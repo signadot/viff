@@ -52,7 +52,7 @@ Every subcommand accepts these flags.
 | `-hint-url` | `VERSE_HINT_URL` | none | the hint route of verse for this installed io: `http://verse:9797/io/<name>/hint` |
 | `-root` | | the name of the subcommand | the [root](../glossary.md#root-of-an-io) of the io: the first segment of every [address](../glossary.md#address) that it writes |
 | `-verse-addr` | `VERSE_ADDR` | the host of `-hint-url` | the verse that the out half reads and writes, as `host:port` |
-| `-as` | | `agent:<root>-io`, such as `agent:slack-io` | the [principal](../glossary.md#principal) that the out half reads and writes as |
+| `-as` | | `agent:<root>-io`, such as `agent:slack-io` | the [principal](../glossary.md#principal) that the out half reads and writes as. The Slack out half reads the asks in a message to a person as that person, since a person's ask is read by whom it asks. |
 | `-out-every` | | `5s` | how often the out half reads what is asked of it |
 
 `-verse-addr`, `-as` and `-out-every` configure the out half. Two subcommands have an out
@@ -256,7 +256,8 @@ iod git-issue -repo   [<id>=]<dir>    a repository already on disk (repeatable, 
                   -bodies                 reflect each issue's description body and its discussion's text (default true)
 ```
 
-`git issue` keeps its issues **in the repository, as refs**.
+[`git issue`](https://pkg.go.dev/github.com/signadot/tony-format/git-issue) keeps its issues
+**in the repository, as refs**.
 
 | Ref | What it is |
 |---|---|
@@ -566,8 +567,7 @@ verse data slack acme out review -put '{
 ```
 
 The io writes those lines itself, because the words of the writer could say anything. At
-every pass the io reads each question from `verse.gate.question.<id>`, which everyone may
-read.
+every pass the io reads each question from its ask, `verse.ask.<id>`, which everyone may read.
 
 | the question | the line, and what follows it |
 |---|---|
@@ -627,7 +627,7 @@ and "ship it" differ by one word.
 [How much of a reply is read](#how-much-of-a-reply-is-read) gives the reason.
 
 **Words that answer nothing are recorded on the question.** The io says them on the question
-(`POST /gate/say`,
+(`POST /asks/{id}/say`,
 as the person who typed them). So the reason that something waits stands beside
 the question, for whoever reads it later. The words do not stay only in the window where
 somebody typed them. They decide nothing.
@@ -642,7 +642,7 @@ what it cost, are worth as much as the words before. When somebody addresses the
 the io tells them what became of the question.
 
 **The io answers as the person who typed the reply.** `users.info` turns the Slack id of the
-person into `user:<email>` (`users:read.email`). The answer goes to `POST /gate/resolve` as
+person into `user:<email>` (`users:read.email`). The answer goes to `POST /asks/{id}/answer` as
 that person, so the permissions of verse decide whether the person may answer.
 
 | Outcome | Where the io says it |

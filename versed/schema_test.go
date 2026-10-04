@@ -109,7 +109,8 @@ func TestRouteTableCoversTheKnownSurface(t *testing.T) {
 		got[r.Method+" "+r.Path] = r
 	}
 	for _, want := range []string{
-		"GET /status", "GET /entity", "POST /entity", "POST /gate/resolve",
+		"GET /status", "GET /entity", "POST /entity", "POST /asks/{id}/answer",
+		"GET /asks", "GET /asks/{id}",
 		"GET /tasks", "POST /tasks", "GET /schema", "GET /api",
 		"GET /flows", "POST /flow/suspend", "POST /flow/resume", "POST /flow/say", "POST /flow/cancel",
 	} {
@@ -118,16 +119,19 @@ func TestRouteTableCoversTheKnownSurface(t *testing.T) {
 		}
 	}
 	// The request bodies unified in the api package should be declared as such.
-	if r := got["POST /gate/resolve"]; r.Request != "verse-resolve" {
-		t.Errorf("POST /gate/resolve request = %q, want verse-resolve", r.Request)
+	if r := got["POST /asks/{id}/answer"]; r.Request != "verse-resolve" {
+		t.Errorf("POST /asks/{id}/answer request = %q, want verse-resolve", r.Request)
+	}
+	if r := got["GET /asks/{id}"]; r.Response != "verse-entity" {
+		t.Errorf("GET /asks/{id} response = %q, want verse-entity", r.Response)
 	}
 	if r := got["POST /entity"]; r.Request != "verse-put-entity" {
 		t.Errorf("POST /entity request = %q, want verse-put-entity", r.Request)
 	}
 	// Two routes are called `say` and take different bodies: a word about a question, and a
 	// re-prompt of a task. Each publishes its own.
-	if r := got["POST /gate/say"]; r.Request != "verse-gate-say" {
-		t.Errorf("POST /gate/say request = %q, want verse-gate-say", r.Request)
+	if r := got["POST /asks/{id}/say"]; r.Request != "verse-gate-say" {
+		t.Errorf("POST /asks/{id}/say request = %q, want verse-gate-say", r.Request)
 	}
 	if r := got["POST /tasks/{id}/say"]; r.Request != "verse-say" {
 		t.Errorf("POST /tasks/{id}/say request = %q, want verse-say", r.Request)
@@ -290,7 +294,7 @@ func TestEveryReferenceResolvesUnqualified(t *testing.T) {
 //   - every bare top-level GET that returns a NAMED document appears in the root. Otherwise a
 //     new noun joins the API and the schema quietly goes on describing the old surface.
 //
-// A route whose response is unnamed (GET /gates, still map literals) or a stream (GET /watch)
+// A route whose response is unnamed (GET /asks, still map literals) or a stream (GET /watch)
 // is exempt in the second direction, and root.tony says why for each.
 func TestTheRootIsTheServedSurface(t *testing.T) {
 	srv := testServer(t)

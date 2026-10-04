@@ -253,10 +253,6 @@ func (p *Task) SetConverse(r Resolver) {
 // wherever the driver stops.
 func (p *Task) SetAnswerCheck(a AnswerCheck) { p.ansck = a }
 
-// SetResolverRef names the resolver that owns this task's questions, from the launch.
-// Applied at spawn, before the loop runs.
-func (p *Task) SetResolverRef(ref string) { p.sup.SetResolverRef(ref) }
-
 // SetDeriver swaps the capability-classification step — what turns a self-reported action into
 // the typed effects a vector matches on. A runtime that installs its own (harness does, so its
 // extra tools derive effects the gates can see) needs it reachable from the task it built,
@@ -331,8 +327,16 @@ func (p *Task) take() (input, bool) {
 // preempt a question standing at a gate, because a run that has been told something new may
 // be redirected into work that question no longer bears on.
 // Requires the Driver to hold a Conversation; otherwise the say is ignored.
-func (p *Task) Steer(instruction, by string) error {
-	p.post(inSay{msgs: []convMsg{{text: instruction, by: by, kind: convSay}}})
+func (p *Task) Steer(instruction, by, ask string) error {
+	// An ENDED task hears nothing: its loop is gone, and words posted to it would be said to no
+	// one while whoever said them was told they were taken.
+	p.busMu.Lock()
+	ended := p.ended
+	p.busMu.Unlock()
+	if ended {
+		return ErrEnded
+	}
+	p.post(inSay{msgs: []convMsg{{text: instruction, by: by, kind: convSay, ask: ask}}})
 	return nil
 }
 
@@ -573,7 +577,7 @@ func (p *Task) perform(ctx context.Context, s state, effs []effect, replies chan
 			p.turns++
 			q := GateQuestion{
 				ID: fmt.Sprintf("%s%st%d", p.ID, GateSep, p.turns), Origin: p.ID, Gate: "turn",
-				Mode: Ask, Reason: "your turn",
+				Mode: Ask, Reason: "your turn", Answerers: []string{PrincipalAnswerer},
 				Options: []Option{{ID: Reply, Says: "say something"}, {ID: End, Says: "end the conversation"}},
 			}
 			tok := v.tok
@@ -736,7 +740,7 @@ func (p *Task) converse(msgs []convMsg) {
 		case convRepair:
 			p.emit(Frame{Kind: EvSay, By: "runtime:answer-contract", Seq: p.seq, Text: m.text})
 		default:
-			p.emit(Frame{Kind: EvSay, By: m.by, Seq: p.seq, Text: m.text})
+			p.emit(Frame{Kind: EvSay, By: m.by, Seq: p.seq, Text: m.text, ID: m.ask})
 		}
 	}
 }

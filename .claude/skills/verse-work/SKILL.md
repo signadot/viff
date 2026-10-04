@@ -90,7 +90,7 @@ Whoever answers does it from the other side — worth telling the user, since a 
 nobody knows about is a session that looks hung:
 
 ```sh
-verse gate                                                  # every pending decision
+verse question --all                                        # every pending decision
 verse task approve <task-id> <decision-id> --as <who> --say "ok"
 verse task deny <task-id> <decision-id> --as <who> --say "not this branch"
 ```

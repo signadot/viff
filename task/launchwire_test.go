@@ -11,21 +11,22 @@ import (
 // staysHome is the fields of a Launch that do not cross to a runner, each with why. A field is
 // here or it is in SpawnRequest: there is no third place for one.
 var staysHome = map[string]string{
-	"Scope":    "where the task's records land is verse's to know; the runner never sees it",
-	"Resolver": "an address in this verse; verse holds a remote task's questions out from the launch it kept",
+	"Scope": "where the task's records land is verse's to know; the runner never sees it",
+	"Answerers": "whom a question naming nobody asks is applied where verse poses it, from the " +
+		"launch for a hosted task and from the task's record for one a runner reports",
 }
 
 // fullLaunch is a launch with every field said, so that one the wire loses reads as lost.
 func fullLaunch() Launch {
 	return Launch{
 		ID: "review@demo.pr.1", Prompt: "review it", Driver: "llm",
-		Frame: "you are a reviewer", Resolver: "verse.resolvers.lead", Retain: 512, Converse: true,
+		Frame: "you are a reviewer", Retain: 512, Converse: true,
 		Tools: []string{"read_file", "run_bash"}, VirtualKey: "vk-123",
 		Answer:      ir.FromMap(map[string]*ir.Node{"verdict": ir.FromString("ok")}),
 		Calls:       []Call{{Tool: "run_bash", Input: map[string]any{"cmd": "true"}}},
 		Vector:      &Vector{Default: Ask},
 		Grant:       &Grant{},
-		Environment: "verse-repo", Scope: "me", Occurrence: 4217,
+		Environment: "verse-repo", Scope: "me", Occurrence: 4217, Answerers: []string{PrincipalAnswerer},
 		Provenance: Provenance{Principal: "user:ana@example.com", Subject: "demo.pr.1", Chain: "review"},
 	}
 }

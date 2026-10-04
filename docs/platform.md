@@ -35,8 +35,6 @@ tasks, answers gates) starts at [the docs index](README.md).
   copy and change.
 - [The coding runner, walked](reference/examples/coderunner/walkthrough.md) — deploying the
   coding runner and running a task on it.
-- [attached-resolver.sh](../scripts/attached-resolver.sh) — five acts of supervision, one
-  command each.
 
 ## How verse is built
 

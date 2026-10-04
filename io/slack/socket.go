@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	verseapi "github.com/signadot/verse/api"
 	"github.com/signadot/verse/client"
 	verseio "github.com/signadot/verse/io"
+	"github.com/signadot/verse/task"
 )
 
 // Socket Mode: how what somebody says in Slack reaches this program with no Ingress in front of it.
@@ -44,6 +46,11 @@ import (
 // it says otherwise. A reply matching none of them is somebody talking, and is left alone. When
 // something interprets prose here one day, it inherits that split: it chooses among the options on
 // the record or says it cannot tell, and it never decides which question is meant.
+//
+// A REPLY ANSWERS THE WORDS IT SAW (9ce3bva0, stage 8). It carries the edit of the ask the message
+// shows, so one to an ask whose `then` has changed since is refused, and the redrawn message is
+// answered as it now reads. `force <option>` answers yourself an ask a resolver serves for you.
+// Under a turn — an ask that takes `reply` — any words are the reply.
 //
 // AS THE PERSON WHO TYPED IT: users.info turns their Slack id into `user:<email>`, and the answer
 // goes to versed's resolve route as them, so versed's permissions decide whether they may answer.
@@ -246,7 +253,10 @@ func (k *Socket) said(ctx context.Context, payload json.RawMessage) {
 	} else {
 		asked = open
 	}
-	id, option, err := choose(e.Text, asked, e.Type == "app_mention")
+	// `force <option>`: the person answers an ask their resolver serves for them, themselves
+	// (9ce3bva0, stage 5). Said, so it is never done by accident.
+	text, force := forcing(e.Text)
+	id, option, err := choose(text, asked, e.Type == "app_mention")
 	if err != nil {
 		// It was meant as an answer and could not be read as one, so the words are kept and the
 		// person is told both things: an answer nobody recorded and nobody mentioned is the one
@@ -257,6 +267,13 @@ func (k *Socket) said(ctx context.Context, payload json.RawMessage) {
 		}
 		k.aside(ctx, e.Channel, e.ThreadTS, e.User, say)
 		return
+	}
+	// A TURN TAKES WORDS: where the one thing open here is a conversation's turn, what is said is
+	// the reply, and the words go with it rather than beside it.
+	if id == "" {
+		if turn, ok := replying(asked); ok {
+			id, option = turn.ID, task.Reply
+		}
 	}
 	if id == "" {
 		// Not an answer, so it is talk about the question — and talk about a question belongs ON
@@ -276,7 +293,14 @@ func (k *Socket) said(ctx context.Context, payload json.RawMessage) {
 		}
 		return
 	}
-	said, answered, public := k.answer(ctx, e.User, id, option)
+	var say string
+	if option == task.Reply {
+		say = strings.TrimSpace(stripMentions(text))
+		if strings.EqualFold(say, task.Reply) {
+			say = ""
+		}
+	}
+	said, answered, public := k.answer(ctx, e.User, askedAs(asked, id), option, say, force)
 	if answered && k.Answered != nil {
 		k.Answered()
 	}
@@ -450,7 +474,7 @@ func (k *Socket) say(ctx context.Context, userID string, asked []Asked, text str
 	verse := k.as(who)
 	noted := false
 	for _, a := range asked {
-		resp, err := verse.Post("/gate/say", nil, verseapi.GateSay{ID: a.ID, By: who, Say: text})
+		resp, err := verse.Post("/asks/"+url.PathEscape(a.ID)+"/say", nil, verseapi.GateSay{ID: a.ID, By: who, Say: text})
 		if err != nil {
 			k.s.log("slack socket: saying on %s: %v", a.ID, err)
 			continue
@@ -468,7 +492,8 @@ func (k *Socket) say(ctx context.Context, userID string, asked []Asked, text str
 // answer makes the answer as the person who typed it, and says what became of it: whether it
 // counted — an answer, or a ballot on a question that takes more than one voice — and whether what
 // there is to say belongs in the thread or to them alone.
-func (k *Socket) answer(ctx context.Context, userID, id, option string) (said string, answered, public bool) {
+func (k *Socket) answer(ctx context.Context, userID string, a Asked, option, say string, force bool) (said string, answered, public bool) {
+	id := a.ID
 	if k.as == nil {
 		return "Not answered: this program was not told which verse the question is in", false, false
 	}
@@ -477,8 +502,13 @@ func (k *Socket) answer(ctx context.Context, userID, id, option string) (said st
 		return "Not answered: " + err.Error(), false, false
 	}
 	who := "user:" + email
-	resp, err := k.as(who).Post("/gate/resolve", nil,
-		verseapi.Resolve{ID: id, Choice: option, By: who})
+	// THE EDIT THE MESSAGE SHOWED, which is what was consented to: a reply to words since changed
+	// is refused by versed rather than counted against the new ones.
+	body := verseapi.Resolve{ID: id, Choice: option, By: who, Edit: a.Edit, Force: force}
+	if say != "" {
+		body.Say = []string{say}
+	}
+	resp, err := k.as(who).Post("/asks/"+url.PathEscape(id)+"/answer", nil, body)
 	if err != nil {
 		return "Not answered: " + err.Error(), false, false
 	}
@@ -508,4 +538,33 @@ func (k *Socket) aside(ctx context.Context, channel, thread, user, text string) 
 	if err := k.s.api.ephemeral(ctx, channel, thread, user, text); err != nil {
 		k.s.log("slack socket: saying %q to %s: %v", text, user, err)
 	}
+}
+
+// forcing reads a leading `force`: what remains is the answer, said by somebody answering an ask
+// their resolver serves for them.
+func forcing(text string) (string, bool) {
+	t := strings.TrimSpace(stripMentions(text))
+	if rest, ok := strings.CutPrefix(strings.ToLower(t), "force "); ok {
+		return strings.TrimSpace(t[len(t)-len(rest):]), true
+	}
+	return text, false
+}
+
+// replying is the one open ask in a thread that takes words, a conversation's turn, where it is the
+// only thing open there.
+func replying(asked []Asked) (Asked, bool) {
+	if len(asked) != 1 || !slices.Contains(asked[0].Options, task.Reply) {
+		return Asked{}, false
+	}
+	return asked[0], true
+}
+
+// askedAs is the ask with this id among those a thread is about.
+func askedAs(asked []Asked, id string) Asked {
+	for _, a := range asked {
+		if a.ID == id {
+			return a
+		}
+	}
+	return Asked{ID: id}
 }

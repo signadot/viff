@@ -387,6 +387,10 @@ type attributed struct {
 	// serves nothing (a write's): the view it is checked against has applied the mirror through
 	// it (servedAt).
 	rev int64
+	// deferred says this view is answering an `audience:` grantee already, so another one met
+	// while it does admits nobody: a place is read as another place and no further, so two
+	// records deferring to each other end rather than chase.
+	deferred bool
 }
 
 // Write stamps the principal where the write names none, checks it against what its place
@@ -854,6 +858,9 @@ func Holds(s Store, principal string, level Level, ref Ref) (bool, error) {
 	if !ok {
 		return false, fmt.Errorf("%s is not an attributed store", ref)
 	}
+	if level == Answer {
+		return a.answers(principal, ref)
+	}
 	acc, err := a.accessOf(principal, ref)
 	if err != nil {
 		return false, err
@@ -862,6 +869,141 @@ func Holds(s Store, principal string, level Level, ref Ref) (bool, error) {
 		return acc.control, nil
 	}
 	return acc.level.Admits(level), nil
+}
+
+// AnswerGrantsOf is every node whose own record names principal on an `answer` line: where a
+// resolver has been granted to answer.
+func AnswerGrantsOf(s Store, principal string) ([]Ref, error) {
+	a, ok := s.(*attributed)
+	if !ok {
+		return nil, fmt.Errorf("%s is not an attributed store", principal)
+	}
+	ents, err := BelowErr(As(a, SystemPerms), nil, 1, VerseRoot, PermsSystem, PermsKind)
+	if err != nil {
+		return nil, err
+	}
+	var out []Ref
+	for _, e := range ents {
+		at, err := ParseAddr(e.Ref.Name())
+		if err != nil {
+			continue
+		}
+		rec, err := a.recordAt(at.String(), false)
+		if err != nil {
+			return nil, err
+		}
+		if rec == nil {
+			continue
+		}
+		for _, g := range rec.grants {
+			if slices.Contains(g.To[Answer], principal) {
+				out = append(out, at)
+				break
+			}
+		}
+	}
+	return out, nil
+}
+
+// AnswerersMeeting is every name on an `answer` line that applies where one at ref would: the
+// lines above ref that reach it, as far as the nearest record carrying an owner; the lines at ref;
+// and the lines beneath it that no other owner's record stands between. It is what a new grant at
+// ref could meet — two resolvers answering for one party — and nothing further: a line past
+// somebody else's record answers for them, not for whoever owns ref.
+func AnswerersMeeting(s Store, ref Ref) ([]string, error) {
+	a, ok := s.(*attributed)
+	if !ok {
+		return nil, fmt.Errorf("%s is not an attributed store", ref)
+	}
+	var out []string
+	segs := ref.Segs()
+	for i := len(segs); i >= 0; i-- {
+		rec, err := a.recordAt(RefAt(segs[:i]...).String(), false)
+		if err != nil {
+			return nil, err
+		}
+		if rec == nil {
+			continue
+		}
+		for _, g := range rec.grants {
+			if g.Covers(segs) {
+				out = append(out, g.To[Answer]...)
+			}
+		}
+		if rec.owner != "" {
+			break
+		}
+	}
+	ents, err := BelowErr(As(a, SystemPerms), nil, 1, VerseRoot, PermsSystem, PermsKind)
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range ents {
+		at, err := ParseAddr(e.Ref.Name())
+		if err != nil {
+			continue
+		}
+		below := at.Segs()
+		if len(below) <= len(segs) || !Under(segs, below, Literal) {
+			continue
+		}
+		fenced := false
+		for j := len(below); j > len(segs); j-- {
+			rec, err := a.recordAt(RefAt(below[:j]...).String(), false)
+			if err != nil {
+				return nil, err
+			}
+			if rec != nil && rec.owner != "" {
+				fenced = true
+				break
+			}
+		}
+		if fenced {
+			continue
+		}
+		rec, err := a.recordAt(at.String(), false)
+		if err != nil {
+			return nil, err
+		}
+		if rec == nil {
+			continue
+		}
+		for _, g := range rec.grants {
+			out = append(out, g.To[Answer]...)
+		}
+	}
+	return out, nil
+}
+
+// answers is whether an `answer` grant reaching ref names principal — reaching as any grant does,
+// up to and including the nearest record carrying an owner. Ownership itself is not consulted:
+// Answer is held by being named (Level Answer), so a resolver acting as the owner of the node
+// holds nothing here it was not granted.
+func (a *attributed) answers(principal string, ref Ref) (bool, error) {
+	who, err := a.resolve(principal)
+	if err != nil {
+		return false, err
+	}
+	segs := ref.Segs()
+	for i := len(segs); i >= 0; i-- {
+		key := RefAt(segs[:i]...).String()
+		rec, err := a.recordAt(key, false)
+		if err != nil {
+			return false, err
+		}
+		if rec == nil {
+			continue
+		}
+		for _, g := range rec.grants {
+			if g.Covers(segs) && a.named(g.To[Answer], Answer, principal, who, key) {
+				return true, nil
+			}
+		}
+		if rec.owner != "" {
+			return false, nil // a grant does not reach through a node carrying its own owner
+		}
+	}
+	return false, nil
 }
 
 // MayCreate reports whether principal may bring ref into being: `owner` there, asked as a
@@ -954,6 +1096,9 @@ func (a *attributed) accessOf(principal string, ref Ref) (access, error) {
 // and carries the rest itself: a write goes down conditional on nothing standing there, and
 // the store settles it.
 func (a *attributed) accessFor(principal string, ref Ref, creating bool) (access, error) {
+	if asker, bound, ok := PairOf(principal); ok {
+		return a.pairAccess(asker, bound, ref, creating)
+	}
 	who, err := a.resolve(principal)
 	if err != nil {
 		return access{}, err
@@ -1004,7 +1149,7 @@ func (a *attributed) accessFor(principal string, ref Ref, creating bool) (access
 					continue
 				}
 				for l, names := range g.To {
-					if !a.named(names, principal, who, key) {
+					if !a.named(names, l, principal, who, key) {
 						continue
 					}
 					if l == OwnerLevel && !creating {
@@ -1052,6 +1197,31 @@ func (a *attributed) accessFor(principal string, ref Ref, creating bool) (access
 // a write does; a listing, a replay and a watch leave out what may not be seen, so the same
 // principal sees the same set whichever way they ask. The system reads everything and pays
 // for none of this.
+
+// pairAccess is what a pair holds at ref: what its ASKER holds, and nothing the rule adds or
+// takes away. A consequence is the raiser's, so it runs on the raiser's authority (9ce3bva0):
+// asked whether I may merge, Daniel's yes lets me merge what I may, and neither the answerer
+// nor the rule's installer needs that right. The rule is the pair's second party so the record
+// says what the task acted through, not so the check can ask it.
+//
+// What keeps a rule's author from acting as anybody whose records the rule selects is at
+// install, not here: a rule that spawns `as: subject` may select only records in a place its
+// installer owns (versed, charterTx.rule), so an asker's record there is written into a place
+// the charter was installed to serve.
+//
+// A SYSTEM ASKER IS NO PARTY. Taken as the system, the task would skip the checks beneath the
+// node a write names (write) and carry the rule past its own limits into everything a value
+// reaches; so a pair whose asker is the system acts as the rule alone.
+func (a *attributed) pairAccess(asker, bound string, ref Ref, creating bool) (access, error) {
+	x, err := a.accessFor(asker, ref, creating)
+	if err != nil {
+		return access{}, err
+	}
+	if IsSystem(x.who) {
+		return a.accessFor(bound, ref, creating)
+	}
+	return x, nil
+}
 
 // keep reports whether the view's principal may read ref, for a listing: false and no error
 // for what they may not, an error for a mirror that did not answer.
@@ -2072,21 +2242,39 @@ func (a *attributed) coOwns(who, addr string, hops int) (bool, error) {
 	return false, nil
 }
 
+// Names reports whether a line of grantees names principal at level, read as a perms record's own
+// line is (named): everyone, a whole kind, a principal as written or through its owner, a group's
+// members, a place acting, and `audience:` as that place is held. It is how a reader asks whether
+// an ask's waitingOn waits on somebody, where the line says more than names (mirror.WaitingOnField).
+func Names(s Store, names []string, level Level, principal string) (bool, error) {
+	a, ok := s.(*attributed)
+	if !ok {
+		return false, fmt.Errorf("%s is not an attributed store", principal)
+	}
+	who, err := a.resolve(principal)
+	if err != nil {
+		return false, err
+	}
+	return a.named(names, level, principal, who, ""), nil
+}
+
 // named reports whether a grantee list names the principal, by the structure of each name
 // (Grantee): `*` names everyone; `<kind>:<id>` the principal named exactly that, or whose owner
 // resolves to it, since a grant to a person means them and everything of theirs acting as
 // itself; `<kind>:*` any principal whose name, or whose owner's, carries the kind; `via:` the
 // place acting as that address, or beneath it under a trailing `*`, and never its owner, since
-// the address is the identity; `group:` the group's members, each named the same way. at is the
+// the address is the identity; `group:` the group's members, each named the same way; `audience:`
+// whoever holds level — read or read-write, and nothing else — at that address, asked one place
+// deep and no further. at is the
 // record the names are on, for a name that does not parse to be said against.
-func (a *attributed) named(names []string, principal, who, at string) bool {
-	return a.namedIn(names, principal, who, at, map[string]bool{})
+func (a *attributed) named(names []string, level Level, principal, who, at string) bool {
+	return a.namedIn(names, level, principal, who, at, map[string]bool{})
 }
 
 // namedIn is named, walking a group's members with the groups already seen: a group met a
 // second time is skipped, so a cycle ends because the walk does and a group nested any depth
 // admits its members.
-func (a *attributed) namedIn(names []string, principal, who, at string, seen map[string]bool) bool {
+func (a *attributed) namedIn(names []string, level Level, principal, who, at string, seen map[string]bool) bool {
 	for _, n := range names {
 		g, err := ParseGrantee(n)
 		if err != nil {
@@ -2104,13 +2292,31 @@ func (a *attributed) namedIn(names []string, principal, who, at string, seen map
 				g.Path[len(g.Path)-1] == Everyone && strings.HasPrefix(principal, strings.TrimSuffix(s, Everyone)) {
 				return true
 			}
+		case g.Kind == AnsweringKind:
+			if a.deferred || level != Read {
+				continue
+			}
+			b := *a
+			b.deferred = true
+			if ok, err := b.answers(principal, RefAt(g.Path...)); err == nil && ok {
+				return true
+			}
+		case g.Kind == AudienceKind:
+			if a.deferred || level != Read && level != ReadWrite {
+				continue
+			}
+			b := *a
+			b.deferred = true
+			if acc, err := b.accessOf(principal, RefAt(g.Path...)); err == nil && acc.level.Admits(level) {
+				return true
+			}
 		case g.Kind == GroupKind:
 			if who == "" || seen[g.ID] {
 				continue
 			}
 			seen[g.ID] = true
 			ref := GroupRef(g.ID)
-			if a.namedIn(a.members(ref), principal, who, ref.String(), seen) {
+			if a.namedIn(a.members(ref), level, principal, who, ref.String(), seen) {
 				return true
 			}
 		case g.ID == Everyone:
@@ -2663,6 +2869,12 @@ func parseRecord(key string, payload Payload, root Levels) *permsRecord {
 // miss remembered would leave a rule acting as nobody for the life of the process. A record this
 // process writes is what the next resolution reads (decide).
 func (a *attributed) resolve(principal string) (string, error) {
+	// A PAIR ACTS AS ITS ASKER: whose the task's writes are, whose a node it creates is, and
+	// whose ids it may write under. What it may DO is both parties' (accessFor), and that is
+	// decided by asking each, not by the name it resolves to.
+	if asker, _, ok := PairOf(principal); ok {
+		return a.resolve(asker)
+	}
 	if KindOf(principal) != ViaKind {
 		return principal, nil
 	}
@@ -2783,10 +2995,25 @@ func SetGrants(s Store, ref Ref, gs []Grant) error {
 	return nil
 }
 
+// CheckChildGrants refuses a default that cannot be one. `answer` is granted by whom it answers
+// for, and a resolver's answer for a place is given as the place's owner on record: a default is
+// copied into a node somebody else may own, so an `answer` in it would have them answer for
+// whoever created there, by nobody's grant.
+func CheckChildGrants(levels Levels) error {
+	if _, ok := levels[Answer]; ok {
+		return fmt.Errorf("child-grants: %q names nobody it answers for: it is granted by whom it "+
+			"answers for (verse resolver grant), not handed down", Answer)
+	}
+	return nil
+}
+
 // SetChildGrants sets what a node created beneath ref holds out (ChildGrantsField), as the system: a
 // nil map removes the field, so the node inherits again; an empty one says nothing is held
 // out.
 func SetChildGrants(s Store, ref Ref, levels Levels) error {
+	if err := CheckChildGrants(levels); err != nil {
+		return err
+	}
 	a, ok := s.(*attributed)
 	if !ok {
 		return nil
@@ -2796,7 +3023,7 @@ func SetChildGrants(s Store, ref Ref, levels Levels) error {
 		// A write MERGES, and the default is an object: a level the new default does not name
 		// has to be removed by name, or it stands from the default before.
 		d := Obj{}
-		for _, l := range []Level{Read, ReadWrite, OwnerLevel, Control} {
+		for _, l := range []Level{Read, ReadWrite, OwnerLevel, Control, Answer} {
 			if names, ok := levels[l]; ok {
 				d[string(l)] = strList(names)
 			} else {
@@ -3142,30 +3369,78 @@ func OwnedByOther(s Store, ref Ref, principal string) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
-	rec, err := a.recordAt(ref.String(), false)
-	if err == nil && rec == nil {
-		rec, err = a.recordAt(ref.String(), true)
-	}
-	if err != nil {
+	owner, err := a.ownerOf(ref)
+	if err != nil || owner == "" {
 		return "", false, err
-	}
-	owner := ""
-	if rec != nil {
-		owner = rec.owner
-	}
-	if owner == "" {
-		stands, err := a.Store.StandsAt(ref.Segs())
-		if err != nil || !stands {
-			return "", false, err
-		}
-		if owner, err = a.ownerAbove(ref); err != nil || owner == "" {
-			return "", false, err
-		}
 	}
 	if owner == who || (IsSystem(owner) && IsSystem(who)) {
 		return owner, false, nil
 	}
 	return owner, true, nil
+}
+
+// OwnerOf is whose ref is: its own record's owner where it has one, the nearest owner above where
+// it has none and STANDS, and "" where nothing stands and no record names anybody — a place not
+// yet made is nobody's, whoever owns the place above it. It is what a firing reads to know who
+// wrote the subject it is about, since an event carries no writer: the record a creation left is
+// the only account of whose the thing is.
+func OwnerOf(s Store, ref Ref) (string, error) {
+	a, ok := s.(*attributed)
+	if !ok {
+		return "", fmt.Errorf("%s is not an attributed store", ref)
+	}
+	return a.ownerOf(ref)
+}
+
+// SettledOwnerOf is OwnerOf for a node that may have just been made: what a firing reads the moment
+// it hears of a write.
+//
+// A creation's record lands AFTER the write it records (attributed.write: a record standing for a
+// write that then failed would make the next creator there not its owner), and a rule can hear the
+// write in between. Read then, a node somebody made under a grant is the place's owner's — the
+// rule would take its own installer for the person who wrote it. So: the node's own record the
+// moment one stands, and otherwise the owner as it reads once `settle` has passed, which is the
+// record at whichever node above it the creation made, or the nearest owner above for a node its
+// place's owner made (which leaves no record at all, and costs the wait).
+func SettledOwnerOf(s Store, ref Ref, settle time.Duration) (string, error) {
+	a, ok := s.(*attributed)
+	if !ok {
+		return "", fmt.Errorf("%s is not an attributed store", ref)
+	}
+	deadline := time.Now().Add(settle)
+	for {
+		rec, err := a.recordAt(ref.String(), true)
+		if err != nil {
+			return "", err
+		}
+		if rec != nil && rec.owner != "" {
+			return rec.owner, nil
+		}
+		if !time.Now().Before(deadline) {
+			return a.ownerOf(ref)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// ownerOf is OwnerOf over this view. A record not in the cache is looked for again before it is
+// taken as absent, since a creation's record may have landed after the cache was filled.
+func (a *attributed) ownerOf(ref Ref) (string, error) {
+	rec, err := a.recordAt(ref.String(), false)
+	if err == nil && rec == nil {
+		rec, err = a.recordAt(ref.String(), true)
+	}
+	if err != nil {
+		return "", err
+	}
+	if rec != nil && rec.owner != "" {
+		return rec.owner, nil
+	}
+	stands, err := a.Store.StandsAt(ref.Segs())
+	if err != nil || !stands {
+		return "", err
+	}
+	return a.ownerAbove(ref)
 }
 
 // ClaimForSystem is Claim for a node the SYSTEM makes under a name it decides — a rule of the
@@ -3199,10 +3474,10 @@ func ClaimForSystem(s Store, ref Ref, system string) (displaced string, err erro
 
 // Reestablish is Establish for a node that is made again under the address it had: the record is
 // written where none stands, and where one does its grants and its link are REPLACED with these.
-// A question is the case — its id is a function of what asked it, so a gate fired again about
-// the same subject poses the same id — and who may answer belongs to the asking, not to the id:
-// left as the first asking wrote it, a gate whose answerers changed goes on admitting the old
-// ones and refusing the new.
+// A question is the case — one that stood orphaned, its waiter gone without a decision, is asked
+// again under its own id when the gate comes back to it — and who may answer belongs to the
+// asking, not to the id: left as the first asking wrote it, a gate whose answerers changed goes
+// on admitting the old ones and refusing the new.
 func Reestablish(s Store, ref Ref, owner string, under Ref, grants []Grant) error {
 	a, ok := s.(*attributed)
 	if !ok {

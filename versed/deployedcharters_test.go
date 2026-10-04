@@ -8,7 +8,13 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/signadot/verse/entity"
 )
+
+// systemCharter is the charter a deployment has versed install at start as the system (deploy's
+// `systemCharter`), before any of the rest.
+const systemCharter = "verse/workspace/Signadot/gate-ask.tony"
 
 // deployOrder is the charters a deployment installs, in the order deploy/repopulate.sh installs
 // them: a file, or a directory whose files install as one step. The order is part of what is
@@ -17,7 +23,6 @@ var deployOrder = []string{
 	"verse/repo/verse/comment-drift",
 	"signadot/repo/signadot/comment-drift.tony",
 	"signadot/repo/signadot/pr.tony",
-	"verse/workspace/Signadot/gate-ask.tony",
 	"verse/workspace/Signadot/deploy-announce.tony",
 	"verse/repo/verse/issue-next.tony",
 }
@@ -38,7 +43,7 @@ func TestEveryDeployedCharterInstalls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var listed []string
+	listed := []string{systemCharter}
 	for _, name := range deployOrder {
 		files, err := charterFilesUnder(filepath.Join("../deploy/charters", name))
 		if err != nil {
@@ -55,7 +60,17 @@ func TestEveryDeployedCharterInstalls(t *testing.T) {
 			inTree, listed)
 	}
 
+	// STARTED, as a deployment's verse is: the base charter is installed first, then the
+	// deployment's system charter, and a deployed charter builds on what they declare (the
+	// docket's stratum, `asks`, and the Slack place's, `gate-asked`).
 	srv := testServer(t)
+	srv.SystemCharter = filepath.Join("../deploy/charters", systemCharter)
+	srv.Start(t.Context())
+	for _, rule := range []string{"gate-ask", "gate-ask-person"} {
+		if got := srv.Eng.OwnerOf(rule); got != entity.SystemCharter {
+			t.Fatalf("%s is %q's, want the system's: installed as anybody else it does not see a person's ask", rule, got)
+		}
+	}
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	// The Slack io, as repopulate installs it before the charters that send through it.

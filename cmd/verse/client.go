@@ -233,6 +233,8 @@ func respFmt(resp *http.Response) codec.Format { return client.ResponseFormat(re
 
 func httpPut(path string, body any) (*http.Response, error) { return apiClient().Put(path, body) }
 
+func httpPatch(path string, body any) (*http.Response, error) { return apiClient().Patch(path, body) }
+
 func httpDelete(path string, q url.Values) (*http.Response, error) {
 	return apiClient().Delete(path, q)
 }
@@ -682,15 +684,21 @@ func renderFrame(s string, in, out codec.Format, color, wire bool) string {
 
 // ── gate ─────────────────────────────────────────────────────────────────────
 
-// gateConfig is the docket command: bare lists it, `<id>` shows one record, and `<id>
-// --answer <option> --as <who>` answers it by option. approve and deny remain as subcommands
-// for the two options every question has unless it names its own.
+// gateConfig is `verse question`, the answerer's side as `verse ask` is the asker's: bare lists
+// the questions waiting on you, `--all` the whole docket, `<id>` shows one record, `<id> --answer
+// <option>` answers it by option, and `--watch` follows what starts waiting on you. approve and
+// deny remain as subcommands for the two options every question has unless it names its own.
+// `questions` and `qs` are its aliases, and `gate` and `gates`, the name it had.
 type gateConfig struct {
 	*cli.Command
-	Answer   string `cli:"name=answer desc='the option to choose, by id (proceed|deny on a yes-or-no question)'"`
-	As       string `cli:"name=as desc='identity answering; the configured user when left off (a decision names who made it)'"`
-	Say      string `cli:"name=say aliases=s desc='words to say to the agent on resolution'"`
-	Override bool   `cli:"name=override desc='answer over an exclusive resolver; the record names you both'"`
+	All    bool   `cli:"name=all desc='every pending ask you can read, whoever raised it and whoever it waits on: the whole docket'"`
+	Watch  bool   `cli:"name=watch desc='print a line when a question starts waiting on you, and when it settles, until stopped'"`
+	Since  string `cli:"name=since desc='with --watch: replay from this revision first, so nothing between two runs is missed'"`
+	Answer string `cli:"name=answer desc='the option to choose, by id (proceed|deny on a yes-or-no question)'"`
+	As     string `cli:"name=as desc='identity answering; the configured user when left off (a decision names who made it)'"`
+	Say    string `cli:"name=say aliases=s desc='words to say to the agent on resolution'"`
+	Force  bool   `cli:"name=force desc='answer yourself an ask a resolver you granted serves for you'"`
+	Served bool   `cli:"name=served desc='list the asks a resolver serves for you too, each saying which'"`
 }
 
 func gateCmd() *cli.Command {
@@ -699,11 +707,11 @@ func gateCmd() *cli.Command {
 	if err != nil {
 		panic(err)
 	}
-	return cli.NewCommandAt(&cfg.Command, "gate").
-		WithAliases("gates").
-		WithSynopsis("gate — the docket: bare lists it, <id> shows one, <id> --answer <option> --as <who> answers it (approve|deny are the two default options)").
+	return cli.NewCommandAt(&cfg.Command, "question").
+		WithAliases("questions", "qs", "gate", "gates").
+		WithSynopsis("question — what is asked of you (also: questions, qs, gate): bare lists the questions waiting on you, --all the whole docket, <id> shows one, <id> --answer <option> answers it (approve|deny are the two default options), --watch follows them").
 		WithOpts(append(opts, filterOpts()...)...).
-		WithSubs(gateAnswerCmd(true), gateAnswerCmd(false), gateEscalateCmd()).
+		WithSubs(gateAnswerCmd(true), gateAnswerCmd(false)).
 		WithRun(func(cc *cli.Context, args []string) error {
 			args, err := cfg.Parse(cc, args)
 			if err != nil {
@@ -713,13 +721,26 @@ func gateCmd() *cli.Command {
 				return err
 			}
 			if len(args) == 0 {
+				if err := cfg.together(false); err != nil {
+					return err
+				}
 				if cfg.Answer != "" {
 					return fmt.Errorf("%w: --answer answers one question, so it wants an id: "+
-						"`verse gate <id> --answer %s --as <who>`", cli.ErrUsage, cfg.Answer)
+						"`verse question <id> --answer %s`", cli.ErrUsage, cfg.Answer)
 				}
-				resp, err := httpGet("/gates", nil)
+				if cfg.Watch {
+					return watchAsks(cc, cfg.Since, false, true)
+				}
+				// THE QUESTIONS PUT TO YOU, unless --all asks for every pending ask you may read.
+				q := url.Values{"waiting": {"me"}}
+				if cfg.All {
+					q = url.Values{"all": {"true"}}
+				} else if cfg.Served {
+					q.Set("served", "true")
+				}
+				resp, err := httpGet("/asks", q)
 				if err != nil {
-					return fmt.Errorf("gate: %w", err)
+					return fmt.Errorf("question: %w", err)
 				}
 				return printBody(cc, resp)
 			}
@@ -730,8 +751,12 @@ func gateCmd() *cli.Command {
 			if err != nil {
 				return err
 			}
+			// After the parse, so a flag after the id is checked as one before it is.
+			if err := cfg.together(true); err != nil {
+				return err
+			}
 			if len(rest) > 0 {
-				return fmt.Errorf("%w: gate takes one id — and this takes ONE token, so %q is "+
+				return fmt.Errorf("%w: question takes one id — and this takes ONE token, so %q is "+
 					"after it", cli.ErrUsage, rest[0])
 			}
 			id := args[0]
@@ -739,13 +764,13 @@ func gateCmd() *cli.Command {
 			case id == "list":
 				// `list` is THE mistake a bare-listing collection invites, and an id it is not:
 				// refused by name, before anything is dialled, as every collection refuses it.
-				return noArgs(cfg.Command, "gate", args)
+				return noArgs(cfg.Command, "question", args)
 			case cfg.Answer == "":
 				// One record, as it stands: the options, the ballots, the deadline, the
 				// outcome — what the listing compacts.
-				resp, err := httpGet("/entity", url.Values{"at": {questionPath(id)}})
+				resp, err := httpGet("/asks/"+url.PathEscape(id), nil)
 				if err != nil {
-					return fmt.Errorf("gate: %w", err)
+					return fmt.Errorf("question: %w", err)
 				}
 				return printBody(cc, resp)
 			default:
@@ -753,26 +778,46 @@ func gateCmd() *cli.Command {
 				if err != nil {
 					return err
 				}
-				return answerGate(cc, id, cfg.Answer, as, cfg.Say, cfg.Override, "answered")
+				return answerGate(cc, id, cfg.Answer, as, cfg.Say, cfg.Force, "answered")
 			}
 		})
 }
 
-// questionPath is where a question's record stands in the store.
-func questionPath(id string) string {
-	return entity.VerseRef("gate", "question", id).KPath()
+// together refuses the flags that mean nothing together, rather than following one and dropping
+// the other. --served widens the listing of your questions, and only that: the docket has the
+// served ones already, the watch says each one and who serves it, and one record is the record
+// whoever serves it.
+func (cfg *gateConfig) together(id bool) error {
+	switch {
+	case cfg.Since != "" && !cfg.Watch:
+		return fmt.Errorf("%w: --since goes with --watch", cli.ErrUsage)
+	case id && (cfg.Watch || cfg.All):
+		return fmt.Errorf("%w: --watch and --all are about every question, and take no id", cli.ErrUsage)
+	case id && cfg.Served:
+		return fmt.Errorf("%w: --served widens the listing, and takes no id", cli.ErrUsage)
+	case cfg.Served && cfg.All:
+		return fmt.Errorf("%w: --all lists every pending ask, served ones included; --served "+
+			"widens the questions waiting on you, so pass one", cli.ErrUsage)
+	case cfg.Served && cfg.Watch:
+		return fmt.Errorf("%w: --watch says the questions a resolver serves for you already, "+
+			"each naming it; --served is the listing's", cli.ErrUsage)
+	case cfg.All && cfg.Watch:
+		return fmt.Errorf("%w: --watch follows what waits on you, and not the docket --all "+
+			"lists; pass one", cli.ErrUsage)
+	}
+	return nil
 }
 
 // answerGate posts one answer and says what became of it: settled, or recorded on a question
 // that takes more than one voice, with where the tally stands.
-func answerGate(cc *cli.Context, id, choice, as, say string, override bool, done string) error {
-	body := api.Resolve{ID: id, Choice: choice, By: as, Override: override}
+func answerGate(cc *cli.Context, id, choice, as, say string, force bool, done string) error {
+	body := api.Resolve{ID: id, Choice: choice, By: as, Force: force}
 	if say != "" {
 		body.Say = []string{say}
 	}
-	resp, err := httpPost("/gate/resolve", body)
+	resp, err := httpPost("/asks/"+url.PathEscape(id)+"/answer", body)
 	if err != nil {
-		return fmt.Errorf("gate %s: %w", choice, err)
+		return fmt.Errorf("answer %s: %w", choice, err)
 	}
 	defer resp.Body.Close()
 	switch resp.StatusCode {
@@ -785,13 +830,13 @@ func answerGate(cc *cli.Context, id, choice, as, say string, override bool, done
 		fmt.Fprintln(cc.Out, id+":", strings.TrimSpace(string(msg)))
 	default:
 		msg, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("gate %s: %s: %s", choice, resp.Status, strings.TrimSpace(string(msg)))
+		return fmt.Errorf("answer %s: %s: %s", choice, resp.Status, strings.TrimSpace(string(msg)))
 	}
 	return nil
 }
 
-// The answer to a gate is a VERB, so it is a command — `gate approve <id>` — rather than
-// `gate resolve <id> --approve|--deny`, a flag pair that could be left empty or set both
+// The answer to a question is a VERB, so it is a command — `question approve <id>` — rather than
+// `question resolve <id> --approve|--deny`, a flag pair that could be left empty or set both
 // ways and so needed a runtime check to police two states the grammar should never have
 // allowed. Every other verb in this CLI is already a subcommand (flow suspend/resume/say/cancel,
 // task cancel/say); the gate's answer was the one that had
@@ -805,13 +850,9 @@ func answerGate(cc *cli.Context, id, choice, as, say string, override bool, done
 // with neither, the answer is refused, since a decision names who made it.
 type gateAnswerConfig struct {
 	*cli.Command
-	Say string `cli:"name=say aliases=s desc='words to say to the agent on resolution'"`
-	As  string `cli:"name=as desc='identity answering the gate; the configured user when left off (a decision names who made it)'"`
-	// The refusal an exclusive resolver produces names the resolver and says to use this, so
-	// the flag is the answer to a question the operator has just been asked. It is a named
-	// act rather than a bypass: `exclusive` was never real against whoever holds this API,
-	// and the record ends up naming both parties.
-	Override bool `cli:"name=override desc='answer over an exclusive resolver; the record names you both'"`
+	Say   string `cli:"name=say aliases=s desc='words to say to the agent on resolution'"`
+	As    string `cli:"name=as desc='identity answering the gate; the configured user when left off (a decision names who made it)'"`
+	Force bool   `cli:"name=force desc='answer yourself an ask a resolver you granted serves for you'"`
 }
 
 func gateAnswerCmd(approve bool) *cli.Command {
@@ -820,10 +861,10 @@ func gateAnswerCmd(approve bool) *cli.Command {
 	if err != nil {
 		panic(err)
 	}
-	name, syn := "approve", "approve a decision (also: y, yes): approve <id> --as <who> [--say <text>]"
+	name, syn := "approve", "approve a question (also: y, yes): approve <id> --as <who> [--say <text>]"
 	aliases, done := []string{"y", "yes"}, "approved"
 	if !approve {
-		name, syn = "deny", "deny a decision (also: n, no): deny <id> --as <who> [--say <text>]"
+		name, syn = "deny", "deny a question (also: n, no): deny <id> --as <who> [--say <text>]"
 		aliases, done = []string{"n", "no"}, "denied"
 	}
 	// The aliases are named in the SYNOPSIS because cli's usage never prints them — it
@@ -841,55 +882,13 @@ func (cfg *gateAnswerConfig) run(cc *cli.Context, args []string, verb, done stri
 		return err
 	}
 	if len(args) < 1 {
-		return fmt.Errorf("%w: gate %s wants a decision id", cli.ErrUsage, verb)
+		return fmt.Errorf("%w: question %s wants a question id", cli.ErrUsage, verb)
 	}
 	as, err := requireAs(cfg.As, "identity", "a decision names who made it")
 	if err != nil {
 		return err
 	}
-	return answerGate(cc, args[0], choiceOf(approve), as, cfg.Say, cfg.Override, done)
-}
-
-type gateEscalateConfig struct {
-	*cli.Command
-	As  string `cli:"name=as desc='who is handing the question on; the configured user when left off'"`
-	Say string `cli:"name=say desc='a word about why, on the record'"`
-}
-
-// gateEscalateCmd is `gate escalate <id>`: hand a question on to the next rung matching its
-// subject — a person's form of what a service does through its cover.
-func gateEscalateCmd() *cli.Command {
-	cfg := &gateEscalateConfig{}
-	opts, err := cli.StructOpts(cfg)
-	if err != nil {
-		panic(err)
-	}
-	return cli.NewCommandAt(&cfg.Command, "escalate").
-		WithSynopsis("escalate a question to the next rung matching its subject: escalate <id> [--as <who>] [--say <why>]").
-		WithOpts(opts...).
-		WithRun(func(cc *cli.Context, args []string) error {
-			args, err := cfg.Parse(cc, args)
-			if err != nil {
-				return err
-			}
-			if len(args) < 1 {
-				return fmt.Errorf("%w: gate escalate wants a question id", cli.ErrUsage)
-			}
-			as, err := requireAs(cfg.As, "identity", "an escalation names who handed the question on")
-			if err != nil {
-				return err
-			}
-			resp, err := httpPost("/gate/escalate", api.Escalate{ID: args[0], By: as, Say: cfg.Say})
-			if err != nil {
-				return fmt.Errorf("gate escalate: %w", err)
-			}
-			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusNoContent {
-				return statusError(resp, "gate escalate")
-			}
-			fmt.Fprintf(cc.Out, "escalated %s\n", args[0])
-			return nil
-		})
+	return answerGate(cc, args[0], choiceOf(approve), as, cfg.Say, cfg.Force, done)
 }
 
 // choiceOf spells a yes-or-no answer as the option it chooses. approve and deny are the two

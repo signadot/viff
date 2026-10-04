@@ -17,7 +17,7 @@ verse task run -answer-contract shape.tony "…"    # …and declare the shape i
 verse task run -gates gates.tony "…"     # …under gates of its own, each with its question
 verse task
 verse task get <id>        # snapshot: status, prompt, driver, runner, result, pending gates
-verse task say <id> "also mention the dial"
+verse task say <id> "also mention the dial"   # an ask to the task: said to <id>: <ask id>
 verse task vector <id> ask -as walter@example.com
 verse task vector <id> -file vector.tony
 verse task cancel <id>
@@ -183,10 +183,10 @@ Approving a command that the agent made up is a real decision.
 The set of actions is not fixed at four. **A runtime may add an action of its own.** The
 coding runner adds `push`, which sends work to a destination that its environment declares.
 What arrives at the gate is an ordinary action with an ordinary typed effect. So a vector
-decides it in the same way, and `verse gate` shows it in the same way.
+decides it in the same way, and `verse question` shows it in the same way.
 
 ```sh
-verse gate                                  # task gates, and engine gates that ASK
+verse question                              # task gates, and engine gates that ASK
 # - gate: write
 #   id: run-f3e31ed0390f~d1
 #   mode: ASK
@@ -194,16 +194,15 @@ verse gate                                  # task gates, and engine gates that 
 #   reason: "verb write"
 #   tool: write_file
 #   where: task
-verse gate approve run-f3e31ed0390f~d1 -as you@example.com    # or: task approve run-… run-…~d1
+verse question approve run-f3e31ed0390f~d1 --as you@example.com  # or: task approve run-… run-…~d1
 ```
 
 **Verse checks who may answer before it delivers the answer.** Who may answer is in
 [tasks and gates](../perms.md#tasks-and-gates). The worker that works the task may not answer
 the question that it raised.
 
-Whoever may answer may also pass the question on, with
-`verse gate escalate <id> -as <who> [-say <why>]`. The question goes to the next resolver that
-matches its subject, or to the docket when there is none.
+A person who answers may answer through a [resolver](../attached-resolvers.md) they granted, and
+the answer is still theirs.
 
 **A charter gate is listed here, whatever it takes to settle it**, with its `options`,
 `ballots` and `deadline` ([the tally](gates.md#the-tally)).
@@ -212,7 +211,7 @@ matches its subject, or to the docket when there is none.
 ([what you can see](../provider-selection.md#what-you-can-see)). You answer it by option:
 
 ```sh
-verse gate verse.trigger.treat.provider~aa92f8cc -answer fixer -as you@example.com
+verse question verse.trigger.treat.provider~aa92f8cc --answer fixer --as you@example.com
 ```
 
 The `~` that separates the gate from its task needs no quotes and no escape, in a shell or in
@@ -222,8 +221,8 @@ With an identity, `run -attach` and `attach` ask inline instead
 (`⏸ gate "write" (write_file) — approve? [y/n]`). Answer `y` to allow and `n` to deny. Any
 other answer is asked again; it is not read as a refusal. A denied gate comes back to the agent
 as an error, and the agent makes a new plan. Without an identity, `attach` only streams, and
-prints the `verse gate` command that answers. The gate is the same question in both cases. It
-stays in `verse gate`, and anybody can resolve it by id from anywhere.
+prints the `verse question` command that answers. The gate is the same question in both cases. It
+stays in `verse question`, and anybody can resolve it by id from anywhere.
 
 ### A gate's question
 
@@ -260,10 +259,17 @@ that `task vector -file` reads:
 Every dimension that a gate writes must hold. A dimension that the gate leaves out holds for
 anything.
 
-`need`, `options` and `deadline` mean what they mean on a
+`need`, `options`, `deadline` and `answerers` mean what they mean on a
 [charter gate](gates.md#gates--whether-it-proceeds). Verse refuses them in the same way when
 they cannot be posed as written. It refuses them at the spawn or at `task vector`, and never
 at the boundary that a running task reaches.
+
+**Whom a task's gate asks.** A gate that names nobody asks the docket. `answerers: [$principal]`
+asks whom the task acts for, which for a run you start is you. Verse refuses `$principal` for a
+task that acts for nobody: one run as the system, or a rule's task without `as: subject`. A task
+that acts for somebody else asks them with every question that names nobody: an ask's `then`
+asks its asker, and a spawn `as: subject` asks the subject's owner. The task's record says so,
+as `answerers: [$principal]` beside `asker:`.
 
 **A run that asks before its one command** needs no credentials. A scripted run is one shell
 command, which is `exec`. So a gate over `exec` stops it before it runs:
@@ -277,7 +283,7 @@ cat > gates.tony <<'EOF'
 EOF
 
 verse task run -driver scripted -gates gates.tony "date -u"      # run-4e919ce01f99
-verse gate
+verse question
 # - gate: shell
 #   id: run-4e919ce01f99~d1
 #   mode: ASK
@@ -292,7 +298,7 @@ verse gate
 #   deadline:
 #     default: deny
 #     within: 10m
-verse gate approve run-4e919ce01f99~d1 -as ana@example.com       # the command runs
+verse question approve run-4e919ce01f99~d1 --as ana@example.com   # the command runs
 verse task get run-4e919ce01f99                                   # status: done
 ```
 
@@ -333,7 +339,7 @@ supervises the child. So its options are modes, not a yes and a no:
 Answer by option, as for any question with options:
 
 ```sh
-verse gate run-f3e31ed0390f~d2 -answer careful -as you@example.com
+verse question run-f3e31ed0390f~d2 --answer careful --as you@example.com
 ```
 
 A gate that wrote `options` of its own over a delegation keeps them. A `need` on such a gate
@@ -343,11 +349,14 @@ is the threshold for every mode.
 
 A task can ask the person it runs for. The `ask` tool — offered to the `llm` driver and to a
 call list — poses a question and blocks until it is answered, and the answer is the tool's
-result. It is a gate's record: on the docket, in `verse gate`, in Slack, answerable from any of
-them, withdrawn if the task is cancelled. Its one option, `reply`, takes words:
+result. It is a gate's record: on the docket, in `verse question`, in Slack, answerable from any of
+them, withdrawn if the task is cancelled. It names `$principal`, so it waits on whom the task acts
+for: whoever launched it, or the asker it runs for. A task acting for nobody, a rule's without
+`as: subject`, asks the docket. Its one option, `reply`,
+takes words:
 
 ```sh
-verse gate run-4708ef20b92d~3 -answer reply -say "the second one" -as you@example.com
+verse question run-4708ef20b92d~3 --answer reply --say "the second one" --as you@example.com
 ```
 
 Attached, the prompt is the question and a line:
@@ -364,6 +373,12 @@ was typed before, which on a yes-or-no gate would deny an action you never saw �
 takes everything waiting as one message, so what you wrote while the task was working arrives
 as one message with its paragraphs. `options` on the ask makes it a menu instead of words.
 
+A question waits until it is answered, unless the task gives it a deadline. `within` (a duration,
+`30m`) bounds the wait, and with `options`, `default` names the option silence settles on. When
+the deadline passes the task reads `nobody answered within 30m`, and what it settled on if it had
+a default, and goes on. The turn a conversation hands over has no deadline: a person may take it
+whenever they come back.
+
 A question is inside every grant and outside every vector: a `read-only` task may ask, and
 `vector: ask` never asks whether the task may ask.
 
@@ -373,8 +388,8 @@ A question is inside every grant and outside every vector: a `read-only` task ma
 you are handed the turn — the same record, `gate: turn`, with the options `reply` and `end` —
 and the run ends when you end it, not when the model stops. At the terminal the turn is a bare
 prompt; a line is your next message, and Ctrl-D ends the conversation. From anywhere else it is
-`verse gate <id> -answer reply -say "…"` or `-answer end`, and a `task say` while the turn
-stands is the turn taken. The model is told all this, so it says its piece and stops rather than
+`verse question <id> --answer reply --say "…"` or `--answer end`, and a `task say` while the turn
+stands is the turn taken: its words are your reply. The model is told all this, so it says its piece and stops rather than
 calling `ask` to hand over; `yield` with reason `done` is the model ending it. The last message
 is the result, and the finisher, if any, runs once, after the end.
 
@@ -484,8 +499,9 @@ that marks the stale ones [vanishing](../change-events.md) and acts on the edge.
 
 ## The question record
 
-Verse publishes a gate that stops for an answer as an entity of its own,
-`verse.gate.question.<id>`. The task points at it (`pending: verse.gate.question.<id>`).
+Verse publishes a gate that stops for an answer as an [ask](../glossary.md#ask) of its own,
+`verse.ask.<id>`, on the docket beside every other ask. The task points at it
+(`pending: verse.ask.<id>`).
 
 ```tony
 payload:
@@ -503,31 +519,15 @@ payload:
 can select the questions it cares about without reading prose:
 
 ```sh
-verse data verse gate question '*' -if '{status: pending, effects: {verbs: [write]}}'
+verse data verse ask '*' -if '{status: pending, effects: {verbs: [write]}}'
 ```
 
 The question record is a record, not a mailbox. Answers go through the resolve API. After an
-answer, the entity settles to `status: answered`, with the verdict and who gave it. A question
-outlives its answer.
+answer, the entity settles to `status: answered`, with the verdict and who gave it. A settled
+question stands for its keep, like any ask, and is then removed ([Asking](../asking.md)).
 
-`resolver` names the resolver that the question is held out to. Verse picks it in this
-order:
-
-1. the resolver that a spawn or a rule named;
-2. else the standing resolver that matches the subject;
-3. else none. The field is absent, and the question is on the docket that a person reads.
-
-`reownedFrom` appears when a question changes hands. `reownedWhy` says what moved it:
-
-| `reownedWhy` | What moved the question |
-|---|---|
-| `escalated` | its owner declined it |
-| `overdue` | the resolver's deadline passed |
-| `removed` | its owner was uninstalled |
-
-In each case the question goes to the layer above: the standing resolver that matches its
-subject, or else the docket that a person reads. The question itself does not change. An
-escalation changes who answers, not what is being answered.
+An answer through a resolver carries `via` beside `by`: `by` is the party it answered for, and
+`via` the resolver ([Resolvers](../attached-resolvers.md#answering)).
 
 `delivered: false` appears when verse has accepted an answer, and the worker that the answer
 is for has not yet taken it. This happens with a brokered task, where the answer waits on the
@@ -536,10 +536,10 @@ What is still in doubt is whether the party that must act on the answer knows it
 clears when the worker acknowledges the answer.
 
 ```sh
-verse data verse gate question '*' -if '{delivered: false}'   # answers still in flight
+verse data verse ask '*' -if '{delivered: false}'   # answers still in flight
 ```
 
-Every answer names its answerer: `verse gate approve <id> -as you@example.com`. Two people
+Every answer names its answerer: `verse question approve <id> --as you@example.com`. Two people
 who answer at once is a normal case.
 
 | Case | What verse answers |

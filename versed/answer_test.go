@@ -85,13 +85,13 @@ func TestTwoAnswersRaceAndBothAreRecorded(t *testing.T) {
 	const id = "verse.trigger.review.review~1"
 	answered := answerable(t, srv, id)
 
-	win := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: "proceed", By: "user:scott@example.com"})
+	win := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "proceed", By: "user:scott@example.com"})
 	win.Body.Close()
 	if win.StatusCode != http.StatusNoContent {
 		t.Fatalf("first answer = %s, want 204", win.Status)
 	}
-	lose := postTony(t, ts.URL+"/gate/resolve", api.Resolve{
-		ID: id, Choice: "deny", By: "user:alice@example.com", Say: []string{"not this week"},
+	lose := postTony(t, ts.URL+answerPath(id), api.Resolve{
+		Choice: "deny", By: "user:alice@example.com", Say: []string{"not this week"},
 	})
 	lose.Body.Close()
 	if lose.StatusCode != http.StatusConflict {
@@ -135,7 +135,7 @@ func TestAnsweringNoQuestionIsNotTheSameAsLosing(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: "verse.trigger.nope.nope~9", Choice: "proceed", By: "user:scott@example.com"})
+	resp := postTony(t, ts.URL+answerPath("verse.trigger.nope.nope~9"), api.Resolve{Choice: "proceed", By: "user:scott@example.com"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("answering an unknown id = %s, want 404", resp.Status)
@@ -157,7 +157,7 @@ func TestAnAnswerIsByWhoeverTheRequestIsMadeAs(t *testing.T) {
 	const id = "verse.trigger.review.review~1"
 	answerable(t, srv, id)
 
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: "proceed"})
+	resp := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "proceed"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("an answer whose body names nobody = %s, want 204 as the request's principal", resp.Status)
@@ -167,18 +167,27 @@ func TestAnAnswerIsByWhoeverTheRequestIsMadeAs(t *testing.T) {
 	}
 }
 
-// An answer naming no question is refused before anything is looked up. Without this it
-// reaches the registry as an empty id, finds nothing, and comes back 404 — indistinguishable
-// from a real id that was mistyped.
-func TestAnAnswerMustNameItsQuestion(t *testing.T) {
+// An answer is about the question its path names, and a body naming another is refused before
+// anything is looked up. Otherwise one of the two names is silently the answer's, and whichever
+// it is, the request was about a question other than the one it answered.
+func TestAnAnswerIsAboutTheQuestionItsPathNames(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{Choice: "proceed", By: "user:scott@example.com"})
+	const id, other = "verse.trigger.review.review~1", "verse.trigger.review.review~2"
+	answerable(t, srv, id)
+	answerable(t, srv, other)
+
+	resp := postTony(t, ts.URL+answerPath(id), api.Resolve{ID: other, Choice: "proceed", By: "user:scott@example.com"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("an answer naming no question = %s, want 400", resp.Status)
+		t.Fatalf("an answer whose body names another question = %s, want 400", resp.Status)
+	}
+	for _, q := range []string{id, other} {
+		if got := question(t, srv, q); got["status"] != mirror.QuestionPending {
+			t.Fatalf("a refused answer settled %s: %+v", q, got)
+		}
 	}
 }
 
@@ -202,7 +211,7 @@ func TestAnUndeliverableAnswerSaysSo(t *testing.T) {
 
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: "p~d1", Choice: "proceed", By: "user:scott@example.com"})
+	resp := postTony(t, ts.URL+answerPath("p~d1"), api.Resolve{Choice: "proceed", By: "user:scott@example.com"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Fatalf("answering an open question on an unreachable runner = %s, want 502", resp.Status)
@@ -257,9 +266,9 @@ func TestAQuestionWhoseAskerGaveUpLeavesTheDocket(t *testing.T) {
 			got["status"], got)
 	}
 
-	resp, err := http.Get(ts.URL + "/gates")
+	resp, err := http.Get(ts.URL + "/asks?all=true")
 	if err != nil {
-		t.Fatalf("gates: %v", err)
+		t.Fatalf("docket: %v", err)
 	}
 	defer resp.Body.Close()
 	var gates []map[string]any
@@ -333,7 +342,7 @@ func TestARelayedAnswerIsRecordedAsInFlight(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 
-	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: "p~d1", Choice: "proceed", By: "user:scott@example.com"})
+	resp := postTony(t, ops.URL+answerPath("p~d1"), api.Resolve{Choice: "proceed", By: "user:scott@example.com"})
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("resolve = %s", resp.Status)

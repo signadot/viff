@@ -427,7 +427,7 @@ the io's own half of the world. A forged report costs a misleading timestamp.
 
 ## Control: what people do over there
 
-A press, a reply or a mention is not a reflection and not a delivery. It is a control request,
+A reply or a mention is not a reflection and not a delivery. It is a control request,
 and an intervention is never a store write ([control.md](../control.md)). So a connector that
 hears one asks verse for it through the ordinary route. It does not write the record.
 

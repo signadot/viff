@@ -26,6 +26,8 @@ context:
 - task: github.com/signadot/verse/task
 define:
   answer: .[tony-base:ir]
+  as: .[string]
+  asker: .[string]
   calls: .[array(verse-launch-call)]
   chain: .[string]
   doer: .[string]
@@ -37,7 +39,6 @@ define:
   occurrence: .[int]
   prompt: .[string]
   provider: .[nullable(verse-launch-provider)]
-  resolver: .[string]
   retain: .[int]
   runner: .[string]
   subject: .[string]

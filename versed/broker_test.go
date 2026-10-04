@@ -66,7 +66,7 @@ func TestBrokeredAttachStreams(t *testing.T) {
 	srv := testServer(t)
 	b := srv.UseBroker("http://verse.test:9090")
 	h := b.Spawn(task.Launch{ID: "bp1", Prompt: "t", Driver: "human"}, nil)
-	h.Steer("hello there", "op") // an EvSay lands on the merged log before attach
+	h.Steer("hello there", "op", "") // an EvSay lands on the merged log before attach
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -281,8 +281,8 @@ func TestTaskInboxAndControlRouting(t *testing.T) {
 		t.Fatalf("say: %v", err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("say routing = %d, want 204", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK { // an ask to the task, answered with its id
+		t.Fatalf("say routing = %d, want 200", resp.StatusCode)
 	}
 
 	// inbox shows it, unfenced.

@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
@@ -104,7 +105,7 @@ type Trigger struct {
 	Action Action  `tony:"field=action"`
 }
 
-// Gating is a rule's own gates and who answers them.
+// Gating is a rule's own gates.
 //
 //tony:schemagen=verse-gating,notag,comment=Doc,lineComment=Note
 type Gating struct {
@@ -115,16 +116,9 @@ type Gating struct {
 	Note []string `tony:"-"`
 	// The per-field carriers, as on Trigger: a scalar field has no type of its own to hold
 	// what was written about it.
-	ResolverDoc  []string `tony:"-"`
-	ResolverNote []string `tony:"-"`
-	GatesDoc     []string `tony:"-"`
-	GatesNote    []string `tony:"-"`
-	// Resolver names the resolver that answers these gates — `verse.resolvers.<name>`. Same
-	// spelling as a spawn's `resolver:` on purpose: it is the same act, naming an answerer,
-	// and one word for it is worth more than either word being marginally better in its own
-	// place. Empty leaves the question to the standing layer, then to the human docket.
-	Resolver string `tony:"field=resolver,omitzero,comment=ResolverDoc,lineComment=ResolverNote"`
-	Gates    []Gate `tony:"field=gates,omitzero,comment=GatesDoc,lineComment=GatesNote"`
+	GatesDoc  []string `tony:"-"`
+	GatesNote []string `tony:"-"`
+	Gates     []Gate   `tony:"field=gates,omitzero,comment=GatesDoc,lineComment=GatesNote"`
 }
 
 // AllGates is the rule's gates however they were written.
@@ -133,14 +127,6 @@ func (t Trigger) AllGates() []Gate {
 		return t.Gating.Gates
 	}
 	return t.Gates
-}
-
-// GateResolver is the resolver named to answer this rule's own gates, empty for none.
-func (t Trigger) GateResolver() string {
-	if t.Gating == nil {
-		return ""
-	}
-	return t.Gating.Resolver
 }
 
 // Condition is the ECA "cause": what the firing is about, and what fires it. Subject and
@@ -351,13 +337,28 @@ type Gate struct {
 	// docket's default, so a gate naming davido is davido's to answer and the charter's owner's,
 	// who co-owns what their rule asked. `need` is how many of them it takes.
 	Answerers []string `tony:"field=answerers,omitzero"`
+	// AnswerersFrom names the field of the SUBJECT'S value that says who else is asked: a dotted
+	// path (`answerers`, `review.by`) holding one grantee or a list of them. Read at the firing,
+	// added to Answerers, and held to exactly the checks Answerers is held to at install — a
+	// name the grammar reads, a group or a resolver that stands, a threshold somebody can meet.
+	// It is how a record that ASKS names whom: one standing rule poses every ask, and each ask
+	// says who it is for. A record without the field says nothing, and the question is the
+	// gate's own names' — or open, where the gate names nobody either.
+	//
+	// A field and not an expression, deliberately: who gets asked is adjacent to authority, and
+	// the expression language that words a `pose` is not what should decide it — the same line
+	// a spawn's `tools` and `virtualKey` hold, which are never expanded.
+	AnswerersFrom string `tony:"field=answerersFrom,omitzero"`
+	// Labels ride on the gate's question — `team: payments` — for whoever watches asks to match
+	// on. Words the charter's author and the resolvers agree on; verse routes nothing by one.
+	Labels map[string]string `tony:"field=labels,omitzero"`
 	// OnDenied is what a NO means for the subject — an action applied when this gate
 	// refuses, about the same subjects the firing was about.
 	//
 	// It exists because a denied firing otherwise writes nothing at all (see Engine.fire:
 	// "no budget consumed"), so the subject is left in the state that asked the question.
-	// Any later commit that touches it re-selects it, the rule fires again, and the gate is
-	// re-posed under its deterministic id — over an answer somebody already gave. No rule
+	// Any later commit that touches it re-selects it, the rule fires again, and the gate asks
+	// again — a new question, about what somebody already answered. No rule
 	// shape can author its way out of that, because the latch a well-formed rule carries
 	// lives in the action, and on a deny the action never runs.
 	//
@@ -374,6 +375,9 @@ type Gate struct {
 func (g Gate) validate() error {
 	if g.Need < 0 {
 		return fmt.Errorf("need %d: a threshold is at least one", g.Need)
+	}
+	if err := task.CheckLabels(g.Labels); err != nil {
+		return err
 	}
 	if g.Pose != "" && g.Mode == "auto" {
 		return fmt.Errorf("`pose` is the words a question is asked in, and an auto gate asks " +
@@ -396,7 +400,21 @@ func (g Gate) validate() error {
 			return fmt.Errorf("option %q: need %d: a threshold is at least one", o.ID, o.Need)
 		}
 	}
-	if g.Deadline != nil {
+	if g.Deadline != nil && g.Deadline.At != "" {
+		return fmt.Errorf("deadline `at:` is the engine's, resolved from `atFrom` at the firing; " +
+			"a rule says where the date is (`atFrom: by`) or how long it stands (`within: \"24h\"`)")
+	}
+	if g.Deadline != nil && g.Deadline.AtFrom != "" {
+		if g.Deadline.Within != "" {
+			return fmt.Errorf("deadline has both `within` and `atFrom`: a clock runs from when it is " +
+				"posed or to a date the record says, not both")
+		}
+		if !fieldPath(g.Deadline.AtFrom) {
+			return fmt.Errorf("deadline atFrom %q: a field of the subject's value, dotted "+
+				"(`by`, `review.due`)", g.Deadline.AtFrom)
+		}
+	}
+	if g.Deadline != nil && g.Deadline.AtFrom == "" {
 		d, err := g.Deadline.After()
 		if err != nil {
 			return fmt.Errorf("deadline: %w (quote the duration: within: \"24h\")", err)
@@ -404,6 +422,8 @@ func (g Gate) validate() error {
 		if d <= 0 {
 			return fmt.Errorf("deadline: within %q: a deadline is in the future", g.Deadline.Within)
 		}
+	}
+	if g.Deadline != nil {
 		if dflt := g.Deadline.Default; dflt != "" {
 			opts := g.options()
 			if opts == nil {
@@ -415,9 +435,20 @@ func (g Gate) validate() error {
 			}
 		}
 	}
+	// A RULE'S GATE IS ASKED BY ITS RULE, which acts for nobody: $principal would name no one.
+	if task.NamesPrincipal(g.Answerers) {
+		return fmt.Errorf("answerers: %s is whom a task acts for, and a rule's own gate is asked by "+
+			"the rule; name who answers, or read them from the subject (`answerersFrom`)", task.PrincipalAnswerer)
+	}
+	if g.AnswerersFrom != "" {
+		if _, ok := g.answerersPath(); !ok {
+			return fmt.Errorf("answerersFrom %q: a field of the subject's value, dotted "+
+				"(`answerers`, `review.by`)", g.AnswerersFrom)
+		}
+	}
 	if g.asks() && strings.EqualFold(g.Mode, "auto") {
-		return fmt.Errorf("mode auto asks nobody, so a threshold, options or a deadline have " +
-			"nothing to settle; drop them or drop the mode")
+		return fmt.Errorf("mode auto asks nobody, so a threshold, options, a deadline or " +
+			"answerersFrom have nothing to settle; drop them or drop the mode")
 	}
 	return nil
 }
@@ -436,7 +467,36 @@ func (g Gate) mode() (task.Mode, error) {
 // asks reports whether the gate says anything that only a posed question can honour: how it
 // settles, or the words it is asked in.
 func (g Gate) asks() bool {
-	return g.Need > 0 || len(g.Options) > 0 || g.Deadline != nil || g.Pose != ""
+	return g.Need > 0 || len(g.Options) > 0 || g.Deadline != nil || g.Pose != "" || g.AnswerersFrom != ""
+}
+
+// answerersPath is AnswerersFrom as the segments it reads, and false where it names no field.
+func (g Gate) answerersPath() ([]string, bool) {
+	if !fieldPath(g.AnswerersFrom) {
+		return nil, false
+	}
+	return strings.Split(g.AnswerersFrom, "."), true
+}
+
+// fieldPath reports whether p names a field of a subject's value: dotted, no empty segment.
+func fieldPath(p string) bool {
+	if p == "" {
+		return false
+	}
+	for _, s := range strings.Split(p, ".") {
+		if s == "" {
+			return false
+		}
+	}
+	return true
+}
+
+// readField is the value at a dotted field path in v, nil where anything along it is missing.
+func readField(v entity.Payload, path string) entity.Payload {
+	for _, seg := range strings.Split(path, ".") {
+		v = entity.Get(v, seg)
+	}
+	return v
 }
 
 // options is what the gate's question offers: its own options when it names them, the two
@@ -768,6 +828,33 @@ func (a Action) validate() error {
 			"states. Add one (`grant: read-only`, `no-delegate`, `none`) — or `grant: all` to " +
 			"say the selection is deliberately unbounded")
 	}
+	// WHOSE AUTHORITY A TASK CARRIES is the charter's to ask for and the engine's to find out:
+	// `as: subject` says "with whoever owns the record this is about", and the engine reads who
+	// that is at the firing. A charter naming the asker itself would be naming whoever it liked
+	// to act as, so that is refused rather than overwritten — the author is here to be told.
+	if a.Spawn != nil {
+		if a.Spawn.As != "" && a.Spawn.As != launch.AsSubject {
+			return fmt.Errorf("spawn `as: %s`: the one thing a task can act with beside its rule is "+
+				"`as: subject`, the owner of the record the firing is about", a.Spawn.As)
+		}
+		if a.Spawn.Asker != "" {
+			return fmt.Errorf("spawn `asker:` is the engine's to set, from `as: subject` at the " +
+				"firing; a charter naming who its task acts as would act as anybody")
+		}
+		// $principal is whom the task acts for, and a rule's task acts for somebody only `as:
+		// subject`.
+		if a.Spawn.As == "" && task.GatesNamePrincipal(a.Spawn.Gates) {
+			return fmt.Errorf("spawn.gates: %s is whom the task acts for, and this rule's task acts "+
+				"for nobody but its rule; spawn it `as: subject`, or name who answers", task.PrincipalAnswerer)
+		}
+		// A spawn's gates are asked by its task, which has no record to read a date from.
+		for i, g := range a.Spawn.Gates {
+			if g.Deadline != nil && (g.Deadline.AtFrom != "" || g.Deadline.At != "") {
+				return fmt.Errorf("spawn.gates[%d]: a task's gate stands `within` a duration; "+
+					"a date read from the subject (`atFrom`) is for a rule's own gates", i)
+			}
+		}
+	}
 	for i, el := range a.Seq {
 		// The sequence owns each element's done slot — the list already says what comes
 		// next, so a second answer in the same place is a contradiction, not a composition.
@@ -1055,6 +1142,10 @@ func (e *Engine) launchSpawn(a Action, chain string, subj entity.Ref, root entit
 	return e.launch(a, chain, subj, root, occurrence)
 }
 
+// ownerSettle is how long a firing spawning `as: subject` waits for the subject's owner record to
+// land, when the subject has none of its own yet.
+const ownerSettle = 250 * time.Millisecond
+
 // launch is launchSpawn past the suspension: what a parked launch re-enters when it is released.
 func (e *Engine) launch(a Action, chain string, subj entity.Ref, root entity.Payload,
 	occurrence int64) (task.Handle, error) {
@@ -1062,6 +1153,24 @@ func (e *Engine) launch(a Action, chain string, subj entity.Ref, root entity.Pay
 	// The subject is the engine's to set, not the charter's: a task is about exactly
 	// one subject, and which one is the Condition's answer.
 	spec.Subject = subj.String()
+	// And who asked, the same way: cleared on every launch, and set only where the rule says
+	// `as: subject`, from the subject's owner record — the only account of who wrote it, since
+	// an event carries no writer. A subject nobody owns has nobody to act as, and the spawn
+	// fails rather than running as the rule alone: `as: subject` asked for the asker's bound,
+	// and running without it would lift the one limit the author chose.
+	spec.Asker = ""
+	if spec.As == launch.AsSubject {
+		// SETTLED, because this firing may be hearing the write that made the subject before the
+		// record saying who made it has landed (entity.SettledOwnerOf).
+		owner, err := entity.SettledOwnerOf(e.store, subj, ownerSettle)
+		if err != nil {
+			return nil, fmt.Errorf("spawn as the owner of %s: whose it is could not be read: %w", subj, err)
+		}
+		if owner == "" {
+			return nil, fmt.Errorf("spawn as the owner of %s: no owner is on record for it", subj)
+		}
+		spec.Asker = owner
+	}
 	// The chain rides the spec so the SPAWNER can mirror it: mirror.Reflect owns the task
 	// entity's payload and re-Puts it on every event, so a field the engine wrote afterwards
 	// would be clobbered. Engine-owned, like Subject above.

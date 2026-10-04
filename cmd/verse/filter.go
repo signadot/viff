@@ -29,7 +29,7 @@ import (
 //
 // WHAT AN ITEM IS depends on what the command lists, and that is the whole design:
 //
-//   - a listing (`ps`, `motion`, `gate`, `trigger`, …) answers an ARRAY: an item is an element.
+//   - a listing (`ps`, `motion`, `question`, `trigger`, …) answers an ARRAY: an item is an element.
 //   - `state` answers a document keyed by ADDRESS: an item is one entity's payload, found by
 //     the same walk a read uses, so it works at whatever depth the path reaches and across both
 //     halves of the tree.

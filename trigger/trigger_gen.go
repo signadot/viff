@@ -636,14 +636,6 @@ func (s *Gating) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Create IR object map
 	irMap := make(map[string]*ir.Node)
 
-	// Field: Resolver
-	if s.Resolver != "" {
-		irMap["resolver"] = ir.FromString(string(s.Resolver))
-	}
-	if n, ok := irMap["resolver"]; ok {
-		irMap["resolver"] = gomap.ApplyComments(n, s.ResolverDoc, s.ResolverNote)
-	}
-
 	// Field: Gates
 	if len(s.Gates) > 0 {
 		slice := make([]*ir.Node, len(s.Gates))
@@ -708,18 +700,6 @@ func (s *Gating) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
 		}
 		switch fieldName.String {
-		case "resolver":
-			// Field: Resolver
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "resolver", fieldNodeUnwrapped.Type)
-			}
-			s.Resolver = string(fieldNodeUnwrapped.String)
-			if fieldNode.Type == ir.CommentType {
-				s.ResolverDoc = fieldNode.Lines
-			}
-			if v := ir.Uncomment(fieldNode); v != nil && v.Comment != nil {
-				s.ResolverNote = v.Comment.Lines
-			}
 		case "gates":
 			// Field: Gates
 			if fieldNodeUnwrapped.Type == ir.ArrayType {
@@ -841,6 +821,20 @@ func (s *Gate) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 			slice[i] = ir.FromString(string(v))
 		}
 		irMap["answerers"] = ir.FromSlice(slice)
+	}
+
+	// Field: AnswerersFrom
+	if s.AnswerersFrom != "" {
+		irMap["answerersFrom"] = ir.FromString(string(s.AnswerersFrom))
+	}
+
+	// Field: Labels
+	if len(s.Labels) > 0 {
+		mapNodes := make(map[string]*ir.Node)
+		for k, v := range s.Labels {
+			mapNodes[k] = ir.FromString(string(v))
+		}
+		irMap["labels"] = ir.FromMap(mapNodes)
 	}
 
 	// Field: OnDenied (optional)
@@ -973,6 +967,30 @@ func (s *Gate) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				s.Answerers = slice
 			} else {
 				return fmt.Errorf("%s: expected array, got %v", "field \"answerers\"", fieldNodeUnwrapped.Type)
+			}
+		case "answerersFrom":
+			// Field: AnswerersFrom
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "answerersFrom", fieldNodeUnwrapped.Type)
+			}
+			s.AnswerersFrom = string(fieldNodeUnwrapped.String)
+		case "labels":
+			// Field: Labels
+			if fieldNodeUnwrapped.Type == ir.ObjectType {
+				m := make(map[string]string)
+				irMap := ir.ToMap(fieldNodeUnwrapped)
+				for k, v := range irMap {
+					ctx := fmt.Sprintf("map value at key %q", k)
+					var val string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					val = v.String
+					m[k] = val
+				}
+				s.Labels = m
+			} else {
+				return fmt.Errorf("%s: expected object, got %v", "field \"labels\"", fieldNodeUnwrapped.Type)
 			}
 		case "onDenied":
 			// Field: OnDenied

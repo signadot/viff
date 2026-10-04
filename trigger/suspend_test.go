@@ -346,7 +346,7 @@ func (h *heldHandle) SubscribeSince(int64) (<-chan task.Frame, func()) { return 
 func (h *heldHandle) Pause() error                                     { h.mu.Lock(); h.pauses++; h.mu.Unlock(); return nil }
 func (h *heldHandle) Resume() error                                    { return nil }
 func (h *heldHandle) Cancel(string) error                              { return nil }
-func (h *heldHandle) Steer(string, string) error                       { return nil }
+func (h *heldHandle) Steer(string, string, string) error               { return nil }
 func (h *heldHandle) SetVector(*task.Vector, string) error             { return nil }
 func (h *heldHandle) Result() string                                   { return "" }
 func (h *heldHandle) Err() string                                      { return "" }

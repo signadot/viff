@@ -309,8 +309,8 @@ func (h *remoteHandle) Cancel(reason string) error {
 	return h.post("/cancel", task.CancelRequest{Reason: reason})
 }
 
-func (h *remoteHandle) Steer(instr, by string) error {
-	return h.post("/say", task.SayRequest{Instruction: instr, By: by})
+func (h *remoteHandle) Steer(instr, by, ask string) error {
+	return h.post("/say", task.SayRequest{Instruction: instr, By: by, Ask: ask})
 }
 
 func (h *remoteHandle) SetVector(v *task.Vector, by string) error {
@@ -465,6 +465,8 @@ func statusErr(resp *http.Response) error {
 		return fmt.Errorf("%w: %s", task.ErrNoSuchTask, detail)
 	case http.StatusConflict:
 		return fmt.Errorf("%w: %s", task.ErrAlreadyAnswered, detail)
+	case http.StatusGone:
+		return fmt.Errorf("%w: %s", task.ErrEnded, detail)
 	case http.StatusNotImplemented:
 		return fmt.Errorf("%w: %s", task.ErrUnsupported, detail)
 	}

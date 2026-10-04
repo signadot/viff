@@ -11,6 +11,7 @@ package mirror
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -140,9 +141,14 @@ type Meta struct {
 	Doer  string
 	Grant string
 	Tools []string
-	// Resolver is the resolver a spawn NAMED to answer this run's gates, published on the
-	// entity so "who is covering this" is readable beside what the work may do.
-	Resolver string
+	// Asker is the person the run acts for: beside its rule, where the rule said `as: subject`
+	// (the owner of the record that fired it), or alone, where a person ran it or an ask's `then`
+	// did. Published so "whose authority is this running with" is read off the record rather than
+	// worked out from a pair of names nobody sees. It is whom task.PrincipalAnswerer names.
+	Asker string
+	// Answerers is whom the task's questions naming nobody are held out to (task.Launch.Answerers),
+	// published as the record's `answerers` so a restart keeps it. Empty is the docket.
+	Answerers []string
 	// As is the principal the runner acts as, when the runner is known at spawn — a runner
 	// reached by url carries its identity on its entity. The mirror then does at the first
 	// reflection what a claim does for a brokered task: lists it as a runner, grants it the
@@ -160,29 +166,6 @@ type Meta struct {
 	// worker raises by a name the spawn's gates carry is held out to THEIR answerers, whatever
 	// the frame says: that gate is the charter's, and the runner does not get to soften it.
 	Gates []task.Gate
-	// Owner answers "which standing resolver matches this subject", for a question the spawn
-	// named nobody for. It is a callback rather than a call because mirror must not import
-	// the resolver package: resolver reads the charter's match vocabulary, trigger reads
-	// mirror, and the cycle closes. So the party that knows all three supplies the lookup.
-	//
-	// Nil means no standing layer is consulted, which is what a caller with no store view
-	// of resolvers should pass.
-	//
-	// TODO: cut the cycle rather than routing around it, before the resolver work
-	// multiplies this. Two symptoms already: an optional field three call sites build by
-	// hand lost the standing layer for resumed tasks in the commit that added it (see
-	// versed.Server.reflect), and the resolver's cover system is spelled here as a
-	// private constant because the real one cannot be imported — one fact, two spellings.
-	//
-	// The edge to cut is resolver → trigger, not trigger → mirror. Trigger uses Reflect,
-	// Meta and ParseResult, which is the projection itself and not addressing, so no
-	// extraction of refs into a leaf package would help; it would move a constant and leave
-	// the dependency. Resolver imports trigger for exactly one thing — Match, the entity
-	// selector — which delegates to entity.Pattern and is called "the atom of the trigger
-	// model" while being a selector over entities that trigger happens to own. Lifting it
-	// out is the change that is right on its own merits, and it makes mirror → resolver
-	// legal as a side effect.
-	Owner func(subject string) string
 	// Arm starts the clock on a question a FRAME posed with a deadline, when set. The record
 	// is written here; the timer that settles it is the server's, so the server hands one in.
 	Arm func(questionID, within string)
@@ -221,10 +204,10 @@ func TriggerOf(chain string) string {
 //
 // `hook` is the engine's, written onto the same record when a hook fails (trigger.recordHookFailure).
 var RecordFields = map[string]bool{
-	"chain": true, "cursor": true, "data": true, "dialURL": true, "doer": true,
+	"answerers": true, "asker": true, "chain": true, "cursor": true, "data": true, "dialURL": true, "doer": true,
 	"ended": true, "err": true, "flow": true, "grant": true, "hook": true,
 	"lastAction": true, "lastOutput": true, "observed": true, "occurrence": true,
-	"paused": true, "pending": true, "prompt": true, "resolver": true, "result": true,
+	"paused": true, "pending": true, "prompt": true, "result": true,
 	"runner": true, "runnerName": true, "say": true, "started": true, "startedAt": true,
 	"status": true, "tools": true, "trigger": true, "vector": true, "vectorBy": true,
 	HeldByField: true,
@@ -285,14 +268,17 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	if m.Doer != "" {
 		st["doer"] = m.Doer
 	}
+	if m.Asker != "" {
+		st["asker"] = m.Asker
+	}
+	if len(m.Answerers) > 0 {
+		st["answerers"] = m.Answerers
+	}
 	if m.Grant != "" {
 		st["grant"] = m.Grant
 	}
 	if len(m.Tools) > 0 {
 		st["tools"] = m.Tools
-	}
-	if m.Resolver != "" {
-		st["resolver"] = m.Resolver
 	}
 	// A dial-in runner (broker) has a worker-facing base URL distinct from how verse
 	// controls it: publish it so a worker can be told where to dial in (the mint→publish→
@@ -388,15 +374,77 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 
 // answerersFor is who a worker-raised gate's question is held out to: the spawn's gate of that
 // name, when it has answerers of its own — the charter's policy, which the frame cannot soften
-// — and otherwise whoever the frame named, which is a worker asking somebody. Neither leaves
-// the question to the docket's default.
-func answerersFor(gates []task.Gate, ev task.Frame) []string {
-	for _, g := range gates {
+// — then whoever the frame named, which is a worker asking somebody, then whom the task's
+// questions naming nobody go to (Meta.Answerers). task.PrincipalAnswerer is put as the asker.
+func answerersFor(m Meta, ev task.Frame) []string {
+	names := ev.Answerers
+	for _, g := range m.Gates {
 		if g.Name == ev.Gate && len(g.Answerers) > 0 {
-			return g.Answerers
+			names = g.Answerers
+			break
 		}
 	}
-	return ev.Answerers
+	if len(names) == 0 {
+		names = m.Answerers
+	}
+	return WithPrincipal(names, m.Asker)
+}
+
+// WithPrincipal is answerers with task.PrincipalAnswerer put as actsFor, whom the task acts for.
+// Where it acts for nobody (a firing, as its rule, or the system) the name is dropped, so a
+// question naming nobody else is the docket's: only the `ask` tool and a turn reach here that
+// way, since a gate naming it is refused at the spawn (CheckPrincipal).
+func WithPrincipal(answerers []string, actsFor string) []string {
+	if !task.NamesPrincipal(answerers) {
+		return answerers
+	}
+	if entity.IsSystem(actsFor) {
+		actsFor = ""
+	}
+	out := make([]string, 0, len(answerers))
+	for _, a := range answerers {
+		if a != task.PrincipalAnswerer {
+			out = append(out, a)
+		} else if actsFor != "" && !slices.Contains(answerers, actsFor) {
+			out = append(out, actsFor)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// ActsFor is whom a task launched as principal acts for: the asker of a pair, or a person or
+// agent who launched it as themselves. A firing, launched as its rule, and the system act for
+// nobody.
+func ActsFor(principal string) string {
+	if asker, _, ok := entity.PairOf(principal); ok {
+		if entity.IsSystem(asker) {
+			return ""
+		}
+		return asker
+	}
+	return Launcher(principal)
+}
+
+// CheckPrincipal refuses gates naming task.PrincipalAnswerer for a task that acts for nobody:
+// asked, they would be the docket's, which is not what they say.
+func CheckPrincipal(gates []task.Gate, actsFor string) error {
+	if (actsFor == "" || entity.IsSystem(actsFor)) && task.GatesNamePrincipal(gates) {
+		return fmt.Errorf("a gate names %s, and this task acts for nobody: it runs as its rule or "+
+			"the system, so name who answers, or spawn it `as: subject`", task.PrincipalAnswerer)
+	}
+	return nil
+}
+
+// Launcher is the person or agent who launched a task as themselves, from the launch's
+// principal: nobody for a firing, launched as its rule, or for a pair, which acts for its asker.
+func Launcher(principal string) string {
+	if p, err := entity.ParsePrincipal(principal); err == nil && (p.Kind == entity.UserKind || p.Kind == entity.AgentKind) {
+		return p.String()
+	}
+	return ""
 }
 
 // LocalRunner is Meta.Runner for a task hosted in this process, whose frames are verse's own.
@@ -554,16 +602,10 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				// live there; duplicating any of them here would be a second spelling of one
 				// fact, and the entity is an index.
 				st["pending"] = QuestionRef(ev.ID).String()
-				// A frame carries no subject and no owner — the deriver that knew them ran
-				// on another machine — so they come from what this mirror already holds:
-				// the run's flow, the resolver its spawn named, and failing that the
-				// standing layer matching the subject.
+				// A frame carries no subject — the deriver that knew it ran on another
+				// machine — so it comes from what this mirror already holds: the run's flow.
 				subject := entity.Str(st.Payload(), "flow")
-				owner := m.Resolver
-				if owner == "" && subject != "" && m.Owner != nil {
-					owner = m.Owner(subject)
-				}
-				posed := PostFrameQuestion(docket, ev, id, subject, owner, answerersFor(m.Gates, ev))
+				posed := PostFrameQuestion(docket, ev, id, subject, answerersFor(m, ev))
 				// The clock, if the frame set one: the question is the worker's, but the
 				// timer that settles it runs where the record is kept.
 				if posed && ev.Deadline != nil && ev.Deadline.Within != "" && m.Arm != nil {
@@ -598,6 +640,9 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 			case task.EvSay: // an utterance; only the task's OWN words are the preview
 				if ev.By == "" { // By set = a say-to folded in, not the agent's narration
 					st["say"] = preview(ev.Text)
+				}
+				if ev.ID != "" { // words said to it, which it has now taken: that ask is heard
+					HearSay(docket, ev.ID, id)
 				}
 			case task.EvStatus:
 				// paused/resumed ride the same channel as lifecycle status but are
@@ -659,103 +704,6 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 	}
 	return false, heard
 }
-
-// CoverRun mints a resolver's cover on one run: `verse.covers.<name>@<id>`.
-//
-// At SPAWN rather than at the first question, because a resolver reads context before the ask
-// — that is the whole reason it is attached rather than handed a question — so the thing that
-// says who is covering it has to exist from the moment there is something to read.
-//
-// It carries the resolver and the stream as fields as well as in its address, because an
-// address is for finding one and a field is for selecting many: "every cover of the
-// security reviewer" is a predicate, not a glob.
-func CoverRun(store entity.Store, resolver, name, taskID string) {
-	Cover(store, resolver, name, Ref(taskID))
-}
-
-// StreamKey is the stream half of a cover's id — the one place that says how a cover is
-// addressed, so a reader building the address finds the record the writer put there.
-//
-// A TASK is named by its id alone, which is already unique across the runtime. Anything else is
-// a SUBJECT, whose last segment is not unique across systems, so it carries the whole address —
-// as a TOKEN, never as a rendering. A cover id crosses `/resolvers/cover/{id}`, and a
-// rendering quotes a segment that would otherwise read as something else (`change.pr."1"`),
-// which a URL path may not hold.
-func StreamKey(stream entity.Ref) string {
-	if IsTask(stream) {
-		return stream.Name()
-	}
-	return stream.Token()
-}
-
-// Cover mints the record of one resolver on one gate stream, and does nothing if it already
-// exists.
-//
-// A COVER FOLLOWS ITS STREAM, NOT ITS RESOLVER. A cover lives for the duration of what it
-// reads, and the stream decides what that is — so a resolver covering a subject and three
-// runs about it has four covers, each living exactly as long as the stream it reads.
-// That is also what carrying a cursor pair means: two positions as two records rather than two
-// fields, so there is no place for a merged order to be invented.
-//
-// Which kind of stream a cover reads follows from its stream's address and is not stored
-// beside it: a stream under `task:instance` is a run, whose position is a cursor, and anything else is a
-// subject, whose position is a revision. One fact, one spelling.
-//
-// Create-only, and the precondition is the whole point rather than an optimisation: this is
-// called every time a question is posed, so a plain write would reset the position of a
-// resolver that is already reading — retiring its progress on the arrival of the very question
-// it was reading towards.
-func Cover(store entity.Store, resolver, name string, stream entity.Ref) {
-	if resolver == "" || name == "" {
-		return
-	}
-	ref := entity.VerseRef(resolverCovers, name+"@"+StreamKey(stream))
-	// AS THE SYSTEM, whatever view it was handed. Minting a cover is the mirror's act, and
-	// the caller's view is as often somebody else's: an escalation mints the NEXT resolver's
-	// cover from the request of the resolver handing the question up, and written as that one
-	// the cover would be refused — nothing is held out to be made here — or, were it
-	// admitted, recorded as the wrong resolver's installer's.
-	store = asPrincipal(store, entity.SystemMirror)
-	committed, _, err := store.Write(entity.Write{
-		At: ref.At(),
-		Value: entity.Obj{
-			"resolver": resolver,
-			"stream":   stream.String(),
-			// position is where this cover has read to, and starts before the first
-			// frame. It is on the record rather than only in the reader because that is
-			// what tells "has not decided" from "has not caught up".
-			"position": int64(0),
-		}.Payload(),
-		When: []entity.Require{entity.Created()},
-	})
-	if err != nil {
-		return
-	}
-	// THE COVER IS ITS RESOLVER'S, and says so. It is minted by the system, whose write records
-	// no owner, beneath a row that holds `owner` out to everyone — so with no record of its own
-	// a cover is anybody's to write: its position, and whose it is. The system's record,
-	// under the resolver: whoever owns the resolver co-owns its covers, which is who writes
-	// them. Written when the cover is minted, and for one standing with none; this runs at
-	// every question posed, and a cover already recorded costs a look at the mirror in hand.
-	if !committed {
-		if ok, err := entity.Recorded(store, ref); err != nil || ok {
-			return
-		}
-	}
-	if at, err := entity.ParseAddr(resolver); err == nil {
-		if err := entity.Establish(store, ref, entity.SystemMirror, at, nil); err != nil {
-			fmt.Fprintf(os.Stderr, "verse: cover %s has no record of its own: %v\n", ref, err)
-		}
-	}
-}
-
-// The cover system, spelled here rather than imported: mirror is what every runtime writes
-// through, and a dependency from it onto the resolver package would put the resolver's own
-// vocabulary underneath the index that merely records it.
-//
-// Which is the polite reading. The blunt one is that the import is a cycle, and this is one
-// fact with two spellings until that is cut — see Meta.Owner.
-const resolverCovers = "covers" // resolver.CoverSystem
 
 // write projects the accumulated state onto the task's entity. A failed write is
 // DROPPED, deliberately and here rather than invisibly at each call: Reflect runs on the

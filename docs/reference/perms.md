@@ -25,6 +25,8 @@ grantee   ::= principal
             | *                     # everyone, a read that names nobody included
             | <kind>:*              # every principal of the kind
             | group:<name>          # the group's members, each as themselves
+            | audience:<address>    # whoever holds the same level at the address
+            | answering:<address>   # the resolvers granted `answer` at the address
             | <email>               # shorthand for user:<email>, at the keyboard only
 ```
 
@@ -36,7 +38,7 @@ surfaces are:
 - a grant line and a `child-grants`;
 - a group's members;
 - a gate's `answerers`;
-- a resolver's `who` and `group`.
+- a resolver grant's `answer` line.
 
 The rules of the grammar:
 
@@ -62,6 +64,8 @@ The rules of the grammar:
 | `<kind>:*` | any principal of the kind, and anything installed that acts as one |
 | `via:<address>` | the installed thing at that address and nothing else. It does not admit the thing's owner. A trailing `*` covers what acts beneath (`via:verse.io.*`). Only a rule, an io or a resolver is named this way. A runner acts as `runner:<identity>`. |
 | `group:<name>` | the group's members, each matched as above. A member may be another group, and verse follows it. Verse does not enter a group again that it already met on the walk. So groups that name each other end the walk instead of looping. They admit exactly the members found along the walk. |
+| `audience:<address>` | whoever holds, at the address, the level the grantee is listed under: in `read`, whoever may read it, and in `read-write`, whoever may write it. It is allowed in `read` and `read-write` only, since owning a place is not owning what is about it. Verse follows it one address deep: an `audience:` met while answering another admits nobody. It is never a principal. |
+| `answering:<address>` | whoever holds `answer` at the address: the resolvers answering for a person at `verse.for.<person>`, or for a place. It is allowed in `read` only. An ask's `read` names `answering:` for each of its parties, so the resolvers serving it read it. Verse follows it one address deep, as it does `audience:`. It is never a principal. |
 | `*` | everyone |
 
 A stored name that the grammar does not read admits nobody. Nothing rewrites it. `verse status`
@@ -77,14 +81,14 @@ verse writes records, and only the system reads them. Anybody else reads and set
 |---|---|
 | `owner` | the principal who owns the node. It is absent on a record that only holds grants out (a seed row). |
 | `grants` | a list of lines. `[]` holds out nothing. |
-| `child-grants` | permission levels mapped to grantees. It is what a record made beneath this node starts out holding out. Verse copies it when that record is written, unless the creation gives grants of its own. It is not a fallback: a change to it touches nothing that exists. The nearest `child-grants` up the tree applies, and the root's is the last. |
-| `under` | an address. Whoever co-owns that node co-owns this one. Verse writes it on a question (what asked it) and on a cover (its resolver). |
+| `child-grants` | permission levels mapped to grantees. It is what a record made beneath this node starts out holding out. Verse copies it when that record is written, unless the creation gives grants of its own. It is not a fallback: a change to it touches nothing that exists. The nearest `child-grants` up the tree applies, and the root's is the last. It never holds `answer`, which only whoever a resolver answers for grants. |
+| `under` | an address. Whoever co-owns that node co-owns this one. Verse writes it on a question: what asked it. |
 
 A grant line:
 
 | field | meaning |
 |---|---|
-| `read`, `read-write`, `control` | grantees of that level |
+| `read`, `read-write`, `control`, `answer` | grantees of that level |
 | `child-owner` | grantees who may create beneath, and own what they create. It is always about what is beneath, so it takes no `below`. There is no grant of `owner` at a node. |
 | `below: true` | the line covers what is beneath the node, and not the node |
 | `at: [segs…]` | the line is about another address, with at most a trailing `*`. When `at` is absent, the line is about the node the record is on. Nearly every line is. |
@@ -106,6 +110,7 @@ A permission level is what a principal may do at a node.
 | `read-write` | writing into the node, with fields removed as well as set |
 | `owner` | everything: deleting the node (which takes what is beneath it), replacing it whole, and setting its record. The owner on record and the owners above hold it. `child-owner` confers it only on a creation. |
 | `control` | steering work: run, cancel, pause, resume, say, a change of vector, suspend. An owner by record holds it, and so does whoever it is granted to. |
+| `answer` | which resolvers whoever the node stands for lets answer for them: a place's owner on record at the place, a person at `verse.for.<person>`. It is held only by being named, so owning the node holds none of it, and a resolver holds none through whoever installed it. An owner above may take it back but not give it, and no `child-grants` hands it down. It reaches beneath its node as a grant does. `verse resolver grant` writes it. |
 
 A spawn carries the identity of whoever runs it, and verse writes the task's record as that
 identity. That write is the check for run.
@@ -211,28 +216,38 @@ How each installed thing gets its record, and what the system makes under `verse
 
 ## Questions
 
-A gate's [question](../glossary.md#question) lives at `verse.gate.question.<id>`, with the
-docket's record. Its `under` is what asked it.
+A gate's [question](../glossary.md#question) is an ask, at `verse.ask.<id>`, with the docket's
+record. Its `under` is what asked it. A person's ask is its asker's record instead, written by
+`verse ask` with who reads it and who answers it ([Asking](../asking.md)).
 
+- **Who may read it.** A question about something is read by whoever may read that thing:
+  its `read` line is `audience:<subject>`. A question about nothing is read as the
+  `child-grants` on `verse.ask` say.
 - **Who may answer.** Whoever co-owns the question through `under`: the task's owner, or the
   charter's owner. Also whoever the question's own `read-write` line names. Verse takes that
   line from the first of these that applies:
   1. the gate's `answerers`;
   2. for a gate that a worker raises, the spawn's gate of that name, or else whom the worker
      named (`task do gate -to`);
-  3. the `child-grants` on `verse.gate.question` (`read-write: [user:*, agent:*]`).
+  3. for a question about something, `audience:<subject>`: whoever may write it;
+  4. the `child-grants` on `verse.ask` (`read-write: [user:*, agent:*]`).
+- **Nobody answers what they cannot read.** A question naming answerers who may not read its
+  subject is refused when it is asked: the firing or the task
+  action that asked gets the refusal as its error, and `verse ask` gets 403. A whole kind
+  (`user:*`) passes only where the subject holds read out to that kind or to `*`. An answer from
+  somebody who may no longer read the subject is refused with 403.
 
   A runner's grant is on its task, and reaches no question.
-- **Held out to a resolver**, the line is whoever answers as the resolver: `via:` its address
-  for a service, and otherwise the person or the group behind it. A change of hands replaces the
-  line. When the question is handed up (escalated, overdue, or its resolver removed), the line
-  goes back to the gate's `answerers`. It goes to that `child-grants` only where the gate named
-  nobody.
-- **Asked again**, a question keeps its id, and who may answer belongs to the new asking.
+- **Through a resolver**, an answer is its party's: a resolver answering for a person or a place
+  that granted it `answer` answers as them, held to their line
+  ([Resolvers](resolvers.md#whom-it-answers-for)). Nothing moves the line.
+- **Asked again** after it stood orphaned, a question keeps its id, and who may answer belongs
+  to the new asking. A question that was answered is not asked again: a gate that fires after
+  the answer asks a new question, under an id of its own.
 - **Answerable once posed.** Posing is two writes: the record, and then the question. An answer
   that arrives before both waits a moment, and then gets `503 … still being posed`.
 - **By whoever made the request.** A ballot is keyed by the principal that the check admitted,
-  and a record names that principal. This holds for an answer, an escalation, a `say`, a cancel,
+  and a record names that principal. This holds for an answer, a `say`, a cancel,
   a change of vector, and the `principal` a spawn is answerable to. `need` counts one ballot for
   each.
 - **What a worker reports is not evidence of who answered.** For a task that runs on a broker
@@ -246,8 +261,8 @@ docket's record. Its `under` is what asked it.
 | a raw put | what it names, as the requester |
 | a spawn | the task, as the requester. For a firing, the task is written `via:` the rule, which is the charter's owner. |
 | a worker's claim | `read-write` and `control` for the claimant on the task and the run |
-| posing, settling, escalating, handing on a question | as `system:docket`, in the request's scope, whoever is working the task |
-| holding a question out to a resolver | its `read-write` line, to whoever answers as the resolver |
+| posing and settling a question | as `system:docket`, in the request's scope, whoever is working the task |
+| a grant to a resolver | its `answer` line, at `verse.for.<you>` or at the place |
 | an install | the thing, as its installer, with their record |
 | a suspension | as the system, naming who holds it under `held` |
 

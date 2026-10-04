@@ -1,6 +1,7 @@
 # Tutorial
 
-This tutorial has five sections, and you can run every command in them. A verse holds two
+This tutorial has four sections and a list of where to go next, and you can run every command in
+them. A verse holds two
 kinds of thing:
 
 | Thing | What it is |
@@ -8,30 +9,16 @@ kinds of thing:
 | an [entity](glossary.md#entity) | a part of the world, such as a pull request or a CI status |
 | a [task](glossary.md#task) | work that is done to the world |
 
-Every section after §3 relates entities to tasks.
-
-Every section has a script that sets up its world in one command. For the shape of the system,
-read [the overview](overview.md). For the full command surface, the config layers and the
-detail of each topic, read [the reference](reference/README.md).
+Every section has a script that sets up its world in one command. The rules that relate entities
+to tasks are a [charter](glossary.md#charter): [the introduction to charters](charter-intro.md)
+shows the shapes a rule takes, and [Write a charter](build.md) writes one. For the shape of the system, read [the overview](overview.md). For the
+full command surface and the detail of each topic, read [the reference](reference/README.md).
 
 1. [Start](#1-start)
-2. [Entities](#2-entities) — [read](#read) · [write](#write) · [watch](#watch)
-3. [Tasks](#3-tasks) — [the dial](#the-dial) ·
-   [a task is an entity too](#a-task-is-an-entity-too) · [steering](#steering) ·
-   [where a task runs is a seam](#where-a-task-runs-is-a-seam)
-4. [Charters — relating entities to tasks](#4-charters--relating-entities-to-tasks) —
-   [patch](#patch--a-rule-need-not-spawn-anything) ·
-   [latch](#latch--spawn-a-task-and-react-to-it-finishing) · [ask](#ask--a-human-decides) ·
-   [seq](#seq--steps-in-order) ·
-   [when](#when--a-condition-on-another-entity) · [on](#on--a-cause-not-a-condition) ·
-   [derive](#derive--writing-something-that-is-not-the-subject) ·
-   [reading something the rule is not about](#reading-something-the-rule-is-not-about) ·
-   [the rest of the grammar](#the-rest-of-the-grammar)
-5. [Gates and the docket](#5-gates-and-the-docket) —
-   [a service that answers them](#a-service-that-answers-them) ·
-   ["no" is a real outcome](#no-is-a-real-outcome) ·
-   [the same machinery answers *who*](#the-same-machinery-answers-who)
-6. [Where to go next](#6-where-to-go-next)
+2. [Entities](#2-entities)
+3. [Tasks](#3-tasks)
+4. [Gates and the docket](#4-gates-and-the-docket)
+5. [Where to go next](#5-where-to-go-next)
 
 ---
 
@@ -53,36 +40,26 @@ see verse work before you read about it, run the demo:
 ./scripts/seed-demo.sh     # a charter, the entities it reacts to, one gate waiting for you
 ```
 
-You have not said who you are, and you do not need to yet. Toward a verse on your own machine,
-the CLI acts as `user:<login>@localhost`, where `<login>` is your login name. That user owns
+Toward a verse on your own machine, the CLI acts as `user:<login>@localhost`, and that user owns
 what you write. [The permissions walk](perms-guide.md#before-the-first-step-who-you-are) shows
 how to name yourself.
 
-`up` decides three things for the whole runtime. The defaults need no attention now.
-
-| Thing | Default |
-|---|---|
-| the **store** | a fresh docd on a temp dir. `-data <dir>` keeps it. |
-| the default **driver** | a real llm agent when credentials are configured, and `scripted` when they are not. `scripted` runs a prompt as a shell command. |
-| an agent's **root** | an isolated temp dir. For this reason, a file that an agent writes is not in your cwd. With credentials configured, `up` prints the root at start. |
-
-[reference/up.md](reference/up.md) describes all three. It also describes the config layers
-and the `o` binary that `up` resolves to host its daemons. Its flags point verse at a store or
-a task runner you already have.
+`up` picks a store, a default driver and a root for agents. The defaults need no attention now.
+One matters later: an agent works in an isolated temp dir, so a file that it writes is not in
+your cwd. [reference/up.md](reference/up.md) describes all three, and the flags that point verse
+at a store or a task runner you already have.
 
 ---
 
 ## 2. Entities
 
 An entity is anything the flow refers to, such as a PR, a build, a person or a CI status. An
-entity has an [address](glossary.md#address) and carries a document. The address is as long as
-what it names: `demo.pr.1` for a pull request, and longer where a charter keeps its own tree.
-That is the whole data model.
+entity has an [address](glossary.md#address) and carries a document. That is the whole data
+model.
 
 At a command you type the segments of an address as separate words: `demo pr 1`. In a document
-the same address is written as a kinded path: `demo.pr."1"`. Both spellings name one address.
-[§Addressing](reference/entities.md#addressing) gives the whole grammar. You can read this
-section without it.
+the same address is written as a kinded path: `demo.pr."1"`.
+[Addressing](reference/entities.md#addressing) gives the whole grammar.
 
 ```sh
 ./scripts/seed-demo.sh --clean   # if you ran it above: its rules react to what is seeded next
@@ -92,80 +69,47 @@ section without it.
 ### Read
 
 The address narrows a read by *where* an entity lives. `-if` narrows it by *what the entity
-says*. `-if` is a [tony match](https://signadot.github.io/tony-format/) against the payload.
+says*, with a [tony match](https://signadot.github.io/tony-format/) against the payload.
 
 ```sh
 verse data                                         # the whole verse, one document
 verse data demo pr '*'                             # by where it lives
 verse data demo pr 1                               # one entity, whole
-verse data -at 'demo.pr.*.stage'                   # one field of each, keyed by name
 verse data demo pr '*' -if '{stage: open}'         # by what it says
 verse data demo pr '*' -if '{stage: !or [open, merged]}'  # …an operator, not just equality
-verse data demo pr '*' -if '{urgent: true}' -if-at labels # …rooted inside the payload
 verse data demo pr '*' -trim '{stage}'             # …and how much of each entity to print
 verse data -paths demo pr '*'                      # just the addresses
-verse data -at demo.pr.1                           # …an address copied out of a document
-verse data demo '..' -if '{stage: open}'           # every node that says so, at any depth
+verse data -paths demo pr '*' | xargs -L1 verse data     # …passed straight back
+verse data -at 'demo.pr.*.stage'                   # a whole address in one token goes after -at
 ```
 
-The store is one document, and `verse data` prints the node at an address, at any depth.
-[Reading](reference/entities.md#reading) gives the steps `*` and `..`, `-if-at`, and the rest of
-the read surface.
+Each step of an address is its own shell word, so nothing needs escaping. A positional is a step
+and nothing else: `verse data demo.pr.1` names one segment called `demo.pr.1`.
 
-**An address is typed as steps.** Each step is its own shell word, so nothing needs escaping.
-`-paths` prints addresses as steps too, so you can pass a listing straight back:
-
-```sh
-verse data demo pr a.b labels urgent           # steps: an id with a dot in it, unquoted
-verse data -paths demo pr '*'                  # demo pr a.b
-verse data -paths demo pr '*' | xargs -L1 verse data
-```
-
-**A positional is a step and nothing else.** `verse data demo.pr.1` names one segment called
-`demo.pr.1`. A whole address in one token goes after `-at`:
-
-```sh
-verse data -at demo.pr.1            # an address copied out of a document
-verse data -at 'demo.pr.*.stage'    # …wildcards and all, the same as: demo pr '*' stage
-```
-
-[Addressing](reference/entities.md#addressing) gives the quoting of names that would read as
-something else.
-
-The pattern language belongs to tony, not to verse. `!or`, `!glob`, `!not`, `!and` and the
-others are [tony match operators](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/mergeop).
-They mean the same thing in a read, in a charter's `value`, and in an answer contract. You learn
-them once. Verse adds *where* a match may be asked, and
-[§4](#4-charters--relating-entities-to-tasks) shows that.
+The match operators (`!or`, `!glob`, `!not` and the others) belong to tony. They mean the same
+thing in a read, in a charter and in an answer contract.
+[Reading](reference/entities.md#reading) gives the rest of the read surface.
 
 ### Write
 
-A put **merges**. Fields that you do not name stay as they are. For this reason, verse answers
-with the entity as it stands after the write, not with an echo of what you sent:
+A put **merges**. Fields that you do not name stay as they are. Verse answers with the entity as
+it stands after the write:
 
 ```sh
 verse data demo pr 1 -put '{owner: dee}'         # changes the owner field, keeps the stage
 verse data demo pr 1 labels urgent -put true    # one field, deep
 verse data demo pr 1 labels urgent -rm          # and gone again
-verse data demo scratch 1 -rm                   # the whole entity
 ```
 
-Verse reads a payload typed on the command line as tony, so `{stage: open}` needs no quotes
-([Writing](reference/entities.md#writing)).
-
-A write can also carry a condition. The store checks each condition *with* the write, in one
-step, so nothing can change in between:
+A write can carry a condition. The store checks it with the write, in one step:
 
 ```sh
 verse data demo pr 1  -put '{stage: open}' -create     # only if nothing is there yet → refused
-verse data demo pr 99 -put '{stage: open}' -update     # only if something is        → refused
-# write refused: a condition did not hold
-
 verse data demo pr 4 -put '{owner: dee}' -expect '{stage: merged}'     # only if it still looks like this
 ```
 
-This is CAS written as a predicate
-([Conditional writes](reference/entities.md#conditional-writes)).
+[Writing](reference/entities.md#writing) and
+[conditional writes](reference/entities.md#conditional-writes) give the detail.
 
 ### Watch
 
@@ -175,29 +119,14 @@ verse watch -if '{stage: open}' demo pr '*'
 
 ```tony
 {at: 'demo.pr."1"' op: set rev: 97 to: {labels: {area: auth urgent: true} owner: ana stage: open …}}
-{at: 'demo.pr."3"' op: set rev: 97 to: {labels: {area: store urgent: true} owner: ana stage: open …}}
 {at: 'demo.pr."5"' op: set rev: 97 to: {labels: {area: engine} owner: cy stage: open …}}
 ```
 
-Read two things from that output.
-
-1. The watch **replays**. A watch is level-triggered when it opens: what already matches arrives
-   before anything new. You never watch a stream whose beginning you missed.
-2. Each change is one line, so you can grep a watch.
-
-In each line, `to` is the whole state of the entity at that commit, not the delta. `op` is
-`set` (created *or* updated) or `delete`.
-
-In another terminal, write to the entity, and see the line arrive:
-
-```sh
-verse data demo pr 2 -put '{stage: open}'
-```
-
-Then move the entity past the filter with `'{stage: reviewing}'`. Nothing arrives, because the
-filter is a predicate over the state, not a subscription to the entity.
-
-[reference/entities.md](reference/entities.md) covers refs, deep writes, cursors and `-since`.
+The watch **replays**: what already matches arrives before anything new. Each change is one
+line, and `to` is the whole state of the entity at that commit. In another terminal, run
+`verse data demo pr 2 -put '{stage: open}'` and see the line arrive. Then move it to
+`'{stage: reviewing}'`. Nothing arrives, because the filter is a predicate over the state.
+[reference/entities.md](reference/entities.md) covers cursors, `-since` and the rest.
 
 ---
 
@@ -216,87 +145,49 @@ verse task vector <id> ask         # slide its autonomy (auto|ask|park)
 verse task cancel <id>
 ```
 
-These commands give `-driver` explicitly because the default is not always `scripted`. With LLM
-credentials configured, a bare `task run "echo done"` gives your sentence to an *agent*
-([reference/up.md](reference/up.md#the-driver)).
-
-`say` and `vector` do different things:
-
-| Command | What it changes |
-|---|---|
-| `say` | It gives the agent new instructions. |
-| `vector` | It replaces the [vector](glossary.md#vector), the list of gates that says how much the task must confirm. The change applies at the next boundary of the task, with no restart. |
+These commands give `-driver` explicitly. With LLM credentials configured, a bare
+`task run "echo done"` gives your sentence to an *agent*
+([the driver](reference/up.md#the-driver)). `say` gives the agent new instructions. `vector`
+replaces the [vector](glossary.md#vector), the list of gates that says how much the task must
+confirm, at the task's next boundary.
 
 ### The dial
 
-Verse has three [drivers](glossary.md#driver): `scripted`, `calls` and `llm`. `scripted` and
-`llm` carry different vectors. A gate asks about what you have **not** already authorized.
-
-| Driver | Default vector |
-|---|---|
-| `verse task run -driver scripted` | runs ungated. Its prompt *is* the shell command, and you authorized it when you typed it. |
-| `llm` | asks before effects. Reads run freely. Writing a file, running a command and delegating to a sub-agent block. |
-
-The `scripted` rule holds only for what you type yourself. A charter that spawns
-`driver: scripted` typed nothing, so its task asks about the command it is about to run. The
-charter says `vector: auto` when it means to run unattended.
+A gate asks about what you have **not** already authorized. `verse task run -driver scripted`
+runs ungated, because you typed the command. An `llm` task asks before effects: reads run
+freely, and writing a file, running a command and delegating block. A charter that spawns
+`driver: scripted` typed nothing, so its task asks too, unless the charter says `vector: auto`.
 
 ```sh
 verse task run 'Write a file hello.txt containing "hi".'
-verse gate
+verse question
 # - gate: write
 #   id: run-f3e31ed0390f~d1
-#   mode: ASK
-#   task: run-f3e31ed0390f
-#   reason: "verb write"
 #   tool: write_file
-#   where: task
-verse gate approve run-f3e31ed0390f~d1 -as you@example.com
+verse question approve run-f3e31ed0390f~d1 --as you@example.com
 ```
 
-`run -attach` spawns the task *and* streams its transcript. On a terminal, it asks you inline:
-`⏸ gate "write" (write_file) — approve? [y/N]`. The same gate can also be answered from anywhere
-else by its id, because it is the same question either way.
-
-One case is not settled: you give verse a *command*, and verse runs it with an *agent*. Which of
-the two rules applies then is a rough edge.
-[reference/tasks.md](reference/tasks.md#the-rough-edge-who-you-addressed) states it.
+`run -attach` streams the transcript and asks you inline. The same gate can be answered from
+anywhere by its id. [The dial](reference/tasks.md#the-dial) gives the vectors in full.
 
 ### A task is an entity too
 
 Here entities and tasks join. Verse mirrors every task into the store as
-`verse.task.instance.<id>`. The `verse` address is where verse keeps the records of its own
-running. To observe the tasks, you observe entities:
+`verse.task.instance.<id>`, so to observe tasks you observe entities:
 
 ```sh
 verse watch verse task instance '*'                   # the whole fleet's lifecycle
-verse data verse task instance <id>                   # its result, still there after it finished
 verse data verse task instance '*' -trim '{status}'   # …or just where everything got to
 ```
 
-```tony
-lastAction: run_bash
-lastOutput: summarizing
-runner: local
-status: done
-vector: ASK
-vectorBy: user:scott@localhost
-```
-
 The end of a task is a change to an entity, so a *rule* can react to it. That is how a flow of
-several steps continues: through the store, not through a scheduler. §4 shows it.
+several steps continues: through the store. [The introduction to charters](charter-intro.md) shows it.
 
 ### Steering
 
-You address work in progress by what it is about. Steering is separate from observation, so a
-steering command never waits behind a backlog of changes. Two acts stop work without ending it:
-
-| Act | What it stops |
-|---|---|
-| **hold one run** | one task, at its next boundary |
-| **suspend the work** | the work about a charter and a subject |
-
-This section is about the choice between them.
+You address work in progress by what it is about. Two acts stop work without ending it: a
+[hold](glossary.md#hold) stops one run at its next boundary, and a
+[suspension](glossary.md#suspension) stops the work about a charter and a subject.
 
 ```sh
 verse flow                                     # the live tasks, and what is suspended
@@ -307,449 +198,70 @@ verse flow say     -subject demo.latch.1 "hurry"
 verse flow cancel  -task <id>                  # end that run (destructive)
 ```
 
-A [flow](glossary.md#flow) is not a stored thing. It is a query over live tasks. For this reason,
-`verse flow` lists nothing until something runs, and a `say` reports how many tasks it reached.
-§4 gives you a task to steer.
-
-Every verb takes flags to say what it acts on. [Control](control.md) gives the flags, and the
-difference between a [hold](glossary.md#hold) and a [suspension](glossary.md#suspension).
-
-The next commands use [the seeded demo](#1-start), where `demo-review` holds `demo.pr.1` at a
-gate. §2 removed the demo and seeded other entities at `demo.pr.*`, so first set the demo up
-again:
+A [flow](glossary.md#flow) is a query over live tasks, so `verse flow` lists nothing until
+something runs. To suspend a rule, set [the demo](#1-start) up again (§2 replaced its entities):
 
 ```sh
 ./scripts/seed-entities.sh --clean
 ./scripts/seed-demo.sh
-```
-
-```sh
-verse flow suspend -charter :demo-review -why "reading the review rule"     # baseline's rule, about every subject: its charter has no address
-verse gate                                   # the question is withdrawn: nobody can answer it now
+verse flow suspend -charter :demo-review -why "reading the review rule"
+verse question                               # the question is withdrawn: nobody can answer it now
 verse data demo pr 2 -put '{stage: open}'    # demo-review does not fire
 verse flow -charter :demo-review             # held by you, why, since when, what it holds
-verse flow resume -charter :demo-review     # both PRs are asked about, once, as they stand now
+verse flow resume -charter :demo-review      # both PRs are asked about, once, as they stand now
 ```
 
-Verse does not replay what happened during the suspension. [A suspension](control.md#a-suspension)
-says what a lift does.
-
-### Where a task runs is a seam
-
-A task can also run on a remote verse, on a runner you install, behind a broker, or with a
-person who does it with `verse task do`. The same verbs steer it wherever it runs. How to set
-that up is in [runners-walk.md](platform/runners-walk.md), in the repository.
+Verse does not replay what happened during the suspension. [Control](control.md) gives the
+flags and what a lift does. A task can also run on a remote verse, on a runner you install, or
+with a person who does it with `verse task do`. The same verbs steer it
+([runners-walk.md](platform/runners-walk.md)).
 
 ---
 
-## 4. Charters — relating entities to tasks
-
-A [charter](glossary.md#charter) is a list of [rules](glossary.md#rule). A rule says: when a
-matching entity changes and the gates resolve, act on the entity. The action can patch it, spawn
-a task about it, or react to what that task did. Rules relate entities and tasks by declaration.
-Nothing else in verse authors a flow.
-
-Every rule has the same four parts, and one sentence gives the whole firing rule
-([the rule](trigger-model.md#the-rule)).
-
-Rules differ in which parts are present. One command shows each variation:
-
-```sh
-./scripts/charter-shapes.sh                  # list them
-./scripts/charter-shapes.sh show    <shape>  # the rule, in tony
-./scripts/charter-shapes.sh run     <shape>  # install it, then make it fire
-./scripts/charter-shapes.sh install <shape>  # …or the halves apart, which is its own lesson
-./scripts/charter-shapes.sh drive   <shape>
-./scripts/charter-shapes.sh clean            # remove every shape and what it acted on
-```
-
-Each shape acts on its own address, such as `demo.latch.*` or `demo.seq.*`. For this reason, you
-can install several shapes at once, and they do not conflict over an entity.
-
-### patch — a rule need not spawn anything
-
-```tony
-- name: shape-patch
-  condition:
-    subject:
-      path: "demo.patch.*"
-      value: { stage: open }
-  action:
-    patch: { stage: triaged }
-```
-
-```sh
-./scripts/charter-shapes.sh run patch
-verse data demo patch 1     # stage: triaged
-```
-
-The action has no target of its own. It acts on the [subject](glossary.md#subject) of the
-condition.
-
-A rule also acts on the **backlog**. See it happen:
-
-```sh
-./scripts/charter-shapes.sh remove patch          # nothing is watching
-verse data demo patch 2 -put '{stage: open}'
-verse data demo patch 2                    # stage: open — nobody reacted
-./scripts/charter-shapes.sh install patch
-verse data demo patch 2                    # stage: triaged — installing it acted
-```
-
-A rule is a statement about the world, not a subscription to future changes.
-
-### latch — spawn a task, and react to it finishing
-
-```tony
-- name: shape-latch
-  condition:
-    subject:
-      path: "demo.latch.*"
-      value: { stage: open }
-  action:
-    patch: { stage: reviewing }
-    spawn:
-      driver: scripted
-      vector: auto
-      prompt: "echo reviewing $subject; sleep 2"
-    onDone:
-      patch: { stage: reviewed }
-```
-
-The action binds `$subject` and every field of the subject's payload. `onDone` is a completion
-[hook](glossary.md#hook): when *that* task reaches `done`, the engine fires the hook about the
-same subject ([completion hooks](reference/action.md#completion-hooks-one-trigger-chaining-visible)).
-
-The important shape here is the **[latch](glossary.md#latch)**. The action moves `stage` past
-`open`, so the rule does not select an entity again after it has acted on it. Verse refuses at
-install a spawning rule that cannot latch ([the rule](trigger-model.md#the-rule)).
-
-### ask — a human decides
-
-```tony
-  gates:
-  - name: approval
-    mode: ask
-    onDenied:
-      patch: { stage: rejected }
-```
-
-```sh
-./scripts/charter-shapes.sh run ask
-verse gate
-# - gate: approval
-#   id: verse.trigger.shape-ask.approval~c619ac44
-#   mode: ASK
-#   origin: shape-ask
-#   reason: 'trigger shape-ask gate approval on demo.ask."1"'
-#   spawns: shape-ask@demo.ask.1
-#   subject: 'demo.ask."1"'
-verse gate approve verse.trigger.shape-ask.approval~c619ac44 -as you@example.com
-```
-
-The fields of a [question](glossary.md#question) in the listing:
-
-| Field | What it is |
-|---|---|
-| `gate` | the name of the [gate](glossary.md#gate-of-a-rule) |
-| `origin` | the rule that raised it |
-| `subject` | what the question is about |
-| `spawns` | what a "yes" will start. Verse settles this before it asks, even though nothing runs yet. |
-
-The rule asks **once**, however often verse evaluates it
-([gates](reference/gates.md#gates--whether-it-proceeds)). [§5](#5-gates-and-the-docket) covers
-the rest of gates.
-
-`onDenied` says what a "no" means. Without it, the next commit that touches the subject asks the
-same question again ([`onDenied`](reference/gates.md#ondenied--what-a-no-means)).
-
-### seq — steps in order
-
-```tony
-  action:
-    seq:
-    - spawn:
-        driver: scripted
-        vector: auto
-        prompt: "echo lint $subject"
-    - spawn:
-        driver: scripted
-        vector: auto
-        prompt: "echo test $subject"
-      onFailed:
-        patch: { stage: broken }
-    onDone:
-      patch: { stage: built }
-```
-
-Each element starts when the previous one completes, and the outer `onDone` runs after the whole
-sequence ([`seq`](reference/action.md#seq-sequence-along-the-chain-parallel-across-triggers)).
-
-Ask what happened. The command reads the charter and the runtime through one address:
-
-```sh
-./scripts/charter-shapes.sh run seq
-verse flow show demo.seq.1
-```
-
-```tony
-- roots:
-  - chain: shape-seq
-    children:
-    - chain: shape-seq.seq[0]
-      id: shape-seq.seq.0@demo.seq.1
-      status: done
-      prompt: 'echo lint demo.seq."1"'
-    - chain: shape-seq.seq[1]
-      children:
-      - chain: shape-seq.seq[1].onFailed
-        status: skipped
-      status: done
-    - chain: shape-seq.onDone
-      kind: onDone
-      status: applied
-  subject: 'demo.seq."1"'
-```
-
-Each node is one action in the charter. Its `chain` is the position of that action inside its
-rule. The same string is the id that the task spawns under (`shape-seq.seq.0@demo.seq.1`). The
-tree is not a second model of the work. It is the charter and the runtime read together.
-
-Some statuses come from no task, and they are the point of the tree:
-
-| Status | Meaning |
-|---|---|
-| `applied` | the action fired, but it only set fields |
-| `skipped` | a branch that the outcome of its parent did not select |
-| `pending` | the action may still fire |
-| `failed` | a set-only branch whose write did not land. `err` gives the reason. |
-
-### when — a condition on another entity
-
-```tony
-  condition:
-    subject:
-      path: "demo.when.*"
-      value: { stage: ready }
-    when:
-      path: "ci.status.shapes"
-      value: { state: green }
-```
-
-The subject says what to act on. `when` says whether this is a moment to act. *While* CI is
-green, every ready entity ships. An entity that becomes ready later is picked up too, because
-verse evaluates the rule again at every commit that touches either subtree.
-
-### on — a cause, not a condition
-
-```tony
-    on:
-      path: "ci.status.release"
-      value: { state: green }
-```
-
-The entities are the same, but the rule says something different: fire **at the moment** CI
-went green, over whatever was waiting *then*. Verse asks `on` at the previous commit and at this
-one, and fires on the rising edge:
-
-```sh
-./scripts/charter-shapes.sh run on
-verse data demo on 1                        # stage: released
-
-verse data demo on 2 -put '{stage: waiting}' # CI is still green…
-verse data demo on 2                        # …and this one stays `waiting`
-```
-
-Two properties are the reason to choose `on` over `when`:
-
-- **An edge does not fire again while it stays true.** The predicate never fell, so
-  `demo.on.2` waits for CI to go red and then green again.
-- An `on` rule **does not act on the backlog**, for the same reason: a predicate that already
-  holds never rose.
-
-When you mean "whenever this holds", write `when`. The engine warns at install when a narrow `on`
-leaves part of what the rule reads uncovered. The rule above is such a case.
-
-### derive — writing something that is not the subject
-
-Every rule so far acts on its `subject` and nothing else. `derive` lets a charter write an
-entity at another address. A charter that can write anywhere can write in a circle, so `derive`
-comes with a bound: a [**stratum**](glossary.md#stratum), a declared level.
-
-```tony
-strata:
-- name: shapes-source
-  level: 0
-  match: demo
-- name: shapes-derived
-  level: 10
-  match: derived
-rules:
-- name: shape-derive
-  stratum: shapes-source
-  condition:
-    subject:
-      path: "demo.derive.*"
-      value: { stage: open }
-  action:
-    patch: { stage: raised }
-    derive:
-    - path: "derived.feature"
-      value:
-        priority: urgent
-        about: $subject
-```
-
-```sh
-./scripts/charter-shapes.sh run derive
-verse charter                                                  # the ordering
-verse data derived feature shape-derive demo derive 1
-```
-
-A rule's subject must be inside its own stratum, and a derive must land in a strictly higher
-one. The engine chooses the address of the derived entity:
-`derived.feature.shape-derive.demo.derive.1`. [Strata](strata.md) gives both install checks,
-the address, and why a rule with no stratum may not `derive`.
-
-### Reading something the rule is not about
-
-The `$references` of an action read the entity that the firing is about: `$stage`, `$subject`,
-`$subject.value.head`. To copy from an entity that the firing is *not* about, name that entity:
-
-```tony
-action:
-  patch:
-    branch:   !get-path {at: [git, repo, $subject.value.head], path: branch}
-    branches: !list-paths {at: "git.repo.*", path: branch}
-```
-
-`!get-path` answers with one node, and `!list-paths` with a list. Both **copy and do not
-track**
-([`!get-path` and `!list-paths`](reference/action.md#get-path-and-list-paths--reaching-another-entity)).
-
-### The rest of the grammar
-
-Rules install and read back in tony, so inspecting a rule uses the same format as writing it:
-
-```sh
-./scripts/charter-shapes.sh show latch > charter.tony   # a rule, in a file
-verse c -a -f charter.tony # or: cat charter.tony | verse c -a -f -
-verse charter
-verse c rules shape-latch
-verse c -r rules shape-latch
-verse charter                     # and `verse c rules <name>` for one of them
-```
-
-A charter is durable, because each rule and each stratum is an entity
-([the charter is durable](reference/charter.md#the-charter-is-durable)). [The trigger model](trigger-model.md) describes the model. The reference
-describes the fields:
-
-- [the condition](reference/condition.md), with what a match can say;
-- [the action](reference/action.md), with the answer contract a spawn can demand of an agent,
-  and chains and ids;
-- [the gates](reference/gates.md).
-
----
-
-## 5. Gates and the docket
-
-A gate is the autonomy dial for one action. Three settings answer immediately:
-
-| Mode | What happens |
-|---|---|
-| `auto` | the action fires |
-| `ask` | one person is asked ([§4](#ask--a-human-decides)) |
-| `park` | the action is held |
-
-A rule's gates are conjunctive.
-
-Some questions need more than one person and more than one click. A gate can say how many
-answers it needs:
-
-```tony
-  gates:
-  - name: approvals
-    need: 2
-```
+## 4. Gates and the docket
+
+A [rule](glossary.md#rule) in a charter acts when an entity matches it, and its gates decide
+whether it may ([the introduction to charters](charter-intro.md)). A gate is the autonomy dial for
+one action: `auto` fires, `ask` asks one person, and `park` holds. A rule's gates are conjunctive. A gate can also say how many answers it needs, as
+`need: 2` does in the `vote` shape:
 
 ```sh
 ./scripts/charter-shapes.sh run vote
-verse gates
+verse question
 ```
 
 ```tony
 - gate: approvals
   id: verse.trigger.shape-vote.approvals~e23d0b21
-  mode: ASK
-  options:
-  - id: proceed
-    need: 2
-  - id: deny
-    need: 1
-  origin: shape-vote
-  reason: 'trigger shape-vote gate approvals on demo.vote."1"'
+  options: [{id: proceed, need: 2}, {id: deny, need: 1}]
   subject: 'demo.vote."1"'
-  tool: verse:trigger:shape-vote
-  where: engine
 ```
 
-A gate always poses the same question. Here one option has a threshold: `proceed` needs two
-ballots, and one `deny` still refuses. The listing is a document like every other. So
-`verse gates -o yaml`, a read of one entry, and a diff against the
-[docket](glossary.md#docket) of a minute ago all work.
-
-The rule fired, and the action waits, on a count of ballots and not on one person. Answer the
-question. Each answer names its answerer, because verse records who settled a question:
+`proceed` needs two ballots, and one `deny` still refuses. The listing is a document, so
+`verse question -o yaml` and a diff against the [docket](glossary.md#docket) of a minute ago
+(`verse question --all`) both work. Each answer names its answerer:
 
 ```sh
-verse gate approve verse.trigger.shape-vote.approvals~e23d0b21 -as alice@example.com
+verse question approve verse.trigger.shape-vote.approvals~e23d0b21 --as alice@example.com
 # verse.trigger.shape-vote.approvals~e23d0b21: recorded: 1 of 2 for proceed
-verse gate approve verse.trigger.shape-vote.approvals~e23d0b21 -as bob@example.com
+verse question approve verse.trigger.shape-vote.approvals~e23d0b21 --as bob@example.com
 # approved verse.trigger.shape-vote.approvals~e23d0b21
 verse data demo vote 1              # stage: merged
 ```
 
-The record then reads `status: answered` and `verdict: proceed`. Its `ballots` field names who
-chose what, and when.
+The record then reads `verdict: proceed`, and its `ballots` say who chose what. The owner of the
+charter may answer, and so may anyone the gate names in `answerers`
+([who may answer](reference/gates.md#who-may-answer)).
 
-The question itself says who may cast a ballot. The owner of the charter answers what their rule
-asked, and so does anyone the gate names:
-
-```tony
-  gates:
-  - name: approvals
-    need: 2
-    answerers: [oscar@example.com, group:payments]
-```
-
-Verse refuses Ana, who is not named, and tells her so.
-[Who may answer](reference/gates.md#who-may-answer) gives the rest, and
-[permissions](perms.md) covers who may do what.
-
-A question is an ordinary entity (`verse.gate.question.<id>`), so a rule can react to a question
-like anything else. The question also lasts when verse goes down
-([a question outlives the verse](reference/gates.md#a-question-outlives-the-verse-that-asked-it)).
-
-### A service that answers them
-
-The docket is not only for people. A **resolver** is an installed record that holds questions
-out to an **[answerer](glossary.md#answerer)**. It holds the questions of one run, or of a class
-of subjects. An answerer is a service that reads the run's own stream and answers its gates.
-It answers through the same path as `verse gate approve`, and `by` names the resolver instead of
-a person.
-
-```sh
-./scripts/attached-resolver.sh              # five acts, one command each
-./scripts/attached-resolver.sh run layered  # named → standing → ⊤, in two hops
-```
-
-[Attached resolvers](attached-resolvers.md) gives the argument.
-[reference/resolvers.md](reference/resolvers.md) gives the surface.
+A question is an [ask](glossary.md#ask): an ordinary entity at `verse.ask.<id>`, so a rule can
+react to it, and it lasts when verse goes down. A **resolver** is an installed service that
+answers asks for whoever grants it, through the same path as `verse question approve`
+([resolvers](attached-resolvers.md)). [Asking](asking.md) covers raising an ask with `verse ask`.
 
 ### "No" is a real outcome
 
-A vote you can only win is not a vote. A gate names its options when "yes and no, one each" is
-not the question. A deadline says what silence means:
+A gate names its options when "yes and no, one each" is not the question. A deadline says what
+silence means:
 
 ```tony
 options: [{id: proceed, need: 2}, {id: deny, need: 2}]    # two rejects → deny
@@ -757,79 +269,30 @@ deadline: {within: "4h", default: deny}                    # the clock defaults 
 options: [{id: ship, need: 1}, {id: hold, need: 1}, {id: drop, need: 2}]   # not yes or no at all
 ```
 
-Quote the duration. A tony literal may not start with a digit, and commas are optional. So
-`within: 4h` reads as the number `4` beside a separate literal `h`. That is well-formed, and it
-is not what you wrote. Verse refuses it at install and says so.
+Quote the duration. Unquoted, `4h` reads as the number `4` beside a literal `h`, and verse
+refuses it at install ([a deadline settles](reference/gates.md#a-deadline-settles)).
 
 ### The same machinery answers *who*
 
-A second question is in every `spawn`: who does the work? Replace a fixed `driver` with a
-`provider` selection. The eligible [doers](glossary.md#doer) then become the options of the same
-question that a gate poses. You answer by option
-(`verse gate <id> -answer <doer> -as <who>`), in the same three ways:
-
-| Mode | Who picks |
-|---|---|
-| `auto` | a rule picks |
-| `ask` | one person picks |
-| `vote` | the group picks |
-
-Doers are ordinary entities. You add or retire a doer by writing entities, not by editing the
-charter. A doer may only *narrow* the authority that the spawn granted.
-[Provider selection](provider-selection.md) covers this subject.
+A `spawn` also asks who does the work. Replace a fixed `driver` with a `provider` selection, and
+the eligible [doers](glossary.md#doer) become the options of the same question. You answer by
+option (`verse question <id> --answer <doer> --as <who>`), and `auto`, `ask` or a vote picks.
+Doers are ordinary entities, and a doer may only *narrow* the authority that the spawn granted
+([provider selection](provider-selection.md)).
 
 ---
 
-## 6. Where to go next
+## 5. Where to go next
 
-Each topic below is a subject, not a step. Each one runs, and each page states its own limits.
+- **Isolation and your working tree**: [scopes](reference/connect.md#scopes) and
+  [content federation](content-federation.md).
+- **Remote runners and human work**: [task control](task-control.md) and
+  [external tasks](external-tasks.md).
+- **External systems**: [ios](io.md) bring Git, GitHub or Linear into the store.
+- **The store underneath**: [reference/store.md](reference/store.md) and
+  [change events](change-events.md).
+- **Running it somewhere**: [deployment and steering](deployment-and-steering.md).
 
-**Choosing who acts** — [provider selection](provider-selection.md). A registry of doers as
-entities, and selection by capability and by a match over attributes. A narrowing rule makes it
-safe to select from a registry that anyone can write. *Left to do: richer voting
-disciplines — ranked, weighted, secret.*
-
-**Isolation** — [reference/connect.md](reference/connect.md#scopes). Every command takes
-`-scope`. A [scope](glossary.md#scope) is a real copy-on-write overlay, and
-`verse disconnect -scope` drops the whole scope
-([what a scope owns](reference/connect.md#what-a-scope-owns)).
-*Left to do: scopes as first-class, listable, durable things.*
-
-**Your working tree, in the verse** — [reference/connect.md](reference/connect.md) and
-[content federation](content-federation.md). `verse connect` federates a tree into its own
-scope and spawns a validator for each file. It serves file contents through the store, so the
-agent need not share a filesystem with you. *Left to do: file reads are truncated.*
-
-**Remote runners, brokers, and human-executed work** —
-[task control](task-control.md), [external tasks](external-tasks.md),
-[reference/tasks.md](reference/tasks.md). *Left to do: the inbox long-poll.*
-
-**Reflecting external systems** — [ios](io.md). An [io](glossary.md#io) brings Git, GitHub or
-Linear into an owned address in the store. It takes a hint as a hint, and it reconciles by
-polling. The source half is a program you deploy and install, as you do a runner:
-`verse io add laptop <url> -root git`.
-
-**Ordering what a charter writes** — [strata](strata.md). Declared levels, a `derive` that may
-only climb, and the two install checks that follow. The page also states what strata do not
-give you: a charter under strata still does not converge, and strata do not make it converge.
-*Left to do: fencing a spawned agent's writes to its own level and above.*
-
-**The store underneath** — [reference/store.md](reference/store.md) and
-[change events](change-events.md). The deeper properties of verse come from the store:
-
-- copy-on-write scopes;
-- CAS writes;
-- watches that are faithful to each edge;
-- the entity, not the transaction, as the unit that verse reacts to.
-
-**Running it somewhere** — [deployment and steering](deployment-and-steering.md) and the
-[Kubernetes deploy](https://github.com/signadot/verse/blob/main/deploy/README.md).
-
-You will come back to two flat references:
-[the command surface](reference/README.md) and [the trigger model](trigger-model.md).
-
----
-
-## Why it is this way
-
-The reasons for this design are in [tutorial.md](design/tutorial.md), in the repository.
+The two flat references are [the command surface](reference/README.md) and
+[the trigger model](trigger-model.md). The reasons for this design are in
+[design/tutorial.md](design/tutorial.md).

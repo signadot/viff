@@ -98,8 +98,8 @@ func TestGateOnPerSpawnRunnerIsAnswerable(t *testing.T) {
 	// written after the runner poses it, and an answer racing that write is answering nothing.
 	waitQuestionStatus(t, srv, qid, mirror.QuestionPending)
 
-	ans := postTony(t, ts.URL+"/gate/resolve", map[string]any{
-		"id": qid, "choice": "proceed", "by": tester,
+	ans := postTony(t, ts.URL+answerPath(qid), map[string]any{
+		"choice": "proceed", "by": tester,
 	})
 	defer ans.Body.Close()
 	if ans.StatusCode == http.StatusNotFound {

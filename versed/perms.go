@@ -58,10 +58,6 @@ var seed = []struct {
 	{entity.VerseRef(trigger.CharterSystem, trigger.SuspensionKind), entity.Read, []string{entity.Everyone}},
 	{entity.VerseRef(resolver.System), entity.OwnerLevel, []string{entity.Everyone}},
 	{entity.VerseRef(resolver.System), entity.Read, []string{entity.Everyone}},
-	// Who covers what: minted by the system and by nobody else, so nothing is held out to
-	// be made here, and what is held out is sight — of the place, since each cover carries
-	// a record of its own, under its resolver, that says who reads it.
-	{entity.VerseRef(resolver.CoverSystem), entity.Read, []string{entity.Everyone}},
 	{entity.VerseRef(runner.System), entity.OwnerLevel, []string{entity.Everyone}},
 	{entity.VerseRef(runner.System), entity.Read, []string{entity.Everyone}},
 	{entity.VerseRef(verseio.System), entity.OwnerLevel, []string{entity.Everyone}},
@@ -71,16 +67,20 @@ var seed = []struct {
 	// unless the installer says otherwise.
 	{entity.VerseRef(schedule.System), entity.OwnerLevel, []string{entity.Everyone}},
 	{entity.VerseRef(schedule.System), entity.Read, []string{entity.Everyone}},
-	{entity.VerseRef(mirror.QuestionSystem, mirror.QuestionKind), entity.ReadWrite, []string{"user:*", "agent:*"}},
-	// The docket is everybody's to read, the runner working a task included; answering is
-	// the row above.
-	{entity.VerseRef(mirror.QuestionSystem, mirror.QuestionKind), entity.Read, []string{entity.Everyone}},
 	// Who has been here is data anybody may read (`verse data verse principal`); the mirror,
 	// beside it, is held out to nobody.
 	{entity.VerseRef(entity.PrincipalSystem), entity.Read, []string{entity.Everyone}},
 	// Anyone makes a group; the group is its maker's.
 	{entity.VerseRef(entity.PrincipalSystem, entity.GroupKind), entity.OwnerLevel, []string{entity.Everyone}},
 	{entity.VerseRef(entity.PrincipalSystem, entity.GroupKind), entity.Read, []string{entity.Everyone}},
+	// THE DOCKET: every ask, whoever raised it. Anyone asks, and a person's ask is its asker's.
+	// The place is everybody's to read, the runner working a task included, and a person answers
+	// an ask nobody else was given. What reaches one ask is its own record's to say — the verb
+	// writes a person's, the docket a rule's or a task's — and a grant does not reach through a
+	// node carrying one.
+	{entity.VerseRef(mirror.AskSystem), entity.OwnerLevel, []string{entity.Everyone}},
+	{entity.VerseRef(mirror.AskSystem), entity.Read, []string{entity.Everyone}},
+	{entity.VerseRef(mirror.AskSystem), entity.ReadWrite, []string{"user:*", "agent:*"}},
 }
 
 // childGrants is what the seed says a node created beneath a kind-rooted node holds out, where
@@ -92,7 +92,7 @@ var childGrants = []struct {
 	levels entity.Levels
 }{
 	// The docket: everyone reads a question, and a person answers one nobody else was given.
-	{entity.VerseRef(mirror.QuestionSystem, mirror.QuestionKind), entity.Levels{
+	{entity.VerseRef(mirror.AskSystem), entity.Levels{
 		entity.Read: {entity.Everyone}, entity.ReadWrite: {"user:*", "agent:*"},
 	}},
 	// The clock and the calendar, and a schedule's ticks: everybody's to read, whatever the

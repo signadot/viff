@@ -595,8 +595,11 @@ func CheckFields(node *ir.Node) error {
 		case "gates":
 			return checkGates(val)
 		case "gating":
+			if ir.Get(val, "resolver") != nil {
+				return fmt.Errorf("gating.resolver: %s", retiredResolver)
+			}
 			return checkFields(val, "gating", map[string]bool{
-				"resolver": true, "gates": true,
+				"gates": true,
 			}, func(field string, val *ir.Node) error {
 				if field == "gates" {
 					return checkGates(val)
@@ -628,7 +631,7 @@ func checkGates(node *ir.Node) error {
 		}
 		if err := checkFields(el, "gate", map[string]bool{
 			"name": true, "mode": true, "need": true, "options": true, "deadline": true, "onDenied": true,
-			"answerers": true, "pose": true,
+			"answerers": true, "answerersFrom": true, "pose": true, "labels": true,
 		}, func(field string, val *ir.Node) error {
 			if field == "onDenied" {
 				return checkAction(val)
@@ -641,6 +644,13 @@ func checkGates(node *ir.Node) error {
 	return nil
 }
 
+// retiredResolver is what a rule naming its gates' resolver is told (9ce3bva0, stage 4): nothing
+// names who answers. A gate names its answerers, and whoever is asked grants the resolver that
+// answers for them.
+const retiredResolver = "retired: nothing names a resolver to answer a rule's or a run's gates. A gate " +
+	"names its `answerers`, and whoever is asked grants the resolver that answers for them " +
+	"(`verse resolver grant`)"
+
 // checkAction is CheckFields for an action, recursing where an action nests one: a sequence's
 // elements and the four completion hooks, each of which is a full action.
 func checkAction(node *ir.Node) error {
@@ -649,6 +659,10 @@ func checkAction(node *ir.Node) error {
 		"onDone": true, "onFailed": true, "onCancelled": true, "onOrphaned": true,
 	}, func(field string, val *ir.Node) error {
 		switch field {
+		case "spawn":
+			if val != nil && val.Type == ir.ObjectType && ir.Get(val, "resolver") != nil {
+				return fmt.Errorf("spawn.resolver: %s", retiredResolver)
+			}
 		case "seq":
 			if val.Type != ir.ArrayType {
 				return nil // shape is validate's to report, in its own words
@@ -766,9 +780,10 @@ func validTriggerName(name string) error {
 // fresh edge on the trigger's own subtree to happen at all. It stops being invisible the
 // moment a trigger is re-evaluated rather than re-edged: the same decision, about the same
 // subjects, lands on the docket again and again, and an approver answers a queue of identical
-// questions. Derived from the subjects instead, a re-firing poses the id already standing
-// there and JOINS it (task.Registry.Resolve) — one entry, one decision, delivered to every
-// firing waiting on it.
+// questions. Derived from the subjects instead, a re-firing while the question stands open poses
+// the id already standing there and JOINS it (task.Registry.Resolve) — one entry, one decision,
+// delivered to every firing waiting on it. Once it is answered it is settled, and a firing after
+// that asks a new question under an id derived from this one (askingID).
 //
 // It HASHES the subject list rather than spelling it: the id crosses a URL path and a command
 // line (see spawnID and safeSeg), and a broadcast's subject list is unbounded. Subjects arrive
@@ -976,6 +991,9 @@ func (e *Engine) checkGateAnswerers(answerers []string, need int, options []task
 	}
 	bounded := true
 	for _, a := range answerers {
+		if a == task.PrincipalAnswerer {
+			continue // one person, whom the task acts for: refused where it acts for nobody (validate)
+		}
 		g, err := entity.ParseGrantee(a)
 		if err != nil {
 			return fmt.Errorf("answerer %w", err)

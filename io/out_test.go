@@ -138,7 +138,7 @@ func TestAPassAsksTheSinkForEachInputAndRecordsWhatItSays(t *testing.T) {
 func TestAnInputIsFoundAtAnyDepth(t *testing.T) {
 	r := newOutRig(t)
 	r.sink.fields = entity.Obj{"said": "yes"}
-	deep := []string{"gate-ask", "verse", "gate", "question", "review~1", "user:ana@example.com"}
+	deep := []string{"gate-ask", "verse", "ask", "review~1", "user:ana@example.com"}
 	askDeep(t, r.store, deep, "user:ana@example.com", entity.Obj{"text": "the review is waiting"})
 	r.pass(t)
 
@@ -149,7 +149,7 @@ func TestAnInputIsFoundAtAnyDepth(t *testing.T) {
 	if in.To != "user:ana@example.com" || in.Name != "user:ana@example.com" {
 		t.Errorf("the sink was handed %+v, want whom it is for and what it is called", in)
 	}
-	if want := "demo.out.gate-ask.verse.gate.question"; !strings.Contains(in.At.String(), want) {
+	if want := "demo.out.gate-ask.verse.ask"; !strings.Contains(in.At.String(), want) {
 		t.Errorf("at %s, want the address it was written at", in.At)
 	}
 	// And its status stands beside it, at that same depth.

@@ -18,26 +18,23 @@ func rule(t *testing.T, doc string) Trigger {
 	return trig
 }
 
-// A rule may name who answers its OWN gates, which a spawn has been able to do all along.
-//
-// The named door was open on one side of the design and shut on the other: a spawn says
-// `resolver:` for the run it starts, and a rule had no counterpart for the gates it raises
-// itself — so a firing's question could only ever reach the standing layer or the docket.
-func TestARuleNamesWhoAnswersItsOwnGates(t *testing.T) {
-	trig := rule(t, `{
-		name: validate,
-		condition: {subject: {path: "change.pr.*", value: {stage: proposed}}},
-		gating: {
-			resolver: "verse.resolvers.security-review",
-			gates:    [{name: ship, mode: ask}],
-		},
-		action: {patch: {stage: validated}},
-	}`)
-	if got := trig.GateResolver(); got != "verse.resolvers.security-review" {
-		t.Fatalf("GateResolver = %q", got)
-	}
-	if g := trig.AllGates(); len(g) != 1 || g[0].Name != "ship" {
-		t.Fatalf("AllGates = %+v, want the one under gating", g)
+// NOTHING NAMES WHO ANSWERS A RULE'S GATES (9ce3bva0, stage 4): a gate names its answerers, and
+// whoever is asked grants the resolver answering for them. A rule or a spawn still naming one is
+// refused at install, saying so, rather than decoding to nothing.
+func TestAResolverNamedForGatesIsRetired(t *testing.T) {
+	for what, doc := range map[string]string{
+		"gating.resolver": `{name: v, condition: {subject: {path: "change.pr.*"}},
+			gating: {resolver: "verse.resolvers.r", gates: [{name: ship, mode: ask}]}, action: {patch: {stage: x}}}`,
+		"spawn.resolver": `{name: v, condition: {subject: {path: "change.pr.*"}},
+			action: {spawn: {prompt: p, resolver: "verse.resolvers.r"}}}`,
+	} {
+		node, err := codec.ParseNode([]byte(doc), codec.Tony)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := CheckFields(node); err == nil || !strings.Contains(err.Error(), what+": retired") {
+			t.Errorf("%s: %v, want it refused as retired", what, err)
+		}
 	}
 }
 
@@ -51,9 +48,6 @@ func TestTopLevelGatesStillMeanTheSame(t *testing.T) {
 	}`)
 	if g := trig.AllGates(); len(g) != 1 || g[0].Name != "ship" {
 		t.Fatalf("AllGates = %+v, want the top-level one", g)
-	}
-	if got := trig.GateResolver(); got != "" {
-		t.Fatalf("GateResolver = %q for a rule that named none", got)
 	}
 }
 

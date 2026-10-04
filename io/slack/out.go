@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/http"
+	"net/url"
 	"slices"
 	"sort"
 	"strings"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
+	verseapi "github.com/signadot/verse/api"
 	"github.com/signadot/verse/client"
 	"github.com/signadot/verse/entity"
 	verseio "github.com/signadot/verse/io"
@@ -53,8 +56,8 @@ import (
 // difference. Nothing is remembered between passes but what the status holds, so a restart resumes
 // rather than repeats: a message whose fingerprint the status holds is in step, one whose
 // fingerprint moved is an update, and one with no ts yet is a post. The fingerprint is of the
-// message rather than the input, because a message with buttons also says what became of their
-// questions (see layout), and a question settling is an update nobody wrote. This program never
+// message rather than the input, because a message about asks also says what became of them
+// (see layout), and a question settling is an update nobody wrote. This program never
 // writes an input, so its own writes are never new requests.
 //
 // Removing an input leaves its status, so the ts survives for whoever later decides what a
@@ -63,6 +66,10 @@ type Sink struct {
 	s     *Slack
 	verse *client.Client
 	now   func() time.Time
+	// As reads an ask as the person a message is for, where the input names one (9ce3bva0): an
+	// ask is read by whom it asks, and this program only ever shows it to them. Nil reads as this
+	// program, which reads what a rule's gate holds out and nothing a person's ask does not.
+	As func(principal string) *client.Client
 
 	mu sync.Mutex
 	// (channel, where replies land) → input → the questions its message is asking. Where replies
@@ -94,7 +101,7 @@ func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 	if text == "" {
 		return nil, verseio.Permanent(fmt.Errorf("an input carries {text}, and this one has none"))
 	}
-	body, asked, err := k.body(text, in.Value)
+	body, asked, err := k.body(text, in.Value, in.To)
 	if err != nil {
 		return nil, err
 	}
@@ -128,10 +135,11 @@ func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 			"here — a message about a question nobody can read tells its reader nothing",
 			strings.Join(askedIDs(asked), ", "))
 	}
-	if ts != "" {
-		k.remember(channel, replies(ts), in.At.String(), asked)
-	}
+	// REMEMBERED ONCE SLACK SHOWS IT, and not before: what is remembered includes the edit each ask
+	// stands at, which is what a reply here is taken to answer, so remembering a rewording the
+	// message does not show yet would count a reply to the old words against the new ones.
 	if ts != "" && entity.Str(in.Status, "posted") == fp {
+		k.remember(channel, replies(ts), in.At.String(), asked)
 		return nil, nil // in step: the message shows this input
 	}
 	now := k.now().UTC().Format(time.RFC3339)
@@ -139,6 +147,7 @@ func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 	if ts != "" {
 		err := k.s.api.updateMessage(ctx, channel, ts, body)
 		if err == nil {
+			k.remember(channel, replies(ts), in.At.String(), asked)
 			return entity.Obj{"updatedAt": now, "posted": fp}, nil
 		}
 		// GONE: somebody deleted the message. The input still asks for one showing this, so it is
@@ -182,7 +191,7 @@ func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 // waits on while it is pending, the verdict and who gave it once answered, why it was withdrawn —
 // so a question settling redraws a message nobody wrote to, and everyone who can see it is told,
 // not only whoever answered. An input that asks about nothing is its text and no more.
-func (k *Sink) body(text string, input *ir.Node) (string, []Asked, error) {
+func (k *Sink) body(text string, input *ir.Node, to string) (string, []Asked, error) {
 	asks := strs(entity.Get(input, "asks"))
 	if len(asks) == 0 {
 		return text, nil, nil
@@ -190,8 +199,9 @@ func (k *Sink) body(text string, input *ir.Node) (string, []Asked, error) {
 	said := []string{text}
 	var asked []Asked
 	var options []task.Option
+	reader, whom := k.readerFor(to)
 	for _, id := range asks {
-		q, err := k.question(id)
+		q, err := k.question(reader, whom, id)
 		if err != nil {
 			return "", nil, err
 		}
@@ -203,7 +213,7 @@ func (k *Sink) body(text string, input *ir.Node) (string, []Asked, error) {
 		// outlives its decision, and what people say there afterwards — why it went that way,
 		// what it cost — is worth keeping on the question rather than dropping on the floor.
 		asked = append(asked, Asked{ID: id, Options: optionIDs(q.opts), Settled: !q.pending(),
-			Standing: q.standing, Line: q.line()})
+			Standing: q.standing, Line: q.line(), Edit: q.edit, Served: q.servedBy})
 		if !q.pending() {
 			continue
 		}
@@ -238,6 +248,12 @@ type Asked struct {
 	// Line is what the message says of it, for telling somebody who answers too late what
 	// became of it.
 	Line string
+	// Edit is the edit of the ask the message shows, which a reply answers: one to words since
+	// changed is refused (api.Resolve.Edit).
+	Edit int
+	// Served names the resolver serving the ask for whom the message is for, where one does:
+	// answering it yourself then takes `force` (9ce3bva0, stage 5).
+	Served string
 }
 
 // anyStanding says whether any of the questions an input asks about could be read.
@@ -351,12 +367,31 @@ type question struct {
 	opts     []task.Option // what it takes to answer, in the order the gate wrote them
 	ballots  []string      // "<who> <choice>", and what they said with it, in name order
 	spoken   bool          // some ballot carried words
+	edit     int           // the edit of the ask this shows
+	asker    string        // who asked, for a person's ask
+	then     string        // what a yes runs, in words
+	els      string        // what a no runs, in words
+	via      string        // the resolver an answer came through
+	servedBy string        // the resolver serving it for whom this message is for
+}
+
+// readerFor is who reads the asks a message is about: the person it is for, where the input names
+// one verse knows, and this program otherwise.
+func (k *Sink) readerFor(to string) (*client.Client, string) {
+	if k.As == nil {
+		return k.verse, ""
+	}
+	g, err := entity.ParsePrincipal(to)
+	if err != nil || (g.Kind != entity.UserKind && g.Kind != entity.AgentKind) {
+		return k.verse, ""
+	}
+	return k.As(g.String()), g.String()
 }
 
 // question reads the record of the question with this id, where the mirror keeps it.
-func (k *Sink) question(id string) (question, error) {
+func (k *Sink) question(reader *client.Client, whom, id string) (question, error) {
 	q := question{id: id}
-	doc, err := verseio.ReadAt(k.verse, mirror.QuestionRef(id).KPath())
+	doc, err := verseio.ReadAt(reader, mirror.QuestionRef(id).KPath())
 	if err != nil {
 		return q, fmt.Errorf("reading question %s: %w", id, err)
 	}
@@ -378,6 +413,12 @@ func (k *Sink) question(id string) (question, error) {
 	}
 	q.status, q.verdict = entity.Str(doc, "status"), entity.Str(doc, "verdict")
 	q.by, q.why = entity.Str(doc, "by"), entity.Str(doc, "why")
+	q.edit, q.asker, q.via = mirror.EditOf(doc), entity.Str(doc, "asker"), entity.Str(doc, "via")
+	q.then = thenWords(entity.Get(doc, "then"))
+	q.els = thenWords(entity.Get(doc, "else"))
+	if whom != "" && q.status == mirror.QuestionPending {
+		q.servedBy = servedFor(reader, id)
+	}
 	q.say = strs(entity.Get(doc, "say"))
 	q.waiting = strs(entity.Get(doc, mirror.WaitingOnField))
 	if ir.Uncomment(entity.Get(doc, "options")) != nil {
@@ -405,7 +446,7 @@ func (q question) pending() bool {
 	return q.standing && q.status == mirror.QuestionPending && q.verdict == ""
 }
 
-// line is this program's line about the question, in the message beside its buttons.
+// line is this program's line about the question, in the message above the options it takes.
 func (q question) line() string {
 	id := "`" + q.id + "`"
 	switch {
@@ -417,6 +458,17 @@ func (q question) line() string {
 		line := "Answers " + id
 		if q.pose != "" {
 			line = q.pose
+		}
+		if q.asker != "" {
+			line += " · asked by " + person(q.asker)
+		}
+		// WHAT A YES RUNS, shown as it stands at this edit: the answer is consent to it, and a
+		// change to it is a new asking that redraws this message and refuses a reply to the old.
+		if q.then != "" {
+			line += " · on yes, runs as the asker: " + q.then
+		}
+		if q.els != "" {
+			line += " · on no, runs as the asker: " + q.els
 		}
 		if len(q.waiting) > 0 {
 			line += " · waiting on " + people(q.waiting)
@@ -435,11 +487,19 @@ func (q question) line() string {
 				line += " · `" + q.settles + "` at " + when + " unless answered"
 			}
 		}
+		// A RESOLVER ANSWERS THIS FOR YOU: shown, since you chose it, and answerable yourself by
+		// saying so (9ce3bva0, stage 5).
+		if q.servedBy != "" {
+			line += " · served for you by `" + q.servedBy + "`: reply `force <option>` to answer it yourself"
+		}
 		return line
 	case q.verdict != "":
 		line := id + " answered *" + q.verdict + "*"
 		if q.by != "" {
 			line += " by " + person(q.by)
+		}
+		if q.via != "" {
+			line += " via `" + strings.TrimPrefix(q.via, "via:") + "`"
 		}
 		if said := strings.Join(q.say, "; "); said != "" {
 			line += ": " + said
@@ -501,16 +561,24 @@ func strs(n *ir.Node) []string {
 	return out
 }
 
-// Keep remembers what a message whose last edit was refused for good still asks, as a delivery
-// would: the message stands in Slack, and a reply in its thread is still matched to the question
-// it is about (socket.go). Nothing is asked of Slack.
+// Keep remembers what a message refused for good still asks, as a delivery would, where Slack
+// shows the input as it stands — an input retargeted after delivery, say: the message stands, and
+// a reply in its thread is still matched to the question it is about (socket.go). Nothing is asked
+// of Slack.
 func (k *Sink) Keep(in verseio.Input) {
 	channel, ts := entity.Str(in.Status, "channel"), entity.Str(in.Status, "ts")
 	if ts == "" {
 		return // refused before anything was posted: there is no thread to match
 	}
-	_, asked, err := k.body(entity.Str(in.Value, "text"), in.Value)
+	body, asked, err := k.body(entity.Str(in.Value, "text"), in.Value, in.To)
 	if err != nil {
+		return
+	}
+	// ONLY WHAT SLACK SHOWS, as a delivery remembers (git-issue ny9fce9dh12ks1q9qsn0). What is
+	// remembered includes the edit each ask stands at, which a reply here is taken to answer; an
+	// input whose edit was refused is words the message does not show, and remembering them would
+	// count a reply to the old words against the new.
+	if entity.Str(in.Status, "posted") != fingerprint(body) {
 		return
 	}
 	replies := ts
@@ -551,4 +619,54 @@ func (k *Sink) channelFor(ctx context.Context, target string) (string, error) {
 func fingerprint(body string) string {
 	sum := sha256.Sum256([]byte(body))
 	return hex.EncodeToString(sum[:8])
+}
+
+// thenWords is what an ask's `then` runs, in words for a message: the prompt a model works from, or
+// the calls a call list makes, by tool. Empty for an ask that runs nothing.
+func thenWords(then *ir.Node) string {
+	if then == nil {
+		return ""
+	}
+	if prompt := entity.Str(then, "prompt"); prompt != "" {
+		return "“" + prompt + "”"
+	}
+	// An answer to another ask, or another ask: what it answers, or whom it asks what.
+	if a := entity.Get(then, "answer"); a != nil {
+		return fmt.Sprintf("answers `%s` *%s*", entity.Str(a, "ask"), entity.Str(a, "choice"))
+	}
+	if q := entity.Get(then, "ask"); q != nil {
+		who := strs(entity.Get(q, "answerers"))
+		line := "asks “" + entity.Str(q, "question") + "”"
+		if len(who) > 0 {
+			line += " of " + people(who)
+		}
+		return line
+	}
+	calls := ir.Uncomment(entity.Get(then, "calls"))
+	if calls == nil || calls.Type != ir.ArrayType {
+		return ""
+	}
+	tools := make([]string, 0, len(calls.Values))
+	for _, c := range calls.Values {
+		tools = append(tools, "`"+entity.Str(c, "tool")+"`")
+	}
+	return fmt.Sprintf("%d call(s): %s", len(tools), strings.Join(tools, ", "))
+}
+
+// servedFor is the resolver serving ask id for whom reader acts as, "" where none does or verse
+// did not say.
+func servedFor(reader *client.Client, id string) string {
+	resp, err := reader.Get("/asks/"+url.PathEscape(id)+"/served", nil)
+	if err != nil {
+		return ""
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return ""
+	}
+	var out verseapi.AskServed
+	if err := client.Decode(resp, &out); err != nil {
+		return ""
+	}
+	return out.Resolver
 }

@@ -46,7 +46,7 @@ func TestSteerCooperative(t *testing.T) {
 	p := NewTask("t", NewSupervisor(autoVec(), AutoResolver{}), d, &recExec{})
 	p.onEnterBoundary = func(seq int) {
 		if seq == 1 {
-			p.Steer("s1", "human:test")
+			p.Steer("s1", "human:test", "")
 		}
 	}
 	if _, err := p.Run(context.Background()); err != nil {
@@ -92,7 +92,7 @@ func TestASayIsIgnoredByADriverThatHoldsNoConversation(t *testing.T) {
 	p := NewTask("t", NewSupervisor(autoVec(), AutoResolver{}), d, &recExec{})
 	p.onEnterBoundary = func(seq int) {
 		if seq == 1 {
-			p.Steer("ignored", "human:test")
+			p.Steer("ignored", "human:test", "")
 		}
 	}
 	if _, err := p.Run(context.Background()); err != nil {
@@ -149,4 +149,33 @@ func TestOnlyAPersonsWordsAreFramed(t *testing.T) {
 			t.Errorf("%s was framed as somebody speaking: %q", name, got)
 		}
 	}
+}
+
+// A say that is an ask carries it onto the say frame the task emits when it takes the words
+// (9ce3bva0, stage 6), which is how the ask is known to be heard.
+func TestASayEchoesTheAskItIs(t *testing.T) {
+	d := &steerDriver{steps: []ToolUse{tool("A"), tool("B")}}
+	p := NewTask("t", NewSupervisor(autoVec(), AutoResolver{}), d, &recExec{})
+	p.onEnterBoundary = func(seq int) {
+		if seq == 1 {
+			p.Steer("s1", "user:bob", "say-1")
+		}
+	}
+	frames, stop := p.SubscribeSince(0)
+	defer stop()
+	if _, err := p.Run(context.Background()); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	for f := range frames {
+		if f.Kind == EvSay && f.Text == "s1" {
+			if f.ID != "say-1" || f.By != "user:bob" {
+				t.Fatalf("the say frame is %+v, want it to carry ask say-1, by bob", f)
+			}
+			return
+		}
+		if f.Kind == EvStatus && Status(f.Text).Terminal() {
+			break
+		}
+	}
+	t.Fatal("no say frame for s1")
 }

@@ -223,8 +223,8 @@ supplies `default: auto` and one `ask` [gate](../../../glossary.md#gate-of-a-tas
 `agent`, which matches the `call_agent` verb.
 
 ```sh
-./verse gate                            # what is waiting
-./verse gate approve <id> --as you@example.com
+./verse question                        # what is waiting
+./verse question approve <id> --as you@example.com
 ```
 
 `--vector auto` on the spawn skips the question. Watch the first few runs before you use it.
@@ -409,8 +409,8 @@ verse task run \
   --answer-contract docs/reference/examples/coderunner/docs-drift.answer \
   "$(sed 's|@FILE@|docs/reference/runners.md|' docs/reference/examples/coderunner/docs-drift.prompt)"
 
-verse gate
-verse gate approve <id> --as you@example.com
+verse question
+verse question approve <id> --as you@example.com
 ```
 
 This environment pushes to the real GitHub remote. A delivered task leaves

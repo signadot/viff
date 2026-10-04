@@ -153,8 +153,7 @@ of verse does not restore the hold.
 ## A suspension
 
 A suspension is one record. It names a charter, a rule of the charter, and a subject. It
-covers **the work about that subject** in every form, by one test, as a standing resolver
-does.
+covers **the work about that subject** in every form, by one test.
 
 | Work about the subject | While suspended | When the suspension lifts |
 |---|---|---|

@@ -63,7 +63,7 @@ func TestAnInstallerHoldingLessThanOwnerInstallsNothing(t *testing.T) {
 		{"a schedule", installAs(t, carol, ts.URL, `{name: carols-hour, every: 1h}`),
 			schedule.Ref(schedule.RecordID("", "carols-hour"))},
 		{"a resolver", postAs(t, carol, ts.URL+"/resolvers", "application/tony",
-			`{name: carols-review, byRef: true, method: {driver: url, url: "https://x"}}`), resolver.Ref("carols-review")},
+			`{name: carols-review, match: {}, method: {driver: service}}`), resolver.Ref("carols-review")},
 		{"a source", postAs(t, carol, ts.URL+"/io", "application/tony",
 			fmt.Sprintf(`{name: carols-repo, root: git, dir: %q}`, dir)), verseio.Ref("carols-repo")},
 	} {
@@ -129,7 +129,7 @@ func TestAnInstallTheStoreDidNotRecordIsTakenBackOut(t *testing.T) {
 		t.Error("the rule is in the engine")
 	}
 	resp = postAs(t, "alice@example.com", ts.URL+"/resolvers", "application/tony",
-		`{name: reviewer, byRef: true, method: {driver: url, url: "https://x"}}`)
+		`{name: reviewer, match: {}, method: {driver: service}}`)
 	if body := bodyOf(t, resp); resp.StatusCode != http.StatusConflict {
 		t.Errorf("a resolver whose record was lost: %s %q, want 409", resp.Status, body)
 	}
@@ -169,7 +169,7 @@ func TestTheStartNamesWhatActsAsNobody(t *testing.T) {
 	// By hand, as the system, which records nothing.
 	orphan := resolver.Ref("by-hand")
 	entitytest.Set(t, srv.Store, orphan, entity.Obj{
-		"name": "by-hand", "byRef": true, "method": entity.Obj{"driver": "url", "url": "https://x"},
+		"name": "by-hand", "match": entity.Obj{}, "method": entity.Obj{"driver": "service"},
 	}.Payload())
 
 	got, err := actingAsNobody(srv.Store)

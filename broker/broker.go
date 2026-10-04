@@ -131,7 +131,7 @@ type taskState struct {
 	ackedCursor int64
 	// pending holds the open gate decisions raised by the worker, keyed by decision id.
 	// It keeps the whole raised frame rather than just the gate name: `do gate --reason`
-	// rides in on Text, and a resolver reading `verse gate` needs it — that reason is the
+	// rides in on Text, and a resolver reading `verse question` needs it — that reason is the
 	// entire point of an executor escalating instead of deciding. Narrowing this to
 	// id -> gate silently blanked it on every brokered gate.
 	pending map[string]task.Frame
@@ -232,6 +232,23 @@ func (ps *taskState) emit(e task.Frame) {
 func (ps *taskState) enqueue(it api.InboxItem) int64 {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
+	return ps.push(it)
+}
+
+// enqueueLive is enqueue for an item only a running task can take: it is refused, under the
+// same lock the terminal latch takes, once the task has ended.
+func (ps *taskState) enqueueLive(it api.InboxItem) bool {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	if ps.terminal {
+		return false
+	}
+	ps.push(it)
+	return true
+}
+
+// push appends to the inbox; the caller holds ps.mu.
+func (ps *taskState) push(it api.InboxItem) int64 {
 	ps.inboxCur++
 	it.Cursor = ps.inboxCur
 	ps.inbox = append(ps.inbox, it)
@@ -622,13 +639,20 @@ func (h *handle) Cancel(reason string) error {
 	return nil
 }
 
-func (h *handle) Steer(instr, by string) error {
-	if err := h.enqueue(api.InboxItem{Kind: "say", Text: instr, By: by}); err != nil {
-		return err
+// Steer queues words for the worker. An ENDED task hears nothing, as a local one does not: its
+// worker takes no more from the inbox, and words queued there would be said to no one while
+// whoever said them was told they were taken.
+func (h *handle) Steer(instr, by, ask string) error {
+	ps := h.b.get(h.id)
+	if ps == nil {
+		return task.ErrNoSuchTask
 	}
-	if ps := h.b.get(h.id); ps != nil { // operator-authored: verse observes it too
-		ps.emit(task.Frame{Kind: task.EvSay, Text: instr, By: by})
+	if !ps.enqueueLive(api.InboxItem{Kind: "say", Text: instr, By: by}) {
+		return task.ErrEnded
 	}
+	// Operator-authored: verse observes it too, and a brokered task's say is heard when it is
+	// relayed — the worker takes its inbox at its own pace, on a machine verse cannot see into.
+	ps.emit(task.Frame{Kind: task.EvSay, Text: instr, By: by, ID: ask})
 	return nil
 }
 

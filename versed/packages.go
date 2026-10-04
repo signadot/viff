@@ -59,6 +59,7 @@ func (s *Server) packageEngineLocked(confine trigger.Subtree) (*trigger.Engine, 
 		eng.SetTripPace(s.tripPace)
 	}
 	eng.SetSpawner(s.spawnerFor(s.Store, "", nil, eng))
+	eng.SetDeadlineMover(s.moveDeadline)
 	ctx, cancel := context.WithCancel(s.ctx)
 	// Per-trigger observation, exactly as a scope's engine has: each rule watches the subtrees
 	// it reads, which for a package is usually wider than what it may write.

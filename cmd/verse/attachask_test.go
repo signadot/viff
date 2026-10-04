@@ -109,7 +109,7 @@ func pendingQuestionFor(t *testing.T, store entity.Store, taskID string) string 
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		for _, ent := range store.List(mirror.IsQuestion) {
+		for _, ent := range entity.Below(store, mirror.IsQuestion, 1, entity.VerseRoot, mirror.AskSystem) {
 			o := entity.ToObj(ent.Payload)
 			if o["task"] == taskID && o["status"] == mirror.QuestionPending {
 				return entity.Str(ent.Payload, "id")
@@ -159,7 +159,7 @@ func TestALineTypedBeforeAGateIsNotItsAnswer(t *testing.T) {
 	doc := `{calls: [{tool: run_bash, input: {command: "echo ran"}}, {tool: ask, input: {question: "and?"}}]}`
 	out, done := runCLIIn(t, strings.NewReader("hello\n"),
 		"task", "run", "--driver", "calls", "--vector", "ask", "--attach", "--as", "user:t", doc)
-	waitFor(t, out, "answer it: verse gate approve")
+	waitFor(t, out, "answer it: verse question approve")
 	id := strings.TrimSpace(strings.SplitN(out.String(), "\n", 2)[0])
 	qid := pendingQuestionFor(t, store, id)
 	if _, err := runCLI(t, "gate", "approve", qid, "--as", "user:t"); err != nil {
@@ -180,7 +180,7 @@ func TestEOFLeavesTheQuestionPending(t *testing.T) {
 	store := serveCalls(t)
 	out, done := runCLIIn(t, strings.NewReader(""),
 		"task", "run", "--driver", "calls", "--attach", "--as", "user:t", askDoc)
-	waitFor(t, out, "answer it: verse gate")
+	waitFor(t, out, "answer it: verse question")
 	id := strings.TrimSpace(strings.SplitN(out.String(), "\n", 2)[0])
 	qid := pendingQuestionFor(t, store, id)
 	if _, err := runCLI(t, "gate", qid, "--answer", "reply", "--say", "from afar", "--as", "user:t"); err != nil {
@@ -235,5 +235,18 @@ func TestPromptTake(t *testing.T) {
 	reply := newPrompt(task.Frame{ID: "t~3", Options: []task.Option{{ID: task.Reply}}})
 	if c, say, ok := reply.take("  some words "); !ok || c != task.Reply || say[0] != "some words" {
 		t.Errorf("words → %q %v %v", c, say, ok)
+	}
+}
+
+// A TASK'S QUESTION WITH A CLOCK SETTLES WHEN IT RUNS OUT: nobody answers, and the task reads so
+// and goes on.
+func TestATasksAskSettlesAtItsDeadline(t *testing.T) {
+	serveCalls(t)
+	doc := `{calls: [{tool: ask, input: {question: "which one?", within: 1s}}]}`
+	out, done := runCLIIn(t, strings.NewReader(""),
+		"task", "run", "--driver", "calls", "--attach", "--as", "user:t", doc)
+	got := waitEnd(t, out, done)
+	if !strings.Contains(got, "nobody answered within 1s") {
+		t.Fatalf("the task did not read that its question ran out:\n%s", got)
 	}
 }

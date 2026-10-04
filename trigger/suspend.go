@@ -652,6 +652,9 @@ func recordsCompletion(chain string) bool {
 // is about. The docket renders it as the question's `why`.
 type SuspendedError struct{ IDs []string }
 
+// Suspends says this withdrawal holds the work to ask it again (task.Suspends).
+func (SuspendedError) Suspends() bool { return true }
+
 func (err SuspendedError) Error() string {
 	return "withdrawn while " + strings.Join(err.IDs, ", ") + " suspends the work it is about; " +
 		"it is asked again when that lifts"

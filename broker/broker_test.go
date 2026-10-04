@@ -648,7 +648,7 @@ func TestAReconnectingWorkerResumesFromWhatItAcknowledged(t *testing.T) {
 	// cCursor of 0 cannot pass this by accident — replaying everything from the start is
 	// B3's behaviour, not this rule.
 	h := b.Attach("p")
-	if err := h.Steer("use the staging bucket", "human:scott"); err != nil {
+	if err := h.Steer("use the staging bucket", "human:scott", ""); err != nil {
 		t.Fatalf("steer: %v", err)
 	}
 	if err := h.Pause(); err != nil {
@@ -879,7 +879,7 @@ func TestAWorkerAskingFromTheBeginningIsServedFromWhereItGotTo(t *testing.T) {
 	postJSON(t, cl, srv.URL+"/tasks/p/claim", `{"identity":"agent:ci"}`, &claim)
 
 	h := b.Attach("p")
-	if err := h.Steer("use the staging bucket", "human:scott"); err != nil {
+	if err := h.Steer("use the staging bucket", "human:scott", ""); err != nil {
 		t.Fatalf("steer: %v", err)
 	}
 	if err := h.Pause(); err != nil {
@@ -983,5 +983,66 @@ func TestTheLogIsBoundedAndSaysWhenAReaderFellBelowIt(t *testing.T) {
 	}
 	if n > 40 {
 		t.Fatalf("the replay delivered %d frames of a 32-event window", n)
+	}
+}
+
+// A say that is an ask is heard when the broker relays it: the say frame verse records carries the
+// ask (9ce3bva0, stage 6), since the worker takes its inbox where verse cannot see.
+func TestABrokeredSayCarriesItsAsk(t *testing.T) {
+	b := broker.New()
+	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
+	h := b.Attach("p")
+	frames, stop := h.SubscribeSince(0)
+	defer stop()
+	if err := h.Steer("use the staging bucket", "user:scott", "say-1"); err != nil {
+		t.Fatalf("steer: %v", err)
+	}
+	timeout := time.After(5 * time.Second)
+	for {
+		select {
+		case f := <-frames:
+			if f.Kind == task.EvSay {
+				if f.ID != "say-1" || f.By != "user:scott" {
+					t.Fatalf("the say frame is %+v, want it to carry ask say-1", f)
+				}
+				return
+			}
+		case <-timeout:
+			t.Fatal("no say frame")
+		}
+	}
+}
+
+// WORDS TO AN ENDED BROKERED TASK ARE REFUSED, as a local one's are: its worker takes no more
+// from the inbox, so nothing is queued for it and no say is recorded as heard.
+func TestWordsToAnEndedBrokeredTaskAreRefused(t *testing.T) {
+	b := broker.New()
+	h := b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
+	if err := h.Cancel("operator stop"); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+	if err := h.Steer("still there?", "user:scott", "say-1"); !errors.Is(err, task.ErrEnded) {
+		t.Fatalf("steer after the end = %v, want task.ErrEnded", err)
+	}
+	inbox, _ := b.TaskInbox("p")
+	for _, it := range inbox {
+		if it.Kind == "say" {
+			t.Fatalf("the refused say was queued: %+v", it)
+		}
+	}
+	frames, stop := h.SubscribeSince(0)
+	defer stop()
+	for {
+		select {
+		case f, ok := <-frames:
+			if !ok {
+				return // the replay of an ended task ends with it
+			}
+			if f.Kind == task.EvSay {
+				t.Fatalf("the refused say was recorded: %+v", f)
+			}
+		case <-time.After(time.Second):
+			return
+		}
 	}
 }

@@ -37,7 +37,7 @@ describe() {
 	case "$1" in
 	patch) echo "condition + patch. No task at all: a rule can be pure state." ;;
 	latch) echo "spawn + onDone. The shape that settles — the action advances the subject out of its own selection." ;;
-	ask) echo "one ask gate. The firing waits for a person (verse gate)." ;;
+	ask) echo "one ask gate. The firing waits for a person (verse question)." ;;
 	seq) echo "seq of two steps, with an onFailed off-ramp. The depth axis." ;;
 	when) echo "a condition on ANOTHER entity: act on these, while that holds." ;;
 	on) echo "a cause: fire on the rising edge, not while it stays true (and no backlog)." ;;
@@ -281,8 +281,8 @@ next_steps() {
 	[ ${#scope[@]} -gt 0 ] && c="$BIN ${scope[*]}"
 	printf '\nwhat it did:\n\n  %s data %s\n' "$c" "$sub_at"
 	case "$1" in
-	ask) printf '  %s gates                  ← it is waiting for you\n  %s gate approve <id>\n' "$c" "$c" ;;
-	vote) printf '  %s gates                  ← it is waiting for a tally\n  %s gate approve <id> --as user:alice\n  %s gate approve <id> --as user:bob\n' "$c" "$c" "$c" ;;
+	ask) printf '  %s question               ← it is waiting for you\n  %s question approve <id>\n' "$c" "$c" ;;
+	vote) printf '  %s question               ← it is waiting for a tally\n  %s question approve <id> --as user:alice\n  %s question approve <id> --as user:bob\n' "$c" "$c" "$c" ;;
 	latch | seq) printf '  %s flow show %s  ← the shape of the work, and what comes next\n' "$c" "$sub" ;;
 	on) printf '  (now re-drive it: nothing fires, because the edge already rose)\n' ;;
 	derive)

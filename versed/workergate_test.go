@@ -63,12 +63,12 @@ func TestAWorkerRaisedGateCarriesItsOptionsAndTheChoiceComesBack(t *testing.T) {
 	}
 
 	// A yes is not an option here.
-	bad := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: "p~d1", Choice: "proceed", By: "user:lead@example.com"})
+	bad := postTony(t, ops.URL+answerPath("p~d1"), api.Resolve{Choice: "proceed", By: "user:lead@example.com"})
 	bad.Body.Close()
 	if bad.StatusCode != http.StatusBadRequest {
 		t.Fatalf("proceed on a three-option question = %s, want 400", bad.Status)
 	}
-	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: "p~d1", Choice: "canary", By: "user:lead@example.com"})
+	resp := postTony(t, ops.URL+answerPath("p~d1"), api.Resolve{Choice: "canary", By: "user:lead@example.com"})
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("resolve = %s", resp.Status)

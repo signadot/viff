@@ -57,9 +57,11 @@ nav:
 - Use verse:
   - reference/README.md
   - reference/tasks.md
+  - asking.md
   - perms-guide.md
   - reference/connect.md
 - Write a charter:
+  - Introduction: charter-intro.md
   - trigger-model.md
   - reference/condition.md
   - reference/action.md

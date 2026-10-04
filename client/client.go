@@ -148,6 +148,15 @@ func (c *Client) Put(path string, body any) (*http.Response, error) {
 	return c.send(http.MethodPut, c.URL(path, nil), b)
 }
 
+// Patch sends body as a change to what stands at path.
+func (c *Client) Patch(path string, body any) (*http.Response, error) {
+	b, err := codec.Marshal(body, c.wire())
+	if err != nil {
+		return nil, err
+	}
+	return c.send(http.MethodPatch, c.URL(path, nil), b)
+}
+
 // Delete removes what stands at path.
 func (c *Client) Delete(path string, q url.Values) (*http.Response, error) {
 	req, err := http.NewRequest(http.MethodDelete, c.URL(path, q), nil)

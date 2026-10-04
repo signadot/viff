@@ -905,7 +905,7 @@ type deriveTarget struct {
 	// said: a merge train needs a batch per main, and a derive re-firing at a new tip wrote the
 	// same address, so the SAME gate id was asked and the second batch inherited the first
 	// batch's answer. A gate is identified by (trigger, gate, subject); if the subject cannot
-	// vary, the question cannot be asked twice.
+	// vary, two batches are one subject, asked about as one.
 	//
 	// It keys on STATE deliberately, which `!each` already does (`key: $item.symbol`), and the
 	// invariant is the one a fan-out rests on rather than an exception to it: a derive may carry

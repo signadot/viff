@@ -203,3 +203,25 @@ func oneCommitOf(t *testing.T, ch <-chan Commit, why string) Commit {
 	}
 	return Commit{}
 }
+
+// A CHANGE CARRIES THE WHOLE STATE, however the watch opened (Event.To): a watch that skips what
+// already stands — `noInit`, and the live part of a watch from a cursor — still reports an entity
+// that stood before it opened with every field, not only the ones the write touched; and says
+// nothing about what stood until it changes.
+func TestAWatchThatSkipsWhatStandsReportsTheWholeState(t *testing.T) {
+	s := openStore(t)
+	pr := RefAt("demo", "pr", "1")
+	set(t, s, pr, Obj{"stage": "open", "owner": "ana"}.Payload())
+
+	ch, unsub, err := s.WatchSubtreeAt(3, true, "demo", "pr")
+	if err != nil {
+		t.Fatalf("watch: %v", err)
+	}
+	defer unsub()
+
+	mustWrite(t, s, Write{At: Path{Ref: pr, Access: "stage"}, Value: ir.FromString("closed")})
+	ev := oneChange(t, ch, "the write to one field")
+	if Str(ev.To, "stage") != "closed" || Str(ev.To, "owner") != "ana" {
+		t.Fatalf("To = %+v, want the whole entity: stage closed, owner ana", ToObj(ev.To))
+	}
+}

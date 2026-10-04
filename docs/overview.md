@@ -98,7 +98,7 @@ the owner of what asked it, and by whoever the question was held out to. See
 A **subject** and a **flow** are derived. Verse keeps no record of either.
 
 - A subject, such as a pull request moving through its lifecycle, is half of nearly every
-  identity verse keeps: the id of a spawn, the question of a gate, the cover of a resolver.
+  identity verse keeps: the id of a spawn, the question of a gate.
 - You steer a flow as one unit. Verse builds the flow each time you ask.
 
 ## How verse is built

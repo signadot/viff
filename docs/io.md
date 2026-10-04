@@ -557,7 +557,7 @@ network, and it is native to the SDLC.
 
 ## Control: what people do over there
 
-A press in Slack, a reply in a thread, or a mention is not a reflection and not a delivery. It
+A reply in a Slack thread, or a mention, is not a reflection and not a delivery. It
 is a control request, and [an intervention is never a store write](control.md). So a connector
 that hears one asks verse through the ordinary route, as the person who did it. It writes
 nothing.

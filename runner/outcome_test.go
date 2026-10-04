@@ -34,7 +34,7 @@ func TestControlAgainstADeadRemoteIsUnreachable(t *testing.T) {
 		{"cancel", h.Cancel("stop")},
 		{"pause", h.Pause()},
 		{"resume", h.Resume()},
-		{"steer", h.Steer("do it differently", "human:scott")},
+		{"steer", h.Steer("do it differently", "human:scott", "")},
 		{"set-vector", h.SetVector(&task.Vector{Default: task.Ask}, "human:scott")},
 		{"resolve", h.(resolver).Resolve("d1", "proceed", "", "human:scott")},
 	} {

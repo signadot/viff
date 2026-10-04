@@ -78,6 +78,7 @@ type socketRig struct {
 	ts     string // the message asking the question, which a reply threads under
 	src    *slack.Slack
 	verse  *client.Client
+	addr   string // the verse, for a test that asks it things as somebody
 }
 
 const askedQuestion = "verse.trigger.review.review~1"
@@ -94,7 +95,7 @@ func newSocketRig(t *testing.T) *socketRig {
 	ss := httptest.NewServer(websocket.Handler(sock.handle))
 	t.Cleanup(ss.Close)
 
-	r := &socketRig{srv: srv, sock: sock, kicked: make(chan struct{}, 8), hints: make(chan []entity.Ref, 8)}
+	r := &socketRig{srv: srv, sock: sock, kicked: make(chan struct{}, 8), hints: make(chan []entity.Ref, 8), addr: addr}
 	f := newFake()
 	f.socketURL = "ws" + strings.TrimPrefix(ss.URL, "http") + "/socket"
 	f.users = []map[string]any{
@@ -105,6 +106,7 @@ func newSocketRig(t *testing.T) *socketRig {
 	src := newSource(t, f, slack.Config{})
 	verse := client.New(addr, "agent:slack-io")
 	sink := src.Sink(verse)
+	sink.As = verseio.As(addr) // as cmd/iod wires it: an ask for somebody is read as them
 	out := verseio.NewOut(sink, src.OutRef(), verse, nil)
 	r.outRig = &outRig{store: store, fake: f, sink: sink, out: out}
 	r.src, r.verse = src, verse
@@ -519,11 +521,11 @@ func TestTheSocketDialsAgainOnDisconnect(t *testing.T) {
 	t.Fatalf("%d connections, want a second after the disconnect", r.sock.connections())
 }
 
-// A MESSAGE WHOSE EDIT WAS REFUSED FOR GOOD STILL STANDS IN SLACK, and a reply in its thread is
-// still about its question. The input is not delivered again (git-issue na9fce9dh12krdydqsn0), so
-// what a delivery would remember is kept instead: a sink that starts afresh — a restarted io —
-// learns the thread from one pass.
-func TestARefusedEditStillKeepsItsThread(t *testing.T) {
+// A MESSAGE WHOSE EDIT WAS REFUSED FOR GOOD STILL SHOWS ITS OLD WORDS, and the input is not
+// delivered again (git-issue na9fce9dh12krdydqsn0). What a reply in its thread answers is the edit
+// Slack shows, so a sink that starts afresh — a restarted io — does not take the refused words as
+// the message's (git-issue ny9fce9dh12ks1q9qsn0), and the edit is not sent again.
+func TestARefusedEditIsNotRememberedAsShown(t *testing.T) {
 	r := newSocketRig(t)
 	r.asking(t)
 	r.fake.fail["chat.update"] = "msg_too_long"
@@ -542,8 +544,8 @@ func TestARefusedEditStillKeepsItsThread(t *testing.T) {
 	if err := verseio.NewOut(fresh, r.src.OutRef(), r.verse, nil).Pass(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if got := fresh.Asked("C999", r.ts); len(got) != 1 {
-		t.Fatalf("after a pass, the thread asks %v, want the message's question", got)
+	if got := fresh.Asked("C999", r.ts); len(got) != 0 {
+		t.Fatalf("after a pass, the thread asks %v, want nothing: Slack does not show the refused edit", got)
 	}
 	if n := r.fake.called("chat.update"); n != 1 {
 		t.Errorf("chat.update asked %d times, want once: the refused edit is not sent again", n)

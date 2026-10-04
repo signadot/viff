@@ -53,7 +53,7 @@ func (h *idleHandle) SubscribeSince(int64) (<-chan task.Frame, func()) { return 
 func (h *idleHandle) Pause() error                                     { return h.got("pause") }
 func (h *idleHandle) Resume() error                                    { return h.got("resume") }
 func (h *idleHandle) Cancel(string) error                              { return h.got("cancel") }
-func (h *idleHandle) Steer(string, string) error                       { return h.got("say") }
+func (h *idleHandle) Steer(string, string, string) error               { return h.got("say") }
 func (h *idleHandle) SetVector(*task.Vector, string) error             { return h.got("vector") }
 func (h *idleHandle) Result() string                                   { return "" }
 func (h *idleHandle) Err() string                                      { return "" }

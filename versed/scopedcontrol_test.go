@@ -79,13 +79,11 @@ func TestControlWritesActOnTheirOwnScope(t *testing.T) {
 	// A question, from the wrong scope, each way — and the record is untouched: baseline's
 	// question is still pending, which is the split this pins (delivered there, recorded here).
 	answer := func(id string) map[string]any { return map[string]any{"id": id, "by": tester, "choice": "proceed"} }
-	code, msg = control(t, ts, "/gate/resolve", "me", answer(baseQ))
+	code, msg = control(t, ts, answerPath(baseQ), "me", answer(baseQ))
 	refusesNaming(code, msg, "baseline's", "without --scope", "answer --scope me to baseline's question")
-	code, msg = control(t, ts, "/gate/escalate", "me", map[string]any{"id": baseQ, "by": tester})
-	refusesNaming(code, msg, "baseline's", "without --scope", "escalate --scope me of baseline's question")
 	code, msg = control(t, ts, "/tasks/base-1/resolve", "me", answer(baseQ))
 	refusesNaming(code, msg, "baseline's", "without --scope", "task resolve --scope me of baseline's question")
-	code, msg = control(t, ts, "/gate/resolve", "", answer(mineQ))
+	code, msg = control(t, ts, answerPath(mineQ), "", answer(mineQ))
 	refusesNaming(code, msg, "scope me's", "--scope me", "answer from baseline of the scope's question")
 	if got := questionsIn(srv.Store, "base-1"); len(got) != 1 || got[0] != baseQ {
 		t.Fatalf("baseline's question after the refusals = %v, want it still pending", got)
@@ -95,7 +93,7 @@ func TestControlWritesActOnTheirOwnScope(t *testing.T) {
 	}
 
 	// The scope's own, from the scope: reached, and settled in the scope's record.
-	if code, msg := control(t, ts, "/gate/resolve", "me", answer(mineQ)); code != http.StatusNoContent {
+	if code, msg := control(t, ts, answerPath(mineQ), "me", answer(mineQ)); code != http.StatusNoContent {
 		t.Fatalf("answer --scope me to the scope's own question = %d %q, want 204", code, msg)
 	}
 	deadline := time.After(3 * time.Second)
@@ -108,8 +106,8 @@ func TestControlWritesActOnTheirOwnScope(t *testing.T) {
 	}
 	// And baseline's own, from baseline: reached, as ever. (A say re-prompts the task, which
 	// drops the question it was holding — so it comes after the question has served its turn.)
-	if code, msg := control(t, ts, "/tasks/base-1/say", "", map[string]any{"instruction": "hurry", "by": tester}); code != http.StatusNoContent {
-		t.Fatalf("say to baseline's own task = %d %q, want 204", code, msg)
+	if code, msg := control(t, ts, "/tasks/base-1/say", "", map[string]any{"instruction": "hurry", "by": tester}); code != http.StatusOK {
+		t.Fatalf("say to baseline's own task = %d %q, want 200", code, msg)
 	}
 	if code, msg := control(t, ts, "/tasks/base-1/cancel", "", nil); code != http.StatusNoContent {
 		t.Fatalf("cancel of baseline's own task = %d %q, want 204", code, msg)

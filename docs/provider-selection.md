@@ -21,7 +21,7 @@ spawn what the doer *is*:
 
 Verse lays these over the spawn that selected the doer.
 
-For a walk through an example, see [tutorial §5](tutorial.md#the-same-machinery-answers-who).
+For a walk through an example, see [tutorial §4](tutorial.md#the-same-machinery-answers-who).
 For the place of `spawn` inside a rule, see [the trigger model](trigger-model.md).
 
 ## The registry
@@ -94,8 +94,6 @@ nothing is spawned.
 
 A gate follows the same rule: verse poses a question for `ask`, and never for `mode: auto`.
 
-Verse refuses a `vote` under an `exclusive` resolver at install. An exclusive resolver answers
-alone, and a vote needs a group. `ask` works with an exclusive resolver.
 
 Verse does not store an `auto` pick. It picks again at each firing. The pick is deterministic
 for the same registry, because the eligible set is sorted. When the registry changes, the pick
@@ -310,7 +308,7 @@ verse data verse task instance <id>
 would give is beside the name that the answer names:
 
 ```sh
-verse gate
+verse question
 ```
 
 ```tony
@@ -333,7 +331,7 @@ verse gate
 ```
 
 ```sh
-verse gate verse.trigger.treat.provider~aa92f8cc -answer fixer -as alice@example.com     # 1 of 2 for fixer
+verse question verse.trigger.treat.provider~aa92f8cc --answer fixer --as alice@example.com     # 1 of 2 for fixer
 ```
 
 A doer that adds nothing to the spawn writes neither field. So a [ballot](glossary.md#ballot)

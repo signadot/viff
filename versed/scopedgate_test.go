@@ -16,9 +16,7 @@ import (
 // questionsIn lists the pending gate questions a given view can see.
 func questionsIn(store entity.Store, taskID string) []string {
 	var out []string
-	for _, ent := range store.List(func(ref entity.Ref) bool {
-		return mirror.IsQuestion(ref)
-	}) {
+	for _, ent := range entity.Below(store, mirror.IsQuestion, 1, entity.VerseRoot, mirror.AskSystem) {
 		p := entity.ToObj(ent.Payload)
 		if p["task"] == taskID && p["status"] == mirror.QuestionPending {
 			out = append(out, ent.Ref.Name())
@@ -104,9 +102,7 @@ func spawnScoped(t *testing.T, ts *httptest.Server, id, scope string) {
 // firing's gates, which are posed before anything is running and so carry no task.
 func firingQuestions(store entity.Store, origin string) []string {
 	var out []string
-	for _, ent := range store.List(func(ref entity.Ref) bool {
-		return mirror.IsQuestion(ref)
-	}) {
+	for _, ent := range entity.Below(store, mirror.IsQuestion, 1, entity.VerseRoot, mirror.AskSystem) {
 		p := entity.ToObj(ent.Payload)
 		if p["task"] == nil && p["origin"] == origin && p["status"] == mirror.QuestionPending {
 			out = append(out, ent.Ref.Name())

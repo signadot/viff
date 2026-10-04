@@ -1862,7 +1862,13 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 		path += "." + seg(p)
 	}
 	ctx, cancel := context.WithCancel(s.ctx)
-	w, err := s.establish(ctx, path, &libctl.WatchOptions{WaitIfAbsent: waitIfAbsent, NoInit: noInit})
+	// THE STATE IS ALWAYS ASKED FOR, and noInit says only whether it is SAID. Every commit this
+	// watch emits carries an entity's whole state (Event.To), and that state is this watch's copy
+	// of the slice with each delta applied: a copy that starts from nothing holds, for an entity
+	// that stood before the watch opened, only the fields written since. So the watch opens on
+	// the state the substrate offers (as a re-established one does), and a caller that wanted to
+	// join at the next change gets that state taken in silently below rather than reported.
+	w, err := s.establish(ctx, path, &libctl.WatchOptions{WaitIfAbsent: waitIfAbsent})
 	if err != nil {
 		cancel()
 		return nil, nil, nil, err
@@ -1918,6 +1924,10 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 		// same place (Attribution.follow).
 		var sent int64
 		var resync bool
+		// seeded is whether the opening State has been taken in: under noInit it is taken
+		// into the copy and the snapshot alike, so the first diff says nothing about what
+		// already stood, and the first change carries the whole of what it changed.
+		seeded := !noInit
 		send := func(c Commit) bool {
 			select {
 			case out <- c:
@@ -2032,6 +2042,12 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 							w.Close()
 							return
 						}
+						continue
+					}
+					if !seeded && ev.Patch == nil {
+						apply(ev)
+						prev = doc
+						seeded = true
 						continue
 					}
 					// One event in, one diff out. There is no burst-coalescing here: see

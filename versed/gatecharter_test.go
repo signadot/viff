@@ -2,9 +2,11 @@ package versed
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -36,13 +38,10 @@ func gateCharter(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("reading the shipped charter: %v", err)
 	}
-	return string(b)
+	return strings.ReplaceAll(string(b), "slack.Signadot.out", "demo.out")
 }
 
-// gateOutbox is where the shipped gate charter asks, inside its own package.
-var gateOutbox = entity.RefAt("verse-dev", "gate-ask", "out", "slack")
-
-// withSlackIO registers an io reading slack.Signadot.out, which is what the shipped charters'
+// withSlackIO registers an io reading slack.Signadot.out, which is what the shipped packages'
 // outboxes send to: a package declaring one is refused unless an io reads the place it names.
 func withSlackIO(t *testing.T, srv *Server) {
 	t.Helper()
@@ -80,7 +79,6 @@ func TestTheGateCharterAsksEachPersonAQuestionWaitsOn(t *testing.T) {
 	srv.Start(t.Context()) // the engine, which is what runs the rule
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	withSlackIO(t, srv)
 	installCharter(t, ts, "", gateCharter(t))
 
 	const id = "verse.trigger.review.review~1"
@@ -125,6 +123,50 @@ func TestTheGateCharterAsksEachPersonAQuestionWaitsOn(t *testing.T) {
 	}
 }
 
+// A PERSON'S ASK REACHES WHOM IT ASKS, through the charter the deployment installs as the system:
+// a rule acts as its installer, and a person's ask is read by whom it asks, so only the system's
+// rule sees them all. No rule raised it, so the line names who asked.
+func TestTheGateCharterAsksWhomAPersonsAskNames(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "system.tony")
+	if err := os.WriteFile(path, []byte(gateCharter(t)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srv := testServer(t)
+	srv.SystemCharter = path
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	id := askID(t, ask(t, "user:daniel@example.com", ts.URL,
+		`{name: land, question: "Merge verse/ask?", answerers: [ana@example.com]}`))
+	var asked map[string]entity.Obj
+	deadline := time.After(10 * time.Second)
+	for len(asked) == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("the charter asked nobody about daniel's ask")
+		case <-time.After(10 * time.Millisecond):
+		}
+		asked = asksIn(t, srv)
+	}
+	msg, ok := asked["user:ana@example.com"]
+	if !ok || len(asked) != 1 {
+		t.Fatalf("the charter asked %v, want ana alone", asked)
+	}
+	// ONE message: the rules for a rule's question and a person's ask never both select one ask,
+	// or she is told twice, once by a line naming no rule at all.
+	time.Sleep(200 * time.Millisecond)
+	if n := messagesIn(t, srv); n != 1 {
+		t.Fatalf("%d messages about daniel's ask, want one", n)
+	}
+	if msg["asks"] != id {
+		t.Errorf("the message to ana asks %v, want daniel's ask", msg["asks"])
+	}
+	if text, _ := msg["text"].(string); !strings.Contains(text, "user:daniel@example.com") || strings.Contains(text, "$") {
+		t.Errorf("the message to ana says %q, want who asked, resolved", text)
+	}
+}
+
 // And when the question settles, the messages stand: what they SAY is drawn from the record by
 // whoever shows them, so a settle redraws rather than deletes, and the charter has nothing to do.
 func TestTheGateCharterLeavesSettledQuestionsAlone(t *testing.T) {
@@ -132,7 +174,6 @@ func TestTheGateCharterLeavesSettledQuestionsAlone(t *testing.T) {
 	srv.Start(t.Context()) // the engine, which is what runs the rule
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	withSlackIO(t, srv)
 	installCharter(t, ts, "", gateCharter(t))
 
 	const id = "verse.trigger.review.review~2"
@@ -173,7 +214,7 @@ func TestTheGateCharterLeavesSettledQuestionsAlone(t *testing.T) {
 func asksIn(t *testing.T, srv *Server) map[string]entity.Obj {
 	t.Helper()
 	out := map[string]entity.Obj{}
-	e, ok, err := srv.Store.Get(gateOutbox)
+	e, ok, err := srv.Store.Get(entity.RefAt("demo", "out"))
 	if err != nil || !ok {
 		return out
 	}
@@ -194,6 +235,131 @@ func asksIn(t *testing.T, srv *Server) map[string]entity.Obj {
 	return out
 }
 
+// AN ASK FOR A CHANNEL is one message in the channel its `slack` label names, and a DM to nobody:
+// not to `user:*`, whom a gate asks when anyone may answer, and not to a person it names either.
+// Two asks to one channel are two messages.
+func TestTheGateCharterPutsALabelledAskToItsChannel(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "system.tony")
+	if err := os.WriteFile(path, []byte(gateCharter(t)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srv := testServer(t)
+	srv.SystemCharter = path
+	srv.Start(t.Context())
+
+	raise := func(id string, answerers ...string) {
+		go func() {
+			_, _ = srv.Reg.Resolve(context.Background(),
+				task.GateQuestion{ID: id, Origin: "train-run", Gate: "merge-to-main", Mode: task.Ask,
+					Answerers: answerers, Labels: map[string]string{"slack": "C123"}},
+				task.ToolUse{Name: "verse.trigger.train-run"})
+		}()
+	}
+	raise("verse.trigger.train-run.merge~1", "user:*")
+	raise("verse.trigger.train-run.merge~2", "user:ana@example.com")
+
+	want := map[string]bool{"verse.trigger.train-run.merge~1": true, "verse.trigger.train-run.merge~2": true}
+	var got []entity.Obj
+	deadline := time.After(10 * time.Second)
+	for len(got) < 2 {
+		select {
+		case <-deadline:
+			t.Fatalf("the charter put %v to the channel, want both asks", got)
+		case <-time.After(20 * time.Millisecond):
+		}
+		got = messagesTo(t, srv)
+	}
+	time.Sleep(200 * time.Millisecond)
+	got = messagesTo(t, srv)
+	if len(got) != 2 {
+		t.Fatalf("%d messages, want one per ask, to the channel alone: %v", len(got), got)
+	}
+	for _, m := range got {
+		if m["to"] != "C123" || !want[fmt.Sprint(m["asks"])] {
+			t.Errorf("a message %v, want each ask put to C123", m)
+		}
+		delete(want, fmt.Sprint(m["asks"]))
+	}
+}
+
+// A PERSON'S ASK IS DM'D WHATEVER ITS LABELS: a channel's message is read as the io, and a person's
+// ask is read only by its asker and whom it asks.
+func TestAPersonsAskLabelledForAChannelIsStillDMd(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "system.tony")
+	if err := os.WriteFile(path, []byte(gateCharter(t)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srv := testServer(t)
+	srv.SystemCharter = path
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	id := askID(t, ask(t, "user:daniel@example.com", ts.URL,
+		`{name: land, question: "Merge?", answerers: [ana@example.com], labels: {slack: C123}}`))
+	var got []entity.Obj
+	for deadline := time.Now().Add(10 * time.Second); len(got) == 0; got = messagesTo(t, srv) {
+		if time.Now().After(deadline) {
+			t.Fatal("the charter said nothing about daniel's ask")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if got = messagesTo(t, srv); len(got) != 1 || got[0]["to"] != "user:ana@example.com" || got[0]["asks"] != id {
+		t.Fatalf("messages %v, want one to ana", got)
+	}
+}
+
+// messagesTo is every message the charter has derived, each as written.
+func messagesTo(t *testing.T, srv *Server) []entity.Obj {
+	t.Helper()
+	var out []entity.Obj
+	e, ok, err := srv.Store.Get(entity.RefAt("demo", "out"))
+	if err != nil || !ok {
+		return nil
+	}
+	var walk func(p entity.Payload)
+	walk = func(p entity.Payload) {
+		o := entity.ToObj(p)
+		if to, _ := o["to"].(string); to != "" {
+			out = append(out, o)
+			return
+		}
+		for k := range o {
+			if child := entity.Get(p, k); child != nil {
+				walk(child)
+			}
+		}
+	}
+	walk(e.Payload)
+	return out
+}
+
+// messagesIn counts the messages the charter has derived, whoever each is for.
+func messagesIn(t *testing.T, srv *Server) int {
+	t.Helper()
+	e, ok, err := srv.Store.Get(entity.RefAt("demo", "out"))
+	if err != nil || !ok {
+		return 0
+	}
+	n := 0
+	var walk func(p entity.Payload)
+	walk = func(p entity.Payload) {
+		o := entity.ToObj(p)
+		if to, _ := o["to"].(string); to != "" {
+			n++
+			return
+		}
+		for k := range o {
+			if child := entity.Get(p, k); child != nil {
+				walk(child)
+			}
+		}
+	}
+	walk(e.Payload)
+	return n
+}
+
 // A question that named nobody waits on whoever the docket admits — `waitingOn: [user:*]`, which
 // is every person and so nobody to send a message to. The rule leaves it alone: it is answered
 // from the docket, and a message addressed to a wildcard would be a status full of refusals.
@@ -202,7 +368,6 @@ func TestTheGateCharterLeavesDocketQuestionsToTheDocket(t *testing.T) {
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	withSlackIO(t, srv)
 	installCharter(t, ts, "", gateCharter(t))
 
 	const id = "verse.trigger.review.review~3"

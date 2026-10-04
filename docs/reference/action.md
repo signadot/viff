@@ -263,6 +263,34 @@ default of the runtime applies. That default is small. A longer window costs mem
 live task. The reason `retain` is set per spawn is in
 [Why it is this way](../design/reference-action.md#retain-is-per-spawn).
 
+### `as: subject` — a task for whoever wrote the record
+
+The task of a rule acts as the installer of the rule. `as: subject` makes it act for the owner of
+the record that fired it as well:
+
+```tony
+spawn:
+  driver: llm
+  prompt: $subject.value.then
+  as: subject
+```
+
+The task acts as the pair of them, `pair:<owner> <installer>`, on the owner's authority. A
+consequence belongs to whoever raised it: asked "may I merge this?", an answerer's yes lets the
+owner merge what the owner may. Neither the answerer nor the installer needs that right, and the
+installer's reach is not lent to the owner.
+
+A rule may say `as: subject` only where its subject lies in a place the installer owns: the
+settled part of the subject's path, the last segment left out. Anywhere else, the installer
+could select somebody's records and run a task of the installer's design as them, so verse
+refuses the charter at install.
+
+The task record is the owner's, and says so as `asker:`. Its own gates ask the owner. Where the
+owner is the system, the task acts as the rule alone.
+
+`subject` is the only value that `as` takes. Verse refuses any other at install. It also refuses
+a charter that writes `asker:` itself, because the engine sets it.
+
 ### `calls` — when the charter knows the actions
 
 A spawn can carry the work itself, instead of a prompt for something to work the work out. A

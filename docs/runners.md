@@ -66,7 +66,7 @@ raises, and the worker may not answer them ([perms.md](perms.md)).
 
 ## Naming one on a spawn
 
-A charter names a runner in the same way that it names a provider or a resolver:
+A charter names a runner in the same way that it names a provider:
 
 ```tony
 name: retrain-on-gpu

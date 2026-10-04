@@ -64,7 +64,7 @@ func TestAListingAnswersOnlyWhatMayBeRead(t *testing.T) {
 	entity.PolicyOf(srv.Store).SetRootChildGrants(nil)
 
 	pr(t, srv, "1", "payments")
-	spawnAs(t, "alice@example.com", ts.URL, "run-1", `change.pr."1"`, "")
+	spawnAs(t, "alice@example.com", ts.URL, "run-1", `change.pr."1"`)
 	waitQuestion(t, srv, "run-1")
 
 	listing := func(as string) string {

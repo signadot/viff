@@ -21,9 +21,9 @@ func docket(t *testing.T, srv *Server) []map[string]any {
 	t.Helper()
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	resp, err := http.Get(ts.URL + "/gates")
+	resp, err := http.Get(ts.URL + "/asks?all=true")
 	if err != nil {
-		t.Fatalf("get gates: %v", err)
+		t.Fatalf("get the docket: %v", err)
 	}
 	defer resp.Body.Close()
 	var gates []map[string]any
@@ -126,7 +126,7 @@ func TestARestartKeepsASurvivingTasksQuestion(t *testing.T) {
 	// docket. The answer has to reach the worker that is actually blocked.
 	ops := httptest.NewServer(second.Handler())
 	defer ops.Close()
-	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: decision, Choice: "proceed", By: "user:scott@example.com"})
+	resp := postTony(t, ops.URL+answerPath(decision), api.Resolve{Choice: "proceed", By: "user:scott@example.com"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("answering after a restart = %s, want 204", resp.Status)
@@ -231,6 +231,9 @@ func TestARestartReposesAFiringsQuestion(t *testing.T) {
 	if err := first.Eng.AddTrigger(rule); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
+	// Scott's pr, so scott answers its gate: one naming nobody is answered by whoever may write
+	// what it is about.
+	owns(t, first, "user:scott@example.com", nil, entity.RefAt("demo", "pr", "1"))
 	entitytest.Set(t, first.Store, entity.RefAt("demo", "pr", "1"),
 		entity.Obj{"stage": "open"}.Payload())
 	var posed string
@@ -267,7 +270,7 @@ func TestARestartReposesAFiringsQuestion(t *testing.T) {
 
 	ops := httptest.NewServer(second.Handler())
 	defer ops.Close()
-	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: posed, Choice: "proceed", By: "user:scott@example.com"})
+	resp := postTony(t, ops.URL+answerPath(posed), api.Resolve{Choice: "proceed", By: "user:scott@example.com"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("answering the re-posed question = %s, want 204 — it is listed but nothing is waiting", resp.Status)
@@ -335,30 +338,5 @@ func TestABrokeredTaskEndingSettlesItsQuestions(t *testing.T) {
 	if got := entity.ToObj(e.Payload); got["status"] != mirror.QuestionOrphaned {
 		t.Fatalf("question status = %v, want orphaned — nobody answered it and nobody now can: %+v",
 			got["status"], got)
-	}
-}
-
-// A RESUMED task is covered by whoever was covering it.
-//
-// The resolver its spawn named is on the entity, so a restart reads it back rather than
-// remembering it — and the standing layer is consulted for its questions exactly as it was
-// before. Neither survived the first cut of this: reconcile rebuilt its own Meta by hand and
-// dropped both, silently, which is what an optional field on a struct three call sites
-// construct will do.
-func TestAResumedTaskKeepsItsResolver(t *testing.T) {
-	addr := entitytest.Addr(t)
-	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
-	const resolverRef = "verse.resolvers.security-review"
-	entitytest.Set(t, first.Store, mirror.Ref("p"), entity.Obj{
-		"status": string(task.Running), "runner": "http://elsewhere.invalid",
-		"flow": `change.pr."1"`, "resolver": resolverRef,
-	}.Payload())
-
-	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
-	second.reconcileTasks()
-
-	e, _, _ := second.Store.Get(mirror.Ref("p"))
-	if got := entity.Str(e.Payload, "resolver"); got != resolverRef {
-		t.Fatalf("a resumed task is covered by %q, want the resolver it was spawned with", got)
 	}
 }

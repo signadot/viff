@@ -326,26 +326,21 @@ caller is a stranger.
 The source turns a delivery into a hint and nothing more. Verse does not trust what a webhook
 says as truth. It trusts a webhook only as a reason to go and look.
 
-## 8. Resolvers: answering from the run's own stream
+## 8. Resolvers: answering for whoever grants it
 
-An [answerer](glossary.md#answerer) is a party that answers the gates of a run through a
-[resolver](glossary.md#resolver). It dials verse at a [cover](glossary.md#cover-of-a-resolver).
-A cover is one resolver that reads one stream of gates.
+A [resolver](glossary.md#resolver) is a service that answers asks for the people and places that
+grant it. Its service is whoever installed it, acting as it (`Verse-Resolver`), and it uses the
+routes anybody does:
 
 ```
-GET  /resolvers/cover/{id}/events     the frames — SSE
-POST /resolvers/cover/{id}/verdicts   approve · deny · escalate
-POST /resolvers/cover/{id}/position   how far it has read
+GET  /watch?at=verse.ask          the asks it may read — its subscription
+GET  /resolvers/{name}/asks       the waiting asks it serves, and for whom
+POST /asks/{id}/answer {…, for}   an answer, which is its party's
+POST /asks {…, serves}            an onward ask, carried back when it settles
 ```
 
-The events route serves **the same stream that an attached observer sees**. It is not a
-projection of that stream. This is a requirement of the design.
-
-A different stream would be a second order of events to reconcile. A supervised run would then
-read differently, depending on who looks at it.
-
-An answerer that falls below the kept window is told so. Only in that case does verse also send
-the gates that are still open. The replay that the answerer missed is where those gates were.
+For context it reads the run and the subject through the ordinary routes, and sees what its
+installer sees. [Resolvers](attached-resolvers.md) has the model.
 
 ## 9. The model provider
 
@@ -421,7 +416,6 @@ A stored tree would be an index for each subject, and a query does the same work
 The model is in the addresses, and not in a structure that somebody maintains:
 
 - A task id is a function of (rule, subject).
-- The cover of a resolver is `resolver@stream`. Verse mints one for each subject and each run.
 - A parent and a child in a flow tree *are* a prefix and an extension of the chain kpath. Nesting
   needs no parent pointer to keep correct.
 

@@ -46,7 +46,7 @@ question it poses:
 The record of a question holds `about` beside the gate's own fields. `about` is the one line
 that the subject says about itself. Verse copies it onto the question when it poses the question.
 An entity opts in to this by carrying a `says`
-([the question record](resolvers.md#the-question-record)). With `pose` and `about`, a question
+([the question record](tasks.md#the-question-record)). With `pose` and `about`, a question
 says what is asked and what it is about. A reader needs no grant on the subject to read either.
 
 `pose` is the question in words. It is the only field of a gate written for a person, and not
@@ -90,6 +90,17 @@ such a gate with `mode: auto`, because `auto` asks nobody.
 | `*` | everyone |
 | `group:<name>` | a group |
 | `via:verse.resolvers.<name>` | a resolver |
+| `$principal` | whom a task acts for: on a task's own gate only (below) |
+
+A gate that names nobody asks the docket.
+
+**`$principal`** is whom a task acts for: whoever ran it as themselves, the asker of an ask whose
+`then` it runs, or the subject's owner for a spawn `as: subject`. Verse puts that person in its
+place when it poses the question, so the record names them. It is one answerer with one ballot:
+`answerers: [$principal, group:payments], need: 2` takes the person and one ballot from payments.
+A rule's own gate is asked by the rule, which acts for nobody, so verse refuses `$principal`
+there at install. It also refuses it on a spawn's gates unless the spawn says `as: subject`, and
+it refuses the spawn when the subject's owner turns out to be the system.
 
 Verse writes `answerers` as the `read-write` grant of the question when it poses the question.
 It replaces the default of the docket. Each answerer has one ballot. `need` over the answerers
@@ -108,6 +119,36 @@ Verse refuses at install a gate that nobody could settle:
 
 [perms.md](../perms.md) has the record that `answerers` becomes.
 
+### `answerersFrom` — whom the record names
+
+`answerersFrom: answerers` reads the answerers from a field of the subject at the firing, and
+not from the rule. So one standing rule can pose the question of every record to whoever that
+record names.
+
+```tony
+  gates:
+  - name: answer
+    pose: "$[subject.value.question]"
+    answerersFrom: answerers      # {question: …, answerers: oscar@example.com}
+```
+
+The field holds one name or a list, in the same grammar as `answerers`. It is dotted for a field
+deeper in the record (`review.by`).
+
+A record without the field says nothing. The gate's own `answerers` stand, or the default of the
+docket where the gate names none.
+
+What a record does name is held to what `answerers` is held to at install. An empty list, a name
+that the grammar does not read, or fewer people than `need` is a question that nobody could
+settle. So verse asks nobody.
+
+### `labels` — what the ask says about itself
+
+`labels: {team: payments, kind: deploy}` rides on the gate's ask, for whoever watches asks to
+match on. A label is a name and a value, both words the charter's author and the resolvers agree
+on. Verse reads nothing into one and routes nothing by one. A name holding a space is refused at
+install. A vector's gates take the same field.
+
 ### The tally
 
 The answerers keep the tally, and the engine does not.
@@ -124,8 +165,8 @@ Waiting for a fact is not a gate. A rule that acts once CI is green says so in `
 
 A denied firing writes nothing. A firing that did not happen leaves no trace. So the subject
 stays in the exact state that asked the question. The next commit that touches the subject
-selects it again, and the rule fires again. The gate poses the question again, under the same id,
-to somebody who already answered it.
+selects it again, and the rule fires again. The gate asks again: a new question, with an id of
+its own, to somebody who already answered the last one.
 
 The [latch](../glossary.md#latch) of a well-formed rule cannot help. The latch is in the action,
 and on a deny the action never runs. So the gate says what its own refusal means:
@@ -189,6 +230,23 @@ other ballot. So a `deny` that needs one ballot settles on one deny, before the 
 A default left empty settles on nothing (`verdict: none`). The firing reads that as a refusal
 that nobody made.
 
+`deadline: {atFrom: by, default: proceed}` takes the instant from a field of the subject
+instead. The field holds an RFC 3339 date. That is how a record says "by Friday", and not a
+duration from whenever verse happened to pose it. Verse reads it at the firing, and again when it
+posts the question.
+
+- A record without the field has no deadline.
+- A record whose date does not parse is a question that nobody is asked.
+- While the question stands, editing the date moves its deadline. Verse does not ask the question
+  again.
+- A settled question keeps the instant it settled under.
+
+Whoever may write the record may move the date.
+
+Do not write `within` and `atFrom` together. `at` is the instant that the engine resolved and
+stamped, and a rule never writes it. The gates of a spawn stand `within` only, because there is
+no record for them to read a date from.
+
 ### A question outlives the verse that asked it
 
 The record, its options and every ballot cast into it are entities. So a restart finds the
@@ -222,8 +280,10 @@ So a rule that selects the subject again poses the same question again, over the
 
 Posing again is idempotent by construction, so it can run beside a rule that also fires again:
 
-- the question id is derived from the rule, the gate and the subject;
-- a question settles once;
+- the question id is derived from the rule, the gate and the subject, and a firing joins the
+  question that stands open under it;
+- a question settles once, and a firing after an answer asks a new question under
+  `<id>-2`, `<id>-3`, and so on;
 - the spawn id is deterministic per (chain, subject).
 
 One question, and one task, however many paths reach it.
@@ -260,28 +320,19 @@ The check has two limits.
 - When it cannot tell, it lets the question stand. It cannot tell when the store is unreadable,
   or when a read of the predicate fails.
 
-### Who answers a rule's own gates
+### `gating`
 
 ```tony
 gating:
-  resolver: verse.resolvers.security-review
   gates:
   - name: ship
     mode: ask
 ```
 
-`gating` groups the two facts about the gates of a rule: which gates they are, and who answers
-them. `gates:` at the top level means `gating: {gates: …}`. Verse refuses a rule that writes
-both, and does not merge them.
-
-`resolver` names an installed [resolver](../glossary.md#resolver) (`verse resolver add`). A spawn
-uses the same word for the same act. A spawn names who answers the run it starts. A rule names
-who answers the gates it raises itself.
-
-With `resolver` empty, the question goes to whatever standing resolver matches its subject, and
-then to the docket that a person reads. Verse refuses a resolver that is not installed. It does
-not leave the question to a resolver that cannot answer it. See
-[attached resolvers](../attached-resolvers.md).
+`gating` holds the gates of a rule. `gates:` at the top level means `gating: {gates: …}`. Verse
+refuses a rule that writes both, and does not merge them. A `resolver:` under `gating`, or on a
+spawn, is refused as retired: a gate names its `answerers`, and whoever is asked grants the
+[resolver](../attached-resolvers.md) that answers for them.
 
 ## Why it is this way
 

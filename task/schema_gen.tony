@@ -18,6 +18,8 @@ signature:
 context:
 - tony-format/context
 define:
+  at: .[string]
+  atFrom: .[string]
   default: .[string]
   within: .[string]
 signature:
@@ -90,6 +92,7 @@ context:
 define:
   answerers: .[array(string)]
   deadline: .[nullable(verse-deadline)]
+  labels: .[object(string)]
   match: !verse-gate-match null
   mode: .[string]
   name: .[string]
@@ -140,6 +143,7 @@ signature:
 context:
 - tony-format/context
 define:
+  ask: .[string]
   by: .[string]
   instruction: .[string]
 signature:

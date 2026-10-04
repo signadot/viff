@@ -78,7 +78,9 @@ context:
 - task: github.com/signadot/verse/task
 define:
   answerers: .[array(string)]
+  answerersFrom: .[string]
   deadline: .[nullable(task:verse-deadline)]
+  labels: .[object(string)]
   mode: .[string]
   name: .[string]
   need: .[int]
@@ -92,7 +94,6 @@ context:
 - tony-format/context
 define:
   gates: .[array(verse-trigger-gate)]
-  resolver: .[string]
 signature:
   name: verse-gating
 ---

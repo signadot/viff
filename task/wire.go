@@ -86,6 +86,9 @@ type Spawned struct {
 type SayRequest struct {
 	Instruction string `tony:"field=instruction"`
 	By          string `tony:"field=by,omitzero"`
+	// Ask is the ask these words are (9ce3bva0, stage 6), echoed on the say frame the task emits
+	// when it takes them, so the ask settles as heard. Empty for words nobody tracks.
+	Ask string `tony:"field=ask,omitzero"`
 }
 
 // CancelRequest is the body of `POST /tasks/{id}/cancel`: why the task is being ended. The
@@ -108,14 +111,9 @@ type VectorRequest struct {
 
 // Wire is the launch as it crosses to a runner.
 //
-// TWO FIELDS STAY HOME, and they are the two that are verse's own bookkeeping about the task
-// and mean nothing to whoever runs it:
-//
-//   - Scope is the federation the task was spawned into. It says where the task's records
-//     land, which is verse's to know, and the runner never sees it.
-//   - Resolver is an address in this verse (`verse.resolvers.<name>`). A question a remote
-//     task raises comes back on its event stream, and verse holds it out to the resolver from
-//     the launch it kept.
+// ONE FIELD STAYS HOME, verse's own bookkeeping about the task that means nothing to whoever runs
+// it: Scope, the federation the task was spawned into. It says where the task's records land,
+// which is verse's to know, and the runner never sees it.
 //
 // Every other field crosses, and launchwire_test.go fails for a field added to Launch that is in
 // neither list.
@@ -132,8 +130,8 @@ func (l Launch) Wire() SpawnRequest {
 	return r
 }
 
-// Launch is the launch a runner was sent. Scope and Resolver are empty: they stay with the
-// verse that spawned it (Launch.Wire).
+// Launch is the launch a runner was sent. Scope is empty: it stays with the verse that spawned it
+// (Launch.Wire).
 func (r SpawnRequest) Launch() Launch {
 	l := Launch{
 		ID: r.ID, Prompt: r.Prompt, Driver: r.Driver, Frame: r.Frame, Tools: r.Tools,

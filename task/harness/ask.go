@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/signadot/verse/task"
 )
@@ -21,6 +23,11 @@ import (
 // It is the loop's own wait. A question posted through the resolver is withdrawn when the
 // context ends, orphaned with its task on a restart, bounded by its own deadline, relayed to
 // every runner, and listed for whoever answers gates — none of which this tool has to do.
+//
+// ITS CLOCK IS THE MODEL'S TO SET. `within` bounds the wait, and with options `default` is what
+// silence settles on; at the deadline the model reads that nobody answered, and goes on. Without
+// `within` the question waits until it is answered, which is what a conversation needs: a person
+// is handed the turn and may take it whenever they come back.
 const askTool = "ask"
 
 // replyOption is the one outcome a question has when the model named none: an answer in words.
@@ -42,6 +49,10 @@ func askFor(resolver task.Resolver) Tool {
 				"description": "what you want to know, or say before handing over the turn"},
 			"options": map[string]any{"type": "array", "items": map[string]any{"type": "string"},
 				"description": "outcomes to choose between, by short id; omit for an answer in words"},
+			"within": map[string]any{"type": "string",
+				"description": "how long to wait for an answer, as a duration (30m, 24h); omit to wait until they answer"},
+			"default": map[string]any{"type": "string",
+				"description": "with options and within: the option taken if nobody answers in time"},
 		},
 		Required: []string{"question"},
 		// One effect, with the verb that says what this is: a question, which no grant bounds
@@ -55,19 +66,24 @@ func askFor(resolver task.Resolver) Tool {
 				return "", false, errors.New("ask: a question is required")
 			}
 			opts := optionsOf(tu.Input)
+			deadline, err := deadlineOf(tu.Input, opts)
+			if err != nil {
+				return "", false, err
+			}
 			// The action's own id, which already carries the task's as its prefix — how an
 			// answer finds the task that asked — and cannot collide with the supervisor's
 			// `~d<n>` decisions.
 			origin, _, _ := strings.Cut(tu.ID, task.GateSep)
 			q := task.GateQuestion{
 				ID: tu.ID, Origin: origin, Gate: askTool, Mode: task.Ask,
-				Reason: question, Options: opts,
+				Reason: question, Options: opts, Deadline: deadline,
+				Answerers: []string{task.PrincipalAnswerer},
 			}
 			res, err := resolver.Resolve(ctx, q, tu)
 			if err != nil {
 				return "", false, err // the context ended: the question has left the docket
 			}
-			return answerText(res), false, nil
+			return answerText(res, deadline), false, nil
 		},
 	}
 }
@@ -88,9 +104,39 @@ func optionsOf(in map[string]any) []task.Option {
 	return out
 }
 
-// answerText renders an answer as the model reads it: who, and what they said or chose.
-func answerText(res task.Resolution) string {
+// deadlineOf reads the clock the model set: nil for none, which waits until the question is
+// answered. A default is an option the question offers, and only means anything with a clock.
+func deadlineOf(in map[string]any, opts []task.Option) (*task.Deadline, error) {
+	within, dflt := strings.TrimSpace(str(in, "within")), strings.TrimSpace(str(in, "default"))
+	if within == "" {
+		if dflt != "" {
+			return nil, errors.New("ask: a default is what silence settles on, so it needs within")
+		}
+		return nil, nil
+	}
+	if d, err := time.ParseDuration(within); err != nil || d <= 0 {
+		return nil, fmt.Errorf("ask: within %q: how long to wait, as a duration (30m, 24h)", within)
+	}
+	if dflt != "" && !slices.ContainsFunc(opts, func(o task.Option) bool { return o.ID == dflt && o.ID != replyOption }) {
+		return nil, fmt.Errorf("ask: default %q is not one of the options", dflt)
+	}
+	return &task.Deadline{Within: within, Default: dflt}, nil
+}
+
+// answerText renders an answer as the model reads it: who, and what they said or chose; or, where
+// the clock ran out, that nobody answered, and what that settled on.
+func answerText(res task.Resolution, d *task.Deadline) string {
 	words := strings.TrimSpace(strings.Join(res.Steer, "\n"))
+	if res.By == task.ByDeadline {
+		within := ""
+		if d != nil {
+			within = " within " + d.Within
+		}
+		if res.Choice == "" || res.Choice == task.NoOption {
+			return "nobody answered" + within
+		}
+		return fmt.Sprintf("nobody answered%s, so it settled on %s", within, res.Choice)
+	}
 	switch {
 	case res.Choice == "" || res.Choice == replyOption:
 		if words == "" {

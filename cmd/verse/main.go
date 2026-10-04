@@ -183,7 +183,7 @@ func rootCmd() *cli.Command {
 		WithDescription("`up` starts the daemon(s); every other subcommand is a client.").
 		WithOpts(gopts...).
 		// Each collection is ONE command, named in the singular, and bare it lists:
-		// `verse gate` shows the pending decisions, `verse gate approve <id>` answers one.
+		// `verse question` shows what waits on you, `verse question approve <id>` answers one.
 		// The plural is an ALIAS of it rather than a second command, so both spellings run
 		// the same thing and neither has to be learned as the one that works here.
 		//
@@ -196,6 +196,7 @@ func rootCmd() *cli.Command {
 			upCmd(),
 			watchCmd(),
 			gateCmd(),
+			askCmd(),
 			dataCmd(),
 			taskCmd(),
 			flowCmd(),
@@ -216,7 +217,7 @@ func rootCmd() *cli.Command {
 }
 
 // collection builds the command for one collection: named in the SINGULAR, aliased to the
-// plural the HTTP surface uses (GET /gates, GET /flows), listing when bare and acting on one
+// plural the HTTP surface uses (GET /asks, GET /flows), listing when bare and acting on one
 // member when given a verb (see dispatch).
 func collection(name, plural, route, synopsis string, subs ...*cli.Command) *cli.Command {
 	cfg := &struct{ *cli.Command }{}

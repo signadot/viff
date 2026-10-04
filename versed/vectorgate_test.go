@@ -64,7 +64,7 @@ func TestARunsGateTakesAThreshold(t *testing.T) {
 		t.Fatalf("proceed is not at the gate's threshold: %+v", q["options"])
 	}
 
-	one := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: task.Proceed, By: "user:a@example.com"})
+	one := postTony(t, ts.URL+answerPath(qid), api.Resolve{Choice: task.Proceed, By: "user:a@example.com"})
 	one.Body.Close()
 	if one.StatusCode != http.StatusAccepted {
 		t.Fatalf("the first ballot = %s, want 202 — one of two is not a settle", one.Status)
@@ -74,7 +74,7 @@ func TestARunsGateTakesAThreshold(t *testing.T) {
 	}
 	noTerminalWithin(t, srv, "voted", 100*time.Millisecond)
 
-	two := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: task.Proceed, By: "user:b@example.com"})
+	two := postTony(t, ts.URL+answerPath(qid), api.Resolve{Choice: task.Proceed, By: "user:b@example.com"})
 	two.Body.Close()
 	if two.StatusCode != http.StatusNoContent {
 		t.Fatalf("the second ballot = %s, want 204", two.Status)

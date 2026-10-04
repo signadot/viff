@@ -14,8 +14,8 @@ repository: see [the platform docs](platform.md).
 Read these in order.
 
 1. [Overview](overview.md) — what verse is, and the model.
-2. [Tutorial](tutorial.md) — entities, tasks, and the charters that relate them. Each section
-   seeds itself with one command. It runs on your own machine and needs no credentials.
+2. [Tutorial](tutorial.md) — entities, tasks, and answering the questions a gate asks. Each
+   section seeds itself with one command. It runs on your own machine and needs no credentials.
 3. [Control](control.md) — how to stop work without ending it. Read it before you let verse
    act on anything that matters.
 4. [Write a charter](build.md) — the smallest rule that works, with every step.
@@ -27,14 +27,20 @@ not know.
 
 - [Commands](reference/README.md) — every command, and a file per topic.
 - [Tasks](reference/tasks.md) — running a task by hand, and answering its gates.
+- [Asking](asking.md) — `verse ask`: a question to somebody, with a date, and what follows a
+  yes run on your authority.
 - [Permissions, walked](perms-guide.md) — your own entities, a task and its gates, a charter
   and what it owns, a gate with nobody behind it, a gate with a resolver.
 - [Connect and scopes](reference/connect.md) — reflecting your working tree into a scope.
 
 ## Write a charter
 
-For a charter author: the rules, what they read, and what they may write.
+For a charter author: the rules, what they read, and what they may write. Start with
+[Write a charter](build.md#write-a-charter), which writes one rule, installs it and fires it.
+The pages below say what each part means.
 
+- [Introduction](charter-intro.md) — the shapes a rule takes (patch, latch, ask, seq, when,
+  on, derive), each installed and fired by one command.
 - [The trigger model](trigger-model.md) — the model of a rule. The fields of a rule are in
   the five pages below.
 - [The condition of a rule](reference/condition.md) — `subject`, `on` and `when`, and what a

@@ -188,7 +188,7 @@ func TestDeliveryIsPerQuiescence(t *testing.T) {
 	// exact shape the latch made unreachable.
 	f.onDo = func() {
 		if f.ran == 1 {
-			p.Steer("one more thing", "human:test")
+			p.Steer("one more thing", "human:test", "")
 		}
 	}
 	if _, err := p.Run(context.Background()); err != nil {

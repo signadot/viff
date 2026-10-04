@@ -156,7 +156,7 @@ each PR is a [flow](../glossary.md#flow) of its own.
 
 **There is one gate for each member**, and not one gate for the whole set. A firing is about
 one entity, so twelve reviewed PRs are twelve questions
-([gates](gates.md#gates--whether-it-proceeds)). An operator gives twelve answers, because `verse gate approve` has
+([gates](gates.md#gates--whether-it-proceeds)). An operator gives twelve answers, because `verse question approve` has
 no bulk form.
 
 **The `when` is the condition**: while CI is green. Verse evaluates the rule again at every
@@ -276,9 +276,9 @@ prefix, and a watch cannot open on a wildcard at the top.
 ```tony
 # a rule about PRs — the ordinary case, and it cannot see verse's own records
 subject: {path: "demo.pr.*"}
-# a rule about what verse writes: a posed question, a task's mirror, an installed rule
+# a rule about what verse writes: an ask on the docket, a task's mirror, an installed rule
 subject:
-  path: "verse.gate.question.*"
+  path: "verse.ask.*"
   value: {status: pending}
 ```
 

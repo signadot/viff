@@ -73,7 +73,7 @@ func TestWireFmtKeepsAWritableInputFormat(t *testing.T) {
 // rather than a list of things, so there is no plural to alias and the positional is an address
 // rather than a verb it must refuse. See TestStateTakesAPath.
 var collections = map[string]string{
-	"gate": "gates", "task": "tasks",
+	"question": "questions", "task": "tasks",
 	"flow": "flows", "charter": "charters",
 	"resolver": "resolvers", "runner": "runners", "io": "ios",
 }

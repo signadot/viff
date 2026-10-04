@@ -215,14 +215,14 @@ answers. `onDenied` is the action that fires when the answer is no. Save this as
 ```sh
 verse charter -a -f approve.tony
 verse data demo change 1 -put '{stage: open}'
-verse gate
-verse gate approve verse.trigger.approve-change.approval~5910e931
+verse question
+verse question approve verse.trigger.approve-change.approval~5910e931
 verse data demo change 1
 ```
 
-`verse gate` lists the questions that wait. A question reaches the list a moment after the
-write, so an empty list means that you read too early. Give `verse gate approve` the `id`
-that the listing prints.
+`verse question` lists the questions that wait on you. A question reaches the list a moment
+after the write, so an empty list means that you read too early. Give `verse question approve`
+the `id` that the listing prints.
 
 ```
 - gate: approval

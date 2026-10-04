@@ -1,9 +1,10 @@
-// Package resolver is the record that says who answers a question, and the cover that says
-// which gate stream one resolver is reading.
+// Package resolver is the record of an installed resolver: a service that watches asks and
+// answers for whoever granted it (9ce3bva0, stage 4).
 //
-// A resolver answers gate questions. It is INSTALLED rather than declared in a charter,
-// because a resolver outlives any one rule and is managed by whoever supervises rather than by
-// whoever wrote the work.
+// A resolver answers asks. It is INSTALLED rather than declared in a charter, because a resolver
+// outlives any one rule and is managed by whoever supervises rather than by whoever wrote the
+// work. Its `match` says which asks it watches; whom it answers for is granted, by a person at
+// `verse.for.<person>` and by a place's owner on record at the place (entity.Answer).
 package resolver
 
 import (
@@ -13,305 +14,171 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/trigger"
 )
 
-// System is where resolvers live: `verse.resolvers.<name>`. Their covers stand beside it, at
-// CoverSystem.
-//
-// Resolvers stand one name beneath it, `verse.resolvers.<name>`, and nothing else does.
+// System is where resolvers live: `verse.resolvers.<name>`, one name beneath it and nothing else.
 const System = "resolvers"
-
-// CoverSystem is where a cover stands — one resolver on one gate stream,
-// `verse.covers.<name>@<stream>`. A place of its own, beside the resolvers rather than among
-// them: a cover's address is derived and a resolver's is chosen, so under one roof a resolver
-// could be given a name that was a cover's, and one would overwrite the other. Only the system
-// makes one (mirror.Cover), so nobody is held out the making of anything here.
-const CoverSystem = "covers"
 
 // Ref addresses a resolver: its name, which is the whole of its address.
 func Ref(name string) entity.Ref {
 	return entity.VerseRef(System, name)
 }
 
-// CoverRef addresses one resolver's cover on one gate stream — a run's, or a subject's.
-//
-// The `@` composition is the one verse already uses for a thing that exists per pair
-// (`task:claim:<chain>@<subject>`, a gate question's `<origin>~d<n>`), and it is what lets
-// the routes that serve a resolver name a stream with one ref instead of a ref and a query
-// parameter the caller has to keep in step.
-//
-// The FIRST `@` is the separator and the rest is the stream, because a stream often contains
-// one itself — a trigger spawn is `<trigger>@<subject>`, so covering one reads
-// `verse.covers.security-review@guard@demo:pr:1`. Splitting on the first is the same
-// rule a question id follows for `~`, and a name may not contain `@` for that reason.
-func CoverRef(name, stream string) entity.Ref {
-	return entity.VerseRef(CoverSystem, name+"@"+stream)
-}
-
-// IsResolver reports whether an address is a resolver's, and IsCover whether it is a cover's.
+// IsResolver reports whether an address is a resolver's.
 func IsResolver(ref entity.Ref) bool { return ref.ChildOf(entity.VerseRoot, System) }
 
-func IsCover(ref entity.Ref) bool { return ref.ChildOf(entity.VerseRoot, CoverSystem) }
-
-// Resolver says who answers: what it supervises, how it answers, and under what envelope.
+// Resolver is a service that watches asks and answers for whoever granted it.
 type Resolver struct {
 	// Name is its address: `verse.resolvers.<name>`.
 	Name string `tony:"field=name"`
-	// Condition makes it STANDING: nobody names it, and it supervises the work about the
-	// entities it selects. Nil means it attaches only by being named.
-	//
-	// The two doors are not exclusive: one remit can match the subjects it always watches
-	// and still be pulled in where a charter names it.
-	Condition *Condition `tony:"field=condition,omitzero"`
-	// ByRef says it may be named — by a spawn's `resolver:`, or by a rule's `gating:`. It is
-	// one of the two doors, and a resolver with neither open applies to nothing.
-	ByRef bool `tony:"field=byRef,omitzero"`
-	// Method says how it answers and what the answering may do.
+	// Match is the asks it watches: what they are about, and their labels. It routes nothing and
+	// owns nothing: whom the resolver answers for is granted (entity.Answer), and a match says
+	// only which of those asks it serves.
+	Match *Match `tony:"field=match,omitzero"`
+	// Method says what answers: a service, which dials verse.
 	Method Method `tony:"field=method"`
-	// Deadline is what happens if this resolver says nothing. Optional; without one a
-	// question waits for it indefinitely, which is what an advisory resolver usually wants.
-	Deadline *Deadline `tony:"field=deadline,omitzero"`
-	// Exclusive says its answer is the one that counts, rather than the first answer to
-	// arrive. It requires a Deadline: a resolver that is down would otherwise turn every
-	// question it owns into one nobody may answer.
-	Exclusive bool `tony:"field=exclusive,omitzero"`
 }
 
-// Deadline is a clock on a question and what happens when it fires.
-//
-// `within` is the word a provider selection and a motion already use for a duration, and this
-// is the same idea — so it is the same word. `then` names the outcome rather than the field
-// name baking one in, because the two kinds of outcome are genuinely different: a motion's
-// deadline picks a winning OPTION, and this one picks a new ANSWERER.
-type Deadline struct {
-	Within string `tony:"field=within"`
-	Then   string `tony:"field=then,omitzero"`
+// Match is the asks a resolver watches. An absent dimension admits any ask; an empty match admits
+// every ask put to whoever granted the resolver.
+type Match struct {
+	// About is the address the ask is about, as a kinded path: an ask about that node or one
+	// beneath it is matched. A path and nothing else: a value changes while an ask stands, and
+	// two matches over values could not be told apart at install.
+	About trigger.Match `tony:"field=about,omitzero"`
+	// Labels are the labels the ask carries, each equal (mirror.LabelsOf).
+	Labels map[string]string `tony:"field=labels,omitzero"`
 }
 
-// Escalate is the only outcome this build has. The others a motion already says its own way:
-// a default option that wins when the clock fires is "proceed on silence" and "deny on
-// silence", for a motion over {proceed, deny}.
-const Escalate = "escalate"
-
-// After is the deadline's duration.
-func (d *Deadline) After() (time.Duration, error) {
-	if d == nil {
-		return 0, nil
+// check refuses a match whose overlap with another could not be decided.
+func (m *Match) check() error {
+	if err := m.About.Validate(); err != nil {
+		return fmt.Errorf("match.about: %w", err)
 	}
-	return time.ParseDuration(d.Within)
-}
-
-// Outcome is what happens when it fires; empty means escalate, which is the only one.
-func (d *Deadline) Outcome() string {
-	if d == nil || d.Then == "" {
-		return Escalate
+	if m.About.HasPredicate() {
+		return fmt.Errorf("match.about is a path, with no value: a value changes while an ask " +
+			"stands, and whether two resolvers could serve one ask would not be decidable at install")
 	}
-	return d.Then
+	return task.CheckLabels(m.Labels)
 }
 
-// Condition selects the entities a standing resolver matches, in the vocabulary a trigger's
-// own `subject` already uses — so nothing new is parsed and an operator who can write one can
-// write the other.
-type Condition struct {
-	Subject trigger.Match `tony:"field=subject"`
-}
-
-// Matches reports whether this condition selects ref right now.
-//
-// It asks the store rather than the ref alone, because a condition reads values —
-// `{area: payments}` is a fact about the entity, not about its address. It inherits Select's
-// treatment of an entity on its way out: one marked VANISHING is not selected, so a gate
-// about something that is leaving falls to whoever reads the docket rather than to a
-// supervisor of a thing that will not be there.
-func (c *Condition) Matches(r entity.Reader, ref entity.Ref) bool {
-	if c == nil {
+// Overlaps reports whether one ask could be matched by both: their paths could meet, and no label
+// both name has two values.
+func (m *Match) Overlaps(o *Match) bool {
+	if !m.About.IsEmpty() && !o.About.IsEmpty() && !m.About.Overlaps(o.About) {
 		return false
 	}
-	for _, got := range c.Subject.Select(r) {
-		if got == ref {
-			return true
+	for k, v := range m.Labels {
+		if w, ok := o.Labels[k]; ok && w != v {
+			return false
 		}
 	}
-	return false
+	return true
 }
 
-// Method is the answering half. Driver chooses who decides; the rest is the envelope of
-// whatever that driver runs — its ACTING grant, not the authority of what it answers.
+// Admits reports whether an ask about about, carrying labels, is one this match watches. about is
+// the zero ref for an ask about nothing, which only a match with no `about` admits.
+func (m *Match) Admits(about entity.Ref, labels map[string]string) bool {
+	if !m.About.IsEmpty() && (len(about.Segs()) == 0 || !m.About.MatchRef(about)) {
+		return false
+	}
+	for k, v := range m.Labels {
+		if labels[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
+// Method is what answers. Its service acts as the resolver by being whoever installed it
+// (api.ResolverHeader), and dials verse; verse never dials it, so nothing here is an address verse
+// uses.
 type Method struct {
-	// Driver is who answers: `url`, a service verse hands two streams to and applies what
-	// comes back from, running nothing itself; `person`, one principal answering from the
-	// docket; `group`, a group's members each as themselves. `llm` and `script` are drivers
-	// over the url protocol and are not built.
+	// Driver is `service`, which runs wherever its installer runs it. `llm` and `script` are
+	// drivers over the same protocol, run by verse, and are not built.
 	Driver string `tony:"field=driver"`
-	// Who is the person, for `driver: person`: the principal the question is held out to, in
-	// the grammar (entity.Grammar) — `user:<email>`, or the bare email.
-	Who string `tony:"field=who,omitzero"`
-	// Group is the group, for `driver: group`: `group:<name>`, whose members the question is
-	// held out to.
-	Group string `tony:"field=group,omitzero"`
-	// URL is where the service is, so verse can hand it a capability and an operator can see
-	// what answers. It is not an endpoint verse posts questions to — the service dials out
-	// for both streams, so one behind NAT needs no special case.
+	// URL is where the service runs, a note for an operator reading the record. Optional, and
+	// never dialled or parsed.
 	URL string `tony:"field=url,omitzero"`
-	// Vector, Tools and Grant bound whatever the driver runs. Inert for a `url`, which runs
-	// nothing verse can gate, and carried anyway so the entity says the same thing about
-	// every driver.
-	Vector string   `tony:"field=vector,omitzero"`
-	Tools  []string `tony:"field=tools,omitzero"`
-	Grant  string   `tony:"field=grant,omitzero"`
 }
 
-// Check validates a resolver for THIS increment, refusing what it cannot yet honour rather
-// than storing it.
-//
-// Refusing is the point. A field accepted and not read is a supervisor that reports installed
-// and supervises nothing — which is the failure already in the tree at `launch.Spec.Resolver`,
-// decoded and bound and dropped, so a charter can name a resolver on a spawn today and have it
-// do nothing at all. Every refusal here says which increment will read the field, so an
-// operator learns what to wait for rather than that they were wrong.
+// DriverService is the one driver: a service, which dials verse.
+const DriverService = "service"
+
+// Check validates a resolver, refusing what this build cannot honour rather than storing it.
 func (r Resolver) Check() error {
 	if r.Name == "" {
 		return fmt.Errorf("resolver: name is required — it is the address")
 	}
-	if strings.Contains(r.Name, "@") {
-		return fmt.Errorf("resolver %q: a name may not contain @ — it is the separator in an "+
-			"cover's address (verse.%s.<name>@<stream>), and a stream often contains one "+
-			"of its own", r.Name, CoverSystem)
+	if r.Match == nil {
+		return fmt.Errorf("resolver %q: needs a `match` — the asks it watches (`match: {}` for every "+
+			"ask put to whoever grants it); whom it answers for is granted, `verse resolver grant`", r.Name)
 	}
-	// Two doors, and one of them must be open. A resolver that may not be named and matches
-	// nothing applies to nothing, which is a supervisor that reports installed and
-	// supervises nothing — the failure this whole design is arranged around.
-	if !r.ByRef && r.Condition == nil {
-		return fmt.Errorf("resolver %q: needs a door — `byRef: true` to be named by a spawn "+
-			"or a rule, or a `condition` to match the subjects it watches. Both is allowed; "+
-			"neither applies to nothing", r.Name)
-	}
-	if r.Condition != nil && !r.Condition.Subject.Selects() {
-		return fmt.Errorf("resolver %q: condition.subject must be a path beginning with a literal — "+
-			"it selects the nodes this resolver matches, and one that selects from the top is a "+
-			"claim on every question in the verse", r.Name)
-	}
-	if r.Deadline != nil {
-		if _, err := r.Deadline.After(); err != nil {
-			return fmt.Errorf("resolver %q: deadline.within %q is not a duration (4h, 30m): %w",
-				r.Name, r.Deadline.Within, err)
-		}
-		if got := r.Deadline.Outcome(); got != Escalate {
-			return fmt.Errorf("resolver %q: deadline.then %q is not built; %q is, and it is the "+
-				"one a motion cannot already say — a default option that wins when the clock "+
-				"fires is how a motion says proceed-on-silence", r.Name, got, Escalate)
-		}
-	}
-	// The coupling the design states, enforced where it is cheap: an exclusive resolver that
-	// is down is a question nobody may answer, and a deadline is what makes that a delay
-	// instead of a deadlock.
-	if r.Exclusive && r.Deadline == nil {
-		return fmt.Errorf("resolver %q: exclusive needs a deadline — its answer is the only "+
-			"one that counts, so a resolver that is down would turn every question it owns "+
-			"into one nobody may answer. `deadline: {within: \"4h\"}` makes that a delay",
-			r.Name)
+	if err := r.Match.check(); err != nil {
+		return fmt.Errorf("resolver %q: %w", r.Name, err)
 	}
 	switch r.Method.Driver {
+	case DriverService:
 	case "url":
-		if r.Method.URL == "" {
-			return fmt.Errorf("resolver %q: method.url is required for driver url — it is "+
-				"where the service is, which is what verse hands a capability to", r.Name)
-		}
-	case DriverPerson:
-		if r.Method.Who == "" {
-			return fmt.Errorf("resolver %q: method.who is required for driver person — the "+
-				"principal the question is held out to", r.Name)
-		}
-		if _, err := entity.ParsePrincipal(r.Method.Who); err != nil {
-			return fmt.Errorf("resolver %q: method.who %w", r.Name, err)
-		}
-	case DriverGroup:
-		if r.Method.Group == "" {
-			return fmt.Errorf("resolver %q: method.group is required for driver group — the "+
-				"group, group:<name>", r.Name)
-		}
-		if g, err := entity.ParseGrantee(r.Method.Group); err != nil {
-			return fmt.Errorf("resolver %q: method.group %w", r.Name, err)
-		} else if g.Kind != entity.GroupKind {
-			return fmt.Errorf("resolver %q: method.group %q is not a group: group:<name>", r.Name, r.Method.Group)
-		}
+		return fmt.Errorf("resolver %q: driver %q is %q — verse never dials a resolver's service, "+
+			"which dials verse; method.url may stay, as a note of where it runs", r.Name, r.Method.Driver, DriverService)
 	case "":
 		return fmt.Errorf("resolver %q: method.driver is required", r.Name)
 	case "llm", "script":
 		return fmt.Errorf("resolver %q: driver %q is not built yet; %q is, and the other two "+
-			"are drivers over the same protocol", r.Name, r.Method.Driver, "url")
+			"are drivers over the same protocol", r.Name, r.Method.Driver, DriverService)
+	case "person", "group":
+		return fmt.Errorf("resolver %q: driver %q is retired (9ce3bva0, stage 4, Q4): a person "+
+			"answers for themselves, and a resolver that forwards to one raises an onward ask", r.Name, r.Method.Driver)
 	default:
-		return fmt.Errorf("resolver %q: no driver %q (want url, person or group)", r.Name, r.Method.Driver)
+		return fmt.Errorf("resolver %q: no driver %q (want %s)", r.Name, r.Method.Driver, DriverService)
 	}
 	return nil
 }
 
-// The drivers: who answers through the resolver.
-const (
-	DriverURL    = "url"
-	DriverPerson = "person"
-	DriverGroup  = "group"
-)
-
-// Answerer is who a question this resolver owns is held out to, as the grammar spells it: the
-// resolver, `via:` its address, for a service, which acts as the resolver through its cover;
-// the person, or the group, otherwise, since they answer as themselves from the docket.
-func (r Resolver) Answerer() string {
-	switch r.Method.Driver {
-	case DriverPerson, DriverGroup:
-		name := r.Method.Who
-		if r.Method.Driver == DriverGroup {
-			name = r.Method.Group
-		}
-		if g, err := entity.ParseGrantee(name); err == nil {
-			return g.String()
-		}
-		return name // refused at install (Check); one that got past names nobody
-	}
-	return entity.Via(Ref(r.Name))
-}
-
-// Dials reports whether the resolver's answerer reads through a cover: a service does, a
-// person or a group answers from the docket and is minted none.
-func (r Resolver) Dials() bool { return r.Method.Driver == DriverURL }
+// retired is what each field of the ownership ladder is told (9ce3bva0, stage 4).
+const retired = "retired (9ce3bva0, stage 4): "
 
 // CheckFields reports a field the decoder would drop in silence.
 //
 // Read as a DOCUMENT before decoding, for the reason a trigger is: gomap ignores what it does
-// not recognise, so `resolvre:` or `metod:` installs a resolver that answers nothing and says
-// it installed fine. The fields refused here are the ones this increment cannot honour, and
-// each says what will read it.
+// not recognise, so `metod:` installs a resolver that answers nothing and says it installed fine.
+// A field of the retired ownership ladder is refused saying what took its place.
 func CheckFields(node *ir.Node) error {
 	return checkFields(node, "resolver", map[string]string{
-		"name": "", "byRef": "", "method": "", "condition": "",
-		"deadline": "", "exclusive": "",
-		"escalatesAfter": "spelled `deadline: {within: \"4h\", then: escalate}` — `within` is what " +
-			"a selection and a motion already call a duration, and `then` says which outcome " +
-			"because a motion's deadline picks an option while this one picks an answerer",
+		"name": "", "method": "", "match": "",
+		"condition": retired + "a resolver does not own the questions about a subject; `match: " +
+			"{about: <path>}` says which asks it watches, and a place's owner on record grants it there",
+		"byRef": retired + "nothing names a resolver; whoever it answers for grants it, " +
+			"`verse resolver grant`",
+		"deadline": retired + "a resolver hands nothing up; it escalates by raising an onward ask, " +
+			"whose clock fits inside the ask it serves",
+		"exclusive": retired + "whose answer counts is the party's grant; a party's resolver " +
+			"answers for them, and the party may still answer for themselves",
+		"escalatesAfter": retired + "a resolver hands nothing up; it escalates by raising an onward ask",
 	}, func(field string, val *ir.Node) error {
-		if field == "condition" {
-			return checkFields(val, "resolver condition", map[string]string{
-				"subject": "",
-				"when": "a standing resolver matches ENTITIES, and its spine is that subject's " +
-					"whole story rather than a filtered view of it; there is no firing here " +
-					"for a `when` to dispatch",
-			}, nil)
-		}
-		if field == "deadline" {
-			return checkFields(val, "resolver deadline", map[string]string{
-				"within": "", "then": "",
+		if field == "match" {
+			return checkFields(val, "resolver match", map[string]string{
+				"about": "", "labels": "",
+				"to": "a match does not route (9ce3bva0): whom a resolver answers for is granted, " +
+					"`verse resolver grant`",
 			}, nil)
 		}
 		if field == "method" {
 			return checkFields(val, "resolver method", map[string]string{
-				"driver": "", "url": "", "who": "", "group": "", "vector": "", "tools": "", "grant": "",
+				"driver": "", "url": "",
+				"who":    retired + "the person driver is gone; a person answers for themselves",
+				"group":  retired + "the group driver is gone; a group's members answer for themselves",
+				"vector": retired + "a resolver is a service, and runs nothing verse gates",
+				"tools":  retired + "a resolver is a service, and runs nothing verse gates",
+				"grant":  retired + "a resolver is a service, and runs nothing verse gates",
 			}, nil)
 		}
 		return nil
@@ -341,6 +208,9 @@ func checkFields(node *ir.Node, what string, fields map[string]string, descend f
 				what, name, strings.Join(want, ", "))
 		}
 		if notYet != "" {
+			if strings.HasPrefix(notYet, retired) {
+				return fmt.Errorf("%s: %q is %s", what, name, notYet)
+			}
 			return fmt.Errorf("%s: %q is not read yet — %s", what, name, notYet)
 		}
 		if descend != nil {
@@ -391,62 +261,6 @@ func List(r entity.Reader) []Resolver {
 // than at every question.
 var unreadable sync.Map
 
-// Owner returns the resolver that answers questions about subject, and whether there is one.
-//
-// OVERLAP IS ORDERED, NOT FORBIDDEN. When several standing resolvers match a subject, the
-// first by name owns it. That keeps the design's requirement — a question has exactly one
-// answerer at its layer — while dropping the one it cannot keep: disjointness of two
-// predicates is undecidable in general, so a refusal at install has to be conservative, and a
-// conservative refusal tells an operator with `{area: payments}` and `{area: infra}` no for a
-// reason that is not true of their case.
-//
-// What ordering costs is a resolver silently shadowed by an earlier name. Two things answer
-// that without the check having to be sound: the owner is stamped on every question, so "why
-// is mine idle" is a selection rather than an inference, and installing reports what a new
-// resolver overlaps.
-func Owner(r entity.Reader, subject entity.Ref) (Resolver, bool) {
-	for _, res := range List(r) {
-		if res.Condition.Matches(r, subject) {
-			return res, true
-		}
-	}
-	return Resolver{}, false
-}
-
-// Next returns the resolver that answers a question about subject once `from` steps aside —
-// by declining it, or by being removed.
-//
-// THE LADDER IS THE STANDING RESOLVERS IN NAME ORDER, AND NEEDS NO COUNTER. A named resolver
-// gives way to the first standing one matching the subject; a standing one gives way to the
-// next standing one after it by name; the last gives way to nothing, which is `⊤`, the docket
-// a person reads. That falls out of walking the same list Owner walks and refusing to hand a
-// question back to `from` or to anything before it — a resolver cannot hand a question to
-// itself, and the list is the order, so it needs no layer stored anywhere. A resolver that is
-// both named and standing is the same case as a standing one declining.
-//
-// The rungs are what a person, a group and a service all answer through, so A handing to
-// B and B to C is three standing resolvers over the subject, by name.
-func Next(r entity.Reader, subject entity.Ref, from string) (Resolver, bool) {
-	passed := from == ""
-	for _, res := range List(r) {
-		if !res.Condition.Matches(r, subject) {
-			continue
-		}
-		if Ref(res.Name).String() == from {
-			passed = true
-			continue
-		}
-		if passed {
-			return res, true
-		}
-	}
-	if passed {
-		return Resolver{}, false
-	}
-	// from was a named resolver, not on the ladder: the first standing one matching the subject.
-	return Owner(r, subject)
-}
-
 // Find reads one resolver by its ref, for a caller that has an owner and wants its dials.
 //
 // FindErr is the same read reporting whether it HAPPENED. Find keeps the two-value shape for the
@@ -476,26 +290,4 @@ func FindErr(r entity.Reader, ref string) (Resolver, bool, error) {
 		return Resolver{}, false, nil
 	}
 	return res, true, nil
-}
-
-// Overlaps reports the installed resolvers whose subject paths could meet res's — what a new one
-// may find itself ordered against.
-//
-// Deliberately cheap and deliberately not sound: it is a NOTICE rather than a refusal, so a
-// false positive costs a sentence instead of an install, and there is nothing here that has
-// to decide whether two predicates can both hold.
-func Overlaps(r entity.Reader, res Resolver) []string {
-	if res.Condition == nil {
-		return nil
-	}
-	var out []string
-	for _, other := range List(r) {
-		if other.Name == res.Name || other.Condition == nil {
-			continue
-		}
-		if other.Condition.Subject.Overlaps(res.Condition.Subject) {
-			out = append(out, Ref(other.Name).String())
-		}
-	}
-	return out
 }

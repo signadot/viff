@@ -152,7 +152,7 @@ func completionIsAResult(t *testing.T, p Producer) {
 //
 // The reason is the entire point of raising a gate rather than deciding: it is what the
 // resolver reads. It reached the read plane and was dropped from the snapshot, so
-// `verse gate` listed the escalation with a blank where the justification belonged.
+// `verse question` listed the escalation with a blank where the justification belonged.
 func gateReasonSurvives(t *testing.T, p Producer) {
 	if !p.Caps().ExecutorGates {
 		t.Skip("producer cannot raise a gate from outside the driver")

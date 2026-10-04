@@ -335,12 +335,9 @@ func execReport(cc *cli.Context, as, id string, events []map[string]any, result 
 // the answer is a verb, so it is the command.
 type taskAnswerConfig struct {
 	*cli.Command
-	Say string `cli:"name=say aliases=s desc='words to say to the executor on resolution'"`
-	As  string `cli:"name=as desc='identity answering the gate; the configured user when left off (a decision names who made it)'"`
-	// Not a bypass so much as an admission: a resolver that answers exclusively can always
-	// be answered over by whoever holds this API, so the flag makes that an act with a name
-	// on it rather than a silent one.
-	Override bool `cli:"name=override desc='answer over an exclusive resolver; the record names you both'"`
+	Say   string `cli:"name=say aliases=s desc='words to say to the executor on resolution'"`
+	As    string `cli:"name=as desc='identity answering the gate; the configured user when left off (a decision names who made it)'"`
+	Force bool   `cli:"name=force desc='answer yourself an ask a resolver you granted serves for you'"`
 }
 
 func taskAnswerCmd(approve bool) *cli.Command {
@@ -377,11 +374,11 @@ func (cfg *taskAnswerConfig) run(cc *cli.Context, args []string, verb string, ap
 	}
 	cfg.As = as
 	pid, did := args[0], args[1]
-	// Same body as `gate approve`, --say included: this route relays the answer to a remote
+	// Same body as `question approve`, --say included: this route relays the answer to a remote
 	// worker's inbox, which is a difference in WHERE it goes, not in what can be said. The
 	// flag was missing here alone, so "yes, but do it this way" was unsayable to the one
 	// executor that is a person reading their inbox.
-	body := api.Resolve{ID: did, Choice: choiceOf(approve), By: cfg.As, Override: cfg.Override}
+	body := api.Resolve{ID: did, Choice: choiceOf(approve), By: cfg.As, Force: cfg.Force}
 	if cfg.Say != "" {
 		body.Say = []string{cfg.Say}
 	}
@@ -422,14 +419,13 @@ type taskRunConfig struct {
 	// since a decision became a durable record), and it rides the spawn as the run's
 	// PRINCIPAL, so a runner whose effects leave the verse can say on whose account.
 	// Self-asserted, like every other `--as` here.
-	As       string `cli:"name=as desc='who is running this: the run principal, and the identity for a gate answered while attached'"`
-	Resolver string `cli:"name=resolver desc='resolver that answers the gates this run raises (verse.resolvers.<name>)'"`
-	Runner   string `cli:"name=runner desc='where this run runs: an installed runner (verse.runners.<name>, or the bare <name>); default: the verse default'"`
+	As     string `cli:"name=as desc='who is running this: the run principal, and the identity for a gate answered while attached'"`
+	Runner string `cli:"name=runner desc='where this run runs: an installed runner (verse.runners.<name>, or the bare <name>); default: the verse default'"`
 	// The shape this run's final message must have — a tony match pattern in a file, the
 	// ad-hoc face of a charter's `answer:`. Without one, "finished" means only that the model
 	// stopped calling tools, which is also what a model narrating its next step looks like.
 	//
-	// `--answer-contract`, and not `--answer`: `verse gate <id> --answer <option>` answers a
+	// `--answer-contract`, and not `--answer`: `verse question <id> --answer <option>` answers a
 	// question, and one name for the file that says what an answer must be and for the answer
 	// itself would be read as either.
 	AnswerContract string `cli:"name=answer-contract desc='file holding the answer contract for this run (a tony match pattern)'"`
@@ -519,7 +515,7 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 	}
 	resp, err := httpPost("/tasks", api.Spawn{
 		Prompt: prompt, Driver: cfg.Driver, Name: cfg.Name,
-		Subject: cfg.Subject, Resolver: cfg.Resolver, Vector: vector, Gates: gates, Calls: calls,
+		Subject: cfg.Subject, Vector: vector, Gates: gates, Calls: calls,
 		Runner: cfg.Runner, Environment: cfg.Environment, VirtualKey: cfg.VirtualKey, Principal: by,
 		Answer: contract, Converse: cfg.Attach && cfg.Converse,
 	})
@@ -730,7 +726,7 @@ func (cfg *taskAttachConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	// `gate list` prints gate ids, so reaching for one here is the natural mistake — and
+	// `question` prints question ids, so reaching for one here is the natural mistake — and
 	// the id it wants is right there in the same record, under `task`. Say so, rather
 	// than making a 404 stand in for the explanation.
 	if pid, _, ok := strings.Cut(id, task.GateSep); ok {
@@ -1009,12 +1005,12 @@ func (pr *prompt) hint(as string) string {
 	}
 	switch {
 	case pr.reply:
-		return fmt.Sprintf("%s — answer it: verse gate %s --answer %s --say \"…\" --as %s",
+		return fmt.Sprintf("%s — answer it: verse question %s --answer %s --say \"…\" --as %s",
 			pr.text, pr.id, task.Reply, who)
 	case pr.yesno:
-		return fmt.Sprintf("gate %q (%s) — answer it: verse gate approve %s --as %s", pr.gate, pr.tool, pr.id, who)
+		return fmt.Sprintf("gate %q (%s) — answer it: verse question approve %s --as %s", pr.gate, pr.tool, pr.id, who)
 	default:
-		return fmt.Sprintf("gate %q (%s) — answer it: verse gate %s --answer <%s> --as %s",
+		return fmt.Sprintf("gate %q (%s) — answer it: verse question %s --answer <%s> --as %s",
 			pr.gate, pr.tool, pr.id, strings.Join(task.OptionIDs(pr.opts), "|"), who)
 	}
 }
@@ -1117,7 +1113,7 @@ type taskSayConfig struct{ *cli.Command }
 func taskSayCmd() *cli.Command {
 	cfg := &taskSayConfig{}
 	return cli.NewCommandAt(&cfg.Command, "say").
-		WithSynopsis("say something to a running task (re-prompt): say <id> <text…>").WithRun(cfg.run)
+		WithSynopsis("say something to a running task, as an ask it hears at its next boundary: say <id> <text…>").WithRun(cfg.run)
 }
 
 func (cfg *taskSayConfig) run(cc *cli.Context, args []string) error {
@@ -1133,8 +1129,18 @@ func (cfg *taskSayConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	return noContent(cc, "task say", "/tasks/"+id+"/say",
-		api.Say{Instruction: text, By: by}, id)
+	resp, err := httpPost("/tasks/"+id+"/say", api.Say{Instruction: text, By: by})
+	if err != nil {
+		return fmt.Errorf("task say: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return statusError(resp, "task say")
+	}
+	// The words are an ask to the task (9ce3bva0, stage 6): `verse ask <id>` shows when it hears them.
+	var out api.Asked
+	decodeClose(resp, &out)
+	fmt.Fprintf(cc.Out, "said to %s: %s\n", id, out.ID)
+	return nil
 }
 
 // ── vector (slide autonomy on a running task — the re-vector surface) ──────

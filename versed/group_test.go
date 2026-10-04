@@ -85,30 +85,3 @@ func TestAGateHeldOutToAGroup(t *testing.T) {
 		t.Fatalf("groups: %s", body)
 	}
 }
-
-// A resolver whose answerer is a group holds its questions out to the members.
-func TestAGroupAsAResolversAnswerer(t *testing.T) {
-	srv := askingServer(t)
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-	withoutTheDocketDefault(t, srv)
-	resp := groupAs(t, "walter@example.com", ts.URL, "reviewers", "oscar@example.com")
-	resp.Body.Close()
-	mustInstall(t, ts.URL, `{name: review-group,
-		condition: {subject: {path: "change.pr.*", value: {area: payments}}},
-		method: {driver: group, group: group:reviewers}}`)
-	pr(t, srv, "1", "payments")
-	spawnAs(t, "alice@example.com", ts.URL, "run-1", `change.pr."1"`, "")
-	qid := waitQuestion(t, srv, "run-1")
-	waitOwnedBy(t, srv, qid, "verse.resolvers.review-group")
-	resp = answerAs(t, "bob@example.com", ts.URL, qid)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("a stranger answered: %s", resp.Status)
-	}
-	resp = answerAs(t, "oscar@example.com", ts.URL, qid)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("a member could not answer: %s", resp.Status)
-	}
-}

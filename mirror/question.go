@@ -1,8 +1,10 @@
 package mirror
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -13,8 +15,8 @@ import (
 	"github.com/signadot/verse/task"
 )
 
-// A gate question is published as an entity of its own, `gate:question:<id>`, rather than as a
-// field on whatever raised it.
+// A gate question is published as an ask of its own, `verse.ask.<id>`, rather than as a field
+// on whatever raised it: every question is an ask, on the one docket asks stand on (ask.go).
 //
 // Two things force that. A trigger gate is posed by a FIRING, before anything spawns — there is
 // no task:instance to hang it on, and if the gate is denied there never will be. And a
@@ -24,15 +26,8 @@ import (
 //
 // The id is the question's own (`<origin>~d<n>`), so the ref carries the origin and a predicate
 // can select one run's questions without a second field to match on.
-const (
-	QuestionSystem = "gate"
-	QuestionKind   = "question"
-)
-
-// QuestionRef addresses one question.
-func QuestionRef(id string) entity.Ref {
-	return entity.VerseRef(QuestionSystem, QuestionKind, id)
-}
+// QuestionRef addresses one question: the ask it is.
+func QuestionRef(id string) entity.Ref { return AskRef(id) }
 
 // RuleRef addresses the record of one rule of the charter installed at an address:
 // `verse.trigger.rule.<at>:<name>`, and the bare name for baseline. It is spelled here and
@@ -54,7 +49,7 @@ func RecordID(at, name string) string {
 
 // poseRecord writes the question's own record, once: the system's, under what posed it — the task,
 // or the rule of the charter that asked — and holding out what the default on
-// `verse.gate.question` says, or the gate's own answerers when it named them, or the resolver's
+// `verse.ask` says, or the gate's own answerers when it named them, or the resolver's
 // answerers when a resolver owns it. The resolver is on the record FROM THE WRITE THAT MAKES IT:
 // a record that held the default out first and was narrowed to the resolver afterwards is a
 // question every person may settle for as long as the second write takes, and for good when it
@@ -75,17 +70,23 @@ func poseRecord(store entity.Store, q task.GateQuestion, taskID string) error {
 	}
 	ref := QuestionRef(q.ID)
 	answers := entity.Canonical(q.Answerers)
-	if q.Resolver != "" {
-		answers = resolverAnswerers(store, q.Resolver)
-	}
 	// NOT THROWN AWAY. A question whose record did not land stands with none, and one with none
 	// is answered by whoever the docket's row admits — every person — so a store refusing this
 	// one write would turn a gate held out to five named people into one anybody settles, for
 	// good and with nothing to show for it. Tried a few times, since a store under load refuses
 	// a write now and then, and then said, to a caller that does not pose without it.
+	// A PERSON'S ASK IS ITS ASKER'S RECORD, written by the verb with who reads it and who answers
+	// it (versed postAsk). Posing it writes the question's fields onto that record and leaves the
+	// record as the verb wrote it: re-established as the docket's, the ask would stop being its
+	// asker's, and its asker could no longer withdraw it.
+	if owner, err := ownerOnRecord(store, ref); err != nil {
+		return err
+	} else if owner != "" && !entity.IsSystem(owner) {
+		return nil
+	}
 	var err error
 	for attempt := 0; attempt < 3; attempt++ {
-		if err = poseRecordOnce(store, ref, origin, answers); err == nil {
+		if err = poseRecordOnce(store, ref, origin, q.Subject, answers); err == nil {
 			return nil
 		}
 		time.Sleep(time.Duration(attempt+1) * 20 * time.Millisecond)
@@ -96,21 +97,35 @@ func poseRecord(store entity.Store, q task.GateQuestion, taskID string) error {
 // poseRecordOnce is one try at poseRecord, every read in it included: the default it copies is
 // read from the mirror, and a mirror that did not answer is the same store refusing.
 //
-// WHO MAY ANSWER BELONGS TO THE ASKING, not to the id. A gate fired again about the same subject
-// poses the same id, so where the question standing is one that SETTLED, this is a new asking
-// and the record is rewritten to say who answers it (entity.Reestablish). Where it stands
-// pending it is the same asking reported a second time — a local run posts from the registry
-// and again from the frame — and the record is left as it is: a resolver it has been handed to
-// since keeps it.
-func poseRecordOnce(store entity.Store, ref, origin entity.Ref, answers []string) error {
+// WHO MAY ANSWER BELONGS TO THE ASKING, not to the id. A question that stood orphaned — its
+// waiter gone with nobody having decided it, at a restart or under a suspension — is asked again
+// under its own id when the firing comes back to it, so where the question standing is not
+// pending, this is a new asking and the record is rewritten to say who answers it
+// (entity.Reestablish). Where it stands pending it is the same asking reported a second time — a
+// local run posts from the registry and again from the frame — and the record is left as it is:
+// a resolver it has been handed to since keeps it.
+//
+// AN ASK ABOUT SOMETHING IS READ AND ANSWERED AS THAT THING IS (9ce3bva0, D3): whoever may read
+// its subject reads it, and where it names nobody, whoever may write its subject answers it —
+// `audience:<subject>` in both — since a question says what it is about, and a docket reader who
+// may not read the subject would learn it there. Where it names answerers they answer, each able
+// to read the subject (CheckAudience, before it is posed). An ask about nothing is the docket's.
+func poseRecordOnce(store entity.Store, ref, origin entity.Ref, subject string, answers []string) error {
 	var grants []entity.Grant
-	if len(answers) > 0 {
+	answering := AnsweringReaders(store, subject, answers)
+	if audience := subjectAudience(subject); audience != nil {
+		to := map[entity.Level][]string{entity.Read: append(audience, answering...), entity.ReadWrite: audience}
+		if len(answers) > 0 {
+			to[entity.ReadWrite] = answers
+		}
+		grants = []entity.Grant{{At: ref.Segs(), To: to}}
+	} else if len(answers) > 0 {
 		levels, err := entity.DefaultFor(store, ref)
 		if err != nil {
 			return err
 		}
 		to := map[entity.Level][]string{entity.ReadWrite: answers}
-		if reads := levels[entity.Read]; len(reads) > 0 {
+		if reads := append(slices.Clone(levels[entity.Read]), answering...); len(reads) > 0 {
 			to[entity.Read] = reads
 		}
 		grants = []entity.Grant{{At: ref.Segs(), To: to}}
@@ -125,41 +140,109 @@ func poseRecordOnce(store entity.Store, ref, origin entity.Ref, answers []string
 	return entity.Reestablish(store, ref, entity.SystemDocket, origin, grants)
 }
 
-// HoldOut holds the question out to the resolver that answers it: `read-write` on the question's
-// own record, which is what owning a question IS under the ownership model. The grantee is
-// who answers through the resolver — its address for a service, which acts as the resolver
-// through its cover; the person or the group behind it otherwise (resolver.Answerer) — so a
-// verdict is admitted, and a resolver with no question to answer holds nothing. Exactly one
-// resolver at a time: a change of hands replaces the level, and releasing (an empty resolver)
-// gives the question back to whoever the default holds it out to. `read` is left as the record
-// has it.
-func HoldOut(store entity.Store, id, resolver string) error {
-	ref := QuestionRef(id)
-	names := resolverAnswerers(store, resolver)
-	if resolver == "" {
-		// BACK TO WHOM THE GATE NAMED, and to the default only where it named nobody. A held-out
-		// question's record carries its resolver alone, so the gate's own answerers are kept on
-		// the question (AnswerersField): handed up to the docket without them, a gate held out
-		// to davido became every person's the moment its resolver let go.
-		q, _, err := store.Get(ref)
+// Parties is whom an ask is put to, as the nodes their `answer` grants stand on (entity.Answer):
+// each principal it names at `verse.for.<principal>`, a group standing for its members as they
+// are when it is asked; or, where it names nobody, what it is about. A whole kind, a place acting
+// and an address's audience are nobody a resolver answers for, and name no party.
+func Parties(store entity.Store, subject string, answerers []string) []entity.Ref {
+	var out []entity.Ref
+	for _, n := range expandGroups(store, answerers) {
+		if g, err := entity.ParsePrincipal(n); err == nil && g.Kind != entity.ViaKind {
+			out = append(out, entity.ForRef(g.String()))
+		}
+	}
+	if len(answerers) == 0 && subject != "" {
+		if ref, err := entity.ParseAddr(subject); err == nil {
+			out = append(out, ref)
+		}
+	}
+	return out
+}
+
+// AnsweringReaders is the `read` an ask holds out to the resolvers serving it: `answering:` each
+// of its parties (9ce3bva0, S2).
+func AnsweringReaders(store entity.Store, subject string, answerers []string) []string {
+	var out []string
+	for _, p := range Parties(store, subject, answerers) {
+		out = append(out, entity.Answering(p))
+	}
+	return out
+}
+
+// subjectAudience is what a question is about, as a grantee: none for a question about nothing,
+// or about something that is no one place.
+func subjectAudience(subject string) []string {
+	if subject == "" {
+		return nil
+	}
+	ref, err := entity.ParseAddr(subject)
+	if err != nil {
+		return nil
+	}
+	return []string{entity.Audience(ref)}
+}
+
+// ErrCannotRead is an answerer who may not read what an ask is about.
+var ErrCannotRead = errors.New("may not read what it asks about")
+
+// CheckAudience says whether every answerer an ask names may read what it is about: NOBODY
+// ANSWERS AN ASK ABOUT SOMETHING THEY CANNOT READ (9ce3bva0, D3). An ask about nothing, or naming
+// nobody, passes — the latter is answered by its subject's own audience, who read it by holding
+// write. A group is its members. A whole kind (`user:*`) passes only where what the subject holds
+// out to anybody of that kind reads it, which is asked of a principal of the kind nobody is: a
+// kind cannot be enumerated, and `.invalid` is reserved never to name anyone (RFC 2606).
+func CheckAudience(store entity.Store, subject string, answerers []string) error {
+	if subject == "" || len(answerers) == 0 {
+		return nil
+	}
+	ref, err := entity.ParseAddr(subject)
+	if err != nil {
+		return nil
+	}
+	var cannot []string
+	for _, n := range expandGroups(store, answerers) {
+		g, err := entity.ParseGrantee(n)
+		if err != nil {
+			return fmt.Errorf("answerers: %w", err)
+		}
+		who := n
+		switch {
+		case g.Kind == entity.Everyone:
+			who = entity.UserKind + ":" + nobody
+		case g.ID == entity.Everyone:
+			who = g.Kind + ":" + nobody
+		case g.Kind == entity.AudienceKind:
+			continue // an audience at an address, held to that address's check when it answers
+		}
+		ok, err := entity.Holds(store, who, entity.Read, ref)
 		if err != nil {
 			return err
 		}
-		if names = entity.Canonical(entity.Strs(q.Payload, AnswerersField)); len(names) == 0 {
-			levels, err := entity.DefaultFor(store, ref)
-			if err != nil {
-				return err
-			}
-			names = levels[entity.ReadWrite]
+		if !ok {
+			cannot = append(cannot, n)
 		}
 	}
-	if err := entity.SetLevel(store, ref, entity.ReadWrite, names); err != nil {
-		return err
+	if len(cannot) > 0 {
+		return fmt.Errorf("%s %w %s", strings.Join(cannot, ", "), ErrCannotRead, subject)
 	}
-	// The grant and the field say one thing, so a hand-over says who has it now. A reown
-	// (versed's escalate) comes through here too, which is why it is written here and not there.
-	writeAt(store, ref, entity.Obj{WaitingOnField: waitingOn(store, ref)})
 	return nil
+}
+
+// nobody is the id of a principal no one is, for asking what a whole kind holds.
+const nobody = "nobody@verse.invalid"
+
+// expandGroups is names with each group replaced by its members.
+func expandGroups(store entity.Store, names []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, n := range names {
+		if g, err := entity.ParseGrantee(n); err == nil && g.Kind == entity.GroupKind {
+			out = append(out, entity.Members(store, g.ID, seen)...)
+			continue
+		}
+		out = append(out, n)
+	}
+	return out
 }
 
 // SaidField holds what people said ABOUT a question without answering it, each entry under its own
@@ -195,7 +278,7 @@ const AnswerersField = "answerers"
 // A READER CANNOT WORK THIS OUT. `answerers` is there only where the gate named somebody, and the
 // rest of who may answer — the resolver a question was handed to, the rung that took it after an
 // escalation, the docket's own default — is on the question's perms record, which only the system
-// may read. So a docket, a charter deriving one message per person, and `verse gate` would each
+// may read. So a docket, a charter deriving one message per person, and `verse question` would each
 // have to guess, and would each guess differently.
 //
 // It is the question's own `read-write` line, which is the same fact the answer route checks, with
@@ -240,16 +323,6 @@ func waitingOn(store entity.Store, ref entity.Ref) any {
 	return answerersValue(out)
 }
 
-// resolverAnswerers is who a question is held out to when resolver owns it.
-func resolverAnswerers(store entity.Store, resolver string) []string {
-	if AnswererOf != nil {
-		if who := AnswererOf(store, resolver); who != "" {
-			return entity.Canonical([]string{who})
-		}
-	}
-	return []string{viaResolver(resolver)}
-}
-
 // about is the one line the question's subject offers about ITSELF, copied onto the question so
 // that a reader who cannot read the subject can still say what is being decided.
 //
@@ -288,6 +361,37 @@ const aboutMax = 140
 
 // answerersValue is the gate's named answerers as the question carries them, REMOVED where it
 // named nobody so that an asking that names none does not inherit the last one's.
+// LabelsField is what an ask says about itself for whoever watches asks (task.GateQuestion.Labels):
+// a label's name to its value.
+const LabelsField = "labels"
+
+// labelsValue is labels as a record writes them, removed where there are none.
+func labelsValue(labels map[string]string) any {
+	if len(labels) == 0 {
+		return entity.Removed()
+	}
+	o := entity.Obj{}
+	for k, v := range labels {
+		o[k] = v
+	}
+	return o
+}
+
+// LabelsOf reads an ask's labels, nil where it has none. Only verse writes them, as strings.
+func LabelsOf(p entity.Payload) map[string]string {
+	fs := entity.Fields(entity.Get(p, LabelsField))
+	if len(fs) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(fs))
+	for k, v := range fs {
+		if v = ir.Uncomment(v); v != nil && v.Type == ir.StringType {
+			out[k] = v.String
+		}
+	}
+	return out
+}
+
 func answerersValue(names []string) any {
 	names = entity.Canonical(names)
 	if len(names) == 0 {
@@ -299,22 +403,6 @@ func answerersValue(names []string) any {
 	}
 	return out
 }
-
-// viaResolver is the principal a resolver acts as, from its address: `via:<address>`. An address
-// that does not parse is held out as written, and the grammar admits nobody by it.
-func viaResolver(resolver string) string {
-	ref, err := entity.ParseAddr(resolver)
-	if err != nil {
-		return resolver
-	}
-	return entity.Via(ref)
-}
-
-// AnswererOf says who answers through a resolver — its own address for a service, the person or
-// the group behind it otherwise (resolver.Resolver.Answerer). Supplied by the party that can
-// read a resolver, since mirror may not import resolver (see Meta.Owner for the cycle); nil
-// holds the question out to the address itself.
-var AnswererOf func(r entity.Reader, resolver string) string
 
 // Question status, monotonic: a question is posed once and settles once.
 const (
@@ -356,6 +444,10 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 		"status":  QuestionPending,
 		"posedAt": time.Now().UTC().Format(time.RFC3339),
 	}
+	// Which edit of a person's ask this is, where it is one: what an answer names (Tally).
+	if q.Edit != 0 {
+		rec["edit"] = q.Edit
+	}
 	// Absent rather than empty, for the reason the gate listing already compacts: a missing
 	// key is visible, an empty one is camouflage. A bare `verse task run` is about nothing,
 	// and a brokered gate legitimately carries neither origin nor mode.
@@ -375,10 +467,6 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 		"chain": q.Chain,
 		"tool":  p.Tool,
 		"task":  taskID,
-		// resolver is the RESOLVER that owns this question. Absent means nobody holds it — none
-		// was declared, so it belongs to whoever reads the docket — which is a different fact
-		// from an owner nobody can name, and a later reader depends on the distinction.
-		"resolver": q.Resolver,
 	} {
 		if v != "" {
 			rec[k] = v
@@ -388,15 +476,21 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 		rec["effects"] = eff
 	}
 	rec[AnswerersField] = answerersValue(q.Answerers)
+	rec[LabelsField] = labelsValue(q.Labels)
 	rec["about"] = about(store, q.Subject)
 	// Always written, default included, so the record says what can be chosen without a
 	// reader having to know what a question with no options means. The tally reads it back.
 	rec["options"] = optionList(q.OptionsOrDefault())
-	if q.Deadline != nil && q.Deadline.Within != "" {
+	if q.Deadline != nil && (q.Deadline.Within != "" || q.Deadline.At != "") {
 		// `within` and `default` are the question's; `at`, the instant, is stamped by
 		// whoever arms the clock (StampDeadline), once, so a re-pose finds it rather than
-		// sliding it. It is not written here, and a merge leaves a standing one alone.
-		d := entity.Obj{"within": q.Deadline.Within}
+		// sliding it. It is not written here, and a merge leaves a standing one alone — a
+		// dated question included, whose date is stamped by the arming like any other and
+		// moved only by MoveDeadline.
+		d := entity.Obj{}
+		if q.Deadline.Within != "" {
+			d["within"] = q.Deadline.Within
+		}
 		if q.Deadline.Default != "" {
 			d["default"] = q.Deadline.Default
 		}
@@ -423,21 +517,7 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 	rec[WaitingOnField] = waitingOn(store, QuestionRef(q.ID))
 	clearPriorAnswer(store, QuestionRef(q.ID), rec)
 	writeAt(store, QuestionRef(q.ID), rec)
-	if q.Resolver != "" {
-		holdOutAgain(store, q.ID, q.Resolver)
-	}
 	return true
-}
-
-// holdOutAgain is HoldOut for a question posed AGAIN: its record stands from the first asking and
-// is left as it is (poseRecord), so a resolver that has changed since is written over it here. A
-// failure is said and leaves the record as the last asking had it — held out to the last
-// resolver, never to everybody.
-func holdOutAgain(store entity.Store, id, resolver string) {
-	if err := HoldOut(store, id, resolver); err != nil {
-		fmt.Fprintf(os.Stderr, "verse: question %s is still held out as it was last posed; "+
-			"holding it out to %s failed: %v\n", id, resolver, err)
-	}
 }
 
 // DeadlineOf reads a record's deadline: the duration it was posed with, the option it settles
@@ -482,11 +562,29 @@ func StampDeadline(store entity.Store, id string, at time.Time) (string, error) 
 	return want, nil
 }
 
+// MoveDeadline moves a PENDING question's deadline to at, and reports whether it moved. A question
+// that has settled keeps the clock it settled under — what it records is what happened — so the
+// move is conditional on the record still saying pending, and the store decides at the commit.
+// The caller arms a timer for the new instant; one armed for the old instant finds the record
+// moved and does nothing (a settle re-reads the instant before it acts).
+func MoveDeadline(store entity.Store, id string, at time.Time) (bool, error) {
+	ref := QuestionRef(id)
+	moved, _, err := store.Write(entity.Write{
+		At:    ref.At("deadline", "at"),
+		Value: entity.Val(at.UTC().Format(time.RFC3339Nano)),
+		When:  []entity.Require{{At: ref.At(), Pattern: entity.Obj{"status": QuestionPending}.Payload()}},
+	})
+	return moved, err
+}
+
 // optionList renders options as the record carries them: `[{id, need}]`, in order.
 func optionList(opts []task.Option) []any {
 	out := make([]any, 0, len(opts))
 	for _, o := range opts {
-		om := entity.Obj{"id": o.ID, "need": o.Need}
+		// THE NEED THAT COUNTS: below one reads as one (task.Need), so a producer that left it
+		// empty is recorded as the one ballot that settles it, not as a need of none.
+		need, _ := task.Need([]task.Option{o}, o.ID)
+		om := entity.Obj{"id": o.ID, "need": need}
 		if o.Says != "" {
 			om["says"] = o.Says
 		}
@@ -526,15 +624,48 @@ func OptionsOf(p entity.Payload) []task.Option {
 }
 
 // Tally counts the ballots on a record by the option they chose.
+//
+// ONLY THE BALLOTS CAST FOR THE ASK AS IT STANDS COUNT. A person's ask asked again drops the
+// ballots of its earlier edit, and one that races the drop lands naming the edit it answered,
+// which is not this one; a question nobody edits has no edit, and every ballot on it counts.
 func Tally(p entity.Payload) map[string]int {
 	out := map[string]int{}
+	edit := intField(p, "edit")
 	for _, b := range entity.Fields(entity.Get(p, "ballots")) {
+		if intField(b, "edit") != edit {
+			continue
+		}
 		if c := entity.Str(b, "choice"); c != "" {
 			out[c]++
 		}
 	}
 	return out
 }
+
+// Reword writes what a waiting ask now asks, as the next edit: the fields its asker changed, with
+// the ballots cast before dropped. Conditional on the ask still waiting at the edit it was changed
+// from, so a change never lands on an ask that settled or moved on in between. Whom it waits on is
+// read again once its answerers are settled (WaitOnAgain).
+func Reword(store entity.Store, id string, from int, rec entity.Obj) (bool, error) {
+	ref := QuestionRef(id)
+	rec["ballots"] = entity.Removed()
+	committed, _, err := store.Write(entity.Write{
+		At:    ref.At(),
+		Value: rec.Payload(),
+		When:  []entity.Require{{Pattern: entity.Obj{"status": QuestionPending, "edit": from}.Payload()}},
+	})
+	return committed, err
+}
+
+// WaitOnAgain reads whom a question waits on again from its record, after who may answer it
+// changed.
+func WaitOnAgain(store entity.Store, id string) {
+	ref := QuestionRef(id)
+	writeAt(store, ref, entity.Obj{WaitingOnField: waitingOn(store, ref)})
+}
+
+// EditOf is which edit of a person's ask a record stands at, and 0 for one nobody edits.
+func EditOf(p entity.Payload) int { return intField(p, "edit") }
 
 // intField reads an integer field, 0 when absent or not a number. The record is written by
 // this package with an int, and read back through the store as a number node.
@@ -593,6 +724,12 @@ func ballot(res task.Resolution) entity.Obj {
 	if len(res.Steer) > 0 {
 		rec["say"] = anyStrings(res.Steer)
 	}
+	if res.Edit != 0 {
+		rec["edit"] = res.Edit
+	}
+	if res.Via != "" {
+		rec["via"] = res.Via
+	}
 	return rec
 }
 
@@ -615,7 +752,7 @@ func anyStrings(ss []string) []any {
 // A local run posts twice, once from each writer. That is not a conflict: a write merges, so
 // the frame's post cannot erase the effects the registry's post already recorded, and every
 // field the two share they agree on.
-func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject, owner string, answerers []string) bool {
+func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject string, answerers []string) bool {
 	rec := entity.Obj{
 		"id":      ev.ID,
 		"gate":    ev.Gate,
@@ -690,12 +827,15 @@ func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject, owner
 	}
 	// The record first, for the reason Pose writes it first: a question standing without one is
 	// everybody's to answer.
-	if err := poseRecord(store, task.GateQuestion{ID: ev.ID, Answerers: answerers, Resolver: owner}, taskID); err != nil {
+	if err := poseRecord(store, task.GateQuestion{ID: ev.ID, Answerers: answerers}, taskID); err != nil {
 		fmt.Fprintf(os.Stderr, "verse: question %s is NOT posed — who may answer it could not be "+
 			"written, so nobody is asked until it is posed again: %v\n", ev.ID, err)
 		return false
 	}
 	writeAt(store, ref, rec)
+	// Whom it waits on, read back from the record just written, as PostQuestion does — and with
+	// `status`, since a settled question waits on nobody and a late frame must not say otherwise.
+	posed[WaitingOnField] = waitingOn(store, ref)
 	// Still pending, or not there at all — a brokered question whose only writer is this frame.
 	// `!not` over the two settled values rather than an equality on `pending`, so a status this
 	// does not know about is not silently treated as re-posable.
@@ -704,30 +844,7 @@ func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject, owner
 		Value: posed.Payload(),
 		When:  []entity.Require{notStatus(QuestionAnswered), notStatus(QuestionOrphaned)},
 	})
-	// THE OWNER IS THE OTHER FIELD A LATER ACT CONTRADICTS. The frame names the owner it looked
-	// up when it was reported; a resolver removed or declining since has handed the question on
-	// (reown, which stamps `reownedFrom`), and this write landing after that would name the old
-	// owner again — and hold the question out to it — stranding it on a resolver that no longer
-	// answers. So the owner, and the grant that goes with it, land only on a question not handed
-	// on since; the handover stands. Whether two concurrent writers still leave a window is the
-	// question left open for `status` above (git-issue nkptp9b3h12ksx3kg9n0).
-	if owner != "" {
-		named, _, _ := store.Write(entity.Write{
-			At:    ref.At(),
-			Value: entity.Obj{"resolver": owner}.Payload(),
-			When:  []entity.Require{notHandedOn()},
-		})
-		if named {
-			holdOutAgain(store, ev.ID, owner)
-		}
-	}
 	return true
-}
-
-// notHandedOn is the precondition "this question has not changed hands": no `reownedFrom` on the
-// record. Asked of the whole payload, as notStatus is, so a record the frame is creating passes.
-func notHandedOn() entity.Require {
-	return entity.Require{Pattern: entity.Obj{"reownedFrom": entity.Present()}.Payload().WithTag("!not")}
 }
 
 // notStatus is the precondition "this record does not say status: s".
@@ -783,14 +900,6 @@ func QueuedAnswer(store entity.Store, id string, res task.Resolution) {
 	}
 }
 
-// Overrode records that an answer was taken against an exclusive resolver's claim on the
-// question. `by` already names who answered; this names whom they answered over, so the pair
-// is on the record and neither half has to be inferred from a resolver that may since have
-// changed or gone.
-func Overrode(store entity.Store, id, owner string) {
-	writeAt(store, QuestionRef(id), entity.Obj{"overrode": owner})
-}
-
 func answerRecord(res task.Resolution) entity.Obj {
 	rec := entity.Obj{
 		"status":     QuestionAnswered,
@@ -803,6 +912,9 @@ func answerRecord(res task.Resolution) entity.Obj {
 	if res.By != "" {
 		rec["by"] = res.By
 	}
+	if res.Via != "" {
+		rec["via"] = res.Via
+	}
 	// The settling ballot rides the settle. One write says both that this answerer chose
 	// this and that the choice reached its threshold, so no reader can see the one without
 	// the other. A settle nobody cast — auto, cancelled, the clock — is not a ballot.
@@ -813,7 +925,7 @@ func answerRecord(res task.Resolution) entity.Obj {
 		rec["why"] = res.Note
 	}
 	// What the answerer said alongside the verdict. It rides Steer rather than Note because
-	// that is where an answer's prose goes — `verse gate approve --say "but not on friday"`
+	// that is where an answer's prose goes — `verse question approve --say "but not on friday"`
 	// is an instruction to the task, and the record of a decision that omitted it would
 	// keep the yes and lose the condition on it.
 	if len(res.Steer) > 0 {
@@ -832,17 +944,47 @@ func answerRecord(res task.Resolution) entity.Obj {
 func OrphanQuestions(store entity.Store, taskID string) {
 	for _, ent := range entity.Below(store, func(ref entity.Ref) bool {
 		return IsQuestion(ref)
-	}, 1, entity.VerseRoot, QuestionSystem, QuestionKind) {
+	}, 1, entity.VerseRoot, AskSystem) {
 		p := entity.ToObj(ent.Payload)
-		if p["task"] != taskID || p["status"] != QuestionPending {
+		if p["status"] != QuestionPending {
+			continue
+		}
+		why := "the task that raised it ended without it being answered"
+		switch {
+		case p["task"] == taskID:
+		case p[SaidToField] == taskID:
+			why = "the task ended before it heard this"
+		default:
 			continue
 		}
 		settlePending(store, ent.Ref, entity.Obj{
 			"status":     QuestionOrphaned,
 			"orphanedAt": time.Now().UTC().Format(time.RFC3339),
-			"why":        "the task that raised it ended without it being answered",
+			"why":        why,
 		})
 	}
+}
+
+// SaidToField marks an ask that is words said to a running task (9ce3bva0, stage 6), naming the
+// task. The task is its party: it is heard when the task takes the words at its next boundary
+// (HearSay), and no person answers it.
+const SaidToField = "saidTo"
+
+// Heard is what a say settles on when its task takes it.
+const Heard = "heard"
+
+// HearSay settles the say ask id as heard by taskID, where it stands waiting and is words to that
+// task: the task's say frame echoes the ask it took (task.SayRequest.Ask).
+func HearSay(store entity.Store, id, taskID string) {
+	ref := QuestionRef(id)
+	e, ok, err := store.Get(ref)
+	if err != nil || !ok || entity.Str(e.Payload, SaidToField) != taskID {
+		return
+	}
+	settlePending(store, ref, entity.Obj{
+		"status": QuestionAnswered, "verdict": Heard, "answer": Heard, "by": Ref(taskID).String(),
+		"answeredAt": time.Now().UTC().Format(time.RFC3339),
+	})
 }
 
 // DropQuestion settles one question whose asker stopped waiting for it, with `why` saying what
@@ -853,7 +995,19 @@ func OrphanQuestions(store entity.Store, taskID string) {
 // smaller scope: nothing will act on an answer to this. `why` is what separates the two for a
 // reader, and it is the reason this takes one — a docket that says only `orphaned` reads as
 // "the task died" for a run that is alive and was redirected.
-func DropQuestion(store entity.Store, id, why string) {
+func DropQuestion(store entity.Store, id, why string) { dropQuestion(store, id, why, nil) }
+
+// HoldQuestion is DropQuestion for a suspension's withdrawal: the question is withdrawn to be asked
+// again when the suspension lifts, and says so (`suspended`), so it is kept meanwhile rather than
+// going as a settled ask does (versed askttl.go).
+func HoldQuestion(store entity.Store, id, why string) {
+	dropQuestion(store, id, why, entity.Obj{SuspendedField: true})
+}
+
+// SuspendedField marks a question a suspension withdrew, to be asked again when it lifts.
+const SuspendedField = "suspended"
+
+func dropQuestion(store entity.Store, id, why string, extra entity.Obj) {
 	e, ok, err := store.Get(QuestionRef(id))
 	if err != nil || !ok {
 		return
@@ -874,6 +1028,9 @@ func DropQuestion(store entity.Store, id, why string) {
 		// favour of why nobody answered. `why` is where a settling's account already goes —
 		// see answerRecord, which puts an answerer's note there.
 		rec["why"] = why
+	}
+	for k, v := range extra {
+		rec[k] = v
 	}
 	settlePending(store, QuestionRef(id), rec)
 }
@@ -996,8 +1153,10 @@ func effectLists(effs []task.Effect) entity.Obj {
 }
 
 // clearPriorAnswer prepares a record that is being posed AGAIN under an id that already
-// settled — a trigger gate's id is a function of (rule, gate, subjects), so a re-firing about
-// the same subject re-poses the same one.
+// settled. A firing's question comes back under its own id when it stood orphaned — a restart's
+// replay, a suspension lifted — and never over an answer: a firing after an answer asks a new
+// question under an id of its own (trigger.Engine.askingID). A poser that does post over an
+// answer is still read as asking again rather than refused, for the reason below.
 //
 // Without it the write merges and the record says two things at once: pending, and answered by
 // somebody with a verdict and a time. What a person then reads on the docket is a question to
@@ -1010,12 +1169,20 @@ func effectLists(effs []task.Effect) entity.Obj {
 // is at the commit that made it, which is what the store is for.
 //
 // `askedAgain` marks it, because "you have seen this before" is the fact a reader wants and the
-// cleared fields can no longer say. The cause is upstream — a gate whose refusal writes nothing
-// its subject reads, which advise names at install.
+// cleared fields can no longer say.
 func clearPriorAnswer(store entity.Store, ref entity.Ref, rec entity.Obj) {
 	e, ok, err := store.Get(ref)
 	if err != nil || !ok {
 		return
+	}
+	// AN ASK ASKED AGAIN IS NOT GOING. Its expiry was the settled round's, and a question that
+	// waits again stands until it settles again (versed askttl.go).
+	if entity.Get(e.Payload, "expires") != nil {
+		rec["expires"] = entity.Removed()
+	}
+	// Nor is it held any more: the suspension that withdrew it has lifted.
+	if entity.Get(e.Payload, SuspendedField) != nil {
+		rec[SuspendedField] = entity.Removed()
 	}
 	status := entity.Str(e.Payload, "status")
 	switch status {
@@ -1023,12 +1190,11 @@ func clearPriorAnswer(store entity.Store, ref entity.Ref, rec entity.Obj) {
 	default:
 		return
 	}
-	for _, k := range []string{"verdict", "by", "why", "say", "answeredAt", "delivered",
-		"overrode", "reownedFrom", "reownedWhy", "reownedAt", "escalatesAt"} {
+	for _, k := range []string{"verdict", "by", "via", "why", "say", "answeredAt", "delivered"} {
 		rec[k] = entity.Removed()
 	}
-	// The ballots clear only when a ROUND ended: a question that settled and is asked again
-	// is a new question under an old id, and the earlier ballots answered the earlier one. An
+	// The ballots clear only when a ROUND ended: a question that was answered and is posed
+	// again is a new question under an old id, and the earlier ballots answered the earlier one. An
 	// orphaned record is the same question with its waiter gone — a restart, a withdrawal —
 	// and whoever re-poses it joins what was already cast. The deadline's stamp stands for
 	// the same reason: the clock started when the question was first asked.
@@ -1052,9 +1218,7 @@ func writeAt(store entity.Store, ref entity.Ref, o entity.Obj) {
 
 // IsQuestion reports whether an address is a posed question's — see IsTask on why a namespace
 // answers this for itself now.
-func IsQuestion(ref entity.Ref) bool {
-	return ref.ChildOf(entity.VerseRoot, QuestionSystem, QuestionKind)
-}
+func IsQuestion(ref entity.Ref) bool { return IsAsk(ref) }
 
 // ResumeDeadline gives a question that was withdrawn while it stood the time it had left, from
 // now. A withdrawn question stands in front of nobody, so its clock stopped when it was withdrawn
@@ -1084,4 +1248,13 @@ func ResumeDeadline(store entity.Store, id string, now time.Time) error {
 		Value: entity.Val(now.Add(left).UTC().Format(time.RFC3339Nano)),
 	})
 	return err
+}
+
+// ownerOnRecord is the owner a node's own perms record names, "" where it has none.
+func ownerOnRecord(store entity.Store, ref entity.Ref) (string, error) {
+	rec, ok, err := store.Get(entity.PermsRef(ref))
+	if err != nil || !ok {
+		return "", err
+	}
+	return entity.Str(rec.Payload, entity.OwnerField), nil
 }

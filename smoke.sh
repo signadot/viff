@@ -360,9 +360,9 @@ ok "the rising edge fired: demo.build.1 reviewed → shipped"
 # ── the human loop: an ask gate HOLDS, and answering it releases the action ───
 # The charters above prove the engine reacts on its own. This is the other half — the dial
 # turned down to `ask` — and it is the one surface with no unit-level end-to-end: the gate
-# has to reach `verse gate`, and the answer has to travel back and unblock the action.
+# has to reach `verse question`, and the answer has to travel back and unblock the action.
 #
-# Answering is a VERB (`gate approve <id>`), not a flag on a `resolve` command, so the two
+# Answering is a VERB (`question approve <id>`), not a flag on a `resolve` command, so the two
 # states that are not a decision cannot be typed. The short forms are exercised here rather
 # than the long ones because they are what an operator actually types at a held release.
 step "gate: an ask gate holds; answering it releases the action"
@@ -377,16 +377,16 @@ v data demo release 1 --put '{"stage":"open"}' >/dev/null || die "data --put fai
 # prefix, not by field.
 GID=
 for _ in $(seq 1 100); do
-	GID=$(v gate -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | head -1)
+	GID=$(v question -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | head -1)
 	[ -n "$GID" ] && break
 	sleep 0.2
 done
-[ -n "$GID" ] || die "the ask gate never appeared in verse gate"
-ok "the action is held; verse gate shows $GID"
+[ -n "$GID" ] || die "the ask gate never appeared in verse question"
+ok "the action is held; verse question shows $GID"
 # Still open: an ask gate that let the action through would be indistinguishable from auto.
 haskv "$(v data demo release 1)" stage open || die "the ask gate did not hold the action"
 ok "demo.release.1 still open while the gate is pending"
-v gate y "$GID" -s "ship it" --as user:smoke >/dev/null || die "gate approve (y) failed"
+v question y "$GID" -s "ship it" --as user:smoke >/dev/null || die "question approve (y) failed"
 shipped=
 for _ in $(seq 1 100); do
 	if haskv "$(v data demo release 1 2>/dev/null || true)" stage shipped; then
@@ -396,8 +396,8 @@ for _ in $(seq 1 100); do
 	sleep 0.2
 done
 [ -n "$shipped" ] || die "the approved gate did not release the action"
-ok "gate y + -s released it: demo.release.1 open → shipped"
-has "$(v gate)" "$GID" && die "an answered gate is still pending"
+ok "question y + -s released it: demo.release.1 open → shipped"
+has "$(v question --all)" "$GID" && die "an answered gate is still pending"
 ok "the answered gate left the docket"
 
 # ── the tally: a gate that takes two approvals, settled on the second ────────
@@ -414,26 +414,29 @@ v charter -a --file - >/dev/null <<'TONY' || die "threshold charter -a failed"
   action:
     patch: {stage: shipped}
 TONY
-v data demo motion 1 --put '{"stage":"open"}' >/dev/null || die "data --put failed"
+# alice and bob may write the motion, so they vote on it: a gate naming nobody is answered by
+# whoever may write what it is about.
+v data demo motion 1 --put '{"stage":"open"}' --grants '[{read: ["*"], read-write: [user:alice, user:bob]}]' >/dev/null ||
+	die "data --put failed"
 QID=
 for _ in $(seq 1 100); do
 	# `|| true`: under pipefail a poll that finds nothing yet is grep's exit 1, and set -e would end
 	# the script on it — the retry never ran, and the step failed silently whenever the question
 	# was not on the docket at the first poll.
-	QID=$(v gate -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | grep smoke-quorum | head -1 || true)
+	QID=$(v question --all -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | grep smoke-quorum | head -1 || true)
 	[ -n "$QID" ] && break
 	sleep 0.2
 done
 [ -n "$QID" ] || die "the threshold gate never reached the docket"
-has "$(v gate)" 'demo.motion."1"' || die "the docket does not say what is being decided"
+has "$(v question --all)" 'demo.motion."1"' || die "the docket does not say what is being decided"
 ok "the question is on the docket as $QID, about demo.motion.1"
-out=$(v gate y "$QID" --as user:alice) || die "the first ballot was refused"
+out=$(v question y "$QID" --as user:alice) || die "the first ballot was refused"
 has "$out" "1 of 2" || die "the answerer was not told where the tally stands: $out"
 sleep 0.5
 haskv "$(v data demo motion 1)" stage open || die "one approval released a gate that needs two"
-has "$(v gate)" "$QID" || die "a question one short of its threshold left the docket"
+has "$(v question --all)" "$QID" || die "a question one short of its threshold left the docket"
 ok "one of two: recorded, and the action is still held"
-v gate y "$QID" --as user:bob >/dev/null || die "the second ballot was refused"
+v question y "$QID" --as user:bob >/dev/null || die "the second ballot was refused"
 carried=
 for _ in $(seq 1 100); do
 	if haskv "$(v data demo motion 1 2>/dev/null || true)" stage shipped; then
@@ -444,10 +447,106 @@ for _ in $(seq 1 100); do
 done
 [ -n "$carried" ] || die "the second approval did not release the action"
 ok "two of two: demo.motion.1 open → shipped"
-rec=$(v data verse gate question "$QID")
+rec=$(v data verse ask "$QID")
 has "$rec" "user:alice" && has "$rec" "user:bob" || die "the settled record does not carry both ballots: $rec"
 haskv "$rec" verdict proceed || die "the settled record does not say what it settled on"
 ok "the question is settled with both ballots on the record"
+
+# ── ask: a person asks a person, and is told the answer ─────────────────────
+# Every verse asks: nothing is installed for it. alice asks bob, bob answers on the docket, and
+# alice reads the answer off her ask and off the watch.
+step "ask: alice asks bob, bob answers, alice sees it"
+LAND=$(VERSE_USER=user:alice v ask land -q "Review verse/ask?" --to user:bob --due 48h) || die "alice could not ask"
+LAND=${LAND#asked }
+LAND=${LAND%%:*}
+# The ask is the question: its id is what bob answers, once it is posed and waits on him.
+AID=$LAND
+posed=
+for _ in $(seq 1 100); do
+	if has "$(VERSE_USER=user:alice v ask land 2>/dev/null || true)" "waitingOn"; then
+		posed=1
+		break
+	fi
+	sleep 0.2
+done
+[ -n "$posed" ] || die "alice's ask was never posed: $(VERSE_USER=user:alice v ask land)"
+has "$(VERSE_USER=user:alice v ask land)" "user:bob" || die "alice's ask does not say it waits on bob"
+ok "alice's ask is posed as $AID, waiting on bob"
+v question "$AID" --answer proceed --as user:bob >/dev/null || die "bob could not answer"
+answered=
+for _ in $(seq 1 100); do
+	if haskv "$(VERSE_USER=user:alice v ask land 2>/dev/null || true)" answer yes; then
+		answered=1
+		break
+	fi
+	sleep 0.2
+done
+[ -n "$answered" ] || die "alice's ask never showed bob's yes"
+ok "alice sees bob's yes on her ask"
+VERSE_USER=user:alice v ask --watch --since 0 >"$tmp/askwatch.out" 2>&1 &
+wpid=$!
+for _ in $(seq 1 50); do
+	grep -q "answered $LAND yes" "$tmp/askwatch.out" && break
+	sleep 0.2
+done
+kill "$wpid" 2>/dev/null || true
+wait "$wpid" 2>/dev/null || true
+has "$(cat "$tmp/askwatch.out")" "answered $LAND yes" || die "alice's watch did not say the answer: $(cat "$tmp/askwatch.out")"
+ok "alice's watch, from the beginning, says it was answered"
+
+# ── resolver: a service answers for whoever grants it, and asks onward first ─────
+# dan runs a service, installs it as a resolver, and carol lets it answer for her. alice asks carol;
+# the service, acting as the resolver, sees the ask it serves, asks erin onward, and erin's yes is
+# carried back as carol's answer, through the resolver.
+step "resolver: carol's desk answers for her, after asking erin"
+VERSE_USER=user:dan v resolver add - >/dev/null <<'TONY' || die "dan could not install the resolver"
+name: carols-desk
+match: {}
+method: {driver: service}
+TONY
+has "$(VERSE_USER=user:carol v resolver grant carols-desk)" "answers for you" || die "carol could not grant the desk"
+SHIP=$(VERSE_USER=user:alice v ask ship -q "Ship it?" --to user:carol) || die "alice could not ask carol"
+SHIP=${SHIP#asked }
+SHIP=${SHIP%%:*}
+desk() { curl -s -H 'Verse-Principal: user:dan' -H 'Verse-Resolver: carols-desk' "$@"; }
+served=
+for _ in $(seq 1 100); do
+	if has "$(desk "http://$ADDR/resolvers/carols-desk/asks" || true)" "$SHIP"; then
+		served=1
+		break
+	fi
+	sleep 0.2
+done
+[ -n "$served" ] || die "the desk never served alice's ask: $(desk "http://$ADDR/resolvers/carols-desk/asks")"
+has "$(desk "http://$ADDR/resolvers/carols-desk/asks")" "user:carol" || die "the desk does not say it serves the ask for carol"
+ok "the desk, acting as the resolver, serves $SHIP for carol"
+UP=$(desk -H 'Content-Type: application/tony' -d "{name: up, question: \"Ship alice's?\", answerers: [user:erin], serves: $SHIP}" \
+	"http://$ADDR/asks" | sed -n 's/^id:[[:space:]]*//p')
+[ -n "$UP" ] || die "the desk could not raise an onward ask"
+upposed=
+for _ in $(seq 1 100); do
+	if has "$(VERSE_USER=user:erin v question 2>/dev/null || true)" "$UP"; then
+		upposed=1
+		break
+	fi
+	sleep 0.2
+done
+[ -n "$upposed" ] || die "the onward ask never reached erin's docket"
+ok "the desk asked erin onward, as $UP"
+v question "$UP" --answer proceed --as user:erin >/dev/null || die "erin could not answer the onward ask"
+carried=
+for _ in $(seq 1 100); do
+	if haskv "$(VERSE_USER=user:alice v ask ship 2>/dev/null || true)" answer yes; then
+		carried=1
+		break
+	fi
+	sleep 0.2
+done
+[ -n "$carried" ] || die "erin's yes was never carried back to alice's ask: $(VERSE_USER=user:alice v data verse ask "$SHIP")"
+rec=$(VERSE_USER=user:alice v data verse ask "$SHIP")
+haskv "$rec" by "user:carol" && has "$rec" "via:verse.resolvers.carols-desk" ||
+	die "alice's ask was not answered as carol's, through the desk: $rec"
+ok "erin's yes came back on alice's ask as carol's, via the desk"
 
 # ── suspend: a charter holds, and a resume acts once on the world as it stands ──
 # A package, so the charter has an address to suspend by: a level rule and a gated one. While it
@@ -479,7 +578,7 @@ v data smoke-susp level 1 --put '{stage: open}' >/dev/null || die "data --put fa
 v data smoke-susp gated 1 --put '{stage: open}' >/dev/null || die "data --put failed"
 sleep 1
 haskv "$(v data smoke-susp level 1)" stage open || die "a suspended level rule fired"
-has "$(v gate)" 'smoke-susp' && die "a suspended gated rule put a question on the docket"
+has "$(v question --all)" 'smoke-susp' && die "a suspended gated rule put a question on the docket"
 st=$(v status)
 has "$st" "suspensions:" && haskv "$st" count 1 || die "status does not count the suspension: $st"
 ok "nothing fired, nothing was asked, and status counts suspensions: {count: 1}"
@@ -497,7 +596,7 @@ done
 [ -n "$settled" ] || die "the resumed level rule did not act on what matches it"
 asked=
 for _ in $(seq 1 100); do
-	if has "$(v gate)" 'smoke-susp'; then
+	if has "$(v question --all)" 'smoke-susp'; then
 		asked=1
 		break
 	fi
@@ -804,8 +903,8 @@ ok "seed-demo.sh: the charter, its entities, and a gate waiting"
 has "$(q "$BIN" perms demo)" '@localhost' || die "what the quick start wrote is not the local user's: $(q "$BIN" perms demo)"
 ok "what it wrote is the local user's"
 # The answer the script says to type next, as it says to type it: no --as.
-GID=$(q "$BIN" gate -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | head -1)
-q "$BIN" gate approve "$GID" >/dev/null || die "the gate could not be answered with nobody configured"
+GID=$(q "$BIN" question -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | head -1)
+q "$BIN" question approve "$GID" >/dev/null || die "the gate could not be answered with nobody configured"
 ok "the waiting gate is answered with no --as"
 q ./scripts/seed-demo.sh --clean >/dev/null 2>&1 || die "seed-demo.sh --clean failed"
 

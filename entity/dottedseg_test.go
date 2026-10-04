@@ -4,7 +4,7 @@ import "testing"
 
 // A SEGMENT MAY HOLD A DOT, and the store has to write and read it as one segment. That is not
 // a corner: a question id is `verse.trigger.<rule>.<gate>~<hash>`, and it lands as the last
-// segment of `verse.gate.question.<id>` — so an id that reads as a path when it is a name means
+// segment of `verse.ask.<id>` — so an id that reads as a path when it is a name means
 // a docket that publishes a question nobody can look up.
 func TestAStoredSegmentMayHoldADot(t *testing.T) {
 	s := openStore(t)

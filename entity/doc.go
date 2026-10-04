@@ -640,8 +640,8 @@ func AtDepth(at *kpath.KPath) int {
 }
 
 // Below lists the nodes exactly `levels` segments beneath the place at — the records of a registry
-// whose layout the system decides (`verse.gate.question.<id>` is one level below
-// `verse.gate.question`; `verse.resolvers.<name>` two below `verse.resolvers`). The
+// whose layout the system decides (`verse.ask.<id>` is one level below
+// `verse.ask`; `verse.resolvers.<name>` two below `verse.resolvers`). The
 // registry says how far below its place its records stand; nothing supplies a default.
 func Below(r Reader, pred func(Ref) bool, levels int, at ...string) []Entity {
 	return r.ListAt(at, len(at)+levels, pred)

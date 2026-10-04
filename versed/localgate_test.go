@@ -11,7 +11,6 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/resolver"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/task/taskd"
 )
@@ -40,9 +39,7 @@ func waitQuestion(t *testing.T, srv *Server, taskID string) string {
 	t.Helper()
 	deadline := time.After(3 * time.Second)
 	for {
-		for _, ent := range srv.Store.List(func(ref entity.Ref) bool {
-			return mirror.IsQuestion(ref)
-		}) {
+		for _, ent := range entity.Below(srv.Store, mirror.IsQuestion, 1, entity.VerseRoot, mirror.AskSystem) {
 			p := entity.ToObj(ent.Payload)
 			if p["task"] == taskID && p["status"] == mirror.QuestionPending {
 				return ent.Ref.Name()
@@ -51,51 +48,6 @@ func waitQuestion(t *testing.T, srv *Server, taskID string) string {
 		select {
 		case <-deadline:
 			t.Fatalf("%s never posed a question", taskID)
-		case <-time.After(5 * time.Millisecond):
-		}
-	}
-}
-
-// waitOwned waits for a question to be OWNED, not merely posed.
-//
-// The two are separate writes: the question is posted `pending` and the standing layer takes it
-// a moment later. A test that reads `resolver` the instant waitQuestion returns is racing that
-// second write, and on a loaded machine it loses — which is the same shape 602d25e3 fixed for
-// the tests that read the instant a route answered 204 (git-issue nkptp9b3h12ksx3kg9n0).
-func waitOwned(t *testing.T, srv *Server, qid string) map[string]any {
-	t.Helper()
-	deadline := time.After(5 * time.Second)
-	for {
-		p := question(t, srv, qid)
-		if p["resolver"] != nil {
-			return p
-		}
-		select {
-		case <-deadline:
-			t.Fatalf("question %s was never owned: %+v", qid, p)
-		case <-time.After(5 * time.Millisecond):
-		}
-	}
-}
-
-// waitCover waits for a COVER to be minted and returns its id.
-//
-// A question and the cover beside it are two writes: mirror.Cover mints the cover when the
-// question is posed, and a test that builds a cover id and addresses it the moment
-// waitQuestion returns is racing that second write. Every route under
-// /resolvers/cover/{id} answers 404 until it lands, so the race shows up as "no such
-// cover" rather than as a wait (git-issue nkptp9b3h12ksx3kg9n0).
-func waitCover(t *testing.T, srv *Server, name, stream string) string {
-	t.Helper()
-	ref := resolver.CoverRef(name, stream)
-	deadline := time.After(5 * time.Second)
-	for {
-		if _, ok, _ := srv.Store.Get(ref); ok {
-			return ref.Name()
-		}
-		select {
-		case <-deadline:
-			t.Fatalf("cover %s was never minted", ref.Name())
 		case <-time.After(5 * time.Millisecond):
 		}
 	}
@@ -212,8 +164,12 @@ func TestAHostedTasksControlIsRecordedAsItsRequester(t *testing.T) {
 		"say":    send(http.MethodPost, "/tasks/local-2/say", `{instruction: "hello", by: "`+tester+`"}`),
 	} {
 		resp.Body.Close()
-		if resp.StatusCode != http.StatusNoContent {
-			t.Errorf("%s as the requester: %s, want 204", name, resp.Status)
+		want := http.StatusNoContent
+		if name == "say" {
+			want = http.StatusOK // an ask to the task, answered with its id
+		}
+		if resp.StatusCode != want {
+			t.Errorf("%s as the requester: %s, want %d", name, resp.Status, want)
 		}
 	}
 	deadline := time.Now().Add(3 * time.Second)

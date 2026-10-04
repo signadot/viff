@@ -35,10 +35,6 @@ type Launch struct {
 	// Empty = the driver's own default frame.
 	Frame string
 
-	// Resolver is the resolver that answers this task's gates — `verse.resolvers.<name>`.
-	// Empty means none is named, and its questions go to whoever reads the docket.
-	Resolver string
-
 	// Retain is how many read-plane events to keep for a resuming reader; 0 = the runtime's
 	// default. It is per-spawn because the right number is a property of the work: see
 	// launch.Spec.Retain.
@@ -134,7 +130,7 @@ type Launch struct {
 	// global runtime shared by baseline and every scoped engine, so the gate questions it
 	// posts went to whichever store the ONE OnQuestion callback closed over — baseline —
 	// while the task's own `task:instance` record went to the spawning scope. One run,
-	// two records, two different stores: `verse gates` showed a pending gate whose task
+	// two records, two different stores: `verse question` showed a pending gate whose task
 	// `verse ps` would not list, one dev's decision appeared on every other dev's docket,
 	// and the question named `local:dir-status-<scope>:*` entities the reader could not
 	// read (git-issue kwxxm8cth12ksn99fhn0).
@@ -145,6 +141,12 @@ type Launch struct {
 	// scopes races the very first gate, since a task can ask something before its own
 	// record is written. The launch is the one thing that exists before the task does.
 	Scope string
+
+	// Answerers is whom a question of this task that names nobody is held out to, in a gate's
+	// grammar, so PrincipalAnswerer asks whom the task acts for. Empty leaves such a question to
+	// the docket. Set by the launches that act for a person (an ask's `then`, a rule's
+	// `as: subject`), whose tasks' own questions are that person's to answer.
+	Answerers []string
 
 	// Occurrence is the store revision this RUN is about — the commit that woke the firing,
 	// or the revision a hand-spawned run's record was created at. Zero when nothing knows.
@@ -276,6 +278,8 @@ var (
 	// ErrAlreadyAnswered — nobody answered — and not ErrNoSuchDecision, because the gate was
 	// real and the answerer is not looking at a typo.
 	ErrTaskEnded = errors.New("the task ended with this gate unanswered")
+	// ErrEnded: the task is over, so nothing said to it will be heard.
+	ErrEnded = errors.New("the task has ended")
 	// ErrFenced: a stale claim. The caller's generation was displaced.
 	ErrFenced = errors.New("fenced: stale claim")
 	// ErrUnsupported: this runner has no such face at all.
@@ -293,7 +297,9 @@ type Handle interface {
 	Pause() error
 	Resume() error
 	Cancel(reason string) error
-	Steer(instruction, by string) error
+	// Steer says words to the task, taken at its next boundary; ask is the ask they are, echoed
+	// on the say frame when they are taken, and empty for words nobody tracks.
+	Steer(instruction, by, ask string) error
 	SetVector(v *Vector, by string) error
 	Result() string
 	// Err is why a terminal task failed or was cancelled — independent of Result, not
@@ -333,10 +339,10 @@ func (f failedHandle) SubscribeSince(int64) (<-chan Frame, func()) { return f.Su
 // Control on work that never started is refused rather than silently accepted. There is no
 // task to pause, and saying so is the difference between "your cancel landed" and "there
 // was never anything there".
-func (failedHandle) Pause() error                    { return ErrNoSuchTask }
-func (failedHandle) Resume() error                   { return ErrNoSuchTask }
-func (failedHandle) Cancel(string) error             { return ErrNoSuchTask }
-func (failedHandle) Steer(string, string) error      { return ErrNoSuchTask }
-func (failedHandle) SetVector(*Vector, string) error { return ErrNoSuchTask }
-func (failedHandle) Result() string                  { return "" }
-func (f failedHandle) Err() string                   { return f.err }
+func (failedHandle) Pause() error                       { return ErrNoSuchTask }
+func (failedHandle) Resume() error                      { return ErrNoSuchTask }
+func (failedHandle) Cancel(string) error                { return ErrNoSuchTask }
+func (failedHandle) Steer(string, string, string) error { return ErrNoSuchTask }
+func (failedHandle) SetVector(*Vector, string) error    { return ErrNoSuchTask }
+func (failedHandle) Result() string                     { return "" }
+func (f failedHandle) Err() string                      { return f.err }

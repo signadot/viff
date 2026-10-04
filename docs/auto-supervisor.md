@@ -23,7 +23,7 @@ The supervisor can approve, but the charter stops it from approving everything, 
 - A supervisor that fails to decide promotes the change.
 
 The pattern here is a simple one. For supervision as a live conversation, and not as a rule
-fixed at install, see [attached resolvers](attached-resolvers.md).
+fixed at install, see [resolvers](attached-resolvers.md).
 
 A test drives the charter below through each of its routes
 ([`trigger/supervise_test.go`](https://github.com/signadot/verse/blob/main/trigger/supervise_test.go)).
@@ -36,7 +36,7 @@ different:
 
 | | what it decides | who writes it |
 |---|---|---|
-| `task.Supervisor` (+ a `Resolver`) | whether *one tool use* inside a running task proceeds | Go code, per runtime. Or an [attached resolver](attached-resolvers.md), which is what the `resolver` field of a spawn names. |
+| `task.Supervisor` (+ a `Resolver`) | whether *one tool use* inside a running task proceeds | Go code, per runtime. Its gates ask whom they name, and a [resolver](attached-resolvers.md) they grant may answer for them. |
 | the supervisor here | whether *a firing* proceeds. This is the question at the level of the charter that a gate would put to a person. | a rule of a charter, which you can install over the wire |
 
 An automatic supervisor of the second kind needs no new machinery. A charter can already do each
@@ -107,7 +107,7 @@ verse c -a -f - <<'TONY'
   action:
     patch: { stage: landed }
 
-- name: land-ask               # promoted: one human decision, in `verse gate`
+- name: land-ask               # promoted: one human decision, in `verse question`
   condition:
     subject:
       path: "change.pr.*"
@@ -134,7 +134,7 @@ The charter has five [rules](glossary.md#rule). The routing between them is the 
 | `approve`, risk `low` | `green` | `land-auto` fires. No gate poses a question. | the supervisor |
 | `approve`, risk `medium`/`high` | any | `remit` rewrites the decision to `escalate`, then `land-ask` fires | the charter, over the supervisor |
 | `approve`, risk `low` | not `green` | the same: `remit`, then `land-ask` | the charter, over the supervisor |
-| `escalate` | any | `land-ask` fires, with one `sign-off` gate in `verse gate` | the supervisor, promoting |
+| `escalate` | any | `land-ask` fires, with one `sign-off` gate in `verse question` | the supervisor, promoting |
 | `reject` | any | `close` fires | the supervisor |
 | nothing (the run failed) | any | `onFailed` writes `escalate`, then `land-ask` fires | nobody: this is the default |
 
@@ -232,7 +232,7 @@ verse data change pr 7 -put '{stage: assessed, tests: green, review: {decision: 
 verse data change pr 7
 # payload:
 #   review: { decision: approve, risk: low }
-#   stage: landed            ← land-auto fired; `verse gate` is empty
+#   stage: landed            ← land-auto fired; `verse question` is empty
 ```
 
 Next, write the same approval on a change that CI does not support:
@@ -247,14 +247,14 @@ verse data change pr 8
 #     risk: low
 #     why: "docs only"       ← the supervisor's reasoning survives the override
 #   stage: assessed          ← waiting on a person
-verse gate
+verse question
 # - gate: sign-off
 #   id: verse.trigger.land-ask.sign-off~090ea377
 #   mode: ASK
 #   origin: land-ask
 #   reason: "trigger land-ask gate sign-off on change.pr.8"
 #   subject: change.pr.8
-verse gate approve verse.trigger.land-ask.sign-off~090ea377 -as walter@example.com
+verse question approve verse.trigger.land-ask.sign-off~090ea377 --as walter@example.com
 # approved verse.trigger.land-ask.sign-off~090ea377
 verse data change pr 8      # stage: landed
 ```
@@ -277,14 +277,13 @@ supervisor. Three things show the result:
   The nearby clocks do not fit:
   - A gate's `deadline` guards a firing that has not happened. Promotion on silence needs a
     deadline on a spawn, and a spawn has no deadline.
-  - A [resolver](attached-resolvers.md) that owns a gate has a deadline,
-    `deadline: {within, then}`. Silence past it escalates to the layer above. But that deadline
-    is a clock on a question nobody answered, not on a task that stopped reporting.
+  - A [resolver](attached-resolvers.md)'s onward ask has a clock inside the ask it serves. But
+    that is a clock on a question nobody answered, not on a task that stopped reporting.
 - **The decision is a field, not a ballot.** `review.by` records which rule's supervisor wrote
   the decision. That is weaker than what a gate gives. A gate with `need: 2` keeps a
   [ballot](glossary.md#ballot) for each voter, and each ballot names who cast it
-  ([§5 of the tutorial](tutorial.md#5-gates-and-the-docket)). A principal of kind `agent` can
-  cast one of those ballots, as a person can (`verse gate approve <id> -as agent:<name>`). So
+  ([§4 of the tutorial](tutorial.md#4-gates-and-the-docket)). A principal of kind `agent` can
+  cast one of those ballots, as a person can (`verse question approve <id> --as agent:<name>`). So
   an agent can be one of the two approvals on a gate with `need: 2`. The supervisor in this
   example is a task that writes a field, and it casts no ballot.
 - **No second opinion, as written.** Two supervisors that must agree would be one gate with
@@ -292,9 +291,8 @@ supervisor. Three things show the result:
   `assess`-style rules that write to different fields, with `land-auto` requiring both.
 - **The inside is a different layer.** The supervisor here decides whether a change lands, by
   writing to the subject. What the *worker* agent may do while it produces the change is the
-  other layer of supervision. A charter names a resolver for that layer: `gating.resolver` for
-  a rule's own gates, and `spawn.resolver` for the rule's run. See
-  [attached resolvers](attached-resolvers.md). The two layers compose. This charter decides
+  other layer of supervision: the run's gates, which ask whom they name, and the
+  [resolvers](attached-resolvers.md) those people grant. The two layers compose. This charter decides
   about the change. A resolver decides about the actions taken to produce it.
 
 ## Why it is this way

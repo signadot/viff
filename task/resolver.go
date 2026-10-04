@@ -36,6 +36,13 @@ type Resolution struct {
 	// whether or not Proceed, so a denial can carry a "do this instead". Requires a
 	// driver that holds a Conversation; ignored otherwise.
 	Steer []string
+	// Edit is the edit of the ask this answers, where the answerer named one (GateQuestion.Edit);
+	// zero is the edit standing when it arrives.
+	Edit int
+	// Via is the resolver an answer came through, `via:verse.resolvers.<name>`, where By is the
+	// party it answered for (9ce3bva0, stage 4): the ballot is theirs, given by the resolver
+	// they granted. Empty for an answer somebody gave as themselves.
+	Via string
 }
 
 // Chosen is the option this resolution settled on: Choice when it was set, and the default

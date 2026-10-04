@@ -5,7 +5,7 @@
 # a live gate waiting for you the moment it finishes.
 #
 # It is the missing first five minutes. `verse up` gives you an empty verse, and an empty
-# verse looks the same as a broken one: `verse data`, `verse charter` and `verse gate`
+# verse looks the same as a broken one: `verse data`, `verse charter` and `verse question`
 # all answer with nothing. This seeds enough that they don't, and prints what to type next.
 #
 # Unlike smoke.sh — which builds its own binaries and runs its own isolated server — this
@@ -165,12 +165,12 @@ done
 
 GID=
 for _ in $(seq 1 50); do
-	GID=$(v gate -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | head -1)
+	GID=$(v question -o tony | sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | head -1)
 	[ -n "$GID" ] && break
 	sleep 0.2
 done
 [ -n "$GID" ] && ok "demo-review is holding demo.pr.1 at a gate: $GID" ||
-	printf '  \033[33m~\033[0m no gate yet — `verse gate` in a moment\n'
+	printf '  \033[33m~\033[0m no gate yet — `verse question` in a moment\n'
 
 scope_note=""
 [ ${#scope[@]} -gt 0 ] && scope_note=" ${scope[*]}"
@@ -180,8 +180,8 @@ seeded. What to type next:
 
   $BIN$scope_note data                        what is there (also: data demo)
   $BIN$scope_note charter                      the charter you just installed
-  $BIN$scope_note gates                        the decision demo-review is holding
-  $BIN$scope_note gate approve ${GID:-<id>}
+  $BIN$scope_note question                     the decision demo-review is holding
+  $BIN$scope_note question approve ${GID:-<id>}
                                         …and it spawns a 45s review task:
   $BIN$scope_note flows                        the subjects with live work
   $BIN$scope_note flow show 'demo.pr."1"'      what is happening to this one, and what comes next

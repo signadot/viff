@@ -138,7 +138,7 @@ The store also knows who wrote every commit. How it keeps the author is in
 
 **What is not yours to write.** Verse refuses `verse data -put` under `verse.`, whatever you
 hold. You write `verse` through the verbs that own it (`verse c -a`, `verse task run`,
-`verse gate approve`, `verse perms`). Beneath each verb, the store checks the write against its
+`verse question approve`, `verse perms`). Beneath each verb, the store checks the write against its
 place. So nothing that reaches the store can stamp a task or answer a question for you.
 
 Verse refuses `verse data verse perms` too. A person reads records with `verse perms`, never
@@ -174,9 +174,9 @@ When a worker claims the task, versed grants it `read-write` and `control` on th
 this run. Every report after that is written as the worker. That grant stops at the task's
 record.
 
-A [question](glossary.md#question) that the task raises stands at its own address,
-`verse.gate.question.<id>`. A grant on the task does not reach through the task's record to the
-question. So the executor may not answer its own gate ([perms.md](perms.md#grants)).
+A [question](glossary.md#question) that the task raises is an ask, at its own address,
+`verse.ask.<id>`. A grant on the task does not reach through the task's record to the
+ask. So the executor may not answer its own gate ([perms.md](perms.md#grants)).
 
 **What you may say about its gates.** You may say four things, and they answer different
 questions:
@@ -199,7 +199,6 @@ questions:
   question's `read-write` line, in place of the docket's default. If you leave it off, the
   default stands. In the seed the default is `[user:*,
   agent:*]`, which is any person.
-- `-resolver <resolver>` holds the run's questions out to a resolver instead ([step 5](#step-5-a-gate-with-a-resolver-behind-it)).
 - `-as <who>` is who the run is. So it is who owns the run and co-owns what the run asks.
 
 What the task may *do* in the world is a different axis. Examples are to write files, to push,
@@ -215,9 +214,9 @@ names. Verse refuses the runner ([perms.md](perms.md#tasks-and-gates)).
 Try it as somebody else, and read the refusal:
 
 ```
-VERSE_USER=x@example.com verse gate <id> -answer proceed
-→ 403 refused: user:x@example.com holds read at verse.gate.question."<id>" and answering it
-  needs read-write; the nearest owner on record is system:docket at verse.gate.question."<id>"
+VERSE_USER=x@example.com verse question <id> --answer proceed
+→ 403 refused: user:x@example.com holds read at verse.ask."<id>" and answering it
+  needs read-write; the nearest owner on record is system:docket at verse.ask."<id>"
 ```
 
 `x` holds `read` because the docket's default gave every question `read: ["*"]`. `x` does not
@@ -240,74 +239,45 @@ repository.
 
 ## Step 4: a gate with nobody behind it
 
-A charter gate poses the same record as a task's gate, at `verse.gate.question.<id>`.
-`verse perms verse gate question <id>` shows who may see it, who may answer it, and who owns it.
-Where the gate names no `answerers:`, any person or agent may answer.
+A charter gate raises the same record as a task's gate: an ask, at `verse.ask.<id>`.
+`verse perms verse ask <id>` shows who may see it, who may answer it, and who owns it.
+Where the gate names no `answerers:`, whoever may write what the question is about may answer,
+and whoever may read it sees it. The `answerers:` a gate names must be able to read what it is
+about, or the gate is refused when it fires.
 
 - To narrow the questions posed later, name `answerers` on the gate in the charter, and install
   the charter again. The install refuses a gate that nobody could settle.
 - To narrow a question that stands, write its record with `verse perms`. You co-own it through
   the rule.
-- To hand a question on, run `verse gate escalate <id>`. It goes to the next rung of the
-  [ladder](glossary.md#ladder).
+- To bring somebody else in, ask them: an ask of your own, about the same thing.
 
 [reference/perms.md](reference/perms.md#questions) has the rules. How this step reads on a
 deployed verse is in [perms.md](platform/perms.md#step-4-a-gate-with-nobody-behind-it), in the
 repository.
 
-## Step 5: a gate with a resolver behind it
+## Step 5: a resolver that answers for somebody
 
-A [resolver](glossary.md#resolver) ([reference/resolvers.md](reference/resolvers.md)) is the
-installed record of who answers questions about a subject. Its answerer is a service that dials
-in, a person, or a group.
-
-A resolver is a grant with a condition in front of it:
-
-- The condition is `condition.subject`, a match over the entities whose questions the resolver
-  takes. It can also be `byRef`, so that a spawn's `-resolver` or a rule's `gating.resolver`
-  can name the resolver.
-- The grant is what holding a question out to the resolver does to the record:
+A [resolver](glossary.md#resolver) ([Resolvers](attached-resolvers.md)) is an installed service
+that answers asks for whoever grants it. It owns nothing, and nothing is moved to it: a party lets
+it answer for them with an `answer` grant, and may still answer for themselves.
 
 ```sh
 verse resolver add - <<'EOF'
-name: ani
-condition:
-  subject: "verse-dev.merge.train.*"
-method: {driver: person, who: peggy@example.com}
-deadline: {within: "4h", then: escalate}
+name: ani-desk
+match: {about: "verse-dev.merge.train.*"}
+method: {driver: service}
 EOF
-verse gate escalate verse.trigger.train-run.merge-to-main~adaa5e99 -as user:walter@example.com
+verse resolver grant ani-desk -as user:peggy@example.com
 ```
 
-Holding a question out to a resolver **replaces the `read-write` line** with whoever answers as
-the resolver:
+The grant is ani's, at `verse.for.user:peggy@example.com`. From then on, an ask put to ani about a
+merge train is one `ani-desk` serves: it reads it (`answering:` on the ask's `read`), and its
+answer, made as the resolver, is ani's ballot, with `via` naming the resolver. A place's owner
+on record grants at the place, for the asks about it that name nobody. Two resolvers never answer for one
+party on one ask; a grant that would let them is refused.
 
-| Driver | Who is on the line |
-|---|---|
-| `url` service | `via:` the resolver's address. The service's cover answers as it. |
-| `person` | the person |
-| `group` | `group:<name>`. Its members answer, each as themselves. |
-
-The default `[user:*, agent:*]` line goes with it. So nobody outside the resolver answers any
-more, except the co-owners. They hold the right by ownership, not by the line. `read` stays as
-the default gave it. How the line comes back when the question is released is in
-[reference/perms.md](reference/perms.md#questions).
-
-**The ladder.** Escalation walks the standing resolvers that match the subject, **by name**. It
-goes from the resolver the question is on to the next, and past the last one to the open docket.
-A resolver's `deadline: {within, then: escalate}` walks the same rung by itself when the
-question stands unanswered that long. So a person who is away does not hold a question forever.
-
-A question's own `deadline`, from the gate, is a different clock. It *settles* the question on
-its default. Both deadlines are on the record, and the earlier one fires first.
-
-**What a service holds.** A `url` resolver answers as `via:verse.resolvers.<name>`, and that
-name is what the question's line holds. How a service answers through a
-[cover](glossary.md#cover-of-a-resolver) is in
+**What a service holds.** A resolver's service is whoever installed it, acting as it. How is in
 [perms.md](platform/perms.md#what-a-resolver-service-holds), in the repository.
-
-`exclusive` on a resolver decides whose answer *counts* when several may answer. It is not a
-security boundary. The line is the boundary.
 
 **Groups, here and on a gate.** A [group](glossary.md#group) is a named set of grantees, and
 `group:<name>` is how anything names it:
@@ -321,15 +291,14 @@ A member is any [grantee](reference/perms.md#the-grammar), another group include
 gives the grammar. The group is its maker's to change. How verse reads the members when it
 checks a grant is in [perms.md](perms.md#grants).
 
-A group resolver, `method: {driver: group, group: group:release}`, and a gate's
-`answerers: [group:release]` hold a question out to the same people. The difference: the
-resolver is a rung on the ladder, and the gate's line is not.
+A gate's `answerers: [group:release]` puts its question to the group's members, each answering
+as themselves, or through a resolver they grant.
 
 ## What to check when something surprises you
 
 - **A refusal names the record that decided.** Read that record with `verse perms <path>`. If you
   may not read it, you are outside the node's `read`. That is the first fact.
-- **A question is not under the task.** Look at `verse.gate.question.<id>`, not at the task.
+- **A question is not under the task.** It is an ask: look at `verse.ask.<id>`, not at the task.
   Verse refuses the runner there by design.
 - **A rule acts as its installer.** A firing that verse refuses, or a rule that never wakes, is
   usually the installer's own grants seen through the rule.

@@ -27,7 +27,7 @@ func TestACharterRuleFiresOnAPendingQuestion(t *testing.T) {
 	if err := codec.Unmarshal([]byte(`{
 		name: escalate-writes,
 		condition: {
-			subject: {path: "verse.gate.question.*", value:  {status: pending, effects: {verbs: [write]}}},
+			subject: {path: "verse.ask.*", value:  {status: pending, effects: {verbs: [write]}}},
 		},
 		action: {patch: {escalated: true}},
 	}`), &trig, codec.Tony); err != nil {

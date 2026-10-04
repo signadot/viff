@@ -144,7 +144,7 @@ func TestAnOverdueDeadlineSettlesWhenTheDocketIsRead(t *testing.T) {
 	answered := raiseWithDeadline(t, srv, id, "10m", "deny")
 	backdate(t, srv.Store, id)
 
-	resp, err := http.Get(ts.URL + "/gates")
+	resp, err := http.Get(ts.URL + "/asks?all=true")
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}

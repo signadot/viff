@@ -37,8 +37,10 @@ A [principal](glossary.md#principal) is a name with its kind in front, such as
 Verse itself is `system:`, and something installed that acts is `via:<address>` (see below).
 
 A [grantee](glossary.md#grantee) is who a grant is to. A grantee is a principal, or a set of
-principals: `*` for everyone, `<kind>:*` for every principal of a kind, or `group:<name>` for a
-group's members. [The grammar](reference/perms.md#the-grammar) is in the reference.
+principals: `*` for everyone, `<kind>:*` for every principal of a kind, `group:<name>` for a
+group's members, `audience:<address>` for whoever holds the same level at that address, or
+`answering:<address>` for the resolvers answering for it.
+[The grammar](reference/perms.md#the-grammar) is in the reference.
 
 Every request names who makes it. The CLI sends the `user:` or `agent:` in its config, and
 `-as` names somebody else. Verse refuses a request that writes and names nobody.
@@ -130,6 +132,13 @@ The charter a deployment ships is installed as the system and acts as the system
 that works is in [perms.md](platform/perms.md#installed-things-and-their-records), in the
 repository.
 
+A rule's spawn written `as: subject` acts for the owner of the record that fired it. Its task acts
+as `pair:<owner> <installer>`, which may do what the owner may: the rule is named so the record
+says what the task acted through, and adds no authority and takes none away. A rule may say `as:
+subject` only over a place its installer owns, so it cannot act as somebody whose records it
+merely selects ([the action of a rule](reference/action.md#as-subject--a-task-for-whoever-wrote-the-record)).
+A pair is a principal and never a grantee: nothing is granted to one.
+
 ## The top of the tree
 
 The root is a node with a record, like any other node. `verse perms --root` shows it. In an
@@ -145,7 +154,7 @@ the repository.
 Everything under `verse` belongs to the system. This includes rules, tasks, runners, ios,
 resolvers, schedules, open questions, and the records themselves. You do not write there
 directly. You make things with the verbs that own them (`charter -a`, `task run`, `io add`,
-`gate approve`), and what a verb makes for you is yours.
+`question approve`), and what a verb makes for you is yours.
 
 In an open verse, anybody may use those verbs. Anybody may read what stands under `verse`,
 except the records, which you read with `verse perms`. A rule may watch verse's own half and
@@ -159,8 +168,13 @@ A [task](glossary.md#task) belongs to its spawner. The runner that works the tas
 These principals may answer a gate's [question](glossary.md#question):
 
 - whoever owns what asked it: the task's owner, or the charter's owner;
-- whoever the gate names as `answerers`;
-- any person or agent, where the gate names nobody.
+- whoever the gate names as `answerers`, each of whom must be able to read what the question is
+  about;
+- where the gate names nobody, whoever may write what the question is about, or any person or
+  agent where it is about nothing.
+
+Nobody answers a question about something they cannot read. A question about something is read
+by whoever may read that thing.
 
 Whoever answers as a resolver answers a question held out to that resolver. The runner that
 works a task cannot answer that task's gate. The runner's grant is on the task, and a question

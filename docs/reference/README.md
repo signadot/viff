@@ -65,16 +65,17 @@ verse
                                              tony document stream and parses back as one
 
   Each collection is ONE command, named in the singular. Bare it LISTS, and with a verb it
-  acts on one member: `verse gate` shows the pending decisions, `verse gate approve <id>`
-  answers one. The plural is an alias of that same command — `verse gates`, `verse tasks`
-  — so both spellings do the same thing. `verse gate list` is an error: bare it lists.
+  acts on one member: `verse question` shows the questions waiting on you,
+  `verse question approve <id>` answers one. The plural is an alias of that same command —
+  `verse questions`, `verse tasks` — so both spellings do the same thing. `verse question list`
+  is an error: bare it lists.
 
   EVERY LISTING FILTERS, with the same two flags: `-if <match>` keeps the items that match,
   `-trim <match>` writes only the parts its document names. They compose, and an empty result
   is an answer rather than an error (exit 0).
 
     verse ps -if '{status: running}' -trim '{id status}'
-    verse gate -if '{gate: provider}'
+    verse question -if '{gate: provider}'
     verse data demo pr '*' -trim '{stage}'         # …per pr: the `*` is what makes each one an item
     verse watch demo -trim '{at to}'
 
@@ -131,23 +132,58 @@ verse
                                              place of child-grants. Refused where it stands.
                                              entities.md#creating-with-grants
           An address is one kinded path in two spellings. entities.md#addressing
-  gate (gates)                               the docket: every question waiting on somebody —
+  question (questions, qs, gate, gates)      the questions waiting on you: each ask whose
+                                             waitingOn names you and that you did not raise —
                                              a gate's, one of a task's actions, a provider
-                                             selection's — with its options and ballots
+                                             selection's — with its options and ballots. One a
+                                             resolver serves for you is left out
+          -served                            …and those a resolver serves for you, each
+                                             marked servedBy
+          -all                               the docket: every pending ask you can read,
+                                             whoever raised it and whoever it waits on
           <id>                               …just that one record, as it stands: options,
                                              ballots, deadline, outcome. ONE TOKEN, its id
-          <id> -answer <option> -as <who> [-say <text>] [-override]
-                                             answer it by option. -override answers over an
-                                             exclusive resolver, and the record names you both.
-                                             A yes-or-no question's
+          <id> -answer <option> -as <who> [-say <text>] [-force]
+                                             answer it by option. A yes-or-no question's
                                              options are proceed and deny; a selection's are
                                              its doers. A question that takes more than one
                                              voice records the ballot and says where the
-                                             tally stands (`1 of 2 for proceed`)
+                                             tally stands (`1 of 2 for proceed`). -force
+                                             answers one a resolver serves for you
           approve <id> [-say <text>] · deny <id> [-say <text>]
           approve: y, yes · deny: n, no · -say: -s — the two default options, as verbs
-          escalate <id> [-as <who>] [-say <why>]     hand it on to the next resolver matching
-                                             its subject, or to the docket
+          -watch [-since <rev>]              a line when a question starts waiting on you,
+                                             and when it settles. Runs until stopped; -since
+                                             replays from a revision, as far back as the store
+                                             keeps its log in full
+  ask (asks)                                 your asks: each with its id, question, who is
+                                             asked, its date, and its answer or pending.
+                                             ../asking.md
+          <name|id>                          …just that one, and whom it waits on. A name used
+                                             for two asks is refused with both ids. Answered
+                                             by whom it asks with `question <id> -answer`
+          <name> -question (-q) <text> [-to <who>,…] [-due <when>] [-then <value>] [-else <value>] [-about <path>]
+                 [-keep <duration>]          ask it, under an id derived from the name. Who is
+                                             asked is named in the grammar a grant uses; the
+                                             date is RFC 3339 or a duration from now (48h); what
+                                             follows a yes is one key, {prompt: <text>},
+                                             {calls: [...]}, {answer: {ask, choice}} or
+                                             {ask: {...}}, or - / @<file> to read it; -else is
+                                             what follows a no, answered or by silence, in the
+                                             same terms; -keep is how long it stands once
+                                             settled (a week)
+          <name|id> -due <when>              move its date while it waits; asks nothing again
+          <name|id> -then <value> · -else <value> · -to <who>,…
+                                             change what it asks while it waits: it is asked
+                                             again as its next edit, and answers to the edit
+                                             before don't count
+          <name|id> -withdraw                take it back: withdrawn from the docket and
+                                             removed
+          -watch [-since <rev>]              a line when an ask of yours is made, is made
+                                             again, settles or is withdrawn; what waits on
+                                             you is `question -watch`. Runs until stopped;
+                                             -since replays from a revision, as far back as
+                                             the store keeps its log in full
   charter (charters, c) [<path>]             the charter at a path, printed as the FILE that
                                              installs it (`at:` and all); stderr names the
                                              charters under it, and the marks on its rules
@@ -259,7 +295,7 @@ verse
            -color auto|always|never    colorize (auto = a terminal only)
 ```
 
-Flags may come before or after positionals: `gate approve <id> -as you@example.com -say ok`
+Flags may come before or after positionals: `question approve <id> -as you@example.com -say ok`
 works. A `<who>` is a [principal](../glossary.md#principal) in the
 [grammar](../perms.md#principals-and-grantees). It is one of these:
 
@@ -322,7 +358,7 @@ are for reading as much as for running: each is a worked example of the surface 
 |---|---|
 | `./scripts/seed-demo.sh` | the whole demo at once: a charter, the entities it reacts to, one reaction that has already happened, and one gate waiting for you |
 | `./scripts/seed-entities.sh` | a dozen entities across three systems, and nothing that reacts to them ([tutorial §2](../tutorial.md#2-entities)) |
-| `./scripts/charter-shapes.sh` | the coarse shapes that a rule comes in, one command each. It also runs `suspend`/`resume` on one rule, so you can watch the rule hold and then act on the world as it stands ([tutorial §4](../tutorial.md#4-charters--relating-entities-to-tasks)) |
+| `./scripts/charter-shapes.sh` | the coarse shapes that a rule comes in, one command each. It also runs `suspend`/`resume` on one rule, so you can watch the rule hold and then act on the world as it stands ([the introduction to charters](../charter-intro.md)) |
 | `./scripts/lineage.sh` | a commit becomes a PR, and the PR becomes a release. It shows how ids from three systems correlate without a fourth id, and the two limits of that design. |
 
 All four take `--scope <name>`, and each one removes what it wrote (`--clean`, or `clean`).

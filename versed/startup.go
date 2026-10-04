@@ -28,6 +28,8 @@ const (
 	phaseSelections  = "resumed selections"
 	phaseDeadlines   = "armed deadlines"
 	phaseSchedules   = "armed schedules"
+	phaseAsks        = "armed ask expiries"
+	phaseAsksWait    = "waited on asks"
 	phaseSources     = "restored sources"
 )
 

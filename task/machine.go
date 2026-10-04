@@ -98,6 +98,7 @@ type convMsg struct {
 	text string
 	by   string
 	kind convKind
+	ask  string // the ask these words are, for a say (SayRequest.Ask)
 }
 
 // state is the whole of what the loop knows. Every field is data — no closures, no channels,
@@ -517,7 +518,7 @@ func (s *state) turnTaken(v inTurn) []effect {
 	effs := []effect{
 		effJournal{fmt.Sprintf("[%s] turn → %s by %s", q.ID, v.res.Choice, v.res.By)},
 		effEmit{Frame{Kind: EvDecision, ID: q.ID, Tool: "turn", Gate: q.Gate, Mode: q.Mode.String(),
-			Proceed: v.res.Choice != End, By: v.res.By, Text: v.res.Choice}},
+			Choice: v.res.Choice, Proceed: v.res.Choice != End, By: v.res.By, Text: v.res.Choice}},
 	}
 	if v.res.Choice == End {
 		s.converse = false

@@ -327,11 +327,15 @@ func TestAWithdrawnQuestionKeepsItsBallotsAndIsAskedAgain(t *testing.T) {
 	}`)
 	subject := entity.RefAt("demo", "release", "1")
 	entitytest.Set(t, asTester(srv), subject, entity.Obj{"stage": "open"}.Payload())
+	// Alice and bob may write the release, so they answer for it.
+	if err := entity.SetLevel(srv.Store, subject, entity.ReadWrite, []string{"user:alice@example.com", "user:bob@example.com"}); err != nil {
+		t.Fatal(err)
+	}
 	id := waitRuleQuestion(t, srv, "ship", subject.String())
 
 	ballot := func(by string) int {
 		t.Helper()
-		resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: "proceed", By: by})
+		resp := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "proceed", By: by})
 		resp.Body.Close()
 		return resp.StatusCode
 	}

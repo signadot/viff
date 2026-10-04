@@ -146,7 +146,7 @@ through the overlay. How the runtime keeps each one is in
 
 So a write of the [control plane](../glossary.md#control-plane) in a scope reaches only what the
 scope created. These are the writes of the control plane:
-`flow suspend|resume|say|cancel`, `task cancel|say|vector`, `gate answer|escalate`
+`flow suspend|resume|say|cancel`, `task cancel|say|vector`, `question <id> --answer`
 and `charter -r`. What a suspension covers in a scope is in [control](../control.md#scopes).
 
 Verse **refuses** such a write aimed at an inherited object. The refusal names the scope

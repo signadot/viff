@@ -42,6 +42,13 @@ strata:
   - "verse.schedule.day"
   - "verse.schedule.weekday"
   - "verse.schedule.timezone"
+# The docket: every ask, whoever raised it. A person's ask is posed by the verb that writes it
+# (`verse ask`), a rule's by its gate and a task's by its question, so no rule here poses one; the
+# stratum is for charters that react to asks, as a deployment's Slack charter does.
+- name: asks
+  level: 100020
+  match:
+  - "verse.ask"
 
 rules:
 # The clock: `time` to the minute, from the minutely tick. Two commits a minute, the tick and

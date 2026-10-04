@@ -185,3 +185,34 @@ func TestRegistryCancelledWaiterLeavesTheQuestionStanding(t *testing.T) {
 		t.Fatal("remaining waiter never released")
 	}
 }
+
+// AN ANSWER TO AN EARLIER EDIT IS REFUSED where the answer is delivered, and a revised question
+// keeps whoever waits on it.
+func TestDeliverRefusesAnEarlierEdit(t *testing.T) {
+	r := NewRegistry()
+	q := GateQuestion{ID: "ask-1", Edit: 1}
+	got := make(chan Resolution, 1)
+	go func() {
+		res, _ := r.Resolve(context.Background(), q, ToolUse{})
+		got <- res
+	}()
+	waitFor(t, func() bool { return len(r.Pending()) == 1 })
+	q.Edit = 2
+	if !r.Revise(q) {
+		t.Fatal("revising a pending question was refused")
+	}
+	if err := r.Deliver("ask-1", Resolution{Choice: Proceed, By: "user:a", Edit: 1}); err != ErrStaleEdit {
+		t.Fatalf("an answer to edit 1 of an ask at edit 2: %v, want ErrStaleEdit", err)
+	}
+	if err := r.Deliver("ask-1", Resolution{Choice: Proceed, By: "user:a", Edit: 2}); err != nil {
+		t.Fatalf("an answer to the edit standing: %v", err)
+	}
+	select {
+	case res := <-got:
+		if res.Question.Edit != 2 {
+			t.Fatalf("the waiter was answered about edit %d, want 2", res.Question.Edit)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the waiter was not released")
+	}
+}

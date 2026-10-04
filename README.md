@@ -74,8 +74,8 @@ You need no configuration to start. Toward a verse on your own machine the CLI a
 ends, one reaction has already happened and one gate is waiting for you. Then it prints what
 to type next.
 
-You can do the same by hand: `verse charter -a …`, `verse data … --put …`, `verse gate`,
-`verse gate approve …`.
+You can do the same by hand: `verse charter -a …`, `verse data … --put …`, `verse question`,
+`verse question approve …`.
 
 Two more scripts seed the sections of the [tutorial](docs/tutorial.md):
 
@@ -104,15 +104,11 @@ The tutorial has five sections, about entities, tasks, and the charters that rel
   so every `verse task` command works with each.
 - `mirror/` — writes each running task into the store, as a `verse.task.instance` entity. So
   to observe or steer a task, you observe an entity.
-- `resolver/` — who answers a gate. A resolver is installed. It is not written in a charter,
-  because it lasts longer than one rule, and because it belongs to the person who supervises
-  and not to the person who wrote the work. A resolver matches a subject by a condition, or a
-  run names it. It reads through a *cover*, one for each stream of gates
-  (`verse.covers.<name>@<stream>`), and a cover keeps its own position in the stream. The
-  answerer is a service, a person or a group. When a resolver does not answer before its
-  deadline, the question goes to the next resolver that matches the subject. After the last
-  one it goes to the *docket*: the list of questions waiting for an answer, which a person
-  reads.
+- `resolver/` — a service that answers asks for whoever grants it. A resolver is installed. It
+  is not written in a charter, because it lasts longer than one rule, and because it belongs to
+  whoever runs it. Its `match` says which asks it watches; a person or a place's owner on record
+  grants it to answer for them, and its answer is then theirs. To consult somebody it raises an
+  onward ask, whose answer comes back as its own.
 - `io/` and `cmd/iod/` — the connection to an external system. An *io* has two halves: it
   reflects state in, and it acts out. You deploy an io and install it (`verse io add`). It
   owns a place in the store, such as `git`, and rules react to that place. Verse ships five
@@ -125,7 +121,7 @@ The tutorial has five sections, about entities, tasks, and the charters that rel
   | The CLI | Commands |
   |---|---|
   | governs | `data`, `charter`, `schedule`, `task` (with the `do` verbs for an executor), `flow`, `resolver`, `runner`, `io`, `perms`, `group` |
-  | answers with | `gate` |
+  | answers with | `question` |
   | reads | `status`, `watch`, `provider`, `schema` |
   | runs | `up`, `down`, `connect`, `disconnect` |
 

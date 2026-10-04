@@ -27,7 +27,7 @@ func (h *recHandle) Pause() error {
 }
 func (h *recHandle) Resume() error                        { return nil }
 func (h *recHandle) Cancel(string) error                  { return nil }
-func (h *recHandle) Steer(string, string) error           { return nil }
+func (h *recHandle) Steer(string, string, string) error   { return nil }
 func (h *recHandle) SetVector(*task.Vector, string) error { return nil }
 func (h *recHandle) Result() string                       { return "" }
 func (h *recHandle) Err() string                          { return "" }

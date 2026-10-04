@@ -133,7 +133,7 @@ func (s Subtree) String() string {
 // question is about the address, and naming does not make it somebody else's to write.
 // VERSE'S HALF IS WRITTEN BY THE VERBS THAT OWN IT, and a rule's action is not one of them. The
 // api refuses a generic write under `verse` for that reason (a rule is installed by `charter -a`,
-// a runner by `runner add`, a question answered by `gate approve`), and a firing's patch or
+// a runner by `runner add`, a question answered by `question approve`), and a firing's patch or
 // derive is the same generic write arriving by another door. Left open, it is how a name the
 // system has not used yet is taken: the rows there hold `child-owner` out to everyone, so a
 // person's rule deriving `verse.schedule.date` before the base charter first does creates it,
@@ -147,7 +147,7 @@ func (s Subtree) String() string {
 // literally, so its author hears it; and reservedWrite at the write, of the address itself,
 // since a derive's target and a subject's first segment may not be literal.
 var errReservedWrite = fmt.Errorf("%w: what stands under %s is written by the verbs that own it "+
-	"(charter -a, runner add, source add, resolver add, gate approve), not by a rule's patch or "+
+	"(charter -a, runner add, source add, resolver add, question approve), not by a rule's patch or "+
 	"derive; a rule may read it, select it as a subject and spawn about it", entity.ErrForbidden, entity.VerseRoot)
 
 // checkReserved refuses, at install, a rule of anybody's but the system's that names an address

@@ -219,6 +219,7 @@ POST   /tasks               the launch (below)             spawn → {id}
 POST   /tasks/{id}/resolve  {id, choice, by, say?}         answer a gate: choice is proceed | deny, or an option the record names
        204 applied · 404 no such decision, or it is already answered
 POST   /tasks/{id}/say      {instruction, by?}             say to it (re-prompt)
+       204 applied · 410 it has ended, and hears nothing
 POST   /tasks/{id}/cancel   {reason?}                      end it, and say why
 POST   /tasks/{id}/pause                                   the operator's hold (docs/control.md)
 POST   /tasks/{id}/resume

@@ -234,6 +234,12 @@ build:
     # ingressClassName for the two webhook Ingresses; "" leaves the cluster default.
     ingressClassName: ""
 
+    # A charter versed installs at start AS THE SYSTEM, as a path under deploy/ (VERSE_SYSTEM_CHARTER,
+    # config/config.go). "" installs none. It is how a rule that has to read what no person may —
+    # every ask, to tell each person the ones waiting on them — gets installed at all: `--as
+    # system` over the api is refused. Read at start, so a changed file takes a restart.
+    systemCharter: ""
+
   sources:
   # Namespace first — kubectl applies the stream in order, so namespaced resources must not
   # precede the Namespace (else "namespaces \"verse\" not found" on the first apply).
@@ -254,6 +260,9 @@ build:
   # Before docd for the same reason: the config is read when the pod starts.
   - if: '.[ docdCompactionCutoff != "" ]'
     dir: docd-config
+  # Before versed for the reason the secrets are: a volume is read when the pod starts.
+  - if: '.[ systemCharter != "" ]'
+    dir: system-charter
   - dir: source
   - if: '.[emitStorageClass]'
     dir: eks
@@ -451,6 +460,30 @@ build:
               env: !key(name)
               - name: OPENAI_MODEL
                 value: $[llmModel]
+
+  # The system charter, mounted where VERSE_SYSTEM_CHARTER says (deploy/system-charter).
+  - if: '.[ systemCharter != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: versed
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: versed
+              env: !key(name)
+              - name: VERSE_SYSTEM_CHARTER
+                value: /etc/verse/system-charter/system.tony
+              volumeMounts: !key(name)
+              - name: system-charter
+                mountPath: /etc/verse/system-charter
+                readOnly: true
+            volumes: !key(name)
+            - name: system-charter
+              configMap:
+                name: verse-system-charter
 
   # The verse image on both tiers (list-merge each container by name; docd runs `o`, versed
   # runs `verse` — one image, two roles).

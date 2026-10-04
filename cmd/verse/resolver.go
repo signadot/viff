@@ -8,13 +8,58 @@ import (
 
 	"github.com/scott-cotton/cli"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 )
 
 func resolverCmd() *cli.Command {
 	return collection("resolver", "resolvers", "/resolvers",
-		"resolver — who answers questions; add|show|remove one",
-		resolverAddCmd(), resolverShowCmd(), resolverRemoveCmd())
+		"resolver — who answers questions; add|show|remove one, grant|revoke whom it answers for",
+		resolverAddCmd(), resolverShowCmd(), resolverRemoveCmd(),
+		resolverGrantCmd("grant", "grant <ref> [--for <place>]: let a resolver answer for you, or for a place on record as yours"),
+		resolverGrantCmd("revoke", "revoke <ref> [--for <place>]: stop a resolver answering for you, or for a place you own"))
+}
+
+type resolverGrantConfig struct {
+	*cli.Command
+	For  string `cli:"name=for desc='the place it answers for, as a kinded path; absent, you'"`
+	verb string
+}
+
+func resolverGrantCmd(verb, synopsis string) *cli.Command {
+	cfg := &resolverGrantConfig{verb: verb}
+	return cli.NewCommandAt(&cfg.Command, verb).WithSynopsis(synopsis).WithRun(cfg.run)
+}
+
+// run is `verse resolver grant|revoke <ref>`: an `answer` grant naming the resolver, at the place
+// or at the caller's own `verse.for.<you>`.
+func (cfg *resolverGrantConfig) run(cc *cli.Context, args []string) error {
+	ref, err := oneArg(cfg.Command, cc, args, "resolver "+cfg.verb+" wants a ref")
+	if err != nil {
+		return err
+	}
+	path, err := resolverPath(ref)
+	if err != nil {
+		return err
+	}
+	resp, err := httpPost(path+"/"+cfg.verb, api.AnswerFor{For: cfg.For})
+	if err != nil {
+		return fmt.Errorf("resolver %s: %w", cfg.verb, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return statusError(resp, "resolver "+cfg.verb)
+	}
+	whom := "you"
+	if cfg.For != "" {
+		whom = cfg.For
+	}
+	if cfg.verb == "grant" {
+		fmt.Fprintf(cc.Out, "%s answers for %s\n", ref, whom)
+	} else {
+		fmt.Fprintf(cc.Out, "%s no longer answers for %s\n", ref, whom)
+	}
+	return nil
 }
 
 // resolverPath turns the address an operator types into the route — see namePath.

@@ -72,7 +72,7 @@ of its own, a threshold for each outcome, and a clock:
 
 ```sh
 verse task do gate "$ID" rollout -as runner:scott -options canary,full:2,abort -deadline 4h:abort -wait
-verse gate <id> -answer canary -as lead@example.com
+verse question <id> --answer canary --as lead@example.com
 # rollout-… settled on canary
 ```
 

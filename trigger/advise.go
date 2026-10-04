@@ -145,8 +145,8 @@ func flatRefs(p entity.Payload) []string {
 // A denied firing writes nothing at all — deliberately, so that a firing which did not happen
 // leaves no trace of having happened. The consequence is that the subject is left in the exact
 // state that asked the question. Any later commit that touches it re-selects it, the rule
-// fires again, and the gate is re-posed under its deterministic id, to somebody who already
-// answered it.
+// fires again, and the gate asks again — a new question, to somebody who already answered the
+// last one.
 //
 // The latch a well-formed rule carries cannot help: it lives in the ACTION, and on a deny the
 // action never runs. So this is not a defect an author can fix by writing the rule better —

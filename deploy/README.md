@@ -262,6 +262,7 @@ handing it to somebody outside the cluster a different act from handing them the
 | `llmSecretKey` | `""` | entry for `verse-llm`; `""` emits no `ExternalSecret` |
 | `gitSecretKey` / `slackSecretKey` / `linearSecretKey` / `githubSecretKey` / `coderunnerSecretKey` | `""` | the same, one per credential |
 | `llmModel` | `""` | `OPENAI_MODEL` for versed; `""` leaves the driver's `gpt-4o` |
+| `systemCharter` | `""` | a charter under `deploy/`, mounted into versed and installed at start as the system (`VERSE_SYSTEM_CHARTER`); read at start, so a change takes a restart. Staging: `charters/verse/workspace/Signadot/gate-ask.tony` |
 | `coderunner` | `false` | deploy the coding runner (its own image; install it with `verse runner add`) |
 | `coderunnerImage` | `example/verse-coderunner:latest` | its image ref — a tag in another repository is fine |
 | the io knobs | off | see [Ios](#ios-optional) |

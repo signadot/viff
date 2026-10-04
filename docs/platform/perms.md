@@ -21,9 +21,9 @@ grants to one part and not another.
 
 ## Routes that name their own party
 
-Verse refuses every method but GET and HEAD with 400 when it has no `Verse-Principal`. Four
-routes are registered in another way. Each of them acts for a party that the route itself names:
-an io's `hint` and `pass`, and a cover's `verdicts` and `position`.
+Verse refuses every method but GET and HEAD with 400 when it has no `Verse-Principal`. Two
+routes are registered in another way. Each acts for a party that the route itself names: an io's
+`hint` and `pass`.
 
 ## The root and the config
 
@@ -78,15 +78,15 @@ this includes an operator's edit.
 | `verse.trigger.rule.*`, `verse.trigger.strata.*`, `verse.trigger.package.*` | child-owner, read | everyone |
 | `verse.io.*`, `verse.runners.*`, `verse.resolvers.*`, `verse.schedule.*` | child-owner, read | everyone |
 | `verse.principal.group.*` | child-owner, read | everyone |
-| `verse.principal.*`, `verse.covers.*`, `verse.trigger.suspension.*` | read | everyone |
-| `verse.gate.question.*` | read | everyone |
-| `verse.gate.question.*` | read-write | `user:*`, `agent:*` |
+| `verse.principal.*`, `verse.trigger.suspension.*` | read | everyone |
+| `verse.ask.*`, the docket | child-owner, read | everyone |
+| `verse.ask.*` | read-write | `user:*`, `agent:*` |
 
 Two `child-grants` stand beside the rows:
 
 | at | `child-grants` | effect |
 |---|---|---|
-| `verse.gate.question` | `{read: ["*"], read-write: [user:*, agent:*]}` | copied onto each question at pose. A private verse narrows it to close the docket. |
+| `verse.ask` | `{read: ["*"], read-write: [user:*, agent:*]}` | copied onto each ask a gate or a task raises, when it is posed. A person's ask is written by `verse ask` with its own. A private verse narrows it to close the docket. |
 | `verse.schedule` | `{read: ["*"]}`, whatever the root's says | schedules, their ticks and the derived calendar are readable in a verse that holds out nothing else |
 
 ## Installed things and their records
@@ -151,15 +151,12 @@ It prints the record that decided, which is the same fact seen from the other si
 
 ## What a resolver service holds
 
-**What a service holds.** A `url` resolver is answered through a
-[cover](../glossary.md#cover-of-a-resolver): one resolver on one gate stream,
-`verse.covers.<name>@<stream>`. The cover acts as the resolver. Its verdict, its escalation and
-its position are written as `via:verse.resolvers.<name>`. That name is what the question's line
-holds.
-
-The service says what it decided, and never who it is. `by` on the decision frame is the
-resolver's name, and verse stamps it. A cover's own address is not a principal. As a grantee,
-verse refuses it, and never reads it as a person's email.
+**What a service holds.** A resolver's service is whoever installed it, acting as it: a request
+presents the installer and names the resolver in `Verse-Resolver`, and is made as
+`via:verse.resolvers.<name>`. It reads what the installer reads, and the asks its parties' grants
+admit it to (`answering:`). Its answer counts only for a party that granted it `answer`, and is
+then that party's: `by` names the party and `via` the resolver
+([Resolvers](../attached-resolvers.md#answering)).
 
 ## Walked on a deployed verse
 
@@ -225,11 +222,11 @@ scott's to control and to answer. It is nobody else's unless a line says so.
 The commands in this step read a deployed verse, and the question id is one that was posed
 there.
 
-A charter gate poses the same record as a task's gate. The record says everything about who may
-settle it. Take the gate from the previous step:
+A charter gate raises the same record as a task's gate: an ask on the docket. The record says
+everything about who may settle it. Take the gate from the previous step:
 
 ```sh
-verse perms verse gate question 'verse.trigger.train-run.merge-to-main~adaa5e99'
+verse perms verse ask 'verse.trigger.train-run.merge-to-main~adaa5e99'
 ```
 
 ```tony
@@ -245,7 +242,7 @@ Read the record as three questions:
 |---|---|
 | **Who may see it?** | `read: ["*"]`: everyone, runners included. That is the docket's default, copied onto the record at pose. A line with no `at` is about the node the record is on. Nearly every line is. |
 | **Who may answer it?** | The `read-write` line. This gate named no `answerers:`, so it took the default too: any person, any agent. A runner is not on the line, and verse refuses it. |
-| **Who owns it?** | The system, `system:docket`, which posed it. Also the `train-run` rule's owner, through `under`. `verse perms` does not print `under`, but the check follows it. Owners answer. Only owners hold `control`: to cancel, or to escalate as the owner and not as an answerer. |
+| **Who owns it?** | The system, `system:docket`, which posed it. Also the `train-run` rule's owner, through `under`. `verse perms` does not print `under`, but the check follows it. Owners answer. Only owners hold `control`: to cancel. |
 
 **To narrow the next ones,** name the answerers on the gate in the charter, and re-install the
 file. The questions posed after that carry that line instead of the default:
@@ -277,17 +274,15 @@ posed with.
 `verse perms` is the owner's verb:
 
 ```sh
-verse perms verse gate question 'verse.trigger.train-run.merge-to-main~adaa5e99' \
+verse perms verse ask 'verse.trigger.train-run.merge-to-main~adaa5e99' \
   -grants '[{read: ["*"], read-write: [user:walter@example.com]}]'
 ```
 
-**To close the docket for a whole verse,** narrow the `child-grants` on `verse.gate.question`.
-Verse gives it to each question's record when the question is posed. A private verse sets it to
-`{read: ["*"]}` or less. After that, only co-owners, named answerers and resolvers answer
-anything.
+**To close the docket for a whole verse,** narrow the `child-grants` on `verse.ask`. Verse gives
+it to the record of each ask a gate or a task raises, when it is posed. A private verse sets it to
+`{read: ["*"]}` or less. After that, only co-owners, named answerers and the resolvers they
+grant answer anything.
 
-**Handing it on.** `verse gate escalate <id> -as <who> [-say <why>]` is open to whoever may
-answer, and it takes no `-to`. The question goes to the next rung of the
-[ladder](../glossary.md#ladder) that matches its subject. The ladder is the standing resolvers. On a
-verse with no standing resolvers, an escalation puts the question back on the open docket, where
-it already was. [Step 5](../perms-guide.md#step-5-a-gate-with-a-resolver-behind-it) gives the ladder a rung.
+**Handing it on.** Nothing moves a question. A person who wants somebody else's view asks them,
+with an ask of their own. A resolver does the same with an
+[onward ask](../attached-resolvers.md#onward-asks), whose answer comes back as its own.

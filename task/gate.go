@@ -2,6 +2,7 @@ package task
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -46,8 +47,26 @@ type Gate struct {
 	// first, as on every other question record.
 	Deadline *Deadline `tony:"field=deadline,omitzero"`
 	// Answerers is who this gate's question is held out to, when the spawn says — grantees, as
-	// a grant names them. See trigger.Gate.Answerers; a task's own gates take the same line.
+	// a grant names them, or PrincipalAnswerer for whom the task acts for. See
+	// trigger.Gate.Answerers; a task's own gates take the same line.
 	Answerers []string `tony:"field=answerers,omitzero"`
+	// Labels ride on this gate's question, for the resolvers matching on them. See
+	// GateQuestion.Labels.
+	Labels map[string]string `tony:"field=labels,omitzero"`
+}
+
+// PrincipalAnswerer, in a gate's `answerers`, is whom the task acts for: the person or agent who
+// ran it as themselves, or the asker a task acts for beside its rule. It is put as them when the
+// question is posed. A gate naming nobody is the docket's, so a question for the task's own
+// person says so: the `ask` tool and a conversation's turn name it.
+const PrincipalAnswerer = "$principal"
+
+// NamesPrincipal reports whether answerers name PrincipalAnswerer.
+func NamesPrincipal(answerers []string) bool { return slices.Contains(answerers, PrincipalAnswerer) }
+
+// GatesNamePrincipal reports whether any of gates names PrincipalAnswerer.
+func GatesNamePrincipal(gates []Gate) bool {
+	return slices.ContainsFunc(gates, func(g Gate) bool { return NamesPrincipal(g.Answerers) })
 }
 
 // Validate refuses a gate whose question cannot be posed as written. Every refusal names
@@ -61,6 +80,9 @@ func (g Gate) Validate() error {
 	if g.Need > 0 && len(g.Options) > 0 {
 		return fmt.Errorf("`need` and `options` are written together; a threshold per " +
 			"option is spelled on the option")
+	}
+	if err := CheckLabels(g.Labels); err != nil {
+		return err
 	}
 	seen := map[string]bool{}
 	for _, o := range g.Options {

@@ -18,12 +18,15 @@ type Registry struct {
 	pending map[string]*pendingQuestion
 	onPost  func(Pending)              // optional: notify a watcher when a question is posted
 	onDrop  func(GateQuestion, string) // optional: notify a watcher when one leaves unanswered
+	// optional: OnDrop with the cause, called in its place when set
+	onDropCause func(GateQuestion, string, error)
+	onCheck     func(GateQuestion) error // optional: refuse a question before it is posed
 }
 
 // pendingQuestion is one question standing on the docket, and everyone waiting on it. The
 // answer is broadcast by closing `done` rather than sent on a channel, because a question may
-// have several waiters: a re-fire about the same subject poses the SAME id, and joining the
-// standing question is what makes that one decision instead of two.
+// have several waiters: a re-fire about the same subject while it stands poses the SAME id, and
+// joining the standing question is what makes that one decision instead of two.
 //
 // waiters is what keeps a cancelled waiter from taking the question with it. Without the
 // count, one caller's context ending would delete a question others are still blocked on, and
@@ -75,6 +78,24 @@ func (r *Registry) OnPost(f func(Pending)) { r.onPost = f }
 // the answer itself, which the answerer already has.
 func (r *Registry) OnDrop(f func(GateQuestion, string)) { r.onDrop = f }
 
+// OnDropCause is OnDrop with the cause itself beside its words, for a publisher that records WHAT
+// kind of withdrawal it was rather than only saying it: a suspension withdraws a question to ask
+// it again (Suspends), which a docket keeps, where the asker giving up does not. Set, it is called
+// in OnDrop's place.
+func (r *Registry) OnDropCause(f func(GateQuestion, string, error)) { r.onDropCause = f }
+
+// OnCheck registers what may refuse a question before it is posed: Resolve answers the refusal as
+// its error, to the gate or the action that asked, and nothing reaches the docket. A question
+// already pending is joined without being asked again.
+func (r *Registry) OnCheck(f func(GateQuestion) error) { r.onCheck = f }
+
+// Suspends reports whether a withdrawal's cause is a suspension: work held, to be asked again when
+// it lifts. The cause says so itself (trigger.SuspendedError).
+func Suspends(cause error) bool {
+	var s interface{ Suspends() bool }
+	return errors.As(cause, &s) && s.Suspends()
+}
+
 // Resolve (the Resolver interface) posts the question and blocks until it is answered by ID
 // or the context is cancelled.
 //
@@ -88,6 +109,15 @@ func (r *Registry) OnDrop(f func(GateQuestion, string)) { r.onDrop = f }
 // ID, so a second post used to REPLACE the first — leaving that caller blocked on a question
 // no longer on the docket, waiting for an answer nothing could deliver.
 func (r *Registry) Resolve(ctx context.Context, q GateQuestion, tu ToolUse) (Resolution, error) {
+	r.mu.Lock()
+	_, standing := r.pending[q.ID]
+	check := r.onCheck
+	r.mu.Unlock()
+	if !standing && check != nil {
+		if err := check(q); err != nil {
+			return Resolution{}, err
+		}
+	}
 	r.mu.Lock()
 	pq, joined := r.pending[q.ID]
 	if !joined {
@@ -116,12 +146,15 @@ func (r *Registry) Resolve(ctx context.Context, q GateQuestion, tu ToolUse) (Res
 		if dropped {
 			delete(r.pending, q.ID)
 		}
-		onDrop := r.onDrop
+		onDrop, onDropCause := r.onDrop, r.onDropCause
 		r.mu.Unlock()
 		// Announced outside the lock, and only when the question actually LEFT: a joiner
 		// giving up while others still wait has taken nothing off the docket, and saying
 		// otherwise would retire a question three people are still blocked on.
-		if dropped && onDrop != nil {
+		switch {
+		case dropped && onDropCause != nil:
+			onDropCause(q, dropReason(ctx), context.Cause(ctx))
+		case dropped && onDrop != nil:
 			onDrop(q, dropReason(ctx))
 		}
 		return Resolution{Proceed: false, By: ByCancelled, Question: q}, ctx.Err()
@@ -142,19 +175,47 @@ func dropReason(ctx context.Context) string {
 	}
 }
 
+// ErrStaleEdit is an answer to an edit of an ask that has since been asked again.
+var ErrStaleEdit = errors.New("the ask was asked again since")
+
 // Answer resolves a pending question by ID, releasing EVERY caller waiting on it. It returns
-// false for an unknown ID (already answered, cancelled, or never posted). The original
-// GateQuestion is preserved on the returned Resolution.
-func (r *Registry) Answer(id string, res Resolution) bool {
+// false for an unknown ID (already answered, cancelled, or never posted), and for an answer to an
+// earlier edit of the question (Deliver says which). The original GateQuestion is preserved on
+// the returned Resolution.
+func (r *Registry) Answer(id string, res Resolution) bool { return r.Deliver(id, res) == nil }
+
+// Deliver is Answer, saying why an answer was not delivered: ErrNoSuchDecision for an id nobody
+// waits on, ErrStaleEdit for an answer naming an edit the question has moved past.
+//
+// THE REGISTRY IS WHERE A STALE EDIT IS REFUSED, because an answer is delivered here before the
+// record is written: a check of the record alone would let an answer read before an edit and
+// delivered after it through.
+func (r *Registry) Deliver(id string, res Resolution) error {
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	pq, ok := r.pending[id]
-	if ok {
-		delete(r.pending, id)
-		res.Question = pq.q
-		pq.res = res
-		close(pq.done) // broadcast: one answer, however many joined the question
+	if !ok {
+		return ErrNoSuchDecision
 	}
-	r.mu.Unlock()
+	if res.Edit != 0 && res.Edit != pq.q.Edit {
+		return ErrStaleEdit
+	}
+	delete(r.pending, id)
+	res.Question = pq.q
+	pq.res = res
+	close(pq.done) // broadcast: one answer, however many joined the question
+	return nil
+}
+
+// Revise replaces what a pending question asks, keeping whoever waits on it: a person's ask
+// asked again. It reports false for an id nobody waits on.
+func (r *Registry) Revise(q GateQuestion) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	pq, ok := r.pending[q.ID]
+	if ok {
+		pq.q = q
+	}
 	return ok
 }
 

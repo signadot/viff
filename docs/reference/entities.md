@@ -267,7 +267,7 @@ These are under `verse`:
 | `task.instance.*` | the mirror of every running task |
 | `task.run.*` | the record of a run that happened |
 | `task.claim.*` | the run claim of a sequence |
-| `gate.question.*` | every gate that waits for an answer |
+| `ask.*` | the docket: every ask, whoever raised it — a person, a rule's gate, a task's question |
 | `resolvers.*` | who answers the gates |
 | `covers.*` | who watches what: one record per resolver and gate stream (see [resolvers.md](resolvers.md)) |
 | `trigger.rule.*` | the installed charter. A rule installed at an address is `trigger.rule.<package>:<name>`. |
@@ -279,7 +279,7 @@ These are under `verse`:
 | `schedule.date`, `schedule.time` and the other calendar facts | what the base charter derives from the hourly tick |
 
 The ballots of a [question](../glossary.md#question) are on its record
-(`gate.question.<id>.ballots.<who>`). The answer path that counts them writes them.
+(`ask.<id>.ballots.<who>`). The answer path that counts them writes them.
 
 Two more are about who.
 
@@ -308,7 +308,7 @@ registry of doers.
 You read what is under `verse` like anything else. Only the verbs that own it write it.
 `verse data verse trigger rule review` reads a rule. Verse refuses `verse data -put` at any
 address under `verse`, and says which verb to use instead: `verse c -a`, `verse resolver add`,
-`verse runner add`, `verse io add`, `verse gate approve`.
+`verse runner add`, `verse io add`, `verse question approve`.
 
 Each verb holds its own checks: what a rule may read, what a runner is, whether the claim of an
 io overlaps another. Under every verb, the store itself checks the write against what its place

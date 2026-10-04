@@ -36,6 +36,9 @@ import (
 	"github.com/signadot/verse/task"
 )
 
+// AsSubject is the one value `as` takes: the owner of the record the firing is about.
+const AsSubject = "subject"
+
 // Spec is the declarative launch descriptor. It is a *template*: string fields may
 // contain $vars (e.g. "$subject") that Bind expands against a concrete event,
 // turning a generic action into a specific launch. All fields are optional; a
@@ -165,7 +168,6 @@ type Spec struct {
 	// tool or a path chosen by whoever last wrote the entity being matched — the widening-by-
 	// binding risk Tools is not expanded for either.
 	Gates       []task.Gate `tony:"field=gates,omitzero"`
-	Resolver    string      `tony:"field=resolver,omitzero"`
 	Grant       string      `tony:"field=grant,omitzero"`
 	Environment string      `tony:"field=environment,omitzero"`
 	// Runner is WHERE this launch runs: `verse.runners.<name>`, an entity installed with
@@ -220,6 +222,21 @@ type Spec struct {
 	// not a value a charter can read — it is what a reader of the record uses to tell one run
 	// from the next.
 	Occurrence int64 `tony:"field=occurrence,omitzero"`
+	// As says whose authority the task runs with beside the rule's: `subject`, the owner of the
+	// record the firing is about — whoever wrote the ask a rule answers. Empty, the task runs as
+	// the rule alone, which is what every spawn did before there was a choice.
+	//
+	// ON THE ASKER'S AUTHORITY. The task acts as a pair (entity.Pair) whose authority is the
+	// subject's owner's alone: a consequence is its raiser's. A rule's author cannot use that to
+	// act as anybody whose records the rule selects, because a rule saying `as: subject` may
+	// select only records in a place its installer owns (checked at install): an asker's record
+	// there was written into a place the charter was installed to serve.
+	As string `tony:"field=as,omitzero"`
+	// Asker is who `as: subject` resolved to at the firing: the subject record's owner.
+	// Engine-owned like Subject and Chain, and more strictly: the engine CLEARS it on every
+	// launch and sets it only from `as`, because a charter that could write it would name whoever
+	// it liked to act as.
+	Asker string `tony:"field=asker,omitzero"`
 	// Provider, when set, makes the who-axis a GOVERNED SELECTION rather than a fixed
 	// authoring-time value: the engine selects among the eligible doers via the Select
 	// surface, reifies it as a motion, and overlays the winner's Fragment — driver, frame,
@@ -299,7 +316,6 @@ func (s Spec) Bind(b Binding) Spec {
 		Prompt:      expand(s.Prompt, b),
 		Frame:       expand(s.Frame, b),
 		Vector:      expand(s.Vector, b),
-		Resolver:    expand(s.Resolver, b),
 		Runner:      expand(s.Runner, b),
 		Grant:       expand(s.Grant, b),
 		Environment: expand(s.Environment, b),
@@ -330,6 +346,11 @@ func (s Spec) Bind(b Binding) Spec {
 	out.VirtualKey = s.VirtualKey
 	out.Gates = append([]task.Gate(nil), s.Gates...)
 	out.Calls = bindCalls(s.Calls, b)
+	// As is carried and not expanded: it takes one word (AsSubject), and payload text deciding
+	// whose authority a task runs with is the thing it exists to prevent. Asker is NOT carried —
+	// it is the engine's answer to As, set after binding (trigger.launch), and a value a charter
+	// wrote there does not survive to it.
+	out.As = s.As
 	return out
 }
 

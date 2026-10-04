@@ -122,6 +122,7 @@ A control call that fails says which failure it is (`task/runner.go`):
 | `ErrNoSuchTask` / `ErrNoSuchDecision` | the far side answered, and has never heard of this task or decision. Look for a typo. |
 | `ErrAlreadyAnswered` | somebody else answered first |
 | `ErrTaskEnded` | the gate was real, the task is over, and nobody answered the gate |
+| `ErrEnded` | the task is over, so words said to it would be heard by no one (`410` on `/say`) |
 | `ErrFenced` | a stale claim: a newer claim displaced the caller's generation |
 | `ErrUnsupported` | this runner has no such route at all |
 

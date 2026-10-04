@@ -27,7 +27,49 @@ const (
 	GroupKind = "group"
 	// ViaKind is a place acting — a rule, a source, a resolver — named by its address.
 	ViaKind = "via"
+	// AudienceKind is A PLACE'S AUDIENCE: `audience:<address>`, in a grant's `read` or
+	// `read-write`, admits whoever holds that level at the address, whoever they turn out to be.
+	// It is how a record says it is read and written as something else is — an ask read and
+	// answered as what it is about (9ce3bva0, D3) — where those principals cannot be written
+	// down: ownership above, inherited grants, groups and kinds all decide them. It lends neither
+	// `owner` nor `control`: holding a place is not holding what is about it. A set, so never a
+	// principal.
+	AudienceKind = "audience"
+	// AnsweringKind is WHOEVER ANSWERS FOR A PLACE: `answering:<address>`, in a grant's `read`,
+	// admits whoever holds `answer` at the address (Answer) — the resolvers answering for a
+	// person at `verse.for.<person>`, or for a place. It is how an ask is read by the resolver
+	// serving it (9ce3bva0, S2). A set, so never a principal.
+	AnsweringKind = "answering"
+	// PairKind is a rule's task acting for whoever wrote the record it is about, as
+	// `pair:<asker> <rule>` (a spawn's `as: subject`). Only the engine makes one — it is no
+	// grantee and parses as nothing, so no request can present it — and what it may do is what
+	// its asker may do (Pair).
+	PairKind = "pair"
 )
+
+// Pair is the principal of a rule's task acting for the person whose record fired it: the asker
+// supplied the intent, the rule the machinery. It acts on the asker's authority alone — the
+// rule is named so the record says what the task acted through. The asker cannot borrow the
+// rule's authority by writing a record, since the rule adds none; and a rule's author cannot
+// borrow a record owner's by selecting their records, since such a rule may select only in a
+// place its installer owns (checked at install).
+//
+// A space separates the two because no principal holds one: an id holds no space, and neither
+// does an address.
+func Pair(asker, bound string) string { return PairKind + ":" + asker + " " + bound }
+
+// PairOf reads a pair back into its parties, and false for anything else.
+func PairOf(principal string) (asker, bound string, ok bool) {
+	rest, isPair := strings.CutPrefix(principal, PairKind+":")
+	if !isPair {
+		return "", "", false
+	}
+	asker, bound, ok = strings.Cut(rest, " ")
+	if !ok || asker == "" || bound == "" {
+		return "", "", false
+	}
+	return asker, bound, true
+}
 
 // Everyone is the grantee that names every principal — a request that names nobody included,
 // which is what lets a read made from curl with no `user:` behind it see an open verse.
@@ -44,11 +86,13 @@ var actors = map[string]string{"trigger": "rule", "io": "", "resolvers": ""}
 
 // Grantee is a name in the grammar, parsed: the kind before the colon and what follows it.
 type Grantee struct {
-	// Kind is UserKind, AgentKind, RunnerKind, SystemKind, GroupKind, ViaKind, or Everyone.
+	// Kind is UserKind, AgentKind, RunnerKind, SystemKind, GroupKind, ViaKind, AudienceKind, or
+	// Everyone.
 	Kind string
 	// ID is what follows the colon for every kind but via, and `*` for a whole kind.
 	ID string
-	// Path is a via's address as segments, a trailing `*` kept as the last one.
+	// Path is a via's or an audience's address as segments, a via's trailing `*` kept as the last
+	// one.
 	Path []string
 }
 
@@ -56,13 +100,15 @@ type Grantee struct {
 func Grammar() string {
 	return "a principal is user:<email>, agent:<name>, runner:<identity>, system:<part> or " +
 		"via:<address> (a rule, a source or a resolver acting); a grantee is a principal, " +
-		"<kind>:* for every principal of a kind, group:<name> for a group's members, or * for " +
-		"everyone; a bare email is user:<email>"
+		"<kind>:* for every principal of a kind, group:<name> for a group's members, " +
+		"audience:<address> for whoever holds the level at that address, answering:<address> for " +
+		"the resolvers answering for it, or * for everyone; a " +
+		"bare email is user:<email>"
 }
 
 // ParseGrantee reads a name in the grammar. A bare string holding an `@` and no colon is a
-// person's email, `user:<s>` — unless it is an address in verse's own half, as a cover's
-// is (`verse.covers.<name>@<stream>`), which is no person. Every other
+// person's email, `user:<s>` — unless it is an address in verse's own half, which is no
+// person. Every other
 // bare word names nothing and is refused — which is where `user`, `agent`, `coderunner` and
 // `verse.principal.group.<name>` stop meaning anything.
 func ParseGrantee(s string) (Grantee, error) {
@@ -106,6 +152,12 @@ func ParseGrantee(s string) (Grantee, error) {
 			return Grantee{}, refuseName(s, err.Error())
 		}
 		return Grantee{Kind: ViaKind, Path: path}, nil
+	case AudienceKind, AnsweringKind:
+		path, err := PathSegs(rest)
+		if err != nil || len(path) == 0 {
+			return Grantee{}, refuseName(s, kind+": names one address, the place it admits for")
+		}
+		return Grantee{Kind: kind, Path: path}, nil
 	}
 	return Grantee{}, refuseName(s, fmt.Sprintf("%q is not a kind", kind))
 }
@@ -152,6 +204,8 @@ func ParsePrincipal(s string) (Grantee, error) {
 		return Grantee{}, refuseName(s, "a set of principals is not one principal")
 	case g.Kind == GroupKind:
 		return Grantee{}, refuseName(s, "nothing acts as a group; its members act as themselves")
+	case g.Kind == AudienceKind, g.Kind == AnsweringKind:
+		return Grantee{}, refuseName(s, "who holds a level at a place is a set of principals, not one principal")
 	}
 	return g, nil
 }
@@ -166,9 +220,26 @@ func (g Grantee) String() string {
 			return ViaKind + ":" + JoinSegs(g.Path[:n-1]) + "." + Everyone
 		}
 		return ViaKind + ":" + JoinSegs(g.Path)
+	case AudienceKind:
+		return Audience(RefAt(g.Path...))
+	case AnsweringKind:
+		return Answering(RefAt(g.Path...))
 	}
 	return g.Kind + ":" + g.ID
 }
+
+// ForSystem is where a person says whom they let answer for them: `verse.for.<principal>`, their
+// own node, whose `answer` grants name the resolvers that do (Answer).
+const ForSystem = "for"
+
+// ForRef is the node a principal's `answer` grants stand on.
+func ForRef(principal string) Ref { return VerseRef(ForSystem, principal) }
+
+// Answering spells the grantee that admits whoever holds `answer` at ref.
+func Answering(ref Ref) string { return AnsweringKind + ":" + ref.String() }
+
+// Audience spells the grantee that admits whoever holds, at ref, the level it is listed under.
+func Audience(ref Ref) string { return AudienceKind + ":" + ref.String() }
 
 // Via spells the principal of a place acting: whoever writes as a rule, a source or a resolver.
 func Via(ref Ref) string { return ViaKind + ":" + ref.String() }

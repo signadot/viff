@@ -4,7 +4,8 @@ This page describes what is true of a [charter](../glossary.md#charter) as a who
 how a charter is installed at an address as a package, what a package may read and write, and
 what `verse charter` shows. It also says how verse stores a
 [rule](../glossary.md#rule), so that a charter survives a restart.
-[The trigger model](../trigger-model.md) describes the rules that a charter holds.
+[The trigger model](../trigger-model.md) describes the rules that a charter holds, and
+[Write a charter](../build.md#write-a-charter) writes one, step by step.
 
 ## A charter can be installed at an address
 

@@ -35,9 +35,7 @@ func noQuestionWithin(t *testing.T, srv *Server, id string, d time.Duration) {
 	t.Helper()
 	deadline := time.After(d)
 	for {
-		for _, ent := range srv.Store.List(func(ref entity.Ref) bool {
-			return mirror.IsQuestion(ref)
-		}) {
+		for _, ent := range entity.Below(srv.Store, mirror.IsQuestion, 1, entity.VerseRoot, mirror.AskSystem) {
 			if entity.ToObj(ent.Payload)["task"] == id {
 				t.Fatalf("%s posed a question it should not have: %+v", id, entity.ToObj(ent.Payload))
 			}

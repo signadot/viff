@@ -20,7 +20,7 @@ import (
 // which is what makes the co-ownership edge and the resolver's grant visible.
 func withoutTheDocketDefault(t *testing.T, srv *Server) {
 	t.Helper()
-	questions := entity.VerseRef(mirror.QuestionSystem, mirror.QuestionKind)
+	questions := entity.VerseRef(mirror.AskSystem)
 	if err := entity.SetChildGrants(srv.Store, questions, entity.Levels{entity.Read: {entity.Everyone}}); err != nil {
 		t.Fatal(err)
 	}
@@ -31,16 +31,16 @@ func withoutTheDocketDefault(t *testing.T, srv *Server) {
 
 func answerAs(t *testing.T, as, url, id string) *http.Response {
 	t.Helper()
-	b, err := codec.Marshal(api.Resolve{ID: id, Choice: "proceed", By: as}, codec.Tony)
+	b, err := codec.Marshal(api.Resolve{Choice: "proceed", By: as}, codec.Tony)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return postAs(t, as, url+"/gate/resolve", "application/tony", string(b))
+	return postAs(t, as, url+answerPath(id), "application/tony", string(b))
 }
 
-func spawnAs(t *testing.T, as, url, id, subject, resolverRef string) {
+func spawnAs(t *testing.T, as, url, id, subject string) {
 	t.Helper()
-	body := fmt.Sprintf(`{id: %q, prompt: "true", subject: %q, resolver: %q}`, id, subject, resolverRef)
+	body := fmt.Sprintf(`{id: %q, prompt: "true", subject: %q}`, id, subject)
 	resp := postAs(t, as, url+"/tasks", "application/tony", body)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -58,7 +58,7 @@ func TestATasksOwnerAnswersWhatItAsked(t *testing.T) {
 	withoutTheDocketDefault(t, srv)
 
 	pr(t, srv, "1", "payments")
-	spawnAs(t, "alice@example.com", ts.URL, "run-1", `change.pr."1"`, "")
+	spawnAs(t, "alice@example.com", ts.URL, "run-1", `change.pr."1"`)
 	qid := waitQuestion(t, srv, "run-1")
 
 	rec, ok, err := srv.Store.Get(entity.PermsRef(mirror.QuestionRef(qid)))
@@ -83,55 +83,6 @@ func TestATasksOwnerAnswersWhatItAsked(t *testing.T) {
 		t.Fatalf("the task's owner could not answer: %s", resp.Status)
 	}
 	if q := settledQuestion(t, srv, qid); q["by"] != "user:alice@example.com" {
-		t.Fatalf("settled by %v", q["by"])
-	}
-}
-
-// A question is held out to the resolver that owns it, by the resolver's address: the
-// resolver's own verdict is admitted, made as the resolver through its cover, and the grant
-// is on the question's record where anyone can read who may answer.
-func TestAnOwnedQuestionIsHeldOutToItsResolver(t *testing.T) {
-	srv := askingServer(t)
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-	withoutTheDocketDefault(t, srv)
-
-	mustInstall(t, ts.URL, exclusiveResolver("payments-review", "payments"))
-	pr(t, srv, "1", "payments")
-	spawnAs(t, "alice@example.com", ts.URL, "run-1", `change.pr."1"`, "")
-	qid := waitQuestion(t, srv, "run-1")
-	resolverRef := "verse.resolvers.payments-review"
-
-	// The record is posed with the default's `read`, and the resolver's `read-write` lands on
-	// the same line a moment later.
-	deadline := time.Now().Add(3 * time.Second)
-	var grants []entity.Grant
-	for time.Now().Before(deadline) {
-		if rec, ok, _ := srv.Store.Get(entity.PermsRef(mirror.QuestionRef(qid))); ok {
-			if grants, _ = entity.ParseGrants(mirror.QuestionRef(qid).Segs(), rec.Payload); len(grants) > 0 && len(grants[0].To[entity.ReadWrite]) > 0 {
-				break
-			}
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	if len(grants) != 1 || len(grants[0].To[entity.ReadWrite]) != 1 || grants[0].To[entity.ReadWrite][0] != "via:"+resolverRef ||
-		len(grants[0].To[entity.Read]) != 1 || grants[0].To[entity.Read][0] != entity.Everyone {
-		t.Fatalf("the question's grants = %+v, want read-write for its resolver beside read for everyone", grants)
-	}
-	if ok, _ := entity.Holds(srv.Store, "via:"+resolverRef, entity.ReadWrite, mirror.QuestionRef(qid)); !ok {
-		t.Fatal("the resolver does not hold read-write on the question held out to it")
-	}
-	if ok, _ := entity.Holds(srv.Store, "user:carol@example.com", entity.ReadWrite, mirror.QuestionRef(qid)); ok {
-		t.Fatal("somebody else holds what the resolver was granted")
-	}
-
-	cover := waitCover(t, srv, "payments-review", "run-1")
-	resp := postTony(t, ts.URL+"/resolvers/cover/"+cover+"/verdicts", api.Verdict{ID: qid, Verdict: "proceed"})
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("the resolver's verdict was refused: %s", resp.Status)
-	}
-	if q := settledQuestion(t, srv, qid); q["by"] != "via:"+resolverRef {
 		t.Fatalf("settled by %v", q["by"])
 	}
 }
@@ -239,7 +190,7 @@ func TestACharterOwnerAnswersWhatItsRuleAsked(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		rec, _, _ := srv.Store.Get(entity.PermsRef(mirror.QuestionRef(qid)))
-		above, _, _ := srv.Store.Get(entity.PermsRef(entity.VerseRef(mirror.QuestionSystem, mirror.QuestionKind)))
+		above, _, _ := srv.Store.Get(entity.PermsRef(entity.VerseRef(mirror.AskSystem)))
 		t.Fatalf("a stranger answered a charter's question: %s\nrecord: %v\nabove: %v", resp.Status, entity.ToObj(rec.Payload), entity.ToObj(above.Payload))
 	}
 	resp = answerAs(t, "alice@example.com", ts.URL, qid)

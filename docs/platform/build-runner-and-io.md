@@ -54,7 +54,7 @@ func (echoExecutor) Execute(_ context.Context, tu task.ToolUse) (task.StepResult
 | `taskd.New(build)` | makes a daemon that hosts tasks. The daemon calls `build` once for each spawn. |
 | `d.Handler()` | the HTTP routes of the contract |
 | `build` | a `taskd.Builder`. It makes one task from one `task.Launch`. The launch carries what the spawn said: the prompt, the driver, the frame, the tools, the vector and the grant. |
-| `task.NewSupervisor` | decides what happens at a gate of the task. With `task.Auto` every action runs. With `task.Ask` every action raises a gate, which a person answers with `verse gate`. |
+| `task.NewSupervisor` | decides what happens at a gate of the task. With `task.Auto` every action runs. With `task.Ask` every action raises a gate, which a person answers with `verse question`. |
 | `Next` | the driver. It returns the next action and `true`, or `false` when the work is done. An error fails the task. |
 | `Execute` | the executor. It carries out one action. The driver receives its `StepResult` as `prev` at the next call. |
 
@@ -75,7 +75,7 @@ A `Builder` returns no error. To refuse a launch, return
 | `GET /tasks/{id}/events?since=N` | none | the event stream of the task, as server-sent events. Each event holds one frame, a `verse-frame`. |
 | `POST /tasks` | `verse-runner-spawn` | `201` and a `verse-runner-spawned` when the runner built the task. `200` and the same body when the task was already running. `400` when the body does not parse, or when the runner will not host the task. |
 | `POST /tasks/{id}/resolve` | `verse-resolve` | `204` when applied. `404` when the task has no such open question. |
-| `POST /tasks/{id}/say` | `verse-runner-say` | `204` when applied |
+| `POST /tasks/{id}/say` | `verse-runner-say` | `204` when applied. `410` when the task has ended, since nothing said to it would be heard. |
 | `POST /tasks/{id}/cancel` | `verse-runner-cancel`, or no body | `204` when applied |
 | `POST /tasks/{id}/pause` | none | `204` when applied |
 | `POST /tasks/{id}/resume` | none | `204` when applied |

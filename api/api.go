@@ -95,27 +95,19 @@ type Condition struct {
 	Pattern entity.Payload `tony:"field=pattern,omitzero"`
 }
 
-// Escalate is a person handing a question on to the next rung matching its subject
-// (`verse gate escalate`): the question, who handed it on, and a word about why.
-//
-//tony:schemagen=verse-escalate,notag
-type Escalate struct {
-	ID  string `tony:"field=id"`
-	By  string `tony:"field=by"`
-	Say string `tony:"field=say,omitzero"`
-}
-
 // GateSay says something ABOUT a question without answering it: "checking with ops", "this is the
 // third time this week", "I would, but not before the release".
 //
 // A separate act from Resolve, and a separate route, because an answer carries a choice and this
-// one carries none — `/gate/resolve` refuses an answer that names no option, and rightly, since a
+// one carries none — `/asks/{id}/answer` refuses an answer that names no option, and rightly, since a
 // comment that settled a gate by accident would be the worst possible failure of this model. What
 // it leaves is a durable, attributed line on the question, where everyone who reads the question
 // reads it, rather than in whatever chat window it was typed in.
 //
 //tony:schemagen=verse-gate-say,notag
 type GateSay struct {
+	// ID is the question said on. POST /asks/{id}/say takes it from its path, and a body naming
+	// another is refused.
 	ID  string `tony:"field=id"`
 	By  string `tony:"field=by"`
 	Say string `tony:"field=say"`
@@ -133,6 +125,8 @@ type GateSay struct {
 
 //tony:schemagen=verse-resolve,notag
 type Resolve struct {
+	// ID is the gate answered. POST /asks/{id}/answer takes it from its path, and a body naming
+	// another is refused; POST /tasks/{id}/resolve takes it here.
 	ID string `tony:"field=id"`
 	// Choice is the option chosen, by id: `proceed` or `deny` on the question every gate
 	// poses unless it says otherwise, or one of the record's own options where it names
@@ -151,13 +145,17 @@ type Resolve struct {
 	// list because task.Resolution.Steer is: an answer may carry several instructions,
 	// and collapsing them at the boundary would lose an author's paragraphing.
 	Say []string `tony:"field=say,omitzero"`
-	// Override answers a question an exclusive resolver owns, as somebody else.
-	//
-	// It exists because `exclusive` is not real against whoever holds this API, and a dial
-	// that pretended otherwise would be a lie told to the person relying on it. So the
-	// override is a named act rather than a hole: it lands on the record naming both
-	// parties — who overrode, and whom.
-	Override bool `tony:"field=override,omitzero"`
+	// For is the party a resolver answers for, where the request is made as the resolver
+	// (ResolverHeader): a principal, or a place's address, as GET /resolvers/{name}/asks names
+	// it. It may be left out where the resolver serves the ask for one party only.
+	For string `tony:"field=for,omitzero"`
+	// Edit is the edit of a person's ask this answers, as the answerer was shown it. An answer
+	// to an earlier edit is refused: it consented to words no longer asked. Absent is the edit
+	// standing now.
+	Edit int `tony:"field=edit,omitzero"`
+	// Force answers as yourself an ask a resolver you granted serves for you. Without it that
+	// answer is refused, naming the resolver: the party chose to have it answer.
+	Force bool `tony:"field=force,omitzero"`
 }
 
 // Spawn runs an ad-hoc task (`POST /tasks`) — the `task run` path, which has
@@ -206,15 +204,11 @@ type Spawn struct {
 	// document a person typed (task.ParseCalls) and sends this, so a list that will not read
 	// is a message on their terminal rather than a task that failed on a machine elsewhere.
 	Calls []task.Call `tony:"field=calls,omitzero"`
-	// Resolver names the resolver that answers this run's gates — the ad-hoc face of a
-	// spawn's `resolver:`, so `verse task run` and a firing can name one the same way.
-	Resolver string `tony:"field=resolver,omitzero"`
 	// Runner names WHERE this run runs — `verse.runners.<name>`, installed with `verse
 	// runner add`. Empty means the verse's own default runner, which is what `local` means
 	// on a task:instance.
 	//
-	// It is orthogonal to Resolver and to a provider: a provider picks the DOER, a resolver
-	// picks who answers for it, and this picks the place. The same doer may run in either of
+	// It is orthogonal to a provider: a provider picks the DOER, and this picks the place. The same doer may run in either of
 	// two places and the same place may host either of two doers, so folding them together
 	// would make one selection answer two questions.
 	Runner string `tony:"field=runner,omitzero"`
@@ -265,38 +259,6 @@ type Spawned struct {
 //tony:schemagen=verse-dial,notag
 type Dial struct {
 	DialURL string `tony:"field=dialURL"`
-}
-
-// Verdict is one answer through a resolver's cover (`POST /resolvers/cover/{id}/verdicts`).
-//
-// It names the question rather than being addressed to it: an answerer reads a gate stream and
-// decides about what it sees, so the id is which of the things it has read this is about.
-//
-//tony:schemagen=verse-verdict,notag
-type Verdict struct {
-	ID string `tony:"field=id"`
-	// Verdict is `proceed` or `deny` — the record's own vocabulary, so what a resolver says
-	// and what the docket shows are one word rather than a mapping. `escalate` is the third
-	// and arrives with the layer that can receive it.
-	Verdict string `tony:"field=verdict"`
-	// Why is the reasoning, for the record. Say is what to tell the task — "yes, but do
-	// it this way" — and rides the same Steer a person's `--say` does.
-	Why string   `tony:"field=why,omitzero"`
-	Say []string `tony:"field=say,omitzero"`
-}
-
-// Position is how far a cover has read (`POST /resolvers/cover/{id}/position`).
-//
-// Reported even when nothing was decided, which is the point: a hundred frames may produce no
-// verdict, and the position advancing is what tells "has not decided" from "has not caught
-// up". Notes are a handover for whoever picks the position up — a replacement after a
-// restart, or the same answerer with a fresh context — not a memory, since a live one
-// remembers by being alive.
-//
-//tony:schemagen=verse-position,notag
-type Position struct {
-	Position int64  `tony:"field=position"`
-	Notes    string `tony:"field=notes,omitzero"`
 }
 
 // Say re-prompts a running task with a new instruction
@@ -648,6 +610,96 @@ type Group struct {
 	Members []string `tony:"field=members,omitzero"`
 }
 
+// Ask is a person asking somebody something (`verse ask`, POST /asks): what is asked, of whom, by
+// when, and what follows a yes. The ask is written at `verse.ask.<id>` as its asker's record, with
+// the id derived from Name, and the verb poses it (docs/asking.md).
+//
+// Then is one key naming what follows a yes, on the asker's authority: `{prompt: <text>}`, a task a
+// model works from that prompt; `{calls: [...]}`, a call list run as written; `{answer: {ask,
+// choice, say?, force?}}`, an answer to another ask as the asker; or `{ask: {…}}`, another ask the
+// asker raises, whose `due` may be a duration from the yes. Absent, the ask is a vote and the
+// answer is all it leaves.
+//
+//tony:schemagen=verse-ask,notag
+type Ask struct {
+	Name      string   `tony:"field=name"`
+	Question  string   `tony:"field=question"`
+	Answerers []string `tony:"field=answerers,omitzero"`
+	Due       string   `tony:"field=due,omitzero"`
+	// OnSilence is what the ask settles on when Due passes and nobody has answered: `no`, the
+	// default, or `yes`, which runs its `then` as an answer would. It needs a Due. An onward ask
+	// takes the served ask's.
+	OnSilence string         `tony:"field=onSilence,omitzero"`
+	Then      entity.Payload `tony:"field=then,omitzero"`
+	// Else is what follows a no, as Then is what follows a yes: a no answered, or silence settling
+	// on no at Due. It takes what Then does.
+	Else  entity.Payload `tony:"field=else,omitzero"`
+	About string         `tony:"field=about,omitzero"`
+	// Keep is how long the ask stands once settled, as a duration (168h); absent, a week.
+	Keep string `tony:"field=keep,omitzero"`
+	// Labels are what the ask says about itself for whoever watches asks (`team: payments`).
+	Labels map[string]string `tony:"field=labels,omitzero"`
+	// Serves makes this an ONWARD ask (9ce3bva0, stage 4): one a resolver raises, made as the
+	// resolver, about an ask it serves — the ask's id — for the party named in For, or the only
+	// one it serves it for. Its options are the served ask's, its clock fits inside the served
+	// ask's, and it takes no `then`: what follows it is the answer it carries back.
+	Serves string `tony:"field=serves,omitzero"`
+	For    string `tony:"field=for,omitzero"`
+}
+
+// Asked is what an ask answers with: the id it was written under, and the edit it stands at.
+//
+//tony:schemagen=verse-asked,notag
+type Asked struct {
+	ID   string `tony:"field=id"`
+	Edit int    `tony:"field=edit,omitzero"`
+}
+
+// ServedAsk is one waiting ask a resolver serves (GET /resolvers/{name}/asks): what it asks, and
+// the parties the resolver answers for on it — each principal it answers for, or the address of
+// the place.
+//
+//tony:schemagen=verse-served-ask,notag
+type ServedAsk struct {
+	ID     string            `tony:"field=id"`
+	Edit   int               `tony:"field=edit,omitzero"`
+	Pose   string            `tony:"field=pose,omitzero"`
+	About  string            `tony:"field=about,omitzero"`
+	Labels map[string]string `tony:"field=labels,omitzero"`
+	For    []string          `tony:"field=for"`
+}
+
+// AskServed is GET /asks/{id}/served: the resolver serving the ask for the caller, empty where
+// none does.
+//
+//tony:schemagen=verse-ask-served,notag
+type AskServed struct {
+	Resolver string `tony:"field=resolver,omitzero"`
+}
+
+// ServedAsks is the listing of them.
+//
+//tony:schemagen=verse-served-asks,notag
+type ServedAsks struct {
+	Asks []ServedAsk `tony:"field=asks"`
+}
+
+// AskChange is a change to a waiting ask by its asker (`verse ask <id> --due …`, PATCH
+// /asks/{id}). A new Due moves its clock and asks nothing again. A new Question, Answerers, Then
+// or Else changes what it asks, so it is asked again, as the next edit, and the ballots cast before
+// are dropped. Edit is the edit the asker changed, where they name it; a change to an ask that has
+// moved on since is refused.
+//
+//tony:schemagen=verse-ask-change,notag
+type AskChange struct {
+	Edit      int            `tony:"field=edit,omitzero"`
+	Due       string         `tony:"field=due,omitzero"`
+	Question  string         `tony:"field=question,omitzero"`
+	Answerers []string       `tony:"field=answerers,omitzero"`
+	Then      entity.Payload `tony:"field=then,omitzero"`
+	Else      entity.Payload `tony:"field=else,omitzero"`
+}
+
 // ScheduleRow is one schedule as `verse schedule` lists it: its record's id (the declared name,
 // `<address>:<name>` for a package's), its grid, the instant the daemon is armed against, and
 // the tick standing under it.
@@ -693,6 +745,14 @@ type PermsRecord struct {
 // adds one line at the node, beneath it when `below` is set, and `revoke` takes the named
 // grantees off the named levels of every line at the node, leaving the rest standing.
 //
+// AnswerFor is POST /resolvers/{name}/grant and /revoke: whom the resolver answers for. For is
+// the place, as a kinded path; absent, it is the caller, at `verse.for.<caller>`.
+//
+//tony:schemagen=verse-answer-for,notag
+type AnswerFor struct {
+	For string `tony:"field=for,omitzero"`
+}
+
 //tony:schemagen=verse-perms-edit,notag
 type PermsEdit struct {
 	At          string         `tony:"field=at"`

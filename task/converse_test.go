@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -37,6 +38,9 @@ func TestAConversationEndsWhenThePersonEndsIt(t *testing.T) {
 	go func() { oc, _ := p.Run(context.Background()); done <- oc }()
 
 	turn := turnOf(t, reg)
+	if !slices.Equal(turn.Question.Answerers, []string{PrincipalAnswerer}) {
+		t.Errorf("the turn is not put to the task's person: %+v", turn.Question)
+	}
 	if !strings.HasPrefix(turn.Question.ID, "t"+GateSep) || turn.Question.Origin != "t" {
 		t.Fatalf("the turn's question is %+v", turn.Question)
 	}
@@ -86,7 +90,7 @@ func TestASayWithdrawsTheStandingTurn(t *testing.T) {
 	go func() { oc, _ := p.Run(context.Background()); done <- oc }()
 
 	turn := turnOf(t, reg)
-	if err := p.Steer("carry on", "user:t"); err != nil {
+	if err := p.Steer("carry on", "user:t", ""); err != nil {
 		t.Fatal(err)
 	}
 	select {

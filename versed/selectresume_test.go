@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -80,6 +79,7 @@ func TestARestartResumesASelection(t *testing.T) {
 	if err := first.Eng.AddTrigger(reviewRule(&launch.Provider{Eligible: []string{"gpt", "claude"}, Select: "ask"})); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
+	testerOwns(t, first, entity.RefAt("demo", "pr", "1")) // the tester's pr, so the tester's pick
 	entitytest.Set(t, first.Store, entity.RefAt("demo", "pr", "1"), entity.Obj{"stage": "open"}.Payload())
 	var qid string
 	waitUntil(t, "the selection to reach the docket", func() bool {
@@ -95,7 +95,7 @@ func TestARestartResumesASelection(t *testing.T) {
 	ts := httptest.NewServer(second.Handler())
 	defer ts.Close()
 	// The pick, cast from the docket exactly as `verse gate <id> --answer claude --as scott` does.
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: qid, Choice: "claude", By: tester})
+	resp := postTony(t, ts.URL+answerPath(qid), api.Resolve{Choice: "claude", By: tester})
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("answering the resumed selection = %s, want 204", resp.Status)
@@ -140,35 +140,5 @@ func TestARestartHonoursASelectionsDeadline(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	if spawnedDoer(t, second, "gpt") || spawnedDoer(t, second, "claude") {
 		t.Fatal("a no-pick spawned a doer anyway")
-	}
-}
-
-// A vote under an exclusive resolver is refused at install: an exclusive resolver answers
-// alone, and a vote is a room. `ask` composes with it and installs.
-func TestAVoteUnderAnExclusiveResolverIsRefusedAtInstall(t *testing.T) {
-	srv := testServer(t)
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-	installResolver(t, ts.URL, `{name: strict, byRef: true, exclusive: true,`+
-		` deadline: {within: "4h"}, method: {driver: url, url: "https://x"}}`).Body.Close()
-
-	rule := func(sel string, need int) string {
-		return `- name: review
-  condition: {subject: {path: "demo.pr.*", value: {stage: open}}}
-  action:
-    patch: {stage: reviewing}
-    spawn:
-      prompt: "review $subject"
-      grant: read-only
-      resolver: verse.resolvers.strict
-      provider: {eligible: [gpt, claude], select: ` + sel + `, need: ` + itoa(int64(need)) + `}
-`
-	}
-	code, body := postCharterFile(t, ts.URL, rule("vote", 2))
-	if code != http.StatusBadRequest || !strings.Contains(body, "exclusive") {
-		t.Fatalf("a vote under an exclusive resolver installed: %d %s", code, body)
-	}
-	if code, body := postCharterFile(t, ts.URL, rule("ask", 1)); code != http.StatusCreated {
-		t.Fatalf("an ask under an exclusive resolver was refused: %d %s", code, body)
 	}
 }

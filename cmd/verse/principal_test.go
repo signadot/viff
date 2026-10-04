@@ -68,6 +68,10 @@ func TestASayCarriesItsSpeaker(t *testing.T) {
 			w.Write([]byte(`{subject: demo.pr.1, verb: say}`))
 			return
 		}
+		if r.URL.Path == "/tasks/t1/say" { // words to a task are an ask to it, answered with its id
+			w.Write([]byte(`{id: say-1}`))
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer ts.Close()

@@ -218,7 +218,7 @@ func (f *fakeHandle) SubscribeSince(int64) (<-chan task.Frame, func()) {
 func (f *fakeHandle) Pause() error                         { return nil }
 func (f *fakeHandle) Resume() error                        { return nil }
 func (f *fakeHandle) Cancel(string) error                  { return nil }
-func (f *fakeHandle) Steer(string, string) error           { return nil }
+func (f *fakeHandle) Steer(string, string, string) error   { return nil }
 func (f *fakeHandle) SetVector(*task.Vector, string) error { return nil }
 func (f *fakeHandle) Result() string                       { return "" }
 func (f *fakeHandle) Err() string                          { return "" }

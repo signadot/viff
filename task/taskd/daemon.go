@@ -54,11 +54,12 @@ type Daemon struct {
 	// daemon still holds no store and makes no decision about where anything goes — it
 	// repeats what the launch said, and the publisher decides what that means.
 	onQuestion func(l task.Launch, p task.Pending)
+	onCheck    func(l task.Launch, q task.GateQuestion) error
 	// onDrop is the counterpart, and is not optional in the way it looks. A question is
 	// WITHDRAWN when its last waiter stops waiting — an intervention that redirects the run,
 	// a pause, a deadline — and without a publisher for that half the record posted by
 	// onQuestion above stays `pending` on the docket, offering a decision nothing is left to
-	// receive. It was announced and never retracted, so `verse gate` listed a withdrawn
+	// receive. It was announced and never retracted, so `verse question` listed a withdrawn
 	// question beside a live one with nothing to tell them apart, and answering it was a 404
 	// (git-issue zdaqh9vkh12ksxneg9n0).
 	//
@@ -71,6 +72,10 @@ type Daemon struct {
 // OnQuestion registers the publisher. Optional: taskd runs standalone in tests and under
 // `verse task run` with nothing behind it.
 func (d *Daemon) OnQuestion(f func(l task.Launch, p task.Pending)) { d.onQuestion = f }
+
+// OnCheck registers what may refuse a hosted task's question before it is posed (Registry.OnCheck),
+// told the task's launch as onQuestion is.
+func (d *Daemon) OnCheck(f func(l task.Launch, q task.GateQuestion) error) { d.onCheck = f }
 
 // OnDrop registers the publisher's other half — a question leaving the docket unanswered. A
 // caller that registers one without the other publishes questions it never retires.
@@ -208,8 +213,7 @@ func (d *Daemon) spawnHosted(l task.Launch, content task.ContentReader) (*hosted
 	if l.Vector != nil {
 		tk.SetVector(l.Vector, "launch")
 	}
-	tk.SetRetain(l.Retain)        // how much of its read plane a resuming reader can still see
-	tk.SetResolverRef(l.Resolver) // who owns the questions it raises
+	tk.SetRetain(l.Retain) // how much of its read plane a resuming reader can still see
 	if l.Converse {
 		tk.SetConverse(reg) // the person's turn is a question on this task's own docket
 	}
@@ -218,14 +222,22 @@ func (d *Daemon) spawnHosted(l task.Launch, content task.ContentReader) (*hosted
 
 	// Surface pending decisions on the same read plane as the loop's events, so an
 	// attached client sees what a gate is blocked on and can resolve it by id.
+	reg.OnCheck(func(q task.GateQuestion) error {
+		if d.onCheck != nil {
+			return d.onCheck(l, q)
+		}
+		return nil
+	})
 	reg.OnPost(func(p task.Pending) {
 		if d.onQuestion != nil {
 			d.onQuestion(l, p)
 		}
+		// Whom it asks crosses too: verse poses a remote task's question from this frame, and a
+		// turn or an ask naming $principal is the task's person's, not the docket's.
 		tk.Emit(task.Frame{
 			Kind: task.EvPending, ID: p.Question.ID, Tool: p.Tool,
 			Gate: p.Question.Gate, Mode: p.Question.Mode.String(), Text: p.Question.Reason,
-			Options: p.Question.Options, Deadline: p.Question.Deadline,
+			Options: p.Question.Options, Deadline: p.Question.Deadline, Answerers: p.Question.Answerers,
 		})
 	})
 	// And the counterpart, on the SAME registry. This is the one that was missing: the
@@ -411,7 +423,7 @@ func (d *Daemon) events(w http.ResponseWriter, r *http.Request) {
 			_ = sse.Send(task.Frame{
 				Kind: task.EvPending, ID: p.Question.ID, Tool: p.Tool,
 				Gate: p.Question.Gate, Mode: p.Question.Mode.String(), Text: p.Question.Reason,
-				Options: p.Question.Options, Deadline: p.Question.Deadline,
+				Options: p.Question.Options, Deadline: p.Question.Deadline, Answerers: p.Question.Answerers,
 			})
 		}
 	}
@@ -504,7 +516,11 @@ func (d *Daemon) say(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "a say carries an `instruction`", http.StatusBadRequest)
 		return
 	}
-	h.task.Steer(body.Instruction, body.By) // empty is an unattributed caller, said as such
+	// Empty `by` is an unattributed caller, said as such. An ended task hears nothing, and says so.
+	if err := h.task.Steer(body.Instruction, body.By, body.Ask); err != nil {
+		http.Error(w, err.Error(), http.StatusGone)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

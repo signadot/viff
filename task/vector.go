@@ -3,8 +3,10 @@ package task
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
+	"unicode"
 )
 
 // Vector is the ordered gate vector evaluated at each boundary. It is data, not
@@ -57,17 +59,10 @@ type GateQuestion struct {
 	// existing. Empty when the action starts nothing, and note these are ids-to-be: a
 	// denied gate, or a provider selection that resolves to no doer, creates none of them.
 	Spawns string
-	// Resolver is the RESOLVER that owns this question — `verse.resolvers.<name>` — empty
-	// when no resolver holds it and the question belongs to whoever reads the docket.
-	//
-	// The resolver rather than its cover, because a question is owned by what was declared
-	// and answered by whatever is currently reading its gate stream. The cover is derivable
-	// from the resolver and the question's origin, and would be a second spelling of a pair
-	// already here.
-	Resolver string
 	// Answerers is who the gate held the question out to, when it named them — grantees, the
-	// way a grant names them: a principal, a kind, a group's address. Empty leaves the question
-	// to the docket's default. Written as the question's `read-write` grant when it is posed.
+	// way a grant names them: a principal, a kind, a group's address, or PrincipalAnswerer for
+	// whom the task acts for. Empty leaves the question to the docket's default. Written as the
+	// question's `read-write` grant when it is posed.
 	Answerers []string
 	// At is the ADDRESS of the charter whose rule is asking — `verse-dev.merge` — empty for
 	// baseline and for a question a task raised (a task knows what it is doing, not which
@@ -104,13 +99,43 @@ type GateQuestion struct {
 	// selection opens after the action has written its latch, so nothing re-fires it, and the
 	// chain is what a restart navigates back through to re-enter it.
 	Chain string
+	// Edit is which edit of a person's ask this is: 1 as first asked, and one more each time
+	// its asker changes what it asks. An answer is consent to what was asked, so it names the
+	// edit it answered, and one to an earlier edit is refused. Zero for a rule's gate and a
+	// task's question, which nobody edits.
+	Edit int
+	// Labels are what the question says about itself for whoever watches asks: `team: payments`,
+	// `kind: deploy`. A convention between the raiser and the resolvers matching on them; verse
+	// reads nothing into a label, and routes nothing by one.
+	Labels map[string]string
+}
+
+// CheckLabels refuses a label a match could not name: an empty name, or one holding a space.
+func CheckLabels(labels map[string]string) error {
+	for k := range labels {
+		if k == "" || strings.ContainsFunc(k, unicode.IsSpace) {
+			return fmt.Errorf("labels: %q: a label's name is a word, with no space in it", k)
+		}
+	}
+	return nil
 }
 
 // Deadline is how long a question stands, and what it settles on when the clock passes.
 //
 //tony:schemagen=verse-deadline,notag
 type Deadline struct {
-	Within  string `tony:"field=within"`
+	// Within is how long the question stands from when it is posed: "24h".
+	Within string `tony:"field=within,omitzero"`
+	// AtFrom names the field of the subject's value holding the instant it settles at instead —
+	// an RFC 3339 time a record carries, `by: "2026-10-02T17:00:00Z"`. It is how an ask says
+	// "this week": a date, not a duration from whenever it happened to be posed. Written in place
+	// of Within, never beside it; read at the firing, and read AGAIN while the question stands,
+	// so whoever may edit the record moves the clock by editing the date. A record without the
+	// field has no clock: the question stands until it is answered.
+	AtFrom string `tony:"field=atFrom,omitzero"`
+	// At is the instant AtFrom resolved to at the firing. The engine's to set, never a charter's:
+	// a charter says where the date is, and the record says what it is.
+	At      string `tony:"field=at,omitzero"`
 	Default string `tony:"field=default,omitzero"`
 }
 
@@ -221,7 +246,7 @@ func (v *Vector) Evaluate(tu ToolUse) GateQuestion {
 		}
 		if g.Mode >= d.Mode {
 			d = GateQuestion{Mode: g.Mode, Gate: g.Name, Reason: reason,
-				Options: g.options(), Deadline: g.Deadline, Answerers: g.Answerers}
+				Options: g.options(), Deadline: g.Deadline, Answerers: g.Answerers, Labels: g.Labels}
 		}
 	}
 	return d
@@ -232,12 +257,11 @@ func (v *Vector) Evaluate(tu ToolUse) GateQuestion {
 // running task" operation; swapping the resolver is supervisor-agnosticity
 // — a human or another task answering the same gates through one interface.
 type Supervisor struct {
-	vec         atomic.Pointer[Vector]
-	resolver    atomic.Pointer[resolverBox]
-	deriver     Deriver
-	origin      string // task id, stamped onto each GateQuestion
-	resolverRef string // resolver that owns this task's questions, if any
-	dc          uint64 // question counter (one Check goroutine per Supervisor)
+	vec      atomic.Pointer[Vector]
+	resolver atomic.Pointer[resolverBox]
+	deriver  Deriver
+	origin   string // task id, stamped onto each GateQuestion
+	dc       uint64 // question counter (one Check goroutine per Supervisor)
 }
 
 type resolverBox struct{ r Resolver }
@@ -272,11 +296,6 @@ func (s *Supervisor) Derive(tu *ToolUse) {
 // SetOrigin stamps this supervisor's questions with a task id (attribution).
 func (s *Supervisor) SetOrigin(id string) { s.origin = id }
 
-// SetResolverRef names the resolver that owns this task's questions. Set at spawn from
-// the launch, before the loop runs; empty means no resolver holds them and the questions belong
-// to whoever reads the docket.
-func (s *Supervisor) SetResolverRef(ref string) { s.resolverRef = ref }
-
 // Vector returns the current gate vector (for read-surface display).
 func (s *Supervisor) Vector() *Vector { return s.vec.Load() }
 
@@ -295,7 +314,6 @@ func (s *Supervisor) Check(ctx context.Context, tu ToolUse) (Resolution, error) 
 	d := s.vec.Load().Evaluate(tu)
 	s.dc++
 	d.Origin = s.origin
-	d.Resolver = s.resolverRef
 	d.ID = fmt.Sprintf("%s%sd%d", s.origin, GateSep, s.dc)
 	// A question is not asked about. Under `vector: ask` the default would gate the asking
 	// itself, and the person would be asked whether the task may ask them — the question the

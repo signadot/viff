@@ -75,6 +75,8 @@ func slackMain(args []string) error {
 	var o *verseio.Out
 	if *out {
 		sink = src.Sink(client.New(addr, c.principal(c.root)))
+		// An ask is read by whom it asks, so a message for somebody is drawn as they read it.
+		sink.As = verseio.As(addr)
 		outs, err := c.outHalf(ctx, src.Root(), sink, []entity.Ref{src.OutRef()})
 		if err != nil {
 			return err
@@ -83,7 +85,7 @@ func slackMain(args []string) error {
 	}
 
 	// Socket Mode, which this dials out to, so no Ingress is needed: Slack's event deliveries
-	// arrive down it as hints, and with -out so do presses of the buttons it said.
+	// arrive down it as hints, and with -out so do replies in the threads it started.
 	switch {
 	case app != "":
 		sock := src.Socket(app)

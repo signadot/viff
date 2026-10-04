@@ -213,10 +213,10 @@ func TestMatchRejectsBadShape(t *testing.T) {
 
 // AN ADDRESS IS A PATH, written as the kinded path string or as `path:` — the two mean one thing.
 func TestAnAddressIsAPath(t *testing.T) {
-	want := []string{"verse", "gate", "question", "*"}
+	want := []string{"verse", "ask", "*"}
 	for _, src := range []string{
-		`"verse.gate.question.*"`,
-		`{path: "verse.gate.question.*"}`,
+		`"verse.ask.*"`,
+		`{path: "verse.ask.*"}`,
 	} {
 		var m Match
 		if err := codec.Unmarshal([]byte(src), &m, codec.Tony); err != nil {

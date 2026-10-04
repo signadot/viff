@@ -193,3 +193,18 @@ type questionOnly struct{}
 func (questionOnly) Resolve(_ context.Context, q GateQuestion, _ ToolUse) (Resolution, error) {
 	return Resolution{Question: q}, nil
 }
+
+// A gate's labels ride on its question, and a label a match could not name is refused with the
+// gate.
+func TestTheDecidingGateCarriesItsLabels(t *testing.T) {
+	v := &Vector{Default: Auto, Gates: []Gate{
+		{Name: "deploy", Mode: Ask, Match: GateMatch{Tools: []string{"deploy"}}, Labels: map[string]string{"team": "payments"}},
+	}}
+	if q := v.Evaluate(ToolUse{Name: "deploy"}); q.Labels["team"] != "payments" {
+		t.Fatalf("the question carries labels %v", q.Labels)
+	}
+	bad := Gate{Name: "deploy", Mode: Ask, Labels: map[string]string{"a b": "c"}}
+	if err := bad.Validate(); err == nil || !strings.Contains(err.Error(), "a label's name is a word") {
+		t.Fatalf("a label with a space: %v", err)
+	}
+}

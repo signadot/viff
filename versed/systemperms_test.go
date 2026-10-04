@@ -96,7 +96,7 @@ func TestControlIsHeldByTheTasksOwner(t *testing.T) {
 	defer ts.Close()
 
 	pr(t, srv, "1", "payments")
-	spawnAs(t, "alice@example.com", ts.URL, "run-1", `change.pr."1"`, "")
+	spawnAs(t, "alice@example.com", ts.URL, "run-1", `change.pr."1"`)
 	waitQuestion(t, srv, "run-1") // running, and blocked on its gate: there is something to cancel
 
 	say := func(as string) int {
@@ -108,7 +108,7 @@ func TestControlIsHeldByTheTasksOwner(t *testing.T) {
 	if code := say("bob@example.com"); code != http.StatusForbidden {
 		t.Fatalf("a stranger steered the task: %d", code)
 	}
-	if code := say("alice@example.com"); code != http.StatusNoContent {
+	if code := say("alice@example.com"); code != http.StatusOK {
 		t.Fatalf("the owner could not steer their task: %d", code)
 	}
 	// Pause and resume are control verbs like say: the runtime mount serves them only after

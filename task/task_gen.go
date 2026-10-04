@@ -633,6 +633,15 @@ func (s *Gate) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["answerers"] = ir.FromSlice(slice)
 	}
 
+	// Field: Labels
+	if len(s.Labels) > 0 {
+		mapNodes := make(map[string]*ir.Node)
+		for k, v := range s.Labels {
+			mapNodes[k] = ir.FromString(string(v))
+		}
+		irMap["labels"] = ir.FromMap(mapNodes)
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -727,6 +736,24 @@ func (s *Gate) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				s.Answerers = slice
 			} else {
 				return fmt.Errorf("%s: expected array, got %v", "field \"answerers\"", fieldNodeUnwrapped.Type)
+			}
+		case "labels":
+			// Field: Labels
+			if fieldNodeUnwrapped.Type == ir.ObjectType {
+				m := make(map[string]string)
+				irMap := ir.ToMap(fieldNodeUnwrapped)
+				for k, v := range irMap {
+					ctx := fmt.Sprintf("map value at key %q", k)
+					var val string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					val = v.String
+					m[k] = val
+				}
+				s.Labels = m
+			} else {
+				return fmt.Errorf("%s: expected object, got %v", "field \"labels\"", fieldNodeUnwrapped.Type)
 			}
 		default:
 			if gomap.IsStrict(opts...) {
@@ -1697,7 +1724,19 @@ func (s *Deadline) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	irMap := make(map[string]*ir.Node)
 
 	// Field: Within
-	irMap["within"] = ir.FromString(string(s.Within))
+	if s.Within != "" {
+		irMap["within"] = ir.FromString(string(s.Within))
+	}
+
+	// Field: AtFrom
+	if s.AtFrom != "" {
+		irMap["atFrom"] = ir.FromString(string(s.AtFrom))
+	}
+
+	// Field: At
+	if s.At != "" {
+		irMap["at"] = ir.FromString(string(s.At))
+	}
 
 	// Field: Default
 	if s.Default != "" {
@@ -1743,6 +1782,18 @@ func (s *Deadline) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "within", fieldNodeUnwrapped.Type)
 			}
 			s.Within = string(fieldNodeUnwrapped.String)
+		case "atFrom":
+			// Field: AtFrom
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "atFrom", fieldNodeUnwrapped.Type)
+			}
+			s.AtFrom = string(fieldNodeUnwrapped.String)
+		case "at":
+			// Field: At
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "at", fieldNodeUnwrapped.Type)
+			}
+			s.At = string(fieldNodeUnwrapped.String)
 		case "default":
 			// Field: Default
 			if fieldNodeUnwrapped.Type != ir.StringType {
@@ -2413,6 +2464,11 @@ func (s *SayRequest) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["by"] = ir.FromString(string(s.By))
 	}
 
+	// Field: Ask
+	if s.Ask != "" {
+		irMap["ask"] = ir.FromString(string(s.Ask))
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -2458,6 +2514,12 @@ func (s *SayRequest) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error 
 				return fmt.Errorf("field %q: expected string, got %v", "by", fieldNodeUnwrapped.Type)
 			}
 			s.By = string(fieldNodeUnwrapped.String)
+		case "ask":
+			// Field: Ask
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "ask", fieldNodeUnwrapped.Type)
+			}
+			s.Ask = string(fieldNodeUnwrapped.String)
 		default:
 			if gomap.IsStrict(opts...) {
 				return fmt.Errorf("unknown field %q for SayRequest", fieldName.String)

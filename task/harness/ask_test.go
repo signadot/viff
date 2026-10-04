@@ -3,6 +3,7 @@ package harness
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -11,11 +12,15 @@ import (
 )
 
 func askCall(id, question string, options ...string) toolCall {
-	tc := mkTC(id, askTool)
 	args := map[string]any{"question": question}
 	if len(options) > 0 {
 		args["options"] = options
 	}
+	return askCallWith(id, args)
+}
+
+func askCallWith(id string, args map[string]any) toolCall {
+	tc := mkTC(id, askTool)
 	b, _ := json.Marshal(args)
 	tc.Function.Arguments = string(b)
 	return tc
@@ -73,6 +78,9 @@ func TestAskBlocksOnTheDocketAndReturnsTheAnswer(t *testing.T) {
 	fake, done := askRun(t, context.Background(), reg, nil, askCall("c1", "which one?"))
 
 	p := pendingAsk(t, reg)
+	if !slices.Equal(p.Question.Answerers, []string{task.PrincipalAnswerer}) {
+		t.Errorf("the ask is not put to the task's person: %+v", p.Question)
+	}
 	if p.Tool != askTool || p.Question.Reason != "which one?" || p.Question.Origin != "t1" {
 		t.Fatalf("the docket holds %+v", p)
 	}
@@ -153,5 +161,83 @@ func TestACancelledAskLeavesTheDocket(t *testing.T) {
 	}
 	if ps := reg.Pending(); len(ps) != 0 {
 		t.Fatalf("the docket still holds %+v", ps)
+	}
+}
+
+// A QUESTION WAITS UNTIL IT IS ANSWERED unless the model bounds it: a conversation hands the
+// person the turn, and they take it whenever they come back.
+func TestAskWithoutWithinHasNoClock(t *testing.T) {
+	reg := task.NewRegistry()
+	_, done := askRun(t, context.Background(), reg, nil, askCall("c1", "which one?"))
+	p := pendingAsk(t, reg)
+	if p.Question.Deadline != nil {
+		t.Fatalf("an ask with no within has a clock: %+v", p.Question.Deadline)
+	}
+	reg.Answer(p.Question.ID, task.Resolution{Choice: replyOption, By: "user:t", Steer: []string{"x"}})
+	<-done
+}
+
+// WITHIN BOUNDS THE WAIT, and default is what silence settles on; the model reads that nobody
+// answered, and what it came to.
+func TestAskWithinIsTheQuestionsClock(t *testing.T) {
+	reg := task.NewRegistry()
+	fake, done := askRun(t, context.Background(), reg, nil, askCallWith("c1", map[string]any{
+		"question": "a or b?", "options": []string{"a", "b"}, "within": "30m", "default": "b"}))
+	p := pendingAsk(t, reg)
+	if d := p.Question.Deadline; d == nil || d.Within != "30m" || d.Default != "b" {
+		t.Fatalf("the question's clock is %+v, want within 30m defaulting to b", d)
+	}
+	reg.Answer(p.Question.ID, task.Choose("b", task.ByDeadline))
+	if err := <-done; err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if got := toldAfterAsk(t, fake); got != "nobody answered within 30m, so it settled on b" {
+		t.Fatalf("the model read %q", got)
+	}
+}
+
+// A QUESTION IN WORDS THAT RUNS OUT settles on nothing, and says so.
+func TestAnAskInWordsThatRunsOutSaysNobodyAnswered(t *testing.T) {
+	reg := task.NewRegistry()
+	fake, done := askRun(t, context.Background(), reg, nil, askCallWith("c1", map[string]any{
+		"question": "anything?", "within": "2s"}))
+	p := pendingAsk(t, reg)
+	reg.Answer(p.Question.ID, task.Choose(task.NoOption, task.ByDeadline))
+	if err := <-done; err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if got := toldAfterAsk(t, fake); got != "nobody answered within 2s" {
+		t.Fatalf("the model read %q", got)
+	}
+}
+
+// A CLOCK THAT CANNOT MEAN ANYTHING is refused to the model, which reads why, and nothing is posed.
+func TestAskRefusesAClockThatMeansNothing(t *testing.T) {
+	for name, args := range map[string]map[string]any{
+		"within not a duration":  {"question": "q", "within": "soon"},
+		"within not positive":    {"question": "q", "within": "0s"},
+		"default without within": {"question": "q", "options": []string{"a"}, "default": "a"},
+		"default not an option":  {"question": "q", "options": []string{"a"}, "within": "1h", "default": "c"},
+		"default on words":       {"question": "q", "within": "1h", "default": replyOption},
+	} {
+		reg := task.NewRegistry()
+		fake, done := askRun(t, context.Background(), reg, nil, askCallWith("c1", args))
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("%s: run: %v", name, err)
+			}
+		case <-time.After(2 * time.Second):
+			// Posed, so the run waits on it: say so, and answer it to let the run end.
+			for _, p := range reg.Pending() {
+				reg.Answer(p.Question.ID, task.Resolution{Choice: replyOption, By: "user:t"})
+			}
+			<-done
+			t.Errorf("%s: a question was posed", name)
+			continue
+		}
+		if got := toldAfterAsk(t, fake); !strings.Contains(got, "ask:") {
+			t.Errorf("%s: the model read %q, want the refusal", name, got)
+		}
 	}
 }

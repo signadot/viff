@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -370,7 +371,13 @@ func (s *Server) flowSay(w http.ResponseWriter, r *http.Request) {
 			noSuchTask(w, r, b.Task)
 			return
 		}
-		h.Steer(b.Text, b.By)
+		if _, err := s.sayTo(r, b.Task, h, b.Text, sayer(r, b.By)); errors.Is(err, task.ErrEnded) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		} else if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
 		out.Affected = 1
 		writeOut(w, r, http.StatusOK, out)
 		return
@@ -404,9 +411,11 @@ func (s *Server) flowSay(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	for _, t := range tasks {
+		// Words to each task the flow reaches, each an ask to that task (9ce3bva0, stage 6).
 		if h, ok := t.eng.Handle(t.id); ok {
-			h.Steer(b.Text, b.By)
-			out.Affected++
+			if _, err := s.sayTo(r, t.id, h, b.Text, sayer(r, b.By)); err == nil {
+				out.Affected++
+			}
 		}
 	}
 	writeOut(w, r, http.StatusOK, out)
@@ -434,4 +443,12 @@ func (s *Server) flowCancel(w http.ResponseWriter, r *http.Request) {
 	}
 	h.Cancel("flow cancel")
 	writeOut(w, r, http.StatusOK, api.Steered{Task: b.Task, Verb: "cancel", Affected: 1})
+}
+
+// sayer is who says words to a flow: the body's `by`, else whoever the request is made as.
+func sayer(r *http.Request, by string) string {
+	if by != "" {
+		return by
+	}
+	return principalOf(r)
 }

@@ -258,7 +258,7 @@ func (r *outRig) pose(t *testing.T, id string, record entity.Obj) {
 // message says about a question that is no longer there can be asked.
 func (r *outRig) unpose(t *testing.T, id string) {
 	t.Helper()
-	at := entity.RefAt(entity.VerseRoot, mirror.QuestionSystem, mirror.QuestionKind)
+	at := entity.VerseRef(mirror.AskSystem)
 	if _, _, err := r.store.Write(entity.Write{
 		At: at.At(), Value: entity.Obj{id: entity.Removed()}.Payload(),
 	}); err != nil {

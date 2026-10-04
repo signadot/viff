@@ -102,36 +102,9 @@ func (o *oneRecordWrite) Write(w entity.Write) (bool, int64, error) {
 	return o.Store.Write(w)
 }
 
-// A QUESTION A RESOLVER OWNS IS THE RESOLVER'S FROM THE WRITE THAT MAKES ITS RECORD. Held out by
-// the default first and narrowed to the resolver in a second write, it was every person's to settle for as
-// long as that write took — and for good when it failed, which nothing said.
-func TestAResolversQuestionIsNeverHeldOutToEverybody(t *testing.T) {
-	inner := &oneRecordWrite{Store: entitytest.OpenStore(t)}
-	store := entity.As(inner, entity.SystemDocket)
-	q := task.GateQuestion{ID: "review~d1", Gate: "approve", Resolver: "verse.resolvers.reviewbot"}
-	if !mirror.PostQuestion(store, task.Pending{Question: q}, "") {
-		t.Fatal("not posed")
-	}
-	view := entity.As(inner.Store, entity.SystemDefault)
-	if ok, _ := entity.Holds(view, "user:mallory@example.com", entity.ReadWrite, mirror.QuestionRef(q.ID)); ok {
-		t.Error("a resolver's question whose second write failed is anybody's to answer")
-	}
-	rec, ok, err := inner.Store.Get(entity.PermsRef(mirror.QuestionRef(q.ID)))
-	if err != nil || !ok {
-		t.Fatalf("no record: %v %v", ok, err)
-	}
-	gs, err := entity.ParseGrants(mirror.QuestionRef(q.ID).Segs(), rec.Payload)
-	if err != nil || len(gs) == 0 {
-		t.Fatalf("grants = %v (err %v)", gs, err)
-	}
-	if got := gs[0].To[entity.ReadWrite]; len(got) != 1 || got[0] != "via:"+q.Resolver {
-		t.Errorf("held out to %v, want the resolver", got)
-	}
-}
-
-// WHO MAY ANSWER BELONGS TO THE ASKING. A gate fired again about the same subject poses the same
-// id, and a record written once per id would go on admitting whoever the first asking named and
-// refusing whoever this one does.
+// WHO MAY ANSWER BELONGS TO THE ASKING. A question posed again under an id that settled is a new
+// asking, and a record written once per id would go on admitting whoever the first asking named
+// and refusing whoever this one does.
 func TestAQuestionAskedAgainIsHeldOutToWhomThisAskingNames(t *testing.T) {
 	store := entity.As(entitytest.OpenStore(t), entity.SystemDocket)
 	view := entity.As(store, entity.SystemDefault)
@@ -158,46 +131,5 @@ func TestAQuestionAskedAgainIsHeldOutToWhomThisAskingNames(t *testing.T) {
 	e, _, _ := store.Get(ref)
 	if within, dflt, at := mirror.DeadlineOf(e.Payload); within != "72h" || dflt != "deny" || at != "" {
 		t.Errorf("the re-asked question's deadline is within=%q default=%q at=%q", within, dflt, at)
-	}
-}
-
-// HANDED UP, A QUESTION GOES BACK TO WHOM ITS GATE NAMED. A held-out question's record carries its
-// resolver alone, so releasing it to the docket's default would make a gate held out to davido
-// every person's the moment its resolver escalates, times out or is removed.
-func TestReleasingGivesAQuestionBackToItsAnswerers(t *testing.T) {
-	store := entity.As(entitytest.OpenStore(t), entity.SystemDocket)
-	view := entity.As(store, entity.SystemDefault)
-	davido, mallory := "user:davido@example.com", "user:mallory@example.com"
-	q := task.GateQuestion{ID: "review~1", Gate: "approve", Answerers: []string{davido},
-		Resolver: "verse.resolvers.reviewbot"}
-	if !mirror.PostQuestion(store, task.Pending{Question: q}, "") {
-		t.Fatal("not posed")
-	}
-	ref := mirror.QuestionRef(q.ID)
-	if ok, _ := entity.Holds(view, davido, entity.ReadWrite, ref); ok {
-		t.Fatal("the fixture is wrong: a question a resolver owns is the resolver's, and davido holds it")
-	}
-	if err := mirror.HoldOut(store, q.ID, ""); err != nil {
-		t.Fatal(err)
-	}
-	if ok, _ := entity.Holds(view, mallory, entity.ReadWrite, ref); ok {
-		t.Error("handed up to the docket, a gate held out to davido is anybody's")
-	}
-	if ok, err := entity.Holds(view, davido, entity.ReadWrite, ref); err != nil || !ok {
-		t.Errorf("davido may not answer the gate that names him: %v %v", ok, err)
-	}
-	// A gate that named nobody goes back to the docket's default, as it did.
-	if err := entity.SetChildGrants(view, entity.VerseRef(mirror.QuestionSystem, mirror.QuestionKind), entity.Levels{
-		entity.Read: {entity.Everyone}, entity.ReadWrite: {"user:*", "agent:*"},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	open := task.GateQuestion{ID: "open~1", Gate: "approve", Resolver: q.Resolver}
-	mirror.PostQuestion(store, task.Pending{Question: open}, "")
-	if err := mirror.HoldOut(store, open.ID, ""); err != nil {
-		t.Fatal(err)
-	}
-	if ok, err := entity.Holds(view, mallory, entity.ReadWrite, mirror.QuestionRef(open.ID)); err != nil || !ok {
-		t.Errorf("a gate naming nobody did not go back to the default: %v %v", ok, err)
 	}
 }

@@ -5,8 +5,8 @@ condition, a list of gates and an action. When the condition holds and every gat
 action fires.
 
 This page is the model of a rule: its parts, how it fires, and the two grammars that it is
-written in. The [tutorial](tutorial.md) installs a rule and drives it, and this page is the
-model behind the tutorial. [Where the rest is](#where-the-rest-is) lists the pages that say
+written in. To write one, start with [Write a charter](build.md#write-a-charter). The
+[tutorial](tutorial.md) installs a rule and drives it, and this page is the model behind both. [Where the rest is](#where-the-rest-is) lists the pages that say
 what each field of a rule means.
 
 A rule is about entities. An [entity](glossary.md#entity) is a [node](glossary.md#node) at an

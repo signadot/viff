@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -26,6 +27,12 @@ import (
 // compile here and at every call site, instead of decoding to a zero value and
 // answering "unknown or already-answered decision" at runtime.
 
+// answerPath is the route an answer to the ask id is posted to, and sayPath the one a word on it is:
+// the path names the ask, so a body need not.
+func answerPath(id string) string { return "/asks/" + url.PathEscape(id) + "/answer" }
+
+func sayPath(id string) string { return "/asks/" + url.PathEscape(id) + "/say" }
+
 // postTony sends v as tony to path and returns the response, as the tester: the principal the
 // CLI would send from its config's `user:`, so what a test does is somebody's, the way what a
 // person does is. A test about the unattributed request sends none (postAs).
@@ -40,8 +47,6 @@ func postTony(t *testing.T, url string, v any) *http.Response {
 	as := tester
 	switch body := v.(type) {
 	case api.Resolve:
-		as = orTester(body.By)
-	case api.Escalate:
 		as = orTester(body.By)
 	case api.GateSay:
 		as = orTester(body.By)
@@ -63,10 +68,10 @@ func orTester(by string) string {
 // tester is who a test acts as.
 const tester = "tester@example.com"
 
-// An engine gate posted to the registry is answered through POST /gate/resolve carrying
-// api.Resolve — the id names the gate, choice carries the answer, and say rides along
+// An engine gate posted to the registry is answered through POST /asks/{id}/answer carrying
+// api.Resolve — the path names the gate, choice carries the answer, and say rides along
 // as steering.
-func TestGateResolveAcceptsAPIResolve(t *testing.T) {
+func TestAnAskAnswerAcceptsAPIResolve(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -82,7 +87,7 @@ func TestGateResolveAcceptsAPIResolve(t *testing.T) {
 	}()
 	waitPending(t, srv, id)
 
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: "proceed", By: "user:scott@example.com", Say: []string{"ship it"}})
+	resp := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "proceed", By: "user:scott@example.com", Say: []string{"ship it"}})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("gate resolve: status = %s, want 204", resp.Status)
@@ -106,7 +111,7 @@ func TestGateResolveAcceptsAPIResolve(t *testing.T) {
 // once it is posed and not before.
 func posedByTheMirror(t *testing.T, srv *Server, ev task.Frame, taskID string) {
 	t.Helper()
-	if !mirror.PostFrameQuestion(entity.As(srv.Store, entity.SystemDocket), ev, taskID, "", "", nil) {
+	if !mirror.PostFrameQuestion(entity.As(srv.Store, entity.SystemDocket), ev, taskID, "", nil) {
 		t.Fatalf("question %s was not posed", ev.ID)
 	}
 }
@@ -205,7 +210,7 @@ func TestGateResolveRoutesAnOwnerlessTaskGate(t *testing.T) {
 
 	// Answer it the way an operator reading `verse gate` does — by id alone, with no
 	// task id to help, through the same route `verse gate approve` posts to.
-	resp := postTony(t, ops.URL+"/gate/resolve", api.Resolve{ID: decision, Choice: "proceed", By: "user:alice@example.com"})
+	resp := postTony(t, ops.URL+answerPath(decision), api.Resolve{Choice: "proceed", By: "user:alice@example.com"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("gate resolve = %s, want 204 — an ownerless task gate must still route", resp.Status)
@@ -297,9 +302,9 @@ func TestGateListingOmitsAbsentFields(t *testing.T) {
 	var gates []map[string]any
 	deadline := time.After(2 * time.Second)
 	for len(gates) == 0 {
-		resp, err := http.Get(ops.URL + "/gates")
+		resp, err := http.Get(ops.URL + "/asks?all=true")
 		if err != nil {
-			t.Fatalf("get gates: %v", err)
+			t.Fatalf("get the docket: %v", err)
 		}
 		decodeResp(t, resp, &gates)
 		resp.Body.Close()

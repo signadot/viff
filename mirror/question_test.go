@@ -24,8 +24,8 @@ func pose(t *testing.T, store entity.Store, id, gate, taskID string, effs ...tas
 // ids returns the question ids a pattern picks, so a test can say what a rule would fire on.
 func ids(t *testing.T, store entity.Store, p entity.Pattern) []string {
 	t.Helper()
-	p.Path = []*ir.Node{ir.FromString(entity.VerseRoot), ir.FromString(QuestionSystem),
-		ir.FromString(QuestionKind), ir.FromString("*")}
+	p.Path = []*ir.Node{ir.FromString(entity.VerseRoot), ir.FromString(AskSystem),
+		ir.FromString("*")}
 	var out []string
 	for _, ref := range p.Select(store) {
 		out = append(out, ref.Name())
@@ -77,27 +77,6 @@ func TestAPatternSelectsPendingQuestions(t *testing.T) {
 	}), "run-a~d1")
 }
 
-// A question is addressable, which is what makes routing one to a supervisor expressible at
-// all: the resolver it is addressed to is on the record, so a resolver selects its own docket
-// with the same machinery and sees nobody else's.
-func TestAPatternSelectsByResolver(t *testing.T) {
-	store := entitytest.Store(t)
-	pose(t, store, "run-a~d1", "write-guard", "run-a")
-	pose(t, store, "run-a~d2", "write-guard", "run-a")
-	writeAt(store, QuestionRef("run-a~d2"), entity.Obj{"resolver": "verse.resolvers.reviewer"})
-
-	only(t, ids(t, store, entity.Pattern{
-		Predicate: entity.Obj{"resolver": "verse.resolvers.reviewer"}.Payload(),
-	}), "run-a~d2")
-
-	// The unaddressed one is not addressed to "": the key is absent, which is what a later
-	// layer reads as UNBOUND. Selecting on the empty string must not find it, or "nobody has
-	// claimed this" and "someone claimed it with a blank name" would be the same state.
-	if got := ids(t, store, entity.Pattern{Predicate: entity.Obj{"resolver": ""}.Payload()}); len(got) != 0 {
-		t.Fatalf("selected %v on resolver: \"\", want none — absent is not empty", got)
-	}
-}
-
 // The negative that matters. A tool nothing could classify derives no effects, and the
 // temptation is to skip the record or to write `effects: {}`. Either one loses the question:
 // the first hides it from the docket entirely, the second makes an unclassifiable action look
@@ -133,9 +112,9 @@ func TestAQuestionWithNoEffectsIsStillOnTheDocket(t *testing.T) {
 // A question posed AGAIN under an id that already settled must read as a question, not as a
 // question and its own answer at once.
 //
-// A trigger gate's id is a function of (rule, gate, subjects), so a re-firing about the same
-// subject re-poses the same one — and a write merges, so `status: pending` landed on top of a
-// verdict, a `by` and an `answeredAt` that stayed. What a person read on the docket was a
+// A firing asks a new question after an answer (trigger.Engine.askingID); a poser that posts over
+// its own settled id is still asking, and a write merges, so `status: pending` would land on top
+// of a verdict, a `by` and an `answeredAt` that stayed. What a person read on the docket was a
 // question to decide, already stamped with who decided it and what they said.
 func TestReposingOverASettledQuestionClearsTheAnswer(t *testing.T) {
 	store := entitytest.Store(t)
@@ -143,7 +122,7 @@ func TestReposingOverASettledQuestionClearsTheAnswer(t *testing.T) {
 	AnswerQuestion(store, "guard~1", task.Resolution{
 		Proceed: true, By: "human:scott", Steer: []string{"ship it"}})
 
-	pose(t, store, "guard~1", "approval", "") // the rule fires again
+	pose(t, store, "guard~1", "approval", "") // posed again under the id it had
 
 	e, ok, err := store.Get(QuestionRef("guard~1"))
 	if err != nil || !ok {
@@ -290,32 +269,20 @@ func TestAQuestionSaysWhoItWaitsOn(t *testing.T) {
 	same(t, waitsOn(t, store, "run-a~d1"),
 		[]string{"user:scott@example.com", "user:ana@example.com", "user:bo@example.com"})
 
-	// Named nobody: whoever the docket holds questions out to, as it is written. There is no list
-	// of every person to write down, and a reader can see that this is not a person.
-	if err := entity.SetChildGrants(store, entity.VerseRef(QuestionSystem, QuestionKind),
+	// Named nobody, about something: whoever may write what it is about, as it is written
+	// (9ce3bva0, D3). There is no list of them to write down, and a reader can see that this is
+	// not a person.
+	poseTo(t, store, "run-a~d2")
+	same(t, waitsOn(t, store, "run-a~d2"), []string{`audience:demo.pr."1"`})
+
+	// Named nobody, about nothing: whoever the docket holds questions out to.
+	if err := entity.SetChildGrants(store, entity.VerseRef(AskSystem),
 		entity.Levels{entity.ReadWrite: {"user:*"}, entity.Read: {entity.Everyone}}); err != nil {
 		t.Fatal(err)
 	}
-	poseTo(t, store, "run-a~d2")
-	same(t, waitsOn(t, store, "run-a~d2"), []string{"user:*"})
-}
-
-// A resolver takes the question, and the field says so: an escalation and a hand-back come through
-// the same grant, so the answer to "who now?" is never the gate's first answer.
-func TestHoldingOutAQuestionMovesWhoItWaitsOn(t *testing.T) {
-	store := docket(t)
-	poseTo(t, store, "run-a~d1", "user:scott@example.com")
-
-	if err := HoldOut(store, "run-a~d1", "verse.resolvers.oncall"); err != nil {
-		t.Fatalf("holding out: %v", err)
-	}
-	if got := waitsOn(t, store, "run-a~d1"); len(got) != 1 || !strings.Contains(got[0], "oncall") {
-		t.Errorf("waits on %v, want the resolver that now answers it", got)
-	}
-	if err := HoldOut(store, "run-a~d1", ""); err != nil {
-		t.Fatalf("releasing: %v", err)
-	}
-	same(t, waitsOn(t, store, "run-a~d1"), []string{"user:scott@example.com"})
+	PostQuestion(store, task.Pending{Question: task.GateQuestion{ID: "run-a~d3", Origin: "run-a",
+		Gate: "write-guard"}, Tool: "write"}, "run-a")
+	same(t, waitsOn(t, store, "run-a~d3"), []string{"user:*"})
 }
 
 // It is present tense: a settled question waits on nobody, and what was asked of whom stays on
@@ -389,7 +356,7 @@ func TestAnAnsweredQuestionStaysAnswered(t *testing.T) {
 	ev := task.Frame{Kind: task.EvPending, ID: "t1~d1", Gate: "ship"}
 	answered := func() entity.Store {
 		store := docket(t)
-		if !PostFrameQuestion(store, ev, "t1", "", "", []string{ann}) {
+		if !PostFrameQuestion(store, ev, "t1", "", []string{ann}) {
 			t.Fatal("not posed")
 		}
 		AnswerQuestion(store, ev.ID, task.Choose(task.Proceed, ann))
@@ -401,7 +368,7 @@ func TestAnAnsweredQuestionStaysAnswered(t *testing.T) {
 	}
 
 	store := answered()
-	PostFrameQuestion(store, ev, "t1", "", "", []string{ann}) // late: the same asking, reported again
+	PostFrameQuestion(store, ev, "t1", "", []string{ann}) // late: the same asking, reported again
 	if s := status(store); s != QuestionAnswered {
 		t.Errorf("a late frame left the answered question %s", s)
 	}
@@ -410,4 +377,57 @@ func TestAnAnsweredQuestionStaysAnswered(t *testing.T) {
 	if s := status(store); s != QuestionAnswered {
 		t.Errorf("a settling after the answer left the question %s", s)
 	}
+}
+
+// ONLY THE BALLOTS FOR THE ASK AS IT STANDS COUNT: one naming an earlier edit does not.
+func TestTallyCountsOnlyTheCurrentEdit(t *testing.T) {
+	p := entity.Obj{
+		"edit": 2,
+		"ballots": entity.Obj{
+			"user:a": entity.Obj{"choice": "proceed", "edit": 1},
+			"user:b": entity.Obj{"choice": "proceed", "edit": 2},
+		},
+	}.Payload()
+	if got := Tally(p)["proceed"]; got != 1 {
+		t.Fatalf("tally %d, want the one ballot for edit 2", got)
+	}
+	unedited := entity.Obj{"ballots": entity.Obj{"user:a": entity.Obj{"choice": "proceed"}}}.Payload()
+	if got := Tally(unedited)["proceed"]; got != 1 {
+		t.Fatalf("a question nobody edits counts %d, want its ballot", got)
+	}
+}
+
+// AN OPTION IS RECORDED WITH THE NEED THAT COUNTS. A task's `ask` names its options and no
+// threshold; one ballot settles each (task.Need), and the record says one, not zero.
+func TestAnOptionWithNoNeedIsRecordedAsOneBallot(t *testing.T) {
+	store := entitytest.Store(t)
+	PostQuestion(store, task.Pending{
+		Question: task.GateQuestion{ID: "run-a~1", Origin: "run-a", Gate: "ask",
+			Options: []task.Option{{ID: "staging"}, {ID: "prod", Need: 2}}},
+		Tool: "ask",
+	}, "run-a")
+	e, ok, _ := store.Get(QuestionRef("run-a~1"))
+	if !ok {
+		t.Fatal("the question was not posed")
+	}
+	opts, _ := entity.ToObj(e.Payload)["options"].([]any)
+	var got []any
+	for _, o := range opts {
+		got = append(got, o.(map[string]any)["need"])
+	}
+	if len(got) != 2 || got[0] != int64(1) || got[1] != int64(2) {
+		t.Fatalf("needs recorded as %v, want [1 2]", got)
+	}
+}
+
+// A QUESTION A FRAME POSES SAYS WHOM IT WAITS ON, as one the registry poses does: a remote
+// runner's or a broker's questions are on `verse question` and in Slack as a local one's are.
+func TestAFramePosedQuestionSaysWhomItWaitsOn(t *testing.T) {
+	store := docket(t)
+	const ann = "user:ann@example.com"
+	ev := task.Frame{Kind: task.EvPending, ID: "t1~d1", Gate: "ship"}
+	if !PostFrameQuestion(store, ev, "t1", "", []string{ann}) {
+		t.Fatal("not posed")
+	}
+	same(t, waitsOn(t, store, ev.ID), []string{ann})
 }

@@ -397,7 +397,7 @@ See [Schedules](reference/schedules.md).
 A gate of a rule is a check that a firing passes before the action fires:
 `gates: [{name: approval, mode: ask}]`. Every gate of the rule must pass.
 
-`verse gate` prints the question of such a gate with `where: engine`.
+`verse question` prints the question of such a gate with `where: engine`.
 
 Also written: charter gate, trigger gate.
 
@@ -429,20 +429,30 @@ waits for the answer, and `park` holds the action.
 
 See [Tasks](reference/tasks.md#the-dial).
 
+### ask
+
+An ask is something asked of somebody, with a clock and with what follows the answer, in one
+record at `verse.ask.<id>`. A person raises one with `verse ask`. A rule's gate raises one when its
+mode is not `auto`, and a task raises one with its `ask` tool. Once it has settled it stands for its
+keep, a week unless said otherwise, and is then removed.
+
+See [Asking](asking.md).
+
 ### question
 
-A question is what a gate poses when its mode is not `auto`. It is the entity
-`verse.gate.question.<id>`, and it stays in the store after it is answered.
+A question is an [ask](#ask) as whom it asks sees it: one waiting on you. `verse question` lists
+them. The record is the ask's, at `verse.ask.<id>`.
 
-Also written: decision (in the CLI help), gate (`verse gate approve <id>` answers a question).
+`verse gate` is kept as an alias of `verse question`.
 
 See [Tasks](reference/tasks.md#the-question-record).
 
 ### docket
 
-The docket is the list of the questions that wait for an answer. `verse gate` prints it.
+The docket is every pending ask you can read, whoever raised it and whoever it waits on.
+`verse question --all` prints it.
 
-See [Tutorial](tutorial.md#5-gates-and-the-docket).
+See [Tutorial](tutorial.md#4-gates-and-the-docket).
 
 ### option
 
@@ -456,7 +466,7 @@ See [Tutorial](tutorial.md#no-is-a-real-outcome).
 A ballot is the choice of one answerer on one question. The question keeps each ballot under
 `ballots`, by the name of who cast it.
 
-See [Tutorial](tutorial.md#5-gates-and-the-docket).
+See [Tutorial](tutorial.md#4-gates-and-the-docket).
 
 ### need
 
@@ -465,12 +475,14 @@ See [Tutorial](tutorial.md#5-gates-and-the-docket).
 
 Also written: threshold.
 
-See [Tutorial](tutorial.md#5-gates-and-the-docket).
+See [Tutorial](tutorial.md#4-gates-and-the-docket).
 
 ### answerers
 
 `answerers` is the field of a gate that names who may answer its question, as a list of
-[grantees](#grantee). Where it names nobody, any person or agent may answer by default. The
+[grantees](#grantee), each of whom must be able to read what the question is about. Where it
+names nobody, whoever may write what the question is about answers it, or any person or agent
+where it is about nothing. On a task's own gate, `$principal` names whom the task acts for. The
 owner of what asked may always answer.
 
 See [Permissions reference](reference/perms.md#questions).
@@ -480,7 +492,7 @@ See [Permissions reference](reference/perms.md#questions).
 `pose` is the field of a gate of a rule that holds the question in words, for a person to
 read.
 
-See [Resolvers](reference/resolvers.md#the-question-record).
+See [Gates](reference/gates.md).
 
 ### reason
 
@@ -500,60 +512,26 @@ See [Tasks](reference/tasks.md#a-gates-question).
 
 ### resolver
 
-A resolver is an installed record that says who answers questions: a service, a person or a
-group. It is the entity `verse.resolvers.<name>`.
+A resolver is an installed service that answers asks for whoever grants it: a person, at
+`verse.for.<person>`, or a place, by its owner. Its `match` says which of their asks it watches.
+It is the entity `verse.resolvers.<name>`.
 
-See [Resolvers](reference/resolvers.md#the-resolver).
+See [Resolvers](attached-resolvers.md).
 
 ### answerer
 
-An answerer is whoever answers a question. The answerer of a resolver is the service, the
-person or the group that the resolver names.
+An answerer is whoever answers a question: a person it names, or a resolver answering for one of
+them, whose answer is then that person's.
 
-See [Resolvers](reference/resolvers.md#the-resolver).
+See [Resolvers](attached-resolvers.md#answering).
 
-### standing resolver
+### onward ask
 
-A standing resolver is a resolver with a `condition`. It takes the questions about the
-subjects that its condition selects. A resolver with `byRef: true` can be named, by a `spawn`
-or by a rule.
+An onward ask is an ask a resolver raises inside an ask it serves, to consult somebody or to
+escalate. It fits inside the ask it serves, and what it comes to is carried back as the
+resolver's answer.
 
-See [Attached resolvers](attached-resolvers.md#two-doors-and-one-of-them-must-be-open).
-
-### cover (of a resolver)
-
-A cover is the record of one resolver that reads one stream of gates. It is the entity
-`verse.covers.<name>@<stream>`, and it keeps the position that the resolver has read to.
-
-See [Resolvers](reference/resolvers.md#the-two-entities).
-
-### ladder
-
-The ladder of a question is the order in which verse asks for an answer: the named resolver,
-then the standing resolvers that match the subject, then the docket. To escalate a question
-is to move it one place along: `verse gate escalate <id>`.
-
-Also written: layers, rung.
-
-See [Attached resolvers](attached-resolvers.md#layers).
-
-### deadline (of a resolver)
-
-The deadline of a resolver says how long the resolver has to answer:
-`deadline: {within: "4h", then: escalate}`.
-
-A deadline of a resolver escalates the question. It does not settle it.
-
-See [Tasks](reference/tasks.md#a-gates-question).
-
-### exclusive resolver
-
-An exclusive resolver is a resolver with `exclusive: true`. Only its answer counts, unless
-somebody answers with `-override`. Any other resolver is advisory: the first answer wins.
-
-See [Attached resolvers](attached-resolvers.md#advisory-or-exclusive).
-
-## Tasks and where they run
+See [Resolvers](attached-resolvers.md#onward-asks).
 
 ### task
 
@@ -850,7 +828,8 @@ See [Permissions, walked](perms-guide.md#before-the-first-step-who-you-are).
 ### grantee
 
 A grantee is who a grant is to: a principal, every principal of a kind (`user:*`), a
-[group](#group), or everyone (`*`).
+[group](#group), the audience of an address (`audience:<address>`, whoever holds the same level
+there), or everyone (`*`).
 
 See [Permissions reference](reference/perms.md#the-grammar).
 
@@ -1072,11 +1051,8 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 
 + [controller](#controller)
 
-+ [cover (of a resolver)](#cover-of-a-resolver)
 
 + [deadline (of a gate)](#deadline-of-a-gate)
-
-+ [deadline (of a resolver)](#deadline-of-a-resolver)
 
 + [derive](#derive)
 
@@ -1091,8 +1067,6 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 + [environment](#environment)
 
 + [event stream](#event-stream)
-
-+ [exclusive resolver](#exclusive-resolver)
 
 + [executor](#executor)
 
@@ -1136,8 +1110,6 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 
 + [kinds of principal](#kinds-of-principal)
 
-+ [ladder](#ladder)
-
 + [latch](#latch)
 
 + [level (of a permission)](#level-of-a-permission)
@@ -1163,6 +1135,8 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 + [occurrence](#occurrence)
 
 + [on](#on)
+
++ [onward ask](#onward-ask)
 
 + [operator](#operator)
 
@@ -1230,7 +1204,6 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 
 + [spawn](#spawn)
 
-+ [standing resolver](#standing-resolver)
 
 + [status (of a task)](#status-of-a-task)
 

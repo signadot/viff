@@ -28,6 +28,12 @@ const (
 	// Control admits the task-control verbs on a task. It is granted beside the record levels
 	// and checked by the control routes, never by the store.
 	Control Level = "control"
+	// Answer admits a RESOLVER answering for whoever the node stands for: a place's asks, or a
+	// person's at `verse.for.<person>` (9ce3bva0, stage 4). Like Control it stands beside the
+	// record levels, is checked by the answer route and never by the store, and is held only by
+	// being NAMED: owning the node confers nothing here, since a resolver acts as whoever
+	// installed it, and an owner's own resolver would otherwise answer for them ungranted.
+	Answer Level = "answer"
 )
 
 // rank orders the record levels for Admits. Control is not in the order.
@@ -44,10 +50,10 @@ func (l Level) rank() int {
 }
 
 // Admits reports whether holding l is enough for what need asks: the record levels nest, and
-// Control is only ever satisfied by Control.
+// Control and Answer are each satisfied only by themselves.
 func (l Level) Admits(need Level) bool {
-	if need == Control {
-		return l == Control
+	if need == Control || need == Answer {
+		return l == need
 	}
 	return l.rank() >= need.rank()
 }
@@ -121,6 +127,14 @@ func grantees(field string, names []string) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", field, err)
 		}
+		if l := field[strings.LastIndex(field, ".")+1:]; g.Kind == AudienceKind &&
+			l != string(Read) && l != string(ReadWrite) {
+			return nil, fmt.Errorf("%s: %q: an audience holds read or read-write, as it does at "+
+				"its address; holding a place is not owning or controlling what is about it", field, n)
+		} else if g.Kind == AnsweringKind && l != string(Read) {
+			return nil, fmt.Errorf("%s: %q: whoever answers for a place reads what is put to it, "+
+				"and holds nothing more by it", field, n)
+		}
 		out[i] = g.String()
 	}
 	return out, nil
@@ -146,9 +160,9 @@ func parseLevels(rec Payload, field string, read func(string, []string) ([]strin
 			l = OwnerLevel
 		case l == OwnerLevel:
 			return nil, true, errOwnerHeldOut(field)
-		case l == Read, l == ReadWrite, l == Control:
+		case l == Read, l == ReadWrite, l == Control, l == Answer:
 		default:
-			return nil, true, fmt.Errorf("%s: %q is not a level (read, read-write, %s, control)", field, name, ChildOwnerKey)
+			return nil, true, fmt.Errorf("%s: %q is not a level (read, read-write, %s, control, answer)", field, name, ChildOwnerKey)
 		}
 		to := ir.Uncomment(Get(f, name))
 		if to == nil || to.Type != ir.ArrayType {
@@ -323,7 +337,7 @@ func parseLine(node []string, v Payload, read func(string, []string) ([]string, 
 		return Grant{}, nil, errOwnerHeldOut("a grant")
 	}
 	var owners []string
-	for _, l := range []Level{Read, ReadWrite, OwnerLevel, Control} {
+	for _, l := range []Level{Read, ReadWrite, OwnerLevel, Control, Answer} {
 		key := levelKey(l)
 		to := ir.Uncomment(Get(v, key))
 		if to == nil {
@@ -350,7 +364,7 @@ func parseLine(node []string, v Payload, read func(string, []string) ([]string, 
 		g.To[l] = kept
 	}
 	if len(g.To) == 0 && owners == nil {
-		return Grant{}, nil, fmt.Errorf("a grant holds out a level: read, read-write, %s or control", ChildOwnerKey)
+		return Grant{}, nil, fmt.Errorf("a grant holds out a level: read, read-write, %s, control or answer", ChildOwnerKey)
 	}
 	return g, owners, nil
 }

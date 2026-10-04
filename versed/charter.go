@@ -13,8 +13,6 @@ import (
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/launch"
-	"github.com/signadot/verse/resolver"
 	"github.com/signadot/verse/trigger"
 )
 
@@ -1056,8 +1054,15 @@ func (tx *charterTx) rule(def *ir.Node) (int, error) {
 	if t.Name == "" {
 		return http.StatusBadRequest, errors.New("a rule needs a name")
 	}
-	if err := exclusiveVote(tx.store, t); err != nil {
-		return http.StatusBadRequest, fmt.Errorf("rule %q: %w", t.Name, err)
+	// A TASK ACTING AS WHOEVER WROTE A RECORD selects only in its installer's place. It runs on
+	// the record owner's authority (entity.Pair), which is safe where writing the record is
+	// writing into the charter's own place — an ask under verse.ask, the system's — and is
+	// harvesting anywhere else: a rule over Daniel's space would run its author's task as Daniel.
+	if place, ok := t.ActsAsSubjectOver(); ok {
+		if code, err := checkPlace(tx.store, tx.as(), place,
+			fmt.Sprintf("rule %q acting as the owner of what it selects under it", t.Name)); err != nil {
+			return code, err
+		}
 	}
 	eng := tx.eng // captured: the transaction spans packages (see imports)
 	tx.keep("rules", t.Name)
@@ -1094,32 +1099,6 @@ func (tx *charterTx) rule(def *ir.Node) (int, error) {
 	}
 	tx.placed = append(tx.placed, placedRule{at: tx.at, eng: eng, rule: t})
 	return http.StatusCreated, nil
-}
-
-// exclusiveVote refuses a spawn whose selection is a vote and whose resolver answers
-// exclusively. An exclusive resolver's answer is the only one that counts, and a vote is a room:
-// under one, a threshold of three would either never be reached — one answerer, one ballot —
-// or be reached by one resolver casting as three, and neither is what the author wrote.
-// `select: ask` is one party choosing and composes with it; a vote does not.
-func exclusiveVote(store entity.Store, t trigger.Trigger) error {
-	var err error
-	t.Action.EachSpawn(func(chain string, spec *launch.Spec) {
-		if err != nil || spec.Provider == nil || spec.Provider.Select != "vote" || spec.Provider.Need < 2 {
-			return
-		}
-		if spec.Resolver == "" {
-			return
-		}
-		res, ok := resolver.Find(store, spec.Resolver)
-		if !ok || !res.Exclusive {
-			return
-		}
-		err = fmt.Errorf("%s: `select: vote` at `need: %d` under resolver %q, which is exclusive — "+
-			"an exclusive resolver answers alone, and a vote is a room. Use `select: ask`, drop "+
-			"`exclusive` on the resolver, or name a resolver that is not exclusive",
-			chain, spec.Provider.Need, spec.Resolver)
-	})
-	return err
 }
 
 // refuse unwinds what this request installed and dresses the refusal that caused it.

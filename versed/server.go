@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -60,6 +61,13 @@ type Server struct {
 	Zone *time.Location
 	// clocks is the schedule timers this process holds (schedule.go).
 	clocks clocks
+	// AskKeep is how long a settled ask stands when it says nothing itself; zero is a week
+	// (askttl.go).
+	AskKeep time.Duration
+	// expiries is the settled asks' timers this process holds (askttl.go).
+	expiries askExpiries
+	// asks is the person's asks this process waits on (asks.go).
+	asks asksWaiting
 	// users is every principal this process has recorded as `verse.principal.user.<principal>`; see noteUser.
 	users sync.Map
 	// slides is, by task id, the last slide the control route relayed — who for, and to which
@@ -147,9 +155,6 @@ type Server struct {
 	srcMu  sync.Mutex
 	ioRuns map[string]*sourceRun
 
-	// standingOwner answers "which standing resolver matches this subject", for the paths that
-	// post a question without one — a brokered run's frames, whose deriver ran elsewhere.
-	standingOwner func(subject string) string
 	// tripPace is the cycle throttle's D, applied to every engine this server owns. Guarded by
 	// scopeMu because scopeEngine reads it when it builds a scope's engine, lazily.
 	tripPace    time.Duration
@@ -221,7 +226,7 @@ func WithPerms(p Perms) Option { return func(o *options) { o.perms = p } }
 
 // NewWithStore assembles the server with the given task driver builder (scripted,
 // LLM, …) over a store. The engine resolves trigger gates through the shared registry,
-// so a human answers them out-of-band via POST /gate/resolve; a trigger's spawn action
+// so a human answers them out-of-band via POST /asks/{id}/answer; a trigger's spawn action
 // goes through the task runtime (hosted, mirrored into the verse).
 func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Server {
 	var o options
@@ -234,21 +239,17 @@ func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Serv
 	// ownerless. scopedStore re-derives a view per request, and a firing's causal store stamps
 	// its rule, so this default is what remains when neither applies.
 	store = entity.As(store, entity.SystemDefault)
-	// Who answers through a resolver: the person or the group behind it, or the resolver itself
-	// for a service. mirror holds questions out by it and cannot read a resolver.
-	mirror.AnswererOf = func(r entity.Reader, resolverRef string) string {
-		if res, ok := resolver.Find(r, resolverRef); ok {
-			return res.Answerer()
-		}
-		return ""
-	}
 	// The root's default, BEFORE the seed: the records the seed writes hold out what it says,
 	// and setting it afterwards left a deployment's own default reaching nothing the seed
 	// wrote — which is the order this fixes rather than documents.
 	// NIL IS UNSET AND EMPTY IS A SETTING: `perms: {child-grants: {}}` is a verse where what anybody
 	// creates is theirs alone, and reading it as "not set" made a verse configured private
 	// create everything readable by everyone, with nothing said.
-	if o.perms.ChildGrants != nil {
+	// A root default that cannot be one is refused as a seed is: fatal, saying why.
+	rootDefault := entity.CheckChildGrants(o.perms.ChildGrants)
+	if rootDefault != nil {
+		rootDefault = fmt.Errorf("the root's default (perms child-grants): %w", rootDefault)
+	} else if o.perms.ChildGrants != nil {
 		entity.PolicyOf(store).SetRootChildGrants(o.perms.ChildGrants)
 	}
 	// And what the system holds out, written before anything is asked of the store on
@@ -261,7 +262,10 @@ func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Serv
 	// THE MIGRATION FIRST, since the seed and every check after it read the mirror in the new
 	// spelling alone: a record still in the old one holds out nothing, so a store left half way
 	// is a verse where nobody can spawn a task. It is fatal for the reason the seed is.
-	seedErr := migratePerms(store)
+	seedErr := rootDefault
+	if seedErr == nil {
+		seedErr = migratePerms(store)
+	}
 	if seedErr == nil {
 		seedErr = seedPerms(store, o.perms)
 	}
@@ -289,78 +293,11 @@ func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Serv
 	// raised: the engine's own registry for a firing's gates, and each hosted task for a
 	// run's. One record shape either way — the docket, a charter predicate and an auditor all
 	// read the same fact, and neither source is privileged.
-	// The layer rule, applied where a question is posed. A question carries the owner its
-	// LAYER gives it: what named it, else the standing resolver matching its subject, else
-	// nothing — which is `⊤`, the docket a person reads.
-	//
-	// Absent layers are skipped rather than ranked. A standing resolver is not a wider claim
-	// on a named one's questions; it answers a different set.
-	owner := func(st entity.Store, q *task.GateQuestion) {
-		if q.Resolver != "" || q.Subject == "" {
-			return
-		}
-		ref, err := entity.ParseAddr(q.Subject)
-		if err != nil {
-			return
-		}
-		if res, ok := resolver.Owner(st, ref); ok {
-			q.Resolver = resolver.Ref(res.Name).String()
-		}
-	}
-	standingOwner := func(subject string) string {
-		ref, err := entity.ParseAddr(subject)
-		if err != nil {
-			return ""
-		}
-		if res, ok := resolver.Owner(store, ref); ok {
-			return resolver.Ref(res.Name).String()
-		}
-		return ""
-	}
-	s.standingOwner = standingOwner
-	// A question is where a cover is minted, because that is where ownership is decided.
-	// A spawn mints one for the resolver it NAMES, since ownership is settled then and an
-	// answerer should be reading before the first ask; a standing resolver's cannot be minted
-	// that early, because one installed mid-run would own questions an earlier mint never
-	// heard of. Both call the same create-only Cover, so the two are one act done twice.
-	cover := func(st entity.Store, q task.GateQuestion, taskID string) {
-		if q.Resolver == "" || !dials(st, q.Resolver) {
-			return
-		}
-		stream, err := entity.ParseAddr(q.Subject)
-		if taskID != "" {
-			stream, err = mirror.Ref(taskID), nil // a run's questions are covered over the run
-		}
-		if err != nil {
-			return
-		}
-		mirror.Cover(st, q.Resolver, resolverName(q.Resolver), stream)
-	}
-	// The clock a resolver puts on its own silence, stamped when the question is posed and
-	// ABSOLUTE so a restart cannot slide it. A resolver cannot know when a question will
-	// arrive, so it says a duration and the question says an instant.
+	// A question's clock, where it has one: stamped when it is posed, and armed.
 	arm := func(st entity.Store, q task.GateQuestion) {
-		// The question's own clock first: it settles, where the resolver's below only hands
-		// the question up, and it exists whether or not any resolver owns it.
 		if q.Deadline != nil {
-			s.armDeadline(st, q.ID, q.Deadline.Within)
+			s.armQuestion(st, q)
 		}
-		if q.Resolver == "" {
-			return
-		}
-		res, ok := resolver.Find(st, q.Resolver)
-		if !ok || res.Deadline == nil {
-			return
-		}
-		after, err := res.Deadline.After()
-		if err != nil {
-			return
-		}
-		_, _, _ = st.Write(entity.Write{
-			At:    mirror.QuestionRef(q.ID).At(),
-			Value: entity.Obj{"escalatesAt": time.Now().Add(after).UTC().Format(time.RFC3339Nano)}.Payload(),
-			When:  []entity.Require{entity.Updated()},
-		})
 	}
 	reg.OnPost(func(p task.Pending) {
 		// WHERE this one goes is the ASKER's to say, exactly as it is on the task seam
@@ -371,8 +308,6 @@ func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Serv
 		// question asked one plane over, and "no task, therefore no scope" was never true
 		// of them: the TRIGGER has a scope whether or not a task exists yet.
 		store := s.storeForScope(p.Question.Scope)
-		owner(store, &p.Question)
-		cover(store, p.Question, "")
 		if mirror.PostQuestion(store, p, "") {
 			arm(store, p.Question)
 		}
@@ -384,7 +319,13 @@ func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Serv
 	// answerer completely differently.
 	// …and the retraction goes to the store the post went to, or a scope's question is
 	// published in one place and retired in another, leaving it `pending` forever.
-	reg.OnDrop(func(q task.GateQuestion, why string) {
+	reg.OnDropCause(func(q task.GateQuestion, why string, cause error) {
+		// A suspension's withdrawal is kept to be asked again when it lifts; anything else
+		// retires the question.
+		if task.Suspends(cause) {
+			mirror.HoldQuestion(s.storeForScope(q.Scope), q.ID, why)
+			return
+		}
 		mirror.DropQuestion(s.storeForScope(q.Scope), q.ID, why)
 	})
 	// A HOSTED task's questions are retired here. The registry above is the ENGINE's — a
@@ -392,6 +333,15 @@ func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Serv
 	// why this is a second registration rather than the same one reaching both.
 	taskd.OnDrop(func(_, scope, questionID, why string) {
 		mirror.DropQuestion(s.storeForScope(scope), questionID, why)
+	})
+	// NOBODY ANSWERS AN ASK ABOUT SOMETHING THEY CANNOT READ (9ce3bva0, D3): an ask naming
+	// answerers who may not read its subject is refused before it is posed, to the firing or the
+	// action that asked it.
+	reg.OnCheck(func(q task.GateQuestion) error {
+		return checkAudience(s.storeForScope(q.Scope), q)
+	})
+	taskd.OnCheck(func(l task.Launch, q task.GateQuestion) error {
+		return checkAudience(s.storeForScope(l.Scope), hostedQuestion(l, q))
 	})
 	taskd.OnQuestion(func(l task.Launch, p task.Pending) {
 		// WHERE this question goes is the task's to say, not this closure's. taskd is one
@@ -408,19 +358,8 @@ func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Serv
 		// A task gate's question knows what it would DO but not what it is about: the
 		// flow belongs to the task, not to the action. Fill it in from the launch, so a
 		// rule can select "the questions about demo:pr:1" by matching one record rather
-		// than joining two, and so the layer rule below has a subject to find an owner by.
-		//
-		// FROM THE LAUNCH, not from the task's record, for the reason the scope is: both
-		// spawn paths start the task and then write its record, and a task that asks straight
-		// away asks before the record lands. Read off the record, a question posed in that
-		// window has no subject and so no owner — no cover for the resolver matching it, no
-		// deadline armed, and an exclusive resolver's question answerable by anybody until the
-		// frame's post names the owner a moment later (git-issue nkptp9b3h12ksx3kg9n0).
-		if p.Question.Subject == "" {
-			p.Question.Subject = l.Provenance.Subject
-		}
-		owner(store, &p.Question)
-		cover(store, p.Question, l.ID)
+		// than joining two (hostedQuestion).
+		p.Question = hostedQuestion(l, p.Question)
 		if mirror.PostQuestion(store, p, l.ID) {
 			arm(store, p.Question)
 		}
@@ -429,7 +368,33 @@ func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Serv
 	// The Spawner owns the full lifecycle: host it via the runner, then mirror
 	// its state into the verse so triggers can react to its completion.
 	eng.SetSpawner(s.spawnerFor(store, "", nil, eng))
+	eng.SetDeadlineMover(s.moveDeadline)
 	return s
+}
+
+// hostedQuestion is a hosted task's question as the docket poses it: about the task's subject where
+// it names none; held out, where it names nobody, to whom the launch says such questions go
+// (task.Launch.Answerers), and otherwise to the docket; and with task.PrincipalAnswerer put as
+// whom the task acts for (mirror.WithPrincipal).
+//
+// A task gate's question knows what it would DO but not what it is about: the flow belongs to the
+// task, not to the action. FROM THE LAUNCH, not from the task's record: both spawn paths start the
+// task and then write its record, and a task that asks straight away asks before the record lands
+// (git-issue nkptp9b3h12ksx3kg9n0).
+func hostedQuestion(l task.Launch, q task.GateQuestion) task.GateQuestion {
+	if q.Subject == "" {
+		q.Subject = l.Provenance.Subject
+	}
+	if len(q.Answerers) == 0 {
+		q.Answerers = l.Answerers
+	}
+	q.Answerers = mirror.WithPrincipal(q.Answerers, mirror.ActsFor(l.Provenance.Principal))
+	return q
+}
+
+// checkAudience is mirror.CheckAudience for a question as it will be posed.
+func checkAudience(store entity.Store, q task.GateQuestion) error {
+	return mirror.CheckAudience(store, q.Subject, entity.Canonical(q.Answerers))
 }
 
 // localRunner is the in-process runner: it hosts tasks on the embedded
@@ -553,7 +518,25 @@ func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentR
 		// the task is written as the rule, so the task is owned by whoever owns the rule, and
 		// the runner is told the same name as the caller it is working for.
 		by := eng.Principal(spec.Chain)
+		// AND WHO ASKED, where the rule said `as: subject`: the task acts as the pair, on the
+		// asker's authority (entity.Pair). The engine set the asker from the subject's owner
+		// record and nothing else sets it. A system asker is no party, so the rule acts alone, as
+		// it would without `as`.
+		if spec.Asker != "" && !entity.IsSystem(spec.Asker) {
+			by = entity.Pair(spec.Asker, by)
+		}
+		base := st
 		st := entity.As(st, by)
+		// THE TASK'S RECORD IS KEPT AS ITS OWNER. It is the asker's where the task acts for one
+		// (the pair resolves to them), and what the mirror writes on it after — running, done, its
+		// result — is bookkeeping about their task, not an act of it. Written as the pair, every
+		// write after the first would need the rule's installer to hold the asker's record too,
+		// which they do not, and the task would stand `running` forever. What the TASK does still
+		// acts as the pair (the launch's principal).
+		rec := st
+		if spec.Asker != "" && !entity.IsSystem(spec.Asker) {
+			rec = entity.As(base, spec.Asker)
+		}
 		// NOT UNDER SOMEBODY ELSE'S ID. A rule's task id is a function of what fired, so anybody
 		// can run a task under it first; the record this spawn writes would go over theirs, and
 		// the task — its gate with it, through the link under it — would be theirs. Refused
@@ -575,7 +558,7 @@ func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentR
 			// where it said does not run somewhere else instead.
 			meta := mirror.Meta{Subject: spec.Subject, Chain: spec.Chain, Prompt: spec.Prompt}
 			h := task.FailedHandle(fmt.Sprintf("spawn %s: %v", id, err))
-			s.reflect(st, id, h, meta)
+			s.reflect(rec, id, h, meta)
 			return h
 		}
 		// The provenance every reflection of this spawn carries, envelope included: which
@@ -584,23 +567,16 @@ func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentR
 		meta := mirror.Meta{
 			Subject: spec.Subject, Runner: place.Ref(), RunnerName: placeName,
 			Chain: spec.Chain, Prompt: spec.Prompt, Occurrence: spec.Occurrence,
-			Doer: spec.Doer, Grant: spec.Grant, Tools: spec.Tools,
-			Resolver: spec.Resolver, Gates: spec.Gates,
+			Doer: spec.Doer, Grant: spec.Grant, Tools: spec.Tools, Asker: spec.Asker,
+			Gates:  spec.Gates,
 			HeldBy: func() []string { return eng.HeldBy(id) },
-		}
-		if why := ghostResolver(st, spec.Resolver); why != "" {
-			// The same shape as an envelope this build does not have, below: a spawn that
-			// cannot be supervised as written does not run unsupervised instead.
-			h := task.FailedHandle(fmt.Sprintf("spawn %s: %s", id, why))
-			s.reflect(st, id, h, meta)
-			return h
 		}
 		// WHICH CREDENTIAL, resolved as the rule that named it — before the launch, so a spawn
 		// that may not spend what it asked for never starts.
 		key, kerr := credentialAt(st, by, spec.VirtualKey)
 		if kerr != nil {
 			h := task.FailedHandle(fmt.Sprintf("spawn %s: %v", id, kerr))
-			s.reflect(st, id, h, meta)
+			s.reflect(rec, id, h, meta)
 			return h
 		}
 		spec.VirtualKey = key
@@ -612,18 +588,26 @@ func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentR
 			// mistake with an error message attached. So the spawn fails, visibly, and the
 			// trigger's own failure path carries the reason.
 			h := task.FailedHandle(fmt.Sprintf("spawn %s: %v", id, err))
-			s.reflect(st, id, h, meta)
+			s.reflect(rec, id, h, meta)
 			return h
 		}
 		l.Scope = scope                // where this task's records live, so its gates land there too
 		l.Occurrence = spec.Occurrence // and which run it is, so the process can say so too
-		h := place.Spawn(l, content)
-		s.reflect(st, id, h, meta)
-		// Who covers this run, if anybody was named. Minted beside the mirror because
-		// the two answer adjacent questions — what the work is doing, and who is reading it.
-		if dials(st, l.Resolver) {
-			mirror.CoverRun(st, l.Resolver, resolverName(l.Resolver), id)
+		// A TASK ACTING FOR SOMEBODY ASKS THEM: `as: subject` runs on the asker's authority, so
+		// its own questions naming nobody are theirs, and a gate naming $principal asks them. A
+		// rule's task acts for nobody, and such a gate is refused rather than left to the docket.
+		actsFor := mirror.ActsFor(by)
+		if err := mirror.CheckPrincipal(spec.Gates, actsFor); err != nil {
+			h := task.FailedHandle(fmt.Sprintf("spawn %s: %v", id, err))
+			s.reflect(rec, id, h, meta)
+			return h
 		}
+		if actsFor != "" {
+			l.Answerers = []string{task.PrincipalAnswerer}
+			meta.Answerers = l.Answerers
+		}
+		h := place.Spawn(l, content)
+		s.reflect(rec, id, h, meta)
 		return h
 	}
 }
@@ -734,7 +718,7 @@ func launchOf(id string, spec launch.Spec, principal string) (task.Launch, error
 	l := task.Launch{
 		ID: id, Prompt: spec.Prompt, Driver: spec.Driver,
 		Frame: spec.Frame, Tools: spec.Tools, Answer: spec.Answer, Retain: spec.Retain,
-		Resolver: spec.Resolver, Environment: spec.Environment, VirtualKey: spec.VirtualKey,
+		Environment: spec.Environment, VirtualKey: spec.VirtualKey,
 		// A firing has no launcher, so its principal is the rule that fired — the address of
 		// its record, which the runner can read back. See trigger.Engine.Principal.
 		Provenance: task.Provenance{Principal: principal, Subject: spec.Subject, Chain: spec.Chain},
@@ -851,9 +835,6 @@ func (s *Server) reconcileTasks() error {
 			}
 			if h := attachOn(place, ent.Ref.Name()); h != nil {
 				// re-attach: observe
-				// The resolver its spawn named is read back off the entity rather than
-				// remembered: a resumed task must be covered by whoever was covering
-				// it, and the launch that said so is long gone.
 				s.reflect(s.Store, ent.Ref.Name(), h, mirror.Meta{
 					Subject: subject, Runner: runnerRef, Chain: chain,
 					// Carried for the same reason chain is: Reflect REPLACES the payload, so
@@ -864,7 +845,11 @@ func (s *Server) reconcileTasks() error {
 					RunnerName: entity.Str(ent.Payload, "runnerName"),
 					// Carried, not re-stamped: a resumed task did not start again.
 					StartedAt: entity.Str(ent.Payload, "startedAt"),
-					Resolver:  entity.Str(ent.Payload, "resolver"),
+					// And whose authority it runs with beside its rule: the runner still
+					// holds the pair it launched with, and the record says so across the
+					// restart rather than forgetting on the first re-reflection.
+					Asker:     entity.Str(ent.Payload, "asker"),
+					Answerers: entity.Strs(ent.Payload, "answerers"),
 					HeldBy:    func() []string { return s.Eng.HeldBy(ent.Ref.Name()) },
 				})
 				// re-track: steerable, AND its hooks rehydrated from the chain, so the
@@ -906,8 +891,14 @@ func (s *Server) reconcileTasks() error {
 //     question again under the same deterministic id and it comes back answerable within
 //     milliseconds — which is what a deterministic id is for. If it no longer matches, the
 //     question was about a world that has moved on, and it should not be on a docket.
+//   - A PERSON raised it: an ask. Its waiter is versed on the asker's behalf, and the asker is
+//     still here whatever became of the process, so it is waited on again (resumeAsks) and
+//     left as it stands.
 func (s *Server) reconcileQuestions() {
 	for _, ent := range pendingQuestions(s.Store) {
+		if entity.Str(ent.Payload, "asker") != "" {
+			continue
+		}
 		taskID, _ := entity.ToObj(ent.Payload)["task"].(string)
 		if taskID != "" {
 			e, ok, err := s.Store.Get(mirror.Ref(taskID))
@@ -1093,6 +1084,7 @@ func (s *Server) scopeEngine(scope string) *trigger.Engine {
 		// controller), so a validator isn't tied to the machine holding the files.
 		content := storeContentReader{store: s.Store, kind: verseio.ContentPrefix + scope}
 		eng.SetSpawner(s.spawnerFor(scoped, scope, content, eng))
+		eng.SetDeadlineMover(s.moveDeadline)
 		sctx, cancel := context.WithCancel(s.ctx)
 		// Per-trigger observation: no root watch. Each scoped trigger watches exactly the
 		// (system,kind) subtree it matches, scoped to this federation. cancel stops them.
@@ -1261,6 +1253,11 @@ func (s *Server) Start(ctx context.Context) {
 	// And the schedules, for the same reason: the record holds `next`, this process holds the
 	// timer.
 	phase(phaseSchedules, s.armSchedules)
+	// And the asks' expiries, for the same reason: the ask holds `expires`, this process the timer.
+	phase(phaseAsks, s.armAsks)
+	// And a person's asks: each that waits is waited on again, since the wait was the last
+	// process's, and a yes whose `then` had not started starts.
+	phase(phaseAsksWait, s.resumeAsks)
 	// And the sources, last: each one's first pass is a write the restored charter should be
 	// standing to react to. A level-triggered pass does not repeat itself, so what a rule
 	// missed by being late it would miss for good.
@@ -1290,8 +1287,18 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("POST /groups", s.putGroup, "verse-group", nothing)
 	rt.handle("GET /groups/{name}", s.getGroup, "", nothing)
 	rt.handle("DELETE /groups/{name}", s.removeGroup, "", nothing)
+	// THE ASKS, both sides of each: the asker raises, changes and withdraws one and lists theirs;
+	// whom it asks lists the questions waiting on them and answers. Every question is an ask at
+	// verse.ask.<id>, so there is one tree of routes, and `verse ask` and `verse question` are its
+	// two readings.
+	rt.handle("GET /asks", s.listAsks, "", nothing)
+	rt.handle("POST /asks", s.postAsk, "verse-ask", one("verse-asked"))
+	rt.handle("GET /asks/{id}", s.getAsk, "", one("verse-entity"))
+	rt.handle("DELETE /asks/{id}", s.deleteAsk, "", nothing)
+	rt.handle("PATCH /asks/{id}", s.patchAsk, "verse-ask-change", one("verse-asked"))
+	rt.handle("POST /asks/{id}/answer", s.answerAsk, "verse-resolve", nothing)
+	rt.handle("POST /asks/{id}/say", s.sayOnAsk, "verse-gate-say", nothing)
 	rt.handle("PUT /perms", s.putPerms, "verse-perms-edit", one("verse-perms-record"))
-	rt.handle("GET /gates", s.listGates, "", nothing)
 	// The live tasks and the suspensions a selection names (flows.go): the work in flight and
 	// the work held from now on, one listing narrowed by the flags an act takes.
 	rt.handle("GET /flows", s.listFlows, "", list("verse-flow-row"))
@@ -1319,6 +1326,10 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("POST /resolvers", s.addResolver, "", nothing)
 	rt.handle("GET /resolvers/{name}", s.getResolver, "", nothing)
 	rt.handle("DELETE /resolvers/{name}", s.removeResolver, "", nothing)
+	rt.handle("POST /resolvers/{name}/grant", s.grantResolver, "", nothing)
+	rt.handle("GET /resolvers/{name}/asks", s.servedAsks, "", nothing)
+	rt.handle("GET /asks/{id}/served", s.askServed, "", nothing)
+	rt.handle("POST /resolvers/{name}/revoke", s.revokeResolver, "", nothing)
 	// runners — WHERE work runs, as against who answers for it. Installed rather than chosen
 	// at startup, so a drive can add one for work this verse does not otherwise need to know
 	// about.
@@ -1343,19 +1354,10 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("GET /runners/{name}", s.getRunner, "", nothing)
 	rt.handle("GET /runners/{name}/check", s.checkRunner, "", nothing)
 	rt.handle("DELETE /runners/{name}", s.removeRunner, "", nothing)
-	// The two streams an answerer lives on. Addressed by COVER — one resolver on one gate
-	// stream — so neither route needs a second parameter to say which run it is about.
-	rt.handle("GET /resolvers/cover/{id}/events", s.resolverEvents, "", stream("verse-frame"))
-	rt.handleUnattributed("POST /resolvers/cover/{id}/verdicts", s.resolverVerdict, "verse-verdict", nothing)
-	rt.handleUnattributed("POST /resolvers/cover/{id}/position", s.resolverPosition, "verse-position", nothing)
-
 	// A package's own declaration: what it reads outside its address. It carries `?at=` like
 	// the two above, and it is posted BEFORE them, because a rule is checked against it.
 
 	rt.handle("POST /scope/delete", s.deleteScope, "", nothing)
-	rt.handle("POST /gate/resolve", s.resolveGate, "verse-resolve", nothing)
-	rt.handle("POST /gate/escalate", s.escalateGate, "verse-escalate", nothing)
-	rt.handle("POST /gate/say", s.sayOnGate, "verse-gate-say", nothing)
 	// Holding a run or a suspension, and lifting it; saying to live work, and cancelling a run
 	// (flows.go).
 	rt.handle("POST /flow/suspend", s.flowSuspend, "verse-flow-select", one("verse-flow-row"))
@@ -1392,7 +1394,7 @@ func (s *Server) Handler() http.Handler {
 		s.taskControl(w, r, ph, "resume")
 	}, "", nothing)
 	// Answering is the ONE path (answerQuestion), not a case of taskControl: this route
-	// differs from `/gate/resolve` only in being TOLD which task holds the question
+	// differs from `/asks/{id}/answer` only in being TOLD which task holds the question
 	// instead of working it out. Everything that follows — attribution, delivery, the record,
 	// a stale answer — is the same act and must not have two implementations.
 	rt.handle("POST /tasks/{id}/resolve", func(w http.ResponseWriter, r *http.Request) {
@@ -1476,8 +1478,33 @@ func (s *Server) principals(mux *http.ServeMux, unattributed map[string]bool) ht
 			}
 			s.notePrincipal(p)
 		}
+		if name := r.Header.Get(api.ResolverHeader); name != "" {
+			via, err := s.actAsResolver(p, name)
+			if err != nil {
+				http.Error(w, api.ResolverHeader+": "+err.Error(), http.StatusForbidden)
+				return
+			}
+			r.Header.Set(api.PrincipalHeader, via)
+		}
 		h.ServeHTTP(w, r)
 	})
+}
+
+// actAsResolver is who a request presented as p acts as when it names a resolver: `via:` the
+// resolver, where p installed it, and a refusal otherwise.
+func (s *Server) actAsResolver(p, name string) (string, error) {
+	if p == "" {
+		return "", fmt.Errorf("a resolver is acted as by whoever installed it, and this request names nobody")
+	}
+	ref := resolver.Ref(strings.TrimPrefix(name, entity.VerseRoot+"."+resolver.System+"."))
+	owner, err := entity.OwnerOf(s.Store, ref)
+	if err != nil {
+		return "", err
+	}
+	if owner == "" || owner != p {
+		return "", fmt.Errorf("%s acts as %s only if it installed it", p, ref)
+	}
+	return entity.Via(ref), nil
 }
 
 // notePrincipal records p under the kind its name carries, the first time this process sees
@@ -1684,24 +1711,6 @@ func (s *Server) scopedStore(r *http.Request) entity.Store {
 // write carrying their name would say they did.
 func (s *Server) asDocket(r *http.Request) entity.Store {
 	return entity.As(s.scopedStore(r), entity.SystemDocket)
-}
-
-// asResolver is the store a resolver acts through: the request's scope, via the resolver whose
-// cover the request came through. A service says what it decided, never who it is
-// (resolverVerdict), so the party on the write is the resolver — `via:` its address, which the
-// check resolves to whoever installed it, and which a question is held out to by name.
-func (s *Server) asResolver(r *http.Request, resolverRef string) entity.Store {
-	return entity.As(s.scopedStore(r), resolverPrincipal(resolverRef))
-}
-
-// resolverPrincipal is who acts as a resolver: `via:` its address. An address that does not parse
-// is kept as written, and names no place the check admits anybody at.
-func resolverPrincipal(resolverRef string) string {
-	ref, err := entity.ParseAddr(resolverRef)
-	if err != nil {
-		return resolverRef
-	}
-	return entity.Via(ref)
 }
 
 // actor is who an act that records a `by` is BY: the principal the request is made as, which is
@@ -2211,7 +2220,7 @@ func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {
 // It is not a lock on the DATA. A reader still reads it (that is the point of it being
 // entities), the engine still writes it, and a scope's own copy still layers over it. What is
 // refused is one path — the generic write — because every legitimate change to verse's own
-// state has a verb: `verse c -a`, `verse resolver add`, `verse gate approve`. A ballot
+// state has a verb: `verse c -a`, `verse resolver add`, `verse question approve`. A ballot
 // is not among them, deliberately: `vote.*` is the world's half, since casting one is an act
 // somebody takes rather than a record verse keeps.
 func reservedWrite(ref entity.Ref) error {
@@ -2220,7 +2229,7 @@ func reservedWrite(ref entity.Ref) error {
 	}
 	return fmt.Errorf("%s is verse's own: the entity write is for what the world is about, and "+
 		"what verse writes about its own running is written by the verbs that own it "+
-		"(charter -a, resolver add, runner add, source add, gate approve)", ref)
+		"(charter -a, resolver add, runner add, source add, question approve)", ref)
 }
 
 func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
@@ -2471,6 +2480,23 @@ func (s *Server) putPerms(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "a place is taken by somebody: set `user:` in the CLI's config, or --as", http.StatusBadRequest)
 		return
 	}
+	// What the edit would hand down is read before the place is taken, so a refused one takes
+	// nothing.
+	var childLevels entity.Levels
+	if body.ChildGrants != nil && ir.Uncomment(body.ChildGrants).Type != ir.NullType {
+		var perr error
+		if childLevels, _, perr = entity.ParseLevels(entity.Obj{entity.ChildGrantsField: body.ChildGrants}.Payload(), entity.ChildGrantsField); perr != nil {
+			http.Error(w, perr.Error(), http.StatusBadRequest)
+			return
+		}
+		if childLevels == nil {
+			childLevels = entity.Levels{}
+		}
+		if err := entity.CheckChildGrants(childLevels); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 	store := s.scopedStore(r)
 	if refused(w, entity.CheckTake(store, who, ref, "setting its record")) {
 		return
@@ -2485,18 +2511,7 @@ func (s *Server) putPerms(w http.ResponseWriter, r *http.Request) {
 	// above passed on co-ownership, so they are a co-owner of it and may edit it. Owner
 	// records never move: what the edit touches is what the node holds out.
 	if body.ChildGrants != nil {
-		var levels entity.Levels
-		if ir.Uncomment(body.ChildGrants).Type != ir.NullType {
-			var perr error
-			if levels, _, perr = entity.ParseLevels(entity.Obj{entity.ChildGrantsField: body.ChildGrants}.Payload(), entity.ChildGrantsField); perr != nil {
-				http.Error(w, perr.Error(), http.StatusBadRequest)
-				return
-			}
-			if levels == nil {
-				levels = entity.Levels{}
-			}
-		}
-		if err := entity.SetChildGrants(store, ref, levels); err != nil {
+		if err := entity.SetChildGrants(store, ref, childLevels); err != nil {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}
@@ -2681,10 +2696,10 @@ func conditions(cs []api.Condition) ([]entity.Require, error) {
 	return out, nil
 }
 
-// listGates is the unified pending-gate view: engine (trigger) gates raised by a firing AND
+// listDocket is the unified pending-gate view: engine (trigger) gates raised by a firing AND
 // per-task gates (an agent blocked on write/shell/delegate). Both are published as
 // `gate:question:<id>` records, and both are resolvable by id.
-func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
+func (s *Server) listDocket(w http.ResponseWriter, r *http.Request) {
 	// The docket is a slice of the store, not a walk of two in-memory registries. That is
 	// what makes it survive a restart for work that outlived the daemon, and what lets it
 	// say what each question is ABOUT rather than only what it is called: the record carries
@@ -2701,10 +2716,32 @@ func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 	if s.settleOverdueIn(s.asDocket(r), ents) {
 		ents, readErr = pendingQuestionsErr(s.scopedStore(r))
 	}
-	s.escalateOverdueIn(s.asDocket(r), ents)
+	// WHAT A RESOLVER SERVES FOR YOU is its to answer, so the docket leaves it out; `?served`
+	// puts it back, saying which resolver serves it (9ce3bva0, stage 5).
+	withServed := r.URL.Query().Get("served") == "true" || r.URL.Query().Get("all") == "true"
+	// THE QUESTIONS PUT TO YOU, with `?waiting=me`: what waits on the caller rather than every
+	// pending ask they may read, which is the whole docket (`verse question` against `--all`).
+	waiting := r.URL.Query().Get("waiting") == "me"
 	for _, ent := range ents {
+		if waiting && !waitsOn(s.scopedStore(r), principalOf(r), ent.Payload) {
+			continue
+		}
+		servedBy, err := s.servedFor(principalOf(r), ent.Payload)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		if servedBy != "" && !withServed {
+			continue
+		}
+		if entity.Str(ent.Payload, mirror.SaidToField) != "" {
+			continue // words to a task, which asks no person
+		}
 		p := entity.ToObj(ent.Payload)
 		rec := map[string]any{}
+		if servedBy != "" {
+			rec["servedBy"] = servedBy
+		}
 		for k, v := range p {
 			switch k {
 			case "status", "posedAt": // structural: every pending question has them
@@ -2730,6 +2767,23 @@ func (s *Server) listGates(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeOut(w, r, http.StatusOK, out)
+}
+
+// waitsOn reports whether a question waits on who: its waitingOn names them as the answer line it
+// was copied from would (entity.Names) — themselves, a whole kind, everyone, a place they may
+// write — and it is not their own ask, which its asker answers only where they named themselves
+// (askedBy). A line that cannot be read waits on nobody here, as the docket's other readers
+// would take it.
+func waitsOn(store entity.Store, who string, q entity.Payload) bool {
+	names := entity.Strs(q, mirror.WaitingOnField)
+	if s := entity.Str(q, mirror.WaitingOnField); s != "" {
+		names = append(names, s)
+	}
+	if len(names) == 0 || askedBy(q, who) {
+		return false
+	}
+	ok, err := entity.Names(store, names, entity.ReadWrite, who)
+	return err == nil && ok
 }
 
 // relaysControl reports whether an answer to this task's gates is QUEUED for a worker
@@ -2784,7 +2838,7 @@ func (s *Server) ownerOf(store entity.Store, questionID string) string {
 
 // pendingQuestions selects the open questions: the docket, as a slice of the store.
 //
-// One selector, because `verse gate` and `verse status` must name the same set. They did not
+// One selector, because `verse question --all` and `verse status` must name the same set. They did not
 // before — status counted the engine registry, which never held a task's questions and
 // holds nothing at all after a restart, so it could report no gates beside a docket listing
 // several.
@@ -2800,7 +2854,7 @@ func pendingQuestionsErr(store entity.Store) ([]entity.Entity, error) {
 	// and a List(pred) is a Match on the root — so a probe every five seconds read the entire
 	// verse to count what was pending.
 	ents, err := entity.BelowErr(store, mirror.IsQuestion, 1,
-		entity.VerseRoot, mirror.QuestionSystem, mirror.QuestionKind)
+		entity.VerseRoot, mirror.AskSystem)
 	if err != nil {
 		return nil, err
 	}
@@ -2812,30 +2866,87 @@ func pendingQuestionsErr(store entity.Store) ([]entity.Entity, error) {
 	return out, nil
 }
 
-func (s *Server) resolveGate(w http.ResponseWriter, r *http.Request) {
+func (s *Server) answerAsk(w http.ResponseWriter, r *http.Request) {
 	var body api.Resolve
 	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if !pathID(w, r, &body.ID) {
+		return
+	}
 	s.answerQuestion(w, r, body, "", s.scopedStore(r))
 }
 
-// sayOnGate records what somebody said ABOUT a question, answering nothing.
+// pathID puts the ask the path names into a body's id, and refuses a body naming another: the path
+// is which ask a request is about.
+func pathID(w http.ResponseWriter, r *http.Request, id *string) bool {
+	path := r.PathValue("id")
+	if *id != "" && *id != path {
+		http.Error(w, fmt.Sprintf("the path names ask %s and the body %s", path, *id), http.StatusBadRequest)
+		return false
+	}
+	*id = path
+	return true
+}
+
+// getAsk is one ask, read as its record is (getEntity): what the caller may not read is refused,
+// and what does not stand is 404.
+func (s *Server) getAsk(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	q.Set("at", mirror.AskRef(r.PathValue("id")).KPath())
+	r.URL.RawQuery = q.Encode()
+	s.getEntity(w, r)
+}
+
+// listAsks is GET /asks, as each side reads the asks. Bare, the caller's own, whatever became of
+// them (`verse ask`); `?waiting=me`, the questions waiting on them (`verse question`); `?all=true`,
+// every pending ask they may read, the docket (`verse question --all`).
+func (s *Server) listAsks(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	waiting, all := q.Get("waiting"), q.Get("all") == "true"
+	switch {
+	case waiting != "" && waiting != "me":
+		http.Error(w, "waiting names whom the questions wait on, and only `me` is asked for", http.StatusBadRequest)
+		return
+	case waiting != "" && all:
+		http.Error(w, "waiting=me and all=true are two listings; ask for one", http.StatusBadRequest)
+		return
+	case waiting != "" || all:
+		s.listDocket(w, r)
+		return
+	}
+	who := principalOf(r)
+	ents, err := entity.BelowErr(s.scopedStore(r), mirror.IsAsk, 1, entity.VerseRoot, mirror.AskSystem)
+	if unreadable(w, r, err) {
+		return
+	}
+	out := make([]map[string]any, 0)
+	for _, e := range ents {
+		if entity.Str(e.Payload, "asker") != who {
+			continue
+		}
+		rec := map[string]any(entity.ToObj(e.Payload))
+		rec["id"] = e.Ref.Name()
+		out = append(out, rec)
+	}
+	writeOut(w, r, http.StatusOK, out)
+}
+
+// sayOnAsk records what somebody said ABOUT a question, answering nothing.
 //
 // Admitted to whoever may READ the question, which is wider than who may answer it on purpose: the
 // person who cannot decide this is often the one who knows why it is waiting, and a docket that
 // took words only from its answerers would lose them. The words are written by versed, as the
 // docket, so a reader who holds no write on the question can still leave a line on it — and cannot
 // write anything else there.
-func (s *Server) sayOnGate(w http.ResponseWriter, r *http.Request) {
+func (s *Server) sayOnAsk(w http.ResponseWriter, r *http.Request) {
 	var body api.GateSay
 	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if body.ID == "" {
-		http.Error(w, "id is required: a say names the question it is about", http.StatusBadRequest)
+	if !pathID(w, r, &body.ID) {
 		return
 	}
 	if strings.TrimSpace(body.Say) == "" {
@@ -2860,63 +2971,6 @@ func (s *Server) sayOnGate(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// escalateGate is a person's escalation: the question moves to the next rung matching its
-// subject, and to the docket when there is none — what a service does through its cover,
-// done from the docket. Admitted to whoever holds `read-write` on the question, since handing
-// a question on is an answer of a kind, "not by me", and refused to anybody else.
-func (s *Server) escalateGate(w http.ResponseWriter, r *http.Request) {
-	var body api.Escalate
-	if err := codec.Read(r, &body); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if body.ID == "" {
-		http.Error(w, "id is required: an escalation names the question it hands on", http.StatusBadRequest)
-		return
-	}
-	var ok bool
-	if body.By, ok = actor(w, s.scopedStore(r), body.By); !ok {
-		return
-	}
-	// The scope's own, first, as an answer is (answerQuestion): a handover written from a scope
-	// that did not pose the question would re-own the overlay's copy of a record baseline's
-	// docket keeps working.
-	holder, found, err := s.questionScope(body.ID, r.URL.Query().Get("scope"))
-	if !s.ownHere(w, r, "question "+body.ID, holder, found, err) {
-		return
-	}
-	store := s.scopedStore(r)
-	if refused(w, entity.Check(store, principalOf(r), entity.ReadWrite, mirror.QuestionRef(body.ID), "escalating it")) {
-		return
-	}
-	q, ok, err := store.Get(mirror.QuestionRef(body.ID))
-	if unreadable(w, r, err) {
-		return
-	}
-	if !ok {
-		http.Error(w, "no such question", http.StatusNotFound)
-		return
-	}
-	p := entity.ToObj(q.Payload)
-	if p["status"] != mirror.QuestionPending {
-		http.Error(w, "that question is already settled", http.StatusConflict)
-		return
-	}
-	subject, _ := p["subject"].(string)
-	from, _ := p["resolver"].(string)
-	why := "escalated by " + body.By
-	if body.Say != "" {
-		why += ": " + body.Say
-	}
-	// Versed's own act, in the request's scope: the handover is the layer rule's, not the
-	// person's write.
-	if !reown(s.asDocket(r), mirror.QuestionRef(body.ID), questionOrigin(p, subject), subject, from, why) {
-		http.Error(w, "that question was answered while you were escalating it", http.StatusConflict)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
 // posed reads a question, and says whether it is POSED: its own perms record stands, which says
 // who may answer it, and so does the question, which says what may be chosen and how many it
 // takes. Until both do, an answer is checked against the docket's row — every person — and
@@ -2935,11 +2989,12 @@ func (s *Server) escalateGate(w http.ResponseWriter, r *http.Request) {
 // once rather than after the wait.
 func (s *Server) posed(store entity.Store, id string, raised func() bool) (q entity.Entity, posed bool, err error) {
 	ref := mirror.QuestionRef(id)
-	// AND IT STANDS PENDING, where somebody is waiting on it. An id is a function of what asked,
-	// so a gate fired again poses the id it had, and the record and the question both stand
-	// from the asking before — settled, with that asking's options. Answered against those, one
-	// ballot releases a waiter this asking says needs three. A settled question nobody is
-	// waiting on is simply answered already, and is told so below.
+	// AND IT STANDS PENDING, where somebody is waiting on it. A question asked again under the
+	// id it had — one withdrawn and asked again, or a poser posting over its own id — has a
+	// record standing from the asking before until this one lands: settled, with that asking's
+	// options. Answered against those, one ballot releases a waiter this asking says needs
+	// three. A settled question nobody is waiting on is simply answered already, and is told so
+	// below.
 	read := func() (entity.Entity, bool, error) {
 		if ok, err := entity.Recorded(store, ref); err != nil || !ok {
 			return entity.Entity{}, false, err
@@ -2964,7 +3019,7 @@ func (s *Server) posed(store entity.Store, id string, raised func() bool) (q ent
 	return q, posed, err
 }
 
-// answerQuestion is the ONE answering path. Both routes reach it — `/gate/resolve`, which
+// answerQuestion is the ONE answering path. Both routes reach it — `/asks/{id}/answer`, which
 // finds the owner from the id, and `/tasks/{id}/resolve`, which is told it — because the
 // two differ in how the question is addressed and in nothing else. Having had two
 // implementations is how `decisionId`/`proceed` drifted from `id`/`approve` unnoticed, and an
@@ -2973,12 +3028,12 @@ func (s *Server) posed(store entity.Store, id string, raised func() bool) (q ent
 // taskID is the task the answer is addressed to, empty when the caller did not say and the
 // id must be read for it.
 //
-// store is the view the answerer acts through: the request's principal, or a resolver for a
-// verdict that came through its cover. Whether that party may answer is asked of the store
-// BEFORE the answer is delivered, since the record is written only afterwards and a refusal
-// then would be an answer that reached the work with no record of it. The answer is theirs to
-// give when they co-own the question — the task's owner, or the charter's — or hold `read-write`
-// on it: the resolver it is held out to, or a person, under the seed.
+// store is the view the answerer acts through: the request's principal, or a resolver answering
+// for a party it serves (answeringFor), which then answers as that party. Whether they may answer
+// is asked of the store BEFORE the answer is delivered, since the record is written only
+// afterwards and a refusal then would be an answer that reached the work with no record of it.
+// The answer is theirs to give when they co-own the question — the task's owner, or the
+// charter's — or hold `read-write` on it.
 func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api.Resolve, taskID string, store entity.Store) {
 	if body.ID == "" {
 		http.Error(w, "id is required: an answer names the question it answers", http.StatusBadRequest)
@@ -3000,6 +3055,7 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	}
 	res := task.Choose(body.Choice, body.By)
 	res.Steer = body.Say
+	res.Edit = body.Edit
 
 	// THE SCOPE'S OWN, first. The awaiter is delivered to out-of-band and the record is written
 	// through `store` afterwards, and the two are in different scopes the moment a question is
@@ -3038,7 +3094,59 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 			http.StatusServiceUnavailable)
 		return
 	}
-	if refused(w, entity.Check(store, entity.PrincipalOf(store), entity.ReadWrite, mirror.QuestionRef(body.ID), "answering it")) {
+	// A RESOLVER ANSWERS FOR A PARTY (9ce3bva0, stage 4): made as a resolver with a match, the
+	// answer is the party's — whoever it serves the ask for, as they granted it — and is held
+	// from here on to everything that party's own answer would be. The ballot names both.
+	if party, acting, err := s.answeringFor(entity.PrincipalOf(store), q.Payload, body.For); err != nil {
+		http.Error(w, fmt.Sprintf("%s: %v", body.ID, err), http.StatusForbidden)
+		return
+	} else if acting {
+		res.Via = body.By
+		body.By, res.By = party, party
+		// And made on their authority from here: the ballot and the answer are the party's, so
+		// what the resolver may not write — it reads the ask, and no more — they may.
+		store = entity.As(store, party)
+	} else if body.For != "" {
+		http.Error(w, "`for` names whom a resolver answers for, and this answer is not made as one", http.StatusBadRequest)
+		return
+	} else if !body.Force {
+		// THE PARTY CHOSE ITS RESOLVER (9ce3bva0, stage 5): answering as yourself what one
+		// serves for you is said, and done only when you say so.
+		if by, err := s.servedFor(body.By, q.Payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		} else if by != "" {
+			http.Error(w, fmt.Sprintf("%s answers %s for you; answer with force (--force) to answer "+
+				"it yourself", by, body.ID), http.StatusConflict)
+			return
+		}
+	}
+	if refused(w, entity.Check(store, body.By, entity.ReadWrite, mirror.QuestionRef(body.ID), "answering it")) {
+		return
+	}
+	// AN ANSWER IS TO THE ASK AS IT STANDS. One naming an earlier edit of a person's ask consented
+	// to words no longer asked; one naming none answers the edit standing now. The registry
+	// checks again at delivery, which is where the race with an edit is closed (Registry.Deliver).
+	if current := mirror.EditOf(q.Payload); current != 0 {
+		if res.Edit != 0 && res.Edit != current {
+			http.Error(w, fmt.Sprintf("ask %s was asked again: you answered edit %d, and it now stands at edit %d (%s); read it and answer again",
+				body.ID, res.Edit, current, entity.Str(q.Payload, "pose")), http.StatusConflict)
+			return
+		}
+		res.Edit = current
+	}
+	// AN ASK IS ANSWERED BY WHOM IT ASKS. A person's ask is its asker's record, so the asker holds
+	// it at owner and would pass the check above; answering it is still not theirs, unless they
+	// named themselves among whom it asks.
+	if askedBy(q.Payload, body.By) {
+		http.Error(w, fmt.Sprintf("%s asked %s, and an ask is answered by whom it asks, not by its asker",
+			body.By, body.ID), http.StatusForbidden)
+		return
+	}
+	// NOBODY ANSWERS AN ASK ABOUT SOMETHING THEY CANNOT READ (9ce3bva0, D3), asked again here and
+	// not only when it was posed: the subject's reading may have narrowed since.
+	if err := mirror.CheckAudience(store, entity.Str(q.Payload, "subject"), []string{body.By}); err != nil {
+		http.Error(w, fmt.Sprintf("%s: %v", body.ID, err), http.StatusForbidden)
 		return
 	}
 	// The options are the RECORD's, and a choice that is not one of them is refused before
@@ -3051,24 +3159,6 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 			body.Choice, strings.Join(task.OptionIDs(opts), ", ")), http.StatusBadRequest)
 		return
 	}
-	// `exclusive` governs whose answer COUNTS. Not who may SEE the question: the docket is
-	// unchanged, and a person may read — and argue about — what an exclusive resolver owns.
-	// And not a security boundary: it decides who answers an ask, never what an answer may
-	// authorise. The grant does that, and the two are not the same axis.
-	holder, exclusive, err := exclusiveOwner(store, body.ID)
-	// FAIL CLOSED. The guard below refuses a second answerer, so a read that did not happen must
-	// not be allowed to answer "there is nobody to refuse" — that admits exactly what the guard
-	// is for, and stamps the record as if no override happened.
-	if unreadable(w, r, err) {
-		return
-	}
-	if exclusive && body.By != resolverPrincipal(holder) && !body.Override {
-		http.Error(w, holder+" answers this question exclusively; "+
-			"say override to answer it anyway, and the record will name you both",
-			http.StatusForbidden)
-		return
-	}
-	overriding := exclusive && body.By != resolverPrincipal(holder)
 	owner := taskID
 	if owner == "" {
 		owner = s.ownerOf(store, body.ID)
@@ -3100,9 +3190,6 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 
 	err = s.settle(store, body.ID, res, owner)
 	if err == nil {
-		if overriding {
-			mirror.Overrode(store, body.ID, holder)
-		}
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -3120,6 +3207,11 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	}
 	if errors.Is(err, task.ErrUnsupported) {
 		http.Error(w, "runner does not support gate resolution", http.StatusNotImplemented)
+		return
+	}
+	if errors.Is(err, task.ErrStaleEdit) {
+		http.Error(w, fmt.Sprintf("ask %s was asked again while you answered: read it and answer again", body.ID),
+			http.StatusConflict)
 		return
 	}
 	// Somebody was here first. The loser is recorded rather than dropped: two people at a
@@ -3162,8 +3254,8 @@ func (s *Server) settle(store entity.Store, id string, res task.Resolution, owne
 	var err error
 	if owner != "" {
 		err = s.resolveTaskDecision(owner, id, res)
-	} else if !s.Reg.Answer(id, res) {
-		err = task.ErrNoSuchDecision
+	} else {
+		err = s.Reg.Deliver(id, res)
 	}
 	if err != nil {
 		return err
@@ -3185,16 +3277,49 @@ func (s *Server) settle(store entity.Store, id string, res task.Resolution, owne
 // the original instant rather than a fresh one), and a timer fires the settle at it.
 //
 // A timer rather than a sweep, because a deadline SETTLES: it releases a firing or a task
-// loop that is blocked, and those do not read the docket. The resolver's escalation beside
-// it can afford to wait for a reader, since a reader is the only party it is for. The
-// docket read still settles an overdue question it finds (settleOverdueIn), for the daemon
-// whose timer died with it.
+// loop that is blocked, and those do not read the docket. The docket read still settles an
+// overdue question it finds (settleOverdueIn), for the daemon whose timer died with it.
 func (s *Server) armDeadline(store entity.Store, id, within string) {
 	d, err := time.ParseDuration(within)
 	if err != nil || d < 0 {
 		return // refused where the question was written; nothing to arm here
 	}
-	at, err := mirror.StampDeadline(store, id, time.Now().Add(d))
+	s.armAt(store, id, time.Now().Add(d))
+}
+
+// armQuestion arms a posed question's clock: at the date it carries where the gate read one from
+// its subject, and `within` from now otherwise.
+//
+// THE DATE IS READ AGAIN HERE. The firing resolved it before the question was written, and an
+// edit landing in between is followed by the gate's watch before there is a record to move — so
+// the move is refused, and the question would stand at the date it was fired with. Read at the
+// arming, the subject's current date is the one stamped; an edit after this is the watch's.
+func (s *Server) armQuestion(store entity.Store, q task.GateQuestion) {
+	d := q.Deadline
+	if d.At == "" {
+		s.armDeadline(store, q.ID, d.Within)
+		return
+	}
+	want, err := time.Parse(time.RFC3339Nano, d.At)
+	if err != nil {
+		return
+	}
+	if d.AtFrom != "" && q.Subject != "" {
+		if ref, perr := entity.ParseAddr(q.Subject); perr == nil {
+			if e, ok, gerr := store.Get(ref); gerr == nil && ok {
+				if at, derr := trigger.DateAt(e.Payload, d.AtFrom); derr == nil {
+					want = at
+				}
+			}
+		}
+	}
+	s.armAt(store, q.ID, want)
+}
+
+// armAt stamps want as the question's instant, unless one stands already, and sets a timer for
+// whichever instant the record then holds.
+func (s *Server) armAt(store entity.Store, id string, want time.Time) {
+	at, err := mirror.StampDeadline(store, id, want)
 	if err != nil {
 		return
 	}
@@ -3221,10 +3346,28 @@ func (s *Server) armDeadlines() error {
 		return entity.Unread(fmt.Errorf("the docket could not be read, so no deadline was armed: %w", err))
 	}
 	for _, ent := range ents {
-		if within, _, _ := mirror.DeadlineOf(ent.Payload); within != "" {
+		// A STAMPED instant is armed as it stands — a dated question's date, or a moved one —
+		// and only a question armed nowhere yet starts its clock from `within` now.
+		within, _, at := mirror.DeadlineOf(ent.Payload)
+		if stamped, err := time.Parse(time.RFC3339Nano, at); err == nil {
+			s.armAt(s.Store, ent.Ref.Name(), stamped)
+		} else if within != "" {
 			s.armDeadline(s.Store, ent.Ref.Name(), within)
 		}
 	}
+	return nil
+}
+
+// moveDeadline is the engines' way to move a standing question's clock, when a gate reading its
+// date from the subject sees the date edited: the record moves if the question is still pending,
+// and a timer is set for the new instant.
+func (s *Server) moveDeadline(scope, id string, at time.Time) error {
+	store := s.storeForScope(scope)
+	moved, err := mirror.MoveDeadline(store, id, at)
+	if err != nil || !moved {
+		return err
+	}
+	time.AfterFunc(time.Until(at), func() { s.settleByDeadline(store, id) })
 	return nil
 }
 
@@ -3271,450 +3414,9 @@ func (s *Server) settleOverdueIn(store entity.Store, pending []entity.Entity) bo
 	return any
 }
 
-// coverOf reads one cover: the resolver it is of, and the gate stream it reads.
-//
-// Both come off the record rather than being parsed out of the address. The address is for
-// finding it; the fields are what the checks below compare, and a check that re-derives its
-// inputs from a string is one that can disagree with what is stored.
-// The READ's failure is reported rather than folded into "no such cover": every caller
-// answers 404 on false, so an unreadable store told an answerer its own cover is gone — and an
-// answerer's whole read plane hangs off that address (git-issue nkptp9b3h12ksx3kg9n0).
-func (s *Server) coverOf(r *http.Request) (resolverRef string, stream entity.Ref, ok bool, err error) {
-	ref := entity.VerseRef(resolver.CoverSystem, r.PathValue("id"))
-	e, found, err := s.scopedStore(r).Get(ref)
-	if err != nil {
-		return "", entity.Ref{}, false, err
-	}
-	if !found {
-		return "", entity.Ref{}, false, nil
-	}
-	p := entity.ToObj(e.Payload)
-	resolverRef, _ = p["resolver"].(string)
-	got, _ := p["stream"].(string)
-	stream, perr := entity.ParseAddr(got)
-	if perr != nil {
-		return "", entity.Ref{}, false, nil
-	}
-	return resolverRef, stream, resolverRef != "" && stream.Name() != "", nil
-}
-
-// coversARun reports which kind of gate stream this cover reads. It follows from the STREAM and
-// is not stored beside it: a run's fine grain hangs off the spine, and which one you are reading
-// is a property of what you are covering rather than a flag that could disagree with it.
-func coversARun(stream entity.Ref) bool {
-	return mirror.IsTask(stream)
-}
-
-// resolverEvents hands an answerer the gate stream of the run it covers — the task's OWN read
-// plane, from `?since=`, not a projection of it.
-//
-// Context arrives before the ask, which is the whole reason an answerer is attached rather than
-// handed a question: by the time it reads the gate it has read what led to it.
-func (s *Server) resolverEvents(w http.ResponseWriter, r *http.Request) {
-	s.escalateOverdue(s.asDocket(r)) // an answerer arriving is a reader arriving
-	_, stream, ok, readErr := s.coverOf(r)
-	if unreadable(w, r, readErr) {
-		return
-	}
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	if !coversARun(stream) {
-		s.streamSpine(w, r, stream)
-		return
-	}
-	// No local special case: the runner attaches a live in-process handle by the same call,
-	// so an answerer over a local run and one over a brokered run read through one path. The
-	// task route splits only because it forwards to the runtime's own mount, and an
-	// answerer is not asking that route's question.
-	s.streamEvents(w, r, stream.Name())
-}
-
-// streamSpine serves the commits that touched one subject, from `?since=<revision>`.
-//
-// The narrowing is BY REF — every commit touching it, and nothing else. Not the resolver's
-// condition, and the reason is not tidiness: a predicate reads a payload and a deletion has
-// none, so a condition-narrowed stream would hide exactly the end of a life it most needs to
-// show. `sys:k:i` born, marked vanishing, deleted and written again under the same ref is one
-// story, and an answerer covering that ref sees all of it.
-//
-// A position here is a revision rather than a cursor, which is why a cover may be minted
-// late and still read everything that led to a question: the store keeps its commits, so the
-// subject's history is re-readable in a way a run's bounded ring is not.
-//
-// It also carries the ANCHORS: a run about this subject writes a `task:instance` entity
-// naming it as its flow, and a spawn and a terminal are both commits there because the mirror
-// writes them. That is what makes this the spine and task streams the fine grain hanging
-// off it — an answerer reading here learns a run began, and its own cover for that run is
-// where the frames are. Without them the spine would be a subject's history with the work
-// about it left out, which is most of what a supervisor is watching for.
-func (s *Server) streamSpine(w http.ResponseWriter, r *http.Request, subject entity.Ref) {
-	store := s.scopedStore(r)
-	sse, err := codec.NewSSE(w, r)
-	if err != nil {
-		codec.HTTPError(w, r, http.StatusInternalServerError, err.Error())
-		return
-	}
-	since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
-	onSpine := func(ev entity.Event) bool { return spineCarries(ev, subject) }
-
-	// Subscribe BEFORE the catch-up, so a commit landing between the two is carried live
-	// rather than lost in the gap; the two overlap and revision order dedups them.
-	// The spine is three patterns rather than one prefix: the subject's own node, the QUESTIONS
-	// about it and the TASKS naming it as their flow (spineCarries). Narrowing to the subject's
-	// prefix would drop the anchors, which are most of what a supervisor reads here.
-	spine := []*kpath.KPath{
-		entity.PrefixPattern(subject.Segs(), len(subject.Segs())),
-		entity.PrefixPattern([]string{entity.VerseRoot, mirror.QuestionSystem, mirror.QuestionKind}, 4),
-		entity.PrefixPattern([]string{entity.VerseRoot, mirror.System, mirror.InstanceKind}, 4),
-	}
-	ch, unsub := store.Observe(spine...)
-	defer unsub()
-	last := since
-	if commits, err := store.Since(since, spine...); err == nil {
-		for _, c := range commits {
-			for _, ev := range c.Changes {
-				if onSpine(ev) {
-					_ = sse.Send(ev)
-				}
-			}
-			if c.Rev > last {
-				last = c.Rev
-			}
-		}
-	} else {
-		// NO HISTORY, FOR WHATEVER REASON — the cursor expired, or the store could not answer.
-		// Both leave this reader in the same position (it has missed something and cannot get
-		// it), and both take the same recovery, so they are handled together here rather than
-		// split into a refusal an answerer has no better answer to. What must not happen is
-		// silence: this said nothing at all, so a reader could not tell "nothing happened"
-		// from "you missed everything". An answerer is a client of this call and nothing else,
-		// so it reconnected, learned nothing, and sat waiting for a question that had already
-		// been asked.
-		//
-		// Say that it happened, and then say WHAT — which is the half that matters, and the
-		// same two moves SubscribeSince makes on the task plane for the same reason.
-		_ = sse.Send(entity.Event{Gap: 1})
-		for _, ent := range pendingQuestions(store) {
-			if entity.Str(ent.Payload, "subject") != subject.String() {
-				continue
-			}
-			// Rev 0: this is current state, not a position. A reader tracks the highest Rev
-			// it has processed, and a replayed question must not move that cursor in either
-			// direction — the catch-up below is what advances it.
-			_ = sse.Send(entity.Event{Ref: ent.Ref, Op: entity.Set, To: ent.Payload})
-		}
-	}
-	sse.Flush()
-
-	for {
-		select {
-		case <-r.Context().Done():
-			return
-		case c, ok := <-ch:
-			if !ok {
-				return
-			}
-			if c.Rev != 0 && c.Rev <= last {
-				continue
-			}
-			if c.Gap > 0 {
-				_ = sse.Send(entity.Event{Rev: c.Rev, Gap: c.Gap})
-			}
-			for _, ev := range c.Changes {
-				if onSpine(ev) {
-					_ = sse.Send(ev)
-				}
-			}
-			if c.Rev > last {
-				last = c.Rev
-			}
-		}
-	}
-}
-
-// spineCarries reports whether a change belongs on one subject's spine: the subject's own
-// commits, and the runs about it.
-//
-// The subject half is BY REF and unfiltered — a predicate reads a payload and a deletion has
-// none, so a payload-narrowed spine would hide the end of a life. The run half must read one:
-// a task names its subject in `flow`, and there is nothing in its address that says so. A
-// run's terminal is a set rather than a delete, so the anchors that matter carry a payload to
-// be read.
-func spineCarries(ev entity.Event, subject entity.Ref) bool {
-	if ev.Ref == subject {
-		return true
-	}
-	// The QUESTIONS about it, which is how an escalation arrives rather than having to be
-	// polled for: a transfer writes the question, and the layer above is reading here. The
-	// design says the question "appears in the stream of the layer above" and that there is
-	// no second path anywhere, `⊤` included.
-	if mirror.IsQuestion(ev.Ref) {
-		return entity.Str(ev.To, "subject") == subject.String()
-	}
-	if !mirror.IsTask(ev.Ref) {
-		return false
-	}
-	return entity.Str(ev.To, "flow") == subject.String()
-}
-
-// resolverVerdict applies one answer, through the SAME path a person's `verse gate approve`
-// takes. Not a new answering path, and not a write: the record is written from the decision
-// after the fact, which is what the steering invariant requires.
-func (s *Server) resolverVerdict(w http.ResponseWriter, r *http.Request) {
-	resolverRef, stream, ok, readErr := s.coverOf(r)
-	if unreadable(w, r, readErr) {
-		return
-	}
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	var v api.Verdict
-	if err := codec.Read(r, &v); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if v.ID == "" {
-		http.Error(w, "id is required: a verdict names the question it answers", http.StatusBadRequest)
-		return
-	}
-	// `escalate` is the one verdict that is not a choice: it hands the question up rather
-	// than settling it. Everything else names an option, and whether the record carries that
-	// option is answerQuestion's to say, with the options listed.
-	if v.Verdict == "escalate" {
-		s.escalate(w, r, v.ID, resolverRef, stream)
-		return
-	}
-	// A stream it may READ is not a docket it may ANSWER. The check is structural rather
-	// than a policy about who is asking: the cover names its resolver and its stream, so
-	// this is a comparison of two fields the question already carries.
-	// AS THE RESOLVER, which is what the question is held out to; the service that carried the
-	// verdict may itself hold nothing on it.
-	q, found, err := s.asResolver(r, resolverRef).Get(mirror.QuestionRef(v.ID))
-	if unreadable(w, r, err) {
-		return
-	}
-	if !found {
-		http.Error(w, "no such question", http.StatusNotFound)
-		return
-	}
-	if !ownedBy(entity.ToObj(q.Payload), resolverRef, stream) {
-		http.Error(w, "that question is not this resolver's to answer", http.StatusForbidden)
-		return
-	}
-	// Attribution is verse's: `by` is the resolver, stamped here. A service says what it
-	// decided, never who it is.
-	//
-	// The task id is what routes the answer, and a firing's question has none — it is
-	// answered through the engine's own registry, which answerQuestion reaches when told no
-	// task holds it.
-	var taskID string
-	if coversARun(stream) {
-		taskID = stream.Name()
-	}
-	as := s.asResolver(r, resolverRef)
-	s.answerQuestion(w, r, api.Resolve{
-		ID: v.ID, Choice: v.Verdict, By: entity.PrincipalOf(as), Say: v.Say,
-	}, taskID, as)
-}
-
-// ghostResolver reports why a spawn's `resolver:` cannot be honoured, or "" when it can.
-//
-// A resolver that is not installed is REFUSED rather than ignored, and rather than left standing
-// on the question. Left standing it is worse than useless: the question is owned by something
-// that cannot answer, and — the case that makes this a refusal rather than a shrug — it SHADOWS
-// the standing layer that matches the same subject, which never sees the question and has no
-// cover through which to reach it. A misspelled resolver therefore turns a supervised subject
-// into an unsupervised one, silently, which is the shape of the hazard the first resolver plan
-// refused a `condition` to avoid.
-//
-// Checked at spawn rather than at install, because a charter and a resolver are separate
-// entities and either may arrive first; what must hold is that a RUN never names a resolver
-// nobody answers through.
-func ghostResolver(store entity.Store, ref string) string {
-	if ref == "" {
-		return "" // named nobody, which is a state and not a mistake
-	}
-	if _, ok := resolver.Find(store, ref); ok {
-		return ""
-	}
-	return fmt.Sprintf("resolver %q is not installed: a spawn may not name a resolver that does "+
-		"not exist — the question would be owned by something that cannot answer it, and any "+
-		"standing resolver matching the same subject would never see it. Install it "+
-		"(`verse resolver add`), or leave `resolver` empty to let the standing layer own it", ref)
-}
-
-// escalate transfers a question to the layer above. It does NOT ask a favour: the layer above
-// owns it from that moment, and its answer resolves the ORIGINAL question, because escalating
-// changes who answers and not what is being answered.
-//
-// Nothing waits. The escalating answerer is not blocked and gets no answer back — it keeps
-// reading and may answer other questions in the next frame, and only the WORK is blocked, at
-// the gate it always was. The verdict, when it comes, arrives on its stream like any other
-// frame, which is what lets it lean on the precedent next time rather than remember it.
-func (s *Server) escalate(w http.ResponseWriter, r *http.Request, id, resolverRef string, stream entity.Ref) {
-	store := s.asResolver(r, resolverRef)
-	q, ok, err := store.Get(mirror.QuestionRef(id))
-	// A READ THAT DID NOT HAPPEN IS NOT A MISSING QUESTION. Collapsing the two answered 404
-	// "no such question" for a store that could not be read, which tells an answerer its
-	// question is gone at exactly the moment nothing can be established about it.
-	if unreadable(w, r, err) {
-		return
-	}
-	if !ok {
-		http.Error(w, "no such question", http.StatusNotFound)
-		return
-	}
-	p := entity.ToObj(q.Payload)
-	if p["status"] != mirror.QuestionPending {
-		http.Error(w, "that question is already settled", http.StatusConflict)
-		return
-	}
-	if !ownedBy(p, resolverRef, stream) {
-		http.Error(w, "that question is not this resolver's to escalate", http.StatusForbidden)
-		return
-	}
-	subject, _ := p["subject"].(string)
-	if !reown(store, mirror.QuestionRef(id), questionOrigin(p, subject), subject, resolverRef, "escalated") {
-		// Answered between the check above and the write. Not this resolver's to escalate any
-		// more, and saying 204 would tell it the layer above now holds a question that is shut.
-		http.Error(w, "that question was answered while you were escalating it", http.StatusConflict)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// escalateOverdue moves the questions whose deadline has passed, and is called when a READER
-// arrives rather than by a clock of its own.
-//
-// The layer above is the only party an expiry is for, and it learns by reading — its spine, or
-// its docket if it is `⊤` and a person. So the reader's arrival is the moment to make the
-// transfer appear, not a moment too late: a sweeper would compute the same thing slightly
-// earlier, for nobody. It is the shape the claim lease already uses, where expiry happens when
-// somebody next asks for the work.
-//
-// What it costs, said rather than hidden: a question overdue while nothing is reading stays
-// where it is, and moves the instant anything looks. For `⊤` that is exactly right — the
-// docket a person opens is the docket as of now.
-func (s *Server) escalateOverdue(store entity.Store) {
-	s.escalateOverdueIn(store, pendingQuestions(store))
-}
-
-// escalateOverdueIn is escalateOverdue over questions ALREADY READ, for a caller that is about
-// to walk the same list. The docket read is the whole question subtree — every question ever
-// asked, since pending and settled share one address space — so a route that escalated and then
-// listed paid for it twice on every request.
-func (s *Server) escalateOverdueIn(store entity.Store, pending []entity.Entity) {
-	now := time.Now()
-	for _, ent := range pending {
-		p := entity.ToObj(ent.Payload)
-		at, _ := p["escalatesAt"].(string)
-		if at == "" {
-			continue
-		}
-		// Nano, not RFC3339: the second-granularity spelling TRUNCATES, so a deadline
-		// would fire up to a second early — and one shorter than a second would be past
-		// the instant it was stamped.
-		due, err := time.Parse(time.RFC3339Nano, at)
-		if err != nil || now.Before(due) {
-			continue
-		}
-		owner, _ := p["resolver"].(string)
-		subject, _ := p["subject"].(string)
-		reown(store, ent.Ref, questionOrigin(p, subject), subject, owner, "overdue")
-	}
-}
-
-// exclusiveOwner reports the resolver that owns this question and whether it owns it
-// exclusively. A question nobody owns, or one owned by an advisory resolver, is answerable by
-// the first party to answer — which is what advisory means, and is the default.
-// It reports the READ's failure rather than folding it into "nobody owns it". Folding it
-// inverted the guard: an unreadable store answered "not exclusive", so the second answerer this
-// exists to refuse was admitted, and `overriding` came out false so the record did not name them
-// both — the exact shape git-issue nkptp9b3h12ksx3kg9n0 reports.
-func exclusiveOwner(store entity.Store, id string) (string, bool, error) {
-	e, ok, err := store.Get(mirror.QuestionRef(id))
-	if err != nil {
-		return "", false, err
-	}
-	if !ok {
-		return "", false, nil
-	}
-	resolverRef := entity.Str(e.Payload, "resolver")
-	if resolverRef == "" {
-		return "", false, nil
-	}
-	res, ok, err := resolver.FindErr(store, resolverRef)
-	if err != nil {
-		return "", false, err
-	}
-	return resolverRef, ok && res.Exclusive, nil
-}
-
-// questionOrigin is the gate stream an owner of this question covers: the run that raised it,
-// or the subject it is about when a firing did. It is the same distinction a cover's address
-// carries, read off the question rather than guessed.
-func questionOrigin(q map[string]any, subject string) entity.Ref {
-	if p, _ := q["task"].(string); p != "" {
-		return mirror.Ref(p)
-	}
-	ref, _ := entity.ParseAddr(subject)
-	return ref
-}
-
-// ownedBy is the check both answering and escalating make: this resolver, and this cover's
-// own stream. A run's cover acts on the questions of its run and a spine on those of its
-// subject, which is how a resolver with several covers cannot act through the wrong one.
-func ownedBy(q map[string]any, resolverRef string, stream entity.Ref) bool {
-	if q["resolver"] != resolverRef {
-		return false
-	}
-	if coversARun(stream) {
-		return q["task"] == stream.Name()
-	}
-	return q["subject"] == stream.String()
-}
-
-// resolverPosition records how far an answerer has read, and what it wants its successor to
-// know. On the COVER, because who was covering is per run: writing it on the resolver would
-// be one answerer's second run overwriting what its first one saw.
-func (s *Server) resolverPosition(w http.ResponseWriter, r *http.Request) {
-	resolverRef, _, ok, readErr := s.coverOf(r)
-	if unreadable(w, r, readErr) {
-		return
-	} else if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	var p api.Position
-	if err := codec.Read(r, &p); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	rec := entity.Obj{"position": p.Position}
-	if p.Notes != "" {
-		rec["notes"] = p.Notes
-	}
-	ref := entity.VerseRef(resolver.CoverSystem, r.PathValue("id"))
-	if _, _, err := s.asResolver(r, resolverRef).Write(entity.Write{At: ref.At(), Value: rec.Payload()}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
 // reflect mirrors a task, filling in the provenance every call site shares rather than
 // asking each to remember it.
-//
-// The standing-owner lookup is the reason it exists. It is a callback because mirror must not
-// import resolver — resolver reads the charter's match vocabulary, trigger reads mirror, and
-// the cycle closes — and an optional field on a struct three call sites build by hand is a
-// field one of them will forget. One did, within the commit that introduced it: reconcile
-// rebuilt its own Meta and a resumed task's questions lost their layer in silence.
 func (s *Server) reflect(store entity.Store, id string, h task.Handle, m mirror.Meta) {
-	m.Owner = s.standingOwner
 	m.Arm = func(id, within string) { s.armDeadline(store, id, within) }
 	m.SlidBy = func() (by, mode string) {
 		v, _ := s.slides.Load(id)
@@ -3729,32 +3431,12 @@ func (s *Server) reflect(store entity.Store, id string, h task.Handle, m mirror.
 	mirror.Reflect(store, id, h, m)
 }
 
-// resolverName is a resolver's name — the last segment of `verse.resolvers.<name>` — which is
-// what a cover's address is built from, with the gate stream it reads.
-//
-// THE LAST SEGMENT, asked of the address rather than cut at a delimiter. A cut that misses
-// returns the whole string, which mints every cover at
-// `verse.covers.verse.resolvers.reviewer@<stream>`, where nothing looking one up by name finds it.
-func resolverName(ref string) string {
-	r, err := entity.ParseAddr(ref)
-	if err != nil {
-		return ref
-	}
-	segs := r.Segs()
-	if len(segs) == 0 {
-		return ref
-	}
-	return segs[len(segs)-1]
-}
-
 // ── resolvers: who answers ───────────────────────────────────────────────────
 
 // addResolver installs a resolver at `verse.resolvers.<name>`.
 //
-// A VERB rather than a raw write, and the reason survives this increment having nothing to
-// check across resolvers yet: installing one is where the check that two standing conditions
-// do not overlap has to live, and a route that exists is a place to put it. A raw write has
-// nowhere.
+// A VERB rather than a raw write: installing one is where a new match is held to every place
+// the resolver already answers for (answerConflict), and a raw write has nowhere to put that.
 func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
 	// Read as a DOCUMENT first, so a field the decoder would drop can be named. `metod:`
 	// decodes to nothing and installs a resolver that answers over no protocol, reporting
@@ -3778,43 +3460,41 @@ func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ref := resolver.Ref(res.Name)
-	body := entity.Obj{
-		"name": res.Name, "byRef": res.ByRef,
-		"method": entity.Obj{"driver": res.Method.Driver, "url": res.Method.URL, "who": res.Method.Who, "group": res.Method.Group},
+	method := entity.Obj{"driver": res.Method.Driver}
+	if res.Method.URL != "" {
+		method["url"] = res.Method.URL
 	}
-	if res.Condition != nil {
-		// THROUGH THE MATCH'S OWN CODEC, not as the map it is underneath: a subject is written
-		// down as the kinded path it was authored as, which is also the only spelling read back
-		// (trigger.Match.ToTonyIR). Cast to a map, the record carried the parsed segments and a
-		// later read of it could not say what they were.
-		subject, err := res.Condition.Subject.ToTonyIR()
+	body := entity.Obj{"name": res.Name, "method": method}
+	if res.Match != nil {
+		m := entity.Obj{}
+		if !res.Match.About.IsEmpty() {
+			about, err := res.Match.About.ToTonyIR()
+			if err != nil {
+				http.Error(w, "match.about: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			m["about"] = about
+		}
+		if len(res.Match.Labels) > 0 {
+			labels := entity.Obj{}
+			for k, v := range res.Match.Labels {
+				labels[k] = v
+			}
+			m["labels"] = labels
+		}
+		body["match"] = m
+		// Installed again with a new match, it is held to what a grant is held to, at every
+		// place it already answers for.
+		ats, err := entity.AnswerGrantsOf(s.Store, entity.Via(resolver.Ref(res.Name)))
 		if err != nil {
-			http.Error(w, "condition.subject: "+err.Error(), http.StatusBadRequest)
+			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}
-		body["condition"] = entity.Obj{"subject": subject}
-	}
-	if res.Deadline != nil {
-		// The outcome is stored RESOLVED rather than as written: a resolver that omitted it
-		// still means escalate, and a record that says so is one a later reader does not
-		// have to know the default to understand.
-		body["deadline"] = entity.Obj{
-			"within": res.Deadline.Within, "then": res.Deadline.Outcome(),
-		}
-	}
-	if res.Exclusive {
-		body["exclusive"] = true
-	}
-	if m := res.Method; m.Vector != "" || len(m.Tools) > 0 || m.Grant != "" {
-		meth := body["method"].(entity.Obj)
-		if m.Vector != "" {
-			meth["vector"] = m.Vector
-		}
-		if len(m.Tools) > 0 {
-			meth["tools"] = m.Tools
-		}
-		if m.Grant != "" {
-			meth["grant"] = m.Grant
+		for _, at := range ats {
+			if err := s.answerConflict(s.scopedStore(r), res, at); err != nil {
+				http.Error(w, err.Error(), http.StatusConflict)
+				return
+			}
 		}
 	}
 	store := s.scopedStore(r)
@@ -3838,20 +3518,11 @@ func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
-	// What it may find itself ordered against, reported and not refused. Overlap is decided
-	// by name at the moment a question is posed; saying so at install is what keeps a
-	// shadowed resolver from being a silence rather than a fact.
-	out := map[string]any{"at": ref.String()}
-	if over := resolver.Overlaps(s.scopedStore(r), res); len(over) > 0 {
-		out["overlaps"] = over
-	}
-	writeOut(w, r, http.StatusCreated, out)
+	writeOut(w, r, http.StatusCreated, map[string]any{"at": ref.String()})
 }
 
 func (s *Server) listResolvers(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]any, 0)
-	// Resolvers: what is INSTALLED. Who covers what is a different question, and stands
-	// in a place of its own (resolver.CoverSystem).
 	resolvers, readErr := entity.BelowErr(s.scopedStore(r), resolver.IsResolver, 1, entity.VerseRoot, resolver.System)
 	for _, ent := range resolvers {
 		rec := entity.ToObj(ent.Payload)
@@ -3885,6 +3556,134 @@ func (s *Server) getResolver(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, entity.ToObj(e.Payload))
 }
 
+// grantResolver lets a resolver answer for the caller, or for a place the caller owns: an `answer`
+// grant naming it, at `verse.for.<caller>` or at the place (entity.Answer). revokeResolver takes
+// it back.
+//
+// A PERSON'S NODE IS MADE FOR THEM. Verse's half holds nothing out, so nobody can take
+// `verse.for.<anyone>`; the first grant a person makes creates theirs, owned by them, and from
+// then on it is theirs as any place is, `verse perms` included.
+func (s *Server) grantResolver(w http.ResponseWriter, r *http.Request) {
+	s.answerFor(w, r, true)
+}
+
+func (s *Server) revokeResolver(w http.ResponseWriter, r *http.Request) {
+	s.answerFor(w, r, false)
+}
+
+func (s *Server) answerFor(w http.ResponseWriter, r *http.Request, grant bool) {
+	var body api.AnswerFor
+	if err := codec.Read(r, &body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	who, ok := actor(w, s.scopedStore(r), "")
+	if !ok {
+		return
+	}
+	ref := resolver.Ref(r.PathValue("name"))
+	res, found := resolver.Find(s.scopedStore(r), ref.String())
+	// A revoke needs no resolver standing: a grant to one since removed is still yours to take back.
+	if !found && grant {
+		http.Error(w, fmt.Sprintf("no resolver %s", ref), http.StatusNotFound)
+		return
+	}
+	if grant && res.Match == nil {
+		http.Error(w, fmt.Sprintf("%s has no `match`: it stands from before resolvers watched asks, "+
+			"and answers for nobody by grant; install it again with a match", ref), http.StatusConflict)
+		return
+	}
+	at := entity.ForRef(who)
+	if body.For != "" {
+		var err error
+		if at, err = entity.ParseAddr(body.For); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	} else if grant {
+		if owner, err := entity.OwnerOf(s.Store, at); err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		} else if owner == "" {
+			if err := entity.Establish(s.Store, at, who, entity.Ref{}, []entity.Grant{}); err != nil {
+				http.Error(w, err.Error(), http.StatusBadGateway)
+				return
+			}
+		}
+	}
+	if held, err := entity.Holds(s.Store, who, entity.OwnerLevel, at); err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	} else if !held {
+		http.Error(w, fmt.Sprintf("%s does not own %s, so it lets nobody answer for it", who, at), http.StatusForbidden)
+		return
+	}
+	// A GRANT IS ITS PARTY'S: a resolver's answer for a place is given as the place's owner on
+	// record (partyPrincipal), so only they grant it. An owner above co-owns the place and may do
+	// anything there, but a grant of theirs would record answers as somebody who never gave them.
+	// Taking one back is any owner's, as cleaning up is.
+	if grant {
+		if owner, err := entity.OwnerOf(s.Store, at); err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		} else if owner == "" {
+			http.Error(w, fmt.Sprintf("%s is nobody's yet: a resolver answers for a place as its owner on record, "+
+				"so a grant there waits until somebody's it is", at), http.StatusForbidden)
+			return
+		} else if owner != who {
+			http.Error(w, fmt.Sprintf("%s is %s's: a resolver answers for it as its owner on record, so only %s "+
+				"grants one there", at, owner, owner), http.StatusForbidden)
+			return
+		}
+	}
+	if grant {
+		if err := s.answerConflict(s.scopedStore(r), res, at); err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+	}
+	names, err := entity.LevelAt(s.Store, at, entity.Answer)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	via := entity.Via(ref)
+	names = slices.DeleteFunc(slices.Clone(names), func(n string) bool { return n == via })
+	if grant {
+		names = append(names, via)
+	}
+	if err := entity.SetLevel(s.Store, at, entity.Answer, names); err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// answerConflict refuses res answering for at where another resolver already does, on an ask both
+// could match: TWO RESOLVERS NEVER ANSWER FOR ONE PARTY ON ONE ASK (9ce3bva0, Q2). Refused on
+// the party's side only, so a match declared anywhere costs nobody anything, and none can be
+// claimed ahead of the resolver the party wants.
+func (s *Server) answerConflict(store entity.Store, res resolver.Resolver, at entity.Ref) error {
+	names, err := entity.AnswerersMeeting(s.Store, at)
+	if err != nil {
+		return err
+	}
+	self := entity.Via(resolver.Ref(res.Name))
+	for _, n := range names {
+		g, err := entity.ParseGrantee(n)
+		if n == self || err != nil || g.Kind != entity.ViaKind {
+			continue
+		}
+		other, ok := resolver.Find(store, entity.RefAt(g.Path...).String())
+		if !ok || other.Match == nil || !other.Match.Overlaps(res.Match) {
+			continue
+		}
+		return fmt.Errorf("%s and %s would both answer for %s on an ask both match; narrow one's "+
+			"match (its about or its labels), or revoke the other", resolver.Ref(res.Name), n, at)
+	}
+	return nil
+}
+
 func (s *Server) removeResolver(w http.ResponseWriter, r *http.Request) {
 	ref := resolver.Ref(r.PathValue("name"))
 	if _, ok, err := s.scopedStore(r).Get(ref); err != nil {
@@ -3894,6 +3693,14 @@ func (s *Server) removeResolver(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	// WHAT IT WAS GRANTED GOES FIRST. A grant names the resolver's address, not whoever installed
+	// it, so one left standing would pass to whoever installs that name next: their service would
+	// answer as everyone who granted this one. Taken back before the record goes, so there is no
+	// moment when the name is free and the grants are not.
+	if err := s.revokeAnswering(entity.Via(ref)); err != nil {
+		http.Error(w, "the grants to it were not taken back, so it stands: "+err.Error(), http.StatusBadGateway)
+		return
+	}
 	if _, _, err := s.scopedStore(r).Write(entity.Write{At: ref.At(), Value: nil}); err != nil {
 		if refused(w, err) {
 			return
@@ -3901,155 +3708,28 @@ func (s *Server) removeResolver(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// Removed either way: the resolver is gone, and the answer says whether what it held went
-	// with it. An operator told only "removed" would not look for questions still naming it.
-	if err := s.releaseResolver(s.asDocket(r), ref); err != nil {
-		http.Error(w, fmt.Sprintf("removed %s, but what it held was not all handed on: %v", ref, err),
-			http.StatusInternalServerError)
-		return
-	}
+	// Nothing it serves moves: the asks are their askers', and whoever granted it answers for
+	// themselves again. What it raised goes with it — an onward ask nobody is left to carry back.
+	s.withdrawRaisedBy(entity.Via(ref), fmt.Sprintf("the resolver that raised it, %s, was removed", ref))
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// reown hands one question to the next layer, for whatever reason it changed hands.
-//
-// One function because there is one act. Removal asks "who owns this now that I am gone" and
-// escalation asks "who owns this now that I have declined"; the ladder answers both the same
-// way, and `why` is the only thing that differs — which is worth recording, since a question
-// that changed hands should say what moved it.
-// It reports whether the handover LANDED. It can fail to: a question that settled between the
-// decision to move it and the write is one that was answered, and an answer beats a transfer —
-// merging over it would leave a record saying both "decided by X" and "X let its deadline
-// pass", handing the layer above a question somebody had already closed. The check is a
-// precondition on the write rather than a read before it, because a read before it is the same
-// race with a smaller window.
-func reown(store entity.Store, at, stream entity.Ref, subject, from, why string) bool {
-	landed, _ := reownErr(store, at, stream, subject, from, why)
-	return landed
-}
-
-// reownErr is reown, telling apart the two ways a handover does not land. A question that settled
-// in between LOST the race — an answer beats a transfer, and that is no failure — while a write
-// that could not be made leaves the question naming whoever it named, which for a removed
-// resolver is a name nothing will answer. Only the second is an error.
-func reownErr(store entity.Store, at, stream entity.Ref, subject, from, why string) (bool, error) {
-	rec := entity.Obj{
-		// nil, not absent: a write merges, so saying "this is gone" is the writer's job. A
-		// question left naming a resolver that will not answer is one nobody can answer,
-		// listed on a docket as though somebody were coming.
-		"resolver": nil,
-		// And the clock goes with the owner it belonged to; the branch below arms the new
-		// one's, if it has one.
-		"escalatesAt": nil,
-		// The handover, readable rather than inferred. A question that changed hands
-		// without saying so is one whose audit trail has a hole exactly where somebody
-		// would look.
-		"reownedFrom": from,
-		"reownedWhy":  why,
-		"reownedAt":   time.Now().UTC().Format(time.RFC3339),
-	}
-	resolverRef := ""
-	if subject != "" {
-		if ref, err := entity.ParseAddr(subject); err == nil {
-			if next, ok := resolver.Next(store, ref, from); ok {
-				resolverRef = resolver.Ref(next.Name).String()
-				rec["resolver"] = resolverRef
-				// The new owner's clock, not the old one's. Without re-arming, a question
-				// would stay overdue against a deadline nobody set and move again on every
-				// read; without CLEARING it, one handed to a resolver with no deadline would
-				// keep the last one's.
-				rec["escalatesAt"] = entity.Removed()
-				if res, ok := resolver.Find(store, resolverRef); ok && res.Deadline != nil {
-					if after, err := res.Deadline.After(); err == nil {
-						rec["escalatesAt"] = time.Now().Add(after).UTC().Format(time.RFC3339Nano)
-					}
-				}
-			}
-		}
-	}
-	// Still pending, as of the write itself.
-	won, _, err := store.Write(entity.Write{
-		At: at.At(), Value: rec.Payload(),
-		When: []entity.Require{{Pattern: entity.Obj{"status": mirror.QuestionPending}.Payload()}},
-	})
+// revokeAnswering takes via off every `answer` line that names it: each person's and each place's
+// grant to a resolver being removed.
+func (s *Server) revokeAnswering(via string) error {
+	ats, err := entity.AnswerGrantsOf(s.Store, via)
 	if err != nil {
-		return false, err
+		return err
 	}
-	if !won {
-		return false, nil
-	}
-	// And the grant goes with the record: the question is held out to the resolver that now
-	// answers it and to no other, the old resolver's grant going with the old resolver.
-	if err := mirror.HoldOut(store, at.Name(), resolverRef); err != nil {
-		fmt.Fprintf(os.Stderr, "verse: question %s is recorded as %s's and still held out to who "+
-			"had it: %v\n", at.Name(), resolverRef, err)
-	}
-	// The new owner gets a cover for the gate stream it now owns questions in, because
-	// re-owning IS an ownership decision and that is where covers are minted. Without it a
-	// layer could own a question with no record through which to act on it — and no way to
-	// read the fine grain of a run it has just inherited. Create-only, so a resolver that
-	// already covered it keeps the position it had. AFTER the write, so a handover that lost
-	// the race mints nothing.
-	if resolverRef != "" && dials(store, resolverRef) {
-		mirror.Cover(store, resolverRef, resolverName(resolverRef), stream)
-	}
-	return true, nil
-}
-
-// dials reports whether a resolver's answerer reads through a cover — a service does; a person
-// or a group answers from the docket and is minted none.
-func dials(r entity.Reader, resolverRef string) bool {
-	res, ok := resolver.Find(r, resolverRef)
-	return !ok || res.Dials()
-}
-
-// releaseResolver hands on what a removed resolver was holding: the questions it owned, and
-// the covers that were reading for it.
-//
-// RE-ROUTE RATHER THAN DRAIN. Draining means the removed resolver keeps answering what it
-// already owns until those settle, which sounds gentler and is worse in the case that
-// matters: an operator removing a resolver wants it to stop, and its service is usually
-// being shut down in the same breath — so what it still owns is stuck until something
-// re-routes it anyway, and draining is a state machine that postpones the same work.
-//
-// Called AFTER the resolver is gone, which is what makes the recomputation right: the layer
-// rule asked now returns the next name in order, or nothing. So this is a change of owner and
-// not only a loss of one, which is what allowing overlap bought.
-//
-// A HANDOVER THAT DID NOT HAPPEN IS SAID, not swallowed. Reading the questions can fail — a busy
-// store times out — and a listing that failed is not a resolver that owned nothing: read as
-// empty, every question it held stays naming a resolver that no longer exists, on a docket
-// promising an answer that will not come, while the removal reports success. So a failed read,
-// and a handover whose write failed, are the error this returns; a question that settled in
-// between is not, since an answer beats a transfer.
-func (s *Server) releaseResolver(store entity.Store, gone entity.Ref) error {
-	questions, err := pendingQuestionsErr(store)
-	if err != nil {
-		return fmt.Errorf("reading the questions %s owned: %w", gone, err)
-	}
-	var stranded []string
-	for _, ent := range questions {
-		p := entity.ToObj(ent.Payload)
-		if p["resolver"] != gone.String() {
-			continue
+	for _, at := range ats {
+		names, err := entity.LevelAt(s.Store, at, entity.Answer)
+		if err != nil {
+			return err
 		}
-		subject, _ := p["subject"].(string)
-		if _, err := reownErr(store, ent.Ref, questionOrigin(p, subject), subject, gone.String(), "removed"); err != nil {
-			stranded = append(stranded, fmt.Sprintf("%s (%v)", ent.Ref.Name(), err))
+		if err := entity.SetLevel(s.Store, at, entity.Answer,
+			slices.DeleteFunc(slices.Clone(names), func(n string) bool { return n == via })); err != nil {
+			return err
 		}
-	}
-	// Its covers go with it, and this is the only thing that reaps one. They are
-	// machinery for a reader that no longer exists; what they were evidence of is in the
-	// store, where a position report and a note were commits when they were made and
-	// remain commits afterwards.
-	for _, ent := range entity.Below(store, resolver.IsCover, 1, entity.VerseRoot, resolver.CoverSystem) {
-		if entity.Str(ent.Payload, "resolver") == gone.String() {
-			_, _, _ = store.Write(entity.Write{At: ent.Ref.At(), Value: nil})
-		}
-	}
-	if len(stranded) > 0 {
-		return fmt.Errorf("%d question(s) still name %s and could not be handed on: %s",
-			len(stranded), gone, strings.Join(stranded, "; "))
 	}
 	return nil
 }
@@ -4623,19 +4303,21 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	// And whose it is: the record of a task somebody typed is owned by whoever typed it.
 	scope := r.URL.Query().Get("scope")
 	store := s.scopedStore(r)
-	if why := ghostResolver(store, body.Resolver); why != "" {
-		http.Error(w, why, http.StatusBadRequest)
-		return
-	}
 	vec, err := task.SpawnVector(body.Vector, body.Gates)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	// Whom it acts for: whoever ran it, where that is a person or an agent. Its gates name
+	// nobody to ask the docket, and $principal to ask them.
+	actsFor := mirror.ActsFor(body.Principal)
+	if err := mirror.CheckPrincipal(body.Gates, actsFor); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	// The second spawn path, refusing the same way the first does. A misspelled runner that
-	// quietly ran the work in-process would be the same class of bug as a misspelled resolver
-	// that quietly left it unsupervised: the deployment says one thing and the verse does
-	// another. Refused BEFORE the spawn, so nothing is started and nothing is mirrored.
+	// quietly ran the work in-process says one thing in the deployment and does another in
+	// the verse. Refused BEFORE the spawn, so nothing is started and nothing is mirrored.
 	place, placeName, err := s.runnerFor(store, body.Runner)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -4660,7 +4342,7 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	}
 	h := place.Spawn(task.Launch{
 		ID: id, Prompt: body.Prompt, Driver: body.Driver, Retain: body.Retain, Converse: body.Converse,
-		Resolver: body.Resolver, Vector: vec, Environment: body.Environment,
+		Vector: vec, Environment: body.Environment,
 		VirtualKey: credential,
 		Answer:     body.Answer, Calls: body.Calls,
 		// And the same scope the record above goes to, so this run's gates reach the
@@ -4673,7 +4355,7 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	eng := s.engineOf(scope)
 	s.reflect(store, id, h, mirror.Meta{
 		Runner: place.Ref(), RunnerName: placeName,
-		Subject: body.Subject, Resolver: body.Resolver, Gates: body.Gates,
+		Subject: body.Subject, Gates: body.Gates, Asker: actsFor,
 		HeldBy: func() []string { return eng.HeldBy(id) },
 		// No Occurrence: nothing caused this one, so there is no commit to name and the
 		// mirror stamps the revision its own first write landed at instead. Reading
@@ -4681,9 +4363,6 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 		// none is live — which put a network call in front of the record write and let the
 		// task's first gate question arrive before the record it is about.
 	})
-	if dials(store, body.Resolver) {
-		mirror.CoverRun(store, body.Resolver, resolverName(body.Resolver), id)
-	}
 	// A FLOW, like a rule's task: tracked by the engine of the scope that spawned it, so `verse
 	// flow` lists it, the flow verbs reach it, and what holds a subject's work holds this too. A
 	// flow is a query over live tasks' subjects, and a task about no subject is the flow of its
@@ -5319,7 +4998,18 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 		if !ok {
 			return
 		}
-		h.Steer(body.Instruction, by)
+		ask, err := s.sayTo(r, id, h, body.Instruction, by)
+		if refused(w, err) {
+			return
+		} else if errors.Is(err, task.ErrEnded) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		} else if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		writeOut(w, r, http.StatusOK, api.Asked{ID: ask})
+		return
 	case "vector":
 		// slide autonomy on a running (brokered/remote) task: {vector, by} is relayed to
 		// the worker via the handle, `by` attributing the operator who slid it.
@@ -5335,6 +5025,17 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 		if err := body.Vector.Validate(); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
+		}
+		// $principal is whom the task acts for, which its record says (`asker:`).
+		if task.GatesNamePrincipal(body.Vector.Gates) {
+			e, _, err := s.scopedStore(r).Get(mirror.Ref(id))
+			if unreadable(w, r, err) {
+				return
+			}
+			if err := mirror.CheckPrincipal(body.Vector.Gates, entity.Str(e.Payload, "asker")); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 		}
 		by, ok := actor(w, s.scopedStore(r), body.By)
 		if !ok {

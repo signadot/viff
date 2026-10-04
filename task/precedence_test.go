@@ -41,7 +41,7 @@ func TestASayWithdrawsAStandingQuestion(t *testing.T) {
 	p.SetLog(io.Discard)
 	// Nobody ever answers. The say is the discharge — which is the whole point: a wait whose
 	// only exit is a person choosing to look is a wait that fails the contract.
-	reg.OnPost(func(Pending) { p.Steer("stop that, do B instead", "human:test") })
+	reg.OnPost(func(Pending) { p.Steer("stop that, do B instead", "human:test", "") })
 
 	out, err := p.Run(context.Background())
 	if err != nil || out.Reason != string(Done) {

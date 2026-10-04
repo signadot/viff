@@ -30,6 +30,12 @@ const VersionHeader = "Verse-Version"
 // grammar does not read, or a name versed makes — `via:`, `system:` — is refused 400 too.
 const PrincipalHeader = "Verse-Principal"
 
+// ResolverHeader names the resolver a request is made AS: its name, or its address. The request
+// presents whoever installed it (PrincipalHeader), and versed acts as `via:` the resolver only
+// where that principal owns it (9ce3bva0, S1) — a resolver acts as whoever installed it, and its
+// service is them acting as it.
+const ResolverHeader = "Verse-Resolver"
+
 // Version is this binary's own verse version, read from its build info — the version that
 // actually shipped, not one written down somewhere and left behind. It is "(devel)" for a
 // build from a checkout, which is what `go run ./cmd/verse` and every test binary report, and

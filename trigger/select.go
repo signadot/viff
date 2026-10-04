@@ -74,14 +74,21 @@ func (e *Engine) selectProvider(spawn launch.Spec, subject entity.Ref) (launch.F
 		deadline = &task.Deadline{Within: p.Within} // no default: no pick by then is no spawn
 	}
 	origin := mirror.TriggerOf(spawn.Chain)
+	// Derived from the spec and the action, so a re-fire — and a restart — joins the selection
+	// standing open and the ballots already cast on it; one already decided is decided, and a
+	// selection made again is a new question (askingID).
+	id, err := e.askingID(selectID(e.idOwner(), spawn.Chain, subject, p))
+	if err != nil {
+		e.tracef("select for %s on %s: the docket could not be read, so nothing is asked: %v",
+			spawn.Chain, subject, err)
+		return launch.Fragment{}, false
+	}
 	d := task.GateQuestion{
-		// Derived from the spec and the action, so a re-fire — and a restart — re-poses the
-		// same question and joins the ballots already cast on it.
-		ID: selectID(e.idOwner(), spawn.Chain, subject, p), Origin: origin, Mode: task.Ask, Gate: "provider",
-		Reason:   fmt.Sprintf("select a doer for %s on %s", spawn.Chain, subject),
-		Subject:  subject.String(),
-		Spawns:   spawnID(e.idOwner(), chainID(spawn.Chain), subject),
-		Resolver: spawn.Resolver, Scope: e.scope, At: e.At(),
+		ID: id, Origin: origin, Mode: task.Ask, Gate: "provider",
+		Reason:  fmt.Sprintf("select a doer for %s on %s", spawn.Chain, subject),
+		Subject: subject.String(),
+		Spawns:  spawnID(e.idOwner(), chainID(spawn.Chain), subject),
+		Scope:   e.scope, At: e.At(),
 		Options: opts, Deadline: deadline, Chain: spawn.Chain,
 	}
 	ctx := e.bgctx
@@ -106,8 +113,8 @@ func (e *Engine) selectProvider(spawn launch.Spec, subject entity.Ref) (launch.F
 	return f, true
 }
 
-// selectID is the question a selection poses, derived so a re-fire joins it: the rule, the
-// action, the subject and the eligibility spec, hashed together.
+// selectID is the question a selection poses, derived so a re-fire joins it while it stands open:
+// the rule, the action, the subject and the eligibility spec, hashed together.
 func selectID(owner, chain string, subject entity.Ref, p *launch.Provider) string {
 	return fmt.Sprintf("%s%s.trigger.%s.provider%s%s", owner, entity.VerseRoot,
 		entity.SafeSeg(mirror.TriggerOf(chain)), task.GateSep,
@@ -177,7 +184,7 @@ func stringsNode(ss []string) *ir.Node {
 func (e *Engine) ResumeSelections() (int, error) {
 	resumed := 0
 	ents := entity.Below(e.store, mirror.IsQuestion,
-		1, entity.VerseRoot, mirror.QuestionSystem, mirror.QuestionKind)
+		1, entity.VerseRoot, mirror.AskSystem)
 	if err := entity.ReadFailed(e.store); err != nil {
 		return 0, fmt.Errorf("the docket could not be read, so no selection was resumed: %w", err)
 	}

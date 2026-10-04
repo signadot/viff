@@ -205,7 +205,7 @@ func TestVerseOwnHalfRefusesAClientWrite(t *testing.T) {
 	for _, ref := range []string{
 		"verse.trigger.rule.sneaky",
 		"verse.task.instance.run-1",
-		`verse.gate.question."run-1~d1"`,
+		`verse.ask."run-1~d1"`,
 		"verse.motion.channel.abcd",
 		"verse.resolvers.mine",
 	} {

@@ -61,7 +61,7 @@ func TestALaunchReachesARemoteRunnerWhole(t *testing.T) {
 	srv, handed := remote(t, &doneDriver{steps: 1})
 	sent := task.Launch{
 		ID: "review@demo.pr.1", Prompt: "review it", Driver: "llm",
-		Frame: "you are a reviewer", Resolver: "verse.resolvers.lead", Retain: 512,
+		Frame: "you are a reviewer", Retain: 512,
 		Tools: []string{"read_file", "run_bash"}, VirtualKey: "vk-123",
 		Answer:      ir.FromMap(map[string]*ir.Node{"verdict": ir.FromString("ok")}),
 		Calls:       []task.Call{{Tool: "run_bash", Input: map[string]any{"cmd": "true"}}},
@@ -84,7 +84,7 @@ func TestALaunchReachesARemoteRunnerWhole(t *testing.T) {
 		{"Retain", got.Retain, sent.Retain}, {"VirtualKey", got.VirtualKey, sent.VirtualKey},
 		{"Calls", got.Calls, sent.Calls}, {"Environment", got.Environment, sent.Environment},
 		{"Occurrence", got.Occurrence, sent.Occurrence}, {"Provenance", got.Provenance, sent.Provenance},
-		{"Scope", got.Scope, ""}, {"Resolver", got.Resolver, ""},
+		{"Scope", got.Scope, ""},
 	} {
 		if !reflect.DeepEqual(c.got, c.want) {
 			t.Errorf("%s arrived as %v, want %v", c.field, c.got, c.want)

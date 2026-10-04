@@ -95,11 +95,6 @@ func (s *Spec) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["gates"] = ir.FromSlice(slice)
 	}
 
-	// Field: Resolver
-	if s.Resolver != "" {
-		irMap["resolver"] = ir.FromString(string(s.Resolver))
-	}
-
 	// Field: Grant
 	if s.Grant != "" {
 		irMap["grant"] = ir.FromString(string(s.Grant))
@@ -133,6 +128,16 @@ func (s *Spec) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Field: Occurrence
 	if s.Occurrence != 0 {
 		irMap["occurrence"] = ir.FromInt(int64(s.Occurrence))
+	}
+
+	// Field: As
+	if s.As != "" {
+		irMap["as"] = ir.FromString(string(s.As))
+	}
+
+	// Field: Asker
+	if s.Asker != "" {
+		irMap["asker"] = ir.FromString(string(s.Asker))
 	}
 
 	// Field: Provider (optional)
@@ -281,12 +286,6 @@ func (s *Spec) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			} else {
 				return fmt.Errorf("%s: expected array, got %v", "field \"gates\"", fieldNodeUnwrapped.Type)
 			}
-		case "resolver":
-			// Field: Resolver
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "resolver", fieldNodeUnwrapped.Type)
-			}
-			s.Resolver = string(fieldNodeUnwrapped.String)
 		case "grant":
 			// Field: Grant
 			if fieldNodeUnwrapped.Type != ir.StringType {
@@ -329,6 +328,18 @@ func (s *Spec) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected number, got %v", "occurrence", fieldNodeUnwrapped.Type)
 			}
 			s.Occurrence = int64(*fieldNodeUnwrapped.Int64)
+		case "as":
+			// Field: As
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "as", fieldNodeUnwrapped.Type)
+			}
+			s.As = string(fieldNodeUnwrapped.String)
+		case "asker":
+			// Field: Asker
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "asker", fieldNodeUnwrapped.Type)
+			}
+			s.Asker = string(fieldNodeUnwrapped.String)
 		case "provider":
 			// Field: Provider
 			s.Provider = &Provider{}

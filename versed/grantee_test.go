@@ -38,7 +38,7 @@ func TestTheGrammarsActorsAreTheOnesThatAct(t *testing.T) {
 // `user:*` and `agent:*`, and the row's commit is system:seed's.
 func TestTheSeedIsSpelledInTheGrammar(t *testing.T) {
 	srv := testServer(t)
-	docket := entity.VerseRef(mirror.QuestionSystem, mirror.QuestionKind)
+	docket := entity.VerseRef(mirror.AskSystem)
 	rec, ok, err := srv.Store.Get(entity.PermsRef(docket))
 	if err != nil || !ok {
 		t.Fatalf("no seed row at the docket: ok=%v err=%v", ok, err)
@@ -92,18 +92,5 @@ func TestTheEdgesRefuseWhatTheGrammarDoesNotRead(t *testing.T) {
 	e, _, _ := srv.Store.Get(entity.GroupRef("release"))
 	if got := strings.Join(entity.Strs(e.Payload, entity.MembersField), ","); got != "user:ana@example.com,group:qa,runner:*" {
 		t.Fatalf("the members are stored as %s", got)
-	}
-
-	for _, doc := range []string{
-		`{name: p, byRef: true, method: {driver: person, who: davido}}`,
-		`{name: p, byRef: true, method: {driver: person, who: "group:qa"}}`,
-		`{name: g, byRef: true, method: {driver: group, group: verse.principal.group.qa}}`,
-		`{name: g, byRef: true, method: {driver: group, group: user:ana@example.com}}`,
-	} {
-		resp := installResolver(t, ts.URL, doc)
-		body := readBody(t, resp)
-		if resp.StatusCode/100 == 2 || !strings.Contains(body, "method.") {
-			t.Errorf("%s: %s %s, want a refusal naming the field", doc, resp.Status, body)
-		}
 	}
 }

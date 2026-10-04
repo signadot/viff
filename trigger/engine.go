@@ -96,7 +96,10 @@ type Engine struct {
 	// Set by whoever runs more than one (versed); see KnowsElsewhere.
 	elsewhere func(name string) bool
 	spawn     Spawner // optional: how actions spawn tasks
-	triggers  []Trigger
+	// moveDeadline moves a standing question's deadline (SetDeadlineMover); nil leaves a date a
+	// question reads from its subject fixed at the instant it was posed with.
+	moveDeadline func(scope, id string, at time.Time) error
+	triggers     []Trigger
 	// logger carries both the running dispatch commentary (Debug) and anything an
 	// operator has to act on (Warn). One channel with levels, rather than a verbose
 	// io.Writer that defaulted to io.Discard and that nothing ever wired up — which meant
@@ -264,6 +267,11 @@ func New(store entity.Store, resolver task.Resolver) *Engine {
 const armWaitMax = 30 * time.Second
 
 func (e *Engine) SetSpawner(s Spawner) { e.spawn = s }
+
+// SetDeadlineMover installs what moves a standing question's deadline, which is versed's: the
+// instant is stamped on the question's record and a timer settles it, and both are kept where
+// the record is. A gate reading its date from the subject calls it when the date is edited.
+func (e *Engine) SetDeadlineMover(m func(scope, id string, at time.Time) error) { e.moveDeadline = m }
 
 // SetScope names the federation this engine acts in — a `verse connect` scope, or "" for
 // baseline. Set before anything is installed, because it is stamped on what this engine
@@ -865,6 +873,86 @@ func (e *Engine) pose(rule string, g Gate, oc occasion, subj entity.Ref) string 
 	return said
 }
 
+// answerersOf is who a gate's question is held out to at this firing: the names the gate wrote,
+// and — where it reads them from the subject (AnswerersFrom) — the names at that field, one or a
+// list. What the subject contributes is held to the checks a gate's own names meet at install,
+// asked now because it could not be asked then: a name somebody wrote into a record is exactly
+// as likely to be a typo, a group that was removed, or one person short of the threshold.
+func (e *Engine) answerersOf(g Gate, oc occasion, subj entity.Ref) ([]string, error) {
+	if _, reads := g.answerersPath(); !reads {
+		return g.Answerers, nil
+	}
+	v := readField(e.refPayload(oc.ev, subj, fromSubject), g.AnswerersFrom)
+	var named []string
+	switch {
+	case v == nil:
+		// NOT SAID IS NOT NOBODY. A record that names no answerers leaves the question to the
+		// gate's own names, or open to whoever the docket admits — the ask that names nobody in
+		// particular. What a record DOES say is held to account below, an empty list included.
+		return g.Answerers, nil
+	case v.Type == ir.StringType:
+		named = []string{v.String}
+	case v.Type == ir.ArrayType:
+		for _, el := range v.Values {
+			if el.Type != ir.StringType {
+				return nil, fmt.Errorf("answerersFrom %s: %s holds a %v where a name goes",
+					g.AnswerersFrom, subj, el.Type)
+			}
+			named = append(named, el.String)
+		}
+	default:
+		return nil, fmt.Errorf("answerersFrom %s: %s holds a %v, not a name or a list of them",
+			g.AnswerersFrom, subj, v.Type)
+	}
+	if len(named) == 0 {
+		return nil, fmt.Errorf("answerersFrom %s: %s names nobody", g.AnswerersFrom, subj)
+	}
+	all := append(append([]string(nil), g.Answerers...), named...)
+	if err := e.checkGateAnswerers(all, g.Need, g.Options); err != nil {
+		return nil, fmt.Errorf("answerersFrom %s: %w", g.AnswerersFrom, err)
+	}
+	return all, nil
+}
+
+// deadlineOf is the clock a gate's question stands under at this firing: the gate's own, or —
+// where it reads the date from the subject (Deadline.AtFrom) — that date, resolved to the instant
+// the question carries. A date the record does not hold, or holds in no form a clock can read, is
+// a question that would never settle as its asker meant, so it is refused like a name nobody can
+// ask (answerersOf).
+func (e *Engine) deadlineOf(g Gate, v entity.Payload) (*task.Deadline, error) {
+	if g.Deadline == nil || g.Deadline.AtFrom == "" {
+		return g.Deadline, nil
+	}
+	// A record that gives no date gives no clock: the question stands until it is answered, as a
+	// gate with no deadline does. A date it gives that no clock reads is refused (DateAt).
+	if readField(v, g.Deadline.AtFrom) == nil {
+		return nil, nil
+	}
+	at, err := DateAt(v, g.Deadline.AtFrom)
+	if err != nil {
+		return nil, err
+	}
+	// AtFrom rides WITH the instant: whoever arms the clock reads the date again as it arms, so
+	// an edit landing between this firing and the posting is not lost to a question that had
+	// not been written yet when the edit was followed (versed armQuestion).
+	return &task.Deadline{At: at.UTC().Format(time.RFC3339Nano), AtFrom: g.Deadline.AtFrom,
+		Default: g.Deadline.Default}, nil
+}
+
+// DateAt reads the RFC 3339 instant at a field of a subject's value: what a gate's
+// `deadline.atFrom` names, read at the firing, while the question stands, and when it is armed.
+func DateAt(v entity.Payload, path string) (time.Time, error) {
+	f := readField(v, path)
+	if f == nil || f.Type != ir.StringType {
+		return time.Time{}, fmt.Errorf("deadline atFrom %s: no date there", path)
+	}
+	at, err := time.Parse(time.RFC3339, f.String)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("deadline atFrom %s: %q is not an RFC 3339 time (%v)", path, f.String, err)
+	}
+	return at, nil
+}
+
 // fireOne is one firing: hold the subject, resolve the gates conjunctively, and act if they
 // all proceed.
 //
@@ -907,7 +995,50 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 	// made.
 	var denied []Gate
 
-	for _, gate := range t.AllGates() {
+	// WHO EACH GATE ASKS, settled before any is asked. A gate reading its answerers from the
+	// subject can find a name that does not parse, a group that is not there, or fewer people
+	// than its threshold — a question nobody could settle. Posing the others meanwhile would put
+	// half a firing on the docket for a decision that cannot complete, so the firing stops here,
+	// before anybody is asked, and says why. Not a refusal: nobody said no, so no onDenied runs.
+	// And the clock each stands under, for the same reason: a date the record does not hold is
+	// a question that would never settle as its asker meant.
+	answerers := map[int][]string{}
+	deadlines := map[int]*task.Deadline{}
+	// And the id each is asked under, which is the docket's to say: the one standing open, or a
+	// new one where the last was answered (askingID).
+	ids := map[int]string{}
+	for i, gate := range t.AllGates() {
+		if m, _ := gate.mode(); !m.Blocks() {
+			continue
+		}
+		gname := gate.Name
+		if gname == "" {
+			gname = t.Name
+		}
+		id, err := e.askingID(gateID(e.idOwner(), t.Name, gname, subjects))
+		if err != nil {
+			e.tracef("%s: gate %s on %s: the docket could not be read, so nothing is asked: %v",
+				t.Name, gname, subj, err)
+			return
+		}
+		ids[i] = id
+		who, err := e.answerersOf(gate, oc, subj)
+		if err != nil {
+			e.tracef("%s: gate %s on %s: who it asks could not be settled, so nothing is asked: %v",
+				t.Name, gate.Name, subj, err)
+			return
+		}
+		answerers[i] = who
+		clock, err := e.deadlineOf(gate, e.refPayload(oc.ev, subj, fromSubject))
+		if err != nil {
+			e.tracef("%s: gate %s on %s: its deadline could not be settled, so nothing is asked: %v",
+				t.Name, gate.Name, subj, err)
+			return
+		}
+		deadlines[i] = clock
+	}
+
+	for gi, gate := range t.AllGates() {
 		m, _ := gate.mode() // validated at AddTrigger
 		if !m.Blocks() {    // auto: passes without a resolver
 			continue
@@ -917,7 +1048,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 			gname = t.Name
 		}
 		d := task.GateQuestion{
-			ID: gateID(e.idOwner(), t.Name, gname, subjects), Origin: t.Name, Mode: m, Gate: gname,
+			ID: ids[gi], Origin: t.Name, Mode: m, Gate: gname,
 			Reason: fmt.Sprintf("trigger %s gate %s on %s", t.Name, gname, subj),
 			// And the same thing in words, when the gate wrote any. `reason` says which rule
 			// asked; `pose` says what is being decided, which is the half a person needs.
@@ -929,7 +1060,6 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 			// The named layer for a FIRING's gates, which a spawn has had all along and a
 			// rule did not. Empty leaves the question to the standing layer, and then to
 			// the docket a person reads.
-			Resolver: t.GateResolver(),
 			// And WHICH federation is asking, for the same reason a spawn carries it: the
 			// question is about this engine's subject, which outside this scope is an entity
 			// that does not exist.
@@ -942,9 +1072,11 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 			// it stands under. Empty is the question every gate has always asked, yes or no
 			// from one person; the tally and the clock are whoever answers' to keep.
 			Options:  gate.options(),
-			Deadline: gate.Deadline,
-			// And who it is held out to, when the gate says.
-			Answerers: gate.Answerers,
+			Deadline: deadlines[gi],
+			// And who it is held out to, when the gate says: its own names, and the
+			// subject's where it reads them from there (answerersOf, above).
+			Answerers: answerers[gi],
+			Labels:    gate.Labels,
 		}
 		wg.Add(1)
 		go func(g Gate, d task.GateQuestion, gname string) {
@@ -958,7 +1090,39 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 			// Not hypothetical: a merge proposal was swept to `state: stale` while its gate
 			// stood open, the ballot already cast carried, and a branch the sweep had retired
 			// was merged (git-issue 8wt1ta8r).
-			wctx, stop := e.untilMoot(ctx, t, subj)
+			// And while it stands, a date the question reads from the subject follows the
+			// subject: whoever may edit the record moves the clock by editing the date. The
+			// question's own record is moved, not re-posed, and only while it is pending.
+			var follow func()
+			if g.Deadline != nil && g.Deadline.AtFrom != "" && d.Deadline != nil {
+				last := d.Deadline.At
+				follow = func() {
+					cur, ok, err := e.store.Get(subj)
+					if err != nil || !ok {
+						return
+					}
+					at, err := DateAt(cur.Payload, g.Deadline.AtFrom)
+					if err != nil {
+						e.tracef("gate %s/%s on %s: the date moved to one no clock reads, so it stands at %s: %v",
+							t.Name, gname, subj, last, err)
+						return
+					}
+					want := at.UTC().Format(time.RFC3339Nano)
+					if want == last {
+						return
+					}
+					if e.moveDeadline == nil {
+						return
+					}
+					if err := e.moveDeadline(d.Scope, d.ID, at); err != nil {
+						e.tracef("gate %s/%s on %s: moving its deadline to %s: %v", t.Name, gname, subj, want, err)
+						return
+					}
+					e.tracef("gate %s/%s on %s: its deadline moved from %s to %s", t.Name, gname, subj, last, want)
+					last = want
+				}
+			}
+			wctx, stop := e.untilMoot(ctx, t, subj, follow)
 			defer stop()
 			res, err := e.ask(wctx, fl, t, subj, d)
 			e.tracef("gate %s/%s on %s → %s by %s", t.Name, gname, subj, proceedWord(res.Proceed), res.By)
@@ -988,7 +1152,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 		// A no is a decision, and until this it was a decision with no consequence in the
 		// store: nothing was written, so the subject stayed in the state that asked the
 		// question, and the next commit to touch it for any reason re-fired the rule and
-		// re-posed the same deterministic gate id over the answer somebody had given. The
+		// asked again what somebody had already answered. The
 		// latch a well-formed rule carries could not help — it lives in the action, and on
 		// a deny the action never runs.
 		//
@@ -1035,7 +1199,10 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 // The cause is what the docket says: the registry renders it as the question's `why` when
 // the last waiter leaves (task.Registry, dropReason), so a reader sees that the question
 // stopped being about anything, in the rule's own terms, at the change that made it so.
-func (e *Engine) untilMoot(ctx context.Context, t Trigger, subj entity.Ref) (context.Context, func()) {
+//
+// changed, when not nil, runs on each commit to the subject that leaves it selected: what a
+// standing question reads from its subject (a date it settles at) is followed while it stands.
+func (e *Engine) untilMoot(ctx context.Context, t Trigger, subj entity.Ref, changed func()) (context.Context, func()) {
 	wctx, cancel := context.WithCancelCause(ctx)
 	stop := func() { cancel(nil) }
 	if subj == (entity.Ref{}) {
@@ -1059,6 +1226,9 @@ func (e *Engine) untilMoot(ctx context.Context, t Trigger, subj entity.Ref) (con
 				if !e.stillSelects(t, subj) {
 					cancel(fmt.Errorf("%s no longer selects %s, so the question it asked is moot", t.Name, subj))
 					return
+				}
+				if changed != nil {
+					changed()
 				}
 			}
 		}

@@ -14,7 +14,7 @@ flowchart TB
   subgraph versed["versed.Server"]
     direction LR
     obs["observation plane<br/>watch · get · list"]
-    ctl["control plane<br/>gate approve · flow steer · task control"]
+    ctl["control plane<br/>question approve · flow steer · task control"]
   end
 
   store["entity.Store<br/>(logd/docd)<br/>Write(conditional) · Get · watch"]
@@ -98,7 +98,7 @@ without coordinating.
 
 ### Observation and control are separate planes
 
-A read may be late. Steering may not. Steering is `gate approve|deny` and
+A read may be late. Steering may not. Steering is `question approve|deny` and
 `flow suspend|resume|say|cancel`. It travels out of band and is served before observation. It
 never travels on the stream of changes.
 

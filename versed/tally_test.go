@@ -69,14 +69,14 @@ func TestAThresholdOfTwoSettlesOnTheSecondBallot(t *testing.T) {
 	answered := raise(t, srv, id, []task.Option{{ID: "proceed", Need: 2}, {ID: "deny", Need: 1}})
 
 	// The records are one segment below the place verse keeps its questions.
-	questions := []string{entity.VerseRoot, mirror.QuestionSystem, mirror.QuestionKind}
+	questions := []string{entity.VerseRoot, mirror.AskSystem}
 	commits, unsub, err := srv.Store.WatchSubtree(len(questions)+1, questions...)
 	if err != nil {
 		t.Fatalf("watch: %v", err)
 	}
 	defer unsub()
 
-	first := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: "proceed", By: "user:alice@example.com"})
+	first := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "proceed", By: "user:alice@example.com"})
 	body, _ := io.ReadAll(first.Body)
 	first.Body.Close()
 	if first.StatusCode != http.StatusAccepted {
@@ -91,7 +91,7 @@ func TestAThresholdOfTwoSettlesOnTheSecondBallot(t *testing.T) {
 		t.Fatalf("after one ballot the record should be pending with alice's ballot on it: %+v", q)
 	}
 
-	second := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: "proceed", By: "user:bob@example.com"})
+	second := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "proceed", By: "user:bob@example.com"})
 	second.Body.Close()
 	if second.StatusCode != http.StatusNoContent {
 		t.Fatalf("second ballot = %s, want 204 settled", second.Status)
@@ -151,7 +151,7 @@ func TestASecondBallotByTheSameAnswererReplacesTheFirst(t *testing.T) {
 
 	cast := func(by, choice string) string {
 		t.Helper()
-		resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: choice, By: by})
+		resp := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: choice, By: by})
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusAccepted {
@@ -189,7 +189,7 @@ func TestABallotForAnUnknownOptionIsRefused(t *testing.T) {
 	const id = "verse.trigger.review.review~3"
 	answered := answerable(t, srv, id)
 
-	resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: "maybe", By: "user:scott@example.com"})
+	resp := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "maybe", By: "user:scott@example.com"})
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
@@ -204,7 +204,7 @@ func TestABallotForAnUnknownOptionIsRefused(t *testing.T) {
 		t.Fatalf("a refused ballot left a trace: %+v", q)
 	}
 
-	ok := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: "proceed", By: "user:scott@example.com"})
+	ok := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "proceed", By: "user:scott@example.com"})
 	ok.Body.Close()
 	if ok.StatusCode != http.StatusNoContent {
 		t.Fatalf("a real answer afterwards = %s, want 204", ok.Status)
@@ -212,10 +212,10 @@ func TestABallotForAnUnknownOptionIsRefused(t *testing.T) {
 	<-answered
 }
 
-// A QUESTION ASKED AGAIN IS NOT ANSWERED AS THE ONE BEFORE IT. An id is a function of what asked,
-// so a gate fired again poses the id it had — and until the new asking lands, the record and the
-// question that stand are the earlier one's: settled, with its options at one apiece. An answer
-// sent in that window waits for this asking, and is never tallied against the last one's
+// A QUESTION ASKED AGAIN IS NOT ANSWERED AS THE ONE BEFORE IT. A poser that asks again under the
+// id it had — posed here straight to the registry — finds the record and the question standing
+// from the earlier asking until the new one lands: settled, with its options at one apiece. An
+// answer sent in that window waits for this asking, and is never tallied against the last one's
 // options, which would release on one ballot a waiter that needs three.
 func TestAQuestionAskedAgainIsNotAnsweredWithTheOldOptions(t *testing.T) {
 	srv := testServer(t)
@@ -225,7 +225,7 @@ func TestAQuestionAskedAgainIsNotAnsweredWithTheOldOptions(t *testing.T) {
 	for i := 0; i < 6; i++ { // the window is narrow, so it is tried more than once
 		id := fmt.Sprintf("verse.trigger.review.review~again%d", i)
 		first := raise(t, srv, id, nil) // the default two, at one apiece
-		resp := postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: "proceed", By: tester})
+		resp := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "proceed", By: tester})
 		resp.Body.Close()
 		<-first
 
@@ -240,7 +240,7 @@ func TestAQuestionAskedAgainIsNotAnsweredWithTheOldOptions(t *testing.T) {
 		for srv.Reg.WaiterCount(id) == 0 {
 			time.Sleep(time.Millisecond)
 		}
-		resp = postTony(t, ts.URL+"/gate/resolve", api.Resolve{ID: id, Choice: "proceed", By: tester})
+		resp = postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "proceed", By: tester})
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusAccepted {
 			t.Fatalf("round %d: one ballot of three answered %s, want 202 recorded", i, resp.Status)
@@ -266,11 +266,11 @@ func TestABallotIsCastByWhoeverTheRequestIsMadeAs(t *testing.T) {
 	answered := raise(t, srv, id, []task.Option{{ID: "proceed", Need: 3}, {ID: "deny", Need: 1}})
 	as := func(by string) *http.Response { // made as the tester, whatever the body says
 		t.Helper()
-		b, err := codec.Marshal(api.Resolve{ID: id, Choice: "proceed", By: by}, codec.Tony)
+		b, err := codec.Marshal(api.Resolve{Choice: "proceed", By: by}, codec.Tony)
 		if err != nil {
 			t.Fatal(err)
 		}
-		return postAs(t, tester, ts.URL+"/gate/resolve", "application/tony", string(b))
+		return postAs(t, tester, ts.URL+answerPath(id), "application/tony", string(b))
 	}
 	for _, by := range []string{"user:a@example.com", "system:docket", "via:verse.resolvers.bot"} {
 		resp := as(by)

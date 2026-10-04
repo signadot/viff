@@ -25,7 +25,7 @@ func (h *endsOnCancel) Subscribe() (<-chan task.Frame, func())           { retur
 func (h *endsOnCancel) SubscribeSince(int64) (<-chan task.Frame, func()) { return h.ch, func() {} }
 func (h *endsOnCancel) Pause() error                                     { return nil }
 func (h *endsOnCancel) Resume() error                                    { return nil }
-func (h *endsOnCancel) Steer(string, string) error                       { return nil }
+func (h *endsOnCancel) Steer(string, string, string) error               { return nil }
 func (h *endsOnCancel) SetVector(*task.Vector, string) error             { return nil }
 func (h *endsOnCancel) Result() string                                   { return "" }
 func (h *endsOnCancel) Err() string                                      { return "" }
