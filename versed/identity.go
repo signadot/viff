@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -25,8 +26,8 @@ import (
 //
 // AN ACCOUNT IS AN (iss, sub) PAIR, as OIDC models one: the issuer, and the issuer's own id for
 // the account, which for GitHub is the user's number. A login can be renamed and is kept as a hint;
-// the number is the key, so a binding survives a rename. A sub is whatever its issuer says — Dex's
-// is base64 — and it is one address segment whatever characters it holds.
+// the number is the key, so a binding survives a rename. A sub is whatever its issuer says — some
+// are base64 — and it is one address segment whatever characters it holds.
 //
 // THE PERSON CLAIMS, THE SYSTEM BINDS. A claim is asked for by the person it would bind, and only
 // SystemIdentity writes a binding, from evidence it has read itself. Neither lives on the person's
@@ -106,8 +107,8 @@ func trustedIOs(sys entity.Store, provider string) (map[string]bool, error) {
 }
 
 // errNoTrustedIO is what a claim or a verify is refused with where no io is trusted as evidence.
-var errNoTrustedIO = errors.New("no io is trusted as evidence of a GitHub account on this verse, so " +
-	"none can be proved: the deployment names them in its config (auth.principal.providers.github.ios)")
+var errNoTrustedIO = errors.New("no io is trusted as evidence of an account under this provider on this " +
+	"verse, so none can be proved: the deployment names them in its config (auth.principal.providers.<name>.ios)")
 
 // isAccount reports whether ref is a binding's address, under whichever provider.
 func isAccount(ref entity.Ref) bool {
@@ -115,9 +116,18 @@ func isAccount(ref entity.Ref) bool {
 	return len(segs) == 5 && segs[1] == "identity" && segs[3] == "account"
 }
 
-// accountClaim is what POST /accounts/github carries: the login the caller says is theirs.
+// accountClaim is what POST /accounts/<provider> carries: for `github`, the login the caller says
+// is theirs; for a provider whose io hears the nonce said, nothing.
 type accountClaim struct {
-	Login string `tony:"field=login"`
+	Login string `tony:"field=login,omitzero"`
+}
+
+// accountHeard is what POST /accounts/<provider>/heard carries: a nonce an io heard said, the
+// account that said it, and the account's login where the system has one.
+type accountHeard struct {
+	Nonce   string `tony:"field=nonce"`
+	Account string `tony:"field=account"`
+	Login   string `tony:"field=login,omitzero"`
 }
 
 // accountVerify is what POST /accounts/github/verify carries: the nonce the account has said.
@@ -132,7 +142,9 @@ type accountLink struct {
 }
 
 // claimAccount gives the caller a nonce to say from the account they claim, and keeps the claim
-// until it is verified or expires.
+// until it is verified or expires. The claim is under a provider whose accounts are proved by an
+// io's word: `github`, where the login is named and the proof is a reflected comment (verify), or
+// any provider whose io reports the nonce said from an account (heard).
 func (s *Server) claimAccount(w http.ResponseWriter, r *http.Request) {
 	var body accountClaim
 	if err := codec.Read(r, &body); err != nil {
@@ -143,15 +155,24 @@ func (s *Server) claimAccount(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	provider := r.PathValue("provider")
 	login := strings.TrimPrefix(strings.TrimSpace(body.Login), "@")
-	if login == "" {
+	if login == "" && provider == githubProvider {
 		http.Error(w, "a claim names the GitHub login it claims", http.StatusBadRequest)
 		return
 	}
-	// Refused before a nonce is given out, so nobody says one where no io's word would be taken.
-	trusted, err := trustedIOs(entity.As(s.Store, entity.SystemIdentity), githubProvider)
+	// A provider whose accounts an io proves has a trust record, the ios it names (writeTrust);
+	// an issuer has none, and its accounts are proved by its tokens. Refused before a nonce is
+	// given out, so nobody says one where no io's word would be taken. (The verify route below is
+	// `github`'s alone; another provider's nonce is reported heard.)
+	trusted, err := trustedIOs(entity.As(s.Store, entity.SystemIdentity), provider)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	if trusted == nil {
+		http.Error(w, fmt.Sprintf("%q is no provider whose accounts an io proves on this verse "+
+			"(auth.principal.providers.<name>.ios)", provider), http.StatusNotFound)
 		return
 	}
 	if len(trusted) == 0 {
@@ -165,15 +186,17 @@ func (s *Server) claimAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	nonce := hex.EncodeToString(b[:])
 	expires := time.Now().UTC().Add(claimTTL).Format(time.RFC3339)
-	ref := claimRef(githubProvider, nonce)
+	ref := claimRef(provider, nonce)
 	grants := []entity.Grant{{At: ref.Segs(), To: map[entity.Level][]string{entity.Read: {who}}}}
 	if err := entity.Establish(s.Store, ref, entity.SystemIdentity, entity.Ref{}, grants); err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	rec := entity.Obj{
-		"principal": who, "iss": githubIssuer, "login": login, "expires": expires,
-		"claimant": authenticatedBy(r),
+	rec := entity.Obj{"principal": who, "expires": expires, "claimant": authenticatedBy(r)}
+	if provider == githubProvider {
+		rec["iss"], rec["login"] = githubIssuer, login
+	} else if login != "" {
+		rec["login"] = login
 	}
 	if _, _, err := entity.As(s.Store, entity.SystemIdentity).Write(entity.Write{
 		At: ref.At(), Value: rec.Payload(), When: []entity.Require{entity.Created()},
@@ -181,10 +204,97 @@ func (s *Server) claimAccount(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	writeOut(w, r, http.StatusCreated, map[string]any{
-		"nonce": nonce, "login": login, "expires": expires,
+	out := map[string]any{
+		"nonce": nonce, "expires": expires,
 		"say": fmt.Sprintf("%s %s", linkWord, nonce),
-	})
+	}
+	if login != "" {
+		out["login"] = login
+	}
+	writeOut(w, r, http.StatusCreated, out)
+}
+
+// heardAccount binds a claimed account from an io's word that the account said the nonce: the
+// Slack io hearing `/verse link <nonce>` in a message from a member, the github io reading it in
+// a comment it reflected. The io is verified by its own token and trusted for the provider, which
+// is the same word the relay takes for a person (iod.go); the binding's claimant is whoever
+// claimed, as they were authenticated then. A claim that names a login (github) is said from
+// that login or not at all: somebody else saying the nonce binds nothing, and the claim stands.
+// A claim that names none (slack) is bound to whoever says it, since the nonce is the only
+// thing that was given out: it is said from one's own account, as any credential is used. A
+// nonce nobody claimed is not confirmed to whoever says it.
+func (s *Server) heardAccount(w http.ResponseWriter, r *http.Request) {
+	var body accountHeard
+	if err := codec.Read(r, &body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	provider := r.PathValue("provider")
+	io, ok := s.ioOf(principalOf(r))
+	if authenticatedBy(r) != iodProvider || !ok {
+		http.Error(w, "a nonce heard is reported by an io the verse verified (auth.iod), as itself", http.StatusForbidden)
+		return
+	}
+	p := s.providerNamed(provider)
+	if p == nil || len(p.IOs) == 0 {
+		http.Error(w, fmt.Sprintf("%q is no provider whose accounts an io proves on this verse "+
+			"(auth.principal.providers.<name>.ios)", provider), http.StatusNotFound)
+		return
+	}
+	if io.IO == "" || !slices.Contains(p.IOs, io.IO) {
+		http.Error(w, fmt.Sprintf("%s is not an io this verse trusts for %s accounts "+
+			"(auth.principal.providers.%s.ios names %s)", io.Principal, provider, provider,
+			strings.Join(p.IOs, ", ")), http.StatusForbidden)
+		return
+	}
+	account := strings.TrimSpace(strings.TrimPrefix(body.Account, provider+":"))
+	if account == "" || strings.TrimSpace(body.Nonce) == "" {
+		http.Error(w, "a nonce heard names the nonce and the account that said it", http.StatusBadRequest)
+		return
+	}
+	sys := entity.As(s.Store, entity.SystemIdentity)
+	cref := claimRef(provider, strings.TrimSpace(body.Nonce))
+	claim, found, err := sys.Get(cref)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	if !found {
+		http.Error(w, "no claim has that nonce", http.StatusNotFound)
+		return
+	}
+	if exp, err := time.Parse(time.RFC3339, entity.Str(claim.Payload, "expires")); err != nil || time.Now().After(exp) {
+		_, _, _ = sys.Write(entity.Write{At: cref.At()})
+		http.Error(w, "the claim has expired: claim the account again for a new nonce", http.StatusGone)
+		return
+	}
+	if claimed := entity.Str(claim.Payload, "login"); claimed != "" && !strings.EqualFold(claimed, strings.TrimPrefix(body.Login, "@")) {
+		http.Error(w, fmt.Sprintf("the claim names the %s login %s, and the nonce was said from %q: a "+
+			"nonce is said from the account it claims", provider, claimed, body.Login), http.StatusForbidden)
+		return
+	}
+	who := entity.Str(claim.Payload, "principal")
+	binding := entity.Obj{
+		"principal": who, "sub": account, "claimant": entity.Str(claim.Payload, "claimant"),
+		"via": io.Principal,
+		"proof": entity.Obj{
+			"method": "heard", "io": io.Principal, "account": account,
+			"at": time.Now().UTC().Format(time.RFC3339),
+		},
+	}
+	if login := entity.Str(claim.Payload, "login"); login != "" {
+		binding["login"] = strings.ToLower(login) // a hint, kept as the relay keeps one
+	}
+	if iss := entity.Str(claim.Payload, "iss"); iss != "" {
+		binding["iss"] = iss
+	}
+	code, err := s.bind(sys, provider, binding, who, account)
+	if err != nil {
+		http.Error(w, err.Error(), code)
+		return
+	}
+	_, _, _ = sys.Write(entity.Write{At: cref.At()})
+	writeOut(w, r, code, accountRow(provider, binding.Payload()))
 }
 
 // verifyAccount looks for the claimed account having said the nonce, and binds the account to the
@@ -329,6 +439,11 @@ func (s *Server) linkAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	provider := r.PathValue("provider")
+	if v.provider.iod {
+		// A workload token names an io, which is config and never a person's account (iod.go).
+		http.Error(w, "the evidence is a workload token of the ios' issuer, which binds no person's account", http.StatusBadRequest)
+		return
+	}
 	if v.provider.name != provider {
 		http.Error(w, fmt.Sprintf("the evidence is a token of %s, not of %s", v.provider.name, provider), http.StatusBadRequest)
 		return
@@ -513,15 +628,16 @@ func (s *Server) revokeAccount(w http.ResponseWriter, r *http.Request) {
 // accountRow is a binding as the routes answer it, with the provider its address names.
 func accountRow(provider string, p entity.Payload) map[string]any {
 	row := map[string]any{"provider": provider}
-	for _, k := range []string{"principal", "iss", "sub", "login", "claimant"} {
+	for _, k := range []string{"principal", "iss", "sub", "login", "claimant", "via"} {
 		if v := entity.Str(p, k); v != "" {
 			row[k] = v
 		}
 	}
-	// A proof holds what its method kept: a comment's address, or a token's iss, sub and iat.
+	// A proof holds what its method kept: a comment's address, a token's iss, sub and iat, or the
+	// io and account a person was relayed from or heard by.
 	if proof := entity.Get(p, "proof"); proof != nil {
 		shown := map[string]any{}
-		for _, k := range []string{"method", "evidence", "iss", "sub", "iat", "at"} {
+		for _, k := range []string{"method", "evidence", "iss", "sub", "iat", "io", "account", "at"} {
 			if v := entity.Str(proof, k); v != "" {
 				shown[k] = v
 			}

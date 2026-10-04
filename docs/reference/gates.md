@@ -159,7 +159,9 @@ The answerers keep the tally, and the engine does not.
 - A ballot says how its caster was authenticated: `authenticated` is the identity provider that
   verified them, or `asserted` for one who was whoever their request said
   ([who a request is from](perms.md#who-a-request-is-from)). A ballot that a resolver cast for
-  somebody names the resolver in `via`, and has no `authenticated`.
+  somebody names the resolver in `via`, and has no `authenticated`. A ballot a trusted io relayed
+  for a person names the io in `via` and the io's provider in `authenticated`
+  ([a person relayed by a trusted io](perms.md#a-person-relayed-by-a-trusted-io)).
 
 The engine asks exactly what was written, and acts on the one answer that comes back.
 
@@ -403,7 +405,8 @@ grants `:auto` only what that is safe for.
 
 Each of `answerers` is `{principal, authenticated}`: who cast a ballot for the option the gate
 settled on, and how they were authenticated. An answer that a resolver gave for somebody has
-`via` and no `authenticated`. A gate settled by its deadline may have none.
+`via` and no `authenticated`; one a trusted io relayed for a person has both. A gate settled by
+its deadline may have none.
 
 **The task's record says a credential was minted.** It has
 `credential: {audience, sub, jti, expires}`, and never the token. `jti` is the token's own id,

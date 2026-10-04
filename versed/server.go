@@ -171,6 +171,8 @@ type Server struct {
 	routes []api.Route
 	// unattributed is the patterns a request may write through naming nobody (router.handleUnattributed).
 	unattributed map[string]bool
+	// control is the patterns a trusted io may act through for a person it relays (router.handleControl).
+	control map[string]bool
 	// auth is how people are authenticated at the door (SetAuth); nil verifies nobody.
 	auth *authn
 	// issuer signs tokens as this verse and publishes the keys that verify them (SetIssuer); nil
@@ -1316,8 +1318,8 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("GET /asks/{id}", s.getAsk, "", one("verse-entity"))
 	rt.handle("DELETE /asks/{id}", s.deleteAsk, "", nothing)
 	rt.handle("PATCH /asks/{id}", s.patchAsk, "verse-ask-change", one("verse-asked"))
-	rt.handle("POST /asks/{id}/answer", s.answerAsk, "verse-resolve", nothing)
-	rt.handle("POST /asks/{id}/say", s.sayOnAsk, "verse-gate-say", nothing)
+	rt.handleControl("POST /asks/{id}/answer", s.answerAsk, "verse-resolve", nothing)
+	rt.handleControl("POST /asks/{id}/say", s.sayOnAsk, "verse-gate-say", nothing)
 	rt.handle("PUT /perms", s.putPerms, "verse-perms-edit", one("verse-perms-record"))
 	// The live tasks and the suspensions a selection names (flows.go): the work in flight and
 	// the work held from now on, one listing narrowed by the flags an act takes.
@@ -1379,8 +1381,9 @@ func (s *Server) Handler() http.Handler {
 	// own say-so (auth.go).
 	rt.handle("GET /whoami", s.whoami, "", nothing)
 	rt.handle("GET /accounts", s.listAccounts, "", nothing)
-	rt.handle("POST /accounts/github", s.claimAccount, "", nothing)
+	rt.handle("POST /accounts/{provider}", s.claimAccount, "", nothing)
 	rt.handle("POST /accounts/github/verify", s.verifyAccount, "", nothing)
+	rt.handle("POST /accounts/{provider}/heard", s.heardAccount, "", nothing)
 	rt.handle("POST /accounts/{provider}/link", s.linkAccount, "", nothing)
 	rt.handle("GET /accounts/{provider}/who", s.whoIsAccount, "", nothing)
 	rt.handle("DELETE /accounts/{provider}/{sub}", s.revokeAccount, "", nothing)
@@ -1397,7 +1400,7 @@ func (s *Server) Handler() http.Handler {
 	// (flows.go).
 	rt.handle("POST /flow/suspend", s.flowSuspend, "verse-flow-select", one("verse-flow-row"))
 	rt.handle("POST /flow/resume", s.flowResume, "verse-flow-select", one("verse-flow-row"))
-	rt.handle("POST /flow/say", s.flowSay, "verse-flow-select", one("verse-steered"))
+	rt.handleControl("POST /flow/say", s.flowSay, "verse-flow-select", one("verse-steered"))
 	rt.handle("POST /flow/cancel", s.flowCancel, "verse-flow-select", one("verse-steered"))
 	// task runtime (task) — mounted; serves /tasks[/{id}[/…]]. versed intercepts the
 	// two READ routes to union the local runtime with the active runner's own tasks
@@ -1417,7 +1420,7 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("POST /tasks/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
 		s.taskControl(w, r, ph, "cancel")
 	}, "", nothing)
-	rt.handle("POST /tasks/{id}/say", func(w http.ResponseWriter, r *http.Request) {
+	rt.handleControl("POST /tasks/{id}/say", func(w http.ResponseWriter, r *http.Request) {
 		s.taskControl(w, r, ph, "say")
 	}, "verse-say", nothing)
 	// pause/resume the same way: held at the task's next boundary wherever it runs, and asked
@@ -1432,7 +1435,7 @@ func (s *Server) Handler() http.Handler {
 	// differs from `/asks/{id}/answer` only in being TOLD which task holds the question
 	// instead of working it out. Everything that follows — attribution, delivery, the record,
 	// a stale answer — is the same act and must not have two implementations.
-	rt.handle("POST /tasks/{id}/resolve", func(w http.ResponseWriter, r *http.Request) {
+	rt.handleControl("POST /tasks/{id}/resolve", func(w http.ResponseWriter, r *http.Request) {
 		var body api.Resolve
 		if err := codec.Read(r, &body); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1450,6 +1453,7 @@ func (s *Server) Handler() http.Handler {
 	rt.mount("/tasks/", ph)
 	s.routes = rt.routes
 	s.unattributed = rt.unattributed
+	s.control = rt.control
 	// Every answer says which verse gave it, and a client that cannot be talking to this one
 	// is turned away before any of the above runs. See versioned.
 	return versioned(s.principals(rt.mux, rt.unattributed))
@@ -1470,8 +1474,9 @@ func (s *Server) Handler() http.Handler {
 // WHAT A REQUEST MAY PRESENT without one is `user:`, `agent:` or `runner:`, self-asserted within
 // the three, and a bare email, which is respelled `user:` on the request itself so every write and
 // check below reads the one form. Where the deployment admits people only verified (the mode
-// `required`), a `user:` presented this way is refused 401; `agent:` and `runner:` are not
-// verified by anything, and stay as asserted as they were. A name the grammar does not read is refused. So are the names versed
+// `required`), a `user:` presented this way is refused 401. People are verified first: `agent:`
+// and `runner:` are next, each under its own block of `auth`, and are taken as asserted until
+// that is built. A name the grammar does not read is refused. So are the names versed
 // makes — `via:` when a rule fires, a source reflects or a resolver answers, `system:` when versed
 // acts — since a header saying either is precisely the assertion that was fine while nothing was
 // refused and is a way to hold what it names once something is. What installs a system-owned
@@ -1493,7 +1498,11 @@ func (s *Server) principals(mux *http.ServeMux, unattributed map[string]bool) ht
 		// A bearer is who the request is from, verified, and it is read ahead of the header: the
 		// header then names the same principal or nobody (auth.go).
 		if token := bearerOf(r); token != "" {
-			who, provider, refused := s.authenticate(r.Context(), token, principalOf(r))
+			_, pattern := mux.Handler(r)
+			// A read, a registered control act, or no route at all, which the router answers.
+			ctl := pattern == "" || r.Method == http.MethodGet || r.Method == http.MethodHead || s.control[pattern]
+			who, provider, via, refused := s.authenticate(r.Context(), token, principalOf(r),
+				r.Header.Get(api.ForPrincipalHeader), act{method: r.Method, pattern: pattern, control: ctl})
 			if refused != nil {
 				if refused.code == http.StatusUnauthorized {
 					w.Header().Set("WWW-Authenticate", "Bearer")
@@ -1502,6 +1511,9 @@ func (s *Server) principals(mux *http.ServeMux, unattributed map[string]bool) ht
 				return
 			}
 			r = authenticated(r, provider)
+			if via != "" {
+				r = relayed(r, via)
+			}
 			r.Header.Set(api.PrincipalHeader, who)
 		}
 		p := principalOf(r)
@@ -1535,8 +1547,9 @@ func (s *Server) principals(mux *http.ServeMux, unattributed map[string]bool) ht
 				w.Header().Set("WWW-Authenticate", "Bearer")
 				http.Error(w, fmt.Sprintf("this verse admits a person only from an identity provider's "+
 					"token (auth.principal.mode is %s), and this request names %s with none: log in "+
-					"(`verse login`). An agent or a runner is still whoever it says it is, and a "+
-					"request that names nobody still reads what everyone may", AuthRequired, g.String()),
+					"(`verse login`). People are verified first; an agent or a runner is taken as "+
+					"given until its own authentication is built, and a request that names nobody "+
+					"still reads what everyone may", AuthRequired, g.String()),
 					http.StatusUnauthorized)
 				return
 			}
@@ -3132,8 +3145,10 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	res.Steer = body.Say
 	res.Edit = body.Edit
 	// How the answerer was authenticated, from the door (auth.go): what a ballot guarantees is
-	// no more than the name on it, so it says how that name was known.
+	// no more than the name on it, so it says how that name was known — and through which io,
+	// where a trusted io relayed them (iod.go).
 	res.Authenticated = authenticatedBy(r)
+	res.Via = relayedBy(r)
 
 	// THE SCOPE'S OWN, first. The awaiter is delivered to out-of-band and the record is written
 	// through `store` afterwards, and the two are in different scopes the moment a question is

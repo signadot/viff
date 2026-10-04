@@ -264,6 +264,11 @@ A request says who makes it in one of two ways.
   proves.
 - **A name.** `Verse-Principal: <principal>` is taken as given. It is `user:`, `agent:` or
   `runner:`.
+- **An io's token, and a person it relays.** An io of the deployment presents its own token
+  ([ios at the door](#ios-at-the-door)), and, when it acts for a person, that person's name and
+  the account the person is: `Verse-For-Principal: <provider>:<id>`. Verse admits the request as the
+  person only through the account's binding, and only from an io the deployment trusts for that
+  provider ([a person relayed by a trusted io](#a-person-relayed-by-a-trusted-io)).
 
 A token is checked before the name is read:
 
@@ -288,6 +293,9 @@ A token is checked before the name is read:
 | a token, at a verse that names no provider or whose mode is `off` | 401 |
 | a token whose provider cannot be reached | 503. Requests with no token are still served. |
 | a token that passes, and a `Verse-Principal` naming somebody else | 403 |
+| an io's token | as the io, under every mode |
+| an io's token, a person's name and their account, from an io trusted for the account's provider | as the person, through the binding ([below](#a-person-relayed-by-a-trusted-io)) |
+| an io's token and a person's name, with no account or from an io not trusted for it | 403 |
 | no token, under `off` or `optional` | as the `Verse-Principal` it names, or as nobody |
 | no token and a `user:` name, under `required` | 401, saying to log in |
 | no token and an `agent:` or `runner:` name, under `required` | as that name |
@@ -301,30 +309,29 @@ A token is checked before the name is read:
 | `optional` | whoever their token proves, or whoever the request says where it carries none |
 | `required` | whoever their token proves, and nobody else |
 
-**What `required` does not guarantee.** It covers people only.
+**People and ios first, then agents and runners.** The modes above verify people, and
+`auth.iod` verifies the deployment's own ios. Agents and runners are next: each is to be
+authenticated under its own block of `auth`, beside `principal` and `iod`. That is not built, so
+until it is, `agent:` and `runner:` principals are taken as given, under every mode. An agent
+may read bindings, so `required` does not yet mean the door is closed.
 
-- `agent:` and `runner:` principals are always taken as given, under every mode. An agent may
-  read bindings, so `required` does not mean the door is closed.
-- An io that acts as a person presents that person's name without their token. Slack's io does
-  this to read and answer a person's questions. Under `required` those requests are refused,
-  until verse has a way to admit an io for a person.
-- An [`asserted` binding](#accounts-in-other-systems) is not answered to an io's lookup under
-  `required`, until a verified caller proves the account again.
+An [`asserted` binding](#accounts-in-other-systems) is not answered to an io's lookup under
+`required`, until a verified caller proves the account again.
 
 Under `optional`, a `user:` that carries no token is also taken as given. A binding records
 which kind of caller proved it (`claimant`), so a reader can tell a verified name from an
 asserted one.
 
 `GET /whoami` answers who the request is from and how verse knows: `{principal, by}`, where `by`
-is the provider that verified the caller, or `asserted`. A request that names nobody is answered
-`{}`.
+is the provider that verified the caller, or `asserted`, and `via` the io that relayed them where
+one did. A request that names nobody is answered `{}`.
 
 ### Logging in
 
 | command | does |
 |---|---|
 | `verse login [<provider>]` | logs in to a provider in the CLI's config, and keeps the tokens. The provider may be left off when the config names one. |
-| `verse login --link <provider>` | logs in to a second provider and binds your account there to who you are logged in as. The login in use does not change. |
+| `verse login --link <provider>` | logs in to a second provider and binds your account there to who you are logged in as. The login in use does not change. At a provider whose accounts an io proves (`slack`, `github`), it claims the account instead and prints the words to say from it; `--account <login>` names a GitHub login. |
 | `verse whoami` | prints who the verse takes you for, and how: `user:ana@example.com (google)`, or `(asserted)` |
 | `verse logout [<provider>]` | drops the login toward this verse: every provider's, or the one named |
 
@@ -346,15 +353,68 @@ is the provider that verified the caller, or `asserted`. A request that names no
 - **A login the verse refuses is not kept.** `verse login` asks the verse who the token proves
   before it reports success, which is also when a first sight is bound.
 
+### Ios at the door
+
+An io is a program of the deployment's own, and it proves it is the io with the token its runtime
+gives it. `auth.iod` in the [config](up.md#configuration) says what that is:
+
+- **On Kubernetes**, the pod's projected service-account token, asked for with the audience
+  `verse`. Its issuer is the cluster's own; on EKS, `https://oidc.eks.<region>.amazonaws.com/id/<id>`.
+  Verse verifies it as it verifies a person's token, against the issuer's published keys, with
+  `aud` checked against `auth.iod.audience`.
+- **With no cluster**, a token in a file the deployment wrote. Verse reads the file at start and
+  keeps the token's hash.
+
+Which io a token is, is config: `auth.iod.accounts` maps a token's subject
+(`system:serviceaccount:<namespace>:<name>`) to the `agent:` the io acts as and the name it is
+installed under. Verse writes the accounts to `verse.identity.iod.account.<sub>` at every start,
+and a static token's hash to `verse.identity.iod.static.<hash>`, where anyone can read them. An
+io is never bound at first sight. A verified io is its principal under every mode, and `whoami`
+says `by: iod`.
+
+### A person relayed by a trusted io
+
+An io that acts for a person does not act on its own authority: it relays a person the external
+system identified, the Slack member who typed an answer, the GitHub login who commented. Verse
+admits such a request as the person when all of these hold, in order:
+
+1. The bearer verifies to an io.
+2. That io is in the provider's `ios` (`auth.principal.providers.<provider>.ios`): the deployment
+   said this io's word counts for that provider's accounts, and for nobody else's.
+3. The request names the account, `Verse-For-Principal: <provider>:<id>`, beside the person's name in
+   `Verse-Principal`. The account is what the io saw; the name is who it concluded.
+4. The account resolves to the presented person: through its
+   [binding](#accounts-in-other-systems) at `verse.identity.<provider>.account.<id>`, or, on
+   first sight, where the provider has `domains` and the person's email is in one. A first sight
+   writes the binding with the provider as its `claimant`, the io as `via`, and
+   `proof: {method: relay, io, account, at}`. An account bound to somebody else is refused with
+   409.
+5. The act is one a trusted io does for a person: a read, or answering a question, saying on it,
+   and steering a task or a flow. A provider's entry may say `acts: any`.
+
+The request then proceeds as the person. The permission check, the write and the record are
+theirs, and a ballot records `authenticated: <provider>` and `via: <the io>`. What is trusted is
+then stated exactly: verse checked that the io is the io; the external system checked the person;
+the deployment said the io counts for these accounts.
+
+It is not delegation between people. A person's token beside another person's name is still
+refused. An io presenting an `agent:` or a `runner:` is refused. A provider with no `domains`
+admits a relayed person only through a binding that already stands, which a stricter deployment
+wants: a person logs in once, links their account, and only then answers from Slack.
+
 ## Accounts in other systems
 
 An **account binding** says which account in another system is which principal. It is how an io
 answers as the person who wrote something there, without keeping a table of its own.
 
 An account is keyed by its issuer and the issuer's own id for it, `(iss, sub)`, as OIDC keys one.
-Bindings are kept per **provider**, which is the name a deployment gives an issuer. `github` is the
-first provider. Its `iss` is `https://github.com` and its `sub` is the user's number. A login can
-be renamed, so it is kept only as a hint, and a binding survives a rename.
+Bindings are kept per **provider**, which is the name a deployment gives an issuer, or gives the
+ios it trusts where no issuer is involved. `github` is the first provider of that second kind. Its
+`iss` is `https://github.com` and its `sub` is the user's number; a login can be renamed, so it
+is kept only as a hint, and a binding survives a rename. `slack` is the second: its accounts are
+the workspace's members, as the slack io names them, bound when the person says a nonce to the
+app (heard, below) or, where a domain admits it, when the io first
+[relays the person](#a-person-relayed-by-a-trusted-io).
 
 **The person claims, and the system binds.** A binding is written only by `system:identity`, from
 evidence that verse read itself. It is not on the person's own records, since what a person owns
@@ -362,8 +422,9 @@ they could rewrite.
 
 | route | as | does |
 |---|---|---|
-| `POST /accounts/github {login}` | the person | claims the login, and answers `{nonce, expires, say}`. The nonce stands for an hour. |
-| `POST /accounts/github/verify {nonce}` | the person | binds the account, once the account has said `/verse link <nonce>` |
+| `POST /accounts/<provider> {login}` | the person | claims an account under a provider whose accounts an io proves (`github` with the login; `slack` with nothing), and answers `{nonce, expires, say}`. The nonce stands for an hour. |
+| `POST /accounts/github/verify {nonce}` | the person | binds the GitHub account, once the account has said `/verse link <nonce>` in a comment a trusted io reflects |
+| `POST /accounts/<provider>/heard {nonce, account, login}` | a trusted io, verified | binds the claimed account from the io's word that it said the nonce: the Slack io hearing it from a member, the github io reading it in a comment. Where the claim names a login, the `login` that said it must be that one. |
 | `POST /accounts/<provider>/link {idToken}` | the person, verified | binds the account that the id_token names, at an identity provider the verse names |
 | `GET /accounts` | anyone | the caller's bindings, under every provider |
 | `GET /accounts/<provider>/who?sub=…` or `?login=…` | an io | the binding of that account: `{provider, principal, iss, sub, login, claimant, proof}` |
@@ -373,10 +434,21 @@ they could rewrite.
   own. It must be written by the claimed login, on a repository that a trusted
   [github io](iod.md#github) reflects, and it must carry the author's number (`authorId`). Until that comment is reflected,
   verify answers 404 and the claim still stands. An expired claim answers 410, and is removed.
-- **Trusted ios.** Only a comment under the root of an io the deployment trusts is read. The
-  deployment names them in its config, `auth.principal.providers.github.ios`, and verse writes
-  the list to `verse.identity.github.trust` at every start, where anyone can read it. Nothing
-  else writes it. Where none is trusted, a claim and a verify are refused with 409.
+- **A nonce heard.** The same words said where a trusted io hears them bind the account that said
+  them, reported by the io itself (`heard`): the Slack io hears `/verse link <nonce>` in a message
+  from a member and names `slack:<their id>`; the github io reads it in a comment it reflected and
+  names `github:<the author's number>`. The io is verified by its own token and trusted for the
+  provider, which is the same word the [relay](#a-person-relayed-by-a-trusted-io) takes. The
+  binding's `claimant` is whoever claimed, as they were authenticated then, and its proof is
+  `{method: heard, io, account, at}`. A GitHub claim names a login, and the nonce said by any
+  other login binds nothing and leaves the claim standing. A Slack claim names no account, and
+  the nonce binds whoever says it: it is said from one's own account, as a credential is used.
+  Nothing is minted: a nonce nobody claimed binds nobody.
+- **Trusted ios.** Only a comment under the root of an io the deployment trusts is read, and only
+  an io the deployment trusts relays a person. The deployment names a provider's ios in its
+  config, `auth.principal.providers.<provider>.ios`, and verse writes each list to
+  `verse.identity.<provider>.trust` at every start, where anyone can read it. Nothing else writes
+  it. Where none is trusted for `github`, a claim and a verify are refused with 409.
 - **One account is one principal.** Proving an account that is bound to somebody else is refused
   with 409, until they revoke it. Proving it again for the same principal answers 200. One
   principal may hold many accounts.
@@ -384,8 +456,10 @@ they could rewrite.
   `agent:*`, which is what lets an io look an author up. Anyone else asking `who` gets 404.
 - **Where they stand.** Claims are at `verse.identity.<provider>.claim.<nonce>`, and bindings are
   at `verse.identity.<provider>.account.<sub>`. A `sub` is one segment of the address whatever
-  characters its issuer put in it. A binding records how it was proved:
-  `proof: {method: comment, evidence: <the comment's address>, at}`.
+  characters its issuer put in it. A binding records how it was proved: a comment,
+  `proof: {method: comment, evidence: <the comment's address>, at}`; a nonce an io heard,
+  `{method: heard, io, account, at}`; a token,
+  `{method: oidc, iss, sub, iat, at}`; or a relay, `{method: relay, io, account, at}`.
 - **Linking a second provider.** A caller that one provider has verified presents an id_token
   from another as evidence, and verse binds that account to them. No nonce is needed, since the
   token proves the account. The token must be the named provider's and must verify, or the link
@@ -397,10 +471,11 @@ they could rewrite.
   request said. A binding is only as good as the name it binds to, so it says which kind of name
   that was. An `asserted` binding that a verified caller proves again takes that provider as its
   claimant. Proving a binding again as an asserted caller changes nothing.
-- **Trust.** The evidence of a GitHub account is as trustworthy as the io that reflected it,
-  which is why the deployment says which ios those are. An io is itself an asserted `agent:`. An account at an identity
-  provider is bound from a [verified token](#who-a-request-is-from), which is the same binding
-  with a different proof.
+- **Trust.** The evidence of a GitHub account is as trustworthy as the io that reflected it, and
+  a relayed person as trustworthy as the io that relayed them, which is why the deployment says
+  which ios those are, and why an io proves it is the io ([ios at the door](#ios-at-the-door)).
+  An account at an identity provider is bound from a [verified token](#who-a-request-is-from),
+  which is the same binding with a different proof.
 
 ## What each act writes
 
@@ -415,6 +490,7 @@ they could rewrite.
 | a suspension | as the system, naming who holds it under `held` |
 | verifying an account | its binding, as `system:identity` |
 | a first request with a provider's token | the account's binding, as `system:identity` |
+| a first request a trusted io relays for a person | the person's account binding, as `system:identity` |
 
 ## The root, and the config
 

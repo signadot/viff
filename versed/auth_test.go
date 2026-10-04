@@ -642,3 +642,68 @@ func TestOnlyATrustedIosReflectionIsEvidence(t *testing.T) {
 		t.Errorf("a claim where no io is trusted = %d, want 409", code)
 	}
 }
+
+// SetAuth is judged by config's validator, so a rule about a provider holds in one place: a name
+// that is not one segment is refused here as it is at load.
+func TestSetAuthIsJudgedByTheConfigsRules(t *testing.T) {
+	srv := testServer(t)
+	err := srv.SetAuth(Auth{Providers: map[string]AuthProvider{"a.b": {IOs: []string{"x"}}}})
+	if err == nil || !strings.Contains(err.Error(), "one plain address segment") {
+		t.Errorf("a dotted provider name: err = %v, want config's refusal", err)
+	}
+	if _, found, _ := srv.Store.Get(trustRef("a")); found {
+		t.Error("a trust node was written under half a name")
+	}
+}
+
+// A verse whose only issuer is the ios' tells a person it verifies no person's bearer rather
+// than offering them `iod`.
+func TestAVerseWithOnlyTheIosIssuerVerifiesNoPerson(t *testing.T) {
+	cluster, people := idptest.New(t), idptest.New(t)
+	srv := testServer(t)
+	if err := srv.SetAuth(Auth{Mode: AuthOptional, Iod: AuthIod{Issuer: cluster.URL,
+		Accounts: map[string]IodAccount{"system:serviceaccount:verse:x": {Principal: "agent:x"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	code, body := bearer(t, http.MethodGet, ts.URL+"/whoami", people.Token(authClient, "sub-ana", person("ana@example.com")), "", "")
+	if code != http.StatusUnauthorized || !strings.Contains(body, "verifies no person's bearer") || strings.Contains(body, "iod") {
+		t.Errorf("a person's token at a verse with only the ios' issuer = %d %q", code, strings.TrimSpace(body))
+	}
+	// A verified person cannot bind an io's token as an account of theirs.
+	srv2, ts2, idp := authServer(t, AuthOptional)
+	if err := srv2.SetAuth(Auth{Mode: AuthOptional, Providers: map[string]AuthProvider{
+		authProvName: {Issuer: idp.URL, ClientID: authClient, Domains: []string{authDomain}},
+	}, Iod: AuthIod{Issuer: cluster.URL, Accounts: map[string]IodAccount{"system:serviceaccount:verse:x": {Principal: "agent:x"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	ana := idp.Token(authClient, "sub-ana", person("ana@example.com"))
+	link := cluster.Token(iodAudience, "system:serviceaccount:verse:stranger", nil)
+	code, body = bearer(t, http.MethodPost, ts2.URL+"/accounts/iod/link", ana, "", `{idToken: "`+link+`"}`)
+	if code != http.StatusBadRequest || !strings.Contains(body, "workload token") {
+		t.Errorf("linking an io's token as an account = %d %q, want 400", code, strings.TrimSpace(body))
+	}
+	if _, found, _ := srv2.Store.Get(accountRef(iodProvider, "system:serviceaccount:verse:stranger")); found {
+		t.Error("a person bound a stranger under the ios' accounts")
+	}
+}
+
+// A provider that keeps its name and drops its ios has its trust node cleared, so nothing reads
+// yesterday's ios as trusted.
+func TestATrustNodeFollowsTheConfig(t *testing.T) {
+	idp := idptest.New(t)
+	srv := testServer(t)
+	if err := srv.SetAuth(Auth{Providers: map[string]AuthProvider{"slack": {IOs: []string{"workspace"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	if trusted, _ := trustedIOs(entity.As(srv.Store, entity.SystemIdentity), "slack"); !trusted["workspace"] {
+		t.Fatalf("slack's trust = %v, want workspace", trusted)
+	}
+	if err := srv.SetAuth(Auth{Providers: map[string]AuthProvider{"slack": {Issuer: idp.URL, ClientID: authClient}}}); err != nil {
+		t.Fatal(err)
+	}
+	if trusted, _ := trustedIOs(entity.As(srv.Store, entity.SystemIdentity), "slack"); len(trusted) != 0 {
+		t.Errorf("slack, now an issuer, still trusts %v", trusted)
+	}
+}

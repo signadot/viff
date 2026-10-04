@@ -2,6 +2,33 @@
 context:
 - tony-format/context
 define:
+  io: .[string]
+  principal: .[string]
+signature:
+  name: verse-iod-account-config
+---
+context:
+- tony-format/context
+define:
+  file: .[string]
+  io: .[string]
+  principal: .[string]
+signature:
+  name: verse-iod-static-config
+---
+context:
+- tony-format/context
+define:
+  accounts: .[object(verse-iod-account-config)]
+  audience: .[string]
+  issuer: .[string]
+  static: .[array(verse-iod-static-config)]
+signature:
+  name: verse-iod-auth-config
+---
+context:
+- tony-format/context
+define:
   key: .[string]
   url: .[string]
 signature:
@@ -10,6 +37,7 @@ signature:
 context:
 - tony-format/context
 define:
+  acts: .[string]
   clientId: .[string]
   domains: .[array(string)]
   ios: .[array(string)]
@@ -28,6 +56,7 @@ signature:
 context:
 - tony-format/context
 define:
+  iod: !verse-iod-auth-config null
   issuer: !verse-issuer-config null
   principal: !verse-principal-auth-config null
 signature:

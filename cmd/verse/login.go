@@ -240,6 +240,10 @@ func loginSetup(ctx context.Context, name string) (*loginProvider, error) {
 		return nil, fmt.Errorf("%q is no identity provider in this config (auth.principal.providers has: %s)",
 			name, providerNames())
 	}
+	if p.Issuer == "" {
+		return nil, fmt.Errorf("%q names the ios it trusts and no issuer, so it is nobody's to log in to "+
+			"(the providers to log in to: %s)", name, providerNames())
+	}
 	prov, err := oidc.NewProvider(ctx, p.Issuer)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s's discovery document: %w", name, err)
@@ -287,8 +291,10 @@ func (p *loginProvider) idToken(ctx context.Context, tok *oauth2.Token) (string,
 // providerNames is the config's providers, for a message that says what could be named.
 func providerNames() string {
 	names := make([]string, 0, len(appCfg.Auth.Principal.Providers))
-	for name := range appCfg.Auth.Principal.Providers {
-		names = append(names, name)
+	for name, p := range appCfg.Auth.Principal.Providers {
+		if p.Issuer != "" {
+			names = append(names, name)
+		}
 	}
 	sort.Strings(names)
 	if len(names) == 0 {
@@ -305,7 +311,14 @@ func pickProvider(args []string, usage string) (string, error) {
 	case len(args) == 1:
 		return args[0], nil
 	}
-	provs := appCfg.Auth.Principal.Providers
+	// The providers a person logs in to are the issuers. One that names the ios it trusts
+	// (`github`, `slack`) issues no tokens, and is nobody's to log in to.
+	provs := map[string]config.AuthProviderConfig{}
+	for name, p := range appCfg.Auth.Principal.Providers {
+		if p.Issuer != "" {
+			provs[name] = p
+		}
+	}
 	switch len(provs) {
 	case 0:
 		return "", fmt.Errorf("this config names no identity provider to log in to: set " +
@@ -415,7 +428,8 @@ func whoIs() (principal, by string, err error) {
 
 type loginConfig struct {
 	*cli.Command
-	Link string `cli:"name=link desc='link your account at this provider to who you are logged in as, in place of logging in with it'"`
+	Link    string `cli:"name=link desc='link your account at this provider to who you are logged in as, in place of logging in with it'"`
+	Account string `cli:"name=account desc='with --link, the account you claim at a provider whose accounts an io proves (a GitHub login); Slack needs none'"`
 }
 
 func loginCmd() *cli.Command {
@@ -438,6 +452,12 @@ func (cfg *loginConfig) run(cc *cli.Context, args []string) error {
 	if cfg.Link != "" {
 		if len(args) > 0 {
 			return fmt.Errorf("%w: login --link <provider> names the one provider", cli.ErrUsage)
+		}
+		if p, ok := appCfg.Auth.Principal.Providers[cfg.Link]; ok && p.Issuer == "" && len(p.IOs) > 0 {
+			return claimThrough(cc, cfg.Link, cfg.Account)
+		}
+		if cfg.Account != "" {
+			return fmt.Errorf("%w: --account goes with a --link provider whose accounts an io proves", cli.ErrUsage)
 		}
 		return link(cc, cfg.Link)
 	}
@@ -530,6 +550,36 @@ func link(cc *cli.Context, name string) error {
 	}
 	decodeClose(resp, &row)
 	fmt.Fprintf(cc.Out, "linked the %s account %s to %s\n", name, row.Sub, row.Principal)
+	return nil
+}
+
+// claimThrough claims the caller's account at a provider whose accounts an io proves, and prints
+// the words to say from it. The verse binds the account when a trusted io hears them said, so
+// there is nothing to wait on here; and the claim is whoever the CLI acts as, logged in or not,
+// since a verse that takes names as asserted takes this binding the same way (the binding's
+// `claimant` says which).
+func claimThrough(cc *cli.Context, name, account string) error {
+	body := map[string]any{}
+	if account != "" {
+		body["login"] = strings.TrimPrefix(account, "@")
+	}
+	resp, err := httpPost("/accounts/"+url.PathEscape(name), body)
+	if err != nil {
+		return fmt.Errorf("login --link: %w", err)
+	}
+	if resp.StatusCode != http.StatusCreated {
+		return statusError(resp, "login --link")
+	}
+	var claim struct {
+		Say     string `tony:"field=say"`
+		Expires string `tony:"field=expires"`
+	}
+	decodeClose(resp, &claim)
+	ios := strings.Join(appCfg.Auth.Principal.Providers[name].IOs, ", ")
+	fmt.Fprintf(cc.Out, "say this from your %s account, where the io it trusts (%s) hears you, "+
+		"on a line of its own:\n\n    %s\n\nin Slack, a message to the app; on GitHub, a comment on "+
+		"a pull request the io reflects. The verse binds the account when the io reports it, "+
+		"and the words stand until %s.\n", name, ios, claim.Say, claim.Expires)
 	return nil
 }
 

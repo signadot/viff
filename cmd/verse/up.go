@@ -496,14 +496,27 @@ func permsPolicy(c config.PermsConfig) (versed.Perms, error) {
 	return p, nil
 }
 
-// authOf is the config's `auth.principal` as the server takes it.
+// authOf is the config's `auth.principal` and `auth.iod` as the server takes them.
 func authOf(c config.AuthConfig) versed.Auth {
 	a := versed.Auth{Mode: c.Principal.Mode}
 	if len(c.Principal.Providers) > 0 {
 		a.Providers = map[string]versed.AuthProvider{}
 	}
 	for name, p := range c.Principal.Providers {
-		a.Providers[name] = versed.AuthProvider{Issuer: p.Issuer, ClientID: p.ClientID, Domains: p.Domains, IOs: p.IOs}
+		a.Providers[name] = versed.AuthProvider{
+			Issuer: p.Issuer, ClientID: p.ClientID, Domains: p.Domains, IOs: p.IOs,
+			Acts: p.Acts,
+		}
+	}
+	a.Iod = versed.AuthIod{Issuer: c.Iod.Issuer, Audience: c.Iod.Audience}
+	if len(c.Iod.Accounts) > 0 {
+		a.Iod.Accounts = map[string]versed.IodAccount{}
+	}
+	for sub, acct := range c.Iod.Accounts {
+		a.Iod.Accounts[sub] = versed.IodAccount{Principal: acct.Principal, IO: acct.IO}
+	}
+	for _, st := range c.Iod.Static {
+		a.Iod.Static = append(a.Iod.Static, versed.IodStatic{File: st.File, Principal: st.Principal, IO: st.IO})
 	}
 	return a
 }

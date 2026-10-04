@@ -353,6 +353,24 @@ func TestAuthPrincipalIsReadAndChecked(t *testing.T) {
 		t.Errorf("auth.issuer = %+v, %v", c.Auth.Issuer, err)
 	}
 
+	// Ios: an issuer-less provider trusting an io, with what it may do, and the ios' own block.
+	if c, err := load("auth: {principal: {providers: {slack: {ios: [workspace], domains: [example.com], acts: any}, " +
+		"corp: {issuer: \"https://login.example.com\", clientId: verse-cli}, github: {ios: [gh]}}}, " +
+		"iod: {issuer: \"https://oidc.eks.us-west-2.amazonaws.com/id/1\", audience: verse, " +
+		"accounts: {\"system:serviceaccount:verse:slack-io\": {principal: \"agent:slack-io\", io: workspace}}, " +
+		"static: [{file: /run/verse/git-io.token, principal: \"agent:git-io\"}]}}\n"); err != nil {
+		t.Errorf("ios block: %v", err)
+	} else {
+		if sl := c.Auth.Principal.Providers["slack"]; sl.Acts != ActsAny || len(sl.IOs) != 1 || sl.IOs[0] != "workspace" {
+			t.Errorf("slack = %+v", sl)
+		}
+		iod := c.Auth.Iod
+		if iod.Audience != "verse" || iod.Accounts["system:serviceaccount:verse:slack-io"].IO != "workspace" ||
+			len(iod.Static) != 1 || iod.Static[0].Principal != "agent:git-io" {
+			t.Errorf("iod = %+v", iod)
+		}
+	}
+
 	for _, bad := range []struct{ what, body, want string }{
 		{"an issuer with no key", "auth: {issuer: {url: \"https://verse.example.com\"}}", "both a url and a key"},
 		{"an issuer whose url is none", "auth: {issuer: {url: verse, key: /k.pem}}", "relying party"},
@@ -360,8 +378,16 @@ func TestAuthPrincipalIsReadAndChecked(t *testing.T) {
 		{"a provider with no client", "auth: {principal: {providers: {google: {issuer: \"https://accounts.google.com\"}}}}", "clientId is required"},
 		{"a provider with no issuer", "auth: {principal: {providers: {google: {clientId: a}}}}", "not an issuer's URL"},
 		{"an issuer that is no URL", "auth: {principal: {providers: {google: {issuer: accounts, clientId: a}}}}", "not an issuer's URL"},
-		{"an issuer named github", "auth: {principal: {providers: {github: {issuer: \"https://github.com\", clientId: a}}}}", "`ios` alone"},
-		{"ios on an issuer", "auth: {principal: {providers: {google: {issuer: \"https://accounts.google.com\", clientId: a, ios: [gh]}}}}", "account only"},
+		{"an issuer named github", "auth: {principal: {providers: {github: {issuer: \"https://github.com\", clientId: a}}}}", "its entry takes `ios`"},
+		{"ios on an issuer", "auth: {principal: {providers: {google: {issuer: \"https://accounts.google.com\", clientId: a, ios: [gh]}}}}", "not both"},
+		{"a provider with neither", "auth: {principal: {providers: {slack: {domains: [example.com]}}}}", "or names the ios"},
+		{"a provider named iod", "auth: {principal: {providers: {iod: {ios: [x]}}}}", "ios' own"},
+		{"acts that are neither word", "auth: {principal: {providers: {slack: {ios: [workspace], acts: some}}}}", "not control or any"},
+		{"acts on an issuer", "auth: {principal: {providers: {google: {issuer: \"https://accounts.google.com\", clientId: a, acts: any}}}}", "goes with `ios`"},
+		{"iod accounts with no issuer", "auth: {iod: {accounts: {\"system:serviceaccount:verse:slack-io\": {principal: \"agent:slack-io\"}}}}", "no issuer of those tokens"},
+		{"an iod account that is no agent", "auth: {iod: {issuer: \"https://oidc.example.com/id/1\", accounts: {\"system:serviceaccount:verse:slack-io\": {principal: \"user:ana@example.com\"}}}}", "not an io's principal"},
+		{"a static io with no file", "auth: {iod: {static: [{principal: \"agent:slack-io\"}]}}", "path of the token"},
+		{"an iod issuer that is a provider's", "auth: {principal: {providers: {a: {issuer: \"https://a.example.com\", clientId: a}}}, iod: {issuer: \"https://a.example.com\"}}", "names one party"},
 		{"a name that is not one segment", "auth: {principal: {providers: {\"a.b\": {issuer: \"https://a.example.com\", clientId: a}}}}", "one plain address segment"},
 		{"two providers of one issuer", "auth: {principal: {providers: {a: {issuer: \"https://a.example.com\", clientId: a}, b: {issuer: \"https://a.example.com\", clientId: b}}}}", "names one"},
 	} {

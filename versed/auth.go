@@ -14,6 +14,7 @@ import (
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/config"
 	"github.com/signadot/verse/entity"
 )
 
@@ -56,10 +57,13 @@ const (
 )
 
 // Auth is how a deployment has people authenticated: the mode, and its identity providers by the
-// names it gives them.
+// names it gives them. It is config.AuthConfig as the server takes it, and config's validator
+// is the one that judges it (SetAuth), so a rule about a provider lives in one place.
 type Auth struct {
 	Mode      string
 	Providers map[string]AuthProvider
+	// Iod is how the deployment's ios are authenticated (iod.go).
+	Iod AuthIod
 }
 
 // AuthProvider is one OpenID Connect issuer a verse accepts id_tokens from.
@@ -70,9 +74,12 @@ type AuthProvider struct {
 	ClientID string
 	// Domains are the email domains a first sight is admitted from.
 	Domains []string
-	// IOs are the installed ios trusted as evidence of the provider's accounts: `github`'s, whose
-	// accounts are proved by a comment an io reflects.
+	// IOs are the installed ios the verse trusts for the provider's accounts, by the name each is
+	// installed under: `github`'s, whose accounts are proved by a comment an io reflects, and
+	// `slack`'s, whose io relays the member who typed (iod.go). A provider has an issuer or ios.
 	IOs []string
+	// Acts is what a trusted io may do as a person it relays: actsControl (""), or actsAny.
+	Acts string
 }
 
 const (
@@ -89,16 +96,46 @@ const (
 	googleIssuerNoScheme = "accounts.google.com"
 )
 
-// authn is a server's providers as the door asks for them: by the issuer a token names.
+// config is this Auth as the config package spells it, for its validator.
+func (a Auth) config() config.AuthConfig {
+	c := config.AuthConfig{Principal: config.PrincipalAuthConfig{Mode: a.Mode}}
+	if len(a.Providers) > 0 {
+		c.Principal.Providers = map[string]config.AuthProviderConfig{}
+	}
+	for name, p := range a.Providers {
+		c.Principal.Providers[name] = config.AuthProviderConfig{
+			Issuer: p.Issuer, ClientID: p.ClientID, Domains: p.Domains, IOs: p.IOs,
+			Acts: p.Acts,
+		}
+	}
+	c.Iod = config.IodAuthConfig{Issuer: a.Iod.Issuer, Audience: a.Iod.Audience}
+	if len(a.Iod.Accounts) > 0 {
+		c.Iod.Accounts = map[string]config.IodAccountConfig{}
+	}
+	for sub, acct := range a.Iod.Accounts {
+		c.Iod.Accounts[sub] = config.IodAccountConfig{Principal: acct.Principal, IO: acct.IO}
+	}
+	for _, st := range a.Iod.Static {
+		c.Iod.Static = append(c.Iod.Static, config.IodStaticConfig{File: st.File, Principal: st.Principal, IO: st.IO})
+	}
+	return c
+}
+
+// authn is a server's providers as the door asks for them: by the issuer a token names, and by
+// name, for the provider a relayed account is under; and the ios (iod.go).
 type authn struct {
 	mode     string
 	byIssuer map[string]*authProvider
+	byName   map[string]*authProvider
+	iod      *iodAuth
 }
 
 // authProvider is one provider and its verifier, which is built the first time a token names it:
-// a provider that is down when versed starts stops nothing but the requests that need it.
+// a provider that is down when versed starts stops nothing but the requests that need it. The
+// ios' issuer is one too (iod), whose tokens name an io rather than a person.
 type authProvider struct {
 	name string
+	iod  bool
 	AuthProvider
 
 	mu       sync.Mutex
@@ -115,44 +152,72 @@ type authProvider struct {
 // door: the deployment's own config. It is written to the store as system:identity, where it is
 // read like any record, and written again at every start, so the store says what the config does.
 func (s *Server) SetAuth(a Auth) error {
-	switch a.Mode {
-	case "", AuthOff, AuthOptional, AuthRequired:
-	default:
-		return fmt.Errorf("auth.principal.mode: %q is not a mode: %s, %s or %s", a.Mode, AuthOff, AuthOptional, AuthRequired)
+	if err := a.config().Validate(); err != nil {
+		return err
 	}
-	n := &authn{mode: a.Mode, byIssuer: map[string]*authProvider{}}
+	n := &authn{mode: a.Mode, byIssuer: map[string]*authProvider{}, byName: map[string]*authProvider{}}
 	if n.mode == "" {
 		n.mode = AuthOff
 	}
 	for name, p := range a.Providers {
-		if name == githubProvider {
-			if p.Issuer != "" || p.ClientID != "" || len(p.Domains) > 0 {
-				return fmt.Errorf("auth.principal.providers.%s: that name is the provider GitHub accounts "+
-					"are bound under, by proof by action: its entry takes `ios` alone", name)
-			}
-			continue
+		prov := &authProvider{name: name, AuthProvider: p}
+		n.byName[name] = prov
+		if p.Issuer != "" {
+			n.byIssuer[p.Issuer] = prov
 		}
-		switch {
-		case name == "" || p.Issuer == "" || p.ClientID == "":
-			return fmt.Errorf("auth.principal.providers.%s: a provider has a name, an issuer and a clientId", name)
-		case len(p.IOs) > 0:
-			return fmt.Errorf("auth.principal.providers.%s.ios: an io's reflection is evidence of a %s "+
-				"account only", name, githubProvider)
-		}
-		if other, dup := n.byIssuer[p.Issuer]; dup {
-			return fmt.Errorf("auth.principal.providers.%s: %s is %s's issuer too, and a token's "+
-				"issuer names one provider", name, p.Issuer, other.name)
-		}
-		n.byIssuer[p.Issuer] = &authProvider{name: name, AuthProvider: p}
 	}
 	if n.mode == AuthRequired && len(n.byIssuer) == 0 {
 		return fmt.Errorf("auth.principal.mode: %s admits a person only from an identity provider's "+
 			"token, and auth.principal.providers names no issuer", AuthRequired)
 	}
-	if err := s.writeTrust(githubProvider, a.Providers[githubProvider].IOs); err != nil {
-		return fmt.Errorf("auth.principal.providers.%s.ios: %w", githubProvider, err)
+	iodProv, iod, err := s.setIod(a.Iod)
+	if err != nil {
+		return err
+	}
+	if iodProv != nil {
+		n.byIssuer[iodProv.Issuer] = iodProv
+	}
+	n.iod = iod
+	if err := s.writeTrusts(a.Providers); err != nil {
+		return err
 	}
 	s.auth = n
+	return nil
+}
+
+// writeTrusts records each provider's trusted ios, and clears a provider's that the config no
+// longer names, so the store says what the config does.
+func (s *Server) writeTrusts(providers map[string]AuthProvider) error {
+	sys := entity.As(s.Store, entity.SystemIdentity)
+	standing, err := entity.BelowErr(sys, func(ref entity.Ref) bool {
+		segs := ref.Segs()
+		return len(segs) == 4 && segs[3] == "trust"
+	}, 2, entity.VerseRoot, "identity")
+	if err != nil {
+		return err
+	}
+	written := map[string]bool{}
+	for name, p := range providers {
+		if len(p.IOs) > 0 || name == githubProvider {
+			if err := s.writeTrust(name, p.IOs); err != nil {
+				return fmt.Errorf("auth.principal.providers.%s.ios: %w", name, err)
+			}
+			written[name] = true
+		}
+	}
+	// A trust node the config no longer speaks for — its provider gone, or kept and now an
+	// issuer — is cleared, so nothing reads yesterday's ios as trusted.
+	for _, e := range standing {
+		if name := e.Ref.Segs()[2]; !written[name] && len(entity.Strs(e.Payload, "ios")) > 0 {
+			if err := s.writeTrust(name, nil); err != nil {
+				return err
+			}
+			written[name] = true
+		}
+	}
+	if !written[githubProvider] {
+		return s.writeTrust(githubProvider, nil)
+	}
 	return nil
 }
 
@@ -161,14 +226,27 @@ func (s *Server) verifiesPeople() bool {
 	return s.auth != nil && s.auth.mode == AuthRequired
 }
 
-// providerNames is the configured providers' names, for a refusal that says what would be taken.
+// providerNames is the names of the providers people's tokens may come from, for a refusal that
+// says what would be taken. The ios' issuer is not one of them.
 func (n *authn) providerNames() string {
 	names := make([]string, 0, len(n.byIssuer))
 	for _, p := range n.byIssuer {
-		names = append(names, p.name)
+		if !p.iod {
+			names = append(names, p.name)
+		}
 	}
 	sort.Strings(names)
 	return strings.Join(names, ", ")
+}
+
+// peoplesIssuers reports whether any provider issues tokens for people.
+func (n *authn) peoplesIssuers() bool {
+	for _, p := range n.byIssuer {
+		if !p.iod {
+			return true
+		}
+	}
+	return false
 }
 
 // provider is the provider a token's `iss` names, nil where it names none of them.
@@ -281,7 +359,7 @@ type verified struct {
 // verifyToken checks an id_token against the provider its issuer names.
 func (s *Server) verifyToken(ctx context.Context, token string) (*verified, *turnedAway) {
 	n := s.auth
-	if n == nil || n.mode == AuthOff || len(n.byIssuer) == 0 {
+	if n == nil || len(n.byIssuer) == 0 {
 		return nil, turnAway(http.StatusUnauthorized, "this verse verifies no bearer: it names no "+
 			"identity provider (auth.principal in its config), so a request says who makes it in %s",
 			api.PrincipalHeader)
@@ -292,8 +370,19 @@ func (s *Server) verifyToken(ctx context.Context, token string) (*verified, *tur
 	}
 	p := n.provider(iss)
 	if p == nil {
+		if !n.peoplesIssuers() {
+			return nil, turnAway(http.StatusUnauthorized, "this verse verifies no person's bearer: it "+
+				"names no identity provider (auth.principal in its config), so a request says who makes "+
+				"it in %s", api.PrincipalHeader)
+		}
 		return nil, turnAway(http.StatusUnauthorized, "the bearer was issued by %s, which is no identity "+
 			"provider of this verse (it takes: %s)", iss, n.providerNames())
+	}
+	if n.mode == AuthOff && !p.iod {
+		// People are not verified here, and a token is not served as nobody: an answer with
+		// nothing in it reads as an empty verse.
+		return nil, turnAway(http.StatusUnauthorized, "this verse verifies no bearer of a person "+
+			"(auth.principal.mode is %s), so a request says who makes it in %s", AuthOff, api.PrincipalHeader)
 	}
 	verifier, err := p.verifierFor()
 	if err != nil {
@@ -322,38 +411,59 @@ func (s *Server) verifyToken(ctx context.Context, token string) (*verified, *tur
 
 // authenticate is who a request carrying a bearer is from: the principal its account is bound to,
 // bound at first sight where it is not yet, and the provider that vouched for it. presented is
-// what the request's header says, which names the same principal or nobody.
-func (s *Server) authenticate(ctx context.Context, token, presented string) (principal, provider string, _ *turnedAway) {
+// what the request's header says, which names the same principal or nobody — or, for a bearer
+// that proves an io, a person the io relays (iod.go), in which case via is the io. account is the
+// relayed person's account (api.ForPrincipalHeader), and a is what the request does.
+func (s *Server) authenticate(ctx context.Context, token, presented, account string, a act) (principal, provider, via string, _ *turnedAway) {
+	if io, ok := s.auth.staticIo(token); ok {
+		return s.asIo(io, presented, account, a)
+	}
 	v, ref := s.verifyToken(ctx, token)
 	if ref != nil {
-		return "", "", ref
+		return "", "", "", ref
 	}
 	p := v.provider
+	if p.iod {
+		io, ok := s.auth.iod.accounts[v.sub]
+		if !ok {
+			return "", "", "", turnAway(http.StatusUnauthorized, "the bearer is a workload token whose "+
+				"subject %s is no io of this verse (auth.iod.accounts)", v.sub)
+		}
+		return s.asIo(io, presented, account, a)
+	}
 	sys := entity.As(s.Store, entity.SystemIdentity)
 	cur, found, err := sys.Get(accountRef(p.name, v.sub))
 	if err != nil {
-		return "", "", turnAway(http.StatusBadGateway, "%v", err)
+		return "", "", "", turnAway(http.StatusBadGateway, "%v", err)
 	}
 	if found {
 		if iss := entity.Str(cur.Payload, "iss"); iss != p.Issuer {
-			return "", "", turnAway(http.StatusUnauthorized, "the %s account %s is bound as an account "+
+			return "", "", "", turnAway(http.StatusUnauthorized, "the %s account %s is bound as an account "+
 				"of %s, and this token is from %s", p.name, v.sub, iss, p.Issuer)
 		}
 		principal = entity.Str(cur.Payload, "principal")
 	} else {
 		who, ref := s.firstSight(sys, v)
 		if ref != nil {
-			return "", "", ref
+			return "", "", "", ref
 		}
 		principal = who
 	}
 	if presented != "" {
 		if g, err := entity.ParsePrincipal(presented); err != nil || g.String() != principal {
-			return "", "", turnAway(http.StatusForbidden, "the bearer is %s and %s names %s: a request "+
+			return "", "", "", turnAway(http.StatusForbidden, "the bearer is %s and %s names %s: a request "+
 				"is made as whoever it proves it is from", principal, api.PrincipalHeader, presented)
 		}
 	}
-	return principal, p.name, nil
+	return principal, p.name, "", nil
+}
+
+// asIo is a request a verified io makes: as itself, or relaying a person.
+func (s *Server) asIo(io IodAccount, presented, account string, a act) (principal, provider, via string, _ *turnedAway) {
+	if presented == "" || presented == io.Principal {
+		return io.Principal, iodProvider, "", nil
+	}
+	return s.relay(io, presented, account, a)
 }
 
 // firstSight binds an account nobody has been bound from to `user:<email>`, where its token
@@ -383,12 +493,15 @@ func (s *Server) firstSight(sys entity.Store, v *verified) (string, *turnedAway)
 }
 
 // whoami answers who the request is from and how versed knows it: `by` is the provider that
-// verified them, or `asserted` for a caller who is whoever their request said. A request that
-// names nobody is answered with neither.
+// verified them, or `asserted` for a caller who is whoever their request said, and `via` the io
+// that relayed them where one did. A request that names nobody is answered with none.
 func (s *Server) whoami(w http.ResponseWriter, r *http.Request) {
 	out := map[string]any{}
 	if p := principalOf(r); p != "" {
 		out["principal"], out["by"] = p, authenticatedBy(r)
+		if via := relayedBy(r); via != "" {
+			out["via"] = via
+		}
 	}
 	writeOut(w, r, http.StatusOK, out)
 }

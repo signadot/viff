@@ -30,6 +30,11 @@ const loginClient = "verse-cli"
 // serveLogin stands up a verse that takes tokens from a fake IdP named `corp`, and a config that
 // names the same provider, so the CLI can log in to it. The account that logs in is ana's.
 func serveLogin(t *testing.T, device bool) (entity.Store, *idptest.Logins) {
+	return serveLoginWith(t, device, false)
+}
+
+// serveLoginWith is serveLogin, with a github provider that names ios beside the issuer when asked.
+func serveLoginWith(t *testing.T, device, withIOs bool) (entity.Store, *idptest.Logins) {
 	t.Helper()
 	idp := idptest.New(t)
 	l := idp.Login(loginClient, "sub-ana", map[string]any{"email": "ana@example.com", "email_verified": true}, device)
@@ -47,6 +52,9 @@ func serveLogin(t *testing.T, device bool) (entity.Store, *idptest.Logins) {
 
 	cfg := filepath.Join(t.TempDir(), "verse.tony")
 	body := "auth:\n  principal:\n    providers:\n      corp:\n        issuer: \"" + idp.URL + "\"\n        clientId: " + loginClient + "\n"
+	if withIOs {
+		body += "      github:\n        ios: [gh]\n"
+	}
 	if err := os.WriteFile(cfg, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -198,6 +206,18 @@ func TestALoginByAuthorizationCode(t *testing.T) {
 	}
 }
 
+// A provider that names the ios it trusts and no issuer is nobody's to log in to: a bare
+// `verse login` picks the one issuer beside it, and naming it is refused plainly.
+func TestOnlyAnIssuerIsAProviderToLogInTo(t *testing.T) {
+	serveLoginWith(t, false, true) // corp, the issuer, beside github, which has ios alone
+	if out, err := runLogin(t, "login"); err != nil || !strings.Contains(out, "as user:ana@example.com (corp)") {
+		t.Fatalf("a bare login with one issuer = %q, %v", out, err)
+	}
+	if _, err := runLogin(t, "login", "github"); err == nil || !strings.Contains(err.Error(), "nobody's to log in to") {
+		t.Errorf("logging in to an ios-only provider: err = %v, want a plain refusal", err)
+	}
+}
+
 func TestAnExpiredLoginIsRenewed(t *testing.T) {
 	_, l := serveLogin(t, true)
 	if _, err := runCLI(t, "login"); err != nil {
@@ -341,5 +361,48 @@ func TestAQuietProviderFailsTheRenewalAndDoesNotHangIt(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("whoami hung on a provider that does not answer")
+	}
+}
+
+// `verse login --link` at a provider whose accounts an io proves claims the account and prints the
+// words to say; the verse binds it when the io hears them, so no login is needed first.
+func TestLoginLinkClaimsAnAccountAnIoProves(t *testing.T) {
+	store := entitytest.Store(t)
+	srv := versed.NewWithStore(versed.ScriptedBuilder, store)
+	if err := srv.SetAuth(versed.Auth{Mode: versed.AuthOptional, Providers: map[string]versed.AuthProvider{
+		"slack":  {IOs: []string{"workspace"}},
+		"github": {IOs: []string{"gh"}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	testAddr = strings.TrimPrefix(ts.URL, "http://")
+	cfg := filepath.Join(t.TempDir(), "verse.tony")
+	body := "auth: {principal: {providers: {slack: {ios: [workspace]}, github: {ios: [gh]}}}}\n"
+	if err := os.WriteFile(cfg, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(config.EnvConfigPath, cfg)
+
+	out, err := runLogin(t, "login", "--link", "slack")
+	if err != nil || !strings.Contains(out, "/verse link ") || !strings.Contains(out, "(workspace)") {
+		t.Fatalf("login --link slack = %q, %v", out, err)
+	}
+	nonce := strings.Fields(out[strings.Index(out, "/verse link "):])[2]
+	rec, ok, err := entity.As(store, entity.SystemIdentity).Get(entity.VerseRef("identity", "slack", "claim", nonce))
+	if err != nil || !ok || entity.Str(rec.Payload, "principal") != tester || entity.Str(rec.Payload, "claimant") != "asserted" {
+		t.Fatalf("the claim = principal %q claimant %q, want %q asserted (ok=%v err=%v)", entity.Str(rec.Payload, "principal"), entity.Str(rec.Payload, "claimant"), tester, ok, err)
+	}
+	// GitHub names the login; without one the verse says so.
+	if _, err := runLogin(t, "login", "--link", "github"); err == nil || !strings.Contains(err.Error(), "names the GitHub login") {
+		t.Errorf("login --link github without --account: %v", err)
+	}
+	if out, err := runLogin(t, "login", "--link", "github", "--account", "@ana-gh"); err != nil || !strings.Contains(out, "/verse link ") {
+		t.Errorf("login --link github --account = %q, %v", out, err)
+	}
+	// Nothing to log in to: the provider is nobody's issuer.
+	if _, err := runLogin(t, "login", "slack"); err == nil || !strings.Contains(err.Error(), "no issuer") {
+		t.Errorf("login at an ios provider: %v", err)
 	}
 }

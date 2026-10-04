@@ -106,7 +106,6 @@ says so, and says nothing about what is installed.
 |---|---|
 | `runner` | the resolved URL, or `local`. A restart attaches again with it. |
 | `runnerName` | the `verse.runners.<name>` that the spawn named, when it named one |
-| `credential` | `{audience, sub, jti, expires}` of the token verse signed for the task, when its spawn asked for one ([gates](gates.md#a-credential-for-what-a-gate-let-through)). Never the token. |
 | `startedAt` | when the task began. Verse carries it across a new attach, and does not stamp it again. |
 
 A restart can act on the URL with nothing else present. So removing a runner entity cannot

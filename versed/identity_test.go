@@ -110,6 +110,10 @@ func verify(t *testing.T, ts *httptest.Server, as, nonce string) (int, map[strin
 
 func TestAnAccountSaidFromIsBoundAndLookedUp(t *testing.T) {
 	srv, ts := identityServer(t)
+	// A GitHub claim names the login it claims.
+	if code, _ := call(t, http.MethodPost, idAna, ts.URL+"/accounts/github", `{}`); code != http.StatusBadRequest {
+		t.Errorf("a github claim without a login = %d, want 400", code)
+	}
 	nonce := claim(t, ts, idAna, "ana-gh")
 
 	// Not said yet: the claim stands, to be verified once the comment is reflected.
@@ -267,7 +271,7 @@ func TestABindingSaysItsClaimant(t *testing.T) {
 func TestASubIsOneSegmentUnderItsProvider(t *testing.T) {
 	srv, ts := identityServer(t)
 	sys := entity.As(srv.Store, entity.SystemIdentity)
-	const provider, sub = "dex", "Cg.a:b/c=="
+	const provider, sub = "corp", "Cg.a:b/c=="
 	binding := func(who string) entity.Obj {
 		return entity.Obj{"principal": who, "iss": "https://idp.example.com", "sub": sub, "claimant": claimantAsserted}
 	}

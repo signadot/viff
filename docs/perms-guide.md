@@ -93,15 +93,19 @@ things then differ from what is above:
 - `verse whoami` says how verse knows you: the provider's name, or `asserted` for a name it took
   as given.
 - `-as` still names somebody else, and the CLI then sends that name alone, as an assertion. So
-  does a CLI with `agent:` in its config. Agents and runners are not verified. They are still
-  whoever they say they are.
+  does a CLI with `agent:` in its config. People are verified first, and so are the
+  deployment's own ios, which present their own token; an io that answers for you from Slack
+  relays you through your account's binding, and the ballot says so. Agents and runners are
+  next. Until that is built, an agent or a runner is whoever it says it is.
 - A token that does not check out is refused with `401`, and the refusal says why. Verse does not
   fall back to a name sent beside it.
 - A verse may insist (`mode: required`). It then refuses a request that names a person and
   carries no token, with `401` and a line that says to log in.
 
 If you have an account at a second provider the verse names, `verse login --link <provider>`
-binds it to who you are logged in as. Either account's token is then you.
+binds it to who you are logged in as. Either account's token is then you. Where the provider is
+an app's users rather than an issuer (`slack`), the same command prints a line to say to the app
+from your account, and the verse binds the account when the app's io hears it.
 
 [Who a request is from](reference/perms.md#who-a-request-is-from) has the rules.
 

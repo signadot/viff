@@ -261,6 +261,15 @@ func (s *AuthConfig) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["principal"] = node
 	}
 
+	// Field: Iod (optional)
+	if !isZeroValue_AuthConfig_Iod(s.Iod) {
+		node, err = s.Iod.ToTonyIR(opts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert field %q: %w", "Iod", err)
+		}
+		irMap["iod"] = node
+	}
+
 	// Field: Issuer (optional)
 	if !isZeroValue_AuthConfig_Issuer(s.Issuer) {
 		node, err = s.Issuer.ToTonyIR(opts...)
@@ -307,6 +316,11 @@ func (s *AuthConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error 
 			// Field: Principal
 			if err := s.Principal.FromTonyIR(fieldNode, opts...); err != nil {
 				return fmt.Errorf("field %q: %w", "principal", err)
+			}
+		case "iod":
+			// Field: Iod
+			if err := s.Iod.FromTonyIR(fieldNode, opts...); err != nil {
+				return fmt.Errorf("field %q: %w", "iod", err)
 			}
 		case "issuer":
 			// Field: Issuer
@@ -594,6 +608,11 @@ func (s *AuthProviderConfig) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error)
 		irMap["ios"] = ir.FromSlice(slice)
 	}
 
+	// Field: Acts
+	if s.Acts != "" {
+		irMap["acts"] = ir.FromString(string(s.Acts))
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -673,6 +692,12 @@ func (s *AuthProviderConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption
 			} else {
 				return fmt.Errorf("%s: expected array, got %v", "field \"ios\"", fieldNodeUnwrapped.Type)
 			}
+		case "acts":
+			// Field: Acts
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "acts", fieldNodeUnwrapped.Type)
+			}
+			s.Acts = string(fieldNodeUnwrapped.String)
 		default:
 			if gomap.IsStrict(opts...) {
 				return fmt.Errorf("unknown field %q for AuthProviderConfig", fieldName.String)
@@ -698,6 +723,358 @@ func (s *AuthProviderConfig) ToTony(opts ...gomap.MapOption) ([]byte, error) {
 
 // FromTony parses Tony format bytes and populates AuthProviderConfig.
 func (s *AuthProviderConfig) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
+// ToTonyIR converts IodAuthConfig to a Tony IR node.
+func (s *IodAuthConfig) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	var node *ir.Node
+	var err error
+	_ = node // suppress unused variable error
+	_ = err  // suppress unused variable error
+
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: Issuer
+	if s.Issuer != "" {
+		irMap["issuer"] = ir.FromString(string(s.Issuer))
+	}
+
+	// Field: Audience
+	if s.Audience != "" {
+		irMap["audience"] = ir.FromString(string(s.Audience))
+	}
+
+	// Field: Accounts
+	if len(s.Accounts) > 0 {
+		mapNodes := make(map[string]*ir.Node)
+		for k, v := range s.Accounts {
+			node, err = v.ToTonyIR(opts...)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert map value at key %q: %w", k, err)
+			}
+			mapNodes[k] = node
+		}
+		irMap["accounts"] = ir.FromMap(mapNodes)
+	}
+
+	// Field: Static
+	if len(s.Static) > 0 {
+		slice := make([]*ir.Node, len(s.Static))
+		for i, v := range s.Static {
+			node, err = v.ToTonyIR(opts...)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert slice element %d: %w", i, err)
+			}
+			slice[i] = node
+		}
+		irMap["static"] = ir.FromSlice(slice)
+	}
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates IodAuthConfig from a Tony IR node.
+func (s *IodAuthConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for IodAuthConfig, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "issuer":
+			// Field: Issuer
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "issuer", fieldNodeUnwrapped.Type)
+			}
+			s.Issuer = string(fieldNodeUnwrapped.String)
+		case "audience":
+			// Field: Audience
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "audience", fieldNodeUnwrapped.Type)
+			}
+			s.Audience = string(fieldNodeUnwrapped.String)
+		case "accounts":
+			// Field: Accounts
+			if fieldNodeUnwrapped.Type == ir.ObjectType {
+				m := make(map[string]IodAccountConfig)
+				irMap := ir.ToMap(fieldNodeUnwrapped)
+				for k, v := range irMap {
+					val := IodAccountConfig{}
+					if err := val.FromTonyIR(v, opts...); err != nil {
+						return fmt.Errorf("failed to convert map value at key %q: %w", k, err)
+					}
+					m[k] = val
+				}
+				s.Accounts = m
+			} else {
+				return fmt.Errorf("%s: expected object, got %v", "field \"accounts\"", fieldNodeUnwrapped.Type)
+			}
+		case "static":
+			// Field: Static
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]IodStaticConfig, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					elem := IodStaticConfig{}
+					if err := elem.FromTonyIR(v, opts...); err != nil {
+						return fmt.Errorf("failed to convert slice element %d: %w", i, err)
+					}
+					slice[i] = elem
+				}
+				s.Static = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"static\"", fieldNodeUnwrapped.Type)
+			}
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for IodAuthConfig", fieldName.String)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts IodAuthConfig to Tony format bytes.
+func (s *IodAuthConfig) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates IodAuthConfig.
+func (s *IodAuthConfig) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
+// ToTonyIR converts IodAccountConfig to a Tony IR node.
+func (s *IodAccountConfig) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: Principal
+	irMap["principal"] = ir.FromString(string(s.Principal))
+
+	// Field: IO
+	if s.IO != "" {
+		irMap["io"] = ir.FromString(string(s.IO))
+	}
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates IodAccountConfig from a Tony IR node.
+func (s *IodAccountConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for IodAccountConfig, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "principal":
+			// Field: Principal
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "principal", fieldNodeUnwrapped.Type)
+			}
+			s.Principal = string(fieldNodeUnwrapped.String)
+		case "io":
+			// Field: IO
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "io", fieldNodeUnwrapped.Type)
+			}
+			s.IO = string(fieldNodeUnwrapped.String)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for IodAccountConfig", fieldName.String)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts IodAccountConfig to Tony format bytes.
+func (s *IodAccountConfig) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates IodAccountConfig.
+func (s *IodAccountConfig) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
+// ToTonyIR converts IodStaticConfig to a Tony IR node.
+func (s *IodStaticConfig) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: File
+	irMap["file"] = ir.FromString(string(s.File))
+
+	// Field: Principal
+	irMap["principal"] = ir.FromString(string(s.Principal))
+
+	// Field: IO
+	if s.IO != "" {
+		irMap["io"] = ir.FromString(string(s.IO))
+	}
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates IodStaticConfig from a Tony IR node.
+func (s *IodStaticConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for IodStaticConfig, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "file":
+			// Field: File
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "file", fieldNodeUnwrapped.Type)
+			}
+			s.File = string(fieldNodeUnwrapped.String)
+		case "principal":
+			// Field: Principal
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "principal", fieldNodeUnwrapped.Type)
+			}
+			s.Principal = string(fieldNodeUnwrapped.String)
+		case "io":
+			// Field: IO
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "io", fieldNodeUnwrapped.Type)
+			}
+			s.IO = string(fieldNodeUnwrapped.String)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for IodStaticConfig", fieldName.String)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts IodStaticConfig to Tony format bytes.
+func (s *IodStaticConfig) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates IodStaticConfig.
+func (s *IodStaticConfig) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
 	if err != nil {
 		return err
@@ -1130,6 +1507,10 @@ func isZeroValue_Config_Auth(v AuthConfig) bool {
 }
 
 func isZeroValue_AuthConfig_Principal(v PrincipalAuthConfig) bool {
+	return reflect.ValueOf(v).IsZero()
+}
+
+func isZeroValue_AuthConfig_Iod(v IodAuthConfig) bool {
 	return reflect.ValueOf(v).IsZero()
 }
 

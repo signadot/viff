@@ -39,13 +39,16 @@ type Resolution struct {
 	// Edit is the edit of the ask this answers, where the answerer named one (GateQuestion.Edit);
 	// zero is the edit standing when it arrives.
 	Edit int
-	// Via is the resolver an answer came through, `via:verse.resolvers.<name>`, where By is the
-	// party it answered for (9ce3bva0, stage 4): the ballot is theirs, given by the resolver
-	// they granted. Empty for an answer somebody gave as themselves.
+	// Via is the party an answer came through, where By is whose answer it is. A resolver
+	// answering for a party it serves (9ce3bva0, stage 4), `via:verse.resolvers.<name>`: the
+	// ballot is the party's, given by the resolver they granted, and nothing authenticated them.
+	// Or an io relaying a person it identified, `agent:slack-io`: the ballot is the person's, who
+	// the io's provider vouched for, and Authenticated says so. Empty for an answer somebody gave
+	// as themselves. The two read apart by Authenticated.
 	Via string
-	// Authenticated is how the answerer was authenticated when they answered as themselves: the
-	// identity provider that verified them, or `asserted` for one who was whoever their request
-	// said. Empty where nobody said: an answer a resolver gave for a party, whom nothing
+	// Authenticated is how the answerer was authenticated: the identity provider that verified
+	// them, the provider whose io relayed them, or `asserted` for one who was whoever their
+	// request said. Empty where nobody said: an answer a resolver gave for a party, whom nothing
 	// authenticated, and one the runtime settled.
 	Authenticated string
 }

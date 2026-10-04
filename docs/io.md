@@ -571,6 +571,13 @@ one principal per request. Three invariants hold for every connector:
 
 An answer recorded as the io's own principal would be an answer that nobody gave.
 
+Where the verse verifies people, the connector presents its own token and names the account the
+person is, and verse admits the request as the person through that account's binding, from a
+connector the deployment trusts for the provider
+([a person relayed by a trusted io](reference/perms.md#a-person-relayed-by-a-trusted-io)). The
+invariants hold the same way: the request is made as the person, and the record says which
+connector it came through.
+
 ## A Source is not a controller, and cannot be
 
 A `Source` looks like a `libctl.Handler` run under `RunController`, mounted at its own address.

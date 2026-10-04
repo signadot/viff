@@ -41,6 +41,16 @@ const PrincipalHeader = "Verse-Principal"
 // service is them acting as it.
 const ResolverHeader = "Verse-Resolver"
 
+// ForPrincipalHeader names the principal a request is made for, when its caller acts for somebody
+// else, as the caller knows them. It is the one shape for a request made for another, whoever the
+// caller is. An io relaying a person it identified names the account, `<provider>:<id>`: the
+// Slack member who typed, the GitHub login who commented. The io's own bearer proves the io, this
+// header is what the io saw, and PrincipalHeader is who it concluded; versed admits the request as
+// that person only through the account's binding, and only from an io the deployment trusts for
+// the provider. A principal acting for another principal by name is delegation, which the door
+// does not admit.
+const ForPrincipalHeader = "Verse-For-Principal"
+
 // Version is this binary's own verse version, read from its build info — the version that
 // actually shipped, not one written down somewhere and left behind. It is "(devel)" for a
 // build from a checkout, which is what `go run ./cmd/verse` and every test binary report, and

@@ -245,33 +245,68 @@ auth:
   principal:
     mode: optional
     providers:
-      google:
-        issuer: https://accounts.google.com
-        clientId: "1234.apps.googleusercontent.com"
+      corp:
+        issuer: https://login.example.com
+        clientId: verse-cli
         domains: [example.com]
       github:
         ios: [github]
+      slack:
+        ios: [workspace]
+        domains: [example.com]
 ```
 
 - `mode` is `off`, `optional` or `required`. Unset is `off`: no token is verified. Under
   `optional`, a token is verified where a request carries one, and a request without one is
   still whoever it says it is. Under `required`, a request that names a person and carries no
-  token is refused. Agents and runners are not verified under any mode
-  ([what `required` does not guarantee](perms.md#who-a-request-is-from)).
-- `providers` are the OpenID Connect issuers whose id_tokens the verse accepts. Each is under a
-  name the deployment gives it. The name is where its accounts are bound
-  (`verse.identity.<name>`), so it is one plain word. `github` is taken:
-  [GitHub accounts](perms.md#accounts-in-other-systems) are bound under it another way.
-- `issuer` is the issuer's URL. `clientId` is the OAuth client registered there for this verse.
-  It is a public client, with no secret. Quote a `clientId` that starts with a digit.
-- `domains` are the email domains a person may arrive from the first time. With none, only an
-  account that is already bound is admitted.
-- `github: {ios: [<name>…]}` names the installed ios that verse trusts as evidence of a GitHub
-  account ([accounts in other systems](perms.md#accounts-in-other-systems)). It is the only
-  thing the `github` entry takes. With none, no GitHub account can be proved.
+  token is refused. The modes verify people, who come first. Agents and runners are next, and
+  are taken as given until then ([who a request is from](perms.md#who-a-request-is-from)).
+- `providers` are the parties whose word says which account a person is. Each is under a name
+  the deployment gives it. The name is where its accounts are bound (`verse.identity.<name>`),
+  so it is one plain word, and `iod` is the ios'. A provider is one of two kinds:
+    - **An issuer**, with `issuer`, the OpenID Connect issuer's URL, and `clientId`, the OAuth
+      client registered there for this verse: a public client, with no secret. Quote a
+      `clientId` that starts with a digit. The verse accepts its id_tokens.
+    - **Ios**, with `ios`, the installed ios the verse trusts for the provider's accounts, by the
+      name each is installed under. `github`'s ios reflect the comments that prove a GitHub
+      account, and `slack`'s io relays the member who typed
+      ([a person relayed by a trusted io](perms.md#a-person-relayed-by-a-trusted-io)). GitHub
+      is no issuer for people, so `github` is always of this kind.
+- `domains` are the email domains a person may arrive from the first time, through a token or
+  relayed by a trusted io. With none, only an account that is already bound is admitted.
+- `acts`, on a provider with ios, is what a trusted io may do as a person it relays: `control`
+  (unset), the reads and the acts that answer, say and steer, which is all an io does; or `any`.
 
 `verse up` refuses to start on an `auth` block it cannot serve. It does not read a provider at
 start, so a provider that is down stops only the requests that carry its tokens.
+
+**`auth: {iod: {…}}`** says how the deployment's own ios are authenticated
+([ios at the door](perms.md#ios-at-the-door)). The server reads it.
+
+```tony
+auth:
+  iod:
+    issuer: https://oidc.eks.us-west-2.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE
+    audience: verse
+    accounts:
+      "system:serviceaccount:verse:slack-io":  {principal: "agent:slack-io", io: workspace}
+      "system:serviceaccount:verse:github-io": {principal: "agent:github-io", io: github}
+    static:
+      - {file: /var/run/verse/git-io.token, principal: "agent:git-io"}
+```
+
+- `issuer` is the issuer of the ios' workload tokens. On Kubernetes it is the cluster's own,
+  which signs a pod's projected service-account token; `kubectl get --raw
+  /.well-known/openid-configuration` prints it, and on EKS it is
+  `aws eks describe-cluster --query cluster.identity.oidc.issuer`. Verse reads its keys as it
+  reads a provider's.
+- `audience` is what the tokens' `aud` holds, which is what the pod's token was asked for.
+  Unset is `verse`.
+- `accounts` maps a token's subject to the io it is: the `agent:` it acts as, and `io`, the
+  name it is installed under, which is how a provider's `ios` names it. An io that relays nobody
+  needs no `io`. The accounts are written at start, never at first sight.
+- `static` is the ios of a deployment with no issuer, a laptop or CI: the path of a file holding
+  the token each presents, read at start. The verse keeps the hash and never the token.
 
 **`auth: {issuer: {url, key}}`** makes the verse an issuer of its own tokens. The server reads
 it.
@@ -336,6 +371,7 @@ Every key, and the variable that sets it:
 | `format: {default, output, wire}` | `VERSE_FORMAT`, `VERSE_OUTPUT_FORMAT`, `VERSE_WIRE_FORMAT` | every command | the format to write in: `tony` or `yaml` ([representation](representation.md)) |
 | `systemCharter` | `VERSE_SYSTEM_CHARTER` | `verse up` | a charter file installed at start as the system |
 | `auth: {principal: {mode, providers}}` | | `verse up`, `verse login` | the identity providers whose tokens say who a request is from |
+| `auth: {iod: {issuer, audience, accounts, static}}` | | `verse up` | the issuer of the ios' workload tokens, and which io each is |
 | `auth: {issuer: {url, key}}` | | `verse up` | the address and signing key the verse issues its own tokens with |
 | `perms: {child-grants, admins}` | `VERSE_PERMS_ADMINS` for `admins`, comma-separated | `verse up` | what the root holds out, and who may take a top-level place |
 | `tripDuration` | | `verse up` | how long a firing waits when the [cycle throttle](../cycle-throttle.md) trips. A duration, `1s` by default; `0` refuses the firing |

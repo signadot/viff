@@ -169,9 +169,10 @@ func answerersOf(sys entity.Store, p launch.Passed) ([]map[string]any, error) {
 	return out, nil
 }
 
-// answerer is one answerer as a credential names them: the principal, the resolver their answer
-// came through where one gave it for them, and how they were authenticated where they answered
-// as themselves.
+// answerer is one answerer as a credential names them: the principal, the party their answer came
+// through where it did not come from them directly (a resolver that gave it for them, or an io
+// that relayed them), and how they were authenticated. A resolver's answer has `via` and no
+// `authenticated`; a relayed person's has both.
 func answerer(who, via, authenticated string) map[string]any {
 	a := map[string]any{"principal": who}
 	if via != "" {

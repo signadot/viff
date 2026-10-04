@@ -713,8 +713,9 @@ func CastBallot(store entity.Store, id string, res task.Resolution) (count int, 
 	return Tally(e.Payload)[res.Chosen()], nil
 }
 
-// ballot is one answerer's entry under `ballots`: what they chose, when, what they said, and how
-// they were authenticated when they answered as themselves.
+// ballot is one answerer's entry under `ballots`: what they chose, when, what they said, the party
+// it came through where one did (a resolver for them, an io relaying them), and how they were
+// authenticated.
 // Keyed by who, so an answerer who changes their mind replaces their own ballot rather than
 // casting two, and two answerers cannot lose each other's.
 func ballot(res task.Resolution) entity.Obj {

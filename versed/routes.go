@@ -21,6 +21,11 @@ type router struct {
 	// unattributed is the patterns a request may WRITE through without saying who makes it
 	// (handleUnattributed). Everything else that is not a read is refused at the door.
 	unattributed map[string]bool
+	// control is the patterns a trusted io may act through for a person it relays
+	// (handleControl): answering a question, saying on it, steering a task or a flow. Said at
+	// registration, so a route renamed or added carries its own answer to "may an io do this for
+	// somebody", rather than a list elsewhere having to be remembered.
+	control map[string]bool
 }
 
 // returns is what a route answers with: the signature of ONE document, and how many of them
@@ -69,6 +74,16 @@ func (rt *router) handleUnattributed(pattern string, h http.HandlerFunc, req str
 		rt.unattributed = map[string]bool{}
 	}
 	rt.unattributed[pattern] = true
+	rt.handle(pattern, h, req, ret)
+}
+
+// handleControl is handle for a route that is a control act: what a person does to a question or
+// a run, which is all an io relaying a person does for them by default (iod.go).
+func (rt *router) handleControl(pattern string, h http.HandlerFunc, req string, ret returns) {
+	if rt.control == nil {
+		rt.control = map[string]bool{}
+	}
+	rt.control[pattern] = true
 	rt.handle(pattern, h, req, ret)
 }
 
