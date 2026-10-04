@@ -187,7 +187,7 @@ func bearer(ctx context.Context) (string, error) {
 	if exp, err := time.Parse(time.RFC3339, l.Expiry); err == nil && time.Until(exp) > refreshMargin {
 		return l.IDToken, nil
 	}
-	again := fmt.Sprintf("log in again with `verse login %s`, or drop the login with `verse logout`", provider)
+	again := fmt.Sprintf("log in again with `verse account login %s`, or drop the login with `verse account logout`", provider)
 	if l.RefreshToken == "" {
 		return "", fmt.Errorf("the login to %s through %s has expired, and %s gave nothing to renew it with: %s",
 			g.Addr, provider, provider, again)
@@ -260,7 +260,7 @@ func loginSetup(ctx context.Context, name string) (*loginProvider, error) {
 	}
 	return &loginProvider{
 		name:     name,
-		conf:     oauth2.Config{ClientID: p.ClientID, Endpoint: prov.Endpoint(), Scopes: scopes},
+		conf:     oauth2.Config{ClientID: p.ClientID, ClientSecret: p.ClientSecret, Endpoint: prov.Endpoint(), Scopes: scopes},
 		verifier: prov.Verifier(&oidc.Config{ClientID: p.ClientID}),
 	}, nil
 }
@@ -385,9 +385,9 @@ func (p *loginProvider) obtain(cc *cli.Context) (*oauth2.Token, error) {
 			res.code = q.Get("code")
 		}
 		if res.err != nil {
-			http.Error(w, "verse login: "+res.err.Error(), http.StatusBadRequest)
+			http.Error(w, "verse account login: "+res.err.Error(), http.StatusBadRequest)
 		} else {
-			fmt.Fprintln(w, "verse login: logged in. You can close this window.")
+			fmt.Fprintln(w, "verse account login: logged in. You can close this window.")
 		}
 		select {
 		case got <- res:
@@ -426,18 +426,70 @@ func whoIs() (principal, by string, err error) {
 	return out.Principal, out.By, nil
 }
 
-type loginConfig struct {
+// accountConfig is `verse account`: who you are to this verse, and the accounts in other systems
+// that are you. Bare, it lists your bindings; `-link` binds one more; `login` and `logout` are
+// its verbs.
+type accountConfig struct {
 	*cli.Command
-	Link    string `cli:"name=link desc='link your account at this provider to who you are logged in as, in place of logging in with it'"`
-	Account string `cli:"name=account desc='with --link, the account you claim at a provider whose accounts an io proves (a GitHub login); Slack needs none'"`
+	Link    string `cli:"name=link desc='bind your account at this provider to who you are: a login there, or, at a provider whose accounts an io proves (slack, github), a nonce to say from the account'"`
+	Account string `cli:"name=account desc='with -link, the account you claim at a provider whose accounts an io proves (a GitHub login); Slack needs none'"`
 }
+
+func accountCmd() *cli.Command {
+	cfg := &accountConfig{}
+	return cli.NewCommandAt(&cfg.Command, "account").
+		WithAliases("accounts").
+		WithSynopsis("account | account login [<provider>] | account logout [<provider>] | account -link <provider> [-account <login>] — "+
+			"who you are to this verse: bare, the accounts in other systems bound to you; login proves who you are to an "+
+			"identity provider the verse names; -link binds an account in another system to who you are").
+		WithOpts(mustOpts(cfg)...).
+		WithSubs(loginCmd(), logoutCmd()).
+		WithRun(cfg.run)
+}
+
+func (cfg *accountConfig) run(cc *cli.Context, args []string) error {
+	args, err := cfg.Parse(cc, args)
+	if err != nil {
+		return err
+	}
+	if handled, err := dispatch(cfg.Command, cc, args); handled {
+		return err
+	}
+	if cfg.Link != "" {
+		if len(args) > 0 {
+			return fmt.Errorf("%w: account -link <provider> names the one provider", cli.ErrUsage)
+		}
+		if appCfg.Agent != "" {
+			return fmt.Errorf("account -link: this CLI acts as the agent %q (`agent:` in its config), and an account is a person's", appCfg.Agent)
+		}
+		if p, ok := appCfg.Auth.Principal.Providers[cfg.Link]; ok && p.Issuer == "" && len(p.IOs) > 0 {
+			return claimThrough(cc, cfg.Link, cfg.Account)
+		}
+		if cfg.Account != "" {
+			return fmt.Errorf("%w: -account goes with a -link provider whose accounts an io proves", cli.ErrUsage)
+		}
+		return link(cc, cfg.Link)
+	}
+	if cfg.Account != "" {
+		return fmt.Errorf("%w: -account goes with -link", cli.ErrUsage)
+	}
+	if err := noArgs(cfg.Command, "account", args); err != nil {
+		return err
+	}
+	resp, err := httpGet("/accounts", nil)
+	if err != nil {
+		return fmt.Errorf("account: %w", err)
+	}
+	return printBody(cc, resp)
+}
+
+type loginConfig struct{ *cli.Command }
 
 func loginCmd() *cli.Command {
 	cfg := &loginConfig{}
 	return cli.NewCommandAt(&cfg.Command, "login").
-		WithSynopsis("login [<provider>] | login --link <provider> — prove who you are to an identity provider this verse names, " +
-			"and act as that person from then on; --link binds a second provider's account to who you already are").
-		WithOpts(mustOpts(cfg)...).
+		WithSynopsis("login [<provider>] — prove who you are to an identity provider this verse names, " +
+			"and act as that person from then on").
 		WithRun(cfg.run)
 }
 
@@ -449,19 +501,7 @@ func (cfg *loginConfig) run(cc *cli.Context, args []string) error {
 	if appCfg.Agent != "" {
 		return fmt.Errorf("login: this CLI acts as the agent %q (`agent:` in its config), and a login is a person's", appCfg.Agent)
 	}
-	if cfg.Link != "" {
-		if len(args) > 0 {
-			return fmt.Errorf("%w: login --link <provider> names the one provider", cli.ErrUsage)
-		}
-		if p, ok := appCfg.Auth.Principal.Providers[cfg.Link]; ok && p.Issuer == "" && len(p.IOs) > 0 {
-			return claimThrough(cc, cfg.Link, cfg.Account)
-		}
-		if cfg.Account != "" {
-			return fmt.Errorf("%w: --account goes with a --link provider whose accounts an io proves", cli.ErrUsage)
-		}
-		return link(cc, cfg.Link)
-	}
-	name, err := pickProvider(args, "login [<provider>]")
+	name, err := pickProvider(args, "account login [<provider>]")
 	if err != nil {
 		return err
 	}
@@ -516,33 +556,33 @@ func (cfg *loginConfig) run(cc *cli.Context, args []string) error {
 func link(cc *cli.Context, name string) error {
 	l, current, err := currentLogin()
 	if err != nil {
-		return fmt.Errorf("login --link: %w", err)
+		return fmt.Errorf("account -link: %w", err)
 	}
 	if l == nil {
-		return fmt.Errorf("login --link: an account is linked to who you are logged in as, and this CLI is not "+
-			"logged in to %s: `verse login` first", g.Addr)
+		return fmt.Errorf("account -link: an account at an identity provider is linked to who you are logged in "+
+			"as, and this CLI is not logged in to %s: `verse account login` first", g.Addr)
 	}
 	if name == current {
-		return fmt.Errorf("login --link: %s is the provider you are logged in through", name)
+		return fmt.Errorf("account -link: %s is the provider you are logged in through", name)
 	}
 	p, err := discover(cc.Go, name)
 	if err != nil {
-		return fmt.Errorf("login --link: %w", err)
+		return fmt.Errorf("account -link: %w", err)
 	}
 	tok, err := p.obtain(cc)
 	if err != nil {
-		return fmt.Errorf("login --link: %w", err)
+		return fmt.Errorf("account -link: %w", err)
 	}
 	raw, _, err := p.idToken(cc.Go, tok)
 	if err != nil {
-		return fmt.Errorf("login --link: %s %w", name, err)
+		return fmt.Errorf("account -link: %s %w", name, err)
 	}
 	resp, err := httpPost("/accounts/"+url.PathEscape(name)+"/link", map[string]any{"idToken": raw})
 	if err != nil {
-		return fmt.Errorf("login --link: %w", err)
+		return fmt.Errorf("account -link: %w", err)
 	}
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		return statusError(resp, "login --link")
+		return statusError(resp, "account -link")
 	}
 	var row struct {
 		Principal string `tony:"field=principal"`
@@ -565,10 +605,10 @@ func claimThrough(cc *cli.Context, name, account string) error {
 	}
 	resp, err := httpPost("/accounts/"+url.PathEscape(name), body)
 	if err != nil {
-		return fmt.Errorf("login --link: %w", err)
+		return fmt.Errorf("account -link: %w", err)
 	}
 	if resp.StatusCode != http.StatusCreated {
-		return statusError(resp, "login --link")
+		return statusError(resp, "account -link")
 	}
 	var claim struct {
 		Say     string `tony:"field=say"`
@@ -670,7 +710,7 @@ func whoamiCmd() *cli.Command {
 				return err
 			}
 			if who == "" {
-				fmt.Fprintln(cc.Out, "nobody: this CLI names no user toward "+g.Addr+" (`verse login`, or `user:` in its config)")
+				fmt.Fprintln(cc.Out, "nobody: this CLI names no user toward "+g.Addr+" (`verse account login`, or `user:` in its config)")
 				return nil
 			}
 			fmt.Fprintf(cc.Out, "%s (%s)\n", who, by)

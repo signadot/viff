@@ -39,6 +39,7 @@ context:
 define:
   acts: .[string]
   clientId: .[string]
+  clientSecret: .[string]
   domains: .[array(string)]
   ios: .[array(string)]
   issuer: .[string]

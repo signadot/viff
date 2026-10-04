@@ -425,7 +425,7 @@ func (s *Server) linkAccount(w http.ResponseWriter, r *http.Request) {
 	by := authenticatedBy(r)
 	if by == claimantAsserted {
 		http.Error(w, "an account is linked by a caller an identity provider has verified: log in "+
-			"(`verse login`), then link", http.StatusForbidden)
+			"(`verse account login`), then link", http.StatusForbidden)
 		return
 	}
 	v, refused := s.verifyToken(r.Context(), strings.TrimSpace(body.IDToken))

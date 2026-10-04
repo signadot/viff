@@ -1217,7 +1217,7 @@ var asOverride string
 
 // principal resolves who a command acts as, spelled in the grammar (entity.Grammar): its --as
 // where it took one, else the config's `agent:` as `agent:<name>`, else whoever is logged in
-// toward this verse (`verse login`), else the config's `user:`, else the local user when the verse
+// toward this verse (`verse account login`), else the config's `user:`, else the local user when the verse
 // is on this machine (localUser) and nobody when it is not. A login comes before `user:` because
 // its token is what the request carries, and the verse makes the request as whoever that proves. --as and
 // `user:` take a principal or a bare email, which is `user:<email>`; a bare word is refused

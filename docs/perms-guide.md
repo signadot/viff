@@ -74,38 +74,33 @@ Verse refuses a bare word such as `-as coderunner`, and the refusal gives the gr
 [self-asserted](perms.md#principals-and-grantees): everything below is about what a name may do,
 not about who holds it.
 
-**A verse can verify a person instead.** Where its config names an identity provider, you log in
-to that provider, and the CLI sends the token it is given in place of a name. Verse checks the
-token, and the request is made as the person it proves.
+**You are also somebody in Slack and on GitHub.** When you answer a verse question from a Slack
+thread or a pull request comment, the io that heard you asks the verse to count it as you. The
+verse does that only through an **account binding**: a record that says this Slack member, or
+this GitHub login, is this principal. You make the binding yourself, once per system, by proving
+to the app that you are the verse user:
 
 ```sh
-verse login          # prints a URL, and a code to confirm there
-verse whoami         # user:walter@example.com (google)
-verse logout
+verse account -link slack                       # prints: /verse link <nonce>
+verse account -link github -account scott-cotton
+verse account                                   # the bindings that are you
 ```
 
-The CLI's config names the same providers as the verse's (`auth.principal.providers`). Four
-things then differ from what is above:
+Say the line it prints from your own account: to the Slack app as `/verse link <nonce>`, or in
+a comment on a pull request the github io is asking a question on. The io reports that your
+account said it, the verse binds the account to you, and from then on your replies there count
+as you. The ballot records that you answered through Slack or GitHub, and through which io.
+Nobody but you can make the binding, and a nonce said by anyone else binds nothing.
 
-- The name comes from the account, not from the config. The first time verse sees an account, it
-  binds it to `user:<the account's email>`, and from then on that account is that principal. A
-  login comes before `user:` in the config.
-- `verse whoami` says how verse knows you: the provider's name, or `asserted` for a name it took
-  as given.
-- `-as` still names somebody else, and the CLI then sends that name alone, as an assertion. So
-  does a CLI with `agent:` in its config. People are verified first, and so are the
-  deployment's own ios, which present their own token; an io that answers for you from Slack
-  relays you through your account's binding, and the ballot says so. Agents and runners are
-  next. Until that is built, an agent or a runner is whoever it says it is.
-- A token that does not check out is refused with `401`, and the refusal says why. Verse does not
-  fall back to a name sent beside it.
-- A verse may insist (`mode: required`). It then refuses a request that names a person and
-  carries no token, with `401` and a line that says to log in.
-
-If you have an account at a second provider the verse names, `verse login --link <provider>`
-binds it to who you are logged in as. Either account's token is then you. Where the provider is
-an app's users rather than an issuer (`slack`), the same command prints a line to say to the app
-from your account, and the verse binds the account when the app's io hears it.
+**A verse can verify a person instead of taking their word.** Where its config names an identity
+provider, `verse account login` logs you in there, and the CLI sends the token it is given in
+place of a name. Verse checks the token, and the request is made as the person it proves.
+`verse whoami` then says how verse knows you: the provider's name, or `asserted` for a name it
+took as given. `-as`, and `agent:` in the config, still send a bare name. A verse that insists
+(`mode: required`) refuses a person who carries no token, with `401` and a line that says to log
+in. People are verified first, and so are the deployment's own ios, which present their own
+tokens. Agents and runners are next. Until that is built, an agent or a runner is whoever it
+says it is.
 
 [Who a request is from](reference/perms.md#who-a-request-is-from) has the rules.
 

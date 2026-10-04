@@ -22,7 +22,7 @@ import (
 	"github.com/signadot/verse/versed/idptest"
 )
 
-// `verse login` proves who is at the keyboard to the verse's identity provider, and from then on
+// `verse account login` proves who is at the keyboard to the verse's identity provider, and from then on
 // the CLI's requests carry the token it was given, in place of a name.
 
 const loginClient = "verse-cli"
@@ -131,7 +131,7 @@ func TestALoginByDeviceCodeActsAsThePersonItProves(t *testing.T) {
 	if out, err := runCLI(t, "whoami"); err != nil || strings.TrimSpace(out) != tester+" (asserted)" {
 		t.Fatalf("whoami before a login = %q, %v", out, err)
 	}
-	out, err := runCLI(t, "login")
+	out, err := runCLI(t, "account", "login")
 	if err != nil || !strings.Contains(out, "as user:ana@example.com (corp)") {
 		t.Fatalf("login = %q, %v", out, err)
 	}
@@ -156,18 +156,18 @@ func TestALoginByDeviceCodeActsAsThePersonItProves(t *testing.T) {
 	if out, err := runCLI(t, "whoami"); err != nil || strings.TrimSpace(out) != "agent:ci (asserted)" {
 		t.Errorf("whoami as an agent, logged in = %q, %v", out, err)
 	}
-	if _, err := runCLI(t, "login"); err == nil || !strings.Contains(err.Error(), "a login is a person's") {
+	if _, err := runCLI(t, "account", "login"); err == nil || !strings.Contains(err.Error(), "a login is a person's") {
 		t.Errorf("a login as an agent: %v", err)
 	}
 	t.Setenv("VERSE_AGENT", "")
 
-	if out, err := runCLI(t, "logout"); err != nil || !strings.Contains(out, "logged out") {
+	if out, err := runCLI(t, "account", "logout"); err != nil || !strings.Contains(out, "logged out") {
 		t.Fatalf("logout = %q, %v", out, err)
 	}
 	if out, err := runCLI(t, "whoami"); err != nil || strings.TrimSpace(out) != tester+" (asserted)" {
 		t.Errorf("whoami after a logout = %q, %v", out, err)
 	}
-	if out, err := runCLI(t, "logout"); err != nil || !strings.Contains(out, "not logged in") {
+	if out, err := runCLI(t, "account", "logout"); err != nil || !strings.Contains(out, "not logged in") {
 		t.Errorf("a second logout = %q, %v", out, err)
 	}
 }
@@ -176,7 +176,7 @@ func TestALoginByDeviceCodeActsAsThePersonItProves(t *testing.T) {
 // verse make the request as the person who logged in, whatever the command said.
 func TestAsSendsTheNameAndNotTheToken(t *testing.T) {
 	serveLogin(t, true)
-	if _, err := runCLI(t, "login"); err != nil {
+	if _, err := runCLI(t, "account", "login"); err != nil {
 		t.Fatal(err)
 	}
 	if token, err := bearer(t.Context()); err != nil || token == "" {
@@ -194,7 +194,7 @@ func TestAsSendsTheNameAndNotTheToken(t *testing.T) {
 
 func TestALoginByAuthorizationCode(t *testing.T) {
 	_, l := serveLogin(t, false)
-	out, err := runLogin(t, "login", "corp")
+	out, err := runLogin(t, "account", "login", "corp")
 	if err != nil || !strings.Contains(out, "as user:ana@example.com (corp)") {
 		t.Fatalf("login = %q, %v", out, err)
 	}
@@ -207,20 +207,20 @@ func TestALoginByAuthorizationCode(t *testing.T) {
 }
 
 // A provider that names the ios it trusts and no issuer is nobody's to log in to: a bare
-// `verse login` picks the one issuer beside it, and naming it is refused plainly.
+// `verse account login` picks the one issuer beside it, and naming it is refused plainly.
 func TestOnlyAnIssuerIsAProviderToLogInTo(t *testing.T) {
 	serveLoginWith(t, false, true) // corp, the issuer, beside github, which has ios alone
-	if out, err := runLogin(t, "login"); err != nil || !strings.Contains(out, "as user:ana@example.com (corp)") {
+	if out, err := runLogin(t, "account", "login"); err != nil || !strings.Contains(out, "as user:ana@example.com (corp)") {
 		t.Fatalf("a bare login with one issuer = %q, %v", out, err)
 	}
-	if _, err := runLogin(t, "login", "github"); err == nil || !strings.Contains(err.Error(), "nobody's to log in to") {
+	if _, err := runLogin(t, "account", "login", "github"); err == nil || !strings.Contains(err.Error(), "nobody's to log in to") {
 		t.Errorf("logging in to an ios-only provider: err = %v, want a plain refusal", err)
 	}
 }
 
 func TestAnExpiredLoginIsRenewed(t *testing.T) {
 	_, l := serveLogin(t, true)
-	if _, err := runCLI(t, "login"); err != nil {
+	if _, err := runCLI(t, "account", "login"); err != nil {
 		t.Fatal(err)
 	}
 	expireLogin(t)
@@ -245,16 +245,16 @@ func TestALoginThatCannotBeRenewedFailsTheRequest(t *testing.T) {
 	} {
 		_, l := serveLogin(t, true)
 		set(l)
-		if _, err := runCLI(t, "login"); err != nil {
+		if _, err := runCLI(t, "account", "login"); err != nil {
 			t.Fatalf("%s: login: %v", what, err)
 		}
 		expireLogin(t)
 		out, err := runCLI(t, "whoami")
-		if err == nil || !strings.Contains(err.Error(), "verse login") {
+		if err == nil || !strings.Contains(err.Error(), "verse account login") {
 			t.Errorf("%s: whoami = %q, %v, want a failure that says to log in again", what, out, err)
 		}
 		// Logging out is how to go on as the config's user.
-		if _, err := runCLI(t, "logout"); err != nil {
+		if _, err := runCLI(t, "account", "logout"); err != nil {
 			t.Errorf("%s: logout: %v", what, err)
 		}
 		if out, err := runCLI(t, "whoami"); err != nil || strings.TrimSpace(out) != tester+" (asserted)" {
@@ -267,7 +267,7 @@ func TestALoginThatCannotBeRenewedFailsTheRequest(t *testing.T) {
 func TestALoginTheVerseRefusesIsNotKept(t *testing.T) {
 	_, l := serveLogin(t, true)
 	l.Claims = map[string]any{"email": "ana@elsewhere.org", "email_verified": true}
-	if _, err := runCLI(t, "login"); err == nil || !strings.Contains(err.Error(), "in none of them") {
+	if _, err := runCLI(t, "account", "login"); err == nil || !strings.Contains(err.Error(), "in none of them") {
 		t.Fatalf("a login from a domain the verse does not admit: %v", err)
 	}
 	if out, err := runCLI(t, "whoami"); err != nil || strings.TrimSpace(out) != tester+" (asserted)" {
@@ -277,16 +277,16 @@ func TestALoginTheVerseRefusesIsNotKept(t *testing.T) {
 
 func TestLoginNamesItsProvider(t *testing.T) {
 	serveLogin(t, true)
-	if _, err := runCLI(t, "login", "okta"); err == nil || !strings.Contains(err.Error(), "corp") {
+	if _, err := runCLI(t, "account", "login", "okta"); err == nil || !strings.Contains(err.Error(), "corp") {
 		t.Errorf("a login to a provider the config does not name: %v", err)
 	}
 	t.Setenv(config.EnvConfigPath, filepath.Join(t.TempDir(), "none.tony"))
-	if _, err := runCLI(t, "login"); err == nil || !strings.Contains(err.Error(), "names no identity provider") {
+	if _, err := runCLI(t, "account", "login"); err == nil || !strings.Contains(err.Error(), "names no identity provider") {
 		t.Errorf("a login with no provider configured: %v", err)
 	}
 }
 
-// `verse login --link` binds a second provider's account to who the CLI is logged in as, and
+// `verse account -link` binds a second provider's account to who the CLI is logged in as, and
 // leaves the login in use as it was.
 func TestLoginLinkBindsASecondProvidersAccount(t *testing.T) {
 	corp, okta := idptest.New(t), idptest.New(t)
@@ -313,19 +313,19 @@ func TestLoginLinkBindsASecondProvidersAccount(t *testing.T) {
 	t.Setenv(config.EnvConfigPath, cfg)
 
 	// With nobody logged in there is nobody to link to.
-	if _, err := runCLI(t, "login", "--link", "okta"); err == nil || !strings.Contains(err.Error(), "not logged in") {
+	if _, err := runCLI(t, "account", "--link", "okta"); err == nil || !strings.Contains(err.Error(), "not logged in") {
 		t.Fatalf("a link with no login: %v", err)
 	}
 	// With several providers, a login names the one.
-	if _, err := runCLI(t, "login"); err == nil || !strings.Contains(err.Error(), "several identity providers") {
+	if _, err := runCLI(t, "account", "login"); err == nil || !strings.Contains(err.Error(), "several identity providers") {
 		t.Fatalf("a login naming none of two providers: %v", err)
 	}
-	if _, err := runCLI(t, "login", "corp"); err != nil {
+	if _, err := runCLI(t, "account", "login", "corp"); err != nil {
 		t.Fatal(err)
 	}
-	out, err := runLogin(t, "login", "--link", "okta")
+	out, err := runLogin(t, "account", "--link", "okta")
 	if err != nil || !strings.Contains(out, "linked the okta account okta-7 to user:ana@example.com") {
-		t.Fatalf("login --link = %q, %v", out, err)
+		t.Fatalf("account -link = %q, %v", out, err)
 	}
 	rec, ok, err := entity.As(store, entity.SystemIdentity).Get(entity.VerseRef("identity", "okta", "account", "okta-7"))
 	if err != nil || !ok || entity.Str(rec.Payload, "principal") != "user:ana@example.com" || entity.Str(rec.Payload, "claimant") != "corp" {
@@ -340,7 +340,7 @@ func TestLoginLinkBindsASecondProvidersAccount(t *testing.T) {
 // end, on a request that has nothing to do with what was asked.
 func TestAQuietProviderFailsTheRenewalAndDoesNotHangIt(t *testing.T) {
 	_, l := serveLogin(t, true)
-	if _, err := runCLI(t, "login"); err != nil {
+	if _, err := runCLI(t, "account", "login"); err != nil {
 		t.Fatal(err)
 	}
 	expireLogin(t)
@@ -356,7 +356,7 @@ func TestAQuietProviderFailsTheRenewalAndDoesNotHangIt(t *testing.T) {
 	}()
 	select {
 	case err := <-done:
-		if err == nil || !strings.Contains(err.Error(), "did not answer") || !strings.Contains(err.Error(), "verse login") {
+		if err == nil || !strings.Contains(err.Error(), "did not answer") || !strings.Contains(err.Error(), "verse account login") {
 			t.Fatalf("whoami against a quiet provider: %v, want a failure saying it did not answer", err)
 		}
 	case <-time.After(10 * time.Second):
@@ -364,7 +364,7 @@ func TestAQuietProviderFailsTheRenewalAndDoesNotHangIt(t *testing.T) {
 	}
 }
 
-// `verse login --link` at a provider whose accounts an io proves claims the account and prints the
+// `verse account -link` at a provider whose accounts an io proves claims the account and prints the
 // words to say; the verse binds it when the io hears them, so no login is needed first.
 func TestLoginLinkClaimsAnAccountAnIoProves(t *testing.T) {
 	store := entitytest.Store(t)
@@ -385,9 +385,9 @@ func TestLoginLinkClaimsAnAccountAnIoProves(t *testing.T) {
 	}
 	t.Setenv(config.EnvConfigPath, cfg)
 
-	out, err := runLogin(t, "login", "--link", "slack")
+	out, err := runLogin(t, "account", "--link", "slack")
 	if err != nil || !strings.Contains(out, "/verse link ") || !strings.Contains(out, "(workspace)") {
-		t.Fatalf("login --link slack = %q, %v", out, err)
+		t.Fatalf("account -link slack = %q, %v", out, err)
 	}
 	nonce := strings.Fields(out[strings.Index(out, "/verse link "):])[2]
 	rec, ok, err := entity.As(store, entity.SystemIdentity).Get(entity.VerseRef("identity", "slack", "claim", nonce))
@@ -395,14 +395,49 @@ func TestLoginLinkClaimsAnAccountAnIoProves(t *testing.T) {
 		t.Fatalf("the claim = principal %q claimant %q, want %q asserted (ok=%v err=%v)", entity.Str(rec.Payload, "principal"), entity.Str(rec.Payload, "claimant"), tester, ok, err)
 	}
 	// GitHub names the login; without one the verse says so.
-	if _, err := runLogin(t, "login", "--link", "github"); err == nil || !strings.Contains(err.Error(), "names the GitHub login") {
-		t.Errorf("login --link github without --account: %v", err)
+	if _, err := runLogin(t, "account", "--link", "github"); err == nil || !strings.Contains(err.Error(), "names the GitHub login") {
+		t.Errorf("account -link github without --account: %v", err)
 	}
-	if out, err := runLogin(t, "login", "--link", "github", "--account", "@ana-gh"); err != nil || !strings.Contains(out, "/verse link ") {
-		t.Errorf("login --link github --account = %q, %v", out, err)
+	if out, err := runLogin(t, "account", "--link", "github", "--account", "@ana-gh"); err != nil || !strings.Contains(out, "/verse link ") {
+		t.Errorf("account -link github --account = %q, %v", out, err)
 	}
 	// Nothing to log in to: the provider is nobody's issuer.
-	if _, err := runLogin(t, "login", "slack"); err == nil || !strings.Contains(err.Error(), "no issuer") {
+	if _, err := runLogin(t, "account", "login", "slack"); err == nil || !strings.Contains(err.Error(), "no issuer") {
 		t.Errorf("login at an ios provider: %v", err)
+	}
+}
+
+// An issuer that wants a client secret at its token endpoint gets it where the config carries
+// one, and refuses a login without it in its own words.
+func TestALoginSendsTheClientSecretTheIssuerWants(t *testing.T) {
+	idp := idptest.New(t)
+	l := idp.Login(loginClient, "sub-ana", map[string]any{"email": "ana@example.com", "email_verified": true}, true)
+	l.Secret = "installed-app-secret"
+	store := entitytest.Store(t)
+	srv := versed.NewWithStore(versed.ScriptedBuilder, store)
+	if err := srv.SetAuth(versed.Auth{Mode: versed.AuthOptional, Providers: map[string]versed.AuthProvider{
+		"google": {Issuer: idp.URL, ClientID: loginClient, Domains: []string{"example.com"}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	testAddr = strings.TrimPrefix(ts.URL, "http://")
+	cfg := filepath.Join(t.TempDir(), "verse.tony")
+	write := func(secret string) {
+		t.Helper()
+		body := "auth: {principal: {providers: {google: {issuer: \"" + idp.URL + "\", clientId: " + loginClient + secret + "}}}}\n"
+		if err := os.WriteFile(cfg, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv(config.EnvConfigPath, cfg)
+	write("")
+	if _, err := runCLI(t, "account", "login"); err == nil || !strings.Contains(err.Error(), "invalid_client") {
+		t.Fatalf("a login with no secret to an issuer that wants one: %v, want its refusal", err)
+	}
+	write(", clientSecret: installed-app-secret")
+	if out, err := runCLI(t, "account", "login"); err != nil || !strings.Contains(out, "as user:ana@example.com (google)") {
+		t.Fatalf("a login with the secret = %q, %v", out, err)
 	}
 }

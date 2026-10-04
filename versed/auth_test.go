@@ -569,7 +569,7 @@ func TestRequiredAdmitsAPersonOnlyFromAToken(t *testing.T) {
 				url, body = ts.URL+"/entity", entityPut(t, "other.pr.1")
 			}
 			code, out := bearer(t, method, url, "", as, body)
-			if code != http.StatusUnauthorized || !strings.Contains(out, "verse login") {
+			if code != http.StatusUnauthorized || !strings.Contains(out, "verse account login") {
 				t.Errorf("%s as %q with no token = %d %q, want 401 saying to log in", method, as, code, strings.TrimSpace(out))
 			}
 		}

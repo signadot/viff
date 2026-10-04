@@ -590,6 +590,11 @@ func (s *AuthProviderConfig) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error)
 		irMap["clientId"] = ir.FromString(string(s.ClientID))
 	}
 
+	// Field: ClientSecret
+	if s.ClientSecret != "" {
+		irMap["clientSecret"] = ir.FromString(string(s.ClientSecret))
+	}
+
 	// Field: Domains
 	if len(s.Domains) > 0 {
 		slice := make([]*ir.Node, len(s.Domains))
@@ -658,6 +663,12 @@ func (s *AuthProviderConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption
 				return fmt.Errorf("field %q: expected string, got %v", "clientId", fieldNodeUnwrapped.Type)
 			}
 			s.ClientID = string(fieldNodeUnwrapped.String)
+		case "clientSecret":
+			// Field: ClientSecret
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "clientSecret", fieldNodeUnwrapped.Type)
+			}
+			s.ClientSecret = string(fieldNodeUnwrapped.String)
 		case "domains":
 			// Field: Domains
 			if fieldNodeUnwrapped.Type == ir.ArrayType {

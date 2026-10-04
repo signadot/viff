@@ -58,7 +58,7 @@ type Config struct {
 	// write it causes is attributed to and who owns what it creates. An email for a person,
 	// which goes on the wire as `user:<email>`; a principal of another kind spelled as one
 	// (`runner:coderunner`). Self-asserted, and `--as` overrides it on the commands that take one.
-	// A login (`verse login`) comes before it: the CLI then acts as whoever the login proves.
+	// A login (`verse account login`) comes before it: the CLI then acts as whoever the login proves.
 	// Env: VERSE_USER.
 	User string `tony:"field=user,omitzero"`
 	// Agent is the operator agent this CLI acts as, when it is one: a harness driving verse
@@ -100,7 +100,7 @@ type Config struct {
 type AuthConfig struct {
 	// Principal is how a person is authenticated: the identity providers whose id_tokens this
 	// verse accepts. The server reads it to verify a request's bearer, and the CLI reads it to
-	// know which providers `verse login` can log in to.
+	// know which providers `verse account login` can log in to.
 	Principal PrincipalAuthConfig `tony:"field=principal,omitzero"`
 	// Iod is how an io is authenticated: the issuer of the workload tokens the deployment's ios
 	// present, and which io each token's subject is. Server-side, read by `verse up`.
@@ -155,8 +155,13 @@ type AuthProviderConfig struct {
 	// token's `iss` equals.
 	Issuer string `tony:"field=issuer,omitzero"`
 	// ClientID is the OAuth client registered at the issuer for this verse: a token's `aud` holds
-	// it, and the CLI logs in as it. It is a public client, with no secret.
+	// it, and the CLI logs in as it. It is a public client.
 	ClientID string `tony:"field=clientId,omitzero"`
+	// ClientSecret is what some issuers hand a public client beside its id and want back at the
+	// token endpoint (Google's installed-app and device flows do). It is not a confidential
+	// secret: every copy of the CLI carries it, as RFC 8252 §8.5 says of such clients. The CLI
+	// sends it where it is set; the server never reads it.
+	ClientSecret string `tony:"field=clientSecret,omitzero"`
 	// Domains are the email domains a person may arrive from the first time: a token nobody has
 	// been bound from before needs a verified email in one of them, and a person an io relays
 	// needs an email in one of them. Empty admits nobody new.
@@ -512,7 +517,7 @@ func UserPath() string {
 	return filepath.Join(home, ".config", "verse")
 }
 
-// TokensPath is where the CLI keeps what `verse login` was given: `verse-tokens.tony` beside the
+// TokensPath is where the CLI keeps what `verse account login` was given: `verse-tokens.tony` beside the
 // config, which is beside the file VERSE_CONFIG names when it names one and beside the per-user
 // layer otherwise. "" where there is no home to keep it in.
 func TokensPath() string {

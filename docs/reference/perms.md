@@ -256,6 +256,14 @@ record. Its `under` is what asked it. A person's ask is its asker's record inste
 
 ## Who a request is from
 
+The short version: a request is made as a **principal**, and the door decides which one from
+what the request carries. A name alone is taken as given, where the mode allows. A token from an
+identity provider the deployment names is verified, and the principal is whoever the token's
+account is bound to. An io of the deployment presents its own token, and when it acts for a
+person it names the person's account too, which the door resolves through that account's
+binding. Bindings are records at `verse.identity.<provider>.account.<id>`, written only by the
+system from evidence it checked itself ([accounts in other systems](#accounts-in-other-systems)).
+
 A request says who makes it in one of two ways.
 
 - **A token.** `Authorization: Bearer <id_token>` carries an OpenID Connect id_token from an
@@ -326,14 +334,15 @@ asserted one.
 is the provider that verified the caller, or `asserted`, and `via` the io that relayed them where
 one did. A request that names nobody is answered `{}`.
 
-### Logging in
+### Your account
 
 | command | does |
 |---|---|
-| `verse login [<provider>]` | logs in to a provider in the CLI's config, and keeps the tokens. The provider may be left off when the config names one. |
-| `verse login --link <provider>` | logs in to a second provider and binds your account there to who you are logged in as. The login in use does not change. At a provider whose accounts an io proves (`slack`, `github`), it claims the account instead and prints the words to say from it; `--account <login>` names a GitHub login. |
+| `verse account` | lists the accounts in other systems that are bound to you |
+| `verse account login [<provider>]` | logs in to an identity provider in the CLI's config, and keeps the tokens. The provider may be left off when the config names one. |
+| `verse account -link <provider>` | binds an account in another system to who you are. At an identity provider, it logs in there and presents the token as evidence; the login in use does not change. At a provider whose accounts an io proves (`slack`, `github`), it claims the account and prints the words to say from it; `-account <login>` names a GitHub login. |
 | `verse whoami` | prints who the verse takes you for, and how: `user:ana@example.com (google)`, or `(asserted)` |
-| `verse logout [<provider>]` | drops the login toward this verse: every provider's, or the one named |
+| `verse account logout [<provider>]` | drops the login toward this verse: every provider's, or the one named |
 
 - **How it logs in.** Where the provider offers the device authorization grant (RFC 8628), the
   CLI prints a URL and a code, and waits while you confirm the code in any browser. Otherwise it
@@ -350,7 +359,7 @@ one did. A request that names nobody is answered `{}`.
   is sent. Where it cannot be renewed, the command fails and says to log in again. It is not
   sent under the config's `user` instead. A provider that does not answer within 30 seconds
   fails the command too.
-- **A login the verse refuses is not kept.** `verse login` asks the verse who the token proves
+- **A login the verse refuses is not kept.** `verse account login` asks the verse who the token proves
   before it reports success, which is also when a first sight is bound.
 
 ### Ios at the door
@@ -407,6 +416,13 @@ wants: a person logs in once, links their account, and only then answers from Sl
 An **account binding** says which account in another system is which principal. It is how an io
 answers as the person who wrote something there, without keeping a table of its own.
 
+The short version: a person binds their own accounts, one per system, and the system writes the
+record. For Slack and GitHub the proof is a nonce: `verse account -link <provider>` gives it, the
+person says it from the account, the io that heard them reports it, and the binding is made. For
+an identity provider the proof is a verified token. A binding says how it was proved (`proof`)
+and how the person who proved it was authenticated (`claimant`), so a reader can tell a verified
+name from an asserted one. One account is one principal, and a person may hold many accounts.
+
 An account is keyed by its issuer and the issuer's own id for it, `(iss, sub)`, as OIDC keys one.
 Bindings are kept per **provider**, which is the name a deployment gives an issuer, or gives the
 ios it trusts where no issuer is involved. `github` is the first provider of that second kind. Its
@@ -434,6 +450,9 @@ they could rewrite.
   own. It must be written by the claimed login, on a repository that a trusted
   [github io](iod.md#github) reflects, and it must carry the author's number (`authorId`). Until that comment is reflected,
   verify answers 404 and the claim still stands. An expired claim answers 410, and is removed.
+  Two routes read the same comment: the github io reports it itself (heard, next) when the
+  comment replies to a question it is asking, and `verify` is for a comment on any pull request
+  the io reflects, asked for by the person.
 - **A nonce heard.** The same words said where a trusted io hears them bind the account that said
   them, reported by the io itself (`heard`): the Slack io hears `/verse link <nonce>` in a message
   from a member and names `slack:<their id>`; the github io reads it in a comment it reflected and
@@ -464,7 +483,7 @@ they could rewrite.
   from another as evidence, and verse binds that account to them. No nonce is needed, since the
   token proves the account. The token must be the named provider's and must verify, or the link
   is refused with 400. A caller who is only asserted is refused with 403: the binding would let
-  the account's token act as a name nobody proved. `verse login --link <provider>` does this from
+  the account's token act as a name nobody proved. `verse account -link <provider>` does this from
   the CLI.
 - **The claimant.** A binding also records how the caller who proved it was authenticated:
   `claimant` is the provider that verified them, or `asserted` for a caller who was whoever their
@@ -488,7 +507,7 @@ they could rewrite.
 | a grant to a resolver | its `answer` line, at `verse.for.<you>` or at the place |
 | an install | the thing, as its installer, with their record |
 | a suspension | as the system, naming who holds it under `held` |
-| verifying an account | its binding, as `system:identity` |
+| verifying an account, or an io reporting its nonce heard | its binding, as `system:identity` |
 | a first request with a provider's token | the account's binding, as `system:identity` |
 | a first request a trusted io relays for a person | the person's account binding, as `system:identity` |
 

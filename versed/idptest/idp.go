@@ -224,6 +224,9 @@ type Logins struct {
 	Refreshes int
 	// Scopes is what the last login asked for.
 	Scopes string
+	// Secret, when set, is the client secret the token endpoint wants beside the client id, as
+	// Google's installed-app flows do; a token request without it is refused as invalid_client.
+	Secret string
 
 	codes     map[string]string // authorization code → PKCE challenge
 	devices   map[string]bool   // device code → given out
@@ -314,6 +317,10 @@ func (l *Logins) token(w http.ResponseWriter, r *http.Request) {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.Secret != "" && f.Get("client_secret") != l.Secret {
+		oauthError(w, "invalid_client")
+		return
+	}
 	withID := true
 	switch f.Get("grant_type") {
 	case "authorization_code":

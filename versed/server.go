@@ -1547,7 +1547,7 @@ func (s *Server) principals(mux *http.ServeMux, unattributed map[string]bool) ht
 				w.Header().Set("WWW-Authenticate", "Bearer")
 				http.Error(w, fmt.Sprintf("this verse admits a person only from an identity provider's "+
 					"token (auth.principal.mode is %s), and this request names %s with none: log in "+
-					"(`verse login`). People are verified first; an agent or a runner is taken as "+
+					"(`verse account login`). People are verified first; an agent or a runner is taken as "+
 					"given until its own authentication is built, and a request that names nobody "+
 					"still reads what everyone may", AuthRequired, g.String()),
 					http.StatusUnauthorized)

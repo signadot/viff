@@ -218,7 +218,7 @@ that the request makes. It checks each write and each read against what the
 
 Verse takes `user` as given. `-as` overrides it on the commands that take `-as`. When the
 config names a user, those commands do not require `-as`. Where the verse names an identity
-provider, `verse login` proves who you are instead, and the CLI then acts as that person
+provider, `verse account login` proves who you are instead, and the CLI then acts as that person
 whatever `user` says ([logging in](perms.md#logging-in)).
 
 With no `user` and no `agent`, the CLI acts as the local user, `user:<login>@localhost`,
@@ -237,7 +237,7 @@ behind. A request cannot be made as the system, so this key is the way to instal
 **`auth: {principal: {…}}`** says how people are authenticated. The server reads it to verify a
 request's token ([who a request is from](perms.md#who-a-request-is-from)). Without it, a
 request is whoever it says it is. The CLI reads the same `providers` to know where
-`verse login` can log in, so a person's config carries the block as the server's does. It
+`verse account login` can log in, so a person's config carries the block as the server's does. It
 ignores `mode`.
 
 ```tony
@@ -265,8 +265,11 @@ auth:
   the deployment gives it. The name is where its accounts are bound (`verse.identity.<name>`),
   so it is one plain word, and `iod` is the ios'. A provider is one of two kinds:
     - **An issuer**, with `issuer`, the OpenID Connect issuer's URL, and `clientId`, the OAuth
-      client registered there for this verse: a public client, with no secret. Quote a
-      `clientId` that starts with a digit. The verse accepts its id_tokens.
+      client registered there for this verse: a public client. Quote a `clientId` that starts
+      with a digit. The verse accepts its id_tokens. `clientSecret` is for an issuer that hands
+      a public client a secret and wants it back at its token endpoint, as Google's device flow
+      does; it is not confidential (every copy of the CLI carries it), the CLI sends it where it
+      is set, and the server never reads it.
     - **Ios**, with `ios`, the installed ios the verse trusts for the provider's accounts, by the
       name each is installed under. `github`'s ios reflect the comments that prove a GitHub
       account, and `slack`'s io relays the member who typed
@@ -370,7 +373,7 @@ Every key, and the variable that sets it:
 | `agent` | `VERSE_AGENT` | every command | the operator agent the CLI acts as, in place of `user` |
 | `format: {default, output, wire}` | `VERSE_FORMAT`, `VERSE_OUTPUT_FORMAT`, `VERSE_WIRE_FORMAT` | every command | the format to write in: `tony` or `yaml` ([representation](representation.md)) |
 | `systemCharter` | `VERSE_SYSTEM_CHARTER` | `verse up` | a charter file installed at start as the system |
-| `auth: {principal: {mode, providers}}` | | `verse up`, `verse login` | the identity providers whose tokens say who a request is from |
+| `auth: {principal: {mode, providers}}` | | `verse up`, `verse account login` | the identity providers whose tokens say who a request is from |
 | `auth: {iod: {issuer, audience, accounts, static}}` | | `verse up` | the issuer of the ios' workload tokens, and which io each is |
 | `auth: {issuer: {url, key}}` | | `verse up` | the address and signing key the verse issues its own tokens with |
 | `perms: {child-grants, admins}` | `VERSE_PERMS_ADMINS` for `admins`, comma-separated | `verse up` | what the root holds out, and who may take a top-level place |
@@ -378,7 +381,7 @@ Every key, and the variable that sets it:
 | `shellEnv` | | `verse up` | the variables a local task's shell passes through from the server's environment. Everything else is unset |
 | `llm: {baseURL, apiKey, virtualKey, model}` | `PORTKEY_BASE_URL`, `PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY`, `OPENAI_MODEL` | `verse up` | the model and credentials the agent driver uses |
 
-`verse login` keeps its tokens in `verse-tokens.tony`, beside the per-user config, or beside
+`verse account login` keeps its tokens in `verse-tokens.tony`, beside the per-user config, or beside
 the file `VERSE_CONFIG` names. Only its owner can read it.
 
 `VERSE_CONFIG=<file>` names one config file in place of both file layers. `VERSE_RESEED_PERMS`

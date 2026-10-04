@@ -306,7 +306,8 @@ See [Convergence](convergence.md#what-ends-a-firing).
 
 ### binding
 
-A binding is a name that begins with `$`, inside an action. Verse replaces it with a value
+A binding is a name that begins with `$`, inside an action. An [account binding](#account-binding)
+is another thing. Verse replaces it with a value
 when the rule fires, such as `$subject` for the address of the subject.
 
 See [The action of a rule](reference/action.md#bindings).
@@ -689,7 +690,8 @@ A worker is a program or a person that connects to a broker, claims a task, does
 reports it. Verse reaches a runner. A worker reaches verse. In permissions, a worker acts as
 `runner:<identity>`.
 
-Also written: executor (in the help of `verse task do`), claimant.
+Also written: executor (in the help of `verse task do`), and claimant, of a task it has claimed; the
+[claimant of a binding](#claimant-of-a-binding) is another thing.
 
 See [Task control](task-control.md#the-worker-facing-dial-in-protocol).
 
@@ -721,7 +723,8 @@ See [Provider selection](provider-selection.md).
 A provider is a doer that is registered as an entity, `provider.<capability>.<id>`. Its
 payload holds what a selection matches on, and what the provider gives to the spawn.
 
-A "model provider" is another thing: the service that serves a model to the `llm` driver.
+A "model provider" is another thing: the service that serves a model to the `llm` driver. So
+is an [identity provider](#identity-provider).
 
 See [Provider selection](provider-selection.md#the-registry).
 
@@ -825,6 +828,43 @@ The local user is the principal `user:<login>@localhost`. The CLI acts as the lo
 toward a verse on the same machine, when no user is configured.
 
 See [Permissions, walked](perms-guide.md#before-the-first-step-who-you-are).
+
+### identity provider
+
+An identity provider is a party whose signed statement of who a person is the verse accepts: an
+OpenID Connect issuer the deployment names under `auth.principal.providers`. `verse account
+login` logs in there, and the verse verifies the token. The deployment's own ios are verified
+the same way against their workload issuer (`auth.iod`). Slack and GitHub are not identity
+providers here; their accounts are bound by a nonce.
+
+See [Who a request is from](reference/perms.md#who-a-request-is-from).
+
+### account binding
+
+An account binding is the record that an account in another system, a Slack member, a GitHub
+login, an account at an identity provider, is a principal. It is written by the system alone,
+from evidence it checked, at `verse.identity.<provider>.account.<id>`. A person makes their own
+with `verse account -link <provider>`, by saying a nonce from the account or by logging in. An io
+that acts for a person is admitted only through one. One account is one principal.
+
+See [Accounts in other systems](reference/perms.md#accounts-in-other-systems).
+
+### claimant (of a binding)
+
+The claimant of an account binding is how the person who proved it was authenticated: the
+identity provider that verified them, or `asserted` for a person who was whoever their request
+said. It is what lets a reader, and a verse that verifies people, tell the two kinds of binding
+apart.
+
+See [Accounts in other systems](reference/perms.md#accounts-in-other-systems).
+
+### first sight
+
+A first sight is a binding made the first time an account is seen, from a verified email in one
+of the provider's `domains`: by a token at the door, or by a trusted io relaying the person. A
+provider with no `domains` admits bound accounts only.
+
+See [Who a request is from](reference/perms.md#who-a-request-is-from).
 
 ### grantee
 
