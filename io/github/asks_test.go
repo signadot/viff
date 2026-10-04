@@ -1,0 +1,291 @@
+package github_test
+
+import (
+	"context"
+
+	"github.com/signadot/tony-format/go-tony/ir"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/signadot/verse/client"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
+	verseio "github.com/signadot/verse/io"
+	"github.com/signadot/verse/io/github"
+	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/versed"
+)
+
+// A question asked on a pull request is answered there, as the author of the `/verse` comment,
+// through their GitHub account binding; an author verse does not know is told so, once.
+
+const (
+	askedOnPR = "verse.trigger.deploy.ok~1"
+	ioToken   = "the-github-ios-own-token"
+)
+
+// asksRig is a verse that verifies people and knows this io by a static token, a fake GitHub with
+// one pull request, and the out half with a way to answer as a person.
+type asksRig struct {
+	store *entity.LogdStore
+	srv   *versed.Server
+	fake  *fakeGitHub
+	out   *verseio.Out
+}
+
+func newAsksRig(t *testing.T) *asksRig {
+	t.Helper()
+	store := entitytest.Store(t)
+	srv := versed.NewWithStore(versed.ScriptedBuilder, store)
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	addr := strings.TrimPrefix(ts.URL, "http://")
+
+	file := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(file, []byte(ioToken+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.SetAuth(versed.Auth{Mode: versed.AuthRequired, Providers: map[string]versed.AuthProvider{
+		"corp":   {Issuer: "https://idp.example.com", ClientID: "verse-cli"},
+		"github": {IOs: []string{"github"}},
+	}, Iod: versed.AuthIod{Static: []versed.IodStatic{{File: file, Principal: "agent:github-io", IO: "github"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	bearer := func(context.Context) (string, error) {
+		b, err := os.ReadFile(file)
+		return strings.TrimSpace(string(b)), err
+	}
+
+	f := newFake()
+	f.repo("signadot/verse").pr(42, "a change", "open", "2026-09-01T00:00:00Z", "abc")
+	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
+	verse := client.NewAs(addr, "agent:github-io", bearer)
+	sink := src.Sink()
+	sink.Verse = verse
+	sink.As = verseio.As(addr, bearer)
+	out := verseio.NewOut(sink, src.OutRefs()[0], verse, nil)
+	return &asksRig{store: store, srv: srv, fake: f, out: out}
+}
+
+func (r *asksRig) pass(t *testing.T) {
+	t.Helper()
+	if err := r.out.Pass(context.Background()); err != nil {
+		t.Fatalf("pass: %v", err)
+	}
+}
+
+// raise raises the gate a firing would, and waits until its question stands.
+func (r *asksRig) raise(t *testing.T) {
+	t.Helper()
+	go func() {
+		_, _ = r.srv.Reg.Resolve(context.Background(),
+			task.GateQuestion{ID: askedOnPR, Origin: "deploy", Gate: "ok", Mode: task.Ask, Reason: "Deploy #42?"},
+			task.ToolUse{Name: "verse.trigger.deploy"})
+	}()
+	for range 400 {
+		if _, ok, _ := r.store.Get(mirror.QuestionRef(askedOnPR)); ok {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("question %s never stood", askedOnPR)
+}
+
+// bind binds a GitHub account to a person, as a verified proof would have.
+func (r *asksRig) bind(t *testing.T, userID, principal string) {
+	t.Helper()
+	// The value before the record, as versed's own bind writes one.
+	ref := entity.VerseRef("identity", "github", "account", userID)
+	if _, _, err := entity.As(r.srv.Store, entity.SystemIdentity).Write(entity.Write{At: ref.At(), Value: entity.Obj{
+		"principal": principal, "iss": "https://github.com", "sub": userID, "claimant": "corp",
+	}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	grants := []entity.Grant{{At: ref.Segs(), To: map[entity.Level][]string{entity.Read: {principal, "agent:*"}}}}
+	if err := entity.Establish(r.srv.Store, ref, entity.SystemIdentity, entity.Ref{}, grants); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// reflect stands a comment on #42 as the in half's reflection would (github.go, commentPayload).
+func (r *asksRig) reflect(t *testing.T, id int64, login string, userID int64, body string) {
+	t.Helper()
+	ref := entity.RefAt("github", "signadot", "verse", "comment", "42", strconv.FormatInt(id, 10))
+	entitytest.Set(t, r.store, ref, entity.Obj{
+		"repo": "signadot/verse", "on": 42, "id": id, "kind": "conversation",
+		"author": login, "authorId": userID, "body": body,
+		"url": "https://github.com/signadot/verse/pull/42#issuecomment-" + strconv.FormatInt(id, 10),
+	}.Payload())
+}
+
+func (r *asksRig) question(t *testing.T) entity.Payload {
+	t.Helper()
+	e, ok, err := r.store.Get(mirror.QuestionRef(askedOnPR))
+	if err != nil || !ok {
+		t.Fatalf("reading the question: ok %v, %v", ok, err)
+	}
+	return e.Payload
+}
+
+func TestAQuestionOnAPullRequestIsAnsweredByTheAuthorOfAVerseComment(t *testing.T) {
+	r := newAsksRig(t)
+	r.raise(t)
+	entitytest.Set(t, r.store, entity.RefAt("github", "signadot", "verse", "out", "deploy"),
+		entity.Obj{"to": "pr.42", "text": "Ready to deploy.", "asks": askedOnPR}.Payload())
+
+	// The comment says what is asked and how to answer.
+	r.pass(t)
+	got := r.fake.commentsOn("signadot/verse", 42)
+	if len(got) != 1 || !strings.Contains(got[0], "Deploy #42?") || !strings.Contains(got[0], "`/verse proceed`") {
+		t.Fatalf("the comment = %q, want the question and how to answer it", got)
+	}
+
+	// Somebody verse does not know says proceed: told so, once, and nothing is answered.
+	r.reflect(t, 9500, "stranger", 202, "/verse proceed")
+	r.pass(t)
+	got = r.fake.commentsOn("signadot/verse", 42)
+	if len(got) != 2 || !strings.Contains(got[1], "@stranger") || !strings.Contains(got[1], "do not know who") {
+		t.Fatalf("after a stranger's command: comments %q, want one reply telling them", got)
+	}
+	if entity.Str(r.question(t), "verdict") != "" {
+		t.Fatalf("a stranger's command answered: %v", r.question(t))
+	}
+	r.pass(t)
+	if got = r.fake.commentsOn("signadot/verse", 42); len(got) != 2 {
+		t.Fatalf("the stranger was told twice: %q", got)
+	}
+
+	// Ana, whose GitHub account is bound, says proceed with a word: the ballot is hers, made
+	// through this io, vouched for by her GitHub account.
+	r.bind(t, "101", "user:ana@example.com")
+	r.reflect(t, 9600, "ana", 101, "Looks good.\n/verse proceed ship it\n")
+	r.pass(t)
+	q := r.question(t)
+	if entity.Str(q, "verdict") != "proceed" || entity.Str(q, "by") != "user:ana@example.com" {
+		t.Fatalf("ana's command answered %q by %q, want proceed by ana; comments %q; question %v", entity.Str(q, "verdict"), entity.Str(q, "by"), r.fake.commentsOn("signadot/verse", 42), q)
+	}
+	ballot := entity.Get(entity.Get(q, "ballots"), "user:ana@example.com")
+	if entity.Str(ballot, "authenticated") != "github" || entity.Str(ballot, "via") != "agent:github-io" {
+		t.Errorf("ana's ballot = %v, want authenticated by github via this io", ballot)
+	}
+	if said := strings.Join(entity.Strs(ballot, "say"), " "); !strings.Contains(said, "ship it") {
+		t.Errorf("ana's words were dropped: %v", ballot)
+	}
+
+	// The comment is redrawn as settled, and a later pass acts on nothing.
+	r.pass(t)
+	got = r.fake.commentsOn("signadot/verse", 42)
+	if !strings.Contains(got[0], "**proceed**") || !strings.Contains(got[0], "ana@example.com") {
+		t.Errorf("the comment after settling = %q, want the verdict and who gave it", got[0])
+	}
+	edits := r.fake.editCount()
+	r.pass(t)
+	if r.fake.editCount() != edits || len(r.fake.commentsOn("signadot/verse", 42)) != len(got) {
+		t.Errorf("a pass after settling wrote to GitHub")
+	}
+}
+
+// A command naming no option the question offers is told the options, once; the io's own
+// comments and comments before its own are never commands.
+func TestACommandWithNoSuchOptionIsToldTheOptions(t *testing.T) {
+	r := newAsksRig(t)
+	r.raise(t)
+	r.reflect(t, 8000, "ana", 101, "/verse proceed")
+	entitytest.Set(t, r.store, entity.RefAt("github", "signadot", "verse", "out", "deploy"),
+		entity.Obj{"to": "pr.42", "asks": askedOnPR}.Payload())
+	r.pass(t)
+	r.bind(t, "101", "user:ana@example.com")
+	// The io's own words, reflected back, are never a command; nor is the account proof; nor is
+	// a review comment on a line of the diff, which GitHub numbers from another sequence.
+	r.reflect(t, 9650, fakeSelf, 1, "/verse proceed")
+	r.reflect(t, 9660, "ana", 101, "/verse link 0123456789abcdef")
+	entitytest.Set(t, r.store, entity.RefAt("github", "signadot", "verse", "comment", "42", "9670"), entity.Obj{
+		"repo": "signadot/verse", "on": 42, "id": 9670, "kind": "review", "author": "ana", "authorId": 101,
+		"body": "/verse proceed", "url": "https://github.com/signadot/verse/pull/42#discussion_r9670",
+	}.Payload())
+	r.reflect(t, 9700, "ana", 101, "/verse maybe")
+	r.pass(t)
+	got := r.fake.commentsOn("signadot/verse", 42)
+	if len(got) != 2 || !strings.Contains(got[1], "names no option") || !strings.Contains(got[1], "`/verse proceed`") || strings.HasPrefix(got[0], "\n") {
+		t.Fatalf("comments %q, want the io's comment with no text before the question, and one reply naming the options", got)
+	}
+	r.pass(t)
+	if len(r.fake.commentsOn("signadot/verse", 42)) != 2 {
+		t.Errorf("ana was told twice")
+	}
+	if entity.Str(r.question(t), "verdict") != "" {
+		t.Errorf("a command before the io's comment, or one with no option, answered: %v", r.question(t))
+	}
+}
+
+// Two pending questions on one pull request both taking `proceed`: a bare `/verse proceed` is
+// unplaceable and told so, and one naming the question answers that one.
+func TestACommandTwoQuestionsCouldTakeNamesItsQuestion(t *testing.T) {
+	r := newAsksRig(t)
+	r.raise(t)
+	const second = "verse.trigger.deploy.ok~2"
+	go func() {
+		_, _ = r.srv.Reg.Resolve(context.Background(),
+			task.GateQuestion{ID: second, Origin: "deploy", Gate: "ok", Mode: task.Ask, Reason: "Deploy #42 to prod?"},
+			task.ToolUse{Name: "verse.trigger.deploy"})
+	}()
+	for range 400 {
+		if _, ok, _ := r.store.Get(mirror.QuestionRef(second)); ok {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	entitytest.Set(t, r.store, entity.RefAt("github", "signadot", "verse", "out", "deploy"),
+		entity.Obj{"to": "pr.42", "asks": []any{askedOnPR, second}}.Payload())
+	r.pass(t)
+	r.bind(t, "101", "user:ana@example.com")
+	r.reflect(t, 9800, "ana", 101, "/verse proceed")
+	r.pass(t)
+	got := r.fake.commentsOn("signadot/verse", 42)
+	if len(got) != 2 || !strings.Contains(got[1], "could answer") || !strings.Contains(got[1], second) {
+		t.Fatalf("a bare proceed with two questions: comments %q, want it told which", got)
+	}
+	r.reflect(t, 9900, "ana", 101, "/verse proceed "+second+" the prod one")
+	r.pass(t)
+	e, _, _ := r.store.Get(mirror.QuestionRef(second))
+	if entity.Str(e.Payload, "verdict") != "proceed" || entity.Str(r.question(t), "verdict") != "" {
+		t.Errorf("naming the second question answered: second %q, first %q", entity.Str(e.Payload, "verdict"), entity.Str(r.question(t), "verdict"))
+	}
+	ballot := entity.Get(entity.Get(e.Payload, "ballots"), "user:ana@example.com")
+	if said := strings.Join(entity.Strs(ballot, "say"), " "); said != "the prod one" {
+		t.Errorf("the words after the question's id = %q, want them kept without the id", said)
+	}
+}
+
+// A reply is judged against the edit the comment showed when it was made, which the status
+// keeps, and not the edit the question has by the time the pass runs.
+func TestAReplyConsentsToTheEditTheCommentShowed(t *testing.T) {
+	r := newAsksRig(t)
+	r.raise(t)
+	entitytest.Set(t, r.store, entity.RefAt("github", "signadot", "verse", "out", "deploy"),
+		entity.Obj{"to": "pr.42", "asks": askedOnPR}.Payload())
+	r.pass(t)
+	st, _, _ := r.store.Get(entity.RefAt("github", "signadot", "verse", "out", "deploy"+verseio.StatusSuffix))
+	if n := ir.Uncomment(entity.Get(entity.Get(st.Payload, "edits"), askedOnPR)); n == nil {
+		t.Fatalf("the status does not keep the edit the comment showed: %v", st.Payload)
+	}
+	// The comment, as the status has it, showed an edit the question has since moved past.
+	entitytest.Set(t, r.store, entity.RefAt("github", "signadot", "verse", "out", "deploy"+verseio.StatusSuffix),
+		entity.Obj{"edits": entity.Obj{askedOnPR: 7}}.Payload())
+	r.bind(t, "101", "user:ana@example.com")
+	r.reflect(t, 9600, "ana", 101, "/verse proceed")
+	r.pass(t)
+	if v := entity.Str(r.question(t), "verdict"); v != "" {
+		t.Fatalf("a reply to an edit the question moved past answered: %q", v)
+	}
+	got := r.fake.commentsOn("signadot/verse", 42)
+	if len(got) != 2 || !strings.Contains(got[1], "did not take that answer") {
+		t.Errorf("comments %q, want ana told the verse refused the stale consent", got)
+	}
+}

@@ -17,8 +17,8 @@ import (
 
 // heard is what a stub server was told about the request.
 type heard struct {
-	version, principal, authorization, contentType, accept, query, body string
-	hit                                                                 bool
+	version, principal, authorization, account, contentType, accept, query, body string
+	hit                                                                          bool
 }
 
 // stub answers claiming version claims ("" claims nothing), with status and body, and records what
@@ -31,6 +31,7 @@ func stub(t *testing.T, claims string, status int, body string) (*httptest.Serve
 		*h = heard{
 			version: r.Header.Get(api.VersionHeader), principal: r.Header.Get(api.PrincipalHeader),
 			authorization: r.Header.Get("Authorization"),
+			account:       r.Header.Get(api.ForPrincipalHeader),
 			contentType:   r.Header.Get("Content-Type"), accept: r.Header.Get("Accept"),
 			query: r.URL.RawQuery, body: string(b), hit: true,
 		}
@@ -90,6 +91,54 @@ func TestTransportSendsABearerInPlaceOfAName(t *testing.T) {
 	resp.Body.Close()
 	if h.authorization != "" || h.principal != "user:ana@example.com" {
 		t.Errorf("with no bearer the server heard Authorization %q and principal %q", h.authorization, h.principal)
+	}
+}
+
+// A program relaying a person sends its bearer, the person and the person's account together: the
+// one case a bearer and a name travel side by side.
+func TestTransportRelaysAPersonBesideTheBearer(t *testing.T) {
+	ts, h := stub(t, "", http.StatusOK, "ok: true\n")
+	c := client.NewRelay(addr(ts), "user:ana@example.com", "slack:U7",
+		func(context.Context) (string, error) { return "tok", nil })
+	resp, err := c.Get("/status", nil)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	resp.Body.Close()
+	if h.authorization != "Bearer tok" || h.principal != "user:ana@example.com" || h.account != "slack:U7" {
+		t.Errorf("the server heard Authorization %q, principal %q, account %q; want all three",
+			h.authorization, h.principal, h.account)
+	}
+	// Without a bearer the person and the account are asserted, and sent as such.
+	c = client.NewRelay(addr(ts), "user:ana@example.com", "slack:U7", nil)
+	if resp, err = c.Get("/status", nil); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	resp.Body.Close()
+	if h.authorization != "" || h.principal != "user:ana@example.com" || h.account != "slack:U7" {
+		t.Errorf("with no bearer the server heard Authorization %q, principal %q, account %q",
+			h.authorization, h.principal, h.account)
+	}
+	// With no account to relay through, the principal is asserted and no bearer is sent: an
+	// `agent:` an ask is addressed to is read as that agent, as it was.
+	c = client.NewRelay(addr(ts), "agent:reviewer", "", func(context.Context) (string, error) { return "tok", nil })
+	if resp, err = c.Get("/status", nil); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	resp.Body.Close()
+	if h.authorization != "" || h.principal != "agent:reviewer" || h.account != "" {
+		t.Errorf("a relay with no account: the server heard Authorization %q, principal %q, account %q; want the name alone",
+			h.authorization, h.principal, h.account)
+	}
+	// And a program that proves itself names nobody beside the bearer, as before.
+	c = client.NewAs(addr(ts), "agent:slack-io", func(context.Context) (string, error) { return "tok", nil })
+	if resp, err = c.Get("/status", nil); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	resp.Body.Close()
+	if h.authorization != "Bearer tok" || h.principal != "" || h.account != "" {
+		t.Errorf("the io as itself: the server heard Authorization %q, principal %q, account %q",
+			h.authorization, h.principal, h.account)
 	}
 }
 

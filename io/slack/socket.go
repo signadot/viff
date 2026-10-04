@@ -61,15 +61,16 @@ import (
 //
 // It is never made as this program's own principal: an answer recorded as agent:slack-io would be
 // an answer nobody gave. The Slack user comes from an envelope on a socket the app token
-// authenticated, and this program then asserts that person to verse as it asserts its own
-// principal; verse trusts it as it trusts the CLI's. A principal verse verifies for itself is the
-// fix for both.
+// authenticated, and this program presents that person to verse with the account they are,
+// `slack:<user id>`, beside its own credential; a verse that verifies people admits the request
+// through the account's binding, from a Slack io it trusts, and the ballot says so.
 type Socket struct {
 	s   *Slack
 	app *api // holding the app-level token, which only apps.connections.open takes
 	// as is the client factory io.Controller is handed: one verse, and a request made as
-	// whoever Slack says did the thing. nil until Control runs, and then never as this program.
-	as func(principal string) *client.Client
+	// whoever Slack says did the thing, with their account. nil until Control runs, and then
+	// never as this program.
+	as func(principal, account string) *client.Client
 
 	// Hint, when set, receives the hint each Events API delivery calls for, as the request url's
 	// handler would send it.
@@ -90,11 +91,15 @@ func (s *Slack) Socket(appToken string) *Socket {
 }
 
 // Control is io.Controller: the socket, run until ctx is done, answering as whoever typed.
-func (k *Socket) Control(ctx context.Context, as func(principal string) *client.Client) error {
+func (k *Socket) Control(ctx context.Context, as func(principal, account string) *client.Client) error {
 	k.as = as
 	k.Run(ctx)
 	return ctx.Err()
 }
+
+// account is a Slack member as verse's `slack` provider knows them: the workspace's own id for
+// them. One io serves one workspace, so the id needs no team beside it.
+func account(userID string) string { return "slack:" + userID }
 
 var _ verseio.Controller = (*Socket)(nil)
 
@@ -471,7 +476,7 @@ func (k *Socket) say(ctx context.Context, userID string, asked []Asked, text str
 		return false
 	}
 	who := "user:" + email
-	verse := k.as(who)
+	verse := k.as(who, account(userID))
 	noted := false
 	for _, a := range asked {
 		resp, err := verse.Post("/asks/"+url.PathEscape(a.ID)+"/say", nil, verseapi.GateSay{ID: a.ID, By: who, Say: text})
@@ -508,7 +513,7 @@ func (k *Socket) answer(ctx context.Context, userID string, a Asked, option, say
 	if say != "" {
 		body.Say = []string{say}
 	}
-	resp, err := k.as(who).Post("/asks/"+url.PathEscape(id)+"/answer", nil, body)
+	resp, err := k.as(who, account(userID)).Post("/asks/"+url.PathEscape(id)+"/answer", nil, body)
 	if err != nil {
 		return "Not answered: " + err.Error(), false, false
 	}

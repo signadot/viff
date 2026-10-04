@@ -446,6 +446,25 @@ func ReadAt(verse *client.Client, at string) (*ir.Node, error) {
 	return doc, nil
 }
 
+// Strs is a list of strings, or the one string a field holds instead: how `asks`, `handled` and
+// their kind are read, since a person writes one id and a charter a list.
+func Strs(n *ir.Node) []string {
+	n = ir.Uncomment(n)
+	if n == nil {
+		return nil
+	}
+	if n.Type == ir.StringType {
+		return []string{n.String}
+	}
+	var out []string
+	for _, v := range n.Values {
+		if v = ir.Uncomment(v); v != nil && v.Type == ir.StringType {
+			out = append(out, v.String)
+		}
+	}
+	return out
+}
+
 // Fields is an object's keys, sorted so a pass does things in a stable order — and so a sink
 // reading its own structure says things in one.
 func Fields(n *ir.Node) []string {

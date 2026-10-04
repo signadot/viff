@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -83,7 +85,11 @@ type socketRig struct {
 
 const askedQuestion = "verse.trigger.review.review~1"
 
-func newSocketRig(t *testing.T) *socketRig {
+func newSocketRig(t *testing.T) *socketRig { return newSocketRigWith(t, nil) }
+
+// newSocketRigWith is newSocketRig for an io that proves itself with bearer, as cmd/iod does with
+// -token-file.
+func newSocketRigWith(t *testing.T, bearer client.BearerFunc) *socketRig {
 	t.Helper()
 	store := entitytest.Store(t)
 	srv := versed.NewWithStore(versed.ScriptedBuilder, store)
@@ -104,9 +110,9 @@ func newSocketRig(t *testing.T) *socketRig {
 		{"id": "U9", "name": "nobody", "profile": map[string]any{}},
 	}
 	src := newSource(t, f, slack.Config{})
-	verse := client.New(addr, "agent:slack-io")
+	verse := client.NewAs(addr, "agent:slack-io", bearer)
 	sink := src.Sink(verse)
-	sink.As = verseio.As(addr) // as cmd/iod wires it: an ask for somebody is read as them
+	sink.As = verseio.As(addr, bearer) // as cmd/iod wires it: an ask for somebody is read as them
 	out := verseio.NewOut(sink, src.OutRef(), verse, nil)
 	r.outRig = &outRig{store: store, fake: f, sink: sink, out: out}
 	r.src, r.verse = src, verse
@@ -117,7 +123,7 @@ func newSocketRig(t *testing.T) *socketRig {
 	s.Asking = sink.Asked
 	s.Answered = func() { r.kicked <- struct{}{} }
 	s.Hint = func(_ context.Context, refs ...entity.Ref) { r.hints <- refs }
-	go func() { defer close(done); _ = s.Control(ctx, verseio.As(addr)) }()
+	go func() { defer close(done); _ = s.Control(ctx, verseio.As(addr, bearer)) }()
 	t.Cleanup(func() { cancel(); <-done })
 	return r
 }
@@ -186,6 +192,62 @@ func TestAQuestionAskedInAThreadIsAnsweredThere(t *testing.T) {
 	}
 	if q := r.question(t); q["verdict"] != "proceed" || q["by"] != "user:scott@example.com" {
 		t.Fatalf("yes in the thread answered %v by %v, want proceed by scott", q["verdict"], q["by"])
+	}
+}
+
+// WHERE THE VERSE VERIFIES PEOPLE, a reply is admitted as the person through their Slack account,
+// from this io presenting its own credential, and the ballot says which io it came through and who
+// vouched for the person. The same reply from an io with no credential is refused, and the person
+// is told.
+func TestAReplyIsAdmittedAsThePersonWhereVerseVerifiesPeople(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(file, []byte("the-slack-ios-own-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bearer := func(context.Context) (string, error) {
+		b, err := os.ReadFile(file)
+		return strings.TrimSpace(string(b)), err
+	}
+	verifying := versed.Auth{Mode: versed.AuthRequired, Providers: map[string]versed.AuthProvider{
+		// An issuer nobody reaches: `required` wants one, and nothing here logs in through it.
+		"corp":  {Issuer: "https://idp.example.com", ClientID: "verse-cli"},
+		"slack": {IOs: []string{"slack"}, Domains: []string{"example.com"}},
+	}, Iod: versed.AuthIod{Static: []versed.IodStatic{{File: file, Principal: "agent:slack-io", IO: "slack"}}}}
+
+	r := newSocketRigWith(t, bearer)
+	if err := r.srv.SetAuth(verifying); err != nil {
+		t.Fatal(err)
+	}
+	r.asking(t)
+	r.reply(t, "e1", "U7", "proceed")
+	select {
+	case <-r.kicked:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("the reply answered nothing: %v", r.question(t))
+	}
+	q := r.question(t)
+	if q["verdict"] != "proceed" || q["by"] != "user:scott@example.com" {
+		t.Fatalf("answered %v by %v, want proceed by scott", q["verdict"], q["by"])
+	}
+	e, _, _ := r.store.Get(mirror.QuestionRef(askedQuestion))
+	ballot := entity.Get(entity.Get(e.Payload, "ballots"), "user:scott@example.com")
+	if entity.Str(ballot, "authenticated") != "slack" || entity.Str(ballot, "via") != "agent:slack-io" {
+		t.Errorf("scott's ballot = %v, want authenticated by slack via this io", ballot)
+	}
+
+	// The io with no credential of its own: the person is asserted, and a verse that verifies
+	// people will not have it.
+	bare := newSocketRig(t)
+	if err := bare.srv.SetAuth(verifying); err != nil {
+		t.Fatal(err)
+	}
+	bare.asking(t)
+	bare.reply(t, "e2", "U7", "proceed")
+	if said := bare.heard(t, "U7"); !strings.Contains(said, "Not answered") {
+		t.Errorf("an asserted reply was not refused: %q", said)
+	}
+	if q := bare.question(t); q["verdict"] != nil {
+		t.Errorf("an asserted reply answered: %v", q)
 	}
 }
 

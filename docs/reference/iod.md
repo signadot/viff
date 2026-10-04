@@ -54,10 +54,17 @@ Every subcommand accepts these flags.
 | `-verse-addr` | `VERSE_ADDR` | the host of `-hint-url` | the verse that the out half reads and writes, as `host:port` |
 | `-as` | | `agent:<root>-io`, such as `agent:slack-io` | the [principal](../glossary.md#principal) that the out half reads and writes as. The Slack out half reads the asks in a message to a person as that person, since a person's ask is read by whom it asks. |
 | `-out-every` | | `5s` | how often the out half reads what is asked of it |
+| `-token-file` | `VERSE_TOKEN_FILE` | none | the file holding the io's own credential toward verse: on Kubernetes, the pod's projected service-account token, which verse's `auth.iod` names the io by ([ios at the door](perms.md#ios-at-the-door)). Read on every request, since the kubelet rotates it. Without it, the io is whoever `-as` says. |
 
-`-verse-addr`, `-as` and `-out-every` configure the out half. Two subcommands have an out
-half, `slack` and `linear`, and each starts it with `-out`. The other three subcommands accept
-the three flags and do not use them.
+With `-token-file`, every request the io makes carries the token, and one it makes as a person
+(the Slack out half reading their ask, a reply in a thread answering it) carries the person and
+their Slack account beside it, `slack:<user id>`, so that a verse which verifies people admits
+it through the account's binding and the ballot says which io it came through
+([a person relayed by a trusted io](perms.md#a-person-relayed-by-a-trusted-io)).
+
+`-verse-addr`, `-as`, `-out-every` and `-token-file` configure the out half. Three subcommands
+have an out half, `slack`, `linear` and `github`, and each starts it with `-out`. The other two
+subcommands accept the flags and do not use them.
 
 `-out` needs the address of the verse. It refuses to start without one of `-verse-addr`,
 `VERSE_ADDR` and `-hint-url`.
@@ -872,11 +879,27 @@ claim of its repository and outside every cover of the reflection.
 
 | | where | written by | holds |
 |---|---|---|---|
-| input | anywhere under `github.<org>.<name>.out`, or in an outbox sending there | whoever asks | `to`, which is `pr.<n>` or `issue.<n>`, and `text`; or `to: branch.<name>` and `open`; or `to: pr.<n>` and `merge` or `review`; or `to: pr.<n>` or `issue.<n>` and `close` (below) |
-| status | the sibling `<name>~status` | the io alone | `comment, url, postedAt, updatedAt, posted`, and `error` while an error stands. `comment` is the id of the comment, and `posted` is the fingerprint of its text. |
+| input | anywhere under `github.<org>.<name>.out`, or in an outbox sending there | whoever asks | `to`, which is `pr.<n>` or `issue.<n>`, and `text`; or `text` and `asks` (below); or `to: branch.<name>` and `open`; or `to: pr.<n>` and `merge` or `review`; or `to: pr.<n>` or `issue.<n>` and `close` (below) |
+| status | the sibling `<name>~status` | the io alone | `comment, url, postedAt, updatedAt, posted`, and `error` while an error stands. `comment` is the id of the comment, and `posted` is the fingerprint of its text. With `asks`, also `handled`: the replies acted on. |
 
 A pass runs every `-out-every`, as the principal of `-as`, which is `agent:github-io` by
-default.
+default, proving itself with `-token-file` where it has one.
+
+**A question asked on a pull request.** An input carrying `asks`, one
+[question](../glossary.md#question) id or a list, keeps a comment that says what each question
+asks and how to answer it: a comment on the pull request saying `/verse <option>` on a line of
+its own, with any words after the option kept as what the answerer said. Each pass reads the
+replies after the io's own comment, as the io itself reflects them under the pull request, and
+answers one **as its author**: the author's GitHub account
+is looked up for who they are ([accounts in other systems](perms.md#accounts-in-other-systems)),
+and the answer is made as that person with the account beside it, which a verse that verifies
+people admits through the binding and records on the ballot
+([a person relayed by a trusted io](perms.md#a-person-relayed-by-a-trusted-io)). It is never
+made as the io. An author verse does not know, or a command naming no option the question
+offers, is told so in one reply and not again. The comment is redrawn as the question settles.
+A reply reaches the reflection on the comment's delivery, which also asks the out half for a pass,
+or on the resync; a reply older than the in half's comment window is not in the reflection and
+is not seen.
 
 | The input | What the pass does |
 |---|---|

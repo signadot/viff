@@ -67,11 +67,16 @@ type Sink struct {
 	verse *client.Client
 	now   func() time.Time
 	// As reads an ask as the person a message is for, where the input names one (9ce3bva0): an
-	// ask is read by whom it asks, and this program only ever shows it to them. Nil reads as this
-	// program, which reads what a rule's gate holds out and nothing a person's ask does not.
-	As func(principal string) *client.Client
+	// ask is read by whom it asks, and this program only ever shows it to them. The person is
+	// named with their Slack account, so a verse that verifies people admits the read through
+	// its binding. Nil reads as this program, which reads what a rule's gate holds out and
+	// nothing a person's ask does not.
+	As func(principal, account string) *client.Client
 
 	mu sync.Mutex
+	// accounts is who each person is in Slack, by email, once looked up: the account a read as
+	// them is made with.
+	accounts map[string]string
 	// (channel, where replies land) → input → the questions its message is asking. Where replies
 	// land is the message's own ts, or the thread it was posted into: several inputs can speak in
 	// one thread, and a reply there is about all of their questions.
@@ -101,7 +106,7 @@ func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 	if text == "" {
 		return nil, verseio.Permanent(fmt.Errorf("an input carries {text}, and this one has none"))
 	}
-	body, asked, err := k.body(text, in.Value, in.To)
+	body, asked, err := k.body(ctx, text, in.Value, in.To)
 	if err != nil {
 		return nil, err
 	}
@@ -191,15 +196,15 @@ func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 // waits on while it is pending, the verdict and who gave it once answered, why it was withdrawn —
 // so a question settling redraws a message nobody wrote to, and everyone who can see it is told,
 // not only whoever answered. An input that asks about nothing is its text and no more.
-func (k *Sink) body(text string, input *ir.Node, to string) (string, []Asked, error) {
-	asks := strs(entity.Get(input, "asks"))
+func (k *Sink) body(ctx context.Context, text string, input *ir.Node, to string) (string, []Asked, error) {
+	asks := verseio.Strs(entity.Get(input, "asks"))
 	if len(asks) == 0 {
 		return text, nil, nil
 	}
 	said := []string{text}
 	var asked []Asked
 	var options []task.Option
-	reader, whom := k.readerFor(to)
+	reader, whom := k.readerFor(ctx, to)
 	for _, id := range asks {
 		q, err := k.question(reader, whom, id)
 		if err != nil {
@@ -376,8 +381,11 @@ type question struct {
 }
 
 // readerFor is who reads the asks a message is about: the person it is for, where the input names
-// one verse knows, and this program otherwise.
-func (k *Sink) readerFor(to string) (*client.Client, string) {
+// one verse knows, and this program otherwise. A person is read as with their Slack account, found
+// by their email once and kept: the account is what a verse that verifies people admits the read
+// through. A person Slack does not know is read as this program, which is what the message to
+// them would have failed on anyway.
+func (k *Sink) readerFor(ctx context.Context, to string) (*client.Client, string) {
 	if k.As == nil {
 		return k.verse, ""
 	}
@@ -385,7 +393,36 @@ func (k *Sink) readerFor(to string) (*client.Client, string) {
 	if err != nil || (g.Kind != entity.UserKind && g.Kind != entity.AgentKind) {
 		return k.verse, ""
 	}
-	return k.As(g.String()), g.String()
+	acct := ""
+	if g.Kind == entity.UserKind {
+		if acct, err = k.accountOf(ctx, g.ID); err != nil {
+			k.s.log("slack out: who %s is in Slack: %v", g.ID, err)
+			return k.verse, ""
+		}
+	}
+	return k.As(g.String(), acct), g.String()
+}
+
+// accountOf is the Slack account of the member with this email, `slack:<user id>`.
+func (k *Sink) accountOf(ctx context.Context, email string) (string, error) {
+	k.mu.Lock()
+	acct, ok := k.accounts[email]
+	k.mu.Unlock()
+	if ok {
+		return acct, nil
+	}
+	id, err := k.s.api.lookupByEmail(ctx, email)
+	if err != nil {
+		return "", err
+	}
+	acct = account(id)
+	k.mu.Lock()
+	if k.accounts == nil {
+		k.accounts = map[string]string{}
+	}
+	k.accounts[email] = acct
+	k.mu.Unlock()
+	return acct, nil
 }
 
 // question reads the record of the question with this id, where the mirror keeps it.
@@ -419,8 +456,8 @@ func (k *Sink) question(reader *client.Client, whom, id string) (question, error
 	if whom != "" && q.status == mirror.QuestionPending {
 		q.servedBy = servedFor(reader, id)
 	}
-	q.say = strs(entity.Get(doc, "say"))
-	q.waiting = strs(entity.Get(doc, mirror.WaitingOnField))
+	q.say = verseio.Strs(entity.Get(doc, "say"))
+	q.waiting = verseio.Strs(entity.Get(doc, mirror.WaitingOnField))
 	if ir.Uncomment(entity.Get(doc, "options")) != nil {
 		q.opts = mirror.OptionsOf(doc)
 	}
@@ -430,7 +467,7 @@ func (k *Sink) question(reader *client.Client, whom, id string) (question, error
 		cast := person(who) + " " + entity.Str(b, "choice")
 		// What somebody said with their ballot is half of what they decided, and a channel that
 		// shows the count and drops the words shows the lesser half.
-		if said := strings.Join(strs(entity.Get(b, "say")), "; "); said != "" {
+		if said := strings.Join(verseio.Strs(entity.Get(b, "say")), "; "); said != "" {
 			cast += " — " + said
 			q.spoken = true
 		}
@@ -543,34 +580,16 @@ func people(ps []string) string {
 	return strings.Join(out, ", ")
 }
 
-// strs is a list of strings, or the one string a field holds instead.
-func strs(n *ir.Node) []string {
-	n = ir.Uncomment(n)
-	if n == nil {
-		return nil
-	}
-	if n.Type == ir.StringType {
-		return []string{n.String}
-	}
-	var out []string
-	for _, v := range n.Values {
-		if v = ir.Uncomment(v); v != nil && v.Type == ir.StringType {
-			out = append(out, v.String)
-		}
-	}
-	return out
-}
-
 // Keep remembers what a message refused for good still asks, as a delivery would, where Slack
 // shows the input as it stands — an input retargeted after delivery, say: the message stands, and
 // a reply in its thread is still matched to the question it is about (socket.go). Nothing is asked
-// of Slack.
+// of Slack but who the person is, once, which the delivery before this already asked.
 func (k *Sink) Keep(in verseio.Input) {
 	channel, ts := entity.Str(in.Status, "channel"), entity.Str(in.Status, "ts")
 	if ts == "" {
 		return // refused before anything was posted: there is no thread to match
 	}
-	body, asked, err := k.body(entity.Str(in.Value, "text"), in.Value, in.To)
+	body, asked, err := k.body(context.Background(), entity.Str(in.Value, "text"), in.Value, in.To)
 	if err != nil {
 		return
 	}
@@ -635,7 +654,7 @@ func thenWords(then *ir.Node) string {
 		return fmt.Sprintf("answers `%s` *%s*", entity.Str(a, "ask"), entity.Str(a, "choice"))
 	}
 	if q := entity.Get(then, "ask"); q != nil {
-		who := strs(entity.Get(q, "answerers"))
+		who := verseio.Strs(entity.Get(q, "answerers"))
 		line := "asks “" + entity.Str(q, "question") + "”"
 		if len(who) > 0 {
 			line += " of " + people(who)

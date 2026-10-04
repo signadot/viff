@@ -11,6 +11,7 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
+	"github.com/signadot/verse/client"
 	"github.com/signadot/verse/entity"
 	verseio "github.com/signadot/verse/io"
 )
@@ -35,6 +36,18 @@ import (
 //
 // A comment that already carries this text is left alone, and a changed text is an update of the
 // same comment rather than a second one.
+//
+// AND A QUESTION, when the input carries `asks` (step 5; asks.go):
+//
+//	to:   pr.42
+//	text: "Deploy this?"                 # optional: the question says itself without it
+//	asks: verse.trigger.rule.deploy~3    # or a list of ids
+//
+// The comment says what each question asks and how to answer it: a comment on the pull request
+// saying `/verse <option>` on a line of its own. Each pass reads the replies and answers one as
+// its author, through the author's GitHub account binding, so the ballot is theirs; an author
+// verse does not know is told so once. The comment is redrawn as the question settles. The
+// status also carries `handled`, the replies already acted on.
 //
 // AND A REVIEW, when the input carries `review` (step 4):
 //
@@ -76,6 +89,14 @@ import (
 // and body; one it ADOPTED keeps its author's, since what a person wrote on their own pull request
 // is not this io's to rewrite.
 type Sink struct {
+	// Verse is the verse this io reads questions and bindings from, as itself. Nil reads none,
+	// and an input carrying `asks` is refused for good.
+	Verse *client.Client
+	// As makes a request as a person this io relays, named with their GitHub account
+	// (`github:<user id>`), which is how a `/verse` comment answers a question as its author
+	// (asks.go). Nil answers nobody: a command is read and told it cannot count.
+	As func(principal, account string) *client.Client
+
 	g   *GitHub
 	now func() time.Time
 }
@@ -154,38 +175,88 @@ func (k *Sink) deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 		return k.close(ctx, repo, in)
 	}
 	text := strings.TrimSpace(entity.Str(in.Value, "text"))
-	if text == "" {
+	asks := verseio.Strs(entity.Get(in.Value, "asks"))
+	if text == "" && len(asks) == 0 {
 		return nil, verseio.Permanent(fmt.Errorf("an input carries {to, text}, and this one has no text"))
+	}
+	var asked []asked
+	if len(asks) > 0 {
+		var err error
+		if text, asked, err = k.asksBody(ctx, text, asks); err != nil {
+			return nil, err
+		}
+	}
+	fields, number, err := k.say(ctx, repo, in, text)
+	if err != nil || len(asked) == 0 {
+		return fields, err
+	}
+	// The comment stands and says what is asked; now the replies, which answer. A reply is
+	// judged against the edit the comment SHOWED when it was made, which the status keeps from
+	// the pass that last drew it, and not the edit this pass just drew: a question re-posed in
+	// between was never seen by the author.
+	if fields != nil {
+		fields["edits"] = editsOf(asked)
+	}
+	id, ok := commentID(in.Status)
+	if c, _ := fields["comment"].(string); c != "" {
+		id, _ = strconv.ParseInt(c, 10, 64)
+		ok = true
+	}
+	if !ok {
+		return fields, nil
+	}
+	more, err := k.answerReplies(ctx, repo, number, id, shownEdits(asked, in.Status), in.Status)
+	if err != nil && fields != nil {
+		// The comment was made or changed: that is recorded now, with the error beside it, and
+		// not lost to the error. Recorded nowhere, the comment's id would be gone and the next
+		// pass would say it again.
+		fields["error"] = err.Error()
+		return fields, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if fields == nil {
+		return more, nil
+	}
+	for k, v := range more {
+		fields[k] = v
+	}
+	return fields, nil
+}
+
+// say keeps one comment on the input's issue or pull request carrying text, and answers the fields
+// to record and the item's number. Nil fields means the comment already carries the text.
+func (k *Sink) say(ctx context.Context, repo string, in verseio.Input, text string) (entity.Obj, int, error) {
+	number, err := target(in.To)
+	if err != nil {
+		return nil, 0, err
 	}
 	fp := fingerprint(text)
 	now := k.now().UTC().Format(time.RFC3339)
 	if id, ok := commentID(in.Status); ok {
 		if entity.Str(in.Status, "posted") == fp {
-			return nil, nil // in step: the comment carries this text
+			return nil, number, nil // in step: the comment carries this text
 		}
 		err := k.g.api.updateComment(ctx, repo, id, text)
 		if err == nil {
-			return entity.Obj{"updatedAt": now, "posted": fp}, nil
+			return entity.Obj{"updatedAt": now, "posted": fp}, number, nil
 		}
 		// GONE: somebody deleted the comment. The input still asks for one saying this, so it is
 		// said again, rather than an edit of what is not there refused for good
 		// (git-issue ne9fce9dh12ks1q4qsn0).
 		if !NotFound(err) {
-			return nil, err
+			return nil, number, err
 		}
-	}
-	number, err := target(in.To)
-	if err != nil {
-		return nil, err
 	}
 	c, err := k.g.api.createComment(ctx, repo, number, text)
 	if err != nil {
-		return nil, err
+		return nil, number, err
 	}
 	return entity.Obj{
 		"comment": strconv.FormatInt(c.ID, 10), "url": c.HTMLURL,
 		"postedAt": now, "updatedAt": now, "posted": fp,
-	}, nil
+	}, number, nil
 }
 
 // commentID is the comment a status says this input made, if it made one.

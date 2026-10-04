@@ -74,9 +74,9 @@ func slackMain(args []string) error {
 	var sink *slack.Sink
 	var o *verseio.Out
 	if *out {
-		sink = src.Sink(client.New(addr, c.principal(c.root)))
+		sink = src.Sink(client.NewAs(addr, c.principal(c.root), c.bearer()))
 		// An ask is read by whom it asks, so a message for somebody is drawn as they read it.
-		sink.As = verseio.As(addr)
+		sink.As = verseio.As(addr, c.bearer())
 		outs, err := c.outHalf(ctx, src.Root(), sink, []entity.Ref{src.OutRef()})
 		if err != nil {
 			return err
@@ -99,7 +99,7 @@ func slackMain(args []string) error {
 		// The control seam: a client factory rather than a client, so what it asks for is asked
 		// as whoever Slack says did the thing and never as this program (io.Controller).
 		go func() {
-			if err := sock.Control(ctx, verseio.As(addr)); err != nil && ctx.Err() == nil {
+			if err := sock.Control(ctx, verseio.As(addr, c.bearer())); err != nil && ctx.Err() == nil {
 				log.Printf("slack socket: %v", err)
 			}
 		}()

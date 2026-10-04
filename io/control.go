@@ -29,22 +29,30 @@ import (
 //     socket the app token opened, an authenticated sender), never the io's own principal. An
 //     answer recorded as `agent:slack-io` would be an answer nobody gave.
 //
-// The residual is named here rather than hidden: verse trusts `Verse-Principal` as it trusts the
-// CLI's, so an io asserting `user:<email>` is exactly as trusted as a person typing `--as`. A
-// principal verse verifies for itself is the fix, and it is not this seam's to make.
+// What makes the person's name more than an assertion is the connector's own credential beside
+// it: a verse that verifies people admits the request through the person's account binding, from
+// a connector the deployment trusts for that provider, and records which connector it came
+// through. A connector with no credential asserts the person, as a person typing `--as` does.
 type Controller interface {
-	// Control runs until ctx is done. `as` answers a client acting as one principal, which is
-	// how a connector makes a request on somebody's behalf without holding their credentials
-	// or being able to forge a write.
-	Control(ctx context.Context, as func(principal string) *client.Client) error
+	// Control runs until ctx is done. `as` answers a client acting as one person, named with the
+	// account the external system knows them by (`<provider>:<id>`), which is how a connector
+	// makes a request on somebody's behalf without holding their credentials or being able to
+	// forge a write.
+	Control(ctx context.Context, as func(principal, account string) *client.Client) error
 }
 
-// As is the client factory a controller is given: one verse, any principal.
+// As is the client factory a controller is given: one verse, the connector's own bearer, and any
+// person with their account.
 //
-// A FUNCTION RATHER THAN A CLIENT, because the principal is the request's and not the program's.
+// A FUNCTION RATHER THAN A CLIENT, because the person is the request's and not the program's.
 // Handed a client, a connector would have one identity and would have to choose between acting as
 // itself (wrong) and holding credentials for everybody (worse). Handed this, it acts as whoever
-// the external system says did the thing, one request at a time.
-func As(addr string) func(principal string) *client.Client {
-	return func(principal string) *client.Client { return client.New(addr, principal) }
+// the external system says did the thing, one request at a time, and says which account that
+// was. With a bearer the verse verifies the connector and admits the person through the
+// account's binding (docs/reference/perms.md, "a person relayed by a trusted io"); without one
+// the person is asserted, as the CLI's `--as` is.
+func As(addr string, bearer client.BearerFunc) func(principal, account string) *client.Client {
+	return func(principal, account string) *client.Client {
+		return client.NewRelay(addr, principal, account, bearer)
+	}
 }

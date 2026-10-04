@@ -35,6 +35,14 @@ type Transport struct {
 	// Principal: the server makes the request as whoever the token proves, and a name beside it
 	// could only disagree. "" sends none, and an error fails the request.
 	Bearer func(ctx context.Context) (string, error)
+	// For is the party this request is made for, as the program knows them, when a verified
+	// program acts for somebody else: for an io relaying a person it identified, the account
+	// `<provider>:<id>`, the Slack member who typed, the GitHub login who commented. When it
+	// answers one, the request carries the Bearer, the Principal and this together, which is the
+	// one case a bearer and a name travel side by side: versed admits it as the person through
+	// the account's binding, and only from a program the deployment trusts for the provider. ""
+	// acts for nobody.
+	For func() (string, error)
 	// Warn is told when the server's version DRIFTS from Version: the request is served, and
 	// what to do with the news is the program's (the CLI says it once, on stderr). Nil says nothing.
 	Warn func(msg string)
@@ -63,7 +71,15 @@ func (t Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 			proved = true
 		}
 	}
-	if t.Principal != nil && !proved {
+	forWhom := ""
+	if t.For != nil {
+		f, err := t.For()
+		if err != nil {
+			return nil, err
+		}
+		forWhom = f
+	}
+	if t.Principal != nil && (!proved || forWhom != "") {
 		p, err := t.Principal()
 		if err != nil {
 			return nil, err
@@ -71,6 +87,9 @@ func (t Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 		if p != "" {
 			r.Header.Set(api.PrincipalHeader, p)
 		}
+	}
+	if forWhom != "" {
+		r.Header.Set(api.ForPrincipalHeader, forWhom)
 	}
 
 	base := t.Base

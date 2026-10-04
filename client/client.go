@@ -8,6 +8,7 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -46,6 +47,36 @@ func New(addr, principal string) *Client {
 		Addr: addr,
 		HTTP: &http.Client{Transport: Transport{Version: api.Version(), Principal: Static(principal)}},
 	}
+}
+
+// BearerFunc is how a program proves who it is: a token, asked for on every request so that one
+// its runtime rotates is read fresh. nil proves nothing, and the program names itself instead.
+type BearerFunc func(ctx context.Context) (string, error)
+
+// NewAs is the Client for a program that proves itself with bearer where it has one, and names
+// principal where it has none: an io with its workload token, or without.
+func NewAs(addr, principal string, bearer BearerFunc) *Client {
+	return &Client{Addr: addr, HTTP: &http.Client{Transport: Transport{
+		Version: api.Version(), Principal: Static(principal), Bearer: bearer,
+	}}}
+}
+
+// NewRelay is the Client for a verified program acting for a person it identified: it carries the
+// program's bearer, the person, and the person's account in the system the program speaks for,
+// `<provider>:<id>`, and versed admits the request as the person through that account's binding.
+// With no bearer the person and the account are asserted, which a verse that verifies people
+// refuses. With no account there is nothing to relay through, so the program asserts the
+// principal and sends no bearer, as a program with none does: a bearer beside a bare name would
+// make the request the program's own.
+func NewRelay(addr, principal, account string, bearer BearerFunc) *Client {
+	if account == "" {
+		return New(addr, principal)
+	}
+	c := NewAs(addr, principal, bearer)
+	t := c.HTTP.Transport.(Transport)
+	t.For = Static(account)
+	c.HTTP.Transport = t
+	return c
 }
 
 func (c *Client) http() *http.Client {

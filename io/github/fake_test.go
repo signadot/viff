@@ -76,6 +76,16 @@ type fakeComment struct {
 	body    string
 	review  bool
 	updated string
+	// login and userID are the author, "ana" and 101 unless said otherwise; the out half's own
+	// comments are fakeSelf's.
+	login  string
+	userID int64
+}
+
+// by makes the comment somebody's.
+func (c *fakeComment) by(login string, id int64) *fakeComment {
+	c.login, c.userID = login, id
+	return c
 }
 
 type fakeDiscussion struct {
@@ -442,8 +452,12 @@ func (f *fakeGitHub) listComments(repo *fakeRepo, review bool, r *http.Request) 
 // renderComment is shared by the listing and the single-comment read, so a targeted pass and a
 // full one cannot disagree about a comment's shape — the asymmetry that bit the pull request.
 func (f *fakeGitHub) renderComment(c *fakeComment) map[string]any {
+	login, userID := c.login, c.userID
+	if login == "" {
+		login, userID = "ana", 101
+	}
 	m := map[string]any{
-		"id": c.id, "body": c.body, "user": map[string]any{"login": "ana", "id": 101},
+		"id": c.id, "body": c.body, "user": map[string]any{"login": login, "id": userID},
 		"created_at": "2026-01-01T00:00:00Z", "updated_at": c.updated,
 		"html_url": "https://github.com/x/y/comment/" + strconv.FormatInt(c.id, 10),
 	}
@@ -635,7 +649,7 @@ func (f *fakeGitHub) write(w http.ResponseWriter, r *http.Request, repo *fakeRep
 		}
 		f.nextComment++
 		id := 9000 + f.nextComment
-		repo.comments = append(repo.comments, &fakeComment{id: id, on: on, body: body.Body})
+		repo.comments = append(repo.comments, &fakeComment{id: id, on: on, body: body.Body, login: fakeSelf, userID: 1})
 		w.WriteHeader(http.StatusCreated)
 		writeJSON(w, map[string]any{"id": id, "html_url": "https://github.com/c/" + strconv.FormatInt(id, 10)})
 	case r.Method == http.MethodPatch && len(rest) == 3 && rest[0] == "issues" && rest[1] == "comments":

@@ -103,6 +103,9 @@ type common struct {
 	verseAddr string
 	as        string
 	every     time.Duration
+	// tokenFile is where this io's own credential is: the token its runtime gave it, read on
+	// every request since a kubelet rotates the file. Empty, the io is whoever -as says.
+	tokenFile string
 }
 
 func (c *common) bind(fs *flag.FlagSet) {
@@ -129,6 +132,26 @@ func (c *common) bind(fs *flag.FlagSet) {
 		"(default: agent:<connector>-io)")
 	fs.DurationVar(&c.every, "out-every", 5*time.Second,
 		"how often the out half reads what is asked of it")
+	fs.StringVar(&c.tokenFile, "token-file", os.Getenv("VERSE_TOKEN_FILE"),
+		"the file holding this io's own credential toward verse: on Kubernetes the pod's "+
+			"projected service-account token (auth.iod in verse's config). Read on every request, "+
+			"since the kubelet rotates it. Without it the io is whoever -as says")
+}
+
+// bearer is how this io proves who it is: the token in -token-file, read fresh each time, or
+// nothing, in which case it names itself.
+func (c *common) bearer() client.BearerFunc {
+	if c.tokenFile == "" {
+		return nil
+	}
+	file := c.tokenFile
+	return func(context.Context) (string, error) {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return "", fmt.Errorf("this io's credential: %w", err)
+		}
+		return strings.TrimSpace(string(data)), nil
+	}
 }
 
 // verse is where the out half reads and writes: what -verse-addr says, or the host the hint url
@@ -185,7 +208,7 @@ func (c *common) outHalf(ctx context.Context, root string, sink verseio.Sink, pl
 	if addr == "" {
 		return nil, fmt.Errorf("-out needs the verse it reads and writes: -verse-addr, VERSE_ADDR or -hint-url")
 	}
-	verse := client.New(addr, c.principal(root))
+	verse := client.NewAs(addr, c.principal(root), c.bearer())
 	outs := make([]*verseio.Out, 0, len(places))
 	for _, place := range places {
 		o := verseio.NewOut(sink, place, verse, log.Printf).Reporting(c.registration())

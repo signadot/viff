@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"github.com/signadot/verse/client"
+	"github.com/signadot/verse/entity"
+	verseio "github.com/signadot/verse/io"
 	"log"
 	"net/http"
 	"strings"
@@ -97,18 +100,50 @@ func githubMain(args []string) error {
 		log.Printf("no GITHUB_WEBHOOK_SECRET: the webhook will refuse deliveries, and only " +
 			"verse's periodic resync will converge")
 	}
-	routes := map[string]http.Handler{
-		"POST /github/webhook": src.Webhook(signing, c.hinter()),
-	}
+	hint := c.hinter()
 
 	// The out half dials the verse, where the reflection is dialled BY it: one pass loop per
 	// repository's place, all of them the same sink, which reads the repository off the place.
 	if *out {
-		if _, err := c.outHalf(ctx, src.Root(), src.Sink(), src.OutRefs()); err != nil {
+		sink := src.Sink()
+		// The questions a comment is about are read as this io, and a `/verse` comment answers
+		// as its author, relayed with their GitHub account beside this io's own credential
+		// (io.Controller's shape, for a pull rather than a socket).
+		sink.Verse = client.NewAs(c.verse(), c.principal(src.Root()), c.bearer())
+		sink.As = verseio.As(c.verse(), c.bearer())
+		outs, err := c.outHalf(ctx, src.Root(), sink, src.OutRefs())
+		if err != nil {
 			return err
 		}
+		// A comment's delivery is a reply in the making: the hint has verse reflect it, and a
+		// pass asked for now reads the reflection a moment behind the hint. The pass that misses
+		// it is caught by the next interval, which is the net either way.
+		if hint != nil {
+			inner := hint
+			hint = func(ctx context.Context, refs ...entity.Ref) {
+				inner(ctx, refs...)
+				if aboutAComment(refs) {
+					for _, o := range outs {
+						o.Kick()
+					}
+				}
+			}
+		}
+	}
+	routes := map[string]http.Handler{
+		"POST /github/webhook": src.Webhook(signing, hint),
 	}
 	return c.serve(src.Root(), src, routes)
+}
+
+// aboutAComment reports whether a hint names a comment: `<root>.<org>.<name>.comment.<n>.<id>`.
+func aboutAComment(refs []entity.Ref) bool {
+	for _, ref := range refs {
+		if segs := ref.Segs(); len(segs) == 6 && segs[3] == "comment" {
+			return true
+		}
+	}
+	return false
 }
 
 // githubApp is the app the environment names, nil where it names none. Partly named is refused:
