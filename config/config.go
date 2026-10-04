@@ -102,6 +102,23 @@ type AuthConfig struct {
 	// verse accepts. The server reads it to verify a request's bearer, and the CLI reads it to
 	// know which providers `verse login` can log in to.
 	Principal PrincipalAuthConfig `tony:"field=principal,omitzero"`
+	// Issuer makes this verse an issuer of its own: it signs a short-lived token for a task whose
+	// gate passed, and publishes the keys a system outside verse verifies that token against.
+	// Unlike the blocks beside it, this is verse vouching outward, not a party arriving.
+	// Server-side, read by `verse up`.
+	Issuer IssuerConfig `tony:"field=issuer,omitzero"`
+}
+
+// IssuerConfig is what a verse needs to issue tokens: where its relying parties reach it, and
+// the key it signs with.
+//
+//tony:schemagen=verse-issuer-config,notag
+type IssuerConfig struct {
+	// URL is this verse as a relying party reaches it. It is every token's `iss`, and the
+	// discovery document is found at `<url>/.well-known/openid-configuration`.
+	URL string `tony:"field=url,omitzero"`
+	// Key is the path of the signing key: an RSA private key in PEM, PKCS#1 or PKCS#8.
+	Key string `tony:"field=key,omitzero"`
 }
 
 // The modes of auth.principal.
@@ -140,15 +157,28 @@ type AuthProviderConfig struct {
 	// Domains are the email domains a person may arrive from the first time: a token nobody has
 	// been bound from before needs a verified email in one of them. Empty admits nobody new.
 	Domains []string `tony:"field=domains,omitzero"`
+	// IOs names the installed ios whose reflections count as evidence of this provider's
+	// accounts. It is `github`'s to set: a GitHub account is proved by a comment an io reflects,
+	// and only a comment under one of these ios' roots is read. Empty trusts none.
+	IOs []string `tony:"field=ios,omitzero"`
 }
 
 // GitHubProvider is the provider GitHub accounts are bound under. GitHub issues no id_token for
-// a person, so it is never an OpenID Connect provider and its name is not one's to take.
+// a person, so it is never an OpenID Connect issuer: its entry names the ios that are trusted as
+// evidence of its accounts, and nothing else.
 const GitHubProvider = "github"
 
 // validate refuses an auth block that names no usable provider or mode, at load, where the
 // refusal is a line in a config file.
 func (a AuthConfig) validate() error {
+	if (a.Issuer.URL == "") != (a.Issuer.Key == "") {
+		return fmt.Errorf("auth.issuer: an issuer has both a url and a key")
+	}
+	if a.Issuer.URL != "" {
+		if u, err := url.Parse(a.Issuer.URL); err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
+			return fmt.Errorf("auth.issuer.url: %q is not a URL a relying party can fetch from", a.Issuer.URL)
+		}
+	}
 	p := a.Principal
 	switch p.Mode {
 	case "", AuthOff, AuthOptional, AuthRequired:
@@ -159,13 +189,20 @@ func (a AuthConfig) validate() error {
 	issuers := map[string]string{}
 	for name, prov := range p.Providers {
 		at := "auth.principal.providers." + name
+		if name == GitHubProvider {
+			if prov.Issuer != "" || prov.ClientID != "" || len(prov.Domains) > 0 {
+				return fmt.Errorf("%s: %q is the provider GitHub accounts are bound under, by proof "+
+					"by action, and GitHub is no OpenID Connect issuer for people: its entry takes "+
+					"`ios` alone; give an issuer another name", at, name)
+			}
+			continue
+		}
 		switch {
-		case name == GitHubProvider:
-			return fmt.Errorf("%s: %q is the provider GitHub accounts are bound under, by proof by "+
-				"action, and GitHub is no OpenID Connect issuer for people; give the provider "+
-				"another name", at, name)
 		case strings.TrimSpace(name) != name || name == "" || strings.ContainsAny(name, ".*/ "):
 			return fmt.Errorf("%s: a provider's name is one plain address segment", at)
+		case len(prov.IOs) > 0:
+			return fmt.Errorf("%s.ios: an io's reflection is evidence of a %s account only, which "+
+				"is the one proved by action; a token is this provider's evidence", at, GitHubProvider)
 		case prov.ClientID == "":
 			return fmt.Errorf("%s.clientId is required: a token is accepted for one client", at)
 		}

@@ -288,14 +288,32 @@ A token is checked before the name is read:
 | a token, at a verse that names no provider or whose mode is `off` | 401 |
 | a token whose provider cannot be reached | 503. Requests with no token are still served. |
 | a token that passes, and a `Verse-Principal` naming somebody else | 403 |
-| no token | as the `Verse-Principal` it names, or as nobody |
+| no token, under `off` or `optional` | as the `Verse-Principal` it names, or as nobody |
+| no token and a `user:` name, under `required` | 401, saying to log in |
+| no token and an `agent:` or `runner:` name, under `required` | as that name |
+| no token and no name, under `required` | as nobody: it reads what `*` holds, and writes nothing |
 
-`auth.principal.mode` says how far the verse insists on a token. `off` verifies nobody.
-`optional` verifies a token where a request carries one, and still takes a bare name.
+`auth.principal.mode` says how far the verse insists on a token.
 
-**What is not verified.** `agent:` and `runner:` principals are always taken as given. Under
-`optional`, so is a `user:` that carries no token. A binding records which of the two its
-claimant was (`claimant`), so a reader can tell a verified name from an asserted one.
+| mode | a person is |
+|---|---|
+| `off` | whoever the request says. No token is verified. |
+| `optional` | whoever their token proves, or whoever the request says where it carries none |
+| `required` | whoever their token proves, and nobody else |
+
+**What `required` does not guarantee.** It covers people only.
+
+- `agent:` and `runner:` principals are always taken as given, under every mode. An agent may
+  read bindings, so `required` does not mean the door is closed.
+- An io that acts as a person presents that person's name without their token. Slack's io does
+  this to read and answer a person's questions. Under `required` those requests are refused,
+  until verse has a way to admit an io for a person.
+- An [`asserted` binding](#accounts-in-other-systems) is not answered to an io's lookup under
+  `required`, until a verified caller proves the account again.
+
+Under `optional`, a `user:` that carries no token is also taken as given. A binding records
+which kind of caller proved it (`claimant`), so a reader can tell a verified name from an
+asserted one.
 
 `GET /whoami` answers who the request is from and how verse knows: `{principal, by}`, where `by`
 is the provider that verified the caller, or `asserted`. A request that names nobody is answered
@@ -323,7 +341,8 @@ is the provider that verified the caller, or `asserted`. A request that names no
   sends that name alone and no token. A token beside another name is refused.
 - **Renewal.** An id_token that has expired is renewed with the refresh token before the request
   is sent. Where it cannot be renewed, the command fails and says to log in again. It is not
-  sent under the config's `user` instead.
+  sent under the config's `user` instead. A provider that does not answer within 30 seconds
+  fails the command too.
 - **A login the verse refuses is not kept.** `verse login` asks the verse who the token proves
   before it reports success, which is also when a first sight is bound.
 
@@ -351,9 +370,13 @@ they could rewrite.
 | `DELETE /accounts/<provider>/{sub}` | the person | revokes their own binding |
 
 - **The proof** of a GitHub account is a comment that says `/verse link <nonce>` on a line of its
-  own. It must be written by the claimed login, on a repository the [github io](iod.md#github)
-  reflects, and it must carry the author's number (`authorId`). Until that comment is reflected,
+  own. It must be written by the claimed login, on a repository that a trusted
+  [github io](iod.md#github) reflects, and it must carry the author's number (`authorId`). Until that comment is reflected,
   verify answers 404 and the claim still stands. An expired claim answers 410, and is removed.
+- **Trusted ios.** Only a comment under the root of an io the deployment trusts is read. The
+  deployment names them in its config, `auth.principal.providers.github.ios`, and verse writes
+  the list to `verse.identity.github.trust` at every start, where anyone can read it. Nothing
+  else writes it. Where none is trusted, a claim and a verify are refused with 409.
 - **One account is one principal.** Proving an account that is bound to somebody else is refused
   with 409, until they revoke it. Proving it again for the same principal answers 200. One
   principal may hold many accounts.
@@ -374,8 +397,8 @@ they could rewrite.
   request said. A binding is only as good as the name it binds to, so it says which kind of name
   that was. An `asserted` binding that a verified caller proves again takes that provider as its
   claimant. Proving a binding again as an asserted caller changes nothing.
-- **Trust.** The evidence of a GitHub account is as trustworthy as the io that reflected it. That
-  is the same trust verse gives an io's asserted principal today. An account at an identity
+- **Trust.** The evidence of a GitHub account is as trustworthy as the io that reflected it,
+  which is why the deployment says which ios those are. An io is itself an asserted `agent:`. An account at an identity
   provider is bound from a [verified token](#who-a-request-is-from), which is the same binding
   with a different proof.
 

@@ -140,6 +140,7 @@ type fsExec struct {
 	content task.ContentReader
 	extra   map[string]Tool // the runtime's own tools (see Tool)
 	env     []string        // the variables run_bash passes through (see Config.Env)
+	set     []string        // the variables run_bash is given outright (see Config.Set)
 	seq     int
 	records []ExecRecord
 }
@@ -281,7 +282,7 @@ func (e *fsExec) runBash(ctx context.Context, command string, rec *ExecRecord) {
 	c := exec.CommandContext(ctx, "bash", "-lc", command)
 	c.WaitDelay = orphanWaitDelay
 	c.Dir = e.root
-	c.Env = task.ShellEnv(e.env)
+	c.Env = append(task.ShellEnv(e.env), e.set...)
 	var stdout, stderr bytes.Buffer
 	c.Stdout, c.Stderr = &stdout, &stderr
 	err := c.Run()

@@ -249,11 +249,15 @@ auth:
         issuer: https://accounts.google.com
         clientId: "1234.apps.googleusercontent.com"
         domains: [example.com]
+      github:
+        ios: [github]
 ```
 
-- `mode` is `off` or `optional`. Unset is `off`: no token is verified. Under `optional`, a
-  token is verified where a request carries one, and a request without one is still whoever it
-  says it is.
+- `mode` is `off`, `optional` or `required`. Unset is `off`: no token is verified. Under
+  `optional`, a token is verified where a request carries one, and a request without one is
+  still whoever it says it is. Under `required`, a request that names a person and carries no
+  token is refused. Agents and runners are not verified under any mode
+  ([what `required` does not guarantee](perms.md#who-a-request-is-from)).
 - `providers` are the OpenID Connect issuers whose id_tokens the verse accepts. Each is under a
   name the deployment gives it. The name is where its accounts are bound
   (`verse.identity.<name>`), so it is one plain word. `github` is taken:
@@ -262,9 +266,33 @@ auth:
   It is a public client, with no secret. Quote a `clientId` that starts with a digit.
 - `domains` are the email domains a person may arrive from the first time. With none, only an
   account that is already bound is admitted.
+- `github: {ios: [<name>…]}` names the installed ios that verse trusts as evidence of a GitHub
+  account ([accounts in other systems](perms.md#accounts-in-other-systems)). It is the only
+  thing the `github` entry takes. With none, no GitHub account can be proved.
 
 `verse up` refuses to start on an `auth` block it cannot serve. It does not read a provider at
 start, so a provider that is down stops only the requests that carry its tokens.
+
+**`auth: {issuer: {url, key}}`** makes the verse an issuer of its own tokens. The server reads
+it.
+
+```tony
+auth:
+  issuer:
+    url: https://verse.example.com
+    key: /etc/verse/issuer.pem
+```
+
+- `url` is the verse as a system outside it reaches it. It is the `iss` of every token the verse
+  signs. The verse serves its discovery document at `<url>/.well-known/openid-configuration` and
+  its public keys at `<url>/.well-known/jwks.json`. Both are JSON, and are read without naming
+  anybody.
+- `key` is the path of the signing key: an RSA private key of 2048 bits or more, in PEM (PKCS#1
+  or PKCS#8). `openssl genrsa -out issuer.pem 2048` makes one. `verse up` refuses to start on a
+  key it cannot read.
+
+Without the block, the verse signs nothing and answers 404 at both addresses. What it signs is
+[a credential for what a gate let through](gates.md#a-credential-for-what-a-gate-let-through).
 
 **`perms: {child-grants: {…}}`** is read by the server. It is the `child-grants` of the
 [root](../glossary.md#root-of-the-store): what a node that is created with no record above it
@@ -308,6 +336,7 @@ Every key, and the variable that sets it:
 | `format: {default, output, wire}` | `VERSE_FORMAT`, `VERSE_OUTPUT_FORMAT`, `VERSE_WIRE_FORMAT` | every command | the format to write in: `tony` or `yaml` ([representation](representation.md)) |
 | `systemCharter` | `VERSE_SYSTEM_CHARTER` | `verse up` | a charter file installed at start as the system |
 | `auth: {principal: {mode, providers}}` | | `verse up`, `verse login` | the identity providers whose tokens say who a request is from |
+| `auth: {issuer: {url, key}}` | | `verse up` | the address and signing key the verse issues its own tokens with |
 | `perms: {child-grants, admins}` | `VERSE_PERMS_ADMINS` for `admins`, comma-separated | `verse up` | what the root holds out, and who may take a top-level place |
 | `tripDuration` | | `verse up` | how long a firing waits when the [cycle throttle](../cycle-throttle.md) trips. A duration, `1s` by default; `0` refuses the firing |
 | `shellEnv` | | `verse up` | the variables a local task's shell passes through from the server's environment. Everything else is unset |

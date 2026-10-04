@@ -49,6 +49,12 @@ import (
 // refreshMargin is how long before its expiry an id_token is renewed rather than sent.
 const refreshMargin = 10 * time.Second
 
+// providerWait is how long the CLI waits on an identity provider that is not answering: for its
+// discovery document, and for a renewal. A provider that has gone quiet fails the command, saying
+// so, where an unbounded wait would leave it hanging on a request that has nothing to do with
+// what was asked. A var so a test need not sit it out.
+var providerWait = 30 * time.Second
+
 // loginEntry is one login: the tokens a provider gave, and who the verse said they prove.
 type loginEntry struct {
 	// Principal is who the verse made the request as when it was shown the token.
@@ -186,13 +192,15 @@ func bearer(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("the login to %s through %s has expired, and %s gave nothing to renew it with: %s",
 			g.Addr, provider, provider, again)
 	}
+	ctx, cancel := context.WithTimeout(ctx, providerWait)
+	defer cancel()
 	p, err := loginSetup(ctx, provider)
 	if err != nil {
-		return "", fmt.Errorf("renewing the login to %s: %w", g.Addr, err)
+		return "", fmt.Errorf("renewing the login to %s: %w", g.Addr, quiet(ctx, provider, err))
 	}
 	tok, err := p.conf.TokenSource(ctx, &oauth2.Token{RefreshToken: l.RefreshToken}).Token()
 	if err != nil {
-		return "", fmt.Errorf("the login to %s through %s has expired and was not renewed (%v): %s", g.Addr, provider, err, again)
+		return "", fmt.Errorf("the login to %s through %s has expired and was not renewed (%v): %s", g.Addr, provider, quiet(ctx, provider, err), again)
 	}
 	raw, expiry, err := p.idToken(ctx, tok)
 	if err != nil {
@@ -206,6 +214,15 @@ func bearer(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("keeping the renewed login: %w", err)
 	}
 	return raw, nil
+}
+
+// quiet says, of an error from a provider that ran out the wait, that the provider did not answer:
+// the error underneath is a cancelled request, which says nothing of why.
+func quiet(ctx context.Context, provider string, err error) error {
+	if ctx.Err() == context.DeadlineExceeded {
+		return fmt.Errorf("%s did not answer within %s", provider, providerWait)
+	}
+	return err
 }
 
 // loginProvider is a provider as the CLI logs in to it: discovered, with the client's OAuth
@@ -242,6 +259,15 @@ func loginSetup(ctx context.Context, name string) (*loginProvider, error) {
 		conf:     oauth2.Config{ClientID: p.ClientID, Endpoint: prov.Endpoint(), Scopes: scopes},
 		verifier: prov.Verifier(&oidc.Config{ClientID: p.ClientID}),
 	}, nil
+}
+
+// discover is loginSetup for a login, which waits on a person afterwards: only the discovery is
+// held to the provider's wait.
+func discover(ctx context.Context, name string) (*loginProvider, error) {
+	ctx, cancel := context.WithTimeout(ctx, providerWait)
+	defer cancel()
+	p, err := loginSetup(ctx, name)
+	return p, quiet(ctx, name, err)
 }
 
 // idToken is the id_token in a token endpoint's answer, checked as the server will check it, and
@@ -374,7 +400,7 @@ func (p *loginProvider) obtain(cc *cli.Context) (*oauth2.Token, error) {
 func whoIs() (principal, by string, err error) {
 	resp, err := httpGet("/whoami", nil)
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("whoami: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return "", "", statusError(resp, "whoami")
@@ -419,7 +445,7 @@ func (cfg *loginConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	p, err := loginSetup(cc.Go, name)
+	p, err := discover(cc.Go, name)
 	if err != nil {
 		return fmt.Errorf("login: %w", err)
 	}
@@ -479,7 +505,7 @@ func link(cc *cli.Context, name string) error {
 	if name == current {
 		return fmt.Errorf("login --link: %s is the provider you are logged in through", name)
 	}
-	p, err := loginSetup(cc.Go, name)
+	p, err := discover(cc.Go, name)
 	if err != nil {
 		return fmt.Errorf("login --link: %w", err)
 	}
@@ -591,7 +617,7 @@ func whoamiCmd() *cli.Command {
 		func(cc *cli.Context, args []string) error {
 			who, by, err := whoIs()
 			if err != nil {
-				return fmt.Errorf("whoami: %w", err)
+				return err
 			}
 			if who == "" {
 				fmt.Fprintln(cc.Out, "nobody: this CLI names no user toward "+g.Addr+" (`verse login`, or `user:` in its config)")

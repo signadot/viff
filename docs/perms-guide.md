@@ -97,6 +97,8 @@ things then differ from what is above:
   whoever they say they are.
 - A token that does not check out is refused with `401`, and the refusal says why. Verse does not
   fall back to a name sent beside it.
+- A verse may insist (`mode: required`). It then refuses a request that names a person and
+  carries no token, with `401` and a line that says to log in.
 
 If you have an account at a second provider the verse names, `verse login --link <provider>`
 binds it to who you are logged in as. Either account's token is then you.

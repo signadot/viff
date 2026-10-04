@@ -94,6 +94,7 @@ verse-runner-spawn:
   answer: .[tony-base:ir]
   calls: .[array(verse-call)]
   converse: .[bool]
+  credential: .[string]
   driver: .[string]
   environment: .[string]
   frame: .[string]
@@ -181,7 +182,14 @@ On way A, `taskd` does the first five for you. The other four are yours on both 
 6. **`virtualKey` is the model credential itself.** In the `spawn` of a rule the field
    holds an address. In the launch that a runner receives, it holds the key. Use the key
    for that task only, and do not write it to a log.
-7. **The runner enforces an answer contract, or it refuses the spawn.** `answer` is the
+7. **`credential` is a token for the task, and the runner hands it over as a file.** Verse
+   signed it for this task when the rule's gate passed
+   ([a credential for what a gate let through](../reference/gates.md#a-credential-for-what-a-gate-let-through)).
+   Write it to a file outside the task's workspace, readable by the task's user alone, and set
+   `VERSE_CREDENTIAL_FILE` in the task's shell to the file's path. Do not put the token in the
+   environment or in a log, and remove the file when the task ends. A runner that drops the
+   field runs the task without its credential, and the task's promotion is refused.
+8. **The runner enforces an answer contract, or it refuses the spawn.** `answer` is the
    shape that the last message of the task must have
    ([the answer contract](../reference/action.md#the-answer-contract)).
 8. **The runner refuses a spawn that names what it does not have.** The name is an

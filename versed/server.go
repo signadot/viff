@@ -173,6 +173,9 @@ type Server struct {
 	unattributed map[string]bool
 	// auth is how people are authenticated at the door (SetAuth); nil verifies nobody.
 	auth *authn
+	// issuer signs tokens as this verse and publishes the keys that verify them (SetIssuer); nil
+	// issues none.
+	issuer *issuer
 
 	// susp is baseline's suspension table, which baseline's engine and every package's ask; a
 	// scope's is beside its engine. suspMu is the one writer's lock: a suspension's record and
@@ -582,6 +585,20 @@ func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentR
 			return h
 		}
 		spec.VirtualKey = key
+		// AND THE GATE'S CREDENTIAL, where the spawn asks for one: minted now, for this task, from
+		// what the firing's gates settled (gatecredential.go). A spawn that asks for one it cannot be
+		// given does not run without it, since the work it names would reach for it and fail later.
+		var credential string
+		if spec.Credential != nil {
+			token, minted, cerr := s.mintCredential(base, eng, id, spec, by)
+			if cerr != nil {
+				h := task.FailedHandle(fmt.Sprintf("spawn %s: %v", id, cerr))
+				s.reflect(rec, id, h, meta)
+				return h
+			}
+			// On the task's record from its first write: what it is good for and until when.
+			credential, meta.Credential = token, minted
+		}
 		l, err := launchOf(id, spec, by)
 		if err != nil {
 			// A charter that names an envelope this build does not have must not run
@@ -593,6 +610,7 @@ func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentR
 			s.reflect(rec, id, h, meta)
 			return h
 		}
+		l.Credential = credential
 		l.Scope = scope                // where this task's records live, so its gates land there too
 		l.Occurrence = spec.Occurrence // and which run it is, so the process can say so too
 		// A TASK ACTING FOR SOMEBODY ASKS THEM: `as: subject` runs on the asker's authority, so
@@ -1353,6 +1371,10 @@ func (s *Server) Handler() http.Handler {
 	rt.handleUnattributed("POST /io/{name}/pass", s.passIO, "", nothing)
 	// accounts — which account in an external system is which principal (identity.go). A person
 	// claims an account and proves it; the system binds it; an io looks a comment's author up.
+	// Verse as an issuer: the discovery document and the key set a relying party verifies its
+	// tokens against (issuer.go). Reads that name nobody, answered in JSON as OIDC writes them.
+	rt.handle("GET "+issuerDiscoveryPath, s.serveIssuerDiscovery, "", nothing)
+	rt.handle("GET "+issuerKeysPath, s.serveIssuerKeys, "", nothing)
 	// Who the request is from, and how versed knows: the provider that verified them, or their
 	// own say-so (auth.go).
 	rt.handle("GET /whoami", s.whoami, "", nothing)
@@ -1447,7 +1469,9 @@ func (s *Server) Handler() http.Handler {
 //
 // WHAT A REQUEST MAY PRESENT without one is `user:`, `agent:` or `runner:`, self-asserted within
 // the three, and a bare email, which is respelled `user:` on the request itself so every write and
-// check below reads the one form. A name the grammar does not read is refused. So are the names versed
+// check below reads the one form. Where the deployment admits people only verified (the mode
+// `required`), a `user:` presented this way is refused 401; `agent:` and `runner:` are not
+// verified by anything, and stay as asserted as they were. A name the grammar does not read is refused. So are the names versed
 // makes — `via:` when a rule fires, a source reflects or a resolver answers, `system:` when versed
 // acts — since a header saying either is precisely the assertion that was fine while nothing was
 // refused and is a way to hold what it names once something is. What installs a system-owned
@@ -1502,6 +1526,18 @@ func (s *Server) principals(mux *http.ServeMux, unattributed map[string]bool) ht
 					"request presents; a request is user:, agent: or runner:. A charter the system "+
 					"stands behind is installed from the file the deployment names (systemCharter "+
 					"in its config)", api.PrincipalHeader, p), http.StatusBadRequest)
+				return
+			}
+			// Where people are admitted only verified, a person's name with no proof beside it is
+			// refused and not served as nobody: an answer with nothing in it reads as an empty
+			// verse, and a refusal says to log in.
+			if g.Kind == entity.UserKind && s.verifiesPeople() && authenticatedBy(r) == claimantAsserted {
+				w.Header().Set("WWW-Authenticate", "Bearer")
+				http.Error(w, fmt.Sprintf("this verse admits a person only from an identity provider's "+
+					"token (auth.principal.mode is %s), and this request names %s with none: log in "+
+					"(`verse login`). An agent or a runner is still whoever it says it is, and a "+
+					"request that names nobody still reads what everyone may", AuthRequired, g.String()),
+					http.StatusUnauthorized)
 				return
 			}
 			if p = g.String(); p != principalOf(r) {
@@ -1598,7 +1634,11 @@ func NewScriptedTask(l task.Launch, root string, env []string, reg *task.Registr
 	case strings.TrimSpace(l.Prompt) != "":
 		calls = []task.Call{{Tool: "run_bash", Input: map[string]any{"command": l.Prompt}}}
 	}
-	return task.NewCallsTaskFrom(l, calls, reg, &shellExec{root: root, env: env})
+	set, ended, err := handCredential(l, root)
+	if err != nil {
+		return task.NewFailed(l.ID, reg, err.Error())
+	}
+	return ended(task.NewCallsTaskFrom(l, calls, reg, &shellExec{root: root, env: env, set: set}))
 }
 
 // shellExec runs run_bash for real: cancellable via ctx (so `cancel` kills a running command),
@@ -1607,6 +1647,9 @@ func NewScriptedTask(l task.Launch, root string, env []string, reg *task.Registr
 type shellExec struct {
 	root string
 	env  []string
+	// set is the variables the shell is given outright, `NAME=value`: where the task's
+	// credential file is, for a task that has one.
+	set []string
 }
 
 func (e *shellExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResult, []task.ToolUse, error) {
@@ -1615,7 +1658,7 @@ func (e *shellExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResu
 	// passthrough rather than the server's, which carries the server's credentials.
 	c := exec.CommandContext(ctx, "bash", "-c", str(tu.Input, "command"))
 	c.Dir = e.root
-	c.Env = task.ShellEnv(e.env)
+	c.Env = append(task.ShellEnv(e.env), e.set...)
 	out, err := c.CombinedOutput()
 	res := strings.TrimSpace(string(out))
 	// The code, alongside the Err this executor folds it into. Both, because the fold is this
@@ -3088,6 +3131,9 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	res := task.Choose(body.Choice, body.By)
 	res.Steer = body.Say
 	res.Edit = body.Edit
+	// How the answerer was authenticated, from the door (auth.go): what a ballot guarantees is
+	// no more than the name on it, so it says how that name was known.
+	res.Authenticated = authenticatedBy(r)
 
 	// THE SCOPE'S OWN, first. The awaiter is delivered to out-of-band and the record is written
 	// through `store` afterwards, and the two are in different scopes the moment a question is
@@ -3135,6 +3181,8 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 	} else if acting {
 		res.Via = body.By
 		body.By, res.By = party, party
+		// The party authenticated nothing: the resolver answered for them, and `via` says so.
+		res.Authenticated = ""
 		// And made on their authority from here: the ballot and the answer are the party's, so
 		// what the resolver may not write — it reads the ask, and no more — they may.
 		store = entity.As(store, party)

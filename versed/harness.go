@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/signadot/verse/task"
@@ -40,6 +41,10 @@ func (h *Harness) Build(l task.Launch, reg *task.Registry, content task.ContentR
 		if h.LLMKey == "" {
 			return task.NewFailed(l.ID, reg, "llm driver unavailable: set llm.apiKey and llm.virtualKey in verse.tony, or PORTKEY_API_KEY/PORTKEY_VIRTUAL_KEY in the environment")
 		}
+		set, ended, err := handCredential(l, h.Root)
+		if err != nil {
+			return task.NewFailed(l.ID, reg, err.Error())
+		}
 		// WHICH CREDENTIAL: the one the spawn named, else this verse's own. The spawn's is
 		// already the key — versed read it from the address the spawn named, as whoever
 		// named it, and refused there if that read was not theirs to make.
@@ -58,11 +63,11 @@ func (h *Harness) Build(l task.Launch, reg *task.Registry, content task.ContentR
 		// scripted driver, so neither path depends on a builder remembering.
 		p, _ := harness.Build(harness.Config{
 			ID: l.ID, Prompt: l.Prompt, Root: h.Root, Resolver: reg, Log: h.Log, Content: content,
-			Frame: l.Frame, Tools: l.Tools, Answer: l.Answer, Vector: l.Vector, Env: h.Env,
+			Frame: l.Frame, Tools: l.Tools, Answer: l.Answer, Vector: l.Vector, Env: h.Env, Set: set,
 			LLMBaseURL: h.LLMBaseURL, LLMKey: h.LLMKey,
 			LLMVirtualKey: virtualKey, LLMModel: h.LLMModel, Converse: l.Converse,
 		})
-		return p
+		return ended(p)
 	case task.DriverCalls:
 		// A list of calls the charter wrote, with the harness's own executor and NO model —
 		// which is why it is here rather than under the llm case: `calls` needs the four
@@ -72,12 +77,40 @@ func (h *Harness) Build(l task.Launch, reg *task.Registry, content task.ContentR
 		if err := task.CheckCalls(l.Calls); err != nil {
 			return task.NewFailed(l.ID, reg, task.DriverCalls+": "+err.Error())
 		}
-		return harness.Calls(harness.Config{
+		set, ended, err := handCredential(l, h.Root)
+		if err != nil {
+			return task.NewFailed(l.ID, reg, err.Error())
+		}
+		return ended(harness.Calls(harness.Config{
 			ID: l.ID, Root: h.Root, Resolver: reg, Log: h.Log, Content: content,
-			Tools: l.Tools, Answer: l.Answer, Vector: l.Vector, Env: h.Env,
-		}, l.Calls)
+			Tools: l.Tools, Answer: l.Answer, Vector: l.Vector, Env: h.Env, Set: set,
+		}, l.Calls))
 	default:
 		return task.NewFailed(l.ID, reg,
 			"unknown driver "+driver+" (want scripted, calls or llm)")
 	}
+}
+
+// handCredential hands a launch's credential to the task being built for it: written to a file
+// outside the workspace root (task.CredentialFile), with the variable that names the file to add to
+// the task's shell. ended is given the built task, and removes the file when the task has ended.
+// A launch with no credential gets no file and no variable.
+func handCredential(l task.Launch, root string) (set []string, ended func(*task.Task) *task.Task, err error) {
+	if l.Credential == "" {
+		return nil, func(p *task.Task) *task.Task { return p }, nil
+	}
+	env, remove, err := task.CredentialFile(l.Credential, root)
+	if err != nil {
+		return nil, nil, fmt.Errorf("the task's credential could not be handed to it: %w", err)
+	}
+	return []string{env}, func(p *task.Task) *task.Task {
+		frames, stop := p.Subscribe()
+		go func() {
+			for range frames { // the stream ends when the task does
+			}
+			stop()
+			remove()
+		}()
+		return p
+	}, nil
 }

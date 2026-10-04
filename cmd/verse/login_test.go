@@ -315,3 +315,31 @@ func TestLoginLinkBindsASecondProvidersAccount(t *testing.T) {
 		t.Errorf("whoami after a link = %q, %v, want the login in use unchanged", out, err)
 	}
 }
+
+// A provider that has gone quiet fails the command, saying so: the CLI does not wait on it without
+// end, on a request that has nothing to do with what was asked.
+func TestAQuietProviderFailsTheRenewalAndDoesNotHangIt(t *testing.T) {
+	_, l := serveLogin(t, true)
+	if _, err := runCLI(t, "login"); err != nil {
+		t.Fatal(err)
+	}
+	expireLogin(t)
+	l.Stalled = true
+	old := providerWait
+	providerWait = 300 * time.Millisecond
+	defer func() { providerWait = old }()
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := runCLI(t, "whoami")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "did not answer") || !strings.Contains(err.Error(), "verse login") {
+			t.Fatalf("whoami against a quiet provider: %v, want a failure saying it did not answer", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("whoami hung on a provider that does not answer")
+	}
+}

@@ -43,6 +43,11 @@ type Resolution struct {
 	// party it answered for (9ce3bva0, stage 4): the ballot is theirs, given by the resolver
 	// they granted. Empty for an answer somebody gave as themselves.
 	Via string
+	// Authenticated is how the answerer was authenticated when they answered as themselves: the
+	// identity provider that verified them, or `asserted` for one who was whoever their request
+	// said. Empty where nobody said: an answer a resolver gave for a party, whom nothing
+	// authenticated, and one the runtime settled.
+	Authenticated string
 }
 
 // Chosen is the option this resolution settled on: Choice when it was set, and the default

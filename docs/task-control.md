@@ -254,7 +254,8 @@ where a runner in another language reads it.
 | `tools` | the tools offered. Absent is all of them. A name no driver knows fails the spawn. |
 | `retain` | how many events to keep for a reader that resumes |
 | `converse` | the run is a conversation: when the driver goes quiet, the person gets the turn as a question, and the run ends when they end it |
-| `virtualKey` | the model credential the task runs under: the key itself. It is the one field that carries a secret. |
+| `virtualKey` | the model credential the task runs under: the key itself. It carries a secret. |
+| `credential` | the token verse signed for the task when its rule's gate passed ([gates](reference/gates.md#a-credential-for-what-a-gate-let-through)). It carries a secret. The runner hands it to the task as a file named by `VERSE_CREDENTIAL_FILE`. |
 | `answer` | the answer contract, a tony match pattern. A runner that cannot enforce one refuses the spawn. |
 | `calls` | the work itself, for the `calls` driver |
 | `vector` | the gate vector to launch under, as resolved values |

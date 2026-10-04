@@ -994,6 +994,9 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 	// said nothing. Applying a refusal's consequence to those would write a rejection nobody
 	// made.
 	var denied []Gate
+	// And the ones that were passed, by the gate's place in the rule, with how each settled:
+	// what the rule's own spawn carries, for a credential to vouch for (launch.Spec.Passed).
+	passed := map[int]launch.Passed{}
 
 	// WHO EACH GATE ASKS, settled before any is asked. A gate reading its answerers from the
 	// subject can find a name that does not parse, a group that is not there, or fewer people
@@ -1040,12 +1043,15 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 
 	for gi, gate := range t.AllGates() {
 		m, _ := gate.mode() // validated at AddTrigger
-		if !m.Blocks() {    // auto: passes without a resolver
-			continue
-		}
 		gname := gate.Name
 		if gname == "" {
 			gname = t.Name
+		}
+		if !m.Blocks() { // auto: passes without a resolver, and is on the firing's account as that
+			mu.Lock()
+			passed[gi] = launch.Passed{Gate: gname, How: launch.PassedAuto}
+			mu.Unlock()
+			continue
 		}
 		d := task.GateQuestion{
 			ID: ids[gi], Origin: t.Name, Mode: m, Gate: gname,
@@ -1079,7 +1085,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 			Labels:    gate.Labels,
 		}
 		wg.Add(1)
-		go func(g Gate, d task.GateQuestion, gname string) {
+		go func(gi int, g Gate, d task.GateQuestion, gname string) {
 			defer wg.Done()
 			// A gate asks its question of a WORLD, and the answer applies to that world.
 			// While the question stands, the subject's own subtree is watched beside it: the
@@ -1135,7 +1141,11 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 					mu.Lock()
 					allProceed = false
 					mu.Unlock()
+					return
 				}
+				mu.Lock()
+				passed[gi] = passedBy(gname, d.ID, res)
+				mu.Unlock()
 				return
 			}
 			mu.Lock()
@@ -1144,7 +1154,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 				denied = append(denied, g)
 			}
 			mu.Unlock()
-		}(gate, d, gname)
+		}(gi, gate, d, gname)
 	}
 	wg.Wait()
 
@@ -1188,7 +1198,26 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 	//
 	// What fails in it is kept on the rule by apply, per subject (trouble.go): the firing has no
 	// task to write a failure on, and its author is who can mend it.
+	for gi := range t.AllGates() {
+		if p, ok := passed[gi]; ok {
+			oc.passed = append(oc.passed, p)
+		}
+	}
 	_ = t.Action.apply(t.Name, oc, subjects, e, fromSubject)
+}
+
+// passedBy is a gate that asked and was passed, as its resolution says it was: on a ballot somebody cast, or on its
+// default when the clock ran out. A resolution that is neither (a resolver set to let every
+// question through) leaves How empty, which vouches for nothing.
+func passedBy(gate, question string, res task.Resolution) launch.Passed {
+	p := launch.Passed{Gate: gate, Question: question, Choice: res.Chosen()}
+	switch {
+	case res.By == task.ByDeadline:
+		p.How = launch.PassedDeadline
+	case res.Cast():
+		p.How, p.By, p.Via, p.Authenticated = launch.PassedBallots, res.By, res.Via, res.Authenticated
+	}
+	return p
 }
 
 // untilMoot derives the context a firing waits on: cancelled, with the reason as its cause,

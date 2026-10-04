@@ -84,6 +84,15 @@ func writeRun(store entity.Store, id string, occurrence int64, st entity.Obj) {
 	write(store, id, st, RunRef(id, occurrence))
 }
 
+// Minted describes a credential verse signed for a task: the system it is for, the `sub` a
+// target matches on, the token's own id, and when it stops being good. The token is not here.
+type Minted struct {
+	Audience string
+	Sub      string
+	JTI      string
+	Expires  string
+}
+
 // Meta is the provenance Reflect publishes alongside a task's own state: where it runs
 // and what it is about. Grouped rather than passed as four positional strings, which is
 // both unreadable at the call site and easy to transpose.
@@ -169,6 +178,10 @@ type Meta struct {
 	// Arm starts the clock on a question a FRAME posed with a deadline, when set. The record
 	// is written here; the timer that settles it is the server's, so the server hands one in.
 	Arm func(questionID, within string)
+	// Credential is the credential verse minted for the task, where it minted one: what it is
+	// good for and until when, and never the token. It is verse's own account that a token went
+	// out, beside the one the system it is shown to keeps.
+	Credential *Minted
 }
 
 // TriggerOf returns the trigger a chain belongs to — its root kpath segment. The chain is
@@ -204,7 +217,7 @@ func TriggerOf(chain string) string {
 //
 // `hook` is the engine's, written onto the same record when a hook fails (trigger.recordHookFailure).
 var RecordFields = map[string]bool{
-	"answerers": true, "asker": true, "chain": true, "cursor": true, "data": true, "dialURL": true, "doer": true,
+	"answerers": true, "asker": true, "chain": true, "credential": true, "cursor": true, "data": true, "dialURL": true, "doer": true,
 	"ended": true, "err": true, "flow": true, "grant": true, "hook": true,
 	"lastAction": true, "lastOutput": true, "observed": true, "occurrence": true,
 	"paused": true, "pending": true, "prompt": true, "result": true,
@@ -276,6 +289,9 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	}
 	if m.Grant != "" {
 		st["grant"] = m.Grant
+	}
+	if c := m.Credential; c != nil {
+		st["credential"] = entity.Obj{"audience": c.Audience, "sub": c.Sub, "jti": c.JTI, "expires": c.Expires}
 	}
 	if len(m.Tools) > 0 {
 		st["tools"] = m.Tools

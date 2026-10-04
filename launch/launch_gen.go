@@ -149,6 +149,28 @@ func (s *Spec) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["provider"] = node
 	}
 
+	// Field: Credential (optional)
+	if s.Credential != nil {
+		node, err = s.Credential.ToTonyIR(opts...)
+		if err != nil {
+			return nil, err
+		}
+		irMap["credential"] = node
+	}
+
+	// Field: Passed
+	if len(s.Passed) > 0 {
+		slice := make([]*ir.Node, len(s.Passed))
+		for i, v := range s.Passed {
+			node, err = v.ToTonyIR(opts...)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert slice element %d: %w", i, err)
+			}
+			slice[i] = node
+		}
+		irMap["passed"] = ir.FromSlice(slice)
+	}
+
 	res := ir.FromMap(irMap)
 	if len(s.Note) > 0 {
 		res.Comment = &ir.Node{Type: ir.CommentType, Lines: s.Note, Parent: res}
@@ -346,6 +368,27 @@ func (s *Spec) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if err := s.Provider.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
 			}
+		case "credential":
+			// Field: Credential
+			s.Credential = &Credential{}
+			if err := s.Credential.FromTonyIR(fieldNode, opts...); err != nil {
+				return err
+			}
+		case "passed":
+			// Field: Passed
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]Passed, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					elem := Passed{}
+					if err := elem.FromTonyIR(v, opts...); err != nil {
+						return fmt.Errorf("failed to convert slice element %d: %w", i, err)
+					}
+					slice[i] = elem
+				}
+				s.Passed = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"passed\"", fieldNodeUnwrapped.Type)
+			}
 		default:
 			if gomap.IsStrict(opts...) {
 				return fmt.Errorf("unknown field %q for Spec", fieldName.String)
@@ -371,6 +414,236 @@ func (s *Spec) ToTony(opts ...gomap.MapOption) ([]byte, error) {
 
 // FromTony parses Tony format bytes and populates Spec.
 func (s *Spec) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
+// ToTonyIR converts Credential to a Tony IR node.
+func (s *Credential) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: Audience
+	irMap["audience"] = ir.FromString(string(s.Audience))
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates Credential from a Tony IR node.
+func (s *Credential) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for Credential, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "audience":
+			// Field: Audience
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "audience", fieldNodeUnwrapped.Type)
+			}
+			s.Audience = string(fieldNodeUnwrapped.String)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for Credential", fieldName.String)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts Credential to Tony format bytes.
+func (s *Credential) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates Credential.
+func (s *Credential) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
+// ToTonyIR converts Passed to a Tony IR node.
+func (s *Passed) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: Gate
+	if s.Gate != "" {
+		irMap["gate"] = ir.FromString(string(s.Gate))
+	}
+
+	// Field: Question
+	if s.Question != "" {
+		irMap["question"] = ir.FromString(string(s.Question))
+	}
+
+	// Field: How
+	irMap["how"] = ir.FromString(string(s.How))
+
+	// Field: Choice
+	if s.Choice != "" {
+		irMap["choice"] = ir.FromString(string(s.Choice))
+	}
+
+	// Field: By
+	if s.By != "" {
+		irMap["by"] = ir.FromString(string(s.By))
+	}
+
+	// Field: Via
+	if s.Via != "" {
+		irMap["via"] = ir.FromString(string(s.Via))
+	}
+
+	// Field: Authenticated
+	if s.Authenticated != "" {
+		irMap["authenticated"] = ir.FromString(string(s.Authenticated))
+	}
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates Passed from a Tony IR node.
+func (s *Passed) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for Passed, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "gate":
+			// Field: Gate
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "gate", fieldNodeUnwrapped.Type)
+			}
+			s.Gate = string(fieldNodeUnwrapped.String)
+		case "question":
+			// Field: Question
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "question", fieldNodeUnwrapped.Type)
+			}
+			s.Question = string(fieldNodeUnwrapped.String)
+		case "how":
+			// Field: How
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "how", fieldNodeUnwrapped.Type)
+			}
+			s.How = string(fieldNodeUnwrapped.String)
+		case "choice":
+			// Field: Choice
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "choice", fieldNodeUnwrapped.Type)
+			}
+			s.Choice = string(fieldNodeUnwrapped.String)
+		case "by":
+			// Field: By
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "by", fieldNodeUnwrapped.Type)
+			}
+			s.By = string(fieldNodeUnwrapped.String)
+		case "via":
+			// Field: Via
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "via", fieldNodeUnwrapped.Type)
+			}
+			s.Via = string(fieldNodeUnwrapped.String)
+		case "authenticated":
+			// Field: Authenticated
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "authenticated", fieldNodeUnwrapped.Type)
+			}
+			s.Authenticated = string(fieldNodeUnwrapped.String)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for Passed", fieldName.String)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts Passed to Tony format bytes.
+func (s *Passed) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates Passed.
+func (s *Passed) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
 	if err != nil {
 		return err

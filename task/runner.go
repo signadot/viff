@@ -66,6 +66,17 @@ type Launch struct {
 	// provenance. A provider key is not bounded that way and does not belong on it.
 	VirtualKey string
 
+	// Credential is the token verse minted for this task: what vouches for it, to a system
+	// outside verse, that a gate let its work through — THE TOKEN ITSELF, as VirtualKey is the
+	// key. Empty for a task that asked for none.
+	//
+	// It crosses for VirtualKey's reason: the question of whether this task gets one is answered
+	// before it exists, where versed mints it, and what a runner receives is the answer. It is
+	// short-lived and good for one audience. A runner hands it to the task as a file outside the
+	// task's workspace (CredentialFile), named by CredentialFileEnv, and never as a value in the
+	// task's environment, which every process the task starts would inherit.
+	Credential string
+
 	// Answer is the ANSWER CONTRACT: the shape this task's final message must have,
 	// as a tony match pattern (see package answer). nil = no contract.
 	//

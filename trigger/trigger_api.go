@@ -171,6 +171,22 @@ func (e *Engine) vet(t Trigger, as string) (bool, error) {
 	if err := t.Action.noNestedSeq(false); err != nil {
 		return false, fmt.Errorf("trigger %q: %w", t.Name, err)
 	}
+	// A CREDENTIAL SAYS WHICH GATE LET THE WORK THROUGH, so it is asked for where there is one to
+	// name: the rule's own spawn, of a rule that writes a gate. A gate written `auto` counts, and
+	// a rule with none does not: work that reaches another system unattended does so because its
+	// charter says so, where a reviewer reads it. Refused here, where the author is present, and
+	// not at the first firing, which would start a task only to fail it.
+	if where := t.Action.credentialBeneath(""); where != "" {
+		return false, fmt.Errorf("trigger %q: %s asks for a credential, and a credential goes to the "+
+			"spawn a gate let through, which is the rule's own: a hook or a sequence step starts "+
+			"after the answer was given. Make the promotion a rule of its own, with its own gate", t.Name, where)
+	}
+	if t.Action.Spawn != nil && t.Action.Spawn.Credential != nil && len(t.AllGates()) == 0 {
+		return false, fmt.Errorf("trigger %q: the spawn asks for a credential, and the rule has no "+
+			"gate: a credential says which gate let the work through, so the rule writes one. "+
+			"`gates: [{name: …, mode: ask}]` has somebody answer; `mode: auto` asks nobody, and the "+
+			"credential says that too", t.Name)
+	}
 	// One spelling or the other, never both. `gates:` at the top level means
 	// `gating: {gates: …}`; a rule that writes both has said which gates it has twice, and
 	// picking one silently is how a charter comes to gate on something its author removed.

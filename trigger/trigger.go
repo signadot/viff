@@ -554,6 +554,10 @@ type occasion struct {
 	// firing, so what a reference resolves to is what the rule's owner may read. nil reads as
 	// the engine itself.
 	reader entity.Store
+	// passed is the gates this firing passed, set once they all have and before its action is
+	// applied: what the rule's own spawn carries as launch.Spec.Passed. Empty for a completion
+	// hook and for a sequence's steps, which no gate was asked about when they start.
+	passed []launch.Passed
 }
 
 // reads is the store the occasion's reads go through.
@@ -841,6 +845,23 @@ func (a Action) validate() error {
 			return fmt.Errorf("spawn `asker:` is the engine's to set, from `as: subject` at the " +
 				"firing; a charter naming who its task acts as would act as anybody")
 		}
+		// What the firing's gates settled is the engine's account too, and for a sharper reason:
+		// it is what a credential vouches for.
+		if len(a.Spawn.Passed) > 0 {
+			return fmt.Errorf("spawn `passed:` is the engine's to set, from the gates the firing " +
+				"passed; a charter naming them would vouch for an answer nobody gave")
+		}
+		// A credential's audience is declared: a word the charter wrote, read with the rule.
+		if c := a.Spawn.Credential; c != nil {
+			switch aud := strings.TrimSpace(c.Audience); {
+			case aud == "":
+				return fmt.Errorf("spawn `credential:` names no audience: `credential: {audience: …}` " +
+					"says which system the token is for")
+			case strings.Contains(aud, "$"):
+				return fmt.Errorf("spawn `credential: {audience: %s}`: the audience is declared and "+
+					"not derived, so text in the subject cannot choose which system a token is good for", aud)
+			}
+		}
 		// $principal is whom the task acts for, and a rule's task acts for somebody only `as:
 		// subject`.
 		if a.Spawn.As == "" && task.GatesNamePrincipal(a.Spawn.Gates) {
@@ -876,6 +897,33 @@ func (a Action) validate() error {
 		}
 	}
 	return nil
+}
+
+// credentialBeneath is the place of the first spawn below this action — a sequence's step, a
+// completion hook's, however deep — that asks for a credential, and "" where none does. The
+// action's own spawn is not looked at: it is the one a rule's gate admits.
+func (a Action) credentialBeneath(at string) string {
+	for i, el := range a.Seq {
+		where := fmt.Sprintf("%sseq[%d]", at, i)
+		if el.Spawn != nil && el.Spawn.Credential != nil {
+			return where
+		}
+		if found := el.credentialBeneath(where + "."); found != "" {
+			return found
+		}
+	}
+	for name, h := range map[string]*Action{"onDone": a.OnDone, "onFailed": a.OnFailed, "onCancelled": a.OnCancelled, "onOrphaned": a.OnOrphaned} {
+		if h == nil {
+			continue
+		}
+		if h.Spawn != nil && h.Spawn.Credential != nil {
+			return at + name
+		}
+		if found := h.credentialBeneath(at + name + "."); found != "" {
+			return found
+		}
+	}
+	return ""
 }
 
 // noNestedSeq rejects a second `seq` anywhere below one. Stated over CHAINS rather than over
@@ -934,7 +982,11 @@ func (a Action) apply(chain string, oc occasion, subjects []entity.Ref, e *Engin
 		// A sequence starts once the carrier's own write has landed. It cannot also have
 		// spawned (validate rejects spawn+seq), so there is nothing in flight to race.
 		if len(a.Seq) > 0 && h == nil {
-			e.startSeq(chain, a, oc, subj, src)
+			// The steps start as the ones before them finish, which may be long after the gate
+			// was answered: what it passed is the rule's own spawn's to carry, and not theirs.
+			steps := oc
+			steps.passed = nil
+			e.startSeq(chain, a, steps, subj, src)
 		}
 	}
 	return first
@@ -1016,7 +1068,7 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 	if a.Spawn == nil {
 		return nil, nil
 	}
-	return e.launchSpawn(a, chain, subj, root, oc.commit.Rev)
+	return e.launchSpawn(a, chain, subj, root, oc.commit.Rev, oc.passed)
 }
 
 // derivedWrite is one entity an action derives, resolved: where it goes and what it holds.
@@ -1127,19 +1179,20 @@ func (a Action) resolveDerives(chain string, oc occasion, subj entity.Ref, e *En
 // the run it is finishing.
 //
 // root is what $references read (the cause's payload for a hook, the subject's own
-// otherwise); occurrence is the store revision this run is about, 0 when nothing caused it.
+// otherwise); occurrence is the store revision this run is about, 0 when nothing caused it;
+// passed is the gates the firing passed, nil for a launch no firing's gates admitted.
 func (e *Engine) launchSpawn(a Action, chain string, subj entity.Ref, root entity.Payload,
-	occurrence int64) (task.Handle, error) {
+	occurrence int64, passed []launch.Passed) (task.Handle, error) {
 	// A SUSPENDED SUBJECT STARTS NOTHING. A hook's writes and derives have landed by now —
 	// recording is not progress — and what it would start is parked here, before a provider
 	// selection could be posed: a selection asked from the reap goroutine under a suspension
 	// would wait for the lift with every completion in the engine behind it. The lift starts it.
 	if held := e.settled(mirror.TriggerOf(chain), subj); len(held) > 0 {
-		e.park(parkedLaunch{a: a, chain: chain, subj: subj, root: root, occurrence: occurrence})
+		e.park(parkedLaunch{a: a, chain: chain, subj: subj, root: root, occurrence: occurrence, passed: passed})
 		e.tracef("%s: %s is suspended (%s); its launch is parked", chain, subj, strings.Join(held, ", "))
 		return nil, nil
 	}
-	return e.launch(a, chain, subj, root, occurrence)
+	return e.launch(a, chain, subj, root, occurrence, passed)
 }
 
 // ownerSettle is how long a firing spawning `as: subject` waits for the subject's owner record to
@@ -1148,8 +1201,11 @@ const ownerSettle = 250 * time.Millisecond
 
 // launch is launchSpawn past the suspension: what a parked launch re-enters when it is released.
 func (e *Engine) launch(a Action, chain string, subj entity.Ref, root entity.Payload,
-	occurrence int64) (task.Handle, error) {
+	occurrence int64, passed []launch.Passed) (task.Handle, error) {
 	spec := a.Spawn.Bind(bindingFor(root, subj))
+	// What the firing's gates settled, the engine's to say and nobody else's: it is what a
+	// credential vouches for, so a value a charter wrote there does not survive to it.
+	spec.Passed = append([]launch.Passed(nil), passed...)
 	// The subject is the engine's to set, not the charter's: a task is about exactly
 	// one subject, and which one is the Condition's answer.
 	spec.Subject = subj.String()

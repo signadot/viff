@@ -246,6 +246,62 @@ type Spec struct {
 	// A spawn that carries one must also declare Grant: a doer may bring its own, and that is
 	// only checkable against a ceiling the charter stated. See docs/provider-selection.md.
 	Provider *Provider `tony:"field=provider,omitzero"`
+	// Credential asks verse to vouch for this task to a system outside it: a short-lived token,
+	// signed by this verse as an issuer, that says which rule's gate let the work through and how:
+	// on the ballots people cast, on its deadline, or as a gate written `auto`. Absent, the task
+	// gets none.
+	//
+	// DECLARED, AND NEVER DERIVED. What a rule's work may reach is written in the charter, where
+	// it is read and reviewed with the rule; it is not expanded, so text in the subject cannot
+	// choose the audience. It is honoured for the spawn the gate admitted, a rule's own, and not
+	// for a completion hook's or a sequence step's, which start later than the answer was given.
+	Credential *Credential `tony:"field=credential,omitzero"`
+	// Passed is the gates the firing passed before this launch: which questions, and how each
+	// settled. Engine-owned like Asker, and as strictly: the engine clears it on every launch and
+	// sets it only from the firing's own gates, because it is what a credential vouches for.
+	Passed []Passed `tony:"field=passed,omitzero"`
+}
+
+// Credential is what a spawn asks verse to vouch for its task with.
+//
+//tony:schemagen=verse-launch-credential,notag
+type Credential struct {
+	// Audience is who the token is for: its `aud`, which the system it is shown to is set up to
+	// accept (`sts.amazonaws.com`, a Vault role's bound audience).
+	Audience string `tony:"field=audience"`
+}
+
+// How a gate was passed.
+const (
+	// PassedBallots is a gate settled by the ballots people cast.
+	PassedBallots = "ballots"
+	// PassedDeadline is a gate settled on its default when its clock ran out, with nobody's
+	// answer deciding it.
+	PassedDeadline = "deadline"
+	// PassedAuto is a gate the charter wrote as `mode: auto`: it asked nobody, and let the firing
+	// through.
+	PassedAuto = "auto"
+)
+
+// Passed is one gate a firing passed: which gate, the question it asked where it asked one, and
+// how it let the firing through.
+//
+//tony:schemagen=verse-launch-passed,notag
+type Passed struct {
+	// Gate is the gate's name in its rule.
+	Gate string `tony:"field=gate,omitzero"`
+	// Question is the question's id: its record stands at `verse.ask.<id>`. Empty for a gate
+	// that asked nobody.
+	Question string `tony:"field=question,omitzero"`
+	// How is PassedBallots, PassedDeadline or PassedAuto.
+	How string `tony:"field=how"`
+	// Choice is the option it settled on.
+	Choice string `tony:"field=choice,omitzero"`
+	// By is who cast the ballot that settled it, Via the resolver it came through, and
+	// Authenticated how By was authenticated. All empty for a gate its deadline settled.
+	By            string `tony:"field=by,omitzero"`
+	Via           string `tony:"field=via,omitzero"`
+	Authenticated string `tony:"field=authenticated,omitzero"`
 }
 
 // Call is one action of a call list, as a charter writes it.
@@ -351,6 +407,13 @@ func (s Spec) Bind(b Binding) Spec {
 	// it is the engine's answer to As, set after binding (trigger.launch), and a value a charter
 	// wrote there does not survive to it.
 	out.As = s.As
+	// Credential is carried and not expanded, for VirtualKey's reason: payload text deciding
+	// which system a token is good for is what declaring it exists to prevent. Passed is NOT
+	// carried, as Asker is not: it is the engine's account of the firing's gates.
+	if s.Credential != nil {
+		c := *s.Credential
+		out.Credential = &c
+	}
 	return out
 }
 

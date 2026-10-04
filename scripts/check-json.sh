@@ -36,11 +36,14 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 #                              tests point a verse and a CLI at. Discovery documents, key sets
 #                              and tokens are JSON by specification, and the JSON stops at that
 #                              file: a test holds a token as a string and claims as a map.
+#   versed/issuer.go        — the same wire format, issued: verse's own discovery document, key
+#                              set and the tokens it signs, which a relying party outside verse
+#                              reads as the specification writes them.
 #
 # The source connectors are the shape to copy: JSON stops at the
 # package boundary. What they hand back is an entity.Payload, and what they serve is rendered
 # by codec like everything else — so no verse surface acquires a second dialect from this.
-allow='task/harness/llm.go|task/harness/modeltest/model\.go|codec/codec.go|io/slack/[a-z]+\.go|io/linear/[a-z]+\.go|io/github/[a-z]+\.go|docs/reference/examples/coderunner/command\.go|docs/reference/examples/coderunner/pull\.go|versed/idptest/idp\.go'
+allow='task/harness/llm.go|task/harness/modeltest/model\.go|codec/codec.go|io/slack/[a-z]+\.go|io/linear/[a-z]+\.go|io/github/[a-z]+\.go|docs/reference/examples/coderunner/command\.go|docs/reference/examples/coderunner/pull\.go|versed/idptest/idp\.go|versed/issuer\.go'
 
 # git ls-files, not a filesystem walk: the tree carries untracked worktree copies and
 # scratch dirs, and a guard that trips on those is a guard people learn to ignore.

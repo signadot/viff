@@ -22,6 +22,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/task"
 )
@@ -852,6 +853,7 @@ type parkedLaunch struct {
 	subj       entity.Ref
 	root       entity.Payload
 	occurrence int64
+	passed     []launch.Passed
 }
 
 // park holds a launch.
@@ -883,7 +885,7 @@ func (e *Engine) releaseLaunches() {
 			continue
 		}
 		start := func() {
-			if _, err := e.launch(l.a, l.chain, l.subj, l.root, l.occurrence); err != nil {
+			if _, err := e.launch(l.a, l.chain, l.subj, l.root, l.occurrence, l.passed); err != nil {
 				e.logger.Warn("a parked launch did not start", "chain", l.chain, "subject", l.subj.String(), "err", err)
 			}
 		}

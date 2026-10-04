@@ -2,8 +2,17 @@
 context:
 - tony-format/context
 define:
+  key: .[string]
+  url: .[string]
+signature:
+  name: verse-issuer-config
+---
+context:
+- tony-format/context
+define:
   clientId: .[string]
   domains: .[array(string)]
+  ios: .[array(string)]
   issuer: .[string]
 signature:
   name: verse-auth-provider-config
@@ -19,6 +28,7 @@ signature:
 context:
 - tony-format/context
 define:
+  issuer: !verse-issuer-config null
   principal: !verse-principal-auth-config null
 signature:
   name: verse-auth-config

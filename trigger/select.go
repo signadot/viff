@@ -297,7 +297,9 @@ func (e *Engine) resumeSelection(a Action, chain string, subj entity.Ref) {
 	if ent, ok, err := e.store.Get(subj); err == nil && ok {
 		root = ent.Payload
 	}
-	if _, err := e.launchSpawn(a, chain, subj, root, 0); err != nil {
+	// And no gate it passed: the firing that asked them is gone, and what it was told is not
+	// kept across a restart.
+	if _, err := e.launchSpawn(a, chain, subj, root, 0, nil); err != nil {
 		e.tracef("resuming select on %s: %v", subj, err)
 	}
 }

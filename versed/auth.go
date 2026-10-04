@@ -70,6 +70,9 @@ type AuthProvider struct {
 	ClientID string
 	// Domains are the email domains a first sight is admitted from.
 	Domains []string
+	// IOs are the installed ios trusted as evidence of the provider's accounts: `github`'s, whose
+	// accounts are proved by a comment an io reflects.
+	IOs []string
 }
 
 const (
@@ -104,14 +107,16 @@ type authProvider struct {
 	failure  error
 }
 
-// SetAuth says how this verse authenticates people. It is called before the server serves.
+// SetAuth says how this verse authenticates people, and writes down which ios each provider
+// trusts as evidence (trustRef). It is called before the server serves.
+//
+// THE TRUSTED IOS COME FROM HERE AND NOWHERE ELSE. Which ios' reflections count as evidence
+// decides what a binding guarantees, so it is set by the one input that does not come through the
+// door: the deployment's own config. It is written to the store as system:identity, where it is
+// read like any record, and written again at every start, so the store says what the config does.
 func (s *Server) SetAuth(a Auth) error {
 	switch a.Mode {
-	case "", AuthOff, AuthOptional:
-	case AuthRequired:
-		return fmt.Errorf("auth.principal.mode: %s is not served: what a request that names a "+
-			"user: and carries no bearer is answered is not settled (git-issue "+
-			"hqh7km3th12ks1qxqsn0, 1.5); run %s", AuthRequired, AuthOptional)
+	case "", AuthOff, AuthOptional, AuthRequired:
 	default:
 		return fmt.Errorf("auth.principal.mode: %q is not a mode: %s, %s or %s", a.Mode, AuthOff, AuthOptional, AuthRequired)
 	}
@@ -120,12 +125,19 @@ func (s *Server) SetAuth(a Auth) error {
 		n.mode = AuthOff
 	}
 	for name, p := range a.Providers {
+		if name == githubProvider {
+			if p.Issuer != "" || p.ClientID != "" || len(p.Domains) > 0 {
+				return fmt.Errorf("auth.principal.providers.%s: that name is the provider GitHub accounts "+
+					"are bound under, by proof by action: its entry takes `ios` alone", name)
+			}
+			continue
+		}
 		switch {
-		case name == githubProvider:
-			return fmt.Errorf("auth.principal.providers.%s: that name is the provider GitHub accounts "+
-				"are bound under, by proof by action", name)
 		case name == "" || p.Issuer == "" || p.ClientID == "":
 			return fmt.Errorf("auth.principal.providers.%s: a provider has a name, an issuer and a clientId", name)
+		case len(p.IOs) > 0:
+			return fmt.Errorf("auth.principal.providers.%s.ios: an io's reflection is evidence of a %s "+
+				"account only", name, githubProvider)
 		}
 		if other, dup := n.byIssuer[p.Issuer]; dup {
 			return fmt.Errorf("auth.principal.providers.%s: %s is %s's issuer too, and a token's "+
@@ -133,8 +145,20 @@ func (s *Server) SetAuth(a Auth) error {
 		}
 		n.byIssuer[p.Issuer] = &authProvider{name: name, AuthProvider: p}
 	}
+	if n.mode == AuthRequired && len(n.byIssuer) == 0 {
+		return fmt.Errorf("auth.principal.mode: %s admits a person only from an identity provider's "+
+			"token, and auth.principal.providers names no issuer", AuthRequired)
+	}
+	if err := s.writeTrust(githubProvider, a.Providers[githubProvider].IOs); err != nil {
+		return fmt.Errorf("auth.principal.providers.%s.ios: %w", githubProvider, err)
+	}
 	s.auth = n
 	return nil
+}
+
+// verifiesPeople reports whether this verse admits a `user:` only from a verified bearer.
+func (s *Server) verifiesPeople() bool {
+	return s.auth != nil && s.auth.mode == AuthRequired
 }
 
 // providerNames is the configured providers' names, for a refusal that says what would be taken.

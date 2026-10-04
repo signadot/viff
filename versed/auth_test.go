@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"fmt"
 	stdio "io"
 	"net/http"
 	"net/http/httptest"
@@ -331,7 +332,9 @@ func TestAuthRefusesWhatItCannotServe(t *testing.T) {
 	p := AuthProvider{Issuer: "https://idp.example.com", ClientID: "c"}
 	for what, a := range map[string]Auth{
 		"an unknown mode":             {Mode: "sometimes"},
-		"a provider named github":     {Mode: AuthOptional, Providers: map[string]AuthProvider{githubProvider: p}},
+		"an issuer named github":      {Mode: AuthOptional, Providers: map[string]AuthProvider{githubProvider: p}},
+		"ios on an issuer":            {Mode: AuthOptional, Providers: map[string]AuthProvider{"a": {Issuer: p.Issuer, ClientID: "c", IOs: []string{"gh"}}}},
+		"required with no issuer":     {Mode: AuthRequired, Providers: map[string]AuthProvider{githubProvider: {IOs: []string{"gh"}}}},
 		"a provider with no client":   {Mode: AuthOptional, Providers: map[string]AuthProvider{"a": {Issuer: p.Issuer}}},
 		"two providers of one issuer": {Mode: AuthOptional, Providers: map[string]AuthProvider{"a": p, "b": p}},
 	} {
@@ -373,8 +376,9 @@ func linkServer(t *testing.T) (*Server, *httptest.Server, *idptest.IdP, *idptest
 	corp, okta := idptest.New(t), idptest.New(t)
 	srv, ts := identityServer(t)
 	if err := srv.SetAuth(Auth{Mode: AuthOptional, Providers: map[string]AuthProvider{
-		authProvName: {Issuer: corp.URL, ClientID: authClient, Domains: []string{authDomain}},
-		"okta":       {Issuer: okta.URL, ClientID: authClient},
+		authProvName:   {Issuer: corp.URL, ClientID: authClient, Domains: []string{authDomain}},
+		"okta":         {Issuer: okta.URL, ClientID: authClient},
+		githubProvider: {IOs: []string{"gh"}},
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -487,5 +491,154 @@ func TestProvingABindingAgainAsAVerifiedCallerChangesItsClaimant(t *testing.T) {
 	}
 	if code := prove(""); code != http.StatusOK || claimant() != authProvName {
 		t.Errorf("proved again by an asserted caller = %d, claimant %q, want it left as %s", code, claimant(), authProvName)
+	}
+}
+
+// Where people are admitted only verified, a binding a caller nobody verified proved does not say
+// who an account is: the lookup an io makes skips it until a verified caller proves it again. Its
+// own principal still sees it listed, with the claimant that says why it does not count.
+func TestAnAssertedBindingDoesNotCountWherePeopleAreVerified(t *testing.T) {
+	srv, ts, corp, okta := linkServer(t)
+	n := claim(t, ts, idAna, "ana-gh")
+	reflectComment(t, srv, "1", "ana-gh", 101, "/verse link "+n)
+	if code, _ := verify(t, ts, idAna, n); code != http.StatusCreated {
+		t.Fatalf("verify = %d", code)
+	}
+	who := ts.URL + "/accounts/github/who?sub=" + anaSub
+	if code, _ := call(t, http.MethodGet, idIO, who, ""); code != http.StatusOK {
+		t.Fatalf("who under optional = %d, want the asserted binding answered", code)
+	}
+
+	if err := srv.SetAuth(Auth{Mode: AuthRequired, Providers: map[string]AuthProvider{
+		authProvName:   {Issuer: corp.URL, ClientID: authClient, Domains: []string{authDomain}},
+		"okta":         {Issuer: okta.URL, ClientID: authClient},
+		githubProvider: {IOs: []string{"gh"}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{"sub=" + anaSub, "login=ana-gh"} {
+		if code, _ := call(t, http.MethodGet, idIO, ts.URL+"/accounts/github/who?"+q, ""); code != http.StatusNotFound {
+			t.Errorf("who?%s of an asserted binding where people are verified = %d, want 404", q, code)
+		}
+	}
+	ana := corp.Token(authClient, "sub-ana", person("ana@example.com"))
+	code, out := bearer(t, http.MethodGet, ts.URL+"/accounts?format=tony", ana, "", "")
+	var rows []map[string]any
+	if err := codec.Unmarshal([]byte(out), &rows, codec.Tony); err != nil || code != http.StatusOK {
+		t.Fatalf("accounts = %d %s (%v)", code, out, err)
+	}
+	asserted := 0
+	for _, row := range rows {
+		if row["provider"] == githubProvider && row["claimant"] == claimantAsserted {
+			asserted++
+		}
+	}
+	if asserted != 1 {
+		t.Errorf("ana's accounts = %v, want the GitHub binding listed as asserted", rows)
+	}
+
+	// Proved again by ana verified, it counts.
+	code, out = bearer(t, http.MethodPost, ts.URL+"/accounts/github?format=tony", ana, "", `{login: ana-gh}`)
+	if code != http.StatusCreated {
+		t.Fatalf("claim = %d %s", code, out)
+	}
+	nonce := tonyOf(t, out)["nonce"].(string)
+	reflectComment(t, srv, "2", "ana-gh", 101, "/verse link "+nonce)
+	if code, out := bearer(t, http.MethodPost, ts.URL+"/accounts/github/verify", ana, "", `{nonce: "`+nonce+`"}`); code != http.StatusOK {
+		t.Fatalf("verify as a verified caller = %d %s", code, out)
+	}
+	if code, out := call(t, http.MethodGet, idIO, who, ""); code != http.StatusOK || out["principal"] != idAna || out["claimant"] != authProvName {
+		t.Errorf("who after a verified proof = %d %v", code, out)
+	}
+}
+
+// Under `required` a person is admitted only from a verified token. A request that names a person
+// and proves nobody is refused, and told to log in; an agent and a runner are whoever they say;
+// and a request that names nobody still reads what everyone may.
+func TestRequiredAdmitsAPersonOnlyFromAToken(t *testing.T) {
+	srv, ts, idp := authServer(t, AuthRequired)
+	token := idp.Token(authClient, "sub-ana", person("ana@example.com"))
+
+	if code, body := bearer(t, http.MethodPost, ts.URL+"/entity", token, "", entityPut(t, "demo.pr.1")); code/100 != 2 {
+		t.Fatalf("a put with a token = %d %s", code, body)
+	}
+	for _, as := range []string{idBo, "bo@example.com"} {
+		for _, method := range []string{http.MethodGet, http.MethodPost} {
+			url, body := ts.URL+"/whoami", ""
+			if method == http.MethodPost {
+				url, body = ts.URL+"/entity", entityPut(t, "other.pr.1")
+			}
+			code, out := bearer(t, method, url, "", as, body)
+			if code != http.StatusUnauthorized || !strings.Contains(out, "verse login") {
+				t.Errorf("%s as %q with no token = %d %q, want 401 saying to log in", method, as, code, strings.TrimSpace(out))
+			}
+		}
+	}
+	if _, ok, _ := srv.Store.Get(entity.RefAt("other", "pr", "1")); ok {
+		t.Error("a refused request's write stands")
+	}
+	if _, ok, _ := srv.Store.Get(entity.UserRef("bo@example.com")); ok {
+		t.Error("a name nobody proved is on the list of users")
+	}
+	// An agent and a runner are not verified by anything, and are admitted as they were.
+	for _, as := range []string{"agent:ci", "runner:w1"} {
+		code, out := bearer(t, http.MethodGet, ts.URL+"/whoami?format=tony", "", as, "")
+		if who := tonyOf(t, out); code != http.StatusOK || who["principal"] != as || who["by"] != claimantAsserted {
+			t.Errorf("whoami as %s = %d %v", as, code, who)
+		}
+	}
+	// A request that names nobody reads what everyone may, and writes nothing, as before.
+	if code, _ := bearer(t, http.MethodGet, ts.URL+"/entity?at=demo.pr.1", "", "", ""); code != http.StatusOK {
+		t.Errorf("a read naming nobody = %d, want what * holds", code)
+	}
+	if code, _ := bearer(t, http.MethodPost, ts.URL+"/entity", "", "", entityPut(t, "anon.pr.1")); code != http.StatusBadRequest {
+		t.Errorf("a write naming nobody = %d, want 400", code)
+	}
+}
+
+// Proof by action reads a comment only under the ios the deployment trusts for GitHub. A comment
+// an untrusted io reflects is no evidence, and where none is trusted nothing is claimed at all.
+func TestOnlyATrustedIosReflectionIsEvidence(t *testing.T) {
+	srv, ts := identityServer(t)
+	resp := installIO(t, ts, idBo, map[string]any{
+		"name": "mirror", "root": "mirror", "url": "http://mirror-io:9801",
+		"owns": []any{map[string]any{"at": "mirror.signadot"}},
+	})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("install = %s", resp.Status)
+	}
+	// Bo's io reflects a comment that says ana's nonce, under its own root.
+	nonce := claim(t, ts, idAna, "ana-gh")
+	forged := entity.RefAt("mirror", "signadot", "verse", "comment", "42", "1")
+	if _, _, err := srv.Store.Write(entity.Write{At: forged.At(), Value: entity.Obj{
+		"author": "ana-gh", "authorId": 101, "body": "/verse link " + nonce,
+		"url": "https://github.com/signadot/verse/pull/42#issuecomment-1",
+	}.Payload()}); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := verify(t, ts, idAna, nonce); code != http.StatusNotFound {
+		t.Fatalf("verify on an untrusted io's reflection = %d, want 404", code)
+	}
+	// The trusted set is the store's to show, to anybody.
+	code, out := call(t, http.MethodGet, idBo, ts.URL+"/entity?at="+trustRef(githubProvider).String(), "")
+	if code != http.StatusOK || !strings.Contains(fmt.Sprint(out), "gh") {
+		t.Errorf("the trusted ios as a person reads them = %d %v", code, out)
+	}
+
+	// Trusting both, the same comment is evidence; the config at the next start says which.
+	if err := srv.SetAuth(Auth{Providers: map[string]AuthProvider{githubProvider: {IOs: []string{"gh", "mirror"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := verify(t, ts, idAna, nonce); code != http.StatusCreated {
+		t.Fatalf("verify once the io is trusted = %d, want 201", code)
+	}
+
+	// A config that names none trusts none, whatever stood before: nothing is claimed or verified.
+	if err := srv.SetAuth(Auth{}); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := call(t, http.MethodPost, idBo, ts.URL+"/accounts/github", `{"login": "bo-gh"}`); code != http.StatusConflict {
+		t.Errorf("a claim where no io is trusted = %d, want 409", code)
 	}
 }

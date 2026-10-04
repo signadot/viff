@@ -261,6 +261,15 @@ func (s *AuthConfig) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["principal"] = node
 	}
 
+	// Field: Issuer (optional)
+	if !isZeroValue_AuthConfig_Issuer(s.Issuer) {
+		node, err = s.Issuer.ToTonyIR(opts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert field %q: %w", "Issuer", err)
+		}
+		irMap["issuer"] = node
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -299,6 +308,11 @@ func (s *AuthConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error 
 			if err := s.Principal.FromTonyIR(fieldNode, opts...); err != nil {
 				return fmt.Errorf("field %q: %w", "principal", err)
 			}
+		case "issuer":
+			// Field: Issuer
+			if err := s.Issuer.FromTonyIR(fieldNode, opts...); err != nil {
+				return fmt.Errorf("field %q: %w", "issuer", err)
+			}
 		default:
 			if gomap.IsStrict(opts...) {
 				return fmt.Errorf("unknown field %q for AuthConfig", fieldName.String)
@@ -324,6 +338,101 @@ func (s *AuthConfig) ToTony(opts ...gomap.MapOption) ([]byte, error) {
 
 // FromTony parses Tony format bytes and populates AuthConfig.
 func (s *AuthConfig) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
+// ToTonyIR converts IssuerConfig to a Tony IR node.
+func (s *IssuerConfig) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: URL
+	if s.URL != "" {
+		irMap["url"] = ir.FromString(string(s.URL))
+	}
+
+	// Field: Key
+	if s.Key != "" {
+		irMap["key"] = ir.FromString(string(s.Key))
+	}
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates IssuerConfig from a Tony IR node.
+func (s *IssuerConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for IssuerConfig, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "url":
+			// Field: URL
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "url", fieldNodeUnwrapped.Type)
+			}
+			s.URL = string(fieldNodeUnwrapped.String)
+		case "key":
+			// Field: Key
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "key", fieldNodeUnwrapped.Type)
+			}
+			s.Key = string(fieldNodeUnwrapped.String)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for IssuerConfig", fieldName.String)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts IssuerConfig to Tony format bytes.
+func (s *IssuerConfig) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates IssuerConfig.
+func (s *IssuerConfig) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
 	if err != nil {
 		return err
@@ -476,6 +585,15 @@ func (s *AuthProviderConfig) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error)
 		irMap["domains"] = ir.FromSlice(slice)
 	}
 
+	// Field: IOs
+	if len(s.IOs) > 0 {
+		slice := make([]*ir.Node, len(s.IOs))
+		for i, v := range s.IOs {
+			slice[i] = ir.FromString(string(v))
+		}
+		irMap["ios"] = ir.FromSlice(slice)
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -537,6 +655,23 @@ func (s *AuthProviderConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption
 				s.Domains = slice
 			} else {
 				return fmt.Errorf("%s: expected array, got %v", "field \"domains\"", fieldNodeUnwrapped.Type)
+			}
+		case "ios":
+			// Field: IOs
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]string, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					ctx := fmt.Sprintf("slice element %d", i)
+					var elem string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					elem = v.String
+					slice[i] = string(elem)
+				}
+				s.IOs = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"ios\"", fieldNodeUnwrapped.Type)
 			}
 		default:
 			if gomap.IsStrict(opts...) {
@@ -995,5 +1130,9 @@ func isZeroValue_Config_Auth(v AuthConfig) bool {
 }
 
 func isZeroValue_AuthConfig_Principal(v PrincipalAuthConfig) bool {
+	return reflect.ValueOf(v).IsZero()
+}
+
+func isZeroValue_AuthConfig_Issuer(v IssuerConfig) bool {
 	return reflect.ValueOf(v).IsZero()
 }

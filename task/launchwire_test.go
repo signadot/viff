@@ -21,7 +21,7 @@ func fullLaunch() Launch {
 	return Launch{
 		ID: "review@demo.pr.1", Prompt: "review it", Driver: "llm",
 		Frame: "you are a reviewer", Retain: 512, Converse: true,
-		Tools: []string{"read_file", "run_bash"}, VirtualKey: "vk-123",
+		Tools: []string{"read_file", "run_bash"}, VirtualKey: "vk-123", Credential: "eyJ.token.sig",
 		Answer:      ir.FromMap(map[string]*ir.Node{"verdict": ir.FromString("ok")}),
 		Calls:       []Call{{Tool: "run_bash", Input: map[string]any{"cmd": "true"}}},
 		Vector:      &Vector{Default: Ask},

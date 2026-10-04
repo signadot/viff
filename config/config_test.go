@@ -324,12 +324,17 @@ func TestAuthPrincipalIsReadAndChecked(t *testing.T) {
       okta:
         issuer: https://example.okta.com
         clientId: "0oa1"
+      github:
+        ios: [gh]
 `)
 	if err != nil {
 		t.Fatal(err)
 	}
 	p := c.Auth.Principal
-	if p.Mode != AuthOptional || len(p.Providers) != 2 {
+	if gh := p.Providers[GitHubProvider]; len(gh.IOs) != 1 || gh.IOs[0] != "gh" {
+		t.Errorf("github = %+v, want the io it trusts", gh)
+	}
+	if p.Mode != AuthOptional || len(p.Providers) != 3 {
 		t.Fatalf("auth.principal = %+v", p)
 	}
 	if g := p.Providers["google"]; g.Issuer != "https://accounts.google.com" ||
@@ -342,12 +347,21 @@ func TestAuthPrincipalIsReadAndChecked(t *testing.T) {
 		t.Errorf("no auth block = %+v, %v", c.Auth, err)
 	}
 
+	// The issuer is a url and a key file, both or neither.
+	if c, err := load("auth: {issuer: {url: \"https://verse.example.com\", key: /etc/verse/issuer.pem}}\n"); err != nil ||
+		c.Auth.Issuer.URL != "https://verse.example.com" || c.Auth.Issuer.Key != "/etc/verse/issuer.pem" {
+		t.Errorf("auth.issuer = %+v, %v", c.Auth.Issuer, err)
+	}
+
 	for _, bad := range []struct{ what, body, want string }{
+		{"an issuer with no key", "auth: {issuer: {url: \"https://verse.example.com\"}}", "both a url and a key"},
+		{"an issuer whose url is none", "auth: {issuer: {url: verse, key: /k.pem}}", "relying party"},
 		{"an unknown mode", "auth: {principal: {mode: sometimes}}", "not a mode"},
 		{"a provider with no client", "auth: {principal: {providers: {google: {issuer: \"https://accounts.google.com\"}}}}", "clientId is required"},
 		{"a provider with no issuer", "auth: {principal: {providers: {google: {clientId: a}}}}", "not an issuer's URL"},
 		{"an issuer that is no URL", "auth: {principal: {providers: {google: {issuer: accounts, clientId: a}}}}", "not an issuer's URL"},
-		{"a provider named github", "auth: {principal: {providers: {github: {issuer: \"https://github.com\", clientId: a}}}}", "proof by"},
+		{"an issuer named github", "auth: {principal: {providers: {github: {issuer: \"https://github.com\", clientId: a}}}}", "`ios` alone"},
+		{"ios on an issuer", "auth: {principal: {providers: {google: {issuer: \"https://accounts.google.com\", clientId: a, ios: [gh]}}}}", "account only"},
 		{"a name that is not one segment", "auth: {principal: {providers: {\"a.b\": {issuer: \"https://a.example.com\", clientId: a}}}}", "one plain address segment"},
 		{"two providers of one issuer", "auth: {principal: {providers: {a: {issuer: \"https://a.example.com\", clientId: a}, b: {issuer: \"https://a.example.com\", clientId: b}}}}", "names one"},
 	} {

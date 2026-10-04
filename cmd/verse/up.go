@@ -306,6 +306,17 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	if err := srv.SetAuth(authOf(appCfg.Auth)); err != nil {
 		return err
 	}
+	// And whether this verse issues tokens of its own. A key that does not read is a verse that
+	// does not start, rather than one whose tasks find out at their first promotion.
+	if iss := appCfg.Auth.Issuer; iss.URL != "" {
+		key, err := versed.ReadIssuerKey(iss.Key)
+		if err != nil {
+			return fmt.Errorf("auth.issuer.key: %w", err)
+		}
+		if err := srv.SetIssuer(iss.URL, key); err != nil {
+			return fmt.Errorf("auth.issuer: %w", err)
+		}
+	}
 	// The cycle throttle's pace. Refused at startup rather than defaulted, because a server
 	// running at a rate nobody asked for is exactly what the setting exists to prevent.
 	if d, set, err := appCfg.TripPace(); err != nil {
@@ -492,7 +503,7 @@ func authOf(c config.AuthConfig) versed.Auth {
 		a.Providers = map[string]versed.AuthProvider{}
 	}
 	for name, p := range c.Principal.Providers {
-		a.Providers[name] = versed.AuthProvider{Issuer: p.Issuer, ClientID: p.ClientID, Domains: p.Domains}
+		a.Providers[name] = versed.AuthProvider{Issuer: p.Issuer, ClientID: p.ClientID, Domains: p.Domains, IOs: p.IOs}
 	}
 	return a
 }

@@ -216,6 +216,10 @@ type Logins struct {
 	NoRefreshToken bool
 	// NoIDTokenOnRefresh has a refresh answer with an access token alone, as some IdPs do.
 	NoIDTokenOnRefresh bool
+	// Stalled has the token endpoint take a request and sit on it, as a provider that has gone
+	// quiet does: until the caller gives up, or for stallFor, after which it answers 503 so that
+	// a caller with no patience of its own fails its test and does not hang it.
+	Stalled bool
 	// Refreshes counts the refresh grants served.
 	Refreshes int
 	// Scopes is what the last login asked for.
@@ -225,6 +229,9 @@ type Logins struct {
 	devices   map[string]bool   // device code → given out
 	refreshes map[string]bool   // refresh token → good
 }
+
+// stallFor is how long a stalled token endpoint sits on a request before it answers 503.
+const stallFor = 3 * time.Second
 
 // Login turns the login endpoints on for clientID, logging in the account sub. With device, the
 // discovery document names a device authorization endpoint.
@@ -294,6 +301,17 @@ func (l *Logins) token(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f := r.PostForm
+	l.mu.Lock()
+	stalled := l.Stalled
+	l.mu.Unlock()
+	if stalled {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(stallFor):
+			http.Error(w, "stalled", http.StatusServiceUnavailable)
+		}
+		return
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	withID := true

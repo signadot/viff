@@ -156,6 +156,10 @@ The answerers keep the tally, and the engine does not.
 - An answer is a ballot on the record.
 - The question settles in the same write as the ballot that reaches a threshold.
 - An answerer who casts twice replaces their own ballot. The ballot does not count twice.
+- A ballot says how its caster was authenticated: `authenticated` is the identity provider that
+  verified them, or `asserted` for one who was whoever their request said
+  ([who a request is from](perms.md#who-a-request-is-from)). A ballot that a resolver cast for
+  somebody names the resolver in `via`, and has no `authenticated`.
 
 The engine asks exactly what was written, and acts on the one answer that comes back.
 
@@ -319,6 +323,113 @@ The check has two limits.
   rule will fire again.
 - When it cannot tell, it lets the question stand. It cannot tell when the store is unreadable,
   or when a read of the predicate fails.
+
+### A credential for what a gate let through
+
+A gate stops verse's own work. Work that reaches a system verse does not own, such as a cloud
+account or a cluster, is stopped only if that system refuses what no gate approved. A
+**credential** is how it can. It is a short-lived token that verse signs for the task of a rule
+whose gate passed. The outside system is set up to accept such a token and nothing else.
+
+```tony
+- name: deploy
+  condition: {subject: {path: "release.*", value: {stage: ready}}}
+  gates: [{name: go, mode: ask}]
+  action:
+    patch: {stage: deploying}
+    spawn:
+      driver: scripted
+      vector: auto
+      prompt: "AWS_WEB_IDENTITY_TOKEN_FILE=$VERSE_CREDENTIAL_FILE aws s3 sync build s3://releases"
+      credential: {audience: sts.amazonaws.com}
+```
+
+**The verse is an issuer.** Its config names the address and the signing key
+([`auth.issuer`](up.md#configuration)). The outside system reads the verse's public keys from
+that address, and checks each token's signature for itself.
+
+**`sub` is what the outside system matches on.** It is the rule's address, then how the gate was
+passed:
+
+| `sub` | the gate was passed |
+|---|---|
+| `verse.trigger.rule.deploy:ballots` | on the ballots that people cast |
+| `verse.trigger.rule.deploy:deadline` | on its deadline's default, with nobody's answer deciding it |
+| `verse.trigger.rule.deploy:auto` | as a gate written `mode: auto`, which asks nobody |
+
+- `sub` names no task and no subject. So access is granted once for a rule, and holds for every
+  firing of it.
+- A system that requires a person's answer grants only the `:ballots` form. If the rule's gate
+  is later changed to `auto`, its tokens say `:auto` and that system refuses them.
+- A rule with several gates says what its questions came to. It is `:deadline` if any gate that
+  asked was settled by its deadline, and `:ballots` if every gate that asked was answered. It is
+  `:auto` only where no gate asked.
+- A rule in a package has the package in its address:
+  `verse.trigger.rule."<package>:<name>":ballots`.
+
+**Unattended work says so.** A rule whose work should reach the outside system with nobody
+asked writes a gate that says that:
+
+```tony
+- name: deploy-staging
+  condition: {subject: {path: "release.*", value: {stage: built}}}
+  gates: [{name: unattended, mode: auto}]
+  action:
+    patch: {stage: staging}
+    spawn:
+      driver: scripted
+      vector: auto
+      prompt: "AWS_WEB_IDENTITY_TOKEN_FILE=$VERSE_CREDENTIAL_FILE aws s3 sync build s3://staging"
+      credential: {audience: sts.amazonaws.com}
+```
+
+Its token says `:auto`. What that guarantees is that this rule fired and verse started this
+task. Nobody approved it. So whoever may write the subject can cause it, and the outside system
+grants `:auto` only what that is safe for.
+
+**The other claims are for the outside system's audit log.**
+
+| Claim | What it holds |
+|---|---|
+| `iss` | the verse's address as an issuer |
+| `aud` | the `audience` that the spawn declared |
+| `iat`, `nbf`, `exp` | when it was signed, and when it stops being good: ten minutes later |
+| `jti` | an id of this token alone |
+| `task` | the task's id |
+| `rule`, `charter` | the rule's address, and its package's where it is in one |
+| `subject` | the address the firing was about |
+| `principal` | who the task acts as |
+| `gates` | for each gate of the rule: `gate` (its name) and `passed` (`ballots`, `deadline` or `auto`). A gate that asked also has `question` (the question's address) and `answerers`. |
+
+Each of `answerers` is `{principal, authenticated}`: who cast a ballot for the option the gate
+settled on, and how they were authenticated. An answer that a resolver gave for somebody has
+`via` and no `authenticated`. A gate settled by its deadline may have none.
+
+**The task's record says a credential was minted.** It has
+`credential: {audience, sub, jti, expires}`, and never the token. `jti` is the token's own id,
+which the outside system's log has too.
+
+**The task gets the token as a file.** The runner writes it outside the task's workspace, for
+the task's user alone, and sets `VERSE_CREDENTIAL_FILE` in the task's shell to the file's path.
+The token is never a value in the environment. AWS's and GCP's tools take such a token from a
+file. The file is removed when the task ends.
+
+**Who gets no credential.** Verse refuses the charter at install where it can tell, and fails the
+spawn where it cannot. Either way it says why.
+
+- A spawn that declares none gets none.
+- A rule that writes no gate. A credential says which gate let the work through, so there has
+  to be one, and `mode: auto` is one.
+- A completion hook's spawn, or a step of a `seq`. They start after the answer was given. Make
+  the promotion a rule of its own, with its own gate.
+- A verse with no `auth.issuer`.
+- An `audience` with a `$reference` in it. The audience is declared in the charter, and the
+  subject's text cannot choose it.
+
+**A token is minted once, when the task is spawned.** Verse cannot take a token back, so ten
+minutes is how long a cancelled task could still act. A task that reaches for its credential
+after that is refused by the outside system. So keep the promotion short, and gate it as its
+own rule.
 
 ### `gating`
 

@@ -173,6 +173,7 @@ define:
   answer: .[tony-base:ir]
   calls: .[array(verse-call)]
   converse: .[bool]
+  credential: .[string]
   driver: .[string]
   environment: .[string]
   frame: .[string]

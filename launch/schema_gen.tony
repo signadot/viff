@@ -11,6 +11,26 @@ signature:
 context:
 - tony-format/context
 define:
+  audience: .[string]
+signature:
+  name: verse-launch-credential
+---
+context:
+- tony-format/context
+define:
+  authenticated: .[string]
+  by: .[string]
+  choice: .[string]
+  gate: .[string]
+  how: .[string]
+  question: .[string]
+  via: .[string]
+signature:
+  name: verse-launch-passed
+---
+context:
+- tony-format/context
+define:
   capability: .[string]
   eligible: .[array(string)]
   match: .[object(object)]
@@ -30,6 +50,7 @@ define:
   asker: .[string]
   calls: .[array(verse-launch-call)]
   chain: .[string]
+  credential: .[nullable(verse-launch-credential)]
   doer: .[string]
   driver: .[string]
   environment: .[string]
@@ -37,6 +58,7 @@ define:
   gates: .[array(task:verse-gate)]
   grant: .[string]
   occurrence: .[int]
+  passed: .[array(verse-launch-passed)]
   prompt: .[string]
   provider: .[nullable(verse-launch-provider)]
   retain: .[int]

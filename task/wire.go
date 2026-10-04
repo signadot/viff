@@ -43,6 +43,9 @@ type SpawnRequest struct {
 	// VirtualKey is the model credential the task runs under: the key itself
 	// (Launch.VirtualKey). It is the one field here that carries a secret.
 	VirtualKey string `tony:"field=virtualKey,omitzero"`
+	// Credential is the token verse minted for the task (Launch.Credential). A secret, like
+	// VirtualKey: the runner hands it to the task as a file, and does not log it.
+	Credential string `tony:"field=credential,omitzero"`
 	// Answer is the answer contract, a tony match pattern (Launch.Answer). A runner that
 	// cannot enforce one refuses the spawn.
 	Answer *ir.Node `tony:"field=answer,omitzero"`
@@ -120,7 +123,7 @@ type VectorRequest struct {
 func (l Launch) Wire() SpawnRequest {
 	r := SpawnRequest{
 		ID: l.ID, Prompt: l.Prompt, Driver: l.Driver, Frame: l.Frame, Tools: l.Tools,
-		Retain: l.Retain, Converse: l.Converse, VirtualKey: l.VirtualKey, Answer: l.Answer, Calls: l.Calls,
+		Retain: l.Retain, Converse: l.Converse, VirtualKey: l.VirtualKey, Credential: l.Credential, Answer: l.Answer, Calls: l.Calls,
 		Vector: l.Vector, Grant: l.Grant, Environment: l.Environment,
 		Occurrence: l.Occurrence,
 	}
@@ -135,7 +138,7 @@ func (l Launch) Wire() SpawnRequest {
 func (r SpawnRequest) Launch() Launch {
 	l := Launch{
 		ID: r.ID, Prompt: r.Prompt, Driver: r.Driver, Frame: r.Frame, Tools: r.Tools,
-		Retain: r.Retain, Converse: r.Converse, VirtualKey: r.VirtualKey, Answer: r.Answer, Calls: r.Calls,
+		Retain: r.Retain, Converse: r.Converse, VirtualKey: r.VirtualKey, Credential: r.Credential, Answer: r.Answer, Calls: r.Calls,
 		Vector: r.Vector, Grant: r.Grant, Environment: r.Environment,
 		Occurrence: r.Occurrence,
 	}

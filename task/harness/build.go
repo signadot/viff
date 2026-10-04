@@ -237,6 +237,10 @@ type Config struct {
 	// unset, and empty passes nothing. It is the caller's to declare because the caller knows
 	// what this process holds — see task.ShellEnv and task.DefaultShellEnv.
 	Env []string
+	// Set is the variables run_bash is given outright, each `NAME=value`, beside what Env passes
+	// through: what whoever built this task has to tell its shell, such as where the task's
+	// credential file is (task.CredentialFile). A delegated child's shell does not get them.
+	Set []string
 
 	// Frame is the agent's system prompt; empty → defaultFrame, derived from the tools
 	// offered and the vector installed. Tools narrows the offered set; empty → all of
@@ -346,7 +350,7 @@ func Build(cfg Config) (*task.Task, func() []ExecRecord) {
 
 	driver := &llmDriver{client: cfg.Client, tools: tools, frame: frame, prompt: cfg.Prompt,
 		log: cfg.Log}
-	ex := &fsExec{root: cfg.Root, log: cfg.Log, content: cfg.Content, extra: extra, env: cfg.Env}
+	ex := &fsExec{root: cfg.Root, log: cfg.Log, content: cfg.Content, extra: extra, env: cfg.Env, set: cfg.Set}
 	p := task.NewTask(cfg.ID, sup, driver, ex)
 	p.SetLog(cfg.Log)
 	// The two things that decide when a task is OVER, installed on the loop rather than

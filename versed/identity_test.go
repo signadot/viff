@@ -35,6 +35,9 @@ func identityServer(t *testing.T) (*Server, *httptest.Server) {
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install = %s", resp.Status)
 	}
+	if err := srv.SetAuth(Auth{Providers: map[string]AuthProvider{githubProvider: {IOs: []string{"gh"}}}}); err != nil {
+		t.Fatal(err)
+	}
 	return srv, ts
 }
 

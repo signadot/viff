@@ -243,6 +243,7 @@ prevents.
 |---|---|
 | `resolver` | the resolver that answers the gates of this run. Verse refuses a spawn that names a resolver that is not installed, and does not leave the run unsupervised. See [attached resolvers](../attached-resolvers.md). |
 | `environment` | the workspace that the task runs in. Verse carries the name to the runner. The runner resolves it, and refuses a name it does not have. |
+| `credential` | `{audience: <name>}` asks verse for a token that vouches for the task to a system outside verse: the rule's gate let this work through. It is for a rule's own spawn, of a rule with a gate that asks. See [a credential for what a gate let through](gates.md#a-credential-for-what-a-gate-let-through). |
 
 ```tony
 spawn:
