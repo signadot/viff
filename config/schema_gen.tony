@@ -21,6 +21,7 @@ context:
 define:
   accounts: .[object(verse-iod-account-config)]
   audience: .[string]
+  ca: .[string]
   issuer: .[string]
   static: .[array(verse-iod-static-config)]
 signature:

@@ -74,9 +74,9 @@ type Sink struct {
 	As func(principal, account string) *client.Client
 
 	mu sync.Mutex
-	// accounts is who each person is in Slack, by email, once looked up: the account a read as
-	// them is made with.
-	accounts map[string]string
+	// accounts is who each person is in Slack, by email, once looked up — or that they are
+	// nobody there: the account a read as them is made with, and the one Slack lookup per person.
+	accounts map[string]lookedUp
 	// (channel, where replies land) → input → the questions its message is asking. Where replies
 	// land is the message's own ts, or the thread it was posted into: several inputs can speak in
 	// one thread, and a reply there is about all of their questions.
@@ -403,26 +403,35 @@ func (k *Sink) readerFor(ctx context.Context, to string) (*client.Client, string
 	return k.As(g.String(), acct), g.String()
 }
 
-// accountOf is the Slack account of the member with this email, `slack:<user id>`.
+// accountOf is the Slack account of the member with this email, `slack:<user id>`, asked of Slack
+// once per person and kept, the failure included: a person Slack does not know is asked about once
+// and not on every pass of every input that names them, which with a few such inputs is Slack's
+// rate limit. A person who joins the workspace later is found after a restart.
 func (k *Sink) accountOf(ctx context.Context, email string) (string, error) {
 	k.mu.Lock()
-	acct, ok := k.accounts[email]
+	known, ok := k.accounts[email]
 	k.mu.Unlock()
 	if ok {
-		return acct, nil
+		return known.acct, known.err
 	}
 	id, err := k.s.api.lookupByEmail(ctx, email)
-	if err != nil {
-		return "", err
+	known = lookedUp{err: err}
+	if err == nil {
+		known.acct = account(id)
 	}
-	acct = account(id)
 	k.mu.Lock()
 	if k.accounts == nil {
-		k.accounts = map[string]string{}
+		k.accounts = map[string]lookedUp{}
 	}
-	k.accounts[email] = acct
+	k.accounts[email] = known
 	k.mu.Unlock()
-	return acct, nil
+	return known.acct, known.err
+}
+
+// lookedUp is what Slack said of an email, once: the account, or why there is none.
+type lookedUp struct {
+	acct string
+	err  error
 }
 
 // question reads the record of the question with this id, where the mirror keeps it.
@@ -583,13 +592,13 @@ func people(ps []string) string {
 // Keep remembers what a message refused for good still asks, as a delivery would, where Slack
 // shows the input as it stands — an input retargeted after delivery, say: the message stands, and
 // a reply in its thread is still matched to the question it is about (socket.go). Nothing is asked
-// of Slack but who the person is, once, which the delivery before this already asked.
-func (k *Sink) Keep(in verseio.Input) {
+// of Slack but who the person is, once: the answer, found or not, is kept (accountOf).
+func (k *Sink) Keep(ctx context.Context, in verseio.Input) {
 	channel, ts := entity.Str(in.Status, "channel"), entity.Str(in.Status, "ts")
 	if ts == "" {
 		return // refused before anything was posted: there is no thread to match
 	}
-	body, asked, err := k.body(context.Background(), entity.Str(in.Value, "text"), in.Value, in.To)
+	body, asked, err := k.body(ctx, entity.Str(in.Value, "text"), in.Value, in.To)
 	if err != nil {
 		return
 	}
@@ -617,11 +626,11 @@ func (k *Sink) Keep(in verseio.Input) {
 // status, so it is paid once per request rather than once per pass.
 func (k *Sink) channelFor(ctx context.Context, target string) (string, error) {
 	if email := strings.TrimPrefix(target, "user:"); strings.Contains(email, "@") {
-		who, err := k.s.api.lookupByEmail(ctx, email)
+		acct, err := k.accountOf(ctx, email)
 		if err != nil {
 			return "", err
 		}
-		return k.s.api.openDM(ctx, who)
+		return k.s.api.openDM(ctx, strings.TrimPrefix(acct, "slack:"))
 	}
 	switch {
 	case strings.HasPrefix(target, "U"), strings.HasPrefix(target, "W"):

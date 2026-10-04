@@ -661,9 +661,21 @@ The io never answers as `-as`. An answer recorded as `agent:slack-io` is an answ
 nobody gave. An answer also asks for a pass at once, so the io draws the message again while
 the person looks at it.
 
-The io asserts that person to verse as the CLI asserts its own user, and verse trusts the io
-as it trusts the CLI. The Slack id is the word of Slack, on a connection that the app token
-opened.
+#### Linking: `/verse link <nonce>`
+
+A person who is a verse user proves to the app which one they are by saying, from their Slack
+account, a nonce their verse gave them: `verse account -link slack` prints `/verse link <nonce>`.
+Said as a slash command (the app registers `/verse`), typed in a DM to the app, or at the bot
+(`@verse link <nonce>`), the io reports to the verse, as itself, that this account said it
+(`POST /accounts/slack/heard`), and the verse binds the account to whoever claimed the nonce
+([accounts in other systems](perms.md#accounts-in-other-systems)). The person alone is told what
+became of it. From then on a reply of theirs is relayed through the binding, which is the only
+way in where the provider names no `domains`.
+
+The Slack id is the word of Slack, on a connection that the app token opened. What the io
+tells the verse is that id, as the person's account, beside its own token; the verse admits the
+request as the person only through the account's binding, and never on the io's say-so alone
+([a person relayed by a trusted io](perms.md#a-person-relayed-by-a-trusted-io)).
 
 ## linear
 
@@ -896,7 +908,10 @@ and the answer is made as that person with the account beside it, which a verse 
 people admits through the binding and records on the ballot
 ([a person relayed by a trusted io](perms.md#a-person-relayed-by-a-trusted-io)). It is never
 made as the io. An author verse does not know, or a command naming no option the question
-offers, is told so in one reply and not again. The comment is redrawn as the question settles.
+offers, is told so in one reply and not again. A reply that says `/verse link <nonce>` on a line
+of its own is the author proving the account is theirs (`verse account -link github -account
+<login>` printed it): the io reports to the verse, as itself, that this account said it
+(`POST /accounts/github/heard`), and tells the author what became of it, once. The comment is redrawn as the question settles.
 A reply reaches the reflection on the comment's delivery, which also asks the out half for a pass,
 or on the resync; a reply older than the in half's comment window is not in the reflection and
 is not seen.

@@ -204,6 +204,11 @@ type IodAuthConfig struct {
 	// Audience is what a token's `aud` holds, which is what the pod's projected token was asked
 	// for. Unset is `verse`.
 	Audience string `tony:"field=audience,omitzero"`
+	// CA is the path of the PEM bundle the issuer's certificate is checked against, where the
+	// issuer is not behind a public one: a cluster's own API server, whose certificate a pod has
+	// at /var/run/secrets/kubernetes.io/serviceaccount/ca.crt. Unset trusts the system's roots,
+	// which is what a public issuer (EKS's) needs.
+	CA string `tony:"field=ca,omitzero"`
 	// Accounts maps a token's subject (`system:serviceaccount:<namespace>:<name>`) to the io it
 	// is. Written at start, never at first sight.
 	Accounts map[string]IodAccountConfig `tony:"field=accounts,omitzero"`
@@ -317,6 +322,9 @@ func (c IodAuthConfig) validate(issuers map[string]string) error {
 	if len(c.Accounts) > 0 && c.Issuer == "" {
 		return fmt.Errorf("auth.iod.accounts: an account is a token's subject, and no issuer of " +
 			"those tokens is named (auth.iod.issuer)")
+	}
+	if c.CA != "" && c.Issuer == "" {
+		return fmt.Errorf("auth.iod.ca: a bundle checks an issuer's certificate, and no issuer is named (auth.iod.issuer)")
 	}
 	for sub, acct := range c.Accounts {
 		if sub == "" {

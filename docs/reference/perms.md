@@ -368,9 +368,10 @@ An io is a program of the deployment's own, and it proves it is the io with the 
 gives it. `auth.iod` in the [config](up.md#configuration) says what that is:
 
 - **On Kubernetes**, the pod's projected service-account token, asked for with the audience
-  `verse`. Its issuer is the cluster's own; on EKS, `https://oidc.eks.<region>.amazonaws.com/id/<id>`.
-  Verse verifies it as it verifies a person's token, against the issuer's published keys, with
-  `aud` checked against `auth.iod.audience`.
+  `verse`. Its issuer is the cluster's own; on EKS, `https://oidc.eks.<region>.amazonaws.com/id/<id>`,
+  public; on minikube or kubeadm, the API server itself, behind the cluster's CA, which
+  `auth.iod.ca` names. Verse verifies it as it verifies a person's token, against the issuer's
+  published keys, with `aud` checked against `auth.iod.audience`.
 - **With no cluster**, a token in a file the deployment wrote. Verse reads the file at start and
   keeps the token's hash.
 

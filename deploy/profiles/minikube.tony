@@ -15,3 +15,10 @@ env:
   brokerFace: true
   hostPV: true
   hostPath: "/mnt/verse"
+  # An io turned on here (`-e slackIO=true`, with its Secret made by hand) proves itself with its
+  # pod's token, which is what minikube is for: the issuer is the API server behind the cluster's
+  # CA, named in deploy/auth/minikube.tony, and its discovery document is opened to versed
+  # (issuerDiscoveryOpen). The profile itself deploys no io.
+  authConfig: "auth/minikube.tony"
+  ioTokens: true
+  issuerDiscoveryOpen: true

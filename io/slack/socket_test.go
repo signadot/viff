@@ -120,6 +120,7 @@ func newSocketRigWith(t *testing.T, bearer client.BearerFunc) *socketRig {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	s := src.Socket(appToken)
+	s.Verse = verse // as cmd/iod wires it: `/verse link` is told to the verse as the io itself
 	s.Asking = sink.Asked
 	s.Answered = func() { r.kicked <- struct{}{} }
 	s.Hint = func(_ context.Context, refs ...entity.Ref) { r.hints <- refs }
@@ -612,4 +613,111 @@ func TestARefusedEditIsNotRememberedAsShown(t *testing.T) {
 	if n := r.fake.called("chat.update"); n != 1 {
 		t.Errorf("chat.update asked %d times, want once: the refused edit is not sent again", n)
 	}
+}
+
+// `/verse link <nonce>` said to the app binds the Slack account to whoever the verse gave the nonce
+// to, on this io's word; and where slack names no domains, that binding is the only way a reply is
+// admitted as the person. The dogfood shape: people asserted (`optional`), bindings by the nonce.
+func TestLinkSaidToTheAppBindsTheAccountAndAdmitsTheReply(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(file, []byte("the-slack-ios-own-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bearer := func(context.Context) (string, error) {
+		b, err := os.ReadFile(file)
+		return strings.TrimSpace(string(b)), err
+	}
+	r := newSocketRigWith(t, bearer)
+	if err := r.srv.SetAuth(versed.Auth{Mode: versed.AuthOptional, Providers: map[string]versed.AuthProvider{
+		"slack": {IOs: []string{"slack"}},
+	}, Iod: versed.AuthIod{Static: []versed.IodStatic{{File: file, Principal: "agent:slack-io", IO: "slack"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	r.asking(t)
+
+	// Unbound and with no first sight to admit her, scott's reply counts for nothing.
+	r.reply(t, "e1", "U7", "proceed")
+	if q := r.question(t); q["verdict"] != nil {
+		t.Fatalf("an unbound reply answered: %v", q)
+	}
+	if got := waitSaid(t, r, "U7", "Not answered"); got == "" {
+		t.Fatalf("scott was not told the refusal alone: %v", r.fake.ephemerals)
+	}
+	if q := r.question(t); q["verdict"] != nil {
+		t.Fatalf("an unbound reply answered: %v", q)
+	}
+
+	// Scott claims a Slack account from the CLI, asserted; the nonce is what the verse answers.
+	resp, err := client.New(r.addr, "user:scott@example.com").Post("/accounts/slack", nil, map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var claim struct {
+		Nonce string `tony:"field=nonce"`
+	}
+	if resp.StatusCode != 201 {
+		t.Fatalf("claim = %s", resp.Status)
+	}
+	if err := client.Decode(resp, &claim); err != nil {
+		t.Fatal(err)
+	}
+
+	// A wrong nonce from the DM: told alone, nothing bound. The right one, as the slash command
+	// with no response_url (the ephemeral stands in): bound, and told.
+	r.event(t, "e2", map[string]any{"type": "message", "channel": "D77", "user": "U7", "text": "/verse link nope", "ts": "1790000099.000300"})
+	if got := waitSaid(t, r, "U7", "Not linked"); !strings.Contains(got, "no claim has that nonce") {
+		t.Fatalf("a wrong nonce: told %q", got)
+	}
+	r.sock.send <- map[string]any{"envelope_id": "e3", "type": "slash_commands", "payload": map[string]any{
+		"command": "/verse", "text": "link " + claim.Nonce, "user_id": "U7", "channel_id": "D77",
+	}}
+	<-r.sock.acks
+	if got := waitSaid(t, r, "U7", "Linked"); !strings.Contains(got, "<@U7> is user:scott@example.com") {
+		t.Fatalf("the link: told %q", got)
+	}
+	rec, ok, err := entity.As(r.store, entity.SystemIdentity).Get(entity.VerseRef("identity", "slack", "account", "U7"))
+	if err != nil || !ok || entity.Str(rec.Payload, "principal") != "user:scott@example.com" ||
+		entity.Str(rec.Payload, "claimant") != "asserted" || entity.Str(entity.Get(rec.Payload, "proof"), "method") != "heard" {
+		t.Fatalf("the binding = %v (ok=%v err=%v)", rec.Payload, ok, err)
+	}
+
+	// Now the reply is scott's, through the binding.
+	r.reply(t, "e4", "U7", "proceed")
+	select {
+	case <-r.kicked:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("the reply after linking answered nothing: %v", r.question(t))
+	}
+	q := r.question(t)
+	ballot := entity.Get(entity.Get(mustGet(t, r.store, mirror.QuestionRef(askedQuestion)), "ballots"), "user:scott@example.com")
+	if q["verdict"] != "proceed" || q["by"] != "user:scott@example.com" || entity.Str(ballot, "authenticated") != "slack" {
+		t.Fatalf("after linking: answered %v by %v, ballot %v", q["verdict"], q["by"], ballot)
+	}
+}
+
+// waitSaid waits for something said to user alone containing want (any text when want is "").
+func waitSaid(t *testing.T, r *socketRig, user, want string) string {
+	t.Helper()
+	for range 400 {
+		r.fake.mu.Lock()
+		for i := len(r.fake.ephemerals) - 1; i >= 0; i-- {
+			m := r.fake.ephemerals[i]
+			if text, _ := m["text"].(string); m["user"] == user && strings.Contains(text, want) {
+				r.fake.mu.Unlock()
+				return text
+			}
+		}
+		r.fake.mu.Unlock()
+		time.Sleep(5 * time.Millisecond)
+	}
+	return ""
+}
+
+func mustGet(t *testing.T, store entity.Store, ref entity.Ref) entity.Payload {
+	t.Helper()
+	e, ok, err := store.Get(ref)
+	if err != nil || !ok {
+		t.Fatalf("reading %s: ok %v, %v", ref, ok, err)
+	}
+	return e.Payload
 }

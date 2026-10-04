@@ -186,6 +186,16 @@ func (k *Sink) answerReplies(ctx context.Context, repo string, number int, poste
 		if c.id <= posted || done[id] || strings.EqualFold(c.login, self) {
 			continue
 		}
+		if nonce, ok := linking(c.body); ok {
+			told, err := k.link(ctx, repo, number, c, nonce)
+			if err != nil {
+				return nil, err
+			}
+			if told {
+				acted = append(acted, id)
+			}
+			continue
+		}
 		option, say, ok := command(c.body)
 		if !ok {
 			continue // a comment that is not a command is conversation, and nothing of this io's
@@ -253,6 +263,53 @@ func (k *Sink) replies(repo string, number int) ([]reply, error) {
 // is said on whatever pull request is handy, a questioned one included.
 const linkWord = "link"
 
+// linking reads the `/verse link <nonce>` line from a comment, where the line is the comment's own
+// and the nonce the whole of it.
+func linking(body string) (nonce string, ok bool) {
+	for _, line := range strings.Split(body, "\n") {
+		f := strings.Fields(line)
+		if len(f) == 3 && f[0] == commandWord && strings.EqualFold(f[1], linkWord) {
+			return f[2], true
+		}
+	}
+	return "", false
+}
+
+// link proves the GitHub account is the claimant's: the verse gave somebody the nonce
+// (`verse account -link github -account <login>`), and this io's word that this account said it in
+// a comment it reflected is what binds the two (`POST /accounts/github/heard`; perms.md, "accounts
+// in other systems"). The word is the io's own, so it is given as the io itself; the author is
+// told what became of it, once.
+func (k *Sink) link(ctx context.Context, repo string, number int, c reply, nonce string) (bool, error) {
+	tell := func(text string) (bool, error) {
+		_, err := k.g.api.createComment(ctx, repo, number, "@"+c.login+" "+text)
+		return err == nil, err
+	}
+	if c.userID == 0 {
+		return tell("not linked: the comment carries no author number, so it is no evidence of whose it is.")
+	}
+	resp, err := k.Verse.Post("/accounts/github/heard", nil, map[string]string{
+		"nonce": nonce, "account": "github:" + strconv.FormatInt(c.userID, 10), "login": c.login,
+	})
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusInternalServerError {
+		return false, client.StatusError(resp, "linking "+c.login) // the verse's trouble, not the author's: next pass
+	}
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		return tell("not linked: " + client.StatusError(resp, "`"+commandWord+" "+linkWord+"`").Error())
+	}
+	var row struct {
+		Principal string `tony:"field=principal"`
+	}
+	if err := client.Decode(resp, &row); err != nil {
+		return false, err
+	}
+	return tell(fmt.Sprintf("linked: in verse, %s is %s.", c.login, row.Principal))
+}
+
 // command reads a `/verse <option> [words]` line from a comment, where the line is the command's
 // own: a comment quoting somebody else's instructions is not an answer.
 func command(body string) (option, say string, ok bool) {
@@ -311,11 +368,10 @@ func (k *Sink) act(ctx context.Context, repo string, number int, c reply, option
 		return false, err
 	}
 	if who == "" {
-		return tell(fmt.Sprintf("I do not know who %s is in verse, so this does not count. Log in "+
-			"to the verse (`verse login`), which binds your GitHub account where the verse's provider "+
-			"federates it; or claim the account (`POST /accounts/github {login: %s}`) and say the "+
-			"`%s %s <nonce>` it answers in a comment here. Then say it again.", c.login, c.login,
-			commandWord, linkWord))
+		return tell(fmt.Sprintf("I do not know who %s is in verse, so this does not count. Claim the "+
+			"account from your verse (`verse account -link github -account %s`) and say the "+
+			"`%s %s <nonce>` it prints in a comment here, on a line of its own. Then say it again.",
+			c.login, c.login, commandWord, linkWord))
 	}
 	body := verseapi.Resolve{ID: a.ID, Choice: option, By: who, Edit: a.Edit}
 	if say != "" {

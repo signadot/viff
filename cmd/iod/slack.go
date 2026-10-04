@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/signadot/verse/client"
 	"github.com/signadot/verse/entity"
 	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/io/slack"
@@ -71,13 +70,14 @@ func slackMain(args []string) error {
 	// and writes what became of it, as a principal of its own. Its address defaults to the one the
 	// hint url already names, so a deployment says where verse is once.
 	addr := c.verse()
+	verse := c.outClient(src.Root())
 	var sink *slack.Sink
 	var o *verseio.Out
 	if *out {
-		sink = src.Sink(client.NewAs(addr, c.principal(c.root), c.bearer()))
+		sink = src.Sink(verse)
 		// An ask is read by whom it asks, so a message for somebody is drawn as they read it.
 		sink.As = verseio.As(addr, c.bearer())
-		outs, err := c.outHalf(ctx, src.Root(), sink, []entity.Ref{src.OutRef()})
+		outs, err := c.outHalf(ctx, src.Root(), sink, []entity.Ref{src.OutRef()}, verse)
 		if err != nil {
 			return err
 		}
@@ -90,11 +90,14 @@ func slackMain(args []string) error {
 	case app != "":
 		sock := src.Socket(app)
 		sock.Hint = c.hinter()
+		// `/verse link <nonce>` is this program's own word that a member said it, so it is told
+		// to the verse as this program, with or without the out half.
+		sock.Verse = verse
 		if o != nil {
 			sock.Asking, sock.Answered = sink.Asked, o.Kick
 			log.Printf("slack socket: hearing events, and answering questions at %s as whoever replies in the thread", addr)
 		} else {
-			log.Printf("slack socket: hearing events")
+			log.Printf("slack socket: hearing events, and linking accounts at %s", addr)
 		}
 		// The control seam: a client factory rather than a client, so what it asks for is asked
 		// as whoever Slack says did the thing and never as this program (io.Controller).

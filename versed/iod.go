@@ -3,6 +3,8 @@ package versed
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -54,6 +56,9 @@ const iodProvider = "iod"
 type AuthIod struct {
 	Issuer   string
 	Audience string
+	// CA is the path of the PEM bundle the issuer's certificate is checked against, for an
+	// issuer that is not behind a public one: a cluster's own API server. "" is the system's roots.
+	CA       string
 	Accounts map[string]IodAccount
 	Static   []IodStatic
 }
@@ -126,8 +131,30 @@ func (s *Server) setIod(a AuthIod) (*authProvider, *iodAuth, error) {
 			aud = iodAudience
 		}
 		prov = &authProvider{name: iodProvider, iod: true, AuthProvider: AuthProvider{Issuer: a.Issuer, ClientID: aud}}
+		if a.CA != "" {
+			client, err := clientTrusting(a.CA)
+			if err != nil {
+				return nil, nil, fmt.Errorf("auth.iod.ca: %w", err)
+			}
+			prov.client = client
+		}
 	}
 	return prov, out, nil
+}
+
+// clientTrusting is an HTTP client that trusts the certificates in the PEM bundle at path, and
+// nothing else: how the door reaches an issuer whose certificate no public root signed, which
+// on a cluster is the API server's, under the cluster's own CA.
+func clientTrusting(path string) (*http.Client, error) {
+	pem, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(pem) {
+		return nil, fmt.Errorf("%s holds no certificate", path)
+	}
+	return &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}}, nil
 }
 
 // ioPrincipal refuses a principal that is not an io's: an io is an `agent:`.

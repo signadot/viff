@@ -387,6 +387,7 @@ func TestAuthPrincipalIsReadAndChecked(t *testing.T) {
 		{"iod accounts with no issuer", "auth: {iod: {accounts: {\"system:serviceaccount:verse:slack-io\": {principal: \"agent:slack-io\"}}}}", "no issuer of those tokens"},
 		{"an iod account that is no agent", "auth: {iod: {issuer: \"https://oidc.example.com/id/1\", accounts: {\"system:serviceaccount:verse:slack-io\": {principal: \"user:ana@example.com\"}}}}", "not an io's principal"},
 		{"a static io with no file", "auth: {iod: {static: [{principal: \"agent:slack-io\"}]}}", "path of the token"},
+		{"a bundle with no issuer", "auth: {iod: {ca: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt}}", "no issuer is named"},
 		{"an iod issuer that is a provider's", "auth: {principal: {providers: {a: {issuer: \"https://a.example.com\", clientId: a}}}, iod: {issuer: \"https://a.example.com\"}}", "names one party"},
 		{"a name that is not one segment", "auth: {principal: {providers: {\"a.b\": {issuer: \"https://a.example.com\", clientId: a}}}}", "one plain address segment"},
 		{"two providers of one issuer", "auth: {principal: {providers: {a: {issuer: \"https://a.example.com\", clientId: a}, b: {issuer: \"https://a.example.com\", clientId: b}}}}", "names one"},

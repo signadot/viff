@@ -33,10 +33,12 @@ const (
 // asksRig is a verse that verifies people and knows this io by a static token, a fake GitHub with
 // one pull request, and the out half with a way to answer as a person.
 type asksRig struct {
-	store *entity.LogdStore
-	srv   *versed.Server
-	fake  *fakeGitHub
-	out   *verseio.Out
+	store     *entity.LogdStore
+	srv       *versed.Server
+	fake      *fakeGitHub
+	out       *verseio.Out
+	addr      string // the verse, for a test that asks it things as somebody
+	tokenFile string // the io's own token, for a test that sets the auth again
 }
 
 func newAsksRig(t *testing.T) *asksRig {
@@ -70,7 +72,7 @@ func newAsksRig(t *testing.T) *asksRig {
 	sink.Verse = verse
 	sink.As = verseio.As(addr, bearer)
 	out := verseio.NewOut(sink, src.OutRefs()[0], verse, nil)
-	return &asksRig{store: store, srv: srv, fake: f, out: out}
+	return &asksRig{store: store, srv: srv, fake: f, out: out, addr: addr, tokenFile: file}
 }
 
 func (r *asksRig) pass(t *testing.T) {
@@ -201,8 +203,9 @@ func TestACommandWithNoSuchOptionIsToldTheOptions(t *testing.T) {
 		entity.Obj{"to": "pr.42", "asks": askedOnPR}.Payload())
 	r.pass(t)
 	r.bind(t, "101", "user:ana@example.com")
-	// The io's own words, reflected back, are never a command; nor is the account proof; nor is
-	// a review comment on a line of the diff, which GitHub numbers from another sequence.
+	// The io's own words, reflected back, are never a command; nor is the account proof, which
+	// is told its own outcome and answers nothing; nor is a review comment on a line of the diff,
+	// which GitHub numbers from another sequence.
 	r.reflect(t, 9650, fakeSelf, 1, "/verse proceed")
 	r.reflect(t, 9660, "ana", 101, "/verse link 0123456789abcdef")
 	entitytest.Set(t, r.store, entity.RefAt("github", "signadot", "verse", "comment", "42", "9670"), entity.Obj{
@@ -212,11 +215,11 @@ func TestACommandWithNoSuchOptionIsToldTheOptions(t *testing.T) {
 	r.reflect(t, 9700, "ana", 101, "/verse maybe")
 	r.pass(t)
 	got := r.fake.commentsOn("signadot/verse", 42)
-	if len(got) != 2 || !strings.Contains(got[1], "names no option") || !strings.Contains(got[1], "`/verse proceed`") || strings.HasPrefix(got[0], "\n") {
-		t.Fatalf("comments %q, want the io's comment with no text before the question, and one reply naming the options", got)
+	if len(got) != 3 || !strings.Contains(got[1], "not linked") || !strings.Contains(got[2], "names no option") || !strings.Contains(got[2], "`/verse proceed`") || strings.HasPrefix(got[0], "\n") {
+		t.Fatalf("comments %q, want the io's comment with no text before the question, the nonce refused, and one reply naming the options", got)
 	}
 	r.pass(t)
-	if len(r.fake.commentsOn("signadot/verse", 42)) != 2 {
+	if len(r.fake.commentsOn("signadot/verse", 42)) != 3 {
 		t.Errorf("ana was told twice")
 	}
 	if entity.Str(r.question(t), "verdict") != "" {
@@ -287,5 +290,66 @@ func TestAReplyConsentsToTheEditTheCommentShowed(t *testing.T) {
 	got := r.fake.commentsOn("signadot/verse", 42)
 	if len(got) != 2 || !strings.Contains(got[1], "did not take that answer") {
 		t.Errorf("comments %q, want ana told the verse refused the stale consent", got)
+	}
+}
+
+// A `/verse link <nonce>` reply binds the author's GitHub account to whoever the verse gave the
+// nonce to, on this io's word, and their next command counts.
+func TestALinkReplyBindsTheAuthorsAccount(t *testing.T) {
+	r := newAsksRig(t)
+	if err := r.srv.SetAuth(versed.Auth{Mode: versed.AuthOptional, Providers: map[string]versed.AuthProvider{
+		"github": {IOs: []string{"github"}},
+	}, Iod: versed.AuthIod{Static: []versed.IodStatic{{File: r.tokenFile, Principal: "agent:github-io", IO: "github"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	r.raise(t)
+	entitytest.Set(t, r.store, entity.RefAt("github", "signadot", "verse", "out", "deploy"),
+		entity.Obj{"to": "pr.42", "text": "Ready to deploy.", "asks": askedOnPR}.Payload())
+	r.pass(t)
+
+	// Bo claims his GitHub login from the CLI, asserted.
+	resp, err := client.New(r.addr, "user:bo@example.com").Post("/accounts/github", nil, map[string]any{"login": "bo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var claim struct {
+		Nonce string `tony:"field=nonce"`
+	}
+	if resp.StatusCode != 201 {
+		t.Fatalf("claim = %s", resp.Status)
+	}
+	if err := client.Decode(resp, &claim); err != nil {
+		t.Fatal(err)
+	}
+
+	// Said by somebody else, the nonce binds nobody and the sayer is told; said by bo, the
+	// account is his, and said again it is spent.
+	r.reflect(t, 9700, "mallory", 666, "/verse link "+claim.Nonce+"\nmine now")
+	r.pass(t)
+	got := r.fake.commentsOn("signadot/verse", 42)
+	if len(got) != 2 || !strings.Contains(got[1], "@mallory") || !strings.Contains(got[1], "not linked") {
+		t.Fatalf("after mallory's line: comments %q", got)
+	}
+	r.reflect(t, 9701, "bo", 303, "/verse link "+claim.Nonce)
+	r.pass(t)
+	got = r.fake.commentsOn("signadot/verse", 42)
+	if len(got) != 3 || !strings.Contains(got[2], "@bo linked: in verse, bo is user:bo@example.com") {
+		t.Fatalf("after bo's line: comments %q", got)
+	}
+	rec, ok, err := entity.As(r.store, entity.SystemIdentity).Get(entity.VerseRef("identity", "github", "account", "303"))
+	if err != nil || !ok || entity.Str(rec.Payload, "principal") != "user:bo@example.com" || entity.Str(rec.Payload, "login") != "bo" ||
+		entity.Str(entity.Get(rec.Payload, "proof"), "method") != "heard" {
+		t.Fatalf("the binding = %v (ok=%v err=%v)", rec.Payload, ok, err)
+	}
+	r.reflect(t, 9702, "bo", 303, "/verse proceed")
+	r.pass(t)
+	q := r.question(t)
+	if entity.Str(q, "verdict") != "proceed" || entity.Str(q, "by") != "user:bo@example.com" {
+		t.Fatalf("bo's command after linking answered %q by %q; comments %q", entity.Str(q, "verdict"), entity.Str(q, "by"), r.fake.commentsOn("signadot/verse", 42))
+	}
+	// Nothing is told twice.
+	r.pass(t)
+	if n := len(r.fake.commentsOn("signadot/verse", 42)); n != 3 {
+		t.Errorf("comments after a quiet pass = %d, want 3", n)
 	}
 }

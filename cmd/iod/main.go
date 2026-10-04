@@ -203,12 +203,14 @@ func (c *common) registration() string {
 // of its own and is usually not given, so reading the principal off it made an out half act as
 // `agent:-io` — a name the install seeds no grants for, so every status it wrote was refused
 // while the registration held grants for `agent:slack-io`.
-func (c *common) outHalf(ctx context.Context, root string, sink verseio.Sink, places []entity.Ref) ([]*verseio.Out, error) {
+func (c *common) outHalf(ctx context.Context, root string, sink verseio.Sink, places []entity.Ref, verse *client.Client) ([]*verseio.Out, error) {
 	addr := c.verse()
 	if addr == "" {
 		return nil, fmt.Errorf("-out needs the verse it reads and writes: -verse-addr, VERSE_ADDR or -hint-url")
 	}
-	verse := client.NewAs(addr, c.principal(root), c.bearer())
+	if verse == nil {
+		verse = c.outClient(root)
+	}
 	outs := make([]*verseio.Out, 0, len(places))
 	for _, place := range places {
 		o := verseio.NewOut(sink, place, verse, log.Printf).Reporting(c.registration())
@@ -218,6 +220,13 @@ func (c *common) outHalf(ctx context.Context, root string, sink verseio.Sink, pl
 			root, place, c.principal(root), addr, c.every)
 	}
 	return outs, nil
+}
+
+// outClient is the client the out half reads and writes the verse with, as this io: its bearer
+// where it has one (-token-file), its name otherwise. One per process; a sink that reads the verse
+// itself is handed the same one.
+func (c *common) outClient(root string) *client.Client {
+	return client.NewAs(c.verse(), c.principal(root), c.bearer())
 }
 
 // serve mounts the contract and whatever delivery routes this source owns, and runs.

@@ -263,6 +263,9 @@ handing it to somebody outside the cluster a different act from handing them the
 | `gitSecretKey` / `slackSecretKey` / `linearSecretKey` / `githubSecretKey` / `coderunnerSecretKey` | `""` | the same, one per credential |
 | `llmModel` | `""` | `OPENAI_MODEL` for versed; `""` leaves the driver's `gpt-4o` |
 | `systemCharter` | `""` | a charter under `deploy/`, mounted into versed and installed at start as the system (`VERSE_SYSTEM_CHARTER`); read at start, so a change takes a restart. Staging: `charters/verse/workspace/Signadot/gate-ask.tony` |
+| `authConfig` | `""` | verse's `auth` block, a file under `deploy/`, mounted into versed as its config (`VERSE_CONFIG`): who verifies people, which ios are trusted for whose accounts, how the ios prove themselves ([Who a request is from](#who-a-request-is-from-authconfig-iotokens)). Staging: `auth/staging.tony` |
+| `ioTokens` | `false` | give the slack and github ios a ServiceAccount each and a projected token, so each proves it is the io (staging and minikube: on) |
+| `issuerDiscoveryOpen` | `false` | let anyone reaching the API server read its OpenID discovery and keys, which versed needs where the cluster itself is the ios' issuer (minikube: on; EKS needs none) |
 | `coderunner` | `false` | deploy the coding runner (its own image; install it with `verse runner add`) |
 | `coderunnerImage` | `example/verse-coderunner:latest` | its image ref — a tag in another repository is fine |
 | the io knobs | off | see [Ios](#ios-optional) |
@@ -419,6 +422,34 @@ cloning one it can reflect nothing from.
 | `linearTeams` | `""` | comma-separated team keys; `""` is every team the credential sees. Quote it: `-e 'linearTeams="ENG,OPS"'` |
 | `linearWebhookHost` | `""` | Ingress host for `/linear/webhook` |
 | `ingressClassName` | `""` | class for both Ingresses; `""` leaves the cluster default |
+
+## Who a request is from (`authConfig`, `ioTokens`)
+
+Without `authConfig`, a request to versed is whoever its header says, as it has always been on a
+tailnet nobody else reaches. With it, versed verifies people and its own ios
+([who a request is from](../docs/reference/perms.md#who-a-request-is-from)):
+
+- **`authConfig`** mounts the named file as versed's config (`VERSE_CONFIG`). Staging's,
+  `deploy/auth/staging.tony`, names the slack and github ios as trusted for their own systems'
+  accounts, and the cluster as the issuer of the ios' tokens. It names no issuer for people: a
+  person is who their CLI says (`mode: optional`), and binds their Slack or GitHub account by
+  saying the nonce `verse account -link <provider>` gives them to the app
+  ([accounts in other systems](../docs/reference/perms.md#accounts-in-other-systems)). An
+  issuer for people, and `required`, come with the team's identity provider.
+- **`ioTokens`** gives the slack and github ios a ServiceAccount each (`deploy/io-tokens`) and a
+  projected token with the audience `verse` at `/var/run/verse/token`, which `iod` reads as
+  `VERSE_TOKEN_FILE` and sends with every request. The token's subject is
+  `system:serviceaccount:<namespace>:<io>`, which the auth config's `auth.iod.accounts` maps to
+  the io's principal and its installed name. The issuer is the cluster's own:
+  `kubectl --context <ctx> get --raw /.well-known/openid-configuration` prints it, and on EKS it is
+  `aws eks describe-cluster --query cluster.identity.oidc.issuer`. Where the issuer is the API
+  server itself (minikube, kubeadm), the auth file also names the cluster's CA (`auth.iod.ca`,
+  the bundle every pod has mounted) and `issuerDiscoveryOpen` lets versed read the discovery
+  document, which such a cluster otherwise grants to service accounts alone.
+  `deploy/auth/minikube.tony` and the minikube profile are the worked example.
+
+Each io's ServiceAccount carries the pull secret the way `default` does: the `imagePullSecret`
+patch covers every ServiceAccount this deploy emits.
 
 ## Credentials
 

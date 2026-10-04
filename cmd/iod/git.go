@@ -81,7 +81,7 @@ func gitMain(args []string) error {
 	// The out half dials the verse, where the reflection is dialled BY it: one pass loop per
 	// repository, writing refs where this program reads them.
 	if *out {
-		if _, err := c.outHalf(ctx, git.Root(), git.Sink(), git.OutRefs()); err != nil {
+		if _, err := c.outHalf(ctx, git.Root(), git.Sink(), git.OutRefs(), c.outClient(git.Root())); err != nil {
 			return err
 		}
 	}

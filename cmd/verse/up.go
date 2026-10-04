@@ -508,7 +508,7 @@ func authOf(c config.AuthConfig) versed.Auth {
 			Acts: p.Acts,
 		}
 	}
-	a.Iod = versed.AuthIod{Issuer: c.Iod.Issuer, Audience: c.Iod.Audience}
+	a.Iod = versed.AuthIod{Issuer: c.Iod.Issuer, Audience: c.Iod.Audience, CA: c.Iod.CA}
 	if len(c.Iod.Accounts) > 0 {
 		a.Iod.Accounts = map[string]versed.IodAccount{}
 	}

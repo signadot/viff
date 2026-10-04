@@ -72,6 +72,10 @@ type Socket struct {
 	// never as this program.
 	as func(principal, account string) *client.Client
 
+	// Verse, when set, is the verse as this io itself: whose word it is that a member said
+	// `/verse link <nonce>` (link). Nil links nobody, and says so.
+	Verse *client.Client
+
 	// Hint, when set, receives the hint each Events API delivery calls for, as the request url's
 	// handler would send it.
 	Hint verseio.Hinter
@@ -195,6 +199,8 @@ func (k *Socket) session(ctx context.Context) (held bool, err error) {
 			// wants, and the answer somebody may have just typed.
 			go k.s.hintFor(ctx, d, k.Hint)
 			go k.said(ctx, env.Payload)
+		case "slash_commands":
+			go k.commanded(ctx, env.Payload)
 		}
 	}
 }
@@ -222,13 +228,10 @@ func (k *Socket) said(ctx context.Context, payload json.RawMessage) {
 		return
 	}
 	e := p.Event
-	// A person, in a thread, saying something new — said plainly (`message`) or at the bot
-	// (`app_mention`), which are one act and arrive as two events. Not this program's own
-	// messages, since its receipts are in the same threads; not an edit or a join; and not
-	// anything at channel level, which is somebody talking: nothing says which question that
-	// would be about.
-	if (e.Type != "message" && e.Type != "app_mention") || e.Subtype != "" || e.BotID != "" ||
-		e.User == "" || e.ThreadTS == "" || e.ThreadTS == e.TS || k.Asking == nil {
+	// A person saying something new — said plainly (`message`) or at the bot (`app_mention`),
+	// which are one act and arrive as two events. Not this program's own messages, since its
+	// receipts are in the same threads; not an edit or a join.
+	if (e.Type != "message" && e.Type != "app_mention") || e.Subtype != "" || e.BotID != "" || e.User == "" {
 		return
 	}
 	// ONE MESSAGE, TWO EVENTS. A message that mentions this bot arrives twice — as `message` and
@@ -236,6 +239,17 @@ func (k *Socket) said(ctx context.Context, payload json.RawMessage) {
 	// as talk while answering it. The mention is the copy that says it was addressed here, so
 	// the plain one is dropped and the mention does the work.
 	if e.Type == "message" && k.s.me != "" && strings.Contains(e.Text, "<@"+k.s.me+">") {
+		return
+	}
+	// `link <nonce>`, said to the app in a message or a DM, is the person proving a verse
+	// account is theirs, and is about no question. The slash command is the same words (commanded).
+	if nonce, ok := linking(e.Text); ok {
+		k.link(ctx, e.Channel, e.ThreadTS, e.User, "", nonce)
+		return
+	}
+	// In a thread, and not at channel level, which is somebody talking: nothing says which
+	// question that would be about.
+	if e.ThreadTS == "" || e.ThreadTS == e.TS || k.Asking == nil {
 		return
 	}
 	asked := k.Asking(e.Channel, e.ThreadTS)
@@ -461,6 +475,87 @@ func stripMentions(text string) string {
 		}
 		text = text[:i] + text[i+j+1:]
 	}
+}
+
+// commanded reads a slash command sent down the socket: `/verse link <nonce>`, where the app
+// registers `/verse`. Said anywhere, a channel the bot is not in included, so what became of it
+// goes back through the command's `response_url`, which reaches the person alone.
+func (k *Socket) commanded(ctx context.Context, payload json.RawMessage) {
+	var c struct {
+		Command     string `json:"command"`
+		Text        string `json:"text"`
+		User        string `json:"user_id"`
+		Channel     string `json:"channel_id"`
+		ResponseURL string `json:"response_url"`
+	}
+	if err := json.Unmarshal(payload, &c); err != nil || c.User == "" {
+		return
+	}
+	nonce, ok := linking(c.Command + " " + c.Text)
+	if !ok {
+		k.tell(ctx, c.Channel, "", c.User, c.ResponseURL,
+			fmt.Sprintf("`%s %s` is not a command I know: `%s link <nonce>` links your Slack account "+
+				"to who you are in verse (`verse account -link slack` gives the nonce).",
+				c.Command, strings.TrimSpace(c.Text), c.Command))
+		return
+	}
+	k.link(ctx, c.Channel, "", c.User, c.ResponseURL, nonce)
+}
+
+// linking reads `link <nonce>` from what was said to the app — `/verse link <nonce>` as the
+// command or typed out, `@verse link <nonce>`, or `link <nonce>` in a DM — and nothing else: a
+// nonce is the whole of the message, never a word in one.
+func linking(text string) (nonce string, ok bool) {
+	f := strings.Fields(stripMentions(text))
+	if len(f) == 3 && (f[0] == "/verse" || strings.EqualFold(f[0], "verse")) {
+		f = f[1:]
+	}
+	if len(f) == 2 && strings.EqualFold(f[0], "link") {
+		return f[1], true
+	}
+	return "", false
+}
+
+// link proves the Slack account is the claimant's. The verse gave somebody the nonce
+// (`verse account -link slack`); this io's word that this account said it is what binds the two
+// (`POST /accounts/slack/heard`; perms.md, "accounts in other systems"). The word is the io's own,
+// so it is given as the io itself; what became of it is said to the person alone.
+func (k *Socket) link(ctx context.Context, channel, thread, user, responseURL, nonce string) {
+	tell := func(text string) { k.tell(ctx, channel, thread, user, responseURL, text) }
+	if k.Verse == nil {
+		tell("Not linked: this program was not told which verse to tell.")
+		return
+	}
+	resp, err := k.Verse.Post("/accounts/slack/heard", nil, map[string]string{"nonce": nonce, "account": account(user)})
+	if err != nil {
+		tell("Not linked: " + err.Error())
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		tell("Not linked: " + client.StatusError(resp, "`/verse link`").Error())
+		return
+	}
+	var row struct {
+		Principal string `tony:"field=principal"`
+	}
+	if err := client.Decode(resp, &row); err != nil {
+		tell("Linked, though the verse's answer did not decode: " + err.Error())
+		return
+	}
+	tell(fmt.Sprintf("Linked: in verse, <@%s> is %s.", user, row.Principal))
+}
+
+// tell says text to one person: through a slash command's response_url where there is one, which
+// works in a channel the bot is not in, and otherwise as an ephemeral message where they typed.
+func (k *Socket) tell(ctx context.Context, channel, thread, user, responseURL, text string) {
+	if responseURL != "" {
+		if err := k.s.api.respond(ctx, responseURL, text); err != nil {
+			k.s.log("slack socket: answering a command from %s: %v", user, err)
+		}
+		return
+	}
+	k.aside(ctx, channel, thread, user, text)
 }
 
 // say records what somebody said about the thread's questions, as them, answering nothing. It

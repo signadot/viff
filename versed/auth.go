@@ -108,7 +108,7 @@ func (a Auth) config() config.AuthConfig {
 			Acts: p.Acts,
 		}
 	}
-	c.Iod = config.IodAuthConfig{Issuer: a.Iod.Issuer, Audience: a.Iod.Audience}
+	c.Iod = config.IodAuthConfig{Issuer: a.Iod.Issuer, Audience: a.Iod.Audience, CA: a.Iod.CA}
 	if len(a.Iod.Accounts) > 0 {
 		c.Iod.Accounts = map[string]config.IodAccountConfig{}
 	}
@@ -137,6 +137,9 @@ type authProvider struct {
 	name string
 	iod  bool
 	AuthProvider
+	// client reaches the issuer where the system's roots do not: the ios' issuer behind a
+	// cluster's own CA (AuthIod.CA). nil is the default client.
+	client *http.Client
 
 	mu       sync.Mutex
 	verifier *oidc.IDTokenVerifier
@@ -270,6 +273,9 @@ func (p *authProvider) verifierFor() (*oidc.IDTokenVerifier, error) {
 	// Not the request's context: the discovery outlives the request that happened to need it.
 	ctx, cancel := context.WithTimeout(context.Background(), discoveryTimeout)
 	defer cancel()
+	if p.client != nil {
+		ctx = oidc.ClientContext(ctx, p.client) // the key set keeps this client too
+	}
 	prov, err := oidc.NewProvider(ctx, p.Issuer)
 	if err != nil {
 		p.failed, p.failure = time.Now(), err

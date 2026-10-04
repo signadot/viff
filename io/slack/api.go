@@ -1,6 +1,7 @@
 package slack
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -476,6 +477,29 @@ func (a *api) ephemeral(ctx context.Context, channel, thread, user, text string)
 		args["thread_ts"] = thread
 	}
 	return a.post(ctx, "chat.postEphemeral", args, &r)
+}
+
+// respond answers a slash command through its response_url, to the person who typed it alone.
+// No token: the url is the credential, and it stands for a few minutes.
+func (a *api) respond(ctx context.Context, responseURL, text string) error {
+	body, err := json.Marshal(map[string]string{"response_type": "ephemeral", "text": text})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, responseURL, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := a.cl.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		return fmt.Errorf("response_url answered %s", resp.Status)
+	}
+	return nil
 }
 
 // newAPI builds the client. Its own http.Client, never http.DefaultClient, so the timeout

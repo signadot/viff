@@ -305,6 +305,12 @@ auth:
   reads a provider's.
 - `audience` is what the tokens' `aud` holds, which is what the pod's token was asked for.
   Unset is `verse`.
+- `ca` is the path of the PEM bundle the issuer's certificate is checked against, for an issuer
+  no public root signed: a cluster whose issuer is its own API server (minikube, kubeadm), whose
+  certificate a pod has at `/var/run/secrets/kubernetes.io/serviceaccount/ca.crt`. Such a
+  cluster also grants the discovery document to service accounts alone by default, and versed
+  reads it as nobody, so the deploy's `issuerDiscoveryOpen` opens it. Unset trusts the system's
+  roots, which a public issuer (EKS's) needs and nothing more.
 - `accounts` maps a token's subject to the io it is: the `agent:` it acts as, and `io`, the
   name it is installed under, which is how a provider's `ios` names it. An io that relays nobody
   needs no `io`. The accounts are written at start, never at first sight.

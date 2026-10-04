@@ -240,6 +240,23 @@ build:
     # system` over the api is refused. Read at start, so a changed file takes a restart.
     systemCharter: ""
 
+    # verse's `auth` block, as a path under deploy/ (VERSE_CONFIG, config/config.go): who verifies
+    # people, which ios are trusted for whose accounts, and how the ios prove themselves
+    # (docs/reference/up.md). "" leaves versed as it is: a request is whoever it says. The env
+    # verse reads (VERSE_PERMS_ADMINS, the model's) still applies over the file. Read at start.
+    authConfig: ""
+    # Let anyone who reaches the API server read its OpenID discovery document and keys
+    # (deploy/issuer-discovery): a ClusterRoleBinding of the issuer-discovery role to the
+    # unauthenticated group. A cluster whose issuer is private (minikube's, kubeadm's) grants
+    # that to service accounts alone by default, and versed reads the document as nobody; a
+    # cluster with a public issuer (EKS) needs none of this. Cluster-scoped, and off by default.
+    issuerDiscoveryOpen: false
+    # Give the slack and github ios a ServiceAccount each and a projected token, audience `verse`,
+    # at /var/run/verse/token, named to iod by VERSE_TOKEN_FILE: how an io proves it is the io.
+    # The token's subject is system:serviceaccount:<namespace>:<io>, which `auth.iod.accounts` in
+    # the auth config maps to the io's principal. The cluster is the issuer.
+    ioTokens: false
+
   sources:
   # Namespace first — kubectl applies the stream in order, so namespaced resources must not
   # precede the Namespace (else "namespaces \"verse\" not found" on the first apply).
@@ -263,7 +280,14 @@ build:
   # Before versed for the reason the secrets are: a volume is read when the pod starts.
   - if: '.[ systemCharter != "" ]'
     dir: system-charter
+  - if: '.[ authConfig != "" ]'
+    dir: auth-config
   - dir: source
+  # Before the ios, since a pod names its ServiceAccount when it is created.
+  - if: '.[ioTokens]'
+    dir: io-tokens
+  - if: '.[issuerDiscoveryOpen]'
+    dir: issuer-discovery
   - if: '.[emitStorageClass]'
     dir: eks
   - if: '.[hostPV]'
@@ -412,11 +436,12 @@ build:
     patch: !delete null
 
   # The pull secret, onto the `default` ServiceAccount every pod here runs as.
+  # Every ServiceAccount this deploy emits: `default`, which every pod that names none runs as,
+  # and an io's own (deploy/io-tokens), which its pod names instead and so would not inherit
+  # `default`'s.
   - if: '.[ imagePullSecret != "" ]'
     match:
       kind: ServiceAccount
-      metadata:
-        name: default
     patch:
       imagePullSecrets:
       - name: $[imagePullSecret]
@@ -484,6 +509,32 @@ build:
             - name: system-charter
               configMap:
                 name: verse-system-charter
+
+  # The auth block, mounted where VERSE_CONFIG says (deploy/auth-config). VERSE_CONFIG replaces
+  # the file layers verse would otherwise read, none of which a pod has, and the env still applies
+  # over it.
+  - if: '.[ authConfig != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: versed
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: versed
+              env: !key(name)
+              - name: VERSE_CONFIG
+                value: /etc/verse/config/verse.tony
+              volumeMounts: !key(name)
+              - name: verse-auth
+                mountPath: /etc/verse/config
+                readOnly: true
+            volumes: !key(name)
+            - name: verse-auth
+              configMap:
+                name: verse-auth
 
   # The verse image on both tiers (list-merge each container by name; docd runs `o`, versed
   # runs `verse` — one image, two roles).
@@ -758,7 +809,6 @@ build:
         annotations:
           tailscale.com/expose: "true"
           tailscale.com/hostname: "$[namespace]-docd-mount"
-
   # The broker face, where a dial-in worker claims work and reports on it — a laptop agent, a
   # pod in a private cluster, a person. Its own device for the reason docd's faces are two:
   # this is the one face reached by parties that are not operators, and an ACL that grants it
@@ -972,6 +1022,37 @@ build:
               - name: VERSE_HINT_URL
                 value: "http://verse:9797/io/$[slackIOName]/hint"
 
+  # The io's own credential (ioTokens): its ServiceAccount, and a projected token at the path
+  # VERSE_TOKEN_FILE names, asked for with the audience `verse` and rotated by the kubelet. The
+  # env rather than a flag, since the command is restated whole by the patch below.
+  - if: '.[ ioTokens && slackIO ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: slack-io
+    patch:
+      spec:
+        template:
+          spec:
+            serviceAccountName: slack-io
+            containers: !key(name)
+            - name: slack-io
+              env: !key(name)
+              - name: VERSE_TOKEN_FILE
+                value: /var/run/verse/token
+              volumeMounts: !key(name)
+              - name: verse-token
+                mountPath: /var/run/verse
+                readOnly: true
+            volumes: !key(name)
+            - name: verse-token
+              projected:
+                sources:
+                - serviceAccountToken:
+                    audience: verse
+                    expirationSeconds: 3600
+                    path: token
+
   # The workspace label, when the operator would rather name it than take the team's own name.
   - if: '.[ slackIO && slackWorkspace != "" ]'
     match:
@@ -1026,6 +1107,35 @@ build:
               env: !key(name)
               - name: VERSE_HINT_URL
                 value: "http://verse:9797/io/$[githubIOName]/hint"
+
+  # The github io's credential, as the slack io's above.
+  - if: '.[ ioTokens && githubIO ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: github-io
+    patch:
+      spec:
+        template:
+          spec:
+            serviceAccountName: github-io
+            containers: !key(name)
+            - name: github-io
+              env: !key(name)
+              - name: VERSE_TOKEN_FILE
+                value: /var/run/verse/token
+              volumeMounts: !key(name)
+              - name: verse-token
+                mountPath: /var/run/verse
+                readOnly: true
+            volumes: !key(name)
+            - name: verse-token
+              projected:
+                sources:
+                - serviceAccountToken:
+                    audience: verse
+                    expirationSeconds: 3600
+                    path: token
 
   # The command is restated whole rather than appended to, as the Linear and Slack ones are: a
   # patch that inserted would have to know what it was inserting into, and two of them would

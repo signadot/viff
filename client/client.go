@@ -72,11 +72,9 @@ func NewRelay(addr, principal, account string, bearer BearerFunc) *Client {
 	if account == "" {
 		return New(addr, principal)
 	}
-	c := NewAs(addr, principal, bearer)
-	t := c.HTTP.Transport.(Transport)
-	t.For = Static(account)
-	c.HTTP.Transport = t
-	return c
+	return &Client{Addr: addr, HTTP: &http.Client{Transport: Transport{
+		Version: api.Version(), Principal: Static(principal), Bearer: bearer, For: Static(account),
+	}}}
 }
 
 func (c *Client) http() *http.Client {

@@ -151,6 +151,36 @@ func TestAnIoProvesItselfWithItsWorkloadToken(t *testing.T) {
 	}
 }
 
+// The ios' issuer may sit behind a CA no public root signed, a cluster's own API server: named a
+// bundle, the door reaches it; not named one, it cannot, and says so rather than admitting.
+func TestAnIssuerBehindTheClustersCAIsReachedThroughIt(t *testing.T) {
+	cluster := idptest.NewTLS(t)
+	accounts := map[string]IodAccount{ioSub: {Principal: ioAgent, IO: ioName}}
+	trusting := testServer(t)
+	if err := trusting.SetAuth(Auth{Iod: AuthIod{Issuer: cluster.URL, Accounts: accounts, CA: cluster.CAFile()}}); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(trusting.Handler())
+	defer ts.Close()
+	token := cluster.Token(iodAudience, ioSub, nil)
+	if code, body := relay(t, http.MethodGet, ts.URL+"/whoami?format=tony", token, "", "", ""); code != http.StatusOK || tonyOf(t, body)["principal"] != ioAgent {
+		t.Errorf("through the bundle: whoami = %d %s", code, body)
+	}
+
+	blind := testServer(t)
+	if err := blind.SetAuth(Auth{Iod: AuthIod{Issuer: cluster.URL, Accounts: accounts}}); err != nil {
+		t.Fatal(err)
+	}
+	ts2 := httptest.NewServer(blind.Handler())
+	defer ts2.Close()
+	if code, body := relay(t, http.MethodGet, ts2.URL+"/whoami", token, "", "", ""); code != http.StatusServiceUnavailable || !strings.Contains(body, "could not be read") {
+		t.Errorf("without the bundle: whoami = %d %q, want 503 saying the issuer could not be read", code, strings.TrimSpace(body))
+	}
+	if err := testServer(t).SetAuth(Auth{Iod: AuthIod{Issuer: cluster.URL, CA: filepath.Join(t.TempDir(), "none.crt")}}); err == nil {
+		t.Error("a bundle that is not there was accepted")
+	}
+}
+
 func TestATrustedIoRelaysAPersonThroughABinding(t *testing.T) {
 	srv, ts, people, cluster := iodServer(t, AuthRequired, slackTrusting(ioName))
 	io := cluster.Token(iodAudience, ioSub, nil)

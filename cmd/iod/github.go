@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"github.com/signadot/verse/client"
 	"github.com/signadot/verse/entity"
 	verseio "github.com/signadot/verse/io"
 	"log"
@@ -109,23 +108,21 @@ func githubMain(args []string) error {
 		// The questions a comment is about are read as this io, and a `/verse` comment answers
 		// as its author, relayed with their GitHub account beside this io's own credential
 		// (io.Controller's shape, for a pull rather than a socket).
-		sink.Verse = client.NewAs(c.verse(), c.principal(src.Root()), c.bearer())
+		sink.Verse = c.outClient(src.Root())
 		sink.As = verseio.As(c.verse(), c.bearer())
-		outs, err := c.outHalf(ctx, src.Root(), sink, src.OutRefs())
+		outs, err := c.outHalf(ctx, src.Root(), sink, src.OutRefs(), sink.Verse)
 		if err != nil {
 			return err
 		}
 		// A comment's delivery is a reply in the making: the hint has verse reflect it, and a
 		// pass asked for now reads the reflection a moment behind the hint. The pass that misses
 		// it is caught by the next interval, which is the net either way.
-		if hint != nil {
-			inner := hint
-			hint = func(ctx context.Context, refs ...entity.Ref) {
-				inner(ctx, refs...)
-				if aboutAComment(refs) {
-					for _, o := range outs {
-						o.Kick()
-					}
+		inner := hint
+		hint = func(ctx context.Context, refs ...entity.Ref) {
+			inner(ctx, refs...)
+			if aboutAComment(refs) {
+				for _, o := range outs {
+					o.Kick()
 				}
 			}
 		}

@@ -14,9 +14,12 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -50,6 +53,32 @@ func New(t testing.TB) *IdP {
 	t.Cleanup(p.srv.Close)
 	p.URL = p.srv.URL
 	return p
+}
+
+// NewTLS is New over TLS, under a certificate no public root signed: an issuer like a cluster's
+// own API server, which a verifier reaches only trusting the CA it hands out (CAFile).
+func NewTLS(t testing.TB) *IdP {
+	t.Helper()
+	p := &IdP{t: t, handlers: map[string]http.HandlerFunc{}, discovery: map[string]any{}}
+	p.Rotate()
+	p.srv = httptest.NewTLSServer(http.HandlerFunc(p.serve))
+	t.Cleanup(p.srv.Close)
+	p.URL = p.srv.URL
+	return p
+}
+
+// CAFile is the issuer's certificate as a PEM bundle in a file, for an IdP started with NewTLS.
+func (p *IdP) CAFile() string {
+	p.t.Helper()
+	cert := p.srv.Certificate()
+	if cert == nil {
+		p.t.Fatal("CAFile: the IdP is not served over TLS")
+	}
+	path := filepath.Join(p.t.TempDir(), "ca.crt")
+	if err := os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}), 0o644); err != nil {
+		p.t.Fatal(err)
+	}
+	return path
 }
 
 // Handle serves path with h, and names it in the discovery document under key when key is not

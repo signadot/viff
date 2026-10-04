@@ -363,7 +363,7 @@ type keeping struct {
 	kept []string
 }
 
-func (k *keeping) Keep(in verseio.Input) {
+func (k *keeping) Keep(_ context.Context, in verseio.Input) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	k.kept = append(k.kept, in.Name)

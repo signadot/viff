@@ -63,7 +63,7 @@ func linearMain(args []string) error {
 	// The out half dials the verse, where the reflection is dialled BY it: one pass loop per
 	// team's place, all of them the same sink, since an issue identifier says which team it is.
 	if *out {
-		if _, err := c.outHalf(ctx, src.Root(), src.Sink(), src.OutRefs()); err != nil {
+		if _, err := c.outHalf(ctx, src.Root(), src.Sink(), src.OutRefs(), nil); err != nil {
 			return err
 		}
 	}

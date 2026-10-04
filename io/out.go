@@ -87,7 +87,7 @@ type Sink interface {
 // told about an input it is not asked to deliver: one refused for good (Permanent), which stands
 // unchanged. Slack's remembers which thread a message's replies land in.
 type Keeper interface {
-	Keep(in Input)
+	Keep(ctx context.Context, in Input)
 }
 
 // Permanent marks err as a refusal the same input would get again: the far side said no to what
@@ -331,7 +331,7 @@ func (o *Out) deliver(ctx context.Context, in Input) bool {
 	// It still counts as failed — it stands unmet — and a Keeper still hears of it.
 	if refused(in) {
 		if k, ok := o.sink.(Keeper); ok {
-			k.Keep(in)
+			k.Keep(ctx, in)
 		}
 		return false
 	}

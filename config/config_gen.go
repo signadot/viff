@@ -764,6 +764,11 @@ func (s *IodAuthConfig) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["audience"] = ir.FromString(string(s.Audience))
 	}
 
+	// Field: CA
+	if s.CA != "" {
+		irMap["ca"] = ir.FromString(string(s.CA))
+	}
+
 	// Field: Accounts
 	if len(s.Accounts) > 0 {
 		mapNodes := make(map[string]*ir.Node)
@@ -835,6 +840,12 @@ func (s *IodAuthConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) err
 				return fmt.Errorf("field %q: expected string, got %v", "audience", fieldNodeUnwrapped.Type)
 			}
 			s.Audience = string(fieldNodeUnwrapped.String)
+		case "ca":
+			// Field: CA
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "ca", fieldNodeUnwrapped.Type)
+			}
+			s.CA = string(fieldNodeUnwrapped.String)
 		case "accounts":
 			// Field: Accounts
 			if fieldNodeUnwrapped.Type == ir.ObjectType {
