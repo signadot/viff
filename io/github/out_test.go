@@ -408,3 +408,39 @@ func TestARefusalIsAskedOnceAndARateLimitAgain(t *testing.T) {
 		t.Errorf("status %v, want the comment made once the limit lifted", st)
 	}
 }
+
+// A pull request from a branch GitHub does not have yet waits for the branch: the io's error is
+// retried on the next pass, not recorded as a refusal for good, and the pull request opens once
+// the branch is there.
+func TestAPullRequestWaitsForItsBranch(t *testing.T) {
+	store := entitytest.Store(t)
+	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
+	t.Cleanup(ts.Close)
+	f := newFake()
+	repo := f.repo("signadot/verse")
+	repo.missingHeads = map[string]bool{"verse/candidate/aaaa": true}
+	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
+	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-io")
+	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
+	entitytest.Set(t, store, entity.RefAt("github", "signadot", "verse", "out", "candidate"), entity.Obj{
+		"to": "branch.verse/candidate/aaaa", "open": entity.Obj{"base": "verse/live", "title": "charters: aaaa"},
+	}.Payload())
+	if err := out.Pass(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	e, _, _ := store.Get(entity.RefAt("github", "signadot", "verse", "out", "candidate"+verseio.StatusSuffix))
+	st := entity.ToObj(e.Payload)
+	if st["error"] == nil || st["failed"] == verseio.PermanentFailure || !strings.Contains(fmt.Sprint(st["error"]), "not on GitHub yet") {
+		t.Fatalf("a missing head: status %v, want a retryable error naming the branch", st)
+	}
+	f.mu.Lock()
+	repo.missingHeads = nil
+	f.mu.Unlock()
+	if err := out.Pass(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	e, _, _ = store.Get(entity.RefAt("github", "signadot", "verse", "out", "candidate"+verseio.StatusSuffix))
+	if st := entity.ToObj(e.Payload); st["number"] == nil || st["error"] != nil {
+		t.Fatalf("once the branch is there: status %v, want the pull request opened", st)
+	}
+}

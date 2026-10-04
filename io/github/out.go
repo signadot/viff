@@ -256,6 +256,15 @@ func (k *Sink) open(ctx context.Context, repo string, in verseio.Input, spec ent
 	}
 	p, err := k.g.api.createPull(ctx, repo, branch, base, title, body)
 	if err != nil {
+		// A HEAD GITHUB DOES NOT HAVE YET is not a refusal of the pull request: the branch is
+		// another io's to push (the git io's, for a candidate), and it arrives on its own pass.
+		// Said as an ordinary error, so the next pass asks again, rather than GitHub's 422 which
+		// Deliver would record as a refusal for good.
+		var he *httpError
+		if asHTTPError(err, &he) && he.status == 422 &&
+			strings.Contains(he.body, `"field":"head"`) {
+			return nil, fmt.Errorf("branch %s is not on GitHub yet, so the pull request waits for it", branch)
+		}
 		return nil, err
 	}
 	return entity.Obj{

@@ -57,6 +57,9 @@ type fakeRepo struct {
 
 	comments    []*fakeComment
 	discussions []*fakeDiscussion
+	// missingHeads are branches GitHub does not have: a pull request from one is refused with
+	// the 422 GitHub gives, until the branch arrives.
+	missingHeads map[string]bool
 	// discussionsOff is the feature turned off, which answers with an empty list exactly as a
 	// repository with no discussions does — the confusion hasDiscussionsEnabled exists to
 	// resolve. graphqlError is the endpoint refusing, which is HTTP 200 with an errors array.
@@ -687,6 +690,12 @@ func (f *fakeGitHub) write(w http.ResponseWriter, r *http.Request, repo *fakeRep
 		f.closes++
 		writeJSON(w, i.renderAs(false, true))
 	case r.Method == http.MethodPost && len(rest) == 1 && rest[0] == "pulls":
+		if repo.missingHeads[body.Head] {
+			// GitHub's answer to a head branch it does not have.
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			writeJSON(w, map[string]any{"message": "Validation Failed", "errors": []any{map[string]any{"resource": "PullRequest", "field": "head", "code": "invalid"}}})
+			return
+		}
 		number := 1
 		for _, i := range repo.items {
 			if i.number >= number {
