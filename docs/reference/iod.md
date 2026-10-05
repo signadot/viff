@@ -108,7 +108,7 @@ and in the shell history, and an environment variable is not.
 | `-repo` | `[<id>=]<dir>` | | | a repository that is already on disk. The flag is repeatable, and one value may hold several, separated by commas. |
 | `-mirror` | `[<id>=]<url>` | | | a remote repository to mirror and keep fetched. The flag is repeatable. |
 | `-state` | `<dir>` | `SOURCED_STATE` | `/repos` | the directory that holds the clones of `-mirror`, one directory for each repository id |
-| `-tree` | `[<name>=]<path>` | | | a directory whose tree sha is reflected on every ref, as `tree.<name>`: the identity of its contents at that ref. The name defaults to the path's last segment, and is one plain word. The flag is repeatable. |
+| `-tree` | `[<name>=]<path>` | | | a directory whose tree sha is reflected on every ref, as `tree.<name>`: the identity of its contents at that ref, and the empty tree where the directory is not there. The name defaults to the path's last segment, and is one plain word. The flag is repeatable. |
 | `-out` | | | `false` | The io also runs the out half ([the out half](#the-out-half-of-git)): a tag made, a branch moved, a tree of charters installed. |
 
 `iod git` needs at least one `-repo` or one `-mirror`.
@@ -150,7 +150,7 @@ converges at the full reflection of every minute.
 
 | Entity | Payload |
 |---|---|
-| `git.<repo>.ref.<name>` | `repo, name, sha, type`, and `tree` where `-tree` names a directory that exists at that ref: `tree: {<name>: <object sha>}`. These are branches, tags and remote-tracking branches, and nothing else. |
+| `git.<repo>.ref.<name>` | `repo, name, sha, type`, and `tree` for each directory `-tree` names: `tree: {<name>: <object sha>}`, the empty tree where the directory is not there. These are branches, tags and remote-tracking branches, and nothing else. |
 | `git.<repo>.head` | `repo, ref, sha, dirty`, and `ahead`/`behind` when an upstream is set |
 | `git.<repo>.commit.<sha>` | `repo, sha, msg, author, parents`, and `trailers` when the commit has any. `parents` is a list of shas: empty for a root commit, two for a merge, first parent first. No [cover](../glossary.md#cover-of-a-reflection) reaches a commit, so history stays. |
 
@@ -202,6 +202,11 @@ identity of the directory's contents: two refs that differ only outside the dire
 same one, and so does the same change after a squash or a rebase. A charter that keeps a
 repository's rules installed compares this, not the commit (git-issue j9vbwvja).
 
+A ref where the directory is not there carries git's **empty tree**,
+`4b825dc642cb6eb9a060e54bf8d69288fbee4904`, which every repository has without storing it. No
+files is a state of the directory like any other, so removing the directory reads as a change
+to it, and installing the empty tree with the out half removes every charter at the address.
+
 ```tony
 condition:
   subject:
@@ -224,12 +229,15 @@ an **input** under the repository's out place, `git.<repo>.out`, and the io answ
 | `{to: branch.<name>, sha, create: true}` | makes the branch at the commit where there is none, and leaves one that stands alone; a tag takes `create` too | `ref, sha, at`, and `kept: true` where it stood already |
 | `{to: install.<address>, tree, sha}` | installs the charters in the tree object into the verse at the address, as `verse c -a <address> -d <dir> --prune` would, from the io's own copy of the repository; `sha` is the commit it is installed for | `tree, sha, address, at`, and `charters`, how many |
 | `{to: check.<address>, tree}` | asks the verse's charter check what an install of the tree at the address would do, and installs nothing | `tree, address, checkedAt`, and the check's `verdict` (`installs` or `refused`), `refusal`, `packages` and `pruned` |
+| `{to: check.<address>, ref, of, round}` | the same check for the tree a ref holds now in the io's own copy (`of` names the `-tree` directory, and may be left out where there is one), made again whenever `round` changes | as above, with `ref`, `sha` and `round`; `changes`, how many charters the install would add, change, remove or prune (0 is in step with what runs); `differingFor`, the rounds in a row it has differed at one commit; a ref the repository lacks is the verdict `missing` |
+| `{to: obsolete, prefix, keep, before}` | answers `obsolete`, as the io, every pending question waiting on it whose id begins with `prefix`, whose key (the id after the prefix, up to `~`) is none of the strings under `keep`, posed by `before`, and offering `obsolete` | `obsoleted`, the ids answered; `sweptAt`, `before` |
 
 ```sh
 verse data git verse out live -put '{to: tag.live-verse.3, sha: 4f668c1c}'
 verse data git verse out head -put '{to: branch.verse/live, sha: 4f668c1c}'
 verse data git verse out install -put '{to: install.repos.verse, tree: 4b825dc6, sha: 4f668c1c}'
 verse data git verse out check -put '{to: check.repos.verse, tree: 4b825dc6}'
+verse data git verse out livecheck -put '{to: check.repos.verse, ref: verse/live, round: "1"}'
 ```
 
 - **A check is not an install.** It reads the tree's charter files as the install does and asks
@@ -237,10 +245,17 @@ verse data git verse out check -put '{to: check.repos.verse, tree: 4b825dc6}'
   it: a verdict, and per package what it adds, changes, removes and holds. A verdict of
   `refused`, a file that does not parse among them, is an answer on the status and not a failed
   input; a tree the repository lacks is refused for good, and a verse that cannot be reached is
-  tried again. A tree checked already costs nothing.
+  tried again. A tree checked already costs nothing. Checked by `ref` with a `round`, it is the
+  repo-charters reconciler's minute check that verse/live is what is installed.
+- **An obsolete sweep settles what nothing proposes.** The charter that asked decides what is
+  still proposed and names it in `keep`; the io only applies it, and only to questions posed by
+  `before`, the instant `keep` was read at, so a question about something newer is left for the
+  next sweep. The io answers because the charter named it among the question's answerers, so
+  nobody grants anything for it.
 - **An install is the io's own act.** It archives the tree out of its mirror, reads every
   charter file in it (a README is left alone), and makes one request as itself: every charter in
-  the tree or none, and what the tree leaves out under the address removed. So the io has to own
+  the tree or none, and what the tree leaves out under the address removed. A tree with no
+  charter file, the empty tree among them, removes every charter at the address. So the io has to own
   the address, or hold `child-owner` above it (`verse perms repos --grants '[{child-owner:
   [agent:git-io]}]'` on a deployment). A tree the repository lacks, a file that does not parse, or
   a charter the verse refuses is refused for good until the input changes; a verse that cannot be
@@ -797,6 +812,7 @@ default.
 | `-comments` | `<n>` | `200` | the number of comments that the io keeps for each repository |
 | `-max-open` | `<n>` | `2000` | The io refuses a repository that has more open items than this. |
 | `-discussions` | | `false` | The io reflects discussions. |
+| `-tree` | `[<name>=]<path>` | | a directory an open pull request reports when it changes it, as `changes.<name>`: the identity of the directory's contents at the head, present where they differ from the directory at the head's merge base with the pull request's base. Against the merge base, so a pull request branched before the base's copy changed changes nothing. Read once per head and kept. The name defaults to the path's last segment. The flag is repeatable. |
 | `-out` | | `false` | The io also acts back: see [The out half of github](#the-out-half-of-github). |
 
 | Environment | What it is |
@@ -829,7 +845,7 @@ content type `application/json`.
 |---|---|
 | `github.<org>.<name>.repo` | `repo, org, name, private, archived, fork`, and `defaultBranch, defaultBranchSha, cloneUrl, sshUrl, description, topics, url` |
 | `github.<org>.<name>.issue.<n>` | `repo, number, title, state, comments`, and `author, url, createdAt, updatedAt, closedAt, stateReason, body, milestone, labels, assignees` |
-| `github.<org>.<name>.pr.<n>` | `repo, number, title, state, draft, merged`, and `author, base, head, headSha, checks, url, …, labels, assignees` |
+| `github.<org>.<name>.pr.<n>` | `repo, number, title, state, draft, merged`, and `author, base, head, headSha, checks, url, …, labels, assignees`; an open one also `changes.<name>` for each `-tree` directory it changes |
 | `github.<org>.<name>.discussion.<n>` | `repo, number, title, state, answered, comments`, and `author, category, url, …` |
 | `github.<org>.<name>.run.<id>` | `repo, id, status, runNumber, attempt`, and `workflow, event, conclusion, branch, headSha, url, startedAt, updatedAt, actor` |
 | `github.<org>.<name>.comment.<n>.<id>` | `repo, on, id, kind`, and `author, authorId, body, url, createdAt, updatedAt`. `authorId` is GitHub's number for the account, which a rename does not change, and an [account binding](perms.md#accounts-in-other-systems) keys on it. |
@@ -1052,6 +1068,31 @@ Its status holds `review` (its id), `event`, `url` and `reviewedAt`.
 
 GitHub refuses a review from the pull request's own author, so the io cannot review a pull
 request it opened. It also refuses `request-changes` without a body, which the io refuses first.
+
+`{event: dismiss, body}` dismisses every request for changes the io left standing on the pull
+request, not only its latest, with `body` as the reason GitHub shows; the status says how many,
+`dismissed`. Where main's protection requires approving reviews, the io's request for changes
+blocks the merge whatever other approvals the pull request has, and dismissing it lifts the
+block.
+
+**Several things on one pull request.** A `pr.<n>` input that carries `commitStatus`, or `review`
+together with `text` or `asks`, keeps all of them on that pull request at once: the question's
+comment (its facts as `comment`, `commentUrl`, `commentPosted`, `commentAt`), the io's review
+(`reviewEvent`, `review`, `reviewPosted`, `reviewedAt`), and its commit statuses
+(`commitStatus.<context>`). It is how a question is asked on a pull request somebody else opened
+and the merge held until it is answered:
+
+```tony
+to: pr.42
+text: "The charters change here."
+asks: <question id>
+review: {event: request-changes, body: "verse: waiting for an answer to the question below"}
+commitStatus: {verse: {state: pending, description: "waiting for an answer"}}
+```
+
+A comment that cannot be made fails the input and is tried again. A review or a status GitHub
+refuses is said beside the rest (`reviewError`, `commitStatus.<context>.error`) and does not stop
+the comment, whose replies are where the answer comes from.
 
 **A refusal is not asked again.** GitHub may refuse a request with a 4xx other than a timeout or a
 rate limit, or the io may refuse an input itself: a `to` that is no target, a missing title, a head

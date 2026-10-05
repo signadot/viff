@@ -54,7 +54,7 @@ func (s *Server) checkCharterAt(store entity.Store, at string, docs []*ir.Node) 
 	if installer == "" {
 		return refuse(errors.New("a charter names who installs it, and this check names nobody"))
 	}
-	groups, err := charterFiles(docs, "")
+	groups, err := charterFilesPruning(docs, "", at)
 	if err != nil {
 		return refuse(err)
 	}

@@ -77,9 +77,15 @@ func (g *Git) SetRoot(root string) error {
 // tree is one directory a Git reflects the tree sha of: under name, for the path.
 type tree struct{ name, path string }
 
+// EmptyTree is git's tree object with nothing in it, which every repository has without storing
+// it: what a directory that is not there reflects as, so that a directory removed reads as a
+// change to it, to no files, and installing it is installing nothing.
+const EmptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
 // AddTree reflects the tree object of a directory on every ref of every repository, as
-// `tree: {<name>: <object sha>}` on `git.<repo>.ref.<name>`, where the directory exists at that
-// ref. spec is `<name>=<path>`, or a bare path whose last segment is the name: `.verse/charters`
+// `tree: {<name>: <object sha>}` on `git.<repo>.ref.<name>`. A ref where the directory is not
+// there carries the empty tree (EmptyTree): no files is a state of the directory like any other,
+// and removing it is a change to that state. spec is `<name>=<path>`, or a bare path whose last segment is the name: `.verse/charters`
 // is reflected as `tree.charters`. The name is one plain word, so a charter can spell it in a
 // reference (`$subject.value.tree.charters`), which a path with a dot or a slash in it cannot be.
 //
@@ -429,7 +435,8 @@ func gitTrees(ctx context.Context, dir string, paths []tree, refs map[string]ref
 	}
 	trees := map[string]map[string]string{}
 	// A line for an object that is not there reads `<sha>:<path> missing`, and nothing of the
-	// format above.
+	// format above: the directory is not at that ref, which is the empty tree. A path that is
+	// something other than a directory is left off.
 	lines := nonEmptyLines(out)
 	i := 0
 	for _, sha := range shas {
@@ -439,13 +446,19 @@ func gitTrees(ctx context.Context, dir string, paths []tree, refs map[string]ref
 			}
 			f := strings.Fields(lines[i])
 			i++
-			if len(f) < 2 || f[1] != "tree" {
+			obj := ""
+			switch {
+			case len(f) >= 2 && f[1] == "tree":
+				obj = f[0]
+			case len(f) >= 2 && f[len(f)-1] == "missing":
+				obj = EmptyTree
+			default:
 				continue
 			}
 			if trees[sha] == nil {
 				trees[sha] = map[string]string{}
 			}
-			trees[sha][p.name] = f[0]
+			trees[sha][p.name] = obj
 		}
 	}
 	return trees

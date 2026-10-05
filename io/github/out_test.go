@@ -346,7 +346,7 @@ func TestTheOutHalfReviewsAPullRequest(t *testing.T) {
 	ask("bad-event", entity.Obj{"to": "pr.42", "review": entity.Obj{"event": "comment"}})
 	pass()
 	for name, says := range map[string]string{
-		"own": "Can not approve your own", "silent-objection": "carries a body", "bad-event": "approve or request-changes",
+		"own": "Can not approve your own", "silent-objection": "carries a body", "bad-event": "approve, request-changes or dismiss",
 	} {
 		if e, _ := status(name)["error"].(string); !strings.Contains(e, says) {
 			t.Errorf("%s: status %v, want an error saying %q", name, status(name), says)

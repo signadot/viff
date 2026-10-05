@@ -489,7 +489,7 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 //
 // With a PRUNE ROOT it is also a removal: see charterprune.go.
 func (s *Server) installCharterPruning(store entity.Store, scope, at, prune string, docs []*ir.Node) ([]charterGroup, []any, int, error) {
-	groups, err := charterFiles(docs, at)
+	groups, err := charterFilesPruning(docs, at, prune)
 	if err != nil {
 		return nil, nil, http.StatusBadRequest, err
 	}

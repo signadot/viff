@@ -37,6 +37,7 @@ type fakeGitHub struct {
 	opened       int      // pull requests the out half opened
 	issuesOpened int      // issues the out half opened
 	reopens      int      // issues the out half reopened
+	dismissals   int      // reviews the out half dismissed
 	merges       int      // pull requests the out half merged
 	closes       int      // issues and pull requests the out half closed
 	reviews      []string // the events of the reviews the out half posted, in order
@@ -64,6 +65,14 @@ type fakeRepo struct {
 	missingHeads map[string]bool
 	// statuses are the commit statuses posted, in order; statusesForbidden refuses a new one as
 	// GitHub refuses an App not allowed `statuses: write`, and statusAsks counts every request.
+	// trees are the tree objects the fake answers /git/trees/{sha} with, by sha (a commit's sha
+	// names its root tree here); treeAsks counts those requests.
+	trees    map[string][]fakeEntry
+	treeAsks int
+	// mergeBases are the merge bases /compare/{base}...{head} answers, by head sha;
+	// compareAsks counts those requests.
+	mergeBases        map[string]string
+	compareAsks       int
 	statuses          []fakeStatus
 	statusesForbidden bool
 	statusAsks        int
@@ -73,6 +82,9 @@ type fakeRepo struct {
 	discussionsOff bool
 	graphqlError   string
 }
+
+// fakeEntry is one entry of a tree object.
+type fakeEntry struct{ path, typ, sha string }
 
 // fakeStatus is one commit status, as posted.
 type fakeStatus struct {
@@ -138,6 +150,14 @@ type fakeItem struct {
 	body     string
 	headSHA  string
 	labels   []string
+	// reviews are the reviews posted on a pull request, oldest first.
+	reviews []*fakeReview
+}
+
+// fakeReview is one review on a pull request.
+type fakeReview struct {
+	id           int64
+	state, login string
 }
 
 func newFake() *fakeGitHub {
@@ -292,6 +312,45 @@ func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
 			"ssh_url":         "git@github.com:" + name + ".git",
 			"html_url":        "https://github.com/" + name,
 		})
+	case len(rest) == 3 && rest[0] == "pulls" && rest[2] == "reviews":
+		n, _ := strconv.Atoi(rest[1])
+		i := repo.find(n)
+		if i == nil {
+			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+			return
+		}
+		out := []map[string]any{}
+		f.mu.Lock()
+		for _, rv := range i.reviews {
+			out = append(out, map[string]any{"id": rv.id, "state": rv.state, "user": map[string]any{"login": rv.login}})
+		}
+		f.mu.Unlock()
+		f.reply(w, r, out)
+	case len(rest) == 2 && rest[0] == "compare":
+		_, head, _ := strings.Cut(rest[1], "...")
+		f.mu.Lock()
+		repo.compareAsks++
+		mb, ok := repo.mergeBases[head]
+		f.mu.Unlock()
+		if !ok {
+			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+			return
+		}
+		f.reply(w, r, map[string]any{"merge_base_commit": map[string]any{"sha": mb}})
+	case len(rest) == 3 && rest[0] == "git" && rest[1] == "trees":
+		f.mu.Lock()
+		repo.treeAsks++
+		entries, ok := repo.trees[rest[2]]
+		f.mu.Unlock()
+		if !ok {
+			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+			return
+		}
+		out := []map[string]any{}
+		for _, e := range entries {
+			out = append(out, map[string]any{"path": e.path, "type": e.typ, "sha": e.sha})
+		}
+		f.reply(w, r, map[string]any{"sha": rest[2], "tree": out})
 	case len(rest) >= 3 && rest[0] == "git" && rest[1] == "ref":
 		if repo.sha == "" {
 			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
@@ -690,9 +749,28 @@ func (f *fakeGitHub) write(w http.ResponseWriter, r *http.Request, repo *fakeRep
 		default:
 			f.nextComment++
 			f.reviews = append(f.reviews, body.Event)
+			state := map[string]string{"APPROVE": "APPROVED", "REQUEST_CHANGES": "CHANGES_REQUESTED"}[body.Event]
+			i.reviews = append(i.reviews, &fakeReview{id: 7000 + f.nextComment, state: state, login: fakeSelf})
 			writeJSON(w, map[string]any{"id": 7000 + f.nextComment, "state": body.Event,
 				"html_url": "https://github.com/r/" + strconv.FormatInt(7000+f.nextComment, 10)})
 		}
+	case r.Method == http.MethodPut && len(rest) == 5 && rest[0] == "pulls" && rest[2] == "reviews" && rest[4] == "dismissals":
+		n, _ := strconv.Atoi(rest[1])
+		id, _ := strconv.ParseInt(rest[3], 10, 64)
+		i := repo.find(n)
+		if i == nil {
+			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+			return
+		}
+		for _, rv := range i.reviews {
+			if rv.id == id {
+				rv.state = "DISMISSED"
+				f.dismissals++
+				writeJSON(w, map[string]any{"id": id, "state": "DISMISSED"})
+				return
+			}
+		}
+		http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
 	case r.Method == http.MethodPut && len(rest) == 3 && rest[0] == "pulls" && rest[2] == "merge":
 		n, _ := strconv.Atoi(rest[1])
 		i := repo.find(n)

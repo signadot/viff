@@ -12,7 +12,7 @@ auth:
     mode: optional
     providers:
       github:
-        ios: [github]
+        ios: [github, git]
       slack:
         ios: [slack]
   iod:
@@ -22,3 +22,4 @@ auth:
     accounts:
       "system:serviceaccount:verse:slack-io": {principal: "agent:slack-io", io: slack}
       "system:serviceaccount:verse:github-io": {principal: "agent:github-io", io: github}
+      "system:serviceaccount:verse:git-io": {principal: "agent:git-io", io: git}

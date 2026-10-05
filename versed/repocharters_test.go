@@ -10,9 +10,12 @@ import (
 	"time"
 
 	"github.com/signadot/verse/api"
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/schedule"
 	"github.com/signadot/verse/system/repocharters"
 	"github.com/signadot/verse/task"
 )
@@ -32,6 +35,23 @@ func liveAt(t *testing.T, srv *Server, sha, tree string) {
 	entitytest.Set(t, srv.Store, entity.RefAt("git", "r", "ref", "verse/live"), entity.Obj{
 		"repo": "r", "name": "verse/live", "sha": sha, "type": "commit", "tree": entity.Obj{"charters": tree},
 	}.Payload())
+}
+
+// prAt reflects an open pull request #n of r onto main, its head at sha, as the github io does
+// with `-tree .verse/charters`: changing the charters to the tree given, or, given none, leaving
+// them as they were where it branched.
+func prAt(t *testing.T, srv *Server, n int, sha, tree string) {
+	t.Helper()
+	pr := entity.Obj{
+		"repo": "signadot/r", "number": n, "state": "open", "base": "main", "head": fmt.Sprintf("topic-%d", n), "headSha": sha,
+		"updatedAt": time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	if tree != "" {
+		pr["changes"] = entity.Obj{"charters": tree}
+	} else {
+		pr["changes"] = entity.Removed() // a write merges; the io's reflection drops the field
+	}
+	entitytest.Set(t, srv.Store, entity.RefAt("github", "signadot", "r", "pr", fmt.Sprint(n)), pr.Payload())
 }
 
 // installedBy answers an install input as the git io's out half would: the status beside it
@@ -158,7 +178,9 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 			t.Fatalf("installing the %s io = %s", io["name"], resp.Status)
 		}
 	}
-	charter, err := repocharters.Render(repocharters.Params{Repo: "r", GitHub: "signadot/r", InstallAt: "repos.r"})
+	// Answered by anybody verse knows, as on staging: the rendering adds the git io, whose sweep
+	// settles questions nothing proposes any more.
+	charter, err := repocharters.Render(repocharters.Params{Repo: "r", GitHub: "signadot/r", InstallAt: "repos.r", Answerers: []string{"user:*"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -411,4 +433,224 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	waitEntity(t, srv, ghIn("check-refused"), func(p entity.Payload) bool {
 		return fmt.Sprint(entity.ToObj(p)["closed"]) == "false" && strings.Contains(entity.Str(entity.Get(p, "open"), "body"), treeG)
 	})
+
+	// 13. A pull request to main proposing a tree: the question is asked on it, with verse's
+	// request for changes holding the merge and its status waiting on the head, and the check's
+	// status beside it. No branch or pull request onto verse/live: main does not carry the tree.
+	const treeH = "1111bbbb1111bbbb1111bbbb1111bbbb1111bbbb"
+	prIn := func(n int) entity.Ref {
+		return entity.RefAt("repo-charters", "r", "out", "github", "pr", fmt.Sprint(n))
+	}
+	headH := strings.Repeat("c", 40)
+	prAt(t, srv, 7, headH, treeH)
+	candH := waitEntity(t, srv, entity.RefAt("repo-charters", "r", "candidate", treeH), func(p entity.Payload) bool { return entity.Str(p, "tree") == treeH })
+	if entity.Str(candH, "sha") != "" {
+		t.Errorf("a tree only a pull request carries has main's commit: %v", entity.ToObj(candH))
+	}
+	qidH := repocharters.QuestionID("r", treeH)
+	waitQuestionID(t, srv, qidH)
+	onPR := waitEntity(t, srv, prIn(7), func(p entity.Payload) bool { return entity.Str(p, "asks") != "" })
+	if entity.Str(onPR, "to") != "pr.7" || entity.Str(onPR, "asks") != qidH ||
+		entity.Str(entity.Get(onPR, "review"), "event") != "request-changes" ||
+		entity.Str(statusUnder(onPR, "verse"), "state") != "pending" || entity.Str(statusUnder(onPR, "verse"), "sha") != headH {
+		t.Errorf("the pull request to main's input = %v", entity.ToObj(onPR))
+	}
+	waitEntity(t, srv, entity.RefAt("repo-charters", "r", "check", treeH), func(entity.Payload) bool { return true })
+	checkedBy(t, srv, treeH, "installs", "")
+	onPR = waitEntity(t, srv, prIn(7), func(p entity.Payload) bool { return entity.Str(statusUnder(p, "verse/check"), "state") == "success" })
+	if entity.Str(statusUnder(onPR, "verse/check"), "sha") != headH || entity.Str(statusUnder(onPR, "verse"), "state") != "pending" {
+		t.Errorf("the check on the pull request to main = %v", entity.ToObj(onPR))
+	}
+	// A pull request that leaves the charters alone proposes nothing, now or once main moves on.
+	prAt(t, srv, 8, strings.Repeat("d", 40), "")
+	// Yes: the hold is dismissed and the status passes; nothing moves until the merge.
+	answer(qidH, "proceed")
+	onPR = waitEntity(t, srv, prIn(7), func(p entity.Payload) bool { return entity.Str(statusUnder(p, "verse"), "state") == "success" })
+	if entity.Str(entity.Get(onPR, "review"), "event") != "dismiss" || entity.Str(onPR, "to") != "pr.7" {
+		t.Errorf("the answered pull request to main's input = %v", entity.ToObj(onPR))
+	}
+	time.Sleep(300 * time.Millisecond)
+	for _, ref := range []entity.Ref{gitIn(treeH), ghIn(treeH), installIn(treeH)} {
+		if p, ok, _ := srv.Store.Get(ref); ok {
+			t.Errorf("%s stands before the merge: %v", ref, entity.ToObj(p.Payload))
+		}
+	}
+	if p, ok, _ := srv.Store.Get(prIn(8)); ok && entity.Str(p.Payload, "to") != "" {
+		t.Errorf("a pull request leaving the charters alone is spoken to: %v", entity.ToObj(p.Payload))
+	}
+	if p, _, _ := srv.Store.Get(gitIn("live")); entity.Str(p.Payload, "sha") == headH {
+		t.Fatal("verse/live was moved to a pull request's head")
+	}
+	// The merge: main carries the answered tree, and it installs with no second question.
+	mainAt(t, srv, sha(10), treeH)
+	waitEntity(t, srv, gitIn("live"), func(p entity.Payload) bool { return entity.Str(p, "sha") == sha(10) })
+	liveAt(t, srv, sha(10), treeH)
+	waitEntity(t, srv, installIn(treeH), func(p entity.Payload) bool { return entity.Str(p, "sha") == sha(10) })
+	installedBy(t, srv, treeH, sha(10))
+	waitEntity(t, srv, running, func(p entity.Payload) bool { return entity.Str(p, "tree") == treeH })
+	if p, ok, _ := srv.Store.Get(gitIn(treeH)); ok {
+		t.Errorf("a tree answered on its pull request to main was branched for verse/live: %v", entity.ToObj(p.Payload))
+	}
+	if p, ok, _ := srv.Store.Get(prIn(8)); ok && entity.Str(p.Payload, "to") != "" {
+		t.Errorf("after the merge, a pull request leaving the charters alone is spoken to: %v", entity.ToObj(p.Payload))
+	}
+
+	// 14. A pull request to main whose tree would be refused and is answered no: the refusal is
+	// in its comment, the check fails, and the hold stands, saying the answer.
+	const treeI = "2222cccc2222cccc2222cccc2222cccc2222cccc"
+	headI := strings.Repeat("e", 40)
+	prAt(t, srv, 9, headI, treeI)
+	qidI := repocharters.QuestionID("r", treeI)
+	waitQuestionID(t, srv, qidI)
+	waitEntity(t, srv, entity.RefAt("repo-charters", "r", "check", treeI), func(entity.Payload) bool { return true })
+	checkedBy(t, srv, treeI, "refused", "stratum \"y\": a pattern overlaps")
+	onPR = waitEntity(t, srv, prIn(9), func(p entity.Payload) bool { return entity.Str(statusUnder(p, "verse/check"), "state") == "failure" })
+	if entity.Str(statusUnder(onPR, "verse/check"), "sha") != headI || !strings.Contains(entity.Str(onPR, "text"), "a pattern overlaps") {
+		t.Errorf("the refused check on the pull request to main = %v", entity.ToObj(onPR))
+	}
+	answer(qidI, "deny")
+	onPR = waitEntity(t, srv, prIn(9), func(p entity.Payload) bool { return entity.Str(statusUnder(p, "verse"), "state") == "failure" })
+	if entity.Str(entity.Get(onPR, "review"), "event") != "request-changes" ||
+		!strings.Contains(entity.Str(entity.Get(onPR, "review"), "body"), "answered no") {
+		t.Errorf("the denied pull request to main's input = %v", entity.ToObj(onPR))
+	}
+
+	// 15. A pull request that moves to another tree is asked about that one, in the same input;
+	// an answer to the tree it left does not reach it; and once it leaves the charters alone, the
+	// hold is dismissed and the comment says so.
+	const treeJ, treeK = "3333dddd3333dddd3333dddd3333dddd3333dddd", "4444eeee4444eeee4444eeee4444eeee4444eeee"
+	prAt(t, srv, 11, strings.Repeat("1", 40), treeJ)
+	qidJ, qidK := repocharters.QuestionID("r", treeJ), repocharters.QuestionID("r", treeK)
+	waitQuestionID(t, srv, qidJ)
+	waitEntity(t, srv, prIn(11), func(p entity.Payload) bool { return entity.Str(p, "asks") == qidJ })
+	headK := strings.Repeat("2", 40)
+	prAt(t, srv, 11, headK, treeK)
+	waitQuestionID(t, srv, qidK)
+	onPR = waitEntity(t, srv, prIn(11), func(p entity.Payload) bool { return entity.Str(p, "asks") == qidK })
+	if entity.Str(onPR, "tree") != treeK || entity.Str(entity.Get(onPR, "review"), "event") != "request-changes" ||
+		entity.Str(statusUnder(onPR, "verse"), "sha") != headK || entity.Str(statusUnder(onPR, "verse"), "state") != "pending" {
+		t.Errorf("the pull request moved to another tree = %v", entity.ToObj(onPR))
+	}
+	answer(qidJ, "proceed")
+	waitEntity(t, srv, entity.RefAt("repo-charters", "r", "verdict", treeJ), func(p entity.Payload) bool {
+		return entity.Str(entity.Get(p, "decision"), "state") == "success"
+	})
+	time.Sleep(300 * time.Millisecond)
+	if p, _, _ := srv.Store.Get(prIn(11)); entity.Str(entity.Get(p.Payload, "review"), "event") != "request-changes" ||
+		entity.Str(statusUnder(p.Payload, "verse"), "state") != "pending" {
+		t.Errorf("an answer to a tree the pull request left lifted its hold: %v", entity.ToObj(p.Payload))
+	}
+	prAt(t, srv, 11, strings.Repeat("3", 40), "")
+	onPR = waitEntity(t, srv, prIn(11), func(p entity.Payload) bool { return entity.Str(entity.Get(p, "review"), "event") == "dismiss" })
+	if entity.Str(onPR, "to") != "pr.11" || !strings.Contains(entity.Str(onPR, "text"), "no longer changes the charters") ||
+		len(entity.ToObj(onPR)["asks"].([]any)) != 0 {
+		t.Errorf("the pull request that left the charters alone = %v", entity.ToObj(onPR))
+	}
+
+	// 16. Removing the charters directory: a pull request that removes it proposes the empty
+	// tree, and the question says what that means. Answered yes and merged, verse/live moves to
+	// it and it is installed: every charter at the address taken down.
+	prAt(t, srv, 12, strings.Repeat("4", 40), verseio.EmptyTree)
+	qidE0 := repocharters.QuestionID("r", verseio.EmptyTree)
+	waitQuestionID(t, srv, qidE0)
+	if q, _, _ := srv.Store.Get(mirror.AskRef(qidE0)); !strings.Contains(fmt.Sprint(entity.ToObj(q.Payload)), "Remove every charter at repos.r?") {
+		t.Errorf("the empty tree's question does not say it removes every charter: %v", entity.ToObj(q.Payload))
+	}
+	waitEntity(t, srv, prIn(12), func(p entity.Payload) bool { return entity.Str(p, "asks") == qidE0 })
+	answer(qidE0, "proceed")
+	waitEntity(t, srv, prIn(12), func(p entity.Payload) bool { return entity.Str(entity.Get(p, "review"), "event") == "dismiss" })
+	mainAt(t, srv, sha(11), verseio.EmptyTree)
+	waitEntity(t, srv, gitIn("live"), func(p entity.Payload) bool { return entity.Str(p, "sha") == sha(11) })
+	liveAt(t, srv, sha(11), verseio.EmptyTree)
+	gone := waitEntity(t, srv, installIn(verseio.EmptyTree), func(p entity.Payload) bool { return entity.Str(p, "sha") == sha(11) })
+	if entity.Str(gone, "to") != "install.repos.r" {
+		t.Errorf("the empty tree's install input = %v", entity.ToObj(gone))
+	}
+	installedBy(t, srv, verseio.EmptyTree, sha(11))
+	waitEntity(t, srv, running, func(p entity.Payload) bool { return entity.Str(p, "tree") == verseio.EmptyTree })
+
+	// 17. Every minute verse/live is checked against what is installed. In step, nothing is said;
+	// differing two rounds in a row at one commit, an issue says so; back in step, it closes; and
+	// a verse/live that is gone says that.
+	tickAt := func(at time.Time) string {
+		t.Helper()
+		due := schedule.Key(at)
+		body, _ := codec.Marshal(api.ScheduleTick{Due: due}, codec.Tony)
+		resp := postAs(t, "user:"+tester, ts.URL+"/schedules/repo-charters:r/tick", "application/tony", string(body))
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("tick: %s: %s", resp.Status, readBody(t, resp))
+		}
+		resp.Body.Close()
+		return due
+	}
+	liveIn := entity.RefAt("repo-charters", "r", "livecheck", "live")
+	liveStatus := func(st entity.Obj) {
+		t.Helper()
+		ioLatency()
+		entitytest.Set(t, srv.Store, entity.RefAt("repo-charters", "r", "livecheck", "live~status"), st.Payload())
+	}
+	// A day back: the schedule also ticks on its own every minute while the test runs, and a
+	// tick of its own at the same instant would be read in place of this one.
+	due := tickAt(time.Now().UTC().Truncate(time.Minute).Add(-24 * time.Hour))
+	lc := waitEntity(t, srv, liveIn, func(p entity.Payload) bool { return entity.Str(p, "round") == due })
+	if entity.Str(lc, "to") != "check.repos.r" || entity.Str(lc, "ref") != "verse/live" || entity.Str(lc, "of") != "charters" {
+		t.Fatalf("the check of verse/live = %v", entity.ToObj(lc))
+	}
+	sweep := waitEntity(t, srv, gitIn("obsolete"), func(p entity.Payload) bool { return entity.Str(p, "before") == due })
+	if entity.Str(sweep, "to") != "obsolete" || entity.Str(sweep, "prefix") != "repo-charters:propose@repo-charters.r.candidate." ||
+		!strings.Contains(fmt.Sprint(entity.ToObj(sweep)["keep"]), verseio.EmptyTree) || !strings.Contains(fmt.Sprint(entity.ToObj(sweep)["keep"]), treeI) {
+		t.Fatalf("the obsolete sweep = %v", entity.ToObj(sweep))
+	}
+	liveStatus(entity.Obj{"ref": "verse/live", "round": due, "verdict": "installs", "changes": 3, "differingFor": 1, "sha": sha(11), "tree": verseio.EmptyTree})
+	time.Sleep(300 * time.Millisecond)
+	if p, ok, _ := srv.Store.Get(ghIn("live-drift")); ok && entity.Str(p.Payload, "to") != "" {
+		t.Fatalf("one round differing opened an issue: %v", entity.ToObj(p.Payload))
+	}
+	liveStatus(entity.Obj{"ref": "verse/live", "round": due, "verdict": "installs", "changes": 3, "differingFor": 2, "sha": sha(11), "tree": verseio.EmptyTree})
+	drift := waitEntity(t, srv, ghIn("live-drift"), func(p entity.Payload) bool { return entity.Str(p, "to") == "issue" })
+	if fmt.Sprint(entity.ToObj(drift)["closed"]) != "false" || !strings.Contains(entity.Str(entity.Get(drift, "open"), "body"), "by 3 charter(s)") {
+		t.Errorf("the drift issue = %v", entity.ToObj(drift))
+	}
+	liveStatus(entity.Obj{"ref": "verse/live", "round": due, "verdict": "installs", "changes": 0, "differingFor": 0, "sha": sha(11), "tree": verseio.EmptyTree})
+	waitEntity(t, srv, ghIn("live-drift"), func(p entity.Payload) bool { return fmt.Sprint(entity.ToObj(p)["closed"]) == "true" })
+	liveStatus(entity.Obj{"ref": "verse/live", "round": due, "verdict": "missing"})
+	waitEntity(t, srv, ghIn("live-drift"), func(p entity.Payload) bool {
+		return fmt.Sprint(entity.ToObj(p)["closed"]) == "false" && strings.Contains(entity.Str(entity.Get(p, "open"), "body"), "gone")
+	})
+	liveStatus(entity.Obj{"ref": "verse/live", "round": due, "verdict": "installs", "changes": 0, "differingFor": 0, "sha": sha(11), "tree": verseio.EmptyTree})
+	waitEntity(t, srv, ghIn("live-drift"), func(p entity.Payload) bool { return fmt.Sprint(entity.ToObj(p)["closed"]) == "true" })
+
+	// 18. Main's charters answered no: an issue says so while main holds them, and closes when main
+	// moves on.
+	const treeM = "5555ffff5555ffff5555ffff5555ffff5555ffff"
+	mainAt(t, srv, sha(12), treeM)
+	qidM := repocharters.QuestionID("r", treeM)
+	waitQuestionID(t, srv, qidM)
+	answer(qidM, "deny")
+	denied := waitEntity(t, srv, ghIn("main-denied"), func(p entity.Payload) bool {
+		return strings.Contains(entity.Str(entity.Get(p, "open"), "body"), treeM)
+	})
+	if entity.Str(denied, "to") != "issue" || fmt.Sprint(entity.ToObj(denied)["closed"]) != "false" {
+		t.Errorf("the denied main's issue = %v", entity.ToObj(denied))
+	}
+	mainAt(t, srv, sha(13), verseio.EmptyTree)
+	waitEntity(t, srv, ghIn("main-denied"), func(p entity.Payload) bool { return fmt.Sprint(entity.ToObj(p)["closed"]) == "true" })
+
+	// 19. A question settled obsolete, by the git io, once nothing proposed its tree, is asked again
+	// when a pull request proposes the tree again.
+	const treeL = "6666aaaa6666aaaa6666aaaa6666aaaa6666aaaa"
+	prAt(t, srv, 13, strings.Repeat("7", 40), treeL)
+	qidL := repocharters.QuestionID("r", treeL)
+	waitQuestionID(t, srv, qidL)
+	prAt(t, srv, 13, strings.Repeat("8", 40), "")
+	time.Sleep(200 * time.Millisecond)
+	if resp := postAs(t, "agent:git-io", ts.URL+answerPath(qidL), "application/tony", "{choice: obsolete}"); resp.StatusCode/100 != 2 {
+		t.Fatalf("the git io's obsolete answer = %s: %s", resp.Status, readBody(t, resp))
+	}
+	candL := entity.RefAt("repo-charters", "r", "candidate", treeL)
+	waitEntity(t, srv, candL, func(p entity.Payload) bool { return strings.Contains(entity.Str(p, "answer"), "chose obsolete") })
+	prAt(t, srv, 13, strings.Repeat("9", 40), treeL)
+	waitEntity(t, srv, mirror.AskRef(qidL), func(p entity.Payload) bool { return entity.Str(p, "status") == "pending" })
+	answer(qidL, "proceed")
+	waitEntity(t, srv, candL, func(p entity.Payload) bool { return strings.Contains(entity.Str(p, "answer"), "chose proceed") })
 }

@@ -86,6 +86,9 @@ type Config struct {
 	// does: a source that says nothing about discussions must not be read as saying there are
 	// none, or turning this on would tombstone every discussion it had reflected.
 	SkipDiscussions bool
+	// Trees are the directories an open pull request reports when it changes them, as
+	// `changes.<name>` at its head (trees.go).
+	Trees []Tree
 
 	// Base overrides the API root (GitHub Enterprise Server, or a test server). HTTPClient
 	// overrides the transport.
@@ -97,15 +100,17 @@ type Config struct {
 
 // GitHub is the Source.
 type GitHub struct {
-	api      *api
-	root     string
-	repos    []string // `<org>/<name>`, sorted, so two passes answer in one order
-	settled  int
-	maxOpen  int
-	runs     int
-	comments int
-	noDiscus bool
-	log      func(string, ...any)
+	api       *api
+	root      string
+	repos     []string // `<org>/<name>`, sorted, so two passes answer in one order
+	settled   int
+	maxOpen   int
+	runs      int
+	comments  int
+	noDiscus  bool
+	trees     []Tree
+	treeCache treeCache
+	log       func(string, ...any)
 }
 
 var _ verseio.Source = (*GitHub)(nil)
@@ -136,6 +141,7 @@ func New(ctx context.Context, cfg Config) (*GitHub, error) {
 		runs:     cfg.Runs,
 		comments: cfg.Comments,
 		noDiscus: cfg.SkipDiscussions,
+		trees:    cfg.Trees,
 		log:      cfg.Log,
 	}
 	if g.root == "" {
@@ -357,7 +363,9 @@ func (g *GitHub) reflectItem(ctx context.Context, t targetedItem) (verseio.Refle
 			}
 			return verseio.Reflection{}, err
 		}
-		rn.Add(g.ItemRef("pr", t.repo, p.Number), pullPayload(t.repo, p))
+		payload := pullPayload(t.repo, p)
+		g.withTrees(ctx, t.repo, p, payload)
+		rn.Add(g.ItemRef("pr", t.repo, p.Number), payload)
 		return rn, nil
 	}
 	var i issue
@@ -538,6 +546,7 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (verseio.Reflecti
 				payload["checks"] = c
 			}
 		}
+		g.withTrees(ctx, repo, p, payload)
 		rn.Add(g.ItemRef("pr", repo, p.Number), payload)
 	}
 	return rn, nil

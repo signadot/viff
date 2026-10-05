@@ -107,6 +107,7 @@ func gitMain(args []string) error {
 		// An install input installs a tree of charters into the verse, as this io
 		// (io/gitinstall.go): the one client proves it at the door and makes the request.
 		sink.Verse = c.outClient(git.Root())
+		sink.As = c.principal(git.Root())
 		if _, err := c.outHalf(ctx, git.Root(), sink, git.OutRefs(), sink.Verse); err != nil {
 			return err
 		}

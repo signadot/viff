@@ -398,6 +398,28 @@ type review struct {
 	ID      int64  `json:"id"`
 	HTMLURL string `json:"html_url"`
 	State   string `json:"state"`
+	User    *user  `json:"user"`
+}
+
+// listReviews is every review of a pull request, oldest first.
+func (a *api) listReviews(ctx context.Context, repo string, number int) ([]review, error) {
+	var out []review
+	for page := 1; ; page++ {
+		var batch []review
+		if err := a.getOnce(ctx, "/repos/"+repo+"/pulls/"+strconv.Itoa(number)+"/reviews?per_page=100&page="+strconv.Itoa(page), &batch); err != nil {
+			return nil, err
+		}
+		out = append(out, batch...)
+		if len(batch) < 100 {
+			return out, nil
+		}
+	}
+}
+
+// dismissReview dismisses one review, saying why.
+func (a *api) dismissReview(ctx context.Context, repo string, number int, id int64, message string) error {
+	return a.send(ctx, http.MethodPut, "/repos/"+repo+"/pulls/"+strconv.Itoa(number)+"/reviews/"+
+		strconv.FormatInt(id, 10)+"/dismissals", map[string]string{"message": message, "event": "DISMISS"}, nil)
 }
 
 // createReview posts a review on a pull request: APPROVE or REQUEST_CHANGES, with a body. A later

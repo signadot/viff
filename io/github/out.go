@@ -205,6 +205,10 @@ func (k *Sink) deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 	if spec := entity.Get(in.Value, "merge"); spec != nil {
 		return k.merge(ctx, repo, in, spec)
 	}
+	if kind, _, _ := strings.Cut(in.To, "."); kind == "pr" && (entity.Get(in.Value, "commitStatus") != nil ||
+		(entity.Get(in.Value, "review") != nil && (entity.Get(in.Value, "text") != nil || entity.Get(in.Value, "asks") != nil))) {
+		return k.keepPull(ctx, repo, in)
+	}
 	if spec := entity.Get(in.Value, "review"); spec != nil {
 		return k.review(ctx, repo, in, spec)
 	}
@@ -682,6 +686,129 @@ func (k *Sink) mergeAt(ctx context.Context, repo string, number int, spec, statu
 	return entity.Obj{"merged": true, "commit": m.SHA, "head": sha, "mergedAt": now}, nil
 }
 
+// keepPull keeps several things on one pull request in one input, for a pull request somebody
+// else opened: the question's comment (`text`, `asks`; its facts as `comment`, `commentUrl`,
+// `commentPosted`, `commentAt`), verse's review (`review`; reviewBeside), and its commit statuses
+// (`commitStatus`; commitStatuses). It is how the repo-charters reconciler asks its question on a
+// pull request to main and blocks the merge until it is answered (git-issue dzxn44gw).
+//
+// The comment's failure is the input's, retried; a review or a status GitHub refuses is said
+// beside the rest and does not stop the comment, whose replies are where the answer comes from.
+func (k *Sink) keepPull(ctx context.Context, repo string, in verseio.Input) (entity.Obj, error) {
+	number, err := target(in.To)
+	if err != nil {
+		return nil, err
+	}
+	fields := entity.Obj{}
+	merge := func(more entity.Obj) {
+		for k, v := range more {
+			fields[k] = v
+		}
+	}
+	text := strings.TrimSpace(entity.Str(in.Value, "text"))
+	asks := verseio.Strs(entity.Get(in.Value, "asks"))
+	if text != "" || len(asks) > 0 {
+		var asked []asked
+		if len(asks) > 0 {
+			if text, asked, err = k.asksBody(ctx, text, asks); err != nil {
+				return nil, err
+			}
+		}
+		more, err := k.comment(ctx, repo, number, text, asked, in.Status, besideKeys)
+		if err != nil {
+			return nil, err
+		}
+		merge(more)
+	}
+	if spec := entity.Get(in.Value, "review"); spec != nil {
+		merge(k.reviewBeside(ctx, repo, number, spec, in.Status))
+	}
+	if spec := entity.Get(in.Value, "commitStatus"); spec != nil {
+		merge(k.commitStatuses(ctx, repo, number, spec, in.Status, nil))
+	}
+	if len(fields) == 0 {
+		return nil, nil
+	}
+	return fields, nil
+}
+
+// reviewBeside keeps verse's review on a pull request as `review` asks, its facts beside the rest
+// of the input's status: `reviewEvent`, `review` (its id), `reviewPosted` (the fingerprint of what
+// it said) and `reviewedAt`. `{event: request-changes, body}` blocks a merge where main's
+// protection requires reviews; `{event: dismiss, body}` dismisses every standing request for
+// changes this io left on the pull request, `body` being the reason GitHub shows, and answers
+// `dismissed`, how many. The same review asked again costs nothing. What GitHub refuses is
+// `reviewError`, `reviewRefused` holding what was refused so it is not asked again; anything else
+// is asked again on the next pass.
+func (k *Sink) reviewBeside(ctx context.Context, repo string, number int, spec, status entity.Payload) entity.Obj {
+	word := entity.Str(spec, "event")
+	body := entity.Str(spec, "body")
+	fp := fingerprint(word + "\x00" + body)
+	if entity.Str(status, "reviewPosted") == fp || entity.Str(status, "reviewRefused") == fp {
+		return nil
+	}
+	failed := func(err error) entity.Obj {
+		out := entity.Obj{"reviewError": err.Error(), "reviewRefused": entity.Removed()}
+		var he *httpError
+		if verseio.IsPermanent(err) || (asHTTPError(err, &he) && he.refusal()) {
+			out["reviewRefused"] = fp
+		}
+		if entity.Str(status, "reviewError") == err.Error() {
+			return nil
+		}
+		return out
+	}
+	now := k.now().UTC().Format(time.RFC3339)
+	if word == "dismiss" {
+		n, err := k.dismissOwn(ctx, repo, number, body)
+		if err != nil {
+			return failed(err)
+		}
+		return entity.Obj{"reviewEvent": word, "reviewPosted": fp, "reviewedAt": now, "dismissed": n,
+			"reviewError": entity.Removed(), "reviewRefused": entity.Removed()}
+	}
+	event, ok := reviewEvents[word]
+	if !ok {
+		return failed(verseio.Permanent(fmt.Errorf("a review's `event` is approve, request-changes or dismiss, not %q", word)))
+	}
+	if event == "REQUEST_CHANGES" && strings.TrimSpace(body) == "" {
+		return failed(verseio.Permanent(fmt.Errorf("a review requesting changes carries a body: GitHub refuses one without")))
+	}
+	r, err := k.g.api.createReview(ctx, repo, number, event, body)
+	if err != nil {
+		return failed(err)
+	}
+	return entity.Obj{"review": strconv.FormatInt(r.ID, 10), "reviewEvent": word, "reviewPosted": fp, "reviewedAt": now,
+		"reviewError": entity.Removed(), "reviewRefused": entity.Removed()}
+}
+
+// dismissOwn dismisses every request for changes this io left standing on a pull request, and
+// answers how many: all of them, not only the latest, so no earlier one is left to hold the merge.
+func (k *Sink) dismissOwn(ctx context.Context, repo string, number int, message string) (int, error) {
+	if strings.TrimSpace(message) == "" {
+		return 0, verseio.Permanent(fmt.Errorf("a dismissal carries a body, the reason GitHub shows"))
+	}
+	self, err := k.g.api.self(ctx)
+	if err != nil {
+		return 0, err
+	}
+	reviews, err := k.g.api.listReviews(ctx, repo, number)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, r := range reviews {
+		if r.State != "CHANGES_REQUESTED" || r.User == nil || !strings.EqualFold(r.User.Login, self) {
+			continue
+		}
+		if err := k.g.api.dismissReview(ctx, repo, number, r.ID, message); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
+}
+
 // reviewEvents maps the input's words to GitHub's events.
 var reviewEvents = map[string]string{"approve": "APPROVE", "request-changes": "REQUEST_CHANGES"}
 
@@ -692,9 +819,21 @@ func (k *Sink) review(ctx context.Context, repo string, in verseio.Input, spec e
 		return nil, err
 	}
 	word := entity.Str(spec, "event")
+	if word == "dismiss" {
+		body := entity.Str(spec, "body")
+		fp := fingerprint(word + "\x00" + body)
+		if entity.Str(in.Status, "posted") == fp {
+			return nil, nil
+		}
+		n, err := k.dismissOwn(ctx, repo, number, body)
+		if err != nil {
+			return nil, err
+		}
+		return entity.Obj{"event": word, "dismissed": n, "reviewedAt": k.now().UTC().Format(time.RFC3339), "posted": fp}, nil
+	}
 	event, ok := reviewEvents[word]
 	if !ok {
-		return nil, verseio.Permanent(fmt.Errorf("a review's `event` is approve or request-changes, not %q", word))
+		return nil, verseio.Permanent(fmt.Errorf("a review's `event` is approve, request-changes or dismiss, not %q", word))
 	}
 	body := entity.Str(spec, "body")
 	if event == "REQUEST_CHANGES" && strings.TrimSpace(body) == "" {

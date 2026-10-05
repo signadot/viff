@@ -264,7 +264,7 @@ handing it to somebody outside the cluster a different act from handing them the
 | `llmModel` | `""` | `OPENAI_MODEL` for versed; `""` leaves the driver's `gpt-4o` |
 | `systemCharter` | `""` | a charter under `deploy/`, mounted into versed and installed at start as the system (`VERSE_SYSTEM_CHARTER`); read at start, so a change takes a restart. Staging: `charters/verse/workspace/Signadot/gate-ask.tony` |
 | `authConfig` | `""` | verse's `auth` block, a file under `deploy/`, mounted into versed as its config (`VERSE_CONFIG`): who verifies people, which ios are trusted for whose accounts, how the ios prove themselves ([Who a request is from](#who-a-request-is-from-authconfig-iotokens)). Staging: `auth/staging.tony` |
-| `ioTokens` | `false` | give the slack and github ios a ServiceAccount each and a projected token, so each proves it is the io (staging and minikube: on) |
+| `ioTokens` | `false` | give the slack, github and git ios a ServiceAccount each and a projected token, so each proves it is the io (staging and minikube: on) |
 | `issuerDiscoveryOpen` | `false` | let anyone reaching the API server read its OpenID discovery and keys, which versed needs where the cluster itself is the ios' issuer (minikube: on; EKS needs none) |
 | `coderunner` | `false` | deploy the coding runner (its own image; install it with `verse runner add`) |
 | `coderunnerImage` | `example/verse-coderunner:latest` | its image ref — a tag in another repository is fine |
@@ -482,20 +482,20 @@ tailnet nobody else reaches. With it, versed verifies people and its own ios
 
 - **`authConfig`** mounts the named file as versed's config (`VERSE_CONFIG`). Staging's,
   `deploy/auth/staging.tony`, names the slack and github ios as trusted for their own systems'
-  accounts, and the cluster as the issuer of the ios' tokens. It names no issuer for people: a
-  person is who their CLI says (`mode: optional`), and binds their Slack or GitHub account by
-  saying the nonce `verse account -link <provider>` gives them to the app
-  ([accounts in other systems](../docs/reference/perms.md#accounts-in-other-systems)). An
+  accounts and the git io for GitHub's, and the cluster as the issuer of the ios' tokens. It
+  names no issuer for people: a person is who their CLI says (`mode: optional`), and binds their
+  Slack or GitHub account by saying the nonce `verse account -link <provider>` gives them to the
+  app ([accounts in other systems](../docs/reference/perms.md#accounts-in-other-systems)). An
   issuer for people, and `required`, come with the team's identity provider.
-- **`ioTokens`** gives the slack and github ios a ServiceAccount each (`deploy/io-tokens`) and a
-  projected token with the audience `verse` at `/var/run/verse/token`, which `iod` reads as
+- **`ioTokens`** gives the slack, github and git ios a ServiceAccount each (`deploy/io-tokens`)
+  and a projected token with the audience `verse` at `/var/run/verse/token`, which `iod` reads as
   `VERSE_TOKEN_FILE` and sends with every request. The token's subject is
   `system:serviceaccount:<namespace>:<io>`, which the auth config's `auth.iod.accounts` maps to
-  the io's principal and its installed name. The issuer is the cluster's own:
-  `kubectl --context <ctx> get --raw /.well-known/openid-configuration` prints it, and on EKS it is
-  `aws eks describe-cluster --query cluster.identity.oidc.issuer`. Where the issuer is the API
-  server itself (minikube, kubeadm), the auth file also names the cluster's CA (`auth.iod.ca`,
-  the bundle every pod has mounted) and `issuerDiscoveryOpen` lets versed read the discovery
+  the io's principal and its installed name. The issuer is the cluster's own: `kubectl --context
+  <ctx> get --raw /.well-known/openid-configuration` prints it, and on EKS it is `aws eks
+  describe-cluster --query cluster.identity.oidc.issuer`. Where the issuer is the API server
+  itself (minikube, kubeadm), the auth file also names the cluster's CA (`auth.iod.ca`, the
+  bundle every pod has mounted) and `issuerDiscoveryOpen` lets versed read the discovery
   document, which such a cluster otherwise grants to service accounts alone.
   `deploy/auth/minikube.tony` and the minikube profile are the worked example.
 
@@ -670,7 +670,8 @@ and `hook_attributes.url` is a placeholder, since the webhook is inactive:
 These permissions are the token's ([above](#creating-the-entries)) plus the out half's writes:
 Issues and Pull requests to comment, open, review and close, and Contents to merge. **Commit
 statuses (`statuses: write`) is not in the manifest and is wanted**: the repo-charters reconciler
-puts a `verse` status on its candidate pull request's head (an `open` input's `commitStatus`), and
+puts its `verse` and `verse/check` statuses on the head of a pull request to main that changes the
+charters, and of its candidate pull request onto verse/live (an input's `commitStatus`), and
 without the permission GitHub refuses the status and the refusal lands on the input's status.
 Add it under the App's settings (Permissions & events → Repository permissions → Commit
 statuses: Read and write); the installation then asks an org owner to approve the new

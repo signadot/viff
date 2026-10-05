@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"sort"
 
+	"github.com/signadot/tony-format/go-tony/ir"
+
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/schedule"
 	"github.com/signadot/verse/trigger"
@@ -22,6 +24,17 @@ import (
 // A package the request does NOT hold goes whole, as `-R` takes it. Its parts are asked about
 // before anything is installed (mayUninstall) and it is taken down last, after everything that
 // can be put back: an uninstall is not undoable, so it is the step nothing can come after.
+
+// NOTHING, WITH A PRUNE ROOT, IS THE ROOT EMPTIED: a directory with no charter left in it is a
+// state a repository's charters can be in (system/repocharters: the empty tree), and installing
+// it takes down every package at and under the root. Without a root, a request with nothing in
+// it is refused, since it says nothing to do.
+func charterFilesPruning(docs []*ir.Node, at, prune string) ([]charterGroup, error) {
+	if prune != "" && len(docs) == 0 {
+		return nil, nil
+	}
+	return charterFiles(docs, at)
+}
 
 // pruneTargets checks a prune before anything changes: the root is an address, every charter in
 // the request is at or under it, and the requester may take down every package at or under it

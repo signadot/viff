@@ -205,8 +205,8 @@ func charterDocs(dir string) ([]*ir.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(docs) == 0 {
-		return nil, fmt.Errorf("no charter file in it (%s)", strings.Join(codec.Suffixes(), ", "))
-	}
+	// NO CHARTER FILE IS A TREE OF NO CHARTERS, not a fault: installed with its prune it takes
+	// down every charter at the address, which is what a repository that removed its charters
+	// directory asks for (the empty tree, system/repocharters).
 	return docs, nil
 }

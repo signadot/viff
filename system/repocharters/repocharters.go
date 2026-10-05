@@ -21,6 +21,7 @@ import (
 	"text/template"
 
 	"github.com/signadot/verse/entity"
+	verseio "github.com/signadot/verse/io"
 )
 
 //go:embed charter.tony.tmpl
@@ -36,7 +37,15 @@ var charterTemplate string
 const (
 	answeredProceed = `!regexp "^\\S+ chose proceed(: |\\z)"`
 	answeredDeny    = `!regexp "^\\S+ chose deny(: |\\z)"`
+	// answeredObsolete is the git io's sweep settling a question nothing proposes any more.
+	answeredObsolete = `!regexp "^\\S+ chose obsolete(: |\\z)"`
 )
+
+// gitIO is the git io's principal, which the rendered question names among its answerers beside
+// the deployment's own, so that the io's obsolete sweep may settle it with nobody granting
+// anything. A rendering with no answerers asks the docket, which the io is not, and its questions
+// are not swept.
+const gitIO = "agent:git-io"
 
 // Params name the one repository a rendering is for.
 type Params struct {
@@ -97,11 +106,11 @@ func Render(p Params) ([]byte, error) {
 	data := struct {
 		Repo, GitHub, GitHubOrg, GitHubName, InstallAt, Tree string
 		Answerers                                            []string
-		AnswerersList, Proceed, Deny                         string
+		AnswerersList, Proceed, Deny, Obsolete, EmptyTree    string
 	}{
 		Repo: p.Repo, GitHub: p.GitHub, GitHubOrg: org, GitHubName: name, InstallAt: entity.JoinSegs(segs),
-		Tree: tree, Answerers: quoted, AnswerersList: "[" + strings.Join(quoted, ", ") + "]",
-		Proceed: answeredProceed, Deny: answeredDeny,
+		Tree: tree, Answerers: quoted, AnswerersList: "[" + strings.Join(append(quoted, `"`+gitIO+`"`), ", ") + "]",
+		Proceed: answeredProceed, Deny: answeredDeny, Obsolete: answeredObsolete, EmptyTree: verseio.EmptyTree,
 	}
 	tmpl, err := template.New("repo-charters").Parse(charterTemplate)
 	if err != nil {

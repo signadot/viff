@@ -240,9 +240,14 @@ the system, beside the file above: the charter that keeps what runs in verse equ
 state of the repository's charters directory on main that the team said yes to. `repo` is the
 git io's id for the repository (`git.<repo>`), `github` is the repository as GitHub names it
 (`org/name`), `at` is the address the repository's charters install at, `tree` is the name the
-git io reflects the charters directory's tree under (`-tree`; `charters` by default), and
-`answerers` is who may answer the question a change raises, as a gate's `answerers` names them.
-The git io installs at `at` as itself, so it owns that address or holds `child-owner` above it.
+git io and the github io report the charters directory's tree under (each one's `-tree`;
+`charters` by default), and `answerers` is who may answer the question a change raises, as a
+gate's `answerers` names them; the rendering adds the git io (`agent:git-io`), whose minute
+sweep settles a question nothing proposes any more as `obsolete`, and an entry without
+`answerers` asks the docket, whose questions are not swept. The git io installs at `at` as
+itself, so it owns that address or holds `child-owner` above it. The question is asked on a pull request to main that changes the
+charters, which the github io reports only with its `-tree`; without it, a change is asked about
+once it reaches main.
 
 ```tony
 repoCharters:

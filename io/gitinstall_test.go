@@ -123,6 +123,24 @@ func TestTheGitOutHalfInstallsATreeOfCharters(t *testing.T) {
 	if st := r.status(t, "notree"); st["tree"] != "0123456789abcdef0123456789abcdef01234567" {
 		t.Errorf("a tree the repository lacks: status %v, want the tree beside the refusal", st)
 	}
+	// THE EMPTY TREE is the charters directory gone: checked, it installs and prunes what stands;
+	// installed, it takes every charter at the address down.
+	r.ask(t, "check", entity.Obj{"to": "check.repos.r", "tree": verseio.EmptyTree})
+	r.pass(t)
+	if st := r.status(t, "check"); st["verdict"] != "installs" || !strings.Contains(fmt.Sprint(st["pruned"]), "repos.r.hello") {
+		t.Fatalf("the empty tree's check = %v, want it to install and prune repos.r.hello", st)
+	}
+	if installed() != http.StatusOK {
+		t.Fatal("checking the empty tree took the charter down")
+	}
+	r.ask(t, "install", entity.Obj{"to": "install.repos.r", "tree": verseio.EmptyTree, "sha": two})
+	r.pass(t)
+	if st := r.status(t, "install"); st["tree"] != verseio.EmptyTree || fmt.Sprint(st["charters"]) != "0" || st["error"] != nil {
+		t.Fatalf("status after installing the empty tree = %v", st)
+	}
+	if installed() == http.StatusOK {
+		t.Error("the charter stands after the empty tree was installed")
+	}
 }
 
 // A check input asks the verse what an install of the tree would do and installs nothing: a tree
@@ -182,5 +200,71 @@ func TestTheGitOutHalfChecksATreeOfCharters(t *testing.T) {
 	r.pass(t)
 	if st := r.status(t, "missing"); st["failed"] != verseio.PermanentFailure || st["verdict"] != nil {
 		t.Fatalf("a missing tree: status %v, want a permanent refusal and no verdict", st)
+	}
+}
+
+const otherCharter = `at: repos.r.other
+rules:
+- name: other
+  condition:
+    subject: {path: "repos.r.other.in.*"}
+  action:
+    patch: {seen: true}
+`
+
+// A check of a ref resolves what the ref holds now, each round: in step with what runs it differs
+// by nothing; moved to charters that do not run it counts the difference, and the rounds in a row
+// it has differed at one commit; a round checked already costs nothing; a ref the repository does
+// not have is the verdict `missing`.
+func TestTheGitOutHalfChecksARefAgainstWhatRunsEachRound(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	dir := t.TempDir()
+	initRepo(t, dir)
+	if err := os.MkdirAll(filepath.Join(dir, ".verse", "charters"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	one := commit(t, dir, ".verse/charters/hello.tony", helloCharter, "hello")
+	treeA := treeSha(t, dir, "main", ".verse/charters")
+	gitRun(t, dir, "branch", "verse/live", one)
+	two := commit(t, dir, ".verse/charters/other.tony", otherCharter, "other")
+
+	g := verseio.NewGit()
+	g.AddRepo("r", dir)
+	if err := g.AddTree(".verse/charters"); err != nil {
+		t.Fatal(err)
+	}
+	r := newGitOutRig(t, g, "r")
+	r.ask(t, "install", entity.Obj{"to": "install.repos.r", "tree": treeA, "sha": one})
+	r.pass(t)
+
+	check := func(round string) entity.Obj {
+		t.Helper()
+		r.ask(t, "live", entity.Obj{"to": "check.repos.r", "ref": "verse/live", "round": round})
+		r.pass(t)
+		return r.status(t, "live")
+	}
+	st := check("1")
+	if st["verdict"] != "installs" || fmt.Sprint(st["changes"]) != "0" || fmt.Sprint(st["differingFor"]) != "0" ||
+		st["sha"] != one || st["tree"] != treeA || st["ref"] != "verse/live" || st["round"] != "1" {
+		t.Fatalf("verse/live in step with what runs: status %v", st)
+	}
+	before := st["checkedAt"]
+	r.pass(t)
+	if st := r.status(t, "live"); st["checkedAt"] != before {
+		t.Errorf("a round checked already was checked again: %v", st)
+	}
+	gitRun(t, dir, "branch", "-f", "verse/live", two)
+	if st := check("2"); fmt.Sprint(st["changes"]) != "1" || fmt.Sprint(st["differingFor"]) != "1" || st["sha"] != two {
+		t.Fatalf("verse/live moved to charters that do not run: status %v", st)
+	}
+	if st := check("3"); fmt.Sprint(st["differingFor"]) != "2" {
+		t.Fatalf("a second round differing at the same commit: status %v", st)
+	}
+	r.ask(t, "gone", entity.Obj{"to": "check.repos.r", "ref": "no/such", "round": "1"})
+	r.pass(t)
+	if st := r.status(t, "gone"); st["verdict"] != "missing" || st["error"] != nil {
+		t.Fatalf("a ref the repository does not have: status %v", st)
 	}
 }

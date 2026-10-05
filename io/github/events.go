@@ -307,6 +307,7 @@ func (g *GitHub) reflectRun(ctx context.Context, repo string, id int64) (verseio
 	for _, p := range prs {
 		payload := pullPayload(repo, p)
 		payload["checks"] = state
+		g.withTrees(ctx, repo, p, payload)
 		rn.Covers = append(rn.Covers, g.cover(repo, "pr", strconv.Itoa(p.Number)))
 		rn.Add(g.ItemRef("pr", repo, p.Number), payload)
 	}

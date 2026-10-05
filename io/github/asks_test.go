@@ -448,3 +448,83 @@ func TestAnOpenInputClosesThePullRequestItOpened(t *testing.T) {
 		t.Errorf("closed twice")
 	}
 }
+
+// A PULL REQUEST SOMEBODY ELSE OPENED IS ASKED ABOUT AND HELD: one input keeps the question's
+// comment, verse's request for changes and its pending status on the head together; the answer
+// comes from a reply as ever; then a dismissal lifts every request for changes the io left, and
+// the status turns green. A quiet pass does nothing, and a later request for changes is posted
+// again.
+func TestAPullRequestToMainIsAskedAboutAndHeldUntilAnswered(t *testing.T) {
+	r := newAsksRig(t)
+	r.raise(t)
+	ref := entity.RefAt("github", "signadot", "verse", "out", "main-pr")
+	in := entity.Obj{
+		"to":           "pr.42",
+		"text":         "The charters change here; it installs once answered and merged.",
+		"asks":         askedOnPR,
+		"review":       entity.Obj{"event": "request-changes", "body": "verse: waiting for an answer to the question below"},
+		"commitStatus": entity.Obj{"verse": entity.Obj{"state": "pending", "description": "waiting for an answer"}},
+	}
+	set := func() { t.Helper(); entitytest.Set(t, r.store, ref, in.Payload()) }
+	set()
+	r.pass(t)
+	st := r.status(t, "main-pr")
+	if st["comment"] == nil || st["reviewEvent"] != "request-changes" || st["review"] == nil || st["error"] != nil {
+		t.Fatalf("status after asking = %v", st)
+	}
+	pr := r.fake.repos["signadot/verse"].find(42)
+	if len(pr.reviews) != 1 || pr.reviews[0].state != "CHANGES_REQUESTED" {
+		t.Fatalf("reviews on the pull request = %+v", pr.reviews)
+	}
+	if got := r.fake.statusesOn("signadot/verse"); len(got) != 1 || got[0].sha != "abc" || got[0].context != "verse" || got[0].state != "pending" {
+		t.Fatalf("statuses = %+v", got)
+	}
+	if got := r.fake.commentsOn("signadot/verse", 42); len(got) != 1 || !strings.Contains(got[0], "Deploy #42?") {
+		t.Fatalf("comments = %q", got)
+	}
+	// Quiet: nothing more is posted.
+	r.pass(t)
+	if len(pr.reviews) != 1 || len(r.fake.statusesOn("signadot/verse")) != 1 {
+		t.Fatalf("a quiet pass posted: %d reviews, %d statuses", len(pr.reviews), len(r.fake.statusesOn("signadot/verse")))
+	}
+	// Answered on the pull request by a bound author.
+	r.bind(t, "101", "user:ana@example.com")
+	r.reflect(t, 9900, "ana", 101, "/verse proceed")
+	r.pass(t)
+	if q := r.question(t); entity.Str(q, "verdict") != "proceed" {
+		t.Fatalf("the answer on the pull request: %v", q)
+	}
+	// Answered yes: every request for changes the io left is dismissed, and the status is green.
+	in["review"] = entity.Obj{"event": "dismiss", "body": "verse: answered yes; the charters install once this merges"}
+	in["commitStatus"] = entity.Obj{"verse": entity.Obj{"state": "success", "description": "answered yes; installs once merged"}}
+	set()
+	r.pass(t)
+	st = r.status(t, "main-pr")
+	if st["reviewEvent"] != "dismiss" || st["dismissed"] != int64(1) || pr.reviews[0].state != "DISMISSED" {
+		t.Fatalf("after the yes: status %v, reviews %+v", st, pr.reviews)
+	}
+	if got := r.fake.statusesOn("signadot/verse"); len(got) != 2 || got[1].state != "success" {
+		t.Fatalf("statuses after the yes = %+v", got)
+	}
+	// A later request for changes (a new change pushed) is posted again.
+	in["review"] = entity.Obj{"event": "request-changes", "body": "verse: a new change waits for an answer"}
+	set()
+	r.pass(t)
+	if len(pr.reviews) != 2 || pr.reviews[1].state != "CHANGES_REQUESTED" {
+		t.Fatalf("a new request for changes: %+v", pr.reviews)
+	}
+	// The pull request stops changing what was asked about: the question leaves the comment, which
+	// says so in place, and the hold is dismissed.
+	in["text"] = "This pull request no longer changes the charters, so nothing is asked here."
+	in["asks"] = []any{}
+	in["review"] = entity.Obj{"event": "dismiss", "body": "verse: this pull request no longer changes the charters"}
+	set()
+	r.pass(t)
+	got := r.fake.commentsOn("signadot/verse", 42)
+	if len(got) != 1 || strings.Contains(got[0], "Deploy #42?") || !strings.Contains(got[0], "no longer changes the charters") {
+		t.Fatalf("the comment once nothing is asked = %q", got)
+	}
+	if pr.reviews[1].state != "DISMISSED" {
+		t.Fatalf("the hold once nothing is asked: %+v", pr.reviews)
+	}
+}

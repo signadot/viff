@@ -67,8 +67,8 @@ func TestGitReflectsTheTreeOfAConfiguredPath(t *testing.T) {
 	if want == "" || tree("main") != want || tree("other") != want {
 		t.Errorf("tree.charters on main = %q, other = %q, want %q on both", tree("main"), tree("other"), want)
 	}
-	if entity.Get(refs["before"], "tree") != nil {
-		t.Errorf("a ref before the directory existed carries a tree: %v", refs["before"])
+	if tree("before") != verseio.EmptyTree {
+		t.Errorf("a ref before the directory existed carries %q, want the empty tree", tree("before"))
 	}
 	if entity.Str(refs["main"], "sha") == first {
 		t.Fatal("main did not move")

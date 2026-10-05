@@ -236,8 +236,9 @@ build:
     # side, so most repositories have none. Off by default; see docs/reference/iod.md.
     githubDiscussions: false
     # The out half: comments, pull requests, merges, reviews, closes, checks and issues asked
-    # for under `github.<org>.<name>.out`, as the App. The repo-charters reconciler's candidate
-    # pull request rides it; off, nothing asked of GitHub is done (docs/reference/iod.md).
+    # for under `github.<org>.<name>.out`, as the App. The repo-charters reconciler's question,
+    # review and statuses on a pull request to main ride it, and its candidate pull request onto
+    # verse/live; off, nothing asked of GitHub is done (docs/reference/iod.md).
     githubOut: false
     githubWebhookHost: ""
 
@@ -261,7 +262,7 @@ build:
     # that to service accounts alone by default, and versed reads the document as nobody; a
     # cluster with a public issuer (EKS) needs none of this. Cluster-scoped, and off by default.
     issuerDiscoveryOpen: false
-    # Give the slack and github ios a ServiceAccount each and a projected token, audience `verse`,
+    # Give the slack, github and git ios a ServiceAccount each and a projected token, audience `verse`,
     # at /var/run/verse/token, named to iod by VERSE_TOKEN_FILE: how an io proves it is the io.
     # The token's subject is system:serviceaccount:<namespace>:<io>, which `auth.iod.accounts` in
     # the auth config maps to the io's principal. The cluster is the issuer.
@@ -1118,7 +1119,6 @@ build:
               - name: VERSE_HINT_URL
                 value: "http://verse:9797/io/$[githubIOName]/hint"
 
-  # The github io's credential, as the slack io's above.
   # The git io as the GitHub App (gitAsApp): the app's keys from the github io's Secret, which
   # iod git reads as the github io does (cmd/iod/git.go).
   - if: '.[ gitIO && gitAsApp ]'
@@ -1139,6 +1139,8 @@ build:
                 valueFrom: {secretKeyRef: {name: verse-github, key: GITHUB_APP_INSTALLATION_ID}}
               - name: GITHUB_APP_PRIVATE_KEY
                 valueFrom: {secretKeyRef: {name: verse-github, key: GITHUB_APP_PRIVATE_KEY}}
+
+  # The github io's credential, as the slack io's above.
   - if: '.[ ioTokens && githubIO ]'
     match:
       kind: Deployment
@@ -1151,6 +1153,36 @@ build:
             serviceAccountName: github-io
             containers: !key(name)
             - name: github-io
+              env: !key(name)
+              - name: VERSE_TOKEN_FILE
+                value: /var/run/verse/token
+              volumeMounts: !key(name)
+              - name: verse-token
+                mountPath: /var/run/verse
+                readOnly: true
+            volumes: !key(name)
+            - name: verse-token
+              projected:
+                sources:
+                - serviceAccountToken:
+                    audience: verse
+                    expirationSeconds: 3600
+                    path: token
+
+  # The git io's credential, as the github io's: verified, it may relay the person an install is
+  # for (`Verse-For-Principal`), which the auth config trusts it to for GitHub accounts.
+  - if: '.[ ioTokens && gitIO ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: git-io
+    patch:
+      spec:
+        template:
+          spec:
+            serviceAccountName: git-io
+            containers: !key(name)
+            - name: git-io
               env: !key(name)
               - name: VERSE_TOKEN_FILE
                 value: /var/run/verse/token
@@ -1196,6 +1228,10 @@ build:
               - $[githubRepos]
               - -discussions=$[githubDiscussions]
               - -out=$[githubOut]
+              # The charters directory an open pull request changes, against its merge base: the
+              # repo-charters reconciler asks about that change on the pull request to main.
+              - -tree
+              - .verse/charters
 
   - if: '.[ linearIO && linearTeams != "" ]'
     match:

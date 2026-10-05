@@ -49,6 +49,9 @@ type GitSink struct {
 	// Verse is the verse an install input installs into, as this io (gitinstall.go). Nil
 	// installs nothing, and an install input is refused for good.
 	Verse *client.Client
+	// As is the principal Verse acts as: who an obsolete input's answers are by
+	// (gitobsolete.go).
+	As string
 
 	g   *Git
 	now func() time.Time
@@ -106,8 +109,11 @@ func (k *GitSink) Deliver(ctx context.Context, in Input) (entity.Obj, error) {
 	if kind == checkTarget && found {
 		return k.check(ctx, rp, in, name)
 	}
+	if in.To == obsoleteTarget {
+		return k.obsolete(ctx, in)
+	}
 	if !found || name == "" || (kind != "tag" && kind != "branch") {
-		return nil, Permanent(fmt.Errorf("`to` is tag.<name>, branch.<name>, install.<address> or check.<address>, not %q", in.To))
+		return nil, Permanent(fmt.Errorf("`to` is tag.<name>, branch.<name>, install.<address>, check.<address> or obsolete, not %q", in.To))
 	}
 	if strings.HasPrefix(name, "refs/") || strings.Contains(name, "..") || strings.HasSuffix(name, "/") {
 		return nil, Permanent(fmt.Errorf("`to` %q: %q is not a ref's short name", in.To, name))

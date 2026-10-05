@@ -55,8 +55,20 @@ func githubMain(args []string) error {
 			"opt-in per repository on GitHub's side so most repositories have none. On, a "+
 			"repository that does have them costs two requests a pass and one that does not "+
 			"still costs nothing")
+	var trees strs
+	fs.Var(&trees, "tree", "a directory an open pull request reports when it changes it, as "+
+		"[<name>=]<path> (repeatable): changes.<name> is the identity of its contents at the head, "+
+		"where they differ from the head's merge base; the name defaults to the path's last segment")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	var parsedTrees []github.Tree
+	for _, spec := range trees {
+		t, err := github.ParseTree(spec)
+		if err != nil {
+			return err
+		}
+		parsedTrees = append(parsedTrees, t)
 	}
 
 	app, err := githubApp()
@@ -82,6 +94,7 @@ func githubMain(args []string) error {
 		Comments:        *comments,
 		MaxOpen:         *maxOpen,
 		SkipDiscussions: !*discussions,
+		Trees:           parsedTrees,
 		Base:            envOr("GITHUB_API_BASE", ""),
 		Log:             log.Printf,
 	})
