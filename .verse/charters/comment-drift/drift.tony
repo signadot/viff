@@ -1,0 +1,373 @@
+# THE VERSE-DEV DRIVE: the charter staging runs.
+#
+# Two halves, six strata and twelve rules, in one directory because they are one program: the
+# REVIEW (this file) reads what has landed since it last looked, against the tree as it stands
+# now, and remembers what it found; and the MERGE GATE (merge.tony) turns what the review's fixes
+# deliver into a proposal somebody decides. Install it whole —
+#
+#     verse charter -a -d deploy/charters/verse/repo/verse/comment-drift
+#
+# — which installs both as one step, and within each the strata first whatever order they
+# appear in, so the ordering is in force before a rule names it.
+#
+# The two halves keep their own numbering — the review's rules are 1..5, the gate's are 1..3
+# with a 1b and 1c — because the prose in each refers to its own by number.
+#
+# comment-drift-states.md beside the directory reads the whole thing as state machines — which field each
+# rule writes, and which arrows nothing draws — for a reader who wants the shape before the
+# reasons.
+#
+# ── THE UNIT OF REVIEW IS A RANGE, and that is what changed ──────────────────────
+#
+# It reviewed main's TIP: one commit per push, whatever else the push carried. A push of three
+# reviewed one of them, and a comment that started lying in the middle commit was never looked
+# at. The obvious repair — review every commit — is worse, and the drive found out why before it
+# was built: it reviews ancient commits whose tree no longer exists, files findings about symbols
+# that have since moved, and proposes fixes against a checkout forty commits stale. The commit is
+# the OCCASION to look; it is not the subject matter.
+#
+# So the unit is `last-reviewed..head`, reviewed against the tree at the far end. What that
+# dissolves, all at once:
+#
+#   - no ancient commits: the range starts where the last review got to, and what it judges is
+#     current code;
+#   - no storm on first install: seed the cursor at the tip and the first range is empty;
+#   - no linearity to reason about: a range is a TREE DIFF, so merges, fan-out at a fork and
+#     non-fast-forward history are git's problem rather than the charter's;
+#   - retry is free: a review that fails leaves the cursor where it was, so the next one covers
+#     the same range plus whatever landed since. Delay makes the range bigger, not the backlog
+#     longer.
+#
+# WHAT IT COSTS, stated rather than discovered: per-commit attribution. A comment broken in one
+# commit of a push and fixed in the next nets out and is never filed — which is correct, since
+# the tree at the far end is what a comment has to be true about, but it is a behaviour change
+# from reviewing each commit in turn.
+#
+# ── SEEDING, which is two writes and not one ─────────────────────────────────────
+#
+# The cursor needs somewhere to stand, and where it stands is what the first range starts from:
+#
+#     verse data repos.verse.drift.at --put '{sha: <main's tip>, stage: idle}'
+#
+# Nothing fires until main moves, so a first install has no backlog whatever the source's window
+# holds — which is the storm answered by construction rather than by a knob.
+#
+# ON A VERSE THAT RAN THE OLDER CHARTER there is one more step, and skipping it loses the ledger:
+# findings written before this were addressed under (rule, subject, key) and the ones written
+# after are addressed by symbol, so the old rows can never be closed by a verdict and would be
+# gathered forever. Copy each open one to its symbol and remove the original:
+#
+#     verse data repos.verse.drift.finding.<symbol> --put '<its payload>'
+#     verse data repos.verse.drift.finding.<old composed id> --rm
+
+# ── THE REVIEW ──────────────────────────────────────────────────────────────────
+
+# THERE IS NO `reflected` STRATUM HERE ANY MORE, and its absence is the shape of the change: no
+# rule in this half has a git entity as its SUBJECT. The tip is read — by a condition, which is
+# what wakes these rules when it moves — and everything acted on belongs to this package. The
+# gate half (merge.tony) still owns one, because a delivered branch is a git ref and that is its subject.
+at: repos.verse.drift
+reads: [git]
+strata:
+# The cursor is one entity: where the review has got to. It BOUNCES — idle → claimed → idle —
+# and a PATCH is what moves it, which is the one shape that can carry a moving value: a derive's
+# address is a function of (rule, subject) and its content may reference identity and never
+# state, precisely so that re-deriving writes the same bytes twice. A single slot everybody
+# overwrites is what those two rules exist to forbid, so the cursor cannot be derived by anybody
+# — it is patched, by rules whose subject it is (docs/examples/level-ping-pong.yaml: recursion
+# inside one level is what the ordering permits).
+- name: cursor
+  level: 10
+  match:
+    path: "repos.verse.drift.at"
+
+# One entity per range, keyed by the commit it covers — its FAR end, and not the near one. The
+# chain is serial, so `to` determines `from` and an id carrying both would be a separator
+# convention to parse; and it is `to` that every reader downstream names, since `train-load` asks
+# for the review of the tip main is standing on (`drift.range.<tip>.report`). `from` rides in the
+# payload for whoever wants the span.
+#
+# It is also what gives each review its own TASK ID: a task's id is (rule, subject), so with the cursor as the subject every review would be
+# `review-range@repos.verse.drift.at` — and a spawn on an id that already completed comes back
+# instantly carrying the OLD answer, so the range is never looked at and the cursor advances past
+# it (git issue 6j911yhzh12kswgjgsn0, found by watching exactly that happen).
+- name: range
+  level: 20
+  match:
+    path: "repos.verse.drift.range"
+
+- name: ledger
+  level: 30
+  match:
+    path: "repos.verse.drift.finding"
+rules:
+# 1. THE CLAIM, and it is the whole race.
+#
+# The tip is read HERE, when the review is decided, and written down as `covering`. A commit
+# landing while the review runs is then neither covered by it nor skipped: rule 5 advances to
+# what was CLAIMED rather than to whatever the head says at completion, so the next range starts
+# exactly where this one stopped.
+#
+# `sha: !not .[tip]` is condread.go's own example inverted — fire while the cursor is not
+# standing on the tip — and the read joins this trigger's reads, so main moving is what wakes it.
+# No `on:` clause: an `on` is a formula over the whole verse, and "a git head exists" rises once
+# and then stands, which is a level rather than an edge and never fires again (trigger/edge.go).
+- name: claim
+  stratum: cursor
+  condition:
+    subject:
+      path: "repos.verse.drift.at"
+      value: !let
+        let:
+        - tip: !get-path
+            at: "git.verse.head"
+            path: sha
+        in:
+          stage: idle
+          sha: !not .[tip]
+  action:
+    patch:
+      stage: claimed
+      covering: !get-path
+        at: "git.verse.head"
+        path: sha
+# 2. …and the range it claimed becomes an entity, so the review has a subject of its own.
+- name: open-range
+  stratum: cursor
+  condition:
+    subject:
+      path: "repos.verse.drift.at"
+      value:
+        stage: claimed
+  action:
+    derive:
+    - path: "repos.verse.drift.range"
+      id: $subject.value.covering
+      value:
+        from: $subject.value.sha
+        to: $subject.value.covering
+# 3. Before the review, the STANDING SET is read onto the range.
+#
+# A separate rule rather than a line in the next one, and the reason is ordering: a spawn's
+# strings bind against the payload that FIRED the action, so an action that patched `outstanding`
+# and then spawned would hand the task the payload from before its own write. Two firings, two
+# commits, and the second sees the first. `stage` is the latch that sequences them.
+#
+# IT READS THE LEDGER, and that only works because rule 4 addresses a finding by its SYMBOL. A
+# keyed fan-out lands under (rule, subject, key), and the subject is the review — so a later
+# review's `resolved` used to land BESIDE the open row rather than on it, gathering `status:
+# open` handed every stale claim back forever, and nothing a review said could ever close one.
+# `id:` inside `!each` (c1231f7d) is what makes the address the place plus the symbol, so a
+# verdict OVERWRITES the claim it is about.
+#
+# That is worth more than carrying the standing set from review to review, which was the other
+# way to make closure work: carried forward, an answer REPLACES the set, so a reviewer going
+# quiet about a finding deletes it. Here silence leaves it open — resolution stays a fact
+# somebody wrote rather than an absence inferred from a model saying nothing.
+#
+# `status: open` is also the human override: set a finding's status to anything else and it stops
+# being handed to the reviewer, with no charter change and nothing to argue with.
+- name: gather
+  stratum: range
+  condition:
+    subject:
+      path: "repos.verse.drift.range.*"
+      value: !not.has-path stage
+  action:
+    patch:
+      stage: gathered
+      outstanding: !list-paths
+        at: "repos.verse.drift.finding.*"
+        value:
+          status: open
+# 4. …and the range is reviewed, once, against what is already known.
+#
+# The latch is `stage: gathered`, which rule 3 writes and all three terminal hooks write past. A
+# hook that did not would leave that ending unlatched, and the next thing to touch this entity
+# would spawn again.
+- name: review-range
+  stratum: range
+  condition:
+    subject:
+      path: "repos.verse.drift.range.*"
+      value:
+        stage: gathered
+  action:
+    spawn:
+      runner: verse.runners.coderunner
+      # That environment pushes `refs/heads/verse/auto/$sha/$task`, so the deliverable is a diff
+      # rather than prose about a diff. Delivery is the runner's act and the task only proposes
+      # it, at the end; a run that changed nothing proposes nothing and leaves no branch.
+      environment: verse-fix
+      driver: llm
+      grant: all
+      vector: auto
+      # THE ANSWER IS A CONTRACT rather than a request in the prose. "Your final message is JSON"
+      # was obeyed on one run and ignored on the next, and an unparseable answer is not a bad
+      # answer — it is no answer: `$data` resolves to nothing, the completion hook is refused,
+      # and the review is lost with the record left in no state at all, silently (git issue
+      # 91jktrr3h12ksa8fgsn0).
+      answer:
+        files: !irtype 0
+        findings: !irtype []
+      prompt: |
+        The verse repository is checked out at ./verse with its full history, at $to.
+
+        Review the RANGE $from..$to — everything that has landed since the last review — and
+        answer with `at: $to`. The range is what you review; $to is the commit the tree stands
+        at, and it is what your answer is a claim about. main can move while you work, so a
+        reader must not have to assume which commit you meant.
+
+        WHAT STILL STANDS. These are the findings the last review left open — claims that some
+        Go symbol's comments disagree with its code:
+
+        $outstanding
+
+        A finding you do not mention stays open on its own and will be handed to you again, so
+        leaving it out is correct and re-listing it unchanged costs tokens for no fact. What you
+        answer with is what CHANGED: `status: resolved` for one that is right in the tree you are
+        reading, and whatever this range broke.
+
+        Check each carried finding against the TREE, not against your memory of the diff: a
+        comment can be fixed by a commit that never touched the file it names, and the range is
+        only the reason to look.
+
+        WHAT CHANGED. The Go files the range touched:
+
+            git -C verse diff --name-only $from..$to -- '*.go'
+
+        For each of those files, read what changed in it:
+
+            git -C verse diff $from..$to -- <path>
+
+        and judge the comments on the declarations that changed, plus any comment the change
+        made wrong elsewhere in the same file. A comment is STALE when it DISAGREES with the
+        code it is attached to: a parameter that is gone, a rationale for a branch that was
+        deleted, a "returns X" that returns Y, an algorithm described that was replaced under
+        it. Terse, unfashionable and MISSING are not stale — staleness is a disagreement, not a
+        gap.
+
+        A range is not a commit, and that changes one thing: a comment broken by one commit and
+        corrected by a later one in the SAME range is not a finding. What you are judging is the
+        tree at $to, and the intermediate states are somebody else's history.
+
+        FIX each stale one in place with write_file: rewrite the comment to say what the code now
+        does, in the voice of the comments around it. Change nothing else — not the code, not the
+        formatting, not a comment that is merely unlovely. Run no git command that writes: the
+        working tree is the handoff, and delivery is the runner's.
+
+        WHAT YOU DO NOT DO, because the working tree IS the deliverable and every file you leave
+        behind is committed: do not write a test, do not run one, do not build, and do not add a
+        file. You are judging whether a comment disagrees with the code beside it — never whether
+        the code is right. A test you write to satisfy yourself lands in somebody's branch as
+        though a reviewer had asked for it.
+
+        A FIX YOU JUST WROTE RESOLVES NOTHING. Your edits are in a working tree that becomes a
+        branch, and a branch is a PROPOSAL — somebody has to approve it, and it can be declined,
+        or superseded, or retired unmerged while main moves on. So a symbol you fixed is still
+        `status: open`, because it is still wrong in the tree you reviewed, and you say where you
+        proposed the fix: `proposedAt: $to`. The review that comes after the fix LANDS reads
+        main, finds the comment accurate, and resolves it. That is what makes the ledger a record
+        of MAIN rather than of what agents believe they did.
+
+        This is not hypothetical bookkeeping. A review fixed `task.Fatals`, marked it resolved,
+        and its branch was retired before the merge; main kept the wrong comment while the ledger
+        said somebody had dealt with it, and nothing re-examined it, because a resolved finding
+        is not handed to anybody again.
+
+        A finding you are handed that already carries `proposedAt` and is STILL WRONG means that
+        fix did not land. Fix it again and say `proposedAt: $to` for this attempt: the work is
+        cheap and idempotent, where a comment nobody corrects is permanent.
+
+        READ EACH THING ONCE. Re-reading a file you have read does not make a verdict truer, and
+        the second read costs a turn the first one already bought. When every changed declaration
+        and every carried finding has a verdict, answer.
+
+        Name each symbol the way Go does, repo-relative: `entity.nodeToPayload`,
+        `io/github.Reflect`, `entity.(*LogdStore).Get`. That identity survives the comment
+        being rewritten and the declaration moving between files, which a line number does not.
+        `go doc ./<pkg> <Name>` says whether you have it right.
+
+        YOUR FINAL MESSAGE IS THE ANSWER — a JSON document, nothing before it and nothing after
+        it. Every key and every string is quoted, which is the whole of what has gone wrong
+        before. Report an entry ONLY for a symbol that has something to say: a symbol you judged
+        and found ACCURATE is not an entry, and an empty `findings` list is a real answer.
+
+        EVERY FINDING CARRIES ALL FIVE KEYS — symbol, status, says, at, proposedAt — and
+        `proposedAt` is `null` when you proposed no fix, which is every `resolved` one. Write the
+        key with a null rather than leaving it out. An absent reference is an error where a null
+        one is a value, so a finding missing the key fails the whole filing: not that finding —
+        the WHOLE list, including the ones that were complete, and the review is lost with the
+        range marked reviewed and the cursor advanced past it. That is not hypothetical; it is
+        what the first run of this charter did (18:09Z 2026-09-10, `$item.proposedAt is not
+        present in the payload that fired this action`).
+
+            {
+              "files": 2,
+              "findings": [
+                {"symbol": "entity.nodeToPayload",
+                 "status": "open",
+                 "says": "the comment says it returns nil for an empty map; it returns an empty payload",
+                 "at": "$to",
+                 "proposedAt": "$to"},
+                {"symbol": "trigger.predicateNode",
+                 "status": "resolved",
+                 "says": "named a function deleted in this range; the comment is accurate now",
+                 "at": "$to",
+                 "proposedAt": null}
+              ]
+            }
+    onDone:
+      derive:
+      - path: "repos.verse.drift.finding"
+        value: !each
+          over: $data.findings
+          id: $item.symbol
+          value:
+            symbol: $item.symbol
+            status: $item.status
+            says: $item.says
+            at: $item.at
+            proposedAt: $item.proposedAt
+      patch:
+        stage: reviewed
+        status: done
+        report: $data
+        err: !delete null
+    onFailed:
+      patch:
+        stage: failed
+        status: failed
+        err: $err
+    onCancelled:
+      patch:
+        stage: !delete null
+        err: !delete null
+# 5. …and the cursor steps, but only onto the range it claimed and only once that range is done.
+#
+# `covering: !or .[done]` is the subject's own field tested against a bound set. The range's
+# address cannot be read from a condition — a condition read may not name $subject, since the
+# subject is what it selects — so this asks whether what we claimed is among the shas that have
+# been reviewed. A failed review leaves `status: failed`, so it is not in that set: the chain
+# stops where it broke, visibly, and `verse data repos.verse.drift.at --put '{stage: idle}'` is the
+# retry, which by then covers everything since.
+- name: advance
+  stratum: cursor
+  condition:
+    subject:
+      path: "repos.verse.drift.at"
+      value: !let
+        let:
+        - done: !list-paths
+            at: "repos.verse.drift.range.*"
+            value:
+              status: done
+            path: to
+        in:
+          stage: claimed
+          covering: !or .[done]
+  action:
+    patch:
+      sha: $subject.value.covering
+      covering: !delete null
+      stage: idle
