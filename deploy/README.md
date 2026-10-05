@@ -393,6 +393,24 @@ lives on an `emptyDir`, so a restart re-clones; swap in a PVC if that gets expen
 repository that already exists somewhere, run the same binary next to it with `-repo`, or skip
 the deployment entirely and use `verse io add -dir`.
 
+### Carrying what people wrote across a wipe
+
+A wipe takes the store with it, and `repopulate.sh` puts back what files in this repository
+describe: the charters, the ios, the runner. What people wrote by hand in places no charter
+manages is carried by `carry.sh`, over a list somebody keeps of those places,
+`carry/<deployment>.places`:
+
+```sh
+deploy/carry.sh capture verse-staging:9797 deploy/carry/staging.places ~/carry   # before the wipe, as an admin
+# … wipe, ship, repopulate …
+deploy/carry.sh restore verse-staging:9797 deploy/carry/staging.places ~/carry   # after, as each place's owner
+```
+
+Each place crosses with its owner, its grants and its data, and not its history. A charter
+package's address, or anything beneath one, is refused: a charter is installed again from its
+file and its state derived again. So is a place with somebody else's place beneath it. The
+directory holds people's data; keep it out of the repository.
+
 ### Repo charters
 
 The reconciler of the verse repository's charters is a charter verse ships at the system level
