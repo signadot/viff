@@ -129,5 +129,5 @@ func Render(p Params) ([]byte, error) {
 // QuestionID is the id of the question a candidate tree raises, as the charter spells it: the
 // propose task's id with its first call's number.
 func QuestionID(repo, tree string) string {
-	return "repo-charters:propose@repo-charters." + repo + ".candidate." + tree + "~1"
+	return "repo-charters." + repo + ":propose@repo-charters." + repo + ".candidate." + tree + "~1"
 }

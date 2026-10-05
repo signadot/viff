@@ -32,7 +32,7 @@
 # THE ASK is a task's: the propose rule spawns a call list whose one call is `ask`, so the question
 # is on the docket as any ask is, answerable from the CLI, Slack, or the pull request below, and
 # its answer is the task's result, written onto the candidate. Its id is the task's with its first
-# call's number, `repo-charters:propose@repo-charters.verse.candidate.<tree>~1`, which is how
+# call's number, `repo-charters.verse:propose@repo-charters.verse.candidate.<tree>~1`, which is how
 # the pull request names it.
 #
 # THE ANSWER is read as text, `<principal> chose <option>` with `: <words>` after it: the option is
@@ -99,25 +99,28 @@
 # its out place, and the git io owns `repos.verse` or holds `child-owner` above it, since it
 # installs as itself.
 
-at: repo-charters
+# ONE PACKAGE PER REPOSITORY, at `repo-charters.<repo>`, so a deployment reconciling two
+# repositories installs two packages, and every outbox below is a plain name inside the package:
+# a `from` is relative, and one spelled with the repository's id in front (`verse.install`) reads
+# as verse's own half when the repository is called `verse`.
+at: repo-charters.verse
 reads: [git.verse, github.signadot.verse, verse.schedule]
 # Every minute: verse/live is checked against what is installed, and the questions about trees
 # nothing proposes any more are settled `obsolete`.
 schedules:
-- name: verse
+- name: minute
   every: 1m
-# The outboxes are the repository's places inside the package, which is where the rules below
-# derive the inputs: a `from` is relative to the package's address.
+# The outboxes are places inside the package, which is where the rules below derive the inputs.
 sends:
-- from: verse.install
+- from: install
   to: git.verse.out
-- from: verse.check
+- from: check
   to: git.verse.out
-- from: verse.livecheck
+- from: livecheck
   to: git.verse.out
-- from: verse.out.git
+- from: out.git
   to: git.verse.out
-- from: verse.out.github
+- from: out.github
   to: github.signadot.verse.out
 # The levels, lowest first: what the git io reflects, the pull requests the github io reflects,
 # what is on main and on verse/live, the checks and their verdicts, the candidates, what verse
@@ -149,7 +152,7 @@ strata:
   match: {path: "repo-charters.verse.pull"}
 - name: ticks
   level: 8
-  match: {path: 'verse.schedule."repo-charters:verse".tick'}
+  match: {path: 'verse.schedule."repo-charters.verse:minute".tick'}
 - name: livecheck
   level: 9
   match: {path: "repo-charters.verse.livecheck"}
@@ -453,7 +456,7 @@ rules:
         to: "pr.$subject.value.pr"
         tree: $subject.value.tree
         text: !get-path {at: [repo-charters, verse, verdict, $subject.value.tree], path: text}
-        asks: "repo-charters:propose@repo-charters.verse.candidate.$subject.value.tree~1"
+        asks: "repo-charters.verse:propose@repo-charters.verse.candidate.$subject.value.tree~1"
         review: !get-path {at: [repo-charters, verse, verdict, $subject.value.tree], path: decision.review}
         commitStatus:
           verse:
@@ -523,7 +526,7 @@ rules:
         to: "branch.verse/candidate/$subject.value.tree"
         open: {base: "verse/live", title: "charters: $subject.value.title"}
         text: "What is on main against what runs. An answer here installs it."
-        asks: "repo-charters:propose@repo-charters.verse.candidate.$subject.value.tree~1"
+        asks: "repo-charters.verse:propose@repo-charters.verse.candidate.$subject.value.tree~1"
         commitStatus: {verse: {state: pending, description: "waiting for an answer to the question on this pull request", sha: $subject.value.sha}}
         closed: false
 # The check's verdict on the verse/live pull request of a tree main carries, while it is asked
@@ -745,7 +748,7 @@ rules:
   stratum: ticks
   condition:
     subject:
-      path: 'verse.schedule."repo-charters:verse".tick.*'
+      path: 'verse.schedule."repo-charters.verse:minute".tick.*'
       value: !let
         let:
         - liveSha: !get-path {at: [repo-charters, verse, state, live], path: sha}
@@ -825,14 +828,14 @@ rules:
   stratum: ticks
   condition:
     subject:
-      path: 'verse.schedule."repo-charters:verse".tick.*'
+      path: 'verse.schedule."repo-charters.verse:minute".tick.*'
   action:
     derive:
     - path: "repo-charters.verse.out.git"
       id: obsolete
       value:
         to: obsolete
-        prefix: "repo-charters:propose@repo-charters.verse.candidate."
+        prefix: "repo-charters.verse:propose@repo-charters.verse.candidate."
         before: $subject.value.due
         keep:
           state: !list-paths {at: "repo-charters.verse.state.*", path: tree}

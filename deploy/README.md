@@ -438,7 +438,8 @@ succeeds. Each reopens for the next round rather than multiplying. The pieces on
   the only writer of what runs. A repository setting, not a knob here.
 
 Pausing it is `verse flow suspend -charter repos.verse -r -why …` for the repository's charters,
-or `-charter repo-charters -r` for the reconciler itself.
+or `-charter repo-charters.verse -r` for its reconciler (`repo-charters -r` for every
+repository's).
 
 `gitIssueIO` reflects the issues `git issue` keeps inside a repository — a mirror clone maps
 every ref (`+refs/*:refs/*`), so `refs/git-issues/*` is already there and this needs no credential

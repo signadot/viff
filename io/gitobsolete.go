@@ -22,7 +22,7 @@ import (
 // nothing proposes any more is not left pending on the docket).
 //
 //	to:     obsolete
-//	prefix: "repo-charters:propose@repo-charters.verse.candidate."   # the questions it may settle
+//	prefix: "repo-charters.verse:propose@repo-charters.verse.candidate."   # the questions it may settle
 //	keep:   {state: [<tree>, …], pulls: [<tree>, …]}                 # what is proposed now, at any depth
 //	before: 2026-10-04T21:00:00Z                                     # only questions posed by then
 //

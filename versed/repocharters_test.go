@@ -149,6 +149,34 @@ func tagInputFor(t *testing.T, srv *Server, tree string) entity.Payload {
 	return waitEntity(t, srv, ref, func(p entity.Payload) bool { return entity.Str(p, "to") == "tag.live-verse/"+tree })
 }
 
+// A repository whose id is `verse` installs like any other: its package is
+// `repo-charters.verse`, and its outboxes are plain names inside it, not `verse.install`, which
+// the outbox check reads as verse's own half (staging's first ship refused it so).
+func TestTheReconcilerInstallsForARepositoryCalledVerse(t *testing.T) {
+	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	t.Cleanup(srv.stopAllIOs)
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	for _, io := range []map[string]any{
+		{"name": "git", "root": "git", "url": "http://git-io:9801", "owns": []any{map[string]any{"at": "git.verse"}},
+			"out": map[string]any{"places": []any{"git.verse.out"}, "as": "agent:git-io"}},
+		{"name": "github", "root": "github", "url": "http://github-io:9801", "owns": []any{map[string]any{"at": "github.signadot.verse"}},
+			"out": map[string]any{"places": []any{"github.signadot.verse.out"}, "as": "agent:github-io"}},
+	} {
+		resp := installIO(t, ts, "user:"+tester, io)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("installing the %s io = %s", io["name"], resp.Status)
+		}
+	}
+	charter, err := repocharters.Render(repocharters.Params{Repo: "verse", GitHub: "signadot/verse", InstallAt: "repos.verse", Answerers: []string{"user:*"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	installCharter(t, ts, "repo-charters.verse", string(charter))
+}
+
 // The reconciler: main's charters tree is a candidate; an unanswered one is asked about; a yes on
 // main's tree makes verse/live hold it, and the tree verse/live holds is handed to the git io to
 // install; the io's answer records what runs and tags it. A candidate asked about while
@@ -184,7 +212,7 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	installCharter(t, ts, "repo-charters", string(charter))
+	installCharter(t, ts, "repo-charters.r", string(charter))
 	// The outboxes the install holds out to the ios are the places the rules derive into: an
 	// io reads what it is sent from exactly there, and a declaration that named another place
 	// would leave every input unread (the trial found that one).
@@ -335,7 +363,7 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	installedBy(t, srv, treeA, sha(5))
 	waitEntity(t, srv, running, func(p entity.Payload) bool { return entity.Str(p, "sha") == sha(5) })
 	for _, p := range srv.Reg.Pending() {
-		if strings.HasPrefix(p.Question.ID, "repo-charters:propose@"+cand.String()) {
+		if strings.HasPrefix(p.Question.ID, "repo-charters.r:propose@"+cand.String()) {
 			t.Errorf("the rollback asked again: %v", p.Question.ID)
 		}
 	}
@@ -576,7 +604,7 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 		t.Helper()
 		due := schedule.Key(at)
 		body, _ := codec.Marshal(api.ScheduleTick{Due: due}, codec.Tony)
-		resp := postAs(t, "user:"+tester, ts.URL+"/schedules/repo-charters:r/tick", "application/tony", string(body))
+		resp := postAs(t, "user:"+tester, ts.URL+"/schedules/repo-charters.r:minute/tick", "application/tony", string(body))
 		if resp.StatusCode != http.StatusCreated {
 			t.Fatalf("tick: %s: %s", resp.Status, readBody(t, resp))
 		}
@@ -597,7 +625,7 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 		t.Fatalf("the check of verse/live = %v", entity.ToObj(lc))
 	}
 	sweep := waitEntity(t, srv, gitIn("obsolete"), func(p entity.Payload) bool { return entity.Str(p, "before") == due })
-	if entity.Str(sweep, "to") != "obsolete" || entity.Str(sweep, "prefix") != "repo-charters:propose@repo-charters.r.candidate." ||
+	if entity.Str(sweep, "to") != "obsolete" || entity.Str(sweep, "prefix") != "repo-charters.r:propose@repo-charters.r.candidate." ||
 		!strings.Contains(fmt.Sprint(entity.ToObj(sweep)["keep"]), verseio.EmptyTree) || !strings.Contains(fmt.Sprint(entity.ToObj(sweep)["keep"]), treeI) {
 		t.Fatalf("the obsolete sweep = %v", entity.ToObj(sweep))
 	}

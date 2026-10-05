@@ -50,7 +50,7 @@ func TestARenderingIsForItsRepository(t *testing.T) {
 	}
 	s := string(got)
 	for _, want := range []string{
-		"reads: [git.r, github.acme.r, verse.schedule]", `path: 'verse.schedule."repo-charters:r".tick.*'`, "to: git.r.out", "to: github.acme.r.out", `path: "repo-charters.r.candidate.*"`,
+		"reads: [git.r, github.acme.r, verse.schedule]", `path: 'verse.schedule."repo-charters.r:minute".tick.*'`, "at: repo-charters.r\n", "- from: install\n", "to: git.r.out", "to: github.acme.r.out", `path: "repo-charters.r.candidate.*"`,
 		`to: "install.repos.r"`, `answerers: ["user:*", "group:owners", "agent:git-io"]`, "tree.charters", "into repos.r?", `path: "github.acme.r.pr.*"`, `to: "pr.$subject.value.pr"`,
 	} {
 		if !strings.Contains(s, want) {
