@@ -244,7 +244,8 @@ verse data git verse out livecheck -put '{to: check.repos.verse, ref: verse/live
   `POST /charter/check`, which answers what an install at the address would do without doing
   it: a verdict, and per package what it adds, changes, removes and holds. A verdict of
   `refused`, a file that does not parse among them, is an answer on the status and not a failed
-  input; a tree the repository lacks is refused for good, and a verse that cannot be reached is
+  input; a tree the repository lacks is asked about again on the next pass, since a pull request's
+  tree can be asked about before this io has fetched it, and a verse that cannot be reached is
   tried again. A tree checked already costs nothing. Checked by `ref` with a `round`, it is the
   repo-charters reconciler's minute check that verse/live is what is installed.
 - **An obsolete sweep settles what nothing proposes.** The charter that asked decides what is

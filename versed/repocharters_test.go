@@ -104,7 +104,7 @@ func refusedBy(t *testing.T, srv *Server, tree, sha, why string) {
 
 func waitEntity(t *testing.T, srv *Server, ref entity.Ref, want func(entity.Payload) bool) entity.Payload {
 	t.Helper()
-	deadline := time.After(5 * time.Second)
+	deadline := time.After(20 * time.Second) // generous: the full suite runs beside it
 	for {
 		e, ok, _ := srv.Store.Get(ref)
 		if ok && want(e.Payload) {
@@ -125,7 +125,7 @@ func waitEntity(t *testing.T, srv *Server, ref entity.Ref, want func(entity.Payl
 // waitQuestionID waits for the question with id to stand.
 func waitQuestionID(t *testing.T, srv *Server, id string) {
 	t.Helper()
-	deadline := time.After(5 * time.Second)
+	deadline := time.After(20 * time.Second) // generous: the full suite runs beside it
 	for {
 		if _, ok, _ := srv.Store.Get(mirror.AskRef(id)); ok {
 			return

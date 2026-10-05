@@ -94,7 +94,11 @@ func (k *GitSink) check(ctx context.Context, rp repo, in Input, address string) 
 	asked["tree"] = tree
 	full, err := gitCmd(ctx, rp.dir, "rev-parse", "--verify", "-q", tree+"^{tree}")
 	if err != nil || !fullSHA.MatchString(full) {
-		return asked, Permanent(fmt.Errorf("tree %q is no tree this repository has", tree))
+		// NOT YET, rather than never: a tree a pull request proposes is reported by the github io,
+		// which reads GitHub's API, and can reach this before this io's own copy has fetched the
+		// branch that carries it. Asked again on the next pass, after the next fetch. (An install's
+		// tree is one this io reflected itself, and stays a refusal for good.)
+		return asked, fmt.Errorf("tree %q is no tree this repository has yet", tree)
 	}
 	docs, readErr, err := treeCharters(ctx, rp.dir, full)
 	if err != nil {

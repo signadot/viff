@@ -184,7 +184,7 @@ rules:
       value: {sha: $subject.value.sha, tree: $subject.value.tree.charters}
     - path: "repo-charters.verse.check"
       id: $subject.value.tree.charters
-      value: {to: "check.repos.verse", tree: $subject.value.tree.charters}
+      value: {to: "check.repos.verse", tree: $subject.value.tree.charters, sha: $subject.value.sha}
 # What is on verse/live, which is what runs once installed: its sha and the charters tree.
 - name: live
   stratum: reflected
@@ -217,7 +217,7 @@ rules:
       value: {tree: $subject.value.changes.charters, seen: $subject.value.updatedAt}
     - path: "repo-charters.verse.check"
       id: $subject.value.changes.charters
-      value: {to: "check.repos.verse", tree: $subject.value.changes.charters}
+      value: {to: "check.repos.verse", tree: $subject.value.changes.charters, sha: $subject.value.headSha}
     - path: "repo-charters.verse.pull"
       id: $subject.value.number
       value: {pr: $subject.value.number, head: $subject.value.headSha, tree: $subject.value.changes.charters}
@@ -234,7 +234,9 @@ rules:
       value: {pr: $subject.value.number, head: $subject.value.headSha, tree: ""}
 # THE CHECK, apart from the decision: the git io asks the verse's charter check what an install
 # of a tree would do (iod reference, the out half of git), and its verdict is written onto the
-# candidate, where the pull requests' `verse/check` statuses are drawn from.
+# candidate, where the pull requests' `verse/check` statuses are drawn from. The check input
+# carries the commit the tree was seen at (`sha`), so a new commit asks again: a pull request's
+# tree can reach the git io before its copy has fetched the branch.
 - name: checked
   stratum: checks
   condition:
@@ -367,7 +369,10 @@ rules:
   condition:
     subject:
       path: "repo-charters.verse.candidate.*"
-      value: !and [!not.has-path answer, !not.has-path checked]
+      # Only as the candidate appears, before it is named: a firing writes after the commit that
+      # caused it, so one that re-fired on every later change could land after the answer or the
+      # check and put its pending fields back.
+      value: !and [!not.has-path answer, !not.has-path checked, !not.has-path ask]
   action:
     derive:
     - path: "repo-charters.verse.verdict"
@@ -439,20 +444,9 @@ rules:
 # THE HOLD, verse's review, lifts only when BOTH halves agree: the question answered yes AND the
 # charter check finding the tree installs. A yes on a tree the check has not answered yet, or
 # refuses, leaves the merge held, saying what it waits for, so a tree the install would refuse is
-# never let through on a yes alone. One rule per state of the two, so no two write it at once; a
-# no's hold is written with its decision (`verdict-no`), since it waits on nothing.
-- name: hold-unanswered
-  stratum: candidates
-  condition:
-    subject:
-      path: "repo-charters.verse.candidate.*"
-      value: !or [!not.has-path answer, {answer: !regexp "^\\S+ chose obsolete(: |\\z)"}]
-  action:
-    derive:
-    - path: "repo-charters.verse.verdict"
-      id: $subject.value.tree
-      value:
-        review: {event: request-changes, body: "verse: this changes the charters verse runs, and waits for an answer to the question on this pull request."}
+# never let through on a yes alone. Unanswered, it is the one `verdict-new` writes as the candidate
+# appears (an obsolete answer only ever follows that); a no's is written with its decision
+# (`verdict-no`), since it waits on nothing; a yes's is one rule per state of the check.
 - name: hold-yes-unchecked
   stratum: candidates
   condition:

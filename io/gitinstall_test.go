@@ -195,11 +195,12 @@ func TestTheGitOutHalfChecksATreeOfCharters(t *testing.T) {
 		st["failed"] != nil || st["error"] != nil || st["packages"] != nil {
 		t.Fatalf("a broken file: status %v, want a verdict of refused naming it", st)
 	}
-	// A tree the repository lacks is a failed input, for good.
+	// A tree the repository lacks is not refused for good: a pull request's tree can be asked
+	// about before this io has fetched the branch that carries it, so it is asked again.
 	r.ask(t, "missing", entity.Obj{"to": "check.repos.r", "tree": "0123456789abcdef0123456789abcdef01234567"})
 	r.pass(t)
-	if st := r.status(t, "missing"); st["failed"] != verseio.PermanentFailure || st["verdict"] != nil {
-		t.Fatalf("a missing tree: status %v, want a permanent refusal and no verdict", st)
+	if st := r.status(t, "missing"); st["failed"] == verseio.PermanentFailure || st["verdict"] != nil || st["error"] == nil {
+		t.Fatalf("a missing tree: status %v, want an error asked again, not a refusal for good", st)
 	}
 }
 
