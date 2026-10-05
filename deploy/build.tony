@@ -182,6 +182,12 @@ build:
     # then.
     gitIO: false
     gitMirror: "https://github.com/signadot/verse.git"
+    # The git io fetches and pushes AS THE GITHUB APP: its three keys, read from the github io's
+    # Secret (verse-github), make the app's installation token the only credential git presents,
+    # in place of the `verse-git` PAT. Then a branch only the app may push to (verse/live, the
+    # repo-charters reconciler's) is one the git io can move. Needs githubSecretKey's entry to
+    # carry the app (deploy/README.md, The GitHub App).
+    gitAsApp: false
 
     # The issues `git issue` keeps inside a repository, reflected as `git-issue:*`.
     #
@@ -229,6 +235,10 @@ build:
     # repository costs against the rate limit — and they are opt-in per repository on GitHub's
     # side, so most repositories have none. Off by default; see docs/reference/iod.md.
     githubDiscussions: false
+    # The out half: comments, pull requests, merges, reviews, closes, checks and issues asked
+    # for under `github.<org>.<name>.out`, as the App. The repo-charters reconciler's candidate
+    # pull request rides it; off, nothing asked of GitHub is done (docs/reference/iod.md).
+    githubOut: false
     githubWebhookHost: ""
 
     # ingressClassName for the two webhook Ingresses; "" leaves the cluster default.
@@ -1109,6 +1119,26 @@ build:
                 value: "http://verse:9797/io/$[githubIOName]/hint"
 
   # The github io's credential, as the slack io's above.
+  # The git io as the GitHub App (gitAsApp): the app's keys from the github io's Secret, which
+  # iod git reads as the github io does (cmd/iod/git.go).
+  - if: '.[ gitIO && gitAsApp ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: git-io
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: git-io
+              env: !key(name)
+              - name: GITHUB_APP_ID
+                valueFrom: {secretKeyRef: {name: verse-github, key: GITHUB_APP_ID}}
+              - name: GITHUB_APP_INSTALLATION_ID
+                valueFrom: {secretKeyRef: {name: verse-github, key: GITHUB_APP_INSTALLATION_ID}}
+              - name: GITHUB_APP_PRIVATE_KEY
+                valueFrom: {secretKeyRef: {name: verse-github, key: GITHUB_APP_PRIVATE_KEY}}
   - if: '.[ ioTokens && githubIO ]'
     match:
       kind: Deployment
@@ -1165,6 +1195,7 @@ build:
               - -repo
               - $[githubRepos]
               - -discussions=$[githubDiscussions]
+              - -out=$[githubOut]
 
   - if: '.[ linearIO && linearTeams != "" ]'
     match:

@@ -62,12 +62,13 @@ their Slack account beside it, `slack:<user id>`, so that a verse which verifies
 it through the account's binding and the ballot says which io it came through
 ([a person relayed by a trusted io](perms.md#a-person-relayed-by-a-trusted-io)).
 
-`-verse-addr`, `-as`, `-out-every` and `-token-file` configure the out half. Three subcommands
-have an out half, `slack`, `linear` and `github`, and each starts it with `-out`. The other two
-subcommands accept the flags and do not use them.
+`-verse-addr`, `-as`, `-out-every` and `-token-file` configure the out half. Four subcommands
+have an out half, `git`, `slack`, `linear` and `github`, and each starts it with `-out`.
+`git-issue` accepts the flags and does not use them.
 
 `-out` needs the address of the verse. It refuses to start without one of `-verse-addr`,
-`VERSE_ADDR` and `-hint-url`.
+`VERSE_ADDR` and `-hint-url`. `git` has no hint url, since its hint is a hook, so its out half
+is given the address outright.
 
 **`-min-interval`** is the rate limit of the io itself. Verse asks each io for a full
 reflection at a constant interval of one minute ([the reflector](io.md#the-reflector)). The
@@ -108,21 +109,22 @@ and in the shell history, and an environment variable is not.
 | `-mirror` | `[<id>=]<url>` | | | a remote repository to mirror and keep fetched. The flag is repeatable. |
 | `-state` | `<dir>` | `SOURCED_STATE` | `/repos` | the directory that holds the clones of `-mirror`, one directory for each repository id |
 | `-tree` | `[<name>=]<path>` | | | a directory whose tree sha is reflected on every ref, as `tree.<name>`: the identity of its contents at that ref. The name defaults to the path's last segment, and is one plain word. The flag is repeatable. |
-| `-out` | | | `false` | The io also runs the out half ([the out half](#the-out-half-of-git)): a tag made, a branch moved. |
+| `-out` | | | `false` | The io also runs the out half ([the out half](#the-out-half-of-git)): a tag made, a branch moved, a tree of charters installed. |
 
 `iod git` needs at least one `-repo` or one `-mirror`.
 
 | Credential | What it is |
 |---|---|
-| none of its own | `iod git` reads no credential from the environment. `-mirror` runs git, so a private remote needs a credential that git finds by itself. The manifest `deploy/git-io` gives git a credential helper that reads a Secret. With `-out`, a mirror pushes with the same credential, which must then be allowed to push. |
+| none of its own | Without the App's keys, `iod git` reads no credential from the environment. `-mirror` runs git, so a private remote needs a credential that git finds by itself. The manifest `deploy/git-io` gives git a credential helper that reads a Secret. With `-out`, a mirror pushes with the same credential, which must then be allowed to push. The charters it installs it installs as itself (`-as`, `agent:git-io` by default), so it needs `child-owner` where they go. |
+| `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, `GITHUB_APP_PRIVATE_KEY` | a GitHub App's installation, as the github io takes it. Given, the installation's token is the only credential git presents over https, as `x-access-token`, minted again before it lapses, and any helper set before it is not tried: a fetch and a push are the App's. The three go together. |
 
 ```
 iod git -repo   [<id>=]<dir>    a repository already on disk (repeatable, comma-separated)
             -mirror [<id>=]<url>    a remote to mirror and keep fetched (repeatable)
             -state  <dir>           where -mirror clones live (SOURCED_STATE, default /repos)
             -tree   [<name>=]<path> reflect the tree sha of this directory on every ref (repeatable)
-            -out                    also make the tags and move the branches asked for under
-                                    git.<repo>.out (see below)
+            -out                    also make the tags, move the branches and install the trees
+                                    of charters asked for under git.<repo>.out (see below)
 ```
 
 **`-repo`** is for a machine that already has the repository. Verse can also reflect a local
@@ -220,11 +222,30 @@ an **input** under the repository's out place, `git.<repo>.out`, and the io answ
 | `{to: tag.<name>, sha}` | makes the tag at the commit | `ref, sha, at` |
 | `{to: branch.<name>, sha}` | moves the branch to the commit, forward or back | `ref, sha, at`, and `was`, the sha it stood at |
 | `{to: branch.<name>, sha, create: true}` | makes the branch at the commit where there is none, and leaves one that stands alone; a tag takes `create` too | `ref, sha, at`, and `kept: true` where it stood already |
+| `{to: install.<address>, tree, sha}` | installs the charters in the tree object into the verse at the address, as `verse c -a <address> -d <dir> --prune` would, from the io's own copy of the repository; `sha` is the commit it is installed for | `tree, sha, address, at`, and `charters`, how many |
+| `{to: check.<address>, tree}` | asks the verse's charter check what an install of the tree at the address would do, and installs nothing | `tree, address, checkedAt`, and the check's `verdict` (`installs` or `refused`), `refusal`, `packages` and `pruned` |
 
 ```sh
 verse data git verse out live -put '{to: tag.live-verse.3, sha: 4f668c1c}'
 verse data git verse out head -put '{to: branch.verse/live, sha: 4f668c1c}'
+verse data git verse out install -put '{to: install.repos.verse, tree: 4b825dc6, sha: 4f668c1c}'
+verse data git verse out check -put '{to: check.repos.verse, tree: 4b825dc6}'
 ```
+
+- **A check is not an install.** It reads the tree's charter files as the install does and asks
+  `POST /charter/check`, which answers what an install at the address would do without doing
+  it: a verdict, and per package what it adds, changes, removes and holds. A verdict of
+  `refused`, a file that does not parse among them, is an answer on the status and not a failed
+  input; a tree the repository lacks is refused for good, and a verse that cannot be reached is
+  tried again. A tree checked already costs nothing.
+- **An install is the io's own act.** It archives the tree out of its mirror, reads every
+  charter file in it (a README is left alone), and makes one request as itself: every charter in
+  the tree or none, and what the tree leaves out under the address removed. So the io has to own
+  the address, or hold `child-owner` above it (`verse perms repos --grants '[{child-owner:
+  [agent:git-io]}]'` on a deployment). A tree the repository lacks, a file that does not parse, or
+  a charter the verse refuses is refused for good until the input changes; a verse that cannot be
+  reached is tried again. A tree already installed for the same commit costs nothing. It is how
+  the repo-charters reconciler installs what the team said yes to (git-issue dzxn44gw).
 
 - **`sha`** is any name the repository resolves to a commit: a full sha, a short one, a tag. One
   the repository does not have is refused for good.
@@ -237,8 +258,9 @@ verse data git verse out head -put '{to: branch.verse/live, sha: 4f668c1c}'
   credential it fetches with, and writes its own copy so the next reflection sees it. A
   repository on disk gets the ref written in place.
 
-This half is what the repo-charters reconciler uses to record an install as a tag and to keep
-`verse/live` at the running sha (git-issue j9vbwvja). It makes no commit and no tree.
+This half is what the repo-charters reconciler uses to keep `verse/live` at the commit of the
+tree the team said yes to, to install the tree `verse/live` holds, and to tag the commit a tree
+first ran from ([the example](examples/repo-charters/repo-charters.tony)). It makes no commit and no tree.
 
 ## git-issue
 
@@ -779,7 +801,7 @@ default.
 
 | Environment | What it is |
 |---|---|
-| `GITHUB_TOKEN` | a fine-grained PAT. It is read-only on **Contents, Metadata, Issues, Pull requests and Actions** of the repositories, and on Discussions too with `-discussions`. With `-out` it also needs write on **Issues and Pull requests**, and on **Contents** to merge. Required, unless the app below is set. |
+| `GITHUB_TOKEN` | a fine-grained PAT. It is read-only on **Contents, Metadata, Issues, Pull requests and Actions** of the repositories, and on Discussions too with `-discussions`. With `-out` it also needs write on **Issues and Pull requests**, on **Contents** to merge, and on **Commit statuses** for a check. Required, unless the app below is set. |
 | `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, `GITHUB_APP_PRIVATE_KEY` | a GitHub App's id, its installation's id, and its private key as PEM. The io authenticates as the installation: it signs a JWT with the key, exchanges it for an installation token, and mints another shortly before that one expires. A token GitHub refuses (401), because the io's clock runs slow or the token was revoked, is minted again and the request sent once more. A 401 a fresh token gets too is believed. What the out half does is then the app's (`<slug>[bot]`), so it can review a pull request a person opened. The three go together, and some but not all of them is refused. Given with `GITHUB_TOKEN`, the app is used and the token is ignored. The app needs the permissions the token would. |
 | `GITHUB_WEBHOOK_SECRET` | the signing secret of the webhook. Without it, `POST /github/webhook` refuses every delivery. |
 | `GITHUB_API_BASE` | the root of the API, for GitHub Enterprise Server |
@@ -884,15 +906,16 @@ stays and does not change. Nothing covers it, so nothing tombstones it.
 ### The out half of github
 
 With `-out`, `iod github` comments on issues and pull requests, opens, merges and reviews pull
-requests, and closes either. It reads inputs under one
+requests, puts verse's commit status on a pull request it opened, files issues, and closes either. It
+reads inputs under one
 address for each repository, `github.<org>.<name>.out`, and in the
 [outboxes](../glossary.md#outbox) that packages declare for it. Each address is inside the
 claim of its repository and outside every cover of the reflection.
 
 | | where | written by | holds |
 |---|---|---|---|
-| input | anywhere under `github.<org>.<name>.out`, or in an outbox sending there | whoever asks | `to`, which is `pr.<n>` or `issue.<n>`, and `text`; or `text` and `asks` (below); or `to: branch.<name>` and `open`; or `to: pr.<n>` and `merge` or `review`; or `to: pr.<n>` or `issue.<n>` and `close` (below) |
-| status | the sibling `<name>~status` | the io alone | `comment, url, postedAt, updatedAt, posted`, and `error` while an error stands. `comment` is the id of the comment, and `posted` is the fingerprint of its text. With `asks`, also `handled`: the replies acted on. |
+| input | anywhere under `github.<org>.<name>.out`, or in an outbox sending there | whoever asks | `to`, which is `pr.<n>` or `issue.<n>`, and `text`; or `text` and `asks` (below); or `to: branch.<name>` and `open`, with `commitStatus`; or `to: issue` and `open`; or `to: pr.<n>` and `merge` or `review`; or `to: pr.<n>` or `issue.<n>` and `close` (below) |
+| status | the sibling `<name>~status` | the io alone | `comment, url, postedAt, updatedAt, posted`, and `error` while an error stands. `comment` is the id of the comment, and `posted` is the fingerprint of its text. With `asks`, also `handled`: the replies acted on. With `commitStatus`, `commitStatus.<context>`: `state`, `sha` and `at`. |
 
 A pass runs every `-out-every`, as the principal of `-as`, which is `agent:github-io` by
 default, proving itself with `-token-file` where it has one.
@@ -947,6 +970,36 @@ request it opened and hear the answer there (the comment's fields stand beside t
 as `comment`, `commentUrl`, `commentPosted`, `commentAt`); `merge` merges it at the head decided
 on, as below; `closed: true` closes it unmerged, once. The io never merges or closes a pull
 request it adopted.
+
+**Commit statuses on the pull request.** An `open` input carrying `commitStatus` keeps verse's
+commit statuses on the pull request's head, linking to the pull request. It maps GitHub's
+context, the name a status stands under on the page, to the status asked for under it, so two
+things said about one pull request stand side by side and neither overwrites the other:
+
+```tony
+commitStatus:
+  verse:         {state: pending, description: "waiting for an answer", sha: <head>}   # sha defaults to the head GitHub reports
+  "verse/check": {state: success, description: "installs cleanly over what runs"}
+```
+
+`state` is `pending`, `success`, `failure` or `error`. Its status holds `commitStatus.<context>`:
+`state`, `sha`, `at` and `posted`. The same state, description and sha again costs nothing; a
+changed one replaces the status under that context. The App needs `statuses: write` for it
+([the GitHub App](../../deploy/README.md#the-github-app-signadot-verse)). A status GitHub refuses,
+such as one an App without `statuses: write` asks for, is `error` under its context and does not
+fail the input; a refusal is not asked again until the status asked for changes.
+
+**An issue.** An `open` input with `to: issue` files an issue, once, and keeps its title and body
+in step from then on; `text`, `asks` and `closed: true` then apply to it as to a pull request the
+io opened. `closed: false` reopens it where the io closed it, its status saying
+`reopenedAt`: one standing issue a charter opens while something is wrong and closes when it is
+right, as many rounds as it takes. It is how a charter reports what went wrong where the repository's people read, with no
+number to know before the issue exists:
+
+```tony
+to:   issue
+open: {title: "charters: the install of <tree> failed", body: "…"}
+```
 
 **A merge at a sha.** An input that carries `merge` asks for a pull request to be merged at the
 head it was decided on:

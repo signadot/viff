@@ -55,6 +55,14 @@ type Server struct {
 	// SystemCharter is the path of the charter file installed at start as the system, when the
 	// deployment names one (config.Config.SystemCharter).
 	SystemCharter string
+	// SystemCharters are charters installed at start as the system beside that file, each a
+	// text with a name for the log: what `verse up` renders from the config for charters verse
+	// ships at the system level (system/repocharters), which the engine knows nothing of.
+	SystemCharters []SystemCharter
+	// systemWaiting are those of SystemCharters refused at start, tried again as ios are
+	// registered (installWaitingSystemCharters); systemMu orders the two.
+	systemMu      sync.Mutex
+	systemWaiting []SystemCharter
 	Store         entity.Store
 	// Zone is the zone a schedule's ticks are spelled in, and the one a period of whole days
 	// steps in; nil is time.Local, which a deployment sets with TZ (schedule.go).
@@ -1284,6 +1292,17 @@ func (s *Server) Start(ctx context.Context) {
 	// standing to react to. A level-triggered pass does not repeat itself, so what a rule
 	// missed by being late it would miss for good.
 	phase(phaseSources, s.restoreSources)
+	// And the charters verse ships at the system level, rendered by `verse up` from the config
+	// (Server.SystemCharters). After the sources: such a charter declares outboxes to the places
+	// the ios read, and the declaration is checked against the ios the restore registered. Over
+	// what stood, as the system charter file is, and every time, for the same reason.
+	phase(phaseSystemTexts, func() error {
+		if err := s.awaiting(phaseSystem, phaseSources); err != nil {
+			return err
+		}
+		s.installSystemCharters()
+		return nil
+	})
 	s.reportActingAsNobody()
 }
 
@@ -1338,6 +1357,9 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("POST /entity", s.putEntity, "verse-put-entity", one("verse-entity"))
 	rt.handle("DELETE /entity", s.deleteEntity, "", nothing)
 	rt.handle("POST /charter", s.addCharter, "verse-trigger", nothing)
+	// The charter check: what an install of the same documents would do, with nothing installed
+	// (chartercheck.go). A question beside the install, and never part of it.
+	rt.handle("POST /charter/check", s.checkCharter, "verse-trigger", one("verse-charter-check"))
 	rt.handle("POST /schedules/{id}/tick", s.tickSchedule, "verse-schedule-tick", nothing)
 	rt.handle("DELETE /charter/{name}", s.deleteCharterItem, "", nothing)
 	rt.handle("DELETE /charter", s.deleteCharter, "", nothing)
@@ -4006,33 +4028,76 @@ var baseCharter []byte
 // system charter is missing is a verse with fewer rules, not one that will not start.
 func (s *Server) installSystemCharter() {
 	s.installAsSystem("the base charter", baseCharter)
-	if s.SystemCharter == "" {
-		return
+	if s.SystemCharter != "" {
+		if data, err := os.ReadFile(s.SystemCharter); err != nil {
+			fmt.Fprintf(os.Stderr, "verse: system charter: %v\n", err)
+		} else {
+			s.installAsSystem("system charter "+s.SystemCharter, data)
+		}
 	}
-	data, err := os.ReadFile(s.SystemCharter)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "verse: system charter: %v\n", err)
-		return
-	}
-	s.installAsSystem("system charter "+s.SystemCharter, data)
 }
 
-// installAsSystem installs one charter's text as the system, saying what it was when it cannot.
-func (s *Server) installAsSystem(what string, data []byte) {
+// installSystemCharters applies the charters handed to the server as text (SystemCharters), as
+// the system, after the sources are restored: one that sends to an io's place is checked against
+// the ios registered, and a text that cannot be installed is reported and the rest go on.
+//
+// ONE REFUSED FOR WANT OF ITS IOS WAITS FOR THEM. A verse started on an empty store (a wipe) has
+// no ios at start, and its ios are registered afterwards (deploy/repopulate.sh), so such a
+// charter is refused here and would stay missing until the next restart. It is kept, and tried
+// again each time an io with an out half is registered (installWaitingSystemCharters).
+func (s *Server) installSystemCharters() {
+	s.systemMu.Lock()
+	defer s.systemMu.Unlock()
+	s.systemWaiting = nil
+	for _, c := range s.SystemCharters {
+		if err := s.installAsSystem("system charter "+c.Name, c.Text); err != nil {
+			s.systemWaiting = append(s.systemWaiting, c)
+		}
+	}
+}
+
+// installWaitingSystemCharters tries again each system charter refused so far, as an io's
+// registration may be what it was waiting for, and keeps those refused again.
+func (s *Server) installWaitingSystemCharters() {
+	s.systemMu.Lock()
+	defer s.systemMu.Unlock()
+	var still []SystemCharter
+	for _, c := range s.systemWaiting {
+		if err := s.installAsSystem("system charter "+c.Name, c.Text); err != nil {
+			still = append(still, c)
+			continue
+		}
+		fmt.Fprintf(os.Stderr, "verse: system charter %s: installed, once an io it sends to stood\n", c.Name)
+	}
+	s.systemWaiting = still
+}
+
+// SystemCharter is one charter a deployment installs as the system beside the file it names: a
+// text, and the name the log says it by.
+type SystemCharter struct {
+	Name string
+	Text []byte
+}
+
+// installAsSystem installs one charter's text as the system, saying what it was when it cannot,
+// and answering why.
+func (s *Server) installAsSystem(what string, data []byte) error {
 	docs, err := codec.ParseNodes(data, codec.Tony)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "verse: %s: %v\n", what, err)
-		return
+		return err
 	}
 	release, err := s.lockCharter(s.ctxOrBackground())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "verse: %s: %v\n", what, err)
-		return
+		return err
 	}
 	defer release()
 	if _, _, err := s.installCharterAs(entity.As(s.Store, entity.SystemCharter), "", "", docs); err != nil {
 		fmt.Fprintf(os.Stderr, "verse: %s: %v\n", what, err)
+		return err
 	}
+	return nil
 }
 
 // firedTotal is how many entities this verse's triggers have acted on: every engine running a

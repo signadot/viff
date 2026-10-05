@@ -91,6 +91,47 @@ type Config struct {
 	// Auth is how the parties that arrive at a verse are authenticated, one block per kind of
 	// party. Unset, a request is whoever it says it is.
 	Auth AuthConfig `tony:"field=auth,omitzero"`
+	// RepoCharters names the repositories whose charters verse reconciles: for each, `verse up`
+	// renders the repo-charters reconciler (system/repocharters) and installs it at start as the
+	// system, beside SystemCharter. Server-side, read by `verse up`.
+	RepoCharters []RepoCharterConfig `tony:"field=repoCharters,omitzero"`
+}
+
+// RepoCharterConfig is one repository whose charters verse reconciles: what runs in verse is the
+// last state of the repository's charters directory on main that the team said yes to.
+//
+//tony:schemagen=verse-repo-charter-config,notag
+type RepoCharterConfig struct {
+	// Repo is the git io's id for the repository, which it reflects as `git.<repo>`.
+	Repo string `tony:"field=repo"`
+	// GitHub is the repository as GitHub names it, `org/name`: where the candidate pull request
+	// is opened, through the github io.
+	GitHub string `tony:"field=github"`
+	// At is the address the repository's charters install at, as `verse c -a` spells one
+	// (`repos.verse`). The git io installs there as itself, so it owns the address or holds
+	// `child-owner` above it.
+	At string `tony:"field=at"`
+	// Tree is the name the git io reflects the charters directory's tree under (`-tree`);
+	// empty is `charters`.
+	Tree string `tony:"field=tree,omitzero"`
+	// Answerers is who may answer the question a change raises, grantees as a gate names them
+	// (`user:*`, `group:owners`). A system charter's question reaches nobody without them.
+	Answerers []string `tony:"field=answerers,omitzero"`
+}
+
+// Validate refuses a repository entry that names no repository, no GitHub name or no address,
+// at load, where the refusal is a line in a file. What the names have to look like is the
+// renderer's to say (system/repocharters).
+func (r RepoCharterConfig) Validate() error {
+	switch {
+	case r.Repo == "":
+		return errors.New("repoCharters: an entry names its repository (`repo`)")
+	case r.GitHub == "":
+		return fmt.Errorf("repoCharters %s: an entry names the repository as GitHub does (`github: org/name`)", r.Repo)
+	case r.At == "":
+		return fmt.Errorf("repoCharters %s: an entry names the address its charters install at (`at`)", r.Repo)
+	}
+	return nil
 }
 
 // AuthConfig holds one block per kind of party that arrives at a verse. `principal` is the
@@ -602,6 +643,11 @@ func Load() (*Config, error) {
 	}
 	if err := c.Auth.Validate(); err != nil {
 		return c, fmt.Errorf("config: %w", err)
+	}
+	for _, rc := range c.RepoCharters {
+		if err := rc.Validate(); err != nil {
+			return c, fmt.Errorf("config: %w", err)
+		}
 	}
 	return c, nil
 }

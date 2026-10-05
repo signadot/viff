@@ -386,10 +386,41 @@ asked for under `git.<repo>.out` is pushed to the remote with the same credentia
 `verse-git` credential must be allowed to push ([the out half of
 git](../docs/reference/iod.md#the-out-half-of-git)); nothing is pushed that nobody asked for.
 And it reflects the tree sha of each repository's `.verse/charters` directory on every ref
-(`-tree .verse/charters`), which is what the repo-charters reconciler keys approval on. The mirror
+(`-tree .verse/charters`), which is what the repo-charters reconciler keys approval on, and
+installs that tree into the verse when the reconciler asks (`{to: install.<address>}`), as
+itself: `repopulate.sh` holds `repos` out to it with `child-owner`. The mirror
 lives on an `emptyDir`, so a restart re-clones; swap in a PVC if that gets expensive. For a
 repository that already exists somewhere, run the same binary next to it with `-repo`, or skip
 the deployment entirely and use `verse io add -dir`.
+
+### Repo charters
+
+The reconciler of the verse repository's charters is a charter verse ships at the system level
+(`system/repocharters`, [the example](../docs/reference/examples/repo-charters/repo-charters.tony)):
+what runs in verse is the tree of `.verse/charters` that `verse/live` holds, and `verse/live` holds
+only a tree an answer said yes to. A change to the charters that reaches main is put to the team
+as a pull request onto `verse/live`, with two commit statuses on its head: `verse/check`, what
+verse's charter check says an install would do, and `verse`, the decision. A yes moves
+`verse/live` to it, and a commit to main that leaves the charters alone installs nothing.
+While the charters on main would be refused, one issue says so and why; it closes when main
+passes the check. A refused install has an issue of its own, closed by the next install that
+succeeds. Each reopens for the next round rather than multiplying. The pieces on a deployment:
+
+- **`repoCharters`** in versed's config file (`deploy/auth/staging.tony`, mounted by the
+  `authConfig` knob) names the repository, its GitHub name, the address its charters install at
+  and who may answer; versed renders and installs the reconciler as the system at start, after
+  the ios are restored ([up](../docs/reference/up.md)).
+- **The git io** with `-tree .verse/charters -out` (on), registered with its out place
+  (`repopulate.sh`), and `child-owner` under `repos` for `agent:git-io`, so it installs the
+  charters as itself. With `gitAsApp` it pushes as the App, which is what lets it move
+  `verse/live` once only the App may.
+- **The github io** with `githubOut` on, registered with its out place, and the App allowed
+  `statuses: write` for the commit status ([the GitHub App](#the-github-app-signadot-verse)).
+- **On GitHub**, a branch protection on `verse/live` that lets the App alone push, so verse is
+  the only writer of what runs. A repository setting, not a knob here.
+
+Pausing it is `verse flow suspend -charter repos.verse -r -why …` for the repository's charters,
+or `-charter repo-charters -r` for the reconciler itself.
 
 `gitIssueIO` reflects the issues `git issue` keeps inside a repository — a mirror clone maps
 every ref (`+refs/*:refs/*`), so `refs/git-issues/*` is already there and this needs no credential
@@ -413,6 +444,8 @@ cloning one it can reflect nothing from.
 | `gitMirror` | the verse repo | `[<id>=]<url>` to mirror; comma-separated for several |
 | `gitIssueIO` | `false` | deploy the git-issue connector |
 | `gitIssueMirror` | `""` | its own mirror set, when it differs; `""` follows `gitMirror` |
+| `gitAsApp` | `false` | the git io fetches and pushes as the GitHub App, its keys read from `verse-github`, in place of the `verse-git` PAT (staging: on) |
+| `githubOut` | `false` | the github io acts back as the App: comments, pull requests, merges, reviews, closes, checks and issues asked for under `github.<org>.<name>.out` (staging: on) |
 | `slackIO` | `false` | deploy the Slack connector (needs the `verse-slack` Secret) |
 | `slackIOName` | `slack` | the registration name — must match `verse io add <name> -root slack` |
 | `slackWorkspace` | `""` | the id prefix; `""` takes the team name from the token |
@@ -617,8 +650,13 @@ and `hook_attributes.url` is a placeholder, since the webhook is inactive:
 ```
 
 These permissions are the token's ([above](#creating-the-entries)) plus the out half's writes:
-Issues and Pull requests to comment, open, review and close, and Contents to merge. Two are left
-off on purpose:
+Issues and Pull requests to comment, open, review and close, and Contents to merge. **Commit
+statuses (`statuses: write`) is not in the manifest and is wanted**: the repo-charters reconciler
+puts a `verse` status on its candidate pull request's head (an `open` input's `commitStatus`), and
+without the permission GitHub refuses the status and the refusal lands on the input's status.
+Add it under the App's settings (Permissions & events → Repository permissions → Commit
+statuses: Read and write); the installation then asks an org owner to approve the new
+permission. Two are left off on purpose:
 
 - **Discussions.** Discussions stay off unless `githubDiscussions` is turned on.
 - **Workflows.** Without it, GitHub refuses the app a merge of a pull request that changes

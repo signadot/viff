@@ -235,6 +235,10 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 	// And the outboxes packages already declared for its places, which it now reads (outbox.go).
 	if e.Out != nil {
 		s.grantOutboxesTo(e.Out.Places, e.Out.As)
+		// And a system charter refused at start for want of an io to send to, which this may be
+		// (Server.installSystemCharters): a verse whose ios were registered after its start (a
+		// wipe, then repopulate) gets it now rather than at the next restart.
+		s.installWaitingSystemCharters()
 	}
 	// It reflects from here, with no restart. A registration that installed and then did
 	// nothing until somebody bounced the server would be the same silence `dial-in` is refused

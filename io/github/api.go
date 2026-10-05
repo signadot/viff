@@ -357,6 +357,42 @@ func (a *api) mergePull(ctx context.Context, repo string, number int, sha, metho
 	return m, err
 }
 
+// createStatus puts a commit status on sha: `state` is pending, success, failure or error, and
+// `context` names whose status it is, so a later one under the same context replaces it on the
+// pull request's page. It takes the App's `statuses: write`.
+func (a *api) createStatus(ctx context.Context, repo, sha, state, context, description, target string) error {
+	body := map[string]string{"state": state, "context": context}
+	if description != "" {
+		body["description"] = description
+	}
+	if target != "" {
+		body["target_url"] = target
+	}
+	return a.send(ctx, http.MethodPost, "/repos/"+repo+"/statuses/"+sha, body, nil)
+}
+
+// createIssue opens an issue.
+func (a *api) createIssue(ctx context.Context, repo, title, body string) (issue, error) {
+	var i issue
+	err := a.send(ctx, http.MethodPost, "/repos/"+repo+"/issues",
+		map[string]string{"title": title, "body": body}, &i)
+	return i, err
+}
+
+// setIssueState opens or closes an issue: `open` reopens one closed.
+func (a *api) setIssueState(ctx context.Context, repo string, number int, state string) (issue, error) {
+	var i issue
+	err := a.send(ctx, http.MethodPatch, "/repos/"+repo+"/issues/"+strconv.Itoa(number),
+		map[string]string{"state": state}, &i)
+	return i, err
+}
+
+// updateIssue changes the title and body of an issue this io opened.
+func (a *api) updateIssue(ctx context.Context, repo string, number int, title, body string) error {
+	return a.send(ctx, http.MethodPatch, "/repos/"+repo+"/issues/"+strconv.Itoa(number),
+		map[string]string{"title": title, "body": body}, nil)
+}
+
 // review is what GitHub answers about a review it recorded.
 type review struct {
 	ID      int64  `json:"id"`

@@ -1,0 +1,186 @@
+package io_test
+
+import (
+	"fmt"
+	"net/http"
+	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/signadot/verse/entity"
+	verseio "github.com/signadot/verse/io"
+)
+
+// treeSha is the tree object of a path at a rev.
+func treeSha(t *testing.T, dir, rev, path string) string {
+	t.Helper()
+	got := refSha(t, dir, rev+":"+path)
+	if got == "" {
+		t.Fatalf("no tree at %s:%s", rev, path)
+	}
+	return got
+}
+
+const helloCharter = `at: repos.r.hello
+rules:
+- name: hello
+  condition:
+    subject: {path: "repos.r.hello.in.*"}
+  action:
+    patch: {seen: true}
+`
+
+// An install input installs a tree of charters out of the repository into the verse at an
+// address, as this io: archived from the tree object, every charter file in it in one request
+// that prunes the address, recorded for the commit it was installed for, and done once per
+// commit. A tree the repository lacks or a file that is not a charter is refused for good; the
+// verse's own refusal of a charter is too.
+func TestTheGitOutHalfInstallsATreeOfCharters(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	dir := t.TempDir()
+	initRepo(t, dir)
+	if err := os.MkdirAll(filepath.Join(dir, ".verse", "charters"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	one := commit(t, dir, ".verse/charters/hello.tony", helloCharter, "hello")
+	treeA := treeSha(t, dir, "main", ".verse/charters")
+	if err := os.WriteFile(filepath.Join(dir, ".verse", "charters", "README.md"), []byte("not a charter\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, dir, "add", ".verse/charters/README.md")
+	two := commit(t, dir, "unrelated", "x", "readme beside the charters")
+	treeB := treeSha(t, dir, "main", ".verse/charters")
+	broken := commit(t, dir, ".verse/charters/broken.tony", "at: [not: a: charter\n", "broken")
+	treeC := treeSha(t, dir, "main", ".verse/charters")
+
+	g := verseio.NewGit()
+	g.AddRepo("r", dir)
+	r := newGitOutRig(t, g, "r")
+
+	installed := func() int {
+		resp, err := r.verse.Get("/charter", url.Values{"at": {"repos.r.hello"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if installed() == http.StatusOK {
+		t.Fatal("the charter stands before anything installed it")
+	}
+
+	r.ask(t, "install", entity.Obj{"to": "install.repos.r", "tree": treeA, "sha": one})
+	r.pass(t)
+	st := r.status(t, "install")
+	if st["tree"] != treeA || st["sha"] != one || fmt.Sprint(st["charters"]) != "1" || st["address"] != "repos.r" || st["error"] != nil {
+		t.Fatalf("status after the install = %v", st)
+	}
+	if installed() != http.StatusOK {
+		t.Fatal("the charter does not stand after the install")
+	}
+	// Installed for this commit: nothing to do.
+	before := st["at"]
+	r.pass(t)
+	if st := r.status(t, "install"); st["at"] != before {
+		t.Errorf("a pass with nothing to do rewrote the status: %v", st)
+	}
+	// The same tree at a new commit (a rollback) is installed again, and the README in it is
+	// not a charter and is left alone.
+	r.ask(t, "install", entity.Obj{"to": "install.repos.r", "tree": treeB, "sha": two})
+	r.pass(t)
+	if st := r.status(t, "install"); st["tree"] != treeB || st["sha"] != two || fmt.Sprint(st["charters"]) != "1" || st["error"] != nil {
+		t.Fatalf("status after the second install = %v", st)
+	}
+	// A file that does not parse is refused for good, naming it; the charter that stood stands.
+	r.ask(t, "install", entity.Obj{"to": "install.repos.r", "tree": treeC, "sha": broken})
+	r.pass(t)
+	if st := r.status(t, "install"); st["failed"] != verseio.PermanentFailure || !strings.Contains(fmt.Sprint(st["error"]), "broken.tony") ||
+		st["tree"] != treeC || st["sha"] != broken || st["address"] != "repos.r" {
+		t.Fatalf("a broken file: status %v, want a permanent refusal naming it, with the tree and commit refused", st)
+	}
+	if installed() != http.StatusOK {
+		t.Error("a refused install took the standing charter down")
+	}
+	// Refused for good: a tree the repository lacks, no tree, no address.
+	for name, in := range map[string]entity.Obj{
+		"notree":  {"to": "install.repos.r", "tree": "0123456789abcdef0123456789abcdef01234567"},
+		"nothing": {"to": "install.repos.r"},
+		"noaddr":  {"to": "install.", "tree": treeA},
+	} {
+		r.ask(t, name, in)
+	}
+	r.pass(t)
+	for _, name := range []string{"notree", "nothing", "noaddr"} {
+		if st := r.status(t, name); st["failed"] != verseio.PermanentFailure {
+			t.Errorf("%s: status %v, want a permanent refusal", name, st)
+		}
+	}
+	if st := r.status(t, "notree"); st["tree"] != "0123456789abcdef0123456789abcdef01234567" {
+		t.Errorf("a tree the repository lacks: status %v, want the tree beside the refusal", st)
+	}
+}
+
+// A check input asks the verse what an install of the tree would do and installs nothing: a tree
+// that would install says so with what it adds; a file in the tree that does not parse is a
+// verdict of `refused`, not a failed input; a tree checked already costs nothing; and the check
+// and the install stay two inputs.
+func TestTheGitOutHalfChecksATreeOfCharters(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	dir := t.TempDir()
+	initRepo(t, dir)
+	if err := os.MkdirAll(filepath.Join(dir, ".verse", "charters"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	commit(t, dir, ".verse/charters/hello.tony", helloCharter, "hello")
+	treeA := treeSha(t, dir, "main", ".verse/charters")
+	commit(t, dir, ".verse/charters/broken.tony", "at: [not: a: charter\n", "broken")
+	treeB := treeSha(t, dir, "main", ".verse/charters")
+
+	g := verseio.NewGit()
+	g.AddRepo("r", dir)
+	r := newGitOutRig(t, g, "r")
+	installed := func() int {
+		resp, err := r.verse.Get("/charter", url.Values{"at": {"repos.r.hello"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	r.ask(t, "check", entity.Obj{"to": "check.repos.r", "tree": treeA})
+	r.pass(t)
+	st := r.status(t, "check")
+	if st["verdict"] != "installs" || st["tree"] != treeA || st["address"] != "repos.r" || st["error"] != nil ||
+		!strings.Contains(fmt.Sprint(st["packages"]), "rules.hello") {
+		t.Fatalf("status after the check = %v", st)
+	}
+	if installed() == http.StatusOK {
+		t.Fatal("the check installed the charter")
+	}
+	before := st["checkedAt"]
+	r.pass(t)
+	if st := r.status(t, "check"); st["checkedAt"] != before {
+		t.Errorf("a tree checked already was checked again: %v", st)
+	}
+	// A file that does not parse: the verdict, with the file named, and no failure.
+	r.ask(t, "check", entity.Obj{"to": "check.repos.r", "tree": treeB})
+	r.pass(t)
+	if st := r.status(t, "check"); st["verdict"] != "refused" || !strings.Contains(fmt.Sprint(st["refusal"]), "broken.tony") ||
+		st["failed"] != nil || st["error"] != nil || st["packages"] != nil {
+		t.Fatalf("a broken file: status %v, want a verdict of refused naming it", st)
+	}
+	// A tree the repository lacks is a failed input, for good.
+	r.ask(t, "missing", entity.Obj{"to": "check.repos.r", "tree": "0123456789abcdef0123456789abcdef01234567"})
+	r.pass(t)
+	if st := r.status(t, "missing"); st["failed"] != verseio.PermanentFailure || st["verdict"] != nil {
+		t.Fatalf("a missing tree: status %v, want a permanent refusal and no verdict", st)
+	}
+}

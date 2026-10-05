@@ -5082,3 +5082,350 @@ func (s *Listen) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	}
 	return s.FromTonyIR(node, opts...)
 }
+
+// ToTonyIR converts CharterCheck to a Tony IR node.
+func (s *CharterCheck) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	var node *ir.Node
+	var err error
+	_ = node // suppress unused variable error
+	_ = err  // suppress unused variable error
+
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: At
+	irMap["at"] = ir.FromString(string(s.At))
+
+	// Field: Verdict
+	irMap["verdict"] = ir.FromString(string(s.Verdict))
+
+	// Field: Refusal
+	if s.Refusal != "" {
+		irMap["refusal"] = ir.FromString(string(s.Refusal))
+	}
+
+	// Field: Packages
+	if len(s.Packages) > 0 {
+		slice := make([]*ir.Node, len(s.Packages))
+		for i, v := range s.Packages {
+			node, err = v.ToTonyIR(opts...)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert slice element %d: %w", i, err)
+			}
+			slice[i] = node
+		}
+		irMap["packages"] = ir.FromSlice(slice)
+	}
+
+	// Field: Pruned
+	if len(s.Pruned) > 0 {
+		slice := make([]*ir.Node, len(s.Pruned))
+		for i, v := range s.Pruned {
+			slice[i] = ir.FromString(string(v))
+		}
+		irMap["pruned"] = ir.FromSlice(slice)
+	}
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates CharterCheck from a Tony IR node.
+func (s *CharterCheck) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for CharterCheck, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "at":
+			// Field: At
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "at", fieldNodeUnwrapped.Type)
+			}
+			s.At = string(fieldNodeUnwrapped.String)
+		case "verdict":
+			// Field: Verdict
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "verdict", fieldNodeUnwrapped.Type)
+			}
+			s.Verdict = string(fieldNodeUnwrapped.String)
+		case "refusal":
+			// Field: Refusal
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "refusal", fieldNodeUnwrapped.Type)
+			}
+			s.Refusal = string(fieldNodeUnwrapped.String)
+		case "packages":
+			// Field: Packages
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]CharterCheckPackage, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					elem := CharterCheckPackage{}
+					if err := elem.FromTonyIR(v, opts...); err != nil {
+						return fmt.Errorf("failed to convert slice element %d: %w", i, err)
+					}
+					slice[i] = elem
+				}
+				s.Packages = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"packages\"", fieldNodeUnwrapped.Type)
+			}
+		case "pruned":
+			// Field: Pruned
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]string, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					ctx := fmt.Sprintf("slice element %d", i)
+					var elem string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					elem = v.String
+					slice[i] = string(elem)
+				}
+				s.Pruned = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"pruned\"", fieldNodeUnwrapped.Type)
+			}
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for CharterCheck", fieldName.String)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts CharterCheck to Tony format bytes.
+func (s *CharterCheck) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates CharterCheck.
+func (s *CharterCheck) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
+// ToTonyIR converts CharterCheckPackage to a Tony IR node.
+func (s *CharterCheckPackage) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: At
+	irMap["at"] = ir.FromString(string(s.At))
+
+	// Field: Added
+	if len(s.Added) > 0 {
+		slice := make([]*ir.Node, len(s.Added))
+		for i, v := range s.Added {
+			slice[i] = ir.FromString(string(v))
+		}
+		irMap["added"] = ir.FromSlice(slice)
+	}
+
+	// Field: Changed
+	if len(s.Changed) > 0 {
+		slice := make([]*ir.Node, len(s.Changed))
+		for i, v := range s.Changed {
+			slice[i] = ir.FromString(string(v))
+		}
+		irMap["changed"] = ir.FromSlice(slice)
+	}
+
+	// Field: Removed
+	if len(s.Removed) > 0 {
+		slice := make([]*ir.Node, len(s.Removed))
+		for i, v := range s.Removed {
+			slice[i] = ir.FromString(string(v))
+		}
+		irMap["removed"] = ir.FromSlice(slice)
+	}
+
+	// Field: Held
+	if len(s.Held) > 0 {
+		slice := make([]*ir.Node, len(s.Held))
+		for i, v := range s.Held {
+			slice[i] = ir.FromString(string(v))
+		}
+		irMap["held"] = ir.FromSlice(slice)
+	}
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates CharterCheckPackage from a Tony IR node.
+func (s *CharterCheckPackage) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for CharterCheckPackage, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "at":
+			// Field: At
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "at", fieldNodeUnwrapped.Type)
+			}
+			s.At = string(fieldNodeUnwrapped.String)
+		case "added":
+			// Field: Added
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]string, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					ctx := fmt.Sprintf("slice element %d", i)
+					var elem string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					elem = v.String
+					slice[i] = string(elem)
+				}
+				s.Added = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"added\"", fieldNodeUnwrapped.Type)
+			}
+		case "changed":
+			// Field: Changed
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]string, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					ctx := fmt.Sprintf("slice element %d", i)
+					var elem string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					elem = v.String
+					slice[i] = string(elem)
+				}
+				s.Changed = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"changed\"", fieldNodeUnwrapped.Type)
+			}
+		case "removed":
+			// Field: Removed
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]string, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					ctx := fmt.Sprintf("slice element %d", i)
+					var elem string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					elem = v.String
+					slice[i] = string(elem)
+				}
+				s.Removed = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"removed\"", fieldNodeUnwrapped.Type)
+			}
+		case "held":
+			// Field: Held
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]string, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					ctx := fmt.Sprintf("slice element %d", i)
+					var elem string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					elem = v.String
+					slice[i] = string(elem)
+				}
+				s.Held = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"held\"", fieldNodeUnwrapped.Type)
+			}
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for CharterCheckPackage", fieldName.String)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts CharterCheckPackage to Tony format bytes.
+func (s *CharterCheckPackage) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates CharterCheckPackage.
+func (s *CharterCheckPackage) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}

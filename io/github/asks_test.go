@@ -118,12 +118,29 @@ func (r *asksRig) bind(t *testing.T, userID, principal string) {
 // reflect stands a comment on #42 as the in half's reflection would (github.go, commentPayload).
 func (r *asksRig) reflect(t *testing.T, id int64, login string, userID int64, body string) {
 	t.Helper()
-	ref := entity.RefAt("github", "signadot", "verse", "comment", "42", strconv.FormatInt(id, 10))
+	r.reflectOn(t, 42, id, login, userID, body)
+}
+
+// reflectOn is reflect, on the pull request numbered on.
+func (r *asksRig) reflectOn(t *testing.T, on int, id int64, login string, userID int64, body string) {
+	t.Helper()
+	n := strconv.Itoa(on)
+	ref := entity.RefAt("github", "signadot", "verse", "comment", n, strconv.FormatInt(id, 10))
 	entitytest.Set(t, r.store, ref, entity.Obj{
-		"repo": "signadot/verse", "on": 42, "id": id, "kind": "conversation",
+		"repo": "signadot/verse", "on": on, "id": id, "kind": "conversation",
 		"author": login, "authorId": userID, "body": body,
-		"url": "https://github.com/signadot/verse/pull/42#issuecomment-" + strconv.FormatInt(id, 10),
+		"url": "https://github.com/signadot/verse/pull/" + n + "#issuecomment-" + strconv.FormatInt(id, 10),
 	}.Payload())
+}
+
+// status is what the out half recorded beside the input named.
+func (r *asksRig) status(t *testing.T, name string) entity.Obj {
+	t.Helper()
+	e, ok, err := r.store.Get(entity.RefAt("github", "signadot", "verse", "out", name+verseio.StatusSuffix))
+	if err != nil || !ok {
+		return nil
+	}
+	return entity.ToObj(e.Payload)
 }
 
 func (r *asksRig) question(t *testing.T) entity.Payload {
@@ -351,5 +368,83 @@ func TestALinkReplyBindsTheAuthorsAccount(t *testing.T) {
 	r.pass(t)
 	if n := len(r.fake.commentsOn("signadot/verse", 42)); n != 3 {
 		t.Errorf("comments after a quiet pass = %d, want 3", n)
+	}
+}
+
+// A question asked by opening the pull request it is about: one `open` input carrying `asks`
+// opens the pull request, keeps the question's comment on it, hears the answer there, merges it
+// at the head decided on when told to, and records a close of a merged one as already closed.
+func TestAnOpenInputAsksOnThePullRequestItOpens(t *testing.T) {
+	r := newAsksRig(t)
+	r.raise(t)
+	in := entity.Obj{
+		"to":   "branch.verse/candidate/aaaa",
+		"open": entity.Obj{"base": "verse/live", "title": "charters: aaaa"},
+		"text": "What is on main against what runs.",
+		"asks": askedOnPR,
+	}
+	set := func() {
+		t.Helper()
+		entitytest.Set(t, r.store, entity.RefAt("github", "signadot", "verse", "out", "candidate"), in.Payload())
+	}
+	set()
+	r.pass(t)
+	st := r.status(t, "candidate")
+	number, _ := st["number"].(int64)
+	if number == 0 || st["comment"] == nil || st["commentPosted"] == nil || st["posted"] == nil {
+		t.Fatalf("status after opening with a question = %v, want the pull request and the comment both", st)
+	}
+	got := r.fake.commentsOn("signadot/verse", int(number))
+	if len(got) != 1 || !strings.Contains(got[0], "Deploy #42?") || !strings.Contains(got[0], "What is on main") {
+		t.Fatalf("the comment on the opened pull request = %q", got)
+	}
+	// Nothing changed: nothing written.
+	r.pass(t)
+	if r.fake.openedCount() != 1 || r.fake.editCount() != 0 {
+		t.Fatalf("a quiet pass wrote: %d opened, %d edits", r.fake.openedCount(), r.fake.editCount())
+	}
+	// Answered there, by a bound author.
+	r.bind(t, "101", "user:ana@example.com")
+	r.reflectOn(t, int(number), 9800, "ana", 101, "/verse proceed")
+	r.pass(t)
+	if q := r.question(t); entity.Str(q, "verdict") != "proceed" || entity.Str(q, "by") != "user:ana@example.com" {
+		t.Fatalf("the answer on the opened pull request: %v", q)
+	}
+	// Told to merge, at the head decided on: merged once, by this io, and the record says so.
+	in["merge"] = entity.Obj{"sha": "cccc3333", "method": "merge"}
+	set()
+	r.pass(t)
+	if st := r.status(t, "candidate"); st["merged"] != true || st["commit"] == nil || r.fake.merges != 1 {
+		t.Fatalf("merging: status %v, merges %d", st, r.fake.merges)
+	}
+	r.pass(t)
+	if r.fake.merges != 1 {
+		t.Errorf("merged twice")
+	}
+	// Told to close once merged: recorded as already closed, and nothing is closed.
+	in["closed"] = true
+	set()
+	r.pass(t)
+	if st := r.status(t, "candidate"); st["closed"] != true || st["already"] != true || r.fake.closeCount() != 0 {
+		t.Fatalf("closing a merged pull request: status %v, closes %d", st, r.fake.closeCount())
+	}
+}
+
+// A superseded candidate's pull request is closed unmerged, once.
+func TestAnOpenInputClosesThePullRequestItOpened(t *testing.T) {
+	r := newAsksRig(t)
+	r.raise(t)
+	in := entity.Obj{"to": "branch.verse/candidate/bbbb", "open": entity.Obj{"base": "verse/live", "title": "charters: bbbb"}, "asks": askedOnPR}
+	entitytest.Set(t, r.store, entity.RefAt("github", "signadot", "verse", "out", "superseded"), in.Payload())
+	r.pass(t)
+	in["closed"] = true
+	entitytest.Set(t, r.store, entity.RefAt("github", "signadot", "verse", "out", "superseded"), in.Payload())
+	r.pass(t)
+	if st := r.status(t, "superseded"); st["closed"] != true || st["already"] != nil || r.fake.closeCount() != 1 {
+		t.Fatalf("closing: status %v, closes %d", st, r.fake.closeCount())
+	}
+	r.pass(t)
+	if r.fake.closeCount() != 1 {
+		t.Errorf("closed twice")
 	}
 }

@@ -150,11 +150,13 @@ ask. The install writes the grants that the registration describes. So you set u
 act, not with four `verse perms` lines and a flag
 ([reference/io.md](reference/io.md#the-out-half)).
 
-Not every io has an out half. The outbound act of git is a push, which cannot be taken back.
-A push belongs to a task, which verse gates per step and does once. **The rule is
-reversibility**: a sink is for what is kept in step with a record and corrected by editing, and
-a task is for what cannot be taken back. This rule keeps the out half from becoming an RPC
-framework.
+**The rule is reversibility**: a sink is for what is kept in step with a record and corrected by
+editing, and a task is for what cannot be taken back. This rule keeps the out half from becoming
+an RPC framework. So git's out half is narrow. It makes a tag once and never moves it, moves a
+branch to a commit that already exists with a lease on where it stood, and installs a tree of
+charters the repository already holds: each is kept in step with its input and changed by
+editing the input. A commit, and a push of new work, belong to a task, which verse gates per
+step and does once.
 
 ## The seam: a source answers, verse converges
 

@@ -203,3 +203,37 @@ func (i *installation) jwt() (string, error) {
 	}
 	return signed + "." + enc.EncodeToString(sig), nil
 }
+
+// AppToken mints the installation tokens of an app for a program that is not this io, the git io
+// pushing as the app: the same installation, kept until shortly before it expires.
+type AppToken struct{ i *installation }
+
+// NewAppToken checks the app's credentials as far as can be without GitHub and mints the first
+// token, so an app that cannot mint is a program that does not start. base is the API's root
+// (APIBase), and cl the client to mint with (nil is the default).
+func NewAppToken(ctx context.Context, a AppAuth, base string, cl *http.Client) (*AppToken, error) {
+	if base == "" {
+		base = APIBase
+	}
+	if cl == nil {
+		cl = http.DefaultClient
+	}
+	i, err := newInstallation(a, base, cl)
+	if err != nil {
+		return nil, err
+	}
+	t := &AppToken{i: i}
+	if _, err := t.Token(ctx); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+// Token is a token good for at least a few more minutes, minted again where the last is not.
+func (t *AppToken) Token(ctx context.Context) (string, error) {
+	h, err := t.i.authorization(ctx)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimPrefix(h, "Bearer "), nil
+}

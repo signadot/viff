@@ -53,6 +53,8 @@ func askFor(resolver task.Resolver) Tool {
 				"description": "how long to wait for an answer, as a duration (30m, 24h); omit to wait until they answer"},
 			"default": map[string]any{"type": "string",
 				"description": "with options and within: the option taken if nobody answers in time"},
+			"answerers": map[string]any{"type": "array", "items": map[string]any{"type": "string"},
+				"description": "who may answer, as grantees (user:ana@example.com, user:*, group:owners); omit for the person this task runs for"},
 		},
 		Required: []string{"question"},
 		// One effect, with the verb that says what this is: a question, which no grant bounds
@@ -74,10 +76,18 @@ func askFor(resolver task.Resolver) Tool {
 			// answer finds the task that asked — and cannot collide with the supervisor's
 			// `~d<n>` decisions.
 			origin, _, _ := strings.Cut(tu.ID, task.GateSep)
+			// WHOM IT IS HELD OUT TO: the person this task runs for, unless the call names
+			// answerers. A charter's call list asks for a party the charter names, which for
+			// a system charter is the one way its question reaches anybody: the system is
+			// nobody's docket.
+			answerers := strsOf(tu.Input, "answerers")
+			if len(answerers) == 0 {
+				answerers = []string{task.PrincipalAnswerer}
+			}
 			q := task.GateQuestion{
 				ID: tu.ID, Origin: origin, Gate: askTool, Mode: task.Ask,
 				Reason: question, Options: opts, Deadline: deadline,
-				Answerers: []string{task.PrincipalAnswerer},
+				Answerers: answerers,
 			}
 			res, err := resolver.Resolve(ctx, q, tu)
 			if err != nil {
@@ -86,6 +96,19 @@ func askFor(resolver task.Resolver) Tool {
 			return answerText(res, deadline), false, nil
 		},
 	}
+}
+
+// strsOf reads a list of strings the call named under key, blank ones dropped.
+func strsOf(in map[string]any, key string) []string {
+	var out []string
+	if raw, ok := in[key].([]any); ok {
+		for _, v := range raw {
+			if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
+				out = append(out, strings.TrimSpace(s))
+			}
+		}
+	}
+	return out
 }
 
 // optionsOf reads the outcomes the model named, or the one outcome an unnamed question has.

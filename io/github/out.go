@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -88,6 +89,42 @@ import (
 // already opened one from that branch. A pull request this io opened follows the input's title
 // and body; one it ADOPTED keeps its author's, since what a person wrote on their own pull request
 // is not this io's to rewrite.
+//
+// An `open` input may ALSO carry `text` and `asks`, and then this keeps the comment on the pull
+// request it opened as a `pr.<n>` input would, and reads the replies to it (asks.go): a question
+// asked by opening the pull request it is about, in one input, for a charter that cannot know the
+// number before the pull request exists. The comment's fields stand beside the pull request's on
+// the status as `comment`, `commentUrl`, `commentPosted` and `commentAt`. It may carry `merge`,
+// which merges the pull request this io opened at the head it was decided on, as a `merge` input
+// does, with the same fields; and `closed: true`, which closes it unmerged, once, and never one
+// it adopted; `closed` and `closedAt` say so, as a `close` input's do.
+//
+// AND COMMIT STATUSES, when an `open` input carries `commitStatus`, a map from GitHub's context
+// (the name a status stands under on the page) to the status asked for under it:
+//
+//	commitStatus:
+//	  verse:         {state: pending, description: "waiting for an answer", sha: <head>}
+//	  "verse/check": {state: success, description: "installs cleanly"}
+//
+// each a commit status on the pull request's head (`sha`, or the head GitHub reports when it is
+// left out), linking to the pull request: `state` is pending, success, failure or error. Each
+// context is its own status, so two things said about one pull request stand side by side and
+// neither overwrites the other. The status records `commitStatus.<context>`: `state`, `sha`,
+// `at` and `posted`; the same state, description and sha again costs nothing, and a changed one
+// replaces the status under that context. It takes `statuses: write` on the App. One GitHub
+// refuses is `error` under its context, `refused` holding what was refused so it is not asked
+// again, and does not fail the input.
+//
+// AND AN ISSUE, when `open` is asked with `to: issue`:
+//
+//	to:   issue
+//	open: {title: "charters: the install of <tree> failed", body: "…"}
+//
+// opened once and kept in step, answered with `number, url, postedAt, updatedAt, posted` as a pull
+// request is; `text`, `asks` and `closed: true` then apply to it, and `closed: false` reopens it
+// where this io closed it (`reopenedAt`): one standing issue a charter opens and closes as what it
+// is about goes wrong and right. It is how a charter files what
+// went wrong where the repository's people read, with no number to know before the issue exists.
 type Sink struct {
 	// Verse is the verse this io reads questions and bindings from, as itself. Nil reads none,
 	// and an input carrying `asks` is refused for good.
@@ -163,7 +200,7 @@ func (k *Sink) deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 		return nil, verseio.Permanent(fmt.Errorf("%s is no repository's out place this io serves", in.Place))
 	}
 	if spec := entity.Get(in.Value, "open"); spec != nil {
-		return k.open(ctx, repo, in, spec)
+		return k.openWith(ctx, repo, in, spec)
 	}
 	if spec := entity.Get(in.Value, "merge"); spec != nil {
 		return k.merge(ctx, repo, in, spec)
@@ -186,7 +223,26 @@ func (k *Sink) deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 			return nil, err
 		}
 	}
-	fields, number, err := k.say(ctx, repo, in, text)
+	number, err := target(in.To)
+	if err != nil {
+		return nil, err
+	}
+	return k.comment(ctx, repo, number, text, asked, in.Status, commentKeys)
+}
+
+// statusKeys names the fields a comment's facts stand under on a status: a `pr.<n>` input's own,
+// or beside a pull request's on an `open` input that also comments.
+type statusKeys struct{ url, posted, postedAt, updatedAt string }
+
+var (
+	commentKeys = statusKeys{url: "url", posted: "posted", postedAt: "postedAt", updatedAt: "updatedAt"}
+	besideKeys  = statusKeys{url: "commentUrl", posted: "commentPosted", postedAt: "commentAt", updatedAt: "commentAt"}
+)
+
+// comment keeps the comment carrying text on #number and, where it asks questions, reads the
+// replies that answer them. Nil fields means nothing needed doing.
+func (k *Sink) comment(ctx context.Context, repo string, number int, text string, asked []asked, status entity.Payload, keys statusKeys) (entity.Obj, error) {
+	fields, err := k.say(ctx, repo, number, text, status, keys)
 	if err != nil || len(asked) == 0 {
 		return fields, err
 	}
@@ -197,7 +253,7 @@ func (k *Sink) deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 	if fields != nil {
 		fields["edits"] = editsOf(asked)
 	}
-	id, ok := commentID(in.Status)
+	id, ok := commentID(status)
 	if c, _ := fields["comment"].(string); c != "" {
 		id, _ = strconv.ParseInt(c, 10, 64)
 		ok = true
@@ -205,7 +261,7 @@ func (k *Sink) deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 	if !ok {
 		return fields, nil
 	}
-	more, err := k.answerReplies(ctx, repo, number, id, shownEdits(asked, in.Status), in.Status)
+	more, err := k.answerReplies(ctx, repo, number, id, shownEdits(asked, status), status)
 	if err != nil && fields != nil {
 		// The comment was made or changed: that is recorded now, with the error beside it, and
 		// not lost to the error. Recorded nowhere, the comment's id would be gone and the next
@@ -225,38 +281,135 @@ func (k *Sink) deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 	return fields, nil
 }
 
-// say keeps one comment on the input's issue or pull request carrying text, and answers the fields
-// to record and the item's number. Nil fields means the comment already carries the text.
-func (k *Sink) say(ctx context.Context, repo string, in verseio.Input, text string) (entity.Obj, int, error) {
-	number, err := target(in.To)
-	if err != nil {
-		return nil, 0, err
-	}
+// say keeps one comment on #number carrying text, and answers the fields to record under keys.
+// Nil fields means the comment already carries the text.
+func (k *Sink) say(ctx context.Context, repo string, number int, text string, status entity.Payload, keys statusKeys) (entity.Obj, error) {
 	fp := fingerprint(text)
 	now := k.now().UTC().Format(time.RFC3339)
-	if id, ok := commentID(in.Status); ok {
-		if entity.Str(in.Status, "posted") == fp {
-			return nil, number, nil // in step: the comment carries this text
+	if id, ok := commentID(status); ok {
+		if entity.Str(status, keys.posted) == fp {
+			return nil, nil // in step: the comment carries this text
 		}
 		err := k.g.api.updateComment(ctx, repo, id, text)
 		if err == nil {
-			return entity.Obj{"updatedAt": now, "posted": fp}, number, nil
+			return entity.Obj{keys.updatedAt: now, keys.posted: fp}, nil
 		}
 		// GONE: somebody deleted the comment. The input still asks for one saying this, so it is
 		// said again, rather than an edit of what is not there refused for good
 		// (git-issue ne9fce9dh12ks1q4qsn0).
 		if !NotFound(err) {
-			return nil, number, err
+			return nil, err
 		}
 	}
 	c, err := k.g.api.createComment(ctx, repo, number, text)
 	if err != nil {
-		return nil, number, err
+		return nil, err
 	}
 	return entity.Obj{
-		"comment": strconv.FormatInt(c.ID, 10), "url": c.HTMLURL,
-		"postedAt": now, "updatedAt": now, "posted": fp,
-	}, number, nil
+		"comment": strconv.FormatInt(c.ID, 10), keys.url: c.HTMLURL,
+		keys.postedAt: now, keys.updatedAt: now, keys.posted: fp,
+	}, nil
+}
+
+// openWith opens the pull request an `open` input asks for and, where the input also carries
+// `text` or `asks`, keeps the comment on it and reads its replies; where it carries `closed:
+// true`, closes it. The fields of each stand together on the one status.
+func (k *Sink) openWith(ctx context.Context, repo string, in verseio.Input, spec entity.Payload) (entity.Obj, error) {
+	fields, err := k.open(ctx, repo, in, spec)
+	if err != nil {
+		return nil, err
+	}
+	number, known := prNumber(in.Status)
+	if n, ok := fields["number"].(int); ok {
+		number, known = n, true
+	}
+	if !known {
+		return fields, nil
+	}
+	merge := func(more entity.Obj) {
+		if len(more) == 0 {
+			return
+		}
+		if fields == nil {
+			fields = entity.Obj{}
+		}
+		for k, v := range more {
+			fields[k] = v
+		}
+	}
+	text := strings.TrimSpace(entity.Str(in.Value, "text"))
+	asks := verseio.Strs(entity.Get(in.Value, "asks"))
+	if text != "" || len(asks) > 0 {
+		var asked []asked
+		if len(asks) > 0 {
+			if text, asked, err = k.asksBody(ctx, text, asks); err != nil {
+				return fields, err
+			}
+		}
+		more, err := k.comment(ctx, repo, number, text, asked, in.Status, besideKeys)
+		if err != nil {
+			if fields == nil {
+				return nil, err
+			}
+			fields["error"] = err.Error()
+			return fields, nil
+		}
+		merge(more)
+	}
+	if spec := entity.Get(in.Value, "merge"); spec != nil {
+		if in.To == issueTarget {
+			return fields, verseio.Permanent(fmt.Errorf("an issue is not merged: `merge` is a pull request's"))
+		}
+		more, err := k.mergeAt(ctx, repo, number, spec, in.Status)
+		if err != nil {
+			if fields == nil {
+				return nil, err
+			}
+			fields["error"] = err.Error()
+			return fields, nil
+		}
+		merge(more)
+	}
+	if spec := entity.Get(in.Value, "commitStatus"); spec != nil && in.To != issueTarget {
+		// BESIDE, NEVER INSTEAD: a status GitHub refuses (an App not yet allowed `statuses:
+		// write`) is said on the input's status and does not fail the input, which would stop
+		// the rest of it — the replies to its question above all — being asked again.
+		merge(k.commitStatuses(ctx, repo, number, spec, in.Status, fields))
+	}
+	if closed := ir.Uncomment(entity.Get(in.Value, "closed")); closed != nil && closed.Type == ir.BoolType && closed.Bool &&
+		entity.Get(in.Status, "closed") == nil && entity.Get(in.Status, "adopted") == nil {
+		// CLOSED, ONCE, AND ONLY WHAT THIS IO OPENED: a person's pull request it adopted is
+		// theirs to close.
+		it, err := k.g.api.readIssue(ctx, repo, number)
+		if err != nil {
+			return fields, err
+		}
+		out := entity.Obj{"closed": true}
+		if it.State == "closed" {
+			out["already"] = true
+		} else if it, err = k.g.api.closeIssue(ctx, repo, number); err != nil {
+			return fields, err
+		}
+		if it.ClosedAt != "" {
+			out["closedAt"] = it.ClosedAt
+		} else {
+			out["closedAt"] = k.now().UTC().Format(time.RFC3339)
+		}
+		merge(out)
+	} else if in.To == issueTarget && closed != nil && closed.Type == ir.BoolType && !closed.Bool &&
+		entity.Get(in.Status, "closed") != nil {
+		// REOPENED, an issue this io filed and closed, where it is asked for open again: one
+		// standing issue a charter opens while something is wrong and closes when it is right,
+		// across as many rounds as it takes, rather than a new issue each round.
+		if _, err := k.g.api.setIssueState(ctx, repo, number, "open"); err != nil {
+			return fields, err
+		}
+		merge(entity.Obj{
+			"closed": entity.Removed(), "closedAt": entity.Removed(), "already": entity.Removed(),
+			"reopenedAt": k.now().UTC().Format(time.RFC3339),
+		})
+	}
+	return fields, nil
 }
 
 // commentID is the comment a status says this input made, if it made one.
@@ -276,12 +429,111 @@ func fingerprint(text string) string {
 	return hex.EncodeToString(sum[:8])
 }
 
+// commitStatuses keeps one commit status per context on the pull request's head, as
+// `commitStatus` asks: a map from GitHub's context (the name a status stands under on the page,
+// `verse`, `verse/check`) to `{state, description, sha}`. Each context is its own status, so two
+// rules saying two things (what verse decided, what the charter check found) write two keys and
+// neither overwrites the other. What each did is recorded under the same context in the input's
+// status, `commitStatus.<context>`.
+func (k *Sink) commitStatuses(ctx context.Context, repo string, number int, spec, status entity.Payload, fields entity.Obj) entity.Obj {
+	out := entity.Obj{}
+	names := verseio.Fields(spec)
+	if len(names) == 0 || ir.Uncomment(spec).Type != ir.ObjectType {
+		return entity.Obj{"commitStatusError": "`commitStatus` maps a context (`verse`) to {state, description, sha}"}
+	}
+	sort.Strings(names)
+	was := entity.Get(status, "commitStatus")
+	// Each status links to the pull request: this pass's url where it opened it, the last pass's
+	// otherwise.
+	target := entity.Str(status, "url")
+	if u, ok := fields["url"].(string); ok && u != "" {
+		target = u
+	}
+	for _, name := range names {
+		if strings.TrimSpace(name) == "" {
+			continue
+		}
+		if more := k.commitStatus(ctx, repo, number, name, entity.Get(spec, name), entity.Get(was, name), target); more != nil {
+			out[name] = more
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return entity.Obj{"commitStatus": out}
+}
+
+// commitStatus keeps one context's commit status on the pull request's head: `state` (pending,
+// success, failure or error), `description`, and `sha`, the head it is about, which defaults to
+// the pull request's. A status GitHub already has, by state, description and sha, is not posted
+// again. `target` is the pull request's url, which the status links to; `status` is what was
+// recorded for this context.
+//
+// It answers fields and never an error: what went wrong is `error`, beside the rest under the
+// context. A refusal (a state GitHub has no word for, a 4xx such as a missing permission) is not
+// asked again while the same status is asked for, `refused` being its fingerprint; anything else
+// is asked again on the next pass.
+func (k *Sink) commitStatus(ctx context.Context, repo string, number int, context string, spec, status entity.Payload, target string) entity.Obj {
+	failed := func(err error, refusedOn string) entity.Obj {
+		if entity.Str(status, "error") == err.Error() && entity.Str(status, "refused") == refusedOn {
+			return nil // said already
+		}
+		out := entity.Obj{"error": err.Error(), "refused": entity.Removed()}
+		if refusedOn != "" {
+			out["refused"] = refusedOn
+		}
+		return out
+	}
+	state := strings.TrimSpace(entity.Str(spec, "state"))
+	description := strings.TrimSpace(entity.Str(spec, "description"))
+	sha := strings.TrimSpace(entity.Str(spec, "sha"))
+	switch state {
+	case "pending", "success", "failure", "error":
+	default:
+		return failed(fmt.Errorf("`commitStatus.%s.state` is pending, success, failure or error, not %q", context, state),
+			fingerprint(state+"\x00"+description+"\x00"+sha))
+	}
+	if sha == "" {
+		p, err := k.g.api.readPull(ctx, repo, number)
+		if err != nil {
+			return failed(err, "")
+		}
+		if p.Head == nil || p.Head.SHA == "" {
+			return failed(fmt.Errorf("pull request #%d names no head to put the status on", number), "")
+		}
+		sha = p.Head.SHA
+	}
+	fp := fingerprint(state + "\x00" + description + "\x00" + sha)
+	if entity.Str(status, "posted") == fp || entity.Str(status, "refused") == fp {
+		return nil // GitHub has this status on this head, or refused it as asked
+	}
+	if err := k.g.api.createStatus(ctx, repo, sha, state, context, description, target); err != nil {
+		var he *httpError
+		if asHTTPError(err, &he) && he.refusal() {
+			return failed(err, fp)
+		}
+		return failed(err, "")
+	}
+	out := entity.Obj{"state": state, "sha": sha, "posted": fp, "at": k.now().UTC().Format(time.RFC3339)}
+	if entity.Get(status, "error") != nil || entity.Get(status, "refused") != nil {
+		out["error"], out["refused"] = entity.Removed(), entity.Removed()
+	}
+	return out
+}
+
+// issueTarget is the `to` of an input that opens an issue: there is no number before it exists.
+const issueTarget = "issue"
+
 // open keeps one pull request for a branch: adopted where a person opened one, opened otherwise,
-// and, for one this io opened, its title and body in step with the input.
+// and, for one this io opened, its title and body in step with the input. With `to: issue` it
+// keeps one issue instead (openIssue).
 func (k *Sink) open(ctx context.Context, repo string, in verseio.Input, spec entity.Payload) (entity.Obj, error) {
+	if in.To == issueTarget {
+		return k.openIssue(ctx, repo, in, spec)
+	}
 	kind, branch, _ := strings.Cut(in.To, ".")
 	if kind != "branch" || branch == "" {
-		return nil, verseio.Permanent(fmt.Errorf("`open` asks for a pull request from a branch: `to` is branch.<name>, not %q", in.To))
+		return nil, verseio.Permanent(fmt.Errorf("`open` asks for a pull request from a branch, or an issue: `to` is branch.<name> or issue, not %q", in.To))
 	}
 	title := strings.TrimSpace(entity.Str(spec, "title"))
 	if title == "" {
@@ -343,6 +595,36 @@ func (k *Sink) open(ctx context.Context, repo string, in verseio.Input, spec ent
 	}, nil
 }
 
+// openIssue keeps one issue for an input: opened once, and its title and body in step with the
+// input from then on. It is how a charter files what went wrong where the repository's people
+// read, with no number to know before the issue exists; `text`, `asks` and `closed` then apply
+// to it as to a pull request this io opened.
+func (k *Sink) openIssue(ctx context.Context, repo string, in verseio.Input, spec entity.Payload) (entity.Obj, error) {
+	title := strings.TrimSpace(entity.Str(spec, "title"))
+	if title == "" {
+		return nil, verseio.Permanent(fmt.Errorf("`open` carries a title"))
+	}
+	body := entity.Str(spec, "body")
+	fp := fingerprint(title + "\x00" + body)
+	now := k.now().UTC().Format(time.RFC3339)
+	if number, ok := prNumber(in.Status); ok {
+		if entity.Str(in.Status, "posted") == fp {
+			return nil, nil
+		}
+		if err := k.g.api.updateIssue(ctx, repo, number, title, body); err != nil {
+			return nil, err
+		}
+		return entity.Obj{"updatedAt": now, "posted": fp}, nil
+	}
+	i, err := k.g.api.createIssue(ctx, repo, title, body)
+	if err != nil {
+		return nil, err
+	}
+	return entity.Obj{
+		"number": i.Number, "url": i.HTMLURL, "postedAt": now, "updatedAt": now, "posted": fp,
+	}, nil
+}
+
 // prNumber is the pull request a status says this input opened or adopted.
 func prNumber(status entity.Payload) (int, bool) {
 	n := ir.Uncomment(entity.Get(status, "number"))
@@ -354,12 +636,18 @@ func prNumber(status entity.Payload) (int, bool) {
 
 // merge merges a pull request at the sha it was asked for, once.
 func (k *Sink) merge(ctx context.Context, repo string, in verseio.Input, spec entity.Payload) (entity.Obj, error) {
-	if entity.Get(in.Status, "merged") != nil {
-		return nil, nil // merged, by this io or before it was asked: nothing is left to do
-	}
 	number, err := target(in.To)
 	if err != nil {
 		return nil, err
+	}
+	return k.mergeAt(ctx, repo, number, spec, in.Status)
+}
+
+// mergeAt merges pull request #number at the head spec names, once; status is what the last pass
+// recorded for whatever input asked.
+func (k *Sink) mergeAt(ctx context.Context, repo string, number int, spec, status entity.Payload) (entity.Obj, error) {
+	if entity.Get(status, "merged") != nil {
+		return nil, nil // merged, by this io or before it was asked: nothing is left to do
 	}
 	sha := entity.Str(spec, "sha")
 	if sha == "" {

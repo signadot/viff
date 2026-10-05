@@ -9,7 +9,7 @@ require (
 	github.com/google/gops v0.3.28
 	github.com/scott-cotton/cli v0.3.1
 	github.com/signadot/tony-format/git-issue v0.3.2
-	github.com/signadot/tony-format/go-tony v0.0.243
+	github.com/signadot/tony-format/go-tony v0.0.244
 	golang.org/x/net v0.59.0
 	golang.org/x/oauth2 v0.36.0
 )

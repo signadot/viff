@@ -20,6 +20,7 @@ import (
 	"github.com/signadot/verse/config"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/system/repocharters"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/versed"
 )
@@ -301,6 +302,18 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	srv.Addr = g.Addr             // this verse's operator API listen address, for /status discovery
 	srv.LLM = appCfg.LLM.Status() // secrets-safe agent-creds summary, for /status
 	srv.SystemCharter = appCfg.SystemCharter
+	// The charters verse ships at the system level, rendered for this deployment's repositories.
+	// Refused at startup where one does not render: a reconciler believed to be watching a
+	// repository and not installed is the worse verse.
+	for _, rc := range appCfg.RepoCharters {
+		text, err := repocharters.Render(repocharters.Params{
+			Repo: rc.Repo, GitHub: rc.GitHub, InstallAt: rc.At, Tree: rc.Tree, Answerers: rc.Answerers,
+		})
+		if err != nil {
+			return fmt.Errorf("repoCharters: %w", err)
+		}
+		srv.SystemCharters = append(srv.SystemCharters, versed.SystemCharter{Name: "repo-charters " + rc.Repo, Text: text})
+	}
 	// How people are authenticated at the door. Refused at startup where it cannot be served, as
 	// the pace below is: a verse believed to verify its callers and not doing so is the worse one.
 	if err := srv.SetAuth(authOf(appCfg.Auth)); err != nil {

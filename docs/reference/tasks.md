@@ -352,7 +352,9 @@ call list — poses a question and blocks until it is answered, and the answer i
 result. It is a gate's record: on the docket, in `verse question`, in Slack, answerable from any of
 them, withdrawn if the task is cancelled. It names `$principal`, so it waits on whom the task acts
 for: whoever launched it, or the asker it runs for. A task acting for nobody, a rule's without
-`as: subject`, asks the docket. Its one option, `reply`,
+`as: subject`, asks the docket. A call that names `answerers`, grantees as a gate's
+`answerers` names them (`user:*`, `group:owners`), holds the question out to them instead, which
+is how a system charter's call list asks anybody at all. Its one option, `reply`,
 takes words:
 
 ```sh

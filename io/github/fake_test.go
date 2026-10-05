@@ -30,14 +30,16 @@ type fakeGitHub struct {
 	mu    sync.Mutex
 	repos map[string]*fakeRepo
 
-	requests    int      // every request that reached a handler
-	notModified int      // those answered 304
-	nextComment int64    // the id of the last comment the out half made, past 9000
-	edits       int      // comments and pull requests the out half changed
-	opened      int      // pull requests the out half opened
-	merges      int      // pull requests the out half merged
-	closes      int      // issues and pull requests the out half closed
-	reviews     []string // the events of the reviews the out half posted, in order
+	requests     int      // every request that reached a handler
+	notModified  int      // those answered 304
+	nextComment  int64    // the id of the last comment the out half made, past 9000
+	edits        int      // comments and pull requests the out half changed
+	opened       int      // pull requests the out half opened
+	issuesOpened int      // issues the out half opened
+	reopens      int      // issues the out half reopened
+	merges       int      // pull requests the out half merged
+	closes       int      // issues and pull requests the out half closed
+	reviews      []string // the events of the reviews the out half posted, in order
 	// app is an app's public key, set when the source authenticates as an app: the fake then
 	// mints installation tokens for a JWT that key verifies, and accepts those tokens too.
 	app    *rsa.PublicKey
@@ -60,11 +62,21 @@ type fakeRepo struct {
 	// missingHeads are branches GitHub does not have: a pull request from one is refused with
 	// the 422 GitHub gives, until the branch arrives.
 	missingHeads map[string]bool
+	// statuses are the commit statuses posted, in order; statusesForbidden refuses a new one as
+	// GitHub refuses an App not allowed `statuses: write`, and statusAsks counts every request.
+	statuses          []fakeStatus
+	statusesForbidden bool
+	statusAsks        int
 	// discussionsOff is the feature turned off, which answers with an empty list exactly as a
 	// repository with no discussions does — the confusion hasDiscussionsEnabled exists to
 	// resolve. graphqlError is the endpoint refusing, which is HTTP 200 with an errors array.
 	discussionsOff bool
 	graphqlError   string
+}
+
+// fakeStatus is one commit status, as posted.
+type fakeStatus struct {
+	sha, state, context, description, target string
 }
 
 // fakeComment is one comment. `review` says which listing it comes from — GitHub keeps the
@@ -626,13 +638,16 @@ func (f *fakeGitHub) reply(w http.ResponseWriter, r *http.Request, v any) {
 // what landed on GitHub.
 func (f *fakeGitHub) write(w http.ResponseWriter, r *http.Request, repo *fakeRepo, rest []string) {
 	var body struct {
-		Body  string `json:"body"`
-		Title string `json:"title"`
-		Head  string `json:"head"`
-		Base  string `json:"base"`
-		SHA   string `json:"sha"`
-		Event string `json:"event"`
-		State string `json:"state"`
+		Body        string `json:"body"`
+		Title       string `json:"title"`
+		Head        string `json:"head"`
+		Base        string `json:"base"`
+		SHA         string `json:"sha"`
+		Event       string `json:"event"`
+		State       string `json:"state"`
+		Context     string `json:"context"`
+		Description string `json:"description"`
+		TargetURL   string `json:"target_url"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, `{"message":"Problems parsing JSON"}`, http.StatusBadRequest)
@@ -693,6 +708,49 @@ func (f *fakeGitHub) write(w http.ResponseWriter, r *http.Request, repo *fakeRep
 			f.merges++
 			writeJSON(w, map[string]any{"sha": "dddd4444", "merged": true})
 		}
+	case r.Method == http.MethodPost && len(rest) == 2 && rest[0] == "statuses":
+		repo.statusAsks++
+		if repo.statusesForbidden {
+			http.Error(w, `{"message":"Resource not accessible by integration"}`, http.StatusForbidden)
+			return
+		}
+		repo.statuses = append(repo.statuses, fakeStatus{sha: rest[1], state: body.State, context: body.Context,
+			description: body.Description, target: body.TargetURL})
+		w.WriteHeader(http.StatusCreated)
+		writeJSON(w, map[string]any{"id": len(repo.statuses), "state": body.State, "context": body.Context})
+	case r.Method == http.MethodPost && len(rest) == 1 && rest[0] == "issues":
+		number := 1
+		for _, i := range repo.items {
+			if i.number >= number {
+				number = i.number + 1
+			}
+		}
+		i := &fakeItem{number: number, title: body.Title, body: body.Body, state: "open",
+			updatedAt: "2026-10-01T00:00:00Z", selfOpened: true}
+		repo.items = append(repo.items, i)
+		f.issuesOpened++
+		w.WriteHeader(http.StatusCreated)
+		writeJSON(w, i.renderAs(false, true))
+	case r.Method == http.MethodPatch && len(rest) == 2 && rest[0] == "issues" && body.State == "" && body.Title != "":
+		n, _ := strconv.Atoi(rest[1])
+		i := repo.find(n)
+		if i == nil || i.pull {
+			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+			return
+		}
+		i.title, i.body = body.Title, body.Body
+		f.edits++
+		writeJSON(w, i.renderAs(false, true))
+	case r.Method == http.MethodPatch && len(rest) == 2 && rest[0] == "issues" && body.State == "open":
+		n, _ := strconv.Atoi(rest[1])
+		i := repo.find(n)
+		if i == nil {
+			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+			return
+		}
+		i.state, i.closedBy = "open", ""
+		f.reopens++
+		writeJSON(w, i.renderAs(false, true))
 	case r.Method == http.MethodPatch && len(rest) == 2 && rest[0] == "issues" && body.State == "closed":
 		n, _ := strconv.Atoi(rest[1])
 		i := repo.find(n)
@@ -813,6 +871,20 @@ func (f *fakeGitHub) openedCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.opened
+}
+
+// issuesOpenedCount is how many issues the out half opened.
+func (f *fakeGitHub) issuesOpenedCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.issuesOpened
+}
+
+// statusesOn is every commit status posted in a repository, in order.
+func (f *fakeGitHub) statusesOn(repo string) []fakeStatus {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]fakeStatus(nil), f.repos[repo].statuses...)
 }
 
 // commentsOn is the bodies of the comments on one issue or pull request, in the order made.

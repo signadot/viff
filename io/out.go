@@ -79,7 +79,9 @@ type Out struct {
 type Sink interface {
 	// Deliver makes the external system match in, and answers the fields to merge onto its
 	// status. Nil fields and no error is "nothing needed doing"; an error is recorded on the
-	// status and retried on the next pass, unless it is Permanent.
+	// status and retried on the next pass, unless it is Permanent. Fields answered WITH an error
+	// are recorded beside it: what the sink knew about the asking it failed, for a reader of the
+	// status that has nothing else to say which asking that was.
 	Deliver(ctx context.Context, in Input) (entity.Obj, error)
 }
 
@@ -356,7 +358,7 @@ func (o *Out) deliver(ctx context.Context, in Input) bool {
 	}
 	fields, err := o.sink.Deliver(ctx, in)
 	if err != nil {
-		o.fail(in, err)
+		o.failWith(in, err, fields)
 		return false
 	}
 	if len(fields) == 0 {
@@ -388,8 +390,16 @@ func (o *Out) deliver(ctx context.Context, in Input) bool {
 // A PERMANENT ONE SAYS WHICH ASKING IT REFUSED, and that is part of "the same": an input edited and
 // refused again with the same words is a new refusal, and one recorded against the old fingerprint
 // would be asked again on every pass.
-func (o *Out) fail(in Input, err error) {
-	fields := entity.Obj{"error": err.Error(), "failedAt": o.now().UTC().Format(time.RFC3339)}
+func (o *Out) fail(in Input, err error) { o.failWith(in, err, nil) }
+
+// failWith is fail with what the sink said beside the error (Sink.Deliver), which a failure
+// carries onto the status under the sink's own names.
+func (o *Out) failWith(in Input, err error, said entity.Obj) {
+	fields := entity.Obj{}
+	for k, v := range said {
+		fields[k] = v
+	}
+	fields["error"], fields["failedAt"] = err.Error(), o.now().UTC().Format(time.RFC3339)
 	on := ""
 	if IsPermanent(err) {
 		on = fingerprint(in.Value)

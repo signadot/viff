@@ -1,0 +1,191 @@
+package versed
+
+import (
+	"bytes"
+	"errors"
+	"net/http"
+	"sort"
+
+	"github.com/signadot/tony-format/go-tony/ir"
+
+	"github.com/signadot/verse/api"
+	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/trigger"
+)
+
+// THE CHARTER CHECK: whether a tree of charters would install at an address over what runs there,
+// and what would change, with nothing installed. `POST /charter/check?at=<address>` takes the
+// documents an install with a prune would take (`verse c -a <address> -d <dir> --prune`), and
+// answers api.CharterCheck: a verdict, `installs` or `refused` with the refusal, the rules and
+// strata each package adds, changes and removes, the rules that would be held, and the packages
+// the prune would take away.
+//
+// IT IS A QUESTION, NEVER PART OF THE INSTALL, and kept apart from it at every turn (dzxn44gw,
+// Scott: "as a matter of ontological cleanliness"): its own route and file, no charter lock, no
+// transaction, and no engine that runs anything. It asks the checks an install asks, each without
+// its write: the files split into packages as an install splits them, the prune's targets as an
+// install computes them, the address as the installer's to take, the outboxes against the ios
+// registered, and each package's strata and rules in an engine of the check's own that is never
+// started (trigger.Check). A verdict of `installs` says the install would not be refused by any
+// of these; what it cannot say is what the store answers on the day, which is the install's own.
+func (s *Server) checkCharter(w http.ResponseWriter, r *http.Request) {
+	docs, err := codec.ReadNodes(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	at := r.URL.Query().Get("at")
+	if at == "" {
+		http.Error(w, "a check names the address the tree would be installed at (?at=)", http.StatusBadRequest)
+		return
+	}
+	writeOut(w, r, http.StatusOK, s.checkCharterAt(s.scopedStore(r), at, docs))
+}
+
+// checkCharterAt is the check, as the store's principal: a refusal is the verdict, never an error.
+func (s *Server) checkCharterAt(store entity.Store, at string, docs []*ir.Node) api.CharterCheck {
+	out := api.CharterCheck{At: at, Verdict: "installs"}
+	refuse := func(err error) api.CharterCheck {
+		out.Verdict, out.Refusal, out.Packages = "refused", err.Error(), nil
+		return out
+	}
+	installer := entity.PrincipalOf(store)
+	if installer == "" {
+		return refuse(errors.New("a charter names who installs it, and this check names nobody"))
+	}
+	groups, err := charterFiles(docs, "")
+	if err != nil {
+		return refuse(err)
+	}
+	gone, _, err := s.pruneTargets(store, "", at, groups)
+	if err != nil {
+		return refuse(err)
+	}
+	out.Pruned = gone
+	for _, g := range groups {
+		if _, err := checkPackageAddress(store, installer, g.at); err != nil {
+			return refuse(err)
+		}
+		pkg, err := s.checkPackage(store, installer, g)
+		if err != nil {
+			return refuse(err)
+		}
+		out.Packages = append(out.Packages, pkg)
+	}
+	return out
+}
+
+// checkPackage checks one package of the tree and says what would change in it.
+func (s *Server) checkPackage(store entity.Store, installer string, g charterGroup) (api.CharterCheckPackage, error) {
+	pkg := api.CharterCheckPackage{At: g.at}
+	confine, err := trigger.ParseAt(g.at)
+	if err != nil {
+		return pkg, err
+	}
+	var reads []trigger.Subtree
+	for _, def := range g.reads {
+		subs, err := trigger.ReadsFromNode(def)
+		if err != nil {
+			return pkg, err
+		}
+		reads = append(reads, subs...)
+		sends, err := trigger.SendsFromNode(def, g.at)
+		if err != nil {
+			return pkg, err
+		}
+		for _, send := range sends {
+			if _, ok := ioFor(s.Store, send.To); !ok {
+				return pkg, errors.New("sends: " + send.To + " is no io's out place — an outbox sends to a place " +
+					"a registered io reads (`verse io` lists them, with their `out.places`)")
+			}
+		}
+	}
+	var strata []trigger.Stratum
+	for _, def := range g.strata {
+		var st trigger.Stratum
+		if err := codec.FromNode(def, &st); err != nil {
+			return pkg, err
+		}
+		strata = append(strata, st)
+	}
+	var rules []trigger.Trigger
+	for _, def := range g.rules {
+		if err := trigger.CheckFields(def); err != nil {
+			return pkg, err
+		}
+		var t trigger.Trigger
+		if err := codec.FromNode(def, &t); err != nil {
+			return pkg, err
+		}
+		if t.Name == "" {
+			return pkg, errors.New("a rule needs a name")
+		}
+		rules = append(rules, t)
+	}
+	held, err := trigger.Check(store, confine, reads, installer, strata, rules)
+	if err != nil {
+		return pkg, err
+	}
+	pkg.Held = held
+	// WHAT WOULD CHANGE, against the package as it runs: read from its engine where one stands,
+	// and never by asking for one, which would create it.
+	stood := map[string][]byte{}
+	if eng, ok := s.standingPackage(confine); ok {
+		for _, t := range append(eng.Triggers(), eng.Held()...) {
+			stood["rules."+t.Name] = encoded(t)
+		}
+		for _, st := range eng.Strata() {
+			stood["strata."+st.Name] = encoded(st)
+		}
+	}
+	now := map[string][]byte{}
+	for _, t := range rules {
+		now["rules."+t.Name] = encoded(t)
+	}
+	for _, st := range strata {
+		now["strata."+st.Name] = encoded(st)
+	}
+	for name, b := range now {
+		was, ok := stood[name]
+		switch {
+		case !ok:
+			pkg.Added = append(pkg.Added, name)
+		case !bytes.Equal(was, b):
+			pkg.Changed = append(pkg.Changed, name)
+		}
+	}
+	for name := range stood {
+		if _, ok := now[name]; !ok {
+			pkg.Removed = append(pkg.Removed, name)
+		}
+	}
+	sort.Strings(pkg.Added)
+	sort.Strings(pkg.Changed)
+	sort.Strings(pkg.Removed)
+	return pkg, nil
+}
+
+// standingPackage is the engine running the package at confine, where one stands.
+func (s *Server) standingPackage(confine trigger.Subtree) (*trigger.Engine, bool) {
+	s.scopeMu.Lock()
+	defer s.scopeMu.Unlock()
+	pe, ok := s.scopeEngs["at:"+confine.Stamp()]
+	if !ok {
+		return nil, false
+	}
+	return pe.eng, true
+}
+
+// encoded is a definition as bytes, to tell one that changed from one that did not.
+func encoded(v any) []byte {
+	n, err := codec.ToNode(v)
+	if err != nil {
+		return nil
+	}
+	b, err := codec.NodeBytes(n, codec.Tony)
+	if err != nil {
+		return nil
+	}
+	return b
+}

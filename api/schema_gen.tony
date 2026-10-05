@@ -55,6 +55,28 @@ signature:
 ---
 context:
 - tony-format/context
+define:
+  added: .[array(string)]
+  at: .[string]
+  changed: .[array(string)]
+  held: .[array(string)]
+  removed: .[array(string)]
+signature:
+  name: verse-charter-check-package
+---
+context:
+- tony-format/context
+define:
+  at: .[string]
+  packages: .[array(verse-charter-check-package)]
+  pruned: .[array(string)]
+  refusal: .[string]
+  verdict: .[string]
+signature:
+  name: verse-charter-check
+---
+context:
+- tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
   at: .[string]

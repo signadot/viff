@@ -95,12 +95,24 @@ signature:
 context:
 - tony-format/context
 define:
+  answerers: .[array(string)]
+  at: .[string]
+  github: .[string]
+  repo: .[string]
+  tree: .[string]
+signature:
+  name: verse-repo-charter-config
+---
+context:
+- tony-format/context
+define:
   addr: .[string]
   agent: .[string]
   auth: !verse-auth-config null
   format: !verse-format null
   llm: !verse-llm null
   perms: !verse-perms-config null
+  repoCharters: .[array(verse-repo-charter-config)]
   scope: .[string]
   shellEnv: .[array(string)]
   systemCharter: .[string]

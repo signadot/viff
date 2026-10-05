@@ -7,8 +7,10 @@ import (
 	"log"
 	"path/filepath"
 	"strings"
+	"time"
 
 	verseio "github.com/signadot/verse/io"
+	"github.com/signadot/verse/io/github"
 )
 
 // The git source, served rather than run in task.
@@ -33,7 +35,8 @@ func gitMain(args []string) error {
 	out := fs.Bool("out", false,
 		"also act back on each input written under git.<repo>.out, or in an outbox a package "+
 			"declares for it: {to: tag.<name>, sha} makes a tag, {to: branch.<name>, sha} moves a "+
-			"branch, each answered on <name>~status; a mirror pushes with the credential it fetches with")
+			"branch, {to: install.<address>, tree} installs a tree of charters, each answered on "+
+			"<name>~status; a mirror pushes with the credential it fetches with")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -42,6 +45,25 @@ func gitMain(args []string) error {
 	}
 
 	ctx := context.Background()
+	// AS AN APP, where the environment names one (GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID and
+	// GITHUB_APP_PRIVATE_KEY, as the github io takes them): the app's installation token is the
+	// only credential git presents, so a fetch and a push are the app's, and a branch only the
+	// app may push to (verse/live) is one this io can move. Before the first clone, which is the
+	// first thing that asks git for a credential.
+	app, err := githubApp()
+	if err != nil {
+		return err
+	}
+	if app != nil {
+		tok, err := github.NewAppToken(ctx, *app, envOr("GITHUB_API_BASE", ""), nil)
+		if err != nil {
+			return err
+		}
+		if err := verseio.UseGitToken(ctx, tok.Token, filepath.Join(*state, ".credential"), time.Minute); err != nil {
+			return err
+		}
+		log.Printf("git presents app %s's installation %s", app.AppID, app.InstallationID)
+	}
 	git := verseio.NewGit()
 	for _, spec := range repos {
 		id, dir, err := split(spec)
@@ -81,7 +103,11 @@ func gitMain(args []string) error {
 	// The out half dials the verse, where the reflection is dialled BY it: one pass loop per
 	// repository, writing refs where this program reads them.
 	if *out {
-		if _, err := c.outHalf(ctx, git.Root(), git.Sink(), git.OutRefs(), c.outClient(git.Root())); err != nil {
+		sink := git.Sink()
+		// An install input installs a tree of charters into the verse, as this io
+		// (io/gitinstall.go): the one client proves it at the door and makes the request.
+		sink.Verse = c.outClient(git.Root())
+		if _, err := c.outHalf(ctx, git.Root(), sink, git.OutRefs(), sink.Verse); err != nil {
 			return err
 		}
 	}

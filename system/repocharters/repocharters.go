@@ -1,0 +1,124 @@
+// Package repocharters is the reconciler of a repository's charters: a system-level charter
+// verse ships, rendered for one repository and installed by a deployment, which keeps what runs
+// in verse equal to the last state of the repository's charters directory on main that the team
+// said yes to (git-issue dzxn44gw; the design is j5vbwvja and its parts).
+//
+// IT IS NOT PART OF THE ENGINE. Nothing in versed knows this charter: it is a charter like any
+// other, written against the rule grammar, the git io's reflection and out half, and the github
+// io's out half, and it reaches a verse the way the deployment's other system charters do, as a
+// text versed installs at start as the system (versed.Server.SystemCharters). This package holds
+// the charter's text as a template, renders it for a repository, and is where its test lives.
+// The reference example (docs/reference/examples/repo-charters/repo-charters.tony) is a
+// rendering of it, checked by the test to be the same.
+package repocharters
+
+import (
+	"bytes"
+	_ "embed"
+	"errors"
+	"fmt"
+	"strings"
+	"text/template"
+
+	"github.com/signadot/verse/entity"
+)
+
+//go:embed charter.tony.tmpl
+var charterTemplate string
+
+// The answer a candidate's question settles on is the propose task's result, which is text:
+// `<principal> chose <option>`, with `: <words>` when the person said more. A principal has no
+// space in it, so the option chosen is the word after the first space and ` chose `, followed by
+// the words or by nothing: `^\S+ chose proceed(: |\z)`. Anchored at the start, the person's words
+// cannot read as a choice: `user:a chose proceed: last time they chose deny` is a proceed.
+// `\z` rather than `$` for the end, so the pattern holds no `$` a reader takes for a reference.
+// (In a double-quoted Tony string a backslash is a JSON escape, hence the doubled ones.)
+const (
+	answeredProceed = `!regexp "^\\S+ chose proceed(: |\\z)"`
+	answeredDeny    = `!regexp "^\\S+ chose deny(: |\\z)"`
+)
+
+// Params name the one repository a rendering is for.
+type Params struct {
+	// Repo is the git io's id for the repository, which it reflects as `git.<Repo>`: `verse`.
+	Repo string
+	// GitHub is the repository as GitHub names it, `org/name`, which the github io reflects as
+	// `github.<org>.<name>` and reads inputs for under `github.<org>.<name>.out`.
+	GitHub string
+	// InstallAt is the address the repository's charters install at, as `verse c -a` spells
+	// one: `repos.verse`. The git io installs there as itself, so it has to own the address or
+	// hold `child-owner` above it.
+	InstallAt string
+	// Tree is the name the git io reflects the charters directory's tree under (`-tree
+	// [<name>=]<path>`, `tree.<name>` on every ref). Empty is `charters`.
+	Tree string
+	// Answerers is who may answer the question a candidate raises, grantees as a gate names
+	// them (`user:*`, `group:owners`). Empty leaves the question to whom the task acts for: the
+	// installer of this charter, which for a system charter is nobody, so a deployment names
+	// them.
+	Answerers []string
+}
+
+// Example is the laptop instance the reference example is rendered from: the verse repository,
+// reflected by a git io beside a clone, its charters installed at `repos.verse`.
+var Example = Params{Repo: "verse", GitHub: "signadot/verse", InstallAt: "repos.verse", Tree: "charters"}
+
+// Render is the charter for one repository, as a verse installs it.
+func Render(p Params) ([]byte, error) {
+	if p.Repo == "" || strings.ContainsAny(p.Repo, ".* \t\n\"") {
+		return nil, fmt.Errorf("repo-charters: Repo %q is not one plain segment", p.Repo)
+	}
+	org, name, ok := strings.Cut(p.GitHub, "/")
+	if !ok || org == "" || name == "" || strings.ContainsAny(p.GitHub, ".* \t\n\"") {
+		return nil, fmt.Errorf("repo-charters: GitHub %q is not org/name", p.GitHub)
+	}
+	segs, err := entity.PathSegs(p.InstallAt)
+	if err != nil || len(segs) == 0 {
+		return nil, fmt.Errorf("repo-charters: InstallAt %q is not an address", p.InstallAt)
+	}
+	tree := p.Tree
+	if tree == "" {
+		tree = "charters"
+	}
+	if strings.ContainsAny(tree, ".* \t\n\"") {
+		return nil, fmt.Errorf("repo-charters: Tree %q is not one plain word", tree)
+	}
+	var quoted []string
+	for _, a := range p.Answerers {
+		a = strings.TrimSpace(a)
+		if a == "" {
+			continue
+		}
+		if strings.ContainsAny(a, "\"\n") {
+			return nil, fmt.Errorf("repo-charters: answerer %q is not a grantee", a)
+		}
+		quoted = append(quoted, `"`+a+`"`)
+	}
+	data := struct {
+		Repo, GitHub, GitHubOrg, GitHubName, InstallAt, Tree string
+		Answerers                                            []string
+		AnswerersList, Proceed, Deny                         string
+	}{
+		Repo: p.Repo, GitHub: p.GitHub, GitHubOrg: org, GitHubName: name, InstallAt: entity.JoinSegs(segs),
+		Tree: tree, Answerers: quoted, AnswerersList: "[" + strings.Join(quoted, ", ") + "]",
+		Proceed: answeredProceed, Deny: answeredDeny,
+	}
+	tmpl, err := template.New("repo-charters").Parse(charterTemplate)
+	if err != nil {
+		return nil, fmt.Errorf("repo-charters: %w", err)
+	}
+	var out bytes.Buffer
+	if err := tmpl.Execute(&out, data); err != nil {
+		return nil, fmt.Errorf("repo-charters: %w", err)
+	}
+	if out.Len() == 0 {
+		return nil, errors.New("repo-charters: rendered nothing")
+	}
+	return out.Bytes(), nil
+}
+
+// QuestionID is the id of the question a candidate tree raises, as the charter spells it: the
+// propose task's id with its first call's number.
+func QuestionID(repo, tree string) string {
+	return "repo-charters:propose@repo-charters." + repo + ".candidate." + tree + "~1"
+}

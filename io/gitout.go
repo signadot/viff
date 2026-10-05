@@ -10,13 +10,16 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
+	"github.com/signadot/verse/client"
 	"github.com/signadot/verse/entity"
 )
 
-// The out half of the git io: a ref written where the io reads. It exists for the repo-charters
-// reconciler (git-issue j9vbwvjah12krs9tqsn0), which records an install as a tag and keeps a
-// branch at the running sha, and it does those two things and nothing else: no commit, no tree,
-// no merge. What it writes is a ref at a sha that already exists in the repository.
+// The out half of the git io: a ref written where the io reads, and a tree of charters installed
+// into the verse. It exists for the repo-charters reconciler (git-issue j9vbwvjah12krs9tqsn0),
+// which records an install as a tag, keeps a branch at the running sha, and has the charters
+// installed from the repository's own copy (gitinstall.go), and it does those three things and
+// nothing else: no commit, no tree written, no merge. A ref it writes is at a sha that already
+// exists in the repository.
 //
 // Somebody writes an input under a repository's out place, `git.<repo>.out.<name>`, or a package
 // writes one in an outbox it declares for that place:
@@ -43,6 +46,10 @@ import (
 // disk gets the ref written in place, which is what a laptop driving the reconciler against a
 // clone wants.
 type GitSink struct {
+	// Verse is the verse an install input installs into, as this io (gitinstall.go). Nil
+	// installs nothing, and an install input is refused for good.
+	Verse *client.Client
+
 	g   *Git
 	now func() time.Time
 }
@@ -93,8 +100,14 @@ func (k *GitSink) Deliver(ctx context.Context, in Input) (entity.Obj, error) {
 		return nil, Permanent(fmt.Errorf("%s is no repository's out place this io serves", in.Place))
 	}
 	kind, name, found := strings.Cut(in.To, ".")
+	if kind == installTarget && found {
+		return k.install(ctx, rp, in, name)
+	}
+	if kind == checkTarget && found {
+		return k.check(ctx, rp, in, name)
+	}
 	if !found || name == "" || (kind != "tag" && kind != "branch") {
-		return nil, Permanent(fmt.Errorf("`to` is tag.<name> or branch.<name>, not %q", in.To))
+		return nil, Permanent(fmt.Errorf("`to` is tag.<name>, branch.<name>, install.<address> or check.<address>, not %q", in.To))
 	}
 	if strings.HasPrefix(name, "refs/") || strings.Contains(name, "..") || strings.HasSuffix(name, "/") {
 		return nil, Permanent(fmt.Errorf("`to` %q: %q is not a ref's short name", in.To, name))

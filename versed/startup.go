@@ -31,6 +31,9 @@ const (
 	phaseAsks        = "armed ask expiries"
 	phaseAsksWait    = "waited on asks"
 	phaseSources     = "restored sources"
+	// After the sources: a charter verse ships at the system level sends to places the ios
+	// read, and an outbox is checked against the registered ios, which the restore registers.
+	phaseSystemTexts = "installed the system charters"
 )
 
 // phase runs one phase of Start and says how long it took, on stderr with the rest of the

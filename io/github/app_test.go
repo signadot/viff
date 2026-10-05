@@ -115,3 +115,29 @@ func TestARefusedTokenIsMintedAgain(t *testing.T) {
 		t.Errorf("minted %d, want 2: the revoked token replaced once", n)
 	}
 }
+
+// THE APP'S TOKEN FOR ANOTHER PROGRAM: minted at once, so an app that cannot mint does not start,
+// and kept while it is good.
+func TestAnAppTokenIsMintedOnceAndKept(t *testing.T) {
+	f := newFake()
+	k, p := appKey(t)
+	f.app = &k.PublicKey
+	base := f.serve(t)
+	tok, err := github.NewAppToken(context.Background(), github.AppAuth{AppID: "5154941", InstallationID: "167", PrivateKey: p}, base, nil)
+	if err != nil {
+		t.Fatalf("NewAppToken: %v", err)
+	}
+	a, err := tok.Token(context.Background())
+	if err != nil || a == "" {
+		t.Fatalf("Token = %q, %v", a, err)
+	}
+	b, _ := tok.Token(context.Background())
+	if a != b || f.mintCount() != 1 {
+		t.Errorf("two tokens %q, %q and %d mints, want one token minted once", a, b, f.mintCount())
+	}
+	other, _ := appKey(t)
+	if _, err := github.NewAppToken(context.Background(), github.AppAuth{AppID: "5154941", InstallationID: "167",
+		PrivateKey: pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(other)})}, base, nil); err == nil {
+		t.Error("an app whose key GitHub does not know minted a token")
+	}
+}

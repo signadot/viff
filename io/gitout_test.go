@@ -78,6 +78,7 @@ func TestGitReflectsTheTreeOfAConfiguredPath(t *testing.T) {
 type gitOutRig struct {
 	store entity.Store
 	out   *verseio.Out
+	verse *client.Client
 	id    string
 }
 
@@ -87,7 +88,9 @@ func newGitOutRig(t *testing.T, g *verseio.Git, id string) *gitOutRig {
 	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
 	t.Cleanup(ts.Close)
 	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:git-io")
-	return &gitOutRig{store: store, id: id, out: verseio.NewOut(g.Sink(), g.OutRef(id), verse, nil)}
+	sink := g.Sink()
+	sink.Verse = verse // an install input installs into the rig's verse, as the io
+	return &gitOutRig{store: store, id: id, verse: verse, out: verseio.NewOut(sink, g.OutRef(id), verse, nil)}
 }
 
 func (r *gitOutRig) pass(t *testing.T) {

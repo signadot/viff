@@ -483,8 +483,9 @@ See [Tutorial](tutorial.md#4-gates-and-the-docket).
 `answerers` is the field of a gate that names who may answer its question, as a list of
 [grantees](#grantee), each of whom must be able to read what the question is about. Where it
 names nobody, whoever may write what the question is about answers it, or any person or agent
-where it is about nothing. On a task's own gate, `$principal` names whom the task acts for. The
-owner of what asked may always answer.
+where it is about nothing. On a task's own gate, `$principal` names whom the task acts for, and
+it is whom the `ask` tool asks unless the call names `answerers` of its own. The owner of what
+asked may always answer.
 
 See [Permissions reference](reference/perms.md#questions).
 

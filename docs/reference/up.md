@@ -234,6 +234,24 @@ names somebody else.
 installs at start as `system:charter`. These are the rules that the deployment itself stands
 behind. A request cannot be made as the system, so this key is the way to install them.
 
+**`repoCharters`** is read by the server. Each entry has `verse up` install the
+[repo-charters reconciler](examples/repo-charters/repo-charters.tony) for one repository, as
+the system, beside the file above: the charter that keeps what runs in verse equal to the last
+state of the repository's charters directory on main that the team said yes to. `repo` is the
+git io's id for the repository (`git.<repo>`), `github` is the repository as GitHub names it
+(`org/name`), `at` is the address the repository's charters install at, `tree` is the name the
+git io reflects the charters directory's tree under (`-tree`; `charters` by default), and
+`answerers` is who may answer the question a change raises, as a gate's `answerers` names them.
+The git io installs at `at` as itself, so it owns that address or holds `child-owner` above it.
+
+```tony
+repoCharters:
+- repo: verse
+  github: signadot/verse
+  at: repos.verse
+  answerers: ["user:*"]
+```
+
 **`auth: {principal: {…}}`** says how people are authenticated. The server reads it to verify a
 request's token ([who a request is from](perms.md#who-a-request-is-from)). Without it, a
 request is whoever it says it is. The CLI reads the same `providers` to know where
@@ -379,6 +397,7 @@ Every key, and the variable that sets it:
 | `agent` | `VERSE_AGENT` | every command | the operator agent the CLI acts as, in place of `user` |
 | `format: {default, output, wire}` | `VERSE_FORMAT`, `VERSE_OUTPUT_FORMAT`, `VERSE_WIRE_FORMAT` | every command | the format to write in: `tony` or `yaml` ([representation](representation.md)) |
 | `systemCharter` | `VERSE_SYSTEM_CHARTER` | `verse up` | a charter file installed at start as the system |
+| `repoCharters: [{repo, github, at, tree, answerers}]` | | `verse up` | the repo-charters reconciler, installed as the system for each repository named |
 | `auth: {principal: {mode, providers}}` | | `verse up`, `verse account login` | the identity providers whose tokens say who a request is from |
 | `auth: {iod: {issuer, audience, accounts, static}}` | | `verse up` | the issuer of the ios' workload tokens, and which io each is |
 | `auth: {issuer: {url, key}}` | | `verse up` | the address and signing key the verse issues its own tokens with |

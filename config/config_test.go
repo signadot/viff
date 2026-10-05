@@ -280,6 +280,27 @@ func TestUserFromFileAndEnv(t *testing.T) {
 	}
 }
 
+// The repositories whose charters verse reconciles are read from the file, and an entry that
+// names no address is refused at load, where the refusal is a line in a file.
+func TestRepoChartersFromFile(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "verse.tony")
+	write(t, p, "repoCharters:\n- repo: verse\n  github: signadot/verse\n  at: repos.verse\n  answerers: [\"user:*\"]\n")
+	withLayers(t, filepath.Join(t.TempDir(), "verse"), t.TempDir())
+	t.Setenv(EnvConfigPath, p)
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.RepoCharters) != 1 || c.RepoCharters[0].Repo != "verse" || c.RepoCharters[0].GitHub != "signadot/verse" ||
+		c.RepoCharters[0].At != "repos.verse" || len(c.RepoCharters[0].Answerers) != 1 || c.RepoCharters[0].Answerers[0] != "user:*" {
+		t.Fatalf("repoCharters = %+v", c.RepoCharters)
+	}
+	write(t, p, "repoCharters:\n- repo: verse\n  github: signadot/verse\n")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "repoCharters verse") {
+		t.Fatalf("an entry with no address loaded: %v", err)
+	}
+}
+
 // A SPAWN'S CREDENTIAL IS THE ONE IT CARRIES, and this verse's only when it carries none.
 //
 // There is nothing to look up: what a spawn carries is already the key, read for it from the

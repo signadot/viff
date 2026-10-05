@@ -116,6 +116,33 @@ func TestAskWithOptionsReturnsTheChoice(t *testing.T) {
 	}
 }
 
+// A call that names answerers holds the question out to them, and not to the task's own
+// person: a charter's call list asks whom the charter says, which for a system charter is the
+// only way its question reaches anybody.
+func TestAskNamesItsAnswerers(t *testing.T) {
+	reg := task.NewRegistry()
+	_, done := askRun(t, context.Background(), reg, nil, askCallWith("c1", map[string]any{
+		"question": "install?", "options": []string{"proceed", "deny"}, "answerers": []string{"user:*", " group:owners "},
+	}))
+	p := pendingAsk(t, reg)
+	if got := p.Question.Answerers; !slices.Equal(got, []string{"user:*", "group:owners"}) {
+		t.Fatalf("answerers %v, want the two the call named", got)
+	}
+	reg.Answer(p.Question.ID, task.Resolution{Choice: "proceed", By: "user:t"})
+	if err := <-done; err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	// Named nobody: the task's own person, as before.
+	reg = task.NewRegistry()
+	_, done = askRun(t, context.Background(), reg, nil, askCall("c2", "go?", "yes"))
+	p = pendingAsk(t, reg)
+	if got := p.Question.Answerers; !slices.Equal(got, []string{task.PrincipalAnswerer}) {
+		t.Fatalf("answerers %v, want the principal", got)
+	}
+	reg.Answer(p.Question.ID, task.Resolution{Choice: "yes", By: "user:t"})
+	<-done
+}
+
 // ASKING IS NOT ASKED ABOUT. Under a vector whose default is `ask`, every action is a question
 // for the supervisor — and the ask itself must not be one, or the person is asked whether the
 // task may ask them, and only then what it wanted to know.

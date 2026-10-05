@@ -91,8 +91,8 @@ Two `child-grants` stand beside the rows:
 
 ## Installed things and their records
 
-The charter a deployment ships (`systemCharter`, and verse's built-in clock and calendar) is
-installed as the system and acts as the system.
+The charter a deployment ships (`systemCharter`, the charters it names under `repoCharters`, and
+verse's built-in clock and calendar) is installed as the system and acts as the system.
 
 - **An install leaves its installer's record, or verse refuses it.** Each of those four installs
   ends by asking who the place acts as. The answer may be nobody, or somebody whose record stood
@@ -100,7 +100,10 @@ installed as the system and acts as the system.
 - **A store can hold one with no record**, for example one written by hand. At start, verse
   names each in its log. Remove it and install it again.
 - **The deployment's charter** (`systemCharter`, and the base charter in the binary) is installed
-  as `system:charter`, with the system's record on each rule. It fires as the system.
+  as `system:charter`, with the system's record on each rule. It fires as the system. So is the
+  repo-charters reconciler for each repository under `repoCharters`, rendered at start and
+  installed once the ios are restored, since its outboxes name their places
+  ([up](../reference/up.md)).
 - **What the system makes under `verse` carries the system's record.** Examples are a task that
   a system rule spawns, and the clock and calendar that the base charter derives. The record
   stops the row's `child-owner` line from reaching inside the node.
@@ -198,7 +201,8 @@ else who installs at the same address, and says who owns it.
 The one place a rule may not read is the perms mirror. `verse.perms` is the system's, with
 nothing held out on it. Verse refuses a rule that watches it at install, and says why. The
 charter that the system stands behind may watch it. That charter comes from `systemCharter:` in
-the deployment's config.
+the deployment's config, or from the charters verse ships that the config names
+(`repoCharters:`).
 
 A package's `reads:` declaration is a separate question. It says what the package's rules may
 reference *outside their own address*. Verse checks it at install, beside all of this.
