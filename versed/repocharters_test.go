@@ -493,8 +493,11 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	prAt(t, srv, 8, strings.Repeat("d", 40), "")
 	// Yes: the hold is dismissed and the status passes; nothing moves until the merge.
 	answer(qidH, "proceed")
-	onPR = waitEntity(t, srv, prIn(7), func(p entity.Payload) bool { return entity.Str(statusUnder(p, "verse"), "state") == "success" })
-	if entity.Str(entity.Get(onPR, "review"), "event") != "dismiss" || entity.Str(onPR, "to") != "pr.7" {
+	// The status is the answer and the hold needs the check too, written apart: wait for both.
+	onPR = waitEntity(t, srv, prIn(7), func(p entity.Payload) bool {
+		return entity.Str(statusUnder(p, "verse"), "state") == "success" && entity.Str(entity.Get(p, "review"), "event") == "dismiss"
+	})
+	if entity.Str(onPR, "to") != "pr.7" {
 		t.Errorf("the answered pull request to main's input = %v", entity.ToObj(onPR))
 	}
 	time.Sleep(300 * time.Millisecond)
@@ -585,7 +588,17 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 		t.Errorf("the empty tree's question does not say it removes every charter: %v", entity.ToObj(q.Payload))
 	}
 	waitEntity(t, srv, prIn(12), func(p entity.Payload) bool { return entity.Str(p, "asks") == qidE0 })
+	// The hold lifts only when the answer and the check agree: a yes with the check still out
+	// keeps it, a yes the check refuses keeps it, and a yes the check passes lifts it.
 	answer(qidE0, "proceed")
+	held := func(p entity.Payload, says string) bool {
+		r := entity.Get(p, "review")
+		return entity.Str(r, "event") == "request-changes" && strings.Contains(entity.Str(r, "body"), says)
+	}
+	waitEntity(t, srv, prIn(12), func(p entity.Payload) bool { return held(p, "waiting for verse's charter check") })
+	checkedBy(t, srv, verseio.EmptyTree, "refused", "stratum \"z\": a level is taken")
+	waitEntity(t, srv, prIn(12), func(p entity.Payload) bool { return held(p, "refuses these charters") })
+	checkedBy(t, srv, verseio.EmptyTree, "installs", "")
 	waitEntity(t, srv, prIn(12), func(p entity.Payload) bool { return entity.Str(entity.Get(p, "review"), "event") == "dismiss" })
 	mainAt(t, srv, sha(11), verseio.EmptyTree)
 	waitEntity(t, srv, gitIn("live"), func(p entity.Payload) bool { return entity.Str(p, "sha") == sha(11) })
