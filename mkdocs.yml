@@ -80,6 +80,8 @@ nav:
 theme:
   name: mkdocs
   highlightjs: false
+  # overrides/main.html marks every page noindex, nofollow until launch.
+  custom_dir: overrides
 
 markdown_extensions:
   - tables: {}
