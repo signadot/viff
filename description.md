@@ -5,14 +5,15 @@ From `docs/roadmap/scope-lifecycle.md`, removed with the roadmap; the note whole
 
 ## What is built
 
-`disconnect -scope <name>` drops an overlay: sources stop, the engine stops, the scope's live
-tasks are cancelled, logd's `DeleteScope` runs (`docs/reference/connect.md`).
+`POST /scope/delete?scope=<name>` drops an overlay: sources stop, the engine stops, the scope's
+live tasks are cancelled, logd's `DeleteScope` runs (`docs/reference/scopes.md`). No CLI verb
+reaches it since `verse disconnect` went with `verse connect` (h6hx7ddc).
 
 ## The gap
 
 Creation is universal and implicit — any write carrying `--scope` makes an overlay — and nothing
 records that it did. Scopes cannot be listed, so nobody can ask "what scopes are there", and
-nothing reclaims one nobody disconnects. (A name only READ under leaks a session and an
+nothing reclaims one nobody drops. (A name only READ under leaks a session and an
 attribution too: `f80cejye`, which needs the same "does this scope exist" answer.)
 
 ## The direction
@@ -20,8 +21,8 @@ attribution too: `f80cejye`, which needs the same "does this scope exist" answer
 Record a scope on its first scoped WRITE, in baseline, at a place the system names for its own
 scope records — who made it, when, ephemeral (leased, reapable) or named (explicit delete), a
 last-write or heartbeat. Because it is data, reclaiming is reactive: a rule reaps lapsed
-ephemeral scopes. A surface over it: list, get, delete (the union of what `disconnect` does and
-dropping the record), and optionally create.
+ephemeral scopes. A surface over it: list, get, delete (what the route does, plus dropping the
+record; this is also where the CLI's drop comes back), and optionally create.
 
 ## Open
 
