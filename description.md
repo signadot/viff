@@ -1,41 +1,29 @@
 # verse/remove-connect
 
-Branch `verse/remove-connect`, worktree `.worktrees/remove-connect`, cut from `claude/verse-docs-iteration-a55dc9` at a39baa35 (PR #5) so the docs removal lands on the site organisation that is going out, not on main's older index pages.
+Branch `verse/remove-connect`, worktree `.worktrees/remove-connect`, cut from `claude/verse-docs-iteration-a55dc9` at a39baa35 (PR #5) so the docs removal lands on the site organisation that is going out, not on main's older index pages. One commit, 26e41eb0, unpushed.
 
-The idea, its status at removal, and the next-step designs are written up in Notion under "Verse Umbrella" (page "verse connect: the idea, its status at removal, and what was next"), because the git issues about it were scrubbed from origin on 2026-10-07 and the Notion page is the one live copy of `4eg94w0j`.
+The idea, its status at removal, and the next-step designs are written up in Notion under "Verse Umbrella" (page "verse connect: the idea, its status at removal, and what was next", 3f308fc654be8182b633f3104b5ec659), because the git issues about it were scrubbed from origin on 2026-10-07 and the Notion page is the one live copy of `4eg94w0j`.
 
-## What goes
+## What went
 
-`verse connect` and `verse disconnect`: the command, its content controller, the per-file validator rule, and the federation of a working tree.
+`verse connect` and `verse disconnect`: the command, its content controller, the per-file validator rule, and the federation of a working tree. With them, everything that existed for them:
 
-Code:
+- `cmd/verse/connect.go`; `io/federation.go`, `io/meta.go`, `io/content.go`, the stat helpers and their tests.
+- The harness's content reader: `task.ContentReader`, the `content` argument on `Runner.Spawn`, the taskd `Builder` and `harness.Config`; `read_file` reads the task's root.
+- The store's mount support: `entity.MountRoot`, `IsMountOwned`, `MountKPath`, the mounted-places table, `rootFor`/`rootForAt`, the level walk over a mounted place (`walkPathsAt`, `memberAddress`) and the mount refusals in `PathsMatching`, `watchPattern` and `Since`; `entity/composedwatch_test.go` and `onelength_test.go`. Every path renders under the store's one root (`pathAt`).
+- `verse up --docd-mount-addr` and `--docd-mount-advertise-addr`, `docd.mount` on `/status` (`api.Docd` is the client face alone), the admin face's `docd-mount` address. `verse up` still reserves an ephemeral port for docd's own mount listener when it spawns `o sys up`, because docd defaults that listener to a fixed port; verse never dials it.
+- Deploy: versed's mount args, the `docd-mount` Service and its tailnet device; docd's StatefulSet keeps `-docd-mount-addr` because it is docd's flag.
+- `smoke.sh`: the connect step is a scopes step: a scoped write lands in the scope and not in baseline, and a scope's `flow suspend` of baseline's package is refused naming baseline.
+- Docs: `reference/connect.md` is `reference/scopes.md` (the scopes half kept), `platform/connect.md` is `platform/scopes.md`, `design/reference-connect.md` is `design/reference-scopes.md`; `content-federation.md`, `controllers.md` and seams §3 deleted; glossary loses `federation` and `controller`; `change-events.md` keeps the composed-watch hazard as a property of docd that verse avoids by mounting nothing; `io.md` keeps "a Source is not a docd controller".
 
-- `cmd/verse/connect.go` whole; the two entries in `main.go`; the `verse up` warning in `docd.go` about a missing mount face; the `client.go` comment that names it.
-- `io/federation.go`, `io/meta.go`, `io/content.go`, `io/stat_unix.go`, `io/stat_other.go` and their tests (`federation_test.go`, `content_test.go`), if nothing else uses the stat helpers.
-- `versed/server.go`: `storeContentReader`, and the scoped engine's spawner gets a nil content reader (a scoped task reads the local root, as a baseline task does); `versed/readfail_test.go` (it tests the reader); the `versed/io.go` comment.
-- `task/harness/content_test.go`: the "federated" cases.
-- `smoke.sh`: the connect step. The check that a scope's `flow suspend` of baseline's package is refused stays, with the scope made by a scoped write instead of by connect.
-- `api/api.go` comment on `/status` `docd.mount`; comments in `deploy/build.tony`, `deploy/source/docd-service.yaml`, `deploy/README.md` (the tailnet paragraph).
+## What stays
 
-Docs:
+Scopes: tasks, charters, perms and the charter-trial proposal (jnvbwvja) all use them, and the open scope issues (yjn5qagj, f80cejye) stand. With `disconnect` gone, `POST /scope/delete` is the one way to drop a scope and no CLI verb does; that belongs to yjn5qagj.
 
-- `docs/reference/connect.md` becomes `docs/reference/scopes.md`: the scopes half stays (scopes, the charter a scope runs, what a scope owns), the federation half goes. Same for `docs/platform/connect.md` and `docs/design/reference-connect.md`.
-- `docs/content-federation.md` deleted; `docs/seams.md` §3 removed.
-- `docs/glossary.md`: `federation` removed, `scope` and `baseline` point at the scopes page.
-- Every other mention: `README.md`, `docs/README.md`, `docs/platform.md`, `docs/reference/README.md` (command table), `mkdocs.yml`, `reference/up.md`, `io.md`, `change-events.md`, `reference/entities.md`, `reference/gates.md`, `reference/charter.md`, `tutorial.md`, `platform/architecture.md`, `deployment-and-steering.md`, `control.md`, `reference/perms.md`, `reference/store.md`, `reference/tasks.md`, `task-control.md`, `controllers.md`.
+## Trailers
 
-## What stays, and is a decision
+Declared on 26e41eb0: `Tier: contract, docs`; `Breaks:` names the two commands, the two flags, `docd.mount` and how a scope is now made and dropped.
 
-Scopes stay: tasks, charters, perms and the charter-trial proposal (jnvbwvja) all use them, and the open scope issues (yjn5qagj, f80cejye) stand.
+## Check
 
-Three things have no in-tree user once connect is gone, and this branch keeps them unless told otherwise:
-
-1. The store's mount support: `entity.MountRoot`, `IsMountOwned`, `MountKPath` and the table of mounted places, which names `local.dir-content-`. The composed-watch tests pin why `MountRoot` exists.
-2. docd's mount face: `verse up --docd-mount-addr`, `--docd-mount-advertise-addr`, `docd.mount` on `/status`, and the deploy manifests that pass them.
-3. `task.ContentReader`, the harness seam a federated `read_file` went through, and `docs/controllers.md`, the page on writing a controller.
-
-Removing those three is removing the content-federation component whole (Bird's Eye View, component 2), not only `verse connect`. If that is wanted, it is a second commit on this branch.
-
-## Trailers where it lands
-
-`Tier: contract, docs`, `Breaks: verse connect and verse disconnect are gone; a scope is made by any scoped write and dropped with POST /scope/delete`.
+`make check` green; `go test ./...` green except `TestEveryDeployedCharterInstalls` and `TestIssueNextProposesOnTheTick`, which fail on the untouched branch head too (they read `deploy/charters/verse/repo/verse/{comment-drift,issue-next.tony}`, absent on the branch and on main); `./smoke.sh` 64 checks.
