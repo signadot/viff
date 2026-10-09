@@ -305,6 +305,11 @@ func (s *Frame) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["tool"] = ir.FromString(string(s.Tool))
 	}
 
+	// Field: Action
+	if s.Action != "" {
+		irMap["action"] = ir.FromString(string(s.Action))
+	}
+
 	// Field: Gate
 	if s.Gate != "" {
 		irMap["gate"] = ir.FromString(string(s.Gate))
@@ -445,6 +450,12 @@ func (s *Frame) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "tool", fieldNodeUnwrapped.Type)
 			}
 			s.Tool = string(fieldNodeUnwrapped.String)
+		case "action":
+			// Field: Action
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "action", fieldNodeUnwrapped.Type)
+			}
+			s.Action = string(fieldNodeUnwrapped.String)
 		case "gate":
 			// Field: Gate
 			if fieldNodeUnwrapped.Type != ir.StringType {
@@ -1389,6 +1400,11 @@ func (s *PendingGate) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["tool"] = ir.FromString(string(s.Tool))
 	}
 
+	// Field: Action
+	if s.Action != "" {
+		irMap["action"] = ir.FromString(string(s.Action))
+	}
+
 	// Field: Mode
 	if s.Mode != "" {
 		irMap["mode"] = ir.FromString(string(s.Mode))
@@ -1456,6 +1472,12 @@ func (s *PendingGate) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error
 				return fmt.Errorf("field %q: expected string, got %v", "tool", fieldNodeUnwrapped.Type)
 			}
 			s.Tool = string(fieldNodeUnwrapped.String)
+		case "action":
+			// Field: Action
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "action", fieldNodeUnwrapped.Type)
+			}
+			s.Action = string(fieldNodeUnwrapped.String)
 		case "mode":
 			// Field: Mode
 			if fieldNodeUnwrapped.Type != ir.StringType {

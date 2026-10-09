@@ -50,6 +50,9 @@ type Pending struct {
 	Question GateQuestion
 	Tool     string
 	Effects  []Effect
+	// Action is the action in one line (ToolUse.Describe), so whoever is asked can read what
+	// they are deciding about and not only which tool proposed it.
+	Action string
 }
 
 func NewRegistry() *Registry {
@@ -130,7 +133,7 @@ func (r *Registry) Resolve(ctx context.Context, q GateQuestion, tu ToolUse) (Res
 	// Only a NEW question is announced: a join adds a waiter to something already on the
 	// docket, and re-announcing it would show a watcher a question appearing twice.
 	if !joined && onPost != nil {
-		onPost(Pending{Question: q, Tool: tu.Name, Effects: tu.Effects})
+		onPost(Pending{Question: q, Tool: tu.Name, Effects: tu.Effects, Action: tu.Describe()})
 	}
 
 	select {

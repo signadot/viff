@@ -50,6 +50,7 @@ type PendingGate struct {
 	Origin string `tony:"field=origin,omitzero"`
 	Gate   string `tony:"field=gate,omitzero"`
 	Tool   string `tony:"field=tool,omitzero"`
+	Action string `tony:"field=action,omitzero"` // the action in one line, see ToolUse.Describe
 	Mode   string `tony:"field=mode,omitzero"`
 	Reason string `tony:"field=reason,omitzero"`
 }

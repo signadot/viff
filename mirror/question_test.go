@@ -431,3 +431,39 @@ func TestAFramePosedQuestionSaysWhomItWaitsOn(t *testing.T) {
 	}
 	same(t, waitsOn(t, store, ev.ID), []string{ann})
 }
+
+// THE RECORD SAYS WHAT THE ACTION IS. `tool` says who proposed it and `effects` what verb it
+// derives to; `action` is the one line an answerer reads — and it is absent, not empty, for an
+// action that said nothing about itself, by the same rule as every other field here.
+func TestAQuestionCarriesTheAction(t *testing.T) {
+	store := entitytest.Store(t)
+	PostQuestion(store, task.Pending{
+		Question: task.GateQuestion{ID: "run-a~d1", Origin: "run-a", Gate: "shell"},
+		Tool:     "run_bash",
+		Action:   "go test ./...",
+	}, "run-a")
+	e, ok, _ := store.Get(QuestionRef("run-a~d1"))
+	if !ok {
+		t.Fatal("not posted")
+	}
+	if got := entity.ToObj(e.Payload)["action"]; got != "go test ./..." {
+		t.Errorf("action is %v, want the command", got)
+	}
+
+	// From a remote runner's frame, the same.
+	PostFrameQuestion(store, task.Frame{Kind: task.EvPending, ID: "run-b~d1", Gate: "write", Tool: "apply_patch",
+		Action: "update docs/x.md", Text: "verb write"}, "run-b", "", nil)
+	e, ok, _ = store.Get(QuestionRef("run-b~d1"))
+	if !ok {
+		t.Fatal("the frame's question was not posted")
+	}
+	if got := entity.ToObj(e.Payload)["action"]; got != "update docs/x.md" {
+		t.Errorf("action from a frame is %v, want the patch's paths", got)
+	}
+
+	pose(t, store, "run-c~d1", "x", "run-c")
+	e, _, _ = store.Get(QuestionRef("run-c~d1"))
+	if _, present := entity.ToObj(e.Payload)["action"]; present {
+		t.Error("an action that said nothing has an action field")
+	}
+}

@@ -10,9 +10,12 @@ type Frame struct {
 	Task   string `tony:"field=task"`
 	Cursor int64  `tony:"field=cursor,omitzero"` // per-task monotonic; resume with ?since=<cursor>
 
-	ID      string `tony:"field=id,omitzero"` // decision id, for resolve-by-id
-	Seq     int    `tony:"field=seq,omitzero"`
-	Tool    string `tony:"field=tool,omitzero"`
+	ID   string `tony:"field=id,omitzero"` // decision id, for resolve-by-id
+	Seq  int    `tony:"field=seq,omitzero"`
+	Tool string `tony:"field=tool,omitzero"`
+	// Action is the action in one line (ToolUse.Describe), on a pending or a decision frame:
+	// what the gate is about, for whoever reads it on the docket or at a terminal.
+	Action  string `tony:"field=action,omitzero"`
 	Gate    string `tony:"field=gate,omitzero"`
 	Mode    string `tony:"field=mode,omitzero"`
 	By      string `tony:"field=by,omitzero"`

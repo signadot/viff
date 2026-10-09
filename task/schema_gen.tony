@@ -39,6 +39,7 @@ signature:
 context:
 - tony-format/context
 define:
+  action: .[string]
   answerers: .[array(string)]
   by: .[string]
   choice: .[string]
@@ -111,6 +112,7 @@ signature:
 context:
 - tony-format/context
 define:
+  action: .[string]
   gate: .[string]
   id: .[string]
   mode: .[string]

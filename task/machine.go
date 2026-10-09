@@ -996,7 +996,7 @@ func record(tu ToolUse, res Resolution) []effect {
 		effJournal{fmt.Sprintf("[%s] %s → %s by %s (%s)",
 			tu.ID, tu.Name, res.Question.Mode, res.By, res.Question.Reason)},
 		effEmit{Frame{
-			Kind: EvDecision, ID: res.Question.ID, Tool: tu.Name, Gate: res.Question.Gate,
+			Kind: EvDecision, ID: res.Question.ID, Tool: tu.Name, Action: tu.Describe(), Gate: res.Question.Gate,
 			Mode: res.Question.Mode.String(), Proceed: res.Proceed, By: res.By,
 			Text: res.Question.Reason,
 		}},

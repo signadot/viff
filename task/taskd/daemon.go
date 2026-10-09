@@ -121,7 +121,7 @@ func (h *hosted) snapshot() task.Instance {
 	pending := make([]task.PendingGate, 0, len(pend))
 	for _, p := range pend {
 		pending = append(pending, task.PendingGate{
-			ID: p.Question.ID, Origin: p.Question.Origin, Tool: p.Tool,
+			ID: p.Question.ID, Origin: p.Question.Origin, Tool: p.Tool, Action: p.Action,
 			Gate: p.Question.Gate, Mode: p.Question.Mode.String(), Reason: p.Question.Reason,
 		})
 	}
@@ -235,7 +235,7 @@ func (d *Daemon) spawnHosted(l task.Launch, content task.ContentReader) (*hosted
 		// Whom it asks crosses too: verse poses a remote task's question from this frame, and a
 		// turn or an ask naming $principal is the task's person's, not the docket's.
 		tk.Emit(task.Frame{
-			Kind: task.EvPending, ID: p.Question.ID, Tool: p.Tool,
+			Kind: task.EvPending, ID: p.Question.ID, Tool: p.Tool, Action: p.Action,
 			Gate: p.Question.Gate, Mode: p.Question.Mode.String(), Text: p.Question.Reason,
 			Options: p.Question.Options, Deadline: p.Question.Deadline, Answerers: p.Question.Answerers,
 		})
@@ -421,7 +421,7 @@ func (d *Daemon) events(w http.ResponseWriter, r *http.Request) {
 		ch, unsub = h.task.Subscribe()
 		for _, p := range h.reg.Pending() {
 			_ = sse.Send(task.Frame{
-				Kind: task.EvPending, ID: p.Question.ID, Tool: p.Tool,
+				Kind: task.EvPending, ID: p.Question.ID, Tool: p.Tool, Action: p.Action,
 				Gate: p.Question.Gate, Mode: p.Question.Mode.String(), Text: p.Question.Reason,
 				Options: p.Question.Options, Deadline: p.Question.Deadline, Answerers: p.Question.Answerers,
 			})

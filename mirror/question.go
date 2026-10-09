@@ -466,7 +466,10 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 		// its own. What a restart navigates by (trigger.Engine.ResumeSelections).
 		"chain": q.Chain,
 		"tool":  p.Tool,
-		"task":  taskID,
+		// The action in one line: what is being decided, where `tool` says only who proposed
+		// it and `effects` what verb it derives to. The one field an answerer reads first.
+		"action": p.Action,
+		"task":   taskID,
 	} {
 		if v != "" {
 			rec[k] = v
@@ -811,6 +814,7 @@ func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject string
 		"mode":    ev.Mode,
 		"reason":  ev.Text,
 		"tool":    ev.Tool,
+		"action":  ev.Action,
 		"task":    taskID,
 		"subject": subject,
 	} {

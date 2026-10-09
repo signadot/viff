@@ -921,6 +921,7 @@ type prompt struct {
 	text    string // the question, in the asker's words
 	gate    string
 	tool    string
+	action  string // the action in one line, when the frame carried one
 	opts    []task.Option
 	reply   bool // an answer in words
 	turn    bool // the person's turn in a conversation: words, or Ctrl-D to end it
@@ -933,7 +934,7 @@ func newPrompt(ev task.Frame) *prompt {
 		pid, _, _ = strings.Cut(ev.ID, task.GateSep)
 	}
 	opts := task.GateQuestion{Options: ev.Options}.OptionsOrDefault()
-	pr := &prompt{pid: pid, id: ev.ID, text: ev.Text, gate: ev.Gate, tool: ev.Tool, opts: opts}
+	pr := &prompt{pid: pid, id: ev.ID, text: ev.Text, gate: ev.Gate, tool: ev.Tool, action: ev.Action, opts: opts}
 	for _, o := range opts {
 		if o.ID == task.Reply {
 			pr.reply = true
@@ -952,9 +953,9 @@ func (pr *prompt) show(w io.Writer) {
 	case pr.reply:
 		fmt.Fprintf(w, "  ❓ %s\n  > ", pr.text)
 	case pr.yesno:
-		fmt.Fprintf(w, "  ⏸ gate %q (%s) — approve? [y/n] ", pr.gate, pr.tool)
+		fmt.Fprintf(w, "  ⏸ gate %q (%s) — approve? [y/n] ", pr.gate, pr.what())
 	default:
-		fmt.Fprintf(w, "  ⏸ gate %q (%s) — choose:\n", pr.gate, pr.tool)
+		fmt.Fprintf(w, "  ⏸ gate %q (%s) — choose:\n", pr.gate, pr.what())
 		for i, o := range pr.opts {
 			need := ""
 			if o.Need > 1 {
@@ -1008,11 +1009,19 @@ func (pr *prompt) hint(as string) string {
 		return fmt.Sprintf("%s — answer it: verse question %s --answer %s --say \"…\" --as %s",
 			pr.text, pr.id, task.Reply, who)
 	case pr.yesno:
-		return fmt.Sprintf("gate %q (%s) — answer it: verse question approve %s --as %s", pr.gate, pr.tool, pr.id, who)
+		return fmt.Sprintf("gate %q (%s) — answer it: verse question approve %s --as %s", pr.gate, pr.what(), pr.id, who)
 	default:
 		return fmt.Sprintf("gate %q (%s) — answer it: verse question %s --answer <%s> --as %s",
-			pr.gate, pr.tool, pr.id, strings.Join(task.OptionIDs(pr.opts), "|"), who)
+			pr.gate, pr.what(), pr.id, strings.Join(task.OptionIDs(pr.opts), "|"), who)
 	}
+}
+
+// what names the action: the tool, and what it would do when the frame said.
+func (pr *prompt) what() string {
+	if pr.action == "" {
+		return pr.tool
+	}
+	return pr.tool + ": " + pr.action
 }
 
 // answerPrompt sends the answer and says what happened.
