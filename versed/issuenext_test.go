@@ -14,7 +14,7 @@ import (
 	"github.com/signadot/verse/schedule"
 )
 
-const issueNextSchedule = "verse-dev.git-issue:sweep"
+const issueNextSchedule = "repos.verse.git-issue:sweep"
 
 // ISSUE-NEXT SWEEPS ON ITS TICK AND ONLY THEN. Installed as the file spells it, an issue that
 // moves between ticks wakes nothing; a tick gives every open issue a proposal record carrying
@@ -29,7 +29,7 @@ func TestIssueNextProposesOnTheTick(t *testing.T) {
 
 	issue := func(id string) entity.Ref { return entity.RefAt("git-issue", "verse", "issue", id) }
 	proposal := func(id string) entity.Ref {
-		return entity.RefAt("verse-dev", "git-issue", "next-proposal", id)
+		return entity.RefAt("repos", "verse", "git-issue", "next-proposal", id)
 	}
 	put := func(id, status, updatedAt string) {
 		entitytest.Set(t, srv.Store, issue(id), entity.Obj{
@@ -41,7 +41,7 @@ func TestIssueNextProposesOnTheTick(t *testing.T) {
 	put("bbb", "open", "t1")
 	put("ccc", "closed", "t1")
 
-	src, err := os.ReadFile("../deploy/charters/verse/repo/verse/issue-next.tony")
+	src, err := os.ReadFile(repoCharters + "/issue-next.tony")
 	if err != nil {
 		t.Fatal(err)
 	}

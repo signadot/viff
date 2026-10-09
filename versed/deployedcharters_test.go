@@ -16,21 +16,29 @@ import (
 // `systemCharter`), before any of the rest.
 const systemCharter = "verse/workspace/Signadot/gate-ask.tony"
 
-// deployOrder is the charters a deployment installs, in the order deploy/repopulate.sh installs
-// them: a file, or a directory whose files install as one step. The order is part of what is
-// tested: a package may read what the one before it writes.
+// deployOrder is the charters a deployment installs from deploy/charters, in the order
+// deploy/repopulate.sh installs them: a file, or a directory whose files install as one step.
+// The order is part of what is tested: a package may read what the one before it writes.
 var deployOrder = []string{
-	"verse/repo/verse/comment-drift",
 	"signadot/repo/signadot/comment-drift.tony",
 	"signadot/repo/signadot/pr.tony",
 	"verse/workspace/Signadot/deploy-announce.tony",
-	"verse/repo/verse/issue-next.tony",
 }
 
-// EVERY DEPLOYED CHARTER INSTALLS, into one verse, in the order a deployment installs them. A
-// charter in the tree is what a newcomer copies and what a deployment runs, and a check added
-// at install is a check these files have to pass: a file that stops installing is found here
-// and not at the next ship.
+// repoCharters is the repository's own charters, and repoChartersAt where the deployment's
+// repo-charters reconciler has the git io install them (deploy/auth/staging.tony): the whole
+// directory as one request with a prune, as `verse c -a <address> -d <dir> --prune` sends it.
+const (
+	repoCharters   = "../.verse/charters"
+	repoChartersAt = "repos.verse"
+)
+
+// EVERY DEPLOYED CHARTER INSTALLS, into one verse, in the order a deployment installs them: the
+// files under deploy/charters that repopulate.sh installs, then the repository's own charters,
+// which the git io installs at repos.verse when the reconciler asks. A charter in the tree is
+// what a newcomer copies and what a deployment runs, and a check added at install is a check
+// these files have to pass: a file that stops installing is found here and not at the next
+// ship, or at the next pull request onto verse/live.
 func TestEveryDeployedCharterInstalls(t *testing.T) {
 	// Every charter in the tree is in the order: one added beside these is installed here too.
 	var inTree []string
@@ -108,6 +116,42 @@ func TestEveryDeployedCharterInstalls(t *testing.T) {
 		if strings.Contains(body, "held:") {
 			t.Errorf("%s installed with rules held:\n%s", name, body)
 		}
+	}
+
+	// The repository's charters, as the git io's out half sends them: every file in the
+	// directory in one request, pruning the address, so what stands at repos.verse afterwards is
+	// exactly the tree.
+	files, err := charterFilesUnder(repoCharters)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) == 0 {
+		t.Fatalf("no charters under %s", repoCharters)
+	}
+	var docs []string
+	for _, f := range files {
+		doc, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		docs = append(docs, string(doc))
+	}
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/charter?prune="+repoChartersAt, strings.NewReader(strings.Join(docs, "\n---\n")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "text/tony")
+	resp, err := sendAsTester(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := readBody(t, resp)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("%s did not install at %s: %s: %s", repoCharters, repoChartersAt, resp.Status, body)
+	}
+	if strings.Contains(body, "held:") {
+		t.Errorf("%s installed with rules held:\n%s", repoCharters, body)
 	}
 }
 
