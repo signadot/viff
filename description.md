@@ -15,6 +15,8 @@ Where the tag asks went:
             a4621a0f…~status:
               a4621a0f…: {create: true, sha: c1bc057a…, to: tag.live-verse/a4621a0f…}
 
-The `installed` rule's tag derive (system/repocharters/charter.tony.tmpl, `path: repo-charters.{{.Repo}}.out.git`, `key: $subject.value.tree`) lands at `out.git.installed.<subject path>.<tree>`, which is what a keyed derive's address is (rule, subject, key). The io reads outbox entries at `out.git.<name>`, one level down, so these never get a `~status` and never reach the remote. The two sibling derives in the same action use `id: $subject.value.tree` and land at `out.github.<tree>`, where they are read.
+The `installed` rule's tag derive (system/repocharters/charter.tony.tmpl) is keyed, `key: $subject.value.tree`, so it stands under (rule, subject, key): `out.git.installed.repo-charters.verse.install.<tree>~status.<tree>`. The rule's subject is the install's STATUS, whose name ends in `~status`, and the sink's walk over an outbox skips every name ending in `~status` without descending (io/out.go, `walk`: "a status, or one nobody asked for any more"), as docs/reference/io.md says: the sink never reads a name that ends in ~status as an input. So the tag input is never offered to the connector, gets no `~status` of its own, and no tag is pushed. The two sibling derives in the same action are named (`id: $subject.value.tree`) and land at `out.github.<tree>`, where they are read.
 
-Not touched here: this is the record of the first real run, filed for whoever owns the template. Related: 455pm5kvh12kr2dts1n0 (the pull request that exercised the path).
+The fix is the same shape as the siblings: name the input by the tree, `id: $subject.value.tree`, so it stands at `out.git.<tree>`. The once-only tag survives the change: a later commit carrying the same tree rewrites the input with its sha, and the io, asked with `create: true`, leaves a standing tag alone (io/gitout.go). The versed test `tagInputFor` asserted the nested address and moves to the named one.
+
+Related: 455pm5kvh12kr2dts1n0 (the pull request that exercised the path).
