@@ -442,8 +442,7 @@ func (a *attributed) Write(w Write) (bool, int64, error) {
 // grantsOnCreate refuses grants on a write that creates no node to carry them, and grants no
 // owner could give: they are checked as `verse perms --grants` checks what an owner sets on
 // their own node's record (checkGrants), and a record is per node, so a delete, an array
-// element and a node whose own record stands beneath it (the root, the mirror) carry none. A
-// mount-owned place is not under the store's root, so the one commit cannot reach it.
+// element and a node whose own record stands beneath it (the root, the mirror) carry none.
 func grantsOnCreate(w Write, ref Ref) error {
 	switch {
 	case w.Value == nil && w.At.Access == "":
@@ -452,8 +451,6 @@ func grantsOnCreate(w Write, ref Ref) error {
 		return fmt.Errorf("%w: %s%s is an element of an array, and grants are held out by a node", ErrBadGrants, ref, w.At.Access)
 	case ref.Under(VerseRoot, PermsSystem) || PermsRef(ref).Under(ref.Segs()...):
 		return fmt.Errorf("%w: %s holds the perms records, and is created with none of its own", ErrBadGrants, ref)
-	case IsMountOwned(ref.Segs()...):
-		return fmt.Errorf("%w: %s is a mounted place, which its source writes", ErrBadGrants, ref)
 	}
 	if err := checkGrants(w.Grants); err != nil {
 		return fmt.Errorf("%w: %w", ErrBadGrants, err)

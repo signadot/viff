@@ -1,10 +1,7 @@
 package entity
 
 import (
-	"errors"
 	"fmt"
-	"slices"
-	"strings"
 	"testing"
 )
 
@@ -56,23 +53,6 @@ func TestSinceAtOneSlice(t *testing.T) {
 	if len(wide) <= len(narrow) {
 		t.Errorf("the whole-verse replay carried %d events and the slice %d; the other slice's "+
 			"write is missing from the wide one", len(wide), len(narrow))
-	}
-}
-
-// A MOUNTED SLICE HAS NO HISTORY, and says so rather than replaying an empty catch-up
-// successfully off the log-backed base underneath it.
-func TestSinceAtAMountedSliceIsRefused(t *testing.T) {
-	s := openStore(t)
-	_, err := s.Since(0, PrefixPattern(append(slices.Clone(mounts[0].at), mounts[0].prefix+"x"), 3))
-	if err == nil {
-		t.Fatal("a replay of a mounted slice succeeded; a controller-backed slice has no commits")
-	}
-	if errors.Is(err, ErrReplayTooOld) {
-		t.Errorf("a mounted slice was reported as an expired cursor, which would send a "+
-			"consumer resyncing over a thing that has no history at all: %v", err)
-	}
-	if !strings.Contains(err.Error(), "no commits to replay") {
-		t.Errorf("the refusal does not say why: %v", err)
 	}
 }
 

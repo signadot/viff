@@ -43,7 +43,7 @@ RECREATE demo.pr.1         {verse:{demo:{pr:{"1":{stage:reopened}}}}}
 docd adds nothing to these events, and this follows from its design. The client side of docd is
 *the logd session protocol verbatim*. A client cannot tell which of the two it talks to. When docd
 routes a watch and does not compose it, the watch is logd's stream, forwarded. docd changes when a
-watch is available. It does not change what a watch says. See the mount hazard below.
+watch is available. It does not change what a watch says. See the composed-watch hazard below.
 
 Two facts decide the design:
 
@@ -159,7 +159,7 @@ and logd decides it, not verse:
 A consumer can inspect the *structure* of a patch to see which entities appeared. That consumer
 misses some, and it does not say so. A walk that expects a merge cannot pull the new key out of a
 `!replace`. A consumer that reads deltas this way fires N−1 validators for an N-file
-`verse connect`, because it drops the first scoped delta, the `!replace`.
+scoped tree, because it drops the first scoped delta, the `!replace`.
 
 So the contract is: **apply the delta, do not decode it.** A subtree watcher keeps the watched
 subtree as a document. It applies each event to the document, whatever operations the event
@@ -304,11 +304,12 @@ without waiting for the one after it. The store built them from a single delta, 
 [the commit is the unit](trigger-model.md#the-commit-is-the-unit) for what the engine does with a
 commit.
 
-## A history-bearing watch, and a mount
+## A history-bearing watch, and a composed one
 
-Everything above assumes that the watch *has* a history behind it. A watch whose address is a
-strict ancestor of a [controller](glossary.md#controller) mount is **composed**. docd sends it to
-the base owner and to every mount below, and merges them into one stream.
+Everything above assumes that the watch *has* a history behind it. docd can serve a region of the
+document from a program rather than from the log, on its controller face. A watch whose address
+is a strict ancestor of such a mount is **composed**. docd sends it to the base owner and to
+every mount below, and merges them into one stream.
 
 A composed watch cannot honour `FromCommit`. The sub-streams have separate commit sequences, so no
 single commit to resume from replays them all. The watch does not refuse. It drops the request for
@@ -316,13 +317,10 @@ the replay and never signals that the replay is complete. So a `Since` over such
 returns `ok=true` with zero events, after its own timeout runs out. The engine's catch-up then
 looks successful but delivers too little. This is the worst form the failure could take.
 
-A consumer could be built to handle mounts that arrive and leave under it. Verse splits the
-namespace instead, because that is simpler. Mounted places appear under a sibling of the root of
-the entities, so no watch that verse opens is an ancestor of a mount. Verse keeps one root watch,
-and `Since` does not change.
-
-The cost is that a mounted place fires no rules. That cost is correct: a task drives a mount, and a
-mount has no history to observe. See [controllers](controllers.md).
+Verse mounts nothing, so no watch that verse opens is ever composed, and every place a rule
+watches has the log behind it. That is the rule: **facts something reacts to are ordinary
+writes**, in the log, with a history. A program that serves bytes on request is not a place a
+rule can watch, and verse has none.
 
 ## Why this is the portable choice (not an exotic dependency)
 

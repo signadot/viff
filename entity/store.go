@@ -174,11 +174,11 @@ type Store interface {
 	WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsent, noInit bool) (<-chan Commit, func(), error)
 	// Scope returns a view of the store isolated to the named scope: writes land in
 	// the scope, reads and Observe/Since see the baseline layered with the scope.
-	// This is the seam for local-dev / sandbox federation — a developer's working tree
-	// overlaid on the shared verse (see docs/deployment-and-steering.md). The
-	// docd/logd-backed store implements real copy-on-write scopes.
+	// This is the seam for a sandbox: one party's work overlaid on the shared verse (see
+	// docs/deployment-and-steering.md). The docd/logd-backed store implements real
+	// copy-on-write scopes.
 	Scope(name string) Store
-	// DeleteScope drops a copy-on-write scope and all of its data (federation teardown).
+	// DeleteScope drops a copy-on-write scope and all of its data.
 	// Only the baseline store may: a scoped view refuses.
 	DeleteScope(name string) error
 }

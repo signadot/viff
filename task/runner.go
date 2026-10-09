@@ -132,7 +132,7 @@ type Launch struct {
 	// Empty = the runner's own default workspace.
 	Environment string
 
-	// Scope is the federation this task was spawned into — a `verse connect` scope, or
+	// Scope is the copy-on-write scope this task was spawned into — a named scope, or
 	// empty for baseline. The RUNTIME does nothing with it: a task runs the same either
 	// way, and the runner never sees it.
 	//
@@ -143,7 +143,7 @@ type Launch struct {
 	// while the task's own `task:instance` record went to the spawning scope. One run,
 	// two records, two different stores: `verse question` showed a pending gate whose task
 	// `verse ps` would not list, one dev's decision appeared on every other dev's docket,
-	// and the question named `local:dir-status-<scope>:*` entities the reader could not
+	// and the question named entities in the scope that the reader could not
 	// read (git-issue kwxxm8cth12ksn99fhn0).
 	//
 	// Carried rather than looked up, because the alternatives are worse where it matters.
@@ -219,8 +219,8 @@ type Provenance struct {
 // in-memory path, so the contract stays complete and local ≡ remote.
 type Runner interface {
 	// Spawn starts a task and returns a handle to govern it. The id is assigned by
-	// the caller (the engine's spawnID); content routes a federated read_file.
-	Spawn(l Launch, content ContentReader) Handle
+	// the caller (the engine's spawnID).
+	Spawn(l Launch) Handle
 
 	// Attach re-attaches to an already-running task by id — the resume path on
 	// restart, when the work outlived verse (a remote runner). Its handle's read plane

@@ -60,7 +60,7 @@ At the surface, control is per [scope](glossary.md#scope). A live thing runs in 
 The engine of a scope holds only what that scope created. So a steer with `-scope` reaches the
 scope's own work and nothing inherited. When it cannot reach the work, it says which scope holds
 the work. It does not steer baseline from a scope, or a scope from baseline. What a scope owns
-is in [connect](reference/connect.md#what-a-scope-owns). That page also says why a control
+is in [scopes](reference/scopes.md#what-a-scope-owns). That page also says why a control
 write cannot be copy-on-write, as a write to the world is.
 
 A [suspension](glossary.md#suspension) is the one intervention with a durable record. Even so,
@@ -94,4 +94,4 @@ The pieces can be split into separate services behind the interfaces that they u
 So a split is a change of deployment, not a new design.
 
 Next: [the reference](reference/README.md#commands) for the commands of this design, and
-[connect](reference/connect.md) for how a developer's working tree joins a running verse.
+[scopes](reference/scopes.md) for how a developer works beside a running verse without touching it.

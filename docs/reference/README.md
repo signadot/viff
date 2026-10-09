@@ -15,7 +15,7 @@ in [the platform docs](../platform.md), in the repository.
 | [schedules.md](schedules.md) | schedules: time as a cause |
 | [entities.md](entities.md) | addresses, payloads, merging writes, conditional writes, selection, and watching |
 | [tasks.md](tasks.md) | the task surface: drivers and vectors, gates, attaching, the mirror, and steering |
-| [connect.md](connect.md) | federating a working tree, and scopes |
+| [scopes.md](scopes.md) | scopes: a private copy of the store, what runs in it, and what it owns |
 | [perms.md](perms.md) | permissions in detail: the grammar, the fields of a record, what verse checks on a write and a read, installed things, questions, the seed, and `verse perms`. The model itself is in [../perms.md](../perms.md). |
 | [representation.md](representation.md) | tony, JSON and YAML: what verse reads, what it writes, and why the two differ |
 
@@ -193,7 +193,7 @@ verse
                                              <dir>/<address as directories>/charter.tony
           [-depth <n>]                       how far under it to go: 0 is that address
                                              alone; -1 (the default) is everything
-          [-scope <name>]                    …a federation's own charter instead
+          [-scope <name>]                    …a scope's own charter instead
           [-paths] [-kpaths]                 one line per rule and level instead of the document.
                                              -paths answers in STEPS — the spelling this
                                              command takes, so `c -paths | xargs -L1 verse c`
@@ -215,7 +215,7 @@ verse
                                              its own `at:`, all of them or none
           -a <address> -d <dir> -prune       …and REMOVE what the directory leaves out at and
                                              under the address: `-R` then `-a -d`, as one step
-          -a -scope <name>                   …into a federation's own charter instead
+          -a -scope <name>                   …into a scope's own charter instead
           -r <path>                          REMOVE what the path names: a package at an
                                              address, or one rule or level in it
                                              (`c -r verse-dev.drift rules watcher`)
@@ -284,10 +284,6 @@ verse
           A verb that names nothing prints its usage and does nothing; of -charter and
           -subject, the one left out beside the other is '*'. See ../control.md
   provider (providers)                       the provider registry (provider.<capability>.<id>)
-
-  connect [path] [-prompt <t>] [-driver <d>]    federate a tree (own scope): scoped metadata +
-          [-interval <dur>]                   content controller + a validator per file
-  disconnect                                  drop the -scope overlay (else remove local.* entities)
 
   global:  -addr <host:port>    -scope <name>
            -ofmt, -o <tony|yaml>   output format (default tony; verse renders no json)

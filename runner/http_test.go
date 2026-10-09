@@ -42,7 +42,7 @@ func (okExec) Execute(_ context.Context, tu task.ToolUse) (task.StepResult, []ta
 // runs to a terminal status — no in-process handle. This is the Phase-3 proof of the
 // base-URL decoupling.
 func TestHTTPRunnerDrivesRemoteTaskd(t *testing.T) {
-	build := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	build := func(l task.Launch, reg *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 2}, okExec{})
 	}
@@ -50,7 +50,7 @@ func TestHTTPRunnerDrivesRemoteTaskd(t *testing.T) {
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
-	h := pol.Spawn(task.Launch{ID: "t1", Prompt: "do a thing", Driver: "scripted"}, nil)
+	h := pol.Spawn(task.Launch{ID: "t1", Prompt: "do a thing", Driver: "scripted"})
 
 	ch, unsub := h.Subscribe()
 	defer unsub()
@@ -92,7 +92,7 @@ loop:
 // A remote runner enumerates its tasks so versed can union them into `task list`/
 // `get`: ListTasks/TaskSnapshot are a thin client over the remote's GET /tasks.
 func TestHTTPRunnerListsRemoteTasks(t *testing.T) {
-	build := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	build := func(l task.Launch, reg *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 2}, okExec{})
 	}
@@ -100,7 +100,7 @@ func TestHTTPRunnerListsRemoteTasks(t *testing.T) {
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
-	pol.Spawn(task.Launch{ID: "r1", Prompt: "remote task", Driver: "scripted"}, nil)
+	pol.Spawn(task.Launch{ID: "r1", Prompt: "remote task", Driver: "scripted"})
 
 	// task.Lister by NAME, not a structural assertion written out here. Spelling the
 	// signature inline is what let a widened one report false instead of failing to build.
@@ -155,7 +155,7 @@ func TestHTTPRunnerSpawnReadsARefusal(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			h := runner.HTTP(srv.URL).Spawn(task.Launch{ID: "x", Prompt: "t", Driver: "scripted"}, nil)
+			h := runner.HTTP(srv.URL).Spawn(task.Launch{ID: "x", Prompt: "t", Driver: "scripted"})
 
 			// The refusal has to arrive as a terminal on the plane the flow already reads,
 			// which is what FailedHandle is for.
@@ -198,14 +198,14 @@ func TestHTTPRunnerSendsTheCredentialName(t *testing.T) {
 
 	runner.HTTP(srv.URL).Spawn(task.Launch{
 		ID: "k", Prompt: "review it", Driver: "llm", VirtualKey: "review",
-	}, nil)
+	})
 
 	if got["virtualKey"] != "review" {
 		t.Errorf("the spawn sent %v, want the credential named", got["virtualKey"])
 	}
 	// …and a launch naming none says nothing, the way every optional field here does: an empty
 	// one written out is a claim rather than an absence.
-	runner.HTTP(srv.URL).Spawn(task.Launch{ID: "k2", Prompt: "x", Driver: "llm"}, nil)
+	runner.HTTP(srv.URL).Spawn(task.Launch{ID: "k2", Prompt: "x", Driver: "llm"})
 	if _, said := got["virtualKey"]; said {
 		t.Errorf("a launch naming no credential sent %v", got["virtualKey"])
 	}
@@ -259,7 +259,7 @@ func TestHTTPRunnerListReportsWhyItIsEmpty(t *testing.T) {
 // (which kept running and finished) converges the entity to its terminal status. This is
 // what versed.reconcileTasks does: resume, not orphan, when the work outlived verse.
 func TestResumeReAttachesToRemoteTask(t *testing.T) {
-	build := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	build := func(l task.Launch, reg *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 2}, okExec{})
 	}
@@ -267,8 +267,8 @@ func TestResumeReAttachesToRemoteTask(t *testing.T) {
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
-	pol.Spawn(task.Launch{ID: "t1", Prompt: "task", Driver: "scripted"}, nil) // runs on the remote to completion
-	time.Sleep(300 * time.Millisecond)                                        // let it finish (retained in the ring)
+	pol.Spawn(task.Launch{ID: "t1", Prompt: "task", Driver: "scripted"}) // runs on the remote to completion
+	time.Sleep(300 * time.Millisecond)                                   // let it finish (retained in the ring)
 
 	// "verse restart": a fresh store with a STALE running entity tagged with the runner.
 	store := entitytest.Store(t)
@@ -300,7 +300,7 @@ func TestResumeReAttachesToRemoteTask(t *testing.T) {
 // runtime understands it. When those two disagree the answer decodes to an empty id, answers
 // nothing, and comes back as though the decision were unknown.
 func TestHTTPRunnerAnswersARemoteGate(t *testing.T) {
-	build := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	build := func(l task.Launch, reg *task.Registry) *task.Task {
 		// Ask, and resolved by the daemon's own registry — so the task really blocks and
 		// really waits for an answer to arrive over HTTP.
 		sup := task.NewSupervisor(&task.Vector{Default: task.Ask}, reg)
@@ -310,7 +310,7 @@ func TestHTTPRunnerAnswersARemoteGate(t *testing.T) {
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
-	h := pol.Spawn(task.Launch{ID: "t-gate", Prompt: "do a thing", Driver: "scripted"}, nil)
+	h := pol.Spawn(task.Launch{ID: "t-gate", Prompt: "do a thing", Driver: "scripted"})
 	ch, unsub := h.Subscribe()
 	defer unsub()
 
@@ -369,7 +369,7 @@ func TestHTTPRunnerAnswersARemoteGate(t *testing.T) {
 // sending {decisionId, proceed} must still be understood, or adding the new vocabulary would
 // have been a break dressed as an addition.
 func TestTaskdStillReadsTheOlderResolveSpelling(t *testing.T) {
-	build := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	build := func(l task.Launch, reg *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Ask}, reg)
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 1}, okExec{})
 	}
@@ -377,7 +377,7 @@ func TestTaskdStillReadsTheOlderResolveSpelling(t *testing.T) {
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
-	h := pol.Spawn(task.Launch{ID: "t-old", Prompt: "do a thing", Driver: "scripted"}, nil)
+	h := pol.Spawn(task.Launch{ID: "t-old", Prompt: "do a thing", Driver: "scripted"})
 	ch, unsub := h.Subscribe()
 	defer unsub()
 
@@ -418,7 +418,7 @@ func TestTaskdStillReadsTheOlderResolveSpelling(t *testing.T) {
 // yields a DENY: the id is recognised and the verdict field beside it is not, so an approval
 // arrives as a refusal and the task stops. It has to be read as an approval.
 func TestTaskdReadsTheDocumentedMixedSpelling(t *testing.T) {
-	build := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	build := func(l task.Launch, reg *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Ask}, reg)
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 1}, okExec{})
 	}
@@ -426,7 +426,7 @@ func TestTaskdReadsTheDocumentedMixedSpelling(t *testing.T) {
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
-	h := pol.Spawn(task.Launch{ID: "t-mixed", Prompt: "do a thing", Driver: "scripted"}, nil)
+	h := pol.Spawn(task.Launch{ID: "t-mixed", Prompt: "do a thing", Driver: "scripted"})
 	ch, unsub := h.Subscribe()
 	defer unsub()
 

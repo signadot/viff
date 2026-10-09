@@ -69,7 +69,7 @@ func TestSpawnRoutesBoundSpec(t *testing.T) {
 	}
 }
 
-// A ref id can be a file path (from local-dev federation) — full of slashes. The
+// A ref id can be a file path — full of slashes. The
 // spawned task id must stay a single, route-safe URL segment (it routes through
 // /tasks/{id}), so slashes are sanitized while the real ref lives on as Subject.
 func TestSpawnIDIsRouteSafe(t *testing.T) {

@@ -22,7 +22,7 @@ func TestBrokerDialInLoop(t *testing.T) {
 	b := broker.New()
 
 	// verse side: spawn + observe.
-	h := b.Spawn(task.Launch{ID: "t1", Prompt: "review PR #42", Driver: "human"}, nil)
+	h := b.Spawn(task.Launch{ID: "t1", Prompt: "review PR #42", Driver: "human"})
 	ch, unsub := h.Subscribe()
 	defer unsub()
 
@@ -73,7 +73,7 @@ func TestBrokerDialInLoop(t *testing.T) {
 	// verse control → the worker's inbox (a fresh task, so the cancel is observable
 	// before terminal). Uses a second task to keep this assertion independent of the
 	// completed one above.
-	h2 := b.Spawn(task.Launch{ID: "t2", Prompt: "watch", Driver: "human"}, nil)
+	h2 := b.Spawn(task.Launch{ID: "t2", Prompt: "watch", Driver: "human"})
 	var claim2 struct {
 		Epoch   int64 `tony:"field=epoch"`
 		CCursor int64 `tony:"field=cCursor"`
@@ -101,7 +101,7 @@ func TestBrokerDialInLoop(t *testing.T) {
 // stays authoritative, and a lost-ack retry reads as success (200 + terminal), not error.
 func TestTerminalOnce(t *testing.T) {
 	b := broker.New()
-	h := b.Spawn(task.Launch{ID: "p", Prompt: "task", Driver: "human"}, nil)
+	h := b.Spawn(task.Launch{ID: "p", Prompt: "task", Driver: "human"})
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
@@ -133,7 +133,7 @@ func TestTerminalOnce(t *testing.T) {
 // worker report — and a late worker `completed` loses to the latch.
 func TestVerseAuthoritativeCancel(t *testing.T) {
 	b := broker.New()
-	h := b.Spawn(task.Launch{ID: "p", Prompt: "task", Driver: "human"}, nil)
+	h := b.Spawn(task.Launch{ID: "p", Prompt: "task", Driver: "human"})
 	ch, unsub := h.Subscribe()
 	defer unsub()
 	srv := httptest.NewServer(b.WorkerHandler())
@@ -183,7 +183,7 @@ loop:
 // the claim is released (Revoke).
 func TestFenceAndTakeover(t *testing.T) {
 	b := broker.New()
-	b.Spawn(task.Launch{ID: "p", Prompt: "task", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "task", Driver: "human"})
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
@@ -230,7 +230,7 @@ func TestFenceAndTakeover(t *testing.T) {
 // records the decision (clearing pending). The executor never resolves its own gate.
 func TestGateLoop(t *testing.T) {
 	b := broker.New()
-	h := b.Spawn(task.Launch{ID: "p", Prompt: "task", Driver: "human"}, nil)
+	h := b.Spawn(task.Launch{ID: "p", Prompt: "task", Driver: "human"})
 	ch, unsub := h.Subscribe()
 	defer unsub()
 	srv := httptest.NewServer(b.WorkerHandler())
@@ -333,7 +333,7 @@ func TestGateLoop(t *testing.T) {
 // "vector" marker and drop the vector, so the worker had nothing to apply.)
 func TestSetVectorRelaysPayload(t *testing.T) {
 	b := broker.New()
-	h := b.Spawn(task.Launch{ID: "p", Prompt: "task", Driver: "human"}, nil)
+	h := b.Spawn(task.Launch{ID: "p", Prompt: "task", Driver: "human"})
 
 	h.SetVector(&task.Vector{Default: task.Ask}, "human:scott")
 
@@ -363,7 +363,7 @@ func TestSetVectorRelaysPayload(t *testing.T) {
 // EvVector carrying the new default mode) — like a say-to, not waiting on the worker to echo.
 func TestSetVectorObservable(t *testing.T) {
 	b := broker.New()
-	h := b.Spawn(task.Launch{ID: "p", Prompt: "task", Driver: "human"}, nil)
+	h := b.Spawn(task.Launch{ID: "p", Prompt: "task", Driver: "human"})
 	ch, unsub := h.Subscribe()
 	defer unsub()
 
@@ -480,7 +480,7 @@ var _ = task.EvSay
 // that was never going to carry any.
 func TestFailureReasonIsAnErrNotAResult(t *testing.T) {
 	b := broker.New()
-	h := b.Spawn(task.Launch{ID: "p", Prompt: "migrate the schema", Driver: "human"}, nil)
+	h := b.Spawn(task.Launch{ID: "p", Prompt: "migrate the schema", Driver: "human"})
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
@@ -520,7 +520,7 @@ func TestFailureReasonIsAnErrNotAResult(t *testing.T) {
 // stays empty — the routing keys off the status, not off the presence of text.
 func TestCompletionTextStaysAResult(t *testing.T) {
 	b := broker.New()
-	h := b.Spawn(task.Launch{ID: "p", Prompt: "review", Driver: "human"}, nil)
+	h := b.Spawn(task.Launch{ID: "p", Prompt: "review", Driver: "human"})
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
@@ -548,7 +548,7 @@ func TestCompletionTextStaysAResult(t *testing.T) {
 // that had already ended. `report` was guarded post-terminal and the gate set was not.
 func TestATerminalAbandonsItsOpenGates(t *testing.T) {
 	b := broker.New()
-	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"})
 	h := b.Attach("p")
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
@@ -585,7 +585,7 @@ func TestATerminalAbandonsItsOpenGates(t *testing.T) {
 // whole wind-down had landed while part of it was on the floor, with no way to find out.
 func TestAReportSaysWhatItApplied(t *testing.T) {
 	b := broker.New()
-	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"})
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
@@ -620,7 +620,7 @@ func TestAReportSaysWhatItApplied(t *testing.T) {
 // delivered.
 func TestAReconnectingWorkerResumesFromWhatItAcknowledged(t *testing.T) {
 	b := broker.New()
-	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"})
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
@@ -694,7 +694,7 @@ func TestAReconnectingWorkerResumesFromWhatItAcknowledged(t *testing.T) {
 // so a worker that talks to the broker at all is already keeping its lease.
 func TestAnUnrenewedClaimIsReleased(t *testing.T) {
 	b := broker.New()
-	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"})
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
@@ -734,7 +734,7 @@ func TestAnUnrenewedClaimIsReleased(t *testing.T) {
 // is simply on a slow link but still polling.
 func TestAWorkingWorkerKeepsItsClaim(t *testing.T) {
 	b := broker.New()
-	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"})
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
@@ -769,7 +769,7 @@ func TestAWorkingWorkerKeepsItsClaim(t *testing.T) {
 // acknowledgement.
 func TestAnAnswerBecomesADecisionOnDelivery(t *testing.T) {
 	b := broker.New()
-	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"})
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
@@ -823,7 +823,7 @@ func TestAnAnswerBecomesADecisionOnDelivery(t *testing.T) {
 // twice.
 func TestARetriedReportIsAnsweredNotReapplied(t *testing.T) {
 	b := broker.New()
-	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"})
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
@@ -869,7 +869,7 @@ func TestARetriedReportIsAnsweredNotReapplied(t *testing.T) {
 // it has NOT taken is still waiting for it, which is the part that matters.
 func TestAWorkerAskingFromTheBeginningIsServedFromWhereItGotTo(t *testing.T) {
 	b := broker.New()
-	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"})
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
@@ -929,7 +929,7 @@ func TestAWorkerAskingFromTheBeginningIsServedFromWhereItGotTo(t *testing.T) {
 // already wrote could never fire, because an unbounded log has no watermark to be below.
 func TestTheLogIsBoundedAndSaysWhenAReaderFellBelowIt(t *testing.T) {
 	b := broker.New()
-	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human", Retain: 32}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human", Retain: 32})
 	srv := httptest.NewServer(b.WorkerHandler())
 	defer srv.Close()
 	cl := srv.Client()
@@ -990,7 +990,7 @@ func TestTheLogIsBoundedAndSaysWhenAReaderFellBelowIt(t *testing.T) {
 // ask (9ce3bva0, stage 6), since the worker takes its inbox where verse cannot see.
 func TestABrokeredSayCarriesItsAsk(t *testing.T) {
 	b := broker.New()
-	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"})
 	h := b.Attach("p")
 	frames, stop := h.SubscribeSince(0)
 	defer stop()
@@ -1017,7 +1017,7 @@ func TestABrokeredSayCarriesItsAsk(t *testing.T) {
 // from the inbox, so nothing is queued for it and no say is recorded as heard.
 func TestWordsToAnEndedBrokeredTaskAreRefused(t *testing.T) {
 	b := broker.New()
-	h := b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
+	h := b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"})
 	if err := h.Cancel("operator stop"); err != nil {
 		t.Fatalf("cancel: %v", err)
 	}

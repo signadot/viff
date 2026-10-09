@@ -1,3 +1,4 @@
+| 2 | [Store](#2-the-store) | verse → docd | logd session, on the client face | built |
 # Seams that can be a network
 
 A [seam](glossary.md#seam) is an interface between two parts of verse. Every seam is a Go
@@ -39,7 +40,6 @@ flowchart LR
 
   remote["remote runner<br/>another verse / taskd"]
   src["iod<br/>:9801"]
-  ctl["content controller<br/>verse connect"]
   llm["model provider"]
 
   cli -->|"HTTP"| versed
@@ -52,12 +52,11 @@ flowchart LR
   versed -->|"spawn · events?since · control"| remote
   versed -->|"GET /io · GET /reflect"| src
   src -->|"POST .../hint"| versed
-  ctl -->|"controller, mount face"| docd
   remote -.->|"llm"| llm
 
   classDef dialsIn fill:#e8f4ff,stroke:#4a90d9
   classDef dialsOut fill:#f2f7ec,stroke:#7aa352
-  class cli,res,worker,wh,hook,src,ctl dialsIn
+  class cli,res,worker,wh,hook,src dialsIn
   class remote,llm,docd dialsOut
 ```
 
@@ -81,8 +80,7 @@ would have this shape if every external system let you install a four-line shell
 | # | Seam | Who opens it | Contract | Today |
 |---|------|--------------|----------|-------|
 | 1 | [Operator API](#1-the-operator-api) | client → verse | ~60 HTTP routes, two planes | built |
-| 2 | [Store](#2-the-store-two-faces-not-one) | verse → docd | logd session; client + mount faces | built |
-| 3 | [Content](#3-content-federation-a-read-that-follows-the-reference-out) | controller → docd | `libctl` controller on the mount face | built |
+| 2 | [Store](#2-the-store) | verse → docd | logd session, on the client face | built |
 | 4 | [Remote runner](#4-task-control-dialled-out) | verse → runner | `POST /tasks`, `GET /events?since`, control | built |
 | 5 | [Broker](#5-task-control-dialled-in) | worker → verse | `claim` · `inbox` · `report` under a nonce | built |
 | 6 | [Ios](#6-ios--read-one-way-hint-and-act-the-other) | both, by question | `GET /io`, `GET /reflect`; `POST …/hint`, `POST …/pass` | built (`dial-in` is not) |
@@ -113,7 +111,7 @@ sentence more easily than a document.
 This side is **trusted**. It has no authentication. The default bind is `localhost:9797`. In the
 Kubernetes deploy, its Service is internal to the cluster and has no Ingress.
 
-## 2. The store: two faces, not one
+## 2. The store
 
 Verse holds one logd session to docd, and does everything through it:
 
@@ -122,46 +120,19 @@ Verse holds one logd session to docd, and does everything through it:
 - watches of one subtree;
 - replays with `since=<rev>`.
 
-This is the **client** face of docd.
-
-docd serves a second, separate **mount** face for [controllers](glossary.md#controller). On the
-mount face, a program declares that it serves one region of the document. None of verse's own
-traffic goes to the mount face. For this reason the two faces have distinct addresses.
+This is the **client** face of docd. docd serves a second face, on which a program may declare
+that it serves one region of the document; none of verse's traffic goes there, and verse mounts
+nothing. Every place a rule watches has the log behind it
+([change events](change-events.md#a-history-bearing-watch-and-a-composed-one)).
 
 ```mermaid
 flowchart LR
   versed["versed"] -->|"client face<br/>read · write · watch · replay"| docd["docd"]
-  ctl["controller<br/>(verse connect)"] -->|"mount face<br/>serve a region"| docd
   docd --- logd["logd<br/>the durable log"]
 ```
 
-`GET /status` publishes both addresses, and a controller needs them. `verse up` chooses
-ephemeral ports for the daemons it starts. A controller that runs as its own process cannot
-guess those ports, so it asks `GET /status`.
-
-## 3. Content federation: a read that follows the reference out
-
-`verse connect` [federates](glossary.md#federation) a working tree. It writes the *file
-metadata* of the tree into a [scope](glossary.md#scope) as entities. It serves the *bytes* from
-a controller that it runs itself, on the mount face of docd. Verse never stores the contents.
-
-This is a seam and not a cache, because a reader above cannot see the indirection:
-
-1. An agent's `read_file` becomes an ordinary `Get` at `local.dir-content-<scope>.<path>`.
-2. docd resolves that address to the mounted controller.
-3. The controller stats and reads the file *at request time*. It stays inside its root, and it
-   caps the size.
-4. The controller answers null for a traversal attempt, or for a file that is not a regular file.
-
-From above, it is a read of the store. At the bottom, it is a read of the live filesystem.
-
-The tree stays where it is, and its owner decides how long it lives. A charter reacts only to
-the entities that describe the tree.
-
-The write half is not built. In the write half, an agent would change a federated file.
-
-A write is an effect that goes out. It is not a read in the other direction, and it needs a
-definite target, which a read does not.
+`GET /status` publishes the client address, so a store client that runs as its own process
+beside verse finds docd without guessing the ephemeral port `verse up` chose.
 
 ## 4. Task control, dialled out
 

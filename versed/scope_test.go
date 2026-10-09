@@ -16,7 +16,7 @@ import (
 )
 
 // The scope overlay is honored end-to-end through the HTTP surface, and
-// POST /scope/delete tears it down — the federation teardown path the CLI drives.
+// POST /scope/delete tears it down — the teardown path a client drives.
 func TestScopeOverHTTP(t *testing.T) {
 	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
 	ts := httptest.NewServer(srv.Handler())
@@ -97,8 +97,8 @@ func TestDeletingAScopeCancelsItsLiveTasks(t *testing.T) {
 	eng := srv.scopeEngine("me")
 	tracked := newIdleHandle(t)
 	eng.Adopt("demo.pr.1", "tracked", tracked)
-	srv.Taskd.Spawn(task.Launch{ID: "hosted", Prompt: "sleep 30", Scope: "me"}, nil)
-	other := srv.Taskd.Spawn(task.Launch{ID: "other", Prompt: "sleep 30"}, nil)
+	srv.Taskd.Spawn(task.Launch{ID: "hosted", Prompt: "sleep 30", Scope: "me"})
+	other := srv.Taskd.Spawn(task.Launch{ID: "other", Prompt: "sleep 30"})
 	t.Cleanup(func() { other.Cancel("test over") })
 	baseline := newIdleHandle(t)
 	srv.Eng.Adopt("demo.pr.1", "baseline", baseline)

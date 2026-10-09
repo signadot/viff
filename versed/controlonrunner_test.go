@@ -26,7 +26,7 @@ import (
 // not.
 func TestControlOnPerSpawnRunner(t *testing.T) {
 	// A face that keeps working until it is stopped, so cancel has something to do.
-	build := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	build := func(l task.Launch, reg *task.Registry) *task.Task {
 		return task.NewTask(l.ID, task.NewSupervisor(&task.Vector{Default: task.Auto}, reg),
 			&foreverDriver{}, okExecutor{})
 	}

@@ -582,7 +582,7 @@ and the record that every scoped creation leaves, land in the overlay. They gove
 writes on top of baseline's, and baseline never sees them. Two scopes may hold different owners
 for one address. Dropping a scope drops its grants.
 
-A task or a gate cannot be acted on from a scope that did not create it. What a scope owns is in [connect](connect.md#what-a-scope-owns).
+A task or a gate cannot be acted on from a scope that did not create it. What a scope owns is in [scopes](scopes.md#what-a-scope-owns).
 
 The reason is that a grant has no live side. A task is a handle and a gate is an awaiter, and
 each runs in one engine. A grant is a record that a cache reads, and a cache layers as records

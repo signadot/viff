@@ -294,7 +294,7 @@ Posing again is idempotent by construction, so it can run beside a rule that als
 
 One question, and one task, however many paths reach it.
 
-**A scope (`verse connect`) is not covered.** Its questions are in the scope's own store,
+**A scope is not covered.** Its questions are in the scope's own store,
 and nothing lists them at startup. Scoped charters and scoped claims have the same gap.
 
 **When verse stops between settling a question and starting the work it decided, the spawn

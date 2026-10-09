@@ -18,7 +18,7 @@ import (
 // in-process runner is, so the install probe has something truthful to find.
 func runnerFace(t *testing.T) *httptest.Server {
 	t.Helper()
-	build := func(l task.Launch, _ *task.Registry, _ task.ContentReader) *task.Task {
+	build := func(l task.Launch, _ *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 		return task.NewTask(l.ID, sup, doneAfter{}, okExec{})
 	}

@@ -65,7 +65,7 @@ func TestTaskRunHonorsRunner(t *testing.T) {
 func TestBrokeredAttachStreams(t *testing.T) {
 	srv := testServer(t)
 	b := srv.UseBroker("http://verse.test:9090")
-	h := b.Spawn(task.Launch{ID: "bp1", Prompt: "t", Driver: "human"}, nil)
+	h := b.Spawn(task.Launch{ID: "bp1", Prompt: "t", Driver: "human"})
 	h.Steer("hello there", "op", "") // an EvSay lands on the merged log before attach
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -268,7 +268,7 @@ func TestTaskListUnionsBrokered(t *testing.T) {
 func TestTaskInboxAndControlRouting(t *testing.T) {
 	srv := testServer(t)
 	b := srv.UseBroker("http://verse.test:9090")
-	b.Spawn(task.Launch{ID: "bp1", Prompt: "brokered task", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "bp1", Prompt: "brokered task", Driver: "human"})
 	testerOwns(t, srv, mirror.Ref("bp1")) // as the spawn route would have left it
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -332,7 +332,7 @@ func TestUseBrokerPublishesDialBase(t *testing.T) {
 	srv := testServer(t)
 	b := srv.UseBroker("http://verse.test:9090/")
 
-	h := b.Spawn(task.Launch{ID: "x", Prompt: "task", Driver: "human"}, nil)
+	h := b.Spawn(task.Launch{ID: "x", Prompt: "task", Driver: "human"})
 	u := h.(interface{ DialURL() string }).DialURL()
 	if !strings.HasPrefix(u, "http://verse.test:9090/broker/") {
 		t.Fatalf("dial base = %q, want <face>/broker/<nonce>", u)
@@ -350,7 +350,7 @@ func TestHostBrokerRoutesWorkerDialIn(t *testing.T) {
 	srv := testServer(t)
 
 	b := broker.New()
-	b.Spawn(task.Launch{ID: "p1", Prompt: "review PR #7", Driver: "human"}, nil) // verse side registers the task
+	b.Spawn(task.Launch{ID: "p1", Prompt: "review PR #7", Driver: "human"}) // verse side registers the task
 	nonce := srv.HostBroker("", b.WorkerHandler())
 
 	ts := httptest.NewServer(srv.BrokerHandler())

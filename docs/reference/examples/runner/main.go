@@ -62,7 +62,7 @@ func main() {
 // frame it should be read in, the tool set it may use, and the envelope (vector, grant) verse
 // already resolved. A runner that cannot honour something it was handed should say so — see
 // the note on refusing, below.
-func build(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+func build(l task.Launch, reg *task.Registry) *task.Task {
 	// The supervisor decides what happens at a gate, and the vector is the DEFAULT for gates
 	// this launch did not narrow — verse overrides it from the spawn when the charter said
 	// `vector:`, so this is the floor rather than the rule.

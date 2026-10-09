@@ -50,7 +50,7 @@ func Calls(cfg Config, calls []task.Call) *task.Task {
 	}
 	l := task.Launch{ID: cfg.ID, Driver: task.DriverCalls, Vector: cfg.Vector, Answer: cfg.Answer}
 	p := task.NewCallsTaskFrom(l, calls, cfg.Resolver, &fsExec{
-		root: cfg.Root, log: cfg.Log, content: cfg.Content, extra: extra, env: cfg.Env, set: cfg.Set,
+		root: cfg.Root, log: cfg.Log, extra: extra, env: cfg.Env, set: cfg.Set,
 	})
 	p.SetLog(cfg.Log)
 	p.SetDeriver(demoDeriver{extra: extra})

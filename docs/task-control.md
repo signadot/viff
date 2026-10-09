@@ -180,7 +180,7 @@ remote task.
 
 The dispatch is per [scope](glossary.md#scope). With `-scope`, it reaches a task that the scope
 spawned. It refuses a task that the scope inherited, and names the scope that holds it (see
-[what a scope owns](reference/connect.md#what-a-scope-owns)).
+[what a scope owns](reference/scopes.md#what-a-scope-owns)).
 
 One dispatch for every task forces the contract to be complete. It keeps local tasks equivalent
 to remote tasks.
@@ -481,10 +481,10 @@ controller.
 | docd | the ops of a subtree | a registered controller | a mount |
 | verse | the worker ops and engine ops of a task | a registered backend | `/broker/<nonce>` |
 
-This is the same capability-URL method that `connect` uses for `dir-content-<nonce>`. A runner
-binding to anything but the built-in supervisor is a URL: `<broker>/broker/<nonce>`, or an
-external one. Verse consumes the verse-facing contract from it. For a hosted broker the call is in
-process or forwarded. For an external broker the call is HTTP.
+This is a capability URL: knowing it is the grant. A runner binding to anything but the built-in
+supervisor is a URL: `<broker>/broker/<nonce>`, or an external one. Verse consumes the
+verse-facing contract from it. For a hosted broker the call is in process or forwarded. For an
+external broker the call is HTTP.
 
 One deployment has two listeners.
 
@@ -787,5 +787,5 @@ Two larger tracks are outside this page:
 
 - a human surfacer and an inbox projected by identity, with `owner`, `claimant` and `resolver`
   stamps;
-- a k8s runner that spawns Jobs behind the broker, alongside `k8s.*` as a
-  [Source](controllers.md).
+- a k8s runner that spawns Jobs behind the broker, alongside `k8s.*` as an
+  [io](io.md).

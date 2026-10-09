@@ -42,7 +42,7 @@ func pendingIn(t *testing.T, store entity.Store, taskID string) string {
 }
 
 // A control write reaches the scope's own and is refused at anything inherited: a scope owns
-// what it creates (docs/reference/connect.md#what-a-scope-owns, owns.go).
+// what it creates (docs/reference/scopes.md#what-a-scope-owns, owns.go).
 //
 // The runtime hosts baseline's tasks and every scope's, and by id a task is reached whatever
 // scope asked — so `task cancel --scope me <baseline's task>` cancelled baseline's task, and

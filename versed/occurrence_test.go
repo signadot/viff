@@ -48,7 +48,7 @@ func TestATaskRecordSaysWhichRunItIs(t *testing.T) {
 	// A driver that finishes, because the case is a RE-FIRE: an id is reused only once the
 	// run holding it is over. A second spawn of a LIVE id is deduped by the runtime, which is
 	// the property the id exists for and not the one under test here.
-	drive := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	drive := func(l task.Launch, reg *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
 		return task.NewTask(l.ID, sup, &countingDriver{n: 1}, noopExecutor{})
 	}

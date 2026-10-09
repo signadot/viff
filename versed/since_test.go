@@ -74,7 +74,7 @@ func cursors(fs []task.Frame) []string {
 // resolver — whose whole job is acting on what it reads — is not a cosmetic difference.
 func TestSinceMeansTheSameOnEveryRunner(t *testing.T) {
 	// A drive of identical shape on each runner: N actions, then done.
-	drive := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	drive := func(l task.Launch, reg *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
 		return task.NewTask(l.ID, sup, &countingDriver{n: 6}, noopExecutor{})
 	}
@@ -110,7 +110,7 @@ func TestSinceMeansTheSameOnEveryRunner(t *testing.T) {
 		work := httptest.NewServer(srv.BrokerHandler())
 		defer work.Close()
 
-		b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
+		b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"})
 		claim := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p/claim", map[string]any{"identity": "runner:w"})
 		var cl struct {
 			Epoch int64 `tony:"field=epoch"`
@@ -199,7 +199,7 @@ func (noopExecutor) Execute(_ context.Context, tu task.ToolUse) (task.StepResult
 // the same retained window, and what is being measured is the resume, not the race.
 func TestBelowTheWatermarkResyncs(t *testing.T) {
 	// Past the retained window (task.ringCap is 256), so the early frames are gone.
-	drive := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	drive := func(l task.Launch, reg *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
 		return task.NewTask(l.ID, sup, &countingDriver{n: 400}, noopExecutor{})
 	}
@@ -240,7 +240,7 @@ func TestBelowTheWatermarkResyncs(t *testing.T) {
 		srv := NewWithStore(drive, entitytest.Store(t))
 		ts := httptest.NewServer(srv.Handler())
 		defer ts.Close()
-		srv.Taskd.Spawn(task.Launch{ID: "p", Prompt: "work"}, nil)
+		srv.Taskd.Spawn(task.Launch{ID: "p", Prompt: "work"})
 		assertGap(t, ts.URL+"/tasks/p/events")
 	})
 
@@ -251,7 +251,7 @@ func TestBelowTheWatermarkResyncs(t *testing.T) {
 		remote := httptest.NewServer(taskd.New(drive).Handler())
 		defer remote.Close()
 		pol := runner.HTTP(remote.URL)
-		pol.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "scripted"}, nil)
+		pol.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "scripted"})
 
 		srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
 		srv.SetRunner(pol)
@@ -271,12 +271,12 @@ func TestBelowTheWatermarkResyncs(t *testing.T) {
 // forever on a task that had finished minutes ago.
 func TestAFastTaskIsStillRecordedAsFinished(t *testing.T) {
 	for _, n := range []int{50, 300, 5000} {
-		drive := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+		drive := func(l task.Launch, reg *task.Registry) *task.Task {
 			sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
 			return task.NewTask(l.ID, sup, &countingDriver{n: n}, noopExecutor{})
 		}
 		srv := NewWithStore(drive, entitytest.Store(t))
-		h := srv.Taskd.Spawn(task.Launch{ID: "p", Prompt: "work"}, nil)
+		h := srv.Taskd.Spawn(task.Launch{ID: "p", Prompt: "work"})
 		mirror.Reflect(srv.Store, "p", h, mirror.Meta{Runner: "local"})
 
 		var last string
@@ -301,7 +301,7 @@ func TestAFastTaskIsStillRecordedAsFinished(t *testing.T) {
 // crosses two seams to get there: the charter's spawn fragment, and the runner contract.
 func TestACharterSetsTheRetainedWindow(t *testing.T) {
 	got := make(chan int, 4)
-	build := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	build := func(l task.Launch, reg *task.Registry) *task.Task {
 		got <- l.Retain
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
 		return task.NewTask(l.ID, sup, &countingDriver{n: 1}, noopExecutor{})

@@ -35,7 +35,7 @@ func (e *ranExec) Execute(_ context.Context, tu task.ToolUse) (task.StepResult, 
 // envelope still has to bite.
 func TestSpawnInstallsTheGrant(t *testing.T) {
 	ex := &ranExec{}
-	d := New(func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	d := New(func(l task.Launch, reg *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 		sup.SetDeriver(task.BasicDeriver{})
 		return task.NewTask(l.ID, sup, &execDriver{}, ex)
@@ -45,7 +45,7 @@ func TestSpawnInstallsTheGrant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := d.Spawn(task.Launch{ID: "p1", Prompt: "run id", Grant: &g}, nil)
+	p := d.Spawn(task.Launch{ID: "p1", Prompt: "run id", Grant: &g})
 	waitTerminal(t, d, p.ID)
 
 	if ex.ran {
@@ -59,13 +59,13 @@ func TestSpawnInstallsTheGrant(t *testing.T) {
 // task in the system.
 func TestSpawnWithoutAGrantStaysUnbounded(t *testing.T) {
 	ex := &ranExec{}
-	d := New(func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	d := New(func(l task.Launch, reg *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 		sup.SetDeriver(task.BasicDeriver{})
 		return task.NewTask(l.ID, sup, &execDriver{}, ex)
 	})
 
-	p := d.Spawn(task.Launch{ID: "p1", Prompt: "run id"}, nil)
+	p := d.Spawn(task.Launch{ID: "p1", Prompt: "run id"})
 	waitTerminal(t, d, p.ID)
 
 	if !ex.ran {
@@ -88,7 +88,7 @@ func (denyResolver) Resolve(_ context.Context, q task.GateQuestion, _ task.ToolU
 // the action executes only if the spawn's `vector: auto` actually replaced it.
 func TestSpawnInstallsTheVector(t *testing.T) {
 	ex := &ranExec{}
-	build := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	build := func(l task.Launch, reg *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Ask}, denyResolver{})
 		sup.SetDeriver(task.BasicDeriver{})
 		return task.NewTask(l.ID, sup, &execDriver{}, ex)
@@ -96,7 +96,7 @@ func TestSpawnInstallsTheVector(t *testing.T) {
 
 	// First, without a vector on the spawn: the builder's ask-and-deny stands.
 	d := New(build)
-	p := d.Spawn(task.Launch{ID: "p1", Prompt: "run id"}, nil)
+	p := d.Spawn(task.Launch{ID: "p1", Prompt: "run id"})
 	waitTerminal(t, d, p.ID)
 	if ex.ran {
 		t.Fatal("the builder's vector should have blocked this action; the test proves nothing if it did not")
@@ -109,7 +109,7 @@ func TestSpawnInstallsTheVector(t *testing.T) {
 	}
 	ex.ran = false
 	d2 := New(build)
-	p2 := d2.Spawn(task.Launch{ID: "p2", Prompt: "run id", Vector: vec}, nil)
+	p2 := d2.Spawn(task.Launch{ID: "p2", Prompt: "run id", Vector: vec})
 	waitTerminal(t, d2, p2.ID)
 	if !ex.ran {
 		t.Error("the spawn's auto vector did not replace the builder's blocking one")

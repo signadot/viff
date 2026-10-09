@@ -31,7 +31,7 @@ not know.
   yes run on your authority.
 - [Permissions, walked](perms-guide.md) — your own entities, a task and its gates, a charter
   and what it owns, a gate with nobody behind it, a gate with a resolver.
-- [Connect and scopes](reference/connect.md) — reflecting your working tree into a scope.
+- [Scopes](reference/scopes.md) — a private copy of the store for your own work and flows.
 
 ## Write a charter
 

@@ -1268,7 +1268,7 @@ func stateAt(at string) ([]entity.Entity, error) {
 	}
 	defer resp.Body.Close()
 	// A LISTING'S EMPTY, not a reader's not-found. This reads a WELL-KNOWN address on behalf of
-	// a command that named it — `verse motion`, `verse connect` — where "nothing stands there"
+	// a command that named it — `verse motion` — where "nothing stands there"
 	// is what an empty list means and the caller says so in its own words ("no motions"). The
 	// address a PERSON typed is `verse data`'s, and that one reports the 404, which is the whole
 	// point of the route answering one (git-issue 7e5gv3n9h12krd10jhn0).

@@ -30,8 +30,6 @@ spec:
         - up
         - --docd-addr
         - docd:7071
-        - --docd-mount-addr
-        - docd-mount:7072
         - --addr
         - :9797
         - --broker-addr

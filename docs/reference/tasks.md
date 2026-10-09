@@ -606,7 +606,7 @@ verse flow resume -subject demo.pr.2
 
 Every verb here asks for `control` of each task that it reaches
 ([who may](../control.md#who-may)). With `-scope`, a verb here, and the runtime's
-`/tasks/{id}/pause|resume`, reaches only the tasks that the scope started ([what a scope owns](connect.md#what-a-scope-owns)). So
+`/tasks/{id}/pause|resume`, reaches only the tasks that the scope started ([what a scope owns](scopes.md#what-a-scope-owns)). So
 `verse flow cancel -scope me -task review@demo.pr.2` never stops baseline's review of that PR
 by accident. Drop the flag to address baseline.
 

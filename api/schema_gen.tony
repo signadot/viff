@@ -96,7 +96,6 @@ context:
 - tony-format/context
 define:
   client: .[string]
-  mount: .[string]
 signature:
   name: verse-docd
 ---

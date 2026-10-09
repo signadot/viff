@@ -25,7 +25,7 @@ type Harness struct {
 }
 
 // Build is a taskd builder.
-func (h *Harness) Build(l task.Launch, reg *task.Registry, content task.ContentReader) *task.Task {
+func (h *Harness) Build(l task.Launch, reg *task.Registry) *task.Task {
 	driver := l.Driver
 	if driver == "" {
 		driver = h.Default
@@ -52,9 +52,7 @@ func (h *Harness) Build(l task.Launch, reg *task.Registry, content task.ContentR
 		if h.VirtualKeyOr != nil {
 			virtualKey = h.VirtualKeyOr(l.VirtualKey)
 		}
-		// content (non-nil for a scoped federation) routes read_file through the
-		// verse; otherwise the agent reads the server-side root tree.
-		//
+
 		// Frame/Tools/Vector come from the spawn. The vector is handed to Build rather
 		// than left for the daemon to install afterwards because the DEFAULT FRAME is
 		// derived from it: describing each tool as it will actually behave only works
@@ -62,7 +60,7 @@ func (h *Harness) Build(l task.Launch, reg *task.Registry, content task.ContentR
 		// it again after Build, which is idempotent and is also what bounds the
 		// scripted driver, so neither path depends on a builder remembering.
 		p, _ := harness.Build(harness.Config{
-			ID: l.ID, Prompt: l.Prompt, Root: h.Root, Resolver: reg, Log: h.Log, Content: content,
+			ID: l.ID, Prompt: l.Prompt, Root: h.Root, Resolver: reg, Log: h.Log,
 			Frame: l.Frame, Tools: l.Tools, Answer: l.Answer, Vector: l.Vector, Env: h.Env, Set: set,
 			LLMBaseURL: h.LLMBaseURL, LLMKey: h.LLMKey,
 			LLMVirtualKey: virtualKey, LLMModel: h.LLMModel, Converse: l.Converse,
@@ -82,7 +80,7 @@ func (h *Harness) Build(l task.Launch, reg *task.Registry, content task.ContentR
 			return task.NewFailed(l.ID, reg, err.Error())
 		}
 		return ended(harness.Calls(harness.Config{
-			ID: l.ID, Root: h.Root, Resolver: reg, Log: h.Log, Content: content,
+			ID: l.ID, Root: h.Root, Resolver: reg, Log: h.Log,
 			Tools: l.Tools, Answer: l.Answer, Vector: l.Vector, Env: h.Env, Set: set,
 		}, l.Calls))
 	default:

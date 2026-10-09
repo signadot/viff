@@ -48,12 +48,9 @@ These pages say why a part is shaped the way it is.
 - [The cycle throttle](cycle-throttle.md) — how a runaway across rules is caught at runtime.
 - [External tasks](external-tasks.md) — how the task seam was chosen.
 - [Deployment and steering](deployment-and-steering.md) — why control is not a store write.
-- [Content federation](content-federation.md) — how `connect` federates a tree, and what a
-  task reads through.
-- [Writing a controller](controllers.md) — the `Handler` contract and its invariants.
 - [Platform glossary](platform/glossary.md) — the terms of running, extending and changing
   verse.
 - [Control on the platform](platform/control.md) — the routes of a hold, and what a
   suspension does to rules.
-- [Connect and scopes on the platform](platform/connect.md) — docd, logd and the engine of a
+- [Scopes on the platform](platform/scopes.md) — docd, logd and the engine of a
   scope.

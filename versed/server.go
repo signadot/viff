@@ -113,26 +113,24 @@ type Server struct {
 	// that hosts the runtime) — the common gotcha. Set by `up`; nil when unconfigured.
 	LLM *api.LLM
 
-	// DocdClient/DocdMount are the addresses of the docd this verse is backed by,
-	// when store-kind is docd. They are published on GET /status so a separately-run
-	// controller task (e.g. `verse connect`) can find docd's mount face without
-	// guessing the ephemeral ports `up` chose.
+	// DocdClient is the client-face address of the docd this verse is backed by, when
+	// store-kind is docd. It is published on GET /status so a store client run beside this
+	// verse can find docd without guessing the ephemeral port `up` chose.
 	//
-	// They are what a CLIENT should dial, which is not necessarily what versed dialled:
-	// `up --docd-advertise-addr` sets these when the two differ, as they do in a cluster,
+	// It is what a CLIENT should dial, which is not necessarily what versed dialled:
+	// `up --docd-advertise-addr` sets it when the two differ, as they do in a cluster,
 	// where versed reaches docd by a Service name that resolves nowhere else. The server
-	// never connects to them — it is handed an open store — so there is one reader, and
+	// never connects to it — it is handed an open store — so there is one reader, and
 	// it is somewhere else.
 	DocdClient string
-	DocdMount  string
 
 	// ctx is the lifetime captured at Start; scoped engines start under a child of it.
 	ctx context.Context
 	// Per-scope engines. A trigger installed under ?scope=<s> runs on a dedicated
-	// engine observing store.Scope(s) — the reactivity for one dev's federation
-	// (verse connect) lives in its own copy-on-write scope, isolated from baseline and
+	// engine observing store.Scope(s) — the reactivity for one scope
+	// lives in its own copy-on-write overlay, isolated from baseline and
 	// from other scopes. Created lazily on the first scoped trigger, stopped when the
-	// scope is dropped (disconnect).
+	// scope is dropped (POST /scope/delete).
 	// restored reports that Start's phases have finished. /healthz answers with it, so a
 	// probe can tell STARTING from wedged — the two looked identical while nothing listened
 	// until Start returned.
@@ -199,7 +197,7 @@ type Server struct {
 // pacing it. Unset leaves each engine on trigger.DefaultTripPace.
 //
 // It is here rather than a NewWithStore argument because a scope engine is built lazily, on first
-// use, and a pace applied only to the baseline would leave a developer's federated scope running
+// use, and a pace applied only to the baseline would leave a scope running
 // a different policy from the verse it overlays.
 func (s *Server) SetTripPace(d time.Duration) {
 	s.scopeMu.Lock()
@@ -382,7 +380,7 @@ func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Serv
 
 	// The Spawner owns the full lifecycle: host it via the runner, then mirror
 	// its state into the verse so triggers can react to its completion.
-	eng.SetSpawner(s.spawnerFor(store, "", nil, eng))
+	eng.SetSpawner(s.spawnerFor(store, "", eng))
 	eng.SetDeadlineMover(s.moveDeadline)
 	return s
 }
@@ -424,8 +422,8 @@ func checkAudience(store entity.Store, q task.GateQuestion) error {
 // port, with no check, no owner and no record (git-issue jp9dy8anh12kr9r7nxn0).
 type localRunner struct{ d *taskd.Daemon }
 
-func (l localRunner) Spawn(spec task.Launch, content task.ContentReader) task.Handle {
-	return l.d.Spawn(spec, content)
+func (l localRunner) Spawn(spec task.Launch) task.Handle {
+	return l.d.Spawn(spec)
 }
 
 // Attach returns the still-live in-process handle for id, or nil — after a restart the
@@ -442,7 +440,7 @@ func (localRunner) Ref() string { return "local" }
 // SetRunner rebinds how this server runs tasks — e.g. to a remote runner base
 // URL (runner.HTTP) instead of the in-process local supervisor. The spawnerFor
 // closures read s.runner at spawn time, so this takes effect for subsequent spawns
-// (baseline and scoped). content federation is not forwarded to a remote runner yet.
+// (baseline and scoped).
 func (s *Server) SetRunner(p task.Runner) { s.runner = p }
 
 // UseBroker serves an in-process dial-in broker, hosted under a minted nonce, and returns it
@@ -526,11 +524,11 @@ func mintNonce() string {
 // state into st — the baseline store for the baseline engine, a scoped store for a
 // per-scope engine, so a scoped flow's task state stays in that scope. content (nil
 // for baseline) routes a spawned agent's read_file through the verse.
-// scope is the federation st belongs to (empty for baseline). It is passed rather than
+// scope is the scope st belongs to (empty for baseline). It is passed rather than
 // derived from st because a task must be able to say where it lives before it exists —
 // see task.Launch.Scope, and git-issue kwxxm8cth12ksn99fhn0 for what publishing without
 // it cost.
-func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentReader, eng *trigger.Engine) trigger.Spawner {
+func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) trigger.Spawner {
 	return func(id string, spec launch.Spec) task.Handle {
 		// WHO THIS SPAWN IS BY: the rule that fired, as the engine spells it. Every record of
 		// the task is written as the rule, so the task is owned by whoever owns the rule, and
@@ -639,7 +637,7 @@ func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentR
 			l.Answerers = []string{task.PrincipalAnswerer}
 			meta.Answerers = l.Answerers
 		}
-		h := place.Spawn(l, content)
+		h := place.Spawn(l)
 		s.reflect(rec, id, h, meta)
 		return h
 	}
@@ -1038,30 +1036,6 @@ func claimIsLive(claim entity.Entity, resumed []resumedRun) bool {
 	return false
 }
 
-// storeContentReader resolves a federated file's content by fetching its
-// local:dir-content-<scope>:<path> entity — served on demand by the connect content
-// controller through docd, never stored. It reads via the baseline store, since the
-// content mount is baseline (mounts are not scope-specific).
-type storeContentReader struct {
-	store entity.Store
-	kind  string // dir-content-<scope>
-}
-
-func (c storeContentReader) ReadContent(path string) (string, bool, error) {
-	e, ok, err := c.store.Get(entity.RefAt(verseio.FederationRoot, c.kind, path))
-	if err != nil {
-		return "", false, err
-	}
-	if !ok {
-		return "", false, nil
-	}
-	body := entity.Get(e.Payload, "content")
-	if body == nil {
-		return "", false, nil
-	}
-	return body.String, true, nil
-}
-
 // engFor returns the engine serving a scope for read/manage operations: the baseline
 // engine for the empty scope, the scope's engine if one exists, or nil if that scope
 // has no engine yet (reads treat nil as empty — never create an engine on a GET).
@@ -1087,7 +1061,7 @@ func (s *Server) engineOf(scope string) *trigger.Engine {
 }
 
 // scopeEngine returns the engine for a scope, creating and starting it on first use.
-// It observes store.Scope(scope) — one dev's copy-on-write federation — and spawns
+// It observes store.Scope(scope) — one copy-on-write overlay — and spawns
 // into that same scope. Requires Start to have captured the lifetime ctx.
 //
 // The scope's own charter is RESTORED into it, which is what makes `verse c -a
@@ -1113,14 +1087,11 @@ func (s *Server) scopeEngine(scope string) *trigger.Engine {
 		if s.tripPaceSet { // same throttle policy as the baseline it overlays (see SetTripPace)
 			eng.SetTripPace(s.tripPace)
 		}
-		// Scoped agents read file content through the verse (the connect content
-		// controller), so a validator isn't tied to the machine holding the files.
-		content := storeContentReader{store: s.Store, kind: verseio.ContentPrefix + scope}
-		eng.SetSpawner(s.spawnerFor(scoped, scope, content, eng))
+		eng.SetSpawner(s.spawnerFor(scoped, scope, eng))
 		eng.SetDeadlineMover(s.moveDeadline)
 		sctx, cancel := context.WithCancel(s.ctx)
 		// Per-trigger observation: no root watch. Each scoped trigger watches exactly the
-		// (system,kind) subtree it matches, scoped to this federation. cancel stops them.
+		// (system,kind) subtree it matches, scoped to this scope. cancel stops them.
 		eng.ObserveScoped(sctx)
 		se = &scopeEngine{eng: eng, ctx: sctx, cancel: cancel, susp: susp}
 		s.scopeEngs[scope] = se
@@ -1189,7 +1160,7 @@ func (s *Server) StartServing(ctx context.Context) {
 // task:instance entities a previous run left running — since this is the monolith
 // (the task runtime restarts with the engine, so those tasks are gone).
 func (s *Server) Start(ctx context.Context) {
-	s.ctx = ctx // scoped engines (created later, per federation) start under this
+	s.ctx = ctx // scoped engines (created later, per scope) start under this
 	// Nothing is suspended that the records do not say, and nothing runs until they have been
 	// read: the table holds everything from here until phaseSuspensions loads it.
 	if s.susp.Loaded() {
@@ -1233,7 +1204,7 @@ func (s *Server) Start(ctx context.Context) {
 	// happens on demand — the first scoped request, i.e. the dev reconnecting (see
 	// scopeEngine). It cannot happen here, because a restart cannot enumerate the scopes that
 	// have one: a scope's layer is invisible from baseline and nothing registers a scope's
-	// existence. So a federation nobody has reconnected to sits inert, which is the remaining
+	// existence. So a scope nobody has come back to sits inert, which is the remaining
 	// half of the gap scoped resume also has (see reconcileClaims).
 	// The ORDERING first: a rule names the stratum it lives in, and one restored before its
 	// stratum is held rather than installed — correct, and it would then only start firing when
@@ -1636,7 +1607,7 @@ func (s *Server) notePrincipal(p string) {
 // exercisable and steerable (and can run real work like `sleep`) without model credentials.
 // ScriptedBuilder is the taskd.Builder form (root = the task's cwd). `verse up` uses
 // NewScriptedTask directly to confine scripted commands to the agent root.
-func ScriptedBuilder(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+func ScriptedBuilder(l task.Launch, reg *task.Registry) *task.Task {
 	return NewScriptedTask(l, "", task.DefaultShellEnv, reg)
 }
 
@@ -1730,7 +1701,7 @@ func (e *shellExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResu
 
 func str(m map[string]any, k string) string { s, _ := m[k].(string); return s }
 
-// deleteScope drops the ?scope copy-on-write overlay and all its data — federation
+// deleteScope drops the ?scope copy-on-write overlay and all its data —
 // teardown. It runs against the baseline store (only baseline may delete a scope), so it
 // is independent of scopedStore.
 func (s *Server) deleteScope(w http.ResponseWriter, r *http.Request) {
@@ -1770,7 +1741,7 @@ func (s *Server) deleteScope(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// cancelScopeTasks cancels every live task a scope owns (docs/reference/connect.md#what-a-scope-owns):
+// cancelScopeTasks cancels every live task a scope owns (docs/reference/scopes.md#what-a-scope-owns):
 // what its engine tracks — its rules' tasks and `task run --scope`, wherever they run — and
 // what the local runtime hosts under the scope that no engine does. The engine's go without
 // their completion hooks, which would act inside the scope being deleted (Engine.CancelLive).
@@ -1793,7 +1764,7 @@ func (s *Server) cancelScopeTasks(scope string, eng *trigger.Engine) {
 }
 
 // scopedStore returns the store view for the request's ?scope (baseline if absent).
-// The seam for local-dev federation — the logd-backed store isolates the scope (see
+// The seam for a sandbox — the logd-backed store isolates the scope (see
 // docs/deployment-and-steering.md).
 // storeForScope is the store a scope's records belong in: the scope's own overlay, or
 // baseline when the scope is empty. It is the non-HTTP half of scopedStore — same question,
@@ -2221,7 +2192,7 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 		}
 		writeOut(w, r, http.StatusOK, entity.PathsDoc(out))
 		return
-	} else if listing && !entity.IsMountOwned(prefix...) {
+	} else if listing {
 		out, reached, err := store.PathsMatching(sel.at, depth, sel.pat.StorePattern(), nil)
 		if unreadable(w, r, err) {
 			return
@@ -2235,8 +2206,7 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 		writeOut(w, r, http.StatusOK, entity.PathsDoc(out))
 		return
 	}
-	// What is left reads the node: a read that wants the document, and a listing over a path
-	// rooted in a MOUNTED place, which the store walks a level at a time and does not descend.
+	// What is left reads the node: a read that wants the document.
 	node, ok, err := store.ReadAt(prefix)
 	if unreadable(w, r, err) {
 		return
@@ -3991,10 +3961,9 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		Perms:       s.permsStatus(),
 		Restoring:   s.Restoring(),
 	}
-	// When docd-backed, publish its addresses so a controller task (verse connect)
-	// can reach the mount face; the client face is where store clients connect.
-	if s.DocdMount != "" || s.DocdClient != "" {
-		out.Docd = &api.Docd{Client: s.DocdClient, Mount: s.DocdMount}
+	// When docd-backed, publish the client face, where store clients connect.
+	if s.DocdClient != "" {
+		out.Docd = &api.Docd{Client: s.DocdClient}
 	}
 	// This verse's own listen addresses (operator API, and the broker face when served).
 	if s.Addr != "" || s.BrokerAddr != "" || s.AdminAddr != "" {
@@ -4118,7 +4087,7 @@ func (s *Server) installAsSystem(what string, data []byte) error {
 // Read it as "has this verse ever acted", not as a gauge of what is in flight — `flows` is the
 // live one.
 //
-// Scopes are left out for the reason the census leaves them out: a federation is one dev's
+// Scopes are left out for the reason the census leaves them out: a scope is one party's
 // overlay, and status answers for this verse.
 // firingsStatus counts what has gone wrong at the rules' firings, over baseline and every
 // package, and is nil when nothing has: a status with no `firings` is one with none in trouble.
@@ -4514,7 +4483,7 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 		// Somebody typed this, and the principal is theirs; a firing's is the rule that
 		// fired — see launchOf.
 		Provenance: task.Provenance{Principal: body.Principal, Subject: body.Subject},
-	}, nil)
+	})
 	eng := s.engineOf(scope)
 	s.reflect(store, id, h, mirror.Meta{
 		Runner: place.Ref(), RunnerName: placeName,
@@ -4573,7 +4542,7 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 // stamped with its runner.
 //
 // The runtime and the broker are scope-blind — they hold every task globally — so a
-// bare list would leak a `verse connect` scope's tasks into baseline (and across
+// bare list would leak a scope's tasks into baseline (and across
 // scopes). The one record that carries scope is the task:instance:<id> entity that
 // mirror.Reflect writes (synchronously, at spawn) into the spawning scope's copy-on-write
 // store. So a task belongs to this view iff its instance entity is visible here: the

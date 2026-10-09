@@ -25,12 +25,12 @@ import (
 func serveCalls(t *testing.T) entity.Store {
 	t.Helper()
 	root := t.TempDir()
-	build := func(l task.Launch, reg *task.Registry, content task.ContentReader) *task.Task {
+	build := func(l task.Launch, reg *task.Registry) *task.Task {
 		if l.Driver != task.DriverCalls {
 			return versed.NewScriptedTask(l, root, task.DefaultShellEnv, reg)
 		}
 		return harness.Calls(harness.Config{
-			ID: l.ID, Root: root, Resolver: reg, Content: content,
+			ID: l.ID, Root: root, Resolver: reg,
 			Tools: l.Tools, Answer: l.Answer, Vector: l.Vector, Env: task.DefaultShellEnv,
 		}, l.Calls)
 	}

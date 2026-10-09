@@ -37,7 +37,7 @@ func (okExec) Execute(_ context.Context, tu task.ToolUse) (task.StepResult, []ta
 
 // fakeBuild makes a hosted task whose single action hits an ASK gate, so the
 // resolve/read-plane paths are exercised without a live model.
-func fakeBuild(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+func fakeBuild(l task.Launch, reg *task.Registry) *task.Task {
 	vec := &task.Vector{
 		Default: task.Auto,
 		Gates:   []task.Gate{{Name: "shell", Mode: task.Ask, Match: task.GateMatch{Verbs: []task.Verb{task.Exec}}}},

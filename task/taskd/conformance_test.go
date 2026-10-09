@@ -48,7 +48,7 @@ func (p *localProducer) Caps() tasktest.Caps {
 	return tasktest.Caps{FailureReason: true, CompletionAnswer: true}
 }
 
-func (p *localProducer) build(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+func (p *localProducer) build(l task.Launch, reg *task.Registry) *task.Task {
 	p.mu.Lock()
 	spec := p.specs[l.ID]
 	p.mu.Unlock()
@@ -63,7 +63,7 @@ func (p *localProducer) Start(t *testing.T, spec tasktest.Spec) string {
 	p.mu.Lock()
 	p.specs[id] = spec
 	p.mu.Unlock()
-	p.d.Spawn(task.Launch{ID: id, Prompt: "a task", Driver: spec.Driver}, nil)
+	p.d.Spawn(task.Launch{ID: id, Prompt: "a task", Driver: spec.Driver})
 	return id
 }
 

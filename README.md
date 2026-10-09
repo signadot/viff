@@ -113,8 +113,7 @@ The tutorial has five sections, about entities, tasks, and the charters that rel
   reflects state in, and it acts out. You deploy an io and install it (`verse io add`). It
   owns a place in the store, such as `git`, and rules react to that place. Verse ships five
   (`iod git|git-issue|slack|linear|github`). To write another, copy the sample program and
-  write one function. `verse connect` reflects your working tree in the same way, into a
-  scope.
+  write one function.
 - `versed/` and `cmd/verse/` — the HTTP server and the `verse` CLI. Each command is named in
   the singular, and with no argument it lists.
 
@@ -123,7 +122,7 @@ The tutorial has five sections, about entities, tasks, and the charters that rel
   | governs | `data`, `charter`, `schedule`, `task` (with the `do` verbs for an executor), `flow`, `resolver`, `runner`, `io`, `perms`, `group` |
   | answers with | `question` |
   | reads | `status`, `watch`, `provider`, `schema` |
-  | runs | `up`, `down`, `connect`, `disconnect` |
+  | runs | `up`, `down` |
 
 - `deploy/` and `Makefile` — build the image locally and run verse on Kubernetes, from a
   checked-in `o build`.
@@ -147,7 +146,7 @@ describes what runs today, and so does the site mkdocs builds from it. Start wit
   [entities](docs/reference/entities.md), [tasks](docs/reference/tasks.md),
   [resolvers](docs/reference/resolvers.md), [runners](docs/reference/runners.md),
   [ios](docs/reference/io.md) and [the five that ship](docs/reference/iod.md),
-  [connect and scopes](docs/reference/connect.md),
+  [scopes](docs/reference/scopes.md),
   [the store](docs/reference/store.md), [representation](docs/reference/representation.md).
 - [Kubernetes deploy](deploy/README.md) — build the image (`make docker`) and run verse on a
   cluster.

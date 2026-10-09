@@ -33,8 +33,8 @@ func questionsIn(store entity.Store, taskID string) []string {
 // scoped engine. So one run left two records in two different stores, and the consequences
 // were all of the wrong kind: one dev's pending decision appeared on every other dev's
 // docket, `verse gates` listed a gate whose task `verse ps` would not show, and the question
-// named `local:dir-status-<scope>:*` content the reader had no way to read. The isolation
-// `verse connect` promises held for everything except the one record a human is asked to act
+// named content in the scope the reader had no way to read. The isolation
+// a scope promises held for everything except the one record a human is asked to act
 // on (git-issue kwxxm8cth12ksn99fhn0).
 //
 // The fix carries the scope on the launch, so it is known before the task exists rather than

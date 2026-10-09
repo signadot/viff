@@ -23,12 +23,10 @@ const (
 	goTonyO      = goTonyModule + "/cmd/o"
 )
 
-// docd is the resolved docd the store and Sources use: its client face (logd
-// session protocol) and controller/MOUNT face, plus a stop that tears down anything
-// verse spawned.
+// docd is the resolved docd the store uses: its client face (logd session protocol),
+// plus a stop that tears down anything verse spawned.
 type docd struct {
 	clientAddr string
-	mountAddr  string
 	stop       func()
 }
 
@@ -43,12 +41,7 @@ type docd struct {
 // docd to accept connections before returning.
 func resolveDocd(cfg *upConfig, cc *cli.Context) (docd, error) {
 	if cfg.DocdAddr != "" { // contradictory combinations are refused by upConfig.validate
-		if cfg.DocdMountAddr == "" {
-			// Not fatal — the store only needs the client face — but `verse connect` reads
-			// the mount face off /status, so federation would fail later with no hint why.
-			fmt.Fprintf(cc.Err, "verse up: no --docd-mount-addr; `verse connect` (which mounts a content controller) will not work against this verse\n")
-		}
-		return docd{clientAddr: cfg.DocdAddr, mountAddr: cfg.DocdMountAddr, stop: func() {}}, nil
+		return docd{clientAddr: cfg.DocdAddr, stop: func() {}}, nil
 	}
 
 	// Resolve `o` BEFORE the data dir and the ports: with no o there is nothing to bring
@@ -82,6 +75,8 @@ func resolveDocd(cfg *upConfig, cc *cli.Context) (docd, error) {
 	if err != nil {
 		return docd{}, err
 	}
+	// docd's mount face (its controller-facing listener) is reserved like the rest, because
+	// `o sys up` defaults it to a fixed port too; verse itself never dials it.
 	mountAddr, err := freeAddr()
 	if err != nil {
 		return docd{}, err
@@ -148,7 +143,7 @@ func resolveDocd(cfg *upConfig, cc *cli.Context) (docd, error) {
 		}
 		return docd{}, fmt.Errorf("docd did not come up on %s: %w", clientAddr, err)
 	}
-	return docd{clientAddr: clientAddr, mountAddr: mountAddr, stop: stop}, nil
+	return docd{clientAddr: clientAddr, stop: stop}, nil
 }
 
 // ── resolving o ──────────────────────────────────────────────────────────────

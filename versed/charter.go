@@ -268,7 +268,7 @@ func (s *Server) getCharter(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// A SCOPE IS A CHARTER TOO, and it is not in the tree: a federation's rules are its own
+	// A SCOPE IS A CHARTER TOO, and it is not in the tree: a scope's rules are its own
 	// copy of the verse rather than a place in this one. Asked for by name, answered whole.
 	if scope := r.URL.Query().Get("scope"); scope != "" {
 		eng := s.engFor(scope)

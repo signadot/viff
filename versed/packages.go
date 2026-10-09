@@ -25,7 +25,7 @@ import (
 // of the verse a charter acts in; a package says which part of the verse it acts on. Both are a
 // second engine over the same store with its own watches, both stamp their records so a restore
 // takes only its own, and both are created on demand — so `scopeEngine` below is the thing to
-// read for how this works, and this file is that with an address in place of a federation.
+// read for how this works, and this file is that with an address in place of a scope.
 //
 // READS ARE NOT NARROWED. A package's rules see the whole verse, because reacting to what
 // happened elsewhere is most of what a rule does; what is confined is what MOVES.
@@ -58,7 +58,7 @@ func (s *Server) packageEngineLocked(confine trigger.Subtree) (*trigger.Engine, 
 	if s.tripPaceSet {
 		eng.SetTripPace(s.tripPace)
 	}
-	eng.SetSpawner(s.spawnerFor(s.Store, "", nil, eng))
+	eng.SetSpawner(s.spawnerFor(s.Store, "", eng))
 	eng.SetDeadlineMover(s.moveDeadline)
 	ctx, cancel := context.WithCancel(s.ctx)
 	// Per-trigger observation, exactly as a scope's engine has: each rule watches the subtrees
@@ -90,7 +90,7 @@ func (s *Server) packageEngineIfRunning(at string) *trigger.Engine {
 // packageEngines is every engine running a package's charter — not a scope's.
 //
 // The distinction is the key prefix: a package engine is keyed by its ADDRESS (`at:<stamp>`),
-// a federation scope by its scope name. They are different planes and only one of them is
+// a scope by its name. They are different planes and only one of them is
 // visible from baseline, which is what restorePackages exists for.
 func (s *Server) packageEngines() []*trigger.Engine {
 	s.scopeMu.Lock()
@@ -154,7 +154,7 @@ func (s *Server) resumeSelections() error {
 // restorePackages installs each package's durable charter back into an engine of its own.
 //
 // A package is VISIBLE where a scope is not, and that is the whole difference in lifecycle: a
-// scope's layer cannot be enumerated from baseline, so a federation comes back when its dev
+// scope's layer cannot be enumerated from baseline, so a scope comes back when its owner
 // reconnects, while a package is a stamp on records anyone can list — so a restart brings every
 // package back by reading the charter and grouping it by address.
 //

@@ -59,7 +59,7 @@ func matchFormula(m Match) *Formula {
 
 // MatchWhen builds a Condition.When from a point-in-time Match — the Go-side equivalent of
 // writing the match object inline in a charter. For a Go caller assembling a trigger
-// programmatically (verse connect's per-file validator, tests) rather than parsing JSON.
+// programmatically (tests) rather than parsing JSON.
 func MatchWhen(m Match) *Formula { return matchFormula(m) }
 
 // MatchEvent is the EDGE face of a formula: whether one observed change satisfies it.

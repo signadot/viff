@@ -62,7 +62,7 @@ func cuttingProxy(t *testing.T, upstream string, cutAfter int) *httptest.Server 
 
 func remoteRuntime(t *testing.T, steps int) *httptest.Server {
 	t.Helper()
-	d := taskd.New(func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	d := taskd.New(func(l task.Launch, reg *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
 		return task.NewTask(l.ID, sup, &pacedDriver{n: steps}, noopExecutor{})
 	})
@@ -96,7 +96,7 @@ func TestTheMirrorReconnectsAStreamThatDies(t *testing.T) {
 	remote := remoteRuntime(t, 40)
 	proxy := cuttingProxy(t, remote.URL, 300)
 
-	runner.HTTP(remote.URL).Spawn(task.Launch{ID: "p", Prompt: "work"}, nil)
+	runner.HTTP(remote.URL).Spawn(task.Launch{ID: "p", Prompt: "work"})
 	store := entitytest.Store(t)
 	mirror.Reflect(store, "p", runner.HTTP(proxy.URL).Attach("p"), mirror.Meta{Runner: proxy.URL})
 
@@ -127,7 +127,7 @@ func TestTheMirrorReconnectsAStreamThatDies(t *testing.T) {
 // "the last thing I heard was that it was running".
 func TestADisconnectedMirrorSaysSo(t *testing.T) {
 	remote := remoteRuntime(t, 200) // long enough to still be running while we look
-	runner.HTTP(remote.URL).Spawn(task.Launch{ID: "p", Prompt: "work"}, nil)
+	runner.HTTP(remote.URL).Spawn(task.Launch{ID: "p", Prompt: "work"})
 
 	// Mirrored through a runner that cannot be REACHED, which is distinct from one that
 	// answers with an error: a rejected subscribe is deliberately reported as a failed

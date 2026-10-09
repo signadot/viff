@@ -1039,7 +1039,7 @@ func stillInstalled(ref entity.Ref) entity.Require {
 // way to enumerate scopes (entity.Store has Scope and DeleteScope and nothing that lists), and
 // a scoped store reads baseline layered underneath, so nothing here can find them. It is
 // exactly the gap scoped charters have, and it is survivable for the same reason: a scope is
-// created on demand by whatever owns it — `verse connect` for a session, a sandbox for its own
+// created on demand by whatever owns it — a session's client, a sandbox for its own
 // lifetime — so the thing that made the scope is the thing that can install into it again.
 //
 // A failed read is not "no sources installed", and taking it as one brought a verse back

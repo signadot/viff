@@ -4769,11 +4769,6 @@ func (s *Docd) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["client"] = ir.FromString(string(s.Client))
 	}
 
-	// Field: Mount
-	if s.Mount != "" {
-		irMap["mount"] = ir.FromString(string(s.Mount))
-	}
-
 	return ir.FromMap(irMap), nil
 }
 
@@ -4813,12 +4808,6 @@ func (s *Docd) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "client", fieldNodeUnwrapped.Type)
 			}
 			s.Client = string(fieldNodeUnwrapped.String)
-		case "mount":
-			// Field: Mount
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "mount", fieldNodeUnwrapped.Type)
-			}
-			s.Mount = string(fieldNodeUnwrapped.String)
 		default:
 			if gomap.IsStrict(opts...) {
 				return fmt.Errorf("unknown field %q for Docd", fieldName.String)

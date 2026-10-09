@@ -35,7 +35,7 @@ func main() {
 	}
 }
 
-func build(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+func build(l task.Launch, reg *task.Registry) *task.Task {
 	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
 	return task.NewTask(l.ID, sup, &planDriver{prompt: l.Prompt}, &echoExecutor{})
 }

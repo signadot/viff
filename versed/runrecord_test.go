@@ -29,7 +29,7 @@ func TestEachRunLeavesItsOwnRecord(t *testing.T) {
 	// A driver that fails the first time and succeeds the second, so the two runs differ in
 	// the field an operator would actually be reading.
 	var runs int
-	drive := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	drive := func(l task.Launch, reg *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
 		runs++
 		if runs == 1 {
@@ -151,7 +151,7 @@ func waitRunAfter(t *testing.T, store entity.Store, id string, prev int64) int64
 // had just told it was fine.
 func TestAClearedFieldIsAbsent(t *testing.T) {
 	store := entitytest.Store(t)
-	drive := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	drive := func(l task.Launch, reg *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
 		return task.NewTask(l.ID, sup, &countingDriver{n: 1}, noopExecutor{})
 	}

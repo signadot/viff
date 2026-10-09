@@ -591,7 +591,7 @@ func (s *Server) runThen(id string, ref entity.Ref, asker, prompt string, calls 
 	h := place.Spawn(task.Launch{
 		ID: id, Prompt: prompt, Driver: driver, Vector: vec, Calls: calls, Answerers: answerers,
 		Provenance: task.Provenance{Principal: asker, Subject: ref.String()},
-	}, nil)
+	})
 	eng := s.engineOf("")
 	s.reflect(store, id, h, mirror.Meta{
 		Runner: place.Ref(), RunnerName: placeName, Subject: ref.String(), Prompt: prompt,

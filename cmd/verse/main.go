@@ -35,7 +35,7 @@ type globals struct {
 	OFmt  string `cli:"name=ofmt aliases=o desc='output format: tony | yaml (verse does not render json)'"`
 	IFmt  string `cli:"name=ifmt aliases=i desc='input format for stdin, extensionless files and typed payloads: tony | json | yaml (a file suffix wins)'"`
 	Color string `cli:"name=color default=auto desc='colorize output: auto (a terminal only) | always | never'"`
-	Scope string `cli:"name=scope desc='operate in a copy-on-write scope: a federation overlay isolated from baseline'"`
+	Scope string `cli:"name=scope desc='operate in a copy-on-write scope: an overlay isolated from baseline'"`
 }
 
 var g = &globals{Addr: defaultAddr}
@@ -210,8 +210,6 @@ func rootCmd() *cli.Command {
 			groupCmd(),
 			ioCmd(),
 			providerCmd(),
-			connectCmd(),
-			disconnectCmd(),
 			statusCmd(),
 			accountCmd(),
 			whoamiCmd(),
@@ -352,7 +350,7 @@ func noArgs(cmd *cli.Command, name string, args []string) error {
 // discard whatever they were handed, so `verse status demo.pr.1` printed the status of the
 // whole verse and looked like it had answered the question asked.
 // listing is leaf for a command that ANSWERS A COLLECTION — it carries --if/--trim, where a
-// leaf that prints a line (`down`, `disconnect`) does not. A flag that silently does nothing is
+// leaf that prints a line (`down`) does not. A flag that silently does nothing is
 // worse than one the parser refuses, which is the whole reason the two are separate builders.
 func listing(name, synopsis string, fn func(cc *cli.Context, args []string) error) *cli.Command {
 	return leaf(name, synopsis, fn).WithOpts(filterOpts()...)

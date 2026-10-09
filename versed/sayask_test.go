@@ -59,7 +59,7 @@ func (noopExec) Execute(_ context.Context, tu task.ToolUse) (task.StepResult, []
 // `mute` many slow steps and no conversation, `turn` a conversation that goes quiet at once.
 func sayServer(t *testing.T) (*Server, *httptest.Server) {
 	t.Helper()
-	build := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	build := func(l task.Launch, reg *task.Registry) *task.Task {
 		var d task.Driver
 		switch l.Prompt {
 		case "talk":

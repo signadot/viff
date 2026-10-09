@@ -211,12 +211,11 @@ type Engine struct {
 	// — which is the property one-entity-per-rule exists to avoid. Promoted by addStratum.
 	pending []Trigger
 
-	// Per-trigger (subtree) observation mode. A scoped engine (a verse connect
-	// federation) opens NO root watch; instead each trigger added gets a watch on exactly
+	// Per-trigger (subtree) observation mode. A scoped engine opens NO root watch; instead each trigger added gets a watch on exactly
 	// the (system,kind) subtree it matches. bgctx bounds those watchers.
 	subtree bool
 	bgctx   context.Context
-	// scope is the federation this engine acts in — "" for baseline. It is written onto
+	// scope is the scope this engine acts in — "" for baseline. It is written onto
 	// every rule this engine persists, and read back to tell the scope's OWN charter from
 	// baseline's, which a scoped store reads through and cannot otherwise distinguish. See
 	// SetScope.
@@ -273,23 +272,23 @@ func (e *Engine) SetSpawner(s Spawner) { e.spawn = s }
 // the record is. A gate reading its date from the subject calls it when the date is edited.
 func (e *Engine) SetDeadlineMover(m func(scope, id string, at time.Time) error) { e.moveDeadline = m }
 
-// SetScope names the federation this engine acts in — a `verse connect` scope, or "" for
+// SetScope names the scope this engine acts in — a named scope, or "" for
 // baseline. Set before anything is installed, because it is stamped on what this engine
 // persists.
 //
 // It exists because a scoped store READS BASELINE THROUGH: listing `trigger:rule:*` in a
 // scope returns baseline's rules and the scope's own, with nothing on the record to tell
 // them apart, so a restore either resurrects nothing or installs the whole baseline charter
-// into one dev's federation. Neither is what `verse c -a --scope me` promised. The
+// into one scope. Neither is what `verse c -a --scope me` promised. The
 // scope's name on the record answers it exactly, at the one moment the answer is known: the
 // install itself.
 //
 // A record carrying `scope: me` also answers the same question for a reader — `verse data
-// get trigger:rule:x --scope me` says which federation the rule belongs to rather than
+// get trigger:rule:x --scope me` says which scope the rule belongs to rather than
 // leaving it to be inferred from which listing it turned up in.
 func (e *Engine) SetScope(name string) { e.scope = name }
 
-// Scope is the federation this engine acts in, "" for baseline.
+// Scope is the scope this engine acts in, "" for baseline.
 func (e *Engine) Scope() string { return e.scope }
 
 // SetLogger redirects engine logging. Debug carries dispatch detail (off by default),
@@ -329,7 +328,7 @@ func (e *Engine) Start(ctx context.Context) {
 // ObserveScoped puts the engine in per-trigger (subtree) observation mode: it opens
 // NO root watch. Each trigger added afterward gets its own watch on exactly the
 // (system,kind) subtree it matches — the docd-aligned model (watch what you match,
-// not the whole verse). Used for a scoped engine (a verse connect federation); ctx
+// not the whole verse). Used for a scoped engine; ctx
 // bounds every subtree watcher, so cancelling it stops them all. Baseline engines use
 // Start instead. Actions still run on this engine's (scoped) store and spawner.
 func (e *Engine) ObserveScoped(ctx context.Context) {
@@ -1066,7 +1065,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 			// The named layer for a FIRING's gates, which a spawn has had all along and a
 			// rule did not. Empty leaves the question to the standing layer, and then to
 			// the docket a person reads.
-			// And WHICH federation is asking, for the same reason a spawn carries it: the
+			// And WHICH scope is asking, for the same reason a spawn carries it: the
 			// question is about this engine's subject, which outside this scope is an entity
 			// that does not exist.
 			Scope: e.scope,

@@ -39,7 +39,7 @@ func TestASpawnIsAnsweredBeforeTheTaskIsPrepared(t *testing.T) {
 	rt := runner.HTTP(srv.URL)
 
 	start := time.Now()
-	h := rt.Spawn(task.Launch{ID: "t1", Prompt: "say ok", Vector: &task.Vector{Default: task.Auto}}, nil)
+	h := rt.Spawn(task.Launch{ID: "t1", Prompt: "say ok", Vector: &task.Vector{Default: task.Auto}})
 	if took := time.Since(start); took > 5*time.Second {
 		t.Fatalf("the spawn waited %s for a preparation that has not even begun", took)
 	}
@@ -56,7 +56,7 @@ func TestASpawnIsAnsweredBeforeTheTaskIsPrepared(t *testing.T) {
 		t.Errorf("the list while preparing = %v (%v), want t1 alone", list, err)
 	}
 	// Asked again while preparing: the same answer, not a second task and not a refusal.
-	if again := rt.Spawn(task.Launch{ID: "t1", Prompt: "say ok"}, nil); again.Err() != "" {
+	if again := rt.Spawn(task.Launch{ID: "t1", Prompt: "say ok"}); again.Err() != "" {
 		t.Errorf("a second spawn of a task being prepared was refused: %s", again.Err())
 	}
 
@@ -79,7 +79,7 @@ func TestAPreparationThatFailsIsAFailedTask(t *testing.T) {
 	defer srv.Close()
 	rt := runner.HTTP(srv.URL)
 
-	h := rt.Spawn(task.Launch{ID: "t2", Prompt: "say never"}, nil)
+	h := rt.Spawn(task.Launch{ID: "t2", Prompt: "say never"})
 	if h.Err() != "" {
 		t.Fatalf("the spawn itself was refused, so the caller never got a task to read: %s", h.Err())
 	}
@@ -111,7 +111,7 @@ func TestACancelWhilePreparingIsCancelled(t *testing.T) {
 	defer srv.Close()
 	rt := runner.HTTP(srv.URL)
 
-	h := rt.Spawn(task.Launch{ID: "t3", Prompt: "say late"}, nil)
+	h := rt.Spawn(task.Launch{ID: "t3", Prompt: "say late"})
 	if err := h.Cancel("changed my mind"); err != nil {
 		t.Fatalf("cancel while preparing: %v", err)
 	}

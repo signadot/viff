@@ -1,4 +1,5 @@
-# The store
+| `-docd-addr` | attach to a docd that is already running |
+| `-docd-advertise-addr` | publish a different address on `/status`. Use it when a store client beside verse reaches docd at another address than verse does. |# The store
 
 Verse coordinates everything through one [store](../glossary.md#store). The store is a tree of
 entities. It can be watched, and a reader can follow it with a cursor. You do not have to touch
@@ -10,7 +11,7 @@ document store, over logd. docd gives verse four things:
 
 | Property | What it means |
 |---|---|
-| **Copy-on-write scopes** | A [scope](../glossary.md#scope) is an overlay. Its writes do not touch [baseline](../glossary.md#baseline), and one operation drops it ([connect.md](connect.md#scopes)). |
+| **Copy-on-write scopes** | A [scope](../glossary.md#scope) is an overlay. Its writes do not touch [baseline](../glossary.md#baseline), and one operation drops it ([scopes.md](scopes.md#scopes)). |
 | **Conditional and coordinated writes** | A write is an atomic compare-and-swap (CAS). Two writers that advance one entity cannot lose each other's fields ([entities.md](entities.md#conditional-writes)). |
 | **Edge-faithful watches** | The change stream *is* the patch that each writer applied. No reader rebuilds, reorders or drops an edit. |
 | **Compactions** | A compaction keeps the log bounded and keeps the current state. |
@@ -21,8 +22,8 @@ directory. It points the store at the client face of docd. The store flags chang
 | Flag | What it does |
 |---|---|
 | `-data <dir>` | uses a durable directory |
-| `-docd-addr`, `-docd-mount-addr` | attach to a docd that is already running |
-| `-docd-advertise-addr`, `-docd-mount-advertise-addr` | publish a different pair of addresses on `/status`. Use them when a [controller](../glossary.md#controller) reaches docd at another address than verse does. |
+| `-docd-addr` | attach to a docd that is already running |
+| `-docd-advertise-addr` | publish a different address on `/status`. Use it when a store client beside verse reaches docd at another address than verse does. |
 
 See [up.md](up.md#the-store).
 

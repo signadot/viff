@@ -637,89 +637,18 @@ ok "slide observable on the entity (vector/vectorBy projected)"
 VERSE_USER=user:smoke v task cancel "$ID" >/dev/null 2>&1 || true # stop the sleep (frees the runtime promptly)
 ok "task cancel (kills the running command)"
 
-# ── connect: federate a local tree into a scope (docd-only path) ─────────────
-step "connect (federate a local tree)"
-mkdir -p "$tmp/tree"
-printf 'hello from a\n' >"$tmp/tree/a.txt"
-printf 'hello from b\n' >"$tmp/tree/b.txt"
+# ── scopes: a scoped write is the scope, and a scope owns only what it creates ───────
+step "scopes"
 SCOPE="smoke$$"
-# direct invocation (see the up launch above) so kill -INT reaches connect, not a wrapper.
-"$BIN" --addr "$ADDR" --scope "$SCOPE" connect "$tmp/tree" --driver scripted \
-	--prompt 'echo checked $path' >"$tmp/connect.log" 2>&1 &
-CONN=$!
-fed=
-why="it did not appear within 30s"
-last=
-for _ in $(seq 1 150); do
-	out=$(v --scope "$SCOPE" data local 2>/dev/null || true)
-	last=$out
-	if has "$out" 'a.txt' && has "$out" 'b.txt'; then
-		fed=1
-		break
-	fi
-	# WHICH FAILURE IT WAS. This loop has two exits and reported one message for both, so a
-	# `connect` that died on startup and a federation that was merely slow were the same line —
-	# and the check flakes about one run in fourteen (git-issue d3vpeqshh12ksq3hg9n0), which is
-	# exactly when the difference decides where to look next.
-	if ! kill -0 "$CONN" 2>/dev/null; then
-		why="the connect process exited before the tree appeared"
-		break
-	fi
-	sleep 0.2
-done
-[ -n "$fed" ] || {
-	printf '  last `data local` answer in scope %s:\n%s\n' "$SCOPE" "${last:-<empty>}" >&2
-	tail -20 "$tmp/connect.log" >&2
-	die "connect did not federate the tree: $why"
-}
-ok "federated a.txt + b.txt into scope $SCOPE"
-# Content is served on demand off a baseline mount (no --scope). ASSERTED, not noted: this
-# used to be a soft `note` blaming "mount timing", and the read never resolved at all — a
-# path naming a mount-owned slice was rooted at the entity root while the controller sits
-# under MountRoot, so `verse data` could not read what `verse connect` had just federated.
-# A tolerated check is how that survived every run (entity.rootForAt).
-has "$(v data local "dir-content-$SCOPE" a.txt)" 'hello from a' ||
-	die "file content did not come back through the content mount"
-ok "file content served through the verse (content mount)"
-# THE VALIDATOR RAN. Federation is only half of what connect promises — its startup line says
-# "validator per file" — and this half was dead for as long as it existed while every check
-# above passed: the rule's subject predicate selected nothing, and the completion hook under it
-# failed on a reference a hook cannot reach. Both were silent. So the assertion is the end of
-# the loop rather than any part of its middle: the file's own record says it was validated.
-val=
-for _ in $(seq 1 60); do
-	if has "$(v --scope "$SCOPE" data local "dir-status-$SCOPE" a.txt 2>/dev/null || true)" 'validated'; then
-		val=1
-		break
-	fi
-	sleep 0.5
-done
-[ -n "$val" ] || { v --scope "$SCOPE" data verse task instance >&2; die "the per-file validator never validated a.txt"; }
-ok "the validator ran and latched: a.txt is marked validated"
-# And it LATCHES: a validated file is not selected again, which is the whole reason the
-# subject says what is outstanding rather than what exists.
-# Counted with --paths, one address per line, rather than by grepping `ref:` out of a
-# rendering: the answer is a document now, and an id is a key in it.
-# At `verse task instance`, which is where tasks are held out to be read: `verse task` above it
-# is the system's and holds out nothing, so a listing there is refused — and a refusal counted
-# is 0 before and 0 after, which passes whatever the validator did.
-before=$(v --scope "$SCOPE" data --paths --depth 1 verse task instance | grep -c . || true)
-sleep 3
-after=$(v --scope "$SCOPE" data --paths --depth 1 verse task instance | grep -c . || true)
-[ "$before" -gt 0 ] || die "no task is listed at verse task instance: the count says nothing"
-[ "$before" = "$after" ] || die "the validator re-spawned after latching ($before → $after)"
-ok "a validated file is not validated again ($after tasks)"
-
+v --scope "$SCOPE" data smokescope x 1 --put '{k: v}' >/dev/null || die "a scoped --put failed"
+haskv "$(v --scope "$SCOPE" data smokescope x 1)" k v || die "the scope does not read its own write"
+v data smokescope x 1 >/dev/null 2>&1 && die "a scoped write is visible from baseline"
+ok "a write under --scope $SCOPE lands in the scope and not in baseline"
 # A suspension is a control write, and a scope owns what it creates: from the scope, baseline's
 # package is refused with the sentence every control write refuses in.
 out=$(v --scope "$SCOPE" flow suspend --charter smoke-susp --why "not mine" 2>&1) && die "a scope suspended baseline's package: $out"
 has "$out" "baseline's" || die "the scope's refusal does not say whose the charter is: $out"
 ok "--scope $SCOPE suspend of baseline's package is refused, naming baseline"
-
-kill -INT "$CONN" 2>/dev/null || true # ctrl-c tears the scope down
-wait "$CONN" 2>/dev/null || true
-CONN=""
-ok "connect disconnected"
 
 # ── status ───────────────────────────────────────────────────────────────────
 step "status"

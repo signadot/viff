@@ -284,8 +284,7 @@ Doers are ordinary entities, and a doer may only *narrow* the authority that the
 
 ## 5. Where to go next
 
-- **Isolation and your working tree**: [scopes](reference/connect.md#scopes) and
-  [content federation](content-federation.md).
+- **Isolation**: [scopes](reference/scopes.md#scopes).
 - **Remote runners and human work**: [task control](task-control.md) and
   [external tasks](external-tasks.md).
 - **External systems**: [ios](io.md) bring Git, GitHub or Linear into the store.

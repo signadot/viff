@@ -1,87 +1,31 @@
-# Federating a working tree, and scopes
+# Scopes
 
-`verse connect` federates your working tree into the [store](../glossary.md#store). To
-[federate](../glossary.md#federation) a tree is to make its files readable through the store.
-`verse connect` does this under a private [scope](../glossary.md#scope) for this session, and it
-connects a validator to every file. This is the loop for local development. `verse connect` is
-a process of its own, so give it a terminal and leave it running.
-
-[Content federation](../content-federation.md) says how verse splits a tree into an index and
-the bytes that it serves.
-
-## What one command does
-
-`verse connect` does three things.
-
-| What | Where | What it holds |
-|---|---|---|
-| writes the metadata of each file | `local.dir-status-<scope>.<path>` entities | the full fstat and a hash of the content. It is an index: the stat and the hash, and not the bytes. |
-| serves the contents of files on request | `local.dir-content-<scope>.*` | the bytes. A validator reads them through the verse, and needs no shared filesystem. |
-| installs a scoped [rule](../glossary.md#rule) | the scope | a rule that spawns a validator for each file |
-
-All of it lives in a scope with a random name. The scope is isolated from
-[baseline](../glossary.md#baseline) and from other developers. When `connect` exits, it drops
-the scope.
-
-## Driving it
-
-First configure the model credentials ([up.md](up.md#the-driver)), so that the validators run
-as real agents. In one terminal:
-
-```sh
-verse up
-```
-
-In a second terminal, connect your tree and give the validator a prompt. `$path` binds to the
-relative path of each file. `connect` prints the scope that it chose, such as `scope "a1b2c3"`:
-
-```sh
-verse connect . -driver llm \
-  -prompt 'Read the file at path "$path" and report any problems in one sentence.'
-```
-
-In a third terminal, use the scope that `connect` printed:
-
-```sh
-verse task                                           # a validator per file
-verse task get <id>                                  # the agent's read-and-validated report
-verse -scope <scope> data local                    # your files, as dir-status entities
-verse data local dir-content-<scope> README.md # a file's bytes, served on demand
-```
-
-Touch or add a file, and its validator fires. The validator reads the file through the verse.
-To remove the scope, press Ctrl-c in `connect`, or run `verse disconnect -scope <scope>`. The
-rule, the overlay and the content mount all go.
-
-For a test without credentials, leave out the credentials and `-driver llm`. A validator still
-fires for each file, on the scripted driver. It does not read the file.
-
-The runtime need not share a filesystem with your tree, and the validator can run on another
-machine.
-*Verse truncates file reads, so an agent validates a large file from a partial view.*
+A scope is a private copy of the [store](../glossary.md#store) for one party: a developer, a
+sandbox, a trial. A write under a scope lands in the scope and does not touch
+[baseline](../glossary.md#baseline). A read under a scope sees the scope on top of baseline. So
+your local changes and your flows stay isolated from other developers and from the shared verse.
 
 <a id="scopes"></a>
-## Scopes
+## Using a scope
 
-Every client command takes `-scope <name>`. The default is baseline. A scope is a
-copy-on-write overlay:
+Every client command takes `-scope <name>`. The default is baseline. A scope is a copy-on-write
+overlay:
 
 - a read sees the scope on top of the shared baseline;
 - a write lands in the scope, and does not touch baseline.
 
-So your local changes and your flows stay isolated.
+A scope exists from its first scoped write. Nothing creates one ahead of time.
 
 ```sh
-verse connect . -scope me
-verse watch -scope me
 verse data -scope me demo x 1 -put '{k: v}' # in the scope only
+verse data -scope me demo x 1                # the scope: there
 verse data demo x 1                          # baseline: not there
-verse disconnect -scope me                         # drop the whole overlay
+verse watch -scope me                        # the scope's changes, baseline's beneath
+verse charter -a -f rules.tony -scope me     # a charter that runs in the scope alone
 ```
 
-`disconnect -scope me` removes the overlay in one step. It removes every write of the scope,
-not only the `local.*` files. First, what the scope started
-stops:
+Dropping a scope is `POST /scope/delete?scope=<name>` on the operator API. It removes every write
+of the scope, in one step. First, what the scope started stops:
 
 1. its sources stop;
 2. its engine stops;
@@ -89,7 +33,7 @@ stops:
    tasks that its rules started, verse skips `onCancelled`, because that hook would act
    inside the scope that is being dropped.
 
-How the store makes a scope is in [connect.md](../platform/connect.md), in the repository.
+How the store makes a scope is in [scopes.md](../platform/scopes.md), in the repository.
 
 ## The charter a scope runs
 
@@ -115,12 +59,12 @@ scope, and verse refuses it as one (see [what a scope owns](#what-a-scope-owns))
 never ran in the scope needs no hiding.
 
 After a restart of verse, the charter of a scope comes back when verse next builds the engine
-of the scope. That happens when you connect again. Until something asks for the scope, its
+of the scope. That happens on the first scoped request. Until something asks for the scope, its
 engine does not exist and its rules do not run. A restart cannot list the scopes that have a
 charter. The layer of a scope is not visible from baseline, and nothing registers a scope.
 
 *Left to do: a scope is not a first-class, listable, durable thing. A registry of scopes would
-let a restart bring back the charter of every scope without a new connection.*
+let a restart bring back the charter of every scope without a new request.*
 
 Whether a scope should also run the rules of baseline is an open question. See
 [Why it is this way](#why-it-is-this-way).
@@ -142,7 +86,7 @@ owns what it created:
 
 Everything else that the scope can see belongs to baseline, and the scope reads its record
 through the overlay. How the runtime keeps each one is in
-[connect.md](../platform/connect.md#the-program-of-a-scope), in the repository.
+[scopes.md](../platform/scopes.md#the-program-of-a-scope), in the repository.
 
 So a write of the [control plane](../glossary.md#control-plane) in a scope reaches only what the
 scope created. These are the writes of the control plane:
@@ -168,4 +112,4 @@ replace a baseline rule in a scope, install yours under its name
 
 ## Why it is this way
 
-The reasons for this design are in [reference-connect.md](../design/reference-connect.md), in the repository.
+The reasons for this design are in [reference-scopes.md](../design/reference-scopes.md), in the repository.

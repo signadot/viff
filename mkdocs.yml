@@ -27,8 +27,6 @@ exclude_docs: |
   /cycle-throttle.md
   /external-tasks.md
   /deployment-and-steering.md
-  /content-federation.md
-  /controllers.md
   /reference/up.md
   /reference/runners.md
   /reference/resolvers.md
@@ -59,7 +57,7 @@ nav:
   - reference/tasks.md
   - asking.md
   - perms-guide.md
-  - reference/connect.md
+  - reference/scopes.md
 - Write a charter:
   - Introduction: charter-intro.md
   - trigger-model.md

@@ -302,7 +302,7 @@ func TestALaunchNeedingRestrictedEgressIsRefusedHere(t *testing.T) {
 	srv := httptest.NewServer(r.Handler())
 	defer srv.Close()
 
-	h := runner.HTTP(srv.URL).Spawn(task.Launch{ID: "e1", Prompt: "x"}, nil)
+	h := runner.HTTP(srv.URL).Spawn(task.Launch{ID: "e1", Prompt: "x"})
 	e := h.Err()
 	if e == "" {
 		t.Fatal("a launch asking for containment this runner cannot build was accepted")
@@ -358,7 +358,7 @@ func TestAMissingModelCredentialIsRefusedNotDiscovered(t *testing.T) {
 	srv := httptest.NewServer(r.Handler())
 	defer srv.Close()
 
-	h := runner.HTTP(srv.URL).Spawn(task.Launch{ID: "k1", Prompt: "x"}, nil)
+	h := runner.HTTP(srv.URL).Spawn(task.Launch{ID: "k1", Prompt: "x"})
 	e := h.Err()
 	for _, want := range []string{"refused", "DRIVE_KEY", "runner's environment"} {
 		if !strings.Contains(e, want) {

@@ -506,7 +506,7 @@ type SuspensionCount struct {
 // reach the pieces around it.
 //
 // The counters are the cheap health read; the three optional blocks are discovery. `docd` is
-// how `verse connect` finds the store's mount face without guessing the ephemeral port `up`
+// how a store client beside this verse finds docd without guessing the ephemeral port `up`
 // chose, `listen` publishes this verse's own addresses, and `llm` says whether agent creds
 // are configured ON THIS SERVER — the common gotcha, since the runtime reads its own
 // environment rather than the client's.
@@ -791,13 +791,11 @@ type RunnerStatus struct {
 	Dial   string `tony:"field=dial,omitzero"`
 }
 
-// Docd is the document store's two faces: the client address store clients connect to, and
-// the mount address a controller task reaches.
+// Docd is the document store's client face: the address store clients connect to.
 //
 //tony:schemagen=verse-docd,notag
 type Docd struct {
 	Client string `tony:"field=client,omitzero"`
-	Mount  string `tony:"field=mount,omitzero"`
 }
 
 // LLM is a SECRETS-SAFE summary of the task runtime's model config: whether it is usable

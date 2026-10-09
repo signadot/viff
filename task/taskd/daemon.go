@@ -25,11 +25,10 @@ import (
 
 // Builder constructs a hosted task from a task.Launch — the id, the prompt, the
 // requested driver (e.g. "scripted"/"llm"; "" = the builder's default), and the frame and
-// tool set that shape the agent — plus the Registry that serves as its gate resolver and
-// an optional ContentReader (nil = read from the local filesystem; non-nil = read
-// federated files through the verse). It is injected so the daemon stays decoupled from
-// any particular driver/runtime, and picks the driver per spawn.
-type Builder func(l task.Launch, reg *task.Registry, content task.ContentReader) *task.Task
+// tool set that shape the agent — plus the Registry that serves as its gate resolver. It is
+// injected so the daemon stays decoupled from any particular driver/runtime, and picks the
+// driver per spawn.
+type Builder func(l task.Launch, reg *task.Registry) *task.Task
 
 // Daemon hosts a set of running tasks.
 type Daemon struct {
@@ -93,7 +92,7 @@ type hosted struct {
 	// occurrence is which run this is (see task.Launch.Occurrence), retained so the snapshot
 	// can say so: the process, and not only the entity, knows which run it is.
 	occurrence int64
-	// scope is the federation the task was launched in (task.Launch.Scope), retained so the
+	// scope is the copy-on-write scope the task was launched in (task.Launch.Scope), retained so the
 	// runtime can say whose a task is: one runtime hosts baseline's and every scope's, and a
 	// control write from the wrong scope is refused by asking, not by reaching the task.
 	scope string
@@ -173,8 +172,8 @@ func (d *Daemon) Lookup(id string) *task.Task {
 // seam the engine's Spawner uses, so a trigger-spawned task is hosted and
 // controllable (list/get/attach/cancel) exactly like a `verse task run` one.
 // Returns the running task (already Run in the background).
-func (d *Daemon) Spawn(l task.Launch, content task.ContentReader) *task.Task {
-	h, _ := d.spawnHosted(l, content)
+func (d *Daemon) Spawn(l task.Launch) *task.Task {
+	h, _ := d.spawnHosted(l)
 	return h.task
 }
 
@@ -190,7 +189,7 @@ func (d *Daemon) Spawn(l task.Launch, content task.ContentReader) *task.Task {
 // That makes the spawn safe to RETRY, which is the point. A caller whose spawn request
 // timed out cannot know whether the far side acted, and until now its only options were to
 // abandon real work or to destroy it.
-func (d *Daemon) spawnHosted(l task.Launch, content task.ContentReader) (*hosted, bool) {
+func (d *Daemon) spawnHosted(l task.Launch) (*hosted, bool) {
 	d.mu.Lock()
 	if h, ok := d.tasks[l.ID]; ok && !h.done() {
 		d.mu.Unlock()
@@ -199,7 +198,7 @@ func (d *Daemon) spawnHosted(l task.Launch, content task.ContentReader) (*hosted
 	d.mu.Unlock()
 
 	reg := task.NewRegistry()
-	tk := d.build(l, reg, content)
+	tk := d.build(l, reg)
 
 	// Install the spawn's authority axes here rather than in the Builder, because they are
 	// properties of the RUNTIME's contract with verse, not of any driver: a scripted
@@ -329,7 +328,7 @@ func (d *Daemon) spawn(w http.ResponseWriter, r *http.Request) {
 	// one — the seam is complete or the guarantee is local-only. The vector and grant arrive
 	// as resolved predicates rather than names for the reason task.Launch gives: the
 	// vocabulary lives at one end, so the two cannot drift apart.
-	h, created := d.spawnHosted(l, nil)
+	h, created := d.spawnHosted(l)
 	// 201 built it, 200 found it already running. A retrying client needs no more than
 	// that, and a client that does not care can ignore it: both mean "this id is running".
 	status := http.StatusCreated

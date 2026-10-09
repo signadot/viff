@@ -42,7 +42,7 @@ func (p *brokerProducer) Start(t *testing.T, spec tasktest.Spec) string {
 	t.Helper()
 	p.n++
 	id := "p" + itoa(int64(p.n))
-	p.b.Spawn(task.Launch{ID: id, Prompt: "a task", Driver: spec.Driver}, nil)
+	p.b.Spawn(task.Launch{ID: id, Prompt: "a task", Driver: spec.Driver})
 
 	// A worker must claim before it may report — the epoch it gets back is the fence on
 	// every subsequent write.

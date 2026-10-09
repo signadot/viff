@@ -18,7 +18,7 @@ import (
 // worker's inbox rather than a yes or no it cannot read as one.
 func TestAWorkerRaisedGateCarriesItsOptionsAndTheChoiceComesBack(t *testing.T) {
 	b := broker.New()
-	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"})
 	srv := testServer(t)
 	srv.SetRunner(b)
 	nonce := srv.HostBroker("", b.WorkerHandler())

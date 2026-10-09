@@ -25,7 +25,7 @@ spec:
       - name: docd
         image: signadot/verse:latest
         # The stateful tier: logd+docd on the /data volume. `o sys up` runs just the
-        # daemons (no engine). versed attaches over the client/mount faces.
+        # daemons (no engine). versed attaches over the client face.
         # o wants space-separated, single-dash flags (not --flag=value).
         #
         # NO SNAPSHOT POLICY IS NAMED HERE, and that is now deliberate rather than
@@ -56,6 +56,8 @@ spec:
         - :7070
         - -docd-addr
         - :7071
+        # docd's mount face. `o sys up` serves it, so it is given a port of its own rather
+        # than left to collide; verse never dials it, and no Service fronts it.
         - -docd-mount-addr
         - :7072
         ports:

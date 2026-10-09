@@ -82,27 +82,27 @@ func TestLatchCheck(t *testing.T) {
 	}
 }
 
-// `verse connect`'s validator is the charter this check was written for: it spawned per file
-// with nothing to stop it. Its replacement asks for the ABSENCE of a `validated` field and
+// A per-file validator is the charter this check was written for: one that spawned per file
+// with nothing to stop it. The shape that works asks for the ABSENCE of a `validated` field and
 // writes one, so a file is validated once rather than once per commit — and that is a latch the
 // key intersection could not see, since the predicate's only top-level "key" was the tag `not`.
 //
 // Both halves of the absence idiom are pinned here because the check now reasons about what the
 // predicate MEANS: `!not {validated: null}` is "no such field" (a null in a match value is a
 // wildcard, so `{validated: null}` is presence), and writing ANY value falsifies it.
-func TestConnectValidatorShapeLatches(t *testing.T) {
+func TestAbsenceLatchShapeLatches(t *testing.T) {
 	unvalidated := Condition{Subject: Match{
-		"path": pathOf("local", "dir-status-abc", "*"),
+		"path": pathOf("demo", "file", "*"),
 		"value": ir.FromKeyVals([]ir.KeyVal{
 			{Key: ir.FromString("validated"), Val: ir.Null()},
 		}).WithTag("!not"),
 	}}
 	spawn := &launch.Spec{Prompt: `Read the file at path "$path" and report any problems.`}
 
-	// What connect installs today: a literal.
+	// A literal latch.
 	act := Action{Spawn: spawn, OnDone: &Action{Patch: entity.Obj{"validated": true}.Payload()}}
 	if err := checkLatch(unvalidated, act); err != nil {
-		t.Fatalf("the connect validator still re-spawns: %v", err)
+		t.Fatalf("the validator still re-spawns: %v", err)
 	}
 	// And a $reference, which is the case that needs the fold rather than a value comparison:
 	// what lands is unknown, but that SOMETHING lands is not, and an absence constraint is

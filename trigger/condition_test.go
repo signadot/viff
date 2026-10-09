@@ -289,7 +289,7 @@ func TestEmptyWhenMatchesEverything(t *testing.T) {
 // written when it meant something, and their authors deserve to be told where the meaning
 // went — a create is the rising edge of "this exists", which is what `on` says.
 func TestOpIsNoLongerAMatchDimension(t *testing.T) {
-	const in = `{"path":"local.dir-status-abc.*","op":"set"}`
+	const in = `{"path":"demo.file.*","op":"set"}`
 	var f Formula
 	if err := codec.Unmarshal([]byte(in), &f, codec.JSON); err == nil {
 		if err := f.Req.Facts.Validate(); err == nil {

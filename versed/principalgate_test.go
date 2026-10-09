@@ -125,7 +125,7 @@ func TestAVectorNamingPrincipalNeedsSomebodyToAsk(t *testing.T) {
 // runner's frame says the turn names $principal, verse puts the launcher there, and the record
 // says it waits on them.
 func TestARemoteConversationsTurnIsItsLaunchers(t *testing.T) {
-	build := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	build := func(l task.Launch, reg *task.Registry) *task.Task {
 		tk := task.NewTask(l.ID, task.NewSupervisor(&task.Vector{Default: task.Auto}, reg),
 			talkingDriver{&slowDriver{}}, noopExec{})
 		if l.Converse {

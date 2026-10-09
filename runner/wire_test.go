@@ -38,7 +38,7 @@ func remote(t *testing.T, d task.Driver) (*httptest.Server, func() task.Launch) 
 	t.Helper()
 	var mu sync.Mutex
 	var got task.Launch
-	build := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	build := func(l task.Launch, reg *task.Registry) *task.Task {
 		mu.Lock()
 		got = l
 		mu.Unlock()
@@ -69,7 +69,7 @@ func TestALaunchReachesARemoteRunnerWhole(t *testing.T) {
 		Environment: "verse-repo", Scope: "me", Occurrence: 4217,
 		Provenance: task.Provenance{Principal: "user:ana@example.com", Subject: "demo.pr.1", Chain: "review"},
 	}
-	h := runner.HTTP(srv.URL).Spawn(sent, nil)
+	h := runner.HTTP(srv.URL).Spawn(sent)
 	if msg := h.Err(); msg != "" {
 		t.Fatalf("the spawn was refused: %s", msg)
 	}
@@ -110,7 +110,7 @@ func TestALaunchReachesARemoteRunnerWhole(t *testing.T) {
 func TestACancelsReasonReachesARemoteTask(t *testing.T) {
 	srv, _ := remote(t, &paced{n: 500})
 	r := runner.HTTP(srv.URL)
-	h := r.Spawn(task.Launch{ID: "long", Prompt: "wait"}, nil)
+	h := r.Spawn(task.Launch{ID: "long", Prompt: "wait"})
 	if err := h.Cancel("the place is going away"); err != nil {
 		t.Fatalf("cancel: %v", err)
 	}

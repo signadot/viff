@@ -70,13 +70,13 @@ type GateQuestion struct {
 	// charter rather than across them, so without this a docket entry names a `review` and
 	// leaves the reader to work out which package's.
 	At string
-	// Scope is the federation the asker acts in — "" for baseline. A question is published as
+	// Scope is the copy-on-write scope the asker acts in — "" for baseline. A question is published as
 	// a record, and a record goes in a store; without this, one registry serving baseline and
 	// every scoped engine has nothing to route by and publishes them all to baseline. The
 	// docket a reader sees is then not the world a reader sees: a question about an entity
 	// only one dev can read, on everybody's docket.
 	//
-	// Not written into the record — the store it lands in already says which federation it
+	// Not written into the record — the store it lands in already says which scope it
 	// belongs to, the way a task's instance record does.
 	Scope string
 	// Options are the outcomes this question can settle on, each with the number of ballots

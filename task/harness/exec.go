@@ -131,13 +131,10 @@ func (r ExecRecord) modelContent() string {
 }
 
 // fsExec performs the tools for real, confined to root, keeping a full record of
-// every execution. When content is non-nil, read_file reads federated files through
-// the verse (the docd content controller) instead of the local filesystem, so the
-// task need not share a disk with the files it validates.
+// every execution.
 type fsExec struct {
 	root    string
 	log     io.Writer
-	content task.ContentReader
 	extra   map[string]Tool // the runtime's own tools (see Tool)
 	env     []string        // the variables run_bash passes through (see Config.Env)
 	set     []string        // the variables run_bash is given outright (see Config.Set)
@@ -155,21 +152,7 @@ func (e *fsExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResult,
 
 	switch tu.Name {
 	case "read_file":
-		if e.content != nil {
-			// Federated: read the file's bytes through the verse (docd content
-			// controller), by its path relative to the federated tree.
-			path := str(tu.Input, "path")
-			switch body, ok, err := e.content.ReadContent(path); {
-			case err != nil:
-				// A failed lookup is NOT a missing file, and must not be reported as
-				// one: an agent told the file does not exist will go and create it.
-				rec.Err = "reading " + path + " through the verse failed: " + err.Error()
-			case !ok:
-				rec.Err = "file not found in the verse: " + path
-			default:
-				rec.Stdout = body
-			}
-		} else if p, err := e.path(tu, "path"); err != nil {
+		if p, err := e.path(tu, "path"); err != nil {
 			rec.Err = err.Error()
 		} else if b, err := os.ReadFile(p); err != nil {
 			rec.Err = fsProblem("read_file", str(tu.Input, "path"), p, err)

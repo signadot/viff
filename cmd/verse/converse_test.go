@@ -43,7 +43,7 @@ func (nopExec) Execute(_ context.Context, tu task.ToolUse) (task.StepResult, []t
 // serveParrot is serve with a runtime whose `parrot` driver holds a conversation.
 func serveParrot(t *testing.T) entity.Store {
 	t.Helper()
-	build := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	build := func(l task.Launch, reg *task.Registry) *task.Task {
 		if l.Driver != "parrot" {
 			return versed.NewScriptedTask(l, t.TempDir(), task.DefaultShellEnv, reg)
 		}

@@ -13,7 +13,7 @@ import (
 	"github.com/signadot/verse/trigger"
 )
 
-// A scope owns what it creates (docs/reference/connect.md#what-a-scope-owns).
+// A scope owns what it creates (docs/reference/scopes.md#what-a-scope-owns).
 //
 // The world half of a scope is logd's copy-on-write. The program half — rules, tasks, gates,
 // flows — is a record AND a live thing: a watch, a handle, an awaiter, a set of handles. A live
@@ -41,7 +41,7 @@ func (s *Server) flowEngines(scope string) []*trigger.Engine {
 	return append([]*trigger.Engine{s.Eng}, s.packageEngines()...)
 }
 
-// scopeEngines is every named scope's engine, by name — the federations that are open, as
+// scopeEngines is every named scope's engine, by name — the scopes that are open, as
 // against the packages packageEngines lists from the same map.
 func (s *Server) scopeEngines() map[string]*trigger.Engine {
 	s.scopeMu.Lock()

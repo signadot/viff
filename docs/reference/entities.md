@@ -329,9 +329,6 @@ Spawning about such a subject is allowed: the task record is verse's own write. 
 the system is the exception, because it is how the system writes there. The base charter
 derives the calendar under `verse.schedule`.
 
-`local.*` (a federated working tree) is a third thing. It is owned by the mount, and a
-controller with no history serves it. See below.
-
 ## Reading
 
 A verse is one document, a tree, and `verse data` answers it at an address. The address is a
@@ -536,15 +533,6 @@ the precondition holds, and the substrate refuses the write instead, naming the 
 array. That is the useful answer. Where a ballot does stand, `-create` refuses to commit over it,
 as it does anywhere else.
 
-### What the document does not cover
-
-Addresses owned by a mount are not in the document. `verse connect` serves its content
-(`local.dir-content-*`) from a controller outside the store's own tree, with no history. The
-read walks only the store's tree. So a mounted node is addressable by `verse data <path>`, and
-absent from `verse data`.
-
-To say "the whole document" would turn that existing gap into a claim that is not quite true.
-To add the second read to the answer is a real decision, not a detail.
 
 ## Writing
 

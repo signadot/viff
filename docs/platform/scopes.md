@@ -1,26 +1,16 @@
-# Connect and scopes on the platform
+# Scopes on the platform
 
-This page is how `verse connect` and a scope work inside verse: docd, logd and the engine of a
-scope. What a user types and sees is in [connect.md](../reference/connect.md).
-
-## What one command does
-
-`verse connect` serves the contents of files on request, through docd. A content
-[controller](../glossary.md#controller) serves them at `local.dir-content-<scope>.*`.
-
-## How the contents travel
-
-The contents pass through docd, and not through a `-root` on the server. So the runtime need
-not share a filesystem with your tree, and the validator can run on another machine.
+This page is how a scope works inside verse: docd, logd and the engine of a scope. What a user
+types and sees is in [scopes.md](../reference/scopes.md).
 
 ## Dropping a scope
 
-`disconnect -scope me` removes the overlay in one step, through the `DeleteScope` of logd.
+`POST /scope/delete?scope=<name>` removes the overlay in one step, through the `DeleteScope` of
+logd.
 
 The store provides scopes, and the surface of verse does not. logd and docd make the
-copy-on-write overlay, and `disconnect -scope` asks the store to drop one. A store without
-real scopes would answer 501. The client would then remove the `local.*` entities one at a
-time.
+copy-on-write overlay, and the route asks the store to drop one. A store without real scopes
+answers 501.
 
 The engine of a scope watches subtrees, one watch for each rule. Each watch covers exactly the
 literal prefix of the [pattern](../glossary.md#pattern) that its rule matches. It does not

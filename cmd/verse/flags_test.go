@@ -205,7 +205,6 @@ func TestGateAndTaskAnswerVerbs(t *testing.T) {
 func TestUpValidateRefusesContradictions(t *testing.T) {
 	cases := map[string]upConfig{
 		"--data with --docd-addr": {DocdAddr: "h:1", Data: "/tmp/x"},
-		"mount face with no docd": {DocdMountAddr: "h:2"},
 		"two runners":             {Runner: "http://x", Broker: true},
 		"broker with no face":     {Broker: true},
 	}
@@ -217,7 +216,7 @@ func TestUpValidateRefusesContradictions(t *testing.T) {
 
 	ok := map[string]upConfig{
 		"defaults":           {},
-		"running docd":       {DocdAddr: "h:1", DocdMountAddr: "h:2"},
+		"running docd":       {DocdAddr: "h:1"},
 		"data dir":           {Data: "/tmp/x"},
 		"broker with a face": {Broker: true, BrokerAddr: ":9090"},
 		"broker face only":   {BrokerAddr: ":9090"},

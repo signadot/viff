@@ -221,7 +221,7 @@ every time it would apply ([suspending](reference/perms.md#suspending)).
 
 ## Scopes
 
-A scope owns what it creates ([connect](reference/connect.md#what-a-scope-owns)).
+A scope owns what it creates ([scopes](reference/scopes.md#what-a-scope-owns)).
 
 | You act | What a verb reaches |
 |---|---|

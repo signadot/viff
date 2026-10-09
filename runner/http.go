@@ -65,9 +65,8 @@ type httpRunner struct {
 }
 
 // Spawn POSTs /tasks carrying the caller's id (so the remote uses it and it matches
-// the task:instance entity). content is not forwarded — a remote runtime resolves
-// files its own way; federating a remote read_file is a later concern.
-func (p *httpRunner) Spawn(l task.Launch, _ task.ContentReader) task.Handle {
+// the task:instance entity).
+func (p *httpRunner) Spawn(l task.Launch) task.Handle {
 	// The launch as it crosses (task.SpawnRequest): every field of it but the two that are
 	// verse's own, each absent where the spawn said nothing, which is the runner's default.
 	body, err := codec.Marshal(l.Wire(), codec.Tony)

@@ -92,64 +92,12 @@ const writeBudget = 30 * time.Second
 // commits it got AND the deadline, so nobody reads a truncated catch-up as a complete one.
 const replayBudget = 15 * time.Second
 
-// MountRoot is the top-level segment CONTROLLER-MOUNTED slices live under, kept
-// disjoint from DefaultRoot — and that disjointness is load-bearing, for one reason:
-//
-// A mount is task-driven, so it has NO HISTORY. A controller backs its subtree with
-// something that is not the log (a filesystem, an API), and across a mount/unmount there
-// is no durable commit sequence to replay; a self-backed controller has no past to ask
-// for at all (libctl.Handler says such a controller "should reject a historical read
-// rather than answer from an uncoordinated timeline"). So history belongs to the
-// log-backed base, and a history-bearing watch must never span a mount.
-//
-// docd enforces nothing here — it composes a watch whose path is a strict ANCESTOR of a
-// mount, and a composed watch silently drops FromCommit and never emits ReplayComplete.
-// With mounts under DefaultRoot, the root watch became composed the moment a `verse
-// connect` content controller appeared, and Since (a FromCommit replay on the root)
-// returned ok=true with ZERO events after running to its internal timeout — a silent,
-// successful-looking under-delivery of the engine's catch-up. Mount/unmount are also
-// coordinator WRITERS, so the mount additionally blocked ~5s on the overlapping root
-// watch before force-ending it.
-//
-// Holding mounts on a sibling root removes both: "verse" is not a field-prefix of
-// "versemnt", so no watch is ever an ancestor of a mount and nothing overlaps. One root
-// watch, no subtree enumeration, Since untouched. See entity/composedwatch_test.go and
-// docs/trigger-model.md.
-//
-// This is a PATH-RENDERING split only: the entity namespace is unchanged, so a mounted
-// slice is still addressed as the ordinary ref local:dir-content-<scope>:<path>.
-const MountRoot = DefaultRoot + "mnt"
-
-// mounts are the places served by a controller mount rather than by the log, so a path through
-// one renders under MountRoot. Each is a path from the top of the tree whose last segment is a
-// prefix: `local.dir-content-*`. Kept here — not derived from package source, which imports
-// this package — and held in step by source.TestFederationKindsAreMountOwned.
-//
-// Only the content place is mounted today: `verse connect` serves file bytes on demand at
-// local.dir-content-<scope> and stores nothing. Its sibling local.dir-status-<scope> is
-// ordinary log-backed metadata and stays under DefaultRoot, which is what keeps the
-// trigger that matches it watchable.
-var mounts = []struct {
-	at     []string // the literal segments above the mounted one
-	prefix string   // what the mounted segment begins with
-}{
-	{[]string{"local"}, "dir-content-"},
-}
-
-// IsMountOwned reports whether a path reaches a place served by a controller mount, and so
-// renders under MountRoot with no history. It is asked of a path's segments from the top of the
-// tree — `verse` counts like any other — whoever asks: a ref, a read, a watch, a replay.
-func IsMountOwned(segs ...string) bool {
-	for _, m := range mounts {
-		if len(segs) <= len(m.at) || !slices.Equal(segs[:len(m.at)], m.at) {
-			continue
-		}
-		if strings.HasPrefix(segs[len(m.at)], m.prefix) {
-			return true
-		}
-	}
-	return false
-}
+// Every entity renders under the store's one root, and nothing under that root is served by
+// anything but the log. That is what lets a history-bearing watch or replay on any path be
+// answered from logd's commit sequence: a controller mount (docd's mount face) backs a
+// subtree with something that is not the log, and a watch whose path is a strict ancestor
+// of one is composed by docd, which drops FromCommit and never emits ReplayComplete. The
+// store mounts nothing, so no watch it opens is ever composed.
 
 // observer is one live subscriber: a buffered channel plus the count of COMMITS dropped
 // while it was full, carried on its next delivery so a drop is never silent (the consumer
@@ -319,57 +267,18 @@ func OpenLogdStore(cfg LogdConfig) (*LogdStore, error) {
 // refPath renders an entity ref as a kinded path <root>.<system>.<kind>.<id>, with
 // each segment quoted as needed so arbitrary ids (e.g. "signadot/x#42") stay a
 // single field. Note: kpaths are '.'-delimited; '/' is a literal character.
-//
-// A mount-owned slice renders under MountRoot instead, so no watch on this store's root
-// is ever an ancestor of a mount (see MountRoot). The ref itself is unchanged — this is
-// the one place the two roots are chosen between, and reads/writes route by the rendered
-// path, so every caller keeps addressing a mounted slice as an ordinary ref.
 func (s *LogdStore) refPath(ref Ref) string {
-	path := s.rootFor(ref)
-	for _, sg := range ref.Segs() {
+	return s.pathAt(ref.Segs())
+}
+
+// pathAt renders a path's segments under this store's root, the way refPath renders a ref:
+// the two ways of naming one entity reach the same place.
+func (s *LogdStore) pathAt(at []string) string {
+	path := seg(s.root)
+	for _, sg := range at {
 		path += "." + seg(sg)
 	}
 	return path
-}
-
-// rootFor picks the top-level segment a ref renders under: MountRoot for a
-// controller-mounted (historyless) slice, this store's root otherwise.
-func (s *LogdStore) rootFor(ref Ref) string { return s.rootForAt(ref.Segs()) }
-
-// rootForAt is rootFor for a PATH rather than a ref — the same choice, made from the
-// segments a read was asked at.
-//
-// It exists because the two ways of naming one entity have to reach the same place. A ref
-// went through rootFor and found the mount; a path was rooted at this store's root and found
-// nothing, so `verse data local:dir-content-x:a.txt` answered "nothing stands there" about a
-// file the ref route served in full. The CLI sends a path, so `verse connect`'s content was
-// unreadable through the command that federated it.
-//
-// A path of ONE segment cannot decide: `local` spans both the mounted content slice and the
-// log-backed status one, and they live under different roots. It stays under this store's
-// root, which loses nothing today — a controller answers null at its own mount root (see
-// source.Content.Match), so there is nothing there to merge in.
-func (s *LogdStore) rootForAt(at []string) string {
-	if IsMountOwned(at...) {
-		return seg(MountRoot)
-	}
-	return seg(s.root)
-}
-
-// MountKPath renders the kinded path under MountRoot at which a controller mounts to own a
-// mounted place — e.g. verse connect's content controller mounts local.dir-content-<scope>. A
-// controller task holds no store, so this lets it and the store agree on the path.
-//
-// It renders under MountRoot, disjoint from the entity root, so a mount never sits below a
-// watched path (see MountRoot). The path must reach a mounted place (IsMountOwned), or the store
-// would render what is under it at the other root and reads would miss the mount — MountKPath
-// panics rather than let the two drift silently.
-func MountKPath(segs ...string) string {
-	if !IsMountOwned(segs...) {
-		panic("entity.MountKPath: " + JoinSegs(segs) + " is not a mounted place " +
-			"(add it to mounts, else refPath will render it under the entity root and miss the mount)")
-	}
-	return seg(MountRoot) + "." + JoinSegs(segs)
 }
 
 func seg(v string) string {
@@ -880,24 +789,9 @@ func (s *LogdStore) replacing(ref Ref, payload Payload) Payload {
 // a pattern, so it is a negated nesting — "this object does not have <id>" — and a pattern at
 // an ELEMENT hangs off an `!at` rather than a key, which a shared tree would overwrite
 // (elemPattern).
-//
-// A MOUNT-OWNED BRANCH IS ASKED AT THE ROOT, unpushed. Its own segments render under
-// MountRoot rather than this store's root, so a prefix taken from them would name a path in
-// the wrong tree; there is no such precondition today, and this keeps one from arriving as a
-// silent mis-rooting rather than as the behaviour that already stands.
 func (s *LogdStore) preconditionAt(pre []pathPattern) *logdapi.PathData {
 	prefix := commonFloor(pre)
-	for _, p := range pre {
-		if s.rootForAt(p.at.segments()) != seg(s.root) {
-			prefix = nil // a mount-owned branch is rooted elsewhere; ask at the root
-			break
-		}
-	}
-	path := seg(s.root)
-	for _, sg := range prefix {
-		path += "." + seg(sg)
-	}
-	return &logdapi.PathData{Path: path, Data: patternUnder(pre, len(prefix))}
+	return &logdapi.PathData{Path: s.pathAt(prefix), Data: patternUnder(pre, len(prefix))}
 }
 
 // floor is how many of a branch's leading segments may become part of the precondition's
@@ -1304,10 +1198,7 @@ func (s *LogdStore) ReadAt(at []string) (*ir.Node, bool, error) {
 func (s *LogdStore) ReadAtCommit(at []string) (*ir.Node, bool, int64, error) {
 	ctx, cancel := s.reqCtx()
 	defer cancel()
-	path := s.rootForAt(at)
-	for _, sg := range at {
-		path += "." + seg(sg)
-	}
+	path := s.pathAt(at)
 	node, commit, err := s.sess.MatchCommit(ctx, path)
 	if isNotFound(err) {
 		s.noteRead(nil)
@@ -1345,50 +1236,25 @@ func (s *LogdStore) ReadAtCommit(at []string) (*ir.Node, bool, int64, error) {
 // designed yet -- so nothing here has to read an array to find out what its elements are called.
 //
 // The addresses beneath an element are the same ones the document walk spells, since below an
-// element a name extends the ACCESS rather than the address (entity.Path). A mounted place is
-// the one exception to the descent, walked a level at a time (walkPathsAt).
+// element a name extends the ACCESS rather than the address (entity.Path).
 func (s *LogdStore) PathsAt(at []string, depth int) ([]Path, error) {
 	out, _, err := s.PathsAtCommit(at, depth)
 	return out, err
 }
 
 // PathsAtCommit is PathsAt, and the commit the listing was served at: the one descent's, since
-// every page of it reads the commit its first did. Zero where the store said none (GetCommit) —
-// and for a mounted place, walked in a read per level, each at a commit of its own.
+// every page of it reads the commit its first did. Zero where the store said none (GetCommit).
 func (s *LogdStore) PathsAtCommit(at []string, depth int) ([]Path, int64, error) {
 	if depth == 0 {
 		return nil, 0, nil // the node alone, and a listing is what stands BENEATH it
 	}
 	ctx, cancel := s.reqCtx()
 	defer cancel()
-	path := s.rootForAt(at)
-	for _, sg := range at {
-		path += "." + seg(sg)
-	}
-	// A MOUNTED PLACE IS WALKED, a level at a time: docd does not descend into a mount, and a
-	// controller answers its own levels.
-	if IsMountOwned(at...) {
-		kind, err := s.iterTypeAt(ctx, path)
-		if err != nil || kind == "" {
-			return nil, 0, err
-		}
-		// The level walk prunes by how long an address is, so the bound is turned into the
-		// ceiling it counts against here — the one place left that adds the two.
-		max := 0
-		if depth > 0 {
-			max = len(at) + depth
-		}
-		var out []Path
-		if err := s.walkPathsAt(ctx, path, at, "", kind, max, &out); err != nil {
-			return nil, 0, err
-		}
-		return out, 0, nil
-	}
+	path := s.pathAt(at)
 	// ONE DESCENT, `<at>..`, answers every node beneath in document order — a node before what
 	// is under it, and at each level the store's order — which is the walk a listing prints,
 	// in one paged request rather than one per container. A depth bounds it on the server, so
-	// what is past the bound is neither walked nor shipped. The entity root is a node of its
-	// own beside the mount root, so a descent under it never reaches a mount.
+	// what is past the bound is neither walked nor shipped.
 	q := libctl.SetQuery{Path: path + "..", Return: logdapi.ReturnPath}
 	if depth > 0 {
 		d := depth
@@ -1420,7 +1286,7 @@ func (s *LogdStore) PathsAtCommit(at []string, depth int) ([]Path, int64, error)
 // pathOfMember is the address a member of a descent stands at, from the store's own spelling of
 // its path: the root comes off, the leading field names are the address, and from the first
 // bracket segment on everything is ACCESS inside the node that holds it (entity.Path) — a name
-// after an element extends the access rather than the address, as memberAddress says.
+// after an element extends the access rather than the address.
 func (s *LogdStore) pathOfMember(p string) (Path, error) {
 	kp, err := kpath.Parse(p)
 	if err != nil {
@@ -1442,11 +1308,7 @@ func (s *LogdStore) pathOfMember(p string) (Path, error) {
 func (s *LogdStore) StandsAt(at []string) (bool, error) {
 	ctx, cancel := s.reqCtx()
 	defer cancel()
-	path := s.rootForAt(at)
-	for _, sg := range at {
-		path += "." + seg(sg)
-	}
-	kind, err := s.iterTypeAt(ctx, path)
+	kind, err := s.iterTypeAt(ctx, s.pathAt(at))
 	return kind != "", err
 }
 
@@ -1486,17 +1348,11 @@ func (s *LogdStore) iterTypeAt(ctx context.Context, path string) (string, error)
 // from them says what the field holds to anybody willing to guess. So a view narrows the answer
 // (Narrow): each row the pattern kept is asked again as its reader reads it, and whether the
 // path reached anything is asked of what they may see.
-//
-// A mounted place is not descended into (PathsAt walks those), so a caller with a path rooted
-// in one reads the node instead.
 func (s *LogdStore) PathsMatching(at *kpath.KPath, depth int, pattern *ir.Node, as *Narrow) ([]Path, bool, error) {
 	prefix, rest := LiteralPrefix(at)
-	if IsMountOwned(prefix...) {
-		return nil, false, fmt.Errorf("list %s: a mounted place is walked a level at a time, not descended", JoinSegs(prefix))
-	}
 	ctx, cancel := s.reqCtx()
 	defer cancel()
-	asked := s.rootForAt(prefix)
+	asked := seg(s.root)
 	if spelled := at.String(); spelled != "" {
 		if !strings.HasPrefix(spelled, ".") && !strings.HasPrefix(spelled, "[") &&
 			!strings.HasPrefix(spelled, "{") && !strings.HasPrefix(spelled, "(") {
@@ -1634,76 +1490,6 @@ func beneath(member, under string) bool {
 	return false
 }
 
-// walkPathsAt appends every address beneath the node of kind standing at path, which is the
-// address segs (and, inside an element, access) names.
-func (s *LogdStore) walkPathsAt(ctx context.Context, path string, segs []string, access, kind string, max int, out *[]Path) error {
-	here := Path{Ref: RefAt(segs...), Access: access}
-	if max > 0 && len(segs)+accessDepth(access) >= max {
-		return nil // nothing beneath this can be within the bound
-	}
-	wild := logdapi.IterWildcard(kind)
-	if wild == "" {
-		return nil // a scalar holds nothing to list
-	}
-	type member struct{ id, kind string }
-	var members []member
-	if _, err := s.sess.MatchEachReturning(ctx, path+wild, nil,
-		logdapi.ReturnID+","+logdapi.ReturnIterType, func(m libctl.SetMember) error {
-			members = append(members, member{id: m.ID, kind: m.IterType})
-			return nil
-		}); err != nil {
-		if isNotFound(err) {
-			s.noteRead(nil)
-			return nil
-		}
-		s.noteRead(err)
-		return fmt.Errorf("list %s: %w", here, err)
-	}
-	s.noteRead(nil)
-	// Depth-first, so the answer reads as the walk a listing prints: each address, then what is
-	// under it, before the next sibling.
-	for _, m := range members {
-		below, belowAccess, step := s.memberAddress(segs, access, kind, m.id)
-		*out = append(*out, Path{Ref: RefAt(below...), Access: belowAccess})
-		if err := s.walkPathsAt(ctx, path+step, below, belowAccess, m.kind, max, out); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// memberAddress is where one member of a level stands: the names, the access, and the step to
-// append to the store path to reach it.
-//
-// AN OBJECT'S MEMBER EXTENDS THE NAMES, unless it is inside an element, where everything is
-// inside a node and the name extends the access instead (entity.Path). AN ARRAY'S MEMBER IS A
-// POSITION, and extends the access whatever it is inside.
-//
-// The id is read as a kpath SEGMENT — which is what a client would write, and what the segment
-// forms `[0]` and `{7}` already are. A name that needs quoting arrives quoted, and the address is
-// built from the name inside: taken verbatim, the id `"1"` became a segment of that spelling and
-// demo.pr."\"1\"" named nothing.
-func (s *LogdStore) memberAddress(segs []string, access, kind, id string) (below []string, belowAccess, step string) {
-	if kind == logdapi.IterObject {
-		name := id
-		if n, isField := kpath.SegmentFieldName(id); isField {
-			name = n
-		}
-		if access != "" {
-			return segs, access + "." + seg(name), "." + seg(name)
-		}
-		below = append(append([]string{}, segs...), name)
-		return below, "", "." + seg(name)
-	}
-	// An array's member: the id is the position, as a segment (`[0]`) or as the bare value it
-	// used to be — both spelled here as the segment a reader writes.
-	elem := id
-	if kp, err := kpath.Parse(id); err != nil || kp == nil || kp.Field != nil {
-		elem = "[" + id + "]"
-	}
-	return segs, access + elem, elem
-}
-
 // ListAtErr is ListAt, answering with the error THIS read failed with. See ListErr.
 func (s *LogdStore) ListAtErr(at []string, depth int, pred func(Ref) bool) ([]Entity, error) {
 	out, _, err := s.ListAtErrCommit(at, depth, pred)
@@ -1718,10 +1504,7 @@ func (s *LogdStore) ListAtErrCommit(at []string, depth int, pred func(Ref) bool)
 	}
 	ctx, cancel := s.reqCtx()
 	defer cancel()
-	path := s.rootForAt(at)
-	for _, sg := range at {
-		path += "." + seg(sg)
-	}
+	path := s.pathAt(at)
 	node, commit, err := s.sess.MatchCommit(ctx, path)
 	// NOT_FOUND IS AN ANSWER, not an outage: it says nothing stands at the path, and a read that
 	// FAILS says the store could not be read (libctl's own distinction). They are only ever
@@ -1837,8 +1620,7 @@ func (s *LogdStore) WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 // carries a commit marked as progress (Commit.progress) at that head or later, after every
 // commit at or below it. A watch that ends before it answers carries none; the stream goes on
 // with the re-established watch's State, marked as a resync. The error is the watch not being
-// asked — being re-established, or a store that cannot say (`unsupported`, for a watch docd
-// composes across mounts).
+// asked — being re-established, or a store that cannot say (`unsupported`).
 func (s *LogdStore) WatchSubtreeProgress(depth int, prefix ...string) (<-chan Commit, func(), func(context.Context) (int64, error), error) {
 	prefix = trimEmpty(prefix)
 	return s.watchPattern(prefix, PrefixPattern(prefix, depth), true, false)
@@ -1846,13 +1628,6 @@ func (s *LogdStore) WatchSubtreeProgress(depth int, prefix ...string) (<-chan Co
 
 func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent, noInit bool) (<-chan Commit, func(), func(context.Context) (int64, error), error) {
 	prefix = trimEmpty(prefix)
-	// A MOUNTED PLACE IS NOT IN THE LOG, so a watch on the log's copy of its path would open on
-	// nothing and wait for ever; Since refuses it for the same reason, and this says so the same
-	// way rather than routing it somewhere a history-bearing watch must never span (MountRoot).
-	if IsMountOwned(prefix...) {
-		return nil, nil, nil, fmt.Errorf("watching %s: a mounted place is served by a controller rather "+
-			"than the log, so it has no commits to watch", JoinSegs(prefix))
-	}
 	// The path as segments as well as a kpath: every event is rooted at the watched path
 	// and the document is rooted at the store root, so the segments are what bridges the two
 	// (see nestAt).
@@ -2347,18 +2122,7 @@ func (s *LogdStore) Since(from int64, patterns ...*kpath.KPath) ([]Commit, error
 	// LogdStore.sess). Since mutates no store state, so they stay independent.
 	ctx, cancel := context.WithTimeout(s.ctx, replayBudget)
 	defer cancel()
-	// A MOUNTED SLICE HAS NO HISTORY to replay: a controller backs it with something that is
-	// not the log, and MountRoot exists so a history-bearing watch never spans one. Replaying
-	// the log-backed base at that path would answer an empty catch-up successfully, which is
-	// the shape this call is being fixed to stop producing.
-	if IsMountOwned(at...) {
-		return nil, fmt.Errorf("replaying %s: a mounted slice is backed by a controller rather "+
-			"than the log, so it has no commits to replay", JoinSegs(at))
-	}
-	path := seg(s.root)
-	for _, a := range at {
-		path += "." + seg(a)
-	}
+	path := s.pathAt(at)
 	fc := from
 	w, err := s.sess.Watch(ctx, path, &libctl.WatchOptions{FromCommit: &fc, NoInit: true, WaitIfAbsent: true})
 	if err != nil {

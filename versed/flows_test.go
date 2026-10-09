@@ -197,7 +197,7 @@ func TestFlowsAreEveryEnginesOnBothSurfaces(t *testing.T) {
 		t.Fatalf("flows --charter notes = %v, want the package's task alone", got)
 	}
 
-	// A SCOPE ANSWERS FOR ITSELF: a federation nobody has opened has no live work, and says so
+	// A SCOPE ANSWERS FOR ITSELF: a scope nobody has opened has no live work, and says so
 	// rather than reporting baseline's.
 	if got := flowRows(t, ts, "nobody", api.FlowSelect{}); len(got) != 0 {
 		t.Fatalf("scope flows = %+v, want none — a scope is not baseline", got)
@@ -208,7 +208,7 @@ func TestFlowsAreEveryEnginesOnBothSurfaces(t *testing.T) {
 }
 
 // A flow verb reaches every engine its scope may see, and only those: a scope owns what it
-// creates (docs/reference/connect.md#what-a-scope-owns). Baseline's verbs reach baseline's work
+// creates (docs/reference/scopes.md#what-a-scope-owns). Baseline's verbs reach baseline's work
 // and a package's; a scope's reach the scope's own; and a scope asked to steer work it merely
 // sees through the overlay is refused naming whose it is, rather than answering `affected: 0`
 // over work that keeps running — or, worse, stopping baseline's work from a scope.

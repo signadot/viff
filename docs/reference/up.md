@@ -51,7 +51,7 @@ See [store.md](store.md).
 
 ```sh
 verse up -data ~/.verse/data                        # a durable dir rather than a fresh temp one
-verse up -docd-addr host:port -docd-mount-addr host:port     # attach to an already-running docd
+verse up -docd-addr host:port                              # attach to an already-running docd
 ```
 
 **A store call has a time limit, and reads and writes have different limits.**
@@ -76,28 +76,25 @@ load would delay an answer that reads the store.
 
 ### When a client cannot reach docd where verse does
 
-`up` publishes both addresses of docd on `GET /status`. A
-[controller](../glossary.md#controller) is its own process, and it must find these addresses
-itself. [`verse connect`](connect.md) finds the mount address of docd in this way.
+`up` publishes the client address of docd on `GET /status`. A store client that runs as its own
+process beside verse finds docd there.
 
-The client reads the addresses from where the client runs. That is not always where verse
+The client reads the address from where the client runs. That is not always where verse
 runs. In a cluster, verse reaches docd by the name of a Service, and that name resolves only
 inside the cluster. A laptop that gets that name gets a true address that it cannot use.
 
-`-docd-advertise-addr` and `-docd-mount-advertise-addr` say what to publish. Verse still
-connects to `-docd-addr`. Only the published answer changes:
+`-docd-advertise-addr` says what to publish. Verse still connects to `-docd-addr`. Only the
+published answer changes:
 
 ```sh
-verse up -docd-addr docd:7071 -docd-mount-addr docd-mount:7072 \
-         -docd-advertise-addr verse-docd:7071 \
-         -docd-mount-advertise-addr verse-docd-mount:7072
+verse up -docd-addr docd:7071 -docd-advertise-addr verse-docd:7071
 ```
 
-Each advertise flag needs the address flag that it replaces. Verse refuses
+The advertise flag needs the address flag that it replaces. Verse refuses
 `-docd-advertise-addr` without `-docd-addr`. When verse starts docd itself, docd listens on
 temporary ports, and a published address for them would not stay true.
 
-Verse publishes one address for each face of docd. So you choose which clients the address is
+Verse publishes one address for docd. So you choose which clients the address is
 for. A deployment that clients reach in two ways publishes the address that its controllers
 use. `deploy/README.md` is a worked example. There, the pair is the tailnet names of the two
 Services that verse connects to inside the cluster.
@@ -115,8 +112,7 @@ depends on the model credentials.
 The **server** reads the credentials. So set them before `up`, and not in the environment of
 the client. `verse status` shows an `llm` block with `available` and a masked key.
 
-Each spawn chooses its driver. A rule's `spawn.driver`, `connect -driver` and
-`task run -driver` each select `scripted`, `calls` or `llm` for that one task. If a task asks
+Each spawn chooses its driver. A rule's `spawn.driver` and `task run -driver` each select `scripted`, `calls` or `llm` for that one task. If a task asks
 for `llm` and no credentials are configured, that one task fails. Its status is `failed`, and
 its message tells you to set the credentials. The engine keeps running. What each driver
 means for gates is in [tasks.md](tasks.md#the-dial).
@@ -127,10 +123,6 @@ The agent root is the directory where an llm agent acts. `verse up -root <dir>` 
 `-root .` is your own tree. With no flag, `up` makes an isolated temporary directory. When the
 llm driver is available, `up` prints it at start (`agents rooted at …`). For this reason, a
 file that an agent writes is *not* in your working directory.
-
-An agent can also read a tree *through* the verse, with no shared filesystem, wherever the
-agent runs. For that, use [`verse connect`](connect.md). `-root` is for an agent on a single
-machine, without federation.
 
 ## Where tasks run
 

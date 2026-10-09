@@ -36,7 +36,7 @@ func (echoExec) Execute(_ context.Context, tu task.ToolUse) (task.StepResult, []
 
 func hosting(t *testing.T) (*taskd.Daemon, *httptest.Server) {
 	t.Helper()
-	d := taskd.New(func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	d := taskd.New(func(l task.Launch, reg *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
 		return task.NewTask(l.ID, sup, &steady{n: 50}, echoExec{})
 	})
@@ -138,7 +138,7 @@ func (d *quick) Result() string { return d.answer }
 func TestSpawningAnIDThatAlreadyCompletedRunsAgain(t *testing.T) {
 	var built int
 	answers := []string{"first run", "second run"}
-	d := taskd.New(func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	d := taskd.New(func(l task.Launch, reg *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
 		drv := &quick{answer: answers[min(built, len(answers)-1)]}
 		built++

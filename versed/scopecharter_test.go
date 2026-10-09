@@ -31,7 +31,7 @@ func TestAScopesOwnCharterSurvivesARestart(t *testing.T) {
 	firstHTTP := httptest.NewServer(first.Handler())
 	defer firstHTTP.Close()
 	// The first server's own lifetime, CANCELLED before the second starts. Without that it
-	// is not a restart at all: the scope engine `verse connect` created is still watching in
+	// is not a restart at all: the scope engine the first install created is still watching in
 	// this process, and it — not the restored charter — is what advances the entity.
 	firstCtx, down := context.WithCancel(t.Context())
 	first.Start(firstCtx)
@@ -51,13 +51,13 @@ func TestAScopesOwnCharterSurvivesARestart(t *testing.T) {
 	secondHTTP := httptest.NewServer(second.Handler())
 	defer secondHTTP.Close()
 
-	// The dev reconnects. `verse connect` installs its own trigger into the scope, which is
+	// The dev comes back and installs a trigger into the scope, which is
 	// what creates the scope's engine on the new server — and the moment there is an engine,
 	// the charter the dev left behind belongs in it.
 	//
 	// A scope with nobody connected stays inert, which is the remaining half of this: a
 	// restart cannot enumerate the scopes that have a charter, because a scope layer is
-	// invisible from baseline and nothing registers one. See docs/reference/connect.md.
+	// invisible from baseline and nothing registers one. See docs/reference/scopes.md.
 	addScopedRule(t, secondHTTP, "me", `{
 		name: connect-probe,
 		condition: {subject: {path: "never.never.*"}},
@@ -104,10 +104,10 @@ func addScopedRule(t *testing.T, ts *httptest.Server, scope, doc string) {
 // BASELINE'S RULES ARE NOT INSTALLED INTO A SCOPE, which is the boundary the restore must not
 // quietly cross. A scoped store reads baseline layered underneath, so the charter listing a
 // scope sees includes rules the dev never installed — and a restore that took them at face
-// value would replay the whole baseline charter inside one dev's federation: every entity the
+// value would replay the whole baseline charter inside one scope: every entity the
 // scope inherits, seeding a firing, spawning into the scope.
 //
-// Whether a scope SHOULD run baseline's rules is open (docs/reference/connect.md). This pins
+// Whether a scope SHOULD run baseline's rules is open (docs/reference/scopes.md). This pins
 // what it does today, so the answer is chosen rather than fallen into.
 func TestAScopeDoesNotInheritBaselinesCharter(t *testing.T) {
 	srv := testServer(t)

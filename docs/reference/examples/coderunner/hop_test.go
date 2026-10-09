@@ -66,7 +66,7 @@ func TestATaskRunsInItsOwnProcessAndDelivers(t *testing.T) {
 		// Auto: this test is about the hop, not about the gate. The gate over the hop is the
 		// next test.
 		Vector: &task.Vector{Default: task.Auto},
-	}, nil)
+	})
 
 	if st := awaitTerminal(t, h); st != task.Done {
 		t.Fatalf("task ended %s (%s)", st, h.Err())
@@ -105,7 +105,7 @@ func TestAGateInsideTheChildIsAnsweredFromOutside(t *testing.T) {
 
 	rt := runner.HTTP(srv.URL)
 	// No vector: the command driver's own default asks before it hands work to a program.
-	h := rt.Spawn(task.Launch{ID: "t2", Prompt: "run it"}, nil)
+	h := rt.Spawn(task.Launch{ID: "t2", Prompt: "run it"})
 	frames, cancel := h.Subscribe()
 	defer cancel()
 
@@ -164,7 +164,7 @@ func TestADeadTaskProcessBecomesAFailedTask(t *testing.T) {
 	defer srv.Close()
 
 	rt := runner.HTTP(srv.URL)
-	h := rt.Spawn(task.Launch{ID: "t3", Prompt: "wait at the gate"}, nil)
+	h := rt.Spawn(task.Launch{ID: "t3", Prompt: "wait at the gate"})
 	frames, cancel := h.Subscribe()
 	defer cancel()
 	for f := range frames {
@@ -212,7 +212,7 @@ func TestTheControlPlaneIsNotInsideTheWorkspace(t *testing.T) {
 	srv := httptest.NewServer(r.Handler())
 	defer srv.Close()
 
-	h := runner.HTTP(srv.URL).Spawn(task.Launch{ID: "t4", Prompt: "sit at the gate"}, nil)
+	h := runner.HTTP(srv.URL).Spawn(task.Launch{ID: "t4", Prompt: "sit at the gate"})
 	frames, cancel := h.Subscribe()
 	defer cancel()
 	for f := range frames {
@@ -256,11 +256,11 @@ func TestAnUnhostableLaunchIsRefusedOnTheWire(t *testing.T) {
 	defer srv.Close()
 
 	rt := runner.HTTP(srv.URL)
-	h := rt.Spawn(task.Launch{ID: "t5", Prompt: "x", Environment: "nowhere"}, nil)
+	h := rt.Spawn(task.Launch{ID: "t5", Prompt: "x", Environment: "nowhere"})
 	if err := h.Err(); !strings.Contains(err, "no environment") {
 		t.Errorf("spawn into an unknown environment reported %q", err)
 	}
-	h = rt.Spawn(task.Launch{ID: "t6", Prompt: "x", Driver: "nope"}, nil)
+	h = rt.Spawn(task.Launch{ID: "t6", Prompt: "x", Driver: "nope"})
 	if err := h.Err(); !strings.Contains(err, "no driver") {
 		t.Errorf("spawn with an unknown driver reported %q", err)
 	}
@@ -383,7 +383,7 @@ func TestTheLLMDriverRunsInTheChildToo(t *testing.T) {
 
 	h := runner.HTTP(srv.URL).Spawn(task.Launch{
 		ID: "t7", Prompt: "read something", Vector: &task.Vector{Default: task.Auto},
-	}, nil)
+	})
 	if st := awaitTerminal(t, h); st != task.Failed {
 		t.Fatalf("a task whose model is unreachable ended %s", st)
 	}
@@ -441,7 +441,7 @@ func TestASecretOutsideTheAllowlistDoesNotReachTheAgent(t *testing.T) {
 
 	h := runner.HTTP(srv.URL).Spawn(task.Launch{
 		ID: "t8", Prompt: "print your environment", Vector: &task.Vector{Default: task.Auto},
-	}, nil)
+	})
 	if st := awaitTerminal(t, h); st != task.Done {
 		t.Fatalf("task ended %s (%s)", st, h.Err())
 	}
@@ -490,7 +490,7 @@ func TestDeliveryIsAGatedActionOfTheTask(t *testing.T) {
 			Name: "delivery", Mode: task.Ask,
 			Match: task.GateMatch{Verbs: []task.Verb{task.Push}},
 		}}},
-	}, nil)
+	})
 	frames, cancel := h.Subscribe()
 	defer cancel()
 	res := h.(interface {
@@ -552,7 +552,7 @@ func TestARefusedDeliveryPushesNothingAndKeepsTheWork(t *testing.T) {
 			Name: "delivery", Mode: task.Ask,
 			Match: task.GateMatch{Verbs: []task.Verb{task.Push}},
 		}}},
-	}, nil)
+	})
 	frames, cancel := h.Subscribe()
 	defer cancel()
 	res := h.(interface {
@@ -622,7 +622,7 @@ func TestATaskThatChangedNothingSaysSo(t *testing.T) {
 
 	h := runner.HTTP(srv.URL).Spawn(task.Launch{
 		ID: "n1", Prompt: "check it", Vector: &task.Vector{Default: task.Auto},
-	}, nil)
+	})
 	frames, cancel := h.Subscribe()
 	defer cancel()
 	var deliver, terminal string
@@ -698,7 +698,7 @@ func TestAFinishedTaskIDRunsAgain(t *testing.T) {
 	rt := runner.HTTP(srv.URL)
 	id := "comment-drift@drift.head.head-moved@git.head.verse"
 	for i, want := range []string{"ran", "ran"} {
-		h := rt.Spawn(task.Launch{ID: id, Prompt: "go", Vector: &task.Vector{Default: task.Auto}}, nil)
+		h := rt.Spawn(task.Launch{ID: id, Prompt: "go", Vector: &task.Vector{Default: task.Auto}})
 		if st := awaitTerminal(t, h); st != task.Done {
 			t.Fatalf("run %d ended %s (%s)", i+1, st, h.Err())
 		}
@@ -786,7 +786,7 @@ func TestTheAgentProposesAPushToANamedDestination(t *testing.T) {
 				{Kind: task.KindGitRef, Pattern: "refs/heads/main"},
 			}},
 		}}},
-	}, nil)
+	})
 	frames, cancel := h.Subscribe()
 	defer cancel()
 	res := h.(interface {
@@ -866,7 +866,7 @@ func TestAnUndeclaredDestinationIsRefusedWithoutAsking(t *testing.T) {
 			Name: "any-push", Mode: task.Ask,
 			Match: task.GateMatch{Verbs: []task.Verb{task.Push}},
 		}}},
-	}, nil)
+	})
 	frames, cancel := h.Subscribe()
 	defer cancel()
 	res := h.(interface {
@@ -988,7 +988,7 @@ func TestApprovalIsWhatReleasesTheCredential(t *testing.T) {
 				{Kind: task.KindGitRef, Pattern: "refs/heads/main"},
 			}},
 		}}},
-	}, nil)
+	})
 	frames, cancel := h.Subscribe()
 	defer cancel()
 	res := h.(interface {
@@ -1084,7 +1084,7 @@ func TestACallListRunsInTheChildToo(t *testing.T) {
 		ID: "t-calls", Vector: &task.Vector{Default: task.Auto},
 		Calls: []task.Call{{Tool: "run_bash",
 			Input: map[string]any{"command": "echo listed > svc/ran.txt"}}},
-	}, nil)
+	})
 	if st := awaitTerminal(t, h); st != task.Done {
 		t.Fatalf("a call list across the hop ended %s: %s", st, h.Err())
 	}
@@ -1112,7 +1112,7 @@ func TestAnEmptyCallListFailsAcrossTheHop(t *testing.T) {
 	h := runner.HTTP(srv.URL).Spawn(task.Launch{
 		ID: "t-nolist", Prompt: "please merge the branch and push it",
 		Vector: &task.Vector{Default: task.Auto},
-	}, nil)
+	})
 	if st := awaitTerminal(t, h); st != task.Failed {
 		t.Fatalf("a calls spawn with no calls ended %s", st)
 	}

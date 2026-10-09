@@ -106,10 +106,10 @@ build:
     # cutoff is stated; the tiers and the snapshot policy stay upstream's.
     docdCompactionCutoff: ""
 
-    # Put the versed API and docd's mount face on the tailnet, through the Tailscale
+    # Put the versed API and docd's client face on the tailnet, through the Tailscale
     # Kubernetes operator — which has to be installed already; these are just annotations it
     # watches for, and nothing here notices if nobody is watching. The devices are named after
-    # the namespace (verse, verse-mount), so a second deploy under another namespace does not
+    # the namespace (verse, verse-docd), so a second deploy under another namespace does not
     # collide. tailscaleTags is for a tailnet whose ACL wants its own tag rather than the
     # operator's default tag:k8s; "" leaves the default.
     tailscaleExpose: false
@@ -794,9 +794,8 @@ build:
           tailscale.com/expose: "true"
           tailscale.com/hostname: $[namespace]
 
-  # docd's two faces. Nothing is added to reach them — they are ordinary Services the deploy
-  # always has, and this only annotates them. Two devices rather than one Service with both
-  # ports, so an ACL can grant the mount face without granting the store.
+  # docd's client face. Nothing is added to reach it — it is an ordinary Service the deploy
+  # always has, and this only annotates it.
   #
   # docd-headless is deliberately absent: the operator refuses a headless Service, recording
   # an INVALIDSERVICE event, and nothing dials it anyway.
@@ -810,16 +809,6 @@ build:
         annotations:
           tailscale.com/expose: "true"
           tailscale.com/hostname: "$[namespace]-docd"
-  - if: '.[tailscaleExpose]'
-    match:
-      kind: Service
-      metadata:
-        name: docd-mount
-    patch:
-      metadata:
-        annotations:
-          tailscale.com/expose: "true"
-          tailscale.com/hostname: "$[namespace]-docd-mount"
   # The broker face, where a dial-in worker claims work and reports on it — a laptop agent, a
   # pod in a private cluster, a person. Its own device for the reason docd's faces are two:
   # this is the one face reached by parties that are not operators, and an ACL that grants it
@@ -841,8 +830,8 @@ build:
   # versed keeps dialling the Service names; only what it PUBLISHES changes, to the tailnet
   # names those same Services now answer to.
   #
-  # Three faces, published in two places for the same reason. docd's two go on /status, where
-  # a controller (`verse connect`) looks for them. The broker's goes in each task's dialURL,
+  # Two faces, published in two places for the same reason. docd's goes on /status, where a
+  # store client beside the cluster looks for it. The broker's goes in each task's dialURL,
   # where a worker looks for it — and it is the one a party outside the cluster reads, so it is
   # the one that is useless when it is wrong: a wildcard bind advertises `localhost:9090`, an
   # address every worker has and none of them wants.
@@ -869,12 +858,8 @@ build:
               - up
               - --docd-addr
               - docd:7071
-              - --docd-mount-addr
-              - docd-mount:7072
               - --docd-advertise-addr
               - "$[namespace]-docd:7071"
-              - --docd-mount-advertise-addr
-              - "$[namespace]-docd-mount:7072"
               - --addr
               - ":9797"
               - --broker-addr
@@ -891,7 +876,7 @@ build:
     match:
       kind: Service
       metadata:
-        name: !or [verse, docd, docd-mount, verse-broker]
+        name: !or [verse, docd, verse-broker]
     patch:
       metadata:
         annotations:

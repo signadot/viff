@@ -224,7 +224,7 @@ easy to overstate.
 | a spawn | A task acts in the world under its `grant`. Confinement in the store is not confinement in the world (see [provider selection](../provider-selection.md)). |
 | verse's own records, such as the mirror of a task or a posed question | The engine writes them into [`verse`'s own part of the tree](entities.md). No charter may be installed there, and no charter may write there. |
 
-A package has the same shape as a `verse connect` [scope](../glossary.md#scope), on another
+A package has the same shape as a [scope](../glossary.md#scope), on another
 axis.
 
 | | What it says | How it comes back |
@@ -358,9 +358,9 @@ The record of a scoped rule carries `scope: <name>`, and this makes the restore 
 scoped store reads baseline layered underneath. So a listing in a scope returns the rules of
 baseline and the rules of the scope, and only the record says which is which. The restore
 passes over the rules of baseline, because a scope runs what was installed into it (see
-[connect](connect.md#the-charter-a-scope-runs)).
+[scopes](scopes.md#the-charter-a-scope-runs)).
 
-A restart cannot bring back a scope that nobody has reconnected to. To enumerate the scopes
+A restart cannot bring back a scope that nobody has asked for again. To enumerate the scopes
 that have a charter, a scope must be a thing that can be listed, and it is not.
 
 The charter is an observable place like any other, so a rule can watch it

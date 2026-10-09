@@ -397,9 +397,8 @@ const Unbounded = -1
 // THIS IS NOT HOW A LISTING IS ANSWERED. The store answers one — a place, a path with a
 // wildcard or a descent, a predicate — with the depth handed to it as given (Store.PathsAt,
 // PathsMatching), and what a depth means over a path with a `..` in it is logd's to say. This
-// walk is what is left for a document somebody already holds, which for a listing is a path
-// rooted in a MOUNTED place: the store does not descend into one. Its count is an approximation
-// of the store's there — every segment past the literal prefix, where the store counts only
+// walk is what is left for a document somebody already holds. Its count is an approximation
+// of the store's — every segment past the literal prefix, where the store counts only
 // what a descent took — and is not to be grown into a second implementation of that rule.
 func (d Doc) Paths(at *kpath.KPath, depth int) []Path {
 	prefix, rest := LiteralPrefix(at)

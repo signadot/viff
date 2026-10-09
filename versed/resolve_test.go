@@ -126,7 +126,7 @@ func posedByTheMirror(t *testing.T, srv *Server, ev task.Frame, taskID string) {
 func TestTaskResolveAcceptsAPIResolve(t *testing.T) {
 	srv := testServer(t)
 	b := broker.New()
-	b.Spawn(task.Launch{ID: "p1", Prompt: "review PR #7", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p1", Prompt: "review PR #7", Driver: "human"})
 	srv.SetRunner(b) // the resolve route relays to a worker only under a broker runner
 	nonce := srv.HostBroker("", b.WorkerHandler())
 
@@ -180,7 +180,7 @@ func TestTaskResolveAcceptsAPIResolve(t *testing.T) {
 func TestGateResolveRoutesAnOwnerlessTaskGate(t *testing.T) {
 	srv := testServer(t)
 	b := broker.New()
-	b.Spawn(task.Launch{ID: "p1", Prompt: "review the auth change", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p1", Prompt: "review the auth change", Driver: "human"})
 	srv.SetRunner(b)
 	nonce := srv.HostBroker("", b.WorkerHandler())
 
@@ -267,7 +267,7 @@ func waitPending(t *testing.T, srv *Server, id string) {
 func TestGateListingOmitsAbsentFields(t *testing.T) {
 	srv := testServer(t)
 	b := broker.New()
-	h := b.Spawn(task.Launch{ID: "p1", Prompt: "migrate the schema", Driver: "human"}, nil)
+	h := b.Spawn(task.Launch{ID: "p1", Prompt: "migrate the schema", Driver: "human"})
 	srv.SetRunner(b)
 	nonce := srv.HostBroker("", b.WorkerHandler())
 	// The docket is a slice of the store, so what puts a task on it is the same thing

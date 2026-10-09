@@ -718,7 +718,7 @@ func (e *Engine) persistStratum(s Stratum, as string, take bool) error {
 // In a scope it restores the scope's own strata, for the reason LoadCharter gives. A scoped rule
 // naming an inherited stratum is therefore HELD rather than installed — which is the existing
 // answer for a rule whose stratum has not arrived, and the right one here too: the ordering it
-// asked to be checked against is not in force in this federation.
+// asked to be checked against is not in force in this scope.
 func (e *Engine) LoadStrata() error {
 	var errs []error
 	ents := entity.Below(e.store, func(r entity.Ref) bool {

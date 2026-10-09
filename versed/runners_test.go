@@ -28,7 +28,7 @@ func runnerFace(t *testing.T) *httptest.Server {
 	// task that never finishes holds the mirror's event stream open, and httptest.Close
 	// waits on outstanding requests — the test hangs on its own teardown rather than failing.
 	release := make(chan struct{})
-	build := func(l task.Launch, _ *task.Registry, _ task.ContentReader) *task.Task {
+	build := func(l task.Launch, _ *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 		return task.NewTask(l.ID, sup, &blockedDriver{release: release}, okExecutor{})
 	}
@@ -249,7 +249,7 @@ func TestRunnerRemoveRefusesUntilToldWhich(t *testing.T) {
 	// A task running ON it. Spawned through the runner face and mirrored the way a spawn
 	// does, which is what makes it work this removal has to answer for.
 	p := runner.HTTP(face.URL)
-	p.Spawn(task.Launch{ID: "w1", Prompt: "long work", Driver: "scripted"}, nil)
+	p.Spawn(task.Launch{ID: "w1", Prompt: "long work", Driver: "scripted"})
 	setInstance(t, srv, "w1", entity.Obj{
 		"status": "running", "runner": face.URL, "runnerName": "verse.runners.gpu",
 	})
@@ -323,7 +323,7 @@ func TestRunnerRemoveCancelReportsWhatItCouldNotReach(t *testing.T) {
 	}).Body.Close()
 
 	p := runner.HTTP(face.URL)
-	h := p.Spawn(task.Launch{ID: "c1", Prompt: "long work", Driver: "scripted"}, nil)
+	h := p.Spawn(task.Launch{ID: "c1", Prompt: "long work", Driver: "scripted"})
 	setInstance(t, srv, "c1", entity.Obj{
 		"status": "running", "runner": face.URL, "runnerName": "verse.runners.gpu",
 	})
@@ -496,7 +496,7 @@ func TestSpawnNamingAnUninstalledRunnerIsRefused(t *testing.T) {
 
 	// The charter path, where the refusal has to travel as a failed spawn rather than as an
 	// HTTP status, because there is nobody to answer.
-	h := srv.spawnerFor(srv.Store, "", nil, srv.Eng)("fired", launch.Spec{
+	h := srv.spawnerFor(srv.Store, "", srv.Eng)("fired", launch.Spec{
 		Prompt: "t", Driver: "scripted", Runner: "verse.runners.typo",
 	})
 	if h == nil {

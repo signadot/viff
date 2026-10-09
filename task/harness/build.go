@@ -226,13 +226,12 @@ func byName(extra []Tool) map[string]Tool {
 
 // Config parameterizes Build.
 type Config struct {
-	ID       string             // task id
-	Prompt   string             // the top-level user task (seeds the driver)
-	Root     string             // working directory the executor is confined to
-	Resolver task.Resolver      // how ASK gates are answered (stdin, auto, Registry, …)
-	Client   completer          // model client; nil → built from the LLM creds below (or env)
-	Log      io.Writer          // local narration/exec log; nil → io.Discard
-	Content  task.ContentReader // read_file source; nil → local filesystem under Root
+	ID       string        // task id
+	Prompt   string        // the top-level user task (seeds the driver)
+	Root     string        // working directory the executor is confined to
+	Resolver task.Resolver // how ASK gates are answered (stdin, auto, Registry, …)
+	Client   completer     // model client; nil → built from the LLM creds below (or env)
+	Log      io.Writer     // local narration/exec log; nil → io.Discard
 	// Env names the variables run_bash passes through from this process; everything else is
 	// unset, and empty passes nothing. It is the caller's to declare because the caller knows
 	// what this process holds — see task.ShellEnv and task.DefaultShellEnv.
@@ -350,7 +349,7 @@ func Build(cfg Config) (*task.Task, func() []ExecRecord) {
 
 	driver := &llmDriver{client: cfg.Client, tools: tools, frame: frame, prompt: cfg.Prompt,
 		log: cfg.Log}
-	ex := &fsExec{root: cfg.Root, log: cfg.Log, content: cfg.Content, extra: extra, env: cfg.Env, set: cfg.Set}
+	ex := &fsExec{root: cfg.Root, log: cfg.Log, extra: extra, env: cfg.Env, set: cfg.Set}
 	p := task.NewTask(cfg.ID, sup, driver, ex)
 	p.SetLog(cfg.Log)
 	// The two things that decide when a task is OVER, installed on the loop rather than
@@ -387,7 +386,7 @@ func Build(cfg Config) (*task.Task, func() []ExecRecord) {
 		// does not run, so it is trimmed rather than left to mislead.)
 		childDriver := &llmDriver{client: cfg.Client, tools: tools, frame: withoutContract(frame),
 			prompt: req.Prompt, log: cfg.Log}
-		childExec := &fsExec{root: cfg.Root, log: cfg.Log, content: cfg.Content, extra: extra, env: cfg.Env}
+		childExec := &fsExec{root: cfg.Root, log: cfg.Log, extra: extra, env: cfg.Env}
 		child, err := parent.NewChild(childID, mode, req, childDriver, childExec)
 		if err == nil {
 			childDriver.emit = child.Emit // child narration onto the child's read plane

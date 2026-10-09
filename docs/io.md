@@ -360,10 +360,9 @@ all are fine.
 ## Scoped ios
 
 An io registers into a [scope](glossary.md#scope). The io writes its reflection into that
-scope. `verse connect` is an example: it reflects a working tree into a scope for one session.
-It is a scoped io, built as a special case.
+scope.
 
-The general case is the sandbox. **The branches of my checkout shadow the view that baseline has
+This is the sandbox. **The branches of my checkout shadow the view that baseline has
 of the same repository, for my rules, and do not touch anyone else's.**
 
 The ownership check is per scope:
@@ -580,28 +579,21 @@ connector the deployment trusts for the provider
 invariants hold the same way: the request is made as the person, and the record says which
 connector it came through.
 
-## A Source is not a controller, and cannot be
+## A Source is not a docd controller, and cannot be
 
-A `Source` looks like a `libctl.Handler` run under `RunController`, mounted at its own address.
+docd can serve a region of the document from a program rather than from the log: a controller,
+registered on docd's controller face. A `Source` looks like one, mounted at its own address.
 The shape fits, until you ask what fires.
 
-**A mounted subtree fires no rules.** Mounts render under `entity.MountRoot`, a top-level
-segment disjoint from the entity root. A mount is driven by a task, so it has no history, and a
-watch with history must never span one. `LogdStore.WatchSubtree` renders only under the entity
-root.
+**A mounted subtree fires no rules.** A mount is driven by a task, so it has no history, and a
+watch with history must never span one: docd composes a watch over a mount and drops its replay
+([change events](change-events.md#a-history-bearing-watch-and-a-composed-one)). A git `Source`
+mounted this way would reflect a repository perfectly and fire nothing. Firing is the whole point
+of a source.
 
-So a subtree that a controller serves is readable by its ordinary path. No watch sees it: no
-change events, no `Since` replay, nothing a charter can react to. A git `Source` mounted this
-way would reflect a repository perfectly and fire nothing. Firing is the whole point of a
-source.
-
-Mounting under the entity root instead does not help. It re-creates the composed root watch
-that silently drops `FromCommit`, and `MountRoot` exists to prevent that. See
-[writing a controller](controllers.md) for both halves of that rule.
-
-The line is clean, and `connect` sits on both sides of it: **bytes somebody asks for may be a
-mount; facts something reacts to must be ordinary writes.** A `Source` is entirely the second
-kind. It stays an interface of verse, with nothing underneath it.
+The line is clean: **facts something reacts to must be ordinary writes.** A `Source` is
+entirely that kind. It stays an interface of verse, with nothing underneath it, and verse mounts
+nothing.
 
 ## What a Source does not do
 
@@ -691,7 +683,7 @@ only when the external system has such a state.
 ### Why a scope has its own reflections
 
 One could argue that a reflection is a fact about the outside world, so every scope should read
-the same one. That argument is wrong, and `verse connect` shows why. A verse whose reflections
+the same one. That argument is wrong. A verse whose reflections
 are all shared cannot say "in here, the repository looks like this". A sandbox exists to answer
 that question. Shadowing is the feature, and for this reason the ownership check is per scope.
 

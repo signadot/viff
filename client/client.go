@@ -26,7 +26,7 @@ import (
 type Client struct {
 	// Addr is the verse's host:port, the spelling VERSE_ADDR and `-addr` take.
 	Addr string
-	// Scope, when set, is folded into every request: a copy-on-write federation overlay isolated
+	// Scope, when set, is folded into every request: a copy-on-write overlay isolated
 	// from baseline.
 	Scope string
 	// Wire is the format request bodies are RENDERED in, and what the format parameter tells the

@@ -70,7 +70,7 @@ func TestARestartTakesADeadTasksQuestionWithIt(t *testing.T) {
 func TestARestartKeepsASurvivingTasksQuestion(t *testing.T) {
 	addr := entitytest.Addr(t)
 	b := broker.New()
-	b.Spawn(task.Launch{ID: "p1", Prompt: "migrate the schema", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p1", Prompt: "migrate the schema", Driver: "human"})
 
 	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
 	first.SetRunner(b)
@@ -302,7 +302,7 @@ func waitDocket(t *testing.T, srv *Server, id string) {
 // it reported "no such question".
 func TestABrokeredTaskEndingSettlesItsQuestions(t *testing.T) {
 	b := broker.New()
-	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"}, nil)
+	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"})
 	srv := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, entitytest.Addr(t)))
 	srv.SetRunner(b)
 	nonce := srv.HostBroker("", b.WorkerHandler())

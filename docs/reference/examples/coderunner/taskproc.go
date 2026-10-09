@@ -261,7 +261,7 @@ func (p *taskProc) launch() task.Launch {
 // harness runs is inside it, an agent binary is inside it, and neither needed a confiner of its
 // own. That is why hostConfiner appears below — at this depth it means "just set the working
 // directory", which is now the honest whole of it.
-func (p *taskProc) build(l task.Launch, reg *task.Registry, content task.ContentReader) *task.Task {
+func (p *taskProc) build(l task.Launch, reg *task.Registry) *task.Task {
 	// Kept for what a push commits with: the provenance trailers are the only externally
 	// checkable link back into the verse from a push made under a shared credential, and they
 	// are written on THIS side now that this side does the committing.
@@ -289,7 +289,7 @@ func (p *taskProc) build(l task.Launch, reg *task.Registry, content task.Content
 			tools = p.cfg.Environment.Tools
 		}
 		t, _ = harness.Build(harness.Config{
-			ID: l.ID, Prompt: l.Prompt, Root: p.ws.Root, Resolver: reg, Content: content,
+			ID: l.ID, Prompt: l.Prompt, Root: p.ws.Root, Resolver: reg,
 			Frame: l.Frame, Tools: tools, Answer: l.Answer, Vector: l.Vector,
 			Env:      p.cfg.Environment.Env, // this process was started with only these; say so
 			Converse: l.Converse,
@@ -321,7 +321,7 @@ func (p *taskProc) build(l task.Launch, reg *task.Registry, content task.Content
 			tools = p.cfg.Environment.Tools
 		}
 		t = harness.Calls(harness.Config{
-			ID: l.ID, Root: p.ws.Root, Resolver: reg, Content: content,
+			ID: l.ID, Root: p.ws.Root, Resolver: reg,
 			Tools: tools, Answer: l.Answer, Vector: l.Vector,
 			Env:    p.cfg.Environment.Env,
 			Log:    os.Stderr,

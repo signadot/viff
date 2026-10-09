@@ -15,7 +15,7 @@ func TestAdvertised(t *testing.T) {
 		{"docd:7071", "", "docd:7071"},                            // the common case: one place
 		{"docd:7071", "verse-docd:7071", "verse-docd:7071"},       // a cluster name means nothing outside
 		{"127.0.0.1:41207", "verse-docd:7071", "verse-docd:7071"}, // …including an ephemeral one
-		{"", "", ""}, // no mount face, nothing published
+		{"", "", ""}, // no face, nothing published
 	}
 	for _, c := range cases {
 		if got := advertised(c.dialled, c.advertise); got != c.want {
@@ -36,18 +36,11 @@ func TestValidateAdvertiseNeedsItsFace(t *testing.T) {
 			cfg:     upConfig{DocdAdvertiseAddr: "verse-docd:7071"},
 			wantErr: true,
 		},
-		"mount advertise with no mount face": {
-			cfg:     upConfig{DocdAddr: "docd:7071", DocdMountAdvertiseAddr: "verse-docd-mount:7072"},
-			wantErr: true,
+		"advertise with its face": {
+			cfg: upConfig{DocdAddr: "docd:7071", DocdAdvertiseAddr: "verse-docd:7071"},
 		},
-		"both, each with its face": {
-			cfg: upConfig{
-				DocdAddr: "docd:7071", DocdMountAddr: "docd-mount:7072",
-				DocdAdvertiseAddr: "verse-docd:7071", DocdMountAdvertiseAddr: "verse-docd-mount:7072",
-			},
-		},
-		"neither — the default": {
-			cfg: upConfig{DocdAddr: "docd:7071", DocdMountAddr: "docd-mount:7072"},
+		"no advertise — the default": {
+			cfg: upConfig{DocdAddr: "docd:7071"},
 		},
 		"broker advertise with no broker face": {
 			cfg:     upConfig{BrokerAdvertiseAddr: "verse-broker:9090"},

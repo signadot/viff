@@ -27,25 +27,22 @@ import (
 
 type upConfig struct {
 	*cli.Command
-	Root string `cli:"name=root desc='working dir an llm agent reads/acts in (e.g. . for local-dev federation); default: isolated temp dir'"`
+	Root string `cli:"name=root desc='working dir an llm agent reads/acts in; default: isolated temp dir'"`
 
-	// The store is docd (durable, controller-federated): the store client connects to
-	// docd's client face, and Sources mount at its controller face.
+	// The store is docd (durable): the store client connects to docd's client face.
 	//
 	// docd resolution (see docd.go): pass a running docd, or a data dir to bring
 	// logd+docd up on, or nothing for a fresh temp data dir.
-	DocdAddr      string `cli:"name=docd-addr desc='connect to a running docd (client face); if set, verse spawns nothing'"`
-	DocdMountAddr string `cli:"name=docd-mount-addr desc='the running docd controller/MOUNT face (with --docd-addr)'"`
+	DocdAddr string `cli:"name=docd-addr desc='connect to a running docd (client face); if set, verse spawns nothing'"`
 	// What to PUBLISH on /status, when that is not what versed dials. A client reads
-	// docd's addresses off /status and connects to them itself, from where IT is — and
+	// docd's address off /status and connects to it itself, from where IT is — and
 	// where it is may not be where versed is. In a cluster versed reaches docd by a
 	// Service name that resolves nowhere else, so a laptop given that name has been told
 	// something true and useless.
-	DocdAdvertiseAddr      string `cli:"name=docd-advertise-addr desc='publish this client-face address on /status instead of --docd-addr (for clients that cannot reach it)'"`
-	DocdMountAdvertiseAddr string `cli:"name=docd-mount-advertise-addr desc='publish this MOUNT-face address on /status instead of --docd-mount-addr'"`
-	Data                   string `cli:"name=data desc='data dir; verse ups logd+docd here via o sys up. default: a fresh (kept) temp dir'"`
-	LogdConfig             string `cli:"name=logd-config desc='logd configuration file (tony) for the spawned daemons, replacing the one verse writes (see docd.go)'"`
-	OBin                   string `cli:"name=o-bin desc='path to the o binary for spawning daemons; default: go run the pinned go-tony cmd/o'"`
+	DocdAdvertiseAddr string `cli:"name=docd-advertise-addr desc='publish this client-face address on /status instead of --docd-addr (for clients that cannot reach it)'"`
+	Data              string `cli:"name=data desc='data dir; verse ups logd+docd here via o sys up. default: a fresh (kept) temp dir'"`
+	LogdConfig        string `cli:"name=logd-config desc='logd configuration file (tony) for the spawned daemons, replacing the one verse writes (see docd.go)'"`
+	OBin              string `cli:"name=o-bin desc='path to the o binary for spawning daemons; default: go run the pinned go-tony cmd/o'"`
 	// runner: where tasks run. Default is the in-process local supervisor.
 	Runner     string `cli:"name=runner desc='task-control base URL to run tasks on (default: local, in-process)'"`
 	BrokerAddr string `cli:"name=broker-addr desc='sibling port to serve the broker face (/broker/<nonce>, worker/remote-facing); empty = off'"`
@@ -83,28 +80,20 @@ type upConfig struct {
 // happened yet when we say so.
 func (cfg *upConfig) validate() error {
 	// Refuse the docd knobs that only LOOK like they were honored. --data names a dir to
-	// bring daemons up in, so with --docd-addr (which spawns nothing) it is dead; and
-	// --docd-mount-addr names a face of the docd being connected to, so without --docd-addr
-	// there is no docd it can be about. Both used to be dropped in silence, which reads as
-	// "verse ignored where I told it to put my data".
+	// bring daemons up in, so with --docd-addr (which spawns nothing) it is dead. Dropped in
+	// silence, it reads as "verse ignored where I told it to put my data".
 	if cfg.DocdAddr != "" && cfg.Data != "" {
 		return fmt.Errorf("%w: verse up: --data is meaningless with --docd-addr (nothing is spawned to use it)", cli.ErrUsage)
 	}
 	if cfg.DocdAddr != "" && cfg.LogdConfig != "" {
 		return fmt.Errorf("%w: verse up: --logd-config configures the logd verse spawns, and --docd-addr spawns none", cli.ErrUsage)
 	}
-	if cfg.DocdAddr == "" && cfg.DocdMountAddr != "" {
-		return fmt.Errorf("%w: verse up: --docd-mount-addr needs --docd-addr (it is the mount face of the docd being connected to)", cli.ErrUsage)
-	}
-	// An advertised address is a claim about a face that exists; each needs the face it
-	// re-addresses. Without --docd-addr the faces are ephemeral ports on a docd verse
-	// spawned itself, and publishing some other address for them is a promise nothing
+	// An advertised address is a claim about a face that exists, and needs the face it
+	// re-addresses. Without --docd-addr the face is an ephemeral port on a docd verse
+	// spawned itself, and publishing some other address for it is a promise nothing
 	// keeps — the failure would land on whoever believed /status, a process away.
 	if cfg.DocdAddr == "" && cfg.DocdAdvertiseAddr != "" {
 		return fmt.Errorf("%w: verse up: --docd-advertise-addr needs --docd-addr (it re-addresses the docd being connected to, and verse spawns its own on ephemeral ports)", cli.ErrUsage)
-	}
-	if cfg.DocdMountAddr == "" && cfg.DocdMountAdvertiseAddr != "" {
-		return fmt.Errorf("%w: verse up: --docd-mount-advertise-addr needs --docd-mount-addr (there is no mount face to re-address)", cli.ErrUsage)
 	}
 	// --runner and --broker compose rather than compete: one says where a spawn naming nobody
 	// runs, the other serves a place a spawn may NAME. A verse can send its unnamed work to a
@@ -188,8 +177,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	// flag to be stale against.
 	codec.SetDefault(appCfg.Format.ResolveWire())
 
-	// Working directory an llm agent acts in: --root, else an isolated temp dir. A
-	// federated read_file goes through the verse; --root is the non-federated fallback.
+	// Working directory an llm agent acts in: --root, else an isolated temp dir.
 	root := cfg.Root
 	if root == "" {
 		t, err := os.MkdirTemp("", "verse-task-*")
@@ -279,13 +267,11 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("verse up: the permission seed did not land, so this verse would "+
 			"admit nobody: %w", err)
 	}
-	// Publish docd's faces on /status so `verse connect` (its own process) can find
-	// the mount face and run the file controller against it — as the CLIENT should reach
-	// them, which is not always how versed did (--docd-advertise-addr). storeKind below
-	// stays the dialled pair: it describes what this process connected to.
+	// Publish docd's client face on /status — as a CLIENT should reach it, which is not
+	// always how versed did (--docd-advertise-addr). storeKind below stays the dialled
+	// address: it describes what this process connected to.
 	srv.DocdClient = advertised(d.clientAddr, cfg.DocdAdvertiseAddr)
-	srv.DocdMount = advertised(d.mountAddr, cfg.DocdMountAdvertiseAddr)
-	storeKind := fmt.Sprintf("docd[client=%s mount=%s]", d.clientAddr, d.mountAddr)
+	storeKind := fmt.Sprintf("docd[client=%s]", d.clientAddr)
 
 	// What the admin face now knows: this process's own health (answered without touching
 	// the store, so it holds when the store is what is wrong) and every address verse
@@ -295,7 +281,6 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	adm.SetAddrs( // its own goes without saying: the index prepends it
 		adminface.Addr{Name: "api", Addr: g.Addr},
 		adminface.Addr{Name: "docd-client", Addr: d.clientAddr},
-		adminface.Addr{Name: "docd-mount", Addr: d.mountAddr},
 	)
 
 	srv.AdminAddr = adm.Addr()    // published on /status: a derived port is knowable, not guessed
@@ -384,7 +369,6 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 			adminface.Addr{Name: "api", Addr: g.Addr},
 			adminface.Addr{Name: "broker", Addr: cfg.BrokerAddr},
 			adminface.Addr{Name: "docd-client", Addr: d.clientAddr},
-			adminface.Addr{Name: "docd-mount", Addr: d.mountAddr},
 		)
 		brokerSrv := &http.Server{Addr: cfg.BrokerAddr, Handler: srv.BrokerHandler()}
 		go func() {

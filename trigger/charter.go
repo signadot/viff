@@ -98,7 +98,7 @@ func recordID(at, name string) string { return mirror.RecordID(at, name) }
 // structural write would, and which the text form got for free by being one scalar.
 const specField = "spec"
 
-// scopeField is the federation a record belongs to — absent for baseline. It is what makes a
+// scopeField is the scope a record belongs to — absent for baseline. It is what makes a
 // scope's charter restorable: a scoped store reads baseline layered underneath, so a listing
 // in a scope returns both, and only the record can say which is which. See Engine.SetScope.
 const scopeField = "scope"
@@ -116,13 +116,13 @@ const atField = "at"
 // bring every package back at a restart.
 const AtField = atField
 
-// ownRecord reports whether a charter record belongs to THIS engine's federation: the scope
+// ownRecord reports whether a charter record belongs to THIS engine's scope: the one
 // stamped on it is the scope the engine acts in.
 //
 // A record with no scope is baseline's. Read from a scope that is what an INHERITED rule looks
-// like, and skipping it is what keeps `verse connect` from installing the whole baseline
-// charter into one dev's federation — which is a decision about what a scope means, not a
-// restore detail, and is not this function's to make (docs/reference/connect.md).
+// like, and skipping it is what keeps a restore from installing the whole baseline
+// charter into one scope — which is a decision about what a scope means, not a
+// restore detail, and is not this function's to make (docs/reference/scopes.md).
 func (e *Engine) ownRecord(ent entity.Entity) bool {
 	return entity.Str(ent.Payload, scopeField) == e.scope &&
 		entity.Str(ent.Payload, atField) == e.confine.stamp()
@@ -255,7 +255,7 @@ func (e *Engine) forget(name string) {
 // names itself rather than hiding behind "the charter failed to load".
 //
 // IN A SCOPE it restores the scope's OWN rules and passes over the baseline ones it can see
-// through the overlay (ownRecord). Baseline's charter running in every live federation is a
+// through the overlay (ownRecord). Baseline's charter running in every live scope is a
 // question about what a scope means, and a restore is not where it gets decided.
 func (e *Engine) LoadCharter() error {
 	var errs []error

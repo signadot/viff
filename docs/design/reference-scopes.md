@@ -1,6 +1,6 @@
-# Why: Federating a working tree, and scopes
+# Why: Scopes
 
-The reasons behind [Federating a working tree, and scopes](../reference/connect.md). They are for somebody changing verse; the page itself says what verse does.
+The reasons behind [Scopes](../reference/scopes.md). They are for somebody changing verse; the page itself says what verse does.
 
 ## A scope does not run the rules of baseline
 

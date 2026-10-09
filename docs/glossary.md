@@ -107,31 +107,14 @@ See [Entities](reference/entities.md#watching).
 A scope is a named copy-on-write view of the store: `verse data -scope me demo x 1`. A write
 lands in the scope only. A read sees the scope on top of the rest of the store.
 
-See [Connect and scopes](reference/connect.md#scopes).
+See [Scopes](reference/scopes.md#scopes).
 
 ### baseline
 
 Baseline is the store outside every scope. A command that names no scope acts on baseline.
 For the charter, see [baseline charter](#baseline-charter).
 
-See [Connect and scopes](reference/connect.md#scopes).
-
-### controller
-
-A controller is a process that serves one subtree of the store. No rule fires on what a
-controller serves.
-
-Also written: docd controller, mount.
-
-See [Writing a docd controller](controllers.md).
-
-### federation
-
-To federate a working tree is to make its files readable through the store. `verse connect`
-writes the metadata of each file as an entity in a scope, and a controller serves the
-contents.
-
-See [Connect and scopes](reference/connect.md#what-one-command-does).
+See [Scopes](reference/scopes.md#scopes).
 
 ## Rules
 
@@ -1091,9 +1074,6 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 
 + [control plane](#control-plane)
 
-+ [controller](#controller)
-
-
 + [deadline (of a gate)](#deadline-of-a-gate)
 
 + [derive](#derive)
@@ -1111,8 +1091,6 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 + [event stream](#event-stream)
 
 + [executor](#executor)
-
-+ [federation](#federation)
 
 + [firing](#firing)
 

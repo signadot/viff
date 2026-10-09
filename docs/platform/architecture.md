@@ -47,7 +47,7 @@ compare-and-swap from it.
 `Get` reads one address and `List` reads many. `Observe` is a fast hint, and it may drop
 events. The source of truth is the replay, `watch … since=<rev>`, which reads from a cursor.
 Every event carries the entity as it was at its commit. logd and docd give the store
-durability, copy-on-write scopes, and controller federation. See
+durability and copy-on-write scopes. See
 [change events](../change-events.md).
 
 **`trigger`** is the engine that reacts. It watches the store, matches the installed rules,
@@ -78,11 +78,8 @@ start it reconciles the tasks a previous run left: it resumes some and orphans t
 **`runner`** and **`broker`** are the two ways a task runs outside the verse process. They
 are described below.
 
-**`io`** reflects external state into the store. `verse connect` reflects a working tree into
-a scope: it writes the metadata of each file as an entity, and serves the contents on demand
-through a docd controller. Git, GitHub and the others follow the same pattern. See
-[connect](../reference/connect.md), [ios](../io.md) and
-[content federation](../content-federation.md).
+**`io`** reflects external state into the store: Git, GitHub and the others, each writing the
+place it owns. See [ios](../io.md).
 
 ## Design decisions
 
@@ -151,14 +148,14 @@ opaque cursor. The event stream of a task has a cursor of its own, for resuming.
 assumes that the numbers are dense, and every reader catches up with `since`.
 
 **Scopes.** A scope is a copy-on-write overlay. A read sees the scope on top of baseline. A
-write lands in the scope only. Your local federation and your flows in progress live in a
+write lands in the scope only. Your own work and your flows in progress live in a
 private scope. The scope is isolated from baseline and from other developers, and one
 `DeleteScope` removes it.
 
 A scope holds a copy of the world. It does not hold a copy of the program: the rules, tasks,
 gates and flows are referenced. So a scope steers, answers and removes what it created, and
 verse refuses the rest. A grant made in a scope governs that scope alone
-([what a scope owns](../reference/connect.md#what-a-scope-owns)).
+([what a scope owns](../reference/scopes.md#what-a-scope-owns)).
 
 **The charter is durable.** An installed rule is an entity, `verse.trigger.rule.<name>`, and
 it carries the definition it was installed from. At a restart verse installs the stored rules
@@ -200,7 +197,7 @@ corrupt the log.
 | Io | a program that reflects an external system into a place it owns in the store. You deploy it and install it ([ios](../io.md)). |
 
 An io is not a *docd controller*. A controller serves bytes that somebody asks for. An io
-writes facts that something reacts to ([writing a controller](../controllers.md)).
+writes facts that something reacts to ([ios](../io.md#a-source-is-not-a-docd-controller-and-cannot-be)).
 
 ## Deployment
 

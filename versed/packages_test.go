@@ -129,7 +129,7 @@ func TestACharterPackageMayNotBeInstalledInVersesHalf(t *testing.T) {
 // baseline's — which is what the address stamped on the record is for.
 //
 // It is the half a scope cannot have: a scope's layer is invisible from baseline, so a
-// federation waits for its dev to reconnect, while a package is a stamp anyone can list.
+// scope waits for its owner to come back, while a package is a stamp anyone can list.
 func TestACharterPackageIsRestoredAtItsAddress(t *testing.T) {
 	addr := entitytest.Addr(t)
 	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))

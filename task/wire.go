@@ -115,7 +115,7 @@ type VectorRequest struct {
 // Wire is the launch as it crosses to a runner.
 //
 // ONE FIELD STAYS HOME, verse's own bookkeeping about the task that means nothing to whoever runs
-// it: Scope, the federation the task was spawned into. It says where the task's records land,
+// it: Scope, the copy-on-write scope the task was spawned into. It says where the task's records land,
 // which is verse's to know, and the runner never sees it.
 //
 // Every other field crosses, and launchwire_test.go fails for a field added to Launch that is in

@@ -28,7 +28,7 @@ import (
 func TestGateOnPerSpawnRunnerIsAnswerable(t *testing.T) {
 	// A face that asks before it acts, so there is a real question to answer. Its registry is
 	// the one that must receive the answer, and it is not this verse's.
-	build := func(l task.Launch, reg *task.Registry, _ task.ContentReader) *task.Task {
+	build := func(l task.Launch, reg *task.Registry) *task.Task {
 		vec := &task.Vector{Default: task.Auto, Gates: []task.Gate{{
 			Name: "act", Mode: task.Ask,
 			Match: task.GateMatch{Tools: []string{"noop"}},

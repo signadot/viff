@@ -15,13 +15,12 @@ Two tiers, split so the storage fragility stays off the engine:
   Singleton because two engines would double-fire triggers; leader-election is the scale-out
   answer later.
 
-Plus a `Service` for the versed API, one for the broker face when `brokerFace`, and three for
-docd — one per face, because a face is the unit anything grants or reaches:
+Plus a `Service` for the versed API, one for the broker face when `brokerFace`, and two for
+docd, because a face is the unit anything grants or reaches:
 
 | | |
 |---|---|
 | `docd` | the client face (7071) — the store, read/write; what versed is pointed at |
-| `docd-mount` | the mount face (7072) — where a controller mounts a subtree it owns |
 | `docd-headless` | the StatefulSet's governing Service. Nobody dials it; it exists so `docd-0` has a stable per-pod name |
 
 > ⚠️ **An existing deploy needs the StatefulSet recreated once.** `docd` used to be the
@@ -203,7 +202,6 @@ an unexposed Service looks exactly like an exposed one until you go looking on t
 |---|---|---|
 | `verse` | the versed API — `verse -addr http://verse:9797 …` | 9797 |
 | `verse-docd` | docd's client face: the store, read/write, including scoped writes | 7071 |
-| `verse-docd-mount` | docd's mount face, where a controller mounts a subtree ([seam 3](../docs/seams.md)) | 7072 |
 | `verse-broker` | the broker face: where a dial-in worker claims work and reports on it (`brokerFace`) | 9090 |
 
 The device names track `namespace`, so a second verse on the same tailnet is a second name
@@ -212,7 +210,7 @@ if the ACL wants its own tag instead of the operator's default `tag:k8s`.
 
 `tailscaleExpose` adds no Services — it annotates the ones the deploy already has. A Service
 gets one tailnet IP, so a face that an ACL should be able to grant separately has to be its
-own Service: that is why docd's two are two, and why the broker is a third. The broker's is
+own Service: that is why the broker's is its own. The broker's is
 the one reached by parties who are not operators — a laptop agent, a pod in a private cluster,
 a person — and granting it must not thereby grant the operator API. `docd-headless` is
 deliberately not exposed: the operator refuses a headless Service outright, recording `headless
@@ -220,18 +218,17 @@ Services are not supported` as an `INVALIDSERVICE` warning event and exposing no
 is the reason the plain name `docd` belongs to a face and the governing Service carries the
 suffix.
 
-**`/status` answers with the tailnet names too**, which is what makes `verse connect` work from
-a laptop. `connect` is its own process: it reads docd's two addresses off `/status` and dials
-them from where *it* is, so being told `docd:7071` — true inside the cluster, meaningless
-outside — was enough to stop it. With `tailscaleExpose`, versed is given
-`-docd-advertise-addr verse-docd:7071` and `-docd-mount-advertise-addr verse-docd-mount:7072`
+**`/status` answers with the tailnet name too**, which is what lets a store client on a laptop
+find docd. Such a client reads docd's address off `/status` and dials it from where *it* is, so
+being told `docd:7071` — true inside the cluster, meaningless outside — would stop it. With
+`tailscaleExpose`, versed is given `-docd-advertise-addr verse-docd:7071`
 ([up.md](../docs/reference/up.md#when-a-client-cannot-reach-docd-where-verse-does)). It keeps
-*dialling* `docd:7071` and `docd-mount:7072` — routing the engine's own traffic through a proxy
-pod to reach a container beside it would be absurd — and only the answer changes.
+*dialling* `docd:7071` — routing the engine's own traffic through a proxy pod to reach a
+container beside it would be absurd — and only the answer changes.
 
-There is one published pair, so this is a choice about which client matters, and it goes to the
-one outside. A controller running *inside* the namespace would now be handed tailnet names; it
-should be passed the Service names directly rather than discovering them.
+There is one published address, so this is a choice about which client matters, and it goes to
+the one outside. A client running *inside* the namespace would now be handed a tailnet name; it
+should be passed the Service name directly rather than discovering it.
 
 The broker face is the same arrangement one layer along, and its answer travels on the task
 rather than on `/status`: versed is given `-broker-advertise-addr verse-broker:9090`, so each

@@ -71,7 +71,7 @@ func (b *Broker) get(id string) *taskState {
 // is unable to keep, which is the exact failure this change exists to remove. Bounding a
 // remote worker is a real question, and it belongs to the claim protocol rather than to
 // this registration. See docs/external-tasks.md.
-func (b *Broker) Spawn(l task.Launch, _ task.ContentReader) task.Handle {
+func (b *Broker) Spawn(l task.Launch) task.Handle {
 	b.mu.Lock()
 	b.tasks[l.ID] = &taskState{
 		id: l.ID, prompt: l.Prompt, driver: l.Driver, retain: l.Retain,
