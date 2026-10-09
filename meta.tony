@@ -6,7 +6,9 @@ commits: []
 created: "2026-10-09T09:32:08.038394+02:00"
 duplicates: []
 id: pvk89kvah12kry4rs1n0
-labels: []
+labels:
+- branch
+- design
 related_issues: []
 status: open
-updated: "2026-10-09T09:32:08.038394+02:00"
+updated: "2026-10-09T09:32:08.111876+02:00"
