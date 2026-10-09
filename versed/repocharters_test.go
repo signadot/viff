@@ -141,11 +141,12 @@ func waitQuestionID(t *testing.T, srv *Server, id string) {
 	}
 }
 
-// tagInputFor is the keyed tag input for a tree: a keyed derive stands under the rule and its
-// subject, the install's status, and the key.
+// tagInputFor is the tag input for a tree, named by the tree in the git outbox, where the io
+// reads it: an input under a name ending in ~status (the install's status, the rule's subject)
+// is one the sink never reads, so the input is named and not keyed.
 func tagInputFor(t *testing.T, srv *Server, tree string) entity.Payload {
 	t.Helper()
-	ref := entity.RefAt("repo-charters", "r", "out", "git", "installed", "repo-charters", "r", "install", tree+"~status", tree)
+	ref := entity.RefAt("repo-charters", "r", "out", "git", tree)
 	return waitEntity(t, srv, ref, func(p entity.Payload) bool { return entity.Str(p, "to") == "tag.live-verse/"+tree })
 }
 

@@ -725,9 +725,12 @@ rules:
       id: install-failed
       value: {closed: true}
     # The tag names the TREE and stands at the commit it first ran from, once: a later commit
-    # carrying the same tree finds the tag standing and leaves it.
+    # carrying the same tree rewrites this input with its sha, and the io, asked to create, finds
+    # the tag standing and leaves it. NAMED, not keyed: a keyed input would stand under the rule
+    # and its subject, and the subject here is the install's status, whose name ends in ~status,
+    # which the sink never reads into. Named, it stands at out.git.<tree>, where the io finds it.
     - path: "repo-charters.{{.Repo}}.out.git"
-      key: $subject.value.tree
+      id: $subject.value.tree
       value: {to: "tag.live-verse/$subject.value.tree", sha: $subject.value.sha, create: true}
 # An install the io refused for good is an issue in the repository, saying what the verse said,
 # and the candidate's pull request's commit status fails. The issue and the status stand until the
