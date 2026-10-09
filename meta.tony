@@ -2,6 +2,7 @@
 blocked_by: []
 blocks: []
 branches: []
+closed_by: c1bc057ad5d2c1bb7ffa160a4d66a5dfe7f98f50
 commits: []
 created: "2026-10-09T11:55:21.629088+02:00"
 duplicates: []
@@ -9,5 +10,5 @@ id: 455pm5kvh12kr2dts1n0
 labels:
 - chore
 related_issues: []
-status: open
-updated: "2026-10-09T11:55:21.724895+02:00"
+status: closed
+updated: "2026-10-09T12:07:44.070918+02:00"
