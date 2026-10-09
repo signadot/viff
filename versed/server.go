@@ -302,7 +302,7 @@ func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Serv
 		// context to run under, and one that is never cancelled would be worse than one
 		// cancelled at task exit.
 		ctx: context.Background()}
-	s.runner = localRunner{taskd} // the in-process runner ("/broker/local")
+	s.runner = localRunner{taskd} // the in-process runner, reached in process and nowhere else
 
 	// Publish every posed question as `gate:question:<id>`, from both places questions are
 	// raised: the engine's own registry for a firing's gates, and each hosted task for a
@@ -412,10 +412,16 @@ func checkAudience(store entity.Store, q task.GateQuestion) error {
 	return mirror.CheckAudience(store, q.Subject, entity.Canonical(q.Answerers))
 }
 
-// localRunner is the in-process runner: it hosts tasks on the embedded
-// taskd runtime — the "/broker/local" handler. Remote runners (a base
-// URL: k8s, lambda, a human broker) implement the same task.Runner behind the
-// wire contract; the engine drives them through the identical seam. See docs/task-control.md.
+// localRunner is the in-process runner: it hosts tasks on the embedded taskd runtime, called
+// in process. Remote runners (a base URL: k8s, lambda, a human broker) implement the same
+// task.Runner behind the wire contract; the engine drives them through the identical seam. See
+// docs/task-control.md.
+//
+// The runtime is served to nobody raw. The operator API serves it behind the door (a
+// principal, the perms check, the mirror), and the broker face serves only what HostBroker
+// registered under a minted nonce. A fixed name on the broker face used to map to this
+// runtime whole — POST /tasks, resolve, cancel, the vector — for anyone who could reach the
+// port, with no check, no owner and no record (git-issue jp9dy8anh12kr9r7nxn0).
 type localRunner struct{ d *taskd.Daemon }
 
 func (l localRunner) Spawn(spec task.Launch, content task.ContentReader) task.Handle {
@@ -461,11 +467,11 @@ func (s *Server) UseBroker(face string) *broker.Broker {
 	return b
 }
 
-// BrokerHandler serves this verse's broker face — the runner contract hosted under
-// /broker/<nonce>, so a remote verse or a worker reaches a runner through verse's own URL
-// rather than a separate service (see docs/task-control.md "Hosting"). The well-known
-// "local" nonce is the built-in supervisor (taskd); any other nonce is a handler
-// registered via HostBroker (e.g. a dial-in broker's WorkerHandler). It is intended for a
+// BrokerHandler serves this verse's broker face — a handler hosted under /broker/<nonce>, so a
+// worker reaches a dial-in broker through verse's own URL rather than a separate service (see
+// docs/task-control.md "Hosting"). Every nonce is one HostBroker registered, minted unguessable
+// unless the registrant pinned it, and the nonce is the capability: there is no well-known
+// name, and the built-in supervisor is not here (see localRunner). It is intended for a
 // SIBLING port, kept distinct from the trusted operator API.
 func (s *Server) BrokerHandler() http.Handler {
 	mux := http.NewServeMux()
@@ -483,12 +489,9 @@ func (s *Server) BrokerHandler() http.Handler {
 	return mux
 }
 
-// brokerFor resolves a nonce to its worker-facing handler. "local" is the built-in
-// supervisor; every other nonce must have been registered via HostBroker.
+// brokerFor resolves a nonce to its worker-facing handler: one registered via HostBroker, or
+// nil for a nonce nobody minted.
 func (s *Server) brokerFor(nonce string) http.Handler {
-	if nonce == "local" {
-		return s.Taskd.Handler()
-	}
 	s.brokerMu.Lock()
 	defer s.brokerMu.Unlock()
 	return s.brokers[nonce]

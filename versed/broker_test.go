@@ -491,3 +491,28 @@ func TestTaskGetSeparatesUnreachableFromUnknown(t *testing.T) {
 		t.Fatalf("an unknown id on a reachable verse = %s, want 404", miss.Status)
 	}
 }
+
+// THE LOCAL RUNTIME IS NOT ON THE BROKER FACE. The face is on a port workers reach, and a
+// fixed name there mapped to the whole runtime — spawn, resolve, cancel, the vector — for
+// anyone who could type it, with no principal and no record (git-issue jp9dy8anh12kr9r7nxn0).
+// Every path under the face is a nonce somebody minted, or nothing.
+func TestTheLocalRuntimeIsNotServedOnTheBrokerFace(t *testing.T) {
+	srv := testServer(t)
+	work := httptest.NewServer(srv.BrokerHandler())
+	defer work.Close()
+
+	for _, path := range []string{"/tasks", "/tasks/x/resolve", "/tasks/x/cancel", "/tasks/x/vector"} {
+		resp, err := httpPost(work.URL+"/broker/local"+path, "application/json", strings.NewReader(`{"prompt":"sneaky"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("POST /broker/local%s = %d, want 404: the runtime is served raw to whoever reaches the port", path, resp.StatusCode)
+		}
+	}
+	// And nothing arrived in the runtime by that door.
+	if n := srv.Taskd.Count(); n != 0 {
+		t.Errorf("the runtime holds %d task(s) after posts to /broker/local, want none", n)
+	}
+}

@@ -374,9 +374,10 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		_ = httpSrv.Shutdown(context.Background())
 	}()
 
-	// Broker face on a SIBLING port (worker/remote-facing, kept off the operator API):
-	// serves /broker/local — this verse's local supervisor — so a remote verse can bind
-	// `--runner http://<host>:<broker-addr>/broker/local`.
+	// Broker face on a SIBLING port (worker/remote-facing, kept off the operator API): serves
+	// /broker/<nonce> for the dial-in brokers this verse hosts, and nothing by a fixed name.
+	// Another verse that wants this one's runtime installs it as a runner by the operator
+	// URL, where the request meets the door.
 	if cfg.BrokerAddr != "" {
 		srv.BrokerAddr = cfg.BrokerAddr // publish the broker face address on /status
 		adm.SetAddrs(

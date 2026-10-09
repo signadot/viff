@@ -356,7 +356,7 @@ This table is the summary of the page.
 
 | If it must live… | Use | Because |
 |---|---|---|
-| beside verse | local runner (`/broker/local`) | no wire at all |
+| beside verse | local runner (in process) | no wire at all |
 | anywhere verse can reach | remote runner (4) | verse opens the connection |
 | behind a firewall, on a laptop, in a person's hands | broker (5) | the worker opens it, and holds a nonce |
 | in a system verse may dial | source `url` (6) | verse asks; hints are an optimization |

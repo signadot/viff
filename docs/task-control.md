@@ -190,11 +190,11 @@ Verse can mint that URL on its own broker face, so a runner need not stand up a 
 
 | Runner | URL | What serves it |
 |---|---|---|
-| the built-in local supervisor | the well-known `<broker>/broker/local` | an in-process handler |
+| the built-in local supervisor | none: it is called in process | the engine's own runtime |
 | a broker registered at runtime | `<broker>/broker/<nonce>` | the registered backend |
 
-So "no privileged local path" needs no separate loopback server. Local is the broker at a fixed
-nonce.
+So "no privileged local path" needs no separate loopback server, and no path at all: local is
+the runtime itself, called in process.
 
 ## The verse-facing contract
 
@@ -482,9 +482,9 @@ controller.
 | verse | the worker ops and engine ops of a task | a registered backend | `/broker/<nonce>` |
 
 This is the same capability-URL method that `connect` uses for `dir-content-<nonce>`. A runner
-binding is then always a URL: `<broker>/broker/local`, `<broker>/broker/<nonce>`, or an external
-one. Verse consumes the verse-facing contract from it. For a hosted broker the call is in process
-or forwarded. For an external broker the call is HTTP.
+binding to anything but the built-in supervisor is a URL: `<broker>/broker/<nonce>`, or an
+external one. Verse consumes the verse-facing contract from it. For a hosted broker the call is in
+process or forwarded. For an external broker the call is HTTP.
 
 One deployment has two listeners.
 
@@ -500,9 +500,12 @@ The sibling port keeps a clear trust boundary between operators and workers. Bro
 the deployment of verse, but it does not expose the operator API to workers. A worker only
 reaches its own path under a nonce, and never the surface of entities or gates.
 
-The built-in local supervisor is at the well-known `/broker/local`. It has a fixed nonce and an
-in-process handler. So a default spawn binds to it with no config, and the binding stays the
-same across restarts.
+The built-in local supervisor is not on the broker face. It is called in process, so a default
+spawn binds to it with no config and the binding is the same across restarts. It was once served
+there under a fixed name, and a fixed name on a port workers reach is the whole runtime handed to
+anyone who can guess it: spawn, resolve, cancel, the vector, with no principal, no owner and no
+record. Another verse that wants this one's runtime installs it as a runner by the operator URL,
+where the request meets the door like any other.
 
 A broker registered at runtime gets a random nonce, and the nonce is the capability. It may be
 an in-process plugin. It may also be a registrant that dials in, as in the docd-controller
@@ -512,7 +515,7 @@ firewall or a vendor behind NAT, still hosts a broker without a face of its own.
 
 The lifecycle follows the existing discipline of reaping daemons and restarting:
 
-1. `up` binds both listeners and mints `/broker/local` again.
+1. `up` binds both listeners; the local supervisor needs no mount.
 2. Brokers register at runtime.
 3. `down` reaps them.
 4. `up` reconciles each task that is not terminal, from the runner binding on its entity. It

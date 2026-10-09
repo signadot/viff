@@ -21,7 +21,7 @@ import (
 )
 
 // a runner face an operator can actually install: the verse-facing contract, served by the
-// same taskd handler `/broker/local` serves.
+// same taskd handler the local runner calls in process.
 func runnerFace(t *testing.T) *httptest.Server {
 	t.Helper()
 	// Released at cleanup, so the work on this face ENDS before the face does. Without it a
