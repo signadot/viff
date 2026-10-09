@@ -5,7 +5,7 @@
 # now, and remembers what it found; and the MERGE GATE (merge.tony) turns what the review's fixes
 # deliver into a proposal somebody decides. Install it whole —
 #
-#     verse charter -a -d deploy/charters/verse/repo/verse/comment-drift
+#     verse charter -a -d .verse/charters/comment-drift
 #
 # — which installs both as one step, and within each the strata first whatever order they
 # appear in, so the ordering is in force before a rule names it.
