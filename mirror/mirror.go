@@ -133,6 +133,10 @@ type Meta struct {
 	// identity to a reader — so it belongs on the index next to what the task produced,
 	// not only on the read plane that outlives nothing.
 	Prompt string
+	// Driver is what ran it (`llm`, `calls`, `codex`), as the launch named it. On the record
+	// for the reader of a failure, whose next question is which driver failed, and for a task
+	// on a named runner, whose snapshot is a trip away.
+	Driver string
 	// Doer, Grant and Tools are the ENVELOPE the task runs under: which doer a governed
 	// selection picked, and what the resulting launch may do.
 	//
@@ -218,7 +222,7 @@ func TriggerOf(chain string) string {
 // `hook` is the engine's, written onto the same record when a hook fails (trigger.recordHookFailure).
 var RecordFields = map[string]bool{
 	"answerers": true, "asker": true, "chain": true, "credential": true, "cursor": true, "data": true, "dialURL": true, "doer": true,
-	"ended": true, "err": true, "flow": true, "grant": true, "hook": true,
+	"driver": true, "ended": true, "err": true, "flow": true, "grant": true, "hook": true,
 	"lastAction": true, "lastOutput": true, "observed": true, "occurrence": true,
 	"paused": true, "pending": true, "prompt": true, "result": true,
 	"runner": true, "runnerName": true, "say": true, "started": true, "startedAt": true,
@@ -276,6 +280,9 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	}
 	if m.Prompt != "" {
 		st["prompt"] = m.Prompt
+	}
+	if m.Driver != "" {
+		st["driver"] = m.Driver
 	}
 	// The envelope: who was picked, and what the launch may do. See Meta.
 	if m.Doer != "" {
@@ -687,7 +694,17 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 								st["data"] = d
 							}
 						}
-						if e := h.Err(); e != "" { // status says only THAT it ended, never why
+						// WHY it ended, which the status alone never says: the frame's own word
+						// first, since the plane is what this record mirrors, and the handle's
+						// account only where the frame carried none. The handle's is a second
+						// read against the runner, and a runner whose snapshot has less to say
+						// than its stream did, or that cannot be asked just now, was losing the
+						// reason between the frame and the record.
+						e := ev.Err
+						if e == "" {
+							e = h.Err()
+						}
+						if e != "" {
 							st["err"] = e
 						}
 						project(store, id, st, m)

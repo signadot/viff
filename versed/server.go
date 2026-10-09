@@ -574,7 +574,7 @@ func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentR
 		if err != nil {
 			// Same shape as the envelope and the resolver below: a spawn that cannot run
 			// where it said does not run somewhere else instead.
-			meta := mirror.Meta{Subject: spec.Subject, Chain: spec.Chain, Prompt: spec.Prompt}
+			meta := mirror.Meta{Subject: spec.Subject, Chain: spec.Chain, Prompt: spec.Prompt, Driver: spec.Driver}
 			h := task.FailedHandle(fmt.Sprintf("spawn %s: %v", id, err))
 			s.reflect(rec, id, h, meta)
 			return h
@@ -584,7 +584,7 @@ func (s *Server) spawnerFor(st entity.Store, scope string, content task.ContentR
 		// and the running path cannot disagree about what was attempted.
 		meta := mirror.Meta{
 			Subject: spec.Subject, Runner: place.Ref(), RunnerName: placeName,
-			Chain: spec.Chain, Prompt: spec.Prompt, Occurrence: spec.Occurrence,
+			Chain: spec.Chain, Prompt: spec.Prompt, Driver: spec.Driver, Occurrence: spec.Occurrence,
 			Doer: spec.Doer, Grant: spec.Grant, Tools: spec.Tools, Asker: spec.Asker,
 			Gates:  spec.Gates,
 			HeldBy: func() []string { return eng.HeldBy(id) },
@@ -4518,6 +4518,10 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	eng := s.engineOf(scope)
 	s.reflect(store, id, h, mirror.Meta{
 		Runner: place.Ref(), RunnerName: placeName,
+		// What it was asked and what ran it, on the record as a rule's spawn puts them: the
+		// two facts a reader of this task wants beside its status, and for a task on a named
+		// runner the record is the only place they can be read without that runner.
+		Prompt: body.Prompt, Driver: body.Driver,
 		Subject: body.Subject, Gates: body.Gates, Asker: actsFor,
 		HeldBy: func() []string { return eng.HeldBy(id) },
 		// No Occurrence: nothing caused this one, so there is no commit to name and the
@@ -4685,7 +4689,7 @@ func instanceFromRecord(id string, rec map[string]any) task.Instance {
 	str := func(k string) string { v, _ := rec[k].(string); return v }
 	num := func(k string) int64 { v, _ := rec[k].(int64); return v }
 	return task.Instance{
-		ID: id, Prompt: str("prompt"), Status: task.Status(str("status")),
+		ID: id, Prompt: str("prompt"), Driver: str("driver"), Status: task.Status(str("status")),
 		Runner: str("runner"), RunnerName: str("runnerName"),
 		Result: str("result"), Err: str("err"),
 		Started: str("started"), Ended: str("ended"),

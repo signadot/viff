@@ -297,7 +297,7 @@ Verse keeps its high-water cursor on the entity. On a restart, it knows where to
 | `decision` | `id, gate, mode, choice, proceed, by, reason` | clears `pending`; records the resolution — `choice` is the option, `proceed` the same as yes or no |
 | `child` | `child, status` | flow-tracking (sub-task spawn/join) |
 | `vector` | `by` | records an autonomy slide (the new vector is observable) |
-| `status` | `text: running\|paused\|resumed\|done\|failed\|cancelled`, `result?` | `status`, `paused`; on terminal `result` (CAS-once) |
+| `status` | `text: running\|paused\|resumed\|done\|failed\|cancelled`, `result?`, `err?` | `status`, `paused`; on terminal `result` (CAS-once) and `err`, why it ended, which the status alone never says |
 
 The `claim` kind is not built. Verse writes a claim on the record of the task, and not as an
 event on the stream (see [what is built](#what-is-built)).
