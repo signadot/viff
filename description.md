@@ -1,0 +1,13 @@
+# chartercheck: a restart makes the check report every rule with an object value as changed, so the reconciler reopens "verse/live is not what runs" after each ship
+
+GitHub issue signadot/verse#3 reopened at 2026-10-09T11:06:11Z, one minute after versed came up from the ship at 11:04, saying verse/live (c1bc057a, tree a4621a0f) "differs from the charters installed at repos.verse by 13 charter(s)". verse/live, main and what runs all hold tree a4621a0f, and the install at 10:04:33Z had succeeded; at 10:05 and 10:06 the minute check said `installs`, `changes: 0`. Since the restart it says `changes: 13`, `differingFor` climbing by the minute, and lists under `changed` five rules of repos.verse.drift, five of repos.verse.merge and the three of repos.verse.git-issue.
+
+Reproduced in-process with one binary (versed/checkrestart_test.go, in `.worktrees/livecheck`, uncommitted): install `.verse/charters` at repos.verse, check the same tree → nothing to change; start a second server over the same store, check again → the same thirteen rules `changed`.
+
+Why: `encoded` in versed/chartercheck.go compares the bytes of a standing rule with the bytes of the tree's rule. Before a restart the standing rules are the ones parsed from the install, in file order. After a restart they are parsed from the stored `spec`, and the store returns object keys SORTED (probe: `{stage, sha, in: {zeta, alpha}}` written Raw reads back `in: {alpha, zeta}, sha, stage`). The two sides differ exactly where a rule's value object has keys the file wrote out of alphabetical order (`claim`'s `in: {sha, stage}` versus `{stage, sha}`); rules and strata whose objects happen to be in sorted order, like merge's proposal-based and proposal-says, are reported unchanged. Comments are not it: the Doc/Note fields are `tony:"-"`.
+
+So every ship reopens #3 and `verse/check` on a pull request proposing the running tree would say it changes rules it does not. The fix is a canonical comparison: sort object keys (and strip comments) on both sides before `NodeBytes`.
+
+A second defect seen on the same record: the io writes a check status by merging (io/out.go Write, a PutEntity), and `packages[i].added` from the first round survives beside later rounds' `changed`, since a later answer omits an empty `added` and the merge keeps the old value. `countChanges` reads the answer, not the status, so `changes` is right; the record is misleading. io/gitcheck.go could write `packages` and `pruned` as `entity.Raw`, which replaces.
+
+Not the reconciler's rule: `live-drifted` fires on `changes > 0` for two rounds, as designed; the check is what lied to it.
