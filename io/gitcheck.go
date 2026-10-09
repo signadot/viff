@@ -131,11 +131,18 @@ func (k *GitSink) check(ctx context.Context, rp repo, in Input, address string) 
 	if err != nil {
 		return asked, fmt.Errorf("checking tree %s at %s: reading the answer: %w", tree, at, err)
 	}
+	// The lists REPLACE what the round before wrote: a status is written as a patch, and a
+	// package's `added` of one round would otherwise stand beside the next round's `changed`,
+	// since an answer with nothing added says nothing rather than an empty list. `!raw` is the
+	// store's own escape for a subtree to land as written (entity.Raw).
 	for _, f := range []string{"verdict", "refusal", "packages", "pruned"} {
-		if v := entity.Get(answer, f); v != nil {
-			asked[f] = v
-		} else {
+		switch v := entity.Get(answer, f); {
+		case v == nil:
 			asked[f] = entity.Removed()
+		case f == "packages" || f == "pruned":
+			asked[f] = entity.Raw(v)
+		default:
+			asked[f] = v
 		}
 	}
 	n := countChanges(answer)

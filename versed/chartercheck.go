@@ -177,15 +177,50 @@ func (s *Server) standingPackage(confine trigger.Subtree) (*trigger.Engine, bool
 	return pe.eng, true
 }
 
-// encoded is a definition as bytes, to tell one that changed from one that did not.
+// encoded is a definition as bytes, to tell one that changed from one that did not: the same
+// definition is the same bytes, whichever way it came.
+//
+// CANONICAL, because the two sides come different ways. The tree's rules are parsed from the
+// files, whose objects keep the order they were written in; a standing rule is the one parsed
+// at install until a restart, and after one it is parsed from its stored spec, and the store
+// gives an object's keys back sorted. Compared as written, every rule whose values were not
+// written in sorted order changed at the restart, and the reconciler's minute check opened an
+// issue saying verse/live is not what runs over a verse that was running exactly it. Keys are
+// sorted at every depth before the bytes are taken, and comments dropped: a comment is not a
+// rule's meaning, and it is not what an install changes.
 func encoded(v any) []byte {
 	n, err := codec.ToNode(v)
 	if err != nil {
 		return nil
 	}
-	b, err := codec.NodeBytes(n, codec.Tony)
+	b, err := codec.NodeBytes(canonical(ir.StripComments(n)), codec.Tony)
 	if err != nil {
 		return nil
 	}
 	return b
+}
+
+// canonical is n with every object's keys in sorted order, at every depth.
+func canonical(n *ir.Node) *ir.Node {
+	if n == nil {
+		return nil
+	}
+	switch n.Type {
+	case ir.ObjectType:
+		kvs := make([]ir.KeyVal, 0, len(n.Fields))
+		for i, k := range n.Fields {
+			kvs = append(kvs, ir.KeyVal{Key: k, Val: canonical(n.Values[i])})
+		}
+		sort.SliceStable(kvs, func(i, j int) bool { return kvs[i].Key.String < kvs[j].Key.String })
+		out := ir.FromKeyVals(kvs)
+		out.Tag = n.Tag
+		return out
+	case ir.ArrayType:
+		out := n.Clone()
+		for i, v := range n.Values {
+			out.Values[i] = canonical(v)
+		}
+		return out
+	}
+	return n
 }

@@ -263,6 +263,17 @@ func TestTheGitOutHalfChecksARefAgainstWhatRunsEachRound(t *testing.T) {
 	if st := check("3"); fmt.Sprint(st["differingFor"]) != "2" {
 		t.Fatalf("a second round differing at the same commit: status %v", st)
 	}
+	// Back in step: the status says so WHOLE. A status is a patch, and a round's `packages`
+	// replaces the round before's rather than landing on top of it, so neither the package the
+	// tree no longer holds nor what an earlier round would have added stands in it.
+	gitRun(t, dir, "branch", "-f", "verse/live", one)
+	st = check("4")
+	if fmt.Sprint(st["changes"]) != "0" || fmt.Sprint(st["differingFor"]) != "0" || st["sha"] != one {
+		t.Fatalf("verse/live back in step: status %v", st)
+	}
+	if pkgs := fmt.Sprint(st["packages"]); strings.Contains(pkgs, "added") || strings.Contains(pkgs, "repos.r.other") {
+		t.Fatalf("a round back in step carries the round before's lists: %s", pkgs)
+	}
 	r.ask(t, "gone", entity.Obj{"to": "check.repos.r", "ref": "no/such", "round": "1"})
 	r.pass(t)
 	if st := r.status(t, "gone"); st["verdict"] != "missing" || st["error"] != nil {
