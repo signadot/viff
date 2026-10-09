@@ -108,7 +108,7 @@ address. See [The out half](io.md#the-out-half) for what an io does with an outb
 **One file is one charter, and a directory holds several.** Each file says where its charter
 goes with its own `at:`, so the layout of the directory is free.
 
-`deploy/charters/verse/repo/verse/comment-drift/` holds two packages: a `drift` package that
+`.verse/charters/comment-drift/` holds two packages: a `drift` package that
 reviews, and a `merge` package that gates what the review delivers. One `verse c -a -d`
 installs them, all of them or none.
 
@@ -117,7 +117,7 @@ together or not at all. So a refusal anywhere puts back what stood before it (se
 [strata.md](../strata.md#installing-and-the-order-it-does-not-depend-on)).
 
 **Its levels are its own**, and so are its records. The rules and the strata of a package are
-addressed by package (`verse.trigger.rule."verse-dev.drift:head-moved"`). So two packages may
+addressed by package (`verse.trigger.rule."repos.verse.drift:claim"`). So two packages may
 each declare a `reflected` level, and neither overwrites the other. The two halves of
 comment-drift need this: both read the git io, and both want a bottom level for it.
 

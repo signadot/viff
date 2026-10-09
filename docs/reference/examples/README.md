@@ -240,7 +240,7 @@ spawn:
 Nothing downstream can tell which driver proposed the push. The push derives the same effect,
 meets the same gate, and appears in the same way. For the driver itself, see
 [tasks.md](../tasks.md#the-drivers). This example comes from the charter
-`deploy/charters/verse/repo/verse/comment-drift/merge.tony`.
+`.verse/charters/comment-drift/merge.tony`.
 
 The egress allowlist is the one place where **reachable** and **authorised** differ. An
 environment with destinations needs a route to the forge, because the task does the pushing.
