@@ -200,18 +200,22 @@ func encoded(v any) []byte {
 	return b
 }
 
-// canonical is n with every object's keys in sorted order, at every depth.
+// canonical is n with every object's keys in the ir's own order, at every depth: a sparse
+// array is an object whose keys are numbers, ordered as numbers, and ir.Compare is what orders
+// a key of either kind. An array keeps its order, which is part of what it says.
 func canonical(n *ir.Node) *ir.Node {
 	if n == nil {
 		return nil
 	}
 	switch n.Type {
+	case ir.CommentType:
+		return canonical(ir.Uncomment(n))
 	case ir.ObjectType:
 		kvs := make([]ir.KeyVal, 0, len(n.Fields))
 		for i, k := range n.Fields {
 			kvs = append(kvs, ir.KeyVal{Key: k, Val: canonical(n.Values[i])})
 		}
-		sort.SliceStable(kvs, func(i, j int) bool { return kvs[i].Key.String < kvs[j].Key.String })
+		sort.SliceStable(kvs, func(i, j int) bool { return ir.Compare(kvs[i].Key, kvs[j].Key) < 0 })
 		out := ir.FromKeyVals(kvs)
 		out.Tag = n.Tag
 		return out
