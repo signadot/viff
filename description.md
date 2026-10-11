@@ -1,0 +1,9 @@
+# versed: the test suite is factored for coverage, not for runtime; re-compose it so the ~3 minutes become a fraction
+
+`go test ./versed` takes ~180s on main bd21db2b (533 named tests incl. subtests, 178.9s summed, measured 2026-10-11). Not to be parallelised: the composition is what is wrong. Where the time goes:
+
+1. **One scenario, 43s** (`TestTheRepoChartersReconcilerInstallsWhatIsApproved`): ~2,700 store commits in one story. logd snapshots every 1,000 commits (2.0s and 1.8s) and takes 32 per-path snapshots of the hot `verdict` records; 28 of the 47s of wall time follow a path-snapshot line. Every "patch did not land" and "context canceled" warning in its log is stamped at the second the test ends, with firings in flight: teardown noise, not patches lost mid-test. The engine itself is quick: a four-firing chain through docd completes in 26ms. The lever is the test store's snapshot policy (logd `SnapshotConfig`, `StorageConfig.PathSnapshotTail`), for these tests or for all.
+2. **Real-clock waits, ~36s**: askttl 12.0s (keep 2s/3s and a 3s wait to prove a suspended ask is NOT reaped), deadlineat 9.7s, asks 6.5s, gatecredential 3.7s (`within: 1s`), carryback 3.6s. The lever is an injectable clock on the server, so a test moves time and asserts the next action rather than sleeping through a keep.
+3. **A full world per assertion, ~55s**: 489 tests each stand up a store (2.5ms), a server (26ms, seeding perms), Start (91ms, of which installing versed/system.tony is 59ms) and an HTTP server, 127 of them starting the engine; 104 small files hold 282 tests at ~0.15s each. The lever is a started world shared across a file's tests where they read it or write disjoint places, and the cheaper world (store plus server, no Start) where the engine is never reached.
+
+The cost profile is in the branch issue comments as the work lands.
