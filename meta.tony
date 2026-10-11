@@ -6,7 +6,9 @@ commits: []
 created: "2026-10-11T10:55:26.422005+02:00"
 duplicates: []
 id: qbk89kvah12kszjesdn0
-labels: []
+labels:
+- design
+- docs
 related_issues: []
 status: open
-updated: "2026-10-11T10:55:26.422005+02:00"
+updated: "2026-10-11T10:55:26.53451+02:00"
