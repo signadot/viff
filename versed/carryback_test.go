@@ -50,9 +50,10 @@ func TestAnOnwardAsksAnswerIsCarriedBack(t *testing.T) {
 	if c := entity.ToObj(carried(t, srv, onward)); fmt.Sprint(c["status"]) != "204" {
 		t.Fatalf("the onward ask says it carried %v", c)
 	}
-	// Once: a carry recorded is not made again when the onward ask changes later.
+	// Once: a carry recorded is not made again when the onward ask changes later. The clock
+	// moves on, so a second carry would stamp a later instant.
 	first := fmt.Sprint(entity.ToObj(carried(t, srv, onward))["at"])
-	time.Sleep(1100 * time.Millisecond)
+	srv.clock.(*fakeClock).Advance(2 * time.Second)
 	if _, _, err := entity.As(srv.Store, entity.SystemDocket).Write(entity.Write{
 		At: mirror.AskRef(onward).At(), Value: entity.Obj{"note": "later"}.Payload(),
 	}); err != nil {
@@ -68,9 +69,11 @@ func TestAnOnwardAsksAnswerIsCarriedBack(t *testing.T) {
 // carried back as any answer is.
 func TestAnOnwardAsksSilenceIsCarriedBack(t *testing.T) {
 	srv, url, served := servedPending(t)
-	soon := time.Now().Add(2 * time.Second).UTC().Format(time.RFC3339)
+	clock := srv.clock.(*fakeClock)
+	soon := clock.Now().Add(time.Minute).UTC().Format(time.RFC3339)
 	raiseOnward(t, srv, url, served, `, due: "`+soon+`"`)
-	deadline := time.Now().Add(10 * time.Second)
+	clock.Advance(time.Minute)
+	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		if e, ok, _ := srv.Store.Get(mirror.AskRef(served)); ok && entity.Str(e.Payload, "status") == mirror.QuestionAnswered {
 			if v, by := entity.Str(e.Payload, "verdict"), entity.Str(e.Payload, "by"); v != "deny" || by != "user:bob@example.com" {

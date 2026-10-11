@@ -27,7 +27,7 @@ import (
 // uninstall drops.
 type clocks struct {
 	mu     sync.Mutex
-	timers map[string]*time.Timer
+	timers map[string]Timer
 }
 
 // Zone is the zone a tick's calendar is spelled in, and the zone a period of whole days steps
@@ -77,12 +77,12 @@ func (s *Server) armSchedule(id string) {
 	s.clocks.mu.Lock()
 	defer s.clocks.mu.Unlock()
 	if s.clocks.timers == nil {
-		s.clocks.timers = map[string]*time.Timer{}
+		s.clocks.timers = map[string]Timer{}
 	}
 	if old := s.clocks.timers[id]; old != nil {
 		old.Stop()
 	}
-	s.clocks.timers[id] = time.AfterFunc(time.Until(at), func() { s.tick(id) })
+	s.clocks.timers[id] = s.at(at, func() { s.tick(id) })
 }
 
 // dropClock stops and forgets a schedule's timer: an uninstall, or a record that is gone.
@@ -99,7 +99,7 @@ func (s *Server) dropClock(id string) {
 // arm the next. The record is read again here — the timer that fired may be one an earlier
 // arming set, and the record is what says whether the instant has passed.
 func (s *Server) tick(id string) {
-	if err := s.tickAt(id, time.Now()); err != nil && !errors.Is(err, errTickRefused) {
+	if err := s.tickAt(id, s.now()); err != nil && !errors.Is(err, errTickRefused) {
 		fmt.Fprintf(os.Stderr, "verse: schedule %s: %v\n", id, err)
 	}
 	s.armSchedule(id)
@@ -189,7 +189,7 @@ func (s *Server) backfill(id string, due time.Time) error {
 	if err != nil {
 		return err
 	}
-	if due.After(time.Now()) {
+	if due.After(s.now()) {
 		return fmt.Errorf("%s is ahead: a backfill is for an instant that has passed", schedule.Key(due))
 	}
 	if on := schedule.Due(from, every, due); !on.Equal(due) {

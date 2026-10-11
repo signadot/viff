@@ -60,7 +60,7 @@ func (s *Server) postAsk(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	id, code, err := s.raiseAsk(store, asker, body, time.Now())
+	id, code, err := s.raiseAsk(store, asker, body, s.now())
 	if err != nil {
 		http.Error(w, err.Error(), code)
 		return
@@ -481,8 +481,16 @@ func (s *Server) carryBack(ref entity.Ref, p entity.Payload) {
 		return
 	}
 	sys := entity.As(s.Store, entity.SystemDocket)
+	// ONCE, by the record and not by the event: the watch hands this the ask as its event saw
+	// it, and an answer delivered again — a replay when the watch reopens, a change to the ask
+	// after the carry landed — can carry a payload from before `carried` was written. The
+	// served ask counts the same ballot once, but the carry's own record would say it was made
+	// twice, at two instants.
+	if e, ok, err := sys.Get(ref); err != nil || !ok || entity.Get(e.Payload, "carried") != nil {
+		return
+	}
 	choice := entity.Str(p, "verdict")
-	carried := entity.Obj{"at": time.Now().UTC().Format(time.RFC3339)}
+	carried := entity.Obj{"at": s.now().UTC().Format(time.RFC3339)}
 	if choice == "" || choice == task.NoOption {
 		carried["status"] = "nothing: the clock settled on no option"
 	} else {
@@ -545,7 +553,7 @@ func (s *Server) followAsk(ref entity.Ref, field string) {
 		// Marked, so it is not tried again at every restart, and said, since the mark names a task
 		// that never ran.
 		fmt.Fprintf(os.Stderr, "verse: ask %s: its %s did not start: %v\n", ref.Name(), field, err)
-		s.writeThen(ref, field+"-failed", entity.Obj{"at": time.Now().UTC().Format(time.RFC3339), "why": err.Error()})
+		s.writeThen(ref, field+"-failed", entity.Obj{"at": s.now().UTC().Format(time.RFC3339), "why": err.Error()})
 	}
 }
 
@@ -744,7 +752,7 @@ func (s *Server) patchAsk(w http.ResponseWriter, r *http.Request) {
 	}
 	// Checked as an ask is when it is made, over what it will say once changed.
 	next := askChangeOf(ent.Payload, body)
-	rec, answerers, err := askRecord(next, asker, time.Now())
+	rec, answerers, err := askRecord(next, asker, s.now())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -752,7 +760,7 @@ func (s *Server) patchAsk(w http.ResponseWriter, r *http.Request) {
 	// A new `then` or `else` that answers or asks is checked as one is when an ask is raised.
 	for field, changed := range map[string]bool{"then": body.Then != nil, "else": body.Else != nil} {
 		if follow, ok := asMap(rec[field]); ok && changed {
-			if code, err := s.checkThen(asker, follow, id, time.Now()); err != nil {
+			if code, err := s.checkThen(asker, follow, id, s.now()); err != nil {
 				http.Error(w, field+": "+err.Error(), code)
 				return
 			}
@@ -875,7 +883,7 @@ func (s *Server) moveAskDue(id, due string) error {
 	if !moved {
 		return fmt.Errorf("ask %s settled before its date could move", id)
 	}
-	time.AfterFunc(time.Until(at), func() { s.settleByDeadline(s.Store, id) })
+	s.at(at, func() { s.settleByDeadline(s.Store, id) })
 	return nil
 }
 

@@ -136,7 +136,7 @@ func (s *Server) hold(scope string, sus trigger.Suspension, by, why string) (tri
 	}
 	store := s.storeForScope(scope)
 	ref := trigger.SuspensionRef(sus.ID())
-	h := trigger.Holder{Why: why, Since: time.Now().UTC().Format(time.RFC3339)}
+	h := trigger.Holder{Why: why, Since: s.now().UTC().Format(time.RFC3339)}
 	held := map[string]trigger.Holder{}
 	cur, standing := tbl.Get(sus.ID())
 	for who, was := range cur.Held {

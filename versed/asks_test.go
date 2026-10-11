@@ -132,17 +132,18 @@ func TestAnAskIsCheckedWhereItIsAsked(t *testing.T) {
 // SILENCE IS NO UNLESS THE ASKER SAYS YES: an ask whose date passes unanswered settles on what its
 // asker said silence means, and on no where they said nothing, so nobody answering runs no `then`.
 func TestAnAsksSilenceIsNoUnlessItSaysYes(t *testing.T) {
-	srv, ts := asking(t)
+	srv, ts, clock := keeping(t, 0)
 	for name, said := range map[string]string{"quiet": "", "lazy": ", onSilence: yes", "said": ", onSilence: no"} {
 		want := task.Deny
 		if said == ", onSilence: yes" {
 			want = task.Proceed
 		}
-		due := time.Now().Add(2 * time.Second).UTC().Format(time.RFC3339)
+		due := clock.Now().Add(time.Minute).UTC().Format(time.RFC3339)
 		body := `{name: ` + name + `, question: "Merge?", answerers: [oscar@example.com], due: "` + due + `"` + said + `}`
 		ref := mirror.AskRef(askID(t, ask(t, "user:daniel@example.com", ts.URL, body)))
 		posed(t, srv, ref)
-		deadline := time.After(10 * time.Second)
+		clock.Advance(time.Minute)
+		deadline := time.After(3 * time.Second)
 		for {
 			e, _, _ := srv.Store.Get(ref)
 			if entity.Str(e.Payload, "status") != mirror.QuestionPending {

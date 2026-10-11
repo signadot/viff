@@ -33,7 +33,7 @@ func postAsResolver(t *testing.T, as, name, url, body string) *http.Response {
 // which bob's resolver serves.
 func servedPending(t *testing.T) (*Server, string, string) {
 	t.Helper()
-	srv, ts := shortKeep(t, askKeepDefault)
+	srv, ts, _ := keeping(t, askKeepDefault)
 	if resp := postAs(t, "user:alice@example.com", ts.URL+"/resolvers", "application/tony",
 		`{name: helper, match: {}, method: {driver: service}}`); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install: %s: %s", resp.Status, bodyOf(t, resp))

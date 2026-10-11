@@ -206,7 +206,7 @@ func (s *Server) thenAnswers(ref entity.Ref, field, asker string, m entity.Obj) 
 	}
 	rec := httptest.NewRecorder()
 	s.answerQuestion(rec, req, body, "", entity.As(s.Store, asker))
-	out := entity.Obj{"ask": a.Ask, "at": time.Now().UTC().Format(time.RFC3339), "status": rec.Code}
+	out := entity.Obj{"ask": a.Ask, "at": s.now().UTC().Format(time.RFC3339), "status": rec.Code}
 	if rec.Code >= 300 {
 		out["refused"] = strings.TrimSpace(rec.Body.String())
 	}
@@ -219,7 +219,7 @@ func (s *Server) thenAsks(ref entity.Ref, field, asker string, q entity.Payload)
 	if !s.markThen(ref, field+"-asked") {
 		return
 	}
-	now := time.Now()
+	now := s.now()
 	out := entity.Obj{"at": now.UTC().Format(time.RFC3339)}
 	body, err := thenAskOf(q, now)
 	if err != nil {
@@ -246,7 +246,7 @@ func (s *Server) markThen(ref entity.Ref, field string) bool {
 	}
 	marked, _, err := entity.As(s.Store, entity.SystemDocket).Write(entity.Write{
 		At:    ref.At(),
-		Value: entity.Obj{field: entity.Obj{"at": time.Now().UTC().Format(time.RFC3339)}}.Payload(),
+		Value: entity.Obj{field: entity.Obj{"at": s.now().UTC().Format(time.RFC3339)}}.Payload(),
 		When:  []entity.Require{{Pattern: unmarked}},
 	})
 	return err == nil && marked

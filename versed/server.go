@@ -67,6 +67,9 @@ type Server struct {
 	// Zone is the zone a schedule's ticks are spelled in, and the one a period of whole days
 	// steps in; nil is time.Local, which a deployment sets with TZ (schedule.go).
 	Zone *time.Location
+	// clock is where the server reads the time and sets its timers: the wall clock, or the
+	// one a test moves (clock.go).
+	clock Clock
 	// clocks is the schedule timers this process holds (schedule.go).
 	clocks clocks
 	// AskKeep is how long a settled ask stands when it says nothing itself; zero is a week
@@ -291,7 +294,7 @@ func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Serv
 	susp.Load(nil)
 	eng.SetSuspensions(susp)
 	taskd := taskd.New(build)
-	s := &Server{Store: store, Reg: reg, Eng: eng, Taskd: taskd, susp: susp,
+	s := &Server{Store: store, Reg: reg, Eng: eng, Taskd: taskd, susp: susp, clock: wallClock{},
 		seedErr:   seedErr,
 		scopeEngs: map[string]*scopeEngine{}, ioRuns: map[string]*sourceRun{},
 		charterMu: make(chan struct{}, 1),
@@ -941,7 +944,7 @@ func (s *Server) reconcileQuestions() {
 			}
 		}
 		s.write(ent.Ref.At("status"), entity.Val(mirror.QuestionOrphaned))
-		s.write(ent.Ref.At("orphanedAt"), entity.Val(time.Now().UTC().Format(time.RFC3339)))
+		s.write(ent.Ref.At("orphanedAt"), entity.Val(s.now().UTC().Format(time.RFC3339)))
 		s.write(ent.Ref.At("why"), entity.Val("the runtime that raised it did not survive a restart"))
 	}
 }
@@ -3374,7 +3377,7 @@ func (s *Server) armDeadline(store entity.Store, id, within string) {
 	if err != nil || d < 0 {
 		return // refused where the question was written; nothing to arm here
 	}
-	s.armAt(store, id, time.Now().Add(d))
+	s.armAt(store, id, s.now().Add(d))
 }
 
 // armQuestion arms a posed question's clock: at the date it carries where the gate read one from
@@ -3417,7 +3420,7 @@ func (s *Server) armAt(store entity.Store, id string, want time.Time) {
 	if err != nil {
 		return
 	}
-	time.AfterFunc(time.Until(fires), func() { s.settleByDeadline(store, id) })
+	s.at(fires, func() { s.settleByDeadline(store, id) })
 }
 
 // armDeadlines re-arms, at startup, every pending question that carries a stamped deadline.
@@ -3457,7 +3460,7 @@ func (s *Server) moveDeadline(scope, id string, at time.Time) error {
 	if err != nil || !moved {
 		return err
 	}
-	time.AfterFunc(time.Until(at), func() { s.settleByDeadline(store, id) })
+	s.at(at, func() { s.settleByDeadline(store, id) })
 	return nil
 }
 
@@ -3472,7 +3475,7 @@ func (s *Server) settleByDeadline(store entity.Store, id string) {
 	}
 	_, dflt, at := mirror.DeadlineOf(e.Payload)
 	fires, err := time.Parse(time.RFC3339Nano, at)
-	if err != nil || time.Now().Before(fires) {
+	if err != nil || s.now().Before(fires) {
 		return
 	}
 	if dflt == "" {
@@ -3489,7 +3492,7 @@ func (s *Server) settleByDeadline(store entity.Store, id string) {
 // reports whether it settled any, so the reader can list what is true now rather than what
 // was true a moment ago.
 func (s *Server) settleOverdueIn(store entity.Store, pending []entity.Entity) bool {
-	now := time.Now()
+	now := s.now()
 	var any bool
 	for _, ent := range pending {
 		_, _, at := mirror.DeadlineOf(ent.Payload)

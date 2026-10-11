@@ -27,6 +27,9 @@ const datedRule = `{
 
 func datedServer(t *testing.T, srv *Server) *httptest.Server {
 	t.Helper()
+	if srv.clock == (wallClock{}) {
+		clockOf(t, srv)
+	}
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
@@ -65,11 +68,15 @@ func stampOf(t *testing.T, srv *Server, qid string) time.Time {
 	}
 }
 
-// waitSettledByDeadline waits for a question to settle, and requires the clock to have settled
-// it, on proceed (the rule's default).
-func waitSettledByDeadline(t *testing.T, srv *Server, qid string, within time.Duration) {
+// settledByDeadline moves the clock to at and waits a moment for the question to settle, and
+// requires the clock to have settled it, on proceed (the rule's default).
+func settledByDeadline(t *testing.T, srv *Server, qid string, at time.Time) {
 	t.Helper()
-	deadline := time.After(within)
+	clock := srv.clock.(*fakeClock)
+	if d := at.Sub(clock.Now()); d > 0 {
+		clock.Advance(d)
+	}
+	deadline := time.After(3 * time.Second)
 	for {
 		if e, ok, _ := srv.Store.Get(mirror.QuestionRef(qid)); ok && entity.Str(e.Payload, "status") != mirror.QuestionPending {
 			if by, v := entity.Str(e.Payload, "by"), entity.Str(e.Payload, "verdict"); by != "deadline" || v != "proceed" {
@@ -91,16 +98,18 @@ func TestAQuestionSettlesAtTheDateItsRecordSays(t *testing.T) {
 	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
 	datedServer(t, srv)
 	ask := entity.RefAt("ask", "one")
-	by := time.Now().Add(1500 * time.Millisecond).Truncate(time.Second).Add(time.Second)
+	by := srv.now().Add(90 * time.Second)
 	entitytest.Set(t, srv.Store, ask, entity.Obj{"question": "q", "by": rfc(by)}.Payload())
 	qid := waitRuleQuestion(t, srv, "ask", ask.String())
 	if got := stampOf(t, srv, qid); !got.Equal(by) {
 		t.Fatalf("stamped %s, want the record's date %s", got, by)
 	}
-	waitSettledByDeadline(t, srv, qid, 8*time.Second)
-	if time.Now().Before(by) {
-		t.Fatalf("settled before its date")
+	// Short of its date it stands, however long it was posed; at its date it settles.
+	srv.clock.(*fakeClock).Advance(89 * time.Second)
+	if e, _, _ := srv.Store.Get(mirror.QuestionRef(qid)); entity.Str(e.Payload, "status") != mirror.QuestionPending {
+		t.Fatalf("settled before its date: %v", entity.ToObj(e.Payload))
 	}
+	settledByDeadline(t, srv, qid, by)
 }
 
 // EDITING THE DATE MOVES THE CLOCK. Whoever may write the record moves the question's deadline by
@@ -109,7 +118,7 @@ func TestEditingTheRecordsDateMovesTheQuestionsDeadline(t *testing.T) {
 	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
 	datedServer(t, srv)
 	ask := entity.RefAt("ask", "one")
-	later := time.Now().Add(time.Hour).Truncate(time.Second)
+	later := srv.now().Add(time.Hour)
 	entitytest.Set(t, srv.Store, ask, entity.Obj{"question": "q", "by": rfc(later)}.Payload())
 	qid := waitRuleQuestion(t, srv, "ask", ask.String())
 	// Armed first, at the date it was posed with — so what moves it next can only be the edit
@@ -118,7 +127,7 @@ func TestEditingTheRecordsDateMovesTheQuestionsDeadline(t *testing.T) {
 		t.Fatalf("armed at %s, want the date it was posed with %s", got, later)
 	}
 
-	soon := time.Now().Add(time.Second).Truncate(time.Second).Add(time.Second)
+	soon := srv.now().Add(time.Minute)
 	entitytest.Set(t, srv.Store, ask, entity.Obj{"question": "q", "by": rfc(soon)}.Payload())
 	deadline := time.After(3 * time.Second)
 	for !stampOf(t, srv, qid).Equal(soon) {
@@ -128,7 +137,7 @@ func TestEditingTheRecordsDateMovesTheQuestionsDeadline(t *testing.T) {
 		case <-time.After(20 * time.Millisecond):
 		}
 	}
-	waitSettledByDeadline(t, srv, qid, 8*time.Second)
+	settledByDeadline(t, srv, qid, soon)
 }
 
 // A SETTLED QUESTION KEEPS THE CLOCK IT SETTLED UNDER: what it records is what happened.
@@ -136,11 +145,12 @@ func TestASettledQuestionsDeadlineDoesNotMove(t *testing.T) {
 	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
 	datedServer(t, srv)
 	ask := entity.RefAt("ask", "one")
-	entitytest.Set(t, srv.Store, ask, entity.Obj{"question": "q", "by": rfc(time.Now().Add(time.Second))}.Payload())
+	by := srv.now().Add(time.Minute)
+	entitytest.Set(t, srv.Store, ask, entity.Obj{"question": "q", "by": rfc(by)}.Payload())
 	qid := waitRuleQuestion(t, srv, "ask", ask.String())
-	waitSettledByDeadline(t, srv, qid, 8*time.Second)
+	settledByDeadline(t, srv, qid, by)
 	before := stampOf(t, srv, qid)
-	moved, err := mirror.MoveDeadline(entity.As(srv.Store, entity.SystemDocket), qid, time.Now().Add(time.Hour))
+	moved, err := mirror.MoveDeadline(entity.As(srv.Store, entity.SystemDocket), qid, srv.now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +170,7 @@ func TestARecordWhoseDateIsUnreadableIsNotAsked(t *testing.T) {
 			rec["by"] = by
 		}
 		entitytest.Set(t, srv.Store, bad, rec.Payload())
-		stop := time.Now().Add(400 * time.Millisecond)
+		stop := time.Now().Add(150 * time.Millisecond)
 		for time.Now().Before(stop) {
 			for _, p := range srv.Reg.Pending() {
 				if p.Question.Subject == bad.String() {
@@ -172,7 +182,7 @@ func TestARecordWhoseDateIsUnreadableIsNotAsked(t *testing.T) {
 		entitytest.Set(t, srv.Store, bad, entity.Removed())
 	}
 	good := entity.RefAt("ask", "good")
-	entitytest.Set(t, srv.Store, good, entity.Obj{"question": "q", "by": rfc(time.Now().Add(time.Hour))}.Payload())
+	entitytest.Set(t, srv.Store, good, entity.Obj{"question": "q", "by": rfc(srv.now().Add(time.Hour))}.Payload())
 	waitRuleQuestion(t, srv, "ask", good.String())
 }
 
@@ -183,7 +193,7 @@ func TestARecordGivingNoDateIsAskedWithNoClock(t *testing.T) {
 	ask := entity.RefAt("ask", "undated")
 	entitytest.Set(t, srv.Store, ask, entity.Obj{"question": "q"}.Payload())
 	qid := waitRuleQuestion(t, srv, "ask", ask.String())
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 	e, ok, err := srv.Store.Get(mirror.QuestionRef(qid))
 	if err != nil || !ok {
 		t.Fatalf("question %s: %v", qid, err)
@@ -198,19 +208,20 @@ func TestARecordGivingNoDateIsAskedWithNoClock(t *testing.T) {
 func TestAMovedDeadlineHoldsAcrossARestart(t *testing.T) {
 	addr := entitytest.Addr(t)
 	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	clock := clockOf(t, first)
 	ctx, stop := context.WithCancel(t.Context())
 	first.Start(ctx)
 	ts := httptest.NewServer(first.Handler())
 	resp := installAs(t, "alice@example.com", ts.URL, datedRule)
 	resp.Body.Close()
 	ask := entity.RefAt("ask", "one")
-	later := time.Now().Add(time.Hour).Truncate(time.Second)
+	later := clock.Now().Add(time.Hour)
 	entitytest.Set(t, first.Store, ask, entity.Obj{"question": "q", "by": rfc(later)}.Payload())
 	qid := waitRuleQuestion(t, first, "ask", ask.String())
 	if got := stampOf(t, first, qid); !got.Equal(later) {
 		t.Fatalf("armed at %s, want the date it was posed with %s", got, later)
 	}
-	soon := time.Now().Add(2 * time.Second).Truncate(time.Second).Add(time.Second)
+	soon := clock.Now().Add(time.Minute)
 	entitytest.Set(t, first.Store, ask, entity.Obj{"question": "q", "by": rfc(soon)}.Payload())
 	deadline := time.After(3 * time.Second)
 	for !stampOf(t, first, qid).Equal(soon) {
@@ -224,8 +235,9 @@ func TestAMovedDeadlineHoldsAcrossARestart(t *testing.T) {
 	stop()
 
 	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	second.clock = clock
 	second.Start(t.Context())
-	waitSettledByDeadline(t, second, qid, 10*time.Second)
+	settledByDeadline(t, second, qid, soon)
 	if got := stampOf(t, second, qid); !got.Equal(soon) {
 		t.Fatalf("after the restart it settled against %s, want the moved date %s", got, soon)
 	}

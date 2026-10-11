@@ -57,7 +57,7 @@ const askExpiryField = "expires"
 // askExpiries is the timers standing for this process, by ask id.
 type askExpiries struct {
 	mu     sync.Mutex
-	timers map[string]*time.Timer
+	timers map[string]Timer
 }
 
 // armAsks is the startup phase: follow every ask, the ones standing now included, and give each
@@ -118,7 +118,7 @@ func (s *Server) expireLater(ref entity.Ref, p entity.Payload) {
 		// The watch delivers the write, and the timer is armed from it.
 		if _, _, err := entity.As(s.Store, entity.SystemDefault).Write(entity.Write{
 			At:    entity.Path{Ref: ref, Access: askExpiryField},
-			Value: entity.Val(time.Now().Add(keep).UTC().Format(time.RFC3339)),
+			Value: entity.Val(s.now().Add(keep).UTC().Format(time.RFC3339)),
 			When:  []entity.Require{{At: ref.At(), Pattern: entity.Present()}},
 		}); err != nil {
 			fmt.Fprintf(os.Stderr, "verse: ask %s: its expiry was not written: %v\n", ref.Name(), err)
@@ -134,12 +134,12 @@ func (s *Server) expireLater(ref entity.Ref, p entity.Payload) {
 	s.expiries.mu.Lock()
 	defer s.expiries.mu.Unlock()
 	if s.expiries.timers == nil {
-		s.expiries.timers = map[string]*time.Timer{}
+		s.expiries.timers = map[string]Timer{}
 	}
 	if t := s.expiries.timers[id]; t != nil {
 		t.Stop()
 	}
-	s.expiries.timers[id] = time.AfterFunc(time.Until(when), func() { s.expireAsk(ref) })
+	s.expiries.timers[id] = s.at(when, func() { s.expireAsk(ref) })
 }
 
 func (s *Server) dropExpiry(id string) {
@@ -163,7 +163,7 @@ func (s *Server) expireAsk(ref entity.Ref) {
 	if err != nil {
 		return
 	}
-	if time.Now().Before(when) {
+	if s.now().Before(when) {
 		s.expireLater(ref, ent.Payload)
 		return
 	}

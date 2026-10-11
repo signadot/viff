@@ -31,6 +31,7 @@ func credentialServer(t *testing.T) (*Server, *httptest.Server, *idptest.IdP) {
 	t.Helper()
 	idp := idptest.New(t)
 	srv := testServer(t)
+	clockOf(t, srv)
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
@@ -239,6 +240,9 @@ func TestWhoGetsWhichCredential(t *testing.T) {
 				if resp.StatusCode/100 != 2 {
 					t.Fatalf("answer = %s", resp.Status)
 				}
+			} else if c.passed == "deadline" {
+				waitStamped(t, srv, waitRuleQuestion(t, srv, "deploy", subject))
+				srv.clock.(*fakeClock).Advance(time.Second)
 			}
 			if c.status == "" {
 				time.Sleep(300 * time.Millisecond)

@@ -273,7 +273,7 @@ func (s *Server) passIO(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := s.now().UTC().Format(time.RFC3339)
 	rec := entity.Obj{"delivered": body.Delivered, "failed": body.Failed}
 	if body.Error == "" {
 		rec["lastPass"] = now
@@ -941,7 +941,7 @@ func (s *Server) recordPass(ctx context.Context, store entity.Store, ref entity.
 	if err := ctx.Err(); err != nil {
 		return
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := s.now().UTC().Format(time.RFC3339)
 	var errText string
 	if p.Err != nil {
 		errText = p.Err.Error()

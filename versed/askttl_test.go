@@ -29,19 +29,33 @@ func expiryOf(t *testing.T, srv *Server, ref entity.Ref) time.Time {
 	return at
 }
 
-// goneWithin waits for an ask to be removed.
-func goneWithin(t *testing.T, srv *Server, ref entity.Ref, d time.Duration) {
+// gone waits for an ask to be removed, the clock having passed its keep. Generous: the timer
+// is armed by the watch that sees the expiry written, and a loaded suite delays that watch.
+func gone(t *testing.T, srv *Server, ref entity.Ref) {
 	t.Helper()
-	deadline := time.Now().Add(d)
+	deadline := time.Now().Add(10 * time.Second)
 	for {
 		if _, ok, _ := srv.Store.Get(ref); !ok {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("%s still stands %s on", ref, d)
+			t.Fatalf("%s still stands after its keep", ref)
 		}
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(5 * time.Millisecond)
 	}
+}
+
+// keeping is a started verse on a clock the test moves, whose settled asks stand for keep (zero:
+// the default).
+func keeping(t *testing.T, keep time.Duration) (*Server, *httptest.Server, *fakeClock) {
+	t.Helper()
+	srv := testServer(t)
+	clock := clockOf(t, srv)
+	srv.AskKeep = keep
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	return srv, ts, clock
 }
 
 // settle asks, answers yes as the answerer, and waits for the answer on the ask.
@@ -62,13 +76,17 @@ func settle(t *testing.T, srv *Server, url, body string) (entity.Ref, string) {
 
 // A SETTLED ASK GOES AFTER ITS KEEP, and its question with it.
 func TestASettledAskGoesAfterItsKeep(t *testing.T) {
-	srv, ts := asking(t)
+	srv, ts, clock := keeping(t, 0)
 	ref, qid := settle(t, srv, ts.URL, `{name: land, question: "Merge?", answerers: [oscar@example.com], keep: 2s}`)
-	settled := time.Now()
-	if at := expiryOf(t, srv, ref); at.Before(settled.Add(time.Second)) || at.After(settled.Add(4*time.Second)) {
-		t.Fatalf("expires %s, want about 2s after it settled at %s", at, settled)
+	if at, want := expiryOf(t, srv, ref), clock.Now().Add(2*time.Second); !at.Equal(want) {
+		t.Fatalf("expires %s, want 2s after it settled, %s", at, want)
 	}
-	goneWithin(t, srv, ref, 8*time.Second)
+	clock.Advance(time.Second)
+	if _, ok, _ := srv.Store.Get(ref); !ok {
+		t.Fatal("the ask went before its keep")
+	}
+	clock.Advance(time.Second)
+	gone(t, srv, ref)
 	if _, ok, _ := srv.Store.Get(mirror.QuestionRef(qid)); ok {
 		t.Fatal("its question outlived it")
 	}
@@ -76,11 +94,10 @@ func TestASettledAskGoesAfterItsKeep(t *testing.T) {
 
 // WITHOUT A KEEP, A SETTLED ASK STANDS A WEEK.
 func TestASettledAskStandsAWeekByDefault(t *testing.T) {
-	srv, ts := asking(t)
+	srv, ts, clock := keeping(t, 0)
 	ref, _ := settle(t, srv, ts.URL, `{name: land, question: "Merge?", answerers: [oscar@example.com]}`)
-	want := time.Now().Add(askKeepDefault)
-	if at := expiryOf(t, srv, ref); at.Before(want.Add(-time.Minute)) || at.After(want.Add(time.Minute)) {
-		t.Fatalf("expires %s, want a week on (%s)", at, want)
+	if at, want := expiryOf(t, srv, ref), clock.Now().Add(askKeepDefault); !at.Equal(want) {
+		t.Fatalf("expires %s, want a week on, %s", at, want)
 	}
 }
 
@@ -88,6 +105,7 @@ func TestASettledAskStandsAWeekByDefault(t *testing.T) {
 func TestAnAsksExpiryHoldsAcrossARestart(t *testing.T) {
 	addr := entitytest.Addr(t)
 	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	clock := clockOf(t, first)
 	ctx, stop := context.WithCancel(t.Context())
 	first.Start(ctx)
 	ts := httptest.NewServer(first.Handler())
@@ -97,9 +115,13 @@ func TestAnAsksExpiryHoldsAcrossARestart(t *testing.T) {
 	ts.Close()
 	stop()
 
+	// The same clock: the expiry is an instant on the record, and the second verse arms it
+	// against the clock as it stands.
 	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	second.clock = clock
 	second.Start(t.Context())
-	goneWithin(t, second, ref, 10*time.Second)
+	clock.Advance(3 * time.Second)
+	gone(t, second, ref)
 }
 
 // KEEP IS A DURATION, checked where it is asked.
@@ -113,14 +135,11 @@ func TestAnAsksKeepIsADuration(t *testing.T) {
 	}
 }
 
-// shortKeep is a started verse whose settled asks stand for keep.
+// shortKeep is a started verse whose settled asks stand for keep, on the wall clock.
 func shortKeep(t *testing.T, keep time.Duration) (*Server, *httptest.Server) {
 	t.Helper()
-	srv := testServer(t)
-	srv.AskKeep = keep
-	srv.Start(t.Context())
-	ts := httptest.NewServer(srv.Handler())
-	t.Cleanup(ts.Close)
+	srv, ts, _ := keeping(t, keep)
+	srv.clock = wallClock{}
 	return srv, ts
 }
 
@@ -132,7 +151,7 @@ const gatedRule = `{
 // A RULE'S GATE IS AN ASK, AND GOES LIKE ONE: settled, it stands for the verse's keep, then it is
 // removed.
 func TestASettledGateGoesAfterTheKeep(t *testing.T) {
-	srv, ts := shortKeep(t, 2*time.Second)
+	srv, ts, clock := keeping(t, 2*time.Second)
 	if resp := installAs(t, "alice@example.com", ts.URL, gatedRule); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install: %s: %s", resp.Status, bodyOf(t, resp))
 	}
@@ -147,7 +166,8 @@ func TestASettledGateGoesAfterTheKeep(t *testing.T) {
 		t.Fatalf("the answer: %s: %s", resp.Status, bodyOf(t, resp))
 	}
 	expiryOf(t, srv, ref)
-	goneWithin(t, srv, ref, 8*time.Second)
+	clock.Advance(2 * time.Second)
+	gone(t, srv, ref)
 }
 
 // A GATE FIRED AGAIN AFTER ITS ASK SETTLED IS A NEW ASK. The answer stands on the ask it answered,
@@ -155,7 +175,7 @@ func TestASettledGateGoesAfterTheKeep(t *testing.T) {
 // the firing that came back asks a question of its own, under an id of its own, which stands
 // while it waits.
 func TestAGateFiredAgainIsANewAsk(t *testing.T) {
-	srv, ts := shortKeep(t, 2*time.Second)
+	srv, ts, clock := keeping(t, 2*time.Second)
 	if resp := installAs(t, "alice@example.com", ts.URL, gatedRule); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install: %s: %s", resp.Status, bodyOf(t, resp))
 	}
@@ -205,7 +225,8 @@ func TestAGateFiredAgainIsANewAsk(t *testing.T) {
 		t.Fatalf("the new ask is not a new question: %v", q)
 	}
 
-	goneWithin(t, srv, ref, 8*time.Second)
+	clock.Advance(2 * time.Second)
+	gone(t, srv, ref)
 	e, ok, _ := srv.Store.Get(mirror.QuestionRef(again))
 	if !ok {
 		t.Fatal("the new ask went with the old one's keep")
@@ -218,7 +239,7 @@ func TestAGateFiredAgainIsANewAsk(t *testing.T) {
 // A SUSPENDED ASK IS KEPT: a suspension withdraws a gate's ask to ask it again when it lifts, so
 // it stands past the keep a settled ask goes after, and the lift asks it again unmarked.
 func TestASuspendedAskIsKeptPastItsKeep(t *testing.T) {
-	srv, ts := shortKeep(t, time.Second)
+	srv, ts, clock := keeping(t, time.Second)
 	addRule(t, ts, `{
 		name: ship,
 		condition: {subject: {path: "demo.release.*", value: {stage: open}}},
@@ -236,7 +257,7 @@ func TestASuspendedAskIsKeptPastItsKeep(t *testing.T) {
 	if entity.Get(rec, mirror.SuspendedField) == nil {
 		t.Fatalf("the withdrawn ask does not say it is suspended: %v", entity.ToObj(rec))
 	}
-	time.Sleep(3 * time.Second)
+	clock.Advance(3 * time.Second)
 	if _, ok, _ := srv.Store.Get(ref); !ok {
 		t.Fatal("a suspended ask was removed after the keep")
 	}

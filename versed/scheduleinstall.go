@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
@@ -94,7 +93,7 @@ func (s *Server) installSchedule(store entity.Store, at string, decl schedule.Sc
 		if err != nil {
 			return err
 		}
-		rec[schedule.NextField] = schedule.Key(schedule.Next(from, every, time.Now()))
+		rec[schedule.NextField] = schedule.Key(schedule.Next(from, every, s.now()))
 	}
 	if _, _, err := store.Write(entity.Write{At: ref.At(), Value: rec.Payload()}); err != nil {
 		return fmt.Errorf("schedule %q: writing %s: %w", decl.Name, ref, err)

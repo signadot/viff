@@ -112,7 +112,7 @@ func (s *Server) mintCredential(store entity.Store, eng *trigger.Engine, id stri
 		return "", nil, err
 	}
 	rule := strings.TrimPrefix(eng.Principal(spec.Chain), entity.ViaKind+":")
-	now := time.Now()
+	now := s.now()
 	minted := &mirror.Minted{
 		Audience: aud, Sub: rule + ":" + how, JTI: hex.EncodeToString(b[:]),
 		Expires: now.Add(credentialLife).UTC().Format(time.RFC3339),

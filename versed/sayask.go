@@ -29,7 +29,7 @@ func (s *Server) sayTo(r *http.Request, taskID string, h task.Handle, words, by 
 	rec := entity.Obj{
 		"name": "say", "asker": by, "question": words, "pose": words, "reason": words, "edit": 1,
 		"subject": about.String(), mirror.SaidToField: taskID,
-		"status": mirror.QuestionPending, "posedAt": time.Now().UTC().Format(time.RFC3339),
+		"status": mirror.QuestionPending, "posedAt": s.now().UTC().Format(time.RFC3339),
 	}
 	answered := false
 	if turn := s.turnOf(taskID); turn != "" {
@@ -40,7 +40,7 @@ func (s *Server) sayTo(r *http.Request, taskID string, h task.Handle, words, by 
 			answered = true
 			rec["status"], rec["verdict"], rec["answer"] = mirror.QuestionAnswered, mirror.Heard, mirror.Heard
 			rec["by"], rec["turn"] = about.String(), turn
-			rec["answeredAt"] = time.Now().UTC().Format(time.RFC3339)
+			rec["answeredAt"] = s.now().UTC().Format(time.RFC3339)
 		}
 	}
 	grants := []entity.Grant{{At: ref.Segs(), To: map[entity.Level][]string{entity.Read: {entity.Audience(about)}}}}

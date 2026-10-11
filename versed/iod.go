@@ -327,7 +327,7 @@ func (s *Server) relay(io IodAccount, presented, account string, a act) (princip
 			"claimant": pname, "via": io.Principal,
 			"proof": entity.Obj{
 				"method": "relay", "io": io.Principal, "account": id,
-				"at": time.Now().UTC().Format(time.RFC3339),
+				"at": s.now().UTC().Format(time.RFC3339),
 			},
 		}
 		if code, err := s.bind(sys, pname, binding, who, id); err != nil {

@@ -185,7 +185,7 @@ func (s *Server) claimAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	nonce := hex.EncodeToString(b[:])
-	expires := time.Now().UTC().Add(claimTTL).Format(time.RFC3339)
+	expires := s.now().UTC().Add(claimTTL).Format(time.RFC3339)
 	ref := claimRef(provider, nonce)
 	grants := []entity.Grant{{At: ref.Segs(), To: map[entity.Level][]string{entity.Read: {who}}}}
 	if err := entity.Establish(s.Store, ref, entity.SystemIdentity, entity.Ref{}, grants); err != nil {
@@ -263,7 +263,7 @@ func (s *Server) heardAccount(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no claim has that nonce", http.StatusNotFound)
 		return
 	}
-	if exp, err := time.Parse(time.RFC3339, entity.Str(claim.Payload, "expires")); err != nil || time.Now().After(exp) {
+	if exp, err := time.Parse(time.RFC3339, entity.Str(claim.Payload, "expires")); err != nil || s.now().After(exp) {
 		_, _, _ = sys.Write(entity.Write{At: cref.At()})
 		http.Error(w, "the claim has expired: claim the account again for a new nonce", http.StatusGone)
 		return
@@ -279,7 +279,7 @@ func (s *Server) heardAccount(w http.ResponseWriter, r *http.Request) {
 		"via": io.Principal,
 		"proof": entity.Obj{
 			"method": "heard", "io": io.Principal, "account": account,
-			"at": time.Now().UTC().Format(time.RFC3339),
+			"at": s.now().UTC().Format(time.RFC3339),
 		},
 	}
 	if login := entity.Str(claim.Payload, "login"); login != "" {
@@ -323,7 +323,7 @@ func (s *Server) verifyAccount(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no claim of yours has that nonce", http.StatusNotFound)
 		return
 	}
-	if exp, err := time.Parse(time.RFC3339, entity.Str(claim.Payload, "expires")); err != nil || time.Now().After(exp) {
+	if exp, err := time.Parse(time.RFC3339, entity.Str(claim.Payload, "expires")); err != nil || s.now().After(exp) {
 		_, _, _ = sys.Write(entity.Write{At: cref.At()})
 		http.Error(w, "the claim has expired: claim the account again for a new nonce", http.StatusGone)
 		return
@@ -351,7 +351,7 @@ func (s *Server) verifyAccount(w http.ResponseWriter, r *http.Request) {
 		"claimant": authenticatedBy(r),
 		"proof": entity.Obj{
 			"method": "comment", "evidence": evidence.Ref.String(),
-			"at": time.Now().UTC().Format(time.RFC3339),
+			"at": s.now().UTC().Format(time.RFC3339),
 		},
 	}
 	code, err := s.bind(sys, githubProvider, binding, who, sub)
