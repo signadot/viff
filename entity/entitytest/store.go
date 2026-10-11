@@ -43,7 +43,17 @@ func LogdAddr(t testing.TB) string {
 	}
 	t.Cleanup(func() { store.Close() })
 
-	srv := logdserver.New(&logdserver.Spec{Storage: store})
+	// SNAPSHOT SOONER THAN A DEPLOYMENT WOULD. A read at a path folds the patches since the
+	// last snapshot there, and a test that drives one record through hundreds of firings pays
+	// that fold on every read of it: the reconciler's scenario, ~2,700 commits in one story,
+	// spent 47 seconds at logd's default of 64 records per MiB before a path is snapshotted,
+	// 168 seconds with path snapshots off, and 29 at 8. Past 8 the curve is flat (27 at 2),
+	// and a full snapshot more often than the default changed nothing. A test store is read
+	// by one process for one test, so the disk the sooner snapshots cost is nobody's.
+	cfg := (&logdserver.Config{
+		Storage: &logdserver.StorageConfig{PathSnapshotTail: 8},
+	}).WithDefaults()
+	srv := logdserver.New(&logdserver.Spec{Config: cfg, Storage: store})
 	if err := srv.StartTCP("127.0.0.1:0"); err != nil {
 		t.Fatalf("start logd: %v", err)
 	}
