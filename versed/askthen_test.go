@@ -255,10 +255,12 @@ func TestANoRunsTheElse(t *testing.T) {
 // SILENCE THAT SETTLES ON NO RUNS THE ELSE: nobody answers by the date, which is a no unless the
 // asker said otherwise, and the lead is asked.
 func TestSilenceRunsTheElse(t *testing.T) {
-	srv, ts := asking(t)
-	due := time.Now().Add(2 * time.Second).UTC().Format(time.RFC3339)
+	srv, ts, clock := keeping(t, 0)
+	due := clock.Now().Add(time.Minute).UTC().Format(time.RFC3339)
 	id := askID(t, ask(t, thScott, ts.URL, `{name: ship, question: "Ship it?", answerers: [ann@example.com], due: "`+due+`",
 		else: {ask: {name: ship-lead, question: "Nobody answered: ship it?", answerers: [lead@example.com]}}}`))
+	posed(t, srv, mirror.AskRef(id))
+	clock.Advance(time.Minute)
 	asked := entity.ToObj(entity.Get(askField(t, srv, id, "else-asked"), "else-asked"))
 	if lead, _ := asked["id"].(string); !strings.HasPrefix(lead, "ship-lead-") {
 		t.Fatalf("else-asked %v after silence, want the lead's ask", asked)

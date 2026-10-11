@@ -660,6 +660,7 @@ func failureWhen(p entity.Payload) string {
 // the reading that let a hours-old error pass for a live one.
 func TestFailureWhenMarksTheOnsetAndNotEachRepeat(t *testing.T) {
 	srv := testServer(t)
+	clock := clockOf(t, srv)
 	ref := verseio.Ref("onset")
 	entitytest.Set(t, srv.Store, ref, entity.Obj{
 		"name": "onset", "root": "git", "url": "http://127.0.0.1:1",
@@ -674,8 +675,8 @@ func TestFailureWhenMarksTheOnsetAndNotEachRepeat(t *testing.T) {
 		t.Fatal("a new failure should carry when it began")
 	}
 
-	// The same failure again, a second later. No write at all, so the onset cannot move.
-	time.Sleep(1100 * time.Millisecond)
+	// The same failure again, later. No write at all, so the onset cannot move.
+	clock.Advance(2 * time.Second)
 	srv.recordPass(t.Context(), srv.Store, ref, run, fail)
 	reg, _, _ = srv.Store.Get(ref)
 	if got := failureWhen(reg.Payload); got != first {
