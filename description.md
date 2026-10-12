@@ -1,0 +1,3 @@
+# repopulate.sh seeds the drift cursor at verse-dev, where no charter reads it
+
+The drift charter moved from verse-dev.drift to repos.verse.drift with the charters directory (PR #9, c1bc057a), but deploy/repopulate.sh still prints a seed command for verse-dev drift at (line 227) and a census expecting verse-dev (line 211). On staging the cursor stands at verse-dev.drift.at (bb69c22c, idle), seeded by that line, and repos.verse.drift has no cursor, so the verse repo's drive has reviewed nothing since 2026-10-05. An install through the reconciler never touches data, so this is the script, not the install. Fix: the two lines name repos.verse. The staging cursor is moved by hand.
