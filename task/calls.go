@@ -74,7 +74,7 @@ func Fatals(os ...StepOutcome) *[]StepOutcome {
 // mean fails where its author can see it, rather than on a machine they do not have.
 //
 // What it cannot check is the tool NAMES: `push` belongs to a runner's vocabulary and not to
-// the engine's, so an unknown one is refused at the far end (harness.Calls) on the same
+// the engine's, so an unknown one is refused at the far end (agent.Calls) on the same
 // argument `driver:` and `environment:` already travel by.
 func CheckCalls(cs []Call) error {
 	if len(cs) == 0 {
@@ -249,7 +249,7 @@ func NewCallsTask(l Launch, reg Resolver, exec Executor) *Task {
 // list is the party that knows whether it should run unattended, and a driver deciding for
 // itself is how `scripted` came to be exempt from a vector it was handed and ignored.
 //
-// Ask rather than auto because it is what an `llm` spawn already lives with — harness.Vector()
+// Ask rather than auto because it is what an `llm` spawn already lives with — agent.Vector()
 // asks on write, shell and delegate — and a list of shell commands nobody vetted is not the
 // case for a weaker default than the one an agent gets.
 func NewCallsTaskFrom(l Launch, calls []Call, reg Resolver, exec Executor) *Task {

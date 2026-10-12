@@ -2,13 +2,13 @@
 //
 // verse reports a task through one shape wherever it runs — `verse task`,
 // `task get` and the mirrored entity all read task.Instance — but that shape is
-// PRODUCED independently by each runner: taskd projects it from a hosted task, the
+// PRODUCED independently by each runner: runnerd projects it from a hosted task, the
 // broker from a dial-in worker's reported state. Nothing made those two agree. Every field
 // is a plain struct member, so a producer that never sets one still compiles, and a producer
 // that sets the wrong one type-checks perfectly.
 //
 // That is not a hypothetical. Across one afternoon: the broker narrowed a raised gate to
-// id+name and dropped the --reason a resolver reads to decide; taskd passed the selected
+// id+name and dropped the --reason a resolver reads to decide; runnerd passed the selected
 // driver to its builder and kept no record, so an auto-selected doer was observable nowhere;
 // and the broker filed a failure reason as a Result because `do complete <answer>` and
 // `do fail <why>` ride the same wire field, while an identical local failure reported an Err.
@@ -45,7 +45,7 @@ import (
 
 // Spec describes the task a producer should start, and how (or whether) to drive it to a
 // terminal state. Outcome is part of the spec rather than a later call because the two
-// producers differ on exactly this: a taskd task begins executing the instant it is
+// producers differ on exactly this: a runnerd task begins executing the instant it is
 // spawned and cannot be told to fail afterward, while a brokered one waits for a worker to
 // report. Naming the intent up front is the only phrasing both can honor.
 type Spec struct {
@@ -188,7 +188,7 @@ func snapshot(t *testing.T, p Producer, id string) task.Instance {
 	return inst
 }
 
-// waitTerminal polls until the task reports a terminal status. A taskd task runs
+// waitTerminal polls until the task reports a terminal status. A runnerd task runs
 // asynchronously, so its terminal state is not readable the instant Start returns.
 func waitTerminal(t *testing.T, p Producer, id string) task.Instance {
 	t.Helper()

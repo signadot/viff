@@ -362,7 +362,7 @@ func commitOn(repoDir, ref string) string {
 
 // The `llm` driver runs on the far side of the hop too, and its failures come back as failures.
 //
-// It is the branch the command driver's tests cannot reach: harness.Build, the environment's tool
+// It is the branch the command driver's tests cannot reach: agent.Build, the environment's tool
 // floor, and model credentials that arrived on stdin rather than from an environment variable.
 // The model here is deliberately unreachable, because what is being checked is that the loop runs
 // in the child and reports what happened — not what a model would say.

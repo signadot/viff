@@ -1,7 +1,7 @@
 // Package launch is the wire form of an action: a declarative, serializable
 // description of a task to launch when a trigger fires — the "action as data",
 // not a Go closure. This is what lets an action take the deployment shape: a Spec
-// can cross a network to a task runtime (taskd), be persisted, or be
+// can cross a network to a task runtime (runnerd), be persisted, or be
 // reflected as an entity (triggers-as-data). Nothing here depends on the task
 // substrate; it is pure data + binding.
 //

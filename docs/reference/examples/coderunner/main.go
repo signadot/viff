@@ -32,7 +32,7 @@
 //     approval is what releases the credential that destination carries — the only path to one.
 //     The closing delivery is a push to `auto` like any other. Work is staged in the runner's
 //     mirror on its way out, so a push that fails loses nothing. See push.go and stage.go.
-//   - Two drivers. `llm` is harness.Build rooted at the workspace, every action gated and
+//   - Two drivers. `llm` is agent.Build rooted at the workspace, every action gated and
 //     narrated; anything else names a program under `agents:`, run through ONE subprocess path.
 //     A program that declares how to resume gets steering and answer-contract repair; one that
 //     does not gets a turn and says so.
@@ -198,9 +198,9 @@ func main() {
 
 // Handler is the verse-facing surface: the task-control contract, served by FORWARDING it.
 //
-// There is no taskd here. This process hosts no task — it prepares a workspace, starts one
+// There is no runnerd here. This process hosts no task — it prepares a workspace, starts one
 // contained process per task, and proxies the contract to it (hop.go). The routes are the same
-// ones taskd registers, which is the property worth keeping: verse cannot tell, and neither can
+// ones runnerd registers, which is the property worth keeping: verse cannot tell, and neither can
 // `verse task attach`.
 func (r *Runner) Handler() http.Handler {
 	mux := http.NewServeMux()

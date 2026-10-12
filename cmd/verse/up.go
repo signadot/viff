@@ -20,6 +20,7 @@ import (
 	"github.com/signadot/verse/config"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/runnerd/verserunner"
 	"github.com/signadot/verse/system/repocharters"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/versed"
@@ -97,7 +98,7 @@ func (cfg *upConfig) validate() error {
 	}
 	// --runner and --broker compose rather than compete: one says where a spawn naming nobody
 	// runs, the other serves a place a spawn may NAME. A verse can send its unnamed work to a
-	// remote taskd and still put a named task in front of a person.
+	// remote runnerd and still put a named task in front of a person.
 	if cfg.Broker && cfg.BrokerAddr == "" {
 		return fmt.Errorf("%w: verse up: --broker requires --broker-addr (the worker face to dial in on)", cli.ErrUsage)
 	}
@@ -203,11 +204,13 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	if len(shellEnv) == 0 {
 		shellEnv = task.DefaultShellEnv
 	}
-	h := &versed.Harness{
+	h := &verserunner.Drivers{
 		Root: root, Env: shellEnv, Log: cc.Err, Default: defaultDriver,
 		LLMBaseURL: appCfg.LLM.BaseURL, LLMKey: appCfg.LLM.APIKey,
 		LLMVirtualKey: appCfg.LLM.VirtualKey, LLMModel: appCfg.LLM.Model,
 		VirtualKeyOr: appCfg.LLM.VirtualKeyOr,
+		NoKey: "set llm.apiKey and llm.virtualKey in verse.tony, or " +
+			"PORTKEY_API_KEY/PORTKEY_VIRTUAL_KEY in the environment",
 	}
 
 	// Resolve docd's addresses — connecting to a running one, or bringing logd+docd up

@@ -12,8 +12,8 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/task/taskd"
 )
 
 // runnerID is a principal a request may present that is no person: a runner acting as itself.
@@ -133,7 +133,7 @@ func TestARemoteConversationsTurnIsItsLaunchers(t *testing.T) {
 		}
 		return tk
 	}
-	face := httptest.NewServer(taskd.New(build).Handler())
+	face := httptest.NewServer(runnerd.New(build).Handler())
 	t.Cleanup(face.Close)
 	var spawned string
 	t.Cleanup(func() { // end the conversation at the runner, so its stream closes

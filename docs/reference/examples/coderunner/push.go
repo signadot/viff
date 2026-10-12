@@ -13,8 +13,8 @@ import (
 	"syscall"
 
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/runner/runnerd/verserunner/agent"
 	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/task/harness"
 )
 
 // A push is a CAPABILITY the parent holds and the task may ask it to exercise, and the whole of
@@ -186,13 +186,13 @@ const pushToolName = "push"
 //
 // false when this environment declares no destinations at all: offering a tool whose every use
 // is refused teaches an agent that the loop is broken.
-func pushTool(p *taskProc, conn net.Conn) (harness.Tool, bool) {
+func pushTool(p *taskProc, conn net.Conn) (agent.Tool, bool) {
 	ws := p.ws
 	names := ws.DestinationNames()
 	if len(names) == 0 || conn == nil {
-		return harness.Tool{}, false
+		return agent.Tool{}, false
 	}
-	return harness.Tool{
+	return agent.Tool{
 		Name: pushToolName,
 		Description: "Send this task's committed work out of the sandbox, to one of the places " +
 			"this environment declares, or retire a ref at one that permits it. You cannot name " +

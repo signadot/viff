@@ -305,7 +305,7 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	}
 	// A dial-in runner (broker) has a worker-facing base URL distinct from how verse
 	// controls it: publish it so a worker can be told where to dial in (the mint→publish→
-	// dial loop) rather than being pre-configured. Local/remote-taskd handles have none.
+	// dial loop) rather than being pre-configured. Local/remote-runnerd handles have none.
 	if d, ok := h.(interface{ DialURL() string }); ok {
 		if u := d.DialURL(); u != "" {
 			st["dialURL"] = u

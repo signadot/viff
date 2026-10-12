@@ -55,7 +55,7 @@ func TestReflectProjectsOutput(t *testing.T) {
 	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 	d := &sayer{result: "here is the summary you asked for"}
 	p := task.NewTask("p2", sup, d, noopExec{})
-	d.emit = p.Emit // narration onto the read plane, as harness.Build wires it
+	d.emit = p.Emit // narration onto the read plane, as agent.Build wires it
 	Reflect(store, p.ID, p, Meta{Runner: "local"})
 	go func() { p.Run(context.Background()) }()
 
@@ -93,7 +93,7 @@ func (d dialer) DialURL() string { return d.url }
 
 // A dial-in runner publishes where a worker connects: Reflect projects a handle's DialURL
 // onto the entity as `dialURL`, so a worker can be told where to dial in (mint→publish→dial)
-// rather than being pre-configured. A handle without one (local, remote-taskd) sets none.
+// rather than being pre-configured. A handle without one (local, remote-runnerd) sets none.
 func TestReflectPublishesDialURL(t *testing.T) {
 	store := entitytest.Store(t)
 	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})

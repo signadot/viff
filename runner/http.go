@@ -1,5 +1,5 @@
 // Package runner provides the HTTP client of the verse-facing task-control
-// contract: an httpRunner drives a remote taskd-shaped service at a base URL, so the
+// contract: an httpRunner drives a remote runnerd-shaped service at a base URL, so the
 // engine can run a task on another host, k8s, or a broker exactly as it runs one in
 // task. It is the mirror of versed's localRunner — same task.Runner seam,
 // HTTP transport. See docs/task-control.md.
@@ -339,7 +339,7 @@ func (h *remoteHandle) SetVector(v *task.Vector, by string) error {
 // rather than about the runner.
 //
 // It speaks api.Resolve — the vocabulary every other answering surface uses — rather than the
-// runtime's older {decisionId, proceed}. taskd accepts both, so an old runner on the other
+// runtime's older {decisionId, proceed}. runnerd accepts both, so an old runner on the other
 // end still understands this.
 //
 // The status is the point, and it is why this cannot go through post(): an answer that did

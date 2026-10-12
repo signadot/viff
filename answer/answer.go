@@ -1,11 +1,11 @@
 // Package answer is the contract a spawn puts on its own final message.
 //
 // An agent ends by talking: the loop stops when the model stops calling tools, and the
-// result is whatever prose it stopped on (task/harness/llm.go). So "the model finished
-// the job" and "the model stopped talking" are the same observation, and a charter that
-// derefs `$data.class` finds out at PATCH time — after the work is done and the tokens are
-// spent — that the agent narrated instead of answering. The failure lands on a hook nobody
-// is watching, and the entity is stranded at a stage no rule matches.
+// result is whatever prose it stopped on (runner/runnerd/verserunner/agent/llm.go). So "the
+// model finished the job" and "the model stopped talking" are the same observation, and a
+// charter that derefs `$data.class` finds out at PATCH time — after the work is done and the
+// tokens are spent — that the agent narrated instead of answering. The failure lands on a hook
+// nobody is watching, and the entity is stranded at a stage no rule matches.
 //
 // A contract moves that failure earlier and onto a path the charter already handles. The
 // spawn declares the shape its answer must have; the driver validates the final message

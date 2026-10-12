@@ -16,8 +16,8 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/task/taskd"
 )
 
 // a driver that takes `steps` no-op actions then completes.
@@ -37,7 +37,7 @@ func (okExec) Execute(_ context.Context, tu task.ToolUse) (task.StepResult, []ta
 	return task.StepResult{Use: tu}, nil, nil
 }
 
-// The engine drives a REMOTE taskd entirely over HTTP: httpRunner.Spawn issues the
+// The engine drives a REMOTE runnerd entirely over HTTP: httpRunner.Spawn issues the
 // spawn, remoteHandle.Subscribe streams the SSE read plane (cursored), and the task
 // runs to a terminal status — no in-process handle. This is the Phase-3 proof of the
 // base-URL decoupling.
@@ -46,7 +46,7 @@ func TestHTTPRunnerDrivesRemoteTaskd(t *testing.T) {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 2}, okExec{})
 	}
-	srv := httptest.NewServer(taskd.New(build).Handler())
+	srv := httptest.NewServer(runnerd.New(build).Handler())
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
@@ -96,7 +96,7 @@ func TestHTTPRunnerListsRemoteTasks(t *testing.T) {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 2}, okExec{})
 	}
-	srv := httptest.NewServer(taskd.New(build).Handler())
+	srv := httptest.NewServer(runnerd.New(build).Handler())
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
@@ -263,7 +263,7 @@ func TestResumeReAttachesToRemoteTask(t *testing.T) {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 2}, okExec{})
 	}
-	srv := httptest.NewServer(taskd.New(build).Handler())
+	srv := httptest.NewServer(runnerd.New(build).Handler())
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
@@ -306,7 +306,7 @@ func TestHTTPRunnerAnswersARemoteGate(t *testing.T) {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Ask}, reg)
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 1}, okExec{})
 	}
-	srv := httptest.NewServer(taskd.New(build).Handler())
+	srv := httptest.NewServer(runnerd.New(build).Handler())
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
@@ -373,7 +373,7 @@ func TestTaskdStillReadsTheOlderResolveSpelling(t *testing.T) {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Ask}, reg)
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 1}, okExec{})
 	}
-	srv := httptest.NewServer(taskd.New(build).Handler())
+	srv := httptest.NewServer(runnerd.New(build).Handler())
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
@@ -422,7 +422,7 @@ func TestTaskdReadsTheDocumentedMixedSpelling(t *testing.T) {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Ask}, reg)
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 1}, okExec{})
 	}
-	srv := httptest.NewServer(taskd.New(build).Handler())
+	srv := httptest.NewServer(runnerd.New(build).Handler())
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)

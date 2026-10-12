@@ -12,8 +12,8 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/task/taskd"
 )
 
 // cuttingProxy relays a runner's HTTP faithfully and severs the event stream after the first
@@ -62,7 +62,7 @@ func cuttingProxy(t *testing.T, upstream string, cutAfter int) *httptest.Server 
 
 func remoteRuntime(t *testing.T, steps int) *httptest.Server {
 	t.Helper()
-	d := taskd.New(func(l task.Launch, reg *task.Registry) *task.Task {
+	d := runnerd.New(func(l task.Launch, reg *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
 		return task.NewTask(l.ID, sup, &pacedDriver{n: steps}, noopExecutor{})
 	})

@@ -512,7 +512,7 @@ func TestTheLocalRuntimeIsNotServedOnTheBrokerFace(t *testing.T) {
 		}
 	}
 	// And nothing arrived in the runtime by that door.
-	if n := srv.Taskd.Count(); n != 0 {
+	if n := srv.Local.Count(); n != 0 {
 		t.Errorf("the runtime holds %d task(s) after posts to /broker/local, want none", n)
 	}
 }

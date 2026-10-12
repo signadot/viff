@@ -38,7 +38,7 @@ flowchart LR
     docd["logd + docd"]
   end
 
-  remote["remote runner<br/>another verse / taskd"]
+  remote["remote runner<br/>another verse / runnerd"]
   src["iod<br/>:9801"]
   llm["model provider"]
 
@@ -136,7 +136,7 @@ beside verse finds docd without guessing the ephemeral port `verse up` chose.
 
 ## 4. Task control, dialled out
 
-`runner.HTTP(base)` drives another verse, a `taskd`, or any program that serves the same
+`runner.HTTP(base)` drives another verse, a `runnerd`, or any program that serves the same
 contract:
 
 ```

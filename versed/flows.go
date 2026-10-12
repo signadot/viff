@@ -326,7 +326,7 @@ func (s *Server) taskHandle(holder, id string) task.Handle {
 			return h
 		}
 	}
-	if t := s.Taskd.Lookup(id); t != nil {
+	if t := s.Local.Lookup(id); t != nil {
 		return t
 	}
 	return s.attach(id)

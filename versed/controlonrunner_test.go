@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/task/taskd"
 )
 
 // A task on a PER-SPAWN runner can be cancelled.
@@ -30,7 +30,7 @@ func TestControlOnPerSpawnRunner(t *testing.T) {
 		return task.NewTask(l.ID, task.NewSupervisor(&task.Vector{Default: task.Auto}, reg),
 			&foreverDriver{}, okExecutor{})
 	}
-	face := httptest.NewServer(taskd.New(build).Handler())
+	face := httptest.NewServer(runnerd.New(build).Handler())
 	t.Cleanup(face.Close)
 
 	srv := testServer(t)

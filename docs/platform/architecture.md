@@ -22,12 +22,12 @@ flowchart TB
 
   subgraph run["task control — how a task RUNS"]
     direction TB
-    local["local<br/>taskd, in-proc"]
+    local["local<br/>runnerd, in-proc"]
     remote["remote<br/>runner.HTTP"]
     broker["broker<br/>dial-in worker"]
   end
 
-  rt["task runtime (task/taskd)<br/>Task · Supervisor · Vector · Event stream · gate registry"]
+  rt["task runtime (task, runner/runnerd)<br/>Task · Supervisor · Vector · Event stream · gate registry"]
 
   cli -->|"HTTP"| versed
   obs --> store
@@ -55,11 +55,14 @@ resolves gates through a shared registry, and fires actions. Each rule watches o
 subtree its match names. No watch covers the whole store. A spawn goes through the engine's
 `Spawner`, which hosts the task through task control and mirrors it back into the store.
 
-**`task`** and **`task/taskd`** are the task runtime. A `Task` runs a *driver*: `scripted`,
-`calls` or `llm`. A `Supervisor` governs it, under a `Vector`: the gates of the task, and
-the mode for an action that no gate matches. The task emits a stream of events. The stream has a cursor, keeps a bounded number of
-events, and can be resumed. The task posts its gate decisions to a registry. `taskd` serves
-the runtime over HTTP.
+**`task`** is the task runtime. A `Task` runs a *driver*: `scripted`, `calls` or `llm`. A
+`Supervisor` governs it, under a `Vector`: the gates of the task, and the mode for an action
+that no gate matches. The task emits a stream of events. The stream has a cursor, keeps a
+bounded number of events, and can be resumed. The task posts its gate decisions to a registry.
+
+**`runner/runnerd`** hosts a runner's tasks. Verse embeds it to run work in its own process
+(`verse up`), and `runnerd` serves it over HTTP. **`runner/runnerd/verserunner`** is the runner
+verse ships: verse's own agent (`verserunner/agent`) and scripts.
 
 **`mirror`** writes a task's state onto its entity, `verse.task.instance.<id>`. It writes the
 status, a preview of what the task said, the last tool output, the final `result`, the
@@ -116,7 +119,7 @@ Three implementations stand behind the seam.
 
 | Implementation | What it is |
 |---|---|
-| local | the `taskd` supervisor in the verse process, reached by a Go call |
+| local | the `runnerd` daemon embedded in the verse process, reached by a Go call |
 | remote | `runner.HTTP(baseURL)`. It drives another verse or host over HTTP: `GET /tasks`, `GET /tasks/{id}/events?since=N`, and control POSTs. |
 | broker | a task whose runtime is a worker that dials in: an agent on a laptop, a pod behind a firewall, or a person |
 

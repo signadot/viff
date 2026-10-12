@@ -459,7 +459,7 @@ func taskRunCmd() *cli.Command {
 // It lives on the CLI path rather than in the driver because that is the whole of the
 // argument — it is about who addressed the request, not about what the driver is. The driver
 // used to carry it, so a charter that spawns `driver: scripted` inherited an exemption it
-// never typed anything to earn; see versed.NewScriptedTask. An explicit --vector still wins,
+// never typed anything to earn; see verserunner.NewScriptedTask. An explicit --vector still wins,
 // including `--vector ask`, and the llm driver is untouched: it has its own.
 func scriptedVector(driver string) string {
 	if driver == "scripted" {

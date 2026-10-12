@@ -11,8 +11,9 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/runner/runnerd/verserunner"
 	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/task/taskd"
 )
 
 // askingServer runs local tasks under an Ask vector, so a spawned one blocks on its first
@@ -27,10 +28,10 @@ func askingServer(t *testing.T) *Server {
 // It used to hand-build an Ask supervisor because ScriptedBuilder forced Auto and there was no
 // way to ask a scripted task for a question. There is now: a spawn that names no vector asks,
 // so this is the ordinary builder with a root to run in.
-func askingBuilder(t *testing.T) taskd.Builder {
+func askingBuilder(t *testing.T) runnerd.Builder {
 	t.Helper()
 	return func(l task.Launch, reg *task.Registry) *task.Task {
-		return NewScriptedTask(l, t.TempDir(), task.DefaultShellEnv, reg)
+		return verserunner.NewScriptedTask(l, t.TempDir(), task.DefaultShellEnv, reg)
 	}
 }
 
@@ -56,7 +57,7 @@ func waitQuestion(t *testing.T, srv *Server, taskID string) string {
 // The LOCAL leg of `POST /tasks/{id}/resolve`, which had no test.
 //
 // It is the leg that used to be forwarded rather than handled: a local task's answer went
-// to taskd's own HTTP face, which reads `{decisionId, proceed}` — so an api.Resolve body
+// to runnerd's own HTTP face, which reads `{decisionId, proceed}` — so an api.Resolve body
 // arrived as an empty decision id and answered nothing. The brokered leg was covered and the
 // local one was not, which is exactly why the difference could sit there.
 //

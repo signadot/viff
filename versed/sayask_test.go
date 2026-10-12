@@ -15,8 +15,8 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/task/taskd"
 )
 
 // slowDriver takes `steps` actions, one every tick, and — when talks — holds a conversation
@@ -75,7 +75,7 @@ func sayServer(t *testing.T) (*Server, *httptest.Server) {
 		}
 		return tk
 	}
-	srv := NewWithStore(taskd.Builder(build), entitytest.Store(t))
+	srv := NewWithStore(runnerd.Builder(build), entitytest.Store(t))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)

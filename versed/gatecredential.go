@@ -183,3 +183,5 @@ func answerer(who, via, authenticated string) map[string]any {
 	}
 	return a
 }
+
+func str(m map[string]any, k string) string { s, _ := m[k].(string); return s }

@@ -8,13 +8,14 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/runner/runnerd/verserunner"
+	"github.com/signadot/verse/runner/runnerd/verserunner/agent/modeltest"
 	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/task/harness/modeltest"
 	"github.com/signadot/verse/trigger"
 )
 
 // harnessServer is a verse hosting its tasks as `verse up` does, its model the scripted one.
-func harnessServer(t *testing.T, h *Harness) *Server {
+func harnessServer(t *testing.T, h *verserunner.Drivers) *Server {
 	t.Helper()
 	srv := NewWithStore(h.Build, entitytest.Store(t))
 	srv.Start(t.Context())
@@ -59,7 +60,8 @@ func TestTheHarnessRunsAnLLMSpawnAgainstItsModel(t *testing.T) {
 		}
 		return modeltest.Say("heard: " + r.Prompt())
 	})
-	srv := harnessServer(t, &Harness{Root: t.TempDir(), Env: task.DefaultShellEnv, Log: io.Discard,
+	srv := harnessServer(t, &verserunner.Drivers{
+		Root: t.TempDir(), Env: task.DefaultShellEnv, Log: io.Discard,
 		Default: "scripted", LLMBaseURL: model.URL, LLMKey: "test-key"})
 
 	ref := entity.RefAt("demo", "note", "1")
@@ -75,7 +77,8 @@ func TestTheHarnessRunsAnLLMSpawnAgainstItsModel(t *testing.T) {
 // With no model configured, an llm spawn fails its own task, and the engine goes on: the rule
 // hears the failure.
 func TestTheHarnessFailsAnLLMSpawnWithNoModel(t *testing.T) {
-	srv := harnessServer(t, &Harness{Root: t.TempDir(), Env: task.DefaultShellEnv, Log: io.Discard,
+	srv := harnessServer(t, &verserunner.Drivers{
+		Root: t.TempDir(), Env: task.DefaultShellEnv, Log: io.Discard,
 		Default: "scripted"})
 
 	ref := entity.RefAt("demo", "note", "1")

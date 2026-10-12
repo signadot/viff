@@ -9,6 +9,8 @@
 /verse
 /o
 /sourced
+/iod
+/runnerd
 dist/
 # mkdocs build output (`mkdocs build` defaults here; `mkdocs serve` needs nothing)
 site/

@@ -145,7 +145,7 @@ func (w *worker) findWork(ctx context.Context) (*task.Instance, error) {
 		return nil, fmt.Errorf("listing tasks: %w", err)
 	}
 	for i := range tasks {
-		// Unclaimed AND brokered. A local or remote-taskd task never enters `unclaimed` and
+		// Unclaimed AND brokered. A local or remote-runnerd task never enters `unclaimed` and
 		// carries no dialURL, so this is one condition read twice rather than two.
 		if tasks[i].Status == task.Unclaimed && tasks[i].DialURL != "" {
 			return &tasks[i], nil

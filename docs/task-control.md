@@ -6,7 +6,7 @@ and executes a task by hand. This page is the [seam](glossary.md#seam) that make
 builds on [external tasks](external-tasks.md), where it is design D, and it makes concrete what
 that page calls "wrapping and enforcing the verse invariants".
 
-In short, the task-control interface is the `taskd` HTTP contract behind a base URL, made
+In short, the task-control interface is the `runnerd` HTTP contract behind a base URL, made
 resumable and aware of claims.
 
 - Verse is its client. Verse mirrors it into the durable `verse.task.instance` entity, the
@@ -231,7 +231,7 @@ A control call that was applied answers `204`. A task the runner does not host a
 ### The bodies
 
 Each body is one Go type in package `task`, used by verse when it sends and by the stock runner
-(`task/taskd`) when it reads. Each is in the schema under its name (`verse schema`), which is
+(`runner/runnerd`) when it reads. Each is in the schema under its name (`verse schema`), which is
 where a runner in another language reads it.
 
 | Route | Type | Schema name |
@@ -334,7 +334,7 @@ The same `gap` frame carries both reasons that a reader can be behind: a cursor 
 and events dropped because the reader could not keep up.
 
 `?since=` means the same on every runner. `GET /tasks/{id}/events` hands the cursor to the
-runtime that holds the work: the local one, a broker, or a remote taskd. A client that resumes
+runtime that holds the work: the local one, a broker, or a remote runnerd. A client that resumes
 gets the frames after its cursor and no others, wherever the task runs.
 
 A resume below the window also replays the gates still open below it. The gap says that a reader

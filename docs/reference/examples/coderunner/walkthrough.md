@@ -230,11 +230,11 @@ supplies `default: auto` and one `ask` [gate](../../../glossary.md#gate-of-a-tas
 `--vector auto` on the spawn skips the question. Watch the first few runs before you use it.
 
 Compare the default vector of the `llm` driver,
-[`harness.Vector()`](https://github.com/signadot/verse/blob/main/task/harness/build.go). It has
-*three* ask gates: write, shell and delegate. For a foreign agent run this way, only `delegate`
-can fire. The writes and the shell commands happen inside a subprocess, and the subprocess
-reports none of them to verse. The two vectors show the whole difference between the two
-drivers.
+[`agent.Vector()`](https://github.com/signadot/verse/blob/main/runner/runnerd/verserunner/agent/build.go).
+It has *three* ask gates: write, shell and delegate. For a foreign agent run this way, only
+`delegate` can fire. The writes and the shell commands happen inside a subprocess, and the
+subprocess reports none of them to verse. The two vectors show the whole difference between the
+two drivers.
 
 ### 9. Read what it produced
 

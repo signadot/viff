@@ -501,7 +501,7 @@ func (r *Runner) spawn(w http.ResponseWriter, req *http.Request) {
 		setField(&body, "id", id)
 	}
 	// An id is spawned ONCE WHILE IT RUNS, and a repeated spawn of a live one is answered by it
-	// — the same retry-safety taskd has, which a client whose request timed out depends on.
+	// — the same retry-safety runnerd has, which a client whose request timed out depends on.
 	//
 	// A FINISHED one is a different question, and answering it the same way was wrong twice
 	// over. The record outlives the process on purpose, so that `forward` can keep answering
@@ -967,7 +967,7 @@ func requestWithBody(req *http.Request, body []byte) *http.Request {
 }
 
 // field reads one string off a decoded document. Reading the launch this way rather than into a
-// struct is deliberate: a struct here would be a second copy of taskd's wire shape, and the two
+// struct is deliberate: a struct here would be a second copy of runnerd's wire shape, and the two
 // would drift the first time a field was added to one of them.
 func field(n *ir.Node, name string) string {
 	if n == nil {

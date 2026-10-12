@@ -151,7 +151,7 @@ is the simplest, and it reuses everything. But it blocks on each step. It has no
 does not survive a restart, and has no place for a person. Shape A is the unix adapter, not the
 model.
 
-**B, attached remote runtime.** `taskd` hosts a task. It exposes the event stream over SSE and
+**B, attached remote runtime.** `runnerd` hosts a task. It exposes the event stream over SSE and
 control over HTTP. Shape B reverses the roles: a worker connects to verse, pushes events and
 pulls control over one live connection. Shape B is rich, live and native to unix: it gives a
 pty, stdin and an exit. But a lost connection breaks it. Unless it also writes the mirror, the

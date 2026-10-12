@@ -9,7 +9,7 @@ type Status string
 
 const (
 	// Unclaimed: spawned and hosted on a broker, awaiting an executor to claim it
-	// (the pre-running state). Local and remote-taskd tasks never enter it —
+	// (the pre-running state). Local and remote-runnerd tasks never enter it —
 	// they begin executing immediately.
 	Unclaimed Status = "unclaimed"
 	// Running: an executor is working the task.

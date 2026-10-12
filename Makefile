@@ -26,30 +26,36 @@ DIST := dist
 
 O_PKG := github.com/signadot/tony-format/go-tony/cmd/o
 
-# Three binaries, one image:
+# Four binaries, one image:
 #   verse    the engine + CLI
 #   o        the tony daemons verse spawns for logd+docd (pinned, built alongside verse)
 #   iod  the shipped Sources (git, slack, linear) — a SEPARATE process by design, so the
 #            engine binary carries no connector's wire format or credential handling. Riding
 #            in the same image is free; riding in the same process is not (cmd/iod).
+#   runnerd  the shipped runners (verse) — separate for the same reason (cmd/runnerd).
 define go_build
 	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/verse ./cmd/verse
 	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/o $(O_PKG)
 	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/iod ./cmd/iod
+	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/runnerd ./cmd/runnerd
 endef
 
 .DEFAULT_GOAL := help
 
 .PHONY: bin
-bin: ## build verse + o + iod for the host → dist/$(GOOS)/$(GOARCH)/ (dev use)
+bin: ## build verse + o + iod + runnerd for the host → dist/$(GOOS)/$(GOARCH)/ (dev use)
 	$(call go_build,$(GOOS),$(GOARCH))
 
 .PHONY: iod
 iod: ## build just the source connectors (git, slack, linear) for the host
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build -o $(DIST)/$(GOOS)/$(GOARCH)/iod ./cmd/iod
 
+.PHONY: runnerd
+runnerd: ## build just the runners (verse) for the host
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build -o $(DIST)/$(GOOS)/$(GOARCH)/runnerd ./cmd/runnerd
+
 .PHONY: dist-linux
-dist-linux: ## cross-compile verse + o + iod for linux/$(IMAGE_ARCH) → dist/linux/$(IMAGE_ARCH)/ (for the image)
+dist-linux: ## cross-compile verse + o + iod + runnerd for linux/$(IMAGE_ARCH) → dist/linux/$(IMAGE_ARCH)/ (for the image)
 	$(call go_build,linux,$(IMAGE_ARCH))
 
 .PHONY: docker

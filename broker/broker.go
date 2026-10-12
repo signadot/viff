@@ -1,6 +1,6 @@
 // Package broker is a runner whose runtime is an external DIAL-IN worker — a
 // laptop agent, a pod in a private cluster, or a human. verse drives it through the
-// task.Runner seam exactly as it drives a local or remote-taskd runner; a
+// task.Runner seam exactly as it drives a local or remote-runnerd runner; a
 // worker connects OUT to the broker's worker-facing HTTP (claim / inbox / report) and
 // the broker glues the two legs: a worker's reports become the events verse observes, and
 // verse's control becomes items the worker pulls. Both parties are clients; only the
@@ -613,7 +613,7 @@ func (h *handle) RelaysControl() bool { return true }
 
 // DialURL is where a worker dials in to run this task (the broker's hosted base). mirror
 // type-asserts for this and publishes it as `dialURL`; handles without it (local, remote
-// taskd) have no separate worker-facing address.
+// runnerd) have no separate worker-facing address.
 func (h *handle) DialURL() string { return h.b.dialURL() }
 
 // The broker is in-process and its inbox is in memory, so a control call cannot fail to be

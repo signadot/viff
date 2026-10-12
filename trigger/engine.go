@@ -28,7 +28,7 @@ import (
 // Spawner turns a (bound) launch.Spec into a running, hosted task and returns
 // it. It owns the full lifecycle — resolve the spec's references (driver, runner,
 // resolver, scope, environment), build, mirror into the verse, and run/host — so
-// the engine stays agnostic to how tasks are hosted (a taskd runtime here,
+// the engine stays agnostic to how tasks are hosted (a runnerd runtime here,
 // an RPC to a remote runtime when distributed).
 type Spawner func(id string, spec launch.Spec) task.Handle
 
@@ -1539,7 +1539,7 @@ func (e *Engine) spawnHooked(id string, spec launch.Spec, hooks *Action, chain s
 	}
 	// Idempotent per id: spawnID is deterministic per (trigger, subject), so a re-fire about
 	// the same subject must not start a second task. The runtime would not stop it — a
-	// taskd Spawn overwrites its registry entry while the old task keeps running — so
+	// runnerd Spawn overwrites its registry entry while the old task keeps running — so
 	// the engine, which owns the live registry, is where this belongs.
 	e.liveMu.Lock()
 	if fp, running := e.live[id]; running {
@@ -2081,7 +2081,7 @@ func (e *Engine) reapLoop(ctx context.Context, ch <-chan entity.Commit, unsub fu
 }
 
 // ReconcileOrphans retires task:instance entities that a previous run left
-// non-terminal: a fresh runtime holds no handle for them (taskd is in-memory, so
+// non-terminal: a fresh runtime holds no handle for them (runnerd is in-memory, so
 // a restart kills every task), so their last durable state is marked orphaned
 // rather than left claiming to run. Returns how many were reconciled.
 //

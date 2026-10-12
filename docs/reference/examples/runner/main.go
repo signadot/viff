@@ -14,7 +14,7 @@
 //
 // Two functions, and they are the two questions a runner answers. The Driver decides what the
 // work IS — one action at a time, until it says it is done — and the Executor carries each
-// action out. Everything else here is plumbing you can leave alone: taskd serves the
+// action out. Everything else here is plumbing you can leave alone: runnerd serves the
 // contract, tracks the running set, and streams the read plane.
 //
 // # What NOT to change
@@ -36,19 +36,19 @@ import (
 	"os"
 	"strings"
 
+	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/task/taskd"
 )
 
 func main() {
 	addr := flag.String("addr", ":9800", "address to serve the task-control contract on")
 	flag.Parse()
 
-	// taskd is the contract: POST /tasks to spawn, GET /tasks[/{id}] to list and
+	// runnerd is the contract: POST /tasks to spawn, GET /tasks[/{id}] to list and
 	// snapshot, GET /tasks/{id}/events for the read plane, and the control POSTs. verse
 	// drives exactly this over HTTP, and its own in-process runner is the same handler — so
 	// there is no privileged local path for this to differ from.
-	d := taskd.New(build)
+	d := runnerd.New(build)
 	log.Printf("runner listening on %s — install it with: verse runner add <name> http://<host>%s",
 		*addr, *addr)
 	if err := http.ListenAndServe(*addr, d.Handler()); err != nil {
@@ -68,7 +68,7 @@ func build(l task.Launch, reg *task.Registry) *task.Task {
 	// `vector:`, so this is the floor rather than the rule.
 	//
 	// Auto so the sample runs to completion unattended. Change the default to task.Ask and
-	// every action raises a gate instead: `reg` is the registry taskd serves answers into,
+	// every action raises a gate instead: `reg` is the registry runnerd serves answers into,
 	// so those become questions an operator answers through verse (`verse question`), and the
 	// task waits. That is the one-word difference between a runner that acts and a runner
 	// that asks.

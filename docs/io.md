@@ -209,7 +209,7 @@ The reasons are in [Why it is this way](#why-it-is-this-way).
 | `GET /io` | a descriptor |
 | `GET /reflect` | a `Reflection` |
 
-`io.HTTP` is the client that verse drives an io with. `taskd` uses the same pattern, for the
+`io.HTTP` is the client that verse drives an io with. `runnerd` uses the same pattern, for the
 same reason. `io.Git` behind `iod` *is* the sample external io. The same value behind the
 reflector of verse is the built-in io. So a deployed io has no privileged local path to differ
 from.

@@ -15,7 +15,7 @@ runner.
 
 | Way | What you write | What you get |
 |---|---|---|
-| A, in Go | a `Builder`, a driver and an executor, on the package `task/taskd` | `taskd` serves every route of the contract |
+| A, in Go | a `Builder`, a driver and an executor, on the package `runner/runnerd` | `runnerd` serves every route of the contract |
 | B, in any language | an HTTP server | nothing. You serve every route yourself. |
 
 The sample, [examples/runner/main.go](../reference/examples/runner/main.go), is way A. It
@@ -28,7 +28,7 @@ The lines of the sample that matter are below. The file has the rest.
 ```go
 func main() {
 	// …
-	d := taskd.New(build)
+	d := runnerd.New(build)
 	// …
 	if err := http.ListenAndServe(*addr, d.Handler()); err != nil {
 		log.Fatalf("runner: %v", err)
@@ -51,9 +51,9 @@ func (echoExecutor) Execute(_ context.Context, tu task.ToolUse) (task.StepResult
 
 | Part | What it does |
 |---|---|
-| `taskd.New(build)` | makes a daemon that hosts tasks. The daemon calls `build` once for each spawn. |
-| `d.Handler()` | the HTTP routes of the contract |
-| `build` | a `taskd.Builder`. It makes one task from one `task.Launch`. The launch carries what the spawn said: the prompt, the driver, the frame, the tools, the vector and the grant. |
+| `runnerd.New(build)` | makes a daemon that hosts tasks. The daemon calls `build` once for each spawn. |
+| `d.Handler()` | the HTTP routes of the contract, and `GET /describe` |
+| `build` | a `runnerd.Builder`. It makes one task from one `task.Launch`. The launch carries what the spawn said: the prompt, the driver, the frame, the tools, the vector and the grant. |
 | `task.NewSupervisor` | decides what happens at a gate of the task. With `task.Auto` every action runs. With `task.Ask` every action raises a gate, which a person answers with `verse question`. |
 | `Next` | the driver. It returns the next action and `true`, or `false` when the work is done. An error fails the task. |
 | `Execute` | the executor. It carries out one action. The driver receives its `StepResult` as `prev` at the next call. |
@@ -163,7 +163,7 @@ command and what each refuses.
 
 ### What a runner must do that the compiler does not check
 
-On way A, `taskd` does the first five for you. The other four are yours on both ways.
+On way A, `runnerd` does the first five for you. The other four are yours on both ways.
 
 1. **A spawn is idempotent by id while the task runs.** A second spawn of a live id answers
    `200` with the task that runs, and starts nothing. A spawn of an id whose task has ended

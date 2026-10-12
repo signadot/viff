@@ -28,8 +28,8 @@ func questionsIn(store entity.Store, taskID string) []string {
 // A scoped task's gate belongs to the scope that spawned it, and to nobody else.
 //
 // It did not. `mirror.Reflect` writes `task:instance` into the SPAWNING store, but the gate
-// question was published by a single `taskd.OnQuestion` callback registered once at
-// construction, closing over baseline — and taskd is one runtime shared by baseline and every
+// question was published by a single `runnerd.OnQuestion` callback registered once at
+// construction, closing over baseline — and runnerd is one runtime shared by baseline and every
 // scoped engine. So one run left two records in two different stores, and the consequences
 // were all of the wrong kind: one dev's pending decision appeared on every other dev's
 // docket, `verse gates` listed a gate whose task `verse ps` would not show, and the question

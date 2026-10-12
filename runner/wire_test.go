@@ -14,8 +14,8 @@ import (
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/task/taskd"
 )
 
 // paced takes n steps at a pace, so a task is still running when it is cancelled.
@@ -45,7 +45,7 @@ func remote(t *testing.T, d task.Driver) (*httptest.Server, func() task.Launch) 
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 		return task.NewTask(l.ID, sup, d, okExec{})
 	}
-	srv := httptest.NewServer(taskd.New(build).Handler())
+	srv := httptest.NewServer(runnerd.New(build).Handler())
 	t.Cleanup(srv.Close)
 	return srv, func() task.Launch {
 		mu.Lock()

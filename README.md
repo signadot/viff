@@ -95,13 +95,13 @@ The tutorial has five sections, about entities, tasks, and the charters that rel
   of a rule are asked at the same time, and all must pass. An action is data, not code. A new
   rule acts on what already stands in the store. The engine watches only the subtrees that
   its rules read.
-- `task/` and `task/taskd/` — a *task* is a unit of work that verse governs and that you
-  can steer. An agent, a shell command, a worker or a person does it. It serves HTTP, for control and for
-  reading.
+- `task/` — a *task* is a unit of work that verse governs and that you can steer. An agent, a
+  shell command, a worker or a person does it.
 - `runner/` and `broker/` — where a task runs. There are three ways: local, in the verse
   process; remote, on another verse over HTTP; and a broker, where a worker behind a firewall,
   or a person, dials in and does the work. The engine drives all three through one interface,
-  so every `verse task` command works with each.
+  so every `verse task` command works with each. `runner/runnerd/` hosts a runner, embedded in
+  verse or served over HTTP, and `runner/runnerd/verserunner/` is the runner verse ships.
 - `mirror/` — writes each running task into the store, as a `verse.task.instance` entity. So
   to observe or steer a task, you observe an entity.
 - `resolver/` — a service that answers asks for whoever grants it. A resolver is installed. It

@@ -6,7 +6,7 @@ import "github.com/signadot/tony-format/go-tony/ir"
 //
 // A runner is a url, and what verse sends it is these. They are declared here, beside Launch
 // and Instance, because this is the package both ends already import: the client that drives a
-// runner (package runner) and the runtime a runner is built on (task/taskd). A runner written
+// runner (package runner) and the runtime a runner is built on (runner/runnerd). A runner written
 // in another language reads them from the schema, where each is published under its name.
 //
 // ONE DECLARATION, because a body written by hand at each end loses a field without anybody

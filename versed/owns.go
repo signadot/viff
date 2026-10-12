@@ -122,7 +122,7 @@ func (s *Server) taskScope(id, asked string) (holder string, found bool, err err
 	if holder, found, err = s.scopeOf(mirror.Ref(id), asked); found || err != nil {
 		return holder, found, err
 	}
-	if sc, ok := s.Taskd.ScopeOf(id); ok {
+	if sc, ok := s.Local.ScopeOf(id); ok {
 		return sc, true, nil
 	}
 	for _, eng := range s.flowEngines("") {
@@ -151,7 +151,7 @@ func (s *Server) questionScope(id, asked string) (holder string, found bool, err
 		}
 	}
 	if i := strings.Index(id, task.GateSep); i >= 0 {
-		if sc, ok := s.Taskd.ScopeOf(id[:i]); ok {
+		if sc, ok := s.Local.ScopeOf(id[:i]); ok {
 			return sc, true, nil
 		}
 	}

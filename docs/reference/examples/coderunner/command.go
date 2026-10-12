@@ -91,7 +91,7 @@ type commandDriver struct {
 	dir    string
 
 	// contractSrc is the shape the answer must have, for the OPENING turn only — the check
-	// itself is the loop's (task.AnswerCheck). Stated up front for the reason harness.Build
+	// itself is the loop's (task.AnswerCheck). Stated up front for the reason agent.Build
 	// states it: meeting the check for the first time as a rejection wastes a repair attempt
 	// learning what it could have been told at the start.
 	contractSrc string

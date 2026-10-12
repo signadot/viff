@@ -10,9 +10,9 @@ import (
 
 	"github.com/signadot/verse/answer"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/runner/runnerd/verserunner/agent"
 	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/task/harness"
-	"github.com/signadot/verse/task/taskd"
 )
 
 // `coderunner -task` is the other half of this program: ONE task, in ITS OWN PROCESS, serving
@@ -153,7 +153,7 @@ func runTaskProcess() error {
 			p.extra = append(p.extra, t)
 		}
 	}
-	return http.Serve(ln, taskd.New(p.build).Handler())
+	return http.Serve(ln, runnerd.New(p.build).Handler())
 }
 
 // useEgress makes the runner's allowlisting proxy usable as a proxy.
@@ -235,8 +235,8 @@ func dieWithParent() {
 type taskProc struct {
 	cfg   childConfig
 	ws    *Workspace
-	fin   task.Finisher  // the runner's closing act: deliver (deliver.go)
-	extra []harness.Tool // what this runner adds to the agent's vocabulary: push (deliver.go)
+	fin   task.Finisher // the runner's closing act: deliver (deliver.go)
+	extra []agent.Tool  // what this runner adds to the agent's vocabulary: push (deliver.go)
 
 	// mu guards launched, which build writes and the push tool reads. One process is one task,
 	// so this is a handover rather than sharing — but the tool is built before any launch
@@ -253,7 +253,7 @@ func (p *taskProc) launch() task.Launch {
 	return p.launched
 }
 
-// build is the taskd Builder on this side of the hop — the driver dispatch that used to happen
+// build is the runnerd Builder on this side of the hop — the driver dispatch that used to happen
 // in the runner's own process, with everything about workspaces, mirrors and delivery gone.
 //
 // The containment argument is gone too, and its absence is the win. This process IS the
@@ -273,7 +273,7 @@ func (p *taskProc) build(l task.Launch, reg *task.Registry) *task.Task {
 	switch l.Driver {
 	case driverLLM, "":
 		// The workspace layout is the runner's convention, so the runner describes it. It rides
-		// the PROMPT rather than the frame because harness.Build derives a default frame from
+		// the PROMPT rather than the frame because agent.Build derives a default frame from
 		// the tools and vector when a spawn writes none, and setting one here would silently
 		// replace advice that is more useful than this.
 		//
@@ -288,7 +288,7 @@ func (p *taskProc) build(l task.Launch, reg *task.Registry) *task.Task {
 		if len(tools) == 0 {
 			tools = p.cfg.Environment.Tools
 		}
-		t, _ = harness.Build(harness.Config{
+		t, _ = agent.Build(agent.Config{
 			ID: l.ID, Prompt: l.Prompt, Root: p.ws.Root, Resolver: reg,
 			Frame: l.Frame, Tools: tools, Answer: l.Answer, Vector: l.Vector,
 			Env:      p.cfg.Environment.Env, // this process was started with only these; say so
@@ -320,7 +320,7 @@ func (p *taskProc) build(l task.Launch, reg *task.Registry) *task.Task {
 		if len(tools) == 0 {
 			tools = p.cfg.Environment.Tools
 		}
-		t = harness.Calls(harness.Config{
+		t = agent.Calls(agent.Config{
 			ID: l.ID, Root: p.ws.Root, Resolver: reg,
 			Tools: tools, Answer: l.Answer, Vector: l.Vector,
 			Env:    p.cfg.Environment.Env,

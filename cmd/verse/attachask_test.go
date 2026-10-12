@@ -14,8 +14,9 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner/runnerd/verserunner"
+	"github.com/signadot/verse/runner/runnerd/verserunner/agent"
 	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/task/harness"
 	"github.com/signadot/verse/versed"
 )
 
@@ -27,9 +28,9 @@ func serveCalls(t *testing.T) entity.Store {
 	root := t.TempDir()
 	build := func(l task.Launch, reg *task.Registry) *task.Task {
 		if l.Driver != task.DriverCalls {
-			return versed.NewScriptedTask(l, root, task.DefaultShellEnv, reg)
+			return verserunner.NewScriptedTask(l, root, task.DefaultShellEnv, reg)
 		}
-		return harness.Calls(harness.Config{
+		return agent.Calls(agent.Config{
 			ID: l.ID, Root: root, Resolver: reg,
 			Tools: l.Tools, Answer: l.Answer, Vector: l.Vector, Env: task.DefaultShellEnv,
 		}, l.Calls)

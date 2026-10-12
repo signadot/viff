@@ -17,9 +17,9 @@ import (
 // The Slack Web API, as much of it as a reflection and the out half need.
 //
 // encoding/json rather than codec, and this file is on scripts/check-json.sh's allowlist for
-// the reason task/harness/llm.go is: this is somebody else's wire format. verse renders in
-// tony; Slack does not, and re-rendering its schema through codec would buy nothing but a
-// second place for it to be wrong.
+// the reason runner/runnerd/verserunner/agent/llm.go is: this is somebody else's wire format.
+// verse renders in tony; Slack does not, and re-rendering its schema through codec would buy
+// nothing but a second place for it to be wrong.
 //
 // Hand-rolled rather than slack-go, which is the same call the tree already made for the
 // OpenAI schema. What is needed is ten methods and a handful of structs; a client library would

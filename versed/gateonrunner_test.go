@@ -10,8 +10,8 @@ import (
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/task/taskd"
 )
 
 // A gate raised on a PER-SPAWN runner can be answered.
@@ -39,7 +39,7 @@ func TestGateOnPerSpawnRunnerIsAnswerable(t *testing.T) {
 		// fail. Same hazard runnerFace guards with its release channel.
 		return task.NewTask(l.ID, task.NewSupervisor(vec, reg), &oneAction{}, okExecutor{})
 	}
-	face := httptest.NewServer(taskd.New(build).Handler())
+	face := httptest.NewServer(runnerd.New(build).Handler())
 	t.Cleanup(face.Close)
 	// Cleanups run last-registered-first, so this drains before the face closes. Without it a
 	// FAILING run leaves the gate unanswered, the task parked, and the mirror's stream open —

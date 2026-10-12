@@ -32,6 +32,7 @@ exclude_docs: |
   /reference/resolvers.md
   /reference/io.md
   /reference/iod.md
+  /reference/runnerd.md
   /reference/store.md
   /reference/examples/
 

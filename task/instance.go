@@ -2,7 +2,7 @@ package task
 
 // Instance is the snapshot of a hosted task as the task API returns it
 // (GET /tasks and /tasks/{id}) — one typed shape across the local
-// runtime, a remote taskd, and a dial-in broker, so `verse task list`/`get`
+// runtime, a remote runnerd, and a dial-in broker, so `verse task list`/`get`
 // is uniform regardless of where the task runs. It is the runtime view; the
 // durable entity projection (the mirror's task:instance:<id>) is a separate
 // index that adds read-plane previews.

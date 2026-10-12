@@ -23,7 +23,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"slices"
 	"sort"
 	"strconv"
@@ -45,8 +44,9 @@ import (
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/resolver"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/runner/runnerd/verserunner"
 	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/task/taskd"
 	"github.com/signadot/verse/trigger"
 )
 
@@ -91,8 +91,9 @@ type Server struct {
 	slides sync.Map
 	Reg    *task.Registry
 	Eng    *trigger.Engine
-	Taskd  *taskd.Daemon
-	runner task.Runner // how tasks are run/governed; local (taskd) today
+	// Local is the runner this verse embeds, for `verse up`: its tasks run in this process.
+	Local  *runnerd.Daemon
+	runner task.Runner // how tasks are run/governed; the embedded runner unless SetRunner
 
 	// broker is the dial-in broker, when one is served: a place a spawn may NAME, beside the
 	// default rather than instead of it. It is addressed as `broker` the way the in-process
@@ -249,7 +250,7 @@ func WithPerms(p Perms) Option { return func(o *options) { o.perms = p } }
 // LLM, …) over a store. The engine resolves trigger gates through the shared registry,
 // so a human answers them out-of-band via POST /asks/{id}/answer; a trigger's spawn action
 // goes through the task runtime (hosted, mirrored into the verse).
-func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Server {
+func NewWithStore(build runnerd.Builder, store entity.Store, opts ...Option) *Server {
 	var o options
 	for _, opt := range opts {
 		opt(&o)
@@ -298,8 +299,8 @@ func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Serv
 	susp := trigger.NewSuspensions()
 	susp.Load(nil)
 	eng.SetSuspensions(susp)
-	taskd := taskd.New(build)
-	s := &Server{Store: store, Reg: reg, Eng: eng, Taskd: taskd, susp: susp, clock: wallClock{},
+	host := runnerd.New(build)
+	s := &Server{Store: store, Reg: reg, Eng: eng, Local: host, susp: susp, clock: wallClock{},
 		seedErr:   seedErr,
 		scopeEngs: map[string]*scopeEngine{}, ioRuns: map[string]*sourceRun{},
 		charterMu: make(chan struct{}, 1),
@@ -308,7 +309,7 @@ func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Serv
 		// context to run under, and one that is never cancelled would be worse than one
 		// cancelled at task exit.
 		ctx: context.Background()}
-	s.runner = localRunner{taskd} // the in-process runner, reached in process and nowhere else
+	s.runner = localRunner{host} // the in-process runner, reached in process and nowhere else
 
 	// Publish every posed question as `gate:question:<id>`, from both places questions are
 	// raised: the engine's own registry for a firing's gates, and each hosted task for a
@@ -350,9 +351,9 @@ func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Serv
 		mirror.DropQuestion(s.storeForScope(q.Scope), q.ID, why)
 	})
 	// A HOSTED task's questions are retired here. The registry above is the ENGINE's — a
-	// firing's own gates — and a task spawned into taskd gets a registry of its own, which is
+	// firing's own gates — and a task spawned into runnerd gets a registry of its own, which is
 	// why this is a second registration rather than the same one reaching both.
-	taskd.OnDrop(func(_, scope, questionID, why string) {
+	host.OnDrop(func(_, scope, questionID, why string) {
 		mirror.DropQuestion(s.storeForScope(scope), questionID, why)
 	})
 	// NOBODY ANSWERS AN ASK ABOUT SOMETHING THEY CANNOT READ (9ce3bva0, D3): an ask naming
@@ -361,11 +362,11 @@ func NewWithStore(build taskd.Builder, store entity.Store, opts ...Option) *Serv
 	reg.OnCheck(func(q task.GateQuestion) error {
 		return checkAudience(s.storeForScope(q.Scope), q)
 	})
-	taskd.OnCheck(func(l task.Launch, q task.GateQuestion) error {
+	host.OnCheck(func(l task.Launch, q task.GateQuestion) error {
 		return checkAudience(s.storeForScope(l.Scope), hostedQuestion(l, q))
 	})
-	taskd.OnQuestion(func(l task.Launch, p task.Pending) {
-		// WHERE this question goes is the task's to say, not this closure's. taskd is one
+	host.OnQuestion(func(l task.Launch, p task.Pending) {
+		// WHERE this question goes is the task's to say, not this closure's. runnerd is one
 		// runtime under baseline and every scoped engine, so a publisher registered once
 		// closed over the baseline store and posted every scope's questions there — while
 		// the task's own record went to the scope that spawned it. `verse gates` then
@@ -418,17 +419,17 @@ func checkAudience(store entity.Store, q task.GateQuestion) error {
 	return mirror.CheckAudience(store, q.Subject, entity.Canonical(q.Answerers))
 }
 
-// localRunner is the in-process runner: it hosts tasks on the embedded taskd runtime, called
-// in process. Remote runners (a base URL: k8s, lambda, a human broker) implement the same
-// task.Runner behind the wire contract; the engine drives them through the identical seam. See
-// docs/task-control.md.
+// localRunner is the embedded runner (Server.Local) as a task.Runner: verse reaches it by Go
+// calls rather than over HTTP. Remote runners (a base URL: k8s, lambda, a human broker)
+// implement the same task.Runner behind the wire contract; the engine drives them through the
+// identical seam. See docs/task-control.md.
 //
 // The runtime is served to nobody raw. The operator API serves it behind the door (a
 // principal, the perms check, the mirror), and the broker face serves only what HostBroker
 // registered under a minted nonce. A fixed name on the broker face used to map to this
 // runtime whole — POST /tasks, resolve, cancel, the vector — for anyone who could reach the
 // port, with no check, no owner and no record (git-issue jp9dy8anh12kr9r7nxn0).
-type localRunner struct{ d *taskd.Daemon }
+type localRunner struct{ d *runnerd.Daemon }
 
 func (l localRunner) Spawn(spec task.Launch) task.Handle {
 	return l.d.Spawn(spec)
@@ -1410,7 +1411,7 @@ func (s *Server) Handler() http.Handler {
 	// two READ routes to union the local runtime with the active runner's own tasks
 	// (e.g. a broker's), stamping each with its runner; everything else (spawn, events,
 	// control) falls through to the local runtime.
-	ph := s.Taskd.Handler()
+	ph := s.Local.Handler()
 	rt.handle("GET /tasks", s.listTasks, "", list("verse-instance"))
 	rt.handle("POST /tasks", s.spawnTask, "verse-spawn", one("verse-spawned"))
 	rt.handle("GET /tasks/{id}", s.getTask, "", one("verse-instance"))
@@ -1448,7 +1449,7 @@ func (s *Server) Handler() http.Handler {
 		s.answerQuestion(w, r, body, r.PathValue("id"), s.scopedStore(r))
 	}, "verse-resolve", nothing)
 	// re-vector (slide autonomy on a running task) — runner-agnostic like cancel/say: a
-	// local task is served by the runtime mount (taskd's setVector), a brokered/remote
+	// local task is served by the runtime mount (runnerd's setVector), a brokered/remote
 	// one goes to the runner handle's SetVector.
 	rt.handle("PUT /tasks/{id}/vector", func(w http.ResponseWriter, r *http.Request) {
 		s.taskControl(w, r, ph, "vector")
@@ -1603,111 +1604,10 @@ func (s *Server) notePrincipal(p string) {
 	s.users.Store(p, struct{}{})
 }
 
-// ── scripted driver: the default task runtime driver ─────────────────────
-//
-// A dependency-free driver that performs a few steps of "work" then completes, so
-// the runtime is exercisable without model credentials. `verse up --llm` swaps in
-// the LLM harness.
-
-// ScriptedBuilder builds the credential-free task runtime driver: it runs the prompt as a real
-// shell command, confined to root and cancellable via the task context — a governed shell
-// command as a task. It is the dependency-free stand-in for an LLM agent, so the runtime is
-// exercisable and steerable (and can run real work like `sleep`) without model credentials.
-// ScriptedBuilder is the taskd.Builder form (root = the task's cwd). `verse up` uses
-// NewScriptedTask directly to confine scripted commands to the agent root.
-func ScriptedBuilder(l task.Launch, reg *task.Registry) *task.Task {
-	return NewScriptedTask(l, "", task.DefaultShellEnv, reg)
-}
-
-// NewScriptedTask builds a scripted task rooted at root — a call list of exactly one call,
-// which is what `scripted` always was. env names the variables its shell passes through from
-// this process; see task.ShellEnv.
-//
-// It used to be its own driver with its own vector, hardcoded to Auto. Both are gone. The
-// driver is task's, because one shell command is the degenerate case of a list of calls and
-// keeping a second implementation of "propose one action, then stop" bought nothing; the
-// vector is now the SPAWN's, because the old one was not a default but an override — it
-// ignored a `vector:` the charter had written, so a charter asking to be asked was disobeyed
-// in silence.
-//
-// The consequence is deliberate and is the reason this is a contract change: a `driver:
-// scripted` spawn that names no vector now ASKS, where it used to run unattended. The
-// exemption that justified auto — "you authorized it by typing it" — is true of `verse task
-// run --driver scripted` and of nothing else, so it lives on that path now (cmd/verse/task.go)
-// rather than travelling to charters that typed nothing.
-func NewScriptedTask(l task.Launch, root string, env []string, reg *task.Registry) *task.Task {
-	// A LIST THE SPAWN WROTE IS THE LIST, and the prompt is read only where there is none: a
-	// charter's `calls:` reaches this builder as l.Calls, and a builder that read the prompt
-	// alone ran such a task to `done` having done nothing. An empty prompt and no list is an
-	// empty list: the task completes having done nothing, which is what the old driver did
-	// with a blank command.
-	var calls []task.Call
-	switch {
-	case len(l.Calls) > 0:
-		if err := task.CheckCalls(l.Calls); err != nil {
-			return task.NewFailed(l.ID, reg, err.Error())
-		}
-		calls = l.Calls
-	case strings.TrimSpace(l.Prompt) != "":
-		calls = []task.Call{{Tool: "run_bash", Input: map[string]any{"command": l.Prompt}}}
-	}
-	set, ended, err := handCredential(l, root)
-	if err != nil {
-		return task.NewFailed(l.ID, reg, err.Error())
-	}
-	return ended(task.NewCallsTaskFrom(l, calls, reg, &shellExec{root: root, env: env, set: set}))
-}
-
-// shellExec runs run_bash for real: cancellable via ctx (so `cancel` kills a running command),
-// confined to root, with only the variables env names. It is the scripted driver's counterpart
-// of the harness's fsExec.
-type shellExec struct {
-	root string
-	env  []string
-	// set is the variables the shell is given outright, `NAME=value`: where the task's
-	// credential file is, for a task that has one.
-	set []string
-}
-
-func (e *shellExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResult, []task.ToolUse, error) {
-	// bash -c (non-login): avoids the login shell's job-control setpgid ("failed to change
-	// group ID") that fails in restricted envs (CI, sandboxes). Its environment is the declared
-	// passthrough rather than the server's, which carries the server's credentials.
-	c := exec.CommandContext(ctx, "bash", "-c", str(tu.Input, "command"))
-	c.Dir = e.root
-	c.Env = append(task.ShellEnv(e.env), e.set...)
-	out, err := c.CombinedOutput()
-	res := strings.TrimSpace(string(out))
-	// The code, alongside the Err this executor folds it into. Both, because the fold is this
-	// executor's reading and a driver may want the fact underneath it — see
-	// task.StepResult.Exit. A spawn failure (no such binary) has no exit code and gets none.
-	var code *int
-	var ee *exec.ExitError
-	if errors.As(err, &ee) {
-		n := ee.ExitCode()
-		code = &n
-	}
-	if err != nil {
-		if res != "" {
-			res += "\n"
-		}
-		res += "exit: " + err.Error()
-	}
-	if res == "" {
-		res = "(ok)"
-	}
-	// The failure rides in the StepResult rather than as an Execute error, because Run
-	// discards the result on an error return and the command's output is the whole point
-	// of a failure. A cancel is not a failure: the kill that ends `sleep` surfaces here as
-	// an error too, and Run's boundary check reaches ctx.Err() first — but say so here, so
-	// the driver's cancel and failure paths do not depend on that ordering.
-	if ctx.Err() != nil {
-		err = nil
-	}
-	return task.StepResult{Use: tu, Output: res, Err: err, Exit: code}, nil, nil
-}
-
-func str(m map[string]any, k string) string { s, _ := m[k].(string); return s }
+// ScriptedBuilder is verserunner.ScriptedBuilder, where the scripted driver now lives with the
+// verse runner. It stays here for the in-process runner and its tests until that runner is
+// removed.
+var ScriptedBuilder = verserunner.ScriptedBuilder
 
 // deleteScope drops the ?scope copy-on-write overlay and all its data —
 // teardown. It runs against the baseline store (only baseline may delete a scope), so it
@@ -1761,11 +1661,11 @@ func (s *Server) cancelScopeTasks(scope string, eng *trigger.Engine) {
 			cancelled[id] = true
 		}
 	}
-	for _, inst := range s.Taskd.Snapshots() {
-		if sc, ok := s.Taskd.ScopeOf(inst.ID); !ok || sc != scope || cancelled[inst.ID] {
+	for _, inst := range s.Local.Snapshots() {
+		if sc, ok := s.Local.ScopeOf(inst.ID); !ok || sc != scope || cancelled[inst.ID] {
 			continue
 		}
-		if t := s.Taskd.Lookup(inst.ID); t != nil {
+		if t := s.Local.Lookup(inst.ID); t != nil {
 			t.Cancel(reason)
 		}
 	}
@@ -2884,7 +2784,7 @@ func (s *Server) relaysControl(taskID string) bool {
 	if taskID == "" {
 		return false // a firing's gate: the registry answers it here, now
 	}
-	if _, ok := s.Taskd.SnapshotOf(taskID); ok {
+	if _, ok := s.Local.SnapshotOf(taskID); ok {
 		return false
 	}
 	// The same reach the answer itself will take, so this cannot say "applied" about a task
@@ -4275,7 +4175,7 @@ func ioRefs(store entity.Store) []string {
 // runnerStatus describes the runner along its two independent legs, so the two are not
 // confused: `resume` is the VERSE-facing control/re-attach address (what a restart needs),
 // `dial` is the WORKER-facing address (where a dial-in worker connects). They coincide for
-// a remote taskd (one URL, no separate worker leg) and diverge for a broker (verse drives
+// a remote runnerd (one URL, no separate worker leg) and diverge for a broker (verse drives
 // it in-process — ephemeral — while a worker dials a separate face). See docs/task-control.md.
 //
 // `kind` is about the DEFAULT — where a spawn that names nobody runs — and `dial` is about
@@ -4304,7 +4204,7 @@ func hasFace(p task.Runner) bool {
 
 // taskLister is task.Lister: a runner that keeps its OWN task registry (a broker),
 // distinct from the local runtime. localRunner does NOT implement it — it delegates to the
-// same taskd the union already lists — so brokered tasks are added without
+// same runnerd the union already lists — so brokered tasks are added without
 // double-counting local ones.
 //
 // The declaration moved to the task package so both implementations assert against it and
@@ -4314,7 +4214,7 @@ func hasFace(p task.Runner) bool {
 type taskLister = task.Lister
 
 // registries are the runtimes whose OWN task list this verse has to ask, beside the Taskd
-// snapshots every caller reads first: the default runner when it keeps one (a remote taskd
+// snapshots every caller reads first: the default runner when it keeps one (a remote runnerd
 // does), and the dial-in broker, which a spawn may name without it being the default.
 //
 // It is a list rather than a field because a runtime can be named without being the default,
@@ -4573,7 +4473,7 @@ func (s *Server) taskSnapshots(store entity.Store) ([]task.Instance, error) {
 	// The live view, by id, from whatever can be asked cheaply: the in-process runtime, and
 	// the default runner when it keeps its own registry (a broker).
 	live := map[string]task.Instance{}
-	for _, inst := range s.Taskd.Snapshots() {
+	for _, inst := range s.Local.Snapshots() {
 		inst.Runner = "local"
 		live[inst.ID] = inst
 	}
@@ -4700,7 +4600,7 @@ func (s *Server) scopeMembers(store entity.Store) map[string]bool {
 // falls through to the same answer it would have given anyway. Widening it would widen the
 // gate-routing chain above for a case that chain cannot act on.
 func (s *Server) isTask(id string) bool {
-	if _, ok := s.Taskd.SnapshotOf(id); ok {
+	if _, ok := s.Local.SnapshotOf(id); ok {
 		return true
 	}
 	for _, p := range s.registries() {
@@ -4735,7 +4635,7 @@ func (s *Server) placeOf(id string) task.Runner {
 		return nil
 	}
 	ref := entity.Str(e.Payload, "runner")
-	// `local` means in-process, which the taskd branch above already covers; equal to the
+	// `local` means in-process, which the runnerd branch above already covers; equal to the
 	// default runner means the branch above covered it too, and rebuilding a second client
 	// for the same place would lose whatever the configured one knows about itself — a
 	// broker's handle relays control, and an HTTP client reconstructed from its url does not
@@ -4774,7 +4674,7 @@ func (s *Server) taskHoldingGate(decisionID string) string {
 		}
 		return false
 	}
-	for _, inst := range s.Taskd.Snapshots() {
+	for _, inst := range s.Local.Snapshots() {
 		if holds(inst) {
 			return inst.ID
 		}
@@ -4798,8 +4698,8 @@ func (s *Server) taskHoldingGate(decisionID string) string {
 // resolveTaskDecision answers a task's pending gate (write/shell/delegate) — the
 // runtime for a local task, the runner handle for a brokered one.
 func (s *Server) resolveTaskDecision(taskID, decisionID string, res task.Resolution) error {
-	if _, ok := s.Taskd.SnapshotOf(taskID); ok {
-		if s.Taskd.Resolve(taskID, decisionID, res) {
+	if _, ok := s.Local.SnapshotOf(taskID); ok {
+		if s.Local.Resolve(taskID, decisionID, res) {
 			return nil
 		}
 		// The local registry answers by id and cannot say which of the two it was. The
@@ -4885,7 +4785,7 @@ func (s *Server) taskDial(w http.ResponseWriter, r *http.Request) {
 // dialOf is a task's dial address, from whichever holds the task: a registry that serves
 // workers, else the task's record, read as the system since the asker may hold nothing on it.
 func (s *Server) dialOf(r *http.Request, id string) string {
-	if _, ok := s.Taskd.SnapshotOf(id); ok {
+	if _, ok := s.Local.SnapshotOf(id); ok {
 		return "" // hosted here: there is no worker to dial in
 	}
 	for _, p := range s.registries() {
@@ -4908,7 +4808,7 @@ func (s *Server) getTask(w http.ResponseWriter, r *http.Request) {
 	if !s.mayReadTask(w, r, id) {
 		return
 	}
-	if inst, ok := s.Taskd.SnapshotOf(id); ok {
+	if inst, ok := s.Local.SnapshotOf(id); ok {
 		inst.Runner = "local"
 		writeOut(w, r, http.StatusOK, inst)
 		return
@@ -5006,7 +4906,7 @@ func (s *Server) taskEvents(w http.ResponseWriter, r *http.Request, runtime http
 	if !s.mayReadTask(w, r, id) {
 		return
 	}
-	if _, ok := s.Taskd.SnapshotOf(id); ok {
+	if _, ok := s.Local.SnapshotOf(id); ok {
 		runtime.ServeHTTP(w, r) // local runtime owns it
 		return
 	}
@@ -5110,7 +5010,7 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 	// both record who did them, and that is whoever the request is made as (actor). The
 	// runtime's own handler takes the request as it stands and records the body's `by`, so the
 	// party checked for control would not be the party written down.
-	if _, ok := s.Taskd.SnapshotOf(id); ok && op != "say" && op != "vector" {
+	if _, ok := s.Local.SnapshotOf(id); ok && op != "say" && op != "vector" {
 		runtime.ServeHTTP(w, r) // local runtime owns it
 		return
 	}

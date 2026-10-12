@@ -10,11 +10,11 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/task/taskd"
 )
 
-// runnerFace is a real runner for the client to install: the same taskd handler verse's own
+// runnerFace is a real runner for the client to install: the same runnerd handler verse's own
 // in-process runner is, so the install probe has something truthful to find.
 func runnerFace(t *testing.T) *httptest.Server {
 	t.Helper()
@@ -22,7 +22,7 @@ func runnerFace(t *testing.T) *httptest.Server {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 		return task.NewTask(l.ID, sup, doneAfter{}, okExec{})
 	}
-	srv := httptest.NewServer(taskd.New(build).Handler())
+	srv := httptest.NewServer(runnerd.New(build).Handler())
 	t.Cleanup(srv.Close)
 	return srv
 }

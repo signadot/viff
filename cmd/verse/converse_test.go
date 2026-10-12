@@ -9,6 +9,7 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/runner/runnerd/verserunner"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/versed"
 )
@@ -45,7 +46,7 @@ func serveParrot(t *testing.T) entity.Store {
 	t.Helper()
 	build := func(l task.Launch, reg *task.Registry) *task.Task {
 		if l.Driver != "parrot" {
-			return versed.NewScriptedTask(l, t.TempDir(), task.DefaultShellEnv, reg)
+			return verserunner.NewScriptedTask(l, t.TempDir(), task.DefaultShellEnv, reg)
 		}
 		vec := l.Vector
 		if vec == nil {

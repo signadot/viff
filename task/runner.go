@@ -137,7 +137,7 @@ type Launch struct {
 	// way, and the runner never sees it.
 	//
 	// It rides here because a task's records have to land where the task lives, and the one
-	// piece of machinery that publishes on a task's behalf is scope-blind. taskd is a single
+	// piece of machinery that publishes on a task's behalf is scope-blind. runnerd is a single
 	// global runtime shared by baseline and every scoped engine, so the gate questions it
 	// posts went to whichever store the ONE OnQuestion callback closed over — baseline —
 	// while the task's own `task:instance` record went to the spawning scope. One run,
@@ -211,7 +211,7 @@ type Provenance struct {
 }
 
 // Runner runs and governs tasks on some substrate; verse (the engine) is its
-// client. The only implementation today is the in-process local supervisor (a taskd
+// client. The only implementation today is the in-process local supervisor (a runnerd
 // wrapper); remote runners addressed by a base URL — k8s, lambda, a human broker — come
 // later, all behind this same seam. See docs/task-control.md.
 //
@@ -237,7 +237,7 @@ type Runner interface {
 
 // Lister is a Runner that keeps its OWN task registry — a broker, or a runner behind a
 // URL — distinct from the local runtime. The in-process runner does NOT implement it: it
-// delegates to the same taskd the union already lists, so brokered tasks are added
+// delegates to the same runnerd the union already lists, so brokered tasks are added
 // without double-counting local ones.
 //
 // It is declared HERE, beside Runner, rather than inline at the call site that asserts it.

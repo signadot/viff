@@ -15,7 +15,7 @@ import (
 //
 // An intervention withdraws the standing question — the task package's own machine says so and
 // `TestAPauseWithdrawsAStandingQuestionAndAResumeDoesNot` proves it — and for a HOSTED task
-// nothing carried that as far as the record. taskd's per-task registry had `OnPost` wired to the
+// nothing carried that as far as the record. runnerd's per-task registry had `OnPost` wired to the
 // publisher and no `OnDrop` beside it, so the question was announced and never retracted: it sat
 // `pending` on `verse gate` next to a live one with nothing to tell them apart, and answering it
 // was a 404 (git-issue zdaqh9vkh12ksxneg9n0).
