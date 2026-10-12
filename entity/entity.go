@@ -1,12 +1,20 @@
-// Package entity is the entity-verse: the substrate of things an SDLC refers to
-// or generates, each named by a <system, kind, id> triple. It is an *index, not a
-// warehouse* — an entity holds high-level metadata (a small payload), not the full
-// contents of the underlying system; anything needing depth follows the reference
-// into the real system on its own.
+// Package entity is the verse as ONE DOCUMENT: a tony tree, addressed by kinded paths.
 //
-// The store is observable: every change is an Event on a stream. That stream is
-// what triggers (elsewhere) match on, and where task state is reflected — so
-// "observe another task" is just "observe an entity."
+// An entity is a node of that tree. Its address (Ref) is a path of segments at any depth —
+// `demo.pr."1"`, `verse.task.instance.x` — and its payload is whatever tony value stands there.
+// Nothing in the document says where an entity ends: a read names its own depth by the path it
+// asks (Doc), and a listing takes the depth from its caller (Reader.ListAt). The first segment
+// `verse` is reserved for what verse writes about its own running.
+//
+// The store (Store) has one write: a value merges at a path iff every precondition holds, as
+// one commit — create, update, delete, a patch to one field and a claim on an address are all
+// Write with different arguments. Reads tell "nothing stands here" apart from "the read could
+// not be performed". Every change is a Commit at a revision, and a consumer that falls behind
+// catches up from its cursor (Since) rather than from a buffer; that stream is what triggers
+// match on and where task state is reflected, so observing a task is observing an entity.
+//
+// A store wrapped by As is attributed: every write names a principal, and what a principal may
+// do at a node is decided by the perms mirror under `verse.perms` (Attribution, Level, Grant).
 package entity
 
 //go:generate go tool tony-codegen -dir .
@@ -18,15 +26,13 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 )
 
-// Ref is a concrete, org-addressable entity: <system, kind, id>, e.g.
-// "linear:issue:1090". A generic reference ("linear:issue:$id") lives a level up,
-// in trigger templates; here a Ref always names one concrete thing.
+// Ref is the address of one concrete node of the verse: a path of segments at any depth, e.g.
+// `demo.pr."1"`. A pattern over addresses (`demo.pr.*`) lives a level up, in the kinded path a
+// read or a rule asks with; here a Ref always names one place.
 //
-// ITS SEGMENTS ARE UNEXPORTED, and that is the whole point of this step. A ref is an ADDRESS,
-// and an address is a sequence of segments that happens to be three long today; every caller
-// that reached into the struct was writing that arity down again. They go through RefAt and
-// the three readers below, so the day the representation becomes a path this file changes and
-// they do not.
+// ITS SEGMENTS ARE UNEXPORTED. A ref is an ADDRESS, and an address is a sequence of segments
+// of no fixed length; a caller that reached into the struct would be writing an arity down.
+// They go through RefAt and Segs, so how the segments are held is this file's business alone.
 //
 // It stays a comparable struct rather than becoming a slice: a Ref is a map key and an
 // equality test in a hundred places (`ev.Ref == subj`, `map[Ref]Payload`), and a slice is
@@ -35,9 +41,7 @@ import (
 // THE ROOT is which half of the verse the address is in: empty for everything the world is
 // about — a PR, a build, a person, a doer somebody registered — and `verse` for what verse
 // writes about its own running. It is a segment like the others (it renders, it is walked, it
-// is a level in the document) and it is not one of the three: a task is `verse:task:instance:x`,
-// so `system` is still `task` and the code asking "is this a task" is asking about the same
-// segment it always was.
+// is a level in the document), held apart so that Reserved is a comparison rather than a walk.
 type Ref struct {
 	root string // "" = the world's, VerseRoot = verse's own
 	// key is the segments BELOW the root, joined by sep — a STRING because a Ref is a map key
