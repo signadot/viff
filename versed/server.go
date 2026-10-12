@@ -1,11 +1,16 @@
-// Package versed is the reactive engine as a service: it assembles the entity
-// store, the trigger engine, and a gate registry, and serves an HTTP surface that
-// the `verse` CLI drives. The surface keeps the two planes distinct — observation
-// (watch, entity reads) separate from control (gate resolve, and later flow
-// steering) — per docs/deployment-and-steering.md.
+// Package versed is the verse as one process: the entity store, the trigger engine, the task
+// runtime and the door that says who a request is from, assembled behind one HTTP surface that
+// the `verse` CLI drives (Server).
 //
-// Scaffold status: the task runtime (task) is not yet mounted; spawning actions
-// no-op until it is wired.
+// The model lives elsewhere — entity, trigger, task, io, mirror — and this package is where it
+// is wired together, made durable, and served. Start restores the live half of every durable
+// record in named phases (startup.go): the perms mirror, suspensions, tasks, the charter and its
+// packages, selections, clocks, asks and sources; a phase whose read did not happen is asked
+// again rather than taken as empty. Handler registers the routes and publishes the table it
+// built (routes.go); every request passes the principals middleware, which verifies a bearer,
+// admits what a header may assert, and refuses a write naming nobody. The surface keeps
+// observation (watch, reads) distinct from control (answering, steering, cancelling), per
+// docs/deployment-and-steering.md.
 package versed
 
 import (
