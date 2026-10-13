@@ -2,6 +2,7 @@
 blocked_by: []
 blocks: []
 branches: []
+closed_by: 20e82070455abe6707d5607bc91c1f8fc3663eaa
 commits:
 - 33d68c15bb25d214dcc2d5cc9c328f3b69589240
 created: "2026-10-09T01:40:04.132926+02:00"
@@ -10,5 +11,5 @@ id: hahx7ddch12ksn19s1n0
 labels:
 - branch
 related_issues: []
-status: open
-updated: "2026-10-13T16:23:48.54206+02:00"
+status: closed
+updated: "2026-10-13T16:56:35.456385+02:00"
