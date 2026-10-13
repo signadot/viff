@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -76,63 +75,6 @@ func TestATasksOwnerAnswersWhatItAsked(t *testing.T) {
 	}
 	if q := question(t, srv, qid); q["status"] != mirror.QuestionPending {
 		t.Fatalf("the refused answer settled the question: %+v", q)
-	}
-	resp = answerAs(t, "alice@example.com", ts.URL, qid)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("the task's owner could not answer: %s", resp.Status)
-	}
-	if q := settledQuestion(t, srv, qid); q["by"] != "user:alice@example.com" {
-		t.Fatalf("settled by %v", q["by"])
-	}
-}
-
-// The runner working a task holds its grant on the task and nothing on the question the task
-// raised — the executor may not resolve its own gate — and a runner's name is a runner's,
-// since the kind is in the name, however it later turns up on the api. The task's owner answers, and the answer reaches the
-// worker.
-func TestARunnerMayNotAnswerItsOwnQuestion(t *testing.T) {
-	srv := testServer(t)
-	b := srv.UseBroker("http://verse.test:9090")
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-	worker := httptest.NewServer(b.WorkerHandler())
-	defer worker.Close()
-
-	resp := postAs(t, "alice@example.com", ts.URL+"/tasks", "application/json",
-		`{"prompt":"deploy","driver":"human","runner":"broker"}`)
-	var sp struct {
-		ID string `tony:"field=id"`
-	}
-	decodeResp(t, resp, &sp)
-	resp.Body.Close()
-
-	resp, err := worker.Client().Post(worker.URL+"/tasks/"+sp.ID+"/claim", "application/json",
-		strings.NewReader(`{"identity":"runner:bot"}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var claim struct {
-		Epoch int64 `tony:"field=epoch"`
-	}
-	decodeResp(t, resp, &claim)
-	resp.Body.Close()
-	qid := sp.ID + "~d1"
-	resp, err = worker.Client().Post(worker.URL+"/tasks/"+sp.ID+"/report", "application/json",
-		strings.NewReader(fmt.Sprintf(`{"epoch":%d,"events":[{"kind":"pending","id":%q,"gate":"deploy","text":"prod"}]}`, claim.Epoch, qid)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	waitDocket(t, srv, qid)
-
-	resp = answerAs(t, "runner:bot", ts.URL, qid)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("the runner answered its own question: %s", resp.Status)
-	}
-	if _, listed, _ := srv.Store.Get(entity.UserRef("bot")); listed {
-		t.Fatal("the runner's name was listed as a user when it turned up on the api")
 	}
 	resp = answerAs(t, "alice@example.com", ts.URL, qid)
 	resp.Body.Close()

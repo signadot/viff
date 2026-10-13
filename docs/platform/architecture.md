@@ -24,7 +24,6 @@ flowchart TB
     direction TB
     local["local<br/>runnerd, in-proc"]
     remote["remote<br/>runner.HTTP"]
-    broker["broker<br/>dial-in worker"]
   end
 
   rt["task runtime (task, runner/runnerd)<br/>Task · Supervisor · Vector · Event stream · gate registry"]
@@ -67,7 +66,7 @@ bwrap. **`runner/runnerd/verserunner`** is the runner verse ships: verse's own a
 
 **`mirror`** writes a task's state onto its entity, `verse.task.instance.<id>`. It writes the
 status, a preview of what the task said, the last tool output, the final `result`, the
-`cursor` to resume from, the `runner`, and the `dialURL` of a broker. It writes one way only.
+`cursor` to resume from, and the `runner`. It writes one way only.
 It is an index, and it does not keep the transcript.
 
 An id names the work, not the run. A rule that fires again uses the same id, and the instance
@@ -76,11 +75,10 @@ holds the latest run. Each run also writes `verse.task.run.<id>@<occurrence>`
 happened before.
 
 **`versed`** assembles the parts and serves HTTP. It owns *scopes*: each scope has engines of
-its own, over a copy-on-write view of the store. It hosts brokers under `/broker/<nonce>`. At
+its own, over a copy-on-write view of the store. At
 start it reconciles the tasks a previous run left: it resumes some and orphans the others.
 
-**`runner`** and **`broker`** are the two ways a task runs outside the verse process. They
-are described below.
+**`runner`** is how a task runs outside the verse process. It is described below.
 
 **`io`** reflects external state into the store: Git, GitHub and the others, each writing the
 place it owns. See [ios](../io.md).
@@ -122,15 +120,9 @@ Three implementations stand behind the seam.
 |---|---|
 | local | the `runnerd` daemon embedded in the verse process, reached by a Go call |
 | remote | `runner.HTTP(baseURL)`. It drives another verse or host over HTTP: `GET /tasks`, `GET /tasks/{id}/events?since=N`, and control POSTs. |
-| broker | a task whose runtime is a worker that dials in: an agent on a laptop, a pod behind a firewall, or a person |
 
-With a broker, the worker connects out to the broker (`claim`, `inbox`, `report`), and the
-broker joins that connection to verse's handle. One task then has two handles: one where it
-runs and one where it is observed.
-
-The seam is the same for all three. So `verse task get/attach/cancel/say/approve` works for a
-local, a remote and a brokered task. A person does a task with `verse task do` in the same way
-an agent does. See [task control](../task-control.md).
+The seam is the same for both. So `verse task get/attach/cancel/say/approve` works for a
+local and a remote task. See [task control](../task-control.md).
 
 ## Data and failure model
 
@@ -180,23 +172,16 @@ docket, and they can still be answered. The questions of an orphaned task are se
 leave the docket.
 
 **Compare-and-swap at every write that may conflict.** A store write carries its
-preconditions, and the store checks them with the write in one step (docd's `PatchIf`). A
-broker adds two more checks.
-
-- **Terminal once.** The first writer of a terminal status wins. A later report changes
-  nothing.
-- **A claim fence.** Each claim makes a new epoch, and the broker rejects a report from an
-  older epoch.
-
-So a worker that was displaced, or that went on running after it should have stopped, cannot
-corrupt the log.
+preconditions, and the store checks them with the write in one step (docd's `PatchIf`). The
+mirror adds one more: **terminal once.** The first writer of a terminal status wins, and a
+later report changes nothing.
 
 ## Extension points
 
 | Point | What you supply |
 |---|---|
 | Driver | how a task decides what to do next: `scripted`, `calls`, `llm`, or your own `Next` |
-| Task control | where and how a task runs: a Kubernetes Job, a lambda, a broker for people |
+| Task control | where and how a task runs: a Kubernetes Job, a lambda, another verse |
 | Store | logd and docd, or anything that implements the `Store` interface |
 | Io | a program that reflects an external system into a place it owns in the store. You deploy it and install it ([ios](../io.md)). |
 

@@ -88,13 +88,6 @@ signature:
 context:
 - tony-format/context
 define:
-  dialURL: .[string]
-signature:
-  name: verse-dial
----
-context:
-- tony-format/context
-define:
   client: .[string]
 signature:
   name: verse-docd
@@ -185,23 +178,6 @@ signature:
 ---
 context:
 - tony-format/context
-- task: github.com/signadot/verse/task
-define:
-  by: .[string]
-  choice: .[string]
-  cursor: .[int]
-  decision: .[string]
-  driver: .[string]
-  kind: .[string]
-  proceed: .[bool]
-  prompt: .[string]
-  text: .[string]
-  vector: .[nullable(task:verse-vector)]
-signature:
-  name: verse-inbox-item
----
-context:
-- tony-format/context
 define:
   apiKey: .[string]
   available: .[bool]
@@ -216,7 +192,6 @@ context:
 define:
   admin: .[string]
   api: .[string]
-  broker: .[string]
 signature:
   name: verse-listen
 ---
@@ -300,7 +275,6 @@ signature:
 context:
 - tony-format/context
 define:
-  dial: .[string]
   kind: .[string]
   resume: .[string]
 signature:

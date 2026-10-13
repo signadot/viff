@@ -7,12 +7,12 @@ tasks, answers gates) starts at [the docs index](README.md).
 ## Run a verse
 
 - [Starting a verse](reference/up.md) — `verse up`, its flags, and the config file.
-- [Platform commands](platform/commands.md) — `up`, `down`, `runner`, `io`, `resolver` and
-  `task do`, and the smoke test.
+- [Platform commands](platform/commands.md) — `up`, `down`, `runner`, `io` and `resolver`,
+  and the smoke test.
 - [Runners](runners.md) — where work runs, and what removing a runner does to the work on it.
   The surface is [reference/runners.md](reference/runners.md).
-- [Where a task runs, walked](platform/runners-walk.md) — a remote verse, a broker, a person,
-  and a runner you install, one command each.
+- [Where a task runs, walked](platform/runners-walk.md) — a remote verse, and a runner you
+  install, one command each.
 - [Kubernetes deploy](../deploy/README.md) — build the image and run verse on a cluster.
 - [Permissions on the platform](platform/perms.md) — the `system:` parts, the root and the
   config, the seed, and how installed things get their records.
@@ -21,17 +21,14 @@ tasks, answers gates) starts at [the docs index](README.md).
 
 - [Build a runner and an io](platform/build-runner-and-io.md) — the smallest runner and the
   smallest io, with every step.
-- [Tasks, from the worker side](platform/tasks-worker.md) — the task backends, the broker, and
-  working a task with `verse task do`.
-- [Seams](seams.md) — the nine places that can be a network, and which side opens each.
-- [Task control](task-control.md) — the contract a runner serves, and the protocol a worker
-  dials in with.
+- [Seams](seams.md) — the eight places that can be a network, and which side opens each.
+- [Task control](task-control.md) — the contract a runner serves.
 - [Attached resolvers](attached-resolvers.md) — a service that answers gates. The surface is
   [reference/resolvers.md](reference/resolvers.md).
 - [Ios](io.md) — connectors: reflecting git, Slack and Linear in, and acting back out. The
   surface is [reference/io.md](reference/io.md), and the ios verse ships are in
   [reference/iod.md](reference/iod.md).
-- [Examples](reference/examples/README.md) — a runner, a coding runner, a worker and an io to
+- [Examples](reference/examples/README.md) — a runner, a coding runner and an io to
   copy and change.
 - [The coding runner, walked](reference/examples/coderunner/walkthrough.md) — deploying the
   coding runner and running a task on it.

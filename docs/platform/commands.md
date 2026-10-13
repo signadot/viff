@@ -22,22 +22,9 @@ verse
                                              reaches docd by a different address than verse does
        [-o-bin path]                         the o binary to spawn daemons with (default: resolved —
                                              see up.md)
-       [-runner <url>]                       run tasks on a remote task-control base URL …
-       [-broker       ]                      … and/or SERVE an in-process dial-in broker, which a
-                                             spawn reaches as `-runner broker` (needs -broker-addr;
-                                             publishes each task's dialURL from it). It adds a name
-                                             rather than replacing the default: a spawn naming
-                                             nobody still runs here …
-       [-broker-addr host:port]              … the sibling port serving this verse's broker face
-                                             (/broker/<nonce>); all default off (local in-process
-                                             supervisor). See ../task-control.md.
-       [-broker-advertise-addr host:port]    publish THIS in each task's dialURL instead, when a
-                                             worker dials the broker by a name the process cannot
-                                             bind (a Service, a tailnet device)
+       [-runner <url>]                       run tasks on a remote task-control base URL
   down                                       stop the verse on -addr (it reaps its spawned daemons)
   task (tasks, ps) [-runner <ref>]           every task, whatever runs it
-          do complete|fail|note <id> [text] -as runner:<identity>    executor vantage (dial in):
-          do gate <id> <name> -as runner:<identity> [-to <who>,…] [-reason <t>] [-wait]       raise a gate up
                   [-options id[:need],…] [-deadline within[:default]]    …with outcomes
                                              of its own and a clock, as a charter gate has
   runner (runners) [-probe]                  where work can run

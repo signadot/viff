@@ -15,8 +15,8 @@ Two tiers, split so the storage fragility stays off the engine:
   Singleton because two engines would double-fire triggers; leader-election is the scale-out
   answer later.
 
-Plus a `Service` for the versed API, one for the broker face when `brokerFace`, and two for
-docd, because a face is the unit anything grants or reaches:
+Plus a `Service` for the versed API, and two for docd, because a face is the unit anything
+grants or reaches:
 
 | | |
 |---|---|
@@ -202,7 +202,6 @@ an unexposed Service looks exactly like an exposed one until you go looking on t
 |---|---|---|
 | `verse` | the versed API — `verse -addr http://verse:9797 …` | 9797 |
 | `verse-docd` | docd's client face: the store, read/write, including scoped writes | 7071 |
-| `verse-broker` | the broker face: where a dial-in worker claims work and reports on it (`brokerFace`) | 9090 |
 
 The device names track `namespace`, so a second verse on the same tailnet is a second name
 rather than the `-1` suffix the operator would otherwise pick. `-e tailscaleTags=tag:verse`
@@ -210,9 +209,7 @@ if the ACL wants its own tag instead of the operator's default `tag:k8s`.
 
 `tailscaleExpose` adds no Services — it annotates the ones the deploy already has. A Service
 gets one tailnet IP, so a face that an ACL should be able to grant separately has to be its
-own Service: that is why the broker's is its own. The broker's is
-the one reached by parties who are not operators — a laptop agent, a pod in a private cluster,
-a person — and granting it must not thereby grant the operator API. `docd-headless` is
+own Service. `docd-headless` is
 deliberately not exposed: the operator refuses a headless Service outright, recording `headless
 Services are not supported` as an `INVALIDSERVICE` warning event and exposing nothing — which
 is the reason the plain name `docd` belongs to a face and the governing Service carries the
@@ -230,12 +227,6 @@ There is one published address, so this is a choice about which client matters, 
 the one outside. A client running *inside* the namespace would now be handed a tailnet name; it
 should be passed the Service name directly rather than discovering it.
 
-The broker face is the same arrangement one layer along, and its answer travels on the task
-rather than on `/status`: versed is given `-broker-advertise-addr verse-broker:9090`, so each
-brokered task's `dialURL` names the tailnet device while the process goes on binding `:9090`.
-A worker only ever reaches its own task, through the nonce in that URL, which is what makes
-handing it to somebody outside the cluster a different act from handing them the API.
-
 [Tailscale Kubernetes operator]: https://tailscale.com/kb/1236/kubernetes-operator
 
 ## Knobs (`build.tony` `env`; override with `-e` or a profile)
@@ -245,7 +236,6 @@ handing it to somebody outside the cluster a different act from handing them the
 | `namespace` | `verse` | target namespace |
 | `image` | `signadot/verse:latest` | full image ref incl. tag (staging: `example/verse-staging:latest`) |
 | `imagePullSecret` | `""` | name an existing pull Secret, onto the `default` ServiceAccount |
-| `brokerFace` | `true` | serve + expose the broker face; `false` drops its Service |
 | `storageClassName` | `""` | PVC class; `""` = cluster default (staging sets `gp3`) |
 | `storageSize` | `10Gi` | docd volume size |
 | `emitStorageClass` | `false` | emit a `verse-gp3` StorageClass |

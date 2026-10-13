@@ -2,8 +2,6 @@ package main
 
 import (
 	"bufio"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -29,304 +27,13 @@ func taskSubs() []*cli.Command {
 	return []*cli.Command{
 		taskRunCmd(),
 		taskGetCmd(),
-		taskInboxCmd(),
 		taskAttachCmd(),
 		taskCancelCmd(),
 		taskSayCmd(),
 		taskVectorCmd(),
 		taskAnswerCmd(true),
 		taskAnswerCmd(false),
-		taskDoCmd(),
 	}
-}
-
-// ── inbox (operator peek at a brokered task's queued worker control) ──────
-
-type taskInboxConfig struct{ *cli.Command }
-
-func taskInboxCmd() *cli.Command {
-	cfg := &taskInboxConfig{}
-	return cli.NewCommandAt(&cfg.Command, "inbox").
-		WithSynopsis("inbox — the control queued for a task's worker: inbox <id>").WithRun(cfg.run)
-}
-
-func (cfg *taskInboxConfig) run(cc *cli.Context, args []string) error {
-	id, err := oneArg(cfg.Command, cc, args, "task inbox wants an id")
-	if err != nil {
-		return err
-	}
-	resp, err := httpGet("/tasks/"+id+"/inbox", nil)
-	if err != nil {
-		return fmt.Errorf("task inbox: %w", err)
-	}
-	return printBody(cc, resp)
-}
-
-// ── do (act on a task as its EXECUTOR — the worker leg) ───────────────────
-//
-// `task do <verb>` is the inside-the-task vantage: the one running the work reports
-// to the task's broker (claim → report), as opposed to the operator verbs that drive it
-// from outside. The broker face is discovered from the task's dialURL, so no URL is
-// typed; --as is required because every claim must be attributable.
-
-type taskDoConfig struct {
-	*cli.Command
-	As string `cli:"name=as desc='identity executing the task; the configured user when left off (a claim must be attributable)'"`
-}
-
-func taskDoCmd() *cli.Command {
-	return cli.NewCommand("do").
-		WithSynopsis("do — act on a task as its executor: do complete|fail|note|gate <id> --as <identity>").
-		WithSubs(taskDoVerb("complete"), taskDoVerb("fail"), taskDoVerb("note"), taskDoGateCmd())
-}
-
-// ── do gate (executor RAISES a gate up to versed's governance) ───────────────
-//
-// Mid-execution the worker reaches a decision it isn't authorized to take alone, so it
-// raises a gate to versed (reports EvPending). The verse decides who resolves it (ask, a
-// reviewer, a vote, or — if the dial allows — the executor); the resolution returns down the
-// worker's inbox. --wait blocks for that outcome. The executor never resolves its own gate.
-
-type taskDoGateConfig struct {
-	*cli.Command
-	As     string `cli:"name=as desc='identity executing the task; the configured user when left off (a claim must be attributable)'"`
-	Reason string `cli:"name=reason desc='what is being decided (shown to resolvers)'"`
-	// The question's shape, as a charter gate would write it: outcomes of its own with a
-	// threshold each, and a clock. Empty poses proceed or deny, one ballot each.
-	Options  string `cli:"name=options desc='the outcomes, comma-separated, each id[:need] (default: proceed,deny at one each)'"`
-	Deadline string `cli:"name=deadline desc='how long the question stands, within[:default] (e.g. 4h:deny)'"`
-	Wait     bool   `cli:"name=wait desc='block until the gate is resolved, then print the outcome'"`
-	To       string `cli:"name=to desc='who to hold the question out to, comma-separated: a person, a group address, a kind. A gate of this name on the spawn that names answerers stands over this'"`
-}
-
-// parseOptions reads `id[:need],id[:need]` into options. A threshold left out is one.
-func parseOptions(spec string) ([]task.Option, error) {
-	if strings.TrimSpace(spec) == "" {
-		return nil, nil
-	}
-	var out []task.Option
-	for _, part := range strings.Split(spec, ",") {
-		id, need, hasNeed := strings.Cut(strings.TrimSpace(part), ":")
-		if id == "" {
-			return nil, fmt.Errorf("%w: --options: an option has no id in %q", cli.ErrUsage, spec)
-		}
-		o := task.Option{ID: id, Need: 1}
-		if hasNeed {
-			n, err := strconv.Atoi(need)
-			if err != nil || n < 1 {
-				return nil, fmt.Errorf("%w: --options: %q wants a threshold of at least one, got %q", cli.ErrUsage, id, need)
-			}
-			o.Need = n
-		}
-		out = append(out, o)
-	}
-	return out, nil
-}
-
-// parseDeadline reads `within[:default]`.
-func parseDeadline(spec string) (*task.Deadline, error) {
-	if strings.TrimSpace(spec) == "" {
-		return nil, nil
-	}
-	within, dflt, _ := strings.Cut(strings.TrimSpace(spec), ":")
-	d := &task.Deadline{Within: within, Default: dflt}
-	if _, err := d.After(); err != nil {
-		return nil, fmt.Errorf("%w: --deadline: %v", cli.ErrUsage, err)
-	}
-	return d, nil
-}
-
-func taskDoGateCmd() *cli.Command {
-	cfg := &taskDoGateConfig{}
-	opts, err := cli.StructOpts(cfg)
-	if err != nil {
-		panic(err)
-	}
-	return cli.NewCommandAt(&cfg.Command, "gate").
-		WithSynopsis("gate — raise a gate up to versed for resolution: gate <id> <name> --as <identity> [--to <who>,…] [--reason <t>] [--wait]").
-		WithOpts(opts...).WithRun(cfg.run)
-}
-
-func (cfg *taskDoGateConfig) run(cc *cli.Context, args []string) error {
-	args, err := cfg.Parse(cc, args)
-	if err != nil {
-		return err
-	}
-	if len(args) < 2 {
-		return fmt.Errorf("%w: task do gate wants a task id and a gate name", cli.ErrUsage)
-	}
-	as, err := requireAs(cfg.As, "identity", "a claim must be attributable")
-	if err != nil {
-		return err
-	}
-	cfg.As = as
-	id, name := args[0], args[1]
-	base, err := brokerOf(id)
-	if err != nil {
-		return fmt.Errorf("task do gate: %w", err)
-	}
-	epoch, cCursor, err := brokerClaim(base, id, cfg.As)
-	if err != nil {
-		return fmt.Errorf("task do gate: claim %s: %w", id, err)
-	}
-	options, err := parseOptions(cfg.Options)
-	if err != nil {
-		return err
-	}
-	clock, err := parseDeadline(cfg.Deadline)
-	if err != nil {
-		return err
-	}
-	decision := name + "-" + shortID()
-	ev := map[string]any{"kind": "pending", "id": decision, "gate": name}
-	if cfg.Reason != "" {
-		ev["text"] = cfg.Reason
-	}
-	if len(options) > 0 {
-		ev["options"] = options
-	}
-	if clock != nil {
-		ev["deadline"] = clock
-	}
-	if cfg.To != "" {
-		var to []string
-		for _, who := range strings.Split(cfg.To, ",") {
-			if who = strings.TrimSpace(who); who != "" {
-				to = append(to, who)
-			}
-		}
-		ev["answerers"] = to
-	}
-	resp, err := httpPostURL(base+"/tasks/"+id+"/report",
-		map[string]any{"epoch": epoch, "events": []any{ev}})
-	if err != nil {
-		return fmt.Errorf("task do gate: report: %w", err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("task do gate: report: %s", resp.Status)
-	}
-	fmt.Fprintln(cc.Out, "gate raised:", decision)
-	if !cfg.Wait {
-		return nil
-	}
-
-	// UNTIL IT IS ANSWERED OR THE COMMAND IS INTERRUPTED, and no sooner: the question is put to
-	// a person, and a worker whose wait ended by itself goes on as if nobody answered while the
-	// question still stands on the docket.
-	fmt.Fprintln(cc.Out, "awaiting resolution…")
-	since := cCursor
-	for {
-		items, max, err := brokerInbox(base, id, since, epoch)
-		if err != nil {
-			return fmt.Errorf("task do gate: inbox: %w", err)
-		}
-		since = max
-		for _, it := range items {
-			if it.Kind == "resolve" && it.Decision == decision {
-				switch it.Choice {
-				case task.Proceed, "":
-					if it.Proceed {
-						fmt.Fprintln(cc.Out, decision, "approved")
-					} else {
-						fmt.Fprintln(cc.Out, decision, "denied")
-					}
-				case task.Deny:
-					fmt.Fprintln(cc.Out, decision, "denied")
-				default:
-					fmt.Fprintln(cc.Out, decision, "settled on", it.Choice)
-				}
-				// TAKEN, said so. An answer is delivered when a poll asks for what comes AFTER
-				// it — that is the broker's acknowledgement, and the poll that first showed the
-				// item is not it. Without this the record read `delivered: false` for an answer
-				// the worker had just printed. Best effort: the outcome is known either way.
-				_, _, _ = brokerInbox(base, id, max, epoch)
-				return nil
-			}
-		}
-		select {
-		case <-cc.Go.Done():
-			return fmt.Errorf("task do gate: interrupted while %s was still waiting for an answer", decision)
-		case <-time.After(200 * time.Millisecond):
-		}
-	}
-}
-
-// shortID is a short random suffix that keeps generated decision ids unique. Hex, so the id
-// stays free of anything the surfaces it crosses read as punctuation — a URL's "#" or "?",
-// a shell's globs, and task.GateSep, which would make a resolve split the id in the
-// wrong place.
-func shortID() string {
-	var b [4]byte
-	_, _ = rand.Read(b[:])
-	return hex.EncodeToString(b[:])
-}
-
-func taskDoVerb(verb string) *cli.Command {
-	cfg := &taskDoConfig{}
-	opts, err := cli.StructOpts(cfg)
-	if err != nil {
-		panic(err)
-	}
-	syn := map[string]string{
-		"complete": "complete a task you're executing: complete <id> [result] --as <identity>",
-		"fail":     "fail a task you're executing: fail <id> [reason] --as <identity>",
-		"note":     "note — narrate onto a task you're executing: note <id> <text…> --as <identity>",
-	}[verb]
-	return cli.NewCommandAt(&cfg.Command, verb).WithSynopsis(syn).WithOpts(opts...).
-		WithRun(func(cc *cli.Context, args []string) error {
-			args, err := cfg.Parse(cc, args)
-			if err != nil {
-				return err
-			}
-			if len(args) < 1 {
-				return fmt.Errorf("%w: task do %s wants a task id", cli.ErrUsage, verb)
-			}
-			id, rest := args[0], strings.Join(args[1:], " ")
-			switch verb {
-			case "complete":
-				return execReport(cc, cfg.As, id, []map[string]any{{"kind": "status", "text": "done"}}, rest)
-			case "fail":
-				return execReport(cc, cfg.As, id, []map[string]any{{"kind": "status", "text": "failed"}}, rest)
-			default: // note
-				if rest == "" {
-					return fmt.Errorf("%w: task do note wants text", cli.ErrUsage)
-				}
-				return execReport(cc, cfg.As, id, []map[string]any{{"kind": "say", "text": rest}}, "")
-			}
-		})
-}
-
-// execReport is the executor's report action: resolve the task's broker (its dialURL),
-// claim it as `as`, and report events onto the merged log verse observes.
-func execReport(cc *cli.Context, as, id string, events []map[string]any, result string) error {
-	as, err := requireAs(as, "identity", "a claim must be attributable")
-	if err != nil {
-		return err
-	}
-	base, err := brokerOf(id)
-	if err != nil {
-		return fmt.Errorf("task do: %w", err)
-	}
-	epoch, _, err := brokerClaim(base, id, as)
-	if err != nil {
-		return fmt.Errorf("task do: claim %s: %w", id, err)
-	}
-	body := map[string]any{"epoch": epoch, "events": events}
-	if result != "" {
-		body["result"] = result
-	}
-	resp, err := httpPostURL(base+"/tasks/"+id+"/report", body)
-	if err != nil {
-		return fmt.Errorf("task do: report: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		msg, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("task do: report: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
-	}
-	fmt.Fprintln(cc.Out, "task do", id, "ok")
-	return nil
 }
 
 // ── resolve (answer a task's own tool gate) ──────────────────────────────
@@ -374,10 +81,10 @@ func (cfg *taskAnswerConfig) run(cc *cli.Context, args []string, verb string, ap
 	}
 	cfg.As = as
 	pid, did := args[0], args[1]
-	// Same body as `question approve`, --say included: this route relays the answer to a remote
-	// worker's inbox, which is a difference in WHERE it goes, not in what can be said. The
-	// flag was missing here alone, so "yes, but do it this way" was unsayable to the one
-	// executor that is a person reading their inbox.
+	// Same body as `question approve`, --say included: this route applies the answer where the
+	// task is held, the local registry or a remote runtime over the wire, which is a difference
+	// in WHERE it goes, not in what can be said. The flag was missing here alone, so "yes, but
+	// do it this way" was unsayable on a task's own gate.
 	body := api.Resolve{ID: did, Choice: choiceOf(approve), By: cfg.As, Force: cfg.Force}
 	if cfg.Say != "" {
 		body.Say = []string{cfg.Say}
@@ -573,30 +280,6 @@ func taskSnapshot(id string, v any) error {
 		return client.StatusError(r, "reading task "+id)
 	}
 	return client.Decode(r, v)
-}
-
-// brokerOf is where a worker dials in for a task, asked of the route that answers that and
-// nothing else (GET /tasks/<id>/dial).
-//
-// NOT THE TASK'S SNAPSHOT, which a worker that has claimed nothing may not read: it is granted
-// the task at its claim, and the claim is made at the address this answers.
-func brokerOf(id string) (string, error) {
-	r, err := httpGet("/tasks/"+id+"/dial", nil)
-	if err != nil {
-		return "", err
-	}
-	defer r.Body.Close()
-	if r.StatusCode >= http.StatusBadRequest {
-		return "", client.StatusError(r, "finding where to dial in")
-	}
-	var dial api.Dial
-	if err := client.Decode(r, &dial); err != nil {
-		return "", fmt.Errorf("finding where to dial in: %w", err)
-	}
-	if dial.DialURL == "" {
-		return "", fmt.Errorf("task %s has no broker to dial in to", id)
-	}
-	return strings.TrimRight(dial.DialURL, "/"), nil
 }
 
 // waitPoll is how often a wait asks again.
@@ -1069,7 +752,7 @@ func recordedFailure(id string) string {
 }
 
 // isTerminalStatus reports whether a status EvStatus text is an end state — covering the
-// runtime (completed | cancelled | "driver error") and the broker (failed) vocabularies.
+// runtime (completed | cancelled | "driver error") vocabularies.
 func isTerminalStatus(text string) bool {
 	switch text {
 	case "done", "cancelled", "failed", "orphaned":
@@ -1175,7 +858,7 @@ func taskVectorCmd() *cli.Command {
 
 // run re-vectors a task: the common form sets the default autonomy (auto|ask|park); --file
 // supplies a full gate vector. The vector rides a PUT to /tasks/{id}/vector, which is
-// runner-agnostic — the runtime slides a local task, the broker relays it to a remote one.
+// runner-agnostic — the runtime slides a local task, the runner relays it to a remote one.
 func (cfg *taskVectorConfig) run(cc *cli.Context, args []string) error {
 	args, err := cfg.Parse(cc, args)
 	if err != nil {

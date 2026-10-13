@@ -30,8 +30,6 @@ build:
     # (the signadot-registry ClusterExternalSecret fans it into every namespace); see
     # deploy/README.md. "" attaches none.
     imagePullSecret: ""
-    # Serve + expose the broker face (needed by remote policies / k8s Jobs workers).
-    brokerFace: true
     storageSize: "10Gi"
 
     # docd storage. The StatefulSet always uses a volumeClaimTemplate; only what BACKS the
@@ -809,40 +807,15 @@ build:
         annotations:
           tailscale.com/expose: "true"
           tailscale.com/hostname: "$[namespace]-docd"
-  # The broker face, where a dial-in worker claims work and reports on it — a laptop agent, a
-  # pod in a private cluster, a person. Its own device for the reason docd's faces are two:
-  # this is the one face reached by parties that are not operators, and an ACL that grants it
-  # should not thereby grant the operator API. A worker only ever reaches its own task through
-  # a nonce, which is why handing it out is safe and why it goes somewhere separate.
-  - if: '.[tailscaleExpose]'
-    match:
-      kind: Service
-      metadata:
-        name: verse-broker
-    patch:
-      metadata:
-        annotations:
-          tailscale.com/expose: "true"
-          tailscale.com/hostname: "$[namespace]-broker"
-
   # …and tell clients so. A client reads an address off verse and connects to it from wherever
   # IT is — which, once the faces are on a tailnet, is somewhere `docd:7071` does not resolve.
   # versed keeps dialling the Service names; only what it PUBLISHES changes, to the tailnet
   # names those same Services now answer to.
   #
-  # Two faces, published in two places for the same reason. docd's goes on /status, where a
-  # store client beside the cluster looks for it. The broker's goes in each task's dialURL,
-  # where a worker looks for it — and it is the one a party outside the cluster reads, so it is
-  # the one that is useless when it is wrong: a wildcard bind advertises `localhost:9090`, an
-  # address every worker has and none of them wants.
+  # docd's goes on /status, where a store client beside the cluster looks for it.
   #
-  # The broker's is also the only one whose reader is not an operator, which is why the ACL
-  # that grants it should not be the ACL that grants the API. A worker reaches its own task and
-  # nothing else, through the nonce that URL carries.
-  #
-  # No knob: these are not a choice, they are the names the devices were given just above,
-  # spelled from the same namespace. A knob would only be a way to disagree with the
-  # annotations.
+  # No knob: this is not a choice, it is the name the device was given just above, spelled
+  # from the same namespace. A knob would only be a way to disagree with the annotation.
   - if: '.[tailscaleExpose]'
     match:
       kind: Deployment
@@ -862,21 +835,12 @@ build:
               - "$[namespace]-docd:7071"
               - --addr
               - ":9797"
-              - --broker-addr
-              - ":9090"
-              - --broker-advertise-addr
-              - "$[namespace]-broker:9090"
-              # Serve the dial-in broker, so `--runner broker` puts a task in front of a person
-              # — a laptop agent, or somebody answering through `verse task do`. It is a NAME a
-              # spawn may use and not where unnamed work goes: this verse goes on running its
-              # own spawns, and `verse.runners.coderunner` goes on running the charters'.
-              - --broker
 
   - if: '.[ tailscaleExpose && tailscaleTags != "" ]'
     match:
       kind: Service
       metadata:
-        name: !or [verse, docd, verse-broker]
+        name: !or [verse, docd]
     patch:
       metadata:
         annotations:
@@ -1372,14 +1336,3 @@ build:
       spec:
         ingressClassName: $[ingressClassName]
 
-  # Drop the broker Service unless the broker face is served.
-  #
-  # `!delete null` like the two above, and this one is where the trap was found: a bare
-  # `!delete` parses while it is the LAST pair of the document, so this patch was fine until
-  # a patch was added below it — and then the error pointed at the new patch.
-  - if: '.[!brokerFace]'
-    match:
-      kind: Service
-      metadata:
-        name: verse-broker
-    patch: !delete null

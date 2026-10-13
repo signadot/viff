@@ -450,7 +450,7 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 	}
 	// Absent rather than empty, for the reason the gate listing already compacts: a missing
 	// key is visible, an empty one is camouflage. A bare `verse task run` is about nothing,
-	// and a brokered gate legitimately carries neither origin nor mode.
+	// and a relayed gate legitimately carries neither origin nor mode.
 	for k, v := range map[string]string{
 		// What is being decided, in words, when the gate wrote any (trigger.Gate.Pose) — the
 		// one field on the record written for a person to read rather than for a reader to
@@ -605,7 +605,7 @@ func optionList(opts []task.Option) []any {
 }
 
 // OptionsOf reads a record's options, the default two for a record that names none — which
-// is every record posted before options existed, and a brokered record whose only writer was
+// is every record posted before options existed, and a relayed record whose only writer was
 // a frame.
 func OptionsOf(p entity.Payload) []task.Option {
 	f := ir.Uncomment(entity.Get(p, "options"))
@@ -749,7 +749,7 @@ func anyStrings(ss []string) []any {
 	return out
 }
 
-// PostFrameQuestion publishes a question reported as a FRAME — the brokered path, where the
+// PostFrameQuestion publishes a question reported as a FRAME — the relayed path, where the
 // worker ran the gate on its own machine and sent back what it chose to report.
 //
 // It writes less than PostQuestion because the frame carries less: derived effects stayed with
@@ -845,7 +845,7 @@ func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject string
 	// Whom it waits on, read back from the record just written, as PostQuestion does — and with
 	// `status`, since a settled question waits on nobody and a late frame must not say otherwise.
 	posed[WaitingOnField] = waitingOn(store, ref)
-	// Still pending, or not there at all — a brokered question whose only writer is this frame.
+	// Still pending, or not there at all — a relayed question whose only writer is this frame.
 	// `!not` over the two settled values rather than an equality on `pending`, so a status this
 	// does not know about is not silently treated as re-posable.
 	_, _, _ = store.Write(entity.Write{
@@ -859,7 +859,7 @@ func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject string
 // notStatus is the precondition "this record does not say status: s".
 //
 // Asked of the WHOLE payload rather than of the `status` field, which is what makes it true for
-// a record that has no status yet — the brokered case, where this frame is the first writer.
+// a record that has no status yet — the relayed case, where this frame is the first writer.
 // A field-level `!not` would be a non-match against an absent field and would refuse the very
 // write that creates it.
 func notStatus(s string) entity.Require {
@@ -877,36 +877,7 @@ func AnswerQuestion(store entity.Store, id string, res task.Resolution) {
 	rec := answerRecord(res)
 	// REMOVED, not absent: a write MERGES, so an answer that was recorded as in-flight would
 	// stay in-flight forever unless this says otherwise. Delivery is the news here.
-	rec["delivered"] = entity.Removed()
 	writeAt(store, QuestionRef(id), rec)
-}
-
-// QueuedAnswer records an answer that has been ACCEPTED but not yet delivered — taken by a
-// broker for a worker that must dial in and pull it.
-//
-// The gate is closed either way: nobody else may answer, because two answers to one question
-// is a race with one winner however slowly the answer travels. What is not yet true is that
-// the party who must act on it knows. Recording that as done is what let an answer evaporate
-// with a worker that never came back, while every surface said the question was settled.
-//
-// `delivered: false` is present only while that is the case; it is cleared when the worker's
-// acknowledgement arrives. Absent means delivered, which is what it has always meant.
-//
-// UNLESS THE ACKNOWLEDGEMENT IS ALREADY IN. The answer is delivered before it is recorded
-// (Server.settle), so a quick worker's decision frame can be projected first, and it settles the
-// question as the worker's for want of anything else to go on. Written over that, `delivered:
-// false` would never clear — the acknowledgement it waits for has been and gone. The write is
-// therefore conditional on the question not being answered yet, and where it is, the answer is
-// recorded as what it now is: delivered, and the answerer's.
-func QueuedAnswer(store entity.Store, id string, res task.Resolution) {
-	rec := answerRecord(res)
-	rec["delivered"] = false
-	committed, _, err := store.Write(entity.Write{
-		At: QuestionRef(id).At(), Value: rec.Payload(), When: []entity.Require{notStatus(QuestionAnswered)},
-	})
-	if err == nil && !committed {
-		AnswerQuestion(store, id, res)
-	}
 }
 
 func answerRecord(res task.Resolution) entity.Obj {
@@ -1199,7 +1170,7 @@ func clearPriorAnswer(store entity.Store, ref entity.Ref, rec entity.Obj) {
 	default:
 		return
 	}
-	for _, k := range []string{"verdict", "by", "via", "why", "say", "answeredAt", "delivered"} {
+	for _, k := range []string{"verdict", "by", "via", "why", "say", "answeredAt"} {
 		rec[k] = entity.Removed()
 	}
 	// The ballots clear only when a ROUND ended: a question that was answered and is posed

@@ -80,9 +80,9 @@ type hosted struct {
 	reg    *task.Registry
 	prompt string
 	// driver is retained, not just passed to build, because it is the only durable record
-	// of WHO was picked when a spawn's doer came from a `provider` selection. The broker's
-	// snapshot has always reported it; a locally-run task did not, so an auto-selected
-	// doer was observable nowhere but a trace line.
+	// of WHO was picked when a spawn's doer came from a `provider` selection. A remote runner's
+	// snapshot reports it; a locally-run task did not, so an auto-selected doer was
+	// observable nowhere but a trace line.
 	driver string
 	// occurrence is which run this is (see task.Launch.Occurrence), retained so the snapshot
 	// can say so: the process, and not only the entity, knows which run it is.
@@ -352,7 +352,7 @@ func (d *InProcessHandler) list(w http.ResponseWriter, r *http.Request) {
 }
 
 // Snapshots returns every hosted task in the shape the task API returns — for versed
-// to union the local runtime with a runner's own tasks (e.g. a broker's) in one list.
+// to union the local runtime with a runner's own tasks in one list.
 func (d *InProcessHandler) Snapshots() []task.Instance {
 	d.mu.Lock()
 	defer d.mu.Unlock()

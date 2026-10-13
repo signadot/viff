@@ -1,7 +1,7 @@
 # Tasks
 
 A [task](../glossary.md#task) is a unit of work that verse governs. An agent, a shell
-command, a [worker](../glossary.md#worker) behind a firewall or a person does the work.
+command or a remote [worker](../glossary.md#worker) does the work.
 [Tutorial §3](../tutorial.md#3-tasks) runs one task. This page is what a user needs to
 run a task, watch it, steer it and answer its gates.
 
@@ -31,7 +31,7 @@ verse task cancel <id>
 | `vector` | replaces the [vector](../glossary.md#vector) that governs how much the task decides alone. Verse applies it at the next [boundary](../glossary.md#boundary), with no restart. |
 
 `-as` names who made the change. Both commands work wherever the task runs. The local runtime
-applies them directly. A brokered or remote worker gets them through its inbox.
+applies them directly. A remote worker gets them through its runner.
 
 The `spawn` of a [rule](../glossary.md#rule) runs a task in the same way, from the same
 `launch.Spec`. What a charter may say about a spawn is in
@@ -531,16 +531,6 @@ question stands for its keep, like any ask, and is then removed ([Asking](../ask
 An answer through a resolver carries `via` beside `by`: `by` is the party it answered for, and
 `via` the resolver ([Resolvers](../attached-resolvers.md#answering)).
 
-`delivered: false` appears when verse has accepted an answer, and the worker that the answer
-is for has not yet taken it. This happens with a brokered task, where the answer waits on the
-inbox until a worker dials in. The gate closes to other answers as soon as verse accepts one.
-What is still in doubt is whether the party that must act on the answer knows it. The field
-clears when the worker acknowledges the answer.
-
-```sh
-verse data verse ask '*' -if '{delivered: false}'   # answers still in flight
-```
-
 Every answer names its answerer: `verse question approve <id> --as you@example.com`. Two people
 who answer at once is a normal case.
 
@@ -614,14 +604,7 @@ by accident. Drop the flag to address baseline.
 
 A task runs in the verse process by default. A spawn can name another place with `runner:`,
 and `verse task` shows where each task runs. Every command on this page works wherever the task
-runs. How the backends, the broker and a worker work is in
-[tasks-worker.md](../platform/tasks-worker.md), in the repository.
-
-### Executing one by hand
-
-A task on the broker waits for a worker, and a person can be that worker. How a worker claims
-the task, raises gates and completes it with `verse task do` is in
-[tasks-worker.md](../platform/tasks-worker.md#executing-one-by-hand), in the repository.
+runs. How a runner works is in [runners.md](../runners.md).
 
 ## Why it is this way
 

@@ -82,8 +82,6 @@ A spawn names its runner in one of two places:
 - `-runner` or `runner` on the ad-hoc path.
 
 An empty runner means the default runner of this verse, which `verse up -runner` sets.
-`verse up -broker` serves a broker beside the default runner. A spawn reaches that broker by
-the name `broker`.
 
 Verse **refuses a spawn that names a runner that is not installed**, on both paths:
 
@@ -123,7 +121,6 @@ A control call that fails says which failure it is (`task/runner.go`):
 | `ErrAlreadyAnswered` | somebody else answered first |
 | `ErrTaskEnded` | the gate was real, the task is over, and nobody answered the gate |
 | `ErrEnded` | the task is over, so words said to it would be heard by no one (`410` on `/say`) |
-| `ErrFenced` | a stale claim: a newer claim displaced the caller's generation |
 | `ErrUnsupported` | this runner has no such route at all |
 
 A caller that cannot tell these failures apart does one of two wrong things. It retries a call
@@ -134,18 +131,6 @@ that the far side already applied, or it gives up on a call that never arrived.
 A reader of the stream resumes with `since=<cursor>`, not from the start. The resume replays
 the questions that are still open. So a reader that missed a gate does not have to learn about
 it from the store.
-
-Two mechanisms keep a [worker](../glossary.md#worker) that dials in honest, with no clock on
-the worker's side:
-
-- **The inbox poll is the acknowledgement.** A worker can ask for what came after `N` only
-  when it has taken what came before. So the broker knows how far the worker has read without
-  being told.
-- **A claim carries a lease** (`broker.ClaimLease`, two minutes). Any poll or report renews
-  it. So a worker whose laptop closed stops holding a task and its gate forever.
-
-The lease is one clock that compares two of its own readings. It is never a timestamp that
-another machine wrote.
 
 ## Why it is this way
 

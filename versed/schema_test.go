@@ -376,7 +376,6 @@ func TestTopLevelIsABarePathSegment(t *testing.T) {
 		{"/flow/tree", ""},
 		{"/tasks", "tasks"},
 		{"/tasks/{id}", ""},
-		{"/tasks/{id}/inbox", ""},
 		{"/schema/{name}", ""},
 		{"/", ""},
 		{"", ""},

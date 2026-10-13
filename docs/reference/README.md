@@ -241,7 +241,7 @@ verse
           run [-answer-contract <file>]      the shape its final message must have
           run [-environment <name>] [-virtual-key <address>]    the workspace the runner builds,
                                              and the model credential the run spends
-          get <id> · attach <id> · inbox <id>            operator vantage (any backend):
+          get <id> · attach <id>                        operator vantage (any backend):
                                              attach prompts for each gate and for a question
                                              asked in words (`ask`), with an identity
           cancel <id> · say <id> <text…>
@@ -300,8 +300,7 @@ works. A `<who>` is a [principal](../glossary.md#principal) in the
 - `runner:<identity>`.
 
 The commands that start and stop a verse, and the ones that install runners, ios and
-resolvers, are for somebody who runs verse. So are the `verse task do` commands that a worker
-types. They are in [commands.md](../platform/commands.md), in the repository.
+resolvers, are for somebody who runs verse. They are in [commands.md](../platform/commands.md), in the repository.
 
 ## Selecting by what an entity says
 

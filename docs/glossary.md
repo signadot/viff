@@ -399,8 +399,8 @@ See [Tasks](reference/tasks.md#a-gates-question).
 
 ### gate (raised by a worker)
 
-A worker raises a gate when it reaches a decision that it may not make:
-`verse task do gate <id> <name>`. A worker never answers its own gate.
+A worker raises a gate when it reaches a decision that it may not make, by reporting a
+pending frame. A worker never answers its own gate.
 
 The question of such a gate has the id `<name>-<hex>`, and no `mode`.
 
@@ -543,7 +543,6 @@ See [Tasks](reference/tasks.md#one-id-many-runs).
 
 | Status | Meaning |
 |---|---|
-| `unclaimed` | the task waits on a broker for a worker |
 | `running` | the work is in progress |
 | `done` | the task finished |
 | `failed` | the task ran and did not succeed |
@@ -584,7 +583,7 @@ See [Tasks](reference/tasks.md#the-drivers).
 ### executor
 
 The executor of a task performs each action that the driver proposes, after the gates pass.
-The help of `verse task do` also says "executor" for a [worker](#worker).
+A [worker](#worker) on a runner is an executor too.
 
 See [External tasks](external-tasks.md#a-task-is-a-contract-not-a-runtime).
 
@@ -643,8 +642,8 @@ See [Task control](task-control.md#the-event-envelope-and-the-cursor).
 ### seam
 
 A seam is a place where what does the work can change and the commands stay the same. Where a
-task runs is a seam: in the verse process, on a runner, or with a person who runs
-`verse task do`, and every `verse task` command works on all of them.
+task runs is a seam: in the verse process or on a runner, and every `verse task` command works
+on both.
 
 See [where a task runs is a seam](reference/tasks.md#where-a-task-runs-is-a-seam). How the
 seams are built is in [Seams](seams.md), in the repository.
@@ -657,43 +656,28 @@ A runner is a place where verse runs a task. Verse connects to it.
 |---|---|
 | `local` | the verse process itself |
 | an installed runner | another host, at a URL. It is the entity `verse.runners.<name>`. |
-| `broker` | a [broker](#broker) |
 
 See [Runners](runners.md).
 
-### broker
-
-A broker is a runner whose tasks wait for a worker to connect and do them. Verse and the worker
-both connect to the broker, so the worker may be behind a firewall.
-
-See [Task control](task-control.md#brokering-firewalled-workers-and-humans-without-inverting-verse).
-
 ### worker
 
-A worker is a program or a person that connects to a broker, claims a task, does the work and
-reports it. Verse reaches a runner. A worker reaches verse. In permissions, a worker acts as
-`runner:<identity>`.
+A worker is the program on a [runner](#runner) that does a task and reports it. In
+permissions, a worker acts as `runner:<identity>`, the identity on the runner's entity.
 
-Also written: executor (in the help of `verse task do`), and claimant, of a task it has claimed; the
+Also written: executor, and claimant, of a task it works; the
 [claimant of a binding](#claimant-of-a-binding) is another thing.
 
-See [Task control](task-control.md#the-worker-facing-dial-in-protocol).
+See [Task control](task-control.md).
 
 ### claim (of a worker)
 
-A claim is how a worker takes a task on a broker. Verse then grants that worker `read-write`
-and `control` on the task. With the CLI, the first `verse task do` claims.
+A claim is how a worker becomes the one working a task: the runner known at the spawn, or the
+name a running status carries. Verse then grants that worker `read-write` and `control` on the
+task, and writes every report as it.
 
 A claim of this kind is about one task.
 
-See [Task control](task-control.md#claim-identity-takeover).
-
-### inbox
-
-The inbox of a task on a broker is the queue of control for its worker, such as a `say`, a
-cancel or the answer to a gate. `verse task inbox <id>` prints it.
-
-See [Task control](task-control.md#the-worker-facing-dial-in-protocol).
+See [Runners](runners.md).
 
 ### doer
 
@@ -985,10 +969,6 @@ See [converge](platform/glossary.md#converge), in the repository.
 
 See [cover (of a reflection)](platform/glossary.md#cover-of-a-reflection), in the repository.
 
-### dial URL
-
-See [dial URL](platform/glossary.md#dial-url), in the repository.
-
 ### epoch
 
 See [epoch](platform/glossary.md#epoch), in the repository.
@@ -1049,8 +1029,6 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 + [binding](#binding)
 
 + [boundary](#boundary)
-
-+ [broker](#broker)
 
 + [chain (of an action)](#chain-of-an-action)
 
@@ -1119,8 +1097,6 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 + [hold](#hold)
 
 + [hook](#hook)
-
-+ [inbox](#inbox)
 
 + [instance record](#instance-record)
 

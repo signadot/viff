@@ -130,41 +130,21 @@ By default, the local supervisor in the verse process runs tasks.
 
 ```sh
 verse up -runner http://other-verse:9797      # send unnamed work to a remote verse
-verse up -broker -broker-addr :9090           # …and/or serve a dial-in broker
 ```
 
-The two flags answer different questions, and you can use both.
-
-- `-runner` sets the **default**: where a spawn that names no [runner](../glossary.md#runner)
-  runs.
-- `-broker` serves a [broker](../glossary.md#broker). A spawn reaches it by name.
+`-runner` sets the **default**: where a spawn that names no [runner](../glossary.md#runner)
+runs.
 
 | a spawn names | where it runs |
 |---|---|
 | nothing | this verse's own runtime, or `-runner` if one is set |
-| `broker` | the dial-in broker: it lands `unclaimed` and waits for a worker |
 | an installed runner | wherever that runner's url says ([runners.md](runners.md)) |
 
-A broker adds a name, and it takes no name away. A charter that never names a runner still
-runs its tasks, and they do not wait for a [worker](../glossary.md#worker). Verse refuses a
-spawn that names `broker` when no broker is served. It refuses it by name, as it refuses any
-runner that is not installed.
+Verse refuses a spawn that names a runner that is not installed, by name, rather than run it
+somewhere else.
 
-All three places use the same seam, and every `verse task` verb works on all three. See also
+Both places use the same seam, and every `verse task` verb works on both. See also
 [task control](../task-control.md) and [tasks.md](tasks.md).
-
-A task on a broker carries a `dialURL`. The worker connects to that URL. Verse builds it from
-`-broker-addr`. A worker may reach the broker by a name that the process cannot bind, such as
-a pod behind a Service, or a device on a tailnet. Then `-broker-advertise-addr` is what verse
-publishes instead:
-
-```sh
-verse up -broker -broker-addr :9090 -broker-advertise-addr verse-broker:9090
-```
-
-Without the flag, a bind to all interfaces advertises `localhost:9090`. Every worker resolves
-that name, and no worker reaches the broker by it. `-docd-advertise-addr` above makes the
-same split. Where a face is bound and where clients reach it are two separate facts.
 
 ## Configuration
 
@@ -206,7 +186,7 @@ that the request makes. It checks each write and each read against what the
 
 `user` is a [principal](../glossary.md#principal) in the
 [grammar](../perms.md#principals-and-grantees). A bare email goes on the wire as
-`user:<email>`. A worker sets `runner:<identity>`. Verse refuses a bare word.
+`user:<email>`. A runner's identity is `runner:<identity>`. Verse refuses a bare word.
 
 Verse takes `user` as given. `-as` overrides it on the commands that take `-as`. When the
 config names a user, those commands do not require `-as`. Where the verse names an identity

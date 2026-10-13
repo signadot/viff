@@ -47,7 +47,7 @@ func TestTheConfiguredUserOwnsWhatTheyPut(t *testing.T) {
 // refused with the grammar rather than guessed to be one.
 func TestABareWordIsNotAPrincipal(t *testing.T) {
 	serve(t)
-	_, err := runCLI(t, "task", "do", "note", "t1", "hello", "--as", "coderunner")
+	_, err := runCLI(t, "task", "approve", "t1", "d1", "--as", "coderunner")
 	if err == nil || !strings.Contains(err.Error(), entity.Grammar()) {
 		t.Fatalf("--as coderunner: %v", err)
 	}

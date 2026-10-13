@@ -22,7 +22,7 @@ import (
 //
 // The id cannot carry brackets. Under zsh `review.seq[2]@demo:pr:1` dies with "no matches
 // found" BEFORE verse runs, and ids are pasted back onto command lines constantly — the same
-// principle shortID states (cmd/verse/task.go). The flattening is lossless because
+// principle a task id follows. The flattening is lossless because
 // Action's field set is closed: a segment following `seq` is an element, everything else is a
 // field name, so nothing has to be guessed.
 

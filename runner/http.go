@@ -1,6 +1,6 @@
 // Package runner provides the HTTP client of the verse-facing task-control
 // contract: an httpRunner drives a remote runnerd-shaped service at a base URL, so the
-// engine can run a task on another host, k8s, or a broker exactly as it runs one in
+// engine can run a task on another host or k8s exactly as it runs one in
 // task. It is the mirror of versed's localRunner — same task.Runner seam,
 // HTTP transport. See docs/task-control.md.
 package runner
@@ -102,7 +102,7 @@ func (p *httpRunner) Attach(id string) task.Handle {
 func (p *httpRunner) Ref() string { return p.base }
 
 // ListTasks / TaskSnapshot let versed union a remote runner's tasks into the
-// unified `task list`/`get` (implementing the same task.Lister a broker does). Each call
+// unified `task list`/`get` (implementing task.Lister). Each call
 // is bounded by a short timeout, so an unreachable remote fails fast rather than hanging the
 // list. The verse-facing contract already serves GET /tasks and GET /tasks/{id}, so
 // this is a thin client.
@@ -200,8 +200,8 @@ func (h *remoteHandle) Subscribe() (<-chan task.Frame, func()) {
 	return h.SubscribeSince(0)
 }
 
-// SubscribeSince resumes from a cursor. It is the same contract the local bus and the broker
-// honour, carried over HTTP by handing the cursor to the remote's own `?since=` rather than
+// SubscribeSince resumes from a cursor. It is the same contract the local bus
+// honours, carried over HTTP by handing the cursor to the remote's own `?since=` rather than
 // asking for everything and discarding — the remote is the one that knows what it still has,
 // and it is the one that can say EvGap when the cursor is below its window.
 func (h *remoteHandle) SubscribeSince(since int64) (<-chan task.Frame, func()) {

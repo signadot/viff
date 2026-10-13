@@ -228,7 +228,7 @@ record. Its `under` is what asked it. A person's ask is its asker's record inste
   line from the first of these that applies:
   1. the gate's `answerers`;
   2. for a gate that a worker raises, the spawn's gate of that name, or else whom the worker
-     named (`task do gate -to`);
+     named on the frame;
   3. for a question about something, `audience:<subject>`: whoever may write it;
   4. the `child-grants` on `verse.ask` (`read-write: [user:*, agent:*]`).
 - **Nobody answers what they cannot read.** A question naming answerers who may not read its
@@ -250,8 +250,8 @@ record. Its `under` is what asked it. A person's ask is its asker's record inste
   and a record names that principal. This holds for an answer, a `say`, a cancel,
   a change of vector, and the `principal` a spawn is answerable to. `need` counts one ballot for
   each.
-- **What a worker reports is not evidence of who answered.** For a task that runs on a broker
-  or a remote runner, who is working the task is who claimed it. How verse reads what such a
+- **What a worker reports is not evidence of who answered.** For a task that runs on a remote
+  runner, who is working the task is who claimed it. How verse reads what such a
   worker sends is in [perms.md](../platform/perms.md#a-relayed-tasks-frames), in the repository.
 
 ## Who a request is from

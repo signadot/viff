@@ -227,7 +227,7 @@ The ask is yours, about the task, and read by whoever may read the task. It has 
 conversation turn has none. If the task is waiting on your turn, the words are your reply, and
 the turn is answered. Otherwise the task takes them at its next boundary, and the ask settles as
 `heard`. A task that ends before it takes them leaves the ask withdrawn, saying so. Words to a
-brokered task are heard when verse relays them to its worker. `verse flow say` says the words to
+remote task are heard when verse relays them to its runner. `verse flow say` says the words to
 each task the flow reaches, as an ask to each.
 
 Nobody else answers these asks, so they are not on the docket.

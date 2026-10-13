@@ -1,17 +1,13 @@
 package task
 
 // Status is a hosted task's lifecycle state — one vocabulary across every
-// runner (local, remote, broker) and the entity mirror, replacing the
+// runner (local, remote) and the entity mirror, replacing the
 // per-layer strings that used to disagree ("error" vs "failed" vs "driver
 // error"). The completion pattern keys off exactly one value (Done), so the
 // terminal states stay distinct rather than collapsing into one end state.
 type Status string
 
 const (
-	// Unclaimed: spawned and hosted on a broker, awaiting an executor to claim it
-	// (the pre-running state). Local and remote-runnerd tasks never enter it —
-	// they begin executing immediately.
-	Unclaimed Status = "unclaimed"
 	// Running: an executor is working the task.
 	Running Status = "running"
 	// Done: finished its work successfully — the ONLY status a completion trigger
@@ -20,7 +16,7 @@ const (
 	// Cancelled: stopped by an operator (destructive), not by finishing.
 	Cancelled Status = "cancelled"
 	// Failed: ran but did not succeed — a driver/agent error or an executor-reported
-	// failure. (Folds the old "error"/"driver error"/broker "failed".)
+	// failure.
 	Failed Status = "failed"
 	// Orphaned: its runtime died (e.g. a monolith restart), so the last durable state
 	// is retired rather than left claiming to run. Terminal, but the work did NOT
@@ -28,8 +24,8 @@ const (
 	Orphaned Status = "orphaned"
 )
 
-// Terminal reports whether a status is an end state (no further work). Unclaimed
-// and Running are the two live states; everything else is terminal.
+// Terminal reports whether a status is an end state (no further work). Running is the
+// one live state; everything else is terminal.
 func (s Status) Terminal() bool {
 	switch s {
 	case Done, Cancelled, Failed, Orphaned:

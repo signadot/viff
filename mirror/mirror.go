@@ -109,7 +109,7 @@ type Meta struct {
 	// without this a second run overwrites the first and the fields of two runs sit side by
 	// side with nothing to tell them apart (git-issue gjv063rrh12ksvgnfsn0).
 	Occurrence int64
-	// Runner is the task-control backend hosting it — "local", "broker", or a remote URL — so a
+	// Runner is the task-control backend hosting it — "local" or a remote URL — so a
 	// restart can decide resume-or-orphan.
 	Runner string
 	// RunnerName is the runner ENTITY a spawn named — `verse.runners.<name>` — when it named
@@ -163,10 +163,9 @@ type Meta struct {
 	// published as the record's `answerers` so a restart keeps it. Empty is the docket.
 	Answerers []string
 	// As is the principal the runner acts as, when the runner is known at spawn — a runner
-	// reached by url carries its identity on its entity. The mirror then does at the first
-	// reflection what a claim does for a brokered task: lists it as a runner, grants it the
-	// task, and writes every report as it. Empty for a local task, whose mirror is the
-	// system's, and for a brokered one, which learns its worker at the claim.
+	// reached by url carries its identity on its entity. The mirror then, at the first
+	// reflection, lists it as a runner, grants it the task, and writes every report as it.
+	// Empty for a local task, whose mirror is the system's.
 	As string
 	// HeldBy says who holds the task at its boundary — `operator` for `flow suspend --task`, and the
 	// suspensions that paused it — asked at every write, since the engine holding the task is
@@ -221,7 +220,7 @@ func TriggerOf(chain string) string {
 //
 // `hook` is the engine's, written onto the same record when a hook fails (trigger.recordHookFailure).
 var RecordFields = map[string]bool{
-	"answerers": true, "asker": true, "chain": true, "credential": true, "cursor": true, "data": true, "dialURL": true, "doer": true,
+	"answerers": true, "asker": true, "chain": true, "credential": true, "cursor": true, "data": true, "doer": true,
 	"driver": true, "ended": true, "err": true, "flow": true, "grant": true, "hook": true,
 	"lastAction": true, "lastOutput": true, "observed": true, "occurrence": true,
 	"paused": true, "pending": true, "prompt": true, "result": true,
@@ -232,19 +231,12 @@ var RecordFields = map[string]bool{
 
 func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	ch, unsub := h.Subscribe()
-	// A brokered task starts in the pre-running `unclaimed` state — it is hosted on
-	// the broker awaiting an executor; the claim emits an EvStatus{running} that moves it
-	// on. Local/remote tasks execute immediately, so they start `running`.
-	initial := task.Running
-	if m.Runner == "broker" {
-		initial = task.Unclaimed
-	}
 	// WHEN, and only twice: `started` here, `ended` at the terminal status below. A record
 	// stamped on every update would be an entity that changes whenever anything narrates,
 	// which wakes every trigger watching this slice for no fact anybody wrote — and the two
 	// instants somebody actually asks about are the two ends. RFC3339, the same spelling
 	// `verse.meta.vanishing` and a source's `lastReflect` use.
-	st := entity.Obj{"status": string(initial), "started": nowStamp()}
+	st := entity.Obj{"status": string(task.Running), "started": nowStamp()}
 	if m.Subject != "" {
 		st["flow"] = m.Subject
 	}
@@ -302,14 +294,6 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	}
 	if len(m.Tools) > 0 {
 		st["tools"] = m.Tools
-	}
-	// A dial-in runner (broker) has a worker-facing base URL distinct from how verse
-	// controls it: publish it so a worker can be told where to dial in (the mint→publish→
-	// dial loop) rather than being pre-configured. Local/remote-runnerd handles have none.
-	if d, ok := h.(interface{ DialURL() string }); ok {
-		if u := d.DialURL(); u != "" {
-			st["dialURL"] = u
-		}
 	}
 	// WHICH RUN this record is about. A firing knows — it is the commit that woke it, carried
 	// on Meta — and anything else learns it here, from the commit its own first write landed
@@ -476,9 +460,8 @@ const LocalRunner = "local"
 // settleRelayed records a relayed task's decision frame.
 //
 // WHERE THE ANSWER ROUTE ACCEPTED AN ANSWER, the question already says everything — who, what
-// they chose, their ballot — written when the answer was queued for the worker (QueuedAnswer),
-// and the frame is the worker's acknowledgement that it arrived: `delivered` is cleared and
-// nothing else is touched. The frame's verdict is not read, so it cannot differ.
+// they chose, their ballot — and the frame is the worker's acknowledgement that it arrived:
+// nothing is touched. The frame's verdict is not read, so it cannot differ.
 //
 // WHERE NOBODY WAS ASKED, the worker settled it, and the verdict is the frame's because there
 // is no other: by the runtime's own name where the frame says the runtime did it (auto, the
@@ -490,7 +473,6 @@ func settleRelayed(docket entity.Store, questionID string, res task.Resolution, 
 	ref := QuestionRef(questionID)
 	if e, ok, err := docket.Get(ref); err == nil && ok &&
 		entity.Str(e.Payload, "status") == QuestionAnswered && entity.Str(e.Payload, "by") != "" {
-		writeAt(docket, ref, entity.Obj{"delivered": entity.Removed()})
 		return
 	}
 	if res.Cast() {
@@ -498,13 +480,12 @@ func settleRelayed(docket entity.Store, questionID string, res task.Resolution, 
 	}
 	rec := answerRecord(res)
 	delete(rec, "ballots")
-	rec["delivered"] = entity.Removed()
 	writeAt(docket, ref, rec)
 }
 
 // slidBy is who a relayed task's slide is recorded as by: the actor the control route relayed
 // this mode for (Meta.SlidBy), and the worker of record for a slide to a mode nobody relayed.
-// The relayed slide is not used up by the first frame that matches it: the broker reports the
+// The relayed slide is not used up by the first frame that matches it: the runner reports the
 // slide itself and the worker echoes it, and both are the same slide.
 func slidBy(m Meta, mode, claimant string) string {
 	if m.SlidBy != nil {
@@ -516,9 +497,8 @@ func slidBy(m Meta, mode, claimant string) string {
 }
 
 // mayClaim reports whether a name on a running status is one a worker claims as: somebody, and
-// not a name verse makes. The broker holds a claim to the same (broker.claim), and a stream from
-// anywhere else — a remote runner's — is held to it here, since what follows is a grant to that
-// name and every projection written as it.
+// not a name verse makes. A remote runner's stream is held to it here, since what follows is a
+// grant to that name and every projection written as it.
 func mayClaim(by string) bool {
 	switch entity.KindOf(by) {
 	case entity.SystemKind, entity.ViaKind:
@@ -577,7 +557,7 @@ func backoff(attempt int) time.Duration {
 //
 // WHO WRITES. The task's record is written as the party working the task: the spawn's
 // principal until a worker claims it, and the worker from then on — the claimant, named by the
-// broker on the claim's running frame, and remembered across a reconnect in claimant. A
+// runner on the claim's running frame, and remembered across a reconnect in claimant. A
 // question is posed and settled as the docket (entity.SystemDocket) whoever is working the task,
 // since versed poses it and the decision that settles it travelled by the answer path, where the
 // answerer was checked; the worker's grant is on its task and must reach no question, and a
@@ -586,7 +566,7 @@ func backoff(attempt int) time.Duration {
 //
 // WHO A FRAME SAYS DID SOMETHING IS NOT THE FRAME'S TO SAY, where the frame came from a worker.
 // A hosted task's frames are made in this process, by routes that checked their actor, and are
-// trusted. A relayed task's — a broker's worker's, a remote runner's — are whatever the worker
+// trusted. A relayed task's — a remote runner's — are whatever the worker
 // wrote, and a `by` on one is a name the worker chose: a decision "by" the answerer a gate is
 // held out to, a slide "by" the docket. AND WHAT WAS DECIDED IS NOT THE FRAME'S EITHER, where
 // verse already holds it: an answer the route accepted is on the question, verdict, ballot and
@@ -711,7 +691,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 						// And the run's own record, which the next run does not overwrite.
 						writeRun(store, id, occurrenceOf(st), st)
 						// Whatever it was still asking, it will never hear the answer to.
-						// A brokered task ends with an EvStatus and no EvDecision, so
+						// A relayed task may end with an EvStatus and no EvDecision, so
 						// nothing else would ever settle those questions and the docket
 						// would keep offering them for a run that is over.
 						OrphanQuestions(docket, id)

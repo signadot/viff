@@ -46,7 +46,7 @@ through the store, and not through a scheduler.
 | **trigger**, or **rule** | one rule of a charter: when the condition holds and the gates resolve, the action fires. |
 | **gate** | what a firing must pass: `auto`, `ask` or `park`. |
 | **action** | what a rule does. It is data, not code. |
-| **task** | a unit of work that verse governs and that you can steer. An agent, a shell command, a worker or a person does it. |
+| **task** | a unit of work that verse governs and that you can steer. An agent, a shell command or a remote worker does it. |
 | **principal** | who acts: a person, a runner, an agent, or the system. |
 | **subject** | the entity a piece of work is about. |
 | **flow** | the tasks in progress about one subject, or about the subjects that a pattern names. |

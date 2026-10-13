@@ -7,9 +7,8 @@ records which runner it went to.
 So a drive can deploy a place to run work that the verse deployment does not otherwise need to
 know about. The drive can use that place for *some* of its work, and not for all of it.
 
-**Selection for each spawn is the whole feature.** Deploying a runner is easy:
-`broker.New()` and `WorkerHandler()` are exported, and a second `verse up -broker` is one
-command. The hard part is using a runner for *part* of the work.
+**Selection for each spawn is the whole feature.** Deploying a runner is easy: the sample
+runner is one program. The hard part is using a runner for *part* of the work.
 
 To build a runner, start from [the sample runner](reference/examples/runner/main.go). The
 sample is a real program that compiles with the tree. Comments mark the two functions that you
@@ -54,8 +53,9 @@ that does not decode are answers about what is at the URL.
 
 `-no-probe` installs the runner in every case.
 
-A [worker](glossary.md#worker) that claims brokered work names itself. The
-[claim](glossary.md#claim-of-a-worker) is where verse assigns the task to the worker:
+A [worker](glossary.md#worker) is named on its runner's entity, or names itself on its first
+running status. The [claim](glossary.md#claim-of-a-worker) is where verse assigns the task to
+the worker:
 
 - versed writes `read-write` and `control` for the worker on the task's record;
 - the mirror writes every report from then on as the worker;
@@ -104,8 +104,7 @@ does not fall back to the default runner.
 | charter spawn | nobody is there to answer, so verse fails the spawn, and the reason goes onto the flow |
 
 A spawn that names no runner goes to the default runner of this verse, which
-`verse up -runner` sets. With `-broker`, `verse up` serves a broker beside the default runner.
-A spawn reaches that broker by the name `broker`.
+`verse up -runner` sets.
 
 ### Not a provider
 
@@ -246,9 +245,8 @@ The three outcomes differ on whether waiting could change the answer. They do no
 whether anything answered.
 
 A URL that answers *that it has no task list* states what it is, and states it now. Something
-is at that address, and it does not serve the runner contract. The worker side of a broker is
-exactly this. It serves claim, inbox and report, and it does not serve `GET /tasks`. Verse
-catches this mistake at install, not at the first spawn.
+is at that address, and it does not serve the runner contract. Verse catches this mistake at
+install, not at the first spawn.
 
 A URL that nothing answers is the ordinary state of a runner that is deployed with the entity
 that names it. The manifest lands, the pod is pending, and the entity is already written. A

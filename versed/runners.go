@@ -50,8 +50,8 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 	}
 	out := map[string]any{"at": runner.Ref(e.Name).String()}
 	// The probe, and the two dispositions it feeds. They differ on whether waiting could
-	// change the answer: a url that answers as something else is answering NOW — a broker's
-	// worker leg is the case worth catching — while a url nothing answers is the ordinary
+	// change the answer: a url that answers as something else is answering NOW, while a url
+	// nothing answers is the ordinary
 	// state of a runner deployed alongside the entity that names it, where the manifest lands,
 	// the pod is pending, and the entity is already written. Refusing that would make
 	// deployment order-dependent for a fact that fixes itself.
@@ -59,9 +59,8 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 		reach, why := runner.Probe(e.URL)
 		switch reach {
 		case runner.NotRunner:
-			http.Error(w, fmt.Sprintf("runner %q: %s is not a runner: %s — if this is a "+
-				"broker's worker leg, that is the dial-in face rather than the verse-facing "+
-				"one; --no-probe installs it anyway", e.Name, e.URL, why), http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf("runner %q: %s is not a runner: %s — --no-probe installs it anyway",
+				e.Name, e.URL, why), http.StatusBadRequest)
 			return
 		case runner.Unreachable:
 			// Installed, and said so. The warning rides on the response rather than being
@@ -295,20 +294,10 @@ func runnerCounts(instances []entity.Entity, ref entity.Ref, url string) map[str
 	return out
 }
 
-// brokerName is the reserved runner name for this verse's own dial-in broker, and it is
-// broker.Broker's Ref() — the string a task already records in `runner` when it ran on one, so
-// what a spawn names and what its task reports are one word. It is reserved the way `local` is:
-// neither is an installed entity, because an entity carries a url for runner.HTTP to drive and
-// both of these are runtimes this process holds.
-const brokerName = "broker"
-
 // runnerFor resolves the runner a spawn NAMED, to the one runner that spawn runs on.
 //
-// THREE NAMES, and the default is the one nobody types. Naming nothing means "run this", and
-// the answer is this verse's own runtime; `broker` means "somebody should do this", and it
-// waits to be claimed; an installed runner means wherever its url says. Serving a broker adds
-// a name and takes none away, which is what keeps a charter that mentions no runner meaning
-// what it says: run it.
+// TWO NAMES, and the default is the one nobody types. Naming nothing means "run this", and
+// the answer is this verse's own runtime; an installed runner means wherever its url says.
 //
 // A spawn naming a runner that is not installed is REFUSED rather than quietly falling back to
 // the default. A misspelled runner that ran the work in-process would be the same class of bug
@@ -316,9 +305,9 @@ const brokerName = "broker"
 // and the verse does another.
 // runnerIdentity is the principal a named runner acts as — the identity on its entity, or its
 // name — and "" for the runtimes this process holds, which act as nobody of their own: a local
-// task's mirror is the system's, and a brokered task learns its worker at the claim.
+// task's mirror is the system's.
 func runnerIdentity(store entity.Reader, name string) string {
-	if name == "" || name == brokerName {
+	if name == "" {
 		return ""
 	}
 	if e, ok := runner.Find(store, name); ok {
@@ -330,18 +319,6 @@ func runnerIdentity(store entity.Reader, name string) string {
 func (s *Server) runnerFor(store entity.Reader, name string) (task.Runner, string, error) {
 	if name == "" {
 		return s.runner, "", nil
-	}
-	// `broker` is a reserved name, resolved here rather than out of the store, for the reason
-	// `local` is the meaning of the empty one: both are runtimes this process holds, and a
-	// runner entity is an address for runner.HTTP to drive. The name is the broker's own
-	// Ref(), which is what a task already records in `runner`, so a spawn names the runner
-	// its task will say it ran on.
-	if name == brokerName {
-		if s.broker == nil {
-			return nil, "", fmt.Errorf("no runner %q — this verse serves no dial-in broker "+
-				"(start it with --broker --broker-addr <host:port>)", name)
-		}
-		return s.broker, brokerName, nil
 	}
 	e, ok, err := runner.FindErr(store, name)
 	if err != nil && !errors.Is(err, entity.ErrForbidden) {
@@ -358,9 +335,6 @@ func (s *Server) runnerFor(store entity.Reader, name string) (task.Runner, strin
 			names := make([]string, 0, len(listed))
 			for _, i := range listed {
 				names = append(names, runner.Ref(i.Name).String())
-			}
-			if s.broker != nil {
-				names = append(names, brokerName)
 			}
 			have = "none are installed"
 			if len(names) > 0 {

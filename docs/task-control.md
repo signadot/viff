@@ -1,13 +1,12 @@
 # Task control
 
-This page is the contract behind `verse up -runner <url>` and `verse up -broker`. Walk through it
-first in [reference/tasks.md](reference/tasks.md#executing-one-by-hand), where a person dials in
-and executes a task by hand. This page is the [seam](glossary.md#seam) that makes that work. It
-builds on [external tasks](external-tasks.md), where it is design D, and it makes concrete what
+This page is the contract behind `verse up -runner <url>` and a runner named on a spawn. It is
+the [seam](glossary.md#seam) between verse and where a task runs. It builds on
+[external tasks](external-tasks.md), where it is the attached shape, and it makes concrete what
 that page calls "wrapping and enforcing the verse invariants".
 
 In short, the task-control interface is the `runnerd` HTTP contract behind a base URL, made
-resumable and aware of claims.
+resumable.
 
 - Verse is its client. Verse mirrors it into the durable `verse.task.instance` entity, the
   [instance record](glossary.md#instance-record).
@@ -55,33 +54,28 @@ until `Supervisor.Check` returns proceed. `Supervisor.Check` derives the `Effect
 `Vector.Evaluate`, and calls `Resolver.Resolve`. Verse is trusted because it runs the loop
 itself.
 
-Outside the process, verse cannot intercept every action of a remote worker or of a person.
+Outside the process, verse cannot intercept every action of a remote worker.
 Enforcement becomes four things: authorize, checkpoint, attest, and CAS-enforce invariants.
 
-- Verse authorizes the [claim](glossary.md#claim-of-a-worker).
-- Verse records what the [worker](glossary.md#worker) reports, as audited attestations.
-- Verse CAS-enforces the structural invariants on the entity: terminal-once, writes by the claim
-  holder only, and gate-before-the-effect.
+- Verse authorizes the runner: the identity on its entity is the
+  [worker](glossary.md#worker) of record, granted the task and nothing else.
+- Verse records what the worker reports, as audited attestations.
+- Verse CAS-enforces the structural invariants on the entity: terminal-once, writes by the
+  worker of record only, and gate-before-the-effect.
 
-Verse relays a change of vector to the inbox of the worker. The worker honours it or does not.
-Nothing outside the process derives an effect or evaluates a vector. The broker records no
-envelope that it cannot check.
+Verse relays a change of vector to the runner. The worker honours it or does not.
+Nothing outside the process derives an effect or evaluates a vector.
 
-So there is one control contract with three modes of enforcement. What each mode guarantees
+So there is one control contract with two modes of enforcement. What each mode guarantees
 differs, with the mechanism:
 
 | | who performs the step | what holds |
 |---|---|---|
 | the local supervisor | verse's own executor | **enforced** — the action cannot run until the vector clears it |
 | a spawned worker on k8s, lambda or a host | the worker | **attested** — verse holds the worker's account of what it did |
-| a human, by surfaced attestation | a person | **attested**, and the person is answerable for the account |
 
-Gates, the resolver, boundaries and the terminal are the same in all three modes. The vector is
+Gates, the resolver, boundaries and the terminal are the same in both modes. The vector is
 the part that does not travel.
-
-Takeover needs nothing extra. You `cancel` the agent. A person claims the task again, by a CAS
-transfer of the claim with an identity. The person reads the journal and continues on the same
-subject under the same runner.
 
 ## The loop is a state machine
 
@@ -135,7 +129,7 @@ A backend is a reconciler. So it must be level-triggered, and verse must be able
 from the durable entity. The same `Observe:Since` and `webhook:reconcile` law holds here as
 everywhere in verse. Two rules follow.
 
-**No control state of a task lives only in memory.** Pending gates, the claim, the control
+**No control state of a task lives only in memory.** Pending gates, the worker of record, the control
 fields and the event cursor are all on the `verse.task.instance` entity. A restart reads them
 again.
 
@@ -144,9 +138,9 @@ again.
 | Task | What `up` does |
 |---|---|
 | an in-process agent whose runtime died | orphans it, because the loop is gone |
-| a detached or claimed task, such as a person still merging or a k8s Job still running | resumes it. Verse attaches again to the bound runner, and reconciles from the current status. |
+| a task on a runner, such as a k8s Job still running | resumes it. Verse attaches again to the bound runner, and reconciles from the current status. |
 
-The work of a detached task went on in the world while verse was down. Verse resumes where the
+The work on a runner went on in the world while verse was down. Verse resumes where the
 work outlived the daemon, and orphans only what died with it.
 
 An open question follows the task that asks it.
@@ -185,16 +179,8 @@ spawned. It refuses a task that the scope inherited, and names the scope that ho
 One dispatch for every task forces the contract to be complete. It keeps local tasks equivalent
 to remote tasks.
 
-Verse can mint that URL on its own broker face, so a runner need not stand up a service (see
-"Hosting").
-
-| Runner | URL | What serves it |
-|---|---|---|
-| the built-in local supervisor | none: it is called in process | the engine's own runtime |
-| a broker registered at runtime | `<broker>/broker/<nonce>` | the registered backend |
-
-So "no privileged local path" needs no separate loopback server, and no path at all: local is
-the runtime itself, called in process.
+The built-in local supervisor is reached through the same interface, in process. `local` is the
+meaning of naming no runner.
 
 ## The verse-facing contract
 
@@ -289,7 +275,6 @@ Verse keeps its high-water cursor on the entity. On a restart, it knows where to
 
 | `kind` | key fields | entity projection |
 |---|---|---|
-| `claim` | `by, identity, at` | `claim {by, identity, at}` (CAS; authorizes the driver) |
 | `boundary` | `seq` | a safe point where control lands |
 | `say` | `text, by` | an utterance: `by` empty = the agent's narration → `say` preview; `by` set = a say-to folded in → journal only |
 | `exec` | `tool, text, err` | `lastAction`, `lastOutput` + journal |
@@ -299,10 +284,7 @@ Verse keeps its high-water cursor on the entity. On a restart, it knows where to
 | `vector` | `by` | records an autonomy slide (the new vector is observable) |
 | `status` | `text: running\|paused\|resumed\|done\|failed\|cancelled`, `result?`, `err?` | `status`, `paused`; on terminal `result` (CAS-once) and `err`, why it ended, which the status alone never says |
 
-The `claim` kind is not built. Verse writes a claim on the record of the task, and not as an
-event on the stream (see [what is built](#what-is-built)).
-
-That table is the durable contract. It is `mirror.Reflect`, plus `claim` and `vector`, minus the
+That table is the durable contract. It is `mirror.Reflect`, plus `vector`, minus the
 `gap` marker. The `gap` marker says something about the *reading*, and not about the task.
 
 ### `since` semantics and the two restarts
@@ -334,7 +316,7 @@ The same `gap` frame carries both reasons that a reader can be behind: a cursor 
 and events dropped because the reader could not keep up.
 
 `?since=` means the same on every runner. `GET /tasks/{id}/events` hands the cursor to the
-runtime that holds the work: the local one, a broker, or a remote runnerd. A client that resumes
+runtime that holds the work: the local one or a remote runnerd. A client that resumes
 gets the frames after its cursor and no others, wherever the task runs.
 
 A resume below the window also replays the gates still open below it. The gap says that a reader
@@ -377,7 +359,7 @@ matching event appears at a new cursor. This removes races:
 - A `resolve` for a gate that already timed out comes back as a `decision` marked stale. It is a
   recorded no-op, and not a silent drop.
 
-The POST does not wait for the effect. The next boundary of a person may be hours away.
+The POST does not wait for the effect. The next boundary of a remote worker may be far away.
 
 One ordered stream interleaves reports and control effects by cursor. That gives a single total
 order, which verse replays with nothing else to reconcile. Priority is this ordering. "Steering
@@ -416,116 +398,12 @@ one decision: no gate is lost, and nothing merges twice.
 Three things hold on the `verse.task.instance` entity, even when a runner or a worker misbehaves:
 
 - terminal-once (the status is monotonic);
-- writes by the claim holder only;
+- writes by the worker of record only;
 - gate-before-the-effect.
 
-For a detached worker or a person, gate-before-the-effect is an attestation that verse
-timestamps and audits. Verse cannot intercept the merge itself. Autonomy outside verse is
+For a remote worker, gate-before-the-effect is an attestation that verse timestamps and
+audits. Verse cannot intercept the merge itself. Autonomy outside verse is
 coarser by nature, and this page says so.
-
-## Brokering: firewalled workers and humans, without inverting verse
-
-Some workers cannot accept inbound connections: an agent on a laptop, a pod in a private cluster,
-a person. Such a worker does not force verse to invert. The [broker](glossary.md#broker) is
-itself a backend, and it is the one reachable meeting point. Verse and the worker both dial out
-to it:
-
-```
- verse ──POST/GET(events)/POST(control)──▶  broker (base URL)  ◀──claim/inbox/report── worker
- mirror → task.instance (durable truth)   per-task relay log       dials OUT (NAT-friendly)
-```
-
-The broker has two faces:
-
-| Face | Who is the client | What it serves |
-|---|---|---|
-| the verse-facing contract, above | verse, as a plain client | spawn, events, control |
-| a worker-facing dial-in protocol that the broker owns | the worker | claim, then an inbox long-poll for the spec and control, then report |
-
-The inbox long-poll is not built: a worker polls (see [what is built](#what-is-built)).
-
-The job of the broker is to join the two halves of a task:
-
-- The reports of the worker become the events that verse streams.
-- The control of verse becomes items that the worker pulls.
-- A checkpoint that the worker reports becomes an `EvPending`. Verse routes it to a resolver, and
-  the verdict goes back down the [inbox](glossary.md#inbox) of the worker.
-
-The spawner of verse does the same three things: spawn, stream and control. It does them
-whatever is behind the URL: the in-process loop, a reachable k8s runner, or a broker that relays
-to a laptop.
-Reachability is a detail of the implementation behind the URL.
-
-The two legs have independent cursors that a reader can resume. The verse leg has one, and the
-worker leg has two (see [the worker-facing dial-in protocol](#the-worker-facing-dial-in-protocol)
-below). Each follows the same discipline of replay and resync. The broker keeps a bounded log per
-task to serve them. The entity stays the durable system of record of verse. The broker is a
-relay, so a third party can run a cheap one.
-
-A person is a worker of a broker. For a person:
-
-- the inbox long-poll is "check notifications, run `verse task inbox`";
-- `report` is the person's progress `say`;
-- pushed control is a notification or a PR comment.
-
-So a person and an agent behind NAT use the same mechanism. A design for the person first gives
-the agent at no extra cost.
-
-## Hosting: verse's broker face (`/broker/<nonce>`)
-
-A base URL need not be a new service. Verse can host a broker in the way docd hosts a
-controller.
-
-| Host | What it forwards | To what | Under |
-|---|---|---|---|
-| docd | the ops of a subtree | a registered controller | a mount |
-| verse | the worker ops and engine ops of a task | a registered backend | `/broker/<nonce>` |
-
-This is a capability URL: knowing it is the grant. A runner binding to anything but the built-in
-supervisor is a URL: `<broker>/broker/<nonce>`, or an external one. Verse consumes the
-verse-facing contract from it. For a hosted broker the call is in process or forwarded. For an
-external broker the call is HTTP.
-
-One deployment has two listeners.
-
-| Listener | What it serves | Trust |
-|---|---|---|
-| the operator API, on `-addr` | the CLI, entities, gates, task control, and broker registration (`POST /broker` mints a nonce) | trusted and internal |
-| the broker face, on a sibling port | `/broker/<nonce>/...` and the worker-facing dial-in (`claim`, `inbox`, `report`) | guarded by the nonce, and reachable by workers |
-
-`POST /broker` is not built: a verse hosts the broker it was started with (see
-[what is built](#what-is-built)).
-
-The sibling port keeps a clear trust boundary between operators and workers. Brokering shares
-the deployment of verse, but it does not expose the operator API to workers. A worker only
-reaches its own path under a nonce, and never the surface of entities or gates.
-
-The built-in local supervisor is not on the broker face. It is called in process, so a default
-spawn binds to it with no config and the binding is the same across restarts. It was once served
-there under a fixed name, and a fixed name on a port workers reach is the whole runtime handed to
-anyone who can guess it: spawn, resolve, cancel, the vector, with no principal, no owner and no
-record. Another verse that wants this one's runtime installs it as a runner by the operator URL,
-where the request meets the door like any other.
-
-A broker registered at runtime gets a random nonce, and the nonce is the capability. It may be
-an in-process plugin. It may also be a registrant that dials in, as in the docd-controller
-inversion. Such a registrant connects out to the registration of verse and gets a nonce. Verse
-then forwards the worker ops and engine ops to it. So a runtime that can only dial out, such as a pod behind a
-firewall or a vendor behind NAT, still hosts a broker without a face of its own.
-
-The lifecycle follows the existing discipline of reaping daemons and restarting:
-
-1. `up` binds both listeners; the local supervisor needs no mount.
-2. Brokers register at runtime.
-3. `down` reaps them.
-4. `up` reconciles each task that is not terminal, from the runner binding on its entity. It
-   mints the local broker again, attaches an external one again, and orphans only an in-process
-   handler that died.
-
-The two topologies combine. A hosted nonce-broker can relay out to an external runtime. A k8s
-pod behind a firewall dials `<broker>/broker/<nonce>`, and the handler that verse registered
-drives the Job. Neither the pod nor the vendor needs a face. A third party that wants its own
-front door still binds an external URL directly.
 
 ## What a 3rd-party implementer must satisfy
 
@@ -540,219 +418,8 @@ For each task, an implementation must:
 - echo the application of every control POST as an ordered event;
 - make the terminal a stable last event that a reader can replay.
 
-Nothing about *how* it runs the work shows through. For this reason local, k8s, lambda and a
-broker behind NAT can replace one another behind the URL.
-
-## The worker-facing dial-in protocol
-
-The verse-facing contract stands on its own. The local, k8s and lambda backends need nothing in
-this section.
-
-A runner may work through a party that cannot accept inbound connections: an agent on a laptop,
-a pod in a private cluster, a person. That worker needs a way to dial out and still be driven.
-
-The worker leg is the verse leg inverted:
-
-| Leg | Reports | Control |
-|---|---|---|
-| verse | verse pulls them | verse pushes it |
-| worker | the worker pushes them | the worker pulls it |
-
-Both sides only dial out, and the broker is the one reachable meeting point. This is the standard
-worker protocol, so a worker written once runs under any broker. A broker may also offer a
-private, faster transport over WebSocket or gRPC. This HTTP form is the baseline for interop.
-
-Three endpoints, with the worker as the client:
-
-```
-POST /tasks/{id}/claim   {identity}                      → {spec, cCursor, rCursor}
-GET  /tasks/{id}/inbox?since={cCursor}   (long-poll/SSE)  → control directed at the worker
-POST /tasks/{id}/report  {events:[…], key?, epoch}        → {rCursor, applied}
-```
-
-The long-poll on `inbox` is not built: a worker polls (see [what is built](#what-is-built)).
-
-`inbox` is the dual of verse's `/events`. It is a stream of control directed at the worker, and
-the worker can resume it. It carries these items:
-
-- `spec`, once;
-- `say {text, by}`;
-- `resolve {decision, choice, proceed, say?, by}`;
-- `cancel|pause|resume`;
-- `vector`.
-
-Each item carries a control cursor, and the worker resumes with `?since=cCursor`.
-
-**An answer is a decision when the worker has taken it, not when the broker queued it.**
-
-- `resolve` closes the gate at once. A second answerer is told that somebody answered first.
-  Two answers to one question are a race with one winner, however slowly the answer travels.
-- The broker emits the `decision` event when the inbox poll of the worker acknowledges the item
-  that carries it.
-- The acknowledging poll is the one that asks for what comes *after* the item. It is not the poll
-  that returns the item. A received response is not proof that the worker took the item, because
-  a lost response looks the same.
-- Until the acknowledgement, the question is answered and not delivered. If the claim expires
-  first, the answer was never delivered at all.
-
-**A claim is a lease.** It survives for `broker.ClaimLease` without the broker hearing from the
-holder. The work itself renews the lease: every inbox poll and every report says that the holder
-is alive. So a worker that talks to the broker at all already keeps its lease.
-
-The broker releases an expired claim when somebody next asks for the work, and it fences the
-silent holder. If the holder comes back, it comes back as a stranger. The broker does not make
-the task terminal. A broker that cannot hear a worker knows nothing about whether the work is
-running. It knows only that nobody may claim to speak for the work.
-
-This is the only place in the task-control seams where a clock decides anything. There is one
-clock, the broker's, and the broker compares two readings of its own clock. A timestamp written
-elsewhere is a record, and never an input.
-
-`cCursor` is what this worker last acknowledged. It is not how far the broker has got. A poll for
-`since=N` acknowledges everything at or below N, because a worker asks for what comes next only
-after it has taken what came before. So a worker that connects again gets the place it actually
-reached, and control issued while it was away is still waiting for it.
-
-A worker that asks to go backwards gets items from where it got to, and not from where it asked.
-The broker knows what this claim acknowledged, so a worker that lost its cursor need not remember
-it. What the worker has not taken is still waiting. What it has taken is not handed back to be
-applied twice.
-
-A takeover resets that mark. What a different worker acknowledged says nothing about what this
-worker has done. An acknowledgement is not a promise that the work was done.
-
-One window stays the worker's own: the time between receiving control and acknowledging it. A
-worker may pull an item, act on it, and die before its next poll. The broker then hands it that
-item again. So the worker should apply idempotently any control that it cannot afford to apply
-twice. The worker is the only party that can.
-
-**`key` makes a report retryable.** A worker whose response was lost cannot know whether its
-events landed. Without a key it has two choices, and both are bad:
-
-- drop what it observed;
-- report it twice. One deploy then becomes two events at two cursors, and afterwards nobody can
-  tell it from work done twice.
-
-The broker answers a repeat of a key already applied with the answer to the first, and does not
-apply it again. The key is optional, and must be. Only the worker knows that a retry is a retry.
-A worker that sends no key gets a new report every time.
-
-**`applied` is how many of the reported events the broker took.** It is not always all of them.
-Nothing follows a terminal, so if a batch has its terminal before its last entry, the broker
-drops the rest. A worker computes its retry from `applied`. It does not assume that a 200 means
-everything landed.
-
-`report` is the dual of the control POSTs of verse. The worker appends:
-
-- `pending`;
-- its own `say`;
-- `exec`;
-- `status` transitions;
-- `boundary`.
-
-Each gets a report cursor. `from: rCursor` makes a re-POST idempotent: the broker appends only
-what is past its high-water, and acknowledges again.
-
-`report {from: rCursor}` is not built. A report carries `epoch`, `events`, and optionally `key`
-and `result` (see [what is built](#what-is-built)).
-
-### The two cursors on this leg
-
-The verse leg has one cursor: the read position of verse on the event log. The worker leg has
-two, because the worker both reads and writes.
-
-| Cursor | What it is | How the worker connects again |
-|---|---|---|
-| `cCursor` | its position in the inbox, the control it pulled | `inbox?since=cCursor` |
-| `rCursor` | its high-water in what it reported and the broker acknowledged | `report {from: rCursor}` |
-
-Each cursor resumes independently. So there are three resume points over one durable truth, the
-`verse.task.instance` entity:
-
-1. the read of verse;
-2. the read of the worker;
-3. the write of the worker.
-
-A worker that sleeps and connects again resumes both its cursors, and verse does not notice. A
-verse that restarts reads `/events` again, and the worker does not notice. All three follow the
-same discipline: replay, then live, with a resync below the watermark.
-
-### How the broker maps the worker leg onto the verse leg
-
-The broker keeps one ordered event log for each task. `/events` streams this log. The broker
-sequences two interleaved sources into it, each with a cursor.
-
-**Worker reports.** The broker sequences each `POST /report` into the log, and the next
-`/events?since` of verse delivers it. A report at `rCursor=R` becomes an entry of the merged log
-at a `cursor=V` that the broker assigns. The two axes relate only through the sequencer of the
-broker.
-
-**Control-origin events.** These arrive when verse POSTs control. The broker records the ordered
-event, and relays the item to the inbox of the worker at a new `cCursor`. One fact has two
-readers.
-
-Who writes an effect event follows the interlock rule: the truth is what was applied.
-
-| Event | Who emits it | When |
-|---|---|---|
-| operator-authored: a `decision` from `/resolve`, a `vector` from set-vector, an operator `say` | the broker | on the POST, because the operator or the answerer acted. The broker relays the item for the worker to act on. |
-| worker-confirmed: `cancelled`, `paused`, `resumed` | the worker, in a report | when it stops at its boundary. The broker only relays `cancel` and `pause`. |
-
-There is no duplication. The `say` is the operator speaking, and the action that the worker then
-takes is a separate `exec`.
-
-Until the worker confirms, verse sees "cancel requested" in the snapshot. `status:cancelled`
-lands on confirmation. This latency is coarse, and this page says so.
-
-A gate goes across both legs and back:
-
-```
-worker POST /report pending@R7      → broker seq → events@V40 → verse mirrors pending[G]
-verse routes, resolves, POST /resolve {G, proceed, say:"squash first"}
-  broker: events@V41 decision{by:human:scott}      (verse: cleared)
-          events@V42 say{by:human:scott,"squash first"}
-          inbox@C3   resolve{G, proceed, say:"squash first"}   (relayed to worker)
-worker GET /inbox?since=C2 → C3 → proceeds → POST /report exec@R8  (→ events@V43)
-```
-
-### Claim, identity, takeover
-
-The identity on a claim is the [principal](glossary.md#principal) that the worker acts as from
-then on. Verse lists it as a runner. Verse grants it `read-write` and `control` on the task and on
-this run. The mirror writes every report as that principal ([perms.md](perms.md)). The identity
-holds nothing on the questions that the task raises.
-
-`POST /tasks/{id}/claim {identity}` is a CAS on the claim. On success, it returns the `spec` and
-the resume cursors. A task claimed by another worker gives `409`, unless this is a takeover.
-
-In a takeover:
-
-1. The broker revokes the prior claim. Its inbox gets a `revoked` item, so an old worker that is
-   still connected stops.
-2. The new identity claims.
-3. The new identity reads the journal, which is already durable and is the context of the
-   handoff.
-4. It continues on the same subject.
-
-Verse mirrors the claim on the entity, so anyone can see who holds it. A person who takes over a
-runaway agent does a plain transfer of the claim.
-
-A pool variant, `POST /claim {identity, kinds}`, long-polls for the next eligible unclaimed task
-and CAS-assigns one. N workers can then drain a queue without getting in each other's way.
-
-Takeover by a `revoked` item and the pool claim are not built. A worker claims one task by its
-id. A displaced worker learns that it was displaced from a `409` on its next call (see
-[what is built](#what-is-built)).
-
-A person uses this protocol at the pace of a person:
-
-| Endpoint | For a person |
-|---|---|
-| `claim` | "I'll take it", from a CLI or a bot |
-| the `inbox` pull | "check notifications" |
-| `report` | a progress `say`, and checkpoints |
-
-The three endpoints are the same. Only the pace differs.
+Nothing about *how* it runs the work shows through. For this reason local, k8s and lambda can
+replace one another behind the URL.
 
 ## What is built
 
@@ -765,27 +432,11 @@ Everything above is built, except what this section names.
 - `runner.HTTP(baseURL)` drives a remote verse over the verse-facing contract.
 - The reconcile at startup resumes a task where the work outlived the daemon, and does not orphan
   it.
-- The dial-in broker is hosted under `/broker/<nonce>`. It publishes the `dialURL` of each task
-  on the entity of the task. The terminal-once latch and the claim fence guard it.
-- `verse task do` is the view of the executor. Every operator verb works on local, remote and
-  brokered tasks alike.
+- Every operator verb works on local and remote tasks alike.
 
 Not built, though the sections above describe them:
 
-- The inbox long-poll. A worker polls.
 - A timestamp `at` on an event. An event carries a cursor and no time.
-- A `claim` event kind. A claim is written on the task's record and is not an event on the
-  stream.
-- `POST /broker`, which would register a broker and mint its nonce. A verse hosts the broker it
-  was started with (`verse up -broker`).
-- Takeover by a `revoked` inbox item, and a pool claim `POST /claim`. A worker claims one task
-  by its id, and a worker that has been displaced learns it from a `409` on its next call.
-- `report {from: rCursor}`. A report carries `epoch`, `events`, and optionally `key` and
-  `result`.
 
-Two larger tracks are outside this page:
-
-- a human surfacer and an inbox projected by identity, with `owner`, `claimant` and `resolver`
-  stamps;
-- a k8s runner that spawns Jobs behind the broker, alongside `k8s.*` as an
-  [io](io.md).
+One larger track is outside this page: a k8s runner that spawns Jobs, alongside `k8s.*` as an
+[io](io.md).

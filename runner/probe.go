@@ -15,9 +15,8 @@ type Reach int
 const (
 	// IsRunner: it answered, and the body decoded as the task list the contract promises.
 	IsRunner Reach = iota
-	// NotRunner: it answered, and is not that. A broker's WORKER leg is the case worth
-	// catching — WorkerHandler serves claim, inbox and report and no GET /tasks — and so
-	// is a url pointed at some unrelated service.
+	// NotRunner: it answered, and is not that: a url pointed at some unrelated service, or at
+	// a face of a runner that is not its task list.
 	NotRunner
 	// Unreachable: nothing answered, or what answered said nothing about what it is. Both are
 	// facts that can change on their own, which is what separates this from NotRunner.

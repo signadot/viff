@@ -4,12 +4,13 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"github.com/signadot/tony-format/go-tony/gomap"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/signadot/tony-format/go-tony/gomap"
 
 	"github.com/scott-cotton/cli"
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -246,58 +247,6 @@ func decodeClose(resp *http.Response, v any) { _ = client.DecodeClose(resp, v) }
 // decodeBody decodes a response into v without closing it, for callers already deferring their
 // own Close.
 func decodeBody(resp *http.Response, v any) { _ = client.Decode(resp, v) }
-
-// httpPostURL posts to an ABSOLUTE url — used for a task's broker face (its dialURL), which lives
-// on a sibling port, not the operator API at g.Addr.
-func httpPostURL(u string, body any) (*http.Response, error) { return apiClient().PostURL(u, body) }
-
-// brokerClaim claims a task at its broker face as identity, returning the epoch (the
-// fencing token to carry on report/inbox) and the control cursor (cCursor, where to read the
-// inbox from). Same-identity re-claim is idempotent, so an executor can claim afresh.
-func brokerClaim(base, id, identity string) (epoch, cCursor int64, err error) {
-	resp, err := httpPostURL(base+"/tasks/"+id+"/claim", map[string]any{"identity": identity})
-	if err != nil {
-		return 0, 0, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		msg, _ := io.ReadAll(resp.Body)
-		return 0, 0, fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(msg)))
-	}
-	var c struct {
-		Epoch   int64 `tony:"field=epoch"`
-		CCursor int64 `tony:"field=cCursor"`
-	}
-	decodeBody(resp, &c)
-	return c.Epoch, c.CCursor, nil
-}
-
-// brokerInbox pulls the worker inbox at base for id — items with cursor > since, carrying
-// epoch for the fence — returning the items and the highest cursor seen (to advance since).
-func brokerInbox(base, id string, since, epoch int64) ([]api.InboxItem, int64, error) {
-	u := base + "/tasks/" + id + "/inbox?since=" +
-		strconv.FormatInt(since, 10) + "&epoch=" + strconv.FormatInt(epoch, 10)
-	resp, err := verse.Get(u)
-	if err != nil {
-		return nil, since, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		msg, _ := io.ReadAll(resp.Body)
-		return nil, since, fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(msg)))
-	}
-	var box struct {
-		Items []api.InboxItem `tony:"field=items"`
-	}
-	decodeBody(resp, &box)
-	max := since
-	for _, it := range box.Items {
-		if it.Cursor > max {
-			max = it.Cursor
-		}
-	}
-	return box.Items, max, nil
-}
 
 // streamFmt reads the format an SSE stream declares its FRAMES are in. Content-Type is
 // spoken for by text/event-stream, so the server says it in a header of its own; a stream

@@ -366,7 +366,7 @@ left the charter, or its subject is gone.
 
 ## Corners
 
-- **A person cannot be selected.** A brokered doer is not a driver name. A spawn names its
+- **A person cannot be selected.** A person is not a driver name. A spawn names its
   runner in its own `runner` field (see [runners](runners.md)), and a provider cannot set that
   field. So "this needs a person" is still a gate or a separate rule. It is not a selection
   whose winner is a person. This is the largest missing piece.

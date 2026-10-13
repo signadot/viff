@@ -54,11 +54,11 @@ func TestAWorkersDecisionFrameDoesNotSayWhoAnsweredOrWhat(t *testing.T) {
 		t.Run(c.what, func(t *testing.T) {
 			store := entitytest.Store(t)
 			h := &fakeHandle{ch: make(chan task.Frame)}
-			Reflect(store, "t1", h, Meta{Runner: "broker", As: worker})
+			Reflect(store, "t1", h, Meta{Runner: "http://runner.test", As: worker})
 			h.ch <- task.Frame{Kind: task.EvPending, ID: "q1", Gate: "write"}
 			awaitFields(t, store, Ref("t1"), "the gate to appear", func(f map[string]any) bool { return f["pending"] != nil })
 			if c.queued != "" {
-				QueuedAnswer(store, "q1", task.Resolution{Proceed: true, By: c.queued})
+				AnswerQuestion(store, "q1", task.Resolution{Proceed: true, By: c.queued})
 			}
 			h.ch <- c.frame
 			awaitFields(t, store, Ref("t1"), "the gate to clear", func(f map[string]any) bool { return f["pending"] == nil })
@@ -86,8 +86,8 @@ func TestAWorkersDecisionFrameDoesNotSayWhoAnsweredOrWhat(t *testing.T) {
 func TestAWorkersDecisionFrameSettlesOnlyItsOwnTasksQuestion(t *testing.T) {
 	store := entitytest.Store(t)
 	mine, theirs := &fakeHandle{ch: make(chan task.Frame)}, &fakeHandle{ch: make(chan task.Frame)}
-	Reflect(store, "mine", mine, Meta{Runner: "broker", As: "runner:bot"})
-	Reflect(store, "theirs", theirs, Meta{Runner: "broker", As: "runner:other"})
+	Reflect(store, "mine", mine, Meta{Runner: "http://runner.test", As: "runner:bot"})
+	Reflect(store, "theirs", theirs, Meta{Runner: "http://runner.test", As: "runner:other"})
 	mine.ch <- task.Frame{Kind: task.EvPending, ID: "q-mine", Gate: "write"}
 	theirs.ch <- task.Frame{Kind: task.EvPending, ID: "q-theirs", Gate: "deploy"}
 	awaitFields(t, store, Ref("mine"), "my gate", func(f map[string]any) bool { return f["pending"] != nil })
@@ -103,17 +103,17 @@ func TestAWorkersDecisionFrameSettlesOnlyItsOwnTasksQuestion(t *testing.T) {
 
 // THE ACKNOWLEDGEMENT CAN OUTRUN THE RECORD: the answer is delivered before it is written down,
 // so a quick worker's frame settles the question first, as the worker's. The answer written
-// after it is the answerer's, delivered, and the only ballot.
+// after it is the answerer's, and the only ballot.
 func TestAnAnswerRecordedAfterItsAcknowledgementIsTheAnswerers(t *testing.T) {
 	const worker, ana = "runner:bot", "user:ana@example.com"
 	store := entitytest.Store(t)
 	h := &fakeHandle{ch: make(chan task.Frame)}
-	Reflect(store, "t1", h, Meta{Runner: "broker", As: worker})
+	Reflect(store, "t1", h, Meta{Runner: "http://runner.test", As: worker})
 	h.ch <- task.Frame{Kind: task.EvPending, ID: "q1", Gate: "write"}
 	awaitFields(t, store, Ref("t1"), "the gate", func(f map[string]any) bool { return f["pending"] != nil })
 	h.ch <- task.Frame{Kind: task.EvDecision, ID: "q1", Tool: "act", Proceed: true, By: ana}
 	awaitFields(t, store, QuestionRef("q1"), "the echo to settle it", func(f map[string]any) bool { return f["status"] == QuestionAnswered })
-	QueuedAnswer(store, "q1", task.Resolution{Proceed: true, By: ana})
+	AnswerQuestion(store, "q1", task.Resolution{Proceed: true, By: ana})
 	q, _, _ := store.Get(QuestionRef("q1"))
 	got := entity.ToObj(q.Payload)
 	ballots, _ := got["ballots"].(map[string]any)
@@ -126,8 +126,8 @@ func TestAWorkersVectorFrameDoesNotSayWhoSlidIt(t *testing.T) {
 	const worker, ana = "runner:bot", "user:ana@example.com"
 	store := entitytest.Store(t)
 	h := &fakeHandle{ch: make(chan task.Frame)}
-	Reflect(store, "t1", h, Meta{Runner: "broker", As: worker, SlidBy: func() (string, string) { return ana, "ask" }})
-	// The slide the control route relayed for ana: the broker reports it and the worker echoes
+	Reflect(store, "t1", h, Meta{Runner: "http://runner.test", As: worker, SlidBy: func() (string, string) { return ana, "ask" }})
+	// The slide the control route relayed for ana: the runner reports it and the worker echoes
 	// it, under whatever name, and both are her slide.
 	for i, by := range []string{ana, entity.SystemDocket} {
 		h.ch <- task.Frame{Kind: task.EvVector, Mode: "ask", By: by}

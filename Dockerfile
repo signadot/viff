@@ -18,7 +18,7 @@ COPY dist/linux/${TARGETARCH}/verse dist/linux/${TARGETARCH}/o dist/linux/${TARG
      dist/linux/${TARGETARCH}/runnerd /usr/local/bin/
 # logd+docd durable state — mount a volume here (the deploy StatefulSet does).
 VOLUME ["/data"]
-EXPOSE 9797 9090
+EXPOSE 9797
 # Bare `docker run` = the monolith (the deploy overrides command/args per tier).
 ENTRYPOINT ["verse"]
-CMD ["up", "--data", "/data", "--o-bin", "/usr/local/bin/o", "--addr", ":9797", "--broker-addr", ":9090"]
+CMD ["up", "--data", "/data", "--o-bin", "/usr/local/bin/o", "--addr", ":9797"]

@@ -60,7 +60,7 @@ func TestChainPrefixMatching(t *testing.T) {
 // A spawn id is pasted back onto a command line constantly (task show, gate resolve,
 // task events), so it must survive a shell word unquoted. This is the constraint that
 // kept kpath's bracket syntax OUT of the id: under zsh, review.seq[2]@demo.pr.1 dies with
-// "no matches found" before verse ever runs. The same principle shortID already states.
+// "no matches found" before verse ever runs. The same principle a task id follows.
 func TestSpawnIDIsPasteSafe(t *testing.T) {
 	const globs = `*?[]{}()~!$&;'"<>|` + "`\\"
 	ids := []string{

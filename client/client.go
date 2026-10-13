@@ -195,16 +195,6 @@ func (c *Client) Delete(path string, q url.Values) (*http.Response, error) {
 	return c.Do(req)
 }
 
-// PostURL sends body to an ABSOLUTE url: a task's broker face, which lives on a sibling port rather
-// than at Addr.
-func (c *Client) PostURL(u string, body any) (*http.Response, error) {
-	b, err := codec.Marshal(body, c.wire())
-	if err != nil {
-		return nil, err
-	}
-	return c.send(http.MethodPost, u, b)
-}
-
 func (c *Client) send(method, u string, body []byte) (*http.Response, error) {
 	req, err := http.NewRequest(method, u, bytes.NewReader(body))
 	if err != nil {

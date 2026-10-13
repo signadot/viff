@@ -36,7 +36,6 @@ import (
 
 	"github.com/signadot/verse/answer"
 	"github.com/signadot/verse/api"
-	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	verseio "github.com/signadot/verse/io"
@@ -95,23 +94,10 @@ type Server struct {
 	Embedded *runnerd.InProcessHandler
 	runner   task.Runner // how tasks are run/governed; the embedded runner unless SetRunner
 
-	// broker is the dial-in broker, when one is served: a place a spawn may NAME, beside the
-	// default rather than instead of it. It is addressed as `broker` the way the in-process
-	// supervisor is addressed as `local` — a reserved name rather than an installed entity,
-	// because a runner entity carries a url for runner.HTTP to drive and this one is a field
-	// on this struct. Making verse dial itself to reach it would buy a loopback hop and a
-	// second copy of the contract.
-	//
-	// Nil when `--broker` was not asked for, and `--runner broker` is then refused by name
-	// like any other runner that is not there.
-	broker task.Runner
-
-	// Addr/BrokerAddr are this verse's OWN listen addresses — the operator API and (if
-	// served) the broker face — published on /status so a client or worker can discover
-	// where verse listens, as the docd addresses are published for a controller. Set by the
-	// task that binds them (cmd/verse up); empty until then.
-	Addr       string
-	BrokerAddr string
+	// Addr is this verse's OWN listen address, the operator API, published on /status so a
+	// client can discover where verse listens, as the docd address is published. Set by the
+	// task that binds it (cmd/verse up); empty until then.
+	Addr string
 	// AdminAddr is the out-of-band pprof/stacks face (adminface), published on /status
 	// because its default is DERIVED from the API address rather than fixed — knowable,
 	// but not something an operator should have to re-derive during an incident.
@@ -174,12 +160,6 @@ type Server struct {
 	// scopeMu because scopeEngine reads it when it builds a scope's engine, lazily.
 	tripPace    time.Duration
 	tripPaceSet bool
-
-	// brokers are worker-facing handlers hosted under /broker/<nonce> (see BrokerHandler).
-	// The nonce is a capability: knowing the URL is the grant to dial in as that runner's
-	// worker. The well-known "local" nonce is handled specially (the in-process supervisor).
-	brokerMu sync.Mutex
-	brokers  map[string]http.Handler
 
 	// routes is the published route table, filled in by Handler as it registers each
 	// route — never maintained separately. See routes.go.
@@ -420,15 +400,12 @@ func checkAudience(store entity.Store, q task.GateQuestion) error {
 }
 
 // localRunner is the embedded runner (Server.Embedded) as a task.Runner: verse reaches it by Go
-// calls rather than over HTTP. Remote runners (a base URL: k8s, lambda, a human broker)
+// calls rather than over HTTP. Remote runners (a base URL: k8s, lambda, another verse)
 // implement the same task.Runner behind the wire contract; the engine drives them through the
 // identical seam. See docs/task-control.md.
 //
-// The runtime is served to nobody raw. The operator API serves it behind the door (a
-// principal, the perms check, the mirror), and the broker face serves only what HostBroker
-// registered under a minted nonce. A fixed name on the broker face used to map to this
-// runtime whole — POST /tasks, resolve, cancel, the vector — for anyone who could reach the
-// port, with no check, no owner and no record (git-issue jp9dy8anh12kr9r7nxn0).
+// The runtime is served to nobody raw: the operator API serves it behind the door (a
+// principal, the perms check, the mirror).
 type localRunner struct{ d *runnerd.InProcessHandler }
 
 func (l localRunner) Spawn(spec task.Launch) task.Handle {
@@ -452,77 +429,7 @@ func (localRunner) Ref() string { return "local" }
 // (baseline and scoped).
 func (s *Server) SetRunner(p task.Runner) { s.runner = p }
 
-// UseBroker serves an in-process dial-in broker, hosted under a minted nonce, and returns it
-// (e.g. for the operator to Revoke a claim). face is this verse's externally-reachable broker
-// base (scheme://host:broker-addr — what a worker can reach); the broker publishes
-// <face>/broker/<nonce> as each task's `dialURL`, closing the mint→publish→dial loop so a
-// worker is told where to dial in rather than pre-configured.
-//
-// It is installed BESIDE the default runner and not as it. Serving a broker says a verse can
-// put work in front of a person; it does not say every spawn is for a person. A spawn that
-// names nobody means "run this", and the answer to that is the runtime this verse has —
-// otherwise turning brokering on takes away the ability to run anything at all, and every
-// charter that never mentioned a runner starts waiting for somebody instead of working.
-//
-// So the three ways of running work are three names: nothing is local, `broker` is here, and
-// an installed runner is wherever its url says. See runnerFor.
-func (s *Server) UseBroker(face string) *broker.Broker {
-	b := broker.New()
-	nonce := s.HostBroker("", b.WorkerHandler())
-	b.SetBase(strings.TrimRight(face, "/") + "/broker/" + nonce)
-	s.broker = b
-	return b
-}
-
-// BrokerHandler serves this verse's broker face — a handler hosted under /broker/<nonce>, so a
-// worker reaches a dial-in broker through verse's own URL rather than a separate service (see
-// docs/task-control.md "Hosting"). Every nonce is one HostBroker registered, minted unguessable
-// unless the registrant pinned it, and the nonce is the capability: there is no well-known
-// name, and the built-in supervisor is not here (see localRunner). It is intended for a
-// SIBLING port, kept distinct from the trusted operator API.
-func (s *Server) BrokerHandler() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/broker/{nonce}/", func(w http.ResponseWriter, r *http.Request) {
-		nonce := r.PathValue("nonce")
-		h := s.brokerFor(nonce)
-		if h == nil {
-			http.NotFound(w, r)
-			return
-		}
-		// Strip /broker/<nonce> so the mounted handler sees its own /tasks/... paths,
-		// exactly as it would if hosted at a root.
-		http.StripPrefix("/broker/"+nonce, h).ServeHTTP(w, r)
-	})
-	return mux
-}
-
-// brokerFor resolves a nonce to its worker-facing handler: one registered via HostBroker, or
-// nil for a nonce nobody minted.
-func (s *Server) brokerFor(nonce string) http.Handler {
-	s.brokerMu.Lock()
-	defer s.brokerMu.Unlock()
-	return s.brokers[nonce]
-}
-
-// HostBroker mounts a worker-facing handler under /broker/<nonce> and returns the nonce a
-// worker dials. Pass a well-known nonce to pin the URL, or "" to mint a fresh unguessable
-// one — the nonce is the capability, so an unguessable mint is the private default. The
-// handler is expected to serve the worker-facing dial-in protocol (claim/inbox/report),
-// e.g. broker.Broker.WorkerHandler().
-func (s *Server) HostBroker(nonce string, h http.Handler) string {
-	if nonce == "" {
-		nonce = mintNonce()
-	}
-	s.brokerMu.Lock()
-	if s.brokers == nil {
-		s.brokers = map[string]http.Handler{}
-	}
-	s.brokers[nonce] = h
-	s.brokerMu.Unlock()
-	return nonce
-}
-
-// mintNonce returns an unguessable path segment used as a broker capability.
+// mintNonce returns an unguessable path segment.
 func mintNonce() string {
 	var b [16]byte
 	_, _ = rand.Read(b[:])
@@ -857,12 +764,7 @@ func (s *Server) reconcileTasks() error {
 		// see docs/trigger-model.md.
 		chain := entity.Str(ent.Payload, "chain")
 		// What can still be re-attached is what did not die with this process, and the entity
-		// says which by naming where it ran. `broker` is a reserved NAME rather than a url, so
-		// it is resolved to the runtime this process holds — which survives a restart exactly
-		// when the broker object does, as one handed in from outside does and one this verse
-		// serves itself does not. Dialling the name as a url would instead ask DNS for a host
-		// called "broker" and orphan the task on the failure: the right answer for the
-		// in-process case, reached by a hung request, and the wrong one for the other.
+		// says which by naming where it ran.
 		if runnerRef != "" && runnerRef != "local" { // the work may have outlived verse
 			// The URL is what this attaches with, and that is the whole reason it is stamped
 			// beside the name. A restart that resolved the name instead would depend on the
@@ -870,9 +772,6 @@ func (s *Server) reconcileTasks() error {
 			// perfectly well — a deletion with an action at a distance, and the thing that
 			// would make step 1's `--leave` a lie.
 			place := task.Runner(runner.HTTP(runnerRef))
-			if runnerRef == brokerName {
-				place = s.brokerRuntime()
-			}
 			if h := attachOn(place, ent.Ref.Name()); h != nil {
 				// re-attach: observe
 				s.reflect(s.Store, ent.Ref.Name(), h, mirror.Meta{
@@ -963,24 +862,6 @@ func (s *Server) write(at entity.Path, v entity.Payload) {
 	if _, _, err := s.Store.Write(entity.Write{At: at, Value: v}); err != nil {
 		fmt.Fprintf(os.Stderr, "verse: reconcile: write %s: %v\n", at, err)
 	}
-}
-
-// brokerRuntime is the dial-in broker this process can still reach: the one it serves, or one
-// installed as the default runner from outside. Nil when there is none, which is what a
-// brokered task whose runtime did not outlive the restart resolves to.
-//
-// Two places to look because a broker arrives two ways, and they differ in exactly the thing a
-// restart cares about: `--broker` builds one here, so it is new and knows nothing about what
-// ran before; one handed in with SetRunner is somebody else's object, and a worker dialled into
-// it never noticed this process go away.
-func (s *Server) brokerRuntime() task.Runner {
-	if s.broker != nil {
-		return s.broker
-	}
-	if s.runner != nil && s.runner.Ref() == brokerName {
-		return s.runner
-	}
-	return nil
 }
 
 // attachOn re-attaches to a task on p, tolerating a p that is not there. A nil runner is a
@@ -1408,19 +1289,17 @@ func (s *Server) Handler() http.Handler {
 	rt.handleControl("POST /flow/say", s.flowSay, "verse-flow-select", one("verse-steered"))
 	rt.handle("POST /flow/cancel", s.flowCancel, "verse-flow-select", one("verse-steered"))
 	// task runtime (task) — mounted; serves /tasks[/{id}[/…]]. versed intercepts the
-	// two READ routes to union the local runtime with the active runner's own tasks
-	// (e.g. a broker's), stamping each with its runner; everything else (spawn, events,
+	// two READ routes to union the local runtime with the active runner's own tasks,
+	// stamping each with its runner; everything else (spawn, events,
 	// control) falls through to the local runtime.
 	ph := s.Embedded.HTTPHandler()
 	rt.handle("GET /tasks", s.listTasks, "", list("verse-instance"))
 	rt.handle("POST /tasks", s.spawnTask, "verse-spawn", one("verse-spawned"))
 	rt.handle("GET /tasks/{id}", s.getTask, "", one("verse-instance"))
-	rt.handle("GET /tasks/{id}/dial", s.taskDial, "", one("verse-dial"))
-	rt.handle("GET /tasks/{id}/inbox", s.taskInbox, "", list("verse-inbox-item"))
 	rt.handle("GET /tasks/{id}/events", func(w http.ResponseWriter, r *http.Request) {
 		s.taskEvents(w, r, ph)
 	}, "", stream("verse-frame"))
-	// cancel/say are runner-agnostic: local tasks go to the runtime, brokered/remote
+	// cancel/say are runner-agnostic: local tasks go to the runtime, remote
 	// ones to the runner's handle — so `task cancel`/`say` work wherever a task runs.
 	rt.handle("POST /tasks/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
 		s.taskControl(w, r, ph, "cancel")
@@ -1449,7 +1328,7 @@ func (s *Server) Handler() http.Handler {
 		s.answerQuestion(w, r, body, r.PathValue("id"), s.scopedStore(r))
 	}, "verse-resolve", nothing)
 	// re-vector (slide autonomy on a running task) — runner-agnostic like cancel/say: a
-	// local task is served by the runtime mount (runnerd's setVector), a brokered/remote
+	// local task is served by the runtime mount (runnerd's setVector), a remote
 	// one goes to the runner handle's SetVector.
 	rt.handle("PUT /tasks/{id}/vector", func(w http.ResponseWriter, r *http.Request) {
 		s.taskControl(w, r, ph, "vector")
@@ -2777,26 +2656,6 @@ func waitsOn(store entity.Store, who string, q entity.Payload) bool {
 	return err == nil && ok
 }
 
-// relaysControl reports whether an answer to this task's gates is QUEUED for a worker
-// rather than applied. A local task's registry takes it on the spot and a remote runtime
-// takes it over the wire that carried it; a broker holds it until somebody dials in.
-func (s *Server) relaysControl(taskID string) bool {
-	if taskID == "" {
-		return false // a firing's gate: the registry answers it here, now
-	}
-	if _, ok := s.Embedded.SnapshotOf(taskID); ok {
-		return false
-	}
-	// The same reach the answer itself will take, so this cannot say "applied" about a task
-	// the answer is then queued for: whether control is relayed is a property of the runtime
-	// HOLDING the task, and a broker holds one it was named for without being the default.
-	if h := s.attach(taskID); h != nil {
-		r, ok := h.(interface{ RelaysControl() bool })
-		return ok && r.RelaysControl()
-	}
-	return false
-}
-
 // ownerOf says which task holds a question, empty for a firing's gate.
 //
 // The RECORD is asked first, and it is the only source that answers while the runner holding
@@ -3258,15 +3117,7 @@ func (s *Server) settle(store entity.Store, id string, res task.Resolution, owne
 	if err != nil {
 		return err
 	}
-	// Accepted is not the same as delivered. A broker takes an answer for a worker that
-	// must dial in and pull it, so the record says so — `delivered: false` — until the
-	// worker's acknowledgement clears it. Everywhere else the answer has already landed
-	// on the party that must act, and the record is simply settled.
-	if s.relaysControl(owner) {
-		mirror.QueuedAnswer(store, id, res)
-	} else {
-		mirror.AnswerQuestion(store, id, res)
-	}
+	mirror.AnswerQuestion(store, id, res)
 	return nil
 }
 
@@ -3873,9 +3724,9 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	if s.DocdClient != "" {
 		out.Docd = &api.Docd{Client: s.DocdClient}
 	}
-	// This verse's own listen addresses (operator API, and the broker face when served).
-	if s.Addr != "" || s.BrokerAddr != "" || s.AdminAddr != "" {
-		out.Listen = &api.Listen{API: s.Addr, Broker: s.BrokerAddr, Admin: s.AdminAddr}
+	// This verse's own listen addresses (the operator API, and the admin face).
+	if s.Addr != "" || s.AdminAddr != "" {
+		out.Listen = &api.Listen{API: s.Addr, Admin: s.AdminAddr}
 	}
 	writeOut(w, r, http.StatusOK, out)
 }
@@ -4172,16 +4023,8 @@ func ioRefs(store entity.Store) []string {
 	return out
 }
 
-// runnerStatus describes the runner along its two independent legs, so the two are not
-// confused: `resume` is the VERSE-facing control/re-attach address (what a restart needs),
-// `dial` is the WORKER-facing address (where a dial-in worker connects). They coincide for
-// a remote runnerd (one URL, no separate worker leg) and diverge for a broker (verse drives
-// it in-process — ephemeral — while a worker dials a separate face). See docs/task-control.md.
-//
-// `kind` is about the DEFAULT — where a spawn that names nobody runs — and `dial` is about
-// the broker, which is a name a spawn may use rather than the place it lands by default. So
-// the two are reported independently: a verse serving a broker still answers `kind: local`,
-// and `dial` being present is what says work can be put in front of a person here.
+// runnerStatus describes the default runner: where a spawn that names nobody runs, and the
+// VERSE-facing control/re-attach address a restart needs.
 func (s *Server) runnerStatus() *api.RunnerStatus {
 	pol := &api.RunnerStatus{Resume: "ephemeral"}
 	switch {
@@ -4191,20 +4034,12 @@ func (s *Server) runnerStatus() *api.RunnerStatus {
 		pol.Kind = "remote"
 		pol.Resume = s.runner.Ref()
 	}
-	if f, ok := s.broker.(interface{ Face() string }); ok {
-		pol.Dial = f.Face()
-	}
 	return pol
 }
 
-func hasFace(p task.Runner) bool {
-	_, ok := p.(interface{ Face() string })
-	return ok
-}
-
-// taskLister is task.Lister: a runner that keeps its OWN task registry (a broker),
+// taskLister is task.Lister: a runner that keeps its OWN task registry,
 // distinct from the local runtime. localRunner does NOT implement it — it delegates to the
-// same runnerd the union already lists — so brokered tasks are added without
+// same runnerd the union already lists — so a runner's tasks are added without
 // double-counting local ones.
 //
 // The declaration moved to the task package so both implementations assert against it and
@@ -4215,12 +4050,7 @@ type taskLister = task.Lister
 
 // registries are the runtimes whose OWN task list this verse has to ask, beside the Taskd
 // snapshots every caller reads first: the default runner when it keeps one (a remote runnerd
-// does), and the dial-in broker, which a spawn may name without it being the default.
-//
-// It is a list rather than a field because a runtime can be named without being the default,
-// so there is no single one to ask. Consulting only the default omits the other silently, and
-// a task missing from `verse task`, from the gate-holder search and from the snapshot route
-// while running perfectly well is the shape that costs an afternoon.
+// does).
 //
 // The local supervisor is deliberately absent: it delegates to the same Taskd the callers list
 // first, so including it would double-count rather than add anything.
@@ -4228,9 +4058,6 @@ func (s *Server) registries() []task.Runner {
 	var out []task.Runner
 	if _, ok := s.runner.(taskLister); ok {
 		out = append(out, s.runner)
-	}
-	if _, ok := s.broker.(taskLister); ok {
-		out = append(out, s.broker)
 	}
 	return out
 }
@@ -4251,7 +4078,7 @@ type gateResolver interface {
 
 // spawnTask is the ad-hoc `task run` path. Unlike a trigger spawn it has no
 // subject/flow, but it goes through the SAME seam: host it via the runner (so a run
-// honors --runner/--broker, not just trigger spawns) and mirror it into the store (so a run
+// honors --runner, not just trigger spawns) and mirror it into the store (so a run
 // is a task:instance entity — observable, and its completion can drive triggers) — the
 // consistency the "tasks are entities" model wants.
 // spawnID settles what a run is called, and refuses an id that would break the surfaces an id
@@ -4419,9 +4246,8 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, api.Spawned{ID: id})
 }
 
-// listTasks is the unified task list: the local runtime plus, when the runner is a
-// broker (or any runner with its own registry), its tasks — each stamped with its runner
-// so a client sees whether a task is local or brokered (and, for a broker, its dialURL).
+// listTasks is the unified task list: the local runtime plus, when the runner keeps its own
+// registry, its tasks — each stamped with its runner so a client sees where a task runs.
 func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 	out, err := s.taskSnapshots(s.scopedStore(r))
 	if err != nil {
@@ -4446,10 +4272,10 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 }
 
 // taskSnapshots is the unified task list for one store view (baseline, or a ?scope
-// overlay): the local runtime plus the active runner's own tasks (a broker's), each
-// stamped with its runner.
+// overlay): the local runtime plus the active runner's own tasks, each stamped with its
+// runner.
 //
-// The runtime and the broker are scope-blind — they hold every task globally — so a
+// The runtime and a runner are scope-blind — they hold every task globally — so a
 // bare list would leak a scope's tasks into baseline (and across
 // scopes). The one record that carries scope is the task:instance:<id> entity that
 // mirror.Reflect writes (synchronously, at spawn) into the spawning scope's copy-on-write
@@ -4471,7 +4297,7 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 // only means its live detail is missing, so the record's own account stands in.
 func (s *Server) taskSnapshots(store entity.Store) ([]task.Instance, error) {
 	// The live view, by id, from whatever can be asked cheaply: the in-process runtime, and
-	// the default runner when it keeps its own registry (a broker).
+	// the default runner when it keeps its own registry.
 	live := map[string]task.Instance{}
 	for _, inst := range s.Embedded.Snapshots() {
 		inst.Runner = "local"
@@ -4637,18 +4463,9 @@ func (s *Server) placeOf(id string) task.Runner {
 	ref := entity.Str(e.Payload, "runner")
 	// `local` means in-process, which the runnerd branch above already covers; equal to the
 	// default runner means the branch above covered it too, and rebuilding a second client
-	// for the same place would lose whatever the configured one knows about itself — a
-	// broker's handle relays control, and an HTTP client reconstructed from its url does not
-	// say so.
+	// for the same place would lose whatever the configured one knows about itself.
 	if ref == "" || ref == "local" || ref == s.runner.Ref() {
 		return nil
-	}
-	// The broker is named, not addressed. Handing back the runtime itself is the whole of why
-	// this is a branch: `broker` is a reserved name rather than a url, so building an HTTP
-	// client from it dials a host by that name — and control for a brokered task has to reach
-	// the object holding the claim, which relays it to a worker that dialled in.
-	if ref == brokerName {
-		return s.broker // nil when this verse serves none, which reads as "not here"
 	}
 	return runner.HTTP(ref)
 }
@@ -4656,12 +4473,11 @@ func (s *Server) placeOf(id string) task.Runner {
 // taskHoldingGate finds which task has decisionID open, for a gate id that does not
 // carry its owner.
 //
-// A gate the RUNTIME raises is <task-id>~dN, so its owner is readable off the id. One an
-// EXECUTOR raises (`task do gate`) is <name>-<hex>, deliberately free of GateSep —
-// shortID avoids it so the id survives a shell and a URL intact — with the consequence that
-// splitting on GateSep recovers nothing and `verse gate approve` answered 404 on a gate
-// `verse gate` was listing one line above, `task:` and all. The routing information was
-// never missing; it was in the snapshot rather than in the id. This reads it from there.
+// A gate the embedded runtime raises is <task-id>~dN, so its owner is readable off the id. A
+// runner behind a URL names its gates as it likes, and an id without GateSep in it recovers
+// nothing when split, so `verse gate approve` would answer 404 on a gate `verse gate` was
+// listing one line above, `task:` and all. The routing information is not missing; it is in
+// the runner's snapshot rather than in the id. This reads it from there.
 //
 // Unscoped, like isTask beside it: a resolve is addressed by a unique decision id, not
 // discovered by listing, so it does not go through taskSnapshots' scope filter.
@@ -4696,7 +4512,7 @@ func (s *Server) taskHoldingGate(decisionID string) string {
 }
 
 // resolveTaskDecision answers a task's pending gate (write/shell/delegate) — the
-// runtime for a local task, the runner handle for a brokered one.
+// runtime for a local task, the runner handle for a remote one.
 func (s *Server) resolveTaskDecision(taskID, decisionID string, res task.Resolution) error {
 	if _, ok := s.Embedded.SnapshotOf(taskID); ok {
 		if s.Embedded.Resolve(taskID, decisionID, res) {
@@ -4708,7 +4524,7 @@ func (s *Server) resolveTaskDecision(taskID, decisionID string, res task.Resolut
 	}
 	if h := s.attach(taskID); h != nil {
 		// by is carried across this seam, not dropped: the local leg above takes the whole
-		// Resolution, so a brokered gate that lost the answerer would be attributed
+		// Resolution, so a remote gate that lost the answerer would be attributed
 		// differently from an identical local one purely by where it happened to run.
 		if rh, ok := h.(gateResolver); ok {
 			return rh.Resolve(decisionID, res.Chosen(), strings.Join(res.Steer, " "), res.By)
@@ -4719,14 +4535,11 @@ func (s *Server) resolveTaskDecision(taskID, decisionID string, res task.Resolut
 }
 
 // attach reaches a task wherever it actually runs: the runner its own task:instance records
-// first, the dial-in broker second, this verse's default runner last.
+// first, this verse's default runner last.
 //
 // The order is not a preference. An HTTP runner's Attach hands back a handle for ANY id without
 // asking, so consulting the default first would reach whichever place happens to be configured
 // rather than the one holding the task — silently, and only for work sent somewhere by name.
-// The broker goes ahead of it for the opposite reason: it answers only for ids it actually
-// holds, so asking costs nothing and skipping it would lose a brokered task that never got a
-// record — one spawned on the broker directly rather than through a firing.
 //
 // One helper rather than the same two lines at each call site, because "reach this task" was
 // written three times and every copy assumed the default runner: answering a gate, streaming a
@@ -4738,15 +4551,11 @@ func (s *Server) attach(id string) task.Handle {
 			return h
 		}
 	}
-	if h := attachOn(s.broker, id); h != nil {
-		return h
-	}
 	return s.runner.Attach(id)
 }
 
 // getTask resolves one task across backends: the local runtime first (live detail),
-// then the runner's own registry (a brokered task) — so `task get <id>` works whether
-// the task runs locally or behind a broker.
+// then the runner's own registry — so `task get <id>` works wherever the task runs.
 // mayReadTask asks the permission check whether the request may read a task, and answers the
 // request when it may not: refused in the check's words, or the store's error when the record
 // could not be read.
@@ -4761,46 +4570,6 @@ func (s *Server) attach(id string) task.Handle {
 func (s *Server) mayReadTask(w http.ResponseWriter, r *http.Request, id string) bool {
 	_, _, err := s.scopedStore(r).Get(mirror.Ref(id))
 	return !unreadable(w, r, err)
-}
-
-// taskDial answers where a worker dials in to run a task, and nothing else about it.
-//
-// NOT CHECKED, which is its reason for being: a worker is granted the task at its claim, the
-// claim is made at the address this answers, and a check here would ask for the grant before
-// the act that makes it. What it gives away is an address the broker serves to anybody who
-// can reach it.
-//
-// ONE ANSWER for a task that is not brokered and for one that is not there, so it says where
-// to dial and never whether a task exists.
-func (s *Server) taskDial(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if url := s.dialOf(r, id); url != "" {
-		writeOut(w, r, http.StatusOK, api.Dial{DialURL: url})
-		return
-	}
-	codec.HTTPError(w, r, http.StatusNotFound, fmt.Sprintf(
-		"no broker to dial in to for task %q: it is not a brokered task, or it is not there", id))
-}
-
-// dialOf is a task's dial address, from whichever holds the task: a registry that serves
-// workers, else the task's record, read as the system since the asker may hold nothing on it.
-func (s *Server) dialOf(r *http.Request, id string) string {
-	if _, ok := s.Embedded.SnapshotOf(id); ok {
-		return "" // hosted here: there is no worker to dial in
-	}
-	for _, p := range s.registries() {
-		if inst, err := p.(taskLister).TaskSnapshot(id); err == nil && inst.DialURL != "" {
-			return inst.DialURL
-		}
-	}
-	store := s.Store
-	if sc := r.URL.Query().Get("scope"); sc != "" {
-		store = s.Store.Scope(sc)
-	}
-	if e, ok, _ := entity.As(store, entity.SystemDefault).Get(mirror.Ref(id)); ok {
-		return entity.Str(e.Payload, "dialURL")
-	}
-	return ""
 }
 
 func (s *Server) getTask(w http.ResponseWriter, r *http.Request) {
@@ -4862,42 +4631,8 @@ func noSuchTask(w http.ResponseWriter, r *http.Request, id string) {
 			"`verse flow show %s` reads the flow.", id, id))
 }
 
-// inboxReader is a runner (a broker) that can surface a task's queued worker control for
-// operator observability, unfenced. localRunner doesn't implement it (no dial-in worker).
-type inboxReader interface {
-	TaskInbox(id string) ([]api.InboxItem, bool)
-}
-
-// taskInbox is an operator peek at the control queued for a brokered task's worker —
-// unfenced, so it doesn't disturb a live worker. A local task has no worker inbox → empty.
-func (s *Server) taskInbox(w http.ResponseWriter, r *http.Request) {
-	if !s.mayReadTask(w, r, r.PathValue("id")) {
-		return
-	}
-	items := []api.InboxItem{}
-	// Every runtime that could hold a worker inbox, not just the default: a broker serves one
-	// whether or not unnamed work lands on it, and asking only the default answers an empty
-	// list about a task with control queued — which reads as "nothing waiting" rather than
-	// "asked the wrong place".
-	for _, p := range s.registries() {
-		ir, ok := p.(inboxReader)
-		if !ok {
-			continue
-		}
-		if got, ok := ir.TaskInbox(r.PathValue("id")); ok {
-			items = got
-			break
-		}
-	}
-	// The bare list, not {items: [...]}. Every other collection this server serves is a
-	// bare array — triggers, gates, flows, tasks, flow trees — and the wrapper
-	// here was a JSON habit rather than a decision. Nothing decoded it structurally:
-	// `verse task inbox` re-renders the document.
-	writeOut(w, r, http.StatusOK, items)
-}
-
 // taskEvents bridges `attach` across backends: a locally-hosted task streams from the
-// runtime (its native SSE); a brokered/remote one is bridged here — Subscribe the runner
+// runtime (its native SSE); a remote one is bridged here — Subscribe the runner
 // handle (which replays the merged log then goes live) and re-emit each event as SSE.
 func (s *Server) taskEvents(w http.ResponseWriter, r *http.Request, runtime http.Handler) {
 	id := r.PathValue("id")
@@ -4960,7 +4695,7 @@ type sinceSubscriber interface {
 // same thing on this route as it does on the local runtime's: the frames AFTER that cursor,
 // then live, with an EvGap first if the cursor is below what is still retained.
 //
-// It read nothing before, so a brokered or remote task replayed from the beginning however
+// It read nothing before, so a remote task replayed from the beginning however
 // far along the client already was. A resumable client would then see events it had already
 // acted on — which is not a cosmetic difference for a reader that acts on what it sees.
 //
@@ -4983,7 +4718,7 @@ func subscribeAt(h task.Handle, since string) (<-chan task.Frame, func()) {
 }
 
 // taskControl routes cancel/say: a task the local runtime hosts is served by it (live
-// detail); otherwise the request goes to the runner's handle (a brokered/remote task),
+// detail); otherwise the request goes to the runner's handle (a remote task),
 // so the same command works wherever a task runs. Pause and resume are the operator's hold
 // (holdTask), taken and lifted as `flow suspend|resume --task` take them.
 //
@@ -5055,7 +4790,7 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 		writeOut(w, r, http.StatusOK, api.Asked{ID: ask})
 		return
 	case "vector":
-		// slide autonomy on a running (brokered/remote) task: {vector, by} is relayed to
+		// slide autonomy on a running (remote) task: {vector, by} is relayed to
 		// the worker via the handle, `by` attributing the operator who slid it.
 		var body api.SetVector
 		if err := codec.Read(r, &body); err != nil {

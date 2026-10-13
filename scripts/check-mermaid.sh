@@ -6,7 +6,7 @@
 # reads, tony the codegen reads, or prose. A mermaid block is a string that mkdocs copies
 # through untouched and a browser parses months later — so a syntax error is invisible at
 # build time and shows up as mermaid's error message printed where the picture should be.
-# That is how the broker sequence in docs/seams.md shipped broken: reviewed by reading, which
+# That is how a sequence diagram in docs/seams.md shipped broken: reviewed by reading, which
 # found one of its two faults and not the one the parser reports first.
 #
 # The VERSION is derived, not written down here. mkdocs-mermaid2-plugin decides which mermaid

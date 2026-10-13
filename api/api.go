@@ -252,15 +252,6 @@ type Spawned struct {
 	ID string `tony:"field=id"`
 }
 
-// Dial is where a worker dials in to run one task (`GET /tasks/{id}/dial`), and nothing else
-// about the task: a worker reads it before it has claimed anything, so before it holds anything
-// on the task's record.
-//
-//tony:schemagen=verse-dial,notag
-type Dial struct {
-	DialURL string `tony:"field=dialURL"`
-}
-
 // Say re-prompts a running task with a new instruction
 // (`POST /tasks/{id}/say`).
 //
@@ -449,36 +440,6 @@ type Steered struct {
 	// Affected is how many live tasks it reached. Zero is a normal answer — a selection that
 	// names no running work is not an error, it is a flow that has finished.
 	Affected int `tony:"field=affected"`
-}
-
-// InboxItem is one control instruction queued for a task's worker — the broker's
-// dial-in leg. It is cursored so a reconnecting worker resumes with ?since=<cursor>.
-//
-// It lives here because it was spelled THREE times: the broker's own queue element, a
-// map[string]any re-spelling of that element in TaskInbox, and a partial copy in the CLI
-// carrying the four fields an executor acts on. Three spellings of one message, none of
-// which a compiler could compare — the same defect this package was created to remove for
-// request bodies, surviving on the response side because nobody looked.
-//
-// The subset the CLI used to declare is not lost by naming the whole thing: a field an
-// executor does not read simply arrives and is ignored.
-//
-//tony:schemagen=verse-inbox-item,notag
-type InboxItem struct {
-	Cursor int64  `tony:"field=cursor"`
-	Kind   string `tony:"field=kind"` // spec | say | cancel | pause | resume | vector | resolve
-	Prompt string `tony:"field=prompt,omitzero"`
-	Driver string `tony:"field=driver,omitzero"`
-	Text   string `tony:"field=text,omitzero"`
-	By     string `tony:"field=by,omitzero"`
-	// Decision and Choice answer a gate the worker raised: which one, and which option.
-	// Proceed is the same answer as yes or no, for a worker that raised a two-option gate
-	// and reads only that.
-	Decision string `tony:"field=decision,omitzero"`
-	Choice   string `tony:"field=choice,omitzero"`
-	Proceed  bool   `tony:"field=proceed,omitzero"`
-	// Vector slides the worker's autonomy dial mid-run.
-	Vector *task.Vector `tony:"field=vector,omitzero"`
 }
 
 // FlowCount is how much work is live: tasks, and the distinct subjects they are about.
@@ -780,15 +741,13 @@ type Perms struct {
 	Unparsed int `tony:"field=unparsed,omitzero"`
 }
 
-// RunnerStatus is how this verse runs tasks: local (in-process), broker (a dial-in
-// worker face), or remote (a runner base URL). Resume says what survives a restart,
-// and Dial is the worker-facing address when there is one.
+// RunnerStatus is how this verse runs tasks: local (in-process) or remote (a runner base
+// URL). Resume says what survives a restart.
 //
 //tony:schemagen=verse-runner-status,notag
 type RunnerStatus struct {
 	Kind   string `tony:"field=kind"`
 	Resume string `tony:"field=resume"`
-	Dial   string `tony:"field=dial,omitzero"`
 }
 
 // Docd is the document store's client face: the address store clients connect to.
@@ -811,12 +770,11 @@ type LLM struct {
 	BaseURL    string `tony:"field=baseURL,omitzero"`
 }
 
-// Listen is this verse's own addresses: the operator API, and the broker face when served.
+// Listen is this verse's own addresses: the operator API, and the admin face.
 //
 //tony:schemagen=verse-listen,notag
 type Listen struct {
-	API    string `tony:"field=api,omitzero"`
-	Broker string `tony:"field=broker,omitzero"`
+	API string `tony:"field=api,omitzero"`
 	// Admin is the pprof/stacks face. It is reported because its address is DERIVED from
 	// the api one rather than fixed, and an operator reaching for it is mid-incident.
 	Admin string `tony:"field=admin,omitzero"`

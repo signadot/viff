@@ -12,7 +12,6 @@
 env:
   image: "verse:dev"
   imagePullPolicy: "Never"
-  brokerFace: true
   hostPV: true
   hostPath: "/mnt/verse"
   # An io turned on here (`-e slackIO=true`, with its Secret made by hand) proves itself with its

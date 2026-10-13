@@ -42,8 +42,7 @@ func (p *localProducer) Name() string { return "runnerd" }
 // A local task fails through its driver, and the loop reports the driver's error — so a
 // caller-chosen failure reason is available. A completion's answer comes from the optional
 // Resulter capability, likewise. Gates are the gap: they are raised BY the driver mid-run,
-// and there is no outside-in way to open one on a hosted task the way an executor does
-// through a broker.
+// and there is no outside-in way to open one on a hosted task.
 func (p *localProducer) Caps() tasktest.Caps {
 	return tasktest.Caps{FailureReason: true, CompletionAnswer: true}
 }

@@ -83,37 +83,6 @@ func TestReflectProjectsOutput(t *testing.T) {
 	}
 }
 
-// dialer wraps a handle with a worker-facing dial URL, as the broker's handle does.
-type dialer struct {
-	task.Handle
-	url string
-}
-
-func (d dialer) DialURL() string { return d.url }
-
-// A dial-in runner publishes where a worker connects: Reflect projects a handle's DialURL
-// onto the entity as `dialURL`, so a worker can be told where to dial in (mint→publish→dial)
-// rather than being pre-configured. A handle without one (local, remote-runnerd) sets none.
-func TestReflectPublishesDialURL(t *testing.T) {
-	store := entitytest.Store(t)
-	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
-	p := task.NewTask("d1", sup, &steps{n: 1}, noopExec{})
-	const url = "http://verse.test:9090/broker/abc123"
-	Reflect(store, p.ID, dialer{p, url}, Meta{Runner: "broker"}) // initial Put is synchronous
-
-	got, ok, _ := store.Get(Ref("d1"))
-	if !ok || entity.ToObj(got.Payload)["dialURL"] != url {
-		t.Fatalf("dialURL not published: %+v", got.Payload)
-	}
-
-	// a plain handle (no DialURL) publishes no dialURL key.
-	p2 := task.NewTask("d2", sup, &steps{n: 1}, noopExec{})
-	Reflect(store, p2.ID, p2, Meta{Runner: "local"})
-	if g2, _, _ := store.Get(Ref("d2")); entity.ToObj(g2.Payload)["dialURL"] != nil {
-		t.Fatalf("local handle should publish no dialURL: %+v", g2.Payload)
-	}
-}
-
 // A running task shows up in the verse as a task:instance:<id> entity that
 // progresses to a terminal status — so another observer sees its lifecycle purely
 // by watching entities.

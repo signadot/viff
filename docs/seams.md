@@ -28,13 +28,11 @@ gives the reasons for the design.
 flowchart LR
   cli["verse CLI<br/>operator"]
   res["answerer<br/>through a resolver"]
-  worker["worker<br/>laptop · pod · human"]
   wh["Slack · Linear · GitHub"]
   hook["git hook<br/>reference-transaction"]
 
   subgraph host["the verse"]
     versed["versed<br/>:9797 operator API"]
-    bface["broker face<br/>sibling port"]
     docd["logd + docd"]
   end
 
@@ -46,7 +44,6 @@ flowchart LR
   res -->|"events · verdicts · position"| versed
   wh -->|"signed webhook"| src
   hook -->|"POST .../hint"| versed
-  worker -->|"claim · inbox · report"| bface
 
   versed -->|"session: read · write · watch"| docd
   versed -->|"spawn · events?since · control"| remote
@@ -56,7 +53,7 @@ flowchart LR
 
   classDef dialsIn fill:#e8f4ff,stroke:#4a90d9
   classDef dialsOut fill:#f2f7ec,stroke:#7aa352
-  class cli,res,worker,wh,hook,src dialsIn
+  class cli,res,wh,hook,src dialsIn
   class remote,llm,docd dialsOut
 ```
 
@@ -82,7 +79,6 @@ would have this shape if every external system let you install a four-line shell
 | 1 | [Operator API](#1-the-operator-api) | client → verse | ~60 HTTP routes, two planes | built |
 | 2 | [Store](#2-the-store) | verse → docd | logd session, on the client face | built |
 | 4 | [Remote runner](#4-task-control-dialled-out) | verse → runner | `POST /tasks`, `GET /events?since`, control | built |
-| 5 | [Broker](#5-task-control-dialled-in) | worker → verse | `claim` · `inbox` · `report` under a nonce | built |
 | 6 | [Ios](#6-ios--read-one-way-hint-and-act-the-other) | both, by question | `GET /io`, `GET /reflect`; `POST …/hint`, `POST …/pass` | built (`dial-in` is not) |
 | 7 | [Webhooks](#7-webhooks-the-only-seam-facing-the-internet) | external → source | signed `POST` | built |
 | 8 | [Resolvers](#8-resolvers-answering-from-the-runs-own-stream) | answerer → verse | SSE frames; verdict; position | built |
@@ -152,56 +148,9 @@ Verse hands `?since=` to the cursor of the *remote*. The remote knows what it st
 the remote decides. A reader whose cursor is below the kept window gets a resync marker. It does
 not get a stream that starts in the middle without notice.
 
-This direction has the usual cost: **verse must be able to reach the runner.** A runtime on a
+This direction has a cost: **verse must be able to reach the runner.** A runtime on a
 private network, on a laptop, or in a cluster that accepts no inbound connection cannot be a
-remote runner. Seam 5 removes that limit.
-
-## 5. Task control, dialled in
-
-The [broker](glossary.md#broker) is seam 4 in the other direction. Verse serves a handler for
-[workers](glossary.md#worker) under `/broker/<nonce>`, and the *worker* opens the connection:
-
-```mermaid
-sequenceDiagram
-  participant W as worker · laptop · pod · human
-  participant B as broker face<br/>/broker/{nonce}
-  participant V as versed
-  participant S as the store
-
-  V->>B: spawn — in task, because the broker IS verse's runner here
-  Note over B: status: unclaimed
-  W->>B: POST /tasks/{id}/claim  (-as runner:#lt;who#gt;)
-  B-->>W: claim accepted — an epoch is minted
-  Note over B: a later claim fences this one
-  loop while running
-    W->>B: GET /tasks/{id}/inbox
-    B-->>W: queued control: say · pause · cancel
-    W->>B: POST /tasks/{id}/report (frames, gates, result)
-    B->>V: the same frames an attached observer sees
-    V->>S: mirrored to verse.task.instance.{id}
-  end
-  Note over B: first terminal report wins — later ones are frozen no-ops
-```
-
-Three properties make this more than a polling loop.
-
-| Property | What it means |
-|---|---|
-| **The nonce is the capability.** | The nonce is 128 bits from `crypto/rand`. Whoever knows the URL may act as the worker of that runner. |
-| **The claim mints an epoch.** | The broker fences a displaced or zombie worker, so that worker cannot corrupt the log. |
-| **The terminal is once.** | The first terminal report wins. Later reports are idempotent no-ops. |
-
-Because the nonce is the grant, the broker face is meant for a *sibling* port. That port is
-separate from the trusted operator API.
-
-The well-known nonce `local` is the built-in supervisor. Verse reaches the in-process runtime
-through the same shape as every other runtime. There is no privileged local path.
-
-The seam is the same for every worker, so a person can do a task: **the broker is the
-[runner](glossary.md#runner), and the person is its worker.** `verse task do <verb> -as <who>`
-is the worker's side of this protocol. `-as` is required, because a claim must name who made
-it. Every `verse task` verb works in the same way, whether the work is local, remote, or in the
-terminal of a person.
+remote runner.
 
 ## 6. Ios — read one way, hint and act the other
 
@@ -329,7 +278,6 @@ This table is the summary of the page.
 |---|---|---|
 | beside verse | local runner (in process) | no wire at all |
 | anywhere verse can reach | remote runner (4) | verse opens the connection |
-| behind a firewall, on a laptop, in a person's hands | broker (5) | the worker opens it, and holds a nonce |
 | in a system verse may dial | source `url` (6) | verse asks; hints are an optimization |
 | in a system verse may **not** dial | source `dial-in` | **designed, not built** |
 | in somebody else's org, pushing in | webhook (7) | signed, and only ever a hint |

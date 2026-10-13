@@ -122,20 +122,16 @@ verse's built-in clock and calendar) is installed as the system and acts as the 
 
 ## Reads by a worker and by a task's routes
 
-- **A task is read as its record is.** `GET /tasks/{id}`, its `/events` and its `/inbox` hold
-  the task's prompt, its transcript, its result and the answers queued for its worker. Each asks
+- **A task is read as its record is.** `GET /tasks/{id}` and its `/events` hold the task's
+  prompt, its transcript and its result. Each asks
   for `read` on the task's record, `verse.task.instance.<id>`. Verse refuses each without it.
-- **Where to dial is not checked.** `GET /tasks/{id}/dial` answers a brokered task's dial
-  address and nothing else. A worker reads it before it has claimed the task, so before it holds
-  anything on the record. The claim is what grants it. The route gives the same answer for a
-  task that is not brokered and for a task that is not there.
 
 ## A relayed task's frames
 
 - **A relayed task's frames are not evidence of who did what.** A *frame* is an event that a
   running task streams back: a status, a pending gate, a decision, a `say`, a vector change. For
-  a task that verse hosts, verse makes the frames. For a task that verse relays to, such as a
-  broker's worker or a remote runner, the frames are whatever the worker sent. So for a relayed
+  a task that verse hosts, verse makes the frames. For a task that verse relays to, a remote
+  runner's, the frames are whatever the worker sent. So for a relayed
   task:
   - who is working the task is who claimed it;
   - an answer that the route accepted is already on the question, and the worker's decision

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/signadot/verse/api"
-	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
@@ -302,88 +301,4 @@ func TestOneJoinerLeavingKeepsTheQuestion(t *testing.T) {
 		t.Fatalf("status = %v, want still pending — somebody is still blocked on it: %+v",
 			got["status"], got)
 	}
-}
-
-// An answer a broker took for a worker is recorded as ACCEPTED, not as delivered — and
-// becomes delivered when the worker acknowledges it.
-//
-// It was recorded as settled the moment it was queued, so `verse gate`, the snapshot and the
-// record all reported the question decided while the worker that must act on it had heard
-// nothing. If it never came back the answer evaporated with no trace it was undelivered.
-//
-// The gate is closed either way: nobody else may answer. What is not yet true is that the
-// party who must act knows.
-func TestARelayedAnswerIsRecordedAsInFlight(t *testing.T) {
-	b := broker.New()
-	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"})
-	srv := testServer(t)
-	srv.SetRunner(b)
-	nonce := srv.HostBroker("", b.WorkerHandler())
-	mirror.Reflect(srv.Store, "p", b.Attach("p"), mirror.Meta{Runner: b.Ref()})
-	ops := httptest.NewServer(srv.Handler())
-	defer ops.Close()
-	work := httptest.NewServer(srv.BrokerHandler())
-	defer work.Close()
-
-	claim := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p/claim", map[string]any{"identity": "runner:w"})
-	var cl struct {
-		Epoch int64 `tony:"field=epoch"`
-	}
-	decodeResp(t, claim, &cl)
-	claim.Body.Close()
-	postTony(t, work.URL+"/broker/"+nonce+"/tasks/p/report", map[string]any{
-		"epoch":  cl.Epoch,
-		"events": []task.Frame{{Kind: task.EvPending, ID: "p~d1", Gate: "write"}},
-	}).Body.Close()
-	for range 400 {
-		if _, ok, _ := srv.Store.Get(mirror.QuestionRef("p~d1")); ok {
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-
-	resp := postTony(t, ops.URL+answerPath("p~d1"), api.Resolve{Choice: "proceed", By: "user:scott@example.com"})
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("resolve = %s", resp.Status)
-	}
-
-	q := question(t, srv, "p~d1")
-	if q["status"] != mirror.QuestionAnswered || q["verdict"] != "proceed" {
-		t.Fatalf("the answer was not recorded at all: %+v", q)
-	}
-	if q["delivered"] != false {
-		t.Fatalf("delivered = %v, want false — the worker has not been told: %+v", q["delivered"], q)
-	}
-
-	// The worker pulls, then polls past it. That acknowledgement is what makes it delivered.
-	pull := func(since int64) []map[string]any {
-		t.Helper()
-		r, err := http.Get(work.URL + "/broker/" + nonce + "/tasks/p/inbox?since=" +
-			itoa(since) + "&epoch=" + itoa(cl.Epoch))
-		if err != nil {
-			t.Fatalf("inbox: %v", err)
-		}
-		defer r.Body.Close()
-		var out struct {
-			Items []map[string]any `tony:"field=items"`
-		}
-		decodeResp(t, r, &out)
-		return out.Items
-	}
-	items := pull(0)
-	if len(items) == 0 {
-		t.Fatal("the answer never reached the worker's inbox")
-	}
-	pull(int64(len(items)))
-
-	var got map[string]any
-	for range 400 {
-		got = question(t, srv, "p~d1")
-		if _, still := got["delivered"]; !still {
-			return
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	t.Fatalf("the worker acknowledged the answer and the record still says in-flight: %+v", got)
 }

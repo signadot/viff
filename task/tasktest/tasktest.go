@@ -2,21 +2,21 @@
 //
 // verse reports a task through one shape wherever it runs — `verse task`,
 // `task get` and the mirrored entity all read task.Instance — but that shape is
-// PRODUCED independently by each runner: runnerd projects it from a hosted task, the
-// broker from a dial-in worker's reported state. Nothing made those two agree. Every field
+// PRODUCED independently by each runner: runnerd projects it from a hosted task, a remote
+// runner from its own worker's reported state. Nothing made two producers agree. Every field
 // is a plain struct member, so a producer that never sets one still compiles, and a producer
 // that sets the wrong one type-checks perfectly.
 //
-// That is not a hypothetical. Across one afternoon: the broker narrowed a raised gate to
+// That is not a hypothetical. Across one afternoon: one producer narrowed a raised gate to
 // id+name and dropped the --reason a resolver reads to decide; runnerd passed the selected
 // driver to its builder and kept no record, so an auto-selected doer was observable nowhere;
-// and the broker filed a failure reason as a Result because `do complete <answer>` and
-// `do fail <why>` ride the same wire field, while an identical local failure reported an Err.
+// and one producer filed a failure reason as a Result because its wire carried both in one
+// field, while an identical local failure reported an Err.
 // Each was found by hand, by asking one producer a question and then asking the other.
 //
 // An interface alone does not fix this, and it is worth being precise about why, because the
 // obvious fix was already in place: Err() IS a method on task.Handle, both producers were
-// forced to implement it, and the broker implemented it as `return ""` with a comment
+// forced to implement it, and one producer implemented it as `return ""` with a comment
 // explaining that the protocol had no error channel. The comment was wrong. A compiler can
 // demand that a question be answered; it cannot tell that the answer is false.
 //
@@ -29,7 +29,7 @@
 //	func TestConformance(t *testing.T) { tasktest.Run(t, &myProducer{}) }
 //
 // LIMIT, stated plainly: this only asserts invariants somebody thought to write. It would
-// not have caught PendingGate.Origin being empty on the broker leg, because that one is
+// not have caught PendingGate.Origin being empty on a relayed leg, because that one is
 // CORRECTLY empty — an executor raises a gate without deciding who answers it. Telling a
 // structural blank from a dropped value still needs a person who knows what the field means.
 // What the suite buys is that "silently different across runners" becomes "fails a named
@@ -46,7 +46,7 @@ import (
 // Spec describes the task a producer should start, and how (or whether) to drive it to a
 // terminal state. Outcome is part of the spec rather than a later call because the two
 // producers differ on exactly this: a runnerd task begins executing the instant it is
-// spawned and cannot be told to fail afterward, while a brokered one waits for a worker to
+// spawned and cannot be told to fail afterward, while a relayed one waits for a worker to
 // report. Naming the intent up front is the only phrasing both can honor.
 type Spec struct {
 	Driver  string      // the driver name the caller asked for

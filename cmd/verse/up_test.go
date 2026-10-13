@@ -42,15 +42,6 @@ func TestValidateAdvertiseNeedsItsFace(t *testing.T) {
 		"no advertise — the default": {
 			cfg: upConfig{DocdAddr: "docd:7071"},
 		},
-		"broker advertise with no broker face": {
-			cfg:     upConfig{BrokerAdvertiseAddr: "verse-broker:9090"},
-			wantErr: true,
-		},
-		// The face is what --broker-addr serves, so hosting one is enough to re-address it.
-		// A verse can host a broker for somebody else's worker without running tasks on one.
-		"broker advertise with a face but no --broker": {
-			cfg: upConfig{BrokerAddr: ":9090", BrokerAdvertiseAddr: "verse-broker:9090"},
-		},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -62,56 +53,6 @@ func TestValidateAdvertiseNeedsItsFace(t *testing.T) {
 				t.Fatalf("validate() = %v, want a cli.ErrUsage", err)
 			case !c.wantErr && err != nil:
 				t.Fatalf("validate() = %v, want nil", err)
-			}
-		})
-	}
-}
-
-// brokerFace advertises a dialable URL: wildcard/empty hosts become localhost (dev), an
-// explicit host is preserved (deployment), and the scheme is http.
-func TestBrokerFace(t *testing.T) {
-	cases := map[string]string{
-		":9090":           "http://localhost:9090",
-		"0.0.0.0:9090":    "http://localhost:9090",
-		"[::]:9090":       "http://localhost:9090",
-		"verse.test:9090": "http://verse.test:9090",
-		"127.0.0.1:9090":  "http://127.0.0.1:9090",
-	}
-	for in, want := range cases {
-		if got := brokerFace(in); got != want {
-			t.Errorf("brokerFace(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
-// The face a worker is told to dial is built from the ADVERTISED address, which is the whole
-// point of having one: a pod binds a wildcard port and is reached by a name it cannot bind, so
-// the published URL has to come from somewhere other than the listen address. Without the
-// advertised one the same deployment publishes localhost, which every worker resolves and none
-// of them reaches.
-func TestBrokerFaceUsesTheAdvertisedAddress(t *testing.T) {
-	cases := map[string]struct {
-		cfg  upConfig
-		want string
-	}{
-		"a cluster: bound to a wildcard, reached by a tailnet name": {
-			cfg:  upConfig{BrokerAddr: ":9090", BrokerAdvertiseAddr: "verse-broker:9090"},
-			want: "http://verse-broker:9090",
-		},
-		"dev: nothing advertised, so where it bound is where to dial": {
-			cfg:  upConfig{BrokerAddr: ":9090"},
-			want: "http://localhost:9090",
-		},
-		"the advertised port may differ too — a proxy in front of the bind": {
-			cfg:  upConfig{BrokerAddr: ":9090", BrokerAdvertiseAddr: "verse-broker:443"},
-			want: "http://verse-broker:443",
-		},
-	}
-	for name, c := range cases {
-		t.Run(name, func(t *testing.T) {
-			got := brokerFace(advertised(c.cfg.BrokerAddr, c.cfg.BrokerAdvertiseAddr))
-			if got != c.want {
-				t.Errorf("broker face = %q, want %q", got, c.want)
 			}
 		})
 	}

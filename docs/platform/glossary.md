@@ -5,27 +5,6 @@ a user meets are in [the glossary](../glossary.md).
 
 ## Tasks and where they run
 
-### epoch
-
-The epoch of a claim is a number that the broker makes at each claim. The broker rejects a
-report that carries an older epoch.
-
-See [Seams](../seams.md#5-task-control-dialled-in).
-
-### report
-
-A report is what a worker sends to the broker about its task: what it said, what it ran, a
-gate that it raised, its final status.
-
-See [Task control](../task-control.md#the-worker-facing-dial-in-protocol).
-
-### dial URL
-
-The dial URL of a task on a broker is the URL where a worker connects to claim the task. It is
-the `dialURL` field of the instance record.
-
-See [Tasks](../reference/tasks.md#executing-one-by-hand).
-
 ### frame (of an event stream)
 
 A frame is one event in the event stream of a task: a status, a pending gate, a decision, a
@@ -114,10 +93,6 @@ See [Deployment and steering](../deployment-and-steering.md#two-planes).
 
 + [cover (of a reflection)](#cover-of-a-reflection)
 
-+ [dial URL](#dial-url)
-
-+ [epoch](#epoch)
-
 + [frame (of an event stream)](#frame-of-an-event-stream)
 
 + [iod](#iod)
@@ -129,8 +104,6 @@ See [Deployment and steering](../deployment-and-steering.md#two-planes).
 + [reflection](#reflection)
 
 + [reflector](#reflector)
-
-+ [report](#report)
 
 + [root (of verse up)](#root-of-verse-up)
 

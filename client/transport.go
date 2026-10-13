@@ -101,7 +101,7 @@ func (t Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 		return resp, err
 	}
 	// A server that says nothing is not a server that disagrees. It may be a verse older than the
-	// check, a broker face, or a proxy, and none of those is a version to compare against. The
+	// check, a runner, or a proxy, and none of those is a version to compare against. The
 	// check is between two things that both speak this contract.
 	theirs := resp.Header.Get(api.VersionHeader)
 	if theirs == "" || t.Version == "" {

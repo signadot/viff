@@ -1197,11 +1197,6 @@ func (s *Instance) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["err"] = ir.FromString(string(s.Err))
 	}
 
-	// Field: DialURL
-	if s.DialURL != "" {
-		irMap["dialURL"] = ir.FromString(string(s.DialURL))
-	}
-
 	// Field: Pending
 	if len(s.Pending) > 0 {
 		slice := make([]*ir.Node, len(s.Pending))
@@ -1321,12 +1316,6 @@ func (s *Instance) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "err", fieldNodeUnwrapped.Type)
 			}
 			s.Err = string(fieldNodeUnwrapped.String)
-		case "dialURL":
-			// Field: DialURL
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "dialURL", fieldNodeUnwrapped.Type)
-			}
-			s.DialURL = string(fieldNodeUnwrapped.String)
 		case "pending":
 			// Field: Pending
 			if fieldNodeUnwrapped.Type == ir.ArrayType {

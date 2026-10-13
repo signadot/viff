@@ -146,7 +146,7 @@ func TestHTTPRunnerSpawnReadsARefusal(t *testing.T) {
 		body string
 	}{
 		{"bad request", http.StatusBadRequest, "unknown driver \"llm\""},
-		{"not implemented", http.StatusNotImplemented, "this runner does not host brokered work"},
+		{"not implemented", http.StatusNotImplemented, "this runner does not host relayed work"},
 		{"no body", http.StatusForbidden, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -225,7 +225,7 @@ func TestHTTPRunnerListReportsWhyItIsEmpty(t *testing.T) {
 		t.Fatalf("a dead runner's list = %v, want ErrUnreachable", err)
 	}
 
-	// Answering, but not as a runner: a broker's WORKER leg serves claim/inbox/report and no
+	// Answering, but not as a runner: a face that serves no
 	// GET /tasks, so a url pointed at one 404s. That is a different fact from unreachable
 	// — something is there, and it is not this contract.
 	worker := httptest.NewServer(http.NewServeMux())

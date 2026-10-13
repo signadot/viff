@@ -25,8 +25,8 @@ func Calls(cfg Config, calls []task.Call) *task.Task {
 	if cfg.Log == nil {
 		cfg.Log = io.Discard
 	}
-	// `ask` is offered to a list too: a question with options is a gate a script raises, the
-	// way a worker raises one with `task do gate`, and the answer is the call's output.
+	// `ask` is offered to a list too: a question with options is a gate a script raises, and
+	// the answer is the call's output.
 	cfg.Extra = append(append([]Tool{}, cfg.Extra...), askFor(cfg.Resolver))
 	extra := byName(cfg.Extra)
 	tools, err := selectTools(cfg.Tools, cfg.Extra)

@@ -212,7 +212,7 @@ type Provenance struct {
 
 // Runner runs and governs tasks on some substrate; verse (the engine) is its
 // client. The only implementation today is the in-process local supervisor (a runnerd
-// wrapper); remote runners addressed by a base URL — k8s, lambda, a human broker — come
+// wrapper); remote runners addressed by a base URL — k8s, lambda, another verse — come
 // later, all behind this same seam. See docs/task-control.md.
 //
 // Keeping even the local case behind the interface is deliberate: there is no privileged
@@ -235,10 +235,10 @@ type Runner interface {
 	Ref() string
 }
 
-// Lister is a Runner that keeps its OWN task registry — a broker, or a runner behind a
-// URL — distinct from the local runtime. The in-process runner does NOT implement it: it
-// delegates to the same runnerd the union already lists, so brokered tasks are added
-// without double-counting local ones.
+// Lister is a Runner that keeps its OWN task registry — a runner behind a URL — distinct
+// from the local runtime. The in-process runner does NOT implement it: it delegates to the
+// same runnerd the union already lists, so a runner's tasks are added without double-counting
+// local ones.
 //
 // It is declared HERE, beside Runner, rather than inline at the call site that asserts it.
 // The assertion is structural and checked with `, ok`, so widening a signature on one side

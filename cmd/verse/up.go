@@ -45,17 +45,7 @@ type upConfig struct {
 	LogdConfig        string `cli:"name=logd-config desc='logd configuration file (tony) for the spawned daemons, replacing the one verse writes (see docd.go)'"`
 	OBin              string `cli:"name=o-bin desc='path to the o binary for spawning daemons; default: go run the pinned go-tony cmd/o'"`
 	// runner: where tasks run. Default is the in-process local supervisor.
-	Runner     string `cli:"name=runner desc='task-control base URL to run tasks on (default: local, in-process)'"`
-	BrokerAddr string `cli:"name=broker-addr desc='sibling port to serve the broker face (/broker/<nonce>, worker/remote-facing); empty = off'"`
-	Broker     bool   `cli:"name=broker desc='serve an in-process dial-in broker, nameable as --runner broker (requires --broker-addr; publishes each task dialURL from it)'"`
-	// What to PUBLISH as each task's dialURL, when that is not where the broker LISTENS —
-	// the same split docd's two advertise flags exist for, arriving here for the same reason.
-	// A worker reads dialURL off the task and connects to it from where IT is; a process that
-	// binds a wildcard port inside a cluster cannot also bind the name that reaches it from
-	// outside, so the two addresses are different strings and neither can be derived from the
-	// other. Without this the broker advertises where it bound, which for `:9090` is
-	// `localhost:9090` — an address every worker has and none of them wants.
-	BrokerAdvertiseAddr string `cli:"name=broker-advertise-addr desc='publish this address in each task dialURL instead of --broker-addr (for workers that cannot reach it)'"`
+	Runner string `cli:"name=runner desc='task-control base URL to run tasks on (default: local, in-process)'"`
 	// AdminAddr is the out-of-band face: pprof and goroutine stacks, off the data path.
 	// Empty derives it from --addr (see adminface); `off` disables it.
 	AdminAddr string `cli:"name=admin-addr desc='admin/pprof listen address, or off to disable (default: the --addr port + 1)'"`
@@ -75,7 +65,7 @@ type upConfig struct {
 // validate rejects contradictory flag combinations BEFORE anything is started.
 //
 // These checks used to sit further down run, past the point where docd had been brought up
-// and a store opened — so `verse up --runner … --broker` spent forty seconds compiling and
+// and a store opened — so an impossible `verse up` spent forty seconds compiling and
 // launching daemons, then refused the command it could have refused immediately. A flag
 // combination that cannot work is knowable from the flags alone; nothing should have
 // happened yet when we say so.
@@ -95,19 +85,6 @@ func (cfg *upConfig) validate() error {
 	// keeps — the failure would land on whoever believed /status, a process away.
 	if cfg.DocdAddr == "" && cfg.DocdAdvertiseAddr != "" {
 		return fmt.Errorf("%w: verse up: --docd-advertise-addr needs --docd-addr (it re-addresses the docd being connected to, and verse spawns its own on ephemeral ports)", cli.ErrUsage)
-	}
-	// --runner and --broker compose rather than compete: one says where a spawn naming nobody
-	// runs, the other serves a place a spawn may NAME. A verse can send its unnamed work to a
-	// remote runnerd and still put a named task in front of a person.
-	if cfg.Broker && cfg.BrokerAddr == "" {
-		return fmt.Errorf("%w: verse up: --broker requires --broker-addr (the worker face to dial in on)", cli.ErrUsage)
-	}
-	// The same rule the docd advertise flags are held to: re-addressing a face needs the face.
-	// The broker one is checked against --broker-addr rather than --broker, because the face is
-	// what --broker-addr serves and a hosted nonce is reachable across it whether or not this
-	// verse also runs tasks on one.
-	if cfg.BrokerAddr == "" && cfg.BrokerAdvertiseAddr != "" {
-		return fmt.Errorf("%w: verse up: --broker-advertise-addr needs --broker-addr (there is no broker face to re-address)", cli.ErrUsage)
 	}
 	return nil
 }
@@ -156,11 +133,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	// design. Everything below this line can wedge, and this is the channel that has to
 	// answer when it does. It reports the addresses and this process's own health once
 	// there is a server to ask; until then it still has the stacks, which is the point.
-	adminAddr := adminAddrFor(cfg.AdminAddr, g.Addr, cfg.BrokerAddr)
-	if adminAddr == adminface.Off && cfg.AdminAddr == "" {
-		fmt.Fprintf(cc.Err, "verse up: no admin face: it derives to %s, which --broker-addr "+
-			"asked for; pass --admin-addr <addr> to put it somewhere else\n", cfg.BrokerAddr)
-	}
+	adminAddr := cfg.AdminAddr
 	adm, err := adminface.Start(adminface.Spec{
 		Name:  "verse up",
 		Addr:  adminAddr,
@@ -279,7 +252,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	// What the admin face now knows: this process's own health (answered without touching
 	// the store, so it holds when the store is what is wrong) and every address verse
 	// listens on or dials — which is the thing gops cannot do and the reason the face is
-	// worth a port. The broker's is added below, where it is decided.
+	// worth a port.
 	adm.SetReport(srv.Health)
 	adm.SetAddrs( // its own goes without saying: the index prepends it
 		adminface.Addr{Name: "api", Addr: g.Addr},
@@ -328,12 +301,6 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	if cfg.Runner != "" { // run tasks on a remote runner instead of in-process
 		srv.SetRunner(runner.HTTP(cfg.Runner))
 	}
-	if cfg.Broker { // serve an in-process dial-in broker, beside the default runner
-		face := brokerFace(advertised(cfg.BrokerAddr, cfg.BrokerAdvertiseAddr))
-		srv.UseBroker(face)
-		fmt.Fprintf(cc.Out, "verse up: dial-in broker served as `broker` "+
-			"(--runner broker); workers dial %s\n", face)
-	}
 
 	// Catch SIGTERM as well as SIGINT so `verse down` (which signals us) triggers the
 	// same graceful shutdown — the deferred d.stop() reaps the spawned daemons.
@@ -362,56 +329,12 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		_ = httpSrv.Shutdown(context.Background())
 	}()
 
-	// Broker face on a SIBLING port (worker/remote-facing, kept off the operator API): serves
-	// /broker/<nonce> for the dial-in brokers this verse hosts, and nothing by a fixed name.
-	// Another verse that wants this one's runtime installs it as a runner by the operator
-	// URL, where the request meets the door.
-	if cfg.BrokerAddr != "" {
-		srv.BrokerAddr = cfg.BrokerAddr // publish the broker face address on /status
-		adm.SetAddrs(
-			adminface.Addr{Name: "api", Addr: g.Addr},
-			adminface.Addr{Name: "broker", Addr: cfg.BrokerAddr},
-			adminface.Addr{Name: "docd-client", Addr: d.clientAddr},
-		)
-		brokerSrv := &http.Server{Addr: cfg.BrokerAddr, Handler: srv.BrokerHandler()}
-		go func() {
-			<-ctx.Done()
-			_ = brokerSrv.Shutdown(context.Background())
-		}()
-		go func() {
-			if err := brokerSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				fmt.Fprintf(cc.Err, "verse up: broker face on %s: %v\n", cfg.BrokerAddr, err)
-			}
-		}()
-	}
-
 	fmt.Fprintf(cc.Out, "verse up on %s (engine + store[%s] + task[default:%s]). ctrl-c to stop.\n", g.Addr, storeKind, defaultDriver)
 
 	if err := httpSrv.Serve(ln); err != nil && err != http.ErrServerClosed {
 		return err
 	}
 	return nil
-}
-
-// adminAddrFor is the admin face's address: what was asked for, else the derived default —
-// unless that default is a port somebody asked for BY NAME.
-//
-// A DERIVED ADDRESS YIELDS TO AN EXPLICIT ONE. The default is the API port plus one, and
-// `--broker-addr` is often exactly the next port along: the admin face starts first (before
-// docd, deliberately) so it won the bind, and the broker face — which was named outright — lost
-// it and was silently not served, leaving every spawn with a dialURL nothing answered.
-//
-// It is the same rule adminface already states from the other side, where a derived address
-// that will not bind is a warning and an explicit one is fatal. Applied here, before the race,
-// rather than discovered afterwards in a log line nobody reads.
-func adminAddrFor(explicit, api, broker string) string {
-	if explicit != "" {
-		return explicit
-	}
-	if broker != "" && adminface.Default(api) == broker {
-		return adminface.Off
-	}
-	return ""
 }
 
 func openDocdStore(cfg entity.LogdConfig, wait time.Duration, cc *cli.Context) (*entity.LogdStore, error) {
@@ -446,26 +369,6 @@ func advertised(dialled, advertise string) string {
 		return advertise
 	}
 	return dialled
-}
-
-// brokerFace turns a broker address into a URL a worker can dial. An empty or wildcard host
-// (":9090", "0.0.0.0:9090", "[::]:9090") becomes localhost — right for dev, where the worker
-// is on the same machine. Scheme is http.
-//
-// It is given the ADVERTISED address, so a deployment whose bind address is not reachable
-// says so with --broker-advertise-addr rather than by binding somewhere it cannot. A pod
-// binds a wildcard and is reached by a Service name; asking one string to be both is what
-// makes localhost the published answer.
-func brokerFace(addr string) string {
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil { // not host:port (e.g. bare ":9090" edge) — use as-is under http
-		return "http://" + addr
-	}
-	switch host {
-	case "", "0.0.0.0", "::", "[::]":
-		host = "localhost"
-	}
-	return "http://" + net.JoinHostPort(host, port)
 }
 
 // permsPolicy reads the deployment's permission settings: the root's default, and the admins

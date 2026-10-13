@@ -2,7 +2,6 @@ package versed
 
 import (
 	"context"
-	"github.com/signadot/verse/api"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/signadot/verse/api"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
@@ -150,16 +151,14 @@ func TestRunnerAddRefusesWhatItCannotHonour(t *testing.T) {
 }
 
 // The probe's two dispositions, and the reason they differ: whether waiting could change the
-// answer. A url that answers as something ELSE is answering now — a broker's worker leg is
-// exactly this — while a url nothing answers is the ordinary state of a runner deployed
+// answer. A url that answers as something ELSE is answering now, while a url nothing answers is the ordinary state of a runner deployed
 // alongside the entity that names it.
 func TestRunnerAddProbeRefusesOnlyWhatWaitingCannotFix(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	// Answering, and not as a runner: a mux with no GET /tasks, which is the shape of a
-	// broker's worker leg (claim/inbox/report).
+	// Answering, and not as a runner: a mux with no GET /tasks.
 	worker := httptest.NewServer(http.NewServeMux())
 	defer worker.Close()
 	resp := postTony(t, ts.URL+"/runners", map[string]any{

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/signadot/verse/api"
-	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
@@ -68,7 +67,7 @@ func cursors(fs []task.Frame) []string {
 
 // `?since=` names the same thing on every runner: the frames AFTER that cursor.
 //
-// It did not. The route read the parameter only for a local task; a brokered or remote one
+// It did not. The route read the parameter only for a local task; a remote one
 // went through a plain Subscribe and replayed from the beginning however far along the client
 // already was. A reader that resumes then sees events it has already acted on, which for a
 // resolver — whose whole job is acting on what it reads — is not a cosmetic difference.
@@ -97,35 +96,6 @@ func TestSinceMeansTheSameOnEveryRunner(t *testing.T) {
 		defer ts.Close()
 		spawn := postTony(t, ts.URL+"/tasks", map[string]any{"id": "p", "prompt": "work"})
 		spawn.Body.Close()
-		assertSince(t, ts.URL+"/tasks/p/events")
-	})
-
-	t.Run("broker", func(t *testing.T) {
-		b := broker.New()
-		srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
-		srv.SetRunner(b)
-		nonce := srv.HostBroker("", b.WorkerHandler())
-		ts := httptest.NewServer(srv.Handler())
-		defer ts.Close()
-		work := httptest.NewServer(srv.BrokerHandler())
-		defer work.Close()
-
-		b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"})
-		claim := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p/claim", map[string]any{"identity": "runner:w"})
-		var cl struct {
-			Epoch int64 `tony:"field=epoch"`
-		}
-		decodeResp(t, claim, &cl)
-		claim.Body.Close()
-		// The worker reports the same shape of drive the other two ran.
-		var evs []task.Frame
-		for range 6 {
-			evs = append(evs, task.Frame{Kind: task.EvExec, Tool: "noop"})
-		}
-		evs = append(evs, task.Frame{Kind: task.EvStatus, Text: string(task.Done)})
-		rep := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p/report",
-			map[string]any{"epoch": cl.Epoch, "events": evs})
-		rep.Body.Close()
 		assertSince(t, ts.URL+"/tasks/p/events")
 	})
 }

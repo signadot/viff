@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/signadot/verse/api"
-	"github.com/signadot/verse/broker"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
@@ -58,101 +57,6 @@ func TestARestartTakesADeadTasksQuestionWithIt(t *testing.T) {
 	}
 	if got := entity.ToObj(e.Payload); got["status"] != mirror.QuestionOrphaned {
 		t.Fatalf("status = %v, want orphaned: %+v", got["status"], got)
-	}
-}
-
-// And the positive: work that OUTLIVED verse keeps its question, and answering it still
-// reaches the worker.
-//
-// The broker here is created outside both servers and handed to each, which is what a broker
-// that outlived verse looks like: the worker never noticed the restart, and the task is
-// still sitting on its gate waiting for somebody to decide.
-func TestARestartKeepsASurvivingTasksQuestion(t *testing.T) {
-	addr := entitytest.Addr(t)
-	b := broker.New()
-	b.Spawn(task.Launch{ID: "p1", Prompt: "migrate the schema", Driver: "human"})
-
-	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
-	first.SetRunner(b)
-	nonce := first.HostBroker("", b.WorkerHandler())
-	h := b.Attach("p1")
-	mirror.Reflect(first.Store, "p1", h, mirror.Meta{Runner: b.Ref()})
-
-	work := httptest.NewServer(first.BrokerHandler())
-	defer work.Close()
-	claim := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p1/claim", map[string]any{"identity": "runner:worker"})
-	var cl struct {
-		Epoch int64 `tony:"field=epoch"`
-	}
-	decodeResp(t, claim, &cl)
-	claim.Body.Close()
-
-	const decision = "p1~d1"
-	rep := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p1/report", map[string]any{
-		"epoch":  cl.Epoch,
-		"events": []task.Frame{{Kind: task.EvPending, ID: decision, Gate: "write", Text: "prod"}},
-	})
-	rep.Body.Close()
-	waitDocket(t, first, decision)
-
-	// The restart: a second server over the same store, with the same still-running broker.
-	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
-	second.SetRunner(b)
-	second.reconcileTasks()
-	// The resume REPLAYS the worker's frames into the mirror, and the answer below must not
-	// race that replay: a replayed pending frame landing after the answer can re-pose the
-	// question against a precondition view that has not seen the answer yet, which is
-	// git-issue nkptp9b3h12ksx3kg9n0 and not what this test is about. The replay's last
-	// write is the pending frame's projection onto the task record, after the first write
-	// of the resume replaced it, so that is what says the replay is done.
-	replayed := func() bool {
-		e, ok, _ := second.Store.Get(mirror.Ref("p1"))
-		return ok && entity.Str(e.Payload, "status") == string(task.Running) &&
-			entity.Str(e.Payload, "pending") == mirror.QuestionRef(decision).String()
-	}
-	for i := 0; !replayed(); i++ {
-		if i > 400 {
-			t.Fatal("the resumed task's frames were never replayed into the mirror")
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-
-	gates := docket(t, second)
-	if len(gates) != 1 || gates[0]["id"] != decision {
-		t.Fatalf("the docket after a restart = %v, want the question that outlived it", gates)
-	}
-
-	// And it is still answerable — a docket entry nobody can act on is a listing, not a
-	// docket. The answer has to reach the worker that is actually blocked.
-	ops := httptest.NewServer(second.Handler())
-	defer ops.Close()
-	resp := postTony(t, ops.URL+answerPath(decision), api.Resolve{Choice: "proceed", By: "user:scott@example.com"})
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("answering after a restart = %s, want 204", resp.Status)
-	}
-	if got := docket(t, second); len(got) != 0 {
-		t.Fatalf("the question stayed on the docket after being answered: %v", got)
-	}
-
-	// Reaching the worker is the claim, so read the worker's own inbox rather than trusting
-	// the 204. A route that accepted the answer and delivered it nowhere would pass every
-	// assertion above and leave the person at the terminal blocked forever.
-	inbox, ok := b.TaskInbox("p1")
-	if !ok {
-		t.Fatal("no worker inbox")
-	}
-	var delivered *api.InboxItem
-	for i, it := range inbox {
-		if it.Kind == "resolve" && it.Decision == decision {
-			delivered = &inbox[i]
-		}
-	}
-	if delivered == nil {
-		t.Fatalf("the answer never reached the worker: %+v", inbox)
-	}
-	if !delivered.Proceed || delivered.By != "user:scott@example.com" {
-		t.Fatalf("the answer reached the worker garbled: %+v", delivered)
 	}
 }
 
@@ -292,51 +196,4 @@ func waitDocket(t *testing.T, srv *Server, id string) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("%s never reached the docket", id)
-}
-
-// A task that ends leaves no question on the docket, whichever way it ended.
-//
-// Only one of the two ways settled them. A local task ends by emitting an EvDecision for
-// its open gate, which the mirror settles; a brokered one latches terminal and emits only an
-// EvStatus — so the docket went on offering a question for a run that was over, and answering
-// it reported "no such question".
-func TestABrokeredTaskEndingSettlesItsQuestions(t *testing.T) {
-	b := broker.New()
-	b.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "human"})
-	srv := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, entitytest.Addr(t)))
-	srv.SetRunner(b)
-	nonce := srv.HostBroker("", b.WorkerHandler())
-	mirror.Reflect(srv.Store, "p", b.Attach("p"), mirror.Meta{Runner: b.Ref()})
-	work := httptest.NewServer(srv.BrokerHandler())
-	defer work.Close()
-
-	claim := postTony(t, work.URL+"/broker/"+nonce+"/tasks/p/claim", map[string]any{"identity": "runner:w"})
-	var cl struct {
-		Epoch int64 `tony:"field=epoch"`
-	}
-	decodeResp(t, claim, &cl)
-	claim.Body.Close()
-	postTony(t, work.URL+"/broker/"+nonce+"/tasks/p/report", map[string]any{
-		"epoch":  cl.Epoch,
-		"events": []task.Frame{{Kind: task.EvPending, ID: "p~d1", Gate: "write"}},
-	}).Body.Close()
-	waitDocket(t, srv, "p~d1")
-
-	if err := b.Attach("p").Cancel("operator changed their mind"); err != nil {
-		t.Fatalf("cancel: %v", err)
-	}
-
-	for range 400 {
-		if len(docket(t, srv)) == 0 {
-			break
-		}
-	}
-	if got := docket(t, srv); len(got) != 0 {
-		t.Fatalf("the docket still offers %v for a task that ended", got)
-	}
-	e, _, _ := srv.Store.Get(mirror.QuestionRef("p~d1"))
-	if got := entity.ToObj(e.Payload); got["status"] != mirror.QuestionOrphaned {
-		t.Fatalf("question status = %v, want orphaned — nobody answered it and nobody now can: %+v",
-			got["status"], got)
-	}
 }

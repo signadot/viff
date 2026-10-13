@@ -126,7 +126,6 @@ context:
 - tony-format/context
 define:
   cursor: .[int]
-  dialURL: .[string]
   driver: .[string]
   ended: .[string]
   err: .[string]

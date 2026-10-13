@@ -194,11 +194,8 @@ Verse writes the task's record as whoever runs it, and that write is the check f
 Reads of the task follow the default the task was created with: everyone. Writes to the task
 are yours and the runtime's.
 
-**The runner that works the task holds the task and nothing else.** A worker claims the task in
-one of two ways:
-
-- a brokered claim, as `runner:<identity>`;
-- a runner reached by url, which acts as `runner:` with the `identity` on its entity.
+**The runner that works the task holds the task and nothing else.** A runner reached by url
+acts as `runner:` with the `identity` on its entity, and that is the claim.
 
 When a worker claims the task, versed grants it `read-write` and `control` on the task and on
 this run. Every report after that is written as the worker. That grant stops at the task's
@@ -253,9 +250,8 @@ VERSE_USER=x@example.com verse question <id> --answer proceed
 hold `read-write` because `x` is not on the line.
 
 A worker may hit something that the task cannot decide. Then the worker raises a gate itself,
-and may say to whom: `verse task do gate <id> <name> -as
-runner:<identity> -to ana@example.com`. If the spawn has a gate of the same name that names
-answerers, that gate stands over what the worker says.
+and may say to whom. If the spawn has a gate of the same name that names answerers, that gate
+stands over what the worker says.
 
 ## Step 3: a charter, and what it owns
 

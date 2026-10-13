@@ -8,10 +8,10 @@ import (
 	"github.com/signadot/verse/task"
 )
 
-// WHOM A BROKERED TASK'S QUESTION ASKS: a gate naming its answerers keeps them, then a frame's
+// WHOM A RELAYED TASK'S QUESTION ASKS: a gate naming its answerers keeps them, then a frame's
 // own, then the launch's default for a question naming nobody (Meta.Answerers), and otherwise
 // the docket. $principal is put as whom the task acts for, and dropped where that is nobody.
-func TestABrokeredQuestionAsksWhomItNames(t *testing.T) {
+func TestARelayedQuestionAsksWhomItNames(t *testing.T) {
 	const daniel, ani = "user:daniel@example.com", "user:ani@example.com"
 	me := []string{task.PrincipalAnswerer}
 	named := []task.Gate{{Name: "ship", Answerers: []string{ani}}}

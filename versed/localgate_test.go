@@ -58,7 +58,7 @@ func waitQuestion(t *testing.T, srv *Server, taskID string) string {
 //
 // It is the leg that used to be forwarded rather than handled: a local task's answer went
 // to runnerd's own HTTP face, which reads `{decisionId, proceed}` — so an api.Resolve body
-// arrived as an empty decision id and answered nothing. The brokered leg was covered and the
+// arrived as an empty decision id and answered nothing. The relayed leg was covered and the
 // local one was not, which is exactly why the difference could sit there.
 //
 // What this pins is that both legs of this route now speak one body. `verse task approve`

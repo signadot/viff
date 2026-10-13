@@ -421,7 +421,7 @@ func TestAnOptionWithNoNeedIsRecordedAsOneBallot(t *testing.T) {
 }
 
 // A QUESTION A FRAME POSES SAYS WHOM IT WAITS ON, as one the registry poses does: a remote
-// runner's or a broker's questions are on `verse question` and in Slack as a local one's are.
+// runner's questions are on `verse question` and in Slack as a local one's are.
 func TestAFramePosedQuestionSaysWhomItWaitsOn(t *testing.T) {
 	store := docket(t)
 	const ann = "user:ann@example.com"

@@ -132,7 +132,7 @@ line, and `to` is the whole state of the entity at that commit. In another termi
 
 ## 3. Tasks
 
-A task is a governed unit of work. An agent, a shell command, a remote worker or a person does
+A task is a governed unit of work. An agent, a shell command or a remote worker does
 the work. Run a task directly:
 
 ```sh
@@ -212,8 +212,8 @@ verse flow resume -charter :demo-review      # both PRs are asked about, once, a
 ```
 
 Verse does not replay what happened during the suspension. [Control](control.md) gives the
-flags and what a lift does. A task can also run on a remote verse, on a runner you install, or
-with a person who does it with `verse task do`. The same verbs steer it
+flags and what a lift does. A task can also run on a remote verse, or on a runner you install.
+The same verbs steer it
 ([runners-walk.md](platform/runners-walk.md)).
 
 ---

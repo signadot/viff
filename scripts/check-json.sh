@@ -5,7 +5,7 @@
 # verse's representation is tony, rendered through package codec. A stray encoding/json is
 # how that quietly stops being true: it does not fail, it just produces a document in the
 # wrong dialect, or silently fails to parse one — which is exactly how a client hung
-# and how the broker's claim epoch came back 0 during the migration. Both were a client
+# and how a claim epoch came back 0 during the migration. Both were a client
 # hard-coding a decoder for a body it did not own.
 #
 set -euo pipefail

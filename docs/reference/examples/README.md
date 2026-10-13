@@ -7,15 +7,10 @@ tree.
 |---|---|---|
 | [runner/](runner/main.go) | a verse [runner](../../glossary.md#runner): the smallest thing that serves the task-control contract. The two functions that a drive changes are marked. | `go run ./docs/reference/examples/runner -addr :9800` |
 | [coderunner/](coderunner/main.go) | a runner that codes. Each task gets a workspace of git checkouts and a contained process. A push is a gated capability, and the runner hands out a credential for it. | `go run ./docs/reference/examples/coderunner -config docs/reference/examples/coderunner/coderunner.tony -addr :9802` |
-| [worker/](worker/main.go) | a dial-in [worker](../../glossary.md#worker). It claims work from a [broker](../../glossary.md#broker) and does it with a local `claude`, so nothing has to be able to reach it. | `go run ./docs/reference/examples/worker -verse localhost:9797 -as "runner:$USER"` |
 | [io/](io/main.go) | a verse [io](../../glossary.md#io): the smallest thing that serves the reflection contract. The one function that a drive changes is marked. | `go run ./docs/reference/examples/io -addr :9801 -repo verse=/path/to/a/repo` |
 
 The two runners are two steps, and not one program that tries to be both. `runner/` is the
 contract at its smallest. `coderunner/` is what a real runner does with the contract.
-
-`worker/` is a different kind of program. It is not a smaller runner. It is an inverted one.
-Verse reaches a runner, and a worker reaches verse. The network decides which one you want.
-The work does not decide it.
 
 ## Running the runner
 
@@ -37,42 +32,6 @@ own work.
 
 The `verse runner add` above prints `reach: a runner`. That line is the install probe. It
 confirms that the program at the URL serves the contract.
-
-## Running the worker
-
-The worker needs a verse whose tasks are brokered. A worker claims work. Verse does not hand
-the work to it.
-
-```sh
-verse up -broker -broker-addr :9090                                    # one terminal
-go run ./docs/reference/examples/worker -verse localhost:9797 -as "runner:$USER"   # another
-verse task run -runner broker "summarise what changed in cmd/verse this week"   # a third
-```
-
-The task moves through three statuses:
-
-| Status | When |
-|---|---|
-| `unclaimed` | until the worker takes the task |
-| `running` | while the worker does it |
-| `done` | at the end. The agent's answer is the task's `result`. |
-
-While the task runs, `verse task attach <id>` shows the agent's output line by line.
-
-The worker is not configured with a broker URL. Each task carries the `dialURL` through which
-a worker claims it. So the same binary works against any verse. When the broker moves, every
-worker follows it.
-
-The worker takes two more flags:
-
-| Flag | What it does |
-|---|---|
-| `-agent` | names the program that does the work. `/bin/echo` is a useful stand-in while you connect the parts. |
-| `-once` | takes a single pass and exits |
-
-The credential never passes through verse. The agent runs on this machine, with the
-permissions that the owner of this machine gave it. For this reason a laptop is a reasonable
-place to run a task.
 
 ## Running the coderunner
 
