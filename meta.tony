@@ -2,6 +2,7 @@
 blocked_by: []
 blocks: []
 branches: []
+closed_by: 20e82070455abe6707d5607bc91c1f8fc3663eaa
 commits: []
 created: "2026-09-20T00:05:27.261559+02:00"
 duplicates: []
@@ -10,5 +11,5 @@ labels:
 - residual
 - security
 related_issues: []
-status: open
-updated: "2026-10-09T12:54:32.5386+02:00"
+status: closed
+updated: "2026-10-13T16:56:35.645867+02:00"
