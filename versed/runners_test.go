@@ -32,7 +32,7 @@ func runnerFace(t *testing.T) *httptest.Server {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 		return task.NewTask(l.ID, sup, &blockedDriver{release: release}, okExecutor{})
 	}
-	srv := httptest.NewServer(runnerd.New(build).Handler())
+	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	t.Cleanup(func() {
 		close(release)
 		srv.Close()
@@ -447,10 +447,10 @@ func TestSpawnNamesItsRunner(t *testing.T) {
 		t.Fatal("the spawn naming NO runner went to the named one — the default is what an " +
 			"absent runner means")
 	}
-	if _, ok := srv.Local.SnapshotOf(deflt); !ok {
+	if _, ok := srv.Embedded.SnapshotOf(deflt); !ok {
 		t.Fatal("the spawn naming no runner did not go to the verse's default runner")
 	}
-	if _, ok := srv.Local.SnapshotOf(named); ok {
+	if _, ok := srv.Embedded.SnapshotOf(named); ok {
 		t.Fatal("the spawn naming a runner ALSO ran in-process")
 	}
 
@@ -487,7 +487,7 @@ func TestSpawnNamingAnUninstalledRunnerIsRefused(t *testing.T) {
 	if msg := readBody(t, resp); !strings.Contains(msg, "verse.runners.typo") {
 		t.Fatalf("refusal = %q, want it to name the runner that is not installed", msg)
 	}
-	if _, ok := srv.Local.SnapshotOf("nope"); ok {
+	if _, ok := srv.Embedded.SnapshotOf("nope"); ok {
 		t.Fatal("the refused spawn ran on the default runner anyway")
 	}
 	if _, ok, _ := srv.Store.Get(mirror.Ref("nope")); ok {
@@ -505,7 +505,7 @@ func TestSpawnNamingAnUninstalledRunnerIsRefused(t *testing.T) {
 	if e := h.Err(); !strings.Contains(e, "verse.runners.typo") {
 		t.Fatalf("failure = %q, want the runner named in it", e)
 	}
-	if _, ok := srv.Local.SnapshotOf("fired"); ok {
+	if _, ok := srv.Embedded.SnapshotOf("fired"); ok {
 		t.Fatal("a charter spawn naming an uninstalled runner ran on the default instead")
 	}
 }

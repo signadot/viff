@@ -16,7 +16,7 @@ import (
 // the refusal as its error, and the task ends on it rather than waiting on a question nobody was
 // asked.
 func TestARefusedQuestionIsNeverPosed(t *testing.T) {
-	d := New(fakeBuild)
+	d := NewInProcessHandler(fakeBuild)
 	refused := errors.New("bob may not read what it asks about")
 	var checked atomic.Value
 	var posted atomic.Bool
@@ -25,7 +25,7 @@ func TestARefusedQuestionIsNeverPosed(t *testing.T) {
 		return refused
 	})
 	d.OnQuestion(func(task.Launch, task.Pending) { posted.Store(true) })
-	srv := httptest.NewServer(d.Handler())
+	srv := httptest.NewServer(d.HTTPHandler())
 	defer srv.Close()
 	resp, err := http.Post(srv.URL+"/tasks", "application/json", strings.NewReader(`{"id":"run-refused","prompt":"t"}`))
 	if err != nil {

@@ -50,7 +50,7 @@ func fakeBuild(l task.Launch, reg *task.Registry) *task.Task {
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	return httptest.NewServer(New(fakeBuild).Handler())
+	return httptest.NewServer(NewInProcessHandler(fakeBuild).HTTPHandler())
 }
 
 // Spawn a task, watch its pending gate over SSE, resolve it by id, and see it

@@ -62,11 +62,11 @@ func cuttingProxy(t *testing.T, upstream string, cutAfter int) *httptest.Server 
 
 func remoteRuntime(t *testing.T, steps int) *httptest.Server {
 	t.Helper()
-	d := runnerd.New(func(l task.Launch, reg *task.Registry) *task.Task {
+	d := runnerd.NewInProcessHandler(func(l task.Launch, reg *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
 		return task.NewTask(l.ID, sup, &pacedDriver{n: steps}, noopExecutor{})
 	})
-	srv := httptest.NewServer(d.Handler())
+	srv := httptest.NewServer(d.HTTPHandler())
 	t.Cleanup(srv.Close)
 	return srv
 }

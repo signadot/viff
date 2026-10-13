@@ -5,14 +5,14 @@ import "github.com/signadot/verse/runner"
 // AgentName is the agent the verse runner offers.
 const AgentName = "verse"
 
-// Describe is what the verse runner offers under c: verse's own agent, when it has a model to
-// reach, and scripts.
+// Describe is what the verse runner offers under c and s: verse's own agent, when it has a model
+// to reach, and scripts.
 //
 // It lists only what the runner honours. `effort` and `network` are offered once the runner
 // applies them.
-func (c Config) Describe() runner.Description {
+func (c Config) Describe(s Secrets) runner.Description {
 	var d runner.Description
-	if c.APIKey() != "" {
+	if s.PortkeyAPIKey != "" {
 		agent := runner.Offer{
 			Agent: AgentName,
 			With:  map[string]runner.Accepts{"model": runner.AcceptsAny},

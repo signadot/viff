@@ -13,13 +13,56 @@ runner is a program that does the work a spawn describes. Verse reaches it over 
 image as `verse`. Each subcommand runs one runner:
 
 ```
-runnerd verse -config <file>   verse's own agent, and scripts
+runnerd verse -config <file> [-sandbox bwrap|none]   verse's own agent, and scripts
 ```
 
 The same runners also run embedded. `verse up` hosts the verse runner in its own process and
 reaches it by Go calls, with no `runnerd` process. Both use package `runner/runnerd`, which holds
 a runner's tasks and serves them. A central deployment is meant to run no work in verse itself,
 with each runner a `runnerd` of its own; today an ask's `then:` still runs in verse.
+
+## The sandbox
+
+`runnerd` runs each task in a process of its own, inside a sandbox. Everything the task runs is
+inside it: the agent's loop and its shell, or a script.
+
+| `-sandbox` | What a task's process gets |
+|---|---|
+| `bwrap` (the default) | its own pid, ipc and uts namespaces, its own `/proc`, `/dev` and `/tmp`, and no capabilities. The system (`/usr`, `/bin`, `/lib`, `/etc`, …) is read-only, and the task's directory is the only path it may write. It doesn't see the runner's other tasks. The network is the runner's. |
+| `none` | nothing: it runs as the runner's user, in the runner's filesystem. Logged when the runner starts. |
+
+With `bwrap`, the runner refuses to start when bubblewrap isn't installed or can't run. bwrap
+needs unprivileged user namespaces:
+
+- **Ubuntu 24.04 and later** restrict them with AppArmor
+  (`kernel.apparmor_restrict_unprivileged_userns=1`), and bwrap fails with *setting up uid map:
+  Permission denied*. Allow bwrap with an AppArmor profile, or run with `-sandbox none`.
+- **Kubernetes:** the pod needs the three settings the coderunner's pod has: `hostUsers: false`,
+  `procMount: Unmasked` and `seccompProfile: Unconfined`. The coderunner section of
+  `deploy/README.md` says why each one is needed.
+- **macOS** has no bwrap: run with `-sandbox none`.
+
+The task's process has none of the runner's environment. Its stdin carries the runner's
+configuration and the secrets the runner read from its environment, and its environment has only
+what `task.DefaultShellEnv` names. `HOME` is the task's directory, and `TMPDIR` is `/tmp`. A
+process that exits before its task ends fails the task, with the process's exit status.
+
+### What keeps the secrets from the task
+
+The task's process holds the runner's secrets (the Portkey key) in its memory, and the task's
+shell, or its script, runs inside the same sandbox: as the same uid, since bwrap maps the caller
+to itself, and in the same pid namespace, so it can see that process.
+
+| What | Covered by |
+|---|---|
+| the environment, and what a subprocess inherits | the secrets come on stdin, never in an environment |
+| `/proc/<pid>/mem`, `/proc/<pid>/environ`, and ptrace | the task's process makes itself non-dumpable (`PR_SET_DUMPABLE`) before it serves, so a same-uid process without `CAP_SYS_PTRACE` is refused them. Without it, only the node's `kernel.yama.ptrace_scope` would decide, and its default, 0, allows reading another process's memory. bwrap also drops every capability (`--cap-drop ALL`), which it would otherwise leave to a runner run as root. With `-sandbox none`, a task of a runner run as root keeps its capabilities: its memory is still refused, its `environ`, which holds no secret, is not. |
+| a separate uid for the task | **not done**: the task runs as the runner's uid. A uid boundary would not depend on dumpability. |
+
+On a platform without procfs (macOS, with `-sandbox none`), nothing makes the process
+non-dumpable.
+
+`verse up` doesn't sandbox: its tasks run in verse's own process, as the user who ran it.
 
 ## The verse runner
 
@@ -41,9 +84,10 @@ a file: `#!/bin/sh`, `#!/usr/bin/env python3`, `#!/usr/bin/env node`. The line i
 the kernel reads it: the program, and at most one argument. A script with no `#!` line runs with
 `bash`.
 
-Each task runs in a directory of its own, which is removed when the task ends. A task's shell
-sees only the variables that `task.DefaultShellEnv` names, so it never sees the runner's
-secrets.
+Each task runs in a directory of its own, in a process of its own ([the sandbox](#the-sandbox)).
+The directory is removed when the task ends. A task's shell sees only the variables that
+`task.DefaultShellEnv` names, and can't read the runner's secrets from the task's process
+([what keeps the secrets from the task](#what-keeps-the-secrets-from-the-task)).
 
 ### Configuration
 

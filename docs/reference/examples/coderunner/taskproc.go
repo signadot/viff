@@ -153,7 +153,7 @@ func runTaskProcess() error {
 			p.extra = append(p.extra, t)
 		}
 	}
-	return http.Serve(ln, runnerd.New(p.build).Handler())
+	return http.Serve(ln, runnerd.NewInProcessHandler(p.build).HTTPHandler())
 }
 
 // useEgress makes the runner's allowlisting proxy usable as a proxy.

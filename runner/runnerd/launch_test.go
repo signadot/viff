@@ -35,7 +35,7 @@ func (e *ranExec) Execute(_ context.Context, tu task.ToolUse) (task.StepResult, 
 // envelope still has to bite.
 func TestSpawnInstallsTheGrant(t *testing.T) {
 	ex := &ranExec{}
-	d := New(func(l task.Launch, reg *task.Registry) *task.Task {
+	d := NewInProcessHandler(func(l task.Launch, reg *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 		sup.SetDeriver(task.BasicDeriver{})
 		return task.NewTask(l.ID, sup, &execDriver{}, ex)
@@ -59,7 +59,7 @@ func TestSpawnInstallsTheGrant(t *testing.T) {
 // task in the system.
 func TestSpawnWithoutAGrantStaysUnbounded(t *testing.T) {
 	ex := &ranExec{}
-	d := New(func(l task.Launch, reg *task.Registry) *task.Task {
+	d := NewInProcessHandler(func(l task.Launch, reg *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 		sup.SetDeriver(task.BasicDeriver{})
 		return task.NewTask(l.ID, sup, &execDriver{}, ex)
@@ -95,7 +95,7 @@ func TestSpawnInstallsTheVector(t *testing.T) {
 	}
 
 	// First, without a vector on the spawn: the builder's ask-and-deny stands.
-	d := New(build)
+	d := NewInProcessHandler(build)
 	p := d.Spawn(task.Launch{ID: "p1", Prompt: "run id"})
 	waitTerminal(t, d, p.ID)
 	if ex.ran {
@@ -108,7 +108,7 @@ func TestSpawnInstallsTheVector(t *testing.T) {
 		t.Fatal(err)
 	}
 	ex.ran = false
-	d2 := New(build)
+	d2 := NewInProcessHandler(build)
 	p2 := d2.Spawn(task.Launch{ID: "p2", Prompt: "run id", Vector: vec})
 	waitTerminal(t, d2, p2.ID)
 	if !ex.ran {
@@ -116,7 +116,7 @@ func TestSpawnInstallsTheVector(t *testing.T) {
 	}
 }
 
-func waitTerminal(t *testing.T, d *Daemon, id string) {
+func waitTerminal(t *testing.T, d *InProcessHandler, id string) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {

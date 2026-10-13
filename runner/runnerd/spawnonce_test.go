@@ -34,13 +34,13 @@ func (echoExec) Execute(_ context.Context, tu task.ToolUse) (task.StepResult, []
 	return task.StepResult{Use: tu}, nil, nil
 }
 
-func hosting(t *testing.T) (*runnerd.Daemon, *httptest.Server) {
+func hosting(t *testing.T) (*runnerd.InProcessHandler, *httptest.Server) {
 	t.Helper()
-	d := runnerd.New(func(l task.Launch, reg *task.Registry) *task.Task {
+	d := runnerd.NewInProcessHandler(func(l task.Launch, reg *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
 		return task.NewTask(l.ID, sup, &steady{n: 50}, echoExec{})
 	})
-	srv := httptest.NewServer(d.Handler())
+	srv := httptest.NewServer(d.HTTPHandler())
 	t.Cleanup(srv.Close)
 	return d, srv
 }
@@ -138,13 +138,13 @@ func (d *quick) Result() string { return d.answer }
 func TestSpawningAnIDThatAlreadyCompletedRunsAgain(t *testing.T) {
 	var built int
 	answers := []string{"first run", "second run"}
-	d := runnerd.New(func(l task.Launch, reg *task.Registry) *task.Task {
+	d := runnerd.NewInProcessHandler(func(l task.Launch, reg *task.Registry) *task.Task {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
 		drv := &quick{answer: answers[min(built, len(answers)-1)]}
 		built++
 		return task.NewTask(l.ID, sup, drv, echoExec{})
 	})
-	srv := httptest.NewServer(d.Handler())
+	srv := httptest.NewServer(d.HTTPHandler())
 	defer srv.Close()
 
 	if got := spawnOne(t, srv.URL, "walker"); got != http.StatusCreated {
@@ -168,7 +168,7 @@ func TestSpawningAnIDThatAlreadyCompletedRunsAgain(t *testing.T) {
 	}
 }
 
-func snapOf(t *testing.T, d *runnerd.Daemon, id string) task.Instance {
+func snapOf(t *testing.T, d *runnerd.InProcessHandler, id string) task.Instance {
 	t.Helper()
 	s, ok := d.SnapshotOf(id)
 	if !ok {
@@ -177,7 +177,7 @@ func snapOf(t *testing.T, d *runnerd.Daemon, id string) task.Instance {
 	return s
 }
 
-func waitDone(t *testing.T, d *runnerd.Daemon, id string) {
+func waitDone(t *testing.T, d *runnerd.InProcessHandler, id string) {
 	t.Helper()
 	deadline := time.After(3 * time.Second)
 	for {

@@ -18,13 +18,13 @@ import (
 // Builder constructs a hosted task from a task.Launch — the id, the prompt, the
 // requested driver (e.g. "scripted"/"llm"; "" = the builder's default), and the frame and
 // tool set that shape the agent — plus the Registry that serves as its gate resolver. It is
-// injected so the daemon stays decoupled from any particular driver/runtime, and picks the
+// injected so the host stays decoupled from any particular driver/runtime, and picks the
 // driver per spawn.
 type Builder func(l task.Launch, reg *task.Registry) *task.Task
 
-// Daemon hosts a set of running tasks, built by its runner's Builder, and says what the runner
-// offers.
-type Daemon struct {
+// InProcessHandler is a task handler that runs its tasks in its own process: it hosts a set of
+// running tasks, built by its runner's Builder, and says what the runner offers.
+type InProcessHandler struct {
 	mu    sync.Mutex
 	tasks map[string]*hosted
 	seq   atomic.Uint64
@@ -33,19 +33,19 @@ type Daemon struct {
 	// describe is what the runner offers, answered on GET /describe.
 	describe runner.Description
 	// onQuestion, when set, is called as each hosted task poses a gate question. The
-	// daemon holds no store and should not: publishing a question is the job of whoever
+	// host holds no store and should not: publishing a question is the job of whoever
 	// owns one, and this is the seam that hands it over with the derived effects still
 	// attached — the read plane's own EvPending frame carries only what an attached client
 	// needs to see, which is less than a record needs to be matchable.
 	//
 	// THE LAUNCH is passed with it, because what a record needs beyond the question — where it
 	// goes, and what it is about — is the launch's to say, and the launch is the one thing that
-	// exists before the task does. The SCOPE because this daemon is one runtime shared by
+	// exists before the task does. The SCOPE because this host is one runtime shared by
 	// baseline and every scoped engine, and a publisher that closed over a single store sent
 	// every scope's questions to that one (git-issue kwxxm8cth12ksn99fhn0). The SUBJECT because
 	// the only other place it is written is the task's own record, which lands after the task
 	// is started, and a task can ask before it does (git-issue nkptp9b3h12ksx3kg9n0). The
-	// daemon still holds no store and makes no decision about where anything goes — it
+	// host still holds no store and makes no decision about where anything goes — it
 	// repeats what the launch said, and the publisher decides what that means.
 	onQuestion func(l task.Launch, p task.Pending)
 	onCheck    func(l task.Launch, q task.GateQuestion) error
@@ -65,15 +65,15 @@ type Daemon struct {
 
 // OnQuestion registers the publisher. Optional: runnerd runs standalone in tests and under
 // `verse task run` with nothing behind it.
-func (d *Daemon) OnQuestion(f func(l task.Launch, p task.Pending)) { d.onQuestion = f }
+func (d *InProcessHandler) OnQuestion(f func(l task.Launch, p task.Pending)) { d.onQuestion = f }
 
 // OnCheck registers what may refuse a hosted task's question before it is posed (Registry.OnCheck),
 // told the task's launch as onQuestion is.
-func (d *Daemon) OnCheck(f func(l task.Launch, q task.GateQuestion) error) { d.onCheck = f }
+func (d *InProcessHandler) OnCheck(f func(l task.Launch, q task.GateQuestion) error) { d.onCheck = f }
 
 // OnDrop registers the publisher's other half — a question leaving the docket unanswered. A
 // caller that registers one without the other publishes questions it never retires.
-func (d *Daemon) OnDrop(f func(taskID, scope, questionID, why string)) { d.onDrop = f }
+func (d *InProcessHandler) OnDrop(f func(taskID, scope, questionID, why string)) { d.onDrop = f }
 
 type hosted struct {
 	task   *task.Task
@@ -126,17 +126,17 @@ func (h *hosted) snapshot() task.Instance {
 	}
 }
 
-// New returns a Daemon that builds hosted tasks with the given Builder.
-func New(build Builder) *Daemon {
-	return &Daemon{tasks: map[string]*hosted{}, build: build, log: os.Stderr}
+// NewInProcessHandler returns an InProcessHandler that builds hosted tasks with build.
+func NewInProcessHandler(build Builder) *InProcessHandler {
+	return &InProcessHandler{tasks: map[string]*hosted{}, build: build, log: os.Stderr}
 }
 
-// Describe sets what the runner offers. Set it before the daemon is served.
-func (d *Daemon) Describe(desc runner.Description) { d.describe = desc }
+// Describe sets what the runner offers. Set it before the runner is served.
+func (d *InProcessHandler) Describe(desc runner.Description) { d.describe = desc }
 
-// Handler returns the HTTP routes (Go 1.22 method+wildcard patterns): the task contract, and
+// HTTPHandler returns the HTTP routes (Go 1.22 method+wildcard patterns): the task contract, and
 // GET /describe.
-func (d *Daemon) Handler() http.Handler {
+func (d *InProcessHandler) HTTPHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /describe", func(w http.ResponseWriter, r *http.Request) {
 		writeOut(w, r, http.StatusOK, d.describe)
@@ -154,14 +154,14 @@ func (d *Daemon) Handler() http.Handler {
 	return mux
 }
 
-func (d *Daemon) lookup(r *http.Request) *hosted {
+func (d *InProcessHandler) lookup(r *http.Request) *hosted {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.tasks[r.PathValue("id")]
 }
 
 // Lookup returns the live hosted task for id, or nil — the local re-attach path.
-func (d *Daemon) Lookup(id string) *task.Task {
+func (d *InProcessHandler) Lookup(id string) *task.Task {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if h := d.tasks[id]; h != nil {
@@ -174,7 +174,7 @@ func (d *Daemon) Lookup(id string) *task.Task {
 // seam the engine's Spawner uses, so a trigger-spawned task is hosted and
 // controllable (list/get/attach/cancel) exactly like a `verse task run` one.
 // Returns the running task (already Run in the background).
-func (d *Daemon) Spawn(l task.Launch) *task.Task {
+func (d *InProcessHandler) Spawn(l task.Launch) *task.Task {
 	h, _ := d.spawnHosted(l)
 	return h.task
 }
@@ -191,7 +191,7 @@ func (d *Daemon) Spawn(l task.Launch) *task.Task {
 // That makes the spawn safe to RETRY, which is the point. A caller whose spawn request
 // timed out cannot know whether the far side acted, and until now its only options were to
 // abandon real work or to destroy it.
-func (d *Daemon) spawnHosted(l task.Launch) (*hosted, bool) {
+func (d *InProcessHandler) spawnHosted(l task.Launch) (*hosted, bool) {
 	d.mu.Lock()
 	if h, ok := d.tasks[l.ID]; ok && !h.done() {
 		d.mu.Unlock()
@@ -308,7 +308,7 @@ func (d *Daemon) spawnHosted(l task.Launch) (*hosted, bool) {
 	return h, true
 }
 
-func (d *Daemon) spawn(w http.ResponseWriter, r *http.Request) {
+func (d *InProcessHandler) spawn(w http.ResponseWriter, r *http.Request) {
 	// The launch as the contract declares it (task.SpawnRequest), which is what the caller
 	// rendered: a field this end had its own name for is a field the two could disagree on.
 	var body task.SpawnRequest
@@ -341,19 +341,19 @@ func (d *Daemon) spawn(w http.ResponseWriter, r *http.Request) {
 }
 
 // Count returns the number of hosted tasks (live and completed-but-unreaped).
-func (d *Daemon) Count() int {
+func (d *InProcessHandler) Count() int {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return len(d.tasks)
 }
 
-func (d *Daemon) list(w http.ResponseWriter, r *http.Request) {
+func (d *InProcessHandler) list(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, d.Snapshots())
 }
 
 // Snapshots returns every hosted task in the shape the task API returns — for versed
 // to union the local runtime with a runner's own tasks (e.g. a broker's) in one list.
-func (d *Daemon) Snapshots() []task.Instance {
+func (d *InProcessHandler) Snapshots() []task.Instance {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	out := make([]task.Instance, 0, len(d.tasks))
@@ -365,7 +365,7 @@ func (d *Daemon) Snapshots() []task.Instance {
 
 // ScopeOf is the scope a hosted task was launched in — "" for baseline — and whether id is
 // hosted here at all.
-func (d *Daemon) ScopeOf(id string) (string, bool) {
+func (d *InProcessHandler) ScopeOf(id string) (string, bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	h := d.tasks[id]
@@ -375,8 +375,8 @@ func (d *Daemon) ScopeOf(id string) (string, bool) {
 	return h.scope, true
 }
 
-// SnapshotOf returns one hosted task's snapshot, or false if this daemon doesn't host it.
-func (d *Daemon) SnapshotOf(id string) (task.Instance, bool) {
+// SnapshotOf returns one hosted task's snapshot, or false if this runner doesn't host it.
+func (d *InProcessHandler) SnapshotOf(id string) (task.Instance, bool) {
 	d.mu.Lock()
 	h := d.tasks[id]
 	d.mu.Unlock()
@@ -386,7 +386,7 @@ func (d *Daemon) SnapshotOf(id string) (task.Instance, bool) {
 	return h.snapshot(), true
 }
 
-func (d *Daemon) get(w http.ResponseWriter, r *http.Request) {
+func (d *InProcessHandler) get(w http.ResponseWriter, r *http.Request) {
 	h := d.lookup(r)
 	if h == nil {
 		http.NotFound(w, r)
@@ -395,7 +395,7 @@ func (d *Daemon) get(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, h.snapshot())
 }
 
-func (d *Daemon) events(w http.ResponseWriter, r *http.Request) {
+func (d *InProcessHandler) events(w http.ResponseWriter, r *http.Request) {
 	h := d.lookup(r)
 	if h == nil {
 		http.NotFound(w, r)
@@ -447,14 +447,14 @@ func (d *Daemon) events(w http.ResponseWriter, r *http.Request) {
 // Resolve answers a hosted task's pending decision by id — the Go entry versed's unified
 // gate surface uses to resolve a task gate (write/shell/delegate) the same way it resolves
 // an engine gate. Reports whether the decision matched.
-func (d *Daemon) Resolve(taskID, decisionID string, res task.Resolution) bool {
+func (d *InProcessHandler) Resolve(taskID, decisionID string, res task.Resolution) bool {
 	d.mu.Lock()
 	h := d.tasks[taskID]
 	d.mu.Unlock()
 	return h != nil && h.reg.Answer(decisionID, res)
 }
 
-func (d *Daemon) resolve(w http.ResponseWriter, r *http.Request) {
+func (d *InProcessHandler) resolve(w http.ResponseWriter, r *http.Request) {
 	h := d.lookup(r)
 	if h == nil {
 		http.NotFound(w, r)
@@ -502,7 +502,7 @@ func (d *Daemon) resolve(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (d *Daemon) say(w http.ResponseWriter, r *http.Request) {
+func (d *InProcessHandler) say(w http.ResponseWriter, r *http.Request) {
 	h := d.lookup(r)
 	if h == nil {
 		http.NotFound(w, r)
@@ -530,7 +530,7 @@ const cancelledHere = "cancelled via daemon"
 
 // control returns a handler for the subtree ops. A cancel carries why (task.CancelRequest);
 // pause and resume carry nothing.
-func (d *Daemon) control(op string) http.HandlerFunc {
+func (d *InProcessHandler) control(op string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		h := d.lookup(r)
 		if h == nil {
@@ -560,7 +560,7 @@ func (d *Daemon) control(op string) http.HandlerFunc {
 	}
 }
 
-func (d *Daemon) setVector(w http.ResponseWriter, r *http.Request) {
+func (d *InProcessHandler) setVector(w http.ResponseWriter, r *http.Request) {
 	h := d.lookup(r)
 	if h == nil {
 		http.NotFound(w, r)

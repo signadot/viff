@@ -133,7 +133,7 @@ func TestARemoteConversationsTurnIsItsLaunchers(t *testing.T) {
 		}
 		return tk
 	}
-	face := httptest.NewServer(runnerd.New(build).Handler())
+	face := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	t.Cleanup(face.Close)
 	var spawned string
 	t.Cleanup(func() { // end the conversation at the runner, so its stream closes

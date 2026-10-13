@@ -89,7 +89,7 @@ func TestSinceMeansTheSameOnEveryRunner(t *testing.T) {
 	})
 
 	t.Run("remote", func(t *testing.T) {
-		remote := httptest.NewServer(runnerd.New(drive).Handler())
+		remote := httptest.NewServer(runnerd.NewInProcessHandler(drive).HTTPHandler())
 		defer remote.Close()
 		srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
 		srv.SetRunner(runner.HTTP(remote.URL))
@@ -240,7 +240,7 @@ func TestBelowTheWatermarkResyncs(t *testing.T) {
 		srv := NewWithStore(drive, entitytest.Store(t))
 		ts := httptest.NewServer(srv.Handler())
 		defer ts.Close()
-		srv.Local.Spawn(task.Launch{ID: "p", Prompt: "work"})
+		srv.Embedded.Spawn(task.Launch{ID: "p", Prompt: "work"})
 		assertGap(t, ts.URL+"/tasks/p/events")
 	})
 
@@ -248,7 +248,7 @@ func TestBelowTheWatermarkResyncs(t *testing.T) {
 	// `?since=`, so the resync decision is made by the side that knows what it still holds.
 	// Asking for everything and discarding locally could never produce this frame.
 	t.Run("remote", func(t *testing.T) {
-		remote := httptest.NewServer(runnerd.New(drive).Handler())
+		remote := httptest.NewServer(runnerd.NewInProcessHandler(drive).HTTPHandler())
 		defer remote.Close()
 		pol := runner.HTTP(remote.URL)
 		pol.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "scripted"})
@@ -276,7 +276,7 @@ func TestAFastTaskIsStillRecordedAsFinished(t *testing.T) {
 			return task.NewTask(l.ID, sup, &countingDriver{n: n}, noopExecutor{})
 		}
 		srv := NewWithStore(drive, entitytest.Store(t))
-		h := srv.Local.Spawn(task.Launch{ID: "p", Prompt: "work"})
+		h := srv.Embedded.Spawn(task.Launch{ID: "p", Prompt: "work"})
 		mirror.Reflect(srv.Store, "p", h, mirror.Meta{Runner: "local"})
 
 		var last string

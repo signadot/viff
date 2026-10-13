@@ -30,7 +30,7 @@ func TestControlOnPerSpawnRunner(t *testing.T) {
 		return task.NewTask(l.ID, task.NewSupervisor(&task.Vector{Default: task.Auto}, reg),
 			&foreverDriver{}, okExecutor{})
 	}
-	face := httptest.NewServer(runnerd.New(build).Handler())
+	face := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	t.Cleanup(face.Close)
 
 	srv := testServer(t)

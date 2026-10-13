@@ -91,9 +91,9 @@ type Server struct {
 	slides sync.Map
 	Reg    *task.Registry
 	Eng    *trigger.Engine
-	// Local is the runner this verse embeds, for `verse up`: its tasks run in this process.
-	Local  *runnerd.Daemon
-	runner task.Runner // how tasks are run/governed; the embedded runner unless SetRunner
+	// Embedded is the runner this verse embeds, for `verse up`: its tasks run in this process.
+	Embedded *runnerd.InProcessHandler
+	runner   task.Runner // how tasks are run/governed; the embedded runner unless SetRunner
 
 	// broker is the dial-in broker, when one is served: a place a spawn may NAME, beside the
 	// default rather than instead of it. It is addressed as `broker` the way the in-process
@@ -299,8 +299,8 @@ func NewWithStore(build runnerd.Builder, store entity.Store, opts ...Option) *Se
 	susp := trigger.NewSuspensions()
 	susp.Load(nil)
 	eng.SetSuspensions(susp)
-	host := runnerd.New(build)
-	s := &Server{Store: store, Reg: reg, Eng: eng, Local: host, susp: susp, clock: wallClock{},
+	host := runnerd.NewInProcessHandler(build)
+	s := &Server{Store: store, Reg: reg, Eng: eng, Embedded: host, susp: susp, clock: wallClock{},
 		seedErr:   seedErr,
 		scopeEngs: map[string]*scopeEngine{}, ioRuns: map[string]*sourceRun{},
 		charterMu: make(chan struct{}, 1),
@@ -419,7 +419,7 @@ func checkAudience(store entity.Store, q task.GateQuestion) error {
 	return mirror.CheckAudience(store, q.Subject, entity.Canonical(q.Answerers))
 }
 
-// localRunner is the embedded runner (Server.Local) as a task.Runner: verse reaches it by Go
+// localRunner is the embedded runner (Server.Embedded) as a task.Runner: verse reaches it by Go
 // calls rather than over HTTP. Remote runners (a base URL: k8s, lambda, a human broker)
 // implement the same task.Runner behind the wire contract; the engine drives them through the
 // identical seam. See docs/task-control.md.
@@ -429,7 +429,7 @@ func checkAudience(store entity.Store, q task.GateQuestion) error {
 // registered under a minted nonce. A fixed name on the broker face used to map to this
 // runtime whole — POST /tasks, resolve, cancel, the vector — for anyone who could reach the
 // port, with no check, no owner and no record (git-issue jp9dy8anh12kr9r7nxn0).
-type localRunner struct{ d *runnerd.Daemon }
+type localRunner struct{ d *runnerd.InProcessHandler }
 
 func (l localRunner) Spawn(spec task.Launch) task.Handle {
 	return l.d.Spawn(spec)
@@ -1411,7 +1411,7 @@ func (s *Server) Handler() http.Handler {
 	// two READ routes to union the local runtime with the active runner's own tasks
 	// (e.g. a broker's), stamping each with its runner; everything else (spawn, events,
 	// control) falls through to the local runtime.
-	ph := s.Local.Handler()
+	ph := s.Embedded.HTTPHandler()
 	rt.handle("GET /tasks", s.listTasks, "", list("verse-instance"))
 	rt.handle("POST /tasks", s.spawnTask, "verse-spawn", one("verse-spawned"))
 	rt.handle("GET /tasks/{id}", s.getTask, "", one("verse-instance"))
@@ -1661,11 +1661,11 @@ func (s *Server) cancelScopeTasks(scope string, eng *trigger.Engine) {
 			cancelled[id] = true
 		}
 	}
-	for _, inst := range s.Local.Snapshots() {
-		if sc, ok := s.Local.ScopeOf(inst.ID); !ok || sc != scope || cancelled[inst.ID] {
+	for _, inst := range s.Embedded.Snapshots() {
+		if sc, ok := s.Embedded.ScopeOf(inst.ID); !ok || sc != scope || cancelled[inst.ID] {
 			continue
 		}
-		if t := s.Local.Lookup(inst.ID); t != nil {
+		if t := s.Embedded.Lookup(inst.ID); t != nil {
 			t.Cancel(reason)
 		}
 	}
@@ -2784,7 +2784,7 @@ func (s *Server) relaysControl(taskID string) bool {
 	if taskID == "" {
 		return false // a firing's gate: the registry answers it here, now
 	}
-	if _, ok := s.Local.SnapshotOf(taskID); ok {
+	if _, ok := s.Embedded.SnapshotOf(taskID); ok {
 		return false
 	}
 	// The same reach the answer itself will take, so this cannot say "applied" about a task
@@ -4473,7 +4473,7 @@ func (s *Server) taskSnapshots(store entity.Store) ([]task.Instance, error) {
 	// The live view, by id, from whatever can be asked cheaply: the in-process runtime, and
 	// the default runner when it keeps its own registry (a broker).
 	live := map[string]task.Instance{}
-	for _, inst := range s.Local.Snapshots() {
+	for _, inst := range s.Embedded.Snapshots() {
 		inst.Runner = "local"
 		live[inst.ID] = inst
 	}
@@ -4600,7 +4600,7 @@ func (s *Server) scopeMembers(store entity.Store) map[string]bool {
 // falls through to the same answer it would have given anyway. Widening it would widen the
 // gate-routing chain above for a case that chain cannot act on.
 func (s *Server) isTask(id string) bool {
-	if _, ok := s.Local.SnapshotOf(id); ok {
+	if _, ok := s.Embedded.SnapshotOf(id); ok {
 		return true
 	}
 	for _, p := range s.registries() {
@@ -4674,7 +4674,7 @@ func (s *Server) taskHoldingGate(decisionID string) string {
 		}
 		return false
 	}
-	for _, inst := range s.Local.Snapshots() {
+	for _, inst := range s.Embedded.Snapshots() {
 		if holds(inst) {
 			return inst.ID
 		}
@@ -4698,8 +4698,8 @@ func (s *Server) taskHoldingGate(decisionID string) string {
 // resolveTaskDecision answers a task's pending gate (write/shell/delegate) — the
 // runtime for a local task, the runner handle for a brokered one.
 func (s *Server) resolveTaskDecision(taskID, decisionID string, res task.Resolution) error {
-	if _, ok := s.Local.SnapshotOf(taskID); ok {
-		if s.Local.Resolve(taskID, decisionID, res) {
+	if _, ok := s.Embedded.SnapshotOf(taskID); ok {
+		if s.Embedded.Resolve(taskID, decisionID, res) {
 			return nil
 		}
 		// The local registry answers by id and cannot say which of the two it was. The
@@ -4785,7 +4785,7 @@ func (s *Server) taskDial(w http.ResponseWriter, r *http.Request) {
 // dialOf is a task's dial address, from whichever holds the task: a registry that serves
 // workers, else the task's record, read as the system since the asker may hold nothing on it.
 func (s *Server) dialOf(r *http.Request, id string) string {
-	if _, ok := s.Local.SnapshotOf(id); ok {
+	if _, ok := s.Embedded.SnapshotOf(id); ok {
 		return "" // hosted here: there is no worker to dial in
 	}
 	for _, p := range s.registries() {
@@ -4808,7 +4808,7 @@ func (s *Server) getTask(w http.ResponseWriter, r *http.Request) {
 	if !s.mayReadTask(w, r, id) {
 		return
 	}
-	if inst, ok := s.Local.SnapshotOf(id); ok {
+	if inst, ok := s.Embedded.SnapshotOf(id); ok {
 		inst.Runner = "local"
 		writeOut(w, r, http.StatusOK, inst)
 		return
@@ -4906,7 +4906,7 @@ func (s *Server) taskEvents(w http.ResponseWriter, r *http.Request, runtime http
 	if !s.mayReadTask(w, r, id) {
 		return
 	}
-	if _, ok := s.Local.SnapshotOf(id); ok {
+	if _, ok := s.Embedded.SnapshotOf(id); ok {
 		runtime.ServeHTTP(w, r) // local runtime owns it
 		return
 	}
@@ -5010,7 +5010,7 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 	// both record who did them, and that is whoever the request is made as (actor). The
 	// runtime's own handler takes the request as it stands and records the body's `by`, so the
 	// party checked for control would not be the party written down.
-	if _, ok := s.Local.SnapshotOf(id); ok && op != "say" && op != "vector" {
+	if _, ok := s.Embedded.SnapshotOf(id); ok && op != "say" && op != "vector" {
 		runtime.ServeHTTP(w, r) // local runtime owns it
 		return
 	}

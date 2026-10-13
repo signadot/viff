@@ -45,7 +45,7 @@ func remote(t *testing.T, d task.Driver) (*httptest.Server, func() task.Launch) 
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 		return task.NewTask(l.ID, sup, d, okExec{})
 	}
-	srv := httptest.NewServer(runnerd.New(build).Handler())
+	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	t.Cleanup(srv.Close)
 	return srv, func() task.Launch {
 		mu.Lock()

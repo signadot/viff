@@ -39,7 +39,7 @@ func TestGateOnPerSpawnRunnerIsAnswerable(t *testing.T) {
 		// fail. Same hazard runnerFace guards with its release channel.
 		return task.NewTask(l.ID, task.NewSupervisor(vec, reg), &oneAction{}, okExecutor{})
 	}
-	face := httptest.NewServer(runnerd.New(build).Handler())
+	face := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	t.Cleanup(face.Close)
 	// Cleanups run last-registered-first, so this drains before the face closes. Without it a
 	// FAILING run leaves the gate unanswered, the task parked, and the mirror's stream open —

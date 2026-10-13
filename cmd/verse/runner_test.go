@@ -22,7 +22,7 @@ func runnerFace(t *testing.T) *httptest.Server {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 		return task.NewTask(l.ID, sup, doneAfter{}, okExec{})
 	}
-	srv := httptest.NewServer(runnerd.New(build).Handler())
+	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	t.Cleanup(srv.Close)
 	return srv
 }

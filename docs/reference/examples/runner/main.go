@@ -48,10 +48,10 @@ func main() {
 	// snapshot, GET /tasks/{id}/events for the read plane, and the control POSTs. verse
 	// drives exactly this over HTTP, and its own in-process runner is the same handler — so
 	// there is no privileged local path for this to differ from.
-	d := runnerd.New(build)
+	d := runnerd.NewInProcessHandler(build)
 	log.Printf("runner listening on %s — install it with: verse runner add <name> http://<host>%s",
 		*addr, *addr)
-	if err := http.ListenAndServe(*addr, d.Handler()); err != nil {
+	if err := http.ListenAndServe(*addr, d.HTTPHandler()); err != nil {
 		log.Fatalf("runner: %v", err)
 	}
 }

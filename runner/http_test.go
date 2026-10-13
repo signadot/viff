@@ -46,7 +46,7 @@ func TestHTTPRunnerDrivesRemoteTaskd(t *testing.T) {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 2}, okExec{})
 	}
-	srv := httptest.NewServer(runnerd.New(build).Handler())
+	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
@@ -96,7 +96,7 @@ func TestHTTPRunnerListsRemoteTasks(t *testing.T) {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 2}, okExec{})
 	}
-	srv := httptest.NewServer(runnerd.New(build).Handler())
+	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
@@ -263,7 +263,7 @@ func TestResumeReAttachesToRemoteTask(t *testing.T) {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 2}, okExec{})
 	}
-	srv := httptest.NewServer(runnerd.New(build).Handler())
+	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
@@ -306,7 +306,7 @@ func TestHTTPRunnerAnswersARemoteGate(t *testing.T) {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Ask}, reg)
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 1}, okExec{})
 	}
-	srv := httptest.NewServer(runnerd.New(build).Handler())
+	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
@@ -373,7 +373,7 @@ func TestTaskdStillReadsTheOlderResolveSpelling(t *testing.T) {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Ask}, reg)
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 1}, okExec{})
 	}
-	srv := httptest.NewServer(runnerd.New(build).Handler())
+	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)
@@ -422,7 +422,7 @@ func TestTaskdReadsTheDocumentedMixedSpelling(t *testing.T) {
 		sup := task.NewSupervisor(&task.Vector{Default: task.Ask}, reg)
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 1}, okExec{})
 	}
-	srv := httptest.NewServer(runnerd.New(build).Handler())
+	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	defer srv.Close()
 
 	pol := runner.HTTP(srv.URL)

@@ -61,8 +61,9 @@ that no gate matches. The task emits a stream of events. The stream has a cursor
 bounded number of events, and can be resumed. The task posts its gate decisions to a registry.
 
 **`runner/runnerd`** hosts a runner's tasks. Verse embeds it to run work in its own process
-(`verse up`), and `runnerd` serves it over HTTP. **`runner/runnerd/verserunner`** is the runner
-verse ships: verse's own agent (`verserunner/agent`) and scripts.
+(`verse up`), and `runnerd` serves it over HTTP, with each task in a process of its own under
+bwrap. **`runner/runnerd/verserunner`** is the runner verse ships: verse's own agent
+(`verserunner/agent`) and scripts.
 
 **`mirror`** writes a task's state onto its entity, `verse.task.instance.<id>`. It writes the
 status, a preview of what the task said, the last tool output, the final `result`, the

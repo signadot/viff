@@ -28,9 +28,9 @@ The lines of the sample that matter are below. The file has the rest.
 ```go
 func main() {
 	// …
-	d := runnerd.New(build)
+	d := runnerd.NewInProcessHandler(build)
 	// …
-	if err := http.ListenAndServe(*addr, d.Handler()); err != nil {
+	if err := http.ListenAndServe(*addr, d.HTTPHandler()); err != nil {
 		log.Fatalf("runner: %v", err)
 	}
 }
@@ -51,8 +51,8 @@ func (echoExecutor) Execute(_ context.Context, tu task.ToolUse) (task.StepResult
 
 | Part | What it does |
 |---|---|
-| `runnerd.New(build)` | makes a daemon that hosts tasks. The daemon calls `build` once for each spawn. |
-| `d.Handler()` | the HTTP routes of the contract, and `GET /describe` |
+| `runnerd.NewInProcessHandler(build)` | makes a task handler that runs tasks in this program's process, with no sandbox. It calls `build` once for each spawn. (`runnerd verse` uses a `runnerd.SubprocessHandler` instead, which runs each task in a sandboxed process of its own.) |
+| `d.HTTPHandler()` | the HTTP routes of the contract, and `GET /describe` |
 | `build` | a `runnerd.Builder`. It makes one task from one `task.Launch`. The launch carries what the spawn said: the prompt, the driver, the frame, the tools, the vector and the grant. |
 | `task.NewSupervisor` | decides what happens at a gate of the task. With `task.Auto` every action runs. With `task.Ask` every action raises a gate, which a person answers with `verse question`. |
 | `Next` | the driver. It returns the next action and `true`, or `false` when the work is done. An error fails the task. |

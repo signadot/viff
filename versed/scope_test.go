@@ -97,8 +97,8 @@ func TestDeletingAScopeCancelsItsLiveTasks(t *testing.T) {
 	eng := srv.scopeEngine("me")
 	tracked := newIdleHandle(t)
 	eng.Adopt("demo.pr.1", "tracked", tracked)
-	srv.Local.Spawn(task.Launch{ID: "hosted", Prompt: "sleep 30", Scope: "me"})
-	other := srv.Local.Spawn(task.Launch{ID: "other", Prompt: "sleep 30"})
+	srv.Embedded.Spawn(task.Launch{ID: "hosted", Prompt: "sleep 30", Scope: "me"})
+	other := srv.Embedded.Spawn(task.Launch{ID: "other", Prompt: "sleep 30"})
 	t.Cleanup(func() { other.Cancel("test over") })
 	baseline := newIdleHandle(t)
 	srv.Eng.Adopt("demo.pr.1", "baseline", baseline)
@@ -117,7 +117,7 @@ func TestDeletingAScopeCancelsItsLiveTasks(t *testing.T) {
 		t.Errorf("the scope engine's task was cancelled %d times, want once", tracked.count("cancel"))
 	}
 	statusOf := func(id string) task.Status {
-		inst, _ := srv.Local.SnapshotOf(id)
+		inst, _ := srv.Embedded.SnapshotOf(id)
 		return inst.Status
 	}
 	deadline := time.After(3 * time.Second)

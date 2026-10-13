@@ -16,7 +16,7 @@ import (
 // held to the same properties rather than each being spot-checked on its own terms.
 func TestConformance(t *testing.T) {
 	p := &localProducer{specs: map[string]tasktest.Spec{}}
-	p.d = runnerd.New(p.build)
+	p.d = runnerd.NewInProcessHandler(p.build)
 	tasktest.Run(t, p)
 }
 
@@ -27,7 +27,7 @@ func TestConformance(t *testing.T) {
 // driver below is the smaller thing the properties actually need — something that ends the
 // run either with an answer or with an error.
 type localProducer struct {
-	d *runnerd.Daemon
+	d *runnerd.InProcessHandler
 	n int
 
 	// specs carries each spawn's intent to the Builder. runnerd begins executing the

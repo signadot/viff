@@ -8,7 +8,6 @@ package verserunner
 import (
 	"fmt"
 	"maps"
-	"os"
 	"slices"
 	"strings"
 
@@ -76,9 +75,6 @@ func (c *Config) Check() error {
 	}
 	return nil
 }
-
-// APIKey is the Portkey account key. Without it the runner doesn't offer the verse agent.
-func (c Config) APIKey() string { return os.Getenv(EnvPortkeyAPIKey) }
 
 // accepts reports whether the configuration accepts an annotation.
 func (c Config) accepts(annotation string) bool {

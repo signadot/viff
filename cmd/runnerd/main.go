@@ -3,6 +3,8 @@
 //
 //	runnerd verse -config verse-runner.tony   # verse's own agent, and scripts
 //
+// Each task runs in a process of its own, confined by bwrap unless -sandbox none says otherwise.
+//
 // Then register it, from anywhere that can reach verse:
 //
 //	verse runner add verse-runner http://localhost:9802
@@ -43,7 +45,8 @@ func main() {
 func usage() {
 	fmt.Fprint(os.Stderr, `runnerd runs one runner verse ships.
 
-  runnerd verse -config <file>   verse's own agent, and scripts (PORTKEY_API_KEY)
+  runnerd verse -config <file> [-sandbox bwrap|none]
+                                 verse's own agent, and scripts (PORTKEY_API_KEY)
 
 `)
 	os.Exit(2)
