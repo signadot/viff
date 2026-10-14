@@ -1,5 +1,6 @@
-// Package api is the wire form of verse's HTTP surface: one named type per request
-// body, shared by the server that decodes it and every client that builds it.
+// Package api is the wire form of verse's HTTP surface: one named type per request or
+// response body, shared by the server that decodes or assembles it and every client that
+// builds it or reads it back.
 //
 // It exists because the contract used to be written twice — a `var body struct{…}`
 // with tony field tags inside each handler, and a `map[string]any{"…": …}` literal at
@@ -16,9 +17,9 @@
 // tony-codegen, which is what lets the API describe itself (docs/… , `GET /schema`)
 // instead of describing only the payload types that happened to be named already.
 //
-// Only request bodies live here today. Responses are still assembled as map literals
-// at their handlers; naming those is the same exercise and the same argument, one pass
-// behind.
+// Most responses are still assembled as map literals at their handlers; naming those is
+// the same exercise and the same argument, one pass behind. Task is named here because
+// TaskFrom needed somewhere both verse and its caller could read the same shape from.
 package api
 
 //go:generate go tool tony-codegen -dir .

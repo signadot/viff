@@ -77,7 +77,7 @@ type Producer interface {
 	// RaiseGate opens a gate on a running task and returns its decision id. Called only
 	// when Caps().ExecutorGates.
 	RaiseGate(t *testing.T, id, gate, reason string) string
-	// Snapshot returns the Instance this producer reports for id.
+	// Snapshot returns the Snapshot this producer reports for id.
 	Snapshot(t *testing.T, id string) (task.Snapshot, bool)
 }
 
