@@ -38,7 +38,7 @@ func armedQuestion(t *testing.T, srv *Server, id string) map[string]any {
 	t.Helper()
 	var q map[string]any
 	for range 200 {
-		q = question(t, srv, id)
+		q = questionDoc(t, srv, id)
 		if _, _, at := mirror.DeadlineOf(entity.Obj(q).Payload()); at != "" {
 			return q
 		}

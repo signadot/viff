@@ -1,4 +1,4 @@
-package runner
+package versed
 
 import (
 	"fmt"
@@ -12,32 +12,32 @@ import (
 	"github.com/signadot/verse/entity"
 )
 
-// System is where installed runners live: `verse.runners.<name>`.
+// runnersSystem is where installed runners live: `verse.runners.<name>`.
 //
 // A runner is an ENTITY rather than a startup flag, because the ask this answers is
 // "deploying arbitrary runners in the verse namespace" — adding one is a deployment act, a
 // write, not an edit to how verse itself is started. A drive adds a runner the way it adds a
 // doer or a resolver.
-const System = "runners"
+const runnersSystem = "runners"
 
-// Ref addresses an installed runner: one name beneath the registry, which is the whole of its
+// runnerEntityRef addresses an installed runner: one name beneath the registry, which is the whole of its
 // address.
-func Ref(name string) entity.Ref {
-	return entity.VerseRef(System, name)
+func runnerEntityRef(name string) entity.Ref {
+	return entity.VerseRef(runnersSystem, name)
 }
 
-// Entity is one installed runner: an address and somewhere to reach it.
+// runnerEntity is one installed runner: an address and somewhere to reach it.
 //
 // It carries a url and who the runner acts as, and nothing about what work may do there. A
 // grant ceiling, a tool allowlist, a label — anything saying "work here may only do this" — is
 // expressible and deliberately absent: it is the same
 // narrowing a doer answers, and answering it in two places without deciding how they compose
 // is how a ceiling comes to mean two things.
-type Entity struct {
+type runnerEntity struct {
 	// Name is the address: `verse.runners.<name>`.
 	Name string `tony:"field=name"`
 
-	// URL is the runner's verse-facing base: what runner.HTTP drives, and what a restart
+	// URL is the runner's verse-facing base: what client.HTTP drives, and what a restart
 	// reconstructs from. Required, with no default and no local special case — `local` is what
 	// the ABSENCE of a runner means, which keeps every runner entity somewhere to reach.
 	URL string `tony:"field=url"`
@@ -48,7 +48,7 @@ type Entity struct {
 }
 
 // Principal is who the runner acts as: `runner:` its identity, or its name.
-func (e Entity) Principal() string {
+func (e runnerEntity) Principal() string {
 	if e.Identity != "" {
 		return entity.RunnerKind + ":" + e.Identity
 	}
@@ -62,7 +62,7 @@ func (e Entity) Principal() string {
 // — an address that cannot be addressed, and a url that is not one. Whether the far side is a
 // runner at all is a separate question, answered by probing (Probe), because it is the only
 // one of the three that can change on its own.
-func (e Entity) Check() error {
+func (e runnerEntity) Check() error {
 	if e.Name == "" {
 		return fmt.Errorf("runner: name is required — it is the address")
 	}
@@ -90,7 +90,7 @@ func (e Entity) Check() error {
 	// nothing can dial.
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return fmt.Errorf("runner %q: url %q needs an http:// or https:// scheme — it is what "+
-			"runner.HTTP dials and what a restart reconstructs from", e.Name, e.URL)
+			"client.HTTP dials and what a restart reconstructs from", e.Name, e.URL)
 	}
 	if u.Host == "" {
 		return fmt.Errorf("runner %q: url %q has no host", e.Name, e.URL)
@@ -98,14 +98,14 @@ func (e Entity) Check() error {
 	return nil
 }
 
-// CheckFields reports a field the decoder would drop in silence.
+// checkRunnerFields reports a field the decoder would drop in silence.
 //
 // Read as a DOCUMENT before decoding, for the reason a resolver is: gomap ignores what it does
 // not recognise, so `ulr:` would install a runner with no address and report success — and the
 // url is the entire content of this entity, so the silence is total.
-func CheckFields(node *ir.Node) error {
+func checkRunnerFields(node *ir.Node) error {
 	known := map[string]string{"name": "", "url": "", "identity": ""}
-	node = unwrapNode(node)
+	node = unwrapRunnerNode(node)
 	if node == nil || node.Type != ir.ObjectType {
 		return nil // not an object: the decoder's complaint to make, in its own terms
 	}
@@ -125,64 +125,64 @@ func CheckFields(node *ir.Node) error {
 	return nil
 }
 
-func unwrapNode(n *ir.Node) *ir.Node {
+func unwrapRunnerNode(n *ir.Node) *ir.Node {
 	for n != nil && n.Type == ir.CommentType && len(n.Values) > 0 {
 		n = n.Values[0]
 	}
 	return n
 }
 
-// Find reads one installed runner by what a charter or a CLI argument names: its address as it
+// findRunner reads one installed runner by what a charter or a CLI argument names: its address as it
 // is stored and listed (`verse.runners.gpu`), or its name (`gpu`) — an operator reading `verse
 // data` and one typing `verse runner show` should not have to know two spellings of one thing.
 //
-// FindErr is the same read reporting whether it HAPPENED, and it is the one a caller deciding
+// findRunnerErr is the same read reporting whether it HAPPENED, and it is the one a caller deciding
 // something uses: a read that failed, or one the reader may not make, is not a runner that is
 // not installed, and a spawn told "not installed" is work that does not run.
-func Find(r entity.Reader, ref string) (Entity, bool) {
-	e, ok, _ := FindErr(r, ref)
+func findRunner(r entity.Reader, ref string) (runnerEntity, bool) {
+	e, ok, _ := findRunnerErr(r, ref)
 	return e, ok
 }
 
-func FindErr(r entity.Reader, ref string) (Entity, bool, error) {
-	name, ok := NameOf(ref)
+func findRunnerErr(r entity.Reader, ref string) (runnerEntity, bool, error) {
+	name, ok := runnerNameOf(ref)
 	if !ok {
-		return Entity{}, false, nil
+		return runnerEntity{}, false, nil
 	}
-	e, ok, err := r.Get(Ref(name))
+	e, ok, err := r.Get(runnerEntityRef(name))
 	if err != nil || !ok {
-		return Entity{}, false, err
+		return runnerEntity{}, false, err
 	}
-	var out Entity
+	var out runnerEntity
 	if codec.FromNode(e.Payload, &out) != nil {
-		return Entity{}, false, nil
+		return runnerEntity{}, false, nil
 	}
 	return out, true, nil
 }
 
-// List reads every installed runner, ordered by address, so two readers see one order.
-func List(r entity.Reader) []Entity {
-	out, _ := ListErr(r)
+// installedRunners reads every installed runner, ordered by address, so two readers see one order.
+func installedRunners(r entity.Reader) []runnerEntity {
+	out, _ := installedRunnersErr(r)
 	return out
 }
 
-// ListErr is List, reporting the error THIS read failed with — see entity.ListErr for why a
+// installedRunnersErr is installedRunners, reporting the error THIS read failed with — see entity.ListErr for why a
 // listing cannot say so in its signature, and why asking the store afterwards is a different
 // question from asking the read.
-func ListErr(r entity.Reader) ([]Entity, error) {
-	var out []Entity
+func installedRunnersErr(r entity.Reader) ([]runnerEntity, error) {
+	var out []runnerEntity
 	// AT THE SUBTREE, not over the document. A List(pred) is a Match on the ROOT — the whole
 	// verse across the wire and filtered here — so a listing of a handful of runners cost a
 	// read of everything every source had ever reflected. On a store carrying two mirrored
 	// repositories that was 455 KB a call, and `verse status` (which lists runners, sources
 	// and questions) paid it three times per readiness probe.
-	registry := []string{entity.VerseRoot, System}
-	ents, err := entity.ListAtErr(r, registry, len(registry)+1, Is)
+	registry := []string{entity.VerseRoot, runnersSystem}
+	ents, err := entity.ListAtErr(r, registry, len(registry)+1, isRunnerRef)
 	if err != nil {
 		return nil, err
 	}
 	for _, ent := range ents {
-		var e Entity
+		var e runnerEntity
 		if codec.FromNode(ent.Payload, &e) != nil {
 			continue
 		}
@@ -192,19 +192,19 @@ func ListErr(r entity.Reader) ([]Entity, error) {
 	return out, nil
 }
 
-// Is reports whether an address is an installed runner's — the namespace's own question, since
+// isRunnerRef reports whether an address is an installed runner's — the namespace's own question, since
 // the reserved root rather than the system is what makes it verse's (see mirror.IsTask).
-func Is(ref entity.Ref) bool { return ref.Under(entity.VerseRoot, System) }
+func isRunnerRef(ref entity.Ref) bool { return ref.Under(entity.VerseRoot, runnersSystem) }
 
-// NameOf is the runner's name from either spelling an operator has in front of them: the whole
+// runnerNameOf is the runner's name from either spelling an operator has in front of them: the whole
 // address as it is listed and stored (`verse.runners.gpu`), or the name alone. Anything else —
 // the address without its reserved root, a path with more to it — names no runner.
-func NameOf(ref string) (string, bool) {
+func runnerNameOf(ref string) (string, bool) {
 	segs, err := entity.PathSegs(ref)
 	if err != nil {
 		return "", false
 	}
-	if at := entity.RefAt(segs...); at.ChildOf(entity.VerseRoot, System) {
+	if at := entity.RefAt(segs...); at.ChildOf(entity.VerseRoot, runnersSystem) {
 		return at.Name(), at.Name() != ""
 	}
 	if len(segs) != 1 || segs[0] == "" {

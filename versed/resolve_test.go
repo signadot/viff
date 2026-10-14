@@ -14,11 +14,10 @@ import (
 	"github.com/signadot/verse/task"
 )
 
-// The resolve body is one type for both routes (api.Resolve), and these are the tests
-// that keep it that way. They exist because the two routes previously carried two
-// vocabularies — `{id, approve}` here, `{decisionId, proceed}` on the task route —
-// and nothing noticed: no test posted either body, so the drift was invisible to
-// everything except a person reading both handlers at once.
+// The resolve body is one type for both of verse's routes (api.Resolve), and these are the
+// tests that keep it that way. They exist because the routes once carried a vocabulary each
+// and nothing noticed: no test posted either body, so the drift was invisible to everything
+// except a person reading both handlers at once.
 //
 // Posting the SHARED type is the point. A field renamed in api.Resolve now fails to
 // compile here and at every call site, instead of decoding to a zero value and

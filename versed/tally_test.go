@@ -86,7 +86,7 @@ func TestAThresholdOfTwoSettlesOnTheSecondBallot(t *testing.T) {
 		t.Errorf("the answerer is not told where the tally stands: %q", body)
 	}
 	stillWaiting(t, answered)
-	q := question(t, srv, id)
+	q := questionDoc(t, srv, id)
 	if q["status"] != mirror.QuestionPending || ballotsOf(q)["user:alice@example.com"] != "proceed" {
 		t.Fatalf("after one ballot the record should be pending with alice's ballot on it: %+v", q)
 	}
@@ -170,7 +170,7 @@ func TestASecondBallotByTheSameAnswererReplacesTheFirst(t *testing.T) {
 		t.Errorf("alice no longer counts for proceed, got %q", got)
 	}
 	stillWaiting(t, answered)
-	q := question(t, srv, id)
+	q := questionDoc(t, srv, id)
 	if b := ballotsOf(q); len(b) != 2 || b["user:alice@example.com"] != "deny" || b["user:bob@example.com"] != "proceed" {
 		t.Fatalf("ballots = %+v, want alice's latest and bob's", b)
 	}
@@ -199,7 +199,7 @@ func TestABallotForAnUnknownOptionIsRefused(t *testing.T) {
 		t.Errorf("the refusal should list the options: %q", body)
 	}
 	stillWaiting(t, answered)
-	q := question(t, srv, id)
+	q := questionDoc(t, srv, id)
 	if q["status"] != mirror.QuestionPending || len(ballotsOf(q)) != 0 {
 		t.Fatalf("a refused ballot left a trace: %+v", q)
 	}
@@ -280,7 +280,7 @@ func TestABallotIsCastByWhoeverTheRequestIsMadeAs(t *testing.T) {
 		}
 	}
 	stillWaiting(t, answered)
-	if got := ballotsOf(question(t, srv, id)); len(got) != 0 {
+	if got := ballotsOf(questionDoc(t, srv, id)); len(got) != 0 {
 		t.Fatalf("ballots were recorded: %v", got)
 	}
 	// Its own name, spelled either way, or none at all: one ballot, the tester's.
@@ -291,7 +291,7 @@ func TestABallotIsCastByWhoeverTheRequestIsMadeAs(t *testing.T) {
 			t.Errorf("a ballot by %q as %s: %s, want 202", by, tester, resp.Status)
 		}
 	}
-	if got := ballotsOf(question(t, srv, id)); len(got) != 1 || got["user:"+tester] != "proceed" {
+	if got := ballotsOf(questionDoc(t, srv, id)); len(got) != 1 || got["user:"+tester] != "proceed" {
 		t.Fatalf("ballots = %v, want the tester's one", got)
 	}
 	srv.Reg.Answer(id, task.Resolution{Choice: "deny"})

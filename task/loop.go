@@ -138,7 +138,7 @@ type frame struct {
 // Outcome summarizes how a run ended and where the cursor stopped.
 type Outcome struct {
 	Task     string
-	Reason   string // completed | cancelled | failed (a task.Status)
+	Reason   string // completed | cancelled | failed (a Status)
 	Boundary int    // cursor position at exit
 }
 
@@ -195,15 +195,15 @@ type Task struct {
 	subs   map[int]*subscriber
 	subID  int
 	cursor int64   // per-task monotonic event cursor (assigned in emit)
-	ring   []Frame // bounded retained window, for SubscribeSince(?since) replay
+	ring   []Event // bounded retained window, for SubscribeSince(?since) replay
 	// retain is this task's read-plane window in events; 0 = the package default. Set from
 	// the Launch at spawn, because how much of the past is worth keeping is a property of
 	// the work rather than of the runtime.
 	retain int
-	// open is the gates standing right now, keyed by decision id: an EvPending opens one and
-	// its EvDecision closes it. The RING is not a substitute — it forgets, and what it
+	// open is the gates standing right now, keyed by decision id: an EventPending opens one and
+	// its EventDecision closes it. The RING is not a substitute — it forgets, and what it
 	// forgets first is the oldest, which for a long-standing gate is the gate itself.
-	open map[string]Frame
+	open map[string]Event
 	// ended latches on the terminal frame. After it, the read plane is a finite record: no
 	// event will ever follow, so subscribers are closed rather than left listening to a
 	// task that has stopped speaking.
@@ -260,7 +260,7 @@ func (p *Task) SetAnswerCheck(a AnswerCheck) { p.ansck = a }
 func (p *Task) SetDeriver(d Deriver) { p.sup.SetDeriver(d) }
 
 // SetVector swaps the gate vector on the running supervisor — the autonomy slide, applied at
-// the next EVALUATION with no restart. It emits an EvVector frame so the slide is observable
+// the next EVALUATION with no restart. It emits an EventVector frame so the slide is observable
 // on the read plane (the new default mode; the operator who slid it rides By).
 //
 // It is a POLICY change and not an intervention, which is why it does not disturb a question
@@ -268,7 +268,7 @@ func (p *Task) SetDeriver(d Deriver) { p.sup.SetDeriver(d) }
 // this", not "approve the one already in front of me". See machine.go's inVector.
 func (p *Task) SetVector(v *Vector, by string) error {
 	p.sup.SetVector(v)
-	p.emit(Frame{Kind: EvVector, Mode: v.Default.String(), By: by})
+	p.emit(Event{Kind: EventVector, Mode: v.Default.String(), By: by})
 	p.post(inVector{})
 	return nil // the local handle: the task is right here, so delivery is not in doubt
 }
@@ -429,7 +429,7 @@ func (p *Task) Run(ctx context.Context) (oc Outcome, err error) {
 			err := fmt.Errorf("the loop has nothing to wait for and nothing to do (phase %s): "+
 				"this is a defect in the machine, not a state a task can be in", s.ph)
 			p.setErr(err)
-			p.emit(Frame{Kind: EvStatus, Text: string(Failed)})
+			p.emit(Event{Kind: EventStatus, Text: string(Failed)})
 			return Outcome{Task: p.ID, Reason: string(Failed), Boundary: s.seq}, err
 		}
 	}
@@ -441,7 +441,7 @@ func (p *Task) perform(ctx context.Context, s state, effs []effect, replies chan
 	for _, e := range effs {
 		switch v := e.(type) {
 		case effEmit:
-			if v.f.Kind == EvBoundary {
+			if v.f.Kind == EventBoundary {
 				p.seq = v.f.Seq
 				if p.onEnterBoundary != nil {
 					p.onEnterBoundary(v.f.Seq)
@@ -735,12 +735,12 @@ func (p *Task) converse(msgs []convMsg) {
 	for _, m := range msgs {
 		switch m.kind {
 		case convChild:
-			// Already on the plane as EvChild, where it belongs: it is the task's own work
+			// Already on the plane as EventChild, where it belongs: it is the task's own work
 			// returning, not somebody talking to it.
 		case convRepair:
-			p.emit(Frame{Kind: EvSay, By: "runtime:answer-contract", Seq: p.seq, Text: m.text})
+			p.emit(Event{Kind: EventSay, By: "runtime:answer-contract", Seq: p.seq, Text: m.text})
 		default:
-			p.emit(Frame{Kind: EvSay, By: m.by, Seq: p.seq, Text: m.text, ID: m.ask})
+			p.emit(Event{Kind: EventSay, By: m.by, Seq: p.seq, Text: m.text, ID: m.ask})
 		}
 	}
 }
@@ -757,7 +757,7 @@ func (p *Task) teardown(ctx context.Context, td effTeardown) (Outcome, error) {
 	for i := len(td.frames) - 1; i >= 0; i-- {
 		p.unwind(ctx, td.frames[i])
 	}
-	p.emit(Frame{Kind: EvStatus, Text: string(td.status)})
+	p.emit(Event{Kind: EventStatus, Text: string(td.status)})
 	out := Outcome{Task: p.ID, Reason: string(td.status), Boundary: td.seq}
 	if td.status == Done {
 		return out, nil
@@ -797,7 +797,7 @@ func (p *Task) spawnChild(ctx context.Context, tu ToolUse, mode ChildMode) (stri
 	childCtx, childCancel := context.WithCancel(ctx)
 	p.children[child.ID] = &childHandle{task: child, cancel: childCancel}
 	p.logf("⑂ spawned child %s (agent=%s)", child.ID, req.Agent)
-	p.emit(Frame{Kind: EvChild, Tool: req.Agent, Text: "spawned " + child.ID})
+	p.emit(Event{Kind: EventChild, Tool: req.Agent, Text: "spawned " + child.ID})
 	go p.runChild(childCtx, child)
 	return child.ID, StepResult{Use: tu,
 		Output: fmt.Sprintf("started %s (handle=%s); result arrives when it completes", req.Agent, child.ID)}

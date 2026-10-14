@@ -121,7 +121,7 @@ func pendingOn(t *testing.T, base, id string) string {
 		return ""
 	}
 	defer resp.Body.Close()
-	var inst task.Instance
+	var inst task.Snapshot
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return ""

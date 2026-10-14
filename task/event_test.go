@@ -18,7 +18,7 @@ func TestEventBusRun(t *testing.T) {
 		seen := map[string]int{}
 		for ev := range ch {
 			seen[ev.Kind]++
-			if ev.Kind == EvStatus { // run ended
+			if ev.Kind == EventStatus { // run ended
 				break
 			}
 		}
@@ -30,7 +30,7 @@ func TestEventBusRun(t *testing.T) {
 	}
 	select {
 	case seen := <-seenCh:
-		if seen[EvBoundary] == 0 || seen[EvExec] == 0 || seen[EvStatus] == 0 {
+		if seen[EventBoundary] == 0 || seen[EventExec] == 0 || seen[EventStatus] == 0 {
 			t.Fatalf("missing expected events: %v", seen)
 		}
 	case <-time.After(2 * time.Second):
@@ -46,18 +46,18 @@ func TestEventBusGapMarker(t *testing.T) {
 	defer unsub()
 
 	for i := 0; i < 300; i++ { // overflow the 256 buffer without draining → drops accrue
-		p.emit(Frame{Kind: EvBoundary, Seq: i})
+		p.emit(Event{Kind: EventBoundary, Seq: i})
 	}
 	for i := 0; i < 10; i++ { // free some slots, then emit → gap marker flushes
 		<-ch
 	}
-	p.emit(Frame{Kind: EvBoundary, Seq: 999})
+	p.emit(Event{Kind: EventBoundary, Seq: 999})
 
 	sawGap, dropped := false, 0
 	for {
 		select {
 		case ev := <-ch:
-			if ev.Kind == EvGap {
+			if ev.Kind == EventGap {
 				sawGap, dropped = true, ev.Dropped
 			}
 		default:

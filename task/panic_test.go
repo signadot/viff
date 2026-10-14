@@ -143,7 +143,7 @@ func TestAPanickingRootFailsTheTaskAndStillSaysSo(t *testing.T) {
 	}
 	var terminal bool
 	for f := range ch { // the stream ENDS after the terminal, so this drains and stops
-		if f.Kind == EvStatus && Status(f.Text).Terminal() {
+		if f.Kind == EventStatus && Status(f.Text).Terminal() {
 			terminal = true
 		}
 	}

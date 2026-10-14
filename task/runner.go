@@ -1,8 +1,6 @@
 package task
 
 import (
-	"errors"
-
 	"github.com/signadot/tony-format/go-tony/ir"
 )
 
@@ -260,8 +258,8 @@ type Runner interface {
 // never answered, so a task that exists on an unreachable runner reads as one that does not
 // exist at all.
 type Lister interface {
-	ListTasks() ([]Instance, error)
-	TaskSnapshot(id string) (Instance, error)
+	ListTasks() ([]Snapshot, error)
+	TaskSnapshot(id string) (Snapshot, error)
 }
 
 // Handle is verse's governing handle on one running task — the control plane
@@ -269,42 +267,14 @@ type Lister interface {
 // the task runs in-process or behind a URL, so the engine tracks handles, not the
 // concrete *Task. The local handle is *Task itself; a remote handle wraps an HTTP
 // client of a runner base URL.
-// Every control call reports what became of it. Three outcomes, and the third is the one that
-// used to have nowhere to go: applied (nil), REFUSED by the far side, or never reached it.
-//
-// The distinction is not pedantry. Only one of the three is worth retrying, and a caller that
-// cannot tell them apart either retries what was already applied or abandons what never
-// arrived. A cancel that never left the building read as a cancel.
-var (
-	// ErrUnreachable: the far side did not answer. Nothing is known about whether it acted.
-	ErrUnreachable = errors.New("runner unreachable")
-	// ErrNoSuchTask / ErrNoSuchDecision: the far side answered, and has never heard of it.
-	ErrNoSuchTask     = errors.New("no such task")
-	ErrNoSuchDecision = errors.New("no such decision")
-	// ErrAlreadyAnswered: a decision that was settled before this answer arrived. Distinct
-	// from ErrNoSuchDecision because the two mean opposite things to whoever asked — one is
-	// "look for your typo", the other is "somebody beat you to it".
-	ErrAlreadyAnswered = errors.New("already answered")
-	// ErrTaskEnded: the task is over, so its open gates will never be acted on. Not
-	// ErrAlreadyAnswered — nobody answered — and not ErrNoSuchDecision, because the gate was
-	// real and the answerer is not looking at a typo.
-	ErrTaskEnded = errors.New("the task ended with this gate unanswered")
-	// ErrEnded: the task is over, so nothing said to it will be heard.
-	ErrEnded = errors.New("the task has ended")
-	// ErrFenced: a stale claim. The caller's generation was displaced.
-	ErrFenced = errors.New("fenced: stale claim")
-	// ErrUnsupported: this runner has no such face at all.
-	ErrUnsupported = errors.New("unsupported by this runner")
-)
-
 type Handle interface {
-	Subscribe() (<-chan Frame, func())
-	// SubscribeSince resumes: the frames after that cursor, then live, with an EvGap first
+	Subscribe() (<-chan Event, func())
+	// SubscribeSince resumes: the frames after that cursor, then live, with an EventGap first
 	// if the cursor is below what is still retained. It is on the interface rather than
 	// type-asserted for because a reader that cannot resume cannot recover — a stream that
 	// dies mid-task would leave it with no way back to current, and no way to tell that
 	// from the task having ended.
-	SubscribeSince(since int64) (<-chan Frame, func())
+	SubscribeSince(since int64) (<-chan Event, func())
 	Pause() error
 	Resume() error
 	Cancel(reason string) error
@@ -336,16 +306,16 @@ func FailedHandle(reason string) Handle { return failedHandle{reason} }
 
 type failedHandle struct{ err string }
 
-func (f failedHandle) Subscribe() (<-chan Frame, func()) {
-	ch := make(chan Frame, 1)
-	ch <- Frame{Kind: EvStatus, Text: string(Failed), Err: f.err}
+func (f failedHandle) Subscribe() (<-chan Event, func()) {
+	ch := make(chan Event, 1)
+	ch <- Event{Kind: EventStatus, Text: string(Failed), Err: f.err}
 	close(ch)
 	return ch, func() {}
 }
 
 // Resuming work that never started is the same one-frame record from any cursor: there is
 // nothing before the failure and there will be nothing after it.
-func (f failedHandle) SubscribeSince(int64) (<-chan Frame, func()) { return f.Subscribe() }
+func (f failedHandle) SubscribeSince(int64) (<-chan Event, func()) { return f.Subscribe() }
 
 // Control on work that never started is refused rather than silently accepted. There is no
 // task to pause, and saying so is the difference between "your cancel landed" and "there

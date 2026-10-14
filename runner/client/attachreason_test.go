@@ -1,4 +1,4 @@
-package runner_test
+package client_test
 
 import (
 	"net/http"
@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/task"
 )
 
@@ -32,12 +32,12 @@ func TestAttachToAFailedTaskReportsWhyItFailed(t *testing.T) {
 		}
 		// And the record, which knows.
 		w.Header().Set(codec.HeaderFormat, codec.Tony.String())
-		b, _ := codec.Marshal(task.Instance{ID: "run-1", Status: task.Failed, Err: reason}, codec.Tony)
+		b, _ := codec.Marshal(task.Snapshot{ID: "run-1", Status: task.Failed, Err: reason}, codec.Tony)
 		_, _ = w.Write(b)
 	}))
 	defer srv.Close()
 
-	h := runner.HTTP(srv.URL).Attach("run-1")
+	h := client.HTTP(srv.URL).Attach("run-1")
 	if h == nil {
 		t.Fatal("no handle for a task the runner knows about")
 	}
@@ -66,7 +66,7 @@ func TestAttachKeepsTheTransportErrorWhenTheRecordHasNoBetterAccount(t *testing.
 	}{
 		{"the remote thinks it is still running", func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set(codec.HeaderFormat, codec.Tony.String())
-			b, _ := codec.Marshal(task.Instance{ID: "run-1", Status: task.Running}, codec.Tony)
+			b, _ := codec.Marshal(task.Snapshot{ID: "run-1", Status: task.Running}, codec.Tony)
 			_, _ = w.Write(b)
 		}},
 		{"the remote does not know the id", func(w http.ResponseWriter, r *http.Request) {
@@ -83,7 +83,7 @@ func TestAttachKeepsTheTransportErrorWhenTheRecordHasNoBetterAccount(t *testing.
 			}))
 			defer srv.Close()
 
-			h := runner.HTTP(srv.URL).Attach("run-1")
+			h := client.HTTP(srv.URL).Attach("run-1")
 			ch, _ := h.Subscribe()
 			ev, open := <-ch
 			if !open {

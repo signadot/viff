@@ -115,7 +115,7 @@ func TestAGateHeldOutToItsAnswerers(t *testing.T) {
 	if resp.StatusCode != http.StatusAccepted {
 		t.Fatalf("the first of two ballots: %s, want 202 recorded", resp.Status)
 	}
-	if q := question(t, srv, qid); q["status"] != mirror.QuestionPending {
+	if q := questionDoc(t, srv, qid); q["status"] != mirror.QuestionPending {
 		t.Fatalf("one of two settled the question: %+v", q)
 	}
 	resp = answerAs(t, "ana@example.com", ts.URL, qid)
@@ -218,7 +218,7 @@ func TestAQuestionIsNotAnswerableBeforeItIsPosed(t *testing.T) {
 		if resp.StatusCode != http.StatusAccepted {
 			t.Fatalf("round %d: the first of two ballots: %s, want 202 recorded", i, resp.Status)
 		}
-		if q := question(t, srv, qid); q["status"] != mirror.QuestionPending {
+		if q := questionDoc(t, srv, qid); q["status"] != mirror.QuestionPending {
 			t.Fatalf("round %d: one ballot of two settled the question: %+v", i, q)
 		}
 	}

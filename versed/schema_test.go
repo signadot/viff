@@ -454,7 +454,8 @@ func TestSchemaPublishesTheRunnerContract(t *testing.T) {
 	}
 	for _, name := range []string{
 		"verse-runner-spawn", "verse-runner-provenance", "verse-runner-spawned",
-		"verse-runner-say", "verse-runner-cancel", "verse-runner-vector", "verse-instance",
+		"verse-task-snapshot", "verse-pending-gate", "verse-task-event",
+		"verse-runner-say", "verse-runner-cancel", "verse-runner-resolve", "verse-runner-vector",
 	} {
 		if ir.Get(defs, name) == nil {
 			t.Errorf("/schema does not define %s", name)

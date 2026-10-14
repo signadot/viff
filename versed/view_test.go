@@ -9,7 +9,6 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/runner"
 )
 
 // alicesRunner installs a runner that is alice's alone, in a verse that holds nothing out.
@@ -17,12 +16,12 @@ func alicesRunner(t *testing.T, srv *Server, name string) {
 	t.Helper()
 	entity.PolicyOf(srv.Store).SetRootChildGrants(nil)
 	if _, _, err := srv.Store.Write(entity.Write{
-		At:    runner.Ref(name).At(),
+		At:    runnerEntityRef(name).At(),
 		Value: entity.Obj{"name": name, "url": "http://127.0.0.1:1"}.Payload(),
 	}); err != nil {
 		t.Fatalf("installing runner %s: %v", name, err)
 	}
-	owns(t, srv, "user:alice@example.com", nil, runner.Ref(name))
+	owns(t, srv, "user:alice@example.com", nil, runnerEntityRef(name))
 }
 
 // A runner the asker may not read and a runner that is not there are ONE ANSWER, in the

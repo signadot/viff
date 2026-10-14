@@ -21,7 +21,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/task"
 )
 
@@ -135,7 +135,7 @@ type child struct {
 	// the process, the spawn forwarded to it — is preparation this side answers for: `pending`
 	// is the task as it stands until then, and `abort` is what a cancel does to it.
 	ready   chan struct{}
-	pending task.Instance
+	pending task.Snapshot
 	abort   context.CancelFunc
 	ended   sync.Once // gone is closed by whichever ends the child first: its exit, or a preparation that did not reach one
 	// gone is closed by the one goroutine that calls cmd.Wait, so any number of readers can
@@ -144,7 +144,7 @@ type child struct {
 
 	mu    sync.Mutex
 	exit  error
-	final *task.Instance // the last word on this task, once there is one
+	final *task.Snapshot // the last word on this task, once there is one
 	dead  bool
 	// What delivery did, recorded when the task asked for it. Delivery is an action inside the
 	// loop now (deliver.go), so this side finds out by being asked rather than by doing it —
@@ -203,11 +203,11 @@ func (c *child) hosting() bool {
 	}
 }
 
-func (c *child) snapshot() (task.Instance, bool) {
+func (c *child) snapshot() (task.Snapshot, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.final == nil {
-		return task.Instance{}, false
+		return task.Snapshot{}, false
 	}
 	return *c.final, true
 }
@@ -215,7 +215,7 @@ func (c *child) snapshot() (task.Instance, bool) {
 // remember records the last word about a task. First writer wins: a terminal status observed on
 // the read plane is a better account than "the process exited", and the process always exits
 // afterwards.
-func (c *child) remember(in task.Instance) {
+func (c *child) remember(in task.Snapshot) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.final == nil {
@@ -235,9 +235,9 @@ func (c *child) remember(in task.Instance) {
 //
 // So ask until it agrees with the plane that said so. If it never does, the frame is still the
 // better authority for the STATUS, since the task did reach it.
-func (c *child) settled(terminal task.Status) task.Instance {
+func (c *child) settled(terminal task.Status) task.Snapshot {
 	lister, ok := c.rt.(task.Lister)
-	var last task.Instance
+	var last task.Snapshot
 	for deadline := time.Now().Add(settleTimeout); ok && time.Now().Before(deadline); {
 		snap, err := lister.TaskSnapshot(c.id)
 		if err == nil {
@@ -420,7 +420,7 @@ func (r *Runner) startChild(c *child, env Environment, point Point, driver, virt
 	// not parse. So no charter-spawned task could start here at all, while every
 	// hand-launched `run-<hex>` one could.
 	c.tr, c.base = tr, "http://task."+hostSafe(id)
-	c.rt, c.prox = runner.HTTPOver(c.base, tr), unixProxy(tr, id)
+	c.rt, c.prox = client.HTTPOver(c.base, tr), unixProxy(tr, id)
 	go func() {
 		err := cmd.Wait()
 		c.mu.Lock()
@@ -531,7 +531,7 @@ func (r *Runner) spawn(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// Every refusal below is an HTTP error rather than a task that fails immediately, and that
-	// is the improvement the hop brings here: runner.HTTP reads the status, so a launch this
+	// is the improvement the hop brings here: client.HTTP reads the status, so a launch this
 	// runner will not host comes back as `spawn refused by <url>: <reason>` on the flow that
 	// asked for it, instead of a task that exists for one tick.
 	env, err := r.cfg.Environment(sent.Environment)
@@ -588,7 +588,7 @@ func (r *Runner) spawn(w http.ResponseWriter, req *http.Request) {
 	ctx, abort := context.WithCancel(context.Background())
 	c := &child{
 		id: id, gone: make(chan struct{}), ready: make(chan struct{}), abort: abort,
-		pending: task.Instance{ID: id, Prompt: l.Prompt, Driver: driver, Status: task.Running},
+		pending: task.Snapshot{ID: id, Prompt: l.Prompt, Driver: driver, Status: task.Running},
 	}
 	r.mu.Lock()
 	r.children[id] = c
@@ -613,7 +613,7 @@ func (r *Runner) prepare(ctx context.Context, c *child, l task.Launch, env Envir
 	// Ended before it started: remembered and gone, with no process to wait for.
 	before := func(status task.Status, err error) {
 		fmt.Fprintf(r.log, "coderunner: %s: %s before it started: %v\n", c.id, status, err)
-		c.remember(task.Instance{Prompt: l.Prompt, Driver: driver, Status: status, Err: err.Error()})
+		c.remember(task.Snapshot{Prompt: l.Prompt, Driver: driver, Status: status, Err: err.Error()})
 		c.end()
 	}
 	cancelled := errors.New("cancelled while the task was being prepared")
@@ -654,7 +654,7 @@ func (r *Runner) prepare(ctx context.Context, c *child, l task.Launch, env Envir
 			err = cancelled
 		}
 		fmt.Fprintf(r.log, "coderunner: %s: the task process would not take the spawn: %v\n", c.id, err)
-		c.remember(task.Instance{Prompt: l.Prompt, Driver: driver, Status: task.Failed, Err: err.Error()})
+		c.remember(task.Snapshot{Prompt: l.Prompt, Driver: driver, Status: task.Failed, Err: err.Error()})
 		c.stop()
 		return
 	}
@@ -705,7 +705,7 @@ func (r *Runner) supervise(c *child, l task.Launch, env Environment) {
 	frames, cancel := h.Subscribe()
 	var terminal task.Status
 	for f := range frames {
-		if f.Kind == task.EvStatus && task.Status(f.Text).Terminal() {
+		if f.Kind == task.EventStatus && task.Status(f.Text).Terminal() {
 			terminal = task.Status(f.Text)
 			break
 		}
@@ -723,7 +723,7 @@ func (r *Runner) supervise(c *child, l task.Launch, env Environment) {
 	// without a terminal status is a FAILED task and must be reported as one: verse is otherwise
 	// waiting on a task nobody is running, which is the failure mode the in-process version could
 	// not have and this one can.
-	c.remember(task.Instance{
+	c.remember(task.Snapshot{
 		Status: task.Failed,
 		Err: fmt.Sprintf("the task process exited (%s) without reaching a terminal status",
 			c.exitStatus()),
@@ -845,7 +845,7 @@ func (r *Runner) forward(w http.ResponseWriter, req *http.Request) {
 			codec.HTTPError(w, req, http.StatusInternalServerError, err.Error())
 			return
 		}
-		_ = sse.Send(task.Frame{Kind: task.EvStatus, Text: string(final.Status), Err: final.Err})
+		_ = sse.Send(task.Event{Kind: task.EventStatus, Text: string(final.Status), Err: final.Err})
 		sse.Flush()
 	case req.URL.Path == "/tasks/"+id+"/cancel":
 		// Already stopped, which is what the caller asked for. Answering an error here would make
@@ -868,7 +868,7 @@ func (r *Runner) list(w http.ResponseWriter, req *http.Request) {
 	}
 	r.mu.Unlock()
 
-	out := make([]task.Instance, 0, len(kids))
+	out := make([]task.Snapshot, 0, len(kids))
 	for _, c := range kids {
 		if final, done := c.snapshot(); done {
 			out = append(out, final)
@@ -886,7 +886,7 @@ func (r *Runner) list(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			// A child that is up but not answering is still a task this runner is responsible
 			// for. Reporting nothing would read as a runner with less work than it has.
-			snap = task.Instance{ID: c.id, Status: task.Running, Err: err.Error()}
+			snap = task.Snapshot{ID: c.id, Status: task.Running, Err: err.Error()}
 		}
 		out = append(out, snap)
 	}

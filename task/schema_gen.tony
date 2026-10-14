@@ -11,13 +11,6 @@ signature:
 context:
 - tony-format/context
 define:
-  reason: .[string]
-signature:
-  name: verse-runner-cancel
----
-context:
-- tony-format/context
-define:
   at: .[string]
   atFrom: .[string]
   default: .[string]
@@ -58,7 +51,7 @@ define:
   text: .[string]
   tool: .[string]
 signature:
-  name: verse-frame
+  name: verse-task-event
 ---
 context:
 - tony-format/context
@@ -134,21 +127,10 @@ define:
   pending: .[array(verse-pending-gate)]
   prompt: .[string]
   result: .[string]
-  runner: .[string]
-  runnerName: .[string]
   started: .[string]
   status: .[string]
 signature:
-  name: verse-instance
----
-context:
-- tony-format/context
-define:
-  ask: .[string]
-  by: .[string]
-  instruction: .[string]
-signature:
-  name: verse-runner-say
+  name: verse-task-snapshot
 ---
 context:
 - tony-format/context
@@ -189,13 +171,6 @@ define:
   virtualKey: .[string]
 signature:
   name: verse-runner-spawn
----
-context:
-- tony-format/context
-define:
-  id: .[string]
-signature:
-  name: verse-runner-spawned
 ---
 context:
 - tony-format/context

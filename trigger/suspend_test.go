@@ -336,13 +336,13 @@ func TestOnlyTheSystemSuspendsTheSystemsRule(t *testing.T) {
 
 // heldHandle is a task that runs until it is told to finish, counting the holds it is sent.
 type heldHandle struct {
-	ch     chan task.Frame
+	ch     chan task.Event
 	mu     sync.Mutex
 	pauses int
 }
 
-func (h *heldHandle) Subscribe() (<-chan task.Frame, func())           { return h.ch, func() {} }
-func (h *heldHandle) SubscribeSince(int64) (<-chan task.Frame, func()) { return h.ch, func() {} }
+func (h *heldHandle) Subscribe() (<-chan task.Event, func())           { return h.ch, func() {} }
+func (h *heldHandle) SubscribeSince(int64) (<-chan task.Event, func()) { return h.ch, func() {} }
 func (h *heldHandle) Pause() error                                     { h.mu.Lock(); h.pauses++; h.mu.Unlock(); return nil }
 func (h *heldHandle) Resume() error                                    { return nil }
 func (h *heldHandle) Cancel(string) error                              { return nil }
@@ -352,7 +352,9 @@ func (h *heldHandle) Result() string                                   { return 
 func (h *heldHandle) Err() string                                      { return "" }
 
 // finish ends the task done.
-func (h *heldHandle) finish() { h.ch <- task.Frame{Kind: task.EvStatus, Text: string(task.Done)} }
+func (h *heldHandle) finish() {
+	h.ch <- task.Event{Kind: task.EventStatus, Text: string(task.Done)}
+}
 
 // spawned is a spawner of heldHandles that remembers them by id.
 type spawned struct {
@@ -361,7 +363,7 @@ type spawned struct {
 }
 
 func (s *spawned) spawn(id string, _ launch.Spec) task.Handle {
-	h := &heldHandle{ch: make(chan task.Frame, 1)}
+	h := &heldHandle{ch: make(chan task.Event, 1)}
 	s.mu.Lock()
 	s.by[id] = h
 	s.mu.Unlock()

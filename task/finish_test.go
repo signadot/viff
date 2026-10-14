@@ -292,7 +292,7 @@ func TestAClosingActOutsideTheGrantEndsTheRunDone(t *testing.T) {
 	cancelSub()
 	var said string
 	for fr := range frames {
-		if fr.Kind == EvExec && fr.Tool == "push" {
+		if fr.Kind == EventExec && fr.Tool == "push" {
 			said = fr.Err
 		}
 	}

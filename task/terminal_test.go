@@ -10,13 +10,13 @@ import (
 func burst(t *testing.T, p *Task, n int) {
 	t.Helper()
 	for range n {
-		p.emit(Frame{Kind: EvExec, Tool: "noop"})
+		p.emit(Event{Kind: EventExec, Tool: "noop"})
 	}
-	p.emit(Frame{Kind: EvStatus, Text: string(Done)})
+	p.emit(Event{Kind: EventStatus, Text: string(Done)})
 }
 
 // drain reads a channel to its end (or until it stalls) and reports what arrived.
-func drain(t *testing.T, ch <-chan Frame) (kinds []string, closed bool) {
+func drain(t *testing.T, ch <-chan Event) (kinds []string, closed bool) {
 	t.Helper()
 	for {
 		select {
@@ -33,7 +33,7 @@ func drain(t *testing.T, ch <-chan Frame) (kinds []string, closed bool) {
 
 func sawTerminal(kinds []string) bool {
 	for _, k := range kinds {
-		if k == EvStatus+":"+string(Done) {
+		if k == EventStatus+":"+string(Done) {
 			return true
 		}
 	}
@@ -68,14 +68,14 @@ func TestABehindSubscriberStillGetsTheTerminal(t *testing.T) {
 // at cap-1, so a slot is always free when the terminal arrives. Without it the terminal
 // competes with 256 replaceable frames for the same space.
 func TestAnOrdinaryFrameCannotTakeTheLastSlot(t *testing.T) {
-	s := &subscriber{ch: make(chan Frame, 4)}
+	s := &subscriber{ch: make(chan Event, 4)}
 	for range 10 {
-		trySend(s, Frame{Kind: EvExec})
+		trySend(s, Event{Kind: EventExec})
 	}
 	if got := len(s.ch); got != 3 {
 		t.Fatalf("buffer holds %d of 4, want 3 — the last slot is not reserved", got)
 	}
-	trySend(s, Frame{Kind: EvStatus, Text: string(Done)})
+	trySend(s, Event{Kind: EventStatus, Text: string(Done)})
 	if got := len(s.ch); got != 4 {
 		t.Fatalf("buffer holds %d of 4 after the terminal, want 4 — it did not fit", got)
 	}
@@ -132,7 +132,7 @@ func TestSubscribingToAFinishedTask(t *testing.T) {
 // late subscriber the last thing it happened to say.
 func TestSubscribingToALiveTaskStaysOpen(t *testing.T) {
 	p := NewTask("p", NewSupervisor(&Vector{Default: Auto}, AutoResolver{}), nil, nil)
-	p.emit(Frame{Kind: EvExec, Tool: "noop"})
+	p.emit(Event{Kind: EventExec, Tool: "noop"})
 
 	ch, unsub := p.Subscribe()
 	defer unsub()
@@ -152,21 +152,21 @@ func TestSubscribingToALiveTaskStaysOpen(t *testing.T) {
 // not see the open question it exists to answer.
 func TestAResumeBelowTheWindowReplaysOpenGates(t *testing.T) {
 	p := NewTask("p", NewSupervisor(&Vector{Default: Auto}, AutoResolver{}), nil, nil)
-	p.emit(Frame{Kind: EvPending, ID: "p~d1", Gate: "write", Mode: "ASK"})
+	p.emit(Event{Kind: EventPending, ID: "p~d1", Gate: "write", Mode: "ASK"})
 	gateAt := p.Cursor()
 	for range ringCap + 10 { // it keeps talking while the gate stands
-		p.emit(Frame{Kind: EvSay, Text: "thinking"})
+		p.emit(Event{Kind: EventSay, Text: "thinking"})
 	}
 
 	ch, unsub := p.SubscribeSince(gateAt - 1)
 	defer unsub()
 	kinds, _ := drain(t, ch)
-	if len(kinds) == 0 || kinds[0] != EvGap+":" {
+	if len(kinds) == 0 || kinds[0] != EventGap+":" {
 		t.Fatalf("first frame = %v, want the gap marker", kinds[:min(2, len(kinds))])
 	}
 	var sawGate bool
 	for _, k := range kinds {
-		if k == EvPending+":" {
+		if k == EventPending+":" {
 			sawGate = true
 		}
 	}
@@ -179,18 +179,18 @@ func TestAResumeBelowTheWindowReplaysOpenGates(t *testing.T) {
 // would put a settled question back on a reader's docket.
 func TestAResumeDoesNotReplayAnsweredGates(t *testing.T) {
 	p := NewTask("p", NewSupervisor(&Vector{Default: Auto}, AutoResolver{}), nil, nil)
-	p.emit(Frame{Kind: EvPending, ID: "p~d1", Gate: "write"})
+	p.emit(Event{Kind: EventPending, ID: "p~d1", Gate: "write"})
 	gateAt := p.Cursor()
-	p.emit(Frame{Kind: EvDecision, ID: "p~d1", Proceed: true, By: "human:scott"})
+	p.emit(Event{Kind: EventDecision, ID: "p~d1", Proceed: true, By: "human:scott"})
 	for range ringCap + 10 {
-		p.emit(Frame{Kind: EvSay, Text: "thinking"})
+		p.emit(Event{Kind: EventSay, Text: "thinking"})
 	}
 
 	ch, unsub := p.SubscribeSince(gateAt - 1)
 	defer unsub()
 	kinds, _ := drain(t, ch)
 	for _, k := range kinds {
-		if k == EvPending+":" {
+		if k == EventPending+":" {
 			t.Fatal("an answered gate was replayed as though it were still open")
 		}
 	}
@@ -200,16 +200,16 @@ func TestAResumeDoesNotReplayAnsweredGates(t *testing.T) {
 // so replaying open gates as well would show the reader the same question twice.
 func TestAResumeInsideTheWindowDoesNotDuplicate(t *testing.T) {
 	p := NewTask("p", NewSupervisor(&Vector{Default: Auto}, AutoResolver{}), nil, nil)
-	p.emit(Frame{Kind: EvSay, Text: "starting"})
+	p.emit(Event{Kind: EventSay, Text: "starting"})
 	from := p.Cursor()
-	p.emit(Frame{Kind: EvPending, ID: "p~d1", Gate: "write"})
+	p.emit(Event{Kind: EventPending, ID: "p~d1", Gate: "write"})
 
 	ch, unsub := p.SubscribeSince(from)
 	defer unsub()
 	kinds, _ := drain(t, ch)
 	var gates int
 	for _, k := range kinds {
-		if k == EvPending+":" {
+		if k == EventPending+":" {
 			gates++
 		}
 	}
@@ -229,8 +229,8 @@ func TestTheRetainedWindowIsPerTask(t *testing.T) {
 	narrow.SetRetain(8)
 
 	for range ringCap * 2 {
-		wide.emit(Frame{Kind: EvSay, Text: "chatty"})
-		narrow.emit(Frame{Kind: EvSay, Text: "chatty"})
+		wide.emit(Event{Kind: EventSay, Text: "chatty"})
+		narrow.emit(Event{Kind: EventSay, Text: "chatty"})
 	}
 
 	// The wide one still has the beginning; the narrow one long since let it go.
@@ -243,7 +243,7 @@ func TestTheRetainedWindowIsPerTask(t *testing.T) {
 	// And a task that asks for nothing gets the default.
 	plain := NewTask("plain", NewSupervisor(&Vector{Default: Auto}, AutoResolver{}), nil, nil)
 	for range ringCap * 2 {
-		plain.emit(Frame{Kind: EvSay, Text: "chatty"})
+		plain.emit(Event{Kind: EventSay, Text: "chatty"})
 	}
 	if got := len(plain.ring); got != ringCap {
 		t.Errorf("the default window holds %d, want %d", got, ringCap)

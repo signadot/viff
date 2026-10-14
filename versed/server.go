@@ -42,7 +42,7 @@ import (
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/resolver"
-	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/runner/runnerd/verserunner"
 	"github.com/signadot/verse/task"
@@ -424,7 +424,7 @@ func (l localRunner) Attach(id string) task.Handle {
 func (localRunner) Ref() string { return "local" }
 
 // SetRunner rebinds how this server runs tasks — e.g. to a remote runner base
-// URL (runner.HTTP) instead of the in-process local supervisor. The spawnerFor
+// URL (client.HTTP) instead of the in-process local supervisor. The spawnerFor
 // closures read s.runner at spawn time, so this takes effect for subsequent spawns
 // (baseline and scoped).
 func (s *Server) SetRunner(p task.Runner) { s.runner = p }
@@ -771,7 +771,7 @@ func (s *Server) reconcileTasks() error {
 			// runner ENTITY still existing, so removing one would orphan work that is running
 			// perfectly well — a deletion with an action at a distance, and the thing that
 			// would make step 1's `--leave` a lie.
-			place := task.Runner(runner.HTTP(runnerRef))
+			place := task.Runner(client.HTTP(runnerRef))
 			if h := attachOn(place, ent.Ref.Name()); h != nil {
 				// re-attach: observe
 				s.reflect(s.Store, ent.Ref.Name(), h, mirror.Meta{
@@ -1298,7 +1298,7 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("GET /tasks/{id}", s.getTask, "", one("verse-instance"))
 	rt.handle("GET /tasks/{id}/events", func(w http.ResponseWriter, r *http.Request) {
 		s.taskEvents(w, r, ph)
-	}, "", stream("verse-frame"))
+	}, "", stream("verse-task-event"))
 	// cancel/say are runner-agnostic: local tasks go to the runtime, remote
 	// ones to the runner's handle — so `task cancel`/`say` work wherever a task runs.
 	rt.handle("POST /tasks/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
@@ -4001,10 +4001,10 @@ func strataNames(ss []trigger.Stratum) []string {
 // runnerRefs is the runners a spawn may name. Refs rather than records, because status is an
 // orientation and `verse runner` is the surface that answers what one IS.
 func runnerRefs(store entity.Store) []string {
-	es := runner.List(store)
+	es := installedRunners(store)
 	out := make([]string, 0, len(es))
 	for _, e := range es {
-		out = append(out, runner.Ref(e.Name).String())
+		out = append(out, runnerEntityRef(e.Name).String())
 	}
 	return out
 }
@@ -4259,7 +4259,7 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 	// been removed — which is when an operator most wants it, since that is exactly the case
 	// `verse runner` can no longer show. `--runner local` selects the ones that named none.
 	if want := r.URL.Query().Get("runner"); want != "" {
-		kept := make([]task.Instance, 0, len(out))
+		kept := make([]api.Task, 0, len(out))
 		for _, inst := range out {
 			if inst.RunnerName == want ||
 				(inst.RunnerName == "" && want == "local" && inst.Runner == "local") {
@@ -4295,13 +4295,12 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 // (git-issue 6mnmxj6mh12krz3ae1n0), and then — once ListTasks could say so — the whole
 // list. Now it costs neither: the rows are already here, and a runtime that does not answer
 // only means its live detail is missing, so the record's own account stands in.
-func (s *Server) taskSnapshots(store entity.Store) ([]task.Instance, error) {
+func (s *Server) taskSnapshots(store entity.Store) ([]api.Task, error) {
 	// The live view, by id, from whatever can be asked cheaply: the in-process runtime, and
 	// the default runner when it keeps its own registry.
-	live := map[string]task.Instance{}
+	live := map[string]liveTask{}
 	for _, inst := range s.Embedded.Snapshots() {
-		inst.Runner = "local"
-		live[inst.ID] = inst
+		live[inst.ID] = liveTask{inst, "local"}
 	}
 	for _, p := range s.registries() {
 		// Best effort, deliberately: an error here means this runner's DETAIL is missing, and
@@ -4310,49 +4309,21 @@ func (s *Server) taskSnapshots(store entity.Store) ([]task.Instance, error) {
 		if insts, err := p.(taskLister).ListTasks(); err == nil {
 			ref := p.Ref()
 			for _, inst := range insts {
-				inst.Runner = ref
-				live[inst.ID] = inst
+				live[inst.ID] = liveTask{inst, ref}
 			}
 		}
 	}
-	out := make([]task.Instance, 0)
+	out := make([]api.Task, 0)
 	for _, ent := range taskRows(store) {
 		rec := entity.ToObj(ent.Payload)
 		if rec == nil {
 			continue
 		}
-		inst, ok := live[ent.Ref.Name()]
-		if !ok {
-			inst = instanceFromRecord(ent.Ref.Name(), rec)
+		var got *liveTask
+		if l, ok := live[ent.Ref.Name()]; ok {
+			got = &l
 		}
-		// Where it ran is the RECORD's to say, not the runtime's: the runtime knows it hosts
-		// the task, and the record knows which installed runner that is and what the
-		// charter called it.
-		if on, _ := rec["runner"].(string); on != "" {
-			inst.Runner = on
-		}
-		if named, _ := rec["runnerName"].(string); named != "" {
-			inst.RunnerName = named
-		}
-		// And WHICH RUN, for the same reason: the runtime may know it — a firing carries the
-		// commit that caused it — but only the record always does. An ad-hoc run's occurrence
-		// is the revision its own first record write landed at, which is decided after the
-		// process is already running, so a live snapshot of one would report nothing and the
-		// same task would start naming its run only once the runtime had let it go.
-		if occ, _ := rec["occurrence"].(int64); occ != 0 {
-			inst.Occurrence = occ
-		}
-		// WHEN is the record's too, and for the reason the two above are: a live snapshot
-		// knows it is hosting the task, and the mirror is what wrote down when that began. A
-		// row for a running task would otherwise carry no start at all, which is the one it
-		// is most often asked for.
-		if started, _ := rec["started"].(string); started != "" && inst.Started == "" {
-			inst.Started = started
-		}
-		if ended, _ := rec["ended"].(string); ended != "" && inst.Ended == "" {
-			inst.Ended = ended
-		}
-		out = append(out, inst)
+		out = append(out, taskOf(ent.Ref.Name(), got, rec))
 	}
 	return out, nil
 }
@@ -4385,25 +4356,58 @@ func taskCount(store entity.Store) int {
 	return n
 }
 
-// instanceFromRecord is what verse can say about a task it is not currently holding a
-// handle on — one on a named runner, or one whose runtime has not been asked. It is the
-// durable account rather than a live one, which is exactly what the mirror is for.
-func instanceFromRecord(id string, rec map[string]any) task.Instance {
+// liveTask is a runner's snapshot of a task it holds, and which runner that is: `local`, or the
+// runner's url.
+type liveTask struct {
+	snap task.Snapshot
+	on   string
+}
+
+// taskOf is a task as verse reports it (api.Task): the runner's snapshot while one holds it,
+// else what the record kept, and in both cases what only the record knows.
+//
+// The record is what verse can say about a task it is not holding a handle on — one on a named
+// runner, or one whose runtime has not been asked — and it is the RECORD's to say several
+// things even when a runner answers:
+//
+//   - Where it ran: the runtime knows it hosts the task, and the record knows which installed
+//     runner that is and what the charter called it.
+//   - WHICH RUN this is: the runtime may know it — a firing carries the commit that caused it —
+//     but only the record always does. An ad-hoc run's occurrence is the revision its own first
+//     record write landed at, decided after the process is already running, so a live snapshot
+//     of one would report nothing and the same task would start naming its run only once the
+//     runtime had let it go. Reading it here is what makes `verse ps` able to answer "is this
+//     the run that record is about" without a second lookup.
+//   - WHEN: a live snapshot knows it is hosting the task, and the mirror is what wrote down
+//     when that began. A row for a running task would otherwise carry no start at all, which
+//     is the one it is most often asked for.
+func taskOf(id string, live *liveTask, rec map[string]any) api.Task {
 	str := func(k string) string { v, _ := rec[k].(string); return v }
 	num := func(k string) int64 { v, _ := rec[k].(int64); return v }
-	return task.Instance{
-		ID: id, Prompt: str("prompt"), Driver: str("driver"), Status: task.Status(str("status")),
-		Runner: str("runner"), RunnerName: str("runnerName"),
-		Result: str("result"), Err: str("err"),
-		Started: str("started"), Ended: str("ended"),
-		// WHICH RUN this is, read from the record rather than from the runtime, because the
-		// record has it either way: a firing's occurrence comes from the commit that caused
-		// it and is known before the task starts, while an ad-hoc run's is the revision its
-		// own first record write landed at — known only after. Reading it here is what makes
-		// `verse ps` able to answer "is this the run that record is about" without a second
-		// lookup and a comparison by hand.
-		Occurrence: num("occurrence"),
+	var t api.Task
+	if live != nil {
+		t = api.TaskFrom(live.snap)
+		t.Runner = live.on
+	} else {
+		t = api.Task{
+			ID: id, Prompt: str("prompt"), Driver: str("driver"),
+			Status: task.Status(str("status")), Result: str("result"), Err: str("err"),
+		}
 	}
+	if on := str("runner"); on != "" {
+		t.Runner = on
+	}
+	t.RunnerName = str("runnerName")
+	if occ := num("occurrence"); occ != 0 {
+		t.Occurrence = occ
+	}
+	if t.Started == "" {
+		t.Started = str("started")
+	}
+	if t.Ended == "" {
+		t.Ended = str("ended")
+	}
+	return t
 }
 
 // scopeMembers returns the set of task ids whose task:instance entity is visible in
@@ -4467,7 +4471,7 @@ func (s *Server) placeOf(id string) task.Runner {
 	if ref == "" || ref == "local" || ref == s.runner.Ref() {
 		return nil
 	}
-	return runner.HTTP(ref)
+	return client.HTTP(ref)
 }
 
 // taskHoldingGate finds which task has decisionID open, for a gate id that does not
@@ -4482,7 +4486,7 @@ func (s *Server) placeOf(id string) task.Runner {
 // Unscoped, like isTask beside it: a resolve is addressed by a unique decision id, not
 // discovered by listing, so it does not go through taskSnapshots' scope filter.
 func (s *Server) taskHoldingGate(decisionID string) string {
-	holds := func(inst task.Instance) bool {
+	holds := func(inst task.Snapshot) bool {
 		for _, pg := range inst.Pending {
 			if pg.ID == decisionID {
 				return true
@@ -4577,18 +4581,18 @@ func (s *Server) getTask(w http.ResponseWriter, r *http.Request) {
 	if !s.mayReadTask(w, r, id) {
 		return
 	}
+	var live *liveTask
 	if inst, ok := s.Embedded.SnapshotOf(id); ok {
-		inst.Runner = "local"
-		writeOut(w, r, http.StatusOK, inst)
-		return
+		live = &liveTask{inst, "local"}
 	}
 	for _, p := range s.registries() {
+		if live != nil {
+			break
+		}
 		inst, err := p.(taskLister).TaskSnapshot(id)
 		switch {
 		case err == nil:
-			inst.Runner = p.Ref()
-			writeOut(w, r, http.StatusOK, inst)
-			return
+			live = &liveTask{inst, p.Ref()}
 		case errors.Is(err, task.ErrNoSuchTask):
 			// This one answered and has never heard of it. Not a 404 yet: another registry
 			// may hold it, and a task on a NAMED runner is in none of them. Keep asking, and
@@ -4602,16 +4606,18 @@ func (s *Server) getTask(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// The mirror, last: a task on a named runner is held by neither the local runtime nor
-	// the default runner, so without this `task get` would 404 for work that is running.
-	// The account is durable rather than live, which is what the record is for.
+	// The mirror: what only the record knows, for a live task, and the whole account for a task
+	// no runtime answers for — one on a named runner is held by neither the local runtime nor
+	// the default runner, so without it `task get` would 404 for work that is running.
+	var rec map[string]any
 	if e, ok, _ := s.scopedStore(r).Get(mirror.Ref(id)); ok {
-		if rec := entity.ToObj(e.Payload); rec != nil {
-			writeOut(w, r, http.StatusOK, instanceFromRecord(id, rec))
-			return
-		}
+		rec = entity.ToObj(e.Payload)
 	}
-	noSuchTask(w, r, id)
+	if live == nil && rec == nil {
+		noSuchTask(w, r, id)
+		return
+	}
+	writeOut(w, r, http.StatusOK, taskOf(id, live, rec))
 }
 
 // noSuchTask is the 404 every task route ends at, and it says which id space it is about.
@@ -4688,12 +4694,12 @@ func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request, id string)
 // rather than part of it, the way gate resolution is: a handle wraps somebody else's runtime,
 // and one that cannot replay should say so by not implementing this rather than by pretending.
 type sinceSubscriber interface {
-	SubscribeSince(since int64) (<-chan task.Frame, func())
+	SubscribeSince(since int64) (<-chan task.Event, func())
 }
 
 // subscribeAt opens the read plane at the cursor the client asked for, so `?since=` means the
 // same thing on this route as it does on the local runtime's: the frames AFTER that cursor,
-// then live, with an EvGap first if the cursor is below what is still retained.
+// then live, with an EventGap first if the cursor is below what is still retained.
 //
 // It read nothing before, so a remote task replayed from the beginning however
 // far along the client already was. A resumable client would then see events it had already
@@ -4701,8 +4707,8 @@ type sinceSubscriber interface {
 //
 // An absent `since` is a live attach, and a handle that cannot resume falls back to one. That
 // fallback delivers MORE than was asked for rather than less, which a cursor-carrying reader
-// can discard; the opposite — silently delivering less — is what EvGap exists to prevent.
-func subscribeAt(h task.Handle, since string) (<-chan task.Frame, func()) {
+// can discard; the opposite — silently delivering less — is what EventGap exists to prevent.
+func subscribeAt(h task.Handle, since string) (<-chan task.Event, func()) {
 	if since == "" {
 		return h.Subscribe()
 	}

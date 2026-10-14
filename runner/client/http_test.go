@@ -1,7 +1,6 @@
-package runner_test
+package client_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -15,7 +14,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
 )
@@ -49,7 +48,7 @@ func TestHTTPRunnerDrivesRemoteTaskd(t *testing.T) {
 	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	defer srv.Close()
 
-	pol := runner.HTTP(srv.URL)
+	pol := client.HTTP(srv.URL)
 	h := pol.Spawn(task.Launch{ID: "t1", Prompt: "do a thing", Driver: "scripted"})
 
 	ch, unsub := h.Subscribe()
@@ -67,10 +66,10 @@ loop:
 			if ev.Cursor > 0 {
 				sawCursor = true
 			}
-			if ev.Kind == task.EvExec {
+			if ev.Kind == task.EventExec {
 				sawExec = true
 			}
-			if ev.Kind == task.EvStatus && ev.Text == "done" {
+			if ev.Kind == task.EventStatus && ev.Text == "done" {
 				completed = true
 				break loop
 			}
@@ -99,7 +98,7 @@ func TestHTTPRunnerListsRemoteTasks(t *testing.T) {
 	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	defer srv.Close()
 
-	pol := runner.HTTP(srv.URL)
+	pol := client.HTTP(srv.URL)
 	pol.Spawn(task.Launch{ID: "r1", Prompt: "remote task", Driver: "scripted"})
 
 	// task.Lister by NAME, not a structural assertion written out here. Spelling the
@@ -155,7 +154,7 @@ func TestHTTPRunnerSpawnReadsARefusal(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			h := runner.HTTP(srv.URL).Spawn(task.Launch{ID: "x", Prompt: "t", Driver: "scripted"})
+			h := client.HTTP(srv.URL).Spawn(task.Launch{ID: "x", Prompt: "t", Driver: "scripted"})
 
 			// The refusal has to arrive as a terminal on the plane the flow already reads,
 			// which is what FailedHandle is for.
@@ -164,7 +163,7 @@ func TestHTTPRunnerSpawnReadsARefusal(t *testing.T) {
 			if !open {
 				t.Fatal("a refused spawn produced no frame at all; the flow waits forever")
 			}
-			if ev.Kind != task.EvStatus || ev.Text != string(task.Failed) {
+			if ev.Kind != task.EventStatus || ev.Text != string(task.Failed) {
 				t.Fatalf("frame = %+v, want a failed status — the refusal read as an accepted spawn", ev)
 			}
 			if ev.Err == "" {
@@ -196,7 +195,7 @@ func TestHTTPRunnerSendsTheCredentialName(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	runner.HTTP(srv.URL).Spawn(task.Launch{
+	client.HTTP(srv.URL).Spawn(task.Launch{
 		ID: "k", Prompt: "review it", Driver: "llm", VirtualKey: "review",
 	})
 
@@ -205,7 +204,7 @@ func TestHTTPRunnerSendsTheCredentialName(t *testing.T) {
 	}
 	// …and a launch naming none says nothing, the way every optional field here does: an empty
 	// one written out is a claim rather than an absence.
-	runner.HTTP(srv.URL).Spawn(task.Launch{ID: "k2", Prompt: "x", Driver: "llm"})
+	client.HTTP(srv.URL).Spawn(task.Launch{ID: "k2", Prompt: "x", Driver: "llm"})
 	if _, said := got["virtualKey"]; said {
 		t.Errorf("a launch naming no credential sent %v", got["virtualKey"])
 	}
@@ -221,7 +220,7 @@ func TestHTTPRunnerListReportsWhyItIsEmpty(t *testing.T) {
 	deadURL := dead.URL
 	dead.Close()
 
-	if _, err := runner.HTTP(deadURL).(task.Lister).ListTasks(); !errors.Is(err, task.ErrUnreachable) {
+	if _, err := client.HTTP(deadURL).(task.Lister).ListTasks(); !errors.Is(err, task.ErrUnreachable) {
 		t.Fatalf("a dead runner's list = %v, want ErrUnreachable", err)
 	}
 
@@ -230,14 +229,14 @@ func TestHTTPRunnerListReportsWhyItIsEmpty(t *testing.T) {
 	// — something is there, and it is not this contract.
 	worker := httptest.NewServer(http.NewServeMux())
 	defer worker.Close()
-	if _, err := runner.HTTP(worker.URL).(task.Lister).ListTasks(); !errors.Is(err, task.ErrUnsupported) {
+	if _, err := client.HTTP(worker.URL).(task.Lister).ListTasks(); !errors.Is(err, task.ErrUnsupported) {
 		t.Fatalf("a non-runner url's list = %v, want ErrUnsupported", err)
 	}
 
 	// And the single-task read tells the same three apart. This one always DID check its
 	// status, so no refusal ever passed for an answer — but every failure collapsed into one
 	// `false`, which the caller could only report as "no such task".
-	if _, err := runner.HTTP(deadURL).(task.Lister).TaskSnapshot("p"); !errors.Is(err, task.ErrUnreachable) {
+	if _, err := client.HTTP(deadURL).(task.Lister).TaskSnapshot("p"); !errors.Is(err, task.ErrUnreachable) {
 		t.Fatalf("a dead runner's snapshot = %v, want ErrUnreachable — a task on an "+
 			"unreachable runner is not a task that does not exist", err)
 	}
@@ -249,7 +248,7 @@ func TestHTTPRunnerListReportsWhyItIsEmpty(t *testing.T) {
 		_, _ = w.Write([]byte(`{"not":"a list"`))
 	}))
 	defer junk.Close()
-	if _, err := runner.HTTP(junk.URL).(task.Lister).ListTasks(); err == nil {
+	if _, err := client.HTTP(junk.URL).(task.Lister).ListTasks(); err == nil {
 		t.Fatal("an undecodable body listed as no tasks at all")
 	}
 }
@@ -266,7 +265,7 @@ func TestResumeReAttachesToRemoteTask(t *testing.T) {
 	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	defer srv.Close()
 
-	pol := runner.HTTP(srv.URL)
+	pol := client.HTTP(srv.URL)
 	pol.Spawn(task.Launch{ID: "t1", Prompt: "task", Driver: "scripted"}) // runs on the remote to completion
 	time.Sleep(300 * time.Millisecond)                                   // let it finish (retained in the ring)
 
@@ -296,9 +295,9 @@ func TestResumeReAttachesToRemoteTask(t *testing.T) {
 // a gateResolver at all, so every route into it refused with a message about the question —
 // a task on another host could be blocked on a decision that no operator could give.
 //
-// It also pins the vocabulary: the handle sends api.Resolve (`id`/`approve`), and the remote
-// runtime understands it. When those two disagree the answer decodes to an empty id, answers
-// nothing, and comes back as though the decision were unknown.
+// It also pins the vocabulary: the handle sends the contract's runner.ResolveRequest
+// (`id`/`choice`), and the remote runtime reads the same type. A body it cannot read as one is
+// refused, not answered.
 func TestHTTPRunnerAnswersARemoteGate(t *testing.T) {
 	build := func(l task.Launch, reg *task.Registry) *task.Task {
 		// Ask, and resolved by the daemon's own registry — so the task really blocks and
@@ -309,7 +308,7 @@ func TestHTTPRunnerAnswersARemoteGate(t *testing.T) {
 	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	defer srv.Close()
 
-	pol := runner.HTTP(srv.URL)
+	pol := client.HTTP(srv.URL)
 	h := pol.Spawn(task.Launch{ID: "t-gate", Prompt: "do a thing", Driver: "scripted"})
 	ch, unsub := h.Subscribe()
 	defer unsub()
@@ -329,7 +328,7 @@ func TestHTTPRunnerAnswersARemoteGate(t *testing.T) {
 			if !open {
 				t.Fatal("the stream ended before the task gated")
 			}
-			if ev.Kind == task.EvPending {
+			if ev.Kind == task.EventPending {
 				decision = ev.ID
 			}
 		case <-timeout:
@@ -350,125 +349,12 @@ func TestHTTPRunnerAnswersARemoteGate(t *testing.T) {
 			if !open {
 				t.Fatal("the stream ended without a decision")
 			}
-			if ev.Kind == task.EvDecision && ev.ID == decision {
+			if ev.Kind == task.EventDecision && ev.ID == decision {
 				if !ev.Proceed {
 					t.Fatalf("the remote read a deny from an approve: %+v", ev)
 				}
 				if ev.By != "human:scott" {
 					t.Fatalf("by = %q, want human:scott — attribution was dropped on the wire", ev.By)
-				}
-				return
-			}
-		case <-timeout:
-			t.Fatal("the remote task never acted on the answer")
-		}
-	}
-}
-
-// And the older spelling still works, because things dial in against this face. A client
-// sending {decisionId, proceed} must still be understood, or adding the new vocabulary would
-// have been a break dressed as an addition.
-func TestTaskdStillReadsTheOlderResolveSpelling(t *testing.T) {
-	build := func(l task.Launch, reg *task.Registry) *task.Task {
-		sup := task.NewSupervisor(&task.Vector{Default: task.Ask}, reg)
-		return task.NewTask(l.ID, sup, &doneDriver{steps: 1}, okExec{})
-	}
-	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
-	defer srv.Close()
-
-	pol := runner.HTTP(srv.URL)
-	h := pol.Spawn(task.Launch{ID: "t-old", Prompt: "do a thing", Driver: "scripted"})
-	ch, unsub := h.Subscribe()
-	defer unsub()
-
-	var decision string
-	timeout := time.After(5 * time.Second)
-	for decision == "" {
-		select {
-		case ev, open := <-ch:
-			if !open {
-				t.Fatal("the stream ended before the task gated")
-			}
-			if ev.Kind == task.EvPending {
-				decision = ev.ID
-			}
-		case <-timeout:
-			t.Fatal("the remote task never raised a gate")
-		}
-	}
-
-	body, err := codec.Marshal(map[string]any{
-		"decisionId": decision, "proceed": true, "by": "human:legacy",
-	}, codec.Tony)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	resp, err := http.Post(srv.URL+"/tasks/t-old/resolve", codec.MediaType(codec.Tony), bytes.NewReader(body))
-	if err != nil {
-		t.Fatalf("post: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("the older spelling = %s, want 204", resp.Status)
-	}
-}
-
-// The contract as documented mixes the two spellings — `{id, proceed}` — and things dial in
-// against the document, not against the struct. Read as two fixed vocabularies that combination
-// yields a DENY: the id is recognised and the verdict field beside it is not, so an approval
-// arrives as a refusal and the task stops. It has to be read as an approval.
-func TestTaskdReadsTheDocumentedMixedSpelling(t *testing.T) {
-	build := func(l task.Launch, reg *task.Registry) *task.Task {
-		sup := task.NewSupervisor(&task.Vector{Default: task.Ask}, reg)
-		return task.NewTask(l.ID, sup, &doneDriver{steps: 1}, okExec{})
-	}
-	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
-	defer srv.Close()
-
-	pol := runner.HTTP(srv.URL)
-	h := pol.Spawn(task.Launch{ID: "t-mixed", Prompt: "do a thing", Driver: "scripted"})
-	ch, unsub := h.Subscribe()
-	defer unsub()
-
-	var decision string
-	timeout := time.After(5 * time.Second)
-	for decision == "" {
-		select {
-		case ev, open := <-ch:
-			if !open {
-				t.Fatal("the stream ended before the task gated")
-			}
-			if ev.Kind == task.EvPending {
-				decision = ev.ID
-			}
-		case <-timeout:
-			t.Fatal("the remote task never raised a gate")
-		}
-	}
-
-	body, err := codec.Marshal(map[string]any{"id": decision, "proceed": true, "by": "human:doc"}, codec.Tony)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	resp, err := http.Post(srv.URL+"/tasks/t-mixed/resolve", codec.MediaType(codec.Tony), bytes.NewReader(body))
-	if err != nil {
-		t.Fatalf("post: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("the documented spelling = %s, want 204", resp.Status)
-	}
-
-	timeout = time.After(5 * time.Second)
-	for {
-		select {
-		case ev, open := <-ch:
-			if !open {
-				t.Fatal("the stream ended without a decision")
-			}
-			if ev.Kind == task.EvDecision && ev.ID == decision {
-				if !ev.Proceed {
-					t.Fatal("`{id, proceed: true}` was read as a deny — an approval became a refusal")
 				}
 				return
 			}
@@ -491,7 +377,7 @@ func TestHTTPRunnerRefusesAnUnparseableURL(t *testing.T) {
 	// some other grammar spends. An address inside a URL is not that case —
 	// `http://task.review@demo.pr.1` is a perfectly good URL — so the bad escape is the whole
 	// of what this asks about, and stays so however addresses are spelled.
-	bad := runner.HTTP("http://%zz")
+	bad := client.HTTP("http://%zz")
 	if _, err := bad.(task.Lister).ListTasks(); !errors.Is(err, task.ErrUnreachable) {
 		t.Fatalf("list on an unparseable url = %v, want ErrUnreachable", err)
 	}

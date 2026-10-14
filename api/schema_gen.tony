@@ -411,3 +411,23 @@ define:
   verb: .[string]
 signature:
   name: verse-steered
+---
+context:
+- tony-format/context
+- task: github.com/signadot/verse/task
+define:
+  cursor: .[int]
+  driver: .[string]
+  ended: .[string]
+  err: .[string]
+  id: .[string]
+  occurrence: .[int]
+  pending: .[array(task:verse-pending-gate)]
+  prompt: .[string]
+  result: .[string]
+  runner: .[string]
+  runnerName: .[string]
+  started: .[string]
+  status: .[string]
+signature:
+  name: verse-instance

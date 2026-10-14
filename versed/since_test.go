@@ -13,7 +13,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/trigger"
@@ -23,7 +23,7 @@ import (
 //
 // Quiet rather than closed: a live attach does not end, and what is being compared here is
 // the REPLAY — everything the server had to say about the past before it started waiting.
-func frames(t *testing.T, url string) []task.Frame {
+func frames(t *testing.T, url string) []task.Event {
 	t.Helper()
 	_, lines, stop := sseData(t, http.DefaultClient, url)
 	defer stop()
@@ -32,19 +32,19 @@ func frames(t *testing.T, url string) []task.Frame {
 	// here finishes, so "the replay is complete" is a fact the stream states rather than one
 	// the test infers from a quiet moment — which under load is indistinguishable from a
 	// burst that has not finished arriving.
-	var out []task.Frame
+	var out []task.Event
 	for {
 		select {
 		case d, ok := <-lines:
 			if !ok {
 				return out
 			}
-			var f task.Frame
+			var f task.Event
 			if err := codec.Unmarshal([]byte(d), &f, codec.Tony); err != nil {
 				t.Fatalf("decode frame %q: %v", d, err)
 			}
 			out = append(out, f)
-			if f.Kind == task.EvStatus && task.Status(f.Text).Terminal() {
+			if f.Kind == task.EventStatus && task.Status(f.Text).Terminal() {
 				return out
 			}
 		case <-time.After(5 * time.Second):
@@ -57,7 +57,7 @@ func frames(t *testing.T, url string) []task.Frame {
 
 // cursors is what a comparison across runners can actually be made on: the frames' kinds and
 // order. Ids and timings differ by runner; the sequence is the contract.
-func cursors(fs []task.Frame) []string {
+func cursors(fs []task.Event) []string {
 	var out []string
 	for _, f := range fs {
 		out = append(out, f.Kind)
@@ -91,7 +91,7 @@ func TestSinceMeansTheSameOnEveryRunner(t *testing.T) {
 		remote := httptest.NewServer(runnerd.NewInProcessHandler(drive).HTTPHandler())
 		defer remote.Close()
 		srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
-		srv.SetRunner(runner.HTTP(remote.URL))
+		srv.SetRunner(client.HTTP(remote.URL))
 		ts := httptest.NewServer(srv.Handler())
 		defer ts.Close()
 		spawn := postTony(t, ts.URL+"/tasks", map[string]any{"id": "p", "prompt": "work"})
@@ -111,7 +111,7 @@ func assertSince(t *testing.T, url string) {
 	cut := all[1].Cursor // resume just after the second frame
 
 	got := frames(t, url+"?since="+itoa(cut))
-	var want []task.Frame
+	var want []task.Event
 	for _, f := range all {
 		if f.Cursor > cut {
 			want = append(want, f)
@@ -192,9 +192,9 @@ func TestBelowTheWatermarkResyncs(t *testing.T) {
 		if len(got) == 0 {
 			t.Fatal("resuming below the watermark returned nothing at all")
 		}
-		if got[0].Kind != task.EvGap {
+		if got[0].Kind != task.EventGap {
 			t.Fatalf("first frame = %s, want %s — the reader is not told it lost the middle: %v",
-				got[0].Kind, task.EvGap, cursors(got)[:min(6, len(got))])
+				got[0].Kind, task.EventGap, cursors(got)[:min(6, len(got))])
 		}
 		// And what follows is current, not the start of the story: everything after the
 		// marker is above the cursor the client asked to resume from.
@@ -220,7 +220,7 @@ func TestBelowTheWatermarkResyncs(t *testing.T) {
 	t.Run("remote", func(t *testing.T) {
 		remote := httptest.NewServer(runnerd.NewInProcessHandler(drive).HTTPHandler())
 		defer remote.Close()
-		pol := runner.HTTP(remote.URL)
+		pol := client.HTTP(remote.URL)
 		pol.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "scripted"})
 
 		srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))

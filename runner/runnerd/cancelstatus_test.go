@@ -38,7 +38,7 @@ func TestACancelledTaskIsNotReportedAsFailed(t *testing.T) {
 		t.Fatalf("cancel: %v", err)
 	}
 
-	var got task.Instance
+	var got task.Snapshot
 	for i := 0; i < 200; i++ {
 		in, ok := d.SnapshotOf("run-cancel")
 		if ok && in.Status.Terminal() {

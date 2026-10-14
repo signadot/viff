@@ -23,13 +23,13 @@ import (
 // a test can stand in rather than race against. It counts each control verb it is sent, so a
 // test can say WHICH task a steer reached rather than only how many.
 type idleHandle struct {
-	ch    chan task.Frame
+	ch    chan task.Event
 	mu    sync.Mutex
 	verbs map[string]int
 }
 
 func newIdleHandle(t *testing.T) *idleHandle {
-	h := &idleHandle{ch: make(chan task.Frame), verbs: map[string]int{}}
+	h := &idleHandle{ch: make(chan task.Event), verbs: map[string]int{}}
 	t.Cleanup(func() { close(h.ch) }) // the reaper exits with the test rather than the process
 	return h
 }
@@ -48,8 +48,8 @@ func (h *idleHandle) count(verb string) int {
 	return h.verbs[verb]
 }
 
-func (h *idleHandle) Subscribe() (<-chan task.Frame, func())           { return h.ch, func() {} }
-func (h *idleHandle) SubscribeSince(int64) (<-chan task.Frame, func()) { return h.ch, func() {} }
+func (h *idleHandle) Subscribe() (<-chan task.Event, func())           { return h.ch, func() {} }
+func (h *idleHandle) SubscribeSince(int64) (<-chan task.Event, func()) { return h.ch, func() {} }
 func (h *idleHandle) Pause() error                                     { return h.got("pause") }
 func (h *idleHandle) Resume() error                                    { return h.got("resume") }
 func (h *idleHandle) Cancel(string) error                              { return h.got("cancel") }
@@ -299,7 +299,7 @@ func TestFlowSteeringActsOnItsOwn(t *testing.T) {
 	// the scope's run is refused the same way.
 	close(base.ch)
 	close(packaged.ch)
-	base.ch, packaged.ch = make(chan task.Frame), make(chan task.Frame) // the cleanups close these
+	base.ch, packaged.ch = make(chan task.Event), make(chan task.Event) // the cleanups close these
 	for i := 0; ; i++ {
 		if len(srv.Eng.Flows()) == 0 && len(pkg.Flows()) == 0 {
 			break

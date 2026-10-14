@@ -168,7 +168,7 @@ func TestSpawningAnIDThatAlreadyCompletedRunsAgain(t *testing.T) {
 	}
 }
 
-func snapOf(t *testing.T, d *runnerd.InProcessHandler, id string) task.Instance {
+func snapOf(t *testing.T, d *runnerd.InProcessHandler, id string) task.Snapshot {
 	t.Helper()
 	s, ok := d.SnapshotOf(id)
 	if !ok {

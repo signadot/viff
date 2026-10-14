@@ -17,22 +17,22 @@ func TestTonyRoundTrip(t *testing.T) {
 		v    any
 		want func() any
 	}{
-		{"instance", Instance{
+		{"instance", Snapshot{
 			ID: "run-1", Prompt: "review", Driver: "llm", Status: Running,
-			Runner: "local", Cursor: 7,
+			Cursor:  7,
 			Pending: []PendingGate{{ID: "d1", Gate: "shell", Mode: "ask", Reason: "why"}},
-		}, func() any { return &Instance{} }},
+		}, func() any { return &Snapshot{} }},
 
 		{
 			"instance-minimal",
-			Instance{ID: "run-2", Status: Done},
-			func() any { return &Instance{} },
+			Snapshot{ID: "run-2", Status: Done},
+			func() any { return &Snapshot{} },
 		},
 
-		{"frame", Frame{
-			Kind: EvDecision, Task: "run-1", Cursor: 3, ID: "d1",
+		{"frame", Event{
+			Kind: EventDecision, Task: "run-1", Cursor: 3, ID: "d1",
 			Gate: "shell", Mode: "ask", By: "user:walter@example.com", Proceed: true, Text: "ok",
-		}, func() any { return &Frame{} }},
+		}, func() any { return &Event{} }},
 
 		{"vector", Vector{Default: Ask, Gates: []Gate{{
 			Name: "shell", Mode: Park,
@@ -71,7 +71,7 @@ func TestTonyRoundTrip(t *testing.T) {
 // Optional fields must not appear when unset — the readability this whole migration is
 // for. Without codec's omitzero pass, gomap's reflection path emits all ten.
 func TestTonyOmitsUnsetFields(t *testing.T) {
-	b, err := codec.Marshal(Instance{ID: "run-1", Status: Running}, codec.Tony)
+	b, err := codec.Marshal(Snapshot{ID: "run-1", Status: Running}, codec.Tony)
 	if err != nil {
 		t.Fatal(err)
 	}

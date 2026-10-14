@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/task"
 )
@@ -35,7 +36,7 @@ func reasonRunner(t *testing.T, reason string) *httptest.Server {
 	})
 	mux.HandleFunc("GET /tasks/{id}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", codec.MediaType(codec.Tony))
-		b, _ := codec.Marshal(task.Instance{ID: r.PathValue("id"), Status: task.Failed}, codec.Tony)
+		b, _ := codec.Marshal(task.Snapshot{ID: r.PathValue("id"), Status: task.Failed}, codec.Tony)
 		w.Write(b)
 	})
 	mux.HandleFunc("GET /tasks/{id}/events", func(w http.ResponseWriter, r *http.Request) {
@@ -44,8 +45,8 @@ func reasonRunner(t *testing.T, reason string) *httptest.Server {
 			t.Error(err)
 			return
 		}
-		_ = sse.Send(task.Frame{Kind: task.EvStatus, Task: r.PathValue("id"), Text: string(task.Running)})
-		_ = sse.Send(task.Frame{Kind: task.EvStatus, Task: r.PathValue("id"), Text: string(task.Failed), Err: reason})
+		_ = sse.Send(task.Event{Kind: task.EventStatus, Task: r.PathValue("id"), Text: string(task.Running)})
+		_ = sse.Send(task.Event{Kind: task.EventStatus, Task: r.PathValue("id"), Text: string(task.Failed), Err: reason})
 		sse.Flush()
 	})
 	srv := httptest.NewServer(mux)
@@ -79,14 +80,14 @@ func TestAFailedTaskOnANamedRunnerSaysWhy(t *testing.T) {
 		t.Errorf("the record says prompt %v, driver %v; want what the spawn said", rec["prompt"], rec["driver"])
 	}
 
-	var got task.Instance
+	var got api.Task
 	decodeResp(t, getAs(t, tester, ts.URL+"/tasks/"+id), &got)
 	if got.Status != task.Failed || got.Err != reason || got.Prompt != "triage the issue" || got.Driver != "codex" {
 		t.Errorf("task get = %+v; want the failure's reason, the prompt and the driver", got)
 	}
-	var rows []task.Instance
+	var rows []api.Task
 	decodeResp(t, getAs(t, tester, ts.URL+"/tasks"), &rows)
-	var row *task.Instance
+	var row *api.Task
 	for i := range rows {
 		if rows[i].ID == id {
 			row = &rows[i]

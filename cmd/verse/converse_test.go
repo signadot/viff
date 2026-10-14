@@ -19,15 +19,15 @@ import (
 // conversation, so the turn can be exercised end to end from the CLI.
 type parrot struct {
 	heard []string
-	emit  func(task.Frame)
+	emit  func(task.Event)
 }
 
 func (d *parrot) Next(context.Context, task.StepResult) (task.ToolUse, bool, error) {
 	if d.emit != nil {
 		if n := len(d.heard); n > 0 {
-			d.emit(task.Frame{Kind: task.EvSay, Text: "you said: " + d.heard[n-1]})
+			d.emit(task.Event{Kind: task.EventSay, Text: "you said: " + d.heard[n-1]})
 		} else {
-			d.emit(task.Frame{Kind: task.EvSay, Text: "hello"})
+			d.emit(task.Event{Kind: task.EventSay, Text: "hello"})
 		}
 	}
 	return task.ToolUse{}, false, nil

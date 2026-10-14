@@ -12,11 +12,11 @@ import (
 type recHandle struct {
 	mu     sync.Mutex
 	paused bool
-	ch     chan task.Frame
+	ch     chan task.Event
 }
 
-func (h *recHandle) Subscribe() (<-chan task.Frame, func()) { return h.ch, func() {} }
-func (h *recHandle) SubscribeSince(int64) (<-chan task.Frame, func()) {
+func (h *recHandle) Subscribe() (<-chan task.Event, func()) { return h.ch, func() {} }
+func (h *recHandle) SubscribeSince(int64) (<-chan task.Event, func()) {
 	return h.ch, func() {}
 }
 func (h *recHandle) Pause() error {
@@ -36,7 +36,7 @@ func (h *recHandle) Err() string                          { return "" }
 // under its flow, so a selection of its subject reaches it and flow control holds it.
 func TestAdoptMakesResumedTaskSteerable(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
-	h := &recHandle{ch: make(chan task.Frame)}
+	h := &recHandle{ch: make(chan task.Event)}
 	eng.Adopt(`demo.pr."1"`, "review-demo.pr.1", h)
 
 	if n := len(eng.SelectFlow(mustSelect(t, "*", `demo.pr."1"`))); n != 1 {

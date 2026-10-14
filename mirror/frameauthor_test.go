@@ -37,25 +37,25 @@ func TestAWorkersDecisionFrameDoesNotSayWhoAnsweredOrWhat(t *testing.T) {
 	for _, c := range []struct {
 		what        string
 		queued      string     // who the answer route accepted `proceed` from, "" where nobody was asked
-		frame       task.Frame // what the worker then reports
+		frame       task.Event // what the worker then reports
 		by, verdict string
 		ballots     []string
 	}{
 		{"an answer the route accepted from ana, reported under another name with another verdict", ana,
-			task.Frame{Kind: task.EvDecision, ID: "q1", Tool: "act", Proceed: false, Choice: "deny", By: boss},
+			task.Event{Kind: task.EventDecision, ID: "q1", Tool: "act", Proceed: false, Choice: "deny", By: boss},
 			ana, "proceed", []string{ana}},
 		{"a gate the worker settled with nobody asked", "",
-			task.Frame{Kind: task.EvDecision, ID: "q1", Tool: "act", Proceed: true, By: boss},
+			task.Event{Kind: task.EventDecision, ID: "q1", Tool: "act", Proceed: true, By: boss},
 			worker, "proceed", nil},
 		{"a gate the worker's runtime settled at its deadline", "",
-			task.Frame{Kind: task.EvDecision, ID: "q1", Tool: "act", Proceed: false, By: task.ByDeadline},
+			task.Event{Kind: task.EventDecision, ID: "q1", Tool: "act", Proceed: false, By: task.ByDeadline},
 			task.ByDeadline, "deny", nil},
 	} {
 		t.Run(c.what, func(t *testing.T) {
 			store := entitytest.Store(t)
-			h := &fakeHandle{ch: make(chan task.Frame)}
+			h := &fakeHandle{ch: make(chan task.Event)}
 			Reflect(store, "t1", h, Meta{Runner: "http://runner.test", As: worker})
-			h.ch <- task.Frame{Kind: task.EvPending, ID: "q1", Gate: "write"}
+			h.ch <- task.Event{Kind: task.EventPending, ID: "q1", Gate: "write"}
 			awaitFields(t, store, Ref("t1"), "the gate to appear", func(f map[string]any) bool { return f["pending"] != nil })
 			if c.queued != "" {
 				AnswerQuestion(store, "q1", task.Resolution{Proceed: true, By: c.queued})
@@ -85,16 +85,16 @@ func TestAWorkersDecisionFrameDoesNotSayWhoAnsweredOrWhat(t *testing.T) {
 // its to settle: another task's question, named by a worker, stays as it stood.
 func TestAWorkersDecisionFrameSettlesOnlyItsOwnTasksQuestion(t *testing.T) {
 	store := entitytest.Store(t)
-	mine, theirs := &fakeHandle{ch: make(chan task.Frame)}, &fakeHandle{ch: make(chan task.Frame)}
+	mine, theirs := &fakeHandle{ch: make(chan task.Event)}, &fakeHandle{ch: make(chan task.Event)}
 	Reflect(store, "mine", mine, Meta{Runner: "http://runner.test", As: "runner:bot"})
 	Reflect(store, "theirs", theirs, Meta{Runner: "http://runner.test", As: "runner:other"})
-	mine.ch <- task.Frame{Kind: task.EvPending, ID: "q-mine", Gate: "write"}
-	theirs.ch <- task.Frame{Kind: task.EvPending, ID: "q-theirs", Gate: "deploy"}
+	mine.ch <- task.Event{Kind: task.EventPending, ID: "q-mine", Gate: "write"}
+	theirs.ch <- task.Event{Kind: task.EventPending, ID: "q-theirs", Gate: "deploy"}
 	awaitFields(t, store, Ref("mine"), "my gate", func(f map[string]any) bool { return f["pending"] != nil })
 	awaitFields(t, store, QuestionRef("q-theirs"), "their question", func(f map[string]any) bool { return f["status"] == QuestionPending })
 
-	mine.ch <- task.Frame{Kind: task.EvDecision, ID: "q-theirs", Tool: "act", Proceed: true}
-	mine.ch <- task.Frame{Kind: task.EvExec, Tool: "after"} // a frame behind it, so the decision has been through
+	mine.ch <- task.Event{Kind: task.EventDecision, ID: "q-theirs", Tool: "act", Proceed: true}
+	mine.ch <- task.Event{Kind: task.EventExec, Tool: "after"} // a frame behind it, so the decision has been through
 	awaitFields(t, store, Ref("mine"), "the frame behind it", func(f map[string]any) bool { return f["lastAction"] == "after" })
 	if q, _, _ := store.Get(QuestionRef("q-theirs")); entity.Str(q.Payload, "status") != QuestionPending {
 		t.Fatalf("another task's question was settled by my worker's frame: %+v", entity.ToObj(q.Payload))
@@ -107,11 +107,11 @@ func TestAWorkersDecisionFrameSettlesOnlyItsOwnTasksQuestion(t *testing.T) {
 func TestAnAnswerRecordedAfterItsAcknowledgementIsTheAnswerers(t *testing.T) {
 	const worker, ana = "runner:bot", "user:ana@example.com"
 	store := entitytest.Store(t)
-	h := &fakeHandle{ch: make(chan task.Frame)}
+	h := &fakeHandle{ch: make(chan task.Event)}
 	Reflect(store, "t1", h, Meta{Runner: "http://runner.test", As: worker})
-	h.ch <- task.Frame{Kind: task.EvPending, ID: "q1", Gate: "write"}
+	h.ch <- task.Event{Kind: task.EventPending, ID: "q1", Gate: "write"}
 	awaitFields(t, store, Ref("t1"), "the gate", func(f map[string]any) bool { return f["pending"] != nil })
-	h.ch <- task.Frame{Kind: task.EvDecision, ID: "q1", Tool: "act", Proceed: true, By: ana}
+	h.ch <- task.Event{Kind: task.EventDecision, ID: "q1", Tool: "act", Proceed: true, By: ana}
 	awaitFields(t, store, QuestionRef("q1"), "the echo to settle it", func(f map[string]any) bool { return f["status"] == QuestionAnswered })
 	AnswerQuestion(store, "q1", task.Resolution{Proceed: true, By: ana})
 	q, _, _ := store.Get(QuestionRef("q1"))
@@ -125,20 +125,20 @@ func TestAnAnswerRecordedAfterItsAcknowledgementIsTheAnswerers(t *testing.T) {
 func TestAWorkersVectorFrameDoesNotSayWhoSlidIt(t *testing.T) {
 	const worker, ana = "runner:bot", "user:ana@example.com"
 	store := entitytest.Store(t)
-	h := &fakeHandle{ch: make(chan task.Frame)}
+	h := &fakeHandle{ch: make(chan task.Event)}
 	Reflect(store, "t1", h, Meta{Runner: "http://runner.test", As: worker, SlidBy: func() (string, string) { return ana, "ask" }})
 	// The slide the control route relayed for ana: the runner reports it and the worker echoes
 	// it, under whatever name, and both are her slide.
 	for i, by := range []string{ana, entity.SystemDocket} {
-		h.ch <- task.Frame{Kind: task.EvVector, Mode: "ask", By: by}
-		h.ch <- task.Frame{Kind: task.EvExec, Tool: []string{"first", "second"}[i]}
+		h.ch <- task.Event{Kind: task.EventVector, Mode: "ask", By: by}
+		h.ch <- task.Event{Kind: task.EventExec, Tool: []string{"first", "second"}[i]}
 		got := awaitFields(t, store, Ref("t1"), "the slide", func(f map[string]any) bool { return f["lastAction"] == []string{"first", "second"}[i] })
 		if got["vector"] != "ask" || got["vectorBy"] != ana {
 			t.Fatalf("after frame %d: vector %v by %v, want ask by who it was relayed for: %+v", i, got["vector"], got["vectorBy"], got)
 		}
 	}
 	// A mode nobody relayed: the worker slid it, whatever it says.
-	h.ch <- task.Frame{Kind: task.EvVector, Mode: "auto", By: ana}
+	h.ch <- task.Event{Kind: task.EventVector, Mode: "auto", By: ana}
 	got := awaitFields(t, store, Ref("t1"), "the second slide", func(f map[string]any) bool { return f["vector"] == "auto" })
 	if got["vectorBy"] != worker {
 		t.Fatalf("vectorBy = %v, want the worker of record: %+v", got["vectorBy"], got)
@@ -149,16 +149,16 @@ func TestAWorkersVectorFrameDoesNotSayWhoSlidIt(t *testing.T) {
 func TestAHostedTasksFramesAreTrusted(t *testing.T) {
 	const ana = "user:ana@example.com"
 	store := entitytest.Store(t)
-	h := &fakeHandle{ch: make(chan task.Frame)}
+	h := &fakeHandle{ch: make(chan task.Event)}
 	Reflect(store, "t1", h, Meta{Runner: LocalRunner})
-	h.ch <- task.Frame{Kind: task.EvVector, Mode: "ask", By: ana}
+	h.ch <- task.Event{Kind: task.EventVector, Mode: "ask", By: ana}
 	got := awaitFields(t, store, Ref("t1"), "the slide", func(f map[string]any) bool { return f["vector"] == "ask" })
 	if got["vectorBy"] != ana {
 		t.Fatalf("vectorBy = %v, want %s", got["vectorBy"], ana)
 	}
-	h.ch <- task.Frame{Kind: task.EvPending, ID: "q1", Gate: "write"}
+	h.ch <- task.Event{Kind: task.EventPending, ID: "q1", Gate: "write"}
 	awaitFields(t, store, Ref("t1"), "the gate", func(f map[string]any) bool { return f["pending"] != nil })
-	h.ch <- task.Frame{Kind: task.EvDecision, ID: "q1", Proceed: true, By: ana}
+	h.ch <- task.Event{Kind: task.EventDecision, ID: "q1", Proceed: true, By: ana}
 	q := awaitFields(t, store, QuestionRef("q1"), "the question to settle", func(f map[string]any) bool { return f["status"] == QuestionAnswered })
 	if q["by"] != ana {
 		t.Fatalf("the question was settled by %v, want %s", q["by"], ana)

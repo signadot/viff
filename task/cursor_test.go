@@ -10,7 +10,7 @@ import (
 func TestSubscribeSinceReplaysAfterCursor(t *testing.T) {
 	p := &Task{ID: "t"}
 	for i := 1; i <= 5; i++ {
-		p.Emit(Frame{Kind: EvSay, Text: fmt.Sprintf("m%d", i)})
+		p.Emit(Event{Kind: EventSay, Text: fmt.Sprintf("m%d", i)})
 	}
 	if p.Cursor() != 5 {
 		t.Fatalf("cursor=%d, want 5", p.Cursor())
@@ -26,24 +26,24 @@ func TestSubscribeSinceReplaysAfterCursor(t *testing.T) {
 		t.Fatalf("replay cursors=%v, want [3 4 5]", got)
 	}
 
-	p.Emit(Frame{Kind: EvSay, Text: "m6"}) // live event after the replay
+	p.Emit(Event{Kind: EventSay, Text: "m6"}) // live event after the replay
 	if ev := <-ch; ev.Cursor != 6 {
 		t.Fatalf("live cursor=%d, want 6", ev.Cursor)
 	}
 }
 
-// A cursor below the retained window's low-watermark gets a resync marker (EvGap
+// A cursor below the retained window's low-watermark gets a resync marker (EventGap
 // carrying the current cursor), telling the consumer to re-read the snapshot.
 func TestSubscribeSinceBelowWatermarkResyncs(t *testing.T) {
 	p := &Task{ID: "t"}
 	for i := 0; i < ringCap+10; i++ { // overflow the ring; low-watermark rises past 1
-		p.Emit(Frame{Kind: EvSay})
+		p.Emit(Event{Kind: EventSay})
 	}
 	ch, unsub := p.SubscribeSince(1) // 1 is now below the retained window
 	defer unsub()
 	ev := <-ch
-	if ev.Kind != EvGap {
-		t.Fatalf("first event kind=%q, want a %q resync marker", ev.Kind, EvGap)
+	if ev.Kind != EventGap {
+		t.Fatalf("first event kind=%q, want a %q resync marker", ev.Kind, EventGap)
 	}
 	if ev.Cursor != p.Cursor() {
 		t.Fatalf("resync cursor=%d, want current %d", ev.Cursor, p.Cursor())

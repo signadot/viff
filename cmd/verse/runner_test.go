@@ -9,7 +9,6 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
 )
@@ -62,7 +61,7 @@ func TestRunnerAddThroughTheClient(t *testing.T) {
 	if !strings.Contains(out, "a runner") {
 		t.Fatalf("add printed %q, want the probe's verdict", out)
 	}
-	if payloadOf(t, store, runner.Ref("demo")) == nil {
+	if payloadOf(t, store, entity.VerseRef("runners", "demo")) == nil {
 		t.Fatal("nothing was installed")
 	}
 
@@ -75,7 +74,7 @@ func TestRunnerAddThroughTheClient(t *testing.T) {
 	if _, err := runCLI(t, "runner", "add", "--no-probe", "nope", dead.URL); err != nil {
 		t.Fatalf("--no-probe: %v — the flag never reached the server", err)
 	}
-	if payloadOf(t, store, runner.Ref("nope")) == nil {
+	if payloadOf(t, store, entity.VerseRef("runners", "nope")) == nil {
 		t.Fatal("--no-probe did not install")
 	}
 }
@@ -123,7 +122,7 @@ func TestRunnerVerbsThroughTheClient(t *testing.T) {
 		!strings.Contains(out, "verse.runners.demo") {
 		t.Fatalf("remove --leave = %q, %v; want it to succeed and say so", out, err)
 	}
-	if payloadOf(t, store, runner.Ref("demo")) != nil {
+	if payloadOf(t, store, entity.VerseRef("runners", "demo")) != nil {
 		t.Fatal("--leave did not remove the entity")
 	}
 }

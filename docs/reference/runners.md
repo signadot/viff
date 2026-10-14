@@ -10,7 +10,7 @@ A runner is an entity at `verse.runners.<name>`. It carries its `name` and two f
 
 | Field | What it holds |
 |---|---|
-| `url` | the base URL of task control that faces verse. `runner.HTTP` drives this URL, and a restart rebuilds the runner from it. Required. |
+| `url` | the base URL of task control that faces verse. `client.HTTP` drives this URL, and a restart rebuilds the runner from it. Required. |
 | `identity` | the [principal](../glossary.md#principal) that the runner acts as. Verse writes the reports of a task as this principal. A spawn grants this principal `read-write` and `control` on the task. A runner acts as itself. It never acts as its installer, or as the person whose work it runs. Default: the runner's name ([perms.md](../perms.md)). |
 
 The `name` is the whole of the address. It may not contain `/`, because it is a segment of
@@ -112,14 +112,13 @@ name. The name keeps working after the entity is gone.
 
 ## What a caller can tell about a control call
 
-A control call that fails says which failure it is (`task/runner.go`):
+A control call that fails says which failure it is (`task/errors.go`):
 
 | Error | Meaning |
 |---|---|
 | `ErrUnreachable` | the far side did not answer. Nothing is known about whether it acted. |
 | `ErrNoSuchTask` / `ErrNoSuchDecision` | the far side answered, and has never heard of this task or decision. Look for a typo. |
 | `ErrAlreadyAnswered` | somebody else answered first |
-| `ErrTaskEnded` | the gate was real, the task is over, and nobody answered the gate |
 | `ErrEnded` | the task is over, so words said to it would be heard by no one (`410` on `/say`) |
 | `ErrUnsupported` | this runner has no such route at all |
 

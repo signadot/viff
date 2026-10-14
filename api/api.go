@@ -245,6 +245,41 @@ type Spawn struct {
 	Principal string `tony:"field=principal,omitzero"`
 }
 
+// Task is a task as verse reports it: the answer to verse's `GET /tasks` and `GET /tasks/{id}`
+// (`verse ps`, `verse task get`). It is built from verse's record of the task and, while a
+// runner still holds it, that runner's snapshot (task.Snapshot), whose fields it repeats
+// under the same names; Runner and RunnerName are what only verse knows.
+//
+// The snapshot's fields are declared again rather than embedded because the generated codec
+// nests an embedded type from another package under its own key, and the shape on the wire is
+// flat.
+//
+//tony:schemagen=verse-instance,notag
+type Task struct {
+	ID         string             `tony:"field=id"`
+	Prompt     string             `tony:"field=prompt,omitzero"`
+	Driver     string             `tony:"field=driver,omitzero"`
+	Status     task.Status        `tony:"field=status"`
+	Runner     string             `tony:"field=runner,omitzero"` // where it runs or ran: local, or the runner's url
+	RunnerName string             `tony:"field=runnerName,omitzero"`
+	Cursor     int64              `tony:"field=cursor,omitzero"`
+	Occurrence int64              `tony:"field=occurrence,omitzero"`
+	Started    string             `tony:"field=started,omitzero"`
+	Ended      string             `tony:"field=ended,omitzero"`
+	Result     string             `tony:"field=result,omitzero"`
+	Err        string             `tony:"field=err,omitzero"`
+	Pending    []task.PendingGate `tony:"field=pending,omitzero"`
+}
+
+// TaskFrom is the task as verse reports it, from what a runner reports of it.
+func TaskFrom(snap task.Snapshot) Task {
+	return Task{
+		ID: snap.ID, Prompt: snap.Prompt, Driver: snap.Driver, Status: snap.Status,
+		Cursor: snap.Cursor, Occurrence: snap.Occurrence, Started: snap.Started, Ended: snap.Ended,
+		Result: snap.Result, Err: snap.Err, Pending: snap.Pending,
+	}
+}
+
 // Spawned is what a spawn answers with: the id to address the new task by.
 //
 //tony:schemagen=verse-spawned,notag

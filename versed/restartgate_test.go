@@ -61,7 +61,7 @@ func TestARestartTakesADeadTasksQuestionWithIt(t *testing.T) {
 }
 
 // A question follows its task's fate rather than being judged on its own — including where
-// that fate is a BELIEF. The runner package's Attach returns a handle with no reachability
+// that fate is a BELIEF. The runner client's Attach returns a handle with no reachability
 // check, so a remote-hosted task is re-adopted whether or not the remote is still there,
 // and it stays `running` on that belief; its question stays pending on the same belief.
 //

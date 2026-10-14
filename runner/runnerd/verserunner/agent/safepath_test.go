@@ -264,7 +264,7 @@ func TestALongModelCallSaysSoAndARetriedSequenceIsBounded(t *testing.T) {
 	var mu sync.Mutex
 	var said []string
 	slow := &slowCompleter{release: make(chan struct{})}
-	d := &llmDriver{client: slow, log: io.Discard, emit: func(f task.Frame) {
+	d := &llmDriver{client: slow, log: io.Discard, emit: func(f task.Event) {
 		mu.Lock()
 		said = append(said, f.Text)
 		mu.Unlock()

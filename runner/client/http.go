@@ -1,9 +1,8 @@
-// Package runner provides the HTTP client of the verse-facing task-control
-// contract: an httpRunner drives a remote runnerd-shaped service at a base URL, so the
-// engine can run a task on another host or k8s exactly as it runs one in
-// task. It is the mirror of versed's localRunner — same task.Runner seam,
-// HTTP transport. See docs/task-control.md.
-package runner
+// Package client is verse's HTTP client of a runner: an httpRunner drives a runner at a base URL
+// over the Runner API (package runner), so the engine can run a task on another host or k8s
+// exactly as it runs one in process. It is the mirror of versed's localRunner — same
+// task.Runner seam, HTTP transport. See docs/task-control.md.
+package client
 
 import (
 	"bufio"
@@ -17,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
@@ -114,7 +113,7 @@ func (p *httpRunner) Ref() string { return p.base }
 // unreachable runner's tasks were absent from the list and the response was a clean 200
 // that was simply short. The same shape as the discarded spawn status above, on the read plane
 // (git-issue 6mnmxj6mh12krz3ae1n0).
-func (p *httpRunner) ListTasks() ([]task.Instance, error) {
+func (p *httpRunner) ListTasks() ([]task.Snapshot, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	// The error is READ, and that is not defensive tidying: NewRequest returns a nil request
@@ -145,7 +144,7 @@ func (p *httpRunner) ListTasks() ([]task.Instance, error) {
 		}
 		return nil, fmt.Errorf("listing tasks on %s: %s", p.base, detail)
 	}
-	var out []task.Instance
+	var out []task.Snapshot
 	if err := decodeResp(resp, &out); err != nil {
 		// A body that does not decode is not an empty verse. Discarding this error is how a
 		// format drift on either end reads as a runner that has nothing running.
@@ -159,27 +158,27 @@ func (p *httpRunner) ListTasks() ([]task.Instance, error) {
 // of failing collapsed into the same `false`, which the caller could only report as "no such
 // task". A task on a runner that did not answer is not a task that does not exist,
 // and `task get` said it was (git-issue 6mnmxj6mh12krz3ae1n0).
-func (p *httpRunner) TaskSnapshot(id string) (task.Instance, error) {
+func (p *httpRunner) TaskSnapshot(id string) (task.Snapshot, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.base+"/tasks/"+id, nil)
 	if err != nil { // nil request, and Do panics on one — see ListTasks
-		return task.Instance{}, fmt.Errorf("%w: %s is not a usable runner url: %w",
+		return task.Snapshot{}, fmt.Errorf("%w: %s is not a usable runner url: %w",
 			task.ErrUnreachable, p.base, err)
 	}
 	resp, err := p.cl.Do(req)
 	if err != nil {
-		return task.Instance{}, fmt.Errorf("%w: %s: %w", task.ErrUnreachable, p.base, err)
+		return task.Snapshot{}, fmt.Errorf("%w: %s: %w", task.ErrUnreachable, p.base, err)
 	}
 	defer resp.Body.Close()
 	// Here a 404 IS about the id — this path names one — so statusErr's reading is the right
 	// one, and ErrNoSuchTask is what it yields.
 	if err := statusErr(resp); err != nil {
-		return task.Instance{}, err
+		return task.Snapshot{}, err
 	}
-	var m task.Instance
+	var m task.Snapshot
 	if err := decodeResp(resp, &m); err != nil {
-		return task.Instance{}, fmt.Errorf("%w: %s answered an undecodable task: %w",
+		return task.Snapshot{}, fmt.Errorf("%w: %s answered an undecodable task: %w",
 			task.ErrUnsupported, p.base, err)
 	}
 	return m, nil
@@ -196,22 +195,22 @@ type remoteHandle struct {
 
 // Subscribe replays the whole retained window then streams live, so the mirror sees the
 // task from as far back as the remote still holds.
-func (h *remoteHandle) Subscribe() (<-chan task.Frame, func()) {
+func (h *remoteHandle) Subscribe() (<-chan task.Event, func()) {
 	return h.SubscribeSince(0)
 }
 
 // SubscribeSince resumes from a cursor. It is the same contract the local bus
 // honours, carried over HTTP by handing the cursor to the remote's own `?since=` rather than
 // asking for everything and discarding — the remote is the one that knows what it still has,
-// and it is the one that can say EvGap when the cursor is below its window.
-func (h *remoteHandle) SubscribeSince(since int64) (<-chan task.Frame, func()) {
+// and it is the one that can say EventGap when the cursor is below its window.
+func (h *remoteHandle) SubscribeSince(since int64) (<-chan task.Event, func()) {
 	ctx, cancel := context.WithCancel(context.Background())
-	out := make(chan task.Frame, 256)
+	out := make(chan task.Event, 256)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		h.url("/events?since="+strconv.FormatInt(since, 10)), nil)
 	if err != nil { // nil request, and Do panics on one — see ListTasks
-		out <- task.Frame{
-			Kind: task.EvStatus,
+		out <- task.Event{
+			Kind: task.EventStatus,
 			Text: string(task.Failed),
 			Err:  fmt.Sprintf("subscribe %s: %s is not a usable runner url: %v", h.id, h.base, err),
 		}
@@ -251,13 +250,13 @@ func (h *remoteHandle) SubscribeSince(since int64) (<-chan task.Frame, func()) {
 		// transport error, and overwriting a live task's frame with a stale record would
 		// be the same mistake pointed the other way.
 		if snap, ok := h.snapshot(); ok && snap.Status.Terminal() && snap.Err != "" {
-			out <- task.Frame{Kind: task.EvStatus, Text: string(snap.Status), Err: snap.Err}
+			out <- task.Event{Kind: task.EventStatus, Text: string(snap.Status), Err: snap.Err}
 			close(out)
 			cancel()
 			return out, func() {}
 		}
-		out <- task.Frame{
-			Kind: task.EvStatus,
+		out <- task.Event{
+			Kind: task.EventStatus,
 			Text: string(task.Failed),
 			Err:  fmt.Sprintf("subscribe %s: %s", h.id, msg),
 		}
@@ -285,7 +284,7 @@ func (h *remoteHandle) SubscribeSince(since int64) (<-chan task.Frame, func()) {
 			if !ok {
 				continue // blank line / comment
 			}
-			var ev task.Frame
+			var ev task.Event
 			if codec.Unmarshal([]byte(data), &ev, frameFmt) != nil {
 				continue
 			}
@@ -305,11 +304,11 @@ func (h *remoteHandle) Resume() error { return h.post("/resume", nil) }
 // Cancel ends the task, and says why: the reason is what the task's charters see, so it
 // crosses with the cancel.
 func (h *remoteHandle) Cancel(reason string) error {
-	return h.post("/cancel", task.CancelRequest{Reason: reason})
+	return h.post("/cancel", runner.CancelRequest{Reason: reason})
 }
 
 func (h *remoteHandle) Steer(instr, by, ask string) error {
-	return h.post("/say", task.SayRequest{Instruction: instr, By: by, Ask: ask})
+	return h.post("/say", runner.SayRequest{Instruction: instr, By: by, Ask: ask})
 }
 
 func (h *remoteHandle) SetVector(v *task.Vector, by string) error {
@@ -338,15 +337,13 @@ func (h *remoteHandle) SetVector(v *task.Vector, by string) error {
 // is not a gateResolver, and every route into it fails with a message about the question
 // rather than about the runner.
 //
-// It speaks api.Resolve — the vocabulary every other answering surface uses — rather than the
-// runtime's older {decisionId, proceed}. runnerd accepts both, so an old runner on the other
-// end still understands this.
+// It sends the contract's ResolveRequest.
 //
 // The status is the point, and it is why this cannot go through post(): an answer that did
 // not land must not read as one that did, or the operator is told a blocked worker was
 // released.
 func (h *remoteHandle) Resolve(decision, choice, say, by string) error {
-	body := api.Resolve{ID: decision, Choice: choice, By: by}
+	body := runner.ResolveRequest{ID: decision, Choice: choice, By: by}
 	if say != "" {
 		body.Say = []string{say}
 	}
@@ -368,7 +365,7 @@ func (h *remoteHandle) Resolve(decision, choice, say, by string) error {
 	return statusErr(resp)
 }
 
-// Err reads the terminal failure detail off the snapshot — the remote's task.Instance
+// Err reads the terminal failure detail off the snapshot — the remote's task.Snapshot
 // already carries it, so this is the same read as Result against a different field.
 // snapshot reads the remote's own account of this task — GET /tasks/{id}, the shape both
 // ends already speak. ok is false when the remote could not be asked or did not answer in
@@ -378,18 +375,18 @@ func (h *remoteHandle) Resolve(decision, choice, say, by string) error {
 // fields of ONE answer, and asking three times invites them to disagree: a task that ends
 // between two of those calls would have its status read from before and its reason from
 // after.
-func (h *remoteHandle) snapshot() (task.Instance, bool) {
+func (h *remoteHandle) snapshot() (task.Snapshot, bool) {
 	resp, err := h.cl.Get(h.url(""))
 	if err != nil {
-		return task.Instance{}, false
+		return task.Snapshot{}, false
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= http.StatusBadRequest {
-		return task.Instance{}, false
+		return task.Snapshot{}, false
 	}
-	var snap task.Instance
+	var snap task.Snapshot
 	if err := decodeResp(resp, &snap); err != nil {
-		return task.Instance{}, false
+		return task.Snapshot{}, false
 	}
 	return snap, true
 }

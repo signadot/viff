@@ -19,17 +19,17 @@ func TestARelayedQuestionAsksWhomItNames(t *testing.T) {
 	for _, c := range []struct {
 		name string
 		m    Meta
-		ev   task.Frame
+		ev   task.Event
 		want []string
 	}{
-		{"a launch whose questions are its asker's", Meta{Asker: daniel, Answerers: me}, task.Frame{Gate: "ship"}, []string{daniel}},
-		{"a hand-run task's nameless gate", Meta{Asker: daniel}, task.Frame{Gate: "ship"}, nil},
-		{"a gate naming its answerers", Meta{Asker: daniel, Answerers: me, Gates: named}, task.Frame{Gate: "ship"}, []string{ani}},
-		{"a gate naming $principal and a group", Meta{Asker: daniel, Gates: mine}, task.Frame{Gate: "ship"}, []string{daniel, "group:payments"}},
-		{"a frame naming its answerers", Meta{Asker: daniel, Answerers: me}, task.Frame{Gate: "ship", Answerers: []string{"user:bo@example.com"}}, []string{"user:bo@example.com"}},
-		{"the ask tool, from a person's task", Meta{Asker: daniel}, task.Frame{Gate: "ask", Answerers: me}, []string{daniel}},
-		{"the ask tool, acting for nobody", Meta{}, task.Frame{Gate: "ask", Answerers: me}, nil},
-		{"the ask tool, acting for the system", Meta{Asker: entity.SystemCharter}, task.Frame{Gate: "ask", Answerers: me}, nil},
+		{"a launch whose questions are its asker's", Meta{Asker: daniel, Answerers: me}, task.Event{Gate: "ship"}, []string{daniel}},
+		{"a hand-run task's nameless gate", Meta{Asker: daniel}, task.Event{Gate: "ship"}, nil},
+		{"a gate naming its answerers", Meta{Asker: daniel, Answerers: me, Gates: named}, task.Event{Gate: "ship"}, []string{ani}},
+		{"a gate naming $principal and a group", Meta{Asker: daniel, Gates: mine}, task.Event{Gate: "ship"}, []string{daniel, "group:payments"}},
+		{"a frame naming its answerers", Meta{Asker: daniel, Answerers: me}, task.Event{Gate: "ship", Answerers: []string{"user:bo@example.com"}}, []string{"user:bo@example.com"}},
+		{"the ask tool, from a person's task", Meta{Asker: daniel}, task.Event{Gate: "ask", Answerers: me}, []string{daniel}},
+		{"the ask tool, acting for nobody", Meta{}, task.Event{Gate: "ask", Answerers: me}, nil},
+		{"the ask tool, acting for the system", Meta{Asker: entity.SystemCharter}, task.Event{Gate: "ask", Answerers: me}, nil},
 	} {
 		if got := answerersFor(c.m, c.ev); !reflect.DeepEqual(got, c.want) {
 			t.Errorf("%s: %v, want %v", c.name, got, c.want)

@@ -760,7 +760,7 @@ func anyStrings(ss []string) []any {
 // A local run posts twice, once from each writer. That is not a conflict: a write merges, so
 // the frame's post cannot erase the effects the registry's post already recorded, and every
 // field the two share they agree on.
-func PostFrameQuestion(store entity.Store, ev task.Frame, taskID, subject string, answerers []string) bool {
+func PostFrameQuestion(store entity.Store, ev task.Event, taskID, subject string, answerers []string) bool {
 	rec := entity.Obj{
 		"id":      ev.ID,
 		"gate":    ev.Gate,
@@ -954,7 +954,7 @@ const SaidToField = "saidTo"
 const Heard = "heard"
 
 // HearSay settles the say ask id as heard by taskID, where it stands waiting and is words to that
-// task: the task's say frame echoes the ask it took (task.SayRequest.Ask).
+// task: the task's say frame echoes the ask it took (runner.SayRequest.Ask).
 func HearSay(store entity.Store, id, taskID string) {
 	ref := QuestionRef(id)
 	e, ok, err := store.Get(ref)

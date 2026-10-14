@@ -91,11 +91,11 @@ func TestDaemonSpawnObserveResolve(t *testing.T) {
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
-		var ev task.Frame
+		var ev task.Event
 		if codec.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &ev, frameFmt) != nil {
 			continue
 		}
-		if ev.Kind == task.EvPending {
+		if ev.Kind == task.EventPending {
 			decisionID = ev.ID
 			break
 		}
@@ -106,7 +106,7 @@ func TestDaemonSpawnObserveResolve(t *testing.T) {
 
 	// resolve it by id
 	rr, err := http.Post(srv.URL+"/tasks/"+sp.ID+"/resolve", "application/json",
-		strings.NewReader(`{"decisionId":"`+decisionID+`","proceed":true}`))
+		strings.NewReader(`{"id":"`+decisionID+`","choice":"proceed"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestDaemonResolveUnknown(t *testing.T) {
 	resp.Body.Close()
 
 	rr, err := http.Post(srv.URL+"/tasks/"+sp.ID+"/resolve", "application/json",
-		strings.NewReader(`{"decisionId":"nope","proceed":true}`))
+		strings.NewReader(`{"id":"nope","choice":"proceed"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,6 +153,62 @@ func TestDaemonResolveUnknown(t *testing.T) {
 	if rr.StatusCode != http.StatusNotFound {
 		t.Fatalf("unknown-decision resolve status = %d, want 404", rr.StatusCode)
 	}
+}
+
+// A resolve without a choice is refused, and the gate stays open. The body's decoder ignores
+// keys it does not know, so a client still speaking an older shape ({decisionId, proceed} or
+// {id, approve}) arrives with no choice at all; read as a deny, its approval would close the gate
+// as a refusal nobody meant.
+func TestDaemonResolveWithoutChoice(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	resp, _ := http.Post(srv.URL+"/tasks", "application/json", strings.NewReader(`{"prompt":"t"}`))
+	var sp struct {
+		ID string `tony:"field=id"`
+	}
+	decodeResp(t, resp, &sp)
+	resp.Body.Close()
+
+	gate := pendingGate(t, srv.URL, sp.ID)
+	for _, body := range []string{
+		`{"decisionId":"` + gate + `","proceed":true}`,
+		`{"id":"` + gate + `","approve":true}`,
+		`{"id":"` + gate + `"}`,
+	} {
+		rr, err := http.Post(srv.URL+"/tasks/"+sp.ID+"/resolve", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		rr.Body.Close()
+		if rr.StatusCode != http.StatusBadRequest {
+			t.Errorf("resolve %s = %d, want 400", body, rr.StatusCode)
+		}
+	}
+	if got := pendingGate(t, srv.URL, sp.ID); got != gate {
+		t.Fatalf("after the refused resolves the open gate is %q, want %q still open", got, gate)
+	}
+}
+
+// pendingGate waits for the task's snapshot to show an open gate, and returns its id.
+func pendingGate(t *testing.T, base, id string) string {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		g, err := http.Get(base + "/tasks/" + id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var snap task.Snapshot
+		decodeResp(t, g, &snap)
+		g.Body.Close()
+		if len(snap.Pending) > 0 {
+			return snap.Pending[0].ID
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("task %s never showed an open gate", id)
+	return ""
 }
 
 // decodeResp reads a response in the format it DECLARES rather than assuming JSON — the

@@ -383,7 +383,7 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 // name, when it has answerers of its own — the charter's policy, which the frame cannot soften
 // — then whoever the frame named, which is a worker asking somebody, then whom the task's
 // questions naming nobody go to (Meta.Answerers). task.PrincipalAnswerer is put as the asker.
-func answerersFor(m Meta, ev task.Frame) []string {
+func answerersFor(m Meta, ev task.Event) []string {
 	names := ev.Answerers
 	for _, g := range m.Gates {
 		if g.Name == ev.Gate && len(g.Answerers) > 0 {
@@ -573,7 +573,7 @@ func backoff(attempt int) time.Duration {
 // all, and a worker reporting another verdict under it would leave a record saying the
 // answerer chose what they did not. So a relayed task's decision is settled from what verse
 // holds (settleRelayed), and its slide named from what verse relayed (slidBy).
-func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Handle, ch <-chan task.Frame, claimant *string) (ended, heard bool) {
+func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Handle, ch <-chan task.Event, claimant *string) (ended, heard bool) {
 	docket, projector := asPrincipal(store, entity.SystemDocket), asPrincipal(store, entity.SystemMirror)
 	relayed := m.Runner != "" && m.Runner != LocalRunner
 	if *claimant != "" {
@@ -599,7 +599,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				st["cursor"] = ev.Cursor
 			}
 			switch ev.Kind {
-			case task.EvPending: // now blocked on a gate — visible to other tasks
+			case task.EventPending: // now blocked on a gate — visible to other tasks
 				// A REF to the question rather than a copy of it. The question is its own
 				// entity (see question.go), so the gate name, mode, tool and derived effects
 				// live there; duplicating any of them here would be a second spelling of one
@@ -614,7 +614,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				if posed && ev.Deadline != nil && ev.Deadline.Within != "" && m.Arm != nil {
 					m.Arm(ev.ID, ev.Deadline.Within)
 				}
-			case task.EvDecision:
+			case task.EventDecision:
 				// nil, not delete: a write MERGES, so a field left out of the payload stays
 				// as it was. Saying "this is gone" is the writer's job, and it is the whole
 				// difference between a gate that clears and a task that looks blocked
@@ -635,19 +635,19 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				}
 				delete(st, "pending") // see write: a replace stores st, so absence is absence
 				st["lastAction"] = ev.Tool
-			case task.EvExec:
+			case task.EventExec:
 				st["lastAction"] = ev.Tool
 				if ev.Text != "" { // the last action's output (already a bounded summary)
 					st["lastOutput"] = ev.Text
 				}
-			case task.EvSay: // an utterance; only the task's OWN words are the preview
+			case task.EventSay: // an utterance; only the task's OWN words are the preview
 				if ev.By == "" { // By set = a say-to folded in, not the agent's narration
 					st["say"] = preview(ev.Text)
 				}
 				if ev.ID != "" { // words said to it, which it has now taken: that ask is heard
 					HearSay(docket, ev.ID, id)
 				}
-			case task.EvStatus:
+			case task.EventStatus:
 				// paused/resumed ride the same channel as lifecycle status but are
 				// transient control acks, not a lifecycle state — project them as a
 				// `paused` flag so `status` stays running→completed/cancelled.
@@ -691,7 +691,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 						// And the run's own record, which the next run does not overwrite.
 						writeRun(store, id, occurrenceOf(st), st)
 						// Whatever it was still asking, it will never hear the answer to.
-						// A relayed task may end with an EvStatus and no EvDecision, so
+						// A relayed task may end with an EventStatus and no EventDecision, so
 						// nothing else would ever settle those questions and the docket
 						// would keep offering them for a run that is over.
 						OrphanQuestions(docket, id)
@@ -700,7 +700,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				}
 				project(store, id, st, m)
 				continue
-			case task.EvVector: // an autonomy slide — project the dial so `entity get` shows it
+			case task.EventVector: // an autonomy slide — project the dial so `entity get` shows it
 				st["vector"] = ev.Mode
 				by := ev.By
 				if relayed {

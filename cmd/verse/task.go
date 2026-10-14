@@ -515,25 +515,25 @@ func streamEvents(cc *cli.Context, id, as, since string) error {
 				return nil
 			}
 			// Wire, always: a transcript is a running commentary, and the loop below reads
-			// each frame as a task.Frame to know when the task is over — so one frame per
+			// each frame as a task.Event to know when the task is over — so one frame per
 			// line is what the person watching and the code watching both want.
 			fmt.Fprintln(cc.Out, renderFrame(data, in, out, color, true))
-			// task.Frame, not a hand-copied subset of it: the six fields this loop reads
+			// task.Event, not a hand-copied subset of it: the six fields this loop reads
 			// were re-declared here with their tony tags, so a rename on the emitting side
 			// would have gone unnoticed and simply stopped populating them.
-			var ev task.Frame
+			var ev task.Event
 			_ = codec.Unmarshal([]byte(data), &ev, in)
 			// The task reached a terminal status — the stream won't emit more, so detach
 			// (else attach would hang waiting on a closed-but-not-EOF stream).
-			if ev.Kind == task.EvStatus && isTerminalStatus(ev.Text) {
+			if ev.Kind == task.EventStatus && isTerminalStatus(ev.Text) {
 				return nil
 			}
-			if ev.Kind == task.EvDecision && open != nil && ev.ID == open.id {
+			if ev.Kind == task.EventDecision && open != nil && ev.ID == open.id {
 				fmt.Fprintf(cc.Out, "  answered by %s\n", ev.By)
 				open = nil
 				continue
 			}
-			if ev.Kind != task.EvPending || ev.ID == "" {
+			if ev.Kind != task.EventPending || ev.ID == "" {
 				continue
 			}
 			pr := newPrompt(ev)
@@ -611,7 +611,7 @@ type prompt struct {
 	yesno   bool // the default two options
 }
 
-func newPrompt(ev task.Frame) *prompt {
+func newPrompt(ev task.Event) *prompt {
 	pid := ev.Task
 	if pid == "" {
 		pid, _, _ = strings.Cut(ev.ID, task.GateSep)
@@ -743,7 +743,7 @@ func recordedFailure(id string) string {
 	if resp.StatusCode >= http.StatusBadRequest {
 		return "" // the id is unknown here too: the 404 the caller has is the whole story
 	}
-	var snap task.Instance
+	var snap api.Task
 	decodeBody(resp, &snap)
 	if !snap.Status.Terminal() || snap.Err == "" {
 		return ""
@@ -751,7 +751,7 @@ func recordedFailure(id string) string {
 	return snap.Err
 }
 
-// isTerminalStatus reports whether a status EvStatus text is an end state — covering the
+// isTerminalStatus reports whether a status EventStatus text is an end state — covering the
 // runtime (completed | cancelled | "driver error") vocabularies.
 func isTerminalStatus(text string) bool {
 	switch text {

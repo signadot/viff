@@ -353,7 +353,7 @@ func TestASubjectThatSaysNothingLeavesTheQuestionBare(t *testing.T) {
 // second half reaching the store, both went through (git-issue 874azhtjh12krn1xqsn0).
 func TestAnAnsweredQuestionStaysAnswered(t *testing.T) {
 	const ann = "user:ann@example.com"
-	ev := task.Frame{Kind: task.EvPending, ID: "t1~d1", Gate: "ship"}
+	ev := task.Event{Kind: task.EventPending, ID: "t1~d1", Gate: "ship"}
 	answered := func() entity.Store {
 		store := docket(t)
 		if !PostFrameQuestion(store, ev, "t1", "", []string{ann}) {
@@ -425,7 +425,7 @@ func TestAnOptionWithNoNeedIsRecordedAsOneBallot(t *testing.T) {
 func TestAFramePosedQuestionSaysWhomItWaitsOn(t *testing.T) {
 	store := docket(t)
 	const ann = "user:ann@example.com"
-	ev := task.Frame{Kind: task.EvPending, ID: "t1~d1", Gate: "ship"}
+	ev := task.Event{Kind: task.EventPending, ID: "t1~d1", Gate: "ship"}
 	if !PostFrameQuestion(store, ev, "t1", "", []string{ann}) {
 		t.Fatal("not posed")
 	}
@@ -451,7 +451,7 @@ func TestAQuestionCarriesTheAction(t *testing.T) {
 	}
 
 	// From a remote runner's frame, the same.
-	PostFrameQuestion(store, task.Frame{Kind: task.EvPending, ID: "run-b~d1", Gate: "write", Tool: "apply_patch",
+	PostFrameQuestion(store, task.Event{Kind: task.EventPending, ID: "run-b~d1", Gate: "write", Tool: "apply_patch",
 		Action: "update docs/x.md", Text: "verb write"}, "run-b", "", nil)
 	e, ok, _ = store.Get(QuestionRef("run-b~d1"))
 	if !ok {

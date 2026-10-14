@@ -99,7 +99,7 @@ func statusOn(t *testing.T, base, id string) string {
 		return ""
 	}
 	defer resp.Body.Close()
-	var inst task.Instance
+	var inst task.Snapshot
 	decodeResp(t, resp, &inst)
 	return string(inst.Status)
 }

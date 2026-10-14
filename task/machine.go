@@ -267,7 +267,7 @@ func (inTurn) input()     {}
 type effect interface{ effect() }
 
 type (
-	effEmit    struct{ f Frame }
+	effEmit    struct{ f Event }
 	effJournal struct{ line string }
 	effLog     struct{ line string }
 
@@ -517,7 +517,7 @@ func (s *state) turnTaken(v inTurn) []effect {
 	q := v.res.Question
 	effs := []effect{
 		effJournal{fmt.Sprintf("[%s] turn → %s by %s", q.ID, v.res.Choice, v.res.By)},
-		effEmit{Frame{Kind: EvDecision, ID: q.ID, Tool: "turn", Gate: q.Gate, Mode: q.Mode.String(),
+		effEmit{Event{Kind: EventDecision, ID: q.ID, Tool: "turn", Gate: q.Gate, Mode: q.Mode.String(),
 			Choice: v.res.Choice, Proceed: v.res.Choice != End, By: v.res.By, Text: v.res.Choice}},
 	}
 	if v.res.Choice == End {
@@ -595,7 +595,7 @@ func (s *state) hinge() []effect {
 	}
 	return []effect{
 		effLog{fmt.Sprintf("· boundary %d", s.seq)},
-		effEmit{Frame{Kind: EvBoundary, Seq: s.seq}},
+		effEmit{Event{Kind: EventBoundary, Seq: s.seq}},
 		// cancel outranks it; the shell's pause chain covers the subtree
 		effHold{tok: s.await(phHeld)},
 	}
@@ -703,7 +703,7 @@ func (s *state) propose(tu ToolUse) []effect {
 	if !s.scope.Permits(tu) {
 		effs := []effect{
 			effLog{"⛔ " + tu.Name + " refused: outside the task's grant"},
-			effEmit{Frame{Kind: EvExec, Tool: tu.Name, Err: "outside grant"}},
+			effEmit{Event{Kind: EventExec, Tool: tu.Name, Err: "outside grant"}},
 		}
 		effs = append(effs, record(tu, Resolution{Question: GateQuestion{
 			Gate: "grant", Reason: "outside the task's grant"}})...)
@@ -751,7 +751,7 @@ func (s *state) resolved(v inGate) []effect {
 	// A delegation answered by a child mode is a yes with the mode on it. The answer path
 	// settles a question by option id and knows nothing about what the option means here, so
 	// `careful` arrives as a choice that is not `proceed`; it is read before anything records
-	// or acts on it, and a `childMode` a client sent beside a plain yes still counts.
+	// or acts on it.
 	if s.action.CallAgent != nil {
 		if mode, ok := ChildModeNamed(v.res.Choice); ok {
 			v.res.ChildMode, v.res.Proceed = mode, true
@@ -770,7 +770,7 @@ func (s *state) resolved(v inGate) []effect {
 		// and was observed reopening a run that had nothing left to do. It goes on the read
 		// plane instead, where the person who wrote it is talking to the people watching.
 		if s.closing {
-			effs = append(effs, effEmit{Frame{Kind: EvSay, By: v.res.By, Text: note}})
+			effs = append(effs, effEmit{Event{Kind: EventSay, By: v.res.By, Text: note}})
 			continue
 		}
 		s.conv = append(s.conv, convMsg{text: note, by: v.res.By, kind: convGate})
@@ -809,7 +809,7 @@ func (s *state) executed(v inExecuted) []effect {
 			s.setCause(v.err)
 			return s.exit(Failed)
 		}
-		return append([]effect{effEmit{Frame{Kind: EvExec, Tool: v.out.Use.Name,
+		return append([]effect{effEmit{Event{Kind: EventExec, Tool: v.out.Use.Name,
 			Text: evTrunc(v.out.Output)}}}, s.quiesce()...)
 	}
 	if v.err != nil {
@@ -819,12 +819,12 @@ func (s *state) executed(v inExecuted) []effect {
 		s.prev = StepResult{Use: s.action, Err: v.err} // no defers registered on failure
 		return append([]effect{
 			effLog{fmt.Sprintf("✗ %s failed: %v", s.action.Name, v.err)},
-			effEmit{Frame{Kind: EvExec, Tool: s.action.Name, Err: v.err.Error()}},
+			effEmit{Event{Kind: EventExec, Tool: s.action.Name, Err: v.err.Error()}},
 		}, s.hinge()...)
 	}
 	s.registerDefers(v.defers) // only on success — defer iff setup succeeded
 	s.prev = v.out
-	return append([]effect{effEmit{Frame{Kind: EvExec, Tool: s.action.Name,
+	return append([]effect{effEmit{Event{Kind: EventExec, Tool: s.action.Name,
 		Text: evTrunc(v.out.Output)}}}, s.hinge()...)
 }
 
@@ -844,7 +844,7 @@ func (s *state) executed(v inExecuted) []effect {
 func (s *state) unknown() []effect {
 	return []effect{
 		effLog{fmt.Sprintf("? %s: unknown — cancelled while it was in flight", s.action.Name)},
-		effEmit{Frame{Kind: EvExec, Tool: s.action.Name,
+		effEmit{Event{Kind: EventExec, Tool: s.action.Name,
 			Err: "unknown: the run was cancelled while this action was in flight, so whether it " +
 				"took effect is not something this loop can say"}},
 	}
@@ -890,7 +890,7 @@ func (s *state) finish(v inFinish) []effect {
 		// would have been narrated.
 		return append([]effect{
 			effLog{"⛔ " + v.tu.Name + " not delivered: outside the task's grant"},
-			effEmit{Frame{Kind: EvExec, Tool: v.tu.Name, Err: "outside the task's grant: not delivered"}},
+			effEmit{Event{Kind: EventExec, Tool: v.tu.Name, Err: "outside the task's grant: not delivered"}},
 		}, s.quiesce()...)
 	}
 	s.action = v.tu
@@ -917,7 +917,7 @@ func (s *state) childEnded(v inChild) []effect {
 	effs := []effect{
 		effJournal{"[child] " + v.summary},
 		effLog{"⑃ " + v.summary},
-		effEmit{Frame{Kind: EvChild, Tool: v.id, Text: v.summary}},
+		effEmit{Event{Kind: EventChild, Tool: v.id, Text: v.summary}},
 	}
 	s.conv = append(s.conv, convMsg{text: v.summary, kind: convChild})
 	s.reopen()
@@ -995,8 +995,8 @@ func record(tu ToolUse, res Resolution) []effect {
 	return []effect{
 		effJournal{fmt.Sprintf("[%s] %s → %s by %s (%s)",
 			tu.ID, tu.Name, res.Question.Mode, res.By, res.Question.Reason)},
-		effEmit{Frame{
-			Kind: EvDecision, ID: res.Question.ID, Tool: tu.Name, Action: tu.Describe(), Gate: res.Question.Gate,
+		effEmit{Event{
+			Kind: EventDecision, ID: res.Question.ID, Tool: tu.Name, Action: tu.Describe(), Gate: res.Question.Gate,
 			Mode: res.Question.Mode.String(), Proceed: res.Proceed, By: res.By,
 			Text: res.Question.Reason,
 		}},

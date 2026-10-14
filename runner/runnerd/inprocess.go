@@ -35,7 +35,7 @@ type InProcessHandler struct {
 	// onQuestion, when set, is called as each hosted task poses a gate question. The
 	// host holds no store and should not: publishing a question is the job of whoever
 	// owns one, and this is the seam that hands it over with the derived effects still
-	// attached — the read plane's own EvPending frame carries only what an attached client
+	// attached — the read plane's own EventPending frame carries only what an attached client
 	// needs to see, which is less than a record needs to be matchable.
 	//
 	// THE LAUNCH is passed with it, because what a record needs beyond the question — where it
@@ -108,7 +108,7 @@ func (h *hosted) done() bool {
 	return h.status.Terminal()
 }
 
-func (h *hosted) snapshot() task.Instance {
+func (h *hosted) snapshot() task.Snapshot {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	pend := h.reg.Pending()
@@ -119,7 +119,7 @@ func (h *hosted) snapshot() task.Instance {
 			Gate: p.Question.Gate, Mode: p.Question.Mode.String(), Reason: p.Question.Reason,
 		})
 	}
-	return task.Instance{
+	return task.Snapshot{
 		ID: h.task.ID, Prompt: h.prompt, Driver: h.driver, Status: h.status,
 		Err: h.err, Result: h.result, Pending: pending, Occurrence: h.occurrence,
 		Cursor: h.task.Cursor(), // resume the event stream with ?since=<cursor>
@@ -235,8 +235,8 @@ func (d *InProcessHandler) spawnHosted(l task.Launch) (*hosted, bool) {
 		}
 		// Whom it asks crosses too: verse poses a remote task's question from this frame, and a
 		// turn or an ask naming $principal is the task's person's, not the docket's.
-		tk.Emit(task.Frame{
-			Kind: task.EvPending, ID: p.Question.ID, Tool: p.Tool, Action: p.Action,
+		tk.Emit(task.Event{
+			Kind: task.EventPending, ID: p.Question.ID, Tool: p.Tool, Action: p.Action,
 			Gate: p.Question.Gate, Mode: p.Question.Mode.String(), Text: p.Question.Reason,
 			Options: p.Question.Options, Deadline: p.Question.Deadline, Answerers: p.Question.Answerers,
 		})
@@ -337,7 +337,7 @@ func (d *InProcessHandler) spawn(w http.ResponseWriter, r *http.Request) {
 	if !created {
 		status = http.StatusOK
 	}
-	writeOut(w, r, status, task.Spawned{ID: h.task.ID})
+	writeOut(w, r, status, runner.SpawnResponse{ID: h.task.ID})
 }
 
 // Count returns the number of hosted tasks (live and completed-but-unreaped).
@@ -353,10 +353,10 @@ func (d *InProcessHandler) list(w http.ResponseWriter, r *http.Request) {
 
 // Snapshots returns every hosted task in the shape the task API returns — for versed
 // to union the local runtime with a runner's own tasks in one list.
-func (d *InProcessHandler) Snapshots() []task.Instance {
+func (d *InProcessHandler) Snapshots() []task.Snapshot {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	out := make([]task.Instance, 0, len(d.tasks))
+	out := make([]task.Snapshot, 0, len(d.tasks))
 	for _, h := range d.tasks {
 		out = append(out, h.snapshot())
 	}
@@ -376,12 +376,12 @@ func (d *InProcessHandler) ScopeOf(id string) (string, bool) {
 }
 
 // SnapshotOf returns one hosted task's snapshot, or false if this runner doesn't host it.
-func (d *InProcessHandler) SnapshotOf(id string) (task.Instance, bool) {
+func (d *InProcessHandler) SnapshotOf(id string) (task.Snapshot, bool) {
 	d.mu.Lock()
 	h := d.tasks[id]
 	d.mu.Unlock()
 	if h == nil {
-		return task.Instance{}, false
+		return task.Snapshot{}, false
 	}
 	return h.snapshot(), true
 }
@@ -407,11 +407,11 @@ func (d *InProcessHandler) events(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var ch <-chan task.Frame
+	var ch <-chan task.Event
 	var unsub func()
 	if s := r.URL.Query().Get("since"); s != "" {
 		// Resumable: replay the retained window after the client's cursor, then live.
-		// The ring already carries any EvPending, so no separate gate replay is needed.
+		// The ring already carries any EventPending, so no separate gate replay is needed.
 		since, _ := strconv.ParseInt(s, 10, 64)
 		ch, unsub = h.task.SubscribeSince(since)
 	} else {
@@ -421,8 +421,8 @@ func (d *InProcessHandler) events(w http.ResponseWriter, r *http.Request) {
 		// on a stream that will never emit again.
 		ch, unsub = h.task.Subscribe()
 		for _, p := range h.reg.Pending() {
-			_ = sse.Send(task.Frame{
-				Kind: task.EvPending, ID: p.Question.ID, Tool: p.Tool, Action: p.Action,
+			_ = sse.Send(task.Event{
+				Kind: task.EventPending, ID: p.Question.ID, Tool: p.Tool, Action: p.Action,
 				Gate: p.Question.Gate, Mode: p.Question.Mode.String(), Text: p.Question.Reason,
 				Options: p.Question.Options, Deadline: p.Question.Deadline, Answerers: p.Question.Answerers,
 			})
@@ -460,40 +460,20 @@ func (d *InProcessHandler) resolve(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	// Spellings of one answer, because this face predates api.Resolve and things dial in
-	// against it. `id`/`approve` is what every other answering surface speaks; `decisionId`
-	// and `proceed` are the runtime's own older names, still read so a client written against
-	// them is not broken by the newer spelling arriving. The contract as documented in
-	// task-control.md mixes them — `{id, proceed}` — so both halves are read independently
-	// rather than as two fixed vocabularies.
-	//
-	// The verdict is the OR, and it is not lossy: a yes is `true` in whichever field the
-	// client used, and a no is `false` in both AND absent from both. There is no answer the
-	// two fields can express that this reads wrongly, short of a client setting them against
-	// each other on purpose.
-	var body struct {
-		ID      string `tony:"field=id"`
-		Choice  string `tony:"field=choice"`
-		Approve bool   `tony:"field=approve"`
-
-		DecisionID string   `tony:"field=decisionId"`
-		Proceed    bool     `tony:"field=proceed"`
-		ChildMode  string   `tony:"field=childMode"`
-		By         string   `tony:"field=by"`  // who answered; empty = an unattributed caller
-		Say        []string `tony:"field=say"` // words to say on resolution (a gate that informs)
-	}
+	var body runner.ResolveRequest
 	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	decision := body.ID
-	if decision == "" {
-		decision = body.DecisionID
+	// No choice is no answer. Read as a deny it would turn a caller's approval, sent in a shape
+	// this runner does not know, into a refusal nobody meant; refused, the gate stays open.
+	if body.Choice == "" {
+		http.Error(w, "a resolve carries a `choice`", http.StatusBadRequest)
+		return
 	}
-	proceed := body.Approve || body.Proceed || body.Choice == task.Proceed
+	decision := body.ID
 	res := task.Resolution{
-		Choice: body.Choice, Proceed: proceed, By: body.By,
-		ChildMode: parseChildMode(body.ChildMode), Steer: body.Say,
+		Choice: body.Choice, Proceed: body.Choice == task.Proceed, By: body.By, Steer: body.Say,
 	}
 	if !h.reg.Answer(decision, res) {
 		http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
@@ -508,7 +488,7 @@ func (d *InProcessHandler) say(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	var body task.SayRequest
+	var body runner.SayRequest
 	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, fmt.Sprintf("the say does not parse: %v", err), http.StatusBadRequest)
 		return
@@ -528,7 +508,7 @@ func (d *InProcessHandler) say(w http.ResponseWriter, r *http.Request) {
 // cancelledHere is the reason a cancel gives when its caller gave none.
 const cancelledHere = "cancelled via daemon"
 
-// control returns a handler for the subtree ops. A cancel carries why (task.CancelRequest);
+// control returns a handler for the subtree ops. A cancel carries why (runner.CancelRequest);
 // pause and resume carry nothing.
 func (d *InProcessHandler) control(op string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -542,7 +522,7 @@ func (d *InProcessHandler) control(op string) http.HandlerFunc {
 			// The reason is what the task's charters see on `onCancelled`. A cancel with no
 			// body is a cancel all the same; one whose body does not parse is refused, since
 			// the reason it meant to give is not known and the task would end under another.
-			var body task.CancelRequest
+			var body runner.CancelRequest
 			if err := codec.Read(r, &body); err != nil {
 				http.Error(w, fmt.Sprintf("the cancel does not parse: %v", err), http.StatusBadRequest)
 				return
@@ -579,11 +559,6 @@ func (d *InProcessHandler) setVector(w http.ResponseWriter, r *http.Request) {
 	}
 	h.task.SetVector(&body.Vector, body.By)
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func parseChildMode(s string) task.ChildMode {
-	mode, _ := task.ChildModeNamed(s)
-	return mode
 }
 
 func writeOut(w http.ResponseWriter, r *http.Request, code int, v any) {

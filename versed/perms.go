@@ -9,7 +9,6 @@ import (
 	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/resolver"
-	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/schedule"
 	"github.com/signadot/verse/trigger"
 )
@@ -58,8 +57,8 @@ var seed = []struct {
 	{entity.VerseRef(trigger.CharterSystem, trigger.SuspensionKind), entity.Read, []string{entity.Everyone}},
 	{entity.VerseRef(resolver.System), entity.OwnerLevel, []string{entity.Everyone}},
 	{entity.VerseRef(resolver.System), entity.Read, []string{entity.Everyone}},
-	{entity.VerseRef(runner.System), entity.OwnerLevel, []string{entity.Everyone}},
-	{entity.VerseRef(runner.System), entity.Read, []string{entity.Everyone}},
+	{entity.VerseRef(runnersSystem), entity.OwnerLevel, []string{entity.Everyone}},
+	{entity.VerseRef(runnersSystem), entity.Read, []string{entity.Everyone}},
 	{entity.VerseRef(verseio.System), entity.OwnerLevel, []string{entity.Everyone}},
 	{entity.VerseRef(verseio.System), entity.Read, []string{entity.Everyone}},
 	// A schedule is declared in a charter and is its installer's, as a rule is; its ticks are

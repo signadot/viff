@@ -16,23 +16,25 @@ import (
 // endsOnCancel is a task that runs until it is cancelled, and then ends cancelled, as a real one
 // does at its next boundary.
 type endsOnCancel struct {
-	ch   chan task.Frame
+	ch   chan task.Event
 	once sync.Once
 	done atomic.Bool
 }
 
-func (h *endsOnCancel) Subscribe() (<-chan task.Frame, func())           { return h.ch, func() {} }
-func (h *endsOnCancel) SubscribeSince(int64) (<-chan task.Frame, func()) { return h.ch, func() {} }
-func (h *endsOnCancel) Pause() error                                     { return nil }
-func (h *endsOnCancel) Resume() error                                    { return nil }
-func (h *endsOnCancel) Steer(string, string, string) error               { return nil }
-func (h *endsOnCancel) SetVector(*task.Vector, string) error             { return nil }
-func (h *endsOnCancel) Result() string                                   { return "" }
-func (h *endsOnCancel) Err() string                                      { return "" }
+func (h *endsOnCancel) Subscribe() (<-chan task.Event, func()) { return h.ch, func() {} }
+func (h *endsOnCancel) SubscribeSince(int64) (<-chan task.Event, func()) {
+	return h.ch, func() {}
+}
+func (h *endsOnCancel) Pause() error                         { return nil }
+func (h *endsOnCancel) Resume() error                        { return nil }
+func (h *endsOnCancel) Steer(string, string, string) error   { return nil }
+func (h *endsOnCancel) SetVector(*task.Vector, string) error { return nil }
+func (h *endsOnCancel) Result() string                       { return "" }
+func (h *endsOnCancel) Err() string                          { return "" }
 func (h *endsOnCancel) Cancel(string) error {
 	h.once.Do(func() {
 		h.done.Store(true)
-		h.ch <- task.Frame{Kind: task.EvStatus, Text: string(task.Cancelled)}
+		h.ch <- task.Event{Kind: task.EventStatus, Text: string(task.Cancelled)}
 	})
 	return nil
 }
@@ -50,7 +52,7 @@ func TestCancelLiveCancelsWithoutHooks(t *testing.T) {
 	handles := map[string]*endsOnCancel{}
 	var mu sync.Mutex
 	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
-		h := &endsOnCancel{ch: make(chan task.Frame, 1)}
+		h := &endsOnCancel{ch: make(chan task.Event, 1)}
 		mu.Lock()
 		handles[spec.Subject] = h
 		mu.Unlock()
@@ -102,7 +104,7 @@ func TestCancelLiveCancelsWithoutHooks(t *testing.T) {
 		t.Fatalf("flows after CancelLive = %v, want none", eng.Flows())
 	}
 
-	late := &endsOnCancel{ch: make(chan task.Frame, 1)}
+	late := &endsOnCancel{ch: make(chan task.Event, 1)}
 	eng.Adopt(prRef("3").String(), "late", late)
 	if !late.cancelled() || len(eng.Flows()) != 0 {
 		t.Fatal("a task tracked after CancelLive was left running")

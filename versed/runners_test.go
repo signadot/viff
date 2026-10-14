@@ -16,7 +16,7 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
 )
@@ -221,7 +221,7 @@ func TestRunnerCheckReportsAndRecordsNothing(t *testing.T) {
 		t.Fatalf("check = %+v, want reach \"a runner\"", got)
 	}
 	// Answered live, printed, discarded: the entity is what it was.
-	e, ok, _ := srv.Store.Get(runner.Ref("gpu"))
+	e, ok, _ := srv.Store.Get(runnerEntityRef("gpu"))
 	if !ok {
 		t.Fatal("the runner entity vanished")
 	}
@@ -247,7 +247,7 @@ func TestRunnerRemoveRefusesUntilToldWhich(t *testing.T) {
 
 	// A task running ON it. Spawned through the runner face and mirrored the way a spawn
 	// does, which is what makes it work this removal has to answer for.
-	p := runner.HTTP(face.URL)
+	p := client.HTTP(face.URL)
 	p.Spawn(task.Launch{ID: "w1", Prompt: "long work", Driver: "scripted"})
 	setInstance(t, srv, "w1", entity.Obj{
 		"status": "running", "runner": face.URL, "runnerName": "verse.runners.gpu",
@@ -277,7 +277,7 @@ func TestRunnerRemoveRefusesUntilToldWhich(t *testing.T) {
 		t.Fatalf("remove --leave = %s, want 200 — --leave must always succeed, or a runner with "+
 			"one long-lived task on it could never be removed", resp.Status)
 	}
-	if _, ok, _ := srv.Store.Get(runner.Ref("gpu")); ok {
+	if _, ok, _ := srv.Store.Get(runnerEntityRef("gpu")); ok {
 		t.Fatal("--leave did not remove the entity")
 	}
 	if _, err := p.(task.Lister).TaskSnapshot("w1"); err != nil {
@@ -321,7 +321,7 @@ func TestRunnerRemoveCancelReportsWhatItCouldNotReach(t *testing.T) {
 		"name": "gpu", "url": face.URL,
 	}).Body.Close()
 
-	p := runner.HTTP(face.URL)
+	p := client.HTTP(face.URL)
 	h := p.Spawn(task.Launch{ID: "c1", Prompt: "long work", Driver: "scripted"})
 	setInstance(t, srv, "c1", entity.Obj{
 		"status": "running", "runner": face.URL, "runnerName": "verse.runners.gpu",
@@ -402,7 +402,7 @@ func readBody(t *testing.T, resp *http.Response) string {
 	return string(b)
 }
 
-func waitForStatus(t *testing.T, ch <-chan task.Frame, want task.Status) {
+func waitForStatus(t *testing.T, ch <-chan task.Event, want task.Status) {
 	t.Helper()
 	deadline := time.After(5 * time.Second)
 	for {
@@ -411,7 +411,7 @@ func waitForStatus(t *testing.T, ch <-chan task.Frame, want task.Status) {
 			if !open {
 				t.Fatalf("the stream ended without a %s terminal", want)
 			}
-			if ev.Kind == task.EvStatus && ev.Text == string(want) {
+			if ev.Kind == task.EventStatus && ev.Text == string(want) {
 				return
 			}
 		case <-deadline:
@@ -438,7 +438,7 @@ func TestSpawnNamesItsRunner(t *testing.T) {
 	deflt := spawnOK(t, ts, map[string]any{"id": "on-default", "prompt": "t"})
 
 	// It really went there: the runner face has it, and the default one does not.
-	remote := runner.HTTP(face.URL).(task.Lister)
+	remote := client.HTTP(face.URL).(task.Lister)
 	if _, err := remote.TaskSnapshot(named); err != nil {
 		t.Fatalf("the spawn naming runners.gpu did not reach it: %v", err)
 	}
@@ -556,7 +556,7 @@ func TestRestartReattachesEvenAfterTheRunnerIsRemoved(t *testing.T) {
 
 	// The drive tears the runner down: the ENTITY goes, the work does not. This is what
 	// step 1's --leave does, reached here directly because the verse that served it is gone.
-	if _, _, err := store.Write(entity.Write{At: runner.Ref("gpu").At(), Value: nil}); err != nil {
+	if _, _, err := store.Write(entity.Write{At: runnerEntityRef("gpu").At(), Value: nil}); err != nil {
 		t.Fatalf("removing the runner entity: %v", err)
 	}
 
@@ -641,7 +641,7 @@ func TestOperatorCanSeeWhere(t *testing.T) {
 	if probed["reach"] != "a runner" {
 		t.Fatalf("runners --probe = %+v, want a live reach column", probed)
 	}
-	e, _, _ := srv.Store.Get(runner.Ref("gpu"))
+	e, _, _ := srv.Store.Get(runnerEntityRef("gpu"))
 	if rec := entity.ToObj(e.Payload); rec["reach"] != nil {
 		t.Fatalf("the store recorded health: %+v", rec)
 	}

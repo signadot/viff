@@ -83,7 +83,7 @@ func (g *pauseGate) hold(ctx context.Context) error {
 func (p *Task) Pause() error {
 	p.pauseGate.pause()
 	p.logf("⏸ pause (subtree)")
-	p.emit(Frame{Kind: EvStatus, Text: "paused"})
+	p.emit(Event{Kind: EventStatus, Text: "paused"})
 	p.post(inPause{})
 	return nil
 }
@@ -96,7 +96,7 @@ func (p *Task) Pause() error {
 func (p *Task) Resume() error {
 	p.pauseGate.unpause()
 	p.logf("▶ resume (subtree)")
-	p.emit(Frame{Kind: EvStatus, Text: "resumed"})
+	p.emit(Event{Kind: EventStatus, Text: "resumed"})
 	p.post(inResume{})
 	return nil
 }

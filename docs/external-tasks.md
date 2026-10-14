@@ -26,7 +26,7 @@ contract, and anything can fulfil the contract. The contract has six parts:
 | a [driver](glossary.md#driver) | proposes the next step: `Driver.Next(ctx, prev) → (ToolUse, more)` |
 | an [executor](glossary.md#executor) | performs a step after the gates approve it: `Executor.Execute(ctx, tu) → StepResult` |
 | the [vector](glossary.md#vector) | gates the typed effects of every step before the step runs. An effect is a `Verb × Resource`, such as `exec` on a `task`. The vector is the autonomy dial. |
-| the [event stream](glossary.md#event-stream) | streams structured `Event`s: `EvSay` narration, `EvExec` results, `EvPending` waits on a gate, `EvStatus` lifecycle and `EvBoundary` cursor |
+| the [event stream](glossary.md#event-stream) | streams structured `Event`s: `EventSay` narration, `EventExec` results, `EventPending` waits on a gate, `EventStatus` lifecycle and `EventBoundary` cursor |
 | the [control plane](glossary.md#control-plane) | applies steering at a [boundary](glossary.md#boundary): `Pause`, `Resume`, `Cancel`, `Say` and `SetVector`. Its rule is "stop between actions, never undo one". |
 | the [mirror](glossary.md#mirror-of-tasks) | writes the task into the [store](glossary.md#store) as a `verse.task.instance.*` [entity](glossary.md#entity). The task ends with a terminal outcome and a result. |
 
@@ -82,8 +82,8 @@ replays what it missed. There is one truth, with two speeds of access.
 
 | concept | unix process | agent |
 |---|---|---|
-| output | stdout | `EvSay` / driver narration |
-| diagnostics | stderr | `EvExec` err, blocked |
+| output | stdout | `EventSay` / driver narration |
+| diagnostics | stderr | `EventExec` err, blocked |
 | terminal | exit code | outcome + `Result()` |
 | input | stdin | a `say` |
 | interactive | pty | (n/a) |

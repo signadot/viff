@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
 )
@@ -50,11 +50,11 @@ func serve(t *testing.T, s Secrets, sb runnerd.Sandbox) (rt task.Runner, work st
 	}
 	srv := httptest.NewServer(h.HTTPHandler())
 	t.Cleanup(func() { srv.Close(); h.Shutdown(); os.RemoveAll(control) })
-	return runner.HTTP(srv.URL), work
+	return client.HTTP(srv.URL), work
 }
 
 // script runs a script as a task, and returns its output once it has ended.
-func script(t *testing.T, rt task.Runner, id, src string) task.Instance {
+func script(t *testing.T, rt task.Runner, id, src string) task.Snapshot {
 	t.Helper()
 	rt.Spawn(task.Launch{ID: id, Driver: "scripted", Vector: &task.Vector{Default: task.Auto}, Prompt: src})
 	deadline := time.Now().Add(10 * time.Second)
@@ -65,7 +65,7 @@ func script(t *testing.T, rt task.Runner, id, src string) task.Instance {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("%s didn't end", id)
-	return task.Instance{}
+	return task.Snapshot{}
 }
 
 // A task runs in a process of its own, in a directory of its own that is also its HOME, and its

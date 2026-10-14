@@ -188,7 +188,7 @@ func (m *Mirrors) ensure(ctx context.Context, remote string) (string, error) {
 	}
 
 	// A FIRST clone outlives the caller. The spawn that asks for it is bounded by versed's
-	// control deadline (runner.ControlTimeout, 30s), and a clone of anything real is longer than
+	// control deadline (client.ControlTimeout, 30s), and a clone of anything real is longer than
 	// that, so under the request's context the clone was cancelled with it: no mirror, and the
 	// next spawn started the same race from nothing. Made under the runner's own context, the
 	// clone finishes whatever the caller did — and the caller is then told, below, that it ran

@@ -167,13 +167,13 @@ func TestASayEchoesTheAskItIs(t *testing.T) {
 		t.Fatalf("run: %v", err)
 	}
 	for f := range frames {
-		if f.Kind == EvSay && f.Text == "s1" {
+		if f.Kind == EventSay && f.Text == "s1" {
 			if f.ID != "say-1" || f.By != "user:bob" {
 				t.Fatalf("the say frame is %+v, want it to carry ask say-1, by bob", f)
 			}
 			return
 		}
-		if f.Kind == EvStatus && Status(f.Text).Terminal() {
+		if f.Kind == EventStatus && Status(f.Text).Terminal() {
 			break
 		}
 	}

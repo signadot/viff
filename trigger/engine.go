@@ -1647,7 +1647,7 @@ func (e *Engine) reapOnDone(fp flowTask) {
 	defer unsub()
 	var status string
 	for ev := range ch {
-		if ev.Kind == task.EvStatus && task.TerminalStatus(ev.Text) {
+		if ev.Kind == task.EventStatus && task.TerminalStatus(ev.Text) {
 			status = ev.Text
 			break
 		}

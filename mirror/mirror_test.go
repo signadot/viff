@@ -27,10 +27,10 @@ func (noopExec) Execute(context.Context, task.ToolUse) (task.StepResult, []task.
 	return task.StepResult{Output: "ok"}, nil, nil
 }
 
-// sayer narrates (EvSay), runs one action, completes, and reports a final result —
+// sayer narrates (EventSay), runs one action, completes, and reports a final result —
 // exercising the output projection. emit is wired to the task's read plane.
 type sayer struct {
-	emit   func(task.Frame)
+	emit   func(task.Event)
 	result string
 	step   int
 }
@@ -39,9 +39,9 @@ func (s *sayer) Next(_ context.Context, _ task.StepResult) (task.ToolUse, bool, 
 	s.step++
 	if s.step == 1 {
 		if s.emit != nil {
-			s.emit(task.Frame{Kind: task.EvSay, Text: "working on it"})
+			s.emit(task.Event{Kind: task.EventSay, Text: "working on it"})
 		}
-		return task.ToolUse{Name: "act"}, true, nil // an action → EvExec → lastOutput
+		return task.ToolUse{Name: "act"}, true, nil // an action → EventExec → lastOutput
 	}
 	return task.ToolUse{}, false, nil // complete
 }
@@ -178,10 +178,10 @@ func TestReflectOmitsChainWhenAbsent(t *testing.T) {
 
 // fakeHandle is a task.Handle whose read plane is a channel the test drives, so a
 // transition can be observed at the instant it happens rather than raced against.
-type fakeHandle struct{ ch chan task.Frame }
+type fakeHandle struct{ ch chan task.Event }
 
-func (f *fakeHandle) Subscribe() (<-chan task.Frame, func()) { return f.ch, func() {} }
-func (f *fakeHandle) SubscribeSince(int64) (<-chan task.Frame, func()) {
+func (f *fakeHandle) Subscribe() (<-chan task.Event, func()) { return f.ch, func() {} }
+func (f *fakeHandle) SubscribeSince(int64) (<-chan task.Event, func()) {
 	return f.ch, func() {}
 }
 func (f *fakeHandle) Pause() error                         { return nil }
@@ -198,7 +198,7 @@ func (f *fakeHandle) Err() string                          { return "" }
 // `pending` reads as a task waiting forever on a gate that was already answered.
 func TestReflectClearsAnAnsweredGate(t *testing.T) {
 	store := entitytest.Store(t)
-	h := &fakeHandle{ch: make(chan task.Frame)}
+	h := &fakeHandle{ch: make(chan task.Event)}
 	Reflect(store, "g1", h, Meta{Runner: "local"})
 
 	fields := func() map[string]any {
@@ -221,12 +221,12 @@ func TestReflectClearsAnAnsweredGate(t *testing.T) {
 		}
 	}
 
-	h.ch <- task.Frame{Kind: task.EvPending, ID: "gate1", Gate: "write"}
+	h.ch <- task.Event{Kind: task.EventPending, ID: "gate1", Gate: "write"}
 	await("the gate to appear", func(f map[string]any) bool {
 		return f["pending"] == QuestionRef("gate1").String()
 	})
 
-	h.ch <- task.Frame{Kind: task.EvDecision, ID: "gate1", Tool: "act", Proceed: true}
+	h.ch <- task.Event{Kind: task.EventDecision, ID: "gate1", Tool: "act", Proceed: true}
 	f := await("the gate to clear", func(f map[string]any) bool { return f["pending"] == nil })
 	if f["lastAction"] != "act" {
 		t.Fatalf("clearing the gate lost the rest of the state: %+v", f)

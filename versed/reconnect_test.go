@@ -11,7 +11,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
 )
@@ -96,9 +96,9 @@ func TestTheMirrorReconnectsAStreamThatDies(t *testing.T) {
 	remote := remoteRuntime(t, 40)
 	proxy := cuttingProxy(t, remote.URL, 300)
 
-	runner.HTTP(remote.URL).Spawn(task.Launch{ID: "p", Prompt: "work"})
+	client.HTTP(remote.URL).Spawn(task.Launch{ID: "p", Prompt: "work"})
 	store := entitytest.Store(t)
-	mirror.Reflect(store, "p", runner.HTTP(proxy.URL).Attach("p"), mirror.Meta{Runner: proxy.URL})
+	mirror.Reflect(store, "p", client.HTTP(proxy.URL).Attach("p"), mirror.Meta{Runner: proxy.URL})
 
 	deadline := time.After(20 * time.Second)
 	for {
@@ -127,7 +127,7 @@ func TestTheMirrorReconnectsAStreamThatDies(t *testing.T) {
 // "the last thing I heard was that it was running".
 func TestADisconnectedMirrorSaysSo(t *testing.T) {
 	remote := remoteRuntime(t, 200) // long enough to still be running while we look
-	runner.HTTP(remote.URL).Spawn(task.Launch{ID: "p", Prompt: "work"})
+	client.HTTP(remote.URL).Spawn(task.Launch{ID: "p", Prompt: "work"})
 
 	// Mirrored through a runner that cannot be REACHED, which is distinct from one that
 	// answers with an error: a rejected subscribe is deliberately reported as a failed
@@ -138,7 +138,7 @@ func TestADisconnectedMirrorSaysSo(t *testing.T) {
 	gone.Close()
 
 	store := entitytest.Store(t)
-	mirror.Reflect(store, "p", runner.HTTP(goneURL).Attach("p"), mirror.Meta{Runner: goneURL})
+	mirror.Reflect(store, "p", client.HTTP(goneURL).Attach("p"), mirror.Meta{Runner: goneURL})
 
 	deadline := time.After(10 * time.Second)
 	for {

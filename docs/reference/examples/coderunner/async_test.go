@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/task"
 )
 
@@ -36,7 +36,7 @@ func TestASpawnIsAnsweredBeforeTheTaskIsPrepared(t *testing.T) {
 	r.prepareHook = func(string) { <-gate }
 	srv := httptest.NewServer(r.Handler())
 	defer srv.Close()
-	rt := runner.HTTP(srv.URL)
+	rt := client.HTTP(srv.URL)
 
 	start := time.Now()
 	h := rt.Spawn(task.Launch{ID: "t1", Prompt: "say ok", Vector: &task.Vector{Default: task.Auto}})
@@ -77,7 +77,7 @@ func TestAPreparationThatFailsIsAFailedTask(t *testing.T) {
 	r := testRunner(t, shEnv(nowhere, "never"))
 	srv := httptest.NewServer(r.Handler())
 	defer srv.Close()
-	rt := runner.HTTP(srv.URL)
+	rt := client.HTTP(srv.URL)
 
 	h := rt.Spawn(task.Launch{ID: "t2", Prompt: "say never"})
 	if h.Err() != "" {
@@ -109,7 +109,7 @@ func TestACancelWhilePreparingIsCancelled(t *testing.T) {
 	r.prepareHook = func(string) { <-gate }
 	srv := httptest.NewServer(r.Handler())
 	defer srv.Close()
-	rt := runner.HTTP(srv.URL)
+	rt := client.HTTP(srv.URL)
 
 	h := rt.Spawn(task.Launch{ID: "t3", Prompt: "say late"})
 	if err := h.Cancel("changed my mind"); err != nil {

@@ -132,7 +132,7 @@ beside verse finds docd without guessing the ephemeral port `verse up` chose.
 
 ## 4. Task control, dialled out
 
-`runner.HTTP(base)` drives another verse, a `runnerd`, or any program that serves the same
+`client.HTTP(base)` drives another verse, a `runnerd`, or any program that serves the same
 contract:
 
 ```

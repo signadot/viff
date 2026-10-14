@@ -355,8 +355,8 @@ func optionIDs(opts []task.Option) []string {
 	return out
 }
 
-// question is what a message says of a question it is about, as its record says it.
-type question struct {
+// posed is what a message says of a question it is about, as its record says it.
+type posed struct {
 	id       string
 	pose     string // what it asks, in the words of whoever asked: a gate's pose, a task's reason
 	about    string // what its subject says about itself
@@ -435,8 +435,8 @@ type lookedUp struct {
 }
 
 // question reads the record of the question with this id, where the mirror keeps it.
-func (k *Sink) question(reader *client.Client, whom, id string) (question, error) {
-	q := question{id: id}
+func (k *Sink) question(reader *client.Client, whom, id string) (posed, error) {
+	q := posed{id: id}
 	doc, err := verseio.ReadAt(reader, mirror.QuestionRef(id).KPath())
 	if err != nil {
 		return q, fmt.Errorf("reading question %s: %w", id, err)
@@ -488,12 +488,12 @@ func (k *Sink) question(reader *client.Client, whom, id string) (question, error
 // pending reports whether the question still takes an answer. A verdict is written only by the
 // settle, in the same write as the answered status, so a record carrying one is answered even
 // when another writer's pending status reached it after.
-func (q question) pending() bool {
+func (q posed) pending() bool {
 	return q.standing && q.status == mirror.QuestionPending && q.verdict == ""
 }
 
 // line is this program's line about the question, in the message above the options it takes.
-func (q question) line() string {
+func (q posed) line() string {
 	id := "`" + q.id + "`"
 	switch {
 	case !q.standing:

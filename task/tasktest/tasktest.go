@@ -1,11 +1,11 @@
-// Package tasktest is a conformance suite for producers of task.Instance.
+// Package tasktest is a conformance suite for producers of task.Snapshot.
 //
-// verse reports a task through one shape wherever it runs — `verse task`,
-// `task get` and the mirrored entity all read task.Instance — but that shape is
-// PRODUCED independently by each runner: runnerd projects it from a hosted task, a remote
-// runner from its own worker's reported state. Nothing made two producers agree. Every field
-// is a plain struct member, so a producer that never sets one still compiles, and a producer
-// that sets the wrong one type-checks perfectly.
+// verse reports a task through one shape wherever it runs — `verse task`, `task get` and the
+// mirrored entity all read task.Snapshot (`task get` as verse's api.Task, which carries
+// it) — but that shape is PRODUCED independently by each runner: runnerd projects it from a
+// hosted task, a remote runner from its own worker's reported state. Nothing made two
+// producers agree. Every field is a plain struct member, so a producer that never sets one
+// still compiles, and a producer that sets the wrong one type-checks perfectly.
 //
 // That is not a hypothetical. Across one afternoon: one producer narrowed a raised gate to
 // id+name and dropped the --reason a resolver reads to decide; runnerd passed the selected
@@ -78,7 +78,7 @@ type Producer interface {
 	// when Caps().ExecutorGates.
 	RaiseGate(t *testing.T, id, gate, reason string) string
 	// Snapshot returns the Instance this producer reports for id.
-	Snapshot(t *testing.T, id string) (task.Instance, bool)
+	Snapshot(t *testing.T, id string) (task.Snapshot, bool)
 }
 
 // Run executes every property against p.
@@ -179,7 +179,7 @@ func gateReasonSurvives(t *testing.T, p Producer) {
 	}
 }
 
-func snapshot(t *testing.T, p Producer, id string) task.Instance {
+func snapshot(t *testing.T, p Producer, id string) task.Snapshot {
 	t.Helper()
 	inst, ok := p.Snapshot(t, id)
 	if !ok {
@@ -190,7 +190,7 @@ func snapshot(t *testing.T, p Producer, id string) task.Instance {
 
 // waitTerminal polls until the task reports a terminal status. A runnerd task runs
 // asynchronously, so its terminal state is not readable the instant Start returns.
-func waitTerminal(t *testing.T, p Producer, id string) task.Instance {
+func waitTerminal(t *testing.T, p Producer, id string) task.Snapshot {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {

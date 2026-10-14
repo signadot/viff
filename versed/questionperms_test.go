@@ -73,7 +73,7 @@ func TestATasksOwnerAnswersWhatItAsked(t *testing.T) {
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("a stranger answered: %s", resp.Status)
 	}
-	if q := question(t, srv, qid); q["status"] != mirror.QuestionPending {
+	if q := questionDoc(t, srv, qid); q["status"] != mirror.QuestionPending {
 		t.Fatalf("the refused answer settled the question: %+v", q)
 	}
 	resp = answerAs(t, "alice@example.com", ts.URL, qid)

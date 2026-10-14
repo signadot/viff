@@ -532,7 +532,7 @@ func TestATaskKnowsWhoseHoldItIs(t *testing.T) {
 		t.Fatalf("flow resume --task once nothing suspends it = %d %s, resumed %d", code, msg, first.count("resume"))
 	}
 	close(first.ch)
-	first.ch = make(chan task.Frame)
+	first.ch = make(chan task.Event)
 
 	// suspend, the runtime's task pause, lift → still held: `/tasks/{id}/pause` is the operator's
 	// hold too.

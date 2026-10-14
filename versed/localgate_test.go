@@ -56,13 +56,13 @@ func waitQuestion(t *testing.T, srv *Server, taskID string) string {
 
 // The LOCAL leg of `POST /tasks/{id}/resolve`, which had no test.
 //
-// It is the leg that used to be forwarded rather than handled: a local task's answer went
-// to runnerd's own HTTP face, which reads `{decisionId, proceed}` — so an api.Resolve body
-// arrived as an empty decision id and answered nothing. The relayed leg was covered and the
-// local one was not, which is exactly why the difference could sit there.
+// It is the leg that used to be forwarded rather than handled, to a runner face that read a
+// body of its own, so verse's answer arrived as an empty decision id and answered nothing. The
+// relayed leg was covered and the local one was not, which is exactly why the difference could
+// sit there.
 //
-// What this pins is that both legs of this route now speak one body. `verse task approve`
-// on a local task must answer it, and the task must go on.
+// What this pins is that both legs of this route speak one body. `verse task approve` on a
+// local task must answer it, and the task must go on.
 func TestTaskResolveAnswersALocalGate(t *testing.T) {
 	srv := askingServer(t)
 	ops := httptest.NewServer(srv.Handler())

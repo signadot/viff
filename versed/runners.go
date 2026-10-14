@@ -10,7 +10,7 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/task"
 )
 
@@ -35,11 +35,11 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := runner.CheckFields(node); err != nil {
+	if err := checkRunnerFields(node); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	var e runner.Entity
+	var e runnerEntity
 	if err := codec.FromNode(node, &e); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -48,7 +48,7 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	out := map[string]any{"at": runner.Ref(e.Name).String()}
+	out := map[string]any{"at": runnerEntityRef(e.Name).String()}
 	// The probe, and the two dispositions it feeds. They differ on whether waiting could
 	// change the answer: a url that answers as something else is answering NOW, while a url
 	// nothing answers is the ordinary
@@ -56,13 +56,13 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 	// the pod is pending, and the entity is already written. Refusing that would make
 	// deployment order-dependent for a fact that fixes itself.
 	if r.URL.Query().Get("probe") != "false" {
-		reach, why := runner.Probe(e.URL)
+		reach, why := client.Probe(e.URL)
 		switch reach {
-		case runner.NotRunner:
+		case client.NotRunner:
 			http.Error(w, fmt.Sprintf("runner %q: %s is not a runner: %s — --no-probe installs it anyway",
 				e.Name, e.URL, why), http.StatusBadRequest)
 			return
-		case runner.Unreachable:
+		case client.Unreachable:
 			// Installed, and said so. The warning rides on the response rather than being
 			// logged, because the operator running the command is the one who can act on it.
 			out["reach"] = reach.String()
@@ -76,7 +76,7 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 		body["identity"] = e.Identity
 	}
 	if _, _, err := s.scopedStore(r).Write(entity.Write{
-		At: runner.Ref(e.Name).At(), Value: body.Payload(),
+		At: runnerEntityRef(e.Name).At(), Value: body.Payload(),
 	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -88,13 +88,13 @@ func (s *Server) listRunners(w http.ResponseWriter, r *http.Request) {
 	store := s.scopedStore(r)
 	probe := r.URL.Query().Get("probe") == "true"
 	out := make([]map[string]any, 0)
-	ents, readErr := runner.ListErr(store)
+	ents, readErr := installedRunnersErr(store)
 	// READ ONCE, COUNT PER RUNNER. The counts are a walk of every task instance, and asking
 	// inside the loop made the listing cost runners x instances for an answer that is one pass
 	// over the same rows.
 	instances := taskRows(store)
 	for _, e := range ents {
-		ref := runner.Ref(e.Name)
+		ref := runnerEntityRef(e.Name)
 		rec := map[string]any{
 			"at": ref.String(), "name": e.Name, "url": e.URL,
 		}
@@ -105,7 +105,7 @@ func (s *Server) listRunners(w http.ResponseWriter, r *http.Request) {
 		// can be stale in the direction that costs — saying a runner is well because it was
 		// well when something last looked.
 		if probe {
-			reach, why := runner.Probe(e.URL)
+			reach, why := client.Probe(e.URL)
 			rec["reach"] = reach.String()
 			if why != nil {
 				rec["why"] = why.Error()
@@ -126,7 +126,7 @@ func (s *Server) listRunners(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getRunner(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	e, ok, err := s.scopedStore(r).Get(runner.Ref(name))
+	e, ok, err := s.scopedStore(r).Get(runnerEntityRef(name))
 	if !installed(w, r, fmt.Sprintf("runner %q", name), ok, err) {
 		return
 	}
@@ -138,13 +138,13 @@ func (s *Server) getRunner(w http.ResponseWriter, r *http.Request) {
 // already gone — and this says so beforehand rather than in the report afterwards.
 func (s *Server) checkRunner(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	e, ok, err := runner.FindErr(s.scopedStore(r), entity.JoinSegs([]string{name}))
+	e, ok, err := findRunnerErr(s.scopedStore(r), entity.JoinSegs([]string{name}))
 	if !installed(w, r, fmt.Sprintf("runner %q", name), ok, err) {
 		return
 	}
-	reach, why := runner.Probe(e.URL)
+	reach, why := client.Probe(e.URL)
 	out := map[string]any{
-		"at": runner.Ref(name).String(), "url": e.URL, "reach": reach.String(),
+		"at": runnerEntityRef(name).String(), "url": e.URL, "reach": reach.String(),
 	}
 	if why != nil {
 		out["why"] = why.Error()
@@ -168,8 +168,8 @@ func (s *Server) checkRunner(w http.ResponseWriter, r *http.Request) {
 func (s *Server) removeRunner(w http.ResponseWriter, r *http.Request) {
 	store := s.scopedStore(r)
 	name := r.PathValue("name")
-	ref := runner.Ref(name)
-	e, ok, err := runner.FindErr(store, entity.JoinSegs([]string{name}))
+	ref := runnerEntityRef(name)
+	e, ok, err := findRunnerErr(store, entity.JoinSegs([]string{name}))
 	if !installed(w, r, fmt.Sprintf("runner %q", name), ok, err) {
 		return
 	}
@@ -247,7 +247,7 @@ func liveOn(r entity.Reader, ref entity.Ref, url string) []string {
 // cancelOn ends each task on a runner, and separates the ones it ended from the ones it
 // could not reach. A cancel that never arrived must not be counted as one that did.
 func cancelOn(url string, ids []string, why string) (cancelled, unreachable []string) {
-	p := runner.HTTP(url)
+	p := client.HTTP(url)
 	for _, id := range ids {
 		h := p.Attach(id)
 		if h == nil {
@@ -310,7 +310,7 @@ func runnerIdentity(store entity.Reader, name string) string {
 	if name == "" {
 		return ""
 	}
-	if e, ok := runner.Find(store, name); ok {
+	if e, ok := findRunner(store, name); ok {
 		return e.Principal()
 	}
 	return ""
@@ -320,7 +320,7 @@ func (s *Server) runnerFor(store entity.Reader, name string) (task.Runner, strin
 	if name == "" {
 		return s.runner, "", nil
 	}
-	e, ok, err := runner.FindErr(store, name)
+	e, ok, err := findRunnerErr(store, name)
 	if err != nil && !errors.Is(err, entity.ErrForbidden) {
 		// The read did not happen, which is not a runner that is not installed: said as what
 		// it is, so whoever reads the refusal waits for the store rather than installs again.
@@ -331,10 +331,10 @@ func (s *Server) runnerFor(store entity.Reader, name string) (task.Runner, strin
 		// that is not there are one answer, and the listing beside it is what they may read.
 		// A failed listing names none rather than saying none are installed.
 		have := "its runners could not be listed"
-		if listed, err := runner.ListErr(store); err == nil {
+		if listed, err := installedRunnersErr(store); err == nil {
 			names := make([]string, 0, len(listed))
 			for _, i := range listed {
-				names = append(names, runner.Ref(i.Name).String())
+				names = append(names, runnerEntityRef(i.Name).String())
 			}
 			have = "none are installed"
 			if len(names) > 0 {
@@ -351,5 +351,5 @@ func (s *Server) runnerFor(store entity.Reader, name string) (task.Runner, strin
 			"naming a runner that is not installed is refused rather than run somewhere else",
 			who, name, have)
 	}
-	return runner.HTTP(e.URL), runner.Ref(e.Name).String(), nil
+	return client.HTTP(e.URL), runnerEntityRef(e.Name).String(), nil
 }

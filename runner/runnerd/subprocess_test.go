@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/task/tasktest"
@@ -72,7 +72,7 @@ func newSubprocess(t *testing.T) (*runnerd.SubprocessHandler, task.Runner) {
 	})
 	srv := httptest.NewServer(h.HTTPHandler())
 	t.Cleanup(func() { srv.Close(); h.Shutdown() })
-	return h, runner.HTTP(srv.URL)
+	return h, client.HTTP(srv.URL)
 }
 
 // resolvedTempDir is t.TempDir with its symlinks resolved, as a task's working directory has
@@ -126,7 +126,7 @@ func (p *subprocessProducer) RaiseGate(t *testing.T, id, gate, reason string) st
 	return ""
 }
 
-func (p *subprocessProducer) Snapshot(t *testing.T, id string) (task.Instance, bool) {
+func (p *subprocessProducer) Snapshot(t *testing.T, id string) (task.Snapshot, bool) {
 	t.Helper()
 	in, err := p.rt.(task.Lister).TaskSnapshot(id)
 	return in, err == nil
@@ -208,7 +208,7 @@ func TestAProcessThatDiesFailsItsTask(t *testing.T) {
 }
 
 // runToEnd spawns l, and returns its snapshot once it has ended.
-func runToEnd(t *testing.T, rt task.Runner, l task.Launch) task.Instance {
+func runToEnd(t *testing.T, rt task.Runner, l task.Launch) task.Snapshot {
 	t.Helper()
 	rt.Spawn(l)
 	deadline := time.Now().Add(10 * time.Second)
@@ -219,7 +219,7 @@ func runToEnd(t *testing.T, rt task.Runner, l task.Launch) task.Instance {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("%s didn't end", l.ID)
-	return task.Instance{}
+	return task.Snapshot{}
 }
 
 func waitGone(t *testing.T, path string) {

@@ -213,21 +213,26 @@ PUT    /tasks/{id}/vector   {vector, by?}                  slide autonomy
 ```
 
 A control call that was applied answers `204`. A task the runner does not host answers `404`.
+A resolve without a `choice` answers `400`, and the gate stays open.
 
 ### The bodies
 
-Each body is one Go type in package `task`, used by verse when it sends and by the stock runner
-(`runner/runnerd`) when it reads. Each is in the schema under its name (`verse schema`), which is
-where a runner in another language reads it.
+Each body is one Go type: a request or an answer of the runner's own in package `runner`, and
+a task's snapshot and events in package `task` (the launch and the vector are still there too).
+verse uses them when it sends and the stock runner (`runner/runnerd`) when it reads. Each is in
+the schema under its name (`verse schema`), which is where a runner in another language reads
+it.
 
 | Route | Type | Schema name |
 |---|---|---|
 | `POST /tasks` | `task.SpawnRequest` | `verse-runner-spawn` |
-| `POST /tasks`, the answer | `task.Spawned` | `verse-runner-spawned` |
-| `POST /tasks/{id}/say` | `task.SayRequest` | `verse-runner-say` |
-| `POST /tasks/{id}/cancel` | `task.CancelRequest` | `verse-runner-cancel` |
+| `POST /tasks`, the answer | `runner.SpawnResponse` | `verse-runner-spawned` |
+| `POST /tasks/{id}/say` | `runner.SayRequest` | `verse-runner-say` |
+| `POST /tasks/{id}/cancel` | `runner.CancelRequest` | `verse-runner-cancel` |
+| `POST /tasks/{id}/resolve` | `runner.ResolveRequest` | `verse-runner-resolve` |
 | `PUT /tasks/{id}/vector` | `task.VectorRequest` | `verse-runner-vector` |
-| `GET /tasks/{id}` | `task.Instance` | `verse-instance` |
+| `GET /tasks`, `GET /tasks/{id}` | `task.Snapshot` | `verse-task-snapshot` |
+| `GET /tasks/{id}/events` | `task.Event` | `verse-task-event` |
 
 **The launch.** Every field is optional. A field that is absent means the runner's own default.
 
@@ -429,7 +434,7 @@ Everything above is built, except what this section names.
   handle, and never a concrete `*Task`.
 - Events carry a per-task cursor with a bounded ring. `GET /events?since=N` replays and then goes
   live. Verse keeps its high-water cursor on the entity.
-- `runner.HTTP(baseURL)` drives a remote verse over the verse-facing contract.
+- `client.HTTP(baseURL)` drives a remote verse over the verse-facing contract.
 - The reconcile at startup resumes a task where the work outlived the daemon, and does not orphan
   it.
 - Every operator verb works on local and remote tasks alike.

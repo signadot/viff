@@ -8,7 +8,6 @@ import (
 	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/resolver"
-	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/schedule"
 	"github.com/signadot/verse/trigger"
 )
@@ -30,7 +29,7 @@ func TestWhatTheSystemMadeBeneathARowIsReadThroughTheRowsLine(t *testing.T) {
 		entity.VerseRef(trigger.StrataSystem, trigger.StrataKind),
 		entity.VerseRef(trigger.CharterSystem, trigger.PackageKind),
 		entity.VerseRef(resolver.System),
-		entity.VerseRef(runner.System),
+		entity.VerseRef(runnersSystem),
 		entity.VerseRef(verseio.System),
 		entity.VerseRef(schedule.System),
 		entity.VerseRef(entity.PrincipalSystem, entity.GroupKind),

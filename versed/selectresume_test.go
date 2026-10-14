@@ -126,7 +126,7 @@ func TestARestartHonoursASelectionsDeadline(t *testing.T) {
 		return qid != ""
 	})
 	waitUntil(t, "the deadline to be stamped", func() bool {
-		_, _, at := mirror.DeadlineOf(entity.Obj(question(t, first, qid)).Payload())
+		_, _, at := mirror.DeadlineOf(entity.Obj(questionDoc(t, first, qid)).Payload())
 		return at != ""
 	})
 	backdate(t, first.Store, qid) // down for longer than the window
@@ -135,7 +135,7 @@ func TestARestartHonoursASelectionsDeadline(t *testing.T) {
 	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
 	second.Start(t.Context())
 	waitUntil(t, "the expired selection to settle on nothing", func() bool {
-		return question(t, second, qid)["verdict"] == "none"
+		return questionDoc(t, second, qid)["verdict"] == "none"
 	})
 	time.Sleep(200 * time.Millisecond)
 	if spawnedDoer(t, second, "gpt") || spawnedDoer(t, second, "claude") {

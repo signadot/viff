@@ -219,21 +219,21 @@ func TestAPromptTakesALineTypedAfterIt(t *testing.T) {
 
 // The unit of it: what a prompt makes of a line.
 func TestPromptTake(t *testing.T) {
-	yn := newPrompt(task.Frame{ID: "t~d1", Options: nil})
+	yn := newPrompt(task.Event{ID: "t~d1", Options: nil})
 	if c, _, ok := yn.take("Yes"); !ok || c != task.Proceed {
 		t.Errorf("yes → %q %v", c, ok)
 	}
 	if _, _, ok := yn.take("hello"); ok {
 		t.Error("a yes-or-no question took a word as an answer")
 	}
-	menu := newPrompt(task.Frame{ID: "t~d2", Options: []task.Option{{ID: "a"}, {ID: "b"}}})
+	menu := newPrompt(task.Event{ID: "t~d2", Options: []task.Option{{ID: "a"}, {ID: "b"}}})
 	if c, _, ok := menu.take("2"); !ok || c != "b" {
 		t.Errorf("2 → %q %v", c, ok)
 	}
 	if _, _, ok := menu.take("c"); ok {
 		t.Error("a menu took an option it does not offer")
 	}
-	reply := newPrompt(task.Frame{ID: "t~3", Options: []task.Option{{ID: task.Reply}}})
+	reply := newPrompt(task.Event{ID: "t~3", Options: []task.Option{{ID: task.Reply}}})
 	if c, say, ok := reply.take("  some words "); !ok || c != task.Reply || say[0] != "some words" {
 		t.Errorf("words → %q %v %v", c, say, ok)
 	}

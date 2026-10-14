@@ -1,4 +1,4 @@
-package runner_test
+package client_test
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
 )
@@ -69,7 +69,7 @@ func TestALaunchReachesARemoteRunnerWhole(t *testing.T) {
 		Environment: "verse-repo", Scope: "me", Occurrence: 4217,
 		Provenance: task.Provenance{Principal: "user:ana@example.com", Subject: "demo.pr.1", Chain: "review"},
 	}
-	h := runner.HTTP(srv.URL).Spawn(sent)
+	h := client.HTTP(srv.URL).Spawn(sent)
 	if msg := h.Err(); msg != "" {
 		t.Fatalf("the spawn was refused: %s", msg)
 	}
@@ -100,7 +100,7 @@ func TestALaunchReachesARemoteRunnerWhole(t *testing.T) {
 		t.Errorf("a launch that named no grant arrived bounded by %+v", got.Grant)
 	}
 	// And the runner says back which run it is.
-	snap, err := runner.HTTP(srv.URL).(task.Lister).TaskSnapshot(sent.ID)
+	snap, err := client.HTTP(srv.URL).(task.Lister).TaskSnapshot(sent.ID)
 	if err != nil || snap.Occurrence != sent.Occurrence {
 		t.Errorf("the snapshot says occurrence %d (%v), want %d", snap.Occurrence, err, sent.Occurrence)
 	}
@@ -109,12 +109,12 @@ func TestALaunchReachesARemoteRunnerWhole(t *testing.T) {
 // A cancel's reason reaches the task it ends, where its charters read it.
 func TestACancelsReasonReachesARemoteTask(t *testing.T) {
 	srv, _ := remote(t, &paced{n: 500})
-	r := runner.HTTP(srv.URL)
+	r := client.HTTP(srv.URL)
 	h := r.Spawn(task.Launch{ID: "long", Prompt: "wait"})
 	if err := h.Cancel("the place is going away"); err != nil {
 		t.Fatalf("cancel: %v", err)
 	}
-	var snap task.Instance
+	var snap task.Snapshot
 	for i := 0; i < 300; i++ {
 		s, err := r.(task.Lister).TaskSnapshot("long")
 		if err == nil && s.Status.Terminal() {
@@ -147,7 +147,7 @@ func TestASpawnThatDoesNotParseIsRefused(t *testing.T) {
 	if code := post(`{id: "typed", retain: "many"}`); code != http.StatusBadRequest {
 		t.Errorf("a spawn whose field is the wrong type = %d, want 400", code)
 	}
-	tasks, err := runner.HTTP(srv.URL).(task.Lister).ListTasks()
+	tasks, err := client.HTTP(srv.URL).(task.Lister).ListTasks()
 	if err != nil || len(tasks) != 0 {
 		t.Fatalf("after two refused spawns the runner hosts %v (%v), want nothing", tasks, err)
 	}

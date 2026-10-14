@@ -213,7 +213,7 @@ func (d *llmDriver) completeWithRetry(ctx context.Context) (chatMessage, string,
 			wait, attempt+2, len(modelBackoff)+1, err)
 		fmt.Fprintf(d.log, "   ↻ %s\n", note)
 		if d.emit != nil {
-			d.emit(task.Frame{Kind: task.EvSay, Text: note})
+			d.emit(task.Event{Kind: task.EventSay, Text: note})
 		}
 		select {
 		case <-time.After(wait):
@@ -256,7 +256,7 @@ func (d *llmDriver) completeAloud(ctx context.Context) (chatMessage, string, err
 					time.Since(started).Round(time.Second))
 				fmt.Fprintf(d.log, "   … %s\n", note)
 				if d.emit != nil {
-					d.emit(task.Frame{Kind: task.EvSay, Text: note})
+					d.emit(task.Event{Kind: task.EventSay, Text: note})
 				}
 			}
 		}
@@ -288,7 +288,7 @@ type llmDriver struct {
 	frame    string // system prompt; empty is legal (a driver built without one)
 	prompt   string
 	log      io.Writer
-	emit     func(task.Frame) // publish narration onto the task read plane; nil = log only
+	emit     func(task.Event) // publish narration onto the task read plane; nil = log only
 	folding  []chatMessage    // messages waiting to land, folded in before the next model turn
 	ended    bool             // the model ended the RUN (yield done), not merely its turn
 }
@@ -353,7 +353,7 @@ func (d *llmDriver) Next(ctx context.Context, prev task.StepResult) (task.ToolUs
 		if c := strings.TrimSpace(msg.Content); c != "" {
 			fmt.Fprintf(d.log, "\n🗣  %s\n", c)
 			if d.emit != nil { // put the agent's words on the read plane (attach sees them)
-				d.emit(task.Frame{Kind: task.EvSay, Text: c})
+				d.emit(task.Event{Kind: task.EventSay, Text: c})
 			}
 		}
 		if finish != "tool_calls" || len(msg.ToolCalls) == 0 {
@@ -650,7 +650,7 @@ func (d *llmDriver) yield(tc toolCall) (task.ToolUse, bool, error) {
 	}
 	fmt.Fprintf(d.log, "   … %s\n", line)
 	if d.emit != nil {
-		d.emit(task.Frame{Kind: task.EvSay, Text: line})
+		d.emit(task.Event{Kind: task.EventSay, Text: line})
 	}
 	return task.ToolUse{}, false, nil
 }

@@ -1,4 +1,4 @@
-package runner_test
+package client_test
 
 import (
 	"errors"
@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/task"
 )
 
@@ -26,7 +26,7 @@ func TestControlAgainstADeadRemoteIsUnreachable(t *testing.T) {
 	url := srv.URL
 	srv.Close()
 
-	h := runner.HTTP(url).Attach("p")
+	h := client.HTTP(url).Attach("p")
 	for _, c := range []struct {
 		what string
 		err  error
@@ -52,7 +52,7 @@ func TestControlAgainstARefusingRemoteIsNotUnreachable(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	h := runner.HTTP(srv.URL).Attach("p")
+	h := client.HTTP(srv.URL).Attach("p")
 	err := h.Cancel("stop")
 	if err == nil {
 		t.Fatal("a refused cancel reported success")
@@ -79,7 +79,7 @@ func TestARemoteResolveDistinguishesItsRefusals(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "no", c.status)
 		}))
-		err := runner.HTTP(srv.URL).Attach("p").(resolver).Resolve("d1", "proceed", "", "human:scott")
+		err := client.HTTP(srv.URL).Attach("p").(resolver).Resolve("d1", "proceed", "", "human:scott")
 		if !errors.Is(err, c.want) {
 			t.Errorf("a %d answer = %v, want %v", c.status, err, c.want)
 		}
@@ -97,7 +97,7 @@ func TestControlAgainstAHangingRemoteIsBounded(t *testing.T) {
 	// NOT RUN BY DEFAULT — set GOTEST_LONG=1. Its runtime IS what it demonstrates: the
 	// deadline expiring is the observation, and a shorter one would be a different test.
 	if os.Getenv("GOTEST_LONG") == "" {
-		t.Skip("long: set GOTEST_LONG=1 to run (it waits out runner.ControlTimeout)")
+		t.Skip("long: set GOTEST_LONG=1 to run (it waits out client.ControlTimeout)")
 	}
 	block := make(chan struct{})
 	defer close(block)
@@ -115,13 +115,13 @@ func TestControlAgainstAHangingRemoteIsBounded(t *testing.T) {
 	}
 
 	done := make(chan error, 1)
-	go func() { done <- runner.HTTP(srv.URL).Attach("p").Cancel("stop") }()
+	go func() { done <- client.HTTP(srv.URL).Attach("p").Cancel("stop") }()
 	select {
 	case err := <-done:
 		if !errors.Is(err, task.ErrUnreachable) {
 			t.Fatalf("a timed-out cancel = %v, want ErrUnreachable", err)
 		}
-	case <-time.After(runner.ControlTimeout + 15*time.Second):
+	case <-time.After(client.ControlTimeout + 15*time.Second):
 		t.Fatal("a control call against a hanging remote never returned")
 	}
 }

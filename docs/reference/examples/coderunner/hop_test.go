@@ -17,7 +17,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/task"
 )
 
@@ -40,7 +40,7 @@ func TestMain(m *testing.M) {
 // delivery — comes back through the contract as if it had not.
 //
 // This is the whole claim of the hop, so it is asserted end to end: a real launch over
-// runner.HTTP against the parent's own handler, a real child process, a real push landing on a
+// client.HTTP against the parent's own handler, a real child process, a real push landing on a
 // real origin.
 func TestATaskRunsInItsOwnProcessAndDelivers(t *testing.T) {
 	fastLifecycle(t)
@@ -60,7 +60,7 @@ func TestATaskRunsInItsOwnProcessAndDelivers(t *testing.T) {
 	srv := httptest.NewServer(r.Handler())
 	defer srv.Close()
 
-	rt := runner.HTTP(srv.URL)
+	rt := client.HTTP(srv.URL)
 	h := rt.Spawn(task.Launch{
 		ID: "t1", Prompt: "write the file",
 		// Auto: this test is about the hop, not about the gate. The gate over the hop is the
@@ -103,7 +103,7 @@ func TestAGateInsideTheChildIsAnsweredFromOutside(t *testing.T) {
 	srv := httptest.NewServer(r.Handler())
 	defer srv.Close()
 
-	rt := runner.HTTP(srv.URL)
+	rt := client.HTTP(srv.URL)
 	// No vector: the command driver's own default asks before it hands work to a program.
 	h := rt.Spawn(task.Launch{ID: "t2", Prompt: "run it"})
 	frames, cancel := h.Subscribe()
@@ -119,12 +119,12 @@ func TestAGateInsideTheChildIsAnsweredFromOutside(t *testing.T) {
 	var asked bool
 	for f := range frames {
 		switch {
-		case f.Kind == task.EvPending:
+		case f.Kind == task.EventPending:
 			asked = true
 			if err := res.Resolve(f.ID, "proceed", "", "human:test"); err != nil {
 				t.Fatalf("answering the gate across the hop: %v", err)
 			}
-		case f.Kind == task.EvStatus && task.Status(f.Text).Terminal():
+		case f.Kind == task.EventStatus && task.Status(f.Text).Terminal():
 			status = task.Status(f.Text)
 		}
 		if status != "" {
@@ -163,12 +163,12 @@ func TestADeadTaskProcessBecomesAFailedTask(t *testing.T) {
 	srv := httptest.NewServer(r.Handler())
 	defer srv.Close()
 
-	rt := runner.HTTP(srv.URL)
+	rt := client.HTTP(srv.URL)
 	h := rt.Spawn(task.Launch{ID: "t3", Prompt: "wait at the gate"})
 	frames, cancel := h.Subscribe()
 	defer cancel()
 	for f := range frames {
-		if f.Kind == task.EvPending {
+		if f.Kind == task.EventPending {
 			break
 		}
 	}
@@ -212,11 +212,11 @@ func TestTheControlPlaneIsNotInsideTheWorkspace(t *testing.T) {
 	srv := httptest.NewServer(r.Handler())
 	defer srv.Close()
 
-	h := runner.HTTP(srv.URL).Spawn(task.Launch{ID: "t4", Prompt: "sit at the gate"})
+	h := client.HTTP(srv.URL).Spawn(task.Launch{ID: "t4", Prompt: "sit at the gate"})
 	frames, cancel := h.Subscribe()
 	defer cancel()
 	for f := range frames {
-		if f.Kind == task.EvPending {
+		if f.Kind == task.EventPending {
 			break
 		}
 	}
@@ -241,7 +241,7 @@ func TestTheControlPlaneIsNotInsideTheWorkspace(t *testing.T) {
 // A launch this runner will not host is REFUSED, and the refusal reaches the caller as a refusal.
 //
 // Before the hop these came back as a task that failed immediately, which reads downstream as
-// work that was attempted. runner.HTTP turns a non-2xx spawn into a failed handle carrying the
+// work that was attempted. client.HTTP turns a non-2xx spawn into a failed handle carrying the
 // runner's own words, so saying no on the wire is now the accurate thing.
 func TestAnUnhostableLaunchIsRefusedOnTheWire(t *testing.T) {
 	fastLifecycle(t)
@@ -255,7 +255,7 @@ func TestAnUnhostableLaunchIsRefusedOnTheWire(t *testing.T) {
 	srv := httptest.NewServer(r.Handler())
 	defer srv.Close()
 
-	rt := runner.HTTP(srv.URL)
+	rt := client.HTTP(srv.URL)
 	h := rt.Spawn(task.Launch{ID: "t5", Prompt: "x", Environment: "nowhere"})
 	if err := h.Err(); !strings.Contains(err, "no environment") {
 		t.Errorf("spawn into an unknown environment reported %q", err)
@@ -323,7 +323,7 @@ func awaitTerminal(t *testing.T, h task.Handle) task.Status {
 	frames, cancel := h.Subscribe()
 	defer cancel()
 	for f := range frames {
-		if f.Kind == task.EvStatus && task.Status(f.Text).Terminal() {
+		if f.Kind == task.EventStatus && task.Status(f.Text).Terminal() {
 			return task.Status(f.Text)
 		}
 	}
@@ -381,7 +381,7 @@ func TestTheLLMDriverRunsInTheChildToo(t *testing.T) {
 	srv := httptest.NewServer(r.Handler())
 	defer srv.Close()
 
-	h := runner.HTTP(srv.URL).Spawn(task.Launch{
+	h := client.HTTP(srv.URL).Spawn(task.Launch{
 		ID: "t7", Prompt: "read something", Vector: &task.Vector{Default: task.Auto},
 	})
 	if st := awaitTerminal(t, h); st != task.Failed {
@@ -439,7 +439,7 @@ func TestASecretOutsideTheAllowlistDoesNotReachTheAgent(t *testing.T) {
 	srv := httptest.NewServer(r.Handler())
 	defer srv.Close()
 
-	h := runner.HTTP(srv.URL).Spawn(task.Launch{
+	h := client.HTTP(srv.URL).Spawn(task.Launch{
 		ID: "t8", Prompt: "print your environment", Vector: &task.Vector{Default: task.Auto},
 	})
 	if st := awaitTerminal(t, h); st != task.Done {
@@ -481,7 +481,7 @@ func TestDeliveryIsAGatedActionOfTheTask(t *testing.T) {
 	srv := httptest.NewServer(r.Handler())
 	defer srv.Close()
 
-	rt := runner.HTTP(srv.URL)
+	rt := client.HTTP(srv.URL)
 	// A charter that wants to be asked before work leaves says exactly this, and could not have
 	// before: `push` is the verb, and the action carrying it did not exist.
 	h := rt.Spawn(task.Launch{
@@ -500,14 +500,14 @@ func TestDeliveryIsAGatedActionOfTheTask(t *testing.T) {
 	var gate, exec, terminal string
 	for f := range frames {
 		switch {
-		case f.Kind == task.EvPending && f.Tool == pushToolName:
+		case f.Kind == task.EventPending && f.Tool == pushToolName:
 			gate = f.Gate
 			if err := res.Resolve(f.ID, "proceed", "", "human:test"); err != nil {
 				t.Fatalf("approving the delivery: %v", err)
 			}
-		case f.Kind == task.EvExec && f.Tool == pushToolName:
+		case f.Kind == task.EventExec && f.Tool == pushToolName:
 			exec = f.Text
-		case f.Kind == task.EvStatus && task.Status(f.Text).Terminal():
+		case f.Kind == task.EventStatus && task.Status(f.Text).Terminal():
 			terminal = f.Text
 		}
 		if terminal != "" {
@@ -546,7 +546,7 @@ func TestARefusedDeliveryPushesNothingAndKeepsTheWork(t *testing.T) {
 	srv := httptest.NewServer(r.Handler())
 	defer srv.Close()
 
-	h := runner.HTTP(srv.URL).Spawn(task.Launch{
+	h := client.HTTP(srv.URL).Spawn(task.Launch{
 		ID: "d2", Prompt: "write the file",
 		Vector: &task.Vector{Default: task.Auto, Gates: []task.Gate{{
 			Name: "delivery", Mode: task.Ask,
@@ -560,12 +560,12 @@ func TestARefusedDeliveryPushesNothingAndKeepsTheWork(t *testing.T) {
 	})
 	var terminal string
 	for f := range frames {
-		if f.Kind == task.EvPending && f.Tool == pushToolName {
+		if f.Kind == task.EventPending && f.Tool == pushToolName {
 			if err := res.Resolve(f.ID, "deny", "not this branch", "human:test"); err != nil {
 				t.Fatal(err)
 			}
 		}
-		if f.Kind == task.EvStatus && task.Status(f.Text).Terminal() {
+		if f.Kind == task.EventStatus && task.Status(f.Text).Terminal() {
 			terminal = f.Text
 			break
 		}
@@ -620,17 +620,17 @@ func TestATaskThatChangedNothingSaysSo(t *testing.T) {
 	srv := httptest.NewServer(r.Handler())
 	defer srv.Close()
 
-	h := runner.HTTP(srv.URL).Spawn(task.Launch{
+	h := client.HTTP(srv.URL).Spawn(task.Launch{
 		ID: "n1", Prompt: "check it", Vector: &task.Vector{Default: task.Auto},
 	})
 	frames, cancel := h.Subscribe()
 	defer cancel()
 	var deliver, terminal string
 	for f := range frames {
-		if f.Kind == task.EvExec && f.Tool == pushToolName {
+		if f.Kind == task.EventExec && f.Tool == pushToolName {
 			deliver = f.Text
 		}
-		if f.Kind == task.EvStatus && task.Status(f.Text).Terminal() {
+		if f.Kind == task.EventStatus && task.Status(f.Text).Terminal() {
 			terminal = f.Text
 			break
 		}
@@ -695,7 +695,7 @@ func TestAFinishedTaskIDRunsAgain(t *testing.T) {
 	srv := httptest.NewServer(r.Handler())
 	defer srv.Close()
 
-	rt := runner.HTTP(srv.URL)
+	rt := client.HTTP(srv.URL)
 	id := "comment-drift@drift.head.head-moved@git.head.verse"
 	for i, want := range []string{"ran", "ran"} {
 		h := rt.Spawn(task.Launch{ID: id, Prompt: "go", Vector: &task.Vector{Default: task.Auto}})
@@ -777,7 +777,7 @@ func TestTheAgentProposesAPushToANamedDestination(t *testing.T) {
 	srv := httptest.NewServer(r.Handler())
 	defer srv.Close()
 
-	h := runner.HTTP(srv.URL).Spawn(task.Launch{
+	h := client.HTTP(srv.URL).Spawn(task.Launch{
 		ID: "g1", Prompt: "merge it",
 		// Ask about main; everything else — including the closing delivery to `auto` — runs.
 		Vector: &task.Vector{Default: task.Auto, Gates: []task.Gate{{
@@ -797,12 +797,12 @@ func TestTheAgentProposesAPushToANamedDestination(t *testing.T) {
 	var terminal string
 	for f := range frames {
 		switch {
-		case f.Kind == task.EvPending:
+		case f.Kind == task.EventPending:
 			asked = append(asked, f.Tool)
 			if err := res.Resolve(f.ID, "proceed", "", "human:test"); err != nil {
 				t.Fatalf("approving %s: %v", f.Tool, err)
 			}
-		case f.Kind == task.EvStatus && task.Status(f.Text).Terminal():
+		case f.Kind == task.EventStatus && task.Status(f.Text).Terminal():
 			terminal = f.Text
 		}
 		if terminal != "" {
@@ -860,7 +860,7 @@ func TestAnUndeclaredDestinationIsRefusedWithoutAsking(t *testing.T) {
 	srv := httptest.NewServer(r.Handler())
 	defer srv.Close()
 
-	h := runner.HTTP(srv.URL).Spawn(task.Launch{
+	h := client.HTTP(srv.URL).Spawn(task.Launch{
 		ID: "g2", Prompt: "push it somewhere",
 		Vector: &task.Vector{Default: task.Auto, Gates: []task.Gate{{
 			Name: "any-push", Mode: task.Ask,
@@ -881,12 +881,12 @@ func TestAnUndeclaredDestinationIsRefusedWithoutAsking(t *testing.T) {
 	askedFirst := false
 	for f := range frames {
 		switch {
-		case f.Kind == task.EvPending:
+		case f.Kind == task.EventPending:
 			asked++
 			_ = res.Resolve(f.ID, "proceed", "", "human:test")
-		case f.Kind == task.EvExec && f.Tool == pushToolName && refused == "":
+		case f.Kind == task.EventExec && f.Tool == pushToolName && refused == "":
 			refused, askedFirst = f.Text, asked > 0
-		case f.Kind == task.EvStatus && task.Status(f.Text).Terminal():
+		case f.Kind == task.EventStatus && task.Status(f.Text).Terminal():
 			terminal = f.Text
 		}
 		if terminal != "" {
@@ -980,7 +980,7 @@ func TestApprovalIsWhatReleasesTheCredential(t *testing.T) {
 	srv := httptest.NewServer(r.Handler())
 	defer srv.Close()
 
-	h := runner.HTTP(srv.URL).Spawn(task.Launch{
+	h := client.HTTP(srv.URL).Spawn(task.Launch{
 		ID: "g3", Prompt: "merge it",
 		Vector: &task.Vector{Default: task.Auto, Gates: []task.Gate{{
 			Name: "to-main", Mode: task.Ask,
@@ -998,11 +998,11 @@ func TestApprovalIsWhatReleasesTheCredential(t *testing.T) {
 	var terminal string
 	for f := range frames {
 		switch {
-		case f.Kind == task.EvPending && f.Tool == pushToolName:
+		case f.Kind == task.EventPending && f.Tool == pushToolName:
 			if err := res.Resolve(f.ID, "deny", "not main, not today", "human:test"); err != nil {
 				t.Fatal(err)
 			}
-		case f.Kind == task.EvStatus && task.Status(f.Text).Terminal():
+		case f.Kind == task.EventStatus && task.Status(f.Text).Terminal():
 			terminal = f.Text
 		}
 		if terminal != "" {
@@ -1080,7 +1080,7 @@ func TestACallListRunsInTheChildToo(t *testing.T) {
 	srv := httptest.NewServer(r.Handler())
 	defer srv.Close()
 
-	h := runner.HTTP(srv.URL).Spawn(task.Launch{
+	h := client.HTTP(srv.URL).Spawn(task.Launch{
 		ID: "t-calls", Vector: &task.Vector{Default: task.Auto},
 		Calls: []task.Call{{Tool: "run_bash",
 			Input: map[string]any{"command": "echo listed > svc/ran.txt"}}},
@@ -1109,7 +1109,7 @@ func TestAnEmptyCallListFailsAcrossTheHop(t *testing.T) {
 	srv := httptest.NewServer(r.Handler())
 	defer srv.Close()
 
-	h := runner.HTTP(srv.URL).Spawn(task.Launch{
+	h := client.HTTP(srv.URL).Spawn(task.Launch{
 		ID: "t-nolist", Prompt: "please merge the branch and push it",
 		Vector: &task.Vector{Default: task.Auto},
 	})

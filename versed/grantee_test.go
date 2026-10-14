@@ -10,7 +10,6 @@ import (
 	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/resolver"
-	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/trigger"
 )
 
@@ -29,7 +28,7 @@ func TestTheGrammarsActorsAreTheOnesThatAct(t *testing.T) {
 			t.Errorf("%s acts, and its principal does not parse: %v", ref, err)
 		}
 	}
-	if _, err := entity.ParseGrantee(entity.Via(runner.Ref("coderunner"))); err == nil {
+	if _, err := entity.ParseGrantee(entity.Via(runnerEntityRef("coderunner"))); err == nil {
 		t.Errorf("a runner's address parsed as a place that acts")
 	}
 }

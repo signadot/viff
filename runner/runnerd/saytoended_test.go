@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/task"
 )
 
@@ -30,7 +30,7 @@ func TestWordsToAnEndedHostedTaskAreErrEnded(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	err := runner.HTTP(srv.URL).Attach("run-said").Steer("still there?", "user:alice@example.com", "")
+	err := client.HTTP(srv.URL).Attach("run-said").Steer("still there?", "user:alice@example.com", "")
 	if !errors.Is(err, task.ErrEnded) {
 		t.Fatalf("words to an ended task = %v, want task.ErrEnded", err)
 	}

@@ -181,9 +181,9 @@ func drive(t *testing.T, withVerb bool) driveResult {
 		fannedOut := false // every file has an agent; anything after this is passing the time
 		for f := range frames {
 			switch f.Kind {
-			case task.EvBoundary:
+			case task.EventBoundary:
 				r.boundaries++
-			case task.EvChild:
+			case task.EventChild:
 				if name, ok := strings.CutPrefix(f.Text, "spawned "); ok {
 					if fannedOut {
 						r.polling = append(r.polling, "spawn:"+name)
@@ -193,12 +193,12 @@ func drive(t *testing.T, withVerb bool) driveResult {
 						fannedOut = true
 					}
 				}
-			case task.EvExec:
+			case task.EventExec:
 				r.execs = append(r.execs, f.Tool)
 				if fannedOut {
 					r.polling = append(r.polling, "exec:"+f.Tool)
 				}
-			case task.EvSay:
+			case task.EventSay:
 				if strings.Contains(f.Text, "yielded (waiting)") {
 					r.waits++
 				}

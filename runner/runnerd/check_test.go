@@ -33,7 +33,7 @@ func TestARefusedQuestionIsNeverPosed(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	var got task.Instance
+	var got task.Snapshot
 	for i := 0; i < 300; i++ {
 		if in, ok := d.SnapshotOf("run-refused"); ok && in.Status.Terminal() {
 			got = in

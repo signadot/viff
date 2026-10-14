@@ -400,7 +400,7 @@ func ownsAreDocuments(node *ir.Node) error {
 // listed (`verse.io.laptop`), or its name (`laptop`) — an operator reading `verse data` and
 // one typing `verse io show` should not have to know two spellings of one thing.
 //
-// FindErr is the same read reporting whether it HAPPENED — see runner.FindErr.
+// FindErr is the same read reporting whether it HAPPENED — see versed's findRunnerErr.
 func Find(r entity.Reader, ref string) (Entity, bool) {
 	e, ok, _ := FindErr(r, ref)
 	return e, ok
@@ -431,7 +431,7 @@ func List(r entity.Reader) []Entity {
 // ListErr is List, reporting the error THIS read failed with — see entity.ListErr.
 func ListErr(r entity.Reader) ([]Entity, error) {
 	var out []Entity
-	// At the subtree — see runner.List for why a List(pred) is the wrong read here: it is a
+	// At the subtree — see versed's installedRunners for why a List(pred) is the wrong read here: it is a
 	// Match on the root, so listing the sources read the whole verse, sources' own output
 	// included.
 	registry := []string{entity.VerseRoot, System}

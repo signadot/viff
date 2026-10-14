@@ -12,7 +12,7 @@ import (
 	"github.com/signadot/verse/task/tasktest"
 )
 
-// The local runtime joins the task.Instance conformance suite, so the two producers are
+// The local runtime joins the task.Snapshot conformance suite, so the two producers are
 // held to the same properties rather than each being spot-checked on its own terms.
 func TestConformance(t *testing.T) {
 	p := &localProducer{specs: map[string]tasktest.Spec{}}
@@ -72,7 +72,7 @@ func (p *localProducer) RaiseGate(t *testing.T, id, gate, reason string) string 
 	return ""
 }
 
-func (p *localProducer) Snapshot(t *testing.T, id string) (task.Instance, bool) {
+func (p *localProducer) Snapshot(t *testing.T, id string) (task.Snapshot, bool) {
 	t.Helper()
 	return p.d.SnapshotOf(id)
 }

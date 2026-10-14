@@ -55,7 +55,7 @@ func TestARunsGateTakesAThreshold(t *testing.T) {
 		t.Fatalf("spawn = %s", resp.Status)
 	}
 	qid := waitQuestion(t, srv, "voted")
-	q := question(t, srv, qid)
+	q := questionDoc(t, srv, qid)
 	opts, _ := q["options"].([]any)
 	if len(opts) != 2 {
 		t.Fatalf("the record does not carry the gate's options: %+v", q)
@@ -69,7 +69,7 @@ func TestARunsGateTakesAThreshold(t *testing.T) {
 	if one.StatusCode != http.StatusAccepted {
 		t.Fatalf("the first ballot = %s, want 202 — one of two is not a settle", one.Status)
 	}
-	if q := question(t, srv, qid); q["status"] != mirror.QuestionPending {
+	if q := questionDoc(t, srv, qid); q["status"] != mirror.QuestionPending {
 		t.Fatalf("one ballot settled a two-ballot question: %+v", q)
 	}
 	noTerminalWithin(t, srv, "voted", 100*time.Millisecond)
@@ -119,7 +119,7 @@ func TestARunsGateDeadlineAnswersTheLoop(t *testing.T) {
 	qid := waitQuestion(t, srv, "unattended")
 	rec, _, _ := srv.Store.Get(mirror.QuestionRef(qid))
 	if within, dflt, _ := mirror.DeadlineOf(rec.Payload); within != "150ms" || dflt != task.Deny {
-		t.Fatalf("the record does not carry the gate's deadline: %+v", question(t, srv, qid))
+		t.Fatalf("the record does not carry the gate's deadline: %+v", questionDoc(t, srv, qid))
 	}
 
 	// Nobody answers. The clock does, as itself.

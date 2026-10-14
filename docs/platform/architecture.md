@@ -23,7 +23,7 @@ flowchart TB
   subgraph run["task control — how a task RUNS"]
     direction TB
     local["local<br/>runnerd, in-proc"]
-    remote["remote<br/>runner.HTTP"]
+    remote["remote<br/>client.HTTP"]
   end
 
   rt["task runtime (task, runner/runnerd)<br/>Task · Supervisor · Vector · Event stream · gate registry"]
@@ -119,7 +119,7 @@ Three implementations stand behind the seam.
 | Implementation | What it is |
 |---|---|
 | local | the `runnerd` daemon embedded in the verse process, reached by a Go call |
-| remote | `runner.HTTP(baseURL)`. It drives another verse or host over HTTP: `GET /tasks`, `GET /tasks/{id}/events?since=N`, and control POSTs. |
+| remote | `client.HTTP(baseURL)`. It drives another verse or host over HTTP: `GET /tasks`, `GET /tasks/{id}/events?since=N`, and control POSTs. |
 
 The seam is the same for both. So `verse task get/attach/cancel/say/approve` works for a
 local and a remote task. See [task control](../task-control.md).

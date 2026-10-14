@@ -11,7 +11,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/task"
 )
 
@@ -45,7 +45,7 @@ func settledQuestion(t *testing.T, srv *Server, id string) map[string]any {
 	t.Helper()
 	deadline := time.After(5 * time.Second)
 	for {
-		q := question(t, srv, id)
+		q := questionDoc(t, srv, id)
 		switch q["status"] {
 		case mirror.QuestionAnswered, mirror.QuestionOrphaned:
 			return q
@@ -58,7 +58,7 @@ func settledQuestion(t *testing.T, srv *Server, id string) map[string]any {
 	}
 }
 
-func question(t *testing.T, srv *Server, id string) map[string]any {
+func questionDoc(t *testing.T, srv *Server, id string) map[string]any {
 	t.Helper()
 	e, ok, err := srv.Store.Get(mirror.QuestionRef(id))
 	// SAY WHICH IT WAS. Dropping these turned every unreadable or absent question into an
@@ -109,7 +109,7 @@ func TestTwoAnswersRaceAndBothAreRecorded(t *testing.T) {
 		t.Fatal("the question never resolved")
 	}
 
-	q := question(t, srv, id)
+	q := questionDoc(t, srv, id)
 	if q["status"] != mirror.QuestionAnswered || q["by"] != "user:scott@example.com" || q["verdict"] != "proceed" {
 		t.Fatalf("the record does not name the winner: %+v", q)
 	}
@@ -161,7 +161,7 @@ func TestAnAnswerIsByWhoeverTheRequestIsMadeAs(t *testing.T) {
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("an answer whose body names nobody = %s, want 204 as the request's principal", resp.Status)
 	}
-	if q := question(t, srv, id); q["by"] != "user:"+tester {
+	if q := questionDoc(t, srv, id); q["by"] != "user:"+tester {
 		t.Fatalf("settled by %v, want the principal the request was made as", q["by"])
 	}
 }
@@ -184,7 +184,7 @@ func TestAnAnswerIsAboutTheQuestionItsPathNames(t *testing.T) {
 		t.Fatalf("an answer whose body names another question = %s, want 400", resp.Status)
 	}
 	for _, q := range []string{id, other} {
-		if got := question(t, srv, q); got["status"] != mirror.QuestionPending {
+		if got := questionDoc(t, srv, q); got["status"] != mirror.QuestionPending {
 			t.Fatalf("a refused answer settled %s: %+v", q, got)
 		}
 	}
@@ -201,7 +201,7 @@ func TestAnUndeliverableAnswerSaysSo(t *testing.T) {
 	dead.Close()
 
 	srv := testServer(t)
-	srv.SetRunner(runner.HTTP(deadURL))
+	srv.SetRunner(client.HTTP(deadURL))
 	mirror.PostQuestion(srv.Store, task.Pending{
 		Question: task.GateQuestion{ID: "p~d1", Origin: "p", Gate: "write"},
 	}, "p")
@@ -218,7 +218,7 @@ func TestAnUndeliverableAnswerSaysSo(t *testing.T) {
 
 	// And the question is untouched. Nothing is known about whether it was answered, so
 	// recording an outcome — settled, or stale — would be recording a guess.
-	q := question(t, srv, "p~d1")
+	q := questionDoc(t, srv, "p~d1")
 	if q["status"] != mirror.QuestionPending {
 		t.Fatalf("an undelivered answer changed the record: %+v", q)
 	}
@@ -246,7 +246,7 @@ func TestAQuestionWhoseAskerGaveUpLeavesTheDocket(t *testing.T) {
 			task.ToolUse{Name: "verse.trigger.review"})
 	}()
 	waitPending(t, srv, id)
-	if q := question(t, srv, id); q["status"] != mirror.QuestionPending {
+	if q := questionDoc(t, srv, id); q["status"] != mirror.QuestionPending {
 		t.Fatalf("the question was not published as pending: %+v", q)
 	}
 
@@ -254,7 +254,7 @@ func TestAQuestionWhoseAskerGaveUpLeavesTheDocket(t *testing.T) {
 
 	var got map[string]any
 	for range 400 {
-		got = question(t, srv, id)
+		got = questionDoc(t, srv, id)
 		if got["status"] != mirror.QuestionPending {
 			break
 		}
@@ -297,7 +297,7 @@ func TestOneJoinerLeavingKeepsTheQuestion(t *testing.T) {
 	give()
 	time.Sleep(100 * time.Millisecond)
 
-	if got := question(t, srv, id); got["status"] != mirror.QuestionPending {
+	if got := questionDoc(t, srv, id); got["status"] != mirror.QuestionPending {
 		t.Fatalf("status = %v, want still pending — somebody is still blocked on it: %+v",
 			got["status"], got)
 	}

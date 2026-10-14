@@ -103,7 +103,7 @@ type commandDriver struct {
 	mu      sync.Mutex
 	folding []string // messages the loop handed over, for the next turn
 
-	emit func(task.Frame)
+	emit func(task.Event)
 }
 
 func (d *commandDriver) Next(_ context.Context, prev task.StepResult) (task.ToolUse, bool, error) {
@@ -239,7 +239,7 @@ func (e *commandExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepRe
 			fmt.Errorf("%s failed (%s): %s", d.name, res.Subtype, firstLine(res.Result))
 	}
 	if d.emit != nil {
-		d.emit(task.Frame{Kind: task.EvSay, Text: res.Result})
+		d.emit(task.Event{Kind: task.EventSay, Text: res.Result})
 	}
 	return task.StepResult{Use: tu, Output: res.Result}, nil, nil
 }

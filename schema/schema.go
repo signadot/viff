@@ -49,6 +49,7 @@ import (
 	"github.com/signadot/verse/config"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/trigger"
 )
@@ -100,7 +101,7 @@ func load() {
 	aliases := map[string]*ir.Node{}
 
 	// Generated first, so a curated definition overrides rather than races it.
-	for _, src := range [][]byte{api.Schema, entity.Schema, trigger.Schema, task.Schema, config.Schema, launch.Schema} {
+	for _, src := range [][]byte{api.Schema, entity.Schema, trigger.Schema, task.Schema, runner.Schema, config.Schema, launch.Schema} {
 		if err := fold(src, aliases, false); err != nil {
 			loadErr = err
 			return

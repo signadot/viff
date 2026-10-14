@@ -17,7 +17,7 @@ import (
 func saidOn(t *testing.T, srv *Server, id string) map[string]string {
 	t.Helper()
 	out := map[string]string{}
-	q := question(t, srv, id)
+	q := questionDoc(t, srv, id)
 	said, _ := q[mirror.SaidField].(map[string]any)
 	for _, v := range said {
 		entry, _ := v.(map[string]any)
@@ -45,7 +45,7 @@ func TestSayingOnAQuestionDecidesNothing(t *testing.T) {
 	if got := saidOn(t, srv, id); got["checking with ops first"] != "user:ana@example.com" {
 		t.Errorf("said %v, want it attributed to who said it", got)
 	}
-	if q := question(t, srv, id); q["status"] != mirror.QuestionPending {
+	if q := questionDoc(t, srv, id); q["status"] != mirror.QuestionPending {
 		t.Errorf("question %v, want it still pending: a say is not an answer", q)
 	}
 

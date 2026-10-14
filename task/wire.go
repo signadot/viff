@@ -2,12 +2,9 @@ package task
 
 import "github.com/signadot/tony-format/go-tony/ir"
 
-// THE BODIES OF THE RUNNER CONTRACT, declared once.
-//
-// A runner is a url, and what verse sends it is these. They are declared here, beside Launch
-// and Instance, because this is the package both ends already import: the client that drives a
-// runner (package runner) and the runtime a runner is built on (runner/runnerd). A runner written
-// in another language reads them from the schema, where each is published under its name.
+// THE LAUNCH'S BODIES, as they cross to a runner. The rest of the Runner API's bodies are in
+// package runner; these stay beside Launch until the launch is replaced (step 2a of the runners
+// plan), because they carry the engine's own types (Vector, Grant, Call).
 //
 // ONE DECLARATION, because a body written by hand at each end loses a field without anybody
 // being told: the end that sends one the other has no name for has sent nothing, and the end
@@ -72,35 +69,6 @@ type SpawnProvenance struct {
 	Principal string `tony:"field=principal,omitzero"`
 	Subject   string `tony:"field=subject,omitzero"`
 	Chain     string `tony:"field=chain,omitzero"`
-}
-
-// Spawned is what a runner answers a spawn with: the id the task runs under. `201` built it,
-// `200` found it already running.
-//
-//tony:schemagen=verse-runner-spawned,notag
-type Spawned struct {
-	ID string `tony:"field=id"`
-}
-
-// SayRequest is the body of `POST /tasks/{id}/say`: an instruction to a running task, and who
-// gave it. An empty By is an unattributed caller, said as such on the task's read plane.
-//
-//tony:schemagen=verse-runner-say,notag
-type SayRequest struct {
-	Instruction string `tony:"field=instruction"`
-	By          string `tony:"field=by,omitzero"`
-	// Ask is the ask these words are (9ce3bva0, stage 6), echoed on the say frame the task emits
-	// when it takes them, so the ask settles as heard. Empty for words nobody tracks.
-	Ask string `tony:"field=ask,omitzero"`
-}
-
-// CancelRequest is the body of `POST /tasks/{id}/cancel`: why the task is being ended. The
-// reason is what the task's charters see on `onCancelled`, so it crosses. A cancel with no
-// body, or no reason, is a cancel all the same, and the runner says its own.
-//
-//tony:schemagen=verse-runner-cancel,notag
-type CancelRequest struct {
-	Reason string `tony:"field=reason,omitzero"`
 }
 
 // VectorRequest is the body of `PUT /tasks/{id}/vector`: the vector a running task goes on

@@ -192,7 +192,7 @@ func TestAGateFiredAgainIsANewAsk(t *testing.T) {
 	expiryOf(t, srv, ref)
 	decided := func() map[string]any {
 		t.Helper()
-		q := question(t, srv, qid)
+		q := questionDoc(t, srv, qid)
 		out := map[string]any{"ballots": fmt.Sprint(ballotsOf(q))}
 		for _, k := range []string{"status", "verdict", "by", "answeredAt", askExpiryField, "askedAgain"} {
 			out[k] = q[k]

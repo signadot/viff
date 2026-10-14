@@ -720,7 +720,7 @@ verse runner add coderunner http://coderunner:9802 -identity coderunner    # it 
 
 That last line is the install, and it probes — so `reach: "a runner"` is the deployment's own
 acceptance test, and the first thing that exercises bubblewrap on the node. As with an io,
-the url is the in-cluster Service name because versed dials it (`runner.Probe`, server-side);
+the url is the in-cluster Service name because versed dials it (`client.Probe`, server-side);
 your CLI needs to reach the *API*, not the runner.
 
 **Its own image, not necessarily its own repository.** The two images are sized by different

@@ -1,11 +1,11 @@
 package task
 
-// Frame is one structured entry on a Task's read plane. It is a plain document
-// so a daemon can stream it over SSE. The loop emits loop-level events; a driver's
-// own narration is a separate concern (wired at the edge, not here).
+// Event is one event on `GET /tasks/{id}/events`: one structured entry on a task's read
+// plane, streamed over SSE. The loop emits loop-level events; a driver's own narration is a
+// separate concern (wired at the edge, not here).
 //
-//tony:schemagen=verse-frame,notag
-type Frame struct {
+//tony:schemagen=verse-task-event,notag
+type Event struct {
 	Kind   string `tony:"field=kind"`
 	Task   string `tony:"field=task"`
 	Cursor int64  `tony:"field=cursor,omitzero"` // per-task monotonic; resume with ?since=<cursor>
@@ -13,7 +13,7 @@ type Frame struct {
 	ID   string `tony:"field=id,omitzero"` // decision id, for resolve-by-id
 	Seq  int    `tony:"field=seq,omitzero"`
 	Tool string `tony:"field=tool,omitzero"`
-	// Action is the action in one line (ToolUse.Describe), on a pending or a decision frame:
+	// Action is the action in one line (ToolUse.Describe), on a pending or a decision event:
 	// what the gate is about, for whoever reads it on the docket or at a terminal.
 	Action  string `tony:"field=action,omitzero"`
 	Gate    string `tony:"field=gate,omitzero"`
@@ -21,7 +21,7 @@ type Frame struct {
 	By      string `tony:"field=by,omitzero"`
 	Proceed bool   `tony:"field=proceed,omitzero"`
 	// Choice is the option a decision settled on; Proceed is the same fact as yes or no, kept
-	// for every reader of a two-option question. A pending frame offers Options and a
+	// for every reader of a two-option question. A pending event offers Options and a
 	// Deadline the way a posed question does, so a worker that raises a gate with outcomes
 	// of its own reports the same record a charter's gate would.
 	Choice   string    `tony:"field=choice,omitzero"`
@@ -36,27 +36,27 @@ type Frame struct {
 	Dropped   int      `tony:"field=dropped,omitzero"` // gap marker: events a slow subscriber missed
 }
 
-// Event kinds.
+// The kinds of Event, its `kind`.
 const (
-	EvBoundary = "boundary" // cursor reached a new boundary
-	EvDecision = "decision" // a gate was evaluated + resolved
-	EvExec     = "exec"     // an action executed (result summary)
-	EvChild    = "child"    // a sub-task was spawned or completed
-	EvStatus   = "status"   // run lifecycle (completed | cancelled | paused | resumed | …)
-	EvPending  = "pending"  // a gate is blocked awaiting resolution (carries the decision id)
-	// EvSay is an utterance in the task's conversation. By empty = the task's own
+	EventBoundary = "boundary" // cursor reached a new boundary
+	EventDecision = "decision" // a gate was evaluated + resolved
+	EventExec     = "exec"     // an action executed (result summary)
+	EventChild    = "child"    // a sub-task was spawned or completed
+	EventStatus   = "status"   // run lifecycle (completed | cancelled | paused | resumed | …)
+	EventPending  = "pending"  // a gate is blocked awaiting resolution (carries the decision id)
+	// EventSay is an utterance in the task's conversation. By empty = the task's own
 	// narration (the agent's words); By set = a say-to folded in from an operator or a
 	// resolver (what was "steer"). One kind, speaker in By — "you say to it, it says back".
-	EvSay = "say"
-	// EvVector records an autonomy slide (SetVector): the new default mode rides Mode and
+	EventSay = "say"
+	// EventVector records an autonomy slide (SetVector): the new default mode rides Mode and
 	// the operator rides By. Observable so `entity get`/attach show the dial change mid-run,
 	// the same way a say-to is observed — an operator-authored control effect on the plane.
-	EvVector = "vector"
-	EvGap    = "gap" // a slow subscriber missed N events
+	EventVector = "vector"
+	EventGap    = "gap" // a slow subscriber missed N events
 )
 
 type subscriber struct {
-	ch      chan Frame
+	ch      chan Event
 	dropped int
 }
 
@@ -92,12 +92,12 @@ func (p *Task) retainCap() int {
 
 // Subscribe returns a channel of events (live from now) and an unsubscribe func.
 // Subscribers that can't keep up drop events (never blocking the loop); the next
-// delivered event is preceded by an EvGap marker reporting how many were missed.
+// delivered event is preceded by an EventGap marker reporting how many were missed.
 //
 // On a task that has already ENDED, "live from now" is its terminal frame and then the
 // end of the stream. It used to be nothing, forever — which strands a mirror on a task
 // that finished, the same way FailedHandle exists to avoid.
-func (p *Task) Subscribe() (<-chan Frame, func()) {
+func (p *Task) Subscribe() (<-chan Event, func()) {
 	return p.subscribe(func(s *subscriber) {
 		if p.ended && len(p.ring) > 0 {
 			trySend(s, p.ring[len(p.ring)-1])
@@ -107,13 +107,13 @@ func (p *Task) Subscribe() (<-chan Frame, func()) {
 
 // SubscribeSince returns a channel that first replays retained events with cursor >
 // since (in order) then streams live. If since is below the retained window's
-// low-watermark, the first delivered event is an EvGap resync marker carrying the
+// low-watermark, the first delivered event is an EventGap resync marker carrying the
 // current cursor — the consumer should re-read the snapshot and resume from there. This
 // is the resumable read plane: a reconnecting consumer passes its last cursor.
-func (p *Task) SubscribeSince(since int64) (<-chan Frame, func()) {
+func (p *Task) SubscribeSince(since int64) (<-chan Event, func()) {
 	return p.subscribe(func(s *subscriber) {
 		if len(p.ring) > 0 && since+1 < p.ring[0].Cursor { // gap below the window
-			trySend(s, Frame{Kind: EvGap, Task: p.ID, Cursor: p.cursor})
+			trySend(s, Event{Kind: EventGap, Task: p.ID, Cursor: p.cursor})
 			// A reader that fell below the window is told it missed some. Telling it WHAT
 			// is the part that matters: the live path replays open gates and this one did
 			// not, on the reasoning that the ring carries them — which stops being true at
@@ -140,7 +140,7 @@ func (p *Task) SubscribeSince(since int64) (<-chan Frame, func()) {
 
 // subscribe registers a subscriber, optionally priming its channel (replay) under the
 // bus lock so no live event can interleave ahead of the replay.
-func (p *Task) subscribe(prime func(*subscriber)) (<-chan Frame, func()) {
+func (p *Task) subscribe(prime func(*subscriber)) (<-chan Event, func()) {
 	p.busMu.Lock()
 	defer p.busMu.Unlock()
 	if p.subs == nil {
@@ -148,7 +148,7 @@ func (p *Task) subscribe(prime func(*subscriber)) (<-chan Frame, func()) {
 	}
 	id := p.subID
 	p.subID++
-	s := &subscriber{ch: make(chan Frame, 256)}
+	s := &subscriber{ch: make(chan Event, 256)}
 	if prime != nil {
 		prime(s)
 	}
@@ -174,8 +174,8 @@ func (p *Task) subscribe(prime func(*subscriber)) (<-chan Frame, func()) {
 // terminalFrame reports whether e is the one frame whose loss cannot be recovered from.
 // Every other event is replaceable: the reader is told it missed some and resyncs from the
 // snapshot. Nothing follows this one, so nothing can carry that news.
-func terminalFrame(e Frame) bool {
-	return e.Kind == EvStatus && Status(e.Text).Terminal()
+func terminalFrame(e Event) bool {
+	return e.Kind == EventStatus && Status(e.Text).Terminal()
 }
 
 // trySend delivers to a subscriber non-blocking, accruing a drop on a full buffer — except
@@ -189,7 +189,7 @@ func terminalFrame(e Frame) bool {
 // It costs one slot of buffer and no blocking, which is the point: the loop must not stall
 // because an observer is slow (see emit), and the terminal is retained in the ring either
 // way — what was lost was never the fact, only one subscriber's delivery of it.
-func trySend(s *subscriber, e Frame) {
+func trySend(s *subscriber, e Event) {
 	if !terminalFrame(e) && len(s.ch) >= cap(s.ch)-1 {
 		s.dropped++
 		return
@@ -212,7 +212,7 @@ func (p *Task) Cursor() int64 {
 // buffer is full drops the event (favor liveness); its next delivery is prefixed
 // with a gap marker. Each event is stamped with the next per-task cursor and
 // retained in the bounded ring for ?since replay.
-func (p *Task) emit(e Frame) {
+func (p *Task) emit(e Event) {
 	e.Task = p.ID
 	p.busMu.Lock()
 	defer p.busMu.Unlock()
@@ -223,12 +223,12 @@ func (p *Task) emit(e Frame) {
 		p.ring = p.ring[len(p.ring)-cap:]
 	}
 	switch e.Kind { // what is still being asked, for a reader that resumes past the window
-	case EvPending:
+	case EventPending:
 		if p.open == nil {
-			p.open = map[string]Frame{}
+			p.open = map[string]Event{}
 		}
 		p.open[e.ID] = e
-	case EvDecision:
+	case EventDecision:
 		delete(p.open, e.ID)
 	}
 	terminal := terminalFrame(e)
@@ -244,7 +244,7 @@ func (p *Task) emit(e Frame) {
 		if s.dropped > 0 { // try to flush the gap marker before the real event
 			was := s.dropped
 			s.dropped = 0
-			trySend(s, Frame{Kind: EvGap, Task: p.ID, Dropped: was})
+			trySend(s, Event{Kind: EventGap, Task: p.ID, Dropped: was})
 			if s.dropped > 0 { // the marker itself did not fit; keep the tally
 				s.dropped += was
 				continue
@@ -266,7 +266,7 @@ func (p *Task) emit(e Frame) {
 // Emit publishes an external event onto this task's read plane — the seam a
 // daemon uses to surface pending decisions (from a Registry OnPost hook) on the
 // same stream as the loop's own events.
-func (p *Task) Emit(e Frame) { p.emit(e) }
+func (p *Task) Emit(e Event) { p.emit(e) }
 
 // emitTerminal says how the task ended, unless it has already said. It is the panic path's
 // entry to the read plane: property 1 is that a terminal is reached at most once and nothing
@@ -276,7 +276,7 @@ func (p *Task) emitTerminal(why Status) {
 	already := p.ended
 	p.busMu.Unlock()
 	if !already {
-		p.emit(Frame{Kind: EvStatus, Text: string(why)})
+		p.emit(Event{Kind: EventStatus, Text: string(why)})
 	}
 }
 

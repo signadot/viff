@@ -1,6 +1,8 @@
 package task
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // ChildMode is how a CallAgent gate's ASK is answered — the autonomy dial at the
 // delegation edge. It configures the CHILD's supervision (resolver + vector)

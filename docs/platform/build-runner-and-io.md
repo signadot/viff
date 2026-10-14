@@ -70,11 +70,11 @@ A `Builder` returns no error. To refuse a launch, return
 
 | Method and path | Body | What to answer |
 |---|---|---|
-| `GET /tasks` | none | `200` and a list of `verse-instance`, one for each task the runner hosts |
-| `GET /tasks/{id}` | none | `200` and one `verse-instance` |
-| `GET /tasks/{id}/events?since=N` | none | the event stream of the task, as server-sent events. Each event holds one frame, a `verse-frame`. |
+| `GET /tasks` | none | `200` and a list of `verse-task-snapshot`, one for each task the runner hosts |
+| `GET /tasks/{id}` | none | `200` and one `verse-task-snapshot` |
+| `GET /tasks/{id}/events?since=N` | none | the event stream of the task, as server-sent events. Each holds one event, a `verse-task-event`. |
 | `POST /tasks` | `verse-runner-spawn` | `201` and a `verse-runner-spawned` when the runner built the task. `200` and the same body when the task was already running. `400` when the body does not parse, or when the runner will not host the task. |
-| `POST /tasks/{id}/resolve` | `verse-resolve` | `204` when applied. `404` when the task has no such open question. |
+| `POST /tasks/{id}/resolve` | `verse-runner-resolve` | `204` when applied. `404` when the task has no such open question. |
 | `POST /tasks/{id}/say` | `verse-runner-say` | `204` when applied. `410` when the task has ended, since nothing said to it would be heard. |
 | `POST /tasks/{id}/cancel` | `verse-runner-cancel`, or no body | `204` when applied |
 | `POST /tasks/{id}/pause` | none | `204` when applied |
@@ -202,7 +202,7 @@ no other field. Add the refusals before you deploy a copy of it.
 
 Verse has no conformance test that a new runner can run against itself. There is one
 exception, for Go. The package `task/tasktest` tests a Go type that produces a
-`task.Instance`. It tests four properties.
+`task.Snapshot`. It tests four properties.
 
 - The snapshot reports the driver.
 - A failure is an `err`.

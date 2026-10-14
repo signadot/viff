@@ -176,7 +176,7 @@ func TestAnActionCancelledInFlightIsRecordedAsUnknown(t *testing.T) {
 
 	var said string
 	for f := range frames {
-		if f.Kind == EvExec && f.Tool == "push" {
+		if f.Kind == EventExec && f.Tool == "push" {
 			said = f.Err
 		}
 	}

@@ -20,6 +20,7 @@ import (
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/task"
 )
 
@@ -125,7 +126,7 @@ type proc struct {
 
 	mu    sync.Mutex
 	exit  error
-	final *task.Instance // the last word on the task, once there is one
+	final *task.Snapshot // the last word on the task, once there is one
 	dead  bool
 }
 
@@ -138,18 +139,18 @@ func (p *proc) running() bool {
 	}
 }
 
-func (p *proc) snapshot() (task.Instance, bool) {
+func (p *proc) snapshot() (task.Snapshot, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.final == nil {
-		return task.Instance{}, false
+		return task.Snapshot{}, false
 	}
 	return *p.final, true
 }
 
 // remember records the last word on the task. The first one stands: the end the task reported
 // is a better account than its process exiting, which always comes after.
-func (p *proc) remember(in task.Instance) {
+func (p *proc) remember(in task.Snapshot) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.final == nil {
@@ -213,7 +214,7 @@ func (h *SubprocessHandler) spawn(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		go h.supervise(p)
-		writeOut(w, r, http.StatusCreated, task.Spawned{ID: p.id})
+		writeOut(w, r, http.StatusCreated, runner.SpawnResponse{ID: p.id})
 		return
 	}
 	select {
@@ -225,7 +226,7 @@ func (h *SubprocessHandler) spawn(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, p.err.Error(), http.StatusBadGateway)
 		return
 	}
-	writeOut(w, r, http.StatusOK, task.Spawned{ID: p.id})
+	writeOut(w, r, http.StatusOK, runner.SpawnResponse{ID: p.id})
 }
 
 // start makes the task's directory, starts its process in the sandbox, and hands it the spawn.
@@ -289,7 +290,7 @@ func (h *SubprocessHandler) start(p *proc, spawn []byte) error {
 		return (&net.Dialer{}).DialContext(ctx, "unix", sock)
 	}}
 	base := "http://task"
-	p.rt = runner.HTTPOver(base, tr)
+	p.rt = client.HTTPOver(base, tr)
 	target, _ := url.Parse(base)
 	p.prox = httputil.NewSingleHostReverseProxy(target)
 	p.prox.Transport = tr
@@ -331,7 +332,7 @@ func (p *proc) awaitReady() error {
 }
 
 func post(tr http.RoundTripper, url string, body []byte) error {
-	resp, err := (&http.Client{Transport: tr, Timeout: runner.ControlTimeout}).Post(url,
+	resp, err := (&http.Client{Transport: tr, Timeout: client.ControlTimeout}).Post(url,
 		codec.MediaType(codec.Tony), bytes.NewReader(body))
 	if err != nil {
 		return err
@@ -371,7 +372,7 @@ func (h *SubprocessHandler) supervise(p *proc) {
 		}
 	}
 	p.stop(h.Log)
-	p.remember(task.Instance{Status: task.Failed, Err: fmt.Sprintf(
+	p.remember(task.Snapshot{Status: task.Failed, Err: fmt.Sprintf(
 		"the task's process exited (%s) before the task ended", p.exitStatus())})
 	os.RemoveAll(p.dir)
 }
@@ -387,7 +388,7 @@ func (p *proc) follow(since int64) (task.Status, int64) {
 			if f.Cursor > since {
 				since = f.Cursor
 			}
-			if f.Kind == task.EvStatus && task.Status(f.Text).Terminal() {
+			if f.Kind == task.EventStatus && task.Status(f.Text).Terminal() {
 				cancel()
 				return task.Status(f.Text), since
 			}
@@ -404,9 +405,9 @@ func (p *proc) follow(since int64) (task.Status, int64) {
 // settled is the snapshot to remember a finished task by, and whether it says the task has
 // ended. The event stream reports the end a moment before the snapshot does, so it is asked
 // again until it agrees, for up to settleTimeout.
-func (p *proc) settled() (task.Instance, bool) {
+func (p *proc) settled() (task.Snapshot, bool) {
 	lister, _ := p.rt.(task.Lister)
-	var last task.Instance
+	var last task.Snapshot
 	for deadline := time.Now().Add(settleTimeout); time.Now().Before(deadline); {
 		if snap, err := lister.TaskSnapshot(p.id); err == nil {
 			last = snap
@@ -483,7 +484,7 @@ func (h *SubprocessHandler) forward(w http.ResponseWriter, r *http.Request) {
 			codec.HTTPError(w, r, http.StatusInternalServerError, err.Error())
 			return
 		}
-		_ = sse.Send(task.Frame{Kind: task.EvStatus, Text: string(final.Status), Err: final.Err})
+		_ = sse.Send(task.Event{Kind: task.EventStatus, Text: string(final.Status), Err: final.Err})
 		sse.Flush()
 	// The rest as an InProcessHandler answers them for an ended task: a cancel, pause, resume or
 	// vector does nothing and says so with 204, a say is 410, and no gate is left to resolve.
@@ -504,19 +505,19 @@ func (h *SubprocessHandler) list(w http.ResponseWriter, r *http.Request) {
 }
 
 // Snapshots is every task the runner runs or has run, asked of its process while it runs.
-func (h *SubprocessHandler) Snapshots() []task.Instance {
+func (h *SubprocessHandler) Snapshots() []task.Snapshot {
 	h.mu.Lock()
 	ps := make([]*proc, 0, len(h.tasks))
 	for _, p := range h.tasks {
 		ps = append(ps, p)
 	}
 	h.mu.Unlock()
-	out := make([]task.Instance, 0, len(ps))
+	out := make([]task.Snapshot, 0, len(ps))
 	for _, p := range ps {
 		select {
 		case <-p.ready:
 		default:
-			out = append(out, task.Instance{ID: p.id, Status: task.Running})
+			out = append(out, task.Snapshot{ID: p.id, Status: task.Running})
 			continue
 		}
 		if p.err != nil {
@@ -529,7 +530,7 @@ func (h *SubprocessHandler) Snapshots() []task.Instance {
 		snap, err := p.rt.(task.Lister).TaskSnapshot(p.id)
 		if err != nil {
 			// Still the runner's task: leaving it out would read as a runner with less work.
-			snap = task.Instance{ID: p.id, Status: task.Running, Err: err.Error()}
+			snap = task.Snapshot{ID: p.id, Status: task.Running, Err: err.Error()}
 		}
 		out = append(out, snap)
 	}
