@@ -114,12 +114,15 @@ func (s *Server) expireLater(ref entity.Ref, p entity.Payload) {
 		if k, err := time.ParseDuration(entity.Str(p, "keep")); err == nil && k > 0 {
 			keep = k
 		}
-		// Conditional on the ask standing, so an expiry is never what brings a removed ask back.
-		// The watch delivers the write, and the timer is armed from it.
+		// Conditional on the ask standing, so an expiry is never what brings a removed ask back,
+		// and on there being none yet: the watch can show the ask settled more than once before
+		// this write is seen, and each pass would otherwise write its own instant, the later one
+		// moving the expiry past a timer armed on the first. Only the first pass commits. The watch
+		// delivers the write, and the timer is armed from it.
 		if _, _, err := entity.As(s.Store, entity.SystemDefault).Write(entity.Write{
 			At:    entity.Path{Ref: ref, Access: askExpiryField},
 			Value: entity.Val(s.now().Add(keep).UTC().Format(time.RFC3339)),
-			When:  []entity.Require{{At: ref.At(), Pattern: entity.Present()}},
+			When:  []entity.Require{{At: ref.At(), Pattern: entity.Present()}, entity.Created()},
 		}); err != nil {
 			fmt.Fprintf(os.Stderr, "verse: ask %s: its expiry was not written: %v\n", ref.Name(), err)
 		}
