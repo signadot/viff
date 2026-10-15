@@ -16,6 +16,12 @@ import (
 	"github.com/signadot/verse/runner/runnerd"
 )
 
+// TaskArgs is how this runner starts a task process: its own executable with these arguments.
+// `runnerd verse -task` answers to them, and so must any program that is this runner under
+// another name, since the executable the runner starts is whichever one it is running as (the
+// coderunner example, docs/reference/examples/coderunner).
+var TaskArgs = []string{"verse", "-task"}
+
 // Main is `runnerd verse`: the verse runner as a program, with its model reached through Portkey.
 // Each task runs in a process of its own, in the sandbox -sandbox names, and in a workspace of
 // the environment it names when the configuration declares environments.
@@ -99,7 +105,7 @@ func Main(args []string) error {
 			EnvPortkeyAPIKey)
 	}
 	r, err := Standalone{
-		Config: c, Secrets: s, Sandbox: sb, Command: []string{self, "verse", "-task"},
+		Config: c, Secrets: s, Sandbox: sb, Command: append([]string{self}, TaskArgs...),
 		Work: root, Control: control, Data: root, Keep: *keep, GitToken: os.Getenv(*tokenEnv),
 		Log: os.Stderr,
 	}.Start()

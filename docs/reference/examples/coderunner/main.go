@@ -22,9 +22,11 @@ import (
 func main() {
 	log.SetFlags(0)
 	log.SetPrefix("coderunner: ")
-	// `-task` is the task process, which takes no flags: everything it is told arrives on stdin.
-	if len(os.Args) > 1 && os.Args[1] == "-task" {
-		if err := verserunner.Main([]string{"-task"}); err != nil {
+	// The task process. The runner starts each task as `<this program> verse -task`, the command
+	// runnerd answers to (verserunner.TaskArgs), and everything the task is told arrives on
+	// stdin, so there is nothing to translate: the arguments go through as they are.
+	if args, ok := taskProcess(os.Args); ok {
+		if err := verserunner.Main(args); err != nil {
 			log.Fatal(err)
 		}
 		return
@@ -62,4 +64,13 @@ func main() {
 	if err := verserunner.Main(args); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// taskProcess reports whether argv is the runner starting a task process, and the arguments the
+// runner's Main takes for it.
+func taskProcess(argv []string) ([]string, bool) {
+	if len(argv) > 1 && argv[1] == verserunner.TaskArgs[0] {
+		return argv[2:], true
+	}
+	return nil, false
 }
