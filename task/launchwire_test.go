@@ -26,7 +26,8 @@ func fullLaunch() Launch {
 		Calls:       []Call{{Tool: "run_bash", Input: map[string]any{"cmd": "true"}}},
 		Vector:      &Vector{Default: Ask},
 		Grant:       &Grant{},
-		Environment: "verse-repo", Scope: "me", Occurrence: 4217, Answerers: []string{PrincipalAnswerer},
+		Environment: "verse-repo", Repos: []Repo{{Repo: "acme/app", Access: AccessWrite, Push: &RepoPush{New: []string{"verse/*"}}}},
+		Scope: "me", Occurrence: 4217, Answerers: []string{PrincipalAnswerer},
 		Provenance: Provenance{Principal: "user:ana@example.com", Subject: "demo.pr.1", Chain: "review"},
 	}
 }

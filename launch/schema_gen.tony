@@ -61,6 +61,7 @@ define:
   passed: .[array(verse-launch-passed)]
   prompt: .[string]
   provider: .[nullable(verse-launch-provider)]
+  repos: .[array(task:verse-repo)]
   retain: .[int]
   runner: .[string]
   subject: .[string]

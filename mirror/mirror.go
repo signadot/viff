@@ -154,6 +154,11 @@ type Meta struct {
 	Doer  string
 	Grant string
 	Tools []string
+	// Repos is what the run was allowed to touch outside the verse: each repository it works in,
+	// its access, where it started, and the branches it may push to (task.Repo). On the record
+	// for the same reason Grant and Tools are — a reader asking what this run could do to a
+	// repository should not need the charter that spawned it, which may since have changed.
+	Repos []task.Repo
 	// Asker is the person the run acts for: beside its rule, where the rule said `as: subject`
 	// (the owner of the record that fired it), or alone, where a person ran it or an ask's `then`
 	// did. Published so "whose authority is this running with" is read off the record rather than
@@ -294,6 +299,9 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	}
 	if len(m.Tools) > 0 {
 		st["tools"] = m.Tools
+	}
+	if len(m.Repos) > 0 {
+		st["repos"] = reposOf(m.Repos)
 	}
 	// WHICH RUN this record is about. A firing knows — it is the commit that woke it, carried
 	// on Meta — and anything else learns it here, from the commit its own first write landed
@@ -875,3 +883,34 @@ func IsTask(ref entity.Ref) bool { return ref.ChildOf(entity.VerseRoot, System, 
 
 // IsTaskish is the whole task namespace: an instance, its run record, its claim.
 func IsTaskish(ref entity.Ref) bool { return ref.Under(entity.VerseRoot, System) }
+
+// reposOf is a spawn's repositories as the record carries them: what each run was allowed, in
+// the words the spawn used (`access`, `from`, `push`), so a reader of the record and a reader of
+// the charter see one vocabulary.
+func reposOf(repos []task.Repo) []any {
+	out := make([]any, 0, len(repos))
+	for _, r := range repos {
+		o := entity.Obj{"repo": r.Repo}
+		if r.Access != "" {
+			o["access"] = r.Access
+		}
+		if r.From != "" {
+			o["from"] = r.From
+		}
+		if p := r.Push; p != nil {
+			push := entity.Obj{}
+			if len(p.New) > 0 {
+				push["new"] = anyStrings(p.New)
+			}
+			if len(p.Existing) > 0 {
+				push["existing"] = anyStrings(p.Existing)
+			}
+			if p.Force {
+				push["force"] = true
+			}
+			o["push"] = push
+		}
+		out = append(out, o)
+	}
+	return out
+}

@@ -53,6 +53,8 @@ type SpawnRequest struct {
 	Grant  *Grant  `tony:"field=grant,omitzero"`
 	// Environment names the workspace, which the runner resolves (Launch.Environment).
 	Environment string `tony:"field=environment,omitzero"`
+	// Repos are the repositories the task works in, and what it may push (Launch.Repos).
+	Repos []Repo `tony:"field=repos,omitzero"`
 	// Occurrence is which run this is: the store revision it is about (Launch.Occurrence).
 	// The runner holds it and says it back on the task's snapshot.
 	Occurrence int64 `tony:"field=occurrence,omitzero"`
@@ -92,7 +94,7 @@ func (l Launch) Wire() SpawnRequest {
 	r := SpawnRequest{
 		ID: l.ID, Prompt: l.Prompt, Driver: l.Driver, Frame: l.Frame, Tools: l.Tools,
 		Retain: l.Retain, Converse: l.Converse, VirtualKey: l.VirtualKey, Credential: l.Credential, Answer: l.Answer, Calls: l.Calls,
-		Vector: l.Vector, Grant: l.Grant, Environment: l.Environment,
+		Vector: l.Vector, Grant: l.Grant, Environment: l.Environment, Repos: l.Repos,
 		Occurrence: l.Occurrence,
 	}
 	if p := l.Provenance; p != (Provenance{}) {
@@ -107,7 +109,7 @@ func (r SpawnRequest) Launch() Launch {
 	l := Launch{
 		ID: r.ID, Prompt: r.Prompt, Driver: r.Driver, Frame: r.Frame, Tools: r.Tools,
 		Retain: r.Retain, Converse: r.Converse, VirtualKey: r.VirtualKey, Credential: r.Credential, Answer: r.Answer, Calls: r.Calls,
-		Vector: r.Vector, Grant: r.Grant, Environment: r.Environment,
+		Vector: r.Vector, Grant: r.Grant, Environment: r.Environment, Repos: r.Repos,
 		Occurrence: r.Occurrence,
 	}
 	if p := r.Provenance; p != nil {

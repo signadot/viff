@@ -153,12 +153,20 @@ func (tu ToolUse) Describe() string {
 	if tu.CallAgent != nil && strings.TrimSpace(tu.CallAgent.Prompt) != "" {
 		return describeTrunc(tu.CallAgent.Agent + ": " + oneLine(tu.CallAgent.Prompt))
 	}
-	// A push says where: the destination, and the ref it resolves to when the action knows.
-	if dest := str(tu.Input, "destination"); dest != "" {
-		if to := str(tu.Input, "to"); to != "" {
-			return describeTrunc(dest + " → " + to)
+	// A push says where: the repository and the ref it resolves to when the action knows, else
+	// the branch as the task named it. A delete says so.
+	if to := str(tu.Input, "to"); to != "" {
+		what := to
+		if repo := str(tu.Input, "repo"); repo != "" {
+			what = repo + " → " + to
 		}
-		return describeTrunc(dest)
+		if del, _ := tu.Input["delete"].(bool); del {
+			what = "delete " + what
+		}
+		return describeTrunc(what)
+	}
+	if branch := str(tu.Input, "branch"); branch != "" {
+		return describeTrunc(branch)
 	}
 	for _, k := range []string{"command", "path", "file", "file_path", "question", "prompt", "text"} {
 		if v := str(tu.Input, k); v != "" {

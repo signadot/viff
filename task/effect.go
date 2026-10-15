@@ -87,6 +87,9 @@ const (
 	KindTask   ResourceKind = "task"  // an exec'd command
 	KindAgent  ResourceKind = "agent" // a delegated sub-task
 	KindGate   ResourceKind = "gate"  // a gate question, by its id
+	// KindPull is a pull request at a forge, as `owner/name:base`: what a gate discriminates on
+	// is which repository and which branch it proposes into, and the head is on the action.
+	KindPull ResourceKind = "pull"
 )
 
 // Resource is a typed reference to the thing a capability touches.
@@ -126,6 +129,7 @@ func (tu ToolUse) IsQuestion() bool {
 // Convenience constructors for typed resources.
 func File(path string) Resource   { return Resource{Kind: KindFile, Ref: path} }
 func GitRef(ref string) Resource  { return Resource{Kind: KindGitRef, Ref: ref} }
+func PullRes(ref string) Resource { return Resource{Kind: KindPull, Ref: ref} }
 func Host(hp string) Resource     { return Resource{Kind: KindHost, Ref: hp} }
 func AgentRes(id string) Resource { return Resource{Kind: KindAgent, Ref: id} }
 

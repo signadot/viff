@@ -1,0 +1,269 @@
+package workspace
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+
+	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+
+	"github.com/signadot/verse/task"
+)
+
+// A fetch must not prune staged work.
+//
+// This is the property the whole ref layout is chosen for. `ensure` fetches `+refs/heads/*` and
+// `+refs/tags/*` with Prune set, and go-git's pruneRemotes removes local refs matching the REVERSE
+// of a configured refspec — so a namespace outside those two is untouchable. Put staged work under
+// refs/heads and the next spawn deletes it, silently, which is the exact failure this runner
+// already had once with task branches in a shared mirror.
+func TestFetchDoesNotPruneStagedWork(t *testing.T) {
+	origin := initRepo(t)
+	m := NewMirrors(t.TempDir(), TokenAuth(""))
+	repos := []Repo{
+		{Name: "svc", Repo: origin, Base: "main", Access: task.AccessWrite, Push: own},
+	}
+	ws, err := m.Open(context.Background(), "p1", repos, t.TempDir(), Author{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws.Root, "svc", "work.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	held := ws.Salvage(context.Background(), task.Launch{ID: "p1"})
+	if held.Err != nil || len(held.Staged) != 1 {
+		t.Fatalf("salvage: %+v", held)
+	}
+	ref := held.Staged[0]
+
+	// A later spawn on the same repository fetches the mirror again, with prune.
+	if _, err := m.Open(context.Background(), "p2", repos, t.TempDir(), Author{}); err != nil {
+		t.Fatal(err)
+	}
+	mirror, err := git.PlainOpen(m.Dir(origin))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mirror.Reference(plumbing.ReferenceName(ref), true); err != nil {
+		t.Fatalf("a fetch pruned staged work at %s: %v", ref, err)
+	}
+}
+
+// The retry sweeps only what a gate approved.
+//
+// Two namespaces exist for exactly this. `pending` is work whose delivery was approved and did not
+// land; `held` is work that was refused or never got that far. A sweep over one namespace would
+// push, later and silently, work an operator declined — which is the whole thing that making the
+// push gateable was for.
+func TestReflectRetriesApprovedWorkAndNeverHeldWork(t *testing.T) {
+	origin := initRepo(t)
+	m := NewMirrors(t.TempDir(), TokenAuth(""))
+	repo := Repo{Name: "svc", Repo: origin, Base: "main", Access: task.AccessWrite, Push: own}
+	repos := []Repo{repo}
+
+	// One task whose delivery was approved and failed, one whose delivery was refused.
+	approved, err := m.Open(context.Background(), "ok1", repos, t.TempDir(), Author{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	refused, err := m.Open(context.Background(), "no1", repos, t.TempDir(), Author{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ws := range []*Workspace{approved, refused} {
+		if err := os.WriteFile(filepath.Join(ws.Root, "svc", "work.txt"), []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The approved one is staged as pending — commit FIRST, then stage, which is the order
+	// Deliver uses and the order that matters: staging an uncommitted tree stages the base, and
+	// a test that got it backwards would pass on a commit nobody made.
+	if _, err := approved.Trees[0].CommitWork(task.Launch{ID: "ok1"}, "the approved work"); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.stage(context.Background(), approved.Trees[0], approved.Branch,
+		StagedRef(StagePending, "ok1", "svc", "refs/heads/verse/auto/ok1")); err != nil {
+		t.Fatal(err)
+	}
+	held := refused.Salvage(context.Background(), task.Launch{ID: "no1"})
+	if len(held.Staged) != 1 || !strings.Contains(held.Staged[0], "refs/held/") {
+		t.Fatalf("a refused delivery did not go to held: %+v", held)
+	}
+
+	n, err := m.Reflect(context.Background(), origin, nil)
+	if err != nil {
+		t.Fatalf("reflect: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("reflected %d refs, want exactly the approved one", n)
+	}
+	if msg := commitAt(t, origin, "refs/heads/verse/auto/ok1"); !strings.Contains(msg, "Verse-Task: ok1") {
+		t.Errorf("the retry did not push the WORK (got %q) — an empty check here passes on the "+
+			"base commit, which is what a stage-before-commit bug looks like", msg)
+	}
+	if commitAt(t, origin, "refs/heads/verse/auto/no1") != "" {
+		t.Fatal("work a gate REFUSED was pushed by the retry — the sweep overrode the refusal")
+	}
+	// The pending ref is dropped once it lands; the held one stays where it is.
+	mirror, _ := git.PlainOpen(m.Dir(origin))
+	if _, err := mirror.Reference(plumbing.ReferenceName(StagedRef(StagePending, "ok1", "svc", "refs/heads/verse/auto/ok1")), true); err == nil {
+		t.Error("a delivered ref is still pending, so it will be pushed again forever")
+	}
+	if _, err := mirror.Reference(plumbing.ReferenceName(held.Staged[0]), true); err != nil {
+		t.Errorf("held work vanished: %v", err)
+	}
+	// And a second sweep has nothing to do.
+	if n, err := m.Reflect(context.Background(), origin, nil); err != nil || n != 0 {
+		t.Errorf("a second sweep moved %d refs (%v) — refs/pending is not self-limiting", n, err)
+	}
+}
+
+// Salvage is what makes a refused or crashed task's work findable.
+func TestSalvageHoldsWorkNobodyAuthorizedToLeave(t *testing.T) {
+	origin := initRepo(t)
+	m := NewMirrors(t.TempDir(), TokenAuth(""))
+	repos := []Repo{
+		{Name: "svc", Repo: origin, Base: "main", Access: task.AccessWrite, Push: own},
+		{Name: "ref", Repo: initRepo(t), Base: "main"}, // reference tree: nothing to hold
+	}
+	ws, err := m.Open(context.Background(), "s1", repos, t.TempDir(), Author{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"svc", "ref"} {
+		if err := os.WriteFile(filepath.Join(ws.Root, name, "work.txt"), []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	d := ws.Salvage(context.Background(), task.Launch{ID: "s1"})
+	if d.Err != nil {
+		t.Fatalf("salvage: %v", d.Err)
+	}
+	// Only the repository with somewhere to go is held: a reference tree's edits were never
+	// going to leave, and staging them would imply they might.
+	want := StagedRef(StageHeld, "s1", "svc", "")
+	if len(d.Staged) != 1 || d.Staged[0] != want {
+		t.Fatalf("Staged = %v, want [%s]", d.Staged, want)
+	}
+	if commitAt(t, origin, "refs/heads/verse/auto/s1") != "" {
+		t.Fatal("salvage pushed something to a remote")
+	}
+	if len(d.Loose) != 0 {
+		t.Fatalf("Loose = %v, so the workspace would be kept anyway", d.Loose)
+	}
+	if msg := commitAt(t, m.Dir(origin), want); !strings.Contains(msg, "Verse-Task: s1") {
+		t.Fatalf("held work carries no provenance: %q", msg)
+	}
+}
+
+// A retry rewrites its target only when the approval did: the namespace the work waits under
+// says so, because the sweep runs without the spawn that decided it — at startup, over every
+// mirror this runner has, which the mirrors themselves enumerate.
+func TestAForcedApprovalRetriesForcedAndTheMirrorsSayWhatThereIs(t *testing.T) {
+	origin := initRepo(t)
+	m := NewMirrors(t.TempDir(), TokenAuth(""))
+	repos := []Repo{{Name: "svc", Repo: origin, Base: "main", Access: task.AccessWrite,
+		Push: &task.RepoPush{New: []string{"verse/*"}, Existing: []string{"main"}}}}
+	forced, err := m.Open(context.Background(), "f1", repos, t.TempDir(), Author{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ff, err := m.Open(context.Background(), "f2", repos, t.TempDir(), Author{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Upstream moves after both checkouts, so neither branch descends from main any more.
+	advanceOrigin(t, origin, "moved")
+	for _, ws := range []*Workspace{forced, ff} {
+		if err := os.WriteFile(filepath.Join(ws.Root, "svc", "work.txt"), []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ws.Trees[0].CommitWork(task.Launch{ID: ws.Branch}, "work"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// One approved to rewrite a branch of its own, one approved to fast-forward main.
+	if d := forced.Stage(context.Background(), "f1", forced.Trees[0], "refs/heads/verse/train", true); d.Err != nil {
+		t.Fatal(d.Err)
+	}
+	if d := ff.Stage(context.Background(), "f2", ff.Trees[0], "refs/heads/main", false); d.Err != nil {
+		t.Fatal(d.Err)
+	}
+	remotes, err := m.Remotes()
+	if err != nil || len(remotes) != 1 || remotes[0] != origin {
+		t.Fatalf("Remotes = %v (%v), want the one origin", remotes, err)
+	}
+	n, err := m.Reflect(context.Background(), origin, nil)
+	if n != 1 {
+		t.Fatalf("reflected %d, want the forced one alone (%v)", n, err)
+	}
+	if err == nil || Refusal(err) == "" && !strings.Contains(err.Error(), "refused") {
+		t.Errorf("the fast-forward of a moved main was not reported as the remote's refusal: %v", err)
+	}
+	if commitAt(t, origin, "refs/heads/verse/train") == "" {
+		t.Error("the forced retry did not land")
+	}
+	if !strings.Contains(commitAt(t, origin, "refs/heads/main"), "moved") {
+		t.Fatal("main was rewritten by a retry that was approved as a fast-forward")
+	}
+	// The refused one is held, not retried forever; the landed one is gone.
+	held, err := m.Staged(origin)
+	if err != nil || len(held) != 1 || !strings.Contains(held[0].Ref, "refs/held/") || held[0].Task != "f2" {
+		t.Errorf("staged after the sweep = %+v (%v), want f2 held and nothing else", held, err)
+	}
+}
+
+// Salvage is decided per tree. A task that delivered one repository and left work in another
+// has work that did not leave, and a task that delivered everything has none to hold twice: what
+// an approved push staged out of a tree is what that tree's head still is.
+func TestSalvageHoldsOnlyTheWorkThatDidNotLeave(t *testing.T) {
+	a, b := initRepo(t), initRepo(t)
+	m := NewMirrors(t.TempDir(), TokenAuth(""))
+	repos := []Repo{
+		{Name: "a", Repo: a, Base: "main", Access: task.AccessWrite, Push: own},
+		{Name: "b", Repo: b, Base: "main", Access: task.AccessWrite, Push: own},
+	}
+	ws, err := m.Open(context.Background(), "s2", repos, t.TempDir(), Author{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := task.Launch{ID: "s2"}
+	for _, name := range []string{"a", "b"} {
+		if err := os.WriteFile(filepath.Join(ws.Root, name, "work.txt"), []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// `a` is committed and staged for an approved push; `b` is edited and never pushed.
+	ta := ws.Tree("a")
+	if work, err := ta.CommitWork(l, ""); err != nil || !work {
+		t.Fatalf("commit a: work=%v err=%v", work, err)
+	}
+	if d := ws.Stage(context.Background(), "s2", ta, "refs/heads/verse/auto/s2", false); d.Err != nil {
+		t.Fatal(d.Err)
+	}
+
+	d := ws.Salvage(context.Background(), l)
+	if d.Err != nil {
+		t.Fatalf("salvage: %v", d.Err)
+	}
+	want := StagedRef(StageHeld, "s2", "b", "")
+	if len(d.Staged) != 1 || d.Staged[0] != want {
+		t.Fatalf("Staged = %v, want [%s]: b's work did not leave and a's did", d.Staged, want)
+	}
+
+	// Work committed on top of what was delivered has not left either.
+	if err := os.WriteFile(filepath.Join(ws.Root, "a", "more.txt"), []byte("y\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d = ws.Salvage(context.Background(), l)
+	if d.Err != nil {
+		t.Fatalf("salvage: %v", d.Err)
+	}
+	if !slices.Contains(d.Staged, StagedRef(StageHeld, "s2", "a", "")) {
+		t.Fatalf("Staged = %v, want a's later work held", d.Staged)
+	}
+}

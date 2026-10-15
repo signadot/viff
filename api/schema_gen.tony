@@ -352,6 +352,7 @@ define:
   name: .[string]
   principal: .[string]
   prompt: .[string]
+  repos: .[array(task:verse-repo)]
   retain: .[int]
   runner: .[string]
   subject: .[string]

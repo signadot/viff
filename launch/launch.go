@@ -170,6 +170,11 @@ type Spec struct {
 	Gates       []task.Gate `tony:"field=gates,omitzero"`
 	Grant       string      `tony:"field=grant,omitzero"`
 	Environment string      `tony:"field=environment,omitzero"`
+	// Repos are the repositories the task works in and what it may push to each, as the spec
+	// of the spawn writes them (task.Repo). `repo`, `from` and `push.existing` take $vars, so a
+	// charter can say `existing: [$subject.head]`; `push.new` does not, for Tools' reason: a
+	// pattern is adjacent to authority, and payload text must not widen what a run may push.
+	Repos []task.Repo `tony:"field=repos,omitzero"`
 	// Runner is WHERE this launch runs: `verse.runners.<name>`, an entity installed with
 	// `verse runner add`. Empty means the verse's own default runner.
 	//
@@ -402,6 +407,7 @@ func (s Spec) Bind(b Binding) Spec {
 	out.VirtualKey = s.VirtualKey
 	out.Gates = append([]task.Gate(nil), s.Gates...)
 	out.Calls = bindCalls(s.Calls, b)
+	out.Repos = bindRepos(s.Repos, b)
 	// As is carried and not expanded: it takes one word (AsSubject), and payload text deciding
 	// whose authority a task runs with is the thing it exists to prevent. Asker is NOT carried —
 	// it is the engine's answer to As, set after binding (trigger.launch), and a value a charter
@@ -500,4 +506,33 @@ func expand(s string, b Binding) string {
 		s = strings.ReplaceAll(s, "$"+k, b[k])
 	}
 	return s
+}
+
+// bindRepos expands what a charter has reason to build out of the firing — which repository,
+// which branch it starts from, which existing branches it may push — and copies the rest.
+//
+// `push.new` is NOT expanded, on the argument Tools makes: a pattern says how far a run may
+// reach, and payload text choosing one would widen authority by binding. `repo` and `existing`
+// are expanded because `$subject.repo` and `$subject.head` are the whole point of a charter that
+// keeps a pull request up to date; the runner holds the credential for one forge, so an expanded
+// repository can only ever name somewhere that credential already reaches.
+func bindRepos(rs []task.Repo, b Binding) []task.Repo {
+	if len(rs) == 0 {
+		return nil
+	}
+	out := make([]task.Repo, 0, len(rs))
+	for _, r := range rs {
+		nr := task.Repo{Repo: expand(r.Repo, b), Access: r.Access, From: expand(r.From, b)}
+		if r.Push != nil {
+			// Copied, never shared: a bound spec aliasing the charter's slices would let one
+			// firing's edit reach every later one.
+			p := task.RepoPush{New: append([]string(nil), r.Push.New...), Force: r.Push.Force}
+			for _, e := range r.Push.Existing {
+				p.Existing = append(p.Existing, expand(e, b))
+			}
+			nr.Push = &p
+		}
+		out = append(out, nr)
+	}
+	return out
 }

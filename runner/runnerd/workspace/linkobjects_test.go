@@ -1,4 +1,4 @@
-package main
+package workspace
 
 import (
 	"context"
@@ -14,12 +14,12 @@ func TestACheckoutSharesTheMirrorsObjectFiles(t *testing.T) {
 	origin := initRepo(t)
 	mirrors := t.TempDir()
 	m := NewMirrors(mirrors, TokenAuth(""))
-	env := Environment{Name: "e", Repos: []Repo{{Name: "svc", Repo: origin, Base: "main"}}}
-	ws, err := m.Open(context.Background(), "p1", env, t.TempDir())
+	repos := []Repo{{Name: "svc", Repo: origin, Base: "main"}}
+	ws, err := m.Open(context.Background(), "p1", repos, t.TempDir(), Author{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	mirror := m.dirFor(origin)
+	mirror := m.Dir(origin)
 	linked, files := 0, 0
 	err = filepath.WalkDir(filepath.Join(ws.Root, "svc", ".git", "objects"), func(p string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {

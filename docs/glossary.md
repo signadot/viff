@@ -712,8 +712,9 @@ See [Provider selection](provider-selection.md#which-credential-it-runs-under).
 
 ### environment
 
-An environment is a named workspace that a runner defines: where the code comes from, what may
-run against it, where the result may go. A `spawn` names one with `environment:`.
+An environment is what a runner defines about a run: which agent runs it, what may run against
+the checkout, what its shell inherits, what it may reach. A `spawn` names one with
+`environment:`, and brings its own repositories with `repos:`.
 
 See [Examples](reference/examples/README.md#the-environment-is-the-unit-of-narrowing).
 

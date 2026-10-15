@@ -499,7 +499,7 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 		meta := mirror.Meta{
 			Subject: spec.Subject, Runner: place.Ref(), RunnerName: placeName,
 			Chain: spec.Chain, Prompt: spec.Prompt, Driver: spec.Driver, Occurrence: spec.Occurrence,
-			Doer: spec.Doer, Grant: spec.Grant, Tools: spec.Tools, Asker: spec.Asker,
+			Doer: spec.Doer, Grant: spec.Grant, Tools: spec.Tools, Repos: spec.Repos, Asker: spec.Asker,
 			Gates:  spec.Gates,
 			HeldBy: func() []string { return eng.HeldBy(id) },
 		}
@@ -666,6 +666,7 @@ func launchOf(id string, spec launch.Spec, principal string) (task.Launch, error
 		ID: id, Prompt: spec.Prompt, Driver: spec.Driver,
 		Frame: spec.Frame, Tools: spec.Tools, Answer: spec.Answer, Retain: spec.Retain,
 		Environment: spec.Environment, VirtualKey: spec.VirtualKey,
+		Repos: spec.Repos,
 		// A firing has no launcher, so its principal is the rule that fired — the address of
 		// its record, which the runner can read back. See trigger.Engine.Principal.
 		Provenance: task.Provenance{Principal: principal, Subject: spec.Subject, Chain: spec.Chain},
@@ -4199,6 +4200,12 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// The repositories, checked as a charter's are at install: somebody is standing here, so the
+	// refusal is a 400 with the reason rather than a task that fails.
+	if err := task.CheckRepos(body.Repos); err != nil {
+		http.Error(w, "repos: "+err.Error(), http.StatusBadRequest)
+		return
+	}
 	// The credential this run spends, read as WHOEVER ASKED — the same rule a charter's spawn
 	// gets, and the reason typing an address buys nothing a person could not already read. The
 	// refusal is a 400 rather than a task that fails, because somebody is standing here.
@@ -4210,6 +4217,7 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	h := place.Spawn(task.Launch{
 		ID: id, Prompt: body.Prompt, Driver: body.Driver, Retain: body.Retain, Converse: body.Converse,
 		Vector: vec, Environment: body.Environment,
+		Repos:      body.Repos,
 		VirtualKey: credential,
 		Answer:     body.Answer, Calls: body.Calls,
 		// And the same scope the record above goes to, so this run's gates reach the
@@ -4226,7 +4234,7 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 		// two facts a reader of this task wants beside its status, and for a task on a named
 		// runner the record is the only place they can be read without that runner.
 		Prompt: body.Prompt, Driver: body.Driver,
-		Subject: body.Subject, Gates: body.Gates, Asker: actsFor,
+		Subject: body.Subject, Gates: body.Gates, Asker: actsFor, Repos: body.Repos,
 		HeldBy: func() []string { return eng.HeldBy(id) },
 		// No Occurrence: nothing caused this one, so there is no commit to name and the
 		// mirror stamps the revision its own first write landed at instead. Reading

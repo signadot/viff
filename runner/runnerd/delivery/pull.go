@@ -1,4 +1,4 @@
-package main
+package delivery
 
 import (
 	"bytes"
@@ -11,41 +11,21 @@ import (
 	"strings"
 )
 
-// A PULL REQUEST is the one thing a destination does after the push, and it is the only forge
-// write this runner makes that is not a ref.
+// A PULL REQUEST is the one forge write a runner makes that is not a ref.
 //
 // It exists for a repository whose default branch nothing may push to: a protected branch takes
 // a merge only through a pull request somebody approves, so "merge this into main" has no act to
-// release there, and what a charter can deliver is the proposal itself. A destination carrying
-// `pull:` keeps ONE open pull request from its ref — a push updates it, since the pull request's
-// head is the ref, and the next push after it merges or closes opens a fresh one, since a merged
-// or closed pull request is not open.
+// release there, and what a task can deliver is the proposal itself. A pull request is FROM a
+// branch the task pushed: the push is what the gate approved, and the pull request is what the
+// branch means at the forge. ONE open pull request per head: a push to the head updates it, and
+// the next push after it merges or closes opens a fresh one, since a merged or closed pull
+// request is not open.
 //
-// It is an option on a destination and not a destination of its own, because a pull request is
-// FROM a ref work went to: the push is what the gate approved and what the credential was
-// released for, and the pull request is what the ref means at the forge. Splitting them would
-// hand a task a second thing to ask for, whose only correct use is "right after the first".
-//
-// The child performs it, with the credential the push already holds, for the same reason the
-// child pushes: the parent's protocol answers with a secret rather than a performance, and a
-// second op for "and open the pull request" would be the growth that protocol exists to refuse.
-// What the child may say about it is nothing — head, base, title and body all come from the
-// environment through the parent's reply.
+// The runner performs it, with its own token, as it performs a push: the task asks over the
+// channel and is told what happened.
 
-// Pull is the pull request a destination keeps open from its ref.
-type Pull struct {
-	// Base is the branch the pull request is into. Empty is the repository's own base, which
-	// is what a proposal against the default branch wants and the only thing a fixed-base
-	// destination could sensibly mean.
-	Base string `tony:"field=base,omitzero"`
-	// Title and Body take the $task and $sha the ref takes. An empty title names the head.
-	Title string `tony:"field=title,omitzero"`
-	Body  string `tony:"field=body,omitzero"`
-}
-
-// pullSpec is the pull request resolved by the parent and performed by the child: every field a
-// forge asks for, and nothing the task chose.
-type pullSpec struct {
+// PullSpec is one pull request as the forge asks for it.
+type PullSpec struct {
 	API   string `tony:"field=api"`
 	Owner string `tony:"field=owner"`
 	Repo  string `tony:"field=repo"`
@@ -55,15 +35,15 @@ type pullSpec struct {
 	Body  string `tony:"field=body,omitzero"`
 }
 
-// githubAPI is the one forge this opens pull requests at. The API host is not the push host,
-// which is why an environment's egress has to name it separately (checkReachable).
-const githubAPI = "https://api.github.com"
+// GitHubAPI is the one forge this opens pull requests at. The API host is not the push host,
+// which is why an egress allowlist has to name it separately.
+const GitHubAPI = "https://api.github.com"
 
-// pullAPI is the forge a repository url names, as the API base and the two path segments a pull
+// PullAPI is the forge a repository url names, as the API base and the two path segments a pull
 // request is addressed by. Refused for anything that is not github.com: a local path has no pull
 // requests, and another forge has another API, which would be a second implementation and not a
 // second case.
-func pullAPI(repo string) (api, owner, name string, err error) {
+func PullAPI(repo string) (api, owner, name string, err error) {
 	u, err := url.Parse(repo)
 	if err != nil || u.Host == "" {
 		return "", "", "", fmt.Errorf("%q is not a forge url, and a pull request needs one", repo)
@@ -75,34 +55,14 @@ func pullAPI(repo string) (api, owner, name string, err error) {
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return "", "", "", fmt.Errorf("%q does not name an owner and a repository", repo)
 	}
-	return githubAPI, parts[0], parts[1], nil
+	return GitHubAPI, parts[0], parts[1], nil
 }
 
-// pullSpec resolves a destination's pull request for this tree: the ref it was pushed to is
-// the head, and the environment's text is expanded the way the ref was.
-func (t *Tree) pullSpec(d Destination, branch string) (pullSpec, error) {
-	api, owner, name, err := pullAPI(t.Repo.Repo)
-	if err != nil {
-		return pullSpec{}, fmt.Errorf("destination %q: %w", d.Name, err)
-	}
-	base := d.Pull.Base
-	if base == "" {
-		base = t.Repo.Base
-	}
-	return pullSpec{
-		API: api, Owner: owner, Repo: name,
-		Head:  strings.TrimPrefix(t.DestRef(d.Name, branch), "refs/heads/"),
-		Base:  strings.TrimPrefix(base, "refs/heads/"),
-		Title: t.expand(d.Pull.Title, branch),
-		Body:  t.expand(d.Pull.Body, branch),
-	}, nil
-}
-
-// ensurePull makes sure an open pull request from the head to the base exists, and opens one if
+// EnsurePull makes sure an open pull request from the head to the base exists, and opens one if
 // none does. Idempotent by asking first: a push that updated an open pull request has nothing to
 // open, and the forge refuses a second one for the same head anyway, so asking is what turns
 // that refusal into an answer.
-func ensurePull(ctx context.Context, hc *http.Client, token string, s pullSpec) (string, error) {
+func EnsurePull(ctx context.Context, hc *http.Client, token string, s PullSpec) (string, error) {
 	repo := s.API + "/repos/" + url.PathEscape(s.Owner) + "/" + url.PathEscape(s.Repo) + "/pulls"
 	q := url.Values{"state": {"open"}, "head": {s.Owner + ":" + s.Head}, "base": {s.Base}}
 	var open []struct {
@@ -131,7 +91,7 @@ func ensurePull(ctx context.Context, hc *http.Client, token string, s pullSpec) 
 	return fmt.Sprintf("opened pull request #%d from %s into %s: %s", made.Number, s.Head, s.Base, made.URL), nil
 }
 
-// forge is one call to the forge's API, with the credential the push was released.
+// forge is one call to the forge's API, with the runner's own token.
 func forge(ctx context.Context, hc *http.Client, token, method, target string, in, out any) error {
 	var payload io.Reader
 	if in != nil {
@@ -163,4 +123,51 @@ func forge(ctx context.Context, hc *http.Client, token, method, target string, i
 		return fmt.Errorf("%s %s: %s: %s", method, target, res.Status, firstLine(string(raw)))
 	}
 	return json.Unmarshal(raw, out)
+}
+
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	s = strings.TrimSpace(s)
+	if len(s) > 72 {
+		s = s[:72]
+	}
+	return s
+}
+
+// UpdatePull changes the open pull request from the head: its title, body and base, each only
+// where the spec says one. Refused, as an error the task reads, when none is open from that
+// head: an update of nothing is a proposal that was never made.
+func UpdatePull(ctx context.Context, hc *http.Client, token string, s PullSpec) (string, error) {
+	repo := s.API + "/repos/" + url.PathEscape(s.Owner) + "/" + url.PathEscape(s.Repo) + "/pulls"
+	q := url.Values{"state": {"open"}, "head": {s.Owner + ":" + s.Head}}
+	var open []struct {
+		Number int    `json:"number"`
+		URL    string `json:"html_url"`
+	}
+	if err := forge(ctx, hc, token, http.MethodGet, repo+"?"+q.Encode(), nil, &open); err != nil {
+		return "", fmt.Errorf("listing pull requests from %s: %w", s.Head, err)
+	}
+	if len(open) == 0 {
+		return "", fmt.Errorf("no pull request is open from %s to update; create-pr opens one", s.Head)
+	}
+	body := map[string]string{}
+	if s.Title != "" {
+		body["title"] = s.Title
+	}
+	if s.Body != "" {
+		body["body"] = s.Body
+	}
+	if s.Base != "" {
+		body["base"] = s.Base
+	}
+	var made struct {
+		Number int    `json:"number"`
+		URL    string `json:"html_url"`
+	}
+	if err := forge(ctx, hc, token, http.MethodPatch, fmt.Sprintf("%s/%d", repo, open[0].Number), body, &made); err != nil {
+		return "", fmt.Errorf("updating pull request #%d from %s: %w", open[0].Number, s.Head, err)
+	}
+	return fmt.Sprintf("updated pull request #%d from %s: %s", made.Number, s.Head, made.URL), nil
 }

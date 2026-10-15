@@ -243,6 +243,7 @@ prevents.
 |---|---|
 | `resolver` | the resolver that answers the gates of this run. Verse refuses a spawn that names a resolver that is not installed, and does not leave the run unsupervised. See [attached resolvers](../attached-resolvers.md). |
 | `environment` | the workspace that the task runs in. Verse carries the name to the runner. The runner resolves it, and refuses a name it does not have. |
+| `repos` | the repositories the task works in, and what it may push to each: `[{repo: acme/app, access: write, from: main, push: {new: ["verse/*"], existing: [main]}}]`. `repo` is `owner/name` at GitHub or a git url; `access` is `read` (the default) or `write`, and `write` names what it may push in `push`; `from` omitted is the default branch; `force` lets a push rewrite an `existing` branch. `repo`, `from` and `existing` take `$vars`, so a charter can write `existing: [$subject.head]`; `new` does not. Verse checks the shape at install, carries the list to the runner, which refuses a launch it cannot honour rather than weakening it, and writes it on the task's record as `repos`, so a reader sees what the run was allowed without the charter. |
 | `credential` | `{audience: <name>}` asks verse for a token that vouches for the task to a system outside verse: the rule's gate let this work through. It is for a rule's own spawn, of a rule with a gate that asks. See [a credential for what a gate let through](gates.md#a-credential-for-what-a-gate-let-through). |
 
 ```tony
@@ -305,7 +306,7 @@ spawn:
   - tool: run_bash
     input: {command: "git merge --ff-only origin/$branch"}
   - tool: push
-    input: {destination: main}
+    input: {branch: main}
 ```
 
 The presence of `calls` **is** the driver. `driver: calls` may be written, and it must not
@@ -319,7 +320,7 @@ An entry may narrow what ends the list:
 
 ```tony
   - tool: push
-    input: {destination: retire}
+    input: {branch: $branch, delete: true}
     fatal: [err]        # a remote declining one ref is not a reason to stop
 ```
 

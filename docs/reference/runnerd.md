@@ -13,7 +13,10 @@ runner is a program that does the work a spawn describes. Verse reaches it over 
 image as `verse`. Each subcommand runs one runner:
 
 ```
-runnerd verse -config <file> [-sandbox bwrap|none]   verse's own agent, and scripts
+runnerd verse -config <file> [-sandbox bwrap|none]   verse's own agent, scripts, and the programs
+                                                      its configuration names, each task in a
+                                                      workspace of git checkouts when it declares
+                                                      environments
 ```
 
 The same runners also run embedded. `verse up` hosts the verse runner in its own process and
@@ -110,6 +113,10 @@ annotations:
 | `models.portkey.virtualKey` | the Portkey virtual key, when a spawn doesn't pick one. It is a routing label, not a secret. | none |
 | `models.model` | the agent's model, when a spawn doesn't pick one | the agent's own |
 | `annotations` | the annotations a spawn may set, with the type of their value. The verse runner knows one, `verse.portkey/virtual-key`: with it, the virtual key a spawn picked is used. | none |
+| `models.baseUrl` | the model endpoint, OpenAI-compatible | `PORTKEY_BASE_URL`, else Portkey's own |
+| `environments` | what a task runs with: each a name, the driver, the tools a spawn gets when it names none, the binaries its work expects (`commands`), the environment allowlist (`env`), the egress allowlist (`egress`). A spawn names one with `environment:`, and brings its own repositories (`repos:`), which the runner checks. See [the coderunner example](examples/README.md#a-workspace-per-task) for the whole shape. | none: each task gets a fresh directory |
+| `default` | the environment a spawn that names none gets | none: a spawn must name one |
+| `agents` | programs a spawn may name as its `driver:`, each an `argv` with `$prompt` in it, how to `resume` a session, and whether its `output` is `text` or `json` | none |
 
 Secrets are never in the file. The runner reads them from its environment, where a deployment
 puts a Kubernetes Secret.
@@ -118,6 +125,14 @@ puts a Kubernetes Secret.
 |---|---|
 | `PORTKEY_API_KEY` | the Portkey account key. Without it, the runner offers scripts only. |
 | `PORTKEY_BASE_URL` | the Portkey endpoint. Default: Portkey's own. |
+| `PORTKEY_VIRTUAL_KEY` | the virtual key a spawn that picks none runs under, when `models.portkey.virtualKey` names none. |
+| `VERSE_GIT_TOKEN` | the git token the environments' mirrors are fetched with, and every push is made with. Another variable with `-git-token-env`. |
+
+With environments, the runner takes `-data <dir>` for its mirrors and workspaces (default: a temp
+directory), `-keep` to keep a task's workspace when it ends, and serves `GET /runner`: what it is,
+the sandbox it runs tasks in and the networks it builds, its environments, and the work it holds
+that did not leave. `-listen` overrides the configuration's `listen`, and `-admin-addr` is the
+admin and pprof face (default: the listen port plus one).
 
 ### What it offers
 

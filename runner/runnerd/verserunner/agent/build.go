@@ -178,7 +178,7 @@ func Vector() *task.Vector {
 // the runtime knows how to do.
 //
 // The case it exists for is a coding runner's push. The runner holds the credential, the
-// destinations are its environment's to declare, and neither is anything this package can know
+// repositories and what may be pushed to each are the spawn's, and neither is anything this package can know
 // about — but the action has to be an ACTION, derived and gated and narrated like every other,
 // or it is a capability outside the vector. Wiring it as a fifth case in fsExec would put git in
 // a package that has no business knowing what git is; wiring it as a private channel would put

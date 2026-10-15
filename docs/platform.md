@@ -30,8 +30,6 @@ tasks, answers gates) starts at [the docs index](README.md).
   [reference/iod.md](reference/iod.md).
 - [Examples](reference/examples/README.md) — a runner, a coding runner and an io to
   copy and change.
-- [The coding runner, walked](reference/examples/coderunner/walkthrough.md) — deploying the
-  coding runner and running a task on it.
 
 ## How verse is built
 

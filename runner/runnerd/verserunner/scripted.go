@@ -31,12 +31,9 @@ func ScriptedBuilder(l task.Launch, reg *task.Registry) *task.Task {
 // which is what `scripted` always was. env names the variables its shell passes through from
 // this process; see task.ShellEnv.
 //
-// It used to be its own driver with its own vector, hardcoded to Auto. Both are gone. The
-// driver is task's, because one shell command is the degenerate case of a list of calls and
-// keeping a second implementation of "propose one action, then stop" bought nothing; the
-// vector is now the SPAWN's, because the old one was not a default but an override — it
-// ignored a `vector:` the charter had written, so a charter asking to be asked was disobeyed
-// in silence.
+// The driver is task's, because one shell command is the degenerate case of a list of calls and
+// a second implementation of "propose one action, then stop" would buy nothing; the autonomy is
+// the SPAWN's, so a charter asking to be asked about its one command is asked.
 //
 // The consequence is deliberate and is the reason this is a contract change: a `driver:
 // scripted` spawn that names no vector now ASKS, where it used to run unattended. The

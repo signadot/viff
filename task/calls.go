@@ -160,7 +160,7 @@ func (c Call) fatalFor(r StepResult) (StepOutcome, bool) {
 }
 
 // describe says what happened, for the error that ends the run. It carries the executor's own
-// words where there are any: a push refused for a destination the environment does not declare
+// words where there are any: a push refused for a branch the spawn does not permit
 // should say that, not "blocked".
 func describe(o StepOutcome, r StepResult) string {
 	switch o {
@@ -278,7 +278,7 @@ func driverName(l Launch) string {
 //	- tool: run_bash
 //	  input: {command: "git merge --ff-only origin/topic"}
 //	- tool: push
-//	  input: {destination: main}
+//	  input: {branch: main}
 //	  fatal: [err]
 //
 // The whole source must be the document. Prose around a list is refused rather than scavenged,

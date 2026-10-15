@@ -246,7 +246,7 @@ calls:
 - tool: run_bash
   input: {command: "git merge --ff-only origin/topic"}
 - tool: push
-  input: {destination: main}
+  input: {branch: main}
   fatal: [err]
 - tool: note
   fatal: []

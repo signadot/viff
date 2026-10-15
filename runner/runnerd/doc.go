@@ -16,7 +16,9 @@
 // their subtrees — and GET /describe. Load reads the configuration every runner shares.
 //
 // How a task is built is injected as a Builder, so the handler carries no coupling to any
-// particular agent. The runners verse ships are its subpackages (verserunner).
+// particular agent. The runners verse ships are its subpackages: verserunner, and what a runner
+// that prepares a task's checkout is built with — workspace, the git working directory, and
+// delivery, how work leaves it.
 //
 // Control ops are task- or subtree-scoped (never per-child); the read plane is drop-with-gap.
 //

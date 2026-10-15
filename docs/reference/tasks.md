@@ -90,7 +90,7 @@ spawn:
   - tool: run_bash
     input: {command: "git merge --ff-only origin/$branch"}
   - tool: push
-    input: {destination: main}
+    input: {branch: main}
 ```
 
 The list is a field. So:
@@ -118,7 +118,7 @@ An entry may say which of its outcomes end the list:
 
 ```tony
 - tool: push
-  input: {destination: retire}
+  input: {branch: $branch, delete: true}
   fatal: [err]        # a remote declining ONE ref is not a reason to stop
 ```
 
@@ -181,7 +181,7 @@ run freely. These block until somebody approves them:
 Approving a command that the agent made up is a real decision.
 
 The set of actions is not fixed at four. **A runtime may add an action of its own.** The
-coding runner adds `push`, which sends work to a destination that its environment declares.
+coding runner adds `push`, which sends work to a branch the spawn permits, and `create-pr` and `update-pr`, which open and update a pull request from such a branch.
 What arrives at the gate is an ordinary action with an ordinary typed effect. So a vector
 decides it in the same way, and `verse question` shows it in the same way.
 

@@ -44,12 +44,15 @@ func serve(t *testing.T, s Secrets, sb runnerd.Sandbox) (rt task.Runner, work st
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := Standalone(Config{}, s, sb, []string{os.Args[0], "-test.run=^$", taskArg}, work, control, io.Discard)
+	r, err := Standalone{
+		Secrets: s, Sandbox: sb, Command: []string{os.Args[0], "-test.run=^$", taskArg},
+		Work: work, Control: control, Log: io.Discard,
+	}.Start()
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(h.HTTPHandler())
-	t.Cleanup(func() { srv.Close(); h.Shutdown(); os.RemoveAll(control) })
+	srv := httptest.NewServer(r.Handler())
+	t.Cleanup(func() { srv.Close(); r.Shutdown(); os.RemoveAll(control) })
 	return client.HTTP(srv.URL), work
 }
 

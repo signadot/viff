@@ -139,6 +139,9 @@ type taskRunConfig struct {
 	// Which workspace the runner should build — a repo at a base, a toolchain, a
 	// containment. Resolved by the runner against its own config; verse carries the name.
 	Environment string `cli:"name=environment desc='workspace the runner should run this in (a name the runner knows)'"`
+	// Which repositories this run works in and what it may push — the ad-hoc face of a
+	// charter's `repos:`, in a file for the same reason `--gates` is: it is a list of records.
+	Repos string `cli:"name=repos desc='file holding the repositories this run works in (a list of {repo, access, from, push}; .tony/.json/.yaml)'"`
 	// Which credential this run spends, by address. Read as the person running it, so this
 	// flag hands nobody anything they could not already read.
 	VirtualKey string `cli:"name=virtual-key desc='address of the model credential this run spends (a node holding {key: <name>}, readable by you); default: the runtime default'"`
@@ -204,6 +207,15 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 			return fmt.Errorf("task run: %s is not a list of gates: %w", cfg.Gates, err)
 		}
 	}
+	var repos []task.Repo
+	if cfg.Repos != "" {
+		if err := codec.ReadFile(cfg.Repos, &repos); err != nil {
+			return fmt.Errorf("task run: %s is not a list of repositories: %w", cfg.Repos, err)
+		}
+		if err := task.CheckRepos(repos); err != nil {
+			return fmt.Errorf("task run: %s: %w", cfg.Repos, err)
+		}
+	}
 	// `--driver calls` takes the actions themselves, as a tony document. It is parsed HERE, so
 	// a list that will not read is a message on the terminal of whoever typed it rather than a
 	// task that failed somewhere else — and what goes over the wire is the field, which is the
@@ -223,7 +235,7 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 	resp, err := httpPost("/tasks", api.Spawn{
 		Prompt: prompt, Driver: cfg.Driver, Name: cfg.Name,
 		Subject: cfg.Subject, Vector: vector, Gates: gates, Calls: calls,
-		Runner: cfg.Runner, Environment: cfg.Environment, VirtualKey: cfg.VirtualKey, Principal: by,
+		Runner: cfg.Runner, Environment: cfg.Environment, Repos: repos, VirtualKey: cfg.VirtualKey, Principal: by,
 		Answer: contract, Converse: cfg.Attach && cfg.Converse,
 	})
 	if err != nil {

@@ -118,6 +118,25 @@ signature:
 context:
 - tony-format/context
 define:
+  existing: .[array(string)]
+  force: .[bool]
+  new: .[array(string)]
+signature:
+  name: verse-repo-push
+---
+context:
+- tony-format/context
+define:
+  access: .[string]
+  from: .[string]
+  push: .[nullable(verse-repo-push)]
+  repo: .[string]
+signature:
+  name: verse-repo
+---
+context:
+- tony-format/context
+define:
   cursor: .[int]
   driver: .[string]
   ended: .[string]
@@ -165,6 +184,7 @@ define:
   occurrence: .[int]
   prompt: .[string]
   provenance: .[nullable(verse-runner-provenance)]
+  repos: .[array(verse-repo)]
   retain: .[int]
   tools: .[array(string)]
   vector: .[nullable(verse-vector)]

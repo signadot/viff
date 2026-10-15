@@ -195,10 +195,19 @@ rules:
   action:
     spawn:
       runner: verse.runners.coderunner
-      # That environment pushes `refs/heads/verse/auto/$sha/$task`, so the deliverable is a diff
-      # rather than prose about a diff. Delivery is the runner's act and the task only proposes
-      # it, at the end; a run that changed nothing proposes nothing and leaves no branch.
       environment: verse-fix
+      # The repository, and what this task may push to it: ONLY a proposal branch of its own,
+      # `verse/auto/<task>`, so the deliverable is a diff rather than prose about a diff, and
+      # `main` is deliberately not here. A fixing task's work is a PROPOSAL — that is the whole
+      # shape of the deliverable — and somewhere with a consequence is merge.tony's spawn, which
+      # exists so that reaching it is a different charter rather than a rule somebody remembers.
+      # The agent commits and pushes itself; a run that changed nothing pushes nothing and leaves
+      # no branch.
+      repos:
+      - repo: signadot/verse
+        from: main
+        access: write
+        push: {new: ["verse/auto/*"]}
       driver: llm
       grant: all
       vector: auto

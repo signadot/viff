@@ -19,37 +19,39 @@ metadata:
   name: coderunner-config
   labels: {app: verse, tier: runner}
 data:
-  # An environment names a repository, a base and where the work goes. Nothing here is a
-  # default the image could have guessed: what to work on and where to push it are a
-  # deployment's to state.
+  # An environment names what a task runs with: the driver, the tools, the shell's allowlist and
+  # the egress. The repositories, and what may be pushed to each, are the spawn's. Nothing here
+  # is a default the image could have guessed: what a task runs with is a deployment's to state.
   #
-  # `tools:` is the FLOOR for the llm driver — which tools exist at all. No `run_bash`: the file
+  # `tools:` is what the llm driver gets when the spawn names none. No `run_bash`: the file
   # tools are confined to the workspace by construction, a shell is the one that can leave, and
   # a docs task does not need one. Withholding it is a stronger statement than any prompt.
   coderunner.tony: |
     default: verse-docs
 
-    llm:
-      apiKeyEnv: PORTKEY_API_KEY
-      virtualKeyEnv: PORTKEY_VIRTUAL_KEY
+    # The model credentials are read from the runner's environment, by the names versed uses
+    # too: PORTKEY_API_KEY, PORTKEY_VIRTUAL_KEY (envFrom the verse-llm Secret, below).
+    models:
       # A model the virtual key's provider serves, and the same one versed is given
       # (deploy/profiles/staging.tony): one credential, one provider, one answer about which
       # model this deployment runs.
       model: claude-sonnet-5
+    # A spawn that names a virtual key of its own runs under it: verse read it from the address
+    # the spawn named, as whoever named it, and refused there if that read was not theirs.
+    annotations:
+      verse.portkey/virtual-key: string
 
     environments:
     - name: verse-docs
-      repos:
-      - name: verse
-        repo: "https://github.com/signadot/verse"
-        base: main
-        push: "refs/heads/verse/auto/$sha/$task"
+      # The repositories a task works in, and what it may push to each, are the SPAWN's to say
+      # (`repos:` on the charter). The runner checks them against this environment, pushes from
+      # its own mirror with its own token, and the task never has a route to the forge.
       driver: llm
-      tools: [read_file, list_dir, write_file]
+      tools: [read_file, list_dir, write_file, push, fetch]
       commands: [go, gofmt]
       env: [PATH, HOME, USER, LANG]
-      # The way out, and the only one. Declaring this IS declaring
-      # `network.egress: restricted`: the task process runs with its network unshared, so it has
+      # The way out, and the only one. Declaring this IS declaring a restricted network: the
+      # task process runs with its network unshared, so it has
       # no route anywhere, and one socket is bound back in that reaches an allowlisting proxy in
       # the runner. Everything else fails with the list in the error message.
       #
@@ -59,7 +61,7 @@ data:
       # proxy per secret.
       #
       # It needs bwrap, which is why `-confine bwrap` below is not optional for this environment:
-      # a confiner that cannot unshare the network REFUSES the launch rather than running the
+      # a sandbox that cannot unshare the network REFUSES the launch rather than running the
       # task with a proxy it is free to ignore.
       # api.portkey.ai, NOT the model vendor: the driver dials Portkey's gateway (the harness
       # defaults there when no baseUrl is set), and which provider sits behind the virtual key
@@ -70,30 +72,6 @@ data:
       - api.portkey.ai
       - proxy.golang.org
       - sum.golang.org
-      # THE FORGE, and it is the one widening in this design worth reading twice.
-      #
-      # An environment with destinations needs a route to them, because the TASK does the
-      # pushing: the runner hands it a credential rather than performing an operation for it.
-      # The runner refuses at startup if this is missing, rather than letting a task be approved
-      # and then fail to reach github.com at the end of a run.
-      #
-      # What this admits is REACHABILITY, for everything in the network namespace — including
-      # the model's shell, since the allowlist is per namespace and the shell shares it. What it
-      # does not admit is AUTHORISATION: a credential is released only when a gate approves a
-      # destination, it goes to `coderunner -task` and not into `env:` above, so the shell can
-      # reach github.com and can do nothing there.
-      #
-      # Two rules at the RECEIVING end finish the job, and neither is verse's to hold — humans
-      # push to this repository too, and an invariant enforced by the receiver applies to all of
-      # them:
-      #   - `receive.denyNonFastForwards` (or the forge's branch-protection equivalent) is what
-      #     makes `--ff-only` more than an instruction in a prompt — SET on this repository's
-      #     `main`, and nothing here checks it or could;
-      #   - `receive.denyDeletes` must NOT be set on a ref pattern a retiring destination
-      #     targets, or a sweep silently cannot do its job.
-      # Both fail OPEN — a missing rule does not error, it permits — so they are written here,
-      # where whoever configures this deployment will read them.
-      - github.com
 
     # The fixing environment: read the repository, correct what disagrees with the code, and
     # leave it on a branch somebody can diff.
@@ -105,18 +83,16 @@ data:
     # It PUSHES, which is the whole shape of the deliverable: a stale comment is cheap to read
     # as a diff and expensive to read as prose about a diff, and a branch is droppable in a way
     # a report on an entity is not. The push is an ACTION of the task, carrying the ref it will
-    # touch, and approval is what releases the credential for it — so a charter can decline it
-    # and a decline means the ability never existed. A run that changed nothing proposes nothing,
+    # touch, and approval is what makes the runner push it — so a charter can decline it and a
+    # decline means nothing moves. A run that changed nothing proposes nothing,
     # so a commit with no stale comment in it leaves no branch.
     #
     # A SHELL, and `git` on the PATH — which the image's own Dockerfile keeps OFF a task's PATH
-    # on purpose, and it is worth saying exactly why that is not being undone here. The shell can
-    # now REACH github.com, because a push needs a route and the allowlist is per network
-    # namespace. What it cannot do is authenticate: the credential is not in `env:` below, which
-    # is the allowlist a subprocess inherits, and it never will be — it goes to the task process
-    # and is used there. So `git` in here can read this clone and can push nothing. What a shell
-    # buys is the one question a charter cannot answer for
-    # itself: which files a commit changed. `git.<repo>.commit.*` carries the sha, the message and the
+    # on purpose, and it is worth saying exactly why that is not being undone here. The shell has
+    # no route to github.com and no credential: the runner pushes, from its own mirror, with a
+    # token that is never in the task's process. So `git` in here can read this clone and can
+    # push nothing. What a shell buys is the one question a charter cannot answer for itself:
+    # which files a commit changed. `git.<repo>.commit.*` carries the sha, the message and the
     # trailers, and not the paths, so without a shell the task cannot find out what it is
     # reviewing. The day that list is a field on the commit entity, this environment goes back
     # to the file tools alone — that is the first item in the note.
@@ -124,62 +100,25 @@ data:
     # `call_agent`, because the unit of review is a FILE and this task is handed a commit. verse
     # fans out per entity and a changed file is not one, so the fan-out lands inside the task.
     - name: verse-fix
-      repos:
-      - name: verse
-        repo: "https://github.com/signadot/verse"
-        base: main
-        destinations:
-        # Where a task's own work lands, and what `deliver` used to mean. $task expands to the
-        # task id, so two runs never contend for a ref; a charter-spawned id is
-        # `<chain>@<subject>`, which is not a legal ref name, and the runner flattens it.
-        #
-        # ONE destination, and `main` is deliberately not here. A fixing task's work is a
-        # PROPOSAL — that is the whole shape of the deliverable — and somewhere with a
-        # consequence is `verse-merge` below, which exists so that reaching it is a different
-        # environment rather than a rule somebody has to remember.
-        - name: auto
-          ref: "refs/heads/verse/auto/$sha/$task"
+      # The repository is the spawn's: .verse/charters/comment-drift/drift.tony names
+      # signadot/verse and permits only a proposal branch of the task's own.
       driver: llm
-      # No `push`. The FLOOR is what a tool can ever be, so a task here cannot ask for a
-      # destination at all — the closing delivery to `auto` is the finisher's and is not a tool.
-      # That is what makes "a fix proposes and does not land" a property of the environment
-      # rather than of every charter that uses it remembering to narrow its own spawn.
-      tools: [read_file, list_dir, write_file, run_bash, call_agent]
+      # `push` is here because delivery is the agent's: it commits what it means to deliver and
+      # calls `push`, and an agent without the tool delivers nothing. What keeps "a fix proposes
+      # and does not land" is the charter's allowance: a proposal branch is the only kind it
+      # permits.
+      tools: [read_file, list_dir, write_file, run_bash, call_agent, push, fetch]
       commands: [git, go, gofmt]
       env: [PATH, HOME, USER, LANG]
       egress:
       - api.portkey.ai
       - proxy.golang.org
       - sum.golang.org
-      # THE FORGE, and it is the one widening in this design worth reading twice.
-      #
-      # An environment with destinations needs a route to them, because the TASK does the
-      # pushing: the runner hands it a credential rather than performing an operation for it.
-      # The runner refuses at startup if this is missing, rather than letting a task be approved
-      # and then fail to reach github.com at the end of a run.
-      #
-      # What this admits is REACHABILITY, for everything in the network namespace — including
-      # the model's shell, since the allowlist is per namespace and the shell shares it. What it
-      # does not admit is AUTHORISATION: a credential is released only when a gate approves a
-      # destination, it goes to `coderunner -task` and not into `env:` above, so the shell can
-      # reach github.com and can do nothing there.
-      #
-      # Two rules at the RECEIVING end finish the job, and neither is verse's to hold — humans
-      # push to this repository too, and an invariant enforced by the receiver applies to all of
-      # them:
-      #   - `receive.denyNonFastForwards` (or the forge's branch-protection equivalent) is what
-      #     makes `--ff-only` more than an instruction in a prompt — SET on this repository's
-      #     `main`, and nothing here checks it or could;
-      #   - `receive.denyDeletes` must NOT be set on a ref pattern a retiring destination
-      #     targets, or a sweep silently cannot do its job.
-      # Both fail OPEN — a missing rule does not error, it permits — so they are written here,
-      # where whoever configures this deployment will read them.
-      - github.com
 
     # The merging environment: take a branch somebody already approved and put it on main.
     #
     # IT IS A SEPARATE ENVIRONMENT AND THAT IS THE WHOLE POINT. Everything here could have been
-    # two more lines on `verse-fix` — one destination, one tool — and the cost of that would have
+    # two more lines on `verse-fix` — one branch, one tool — and the cost of that would have
     # been paid somewhere else: that environment is shared, comment-drift spawns into it with
     # `vector: auto`, and nothing in the loop would then stop a fix task asking for `main`. The
     # containment would have been "every charter that uses this remembers to narrow its own
@@ -190,132 +129,70 @@ data:
     # An environment is the unit this runner already has for that; using it is cheaper than
     # inventing a second answer.
     - name: verse-merge
-      repos:
-      - name: verse
-        repo: "https://github.com/signadot/verse"
-        base: main
-        destinations:
-        # ONE destination, and it is the consequential one. No `auto`: a merge task's work IS the
-        # merge, so there is nothing to propose separately — and with no `auto` declared the
-        # closing delivery proposes nothing at all rather than leaving a junk branch behind every
-        # time somebody approves a merge.
-        #
-        # WHAT DECIDES IT is the charter's gate — merge-gate.tony's `!until [!quorum 1, !deadline
-        # "24h"]`, which denies on the clock — and not the task's vector, which that charter sets
-        # to `auto` deliberately: the decision has been made by a person about the thing that
-        # matters, and making the task re-ask per action would be the same question in two
-        # vocabularies. The environment is what makes that safe to say: the only task that can be
-        # here is one somebody pointed here.
-        #
-        # No `credential:`, deliberately: a PAT scopes per repository and not per ref, so a
-        # second one for the same repository would buy nothing and imply something. The runner's
-        # own `-token-env` token is released, and what stops `--ff-only` being merely a prompt is
-        # `receive.denyNonFastForwards` on main at the far end.
-        - name: main
-          ref: "refs/heads/main"
-        # RETIRING, which is a different act and says so: `delete: true` makes `ref` a GLOB of
-        # what may be removed rather than the one place work goes, because a sweep learns stale
-        # branch names by asking the remote and cannot be handed them by this file. The
-        # environment still decides — the task picks inside this pattern and a ref outside it is
-        # refused before anything is gated.
-        #
-        # TWO segments after `verse/auto/`, because the delivered ref is
-        # `refs/heads/verse/auto/$sha/$task` and `*` does not cross `/`. A pattern one segment
-        # short matches nothing and reads as a sweep that never finds anything, which this drive
-        # has already paid for once in a charter selector.
-        #
-        # Deriving stamps `Verb: Delete`, so a charter that wants to gate destroying without
-        # gating delivery says `verbs: [delete]`. And `receive.denyDeletes` must NOT be set on
-        # this pattern at the far end, or the sweep is refused every time — the one rule in this
-        # file that has to be ABSENT rather than present.
-        - name: retire
-          ref: "refs/heads/verse/auto/*/*"
-          delete: true
+      # The repository is the spawn's: .verse/charters/comment-drift/merge.tony names
+      # signadot/verse with main as a fast-forward and the proposal branches as deletable. What
+      # stops a push to main being merely a prompt is `receive.denyNonFastForwards` on main at
+      # the far end, and `receive.denyDeletes` must NOT be set on verse/auto/* there, or the
+      # sweep is refused every time — the one rule that has to be ABSENT rather than present.
       driver: llm
       # A shell to run the merge, `push` to send it and to retire, and the read tools so a model
       # that wants to look before it merges can. No `write_file`: a merge that hand-edits a file is not a
       # merge. No `call_agent`: there is nothing here to fan out over.
-      tools: [read_file, list_dir, run_bash, push]
+      tools: [read_file, list_dir, run_bash, push, fetch]
       commands: [git]
       env: [PATH, HOME, USER, LANG]
-      # No module proxy: a merge does not build. The model call and the forge, and nothing else.
+      # No module proxy: a merge does not build. The model call, and nothing else: the runner
+      # pushes, so the task has no route to the forge.
       egress:
       - api.portkey.ai
-      - github.com
 
     # ── example/app ──────────────────────────────────────────────────────────
     #
     # The same pair for the product repository, and one thing about it decides their shape:
     # master is PROTECTED — a review, status checks and a merge queue, and nobody pushes to it.
-    # So the consequential destination here is not `main` but a pull request (pull.go): the
+    # So the consequential branch here is not `main` but the train a pull request is from: the
     # push proposes, the forge asks, and the merge is the queue's. The charters are
     # deploy/charters/example/repo/app/{comment-drift,pr}.tony.
     #
-    # The token this runner holds (-token-env) pushes to this repository too, so it needs
-    # contents: write AND pull_requests: write on example/app — the second is what opening
-    # a pull request costs, and a token without it pushes the branch and then fails to ask.
+    # The token this runner holds (-git-token-env) pushes to this repository too, so it needs
+    # contents: write on example/app, and pull_requests: write for the pull request the
+    # train is proposed through.
     #
     # THE FIXING ENVIRONMENT, and it is verse-fix with the repository swapped. A monorepo of
     # several Go modules, so `go` runs inside whichever module the task cds into; the prompt
     # says so, and the module proxy is here for `go doc` the same as it is for verse.
     - name: signadot-fix
-      repos:
-      - name: signadot
-        repo: "https://github.com/example/app"
-        # THE BRANCH, and the charters read the same one. Change it here, in signadot-pr
-        # below (base and pull.base), and in deploy/charters/example/repo/app/*.tony together — the way
-        # it was driven on `verse/drive` before master.
-        base: master
-        destinations:
-        - name: auto
-          ref: "refs/heads/verse/auto/$sha/$task"
+      # The repository is the spawn's: deploy/charters/example/repo/app/comment-drift.tony
+      # names example/app at the branch it reviews, and permits only a proposal branch.
       driver: llm
-      tools: [read_file, list_dir, write_file, run_bash, call_agent]
+      tools: [read_file, list_dir, write_file, run_bash, call_agent, push, fetch]
       commands: [git, go, gofmt]
       env: [PATH, HOME, USER, LANG]
       egress:
       - api.portkey.ai
       - proxy.golang.org
       - sum.golang.org
-      - github.com
 
-    # THE PULL REQUEST ENVIRONMENT: verse-merge with `main` replaced by `train`.
+    # THE PULL REQUEST ENVIRONMENT: verse-merge with `main` replaced by `verse/train`.
     #
-    # `train` is one fixed ref, pushed FORCED by every tip's train — the runner forces every
-    # delivery, and here the overwrite is the point: the pull request's head is this ref, so a
-    # push to it is the update, and one open pull request follows master rather than one per
-    # tip. `pull:` is what keeps it open: after the push the task asks the forge for the open
-    # pull request from this ref and opens one if there is none, which after a merge there is
-    # not.
+    # `verse/train` is one branch, REWRITTEN by every tip's train: it is the run's own (a `new`
+    # pattern, literal), so a push may rewrite it, and here the overwrite is the point — the
+    # pull request's head is this branch, so a push to it is the update, and one open pull
+    # request follows master rather than one per tip.
     #
-    # The body is the reader's map back to verse: git issue sxz4wejmh12kshy5g9n0 is that the
+    # The pull request itself is opened through the API, from this branch into master, and the
+    # body is the reader's map back to verse: git issue sxz4wejmh12kshy5g9n0 is that the
     # charter cannot say which car it left behind, and until it can, the train entity's
     # `branches` beside the pull request's commits is where a person sees it.
     - name: signadot-pr
-      repos:
-      - name: signadot
-        repo: "https://github.com/example/app"
-        base: master
-        destinations:
-        - name: train
-          ref: "refs/heads/verse/train"
-          pull:
-            base: master
-            title: "verse: comment drift at $sha"
-            body: "Assembled by verse from the comment-drift review of the base branch at $sha: each commit is one fix the review proposed, rebased onto that branch. The train is the entity under signadot.pr.train whose sha begins $sha; its `branches` field lists every proposal loaded, and one listed there with no commit here did not rebase and was skipped. Force-pushed whenever the base branch moves, so review comments go outdated rather than stale."
-        - name: retire
-          ref: "refs/heads/verse/auto/*/*"
-          delete: true
+      # The repository is the spawn's: deploy/charters/example/repo/app/pr.tony names
+      # example/app with the train as the run's own branch and the proposals as deletable.
       driver: llm
-      tools: [read_file, list_dir, run_bash, push]
+      tools: [read_file, list_dir, run_bash, push, fetch, create-pr, update-pr]
       commands: [git]
       env: [PATH, HOME, USER, LANG]
-      # api.github.com beside github.com: the push goes to one and the pull request to the
-      # other, and the runner refuses to start with the second missing (checkReachable).
       egress:
       - api.portkey.ai
-      - github.com
-      - api.github.com
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -368,11 +245,10 @@ spec:
         # anyone who can read the deployment.
         #
         # envFrom takes the Secret's own key names as variable names — verse-llm, the one
-        # versed uses, whose keys ARE those names (PORTKEY_API_KEY, PORTKEY_VIRTUAL_KEY). This
-        # named two keys explicitly before, and named ones that Secret does not have: a
-        # secretKeyRef with optional: true is SILENT about a key that is not there, so the pod
-        # came up with no credential and every task would have died at the model call. Taking
-        # the whole Secret cannot drift from it.
+        # versed uses, whose keys ARE those names (PORTKEY_API_KEY, PORTKEY_VIRTUAL_KEY). The
+        # whole Secret rather than named keys, because a secretKeyRef with optional: true is
+        # SILENT about a key that is not there: the pod comes up with no credential and every
+        # task dies at the model call. Taking the whole Secret cannot drift from it.
         envFrom:
         - secretRef:
             name: verse-llm
@@ -440,7 +316,7 @@ spec:
         configMap: {name: coderunner-config}
       # emptyDir is wrong here and is left as the thing you change first.
       #
-      # /state holds the mirrors, and since staging the mirrors hold WORK: a delivery that could
+      # /state holds the mirrors, and the mirrors hold WORK: a delivery that could
       # not reach its remote leaves the commit under `refs/pending/<task>/<repo>` for the runner
       # to retry, and a refused one leaves it under `refs/held/...` for somebody to look at. On an
       # emptyDir all of that dies with the pod, so "the work is safe in the mirror" is only true

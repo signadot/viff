@@ -13,7 +13,7 @@ import (
 func TestLaunchOfTypesACallList(t *testing.T) {
 	l, err := launchOf("merge-1", launch.Spec{Calls: []launch.Call{
 		{Tool: "run_bash", Input: map[string]any{"command": "git merge --ff-only x"}},
-		{Tool: "push", Input: map[string]any{"destination": "main"}, Fatal: &[]string{"err"}},
+		{Tool: "push", Input: map[string]any{"branch": "main"}, Fatal: &[]string{"err"}},
 	}}, "")
 	if err != nil {
 		t.Fatal(err)

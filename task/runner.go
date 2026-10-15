@@ -130,6 +130,15 @@ type Launch struct {
 	// Empty = the runner's own default workspace.
 	Environment string
 
+	// Repos are the repositories the task works in, and what it may do to each: checked out
+	// side by side under the task's directory, pushed as each one's Push allows. The spawn
+	// says them rather than the runner, because what a run may touch is the charter's to
+	// declare, and a $subject.head is a word only a charter has. Each is a request the runner
+	// may refuse, never weaken: a runner with no way to the forge refuses the launch.
+	//
+	// Empty means the task gets whatever workspace its Environment names, or a bare directory.
+	Repos []Repo
+
 	// Scope is the copy-on-write scope this task was spawned into — a named scope, or
 	// empty for baseline. The RUNTIME does nothing with it: a task runs the same either
 	// way, and the runner never sees it.

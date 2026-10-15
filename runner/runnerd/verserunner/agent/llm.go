@@ -182,10 +182,10 @@ var (
 
 // completeWithRetry is the model call, repeated when the failure says nothing about the request.
 //
-// It exists because one slow response used to be terminal for the whole task. Forty-three
-// boundaries of work — reads, reasoning, a finding half-written — ended on a client timeout, and
-// the run was not resumable because a task's conversation lives in its driver. Against that, two
-// retries costing ten seconds are free.
+// It exists because one slow response would otherwise be terminal for the whole task: forty
+// boundaries of work — reads, reasoning, a finding half-written — ended by a client timeout, with
+// no resuming, because a task's conversation lives in its driver. Against that, two retries
+// costing ten seconds are free.
 //
 // Each attempt is announced on the read plane. A run that pauses for ten seconds and says nothing
 // is indistinguishable from one that has hung, which is the complaint findings 6 and 7 of the
@@ -360,11 +360,11 @@ func (d *llmDriver) Next(ctx context.Context, prev task.StepResult) (task.ToolUs
 			// The model has stopped talking, which is the only way it can stop, and that is
 			// ALL this reports. Whether the TASK is finished is a different question, and it
 			// is not the driver's: with a child still working, "the model stopped" means "it
-			// is waiting". The answer contract used to be checked right here, which is why it
-			// could certify a draft written while a child was still editing the tree it
-			// described. The loop now asks when the input has actually gone quiet
-			// (task.AnswerCheck), and a repair comes back through the same channel every
-			// other message into this conversation does.
+			// is waiting". The answer contract is not checked here, because here it would
+			// certify a draft written while a child was still editing the tree it described.
+			// The loop asks when the input has actually gone quiet (task.AnswerCheck), and a
+			// repair comes back through the same channel every other message into this
+			// conversation does.
 			return task.ToolUse{}, false, nil
 		}
 		d.pending = msg.ToolCalls
@@ -575,18 +575,18 @@ func toolDefs() []toolDef {
 	}
 }
 
-// yieldTool is the one thing a model could not previously say: HAND CONTROL BACK.
+// yieldTool is the model's verb for HANDING CONTROL BACK.
 //
-// It had exits and no verb for them. "I am done" was implicit — stop emitting tool calls — and
-// worked. "I could not" was `fail`. "I am waiting for my sub-agents" was nothing at all, and a
-// model with nothing to say and no way to say it reaches for whatever is to hand: first
-// `run_bash sleep 120`, then eleven sub-agents called `noop`, and once for `fail` itself, with
-// the reason "placeholder - not actually failing, retracting" — a terminal tool used as a
-// scratchpad, discarding a review whose children had both reported clean.
+// Without it a model has exits and no verb for them. "I am done" is implicit — stop emitting
+// tool calls — and works. "I could not" is `fail`. "I am waiting for my sub-agents" is nothing
+// at all, and a model with nothing to say and no way to say it reaches for whatever is to hand:
+// a `run_bash sleep 120`, a sub-agent called `noop`, or `fail` itself with a retraction for a
+// reason — a terminal tool used as a scratchpad, discarding a review whose children reported
+// clean.
 //
-// Both are the same defect. Naming the mechanism rather than one of its uses is what stops the
-// model approximating it: yielding is a thing it can now DO, so it does not have to build one
-// out of a sleep, a sub-agent, or a failure.
+// Naming the mechanism rather than one of its uses is what stops the model approximating it:
+// yielding is a thing it can DO, so it does not have to build one out of a sleep, a sub-agent,
+// or a failure.
 const yieldTool = "yield"
 
 // Why a turn is being handed back. Only `cannot` fails the run — see yield for why the

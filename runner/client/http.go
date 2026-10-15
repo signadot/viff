@@ -77,10 +77,10 @@ func (p *httpRunner) Spawn(l task.Launch) task.Handle {
 		return task.FailedHandle(err.Error())
 	}
 	defer resp.Body.Close()
-	// A refusal is not an acceptance. The status used to be discarded here, so a runner
-	// answering 400, 403 or 501 got the same remote handle as one that took the work: versed
-	// mirrored a task:instance for it and the flow waited on a task that was never
-	// started, so the refusal surfaced as a hang. The runner deciding it cannot host this
+	// A refusal is not an acceptance. Were the status discarded here, a runner answering 400,
+	// 403 or 501 would get the same remote handle as one that took the work: versed would
+	// mirror a task:instance for it and the flow would wait on a task that was never started,
+	// so the refusal would surface as a hang. The runner deciding it cannot host this
 	// launch is the DEFAULT way a runner declines — it is the whole reason a runner may refuse
 	// rather than verse having to detect what it is — and that answer is inert unless it is
 	// read (git-issue 6mnmxj6mh12krz3ae1n0).

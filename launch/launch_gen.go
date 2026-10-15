@@ -105,6 +105,19 @@ func (s *Spec) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["environment"] = ir.FromString(string(s.Environment))
 	}
 
+	// Field: Repos
+	if len(s.Repos) > 0 {
+		slice := make([]*ir.Node, len(s.Repos))
+		for i, v := range s.Repos {
+			node, err = v.ToTonyIR(opts...)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert slice element %d: %w", i, err)
+			}
+			slice[i] = node
+		}
+		irMap["repos"] = ir.FromSlice(slice)
+	}
+
 	// Field: Runner
 	if s.Runner != "" {
 		irMap["runner"] = ir.FromString(string(s.Runner))
@@ -320,6 +333,21 @@ func (s *Spec) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "environment", fieldNodeUnwrapped.Type)
 			}
 			s.Environment = string(fieldNodeUnwrapped.String)
+		case "repos":
+			// Field: Repos
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]task.Repo, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					elem := task.Repo{}
+					if err := elem.FromTonyIR(v, opts...); err != nil {
+						return fmt.Errorf("failed to convert slice element %d: %w", i, err)
+					}
+					slice[i] = elem
+				}
+				s.Repos = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"repos\"", fieldNodeUnwrapped.Type)
+			}
 		case "runner":
 			// Field: Runner
 			if fieldNodeUnwrapped.Type != ir.StringType {

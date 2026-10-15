@@ -4,15 +4,22 @@ import (
 	"cmp"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/signadot/verse/runner/runnerd/verserunner/agent"
+	"github.com/signadot/verse/runner/runnerd/workspace"
 	"github.com/signadot/verse/task"
 )
 
 // Drivers builds the tasks the verse runner hosts, choosing the driver a launch names: `llm` is
-// the verse agent (package agent), `scripted` and `calls` run without a model. `verse up`'s
-// in-process runner uses it too, until that runner is removed, so what a test runs is what
-// both run: the same driver choice, the same credentials rule.
+// the verse agent (package agent), `scripted` and `calls` run without a model, and any other name
+// is a program under Agents. `verse up`'s in-process runner uses it too, until that runner is
+// removed, so what a test runs is what both run: the same driver choice, the same credentials
+// rule.
+//
+// With a Workspace, the tasks run in it: the agent is briefed on its layout and on how work
+// leaves it, offered the runner's own tools (Extra: push, fetch), and floored by the
+// Environment's tools; and what a gate can match on is the workspace's branch, base and changes.
 type Drivers struct {
 	Root string   // the working directory an agent acts in
 	Env  []string // what a task's shell inherits
@@ -27,6 +34,16 @@ type Drivers struct {
 	// NoKey says how to give the agent a model key, to an `llm` spawn that fails without one:
 	// where the key comes from depends on who hosts the runner.
 	NoKey string
+
+	// Workspace is the checkout the tasks work in, when the runner gave them one, and
+	// Environment the environment it was opened for. Brief is what the agent is told about the
+	// workspace's layout. Extra is the runner's own tools: push and fetch.
+	Workspace   *workspace.Workspace
+	Environment *Environment
+	Brief       string
+	Extra       []agent.Tool
+	// Agents are the programs a driver may name.
+	Agents map[string]Command
 }
 
 // Build is a runnerd builder.
@@ -35,13 +52,20 @@ func (h *Drivers) Build(l task.Launch, reg *task.Registry) *task.Task {
 	if driver == "" {
 		driver = h.Default
 	}
+	// Tools: a spawn that names none gets the environment's set; one that names its own gets
+	// what it names.
+	tools := l.Tools
+	if len(tools) == 0 && h.Environment != nil {
+		tools = h.Environment.Tools
+	}
+	var t *task.Task
 	switch driver {
 	case "scripted":
 		// A contract the driver cannot enforce fails the spawn — there is no model to
 		// ask again, so honouring the field would mean dropping it, and a dropped
 		// contract is worse than none. The refusal lives in NewCallsTaskFrom now, so
 		// both runtimes state it once and neither can forget it.
-		return NewScriptedTask(l, h.Root, h.Env, reg)
+		t = NewScriptedTask(l, h.Root, h.Env, reg)
 	case "llm":
 		if h.LLMKey == "" {
 			return task.NewFailed(l.ID, reg, "llm driver unavailable: "+cmp.Or(h.NoKey, "no model key"))
@@ -57,7 +81,18 @@ func (h *Drivers) Build(l task.Launch, reg *task.Registry) *task.Task {
 		if h.VirtualKeyOr != nil {
 			virtualKey = h.VirtualKeyOr(l.VirtualKey)
 		}
-
+		// The workspace layout is the runner's convention, so the runner describes it. It rides
+		// the PROMPT rather than the frame because agent.Build derives a default frame from the
+		// tools and vector when a spawn writes none, and setting one here would silently replace
+		// advice that is more useful than this. Only for a driver that READS it: a call list's
+		// prompt is a document.
+		//
+		// Delivery is the agent's: it commits what it means to deliver and calls `push`. No
+		// finisher, so what it did not push does not leave — and the brief says so.
+		prompt := l.Prompt
+		if h.Workspace != nil {
+			prompt = h.Brief + deliveryBrief(l, h.Workspace, offeredTools(h.Extra, tools)) + prompt
+		}
 		// Frame/Tools/Vector come from the spawn. The vector is handed to Build rather
 		// than left for the daemon to install afterwards because the DEFAULT FRAME is
 		// derived from it: describing each tool as it will actually behave only works
@@ -65,18 +100,24 @@ func (h *Drivers) Build(l task.Launch, reg *task.Registry) *task.Task {
 		// it again after Build, which is idempotent and is also what bounds the
 		// scripted driver, so neither path depends on a builder remembering.
 		p, _ := agent.Build(agent.Config{
-			ID: l.ID, Prompt: l.Prompt, Root: h.Root, Resolver: reg, Log: h.Log,
-			Frame: l.Frame, Tools: l.Tools, Answer: l.Answer, Vector: l.Vector, Env: h.Env, Set: set,
+			ID: l.ID, Prompt: prompt, Root: h.Root, Resolver: reg, Log: h.Log,
+			Frame: l.Frame, Tools: tools, Answer: l.Answer, Vector: l.Vector, Env: h.Env, Set: set,
+			Extra:      h.Extra,
 			LLMBaseURL: h.LLMBaseURL, LLMKey: h.LLMKey,
 			LLMVirtualKey: virtualKey, LLMModel: h.LLMModel, Converse: l.Converse,
 		})
-		return ended(p)
+		t = ended(p)
 	case task.DriverCalls:
 		// A list of calls the charter wrote, with the harness's own executor and NO model —
 		// which is why it is here rather than under the llm case: `calls` needs the four
 		// tools and none of the credentials, so a verse with no keys configured can still
 		// run the mechanical work. `scripted` above is the same driver with a
-		// one-shell-command list built for it.
+		// one-shell-command list built for it. The same extras as the agent: a list that wants
+		// to deliver writes `push`, and the credential still never reaches the task.
+		//
+		// The list arrives as the launch's own field, checked by the engine before it crossed.
+		// Checked again here, because a task can be posted straight at a runner without
+		// passing through a charter at all.
 		if err := task.CheckCalls(l.Calls); err != nil {
 			return task.NewFailed(l.ID, reg, task.DriverCalls+": "+err.Error())
 		}
@@ -84,14 +125,41 @@ func (h *Drivers) Build(l task.Launch, reg *task.Registry) *task.Task {
 		if err != nil {
 			return task.NewFailed(l.ID, reg, err.Error())
 		}
-		return ended(agent.Calls(agent.Config{
+		t = ended(agent.Calls(agent.Config{
 			ID: l.ID, Root: h.Root, Resolver: reg, Log: h.Log,
-			Tools: l.Tools, Answer: l.Answer, Vector: l.Vector, Env: h.Env, Set: set,
+			Tools: tools, Answer: l.Answer, Vector: l.Vector, Env: h.Env, Set: set, Extra: h.Extra,
 		}, l.Calls))
 	default:
-		return task.NewFailed(l.ID, reg,
-			"unknown driver "+driver+" (want scripted, calls or llm)")
+		cmd, ok := h.Agents[driver]
+		if !ok {
+			return task.NewFailed(l.ID, reg, fmt.Sprintf("unknown driver %s (want scripted, calls, llm%s)",
+				driver, h.agentList()))
+		}
+		var env Environment
+		if h.Environment != nil {
+			env = *h.Environment
+		}
+		var err error
+		t, err = buildCommandTask(l, reg, cmd, env, h.Root)
+		if err != nil {
+			return task.NewFailed(l.ID, reg, err.Error())
+		}
 	}
+	if h.Workspace != nil {
+		// What a gate can match on: the branch, the base, what has been touched, and where it
+		// would go. `GateMatch.Branches` and `GateMatch.OnPush` read this, so a charter can say
+		// `ask` on anything touching a release branch and `auto` everywhere else.
+		t.SetRepo(h.Workspace.RepoContext)
+	}
+	return t
+}
+
+// agentList is the programs this runner may be asked for, for a refusal that lists the drivers.
+func (h *Drivers) agentList() string {
+	if len(h.Agents) == 0 {
+		return ""
+	}
+	return ", or one of the agents it declares: " + strings.Join(agentNames(h.Agents), ", ")
 }
 
 // handCredential hands a launch's credential to the task being built for it: written to a file

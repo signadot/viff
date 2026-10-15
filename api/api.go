@@ -218,6 +218,10 @@ type Spawn struct {
 	// thing. Resolved by the runner against its own config, never by verse: see
 	// task.Launch.Environment.
 	Environment string `tony:"field=environment,omitzero"`
+	// Repos are the repositories this run works in and what it may push to each — the ad-hoc
+	// face of a spawn's `repos:` (task.Repo), so `verse task run --repos repos.tony` asks for
+	// what a charter can.
+	Repos []task.Repo `tony:"field=repos,omitzero"`
 	// VirtualKey is the ADDRESS of the model credential this run spends — the ad-hoc face of a
 	// spawn's `virtualKey:`, so `verse task run` can ask for the review budget the way a
 	// charter's provider does.

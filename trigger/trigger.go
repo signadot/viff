@@ -862,6 +862,12 @@ func (a Action) validate() error {
 					"not derived, so text in the subject cannot choose which system a token is good for", aud)
 			}
 		}
+		// Which repositories the task works in, and what it may push: the shape is checked here,
+		// with the author present, so a `push` on a repository that may only read is refused at
+		// install rather than at the first firing.
+		if err := task.CheckRepos(a.Spawn.Repos); err != nil {
+			return fmt.Errorf("spawn.repos: %w", err)
+		}
 		// $principal is whom the task acts for, and a rule's task acts for somebody only `as:
 		// subject`.
 		if a.Spawn.As == "" && task.GatesNamePrincipal(a.Spawn.Gates) {

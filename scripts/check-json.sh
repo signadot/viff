@@ -22,14 +22,12 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 #   io/slack/*.go        — Slack's Web API and its signed event envelopes.
 #   io/linear/*.go       — Linear's GraphQL responses and its signed webhook bodies.
 #   io/github/*.go       — GitHub's REST responses.
-#   docs/reference/examples/coderunner/command.go
+#   runner/runnerd/verserunner/command.go
 #                            — whatever an external program prints when its config says
 #                              `output: json`. Same exception as the connectors and the same
 #                              shape: the JSON stops at that file, and what leaves it is a
-#                              task.StepResult. (Was claude.go, before that driver became one
-#                              configured command among others.)
-#   docs/reference/examples/coderunner/pull.go
-#                            — GitHub's pull-request endpoints, the one forge write the runner
+#                              task.StepResult.
+#   runner/runnerd/delivery/pull.go  — GitHub's pull-request endpoints, the one forge write a runner
 #                              makes that is not a ref. Same exception as source/github: the
 #                              JSON stops at that file, and what leaves it is a tool result.
 #   versed/idptest/idp.go
@@ -44,7 +42,7 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 # The source connectors are the shape to copy: JSON stops at the
 # package boundary. What they hand back is an entity.Payload, and what they serve is rendered
 # by codec like everything else — so no verse surface acquires a second dialect from this.
-allow='runner/runnerd/verserunner/agent/llm\.go|runner/runnerd/verserunner/agent/modeltest/model\.go|codec/codec.go|io/slack/[a-z]+\.go|io/linear/[a-z]+\.go|io/github/[a-z]+\.go|docs/reference/examples/coderunner/command\.go|docs/reference/examples/coderunner/pull\.go|versed/idptest/idp\.go|versed/issuer\.go'
+allow='runner/runnerd/verserunner/agent/llm\.go|runner/runnerd/verserunner/agent/modeltest/model\.go|codec/codec.go|io/slack/[a-z]+\.go|io/linear/[a-z]+\.go|io/github/[a-z]+\.go|runner/runnerd/verserunner/command\.go|runner/runnerd/delivery/pull\.go|versed/idptest/idp\.go|versed/issuer\.go'
 
 # git ls-files, not a filesystem walk: the tree carries untracked worktree copies and
 # scratch dirs, and a guard that trips on those is a guard people learn to ignore.

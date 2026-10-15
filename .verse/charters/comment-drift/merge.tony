@@ -2,10 +2,10 @@
 
 # verse-dev drive: an agent's branch is a PROPOSAL, and somebody decides it.
 #
-# The coding runner delivers to `verse/auto/<sha>/<task>` (coderunner/workspace.go: that prefix
-# is chosen so a developer who pulls and finds a commit nobody wrote can tell which system made
-# it from the first two segments). This half is what consumes them: the branch becomes a fact,
-# the fact carries a gate, and a yes merges it.
+# A fixing task pushes its own branch, `verse/auto/<task>` (runner/runnerd/workspace: that prefix is
+# chosen so a developer who pulls and finds a commit nobody wrote can tell which system made it
+# from the first two segments). This half is what consumes them: the branch becomes a fact, the
+# fact carries a gate, and a yes merges it.
 #
 # WHAT DECIDES THE DESIGN is staleness. A `verse/auto/*` branch is cut from whatever main was
 # when its task started, so by the time anybody answers, main may have moved. `base != tip` is
@@ -45,9 +45,9 @@ strata:
 rules:
 # 1. A delivered branch becomes a proposal, and nothing else.
 #
-# TWO segments, not one: the push target is `verse/auto/<sha>/<task>` and `!glob` is
-# filepath.Match, where `*` does NOT cross `/`. Written as `verse/auto/*` this matched nothing at
-# all, and a selector that silently selects nothing is the failure this drive keeps finding.
+# ONE segment after `verse/auto/`: a task's branch is `verse/auto/<task>`, and `!glob` is
+# filepath.Match, where `*` does NOT cross `/`. A pattern that does not match the shape the runner
+# pushes selects nothing, silently, which is the failure this drive keeps finding.
 #
 # FACTS ONLY: a derive MERGES its literal fields every time it runs, so any field named here is
 # restated on every re-derive. `state: open` dragged a merged proposal back to undecided and
@@ -63,7 +63,7 @@ rules:
       # file's cannot.
       path: "git.verse.ref.*"
       value:
-        name: !glob "verse/auto/*/*"
+        name: !glob "verse/auto/*"
   action:
     derive:
     # THE BRANCH IS THE ID, said outright. A derive that does not name one is addressed by its
@@ -98,10 +98,8 @@ rules:
 # `whether open` about a ref name.
 #
 # `base` is main's tip when the branch appeared, which for a range review is that range's `to`
-# unless main moved between the review answering and the push landing. The branch name carries
-# the exact one — `verse/auto/<sha>/<task>` — but a charter has no string operations, so reading
-# it back out is not sayable. The train below carries the exact one, and that is the copy a
-# decider sees.
+# unless main moved between the review answering and the push landing. The train below carries
+# the exact one, and that is the copy a decider sees.
 - name: proposal-says
   stratum: merge
   condition:
@@ -215,6 +213,23 @@ rules:
     spawn:
       runner: verse.runners.coderunner
       environment: verse-merge
+      # `main` is the consequential branch: a merge task's work IS the merge, so there is nothing
+      # to propose separately. A push to it is a fast-forward or nothing — no `force` — so what
+      # stops it being merely a prompt is `receive.denyNonFastForwards` on main at the far end,
+      # and the runner refuses to rewrite it before the remote ever sees the push.
+      #
+      # WHAT DECIDES IT is this rule's gate — `!until [!quorum 1, !deadline "24h"]`, which
+      # denies on the clock — and not the task's vector, which is `auto` deliberately: the
+      # decision has been made by a person about the thing that matters, and making the task
+      # re-ask per action would be the same question in two vocabularies.
+      #
+      # `verse/auto/*` is here so the proposal branches may be read as the run's own, which is
+      # what lets proposal-outrun below delete them.
+      repos:
+      - repo: signadot/verse
+        from: main
+        access: write
+        push: {existing: [main], new: ["verse/auto/*"]}
       grant: no-delegate
       vector: auto
       # A STATIC LIST OVER A DYNAMIC SET: the branches are not interpolated into the command,
@@ -230,9 +245,9 @@ rules:
       calls:
       - tool: run_bash
         input:
-          command: "tb=$(git -C verse rev-parse --abbrev-ref HEAD); for b in $(git -C verse for-each-ref --format='%(refname)' 'refs/remotes/mirror/verse/auto/*/*'); do git -C verse checkout -B _car \"$b\" || continue; if git -C verse -c user.name='verse coderunner' -c user.email=coderunner@invalid rebase \"$tb\"; then git -C verse checkout \"$tb\" && git -C verse merge --ff-only _car; else git -C verse rebase --abort || true; git -C verse checkout \"$tb\"; fi; done"
+          command: "tb=$(git -C verse rev-parse --abbrev-ref HEAD); for b in $(git -C verse for-each-ref --format='%(refname)' 'refs/remotes/mirror/verse/auto/*'); do git -C verse checkout -B _car \"$b\" || continue; if git -C verse -c user.name='verse coderunner' -c user.email=coderunner@invalid rebase \"$tb\"; then git -C verse checkout \"$tb\" && git -C verse merge --ff-only _car; else git -C verse rebase --abort || true; git -C verse checkout \"$tb\"; fi; done"
       - tool: push
-        input: {destination: main}
+        input: {branch: main}
     onDone:
       patch:
         decided: landed
@@ -275,11 +290,23 @@ rules:
     spawn:
       runner: verse.runners.coderunner
       environment: verse-merge
+      # DELETING is a different act and says so: a branch a `new` pattern matches is one a run
+      # created, and only those may be removed. A sweep learns stale branch names by asking the
+      # remote and cannot be handed them by this file; the task picks inside this pattern and a
+      # branch outside it is refused before anything is gated. Deriving stamps `Verb: Delete`, so
+      # a charter that wants to gate destroying without gating delivery says `verbs: [delete]`.
+      # And `receive.denyDeletes` must NOT be set on this pattern at the far end, or the sweep
+      # is refused every time — the one rule that has to be ABSENT rather than present.
+      repos:
+      - repo: signadot/verse
+        from: main
+        access: write
+        push: {new: ["verse/auto/*"]}
       grant: no-delegate
       vector: auto
       calls:
       - tool: push
-        input: {destination: retire, ref: $branch}
+        input: {branch: $branch, delete: true}
       # No `answer:`, and that is the driver rather than an omission: a call list has no model
       # to repair a contract with, so a spawn carrying one is refused. What used to be read out
       # of the answer — which branches went — is the LIST ITSELF, and the ref is in the record

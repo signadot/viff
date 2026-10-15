@@ -2,6 +2,8 @@ package mirror
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -256,6 +258,8 @@ func TestReflectPublishesTheEnvelope(t *testing.T) {
 	Reflect(store, p.ID, p, Meta{ // the initial Put is synchronous
 		Runner: "local", Doer: "provider.treat.fixer", Grant: "no-delegate",
 		Tools: []string{"read_file", "run_bash"},
+		Repos: []task.Repo{{Repo: "acme/app", Access: task.AccessWrite, From: "main",
+			Push: &task.RepoPush{New: []string{"verse/*"}, Existing: []string{"main"}}}, {Repo: "acme/docs"}},
 	})
 
 	got, _, _ := store.Get(Ref("e1"))
@@ -268,6 +272,14 @@ func TestReflectPublishesTheEnvelope(t *testing.T) {
 	}
 	if tools := entity.Strs(got.Payload, "tools"); len(tools) != 2 || tools[1] != "run_bash" {
 		t.Errorf("tools not published: %+v", got.Payload)
+	}
+	// What the run was allowed outside the verse, in the spawn's own words: a reader of the
+	// record sees which repositories, and which branches, without the charter that spawned it.
+	repos := fmt.Sprint(obj["repos"])
+	for _, want := range []string{"acme/app", "write", "verse/*", "main", "acme/docs"} {
+		if !strings.Contains(repos, want) {
+			t.Errorf("repos not published (%q missing): %s", want, repos)
+		}
 	}
 }
 

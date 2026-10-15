@@ -37,6 +37,11 @@ func TestMain(m *testing.M) {
 				return task.NewTask(l.ID, sup, dyingDriver{}, noopExec{})
 			case "pwd": // the task answers where it runs
 				outcome, text = string(task.Done), must(os.Getwd())
+			case "env": // the task answers its process's environment
+				outcome, text = string(task.Done), strings.Join(os.Environ(), "\n")
+			case "fd5": // the task answers what it reads on the first descriptor a Preparer added
+				b, _ := io.ReadAll(os.NewFile(5, "extra"))
+				outcome, text = string(task.Done), string(b)
 			}
 			spec.Outcome, spec.Text = task.Status(outcome), text
 			return task.NewTask(l.ID, sup, &conformanceDriver{spec: spec}, noopExec{})

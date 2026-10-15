@@ -1,4 +1,4 @@
-package main
+package workspace
 
 import (
 	"context"
@@ -16,18 +16,18 @@ import (
 func TestAFirstCloneOutlivesTheSpawnThatAskedForIt(t *testing.T) {
 	origin := initRepo(t)
 	m := NewMirrors(t.TempDir(), TokenAuth(""))
-	env := Environment{Name: "e", Repos: []Repo{{Name: "svc", Repo: origin, Base: "main"}}}
+	repos := []Repo{{Name: "svc", Repo: origin, Base: "main"}}
 
 	gone, cancel := context.WithCancel(context.Background())
 	cancel() // the caller has already given up
-	_, err := m.Open(gone, "p1", env, t.TempDir())
+	_, err := m.Open(gone, "p1", repos, t.TempDir(), Author{})
 	if err == nil {
 		t.Fatal("a spawn whose caller was gone was handed a workspace nobody is waiting for")
 	}
 	if !contains(err.Error(), "ran out of time") {
 		t.Errorf("the refusal does not say what happened: %v", err)
 	}
-	mirror := m.dirFor(origin)
+	mirror := m.Dir(origin)
 	if _, err := os.Stat(filepath.Join(mirror, "objects")); err != nil {
 		t.Fatalf("the mirror was not made: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestAFirstCloneOutlivesTheSpawnThatAskedForIt(t *testing.T) {
 	}
 
 	// The same spawn again, with a caller that waits, is served off the mirror it left behind.
-	ws, err := m.Open(context.Background(), "p1", env, t.TempDir())
+	ws, err := m.Open(context.Background(), "p1", repos, t.TempDir(), Author{})
 	if err != nil {
 		t.Fatalf("the second spawn did not find the mirror: %v", err)
 	}

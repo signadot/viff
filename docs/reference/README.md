@@ -239,8 +239,9 @@ verse
           run [-vector auto|ask|park] [-gates <file>] [-resolver <ref>]   how far it runs by
                                              itself, which actions ask, and who answers
           run [-answer-contract <file>]      the shape its final message must have
-          run [-environment <name>] [-virtual-key <address>]    the workspace the runner builds,
-                                             and the model credential the run spends
+          run [-environment <name>] [-repos <file>]    the workspace the runner builds, and the
+                                             repositories in it with what each may push
+          run [-virtual-key <address>]       the model credential the run spends
           get <id> · attach <id>                        operator vantage (any backend):
                                              attach prompts for each gate and for a question
                                              asked in words (`ask`), with an identity

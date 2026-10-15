@@ -1,4 +1,4 @@
-package main
+package verserunner
 
 import (
 	"bytes"
@@ -16,15 +16,12 @@ import (
 // The command driver runs an external program in the workspace and takes what it says as the
 // task's result. A coding agent binary is one such program; so is a script.
 //
-// It replaced a driver called `claude`, and the reason is worth keeping because it is a
-// judgement about where a distinction belongs rather than a tidy-up.
-//
-// From verse's side, invoking a foreign agent and running a script are the SAME SHAPE: one
-// opaque action, a subprocess, an exit status, some output. Two drivers meant two subprocess
-// spawners — two places to apply containment, build an environment, choose a working directory
-// — and the duplication had already cost something: confinement was applied on the agent path
-// and not on the harness's `run_bash`, so the one tool that can leave a workspace was the one
-// not covered. One path is one place to get that right.
+// One driver for both, because the distinction is not verse's. From verse's side, invoking a
+// foreign agent and running a script are the SAME SHAPE: one opaque action, a subprocess, an
+// exit status, some output. Two drivers would be two subprocess spawners — two places to apply
+// containment, build an environment, choose a working directory — and the one tool that can
+// leave a workspace, the shell, is covered only if it is the same path. One path is one place to
+// get that right.
 //
 // What is NOT folded away is the ability to RE-INVOKE. A driver that runs once and completes
 // cannot honour a steer (it has nowhere to put it) and cannot repair an answer that missed its
@@ -86,8 +83,6 @@ type commandDriver struct {
 	prompt string
 	frame  string
 	env    Environment
-	point  Point
-	conf   Confiner
 	dir    string
 
 	// contractSrc is the shape the answer must have, for the OPENING turn only — the check
@@ -216,10 +211,10 @@ func (e *commandExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepRe
 	// The environment is the allowlist and nothing else. os.Environ() is deliberately not
 	// consulted: a passthrough list is a floor, and "everything except what we remembered to
 	// strip" is not.
-	cmd.Env = buildEnv(d.env.Env, d.env.Commands)
-	if err := d.conf.Confine(cmd, d.point, Sandbox{Dir: d.dir}); err != nil {
-		return task.StepResult{Use: tu}, nil, err
-	}
+	cmd.Env = buildEnv(d.env.Env)
+	// The sandbox is already around this whole process, so the program runs in the workspace
+	// and nothing more is claimed here.
+	cmd.Dir = d.dir
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	runErr := cmd.Run()
@@ -268,25 +263,35 @@ func (d *commandDriver) read(stdout []byte, stderr string, runErr error) (comman
 	return res, nil
 }
 
-// buildEnv is the passthrough allowlist plus a PATH narrowed to the commands the environment
-// opted into.
+// buildEnv is the passthrough allowlist, as a process environment.
 //
-// The PATH half is honest only as far as the filesystem is: an absolute path walks straight past
-// an allowlist, so this is a floor when `filesystem.scope` is `private` and a convention
-// otherwise. Stated here rather than discovered, because a list that looks like a permission and
-// is not is worse than no list.
+// The environment's `commands:` are not applied here, and nothing claims they are: a PATH
+// narrowed to a list is a convention until the filesystem is restricted, since an absolute path
+// walks straight past it, so what a task can run is the sandbox's to bound (runnerd), and
+// `commands:` documents the image the environment expects.
+//
 // It NEVER returns nil, and that is not a style choice. `exec.Cmd.Env == nil` means "inherit
 // os.Environ()", so an environment that declared no passthrough — or whose variables all happened
-// to be unset — got the opposite of what it asked for: the whole of the runner's environment,
-// including the git token, handed to the task. A list that is a floor when non-empty and an open
-// door when empty is worse than no list, and the comment above claimed the opposite.
-func buildEnv(passthrough, commands []string) []string {
+// to be unset — would get the opposite of what it asked for: the whole of the runner's
+// environment, including the git token, handed to the task. A list that is a floor when non-empty
+// and an open door when empty is worse than no list.
+func buildEnv(passthrough []string) []string {
 	env := []string{}
 	for _, name := range passthrough {
 		if v, ok := lookupEnv(name); ok {
 			env = append(env, name+"="+v)
 		}
 	}
-	_ = commands // the symlink farm belongs with the mount namespace; see confine.go
 	return env
+}
+
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	s = strings.TrimSpace(s)
+	if len(s) > 72 {
+		s = s[:72]
+	}
+	return s
 }
