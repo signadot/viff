@@ -1,0 +1,3 @@
+# coderunner: the runner starts a task process as `verse -task`, and the coderunner shim does not answer to it
+
+On the deployed coderunner image every task fails before it serves anything: the runner starts each task process as its own executable with `verse -task`, the command runnerd answers to, and the coderunner shim only answered to a bare `-task`, so the task process fell through to the runner's own flags and looked for coderunner.tony inside the sandbox. The shim answers to the runner's task arguments, which live in one place (verserunner.TaskArgs) so the two cannot drift.
