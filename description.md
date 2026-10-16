@@ -1,0 +1,3 @@
+# docs: the task example reads its answer back into the data
+
+On the examples page the task example spawns a script and does nothing with what it says, so the page shows derive and strata as the way data gets written and leaves the task's answer unconnected to the data. Make the second example's task answer with a document, have its onDone write the answer's fields onto the issue through $data, and have the third example's derive carry that answer forward, so the reader sees how a task connects to the data.
