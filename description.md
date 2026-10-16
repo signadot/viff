@@ -1,7 +1,5 @@
 # gates: what a gate on a command or a file write can honestly promise, and the kernel seams that keep it
 
-# What a gate on a command or a file write can honestly promise, and the kernel seams that keep the promise
-
 **Status:** design, for after the cut to runnerv2. Nothing here is a condition of the cut: main
 promises no gate of this kind today, so a cut without one oversells nothing. This is the shape
 of the work that would let a spawn say "ask before a push, a `make ship`, or a write to
