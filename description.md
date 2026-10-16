@@ -1,0 +1,3 @@
+# docs: the site presents verse to a reader with no context, fact first
+
+A reader new to verse found the public site hard to read without an explanation beside it: the pages define terms and argue the design before anything shows verse doing work, and no page shows an external system, though every deployed charter is about one. The landing says what verse is in plain terms and walks one real flow; the overview keeps the model and adds a comparison to GitHub Actions, Temporal and agent frameworks; a page of the charters that run on staging shows a review becoming a pull request, a merge gate that denies on the clock, and a deploy announced in Slack, in the spawn syntax of #17.
