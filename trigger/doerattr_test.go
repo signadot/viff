@@ -31,7 +31,7 @@ func TestOutcomeIsAttributableToTheDoerThatWon(t *testing.T) {
 		p := task.NewTask(id, sup, answering{r: "SHIPIT"}, noExec{})
 		mirror.Reflect(store, id, p, mirror.Meta{
 			Subject: spec.Subject, Runner: "local", Chain: spec.Chain, Prompt: spec.Prompt,
-			Doer: spec.Doer, Grant: spec.Grant, Tools: spec.Tools,
+			Doer: spec.Doer, Grant: spec.Grant, Tools: task.ToolsOf(spec.Tools),
 		})
 		go p.Run(context.Background())
 		return p

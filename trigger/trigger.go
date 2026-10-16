@@ -1263,9 +1263,9 @@ func (e *Engine) launch(a Action, chain string, subj entity.Ref, root entity.Pay
 		}
 		overlaid, err := spec.Overlay(frag)
 		if err != nil {
-			// The doer and the spawn agree on no tool. Failing the firing is the only safe
-			// answer, because the alternative spelling of "no tools" is an empty list, which
-			// means ALL of them — see launch.Spec.Overlay.
+			// The doer and the spawn agree on no tool: a doer that may use nothing the spawn
+			// offers cannot do the work, and running it with no tools would say so late — see
+			// launch.Spec.Overlay.
 			e.tracef("trigger %s: selected doer cannot be launched under this spawn (%v); not spawning", chain, err)
 			return nil, err
 		}

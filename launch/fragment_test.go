@@ -18,8 +18,8 @@ func TestOverlayPerField(t *testing.T) {
 		want Spec
 	}{{
 		name: "an empty fragment changes nothing",
-		spec: Spec{Driver: "llm", Frame: "F", Grant: "read-only", Tools: []string{"read_file"}},
-		want: Spec{Driver: "llm", Frame: "F", Grant: "read-only", Tools: []string{"read_file"}},
+		spec: Spec{Driver: "llm", Frame: "F", Grant: "read-only", Tools: tl([]string{"read_file"})},
+		want: Spec{Driver: "llm", Frame: "F", Grant: "read-only", Tools: tl([]string{"read_file"})},
 	}, {
 		name: "set fields replace",
 		spec: Spec{Driver: "llm", Frame: "spawn frame", Grant: "no-delegate"},
@@ -31,7 +31,7 @@ func TestOverlayPerField(t *testing.T) {
 		name: "a doer that sets tools and not grant keeps the spawn's grant",
 		spec: Spec{Grant: "no-delegate"},
 		frag: Fragment{Tools: []string{"read_file"}},
-		want: Spec{Grant: "no-delegate", Tools: []string{"read_file"}},
+		want: Spec{Grant: "no-delegate", Tools: tl([]string{"read_file"})},
 	}, {
 		name: "the task is never the doer's to write",
 		spec: Spec{Prompt: "review $subject", Driver: "llm"},
@@ -41,24 +41,24 @@ func TestOverlayPerField(t *testing.T) {
 		name: "spawn offers all, doer narrows",
 		spec: Spec{},
 		frag: Fragment{Tools: []string{"read_file", "list_dir"}},
-		want: Spec{Tools: []string{"read_file", "list_dir"}},
+		want: Spec{Tools: tl([]string{"read_file", "list_dir"})},
 	}, {
 		name: "doer is silent, spawn's list stands",
-		spec: Spec{Tools: []string{"read_file"}},
+		spec: Spec{Tools: tl([]string{"read_file"})},
 		frag: Fragment{},
-		want: Spec{Tools: []string{"read_file"}},
+		want: Spec{Tools: tl([]string{"read_file"})},
 	}, {
 		// The widening the intersection exists to refuse: replace would have handed this
 		// spawn run_bash, which it never offered.
 		name: "a doer cannot add a tool the spawn withheld",
-		spec: Spec{Tools: []string{"read_file"}},
+		spec: Spec{Tools: tl([]string{"read_file"})},
 		frag: Fragment{Tools: []string{"read_file", "run_bash"}},
-		want: Spec{Tools: []string{"read_file"}},
+		want: Spec{Tools: tl([]string{"read_file"})},
 	}, {
 		name: "intersection keeps the spawn's order",
-		spec: Spec{Tools: []string{"a", "b", "c"}},
+		spec: Spec{Tools: tl([]string{"a", "b", "c"})},
 		frag: Fragment{Tools: []string{"c", "a"}},
-		want: Spec{Tools: []string{"a", "c"}},
+		want: Spec{Tools: tl([]string{"a", "c"})},
 	}} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := tc.spec.Overlay(tc.frag)
@@ -72,12 +72,12 @@ func TestOverlayPerField(t *testing.T) {
 	}
 }
 
-// Disjoint tool lists are the one case the data cannot express, so Overlay refuses rather
-// than resolving it. "No tools" would have to be written as an empty list, and an empty list
-// means ALL of them — so the silent answer to "these two agree on nothing" would be "have
-// everything". The engine turns this into ineligibility before a ballot ever offers the doer.
+// Disjoint tool lists are refused rather than resolved: the intersection is spellable, as
+// `[]`, but a doer that may use no tool the spawn offers cannot do the work, and running it
+// with nothing would say so late. The engine turns this into ineligibility before a ballot
+// ever offers the doer.
 func TestOverlayRefusesDisjointTools(t *testing.T) {
-	_, err := Spec{Tools: []string{"read_file"}}.Overlay(Fragment{Tools: []string{"run_bash"}})
+	_, err := Spec{Tools: tl([]string{"read_file"})}.Overlay(Fragment{Tools: []string{"run_bash"}})
 	if err == nil {
 		t.Fatal("disjoint tool lists overlaid without error; an empty result would mean ALL tools")
 	}
@@ -90,17 +90,17 @@ func TestOverlayRefusesDisjointTools(t *testing.T) {
 // slices it was handed, so a charter's Spec can be overlaid once per firing.
 func TestOverlayDoesNotMutateOrAlias(t *testing.T) {
 	spawnTools := []string{"read_file", "list_dir"}
-	spec := Spec{Driver: "llm", Tools: spawnTools}
+	spec := Spec{Driver: "llm", Tools: tl(spawnTools)}
 	frag := Fragment{Driver: "scripted", Tools: []string{"read_file"}}
 
 	got, err := spec.Overlay(frag)
 	if err != nil {
 		t.Fatalf("Overlay: %v", err)
 	}
-	if spec.Driver != "llm" || !reflect.DeepEqual(spec.Tools, []string{"read_file", "list_dir"}) {
+	if spec.Driver != "llm" || !reflect.DeepEqual(*spec.Tools, []string{"read_file", "list_dir"}) {
 		t.Fatalf("Overlay mutated the receiver: %+v", spec)
 	}
-	got.Tools[0] = "clobbered"
+	(*got.Tools)[0] = "clobbered"
 	if spawnTools[0] != "read_file" {
 		t.Fatal("the overlaid spec aliases the spawn's tool slice")
 	}
@@ -152,3 +152,6 @@ func TestAProviderNamesTheCredentialItRunsUnder(t *testing.T) {
 		t.Error("a fragment naming a credential reads as contributing nothing")
 	}
 }
+
+// tl is a spawn's tool list, as the spec carries it.
+func tl(tools []string) *[]string { return &tools }

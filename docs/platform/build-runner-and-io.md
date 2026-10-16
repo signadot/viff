@@ -104,7 +104,7 @@ verse-runner-spawn:
   prompt: .[string]
   provenance: .[nullable(verse-runner-provenance)]
   retain: .[int]
-  tools: .[array(string)]
+  tools: .[nullable(array(string))]   # absent: what the runner makes available; []: no tools
   vector: .[nullable(verse-vector)]
   virtualKey: .[string]
 ```

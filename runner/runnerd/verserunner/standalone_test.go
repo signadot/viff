@@ -265,6 +265,7 @@ func testRunnerWith(t *testing.T, cfg *Config, s Secrets) *Runner {
 		Config: *cfg, Secrets: s, Sandbox: runnerd.Unconfined{},
 		Command: []string{os.Args[0], "-test.run=^$", taskArg},
 		Work:    root, Control: control, Data: root, Log: logf,
+		CallTool: callToolBinary(t),
 	}.Start()
 	if err != nil {
 		t.Fatal(err)

@@ -114,6 +114,7 @@ annotations:
 | `models.model` | the agent's model, when a spawn doesn't pick one | the agent's own |
 | `annotations` | the annotations a spawn may set, with the type of their value. The verse runner knows one, `verse.portkey/virtual-key`: with it, the virtual key a spawn picked is used. | none |
 | `models.baseUrl` | the model endpoint, OpenAI-compatible | `PORTKEY_BASE_URL`, else Portkey's own |
+| `tools` | the tools this runner offers at all, a subset of what it has: a runner whose image has no git has no use for `push`. An environment's `tools` is within it; a spawn naming a tool outside it is refused at launch. | everything the runner has |
 | `environments` | what a task runs with: each a name, the driver, the tools a spawn gets when it names none, the binaries its work expects (`commands`), the environment allowlist (`env`), the egress allowlist (`egress`). A spawn names one with `environment:`, and brings its own repositories (`repos:`), which the runner checks. See [the coderunner example](examples/README.md#a-workspace-per-task) for the whole shape. | none: each task gets a fresh directory |
 | `default` | the environment a spawn that names none gets | none: a spawn must name one |
 | `agents` | programs a spawn may name as its `driver:`, each an `argv` with `$prompt` in it, how to `resume` a session, and whether its `output` is `text` or `json` | none |

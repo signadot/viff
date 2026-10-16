@@ -104,10 +104,15 @@ func Main(args []string) error {
 		log.Printf("%s is not set: the verse agent is not offered, and an `llm` spawn is refused",
 			EnvPortkeyAPIKey)
 	}
+	callTool := FindCallTool(self)
+	if callTool == "" {
+		log.Printf("%s is neither beside this program nor on its PATH: a program under `agents:` "+
+			"has no command for the task's tools", CallToolBinary)
+	}
 	r, err := Standalone{
 		Config: c, Secrets: s, Sandbox: sb, Command: append([]string{self}, TaskArgs...),
 		Work: root, Control: control, Data: root, Keep: *keep, GitToken: os.Getenv(*tokenEnv),
-		Log: os.Stderr,
+		CallTool: callTool, Log: os.Stderr,
 	}.Start()
 	if err != nil {
 		return err
@@ -149,6 +154,9 @@ func (r *Runner) describeEnvironments() {
 	// than assumed. Not a refusal — see ptraceScope for why.
 	if len(r.cfg.Environments) > 0 {
 		log.Printf("%s", ptraceScope())
+	}
+	if len(r.cfg.Tools) > 0 {
+		log.Printf("  tools offered: %s", strings.Join(r.cfg.Tools, ","))
 	}
 	for _, e := range r.cfg.Environments {
 		log.Printf("  environment %s: driver %s, tools %s, egress %s", e.Name,

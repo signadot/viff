@@ -2,6 +2,7 @@ package runnerd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -497,9 +498,14 @@ func (d *InProcessHandler) say(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "a say carries an `instruction`", http.StatusBadRequest)
 		return
 	}
-	// Empty `by` is an unattributed caller, said as such. An ended task hears nothing, and says so.
+	// Empty `by` is an unattributed caller, said as such. An ended task hears nothing, and says
+	// so; one whose driver has nowhere to put words says why.
 	if err := h.task.Steer(body.Instruction, body.By, body.Ask); err != nil {
-		http.Error(w, err.Error(), http.StatusGone)
+		code := http.StatusGone
+		if errors.Is(err, task.ErrUnsteerable) {
+			code = http.StatusUnprocessableEntity
+		}
+		http.Error(w, err.Error(), code)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

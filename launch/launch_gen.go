@@ -40,13 +40,19 @@ func (s *Spec) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["frame"] = ir.FromString(string(s.Frame))
 	}
 
-	// Field: Tools
-	if len(s.Tools) > 0 {
-		slice := make([]*ir.Node, len(s.Tools))
-		for i, v := range s.Tools {
-			slice[i] = ir.FromString(string(v))
+	// Field: Tools (optional)
+	if s.Tools != nil {
+		if s.Tools != nil {
+			var node *ir.Node
+			ns0 := make([]*ir.Node, len((*s.Tools)))
+			for i0, e0 := range *s.Tools {
+				var en0 *ir.Node
+				en0 = ir.FromString(string(e0))
+				ns0[i0] = en0
+			}
+			node = ir.FromSlice(ns0)
+			irMap["tools"] = node
 		}
-		irMap["tools"] = ir.FromSlice(slice)
 	}
 
 	// Field: VirtualKey
@@ -252,20 +258,25 @@ func (s *Spec) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			s.Frame = string(fieldNodeUnwrapped.String)
 		case "tools":
 			// Field: Tools
-			if fieldNodeUnwrapped.Type == ir.ArrayType {
-				slice := make([]string, len(fieldNodeUnwrapped.Values))
-				for i, v := range fieldNodeUnwrapped.Values {
-					ctx := fmt.Sprintf("slice element %d", i)
-					var elem string
-					if v.Type != ir.StringType {
-						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+			if fieldNodeUnwrapped.Type != ir.NullType {
+				var d0 []string
+				if fieldNodeUnwrapped.Type == ir.ArrayType {
+					sl1 := make([]string, len(fieldNodeUnwrapped.Values))
+					for i1, v1 := range fieldNodeUnwrapped.Values {
+						var e1 string
+						var x2 string
+						if v1.Type != ir.StringType {
+							return fmt.Errorf("%s: expected string, got %v", fmt.Sprintf("%s: element %d", "field \"tools\"", i1), v1.Type)
+						}
+						x2 = v1.String
+						e1 = string(x2)
+						sl1[i1] = e1
 					}
-					elem = v.String
-					slice[i] = string(elem)
+					d0 = sl1
+				} else {
+					return fmt.Errorf("%s: expected array, got %v", "field \"tools\"", fieldNodeUnwrapped.Type)
 				}
-				s.Tools = slice
-			} else {
-				return fmt.Errorf("%s: expected array, got %v", "field \"tools\"", fieldNodeUnwrapped.Type)
+				s.Tools = &d0
 			}
 		case "virtualKey":
 			// Field: VirtualKey

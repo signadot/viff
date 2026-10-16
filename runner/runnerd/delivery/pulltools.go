@@ -27,7 +27,7 @@ func (c *Client) PullTools() []agent.Tool {
 	}
 	var names []string
 	for _, t := range c.Workspace.Trees {
-		if _, _, _, err := PullAPI(t.Repo.Repo); err == nil && t.Repo.Writes() {
+		if _, _, _, err := PullAPI(t.Repo.Repo); err == nil && t.Repo.Writes() { // as Offered states
 			names = append(names, t.Repo.Name)
 		}
 	}

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/signadot/verse/answer"
+	"github.com/signadot/verse/runner/runnerd/calltool"
 	"github.com/signadot/verse/runner/runnerd/delivery"
 	"github.com/signadot/verse/runner/runnerd/verserunner/agent"
 	"github.com/signadot/verse/runner/runnerd/workspace"
@@ -72,10 +73,11 @@ type taskPrep struct {
 }
 
 // buildCommandTask builds a task that runs an external program — an agent binary, a script,
-// anything the config names under `agents:`. A program has no tools, so nothing it does leaves
-// the workspace: delivery is a tool, and a driver that offers the runner's tools to its program
-// (as the codex driver does) is how a program comes to deliver.
-func buildCommandTask(l task.Launch, reg *task.Registry, cmd Command, env Environment, dir string) (*task.Task, error) {
+// anything the config names under `agents:` — in dir, offering it tools: the runner's own and
+// `ask`, passed the floor, which the program calls from its shell as `verse-call-tool` over a
+// socket this task process serves. Nothing the program does leaves the workspace but through
+// those tools: delivery is a tool, and a call of one is an action of the loop.
+func buildCommandTask(l task.Launch, reg *task.Registry, cmd Command, env Environment, dir string, tools []agent.Tool) (*task.Task, error) {
 	var contract *answer.Contract
 	if l.Answer != nil {
 		c, err := answer.Parse(l.Answer)
@@ -89,10 +91,10 @@ func buildCommandTask(l task.Launch, reg *task.Registry, cmd Command, env Enviro
 	}
 	vec := l.Vector
 	if vec == nil {
-		// One action per turn, and that action hands the work to another program. ASK is the
-		// honest default for it — verse cannot see inside a subprocess, so the invocation is the
-		// only thing there is to decide about, which is the whole difference from the `llm`
-		// driver and the reason both exist.
+		// The invocation hands the work to another program, and ASK is the honest default for
+		// it — verse cannot see inside a subprocess, so the invocation is the one thing there is
+		// to decide about before it runs. What the program then asks for through its tools is
+		// each an action of its own, and auto lets those through unless a gate names them.
 		vec = &task.Vector{Default: task.Auto, Gates: []task.Gate{{
 			Name: "agent", Mode: task.Ask,
 			Match: task.GateMatch{Verbs: []task.Verb{task.CallAgent}},
@@ -101,28 +103,52 @@ func buildCommandTask(l task.Launch, reg *task.Registry, cmd Command, env Enviro
 	d := &commandDriver{
 		name: l.Driver, cmd: cmd,
 		prompt: l.Prompt, frame: l.Frame, env: env,
-		dir: dir,
+		dir:   dir,
+		calls: make(chan *toolCall, 8),
 	}
 	if contract != nil {
 		d.contractSrc = contract.Source()
 	}
+	if len(tools) > 0 {
+		if err := os.MkdirAll(binDir(dir), 0o755); err != nil {
+			return nil, fmt.Errorf("the workspace's own directory: %w", err)
+		}
+		sock, err := socketFor(dir)
+		if err != nil {
+			return nil, err
+		}
+		srv := &calltool.Server{Tools: tools, Call: d.call}
+		if err := srv.Start(sock); err != nil {
+			return nil, fmt.Errorf("serving the task's tools: %w", err)
+		}
+		d.tools, d.set = srv, toolsEnv(dir, sock)
+	}
 	t := task.NewTask(l.ID, task.NewSupervisor(vec, reg), d, &commandExec{d: d})
 	t.SetLog(os.Stderr)
 	// The answer contract: the harness's give-up is a tool call (`yield`) and this driver has
-	// no tools, so the repair names the thing this program can actually do.
+	// no such tool, so the repair names the thing this program can actually do.
 	if contract != nil {
 		t.SetAnswerCheck(&answer.Checker{C: contract, FailHint: "saying you cannot"})
 	}
 	d.emit = t.Emit
+	// The socket closes with the task: a program the task left running finds its tools gone,
+	// which is what being gone should look like.
+	frames, stop := t.Subscribe()
+	go func() {
+		for range frames { // the stream ends when the task does
+		}
+		stop()
+		d.close()
+	}()
 	return t, nil
 }
 
-// offeredTools is the runner's tools that pass the environment's floor: all of them when the
-// floor names none, else those it names. The same rule the harness applies to its own tools
+// offeredTools is the runner's tools that pass the floor: all of them when there is no floor
+// (nil), else those it names — none, for `[]`. The same rule the harness applies to its own tools
 // (agent.selectTools), stated once more here because the delivery brief names them before
 // the harness is built.
 func offeredTools(extra []agent.Tool, floor []string) []agent.Tool {
-	if len(floor) == 0 {
+	if floor == nil {
 		return extra
 	}
 	var out []agent.Tool

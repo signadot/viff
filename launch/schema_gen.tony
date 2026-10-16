@@ -65,7 +65,7 @@ define:
   retain: .[int]
   runner: .[string]
   subject: .[string]
-  tools: .[array(string)]
+  tools: .[nullable(array(string))]
   vector: .[string]
   virtualKey: .[string]
 signature:

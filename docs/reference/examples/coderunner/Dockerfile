@@ -46,6 +46,9 @@ RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" \
 # binds read-only. A binary installed outside /usr would start fine and then fail to spawn
 # anything.
 COPY dist/linux/${TARGETARCH}/coderunner /usr/local/bin/coderunner
+# Beside the runner, which is where it looks for it: the runner copies it into each task's
+# workspace, and a program there calls the task's tools with it (cmd/verse-call-tool).
+COPY dist/linux/${TARGETARCH}/verse-call-tool /usr/local/bin/verse-call-tool
 
 # Mirrors and workspaces. A volume, because a mirror is a cache worth keeping across restarts
 # (it is the whole reason a task's clone costs no network) and a workspace is state a failed

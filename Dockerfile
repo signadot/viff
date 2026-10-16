@@ -15,7 +15,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates git curl bubblewrap \
  && rm -rf /var/lib/apt/lists/*
 COPY dist/linux/${TARGETARCH}/verse dist/linux/${TARGETARCH}/o dist/linux/${TARGETARCH}/iod \
-     dist/linux/${TARGETARCH}/runnerd /usr/local/bin/
+     dist/linux/${TARGETARCH}/runnerd dist/linux/${TARGETARCH}/verse-call-tool /usr/local/bin/
 # logd+docd durable state — mount a volume here (the deploy StatefulSet does).
 VOLUME ["/data"]
 EXPOSE 9797

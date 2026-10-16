@@ -499,7 +499,7 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 		meta := mirror.Meta{
 			Subject: spec.Subject, Runner: place.Ref(), RunnerName: placeName,
 			Chain: spec.Chain, Prompt: spec.Prompt, Driver: spec.Driver, Occurrence: spec.Occurrence,
-			Doer: spec.Doer, Grant: spec.Grant, Tools: spec.Tools, Repos: spec.Repos, Asker: spec.Asker,
+			Doer: spec.Doer, Grant: spec.Grant, Tools: task.ToolsOf(spec.Tools), Repos: spec.Repos, Asker: spec.Asker,
 			Gates:  spec.Gates,
 			HeldBy: func() []string { return eng.HeldBy(id) },
 		}
@@ -664,7 +664,7 @@ func principalOrNobody(p string) string {
 func launchOf(id string, spec launch.Spec, principal string) (task.Launch, error) {
 	l := task.Launch{
 		ID: id, Prompt: spec.Prompt, Driver: spec.Driver,
-		Frame: spec.Frame, Tools: spec.Tools, Answer: spec.Answer, Retain: spec.Retain,
+		Frame: spec.Frame, Tools: task.ToolsOf(spec.Tools), Answer: spec.Answer, Retain: spec.Retain,
 		Environment: spec.Environment, VirtualKey: spec.VirtualKey,
 		Repos: spec.Repos,
 		// A firing has no launcher, so its principal is the rule that fired — the address of
@@ -4794,7 +4794,7 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 		ask, err := s.sayTo(r, id, h, body.Instruction, by)
 		if refused(w, err) {
 			return
-		} else if errors.Is(err, task.ErrEnded) {
+		} else if errors.Is(err, task.ErrEnded) || errors.Is(err, task.ErrUnsteerable) {
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		} else if err != nil {

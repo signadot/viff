@@ -242,9 +242,9 @@ type Config struct {
 	Set []string
 
 	// Frame is the agent's system prompt; empty → defaultFrame, derived from the tools
-	// offered and the vector installed. Tools narrows the offered set; empty → all of
-	// them. Both come from the spawn (launch.Spec.frame / .tools), which is the point:
-	// see task.Launch.
+	// offered and the vector installed. Tools narrows the offered set; nil → all of them,
+	// an empty list → none but what the contract keeps. Both come from the spawn
+	// (launch.Spec.frame / .tools), which is the point: see task.Launch.
 	Frame string
 	Tools []string
 	// Answer is this spawn's answer contract as a tony match pattern; nil → no contract,

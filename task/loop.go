@@ -41,6 +41,61 @@ type Conversation interface {
 	Fold(messages []string)
 }
 
+// Hearer is a Conversation told who is speaking. Fold hands a driver the words alone, which is
+// what a model reads: every message is a turn of its conversation, and the read plane is where
+// the speakers stay told apart. A driver for which the SPEAKER decides where the words go holds
+// this instead — the command driver is one: what a gate's answerer said about a call goes to
+// the program with the call's answer, while what an operator said opens the program's next
+// turn, and both arrive at the same boundary. A driver holding both is told through Hear.
+type Hearer interface {
+	Hear(said []Said)
+}
+
+// Said is one message into a driver's conversation: the text as Fold would hand it, and who it
+// is from.
+type Said struct {
+	Text string
+	By   string
+	Kind SaidKind
+}
+
+// SaidKind is who is speaking into a conversation.
+type SaidKind uint8
+
+const (
+	SaidByOperator SaidKind = iota // an operator steering the run (Handle.Steer)
+	SaidByChild                    // a child of the task reporting its result
+	SaidByRuntime                  // the runtime asking for the answer to be repaired
+	SaidByPerson                   // the person taking their turn in a conversation
+	SaidByGate                     // whoever answered a gate, about the decision
+)
+
+// holdsConversation reports whether words said to the task reach its driver, one way or the other.
+func holdsConversation(d Driver) bool {
+	_, folds := d.(Conversation)
+	_, hears := d.(Hearer)
+	return folds || hears
+}
+
+// Withdrawer is an optional Driver capability: a driver that proposes actions FOR someone —
+// the command driver, for a program's shell — says when the one being asked about is no longer
+// wanted. Withdrawn is called as the question about tu is posed; the channel closing while the
+// question stands withdraws it the way an operator's say does, so it leaves the docket rather
+// than holding the run for an answer nobody is waiting on, and the driver reads a refusal that
+// says so. nil leaves the question standing. The closing act is nobody's proposal and is not
+// asked about.
+type Withdrawer interface {
+	Withdrawn(tu ToolUse) <-chan struct{}
+}
+
+// Unsteerable is an optional Driver capability: a driver that has nowhere to deliver words mid-run
+// says why, and Steer refuses them with it (ErrUnsteerable) while the task runs. "" means words
+// are taken. A program run once with no way to resume it is the case: the words would wait for a
+// turn that never comes, and the task would fail at its end for having them.
+type Unsteerable interface {
+	Unsteerable() string
+}
+
 // Ender is an optional Driver capability: after Next returns !more, whether the driver ended the
 // RUN rather than its turn. A model that stops talking has ended its turn, and in a
 // conversation the person's turn follows; `yield done` is the model ending the conversation,
@@ -242,7 +297,7 @@ func (p *Task) SetFinisher(f Finisher) { p.fin = f }
 // Refused, with a line in the log, for a driver that holds no conversation: a turn handed to a
 // call list is words nobody hears, and the run would stand at a question for ever.
 func (p *Task) SetConverse(r Resolver) {
-	if _, ok := p.driver.(Conversation); !ok {
+	if !holdsConversation(p.driver) {
 		p.logf("⚠ converse ignored: this driver holds no conversation")
 		return
 	}
@@ -335,6 +390,11 @@ func (p *Task) Steer(instruction, by, ask string) error {
 	p.busMu.Unlock()
 	if ended {
 		return ErrEnded
+	}
+	if u, ok := p.driver.(Unsteerable); ok {
+		if why := u.Unsteerable(); why != "" {
+			return fmt.Errorf("%w: %s", ErrUnsteerable, why)
+		}
 	}
 	p.post(inSay{msgs: []convMsg{{text: instruction, by: by, kind: convSay, ask: ask}}})
 	return nil
@@ -509,9 +569,26 @@ func (p *Task) perform(ctx context.Context, s state, effs []effect, replies chan
 			gctx, gcancel := context.WithCancelCause(ctx)
 			p.gateCancel = gcancel
 			tu, tok := v.tu, v.tok
+			// A driver that can take its proposal back is watched while the question stands,
+			// and the withdrawal names this question by its token, so one that arrives after
+			// the answer did is about a decision already made and changes nothing.
+			settled := make(chan struct{})
+			if w, ok := p.driver.(Withdrawer); ok && !v.closing {
+				if gone := w.Withdrawn(tu); gone != nil {
+					go func() {
+						select {
+						case <-gone:
+							p.post(inWithdraw{tok: tok})
+						case <-settled:
+						case <-gctx.Done():
+						}
+					}()
+				}
+			}
 			p.seam("the gate", replies,
 				func(err error) input { return inGate{err: err, tok: tok} },
 				func() input {
+					defer close(settled)
 					res, err := p.sup.Check(gctx, tu)
 					return inGate{res: res, err: err, tok: tok}
 				})
@@ -710,8 +787,7 @@ func who(by, fallback string) string {
 }
 
 func (p *Task) converse(msgs []convMsg) {
-	d, ok := p.driver.(Conversation)
-	if !ok {
+	if !holdsConversation(p.driver) {
 		for _, m := range msgs {
 			if m.kind == convSay {
 				p.logf("⚠ say ignored: this driver holds no conversation")
@@ -719,15 +795,25 @@ func (p *Task) converse(msgs []convMsg) {
 		}
 		return
 	}
-	texts := make([]string, len(msgs))
 	var says int
-	for i, m := range msgs {
-		texts[i] = fold(m)
+	for _, m := range msgs {
 		if m.kind == convSay {
 			says++
 		}
 	}
-	d.Fold(texts)
+	if h, ok := p.driver.(Hearer); ok {
+		said := make([]Said, len(msgs))
+		for i, m := range msgs {
+			said[i] = Said{Text: fold(m), By: m.by, Kind: m.kind.said()}
+		}
+		h.Hear(said)
+	} else {
+		texts := make([]string, len(msgs))
+		for i, m := range msgs {
+			texts[i] = fold(m)
+		}
+		p.driver.(Conversation).Fold(texts)
+	}
 	if says > 0 {
 		p.appendJournal(fmt.Sprintf("[say] %d said-to at boundary %d", says, p.seq))
 		p.logf("↩ said-to: %d instruction(s)", says)

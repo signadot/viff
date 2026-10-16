@@ -149,8 +149,8 @@ type Meta struct {
 	//
 	// Grant is the NAME a charter or a provider wrote ("read-only"), not the resolved
 	// predicates: the name is the vocabulary a person reads, writes and greps for, and the
-	// predicates are already what crosses to the runtime. Empty Tools means the driver's full
-	// set, exactly as on the spec.
+	// predicates are already what crosses to the runtime. Nil Tools is a spawn that named none,
+	// and the runner's floor applies; `[]` is no tools — both as on the spec.
 	Doer  string
 	Grant string
 	Tools []string
@@ -297,7 +297,9 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	if c := m.Credential; c != nil {
 		st["credential"] = entity.Obj{"audience": c.Audience, "sub": c.Sub, "jti": c.JTI, "expires": c.Expires}
 	}
-	if len(m.Tools) > 0 {
+	// Nil is a spawn that named none; `[]` is one that named no tools, and the record keeps
+	// the difference the wire does.
+	if m.Tools != nil {
 		st["tools"] = m.Tools
 	}
 	if len(m.Repos) > 0 {

@@ -220,7 +220,7 @@ it wants back. So write a frame whenever the charter, and not a person, reads th
 |---|---|
 | `vector` | sets how much the task must confirm. A firing that already answered its own `gates` can say `vector: auto`, and does not ask again for each action. |
 | `grant` | the hard authority. Verse *refuses* an action outside it, and asks nobody. |
-| `tools` | narrows what the driver offers at all. `tools: [read_file, list_dir]` on a review agent means that shell and delegation never come up. |
+| `tools` | the tools the task is offered. Absent, the runner's: what it makes available for this launch, within the environment's floor and the runner's own. `tools: []` is no tools. `tools: [read_file, list_dir]` on a review agent means that shell and delegation never come up; a name the runner cannot offer for this launch — `push` with no writable repository, a tool it has not got — refuses the spawn. |
 
 The values are `vector: auto|ask|park` and `grant: read-only|no-delegate|none|all`.
 

@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"github.com/signadot/verse/task"
 	"testing"
 
 	tony "github.com/signadot/tony-format/go-tony"
@@ -68,21 +69,44 @@ func TestBindExpandsFrame(t *testing.T) {
 // entity being matched. The second widens authority by binding, one field away from the
 // grant.
 func TestBindDoesNotExpandTools(t *testing.T) {
-	s := Spec{Tools: []string{"read_file", "$sneaky"}}
+	s := Spec{Tools: tl([]string{"read_file", "$sneaky"})}
 	got := s.Bind(Binding{"sneaky": "run_bash"})
-	if len(got.Tools) != 2 || got.Tools[1] != "$sneaky" {
-		t.Fatalf("Tools = %v, want the authored list verbatim", got.Tools)
+	if tools := task.ToolsOf(got.Tools); len(tools) != 2 || tools[1] != "$sneaky" {
+		t.Fatalf("Tools = %v, want the authored list verbatim", tools)
 	}
 }
 
 // A bound spec must not alias the charter's slice, or one firing could rewrite the tool
 // list every later firing reads.
 func TestBindCopiesTools(t *testing.T) {
-	s := Spec{Tools: []string{"read_file"}}
+	s := Spec{Tools: tl([]string{"read_file"})}
 	got := s.Bind(Binding{})
-	got.Tools[0] = "run_bash"
-	if s.Tools[0] != "read_file" {
-		t.Fatalf("Bind aliased the receiver's tools: %v", s.Tools)
+	(*got.Tools)[0] = "run_bash"
+	if (*s.Tools)[0] != "read_file" {
+		t.Fatalf("Bind aliased the receiver's tools: %v", *s.Tools)
+	}
+}
+
+// A spawn that names no tools and one that names `tools: []` are two different spawns, and
+// stay so through a bind and through the wire.
+func TestNoToolsIsNotUnnamed(t *testing.T) {
+	none := Spec{Tools: tl([]string{})}.Bind(Binding{})
+	if none.Tools == nil || len(*none.Tools) != 0 {
+		t.Fatalf("tools: [] bound to %v", none.Tools)
+	}
+	if unnamed := (Spec{}).Bind(Binding{}); unnamed.Tools != nil {
+		t.Fatalf("an unnamed tools bound to %v", *unnamed.Tools)
+	}
+	b, err := codec.Marshal(Spec{Tools: tl([]string{})}, codec.Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back Spec
+	if err := codec.Unmarshal(b, &back, codec.Tony); err != nil {
+		t.Fatal(err)
+	}
+	if back.Tools == nil || len(*back.Tools) != 0 {
+		t.Fatalf("tools: [] crossed as %v (wire %s)", back.Tools, b)
 	}
 }
 

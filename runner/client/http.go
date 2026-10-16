@@ -463,6 +463,8 @@ func statusErr(resp *http.Response) error {
 		return fmt.Errorf("%w: %s", task.ErrAlreadyAnswered, detail)
 	case http.StatusGone:
 		return fmt.Errorf("%w: %s", task.ErrEnded, detail)
+	case http.StatusUnprocessableEntity:
+		return fmt.Errorf("%w: %s", task.ErrUnsteerable, detail)
 	case http.StatusNotImplemented:
 		return fmt.Errorf("%w: %s", task.ErrUnsupported, detail)
 	}

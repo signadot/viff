@@ -72,12 +72,14 @@ type Spec struct {
 	// step and would not replace this: the complaint that produced this field is one
 	// driver needing different frames on different spawns.
 	Frame string `tony:"field=frame,omitzero"`
-	// Tools narrows the driver's tool set to those named; empty = all of them. Unlike
-	// Frame it is not advice — a tool that is not offered cannot be called — but it is
-	// still not authority: Grant is what refuses an action. A spawn usually wants both,
-	// because a tool withheld never comes up, while a tool offered-but-ungranted costs a
-	// turn being refused.
-	Tools []string `tony:"field=tools,omitzero"`
+	// Tools names the tools the task is offered. Absent, the task gets what the runner makes
+	// available for it; `tools: []` is no tools; a name the runner cannot offer for this
+	// launch refuses the spawn. Unlike Frame it is not advice — a tool that is not offered
+	// cannot be called — but it is still not authority: Grant is what refuses an action. A
+	// spawn usually wants both, because a tool withheld never comes up, while a tool
+	// offered-but-ungranted costs a turn being refused. A pointer so that absent and empty
+	// cross the wire apart.
+	Tools *[]string `tony:"field=tools,omitzero"`
 	// VirtualKey is the ADDRESS of the model credential this work runs under —
 	// `acme.keys.review` — and the node standing there holds the key.
 	//
@@ -399,7 +401,7 @@ func (s Spec) Bind(b Binding) Spec {
 	// interesting case: this list is adjacent to authority, and letting payload text pick
 	// which tools an agent is handed would widen its authority by binding.
 	// Copied rather than shared so a bound spec cannot alias the charter's slice.
-	out.Tools = append([]string(nil), s.Tools...)
+	out.Tools = task.CloneTools(s.Tools)
 	// VirtualKey is carried and NOT expanded, for Tools' reason and more sharply. It names a
 	// credential the runtime holds, drawn from a fixed set, so a $var in one could only name a
 	// key that does not exist — or one chosen by whoever last wrote the entity being matched,

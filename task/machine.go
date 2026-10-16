@@ -93,6 +93,21 @@ const (
 	convGate                   // a resolver attached context to its answer
 )
 
+// said is the speaker as a Hearer is told it.
+func (k convKind) said() SaidKind {
+	switch k {
+	case convChild:
+		return SaidByChild
+	case convRepair:
+		return SaidByRuntime
+	case convTurn:
+		return SaidByPerson
+	case convGate:
+		return SaidByGate
+	}
+	return SaidByOperator
+}
+
 // convMsg is one message on its way into the conversation, with its speaker.
 type convMsg struct {
 	text string
@@ -192,8 +207,10 @@ type (
 	inPause  struct{}                 // intervention: hold at the next boundary
 	inResume struct{}                 // intervention: lift the hold
 	inSay    struct{ msgs []convMsg } // intervention: an operator said something
-	inVector struct{}                 // policy: the vector was slid
-	inChild  struct {
+	// inWithdraw: the driver no longer wants the action the question tok is about (Withdrawer).
+	inWithdraw struct{ tok int }
+	inVector   struct{} // policy: the vector was slid
+	inChild    struct {
 		id, reason, summary string
 		failed              bool
 	} // the task's own work, returning
@@ -258,6 +275,7 @@ func (inSpawned) input()  {}
 func (inChecked) input()  {}
 func (inFinish) input()   {}
 func (inTurn) input()     {}
+func (inWithdraw) input() {}
 
 // ── effects ─────────────────────────────────────────────────────────────────────
 //
@@ -277,8 +295,9 @@ type (
 		tok  int
 	} // → inDriver
 	effGate struct {
-		tu  ToolUse
-		tok int
+		tu      ToolUse
+		tok     int
+		closing bool // the finisher's act, which no driver proposed and none may withdraw
 	} // → inGate
 	effDropGate struct{ why string } // withdraw the standing question; no reply
 	effExecute  struct {
@@ -379,6 +398,15 @@ func (s *state) fold(in input) []effect {
 		s.conv = append(s.conv, v.msgs...)
 		s.reopen()
 		return s.interrupt("an operator said something while this was being asked about")
+
+	case inWithdraw:
+		// The driver took back the action it proposed: whoever it proposed it for has gone.
+		// Only the question the token names — one that arrives after the answer did is about a
+		// decision already made — and the driver reads a refusal, as it would for a say.
+		if s.winding() || !s.expecting(phGate, v.tok) {
+			return nil
+		}
+		return s.interrupt("whoever asked for this action is no longer waiting on it")
 
 	case inPause:
 		// A pause is about to suspend this run, so a question about an action it will not
@@ -624,7 +652,7 @@ func (s *state) atBoundary() []effect {
 	if s.regate {
 		s.regate = false
 		if len(msgs) == 0 {
-			return append(effs, effGate{tu: s.action, tok: s.await(phGate)})
+			return append(effs, effGate{tu: s.action, tok: s.await(phGate), closing: s.closing})
 		}
 	}
 	if s.driverQuiet {
@@ -895,7 +923,7 @@ func (s *state) finish(v inFinish) []effect {
 	}
 	s.action = v.tu
 	s.closing = true
-	return []effect{effGate{tu: v.tu, tok: s.await(phGate)}}
+	return []effect{effGate{tu: v.tu, tok: s.await(phGate), closing: true}}
 }
 
 // childEnded folds a child's completion. It is not an operator input and does not preempt: it

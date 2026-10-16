@@ -60,6 +60,10 @@ type Standalone struct {
 	// from them with. It stays on this side of the process boundary. Empty is right for a local
 	// path.
 	GitToken string
+	// CallTool is the `verse-call-tool` binary, copied into each task's workspace so a program
+	// there can call the task's tools (calltool.go). Empty: programs have no such command, and
+	// the tools are still served for anything that speaks the socket.
+	CallTool string
 	Log      io.Writer
 }
 
@@ -72,7 +76,8 @@ func (s Standalone) Start() (*Runner, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := &Runner{cfg: s.Config, secrets: s.Secrets, log: s.Log, keep: s.Keep, token: s.GitToken, control: s.Control}
+	r := &Runner{cfg: s.Config, secrets: s.Secrets, log: s.Log, keep: s.Keep, token: s.GitToken,
+		callTool: s.CallTool, control: s.Control}
 	hc := runnerd.SubprocessConfig{
 		Command: s.Command, Env: task.ShellEnv(task.DefaultShellEnv), Config: blob,
 		Sandbox: s.Sandbox, Work: s.Work, Control: s.Control, Log: s.Log,
@@ -112,8 +117,10 @@ type Runner struct {
 	keep       bool
 	// token is this runner's own git credential: every fetch and every push is made with it, on
 	// this side.
-	token   string
-	control string // the directory holding one control socket per task, and the egress sockets
+	token string
+	// callTool is the `verse-call-tool` binary each workspace gets a copy of; "" for none.
+	callTool string
+	control  string // the directory holding one control socket per task, and the egress sockets
 	// h runs each task in a process of its own and serves the contract for it; this runner is
 	// its Preparer (prepare.go) when it has environments.
 	h *runnerd.SubprocessHandler
@@ -192,7 +199,7 @@ func ServeTask(stdin io.Reader, log io.Writer) error {
 	}
 	r := New(tc.Config, tc.Secrets, ws.Root, log)
 	d := &r.drivers
-	d.Env, d.Workspace, d.Environment, d.Brief, d.Agents = env.Env, ws, &env, tp.Brief, tc.Config.Agents
+	d.Env, d.Workspace, d.Environment, d.Brief, d.Agents, d.Tools = env.Env, ws, &env, tp.Brief, tc.Config.Agents, tc.Config.Tools
 	d.Default = cmp.Or(env.Driver, d.Default)
 	// The agent's push and fetch ask over the channel on fd 5, which is the whole reason a push
 	// is a request rather than a push: the credential is on the other side of it. The launch is
@@ -228,6 +235,7 @@ func New(c Config, s Secrets, dir string, log io.Writer) *Runner {
 		VirtualKeyOr:  r.virtualKey,
 		NoKey:         "set " + EnvPortkeyAPIKey,
 		Agents:        c.Agents,
+		Tools:         c.Tools,
 	}
 	if s.PortkeyAPIKey != "" {
 		r.drivers.Default = "llm"

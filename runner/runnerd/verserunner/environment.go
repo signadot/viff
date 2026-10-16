@@ -8,18 +8,21 @@ import (
 
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/runner/runnerd/delivery"
+	"github.com/signadot/verse/runner/runnerd/verserunner/agent"
+	"github.com/signadot/verse/runner/runnerd/workspace"
 	"github.com/signadot/verse/task"
 )
 
-// knownTools is the llm driver's vocabulary, as harness.toolDefs offers it, plus the two this
-// runner adds itself. Named here so an environment's floor can be checked at startup;
-// `call_agent` and `fail` are deliberately absent from what an environment would list, being the
-// loop's own rather than the work's.
+// knownTools is the llm driver's vocabulary, as harness.toolDefs offers it, plus the ones this
+// runner adds itself. Named here so an environment's floor can be checked at startup. `yield`
+// is in it so that a floor or a spawn may spell what the harness keeps regardless.
 //
-// `push`, `fetch`, `create-pr` and `update-pr` are the runner's (runner/runnerd/delivery). `push` is offered only where some
-// repository may be pushed to, which is why naming it in an environment where nothing writes is
-// refused below: a floor that lists a tool nothing will offer is a floor that means nothing.
-var knownTools = []string{"read_file", "list_dir", "write_file", "run_bash", "call_agent", delivery.PushToolName, delivery.FetchToolName, delivery.CreatePullToolName, delivery.UpdatePullToolName}
+// `ask` is the agent's question to a person, and the one tool a program under `agents:` always
+// has something to say with. `push`, `fetch`, `create-pr` and `update-pr` are the runner's
+// (runner/runnerd/delivery). `push` is offered only where some repository may be pushed to, which
+// is why naming it in an environment where nothing writes is refused below: a floor that lists a
+// tool nothing will offer is a floor that means nothing.
+var knownTools = []string{"read_file", "list_dir", "write_file", "run_bash", "call_agent", "yield", agent.AskToolName, delivery.PushToolName, delivery.FetchToolName, delivery.CreatePullToolName, delivery.UpdatePullToolName}
 
 // driverLLM and task.DriverCalls are the two drivers this runner implements itself: an
 // agent, and a list of calls the charter wrote. Every other driver name selects a program from
@@ -96,6 +99,11 @@ type Environment struct {
 // environments with one name, a default naming nothing, a tool the agent does not have, an
 // allowlist entry that does not parse.
 func (c *Config) checkEnvironments() error {
+	for _, name := range c.Tools {
+		if !slices.Contains(knownTools, name) {
+			return fmt.Errorf("tools: this runner has no tool %q (it has: %s)", name, strings.Join(knownTools, ", "))
+		}
+	}
 	seen := map[string]bool{}
 	for i, e := range c.Environments {
 		switch {
@@ -113,6 +121,12 @@ func (c *Config) checkEnvironments() error {
 			if !slices.Contains(knownTools, name) {
 				return fmt.Errorf("environment %q offers tool %q, which the llm "+
 					"driver does not have (it has: %s)", e.Name, name, strings.Join(knownTools, ", "))
+			}
+			// An environment's floor is within the runner's: a floor that names what the
+			// runner does not offer is a floor that means nothing.
+			if len(c.Tools) > 0 && !slices.Contains(c.Tools, name) {
+				return fmt.Errorf("environment %q offers tool %q, which this runner's `tools` does not "+
+					"(it offers: %s)", e.Name, name, strings.Join(c.Tools, ", "))
 			}
 		}
 		// An allowlist entry that does not parse is caught at STARTUP, because the alternative is
@@ -165,5 +179,44 @@ func (c *Config) names() []string {
 		out = append(out, e.Name)
 	}
 	sort.Strings(out)
+	return out
+}
+
+// floorFor is the tools a task in env gets when its spawn names none (floorOf).
+func (c *Config) floorFor(env Environment) []string { return floorOf(env.Tools, c.Tools) }
+
+// floorOf is the floor under a task whose spawn names no tools: the environment's, when it has
+// one, else the runner's, else everything (nil). Stated once, for Admit and for Build.
+func floorOf(environment, runner []string) []string {
+	if len(environment) > 0 {
+		return environment
+	}
+	if len(runner) > 0 {
+		return runner
+	}
+	return nil
+}
+
+// harnessTools is what the verse agent and a call list have of their own, beside `ask` and the
+// runner's: the harness's four, `call_agent`, and `yield`, which the harness never withholds and a
+// spawn may spell. A program has none of these; its shell is its own.
+var harnessTools = []string{"read_file", "list_dir", "write_file", "run_bash", "call_agent", "yield"}
+
+// offeredFor is every tool this runner can offer a launch in env, by driver and by the
+// repositories the spawn brings — the runner's by delivery.Offered, which is also what the task
+// process then builds — `ask` always, and the harness's own for its own drivers, all within the
+// floor.
+func (c *Config) offeredFor(env Environment, driver string, repos []workspace.Repo) []string {
+	var out []string
+	if builtinDriver(driver) {
+		out = append(out, harnessTools...)
+	}
+	out = append(out, agent.AskToolName)
+	out = append(out, delivery.Offered(repos)...)
+	if floor := c.floorFor(env); floor != nil {
+		// `yield` passes every floor, as it passes the harness's own selection: it is the
+		// contract's, not the work's, and a spawn spelling it asks for nothing extra.
+		out = slices.DeleteFunc(out, func(name string) bool { return name != "yield" && !slices.Contains(floor, name) })
+	}
 	return out
 }

@@ -59,7 +59,7 @@ func TestProviderFragmentReachesTheSpawn(t *testing.T) {
 				Spawn: &launch.Spec{
 					Prompt: "treat $subject",
 					Frame:  "a frame the doer overrides",
-					Tools:  []string{"read_file", "list_dir", "write_file", "run_bash"},
+					Tools:  task.ToolsPtr([]string{"read_file", "list_dir", "write_file", "run_bash"}),
 					Grant:  "no-delegate",
 					Provider: &launch.Provider{
 						Capability: "treat",
@@ -95,11 +95,11 @@ func TestProviderFragmentReachesTheSpawn(t *testing.T) {
 	if fix.Driver != "llm" || memo.Driver != "llm" {
 		t.Fatalf("drivers = %q / %q, want both llm — the point is that the driver is what they SHARE", fix.Driver, memo.Driver)
 	}
-	if !reflect.DeepEqual(fix.Tools, []string{"read_file", "list_dir", "write_file", "run_bash"}) {
-		t.Errorf("fixer tools = %v, want the full set the spawn offered", fix.Tools)
+	if got := task.ToolsOf(fix.Tools); !reflect.DeepEqual(got, []string{"read_file", "list_dir", "write_file", "run_bash"}) {
+		t.Errorf("fixer tools = %v, want the full set the spawn offered", got)
 	}
-	if !reflect.DeepEqual(memo.Tools, []string{"read_file", "list_dir"}) {
-		t.Errorf("memo tools = %v, want the doer's narrower set", memo.Tools)
+	if got := task.ToolsOf(memo.Tools); !reflect.DeepEqual(got, []string{"read_file", "list_dir"}) {
+		t.Errorf("memo tools = %v, want the doer's narrower set", got)
 	}
 	if fix.Grant != "no-delegate" || memo.Grant != "read-only" {
 		t.Errorf("grants = %q / %q, want no-delegate / read-only", fix.Grant, memo.Grant)
@@ -205,7 +205,7 @@ func TestDisjointToolsIsIneligible(t *testing.T) {
 
 	spawn := launch.Spec{
 		Prompt:   "treat it",
-		Tools:    []string{"read_file"}, // the spawn offers a tool the doer does not
+		Tools:    task.ToolsPtr([]string{"read_file"}), // the spawn offers a tool the doer does not
 		Grant:    "read-only",
 		Provider: &launch.Provider{Capability: "treat", Select: "auto"},
 	}

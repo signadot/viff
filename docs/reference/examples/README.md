@@ -130,8 +130,11 @@ many times as the work needs. Only commits are delivered, and every one of them 
 the provenance trailers (`Verse-Task`, `Verse-Principal`, `Verse-Subject`, `Verse-Chain`) that
 the brief names. A commit without them is refused with what is missing, and the agent re-commits:
 the runner never rewrites the agent's commits, so the agent knows the SHAs it delivered. A
-program under `agents:` has no tools, so nothing it does leaves the workspace; what it did not
-push is held in the runner's mirror. The checkout carries a git identity, so `git commit` needs
+program under `agents:` has the same tools from its shell: the runner puts `verse-call-tool` in
+the workspace and the task process answers it on a socket there, so `verse-call-tool push` is the
+program's push, and each call is an action of the task — gated, shown and recorded as the verse
+agent's would be. What a program did not push is held in the runner's mirror. The checkout
+carries a git identity, so `git commit` needs
 none from the agent: a person's task commits as `u@h (verse <driver>)` at
 `u+verse-<driver>-runner@h`, an address that says in the forge's view what the Verse-Principal
 trailer says in the message; a charter firing commits as the runner. Either way the push is an
@@ -214,8 +217,14 @@ without the tool decides nothing.
 
 **A task here need not be an agent.** This runner builds `driver: calls` as well as `llm` and
 the programs under `agents:`. A call list gets the same extras: the same `push` and the same
-deriver, and a list that wants to deliver writes it. So a charter that knows the actions writes
-them down, and pays for no model at all:
+deriver, and a list that wants to deliver writes it. A program gets them as `verse-call-tool`
+(`cmd/verse-call-tool`): run with no arguments it lists the tools the floor admits with their
+parameters, and `verse-call-tool ask -question "..."` hands the person the turn and prints what
+they said. Exit 3 is a refusal with the reason on stdout, which the program plans around; exit 1
+is a failure, on stderr and on the record as one; and a call the program's shell gives up on is
+withdrawn from the docket rather than holding the task for an answer nobody reads. A spawn naming
+a tool the program cannot have here is refused before it runs. So a charter that knows the actions
+writes them down, and pays for no model at all:
 
 ```tony
 spawn:

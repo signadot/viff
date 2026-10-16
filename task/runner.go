@@ -43,12 +43,13 @@ type Launch struct {
 	// set it, since a conversation with nobody on the other end would stand forever.
 	Converse bool
 
-	// Tools names the tools offered to the agent, narrowing the driver's full set. Empty
-	// = all of them. It is the hard counterpart of Frame's advice: a frame can only ask
-	// an agent not to reach for something, whereas a tool that is not offered cannot be
-	// called at all. A driver always keeps whatever tools its own contract depends on
-	// (the LLM harness keeps `fail`, which is how a task reports it could not do the
-	// work). A name no driver knows fails the spawn rather than shrinking it in silence.
+	// Tools names the tools offered to the agent. Nil, the spawn named none and the task gets
+	// what the runner makes available for it; empty, the spawn named `tools: []` and the task
+	// gets none. It is the hard counterpart of Frame's advice: a frame can only ask an agent
+	// not to reach for something, whereas a tool that is not offered cannot be called at all.
+	// A driver always keeps whatever tools its own contract depends on (the LLM harness
+	// keeps `yield`, which is how a task reports it could not do the work). A name the runner
+	// cannot offer for this launch refuses the spawn rather than shrinking it in silence.
 	Tools []string
 
 	// VirtualKey is the model credential this task runs under — THE KEY ITSELF, not an address

@@ -30,8 +30,9 @@ type SpawnRequest struct {
 	Driver string `tony:"field=driver,omitzero"`
 	// Frame is the standing instructions the prompt is read in (Launch.Frame).
 	Frame string `tony:"field=frame,omitzero"`
-	// Tools names the tools offered, narrowing the driver's own set (Launch.Tools).
-	Tools []string `tony:"field=tools,omitzero"`
+	// Tools names the tools offered (Launch.Tools). Absent, the task gets what the runner
+	// makes available for it; `[]` is no tools. A pointer so the two cross the wire apart.
+	Tools *[]string `tony:"field=tools,omitzero"`
 	// Retain is how many read-plane events to keep for a reader that resumes (Launch.Retain).
 	Retain int `tony:"field=retain,omitzero"`
 	// Converse makes the run a conversation, the person handed the turn when the driver goes
@@ -92,7 +93,7 @@ type VectorRequest struct {
 // neither list.
 func (l Launch) Wire() SpawnRequest {
 	r := SpawnRequest{
-		ID: l.ID, Prompt: l.Prompt, Driver: l.Driver, Frame: l.Frame, Tools: l.Tools,
+		ID: l.ID, Prompt: l.Prompt, Driver: l.Driver, Frame: l.Frame, Tools: ToolsPtr(l.Tools),
 		Retain: l.Retain, Converse: l.Converse, VirtualKey: l.VirtualKey, Credential: l.Credential, Answer: l.Answer, Calls: l.Calls,
 		Vector: l.Vector, Grant: l.Grant, Environment: l.Environment, Repos: l.Repos,
 		Occurrence: l.Occurrence,
@@ -107,7 +108,7 @@ func (l Launch) Wire() SpawnRequest {
 // (Launch.Wire).
 func (r SpawnRequest) Launch() Launch {
 	l := Launch{
-		ID: r.ID, Prompt: r.Prompt, Driver: r.Driver, Frame: r.Frame, Tools: r.Tools,
+		ID: r.ID, Prompt: r.Prompt, Driver: r.Driver, Frame: r.Frame, Tools: ToolsOf(r.Tools),
 		Retain: r.Retain, Converse: r.Converse, VirtualKey: r.VirtualKey, Credential: r.Credential, Answer: r.Answer, Calls: r.Calls,
 		Vector: r.Vector, Grant: r.Grant, Environment: r.Environment, Repos: r.Repos,
 		Occurrence: r.Occurrence,
@@ -116,4 +117,32 @@ func (r SpawnRequest) Launch() Launch {
 		l.Provenance = Provenance{Principal: p.Principal, Subject: p.Subject, Chain: p.Chain}
 	}
 	return l
+}
+
+// ToolsPtr is a tool list as the wire carries it: nil stays absent, and a list — empty
+// included — is written out, so "no tools" is not read back as "unnamed".
+func ToolsPtr(tools []string) *[]string {
+	if tools == nil {
+		return nil
+	}
+	out := append([]string{}, tools...)
+	return &out
+}
+
+// CloneTools is a copy of a tool list as the wire carries it: nil stays nil, else one copy.
+func CloneTools(p *[]string) *[]string {
+	if p == nil {
+		return nil
+	}
+	out := append([]string{}, (*p)...)
+	return &out
+}
+
+// ToolsOf is a tool list as read from the wire: absent is nil, and a list — empty included —
+// is a list, never nil.
+func ToolsOf(p *[]string) []string {
+	if p == nil {
+		return nil
+	}
+	return append([]string{}, (*p)...)
 }

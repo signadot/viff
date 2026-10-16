@@ -11,6 +11,7 @@
 /sourced
 /iod
 /runnerd
+/verse-call-tool
 dist/
 # mkdocs build output (`mkdocs build` defaults here; `mkdocs serve` needs nothing)
 site/

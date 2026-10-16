@@ -126,20 +126,16 @@ different values, on both sides. For this reason `task.NamedGrant` returns an `o
 `Grant`. The zero grant permits nothing. It would refuse every action of a task that never
 named a grant.
 
-**`tools` intersects, because an empty list means *all* the tools of the driver.** Suppose the
+**`tools` intersects, because an unnamed list means *all* the tools of the driver.** Suppose the
 spawn offers only `[read_file]` and a doer offers `[read_file, run_bash]`. A replace would add
 `run_bash`. A tool list narrows when you read it alone. It does not narrow when you lay it over
 another list.
 
-The empty list has one more effect. Verse cannot combine two tool lists that share no tool:
-
-1. The intersection is the empty set.
-2. The empty set is written as an empty list.
-3. An empty list means all the tools.
-
-So the answer to "these two agree on nothing" would be "have everything". Verse refuses such a
-pair instead. The pair is a contradiction in any case: a doer that may use no tool that the
-spawn permits cannot do the work.
+A spawn that names no `tools` offers all of the runner's; one that writes `tools: []` offers
+none, and a doer's list has nothing to narrow there. A doer's own list only narrows, so an empty
+one on a provider does not narrow. Two lists that share no tool are refused:
+the intersection is spellable, as `[]`, but a doer that may use no tool the spawn permits
+cannot do the work, and running it with nothing would say so late.
 
 ## Which credential it runs under
 

@@ -82,7 +82,7 @@ func (c *Client) PushTool() (agent.Tool, bool) {
 	}
 	var names, allowed []string
 	for _, t := range ws.Trees {
-		if t.Repo.Writes() {
+		if t.Repo.Writes() { // the condition Offered states
 			names = append(names, t.Repo.Name)
 			allowed = append(allowed, t.Repo.Name+" "+t.Repo.Allowance())
 		}

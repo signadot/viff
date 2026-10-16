@@ -186,7 +186,7 @@ define:
   provenance: .[nullable(verse-runner-provenance)]
   repos: .[array(verse-repo)]
   retain: .[int]
-  tools: .[array(string)]
+  tools: .[nullable(array(string))]
   vector: .[nullable(verse-vector)]
   virtualKey: .[string]
 signature:

@@ -33,6 +33,13 @@ const askTool = "ask"
 // replyOption is the one outcome a question has when the model named none: an answer in words.
 const replyOption = "reply"
 
+// AskToolName is what the tool is called, for a floor that names it.
+const AskToolName = askTool
+
+// Ask is the tool for a runtime that offers it to something other than this package's agent: a
+// program calling it from its shell, say. Its result names who answered, as the model's does.
+func Ask(resolver task.Resolver) Tool { return askFor(resolver) }
+
 // askFor builds the tool over the resolver a task's questions go to. The tool result names who
 // answered, because the model is reading somebody's words and should know whose.
 func askFor(resolver task.Resolver) Tool {

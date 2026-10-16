@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/signadot/verse/runner/runnerd/verserunner/agent"
@@ -44,6 +45,9 @@ type Drivers struct {
 	Extra       []agent.Tool
 	// Agents are the programs a driver may name.
 	Agents map[string]Command
+	// Tools is the runner's own floor (Config.Tools): what a task gets when neither its spawn
+	// nor its environment names a set. Nil is everything.
+	Tools []string
 }
 
 // Build is a runnerd builder.
@@ -52,11 +56,12 @@ func (h *Drivers) Build(l task.Launch, reg *task.Registry) *task.Task {
 	if driver == "" {
 		driver = h.Default
 	}
-	// Tools: a spawn that names none gets the environment's set; one that names its own gets
-	// what it names.
+	// Tools: a spawn that names none (nil) gets the floor — the environment's set, else the
+	// runner's, else all; one that names its own gets what it names, `[]` included, which is
+	// none.
 	tools := l.Tools
-	if len(tools) == 0 && h.Environment != nil {
-		tools = h.Environment.Tools
+	if tools == nil {
+		tools = h.floor()
 	}
 	var t *task.Task
 	switch driver {
@@ -139,8 +144,25 @@ func (h *Drivers) Build(l task.Launch, reg *task.Registry) *task.Task {
 		if h.Environment != nil {
 			env = *h.Environment
 		}
+		// The program's tools: the runner's own and `ask`, passed the floor. A spawn that names
+		// one the program cannot have here fails before anything runs, as a call list does: the
+		// charter asked for something specific, and a program told it has `push` when it has
+		// not would deliver nothing and believe it had.
+		extra := append(slices.Clone(h.Extra), agent.Ask(reg))
+		offered := offeredTools(extra, tools)
+		for _, name := range l.Tools {
+			if !slices.ContainsFunc(offered, func(t agent.Tool) bool { return t.Name == name }) {
+				return task.NewFailed(l.ID, reg, fmt.Sprintf("no tool %q for %s here (it has: %s)",
+					name, driver, strings.Join(toolNamesOf(offered), ", ")))
+			}
+		}
+		// The workspace layout and how the tools are reached ride the prompt, as they do for the
+		// verse agent and for the same reason: the arrangement is the runner's.
+		if h.Workspace != nil {
+			l.Prompt = h.Brief + callToolBrief(offered, callToolInstalled(h.Root)) + deliveryBrief(l, h.Workspace, offered) + l.Prompt
+		}
 		var err error
-		t, err = buildCommandTask(l, reg, cmd, env, h.Root)
+		t, err = buildCommandTask(l, reg, cmd, env, h.Root, offered)
 		if err != nil {
 			return task.NewFailed(l.ID, reg, err.Error())
 		}
@@ -152,6 +174,23 @@ func (h *Drivers) Build(l task.Launch, reg *task.Registry) *task.Task {
 		t.SetRepo(h.Workspace.RepoContext)
 	}
 	return t
+}
+
+func toolNamesOf(tools []agent.Tool) []string {
+	out := make([]string, 0, len(tools))
+	for _, t := range tools {
+		out = append(out, t.Name)
+	}
+	return out
+}
+
+// floor is the tools a task here gets when its spawn names none (floorOf).
+func (h *Drivers) floor() []string {
+	var env []string
+	if h.Environment != nil {
+		env = h.Environment.Tools
+	}
+	return floorOf(env, h.Tools)
 }
 
 // agentList is the programs this runner may be asked for, for a refusal that lists the drivers.

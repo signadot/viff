@@ -1,9 +1,11 @@
 package verserunner
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/signadot/verse/codec"
@@ -40,7 +42,8 @@ func (r *Runner) Admit(sent *task.SpawnRequest) error {
 	}
 	// The repositories, as the spawn wrote them: refused here for anything the spawn got wrong,
 	// before any work is set up.
-	if _, err := workspace.FromSpecs(sent.Repos); err != nil {
+	repos, err := workspace.FromSpecs(sent.Repos)
+	if err != nil {
 		return fmt.Errorf("repos: %w", err)
 	}
 	if sent.Driver == "" {
@@ -59,6 +62,19 @@ func (r *Runner) Admit(sent *task.SpawnRequest) error {
 	if _, isAgent := r.cfg.Agents[sent.Driver]; !builtinDriver(sent.Driver) && !isAgent {
 		return fmt.Errorf("this runner has no driver %q — it has %q, %q, and the agents it declares: %s",
 			sent.Driver, driverLLM, task.DriverCalls, strings.Join(agentNames(r.cfg.Agents), ", "))
+	}
+	// The tools the spawn names are the request, and a tool this runner cannot offer for THIS
+	// launch refuses it here — a push with no writable repository, a tool outside the floor, a
+	// tool it has not got — rather than running the task without it. Unnamed is everything
+	// the launch makes available; `[]` is no tools, and nothing to refuse.
+	if sent.Tools != nil {
+		offered := r.cfg.offeredFor(env, sent.Driver, repos)
+		for _, name := range *sent.Tools {
+			if !slices.Contains(offered, name) {
+				return fmt.Errorf("tools: %q is not offered for this launch (it offers: %s)",
+					name, strings.Join(offered, ", "))
+			}
+		}
 	}
 	return nil
 }
@@ -104,6 +120,15 @@ func (r *Runner) Prepare(ctx context.Context, sent task.SpawnRequest) (*runnerd.
 	if ctx.Err() != nil {
 		_ = ws.Remove(context.Background())
 		return nil, ctx.Err()
+	}
+	// The way a program in the workspace calls the task's tools, put there by this side: the
+	// binary is beside the runner on an image, and the task process may not see where. Only a
+	// program has a shell to call it from; the verse agent's tools are its own.
+	if _, program := r.cfg.Agents[cmp.Or(sent.Driver, env.Driver, r.drivers.Default)]; program && r.callTool != "" {
+		if err := installCallTool(r.callTool, ws.Root); err != nil {
+			_ = ws.Remove(context.Background())
+			return nil, fmt.Errorf("installing %s in the workspace: %w", CallToolBinary, err)
+		}
 	}
 	c := &child{id: l.ID, ws: ws, env: env}
 	prep, err := r.ready(c, l)

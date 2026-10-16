@@ -41,6 +41,12 @@ type Config struct {
 	Models Models `tony:"field=models,omitzero"`
 	// Annotations is the annotations a spawn may set, with the type of their value.
 	Annotations map[string]string `tony:"field=annotations,omitzero"`
+	// Tools is the tools this runner offers at all, a subset of what it has: a runner whose
+	// image has no git has no use for `push`, and a tool not listed here is not presented to
+	// any task, whatever its environment or spawn says. Absent is everything the runner has.
+	// An environment's `tools` is within it, and a spawn naming a tool outside it is refused
+	// at launch.
+	Tools []string `tony:"field=tools,omitzero"`
 
 	// Environments are the workspaces this runner can build. A spawn names one
 	// (`environment:` on a charter, `--environment` on `verse task run`) and verse carries the

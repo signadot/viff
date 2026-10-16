@@ -33,17 +33,21 @@ O_PKG := github.com/signadot/tony-format/go-tony/cmd/o
 #            engine binary carries no connector's wire format or credential handling. Riding
 #            in the same image is free; riding in the same process is not (cmd/iod).
 #   runnerd  the shipped runners (verse) — separate for the same reason (cmd/runnerd).
+#   verse-call-tool
+#            a task's tools from the shell (cmd/verse-call-tool): the runner finds it beside
+#            itself and copies it into each task's workspace, for a program running there.
 define go_build
 	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/verse ./cmd/verse
 	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/o $(O_PKG)
 	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/iod ./cmd/iod
 	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/runnerd ./cmd/runnerd
+	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/verse-call-tool ./cmd/verse-call-tool
 endef
 
 .DEFAULT_GOAL := help
 
 .PHONY: bin
-bin: ## build verse + o + iod + runnerd for the host → dist/$(GOOS)/$(GOARCH)/ (dev use)
+bin: ## build verse + o + iod + runnerd + verse-call-tool for the host → dist/$(GOOS)/$(GOARCH)/ (dev use)
 	$(call go_build,$(GOOS),$(GOARCH))
 
 .PHONY: iod
@@ -54,8 +58,12 @@ iod: ## build just the source connectors (git, slack, linear) for the host
 runnerd: ## build just the runners (verse) for the host
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build -o $(DIST)/$(GOOS)/$(GOARCH)/runnerd ./cmd/runnerd
 
+.PHONY: verse-call-tool
+verse-call-tool: ## build just the shell's tool caller for the host
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build -o $(DIST)/$(GOOS)/$(GOARCH)/verse-call-tool ./cmd/verse-call-tool
+
 .PHONY: dist-linux
-dist-linux: ## cross-compile verse + o + iod + runnerd for linux/$(IMAGE_ARCH) → dist/linux/$(IMAGE_ARCH)/ (for the image)
+dist-linux: ## cross-compile verse + o + iod + runnerd + verse-call-tool for linux/$(IMAGE_ARCH) → dist/linux/$(IMAGE_ARCH)/ (for the image)
 	$(call go_build,linux,$(IMAGE_ARCH))
 
 .PHONY: docker
@@ -66,9 +74,11 @@ docker: dist-linux ## build the image, COPYing the pre-built linux binaries (no 
 # two images have nothing to do with each other's cadence: the runtime image is thin and pinned
 # to the engine, this one is sized by the toolchain the repositories it serves need to build.
 .PHONY: coderunner-linux
-coderunner-linux: ## cross-compile the coderunner example for linux/$(IMAGE_ARCH)
+coderunner-linux: ## cross-compile the coderunner example, and verse-call-tool beside it, for linux/$(IMAGE_ARCH)
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(IMAGE_ARCH) $(GO) build \
 	  -o $(DIST)/linux/$(IMAGE_ARCH)/coderunner ./docs/reference/examples/coderunner
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(IMAGE_ARCH) $(GO) build \
+	  -o $(DIST)/linux/$(IMAGE_ARCH)/verse-call-tool ./cmd/verse-call-tool
 
 .PHONY: coderunner-docker
 coderunner-docker: coderunner-linux ## build the coderunner image (bubblewrap containment)

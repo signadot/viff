@@ -1,6 +1,10 @@
 package launch
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/signadot/verse/task"
+)
 
 // Fragment is what a selected doer contributes to the spawn that selected it — the
 // provider-settable subset of a Spec, named field-for-field after the Spec fields it
@@ -63,16 +67,17 @@ func (f Fragment) IsZero() bool {
 //     not `grant` keeps the spawn's grant rather than losing it — "absent" and "empty" are
 //     different values on both sides, which is exactly why task.NamedGrant returns an ok
 //     rather than a zero Grant.
-//   - Tools: INTERSECT, never replace. Empty means all of the driver's tools (see Spec.Tools),
-//     so a replace would let `tools: [read_file, run_bash]` on a provider WIDEN a spawn that
-//     offered only [read_file]. "Narrows by construction" is true of a tool list read on its
+//   - Tools: INTERSECT, never replace. An unnamed list is all of the driver's tools (see
+//     Spec.Tools), so a replace would let `tools: [read_file, run_bash]` on a provider WIDEN a
+//     spawn that offered only [read_file]. "Narrows by construction" is true of a tool list read on its
 //     own and false of one overlaid onto another.
 //
-// The error is the one case the data cannot express: both sides name tools and they share
-// none. The result would have to be "no tools", which is spelled by an empty list, which
-// means all of them — so a silent overlay here would hand the agent everything at the exact
-// moment the two declarations agreed on nothing. The caller excludes such a provider from the
-// eligible set instead, so it never reaches a ballot.
+// The error is the case where both sides name tools and they share none: the intersection is
+// spellable, as `[]`, but a doer that may use no tool the spawn offers cannot do the work, and
+// running it with nothing would say so late. The caller excludes such a provider from the
+// eligible set instead, so it never reaches a ballot. A provider's list only narrows, so an
+// empty one — which a provider entity's payload cannot tell from an absent one — does not
+// narrow; `tools: []` means no tools on the SPAWN alone.
 func (s Spec) Overlay(f Fragment) (Spec, error) {
 	out := s
 	if f.ID != "" {
@@ -102,14 +107,21 @@ func (s Spec) Overlay(f Fragment) (Spec, error) {
 }
 
 // intersectTools narrows a spawn's tool list by a provider's. Order follows the SPAWN, so
-// what the charter wrote reads back in the order it wrote it.
-func intersectTools(spawn, provider []string) ([]string, error) {
+// what the charter wrote reads back in the order it wrote it. A spawn that named none (nil)
+// takes the provider's list as the narrowing; one that named `[]` has no tools for a
+// provider to narrow.
+func intersectTools(spawnP *[]string, provider []string) (*[]string, error) {
 	switch {
 	case len(provider) == 0: // the provider does not narrow
-		return append([]string(nil), spawn...), nil
-	case len(spawn) == 0: // the spawn offered all of them; the provider's list IS the narrowing
-		return append([]string(nil), provider...), nil
+		return task.CloneTools(spawnP), nil
+	case spawnP == nil: // the spawn named none; the provider's list IS the narrowing
+		return task.ToolsPtr(provider), nil
+	case len(*spawnP) == 0:
+		// The spawn named no tools. That is the author's choice and not a contradiction
+		// with the doer: a provider may only narrow, and there is nothing to narrow.
+		return task.CloneTools(spawnP), nil
 	}
+	spawn := *spawnP
 	allowed := make(map[string]bool, len(provider))
 	for _, t := range provider {
 		allowed[t] = true
@@ -121,9 +133,10 @@ func intersectTools(spawn, provider []string) ([]string, error) {
 		}
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("the spawn offers %v and the doer offers %v, which share no tool: "+
-			"an empty tool list means ALL tools, so there is no way to spell the intersection",
+		// Spellable now, as `[]`, and still refused: a doer that shares no tool with the spawn
+		// is a doer that cannot do the work, and running it with nothing says so late.
+		return nil, fmt.Errorf("the spawn offers %v and the doer offers %v, which share no tool",
 			spawn, provider)
 	}
-	return out, nil
+	return task.ToolsPtr(out), nil
 }

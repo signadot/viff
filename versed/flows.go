@@ -371,7 +371,7 @@ func (s *Server) flowSay(w http.ResponseWriter, r *http.Request) {
 			noSuchTask(w, r, b.Task)
 			return
 		}
-		if _, err := s.sayTo(r, b.Task, h, b.Text, sayer(r, b.By)); errors.Is(err, task.ErrEnded) {
+		if _, err := s.sayTo(r, b.Task, h, b.Text, sayer(r, b.By)); errors.Is(err, task.ErrEnded) || errors.Is(err, task.ErrUnsteerable) {
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		} else if err != nil {

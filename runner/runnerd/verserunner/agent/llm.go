@@ -434,8 +434,8 @@ func resultContent(prev task.StepResult) string {
 	}
 }
 
-// selectTools returns the tool definitions to offer: all of them when only is empty, else
-// exactly the ones named — plus yieldTool, always.
+// selectTools returns the tool definitions to offer: all of them when only is nil, else
+// exactly the ones named — none, for an empty list — plus yieldTool, always.
 //
 // fail is not optional because the loop's contract depends on it. It is the only structural
 // way an agent can say "I could not": a driver that simply stops is read as SUCCESS by
@@ -462,7 +462,9 @@ func selectTools(only []string, extra []Tool) ([]toolDef, error) {
 		}
 		all = append(all, td)
 	}
-	if len(only) == 0 {
+	// Nil is unnamed, and everything is offered; an empty list is `tools: []`, and nothing is
+	// but what the contract needs.
+	if only == nil {
 		return all, nil
 	}
 	byName := make(map[string]toolDef, len(all))

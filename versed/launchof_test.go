@@ -62,7 +62,7 @@ func TestLaunchOfRefusesAnUnknownGrantRatherThanWidening(t *testing.T) {
 // there is nothing to resolve and nothing that may be dropped.
 func TestLaunchOfCarriesFrameAndTools(t *testing.T) {
 	l, err := launchOf("p1", launch.Spec{
-		Prompt: "go", Frame: "answer with a severity", Tools: []string{"read_file"},
+		Prompt: "go", Frame: "answer with a severity", Tools: task.ToolsPtr([]string{"read_file"}),
 	}, "")
 	if err != nil {
 		t.Fatal(err)

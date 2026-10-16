@@ -24,6 +24,11 @@ var (
 	ErrAlreadyAnswered = errors.New("already answered")
 	// ErrEnded (`410`): the task is over, so nothing said to it will be heard.
 	ErrEnded = errors.New("the task has ended")
+	// ErrUnsteerable (`422`): the task is running, and its driver has nowhere to deliver words
+	// to — a program run once, with no way to resume it. Said now, to whoever is speaking,
+	// rather than failing the task when it finds the words waiting at a boundary it cannot
+	// deliver them into.
+	ErrUnsteerable = errors.New("the task cannot be steered")
 	// ErrUnsupported (`501`): this runner has no such route at all.
 	ErrUnsupported = errors.New("unsupported by this runner")
 )
