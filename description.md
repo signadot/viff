@@ -1,0 +1,3 @@
+# docs: the task example declares the shape of its answer
+
+The second example on the examples page reads `$data.kind` and `$data.severity` from the task's answer, but the spawn declares no `answer` contract, so nothing holds the answer to the shape the patch reads. Give the spawn an `answer` contract for the two fields, and have the prose say what the contract is and why reading `$data` wants one: a miss fails the task rather than the patch, an agent is asked to repair, a script cannot be and fails outright.
