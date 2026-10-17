@@ -6,7 +6,9 @@ commits: []
 created: "2026-10-17T22:58:44.05933+02:00"
 duplicates: []
 id: ynd0k4hdh12ks171tdn0
-labels: []
+labels:
+- design
+- runners
 related_issues: []
 status: open
-updated: "2026-10-17T22:58:44.05933+02:00"
+updated: "2026-10-17T22:58:44.135135+02:00"
