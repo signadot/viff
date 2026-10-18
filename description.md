@@ -1,6 +1,8 @@
 # systems and policy: the spine (system documents, policy on the spawn, runner ceilings, containment at admit), then Slack
 
-**Status (2026-10-18):** steps 0–5 landed on `verse/cut` (`.worktrees/cut`, local), not on main's runner, with departures from the plan below; the comment of 2026-10-18 (20261018T075413Z) has each step's commit, the departures, and what is open. Step 6, Slack, is next. The plan below is as first written.
+# systems and policy: the spine (system documents, policy on the spawn, runner ceilings, containment at admit), then Slack
+
+**Status (2026-10-18, evening):** everything below, then the mechanical set after the systems page, the charters' network row, the removal of provider selection, a docs page per system, the iod rename and a test fix are on `verse/cut` (`.worktrees/cut`, local, head 161d8747). The comments are the status, newest last; the latest (20261018T111711Z) says where things stand and what is open. The plan below is as first written.
 
 Plan for the shape drafted in `.worktrees/issue-tools/scratchpad/systems-and-policy.md` (to be moved under docs/design when it lands): a tool belongs to a *system*; verse owns one document per system; a spawn gives *facts* per system under `with.<system>` and one ordered *policy* over calls (`match` → `then: deny | ask | allow`); a runner advertises systems and publishes a *ceiling* in the same form; verse admits a spawn by containment. Builds on Daniel's "Who does the work: runners, profiles and interfaces" (Notion 3ed08fc654be811d92dbf1061483e5fb): a system is an interface cut per external system that also names the verbs, which are the tools and the intercepted steps at once. The eleven issue tools on `verse/issue-tools` (yhd0k4hd) are the concrete half and the first consumer.
 
