@@ -2,6 +2,7 @@
 blocked_by: []
 blocks: []
 branches: []
+closed_by: ce0371b053cfd06b8ea4f6f4173077eee0e6ac85
 commits: []
 created: "2026-10-18T02:11:55.635109+02:00"
 duplicates: []
@@ -9,5 +10,5 @@ id: msbzd4w3h12ksjrethn0
 labels:
 - docs
 related_issues: []
-status: open
-updated: "2026-10-18T02:11:55.71151+02:00"
+status: closed
+updated: "2026-10-18T02:20:18.485431+02:00"
