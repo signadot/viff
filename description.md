@@ -1,0 +1,3 @@
+# docs: tutorial pages say they are the tutorial; the derive section is lineage and derivations
+
+Each of the four tutorial pages is titled "Tutorial -- <part>", with Tutorial linking to the tutorial's first page, so the nav and the page say the page is part of the tutorial. The charters page's fourth section, "Rules that react to rules", reads like a charter about charters; it is about derivations, so it becomes "Lineage and derivations" and says what lineage is: verse.meta.derivedFrom, and what the address carries with and without id:.
