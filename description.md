@@ -1,0 +1,3 @@
+# docs: the tutorial is four pages: data, questions, tasks, charters
+
+The tutorial is one page in the order start, entities, tasks, gates, and the examples page sits beside it as a second walk. Make the tutorial four pages, one per part, in order from simple to complex: data, questions, tasks, charters. Its first page says so, and says that a reader who has the four can write charters for their own ends, given the iods, apps and runners installed for them. The examples page goes, and its three charters become the charters page, with the gates material (thresholds, deadlines, who does the work) from the old gates section. Every link to the old anchors and to the examples page is retargeted, and the nav gets a Tutorial section, since the nav is the directory tree.
