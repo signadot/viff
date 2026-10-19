@@ -1,0 +1,5 @@
+# systems: Check passes for any runner, and compares no tool's fields with its document's params
+
+Daniel's Low 6 on PR #24. `systems.Tool`/`systems.Step` claim a verb at the claiming package's init, and `systems.Check` only asks that every documented verb was claimed by something. Every runner links the packages that claim every verb, so Check passes for any runner whatever it performs; and nothing compares the fields a tool sends in a step (`pushFields`, the issue tools, Slack's) with the params its document lists.
+
+Two things to do: a claim should carry the fields the code fills, and Check should hold them against the document's params both ways (a param no code fills, a field no document names); and what a runner *performs* should be what its offers say, checked against its configuration at start, not what is linked in.
