@@ -1,0 +1,5 @@
+# runnerd, versed: a policy replacement on an ended task answers 404 from a standalone runner and 502 from verse
+
+Seen on staging 2026-10-20: `verse task policy run-b08c83e31ed6 '[…]'` answered `task policy: 502 Bad Gateway: no such task: 404 page not found`. The task had ended four seconds after it started (a short agent run), so the replacement reached a task its process no longer hosted.
+
+Two halves. `SubprocessHandler.forward` answers an ended task's `say` and `gates` with 410 ("task X has ended (done)") as the in-process handler does, but a `PUT …/policy` falls to the default `http.NotFound`, so a standalone runner says 404 where the embedded one says 410 and names the status. And versed relays every runner error on `PUT /tasks/{id}/policy` as 502, so a 4xx the runner meant (a refused replacement, an ended task) reads as a gateway fault. The first is one case in the switch; the second is the open Minor from the review rounds (a `task.ErrRefused` for a runner's 4xx, through the remote and embedded handles).
