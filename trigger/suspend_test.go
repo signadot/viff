@@ -184,14 +184,17 @@ func TestASuspendedRuleIsSkippedBeforeItsWatermark(t *testing.T) {
 	stays(t, store, pr1, "stage", "open")
 	stays(t, store, pr2, "stage", "open")
 	eng.seenMu.Lock()
-	seen := eng.seen["review"]
+	var seen int64
+	if s := eng.seen["review"]; s != nil {
+		seen = s.high
+	}
 	eng.seenMu.Unlock()
 	if seen != 0 {
 		t.Fatalf("review's watermark moved to %d while it was suspended whole", seen)
 	}
 	s, _ := NewSuspension("", "review", "*", false)
 	tbl.Lift(s.ID())
-	if !eng.firstSight("review", store.Rev()) {
+	if first, _ := eng.firstSight("review", store.Rev()); !first {
 		t.Fatal("the head is not a first sight for review once lifted: its replay would be refused")
 	}
 }

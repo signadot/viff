@@ -72,7 +72,7 @@ const HeldByOperator = "operator"
 // Engine runs the ECA loop over an entity-verse.
 //
 // ONE BASELINE ENGINE PER STORE. Everything the engine knows about what it has already done is
-// per-engine and in memory — the per-trigger watermark (seen), the in-flight firings (inflight),
+// per-engine and in memory — the commits each trigger was evaluated at (seen), the in-flight firings (inflight),
 // the live task registry, the fire budget — and every one of them reads a write this engine
 // did not make as somebody else's business. That is right for a scope and wrong for a peer:
 //
@@ -83,7 +83,7 @@ const HeldByOperator = "operator"
 //   - TWO BASELINE engines on one store do not compose. Each governs its own firings and neither
 //     can see the other's, so A's write is external to B and B's to A: an A→B→A loop is bounded
 //     by neither budget, and a trigger installed on both is evaluated — and fired — twice per
-//     commit, once against each watermark.
+//     commit, once in each engine.
 //
 // Nothing in the tree runs two peers on one baseline today. This is the constraint that breaks
 // if something starts to, and the causal-depth throttle designed in
@@ -113,10 +113,10 @@ type Engine struct {
 	// troubles is what went wrong at each rule's firings, the latest of each kind (trouble.go).
 	troubles map[string]Trouble
 
-	// seen is the highest commit each trigger has been evaluated at — the watermark that
-	// makes one verdict per (trigger, commit). See firstSight.
+	// seen is the commits each trigger has been evaluated at, which makes one verdict per
+	// (trigger, commit). See firstSight.
 	seenMu sync.Mutex
-	seen   map[string]int64
+	seen   map[string]*sight
 
 	// causes places the commits this engine wrote in their causal chains: revision → how far
 	// it stands from the external write that started it, and what wrote it. A commit that is
@@ -538,9 +538,9 @@ func (e *Engine) openWatches(ctx context.Context, t Trigger, subtrees []Subtree)
 					// cancelling one in flight.
 					//
 					// No skip check: this watch delivers only the subtrees the trigger reads,
-					// so arriving here IS the skip's answer. The per-commit watermark inside
-					// evaluate is what keeps several watched subtrees from evaluating one
-					// commit several times.
+					// so arriving here IS the skip's answer. firstSight inside evaluate is
+					// what keeps several watched subtrees from evaluating one commit several
+					// times, and what tells a commit one watch delivers late from a replay.
 					e.evaluate(e.bgctx, t, e.visibleTo(t, c))
 				}
 			}

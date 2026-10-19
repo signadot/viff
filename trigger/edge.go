@@ -3,6 +3,7 @@ package trigger
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -52,11 +53,11 @@ func (e *Engine) evaluate(ctx context.Context, t Trigger, c entity.Commit) {
 	if c.Rev <= 0 {
 		return // a synthesized commit with no revision cannot be asked "and as of when?"
 	}
-	// A RULE SUSPENDED WHOLE is skipped BEFORE its watermark moves, so the replay a lift opens
-	// at the head is admitted whether or not the lift wrote a commit. Placed after, the skip
-	// would burn the revision, and a re-arm whose seed lands at that same head — a scope's rules
-	// armed before its table loaded, a rule installed during a restore — would be refused and
-	// never evaluate its backlog. A suspension of some subjects is asked per subject below.
+	// A RULE SUSPENDED WHOLE is skipped BEFORE firstSight records the commit, so the replay a
+	// lift opens at the head is admitted whether or not the lift wrote a commit. Placed after,
+	// the skip would burn the revision, and a re-arm whose seed lands at that same head — a
+	// scope's rules armed before its table loaded, a rule installed during a restore — would be
+	// refused and never evaluate its backlog. A suspension of some subjects is asked per subject below.
 	if held := e.holdingRule(t.Name); len(held) > 0 {
 		e.tracef("%s: suspended (%s); not evaluated at rev %d", t.Name, strings.Join(held, ", "), c.Rev)
 		return
@@ -64,7 +65,8 @@ func (e *Engine) evaluate(ctx context.Context, t Trigger, c entity.Commit) {
 	// One verdict per (trigger, commit). A trigger reading several subtrees is delivered the
 	// same commit once per subtree it watches, and the rule is a function of the commit — so
 	// without this it would reach the same verdict twice and fire twice for it.
-	if !e.firstSight(t.Name, c.Rev) {
+	first, late := e.firstSight(t.Name, c.Rev)
+	if !first {
 		return
 	}
 	// Scoped to what this rule reads. This bounds what crosses the wire and does NOT make the
@@ -125,6 +127,18 @@ func (e *Engine) evaluate(ctx context.Context, t Trigger, c entity.Commit) {
 			subjectAddr(t.Condition.Subject))
 		return
 	}
+	if late {
+		// A LATE COMMIT IS ANSWERED AS OF NOW. It arrived after a newer one this rule was
+		// evaluated at, on another of its watches, so its snapshot is older than what the rule
+		// has already acted on: a latch written since stands in the store and not in it. Each
+		// subject it selects fires only if the rule still selects it, which is the check
+		// endFlight makes of a change deferred behind a firing, and for the same reason.
+		subjects = slices.DeleteFunc(subjects, func(subj entity.Ref) bool { return !e.selectsNow(t, subj) })
+		if len(subjects) == 0 {
+			e.tracef("%s: late commit %d selects nothing now", t.Name, c.Rev)
+			return
+		}
+	}
 	e.tracef("fire %s at rev %d (%d subject(s))", t.Name, c.Rev, len(subjects))
 	// The commit stands in for the change an older firing carried: it names WHERE this
 	// happened, which is what a gate's reason and a trace read. There is no cause entity to
@@ -139,20 +153,65 @@ func (e *Engine) evaluate(ctx context.Context, t Trigger, c entity.Commit) {
 // watches; the rule is a function of the commit, so the second delivery would reach the same
 // verdict and fire again for it.
 //
-// The map is bounded by keeping only the highest rev seen per trigger: deliveries of one
-// commit arrive together, and a lower rev after a higher one is a replay whose verdict has
-// already been reached. That makes this a watermark rather than a set, so it cannot grow.
-func (e *Engine) firstSight(name string, rev int64) bool {
+// late says rev is below a commit the trigger has already been evaluated at. That is not a
+// replay. Each subtree a rule reads is its own watch, and the watches do not order their
+// deliveries against each other, so a commit to what the condition reads can arrive after the
+// rule's own write to its subject. That write, landing during the firing that made it, is
+// dropped (claimOrDefer); the earlier commit is then the only news the rule will get. The
+// caller answers a late commit against the store as it is now (see evaluate).
+//
+// What is remembered is bounded: the revisions within sightWindow of the newest. A delivery
+// older than that is taken for a replay.
+func (e *Engine) firstSight(name string, rev int64) (first, late bool) {
 	e.seenMu.Lock()
 	defer e.seenMu.Unlock()
 	if e.seen == nil {
-		e.seen = map[string]int64{}
+		e.seen = map[string]*sight{}
 	}
-	if rev <= e.seen[name] {
-		return false
+	s := e.seen[name]
+	if s == nil {
+		s = &sight{at: map[int64]bool{}}
+		e.seen[name] = s
 	}
-	e.seen[name] = rev
-	return true
+	if s.at[rev] || rev <= s.high-sightWindow {
+		return false, false
+	}
+	s.at[rev] = true
+	if rev < s.high {
+		return true, true
+	}
+	s.high = rev
+	for r := range s.at {
+		if r <= s.high-sightWindow {
+			delete(s.at, r)
+		}
+	}
+	return true, false
+}
+
+// sightWindow is how far below the newest commit a trigger has been evaluated at it still tells
+// a late commit from a replay. Revisions are the store's, and sparse, so it is a span of the
+// log rather than a count of commits: wide enough for any delivery one watch can trail another
+// by, and the memory it costs is the commits a rule was evaluated at within it.
+const sightWindow = 4096
+
+// sight is the commits one trigger has been evaluated at: the newest, and those within
+// sightWindow of it.
+type sight struct {
+	high int64
+	at   map[int64]bool
+}
+
+// forgetFrom unremembers every commit at or after rev, so a replay of them is evaluated again.
+func (s *sight) forgetFrom(rev int64) {
+	for r := range s.at {
+		if r >= rev {
+			delete(s.at, r)
+		}
+	}
+	if s.high >= rev {
+		s.high = rev - 1
+	}
 }
 
 // reads returns the (system, kind) subtrees a trigger's condition reads: its cause, its

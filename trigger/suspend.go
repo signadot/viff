@@ -561,7 +561,7 @@ func (e *Engine) holding(rule string, subj entity.Ref) []string {
 }
 
 // holdingRule is holding for the rule about every subject: what the top of evaluate asks, before
-// the rule's watermark moves, since no subject has been selected there to ask about.
+// firstSight records the commit, since no subject has been selected there to ask about.
 func (e *Engine) holdingRule(rule string) []string {
 	return e.held(rule, entity.Ref{}, true, false)
 }
@@ -906,10 +906,10 @@ func (e *Engine) releaseLaunches() {
 // a subtree watch opened again replays its opening state as a commit, and a root-loop engine
 // evaluates the rule at the head.
 //
-// The rule's watermark is first moved below the head. A skip before firstSight leaves it where it
-// was for a rule suspended whole, but a rule suspended about some subjects goes on evaluating the
-// others, and a sibling's commit landing while a lift drains moves the watermark to the head the
-// replay would arrive at — refusing the one evaluation that sees the subject it skipped.
+// What the rule has been evaluated at from the head on is first forgotten. A skip before
+// firstSight records nothing for a rule suspended whole, but a rule suspended about some subjects
+// goes on evaluating the others, and a sibling's commit landing while a lift drains records the
+// head the replay would arrive at — refusing the one evaluation that sees the subject it skipped.
 func (e *Engine) reArm(covers func(rule string) bool) {
 	e.trigMu.Lock()
 	trigs := make([]Trigger, 0, len(e.triggers))
@@ -925,8 +925,8 @@ func (e *Engine) reArm(covers func(rule string) bool) {
 	head := e.store.Rev()
 	for _, t := range trigs {
 		e.seenMu.Lock()
-		if e.seen != nil && e.seen[t.Name] >= head {
-			e.seen[t.Name] = head - 1
+		if s := e.seen[t.Name]; s != nil {
+			s.forgetFrom(head)
 		}
 		e.seenMu.Unlock()
 		if e.subtree {
