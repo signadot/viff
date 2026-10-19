@@ -189,14 +189,18 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 		if ws, cl, err = r.checkout(l); err != nil {
 			return ended(task.NewFailed(l.ID, reg, err.Error()))
 		}
-		if len(ws.Trees) > 0 {
-			prompt = repoBrief(ws, workspace.RequiredTrailers(&l), &l) + prompt
-		}
 		tools = append(repoTools(cl, ws, r.cfg.atGitHub()), issueTools(cl, ws, l.Doer.With.GitIssue, r.cfg.atGitHub(), r.cfg.Systems["linear-issue"].Credential != "")...)
 		if r.cfg.Systems["slack"].Credential != "" {
 			tools = append(tools, slackTools(cl)...)
 		}
 		tools = offered(tools, l.Policy)
+		// The brief: how to deliver, where there are repos, and what reaches the world from
+		// here, from the tools the task was left with, so a prompt that says "file an issue"
+		// finds the tool rather than a shell that has no client for the tracker.
+		if len(ws.Trees) > 0 {
+			prompt = repoBrief(ws, workspace.RequiredTrailers(&l), &l) + prompt
+		}
+		prompt = toolsBrief(tools) + prompt
 	}
 	if l.Doer.Script != "" {
 		p, stop, err := newScriptTask(l, r.root, r.cfg.shellEnv(), set, tools, r.callTool, reg, r.cfg.taskCeilings())
