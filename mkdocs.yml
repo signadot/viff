@@ -38,6 +38,7 @@ exclude_docs: |
 
 hooks:
   - scripts/mkdocs_repo_links.py
+  - scripts/mkdocs_heading_links.py
 
 # The nav follows docs/README.md's groups. Where the two disagree, the index wins and this
 # follows it. A page is listed once.
@@ -46,35 +47,32 @@ hooks:
 # a submenu it positions with script and `position: fixed`, and that submenu does not open
 # reliably, so each group lists its pages in reading order rather than grouping them again.
 nav:
-- Start here:
-  - Welcome: README.md
-  - Overview: overview.md
-  - tutorial.md
-  - Control: control.md
-  - build.md
-  - glossary.md
+- Tutorial:
+  - tutorial/README.md
+  - tutorial/data.md
+  - tutorial/questions.md
+  - tutorial/tasks.md
+  - tutorial/charters.md
+  - tutorial/charters-2.md
 - Use verse:
-  - reference/README.md
   - reference/tasks.md
   - asking.md
   - perms-guide.md
   - reference/scopes.md
-- Write a charter:
-  - Introduction: charter-intro.md
+- Groundskeeper: groundskeeper.md
+- Systems:
+  - systems/README.md
+  - systems/git.md
+  - systems/git-issue.md
+  - systems/github.md
+  - systems/github-issue.md
+  - systems/linear-issue.md
+  - systems/slack.md
+  - systems/question.md
+  - systems/inside.md
+- Reference:
   - trigger-model.md
-  - reference/condition.md
-  - reference/action.md
-  - reference/gates.md
-  - reference/charter.md
-  - reference/schedules.md
-  - reference/entities.md
-  - strata.md
-  - convergence.md
-  - provider-selection.md
-  - perms.md
-  - reference/perms.md
-  - auto-supervisor.md
-  - reference/representation.md
+  - reference/README.md
 
 theme:
   name: mkdocs
@@ -110,6 +108,11 @@ markdown_extensions:
           format: !!python/name:mermaid2.fence_mermaid
       # Explicitly tell superfences to use pymdownx.highlight for other languages
       # This ensures tony code blocks get pygments highlighting
+
+# A link to an anchor that no heading makes is reported at INFO by default, which --strict lets
+# through. At warn, `make check-docs` fails on it.
+validation:
+  anchors: warn
 
 extra_css:
   - pygments.css

@@ -106,10 +106,10 @@ func Render(p Params) ([]byte, error) {
 	data := struct {
 		Repo, GitHub, GitHubOrg, GitHubName, InstallAt, Tree string
 		Answerers                                            []string
-		AnswerersList, Proceed, Deny, Obsolete, EmptyTree    string
+		AnswererFlags, Proceed, Deny, Obsolete, EmptyTree    string
 	}{
 		Repo: p.Repo, GitHub: p.GitHub, GitHubOrg: org, GitHubName: name, InstallAt: entity.JoinSegs(segs),
-		Tree: tree, Answerers: quoted, AnswerersList: "[" + strings.Join(append(quoted, `"`+gitIO+`"`), ", ") + "]",
+		Tree: tree, Answerers: quoted, AnswererFlags: answererFlags(append(quoted, `"`+gitIO+`"`)),
 		Proceed: answeredProceed, Deny: answeredDeny, Obsolete: answeredObsolete, EmptyTree: verseio.EmptyTree,
 	}
 	tmpl, err := template.New("repo-charters").Parse(charterTemplate)
@@ -127,7 +127,19 @@ func Render(p Params) ([]byte, error) {
 }
 
 // QuestionID is the id of the question a candidate tree raises, as the charter spells it: the
-// propose task's id with its first call's number.
+// propose task's id with the number of the call that asks, its second action after the script
+// itself.
 func QuestionID(repo, tree string) string {
-	return "repo-charters." + repo + ":propose@repo-charters." + repo + ".candidate." + tree + "~1"
+	return "repo-charters." + repo + ":propose@repo-charters." + repo + ".candidate." + tree + "~2"
+}
+
+// answererFlags is the ask's answerers as the call tool takes them: one `-answerers` per
+// grantee, each a quoted word in the script's shell.
+func answererFlags(quoted []string) string {
+	var b strings.Builder
+	for _, q := range quoted {
+		b.WriteString(" -answerers ")
+		b.WriteString(q)
+	}
+	return b.String()
 }

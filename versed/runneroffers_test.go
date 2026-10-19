@@ -1,0 +1,167 @@
+package versed
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/task"
+)
+
+// offeringFace is a runner face that offers what it is told: the agent named, and scripts.
+func offeringFace(t *testing.T, agents ...string) (*httptest.Server, *runnerd.InProcessHandler) {
+	t.Helper()
+	d := runnerd.NewInProcessHandler(func(l runner.Launch, reg *task.Registry) *task.Task {
+		return task.NewTask(l.ID, task.NewSupervisor(l.Policy, reg), &oneAction{}, okExecutor{})
+	})
+	d.Describe(offering(agents...))
+	face := httptest.NewServer(d.HTTPHandler())
+	t.Cleanup(face.Close)
+	return face, d
+}
+
+// offering is a description offering agents and scripts, each building only the network
+// `none`.
+func offering(agents ...string) runner.Description {
+	none := runner.AcceptsOneOf(runner.NetworkNone)
+	var d runner.Description
+	for _, a := range agents {
+		d.Offers = append(d.Offers, runner.Offer{Agent: a, With: map[string]runner.Accepts{"model": runner.AcceptsOneOf("small", "large"), "network": none},
+			Systems: map[string]runner.System{"commands": {Ceiling: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}}}})
+	}
+	d.Offers = append(d.Offers, runner.Offer{Script: true, With: map[string]runner.Accepts{"network": none}})
+	return d
+}
+
+// A RUNNER IS INSTALLED WITH WHAT IT OFFERS: the probe reads its description, the registration
+// keeps it, and a check reads it again, so the record says what the runner says now. An offer
+// that does not say which networks it builds, or a runner that offers nothing, is refused, at
+// the install and at a check.
+func TestARunnerIsInstalledWithWhatItOffers(t *testing.T) {
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	face, d := offeringFace(t, "codex")
+
+	resp := postTony(t, ts.URL+"/runners", map[string]any{"name": "code", "url": face.URL})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("add = %s: %s", resp.Status, readBody(t, resp))
+	}
+	var added map[string]any
+	decodeResp(t, resp, &added)
+	if added["offers"] == nil {
+		t.Fatalf("add said %+v, want the offers it read", added)
+	}
+	rec, ok := findRunner(srv.Store, "verse.runners.code")
+	if !ok || len(rec.Offers) != 2 || rec.Offers[0].Agent != "codex" || !rec.Offers[1].Script {
+		t.Fatalf("the registration holds offers %+v, want codex and scripts", rec.Offers)
+	}
+
+	// The runner comes to offer another agent; a check reads it afresh.
+	d.Describe(offering("codex", "claude"))
+	check, err := http.Get(ts.URL + "/runners/code/check")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if check.StatusCode != http.StatusOK {
+		t.Fatalf("check = %s: %s", check.Status, readBody(t, check))
+	}
+	check.Body.Close()
+	rec, _ = findRunner(srv.Store, "verse.runners.code")
+	if len(rec.Offers) != 3 || rec.Offers[1].Agent != "claude" {
+		t.Fatalf("after the check the registration holds %+v, want claude among the offers", rec.Offers)
+	}
+
+	// The field is the runner's to say, not the installer's.
+	resp = postTony(t, ts.URL+"/runners", map[string]any{"name": "fake", "url": face.URL, "offers": []any{}})
+	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(readBody(t, resp), "read from the runner") {
+		t.Fatalf("an installer writing offers = %s, want refused as the runner's to say", resp.Status)
+	}
+
+	// A runner whose offer names no network is no registration, and a check that finds one
+	// keeps what the runner said before.
+	d.Describe(runner.Description{Offers: []runner.Offer{{Script: true}}})
+	check, err = http.Get(ts.URL + "/runners/code/check")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body := readBody(t, check); check.StatusCode != http.StatusBadGateway || !strings.Contains(body, "the networks it builds") {
+		t.Fatalf("a check finding an offer with no network = %s: %s, want 502", check.Status, body)
+	}
+	if rec, _ = findRunner(srv.Store, "verse.runners.code"); len(rec.Offers) != 3 {
+		t.Fatalf("after a refused check the registration holds %+v, want the three before", rec.Offers)
+	}
+	resp = postTony(t, ts.URL+"/runners", map[string]any{"name": "silent", "url": face.URL})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "the networks it builds") {
+		t.Fatalf("add of a runner whose offer names no network = %s: %s, want 400", resp.Status, body)
+	}
+	if _, ok := findRunner(srv.Store, "verse.runners.silent"); ok {
+		t.Fatal("a refused runner was registered")
+	}
+	d.Describe(runner.Description{})
+	resp = postTony(t, ts.URL+"/runners", map[string]any{"name": "empty", "url": face.URL})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "it offers nothing") {
+		t.Fatalf("add of a runner that offers nothing = %s: %s, want 400", resp.Status, body)
+	}
+}
+
+// A SPAWN IS CHECKED AGAINST WHAT ITS RUNNER OFFERS, where it is written: a hand run at the
+// prompt, a charter at its install. What the offer takes goes; what it does not is refused
+// naming the runner, before a task record is written. The default runner's offers are the
+// embedded runner's.
+func TestASpawnIsCheckedAgainstWhatItsRunnerOffers(t *testing.T) {
+	srv := testServer(t)
+	srv.Embedded.Describe(offering()) // scripts only, as a keyless `verse up` offers
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	face, _ := offeringFace(t, "codex")
+	postTony(t, ts.URL+"/runners", map[string]any{"name": "code", "url": face.URL}).Body.Close()
+
+	for _, c := range []struct {
+		what  string
+		spawn map[string]any
+		want  string // "" is accepted
+	}{
+		{"an agent the runner offers", map[string]any{"doer": map[string]any{"agent": "codex"}, "prompt": "go", "runner": "verse.runners.code"}, ""},
+		{"an agent it does not", map[string]any{"doer": map[string]any{"agent": "claude"}, "prompt": "go", "runner": "verse.runners.code"}, "verse.runners.code: "},
+		{"a model the offer does not take", map[string]any{"doer": map[string]any{"agent": "codex", "with": map[string]any{"model": "huge"}}, "prompt": "go", "runner": "verse.runners.code"}, "takes none called"},
+		{"an agent of the default runner", map[string]any{"doer": map[string]any{"agent": "verse"}, "prompt": "go"}, "the default runner: "},
+		{"a script on the default runner", map[string]any{"doer": map[string]any{"script": "true"}}, ""},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			c.spawn["id"] = "run-" + strings.ReplaceAll(c.what, " ", "-")
+			resp := postTony(t, ts.URL+"/tasks", c.spawn)
+			body := readBody(t, resp)
+			switch {
+			case c.want == "" && resp.StatusCode != http.StatusOK:
+				t.Fatalf("spawn = %s: %s, want it accepted", resp.Status, body)
+			case c.want != "" && (resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, c.want)):
+				t.Fatalf("spawn = %s: %s, want 400 saying %q", resp.Status, body, c.want)
+			}
+			if c.want != "" {
+				if _, ok, _ := srv.Store.Get(entity.VerseRef("task", "instance", c.spawn["id"].(string))); ok {
+					t.Fatal("a refused spawn left a task record")
+				}
+			}
+		})
+	}
+
+	// A charter's spawn, at install.
+	rule := func(agent string) string {
+		return `[{name: r, condition: {subject: {path: "x.*", value: {go: true}}},
+		  action: {patch: {go: false}, spawn: {doer: {agent: ` + agent + `}, prompt: go, runner: verse.runners.code}}}]`
+	}
+	if resp := installAs(t, "user:"+tester, ts.URL, rule("claude")); resp.StatusCode != http.StatusBadRequest ||
+		!strings.Contains(readBody(t, resp), "verse.runners.code") {
+		t.Fatalf("a charter naming an agent its runner does not offer installed: %s", resp.Status)
+	}
+	if resp := installAs(t, "user:"+tester, ts.URL, rule("codex")); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("a charter naming an agent its runner offers = %s: %s", resp.Status, readBody(t, resp))
+	}
+	_ = entitytest.Store
+}

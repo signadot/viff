@@ -10,6 +10,7 @@ import (
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
 )
@@ -28,18 +29,17 @@ import (
 func TestGateOnPerSpawnRunnerIsAnswerable(t *testing.T) {
 	// A face that asks before it acts, so there is a real question to answer. Its registry is
 	// the one that must receive the answer, and it is not this verse's.
-	build := func(l task.Launch, reg *task.Registry) *task.Task {
-		vec := &task.Vector{Default: task.Auto, Gates: []task.Gate{{
-			Name: "act", Mode: task.Ask,
-			Match: task.GateMatch{Tools: []string{"noop"}},
-		}}}
+	build := func(l runner.Launch, reg *task.Registry) *task.Task {
+		gating := task.Policy{{Name: "act", Match: &task.Match{System: "commands", Verb: "run"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAllow}}}
 		// ONE action, then done. A driver that keeps proposing would park on a second gate
 		// after this test answers the first, and a task that never reaches a terminal holds
 		// the mirror's stream open — so the test would hang in httptest.Close rather than
 		// fail. Same hazard runnerFace guards with its release channel.
-		return task.NewTask(l.ID, task.NewSupervisor(vec, reg), &oneAction{}, okExecutor{})
+		sup := task.NewSupervisor(gating, reg)
+		sup.SetStepOf(commandStep)
+		return task.NewTask(l.ID, sup, &oneAction{}, okExecutor{})
 	}
-	face := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
+	face := httptest.NewServer(offeringAll(runnerd.NewInProcessHandler(build), "fake").HTTPHandler())
 	t.Cleanup(face.Close)
 	// Cleanups run last-registered-first, so this drains before the face closes. Without it a
 	// FAILING run leaves the gate unanswered, the task parked, and the mirror's stream open —
@@ -69,7 +69,7 @@ func TestGateOnPerSpawnRunnerIsAnswerable(t *testing.T) {
 	// Spawned onto that runner BY NAME. The verse's own default runner is the in-process one
 	// and knows nothing about this task, which is the condition being tested.
 	resp := postTony(t, ts.URL+"/tasks", map[string]any{
-		"prompt": "work", "runner": "verse.runners.code", "name": "onrunner",
+		"doer": map[string]any{"agent": "fake"}, "prompt": "work", "runner": "verse.runners.code", "name": "onrunner",
 	})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("spawn = %s", resp.Status)
@@ -164,7 +164,7 @@ func TestAttachToTaskOnPerSpawnRunner(t *testing.T) {
 	}).Body.Close()
 
 	resp := postTony(t, ts.URL+"/tasks", map[string]any{
-		"prompt": "work", "runner": "verse.runners.code", "name": "streamed",
+		"doer": map[string]any{"agent": "fake"}, "prompt": "work", "runner": "verse.runners.code", "name": "streamed",
 	})
 	var sp map[string]any
 	decodeResp(t, resp, &sp)
@@ -194,4 +194,11 @@ func TestAttachToTaskOnPerSpawnRunner(t *testing.T) {
 	if _, err := ev.Body.Read(buf); err != nil {
 		t.Fatalf("the stream opened and produced nothing: %v", err)
 	}
+}
+
+// commandStep classifies the one action the test drivers propose, `noop` or `run_bash`, as a
+// command run: the step a gate on `commands.run` asks about.
+func commandStep(tu task.ToolUse) (task.Step, bool) {
+	cmd, _ := tu.Input["command"].(string)
+	return task.Step{Name: task.StepCommandsRun, Fields: map[string]string{"command": cmd}}, true
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
@@ -54,7 +55,7 @@ func (s *sayer) Result() string { return s.result }
 // full final answer land on the task:instance entity, readable after the run.
 func TestReflectProjectsOutput(t *testing.T) {
 	store := entitytest.Store(t)
-	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+	sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 	d := &sayer{result: "here is the summary you asked for"}
 	p := task.NewTask("p2", sup, d, noopExec{})
 	d.emit = p.Emit // narration onto the read plane, as agent.Build wires it
@@ -93,7 +94,7 @@ func TestReflectProjectsTaskState(t *testing.T) {
 	ch, unsub := store.Observe(entity.PrefixPattern(Ref("").Segs()[:3], 4))
 	defer unsub()
 
-	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+	sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 	p := task.NewTask("p1", sup, &steps{n: 2}, noopExec{})
 	Reflect(store, p.ID, p, Meta{Runner: "local"})
 
@@ -137,7 +138,7 @@ func TestReflectProjectsTaskState(t *testing.T) {
 // match can express — rather than a glob over ids.
 func TestReflectPublishesChainAndTrigger(t *testing.T) {
 	store := entitytest.Store(t)
-	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+	sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 	p := task.NewTask("p-chain", sup, &sayer{}, noopExec{})
 	Reflect(store, p.ID, p, Meta{
 		Subject: `demo.pr."1"`,
@@ -163,7 +164,7 @@ func TestReflectPublishesChainAndTrigger(t *testing.T) {
 // be given an empty one — an empty `trigger` field would match a predicate looking for it.
 func TestReflectOmitsChainWhenAbsent(t *testing.T) {
 	store := entitytest.Store(t)
-	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+	sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 	p := task.NewTask("p-bare", sup, &sayer{}, noopExec{})
 	Reflect(store, p.ID, p, Meta{Runner: "local"})
 	e, ok, _ := store.Get(Ref("p-bare"))
@@ -186,13 +187,13 @@ func (f *fakeHandle) Subscribe() (<-chan task.Event, func()) { return f.ch, func
 func (f *fakeHandle) SubscribeSince(int64) (<-chan task.Event, func()) {
 	return f.ch, func() {}
 }
-func (f *fakeHandle) Pause() error                         { return nil }
-func (f *fakeHandle) Resume() error                        { return nil }
-func (f *fakeHandle) Cancel(string) error                  { return nil }
-func (f *fakeHandle) Steer(string, string, string) error   { return nil }
-func (f *fakeHandle) SetVector(*task.Vector, string) error { return nil }
-func (f *fakeHandle) Result() string                       { return "" }
-func (f *fakeHandle) Err() string                          { return "" }
+func (f *fakeHandle) Pause(string) error                  { return nil }
+func (f *fakeHandle) Resume(string) error                 { return nil }
+func (f *fakeHandle) Cancel(string, string) error         { return nil }
+func (f *fakeHandle) Steer(string, string, string) error  { return nil }
+func (f *fakeHandle) SetPolicy(task.Policy, string) error { return nil }
+func (f *fakeHandle) Result() string                      { return "" }
+func (f *fakeHandle) Err() string                         { return "" }
 
 // A gate that has been answered must LEAVE the entity, not linger on it. Reflect writes the
 // state it knows, and a write merges — so clearing a field means saying so, and the field
@@ -247,38 +248,29 @@ func TestReflectClearsAnAnsweredGate(t *testing.T) {
 	}
 }
 
-// The envelope a task runs under is on its entity: which doer was picked, and what the
-// launch may do. It is published for EVERY spawn because the alternative surface does not
-// exist for most of them — `select: auto` opens no motion, so an auto-picked doer appeared on
-// no docket, and a driver name no longer identifies a doer now that two can share one.
+// The envelope a task runs under is on its entity: what the launch may do, and what it works
+// in. It is published for EVERY spawn, since the record is the one place a reader of a task
+// on another runner can read it.
 func TestReflectPublishesTheEnvelope(t *testing.T) {
 	store := entitytest.Store(t)
-	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+	sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 	p := task.NewTask("e1", sup, &steps{n: 1}, noopExec{})
 	Reflect(store, p.ID, p, Meta{ // the initial Put is synchronous
-		Runner: "local", Doer: "provider.treat.fixer", Grant: "no-delegate",
-		Tools: []string{"read_file", "run_bash"},
-		Repos: []task.Repo{{Repo: "acme/app", Access: task.AccessWrite, From: "main",
-			Push: &task.RepoPush{New: []string{"verse/*"}, Existing: []string{"main"}}}, {Repo: "acme/docs"}},
+		Runner: "local", Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}},
+		Git: []runner.Repo{{Repo: "acme/app", From: "main"}, {Repo: "acme/docs"}},
 	})
 
 	got, _, _ := store.Get(Ref("e1"))
 	obj := entity.ToObj(got.Payload)
-	if obj["doer"] != "provider.treat.fixer" {
-		t.Errorf("doer not published: %+v", got.Payload)
+	if p := PolicyOf(got.Payload); len(p) != 1 || p[0].Then.Mode != task.ThenAllow {
+		t.Errorf("the policy not published: %+v", got.Payload)
 	}
-	if obj["grant"] != "no-delegate" {
-		t.Errorf("grant not published: %+v", got.Payload)
-	}
-	if tools := entity.Strs(got.Payload, "tools"); len(tools) != 2 || tools[1] != "run_bash" {
-		t.Errorf("tools not published: %+v", got.Payload)
-	}
-	// What the run was allowed outside the verse, in the spawn's own words: a reader of the
-	// record sees which repositories, and which branches, without the charter that spawned it.
-	repos := fmt.Sprint(obj["repos"])
-	for _, want := range []string{"acme/app", "write", "verse/*", "main", "acme/docs"} {
+	// What the run worked on, in the spawn's own words: a reader of the record sees which
+	// repositories, and where each started, without the charter that spawned it.
+	repos := fmt.Sprint(obj["git"])
+	for _, want := range []string{"acme/app", "main", "acme/docs"} {
 		if !strings.Contains(repos, want) {
-			t.Errorf("repos not published (%q missing): %s", want, repos)
+			t.Errorf("git not published (%q missing): %s", want, repos)
 		}
 	}
 }
@@ -288,13 +280,13 @@ func TestReflectPublishesTheEnvelope(t *testing.T) {
 // omission" from "bounded to nothing".
 func TestReflectOmitsAnUndeclaredEnvelope(t *testing.T) {
 	store := entitytest.Store(t)
-	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+	sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 	p := task.NewTask("e2", sup, &steps{n: 1}, noopExec{})
 	Reflect(store, p.ID, p, Meta{Runner: "local"})
 
 	got, _, _ := store.Get(Ref("e2"))
 	obj := entity.ToObj(got.Payload)
-	for _, k := range []string{"doer", "grant", "tools"} {
+	for _, k := range []string{"selected", "doer", "repos"} {
 		if _, present := obj[k]; present {
 			t.Errorf("%q published for a spawn that declared none: %+v", k, got.Payload)
 		}
@@ -310,7 +302,7 @@ func TestReflectOmitsAnUndeclaredEnvelope(t *testing.T) {
 // this slice for a fact nobody wrote.
 func TestReflectStampsWhenATaskStartedAndEnded(t *testing.T) {
 	store := entitytest.Store(t)
-	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+	sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 	p := task.NewTask("when1", sup, &steps{n: 1}, noopExec{})
 	Reflect(store, p.ID, p, Meta{Runner: "local"})
 

@@ -80,23 +80,29 @@ func (g *pauseGate) hold(ctx context.Context) error {
 // machine treat this as an operator act — which it is, and which is why it withdraws a
 // question standing at a gate. The task is about to be suspended, so a question about an
 // action it will not reach is better withdrawn than left standing across the hold.
-func (p *Task) Pause() error {
+// by is who paused it, said on the read plane.
+func (p *Task) Pause(by string) error {
 	p.pauseGate.pause()
 	p.logf("⏸ pause (subtree)")
-	p.emit(Event{Kind: EventStatus, Text: "paused"})
+	p.emit(Event{Kind: EventStatus, Text: "paused", By: by})
 	p.post(inPause{})
 	return nil
 }
+
+// Paused reports whether a pause is in effect on the task, its own or an ancestor's: it holds at
+// its next boundary, though an action already running finishes first.
+func (p *Task) Paused() bool { return p.pauseGate.heldOn() != nil }
 
 // Resume lifts this task's pause; descendants held only by this gate proceed.
 //
 // It is posted as an input for symmetry and for the read plane, and the machine deliberately
 // does nothing with it — see machine.go's inResume, which is the one place this design's
 // precedence rule is not followed and says why.
-func (p *Task) Resume() error {
+// by is who resumed it, said on the read plane.
+func (p *Task) Resume(by string) error {
 	p.pauseGate.unpause()
 	p.logf("▶ resume (subtree)")
-	p.emit(Event{Kind: EventStatus, Text: "resumed"})
+	p.emit(Event{Kind: EventStatus, Text: string(Running), By: by}) // a status, as `paused` is
 	p.post(inResume{})
 	return nil
 }

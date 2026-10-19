@@ -25,7 +25,7 @@ func Dial(path string) *Client {
 			return d.DialContext(ctx, "unix", path)
 		},
 	}
-	// No timeout, deliberately: an `ask` waits for a person, and the caller's own context — a
+	// No timeout, deliberately: a `question-ask` waits for a person, and the caller's own context — a
 	// shell's ctrl-C — is what ends the wait.
 	return &Client{hc: &http.Client{Transport: tr}}
 }

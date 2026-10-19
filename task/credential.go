@@ -26,7 +26,7 @@ func CredentialFile(token, workspace string) (env string, remove func(), err err
 		return "", nil, err
 	}
 	remove = func() { _ = os.RemoveAll(dir) }
-	if inside(dir, workspace) {
+	if Inside(dir, workspace) {
 		remove()
 		return "", nil, fmt.Errorf("the temporary directory %s is inside the task's workspace %s, "+
 			"and a credential is kept outside it", filepath.Dir(dir), workspace)
@@ -39,8 +39,8 @@ func CredentialFile(token, workspace string) (env string, remove func(), err err
 	return CredentialFileEnv + "=" + path, remove, nil
 }
 
-// inside reports whether dir is at or beneath root, as the filesystem resolves both.
-func inside(dir, root string) bool {
+// Inside reports whether dir is at or beneath root, as the filesystem resolves both.
+func Inside(dir, root string) bool {
 	if root == "" {
 		return false
 	}

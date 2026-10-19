@@ -22,7 +22,7 @@ func answerable(t *testing.T, srv *Server, id string) chan task.Resolution {
 	answered := make(chan task.Resolution, 1)
 	go func() {
 		res, _ := srv.Reg.Resolve(context.Background(),
-			task.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: task.Ask},
+			task.GateQuestion{ID: id, Origin: "review", Gate: "review"},
 			task.ToolUse{Name: "verse.trigger.review"})
 		answered <- res
 	}()
@@ -242,7 +242,7 @@ func TestAQuestionWhoseAskerGaveUpLeavesTheDocket(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		_, _ = srv.Reg.Resolve(ctx,
-			task.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: task.Ask},
+			task.GateQuestion{ID: id, Origin: "review", Gate: "review"},
 			task.ToolUse{Name: "verse.trigger.review"})
 	}()
 	waitPending(t, srv, id)
@@ -282,7 +282,7 @@ func TestAQuestionWhoseAskerGaveUpLeavesTheDocket(t *testing.T) {
 func TestOneJoinerLeavingKeepsTheQuestion(t *testing.T) {
 	srv := testServer(t)
 	const id = "verse.trigger.review.review~1"
-	q := task.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: task.Ask}
+	q := task.GateQuestion{ID: id, Origin: "review", Gate: "review"}
 
 	stay, keep := context.WithCancel(context.Background())
 	defer keep()

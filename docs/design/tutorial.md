@@ -1,13 +1,13 @@
 # Why: Tutorial
 
-The reasons behind [Tutorial](../tutorial.md). They are for somebody changing verse; the page itself says what verse does.
+The reasons behind [Tutorial](../tutorial/README.md). They are for somebody changing verse; the page itself says what verse does.
 
-## Why a scripted task you type runs ungated
+## Why a script you type runs unasked
 
-A gate asks about what you have not already authorized. The ungated `scripted` default is an
-argument about **who addressed the request**. When you type a shell command, you authorized that
-command. So the argument holds for what you type and nothing else. An `llm` task asks before
-effects because the agent *chose* them.
+A gate asks about what you have not already authorized. A script is one action and no step,
+and `task run --script` runs it as typed: an argument about **who addressed the request**. When you type a shell command, you authorized that command. What the script then
+calls (`verse-call-tool git-push`, say) is a step, and the policy decides it. An agent asks before
+its steps because the agent *chose* them.
 
 ## Why a spawning rule must latch
 

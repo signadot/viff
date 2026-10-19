@@ -22,7 +22,7 @@ grants to one part and not another.
 ## Routes that name their own party
 
 Verse refuses every method but GET and HEAD with 400 when it has no `Verse-Principal`. Two
-routes are registered in another way. Each acts for a party that the route itself names: an io's
+routes are registered in another way. Each acts for a party that the route itself names: an iod's
 `hint` and `pass`.
 
 ## The root and the config
@@ -102,14 +102,14 @@ verse's built-in clock and calendar) is installed as the system and acts as the 
 - **The deployment's charter** (`systemCharter`, and the base charter in the binary) is installed
   as `system:charter`, with the system's record on each rule. It fires as the system. So is the
   repo-charters reconciler for each repository under `repoCharters`, rendered at start and
-  installed once the ios are restored, since its outboxes name their places
+  installed once the iods are restored, since its outboxes name their places
   ([up](../reference/up.md)).
 - **What the system makes under `verse` carries the system's record.** Examples are a task that
   a system rule spawns, and the clock and calendar that the base charter derives. The record
   stops the row's `child-owner` line from reaching inside the node.
-- **An io takes the nodes its claims name** for its installer, at install. A claim names its
-  levels up to its first glob. What the io reflects beneath is owned through those nodes. Verse
-  refuses an io over a node that somebody else owns. So two ios that share a node share an
+- **An iod takes the nodes its claims name** for its installer, at install. A claim names its
+  levels up to its first glob. What the iod reflects beneath is owned through those nodes. Verse
+  refuses an iod over a node that somebody else owns. So two iods that share a node share an
   installer.
 
 ## What the system writes
@@ -129,7 +129,7 @@ verse's built-in clock and calendar) is installed as the system and acts as the 
 ## A relayed task's frames
 
 - **A relayed task's frames are not evidence of who did what.** A *frame* is an event that a
-  running task streams back: a status, a pending gate, a decision, a `say`, a vector change. For
+  running task streams back: a status, a pending gate, a decision, a `say`, a change of policy. For
   a task that verse hosts, verse makes the frames. For a task that verse relays to, a remote
   runner's, the frames are whatever the worker sent. So for a relayed
   task:
@@ -139,8 +139,8 @@ verse's built-in clock and calendar) is installed as the system and acts as the 
   - a gate that nobody was asked about is settled with the frame's verdict, by the worker of
     record (or the runtime's `auto`, `deadline`, `cancelled`), and casts no ballot;
   - only the question that the task is waiting on is the task's to settle;
-  - a vector change is by whoever the control route relayed that mode for, or else by the
-    worker.
+  - a change of policy is by whoever the control route relayed that policy for, or else by
+    the worker.
 
 ## The author of a commit
 
@@ -164,8 +164,8 @@ These two steps continue [the walk](../perms-guide.md) on a deployed verse.
 
 ### Step 3: a charter, and what it owns
 
-The commands in this step read a deployed verse, where walter@example.com installed the charter
-`verse-dev.merge`.
+The commands in this step read a deployed verse, where you@example.com installed the charter
+`repos.verse.merge`.
 
 A rule has no identity of its own. It acts **via the address of its record**,
 `via:verse.trigger.rule.<package>:<name>`. The check resolves that principal to the record's
@@ -189,7 +189,7 @@ Installing is open in the seed: `verse.trigger.rule` says `child-owner: ["*"]`. 
 install. A rule's record holds out `read: ["*"]` by the root's default. So anybody may read what
 is installed.
 
-**A package takes its address.** Installing at `verse-dev.git-issue` writes an owner record there
+**A package takes its address.** Installing at `repos.verse.git-issue` writes an owner record there
 for the installer. So every row that the package's rules derive beneath that address is owned
 through that one record. The rows do not each carry their own record. Verse refuses somebody
 else who installs at the same address, and says who owns it.
@@ -203,20 +203,20 @@ the deployment's config, or from the charters verse ships that the config names
 A package's `reads:` declaration is a separate question. It says what the package's rules may
 reference *outside their own address*. Verse checks it at install, beside all of this.
 
-The installer of `verse-dev.merge` owns its rule:
+The installer of `repos.verse.merge` owns its rule:
 
 ```sh
-verse perms verse trigger rule 'verse-dev.merge:train-run'
+verse perms verse trigger rule 'repos.verse.merge:train-run'
 ```
 
 ```tony
-owner: user:walter@example.com
+owner: user:you@example.com
 grants:
 - read: ["*"]
 ```
 
 Every train the rule cuts, every task it runs, and every `merge-to-main` question it poses is
-scott's to control and to answer. It is nobody else's unless a line says so.
+yours to control and to answer. It is nobody else's unless a line says so.
 
 ### Step 4: a gate with nobody behind it
 
@@ -252,7 +252,7 @@ file. The questions posed after that carry that line instead of the default:
   gates:
   - name: merge-to-main
     mode: ask
-    answerers: [walter@example.com, group:release]
+    answerers: [you@example.com, group:release]
     need: 2
     deadline: {within: "24h", default: deny}
 ```
@@ -276,7 +276,7 @@ posed with.
 
 ```sh
 verse perms verse ask 'verse.trigger.train-run.merge-to-main~adaa5e99' \
-  -grants '[{read: ["*"], read-write: [user:walter@example.com]}]'
+  -grants '[{read: ["*"], read-write: [user:you@example.com]}]'
 ```
 
 **To close the docket for a whole verse,** narrow the `child-grants` on `verse.ask`. Verse gives

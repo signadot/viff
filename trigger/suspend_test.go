@@ -9,6 +9,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
@@ -346,11 +347,11 @@ type heldHandle struct {
 
 func (h *heldHandle) Subscribe() (<-chan task.Event, func())           { return h.ch, func() {} }
 func (h *heldHandle) SubscribeSince(int64) (<-chan task.Event, func()) { return h.ch, func() {} }
-func (h *heldHandle) Pause() error                                     { h.mu.Lock(); h.pauses++; h.mu.Unlock(); return nil }
-func (h *heldHandle) Resume() error                                    { return nil }
-func (h *heldHandle) Cancel(string) error                              { return nil }
+func (h *heldHandle) Pause(string) error                               { h.mu.Lock(); h.pauses++; h.mu.Unlock(); return nil }
+func (h *heldHandle) Resume(string) error                              { return nil }
+func (h *heldHandle) Cancel(string, string) error                      { return nil }
 func (h *heldHandle) Steer(string, string, string) error               { return nil }
-func (h *heldHandle) SetVector(*task.Vector, string) error             { return nil }
+func (h *heldHandle) SetPolicy(task.Policy, string) error              { return nil }
 func (h *heldHandle) Result() string                                   { return "" }
 func (h *heldHandle) Err() string                                      { return "" }
 
@@ -413,10 +414,10 @@ func TestAHookLandsAndItsLaunchParks(t *testing.T) {
 			Condition: Condition{Subject: prSubject("open")},
 			Action: Action{
 				Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-				Spawn: &launch.Spec{Prompt: "review"},
+				Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "review"},
 				OnDone: &Action{
 					Patch: entity.Obj{"stage": "reviewed"}.Payload(),
-					Spawn: &launch.Spec{Prompt: "merge"},
+					Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "merge"},
 				},
 			},
 		},
@@ -425,11 +426,10 @@ func TestAHookLandsAndItsLaunchParks(t *testing.T) {
 			Condition: Condition{Subject: prSubject("picking")},
 			Action: Action{
 				Patch: entity.Obj{"stage": "picked"}.Payload(),
-				Spawn: &launch.Spec{Prompt: "pick", Grant: "read-only"},
+				Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "pick"},
 				OnDone: &Action{
 					Patch: entity.Obj{"stage": "chosen"}.Payload(),
-					Spawn: &launch.Spec{Prompt: "act", Grant: "read-only",
-						Provider: &launch.Provider{Select: "ask", Eligible: []string{"a", "b"}}},
+					Spawn: &launch.Spec{Prompt: "act", Doer: runner.Doer{Agent: "verse"}},
 				},
 			},
 		},
@@ -438,7 +438,7 @@ func TestAHookLandsAndItsLaunchParks(t *testing.T) {
 			Condition: Condition{Subject: Match{"path": pathOf("demo", "issue", "*"), "value": map[string]any{"stage": "open"}}},
 			Action: Action{
 				Patch:  entity.Obj{"stage": "triaging"}.Payload(),
-				Spawn:  &launch.Spec{Prompt: "triage"},
+				Spawn:  &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "triage"},
 				OnDone: &Action{Patch: entity.Obj{"stage": "triaged"}.Payload()},
 			},
 		},
@@ -518,14 +518,14 @@ func TestDrainingRefusesAFiringWhileAParkedLaunchStarts(t *testing.T) {
 			Condition: Condition{Subject: prSubject("open")},
 			Action: Action{
 				Patch:  entity.Obj{"stage": "reviewing"}.Payload(),
-				Spawn:  &launch.Spec{Prompt: "review"},
-				OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload(), Spawn: &launch.Spec{Prompt: "notify"}},
+				Spawn:  &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "review"},
+				OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload(), Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "notify"}},
 			},
 		},
 		{
 			Name:      "merge",
 			Condition: Condition{Subject: prSubject("reviewed")},
-			Action:    Action{Patch: entity.Obj{"stage": "merging"}.Payload(), Spawn: &launch.Spec{Prompt: "merge"}},
+			Action:    Action{Patch: entity.Obj{"stage": "merging"}.Payload(), Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "merge"}},
 		},
 	} {
 		if err := eng.AddTrigger(trig); err != nil {

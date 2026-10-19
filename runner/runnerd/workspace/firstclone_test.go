@@ -7,24 +7,26 @@ import (
 	"testing"
 
 	git "github.com/go-git/go-git/v5"
+
+	"github.com/signadot/verse/runner"
 )
 
-// A first clone finishes whatever happened to the spawn that asked for it. The spawn is bounded
-// by versed's control deadline and a clone of anything real is longer, so the clone runs under
-// the runner's own context; the spawn is then refused, saying so, and the next one finds the
+// A first clone finishes whatever happened to the task that asked for it. A clone of anything
+// real is long and a task may be cancelled meanwhile, so the clone runs under the runner's own
+// context; the task's workspace is then refused, saying so, and the next launch finds the
 // mirror there.
-func TestAFirstCloneOutlivesTheSpawnThatAskedForIt(t *testing.T) {
+func TestAFirstCloneOutlivesTheTaskThatAskedForIt(t *testing.T) {
 	origin := initRepo(t)
 	m := NewMirrors(t.TempDir(), TokenAuth(""))
-	repos := []Repo{{Name: "svc", Repo: origin, Base: "main"}}
+	repos := []Repo{{Repo: runner.Repo{Repo: "acme/svc", From: "main"}, Remote: origin}}
 
 	gone, cancel := context.WithCancel(context.Background())
 	cancel() // the caller has already given up
 	_, err := m.Open(gone, "p1", repos, t.TempDir(), Author{})
 	if err == nil {
-		t.Fatal("a spawn whose caller was gone was handed a workspace nobody is waiting for")
+		t.Fatal("a launch whose caller was gone was handed a workspace nobody is waiting for")
 	}
-	if !contains(err.Error(), "ran out of time") {
+	if !contains(err.Error(), "ended while waiting") {
 		t.Errorf("the refusal does not say what happened: %v", err)
 	}
 	mirror := m.Dir(origin)
@@ -39,13 +41,13 @@ func TestAFirstCloneOutlivesTheSpawnThatAskedForIt(t *testing.T) {
 		t.Errorf("the mirror was made but not fetched: %v", err)
 	}
 
-	// The same spawn again, with a caller that waits, is served off the mirror it left behind.
+	// The same launch again, with a caller that waits, is served off the mirror it left behind.
 	ws, err := m.Open(context.Background(), "p1", repos, t.TempDir(), Author{})
 	if err != nil {
-		t.Fatalf("the second spawn did not find the mirror: %v", err)
+		t.Fatalf("the second launch did not find the mirror: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(ws.Root, "svc", "README")); err != nil {
-		t.Errorf("the second spawn's checkout is empty: %v", err)
+		t.Errorf("the second launch's checkout is empty: %v", err)
 	}
 }
 

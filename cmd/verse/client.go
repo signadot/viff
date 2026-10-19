@@ -1197,48 +1197,6 @@ func inSteps(at entity.Path) string {
 	return entity.JoinSteps(segs) + at.Access
 }
 
-// stateAt reads the verse at a kinded path and hands back each node it reached, at its address:
-// `provider.*.*` is every provider, one node each.
-//
-// The addresses are in the answer, as keys, so a caller reads them out of the document it already
-// has rather than recovering them from a rendered string and making a second request.
-func stateAt(at string) ([]entity.Entity, error) {
-	kp, err := entity.ParseAt(at)
-	if err != nil {
-		return nil, err
-	}
-	q := url.Values{}
-	if at != "" {
-		q.Set("at", at)
-	}
-	resp, err := httpGet("/state", q)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	// A LISTING'S EMPTY, not a reader's not-found. This reads a WELL-KNOWN address on behalf of
-	// a command that named it — `verse motion` — where "nothing stands there"
-	// is what an empty list means and the caller says so in its own words ("no motions"). The
-	// address a PERSON typed is `verse data`'s, and that one reports the 404, which is the whole
-	// point of the route answering one (git-issue 7e5gv3n9h12krd10jhn0).
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, nil
-	}
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode >= http.StatusBadRequest {
-		msg := strings.TrimSpace(string(body))
-		if msg == "" {
-			msg = resp.Status
-		}
-		return nil, errors.New(msg)
-	}
-	node, err := codec.ParseNode(body, respFmt(resp))
-	if err != nil {
-		return nil, fmt.Errorf("decoding the state: %w", err)
-	}
-	return (entity.Doc{Node: node}).Reached(kp), nil
-}
-
 // printPaths prints one address per line — EVERY address under what was asked for, deepest last
 // within each branch, bounded by --depth when the reader wants less.
 //

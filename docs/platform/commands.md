@@ -6,7 +6,7 @@ worker. The commands for a user are in [the reference](../reference/README.md#co
 ```
 verse
   up   [-root <dir>]                         start the monolith (engine + store + tasks)
-                                             the dir an llm agent reads/acts in; default: an
+                                             the dir the verse agent reads/acts in; default: an
                                              isolated temp dir, printed at start when model
                                              credentials are configured
        [-data <dir>]                         bring logd+docd up on <dir> (default: fresh temp dir)

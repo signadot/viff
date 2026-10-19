@@ -50,7 +50,7 @@ sequenceDiagram
     participant git as the repo
     participant cur as the cursor
     participant rng as the range
-    participant run as the coderunner
+    participant run as the verse runner
     participant led as the ledger
 
     git->>cur: a new tip is reflected
@@ -78,7 +78,7 @@ sequenceDiagram
    the next rule fire, and the reason gathering and spawning are two rules rather than one: a
    spawn's strings bind against the payload that FIRED it, so one action doing both would hand
    the task the payload from before its own write.
-6. `review-range` spawns the llm task on the coderunner, the range's two ends in its prompt.
+6. `review-range` spawns the llm task on the verse runner, the range's two ends in its prompt.
 7. The runner delivers `verse/auto/<sha>/<task>` at the END of the task, and only if the working
    tree changed. A review that found nothing leaves no branch.
 8. The answer comes back: `onDone` writes `report`, `status: done`, `stage: reviewed`.

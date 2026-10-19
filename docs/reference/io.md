@@ -1,19 +1,19 @@
-# Ios
+# Iods
 
-This page is the surface of an io. For what an io *is* (one program, two halves, and which side
+This page is the surface of an io. For what an iod *is* (one program, two halves, and which side
 dials each half), see [../io.md](../io.md). To build one, copy
 [examples/io](examples/io/main.go).
 
-An [io](../glossary.md#io) is an entity at `verse.io.<name>`:
+An [iod](../glossary.md#iod) is an entity at `verse.io.<name>`:
 
 | | |
 |---|---|
 | `name` | its name, and the whole of its address under `verse.io`. Required |
-| `root` | the root of the tree this io writes, and is the single writer of. It is the first segment of every address it writes (`git`, `github`, …). Required |
+| `root` | the root of the tree this iod writes, and is the single writer of. It is the first segment of every address it writes (`git`, `github`, …). Required |
 | `url` | verse dials this base for the reflection contract |
 | `dir` | a local git repository, reflected in task, with no network |
-| `dial-in` | the io dials verse. It is designed, and refused at install until it is built |
-| `owns` | the addresses this io claims to be the single writer of (see below) |
+| `dial-in` | the iod dials verse. It is designed, and refused at install until it is built |
+| `owns` | the addresses this iod claims to be the single writer of (see below) |
 | `out` | its out half: where it reads what is asked of it, whom it acts as, and who may ask (see below) |
 | `scope` | the copy-on-write scope it reflects into. Empty is baseline |
 | `lastReflect` | when verse last *wrote* from this io. Verse writes it |
@@ -27,20 +27,20 @@ half, the [sink](../glossary.md#sink), which dials verse.
 connection comes from. `Reflect` is the same call on all three. For a runner, absence means
 something. Here it does not: the field that is present says which way it is.
 
-The address of an io is its name and nothing else: `verse.io.<name>`. It is under the reserved
-root, like everything verse keeps about its own running. So an operator tells two ios of one
+The address of an iod is its name and nothing else: `verse.io.<name>`. It is under the reserved
+root, like everything verse keeps about its own running. So an operator tells two iods of one
 connector apart by the names the operator gave them.
 
 `root` answers the question that verse asks of a registration: who writes `git.*`? The root is
 one segment of an address. So it may not contain `:`, `/` or `.`. A name may not contain `/`,
 because a name is a segment of the route that serves the io.
 
-**The convention is to name an io after its connector**, such as `git`, `git-issue` or `slack`.
-Most verses run one io of each kind. A name that says no more than `root` says would be a second
-word for one fact. The name is still free. A second io on one connector is where a name of its
+**The convention is to name an iod after its connector**, such as `git`, `git-issue` or `slack`.
+Most verses run one iod of each kind. A name that says no more than `root` says would be a second
+word for one fact. The name is still free. A second iod on one connector is where a name of its
 own is useful (`git` beside `git-buildhost`).
 
-An io reflects the world outside verse. It never reflects what verse keeps under `verse`:
+An iod reflects the world outside verse. It never reflects what verse keeps under `verse`:
 
 - Verse refuses a reflection that names an address under `verse.`.
 - Verse refuses, at install, a claim that names such an address.
@@ -48,14 +48,14 @@ An io reflects the world outside verse. It never reflects what verse keeps under
 
 ## Ownership
 
-`owns` is a list of [claims](../glossary.md#claim-of-an-io). The claims do three things:
+`owns` is a list of [claims](../glossary.md#claim-of-an-iod). The claims do three things:
 
 - An install proves them disjoint from the claims of other ios.
 - They bound what a `-forget` removal may tombstone.
-- They name the nodes the io owns.
+- They name the nodes the iod owns.
 
 The node of a claim is its levels up to the first glob. Installing takes each such node for the
-installer. So what the io reflects beneath the node belongs to the installer, with no owner
+installer. So what the iod reflects beneath the node belongs to the installer, with no owner
 record per entity. Verse refuses an install over a node that somebody else owns
 ([perms.md](../perms.md#ownership)).
 
@@ -66,15 +66,15 @@ and it has no entities in hand.
 {at: "git.verse.head"}         one entity
 {at: "git.verse"}              a whole subtree: everything under it, at every depth
 {at: "linear.ENG.issue.*"}     a level may be `*`, and may END in one — a literal prefix
-{at: "verse-dev.drift"}        …which is how an io that keeps two levels of its own says so
-{at: "linear.project.*.owners.ENG"}   one place inside a node several ios share
+{at: "verse-dev.drift"}        …which is how an iod that keeps two levels of its own says so
+{at: "linear.project.*.owners.ENG"}   one place inside a node several iods share
 ```
 
 A claim is **one pattern per level, at any depth**. This is the same shape as an address. A
 claim owns the node it names and everything under it. So `git` owns every repository, and
 `verse-dev.drift` owns the tree that a package keeps there.
 
-**Sharing is a deeper address.** Two ios that share a thing do not share a node. They own two
+**Sharing is a deeper address.** Two iods that share a thing do not share a node. They own two
 nodes beneath it, such as `linear.project.p1.owners.ENG` and `…owners.OPS`. These are two
 addresses, and verse proves them apart with the same comparison, level by level, as any other
 pair. Sharing is not an exception to single-writership. It is single-writership one level down.
@@ -125,7 +125,7 @@ verse io add <name> <url> -root <root>       install one, probing the url first
        add -dir <d> <name>                  …or a local git repo, reflected in task
        add [-file <f>] | [file] | stdin      …or as a document (.tony/.json/.yaml)
            [-no-probe]                       install without asking it what it is
-           [-allow-overlap]                  install though another io may write the same place
+           [-allow-overlap]                  install though another iod may write the same place
        show <ref>                            the entity
        check <ref>                           ask it what it is and what it claims, right now
        remove <ref>                          take it away; refused if it reflected anything
@@ -136,43 +136,43 @@ verse io add <name> <url> -root <root>       install one, probing the url first
 A `<ref>` is `verse.io.laptop` or `laptop`: the whole address or the bare name. The middle form
 (`io.laptop`) is not accepted.
 
-`verse status` names the installed ios under `io:`. It shows the refs only. `verse io` shows
+`verse status` names the installed iods under `iod:`. It shows the refs only. `verse io` shows
 their health.
 
 The list is in `verse status` because it is the one line that says whether anything is
-*arriving*. Every other counter moves on what verse already has. So a verse whose last io was
+*arriving*. Every other counter moves on what verse already has. So a verse whose last iod was
 removed looks the same as a healthy, quiet verse, until that list is empty.
 
-Every command takes the global `-scope`. A scoped io is installed, listed and removed in the
+Every command takes the global `-scope`. A scoped iod is installed, listed and removed in the
 scope it reflects into.
 
 ## Routes
 
 | | |
 |---|---|
-| `GET /io` | list; `?probe=true` adds a live `reach` per io |
+| `GET /io` | list; `?probe=true` adds a live `reach` per iod |
 | `POST /io` | install; `?probe=false` skips the check, `?allow-overlap=true` the disjointness proof. `201` with `{at, reach}`, plus `owns` when taken from the probe and `warning` when unreachable |
 | `GET /io/{name}` | the entity |
-| `GET /io/{name}/check` | `{at, reach}`, plus `url` when the io has one and `why` when the probe gave a reason, plus `says: {root, owns}` when it answered |
+| `GET /io/{name}/check` | `{at, reach}`, plus `url` when the iod has one and `why` when the probe gave a reason, plus `says: {root, owns}` when it answered |
 | `DELETE /io/{name}` | remove. `?forget=true` or `?keep=true`; `409` with both named when it reflected something and neither is given |
 | `POST /io/{name}/hint` | `?at=<address>` (repeatable): reconcile those addresses. None means a full resync. `204` |
-| `GET /outboxes` | `?to=<out place>`: the outboxes packages declare sending there, as `[{from, to}]`. Only the io whose out half reads the place (its `as`) may ask; `403` for anybody else, `404` when no io reads it |
+| `GET /outboxes` | `?to=<out place>`: the outboxes packages declare sending there, as `[{from, to}]`. Only the iod whose out half reads the place (its `as`) may ask; `403` for anybody else, `404` when no iod reads it |
 
-A route that names one io has two answers when it does not find the io:
+A route that names one iod has two answers when it does not find the iod:
 
 | | |
 |---|---|
-| `404` | `in your view, no io "<name>" is installed`. The io is not installed, or it is not yours to read. The answer is the same for both. |
-| `503` | `io "<name>" could not be read: …`. The store did not answer. Nothing is known to be missing, so ask again. |
+| `404` | `in your view, no iod "<name>" is installed`. The iod is not installed, or it is not yours to read. The answer is the same for both. |
+| `503` | `iod "<name>" could not be read: …`. The store did not answer. Nothing is known to be missing, so ask again. |
 
-The listing leaves out the ios you may not read. It answers `503` when verse could not read the
+The listing leaves out the iods you may not read. It answers `503` when verse could not read the
 store.
 
 `reach` is one of `a source`, `not a source` and `unreachable`. Verse writes nothing about it to
 the store.
 
-A `500` from an io is *unreachable*, not *not a source*. Something speaks HTTP and fails. That is
-at least as often an io with a temporary fault as a wrong url. Refusing the install would refuse
+A `500` from an iod is *unreachable*, not *not a source*. Something speaks HTTP and fails. That is
+at least as often an iod with a temporary fault as a wrong url. Refusing the install would refuse
 a fault that fixes itself.
 
 The listing reports `lastPass` from the live reflector: when a pass last *completed*, whatever
@@ -187,7 +187,7 @@ A malformed ref is `400`, not a silent full resync. A hint to a registration tha
 but not running is `503`, not a quiet `204`. A hint that verse drops must not look like one that
 worked.
 
-## The contract an io serves
+## The contract an iod serves
 
 The contract has two routes, no state and no way to write:
 
@@ -225,9 +225,9 @@ A cover may add `value`, a payload predicate. Use it where an address alone cann
 answer is complete for. GitHub covers the open issues of a repository and its recent closed
 issues as two halves of `github.<org>.<name>.issue.*`.
 
-**A cover goes as deep as the answer does.** An io that owns one address inside a shared thing
+**A cover goes as deep as the answer does.** An iod that owns one address inside a shared thing
 covers that address, such as `linear.project.*.owners.ENG`. Converge writes, compares and
-tombstones there, and nowhere else. Two ios can be the single writers of two nodes under one
+tombstones there, and nowhere else. Two iods can be the single writers of two nodes under one
 project. Each is proved apart by its `owns`, and neither can reach the other.
 
 Removing the last owner empties `owners`, and that empties the project. Each step up is a
@@ -280,7 +280,7 @@ the scope can install into it again.
 
 ## The out half
 
-An io that acts back says so on its registration. The install writes the grants that the
+An iod that acts back says so on its registration. The install writes the grants that the
 registration describes:
 
 ```tony
@@ -292,10 +292,10 @@ out:
 
 | | |
 |---|---|
-| `places` | where it reads what is asked of it, as kinded paths. Each must lie inside what this io claims, and outside what its reflection covers. It is a list, because one io may serve several. A Linear io reads one address per team, since a claim per team is what keeps two installs apart |
-| `as` | the principal it acts as. This principal owns every status the io writes, so nobody else can forge one |
+| `places` | where it reads what is asked of it, as kinded paths. Each must lie inside what this iod claims, and outside what its reflection covers. It is a list, because one iod may serve several. A Linear iod reads one address per team, since a claim per team is what keeps two installs apart |
+| `as` | the principal it acts as. This principal owns every status the iod writes, so nobody else can forge one |
 | `requesters` | who may ask, as grantees. Empty asks for nobody. That is how an operator says that the grants are managed by hand |
-| `lastPass` `delivered` `failed` `lastError` | what the last pass did, and the failure that stopped one. The io writes these (see below) |
+| `lastPass` `delivered` `failed` `lastError` | what the last pass did, and the failure that stopped one. The iod writes these (see below) |
 
 ```sh
 verse io add slack http://slack-io:9801 --root slack \
@@ -306,7 +306,7 @@ verse io add slack http://slack-io:9801 --root slack \
 
 ```
 read-write   <requesters>       below the place    they may ask, and may not write the answers
-read         <as>               below the place    the io reads what is asked
+read         <as>               below the place    the iod reads what is asked
 child-owner  <as>                                  and OWNS each status it creates
 child-grants {read: ["*"]}                         which everyone may read
 ```
@@ -321,20 +321,20 @@ The install checks these things, while the operator is present:
 - `places` and `as` are required.
 - `as` parses as a principal.
 - Every requester parses as a grantee.
-- Each place lies inside what this io claims. An io asked for things outside its own slice would
+- Each place lies inside what this iod claims. An iod asked for things outside its own slice would
   seed grants in the tree of somebody else.
 
 The install does not check whether a place is outside the COVERS of the reflection. The connector
 must arrange that, because covers come with an answer and not with a claim.
 
-`--forget` takes the grants back, with everything else the io left. `--keep` keeps them, because
+`--forget` takes the grants back, with everything else the iod left. `--keep` keeps them, because
 a re-install lands back on a place whose grants stand.
 
 ### Outboxes: what a package sends
 
-A package asks an io for something through an outbox it declares
+A package asks an iod for something through an outbox it declares
 ([`sends:`](charter.md#a-charter-can-be-installed-at-an-address)): a place inside the package,
-named with the io's out place.
+named with the iod's out place.
 
 ```tony
 at: verse-dev.announce
@@ -343,24 +343,24 @@ sends: [{from: out.slack, to: slack.Signadot.out}]
 
 Each pass, the out half reads its own place and then every outbox sending to it, which it asks
 verse for (`GET /outboxes`). An input in an outbox is handed to the connector as one asked at the
-io's own place, so a connector serving several places treats it the same. Its status is written
+iod's own place, so a connector serving several places treats it the same. Its status is written
 beside it, inside the package, where the package's rules can read it.
 
 The package's install writes the grants, at the outbox:
 
 ```
-read         <as>               below the outbox   the io reads what is asked
+read         <as>               below the outbox   the iod reads what is asked
 child-owner  <as>                                  and OWNS each status it creates
 ```
 
 The package's own rules ask as its installer, who owns the outbox already. So there is no
 requesters' line, and no line for anybody else.
 
-The io does nothing to opt in. Any registered io's out place may be named in a `to`.
+The iod does nothing to opt in. Any registered iod's out place may be named in a `to`.
 
-The grant follows both sides. Removing the io takes back the grant on every outbox sending to
+The grant follows both sides. Removing the iod takes back the grant on every outbox sending to
 it, whether the removal said `--forget` or `--keep`: an outbox is a package's arrangement with an
-io that is gone. Installing the io again grants the outboxes still declared for its places, so
+iod that is gone. Installing the iod again grants the outboxes still declared for its places, so
 the packages need not be installed again.
 
 ### What is asked, and what became of it
@@ -368,7 +368,7 @@ the packages need not be installed again.
 | | where | written by | holds |
 |---|---|---|---|
 | input | anywhere under `<place>` | whoever asks | `to` — whom or what it is about — and whatever the connector reads (`text`, Slack's `asks`) |
-| status | the sibling `<name>~status` | the io alone | whatever the connector records, and `error`/`failedAt` while a failure stands, with `failed: permanent` and `failedOn` for a refusal |
+| status | the sibling `<name>~status` | the iod alone | whatever the connector records, and `error`/`failedAt` while a failure stands, with `failed: permanent` and `failedOn` for a refusal |
 
 **An input is a node that carries `to`, at any depth.** Whatever writes an input decides where it
 stands. A person types one under the place. The fan-out of a charter writes one per person under
@@ -401,7 +401,7 @@ unchanged.
   rate limit, and the network.
 
 A request sent again on every pass after it was refused is what tripped GitHub's secondary rate
-limit for the account an io acted as.
+limit for the account an iod acted as.
 
 A connector that keeps something current on every pass is still told of an input it does not
 offer. Slack's keeps the thread a message's replies are matched in.
@@ -416,14 +416,14 @@ POST /io/<name>/pass   {delivered, failed, error?}
 ```
 
 The report lands on the registration as `lastPass`, `delivered`, `failed` and `lastError`.
-`verse io` shows them beside the columns of the reflection. So an io with a healthy reflection
+`verse io` shows them beside the columns of the reflection. So an iod with a healthy reflection
 and an out half refused for an hour does not look healthy.
 
 The counts are those of the last pass, not totals. Somebody can act on "the last pass delivered
 nothing and failed twice".
 
 The report is unattributed, like the hint beside it, and for the same reason. It is a fact about
-the io's own half of the world. A forged report costs a misleading timestamp.
+the iod's own half of the world. A forged report costs a misleading timestamp.
 
 ## Control: what people do over there
 
@@ -436,11 +436,11 @@ client. So the connector makes each request as whoever the external system says 
 
 Three invariants hold for every connector:
 
-- **Which** request it is, is decided without reading prose. The Slack io knows which question a
+- **Which** request it is, is decided without reading prose. The Slack iod knows which question a
   reply answers, because it posted the message that the reply is under.
 - **What** it may ask for is bounded by what the record already offers, such as the options on a
   question. It never invents one.
-- **Who** it is made as is the person, never the io's own principal. An answer recorded as
+- **Who** it is made as is the person, never the iod's own principal. An answer recorded as
   `agent:slack-io` is an answer that nobody gave.
 
 The connector asserts that person to verse in the way the CLI asserts its own user. Verse trusts

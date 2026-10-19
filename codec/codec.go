@@ -173,6 +173,16 @@ func Unmarshal(data []byte, v any, f Format) error {
 	return FromNode(node, v)
 }
 
+// UnmarshalStrict is Unmarshal for a type that refuses keys it does not know, so a field
+// misspelled in what a person wrote is an error rather than silently dropped.
+func UnmarshalStrict(data []byte, v any, f Format) error {
+	node, err := ParseNode(data, f)
+	if err != nil {
+		return err
+	}
+	return gomap.FromTonyIR(node, v, gomap.Strict())
+}
+
 // Encode writes v to w in f.
 func Encode(w io.Writer, v any, f Format) error {
 	node, err := ToNode(v)

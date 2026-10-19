@@ -21,16 +21,26 @@ import (
 	"github.com/signadot/verse/task"
 )
 
-// HTTP returns a Runner that drives the runner at baseURL.
 // ControlTimeout bounds every non-streaming call to a runner. A remote that accepts the
 // connection and then never answers is indistinguishable from a slow one, and without a
 // deadline the caller waits on that distinction forever — which is not a hypothetical: it is
-// how a spawn, a cancel and an answer each hang, holding whatever goroutine issued them.
+// how a launch, a cancel and an answer each hang, holding whatever goroutine issued them.
 //
 // Generous rather than tight. It is a backstop against a hung peer, not a latency budget.
 const ControlTimeout = 30 * time.Second
 
-func HTTP(baseURL string) task.Runner { return HTTPOver(baseURL, nil) }
+// Launcher is a runner verse can start work on: a task.Runner, and Launch. Launch is here rather
+// than on task.Runner because the launch is the runner's type (package runner), which task does
+// not import.
+type Launcher interface {
+	task.Runner
+	// Launch POSTs the launch to /tasks, carrying the caller's id so the task's record and the
+	// runner agree on it. A refusal is a failed handle with the runner's reason.
+	Launch(l runner.Launch) task.Handle
+}
+
+// HTTP returns the runner at baseURL.
+func HTTP(baseURL string) Launcher { return HTTPOver(baseURL, nil) }
 
 // HTTPOver is HTTP over a transport of the caller's choosing — nil means the default one, so
 // HTTP is this with nothing supplied.
@@ -45,7 +55,7 @@ func HTTP(baseURL string) task.Runner { return HTTPOver(baseURL, nil) }
 // The baseURL still matters even when the transport ignores its host: it is what Ref reports,
 // and it is what the request line carries. A caller dialing a socket conventionally passes
 // something that names the peer rather than a reachable address.
-func HTTPOver(baseURL string, tr http.RoundTripper) task.Runner {
+func HTTPOver(baseURL string, tr http.RoundTripper) Launcher {
 	return &httpRunner{
 		base: strings.TrimRight(baseURL, "/"),
 		// Its OWN client, never http.DefaultClient: that one is shared task-wide, so a
@@ -63,34 +73,32 @@ type httpRunner struct {
 	stream *http.Client // the event plane: unbounded, cancelled by its context
 }
 
-// Spawn POSTs /tasks carrying the caller's id (so the remote uses it and it matches
+// Launch POSTs /tasks carrying the caller's id (so the remote uses it and it matches
 // the task:instance entity).
-func (p *httpRunner) Spawn(l task.Launch) task.Handle {
-	// The launch as it crosses (task.SpawnRequest): every field of it but the two that are
-	// verse's own, each absent where the spawn said nothing, which is the runner's default.
-	body, err := codec.Marshal(l.Wire(), codec.Tony)
+func (p *httpRunner) Launch(l runner.Launch) task.Handle {
+	body, err := codec.Marshal(&l, codec.Tony)
 	if err != nil {
-		return task.FailedHandle(fmt.Sprintf("spawn on %s: the launch does not render: %v", p.base, err))
+		return task.FailedHandle(fmt.Sprintf("launch on %s: it does not render: %v", p.base, err))
 	}
 	resp, err := p.cl.Post(p.base+"/tasks", codec.MediaType(codec.Tony), bytes.NewReader(body))
 	if err != nil {
 		return task.FailedHandle(err.Error())
 	}
 	defer resp.Body.Close()
-	// A refusal is not an acceptance. Were the status discarded here, a runner answering 400,
-	// 403 or 501 would get the same remote handle as one that took the work: versed would
-	// mirror a task:instance for it and the flow would wait on a task that was never started,
-	// so the refusal would surface as a hang. The runner deciding it cannot host this
+	// A refusal is not an acceptance. The status used to be discarded here, so a runner
+	// answering 400, 403 or 501 got the same remote handle as one that took the work: versed
+	// mirrored a task:instance for it and the flow waited on a task that was never
+	// started, so the refusal surfaced as a hang. The runner deciding it cannot host this
 	// launch is the DEFAULT way a runner declines — it is the whole reason a runner may refuse
 	// rather than verse having to detect what it is — and that answer is inert unless it is
 	// read (git-issue 6mnmxj6mh12krz3ae1n0).
 	if err := statusErr(resp); err != nil {
-		return task.FailedHandle(fmt.Sprintf("spawn refused by %s: %s", p.base, err))
+		return task.FailedHandle(fmt.Sprintf("launch refused by %s: %s", p.base, err))
 	}
 	return &remoteHandle{base: p.base, id: l.ID, cl: p.cl, stream: p.stream}
 }
 
-// Attach re-attaches to an existing remote task (no spawn). remoteHandle.Subscribe
+// Attach re-attaches to an existing remote task (no launch). remoteHandle.Subscribe
 // replays from the start (?since=0), so a resumed mirror re-derives current state.
 func (p *httpRunner) Attach(id string) task.Handle {
 	return &remoteHandle{base: p.base, id: id, cl: p.cl, stream: p.stream}
@@ -111,15 +119,15 @@ func (p *httpRunner) Ref() string { return p.base }
 // comment here claimed the mirror covered the difference. It does not: versed reads the mirror
 // as a scope-membership FILTER over what the runner reported, not as a fallback source, so an
 // unreachable runner's tasks were absent from the list and the response was a clean 200
-// that was simply short. The same shape as the discarded spawn status above, on the read plane
+// that was simply short. The same shape as the discarded launch status above, on the read plane
 // (git-issue 6mnmxj6mh12krz3ae1n0).
 func (p *httpRunner) ListTasks() ([]task.Snapshot, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	// The error is READ, and that is not defensive tidying: NewRequest returns a nil request
 	// with it, and `Do(nil)` panics rather than failing. A base is built by whoever installed
-	// the runner — and by the coderunner out of a task id — so an unparseable one is a thing a
-	// caller can cause, and it arrived as a panic serving HTTP.
+	// the runner, so an unparseable one is a thing a caller can cause, and it would arrive as a
+	// panic serving HTTP.
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.base+"/tasks", nil)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s is not a usable runner url: %w", task.ErrUnreachable, p.base, err)
@@ -298,38 +306,23 @@ func (h *remoteHandle) SubscribeSince(since int64) (<-chan task.Event, func()) {
 	return out, cancel
 }
 
-func (h *remoteHandle) Pause() error  { return h.post("/pause", nil) }
-func (h *remoteHandle) Resume() error { return h.post("/resume", nil) }
+func (h *remoteHandle) Pause(by string) error { return h.post("/pause", runner.PauseRequest{By: by}) }
+func (h *remoteHandle) Resume(by string) error {
+	return h.post("/resume", runner.ResumeRequest{By: by})
+}
 
 // Cancel ends the task, and says why: the reason is what the task's charters see, so it
 // crosses with the cancel.
-func (h *remoteHandle) Cancel(reason string) error {
-	return h.post("/cancel", runner.CancelRequest{Reason: reason})
+func (h *remoteHandle) Cancel(reason, by string) error {
+	return h.post("/cancel", runner.CancelRequest{Reason: reason, By: by})
 }
 
 func (h *remoteHandle) Steer(instr, by, ask string) error {
 	return h.post("/say", runner.SayRequest{Instruction: instr, By: by, Ask: ask})
 }
 
-func (h *remoteHandle) SetVector(v *task.Vector, by string) error {
-	if v == nil {
-		return fmt.Errorf("%s: no vector to set", h.id)
-	}
-	b, err := codec.Marshal(task.VectorRequest{Vector: *v, By: by}, codec.Tony)
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequest(http.MethodPut, h.url("/vector"), bytes.NewReader(b))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", codec.MediaType(codec.Tony))
-	resp, err := h.cl.Do(req)
-	if err != nil {
-		return fmt.Errorf("%w: %s: %w", task.ErrUnreachable, h.id, err)
-	}
-	defer resp.Body.Close()
-	return statusErr(resp)
+func (h *remoteHandle) SetPolicy(p task.Policy, by string) error {
+	return h.send(http.MethodPut, "/policy", runner.PolicyRequest{Policy: p, By: by})
 }
 
 // Resolve answers a gate the remote's task is blocked on, and reports whether the answer
@@ -426,6 +419,10 @@ func decodeResp(resp *http.Response, v any) error {
 // and the status, so a control that never left the building — and one the remote refused —
 // read exactly like one that was applied.
 func (h *remoteHandle) post(path string, body any) error {
+	return h.send(http.MethodPost, path, body)
+}
+
+func (h *remoteHandle) send(method, path string, body any) error {
 	var r io.Reader
 	if body != nil {
 		b, err := codec.Marshal(body, codec.Tony)
@@ -434,7 +431,12 @@ func (h *remoteHandle) post(path string, body any) error {
 		}
 		r = bytes.NewReader(b)
 	}
-	resp, err := h.cl.Post(h.url(path), codec.MediaType(codec.Tony), r)
+	req, err := http.NewRequest(method, h.url(path), r)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", codec.MediaType(codec.Tony))
+	resp, err := h.cl.Do(req)
 	if err != nil {
 		// Nothing is known about whether the far side acted. That is the whole content of
 		// ErrUnreachable, and it is the only one of the three outcomes worth retrying.

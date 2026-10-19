@@ -12,15 +12,20 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
 // shellGate is one gate over the scripted task's one action, with the question it poses.
-func shellGate(need int, clock *task.Deadline) []task.Gate {
-	return []task.Gate{{
-		Name: "shell", Mode: task.Ask, Match: task.GateMatch{Tools: []string{"run_bash"}},
-		Need: need, Deadline: clock,
-	}}
+func shellGate(need int, clock *task.Deadline) task.Policy {
+	ask := &task.Ask{Need: need}
+	if clock != nil {
+		ask.Within, ask.Default = clock.Within, clock.Default
+	}
+	return task.Policy{
+		{Name: "shell", Match: &task.Match{System: "commands", Verb: "run"}, Then: task.Then{Mode: task.ThenAsk, Ask: ask}},
+		{Then: task.Then{Mode: task.ThenAllow}},
+	}
 }
 
 // waitTaskEnded waits for the mirrored task to reach any terminal status.
@@ -45,11 +50,11 @@ func waitTaskEnded(t *testing.T, srv *Server, id string) {
 // pass until the second ballot. This is the runtime half of the one gate record — a task's
 // action gates used to pose two-option questions whatever the record could carry.
 func TestARunsGateTakesAThreshold(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := NewWithStore(stepBuilder(t), entitytest.Store(t))
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp := postTony(t, ts.URL+"/tasks", api.Spawn{ID: "voted", Prompt: "true", Gates: shellGate(2, nil)})
+	resp := postTony(t, ts.URL+"/tasks", api.Spawn{ID: "voted", Doer: runner.Doer{Script: "true"}, Policy: shellGate(2, nil)})
 	resp.Body.Close()
 	if resp.StatusCode >= 300 {
 		t.Fatalf("spawn = %s", resp.Status)
@@ -106,12 +111,12 @@ func noTerminalWithin(t *testing.T, srv *Server, id string, d time.Duration) {
 // it — with `default: deny` the action fails back to the task as a refusal it can re-plan
 // around, and the record says the clock decided.
 func TestARunsGateDeadlineAnswersTheLoop(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := NewWithStore(stepBuilder(t), entitytest.Store(t))
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp := postTony(t, ts.URL+"/tasks", api.Spawn{ID: "unattended", Prompt: "true",
-		Gates: shellGate(0, &task.Deadline{Within: "150ms", Default: task.Deny})})
+	resp := postTony(t, ts.URL+"/tasks", api.Spawn{ID: "unattended", Doer: runner.Doer{Script: "true"},
+		Policy: shellGate(0, &task.Deadline{Within: "150ms", Default: task.Deny})})
 	resp.Body.Close()
 	if resp.StatusCode >= 300 {
 		t.Fatalf("spawn = %s", resp.Status)
@@ -133,34 +138,34 @@ func TestARunsGateDeadlineAnswersTheLoop(t *testing.T) {
 
 // A gate whose question cannot be posed as written refuses the spawn, before anything runs.
 func TestASpawnWithAGateThatAsksNobodyIsRefused(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := NewWithStore(stepBuilder(t), entitytest.Store(t))
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
 	gates := shellGate(2, nil)
-	gates[0].Mode = task.Auto
-	resp := postTony(t, ts.URL+"/tasks", api.Spawn{ID: "malformed", Prompt: "true", Gates: gates})
+	gates[0].Match = nil // a row about every call before the last decides for the rows after it
+	resp := postTony(t, ts.URL+"/tasks", api.Spawn{ID: "malformed", Doer: runner.Doer{Script: "true"}, Policy: gates})
 	raw, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(string(raw), "gate shell") {
+	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(string(raw), "policy[0]") {
 		t.Fatalf("spawn = %s %s, want 400 naming the gate", resp.Status, strings.TrimSpace(string(raw)))
 	}
 	if _, ok, _ := srv.Store.Get(mirror.Ref("malformed")); ok {
 		t.Fatal("a refused spawn was mirrored anyway")
 	}
 	// The same document over the running task's dial is refused the same way.
-	ok := postTony(t, ts.URL+"/tasks", api.Spawn{ID: "running", Prompt: "sleep 5", Vector: "auto"})
+	ok := postTony(t, ts.URL+"/tasks", api.Spawn{ID: "running", Doer: runner.Doer{Script: "sleep 5"}, Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}})
 	ok.Body.Close()
-	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/tasks/running/vector",
-		strings.NewReader(`{vector: {default: auto, gates: [{name: shell, mode: auto, need: 2}]}, by: "user:scott@example.com"}`))
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/tasks/running/policy",
+		strings.NewReader(`{policy: [{name: shell, match: {system: commands, verb: run}, then: {ask: {need: 2}}}, {then: sometimes}], by: "user:scott@example.com"}`))
 	req.Header.Set("Content-Type", "application/tony")
 	req.Header.Set(api.PrincipalHeader, tester)
 	slid, err := http.DefaultClient.Do(req)
 	if err != nil {
-		t.Fatalf("vector: %v", err)
+		t.Fatalf("gates: %v", err)
 	}
 	slid.Body.Close()
 	if slid.StatusCode != http.StatusBadRequest {
-		t.Fatalf("sliding to a malformed vector = %s, want 400", slid.Status)
+		t.Fatalf("setting a malformed gating = %s, want 400", slid.Status)
 	}
 }

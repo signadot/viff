@@ -5,16 +5,18 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/signadot/verse/runner"
 )
 
 // A checkout's objects are the mirror's, linked: the same file, not a copy of it. That is what
-// keeps a spawn against a large repository inside versed's control deadline, and it holds as
+// keeps a launch against a large repository from waiting on a copy, and it holds as
 // long as every object file the checkout has is one the mirror has.
 func TestACheckoutSharesTheMirrorsObjectFiles(t *testing.T) {
 	origin := initRepo(t)
 	mirrors := t.TempDir()
 	m := NewMirrors(mirrors, TokenAuth(""))
-	repos := []Repo{{Name: "svc", Repo: origin, Base: "main"}}
+	repos := []Repo{{Repo: runner.Repo{Repo: "acme/svc", From: "main"}, Remote: origin}}
 	ws, err := m.Open(context.Background(), "p1", repos, t.TempDir(), Author{})
 	if err != nil {
 		t.Fatal(err)

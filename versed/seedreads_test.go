@@ -53,7 +53,7 @@ func TestWhatTheSystemMadeBeneathARowIsReadThroughTheRowsLine(t *testing.T) {
 				if _, stands := ownerOfRecord(t, srv.Store, made); stands {
 					t.Fatalf("%s still carries a record, so this says nothing about the row", made)
 				}
-				for _, who := range []string{"user:mallory@example.com", "runner:coderunner", "agent:harness"} {
+				for _, who := range []string{"user:mallory@example.com", "runner:verse-runner", "agent:harness"} {
 					if !holds(t, srv.Store, who, entity.Read, made) {
 						t.Errorf("%s does not read %s, which the system made", who, made)
 					}

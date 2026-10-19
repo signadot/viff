@@ -13,7 +13,7 @@ import (
 
 // GET /describe answers what the daemon was told the runner offers, beside the task contract.
 func TestDescribeAnswersTheOffers(t *testing.T) {
-	d := runnerd.NewInProcessHandler(func(l task.Launch, reg *task.Registry) *task.Task {
+	d := runnerd.NewInProcessHandler(func(l runner.Launch, reg *task.Registry) *task.Task {
 		return task.NewFailed(l.ID, reg, "no tasks here")
 	})
 	d.Describe(runner.Description{Offers: []runner.Offer{{Agent: "verse",

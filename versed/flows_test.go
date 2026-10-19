@@ -50,11 +50,11 @@ func (h *idleHandle) count(verb string) int {
 
 func (h *idleHandle) Subscribe() (<-chan task.Event, func())           { return h.ch, func() {} }
 func (h *idleHandle) SubscribeSince(int64) (<-chan task.Event, func()) { return h.ch, func() {} }
-func (h *idleHandle) Pause() error                                     { return h.got("pause") }
-func (h *idleHandle) Resume() error                                    { return h.got("resume") }
-func (h *idleHandle) Cancel(string) error                              { return h.got("cancel") }
+func (h *idleHandle) Pause(string) error                               { return h.got("pause") }
+func (h *idleHandle) Resume(string) error                              { return h.got("resume") }
+func (h *idleHandle) Cancel(string, string) error                      { return h.got("cancel") }
 func (h *idleHandle) Steer(string, string, string) error               { return h.got("say") }
-func (h *idleHandle) SetVector(*task.Vector, string) error             { return h.got("vector") }
+func (h *idleHandle) SetPolicy(task.Policy, string) error              { return h.got("policy") }
 func (h *idleHandle) Result() string                                   { return "" }
 func (h *idleHandle) Err() string                                      { return "" }
 
@@ -453,7 +453,7 @@ func TestAHandSpawnedTaskIsAFlow(t *testing.T) {
 		if scope != "" {
 			url += "?scope=" + scope
 		}
-		body := map[string]any{"id": id, "prompt": "true"}
+		body := map[string]any{"id": id, "doer": map[string]any{"script": "true"}, "policy": stepAsks}
 		if subject != "" {
 			body["subject"] = subject
 		}

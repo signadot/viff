@@ -14,7 +14,7 @@ import (
 // spawnFor starts a run about a subject.
 func spawnFor(t *testing.T, ts *httptest.Server, id, subject string) {
 	t.Helper()
-	resp := postTony(t, ts.URL+"/tasks", map[string]any{"id": id, "prompt": "true", "subject": subject})
+	resp := postTony(t, ts.URL+"/tasks", map[string]any{"id": id, "doer": map[string]any{"script": "true"}, "subject": subject})
 	defer resp.Body.Close()
 	// Loudly: a test whose run never started fails three assertions later as a timeout.
 	if resp.StatusCode != http.StatusOK {

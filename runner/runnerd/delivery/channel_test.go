@@ -11,25 +11,32 @@ import (
 	"time"
 
 	git "github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/config"
-	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/workspace"
 	"github.com/signadot/verse/task"
 )
 
+// pushing is a launch's policy that gives the task git and lets every call of it go.
+var pushing = task.Policy{{Match: &task.Match{System: "git"}, Then: task.Then{Mode: task.ThenAllow}}, {Then: task.Then{Mode: task.ThenAllow}}}
+
 // A push the task asked for before its process died is finished before anything decides what
 // did not leave. Settle closes the channel and then waits for the request in flight; without
 // that, salvage would read a tree an approved push was staging from, hold the work under `held`
-// as if nobody had authorized it, and the next sweep would send it twice.
+// as if nobody had authorized it, and the next sweep would send it twice. (Scott's, from #16.)
 func TestSettleWaitsForThePushInFlight(t *testing.T) {
 	ctx := context.Background()
-	origin := initRepo(t)
+	forge := t.TempDir()
+	origin := initRepo(t, forge, "acme/svc")
+	l := &runner.Launch{ID: "s1", Doer: runner.Doer{Agent: "verse", With: runner.With{Git: []runner.Repo{
+		{Repo: "acme/svc"},
+	}}}, Policy: pushing}
+	repos, err := workspace.FromLaunch(l.Doer.With.Git, forge)
+	if err != nil {
+		t.Fatal(err)
+	}
 	m := workspace.NewMirrors(t.TempDir(), workspace.TokenAuth(""))
-	repos := []workspace.Repo{{Name: "svc", Repo: origin, Base: "main", Access: task.AccessWrite,
-		Push: &task.RepoPush{New: []string{"verse/*"}}}}
-	l := task.Launch{ID: "s1"}
 	ws, err := m.Open(ctx, l.ID, repos, t.TempDir(), workspace.Author{})
 	if err != nil {
 		t.Fatal(err)
@@ -45,7 +52,7 @@ func TestSettleWaitsForThePushInFlight(t *testing.T) {
 	// a push in flight at the moment the process dies.
 	asked, release := make(chan struct{}), make(chan struct{})
 	cred := func(workspace.Repo) (string, error) { close(asked); <-release; return "", nil }
-	ch, err := Open(l.ID, ws, m, cred, l, io.Discard)
+	ch, err := Open(l.ID, ws, m, cred, Services{}, nil, l, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,45 +95,4 @@ func TestSettleWaitsForThePushInFlight(t *testing.T) {
 			t.Errorf("delivered work was held as if it had not left: %s", s.Ref)
 		}
 	}
-}
-
-// initRepo is a bare repository with one commit on main.
-func initRepo(t *testing.T) string {
-	t.Helper()
-	dir := filepath.Join(t.TempDir(), "origin.git")
-	if _, err := git.PlainInit(dir, true); err != nil {
-		t.Fatal(err)
-	}
-	work := t.TempDir()
-	wr, err := git.PlainInit(work, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := wr.CreateRemote(&config.RemoteConfig{Name: "origin", URLs: []string{dir}}); err != nil {
-		t.Fatal(err)
-	}
-	wt, err := wr.Worktree()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(work, "README"), []byte("seed\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := wt.AddWithOptions(&git.AddOptions{All: true}); err != nil {
-		t.Fatal(err)
-	}
-	sig := &object.Signature{Name: "t", Email: "t@invalid", When: time.Now()}
-	if _, err := wt.Commit("seed", &git.CommitOptions{Author: sig, Committer: sig}); err != nil {
-		t.Fatal(err)
-	}
-	head, err := wr.Head()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := wr.Push(&git.PushOptions{RemoteName: "origin", RefSpecs: []config.RefSpec{
-		config.RefSpec("+" + head.Name().String() + ":refs/heads/main"),
-	}}); err != nil {
-		t.Fatal(err)
-	}
-	return dir
 }

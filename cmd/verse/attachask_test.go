@@ -2,8 +2,11 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -14,26 +17,28 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/verserunner"
 	"github.com/signadot/verse/runner/runnerd/verserunner/agent"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/versed"
 )
 
-// serveCalls is serve with a runtime that runs a call list, the way `verse up` dispatches one:
-// the scripted builder the other tests share runs a prompt as a shell command and has no list
-// to run.
+// serveCalls is serve with the verse runner hosting scripts, the way `verse up` does: a script
+// calls the task's tools with verse-call-tool, `ask` among them. A script is one action and no
+// step, so the agent `steps` is served beside it for a test about a gate: its prompt is actions
+// separated by `;`, `run <command>` a command (the `commands.run` step) and `ask <words>` the ask
+// tool, each in turn.
 func serveCalls(t *testing.T) entity.Store {
 	t.Helper()
 	root := t.TempDir()
-	build := func(l task.Launch, reg *task.Registry) *task.Task {
-		if l.Driver != task.DriverCalls {
-			return verserunner.NewScriptedTask(l, root, task.DefaultShellEnv, reg)
+	scripts := verserunner.New(verserunner.Config{}, verserunner.Secrets{}, root, io.Discard).Build
+	build := func(l runner.Launch, reg *task.Registry) *task.Task {
+		if l.Doer.Agent != "steps" {
+			return scripts(l, reg)
 		}
-		return agent.Calls(agent.Config{
-			ID: l.ID, Root: root, Resolver: reg,
-			Tools: l.Tools, Answer: l.Answer, Vector: l.Vector, Env: task.DefaultShellEnv,
-		}, l.Calls)
+		ask := agent.Ask(reg)
+		return task.NewTask(l.ID, task.NewSupervisor(l.Policy, reg), &stepsDriver{prompt: l.Prompt}, stepsExec{ask: ask})
 	}
 	store := entitytest.Store(t)
 	srv := versed.NewWithStore(build, store)
@@ -44,6 +49,37 @@ func serveCalls(t *testing.T) entity.Store {
 	t.Cleanup(ts.CloseClientConnections)
 	testAddr = strings.TrimPrefix(ts.URL, "http://")
 	return store
+}
+
+// stepsDriver proposes the prompt's actions in turn: `run <command>` as `run_bash`, a command
+// run, and `ask <words>` as the ask tool.
+type stepsDriver struct {
+	prompt string
+	i      int
+}
+
+func (d *stepsDriver) Next(context.Context, task.StepResult) (task.ToolUse, bool, error) {
+	actions := strings.Split(d.prompt, ";")
+	if d.i >= len(actions) {
+		return task.ToolUse{}, false, nil
+	}
+	a := strings.TrimSpace(actions[d.i])
+	d.i++
+	if words, ok := strings.CutPrefix(a, "ask "); ok {
+		return task.ToolUse{Name: "ask", Input: map[string]any{"question": words}}, true, nil
+	}
+	return task.ToolUse{Name: "run_bash", Input: map[string]any{"command": strings.TrimPrefix(a, "run ")}}, true, nil
+}
+
+// stepsExec performs them: a command echoes, an ask asks.
+type stepsExec struct{ ask agent.Tool }
+
+func (e stepsExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResult, []task.ToolUse, error) {
+	if tu.Name == "ask" {
+		out, blocked, err := e.ask.Do(ctx, tu)
+		return task.StepResult{Use: tu, Output: out, Blocked: blocked}, nil, err
+	}
+	return task.StepResult{Use: tu, Output: "ran"}, nil, nil
 }
 
 // syncBuf is an output a test can read while the command is still writing it.
@@ -122,13 +158,30 @@ func pendingQuestionFor(t *testing.T, store entity.Store, taskID string) string 
 	return ""
 }
 
-const askDoc = `{calls: [{tool: ask, input: {question: "which one?"}}]}`
+const askScript = `verse-call-tool question-ask -question "which one?"`
+
+// policyFile is a policy for `--policy`, written to a file of the test's: rows is the policy,
+// in tony.
+func policyFile(t *testing.T, rows string) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "policy.tony")
+	if err := os.WriteFile(p, []byte(rows), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// asking is the policy a script that asks runs under: the question is its, and nothing else.
+const asking = "- {match: {system: question}, then: allow}\n- {then: deny}\n"
+
+// gating is the policy the `steps` agent runs under for a test about a gate: its commands ask.
+const gating = "- {match: {system: commands}, then: ask}\n- {then: ask}\n"
 
 // AN ANSWER IN WORDS REACHES THE TASK as the ask's result, from the attach prompt.
 func TestAttachAnswersAnAskInWords(t *testing.T) {
 	serveCalls(t)
 	out, done := runCLIIn(t, strings.NewReader("the second\n"),
-		"task", "run", "--driver", "calls", "--attach", "--as", "user:t", askDoc)
+		"task", "run", "--script", askScript, "--policy", policyFile(t, asking), "--attach", "--as", "user:t")
 	got := waitEnd(t, out, done)
 	if !strings.Contains(got, "user:t: the second") {
 		t.Fatalf("the answer did not reach the task as its result:\n%s", got)
@@ -143,7 +196,7 @@ func TestAttachAnswersAnAskInWords(t *testing.T) {
 func TestLinesTypedBeforeAnAskGoAsOneReply(t *testing.T) {
 	serveCalls(t)
 	out, done := runCLIIn(t, strings.NewReader("first\nsecond\n"),
-		"task", "run", "--driver", "calls", "--attach", "--as", "user:t", askDoc)
+		"task", "run", "--script", askScript, "--policy", policyFile(t, asking), "--attach", "--as", "user:t")
 	got := waitEnd(t, out, done)
 	if n := strings.Count(got, "→ sent"); n != 1 {
 		t.Fatalf("sent %d replies, want one:\n%s", n, got)
@@ -157,9 +210,8 @@ func TestLinesTypedBeforeAnAskGoAsOneReply(t *testing.T) {
 // the gate is answered by somebody who saw it.
 func TestALineTypedBeforeAGateIsNotItsAnswer(t *testing.T) {
 	store := serveCalls(t)
-	doc := `{calls: [{tool: run_bash, input: {command: "echo ran"}}, {tool: ask, input: {question: "and?"}}]}`
 	out, done := runCLIIn(t, strings.NewReader("hello\n"),
-		"task", "run", "--driver", "calls", "--vector", "ask", "--attach", "--as", "user:t", doc)
+		"task", "run", "--agent", "steps", "--policy", policyFile(t, gating), "--attach", "--as", "user:t", "run echo ran; ask and?")
 	waitFor(t, out, "answer it: verse question approve")
 	id := strings.TrimSpace(strings.SplitN(out.String(), "\n", 2)[0])
 	qid := pendingQuestionFor(t, store, id)
@@ -180,7 +232,7 @@ func TestALineTypedBeforeAGateIsNotItsAnswer(t *testing.T) {
 func TestEOFLeavesTheQuestionPending(t *testing.T) {
 	store := serveCalls(t)
 	out, done := runCLIIn(t, strings.NewReader(""),
-		"task", "run", "--driver", "calls", "--attach", "--as", "user:t", askDoc)
+		"task", "run", "--script", askScript, "--policy", policyFile(t, asking), "--attach", "--as", "user:t")
 	waitFor(t, out, "answer it: verse question")
 	id := strings.TrimSpace(strings.SplitN(out.String(), "\n", 2)[0])
 	qid := pendingQuestionFor(t, store, id)
@@ -196,11 +248,10 @@ func TestEOFLeavesTheQuestionPending(t *testing.T) {
 // A PROMPT TAKES A LINE TYPED AFTER IT, and asks again for anything that is not an answer.
 func TestAPromptTakesALineTypedAfterIt(t *testing.T) {
 	serveCalls(t)
-	doc := `{calls: [{tool: run_bash, input: {command: "echo ran"}}]}`
 	pr, pw := io.Pipe()
 	defer pw.Close()
 	out, done := runCLIIn(t, pr,
-		"task", "run", "--driver", "calls", "--vector", "ask", "--attach", "--as", "user:t", doc)
+		"task", "run", "--agent", "steps", "--policy", policyFile(t, gating), "--attach", "--as", "user:t", "run echo ran")
 	waitFor(t, out, "approve? [y/n]")
 	io.WriteString(pw, "maybe\n")
 	deadline := time.Now().Add(10 * time.Second)
@@ -243,9 +294,8 @@ func TestPromptTake(t *testing.T) {
 // and goes on.
 func TestATasksAskSettlesAtItsDeadline(t *testing.T) {
 	serveCalls(t)
-	doc := `{calls: [{tool: ask, input: {question: "which one?", within: 1s}}]}`
 	out, done := runCLIIn(t, strings.NewReader(""),
-		"task", "run", "--driver", "calls", "--attach", "--as", "user:t", doc)
+		"task", "run", "--script", `verse-call-tool question-ask -question "which one?" -within 1s`, "--policy", policyFile(t, asking), "--attach", "--as", "user:t")
 	got := waitEnd(t, out, done)
 	if !strings.Contains(got, "nobody answered within 1s") {
 		t.Fatalf("the task did not read that its question ran out:\n%s", got)

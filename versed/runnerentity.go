@@ -10,6 +10,7 @@ import (
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/runner"
 )
 
 // runnersSystem is where installed runners live: `verse.runners.<name>`.
@@ -45,7 +46,16 @@ type runnerEntity struct {
 	// reports are written as, and what the spawn grants `read-write` and `control` on the task. A runner acts as itself,
 	// not as whoever installed it or whoever's work it runs. Defaults to the runner's name.
 	Identity string `tony:"field=identity,omitzero"`
+	// Offers is what the runner offers, as it described itself (GET /describe) when it was
+	// installed or last checked: the agents and scripts it runs, and what each takes. Verse
+	// writes it, from the runner, and checks a spawn naming this runner against it. None is a
+	// runner that was installed unprobed, or has not described itself yet; its launches are
+	// checked by the runner alone.
+	Offers []runner.Offer `tony:"field=offers,omitzero"`
 }
+
+// Description is what the runner offers, as a description.
+func (e runnerEntity) Description() runner.Description { return runner.Description{Offers: e.Offers} }
 
 // Principal is who the runner acts as: `runner:` its identity, or its name.
 func (e runnerEntity) Principal() string {
@@ -119,6 +129,10 @@ func checkRunnerFields(node *ir.Node) error {
 			want = append(want, k)
 		}
 		sort.Strings(want)
+		if name == "offers" {
+			return fmt.Errorf("runner `offers:` is read from the runner, which describes itself " +
+				"when it is installed and checked; it is not written by hand")
+		}
 		return fmt.Errorf("runner has no field %q (want any of %s) — an unknown field decodes "+
 			"silently, and url is the whole of what this entity carries", name, strings.Join(want, ", "))
 	}

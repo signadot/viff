@@ -2,10 +2,10 @@
 
 The reasons behind [An automatic supervisor](../auto-supervisor.md). They are for somebody changing verse; the page itself says what verse does.
 
-## Why `vector: auto` for the supervisor
+## Why `then: allow` for the supervisor
 
-`vector: auto` is consistent with the design, not lax. With a read-only grant, there is nothing
-left to ask about. If a person had to confirm each `read_file`, the questions would pile up, and
+`then: allow` as the supervisor's last row is consistent with the design, not lax. With its writes and commands refused
+by gates, there is nothing left to ask about. If a person had to confirm each `read_file`, the questions would pile up, and
 people would stop reading the questions that matter.
 
 ## Why the promotion comes before the action

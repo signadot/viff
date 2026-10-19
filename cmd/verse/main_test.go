@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -27,9 +29,24 @@ func TestMain(m *testing.M) {
 		os.Unsetenv(k)
 	}
 	os.Setenv("VERSE_USER", tester)
+	// The scripts these tests run call the task's tools with verse-call-tool, which the
+	// embedded runner finds on PATH: built once, here, from the tree under test.
+	if err := buildCallTool(dir); err != nil {
+		panic(err)
+	}
 	code := m.Run()
 	os.RemoveAll(dir)
 	os.Exit(code)
+}
+
+// buildCallTool builds verse-call-tool into dir and puts dir first on PATH.
+func buildCallTool(dir string) error {
+	bin := filepath.Join(dir, "verse-call-tool")
+	cmd := exec.Command("go", "build", "-o", bin, "github.com/signadot/verse/cmd/verse-call-tool")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("building verse-call-tool: %v\n%s", err, out)
+	}
+	return os.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
 // tester is who the package's CLI acts as unless a test says otherwise.

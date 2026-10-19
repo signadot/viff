@@ -155,6 +155,27 @@ func (e *Engine) vet(t Trigger, as string) (bool, error) {
 	if err := t.Action.validate(); err != nil {
 		return false, fmt.Errorf("trigger %q: %w", t.Name, err)
 	}
+	// AGAINST WHAT THE RUNNER OFFERS, where the author is present: a spawn naming an agent its
+	// runner does not offer, a model it does not take, or repos on a forge it has none on is
+	// refused here, with the offers named, rather than failing at its first firing.
+	if e.offerCheck != nil {
+		var refused error
+		t.Action.eachSpawn(t.Name, func(chain string, spec *launch.Spec) {
+			if refused != nil {
+				return
+			}
+			l, known := installLaunch(*spec)
+			if !known {
+				return // the doer is picked or bound at the firing, and checked against its runner then
+			}
+			if err := e.offerCheck(spec.Runner, l); err != nil {
+				refused = fmt.Errorf("trigger %q: spawn: %w", chain, err)
+			}
+		})
+		if refused != nil {
+			return false, refused
+		}
+	}
 	// A RULE THAT DOES NOTHING IS REFUSED. It installed, reported "installed 1 trigger(s)",
 	// rendered back with `action: {}`, and then watched its subtree for the life of the verse
 	// without ever writing anything (git-issue b2g9hsnfh12ks5vqg9n0).
@@ -498,7 +519,7 @@ func (e *Engine) Triggers() []Trigger {
 const ChainSep = "@"
 
 // AtSep and ScopeSep bound WHICH ENGINE minted an id from the chain it was minted for, in every
-// id a firing mints — its task, its gate question, its provider selection. A rule is (scope,
+// id a firing mints — its task, its gate question. A rule is (scope,
 // charter address, name), and names are unique only within an engine, while every engine of a
 // verse shares one runtime and one question registry: without the two, baseline's `review` and
 // a package's `review` about one subject would spawn under one task id and wait on one question.
@@ -960,17 +981,17 @@ func payloadPaths(payload entity.Payload) map[string]entity.Payload {
 	return out
 }
 
-// ParseMode maps a gate mode name to a task.Mode.
-func ParseMode(s string) (task.Mode, error) {
+// ParseMode maps a gate mode name to a Mode.
+func ParseMode(s string) (Mode, error) {
 	switch s {
 	case "auto", "":
-		return task.Auto, nil
+		return ModeAuto, nil
 	case "ask":
-		return task.Ask, nil
+		return ModeAsk, nil
 	case "park", "hold":
-		return task.Park, nil
+		return ModePark, nil
 	default:
-		return task.Auto, fmt.Errorf("unknown gate mode %q (want auto|ask|park)", s)
+		return ModeAuto, fmt.Errorf("unknown gate mode %q (want auto|ask|park)", s)
 	}
 }
 
@@ -984,18 +1005,30 @@ func ParseMode(s string) (task.Mode, error) {
 // The spawn's own gates are checked the same way, since a task's questions are posed under
 // them; a hook's spawn beneath the action is not walked here.
 func (e *Engine) checkAnswerers(t Trigger) error {
-	var gates []task.Gate
+	var policy task.Policy
 	if t.Action.Spawn != nil {
-		gates = t.Action.Spawn.Gates
+		policy = t.Action.Spawn.Policy
 	}
 	for i, g := range t.AllGates() {
-		if err := e.checkGateAnswerers(g.Answerers, g.Need, g.Options); err != nil {
+		if err := e.checkGateAnswerers(g.Answerers, g.Need, nil); err != nil {
 			return fmt.Errorf("trigger %q gates[%d]: %w", t.Name, i, err)
 		}
 	}
-	for i, g := range gates {
-		if err := e.checkGateAnswerers(g.Answerers, g.Need, g.Options); err != nil {
-			return fmt.Errorf("trigger %q spawn.gates[%d]: %w", t.Name, i, err)
+	if err := e.CheckPolicyAnswerers(policy); err != nil {
+		return fmt.Errorf("trigger %q spawn.%w", t.Name, err)
+	}
+	return nil
+}
+
+// CheckPolicyAnswerers checks each ask row's answerers as a gate's are checked (checkAnswerers):
+// for a policy a charter's spawn carries, a run started by hand, or a replacement.
+func (e *Engine) CheckPolicyAnswerers(p task.Policy) error {
+	for i, r := range p {
+		if r.Then.Ask == nil {
+			continue
+		}
+		if err := e.checkGateAnswerers(r.Then.Ask.Answerers, r.Then.Ask.Need, nil); err != nil {
+			return fmt.Errorf("policy[%d]: %w", i, err)
 		}
 	}
 	return nil

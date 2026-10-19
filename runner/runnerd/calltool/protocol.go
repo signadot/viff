@@ -4,17 +4,17 @@ import (
 	"fmt"
 
 	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/runner/runnerd/verserunner/agent"
 )
 
 // Env is the environment variable that names the socket, as the task process sets it for the
 // programs it runs and as verse-call-tool reads it.
 const Env = "VERSE_TOOLS"
 
-// Tool is one tool as the shell sees it: what the model is told about it (agent.Tool), less the
-// code. The params are JSON-schema properties, and `enum` on one is the vocabulary the server
-// accepts — verse-call-tool shows it in a tool's usage and refuses a value outside it before
-// the call crosses.
+// Tool is one tool as the shell sees it: what the model is told about it, less the code. A host
+// offers its tools as these, with params as it has them; the server describes them (Describe).
+// The params are JSON-schema properties, and `enum` on one is the vocabulary the server accepts
+// — verse-call-tool shows it in a tool's usage and refuses a value outside it before the call
+// crosses.
 type Tool struct {
 	Name        string         `tony:"field=name"`
 	Description string         `tony:"field=description,omitzero"`
@@ -32,7 +32,7 @@ const Reserved = "input"
 // as whatever Go slice it has to hand, and the check reads one shape. A schema the codec cannot
 // carry, or a parameter named Reserved, is the error: such a tool cannot be listed, and is not
 // described with a schema its check would then quietly skip. Server.Start refuses it.
-func Describe(t agent.Tool) (Tool, error) {
+func Describe(t Tool) (Tool, error) {
 	if _, has := t.Params[Reserved]; has {
 		return Tool{}, fmt.Errorf("calltool: %s has a parameter named %q, which verse-call-tool reserves for the whole input", t.Name, Reserved)
 	}

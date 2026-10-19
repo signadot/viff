@@ -14,13 +14,6 @@ import (
 // The point of testing them is that they used to be inferrable only from the order of nine
 // statements in Run, which is not a place anybody can disagree with a policy.
 
-// askOn returns a vector that stops on one tool by name.
-func askOn(tool string) *Vector {
-	return &Vector{Default: Auto, Gates: []Gate{
-		{Name: "g", Mode: Ask, Match: GateMatch{Tools: []string{tool}}},
-	}}
-}
-
 // An INTERVENTION preempts a standing question: the question is abandoned, the action is not
 // taken, and the driver is told so as a refusal it can re-plan around.
 //
@@ -37,7 +30,7 @@ func TestASayWithdrawsAStandingQuestion(t *testing.T) {
 	dropped := make(chan string, 4)
 	reg.OnDrop(func(_ GateQuestion, why string) { dropped <- why })
 
-	p := NewTask("t", NewSupervisor(askOn("A"), reg), d, ex)
+	p := NewTask("t", toolSup(askOn("A"), reg), d, ex)
 	p.SetLog(io.Discard)
 	// Nobody ever answers. The say is the discharge — which is the whole point: a wait whose
 	// only exit is a person choosing to look is a wait that fails the contract.
@@ -99,8 +92,8 @@ func TestAPauseWithdrawsAStandingQuestionAndAResumeDoesNot(t *testing.T) {
 		act      func(*Task)
 		withdraw bool
 	}{
-		{"pause", func(p *Task) { p.Pause() }, true},
-		{"resume", func(p *Task) { p.Resume() }, false},
+		{"pause", func(p *Task) { p.Pause("") }, true},
+		{"resume", func(p *Task) { p.Resume("") }, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			d := &scriptDriver{steps: []ToolUse{tool("A")}}
@@ -108,7 +101,7 @@ func TestAPauseWithdrawsAStandingQuestionAndAResumeDoesNot(t *testing.T) {
 			dropped := make(chan string, 4)
 			reg.OnDrop(func(q GateQuestion, _ string) { dropped <- q.ID })
 
-			p := NewTask("t", NewSupervisor(askOn("A"), reg), d, &recExec{})
+			p := NewTask("t", toolSup(askOn("A"), reg), d, &recExec{})
 			p.SetLog(io.Discard)
 			var once sync.Once
 			reg.OnPost(func(pd Pending) {
@@ -118,8 +111,8 @@ func TestAPauseWithdrawsAStandingQuestionAndAResumeDoesNot(t *testing.T) {
 						time.Sleep(50 * time.Millisecond)
 						// Whatever happened to the question, this run has to be able to end.
 						reg.Answer(pd.Question.ID, Resolution{Proceed: false, By: "human:test"})
-						p.Resume()
-						p.Cancel("done here")
+						p.Resume("")
+						p.Cancel("done here", "")
 					}()
 				})
 			})
@@ -139,49 +132,6 @@ func TestAPauseWithdrawsAStandingQuestionAndAResumeDoesNot(t *testing.T) {
 	}
 }
 
-// A POLICY CHANGE does not. Sliding a running task to AUTO says "stop asking me about actions
-// like this", not "approve the one already in front of me" — and dissolving the pending
-// question would turn a policy change into approval of a specific action nobody looked at. The
-// operator never saw what was being asked, and an envelope that widens is not consent to what
-// was already refused entry.
-//
-// So the standing question stands and is answered on its own terms; the new vector governs the
-// next evaluation.
-func TestAPolicyChangeLeavesAStandingQuestionStanding(t *testing.T) {
-	d := &steerDriver{steps: []ToolUse{tool("A")}}
-	reg := NewRegistry()
-
-	var mu sync.Mutex
-	var dropped int
-	reg.OnDrop(func(GateQuestion, string) { mu.Lock(); dropped++; mu.Unlock() })
-
-	p := NewTask("t", NewSupervisor(askOn("A"), reg), d, &recExec{})
-	p.SetLog(io.Discard)
-	var once sync.Once
-	reg.OnPost(func(pd Pending) {
-		once.Do(func() {
-			go func() {
-				// The slide arrives while the question is standing.
-				p.SetVector(&Vector{Default: Auto}, "human:test")
-				// Long enough for a machine that DID dissolve it to have done so, and for
-				// the drop to be recorded.
-				time.Sleep(50 * time.Millisecond)
-				reg.Answer(pd.Question.ID, Resolution{Proceed: false, By: "human:test"})
-			}()
-		})
-	})
-
-	if _, err := p.Run(context.Background()); err != nil {
-		t.Fatalf("run: %v", err)
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	if dropped != 0 {
-		t.Fatal("the autonomy slide dissolved a question that was already standing, which " +
-			"turns a policy change into approval of an action nobody looked at")
-	}
-}
-
 // A CHILD'S RESULT is not an operator input and does not preempt: it folds at the hinge, like
 // any other work the task produced for itself, and it never overtakes an action already
 // proposed. Preemption is for people.
@@ -192,11 +142,11 @@ func TestAChildsResultDoesNotOvertakeAProposedAction(t *testing.T) {
 	ran := make(chan struct{})
 	ex := &blockingExec{on: "slow", entered: ran, release: make(chan struct{})}
 
-	p := NewTask("p", NewSupervisor(autoVec(), AutoResolver{}), d, ex)
+	p := NewTask("p", toolSup(allowAll(), AutoResolver{}), d, ex)
 	p.SetLog(io.Discard)
 	childRelease := make(chan struct{})
-	p.SetSpawn(func(pt *Task, mode ChildMode, req *CallAgentRequest) (*Task, error) {
-		return pt.NewChild("kid", mode, req, &waitThenDone{release: childRelease}, &recExec{})
+	p.SetDelegate(func(pt *Task, req *CallAgentRequest) (*Task, error) {
+		return pt.NewChild("kid", req, &waitThenDone{release: childRelease}, &recExec{}), nil
 	})
 
 	done := make(chan Outcome, 1)
@@ -231,8 +181,7 @@ func (d *delegateThenAct) Next(context.Context, StepResult) (ToolUse, bool, erro
 	d.i++
 	switch d.i {
 	case 1:
-		return ToolUse{Name: "delegate", CallAgent: &CallAgentRequest{Agent: "kid",
-			Grant: Grant{Allow: []GateMatch{{}}}}}, true, nil
+		return ToolUse{Name: "delegate", CallAgent: &CallAgentRequest{Agent: "kid"}}, true, nil
 	case 2:
 		d.acting = true
 		return ToolUse{Name: "slow"}, true, nil
@@ -320,7 +269,7 @@ func TestAPausedQuestionIsAskedAgainOnResume(t *testing.T) {
 
 	var mu sync.Mutex
 	var asked []string
-	p := NewTask("t", NewSupervisor(askOn("A"), reg), d, ex)
+	p := NewTask("t", toolSup(askOn("A"), reg), d, ex)
 	p.SetLog(io.Discard)
 
 	reg.OnPost(func(pd Pending) {
@@ -332,9 +281,9 @@ func TestAPausedQuestionIsAskedAgainOnResume(t *testing.T) {
 			if n == 0 {
 				// The first asking is interrupted by a pause, which withdraws it. Resume, and
 				// the same action must be asked about again rather than reported as refused.
-				p.Pause()
+				p.Pause("")
 				time.Sleep(50 * time.Millisecond)
-				p.Resume()
+				p.Resume("")
 				return
 			}
 			reg.Answer(pd.Question.ID, Resolution{Proceed: true, By: "human:test"})

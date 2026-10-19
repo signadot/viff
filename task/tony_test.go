@@ -20,7 +20,7 @@ func TestTonyRoundTrip(t *testing.T) {
 		{"instance", Snapshot{
 			ID: "run-1", Prompt: "review", Driver: "llm", Status: Running,
 			Cursor:  7,
-			Pending: []PendingGate{{ID: "d1", Gate: "shell", Mode: "ask", Reason: "why"}},
+			Pending: []PendingGate{{ID: "d1", Gate: "shell", Step: StepCommandsRun, Fields: map[string]string{"command": "ls"}, Reason: "why"}},
 		}, func() any { return &Snapshot{} }},
 
 		{
@@ -31,22 +31,17 @@ func TestTonyRoundTrip(t *testing.T) {
 
 		{"frame", Event{
 			Kind: EventDecision, Task: "run-1", Cursor: 3, ID: "d1",
-			Gate: "shell", Mode: "ask", By: "user:walter@example.com", Proceed: true, Text: "ok",
+			Gate: "shell", Step: StepCommandsRun, Fields: map[string]string{"command": "ls"}, By: "user:walter@example.com", Proceed: true, Text: "ok",
 		}, func() any { return &Event{} }},
 
-		{"vector", Vector{Default: Ask, Gates: []Gate{{
-			Name: "shell", Mode: Park,
-			Match: GateMatch{
-				Tools:     []string{"bash*"},
-				Verbs:     []Verb{Exec, Write},
-				Resources: []ResourcePred{{Kind: KindFile, Pattern: "cmd/**"}},
-				Paths:     []PathPred{{Name: "*.go", Type: "glob"}},
-				Branches:  []string{"main"},
-				OnPush:    true,
-			},
-		}}}, func() any { return &Vector{} }},
+		{"policy", Policy{
+			{Name: "release", Match: &Match{System: "git", Verb: "push", Params: map[string]string{"repo": "signadot/verse", "ref": "refs/heads/release/*"}},
+				Then: Then{Mode: ThenAsk, Ask: &Ask{Need: 2, Within: "24h", Answerers: []string{"group:release"}, Default: "deny", Labels: map[string]string{"team": "release"}}}},
+			{Match: &Match{Verb: "push"}, Then: Then{Mode: ThenDeny}},
+			{Then: Then{Mode: ThenAsk}},
+		}, func() any { return &Policy{} }},
 
-		{"vector-minimal", Vector{Default: Auto}, func() any { return &Vector{} }},
+		{"policy-minimal", Policy{{Then: Then{Mode: ThenAllow}}}, func() any { return &Policy{} }},
 	}
 
 	for _, c := range cases {
@@ -78,44 +73,5 @@ func TestTonyOmitsUnsetFields(t *testing.T) {
 	got := strings.TrimSpace(string(b))
 	if got != "id: run-1\nstatus: running" {
 		t.Errorf("unset fields leaked into the document:\n%s", got)
-	}
-}
-
-// Mode, Status, Verb and ResourceKind are scalar vocabularies; they must read as their
-// names in a document, not as numbers.
-func TestScalarVocabulariesAreText(t *testing.T) {
-	b, err := codec.Marshal(Vector{
-		Default: Park,
-		Gates: []Gate{{Mode: Ask, Match: GateMatch{
-			Verbs:     []Verb{CallAgent},
-			Resources: []ResourcePred{{Kind: KindAgent}},
-		}}},
-	}, codec.Tony)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"park", "ask", "call-agent", "agent"} {
-		if !strings.Contains(string(b), want) {
-			t.Errorf("%q did not render as text: %s", want, b)
-		}
-	}
-}
-
-// A struct-valued field carrying `omitzero` is still emitted by generated code when empty.
-// The scalar and collection kinds were fixed in go-tony v0.0.89; this one was not
-// (tony-format#f69agjyeh12ksa25cnn0 item 12), and it shows up as `match: {}` on a gate with
-// no predicate — a default gate — in documents people author by hand.
-//
-// Accepted deliberately when codegen was adopted: nothing has to be undone when it lands,
-// the `{}` simply stops appearing. THIS TEST FAILING IS THAT MOMENT — delete it and the
-// note beside Gate.Match.
-func TestCodegenStillEmitsEmptyStructFields(t *testing.T) {
-	b, err := codec.Marshal(Vector{Default: Auto, Gates: []Gate{{Name: "default", Mode: Auto}}}, codec.Tony)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(b), "match: {}") {
-		t.Logf("`match: {}` is gone — go-tony now honors omitzero on struct-valued fields.\n"+
-			"Remove this test and the note on Gate.Match.\n%s", b)
 	}
 }

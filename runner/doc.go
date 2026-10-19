@@ -11,22 +11,33 @@
 // Each route's request and answer, and the file in this package that holds them. Each type's
 // comment opens with the route it crosses on.
 //
-//	Route                                   Request              Response                  File
-//	GET  /describe                          -                    Description               describe.go
-//	POST /tasks                             task.SpawnRequest    SpawnResponse             spawn.go
-//	GET  /tasks                             -                    []task.Snapshot
-//	GET  /tasks/{id}                        -                    task.Snapshot
-//	GET  /tasks/{id}/events?since=<cursor>  -                    SSE stream of task.Event
-//	POST /tasks/{id}/say                    SayRequest           204                       control.go
-//	POST /tasks/{id}/cancel                 CancelRequest        204                       control.go
-//	POST /tasks/{id}/resolve                ResolveRequest       204                       control.go
-//	POST /tasks/{id}/pause                  -                    204                       control.go
-//	POST /tasks/{id}/resume                 -                    204                       control.go
-//	PUT  /tasks/{id}/vector                 task.VectorRequest   204
+//	Route                                   Request         Response                File
+//	GET  /describe                          -               Description             describe.go
+//	POST /tasks                             Launch          task.Snapshot           launch.go
+//	GET  /tasks                             -               []task.Snapshot
+//	GET  /tasks/{id}                        -               task.Snapshot
+//	GET  /tasks/{id}/events?since=<cursor>  -               SSE stream of task.Event
+//	POST /tasks/{id}/say                    SayRequest      204                     control.go
+//	POST /tasks/{id}/cancel                 CancelRequest   204                     control.go
+//	POST /tasks/{id}/resolve                ResolveRequest  204                     control.go
+//	POST /tasks/{id}/pause                  PauseRequest    204                     control.go
+//	POST /tasks/{id}/resume                 ResumeRequest   204                     control.go
+//	PUT  /tasks/{id}/policy                 PolicyRequest   204                     control.go
 //
-// The launch (task.SpawnRequest) and the vector (task.VectorRequest) are still the task
-// engine's; the launch is replaced here, and the vector removed, in the next step of the
-// runners plan (2a).
+// # Names
+//
+// What the API returns is named for what it is: Description, task.Snapshot, task.Event. The body
+// of a command is named for the command, <Command>Request, and says who gave it (`by`). A task
+// starts from a Launch: the spawn a charter wrote, as verse resolved it for one firing, with
+// verse's references filled in, and an id. "Spawn" is verse's word,
+// for the charter's declaration and the act of firing it; "launch" is the runner's, for the
+// concrete request it receives. POST /tasks answers with the task's snapshot: 201 when it
+// started the task, 200 when the task was already running.
+//
+// The launch's policy is the task's (task.Policy), since the task's steps are decided under it,
+// and PUT /tasks/{id}/policy replaces it on a running task. A runner checks a launch as it
+// arrives and refuses what it can't honour with `400` and the reason (runnerd.CheckLaunch), and
+// a new policy the same way (runnerd.CheckPolicy).
 //
 // Bodies are tony by default; a request's Content-Type and Accept pick the format. A refusal
 // is a status, and the client reads each as one of the errors in task/errors.go.

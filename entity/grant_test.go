@@ -131,7 +131,7 @@ func TestParseGrants(t *testing.T) {
 	for _, bad := range []string{
 		`{grants: [{at: [demo], read: [user]}]}`,
 		`{grants: [{at: [demo], read: [verse.principal.group.release]}]}`,
-		`{grants: [{at: [demo], control: [coderunner]}]}`,
+		`{grants: [{at: [demo], control: [verse-runner]}]}`,
 	} {
 		if _, err := entity.ParseGrants(nil, mustParse(t, bad)); err == nil || !strings.Contains(err.Error(), entity.Grammar()) {
 			t.Errorf("%s: %v, want a refusal quoting the grammar", bad, err)

@@ -36,7 +36,7 @@ func TestSubscribeSinceReplaysAfterCursor(t *testing.T) {
 // carrying the current cursor), telling the consumer to re-read the snapshot.
 func TestSubscribeSinceBelowWatermarkResyncs(t *testing.T) {
 	p := &Task{ID: "t"}
-	for i := 0; i < ringCap+10; i++ { // overflow the ring; low-watermark rises past 1
+	for i := 0; i < RingCap+10; i++ { // overflow the ring; low-watermark rises past 1
 		p.Emit(Event{Kind: EventSay})
 	}
 	ch, unsub := p.SubscribeSince(1) // 1 is now below the retained window

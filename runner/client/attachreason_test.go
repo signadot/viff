@@ -11,17 +11,17 @@ import (
 	"github.com/signadot/verse/task"
 )
 
-// A task that failed at spawn has no stream, and what a reader needs then is not the news
+// A task that failed at launch has no stream, and what a reader needs then is not the news
 // that there is no stream.
 //
 // Attaching to one answered `subscribe <id>: 404 page not found` — honest about the question
-// it was asked, and silent about the run. Meanwhile the runner's own record said: "spawn
-// refused by http://coderunner:9802: the task process exited before it served anything (exit
+// it was asked, and silent about the run. Meanwhile the runner's own record said: "launch
+// refused by http://verse-runner:9802: the task process exited before it served anything (exit
 // status 1) — its output is on this runner's log, tagged <id>". The first is a fact about a
 // route; the second ends the investigation. Getting from one to the other cost three trips
 // to `kubectl logs` (git-issue ykpt9g3eh12kss9wfhn0).
 func TestAttachToAFailedTaskReportsWhyItFailed(t *testing.T) {
-	const reason = "spawn refused: the task process exited before it served anything (exit status 1)"
+	const reason = "launch refused: the task process exited before it served anything (exit status 1)"
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// The events route has nothing to forward — the truthful 404 that used to be the

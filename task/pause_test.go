@@ -37,12 +37,12 @@ func TestPauseGateChainIsSubtree(t *testing.T) {
 func TestSubtreePauseHoldsAndResumes(t *testing.T) {
 	reached := make(chan int, 16)
 	d := &scriptDriver{steps: []ToolUse{tool("a"), tool("b"), tool("c")}}
-	p := NewTask("t", NewSupervisor(autoVec(), AutoResolver{}), d, &recExec{})
+	p := NewTask("t", toolSup(allowAll(), AutoResolver{}), d, &recExec{})
 	paused := make(chan struct{})
 	p.onEnterBoundary = func(seq int) {
 		reached <- seq
 		if seq == 2 {
-			p.Pause()
+			p.Pause("")
 			close(paused)
 		}
 	}
@@ -64,7 +64,7 @@ func TestSubtreePauseHoldsAndResumes(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 
-	p.Resume()
+	p.Resume("")
 	if got := <-reached; got != 3 {
 		t.Fatalf("after resume, next boundary = %d, want 3", got)
 	}
@@ -74,11 +74,11 @@ func TestSubtreePauseHoldsAndResumes(t *testing.T) {
 // Cancel outranks pause: a cancelled, paused loop still exits.
 func TestCancelOutranksPause(t *testing.T) {
 	d := &scriptDriver{steps: []ToolUse{tool("a"), tool("b"), tool("c")}}
-	p := NewTask("t", NewSupervisor(autoVec(), AutoResolver{}), d, &recExec{})
+	p := NewTask("t", toolSup(allowAll(), AutoResolver{}), d, &recExec{})
 	paused := make(chan struct{})
 	p.onEnterBoundary = func(seq int) {
 		if seq == 2 {
-			p.Pause()
+			p.Pause("")
 			close(paused)
 		}
 	}
@@ -87,7 +87,7 @@ func TestCancelOutranksPause(t *testing.T) {
 	go func() { p.Run(context.Background()); close(done) }()
 
 	<-paused
-	p.Cancel("test") // while held at boundary 2
+	p.Cancel("test", "") // while held at boundary 2
 	select {
 	case <-done: // exited despite being paused
 	case <-time.After(2 * time.Second):

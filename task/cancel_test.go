@@ -17,7 +17,7 @@ func (d *callN) Next(_ context.Context, _ StepResult) (ToolUse, bool, error) {
 	if d.i < len(d.agents) {
 		a := d.agents[d.i]
 		d.i++
-		return ToolUse{Name: "call-" + a, CallAgent: &CallAgentRequest{Agent: a, Grant: Grant{Allow: []GateMatch{{}}}}}, true, nil
+		return ToolUse{Name: "call-" + a, CallAgent: &CallAgentRequest{Agent: a}}, true, nil
 	}
 	return ToolUse{}, false, nil
 }
@@ -60,9 +60,11 @@ func TestSubtreeCancelJoinsBottomUp(t *testing.T) {
 	blocked := make(chan struct{})
 	childDrv := &blockAfter{steps: []ToolUse{tool("csetup")}, blocked: blocked}
 
-	parent := NewTask("p", NewSupervisor(autoVec(), AutoResolver{}), &callThenDone{}, &recExec{})
-	parent.SetSpawn(func(pTask *Task, mode ChildMode, req *CallAgentRequest) (*Task, error) {
-		return pTask.NewChild("kid", mode, req, childDrv, childExec)
+	parent := NewTask("p", toolSup(allowAll(), AutoResolver{}), &callThenDone{}, &recExec{})
+	log := &syncLog{}
+	parent.SetLog(log)
+	parent.SetDelegate(func(pTask *Task, req *CallAgentRequest) (*Task, error) {
+		return pTask.NewChild("kid", req, childDrv, childExec), nil
 	})
 
 	type result struct {
@@ -76,7 +78,7 @@ func TestSubtreeCancelJoinsBottomUp(t *testing.T) {
 	}()
 
 	<-blocked // child is running and blocked; the parent is awaiting it
-	parent.Cancel("test")
+	parent.Cancel("test", "")
 	r := <-done
 
 	if r.oc.Reason != "cancelled" {
@@ -93,14 +95,8 @@ func TestSubtreeCancelJoinsBottomUp(t *testing.T) {
 		t.Fatalf("child did not unwind on cancel: %v", childExec.order)
 	}
 	// and the parent joined it before returning (no orphan)
-	joined := false
-	for _, l := range parent.Journal() {
-		if strings.Contains(l, "kid joined on exit") {
-			joined = true
-		}
-	}
-	if !joined {
-		t.Fatalf("parent did not join the child bottom-up: %v", parent.Journal())
+	if !strings.Contains(log.String(), "kid joined on exit") {
+		t.Fatalf("parent did not join the child bottom-up:\n%s", log.String())
 	}
 }
 
@@ -113,19 +109,19 @@ func TestFailFastCancelsSiblings(t *testing.T) {
 	bBlocked := make(chan struct{})
 	bDrv := &blockAfter{steps: []ToolUse{tool("bsetup")}, blocked: bBlocked}
 
-	parent := NewTask("p", NewSupervisor(autoVec(), AutoResolver{}), &callN{agents: []string{"A", "B"}}, &recExec{})
+	parent := NewTask("p", toolSup(allowAll(), AutoResolver{}), &callN{agents: []string{"A", "B"}}, &recExec{})
 	parent.SetFailFast(true)
-	parent.SetSpawn(func(pTask *Task, mode ChildMode, req *CallAgentRequest) (*Task, error) {
+	parent.SetDelegate(func(pTask *Task, req *CallAgentRequest) (*Task, error) {
 		if req.Agent == "A" {
-			return pTask.NewChild("childA", mode, req, &blockThenErr{release: releaseA}, aExec)
+			return pTask.NewChild("childA", req, &blockThenErr{release: releaseA}, aExec), nil
 		}
-		return pTask.NewChild("childB", mode, req, bDrv, bExec)
+		return pTask.NewChild("childB", req, bDrv, bExec), nil
 	})
 
 	done := make(chan struct{})
 	go func() { parent.Run(context.Background()); close(done) }()
 
-	<-bBlocked      // both children spawned; B blocked; A blocked on releaseA
+	<-bBlocked      // both children started; B blocked; A blocked on releaseA
 	close(releaseA) // A errors → fail-fast cancels B
 	<-done
 
@@ -162,7 +158,7 @@ func (e *inFlightExec) Execute(_ context.Context, tu ToolUse) (StepResult, []Too
 // left no trace at all and the run read as one where nothing had been tried.
 func TestAnActionCancelledInFlightIsRecordedAsUnknown(t *testing.T) {
 	e := &inFlightExec{started: make(chan struct{}), release: make(chan struct{})}
-	p := NewTask("t", NewSupervisor(autoVec(), AutoResolver{}), &scriptDriver{steps: []ToolUse{tool("push")}}, e)
+	p := NewTask("t", toolSup(allowAll(), AutoResolver{}), &scriptDriver{steps: []ToolUse{tool("push")}}, e)
 
 	frames, cancelSub := p.Subscribe()
 	defer cancelSub()
@@ -170,7 +166,7 @@ func TestAnActionCancelledInFlightIsRecordedAsUnknown(t *testing.T) {
 	go func() { _, _ = p.Run(context.Background()); close(done) }()
 
 	<-e.started
-	p.Cancel("operator changed their mind")
+	p.Cancel("operator changed their mind", "")
 	close(e.release)
 	<-done
 

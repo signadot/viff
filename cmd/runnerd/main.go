@@ -1,4 +1,4 @@
-// Command runnerd runs one of the runners verse ships: a program that does the work a spawn
+// Command runnerd runs one of the runners verse ships: a program that does the work a launch
 // describes, and that verse reaches over a URL.
 //
 //	runnerd verse -config verse-runner.tony   # verse's own agent, and scripts

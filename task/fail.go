@@ -6,12 +6,12 @@ import (
 )
 
 // NewFailed builds a task that terminates immediately with msg as its error — used
-// when a spawn cannot be honored (e.g. an `llm` driver requested with no creds). The
-// point is that *that spawn* errors while the engine keeps running: it is hosted like
+// when a launch cannot be honoured (e.g. the agent, on a runner with no model key). The
+// point is that *that launch* fails while the engine keeps running: it is hosted like
 // any task (visible via `task get`, status error), rather than a nil that
 // vanishes or a panic that stops the loop.
 func NewFailed(id string, reg Resolver, msg string) *Task {
-	sup := NewSupervisor(&Vector{Default: Auto}, reg)
+	sup := NewSupervisor(Policy{{Then: Then{Mode: ThenAllow}}}, reg) // nothing to start, so nothing to ask
 	return NewTask(id, sup, failDriver{msg: msg}, nopExec{})
 }
 

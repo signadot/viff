@@ -21,14 +21,14 @@ Also written: the agent root.
 
 See [Starting a verse](../reference/up.md#the-agent-root).
 
-## Ios
+## Iods
 
 ### reflection
 
 A reflection is one answer of a source. Its `entities` are what the source read. Its `covers`
 say where the answer is complete.
 
-See [Ios (reference)](../reference/io.md#the-contract-an-io-serves).
+See [Iods (reference)](../reference/io.md#the-contract-an-iod-serves).
 
 ### cover (of a reflection)
 
@@ -36,7 +36,7 @@ A cover of a reflection is a pattern under which the reflection is complete, suc
 `git.verse.ref.*`. Verse removes a stored entity that a cover reaches and that the reflection
 does not hold.
 
-See [Ios (reference)](../reference/io.md#the-contract-an-io-serves).
+See [Iods (reference)](../reference/io.md#the-contract-an-iod-serves).
 
 ### converge
 
@@ -45,14 +45,14 @@ what a cover reaches and the reflection does not hold.
 
 The page [Convergence](../convergence.md) is about how rules come to rest.
 
-See [Ios](../io.md#the-seam-a-source-answers-verse-converges).
+See [Iods](../io.md#the-seam-a-source-answers-verse-converges).
 
 ### tombstone
 
 To tombstone an entity is to remove it from the store because its external system does not
 hold it any more.
 
-See [Ios](../io.md#the-seam-a-source-answers-verse-converges).
+See [Iods](../io.md#the-seam-a-source-answers-verse-converges).
 
 ### reflector
 
@@ -60,11 +60,11 @@ The reflector is the part of verse that drives one installed source. It asks for
 reflection every minute, and for a part of one when a hint arrives. It converges the store
 with each answer.
 
-See [Ios (reference)](../reference/io.md#the-reflector).
+See [Iods (reference)](../reference/io.md#the-reflector).
 
 ### iod
 
-`iod` is the binary that holds the five ios that verse ships. Each is a subcommand: `git`,
+`iod` is the binary that holds the five iods that verse ships. Each is a subcommand: `git`,
 `git-issue`, `slack`, `linear` and `github`.
 
 See [iod](../reference/iod.md).
@@ -72,7 +72,7 @@ See [iod](../reference/iod.md).
 ### mirror (of a git repository)
 
 A mirror of a git repository is a copy of a remote repository, kept fetched.
-`iod git -mirror <url>` reflects from one, and the coderunner example clones from one.
+`iod git -mirror <url>` reflects from one, and the verse runner clones a task's checkout from one.
 
 In a page about git, "mirror" has this meaning.
 

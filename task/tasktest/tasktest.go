@@ -46,7 +46,7 @@ import (
 // Spec describes the task a producer should start, and how (or whether) to drive it to a
 // terminal state. Outcome is part of the spec rather than a later call because the two
 // producers differ on exactly this: a runnerd task begins executing the instant it is
-// spawned and cannot be told to fail afterward, while a relayed one waits for a worker to
+// launched and cannot be told to fail afterward, while a relayed one waits for a worker to
 // report. Naming the intent up front is the only phrasing both can honor.
 type Spec struct {
 	Driver  string      // the driver name the caller asked for
@@ -90,7 +90,7 @@ func Run(t *testing.T, p Producer) {
 	t.Run(p.Name()+"/gate-reason-survives", func(t *testing.T) { gateReasonSurvives(t, p) })
 }
 
-// The driver a spawn asked for is readable back off the task.
+// The doer a launch asked for is readable back off the task.
 //
 // It is the only durable record of WHO was picked when the doer came from a `provider`
 // selection, and an auto selection deliberately opens no motion — so if the snapshot drops
@@ -99,7 +99,7 @@ func driverIsReported(t *testing.T, p Producer) {
 	id := p.Start(t, Spec{Driver: "scripted"})
 	inst := snapshot(t, p, id)
 	if inst.Driver != "scripted" {
-		t.Errorf("Driver = %q, want scripted — the spawn's chosen doer must be readable back", inst.Driver)
+		t.Errorf("Driver = %q, want scripted — the launch's chosen doer must be readable back", inst.Driver)
 	}
 }
 

@@ -16,6 +16,7 @@ package trigger
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
@@ -453,10 +455,24 @@ func (g Gate) validate() error {
 	return nil
 }
 
-// mode resolves the gate's autonomy mode. Empty is auto, unless the gate carries a
+// mode resolves the gate's mode. Empty is auto, unless the gate carries a
 // threshold, options or a deadline — a question shaped for somebody to answer — and then it
 // is ask.
-func (g Gate) mode() (task.Mode, error) {
+// Mode is how a rule's gate decides: `auto` passes the firing without asking, `ask` poses a
+// question and waits, `park` holds the firing until somebody releases it. A rule's gate is
+// verse's own (the firing's), so these are verse's words and not the runner's.
+type Mode string
+
+const (
+	ModeAuto Mode = "auto"
+	ModeAsk  Mode = "ask"
+	ModePark Mode = "park"
+)
+
+// Blocks reports whether the mode holds the firing for somebody: ask and park do, auto does not.
+func (m Mode) Blocks() bool { return m != ModeAuto }
+
+func (g Gate) mode() (Mode, error) {
 	m := g.Mode
 	if m == "" && g.asks() {
 		m = "ask"
@@ -819,19 +835,6 @@ func (a Action) validate() error {
 		return fmt.Errorf("action has both `spawn` and `seq`: which one the sequence waits " +
 			"for would be a coin flip. Put the spawn in the sequence as its first element")
 	}
-	// A governed selection needs a ceiling to select within. A provider entity is an ordinary
-	// entity — anyone who can write one can create a doer — so a doer's `grant` is only safe
-	// as a NARROWING of something the charter declared. An omitted grant is not a small
-	// ceiling but an unbounded one (task.Launch.Grant nil = unbounded), which would make
-	// "a provider may only narrow" a check against everything. Refuse at install, where the
-	// charter's author is present to answer, rather than at fire time: `grant: all` is
-	// spellable precisely so a charter can SAY it means unbounded instead of omitting it.
-	if a.Spawn != nil && a.Spawn.Provider != nil && a.Spawn.Grant == "" {
-		return fmt.Errorf("spawn declares `provider:` but no `grant:`: a selected doer may " +
-			"carry its own grant, and that is only checkable against a ceiling the charter " +
-			"states. Add one (`grant: read-only`, `no-delegate`, `none`) — or `grant: all` to " +
-			"say the selection is deliberately unbounded")
-	}
 	// WHOSE AUTHORITY A TASK CARRIES is the charter's to ask for and the engine's to find out:
 	// `as: subject` says "with whoever owns the record this is about", and the engine reads who
 	// that is at the firing. A charter naming the asker itself would be naming whoever it liked
@@ -862,24 +865,32 @@ func (a Action) validate() error {
 					"not derived, so text in the subject cannot choose which system a token is good for", aud)
 			}
 		}
-		// Which repositories the task works in, and what it may push: the shape is checked here,
-		// with the author present, so a `push` on a repository that may only read is refused at
-		// install rather than at the first firing.
-		if err := task.CheckRepos(a.Spawn.Repos); err != nil {
-			return fmt.Errorf("spawn.repos: %w", err)
+		// Which repositories and trackers the task works with: the shape is checked here, with
+		// the author present, rather than at a firing.
+		if err := runner.CheckWith(templatedWith(a.Spawn.Doer.With)); err != nil {
+			return fmt.Errorf("spawn.doer.%w", err)
+		}
+		if a.Spawn.Doer.Agent != "" && a.Spawn.Doer.Script != "" {
+			return fmt.Errorf("spawn.doer: names an agent and a script; a doer is one of the two")
 		}
 		// $principal is whom the task acts for, and a rule's task acts for somebody only `as:
 		// subject`.
-		if a.Spawn.As == "" && task.GatesNamePrincipal(a.Spawn.Gates) {
-			return fmt.Errorf("spawn.gates: %s is whom the task acts for, and this rule's task acts "+
+		if a.Spawn.As == "" && a.Spawn.Policy.NamesPrincipal() {
+			return fmt.Errorf("spawn.policy: %s is whom the task acts for, and this rule's task acts "+
 				"for nobody but its rule; spawn it `as: subject`, or name who answers", task.PrincipalAnswerer)
 		}
-		// A spawn's gates are asked by its task, which has no record to read a date from.
-		for i, g := range a.Spawn.Gates {
-			if g.Deadline != nil && (g.Deadline.AtFrom != "" || g.Deadline.At != "") {
-				return fmt.Errorf("spawn.gates[%d]: a task's gate stands `within` a duration; "+
-					"a date read from the subject (`atFrom`) is for a rule's own gates", i)
-			}
+		// A spawn's policy is checked as the runner will check it, here, with the author present.
+		if err := a.Spawn.Policy.Check(); err != nil {
+			return fmt.Errorf("spawn.%w", err)
+		}
+		// THE WHOLE SHAPE, as the runner checks it at the launch: a script with a prompt, a
+		// model on a script, a network mode, an environment name, a timeout. Here, with the
+		// author present, rather than at every firing.
+		if l, _ := installLaunch(*a.Spawn); l.Check() != nil {
+			return fmt.Errorf("spawn: %w", l.Check())
+		}
+		if err := launch.CheckAnnotations(a.Spawn.Doer); err != nil {
+			return fmt.Errorf("spawn.%w", err)
 		}
 	}
 	for i, el := range a.Seq {
@@ -1176,13 +1187,9 @@ func (a Action) resolveDerives(chain string, oc occasion, subj entity.Ref, e *En
 	return out, nil
 }
 
-// launchSpawn is the spawn half of an action: bind the spec, resolve the who-axis, and start
-// the task under its deterministic id.
-//
-// It is its own function rather than the tail of applyOne because a who-motion outlives the
-// firing that opened it: ResumeSelections re-enters HERE after a restart, and a second copy of
-// these lines is how a resumed selection would come to launch something subtly different from
-// the run it is finishing.
+// launchSpawn is the spawn half of an action: bind the spec and start the task under its
+// deterministic id. Its own function rather than the tail of applyOne, since a parked launch
+// (a suspension's) re-enters here when it is released.
 //
 // root is what $references read (the cause's payload for a hook, the subject's own
 // otherwise); occurrence is the store revision this run is about, 0 when nothing caused it;
@@ -1190,9 +1197,7 @@ func (a Action) resolveDerives(chain string, oc occasion, subj entity.Ref, e *En
 func (e *Engine) launchSpawn(a Action, chain string, subj entity.Ref, root entity.Payload,
 	occurrence int64, passed []launch.Passed) (task.Handle, error) {
 	// A SUSPENDED SUBJECT STARTS NOTHING. A hook's writes and derives have landed by now —
-	// recording is not progress — and what it would start is parked here, before a provider
-	// selection could be posed: a selection asked from the reap goroutine under a suspension
-	// would wait for the lift with every completion in the engine behind it. The lift starts it.
+	// recording is not progress — and what it would start is parked here. The lift starts it.
 	if held := e.settled(mirror.TriggerOf(chain), subj); len(held) > 0 {
 		e.park(parkedLaunch{a: a, chain: chain, subj: subj, root: root, occurrence: occurrence, passed: passed})
 		e.tracef("%s: %s is suspended (%s); its launch is parked", chain, subj, strings.Join(held, ", "))
@@ -1237,9 +1242,7 @@ func (e *Engine) launch(a Action, chain string, subj entity.Ref, root entity.Pay
 	// entity's payload and re-Puts it on every event, so a field the engine wrote afterwards
 	// would be clobbered. Engine-owned, like Subject above.
 	//
-	// Set BEFORE the selection below, not after: a who-motion is opened by that selection and
-	// outlives the firing, so the chain is what it records to be resumable by — the same
-	// lookup key a resumed task's hooks are rehydrated from (AdoptChain).
+	// The lookup key a resumed task's hooks are rehydrated from (AdoptChain).
 	spec.Chain = chain
 	// And WHICH RUN this is. The id names the work — chain plus subject, so a re-fire is
 	// idempotent — and nothing named the occurrence, so a second run overwrote the first
@@ -1248,29 +1251,6 @@ func (e *Engine) launch(a Action, chain string, subj entity.Ref, root entity.Pay
 	// run they are looking at. Engine-owned, and it rides to the record only — a DERIVE that
 	// referenced its cause is the cycle deriveMayReference exists to refuse.
 	spec.Occurrence = occurrence
-	// who-axis: if the spawn declares a governed provider selection, resolve it and overlay
-	// what the chosen doer contributes — driver, frame, tools, grant — before spawn. No live
-	// swap (reassign = cancel+respawn). Orthogonal to the runner that then transports Driver.
-	//
-	// The spawn is the base and the winner is the overlay, so the charter's spawn block is
-	// what a doer varies FROM rather than a set of fields one doer must satisfy: that is what
-	// lets one trigger route to a fixer and a memo-writer that differ in everything but the
-	// driver. Narrowing only — see launch.Spec.Overlay.
-	if spec.Provider != nil {
-		frag, ok := e.selectProvider(spec, subj)
-		if !ok {
-			return nil, nil // no eligible doer / selection did not resolve — do not spawn
-		}
-		overlaid, err := spec.Overlay(frag)
-		if err != nil {
-			// The doer and the spawn agree on no tool: a doer that may use nothing the spawn
-			// offers cannot do the work, and running it with no tools would say so late — see
-			// launch.Spec.Overlay.
-			e.tracef("trigger %s: selected doer cannot be launched under this spawn (%v); not spawning", chain, err)
-			return nil, err
-		}
-		spec = overlaid
-	}
 	// Keyed by the SUBJECT, not the matched entity, so a re-fire about the same subject is
 	// idempotent (and, under fan-out, each member gets its own deterministic id). The action
 	// carries its own completion hooks (onX): they ride the spawned task's flowTask and
@@ -1278,4 +1258,89 @@ func (e *Engine) launch(a Action, chain string, subj entity.Ref, root entity.Pay
 	// spawn — or a sequence's next element — gets a distinct, deterministic id.
 	hooks := a
 	return e.spawnHooked(spawnID(e.idOwner(), chainID(chain), subj), spec, &hooks, chain), nil
+}
+
+// installLaunch is a charter's spawn as the launch it will become, for the checks made at
+// install: each value the firing binds stood in by one that passes, so what is checked is
+// everything but what the firing cannot know yet. known is whether the doer is the one that
+// will run: an agent named by `$` is bound at the firing, so it cannot be checked against what
+// a runner offers here.
+func installLaunch(spec launch.Spec) (l runner.Launch, known bool) {
+	l = runner.Launch{
+		ID: "install", Prompt: spec.Prompt, Doer: spec.Doer, Policy: spec.Policy, Timeout: spec.Timeout,
+	}
+	l.Doer.With = templatedWith(spec.Doer.With)
+	if spec.VirtualKey != "" {
+		// The firing carries the key's name as an annotation, which the runner's offer must take.
+		l.Doer.Annotations = maps.Clone(spec.Doer.Annotations)
+		if l.Doer.Annotations == nil {
+			l.Doer.Annotations = map[string]string{}
+		}
+		l.Doer.Annotations[launch.AnnotationVirtualKey] = "install"
+	}
+	known = !strings.Contains(spec.Doer.Agent, "$")
+	if !known && l.Doer.Script == "" {
+		l.Doer.Agent = "chosen-at-the-firing"
+	}
+	for _, v := range []*string{&l.Doer.With.Model, &l.Doer.With.Effort} {
+		if strings.Contains(*v, "$") {
+			*v = ""
+		}
+	}
+	return l, known
+}
+
+// templatedWith is a spawn's `with` with each `$var` in a field the firing expands (a repo's
+// `repo` and `from`, a tracker's `repo`) stood in by a placeholder that passes the shape check,
+// so a charter writing `repo: $subject.repo` is checked for everything but the name it cannot
+// know yet. Each templated name stands in for its own text, so two that the firing names apart
+// read as two checkouts and a tracker written as its repo is reads as that repo's; a host
+// written before the `$` is kept, since which forge a repository is on is what a runner's
+// offer is checked for.
+func templatedWith(w runner.With) runner.With {
+	w.Git = templatedRepos(w.Git)
+	trackers := make([]runner.Tracker, 0, len(w.GitIssue))
+	for _, t := range w.GitIssue {
+		trackers = append(trackers, runner.Tracker{Repo: templatedRepoName(t.Repo)})
+	}
+	w.GitIssue = trackers
+	return w
+}
+
+// templatedRepoName is a repo's name with a `$` in it stood in by a placeholder for that text.
+// Where only the name is templated, the owner (and the host) written before it are kept, since a
+// runner's ceiling may be scoped to an owner.
+func templatedRepoName(name string) string {
+	if !strings.Contains(name, "$") {
+		return name
+	}
+	word := strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			return r
+		}
+		return '-'
+	}, name)
+	if i := strings.LastIndex(name, "/"); i > 0 && !strings.Contains(name[:i], "$") &&
+		(strings.Contains(name[:i], "/") || !strings.Contains(name[:i], ".")) { // an owner, not a host alone
+		return name[:i] + "/templated-" + strings.Trim(word, "-")
+	}
+	out := "owner/templated-" + strings.Trim(word, "-")
+	if host, rest, ok := strings.Cut(name, "/"); ok && strings.Contains(host, ".") &&
+		!strings.Contains(host, "$") && rest != "" {
+		out = host + "/" + out
+	}
+	return out
+}
+
+func templatedRepos(repos []runner.Repo) []runner.Repo {
+	out := make([]runner.Repo, 0, len(repos))
+	for _, r := range repos {
+		nr := r
+		nr.Repo = templatedRepoName(r.Repo)
+		if strings.Contains(r.From, "$") {
+			nr.From = "main"
+		}
+		out = append(out, nr)
+	}
+	return out
 }

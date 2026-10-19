@@ -114,3 +114,25 @@ context:
 define: {}
 signature:
   name: verse-state
+---
+# task.Match — the calls a policy row is about, written FLAT: `{system: git, verb: push, ref:
+# main}`. `system` and `verb` are the two keys every match may carry, and the rest are the
+# verb's params as patterns, which the systems' documents name (verse.systems.<name>); codegen
+# saw the Go struct, `{System, Verb, Params}`, and described a `params` field that never
+# appears on the wire.
+context:
+- tony-format/context
+define: .[object(string)]
+signature:
+  name: verse-task-policy-match
+---
+# task.Then — what a policy row does with a call: the word `deny`, `ask`, `allow` or `withhold`, or an
+# object `{ask: <verse-task-policy-ask>}`, an ask with its shape. A UNION of a string and an
+# object, so the wire form is either; codegen saw the Go struct, `{Mode, Ask}`, which never
+# appears on the wire.
+context:
+- tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
+define: .[tony-base:ir]
+signature:
+  name: verse-task-policy-then

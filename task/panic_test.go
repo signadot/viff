@@ -30,10 +30,10 @@ func (panicDriver) Next(context.Context, StepResult) (ToolUse, bool, error) {
 // "this cannot hang" a statement about the code instead of about luck.
 func TestAPanickingChildStillCompletesItsParent(t *testing.T) {
 	d := &callThenDone{}
-	parent := NewTask("p", NewSupervisor(autoVec(), AutoResolver{}), d, &recExec{})
+	parent := NewTask("p", toolSup(allowAll(), AutoResolver{}), d, &recExec{})
 	parent.SetLog(io.Discard)
-	parent.SetSpawn(func(pt *Task, mode ChildMode, req *CallAgentRequest) (*Task, error) {
-		return pt.NewChild("kid", mode, req, panicDriver{}, &recExec{})
+	parent.SetDelegate(func(pt *Task, req *CallAgentRequest) (*Task, error) {
+		return pt.NewChild("kid", req, panicDriver{}, &recExec{}), nil
 	})
 
 	type result struct {
@@ -75,7 +75,7 @@ type boomCheck struct{}
 func (boomCheck) Check(string) (string, error) { panic("the contract check fell over") }
 
 // The second layer, which the first test does not reach: a panic on the child's OWN goroutine,
-// off the seam path. The answer contract, the finisher, the spawn factory, emit and the
+// off the seam path. The answer contract, the delegate factory, emit and the
 // executor calls that unwind frames at teardown all run there.
 //
 // It matters because the two recovers cover different things and only one of them is reached
@@ -84,10 +84,10 @@ func (boomCheck) Check(string) (string, error) { panic("the contract check fell 
 // another route.
 func TestAPanicOnTheChildsOwnGoroutineStillCompletesItsParent(t *testing.T) {
 	d := &callThenDone{}
-	parent := NewTask("p", NewSupervisor(autoVec(), AutoResolver{}), d, &recExec{})
+	parent := NewTask("p", toolSup(allowAll(), AutoResolver{}), d, &recExec{})
 	parent.SetLog(io.Discard)
-	parent.SetSpawn(func(pt *Task, mode ChildMode, req *CallAgentRequest) (*Task, error) {
-		c, err := pt.NewChild("kid", mode, req, &scriptDriver{}, &recExec{})
+	parent.SetDelegate(func(pt *Task, req *CallAgentRequest) (*Task, error) {
+		c, err := pt.NewChild("kid", req, &scriptDriver{}, &recExec{}), error(nil)
 		if err == nil {
 			c.SetLog(io.Discard)
 			c.SetAnswerCheck(boomCheck{})
@@ -125,7 +125,7 @@ func TestAPanicOnTheChildsOwnGoroutineStillCompletesItsParent(t *testing.T) {
 // forever. That is the leak the terminal-frame handling exists to prevent, reachable by a
 // second route.
 func TestAPanickingRootFailsTheTaskAndStillSaysSo(t *testing.T) {
-	p := NewTask("t", NewSupervisor(autoVec(), AutoResolver{}), &scriptDriver{}, &recExec{})
+	p := NewTask("t", toolSup(allowAll(), AutoResolver{}), &scriptDriver{}, &recExec{})
 	p.SetLog(io.Discard)
 	p.SetAnswerCheck(boomCheck{})
 	ch, unsub := p.Subscribe()
@@ -158,7 +158,7 @@ func TestAPanickingRootFailsTheTaskAndStillSaysSo(t *testing.T) {
 // there is not just a crash — it is a wait that can never be discharged, at the one place the
 // loop cannot see into.
 func TestAPanickingDriverFailsItsOwnTask(t *testing.T) {
-	p := NewTask("t", NewSupervisor(autoVec(), AutoResolver{}), panicDriver{}, &recExec{})
+	p := NewTask("t", toolSup(allowAll(), AutoResolver{}), panicDriver{}, &recExec{})
 	p.SetLog(io.Discard)
 	out, err := p.Run(context.Background())
 	if err == nil {

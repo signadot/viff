@@ -4,23 +4,23 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
+	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
 )
 
 // ── runners: where work runs ─────────────────────────────────────────────────
 //
 // A runner is installed at `verse.runners.<name>` carrying a url, and a spawn names one. It
-// is not a provider: a provider picks the DOER — which driver, under which frame, with which
-// grant — and a runner is WHERE the work runs. The two are orthogonal, so folding runners into
-// provider selection would make one selection answer two questions and force a doer entity per
-// (doer, place) pair.
+// is WHERE the work runs, and nothing about who does it: the doer is the spawn's.
 
 // addRunner installs one, after asking the url what it is.
 //
@@ -55,8 +55,12 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 	// state of a runner deployed alongside the entity that names it, where the manifest lands,
 	// the pod is pending, and the entity is already written. Refusing that would make
 	// deployment order-dependent for a fact that fixes itself.
+	body := entity.Obj{"name": e.Name, "url": e.URL}
+	if e.Identity != "" {
+		body["identity"] = e.Identity
+	}
 	if r.URL.Query().Get("probe") != "false" {
-		reach, why := client.Probe(e.URL)
+		reach, desc, why := client.Probe(e.URL)
 		switch reach {
 		case client.NotRunner:
 			http.Error(w, fmt.Sprintf("runner %q: %s is not a runner: %s — --no-probe installs it anyway",
@@ -68,12 +72,18 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 			out["reach"] = reach.String()
 			out["warning"] = why.Error()
 		default:
+			// What it offers is kept with the registration, so a spawn naming this runner is
+			// checked against it where the spawn is written; a description that says too little
+			// to check a spawn by is no registration.
+			if err := desc.Check(); err != nil {
+				http.Error(w, fmt.Sprintf("runner %q: %s does not say what it offers and the networks it builds: %v", e.Name, e.URL, err),
+					http.StatusBadRequest)
+				return
+			}
 			out["reach"] = reach.String()
+			out["offers"] = desc.Offers
+			body["offers"] = desc.Offers
 		}
-	}
-	body := entity.Obj{"name": e.Name, "url": e.URL}
-	if e.Identity != "" {
-		body["identity"] = e.Identity
 	}
 	if _, _, err := s.scopedStore(r).Write(entity.Write{
 		At: runnerEntityRef(e.Name).At(), Value: body.Payload(),
@@ -105,7 +115,7 @@ func (s *Server) listRunners(w http.ResponseWriter, r *http.Request) {
 		// can be stale in the direction that costs — saying a runner is well because it was
 		// well when something last looked.
 		if probe {
-			reach, why := client.Probe(e.URL)
+			reach, _, why := client.Probe(e.URL)
 			rec["reach"] = reach.String()
 			if why != nil {
 				rec["why"] = why.Error()
@@ -142,14 +152,157 @@ func (s *Server) checkRunner(w http.ResponseWriter, r *http.Request) {
 	if !installed(w, r, fmt.Sprintf("runner %q", name), ok, err) {
 		return
 	}
-	reach, why := client.Probe(e.URL)
+	reach, desc, why := client.Probe(e.URL)
 	out := map[string]any{
 		"at": runnerEntityRef(name).String(), "url": e.URL, "reach": reach.String(),
 	}
 	if why != nil {
 		out["why"] = why.Error()
 	}
+	// A runner that answers describes itself afresh: what it offers may have changed since it
+	// was installed (a restart with a model credential, say), and the registration says what
+	// the runner says now. Written as verse, not as whoever asked: the offers are the runner's
+	// words, recorded the way a task's status is, and anybody who may read the runner may ask.
+	if reach == client.IsRunner {
+		if err := desc.Check(); err != nil {
+			http.Error(w, fmt.Sprintf("runner %q: %s does not say what it offers and the networks it builds: %v; its registration "+
+				"keeps what it said before", name, e.URL, err), http.StatusBadGateway)
+			return
+		}
+		out["offers"] = desc.Offers
+		if _, _, err := s.storeForScope(r.URL.Query().Get("scope")).Write(entity.Write{
+			At: runnerEntityRef(name).At(), Value: entity.Obj{"offers": offersValue(desc.Offers)}.Payload(),
+		}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
 	writeOut(w, r, http.StatusOK, out)
+}
+
+// offersValue is a runner's offers as a record writes them: removed where there are none, so
+// a runner that stopped describing offers holds none out.
+func offersValue(offers []runner.Offer) any {
+	if len(offers) == 0 {
+		return entity.Removed()
+	}
+	return offers
+}
+
+// descriptionFor is what the runner a spawn names offers, for the check a spawn is made against
+// before it is launched: the embedded runner's for none, an installed runner's as it described
+// itself. A runner with no recorded offers is checked by nobody but itself.
+func (s *Server) descriptionFor(store entity.Reader, name string) runner.Description {
+	if name == "" {
+		// The embedded runner's offers, where it is the default. A default reached by url
+		// (`verse up --runner`) has no registration to keep its offers on: it checks its
+		// launches itself.
+		if _, local := s.runner.(localRunner); local {
+			return s.Embedded.Description()
+		}
+		return runner.Description{}
+	}
+	if e, ok := findRunner(store, name); ok {
+		return e.Description()
+	}
+	return runner.Description{}
+}
+
+// checkOffer refuses a launch the runner it is for would refuse, before it leaves: the doer is
+// not on offer there, or what the launch asks of it is not what the offer takes. A runner the
+// launch names that is not installed refuses it, as the launch itself would (runnerFor). One
+// installed with no offers on record (--no-probe, or a pod that was not up when it was added)
+// is asked now, and what it says is kept on its registration and checked against; one that
+// still does not describe itself takes no spawn. A check with nothing to check against is no
+// check, and the runner is the side that answers for what it runs. The default runner reached
+// by url alone (`verse up --runner`) has no registration to keep offers on, and is the one
+// exception: it checks its launches itself.
+func (s *Server) checkOffer(store entity.Reader, name string, l *runner.Launch) error {
+	desc, where, err := s.offersOf(store, name)
+	if err != nil {
+		return err
+	}
+	if len(desc.Offers) == 0 {
+		return nil
+	}
+	if err := runnerd.CheckOffer(l, desc); err != nil {
+		return fmt.Errorf("%s: %w", where, err)
+	}
+	return nil
+}
+
+// offersOf is what the runner a spawn names offers, as its registration keeps it or as it
+// answers now, and the name a refusal calls it by.
+func (s *Server) offersOf(store entity.Reader, name string) (runner.Description, string, error) {
+	if name == "" {
+		return s.descriptionFor(store, ""), "the default runner", nil
+	}
+	e, ok, err := findRunnerErr(store, name)
+	if err != nil && !errors.Is(err, entity.ErrForbidden) {
+		return runner.Description{}, "", errors.New(notRead(fmt.Sprintf("runner %q", name), err))
+	}
+	if !ok {
+		return runner.Description{}, "", fmt.Errorf("no runner %q is installed — a spawn naming a runner that is "+
+			"not installed is refused rather than run somewhere else", name)
+	}
+	where := runnerEntityRef(e.Name).String()
+	if len(e.Offers) > 0 {
+		return e.Description(), where, nil
+	}
+	reach, desc, why := client.Probe(e.URL)
+	if reach != client.IsRunner {
+		return runner.Description{}, "", fmt.Errorf("%s has not described itself (%s: %v): a spawn naming it is "+
+			"refused until it answers `verse runner check %s`", where, reach, why, e.Name)
+	}
+	if err := desc.Check(); err != nil {
+		return runner.Description{}, "", fmt.Errorf("%s does not say what it offers and the networks it builds: %v", where, err)
+	}
+	s.recordOffers(store, e.Name, desc)
+	return desc, where, nil
+}
+
+// recordOffers keeps what a runner said on its registration, as `verse runner check` does,
+// where the store this read was made in can be written; a view that cannot keeps nothing, and
+// the next spawn asks again.
+func (s *Server) recordOffers(store entity.Reader, name string, desc runner.Description) {
+	w, ok := store.(entity.Store)
+	if !ok {
+		return
+	}
+	if _, _, err := w.Write(entity.Write{
+		At: runnerEntityRef(name).At(), Value: entity.Obj{"offers": offersValue(desc.Offers)}.Payload(),
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "verse: runner %s: keeping what it offers: %v\n", runnerEntityRef(name), err)
+	}
+}
+
+// probeRunners asks each installed runner with no offers on record what it offers, when verse
+// starts: a registration made with --no-probe, or against a pod that was not up yet, is what a
+// repopulate leaves, and until the runner has described itself a spawn naming it is refused
+// (checkOffer). One that answers has its offers kept; one that does not is named here, and
+// asked again by the next spawn that names it.
+func (s *Server) probeRunners() error {
+	runners, err := installedRunnersErr(s.Store)
+	if err != nil {
+		return err
+	}
+	for _, e := range runners {
+		if len(e.Offers) > 0 {
+			continue
+		}
+		reach, desc, why := client.Probe(e.URL)
+		if reach != client.IsRunner {
+			fmt.Fprintf(os.Stderr, "verse: runner %s has not described itself (%s: %v); a spawn naming it is refused until it does\n",
+				runnerEntityRef(e.Name), reach, why)
+			continue
+		}
+		if err := desc.Check(); err != nil {
+			fmt.Fprintf(os.Stderr, "verse: runner %s does not say what it offers and the networks it builds: %v\n", runnerEntityRef(e.Name), err)
+			continue
+		}
+		s.recordOffers(s.Store, e.Name, desc)
+	}
+	return nil
 }
 
 // removeRunner takes the entity away, and answers the question a delete cannot: what happens to
@@ -254,7 +407,7 @@ func cancelOn(url string, ids []string, why string) (cancelled, unreachable []st
 			unreachable = append(unreachable, id)
 			continue
 		}
-		if err := h.Cancel(why); err != nil {
+		if err := h.Cancel(why, versedActor); err != nil {
 			unreachable = append(unreachable, id)
 			continue
 		}
@@ -316,7 +469,7 @@ func runnerIdentity(store entity.Reader, name string) string {
 	return ""
 }
 
-func (s *Server) runnerFor(store entity.Reader, name string) (task.Runner, string, error) {
+func (s *Server) runnerFor(store entity.Reader, name string) (client.Launcher, string, error) {
 	if name == "" {
 		return s.runner, "", nil
 	}

@@ -149,7 +149,7 @@ func awaitStage(t *testing.T, store entity.Store, ref entity.Ref, stage string) 
 // what a failed answer contract leaves behind, so onFailed is the branch that fires.
 func supervisorSpawner(store entity.Store, answer string) Spawner {
 	return func(id string, spec launch.Spec) task.Handle {
-		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 		var p task.Handle
 		if answer == "" {
 			p = task.NewFailed(id, task.NewRegistry(), "the supervisor produced no answer")

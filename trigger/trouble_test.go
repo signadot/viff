@@ -129,28 +129,3 @@ func TestACommitARuleCouldNotReadIsKeptOnTheRule(t *testing.T) {
 		t.Errorf("counts = %d failed, %d unread", failed, unread)
 	}
 }
-
-// A SPAWN NO DOER IS ELIGIBLE FOR IS KEPT ON THE RULE. No task starts and no question is
-// posed, so nothing else its author reads says the spawn did not happen, and the rule's own
-// patch has already taken the subject out of its selection.
-func TestASpawnNoDoerIsEligibleForIsKeptOnTheRule(t *testing.T) {
-	store := entitytest.Store(t)
-	eng := patchEngine(t, store)
-	if err := eng.AddTrigger(ruleFrom(t, `{name: routes,
-		condition: {subject: {path: "demo.pr.*", value: {stage: open}}},
-		action: {
-			patch: {stage: routed},
-			spawn: {prompt: "review it", grant: read-only, provider: {capability: review, select: auto}},
-		}}`)); err != nil {
-		t.Fatalf("AddTrigger: %v", err)
-	}
-	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
-
-	got := troubleOf(t, eng, "routes", TroubleFailed)
-	if got.Chain != "routes" || got.Subject != prRef("1").String() {
-		t.Errorf("trouble = %+v, want the rule's own action, about the pr", got)
-	}
-	if !strings.Contains(got.Why, "review") || !strings.Contains(got.Why, "nothing was spawned") {
-		t.Errorf("why = %q, want the capability, and that nothing was spawned", got.Why)
-	}
-}

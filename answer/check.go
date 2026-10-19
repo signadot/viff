@@ -8,12 +8,10 @@ import (
 // Checker adapts a Contract to what the task loop consults (task.AnswerCheck): a predicate on
 // the value a run is about to return, asked at the moment the input goes quiet.
 //
-// It lives here rather than in each driver because it was in each driver — llmDriver and the
-// coderunner's commandDriver carried the same twenty lines against different back ends, with
-// the repair budget duplicated. That was a consequence of WHERE the check ran: inside `Next`,
-// because a rejection has to re-enter the conversation and the driver was the only thing
-// holding one. The loop has that mechanism too and uses it for people, so the check moved to
-// where the whole pending list is visible and the drivers stopped needing a copy.
+// It lives here rather than in each driver because a rejection has to re-enter the
+// conversation, and the loop already has that mechanism and uses it for people. Checked where
+// the whole pending list is visible, it is one check for every driver, with one repair budget,
+// rather than a copy in each driver's `Next`.
 //
 // Why the loop calling it is not the same as the driver calling it: the driver checked when the
 // MODEL stopped talking, which with a child still editing the tree is not when the ANSWER is

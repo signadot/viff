@@ -66,7 +66,7 @@ shape_tony() {
 			    subject: {path: "demo.latch.*", value: { stage: open }}
 			  action:
 			    patch:  { stage: reviewing }
-			    spawn:  { driver: scripted, vector: auto, prompt: "echo reviewing $subject; sleep 2" }
+			    spawn:  { doer: {script: 'echo reviewing "$SUBJECT"; sleep 2', with: {network: {mode: open}, env: {SUBJECT: $subject}}} }
 			    onDone: { patch: { stage: reviewed } }
 		TONY
 		;;
@@ -79,7 +79,7 @@ shape_tony() {
 			  - { name: approval, mode: ask, onDenied: { patch: { stage: rejected } } }
 			  action:
 			    patch:  { stage: reviewing }
-			    spawn:  { driver: scripted, vector: auto, prompt: "echo reviewing $subject; sleep 2" }
+			    spawn:  { doer: {script: 'echo reviewing "$SUBJECT"; sleep 2', with: {network: {mode: open}, env: {SUBJECT: $subject}}} }
 			    onDone: { patch: { stage: reviewed } }
 		TONY
 		;;
@@ -90,8 +90,8 @@ shape_tony() {
 			    subject: {path: "demo.seq.*", value: { stage: ready }}
 			  action:
 			    seq:
-			    - spawn: { driver: scripted, vector: auto, prompt: "echo lint $subject" }
-			    - spawn:    { driver: scripted, vector: auto, prompt: "echo test $subject" }
+			    - spawn: { doer: {script: 'echo lint "$SUBJECT"', with: {network: {mode: open}, env: {SUBJECT: $subject}}} }
+			    - spawn:    { doer: {script: 'echo test "$SUBJECT"', with: {network: {mode: open}, env: {SUBJECT: $subject}}} }
 			      onFailed: { patch: { stage: broken } }
 			    onDone:
 			      patch: { stage: built }

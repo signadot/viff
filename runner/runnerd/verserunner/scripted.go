@@ -1,118 +1,323 @@
 package verserunner
 
 import (
+	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
+	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/runnerd/calltool"
+	"github.com/signadot/verse/runner/runnerd/verserunner/agent"
 	"github.com/signadot/verse/task"
 )
 
-// ── scripted driver: the default task runtime driver ─────────────────────
+// newScriptTask builds a script's task, rooted at root: the script runs once, by its #! line or
+// with bash (scriptCommand), and its output is the task's result. env names the variables its
+// shell is given from this process (task.ShellEnv), and set is set beside them: the launch's
+// `with.env`, and where the task's credential file is.
 //
-// A dependency-free driver that performs a few steps of "work" then completes, so
-// the runtime is exercisable without model credentials. `verse up --llm` swaps in
-// the LLM harness.
-
-// ScriptedBuilder builds the credential-free task runtime driver: it runs the prompt as a real
-// script (by its #! line, or bash; see scriptCommand), confined to root and cancellable via the task context — a governed shell
-// command as a task. It is the dependency-free stand-in for an LLM agent, so the runtime is
-// exercisable and steerable (and can run real work like `sleep`) without model credentials.
-// ScriptedBuilder is the runnerd.Builder form (root = the task's cwd). `verse up` uses
-// NewScriptedTask directly to confine scripted commands to the agent root.
-func ScriptedBuilder(l task.Launch, reg *task.Registry) *task.Task {
-	return NewScriptedTask(l, "", task.DefaultShellEnv, reg)
+// Nothing asks before it runs: the script is one action, and no step; verse decided to start it.
+// What it may then do beyond its directory is call the task's tools from its shell, with
+// `verse-call-tool` (bin, "" for none) over a socket this serves: tools, the ones its repos give
+// it, and `question-ask`. Each call is an action of the task, the same step the agent's use of the tool
+// is, so the same gates decide it; a refusal is an answer the script reads, not the end of its
+// run. What the answerer of a call's question says goes back with the call's answer, approved or
+// not; an operator's words are refused when said (Unsteerable), since a script has no turn for
+// them.
+//
+// A call the script left running in the background may outlive it. One that reached the socket
+// before the script's exit was noticed is proposed first: its question stands while the binary
+// waits, and if it is approved after the script exited it is performed, since its caller is still
+// waiting on it; then the exit is noticed and the run ends. One made after the exit was noticed
+// is never proposed: it waits until the task ends and closes the socket, and reads a failure
+// (exit 1). WaitDelay bounds how long a background child holds the script's output open.
+//
+// stop ends the socket, once the task has ended.
+func newScriptTask(l runner.Launch, root string, env, set []string, tools []agent.Tool, bin string,
+	reg *task.Registry, ceilings map[string]task.Policy) (p *task.Task, stop func(), err error) {
+	tools = offered(append(append([]agent.Tool{}, tools...), agent.Ask(reg)), l.Policy)
+	s := &scriptTask{script: l.Doer.Script, root: root, env: env, set: set, bin: bin,
+		tools: map[string]agent.Tool{}, calls: make(chan *toolCall)}
+	for _, t := range tools {
+		s.tools[t.Name] = t
+	}
+	dir, err := os.MkdirTemp("", "verse-tools-")
+	if err != nil {
+		return nil, nil, fmt.Errorf("a directory for the tools socket: %w", err)
+	}
+	if task.Inside(dir, root) {
+		os.RemoveAll(dir)
+		return nil, nil, fmt.Errorf("the temporary directory %s is inside the task's workspace %s, "+
+			"and the tools socket is kept outside it", filepath.Dir(dir), root)
+	}
+	sock := filepath.Join(dir, "tools.sock")
+	if len(sock) >= sunPathMax {
+		os.RemoveAll(dir)
+		return nil, nil, fmt.Errorf("the tools socket's path %s is too long for a unix socket (%d bytes at "+
+			"most): the temporary directory, TMPDIR, needs a shorter path", sock, sunPathMax-1)
+	}
+	srv := &calltool.Server{Tools: described(tools), Call: s.call}
+	if err := srv.Start(sock); err != nil {
+		os.RemoveAll(dir)
+		return nil, nil, err
+	}
+	s.sock = srv.Path()
+	sup := task.NewSupervisor(l.Policy, reg)
+	sup.SetCeilings(ceilings)
+	sup.SetStepOf(agent.StepOf(tools))
+	return task.NewTask(l.ID, sup, s, s), func() { srv.Close(); os.RemoveAll(dir) }, nil
 }
 
-// NewScriptedTask builds a scripted task rooted at root — a call list of exactly one call,
-// which is what `scripted` always was. env names the variables its shell passes through from
-// this process; see task.ShellEnv.
-//
-// The driver is task's, because one shell command is the degenerate case of a list of calls and
-// a second implementation of "propose one action, then stop" would buy nothing; the autonomy is
-// the SPAWN's, so a charter asking to be asked about its one command is asked.
-//
-// The consequence is deliberate and is the reason this is a contract change: a `driver:
-// scripted` spawn that names no vector now ASKS, where it used to run unattended. The
-// exemption that justified auto — "you authorized it by typing it" — is true of `verse task
-// run --driver scripted` and of nothing else, so it lives on that path now (cmd/verse/task.go)
-// rather than travelling to charters that typed nothing.
-func NewScriptedTask(l task.Launch, root string, env []string, reg *task.Registry) *task.Task {
-	// A LIST THE SPAWN WROTE IS THE LIST, and the prompt is read only where there is none: a
-	// charter's `calls:` reaches this builder as l.Calls, and a builder that read the prompt
-	// alone ran such a task to `done` having done nothing. An empty prompt and no list is an
-	// empty list: the task completes having done nothing, which is what the old driver did
-	// with a blank command.
-	var calls []task.Call
-	switch {
-	case len(l.Calls) > 0:
-		if err := task.CheckCalls(l.Calls); err != nil {
-			return task.NewFailed(l.ID, reg, err.Error())
+// scriptTask is a script's task, as its driver and its executor both: it proposes the script, then
+// each call the script makes while it runs, and ends with its output, done if it exited 0 and
+// failed with the reason otherwise.
+type scriptTask struct {
+	script, root string
+	env, set     []string // the shell's: names passed through, and NAME=value set
+	bin, sock    string   // verse-call-tool, "" for none, and the socket it calls
+
+	tools map[string]agent.Tool
+	// calls carries each call from the socket to Next; proposed is the one Next last put in
+	// front of the loop, until the loop has decided about it and Next answers it.
+	calls    chan *toolCall
+	proposed *toolCall
+
+	started bool
+	run     *running // the script, once it has started
+	result  string
+
+	// heard is what the answerers of the calls' questions said, for the answer to the call they
+	// are about. It relies on the loop handing a gate's words over (Hear) at the boundary after
+	// the call's step and before the Next that answers it, so they are the words about that call.
+	mu    sync.Mutex
+	heard []string
+}
+
+// running is the script's process.
+type running struct {
+	out       bytes.Buffer
+	done      chan struct{} // closed at its exit, when err and cancelled are set
+	err       error
+	cancelled bool
+}
+
+// toolCall is one call the script made, waiting to be an action and then for its answer.
+type toolCall struct {
+	ctx   context.Context // the caller's: it ends when the script's shell gives up on the call
+	tool  string
+	input map[string]any
+	reply chan reply
+}
+
+type reply struct {
+	out     string
+	refused bool
+	err     error
+}
+
+// sunPathMax is what a unix socket's path has to fit in, terminator included, on the stricter
+// platform: 104 bytes on macOS (108 on Linux).
+const sunPathMax = 104
+
+// scriptWaitDelay is how long output is read after the script exits, from children it left.
+const scriptWaitDelay = 2 * time.Second
+
+// scriptTool is the action a script is. It is no step.
+const scriptTool = "script"
+
+func (s *scriptTask) Next(ctx context.Context, prev task.StepResult) (task.ToolUse, bool, error) {
+	if !s.started {
+		s.started = true
+		return task.ToolUse{Name: scriptTool, Input: map[string]any{"script": s.script}}, true, nil
+	}
+	if c := s.proposed; c != nil {
+		// The loop decided about the call, and ran it if it went ahead. A failure is the
+		// script's to read, as a refusal is: it decides what to do next, and the run goes on.
+		s.proposed = nil
+		said := s.takeHeard()
+		switch {
+		case prev.Blocked:
+			// A denial's note already carries what its answerer said.
+			c.reply <- reply{out: cmp.Or(prev.Note, "refused"), refused: true}
+		case prev.Err != nil:
+			if said != "" {
+				prev.Err = fmt.Errorf("%w\n\n%s", prev.Err, said)
+			}
+			c.reply <- reply{err: prev.Err}
+		default:
+			out := prev.Output
+			if said != "" {
+				out = strings.TrimRight(out, "\n") + "\n\n" + said
+			}
+			c.reply <- reply{out: out}
 		}
-		calls = l.Calls
-	case strings.TrimSpace(l.Prompt) != "":
-		calls = []task.Call{{Tool: "run_bash", Input: map[string]any{"command": l.Prompt}}}
+	} else if s.run == nil {
+		return task.ToolUse{}, false, fmt.Errorf("the script failed: %w", cmp.Or(prev.Err, errors.New("it never started")))
 	}
-	set, ended, err := handCredential(l, root)
-	if err != nil {
-		return task.NewFailed(l.ID, reg, err.Error())
-	}
-	return ended(task.NewCallsTaskFrom(l, calls, reg, &shellExec{root: root, env: env, set: set}))
+	return s.await(ctx)
 }
 
-// shellExec runs run_bash for real: cancellable via ctx (so `cancel` kills a running command),
-// confined to root, with only the variables env names. It is the scripted driver's counterpart
-// of the harness's fsExec.
-type shellExec struct {
-	root string
-	env  []string
-	// set is the variables the shell is given outright, `NAME=value`: where the task's
-	// credential file is, for a task that has one.
-	set []string
-}
-
-func (e *shellExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResult, []task.ToolUse, error) {
-	// Its environment is the declared passthrough rather than the server's, which carries the
-	// server's credentials.
-	c, done, err := scriptCommand(ctx, str(tu.Input, "command"))
-	if err != nil {
-		return task.StepResult{Use: tu, Output: "exit: " + err.Error(), Err: err}, nil, nil
-	}
-	defer done()
-	c.Dir = e.root
-	c.Env = append(task.ShellEnv(e.env), e.set...)
-	out, err := c.CombinedOutput()
-	res := strings.TrimSpace(string(out))
-	// The code, alongside the Err this executor folds it into. Both, because the fold is this
-	// executor's reading and a driver may want the fact underneath it — see
-	// task.StepResult.Exit. A spawn failure (no such binary) has no exit code and gets none.
-	var code *int
-	var ee *exec.ExitError
-	if errors.As(err, &ee) {
-		n := ee.ExitCode()
-		code = &n
-	}
-	if err != nil {
-		if res != "" {
-			res += "\n"
+// await is the driver while the script runs: the next call it makes is the next action, and its
+// exit ends the run. A call already waiting is taken before the exit is noticed, so the last one
+// before it exits isn't lost to the order two channels happen to be ready in; one whose caller
+// has gone is not proposed, so nobody is asked about an action nobody waits on.
+func (s *scriptTask) await(ctx context.Context) (task.ToolUse, bool, error) {
+	for {
+		select {
+		case c := <-s.calls:
+			if c.ctx.Err() != nil {
+				continue
+			}
+			return s.propose(c), true, nil
+		default:
 		}
-		res += "exit: " + err.Error()
+		select {
+		case c := <-s.calls:
+			if c.ctx.Err() != nil {
+				continue
+			}
+			return s.propose(c), true, nil
+		case <-s.run.done:
+			return s.ended()
+		case <-ctx.Done():
+			// A cancel or a timeout, which the loop reports: the script is killed with it.
+			return task.ToolUse{}, false, nil
+		}
 	}
-	if res == "" {
-		res = "(ok)"
+}
+
+func (s *scriptTask) propose(c *toolCall) task.ToolUse {
+	s.proposed = c
+	return task.ToolUse{Name: c.tool, Input: c.input}
+}
+
+// ended is the script's exit: its output is the result. A cancel is not a failure: the kill that
+// ends the script surfaces as an error too.
+func (s *scriptTask) ended() (task.ToolUse, bool, error) {
+	s.result = strings.TrimSpace(s.run.out.String())
+	if s.run.err != nil && !s.run.cancelled {
+		return task.ToolUse{}, false, fmt.Errorf("the script failed: %w", s.run.err)
 	}
-	// The failure rides in the StepResult rather than as an Execute error, because Run
-	// discards the result on an error return and the command's output is the whole point
-	// of a failure. A cancel is not a failure: the kill that ends `sleep` surfaces here as
-	// an error too, and Run's boundary check reaches ctx.Err() first — but say so here, so
-	// the driver's cancel and failure paths do not depend on that ordering.
-	if ctx.Err() != nil {
-		err = nil
+	return task.ToolUse{}, false, nil
+}
+
+// Hear keeps what a call's answerer said, for the call's answer. Nothing else reaches it: an
+// operator's words are refused when said (Unsteerable), and a script has no children, no
+// answer contract and no turns.
+func (s *scriptTask) Hear(said []task.Said) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, m := range said {
+		if m.Kind == task.SaidByGate {
+			s.heard = append(s.heard, m.Text)
+		}
 	}
-	return task.StepResult{Use: tu, Output: res, Err: err, Exit: code}, nil, nil
+}
+
+func (s *scriptTask) takeHeard() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	said := strings.Join(s.heard, "\n")
+	s.heard = nil
+	return said
+}
+
+// Unsteerable says why an operator's words are refused: a script runs once, and has no turn for
+// them.
+func (s *scriptTask) Unsteerable() string {
+	return "a script runs once, and has no turn for words: what it may be told is the answer to a call it makes"
+}
+
+// Result is the script's output.
+func (s *scriptTask) Result() string { return s.result }
+
+// Withdrawn is the call being asked about: its question is withdrawn when its caller goes.
+func (s *scriptTask) Withdrawn(tu task.ToolUse) <-chan struct{} {
+	if c := s.proposed; c != nil && c.tool == tu.Name {
+		return c.ctx.Done()
+	}
+	return nil
+}
+
+// Execute starts the script, or performs a call the loop let go ahead: the tool's own Do, under
+// a context that ends with the caller's too, so a `question-ask` nobody waits on any more is withdrawn.
+func (s *scriptTask) Execute(ctx context.Context, tu task.ToolUse) (task.StepResult, []task.ToolUse, error) {
+	if tu.Name == scriptTool {
+		return s.start(ctx, tu), nil, nil
+	}
+	c := s.proposed
+	if c == nil || c.tool != tu.Name {
+		return task.StepResult{Use: tu}, nil, fmt.Errorf("no call of %s is waiting", tu.Name)
+	}
+	cctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	defer context.AfterFunc(c.ctx, cancel)()
+	out, blocked, err := s.tools[tu.Name].Do(cctx, tu)
+	if err != nil {
+		return task.StepResult{Use: tu}, nil, err
+	}
+	return task.StepResult{Use: tu, Output: out, Blocked: blocked, Note: out}, nil, nil
+}
+
+// start starts the script in root, with the variables env names passed through, set set, and its
+// tools' socket and binary, and returns: the script runs beside the loop, which Next waits on.
+// A script that can't start is the step's failure.
+func (s *scriptTask) start(ctx context.Context, tu task.ToolUse) task.StepResult {
+	c, done, err := scriptCommand(ctx, s.script)
+	if err != nil {
+		return task.StepResult{Use: tu, Err: err}
+	}
+	c.Dir = s.root
+	// Its environment is the declared passthrough rather than the runner's, which carries the
+	// runner's secrets.
+	c.Env = withTools(append(task.ShellEnv(s.env), s.set...), toolsEnv(s.sock, s.bin))
+	r := &running{done: make(chan struct{})}
+	c.Stdout, c.Stderr = &r.out, &r.out
+	// A child the script left running (`verse-call-tool question-ask ... &`) holds its output open, and
+	// Wait would wait for it: the script's exit is its end, and the child's output is cut off
+	// after this.
+	c.WaitDelay = scriptWaitDelay
+	if err := c.Start(); err != nil {
+		done()
+		return task.StepResult{Use: tu, Err: err}
+	}
+	s.run = r
+	go func() {
+		r.err = c.Wait()
+		if errors.Is(r.err, exec.ErrWaitDelay) {
+			r.err = nil // it exited 0, and only a child it left held its output
+		}
+		r.cancelled = ctx.Err() != nil
+		done()
+		close(r.done)
+	}()
+	return task.StepResult{Use: tu}
+}
+
+// call is the socket's side (calltool.Server.Call): a call from the script's shell, handed to
+// Next and answered once the loop has decided and, if it went ahead, the tool has run. The
+// caller's going ends the wait here, and withdraws the question if one stands (Withdrawn).
+func (s *scriptTask) call(ctx context.Context, tool string, input map[string]any) (string, bool, error) {
+	c := &toolCall{ctx: ctx, tool: tool, input: input, reply: make(chan reply, 1)}
+	select {
+	case s.calls <- c:
+	case <-ctx.Done():
+		return "", false, ctx.Err()
+	}
+	select {
+	case r := <-c.reply:
+		return r.out, r.refused, r.err
+	case <-ctx.Done():
+		return "", false, ctx.Err()
+	}
 }
 
 // scriptCommand is how a script runs. A script that starts with a #! line is run by the program

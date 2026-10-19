@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/gomap"
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
@@ -107,6 +109,9 @@ func (s *Server) checkThen(asker string, then map[string]any, self string, now t
 	if m, ok := asMap(then["answer"]); ok {
 		return s.checkThenAnswer(asker, m, self)
 	}
+	if v, ok := then["policy"]; ok {
+		return s.checkThenPolicy(asker, v)
+	}
 	m, ok := asMap(then["ask"])
 	if !ok {
 		return 0, nil
@@ -128,6 +133,29 @@ func (s *Server) checkThen(asker string, then map[string]any, self string, now t
 				return code, fmt.Errorf("ask.%s: %w", field, err)
 			}
 		}
+	}
+	return 0, nil
+}
+
+// checkThenPolicy checks the policy a then's prompt or script runs under as a run started by hand
+// is checked: its shape, `$principal` asking the asker, and answerers who can settle its asks.
+func (s *Server) checkThenPolicy(asker string, v any) (int, error) {
+	n, ok := v.(*ir.Node)
+	if !ok {
+		var err error
+		if n, err = gomap.ToTonyIR(v); err != nil {
+			return http.StatusBadRequest, fmt.Errorf("policy: %w", err)
+		}
+	}
+	p, err := thenPolicy(n)
+	if err == nil {
+		err = mirror.CheckPrincipal(p, asker)
+	}
+	if err == nil {
+		err = s.engineOf("").CheckPolicyAnswerers(p)
+	}
+	if err != nil {
+		return http.StatusBadRequest, fmt.Errorf("policy: %w", err)
 	}
 	return 0, nil
 }

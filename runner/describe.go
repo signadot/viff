@@ -2,7 +2,9 @@ package runner
 
 import (
 	"fmt"
+	"github.com/signadot/verse/task"
 	"slices"
+	"strings"
 
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -12,29 +14,80 @@ import (
 // runner is registered, and whenever the runner restarts or reports a change, and keeps it with
 // the registration.
 //
-// The steps verse controls (task.start, repos.push, repos.pr) and repos aren't listed: every
-// runner supports them, as part of the runner contract.
+// What an offer says about the world is its Systems: each system the offer intercepts for its
+// tasks, and the ceiling over it. A SYSTEM OFFERED IS A SYSTEM INTERCEPTED: the runner performs
+// or stops each of its calls for the policy to decide (`git`, `slack`, `files`, `commands`).
+// What a run is set up with, its repositories and its network, is a fact of the launch's
+// `with`, not a system. There is no list of steps beside it: a row of a launch's policy on a system the offer does
+// not hold is refused, since nothing there could honour it. A task's start is no step: verse
+// decides it before it launches the task.
 type Description struct {
 	Offers []Offer `tony:"field=offers"`
+}
+
+// Check is what a description must say for verse to register the runner: at least one offer,
+// and each offer names the networks it builds, under `with.network`, by mode. A runner silent
+// on its offers, or an offer silent on its network, would leave a spawn's network unchecked
+// where the spawn is written.
+func (d Description) Check() error {
+	modes := []string{NetworkOpen, NetworkNone, NetworkAllow}
+	if len(d.Offers) == 0 {
+		return fmt.Errorf("it offers nothing; a runner offers an agent or scripts, each saying which of %s it builds under with.network",
+			strings.Join(modes, ", "))
+	}
+	for _, o := range d.Offers {
+		name := o.Agent
+		if o.Script {
+			name = "script"
+		}
+		a, ok := o.With["network"]
+		if !ok || a.Any || len(a.Values) == 0 {
+			return fmt.Errorf("offer %s: with.network names no network the runner builds; an offer says which of %s it builds",
+				name, strings.Join(modes, ", "))
+		}
+		for _, v := range a.Values {
+			if !slices.Contains(modes, v) {
+				return fmt.Errorf("offer %s: with.network: %q is not a network mode (%s)", name, v, strings.Join(modes, ", "))
+			}
+		}
+	}
+	return nil
 }
 
 // Offer is one kind of doer a runner runs: an agent, by name, or scripts. An agent name is
 // offered by exactly one registered runner, and only one runner offers scripts.
 type Offer struct {
-	// Agent is the agent's name, as a spawn says it (`agent: verse`). Empty for scripts.
+	// Agent is the agent's name, as a launch says it (`agent: verse`). Empty for scripts.
 	Agent string `tony:"field=agent,omitzero"`
 	// Script is set on the offer for scripts.
 	Script bool `tony:"field=script,omitzero"`
 	// Version is what the runner runs for this offer (a Claude Code version, say), and it goes
 	// on the record of every task the offer runs.
 	Version string `tony:"field=version,omitzero"`
-	// With is the `with` values the offer accepts, by key. A key not listed is not accepted.
+	// With is the `with` values the offer accepts, by key: the doer's own parameters (`model`,
+	// `effort`), and the networks the runner builds (`network`: none, open, allow). A key not
+	// listed is not accepted. A system's facts (`with.git`) come with the
+	// system, under Systems, not here.
 	With map[string]Accepts `tony:"field=with,omitzero"`
-	// Intercepts is the steps the offer can stop before they happen, so a gate may name them:
-	// files.write, commands.run, network.fetch.
-	Intercepts []string `tony:"field=intercepts,omitzero"`
 	// Annotations is the annotations the offer accepts, by name, with the type of their value.
 	Annotations map[string]string `tony:"field=annotations,omitzero"`
+	// Systems are the systems the offer intercepts for its tasks, by name (package systems),
+	// each with its ceiling. A system absent here is not intercepted for the offer: a launch
+	// naming it in a row, or giving its facts, is refused.
+	Systems map[string]System `tony:"field=systems,omitzero"`
+	// Converse is whether a launch for this offer may ask for a conversation (Launch.Converse):
+	// the agent hands the person the turn when it goes quiet. A script offer never does.
+	Converse bool `tony:"field=converse,omitzero"`
+}
+
+// System is one system an offer intercepts, and the ceiling over it.
+//
+//tony:schemagen=verse-runner-system,notag
+type System struct {
+	// Ceiling is the operator's policy over the system's calls: `allow` and `deny` rows
+	// (task.Policy, never `ask`), the last the default. It bounds what a launch's policy may
+	// allow or ask about, and what a task may do: the runner reads it again at each act.
+	Ceiling task.Policy `tony:"field=ceiling"`
 }
 
 // Accepts is the values a `with` key accepts: any value, which is passed through as is

@@ -217,7 +217,7 @@ func TestATrustedIoRelaysAPersonThroughABinding(t *testing.T) {
 	// the io, vouched for by slack.
 	ana := people.Token(authClient, "sub-ana", person("ana@example.com"))
 	if code, out := bearer(t, http.MethodPost, ts.URL+"/charter", ana, "",
-		deployRule(`[{name: ok, mode: ask}]`, `prompt: "true"`)); code != http.StatusCreated {
+		deployRule(`[{name: ok, mode: ask}]`, `doer: {script: "true"}`)); code != http.StatusCreated {
 		t.Fatalf("install = %d %s", code, out)
 	}
 	ready, err := codec.Marshal(api.PutEntity{At: "demo.pr.1", Payload: entity.Obj{"stage": "ready"}.Payload()}, codec.Tony)

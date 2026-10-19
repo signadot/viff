@@ -30,20 +30,18 @@ type Snapshot struct {
 }
 
 // PendingGate is one open gate on a task, in Snapshot's `pending`: a raised GateQuestion awaiting a
-// resolution, in the snapshot's shape. The local runtime carries the full question; a
-// remote runner fills what its worker reported. Origin and Mode may be empty there — a
-// worker raises a gate, it does not decide who answers it, so those are versed's to fill
-// upstream of the snapshot.
+// resolution, in the snapshot's shape, with the step it is about when it is about one.
 //
 //tony:schemagen=verse-pending-gate,notag
 type PendingGate struct {
-	ID     string `tony:"field=id"`
-	Origin string `tony:"field=origin,omitzero"`
-	Gate   string `tony:"field=gate,omitzero"`
-	Tool   string `tony:"field=tool,omitzero"`
-	Action string `tony:"field=action,omitzero"` // the action in one line, see ToolUse.Describe
-	Mode   string `tony:"field=mode,omitzero"`
-	Reason string `tony:"field=reason,omitzero"`
+	ID     string            `tony:"field=id"`
+	Origin string            `tony:"field=origin,omitzero"`
+	Gate   string            `tony:"field=gate,omitzero"`
+	Tool   string            `tony:"field=tool,omitzero"`
+	Action string            `tony:"field=action,omitzero"` // the action in one line, see ToolUse.Describe
+	Step   string            `tony:"field=step,omitzero"`
+	Fields map[string]string `tony:"field=fields,omitzero"`
+	Reason string            `tony:"field=reason,omitzero"`
 }
 
 // Status is a task's lifecycle state, in Snapshot's `status` and an EventStatus's
@@ -57,6 +55,10 @@ type Status string
 const (
 	// Running: an executor is working the task.
 	Running Status = "running"
+	// Paused: a pause is in effect (Task.Pause). The task holds at its next boundary, so an
+	// action already running finishes first; nothing new starts until it is resumed. Not an end
+	// state.
+	Paused Status = "paused"
 	// Done: finished its work successfully — the ONLY status a completion trigger
 	// (matching task:instance status=done) or a spawn's onDone hook reacts to.
 	Done Status = "done"
@@ -71,8 +73,8 @@ const (
 	Orphaned Status = "orphaned"
 )
 
-// Terminal reports whether a status is an end state (no further work). Running is the
-// one live state; everything else is terminal.
+// Terminal reports whether a status is an end state (no further work). Running and Paused are
+// the live states; everything else is terminal.
 func (s Status) Terminal() bool {
 	switch s {
 	case Done, Cancelled, Failed, Orphaned:

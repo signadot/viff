@@ -13,7 +13,7 @@ import (
 // stream is read from cursor 0, which replays what is retained before going live.
 func TestTaskRunAttachPrintsFromTheStart(t *testing.T) {
 	serve(t)
-	out, err := runCLI(t, "task", "run", "--driver", "scripted", "--attach", "--as", "user:t", "echo hi")
+	out, err := runCLI(t, "task", "run", "--script", "echo hi", "--attach", "--as", "user:t")
 	if err != nil {
 		t.Fatalf("task run -attach: %v (out=%q)", err, out)
 	}

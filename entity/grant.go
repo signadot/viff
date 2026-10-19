@@ -191,7 +191,7 @@ func (l Levels) Payload() Payload {
 // Grant is one line of a record's grants: a path the grant covers, and who holds which level
 // there.
 //
-//   - read-write: [coderunner]            # the record's own node, and beneath it
+//   - read-write: [verse-runner]            # the record's own node, and beneath it
 //   - below: true                          # beneath the record's node, not the node itself
 //     owner: ["*"]
 //   - at: [spaces, scott, shared, "*"]     # somewhere else: a path, with at most a trailing *

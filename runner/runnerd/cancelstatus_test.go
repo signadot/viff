@@ -26,15 +26,15 @@ import (
 // record disagreeing with itself in two adjacent fields.
 func TestACancelledTaskIsNotReportedAsFailed(t *testing.T) {
 	d, srv := hosting(t)
-	if code := spawnOne(t, srv.URL, "run-cancel"); code != http.StatusCreated && code != http.StatusOK {
-		t.Fatalf("spawn: %d", code)
+	if code := launchOne(t, srv.URL, "run-cancel"); code != http.StatusCreated && code != http.StatusOK {
+		t.Fatalf("launch: %d", code)
 	}
 
 	tk := d.Lookup("run-cancel")
 	if tk == nil {
 		t.Fatal("the task is not hosted")
 	}
-	if err := tk.Cancel("by hand"); err != nil {
+	if err := tk.Cancel("by hand", ""); err != nil {
 		t.Fatalf("cancel: %v", err)
 	}
 

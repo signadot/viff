@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -12,16 +13,20 @@ import (
 	"sync"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/runnerd/verserunner"
 	"github.com/signadot/verse/task"
 )
 
 // thenKinds is what may follow a yes, by the key that names it. One key per kind, so what runs
-// is said by which key is there, and a record never carries two things to do.
-var thenKinds = map[string]bool{"prompt": true, "calls": true, "answer": true, "ask": true}
+// is said by which key is there, and a record never carries two things to do. A prompt or a
+// script takes a `policy` beside it, what its run is given (thenPolicy).
+var thenKinds = map[string]bool{"prompt": true, "script": true, "answer": true, "ask": true}
 
 // askGate is the gate a person's ask poses under: the ask is the question, and nothing else
 // asked it.
@@ -125,24 +130,30 @@ func (s *Server) raiseAsk(store entity.Store, asker string, body api.Ask, now ti
 }
 
 // followRecord checks what follows an answer, `then` on a yes or `else` on a no, as field names it,
-// and answers it as the record keeps it: one key naming one thing to run.
+// and answers it as the record keeps it: one key naming one thing to run, and with a prompt or a
+// script the policy its run is given.
 func followRecord(field string, follow entity.Payload, asker string, now time.Time) (entity.Obj, error) {
 	fields := entity.Fields(follow)
+	policy, hasPolicy := fields["policy"]
+	delete(fields, "policy")
 	if len(fields) != 1 {
 		return nil, fmt.Errorf("%s names one thing to run, as one key (prompt); it has %d", field, len(fields))
 	}
 	for k, v := range fields {
 		if !thenKinds[k] {
-			return nil, fmt.Errorf("%s: %q is not something an ask runs yet (prompt, calls, answer, ask)", field, k)
+			return nil, fmt.Errorf("%s: %q is not something an ask runs yet (prompt, script, answer, ask)", field, k)
+		}
+		if hasPolicy && k != "prompt" && k != "script" {
+			return nil, fmt.Errorf("%s.policy: a policy is what a prompt or a script runs under, and %s runs neither", field, k)
 		}
 		switch k {
 		case "prompt":
 			if entity.Str(follow, k) == "" {
 				return nil, fmt.Errorf("%s.prompt is text, and says what to do", field)
 			}
-		case "calls":
-			if _, err := thenCalls(follow); err != nil {
-				return nil, fmt.Errorf("%s.calls: %w", field, err)
+		case "script":
+			if entity.Str(follow, k) == "" {
+				return nil, fmt.Errorf("%s.script is text, and is run as a shell script", field)
 			}
 		case "answer":
 			if _, err := thenAnswerOf(entity.ToObj(v)); err != nil {
@@ -159,9 +170,33 @@ func followRecord(field string, follow entity.Payload, asker string, now time.Ti
 			}
 			return entity.Obj{k: entity.ToObj(v)}, nil
 		}
-		return entity.Obj{k: v}, nil
+		out := entity.Obj{k: v}
+		if hasPolicy {
+			if _, err := thenPolicy(policy); err != nil {
+				return nil, fmt.Errorf("%s.policy: %w", field, err)
+			}
+			out["policy"] = policy
+		}
+		return out, nil
 	}
 	return nil, nil
+}
+
+// thenPolicy is the policy a then's run is given, read strictly as a policy a person writes is,
+// and checked. Absent, none: the run is given no verb.
+func thenPolicy(n *ir.Node) (task.Policy, error) {
+	if n == nil {
+		return nil, nil
+	}
+	var b bytes.Buffer
+	if err := codec.EncodeNode(&b, n, codec.Tony); err != nil {
+		return nil, err
+	}
+	var p task.Policy
+	if err := codec.UnmarshalStrict(b.Bytes(), &p, codec.Tony); err != nil {
+		return nil, err
+	}
+	return p, p.Check()
 }
 
 // askGrants is who reads an ask and who answers it: read by its asker and whom it asks, and
@@ -297,7 +332,7 @@ func askQuestion(id string, p entity.Payload, about string) task.GateQuestion {
 		about = entity.Str(p, "subject")
 	}
 	q := task.GateQuestion{
-		ID: id, Gate: askGate, Mode: task.Ask,
+		ID: id, Gate: askGate,
 		Pose: entity.Str(p, "question"), Reason: entity.Str(p, "question"),
 		Subject: about, Answerers: askAnswerers(p), Edit: askEdit(p), Labels: mirror.LabelsOf(p),
 	}
@@ -529,8 +564,9 @@ func (s *Server) followAsk(ref entity.Ref, field string) {
 		}
 	}
 	prompt := entity.Str(then, "prompt")
-	calls, _ := thenCalls(then)
-	if (prompt == "" && len(calls) == 0) || asker == "" || entity.Get(ent.Payload, field+"-task") != nil {
+	script := entity.Str(then, "script")
+	policy, perr := thenPolicy(entity.Get(then, "policy"))
+	if (prompt == "" && script == "") || asker == "" || entity.Get(ent.Payload, field+"-task") != nil {
 		return
 	}
 	id, err := spawnID(api.Spawn{Name: ref.Name()})
@@ -549,7 +585,11 @@ func (s *Server) followAsk(ref entity.Ref, field string) {
 	if err != nil || !marked {
 		return
 	}
-	if err := s.runThen(id, ref, asker, prompt, calls); err != nil {
+	err = perr
+	if err == nil {
+		err = s.runThen(id, ref, asker, prompt, script, policy)
+	}
+	if err != nil {
 		// Marked, so it is not tried again at every restart, and said, since the mark names a task
 		// that never ran.
 		fmt.Fprintf(os.Stderr, "verse: ask %s: its %s did not start: %v\n", ref.Name(), field, err)
@@ -557,53 +597,35 @@ func (s *Server) followAsk(ref entity.Ref, field string) {
 	}
 }
 
-// thenCalls reads a `then` of `{calls: [...]}` as the call list it is, checked as `verse task run
-// --driver calls` checks one; nil for a `then` that is not one.
-func thenCalls(then entity.Payload) ([]task.Call, error) {
-	if entity.Get(then, "calls") == nil {
-		return nil, nil
-	}
-	b, err := codec.NodeBytesWire(then, codec.Tony)
-	if err != nil {
-		return nil, err
-	}
-	calls, err := task.ParseCalls(string(b))
-	if err != nil {
-		return nil, err
-	}
-	return calls, task.CheckCalls(calls)
-}
-
 // runThen starts what follows a yes, as a task of the asker's: its principal and its record are
 // theirs, and its subject is the ask. It is the spawn `verse task run` makes, on the asker's
-// authority alone: a prompt for a model, or a call list run as it stands.
-func (s *Server) runThen(id string, ref entity.Ref, asker, prompt string, calls []task.Call) error {
+// authority alone: a prompt for a model, or a script run as written, under the policy the asker
+// wrote beside it.
+func (s *Server) runThen(id string, ref entity.Ref, asker, prompt, script string, policy task.Policy) error {
 	store := entity.As(s.Store, asker)
 	place, placeName, err := s.runnerFor(store, "")
 	if err != nil {
 		return err
 	}
-	// A CALL LIST RUNS AS WRITTEN: what its asker wrote is what they authorized, as a command
-	// typed at `verse task run` is. A prompt leaves a model to choose its actions, so its task
-	// stands under the default vector, and its gates ask the asker.
-	driver, vector := "llm", ""
-	if len(calls) > 0 {
-		driver, vector = task.DriverCalls, "auto"
+	// It is given what its policy names, as a spawn is; with none, no verb of any system, so a
+	// prompt's model reads and answers, and a script runs as written with no tools to call. Either
+	// has the host's network, as `task run` gives a run nobody narrowed: the asker is the author.
+	doer := runner.Doer{Agent: verserunner.AgentName}
+	if script != "" {
+		doer = runner.Doer{Script: script}
 	}
-	vec, err := task.SpawnVector(vector, nil)
-	if err != nil {
-		return err
-	}
+	doer.With.Network = &runner.Network{Mode: runner.NetworkOpen}
 	// ITS QUESTIONS ARE THE ASKER'S: a gate or an ask of its own naming nobody waits on them.
 	answerers := []string{task.PrincipalAnswerer}
-	h := place.Spawn(task.Launch{
-		ID: id, Prompt: prompt, Driver: driver, Vector: vec, Calls: calls, Answerers: answerers,
-		Provenance: task.Provenance{Principal: asker, Subject: ref.String()},
+	s.host(id, hostedTask{subject: ref.String(), principal: asker, answerers: answerers, policy: policy})
+	h := place.Launch(runner.Launch{
+		ID: id, Prompt: prompt, Doer: doer, Policy: policy,
+		Provenance: runner.Provenance{Principal: asker, Subject: ref.String()},
 	})
 	eng := s.engineOf("")
 	s.reflect(store, id, h, mirror.Meta{
 		Runner: place.Ref(), RunnerName: placeName, Subject: ref.String(), Prompt: prompt,
-		Asker: asker, Answerers: answerers,
+		Doer: doer.Name(), Policy: policy, Asker: asker, Answerers: answerers,
 		HeldBy: func() []string { return eng.HeldBy(id) },
 	})
 	eng.Adopt(ref.String(), id, h)

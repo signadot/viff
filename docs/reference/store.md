@@ -101,5 +101,5 @@ Three properties of the store make the reactive loop converge. An author of a
   already uses this: a rule has many operators, and the store keeps it unchanged under that
   escape. `entity.AsData` does the same for a record that you read, edit and put back.
   `entity.Modify` does this for its callers. For the longer version, read
-  [the trigger model](charter.md#the-charter-is-durable). A charter is the first payload that
+  [the charter](charter.md#the-charter-is-durable). A charter is the first payload that
   needed this escape.

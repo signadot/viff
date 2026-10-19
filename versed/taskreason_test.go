@@ -8,6 +8,7 @@ import (
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
@@ -19,8 +20,12 @@ import (
 func reasonRunner(t *testing.T, reason string) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /describe", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", codec.MediaType(codec.Tony))
+		w.Write([]byte("{offers: [{agent: codex, with: {network: [open, none, allow]}}]}\n"))
+	})
 	mux.HandleFunc("POST /tasks", func(w http.ResponseWriter, r *http.Request) {
-		var l task.SpawnRequest
+		var l runner.Launch
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Error(err)
@@ -68,7 +73,7 @@ func TestAFailedTaskOnANamedRunnerSaysWhy(t *testing.T) {
 	postTony(t, ts.URL+"/runners", map[string]any{"name": "codex", "url": face.URL}).Body.Close()
 
 	id := spawnOK(t, ts, map[string]any{
-		"id": "run-quota", "prompt": "triage the issue", "driver": "codex", "runner": "verse.runners.codex",
+		"id": "run-quota", "doer": map[string]any{"agent": "codex"}, "prompt": "triage the issue", "runner": "verse.runners.codex",
 	})
 	waitTerminal(t, srv.Store, id)
 
@@ -76,14 +81,14 @@ func TestAFailedTaskOnANamedRunnerSaysWhy(t *testing.T) {
 	if rec["status"] != string(task.Failed) || rec["err"] != reason {
 		t.Fatalf("the record of a failed task: status %v, err %v; want failed with the frame's reason", rec["status"], rec["err"])
 	}
-	if rec["prompt"] != "triage the issue" || rec["driver"] != "codex" {
-		t.Errorf("the record says prompt %v, driver %v; want what the spawn said", rec["prompt"], rec["driver"])
+	if rec["prompt"] != "triage the issue" || rec["doer"] != "codex" {
+		t.Errorf("the record says prompt %v, doer %v; want what the spawn said", rec["prompt"], rec["doer"])
 	}
 
 	var got api.Task
 	decodeResp(t, getAs(t, tester, ts.URL+"/tasks/"+id), &got)
-	if got.Status != task.Failed || got.Err != reason || got.Prompt != "triage the issue" || got.Driver != "codex" {
-		t.Errorf("task get = %+v; want the failure's reason, the prompt and the driver", got)
+	if got.Status != task.Failed || got.Err != reason || got.Prompt != "triage the issue" || got.Doer != "codex" {
+		t.Errorf("task get = %+v; want the failure's reason, the prompt and the doer", got)
 	}
 	var rows []api.Task
 	decodeResp(t, getAs(t, tester, ts.URL+"/tasks"), &rows)

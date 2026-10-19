@@ -4,8 +4,8 @@ import "context"
 
 // Resolver answers a blocking gate. It is late-bound and substitutable (model
 // invariant #3): the boundary neither knows nor cares whether a human, another
-// task, or a rule answers. This substitutability is what makes autonomy
-// compositional — "autonomy agnostic" implies "supervisor agnostic."
+// task, or a rule answers. This substitutability is what makes a policy
+// compositional — "policy agnostic" implies "supervisor agnostic."
 type Resolver interface {
 	Resolve(ctx context.Context, q GateQuestion, tu ToolUse) (Resolution, error)
 }
@@ -24,12 +24,6 @@ type Resolution struct {
 	By       string // who resolved: "auto", "user:walter@example.com", "via:verse.resolvers.review", ...
 	Note     string
 	Question GateQuestion
-	// ChildMode: for a CallAgent ASK, how the child is supervised (default
-	// ChildInheritGates). Ignored for non-CallAgent questions. A delegation's question offers
-	// the modes as its options (DelegateOptions), and the loop reads a chosen one off Choice
-	// — as a yes — before this field, so an answer given from the docket by option id and one
-	// a client sent here agree.
-	ChildMode ChildMode
 	// Steer: context/instructions the resolver folds into the task's conversation
 	// at its next turn — a gate that *informs*, not just gates (e.g. an SCM
 	// meta-task injecting org conventions, or a human adding guidance). Delivered
@@ -75,45 +69,18 @@ func Choose(choice, by string) Resolution {
 // their own, rather than the runtime settling a question nobody answered.
 func (r Resolution) Cast() bool {
 	switch r.By {
-	case "", ByAuto, ByCancelled, ByDeadline:
+	case "", ByAuto, ByPolicy, ByCancelled, ByDeadline:
 		return false
 	}
 	return true
 }
 
-// AutoResolver promotes every blocking gate to proceed. A vector of Ask gates
-// resolved by an AutoResolver is a fully autonomous loop (all questions routed
-// to proceed).
+// AutoResolver answers every question proceed. Gates resolved by an AutoResolver make a fully
+// autonomous loop.
 type AutoResolver struct{ Who string }
 
 func (a AutoResolver) Resolve(_ context.Context, q GateQuestion, _ ToolUse) (Resolution, error) {
 	return Resolution{Choice: Proceed, Proceed: true, By: nonEmpty(a.Who, ByAuto), Question: q}, nil
-}
-
-// ChannelResolver poses each blocking question on Out and waits for the answer on
-// In — the present human at a console, or a parent task standing at a child's
-// gate. It models liveness coming from a resolver actually acting, not from a
-// notification: it blocks until answered or the context is cancelled. This is
-// the in-the-loop resolver — every block has a resolver in attendance, so PARK
-// never arises.
-type ChannelResolver struct {
-	Who string
-	Out chan<- GateQuestion
-	In  <-chan bool
-}
-
-func (c ChannelResolver) Resolve(ctx context.Context, q GateQuestion, _ ToolUse) (Resolution, error) {
-	select {
-	case c.Out <- q:
-	case <-ctx.Done():
-		return Resolution{Proceed: false, By: c.Who, Question: q}, ctx.Err()
-	}
-	select {
-	case ok := <-c.In:
-		return Resolution{Proceed: ok, By: c.Who, Question: q}, nil
-	case <-ctx.Done():
-		return Resolution{Proceed: false, By: c.Who, Question: q}, ctx.Err()
-	}
 }
 
 func nonEmpty(s, fallback string) string {

@@ -2,7 +2,7 @@
 
 One rule shapes the surface of verse: *steering outranks observation*.
 [Steering](glossary.md#steering) is acting on work in progress. An intervention that arrives
-late has failed. [Tutorial §3](tutorial.md#steering) shows steering from the operator's side.
+late has failed. [The tutorial](tutorial/tasks.md#steering) shows steering from the operator's side.
 This page explains why verse is built this way.
 
 ## Two planes
@@ -13,7 +13,7 @@ coordination. Verse separates two kinds of work:
 | Kind | What it is | How it travels |
 |---|---|---|
 | *Data coordination* | Actions write entities, and [rules](glossary.md#rule) react to them. | Through the store. It may lag: it is eventual, queued and recoverable. |
-| *Control* | Holding a run, cancelling it, answering a gate, changing the [vector](glossary.md#vector) (the autonomy of a task), or sending an instruction with `say`. | Not through the store at all. |
+| *Control* | Holding a run, cancelling it, answering a gate, changing the [policy](glossary.md#policy) of a task, or sending an instruction with `say`. | Not through the store at all. |
 
 What an operator can stop, and for how long, is in [control](control.md).
 
@@ -77,7 +77,7 @@ it does not take effect by being observed:
 
 The reason for the last point: a suspension that failed open on a restart would resume work
 that somebody stopped on purpose ([control](control.md),
-[the trigger model](control.md#suspending)).
+[control](control.md#suspending)).
 
 ## What runs where
 

@@ -28,6 +28,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
@@ -175,8 +176,11 @@ type Spawn struct {
 	// caller can say what a run IS without choosing its address: `--name review` becomes
 	// `review-8f306077b1c2`, which is readable, unique, and cannot be malformed.
 	Name   string `tony:"field=name,omitzero"`
-	Prompt string `tony:"field=prompt"`
-	Driver string `tony:"field=driver,omitzero"` // empty → the runtime default
+	Prompt string `tony:"field=prompt,omitzero"`
+	// Doer is who does the work and what it works with — the ad-hoc face of a spawn's `doer:`
+	// (runner.Doer): `agent: verse`, or `script: "…"`, with its repositories, network and
+	// environment. Empty is the runner's default agent. A script's doer needs no prompt.
+	Doer runner.Doer `tony:"field=doer,omitzero"`
 	// Retain is how many read-plane events to keep for a resuming reader; 0 = the runtime's
 	// default. A charter says it per spawn (launch.Spec.Retain) and this is the ad-hoc face
 	// of the same field, so `verse task run` and a firing can ask for the same thing.
@@ -189,39 +193,20 @@ type Spawn struct {
 	// carries one from its firing; this is the ad-hoc face of the same field, and without it
 	// a `task run` is about nothing, which is a real state and not a useful default.
 	Subject string `tony:"field=subject,omitzero"`
-	// Vector is the autonomy dial — `auto`, `ask` or `park` — the ad-hoc face of a spawn's
-	// `vector:`. Without it the runtime's own default stands, which for a scripted run is
-	// `ask`: every command it proposes is a question. `verse task run --driver scripted`
-	// sends `auto` on the caller's behalf, because a prompt somebody typed IS the command
-	// they authorized — nothing else gets that, a charter least of all.
-	Vector string `tony:"field=vector,omitzero"`
-	// Gates are this run's own gates over that default — the ad-hoc face of a spawn's
-	// `gates:`, each carrying the question it poses (a threshold, options, a deadline). A
-	// named vector is a bare default, and this is how a run says more: `verse task run
-	// --gates gates.tony`.
-	Gates []task.Gate `tony:"field=gates,omitzero"`
-	// Calls is a call list posted directly, for `verse task run --driver calls`: the actions
-	// themselves rather than a prompt for something to work them out. The CLI parses the tony
-	// document a person typed (task.ParseCalls) and sends this, so a list that will not read
-	// is a message on their terminal rather than a task that failed on a machine elsewhere.
-	Calls []task.Call `tony:"field=calls,omitzero"`
+	// Policy is what happens to each step of this run — the ad-hoc face of a spawn's
+	// `policy:` (task.Policy): `verse task run --policy policy.tony`. It is what the run is
+	// given: absent, no verb of any system is the run's.
+	Policy task.Policy `tony:"field=policy,omitzero"`
+	// Timeout bounds the run, a duration: the ad-hoc face of a spawn's `timeout:`.
+	Timeout string `tony:"field=timeout,omitzero"`
 	// Runner names WHERE this run runs — `verse.runners.<name>`, installed with `verse
 	// runner add`. Empty means the verse's own default runner, which is what `local` means
 	// on a task:instance.
 	//
-	// It is orthogonal to a provider: a provider picks the DOER, and this picks the place. The same doer may run in either of
-	// two places and the same place may host either of two doers, so folding them together
-	// would make one selection answer two questions.
+	// It is orthogonal to the doer: the doer is WHO does the work, and this is the place. The
+	// same doer may run in either of two places and the same place may host either of two
+	// doers, so folding them together would make one name answer two questions.
 	Runner string `tony:"field=runner,omitzero"`
-	// Environment names the workspace the runner should build for this run — the ad-hoc face
-	// of a spawn's `environment:`, so `verse task run` and a firing can ask for the same
-	// thing. Resolved by the runner against its own config, never by verse: see
-	// task.Launch.Environment.
-	Environment string `tony:"field=environment,omitzero"`
-	// Repos are the repositories this run works in and what it may push to each — the ad-hoc
-	// face of a spawn's `repos:` (task.Repo), so `verse task run --repos repos.tony` asks for
-	// what a charter can.
-	Repos []task.Repo `tony:"field=repos,omitzero"`
 	// VirtualKey is the ADDRESS of the model credential this run spends — the ad-hoc face of a
 	// spawn's `virtualKey:`, so `verse task run` can ask for the review budget the way a
 	// charter's provider does.
@@ -263,7 +248,7 @@ type Spawn struct {
 type Task struct {
 	ID         string             `tony:"field=id"`
 	Prompt     string             `tony:"field=prompt,omitzero"`
-	Driver     string             `tony:"field=driver,omitzero"`
+	Doer       string             `tony:"field=doer,omitzero"`
 	Status     task.Status        `tony:"field=status"`
 	Runner     string             `tony:"field=runner,omitzero"` // where it runs or ran: local, or the runner's url
 	RunnerName string             `tony:"field=runnerName,omitzero"`
@@ -274,12 +259,17 @@ type Task struct {
 	Result     string             `tony:"field=result,omitzero"`
 	Err        string             `tony:"field=err,omitzero"`
 	Pending    []task.PendingGate `tony:"field=pending,omitzero"`
+	// Policy is the task's policy as it stands, verse's part of its asks with it, and PolicyBy
+	// who last replaced it while it ran: the record's, so a finished task shows the policy it
+	// ended under.
+	Policy   task.Policy `tony:"field=policy,omitzero"`
+	PolicyBy string      `tony:"field=policyBy,omitzero"`
 }
 
 // TaskFrom is the task as verse reports it, from what a runner reports of it.
 func TaskFrom(snap task.Snapshot) Task {
 	return Task{
-		ID: snap.ID, Prompt: snap.Prompt, Driver: snap.Driver, Status: snap.Status,
+		ID: snap.ID, Prompt: snap.Prompt, Doer: snap.Driver, Status: snap.Status,
 		Cursor: snap.Cursor, Occurrence: snap.Occurrence, Started: snap.Started, Ended: snap.Ended,
 		Result: snap.Result, Err: snap.Err, Pending: snap.Pending,
 	}
@@ -301,22 +291,14 @@ type Say struct {
 	By          string `tony:"field=by,omitzero"` // attribution; empty is an unattributed caller
 }
 
-// SetVector slides a running task's gate vector — the autonomy dial — applied at its
-// next boundary with no restart (`PUT /tasks/{id}/vector`).
+// SetPolicy replaces a running task's policy, applied to its later steps and not to a
+// question already waiting (`PUT /tasks/{id}/policy`). The runner carries the rows whole;
+// verse keeps what it reads of them (what silence settles on, the labels).
 //
-// Vector is a pointer because that is what task.SetVector takes and because an absent
-// vector and a zero one are different requests — a distinction this route needs, since
-// "slide to this vector" and "slide to the zero vector" are not the same instruction.
-//
-// It was ALSO a workaround, and no longer is: until go-tony v0.0.94 a struct-valued field of
-// another package made the generator emit an import it never qualified (item 17 of
-// tony-format#f69agjyeh12ksa25cnn0). Fixed, so a value field would compile today. The
-// pointer stays on the first reason alone.
-//
-//tony:schemagen=verse-set-vector,notag
-type SetVector struct {
-	Vector *task.Vector `tony:"field=vector"`
-	By     string       `tony:"field=by,omitzero"` // who slid it, for the record
+//tony:schemagen=verse-set-policy,notag
+type SetPolicy struct {
+	Policy task.Policy `tony:"field=policy,omitzero"`
+	By     string      `tony:"field=by,omitzero"` // who set it, for the record
 }
 
 // FlowSelect names the work a `verse flow` verb reaches, and narrows what `GET /flows` lists (as
@@ -616,10 +598,11 @@ type Group struct {
 // the id derived from Name, and the verb poses it (docs/asking.md).
 //
 // Then is one key naming what follows a yes, on the asker's authority: `{prompt: <text>}`, a task a
-// model works from that prompt; `{calls: [...]}`, a call list run as written; `{answer: {ask,
+// model works from that prompt; `{script: <text>}`, a script run as written; `{answer: {ask,
 // choice, say?, force?}}`, an answer to another ask as the asker; or `{ask: {…}}`, another ask the
-// asker raises, whose `due` may be a duration from the yes. Absent, the ask is a vote and the
-// answer is all it leaves.
+// asker raises, whose `due` may be a duration from the yes. A prompt or a script takes a `policy`
+// beside it, what its run is given, read as a spawn's is; without one the run is given no verb.
+// Absent, the ask is a vote and the answer is all it leaves.
 //
 //tony:schemagen=verse-ask,notag
 type Ask struct {

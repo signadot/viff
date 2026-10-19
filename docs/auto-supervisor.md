@@ -7,14 +7,13 @@ is set per gate:
 |---|---|
 | `auto` | the action runs |
 | `ask` | a person is asked |
-| `park` | the action is held |
 
-Most flows want a third behaviour. It lies between "every change lands on its own" and "a person
-looks at every change". In the third behaviour, *an agent decides, and promotes what is not its
-to decide*. To promote a change is to send it to a person.
+Most flows want a third behaviour, between "every change lands on its own" and "a person looks
+at every change": *an agent decides, and promotes what is not its to decide*. To promote a
+change is to send it to a person.
 
 This page is a worked example. In its charter, a supervisor agent assesses each change. The
-supervisor clears the changes that it may clear. The charter puts a human gate in front of the
+supervisor clears the changes it may clear. The charter puts a person's gate in front of the
 rest.
 
 The supervisor can approve, but the charter stops it from approving everything, in two ways:
@@ -22,24 +21,22 @@ The supervisor can approve, but the charter stops it from approving everything, 
 - The supervisor's remit is written in the charter, not in the supervisor.
 - A supervisor that fails to decide promotes the change.
 
-The pattern here is a simple one. For supervision as a live conversation, and not as a rule
-fixed at install, see [resolvers](attached-resolvers.md).
+This is a simple pattern. For supervision as a live conversation, rather than a rule fixed at
+install, see [resolvers](attached-resolvers.md).
 
 A test drives the charter below through each of its routes
-([`trigger/supervise_test.go`](https://github.com/signadot/verse/blob/main/trigger/supervise_test.go)).
-The last section names the gaps.
+([`trigger/supervise_test.go`](../trigger/supervise_test.go)). The last section names the gaps.
 
 ## Two supervisors, one word
 
-Verse has a thing called a Supervisor, and it is not the supervisor of this page. The two are
-different:
+Verse has a Go type called `Supervisor`, and it is not the supervisor of this page:
 
 | | what it decides | who writes it |
 |---|---|---|
-| `task.Supervisor` (+ a `Resolver`) | whether *one tool use* inside a running task proceeds | Go code, per runtime. Its gates ask whom they name, and a [resolver](attached-resolvers.md) they grant may answer for them. |
+| `task.Supervisor` (+ a `Resolver`) | whether *one step* inside a running task proceeds | Go code, per runtime. It applies the task's [policy](glossary.md#policy): a row that asks asks whom it names, and a [resolver](attached-resolvers.md) they grant may answer for them. |
 | the supervisor here | whether *a firing* proceeds. This is the question at the level of the charter that a gate would put to a person. | a rule of a charter, which you can install over the wire |
 
-An automatic supervisor of the second kind needs no new machinery. A charter can already do each
+An automatic supervisor of the second kind needs nothing new. A charter can already do each
 step:
 
 1. spawn an agent;
@@ -62,9 +59,9 @@ verse c -a -f - <<'TONY'
   action:
     patch: { stage: assessing }
     spawn:
-      driver: llm
-      prompt:  "Assess $subject for landing. Read the change and the tests it touches."
-      frame: |
+      doer: {agent: verse, with: {network: {mode: open}}}
+      prompt: |
+        Assess $subject for landing. Read the change and the tests it touches.
         You are a review supervisor. Decide what is yours to decide and promote what is
         not: answer `escalate` whenever a person should look at this, `reject` when it
         should not land at all, and `approve` only when you would defend landing it
@@ -73,9 +70,10 @@ verse c -a -f - <<'TONY'
         decision: !or [approve, escalate, reject]
         risk:     !or [low, medium, high]
         why:      !irtype string
-      grant:  read-only
-      vector: auto
-      tools:  [read_file, list_dir]
+      policy:
+      - {name: no-writes, match: {system: files, verb: write}, then: deny}
+      - {name: no-commands, match: {system: commands, verb: run}, then: deny}
+      - {then: allow}
     onDone:
       patch:
         stage:  assessed
@@ -147,14 +145,15 @@ Two routes are *not* in the table:
 
 ## Three things keep it honest
 
-**The supervisor cannot act. It can only answer.** `grant: read-only` is a hard limit. Verse
-refuses an action outside the [grant](glossary.md#grant-of-a-spawn), and asks nobody. So the
-supervisor cannot write the field that routes its own decision. The supervisor's one way to
-reach the store is its final message. The `answer` field gives that message a type: `decision`
-is one of three words, or the run fails and `onFailed` takes over. A supervisor that narrates
-instead of deciding gets no vote. `vector: auto` sets the [vector](glossary.md#vector) so that
-the task asks nobody about its actions. With a read-only grant, there is nothing left to ask
-about.
+**The supervisor cannot act. It can only answer.** Its spawn names no repositories, so it has
+nothing to push. Two rows of its [policy](glossary.md#policy) refuse a write and a command, and
+ask nobody. So the supervisor cannot write the field that routes its own decision.
+
+Its one way to reach the store is its final message. The `answer` field gives that message a
+type: `decision` is one of three words, or the run fails and `onFailed` takes over. A
+supervisor that talks instead of deciding gets no vote. The last row of its policy,
+`then: allow`, lets the task read without asking anybody. With its writes refused, there is
+nothing left to ask about.
 
 **The remit belongs to the charter.** `land-auto` requires three things, and the supervisor
 writes only one of them:
@@ -163,10 +162,10 @@ writes only one of them:
 |---|---|
 | `review.decision` | the supervisor |
 | `review.risk` | the supervisor: it is the supervisor's own claim |
-| `tests: green` | a source that reflects CI ([ios](io.md)). The supervisor has no authority to write it. |
+| `tests: green` | an iod that writes CI's state into the store ([iods](io.md)). The supervisor may not write it. |
 
-So `review.decision: approve` alone does not land a change. That is the property you want, and it is the reason `remit`
-is a rule of its own. `remit` is the complement of `land-auto`, written once, in one place. For
+So `review.decision: approve` alone does not land a change. That is the property you want, and
+it is the reason `remit` is a rule of its own. `remit` is the complement of `land-auto`, written once, in one place. For
 any assessed change that the supervisor approved, either `land-auto` matches or `remit` matches.
 Never both match, and never neither. `remit` rewrites `decision` and leaves `why` as it is. So
 the person at the gate reads the supervisor's reasoning, *and* the note that says the charter
@@ -176,12 +175,10 @@ overrode it.
 `why`. A supervisor can fail in several ways:
 
 - it crashed;
-- it could not produce the shape of its answer;
-- it called `fail` because it could not do the work;
-- it was never available at all.
+- it could not produce an answer of the right shape;
+- its runner could not run it.
 
-In each case the change is not left unassessed. The rule sends the change up, with the reason
-attached. Point this charter at an agent that cannot see the change it was asked about, and you
+In each case the change is not left unassessed. The rule sends the change up, with the reason. Point this charter at an agent that cannot see the change it was asked about, and you
 get this, in the agent's own words:
 
 ```tony
@@ -194,18 +191,18 @@ review:
     " the PR diff and test files for change.pr.9 could not be found under any path tried."
 ```
 
-The same route covers the simplest failure. With no model credentials configured, `verse up`
-builds an `llm` spawn as a task that fails at once (`llm driver unavailable:
-set llm.apiKey …`). So a charter installed on a verse with no key routes *every* change to a
-person. Try both failures on purpose. **A supervisor that goes wrong must fail toward the
-person.** That is a property of where `onFailed` points, not of the agent behaving well.
+One failure does not reach this route. With no model credentials, the runner offers no
+`verse` agent, and verse refuses to install the charter at all: `this runner offers no agent
+"verse"`. Nothing is installed, so nothing lands. **A supervisor that goes wrong must fail
+toward the person.** That is a property of where `onFailed` points, not of the agent behaving
+well.
 
 ## What "when" means here
 
 The promotion happens *before* the action, not after it. `land-ask` asks its gate's question
 while the change is still `assessed`. The person's answer is what makes the change `landed`.
 
-A second question of timing deserves its own rule: some changes should not cost a supervisor
+A second question of timing needs its own rule: some changes should not cost a supervisor
 run at all. A release change, for example, is never an agent's to clear. The charter can route
 it straight to a gate and spawn nothing. To do this, narrow what `assess` is about:
 
@@ -222,10 +219,10 @@ promotion is the one that skips the assessment.
 
 ## Drive it
 
-The supervisor's own run needs model credentials. `verse up` reads them: see
-[§1 of the tutorial](tutorial.md#1-start). The *routing* needs no credentials. A `review` is an
-ordinary fact, so you can write one yourself and watch where it goes. Start with a review that
-the supervisor cleared inside its remit:
+The charter needs model credentials to install, because its `assess` rule names the `verse`
+agent. `verse up` reads them: see [the embedded runner](reference/up.md#the-embedded-runner).
+The *routing* needs nothing more. A `review` is an ordinary fact, so you can write one yourself
+and watch where it goes. Start with a review that the supervisor cleared inside its remit:
 
 ```sh
 verse data change pr 7 -put '{stage: assessed, tests: green, review: {decision: approve, risk: low}}'
@@ -254,7 +251,7 @@ verse question
 #   origin: land-ask
 #   reason: "trigger land-ask gate sign-off on change.pr.8"
 #   subject: change.pr.8
-verse question approve verse.trigger.land-ask.sign-off~090ea377 --as walter@example.com
+verse question approve verse.trigger.land-ask.sign-off~090ea377 --as you@example.com
 # approved verse.trigger.land-ask.sign-off~090ea377
 verse data change pr 8      # stage: landed
 ```
@@ -272,17 +269,15 @@ supervisor. Three things show the result:
 
 ## Where this stops
 
-- **Silence has no clock, for this shape.** A supervisor task that never ends leaves its change
-  at `stage: assessing` forever. `onFailed` covers failure. It does not cover a task that hangs.
-  The nearby clocks do not fit:
-  - A gate's `deadline` guards a firing that has not happened. Promotion on silence needs a
-    deadline on a spawn, and a spawn has no deadline.
-  - A [resolver](attached-resolvers.md)'s onward ask has a clock inside the ask it serves. But
-    that is a clock on a question nobody answered, not on a task that stopped reporting.
+- **This charter sets no clock on the supervisor.** A supervisor task that never ends leaves
+  its change at `stage: assessing`. `onFailed` covers failure, not a task that hangs. A spawn
+  can carry the clock: `timeout: "30m"` cancels the run once it has run that long, not
+  counting time spent waiting for an answer, and an `onCancelled` hook can then write
+  `escalate` as `onFailed` does ([completion hooks](reference/action.md#completion-hooks-one-trigger-chaining-visible)).
 - **The decision is a field, not a ballot.** `review.by` records which rule's supervisor wrote
   the decision. That is weaker than what a gate gives. A gate with `need: 2` keeps a
   [ballot](glossary.md#ballot) for each voter, and each ballot names who cast it
-  ([§4 of the tutorial](tutorial.md#4-gates-and-the-docket)). A principal of kind `agent` can
+  ([the tutorial](tutorial/charters.md#no-is-a-real-outcome)). A principal of kind `agent` can
   cast one of those ballots, as a person can (`verse question approve <id> --as agent:<name>`). So
   an agent can be one of the two approvals on a gate with `need: 2`. The supervisor in this
   example is a task that writes a field, and it casts no ballot.
@@ -291,7 +286,7 @@ supervisor. Three things show the result:
   `assess`-style rules that write to different fields, with `land-auto` requiring both.
 - **The inside is a different layer.** The supervisor here decides whether a change lands, by
   writing to the subject. What the *worker* agent may do while it produces the change is the
-  other layer of supervision: the run's gates, which ask whom they name, and the
+  other layer of supervision: the rows of the run's policy, which ask whom they name, and the
   [resolvers](attached-resolvers.md) those people grant. The two layers compose. This charter decides
   about the change. A resolver decides about the actions taken to produce it.
 

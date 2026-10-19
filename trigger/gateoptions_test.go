@@ -64,9 +64,6 @@ func TestAThresholdGatePosesItsOptions(t *testing.T) {
 	entitytest.Set(t, store, entity.RefAt("demo", "pr", "1"), entity.Obj{"stage": "open"}.Payload())
 
 	q := firstQuestion(t, res)
-	if q.Mode != task.Ask {
-		t.Errorf("mode = %v, want ask implied by the threshold", q.Mode)
-	}
 	ids, needs := task.OptionIDs(q.Options), []int{}
 	for _, o := range q.Options {
 		needs = append(needs, o.Need)

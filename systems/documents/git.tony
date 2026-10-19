@@ -1,0 +1,16 @@
+name: git
+description: "A git repository the task checked out: what the runner fetched from the forge into the task's workspace, on the task's own branch. Its verbs are the runner's acts on the remote with the runner's credential, which the task never holds."
+verbs:
+- name: push
+  description: "Push a branch of the checkout to the remote, or delete one there. Fast-forward unless the push says force; a branch this run created it may rewrite. The runner fills `exists` and `own` from the forge, so a row can keep a task to branches it makes and branches it made."
+  params:
+  - {name: repo, form: repo, description: "the repository, as `host/owner/name` in lower case (`github.com/acme/app`), whichever way the spawn named it"}
+  - {name: ref, form: ref, description: "the branch pushed, as a full ref (refs/heads/main)"}
+  - {name: delete, form: bool, description: "true when the push removes the branch rather than writing it"}
+  - {name: force, form: bool, description: "true when the push may rewrite what the branch holds; a branch this run created is its own to rewrite"}
+  - {name: exists, form: bool, description: "true when the branch is at the forge before the push. The runner fills it; a task cannot say it."}
+  - {name: own, form: bool, description: "true when the branch's tip at the forge is a commit this task made, by the trailers every commit it delivers carries. The runner fills it; a task cannot say it."}
+- name: fetch
+  description: "Bring the checkout's view of the remote up to date: the mirror/* refs move to where the remote's branches are, and nothing of the task's own is touched."
+  params:
+  - {name: repo, form: repo, description: "the repository, as `host/owner/name` in lower case (`github.com/acme/app`), whichever way the spawn named it"}

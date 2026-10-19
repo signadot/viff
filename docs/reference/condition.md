@@ -3,17 +3,21 @@
 This page describes the fields of the [condition](../glossary.md#condition) of a
 [rule](../glossary.md#rule): `subject`, `on` and `when`. All three are written as matches, so
 the page also says what a [match](../glossary.md#match) can say.
-[The trigger model](../trigger-model.md) is the model that these fields belong to.
+[The charter reference](../trigger-model.md) is the model that these fields belong to.
 
-## `subject` — what the firing is about, and required
+A condition reads entities in the store. People write them, rules write them, verse writes its
+own, and an [iod](../glossary.md#iod) writes what a system outside verse holds. The condition
+does not care which.
+
+## `subject`: what the firing is about, and required
 
 `subject` says what a [firing](../glossary.md#firing) acts on. It is a `Match` at one point in
 time, and never a formula. Verse selects the subject once, from the
 [store](../glossary.md#store) as it stood at the commit. A subject has no `until` and no
 `deadline`: verse *selects* a subject, and does not *await* it.
 
-`subject` is the one field that a condition cannot leave out. Everything else in the rule is
-read relative to it. [The subject is required](../design/reference-condition.md#the-subject-is-required) gives the reason.
+`subject` is the one field that a condition cannot leave out. The rest of the rule is read
+relative to it. [The subject is required](../design/reference-condition.md#the-subject-is-required) gives the reason.
 
 A subject resolves in one of two ways. Both use the same match grammar.
 
@@ -49,11 +53,10 @@ A re-evaluation about a subject is not a second firing in two cases: when the su
 already firing, and when work that the firing started is already running. So a rule that waits
 for a person does not ask again at every commit.
 
-For this reason `subject` is bounded, where a `when` formula ranges freely. `subject` pins a
-place, and its predicate is over the [payload](../glossary.md#payload) of the single entity.
-"All open PRs" is
-`{path: "demo.pr.*", value: {stage: open}}`. The same thing one level deeper is
-`{path: "verse-dev.drift.head.*", value: {reviewed: pending}}`.
+For this reason `subject` is bounded, where a `when` formula ranges freely. `subject` names a
+place, and its predicate is over the [payload](../glossary.md#payload) of one entity.
+"All open PRs" is `{path: "demo.pr.*", value: {stage: open}}`. The same thing deeper in the tree
+is `{path: "repos.verse.drift.head.*", value: {reviewed: pending}}`.
 
 ### The pattern says how deep its subjects are
 
@@ -67,7 +70,7 @@ N segments down. A name and a `*` count the same: each is one segment.
 | `path` | What it selects |
 |---|---|
 | `{path: "demo.pr.*"}` | the nodes that stand under `demo.pr` |
-| `{path: "verse-dev.drift.head.*"}` | the nodes under `verse-dev.drift.head` |
+| `{path: "repos.verse.drift.head.*"}` | the nodes under `repos.verse.drift.head` |
 | `{path: "demo.pr"}` | the entity at `demo.pr` itself |
 
 A short path is not a prefix. In a path with no `..` segment, nothing means "at or below".
@@ -77,7 +80,7 @@ for. That node exists, and its payload is the subtree beneath it. The rule reads
 that it wanted, does not find them, and writes its patches at that node.
 
 Check the depth wherever a rule reads what another rule derived. See
-[`action`](action.md#action--what-fires).
+[`action`](action.md#action-what-fires).
 
 A write names the place that it writes. A listing walks: `verse data -paths` lists every
 address under the one it was given, and `-depth` bounds how far it goes beneath that address.
@@ -98,13 +101,13 @@ The string is the path that it spells, at every length.
 | String | What it means |
 |---|---|
 | `"demo.pr"` | names the entity at `demo.pr` |
-| `"verse-dev.drift.head.*"` | selects four segments deep |
+| `"repos.verse.drift.head.*"` | selects five segments deep |
 
 Anything else in a segment is a name. `hotfix-*` in the string is the segment called
 `hotfix-*`, and not a glob.
 
 The object form says the same path and adds a predicate:
-`{path: "verse-dev.drift.head.*", value: {…}}`. There is no list of segments, and a path holds
+`{path: "repos.verse.drift.head.*", value: {…}}`. There is no list of segments, and a path holds
 no operator. A condition on what a node holds is a predicate on the node, where a reader looks
 for it.
 
@@ -125,8 +128,8 @@ the subject that a finished task was about. The store cannot fake this correlati
 | "this task, this subject" | a [hook](../glossary.md#hook) |
 | "when this becomes true, act on that set" | an `on` |
 
-`flow` is a convention that `mirror.Reflect` publishes: the field *is* the subject of the
-task. The flow query reads it. A rule whose subject carries the field reads it as
+`flow` is a field that verse writes on the record of each task: the field *is* the subject of
+the task. The flow query reads it. A rule whose subject carries the field reads it as
 `$subject.value.flow`. The field is distinct from the reserved `$subject` binding, which is
 the resolved subject of the firing itself.
 
@@ -156,7 +159,7 @@ each PR is a [flow](../glossary.md#flow) of its own.
 
 **There is one gate for each member**, and not one gate for the whole set. A firing is about
 one entity, so twelve reviewed PRs are twelve questions
-([gates](gates.md#gates--whether-it-proceeds)). An operator gives twelve answers, because `verse question approve` has
+([gates](gates.md#gates-whether-it-proceeds)). An operator gives twelve answers, because `verse question approve` has
 no bulk form.
 
 **The `when` is the condition**: while CI is green. Verse evaluates the rule again at every
@@ -166,7 +169,7 @@ later.
 [Two rules, read out loud](../trigger-model.md#two-rules-read-out-loud) says what an `on` in
 place of `when` means. The engine warns at install when a narrow `on` leaves uncovered a part of what the rule reads.
 
-## `on` and `when` — the cause and the condition
+## `on` and `when`: the cause and the condition
 
 `on` and `when` are one predicate asked at two moments. Both are optional. Both are matches
 over the store, with the same grammar.
@@ -209,8 +212,8 @@ explains why. It does not say "unknown key". A match says a create and a delete 
 A match that is only a path of names and `*` reads back from `verse c`
 in the string form: `demo.pr.*`. It is the same match in a shorter spelling.
 
-**Keep a condition small.** Complexity hides in a condition. To act "only the first time",
-match a state field that your action then advances. That field is a
+**Keep a condition small.** A large condition is hard to read and hard to check. To act "only
+the first time", match a state field that your action then advances. That field is a
 **[latch](../glossary.md#latch)**. [The rule](../trigger-model.md#the-rule) says why a rule
 needs one.
 
@@ -236,7 +239,7 @@ A match is a tony match, and `tony.Match` evaluates it.
 
 **A path takes no operator.** A path is a kinded path, the same one that `verse data -at`
 reads. A segment is a name, `*` or `..`. To select a family of names, write a predicate on
-what the node holds. Both deployed charters write it there:
+what the node holds:
 
 ```tony
 # every pr whose branch is a hotfix
@@ -291,11 +294,11 @@ place too. Use it for a rule about things that do not all stand at one depth. De
 are such things:
 
 ```tony
-# every finding beneath verse-dev, wherever the rule that derived it put one
+# every finding beneath repos.verse, wherever the rule that derived it put one
 subject:
-  path: "verse-dev..finding"
+  path: "repos.verse..finding"
   value: {stage: open}
-subject: "verse-dev..finding"   # the same, as a kinded path
+subject: "repos.verse..finding"   # the same, as a kinded path
 ```
 
 A subject that descends selects by reading the subtree at its literal prefix and walking it.
@@ -343,9 +346,9 @@ the reason.
 
 Know three things about a predicate before you rely on one.
 
-**`!glob` is `filepath.Match`.** So `*` does not cross `/`, and `?` and `[…]` are
-metacharacters: `!glob "a*"` does not match `a/b`. This is intended. A name that holds a `/`
-can then be matched one piece at a time. The `<workspace>/<ts>` of a slack message is such a
+**`!glob` is `filepath.Match`.** So `*` does not cross `/`, and `?` and `[…]` are special
+characters: `!glob "a*"` does not match `a/b`. This is intended: a name that holds a `/` can be
+matched one piece at a time. The `<workspace>/<ts>` of a slack message is such a
 name. But `!glob "*"` and a bare `*` are not interchangeable: a bare `*` is any one segment,
 whatever it holds.
 

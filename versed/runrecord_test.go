@@ -10,6 +10,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
@@ -29,8 +30,8 @@ func TestEachRunLeavesItsOwnRecord(t *testing.T) {
 	// A driver that fails the first time and succeeds the second, so the two runs differ in
 	// the field an operator would actually be reading.
 	var runs int
-	drive := func(l task.Launch, reg *task.Registry) *task.Task {
-		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
+	drive := func(l runner.Launch, reg *task.Registry) *task.Task {
+		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, reg)
 		runs++
 		if runs == 1 {
 			return task.NewTask(l.ID, sup, &failingDriver{why: "first attempt broke"}, noopExecutor{})
@@ -151,8 +152,8 @@ func waitRunAfter(t *testing.T, store entity.Store, id string, prev int64) int64
 // had just told it was fine.
 func TestAClearedFieldIsAbsent(t *testing.T) {
 	store := entitytest.Store(t)
-	drive := func(l task.Launch, reg *task.Registry) *task.Task {
-		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
+	drive := func(l runner.Launch, reg *task.Registry) *task.Task {
+		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, reg)
 		return task.NewTask(l.ID, sup, &countingDriver{n: 1}, noopExecutor{})
 	}
 	srv := NewWithStore(drive, store)

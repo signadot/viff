@@ -48,7 +48,7 @@ func postTony(t *testing.T, url string, v any) *http.Response {
 		as = orTester(body.By)
 	case api.Say:
 		as = orTester(body.By)
-	case api.SetVector:
+	case api.SetPolicy:
 		as = orTester(body.By)
 	}
 	return postAs(t, as, url, "application/tony", string(b))
@@ -77,7 +77,7 @@ func TestAnAskAnswerAcceptsAPIResolve(t *testing.T) {
 	answered := make(chan task.Resolution, 1)
 	go func() {
 		res, _ := srv.Reg.Resolve(context.Background(),
-			task.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: task.Ask},
+			task.GateQuestion{ID: id, Origin: "review", Gate: "review"},
 			task.ToolUse{Name: "verse.trigger.review"})
 		answered <- res
 	}()

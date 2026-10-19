@@ -1,0 +1,7 @@
+name: commands
+description: "The commands a doer runs in the task's shell, in its own process. A runner that intercepts them stops each before it runs, so a gate may ask about it; the command matches as one string."
+verbs:
+- name: run
+  description: "Run a command in the task's shell."
+  params:
+  - {name: command, description: "the command line, as the doer gave it"}

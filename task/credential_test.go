@@ -27,7 +27,7 @@ func TestACredentialIsAFileOutsideTheWorkspace(t *testing.T) {
 	if data, _ := os.ReadFile(path); string(data) != "tok.en.sig" {
 		t.Errorf("the file holds %q", data)
 	}
-	if inside(path, workspace) {
+	if Inside(path, workspace) {
 		t.Errorf("%s is inside the workspace %s", path, workspace)
 	}
 	remove()

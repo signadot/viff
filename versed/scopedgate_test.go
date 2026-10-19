@@ -90,7 +90,7 @@ func spawnScoped(t *testing.T, ts *httptest.Server, id, scope string) {
 	if scope != "" {
 		url += "?scope=" + scope
 	}
-	resp := postTony(t, url, map[string]any{"id": id, "prompt": "true"})
+	resp := postTony(t, url, map[string]any{"id": id, "doer": map[string]any{"script": "true"}, "policy": stepAsks})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		raw, _ := io.ReadAll(resp.Body)

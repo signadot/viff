@@ -11,6 +11,7 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 
 	"github.com/signadot/verse/codec"
@@ -88,7 +89,7 @@ func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewing"}},
 		},
 		Action: Action{
-			Spawn:  &launch.Spec{Prompt: "follow up on $subject"},
+			Spawn:  &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "follow up on $subject"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "followed"}.Payload()},
 		},
 	}); err != nil {

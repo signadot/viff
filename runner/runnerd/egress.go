@@ -9,9 +9,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/signadot/verse/runner"
 )
 
-// The egress proxy: what makes a restricted network a thing a runner can build rather than a
+// The egress proxy: what makes an allow network a thing a runner can build rather than a
 // word in a vocabulary.
 //
 // It matters more than it looks, and the reason is the secret story. Once it is settled that what
@@ -29,11 +31,11 @@ import (
 // What it is NOT is a security boundary against a task that can reach the network another way.
 // Under a sandbox that does not unshare the network it is advice: the proxy is there, the task is
 // told to use it, and nothing stops it opening its own socket. That is why Unconfined refuses
-// NetworkRestricted rather than claiming it.
+// NetworkAllow rather than claiming it.
 
 // Egress is an allowlisting HTTP proxy for one task.
 //
-// Per task rather than per runner, because the allowlist is the environment's and the refusals
+// Per task rather than per runner, because the allowlist is the launch's and the refusals
 // are worth attributing. A refusal is the interesting event here: it is the only place a runner
 // finds out that a task tried to reach something nobody said it could, which is a signal about
 // the work — a dependency nobody declared, or an agent doing something surprising — as much as
@@ -57,13 +59,13 @@ type rule struct {
 }
 
 // NewEgress builds a proxy over an allowlist. An empty allowlist is an error rather than a proxy
-// that permits nothing: an environment that declared a restricted network and listed nothing has
+// that permits nothing: a launch that asked for an allow network and listed nothing has
 // said something contradictory, and a task that cannot reach anything is a task that should have
 // asked for none.
 func NewEgress(id string, allow []string, log io.Writer) (*Egress, error) {
 	if len(allow) == 0 {
 		return nil, fmt.Errorf("an egress allowlist with no entries permits nothing — " +
-			"an environment that means that wants no network at all")
+			"a launch that means that wants network none")
 	}
 	rules := make([]rule, 0, len(allow))
 	for _, entry := range allow {
@@ -80,28 +82,20 @@ func NewEgress(id string, allow []string, log io.Writer) (*Egress, error) {
 	}, nil
 }
 
+// parseAllow reads an entry runner.CheckAllow takes. `*` is refused there by name rather than
+// accepted as a convenience: an allowlist of everything is an open network, which is a
+// different claim, and visible as itself where anything can read it.
 func parseAllow(entry string) (rule, error) {
+	if err := runner.CheckAllow(entry); err != nil {
+		return rule{}, fmt.Errorf("egress: %w", err)
+	}
 	e := strings.ToLower(strings.TrimSpace(entry))
-	if e == "" {
-		return rule{}, fmt.Errorf("egress: an empty allowlist entry")
-	}
-	if e == "*" {
-		// Refused by name rather than accepted as a convenience. An allowlist of everything is an
-		// open network, which is a different claim, and visible as itself where anything can
-		// read it.
-		return rule{}, fmt.Errorf("egress: `*` is not an allowlist — an environment that means " +
-			"it wants an open network, which says so where anything can read it")
-	}
 	r := rule{host: e}
 	if h, p, err := net.SplitHostPort(e); err == nil {
 		r.host, r.port = h, p
 	}
 	if after, ok := strings.CutPrefix(r.host, "*."); ok {
 		r.wildcard, r.host = true, after
-		if r.host == "" || !strings.Contains(r.host, ".") {
-			return rule{}, fmt.Errorf("egress: %q matches too much — a wildcard needs a domain "+
-				"under it", entry)
-		}
 	}
 	return r, nil
 }
@@ -131,7 +125,7 @@ func (e *Egress) Permits(hostport string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("egress: %s is not on this environment's allowlist (%s)",
+	return fmt.Errorf("egress: %s is not on this task's allowlist (%s)",
 		hostport, strings.Join(e.allowed(), ", "))
 }
 
@@ -176,7 +170,11 @@ func (e *Egress) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	dest := r.URL.Host
 	if r.URL.Port() == "" {
-		dest = net.JoinHostPort(dest, "80")
+		port := "80"
+		if strings.EqualFold(r.URL.Scheme, "https") {
+			port = "443"
+		}
+		dest = net.JoinHostPort(r.URL.Hostname(), port)
 	}
 	if perr := e.Permits(dest); perr != nil {
 		e.note(dest, perr)
@@ -233,16 +231,7 @@ func (e *Egress) connect(w http.ResponseWriter, r *http.Request) {
 		down.Close()
 		return
 	}
-	go func() {
-		defer up.Close()
-		defer down.Close()
-		_, _ = io.Copy(up, buf) // whatever the client already sent, then the rest
-	}()
-	go func() {
-		defer up.Close()
-		defer down.Close()
-		_, _ = io.Copy(down, up)
-	}()
+	go splice(down, buf, up) // buf: whatever the client already sent, then the rest
 }
 
 // refuseTunnel says no to a CONNECT in the only channel a client will actually read.
@@ -323,7 +312,7 @@ type EgressServer struct {
 }
 
 // ServeEgress serves a proxy over allow for one task, on a socket in dir: a directory no sandbox
-// binds, so the path is the runner's and the sandbox decides where the task sees it (Sandbox.EgressAt).
+// binds, so the path is the runner's; the sandbox binds it in at EgressPath.
 func ServeEgress(dir, id string, allow []string, log io.Writer) (*EgressServer, error) {
 	eg, err := NewEgress(id, allow, log)
 	if err != nil {
@@ -357,7 +346,7 @@ func (e *EgressServer) Sock() string {
 	return e.sock
 }
 
-// Stop stops serving and removes the socket. Nil-safe: a task with no restricted network has none.
+// Stop stops serving and removes the socket. Nil-safe: a task with no allow network has none.
 func (e *EgressServer) Stop() {
 	if e == nil {
 		return
@@ -368,6 +357,35 @@ func (e *EgressServer) Stop() {
 
 // ProxyEnv is the environment variables a proxy is announced in, both spellings of each.
 var ProxyEnv = []string{"HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"}
+
+// splice joins a client to its far side until both directions have ended, then closes both: what
+// the client sends (read from in) goes to far, and what far sends to the client. Each direction's
+// end is passed on as a half-close, so a client that shuts its write side still reads the answer,
+// and a far side that finishes first still reads what the client sends.
+func splice(client net.Conn, in io.Reader, far net.Conn) {
+	var both sync.WaitGroup
+	both.Add(2)
+	go func() {
+		defer both.Done()
+		_, _ = io.Copy(far, in)
+		closeWrite(far)
+	}()
+	go func() {
+		defer both.Done()
+		_, _ = io.Copy(client, far)
+		closeWrite(client)
+	}()
+	both.Wait()
+	client.Close()
+	far.Close()
+}
+
+// closeWrite half-closes c, where it can be.
+func closeWrite(c net.Conn) {
+	if hc, ok := c.(interface{ CloseWrite() error }); ok {
+		_ = hc.CloseWrite()
+	}
+}
 
 // UseEgress, in a task's process, makes the runner's proxy at sock usable as a proxy: it sets the
 // proxy variables on this process, and returns their names for the caller to pass on to the
@@ -382,7 +400,7 @@ var ProxyEnv = []string{"HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"
 // a network namespace of one process tree, so 127.0.0.1 is reachable by the task and by nothing
 // else on the machine. Without the unshare it would be the host's loopback and this would be a
 // proxy anything could use — which is one more reason a sandbox that cannot unshare refuses a
-// restricted network rather than approximating it.
+// network of allow rather than approximating it.
 func UseEgress(sock string) (names []string, err error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -396,14 +414,12 @@ func UseEgress(sock string) (names []string, err error) {
 				return
 			}
 			go func() {
-				defer down.Close()
 				up, err := net.Dial("unix", sock)
 				if err != nil {
+					down.Close()
 					return
 				}
-				defer up.Close()
-				go func() { _, _ = io.Copy(up, down) }()
-				_, _ = io.Copy(down, up)
+				splice(down, down, up)
 			}()
 		}
 	}()

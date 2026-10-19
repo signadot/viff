@@ -53,14 +53,14 @@ func deployRule(gates, spawn string) string {
 		name: deploy,
 		condition: {subject: {path: "demo.pr.*", value: {stage: ready}}},
 		gates: ` + gates + `,
-		action: {patch: {stage: deploying}, spawn: {driver: scripted, vector: auto, ` + spawn + `}},
+		action: {patch: {stage: deploying}, spawn: {policy: [{then: allow}], ` + spawn + `}},
 	}`
 }
 
 // showsCredential is a spawn's command that prints the path its shell was given for a credential
 // file, and copies the file to dir/token where it was given one, for the test to read.
 func showsCredential(dir string) string {
-	return `prompt: "echo \"[$VERSE_CREDENTIAL_FILE]\"; if [ -n \"$VERSE_CREDENTIAL_FILE\" ]; then cp \"$VERSE_CREDENTIAL_FILE\" ` + dir + `/token; fi"`
+	return `doer: {script: "echo \"[$VERSE_CREDENTIAL_FILE]\"; if [ -n \"$VERSE_CREDENTIAL_FILE\" ]; then cp \"$VERSE_CREDENTIAL_FILE\" ` + dir + `/token; fi"}`
 }
 
 // ruleTask waits for the task the deploy rule started about a subject to end, and answers its
@@ -255,8 +255,8 @@ func TestWhoGetsWhichCredential(t *testing.T) {
 			if rec["status"] != string(c.status) {
 				t.Fatalf("the task = %v, want it %s", rec, c.status)
 			}
-			if c.inResult != "" && !strings.Contains(fmt.Sprint(rec["lastOutput"])+fmt.Sprint(rec["err"]), c.inResult) {
-				t.Errorf("the task says %v / %v, want %q", rec["lastOutput"], rec["err"], c.inResult)
+			if c.inResult != "" && !strings.Contains(fmt.Sprint(rec["result"])+fmt.Sprint(rec["err"]), c.inResult) {
+				t.Errorf("the task says %v / %v, want %q", rec["result"], rec["err"], c.inResult)
 			}
 			if c.sub != "" {
 				_, token := credentialOf(t, rec, dir)

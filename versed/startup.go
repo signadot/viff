@@ -25,12 +25,15 @@ const (
 	phaseCharter     = "restored the charter"
 	phasePackages    = "restored packages"
 	phaseSystem      = "installed the system charter"
-	phaseSelections  = "resumed selections"
+	phaseSystems     = "installed the systems' documents"
 	phaseDeadlines   = "armed deadlines"
 	phaseSchedules   = "armed schedules"
 	phaseAsks        = "armed ask expiries"
 	phaseAsksWait    = "waited on asks"
 	phaseSources     = "restored sources"
+	// A runner installed without its offers (--no-probe, or a pod that was not up) is asked
+	// what it offers, so a spawn naming it is checked rather than refused for want of an answer.
+	phaseRunners = "probed runners"
 	// After the sources: a charter verse ships at the system level sends to places the ios
 	// read, and an outbox is checked against the registered ios, which the restore registers.
 	phaseSystemTexts = "installed the system charters"

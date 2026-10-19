@@ -25,12 +25,12 @@ policy. Nothing here decides anything about the engine, its charter, or how a
 
 Each of the two settings has its own name, and neither name is "policy". What runs a task is its
 [runner](glossary.md#runner). How much it may do without asking is its
-[vector](glossary.md#vector).
+[policy](glossary.md#policy): the rows that name the steps it refuses, asks about or allows.
 
 | meaning | interface | wire | flag |
 |---|---|---|---|
 | what runs a task | `task.Runner`, returning a `task.Handle` | `runner` on a `verse.task.instance` and on `verse status` | `verse up -runner <url>` |
-| how much it may do unasked | `task.Vector` | `vector` on a launch spec | `verse task vector <id>` |
+| how much it may do unasked | `task.Policy` | `policy` on a launch | `verse task policy <id>` |
 
 A policy layer over the engine is a plausible thing to want later. A name "policy" here would
 collide with it.
@@ -39,9 +39,9 @@ collide with it.
 
 Verse defines a task as a contract, not as "an LLM loop":
 
-1. A [driver](glossary.md#driver) proposes an action.
+1. A [doer](glossary.md#doer) proposes an action: an agent's driver, or a script's call.
 2. An [executor](glossary.md#executor) performs it.
-3. A vector gates each effect at a [boundary](glossary.md#boundary).
+3. The policy decides each [step](glossary.md#step) at a [boundary](glossary.md#boundary).
 4. A read plane streams events.
 5. A control plane steers the task at boundaries.
 6. Verse mirrors the whole task to a `verse.task.instance` entity, and the task ends with a
@@ -50,32 +50,30 @@ Verse defines a task as a contract, not as "an LLM loop":
 Task control is the durable form of the in-process `Supervisor`, which enforces that contract.
 
 In process, verse enforces the contract by interception. The loop cannot `Execute` an action
-until `Supervisor.Check` returns proceed. `Supervisor.Check` derives the `Effect`, calls
-`Vector.Evaluate`, and calls `Resolver.Resolve`. Verse is trusted because it runs the loop
+until `Supervisor.Check` returns proceed. `Supervisor.Check` derives the step, asks the policy
+which row decides it, and for an ask calls `Resolver.Resolve`. Verse is trusted because it runs the loop
 itself.
 
-Outside the process, verse cannot intercept every action of a remote worker.
-Enforcement becomes four things: authorize, checkpoint, attest, and CAS-enforce invariants.
+On a [runner](glossary.md#runner), the same supervisor runs in the task's process, and the
+runner holds the line around it. Each verb that crosses a credential (a push, a pull request, a
+tracker's or Slack's act) is performed by the runner's own process, which decides it again by
+the task's current policy and by its own ceiling before anything moves, and fills the facts only
+it knows (a push's `exists` and `own`). An act a row asks about is performed on an answer the
+runner itself relayed to the task, about that call, once per act; the task's process holds the
+model, and its word that a question was answered is not taken. A change of policy goes to the runner first, which holds
+it to the launch's verbs and its ceilings and refuses what reaches past them; what the task's
+process says of it is not what holds the line, since that is the process the policy constrains.
+Verse holds the spawn to the runner's offer at install, and its record is what the runner
+reports: every call, the row that decided it, and whoever answered.
 
-- Verse authorizes the runner: the identity on its entity is the
-  [worker](glossary.md#worker) of record, granted the task and nothing else.
-- Verse records what the worker reports, as audited attestations.
-- Verse CAS-enforces the structural invariants on the entity: terminal-once, writes by the
-  worker of record only, and gate-before-the-effect.
+So there is one control contract, and what a row guarantees depends on who performs its step:
 
-Verse relays a change of vector to the runner. The worker honours it or does not.
-Nothing outside the process derives an effect or evaluates a vector.
-
-So there is one control contract with two modes of enforcement. What each mode guarantees
-differs, with the mechanism:
-
-| | who performs the step | what holds |
+| the step | who performs it | what a row is |
 |---|---|---|
-| the local supervisor | verse's own executor | **enforced** — the action cannot run until the vector clears it |
-| a spawned worker on k8s, lambda or a host | the worker | **attested** — verse holds the worker's account of what it did |
+| a verb the runner performs (`git.push`, `github.create-pr`, a tracker's, Slack's) | the runner, with its credential | **a bound**: refused there is prevented |
+| a verb the runner stops inside the run (`files.write`, `commands.run`, `agent.call-sub-agent`) | the doer, as it proposed it | **a prompt** over what the agent proposes, until a seam below the task makes it a bound ([inside](systems/inside.md)) |
 
-Gates, the resolver, boundaries and the terminal are the same in both modes. The vector is
-the part that does not travel.
+Rows, the resolver, boundaries and the terminal are the same wherever the task runs.
 
 ## The loop is a state machine
 
@@ -101,24 +99,24 @@ that an event arrives.
 | Input | Examples | What it does |
 |---|---|---|
 | an *intervention* | cancel, pause, resume, say | An operator redirects this run. It preempts, and it preempts a pending gate too. |
-| a *policy change* | a change of vector | It applies to later actions and does not preempt. |
+| a *policy change* | a new policy | It applies to later steps and does not preempt. |
 | *work the task produced for itself* | the result of a child | It folds in at the hinge. It never overtakes an action that is already proposed. |
 
 Preemption is for people.
 
-Suppose you change a running task to `auto`. That means "stop asking me about actions like
-this". It does not mean "approve the action already in front of me". If the change dissolved the
+Suppose you change a running task to `auto`. That means "stop asking me about steps like
+this". It does not mean "approve the step already in front of me". If the change dissolved the
 pending question, a policy change would approve one specific action that nobody looked at.
 
 A task-control backend is a reconciler over the `verse.task.instance` resource. It is not itself
 a gated task. Governing a task must not require another governed task, or the regress never
 stops.
 
-A backend is the dual of the [source](glossary.md#source) of an [io](io.md). A source reflects
+A backend is the dual of the [source](glossary.md#source) of an [iod](io.md). A source reflects
 external state *into* the [store](glossary.md#store). A task-control backend runs and governs
 *work* on a substrate. Both reconcile a resource, and both must be idempotent. Only one of them
 is a controller, and it is the backend (see
-[io.md](io.md#a-source-is-not-a-controller-and-cannot-be)). k8s is on both sides:
+[io.md](io.md#a-source-is-not-a-docd-controller-and-cannot-be)). k8s is on both sides:
 
 - `k8s.*` as a source that reflects the cluster in;
 - k8s as a task-control backend that runs tasks as Jobs out.
@@ -161,16 +159,16 @@ goroutine in the verse process.
   This is why a gate id is deterministic.
 - If the rule no longer matches, the question was about a world that has changed.
 
-## Everything through the base URL — no privileged local path
+## Everything through the base URL: no privileged local path
 
 The engine is a client of a bound base URL. It spawns there, subscribes to the event stream, and
 mirrors the stream into the `verse.task.instance` entity. Durability is in verse, and not in the
 runner.
 
 Each spawn binds its runner. The binding is `runner: <name>` in the charter or spec, and names
-an installed runner, as `-driver` names a driver. There is no in-memory shortcut:
-`verse task cancel|say` and `verse flow suspend -task` go through the same dispatch as for a
-remote task.
+an installed runner, as `doer.agent` names an agent the runner offers. There is no in-memory
+shortcut: `verse task cancel|say` and `verse flow suspend -task` go through the same dispatch as
+for a remote task.
 
 The dispatch is per [scope](glossary.md#scope). With `-scope`, it reaches a task that the scope
 spawned. It refuses a task that the scope inherited, and names the scope that holds it (see
@@ -197,19 +195,21 @@ happened, or gives up on what never arrived. The status carries the distinction.
 seam, `task.ErrUnreachable` and the errors like it carry it.
 
 ```
+GET    /describe                   what the runner offers: its agents, scripts, and what each takes
 GET    /tasks                      every task the runner hosts, as snapshots
 GET    /tasks/{id}                 level truth: current snapshot
 GET    /tasks/{id}/events?since=N  edge stream (SSE): replay cursor>N, then live
-POST   /tasks               the launch (below)             spawn → {id}
+POST   /tasks               the launch (below)             launch → {id}
        201 built it · 200 it was already running · 400 the body does not parse, or the runner will not host it
 POST   /tasks/{id}/resolve  {id, choice, by, say?}         answer a gate: choice is proceed | deny, or an option the record names
        204 applied · 404 no such decision, or it is already answered
 POST   /tasks/{id}/say      {instruction, by?}             say to it (re-prompt)
-       204 applied · 410 it has ended, and hears nothing
-POST   /tasks/{id}/cancel   {reason?}                      end it, and say why
-POST   /tasks/{id}/pause                                   the operator's hold (docs/control.md)
-POST   /tasks/{id}/resume
-PUT    /tasks/{id}/vector   {vector, by?}                  slide autonomy
+       204 applied · 410 it has ended, and hears nothing · 422 it takes no words (a script)
+POST   /tasks/{id}/cancel   {reason?, by?}                 end it, and say why
+POST   /tasks/{id}/pause    {by?}                          the operator's hold (docs/control.md)
+POST   /tasks/{id}/resume   {by?}
+PUT    /tasks/{id}/policy   {policy, by?}                  replace the policy
+       204 applied · 400 a row it cannot decide · 410 it has ended
 ```
 
 A control call that was applied answers `204`. A task the runner does not host answers `404`.
@@ -217,49 +217,49 @@ A resolve without a `choice` answers `400`, and the gate stays open.
 
 ### The bodies
 
-Each body is one Go type: a request or an answer of the runner's own in package `runner`, and
-a task's snapshot and events in package `task` (the launch and the vector are still there too).
-verse uses them when it sends and the stock runner (`runner/runnerd`) when it reads. Each is in
-the schema under its name (`verse schema`), which is where a runner in another language reads
-it.
+Each body is one Go type: the launch and the requests of the runner's own in package `runner`,
+and a task's snapshot, events and policy in package `task`. Verse uses them when it sends
+and the stock runner (`runner/runnerd`) when it reads. Each is in the schema under its name
+(`verse schema`), which is where a runner in another language reads it.
 
 | Route | Type | Schema name |
 |---|---|---|
-| `POST /tasks` | `task.SpawnRequest` | `verse-runner-spawn` |
-| `POST /tasks`, the answer | `runner.SpawnResponse` | `verse-runner-spawned` |
+| `GET /describe` | `runner.Description` | none: an offer's `with` takes `any` or a list of values, which the schema generator has no type for |
+| `POST /tasks` | `runner.Launch` | `verse-runner-launch`, with `verse-runner-doer`, `verse-runner-with`, `verse-runner-repo`, `verse-runner-network` and `verse-runner-provenance`; the policy is the task's own rows (task.Policy) |
 | `POST /tasks/{id}/say` | `runner.SayRequest` | `verse-runner-say` |
 | `POST /tasks/{id}/cancel` | `runner.CancelRequest` | `verse-runner-cancel` |
+| `POST /tasks/{id}/pause`, `…/resume` | `runner.PauseRequest`, `runner.ResumeRequest` | `verse-runner-pause`, `verse-runner-resume` |
 | `POST /tasks/{id}/resolve` | `runner.ResolveRequest` | `verse-runner-resolve` |
-| `PUT /tasks/{id}/vector` | `task.VectorRequest` | `verse-runner-vector` |
+| `PUT /tasks/{id}/policy` | `runner.PolicyRequest` | `verse-runner-policy` |
 | `GET /tasks`, `GET /tasks/{id}` | `task.Snapshot` | `verse-task-snapshot` |
 | `GET /tasks/{id}/events` | `task.Event` | `verse-task-event` |
 
-**The launch.** Every field is optional. A field that is absent means the runner's own default.
+**The launch.** It is the spawn as the charter wrote it, with verse's references resolved, and
+the runner reads it as it is. A runner checks it strictly: an
+unknown key, a doer that is both or neither of an agent and a script, or a value its offer does
+not take is refused with `400` and the reason. A refused launch is a failed spawn, never a task
+run without what it asked for.
 
 | Field | What it is |
 |---|---|
-| `id` | the task's id. verse mints it, so that it matches the task's record. A runner sent none mints its own. |
-| `prompt` | the one job |
-| `driver` | which driver runs it: `llm`, `scripted`, `calls`, or one the runner declares |
-| `frame` | the standing instructions the prompt is read in |
-| `tools` | the tools offered. Absent is all of them. A name no driver knows fails the spawn. |
-| `retain` | how many events to keep for a reader that resumes |
-| `converse` | the run is a conversation: when the driver goes quiet, the person gets the turn as a question, and the run ends when they end it |
-| `virtualKey` | the model credential the task runs under: the key itself. It carries a secret. |
-| `credential` | the token verse signed for the task when its rule's gate passed ([gates](reference/gates.md#a-credential-for-what-a-gate-let-through)). It carries a secret. The runner hands it to the task as a file named by `VERSE_CREDENTIAL_FILE`. |
-| `answer` | the answer contract, a tony match pattern. A runner that cannot enforce one refuses the spawn. |
-| `calls` | the work itself, for the `calls` driver |
-| `vector` | the gate vector to launch under, as resolved values |
-| `grant` | the hard envelope, as resolved values. Absent is unbounded. |
-| `environment` | the name of the workspace. The runner resolves it, and refuses a name it does not have. |
+| `id` | the task's id. Verse mints it, so that it matches the task's record. |
+| `doer` | who does the work: `{agent: <name>}`, an agent the runner offers, or `{script: "…"}`; `with` is what it runs with (`git`, `git-issue`, `network`, `env`, `model`, `effort`), and `annotations` are settings for the runner, such as `verse.portkey/virtual-key`. The runner refuses an annotation it does not know. |
+| `prompt` | the one job. Required with an agent; a script takes none. |
+| `policy` | what happens to each step: rows, each a `match` on a step's system, verb and fields and a `then` of `deny`, `ask`, `allow` or `withhold`, the last with no match. An ask's shape rides whole (`need`, `answerers`, `within`, `default`, `labels`); the runner reads the first three and never `default` or `labels`, which are verse's ([a row's question](reference/tasks.md#a-rows-question)). A verb no row names is not the task's; absent gives the task no verb. |
+| `answer` | the answer contract, a tony match pattern. A runner that cannot enforce one refuses the launch; a script takes none. |
+| `timeout` | how long the task may run, as a duration. Time spent waiting for an answer does not count; time paused does. |
+| `converse` | the run is a conversation: when the agent goes quiet, the person gets the turn as a question, and the run ends when they end it. Only for an offer whose `converse` is true. |
 | `occurrence` | which run this is: the store revision it is about. The runner says it back on the snapshot. |
-| `provenance` | `{principal?, subject?, chain?}`: on whose account, and about what |
+| `provenance` | `{principal?, subject?, chain?}`: on whose account, and about what. A record, never authority. |
+| `credential` | the token verse signed for the task when its rule's gate passed ([gates](reference/gates.md#a-credential-for-what-a-gate-let-through)). It carries a secret. The runner hands it to the task as a file named by `VERSE_CREDENTIAL_FILE`, and never says it back. |
 
-Two facts about a launch stay in verse and are not sent: the scope the task was spawned into,
-and the resolver its questions are held out to.
+A row's ask rides whole, but what silence settles on and its `labels` are verse's to act on,
+and a runner reads neither. What stays in verse and is not sent is the scope the task was
+spawned into, whom it acts for, and whom its questions naming nobody are held out to. The
+runner says which row matched; verse adds the rest when it poses the question.
 
-**A spawn is idempotent by id while the task runs.** A second spawn of a live id answers `200`
-with the task that is running. A spawn of an id whose task has ended is a new run.
+**A launch is idempotent by id while the task runs.** A second launch of a live id answers `200`
+with the task that is running. A launch of an id whose task has ended is a new run.
 
 ### The event envelope and the cursor
 
@@ -282,14 +282,14 @@ Verse keeps its high-water cursor on the entity. On a restart, it knows where to
 |---|---|---|
 | `boundary` | `seq` | a safe point where control lands |
 | `say` | `text, by` | an utterance: `by` empty = the agent's narration → `say` preview; `by` set = a say-to folded in → journal only |
-| `exec` | `tool, text, err` | `lastAction`, `lastOutput` + journal |
-| `pending` | `id, gate, mode, tool, reason, options?, deadline?` | `pending {id, gate}` — verse routes it to a Resolver; `options` (each `{id, need}`) and `deadline` (`{within, default}`) shape the question as a charter gate's would, defaulting to proceed or deny at one each |
-| `decision` | `id, gate, mode, choice, proceed, by, reason` | clears `pending`; records the resolution — `choice` is the option, `proceed` the same as yes or no |
+| `exec` | `tool, step?, fields?, text, err` | `lastAction`, `lastOutput` + journal; `step` and `fields` name the call, as its `decision` did |
+| `pending` | `id, gate, step, fields, tool, reason, options?, deadline?, answerers?` | `pending {id, gate}` — verse routes it to a Resolver; `options` (each `{id, need}`) and `deadline` (`{within}`) shape the question as a charter gate's would, defaulting to proceed or deny at one each |
+| `decision` | `id, gate, step?, fields?, choice, proceed, by, reason` | clears `pending`; records the resolution — `choice` is the option, `proceed` the same as yes or no; `gate` is the policy row that decided the call, whether it allowed, denied or asked |
 | `child` | `child, status` | flow-tracking (sub-task spawn/join) |
-| `vector` | `by` | records an autonomy slide (the new vector is observable) |
+| `policy` | `text, by` | records a change of policy: `text` is the policy in one line, `2 row(s), default ask` |
 | `status` | `text: running\|paused\|resumed\|done\|failed\|cancelled`, `result?`, `err?` | `status`, `paused`; on terminal `result` (CAS-once) and `err`, why it ended, which the status alone never says |
 
-That table is the durable contract. It is `mirror.Reflect`, plus `vector`, minus the
+That table is the durable contract. It is `mirror.Reflect`, plus `policy`, minus the
 `gap` marker. The `gap` marker says something about the *reading*, and not about the task.
 
 ### `since` semantics and the two restarts
@@ -385,18 +385,18 @@ The lifecycle of a gate, from end to end, is all on the stream, and a reader can
 say-to is a `say` event with `by` set: it is the operator's side of the conversation.
 
 ```
-pending  @40 {id:G, gate:"deploy", mode:ask, tool:merge}   → verse mirrors pending[G]
+pending  @40 {id:G, gate:"deploy", step:"git.push", fields:{ref:"refs/heads/main"}, tool:push}   → verse mirrors pending[G]
    … verse routes G to a Resolver, gets a verdict …
-POST /resolve {id:G, choice:proceed, by:"user:scott@example.com", say:["squash first"]}   → 204
-decision @41 {id:G, choice:proceed, proceed:true, by:"user:scott@example.com"}   → verse clears pending[G]
-say      @42 {by:"user:scott@example.com", text:"squash first"}                  → folded in
-exec     @43 {tool:merge, text:"merged"}                    → worker proceeded
+POST /resolve {id:G, choice:proceed, by:"user:you@example.com", say:["squash first"]}   → 204
+decision @41 {id:G, choice:proceed, proceed:true, by:"user:you@example.com"}   → verse clears pending[G]
+say      @42 {by:"user:you@example.com", text:"squash first"}                  → folded in
+exec     @43 {tool:push, text:"pushed"}                     → worker proceeded
 ```
 
 Suppose verse restarts between @40 and @41. Verse replays `pending@40`, routes it again, and
 POSTs `resolve` again. If the first answer landed, the runner refuses the second as already
 answered, and the replay carries `decision@41`. Verse dedups by cursor. In either case there is
-one decision: no gate is lost, and nothing merges twice.
+one decision: no gate is lost, and nothing pushes twice.
 
 ## Invariants verse CAS-enforces on the entity
 
@@ -407,7 +407,7 @@ Three things hold on the `verse.task.instance` entity, even when a runner or a w
 - gate-before-the-effect.
 
 For a remote worker, gate-before-the-effect is an attestation that verse timestamps and
-audits. Verse cannot intercept the merge itself. Autonomy outside verse is
+audits. Verse cannot intercept the push itself. A policy outside verse is
 coarser by nature, and this page says so.
 
 ## What a 3rd-party implementer must satisfy
@@ -415,6 +415,7 @@ coarser by nature, and this page says so.
 For each task, an implementation must:
 
 - assign gapless cursors per task;
+- serve `GET /describe` with what it offers, and refuse a launch outside it;
 - serve `GET /tasks/{id}` as current truth;
 - serve `GET /events?since=` with replay-then-live, and a `gap` frame below its watermark;
 - emit the kinds above;
@@ -434,7 +435,7 @@ Everything above is built, except what this section names.
   handle, and never a concrete `*Task`.
 - Events carry a per-task cursor with a bounded ring. `GET /events?since=N` replays and then goes
   live. Verse keeps its high-water cursor on the entity.
-- `client.HTTP(baseURL)` drives a remote verse over the verse-facing contract.
+- `client.HTTP(baseURL)` drives a remote runner over the verse-facing contract.
 - The reconcile at startup resumes a task where the work outlived the daemon, and does not orphan
   it.
 - Every operator verb works on local and remote tasks alike.
@@ -444,4 +445,4 @@ Not built, though the sections above describe them:
 - A timestamp `at` on an event. An event carries a cursor and no time.
 
 One larger track is outside this page: a k8s runner that spawns Jobs, alongside `k8s.*` as an
-[io](io.md).
+[iod](io.md).

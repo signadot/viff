@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
@@ -32,7 +33,13 @@ func TestMain(m *testing.M) {
 
 // serve serves the verse runner as a standalone runner, with its task processes confined by sb.
 // work is where the tasks' directories are made.
-func serve(t *testing.T, s Secrets, sb runnerd.Sandbox) (rt task.Runner, work string) {
+func serve(t *testing.T, s Secrets, sb runnerd.Sandbox) (rt client.Launcher, work string) {
+	t.Helper()
+	return serveLogging(t, s, sb, io.Discard)
+}
+
+// serveLogging is serve, with the runner's log, and its tasks' processes' output, written to log.
+func serveLogging(t *testing.T, s Secrets, sb runnerd.Sandbox, log io.Writer) (rt client.Launcher, work string) {
 	t.Helper()
 	// Symlinks resolved, as a task's $PWD has them: on macOS the temp dir is under /var, a link
 	// to /private/var.
@@ -44,22 +51,19 @@ func serve(t *testing.T, s Secrets, sb runnerd.Sandbox) (rt task.Runner, work st
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := Standalone{
-		Secrets: s, Sandbox: sb, Command: []string{os.Args[0], "-test.run=^$", taskArg},
-		Work: work, Control: control, Log: io.Discard,
-	}.Start()
+	h, err := Standalone(Config{}, s, Tokens{}, sb, []string{os.Args[0], "-test.run=^$", taskArg}, work, control, log)
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(r.Handler())
-	t.Cleanup(func() { srv.Close(); r.Shutdown(); os.RemoveAll(control) })
+	srv := httptest.NewServer(h.HTTPHandler())
+	t.Cleanup(func() { srv.Close(); h.Shutdown(); os.RemoveAll(control) })
 	return client.HTTP(srv.URL), work
 }
 
 // script runs a script as a task, and returns its output once it has ended.
-func script(t *testing.T, rt task.Runner, id, src string) task.Snapshot {
+func script(t *testing.T, rt client.Launcher, id, src string) task.Snapshot {
 	t.Helper()
-	rt.Spawn(task.Launch{ID: id, Driver: "scripted", Vector: &task.Vector{Default: task.Auto}, Prompt: src})
+	rt.Launch(runner.Launch{ID: id, Doer: runner.Doer{Script: src, With: runner.With{Network: netOpen}}, Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}})
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		if in, err := rt.(task.Lister).TaskSnapshot(id); err == nil && in.Status.Terminal() {
@@ -151,4 +155,35 @@ touch /tmp/scratch && echo own-tmp
 			t.Errorf("%s: not in the output:\n%s", want, in.Result)
 		}
 	}
+}
+
+// A task in a process of its own has its gates replaced through the runner, and says so; the
+// client's handle is how verse does it.
+func TestGatesReachATaskInItsOwnProcess(t *testing.T) {
+	rt, _ := serve(t, Secrets{}, runnerd.Unconfined{})
+	if l := rt.Launch(runner.Launch{ID: "t1", Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, Doer: runner.Doer{Script: "sleep 2", With: runner.With{Network: netOpen}}}); l.Err() != "" {
+		t.Fatalf("launch: %s", l.Err())
+	}
+	h := rt.Attach("t1")
+	g := task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}
+	var err error
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		if err = h.SetPolicy(g, "user:ana"); err == nil {
+			break
+		}
+	}
+	if err != nil {
+		t.Fatalf("SetGating: %v", err)
+	}
+	if err := h.SetPolicy(task.Policy{{Name: "c", Match: &task.Match{System: "commands", Verb: "run"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAsk}}}, "x"); err == nil {
+		t.Error("a gate a script can't stop was installed")
+	}
+	events, stop := h.SubscribeSince(0)
+	defer stop()
+	for e := range events {
+		if e.Kind == task.EventPolicy && e.By == "user:ana" {
+			return
+		}
+	}
+	t.Fatal("the stream ended without saying the gates changed")
 }

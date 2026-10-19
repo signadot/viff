@@ -4,19 +4,25 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/runner/runnerd/verserunner"
 	"github.com/signadot/verse/runner/runnerd/verserunner/agent/modeltest"
-	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/trigger"
 )
 
-// harnessServer is a verse hosting its tasks as `verse up` does, its model the scripted one.
-func harnessServer(t *testing.T, h *verserunner.Drivers) *Server {
+// harnessServer is a verse hosting its tasks as `verse up` does, with the model its runner
+// reaches: the test's, or none.
+func harnessServer(t *testing.T, modelURL string) *Server {
 	t.Helper()
+	s := verserunner.Secrets{}
+	if modelURL != "" {
+		s = verserunner.Secrets{PortkeyAPIKey: "test-key", PortkeyBaseURL: modelURL}
+	}
+	h := verserunner.New(verserunner.Config{}, s, t.TempDir(), io.Discard)
 	srv := NewWithStore(h.Build, entitytest.Store(t))
 	srv.Start(t.Context())
 	var trig trigger.Trigger
@@ -24,7 +30,7 @@ func harnessServer(t *testing.T, h *verserunner.Drivers) *Server {
 		name: read,
 		condition: {subject: {path: "demo.note.*", value: !and [{text: null}, !not {read: null}]}},
 		action: {
-			spawn:  {driver: llm, prompt: $subject.value.text, frame: "answer in one word", vector: auto},
+			spawn:  {doer: {agent: verse}, prompt: "answer in one word: $subject.value.text", policy: [{then: allow}]},
 			onDone: {patch: {read: $result}},
 			onFailed: {patch: {read: failed}},
 		},
@@ -55,14 +61,12 @@ func readOf(t *testing.T, srv *Server, ref entity.Ref) string {
 // and prompt, and the model's last message is the task's result, which the rule reads.
 func TestTheHarnessRunsAnLLMSpawnAgainstItsModel(t *testing.T) {
 	model := modeltest.New(t, func(r modeltest.Request) modeltest.Reply {
-		if !strings.Contains(r.System(), "answer in one word") {
-			return modeltest.Say("no frame")
+		if !strings.Contains(r.Prompt(), "answer in one word") {
+			return modeltest.Say("no instruction")
 		}
-		return modeltest.Say("heard: " + r.Prompt())
+		return modeltest.Say("heard: " + strings.TrimPrefix(r.Prompt(), "answer in one word: "))
 	})
-	srv := harnessServer(t, &verserunner.Drivers{
-		Root: t.TempDir(), Env: task.DefaultShellEnv, Log: io.Discard,
-		Default: "scripted", LLMBaseURL: model.URL, LLMKey: "test-key"})
+	srv := harnessServer(t, model.URL)
 
 	ref := entity.RefAt("demo", "note", "1")
 	entitytest.Set(t, srv.Store, ref, entity.Obj{"text": "hello"}.Payload())
@@ -77,13 +81,24 @@ func TestTheHarnessRunsAnLLMSpawnAgainstItsModel(t *testing.T) {
 // With no model configured, an llm spawn fails its own task, and the engine goes on: the rule
 // hears the failure.
 func TestTheHarnessFailsAnLLMSpawnWithNoModel(t *testing.T) {
-	srv := harnessServer(t, &verserunner.Drivers{
-		Root: t.TempDir(), Env: task.DefaultShellEnv, Log: io.Discard,
-		Default: "scripted"})
+	srv := harnessServer(t, "")
 
 	ref := entity.RefAt("demo", "note", "1")
 	entitytest.Set(t, srv.Store, ref, entity.Obj{"text": "hello"}.Payload())
 	if got := readOf(t, srv, ref); got != "failed" {
 		t.Fatalf("the rule read %q, want the task to have failed", got)
 	}
+}
+
+// waitUntil polls until cond holds, or fails the test.
+func waitUntil(t *testing.T, why string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", why)
 }

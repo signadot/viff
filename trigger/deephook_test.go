@@ -50,7 +50,7 @@ func TestACompletionHookPatchesADeepSubject(t *testing.T) {
       value: {reviewed: gathered}
   action:
     patch: {reviewed: running}
-    spawn: {prompt: "review $subject"}
+    spawn: {doer: {agent: verse}, prompt: "review $subject"}
     onDone:
       patch: {reviewed: done}
 `)); err != nil {

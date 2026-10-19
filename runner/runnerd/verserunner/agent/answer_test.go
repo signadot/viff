@@ -36,7 +36,7 @@ func runWithContract(t *testing.T, c *answer.Contract, turns ...scriptedTurn) (*
 	t.Helper()
 	fake := &fakeCompleter{turns: turns}
 	d := &llmDriver{client: fake, prompt: "review it", log: io.Discard}
-	p := task.NewTask("t", task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{}), d, &fsExec{root: t.TempDir()})
+	p := task.NewTask("t", task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), d, &fsExec{root: t.TempDir()})
 	if c != nil {
 		p.SetAnswerCheck(&answer.Checker{C: c, FailHint: yieldHint})
 	}
@@ -124,7 +124,7 @@ func TestUnrepairableAnswerFailsTheRun(t *testing.T) {
 	}
 }
 
-// No contract, no check: a spawn that declares nothing keeps the old behaviour exactly,
+// No contract, no check: a launch that declares nothing keeps the old behaviour exactly,
 // including the freedom to answer in prose.
 func TestNoContractLeavesTheLoopAlone(t *testing.T) {
 	fake, out, err := runWithContract(t, nil, stop("I had a look and it seems fine."))
@@ -139,7 +139,7 @@ func TestNoContractLeavesTheLoopAlone(t *testing.T) {
 // The contract is stated in the frame, so an agent meets it before it stops rather than as
 // a rejection — and it comes back OFF for a child, which runs no such check.
 func TestContractClauseGoesOnAndComesOff(t *testing.T) {
-	base := defaultFrame(toolDefs(), Vector(), nil, false)
+	base := defaultFrame(toolDefs(), task.Policy{}, false, nil)
 	c := contract(t)
 	framed := strings.TrimRight(base, "\n") + "\n\n" + contractClause(c)
 	for _, line := range strings.Split(c.Source(), "\n") { // indented into the clause
@@ -163,7 +163,7 @@ func TestUnusableContractFailsTheBuild(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	p, _ := Build(Config{ID: "p1", Prompt: "go", Client: &fakeCompleter{}, Answer: bad})
+	p := Build(Config{ID: "p1", Prompt: "go", Client: &fakeCompleter{}, Answer: bad})
 	out, runErr := p.Run(context.Background())
 	if runErr == nil {
 		t.Fatal("a task was built on a contract that cannot be used")

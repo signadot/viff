@@ -27,7 +27,7 @@ func TestACharterRuleFiresOnAPendingQuestion(t *testing.T) {
 	if err := codec.Unmarshal([]byte(`{
 		name: escalate-writes,
 		condition: {
-			subject: {path: "verse.ask.*", value:  {status: pending, effects: {verbs: [write]}}},
+			subject: {path: "verse.ask.*", value:  {status: pending, step: files.write}},
 		},
 		action: {patch: {escalated: true}},
 	}`), &trig, codec.Tony); err != nil {
@@ -37,15 +37,14 @@ func TestACharterRuleFiresOnAPendingQuestion(t *testing.T) {
 		t.Fatalf("AddTrigger: %v", err)
 	}
 
-	pose := func(id, gate string, eff task.Effect) {
+	pose := func(id, gate string, step task.Step) {
 		mirror.PostQuestion(store, task.Pending{
-			Question: task.GateQuestion{ID: id, Origin: "run-a", Gate: gate},
+			Question: task.GateQuestion{ID: id, Origin: "run-a", Gate: gate, Step: step},
 			Tool:     "act",
-			Effects:  []task.Effect{eff},
 		}, "run-a")
 	}
-	pose("run-a~d1", "write-guard", task.Effect{Verb: task.Write, Resource: task.File("cfg/app.tony")})
-	pose("run-a~d2", "read-guard", task.Effect{Verb: task.Read, Resource: task.File("cfg/app.tony")})
+	pose("run-a~d1", "write-guard", task.Step{Name: task.StepFilesWrite, Fields: map[string]string{"path": "cfg/app.tony"}})
+	pose("run-a~d2", "read-guard", task.Step{Name: task.StepCommandsRun, Fields: map[string]string{"command": "cat cfg/app.tony"}})
 
 	escalated := func(id string) bool {
 		e, _, _ := store.Get(mirror.QuestionRef(id))

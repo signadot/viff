@@ -109,7 +109,7 @@ func (r Reflection) Check(root string) error {
 	}
 	for _, e := range r.Entities {
 		// The reserved half FIRST, because `Root()` does not say which half a ref is in: a
-		// source registered as `task` answering `verse:task:instance:x` passes the check below,
+		// source registered as `task` answering `verse.task.instance.x` passes the check below,
 		// and converge writes to the store directly — under the refusal that guards `POST
 		// /entity`. A source reflects the world; what verse keeps about its own running is
 		// written by the verbs that own it.

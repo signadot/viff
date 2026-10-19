@@ -162,7 +162,7 @@ func TestStatusTasksIsTheDocket(t *testing.T) {
 			"id":     id,
 			"prompt": "do a thing",
 			"status": "running",
-			"runner": "http://coderunner:9802",
+			"runner": "http://verse-runner:9802",
 		}.Payload())
 	}
 

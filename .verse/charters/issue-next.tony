@@ -15,7 +15,7 @@
 # things come after it, and both read what this writes:
 #
 #   - the git-issue io's out half, which puts the proposal's label on the issue;
-#   - the processing task, one coderunner checkout per sweep, which takes each issue that
+#   - the processing task, one verse-runner checkout per sweep, which takes each issue that
 #     changed to its proposed step and writes the step after it.
 #
 # ── A SWEEP, NOT A REACTION ──────────────────────────────────────────────────────────────

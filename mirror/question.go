@@ -440,7 +440,6 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 		"id":      q.ID,
 		"origin":  q.Origin,
 		"gate":    q.Gate,
-		"mode":    q.Mode.String(),
 		"status":  QuestionPending,
 		"posedAt": time.Now().UTC().Format(time.RFC3339),
 	}
@@ -461,11 +460,8 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 		"reason":  q.Reason,
 		// The charter the asking rule is in. Absent for baseline and for a task's own gate,
 		// where there is no charter to name rather than an unknown one.
-		"at": q.At,
-		// The action a selection is holding up; absent for a gate, whose firing comes back on
-		// its own. What a restart navigates by (trigger.Engine.ResumeSelections).
-		"chain": q.Chain,
-		"tool":  p.Tool,
+		"at":   q.At,
+		"tool": p.Tool,
 		// The action in one line: what is being decided, where `tool` says only who proposed
 		// it and `effects` what verb it derives to. The one field an answerer reads first.
 		"action": p.Action,
@@ -475,8 +471,12 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 			rec[k] = v
 		}
 	}
-	if eff := effectLists(p.Effects); len(eff) > 0 {
-		rec["effects"] = eff
+	// The step the question is about, and its fields: which repository, which ref, which path.
+	if q.Step.Name != "" {
+		rec["step"] = q.Step.Name
+		if len(q.Step.Fields) > 0 {
+			rec["fields"] = stringObj(q.Step.Fields)
+		}
 	}
 	rec[AnswerersField] = answerersValue(q.Answerers)
 	rec[LabelsField] = labelsValue(q.Labels)
@@ -590,14 +590,6 @@ func optionList(opts []task.Option) []any {
 		om := entity.Obj{"id": o.ID, "need": need}
 		if o.Says != "" {
 			om["says"] = o.Says
-		}
-		// Written only when the option says something, so a ballot between interchangeable
-		// doers stays as terse as a yes-or-no one.
-		if o.Grant != "" {
-			om["grant"] = o.Grant
-		}
-		if len(o.Tools) > 0 {
-			om["tools"] = anyStrings(o.Tools)
 		}
 		out = append(out, om)
 	}
@@ -760,12 +752,15 @@ func anyStrings(ss []string) []any {
 // A local run posts twice, once from each writer. That is not a conflict: a write merges, so
 // the frame's post cannot erase the effects the registry's post already recorded, and every
 // field the two share they agree on.
-func PostFrameQuestion(store entity.Store, ev task.Event, taskID, subject string, answerers []string) bool {
+func PostFrameQuestion(store entity.Store, ev task.Event, taskID, subject string, answerers []string, labels map[string]string) bool {
 	rec := entity.Obj{
 		"id":      ev.ID,
 		"gate":    ev.Gate,
 		"status":  QuestionPending,
 		"posedAt": time.Now().UTC().Format(time.RFC3339),
+	}
+	if len(labels) > 0 {
+		rec[LabelsField] = labelsValue(labels)
 	}
 	// A QUESTION THAT HAS ALREADY SETTLED IS NOT RE-POSED BY A LATE FRAME.
 	//
@@ -811,7 +806,7 @@ func PostFrameQuestion(store entity.Store, ev task.Event, taskID, subject string
 	}
 	for k, v := range map[string]string{
 		"origin":  origin,
-		"mode":    ev.Mode,
+		"step":    ev.Step,
 		"reason":  ev.Text,
 		"tool":    ev.Tool,
 		"action":  ev.Action,
@@ -821,6 +816,9 @@ func PostFrameQuestion(store entity.Store, ev task.Event, taskID, subject string
 		if v != "" {
 			rec[k] = v
 		}
+	}
+	if len(ev.Fields) > 0 {
+		rec["fields"] = stringObj(ev.Fields)
 	}
 	rec[AnswerersField] = answerersValue(answerers)
 	// What the question offers, as a posed one carries it: the frame's options, or the
@@ -1103,31 +1101,11 @@ func StaleAnswer(store entity.Store, id string, res task.Resolution) {
 	})
 }
 
-// effectLists flattens derived effects into the three lists a gate predicate speaks in.
-// Empty when an action classified to nothing, which is a real state: a question whose tool
-// derived no effects still publishes its id, gate and subject, because a tool nothing could
-// classify must not vanish from the docket.
-func effectLists(effs []task.Effect) entity.Obj {
-	var verbs, resources, paths []any
-	seen := map[string]bool{}
-	for _, e := range effs {
-		if v := string(e.Verb); v != "" && !seen["v:"+v] {
-			seen["v:"+v] = true
-			verbs = append(verbs, v)
-		}
-		if r := e.Resource.Ref; r != "" {
-			resources = append(resources, entity.Obj{"kind": string(e.Resource.Kind), "ref": r})
-			if e.Resource.Kind == task.KindFile && !seen["p:"+r] {
-				seen["p:"+r] = true
-				paths = append(paths, r)
-			}
-		}
-	}
+// stringObj is a string map as the record carries it.
+func stringObj(m map[string]string) entity.Obj {
 	out := entity.Obj{}
-	for k, v := range map[string][]any{"verbs": verbs, "resources": resources, "paths": paths} {
-		if len(v) > 0 {
-			out[k] = v
-		}
+	for k, v := range m {
+		out[k] = v
 	}
 	return out
 }

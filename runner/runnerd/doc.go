@@ -7,18 +7,16 @@
 //     an InProcessHandler (ServeTask).
 //
 // A runner is embedded in another program, or standalone, a program of its own. `verse up`
-// embeds the runners verse ships with an InProcessHandler, with no sandbox, and calls Spawn,
+// embeds the runners verse ships with an InProcessHandler, with no sandbox, and calls Launch,
 // Lookup and the question hooks (OnQuestion, OnCheck, OnDrop) directly. `runnerd` (cmd/runnerd)
 // is a standalone runner with a SubprocessHandler.
 //
-// Both handlers serve the task contract over HTTP (HTTPHandler) — spawn tasks, stream their
-// events (SSE), resolve their gates by id, steer them, rebind their vector, pause and cancel
+// Both handlers serve the task contract over HTTP (HTTPHandler) — launch tasks, stream their
+// events (SSE), resolve their gates by id, steer them, replace their gates, pause and cancel
 // their subtrees — and GET /describe. Load reads the configuration every runner shares.
 //
 // How a task is built is injected as a Builder, so the handler carries no coupling to any
-// particular agent. The runners verse ships are its subpackages: verserunner, and what a runner
-// that prepares a task's checkout is built with — workspace, the git working directory, and
-// delivery, how work leaves it.
+// particular agent. The runners verse ships are its subpackages (verserunner).
 //
 // Control ops are task- or subtree-scoped (never per-child); the read plane is drop-with-gap.
 //

@@ -8,3 +8,10 @@ func SetLingerAfterEnd(d time.Duration) (restore func()) {
 	lingerAfterEnd = d
 	return func() { lingerAfterEnd = old }
 }
+
+// Count returns the number of hosted tasks (live and completed-but-unreaped).
+func (d *InProcessHandler) Count() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return len(d.tasks)
+}

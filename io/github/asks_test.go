@@ -87,7 +87,7 @@ func (r *asksRig) raise(t *testing.T) {
 	t.Helper()
 	go func() {
 		_, _ = r.srv.Reg.Resolve(context.Background(),
-			task.GateQuestion{ID: askedOnPR, Origin: "deploy", Gate: "ok", Mode: task.Ask, Reason: "Deploy #42?"},
+			task.GateQuestion{ID: askedOnPR, Origin: "deploy", Gate: "ok", Reason: "Deploy #42?"},
 			task.ToolUse{Name: "verse.trigger.deploy"})
 	}()
 	for range 400 {
@@ -252,7 +252,7 @@ func TestACommandTwoQuestionsCouldTakeNamesItsQuestion(t *testing.T) {
 	const second = "verse.trigger.deploy.ok~2"
 	go func() {
 		_, _ = r.srv.Reg.Resolve(context.Background(),
-			task.GateQuestion{ID: second, Origin: "deploy", Gate: "ok", Mode: task.Ask, Reason: "Deploy #42 to prod?"},
+			task.GateQuestion{ID: second, Origin: "deploy", Gate: "ok", Reason: "Deploy #42 to prod?"},
 			task.ToolUse{Name: "verse.trigger.deploy"})
 	}()
 	for range 400 {

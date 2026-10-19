@@ -5,8 +5,8 @@
 #
 # It builds throwaway `verse` + `o` binaries (o is the pinned go-tony daemon runner, built
 # from this module — so bringing up logd+docd needs no external dependency) and runs its own
-# `verse up` on an ephemeral port with a private data dir. Hermetic: it forces the scripted
-# driver, so no LLM creds and no network. It never touches a dev server on :9797, and a trap
+# `verse up` on an ephemeral port with a private data dir. Hermetic: every task it runs is a
+# script, so no LLM creds and no network. It never touches a dev server on :9797, and a trap
 # reaps the server (and its daemon tree) plus the temp dir on exit.
 #
 # Every check is fatal except the two noted as best-effort. Exits non-zero on the first failure.
@@ -483,7 +483,8 @@ for _ in $(seq 1 100); do
 done
 [ -n "$answered" ] || die "alice's ask never showed bob's yes"
 ok "alice sees bob's yes on her ask"
-VERSE_USER=user:alice v ask --watch --since 0 >"$tmp/askwatch.out" 2>&1 &
+# the binary directly, as for up: $! is then the watch itself, not a subshell around it
+VERSE_USER=user:alice "$BIN" --addr "$ADDR" ask --watch --since 0 >"$tmp/askwatch.out" 2>&1 &
 wpid=$!
 for _ in $(seq 1 50); do
 	grep -q "answered $LAND yes" "$tmp/askwatch.out" && break
@@ -606,34 +607,37 @@ done
 has "$(v flow)" 'smoke-susp' && die "the lifted suspension is still listed"
 ok "resumed through verse flow --args | xargs -L1 verse flow resume: settle acted, approve asked, and nothing is suspended"
 
-# ── task runtime + the re-vector surface (scripted driver: hermetic) ──────
-# The scripted driver runs its task as a real shell command, so `sleep 30` is a genuinely
-# live task to exercise the control surfaces against (and observe the slide on).
+# ── task runtime + the policy surface (a script: hermetic) ──────
+# A script runs as a real shell command, so `sleep 30` is a genuinely live task to exercise
+# the control surfaces against (and observe the slide on).
 # One principal for the run and its control: a task is its requester's, and control is held
 # by the owner and the runner, so the party that spawned it is the party that steers it.
 step "task run + control surfaces"
-VERSE_USER=user:smoke v task run --driver scripted "sleep 30" >/dev/null || die "task run failed"
+VERSE_USER=user:smoke v task run --script "sleep 30" >/dev/null || die "task run failed"
 ID=$(v task -o tony | awk -F'[:[:space:]]+' '/^[[:space:]]*-?[[:space:]]*id:/ {print $NF; exit}')
 [ -n "$ID" ] || die "no task id from list"
 ok "spawned $ID (sleep 30)"
 has "$(v task get "$ID")" "$ID" || die "task get missing the id"
 ok "task get"
-VERSE_USER=user:smoke v task say "$ID" "also mention the token TTL" >/dev/null || die "task say failed"
-ok "task say (re-prompt)"
-out=$(VERSE_USER=user:smoke v task vector "$ID" ask --as user:smoke) || die "task vector failed"
-has "$out" "ask" || die "task vector did not report the new mode"
-ok "task vector → ask (as user:smoke)"
+# A script has no turn for words: what it may be told is the answer to a call it makes, so a
+# say is refused when said, in that sentence, rather than queued for a turn that never comes.
+out=$(VERSE_USER=user:smoke v task say "$ID" "also mention the token TTL" 2>&1) && die "a say to a script was accepted: $out"
+has "$out" "no turn for words" || die "the say to a script was refused for another reason: $out"
+ok "task say to a script is refused (a script has no turn for words)"
+out=$(VERSE_USER=user:smoke v task policy "$ID" '[{then: ask}]' --as user:smoke) || die "task policy failed"
+has "$out" "default ask" || die "task policy did not report the new policy"
+ok "task policy → ask (as user:smoke)"
 # the slide is observable on the read plane (the task is live, so the mirror projects it)
 observed=
 for _ in $(seq 1 25); do
-	if haskv "$(v data verse task instance "$ID" 2>/dev/null || true)" vectorBy user:smoke; then
+	if haskv "$(v data verse task instance "$ID" 2>/dev/null || true)" policyBy user:smoke; then
 		observed=1
 		break
 	fi
 	sleep 0.2
 done
-[ -n "$observed" ] || die "slide not observable on the entity (vector/vectorBy not projected)"
-ok "slide observable on the entity (vector/vectorBy projected)"
+[ -n "$observed" ] || die "slide not observable on the entity (policy/policyBy not projected)"
+ok "slide observable on the entity (policy/policyBy projected)"
 VERSE_USER=user:smoke v task cancel "$ID" >/dev/null 2>&1 || true # stop the sleep (frees the runtime promptly)
 ok "task cancel (kills the running command)"
 
@@ -839,7 +843,7 @@ q ./scripts/seed-demo.sh --clean >/dev/null 2>&1 || die "seed-demo.sh --clean fa
 
 q ./scripts/seed-entities.sh >"$tmp/seed-entities.out" 2>&1 ||
 	{ cat "$tmp/seed-entities.out" >&2; die "seed-entities.sh failed with nobody configured"; }
-haskv "$(q "$BIN" data human person ana)" team platform || die "seed-entities.sh: human.person.ana is not there"
+haskv "$(q "$BIN" data verse-tutorial person ana)" team platform || die "seed-entities.sh: verse-tutorial.person.ana is not there"
 ok "seed-entities.sh: a world to select over"
 
 for shape in patch derive; do

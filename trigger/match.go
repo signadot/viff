@@ -28,9 +28,8 @@ import (
 // segment like any other.
 //
 // `value` IS A TONY MATCH TOO, evaluated at the payload ROOT. A payload is an ir.Node
-// (entity.Payload), so tony.Match(payload, predicate) needs no conversion — the same collapse
-// that already happened in engine.providerMatches, which used to marshal a map through gomap
-// to call it. entity.Pattern carries the predicate as a node and evaluates nothing itself.
+// (entity.Payload), so tony.Match(payload, predicate) needs no conversion. entity.Pattern
+// carries the predicate as a node and evaluates nothing itself.
 //
 // What it bought:
 //

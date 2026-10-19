@@ -4,7 +4,7 @@
 //
 //	go run ./docs/reference/examples/runner -addr :9800
 //	verse runner add gpu http://localhost:9800
-//	verse task run -runner verse.runners.gpu "retrain the ranker"
+//	verse task run -runner verse.runners.gpu -agent sample "retrain the ranker"
 //
 // It is a real program and it compiles with the tree, which is the point: a stub in a fenced
 // block goes stale the first time a signature moves and nobody finds out. See
@@ -36,6 +36,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
 )
@@ -44,11 +45,19 @@ func main() {
 	addr := flag.String("addr", ":9800", "address to serve the task-control contract on")
 	flag.Parse()
 
-	// runnerd is the contract: POST /tasks to spawn, GET /tasks[/{id}] to list and
-	// snapshot, GET /tasks/{id}/events for the read plane, and the control POSTs. verse
-	// drives exactly this over HTTP, and its own in-process runner is the same handler — so
-	// there is no privileged local path for this to differ from.
+	// runnerd is the contract: GET /describe for what is on offer, POST /tasks to launch,
+	// GET /tasks[/{id}] to list and snapshot, GET /tasks/{id}/events for the read plane, and
+	// the control POSTs. verse drives exactly this over HTTP, and its own in-process runner is
+	// the same handler — so there is no privileged local path for this to differ from.
 	d := runnerd.NewInProcessHandler(build)
+	// What it offers, which verse reads when the runner is installed and checks each spawn
+	// against: one agent, `sample`. Its tasks run in this process, unconfined, so the only
+	// network it builds them is the host's (`open`); a launch asking for `none` or a list of
+	// hosts is refused rather than run with more than it asked for. CHANGE THIS with build.
+	d.Describe(runner.Description{Offers: []runner.Offer{{
+		Agent: "sample",
+		With:  map[string]runner.Accepts{"network": runner.AcceptsOneOf(runner.NetworkOpen)},
+	}}})
 	log.Printf("runner listening on %s — install it with: verse runner add <name> http://<host>%s",
 		*addr, *addr)
 	if err := http.ListenAndServe(*addr, d.HTTPHandler()); err != nil {
@@ -58,21 +67,22 @@ func main() {
 
 // build turns one launch into one task. CHANGE THIS.
 //
-// The Launch carries what the spawn said: the prompt, the driver name a charter asked for, the
-// frame it should be read in, the tool set it may use, and the envelope (vector, grant) verse
-// already resolved. A runner that cannot honour something it was handed should say so — see
-// the note on refusing, below.
-func build(l task.Launch, reg *task.Registry) *task.Task {
-	// The supervisor decides what happens at a gate, and the vector is the DEFAULT for gates
-	// this launch did not narrow — verse overrides it from the spawn when the charter said
-	// `vector:`, so this is the floor rather than the rule.
+// The Launch carries what the spawn said: the prompt, the doer (an agent by name, or a
+// script) and what it works with, the policy its steps are decided under, and the
+// provenance. A runner that cannot honour something it was handed should say so — see the
+// note on refusing, below.
+func build(l runner.Launch, reg *task.Registry) *task.Task {
+	// The supervisor decides what happens before each action: the launch's policy says which
+	// steps are refused, asked about or allowed (a verb no row names is refused), and `reg` is the registry
+	// runnerd serves answers into, so a question becomes one an operator answers through
+	// verse (`verse question`) while the task waits.
 	//
-	// Auto so the sample runs to completion unattended. Change the default to task.Ask and
-	// every action raises a gate instead: `reg` is the registry runnerd serves answers into,
-	// so those become questions an operator answers through verse (`verse question`), and the
-	// task waits. That is the one-word difference between a runner that acts and a runner
-	// that asks.
-	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
+	// The sample's `do` action is no step (task.StepOf), so nothing asks before it and the
+	// sample runs to completion unattended. Propose `run_bash` with a `command` instead and
+	// each action is a `commands.run` step: a spawn saying nothing refuses each, one saying
+	// `policy: [{match: {system: commands}, then: allow}, {then: ask}]` runs them, and an ask
+	// row on the step asks whom it names.
+	sup := task.NewSupervisor(l.Policy, reg)
 	return task.NewTask(l.ID, sup, &planDriver{prompt: l.Prompt}, &echoExecutor{})
 }
 

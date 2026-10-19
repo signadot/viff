@@ -28,7 +28,7 @@ func TestTheGrammarsActorsAreTheOnesThatAct(t *testing.T) {
 			t.Errorf("%s acts, and its principal does not parse: %v", ref, err)
 		}
 	}
-	if _, err := entity.ParseGrantee(entity.Via(runnerEntityRef("coderunner"))); err == nil {
+	if _, err := entity.ParseGrantee(entity.Via(runnerEntityRef("verse-runner"))); err == nil {
 		t.Errorf("a runner's address parsed as a place that acts")
 	}
 }

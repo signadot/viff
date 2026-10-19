@@ -29,11 +29,12 @@
 # THE EMPTY TREE ({{.EmptyTree}}) is the directory with nothing in it, or gone: a state like any
 # other. Its question asks to remove every charter at `{{.InstallAt}}`, and installing it does.
 #
-# THE ASK is a task's: the propose rule spawns a call list whose one call is `ask`, so the question
+# THE ASK is a task's: the propose rule spawns a script whose one call is `question-ask`, so the question
 # is on the docket as any ask is, answerable from the CLI, Slack, or the pull request below, and
-# its answer is the task's result, written onto the candidate. Its id is the task's with its first
-# call's number, `repo-charters.{{.Repo}}:propose@repo-charters.{{.Repo}}.candidate.<tree>~1`, which is how
-# the pull request names it.
+# its answer is the task's result, written onto the candidate. Its id is the task's with the
+# number of the call that asks, its second action after the script itself:
+# `repo-charters.{{.Repo}}:propose@repo-charters.{{.Repo}}.candidate.<tree>~2`, which is how the pull
+# request names it.
 #
 # THE ANSWER is read as text, `<principal> chose <option>` with `: <words>` after it: the option is
 # the word after the principal, so the words never read as a choice (system/repocharters,
@@ -348,13 +349,16 @@ rules:
           - {answer: {{.Obsolete}}, seen: !gt.get-path(root) askedAt}
   action:
     spawn:
-      vector: auto
-      calls:
-      - tool: ask
-        input:
-          question: "$ask"
-          options: [proceed, deny, obsolete]{{if .Answerers}}
-          answerers: {{.AnswerersList}}{{end}}
+      policy:
+      - match: {system: question}
+        then: allow
+      - then: deny
+      doer:
+        # The question as the script's environment: its text is the candidate's, and spliced
+        # into the script it would be a program.
+        with: {network: {mode: open}, env: {ASK: $ask}}
+        script: |
+          verse-call-tool question-ask -question "$ASK" -options proceed -options deny -options obsolete{{if .Answerers}}{{.AnswererFlags}}{{end}}
     onDone:
       patch: {answer: $result, askedAt: $subject.value.seen}
 # WHAT VERSE SAYS ABOUT A TREE on any pull request that proposes it, from its answer and its
@@ -505,7 +509,7 @@ rules:
         to: "pr.$subject.value.pr"
         tree: $subject.value.tree
         text: !get-path {at: [repo-charters, {{.Repo}}, verdict, $subject.value.tree], path: text}
-        asks: "repo-charters.{{.Repo}}:propose@repo-charters.{{.Repo}}.candidate.$subject.value.tree~1"
+        asks: "repo-charters.{{.Repo}}:propose@repo-charters.{{.Repo}}.candidate.$subject.value.tree~2"
         review: !get-path {at: [repo-charters, {{.Repo}}, verdict, $subject.value.tree], path: review}
         commitStatus:
           verse:
@@ -575,7 +579,7 @@ rules:
         to: "branch.verse/candidate/$subject.value.tree"
         open: {base: "verse/live", title: "charters: $subject.value.title"}
         text: "What is on main against what runs. An answer here installs it."
-        asks: "repo-charters.{{.Repo}}:propose@repo-charters.{{.Repo}}.candidate.$subject.value.tree~1"
+        asks: "repo-charters.{{.Repo}}:propose@repo-charters.{{.Repo}}.candidate.$subject.value.tree~2"
         commitStatus: {verse: {state: pending, description: "waiting for an answer to the question on this pull request", sha: $subject.value.sha}}
         closed: false
 # The check's verdict on the verse/live pull request of a tree main carries, while it is asked

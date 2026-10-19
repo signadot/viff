@@ -12,6 +12,7 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
@@ -97,9 +98,10 @@ func TestDeletingAScopeCancelsItsLiveTasks(t *testing.T) {
 	eng := srv.scopeEngine("me")
 	tracked := newIdleHandle(t)
 	eng.Adopt("demo.pr.1", "tracked", tracked)
-	srv.Embedded.Spawn(task.Launch{ID: "hosted", Prompt: "sleep 30", Scope: "me"})
-	other := srv.Embedded.Spawn(task.Launch{ID: "other", Prompt: "sleep 30"})
-	t.Cleanup(func() { other.Cancel("test over") })
+	srv.host("hosted", hostedTask{scope: "me"})
+	mustLaunch(t, srv, runner.Launch{ID: "hosted", Doer: runner.Doer{Script: "sleep 30"}})
+	other := mustLaunch(t, srv, runner.Launch{ID: "other", Doer: runner.Doer{Script: "sleep 30"}})
+	t.Cleanup(func() { other.Cancel("test over", "test") })
 	baseline := newIdleHandle(t)
 	srv.Eng.Adopt("demo.pr.1", "baseline", baseline)
 

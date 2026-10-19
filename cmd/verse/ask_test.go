@@ -317,7 +317,7 @@ func TestAnAskIsCheckedBeforeItIsWritten(t *testing.T) {
 		{"ask", "land", "-q", "x?", "--due", "2020-01-01T00:00:00Z"},
 		{"ask", "land", "-q", "x?", "--due", "tomorrow"},
 		{"ask", "land", "-q", "x?", "--then", "merge it"},
-		{"ask", "land", "-q", "x?", "--then", `{prompt: a, calls: []}`},
+		{"ask", "land", "-q", "x?", "--then", `{prompt: a, script: ""}`},
 		{"ask", "land", "-q", "x?", "--then", `{shell: "rm -rf /"}`},
 		{"ask", "-q", "x?"},
 		{"ask", "land", "--to", "oscar@example.com"},
@@ -393,7 +393,7 @@ func TestAWithdrawnAskIsGoneAndAsksNobody(t *testing.T) {
 func TestACallsThenRunsItsCalls(t *testing.T) {
 	store := serveCalls(t)
 	id := askAs(t, daniel, "land", "-q", "Tag it?", "--to", "oscar@example.com",
-		"--then", `{calls: [{tool: run_bash, input: {command: "echo tagged"}}]}`)
+		"--then", `{script: "echo tagged"}`)
 	ref := mirror.AskRef(id)
 	questionOn(t, store, ref)
 	as(t, davido)

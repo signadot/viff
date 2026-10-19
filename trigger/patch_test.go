@@ -10,6 +10,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
@@ -149,7 +150,7 @@ func TestFailedPatchDoesNotSpawn(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: bad,
-			Spawn: &launch.Spec{Prompt: "must not run"},
+			Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "must not run"},
 		},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)

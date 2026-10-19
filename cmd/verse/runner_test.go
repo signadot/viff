@@ -9,6 +9,7 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
 )
@@ -17,13 +18,21 @@ import (
 // in-process runner is, so the install probe has something truthful to find.
 func runnerFace(t *testing.T) *httptest.Server {
 	t.Helper()
-	build := func(l task.Launch, _ *task.Registry) *task.Task {
-		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+	build := func(l runner.Launch, _ *task.Registry) *task.Task {
+		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 		return task.NewTask(l.ID, sup, doneAfter{}, okExec{})
 	}
-	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
+	srv := httptest.NewServer(offeringAll(runnerd.NewInProcessHandler(build)).HTTPHandler())
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+// offeringAll is h describing itself as a runner verse registers must: offering scripts, and
+// building every network.
+func offeringAll(h *runnerd.InProcessHandler) *runnerd.InProcessHandler {
+	h.Describe(runner.Description{Offers: []runner.Offer{{Script: true,
+		With: map[string]runner.Accepts{"network": runner.AcceptsOneOf(runner.NetworkOpen, runner.NetworkNone, runner.NetworkAllow)}}}})
+	return h
 }
 
 type doneAfter struct{}

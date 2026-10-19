@@ -9,6 +9,7 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
@@ -51,7 +52,7 @@ func TestParseExpr(t *testing.T) {
 // spawnFP registers a live task under a subject, as Spawn does, and returns its handle.
 func spawnFP(t *testing.T, eng *Engine, id, subject string) *task.Task {
 	t.Helper()
-	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+	sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 	p := task.NewTask(id, sup, blockForever{}, noExec{})
 	eng.track(flowTask{id: id, subject: subject, h: p})
 	return p
@@ -144,11 +145,11 @@ func TestSpawnIsIdempotentPerID(t *testing.T) {
 	spawned := 0
 	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
 		spawned++
-		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 		return task.NewTask(id, sup, blockForever{}, noExec{})
 	})
 
-	spec := launch.Spec{Subject: `demo.pr."1"`, Prompt: "review"}
+	spec := launch.Spec{Doer: runner.Doer{Agent: "verse"}, Subject: `demo.pr."1"`, Prompt: "review"}
 	h1 := eng.Spawn("rev-1", spec)
 	h2 := eng.Spawn("rev-1", spec) // the same firing again
 	if spawned != 1 {
@@ -176,13 +177,13 @@ func TestSpawnIsIdempotentPerID(t *testing.T) {
 func TestSpawnDedupeIsPerSubject(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
 	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
-		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 		return task.NewTask(id, sup, blockForever{}, noExec{})
 	})
 	a := entity.RefAt("demo", "pr", "1")
 	b := entity.RefAt("demo", "pr", "2")
-	eng.Spawn(spawnID("", "review", a), launch.Spec{Subject: a.String()})
-	eng.Spawn(spawnID("", "review", b), launch.Spec{Subject: b.String()})
+	eng.Spawn(spawnID("", "review", a), launch.Spec{Doer: runner.Doer{Agent: "verse"}, Subject: a.String()})
+	eng.Spawn(spawnID("", "review", b), launch.Spec{Doer: runner.Doer{Agent: "verse"}, Subject: b.String()})
 
 	if n := len(eng.matchFlow(mustExpr(t, "demo.pr.*"))); n != 2 {
 		t.Fatalf("two subjects yielded %d live tasks, want 2", n)

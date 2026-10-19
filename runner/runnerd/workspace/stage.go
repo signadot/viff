@@ -13,7 +13,9 @@ import (
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	"github.com/go-git/go-git/v5/storage/memory"
 
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
@@ -54,7 +56,7 @@ import (
 const (
 	StagePending = "pending" // approved, not landed: retryable, as a fast-forward
 	// StagePendingForce is pending work whose approval let it rewrite its target, so the retry
-	// may too. Recorded in the namespace because the retry runs without the spawn that decided
+	// may too. Recorded in the namespace because the retry runs without the launch that decided
 	// it — at startup, over whatever the mirrors hold.
 	StagePendingForce = "pending-force"
 	StageHeld         = "held" // not authorized to leave, or never got that far
@@ -62,9 +64,10 @@ const (
 
 // stagedRef is where one repository's work waits in the mirror.
 //
-// A PENDING ref carries the target it was approved for as the tail of its own name, and a HELD
-// one does not — which is the same distinction the two namespaces already make, written into
-// the shape: pending work is going somewhere specific and held work was never told where.
+// A PENDING ref carries the target it was approved for as the tail of its own name, and a HELD one
+// the commit it holds (heldRef) — the same distinction the two namespaces already make, written
+// into the shape: pending work is going somewhere specific, and held work was never told where,
+// so each piece of it is kept under its own name, and a second never overwrites the first.
 //
 // Carried rather than re-derived, because the target is the TASK's choice: a push names its
 // branch, within what the repository permits, and nothing but the request that was approved can
@@ -77,8 +80,14 @@ func StagedRef(kind, taskID, repo, target string) string {
 	return ref + "/" + target
 }
 
+// heldRef is where one piece of a task's held work waits: named by the commit, so two pieces from
+// one task and repository are two refs.
+func heldRef(taskID, repo string, commit plumbing.Hash) string {
+	return StagedRef(StageHeld, taskID, repo, ShortSha(commit.String()))
+}
+
 // splitStaged reads a staged ref back: the task it belongs to, the repository directory it came
-// from, and the target it was approved for (empty for held work).
+// from, and the target it was approved for (for held work, the commit it holds).
 func splitStaged(kind, ref string) (taskID, repo, target string, ok bool) {
 	rest, ok := strings.CutPrefix(ref, "refs/"+kind+"/")
 	if !ok {
@@ -114,33 +123,38 @@ type Delivery struct {
 //
 // It names no branch, and it must not: work that nobody authorized to leave is held for every
 // repository that may send work anywhere, not for one place somebody might have chosen.
-func (w *Workspace) Salvage(ctx context.Context, l task.Launch) Delivery {
+func (w *Workspace) Salvage(ctx context.Context, l *runner.Launch) Delivery {
 	var d Delivery
 	var errs []error
 	for _, t := range w.Trees {
-		// A read-only repository is a reference tree: nothing leaves and nothing is staged,
-		// because there is nowhere to hold work FOR.
-		if !t.Repo.Writes() {
+		// A repository the policy refuses every push to is a reference tree: nothing leaves and
+		// nothing is staged, because there is nowhere to hold work FOR.
+		if !l.Policy.Possible(task.Step{Name: task.StepGitPush, Fields: map[string]string{"repo": t.Repo.Repo.Canonical()}}) {
 			continue
 		}
 		work, err := t.CommitWork(l, "")
 		if err != nil {
 			errs = append(errs, err)
-			d.Loose = append(d.Loose, t.Repo.Name)
+			d.Loose = append(d.Loose, t.Repo.Name())
 			continue
 		}
 		if !work {
 			continue // genuinely untouched
 		}
-		if head, err := t.repo.Head(); err == nil && head.Hash().String() == t.Delivered {
+		head, err := t.Tip()
+		if err == nil && head.String() == t.Delivered {
 			continue // what is here is what an approved push staged: it left
 		}
-		ref := StagedRef(StageHeld, l.ID, t.Repo.Name, "")
-		if err := w.mirrors.stage(ctx, t, w.Branch, ref); err != nil {
+		var ref string
+		if err == nil {
+			ref = heldRef(l.ID, t.Repo.Name(), head)
+			err = w.mirrors.stage(ctx, t, ref, head)
+		}
+		if err != nil {
 			// Staging is the local hop, so this failing means the disk or the git binary, not
 			// the network. The workspace is the only copy and must be kept.
 			errs = append(errs, err)
-			d.Loose = append(d.Loose, t.Repo.Name)
+			d.Loose = append(d.Loose, t.Repo.Name())
 			continue
 		}
 		d.Staged = append(d.Staged, ref)
@@ -149,50 +163,57 @@ func (w *Workspace) Salvage(ctx context.Context, l task.Launch) Delivery {
 	return d
 }
 
-// Stage is the other half: put one repository's already-committed work in the mirror, under the
-// target it has just been approved for, from where the runner pushes it (Mirrors.Deliver).
+// Stage is the other half: put one repository's already-committed work, commit and what it
+// reaches, in the mirror, under the target it has just been approved for, from where the runner
+// pushes it (Mirrors.Deliver). commit is the one the delivery check read (Tree.AuthoredWork), so
+// what is pushed is what was checked, whatever the task's HEAD says by now.
 //
 // It is durability before any network is tried: the mirror is this side's and a checkout is a
 // directory somebody deletes. There is no commit in it — the work is already a commit by the
 // time a push is asked for, which is what makes this a thin pack rather than a second opinion
 // about what the task did.
-func (w *Workspace) Stage(ctx context.Context, taskID string, t *Tree, target string, force bool) Delivery {
+func (w *Workspace) Stage(ctx context.Context, taskID string, t *Tree, target string, force bool, commit plumbing.Hash) Delivery {
 	var d Delivery
 	kind := StagePending
 	if force {
 		kind = StagePendingForce
 	}
-	ref := StagedRef(kind, taskID, t.Repo.Name, target)
-	if err := w.mirrors.stage(ctx, t, w.Branch, ref); err != nil {
+	ref := StagedRef(kind, taskID, t.Repo.Name(), target)
+	if err := w.mirrors.stage(ctx, t, ref, commit); err != nil {
 		d.Err = err
-		d.Loose = append(d.Loose, t.Repo.Name)
+		d.Loose = append(d.Loose, t.Repo.Name())
 		return d
 	}
-	if head, err := t.repo.Head(); err == nil {
-		t.Delivered = head.Hash().String()
-	}
+	t.Delivered = commit.String()
 	d.Staged = append(d.Staged, ref)
 	return d
 }
 
-// stage pushes a task's branch into the mirror under ref.
-func (m *Mirrors) stage(ctx context.Context, t *Tree, branch, ref string) error {
-	dir := m.Dir(t.Repo.Repo)
+// stage pushes commit, and what it reaches, from the task's checkout into the mirror under ref.
+// The commit is named by its hash, not by a ref of the checkout: the task owns that directory, and
+// a ref there is one it can point elsewhere between the write and the push.
+func (m *Mirrors) stage(ctx context.Context, t *Tree, ref string, commit plumbing.Hash) error {
+	dir := m.Dir(t.Repo.Remote)
 	lock := m.lockFor(dir)
 	lock.Lock()
 	defer lock.Unlock()
 
+	// Opened afresh, so its object store has what the task's own git wrote.
+	repo, err := git.PlainOpen(t.Dir)
+	if err != nil {
+		return fmt.Errorf("repo %s: %w", t.Repo.Name(), err)
+	}
 	// Pinned to the mirror path in memory, for the reason the delivery remote is pinned to the
-	// environment's url: the task can write `.git/config` and go-git re-reads it at push time.
-	remote := git.NewRemote(t.repo.Storer, &config.RemoteConfig{
+	// launch's remote: the task can write `.git/config` and go-git re-reads it at push time.
+	remote := git.NewRemote(repo.Storer, &config.RemoteConfig{
 		Name: stageRemote, URLs: []string{dir},
 	})
-	spec := config.RefSpec(fmt.Sprintf("+refs/heads/%s:%s", branch, ref))
-	err := remote.PushContext(ctx, &git.PushOptions{
+	spec := config.RefSpec(fmt.Sprintf("+%s:%s", commit, ref))
+	err = remote.PushContext(ctx, &git.PushOptions{
 		RemoteName: stageRemote, RefSpecs: []config.RefSpec{spec}, Force: true,
 	})
 	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
-		return fmt.Errorf("repo %s: stage %s: %w", t.Repo.Name, ref, err)
+		return fmt.Errorf("repo %s: stage %s: %w", t.Repo.Name(), ref, err)
 	}
 	return nil
 }
@@ -221,7 +242,7 @@ func (m *Mirrors) unstage(_ context.Context, repo, ref string) error {
 // the ones that land. This is the retry, and it is the reason `pending` and `held` are different
 // namespaces: everything it touches has already been through a gate that said yes.
 //
-// Called after a mirror is fetched (so a spawn against a repository sweeps that repository's
+// Called after a mirror is fetched (so a launch against a repository sweeps that repository's
 // backlog), once at startup over every mirror there is, and once when a task ends. No timer and
 // no loop of its own: the work is bounded by what is there, and a runner nobody is using has
 // nothing to retry for.
@@ -230,10 +251,10 @@ func (m *Mirrors) unstage(_ context.Context, repo, ref string) error {
 // process is not it, so the three answers arrive here: already-up-to-date means it landed and
 // the ref goes, an error means it did not and the ref stays, and a REFUSAL means no retry will
 // ever change the answer and the ref moves to `held`. Without that last one a protected branch
-// would be re-attempted on every spawn, forever, in the log.
+// would be re-attempted on every launch, forever, in the log.
 //
 // Whether a retry may rewrite its target was decided when the push was approved, and is in the
-// namespace the work waits under (StagePendingForce): a retry runs without the spawn that decided
+// namespace the work waits under (StagePendingForce): a retry runs without the launch that decided
 // it. auth is the runner's own credential, the one every push is made with.
 func (m *Mirrors) Reflect(ctx context.Context, remote string, auth transport.AuthMethod) (int, error) {
 	dir := m.Dir(remote)
@@ -311,7 +332,7 @@ func (m *Mirrors) deliver(ctx context.Context, mirror *git.Repository, remote, r
 	if force {
 		spec = "+" + spec
 	}
-	// The remote is PINNED to the url the spawn named, held in memory — never a name looked up
+	// The remote is PINNED to the remote the launch named, held in memory — never a name looked up
 	// in any `.git/config`, which is a file in a directory somebody else writes.
 	rem := git.NewRemote(mirror.Storer, &config.RemoteConfig{
 		Name: deliveryRemote, URLs: []string{remote},
@@ -321,8 +342,7 @@ func (m *Mirrors) deliver(ctx context.Context, mirror *git.Repository, remote, r
 	})
 	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
 		if why := Refusal(err); why != "" {
-			taskID, repo, _, _ := splitStaged(kindOf(ref), ref)
-			if err := m.hold(mirror, ref, StagedRef(StageHeld, taskID, repo, "")); err != nil {
+			if err := m.hold(mirror, ref); err != nil {
 				return "", err
 			}
 			return why, nil
@@ -340,6 +360,26 @@ func kindOf(ref string) string {
 		}
 	}
 	return ""
+}
+
+// RemoteRef is the commit ref points at in the remote now, and whether the remote has ref at all:
+// one listing of its refs, asked of the remote itself rather than read from a mirror that may be
+// behind it. An empty repository has none.
+func (m *Mirrors) RemoteRef(ctx context.Context, remote, ref string, auth transport.AuthMethod) (plumbing.Hash, bool, error) {
+	rem := git.NewRemote(memory.NewStorage(), &config.RemoteConfig{Name: deliveryRemote, URLs: []string{remote}})
+	refs, err := rem.ListContext(ctx, &git.ListOptions{Auth: auth})
+	if errors.Is(err, transport.ErrEmptyRemoteRepository) {
+		return plumbing.ZeroHash, false, nil
+	}
+	if err != nil {
+		return plumbing.ZeroHash, false, err
+	}
+	for _, r := range refs {
+		if r.Name().String() == ref {
+			return r.Hash(), true, nil
+		}
+	}
+	return plumbing.ZeroHash, false, nil
 }
 
 // DeleteRef removes a ref at the remote — a push with no source, which is how git spells a
@@ -372,13 +412,31 @@ func (m *Mirrors) DeleteRef(ctx context.Context, remote, target string, auth tra
 	return nil
 }
 
-// hold moves a staged ref out of the retry namespace, keeping the commit exactly where it is. A
-// local ref rename in a repository this process owns — no transport, and nothing copied.
-func (m *Mirrors) hold(mirror *git.Repository, from, to string) error {
+// Hold moves a staged ref of remote's mirror to `held`, its work kept and never retried: for a
+// push that must not be retried as it would be.
+func (m *Mirrors) Hold(remote, ref string) error {
+	dir := m.Dir(remote)
+	lock := m.lockFor(dir)
+	lock.Lock()
+	defer lock.Unlock()
+
+	mirror, err := git.PlainOpen(dir)
+	if err != nil {
+		return fmt.Errorf("mirror of %s: %w", remote, err)
+	}
+	return m.hold(mirror, ref)
+}
+
+// hold moves a staged ref out of the retry namespace to held, named by its commit (heldRef),
+// keeping the commit exactly where it is. A local ref rename in a repository this process owns —
+// no transport, and nothing copied.
+func (m *Mirrors) hold(mirror *git.Repository, from string) error {
 	ref, err := mirror.Reference(plumbing.ReferenceName(from), false)
 	if err != nil {
 		return err
 	}
+	taskID, repo, _, _ := splitStaged(kindOf(from), from)
+	to := heldRef(taskID, repo, ref.Hash())
 	if err := mirror.Storer.SetReference(
 		plumbing.NewHashReference(plumbing.ReferenceName(to), ref.Hash())); err != nil {
 		return err
@@ -435,9 +493,16 @@ func (m *Mirrors) Staged(remote string) ([]StagedWork, error) {
 			if !ok {
 				continue
 			}
+			recovered := taskID + "-" + repo
+			if kind == StageHeld {
+				// Its own branch per commit held: two held pieces of one task's work fetched into
+				// one branch would refuse, or overwrite, each other.
+				recovered += "-" + target
+				target = "" // the commit it holds, and nowhere it was approved to go
+			}
 			out = append(out, StagedWork{
 				Task: taskID, Repo: repo, Why: whyStaged(kind), Ref: name, To: target,
-				Fetch: fmt.Sprintf("git fetch %s %s:refs/heads/recovered/%s-%s", dir, name, taskID, repo),
+				Fetch: fmt.Sprintf("git fetch %s %s:refs/heads/recovered/%s", dir, name, recovered),
 			})
 		}
 		return nil
@@ -454,7 +519,7 @@ func whyStaged(kind string) string {
 }
 
 // Remotes is every remote this runner has a mirror of: what a sweep at startup covers, when no
-// spawn is here to say which repositories there are. A mirror records its remote as `origin`.
+// launch is here to say which repositories there are. A mirror records its remote as `origin`.
 func (m *Mirrors) Remotes() ([]string, error) {
 	entries, err := os.ReadDir(m.root)
 	if err != nil {

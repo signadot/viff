@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/entity"
@@ -179,21 +178,4 @@ func TestARestartReposesAFiringsQuestion(t *testing.T) {
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("answering the re-posed question = %s, want 204 — it is listed but nothing is waiting", resp.Status)
 	}
-}
-
-// waitDocket waits until id is listed on a server's docket.
-func waitDocket(t *testing.T, srv *Server, id string) {
-	t.Helper()
-	// Bounded by TIME, not by a count of reads: how many reads fit in the wait depends on how busy
-	// the machine is, and under the full suite a count ran out before the question was posted.
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		for _, g := range docket(t, srv) {
-			if g["id"] == id {
-				return
-			}
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatalf("%s never reached the docket", id)
 }

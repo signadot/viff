@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/task"
 )
 
@@ -55,9 +54,6 @@ func TestIDsLeadWithTheEngineThatMintedThem(t *testing.T) {
 	}
 	if gateID(ownerOf("me", nil), "review", "ok", []entity.Ref{ref}) == gateID("", "review", "ok", []entity.Ref{ref}) {
 		t.Error("a scope's gate and baseline's share a question id")
-	}
-	if selectID(ownerOf("me", nil), "review", ref, &launch.Provider{}) == selectID("", "review", ref, &launch.Provider{}) {
-		t.Error("a scope's selection and baseline's share a question id")
 	}
 
 	// And a rule's name may not spell the address's separator, or `x:y@s` could be two rules.

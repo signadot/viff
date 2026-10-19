@@ -1,33 +1,34 @@
 package client_test
 
 import (
+	"cmp"
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
 )
 
 // a driver that takes `steps` no-op actions then completes.
-type doneDriver struct{ steps int }
+// doneDriver proposes steps actions, of tool (absent: one that is no step), and is done.
+type doneDriver struct {
+	steps int
+	tool  string
+}
 
 func (d *doneDriver) Next(context.Context, task.StepResult) (task.ToolUse, bool, error) {
 	if d.steps <= 0 {
 		return task.ToolUse{}, false, nil // complete
 	}
 	d.steps--
-	return task.ToolUse{Name: "noop"}, true, nil
+	return task.ToolUse{Name: cmp.Or(d.tool, "noop")}, true, nil
 }
 
 type okExec struct{}
@@ -36,20 +37,20 @@ func (okExec) Execute(_ context.Context, tu task.ToolUse) (task.StepResult, []ta
 	return task.StepResult{Use: tu}, nil, nil
 }
 
-// The engine drives a REMOTE runnerd entirely over HTTP: httpRunner.Spawn issues the
-// spawn, remoteHandle.Subscribe streams the SSE read plane (cursored), and the task
+// The engine drives a REMOTE runnerd entirely over HTTP: httpRunner.Launch issues the
+// launch, remoteHandle.Subscribe streams the SSE read plane (cursored), and the task
 // runs to a terminal status — no in-process handle. This is the Phase-3 proof of the
 // base-URL decoupling.
 func TestHTTPRunnerDrivesRemoteTaskd(t *testing.T) {
-	build := func(l task.Launch, reg *task.Registry) *task.Task {
-		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+	build := func(l runner.Launch, reg *task.Registry) *task.Task {
+		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 2}, okExec{})
 	}
 	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	defer srv.Close()
 
 	pol := client.HTTP(srv.URL)
-	h := pol.Spawn(task.Launch{ID: "t1", Prompt: "do a thing", Driver: "scripted"})
+	h := pol.Launch(runner.Launch{ID: "t1", Doer: runner.Doer{Agent: "test"}, Prompt: "do a thing"})
 
 	ch, unsub := h.Subscribe()
 	defer unsub()
@@ -91,15 +92,15 @@ loop:
 // A remote runner enumerates its tasks so versed can union them into `task list`/
 // `get`: ListTasks/TaskSnapshot are a thin client over the remote's GET /tasks.
 func TestHTTPRunnerListsRemoteTasks(t *testing.T) {
-	build := func(l task.Launch, reg *task.Registry) *task.Task {
-		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+	build := func(l runner.Launch, reg *task.Registry) *task.Task {
+		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 2}, okExec{})
 	}
 	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	defer srv.Close()
 
 	pol := client.HTTP(srv.URL)
-	pol.Spawn(task.Launch{ID: "r1", Prompt: "remote task", Driver: "scripted"})
+	pol.Launch(runner.Launch{ID: "r1", Doer: runner.Doer{Agent: "test"}, Prompt: "remote task"})
 
 	// task.Lister by NAME, not a structural assertion written out here. Spelling the
 	// signature inline is what let a widened one report false instead of failing to build.
@@ -133,12 +134,12 @@ func TestHTTPRunnerListsRemoteTasks(t *testing.T) {
 	}
 }
 
-// A runner that REFUSES a spawn must not read as one that took it. The status used to be
+// A runner that REFUSES a launch must not read as one that took it. The status used to be
 // discarded, so 400/403/501 all came back as a live remote handle: versed mirrored a
 // task:instance for work that was never started and the flow waited on it forever, so the
 // refusal surfaced as a hang. A runner declining a launch it cannot host is the whole
 // mechanism by which a runner gets to refuse, and it is inert unless this reads it.
-func TestHTTPRunnerSpawnReadsARefusal(t *testing.T) {
+func TestHTTPRunnerLaunchReadsARefusal(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		code int
@@ -154,17 +155,17 @@ func TestHTTPRunnerSpawnReadsARefusal(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			h := client.HTTP(srv.URL).Spawn(task.Launch{ID: "x", Prompt: "t", Driver: "scripted"})
+			h := client.HTTP(srv.URL).Launch(runner.Launch{ID: "x", Doer: runner.Doer{Agent: "test"}, Prompt: "t"})
 
 			// The refusal has to arrive as a terminal on the plane the flow already reads,
 			// which is what FailedHandle is for.
 			ch, _ := h.Subscribe()
 			ev, open := <-ch
 			if !open {
-				t.Fatal("a refused spawn produced no frame at all; the flow waits forever")
+				t.Fatal("a refused launch produced no frame at all; the flow waits forever")
 			}
 			if ev.Kind != task.EventStatus || ev.Text != string(task.Failed) {
-				t.Fatalf("frame = %+v, want a failed status — the refusal read as an accepted spawn", ev)
+				t.Fatalf("frame = %+v, want a failed status — the refusal read as an accepted launch", ev)
 			}
 			if ev.Err == "" {
 				t.Fatal("the failure carries no reason, so the operator is told only that it failed")
@@ -173,40 +174,6 @@ func TestHTTPRunnerSpawnReadsARefusal(t *testing.T) {
 				t.Fatalf("reason = %q, want the runner's own words (%q)", ev.Err, tc.body)
 			}
 		})
-	}
-}
-
-// THE CREDENTIAL'S NAME CROSSES THE WIRE, and only the name.
-//
-// A remote runner holds the values and resolves the name against its own config, so this is the
-// one field about a secret that verse may send in the clear — and the field a dropped line would
-// break silently: the work would run, on whatever budget the runner defaults to, and nothing
-// would say which one.
-func TestHTTPRunnerSendsTheCredentialName(t *testing.T) {
-	var got map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		n, err := codec.ParseNode(body, codec.Tony)
-		if err != nil {
-			t.Errorf("the spawn body does not parse: %v", err)
-		}
-		got = entity.ToObj(n)
-		http.Error(w, "enough", http.StatusBadRequest) // the reply is not what this asks about
-	}))
-	defer srv.Close()
-
-	client.HTTP(srv.URL).Spawn(task.Launch{
-		ID: "k", Prompt: "review it", Driver: "llm", VirtualKey: "review",
-	})
-
-	if got["virtualKey"] != "review" {
-		t.Errorf("the spawn sent %v, want the credential named", got["virtualKey"])
-	}
-	// …and a launch naming none says nothing, the way every optional field here does: an empty
-	// one written out is a claim rather than an absence.
-	client.HTTP(srv.URL).Spawn(task.Launch{ID: "k2", Prompt: "x", Driver: "llm"})
-	if _, said := got["virtualKey"]; said {
-		t.Errorf("a launch naming no credential sent %v", got["virtualKey"])
 	}
 }
 
@@ -253,40 +220,36 @@ func TestHTTPRunnerListReportsWhyItIsEmpty(t *testing.T) {
 	}
 }
 
-// Phase 4 resume: a task:instance left stuck "running" (verse crashed mid-run),
-// tagged with a remote runner, is re-attached on restart — the replay from the remote
-// (which kept running and finished) converges the entity to its terminal status. This is
-// what versed.reconcileTasks does: resume, not orphan, when the work outlived verse.
+// A task that finished while verse was away is re-attached on restart, and the re-attached
+// handle delivers how it ended: verse resumes the task rather than orphaning it when the work
+// outlived it (versed.reconcileTasks).
 func TestResumeReAttachesToRemoteTask(t *testing.T) {
-	build := func(l task.Launch, reg *task.Registry) *task.Task {
-		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+	build := func(l runner.Launch, reg *task.Registry) *task.Task {
+		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 2}, okExec{})
 	}
 	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	defer srv.Close()
 
 	pol := client.HTTP(srv.URL)
-	pol.Spawn(task.Launch{ID: "t1", Prompt: "task", Driver: "scripted"}) // runs on the remote to completion
-	time.Sleep(300 * time.Millisecond)                                   // let it finish (retained in the ring)
+	pol.Launch(runner.Launch{ID: "t1", Doer: runner.Doer{Agent: "test"}, Prompt: "task"}) // runs on the remote to completion
+	time.Sleep(300 * time.Millisecond)                                                    // let it finish (retained in the ring)
 
-	// "verse restart": a fresh store with a STALE running entity tagged with the runner.
-	store := entitytest.Store(t)
-	entitytest.Set(t, store, mirror.Ref("t1"), entity.Obj{"status": "running", "runner": srv.URL}.Payload())
-
-	// resume: re-attach and re-mirror (the core of reconcileTasks).
-	mirror.Reflect(store, "t1", pol.Attach("t1"), mirror.Meta{Runner: srv.URL})
-
+	// "verse restart": attach afresh, and read the stream until it says how the task ended.
+	events, stop := pol.Attach("t1").Subscribe()
+	defer stop()
 	deadline := time.After(5 * time.Second)
 	for {
-		e, _, _ := store.Get(mirror.Ref("t1"))
-		if s, _ := entity.ToObj(e.Payload)["status"].(string); s == string(task.Done) {
-			return // converged: resume recovered the terminal from the remote
-		}
 		select {
+		case e, ok := <-events:
+			if !ok {
+				t.Fatal("the stream ended without the task's terminal")
+			}
+			if e.Kind == task.EventStatus && task.Status(e.Text) == task.Done {
+				return // resume recovered the terminal from the remote
+			}
 		case <-deadline:
-			e, _, _ := store.Get(mirror.Ref("t1"))
-			t.Fatalf("entity never converged to completed; status=%v", entity.ToObj(e.Payload)["status"])
-		case <-time.After(20 * time.Millisecond):
+			t.Fatal("the re-attached handle never delivered the task's terminal")
 		}
 	}
 }
@@ -299,17 +262,17 @@ func TestResumeReAttachesToRemoteTask(t *testing.T) {
 // (`id`/`choice`), and the remote runtime reads the same type. A body it cannot read as one is
 // refused, not answered.
 func TestHTTPRunnerAnswersARemoteGate(t *testing.T) {
-	build := func(l task.Launch, reg *task.Registry) *task.Task {
-		// Ask, and resolved by the daemon's own registry — so the task really blocks and
-		// really waits for an answer to arrive over HTTP.
-		sup := task.NewSupervisor(&task.Vector{Default: task.Ask}, reg)
-		return task.NewTask(l.ID, sup, &doneDriver{steps: 1}, okExec{})
+	build := func(l runner.Launch, reg *task.Registry) *task.Task {
+		// Its one command asks, resolved by the daemon's own registry — so the task really
+		// blocks and really waits for an answer to arrive over HTTP.
+		sup := task.NewSupervisor(task.Policy{{Match: &task.Match{System: "commands"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAsk}}}, reg)
+		return task.NewTask(l.ID, sup, &doneDriver{steps: 1, tool: "run_bash"}, okExec{})
 	}
 	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	defer srv.Close()
 
 	pol := client.HTTP(srv.URL)
-	h := pol.Spawn(task.Launch{ID: "t-gate", Prompt: "do a thing", Driver: "scripted"})
+	h := pol.Launch(runner.Launch{ID: "t-gate", Doer: runner.Doer{Agent: "test"}, Prompt: "do a thing"})
 	ch, unsub := h.Subscribe()
 	defer unsub()
 
@@ -367,11 +330,6 @@ func TestHTTPRunnerAnswersARemoteGate(t *testing.T) {
 // A base url that cannot be parsed is an ERROR, not a panic. `http.NewRequest` answers an
 // unparseable url with a nil request, and `Do(nil)` dereferences it — so discarding that error
 // turned a bad url into a panic serving HTTP, three call sites deep in whoever was asking.
-//
-// It is reachable from data rather than from a typo: the coderunner builds a per-child url out
-// of the task id, and every id a trigger spawns is `<chain>@<subject>` — an `@` makes the rest
-// of it userinfo, and the subject's colons are then read as a port. `review@demo.pr.1`, the
-// shape the tutorial's own charter produces, is enough.
 func TestHTTPRunnerRefusesAnUnparseableURL(t *testing.T) {
 	// Unparseable on its own terms — a bad percent-escape — rather than by holding characters
 	// some other grammar spends. An address inside a URL is not that case —

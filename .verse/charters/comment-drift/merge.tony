@@ -71,7 +71,7 @@ rules:
     # `repos.verse.merge.proposal.proposal-appeared.git.verse.ref."verse/auto/…"` — and every rule below
     # that reads a proposal says `[verse-dev, merge, proposal, "*"]`, which is four. Those rules
     # would go on selecting, on the RULE level, whose payload is the whole subtree rather than
-    # one proposal: `proposal-outrun` fired on it and asked the coderunner to retire a `$branch`
+    # one proposal: `proposal-outrun` fired on it and asked the verse runner to retire a `$branch`
     # that node does not have.
     #
     # A branch name is unique per proposal and is what every reader keys on, so naming it here
@@ -211,43 +211,49 @@ rules:
     patch:
       decided: landing
     spawn:
-      runner: verse.runners.coderunner
-      environment: verse-merge
+      runner: verse.runners.verse-runner
       # `main` is the consequential branch: a merge task's work IS the merge, so there is nothing
-      # to propose separately. A push to it is a fast-forward or nothing — no `force` — so what
-      # stops it being merely a prompt is `receive.denyNonFastForwards` on main at the far end,
-      # and the runner refuses to rewrite it before the remote ever sees the push.
+      # to propose separately. A push to it is a fast-forward or nothing — the policy refuses a
+      # push that says `force` or `delete` — so what stops it being merely a prompt is
+      # `receive.denyNonFastForwards` on main at the far end, and the runner refuses to rewrite
+      # it before the remote ever sees the push.
+      policy:
+      - {match: {system: git, verb: push, ref: refs/heads/main, force: "false", delete: "false"}, then: allow}
+      - {match: {system: git, verb: push}, then: deny}
+      - {then: allow}
       #
       # WHAT DECIDES IT is this rule's gate — `!until [!quorum 1, !deadline "24h"]`, which
-      # denies on the clock — and not the task's vector, which is `auto` deliberately: the
-      # decision has been made by a person about the thing that matters, and making the task
-      # re-ask per action would be the same question in two vocabularies.
-      #
-      # `verse/auto/*` is here so the proposal branches may be read as the run's own, which is
-      # what lets proposal-outrun below delete them.
-      repos:
-      - repo: signadot/verse
-        from: main
-        access: write
-        push: {existing: [main], new: ["verse/auto/*"]}
-      grant: no-delegate
-      vector: auto
-      # A STATIC LIST OVER A DYNAMIC SET: the branches are not interpolated into the command,
-      # they are FOUND in the clone. The train's `branches` field is for the person reading the
-      # docket; the task reads the refs it has.
-      #
-      # EACH CAR IS REBASED ONTO THE TASK BRANCH BEFORE IT IS FAST-FORWARDED IN, and without that
-      # the batch is nominal: the first `--ff-only` moves the branch and every sibling after it
-      # is then neither ancestor nor descendant and is refused. A train of N landed exactly ONE
-      # (issue ezh7m9akh12ksde5g9n0). A rebase that cannot apply is aborted and that car is
-      # skipped — safe here because a comment fix is a textual edit localized to the symbol in
-      # the finding, so there is no judgment for a conflict to need.
-      calls:
-      - tool: run_bash
-        input:
-          command: "tb=$(git -C verse rev-parse --abbrev-ref HEAD); for b in $(git -C verse for-each-ref --format='%(refname)' 'refs/remotes/mirror/verse/auto/*'); do git -C verse checkout -B _car \"$b\" || continue; if git -C verse -c user.name='verse coderunner' -c user.email=coderunner@invalid rebase \"$tb\"; then git -C verse checkout \"$tb\" && git -C verse merge --ff-only _car; else git -C verse rebase --abort || true; git -C verse checkout \"$tb\"; fi; done"
-      - tool: push
-        input: {branch: main}
+      # denies on the clock — and not the task's policy, which allows its one push unasked:
+      # the decision has been made by a person about the thing that matters, and making the
+      # task re-ask per action would be the same question in two vocabularies.
+      doer:
+        with:
+          network: {mode: open}
+          git:
+          - repo: signadot/verse
+            from: main
+        # A STATIC LIST OVER A DYNAMIC SET: the branches are not interpolated into the command,
+        # they are FOUND in the clone. The train's `branches` field is for the person reading the
+        # docket; the task reads the refs it has.
+        #
+        # EACH CAR IS REBASED ONTO THE TASK BRANCH BEFORE IT IS FAST-FORWARDED IN, and without
+        # that the batch is nominal: the first `--ff-only` moves the branch and every sibling
+        # after it is then neither ancestor nor descendant and is refused. A train of N landed
+        # exactly ONE (issue ezh7m9akh12ksde5g9n0). A rebase that cannot apply is aborted and
+        # that car is skipped — safe here because a comment fix is a textual edit localized to
+        # the symbol in the finding, so there is no judgment for a conflict to need.
+        script: |
+          set -e
+          tb=$(git -C verse rev-parse --abbrev-ref HEAD)
+          for b in $(git -C verse for-each-ref --format='%(refname)' 'refs/remotes/mirror/verse/auto/*'); do
+            git -C verse checkout -B _car "$b" || continue
+            if git -C verse -c user.name='verse runner' -c user.email=verse-runner@invalid rebase "$tb"; then
+              git -C verse checkout "$tb" && git -C verse merge --ff-only _car
+            else
+              git -C verse rebase --abort || true; git -C verse checkout "$tb"
+            fi
+          done
+          verse-call-tool git-push -branch main
     onDone:
       patch:
         decided: landed
@@ -288,28 +294,30 @@ rules:
     patch:
       state: stale
     spawn:
-      runner: verse.runners.coderunner
-      environment: verse-merge
-      # DELETING is a different act and says so: a branch a `new` pattern matches is one a run
-      # created, and only those may be removed. A sweep learns stale branch names by asking the
-      # remote and cannot be handed them by this file; the task picks inside this pattern and a
-      # branch outside it is refused before anything is gated. Deriving stamps `Verb: Delete`, so
-      # a charter that wants to gate destroying without gating delivery says `verbs: [delete]`.
-      # And `receive.denyDeletes` must NOT be set on this pattern at the far end, or the sweep
-      # is refused every time — the one rule that has to be ABSENT rather than present.
-      repos:
-      - repo: signadot/verse
-        from: main
-        access: write
-        push: {new: ["verse/auto/*"]}
-      grant: no-delegate
-      vector: auto
-      calls:
-      - tool: push
-        input: {branch: $branch, delete: true}
-      # No `answer:`, and that is the driver rather than an omission: a call list has no model
-      # to repair a contract with, so a spawn carrying one is refused. What used to be read out
-      # of the answer — which branches went — is the LIST ITSELF, and the ref is in the record
+      runner: verse.runners.verse-runner
+      # DELETING is its own row and says so: only a push that removes a branch of this pattern
+      # is allowed. A sweep learns stale branch names by asking the remote and cannot be handed
+      # them by this file; the task picks inside this pattern and any other push is refused
+      # before anything is asked. A charter that wants to ask about destroying without asking
+      # about delivery writes a row on `git.push` with `delete: "true"`. And
+      # `receive.denyDeletes` must NOT be set on this pattern at the far end, or the sweep is
+      # refused every time — the one rule that has to be ABSENT rather than present.
+      policy:
+      - {match: {system: git, verb: push, ref: "refs/heads/verse/auto/*", delete: "true"}, then: allow}
+      - {match: {system: git, verb: push}, then: deny}
+      - {then: allow}
+      doer:
+        with:
+          network: {mode: open}
+          git:
+          - repo: signadot/verse
+            from: main
+          # The branch as the script's environment: a ref name read from the remote is data, and
+          # spliced into the script's text it would be a program.
+          env: {BRANCH: $branch}
+        script: 'verse-call-tool git-push -branch "$BRANCH" -delete'
+      # No `answer:`: a script has no model to repair a contract with. What used to be read out
+      # of the answer — which branches went — is the script itself, and the ref is in the record
       # before the task starts.
     #
     # The patch above already wrote `stale`, so a failed retirement lands on `stale` with an

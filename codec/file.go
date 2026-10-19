@@ -57,6 +57,18 @@ func ReadFile(path string, v any) error {
 	return nil
 }
 
+// ReadFileStrict is ReadFile with UnmarshalStrict: a key the type does not know is an error.
+func ReadFileStrict(path string, v any) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if err := UnmarshalStrict(data, v, ForPath(path)); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	return nil
+}
+
 // ReadFileNode reads a file as a document, returning the node and the format it was read
 // as (so a caller can report or echo it).
 func ReadFileNode(path string) (*ir.Node, Format, error) {

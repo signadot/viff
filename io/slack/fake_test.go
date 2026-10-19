@@ -30,6 +30,7 @@ type fakeSlack struct {
 	inThread   []map[string]any // chat.postMessage in a thread: what a reply was answered with
 	ephemerals []map[string]any // chat.postEphemeral: what one person was told
 	opened     map[string]int   // conversations.open, by user
+	reacted    []string         // reactions.add, in order: "<channel> <ts> <name>"
 
 	// The click's side: the Socket Mode url apps.connections.open answers with, which takes the
 	// app-level token and no other.
@@ -158,6 +159,16 @@ func (f *fakeSlack) handle(w http.ResponseWriter, r *http.Request) {
 		f.updates = append(f.updates, map[string]any{"channel": str("channel"), "ts": str("ts"), "text": str("text"),
 			"blocks": args["blocks"]})
 		write(w, map[string]any{"ok": true, "channel": str("channel"), "ts": str("ts")})
+	case "reactions.add":
+		r := str("channel") + " " + str("timestamp") + " " + str("name")
+		for _, had := range f.reacted {
+			if had == r {
+				write(w, map[string]any{"ok": false, "error": "already_reacted"})
+				return
+			}
+		}
+		f.reacted = append(f.reacted, r)
+		write(w, map[string]any{"ok": true})
 	case "chat.getPermalink":
 		write(w, map[string]any{"ok": true,
 			"permalink": "https://acme.slack.com/archives/" + q.Get("channel") + "/p" + q.Get("message_ts")})

@@ -1,0 +1,7 @@
+name: agent
+description: "The sub-agents a doer may call: each call starts a child run inside the runner, on the task's own stream and under its policy, with no record of its own."
+verbs:
+- name: call-sub-agent
+  description: "Call a sub-agent by name: a child run inside the runner, on this task's stream, under its policy."
+  params:
+  - {name: agent, description: "the sub-agent called"}

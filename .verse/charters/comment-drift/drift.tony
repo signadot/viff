@@ -194,23 +194,33 @@ rules:
         stage: gathered
   action:
     spawn:
-      runner: verse.runners.coderunner
-      environment: verse-fix
+      runner: verse.runners.verse-runner
       # The repository, and what this task may push to it: ONLY a proposal branch of its own,
       # `verse/auto/<task>`, so the deliverable is a diff rather than prose about a diff, and
-      # `main` is deliberately not here. A fixing task's work is a PROPOSAL — that is the whole
+      # `main` is deliberately refused. A fixing task's work is a PROPOSAL — that is the whole
       # shape of the deliverable — and somewhere with a consequence is merge.tony's spawn, which
       # exists so that reaching it is a different charter rather than a rule somebody remembers.
       # The agent commits and pushes itself; a run that changed nothing pushes nothing and leaves
-      # no branch.
-      repos:
-      - repo: signadot/verse
-        from: main
-        access: write
-        push: {new: ["verse/auto/*"]}
-      driver: llm
-      grant: all
-      vector: auto
+      # no branch. "Its own" is two rows, on facts the runner fills: a branch not at the forge
+      # (`exists`), and one whose tip this task made (`own`). Another task's `verse/auto/*` is
+      # neither, so a fast-forward onto it is refused with the rest.
+      policy:
+      - {match: {system: git, verb: push, ref: "refs/heads/verse/auto/*", exists: "false", force: "false", delete: "false"}, then: allow}
+      - {match: {system: git, verb: push, ref: "refs/heads/verse/auto/*", own: "true", force: "false", delete: "false"}, then: allow}
+      - {match: {system: git, verb: push}, then: deny}
+      - {match: {system: git, verb: fetch}, then: allow}
+      - {match: {system: files}, then: allow}
+      - {match: {system: commands}, then: allow}
+      - {match: {system: agent}, then: allow}
+      - {match: {system: question}, then: allow}
+      - {then: allow}
+      doer:
+        agent: verse
+        with:
+          network: {mode: open}
+          git:
+          - repo: signadot/verse
+            from: main
       # THE ANSWER IS A CONTRACT rather than a request in the prose. "Your final message is JSON"
       # was obeyed on one run and ignored on the next, and an unparseable answer is not a bad
       # answer — it is no answer: `$data` resolves to nothing, the completion hook is refused,

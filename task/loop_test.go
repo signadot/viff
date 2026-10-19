@@ -19,7 +19,7 @@ type scriptDriver struct {
 
 func (d *scriptDriver) Next(_ context.Context, _ StepResult) (ToolUse, bool, error) {
 	if d.task != nil && d.i == d.cancelAt {
-		d.task.Cancel("test")
+		d.task.Cancel("test", "")
 	}
 	if d.i >= len(d.steps) {
 		return ToolUse{}, false, nil
@@ -45,8 +45,6 @@ func (e *recExec) Execute(_ context.Context, tu ToolUse) (StepResult, []ToolUse,
 	return StepResult{Use: tu, Output: "ok"}, e.defers[tu.Name], nil
 }
 
-func autoVec() *Vector { return &Vector{Default: Auto} }
-
 func tool(name string) ToolUse { return ToolUse{Name: name} }
 
 // Defers registered at the root frame unwind LIFO at normal completion.
@@ -56,7 +54,7 @@ func TestDefersUnwindLIFOAtRoot(t *testing.T) {
 		"setupB": {tool("teardownB")},
 	}}
 	d := &scriptDriver{steps: []ToolUse{tool("setupA"), tool("setupB")}}
-	p := NewTask("t", NewSupervisor(autoVec(), AutoResolver{}), d, e)
+	p := NewTask("t", toolSup(allowAll(), AutoResolver{}), d, e)
 
 	out, err := p.Run(context.Background())
 	if err != nil || out.Reason != "done" {
@@ -75,7 +73,7 @@ func TestDefersUnwindLIFOAtRoot(t *testing.T) {
 func TestCancelUnwinds(t *testing.T) {
 	e := &recExec{defers: map[string][]ToolUse{"action1": {tool("teardown1")}}}
 	d := &scriptDriver{steps: []ToolUse{tool("action1"), tool("action2")}, cancelAt: 0}
-	p := NewTask("t", NewSupervisor(autoVec(), AutoResolver{}), d, e)
+	p := NewTask("t", toolSup(allowAll(), AutoResolver{}), d, e)
 	d.task = p
 
 	out, err := p.Run(context.Background())

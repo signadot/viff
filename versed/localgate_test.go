@@ -11,13 +11,13 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
-	"github.com/signadot/verse/runner/runnerd/verserunner"
 	"github.com/signadot/verse/task"
 )
 
-// askingServer runs local tasks under an Ask vector, so a spawned one blocks on its first
-// action and there is a real task gate to answer.
+// askingServer runs local tasks whose one action is a step, so a spawn that names no autonomy
+// blocks on it and there is a real task gate to answer.
 func askingServer(t *testing.T) *Server {
 	t.Helper()
 	return NewWithStore(askingBuilder(t), entitytest.Store(t))
@@ -25,14 +25,12 @@ func askingServer(t *testing.T) *Server {
 
 // askingBuilder is askingServer's half that is not the store, for a test that wraps one.
 //
-// It used to hand-build an Ask supervisor because ScriptedBuilder forced Auto and there was no
-// way to ask a scripted task for a question. There is now: a spawn that names no vector asks,
-// so this is the ordinary builder with a root to run in.
+// The verse runner's script is one action and no step: it runs whatever the autonomy says, and
+// what asks is a call it makes. A test about the task's own gate wants a step, so the task
+// proposes one (stepBuilder), under the gating the launch carries.
 func askingBuilder(t *testing.T) runnerd.Builder {
 	t.Helper()
-	return func(l task.Launch, reg *task.Registry) *task.Task {
-		return verserunner.NewScriptedTask(l, t.TempDir(), task.DefaultShellEnv, reg)
-	}
+	return stepBuilder(t)
 }
 
 // waitQuestion waits for a pending question raised by taskID and returns its id.
@@ -68,7 +66,7 @@ func TestTaskResolveAnswersALocalGate(t *testing.T) {
 	ops := httptest.NewServer(srv.Handler())
 	defer ops.Close()
 
-	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "local-1", Prompt: "true"})
+	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "local-1", Doer: runner.Doer{Script: "true"}, Policy: stepAsks})
 	spawn.Body.Close()
 	if spawn.StatusCode >= 300 {
 		t.Fatalf("spawn = %s", spawn.Status)
@@ -99,16 +97,15 @@ func TestTaskResolveAnswersALocalGate(t *testing.T) {
 	}
 }
 
-// A scripted run is gated by what it does, as any other run is: its one call is `run_bash`, which
-// is exec, so `verse task run -driver scripted -gates` with a gate over `exec` asks before the
-// command runs.
-func TestAScriptedRunAsksAtAGateOverItsVerb(t *testing.T) {
-	srv := askingServer(t)
+// A run is gated by the steps it takes: a gate over `commands.run` asks before a command runs,
+// and `verse task run --gates` is how an ad-hoc run gets one.
+func TestARunAsksAtAGateOverItsStep(t *testing.T) {
+	srv := NewWithStore(stepBuilder(t), entitytest.Store(t))
 	ops := httptest.NewServer(srv.Handler())
 	defer ops.Close()
 
-	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "shell-1", Prompt: "true", Vector: "auto",
-		Gates: []task.Gate{{Name: "shell", Mode: task.Ask, Match: task.GateMatch{Verbs: []task.Verb{task.Exec}}}}})
+	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "shell-1", Doer: runner.Doer{Script: "true"},
+		Policy: task.Policy{{Name: "shell", Match: &task.Match{System: "commands", Verb: "run"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAllow}}}})
 	spawn.Body.Close()
 	if spawn.StatusCode >= 300 {
 		t.Fatalf("spawn = %s", spawn.Status)
@@ -130,7 +127,7 @@ func TestAHostedTasksControlIsRecordedAsItsRequester(t *testing.T) {
 	ops := httptest.NewServer(srv.Handler())
 	defer ops.Close()
 
-	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "local-2", Prompt: "true"})
+	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "local-2", Doer: runner.Doer{Script: "true"}, Policy: stepAsks})
 	spawn.Body.Close()
 	if spawn.StatusCode >= 300 {
 		t.Fatalf("spawn = %s", spawn.Status)
@@ -150,18 +147,18 @@ func TestAHostedTasksControlIsRecordedAsItsRequester(t *testing.T) {
 		return resp
 	}
 	for name, resp := range map[string]*http.Response{
-		"vector": send(http.MethodPut, "/tasks/local-2/vector", `{vector: {default: ask}, by: "system:docket"}`),
+		"vector": send(http.MethodPut, "/tasks/local-2/policy", `{policy: [{then: ask}], by: "system:docket"}`),
 		"say":    send(http.MethodPost, "/tasks/local-2/say", `{instruction: "hello", by: "user:ceo@example.com"}`),
-		"spawn":  send(http.MethodPost, "/tasks", `{id: local-3, prompt: "true", principal: "system:charter"}`),
+		"spawn":  send(http.MethodPost, "/tasks", `{id: local-3, doer: {script: "true"}, principal: "system:charter"}`),
 	} {
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusBadRequest {
 			t.Errorf("%s by somebody else: %s, want 400", name, resp.Status)
 		}
 	}
-	// As itself, named or not, each is done — and the vector says who slid it.
+	// As itself, named or not, each is done — and the record says who slid the policy.
 	for name, resp := range map[string]*http.Response{
-		"vector": send(http.MethodPut, "/tasks/local-2/vector", `{vector: {default: ask}}`),
+		"vector": send(http.MethodPut, "/tasks/local-2/policy", `{policy: [{then: ask}]}`),
 		"say":    send(http.MethodPost, "/tasks/local-2/say", `{instruction: "hello", by: "`+tester+`"}`),
 	} {
 		resp.Body.Close()
@@ -175,13 +172,32 @@ func TestAHostedTasksControlIsRecordedAsItsRequester(t *testing.T) {
 	}
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		if e, ok, _ := srv.Store.Get(mirror.Ref("local-2")); ok && entity.Str(e.Payload, "vectorBy") != "" {
-			if got := entity.Str(e.Payload, "vectorBy"); got != "user:"+tester {
-				t.Errorf("vectorBy = %q, want the requester", got)
+		if e, ok, _ := srv.Store.Get(mirror.Ref("local-2")); ok && entity.Str(e.Payload, "policyBy") != "" {
+			if got := entity.Str(e.Payload, "policyBy"); got != "user:"+tester {
+				t.Errorf("policyBy = %q, want the requester", got)
 			}
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Error("the vector's slide never reached the task's record")
+	t.Error("the policy's slide never reached the task's record")
+}
+
+// stepBuilder hosts a task that proposes one command, classified as a `commands.run` step, so a
+// gate on that step has something to ask about. The verse runner's own script is one action and
+// no step, so a test about a step's gate builds its task here.
+// stepAsks is the policy a test of a task's own gate spawns under: stepBuilder's action is a
+// command, and the policy gives the task the shell and asks before each, as `policy[0]`.
+var stepAsks = task.Policy{{Match: &task.Match{System: "commands"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAsk}}}
+
+// stepAsksTony is stepAsks as a spawn writes it.
+const stepAsksTony = `[{match: {system: commands}, then: ask}, {then: ask}]`
+
+func stepBuilder(t *testing.T) runnerd.Builder {
+	t.Helper()
+	return func(l runner.Launch, reg *task.Registry) *task.Task {
+		sup := task.NewSupervisor(l.Policy, reg)
+		sup.SetStepOf(commandStep)
+		return task.NewTask(l.ID, sup, &oneAction{}, okExecutor{})
+	}
 }

@@ -135,11 +135,11 @@ func TestWaitWaitsUntilInterrupted(t *testing.T) {
 // id, and on `task run` it is no flag at all.
 func TestTaskRunNamesItsContractFileAnswerContract(t *testing.T) {
 	serve(t)
-	_, err := runCLI(t, "task", "run", "--driver", "scripted", "--answer", "shape.tony", "true")
+	_, err := runCLI(t, "task", "run", "--script", "true", "--answer", "shape.tony")
 	if err == nil || !strings.Contains(err.Error(), "answer") {
 		t.Fatalf("task run --answer: err = %v, want the flag refused", err)
 	}
-	_, err = runCLI(t, "task", "run", "--driver", "scripted", "--answer-contract", "no-such-file.tony", "true")
+	_, err = runCLI(t, "task", "run", "--script", "true", "--answer-contract", "no-such-file.tony")
 	if err == nil || !strings.Contains(err.Error(), "--answer-contract") || !strings.Contains(err.Error(), "no-such-file.tony") {
 		t.Fatalf("task run --answer-contract <missing file>: err = %v, want the file named", err)
 	}

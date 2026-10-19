@@ -220,7 +220,7 @@ func TestWordsUnderATurnAreTheReply(t *testing.T) {
 	const turn = "run-7~t1"
 	go func() {
 		_, _ = r.srv.Reg.Resolve(context.Background(), task.GateQuestion{ID: turn, Origin: "run-7", Gate: "turn",
-			Mode: task.Ask, Reason: "your turn",
+			Reason:  "your turn",
 			Options: []task.Option{{ID: task.Reply, Says: "say something"}, {ID: task.End, Says: "end the conversation"}}},
 			task.ToolUse{Name: "turn"})
 	}()

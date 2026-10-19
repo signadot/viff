@@ -2,15 +2,6 @@
 context:
 - tony-format/context
 define:
-  fatal: .[nullable(array(string))]
-  input: .[object(object)]
-  tool: .[string]
-signature:
-  name: verse-launch-call
----
-context:
-- tony-format/context
-define:
   audience: .[string]
 signature:
   name: verse-launch-credential
@@ -30,43 +21,23 @@ signature:
 ---
 context:
 - tony-format/context
-define:
-  capability: .[string]
-  eligible: .[array(string)]
-  match: .[object(object)]
-  need: .[int]
-  select: .[string]
-  within: .[string]
-signature:
-  name: verse-launch-provider
----
-context:
-- tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
-- task: github.com/signadot/verse/task
+- runner: github.com/signadot/verse/runner
 define:
   answer: .[tony-base:ir]
   as: .[string]
   asker: .[string]
-  calls: .[array(verse-launch-call)]
   chain: .[string]
   credential: .[nullable(verse-launch-credential)]
-  doer: .[string]
-  driver: .[string]
-  environment: .[string]
-  frame: .[string]
-  gates: .[array(task:verse-gate)]
-  grant: .[string]
+  doer: !runner:verse-runner-doer null
   occurrence: .[int]
   passed: .[array(verse-launch-passed)]
+  policy: !irtype {}
   prompt: .[string]
-  provider: .[nullable(verse-launch-provider)]
-  repos: .[array(task:verse-repo)]
   retain: .[int]
   runner: .[string]
   subject: .[string]
-  tools: .[nullable(array(string))]
-  vector: .[string]
+  timeout: .[string]
   virtualKey: .[string]
 signature:
   name: verse-launch-spec

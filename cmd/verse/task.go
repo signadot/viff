@@ -17,6 +17,7 @@ import (
 	"github.com/signadot/verse/client"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
@@ -30,7 +31,7 @@ func taskSubs() []*cli.Command {
 		taskAttachCmd(),
 		taskCancelCmd(),
 		taskSayCmd(),
-		taskVectorCmd(),
+		taskPolicyCmd(),
 		taskAnswerCmd(true),
 		taskAnswerCmd(false),
 	}
@@ -97,14 +98,17 @@ func (cfg *taskAnswerConfig) run(cc *cli.Context, args []string, verb string, ap
 type taskRunConfig struct {
 	*cli.Command
 	Wait   bool `cli:"name=wait desc='block until the task completes, then print the result (composes with --attach)'"`
-	Attach bool `cli:"name=attach desc='stream the live transcript (words, actions, gates) until it ends'"`
+	Attach bool `cli:"name=attach desc='stream the live transcript (words, actions, questions) until it ends'"`
 	// Converse is on by default and means something only with -attach: a person is at the
 	// terminal, so when the model goes quiet they are handed the turn (a question on the
 	// docket) and the run ends when they end it — Ctrl-D, or `end` from anywhere. Without
 	// -attach nobody is there to take a turn, so the run ends when the model stops, whatever
 	// this says. -no-converse is an attached run that should end when the model stops.
-	Converse bool   `cli:"name=converse default=true desc='with -attach: hand me the turn when the model goes quiet, until I end it (Ctrl-D); -no-converse ends the run when the model stops'"`
-	Driver   string `cli:"name=driver desc='task driver: scripted | calls | llm (default: the runtime default)'"`
+	Converse bool `cli:"name=converse default=true desc='with -attach: hand me the turn when the model goes quiet, until I end it (Ctrl-D); -no-converse ends the run when the model stops'"`
+	// Who does the work: an agent the runner offers (`verse`, `codex`), or a script, which
+	// runs as written and is the prompt's place.
+	Agent  string `cli:"name=agent desc='the agent that does the work, by the name the runner offers it under (default: verse, the agent verse runs itself)'"`
+	Script string `cli:"name=script desc='run this shell script instead of prompting an agent; the prompt is then not needed'"`
 	// Name is a LABEL, not an address. The id is derived from it and returned, because a
 	// caller-chosen id is a caller-chosen prefix on every gate question the run raises
 	// (`<id>~d1`) — and answering one recovers the owner by cutting at the first `~`, so a
@@ -114,13 +118,13 @@ type taskRunConfig struct {
 	Name string `cli:"name=name desc='label for the run; the id is derived from it and printed'"`
 	// The two fields a spawn has carried all along with no way to type them.
 	Subject string `cli:"name=subject desc='the entity this run is about — it joins that flow'"`
-	// Without this a scripted run is `auto` and asks nothing (see scriptedVector), so a
-	// --resolver named for it would have no question to answer.
-	Vector string `cli:"name=vector desc='autonomy for this run: auto | ask | park (default: the runtime default)'"`
-	// The run's own gates over that default, from a file — the ad-hoc face of a spawn's
-	// `gates:`. A gate carries the question it poses (need, options, deadline), which a name
-	// cannot, and this is how a run gets one: `--gates gates.tony`.
-	Gates string `cli:"name=gates desc='file holding the gates for this run, over --vector (a list of gates; .tony/.json/.yaml)'"`
+	// The run's own policy, from a file — the ad-hoc face of a spawn's `policy:`. A row names
+	// the calls it is about and what happens to them (deny, ask, allow): `--policy policy.tony`.
+	// It is what the run is given: without one, no verb of any system is the run's.
+	Policy string `cli:"name=policy desc='file holding the policy for this run (a list of rows; .tony/.json/.yaml); without it the run is given no tools'"`
+	// What the run may reach over the network, as its `with.network` (networkOf): the host's
+	// network unless told otherwise, since whoever typed the command knows what it reaches.
+	Network string `cli:"name=network desc='what the run may reach: open (the default), none, or hosts as host[:port],…'"`
 	// Who is running this — used twice, because it is one fact. A gate that arrives while
 	// attached is answered as this (watching needs no identity; answering has needed one
 	// since a decision became a durable record), and it rides the spawn as the run's
@@ -136,12 +140,10 @@ type taskRunConfig struct {
 	// question, and one name for the file that says what an answer must be and for the answer
 	// itself would be read as either.
 	AnswerContract string `cli:"name=answer-contract desc='file holding the answer contract for this run (a tony match pattern)'"`
-	// Which workspace the runner should build — a repo at a base, a toolchain, a
-	// containment. Resolved by the runner against its own config; verse carries the name.
-	Environment string `cli:"name=environment desc='workspace the runner should run this in (a name the runner knows)'"`
-	// Which repositories this run works in and what it may push — the ad-hoc face of a
-	// charter's `repos:`, in a file for the same reason `--gates` is: it is a list of records.
-	Repos string `cli:"name=repos desc='file holding the repositories this run works in (a list of {repo, access, from, push}; .tony/.json/.yaml)'"`
+	// Which repositories this run works in — the ad-hoc face of a charter's `with.git`, in a
+	// file for the same reason `--policy` is: it is a list of records. What may leave each is
+	// the policy's.
+	Git string `cli:"name=git desc='file holding the repositories this run works in (a list of {repo, from}; .tony/.json/.yaml)'"`
 	// Which credential this run spends, by address. Read as the person running it, so this
 	// flag hands nobody anything they could not already read.
 	VirtualKey string `cli:"name=virtual-key desc='address of the model credential this run spends (a node holding {key: <name>}, readable by you); default: the runtime default'"`
@@ -155,27 +157,35 @@ func taskRunCmd() *cli.Command {
 	}
 	return cli.NewCommandAt(&cfg.Command, "run").
 		WithSynopsis("run a task: run <prompt…> [--name <label>] [--subject <ref>] " +
-			"[--resolver <ref>] [--vector auto|ask|park] [--gates <file>] [--attach] [--wait] " +
-			"[--driver scripted|calls|llm]").
+			"[--policy <file>] [--network open|none|<hosts>] [--git <file>] [--attach] [--wait] " +
+			"[--agent <name> | --script <text>]").
 		WithOpts(opts...).
 		WithRun(cfg.run)
 }
 
-// scriptedVector is the typed-it-yourself exemption, and the only place it holds: a scripted
-// prompt IS the shell command, so whoever typed `--driver scripted "rm -rf x"` has already
-// authorized the one action the task will take, and asking them again asks nothing they have
-// not just answered.
-//
-// It lives on the CLI path rather than in the driver because that is the whole of the
-// argument — it is about who addressed the request, not about what the driver is. The driver
-// used to carry it, so a charter that spawns `driver: scripted` inherited an exemption it
-// never typed anything to earn; see verserunner.NewScriptedTask. An explicit --vector still wins,
-// including `--vector ask`, and the llm driver is untouched: it has its own.
-func scriptedVector(driver string) string {
-	if driver == "scripted" {
-		return "auto"
+// defaultAgent is the agent a prompt is for when the run names no doer: verse's own.
+const defaultAgent = "verse"
+
+// networkOf is what --network says about the run's network, as its `with.network`: `open`,
+// `none`, or hosts as host[:port],…. Given nothing, open: an ad-hoc run is its author's, and the
+// author is at the prompt; a charter's spawn, which nobody typed, says its own, absent being
+// none.
+func networkOf(flag string) (*runner.Network, error) {
+	switch flag {
+	case "", runner.NetworkOpen:
+		return &runner.Network{Mode: runner.NetworkOpen}, nil
+	case runner.NetworkNone:
+		return &runner.Network{Mode: runner.NetworkNone}, nil
 	}
-	return ""
+	n := &runner.Network{Mode: runner.NetworkAllow}
+	for _, entry := range strings.Split(flag, ",") {
+		host := strings.TrimSpace(entry)
+		if h, _, _ := strings.Cut(host, ":"); h == "" {
+			return nil, fmt.Errorf("--network: %q is not open, none, or hosts as host[:port],…", flag)
+		}
+		n.Allow = append(n.Allow, host)
+	}
+	return n, nil
 }
 
 func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
@@ -183,8 +193,11 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(args) < 1 {
-		return fmt.Errorf("%w: task run wants a prompt", cli.ErrUsage)
+	if len(args) < 1 && cfg.Script == "" {
+		return fmt.Errorf("%w: task run wants a prompt, or --script", cli.ErrUsage)
+	}
+	if cfg.Agent != "" && cfg.Script != "" {
+		return fmt.Errorf("%w: task run takes --agent or --script, not both", cli.ErrUsage)
 	}
 	prompt := strings.Join(args, " ")
 	var contract *ir.Node
@@ -195,48 +208,46 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 		}
 		contract = n
 	}
-	vector := cfg.Vector
-	if vector == "" {
-		vector = scriptedVector(cfg.Driver)
-	}
-	// Read here, so a gate that will not parse is a message on the terminal of whoever wrote
+	// Read here, so a row that will not parse is a message on the terminal of whoever wrote
 	// it; what goes over the wire is the field, the same one a charter's spawn carries.
-	var gates []task.Gate
-	if cfg.Gates != "" {
-		if err := codec.ReadFile(cfg.Gates, &gates); err != nil {
-			return fmt.Errorf("task run: %s is not a list of gates: %w", cfg.Gates, err)
+	var policy task.Policy
+	if cfg.Policy != "" {
+		if err := codec.ReadFileStrict(cfg.Policy, &policy); err != nil {
+			return fmt.Errorf("task run: %s is not a policy: %w", cfg.Policy, err)
 		}
 	}
-	var repos []task.Repo
-	if cfg.Repos != "" {
-		if err := codec.ReadFile(cfg.Repos, &repos); err != nil {
-			return fmt.Errorf("task run: %s is not a list of repositories: %w", cfg.Repos, err)
-		}
-		if err := task.CheckRepos(repos); err != nil {
-			return fmt.Errorf("task run: %s: %w", cfg.Repos, err)
-		}
+	network, err := networkOf(cfg.Network)
+	if err != nil {
+		return fmt.Errorf("%w: task run: %v", cli.ErrUsage, err)
 	}
-	// `--driver calls` takes the actions themselves, as a tony document. It is parsed HERE, so
-	// a list that will not read is a message on the terminal of whoever typed it rather than a
-	// task that failed somewhere else — and what goes over the wire is the field, which is the
-	// only form a call list travels in.
-	var calls []task.Call
-	if cfg.Driver == task.DriverCalls {
-		cs, err := task.ParseCalls(prompt)
-		if err != nil {
-			return fmt.Errorf("task run: %w", err)
+	if err := policy.Check(); err != nil {
+		return fmt.Errorf("%w: task run: %v", cli.ErrUsage, err)
+	}
+	// A prompt with no doer named is for verse's own agent: what a person typing a sentence
+	// means, and the agent every verse runner offers.
+	doer := runner.Doer{Agent: cfg.Agent, Script: cfg.Script}
+	if doer.Agent == "" && doer.Script == "" {
+		doer.Agent = defaultAgent
+	}
+	doer.With.Network = network
+	if cfg.Git != "" {
+		if err := codec.ReadFile(cfg.Git, &doer.With.Git); err != nil {
+			return fmt.Errorf("task run: %s is not a list of repositories: %w", cfg.Git, err)
 		}
-		calls, prompt = cs, ""
+		if err := runner.CheckWith(doer.With); err != nil {
+			return fmt.Errorf("task run: %s: %w", cfg.Git, err)
+		}
 	}
 	by, err := principal(cfg.As)
 	if err != nil {
 		return err
 	}
 	resp, err := httpPost("/tasks", api.Spawn{
-		Prompt: prompt, Driver: cfg.Driver, Name: cfg.Name,
-		Subject: cfg.Subject, Vector: vector, Gates: gates, Calls: calls,
-		Runner: cfg.Runner, Environment: cfg.Environment, Repos: repos, VirtualKey: cfg.VirtualKey, Principal: by,
-		Answer: contract, Converse: cfg.Attach && cfg.Converse,
+		Prompt: prompt, Doer: doer, Name: cfg.Name,
+		Subject: cfg.Subject, Policy: policy,
+		Runner: cfg.Runner, VirtualKey: cfg.VirtualKey, Principal: by,
+		// A conversation is an agent's: a script has no turn to hand anybody.
+		Answer: contract, Converse: cfg.Attach && cfg.Converse && doer.Agent != "",
 	})
 	if err != nil {
 		return fmt.Errorf("task run: %w", err)
@@ -847,68 +858,71 @@ func (cfg *taskSayConfig) run(cc *cli.Context, args []string) error {
 	return nil
 }
 
-// ── vector (slide autonomy on a running task — the re-vector surface) ──────
+// ── policy (replace the policy of a running task) ──────────────────────────
 
-type taskVectorConfig struct {
+type taskPolicyConfig struct {
 	*cli.Command
-	// Not "from JSON": codec.ReadFile takes the dialect from the suffix, so a .tony vector
-	// is as readable as a .json one — and tony is what the rest of the CLI writes.
-	File string `cli:"name=file aliases=f desc='load a full gate vector from FILE (gates + a default; .tony/.json/.yaml); overrides the mode arg'"`
-	As   string `cli:"name=as desc='operator identity to attribute the slide to (recorded on the read plane)'"`
+	// Not "from JSON": codec.ReadFile takes the dialect from the suffix, so a .tony policy is
+	// as readable as a .json one — and tony is what the rest of the CLI writes.
+	File string `cli:"name=file aliases=f desc='load the policy from FILE (a list of rows; .tony/.json/.yaml)'"`
+	As   string `cli:"name=as desc='operator identity to attribute the change to (recorded on the read plane)'"`
 }
 
-func taskVectorCmd() *cli.Command {
-	cfg := &taskVectorConfig{}
+func taskPolicyCmd() *cli.Command {
+	cfg := &taskPolicyConfig{}
 	opts, err := cli.StructOpts(cfg)
 	if err != nil {
 		panic(err)
 	}
-	return cli.NewCommandAt(&cfg.Command, "vector").
-		WithSynopsis("vector <id> <auto|ask|park> [--file <vector.tony>] — slide autonomy on a running task").
+	return cli.NewCommandAt(&cfg.Command, "policy").
+		WithSynopsis("policy <id> (<rows> | --file <policy.tony>) — replace the policy of a running task").
 		WithOpts(opts...).WithRun(cfg.run)
 }
 
-// run re-vectors a task: the common form sets the default autonomy (auto|ask|park); --file
-// supplies a full gate vector. The vector rides a PUT to /tasks/{id}/vector, which is
-// runner-agnostic — the runtime slides a local task, the runner relays it to a remote one.
-func (cfg *taskVectorConfig) run(cc *cli.Context, args []string) error {
+// run replaces a task's policy with a whole one, given inline as tony or by --file. The runner
+// takes it when it names no verb the standing policy did not and withholds what that one did
+// (runnerd.CheckPolicy). It rides a PUT to /tasks/{id}/policy, which is runner-agnostic — the
+// handle relays it, in process or over the wire — and applies to the task's later steps.
+func (cfg *taskPolicyConfig) run(cc *cli.Context, args []string) error {
 	args, err := cfg.Parse(cc, args)
 	if err != nil {
 		return err
 	}
 	if len(args) < 1 {
-		return fmt.Errorf("%w: task vector wants a task id", cli.ErrUsage)
+		return fmt.Errorf("%w: task policy wants a task id", cli.ErrUsage)
 	}
 	id := args[0]
-	var vec task.Vector
+	var body api.SetPolicy
 	switch {
+	case cfg.File != "" && len(args) >= 2:
+		return fmt.Errorf("%w: task policy takes the rows or --file, not both", cli.ErrUsage)
 	case cfg.File != "":
-		// The file's suffix names its dialect; an extensionless file uses --ifmt or the
-		// configured default.
-		if err := codec.ReadFile(cfg.File, &vec); err != nil {
-			return fmt.Errorf("task vector: %s is not a valid vector: %w", cfg.File, err)
+		if err := codec.ReadFileStrict(cfg.File, &body.Policy); err != nil {
+			return fmt.Errorf("task policy: %s is not a policy: %w", cfg.File, err)
 		}
 	case len(args) >= 2:
-		if err := vec.Default.UnmarshalText([]byte(args[1])); err != nil {
-			return fmt.Errorf("%w: task vector mode must be auto|ask|park", cli.ErrUsage)
+		if err := codec.UnmarshalStrict([]byte(strings.Join(args[1:], " ")), &body.Policy, codec.Tony); err != nil {
+			return fmt.Errorf("%w: task policy: %q is not a policy, a list of rows: %v", cli.ErrUsage, strings.Join(args[1:], " "), err)
 		}
 	default:
-		return fmt.Errorf("%w: task vector wants a mode (auto|ask|park) or --file", cli.ErrUsage)
+		return fmt.Errorf("%w: task policy wants the whole policy: its rows, or --file", cli.ErrUsage)
 	}
-	by, err := principal(cfg.As)
-	if err != nil {
+	if err := body.Policy.Check(); err != nil {
+		return fmt.Errorf("%w: task policy: %v", cli.ErrUsage, err)
+	}
+	if body.By, err = principal(cfg.As); err != nil {
 		return err
 	}
-	resp, err := httpPut("/tasks/"+id+"/vector", api.SetVector{Vector: &vec, By: by})
+	resp, err := httpPut("/tasks/"+id+"/policy", body)
 	if err != nil {
-		return fmt.Errorf("task vector: %w", err)
+		return fmt.Errorf("task policy: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		msg, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("task vector: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
+		return fmt.Errorf("task policy: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
 	}
-	fmt.Fprintln(cc.Out, "task vector", id, strings.ToLower(vec.Default.String()))
+	fmt.Fprintln(cc.Out, "task policy", id, body.Policy.Summary())
 	return nil
 }
 
@@ -925,7 +939,7 @@ var asOverride string
 // is on this machine (localUser) and nobody when it is not. A login comes before `user:` because
 // its token is what the request carries, and the verse makes the request as whoever that proves. --as and
 // `user:` take a principal or a bare email, which is `user:<email>`; a bare word is refused
-// rather than guessed at, so `--as coderunner` is an error and `--as runner:coderunner` a
+// rather than guessed at, so `--as verse-runner` is an error and `--as runner:verse-runner` a
 // worker. Recording the answer is what puts it on the wire (see skewCheck), so a ballot cast
 // `--as bob@example.com` is also a request MADE by bob, and the two cannot disagree.
 func principal(as string) (string, error) {

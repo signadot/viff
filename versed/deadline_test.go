@@ -21,7 +21,7 @@ func raiseWithDeadline(t *testing.T, srv *Server, id, within, dflt string) chan 
 	answered := make(chan task.Resolution, 1)
 	go func() {
 		res, _ := srv.Reg.Resolve(context.Background(),
-			task.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: task.Ask,
+			task.GateQuestion{ID: id, Origin: "review", Gate: "review",
 				Deadline: &task.Deadline{Within: within, Default: dflt}},
 			task.ToolUse{Name: "verse.trigger.review"})
 		answered <- res

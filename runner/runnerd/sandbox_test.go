@@ -20,7 +20,7 @@ func TestUnconfinedProvidesOnlyAnOpenNetwork(t *testing.T) {
 	if err := u.Provides(runnerd.Network{Mode: runnerd.NetworkOpen}); err != nil {
 		t.Errorf("an open network is refused: %v", err)
 	}
-	for _, mode := range []string{runnerd.NetworkNone, runnerd.NetworkRestricted} {
+	for _, mode := range []string{runnerd.NetworkNone, runnerd.NetworkAllow} {
 		err := u.Provides(runnerd.Network{Mode: mode})
 		if err == nil {
 			t.Errorf("unconfined claimed a %s network, which it cannot take away", mode)
@@ -35,7 +35,7 @@ func TestUnconfinedProvidesOnlyAnOpenNetwork(t *testing.T) {
 	}
 }
 
-// bwrap's network control is one switch: open leaves it, none takes it away, and restricted takes
+// bwrap's network control is one switch: open leaves it, none takes it away, and allow takes
 // it away and binds one socket back in, at the path the task is told to dial.
 func TestBwrapWrapsTheNetworkAsAsked(t *testing.T) {
 	b := runnerd.BwrapAt("/usr/bin/bwrap")
@@ -46,7 +46,7 @@ func TestBwrapWrapsTheNetworkAsAsked(t *testing.T) {
 	}
 
 	open := exec.Command("runner", "-task")
-	if err := b.Wrap(open, "/w", runnerd.Network{}); err != nil {
+	if err := b.Wrap(open, "/w", runnerd.Network{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if open.Path != "/usr/bin/bwrap" {
@@ -66,29 +66,26 @@ func TestBwrapWrapsTheNetworkAsAsked(t *testing.T) {
 	}
 
 	none := exec.Command("x")
-	_ = b.Wrap(none, "/w", runnerd.Network{Mode: runnerd.NetworkNone})
+	_ = b.Wrap(none, "/w", runnerd.Network{Mode: runnerd.NetworkNone}, nil)
 	if !strings.Contains(strings.Join(none.Args, " "), "--unshare-net") {
 		t.Error("a network of none did not unshare the network")
 	}
 
-	restricted := exec.Command("x")
-	if err := b.Wrap(restricted, "/w", runnerd.Network{Mode: runnerd.NetworkRestricted, Egress: "/ctl/e1.sock"}); err != nil {
+	allow := exec.Command("x")
+	if err := b.Wrap(allow, "/w", runnerd.Network{Mode: runnerd.NetworkAllow, Egress: "/ctl/e1.sock"}, nil); err != nil {
 		t.Fatal(err)
 	}
-	joined = strings.Join(restricted.Args, " ")
+	joined = strings.Join(allow.Args, " ")
 	if !strings.Contains(joined, "--unshare-net") {
-		t.Error("restricted egress did not unshare the network, so the allowlist is optional")
+		t.Error("allow did not unshare the network, so the allowlist is optional")
 	}
 	if !strings.Contains(joined, "--bind /ctl/e1.sock "+runnerd.EgressPath) {
 		t.Errorf("the egress socket is not bound into the sandbox:\n%s", joined)
 	}
-	if got := b.EgressAt("/ctl/e1.sock"); got != runnerd.EgressPath {
-		t.Errorf("the task would be told to dial %q, which is not where it was bound", got)
-	}
-	// Restricted with no socket to bind is a refusal rather than a sandbox with no way out that
+	// Allow with no socket to bind is a refusal rather than a sandbox with no way out that
 	// nobody asked for.
-	if err := b.Wrap(exec.Command("x"), "/w", runnerd.Network{Mode: runnerd.NetworkRestricted}); err == nil {
-		t.Error("a restricted network with no egress proxy was wrapped anyway")
+	if err := b.Wrap(exec.Command("x"), "/w", runnerd.Network{Mode: runnerd.NetworkAllow}, nil); err == nil {
+		t.Error("an allow network with no egress proxy was wrapped anyway")
 	}
 }
 
@@ -104,7 +101,7 @@ func TestWrappingKeepsTheInheritedDescriptors(t *testing.T) {
 	for _, sb := range []runnerd.Sandbox{runnerd.Unconfined{}, runnerd.BwrapAt("/usr/bin/bwrap")} {
 		cmd := exec.Command("runner", "-task")
 		cmd.ExtraFiles = []*os.File{f, f}
-		if err := sb.Wrap(cmd, t.TempDir(), runnerd.Network{}); err != nil {
+		if err := sb.Wrap(cmd, t.TempDir(), runnerd.Network{}, nil); err != nil {
 			t.Fatalf("%s: %v", sb.Name(), err)
 		}
 		if len(cmd.ExtraFiles) != 2 {

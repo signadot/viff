@@ -15,11 +15,16 @@ type Event struct {
 	Tool string `tony:"field=tool,omitzero"`
 	// Action is the action in one line (ToolUse.Describe), on a pending or a decision event:
 	// what the gate is about, for whoever reads it on the docket or at a terminal.
-	Action  string `tony:"field=action,omitzero"`
-	Gate    string `tony:"field=gate,omitzero"`
-	Mode    string `tony:"field=mode,omitzero"`
-	By      string `tony:"field=by,omitzero"`
-	Proceed bool   `tony:"field=proceed,omitzero"`
+	Action string `tony:"field=action,omitzero"`
+	Gate   string `tony:"field=gate,omitzero"`
+	// Step and Fields are the system call a pending, a decision or an exec event is about
+	// (task.Step), when it is one: `<system>.<verb>` and the call's params, what a policy row
+	// matches. A decision names the row that decided it as Gate; the exec that follows it names
+	// the same call, with its outcome.
+	Step    string            `tony:"field=step,omitzero"`
+	Fields  map[string]string `tony:"field=fields,omitzero"`
+	By      string            `tony:"field=by,omitzero"`
+	Proceed bool              `tony:"field=proceed,omitzero"`
 	// Choice is the option a decision settled on; Proceed is the same fact as yes or no, kept
 	// for every reader of a two-option question. A pending event offers Options and a
 	// Deadline the way a posed question does, so a worker that raises a gate with outcomes
@@ -28,7 +33,7 @@ type Event struct {
 	Options  []Option  `tony:"field=options,omitzero"`
 	Deadline *Deadline `tony:"field=deadline,omitzero"`
 	// Answerers is who a worker raising a gate wants it held out to — a worker asking somebody.
-	// The spawn's own gate of the same name, when it has answerers, stands
+	// The launch's own gate of the same name, when it has answerers, stands
 	// over this: that gate is the charter's policy.
 	Answerers []string `tony:"field=answerers,omitzero"`
 	Text      string   `tony:"field=text,omitzero"` // reason / detail / result
@@ -41,18 +46,17 @@ const (
 	EventBoundary = "boundary" // cursor reached a new boundary
 	EventDecision = "decision" // a gate was evaluated + resolved
 	EventExec     = "exec"     // an action executed (result summary)
-	EventChild    = "child"    // a sub-task was spawned or completed
-	EventStatus   = "status"   // run lifecycle (completed | cancelled | paused | resumed | …)
+	EventChild    = "child"    // a sub-agent started or ended
+	EventStatus   = "status"   // the task's status changed: its Text is a Status (running, paused, done, …)
 	EventPending  = "pending"  // a gate is blocked awaiting resolution (carries the decision id)
 	// EventSay is an utterance in the task's conversation. By empty = the task's own
 	// narration (the agent's words); By set = a say-to folded in from an operator or a
 	// resolver (what was "steer"). One kind, speaker in By — "you say to it, it says back".
 	EventSay = "say"
-	// EventVector records an autonomy slide (SetVector): the new default mode rides Mode and
-	// the operator rides By. Observable so `entity get`/attach show the dial change mid-run,
-	// the same way a say-to is observed — an operator-authored control effect on the plane.
-	EventVector = "vector"
-	EventGap    = "gap" // a slow subscriber missed N events
+	EventGap = "gap" // a slow subscriber missed N events
+	// EventPolicy is the task's policy replaced while it runs: By is who replaced it, and Text
+	// the policy in one line (Policy.Summary).
+	EventPolicy = "policy"
 )
 
 type subscriber struct {
@@ -60,35 +64,10 @@ type subscriber struct {
 	dropped int
 }
 
-// ringCap is the DEFAULT retained per-task event window served for ?since replay. A
-// consumer reconnecting within this many events resumes losslessly; older than it, resync
-// from the snapshot.
-//
-// It is a default rather than the rule because the right number is a property of the work:
-// see Launch.Retain, which a charter sets per spawn. Modest on purpose — the window is paid
-// for in memory per live task, and a charter that needs a longer one is the party that
-// knows it does.
-const ringCap = 256
-
-// SetRetain sets this task's retained window, in events. Zero or negative keeps the
-// default. It is applied at spawn, before the loop runs, by whoever built the task from a
-// Launch.
-func (p *Task) SetRetain(n int) {
-	if n <= 0 {
-		return
-	}
-	p.busMu.Lock()
-	defer p.busMu.Unlock()
-	p.retain = n
-}
-
-// retainCap is the window in force, called under busMu.
-func (p *Task) retainCap() int {
-	if p.retain > 0 {
-		return p.retain
-	}
-	return ringCap
-}
+// RingCap is the retained per-task event window served for ?since replay. A consumer
+// reconnecting within this many events resumes losslessly; older than it, resync from the
+// snapshot. Modest on purpose: the window is paid for in memory per live task.
+const RingCap = 256
 
 // Subscribe returns a channel of events (live from now) and an unsubscribe func.
 // Subscribers that can't keep up drop events (never blocking the loop); the next
@@ -213,14 +192,31 @@ func (p *Task) Cursor() int64 {
 // with a gap marker. Each event is stamped with the next per-task cursor and
 // retained in the bounded ring for ?since replay.
 func (p *Task) emit(e Event) {
-	e.Task = p.ID
 	p.busMu.Lock()
 	defer p.busMu.Unlock()
+	p.emitLocked(e)
+}
+
+// emitLive emits e unless the task has ended, and reports whether it did. The check and the emit
+// are one step under the bus lock, so nothing it emits can follow the terminal frame.
+func (p *Task) emitLive(e Event) bool {
+	p.busMu.Lock()
+	defer p.busMu.Unlock()
+	if p.ended {
+		return false
+	}
+	p.emitLocked(e)
+	return true
+}
+
+// emitLocked is emit, with the bus lock held.
+func (p *Task) emitLocked(e Event) {
+	e.Task = p.ID
 	p.cursor++
 	e.Cursor = p.cursor
 	p.ring = append(p.ring, e)
-	if cap := p.retainCap(); len(p.ring) > cap {
-		p.ring = p.ring[len(p.ring)-cap:]
+	if len(p.ring) > RingCap {
+		p.ring = p.ring[len(p.ring)-RingCap:]
 	}
 	switch e.Kind { // what is still being asked, for a reader that resumes past the window
 	case EventPending:

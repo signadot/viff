@@ -4,7 +4,7 @@
 and delete. `Since` is a pure read. This page says why. It also says why these two choices let
 verse keep its data in any ordinary [store](glossary.md#store), and not only in an unusual one.
 
-[The tutorial](tutorial.md#watch) shows the stream that this
+[The tutorial](tutorial/data.md#watch) shows the stream that this
 page describes. [reference/store.md](reference/store.md) describes the store that the stream
 comes out of.
 

@@ -117,7 +117,7 @@ func TestAPlaceOfOnesOwnIsNotAnothersToRead(t *testing.T) {
 	// A grantee the grammar does not read is refused where it is typed, whichever flag it rides.
 	t.Setenv("VERSE_USER", "walter@example.com")
 	for _, flag := range [][]string{{"--grant", `{read: [user]}`}, {"--revoke", `{read: [agent]}`},
-		{"--child-grants", `{read: [coderunner]}`}, {"--grants", `[{read: [verse.principal.group.release]}]`}} {
+		{"--child-grants", `{read: [verse-runner]}`}, {"--grants", `[{read: [verse.principal.group.release]}]`}} {
 		if _, err := runCLI(t, append([]string{"perms", "spaces", "scott", "notes"}, flag...)...); err == nil ||
 			!strings.Contains(err.Error(), "a bare word names nothing") && !strings.Contains(err.Error(), "is no person") {
 			t.Errorf("perms %s: %v, want the grammar's refusal", flag, err)

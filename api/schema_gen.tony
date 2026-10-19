@@ -330,33 +330,29 @@ signature:
 ---
 context:
 - tony-format/context
-- task: github.com/signadot/verse/task
 define:
   by: .[string]
-  vector: .[nullable(task:verse-vector)]
+  policy: !irtype {}
 signature:
-  name: verse-set-vector
+  name: verse-set-policy
 ---
 context:
 - tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
-- task: github.com/signadot/verse/task
+- runner: github.com/signadot/verse/runner
 define:
   answer: .[tony-base:ir]
-  calls: .[array(task:verse-call)]
   converse: .[bool]
-  driver: .[string]
-  environment: .[string]
-  gates: .[array(task:verse-gate)]
+  doer: !runner:verse-runner-doer null
   id: .[string]
   name: .[string]
+  policy: !irtype {}
   principal: .[string]
   prompt: .[string]
-  repos: .[array(task:verse-repo)]
   retain: .[int]
   runner: .[string]
   subject: .[string]
-  vector: .[string]
+  timeout: .[string]
   virtualKey: .[string]
 signature:
   name: verse-spawn
@@ -418,12 +414,14 @@ context:
 - task: github.com/signadot/verse/task
 define:
   cursor: .[int]
-  driver: .[string]
+  doer: .[string]
   ended: .[string]
   err: .[string]
   id: .[string]
   occurrence: .[int]
   pending: .[array(task:verse-pending-gate)]
+  policy: !irtype {}
+  policyBy: .[string]
   prompt: .[string]
   result: .[string]
   runner: .[string]

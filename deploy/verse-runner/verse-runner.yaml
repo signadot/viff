@@ -1,0 +1,217 @@
+# The verse runner (`runnerd verse`), as a deployed runner: a workspace per task, a PROCESS per
+# task, and bubblewrap around the process.
+#
+# The pod runs one runner that hosts no task itself. Each task is `runnerd verse -task` under
+# bwrap, serving the same task-control contract back to its parent over an inherited socket, and
+# the parent forwards verse's requests to it. So the sandbox is drawn once, around everything the
+# task does — including the shell — and the git credential below stays outside it by construction
+# rather than by an env allowlist.
+#
+# It is not a source and not the engine — it is a place work RUNS, reached by url, and verse
+# learns about it the same way it learns about any runner:
+#
+#   verse runner add verse-runner http://verse-runner:9802 --identity verse-runner
+#
+# That install probes it, so a `reach: "a runner"` is the deployment's own acceptance test.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: verse-runner-config
+  labels: {app: verse, tier: runner, runner: verse}
+data:
+  # What the runner offers and how it reaches what it needs. Nothing here is a default the image
+  # could have guessed. What a task works on — its repositories, what may leave each, the network
+  # it may reach — is the SPAWN's to say (`doer.with` on the charter); the runner checks each
+  # launch against this, pushes from its own mirror with its own token, and the task never has a
+  # route to the forge.
+  verse-runner.tony: |
+    listen: ":9802"
+    # The model credentials are read from the runner's environment, by the names versed uses
+    # too: PORTKEY_API_KEY, PORTKEY_VIRTUAL_KEY, PORTKEY_BASE_URL (envFrom the verse-llm Secret,
+    # below). The gateway is reachable from a task whatever its network, since the verse agent
+    # makes the call.
+    models:
+      # A model the virtual key's provider serves, and the same one versed is given
+      # (deploy/profiles/staging.tony): one credential, one provider, one answer about which
+      # model this deployment runs.
+      model: claude-sonnet-5
+    # A spawn that names a virtual key of its own runs under it: verse read it from the address
+    # the spawn named, as whoever named it, and refused there if that read was not theirs.
+    annotations:
+      verse.portkey/virtual-key: string
+    # What a task's shell is given of the runner's environment, by name: never a secret.
+    shellEnv: [PATH, HOME, USER, LANG]
+    # One bare mirror per repository, on the state volume, shared by the tasks. The forge is
+    # github.com, and the token is GITHUB_TOKEN (the verse-runner Secret, below).
+    repos:
+      mirrors: /state/mirrors
+    # The operator's line over every system this runner holds for its tasks, read again at
+    # each act whatever a spawn's policy says. The four it performs with its token are kept to
+    # signadot's repositories; the three it stops inside a run are stated as open, so the list
+    # is the whole of what any task here may reach.
+    systems:
+      git:
+        ceiling:
+        - {match: {repo: "github.com/signadot/**"}, then: allow}
+        - {then: deny}
+      git-issue:
+        ceiling:
+        - {match: {repo: "github.com/signadot/**"}, then: allow}
+        - {then: deny}
+      github:
+        ceiling:
+        - {match: {repo: "github.com/signadot/**"}, then: allow}
+        - {then: deny}
+      github-issue:
+        ceiling:
+        - {match: {repo: "github.com/signadot/**"}, then: allow}
+        - {then: deny}
+      files:
+        ceiling: [{then: allow}]
+      commands:
+        ceiling: [{then: allow}]
+      agent:
+        ceiling: [{then: allow}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: verse-runner
+  labels: {app: verse, tier: runner, runner: verse}
+spec:
+  replicas: 1
+  # Recreate, for a reason a source shares and a runner has more sharply: the mirrors and
+  # workspaces live on one volume, and two pods writing one mirror is a fetch racing a fetch.
+  # It also keeps `verse runner remove` honest — the work on a runner is on THAT pod, and a
+  # second replica would make "3 tasks are running on it" ambiguous about where.
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: verse, tier: runner, runner: verse}
+  template:
+    metadata:
+      labels: {app: verse, tier: runner, runner: verse}
+    spec:
+      # The pod gets its own user namespace, which is here for two reasons and only one of
+      # them is bwrap's. The API requires it before it will accept `procMount: Unmasked`
+      # below — "hostUsers must be false to use Unmasked" is the literal refusal — and it is
+      # also what makes the two relaxations below affordable: a process making unfiltered
+      # syscalls against an unmasked /proc from inside its own user namespace is not the same
+      # exposure as one doing it in the host's.
+      hostUsers: false
+      containers:
+      - name: verse-runner
+        image: signadot/verse-runner:latest
+        args:
+        - verse
+        - -config
+        - /config/verse-runner.tony
+        # The containment, named rather than sniffed. If the kernel refuses unprivileged user
+        # namespaces this runner REFUSES the spawn naming the rung it could not build — it does
+        # not run the work uncontained. That is the failure mode to want: a spawn that fails
+        # loudly beats an agent with the run of the pod.
+        - -sandbox
+        - bwrap
+        ports:
+        - {name: control, containerPort: 9802}
+        # pprof and stacks, one port up from the listen address (adminface) — the only way to see what a
+        # task's goroutines are doing on a box `kubectl exec` is not going to reach into.
+        - {name: admin, containerPort: 9803}
+        # The model credentials the verse agent uses. The ConfigMap carries no secret and stays
+        # readable by anyone who can read the deployment.
+        #
+        # envFrom takes the Secret's own key names as variable names — verse-llm, the one
+        # versed uses, whose keys ARE those names (PORTKEY_API_KEY, PORTKEY_VIRTUAL_KEY). This
+        # named two keys explicitly before, and named ones that Secret does not have: a
+        # secretKeyRef with optional: true is SILENT about a key that is not there, so the pod
+        # came up with no credential and every task would have died at the model call. Taking
+        # the whole Secret cannot drift from it.
+        envFrom:
+        - secretRef:
+            name: verse-llm
+            optional: true
+        env:
+        # What this runner pushes with. The TASK never sees it: delivery is the runner's act,
+        # in the runner's process, and the agent has neither the variable nor a shell to read
+        # it from.
+        #
+        #   kubectl -n verse create secret generic verse-runner \
+        #     --from-literal=gitToken=<PAT>
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef: {name: verse-runner, key: gitToken, optional: true}
+        volumeMounts:
+        - {name: config, mountPath: /config, readOnly: true}
+        - {name: state, mountPath: /state}
+        readinessProbe:
+          # GET /describe is what verse's own install probe asks — the cheapest question with an
+          # answer, and the one that decides whether this is a runner at all. A readiness probe
+          # asking anything else would be a second opinion about the same thing.
+          httpGet: {path: /describe, port: control}
+          initialDelaySeconds: 2
+          periodSeconds: 10
+        securityContext:
+          # bubblewrap needs to create user namespaces, which is unprivileged on a kernel that
+          # allows it — no CAP_SYS_ADMIN, no privileged: true. What it does need is for the
+          # runtime not to block the clone: some default seccomp profiles do. If containment
+          # fails here it fails as a refused spawn, which is the diagnosis you want.
+          #
+          # And one does. Bottlerocket's kubelet applies RuntimeDefault to every pod that names
+          # no profile, and containerd's default profile masks the namespace flags out of
+          # `clone` unless the caller holds CAP_SYS_ADMIN — which is dropped three lines down,
+          # on purpose. So the syscall returns EPERM and bwrap reports "No permissions to
+          # create new namespace, likely because the kernel does not allow non-privileged user
+          # namespaces", which sends you to a sysctl that is fine (max_user_namespaces was
+          # 15000 on the node this was found on). The kernel allows it; the filter does not.
+          #
+          # Unconfined is a real trade and worth stating: this pod loses the runtime's blanket
+          # syscall filter so that the TASK can be given namespace containment. It is the right
+          # way round for the threat here — the runner binary is ours and the agent is not, and
+          # without this the runner refuses every spawn, so the strictly safer pod is one that
+          # runs nothing. A Localhost profile (RuntimeDefault plus the clone flags) is the
+          # tighter answer and costs a profile file on every node.
+          seccompProfile:
+            type: Unconfined
+          # And the second one, found the same way: with the filter lifted, bwrap got as far
+          # as `Can't mount proc on /newroot/proc: Operation not permitted`. --unshare-pid and
+          # --proc /proc were already in the argv, so the PID namespace was not the problem.
+          # The runtime masks eleven paths under /proc (bus, fs, irq, sys, sysrq-trigger
+          # read-only; acpi, interrupts, kcore, keys, latency_stats, timer_list covered), and
+          # since Linux 4.x an unprivileged user namespace may only mount a fresh procfs when
+          # it can already see a FULLY VISIBLE one. Eleven submounts is not fully visible.
+          #
+          # Unmasked lifts the covers so the mount is allowed. What made it acceptable is
+          # hostUsers above: the masking exists to keep a container from reading the HOST's
+          # /proc, and in its own user namespace that is not what it is reading.
+          procMount: Unmasked
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 65532
+          capabilities: {drop: ["ALL"]}
+      volumes:
+      - name: config
+        configMap: {name: verse-runner-config}
+      # emptyDir is wrong here and is left as the thing you change first.
+      #
+      # /state holds the mirrors, and the mirrors hold WORK: a delivery that could
+      # not reach its remote leaves the commit under `refs/pending/<task>/<repo>` for the runner
+      # to retry, and a refused one leaves it under `refs/held/...` for somebody to look at. On an
+      # emptyDir all of that dies with the pod, so "the work is safe in the mirror" is only true
+      # relative to the workspace being removed.
+      #
+      # A PVC also makes the mirrors what they are meant to be — a cache that survives restarts,
+      # which is the whole reason a task's clone costs no network. Recreate above already means
+      # one writer, so ReadWriteOnce is the right access mode.
+      - name: state
+        emptyDir: {}
+      # - name: state
+      #   persistentVolumeClaim: {claimName: verse-runner-state}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: verse-runner
+  labels: {app: verse, tier: runner, runner: verse}
+spec:
+  selector: {app: verse, tier: runner, runner: verse}
+  ports:
+  - {name: control, port: 9802, targetPort: control}

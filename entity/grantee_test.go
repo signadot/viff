@@ -20,7 +20,7 @@ func TestGranteeSpellings(t *testing.T) {
 		{"user:walter@example.com", "user:walter@example.com", entity.UserKind, "walter@example.com"},
 		{"walter@example.com", "user:walter@example.com", entity.UserKind, "walter@example.com"},
 		{"agent:harness", "agent:harness", entity.AgentKind, "harness"},
-		{"runner:coderunner", "runner:coderunner", entity.RunnerKind, "coderunner"},
+		{"runner:verse-runner", "runner:verse-runner", entity.RunnerKind, "verse-runner"},
 		{"system:docket", "system:docket", entity.SystemKind, "docket"},
 		{"user:*", "user:*", entity.UserKind, "*"},
 		{"agent:*", "agent:*", entity.AgentKind, "*"},
@@ -57,19 +57,19 @@ func TestGranteeRefusals(t *testing.T) {
 	for _, in := range []string{
 		"agent", // a kind word, which a principal could once be named
 		"verse.principal.group.release",
-		"user", "coderunner", "system", "",
-		"wizard:x",                     // no such kind
-		"group:*",                      // a group is named, not listed under
-		"user:",                        // an empty id
-		"user:a*b",                     // a * that is not the whole id
-		"user:a b",                     // an id with a space
-		"via:",                         // an empty address
-		"via:demo.pr.1",                // the world's half acts as nobody
-		"via:verse.*.x",                // a * that is not trailing
-		"via:verse.*",                  // no system, so nothing that acts
-		"via:verse.runners.coderunner", // a runner acts as runner:<identity>
-		"via:verse.trigger.package.x",  // a package is not a rule
-		"verse.covers.review@run-1",    // a cover's address is no person
+		"user", "verse-runner", "system", "",
+		"wizard:x",                       // no such kind
+		"group:*",                        // a group is named, not listed under
+		"user:",                          // an empty id
+		"user:a*b",                       // a * that is not the whole id
+		"user:a b",                       // an id with a space
+		"via:",                           // an empty address
+		"via:demo.pr.1",                  // the world's half acts as nobody
+		"via:verse.*.x",                  // a * that is not trailing
+		"via:verse.*",                    // no system, so nothing that acts
+		"via:verse.runners.verse-runner", // a runner acts as runner:<identity>
+		"via:verse.trigger.package.x",    // a package is not a rule
+		"verse.covers.review@run-1",      // a cover's address is no person
 	} {
 		_, err := entity.ParseGrantee(in)
 		if err == nil {
@@ -85,7 +85,7 @@ func TestGranteeRefusals(t *testing.T) {
 			t.Errorf("ParsePrincipal(%q) parsed a set as one principal", in)
 		}
 	}
-	for _, in := range []string{"user:ana@example.com", "ana@example.com", "runner:coderunner", "via:verse.trigger.rule.x", "system:default"} {
+	for _, in := range []string{"user:ana@example.com", "ana@example.com", "runner:verse-runner", "via:verse.trigger.rule.x", "system:default"} {
 		if _, err := entity.ParsePrincipal(in); err != nil {
 			t.Errorf("ParsePrincipal(%q): %v", in, err)
 		}

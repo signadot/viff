@@ -10,14 +10,13 @@ import (
 	"testing"
 
 	"github.com/signadot/verse/runner/runnerd/calltool"
-	"github.com/signadot/verse/runner/runnerd/verserunner/agent"
 )
 
 // A tool set shaped like the runner's: push with an enum and a boolean, ask with a required
 // string and a list, and one tool with a number and a document, so every kind of flag is
 // exercised.
-func tools() []agent.Tool {
-	return []agent.Tool{
+func tools() []calltool.Tool {
+	return []calltool.Tool{
 		{
 			Name:        "push",
 			Description: "Push this task's committed work to a branch of a repository.",
@@ -57,8 +56,8 @@ type host struct {
 	err    error
 }
 
-func (h *host) call(_ context.Context, t agent.Tool, in map[string]any) (string, bool, error) {
-	h.tool, h.input = t.Name, in
+func (h *host) call(_ context.Context, tool string, in map[string]any) (string, bool, error) {
+	h.tool, h.input = tool, in
 	return h.out, h.refuse, h.err
 }
 

@@ -13,6 +13,9 @@ import (
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/runner/runnerd/verserunner"
 	"github.com/signadot/verse/task"
 )
 
@@ -75,6 +78,7 @@ func TestDocCharartersInstall(t *testing.T) {
 			}
 			total++
 			eng := New(store, task.AutoResolver{})
+			eng.SetOfferCheck(upOffers)
 			// A BLOCK THAT DECLARES A PACKAGE IS CHECKED AS ONE: confined to the address it
 			// names and reading only what it declares it reads, so a doc example claiming isolation is
 			// held to it rather than passing on an engine that has neither.
@@ -130,6 +134,19 @@ func TestDocCharartersInstall(t *testing.T) {
 			"the declaration stopped being recognized, and both make this test check less than " +
 			"it says")
 	}
+}
+
+// upOffers checks a spawn for the default runner as `verse up`'s embedded runner, with a model
+// key, would at install: a doc charter is typed in on `verse up` first, and a spawn that runner
+// refuses (it builds only the host's network) is a tutorial that stops at its first install.
+// A spawn naming another runner, or an agent `verse up` does not offer, is for a runner set up
+// elsewhere, and is not this test's to judge.
+func upOffers(name string, l runner.Launch) error {
+	if name != "" || (l.Doer.Agent != "" && l.Doer.Agent != verserunner.AgentName) {
+		return nil
+	}
+	desc := verserunner.Config{}.Describe(verserunner.Secrets{PortkeyAPIKey: "k"}, []string{runner.NetworkOpen})
+	return runnerd.CheckOffer(&l, desc)
 }
 
 type block struct {

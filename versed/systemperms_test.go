@@ -28,7 +28,7 @@ func TestTheDoorAdmitsOnlyWhatARequestMayPresent(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	for _, p := range []string{"verse.principal.group.release", "verse.trigger.rule.x",
-		"via:verse.trigger.rule.x", entity.SystemDefault, "coderunner", "group:release"} {
+		"via:verse.trigger.rule.x", entity.SystemDefault, "verse-runner", "group:release"} {
 		resp := putAs(t, p, ts.URL, "demo.pr.1", entity.Obj{"stage": "open"}.Payload())
 		body := readBody(t, resp)
 		if resp.StatusCode != http.StatusBadRequest {
@@ -43,7 +43,7 @@ func TestTheDoorAdmitsOnlyWhatARequestMayPresent(t *testing.T) {
 	}
 	// A PLACE EACH: what a request creates includes the place it brought into being, so three
 	// principals writing into one `demo` would be the first of them owning the other two's rows.
-	for i, p := range []string{"walter@example.com", "agent:harness", "runner:coderunner"} {
+	for i, p := range []string{"walter@example.com", "agent:harness", "runner:verse-runner"} {
 		at := entity.RefAt(fmt.Sprintf("demo%d", i+2), "pr", fmt.Sprint(i+2))
 		resp := putAs(t, p, ts.URL, at.String(), entity.Obj{"stage": "open"}.Payload())
 		body := readBody(t, resp)
@@ -221,7 +221,7 @@ func TestWhatTheSystemMakesInItsOwnHalfIsNotAnybodysToTake(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{
 		name: system-spawn,
 		condition: {subject: {path: "demo.sys.*", value: {stage: open}}},
-		action: {spawn: {driver: scripted, prompt: "sleep 5"}, patch: {stage: spawned}},
+		action: {spawn: {doer: {agent: verse}, prompt: "sleep 5"}, patch: {stage: spawned}},
 	}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +304,7 @@ func TestANameTheSystemHasNotUsedYetCannotBeReserved(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{
 		name: system-spawn,
 		condition: {subject: {path: "demo.sys.*", value: {stage: open}}},
-		action: {spawn: {driver: scripted, prompt: "sleep 5"}, patch: {stage: spawned}},
+		action: {spawn: {doer: {agent: verse}, prompt: "sleep 5"}, patch: {stage: spawned}},
 	}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -359,7 +359,7 @@ func TestANameTheSystemHasNotUsedYetCannotBeReserved(t *testing.T) {
 	}
 	// …and run a task under the next one before the rule does.
 	second := strings.Replace(first, "demo.sys.1", "demo.sys.2", 1)
-	resp = postAs(t, bob, ts.URL+"/tasks", "application/tony", fmt.Sprintf(`{id: %q, prompt: "true"}`, second))
+	resp = postAs(t, bob, ts.URL+"/tasks", "application/tony", fmt.Sprintf(`{id: %q, doer: {script: "true"}}`, second))
 	resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
 		t.Fatalf("bob running a task under an id of his choosing: %s", resp.Status)

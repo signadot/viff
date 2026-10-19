@@ -43,7 +43,7 @@ import (
 // not what anybody hits on the way in.
 //
 // What it does NOT confine is a spawn. A rule's task acts in the world under its `grant`, and
-// store confinement is not world confinement — see docs/provider-selection.md for the dial that
+// store confinement is not world confinement: the task's policy is the dial that
 // is. Nor does it confine what the ENGINE writes about its own running (a task's mirror, a
 // motion, a posed question): those are verse's, they land in verse's half of the tree, and a
 // charter cannot address them anyway.
@@ -65,25 +65,8 @@ func (e *Engine) Confinement() Subtree { return e.confine }
 //
 // A rule's name is unique within a charter and not across them: two packages may each hold a
 // `review`, which is most of what packages are for. So a name alone does not identify a rule,
-// and everything that stored one — a motion's `trigger`, a gate's `origin` — stored half an
-// identity. What that cost is in ResumeSelections.
+// and everything that stores one — a gate's `origin` — stores half an identity without it.
 func (e *Engine) At() string { return e.confine.KPath() }
-
-// KnowsElsewhere tells this engine how to ask whether a rule by some name is installed in
-// ANOTHER engine of the same verse — a package's charter, in practice.
-//
-// It exists for one question, asked once at startup: a motion left open by a previous verse
-// that does not say which charter opened it (`at` postdates it, and baseline never writes one).
-// Baseline is the engine that sweeps those, and "this rule is not in my charter" is the wrong
-// test — a package's rule is in nobody's charter as far as baseline can see, so baseline
-// settled live package gates as though their rules had been deleted. The rule was there; the
-// engine holding it was not this one.
-//
-// nil is "there is no other engine", which is what a lone baseline has and what most tests
-// have, and it restores exactly the old reading.
-func (e *Engine) KnowsElsewhere(fn func(name string) bool) { e.elsewhere = fn }
-
-func (e *Engine) knownElsewhere(name string) bool { return e.elsewhere != nil && e.elsewhere(name) }
 
 // confined reports whether a subtree is set at all.
 func (s Subtree) confined() bool { return s != Subtree{} }

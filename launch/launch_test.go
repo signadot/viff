@@ -1,32 +1,32 @@
 package launch
 
 import (
-	"github.com/signadot/verse/task"
 	"testing"
 
 	tony "github.com/signadot/tony-format/go-tony"
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/task"
 )
 
 func TestBindExpandsSubject(t *testing.T) {
 	s := Spec{
-		Driver:      "harness",
-		Prompt:      "review $subject and report",
-		Environment: "sandbox-$subject",
-		Vector:      "supervised",
+		Doer:   runner.Doer{Agent: "verse", Script: ""},
+		Prompt: "review $subject and report",
+		Runner: "verse.runners.$subject",
+		Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}},
 	}
 	got := s.Bind(Binding{"subject": `demo.pr."1"`})
 
 	if got.Prompt != `review demo.pr."1" and report` {
 		t.Fatalf("Prompt = %q", got.Prompt)
 	}
-	if got.Environment != `sandbox-demo.pr."1"` {
-		t.Fatalf("Environment = %q", got.Environment)
+	if got.Runner != `verse.runners.demo.pr."1"` {
+		t.Fatalf("Runner = %q", got.Runner)
 	}
-	// fields without a $var are untouched
-	if got.Driver != "harness" || got.Vector != "supervised" {
+	if got.Doer.Agent != "verse" || got.Policy.Default() != task.ThenAllow {
 		t.Fatalf("plain fields changed: %+v", got)
 	}
 }
@@ -42,7 +42,6 @@ func TestBindLeavesUnboundVarsAndIsPure(t *testing.T) {
 	}
 }
 
-// Longer variable names bind first, so a short name is not a prefix-hazard.
 func TestBindLongestKeyFirst(t *testing.T) {
 	s := Spec{Prompt: "$subject vs $sub"}
 	got := s.Bind(Binding{"sub": "SHORT", "subject": "LONG"})
@@ -51,76 +50,42 @@ func TestBindLongestKeyFirst(t *testing.T) {
 	}
 }
 
-// A frame is a template like the task it frames: a charter that says "answer about
-// $subject" needs the binding, and a frame that could not carry one would push every
-// per-firing detail back into the task.
-func TestBindExpandsFrame(t *testing.T) {
-	s := Spec{Frame: "You review $subject. Answer with a severity and nothing else."}
-	got := s.Bind(Binding{"subject": `demo.pr."1"`})
-	if got.Frame != `You review demo.pr."1". Answer with a severity and nothing else.` {
-		t.Fatalf("Frame = %q", got.Frame)
+// A SCRIPT'S TEXT IS NOT BOUND: it is a program, and a value spliced into it would be part of
+// the program — a branch named `x;curl …` would run. The value reaches the script as its
+// environment, bound there, and the script's own `$b` is the shell's. The doer's annotations and
+// the autonomy are words from fixed sets, chosen by the charter: not expanded either.
+func TestBindLeavesTheScriptAndTheWordsAndBindsTheEnvironment(t *testing.T) {
+	const script = `for b in x; do verse-call-tool git-push -branch "$BRANCH"; echo "$b"; done`
+	s := Spec{Doer: runner.Doer{Script: script,
+		With:        runner.With{Env: map[string]string{"BRANCH": "$subject.head"}, Model: "$model"},
+		Annotations: map[string]string{"verse.portkey/virtual-key": "$sneaky"}},
+		Policy: task.Policy{{Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"ref": "$sneaky"}}, Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{Answerers: []string{"$sneaky"}}}}, {Then: task.Then{Mode: task.ThenAsk}}}}
+	got := s.Bind(Binding{"subject.head": "x;curl evil", "b": "BOUND", "sneaky": "auto", "model": "large"})
+	if got.Doer.Script != script {
+		t.Fatalf("Script = %q, want the text as written", got.Doer.Script)
+	}
+	if got.Doer.With.Env["BRANCH"] != "x;curl evil" {
+		t.Fatalf("env = %v, want the value bound into the variable", got.Doer.With.Env)
+	}
+	if got.Doer.With.Model != "large" {
+		t.Fatalf("model = %q, want it bound", got.Doer.With.Model)
+	}
+	if got.Doer.Annotations["verse.portkey/virtual-key"] != "$sneaky" || got.Policy[0].Match.Params["ref"] != "$sneaky" ||
+		got.Policy[0].Then.Ask.Answerers[0] != "$sneaky" {
+		t.Fatalf("a word was expanded: %+v", got)
+	}
+	got.Doer.Annotations["verse.portkey/virtual-key"] = "changed"
+	if s.Doer.Annotations["verse.portkey/virtual-key"] != "$sneaky" {
+		t.Fatal("Bind aliased the receiver's annotations")
 	}
 }
 
-// Tools are deliberately NOT expanded, and that asymmetry is the interesting one. Every
-// other string here is a template because a charter has reason to build it out of the
-// firing — but a tool name comes from a fixed set the driver defines, so a $var in one
-// could only name a tool that does not exist, or name one chosen by whoever last wrote the
-// entity being matched. The second widens authority by binding, one field away from the
-// grant.
-func TestBindDoesNotExpandTools(t *testing.T) {
-	s := Spec{Tools: tl([]string{"read_file", "$sneaky"})}
-	got := s.Bind(Binding{"sneaky": "run_bash"})
-	if tools := task.ToolsOf(got.Tools); len(tools) != 2 || tools[1] != "$sneaky" {
-		t.Fatalf("Tools = %v, want the authored list verbatim", tools)
-	}
-}
-
-// A bound spec must not alias the charter's slice, or one firing could rewrite the tool
-// list every later firing reads.
-func TestBindCopiesTools(t *testing.T) {
-	s := Spec{Tools: tl([]string{"read_file"})}
-	got := s.Bind(Binding{})
-	(*got.Tools)[0] = "run_bash"
-	if (*s.Tools)[0] != "read_file" {
-		t.Fatalf("Bind aliased the receiver's tools: %v", *s.Tools)
-	}
-}
-
-// A spawn that names no tools and one that names `tools: []` are two different spawns, and
-// stay so through a bind and through the wire.
-func TestNoToolsIsNotUnnamed(t *testing.T) {
-	none := Spec{Tools: tl([]string{})}.Bind(Binding{})
-	if none.Tools == nil || len(*none.Tools) != 0 {
-		t.Fatalf("tools: [] bound to %v", none.Tools)
-	}
-	if unnamed := (Spec{}).Bind(Binding{}); unnamed.Tools != nil {
-		t.Fatalf("an unnamed tools bound to %v", *unnamed.Tools)
-	}
-	b, err := codec.Marshal(Spec{Tools: tl([]string{})}, codec.Tony)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var back Spec
-	if err := codec.Unmarshal(b, &back, codec.Tony); err != nil {
-		t.Fatal(err)
-	}
-	if back.Tools == nil || len(*back.Tools) != 0 {
-		t.Fatalf("tools: [] crossed as %v (wire %s)", back.Tools, b)
-	}
-}
-
-// The answer contract is a DOCUMENT, and it keeps its operators. It could not be one until
-// a rule could be stored as structure — a write is a tony patch, so `!or` in a payload used
-// to be executed by the store rather than stored by it — and `!raw` (entity.Raw) is what
-// settled that. As a document it is the same kind of thing as the `when` it sits beside.
 func TestAnswerContractIsADocumentWithItsOperators(t *testing.T) {
-	const src = "driver: llm\nanswer:\n  severity: !or [low, high]\n  note: !irtype string\n"
+	const src = "doer: {agent: verse}\nanswer:\n  severity: !or [low, high]\n  note: !irtype string\n"
 	var s Spec
 	if err := codec.Unmarshal([]byte(src), &s, codec.Tony); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	// the operators are still operators, which is the whole question: it MATCHES
 	if !matches(t, s.Answer, `{severity: low, note: "x"}`) {
 		t.Fatal("the contract does not accept a document it describes")
 	}
@@ -128,7 +93,6 @@ func TestAnswerContractIsADocumentWithItsOperators(t *testing.T) {
 		t.Fatal("the contract accepts a severity outside its !or")
 	}
 
-	// and back out again, so `trigger show` renders the pattern the author wrote
 	out, err := codec.Marshal(&s, codec.Tony)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
@@ -142,9 +106,6 @@ func TestAnswerContractIsADocumentWithItsOperators(t *testing.T) {
 	}
 }
 
-// Bind carries the contract across as written. It is a pattern, not text, so there is
-// nothing to substitute into — $var expansion inside a match is the same future work
-// Provider.Match is waiting on.
 func TestBindCarriesTheAnswerContract(t *testing.T) {
 	pat, _ := codec.ParseNode([]byte("severity: !or [low, high]"), codec.Tony)
 	got := Spec{Answer: pat}.Bind(Binding{"subject": `demo.pr."1"`})
@@ -153,7 +114,6 @@ func TestBindCarriesTheAnswerContract(t *testing.T) {
 	}
 }
 
-// matches runs a document against a pattern the way the contract check will.
 func matches(t *testing.T, pattern *ir.Node, doc string) bool {
 	t.Helper()
 	d, err := codec.ParseNode([]byte(doc), codec.Tony)

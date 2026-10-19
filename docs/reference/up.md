@@ -2,7 +2,7 @@
 
 `verse up` runs the engine and the task runtime, and it brings up the
 [store](../glossary.md#store). Every other subcommand is a client of `verse up`.
-[Tutorial §1](../tutorial.md#1-start) starts one with no flags. This page says what those
+[The tutorial](../tutorial/README.md#start) starts one with no flags. This page says what those
 defaults are, and what to give instead.
 
 ```sh
@@ -30,7 +30,7 @@ No other output tells a rule that selects nothing from a rule that selects and f
 `VERSE_LOG` takes any slog level: `debug`, `info`, `warn` or `error`. Verse refuses any other
 value at startup. It does not ignore it.
 
-`up` decides three things for the whole runtime: the store, the driver and the agent root.
+`up` decides three things for the whole runtime: the store, the runner it embeds and the agent root.
 `up` decides them because it hosts the task runtime, and the clients do not.
 
 ## The store
@@ -99,30 +99,32 @@ for. A deployment that clients reach in two ways publishes the address that its 
 use. `deploy/README.md` is a worked example. There, the pair is the tailnet names of the two
 Services that verse connects to inside the cluster.
 
-## The driver
+## The embedded runner
 
-The [driver](../glossary.md#driver) runs a task when nothing names another. The default
-depends on the model credentials.
+`up` embeds the verse runner, which runs a task when the spawn names no other runner. What it
+offers depends on the model credentials.
 
-| Credentials | Default driver |
+| Credentials | On offer |
 |---|---|
-| configured: an `llm` block in `~/.config/verse.tony`, or `PORTKEY_*`/`OPENAI_MODEL` in the environment | a real `llm` agent |
-| none | `scripted`, which runs a prompt as a shell command |
+| configured: an `llm` block in `~/.config/verse.tony`, or `PORTKEY_*`/`OPENAI_MODEL` in the environment | the `verse` agent, and scripts |
+| none | scripts |
 
 The **server** reads the credentials. So set them before `up`, and not in the environment of
 the client. `verse status` shows an `llm` block with `available` and a masked key.
 
-Each spawn chooses its driver. A rule's `spawn.driver` and `task run -driver` each select `scripted`, `calls` or `llm` for that one task. If a task asks
-for `llm` and no credentials are configured, that one task fails. Its status is `failed`, and
-its message tells you to set the credentials. The engine keeps running. What each driver
-means for gates is in [tasks.md](tasks.md#the-dial).
+Each spawn names its [doer](../glossary.md#doer): a rule's `spawn.doer`, and `task run --agent
+<name>` or `--script <text>`, where a bare prompt is for the `verse` agent. Verse checks a spawn
+against what the runner offers where it is written: with no credentials configured, a charter
+naming the `verse` agent is refused at its install, and `task run "…"` at the prompt, each
+saying the runner offers no such agent. The engine keeps running. What a doer means for gates is in
+[tasks.md](tasks.md#the-dial).
 
 ## The agent root
 
-The agent root is the directory where an llm agent acts. `verse up -root <dir>` names it, and
-`-root .` is your own tree. With no flag, `up` makes an isolated temporary directory. When the
-llm driver is available, `up` prints it at start (`agents rooted at …`). For this reason, a
-file that an agent writes is *not* in your working directory.
+The agent root is the directory where the `verse` agent acts. `verse up -root <dir>` names
+it, and `-root .` is your own tree. With no flag, `up` makes an isolated temporary directory.
+When the agent is on offer, `up` prints it at start (`agents rooted at …`). For this reason,
+a file that an agent writes is *not* in your working directory.
 
 ## Where tasks run
 
@@ -168,7 +170,7 @@ A missing file is a layer that is absent. An example `~/.config/verse.tony`:
 ```tony
 addr:  "localhost:9797"
 scope: "me"
-user:  "walter@example.com"
+user:  "you@example.com"
 llm: {
   model:      "gpt-4o"
   apiKey:     "pk-…"
@@ -191,7 +193,7 @@ that the request makes. It checks each write and each read against what the
 Verse takes `user` as given. `-as` overrides it on the commands that take `-as`. When the
 config names a user, those commands do not require `-as`. Where the verse names an identity
 provider, `verse account login` proves who you are instead, and the CLI then acts as that person
-whatever `user` says ([logging in](perms.md#logging-in)).
+whatever `user` says ([your account](perms.md#your-account)).
 
 With no `user` and no `agent`, the CLI acts as the local user, `user:<login>@localhost`,
 toward a verse on this machine (`localhost`, `127.0.0.1`, `::1`). Toward any other verse, it
@@ -210,15 +212,15 @@ behind. A request cannot be made as the system, so this key is the way to instal
 [repo-charters reconciler](examples/repo-charters/repo-charters.tony) for one repository, as
 the system, beside the file above: the charter that keeps what runs in verse equal to the last
 state of the repository's charters directory on main that the team said yes to. `repo` is the
-git io's id for the repository (`git.<repo>`), `github` is the repository as GitHub names it
+git iod's id for the repository (`git.<repo>`), `github` is the repository as GitHub names it
 (`org/name`), `at` is the address the repository's charters install at, `tree` is the name the
-git io and the github io report the charters directory's tree under (each one's `-tree`;
+git iod and the github iod report the charters directory's tree under (each one's `-tree`;
 `charters` by default), and `answerers` is who may answer the question a change raises, as a
-gate's `answerers` names them; the rendering adds the git io (`agent:git-io`), whose minute
+gate's `answerers` names them; the rendering adds the git iod (`agent:git-io`), whose minute
 sweep settles a question nothing proposes any more as `obsolete`, and an entry without
-`answerers` asks the docket, whose questions are not swept. The git io installs at `at` as
+`answerers` asks the docket, whose questions are not swept. The git iod installs at `at` as
 itself, so it owns that address or holds `child-owner` above it. The question is asked on a pull request to main that changes the
-charters, which the github io reports only with its `-tree`; without it, a change is asked about
+charters, which the github iod reports only with its `-tree`; without it, a change is asked about
 once it reaches main.
 
 ```tony
@@ -258,28 +260,28 @@ auth:
   are taken as given until then ([who a request is from](perms.md#who-a-request-is-from)).
 - `providers` are the parties whose word says which account a person is. Each is under a name
   the deployment gives it. The name is where its accounts are bound (`verse.identity.<name>`),
-  so it is one plain word, and `iod` is the ios'. A provider is one of two kinds:
+  so it is one plain word, and `iod` is the iods'. A provider is one of two kinds:
     - **An issuer**, with `issuer`, the OpenID Connect issuer's URL, and `clientId`, the OAuth
       client registered there for this verse: a public client. Quote a `clientId` that starts
       with a digit. The verse accepts its id_tokens. `clientSecret` is for an issuer that hands
       a public client a secret and wants it back at its token endpoint, as Google's device flow
       does; it is not confidential (every copy of the CLI carries it), the CLI sends it where it
       is set, and the server never reads it.
-    - **Ios**, with `ios`, the installed ios the verse trusts for the provider's accounts, by the
-      name each is installed under. `github`'s ios reflect the comments that prove a GitHub
-      account, and `slack`'s io relays the member who typed
-      ([a person relayed by a trusted io](perms.md#a-person-relayed-by-a-trusted-io)). GitHub
+    - **Iods**, with `ios`, the installed iods the verse trusts for the provider's accounts, by the
+      name each is installed under. `github`'s iods reflect the comments that prove a GitHub
+      account, and `slack`'s iod relays the member who typed
+      ([a person relayed by a trusted iod](perms.md#a-person-relayed-by-a-trusted-iod)). GitHub
       is no issuer for people, so `github` is always of this kind.
 - `domains` are the email domains a person may arrive from the first time, through a token or
   relayed by a trusted io. With none, only an account that is already bound is admitted.
-- `acts`, on a provider with ios, is what a trusted io may do as a person it relays: `control`
-  (unset), the reads and the acts that answer, say and steer, which is all an io does; or `any`.
+- `acts`, on a provider with iods, is what a trusted iod may do as a person it relays: `control`
+  (unset), the reads and the acts that answer, say and steer, which is all an iod does; or `any`.
 
 `verse up` refuses to start on an `auth` block it cannot serve. It does not read a provider at
 start, so a provider that is down stops only the requests that carry its tokens.
 
-**`auth: {iod: {…}}`** says how the deployment's own ios are authenticated
-([ios at the door](perms.md#ios-at-the-door)). The server reads it.
+**`auth: {iod: {…}}`** says how the deployment's own iods are authenticated
+([iods at the door](perms.md#iods-at-the-door)). The server reads it.
 
 ```tony
 auth:
@@ -293,7 +295,7 @@ auth:
       - {file: /var/run/verse/git-io.token, principal: "agent:git-io"}
 ```
 
-- `issuer` is the issuer of the ios' workload tokens. On Kubernetes it is the cluster's own,
+- `issuer` is the issuer of the iods' workload tokens. On Kubernetes it is the cluster's own,
   which signs a pod's projected service-account token; `kubectl get --raw
   /.well-known/openid-configuration` prints it, and on EKS it is
   `aws eks describe-cluster --query cluster.identity.oidc.issuer`. Verse reads its keys as it
@@ -306,10 +308,10 @@ auth:
   cluster also grants the discovery document to service accounts alone by default, and versed
   reads it as nobody, so the deploy's `issuerDiscoveryOpen` opens it. Unset trusts the system's
   roots, which a public issuer (EKS's) needs and nothing more.
-- `accounts` maps a token's subject to the io it is: the `agent:` it acts as, and `io`, the
-  name it is installed under, which is how a provider's `ios` names it. An io that relays nobody
+- `accounts` maps a token's subject to the iod it is: the `agent:` it acts as, and `io`, the
+  name it is installed under, which is how a provider's `ios` names it. An iod that relays nobody
   needs no `io`. The accounts are written at start, never at first sight.
-- `static` is the ios of a deployment with no issuer, a laptop or CI: the path of a file holding
+- `static` is the iods of a deployment with no issuer, a laptop or CI: the path of a file holding
   the token each presents, read at start. The verse keeps the hash and never the token.
 
 **`auth: {issuer: {url, key}}`** makes the verse an issuer of its own tokens. The server reads
@@ -357,7 +359,7 @@ record.
 back past `child-owner`. See [perms.md](../perms.md).
 
 **The `llm` block** is read by the server (`verse up`). The server hosts the task runtime, so
-the agent driver reads its model and credentials from the config and the environment of the
+the `verse` agent reads its model and credentials from the config and the environment of the
 server. Setting it for a `task run` *client* does nothing. The variables `OPENAI_MODEL`,
 `PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY` and `PORTKEY_BASE_URL` override the file.
 
@@ -376,12 +378,12 @@ Every key, and the variable that sets it:
 | `systemCharter` | `VERSE_SYSTEM_CHARTER` | `verse up` | a charter file installed at start as the system |
 | `repoCharters: [{repo, github, at, tree, answerers}]` | | `verse up` | the repo-charters reconciler, installed as the system for each repository named |
 | `auth: {principal: {mode, providers}}` | | `verse up`, `verse account login` | the identity providers whose tokens say who a request is from |
-| `auth: {iod: {issuer, audience, accounts, static}}` | | `verse up` | the issuer of the ios' workload tokens, and which io each is |
+| `auth: {iod: {issuer, audience, accounts, static}}` | | `verse up` | the issuer of the iods' workload tokens, and which iod each is |
 | `auth: {issuer: {url, key}}` | | `verse up` | the address and signing key the verse issues its own tokens with |
 | `perms: {child-grants, admins}` | `VERSE_PERMS_ADMINS` for `admins`, comma-separated | `verse up` | what the root holds out, and who may take a top-level place |
 | `tripDuration` | | `verse up` | how long a firing waits when the [cycle throttle](../cycle-throttle.md) trips. A duration, `1s` by default; `0` refuses the firing |
 | `shellEnv` | | `verse up` | the variables a local task's shell passes through from the server's environment. Everything else is unset |
-| `llm: {baseURL, apiKey, virtualKey, model}` | `PORTKEY_BASE_URL`, `PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY`, `OPENAI_MODEL` | `verse up` | the model and credentials the agent driver uses |
+| `llm: {baseURL, apiKey, virtualKey, model}` | `PORTKEY_BASE_URL`, `PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY`, `OPENAI_MODEL` | `verse up` | the model and credentials the `verse` agent uses |
 
 `verse account login` keeps its tokens in `verse-tokens.tony`, beside the per-user config, or beside
 the file `VERSE_CONFIG` names. Only its owner can read it.

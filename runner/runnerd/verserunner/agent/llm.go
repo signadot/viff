@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -79,18 +78,14 @@ type llmClient struct {
 	http       *http.Client
 }
 
-// newLLMClient builds a client from the environment (the default when no explicit
-// creds are supplied).
-func newLLMClient() *llmClient {
-	return clientFrom(os.Getenv("PORTKEY_BASE_URL"), os.Getenv("PORTKEY_API_KEY"),
-		os.Getenv("PORTKEY_VIRTUAL_KEY"), os.Getenv("OPENAI_MODEL"))
-}
+// DefaultBaseURL is where the model is called when no base URL is given: Portkey's gateway.
+const DefaultBaseURL = "https://api.portkey.ai/v1"
 
 // clientFrom builds a client from explicit creds (e.g. resolved verse config),
 // applying the base-URL and model defaults for any empty value.
 func clientFrom(base, key, virtualKey, model string) *llmClient {
 	if base == "" {
-		base = "https://api.portkey.ai/v1"
+		base = DefaultBaseURL
 	}
 	if model == "" {
 		model = "gpt-4o"
@@ -182,10 +177,10 @@ var (
 
 // completeWithRetry is the model call, repeated when the failure says nothing about the request.
 //
-// It exists because one slow response would otherwise be terminal for the whole task: forty
-// boundaries of work — reads, reasoning, a finding half-written — ended by a client timeout, with
-// no resuming, because a task's conversation lives in its driver. Against that, two retries
-// costing ten seconds are free.
+// It exists because one slow response used to be terminal for the whole task. Forty-three
+// boundaries of work — reads, reasoning, a finding half-written — ended on a client timeout, and
+// the run was not resumable because a task's conversation lives in its driver. Against that, two
+// retries costing ten seconds are free.
 //
 // Each attempt is announced on the read plane. A run that pauses for ten seconds and says nothing
 // is indistinguishable from one that has hung, which is the complaint findings 6 and 7 of the
@@ -331,7 +326,7 @@ func (d *llmDriver) Next(ctx context.Context, prev task.StepResult) (task.ToolUs
 		}
 		if !d.started {
 			d.started = true
-			// The frame is per-driver, not a package constant: it is what the spawn (or,
+			// The frame is per-driver, not a package constant: it is what the launch (or,
 			// failing that, defaultFrame) says this agent's task is to be read in. An empty
 			// frame sends no system message at all rather than an empty one — a blank
 			// system turn is a claim about the agent's standing instructions, and "none"
@@ -351,8 +346,8 @@ func (d *llmDriver) Next(ctx context.Context, prev task.StepResult) (task.ToolUs
 		}
 		d.messages = append(d.messages, msg)
 		if c := strings.TrimSpace(msg.Content); c != "" {
-			fmt.Fprintf(d.log, "\n🗣  %s\n", c)
-			if d.emit != nil { // put the agent's words on the read plane (attach sees them)
+			fmt.Fprintf(d.log, "\n🗣  said %d characters\n", len(c)) // the words are the task's: on its read plane, not this log
+			if d.emit != nil {                                      // put the agent's words on the read plane (attach sees them)
 				d.emit(task.Event{Kind: task.EventSay, Text: c})
 			}
 		}
@@ -360,11 +355,11 @@ func (d *llmDriver) Next(ctx context.Context, prev task.StepResult) (task.ToolUs
 			// The model has stopped talking, which is the only way it can stop, and that is
 			// ALL this reports. Whether the TASK is finished is a different question, and it
 			// is not the driver's: with a child still working, "the model stopped" means "it
-			// is waiting". The answer contract is not checked here, because here it would
-			// certify a draft written while a child was still editing the tree it described.
-			// The loop asks when the input has actually gone quiet (task.AnswerCheck), and a
-			// repair comes back through the same channel every other message into this
-			// conversation does.
+			// is waiting". The answer contract used to be checked right here, which is why it
+			// could certify a draft written while a child was still editing the tree it
+			// described. The loop now asks when the input has actually gone quiet
+			// (task.AnswerCheck), and a repair comes back through the same channel every
+			// other message into this conversation does.
 			return task.ToolUse{}, false, nil
 		}
 		d.pending = msg.ToolCalls
@@ -391,14 +386,10 @@ func toToolUse(tc toolCall) task.ToolUse {
 		_ = json.Unmarshal([]byte(tc.Function.Arguments), &args)
 	}
 	tu := task.ToolUse{Name: tc.Function.Name, Input: args}
-	if tc.Function.Name == "call_agent" { // becomes a gated, async sub-task call
+	if tc.Function.Name == "call_agent" { // a delegation: agent.call-sub-agent, then an async sub-agent
 		agent, _ := args["agent"].(string)
 		prompt, _ := args["prompt"].(string)
-		tu.CallAgent = &task.CallAgentRequest{
-			Agent:  agent,
-			Prompt: prompt,
-			Grant:  task.Grant{Allow: []task.GateMatch{{}}}, // demo: full scope; tighten later
-		}
+		tu.CallAgent = &task.CallAgentRequest{Agent: agent, Prompt: prompt}
 	}
 	return tu
 }
@@ -434,12 +425,12 @@ func resultContent(prev task.StepResult) string {
 	}
 }
 
-// selectTools returns the tool definitions to offer: all of them when only is nil, else
-// exactly the ones named — none, for an empty list — plus yieldTool, always.
+// selectTools returns the tool definitions to offer: all of them when only is empty, else
+// exactly the ones named — plus yieldTool, always.
 //
 // fail is not optional because the loop's contract depends on it. It is the only structural
 // way an agent can say "I could not": a driver that simply stops is read as SUCCESS by
-// everything downstream, so a spawn that withheld fail would turn every failure into a
+// everything downstream, so a launch that withheld fail would turn every failure into a
 // completed task with an excuse in its result. A charter deref'ing $result is exactly
 // the caller that cannot afford that.
 //
@@ -450,7 +441,7 @@ func selectTools(only []string, extra []Tool) ([]toolDef, error) {
 	all := toolDefs()
 	for _, t := range extra {
 		// A runtime's own tool is offered on exactly the terms the built-in ones are: it can be
-		// narrowed away by a spawn's `tools:`, it is described in the derived frame, and its
+		// narrowed away by a launch's tools, it is described in the derived frame, and its
 		// name has to be one somebody can write. Appended rather than merged, so a runtime
 		// cannot quietly replace `run_bash` with something of its own.
 		var td toolDef
@@ -462,9 +453,7 @@ func selectTools(only []string, extra []Tool) ([]toolDef, error) {
 		}
 		all = append(all, td)
 	}
-	// Nil is unnamed, and everything is offered; an empty list is `tools: []`, and nothing is
-	// but what the contract needs.
-	if only == nil {
+	if len(only) == 0 {
 		return all, nil
 	}
 	byName := make(map[string]toolDef, len(all))
@@ -485,7 +474,7 @@ func selectTools(only []string, extra []Tool) ([]toolDef, error) {
 	}
 	// yield is not optional, and is the one tool that never was. It carries the only
 	// structural way to say "I could not", which everything downstream depends on — a task that
-	// merely stops reads as success — and now also the only way to wait. A spawn that withheld
+	// merely stops reads as success — and now also the only way to wait. A launch that withheld
 	// it would turn every failure into a completed task with an excuse, and every wait into
 	// whatever the model could improvise.
 	if !seen[yieldTool] {
@@ -577,18 +566,18 @@ func toolDefs() []toolDef {
 	}
 }
 
-// yieldTool is the model's verb for HANDING CONTROL BACK.
+// yieldTool is the one thing a model could not previously say: HAND CONTROL BACK.
 //
-// Without it a model has exits and no verb for them. "I am done" is implicit — stop emitting
-// tool calls — and works. "I could not" is `fail`. "I am waiting for my sub-agents" is nothing
-// at all, and a model with nothing to say and no way to say it reaches for whatever is to hand:
-// a `run_bash sleep 120`, a sub-agent called `noop`, or `fail` itself with a retraction for a
-// reason — a terminal tool used as a scratchpad, discarding a review whose children reported
-// clean.
+// It had exits and no verb for them. "I am done" was implicit — stop emitting tool calls — and
+// worked. "I could not" was `fail`. "I am waiting for my sub-agents" was nothing at all, and a
+// model with nothing to say and no way to say it reaches for whatever is to hand: first
+// `run_bash sleep 120`, then eleven sub-agents called `noop`, and once for `fail` itself, with
+// the reason "placeholder - not actually failing, retracting" — a terminal tool used as a
+// scratchpad, discarding a review whose children had both reported clean.
 //
-// Naming the mechanism rather than one of its uses is what stops the model approximating it:
-// yielding is a thing it can DO, so it does not have to build one out of a sleep, a sub-agent,
-// or a failure.
+// Both are the same defect. Naming the mechanism rather than one of its uses is what stops the
+// model approximating it: yielding is a thing it can now DO, so it does not have to build one
+// out of a sleep, a sub-agent, or a failure.
 const yieldTool = "yield"
 
 // Why a turn is being handed back. Only `cannot` fails the run — see yield for why the
@@ -650,7 +639,7 @@ func (d *llmDriver) yield(tc toolCall) (task.ToolUse, bool, error) {
 	if note != "" {
 		line += ": " + note
 	}
-	fmt.Fprintf(d.log, "   … %s\n", line)
+	fmt.Fprintf(d.log, "   … yielded (%s)\n", reason) // the note is the model's words: the read plane has it
 	if d.emit != nil {
 		d.emit(task.Event{Kind: task.EventSay, Text: line})
 	}

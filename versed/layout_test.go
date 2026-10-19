@@ -28,7 +28,7 @@ func TestAnInstalledCharterRendersInOneShape(t *testing.T) {
 	// Everything bracketable, bracketed — including the two fields that used to keep it.
 	charter := `{ name: braced,
 	  condition: { subject: { path: "demo.pr.*", value: { stage: open } } },
-	  action: { patch: { stage: reviewing }, spawn: { driver: scripted, prompt: "echo hi" } } }`
+	  action: { patch: { stage: reviewing }, spawn: { doer: { script: "echo hi" } } } }`
 	resp, err := httpPost(ts.URL+"/charter", "application/tony", strings.NewReader(charter))
 	if err != nil {
 		t.Fatalf("post charter: %v", err)
@@ -49,7 +49,7 @@ func TestAnInstalledCharterRendersInOneShape(t *testing.T) {
 			"memory of the file it arrived in:\n%s", body)
 	}
 	// It has to still BE the charter, not merely be brace-free.
-	for _, want := range []string{"braced", "stage", "reviewing", "scripted"} {
+	for _, want := range []string{"braced", "stage", "reviewing", "echo hi"} {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("the charter lost %q on the way through:\n%s", want, body)
 		}

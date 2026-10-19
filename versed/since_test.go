@@ -8,15 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/trigger"
 )
 
 // frames reads an SSE attach until the stream is quiet, and returns what it carried.
@@ -73,8 +72,8 @@ func cursors(fs []task.Event) []string {
 // resolver — whose whole job is acting on what it reads — is not a cosmetic difference.
 func TestSinceMeansTheSameOnEveryRunner(t *testing.T) {
 	// A drive of identical shape on each runner: N actions, then done.
-	drive := func(l task.Launch, reg *task.Registry) *task.Task {
-		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
+	drive := func(l runner.Launch, reg *task.Registry) *task.Task {
+		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, reg)
 		return task.NewTask(l.ID, sup, &countingDriver{n: 6}, noopExecutor{})
 	}
 
@@ -82,7 +81,7 @@ func TestSinceMeansTheSameOnEveryRunner(t *testing.T) {
 		srv := NewWithStore(drive, entitytest.Store(t))
 		ts := httptest.NewServer(srv.Handler())
 		defer ts.Close()
-		spawn := postTony(t, ts.URL+"/tasks", map[string]any{"id": "p", "prompt": "work"})
+		spawn := postTony(t, ts.URL+"/tasks", map[string]any{"id": "p", "doer": map[string]any{"script": "work"}})
 		spawn.Body.Close()
 		assertSince(t, ts.URL+"/tasks/p/events")
 	})
@@ -94,7 +93,7 @@ func TestSinceMeansTheSameOnEveryRunner(t *testing.T) {
 		srv.SetRunner(client.HTTP(remote.URL))
 		ts := httptest.NewServer(srv.Handler())
 		defer ts.Close()
-		spawn := postTony(t, ts.URL+"/tasks", map[string]any{"id": "p", "prompt": "work"})
+		spawn := postTony(t, ts.URL+"/tasks", map[string]any{"id": "p", "doer": map[string]any{"script": "work"}})
 		spawn.Body.Close()
 		assertSince(t, ts.URL+"/tasks/p/events")
 	})
@@ -169,8 +168,8 @@ func (noopExecutor) Execute(_ context.Context, tu task.ToolUse) (task.StepResult
 // the same retained window, and what is being measured is the resume, not the race.
 func TestBelowTheWatermarkResyncs(t *testing.T) {
 	// Past the retained window (task.ringCap is 256), so the early frames are gone.
-	drive := func(l task.Launch, reg *task.Registry) *task.Task {
-		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
+	drive := func(l runner.Launch, reg *task.Registry) *task.Task {
+		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, reg)
 		return task.NewTask(l.ID, sup, &countingDriver{n: 400}, noopExecutor{})
 	}
 
@@ -210,7 +209,7 @@ func TestBelowTheWatermarkResyncs(t *testing.T) {
 		srv := NewWithStore(drive, entitytest.Store(t))
 		ts := httptest.NewServer(srv.Handler())
 		defer ts.Close()
-		srv.Embedded.Spawn(task.Launch{ID: "p", Prompt: "work"})
+		mustLaunch(t, srv, runner.Launch{ID: "p", Doer: runner.Doer{Script: "true"}})
 		assertGap(t, ts.URL+"/tasks/p/events")
 	})
 
@@ -221,7 +220,7 @@ func TestBelowTheWatermarkResyncs(t *testing.T) {
 		remote := httptest.NewServer(runnerd.NewInProcessHandler(drive).HTTPHandler())
 		defer remote.Close()
 		pol := client.HTTP(remote.URL)
-		pol.Spawn(task.Launch{ID: "p", Prompt: "work", Driver: "scripted"})
+		pol.Launch(runner.Launch{ID: "p", Doer: runner.Doer{Script: "true"}})
 
 		srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
 		srv.SetRunner(pol)
@@ -241,12 +240,12 @@ func TestBelowTheWatermarkResyncs(t *testing.T) {
 // forever on a task that had finished minutes ago.
 func TestAFastTaskIsStillRecordedAsFinished(t *testing.T) {
 	for _, n := range []int{50, 300, 5000} {
-		drive := func(l task.Launch, reg *task.Registry) *task.Task {
-			sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
+		drive := func(l runner.Launch, reg *task.Registry) *task.Task {
+			sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, reg)
 			return task.NewTask(l.ID, sup, &countingDriver{n: n}, noopExecutor{})
 		}
 		srv := NewWithStore(drive, entitytest.Store(t))
-		h := srv.Embedded.Spawn(task.Launch{ID: "p", Prompt: "work"})
+		h := mustLaunch(t, srv, runner.Launch{ID: "p", Doer: runner.Doer{Script: "true"}})
 		mirror.Reflect(srv.Store, "p", h, mirror.Meta{Runner: "local"})
 
 		var last string
@@ -264,58 +263,12 @@ func TestAFastTaskIsStillRecordedAsFinished(t *testing.T) {
 	}
 }
 
-// A CHARTER says how much of a task's past is worth keeping, and it reaches the task.
-//
-// The number is a property of the work and nothing else knows it — which is the whole reason
-// it is per-spawn rather than a constant somebody has to guess for every task at once. It
-// crosses two seams to get there: the charter's spawn fragment, and the runner contract.
-func TestACharterSetsTheRetainedWindow(t *testing.T) {
-	got := make(chan int, 4)
-	build := func(l task.Launch, reg *task.Registry) *task.Task {
-		got <- l.Retain
-		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
-		return task.NewTask(l.ID, sup, &countingDriver{n: 1}, noopExecutor{})
+// mustLaunch launches on the embedded runner, failing the test on a refusal.
+func mustLaunch(t *testing.T, srv *Server, l runner.Launch) task.Handle {
+	t.Helper()
+	h, err := srv.Embedded.Launch(l)
+	if err != nil {
+		t.Fatalf("launch %s: %v", l.ID, err)
 	}
-	srv := NewWithStore(build, entitytest.Store(t))
-	srv.Start(t.Context())
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-
-	var trig trigger.Trigger
-	if err := codec.Unmarshal([]byte(`{
-		name: chatty,
-		condition: {subject: {path: "demo.pr.*", value: {stage: open}}},
-		action: {
-			spawn:  {prompt: "review $subject", retain: 4096},
-			onDone: {patch: {stage: reviewed}},
-		},
-	}`), &trig, codec.Tony); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if err := srv.Eng.AddTrigger(trig); err != nil {
-		t.Fatalf("AddTrigger: %v", err)
-	}
-	entitytest.Set(t, srv.Store, entity.RefAt("demo", "pr", "1"),
-		entity.Obj{"stage": "open"}.Payload())
-
-	select {
-	case n := <-got:
-		if n != 4096 {
-			t.Fatalf("the runtime was told to retain %d, want the 4096 the charter asked for", n)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("the charter never spawned")
-	}
-
-	// And the ad-hoc face of the same field: `verse task run` can ask for it too.
-	spawn := postTony(t, ts.URL+"/tasks", api.Spawn{ID: "p", Prompt: "work", Retain: 2048})
-	spawn.Body.Close()
-	select {
-	case n := <-got:
-		if n != 2048 {
-			t.Fatalf("an ad-hoc spawn asked to retain 2048 and the runtime was told %d", n)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("the ad-hoc spawn never reached the runtime")
-	}
+	return h
 }

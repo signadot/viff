@@ -9,9 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/signadot/verse/runner/runnerd/verserunner/agent"
-	"github.com/signadot/verse/task"
 )
 
 // socketDir is a short directory for a socket: a unix socket's path is bounded (104 bytes on
@@ -28,8 +25,8 @@ func socketDir(t *testing.T) string {
 
 // fakeTools is a tool set like the runner's: a push with an enum and no required parameter, an
 // ask that requires its question.
-func fakeTools() []agent.Tool {
-	return []agent.Tool{
+func fakeTools() []Tool {
+	return []Tool{
 		{
 			Name:        "push",
 			Description: "Push this task's committed work.",
@@ -58,7 +55,7 @@ type seen struct {
 	input map[string]any
 }
 
-func start(t *testing.T, call func(ctx context.Context, tl agent.Tool, in map[string]any) (string, bool, error)) (*Server, *Client) {
+func start(t *testing.T, call func(ctx context.Context, tool string, in map[string]any) (string, bool, error)) (*Server, *Client) {
 	t.Helper()
 	s := &Server{Tools: fakeTools(), Call: call}
 	path := filepath.Join(socketDir(t), "tools.sock")
@@ -89,8 +86,8 @@ func TestToolsAreListedAsTheModelSeesThem(t *testing.T) {
 
 func TestACallReachesTheHostAndItsResultTheCaller(t *testing.T) {
 	var got seen
-	_, c := start(t, func(_ context.Context, tl agent.Tool, in map[string]any) (string, bool, error) {
-		got = seen{tl.Name, in}
+	_, c := start(t, func(_ context.Context, tool string, in map[string]any) (string, bool, error) {
+		got = seen{tool, in}
 		return "pushed verse to verse/x", false, nil
 	})
 	res, err := c.Call(context.Background(), "push", map[string]any{"branch": "verse/x", "delete": false})
@@ -106,7 +103,7 @@ func TestACallReachesTheHostAndItsResultTheCaller(t *testing.T) {
 }
 
 func TestARefusalIsAnAnswer(t *testing.T) {
-	_, c := start(t, func(context.Context, agent.Tool, map[string]any) (string, bool, error) {
+	_, c := start(t, func(context.Context, string, map[string]any) (string, bool, error) {
 		return "refused: not on this branch", true, nil
 	})
 	res, err := c.Call(context.Background(), "push", nil)
@@ -119,7 +116,7 @@ func TestARefusalIsAnAnswer(t *testing.T) {
 }
 
 func TestAFailureIsAnErrorInTheHostsWords(t *testing.T) {
-	_, c := start(t, func(context.Context, agent.Tool, map[string]any) (string, bool, error) {
+	_, c := start(t, func(context.Context, string, map[string]any) (string, bool, error) {
 		return "", false, errors.New("the remote is unreachable")
 	})
 	_, err := c.Call(context.Background(), "push", nil)
@@ -130,7 +127,7 @@ func TestAFailureIsAnErrorInTheHostsWords(t *testing.T) {
 
 func TestAnUnknownToolIsRefusedWithTheList(t *testing.T) {
 	called := false
-	_, c := start(t, func(context.Context, agent.Tool, map[string]any) (string, bool, error) {
+	_, c := start(t, func(context.Context, string, map[string]any) (string, bool, error) {
 		called = true
 		return "", false, nil
 	})
@@ -147,7 +144,7 @@ func TestOutCrossesAsItIs(t *testing.T) {
 	// Free text with the shapes a pretty rendering trips on: trailing spaces, blank lines, a
 	// colon, a leading dash.
 	out := "pushed verse to verse/x:  \n\n- 3 commits \n  a: b\n"
-	_, c := start(t, func(context.Context, agent.Tool, map[string]any) (string, bool, error) {
+	_, c := start(t, func(context.Context, string, map[string]any) (string, bool, error) {
 		return out, false, nil
 	})
 	res, err := c.Call(context.Background(), "push", nil)
@@ -161,7 +158,7 @@ func TestOutCrossesAsItIs(t *testing.T) {
 
 func TestTheInputIsCheckedAgainstTheSchema(t *testing.T) {
 	called := false
-	_, c := start(t, func(context.Context, agent.Tool, map[string]any) (string, bool, error) {
+	_, c := start(t, func(context.Context, string, map[string]any) (string, bool, error) {
 		called = true
 		return "", false, nil
 	})
@@ -189,7 +186,7 @@ func TestTheInputIsCheckedAgainstTheSchema(t *testing.T) {
 
 func TestANullIsAnAbsentParameter(t *testing.T) {
 	var got map[string]any
-	_, c := start(t, func(_ context.Context, _ agent.Tool, in map[string]any) (string, bool, error) {
+	_, c := start(t, func(_ context.Context, _ string, in map[string]any) (string, bool, error) {
 		got = in
 		return "ok", false, nil
 	})
@@ -203,7 +200,7 @@ func TestANullIsAnAbsentParameter(t *testing.T) {
 
 func TestCheckReadsTheSchemaAsTheToolDeclaresIt(t *testing.T) {
 	// Direct, with no wire in between: the enum is a []string, the number an int.
-	tl, err := Describe(agent.Tool{Name: "x", Params: map[string]any{
+	tl, err := Describe(Tool{Name: "x", Params: map[string]any{
 		"repo": map[string]any{"type": "string", "enum": []string{"a", "b"}},
 		"n":    map[string]any{"type": "integer", "enum": []int{1, 2}},
 	}})
@@ -223,7 +220,7 @@ func TestCheckReadsTheSchemaAsTheToolDeclaresIt(t *testing.T) {
 		t.Error("3 is not in [1, 2]")
 	}
 	// An enum of documents: compared as values, not crashed on.
-	docs, _ := Describe(agent.Tool{Name: "z", Params: map[string]any{"k": map[string]any{"type": "object", "enum": []any{map[string]any{"mode": "fast", "n": 1}}}}})
+	docs, _ := Describe(Tool{Name: "z", Params: map[string]any{"k": map[string]any{"type": "object", "enum": []any{map[string]any{"mode": "fast", "n": 1}}}}})
 	if err := Check(docs, map[string]any{"k": map[string]any{"mode": "fast", "n": 1.0}}); err != nil {
 		t.Errorf("a document in its enum, its number in another spelling: %v", err)
 	}
@@ -231,7 +228,7 @@ func TestCheckReadsTheSchemaAsTheToolDeclaresIt(t *testing.T) {
 		t.Error("a document outside its enum")
 	}
 	// No type and an enum of numbers: the string "1" is not the number 1.
-	untyped, _ := Describe(agent.Tool{Name: "y", Params: map[string]any{"k": map[string]any{"enum": []int{1, 2}}}})
+	untyped, _ := Describe(Tool{Name: "y", Params: map[string]any{"k": map[string]any{"enum": []int{1, 2}}}})
 	if err := Check(untyped, map[string]any{"k": "1"}); err == nil {
 		t.Error(`"1" matched the number 1`)
 	}
@@ -241,7 +238,7 @@ func TestCheckReadsTheSchemaAsTheToolDeclaresIt(t *testing.T) {
 }
 
 func TestAHostsErrorNamesTheToolOnce(t *testing.T) {
-	_, c := start(t, func(context.Context, agent.Tool, map[string]any) (string, bool, error) {
+	_, c := start(t, func(context.Context, string, map[string]any) (string, bool, error) {
 		return "", false, errors.New("ask: a question is required")
 	})
 	_, err := c.Call(context.Background(), "ask", map[string]any{"question": "x"})
@@ -252,7 +249,7 @@ func TestAHostsErrorNamesTheToolOnce(t *testing.T) {
 
 func TestAMissingRequiredParamIsRefusedBeforeTheCall(t *testing.T) {
 	called := false
-	_, c := start(t, func(context.Context, agent.Tool, map[string]any) (string, bool, error) {
+	_, c := start(t, func(context.Context, string, map[string]any) (string, bool, error) {
 		called = true
 		return "", false, nil
 	})
@@ -267,7 +264,7 @@ func TestAMissingRequiredParamIsRefusedBeforeTheCall(t *testing.T) {
 
 func TestTheCallersContextEndsTheCall(t *testing.T) {
 	arrived, ended := make(chan struct{}), make(chan struct{})
-	_, c := start(t, func(ctx context.Context, _ agent.Tool, _ map[string]any) (string, bool, error) {
+	_, c := start(t, func(ctx context.Context, _ string, _ map[string]any) (string, bool, error) {
 		close(arrived)
 		<-ctx.Done()
 		close(ended)
@@ -309,7 +306,7 @@ func TestStartRefusesASocketSomethingAnswers(t *testing.T) {
 }
 
 func TestAToolWhoseSchemaCannotBeCarriedIsRefusedAtStart(t *testing.T) {
-	s := &Server{Tools: []agent.Tool{{Name: "odd", Params: map[string]any{"f": func() {}}}}}
+	s := &Server{Tools: []Tool{{Name: "odd", Params: map[string]any{"f": func() {}}}}}
 	err := s.Start(filepath.Join(socketDir(t), "tools.sock"))
 	if err == nil || !strings.Contains(err.Error(), "the schema of odd cannot be carried") {
 		s.Close()
@@ -318,7 +315,7 @@ func TestAToolWhoseSchemaCannotBeCarriedIsRefusedAtStart(t *testing.T) {
 }
 
 func TestTwoToolsOfOneNameAreRefusedAtStart(t *testing.T) {
-	s := &Server{Tools: []agent.Tool{{Name: "push"}, {Name: "push"}}}
+	s := &Server{Tools: []Tool{{Name: "push"}, {Name: "push"}}}
 	err := s.Start(filepath.Join(socketDir(t), "tools.sock"))
 	if err == nil || !strings.Contains(err.Error(), `two tools named "push"`) {
 		s.Close()
@@ -378,15 +375,14 @@ func TestAStatusWithNoWordsIsTheError(t *testing.T) {
 	}
 }
 
-func TestDescribeIsTheToolLessItsCodeWithItsSchemaNormalised(t *testing.T) {
-	tl := agent.Tool{Name: "x", Description: "d", Params: map[string]any{"a": 1}, Required: []string{"a"},
-		Do: func(context.Context, task.ToolUse) (string, bool, error) { return "", false, nil }}
+func TestDescribeIsTheToolWithItsSchemaNormalised(t *testing.T) {
+	tl := Tool{Name: "x", Description: "d", Params: map[string]any{"a": 1}, Required: []string{"a"}}
 	d, err := Describe(tl)
 	// The integer is the codec's int64, as it would be after a trip over the wire.
 	if err != nil || d.Name != "x" || d.Description != "d" || d.Params["a"] != int64(1) || d.Required[0] != "a" {
 		t.Fatalf("%+v, %v", d, err)
 	}
-	if _, err := Describe(agent.Tool{Name: "odd", Params: map[string]any{"f": func() {}}}); err == nil {
+	if _, err := Describe(Tool{Name: "odd", Params: map[string]any{"f": func() {}}}); err == nil {
 		t.Fatal("a schema the codec cannot carry was described")
 	}
 }
@@ -394,7 +390,7 @@ func TestDescribeIsTheToolLessItsCodeWithItsSchemaNormalised(t *testing.T) {
 // A tool with a parameter named `input` cannot be offered: verse-call-tool takes the whole
 // input as `-input`, and the list grows on the server with no change to the binary.
 func TestAToolWithAParameterNamedInputIsRefusedAtStart(t *testing.T) {
-	s := &Server{Tools: []agent.Tool{{Name: "odd", Params: map[string]any{Reserved: map[string]any{"type": "string"}}}}}
+	s := &Server{Tools: []Tool{{Name: "odd", Params: map[string]any{Reserved: map[string]any{"type": "string"}}}}}
 	err := s.Start(filepath.Join(socketDir(t), "tools.sock"))
 	if err == nil || !strings.Contains(err.Error(), `odd has a parameter named "input"`) {
 		s.Close()

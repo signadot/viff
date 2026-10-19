@@ -34,8 +34,8 @@ func TestAHostedQuestionAsksWhomItNames(t *testing.T) {
 		{"an ask, from the system", entity.SystemDocket, nil, me, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			l := task.Launch{ID: "t1", Answerers: tc.launch, Provenance: task.Provenance{Principal: tc.principal}}
-			q := hostedQuestion(l, task.GateQuestion{ID: "t1~1", Answerers: tc.named})
+			ht := hostedTask{answerers: tc.launch, principal: tc.principal}
+			q := hostedQuestion(ht, task.GateQuestion{ID: "t1~1", Answerers: tc.named})
 			if !slices.Equal(q.Answerers, tc.want) {
 				t.Errorf("held out to %v, want %v", q.Answerers, tc.want)
 			}

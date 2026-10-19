@@ -2,11 +2,13 @@
 context:
 - tony-format/context
 define:
-  fatal: .[nullable(array(string))]
-  input: .[object(object)]
-  tool: .[string]
+  answerers: .[array(string)]
+  default: .[string]
+  labels: .[object(string)]
+  need: .[int]
+  within: .[string]
 signature:
-  name: verse-call
+  name: verse-task-policy-ask
 ---
 context:
 - tony-format/context
@@ -21,11 +23,9 @@ signature:
 context:
 - tony-format/context
 define:
-  grant: .[string]
   id: .[string]
   need: .[int]
   says: .[string]
-  tools: .[array(string)]
 signature:
   name: verse-option
 ---
@@ -40,13 +40,14 @@ define:
   deadline: .[nullable(verse-deadline)]
   dropped: .[int]
   err: .[string]
+  fields: .[object(string)]
   gate: .[string]
   id: .[string]
   kind: .[string]
-  mode: .[string]
   options: .[array(verse-option)]
   proceed: .[bool]
   seq: .[int]
+  step: .[string]
   task: .[string]
   text: .[string]
   tool: .[string]
@@ -56,61 +57,22 @@ signature:
 context:
 - tony-format/context
 define:
-  name: .[string]
-  type: .[string]
+  Params: .[object(string)]
+  System: .[string]
+  Verb: .[string]
 signature:
-  name: verse-path-pred
----
-context:
-- tony-format/context
-define:
-  kind: .[string]
-  pattern: .[string]
-signature:
-  name: verse-resource-pred
----
-context:
-- tony-format/context
-define:
-  branches: .[array(string)]
-  onPush: .[bool]
-  paths: .[array(verse-path-pred)]
-  resources: .[array(verse-resource-pred)]
-  tools: .[array(string)]
-  verbs: .[array(string)]
-signature:
-  name: verse-gate-match
----
-context:
-- tony-format/context
-define:
-  answerers: .[array(string)]
-  deadline: .[nullable(verse-deadline)]
-  labels: .[object(string)]
-  match: !verse-gate-match null
-  mode: .[string]
-  name: .[string]
-  need: .[int]
-  options: .[array(verse-option)]
-signature:
-  name: verse-gate
----
-context:
-- tony-format/context
-define:
-  allow: .[array(verse-gate-match)]
-signature:
-  name: verse-grant
+  name: verse-task-policy-match
 ---
 context:
 - tony-format/context
 define:
   action: .[string]
+  fields: .[object(string)]
   gate: .[string]
   id: .[string]
-  mode: .[string]
   origin: .[string]
   reason: .[string]
+  step: .[string]
   tool: .[string]
 signature:
   name: verse-pending-gate
@@ -118,21 +80,19 @@ signature:
 context:
 - tony-format/context
 define:
-  existing: .[array(string)]
-  force: .[bool]
-  new: .[array(string)]
+  Ask: .[nullable(verse-task-policy-ask)]
+  Mode: .[string]
 signature:
-  name: verse-repo-push
+  name: verse-task-policy-then
 ---
 context:
 - tony-format/context
 define:
-  access: .[string]
-  from: .[string]
-  push: .[nullable(verse-repo-push)]
-  repo: .[string]
+  match: .[nullable(verse-task-policy-match)]
+  name: .[string]
+  then: !verse-task-policy-then null
 signature:
-  name: verse-repo
+  name: verse-task-policy-row
 ---
 context:
 - tony-format/context
@@ -150,52 +110,3 @@ define:
   status: .[string]
 signature:
   name: verse-task-snapshot
----
-context:
-- tony-format/context
-define:
-  chain: .[string]
-  principal: .[string]
-  subject: .[string]
-signature:
-  name: verse-runner-provenance
----
-context:
-- tony-format/context
-define:
-  default: .[string]
-  gates: .[array(verse-gate)]
-signature:
-  name: verse-vector
----
-context:
-- tony-format/context
-- tony-base: github.com/signadot/tony-format/go-tony/schema
-define:
-  answer: .[tony-base:ir]
-  calls: .[array(verse-call)]
-  converse: .[bool]
-  credential: .[string]
-  driver: .[string]
-  environment: .[string]
-  frame: .[string]
-  grant: .[nullable(verse-grant)]
-  id: .[string]
-  occurrence: .[int]
-  prompt: .[string]
-  provenance: .[nullable(verse-runner-provenance)]
-  repos: .[array(verse-repo)]
-  retain: .[int]
-  tools: .[nullable(array(string))]
-  vector: .[nullable(verse-vector)]
-  virtualKey: .[string]
-signature:
-  name: verse-runner-spawn
----
-context:
-- tony-format/context
-define:
-  by: .[string]
-  vector: !verse-vector null
-signature:
-  name: verse-runner-vector

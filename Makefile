@@ -20,7 +20,9 @@ TAG       ?= dev
 IMAGE     ?= $(NAME):$(TAG)                 # local dev tag (docker-desktop/minikube)
 PUSH_IMAGE?= $(REGISTRY)/$(NAME):$(TAG)     # registry ref for `make push`
 IMAGE_ARCH?= $(GOARCH)
-CODERUNNER_IMAGE ?= $(REGISTRY)/verse-coderunner:$(TAG)   # its own image; see its Dockerfile
+
+RUNNER_IMAGE     ?= $(REGISTRY)/verse-runner:$(TAG)         # the verse runner, its own image (deploy/verse-runner)
+CODEXRUNNER_IMAGE ?= $(REGISTRY)/verse-runner:codex-$(TAG)  # the verse runner with Codex in it (deploy/codexrunner)
 
 DIST := dist
 
@@ -70,30 +72,43 @@ dist-linux: ## cross-compile verse + o + iod + runnerd + verse-call-tool for lin
 docker: dist-linux ## build the image, COPYing the pre-built linux binaries (no go build in docker)
 	$(DOCKER) build --platform linux/$(IMAGE_ARCH) --build-arg TARGETARCH=$(IMAGE_ARCH) -t $(IMAGE) .
 
-# The coderunner is its OWN image and its own target. It is not folded into `docker` because the
+# The verse runner is its OWN image and its own target. It is not folded into `docker` because the
 # two images have nothing to do with each other's cadence: the runtime image is thin and pinned
 # to the engine, this one is sized by the toolchain the repositories it serves need to build.
-.PHONY: coderunner-linux
-coderunner-linux: ## cross-compile the coderunner example, and verse-call-tool beside it, for linux/$(IMAGE_ARCH)
+# verse-call-tool rides beside runnerd, where the runner finds it for a task's scripts.
+.PHONY: runner-linux
+runner-linux: ## cross-compile runnerd and verse-call-tool for linux/$(IMAGE_ARCH)
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(IMAGE_ARCH) $(GO) build \
-	  -o $(DIST)/linux/$(IMAGE_ARCH)/coderunner ./docs/reference/examples/coderunner
+	  -o $(DIST)/linux/$(IMAGE_ARCH)/runnerd ./cmd/runnerd
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(IMAGE_ARCH) $(GO) build \
 	  -o $(DIST)/linux/$(IMAGE_ARCH)/verse-call-tool ./cmd/verse-call-tool
 
-.PHONY: coderunner-docker
-coderunner-docker: coderunner-linux ## build the coderunner image (bubblewrap containment)
+.PHONY: runner-docker
+runner-docker: runner-linux ## build the verse runner image (bubblewrap containment)
 	$(DOCKER) build --platform linux/$(IMAGE_ARCH) --build-arg TARGETARCH=$(IMAGE_ARCH) \
-	  -t $(CODERUNNER_IMAGE) -f docs/reference/examples/coderunner/Dockerfile .
+	  -t $(RUNNER_IMAGE) -f deploy/verse-runner/Dockerfile .
 
-# No CODERUNNER_PUSH_IMAGE to pair with PUSH_IMAGE: CODERUNNER_IMAGE already carries the
-# registry, so there is nothing to retag. Override it whole — including into the same
-# repository as the runtime image under a distinguishing tag, which is one repository to
-# create and one pull credential to grant:
+# No RUNNER_PUSH_IMAGE to pair with PUSH_IMAGE: RUNNER_IMAGE already carries the registry, so
+# there is nothing to retag. Override it whole — including into the same repository as the
+# runtime image under a distinguishing tag, which is one repository to create and one pull
+# credential to grant:
 #
-#   make coderunner-push IMAGE_ARCH=amd64 CODERUNNER_IMAGE=example/verse-staging:coderunner
-.PHONY: coderunner-push
-coderunner-push: coderunner-docker ## build + push $(CODERUNNER_IMAGE)
-	$(DOCKER) push $(CODERUNNER_IMAGE)
+#   make runner-push IMAGE_ARCH=amd64 RUNNER_IMAGE=example/verse-staging:runner
+.PHONY: runner-push
+runner-push: runner-docker ## build + push $(RUNNER_IMAGE)
+	$(DOCKER) push $(RUNNER_IMAGE)
+
+# The codex runner: the verse runner image plus a pinned Codex, for the codex agent. A tag in
+# the runner's repository rather than a repository of its own, for the reason the comment above
+# gives.
+.PHONY: codexrunner-docker
+codexrunner-docker: runner-linux ## build the codex runner image (verse runner + Codex)
+	$(DOCKER) build --platform linux/$(IMAGE_ARCH) --build-arg TARGETARCH=$(IMAGE_ARCH) \
+	  -t $(CODEXRUNNER_IMAGE) -f deploy/codexrunner/Dockerfile .
+
+.PHONY: codexrunner-push
+codexrunner-push: codexrunner-docker ## build + push $(CODEXRUNNER_IMAGE)
+	$(DOCKER) push $(CODEXRUNNER_IMAGE)
 
 .PHONY: load
 load: docker ## build + load the image into minikube (Docker Desktop k8s needs no load)
@@ -104,7 +119,7 @@ push: docker ## build + push $(PUSH_IMAGE) to the registry
 	$(DOCKER) tag $(IMAGE) $(PUSH_IMAGE)
 	$(DOCKER) push $(PUSH_IMAGE)
 
-# STAGING, BY IMMUTABLE REF. `make ship` builds both images tagged with the COMMIT, pushes them,
+# STAGING, BY IMMUTABLE REF. `make ship` builds the images tagged with the COMMIT, pushes them,
 # and deploys that ref — so "which build is staging running" is answered by reading the tag
 # instead of comparing registry digests by hand, which is what a moving tag costs the first time
 # a rollout reports success and runs the binary from before it (deploy/profiles/staging.tony).
@@ -115,16 +130,17 @@ push: docker ## build + push $(PUSH_IMAGE) to the registry
 STAGING_SHA ?= $(shell git rev-parse --short HEAD)
 
 .PHONY: ship
-ship: ## build+push both images at the current commit and deploy staging at that ref
+ship: ## build+push the images at the current commit and deploy staging at that ref
 	@if [ -n "$$(git status --porcelain)" ]; then \
 	  echo "ship: the tree is dirty — the image tag would name a commit that is not what is built"; \
 	  git status --short; exit 1; \
 	fi
 	@echo "ship: staging → $(STAGING_SHA)"
 	$(MAKE) push IMAGE_ARCH=amd64 PUSH_IMAGE=$(REGISTRY)/verse-staging:$(STAGING_SHA)
-	$(MAKE) coderunner-push IMAGE_ARCH=amd64 CODERUNNER_IMAGE=$(REGISTRY)/verse-coderunner:$(STAGING_SHA)
+	$(MAKE) runner-push IMAGE_ARCH=amd64 RUNNER_IMAGE=$(REGISTRY)/verse-runner:$(STAGING_SHA)
+	$(MAKE) codexrunner-push IMAGE_ARCH=amd64 CODEXRUNNER_IMAGE=$(REGISTRY)/verse-runner:codex-$(STAGING_SHA)
 	$(MAKE) deploy PROFILE=staging IMAGE=$(REGISTRY)/verse-staging:$(STAGING_SHA) \
-	  E="-e coderunnerImage=$(REGISTRY)/verse-coderunner:$(STAGING_SHA)"
+	  E="-e runnerImage=$(REGISTRY)/verse-runner:$(STAGING_SHA) -e codexrunnerImage=$(REGISTRY)/verse-runner:codex-$(STAGING_SHA)"
 
 # ONE TIER AT A TIME, because `ship` above applies all of them in a single kubectl apply and
 # the tiers do not always tolerate rolling together. versed and docd speak logd's session
@@ -138,15 +154,17 @@ ship: ## build+push both images at the current commit and deploy staging at that
 # can read:
 #
 #   kubectl --context <ctx> -n verse scale deploy/versed --replicas=0
-#   make ship-docd && make ship-versed && make ship-ios && make ship-coderunner
+#   make ship-docd && make ship-versed && make ship-ios && make ship-runner && make ship-codexrunner
 #
 # The tier is the `tier` label every object in deploy/ carries, which is what `-l` selects on:
 # docd (the store), versed (the engine and its two Services), source (the connectors), runner
-# (the coderunner, its own image). An object with no `tier` — the Namespace, the ServiceAccount,
-# the ExternalSecrets — belongs to none of them and is shipped by a full `make deploy`; these
-# targets update a deployment that already exists rather than standing one up.
-SHIP_IMAGE      = $(REGISTRY)/verse-staging:$(STAGING_SHA)
-SHIP_CODERUNNER = $(REGISTRY)/verse-coderunner:$(STAGING_SHA)
+# (the verse runner, its own image) and codexrunner (the same with Codex in it). An object with
+# no `tier` — the Namespace, the ServiceAccount, the ExternalSecrets — belongs to none of them
+# and is shipped by a full `make deploy`; these targets update a deployment that already exists
+# rather than standing one up.
+SHIP_IMAGE       = $(REGISTRY)/verse-staging:$(STAGING_SHA)
+SHIP_RUNNER      = $(REGISTRY)/verse-runner:$(STAGING_SHA)
+SHIP_CODEXRUNNER = $(REGISTRY)/verse-runner:codex-$(STAGING_SHA)
 
 # ship-clean is `ship`'s dirty-tree refusal, factored out so each tier inherits it: the tag
 # names a commit somebody can check out, and that is no less true when shipping one tier.
@@ -157,30 +175,35 @@ ship-clean:
 	  git status --short; exit 1; \
 	fi
 
-# Both images are pushed by tag, and pushing one that is already there is cheap — the layers
+# Each image is pushed by tag, and pushing one that is already there is cheap — the layers
 # exist, so it is a manifest check. That is why every tier target pushes rather than trusting
 # a previous one to have: `make ship-versed` alone must be a whole ship.
-.PHONY: ship-push ship-push-coderunner
+.PHONY: ship-push ship-push-runner ship-push-codexrunner
 ship-push: ship-clean
 	@echo "ship: staging → $(STAGING_SHA)"
 	$(MAKE) push IMAGE_ARCH=amd64 PUSH_IMAGE=$(SHIP_IMAGE)
-ship-push-coderunner: ship-clean
-	@echo "ship: staging coderunner → $(STAGING_SHA)"
-	$(MAKE) coderunner-push IMAGE_ARCH=amd64 CODERUNNER_IMAGE=$(SHIP_CODERUNNER)
+ship-push-runner: ship-clean
+	@echo "ship: staging verse runner → $(STAGING_SHA)"
+	$(MAKE) runner-push IMAGE_ARCH=amd64 RUNNER_IMAGE=$(SHIP_RUNNER)
+ship-push-codexrunner: ship-clean
+	@echo "ship: staging codex runner → codex-$(STAGING_SHA)"
+	$(MAKE) codexrunner-push IMAGE_ARCH=amd64 CODEXRUNNER_IMAGE=$(SHIP_CODEXRUNNER)
 
 # The apply half, shared: staging's profile, the sha-tagged images, one tier, and block on it.
 SHIP_DEPLOY = $(MAKE) deploy PROFILE=staging WAIT=1 IMAGE=$(SHIP_IMAGE) \
-	  E="-e coderunnerImage=$(SHIP_CODERUNNER)"
+	  E="-e runnerImage=$(SHIP_RUNNER) -e codexrunnerImage=$(SHIP_CODEXRUNNER)"
 
-.PHONY: ship-docd ship-versed ship-ios ship-coderunner
+.PHONY: ship-docd ship-versed ship-ios ship-runner ship-codexrunner
 ship-docd: ship-push ## ship the store tier alone, and wait for it (roll this FIRST)
 	$(SHIP_DEPLOY) SELECT=tier=docd
 ship-versed: ship-push ## ship the engine alone, and wait for it (after docd)
 	$(SHIP_DEPLOY) SELECT=tier=versed
 ship-ios: ship-push ## ship the io connectors alone, and wait for them
 	$(SHIP_DEPLOY) SELECT=tier=io
-ship-coderunner: ship-push-coderunner ## ship the coderunner alone (its own image), and wait for it
+ship-runner: ship-push-runner ## ship the verse runner alone (its own image), and wait for it
 	$(SHIP_DEPLOY) SELECT=tier=runner
+ship-codexrunner: ship-push-codexrunner ## ship the codex runner alone (its own image), and wait for it
+	$(SHIP_DEPLOY) SELECT=tier=codexrunner
 
 # make deploy PROFILE=minikube                     # default SC (no mount)
 # make deploy PROFILE=minikube HOSTPV=true HOSTPATH=/mnt/verse   # host-linked (needs --mount)
@@ -317,7 +340,8 @@ check-mermaid: ## fail if a ```mermaid block does not parse (skips if node is ab
 
 # The docs BUILD, which is a different question from whether their links resolve on disk: mkdocs
 # serves docs/ and nothing above it, so a link out of the tree (`../../scripts/x.sh`) resolves
-# for a reader of the repo and 404s for a reader of the site. --strict makes that a failure.
+# for a reader of the repo and 404s for a reader of the site. scripts/mkdocs_repo_links.py
+# rewrites one to the file on GitHub when the file exists, and --strict makes any other a failure.
 #
 # A link into articles/ 404s the same way, because mkdocs.yml excludes
 # them, but mkdocs reports a link to an excluded page at INFO whatever --strict and the
@@ -351,7 +375,7 @@ seed-demo: ## seed a RUNNING verse with a demo charter + entities (./scripts/see
 # The two the tutorial drives, split so each section seeds only what it is about: a world of
 # entities with nothing reacting to them, and the rules that react, one shape at a time.
 .PHONY: seed-entities
-seed-entities: ## seed a RUNNING verse with a world of entities and no charter (tutorial §2)
+seed-entities: ## seed a RUNNING verse with a world of entities and no charter (the tutorial's data page)
 	@./scripts/seed-entities.sh
 
 .PHONY: shapes

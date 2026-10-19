@@ -10,6 +10,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
@@ -25,13 +26,13 @@ func (h *endsOnCancel) Subscribe() (<-chan task.Event, func()) { return h.ch, fu
 func (h *endsOnCancel) SubscribeSince(int64) (<-chan task.Event, func()) {
 	return h.ch, func() {}
 }
-func (h *endsOnCancel) Pause() error                         { return nil }
-func (h *endsOnCancel) Resume() error                        { return nil }
-func (h *endsOnCancel) Steer(string, string, string) error   { return nil }
-func (h *endsOnCancel) SetVector(*task.Vector, string) error { return nil }
-func (h *endsOnCancel) Result() string                       { return "" }
-func (h *endsOnCancel) Err() string                          { return "" }
-func (h *endsOnCancel) Cancel(string) error {
+func (h *endsOnCancel) Pause(string) error                  { return nil }
+func (h *endsOnCancel) Resume(string) error                 { return nil }
+func (h *endsOnCancel) Steer(string, string, string) error  { return nil }
+func (h *endsOnCancel) SetPolicy(task.Policy, string) error { return nil }
+func (h *endsOnCancel) Result() string                      { return "" }
+func (h *endsOnCancel) Err() string                         { return "" }
+func (h *endsOnCancel) Cancel(string, string) error {
 	h.once.Do(func() {
 		h.done.Store(true)
 		h.ch <- task.Event{Kind: task.EventStatus, Text: string(task.Cancelled)}
@@ -63,7 +64,7 @@ func TestCancelLiveCancelsWithoutHooks(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:       entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn:       &launch.Spec{Prompt: "review $subject"},
+			Spawn:       &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "review $subject"},
 			OnCancelled: &Action{Patch: entity.Obj{"stage": "hooked"}.Payload()},
 		},
 	}); err != nil {
@@ -89,7 +90,7 @@ func TestCancelLiveCancelsWithoutHooks(t *testing.T) {
 		t.Fatalf("the selection of demo.pr.1 reached %d tasks, want 1", len(one))
 	}
 	h, _ := eng.Handle(one[0].ID)
-	h.Cancel("by hand")
+	h.Cancel("by hand", "test")
 	waitField(t, store, prRef("1"), "stage", "hooked")
 
 	ids := eng.CancelLive("scope me was deleted")

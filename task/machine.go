@@ -1,6 +1,7 @@
 package task
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strings"
@@ -37,17 +38,16 @@ const (
 	// phHinge: at rest at a boundary-to-be. Nothing is outstanding; an arrival advances it.
 	// Reached when the driver has gone quiet and a child is still running — the one wait
 	// that is not a reply to something the machine asked for.
-	phHinge  phase = iota
-	phHeld         // the pause hold is outstanding
-	phAsk          // the driver's proposal is outstanding
-	phGate         // a gate question is outstanding (the one preemptible wait)
-	phExec         // an action is outstanding
-	phSpawn        // a child's start is outstanding
-	phCheck        // the answer contract's verdict is outstanding
-	phFinish       // the finisher's proposal is outstanding
-	phTurn         // the person's turn is outstanding (a question on the docket; preemptible like a gate)
-	phExit         // winding down: children are cancelled and being joined
-	phEnd          // terminal; nothing follows
+	phHinge    phase = iota
+	phHeld           // the pause hold is outstanding
+	phAsk            // the driver's proposal is outstanding
+	phGate           // a gate question is outstanding (the one preemptible wait)
+	phExec           // an action is outstanding
+	phDelegate       // a child's start is outstanding
+	phCheck          // the answer contract's verdict is outstanding
+	phTurn           // the person's turn is outstanding (a question on the docket; preemptible like a gate)
+	phExit           // winding down: children are cancelled and being joined
+	phEnd            // terminal; nothing follows
 )
 
 func (p phase) String() string {
@@ -62,12 +62,10 @@ func (p phase) String() string {
 		return "gate"
 	case phExec:
 		return "exec"
-	case phSpawn:
-		return "spawn"
+	case phDelegate:
+		return "delegate"
 	case phCheck:
 		return "check"
-	case phFinish:
-		return "finish"
 	case phTurn:
 		return "turn"
 	case phExit:
@@ -138,18 +136,18 @@ type state struct {
 	answer string     // the answer on offer — the driver's last message, as of its last reply
 
 	// What is in flight.
-	action  ToolUse // the action a pending gate is about, or the one executing
-	closing bool    // that action is the finisher's, not the driver's
+	action ToolUse // the action a pending gate is about, or the one executing
+	// step is the step `action` is, as its gate decided it: what its exec event names, so the
+	// call's outcome reads as the same call its decision did. Zero for an action that is no step.
+	step Step
 	// regate: a PAUSE withdrew the question about `action`, and the same one is posed again
 	// when the hold lifts. A pause is not an answer — see inPause — so the alternative was
 	// telling the driver its action had been refused, which ends any driver that cannot
 	// re-plan.
 	regate bool
 
-	// What this quiescence has already done. All reset when the input reopens, which is what
-	// makes delivery per-quiescence rather than once-ever.
+	// What this quiescence has already done. All reset when the input reopens.
 	answerOK bool
-	finished bool
 	turned   bool // the person has been handed the turn in this quiescence
 
 	// Winding down.
@@ -162,14 +160,12 @@ type state struct {
 	frames  []*frame
 	failing bool // fail-fast has already fired
 
-	// Configuration the machine consults. Copied in at the start; a vector is NOT here,
-	// because a policy change takes effect where policy is read (the supervisor) rather than
-	// where the machine records it.
-	scope          Grant
+	// Configuration the machine consults. Copied in at the start; the policy is NOT here,
+	// because a change to it takes effect where it is read (the supervisor) rather than where
+	// the machine records it.
 	failFast       bool
-	hasFinisher    bool
 	hasAnswerCheck bool
-	// converse: this spawn is a conversation. When the driver goes quiet the person is handed
+	// converse: this run is a conversation. When the driver goes quiet the person is handed
 	// the turn as a question, and the run ends when they end it rather than when the model
 	// stops. Cleared by End, and by a driver that says it has ended.
 	converse bool
@@ -189,10 +185,11 @@ func (s state) clone() state {
 //
 //   - an INTERVENTION (cancel, pause, resume, say) is an operator redirecting THIS RUN. It
 //     preempts, including a pending gate.
-//   - a POLICY change (set-vector) is prospective. It does NOT preempt: sliding a running task
-//     to AUTO says "stop asking me about actions like this", not "approve the one already in
-//     front of me", and dissolving the pending question would turn a policy change into
-//     approval of a specific action nobody looked at.
+//   - a POLICY change (Task.SetPolicy) is prospective. It does NOT preempt, and it is not an
+//     input at all: the supervisor reads the new policy at the next step, and a question
+//     already asked stands. Changing a running task to `allow` says "stop asking me about steps
+//     like this", not "approve the one already in front of me", and dissolving the pending
+//     question would turn a policy change into approval of a specific step nobody looked at.
 //   - WORK THE TASK PRODUCED FOR ITSELF (a child's result) folds at the hinge and never
 //     overtakes an action already proposed. Preemption is for people.
 //
@@ -209,7 +206,6 @@ type (
 	inSay    struct{ msgs []convMsg } // intervention: an operator said something
 	// inWithdraw: the driver no longer wants the action the question tok is about (Withdrawer).
 	inWithdraw struct{ tok int }
-	inVector   struct{} // policy: the vector was slid
 	inChild    struct {
 		id, reason, summary string
 		failed              bool
@@ -238,7 +234,7 @@ type (
 		err    error
 		tok    int
 	}
-	inSpawned struct { // reply: a child was started (or was not)
+	inDelegated struct { // reply: a child was started (or was not)
 		id  string
 		res StepResult
 		tok int
@@ -248,11 +244,6 @@ type (
 		err    error
 		tok    int
 	}
-	inFinish struct { // reply: the finisher's closing action
-		tu  ToolUse
-		ok  bool
-		tok int
-	}
 	inTurn struct { // reply: what the person did with their turn
 		res Resolution
 		err error
@@ -260,22 +251,20 @@ type (
 	}
 )
 
-func (inStart) input()    {}
-func (inCancel) input()   {}
-func (inPause) input()    {}
-func (inResume) input()   {}
-func (inSay) input()      {}
-func (inVector) input()   {}
-func (inChild) input()    {}
-func (inHeld) input()     {}
-func (inDriver) input()   {}
-func (inGate) input()     {}
-func (inExecuted) input() {}
-func (inSpawned) input()  {}
-func (inChecked) input()  {}
-func (inFinish) input()   {}
-func (inTurn) input()     {}
-func (inWithdraw) input() {}
+func (inStart) input()     {}
+func (inCancel) input()    {}
+func (inPause) input()     {}
+func (inResume) input()    {}
+func (inSay) input()       {}
+func (inChild) input()     {}
+func (inHeld) input()      {}
+func (inDriver) input()    {}
+func (inGate) input()      {}
+func (inExecuted) input()  {}
+func (inDelegated) input() {}
+func (inChecked) input()   {}
+func (inTurn) input()      {}
+func (inWithdraw) input()  {}
 
 // ── effects ─────────────────────────────────────────────────────────────────────
 //
@@ -285,9 +274,8 @@ func (inWithdraw) input() {}
 type effect interface{ effect() }
 
 type (
-	effEmit    struct{ f Event }
-	effJournal struct{ line string }
-	effLog     struct{ line string }
+	effEmit struct{ f Event }
+	effLog  struct{ line string }
 
 	effHold struct{ tok int } // → inHeld
 	effAsk  struct {
@@ -295,30 +283,23 @@ type (
 		tok  int
 	} // → inDriver
 	effGate struct {
-		tu      ToolUse
-		tok     int
-		closing bool // the finisher's act, which no driver proposed and none may withdraw
+		tu  ToolUse
+		tok int
 	} // → inGate
 	effDropGate struct{ why string } // withdraw the standing question; no reply
 	effExecute  struct {
-		tu      ToolUse
-		closing bool
-		tok     int
+		tu  ToolUse
+		tok int
 	} // → inExecuted
-	effSpawn struct {
-		tu   ToolUse
-		mode ChildMode
-		tok  int
-	} // → inSpawned
+	effDelegate struct {
+		tu  ToolUse
+		tok int
+	} // → inDelegated
 	effConverse struct{ msgs []convMsg } // deliver into the driver's conversation; no reply
 	effCheck    struct {
 		answer string
 		tok    int
 	} // → inChecked
-	effFinish struct {
-		answer string
-		tok    int
-	} // → inFinish
 	effTurn           struct{ tok int } // → inTurn: hand the person the turn, as a question
 	effCancelChildren struct{ ids []string }
 
@@ -334,17 +315,15 @@ type (
 )
 
 func (effEmit) effect()           {}
-func (effJournal) effect()        {}
 func (effLog) effect()            {}
 func (effHold) effect()           {}
 func (effAsk) effect()            {}
 func (effGate) effect()           {}
 func (effDropGate) effect()       {}
 func (effExecute) effect()        {}
-func (effSpawn) effect()          {}
+func (effDelegate) effect()       {}
 func (effConverse) effect()       {}
 func (effCheck) effect()          {}
-func (effFinish) effect()         {}
 func (effTurn) effect()           {}
 func (effCancelChildren) effect() {}
 func (effTeardown) effect()       {}
@@ -420,14 +399,13 @@ func (s *state) fold(in input) []effect {
 		// later", and the action it was asking about is the same action afterwards: nobody
 		// declined it, nobody withdrew it, the task was simply held.
 		//
-		// Read as a refusal it was fatal for any driver that cannot re-plan: a scripted or
-		// calls task died on a pause and a resume, with its charter's onFailed firing,
+		// Read as a refusal it was fatal for any driver that cannot re-plan: a script's task
+		// died on a pause and a resume, with its charter's onFailed firing,
 		// for a control the tutorial describes as "freeze its tasks at their next boundary".
 		//
 		// So the question is withdrawn (a held task must not leave one in front of somebody)
-		// and asked AGAIN when the hold lifts. `s.action` is untouched, `s.prev` is not made
-		// into a refusal, and `s.closing` stands — a closing act that was being asked about is
-		// still the closing act.
+		// and asked AGAIN when the hold lifts. `s.action` is untouched, and `s.prev` is not made
+		// into a refusal.
 		if s.ph == phGate {
 			s.regate = true
 			return append([]effect{effDropGate{
@@ -445,14 +423,6 @@ func (s *state) fold(in input) []effect {
 		// nothing, which an operator can do by clicking resume twice. The other three each
 		// change what the task does next; this one, here, does not. The hold itself is
 		// discharged by the shell's pause chain, which is where a subtree pause lives.
-		return nil
-
-	// ── policy: prospective, and it does not preempt ────────────────────────
-	case inVector:
-		// An arm that does nothing, on purpose. The new vector is already live on the
-		// supervisor and governs the NEXT evaluation; a question already posed stands and is
-		// answered on its own terms. Writing it as a case rather than as an absence is what
-		// makes the policy readable in one place instead of inferred from what is missing.
 		return nil
 
 	// ── work the task produced for itself ───────────────────────────────────
@@ -501,8 +471,8 @@ func (s *state) fold(in input) []effect {
 		}
 		return s.executed(v)
 
-	case inSpawned:
-		if !s.expecting(phSpawn, v.tok) {
+	case inDelegated:
+		if !s.expecting(phDelegate, v.tok) {
 			return nil
 		}
 		if v.id != "" {
@@ -517,12 +487,6 @@ func (s *state) fold(in input) []effect {
 		}
 		return s.checked(v)
 
-	case inFinish:
-		if !s.expecting(phFinish, v.tok) {
-			return nil
-		}
-		return s.finish(v)
-
 	case inTurn:
 		if !s.expecting(phTurn, v.tok) {
 			return nil
@@ -534,7 +498,7 @@ func (s *state) fold(in input) []effect {
 
 // turnTaken folds what the person did with their turn. Words reopen the input as a say — the
 // driver's next message is theirs — and End ends the conversation: the quiescence continues
-// into the contract, the finisher and `done`. An empty reply is neither, and the turn is
+// into the contract and `done`. An empty reply is neither, and the turn is
 // handed over again.
 func (s *state) turnTaken(v inTurn) []effect {
 	if v.err != nil { // the context ended under the question: it has left the docket
@@ -544,8 +508,8 @@ func (s *state) turnTaken(v inTurn) []effect {
 	}
 	q := v.res.Question
 	effs := []effect{
-		effJournal{fmt.Sprintf("[%s] turn → %s by %s", q.ID, v.res.Choice, v.res.By)},
-		effEmit{Event{Kind: EventDecision, ID: q.ID, Tool: "turn", Gate: q.Gate, Mode: q.Mode.String(),
+		effLog{fmt.Sprintf("[%s] turn → %s by %s", q.ID, v.res.Choice, v.res.By)},
+		effEmit{Event{Kind: EventDecision, ID: q.ID, Tool: "turn", Gate: q.Gate,
 			Choice: v.res.Choice, Proceed: v.res.Choice != End, By: v.res.By, Text: v.res.Choice}},
 	}
 	if v.res.Choice == End {
@@ -580,15 +544,9 @@ func (s *state) interrupt(why string) []effect {
 		return append([]effect{effDropGate{why: why}}, s.hinge()...)
 	case phGate:
 		// The action is not taken. The driver is told so as a refusal it can re-plan around,
-		// which is the same shape a denial already has — unless the action was the CLOSING one,
-		// which the agent was never told about and must not now be told was refused. The
-		// finisher is simply consulted again at the next quiescence, against whatever the
-		// intervention leads to.
-		if !s.closing {
-			s.prev = StepResult{Use: s.action, Blocked: true,
-				Note: "the question about this action was withdrawn: " + why}
-		}
-		s.closing = false
+		// which is the same shape a denial already has.
+		s.prev = StepResult{Use: s.action, Blocked: true,
+			Note: "the question about this action was withdrawn: " + why}
 		effs := []effect{effDropGate{why: why}}
 		return append(effs, s.hinge()...)
 	case phHinge:
@@ -598,10 +556,7 @@ func (s *state) interrupt(why string) []effect {
 }
 
 // reopen is what an arriving input does to a quiescence: the task has something new to answer,
-// so the answer it was about to stand on and the delivery it was about to make are both stale.
-//
-// This is the whole of "delivery is per quiescence, not once ever" — no latch, because being
-// asked once is a consequence of the state rather than a flag.
+// so the answer it was about to stand on is stale.
 func (s *state) reopen() {
 	if s.driverQuiet {
 		// The driver already consumed the last action's result and said it was finished;
@@ -610,7 +565,6 @@ func (s *state) reopen() {
 	}
 	s.driverQuiet = false
 	s.answerOK = false
-	s.finished = false
 	s.turned = false
 }
 
@@ -652,7 +606,7 @@ func (s *state) atBoundary() []effect {
 	if s.regate {
 		s.regate = false
 		if len(msgs) == 0 {
-			return append(effs, effGate{tu: s.action, tok: s.await(phGate), closing: s.closing})
+			return append(effs, effGate{tu: s.action, tok: s.await(phGate)})
 		}
 	}
 	if s.driverQuiet {
@@ -704,9 +658,9 @@ func (s *state) quiesce() []effect {
 		s.ph = phHinge
 		return nil
 	}
-	// The person's turn, in a conversation: once per quiescence, above the contract and the
-	// finisher so neither runs until the conversation is over. It is a question, so it is the
-	// wait a gate is — on the docket, withdrawn by an intervention or a cancel — and property 5
+	// The person's turn, in a conversation: once per quiescence, above the contract so it doesn't
+	// run until the conversation is over. It is a question, so it is the
+	// wait a gate is — on the docket, withdrawn by an intervention or a cancel — and property 4
 	// needs nothing new said for it.
 	if s.converse && !s.turned {
 		s.turned = true
@@ -715,44 +669,21 @@ func (s *state) quiesce() []effect {
 	if s.hasAnswerCheck && !s.answerOK {
 		return []effect{effCheck{answer: s.answer, tok: s.await(phCheck)}}
 	}
-	if s.hasFinisher && !s.finished {
-		return []effect{effFinish{answer: s.answer, tok: s.await(phFinish)}}
-	}
 	s.ph = phEnd
 	return []effect{effTeardown{status: Done, frames: s.takeFrames(), seq: s.seq}}
 }
 
-// propose runs the driver's action through the hard envelope. Authority comes BEFORE the
-// vector and it REFUSES rather than asking: the grant says what the caller authorized and the
-// vector says which of that must be confirmed, so an action outside the envelope is not a
-// decision anyone present may make. Asking would offer the resolver an authority the caller
-// never delegated to them.
+// propose takes the driver's action to its gate.
 func (s *state) propose(tu ToolUse) []effect {
-	if !s.scope.Permits(tu) {
-		effs := []effect{
-			effLog{"⛔ " + tu.Name + " refused: outside the task's grant"},
-			effEmit{Event{Kind: EventExec, Tool: tu.Name, Err: "outside grant"}},
-		}
-		effs = append(effs, record(tu, Resolution{Question: GateQuestion{
-			Gate: "grant", Reason: "outside the task's grant"}})...)
-		s.prev = StepResult{Use: tu, Blocked: true,
-			Note: "outside the grant this task was launched with: not permitted, and not something a gate can approve"}
-		return append(effs, s.hinge()...)
-	}
-	s.action = tu
-	s.closing = false
+	s.action, s.step = tu, Step{}
 	return []effect{effGate{tu: tu, tok: s.await(phGate)}}
 }
 
 // deniedNote says the action was DENIED, and by whom — not why it was ASKED.
 //
-// The note is what ends up in the run's `err` (calls.describe folds it as "refused: <note>"),
-// and it carried the QUESTION's reason, which is a different sentence entirely. A person denying
-// a `run_bash` with `--say "not now"` produced:
-//
-//	err: "call 1 of 1 (run_bash): refused: no gate matched"
-//
-// — "no gate matched" being why the vector asked in the first place. It reads as a configuration
+// The note is what the driver reads, and what can end up in the run's `err`. It used to carry the
+// QUESTION's reason, which is a different sentence entirely: a person denying a `run_bash` with
+// `--say "not now"` produced "refused: no gate matched" — why it was asked in the first place. It reads as a configuration
 // problem, sends whoever finds it looking for a missing gate, and loses both the fact that a
 // person decided and the words they decided with. All of it was already on the answer.
 func deniedNote(res Resolution) string {
@@ -776,15 +707,6 @@ func deniedNote(res Resolution) string {
 
 // resolved folds a gate's answer.
 func (s *state) resolved(v inGate) []effect {
-	// A delegation answered by a child mode is a yes with the mode on it. The answer path
-	// settles a question by option id and knows nothing about what the option means here, so
-	// `careful` arrives as a choice that is not `proceed`; it is read before anything records
-	// or acts on it.
-	if s.action.CallAgent != nil {
-		if mode, ok := ChildModeNamed(v.res.Choice); ok {
-			v.res.ChildMode, v.res.Proceed = mode, true
-		}
-	}
 	effs := record(s.action, v.res)
 	if v.err != nil { // e.g. the context ended while blocked at the gate
 		s.setCause(v.err)
@@ -792,54 +714,26 @@ func (s *state) resolved(v inGate) []effect {
 		return append(effs, s.exit(Cancelled)...)
 	}
 	for _, note := range v.res.Steer {
-		// A gate that informs: context folds in at the next turn — unless the action is the
-		// CLOSING one, which the agent was never told about. Answering a question about an
-		// action it did not propose, in its own conversation, is a non-sequitur to the agent
-		// and was observed reopening a run that had nothing left to do. It goes on the read
-		// plane instead, where the person who wrote it is talking to the people watching.
-		if s.closing {
-			effs = append(effs, effEmit{Event{Kind: EventSay, By: v.res.By, Text: note}})
-			continue
-		}
+		// A gate that informs: context folds in at the next turn.
 		s.conv = append(s.conv, convMsg{text: note, by: v.res.By, kind: convGate})
 	}
+	s.step = v.res.Question.Step
 	if !v.res.Proceed {
-		if s.closing {
-			// A refusal is not a failure. Being told not to deliver is a decision the task
-			// complied with; the read plane already carries the denial and the workspace is
-			// what preserves the work. The agent is never told, because the closing act was
-			// never the agent's.
-			s.closing = false
-			return append(effs, s.quiesce()...)
-		}
+		// The step, not the reason: a reason spells out the step's fields (the command), which
+		// are the task's, and the log is the runtime's. The read plane has the whole question.
 		effs = append(effs, effLog{fmt.Sprintf("⛔ %s held by gate %q (%s)",
-			s.action.Name, v.res.Question.Gate, v.res.Question.Reason)})
+			s.action.Name, v.res.Question.Gate, v.res.Question.Step.Name)})
 		s.prev = StepResult{Use: s.action, Blocked: true, Note: deniedNote(v.res)}
 		return append(effs, s.hinge()...)
 	}
-	if !s.closing && s.action.CallAgent != nil { // uniformly async: spawn detached, join later
-		return append(effs, effSpawn{tu: s.action, mode: v.res.ChildMode, tok: s.await(phSpawn)})
+	if s.action.CallAgent != nil { // uniformly async: start detached, join later
+		return append(effs, effDelegate{tu: s.action, tok: s.await(phDelegate)})
 	}
-	return append(effs, effExecute{tu: s.action, closing: s.closing, tok: s.await(phExec)})
+	return append(effs, effExecute{tu: s.action, tok: s.await(phExec)})
 }
 
 // executed folds an action's result.
 func (s *state) executed(v inExecuted) []effect {
-	if s.closing {
-		s.closing = false
-		if v.err != nil {
-			if s.cancelling {
-				return append(s.unknown(), s.exit(s.exitStatus)...)
-			}
-			// The closing action was the last thing this task does, and HOW it ends is the
-			// difference between a lost push and a reported one. A run whose work did not
-			// leave is not a run that succeeded.
-			s.setCause(v.err)
-			return s.exit(Failed)
-		}
-		return append([]effect{effEmit{Event{Kind: EventExec, Tool: v.out.Use.Name,
-			Text: evTrunc(v.out.Output)}}}, s.quiesce()...)
-	}
 	if v.err != nil {
 		if s.cancelling {
 			return append(s.unknown(), s.exit(s.exitStatus)...)
@@ -847,13 +741,14 @@ func (s *state) executed(v inExecuted) []effect {
 		s.prev = StepResult{Use: s.action, Err: v.err} // no defers registered on failure
 		return append([]effect{
 			effLog{fmt.Sprintf("✗ %s failed: %v", s.action.Name, v.err)},
-			effEmit{Event{Kind: EventExec, Tool: s.action.Name, Err: v.err.Error()}},
+			effEmit{Event{Kind: EventExec, Tool: s.action.Name, Step: s.step.Name, Fields: s.step.Fields,
+				Err: v.err.Error()}},
 		}, s.hinge()...)
 	}
 	s.registerDefers(v.defers) // only on success — defer iff setup succeeded
 	s.prev = v.out
-	return append([]effect{effEmit{Event{Kind: EventExec, Tool: s.action.Name,
-		Text: evTrunc(v.out.Output)}}}, s.hinge()...)
+	return append([]effect{effEmit{Event{Kind: EventExec, Tool: s.action.Name, Step: s.step.Name,
+		Fields: s.step.Fields, Text: evTrunc(v.out.Output)}}}, s.hinge()...)
 }
 
 // unknown is the record of an action that was in flight when the run was torn down.
@@ -872,7 +767,7 @@ func (s *state) executed(v inExecuted) []effect {
 func (s *state) unknown() []effect {
 	return []effect{
 		effLog{fmt.Sprintf("? %s: unknown — cancelled while it was in flight", s.action.Name)},
-		effEmit{Event{Kind: EventExec, Tool: s.action.Name,
+		effEmit{Event{Kind: EventExec, Tool: s.action.Name, Step: s.step.Name, Fields: s.step.Fields,
 			Err: "unknown: the run was cancelled while this action was in flight, so whether it " +
 				"took effect is not something this loop can say"}},
 	}
@@ -896,36 +791,6 @@ func (s *state) checked(v inChecked) []effect {
 	return s.quiesce()
 }
 
-// finish folds the finisher's proposal. It runs through the same authority → gate → execute
-// path as anything else, which is the whole argument for this seam over an OnComplete hook: a
-// hook is a fourth thing to supervise, and an action is already supervised.
-func (s *state) finish(v inFinish) []effect {
-	s.finished = true
-	if !v.ok {
-		// An environment with nowhere to deliver has nothing to propose, and proposing a
-		// no-op action would put a gate in front of nothing.
-		return s.quiesce()
-	}
-	if !s.scope.Permits(v.tu) {
-		// Outside the task's own envelope, which no gate can approve and no rephrasing makes
-		// permitted — and NOT a failure, for the reason a gate's no to the closing act is not
-		// one (see the resolution below): being told not to deliver is a decision the task
-		// complied with, and here the one who said no is the caller, at launch, by the grant.
-		// A task launched `read-only` to read and answer was failing at this door on a
-		// delivery of nothing, its answer lost with it; a task that did make work keeps it in
-		// its workspace, and the read plane says it did not leave. What must not happen is the
-		// quiet ending the failure was there to prevent, so the refusal is said where a push
-		// would have been narrated.
-		return append([]effect{
-			effLog{"⛔ " + v.tu.Name + " not delivered: outside the task's grant"},
-			effEmit{Event{Kind: EventExec, Tool: v.tu.Name, Err: "outside the task's grant: not delivered"}},
-		}, s.quiesce()...)
-	}
-	s.action = v.tu
-	s.closing = true
-	return []effect{effGate{tu: v.tu, tok: s.await(phGate), closing: true}}
-}
-
 // childEnded folds a child's completion. It is not an operator input and does not preempt: it
 // folds at the hinge, like any other work the task produced for itself.
 func (s *state) childEnded(v inChild) []effect {
@@ -936,15 +801,13 @@ func (s *state) childEnded(v inChild) []effect {
 		// because a cancel is latched: the parent can learn it is winding down a boundary
 		// before it acts on it, and a child that reports in that window has still been joined
 		// rather than heard.
-		effs := []effect{
-			effJournal{"[child] " + v.id + " joined on exit"},
-			effLog{"⑃ " + v.id + " joined on exit"},
-		}
+		effs := []effect{effLog{"⑃ " + v.id + " joined on exit"}}
 		return append(effs, s.exit(s.exitStatus)...)
 	}
 	effs := []effect{
-		effJournal{"[child] " + v.summary},
-		effLog{"⑃ " + v.summary},
+		// The id and how it ended, not the summary: that carries the sub-agent's result, which is
+		// the task's, and its read plane has it (the EventChild frame).
+		effLog{fmt.Sprintf("⑃ %s ended (%s)", v.id, v.reason)},
 		effEmit{Event{Kind: EventChild, Tool: v.id, Text: v.summary}},
 	}
 	s.conv = append(s.conv, convMsg{text: v.summary, kind: convChild})
@@ -1018,15 +881,18 @@ func (s *state) takeFrames() []*frame {
 	return fs
 }
 
-// record is the journal line and the read-plane frame for one gate evaluation.
+// record is the read-plane frame for one gate evaluation, and a log line for one somebody
+// answered. The line names the step and not the question's reason, which spells out the step's
+// fields: the task's, not the log's.
 func record(tu ToolUse, res Resolution) []effect {
-	return []effect{
-		effJournal{fmt.Sprintf("[%s] %s → %s by %s (%s)",
-			tu.ID, tu.Name, res.Question.Mode, res.By, res.Question.Reason)},
-		effEmit{Event{
-			Kind: EventDecision, ID: res.Question.ID, Tool: tu.Name, Action: tu.Describe(), Gate: res.Question.Gate,
-			Mode: res.Question.Mode.String(), Proceed: res.Proceed, By: res.By,
-			Text: res.Question.Reason,
-		}},
+	var effs []effect
+	if res.By != ByAuto {
+		effs = append(effs, effLog{fmt.Sprintf("[%s] %s → %s by %s (%s)",
+			tu.ID, tu.Name, res.Chosen(), res.By, cmp.Or(res.Question.Step.Name, res.Question.Gate))})
 	}
+	return append(effs, effEmit{Event{
+		Kind: EventDecision, ID: res.Question.ID, Tool: tu.Name, Action: tu.Describe(), Gate: res.Question.Gate,
+		Step: res.Question.Step.Name, Fields: res.Question.Step.Fields, Proceed: res.Proceed, By: res.By,
+		Text: res.Question.Reason,
+	}})
 }

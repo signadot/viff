@@ -13,44 +13,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/task"
 )
-
-// demoDeriver maps the model's tool vocabulary onto typed capabilities so the
-// gate vector can match on them. This is the pluggable classification seam — the
-// place a foreign agent's tools become the platform's typed capabilities.
-//
-// It classifies the runtime's own tools and hands everything else to task.BasicDeriver,
-// which is where the four the harness offers are classified. One classification, because a
-// scripted run proposes the same run_bash under task's supervisor, and the envelope and the
-// gates must read the call the same way whichever driver proposed it.
-type demoDeriver struct {
-	// extra is the runtime's own vocabulary (see Tool). Classification is delegated to
-	// whoever added the tool, because the effect a runtime's action has is exactly the part
-	// this package cannot know — a push resolves to a ref only the runner's environment names.
-	extra map[string]Tool
-}
-
-func (d demoDeriver) Derive(tu *task.ToolUse) {
-	if len(tu.Effects) > 0 {
-		return
-	}
-	if t, ok := d.extra[tu.Name]; ok {
-		if t.Derive != nil {
-			t.Derive(tu)
-		}
-		return
-	}
-	task.BasicDeriver{}.Derive(tu)
-}
 
 // fsProblem turns a filesystem error into something an agent can act on, in the vocabulary it
 // actually has.
 //
 // Two things were wrong with handing back the os error, and a drive found both in one line:
 //
-//	ERROR: read /Users/scott/.verse-coderunner/workspaces/docsdrift-e1f3.../verse/trigger: is a directory
+//	ERROR: read /Users/scott/.verse-runner/workspaces/docsdrift-e1f3.../verse/trigger: is a directory
 //
 // It does not say what to do. "is a directory" is a fact about the path and not an instruction,
 // so the model spends a turn working out that the tool it wanted was list_dir — and the whole
@@ -133,22 +104,20 @@ func (r ExecRecord) modelContent() string {
 // fsExec performs the tools for real, confined to root, keeping a full record of
 // every execution.
 type fsExec struct {
-	root    string
-	log     io.Writer
-	extra   map[string]Tool // the runtime's own tools (see Tool)
-	env     []string        // the variables run_bash passes through (see Config.Env)
-	set     []string        // the variables run_bash is given outright (see Config.Set)
-	seq     int
-	records []ExecRecord
+	root  string
+	log   io.Writer
+	extra map[string]Tool // the runtime's own tools (see Tool)
+	env   []string        // the variables run_bash passes through (see Config.Env)
+	set   []string        // the variables run_bash is given outright (see Config.Set)
+	seq   int
 }
-
-// Records returns the full execution ledger (part of the read surface).
-func (e *fsExec) Records() []ExecRecord { return e.records }
 
 func (e *fsExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResult, []task.ToolUse, error) {
 	e.seq++
 	rec := ExecRecord{Seq: e.seq, Tool: tu.Name, Args: tu.Input}
-	fmt.Fprintf(e.log, "   ▶ %s %s\n", tu.Name, compactArgs(tu.Input))
+	// The tool, not its arguments: the log is the runner's, and what a model passes a tool is the
+	// task's (the read plane carries it).
+	fmt.Fprintf(e.log, "   ▶ %s\n", tu.Name)
 
 	switch tu.Name {
 	case "read_file":
@@ -200,28 +169,22 @@ func (e *fsExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResult,
 		// plane or in the record should be able to tell which side of this seam a tool came
 		// from — and the three outcomes go three ways on purpose:
 		//
-		//   err      the action FAILED. Propagated rather than folded into the record, because
-		//            that is what makes a closing act fail its task: a run whose work did not
-		//            leave is not a run that succeeded.
+		//   err      the action FAILED, and the driver is told so.
 		//   blocked  the far side REFUSED. The loop's own word for it, so the driver re-plans
-		//            rather than retrying something it has been told no about, and a closing
-		//            act ends `done` carrying the refusal.
+		//            rather than retrying something it has been told no about.
 		//   neither  it happened.
 		out, blocked, err := t.Do(ctx, tu)
 		if err != nil {
 			rec.Err = err.Error()
 			e.echo(rec)
-			e.records = append(e.records, rec)
 			return task.StepResult{Use: tu}, nil, err
 		}
 		rec.Stdout = out
 		e.echo(rec)
-		e.records = append(e.records, rec)
 		return task.StepResult{Use: tu, Output: rec.modelContent(), Blocked: blocked, Note: out}, nil, nil
 	}
 
 	e.echo(rec)
-	e.records = append(e.records, rec)
 	// Exit and Err ride the result as well as the text, for the same reason: this executor used
 	// to say what went wrong only in prose, because its driver reads prose. A driver that is not
 	// a model cannot read "exec: bash: not found" out of a paragraph, and a call list whose
@@ -310,14 +273,14 @@ func (e *fsExec) echo(rec ExecRecord) {
 	echoStream(e.log, "stderr", rec.Stderr)
 }
 
+// echoStream says how much a command wrote, and not what: the log is the runner's, and a
+// command's output is the task's, which can hold what the task was given to keep (its
+// credential). The output reaches the model, and the task's read plane.
 func echoStream(w io.Writer, name, s string) {
-	s = strings.TrimRight(s, "\n")
 	if s == "" {
 		return
 	}
-	for _, line := range strings.Split(truncate(s, 2000), "\n") {
-		fmt.Fprintf(w, "   ┆ %-6s %s\n", name, line)
-	}
+	fmt.Fprintf(w, "   ┆ %-6s %d bytes\n", name, len(s))
 }
 
 // safePath confines a model-supplied path to root. It rejects traversal (`../..`) and, since
@@ -388,9 +351,4 @@ func resolveExisting(p string) (string, error) {
 		tail = filepath.Join(filepath.Base(cur), tail)
 		cur = parent
 	}
-}
-
-func compactArgs(m map[string]any) string {
-	b, _ := codec.MarshalWire(m, codec.Tony)
-	return truncate(string(b), 200)
 }

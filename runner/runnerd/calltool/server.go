@@ -12,19 +12,20 @@ import (
 	"syscall"
 
 	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/runner/runnerd/verserunner/agent"
 )
 
 // Server is the task process's end: the tools on offer, and what performing a call means here.
 type Server struct {
-	Tools []agent.Tool
-	// Call performs one call of a tool this server offers, with the input as the caller sent
-	// it, checked against the tool's schema (Check). out is what the caller reads; refused says
-	// the call was declined rather than failed. The host decides what performing means — in a
-	// task process, putting the call in front of the loop as an action — and the server
-	// performs nothing itself. ctx ends when the caller goes away, which for a call that waits
-	// (`ask`) withdraws what it was waiting on.
-	Call func(ctx context.Context, t agent.Tool, input map[string]any) (out string, refused bool, err error)
+	// Tools are the tools on offer, with params as the host has them: the server describes
+	// them (Describe), so the schema it checks and the one the binary reads are the same.
+	Tools []Tool
+	// Call performs one call of the tool named, one this server offers, with the input as the
+	// caller sent it, checked against the tool's schema (Check). out is what the caller reads;
+	// refused says the call was declined rather than failed. The host decides what performing
+	// means — in a task process, putting the call in front of the loop as an action — and the
+	// server performs nothing itself. ctx ends when the caller goes away, which for a call that
+	// waits (`question-ask`) withdraws what it was waiting on.
+	Call func(ctx context.Context, tool string, input map[string]any) (out string, refused bool, err error)
 
 	mu   sync.Mutex
 	path string
@@ -32,18 +33,12 @@ type Server struct {
 	srv  *http.Server
 
 	// list is Tools as the list reports them, built once: the normalised schema each call is
-	// checked against; byName is each with the tool it describes. once guards them for a
-	// Handler used without Start.
+	// checked against; byName is the same, by name. once guards them for a Handler used
+	// without Start.
 	once   sync.Once
 	list   []Tool
-	byName map[string]offered
+	byName map[string]Tool
 	err    error
-}
-
-// offered is one tool both ways: as described, and as performed.
-type offered struct {
-	desc Tool
-	tool agent.Tool
 }
 
 // prepare builds the list. A tool whose schema the codec cannot carry, or two tools of one
@@ -52,7 +47,7 @@ type offered struct {
 func (s *Server) prepare() error {
 	s.once.Do(func() {
 		s.list = make([]Tool, 0, len(s.Tools))
-		s.byName = make(map[string]offered, len(s.Tools))
+		s.byName = make(map[string]Tool, len(s.Tools))
 		for _, t := range s.Tools {
 			d, err := Describe(t)
 			if err != nil {
@@ -64,7 +59,7 @@ func (s *Server) prepare() error {
 				return
 			}
 			s.list = append(s.list, d)
-			s.byName[t.Name] = offered{desc: d, tool: t}
+			s.byName[t.Name] = d
 		}
 	})
 	return s.err
@@ -181,7 +176,7 @@ func (s *Server) call(w http.ResponseWriter, r *http.Request) {
 		codec.HTTPError(w, r, http.StatusInternalServerError, err.Error())
 		return
 	}
-	o, ok := s.byName[c.Tool]
+	desc, ok := s.byName[c.Tool]
 	if !ok {
 		codec.HTTPError(w, r, http.StatusNotFound,
 			fmt.Sprintf("no tool %q here; the tools are: %s", c.Tool, strings.Join(Names(s.list), ", ")))
@@ -192,7 +187,7 @@ func (s *Server) call(w http.ResponseWriter, r *http.Request) {
 	}
 	// The schema is checked here as well as in the binary, so a caller that is not the binary
 	// — curl, a script that speaks the route itself — is told the same thing.
-	if err := Check(o.desc, c.Input); err != nil {
+	if err := Check(desc, c.Input); err != nil {
 		codec.HTTPError(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -200,7 +195,7 @@ func (s *Server) call(w http.ResponseWriter, r *http.Request) {
 		codec.HTTPError(w, r, http.StatusNotImplemented, "this server performs no calls")
 		return
 	}
-	out, refused, err := s.Call(r.Context(), o.tool, c.Input)
+	out, refused, err := s.Call(r.Context(), c.Tool, c.Input)
 	if err != nil {
 		msg := err.Error()
 		if !strings.HasPrefix(msg, c.Tool+": ") {

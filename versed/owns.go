@@ -115,14 +115,14 @@ func (s *Server) scopeOf(ref entity.Ref, asked string) (holder string, found boo
 }
 
 // taskScope is scopeOf for a task by id, asking the runtime and the engines as well: a task
-// hosted here knows the scope it was launched in (task.Launch.Scope) whether or not its scope has
+// hosted here knows the scope it was launched in (hostedTask.scope) whether or not its scope has
 // an engine open or its record has landed yet, and a task hosted elsewhere and adopted is live in
 // the engine of the scope that holds it.
 func (s *Server) taskScope(id, asked string) (holder string, found bool, err error) {
 	if holder, found, err = s.scopeOf(mirror.Ref(id), asked); found || err != nil {
 		return holder, found, err
 	}
-	if sc, ok := s.Embedded.ScopeOf(id); ok {
+	if sc, ok := s.hostedScope(id); ok {
 		return sc, true, nil
 	}
 	for _, eng := range s.flowEngines("") {
@@ -151,7 +151,7 @@ func (s *Server) questionScope(id, asked string) (holder string, found bool, err
 		}
 	}
 	if i := strings.Index(id, task.GateSep); i >= 0 {
-		if sc, ok := s.Embedded.ScopeOf(id[:i]); ok {
+		if sc, ok := s.hostedScope(id[:i]); ok {
 			return sc, true, nil
 		}
 	}

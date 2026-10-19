@@ -1,76 +1,78 @@
 package versed
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/launch"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
-// The complaint, at the seam it was lost on. `vector:` and `grant:` were expanded by Bind
-// and read by nothing: the Spawner took Prompt and Driver off the spec and dropped the rest.
-// A charter could state an envelope, watch `trigger show` render it back, and get an agent
-// that ignored it.
-func TestLaunchOfResolvesTheNamedAxes(t *testing.T) {
+// The spec's envelope reaches the launch: the doer and what it works with, the autonomy, the
+// gates as the runner reads them (their step half), the answer contract, and the provenance.
+func TestLaunchOfCarriesTheSpec(t *testing.T) {
 	l, err := launchOf("rev-1", launch.Spec{
-		Prompt: "review it", Driver: "llm", Vector: "auto", Grant: "read-only",
-	}, "")
+		Prompt:  "review it",
+		Doer:    runner.Doer{Agent: "verse", With: runner.With{Git: []runner.Repo{{Repo: "acme/app"}}}},
+		Timeout: "1h",
+		Policy:  task.Policy{{Name: "release", Match: &task.Match{System: "git", Verb: "push"}, Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{Need: 2, Within: "4h", Default: task.Deny, Labels: map[string]string{"slack": "C1"}}}}, {Then: task.Then{Mode: task.ThenAllow}}},
+		Subject: `demo.pr."1"`, Chain: "review",
+	}, "verse.charters.review")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if l.Vector == nil || l.Vector.Default != task.Auto {
-		t.Errorf("vector = %v, want the named auto vector", l.Vector)
+	if l.ID != "rev-1" || l.Prompt != "review it" || l.Doer.Agent != "verse" || l.Policy.Default() != task.ThenAllow || l.Timeout != "1h" {
+		t.Errorf("launch = %+v", l)
 	}
-	if l.Grant == nil {
-		t.Fatal("grant = nil; `grant: read-only` must reach the spawn")
+	if len(l.Doer.With.Git) != 1 || l.Doer.With.Git[0].Repo != "acme/app" {
+		t.Errorf("repos = %+v, want the spawn's", l.Doer.With.Git)
 	}
-	read := task.ToolUse{Name: "read", Input: map[string]any{"path": "x"}}
-	exec := task.ToolUse{Name: "run_bash", Input: map[string]any{"command": "x"}}
-	task.BasicDeriver{}.Derive(&read)
-	task.BasicDeriver{}.Derive(&exec)
-	if !l.Grant.Permits(read) || l.Grant.Permits(exec) {
-		t.Error("the resolved grant does not behave as read-only")
+	if len(l.Policy) != 2 || l.Policy[0].Name != "release" || l.Policy[0].Then.Ask.Need != 2 || l.Policy[0].Then.Ask.Within != "4h" ||
+		l.Policy[0].Then.Ask.Default != task.Deny || l.Policy[0].Match.System != "git" || l.Policy[0].Match.Verb != "push" {
+		t.Errorf("policy = %+v, want the spawn's whole", l.Policy)
+	}
+	if l.Provenance.Principal != "verse.charters.review" || l.Provenance.Subject != `demo.pr."1"` || l.Provenance.Chain != "review" {
+		t.Errorf("provenance = %+v", l.Provenance)
 	}
 }
 
-// A spec that names neither axis must produce neither, so a task that declared nothing
-// keeps exactly the behaviour it had: the runtime's own vector, and an unbounded scope.
-// Resolving "unstated" to a value — any value — would change every existing charter.
+// A spec that names no policy produces none, so the runner's default stands: resolving
+// "unstated" to a value would change every existing charter.
 func TestLaunchOfLeavesUnstatedAxesUnset(t *testing.T) {
 	l, err := launchOf("p1", launch.Spec{Prompt: "go"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if l.Vector != nil || l.Grant != nil {
-		t.Fatalf("unstated axes resolved to vector=%v grant=%v, want both unset", l.Vector, l.Grant)
+	if len(l.Policy) != 0 || l.Doer.Annotations != nil {
+		t.Fatalf("unstated axes resolved to %+v, want them unset", l)
 	}
 }
 
-// A misspelt envelope must fail the spawn. Dropping the field is how this bug started;
-// defaulting it to the wildcard would be the same bug with an error message attached, and
-// strictly worse than the original because it reads as though it was honored.
-func TestLaunchOfRefusesAnUnknownGrantRatherThanWidening(t *testing.T) {
-	if _, err := launchOf("p1", launch.Spec{Prompt: "go", Grant: "reed-only"}, ""); err == nil {
-		t.Fatal("an unknown grant name must fail the spawn, not resolve to unbounded")
-	}
-	if _, err := launchOf("p1", launch.Spec{Prompt: "go", Vector: "sometimes"}, ""); err == nil {
-		t.Fatal("an unknown vector name must fail the spawn")
-	}
-}
-
-// The frame and tool set ride along untouched — they are the request, not a reference, so
-// there is nothing to resolve and nothing that may be dropped.
-func TestLaunchOfCarriesFrameAndTools(t *testing.T) {
-	l, err := launchOf("p1", launch.Spec{
-		Prompt: "go", Frame: "answer with a severity", Tools: task.ToolsPtr([]string{"read_file"}),
-	}, "")
+// The model credential verse resolved rides as the doer's annotation, the key's name, beside
+// whatever annotations the charter wrote, which are left as they were.
+func TestLaunchOfPutsTheCredentialOnTheDoer(t *testing.T) {
+	spec := launch.Spec{Prompt: "go", VirtualKey: "review-key", Doer: runner.Doer{Annotations: map[string]string{"x": "y"}}}
+	l, err := launchOf("p1", spec, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if l.Frame != "answer with a severity" {
-		t.Errorf("frame = %q", l.Frame)
+	if l.Doer.Annotations[AnnotationVirtualKey] != "review-key" || l.Doer.Annotations["x"] != "y" {
+		t.Errorf("annotations = %v", l.Doer.Annotations)
 	}
-	if len(l.Tools) != 1 || l.Tools[0] != "read_file" {
-		t.Errorf("tools = %v", l.Tools)
+	if _, in := spec.Doer.Annotations[AnnotationVirtualKey]; in {
+		t.Error("launchOf wrote into the charter's annotations")
+	}
+}
+
+// A contract that cannot be meant fails the firing, before a run is paid for.
+func TestLaunchOfRefusesAContractItCannotParse(t *testing.T) {
+	var spec launch.Spec
+	if err := codec.Unmarshal([]byte("prompt: go\nanswer:\n  define: {x: 1}\n  accept: {x: 1}\n"), &spec, codec.Tony); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := launchOf("x", spec, ""); err == nil || !strings.Contains(err.Error(), "answer contract") {
+		t.Fatalf("err = %v, want the contract refused", err)
 	}
 }

@@ -26,7 +26,7 @@ func BenchmarkBoundary(b *testing.B) {
 	const perRun = 1000
 	b.ReportMetric(0, "ns/op") // the interesting figure is per boundary, below
 	for i := 0; i < b.N; i++ {
-		p := NewTask("t", NewSupervisor(&Vector{Default: Auto}, AutoResolver{}),
+		p := NewTask("t", toolSup(allowAll(), AutoResolver{}),
 			&countingDriver{n: perRun}, nopExec{})
 		if _, err := p.Run(context.Background()); err != nil {
 			b.Fatal(err)

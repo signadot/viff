@@ -38,9 +38,11 @@ type ToolCall struct {
 
 // Request is what the driver asked: the conversation so far and the tools on offer.
 type Request struct {
-	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
-	Tools    []struct {
+	// VirtualKey is the Portkey virtual key the request was sent under (its header).
+	VirtualKey string    `json:"-"`
+	Model      string    `json:"model"`
+	Messages   []Message `json:"messages"`
+	Tools      []struct {
 		Function struct {
 			Name string `json:"name"`
 		} `json:"function"`
@@ -143,6 +145,7 @@ func (m *Model) serve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	req.VirtualKey = r.Header.Get("x-portkey-virtual-key")
 	m.mu.Lock()
 	m.seen = append(m.seen, req)
 	m.calls++

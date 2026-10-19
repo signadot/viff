@@ -46,7 +46,7 @@ The flow of work is therefore not written down anywhere. Verse *derives* it when
 | the mirror | what has already happened |
 | the live registry | what is running now |
 
-You write the rules, and you choose how much autonomy each rule has.
+You write the rules, and each rule's policy says what its task may do, and what it asks about.
 
 ## Quick start
 
@@ -77,12 +77,14 @@ to type next.
 You can do the same by hand: `verse charter -a …`, `verse data … --put …`, `verse question`,
 `verse question approve …`.
 
-Two more scripts seed the sections of the [tutorial](docs/tutorial.md):
+Two more scripts seed worlds to read and to react to:
 
-- `scripts/seed-entities.sh` writes entities to select over.
-- `scripts/charter-shapes.sh` installs the shapes a rule can have, one command each.
+- `scripts/seed-entities.sh` writes entities to select over, for the data page of the
+  [tutorial](docs/tutorial/README.md).
+- `scripts/charter-shapes.sh` installs the shapes a rule can have, one command each, for
+  [the tutorial's charters pages](docs/tutorial/charters.md).
 
-The tutorial has five sections, about entities, tasks, and the charters that relate them.
+The tutorial has four pages, one for each part of verse: data, questions, tasks and charters.
 
 ## What's here
 
@@ -134,9 +136,9 @@ describes what runs today, and so does the site mkdocs builds from it. Start wit
 
 - [Overview](docs/overview.md) — the architecture, the model, the seams, and the decisions
   the design depends on. Read this first.
-- [Tutorial](docs/tutorial.md) — five sections that you run yourself: entities, tasks, and
-  the charters that relate them. A script seeds each section.
-- [Trigger model](docs/trigger-model.md) — the model of a rule, and the two grammars a
+- [Tutorial](docs/tutorial/README.md) — four pages that you run yourself: data, questions,
+  tasks, and the charters that put them together.
+- [Charter reference](docs/trigger-model.md) — the model of a rule, and the two grammars a
   charter is written in. It links to the pages that say what each field means.
 - [Seams](docs/seams.md) — the nine places that can be a network, and which side opens
   each: what may run remotely, what may sit behind a firewall, and what each costs.

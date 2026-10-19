@@ -20,18 +20,18 @@ import (
 // first version of this said "every ordering" over a set that quietly excluded most of the ways
 // a run goes wrong:
 //
-//   - arrivals: two children reporting, an operator intervening, a policy change — and in the
+//   - arrivals: two children reporting, an operator intervening — and in the
 //     second enumeration a cancel and a pause instead of the say.
 //   - replies: a driver proposing two delegations, an action that fails and one that works, a
 //     gate that refuses the second question it is asked, a contract that rejects one answer
-//     before accepting it, and a finisher that proposes a closing action.
+//     before accepting it.
 //   - faults: any ONE seam failing, at any point, on any path (see world.fault).
 //
 // WHAT IT DOES NOT: that an input ARRIVES. No enumeration of a bounded set can — liveness is a
 // claim about the world, and it is argued in contract.go and pinned in bounds_test.go. Nor
 // anything in the SHELL: goroutines, contexts, the pause chain, the read plane. Nor two
 // simultaneous faults. Nor — and this is the one worth saying out loud — whether the contract
-// in contract.go is the RIGHT contract. It checks the code against those five properties; a
+// in contract.go is the RIGHT contract. It checks the code against those four properties; a
 // property nobody wrote is not a property this can miss. A staging drive found that a single
 // `fail` token discards a run whose children have all reported, and no amount of interleaving
 // would have surfaced it: the machine is correct on that path, and the question is whether the
@@ -52,12 +52,12 @@ var (
 )
 
 // world answers the machine's blocking effects deterministically. It is the enumeration's
-// stand-in for every seam at once — the driver, the resolver, the executor, the spawn factory,
-// the contract, the finisher — and it is a VALUE, so a DFS can fork it.
+// stand-in for every seam at once — the driver, the resolver, the executor, the delegate factory,
+// the contract — and it is a VALUE, so a DFS can fork it.
 type world struct {
 	acts    int // how much of the script has been proposed
 	gates   int // questions posed
-	spawned int
+	started int
 	repairs int // contract rejections still to hand out
 	execs   int
 	faulted bool // a seam has already failed on this path (see fault)
@@ -71,8 +71,8 @@ type world struct {
 // script is what the driver proposes, in order: two delegations, an action that fails, and one
 // that works. Then it goes quiet forever, which is the only way a driver ends a turn.
 var script = []ToolUse{
-	{Name: "delegate-1", CallAgent: &CallAgentRequest{Agent: "a", Grant: Grant{Allow: []GateMatch{{}}}}},
-	{Name: "delegate-2", CallAgent: &CallAgentRequest{Agent: "b", Grant: Grant{Allow: []GateMatch{{}}}}},
+	{Name: "delegate-1", CallAgent: &CallAgentRequest{Agent: "a"}},
+	{Name: "delegate-2", CallAgent: &CallAgentRequest{Agent: "b"}},
 	{Name: "boom"},
 	{Name: "ok"},
 }
@@ -97,7 +97,7 @@ func (w world) reply(e effect) (input, world) {
 		res := Resolution{
 			Proceed: w.gates != 2,
 			By:      "human:test",
-			Question: GateQuestion{ID: fmt.Sprintf("q%d", w.gates), Mode: Ask,
+			Question: GateQuestion{ID: fmt.Sprintf("q%d", w.gates),
 				Gate: "g", Reason: "because"},
 		}
 		return inGate{res: res, tok: v.tok}, w
@@ -107,20 +107,18 @@ func (w world) reply(e effect) (input, world) {
 			return inExecuted{out: StepResult{Use: v.tu}, err: errBoom, tok: v.tok}, w
 		}
 		return inExecuted{out: StepResult{Use: v.tu, Output: "ok"}, tok: v.tok}, w
-	case effSpawn:
-		w.spawned++
-		return inSpawned{id: kidID(w.spawned), res: StepResult{Use: v.tu, Output: "started"}, tok: v.tok}, w
+	case effDelegate:
+		w.started++
+		return inDelegated{id: kidID(w.started), res: StepResult{Use: v.tu, Output: "started"}, tok: v.tok}, w
 	case effCheck:
 		if w.repairs > 0 {
 			w.repairs--
 			return inChecked{repair: "that is not a document; write one", tok: v.tok}, w
 		}
 		return inChecked{tok: v.tok}, w
-	case effFinish:
-		return inFinish{tu: ToolUse{Name: "deliver", ID: "deliver"}, ok: true, tok: v.tok}, w
 	case effTurn:
 		w.turns++
-		q := GateQuestion{ID: fmt.Sprintf("t%d", w.turns), Gate: "turn", Mode: Ask}
+		q := GateQuestion{ID: fmt.Sprintf("t%d", w.turns), Gate: "turn"}
 		if w.turns == 1 {
 			return inTurn{res: Resolution{Choice: Reply, By: "human:test", Steer: []string{"go on"}, Question: q}, tok: v.tok}, w
 		}
@@ -165,18 +163,15 @@ func (w world) fault(e effect) (input, world, bool) {
 		return inGate{err: errCancelled, tok: v.tok}, w, true
 	case effExecute:
 		return inExecuted{out: StepResult{Use: v.tu}, err: errBoom, tok: v.tok}, w, true
-	case effSpawn:
-		// The factory refused: no spawn configured, or a child scope exceeding the parent's.
+	case effDelegate:
+		// The factory refused: no delegate factory configured.
 		// No child starts, so nothing is owed a completion.
-		return inSpawned{res: StepResult{Use: v.tu, Blocked: true, Note: "scope exceeds parent"},
+		return inDelegated{res: StepResult{Use: v.tu, Blocked: true, Note: "scope exceeds parent"},
 			tok: v.tok}, w, true
 	case effCheck:
 		// The contract itself is unusable, or the repair budget is spent. Either way the run
 		// fails rather than asking again.
 		return inChecked{err: errContract, tok: v.tok}, w, true
-	case effFinish:
-		// Not a failure so much as the other branch: nowhere to deliver, so nothing proposed.
-		return inFinish{ok: false, tok: v.tok}, w, true
 	case effTurn:
 		// The context ended under the turn: the question left the docket unanswered.
 		return inTurn{err: errCancelled, tok: v.tok}, w, true
@@ -196,11 +191,9 @@ func tokOf(e effect) int {
 		return v.tok
 	case effExecute:
 		return v.tok
-	case effSpawn:
+	case effDelegate:
 		return v.tok
 	case effCheck:
-		return v.tok
-	case effFinish:
 		return v.tok
 	case effTurn:
 		return v.tok
@@ -216,7 +209,7 @@ func blocking(t *testing.T, effs []effect) effect {
 	var found effect
 	for _, e := range effs {
 		switch e.(type) {
-		case effHold, effAsk, effGate, effExecute, effSpawn, effCheck, effFinish, effTurn:
+		case effHold, effAsk, effGate, effExecute, effDelegate, effCheck, effTurn:
 			if found != nil {
 				t.Fatalf("two blocking effects in one transition: %T and %T", found, e)
 			}
@@ -241,13 +234,12 @@ func childReady(id string) func(state) bool {
 	return func(s state) bool { return contains(s.children, id) }
 }
 
-// The main enumeration: two children, an operator's say, and a policy change, interleaved with
+// The main enumeration: two children and an operator's say, interleaved with
 // every reply, over a script that delegates twice, is refused once, fails an action, and has
-// both an answer contract and a closing act.
+// an answer contract.
 func TestEveryOrderingHoldsTheContract(t *testing.T) {
 	arrivals := []arrival{
 		{"say", inSay{msgs: []convMsg{{text: "actually, do it this way", by: "human:test"}}}, anytime},
-		{"vector", inVector{}, anytime},
 		{"kid1", inChild{id: kidID(1), reason: string(Done), summary: "child kid1 completed (done)"}, childReady(kidID(1))},
 		{"kid2", inChild{id: kidID(2), reason: string(Failed), failed: true, summary: "child kid2 ended with error: boom"}, childReady(kidID(2))},
 	}
@@ -290,8 +282,6 @@ func enumerate(t *testing.T, arrivals []arrival, w world, mustEnd bool) {
 	t.Helper()
 	start := state{
 		frames:         []*frame{{label: "root"}},
-		scope:          Grant{Allow: []GateMatch{{}}},
-		hasFinisher:    true,
 		hasAnswerCheck: true,
 		failFast:       true,
 		converse:       w.converse,
@@ -426,10 +416,10 @@ func (e *explorer) leaf(s state, watch *contractWatch) {
 		return
 	}
 	// The path ran out of enumerated inputs. That is not a hang — it is the boundary of what
-	// a bounded set can say — but property 5 still applies: the machine must be able to name
+	// a bounded set can say — but property 4 still applies: the machine must be able to name
 	// what it is waiting for.
 	if s.Waiting() == "" {
-		e.t.Fatalf("the machine stopped in phase %s with nothing to wait for: property 5", s.ph)
+		e.t.Fatalf("the machine stopped in phase %s with nothing to wait for: property 4", s.ph)
 	}
 	// A path that stops with nothing outstanding and no children is one the enumeration ran
 	// dry on rather than one the machine could not finish; anything else here would be a
@@ -443,11 +433,11 @@ func (e *explorer) leaf(s state, watch *contractWatch) {
 // the interleavings multiply into the hundreds of millions and the test is one nobody runs;
 // with it, distinct STATES are covered rather than distinct paths to them.
 func fingerprint(s state, w world, pending, stale effect, used int, watch *contractWatch) string {
-	return fmt.Sprintf("%v|%d|%d|%v%v%v%v%v%v%v|%d|%T|%T|%d|%+v|%v%d%v|%d",
-		s.ph, len(s.children), len(s.conv), s.driverQuiet, s.answerOK, s.finished,
-		s.cancelling, s.joining, s.closing, s.failing, s.tok,
+	return fmt.Sprintf("%v|%d|%d|%v%v%v%v%v|%d|%T|%T|%d|%+v|%v|%d",
+		s.ph, len(s.children), len(s.conv), s.driverQuiet, s.answerOK,
+		s.cancelling, s.joining, s.failing, s.tok,
 		pending, stale, used, w,
-		watch.terminated, watch.closings, watch.openInput, len(watch.started))
+		watch.terminated, len(watch.started))
 }
 
 func (w *contractWatch) clone() *contractWatch {

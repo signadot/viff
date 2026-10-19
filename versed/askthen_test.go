@@ -273,7 +273,7 @@ func TestAnElseIsCheckedAndChangingItAsksAgain(t *testing.T) {
 	for body, want := range map[string]int{
 		`{name: x, question: q, answerers: [ann@example.com], else: {answer: {ask: nothing-here, choice: proceed}}}`: http.StatusNotFound,
 		`{name: x, question: q, answerers: [ann@example.com], else: {shell: "rm -rf /"}}`:                            http.StatusBadRequest,
-		`{name: x, question: q, answerers: [ann@example.com], else: {prompt: a, calls: []}}`:                         http.StatusBadRequest,
+		`{name: x, question: q, answerers: [ann@example.com], else: {prompt: a, script: ""}}`:                        http.StatusBadRequest,
 	} {
 		resp := ask(t, thScott, ts.URL, body)
 		if msg := bodyOf(t, resp); resp.StatusCode != want || !strings.Contains(msg, "else") {

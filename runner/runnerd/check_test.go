@@ -20,14 +20,14 @@ func TestARefusedQuestionIsNeverPosed(t *testing.T) {
 	refused := errors.New("bob may not read what it asks about")
 	var checked atomic.Value
 	var posted atomic.Bool
-	d.OnCheck(func(l task.Launch, q task.GateQuestion) error {
-		checked.Store(l.ID)
+	d.OnCheck(func(id string, q task.GateQuestion) error {
+		checked.Store(id)
 		return refused
 	})
-	d.OnQuestion(func(task.Launch, task.Pending) { posted.Store(true) })
+	d.OnQuestion(func(string, task.Pending) { posted.Store(true) })
 	srv := httptest.NewServer(d.HTTPHandler())
 	defer srv.Close()
-	resp, err := http.Post(srv.URL+"/tasks", "application/json", strings.NewReader(`{"id":"run-refused","prompt":"t"}`))
+	resp, err := http.Post(srv.URL+"/tasks", "application/json", strings.NewReader(`{"id":"run-refused","doer":{"agent":"test"},"prompt":"t"}`))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,7 +9,9 @@ import (
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/parse"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
+	"reflect"
 )
 
 // ToTonyIR converts PutEntity to a Tony IR node.
@@ -560,11 +562,17 @@ func (s *Spawn) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	}
 
 	// Field: Prompt
-	irMap["prompt"] = ir.FromString(string(s.Prompt))
+	if s.Prompt != "" {
+		irMap["prompt"] = ir.FromString(string(s.Prompt))
+	}
 
-	// Field: Driver
-	if s.Driver != "" {
-		irMap["driver"] = ir.FromString(string(s.Driver))
+	// Field: Doer (optional)
+	if !isZeroValue_Spawn_Doer(s.Doer) {
+		node, err = s.Doer.ToTonyIR(opts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert field %q: %w", "Doer", err)
+		}
+		irMap["doer"] = node
 	}
 
 	// Field: Retain
@@ -582,58 +590,23 @@ func (s *Spawn) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["subject"] = ir.FromString(string(s.Subject))
 	}
 
-	// Field: Vector
-	if s.Vector != "" {
-		irMap["vector"] = ir.FromString(string(s.Vector))
+	// Field: Policy
+	if s.Policy != nil {
+		node, err = gomap.ToTonyIR(s.Policy, opts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert field %q: %w", "Policy", err)
+		}
+		irMap["policy"] = node
 	}
 
-	// Field: Gates
-	if len(s.Gates) > 0 {
-		slice := make([]*ir.Node, len(s.Gates))
-		for i, v := range s.Gates {
-			node, err = v.ToTonyIR(opts...)
-			if err != nil {
-				return nil, fmt.Errorf("failed to convert slice element %d: %w", i, err)
-			}
-			slice[i] = node
-		}
-		irMap["gates"] = ir.FromSlice(slice)
-	}
-
-	// Field: Calls
-	if len(s.Calls) > 0 {
-		slice := make([]*ir.Node, len(s.Calls))
-		for i, v := range s.Calls {
-			node, err = v.ToTonyIR(opts...)
-			if err != nil {
-				return nil, fmt.Errorf("failed to convert slice element %d: %w", i, err)
-			}
-			slice[i] = node
-		}
-		irMap["calls"] = ir.FromSlice(slice)
+	// Field: Timeout
+	if s.Timeout != "" {
+		irMap["timeout"] = ir.FromString(string(s.Timeout))
 	}
 
 	// Field: Runner
 	if s.Runner != "" {
 		irMap["runner"] = ir.FromString(string(s.Runner))
-	}
-
-	// Field: Environment
-	if s.Environment != "" {
-		irMap["environment"] = ir.FromString(string(s.Environment))
-	}
-
-	// Field: Repos
-	if len(s.Repos) > 0 {
-		slice := make([]*ir.Node, len(s.Repos))
-		for i, v := range s.Repos {
-			node, err = v.ToTonyIR(opts...)
-			if err != nil {
-				return nil, fmt.Errorf("failed to convert slice element %d: %w", i, err)
-			}
-			slice[i] = node
-		}
-		irMap["repos"] = ir.FromSlice(slice)
 	}
 
 	// Field: VirtualKey
@@ -702,12 +675,11 @@ func (s *Spawn) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "prompt", fieldNodeUnwrapped.Type)
 			}
 			s.Prompt = string(fieldNodeUnwrapped.String)
-		case "driver":
-			// Field: Driver
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "driver", fieldNodeUnwrapped.Type)
+		case "doer":
+			// Field: Doer
+			if err := s.Doer.FromTonyIR(fieldNode, opts...); err != nil {
+				return fmt.Errorf("field %q: %w", "doer", err)
 			}
-			s.Driver = string(fieldNodeUnwrapped.String)
 		case "retain":
 			// Field: Retain
 			if fieldNodeUnwrapped.Int64 == nil {
@@ -726,69 +698,23 @@ func (s *Spawn) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "subject", fieldNodeUnwrapped.Type)
 			}
 			s.Subject = string(fieldNodeUnwrapped.String)
-		case "vector":
-			// Field: Vector
+		case "policy":
+			// Field: Policy
+			if err := gomap.FromTonyIR(fieldNode, &s.Policy, opts...); err != nil {
+				return fmt.Errorf("field %q: %w", "policy", err)
+			}
+		case "timeout":
+			// Field: Timeout
 			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "vector", fieldNodeUnwrapped.Type)
+				return fmt.Errorf("field %q: expected string, got %v", "timeout", fieldNodeUnwrapped.Type)
 			}
-			s.Vector = string(fieldNodeUnwrapped.String)
-		case "gates":
-			// Field: Gates
-			if fieldNodeUnwrapped.Type == ir.ArrayType {
-				slice := make([]task.Gate, len(fieldNodeUnwrapped.Values))
-				for i, v := range fieldNodeUnwrapped.Values {
-					elem := task.Gate{}
-					if err := elem.FromTonyIR(v, opts...); err != nil {
-						return fmt.Errorf("failed to convert slice element %d: %w", i, err)
-					}
-					slice[i] = elem
-				}
-				s.Gates = slice
-			} else {
-				return fmt.Errorf("%s: expected array, got %v", "field \"gates\"", fieldNodeUnwrapped.Type)
-			}
-		case "calls":
-			// Field: Calls
-			if fieldNodeUnwrapped.Type == ir.ArrayType {
-				slice := make([]task.Call, len(fieldNodeUnwrapped.Values))
-				for i, v := range fieldNodeUnwrapped.Values {
-					elem := task.Call{}
-					if err := elem.FromTonyIR(v, opts...); err != nil {
-						return fmt.Errorf("failed to convert slice element %d: %w", i, err)
-					}
-					slice[i] = elem
-				}
-				s.Calls = slice
-			} else {
-				return fmt.Errorf("%s: expected array, got %v", "field \"calls\"", fieldNodeUnwrapped.Type)
-			}
+			s.Timeout = string(fieldNodeUnwrapped.String)
 		case "runner":
 			// Field: Runner
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string, got %v", "runner", fieldNodeUnwrapped.Type)
 			}
 			s.Runner = string(fieldNodeUnwrapped.String)
-		case "environment":
-			// Field: Environment
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "environment", fieldNodeUnwrapped.Type)
-			}
-			s.Environment = string(fieldNodeUnwrapped.String)
-		case "repos":
-			// Field: Repos
-			if fieldNodeUnwrapped.Type == ir.ArrayType {
-				slice := make([]task.Repo, len(fieldNodeUnwrapped.Values))
-				for i, v := range fieldNodeUnwrapped.Values {
-					elem := task.Repo{}
-					if err := elem.FromTonyIR(v, opts...); err != nil {
-						return fmt.Errorf("failed to convert slice element %d: %w", i, err)
-					}
-					slice[i] = elem
-				}
-				s.Repos = slice
-			} else {
-				return fmt.Errorf("%s: expected array, got %v", "field \"repos\"", fieldNodeUnwrapped.Type)
-			}
 		case "virtualKey":
 			// Field: VirtualKey
 			if fieldNodeUnwrapped.Type != ir.StringType {
@@ -860,9 +786,9 @@ func (s *Task) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["prompt"] = ir.FromString(string(s.Prompt))
 	}
 
-	// Field: Driver
-	if s.Driver != "" {
-		irMap["driver"] = ir.FromString(string(s.Driver))
+	// Field: Doer
+	if s.Doer != "" {
+		irMap["doer"] = ir.FromString(string(s.Doer))
 	}
 
 	// Field: Status
@@ -925,6 +851,20 @@ func (s *Task) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["pending"] = ir.FromSlice(slice)
 	}
 
+	// Field: Policy
+	if s.Policy != nil {
+		node, err = gomap.ToTonyIR(s.Policy, opts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert field %q: %w", "Policy", err)
+		}
+		irMap["policy"] = node
+	}
+
+	// Field: PolicyBy
+	if s.PolicyBy != "" {
+		irMap["policyBy"] = ir.FromString(string(s.PolicyBy))
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -970,12 +910,12 @@ func (s *Task) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "prompt", fieldNodeUnwrapped.Type)
 			}
 			s.Prompt = string(fieldNodeUnwrapped.String)
-		case "driver":
-			// Field: Driver
+		case "doer":
+			// Field: Doer
 			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "driver", fieldNodeUnwrapped.Type)
+				return fmt.Errorf("field %q: expected string, got %v", "doer", fieldNodeUnwrapped.Type)
 			}
-			s.Driver = string(fieldNodeUnwrapped.String)
+			s.Doer = string(fieldNodeUnwrapped.String)
 		case "status":
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string for TextUnmarshaler, got %v", "status", fieldNodeUnwrapped.Type)
@@ -1046,6 +986,17 @@ func (s *Task) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			} else {
 				return fmt.Errorf("%s: expected array, got %v", "field \"pending\"", fieldNodeUnwrapped.Type)
 			}
+		case "policy":
+			// Field: Policy
+			if err := gomap.FromTonyIR(fieldNode, &s.Policy, opts...); err != nil {
+				return fmt.Errorf("field %q: %w", "policy", err)
+			}
+		case "policyBy":
+			// Field: PolicyBy
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "policyBy", fieldNodeUnwrapped.Type)
+			}
+			s.PolicyBy = string(fieldNodeUnwrapped.String)
 		default:
 			if gomap.IsStrict(opts...) {
 				return fmt.Errorf("unknown field %q for Task", fieldName.String)
@@ -1253,8 +1204,8 @@ func (s *Say) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	return s.FromTonyIR(node, opts...)
 }
 
-// ToTonyIR converts SetVector to a Tony IR node.
-func (s *SetVector) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+// ToTonyIR converts SetPolicy to a Tony IR node.
+func (s *SetPolicy) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if s == nil {
 		return ir.Null(), nil
 	}
@@ -1266,13 +1217,13 @@ func (s *SetVector) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Create IR object map
 	irMap := make(map[string]*ir.Node)
 
-	// Field: Vector (optional)
-	if s.Vector != nil {
-		node, err = s.Vector.ToTonyIR(opts...)
+	// Field: Policy
+	if s.Policy != nil {
+		node, err = gomap.ToTonyIR(s.Policy, opts...)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to convert field %q: %w", "Policy", err)
 		}
-		irMap["vector"] = node
+		irMap["policy"] = node
 	}
 
 	// Field: By
@@ -1283,8 +1234,8 @@ func (s *SetVector) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	return ir.FromMap(irMap), nil
 }
 
-// FromTonyIR populates SetVector from a Tony IR node.
-func (s *SetVector) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+// FromTonyIR populates SetPolicy from a Tony IR node.
+func (s *SetPolicy) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 	if node == nil {
 		return nil
 	}
@@ -1302,7 +1253,7 @@ func (s *SetVector) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 		return nil
 	}
 	if node.Type != ir.ObjectType {
-		return fmt.Errorf("expected map for SetVector, got %v", node.Type)
+		return fmt.Errorf("expected map for SetPolicy, got %v", node.Type)
 	}
 
 	for i, fieldName := range node.Fields {
@@ -1313,11 +1264,10 @@ func (s *SetVector) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
 		}
 		switch fieldName.String {
-		case "vector":
-			// Field: Vector
-			s.Vector = &task.Vector{}
-			if err := s.Vector.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
+		case "policy":
+			// Field: Policy
+			if err := gomap.FromTonyIR(fieldNode, &s.Policy, opts...); err != nil {
+				return fmt.Errorf("field %q: %w", "policy", err)
 			}
 		case "by":
 			// Field: By
@@ -1327,7 +1277,7 @@ func (s *SetVector) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			s.By = string(fieldNodeUnwrapped.String)
 		default:
 			if gomap.IsStrict(opts...) {
-				return fmt.Errorf("unknown field %q for SetVector", fieldName.String)
+				return fmt.Errorf("unknown field %q for SetPolicy", fieldName.String)
 			}
 		}
 	}
@@ -1335,8 +1285,8 @@ func (s *SetVector) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 	return nil
 }
 
-// ToTony converts SetVector to Tony format bytes.
-func (s *SetVector) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+// ToTony converts SetPolicy to Tony format bytes.
+func (s *SetPolicy) ToTony(opts ...gomap.MapOption) ([]byte, error) {
 	node, err := s.ToTonyIR(opts...)
 	if err != nil {
 		return nil, err
@@ -1348,8 +1298,8 @@ func (s *SetVector) ToTony(opts ...gomap.MapOption) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// FromTony parses Tony format bytes and populates SetVector.
-func (s *SetVector) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+// FromTony parses Tony format bytes and populates SetPolicy.
+func (s *SetPolicy) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
 	if err != nil {
 		return err
@@ -5392,4 +5342,9 @@ func (s *CharterCheckPackage) FromTony(data []byte, opts ...gomap.UnmapOption) e
 		return err
 	}
 	return s.FromTonyIR(node, opts...)
+}
+
+// Zero-value check helpers
+func isZeroValue_Spawn_Doer(v runner.Doer) bool {
+	return reflect.ValueOf(v).IsZero()
 }

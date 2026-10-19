@@ -2,9 +2,96 @@
 context:
 - tony-format/context
 define:
+  by: .[string]
   reason: .[string]
 signature:
   name: verse-runner-cancel
+---
+context:
+- tony-format/context
+define:
+  allow: .[array(string)]
+  mode: .[string]
+signature:
+  name: verse-runner-network
+---
+context:
+- tony-format/context
+define:
+  from: .[string]
+  repo: .[string]
+signature:
+  name: verse-runner-repo
+---
+context:
+- tony-format/context
+define:
+  repo: .[string]
+signature:
+  name: verse-runner-tracker
+---
+context:
+- tony-format/context
+define:
+  effort: .[string]
+  env: .[object(string)]
+  git: .[array(verse-runner-repo)]
+  git-issue: .[array(verse-runner-tracker)]
+  model: .[string]
+  network: .[nullable(verse-runner-network)]
+signature:
+  name: verse-runner-with
+---
+context:
+- tony-format/context
+define:
+  agent: .[string]
+  annotations: .[object(string)]
+  script: .[string]
+  with: !verse-runner-with null
+signature:
+  name: verse-runner-doer
+---
+context:
+- tony-format/context
+define:
+  chain: .[string]
+  principal: .[string]
+  subject: .[string]
+signature:
+  name: verse-runner-provenance
+---
+context:
+- tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
+define:
+  answer: .[tony-base:ir]
+  converse: .[bool]
+  credential: .[string]
+  doer: !verse-runner-doer null
+  id: .[string]
+  occurrence: .[int]
+  policy: !irtype {}
+  prompt: .[string]
+  provenance: !verse-runner-provenance null
+  timeout: .[string]
+signature:
+  name: verse-runner-launch
+---
+context:
+- tony-format/context
+define:
+  by: .[string]
+signature:
+  name: verse-runner-pause
+---
+context:
+- tony-format/context
+define:
+  by: .[string]
+  policy: !irtype {}
+signature:
+  name: verse-runner-policy
 ---
 context:
 - tony-format/context
@@ -19,6 +106,13 @@ signature:
 context:
 - tony-format/context
 define:
+  by: .[string]
+signature:
+  name: verse-runner-resume
+---
+context:
+- tony-format/context
+define:
   ask: .[string]
   by: .[string]
   instruction: .[string]
@@ -28,6 +122,6 @@ signature:
 context:
 - tony-format/context
 define:
-  id: .[string]
+  ceiling: !irtype {}
 signature:
-  name: verse-runner-spawned
+  name: verse-runner-system

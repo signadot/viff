@@ -30,6 +30,9 @@ func TestBindCarriesEveryField(t *testing.T) {
 			f.Set(reflect.MakeSlice(f.Type(), 1, 1))
 		case reflect.Pointer:
 			f.Set(reflect.New(f.Type().Elem()))
+		case reflect.Struct:
+			// The doer: filled by its first string field, which is enough for Bind to carry.
+			f.Field(0).SetString("x")
 		default:
 			t.Fatalf("Spec.%s is a %s and this test does not know how to fill one; "+
 				"teach it rather than skipping, or the guard has a hole",
@@ -43,7 +46,6 @@ func TestBindCarriesEveryField(t *testing.T) {
 	// is a longer way to the same place with a window in the middle.
 	engineOwned := map[string]string{
 		"Chain":      "the kpath of the spawning action, which only the engine knows",
-		"Doer":       "who the selection picked, which is an answer and not a request",
 		"Occurrence": "the commit that caused this firing, which is a fact about the cause and not a request",
 		"Asker":      "who `as: subject` resolved to at the firing; a charter naming it would act as anybody",
 		"Passed":     "the gates the firing passed, which a credential vouches for; a charter naming them would vouch for an answer nobody gave",
@@ -68,6 +70,82 @@ func TestBindCarriesEveryField(t *testing.T) {
 		if zero {
 			t.Errorf("Bind dropped Spec.%s — add it to Bind, or add it to engineOwned with "+
 				"the reason a spawn must not carry it", name)
+		}
+	}
+}
+
+// Bind carries EVERY field of the doer, its `with` included, to the leaf: a `with` field added
+// and not copied is a fact of the charter that every firing quietly drops, as the network was.
+func TestBindCarriesEveryDoerField(t *testing.T) {
+	var spec Spec
+	fill(t, reflect.ValueOf(&spec.Doer).Elem(), "Doer")
+	got := spec.Bind(Binding{}).Doer
+	carried(t, reflect.ValueOf(got), "Doer")
+}
+
+// fill sets every leaf of v to something other than its zero value.
+func fill(t *testing.T, v reflect.Value, path string) {
+	t.Helper()
+	switch v.Kind() {
+	case reflect.String:
+		v.SetString("x")
+	case reflect.Bool:
+		v.SetBool(true)
+	case reflect.Int, reflect.Int64:
+		v.SetInt(7)
+	case reflect.Struct:
+		for i := range v.NumField() {
+			fill(t, v.Field(i), path+"."+v.Type().Field(i).Name)
+		}
+	case reflect.Pointer:
+		v.Set(reflect.New(v.Type().Elem()))
+		fill(t, v.Elem(), path)
+	case reflect.Slice:
+		v.Set(reflect.MakeSlice(v.Type(), 1, 1))
+		fill(t, v.Index(0), path+"[0]")
+	case reflect.Map:
+		v.Set(reflect.MakeMap(v.Type()))
+		k, e := reflect.New(v.Type().Key()).Elem(), reflect.New(v.Type().Elem()).Elem()
+		fill(t, k, path+"<key>")
+		fill(t, e, path+"[k]")
+		v.SetMapIndex(k, e)
+	default:
+		t.Fatalf("%s is a %s and this test does not know how to fill one; teach it rather than "+
+			"skipping, or the guard has a hole", path, v.Kind())
+	}
+}
+
+// carried fails for each leaf of v that is zero: a field fill set and Bind did not copy.
+func carried(t *testing.T, v reflect.Value, path string) {
+	t.Helper()
+	switch v.Kind() {
+	case reflect.Struct:
+		for i := range v.NumField() {
+			carried(t, v.Field(i), path+"."+v.Type().Field(i).Name)
+		}
+	case reflect.Pointer:
+		if v.IsNil() {
+			t.Errorf("Bind dropped %s", path)
+			return
+		}
+		carried(t, v.Elem(), path)
+	case reflect.Slice:
+		if v.Len() == 0 {
+			t.Errorf("Bind dropped %s", path)
+			return
+		}
+		carried(t, v.Index(0), path+"[0]")
+	case reflect.Map:
+		if v.Len() == 0 {
+			t.Errorf("Bind dropped %s", path)
+			return
+		}
+		for _, k := range v.MapKeys() {
+			carried(t, v.MapIndex(k), path+"[k]")
+		}
+	default:
+		if v.IsZero() {
+			t.Errorf("Bind dropped %s", path)
 		}
 	}
 }

@@ -59,7 +59,7 @@ roles, so there is one ref to pin and one build to cache.
 ```sh
 make deploy                                    # defaults (dynamic PVC)
 make deploy PROFILE=minikube
-make deploy PROFILE=staging                    # EKS + EBS + tailnet + coderunner
+make deploy PROFILE=staging                    # EKS + EBS + tailnet + the runners
 o build deploy -s                              # show the resolved env, apply nothing
 ```
 
@@ -247,14 +247,16 @@ should be passed the Service name directly rather than discovering it.
 | `tailscaleTags` | `""` | `tailscale.com/tags` for both; `""` leaves the operator's `tag:k8s` |
 | `secretStore` | `aws-secretsmanager` | the `ClusterSecretStore` every entry below comes from |
 | `llmSecretKey` | `""` | entry for `verse-llm`; `""` emits no `ExternalSecret` |
-| `gitSecretKey` / `slackSecretKey` / `linearSecretKey` / `githubSecretKey` / `coderunnerSecretKey` | `""` | the same, one per credential |
+| `gitSecretKey` / `slackSecretKey` / `linearSecretKey` / `githubSecretKey` / `runnerSecretKey` | `""` | the same, one per credential |
 | `llmModel` | `""` | `OPENAI_MODEL` for versed; `""` leaves the driver's `gpt-4o` |
 | `systemCharter` | `""` | a charter under `deploy/`, mounted into versed and installed at start as the system (`VERSE_SYSTEM_CHARTER`); read at start, so a change takes a restart. Staging: `charters/verse/workspace/Signadot/gate-ask.tony` |
 | `authConfig` | `""` | verse's `auth` block, a file under `deploy/`, mounted into versed as its config (`VERSE_CONFIG`): who verifies people, which ios are trusted for whose accounts, how the ios prove themselves ([Who a request is from](#who-a-request-is-from-authconfig-iotokens)). Staging: `auth/staging.tony` |
 | `ioTokens` | `false` | give the slack, github and git ios a ServiceAccount each and a projected token, so each proves it is the io (staging and minikube: on) |
 | `issuerDiscoveryOpen` | `false` | let anyone reaching the API server read its OpenID discovery and keys, which versed needs where the cluster itself is the ios' issuer (minikube: on; EKS needs none) |
-| `coderunner` | `false` | deploy the coding runner (its own image; install it with `verse runner add`) |
-| `coderunnerImage` | `example/verse-coderunner:latest` | its image ref — a tag in another repository is fine |
+| `runner` | `false` | deploy the verse runner (its own image; install it with `verse runner add`) |
+| `runnerImage` | `signadot/verse-runner:latest` | its image ref — a tag in another repository is fine |
+| `codexrunner` | `false` | deploy the codex runner beside it: the verse runner in an image with Codex in it, offering the codex agent |
+| `codexrunnerImage` | `signadot/verse-runner:codex` | its image ref |
 | the io knobs | off | see [Ios](#ios-optional) |
 
 ## Ios (optional)
@@ -499,7 +501,7 @@ knob naming the secret-store entry it comes from, and each emits an `ExternalSec
 right answer on a cluster with no External Secrets Operator.
 
 One knob per credential rather than one for all, because they are held by different processes
-and revoked on different days: the git io's PAT and the coderunner's push token can be the
+and revoked on different days: the git io's PAT and the runner's push token can be the
 same secret and should still be two entries, so taking one away does not take the other.
 
 ⚠️ **The entry's own key names land in the Secret verbatim** (`dataFrom.extract` copies them
@@ -508,12 +510,12 @@ are the names each consumer reads:
 
 | knob | Secret | keys the entry must have | read as |
 |---|---|---|---|
-| `llmSecretKey` | `verse-llm` | `PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY` (`PORTKEY_BASE_URL`, `OPENAI_MODEL` optional) | env, by versed **and** the coderunner |
+| `llmSecretKey` | `verse-llm` | `PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY` (`PORTKEY_BASE_URL`, `OPENAI_MODEL` optional) | env, by versed **and** the verse runner |
 | `gitSecretKey` | `verse-git` | `credential` — the value being `username=x-access-token\npassword=<PAT>\n` | a **file** at `/git-credentials/credential` |
 | `slackSecretKey` | `verse-slack` | `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET` | env; **not** optional — no token, no start |
 | `linearSecretKey` | `verse-linear` | `LINEAR_API_KEY` (the `Authorization` header verbatim), `LINEAR_WEBHOOK_SECRET` | env |
 | `githubSecretKey` | `verse-github` | `GITHUB_TOKEN`, or `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID` and `GITHUB_APP_PRIVATE_KEY` ([The GitHub App](#the-github-app-signadot-verse)); and `GITHUB_WEBHOOK_SECRET` | env; **not** optional — no Secret, no start |
-| `coderunnerSecretKey` | `verse-coderunner` | `gitToken` | env, in the runner and never in the sandbox |
+| `runnerSecretKey` | `verse-runner` | `gitToken` | env (`GITHUB_TOKEN`), in the runners and never in the sandbox |
 
 ### Creating the entries
 
@@ -535,7 +537,7 @@ put staging/verse/git /tmp/e.json
 
 # The same PAT, held by a different process and revocable on its own.
 printf '{"gitToken":"%s"}' "$pat" > /tmp/e.json
-put staging/verse/coderunner /tmp/e.json
+put staging/verse/verse-runner /tmp/e.json
 
 printf '{"SLACK_BOT_TOKEN":"%s","SLACK_SIGNING_SECRET":"%s"}' "$bot" "$sig" > /tmp/e.json
 put staging/verse/slack /tmp/e.json
@@ -706,17 +708,22 @@ choice is deployment config and belongs in the open, not smuggled into a store e
 - **`envFrom` is read when the pod starts.** A Secret that lands after versed does nothing
   until it restarts — `kubectl -n verse rollout restart deploy/versed`.
 
-## The coderunner (`coderunner`, off by default)
+## The verse runner (`runner`, off by default)
 
 A place code work **runs** — its own `Deployment` + `Service` + `ConfigMap`, a workspace and a
-process per task, bubblewrap around the process. Not an io and not the engine: verse reaches
-it by url, and deploying it does not install it.
+process per task, bubblewrap around the process. It is `runnerd verse`
+([reference/runnerd.md](../docs/reference/runnerd.md)) with the configuration its ConfigMap
+holds; what a task works on is its spawn's. Not an io and not the engine: verse reaches it by url, and deploying it does not
+install it.
 
 ```sh
-make coderunner-push IMAGE_ARCH=amd64 CODERUNNER_IMAGE=example/verse-staging:coderunner
-make deploy PROFILE=staging E='-e coderunner=true -e coderunnerImage=example/verse-staging:coderunner'
-verse runner add coderunner http://coderunner:9802 -identity coderunner    # it acts as runner:coderunner; default: its name
+make runner-push IMAGE_ARCH=amd64 RUNNER_IMAGE=example/verse-staging:runner
+make deploy PROFILE=staging E='-e runner=true -e runnerImage=example/verse-staging:runner'
+verse runner add verse-runner http://verse-runner:9802 -identity verse-runner    # it acts as runner:verse-runner; default: its name
 ```
+
+The install's name is what the charters spawn on (`runner: verse.runners.verse-runner`), and the
+url is the Service.
 
 That last line is the install, and it probes — so `reach: "a runner"` is the deployment's own
 acceptance test, and the first thing that exercises bubblewrap on the node. As with an io,
@@ -730,11 +737,15 @@ repositories. A tag in the existing one is a repository you do not have to creat
 credential you do not have to re-grant. It needs no `imagePullSecrets` of its own either way:
 it runs as the namespace's `default` ServiceAccount like everything else here.
 
-⚠️ **Two things it shares with versed have to agree, and nothing checks that they do.** The
-`ConfigMap`'s `llm.model` must be a model the `verse-llm` credential's provider serves — the
-same value as `llmModel` — and its `egress` allowlist must contain **`api.portkey.ai`**, the
-gateway the driver actually dials, not the model vendor behind the virtual key. Both fail at
-the first spawn rather than at deploy.
+⚠️ **One thing it shares with versed has to agree, and nothing checks that it does.** The
+`ConfigMap`'s `models.model` must be a model the `verse-llm` credential's provider serves — the
+same value as `llmModel`. It fails at the first spawn rather than at deploy.
+
+**The codex runner** (`codexrunner`) is the same runner in an image with Codex pinned in it
+(`deploy/codexrunner`), offering the codex agent. Its key is the `verse-codex` Secret, made by
+hand (`kubectl -n verse create secret generic verse-codex --from-literal=OPENAI_API_KEY=<key>`),
+and it pushes with the same token. Install it as `verse runner add codex http://codexrunner:9802
+--identity codexrunner`, and spawn on it with `runner: verse.runners.codex`.
 
 ⚠️ **It needs three things from the pod spec, and each was found by a spawn refusing itself.**
 `hostUsers: false`, `procMount: Unmasked`, `seccompProfile: Unconfined` — in that order of
@@ -800,7 +811,8 @@ kubectl --context $CTX -n verse wait --for=delete pod -l app=verse,tier=versed -
 make ship-docd          # the store; versed is down, so nothing is talking to it
 make ship-versed        # the engine, against a docd that is already up and new
 make ship-ios           # the connectors
-make ship-coderunner    # its own image
+make ship-runner        # the verse runner, its own image
+make ship-codexrunner   # the codex runner, its own image
 ```
 
 `ship-versed` restores `replicas: 1` from the manifest, so the scale to 0 costs no
@@ -810,7 +822,7 @@ runs before applying, so any one of them alone is a whole ship; pushing a tag th
 there is a manifest check, not an upload.
 
 The tier is the `tier` label every object in `deploy/` carries — `docd`, `versed`, `io`,
-`runner` — and `kubectl apply -l` is what selects on it. Objects with no tier (the Namespace,
+`runner`, `codexrunner` — and `kubectl apply -l` is what selects on it. Objects with no tier (the Namespace,
 the ServiceAccount, the ExternalSecrets) belong to none and are applied by a full `make
 deploy`: these targets update a deployment that exists rather than standing one up.
 
@@ -819,10 +831,10 @@ profile that is not staging.
 
 ## When something stops answering (the admin face)
 
-Every daemon here — versed, each `iod`, the coderunner — serves `net/http/pprof`, full
-goroutine stacks, and a short index of what it is and where it listens, on a port **one up from
-the one it serves on**: versed's API is 9797, its admin face 9798; an io's 9801/9802; the
-coderunner's 9802/9803.
+Every daemon here — versed, each `iod`, the runners — serves `net/http/pprof`, full goroutine
+stacks, and a short index of what it is and where it listens, on a port **one up from the one
+it serves on**: versed's API is 9797, its admin face 9798; an io's 9801/9802; the runners'
+9802/9803.
 
 ```
 kubectl -n verse port-forward deploy/versed 9798 &

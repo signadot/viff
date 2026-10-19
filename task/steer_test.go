@@ -43,7 +43,7 @@ func (d *steerDriver) Fold(msgs []string) {
 // before the boundary's Next — cooperative, latched at the hinge.
 func TestSteerCooperative(t *testing.T) {
 	d := &steerDriver{steps: []ToolUse{tool("A"), tool("B")}}
-	p := NewTask("t", NewSupervisor(autoVec(), AutoResolver{}), d, &recExec{})
+	p := NewTask("t", toolSup(allowAll(), AutoResolver{}), d, &recExec{})
 	p.onEnterBoundary = func(seq int) {
 		if seq == 1 {
 			p.Steer("s1", "human:test", "")
@@ -70,10 +70,7 @@ func (r injectResolver) Resolve(_ context.Context, d GateQuestion, _ ToolUse) (R
 // boundary, before the next Next — the "gate that informs" (SCM injection) path.
 func TestGateInjectsContext(t *testing.T) {
 	d := &steerDriver{steps: []ToolUse{tool("A"), tool("B")}}
-	vec := &Vector{Default: Auto, Gates: []Gate{
-		{Name: "g", Mode: Ask, Match: GateMatch{Tools: []string{"A"}}}, // ASK on A → resolver consulted
-	}}
-	p := NewTask("t", NewSupervisor(vec, injectResolver{note: "ctx: heads up"}), d, &recExec{})
+	p := NewTask("t", toolSup(askOn("A"), injectResolver{note: "ctx: heads up"}), d, &recExec{}) // A asks: the resolver is consulted
 	if _, err := p.Run(context.Background()); err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -85,11 +82,13 @@ func TestGateInjectsContext(t *testing.T) {
 	}
 }
 
-// A say to a driver that holds no conversation is ignored, not fatal, and leaves no entry in
-// the journal — there is nothing to record, because nothing was delivered.
+// A say to a driver that holds no conversation is ignored, not fatal, and the log says nothing
+// was said to it — there is nothing to record, because nothing was delivered.
 func TestASayIsIgnoredByADriverThatHoldsNoConversation(t *testing.T) {
 	d := &scriptDriver{steps: []ToolUse{tool("A")}}
-	p := NewTask("t", NewSupervisor(autoVec(), AutoResolver{}), d, &recExec{})
+	p := NewTask("t", toolSup(allowAll(), AutoResolver{}), d, &recExec{})
+	log := &syncLog{}
+	p.SetLog(log)
 	p.onEnterBoundary = func(seq int) {
 		if seq == 1 {
 			p.Steer("ignored", "human:test", "")
@@ -98,10 +97,8 @@ func TestASayIsIgnoredByADriverThatHoldsNoConversation(t *testing.T) {
 	if _, err := p.Run(context.Background()); err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	for _, l := range p.Journal() {
-		if strings.Contains(l, "[steer]") {
-			t.Fatalf("steer should have been ignored, journal=%v", p.Journal())
-		}
+	if strings.Contains(log.String(), "said-to") {
+		t.Fatalf("a say was delivered to a driver with no conversation:\n%s", log.String())
 	}
 }
 
@@ -155,7 +152,7 @@ func TestOnlyAPersonsWordsAreFramed(t *testing.T) {
 // (9ce3bva0, stage 6), which is how the ask is known to be heard.
 func TestASayEchoesTheAskItIs(t *testing.T) {
 	d := &steerDriver{steps: []ToolUse{tool("A"), tool("B")}}
-	p := NewTask("t", NewSupervisor(autoVec(), AutoResolver{}), d, &recExec{})
+	p := NewTask("t", toolSup(allowAll(), AutoResolver{}), d, &recExec{})
 	p.onEnterBoundary = func(seq int) {
 		if seq == 1 {
 			p.Steer("s1", "user:bob", "say-1")

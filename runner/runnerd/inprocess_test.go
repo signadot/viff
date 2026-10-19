@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
@@ -35,17 +36,12 @@ func (okExec) Execute(_ context.Context, tu task.ToolUse) (task.StepResult, []ta
 	return task.StepResult{Use: tu, Output: "ok"}, nil, nil
 }
 
-// fakeBuild makes a hosted task whose single action hits an ASK gate, so the
-// resolve/read-plane paths are exercised without a live model.
-func fakeBuild(l task.Launch, reg *task.Registry) *task.Task {
-	vec := &task.Vector{
-		Default: task.Auto,
-		Gates:   []task.Gate{{Name: "shell", Mode: task.Ask, Match: task.GateMatch{Verbs: []task.Verb{task.Exec}}}},
-	}
-	sup := task.NewSupervisor(vec, reg)
-	sup.SetDeriver(task.BasicDeriver{})
-	tu := task.ToolUse{Name: "run", Effects: []task.Effect{{Verb: task.Exec, Resource: task.Resource{Kind: task.KindTask, Ref: "x"}}}}
-	return task.NewTask(l.ID, sup, &seqDriver{steps: []task.ToolUse{tu}}, okExec{})
+// fakeBuild makes a hosted task whose single command a gate names, so the resolve/read-plane
+// paths are exercised without a live model.
+func fakeBuild(l runner.Launch, reg *task.Registry) *task.Task {
+	g := task.Policy{{Name: "shell", Match: &task.Match{System: "commands", Verb: "run"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAllow}}}
+	tu := task.ToolUse{Name: "run_bash", Input: map[string]any{"command": "x"}}
+	return task.NewTask(l.ID, task.NewSupervisor(g, reg), &seqDriver{steps: []task.ToolUse{tu}}, okExec{})
 }
 
 func newTestServer(t *testing.T) *httptest.Server {
@@ -53,14 +49,14 @@ func newTestServer(t *testing.T) *httptest.Server {
 	return httptest.NewServer(NewInProcessHandler(fakeBuild).HTTPHandler())
 }
 
-// Spawn a task, watch its pending gate over SSE, resolve it by id, and see it
+// Launch a task, watch its pending gate over SSE, resolve it by id, and see it
 // complete — the full observe→resolve loop over HTTP.
-func TestDaemonSpawnObserveResolve(t *testing.T) {
+func TestDaemonLaunchObserveResolve(t *testing.T) {
 	srv := newTestServer(t)
 	defer srv.Close()
 
-	// spawn
-	resp, err := http.Post(srv.URL+"/tasks", "application/json", strings.NewReader(`{"prompt":"t"}`))
+	// launch
+	resp, err := http.Post(srv.URL+"/tasks", "application/json", strings.NewReader(`{"id":"p1","doer":{"agent":"test"},"prompt":"t"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +133,7 @@ func TestDaemonResolveUnknown(t *testing.T) {
 	srv := newTestServer(t)
 	defer srv.Close()
 
-	resp, _ := http.Post(srv.URL+"/tasks", "application/json", strings.NewReader(`{"prompt":"t"}`))
+	resp, _ := http.Post(srv.URL+"/tasks", "application/json", strings.NewReader(`{"id":"p1","doer":{"agent":"test"},"prompt":"t"}`))
 	var sp struct {
 		ID string `tony:"field=id"`
 	}
@@ -163,7 +159,7 @@ func TestDaemonResolveWithoutChoice(t *testing.T) {
 	srv := newTestServer(t)
 	defer srv.Close()
 
-	resp, _ := http.Post(srv.URL+"/tasks", "application/json", strings.NewReader(`{"prompt":"t"}`))
+	resp, _ := http.Post(srv.URL+"/tasks", "application/json", strings.NewReader(`{"id":"p1","doer":{"agent":"test"},"prompt":"t"}`))
 	var sp struct {
 		ID string `tony:"field=id"`
 	}

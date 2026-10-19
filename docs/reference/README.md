@@ -1,307 +1,237 @@
-# Reference
+# Commands and the rest
 
-This section is the flat version of what the [tutorial](../tutorial.md) walks through. It also
-holds the detail that the tutorial leaves out on purpose. For the model of a
-[rule](../glossary.md#rule), see [the trigger model](../trigger-model.md). For the map of all
-the docs, see [the docs index](../README.md). Running a verse, runners, ios and resolvers are
-in [the platform docs](../platform.md), in the repository.
+This page has every command, how to select by what an entity says, and the scripts that seed a
+verse. What a charter says is in [the charter reference](../trigger-model.md), and the
+[tutorial](../tutorial/README.md) walks through all of it. Running a verse, runners, iods and
+resolvers are in [the platform docs](../platform.md), in the repository. For the map of all
+the docs, see [the docs index](../README.md).
 
 | | |
 |---|---|
-| [condition.md](condition.md) | the condition of a rule: `subject`, `on` and `when`, and what a match can say |
-| [action.md](action.md) | the action of a rule: `patch`, `derive`, `spawn`, `calls` and `seq`, what an action reads, the answer contract, hooks, and ids |
-| [gates.md](gates.md) | the gates of a rule: what a gate asks, who answers it, and how it settles |
-| [charter.md](charter.md) | the charter: packages, `reads:`, `verse charter`, and how a charter is stored |
-| [schedules.md](schedules.md) | schedules: time as a cause |
-| [entities.md](entities.md) | addresses, payloads, merging writes, conditional writes, selection, and watching |
-| [tasks.md](tasks.md) | the task surface: drivers and vectors, gates, attaching, the mirror, and steering |
+| [tasks.md](tasks.md) | the task surface: doers, the policy, attaching, the mirror, and steering |
 | [scopes.md](scopes.md) | scopes: a private copy of the store, what runs in it, and what it owns |
+| [entities.md](entities.md) | addresses, payloads, merging writes, conditional writes, selection, and watching |
 | [perms.md](perms.md) | permissions in detail: the grammar, the fields of a record, what verse checks on a write and a read, installed things, questions, the seed, and `verse perms`. The model itself is in [../perms.md](../perms.md). |
 | [representation.md](representation.md) | tony, JSON and YAML: what verse reads, what it writes, and why the two differ |
 
 ## Commands
 
-```
-verse
-  status                                     engine/store snapshot. `restoring:` names the
-                                             phases of a start still being asked again — each
-                                             read the store, the store did not answer, and what
-                                             it restores is not running yet; `arming:` under a
-                                             charter names its rules whose watch is still being
-                                             opened. Both absent on a verse that is up
-  schema [<name>]                            the whole schema: the root — what a verse looks like,
-                                             by top-level path — then every shape it names.
-                                             A name prints just that one definition
-
-  watch  [-since <rev>] [<path>]             stream store changes (cursored) — the same path
-                                             a read takes, naming the same entities, and
-                                             REFUSED the same way: a path nothing stands at
-                                             is a non-zero exit rather than a stream that
-                                             never carries anything
-         -wait-if-absent                     …watch a path that holds nothing YET, and report
-                                             when a value arrives. The case a watch exists
-                                             for — seeing what a task is about to write — and
-                                             asked for rather than assumed, because the
-                                             address came from a person and a typo held open
-                                             for ever looks exactly like a quiet verse
-         -init                               …open with what already stands at the path, then
-                                             the changes. The default. `-no-init` streams
-                                             from now. entities.md#watching
-         -ago <n>                            …the last <n> commits that the store retains.
-                                             entities.md#watching
-         [-if <pat>] [-if-at <field.path>] … only those whose payload matches (see below)
-         -until <pat>                        …and stop at the first frame matching <pat>, which
-                                             is printed before the stream ends. The pattern is
-                                             over the frame (see below). Exit 0 whether or not
-                                             it matched
-         -nowire                             print each frame as a BLOCK, opened by `---`,
-                                             rather than on one line. The default is one frame
-                                             per line, which is what lets `grep` see a whole
-                                             event; this is for the stream somebody is reading
-                                             rather than filtering, where a frame wider than
-                                             the terminal is worse than one six lines tall.
-                                             The brackets go with the wire, and `---` takes
-                                             over as the frame boundary — so the output is a
-                                             tony document stream and parses back as one
-
-  Each collection is ONE command, named in the singular. Bare it LISTS, and with a verb it
-  acts on one member: `verse question` shows the questions waiting on you,
-  `verse question approve <id>` answers one. The plural is an alias of that same command —
-  `verse questions`, `verse tasks` — so both spellings do the same thing. `verse question list`
-  is an error: bare it lists.
-
-  EVERY LISTING FILTERS, with the same two flags: `-if <match>` keeps the items that match,
-  `-trim <match>` writes only the parts its document names. They compose, and an empty result
-  is an answer rather than an error (exit 0).
-
-    verse ps -if '{status: running}' -trim '{id status}'
-    verse question -if '{gate: provider}'
-    verse data demo pr '*' -trim '{stage}'         # …per pr: the `*` is what makes each one an item
-    verse watch demo -trim '{at to}'
-
-  A `-trim` document NAMES keys, so write it as a KEY SET: in brackets, a key with no `:` and
-  no value is that key with a null, which is exactly what a trim wants. `{id status}` and
-  `{id: null, status: null}` are the same document, and the first is the one to type.
-
-  In `-if` the same spelling is a PRESENCE test, because a null there matches any value the
-  key holds: `-if '{status}'` keeps every entity that has a `status` at all, whatever it says,
-  and `-if '{stage}'` is how you ask which ones have got started. What it is NOT is equality —
-  `-if '{status open}'` is two presence tests, `status` and `open`, and selects the entities
-  carrying both keys rather than the ones whose status is open. A key nothing has selects
-  nothing, so the answer to that one is empty rather than wrong-and-plausible.
-
-  On `data` and `watch`, `-if` is the server's selector — it says which entities the read is
-  about, before any of them cross the wire — so those two take `-trim` alone.
-
-  Comments need no flag: verse reads and writes them everywhere (`o list` needs `-c`).
-
-  `data` is not one of them: it answers ONE DOCUMENT at a path rather than a list of things,
-  so there is no plural to alias — and WHAT TO DO IS A FLAG, so its positional is a path in
-  every case. A path's first segment is a name like any other, and a verb there would shadow one.
-
-  data (d) [<step>…]                         the verse at an address, given as STEPS — one
-                                             place per word, its first character saying which:
-                                             demo pr 1 · demo pr 1 labels urgent  (a name)
-                                             demo pr 1 votes '[0]'   (array; also {0} (k))
-                                             demo pr '*'             (any one segment)
-                                             demo pr 1 '"[0]"'       (the FIELD named [0])
-                                             demo pr '"*"'           (the name that is `*`)
-                                             (none) = the whole verse.
-                                             A path nothing stands at is a non-zero exit.
-                                             An empty `{}` with exit 0 means the path stands
-                                             and a -if kept none of it
-          [-at <path>]                       …or whole, as a kinded path:
-                                             demo.pr.1 · 'demo.pr.*.stage'
-          [-if <pat>] [-if-at <path>]        … only entities whose payload matches (see below)
-          [-paths] [-depth <n>]              … every address under the one asked for, one per
-                                             line, as steps. -depth bounds the walk to
-                                             addresses of at most <n> segments (default: no
-                                             bound)
-          [-kpaths]                          … the same listing as one kinded path per line.
-                                             entities.md#addressing
-          -put <payload>                     write it there. A put merges.
-                                             entities.md#writing
-          -rm (-r)                           remove what stands there: an entity, or one field.
-                                             `-r` is `verse c -r`'s letter: removal is the same
-                                             act. `-put` has none — `-p` beside `-paths` is a
-                                             slip that writes
-          -put [-create|-update]             only if nothing is there yet · only if something is
-          -put [-expect <pattern>]           only if what is there matches
-          -put -grants <list>                create it holding out this list, as
-                                             `perms -grants` takes it ([] for nothing), in
-                                             place of child-grants. Refused where it stands.
-                                             entities.md#creating-with-grants
-          An address is one kinded path in two spellings. entities.md#addressing
-  question (questions, qs, gate, gates)      the questions waiting on you: each ask whose
-                                             waitingOn names you and that you did not raise —
-                                             a gate's, one of a task's actions, a provider
-                                             selection's — with its options and ballots. One a
-                                             resolver serves for you is left out
-          -served                            …and those a resolver serves for you, each
-                                             marked servedBy
-          -all                               the docket: every pending ask you can read,
-                                             whoever raised it and whoever it waits on
-          <id>                               …just that one record, as it stands: options,
-                                             ballots, deadline, outcome. ONE TOKEN, its id
-          <id> -answer <option> -as <who> [-say <text>] [-force]
-                                             answer it by option. A yes-or-no question's
-                                             options are proceed and deny; a selection's are
-                                             its doers. A question that takes more than one
-                                             voice records the ballot and says where the
-                                             tally stands (`1 of 2 for proceed`). -force
-                                             answers one a resolver serves for you
-          approve <id> [-say <text>] · deny <id> [-say <text>]
-          approve: y, yes · deny: n, no · -say: -s — the two default options, as verbs
-          -watch [-since <rev>]              a line when a question starts waiting on you,
-                                             and when it settles. Runs until stopped; -since
-                                             replays from a revision, as far back as the store
-                                             keeps its log in full
-  ask (asks)                                 your asks: each with its id, question, who is
-                                             asked, its date, and its answer or pending.
-                                             ../asking.md
-          <name|id>                          …just that one, and whom it waits on. A name used
-                                             for two asks is refused with both ids. Answered
-                                             by whom it asks with `question <id> -answer`
-          <name> -question (-q) <text> [-to <who>,…] [-due <when>] [-then <value>] [-else <value>] [-about <path>]
-                 [-keep <duration>]          ask it, under an id derived from the name. Who is
-                                             asked is named in the grammar a grant uses; the
-                                             date is RFC 3339 or a duration from now (48h); what
-                                             follows a yes is one key, {prompt: <text>},
-                                             {calls: [...]}, {answer: {ask, choice}} or
-                                             {ask: {...}}, or - / @<file> to read it; -else is
-                                             what follows a no, answered or by silence, in the
-                                             same terms; -keep is how long it stands once
-                                             settled (a week)
-          <name|id> -due <when>              move its date while it waits; asks nothing again
-          <name|id> -then <value> · -else <value> · -to <who>,…
-                                             change what it asks while it waits: it is asked
-                                             again as its next edit, and answers to the edit
-                                             before don't count
-          <name|id> -withdraw                take it back: withdrawn from the docket and
-                                             removed
-          -watch [-since <rev>]              a line when an ask of yours is made, is made
-                                             again, settles or is withdrawn; what waits on
-                                             you is `question -watch`. Runs until stopped;
-                                             -since replays from a revision, as far back as
-                                             the store keeps its log in full
-  charter (charters, c) [<path>]             the charter at a path, printed as the FILE that
-                                             installs it (`at:` and all); stderr names the
-                                             charters under it, and the marks on its rules
-                                             (held, suspended, in trouble). Bare, baseline's.
-                                             charter.md
-          [<path>] -d <dir>                  every charter at or under the path, a file apiece:
-                                             <dir>/<address as directories>/charter.tony
-          [-depth <n>]                       how far under it to go: 0 is that address
-                                             alone; -1 (the default) is everything
-          [-scope <name>]                    …a scope's own charter instead
-          [-paths] [-kpaths]                 one line per rule and level instead of the document.
-                                             -paths answers in STEPS — the spelling this
-                                             command takes, so `c -paths | xargs -L1 verse c`
-                                             round-trips — and -kpaths in one kinded path per
-                                             line, for a line captured into a shell variable. A
-                                             package that holds nothing yet prints itself,
-                                             since that is the state worth seeing
-          <address> rules|strata|schedules [<name>]
-                                             …and INTO the node standing there: its rules, its
-                                             levels, one of them by name, and on into that one
-                                             (`c verse-dev drift rules watcher action`).
-                                             `c rules watcher` is baseline's, which has no
-                                             address. A name that is elsewhere is named in
-                                             the refusal, with the path that reaches it
-          -a [<address>] -f <f>|-            INSTALL one charter from one file, as one step.
-                                             Re-applying an edited file is how a charter
-                                             changes. charter.md
-          -a -d <dir>                        …every charter file under the directory, each at
-                                             its own `at:`, all of them or none
-          -a <address> -d <dir> -prune       …and REMOVE what the directory leaves out at and
-                                             under the address: `-R` then `-a -d`, as one step
-          -a -scope <name>                   …into a scope's own charter instead
-          -r <path>                          REMOVE what the path names: a package at an
-                                             address, or one rule or level in it
-                                             (`c -r verse-dev.drift rules watcher`)
-          -R <address>                       …the charter there AND every charter under it
-                                             (-R is not `rm -r`'s recursion: -r is the removal)
-          <address> -- rules|strata|schedules
-                                             where the address ENDS, for a package whose own
-                                             address ends in `rules` or `strata` and would
-                                             otherwise shadow that key
-          A charter file is one document: `at: drift` is where its rules write, `reads:
-          [git, demo.pr]` what they may read besides, and `strata:`, `schedules:` and `rules:`
-          what it holds. A bare rule or list of them installs at the path. A directory of
-          charter files is several packages. charter.md#a-charter-can-be-installed-at-an-address
-  task (tasks, ps) [-runner <ref>]           every task, whatever runs it
-          run <prompt…> [-attach [-no-converse]] [-wait] [-driver scripted|calls|llm]     (honors the runner; mirrored)
-                                             -attach is a conversation: the turn is yours whenever
-                                             the model goes quiet, and Ctrl-D ends it
-          run [-runner <ref>]                …on an installed runner, not the verse default
-          run [-name <label>] [-subject <ref>] [-as <who>]      what the run is called, what it
-                                             is about, and who it is
-          run [-vector auto|ask|park] [-gates <file>] [-resolver <ref>]   how far it runs by
-                                             itself, which actions ask, and who answers
-          run [-answer-contract <file>]      the shape its final message must have
-          run [-environment <name>] [-repos <file>]    the workspace the runner builds, and the
-                                             repositories in it with what each may push
-          run [-virtual-key <address>]       the model credential the run spends
-          get <id> · attach <id>                        operator vantage (any backend):
-                                             attach prompts for each gate and for a question
-                                             asked in words (`ask`), with an identity
-          cancel <id> · say <id> <text…>
-          vector <id> auto|ask|park [-as <who>] · vector <id> -file <f>
-          approve|deny <id> <decision> [-say <text>]     (also y|yes, n|no)
-  group (groups)                             named sets of grantees, granted as group:<name>
-          add <name> <member>… · show <name> · remove <name>
-  perms [-if <pattern>] [-trim <match>]      the records of every node you may read: who
-                                             owns what you can see, and what it holds out
-  perms <step>… [-child-grants '{…}'] [-grants '[…]'] [-grant '{…}' [-below]] [-revoke '{…}']
-                                             one node's record, as its owner: read with no
-                                             flags; take the place and set what it and what
-                                             is created beneath it hold out
-  perms -root [the same flags]               the ROOT's record, whose address is the empty path
-  flow (flows)                               live tasks and suspensions, narrowed by the flags
-          [-task <id>]                       that run only; combines with neither of the others
-          [-charter <address>[:<rule>]]      a charter, and one rule of it: verse-dev.drift:claim,
-                                             :review (baseline's), '*' (every charter)
-          [-r | -recursive]                  …and every charter installed beneath the address
-          [-subject <address>]               a selector, * open in any segment: demo.pr.*,
-                                             demo.*.1, '*' (every subject) — quote it
-          [-args]                            each row as the flags naming it, for xargs -L1
-          suspend -task <id> | [-charter …] [-subject …] -why <text> [-as <who>]
-                                             hold that run at its next boundary, or suspend the
-                                             work about a charter and a subject until resumed
-          resume  -task <id> | [-charter …] [-subject …] [-as <who>]
-                                             lift the hold or the suspension; -task is refused
-                                             while a suspension holds the run
-          say     -task | -charter | -subject <text…>      an instruction to what they name
-          cancel  -task <id>                 end that run (destructive)
-          show <addr> [-active | -no-active]
-                                             a subject's flow as a tree, and what suspends it —
-                                             a held subject with no work too; -active only
-                                             those with a live task, -no-active only the rest
-  schedule (schedules)                       the schedules the verse ticks on: period, next, the
-                                             tick standing (minutely, hourly, daily, weekly come with it)
-          tick <name> -due <instant> [-at <address>]
-                                             write the tick for a past instant, as the schedule
-                                             would have; a rule about it fires as it would have
-          A verb that names nothing prints its usage and does nothing; of -charter and
-          -subject, the one left out beside the other is '*'. See ../control.md
-  provider (providers)                       the provider registry (provider.<capability>.<id>)
-
-  global:  -addr <host:port>    -scope <name>
-           -ofmt, -o <tony|yaml>   output format (default tony; verse renders no json)
-           -ifmt, -i <tony|json|yaml>   input format for stdin / extensionless files
-           -color auto|always|never    colorize (auto = a terminal only)
-```
+Every command is `verse <command>`. Each collection is one command, named in the singular:
+bare, it lists; with a verb, it acts on one member. `verse question` lists the questions
+waiting on you, and `verse question approve <id>` answers one. The plural is an alias of the
+same command (`verse questions`, `verse tasks`). `verse question list` is an error: bare, it
+already lists.
 
 Flags may come before or after positionals: `question approve <id> -as you@example.com -say ok`
 works. A `<who>` is a [principal](../glossary.md#principal) in the
-[grammar](../perms.md#principals-and-grantees). It is one of these:
+[grammar](../perms.md#principals-and-grantees): `user:<email>` or the bare email,
+`agent:<name>`, or `runner:<identity>`.
 
-- `user:<email>`, or the bare email;
-- `agent:<name>`;
-- `runner:<identity>`.
+The commands that start and stop a verse, and that install runners, iods and resolvers, are
+for somebody who runs verse. They are in [commands.md](../platform/commands.md), in the
+repository.
 
-The commands that start and stop a verse, and the ones that install runners, ios and
-resolvers, are for somebody who runs verse. They are in [commands.md](../platform/commands.md), in the repository.
+### Every listing filters
+
+Every listing takes the same two flags. They combine, and an empty result is an answer, not an
+error (exit 0).
+
+| Flag | What it does |
+|---|---|
+| `-if <match>` | keeps the items that match |
+| `-trim <match>` | writes only the parts the document names |
+
+```sh
+verse ps -if '{status: running}' -trim '{id status}'
+verse data demo pr '*' -trim '{stage}'         # per pr: the `*` makes each one an item
+verse watch demo -trim '{at to}'
+```
+
+Write a `-trim` document as a **key set**: in braces, a key with no `:` and no value is that
+key with a null. `{id status}` and `{id: null, status: null}` are the same document; type the
+first.
+
+In `-if`, the same spelling is a **presence** test, because a null matches any value.
+`-if '{status}'` keeps every entity that has a `status`, whatever it says. It is not
+equality: `-if '{status open}'` tests for two keys, `status` and `open`. A key nothing has
+selects nothing, so that mistake gives an empty answer, not a wrong one.
+
+On `data` and `watch`, `-if` is the server's selector: it decides which entities the read is
+about before any cross the wire. So those two take `-trim` alone
+([selecting by what an entity says](#selecting-by-what-an-entity-says)).
+
+Comments need no flag: verse reads and writes them everywhere.
+
+### status, schema
+
+| Command | What it does |
+|---|---|
+| `status` | the engine and the store, now. `restoring:` names the parts of a start that are still waiting on the store; `arming:` under a charter names rules whose watch is still opening. Both are absent on a verse that is up. |
+| `schema [<name>]` | the whole schema: the root, by top-level path, then every shape it names. A name prints that one definition. |
+
+### data (d)
+
+`data` answers **one document** at a path, not a list, so it has no plural. What to do is a
+flag, so its positional is always a path. The path is given as **steps**, one place per word
+([addressing](entities.md#addressing)):
+
+| Steps | What they name |
+|---|---|
+| `demo pr 1` · `demo pr 1 labels urgent` | names |
+| `demo pr 1 votes '[0]'` | an array index (also `{0}`) |
+| `demo pr '*'` | any one segment |
+| `demo pr 1 '"[0]"'` | the field named `[0]` |
+| `demo pr '"*"'` | the name that is `*` |
+| (none) | the whole verse |
+
+A path nothing stands at is a non-zero exit. An empty `{}` with exit 0 means the path stands
+and `-if` kept none of it.
+
+| Form | What it does |
+|---|---|
+| `data <step>…` | the verse at that address |
+| `data -at <path>` | the same, as one kinded path: `demo.pr.1`, `'demo.pr.*.stage'` |
+| `data … -if <pat> [-if-at <path>]` | only entities whose payload matches |
+| `data … -paths [-depth <n>]` | every address under the one asked for, one per line, as steps. `-depth` stops at addresses of at most `<n>` segments (default: no limit). |
+| `data … -kpaths` | the same listing, one kinded path per line |
+| `data … -put <payload>` | write it there. A put merges ([writing](entities.md#writing)). |
+| `data … -put -create` · `-put -update` | only if nothing is there yet · only if something is |
+| `data … -put -expect <pattern>` | only if what is there matches |
+| `data … -put -grants <list>` | create it holding out this list (as `perms -grants` takes it; `[]` for nothing) in place of child-grants. Refused where something stands ([creating with grants](entities.md#creating-with-grants)). |
+| `data … -rm` (`-r`) | remove what stands there: an entity, or one field. `-put` has no short form, because `-p` next to `-paths` is a slip that writes. |
+
+### watch
+
+| Form | What it does |
+|---|---|
+| `watch [<path>]` | stream changes to the store, with a cursor. It names the same entities as a read, and is refused the same way: a path nothing stands at is a non-zero exit, not a stream that never carries anything. |
+| `-since <rev>` | start from a revision |
+| `-wait-if-absent` | watch a path that holds nothing yet, and report when a value arrives. You ask for it, because a mistyped address held open looks exactly like a quiet verse. |
+| `-init` · `-no-init` | open with what already stands at the path, then the changes (the default) · stream from now ([watching](entities.md#watching)) |
+| `-ago <n>` | the last `<n>` commits the store keeps ([watching](entities.md#watching)) |
+| `-if <pat> [-if-at <field.path>]` | only changes whose payload matches |
+| `-until <pat>` | stop at the first frame matching `<pat>`, after printing it. The pattern is over the frame. Exit 0 whether or not it matched. |
+| `-nowire` | print each frame as a block opened by `---`, not on one line. The default, one frame per line, is for `grep`; this is for a person reading. The output is a tony document stream either way. |
+
+### question (questions, qs, gate, gates)
+
+| Form | What it does |
+|---|---|
+| `question` | the questions waiting on you: each ask whose `waitingOn` names you and that you did not raise, with its options and ballots. One a resolver serves for you is left out. |
+| `question -served` | those too, each marked `servedBy` |
+| `question -all` | the docket: every pending ask you can read, whoever raised it and whoever it waits on |
+| `question <id>` | that one record, as it stands: options, ballots, deadline, outcome |
+| `question <id> -answer <option> -as <who> [-say <text>] [-force]` | answer by option. A yes-or-no question's options are `proceed` and `deny`; a selection's are its doers. A question that needs more than one voice records the ballot and says where the tally stands (`1 of 2 for proceed`). `-force` answers one a resolver serves for you. |
+| `question approve <id> [-say <text>]` · `deny <id> [-say <text>]` | the two default options, as verbs. Also `y`, `yes` · `n`, `no`; `-s` for `-say`. |
+| `question -watch [-since <rev>]` | a line when a question starts waiting on you, and when it settles. Runs until stopped. `-since` replays from a revision, as far back as the store keeps its log. |
+
+### ask (asks)
+
+Your own questions to somebody, with a date ([asking](../asking.md)).
+
+| Form | What it does |
+|---|---|
+| `ask` | your asks: each with its id, question, who is asked, its date, and its answer or `pending` |
+| `ask <name\|id>` | that one, and whom it waits on. A name used for two asks is refused with both ids. Whoever it asks answers with `question <id> -answer`. |
+| `ask <name> -question (-q) <text> [-to <who>,…] [-due <when>] [-then <value>] [-else <value>] [-about <path>] [-keep <duration>]` | ask it, under an id derived from the name. `-to` uses the grammar of a grant. `-due` is RFC 3339 or a duration from now (`48h`). `-then` is what follows a yes: one key, `{prompt: <text>}`, `{script: <text>}`, `{answer: {ask, choice}}` or `{ask: {...}}`, a prompt or a script with the `policy` it runs under beside it, or `-` / `@<file>` to read it. `-else` is what follows a no, answered or by silence. `-keep` is how long it stands once settled (default a week). |
+| `ask <name\|id> -due <when>` | move its date while it waits; asks nothing again |
+| `ask <name\|id> -then <value>` · `-else <value>` · `-to <who>,…` | change what it asks while it waits. It is asked again, and answers to the earlier version do not count. |
+| `ask <name\|id> -withdraw` | take it back: off the docket, and removed |
+| `ask -watch [-since <rev>]` | a line when an ask of yours is made, made again, settled or withdrawn. What waits on you is `question -watch`. |
+
+### charter (charters, c)
+
+A charter file is one document. `at:` is where its rules write, `reads:` what they may read
+besides, and `strata:`, `schedules:` and `rules:` what it holds. A bare rule, or a list of
+them, installs at the path. A directory of charter files is several packages
+([the charter](charter.md#a-charter-can-be-installed-at-an-address)).
+
+| Form | What it does |
+|---|---|
+| `charter [<path>]` | the charter at a path, printed as the file that installs it (`at:` and all). stderr names the charters under it, and marks rules that are held, suspended or in trouble. Bare: baseline's. |
+| `charter [<path>] -d <dir>` | every charter at or under the path, one file each: `<dir>/<address as directories>/charter.tony` |
+| `-depth <n>` | how far under it to go: `0` is that address alone, `-1` (the default) everything |
+| `-scope <name>` | a scope's own charter instead |
+| `-paths` · `-kpaths` | one line per rule and level, instead of the document. `-paths` answers in steps, so `c -paths \| xargs -L1 verse c` round-trips; `-kpaths` in one kinded path per line. A package that holds nothing yet prints itself. |
+| `charter <address> rules\|strata\|schedules [<name>]` | into the node there: its rules, its levels, one by name, and on into that one (`c repos.verse.drift rules claim action`). `c rules claim` is baseline's. A name that is elsewhere is named in the refusal, with the path that reaches it. |
+| `charter -a [<address>] -f <file>\|-` | **install** one charter from one file, as one step. Applying an edited file again is how a charter changes. |
+| `charter -a -d <dir>` | every charter file under the directory, each at its own `at:`, all or none |
+| `charter -a <address> -d <dir> -prune` | the same, and **remove** what the directory leaves out at and under the address: `-R` then `-a -d`, as one step |
+| `charter -a -scope <name>` | into a scope's own charter |
+| `charter -r <path>` | **remove** what the path names: a package, or one rule or level in it (`c -r repos.verse.drift rules claim`) |
+| `charter -R <address>` | the charter there and every charter under it. (`-R` is not `rm -r`: `-r` is the removal.) |
+| `charter <address> -- rules\|strata\|schedules` | where the address ends, for a package whose own address ends in `rules` or `strata` |
+
+### task (tasks, ps)
+
+| Form | What it does |
+|---|---|
+| `task [-runner <ref>]` | every task, whatever runs it |
+| `task run <prompt…> [-agent <name> \| -script <text>] [-wait]` | run one. It honors the runner, and is mirrored. |
+| `task run … -attach [-no-converse]` | a conversation: the turn is yours whenever the model goes quiet. Ctrl-D ends it. |
+| `task run … -runner <ref>` | on an installed runner, not the verse's default |
+| `task run … -name <label> -subject <ref> -as <who>` | what the run is called, what it is about, and who it is |
+| `task run … -policy <file>` | what the run is given, and what each step gets: refused, asked about, or allowed |
+| `task run … -answer-contract <file>` | the shape its final message must have |
+| `task run … -git <file>` | the repositories the run works in |
+| `task run … -network open\|none\|<hosts>` | what the run may reach: the host's network (the default), none, or `host[:port],…`, as the launch's `with.network`. `verse up`'s runner builds only the host's. |
+| `task run … -virtual-key <address>` | the model credential the run spends |
+| `task get <id>` · `task attach <id>` | the operator's view, for any backend. `attach` prompts for each gate, and for a question asked in words, with an identity. |
+| `task cancel <id>` · `task say <id> <text…>` | end it · tell it something |
+| `task policy <id> <rows> [-as <who>]` · `task policy <id> -file <f>` | replace its policy with a whole one, naming no verb it did not |
+| `task approve\|deny <id> <decision> [-say <text>]` | answer its gate (also `y`, `yes`, `n`, `no`) |
+
+[Tasks](tasks.md) has the whole task surface.
+
+### group (groups)
+
+| Form | What it does |
+|---|---|
+| `group add <name> <member>…` · `show <name>` · `remove <name>` | named sets of grantees, granted as `group:<name>` |
+
+### perms
+
+| Form | What it does |
+|---|---|
+| `perms [-if <pattern>] [-trim <match>]` | the records of every node you may read: who owns what you can see, and what it holds out |
+| `perms <step>… [-child-grants '{…}'] [-grants '[…]'] [-grant '{…}' [-below]] [-revoke '{…}']` | one node's record. With no flags, read it. As its owner, take the place and set what it, and what is created under it, holds out. |
+| `perms -root [the same flags]` | the root's record, whose address is the empty path |
+
+### flow (flows)
+
+Live tasks and suspensions, narrowed by flags ([control](../control.md)). Of `-charter` and
+`-subject`, the one left out is `'*'`. A verb that names nothing prints its usage and does
+nothing.
+
+| Form | What it does |
+|---|---|
+| `flow -task <id>` | that run only; combines with neither of the others |
+| `flow -charter <address>[:<rule>]` | a charter, and one rule of it: `repos.verse.drift:claim`, `:review` (baseline's), `'*'` (every charter) |
+| `flow … -r` (`-recursive`) | and every charter installed beneath the address |
+| `flow -subject <address>` | a selector, `*` open in any segment: `demo.pr.*`, `demo.*.1`, `'*'`. Quote it. |
+| `flow … -args` | each row as the flags that name it, for `xargs -L1` |
+| `flow suspend -task <id> \| [-charter …] [-subject …] -why <text> [-as <who>]` | hold that run at its next boundary, or suspend the work about a charter and a subject until resumed |
+| `flow resume -task <id> \| [-charter …] [-subject …] [-as <who>]` | lift the hold or the suspension. `-task` is refused while a suspension holds the run. |
+| `flow say -task \| -charter \| -subject <text…>` | an instruction to what they name |
+| `flow cancel -task <id>` | end that run (destructive) |
+| `flow show <addr> [-active \| -no-active]` | a subject's flow as a tree, and what suspends it, a held subject with no work included. `-active` only those with a live task, `-no-active` only the rest. |
+
+### schedule (schedules)
+
+| Form | What it does |
+|---|---|
+| `schedule` | the schedules the verse ticks on: period, next, the tick standing. `minutely`, `hourly`, `daily` and `weekly` come with it. |
+| `schedule tick <name> -due <instant> [-at <address>]` | write the tick for a past instant, as the schedule would have. A rule about it fires as it would have. |
+
+### Global flags
+
+| Flag | What it does |
+|---|---|
+| `-addr <host:port>` | the verse to talk to |
+| `-scope <name>` | work in a copy-on-write scope |
+| `-ofmt`, `-o <tony\|yaml>` | output format (default tony; verse renders no JSON) |
+| `-ifmt`, `-i <tony\|json\|yaml>` | input format for stdin and files with no extension |
+| `-color auto\|always\|never` | color (auto: only on a terminal) |
 
 ## Selecting by what an entity says
 
@@ -353,8 +283,36 @@ are for reading as much as for running: each is a worked example of the surface 
 | | |
 |---|---|
 | `./scripts/seed-demo.sh` | the whole demo at once: a charter, the entities it reacts to, one reaction that has already happened, and one gate waiting for you |
-| `./scripts/seed-entities.sh` | a dozen entities across three systems, and nothing that reacts to them ([tutorial §2](../tutorial.md#2-entities)) |
-| `./scripts/charter-shapes.sh` | the coarse shapes that a rule comes in, one command each. It also runs `suspend`/`resume` on one rule, so you can watch the rule hold and then act on the world as it stands ([the introduction to charters](../charter-intro.md)) |
+| `./scripts/seed-entities.sh` | a dozen entities under `verse-tutorial`, and nothing that reacts to them ([the data page of the tutorial](../tutorial/data.md)) |
+| `./scripts/charter-shapes.sh` | the coarse shapes that a rule comes in, one command each. It also runs `suspend`/`resume` on one rule, so you can watch the rule hold and then act on the world as it stands ([charters, continued](../tutorial/charters-2.md#stopping-a-rule)) |
 | `./scripts/lineage.sh` | a commit becomes a PR, and the PR becomes a release. It shows how ids from three systems correlate without a fourth id, and the two limits of that design. |
 
 All four take `--scope <name>`, and each one removes what it wrote (`--clean`, or `clean`).
+
+## Use verse
+
+- [Commands](#commands): every command, and a file per topic.
+- [Tasks](tasks.md): running a task by hand, and answering its gates.
+- [Asking](../asking.md): `verse ask`: a question to somebody, with a date, and what follows a
+  yes run on your authority.
+- [Permissions, walked](../perms-guide.md): your own entities, a task and its gates, a charter
+  and what it owns, a gate with nobody behind it, a gate with a resolver.
+- [Scopes](scopes.md): a private copy of the store for your own work and flows.
+
+## Charters
+
+[The charter reference](../trigger-model.md) is the model of a rule and the page for each of
+its parts.
+
+## Elsewhere
+
+- [tony](https://signadot.github.io/tony-format/): the document language a charter is
+  written in, and [docd](https://signadot.github.io/tony-format/docd/), the store behind a
+  durable verse.
+- [go-tony](https://pkg.go.dev/github.com/signadot/tony-format/go-tony) on pkg.go.dev —
+  including [`ir/kpath`](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath)
+  (the addressing a task chain uses),
+  [`mergeop`](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/mergeop) (the patch
+  and match operators), and
+  [`system/libctl`](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/system/libctl)
+  (the controller `Handler`).

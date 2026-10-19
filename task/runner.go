@@ -1,223 +1,5 @@
 package task
 
-import (
-	"github.com/signadot/tony-format/go-tony/ir"
-)
-
-// Launch is everything one spawn says about the task it asks for: which driver builds
-// it, the task it is seeded with, and the FRAME that task is read in.
-//
-// It is a struct rather than the positional (id, task, driver) it replaces because what a
-// spawn may say about its agent is the axis that grows, and every growth was widening the
-// same four signatures. Every field but ID is optional; empty means "whatever the runtime
-// defaults to", which is what an ad-hoc `task run` sends.
-//
-// It is the runner-facing half of launch.Spec: the fields a runtime needs to BUILD the
-// task, without the ones (vector, grant, environment, provider) the engine resolves
-// against its own registries before it ever gets here.
-type Launch struct {
-	ID     string
-	Prompt string
-	Driver string
-
-	// Frame is the standing instructions the Prompt is read in — the agent's system
-	// prompt, as against its one job.
-	//
-	// It is per-spawn because it is the CHARTER's to write, and a package default cannot
-	// know what this spawn is for. Two things it gets wrong by construction: whether the
-	// agent's last message is prose for a person or the value a `patch: {x: $result}`
-	// will lift out of it, and which of the offered tools are worth reaching for under
-	// the gate vector this trigger runs at — a default that recommends delegating is
-	// wrong advice for an unattended firing whose delegate gate is ASK.
-	//
-	// Empty = the driver's own default frame.
-	Frame string
-
-	// Retain is how many read-plane events to keep for a resuming reader; 0 = the runtime's
-	// default. It is per-spawn because the right number is a property of the work: see
-	// launch.Spec.Retain.
-	Retain int
-	// Converse makes the run a conversation: when its driver goes quiet the person is handed
-	// the turn as a question on the docket, and the run ends when they end it rather than when
-	// the model stops. Set by `task run -attach` for a person at a terminal; a charter cannot
-	// set it, since a conversation with nobody on the other end would stand forever.
-	Converse bool
-
-	// Tools names the tools offered to the agent. Nil, the spawn named none and the task gets
-	// what the runner makes available for it; empty, the spawn named `tools: []` and the task
-	// gets none. It is the hard counterpart of Frame's advice: a frame can only ask an agent
-	// not to reach for something, whereas a tool that is not offered cannot be called at all.
-	// A driver always keeps whatever tools its own contract depends on (the LLM harness
-	// keeps `yield`, which is how a task reports it could not do the work). A name the runner
-	// cannot offer for this launch refuses the spawn rather than shrinking it in silence.
-	Tools []string
-
-	// VirtualKey is the model credential this task runs under — THE KEY ITSELF, not an address
-	// and not a name. Empty means the runtime's own.
-	//
-	// It is the one field here that carries a secret, and it does so because the permission
-	// question is answered before this exists: versed read it from the address the spawn named,
-	// AS WHOEVER NAMED IT, and refused the spawn if that read was not theirs to make. What a
-	// runner receives is the answer, so it has nothing to check and no list to hold.
-	//
-	// A Portkey virtual key is what this is for. It is bounded by its own budget and route, so
-	// it can cross a wire verse already trusts with a task's prompt, its grant and its
-	// provenance. A provider key is not bounded that way and does not belong on it.
-	VirtualKey string
-
-	// Credential is the token verse minted for this task: what vouches for it, to a system
-	// outside verse, that a gate let its work through — THE TOKEN ITSELF, as VirtualKey is the
-	// key. Empty for a task that asked for none.
-	//
-	// It crosses for VirtualKey's reason: the question of whether this task gets one is answered
-	// before it exists, where versed mints it, and what a runner receives is the answer. It is
-	// short-lived and good for one audience. A runner hands it to the task as a file outside the
-	// task's workspace (CredentialFile), named by CredentialFileEnv, and never as a value in the
-	// task's environment, which every process the task starts would inherit.
-	Credential string
-
-	// Answer is the ANSWER CONTRACT: the shape this task's final message must have,
-	// as a tony match pattern (see package answer). nil = no contract.
-	//
-	// It rides the wire with Frame and Tools rather than being enforced by the engine after
-	// the fact, because the check has to happen INSIDE the loop — the run is not finished
-	// until the answer is good, and a driver that has already stopped cannot be asked
-	// again. A runtime whose driver cannot enforce a contract must fail the spawn rather
-	// than run it unchecked: a contract silently dropped is worse than none, since the
-	// charter downstream is written believing it holds.
-	Answer *ir.Node
-
-	// Calls is the work itself, for a spawn that knows what it wants done: a list of actions
-	// to take in order, each saying which of its outcomes end the list. Empty for every other
-	// driver.
-	//
-	// It is the one field here that is not a reference to something the far end resolves, and
-	// it is where a `driver:` becomes almost redundant — a spawn carrying calls is a call
-	// list, because nothing else could run one. The engine still writes the driver name in,
-	// so what ran is readable rather than inferred.
-	Calls []Call
-
-	// Vector is the gate vector to launch under; nil = the runtime's own default. Grant is
-	// the hard envelope to install as the task's scope; nil = unbounded, which is what
-	// every task got before a spawn could say otherwise.
-	//
-	// These two are RESOLVED VALUES where Frame and Prompt are text, and the asymmetry is
-	// deliberate. A charter writes `vector: auto` / `grant: read-only` — names — and the
-	// engine resolves them (NamedVector/NamedGrant) before the spawn crosses this seam. It
-	// could as easily have sent the names and let the far end resolve them, and that would
-	// be worse: the two ends can be different builds, and a runtime whose vocabulary had
-	// drifted would run the task under a different envelope than the charter named,
-	// silently. Sending the predicates makes the meaning travel with the request and keeps
-	// the vocabulary in exactly one place.
-	//
-	// Grant is a pointer for the same reason NamedGrant returns an ok: the zero Grant
-	// permits NOTHING, so "no envelope declared" and "the empty envelope" must not be the
-	// same value. Conflating them refuses every action of every task that never
-	// mentioned a grant.
-	Vector *Vector
-	Grant  *Grant
-
-	// Environment names the workspace this task should run in — a repo at a base, a
-	// toolchain, a containment — resolved by the RUNNER against its own config, not by
-	// verse. It is the launch.Spec axis that has been parsed, `$var`-expanded and read by
-	// nothing (see versed.launchOf); this is the first consumer.
-	//
-	// It travels as a NAME, unresolved, the way Driver does rather than the way Vector and
-	// Grant do. The asymmetry is deliberate: verse holds the vocabulary for an envelope
-	// because it can enforce one, and holds none for a workspace because only the runner can
-	// build one. A runner handed a name it does not have refuses the launch, which is how a
-	// runner declines anything.
-	//
-	// Empty = the runner's own default workspace.
-	Environment string
-
-	// Repos are the repositories the task works in, and what it may do to each: checked out
-	// side by side under the task's directory, pushed as each one's Push allows. The spawn
-	// says them rather than the runner, because what a run may touch is the charter's to
-	// declare, and a $subject.head is a word only a charter has. Each is a request the runner
-	// may refuse, never weaken: a runner with no way to the forge refuses the launch.
-	//
-	// Empty means the task gets whatever workspace its Environment names, or a bare directory.
-	Repos []Repo
-
-	// Scope is the copy-on-write scope this task was spawned into — a named scope, or
-	// empty for baseline. The RUNTIME does nothing with it: a task runs the same either
-	// way, and the runner never sees it.
-	//
-	// It rides here because a task's records have to land where the task lives, and the one
-	// piece of machinery that publishes on a task's behalf is scope-blind. runnerd is a single
-	// global runtime shared by baseline and every scoped engine, so the gate questions it
-	// posts went to whichever store the ONE OnQuestion callback closed over — baseline —
-	// while the task's own `task:instance` record went to the spawning scope. One run,
-	// two records, two different stores: `verse question` showed a pending gate whose task
-	// `verse ps` would not list, one dev's decision appeared on every other dev's docket,
-	// and the question named entities in the scope that the reader could not
-	// read (git-issue kwxxm8cth12ksn99fhn0).
-	//
-	// Carried rather than looked up, because the alternatives are worse where it matters.
-	// A side map from task id to store is state that a restart loses and that leaks an
-	// entry per task; resolving the scope by hunting for the `task:instance` record across
-	// scopes races the very first gate, since a task can ask something before its own
-	// record is written. The launch is the one thing that exists before the task does.
-	Scope string
-
-	// Answerers is whom a question of this task that names nobody is held out to, in a gate's
-	// grammar, so PrincipalAnswerer asks whom the task acts for. Empty leaves such a question to
-	// the docket. Set by the launches that act for a person (an ask's `then`, a rule's
-	// `as: subject`), whose tasks' own questions are that person's to answer.
-	Answerers []string
-
-	// Occurrence is the store revision this RUN is about — the commit that woke the firing,
-	// or the revision a hand-spawned run's record was created at. Zero when nothing knows.
-	//
-	// The runtime does nothing with it, and holds it for the reason it holds Scope: an id
-	// names the WORK, so one id runs many times, and something has to be able to say WHICH
-	// run a process is. Without it that answer lived only on the entity — asking whether a
-	// running process is the one a record describes meant reading
-	// `task:instance:<id>.occurrence` and comparing by hand, and `verse ps`, which reads the
-	// runtime rather than the store, could not answer it at all.
-	Occurrence int64
-
-	// Provenance is what the runner needs to make its own effects auditable: who is
-	// answerable for this launch, and what it is about.
-	//
-	// It crosses the wire because a runner's effects can leave the verse — a coding runner
-	// pushes a branch under a credential verse does not hold — and the only externally
-	// checkable link back is what the runner itself writes down (a commit trailer, a branch
-	// name). A runner that was never told cannot record it.
-	Provenance Provenance
-}
-
-// Provenance is the answer to "on whose account, and about what" for one launch. Every
-// field is optional and an empty one means verse did not know, which is a real state and
-// not a default.
-//
-// It is deliberately NOT authority. A runner must not read Principal and confer
-// anything on the strength of it — that is rejected, where an agent inherits
-// what a user may do rather than what a user asked for. What may be done is
-// Grant, and nothing here widens it.
-type Provenance struct {
-	// Principal is who is answerable for this launch — the argument half of the
-	// parameter-at-install / argument-at-launch split.
-	//
-	// Self-asserted, and known to be: verifying that a caller is who it says is
-	// authority's whole subject, and nothing local could do better than a lock with the key
-	// taped to it. It is carried anyway because a chain of one asserted link and several
-	// derived ones is checkable against the store, where a bare unattributed effect is not.
-	//
-	// Empty on a charter firing today: what is answerable there is whoever installed the
-	// charter, which is the PARAMETER half and wants an author on an entity write —
-	// `entity.Write` carries none. Subject and Chain below are what the firing does know.
-	Principal string
-	// Subject is the flow this launch belongs to (an entity ref, e.g. a PR), and Chain is
-	// the kpath of the action inside its trigger ("review", "review.onDone"). Together they
-	// are the precipitating cause of a charter firing — which verse has always recorded on
-	// its own side and never told the runner, so a remote runner could not say why it was
-	// asked for anything.
-	Subject string
-	Chain   string
-}
-
 // Runner runs and governs tasks on some substrate; verse (the engine) is its
 // client. The only implementation today is the in-process local supervisor (a runnerd
 // wrapper); remote runners addressed by a base URL — k8s, lambda, another verse — come
@@ -225,11 +7,10 @@ type Provenance struct {
 //
 // Keeping even the local case behind the interface is deliberate: there is no privileged
 // in-memory path, so the contract stays complete and local ≡ remote.
+//
+// It starts nothing: starting a task is the runner client's (runner/client's Launcher, which
+// sends a runner.Launch).
 type Runner interface {
-	// Spawn starts a task and returns a handle to govern it. The id is assigned by
-	// the caller (the engine's spawnID).
-	Spawn(l Launch) Handle
-
 	// Attach re-attaches to an already-running task by id — the resume path on
 	// restart, when the work outlived verse (a remote runner). Its handle's read plane
 	// replays from the start so the mirror re-derives current state. A local (in-process)
@@ -273,7 +54,7 @@ type Lister interface {
 }
 
 // Handle is verse's governing handle on one running task — the control plane
-// (pause/resume/cancel/say/set-vector) plus the read plane (Subscribe). It hides whether
+// (pause/resume/cancel/say/set-policy) plus the read plane (Subscribe). It hides whether
 // the task runs in-process or behind a URL, so the engine tracks handles, not the
 // concrete *Task. The local handle is *Task itself; a remote handle wraps an HTTP
 // client of a runner base URL.
@@ -285,13 +66,15 @@ type Handle interface {
 	// dies mid-task would leave it with no way back to current, and no way to tell that
 	// from the task having ended.
 	SubscribeSince(since int64) (<-chan Event, func())
-	Pause() error
-	Resume() error
-	Cancel(reason string) error
+	// by, on these three, is who did it.
+	Pause(by string) error
+	Resume(by string) error
+	Cancel(reason, by string) error
 	// Steer says words to the task, taken at its next boundary; ask is the ask they are, echoed
 	// on the say frame when they are taken, and empty for words nobody tracks.
 	Steer(instruction, by, ask string) error
-	SetVector(v *Vector, by string) error
+	// SetPolicy replaces the task's policy from its next step; by is who did.
+	SetPolicy(p Policy, by string) error
 	Result() string
 	// Err is why a terminal task failed or was cancelled — independent of Result, not
 	// exclusive with it: a driver can say something and then fail. It is on the Handle
@@ -303,15 +86,14 @@ type Handle interface {
 // *Task is the local Handle.
 var _ Handle = (*Task)(nil)
 
-// FailedHandle is the Handle for work that never started: a spawn that could not be issued
+// FailedHandle is the Handle for work that never started: a launch that could not be issued
 // at all. Its read plane reports one terminal frame and closes, so a mirror records a failed
 // task rather than stranding the entity as running, and Err carries the reason to
 // `task get`.
 //
-// It is here rather than in each caller because there are now two callers with the same
-// need — a remote spawn whose POST did not go through (runner), and a spawn whose declared
-// envelope did not resolve (versed) — and a Handle that lies about a task's status is
-// exactly the thing not to reimplement per package.
+// It is here rather than in each caller because more than one caller has the need — a launch
+// whose POST did not go through, and verse's own spawns that never reached a runner — and a
+// Handle that lies about a task's status is exactly the thing not to reimplement per package.
 func FailedHandle(reason string) Handle { return failedHandle{reason} }
 
 type failedHandle struct{ err string }
@@ -330,10 +112,10 @@ func (f failedHandle) SubscribeSince(int64) (<-chan Event, func()) { return f.Su
 // Control on work that never started is refused rather than silently accepted. There is no
 // task to pause, and saying so is the difference between "your cancel landed" and "there
 // was never anything there".
-func (failedHandle) Pause() error                       { return ErrNoSuchTask }
-func (failedHandle) Resume() error                      { return ErrNoSuchTask }
-func (failedHandle) Cancel(string) error                { return ErrNoSuchTask }
+func (failedHandle) Pause(string) error                 { return ErrNoSuchTask }
+func (failedHandle) Resume(string) error                { return ErrNoSuchTask }
+func (failedHandle) Cancel(string, string) error        { return ErrNoSuchTask }
 func (failedHandle) Steer(string, string, string) error { return ErrNoSuchTask }
-func (failedHandle) SetVector(*Vector, string) error    { return ErrNoSuchTask }
+func (failedHandle) SetPolicy(Policy, string) error     { return ErrNoSuchTask }
 func (failedHandle) Result() string                     { return "" }
 func (f failedHandle) Err() string                      { return f.err }

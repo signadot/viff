@@ -18,13 +18,10 @@ func TestDescribeSaysWhatTheActionIs(t *testing.T) {
 		{"a shell command", ToolUse{Name: "run_bash", Input: map[string]any{"command": "go test ./..."}}, "go test ./..."},
 		{"a file write, by its path and not its content",
 			ToolUse{Name: "write_file", Input: map[string]any{"path": "docs/a.md", "content": "a long body\nover lines"}}, "docs/a.md"},
-		{"a push, by repository and ref",
-			ToolUse{Name: "push", Input: map[string]any{"branch": "verse/auto/1", "repo": "verse", "to": "refs/heads/verse/auto/1"}},
-			"verse → refs/heads/verse/auto/1"},
-		{"a delete, said so",
-			ToolUse{Name: "push", Input: map[string]any{"branch": "verse/auto/1", "repo": "verse", "delete": true, "to": "refs/heads/verse/auto/1"}},
-			"delete verse → refs/heads/verse/auto/1"},
-		{"a push with only a branch", ToolUse{Name: "push", Input: map[string]any{"branch": "main"}}, "main"},
+		{"a push, by destination and ref",
+			ToolUse{Name: "push", Input: map[string]any{"destination": "auto", "repo": "verse", "to": "refs/heads/verse/auto/1"}},
+			"auto → refs/heads/verse/auto/1"},
+		{"a push with only a destination", ToolUse{Name: "push", Input: map[string]any{"destination": "main"}}, "main"},
 		{"a question, in its words", ToolUse{Name: "ask", Input: map[string]any{"question": "which colour?", "options": []any{"red", "blue"}}}, "which colour?"},
 		{"a delegation, by agent and prompt",
 			ToolUse{Name: "call_agent", CallAgent: &CallAgentRequest{Agent: "reviewer", Prompt: "check the tests"}}, "reviewer: check the tests"},
@@ -61,7 +58,7 @@ func TestAPendingQuestionCarriesTheAction(t *testing.T) {
 	reg := NewRegistry()
 	got := make(chan Pending, 1)
 	reg.OnPost(func(p Pending) { got <- p })
-	q := GateQuestion{ID: "run-x~d1", Origin: "run-x", Gate: "shell", Mode: Ask}
+	q := GateQuestion{ID: "run-x~d1", Origin: "run-x", Gate: "shell"}
 	go func() {
 		_, _ = reg.Resolve(context.Background(), q, ToolUse{Name: "run_bash", Input: map[string]any{"command": "go test ./..."}})
 	}()

@@ -23,11 +23,11 @@ contract, and anything can fulfil the contract. The contract has six parts:
 
 | Part | What it does |
 |---|---|
-| a [driver](glossary.md#driver) | proposes the next step: `Driver.Next(ctx, prev) → (ToolUse, more)` |
+| a driver | proposes the next step: `Driver.Next(ctx, prev) → (ToolUse, more)`. It is what a [doer](glossary.md#doer) runs as. |
 | an [executor](glossary.md#executor) | performs a step after the gates approve it: `Executor.Execute(ctx, tu) → StepResult` |
-| the [vector](glossary.md#vector) | gates the typed effects of every step before the step runs. An effect is a `Verb × Resource`, such as `exec` on a `task`. The vector is the autonomy dial. |
+| the [policy](glossary.md#policy) | decides a step before it runs: the first row that matches it denies it, asks about it or allows it. A step is what an action is about to do, such as `commands.run` with its command. |
 | the [event stream](glossary.md#event-stream) | streams structured `Event`s: `EventSay` narration, `EventExec` results, `EventPending` waits on a gate, `EventStatus` lifecycle and `EventBoundary` cursor |
-| the [control plane](glossary.md#control-plane) | applies steering at a [boundary](glossary.md#boundary): `Pause`, `Resume`, `Cancel`, `Say` and `SetVector`. Its rule is "stop between actions, never undo one". |
+| the [control plane](glossary.md#control-plane) | applies steering at a [boundary](glossary.md#boundary): `Pause`, `Resume`, `Cancel`, `Say` and `SetPolicy`. Its rule is "stop between actions, never undo one". |
 | the [mirror](glossary.md#mirror-of-tasks) | writes the task into the [store](glossary.md#store) as a `verse.task.instance.*` [entity](glossary.md#entity). The task ends with a terminal outcome and a result. |
 
 The contract does not say *where* the driver or the executor runs. An external task is
@@ -151,27 +151,21 @@ stream is never the authority.**
 
 This section is about what the contract must not prevent.
 
-An agent in the verse process is trusted by construction. Verse built its executor, derives its
-effects, and gates each effect. An external worker is a separate
-[principal](glossary.md#principal), and the boundary of trust moves.
+A task on a runner is a separate [principal](glossary.md#principal), and the boundary of trust
+is the runner, not the task's process.
 
-- **From interception to authorization.** Verse cannot gate every syscall of a remote worker.
-  Verse authorizes the runner instead: the identity on its entity is who may drive this task.
-  Verse then gates, at chosen points, the effects that the worker reports at its checkpoints.
-  The autonomy of an external worker is coarser by nature. That is the price of remote work,
-  and this page states it openly.
-- **Reported effects are attestations.** The `Effect`s of a worker are claims about the world
-  that verse cannot verify. Verse cannot know that the worker ran only that command. Verse
-  records them as attestations, with the worker named and an audit trail. Verification comes
-  later.
-- **The existing mechanism carries it.** The gate `Vector`, the `Registry` and the `Resolver`
-  already let a person answer the gate of an agent. In the same way, a remote worker can raise
-  a gate, such as "about to deploy, approve?". It is the same mechanism, and an agent or a
-  person answers it.
+- **The runner performs what crosses a credential.** A push, a pull request, a tracker's or
+  Slack's act is made by the runner's own process, with a credential the task never holds, and
+  decided there again by the task's current policy and the runner's ceiling. A row that refuses
+  such a step prevents it. A step the runner can only stop inside the run (a file write, a
+  command) is held by stopping what the agent proposes: a prompt, said so on
+  [inside](systems/inside.md), until a seam below the task makes it a bound.
+- **What the runner reports is the record.** Every call is an event on the task's stream,
+  naming the step and its fields, the row that decided it, and whoever answered. Verse holds
+  the stream and the entity; it does not re-derive a step from outside the process.
+- **The existing mechanism carries it.** The task's `Policy`, the `Registry` and the `Resolver`
+  let a person answer an agent's question, and a task on a runner raises the same question
+  through the runner. It is the same mechanism, and an agent or a person answers it.
 
-Two things keep policy a later layer and not a change to the data model:
-
-- an identity on the runner;
-- effects on the journal that name who made them.
-
-Policy here means who may run what, and which attested effects need a second signature.
+Two things keep policy a layer over the data model and not a change to it: an identity on the
+runner, and events on the stream that name who made them.

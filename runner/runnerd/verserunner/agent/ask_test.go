@@ -26,15 +26,18 @@ func askCallWith(id string, args map[string]any) toolCall {
 	return tc
 }
 
-// askRun builds a task whose model asks once and then stops, and runs it against reg. It
+// unasked is a policy that gives the task its questions and asks about nothing.
+var unasked = task.Policy{{Match: &task.Match{System: "question"}, Then: task.Then{Mode: task.ThenAllow}}, {Then: task.Then{Mode: task.ThenAllow}}}
+
+// askRun builds a task whose model asks once and then stops, and runs it against reg under g. It
 // returns the fake (to read what the model was told) and the run's end.
-func askRun(t *testing.T, ctx context.Context, reg *task.Registry, vec *task.Vector, call toolCall) (*fakeCompleter, <-chan error) {
+func askRun(t *testing.T, ctx context.Context, reg *task.Registry, g task.Policy, call toolCall) (*fakeCompleter, <-chan error) {
 	t.Helper()
 	fake := &fakeCompleter{turns: []scriptedTurn{
 		{msg: chatMessage{Role: "assistant", ToolCalls: []toolCall{call}}, finish: "tool_calls"},
 		{msg: chatMessage{Role: "assistant", Content: "thanks"}, finish: "stop"},
 	}}
-	p, _ := Build(Config{ID: "t1", Prompt: "chat", Root: t.TempDir(), Resolver: reg, Client: fake, Vector: vec})
+	p := Build(Config{ID: "t1", Prompt: "chat", Root: t.TempDir(), Resolver: reg, Client: fake, Policy: g})
 	done := make(chan error, 1)
 	go func() {
 		_, err := p.Run(ctx)
@@ -75,7 +78,7 @@ func toldAfterAsk(t *testing.T, fake *fakeCompleter) string {
 // AN ASK IS A QUESTION ON THE DOCKET, and its answer is what the model reads next.
 func TestAskBlocksOnTheDocketAndReturnsTheAnswer(t *testing.T) {
 	reg := task.NewRegistry()
-	fake, done := askRun(t, context.Background(), reg, nil, askCall("c1", "which one?"))
+	fake, done := askRun(t, context.Background(), reg, unasked, askCall("c1", "which one?"))
 
 	p := pendingAsk(t, reg)
 	if !slices.Equal(p.Question.Answerers, []string{task.PrincipalAnswerer}) {
@@ -102,7 +105,7 @@ func TestAskBlocksOnTheDocketAndReturnsTheAnswer(t *testing.T) {
 // A NAMED OUTCOME COMES BACK BY ITS ID.
 func TestAskWithOptionsReturnsTheChoice(t *testing.T) {
 	reg := task.NewRegistry()
-	fake, done := askRun(t, context.Background(), reg, nil, askCall("c1", "a or b?", "a", "b"))
+	fake, done := askRun(t, context.Background(), reg, unasked, askCall("c1", "a or b?", "a", "b"))
 	p := pendingAsk(t, reg)
 	if len(p.Question.Options) != 2 || p.Question.Options[1].ID != "b" {
 		t.Fatalf("options %+v", p.Question.Options)
@@ -116,12 +119,10 @@ func TestAskWithOptionsReturnsTheChoice(t *testing.T) {
 	}
 }
 
-// A call that names answerers holds the question out to them, and not to the task's own
-// person: a charter's call list asks whom the charter says, which for a system charter is the
-// only way its question reaches anybody.
+// An ask that names answerers holds the question out to them, and not to the task's own person.
 func TestAskNamesItsAnswerers(t *testing.T) {
 	reg := task.NewRegistry()
-	_, done := askRun(t, context.Background(), reg, nil, askCallWith("c1", map[string]any{
+	_, done := askRun(t, context.Background(), reg, unasked, askCallWith("c1", map[string]any{
 		"question": "install?", "options": []string{"proceed", "deny"}, "answerers": []string{"user:*", " group:owners "},
 	}))
 	p := pendingAsk(t, reg)
@@ -134,7 +135,7 @@ func TestAskNamesItsAnswerers(t *testing.T) {
 	}
 	// Named nobody: the task's own person, as before.
 	reg = task.NewRegistry()
-	_, done = askRun(t, context.Background(), reg, nil, askCall("c2", "go?", "yes"))
+	_, done = askRun(t, context.Background(), reg, unasked, askCall("c2", "go?", "yes"))
 	p = pendingAsk(t, reg)
 	if got := p.Question.Answerers; !slices.Equal(got, []string{task.PrincipalAnswerer}) {
 		t.Fatalf("answerers %v, want the principal", got)
@@ -143,14 +144,21 @@ func TestAskNamesItsAnswerers(t *testing.T) {
 	<-done
 }
 
-// ASKING IS NOT ASKED ABOUT. Under a vector whose default is `ask`, every action is a question
-// for the supervisor — and the ask itself must not be one, or the person is asked whether the
-// task may ask them, and only then what it wanted to know.
-func TestAskIsNotGatedByTheVector(t *testing.T) {
+// AN ALLOWED ASK IS ASKED ONCE. Under gates on every other step an agent can take, a row that
+// allows `question` puts the question at once: the person is not asked whether the task may ask
+// them, and only then what it wanted to know.
+func TestAnAllowedAskIsAskedOnce(t *testing.T) {
 	reg := task.NewRegistry()
 	var posted int
 	reg.OnPost(func(task.Pending) { posted++ })
-	fake, done := askRun(t, context.Background(), reg, &task.Vector{Default: task.Ask}, askCall("c1", "go on?"))
+	ask := task.Then{Mode: task.ThenAsk}
+	fake, done := askRun(t, context.Background(), reg, task.Policy{
+		{Name: "w", Match: &task.Match{System: "files", Verb: "write"}, Then: ask},
+		{Name: "c", Match: &task.Match{System: "commands", Verb: "run"}, Then: ask},
+		{Name: "d", Match: &task.Match{System: "agent", Verb: "call-sub-agent"}, Then: ask},
+		{Match: &task.Match{System: "question"}, Then: task.Then{Mode: task.ThenAllow}},
+		{Then: ask},
+	}, askCall("c1", "go on?"))
 	p := pendingAsk(t, reg)
 	if p.Tool != askTool || p.Question.Gate != askTool {
 		t.Fatalf("the first question on the docket is the supervisor's, not the task's: %+v", p)
@@ -167,6 +175,28 @@ func TestAskIsNotGatedByTheVector(t *testing.T) {
 	}
 }
 
+// AN ASK NO ROW NAMES IS REFUSED. A policy that names no `question` does not give the task its
+// questions: the tool is not offered, and a call of it anyway puts nothing on the docket and is
+// refused, whatever the default row says.
+func TestAnAskNoRowNamesIsRefused(t *testing.T) {
+	reg := task.NewRegistry()
+	var posted int
+	reg.OnPost(func(task.Pending) { posted++ })
+	fake, done := askRun(t, context.Background(), reg, task.Policy{
+		{Match: &task.Match{System: "files"}, Then: task.Then{Mode: task.ThenAllow}},
+		{Then: task.Then{Mode: task.ThenAllow}},
+	}, askCall("c1", "go on?"))
+	if err := <-done; err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if posted != 0 {
+		t.Fatalf("%d questions were posed, want none", posted)
+	}
+	if got := toldAfterAsk(t, fake); !strings.Contains(got, "not provided") {
+		t.Fatalf("the model read %q, want the refusal", got)
+	}
+}
+
 // A CANCELLED ASK LEAVES THE DOCKET: the question is withdrawn with its task, not left for
 // somebody to answer into nothing.
 func TestACancelledAskLeavesTheDocket(t *testing.T) {
@@ -174,7 +204,7 @@ func TestACancelledAskLeavesTheDocket(t *testing.T) {
 	dropped := make(chan string, 1)
 	reg.OnDrop(func(q task.GateQuestion, _ string) { dropped <- q.ID })
 	ctx, cancel := context.WithCancel(context.Background())
-	_, done := askRun(t, ctx, reg, nil, askCall("c1", "still there?"))
+	_, done := askRun(t, ctx, reg, unasked, askCall("c1", "still there?"))
 	p := pendingAsk(t, reg)
 	cancel()
 	<-done
@@ -195,7 +225,7 @@ func TestACancelledAskLeavesTheDocket(t *testing.T) {
 // person the turn, and they take it whenever they come back.
 func TestAskWithoutWithinHasNoClock(t *testing.T) {
 	reg := task.NewRegistry()
-	_, done := askRun(t, context.Background(), reg, nil, askCall("c1", "which one?"))
+	_, done := askRun(t, context.Background(), reg, unasked, askCall("c1", "which one?"))
 	p := pendingAsk(t, reg)
 	if p.Question.Deadline != nil {
 		t.Fatalf("an ask with no within has a clock: %+v", p.Question.Deadline)
@@ -208,7 +238,7 @@ func TestAskWithoutWithinHasNoClock(t *testing.T) {
 // answered, and what it came to.
 func TestAskWithinIsTheQuestionsClock(t *testing.T) {
 	reg := task.NewRegistry()
-	fake, done := askRun(t, context.Background(), reg, nil, askCallWith("c1", map[string]any{
+	fake, done := askRun(t, context.Background(), reg, unasked, askCallWith("c1", map[string]any{
 		"question": "a or b?", "options": []string{"a", "b"}, "within": "30m", "default": "b"}))
 	p := pendingAsk(t, reg)
 	if d := p.Question.Deadline; d == nil || d.Within != "30m" || d.Default != "b" {
@@ -226,7 +256,7 @@ func TestAskWithinIsTheQuestionsClock(t *testing.T) {
 // A QUESTION IN WORDS THAT RUNS OUT settles on nothing, and says so.
 func TestAnAskInWordsThatRunsOutSaysNobodyAnswered(t *testing.T) {
 	reg := task.NewRegistry()
-	fake, done := askRun(t, context.Background(), reg, nil, askCallWith("c1", map[string]any{
+	fake, done := askRun(t, context.Background(), reg, unasked, askCallWith("c1", map[string]any{
 		"question": "anything?", "within": "2s"}))
 	p := pendingAsk(t, reg)
 	reg.Answer(p.Question.ID, task.Choose(task.NoOption, task.ByDeadline))
@@ -248,7 +278,7 @@ func TestAskRefusesAClockThatMeansNothing(t *testing.T) {
 		"default on words":       {"question": "q", "within": "1h", "default": replyOption},
 	} {
 		reg := task.NewRegistry()
-		fake, done := askRun(t, context.Background(), reg, nil, askCallWith("c1", args))
+		fake, done := askRun(t, context.Background(), reg, unasked, askCallWith("c1", args))
 		select {
 		case err := <-done:
 			if err != nil {

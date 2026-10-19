@@ -297,9 +297,9 @@ func (s *Server) holdTask(w http.ResponseWriter, r *http.Request, id string, hol
 		return api.FlowRow{}, false
 	}
 	if hold {
-		h.Pause()
+		h.Pause(versedActor)
 	} else {
-		h.Resume()
+		h.Resume(versedActor)
 	}
 	return api.FlowRow{Kind: api.FlowRowTask, Task: id}, true
 }
@@ -441,7 +441,7 @@ func (s *Server) flowCancel(w http.ResponseWriter, r *http.Request) {
 		noSuchTask(w, r, b.Task)
 		return
 	}
-	h.Cancel("flow cancel")
+	h.Cancel("flow cancel", versedActor)
 	writeOut(w, r, http.StatusOK, api.Steered{Task: b.Task, Verb: "cancel", Affected: 1})
 }
 

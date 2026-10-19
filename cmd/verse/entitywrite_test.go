@@ -166,7 +166,7 @@ func TestEntityPutMergesAndAddressesAField(t *testing.T) {
 }
 
 // What a put PRINTS is the entity as it now stands, not an echo of the request — the two
-// differ the moment a write merges, which is the whole point. docs/tutorial.md §2 shows this
+// differ the moment a write merges, which is the whole point. docs/tutorial/data.md shows this
 // output, so it is pinned here rather than left to drift.
 func TestEntityPutPrintsTheEntity(t *testing.T) {
 	serve(t)

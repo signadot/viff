@@ -1,6 +1,7 @@
 package runnerd_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/signadot/verse/runner/runnerd"
 )
@@ -79,6 +81,14 @@ func TestEgressRefusesANonList(t *testing.T) {
 	}
 	if _, err := runnerd.NewEgress("t", []string{"*.com"}, nil); err == nil {
 		t.Error("`*.com` was accepted")
+	}
+	for _, unread := range []string{"2001:DB8:0:0::1", "[2001:db8:0::1]:8443", "::ffff:10.0.0.1"} {
+		if _, err := runnerd.NewEgress("t", []string{unread}, nil); err == nil {
+			t.Errorf("%s was accepted, though the proxy never reads a destination so", unread)
+		}
+	}
+	if _, err := runnerd.NewEgress("t", []string{"2001:db8::1", "[2001:db8::1]:8443", "10.0.0.1:8080"}, nil); err != nil {
+		t.Errorf("an address as Go writes it was refused: %v", err)
 	}
 }
 
@@ -196,7 +206,7 @@ func TestAServedEgressIsASocketThatStopsWithItsTask(t *testing.T) {
 		t.Error("the socket outlived its egress")
 	}
 	var none *runnerd.EgressServer
-	none.Stop() // a task with no restricted network has no egress, and nothing to stop
+	none.Stop() // a task with no allow network has no egress, and nothing to stop
 	if none.Sock() != "" {
 		t.Error("no egress has a socket")
 	}
@@ -234,4 +244,127 @@ func serveEgress(t *testing.T, e *runnerd.Egress) *url.URL {
 		t.Fatal(err)
 	}
 	return u
+}
+
+// An absolute-form request is checked against the port its scheme defaults to: https:// with no
+// port is :443, not :80.
+func TestEgressDefaultsAnAbsoluteRequestsPortByScheme(t *testing.T) {
+	e, err := runnerd.NewEgress("t12", []string{"allowed.example:80"}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxyURL := serveEgress(t, e)
+	conn, err := net.Dial("tcp", proxyURL.Host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	fmt.Fprint(conn, "GET https://allowed.example/x HTTP/1.1\r\nHost: allowed.example\r\n\r\n")
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden || e.Refusals()["allowed.example:443"] != 1 {
+		t.Errorf("https://allowed.example answered %d, refusals %v: want it refused as allowed.example:443",
+			resp.StatusCode, e.Refusals())
+	}
+}
+
+// A client that shuts its write side and waits for the answer gets it, through the task's
+// loopback bridge and the tunnel both: the half-close reaches the far side as one.
+func TestEgressPassesAHalfCloseThrough(t *testing.T) {
+	far, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer far.Close()
+	go func() {
+		c, err := far.Accept()
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		n, _ := io.Copy(io.Discard, c) // to the client's EOF
+		fmt.Fprintf(c, "read %d bytes", n)
+	}()
+	e, err := runnerd.NewEgress("t13", []string{far.Addr().String()}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxyURL := serveEgress(t, e)
+	conn, err := net.Dial("tcp", proxyURL.Host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+	fmt.Fprintf(conn, "CONNECT %s HTTP/1.1\r\nHost: %[1]s\r\n\r\n", far.Addr())
+	br := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(br, nil)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("CONNECT: %v %v", resp, err)
+	}
+	fmt.Fprint(conn, "hello")
+	if err := conn.(*net.TCPConn).CloseWrite(); err != nil {
+		t.Fatal(err)
+	}
+	got, err := io.ReadAll(br)
+	if err != nil {
+		t.Fatalf("no answer after the half-close: %v (read %q)", err, got)
+	}
+	if string(got) != "read 5 bytes" {
+		t.Errorf("the far side answered %q, want %q", got, "read 5 bytes")
+	}
+}
+
+// And the other way: a far side that finishes sending first still reads what the client sends
+// after, through the bridge and the tunnel both.
+func TestEgressKeepsTheClientsSideOpenAfterTheFarSideFinishes(t *testing.T) {
+	far, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer far.Close()
+	late := make(chan string, 1)
+	go func() {
+		c, err := far.Accept()
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		fmt.Fprint(c, "done sending")
+		_ = c.(*net.TCPConn).CloseWrite()
+		got, _ := io.ReadAll(c)
+		late <- string(got)
+	}()
+	e, err := runnerd.NewEgress("t14", []string{far.Addr().String()}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxyURL := serveEgress(t, e)
+	conn, err := net.Dial("tcp", proxyURL.Host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+	fmt.Fprintf(conn, "CONNECT %s HTTP/1.1\r\nHost: %[1]s\r\n\r\n", far.Addr())
+	br := bufio.NewReader(conn)
+	if resp, err := http.ReadResponse(br, nil); err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("CONNECT: %v %v", resp, err)
+	}
+	if got, err := io.ReadAll(br); err != nil || string(got) != "done sending" {
+		t.Fatalf("read %q, %v", got, err)
+	}
+	fmt.Fprint(conn, "still talking")
+	_ = conn.(*net.TCPConn).CloseWrite()
+	select {
+	case got := <-late:
+		if got != "still talking" {
+			t.Errorf("the far side read %q after it finished, want %q", got, "still talking")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the far side never read the client's end")
+	}
 }

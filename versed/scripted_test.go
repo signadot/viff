@@ -9,6 +9,8 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/task"
 )
 
 // waitTaskStatus waits for the mirrored task to reach status, and says what it saw if it does
@@ -48,34 +50,30 @@ func noQuestionWithin(t *testing.T, srv *Server, id string, d time.Duration) {
 	}
 }
 
-// A scripted spawn that names no vector ASKS.
-//
-// This is the contract change, pinned rather than described. The scripted driver used to build
-// its own Auto vector and ignore the one the spawn carried, so every `driver: scripted` charter
-// ran its shell command unattended whatever it had written — and a charter that asked to be
-// asked was disobeyed in silence. Now the spawn governs, and a spawn that says nothing gets the
-// same answer an `llm` spawn saying nothing gets about running a command: ask.
-func TestAScriptedSpawnWithNoVectorAsks(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+// A SPAWN THAT NAMES NO POLICY IS GIVEN NO VERB: its first step is refused, and nobody is asked.
+// The script a charter writes is one action and no step, so the step here is the task's own
+// (stepBuilder); a script's step is a tool it calls.
+func TestASpawnWithNoPolicyIsGivenNoVerb(t *testing.T) {
+	srv := NewWithStore(stepBuilder(t), entitytest.Store(t))
 	ops := httptest.NewServer(srv.Handler())
 	defer ops.Close()
 
-	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "unvectored", Prompt: "true"})
+	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "unstated", Doer: runner.Doer{Script: "true"}})
 	spawn.Body.Close()
 	if spawn.StatusCode >= 300 {
 		t.Fatalf("spawn = %s", spawn.Status)
 	}
-	waitQuestion(t, srv, "unvectored")
+	noQuestionWithin(t, srv, "unstated", 300*time.Millisecond)
 }
 
-// And a spawn that says `auto` runs unattended, which is how a charter that means it says so —
-// one line, and the same line an llm spawn uses.
+// A script that says `auto` runs unattended, which is how a charter that means it says so: one
+// line, and the same line an agent's spawn uses.
 func TestAScriptedSpawnCanSayAuto(t *testing.T) {
 	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
 	ops := httptest.NewServer(srv.Handler())
 	defer ops.Close()
 
-	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "vectored", Prompt: "true", Vector: "auto"})
+	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "vectored", Doer: runner.Doer{Script: "true"}, Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}})
 	spawn.Body.Close()
 	if spawn.StatusCode >= 300 {
 		t.Fatalf("spawn = %s", spawn.Status)
@@ -84,15 +82,14 @@ func TestAScriptedSpawnCanSayAuto(t *testing.T) {
 	waitTaskStatus(t, srv, "vectored", "done")
 }
 
-// A failing command still fails the task, which is what a scripted run has always promised and
-// is now the call list's default `fatal` doing the same job. A trigger's onDone firing on a
-// command that never worked is the thing neither version allows.
+// A failing script fails the task: a trigger's onDone never fires on a command that did not
+// work.
 func TestAScriptedCommandThatFailsFailsTheTask(t *testing.T) {
 	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
 	ops := httptest.NewServer(srv.Handler())
 	defer ops.Close()
 
-	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "broken", Prompt: "exit 3", Vector: "auto"})
+	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "broken", Doer: runner.Doer{Script: "exit 3"}, Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}})
 	spawn.Body.Close()
 	if spawn.StatusCode >= 300 {
 		t.Fatalf("spawn = %s", spawn.Status)

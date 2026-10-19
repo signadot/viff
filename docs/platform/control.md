@@ -18,13 +18,13 @@ lifted. What an operator does with one, and how it differs from holding a run, i
 [a suspension](../control.md#a-suspension). This section is what a suspension does to rules.
 
 ```tony
-# verse.trigger.suspension."verse-dev.drift.**:*@git.*.head"
-charter: verse-dev.drift      # an installed charter's address; "*" for every charter; "" for baseline's
+# verse.trigger.suspension."repos.verse.drift.**:*@git.*.head"
+charter: repos.verse.drift      # an installed charter's address; "*" for every charter; "" for baseline's
 recursive: true               # …and every charter installed beneath it
 rule: "*"                     # a rule's name in it, or "*"
 subject: git.*.head           # an address, * open in any segment, covering at or beneath; "*" for every subject
 held:
-  user:walter@example.com:
+  user:you@example.com:
     why: "reading the drift charter's range logic before it runs again"
     since: "2026-09-14T03:10:00Z"
     occurrence: 41872         # the store revision the hold landed at
@@ -48,8 +48,8 @@ the same question under the same id if the rule still selects the subject, with 
 had left.
 
 **A completion hook or a `seq` step** lands its writes, since recording what a task did is not
-progress, and parks what it would start before a provider selection could be posed, so a hook asks
-nothing while suspended and the engine's reap loop never waits on one.
+progress, and parks what it would start, so a hook asks nothing while suspended and the
+engine's reap loop never waits on one.
 
 **A lift is ordered.** The record is deleted, and the suspension drains: new firings about its work
 are still refused while what it held is released — tasks resume, parked launches start in order,

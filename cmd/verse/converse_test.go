@@ -9,6 +9,7 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/verserunner"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/versed"
@@ -44,16 +45,12 @@ func (nopExec) Execute(_ context.Context, tu task.ToolUse) (task.StepResult, []t
 // serveParrot is serve with a runtime whose `parrot` driver holds a conversation.
 func serveParrot(t *testing.T) entity.Store {
 	t.Helper()
-	build := func(l task.Launch, reg *task.Registry) *task.Task {
-		if l.Driver != "parrot" {
-			return verserunner.NewScriptedTask(l, t.TempDir(), task.DefaultShellEnv, reg)
-		}
-		vec := l.Vector
-		if vec == nil {
-			vec = &task.Vector{Default: task.Auto}
+	build := func(l runner.Launch, reg *task.Registry) *task.Task {
+		if l.Doer.Agent != "parrot" {
+			return verserunner.New(verserunner.Config{}, verserunner.Secrets{}, t.TempDir(), io.Discard).Build(l, reg)
 		}
 		d := &parrot{}
-		tk := task.NewTask(l.ID, task.NewSupervisor(vec, reg), d, nopExec{})
+		tk := task.NewTask(l.ID, task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, reg), d, nopExec{})
 		d.emit = tk.Emit
 		if l.Converse {
 			tk.SetConverse(reg)
@@ -75,7 +72,7 @@ func serveParrot(t *testing.T) entity.Store {
 func TestTaskRunAttachIsAConversationEndedByEOF(t *testing.T) {
 	serveParrot(t)
 	out, done := runCLIIn(t, strings.NewReader("first thing\n"),
-		"task", "run", "--driver", "parrot", "--attach", "--as", "user:t", "chat")
+		"task", "run", "--agent", "parrot", "--attach", "--as", "user:t", "chat")
 	got := waitEnd(t, out, done)
 	for _, want := range []string{"gate: turn", "→ sent", "you said: first thing", "→ ended", "text: done"} {
 		if !strings.Contains(got, want) {
@@ -91,7 +88,7 @@ func TestTaskRunAttachIsAConversationEndedByEOF(t *testing.T) {
 func TestNoConverseEndsWhenTheModelStops(t *testing.T) {
 	serveParrot(t)
 	out, done := runCLIIn(t, strings.NewReader("never read\n"),
-		"task", "run", "--driver", "parrot", "--attach", "--no-converse", "--as", "user:t", "chat")
+		"task", "run", "--agent", "parrot", "--attach", "--no-converse", "--as", "user:t", "chat")
 	got := waitEnd(t, out, done)
 	if strings.Contains(got, "gate: turn") {
 		t.Fatalf("a turn was handed over under -no-converse:\n%s", got)
@@ -104,7 +101,7 @@ func TestNoConverseEndsWhenTheModelStops(t *testing.T) {
 // Without -attach nobody is there to take a turn, so no turn is posed whatever the flag says.
 func TestConverseMeansNothingWithoutAttach(t *testing.T) {
 	serveParrot(t)
-	out, err := runCLI(t, "task", "run", "--driver", "parrot", "--wait", "--as", "user:t", "chat")
+	out, err := runCLI(t, "task", "run", "--agent", "parrot", "--wait", "--as", "user:t", "chat")
 	if err != nil {
 		t.Fatalf("task run -wait: %v\n%s", err, out)
 	}
@@ -121,7 +118,7 @@ func TestASayWhileTheTurnStandsDoesNotBreakTheNextTurn(t *testing.T) {
 	pr, pw := io.Pipe()
 	defer pw.Close()
 	// As the test config's own user, so the out-of-band say (which takes no --as) holds control.
-	out, done := runCLIIn(t, pr, "task", "run", "--driver", "parrot", "--attach", "--as", "user:tester@example.com", "chat")
+	out, done := runCLIIn(t, pr, "task", "run", "--agent", "parrot", "--attach", "--as", "user:tester@example.com", "chat")
 	waitFor(t, out, "id: ")
 	id := strings.TrimSpace(strings.SplitN(out.String(), "\n", 2)[0])
 	waitFor(t, out, "~t1 kind: pending")

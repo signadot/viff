@@ -44,9 +44,8 @@ type Conversation interface {
 // Hearer is a Conversation told who is speaking. Fold hands a driver the words alone, which is
 // what a model reads: every message is a turn of its conversation, and the read plane is where
 // the speakers stay told apart. A driver for which the SPEAKER decides where the words go holds
-// this instead — the command driver is one: what a gate's answerer said about a call goes to
-// the program with the call's answer, while what an operator said opens the program's next
-// turn, and both arrive at the same boundary. A driver holding both is told through Hear.
+// this instead — a script's is one: what a gate's answerer said about a call goes to the script
+// with the call's answer. A driver holding both is told through Hear.
 type Hearer interface {
 	Hear(said []Said)
 }
@@ -77,23 +76,21 @@ func holdsConversation(d Driver) bool {
 	return folds || hears
 }
 
-// Withdrawer is an optional Driver capability: a driver that proposes actions FOR someone —
-// the command driver, for a program's shell — says when the one being asked about is no longer
-// wanted. Withdrawn is called as the question about tu is posed; the channel closing while the
-// question stands withdraws it the way an operator's say does, so it leaves the docket rather
-// than holding the run for an answer nobody is waiting on, and the driver reads a refusal that
-// says so. nil leaves the question standing. The closing act is nobody's proposal and is not
-// asked about.
-type Withdrawer interface {
-	Withdrawn(tu ToolUse) <-chan struct{}
-}
-
-// Unsteerable is an optional Driver capability: a driver that has nowhere to deliver words mid-run
-// says why, and Steer refuses them with it (ErrUnsteerable) while the task runs. "" means words
-// are taken. A program run once with no way to resume it is the case: the words would wait for a
-// turn that never comes, and the task would fail at its end for having them.
+// Unsteerable is an optional Driver capability: a driver that has nowhere to deliver an
+// operator's words says why, and Steer refuses them with it (ErrUnsteerable) while the task runs.
+// "" means words are taken. A script is the case: it runs once, and has no turn for them.
 type Unsteerable interface {
 	Unsteerable() string
+}
+
+// Withdrawer is an optional Driver capability: a driver that proposes actions FOR someone — a
+// script's calls, for its shell — says when the one being asked about is no longer wanted.
+// Withdrawn is called as the question about tu is posed; the channel closing while the question
+// stands withdraws it the way an operator's say does, so it leaves the docket rather than
+// holding the run for an answer nobody is waiting on, and the driver reads a refusal that says
+// so. nil leaves the question standing.
+type Withdrawer interface {
+	Withdrawn(tu ToolUse) <-chan struct{}
 }
 
 // Ender is an optional Driver capability: after Next returns !more, whether the driver ended the
@@ -102,6 +99,13 @@ type Unsteerable interface {
 // and only the driver can tell the two apart.
 type Ender interface {
 	Ended() bool
+}
+
+// Closer is an optional Driver capability: a driver that holds something outside the loop — a
+// process, a connection — which the run's end should end. Run calls it once, after the terminal,
+// whatever the terminal was. A driver that holds nothing does not implement it.
+type Closer interface {
+	Close()
 }
 
 // Resulter is an optional Driver capability: report a completed run's result
@@ -130,7 +134,7 @@ type Executor interface {
 	Execute(ctx context.Context, tu ToolUse) (StepResult, []ToolUse, error)
 }
 
-// AnswerCheck judges the answer a task is about to return against what its spawn declared it
+// AnswerCheck judges the answer a task is about to return against what its launch declared it
 // must be. It is a PREDICATE ON A VALUE, consulted by the loop at the moment the input would
 // go quiet — which is the difference between this and the version that lived inside the llm
 // driver, where it was a verdict about a MOMENT: the first time the model stopped talking,
@@ -144,13 +148,13 @@ type AnswerCheck interface {
 	Check(answer string) (repair string, err error)
 }
 
-// SpawnFunc builds a child Task for a CallAgent — the domain-specific step
+// DelegateFunc builds a child Task for a CallAgent — the domain-specific step
 // the core can't do itself (it must construct the child's Driver/Executor,
 // typically an LLM driver seeded from req.Prompt). It should call
-// parent.NewChild(...); the loop owns spawning, tracking, folding, and joining
-// the returned child. CallAgent is uniformly async: spawn returns immediately,
+// parent.NewChild(...); the loop owns starting, tracking, folding, and joining
+// the returned child. CallAgent is uniformly async: it returns immediately,
 // the child runs concurrently, and its result folds in at a later boundary.
-type SpawnFunc func(parent *Task, mode ChildMode, req *CallAgentRequest) (*Task, error)
+type DelegateFunc func(parent *Task, req *CallAgentRequest) (*Task, error)
 
 // childHandle tracks a running child so the parent can join it or cancel it
 // individually — per-child cancel brings down one subtree without touching the
@@ -198,7 +202,7 @@ type Outcome struct {
 }
 
 // Task is a first-class, addressable governed task — the handle every
-// autonomy mode shares (invariant #1). It drives a cursor between actions: it
+// policy shares (invariant #1). It drives a cursor between actions: it
 // only ever advances or holds; it never reverses. Control (pause/cancel) is
 // latched and honored at the next boundary.
 type Task struct {
@@ -206,12 +210,9 @@ type Task struct {
 	sup    *Supervisor
 	driver Driver
 	exec   Executor
-	fin    Finisher    // the runtime's closing act, consulted when the input goes quiet
 	turn   Resolver    // where the person's turn is posed, when this run is a conversation; nil = it is not
 	turns  int         // turns handed over, for their ids
-	ansck  AnswerCheck // what this spawn declared its answer must be; nil = no contract
-	scope  Grant       // this task's own authority — checked against a CallAgent's Grant
-	repo   func() *RepoContext
+	ansck  AnswerCheck // what this launch declared its answer must be; nil = no contract
 	log    io.Writer
 
 	// touched only by the Run goroutine:
@@ -219,14 +220,12 @@ type Task struct {
 	seq        int                     // the boundary the machine last reached (for attribution)
 	gateCancel context.CancelCauseFunc // withdraws the standing question, saying why
 	cancelSeen bool                    // ctx.Done has already been turned into an input
-	// written on the Run goroutine, read via Journal() from others — under p.mu:
-	journal []string
 
 	// test hook, called at each boundary before the cancellation check:
 	onEnterBoundary func(seq int)
 
-	// async children (spawn set before Run; children map touched only by Run):
-	spawn    SpawnFunc
+	// async children (delegate set before Run; children map touched only by Run):
+	delegate DelegateFunc
 	children map[string]*childHandle
 	failFast bool // cancel siblings when a child errors
 
@@ -251,10 +250,6 @@ type Task struct {
 	subID  int
 	cursor int64   // per-task monotonic event cursor (assigned in emit)
 	ring   []Event // bounded retained window, for SubscribeSince(?since) replay
-	// retain is this task's read-plane window in events; 0 = the package default. Set from
-	// the Launch at spawn, because how much of the past is worth keeping is a property of
-	// the work rather than of the runtime.
-	retain int
 	// open is the gates standing right now, keyed by decision id: an EventPending opens one and
 	// its EventDecision closes it. The RING is not a substitute — it forgets, and what it
 	// forgets first is the oldest, which for a long-standing gate is the gate itself.
@@ -272,7 +267,6 @@ func NewTask(id string, sup *Supervisor, d Driver, e Executor) *Task {
 		sup:       sup,
 		driver:    d,
 		exec:      e,
-		scope:     Grant{Allow: []GateMatch{{}}}, // default: wildcard (allowsAll)
 		log:       io.Discard,
 		children:  map[string]*childHandle{},
 		wake:      make(chan struct{}, 1),
@@ -280,14 +274,8 @@ func NewTask(id string, sup *Supervisor, d Driver, e Executor) *Task {
 	}
 }
 
-// SetSpawn sets the child factory used to build a CallAgent's sub-task.
-func (p *Task) SetSpawn(f SpawnFunc) { p.spawn = f }
-
-// SetFinisher installs the runtime's closing act. It is consulted by the LOOP when the input
-// would otherwise go quiet, and its action runs through the same authority → gate → execute
-// path as anything else — which is every property the driver-wrapping version bought, without
-// the latch it needed to keep. See Finisher.
-func (p *Task) SetFinisher(f Finisher) { p.fin = f }
+// SetDelegate sets the child factory used to build a CallAgent's sub-task.
+func (p *Task) SetDelegate(f DelegateFunc) { p.delegate = f }
 
 // SetConverse makes this run a conversation: when the driver goes quiet, the person is handed
 // the turn as a question posed through r — the task's own resolver, so it is on the docket and
@@ -304,52 +292,15 @@ func (p *Task) SetConverse(r Resolver) {
 	p.turn = r
 }
 
-// SetAnswerCheck installs this spawn's answer contract. nil (the default) means the run ends
+// SetAnswerCheck installs this launch's answer contract. nil (the default) means the run ends
 // wherever the driver stops.
 func (p *Task) SetAnswerCheck(a AnswerCheck) { p.ansck = a }
-
-// SetDeriver swaps the capability-classification step — what turns a self-reported action into
-// the typed effects a vector matches on. A runtime that installs its own (harness does, so its
-// extra tools derive effects the gates can see) needs it reachable from the task it built,
-// since a task built by a shared constructor never had the supervisor in hand.
-func (p *Task) SetDeriver(d Deriver) { p.sup.SetDeriver(d) }
-
-// SetVector swaps the gate vector on the running supervisor — the autonomy slide, applied at
-// the next EVALUATION with no restart. It emits an EventVector frame so the slide is observable
-// on the read plane (the new default mode; the operator who slid it rides By).
-//
-// It is a POLICY change and not an intervention, which is why it does not disturb a question
-// already standing: sliding a running task to AUTO says "stop asking me about actions like
-// this", not "approve the one already in front of me". See machine.go's inVector.
-func (p *Task) SetVector(v *Vector, by string) error {
-	p.sup.SetVector(v)
-	p.emit(Event{Kind: EventVector, Mode: v.Default.String(), By: by})
-	p.post(inVector{})
-	return nil // the local handle: the task is right here, so delivery is not in doubt
-}
 
 // SetFailFast makes a child's error cancel its still-running siblings
 // (errgroup-style). Off by default: siblings run to their own completion.
 func (p *Task) SetFailFast(v bool) { p.failFast = v }
 
-func (p *Task) SetScope(g Grant)              { p.scope = g }
-func (p *Task) SetLog(w io.Writer)            { p.log = w }
-func (p *Task) SetRepo(f func() *RepoContext) { p.repo = f }
-
-// Journal returns a copy of the run's journal, safe to read from any goroutine.
-func (p *Task) Journal() []string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return append([]string(nil), p.journal...)
-}
-
-// appendJournal records a line under p.mu — the journal is written on the Run
-// goroutine but read via Journal() from others, so both go through the lock.
-func (p *Task) appendJournal(line string) {
-	p.mu.Lock()
-	p.journal = append(p.journal, line)
-	p.mu.Unlock()
-}
+func (p *Task) SetLog(w io.Writer) { p.log = w }
 
 // post puts an input on the queue and wakes the Run goroutine. Safe from any goroutine, and
 // it never blocks: a control caller must not be held up by a loop that is busy, and a child
@@ -404,13 +355,21 @@ func (p *Task) Steer(instruction, by, ask string) error {
 // whole subtree derives from (top-down signal). The loop then joins its children
 // bottom-up — children unwind before the parent's frame — and returns "cancelled"
 // at the next boundary. A steer or another cancel arriving mid-teardown does not
-// interrupt it.
-func (p *Task) Cancel(reason string) error {
+// interrupt it. by is who cancelled it, and the task's error says so beside the reason; a cancel
+// that gives none says that.
+func (p *Task) Cancel(reason, by string) error {
+	if reason == "" {
+		reason = "no reason given"
+	}
 	p.mu.Lock()
 	c := p.cancel
 	p.mu.Unlock()
 	if c != nil {
-		c(fmt.Errorf("cancelled: %s", reason))
+		if by != "" {
+			c(fmt.Errorf("cancelled by %s: %s", by, reason))
+		} else {
+			c(fmt.Errorf("cancelled: %s", reason))
+		}
 	}
 	return nil
 }
@@ -429,19 +388,22 @@ func (p *Task) Run(ctx context.Context) (oc Outcome, err error) {
 	p.cancel = cancel
 	p.mu.Unlock()
 	defer cancel(nil)
+	if c, ok := p.driver.(Closer); ok {
+		defer c.Close()
+	}
 
 	// A panic anywhere in this goroutine becomes this task's FAILURE, not the process's death.
 	//
 	// The seams are guarded where they run (see seam) and a child is guarded by its parent (see
 	// runChild), which leaves this: the effects performed inline on the Run goroutine — the
-	// answer contract, the finisher, the spawn factory, emit, and the executor calls that unwind
+	// answer contract, the delegate factory, emit, and the executor calls that unwind
 	// the frames at teardown. A panic in any of those used to leave the loop with no terminal
 	// frame at all, which is worse than a crash and quieter: every subscriber stays open on a
 	// task that has stopped speaking, and the durable entity says `running` forever, which is
 	// exactly the leak the terminal-frame handling exists to prevent.
 	//
 	// So it ends the way any other infrastructure failure ends. fail.go already makes this
-	// argument for a spawn that cannot be honoured — "that spawn errors while the engine keeps
+	// argument for a launch that cannot be honoured — "that launch fails while the engine keeps
 	// running, rather than a nil that vanishes or a panic that stops the loop" — and a hosted
 	// runtime carrying somebody else's driver has the same interest in one task's bug not taking
 	// the fleet with it.
@@ -462,9 +424,7 @@ func (p *Task) Run(ctx context.Context) (oc Outcome, err error) {
 
 	s := state{
 		frames:         []*frame{{label: "root"}},
-		scope:          p.scope,
 		failFast:       p.failFast,
-		hasFinisher:    p.fin != nil,
 		hasAnswerCheck: p.ansck != nil,
 		converse:       p.turn != nil,
 	}
@@ -483,7 +443,7 @@ func (p *Task) Run(ctx context.Context) (oc Outcome, err error) {
 		}
 		var ok bool
 		if in, ok = p.next(ctx, s, replies); !ok {
-			// Property 5, made mechanical: a wait with no discharge is a defect rather than
+			// Property 4, made mechanical: a wait with no discharge is a defect rather than
 			// patience, and failing loudly is the difference between a bug that is found and
 			// one that is waited out.
 			err := fmt.Errorf("the loop has nothing to wait for and nothing to do (phase %s): "+
@@ -508,9 +468,6 @@ func (p *Task) perform(ctx context.Context, s state, effs []effect, replies chan
 				}
 			}
 			p.emit(v.f)
-
-		case effJournal:
-			p.appendJournal(v.line)
 
 		case effLog:
 			p.logf("%s", v.line)
@@ -544,11 +501,7 @@ func (p *Task) perform(ctx context.Context, s state, effs []effect, replies chan
 				func() input {
 					tu, more, err := p.driver.Next(ctx, prev)
 					if err == nil && more {
-						if p.repo != nil {
-							tu.Repo = p.repo()
-						}
 						tu.ID = p.nextID()
-						p.sup.Derive(&tu) // classify before the machine checks the envelope
 					}
 					ended := false
 					if e, ok := p.driver.(Ender); ok && err == nil && !more {
@@ -573,7 +526,7 @@ func (p *Task) perform(ctx context.Context, s state, effs []effect, replies chan
 			// and the withdrawal names this question by its token, so one that arrives after
 			// the answer did is about a decision already made and changes nothing.
 			settled := make(chan struct{})
-			if w, ok := p.driver.(Withdrawer); ok && !v.closing {
+			if w, ok := p.driver.(Withdrawer); ok {
 				if gone := w.Withdrawn(tu); gone != nil {
 					go func() {
 						select {
@@ -601,22 +554,18 @@ func (p *Task) perform(ctx context.Context, s state, effs []effect, replies chan
 			}
 
 		case effExecute:
-			tu, closing, tok := v.tu, v.closing, v.tok
+			tu, tok := v.tu, v.tok
 			p.seam("the executor", replies,
 				func(err error) input { return inExecuted{out: StepResult{Use: tu}, err: err, tok: tok} },
 				func() input {
-					if closing {
-						out, err := p.fin.Do(ctx, tu)
-						return inExecuted{out: StepResult{Use: tu, Output: out}, err: err, tok: tok}
-					}
 					out, defers, err := p.exec.Execute(ctx, tu)
 					return inExecuted{out: out, defers: defers, err: err, tok: tok}
 				})
 
-		case effSpawn:
+		case effDelegate:
 			// Performed inline: it touches the children map, which is the Run goroutine's.
-			id, res := p.spawnChild(ctx, v.tu, v.mode)
-			replies <- inSpawned{id: id, res: res, tok: v.tok}
+			id, res := p.startDelegate(ctx, v.tu)
+			replies <- inDelegated{id: id, res: res, tok: v.tok}
 
 		case effConverse:
 			p.converse(v.msgs)
@@ -628,24 +577,6 @@ func (p *Task) perform(ctx context.Context, s state, effs []effect, replies chan
 			}
 			replies <- inChecked{repair: repair, err: err, tok: v.tok}
 
-		case effFinish:
-			tu, ok := p.fin.Finish(v.answer)
-			if ok {
-				// The repo context, exactly as a driver's action gets it. Leaving it off was
-				// the one thing that made the CLOSING action less gateable than an ordinary
-				// one: `GateMatch.OnPush` compares an effect's ref against RepoContext's push
-				// target and `Branches` globs RepoContext's branch, so with no context both
-				// fell through — and the closing action is the delivery push, which is the one
-				// action those two fields were written for. A charter saying `onPush: true`
-				// matched nothing.
-				if p.repo != nil {
-					tu.Repo = p.repo()
-				}
-				tu.ID = p.nextID()
-				p.sup.Derive(&tu)
-			}
-			replies <- inFinish{tu: tu, ok: ok, tok: v.tok}
-
 		case effTurn:
 			// The person's turn, posed as the question it is. Its context is the standing
 			// question's, so a say or a pause withdraws it the way they withdraw a gate.
@@ -654,7 +585,7 @@ func (p *Task) perform(ctx context.Context, s state, effs []effect, replies chan
 			p.turns++
 			q := GateQuestion{
 				ID: fmt.Sprintf("%s%st%d", p.ID, GateSep, p.turns), Origin: p.ID, Gate: "turn",
-				Mode: Ask, Reason: "your turn", Answerers: []string{PrincipalAnswerer},
+				Reason: "your turn", Answerers: []string{PrincipalAnswerer},
 				Options: []Option{{ID: Reply, Says: "say something"}, {ID: End, Says: "end the conversation"}},
 			}
 			tok := v.tok
@@ -685,7 +616,7 @@ func (p *Task) perform(ctx context.Context, s state, effs []effect, replies chan
 // The defer is what makes "exactly once" true rather than usual. A seam is somebody else's
 // code — a model client, an executor, a resolver — and the machine is waiting on a reply that
 // only this call can produce, so a panic in it is not just a crash: it is a wait that can
-// never be discharged, which is property 5 lost at the one place the loop cannot see into.
+// never be discharged, which is property 4 lost at the one place the loop cannot see into.
 // Turning the panic into that seam's failure keeps the machine's account of itself true, and
 // the task fails with the reason rather than the process dying with a stack.
 func (p *Task) seam(what string, replies chan<- input, fail func(error) input, body func() input) {
@@ -705,7 +636,7 @@ func (p *Task) seam(what string, replies chan<- input, fail func(error) input, b
 // next produces the input to fold. Arrivals go first — an operator's intervention preempts —
 // and a cancellation is turned into an input exactly once, so the loop does not spin on a
 // context that stays done. It returns false when the machine is blocked on nothing, which
-// property 5 says cannot happen and which is therefore worth reporting rather than waiting on.
+// property 4 says cannot happen and which is therefore worth reporting rather than waiting on.
 func (p *Task) next(ctx context.Context, s state, replies <-chan input) (input, bool) {
 	for {
 		// Cancel outranks everything, so it is read first — and exactly once, so the loop does
@@ -815,7 +746,6 @@ func (p *Task) converse(msgs []convMsg) {
 		p.driver.(Conversation).Fold(texts)
 	}
 	if says > 0 {
-		p.appendJournal(fmt.Sprintf("[say] %d said-to at boundary %d", says, p.seq))
 		p.logf("↩ said-to: %d instruction(s)", says)
 	}
 	for _, m := range msgs {
@@ -851,6 +781,24 @@ func (p *Task) teardown(ctx context.Context, td effTeardown) (Outcome, error) {
 	return out, td.cause
 }
 
+// Policy is the task's policy as it stands.
+func (p *Task) Policy() Policy { return p.sup.Policy() }
+
+// SetPolicy replaces the task's policy while it runs. It applies from the next step, a
+// sub-agent's included; a question already asked stands as it was asked. by is who replaced it,
+// and the task's read plane says so (EventPolicy, with Policy.Summary as its text). An ended
+// task's policy is not replaced: ErrEnded.
+func (p *Task) SetPolicy(pol Policy, by string) error {
+	if err := pol.Check(); err != nil {
+		return err
+	}
+	if !p.emitLive(Event{Kind: EventPolicy, By: by, Text: pol.Summary()}) {
+		return ErrEnded
+	}
+	p.sup.SetPolicy(pol)
+	return nil
+}
+
 // Result returns the task's final output — the driver's last message, when the
 // driver reports one (an LLM's answer). Empty for drivers that produce no result
 // (e.g. the scripted driver) or before the run has produced one. This is the same
@@ -863,27 +811,23 @@ func (p *Task) Result() string {
 	return ""
 }
 
-// spawnChild launches a CallAgent as a detached child: build it via the spawn
+// startDelegate launches a CallAgent as a detached child: build it via the delegate
 // factory, run it concurrently, and hand the driver an immediate "started"
 // handle. The child's completion folds in later, at a boundary. The child
 // manages its own frames/defers inside its own Run.
-func (p *Task) spawnChild(ctx context.Context, tu ToolUse, mode ChildMode) (string, StepResult) {
+func (p *Task) startDelegate(ctx context.Context, tu ToolUse) (string, StepResult) {
 	req := tu.CallAgent
-	if p.spawn == nil {
-		return "", StepResult{Use: tu, Err: fmt.Errorf("no spawn factory configured")}
+	if p.delegate == nil {
+		return "", StepResult{Use: tu, Err: fmt.Errorf("no delegate factory configured")}
 	}
-	if !p.scope.Subset(req.Grant) { // monotonicity (also enforced in NewChild)
-		p.logf("⛔ call %s denied: child scope exceeds parent", req.Agent)
-		return "", StepResult{Use: tu, Blocked: true, Note: "scope exceeds parent"}
-	}
-	child, err := p.spawn(p, mode, req)
+	child, err := p.delegate(p, req)
 	if err != nil {
 		return "", StepResult{Use: tu, Err: err}
 	}
 	childCtx, childCancel := context.WithCancel(ctx)
 	p.children[child.ID] = &childHandle{task: child, cancel: childCancel}
-	p.logf("⑂ spawned child %s (agent=%s)", child.ID, req.Agent)
-	p.emit(Event{Kind: EventChild, Tool: req.Agent, Text: "spawned " + child.ID})
+	p.logf("⑂ started sub-agent %s (agent=%s)", child.ID, req.Agent)
+	p.emit(Event{Kind: EventChild, Tool: req.Agent, Text: "started " + child.ID})
 	go p.runChild(childCtx, child)
 	return child.ID, StepResult{Use: tu,
 		Output: fmt.Sprintf("started %s (handle=%s); result arrives when it completes", req.Agent, child.ID)}

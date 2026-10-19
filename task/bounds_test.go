@@ -9,7 +9,7 @@ import (
 
 // THE BOUNDS THE MACHINE ASSUMES.
 //
-// Property 5 — every wait names its discharge, and no discharge depends on a person choosing
+// Property 4 — every wait names its discharge, and no discharge depends on a person choosing
 // to look — is a claim about the SHELL and the seams, not about step. The enumeration cannot
 // touch it: no enumeration of a bounded input set can show that an event arrives. So each wait
 // is pinned here, by the thing that actually discharges it.
@@ -22,7 +22,7 @@ import (
 // nothing is a hang the loop cannot account for, and the shell fails the task rather than
 // waiting on it — a bug that is found instead of one that is waited out.
 func TestEveryWaitNamesItsDischarge(t *testing.T) {
-	for _, ph := range []phase{phHeld, phAsk, phGate, phExec, phSpawn, phCheck, phFinish} {
+	for _, ph := range []phase{phHeld, phAsk, phGate, phExec, phDelegate, phCheck} {
 		if got := (state{ph: ph}).Waiting(); got == "" {
 			t.Errorf("phase %s is a wait with no named discharge", ph)
 		}
@@ -54,9 +54,9 @@ func TestEveryWaitNamesItsDischarge(t *testing.T) {
 func TestAStandingQuestionIsDischargedByACancel(t *testing.T) {
 	d := &scriptDriver{steps: []ToolUse{tool("A")}}
 	reg := NewRegistry()
-	p := NewTask("t", NewSupervisor(askOn("A"), reg), d, &recExec{})
+	p := NewTask("t", toolSup(askOn("A"), reg), d, &recExec{})
 	p.SetLog(io.Discard)
-	reg.OnPost(func(Pending) { p.Cancel("nobody is going to answer that") })
+	reg.OnPost(func(Pending) { p.Cancel("nobody is going to answer that", "") })
 
 	done := make(chan Outcome, 1)
 	go func() { oc, _ := p.Run(context.Background()); done <- oc }()
@@ -76,13 +76,13 @@ func TestACancelReachesAnExecutorThatHonoursItsContext(t *testing.T) {
 	entered := make(chan struct{})
 	ex := &blockingExec{on: "slow", entered: entered, release: make(chan struct{})} // never released
 	d := &scriptDriver{steps: []ToolUse{tool("slow")}}
-	p := NewTask("t", NewSupervisor(autoVec(), AutoResolver{}), d, ex)
+	p := NewTask("t", toolSup(allowAll(), AutoResolver{}), d, ex)
 	p.SetLog(io.Discard)
 
 	done := make(chan Outcome, 1)
 	go func() { oc, _ := p.Run(context.Background()); done <- oc }()
 	<-entered
-	p.Cancel("stop")
+	p.Cancel("stop", "")
 	select {
 	case oc := <-done:
 		if oc.Reason != string(Cancelled) {
@@ -109,13 +109,13 @@ func TestACancelReachesAnExecutorThatHonoursItsContext(t *testing.T) {
 func TestAContextIgnoringExecutorHoldsTheTaskAndThatIsItsDefect(t *testing.T) {
 	ex := &deafExec{release: make(chan struct{}), entered: make(chan struct{})}
 	d := &scriptDriver{steps: []ToolUse{tool("deaf")}}
-	p := NewTask("t", NewSupervisor(autoVec(), AutoResolver{}), d, ex)
+	p := NewTask("t", toolSup(allowAll(), AutoResolver{}), d, ex)
 	p.SetLog(io.Discard)
 
 	done := make(chan Outcome, 1)
 	go func() { oc, _ := p.Run(context.Background()); done <- oc }()
 	<-ex.entered
-	p.Cancel("stop")
+	p.Cancel("stop", "")
 
 	select {
 	case oc := <-done:
@@ -157,9 +157,9 @@ func (e *deafExec) Execute(_ context.Context, tu ToolUse) (StepResult, []ToolUse
 func TestAPauseIsAHangByRequestAndACancelOutranksIt(t *testing.T) {
 	d := &scriptDriver{steps: []ToolUse{tool("A"), tool("B")}}
 	ex := &recExec{}
-	p := NewTask("t", NewSupervisor(autoVec(), AutoResolver{}), d, ex)
+	p := NewTask("t", toolSup(allowAll(), AutoResolver{}), d, ex)
 	p.SetLog(io.Discard)
-	p.Pause()
+	p.Pause("")
 
 	done := make(chan Outcome, 1)
 	go func() { oc, _ := p.Run(context.Background()); done <- oc }()
@@ -171,7 +171,7 @@ func TestAPauseIsAHangByRequestAndACancelOutranksIt(t *testing.T) {
 	if len(ex.order) != 0 {
 		t.Fatalf("a paused task took actions: %v", ex.order)
 	}
-	p.Cancel("enough")
+	p.Cancel("enough", "")
 	select {
 	case oc := <-done:
 		if oc.Reason != string(Cancelled) {

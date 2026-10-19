@@ -25,14 +25,11 @@ func turnOf(t *testing.T, reg *Registry) Pending {
 }
 
 // A CONVERSATION HANDS THE PERSON THE TURN when the driver goes quiet, folds their words as a
-// say, and ends — contract, finisher, done — only when they end it. The finisher runs once,
-// after the end, not after each turn.
+// say, and ends only when they end it.
 func TestAConversationEndsWhenThePersonEndsIt(t *testing.T) {
 	reg := NewRegistry()
 	d := &scripted{acts: []string{"a"}, result: "the answer"}
-	f := &finisher{action: "deliver"}
-	p := NewTask("t", NewSupervisor(&Vector{Default: Auto}, reg), d, &recorder{})
-	p.SetFinisher(f)
+	p := NewTask("t", toolSup(allowAll(), reg), d, &recorder{})
 	p.SetConverse(reg)
 	done := make(chan Outcome, 1)
 	go func() { oc, _ := p.Run(context.Background()); done <- oc }()
@@ -46,9 +43,6 @@ func TestAConversationEndsWhenThePersonEndsIt(t *testing.T) {
 	}
 	if ids := OptionIDs(turn.Question.Options); strings.Join(ids, ",") != Reply+","+End {
 		t.Fatalf("the turn offers %v, want reply and end", ids)
-	}
-	if f.ran != 0 {
-		t.Fatal("the finisher ran before the conversation ended")
 	}
 	reg.Answer(turn.Question.ID, Resolution{Choice: Reply, By: "user:t", Steer: []string{"and then?"}})
 
@@ -69,9 +63,6 @@ func TestAConversationEndsWhenThePersonEndsIt(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("the run did not end after the person ended it")
 	}
-	if f.ran != 1 {
-		t.Fatalf("the finisher ran %d time(s), want once after the end", f.ran)
-	}
 	if len(reg.Pending()) != 0 {
 		t.Fatalf("the docket still holds %+v", reg.Pending())
 	}
@@ -84,7 +75,7 @@ func TestASayWithdrawsTheStandingTurn(t *testing.T) {
 	dropped := make(chan string, 4)
 	reg.OnDrop(func(q GateQuestion, _ string) { dropped <- q.ID })
 	d := &scripted{result: "hi"}
-	p := NewTask("t", NewSupervisor(&Vector{Default: Auto}, reg), d, &recorder{})
+	p := NewTask("t", toolSup(allowAll(), reg), d, &recorder{})
 	p.SetConverse(reg)
 	done := make(chan Outcome, 1)
 	go func() { oc, _ := p.Run(context.Background()); done <- oc }()
@@ -114,12 +105,12 @@ func TestASayWithdrawsTheStandingTurn(t *testing.T) {
 func TestACancelUnderTheTurnWithdrawsIt(t *testing.T) {
 	reg := NewRegistry()
 	d := &scripted{result: "hi"}
-	p := NewTask("t", NewSupervisor(&Vector{Default: Auto}, reg), d, &recorder{})
+	p := NewTask("t", toolSup(allowAll(), reg), d, &recorder{})
 	p.SetConverse(reg)
 	done := make(chan Outcome, 1)
 	go func() { oc, _ := p.Run(context.Background()); done <- oc }()
 	turnOf(t, reg)
-	p.Cancel("enough")
+	p.Cancel("enough", "")
 	select {
 	case oc := <-done:
 		if oc.Reason != string(Cancelled) {
@@ -133,7 +124,7 @@ func TestACancelUnderTheTurnWithdrawsIt(t *testing.T) {
 	}
 }
 
-// Waiting names the turn: property 5 is met by the question, not by an exception.
+// Waiting names the turn: property 4 is met by the question, not by an exception.
 func TestWaitingNamesTheTurn(t *testing.T) {
 	s := state{ph: phTurn}
 	if w := s.Waiting(); !strings.Contains(w, "turn") {
@@ -146,7 +137,7 @@ func TestWaitingNamesTheTurn(t *testing.T) {
 func TestConverseIsRefusedForADriverWithNoConversation(t *testing.T) {
 	reg := NewRegistry()
 	d := &scriptDriver{} // proposes nothing and folds nothing
-	p := NewTask("t", NewSupervisor(&Vector{Default: Auto}, reg), d, &recExec{})
+	p := NewTask("t", toolSup(allowAll(), reg), d, &recExec{})
 	p.SetConverse(reg)
 	oc, err := p.Run(context.Background())
 	if err != nil || oc.Reason != string(Done) {
@@ -155,4 +146,31 @@ func TestConverseIsRefusedForADriverWithNoConversation(t *testing.T) {
 	if len(reg.Pending()) != 0 {
 		t.Fatalf("a turn was posed to a driver that cannot hear the answer: %+v", reg.Pending())
 	}
+}
+
+// scripted is a driver that proposes a fixed list of actions and then stops, ending with result
+// and holding a conversation (Fold).
+type scripted struct {
+	acts   []string
+	i      int
+	result string
+	steers []string
+}
+
+func (d *scripted) Next(_ context.Context, _ StepResult) (ToolUse, bool, error) {
+	if d.i >= len(d.acts) {
+		return ToolUse{}, false, nil
+	}
+	d.i++
+	return ToolUse{Name: d.acts[d.i-1]}, true, nil
+}
+func (d *scripted) Result() string      { return d.result }
+func (d *scripted) Fold(instr []string) { d.steers = append(d.steers, instr...) }
+
+// recorder is an executor that records what it ran.
+type recorder struct{ ran []string }
+
+func (r *recorder) Execute(_ context.Context, tu ToolUse) (StepResult, []ToolUse, error) {
+	r.ran = append(r.ran, tu.Name)
+	return StepResult{Use: tu, Output: "ok"}, nil, nil
 }

@@ -70,7 +70,7 @@ func TestASpawnNamingARunnerOutsideTheSpawnersViewSaysWhoseViewItIs(t *testing.T
 	defer ts.Close()
 
 	resp := postAsTony(t, "bob@example.com", ts.URL+"/tasks", map[string]any{
-		"id": "bobs", "prompt": "t", "runner": "verse.runners.gpu",
+		"id": "bobs", "doer": map[string]any{"agent": "fake"}, "prompt": "t", "runner": "verse.runners.gpu",
 	})
 	msg := readBody(t, resp)
 	if resp.StatusCode != http.StatusBadRequest {
@@ -110,7 +110,7 @@ func TestARunnerReadThatFailedIsNotARunnerNotInstalled(t *testing.T) {
 	}
 
 	resp := postTony(t, ts.URL+"/tasks", map[string]any{
-		"id": "waits", "prompt": "t", "runner": "verse.runners.gpu",
+		"id": "waits", "doer": map[string]any{"agent": "fake"}, "prompt": "t", "runner": "verse.runners.gpu",
 	})
 	msg := readBody(t, resp)
 	if !strings.Contains(msg, "could not be read") || !strings.Contains(msg, "context deadline exceeded") {

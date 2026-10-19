@@ -36,7 +36,7 @@ import (
 //	source ~/secrets/portkey.sh && VERSE_DRIVE=1 go test ./runner/runnerd/verserunner/agent/ -run Drive -v
 type driveResult struct {
 	boundaries int
-	spawned    []string
+	started    []string
 	waits      int
 	execs      []string
 	// polling is what the parent did AFTER it had delegated everything and before it answered:
@@ -145,32 +145,29 @@ func drive(t *testing.T, withVerb bool) driveResult {
 	// resolves for itself, correctly, from selectTools.
 	client := clientFrom(os.Getenv("PORTKEY_BASE_URL"), os.Getenv("PORTKEY_API_KEY"),
 		os.Getenv("PORTKEY_VIRTUAL_KEY"), model)
-	vec := &task.Vector{Default: task.Auto}
+	vec := task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}
 	sup := task.NewSupervisor(vec, task.AutoResolver{})
-	sup.SetDeriver(demoDeriver{})
 	contract, err := answer.ParseSource(driveContract)
 	if err != nil {
 		t.Fatal(err)
 	}
-	frame := defaultFrame(tds, vec, nil, false) + "\n\n" + contractClause(contract)
+	frame := defaultFrame(tds, vec, false, nil) + "\n\n" + contractClause(contract)
 	d := &llmDriver{client: client, tools: tds, frame: frame, prompt: drivePrompt, log: os.Stderr}
 	p := task.NewTask("drive", sup, d, &fsExec{root: root, log: os.Stderr})
 	p.SetLog(os.Stderr)
 	p.SetAnswerCheck(&answer.Checker{C: contract, FailHint: yieldHint})
 	d.emit = p.Emit
 	var kid int
-	p.SetSpawn(func(parent *task.Task, mode task.ChildMode, req *task.CallAgentRequest) (*task.Task, error) {
+	p.SetDelegate(func(parent *task.Task, req *task.CallAgentRequest) (*task.Task, error) {
 		kid++
 		// The child does NOT inherit the contract clause, exactly as Build does it: the
 		// contract describes THIS task's answer, and a child answers a subtask.
 		cd := &llmDriver{client: client, tools: tds, frame: withoutContract(frame),
 			prompt: req.Prompt + "\n\n" + driveChildJob, log: os.Stderr}
-		child, err := parent.NewChild(fmt.Sprintf("%s.%s~%d", parent.ID, req.Agent, kid), mode, req,
+		child := parent.NewChild(fmt.Sprintf("%s.%s~%d", parent.ID, req.Agent, kid), req,
 			cd, &fsExec{root: root, log: os.Stderr})
-		if err == nil {
-			cd.emit = child.Emit
-		}
-		return child, err
+		cd.emit = child.Emit
+		return child, nil
 	})
 
 	frames, unsub := p.Subscribe()
@@ -184,12 +181,12 @@ func drive(t *testing.T, withVerb bool) driveResult {
 			case task.EventBoundary:
 				r.boundaries++
 			case task.EventChild:
-				if name, ok := strings.CutPrefix(f.Text, "spawned "); ok {
+				if name, ok := strings.CutPrefix(f.Text, "started "); ok {
 					if fannedOut {
-						r.polling = append(r.polling, "spawn:"+name)
+						r.polling = append(r.polling, "start:"+name)
 					}
-					r.spawned = append(r.spawned, name)
-					if len(r.spawned) >= len(driveFiles) {
+					r.started = append(r.started, name)
+					if len(r.started) >= len(driveFiles) {
 						fannedOut = true
 					}
 				}
@@ -213,11 +210,11 @@ func drive(t *testing.T, withVerb bool) driveResult {
 	r := <-done
 	r.answer, r.outcome, r.err = p.Result(), out.Reason, err
 	t.Logf("withVerb=%v → boundaries=%d children=%d waits=%d parentExecs=%d POLLING=%d outcome=%s",
-		withVerb, r.boundaries, len(r.spawned), r.waits, len(r.execs), len(r.polling), r.outcome)
+		withVerb, r.boundaries, len(r.started), r.waits, len(r.execs), len(r.polling), r.outcome)
 	if len(r.polling) > 0 {
 		t.Logf("    polling %v", r.polling)
 	}
-	for _, n := range r.spawned {
+	for _, n := range r.started {
 		t.Logf("    child %s", n)
 	}
 	if len(r.execs) > 0 {
@@ -246,10 +243,9 @@ func TestDriveAnImpossibleJobYieldsCannot(t *testing.T) {
 	}
 	client := clientFrom(os.Getenv("PORTKEY_BASE_URL"), os.Getenv("PORTKEY_API_KEY"),
 		os.Getenv("PORTKEY_VIRTUAL_KEY"), model)
-	vec := &task.Vector{Default: task.Auto}
+	vec := task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}
 	sup := task.NewSupervisor(vec, task.AutoResolver{})
-	sup.SetDeriver(demoDeriver{})
-	d := &llmDriver{client: client, tools: tds, frame: defaultFrame(tds, vec, nil, false), log: os.Stderr,
+	d := &llmDriver{client: client, tools: tds, frame: defaultFrame(tds, vec, false, nil), log: os.Stderr,
 		prompt: "Read the file `quarterly-revenue.csv` in your working directory and report the " +
 			"total revenue for Q3. Report the number and nothing else."}
 	p := task.NewTask("impossible", sup, d, &fsExec{root: root, log: os.Stderr})
@@ -306,7 +302,7 @@ func TestDriveControlProbesForPollingWithoutTheVerb(t *testing.T) {
 		t.Fatalf("run: %v", r.err)
 	}
 	t.Logf("CONTROL: %d filler children, %d parent actions after fan-out, %d boundaries",
-		len(r.spawned)-len(driveFiles), len(r.polling), r.boundaries)
+		len(r.started)-len(driveFiles), len(r.polling), r.boundaries)
 	if len(r.polling) == 0 {
 		t.Log("no polling: the pathology did not reproduce, as it has not in six shapes. " +
 			"The fix arm therefore shows the model USES the verb, not that it needed it.")
@@ -320,9 +316,9 @@ func TestDriveTheVerbStopsThePolling(t *testing.T) {
 	if r.err != nil {
 		t.Fatalf("run: %v", r.err)
 	}
-	if len(r.spawned) != len(driveFiles) {
+	if len(r.started) != len(driveFiles) {
 		t.Errorf("%d children for %d files — the extras are filler work: %v",
-			len(r.spawned), len(driveFiles), r.spawned)
+			len(r.started), len(driveFiles), r.started)
 	}
 	if len(r.polling) > 0 {
 		t.Errorf("the parent did %d thing(s) to pass the time after fanning out: %v",

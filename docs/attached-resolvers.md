@@ -46,7 +46,7 @@ match:
 ```
 
 `about` is a path with no value, since a value changes while an ask stands. An ask carries labels
-from its gate (`labels:` on a charter's gate or a vector's) or from `verse ask --label`.
+from its gate (`labels:` on a charter's gate or a task's) or from `verse ask --label`.
 
 A resolver acts as whoever installed it. Its service reads what they may read, and nothing more.
 

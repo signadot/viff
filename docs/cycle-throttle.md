@@ -125,7 +125,7 @@ step that takes real time:
 
 - a **spawned task**. Its writes arrive later through the API, as external writes.
 - the **world**. The write of an effector comes back through the mirror as an external write.
-- a **blocking gate**: an ask, a park, a threshold or a deadline. A person who answers an
+- a **blocking gate**: an ask, a threshold or a deadline. A person who answers an
   approval paces a cycle exactly as a clock does. A firing that will wait begins a fresh chain,
   both for the check and for its writes. One place in the code decides this for both, so the two
   cannot disagree.

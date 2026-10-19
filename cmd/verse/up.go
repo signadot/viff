@@ -19,6 +19,7 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/config"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd/verserunner"
 	"github.com/signadot/verse/system/repocharters"
@@ -162,14 +163,10 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	} else if abs, err := filepath.Abs(root); err == nil {
 		root = abs
 	}
-	// Per-spawn driver: the launch spec picks scripted or llm; an empty spec driver
-	// uses the default. The default is llm when creds are configured (so agents are
-	// real out of the box), else scripted (so the runtime is demoable with no creds).
-	// An explicit --driver still wins, and an llm spawn with no creds fails *that*
-	// task, not the engine.
-	defaultDriver := "scripted"
+	// The verse runner, embedded: its agent when a model credential is configured (so agents
+	// are real out of the box), and scripts either way. An agent spawn with no credential
+	// fails *that* task, not the engine.
 	if appCfg.LLM.Available() {
-		defaultDriver = "llm"
 		fmt.Fprintf(cc.Err, "agents rooted at %s\n", root)
 	}
 	// What a task's shell inherits from this process, which holds the model credentials.
@@ -177,14 +174,8 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	if len(shellEnv) == 0 {
 		shellEnv = task.DefaultShellEnv
 	}
-	h := &verserunner.Drivers{
-		Root: root, Env: shellEnv, Log: cc.Err, Default: defaultDriver,
-		LLMBaseURL: appCfg.LLM.BaseURL, LLMKey: appCfg.LLM.APIKey,
-		LLMVirtualKey: appCfg.LLM.VirtualKey, LLMModel: appCfg.LLM.Model,
-		VirtualKeyOr: appCfg.LLM.VirtualKeyOr,
-		NoKey: "set llm.apiKey and llm.virtualKey in verse.tony, or " +
-			"PORTKEY_API_KEY/PORTKEY_VIRTUAL_KEY in the environment",
-	}
+	runnerCfg, runnerSecrets := embeddedRunner(appCfg.LLM, shellEnv)
+	h := verserunner.New(runnerCfg, runnerSecrets, root, cc.Err)
 
 	// Resolve docd's addresses — connecting to a running one, or bringing logd+docd up
 	// via `o sys up` (see docd.go) — and open the store on its client face.
@@ -236,6 +227,10 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		perms.Reseed = perms.Reseed || on
 	}
 	srv := versed.NewWithStore(h.Build, store, versed.WithPerms(perms))
+	// What the embedded runner offers, as a runner reached by url would say on GET /describe:
+	// a spawn naming the `verse` agent with no model credential is refused as that, not run. Its
+	// tasks run in verse's own process, so the one network it builds them is open.
+	srv.Embedded.Describe(runnerCfg.Describe(runnerSecrets, []string{runner.NetworkOpen}))
 	// NO POLICY, NO SERVING. The root's record is what admits anybody at all now, so a server
 	// that could not write it would refuse every request from every person — which reads as a
 	// verse that lost its data, and is worth failing loudly at the start instead.
@@ -329,7 +324,11 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		_ = httpSrv.Shutdown(context.Background())
 	}()
 
-	fmt.Fprintf(cc.Out, "verse up on %s (engine + store[%s] + task[default:%s]). ctrl-c to stop.\n", g.Addr, storeKind, defaultDriver)
+	agents := "scripts only"
+	if appCfg.LLM.Available() {
+		agents = "the verse agent, and scripts"
+	}
+	fmt.Fprintf(cc.Out, "verse up on %s (engine + store[%s] + runner[%s]). ctrl-c to stop.\n", g.Addr, storeKind, agents)
 
 	if err := httpSrv.Serve(ln); err != nil && err != http.ErrServerClosed {
 		return err
@@ -423,4 +422,16 @@ func authOf(c config.AuthConfig) versed.Auth {
 		a.Iod.Static = append(a.Iod.Static, versed.IodStatic{File: st.File, Principal: st.Principal, IO: st.IO})
 	}
 	return a
+}
+
+// embeddedRunner is the runner `verse up` runs its tasks on, in its own process: the verse agent
+// on the deployment's model credential, which a launch may route by a virtual key it was let
+// spend (versed's `verse.portkey/virtual-key` annotation).
+func embeddedRunner(llm config.LLMConfig, shellEnv []string) (verserunner.Config, verserunner.Secrets) {
+	return verserunner.Config{
+			Models:      verserunner.Models{Portkey: verserunner.Portkey{VirtualKey: llm.VirtualKey}, Model: llm.Model},
+			ShellEnv:    shellEnv,
+			Annotations: map[string]string{verserunner.AnnotationVirtualKey: "string"},
+		},
+		verserunner.Secrets{PortkeyAPIKey: llm.APIKey, PortkeyBaseURL: llm.BaseURL}
 }

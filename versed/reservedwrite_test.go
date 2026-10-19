@@ -47,7 +47,7 @@ func TestAPersonsRuleDoesNotWriteUnderVerse(t *testing.T) {
 	if resp := installAs(t, alice, ts.URL, `{
 		name: on-the-hour,
 		condition: {subject: {path: "verse.schedule.hourly.tick.*"}},
-		action: {spawn: {driver: scripted, prompt: "true"}},
+		action: {spawn: {doer: {agent: verse}, prompt: "true"}},
 	}`); resp.StatusCode != http.StatusCreated {
 		t.Errorf("a rule that reads verse's half and spawns: %s %s", resp.Status, bodyOf(t, resp))
 	}

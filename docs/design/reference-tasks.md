@@ -2,15 +2,17 @@
 
 The reasons behind [Tasks](../reference/tasks.md). They are for somebody changing verse; the page itself says what verse does.
 
-## Why a list of calls is a field
+## Why a script gets its data in `with.env`
 
-A field can be checked when the rule fires, and printed. Verse expands each argument on its
-own, so a value with a quote in it cannot change the shape of the document.
+A value spliced into a script's text is part of the script, so a value with a quote in it can
+change what the script does. A variable cannot: `with.env` sets it beside the script, and
+`verse-call-tool` takes it as a flag's value, whole.
 
-## Why a runtime's own action goes through the gate
+## Why a script's calls go through the gates
 
-A runtime's own capability stays inside the dial, not beside it. The one action with an effect
-outside verse should not be the one action that nobody can gate.
+A script is one action and no step, because verse decided to start it. What it does beyond its
+workspace is a call to the task's tools, and each call is the step an agent's use of the tool
+is: the one action with an effect outside verse is not the one action that nobody can gate.
 
 ## Why a question outlives its answer
 

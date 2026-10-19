@@ -10,6 +10,7 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
@@ -35,21 +36,21 @@ func TestSpawnRoutesBoundSpec(t *testing.T) {
 	var got launch.Spec
 	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
 		got = spec
-		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 		p := task.NewTask(id, sup, immediate{}, noExec{})
 		mirror.Reflect(store, id, p, mirror.Meta{Runner: "local"}) // the Spawner now owns mirror + run
 		go p.Run(context.Background())
 		return p
 	})
 
-	spec := launch.Spec{Driver: "scripted", Prompt: "review $subject"}.
+	spec := launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "review $subject"}.
 		Bind(launch.Binding{"subject": `demo.pr."1"`})
 
 	p := eng.Spawn("rev-1", spec)
 	if p == nil {
 		t.Fatal("Spawn returned nil")
 	}
-	if got.Driver != "scripted" || got.Prompt != `review demo.pr."1"` {
+	if got.Doer.Agent != "verse" || got.Prompt != `review demo.pr."1"` {
 		t.Fatalf("spawner received unbound/wrong spec: %+v", got)
 	}
 
@@ -78,7 +79,7 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 	ids := make(chan string, 4)
 	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
 		ids <- id
-		sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{})
+		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 		p := task.NewTask(id, sup, immediate{}, noExec{})
 		mirror.Reflect(store, id, p, mirror.Meta{Subject: spec.Subject, Runner: "local"})
 		go p.Run(context.Background())
@@ -89,7 +90,7 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 		Condition: Condition{Subject: Match{"path": pathOf("local", "file", "*"),
 			"value": map[string]any{"stage": "open"}}},
 		Action: Action{
-			Spawn:  &launch.Spec{Prompt: "validate $path"},
+			Spawn:  &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "validate $path"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "validated"}.Payload()},
 		},
 	}); err != nil {
@@ -167,7 +168,7 @@ func TestSpawnIDNeverContainsGateSep(t *testing.T) {
 // With no Spawner configured, Spawn is a no-op that returns nil (traced), not a panic.
 func TestSpawnWithoutSpawner(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
-	if p := eng.Spawn("x", launch.Spec{Prompt: "t"}); p != nil {
+	if p := eng.Spawn("x", launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "t"}); p != nil {
 		t.Fatal("expected nil task with no spawner")
 	}
 }

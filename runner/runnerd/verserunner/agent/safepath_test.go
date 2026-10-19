@@ -124,7 +124,7 @@ func TestSafePathNamesTheSymlinkCase(t *testing.T) {
 //
 // Both halves come from one line a drive produced:
 //
-//	ERROR: read /Users/scott/.verse-coderunner/workspaces/docsdrift-e1f3.../verse/trigger: is a directory
+//	ERROR: read /Users/scott/.verse-runner/workspaces/docsdrift-e1f3.../verse/trigger: is a directory
 //
 // It names no remedy, so the model spends a turn deducing that list_dir exists; and it speaks in
 // absolute paths after the frame told the agent every path is relative to its working directory.

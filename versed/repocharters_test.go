@@ -18,7 +18,6 @@ import (
 	"github.com/signadot/verse/runner/runnerd/verserunner"
 	"github.com/signadot/verse/schedule"
 	"github.com/signadot/verse/system/repocharters"
-	"github.com/signadot/verse/task"
 )
 
 // main moves the reflected main of r to sha with the charters tree given, as the git io would.
@@ -189,7 +188,7 @@ func TestTheReconcilerInstallsForARepositoryCalledVerse(t *testing.T) {
 func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	dir := t.TempDir()
 	// Hosted as `verse up` hosts tasks, so a call list can ask.
-	drivers := &verserunner.Drivers{Root: dir, Env: task.DefaultShellEnv, Log: io.Discard}
+	drivers := verserunner.New(verserunner.Config{}, verserunner.Secrets{}, dir, io.Discard)
 	srv := NewWithStore(drivers.Build, entitytest.Store(t))
 	t.Cleanup(srv.stopAllIOs)
 	srv.Start(t.Context())

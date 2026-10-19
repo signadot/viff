@@ -12,13 +12,13 @@ One property decides what each of these seams is good for:
 The direction decides where a part can run:
 
 - a runtime on a laptop;
-- an [io](glossary.md#io) inside the cloud of another organization;
+- an [iod](glossary.md#iod) inside the cloud of another organization;
 - an [executor](glossary.md#executor) behind a firewall that accepts no inbound connection.
 
 Two of the seams carry almost the same payload in opposite directions. The direction is the
 difference between them, and it is the reason that both exist.
 
-Read [the overview](overview.md) first. It says what the components are, and this page assumes
+Read [the overview](README.md) first. It says what the components are, and this page assumes
 it. [Why the seams have the shape they do](#why-the-seams-have-the-shape-they-do), at the end,
 gives the reasons for the design.
 
@@ -58,18 +58,18 @@ flowchart LR
 ```
 
 A blue box dials *into* verse. Verse dials a green box. `iod` is both, and
-[seam 6](#6-ios--read-one-way-hint-and-act-the-other) is about that.
+[seam 6](#6-iods-read-one-way-hint-and-act-the-other) is about that.
 
 A [hint](glossary.md#hint) reaches verse by one of two paths. The two paths are not two routes
 to choose from. They belong to different systems. What the external system lets you install
-decides which path an io takes.
+decides which path an iod takes.
 
 | External system | What it allows | The path of a hint |
 |---|---|---|
 | Slack, Linear | it only *calls* you | `iod` receives the delivery, verifies its signature, and turns it into a hint |
 | Git | it runs a script for you | `Git.InstallHook` writes a four-line `reference-transaction` hook, and the hook curls the hint route itself |
 
-`iod git` serves **no delivery routes at all**, and it is not in the path of a hint. Every io
+`iod git` serves **no delivery routes at all**, and it is not in the path of a hint. Every iod
 would have this shape if every external system let you install a four-line shell script.
 
 ## The seams at a glance
@@ -79,10 +79,10 @@ would have this shape if every external system let you install a four-line shell
 | 1 | [Operator API](#1-the-operator-api) | client → verse | ~60 HTTP routes, two planes | built |
 | 2 | [Store](#2-the-store) | verse → docd | logd session, on the client face | built |
 | 4 | [Remote runner](#4-task-control-dialled-out) | verse → runner | `POST /tasks`, `GET /events?since`, control | built |
-| 6 | [Ios](#6-ios--read-one-way-hint-and-act-the-other) | both, by question | `GET /io`, `GET /reflect`; `POST …/hint`, `POST …/pass` | built (`dial-in` is not) |
+| 6 | [Iods](#6-iods-read-one-way-hint-and-act-the-other) | both, by question | `GET /io`, `GET /reflect`; `POST …/hint`, `POST …/pass` | built (`dial-in` is not) |
 | 7 | [Webhooks](#7-webhooks-the-only-seam-facing-the-internet) | external → source | signed `POST` | built |
-| 8 | [Resolvers](#8-resolvers-answering-from-the-runs-own-stream) | answerer → verse | SSE frames; verdict; position | built |
-| 9 | [Model provider](#9-the-model-provider) | task → provider | the driver's client | built |
+| 8 | [Resolvers](#8-resolvers-answering-for-whoever-grants-it) | answerer → verse | SSE frames; verdict; position | built |
+| 9 | [Model provider](#9-the-model-provider) | task → provider | the agent's client | built |
 
 ## 1. The operator API
 
@@ -141,7 +141,7 @@ GET    {base}/tasks                        list
 GET    {base}/tasks/{id}                   snapshot
 GET    {base}/tasks/{id}/events?since=<n>  the read plane, resumable
 POST   {base}/tasks/{id}/cancel|say|resolve
-PUT    {base}/tasks/{id}/vector
+PUT    {base}/tasks/{id}/policy
 ```
 
 Verse hands `?since=` to the cursor of the *remote*. The remote knows what it still keeps, so
@@ -152,9 +152,9 @@ This direction has a cost: **verse must be able to reach the runner.** A runtime
 private network, on a laptop, or in a cluster that accepts no inbound connection cannot be a
 remote runner.
 
-## 6. Ios — read one way, hint and act the other
+## 6. Iods: read one way, hint and act the other
 
-In this seam, the direction depends on the *question*. The io is built on this seam: one
+In this seam, the direction depends on the *question*. The iod is built on this seam: one
 program with two halves, and the only difference between the halves is which side dials.
 
 Verse dials the [source](glossary.md#source) to **read**. Two routes are the whole contract.
@@ -193,7 +193,7 @@ slower, and never makes it wrong: the periodic pass reads the change anyway. For
 full hint queue drops a hint rather than blocks. The whole engine is level-triggered in the same
 way, so this seam may be unreliable and still correct.
 
-**The out half is the same seam in the other direction, and the io dials.** The
+**The out half is the same seam in the other direction, and the iod dials.** The
 [sink](glossary.md#sink) does these things:
 
 1. It reads what is asked of it under the address it owns.
@@ -203,14 +203,14 @@ way, so this seam may be unreliable and still correct.
    does not dial.
 
 Nothing is pushed to the sink, and nothing is delivered exactly once. For this reason the two
-halves follow one discipline. An io that verse had to reach would need an Ingress. An io that
-dials needs nothing ([io.md](io.md#the-out-half-verse-asks-the-io-does-it)).
+halves follow one discipline. An iod that verse had to reach would need an Ingress. An iod that
+dials needs nothing ([io.md](io.md#the-out-half-verse-asks-the-iod-does-it)).
 
-Some external systems offer a connection of their own, and an io can use it for a third
+Some external systems offer a connection of their own, and an iod can use it for a third
 direction. What people do in the external system, such as a reply or a mention, reaches verse
-as a control request. Verse makes the request as the person who acted, and never as the io
+as a control request. Verse makes the request as the person who acted, and never as the iod
 ([io.md](io.md#control-what-people-do-over-there)). Slack's Socket Mode is the worked example.
-The io dials out, so clicks and replies arrive with no public URL anywhere.
+The iod dials out, so clicks and replies arrive with no public URL anywhere.
 
 The direction matters in a deployment. In the Kubernetes build:
 
@@ -224,7 +224,7 @@ Two variants use no network, or do not exist yet.
 | Variant | What it is |
 |---|---|
 | `-dir` | reflects a local git repository **in task**, with no `iod` and no port |
-| `dial-in` | for a source that verse must not dial. It is designed, and verse **refuses it at install** until it is built ([ios](reference/io.md)). |
+| `dial-in` | for a source that verse must not dial. It is designed, and verse **refuses it at install** until it is built ([iods](reference/io.md)). |
 
 ## 7. Webhooks: the only seam facing the internet
 
@@ -264,7 +264,7 @@ installer sees. [Resolvers](attached-resolvers.md) has the model.
 
 ## 9. The model provider
 
-The `llm` [driver](glossary.md#driver) dials a model provider from the place where the task
+The verse agent, `doer: {agent: verse}`, dials a model provider from the place where the task
 runs. That place is not always where the charter was installed, and this often surprises
 people. For this reason `GET /status` publishes a summary of the LLM configuration of *this*
 server, which is the server that hosts the runtime. The summary is safe to show: it leaves out
@@ -288,7 +288,7 @@ These parts are not wires. They are named here so that the map does not look big
 
 | Part | What it is |
 |---|---|
-| the **driver**: `scripted`, `calls`, `llm`, or your own `Next` | a Go interface, and never a wire |
+| the **driver** behind a [doer](glossary.md#doer): the agent's loop, a script, or your own `Next` | a Go interface, and never a wire |
 | a `-dir` **source** | runs in task |
 | the **local runner** | a Go call |
 | the `Store` interface | admits an implementation in memory, with no daemon behind it. The tests run on it. |

@@ -1,0 +1,7 @@
+name: files
+description: "The files of the task's workspace, which a doer reads and writes in its own process. A runner that intercepts the write stops it before it happens, so a gate may ask about it."
+verbs:
+- name: write
+  description: "Write a file under the workspace root."
+  params:
+  - {name: path, description: "the path written, relative to the workspace root; in a workspace with repositories it begins with the repository's directory"}

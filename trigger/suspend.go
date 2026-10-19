@@ -810,7 +810,7 @@ func (e *Engine) holdTasks() {
 			continue
 		}
 		if !was {
-			fp.h.Pause()
+			fp.h.Pause(engineActor)
 		}
 		e.recordHold(fp)
 	}
@@ -829,7 +829,7 @@ func (e *Engine) releaseTasks() {
 			continue
 		}
 		if !fp.operator {
-			fp.h.Resume()
+			fp.h.Resume(engineActor)
 		}
 		e.recordHold(fp)
 	}
@@ -871,8 +871,7 @@ func (e *Engine) Parked() int {
 }
 
 // releaseLaunches starts, in the order they were parked, every launch nothing holds now, and keeps
-// the rest. One that will pose a provider selection is started on a goroutine of its own, since it
-// waits for somebody to answer and the lift does not.
+// the rest.
 func (e *Engine) releaseLaunches() {
 	e.parkMu.Lock()
 	all := e.parked
@@ -884,16 +883,9 @@ func (e *Engine) releaseLaunches() {
 			kept = append(kept, l)
 			continue
 		}
-		start := func() {
-			if _, err := e.launch(l.a, l.chain, l.subj, l.root, l.occurrence, l.passed); err != nil {
-				e.logger.Warn("a parked launch did not start", "chain", l.chain, "subject", l.subj.String(), "err", err)
-			}
+		if _, err := e.launch(l.a, l.chain, l.subj, l.root, l.occurrence, l.passed); err != nil {
+			e.logger.Warn("a parked launch did not start", "chain", l.chain, "subject", l.subj.String(), "err", err)
 		}
-		if p := l.a.Spawn.Provider; p != nil && p.Select != "" && p.Select != "auto" {
-			go start()
-			continue
-		}
-		start()
 	}
 	if len(kept) > 0 {
 		e.parkMu.Lock()

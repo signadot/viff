@@ -1,12 +1,12 @@
-# Ios
+# Iods
 
-An **[io](glossary.md#io)** is one program that connects verse to one external system, such as
-a git repository, GitHub, Linear or Slack. An io has two halves.
+An **[iod](glossary.md#iod)** is one program that connects verse to one external system, such as
+a git repository, GitHub, Linear or Slack. An iod has two halves.
 
 | Half | What it does |
 |---|---|
-| the **[source](glossary.md#source)** (the in half) | It reads the external system. Verse writes what it read into the [store](glossary.md#store), under the io's [root](glossary.md#root-of-an-io) (`git`, `github`, …). The io is the single writer of everything under that root. [Rules](glossary.md#rule) and agents read what it wrote, and react. |
-| the **[sink](glossary.md#sink)** (the out half) | Somebody writes what they want said or done, at an address the io reads. The io makes the external system match, and writes back what happened. |
+| the **[source](glossary.md#source)** (the in half) | It reads the external system. Verse writes what it read into the [store](glossary.md#store), under the iod's [root](glossary.md#root-of-an-iod) (`git`, `github`, …). The iod is the single writer of everything under that root. [Rules](glossary.md#rule) and agents read what it wrote, and react. |
+| the **[sink](glossary.md#sink)** (the out half) | Somebody writes what they want said or done, at an address the iod reads. The iod makes the external system match, and writes back what happened. |
 
 The two halves differ in one thing: **which side dials**.
 
@@ -16,10 +16,10 @@ The two halves differ in one thing: **which side dials**.
 The rest follows from that difference. [seams.md](seams.md) makes the general point: the
 direction of a connection decides what is possible on it.
 
-One program holds both halves. So an io has one credential, one rate budget, one registration
+One program holds both halves. So an iod has one credential, one rate budget, one registration
 and one deployment.
 
-Not every io has both halves. Git has a source, and it acts out through a **task**. A push
+Not every iod has both halves. Git has a source, and it acts out through a **task**. A push
 cannot be taken back, and verse gates each step of an irreversible effect and does it once.
 
 The rule is reversibility:
@@ -29,9 +29,9 @@ The rule is reversibility:
 | a sink | what is kept in step with a record, and corrected by editing the record | a message, a comment, a notice |
 | a task | what cannot be taken back | a push |
 
-For the surface of an io (the entity, the verbs, the routes, the contracts it serves), see
-[reference/io.md](reference/io.md). Verse ships five ios: git, git-issue, Slack, Linear and
-GitHub. For them, see [reference/iod.md](reference/iod.md). To build your own io, copy
+For the surface of an iod (the entity, the verbs, the routes, the contracts it serves), see
+[reference/io.md](reference/io.md). Verse ships five iods: git, git-issue, Slack, Linear and
+GitHub. For them, see [reference/iod.md](reference/iod.md). To build your own iod, copy
 [examples/io](reference/examples/io/main.go). It is a real program, and it compiles with the
 tree.
 
@@ -41,11 +41,11 @@ verse io add slack http://slack-io:9801  -root slack
 verse io
 ```
 
-**Name an io after its connector, unless two of them run.** The name is the whole of the
-address (`verse.io.<name>`), and you choose it freely. Where one io of a kind runs, the name
+**Name an iod after its connector, unless two of them run.** The name is the whole of the
+address (`verse.io.<name>`), and you choose it freely. Where one iod of a kind runs, the name
 `git` says what `--root git` already says. The reader has nothing new to learn.
 
-Where two ios of one kind run, the name is the only thing that tells them apart. For example,
+Where two iods of one kind run, the name is the only thing that tells them apart. For example,
 one reflects the repositories on the cluster, and one reflects the repositories on a build
 host. Give the second a name of its own:
 
@@ -102,15 +102,15 @@ already read to spell the removals, so the write is a replace and not a merge.
 A compare-and-swap here would protect an address with a single writer against a second writer
 that cannot exist. The gain is modest. Verse keeps it for the rule, not for the measurement.
 
-## The out half: verse asks, the io does it
+## The out half: verse asks, the iod does it
 
 The sections above and below this one are about the source. This section is about the sink.
 The sink runs the same reconciliation in the other direction.
 
-1. Somebody writes what they want, at an address the io reads. It may be a person with
+1. Somebody writes what they want, at an address the iod reads. It may be a person with
    `verse data`, or a charter's `derive`. What they write is an **input**: a node with a `to`
    field, which says whom or what it is about.
-2. The io writes back what happened, at the sibling address `<name>~status`.
+2. The iod writes back what happened, at the sibling address `<name>~status`.
 
 The writer of an input chooses its depth. A person types one input under the address. A
 fan-out writes one input per person, wherever its keys put it.
@@ -127,25 +127,25 @@ The sink differs from the source only in direction, and in what follows from dir
 
 | | in | out |
 |---|---|---|
-| who dials | verse | the io |
+| who dials | verse | the iod |
 | what it carries | entities and covers | inputs, and a status per input |
 | the law | the single writer of what it covers; covered-and-omitted is tombstoned | what is asked is compared with what was done, and the difference is done |
 | failure | recorded on the registration, retried by the next pass | recorded on the status, retried by the next pass; a refusal is permanent until the input changes |
-| who verse trusts | what the reflection answers | what the io says it did (it cannot see for itself) |
+| who verse trusts | what the reflection answers | what the iod says it did (it cannot see for itself) |
 
-The addresses a sink reads must lie **inside the io's claim and outside its covers**:
+The addresses a sink reads must lie **inside the iod's claim and outside its covers**:
 
-- Inside the [claim](glossary.md#claim-of-an-io), so that no second writer can be asked for the
+- Inside the [claim](glossary.md#claim-of-an-iod), so that no second writer can be asked for the
   same things.
 - Outside the [covers](glossary.md#cover-of-a-reflection), so that a reflection never
   tombstones a request.
 
 A sink also reads the [outboxes](glossary.md#outbox) that packages declare for it: places
-inside a package, outside the io's claim, that the package says this io reads. It reads them as
+inside a package, outside the iod's claim, that the package says this iod reads. It reads them as
 it reads its own place, and writes each status inside the package
 ([reference/io.md](reference/io.md#outboxes-what-a-package-sends)).
 
-The registration says three things: where the sink reads, whom the io acts as, and who may
+The registration says three things: where the sink reads, whom the iod acts as, and who may
 ask. The install writes the grants that the registration describes. So you set up a sink in one
 act, not with four `verse perms` lines and a flag
 ([reference/io.md](reference/io.md#the-out-half)).
@@ -200,7 +200,7 @@ so a field that the source stops reporting is gone.
 
 The reasons are in [Why it is this way](#why-it-is-this-way).
 
-## An io you deploy
+## An iod you deploy
 
 `io/iod` serves the contract as two routes:
 
@@ -209,18 +209,18 @@ The reasons are in [Why it is this way](#why-it-is-this-way).
 | `GET /io` | a descriptor |
 | `GET /reflect` | a `Reflection` |
 
-`io.HTTP` is the client that verse drives an io with. `runnerd` uses the same pattern, for the
+`io.HTTP` is the client that verse drives an iod with. `runnerd` uses the same pattern, for the
 same reason. `io.Git` behind `iod` *is* the sample external io. The same value behind the
-reflector of verse is the built-in io. So a deployed io has no privileged local path to differ
+reflector of verse is the built-in io. So a deployed iod has no privileged local path to differ
 from.
 
-**Three ways to reach an io, and one contract.** A registration carries exactly one of these:
+**Three ways to reach an iod, and one contract.** A registration carries exactly one of these:
 
 | Field | Who connects |
 |---|---|
 | `url` | verse dials |
-| `dir` | the git io, in the verse process |
-| `dial-in` | the io dials. It is designed and not built. |
+| `dir` | the git iod, in the verse process |
+| `dial-in` | the iod dials. It is designed and not built. |
 
 The three differ only in where the `net.Conn` comes from. `Reflect` is the same call on all
 three. The field that is present says which way it is.
@@ -277,7 +277,7 @@ external source may not.
   - `-allow-overlap` is for two sources that do write the same address. The cost is stated:
     two writers on one address, each tombstoning what the other reflected.
 
-**The operator chooses the root.** A root separates ios more coarsely than a claim does, and
+**The operator chooses the root.** A root separates iods more coarsely than a claim does, and
 for a different reason. The operator draws the partition between deployed sources: by
 credential, by budget, or by which addresses are busy.
 
@@ -357,9 +357,9 @@ fails the pass in flight. If verse wrote that failure down, every source would c
 clean stop carrying it. A listing after a restart would then show every source as broken, when
 all are fine.
 
-## Scoped ios
+## Scoped iods
 
-An io registers into a [scope](glossary.md#scope). The io writes its reflection into that
+An iod registers into a [scope](glossary.md#scope). The iod writes its reflection into that
 scope.
 
 This is the sandbox. **The branches of my checkout shadow the view that baseline has
@@ -397,12 +397,12 @@ Verse ships `iod`, a second binary with one subcommand per system it connects
 the same image as `verse`, and deliberately not in the same process.
 
 The five are not privileged. They are ordinary external sources that are maintained in this
-repository. To write a sixth, copy the sample program. **The third and the fourth io add
+repository. To write a sixth, copy the sample program. **The third and the fourth iod add
 nothing to `io/`, `versed/` or the CLI.** This tests the claim that the seam is general.
 
 **The credential is the one difference between them.**
 
-| Io | Credential |
+| Iod | Credential |
 |---|---|
 | git | none |
 | git-issue | none. It reads the same directory as git. |
@@ -412,7 +412,7 @@ Because git needs no credential, git can also run in the verse process (`-dir`),
 "webhook" is a shell script of four lines. The three with a token stay on the far side of the
 seam. This is what "nothing new about credentials" means in practice (see below).
 
-Four facts hold for the three ios that need a credential.
+Four facts hold for the three iods that need a credential.
 
 **A delivery endpoint is the same as the git hook.** The Slack Events API endpoint, the Linear
 webhook and the GitHub webhook live in the *source*. Each verifies its own signature. Each posts
@@ -425,7 +425,7 @@ does not depend on it.
 
 **In GitHub, a hint names the thing and not its container.** A targeted pass has a size:
 
-| Io | A targeted pass reads | Why |
+| Iod | A targeted pass reads | Why |
 |---|---|---|
 | git | the whole repository, with `for-each-ref` | git is content-addressed, and a smaller target costs the same |
 | Linear | a whole team | one query reads a team |
@@ -570,12 +570,12 @@ one principal per request. Three invariants hold for every connector:
 - **What** it may ask for is bounded by what the record already offers.
 - **Who** it is made as is the person.
 
-An answer recorded as the io's own principal would be an answer that nobody gave.
+An answer recorded as the iod's own principal would be an answer that nobody gave.
 
 Where the verse verifies people, the connector presents its own token and names the account the
 person is, and verse admits the request as the person through that account's binding, from a
 connector the deployment trusts for the provider
-([a person relayed by a trusted io](reference/perms.md#a-person-relayed-by-a-trusted-io)). The
+([a person relayed by a trusted iod](reference/perms.md#a-person-relayed-by-a-trusted-iod)). The
 invariants hold the same way: the request is made as the person, and the record says which
 connector it came through.
 
@@ -603,7 +603,7 @@ system, and it has no way to.
 Acting back is the out half. It goes in a different direction and follows a different law: a
 level-triggered delivery of what somebody asked for, with a status beside each input that says
 what happened ([the out half](reference/io.md#the-out-half)). The addresses of the out half lie
-under the io's claim and outside the covers of the reflection. So the reflection stays the single
+under the iod's claim and outside the covers of the reflection. So the reflection stays the single
 writer of everything it reflects, and it never tombstones what the out half and its askers
 write.
 

@@ -1,11 +1,15 @@
 # The charter
 
-This page describes what is true of a [charter](../glossary.md#charter) as a whole. It says
-how a charter is installed at an address as a package, what a package may read and write, and
-what `verse charter` shows. It also says how verse stores a
-[rule](../glossary.md#rule), so that a charter survives a restart.
-[The trigger model](../trigger-model.md) describes the rules that a charter holds, and
-[Write a charter](../build.md#write-a-charter) writes one, step by step.
+This page describes a [charter](../glossary.md#charter) as a whole:
+
+- how a charter is installed at an address, as a package;
+- what a package may read and write;
+- what `verse charter` shows;
+- how verse stores a [rule](../glossary.md#rule), so that a charter survives a restart;
+- what an install does not check.
+
+[The charter reference](../trigger-model.md) describes the rules a charter holds, and
+[the tutorial's charters pages](../tutorial/charters.md) write one, step by step.
 
 ## A charter can be installed at an address
 
@@ -13,8 +17,8 @@ A charter installed at an [address](../glossary.md#address) is a
 **[package](../glossary.md#package)**. A package runs in an engine of its own, and it may
 write only inside that address.
 
-The address is where the install points: the positional path, or the file's `at:`. The
-install takes the address:
+The address is where the install points: the path after `-a`, or the file's `at:`. The install
+takes the address:
 
 - The address gets an owner record that names the installer.
 - What the package derives beneath the address is owned through that record.
@@ -25,19 +29,20 @@ verse c -a notes -f notes-charter.tony    # its rules write under notes.*
 verse c -a -f charter.tony                # baseline: may write anywhere
 ```
 
-With packages, two groups keep rules in one store and make no arrangement to avoid a
-collision. The confinement is a property of the *engine*, and not of the rules that are
-installed in it. The engine confines a package in two ways:
+So two groups can keep rules in one store without agreeing on anything to avoid a collision.
+The *engine* keeps a package inside its address, not the rules installed in it. It does this in
+two ways:
 
 - A `derive` that lands outside the address does not install.
-- Verse refuses a write that resolves outside the address when the rule fires.
+- When a rule fires, verse refuses a write that lands outside the address.
 
-The second way matters more, because the address of a derive can be a template.
+The second way matters more, because the address of a derive can be a template that only the
+firing fills in.
 [Confinement belongs to the engine](../design/reference-charter.md#confinement-belongs-to-the-engine) gives the reason.
 
 **A rule may select anywhere it only reads.** The subject is a write when the action patches
-it, and a read otherwise. So a rule of a package can select the place of an
-[io](../glossary.md#io) and derive from it. Most rules of a package do this:
+it, and a read otherwise. So a rule of a package can select what an [iod](../glossary.md#iod)
+wrote and derive from it. Most rules of a package do this:
 
 ```tony
 at: drift                   # where this package writes — its engine is confined to it
@@ -59,11 +64,11 @@ rules:
       value: {repo: $subject.value.repo}
 ```
 
-Two packages that both react to `git.*` are the ordinary arrangement, and not an unusual one.
+Two packages that both react to `git.*` are normal.
 
 **Reads are declared**, in the `reads:` line of the example. A package reads inside its own
-address, and what it names in `reads:`, and nothing else. An undeclared read does not install,
-and the refusal says which line to add:
+address and what it names in `reads:`, and nothing else. A rule that reads anything else does
+not install, and the refusal says which line to add:
 
 ```
 rule "note-the-head" reads git.verse.*, which notes.* does not declare: a charter installed
@@ -71,67 +76,63 @@ at an address reads inside it and what it declares, so that the graph over packa
 checked for a cycle. Add it: `reads: [git.verse]` (this package reads nothing)
 ```
 
-An absent `reads:` does not mean "everything". It means nothing: a package with no declaration
-reads only inside itself.
+A package without `reads:` reads only inside itself. It does not read "everything". A package
+that reads nothing outside cannot interfere with anybody, and every edge of the graph below is
+written down.
 
-This default is the safe one and the strict one. A package that reads nothing outside cannot
-interfere with anybody. The default also makes the graph total, because every edge is written
-down.
-
-**Sends are declared too.** A package writes only inside its address, and an
-[io](../glossary.md#io) reads what it is asked only at its own out place. So a package asks an io
-for something through an [outbox](../glossary.md#outbox): a place inside the package that the
-package declares the io reads.
+**Sends are declared too.** An [iod](../glossary.md#iod) works in both directions: it writes
+what a system holds into the store, and it carries writes back out to the system. It reads
+those writes at its own out place. A package writes only inside its address, so it cannot write
+to that out place directly. It writes to an [outbox](../glossary.md#outbox) instead: a place
+inside the package that the package declares the iod reads.
 
 ```tony
 at: verse-dev.announce
 sends:
 - from: out.slack                # inside this package's address
-  to: slack.Signadot.out         # an io's out place, as its registration names it
+  to: slack.Signadot.out         # an iod's out place, as its registration names it
 ```
 
-- `from` is written relative to the package's address. `to` is an out place that a registered io
-  reads. One `from` sends to one io.
-- The install holds the outbox out to that io: it may read what is asked there and own each
+- `from` is relative to the package's address. `to` is an out place that a registered iod
+  reads. One `from` sends to one iod.
+- The install grants that iod the outbox. The iod may read what is asked there, and own each
   status it writes beside an input. It may do nothing else in the package.
-- The package's rules derive inputs into the outbox like any other write inside the address, and
-  read each `~status` beside them, so a rule can see what became of what it asked.
+- The package's rules derive inputs into the outbox like any other write inside the address.
+  They read each `~status` beside an input, to see what became of it.
 - A place is an outbox only because its package says so. A package that happens to have an
   `out.slack` place sends nothing.
-- The grant stands while the package declares the outbox and an io reads the place it sends to.
-  Installing the package without the entry, removing the package, or removing the io takes it
-  back. Installing the io again grants the outboxes still declared for it.
+- The grant stands while the package declares the outbox and an iod reads the place it sends to.
+  Installing the package without the entry, removing the package, or removing the iod takes it
+  back. Installing the iod again grants the outboxes still declared for it.
 
-The install refuses a `to` no io reads, a `from` sent twice, and `sends:` on a charter with no
-address. See [The out half](io.md#the-out-half) for what an io does with an outbox.
+The install refuses a `to` that no iod reads, a `from` sent twice, and `sends:` on a charter
+with no address. [The out half](io.md#the-out-half) says what an iod does with an outbox.
 
 **One file is one charter, and a directory holds several.** Each file says where its charter
 goes with its own `at:`, so the layout of the directory is free.
 
-`.verse/charters/comment-drift/` holds two packages: a `drift` package that
-reviews, and a `merge` package that gates what the review delivers. One `verse c -a -d`
-installs them, all of them or none.
+For example, `.verse/charters/comment-drift/` holds two packages: `drift`, which reviews, and
+`merge`, which gates what the review delivers. One `verse c -a -d` installs both, or neither.
 
 Each package goes in **as one step**. Its declaration, its levels and its rules install
-together or not at all. So a refusal anywhere puts back what stood before it (see
-[strata.md](../strata.md#installing-and-the-order-it-does-not-depend-on)).
+together or not at all. So a refusal anywhere puts back what stood before it
+([strata](../strata.md#installing-and-the-order-it-does-not-depend-on)).
 
 **Its levels are its own**, and so are its records. The rules and the strata of a package are
 addressed by package (`verse.trigger.rule."repos.verse.drift:claim"`). So two packages may
 each declare a `reflected` level, and neither overwrites the other. The two halves of
-comment-drift need this: both read the git io, and both want a bottom level for it.
+comment-drift need this: both read the git iod, and both want a bottom level for it.
 
 The levels are not confined. The lowest level of a package owns the place that the package
 *reads*. Its rules select from there and derive above it.
 
-The write confinement makes the levels of each package coherent. A second check on the strata
-does not. With no write across packages there is no derive across packages, so there is no
-ordering across packages to define. Two packages may both declare a level 10, and the two
-levels mean nothing to each other.
+Because a package writes only inside its address, no derive crosses packages. So there is no
+order across packages to define. Two packages may both declare a level 10, and the two levels
+mean nothing to each other.
 
-**The reads graph is acyclic.** The declaration is also a graph. P → Q when what P reads meets
-what Q may write, which is the address of Q. Verse refuses a cycle at install, and shows the
-loop:
+**The reads graph has no cycles.** The `reads:` lines make a graph: P → Q when what P reads
+meets what Q may write, which is the address of Q. Verse refuses a cycle at install, and shows
+the loop:
 
 ```
 reads: this would close a cycle between packages: drift → merge → drift — one reads what
@@ -139,14 +140,13 @@ the next writes, all the way round, so a write on any of them can wake the other
 back. A package graph is acyclic: break the loop, or fold the two halves into one package
 ```
 
-The graph exists because nothing else catches such a loop. Suppose `a` reads what `b` writes,
-and `b` reads what `a` writes. That is a feedback loop, and neither author can see it in their
-own file. The level discipline is per package, so a derive across packages has no ordering to
-violate. The cycle throttle bounds a chain within one engine.
+Nothing else catches such a loop. Suppose `a` reads what `b` writes, and `b` reads what `a`
+writes. That is a feedback loop, and neither author can see it in their own file. Levels are per
+package, and the cycle throttle limits a chain only within one engine.
 
-A declared read of an address where no package is installed adds no edge. `git` is the place
-of an io, and to read an io is not to depend on a package. So two packages that both read
-`git`, as in the example, are not a loop.
+A declared read of an address where no package is installed adds no edge. `git` is where an
+iod writes, and reading it is not depending on a package. So two packages that both read `git`,
+as in the example, are not a loop.
 
 **What the graph does not cover** is baseline. The
 [baseline charter](../glossary.md#baseline-charter) may write anywhere. So a loop through it
@@ -173,13 +173,12 @@ strata: [ … ]
 
 Keys come out in alphabetical order, whatever order the file you installed wrote them in.
 
-`verse charter` prints the rules themselves, and not their names. The charter is the program
-that verse runs. A listing of names would need a second command for each rule to show what
-the rule *does*.
+`verse charter` prints the rules themselves, not their names. The charter is the program verse
+runs, and a list of names would need another command per rule to show what it *does*.
 
-**What a file cannot hold goes to stderr.** A rule that is held, suspended or has failed at a
-firing is marked there. Those are facts about the running rule, not part of the charter, and
-the install would refuse them. The charters under the address are named there too:
+**What a file cannot hold goes to stderr.** A rule that is held, suspended, or has failed at a
+firing is marked there. Those are facts about the running rule, not part of the charter, and an
+install would refuse them. The charters under the address are named there too:
 
 ```
 note: drift: rule head-moved is held: it waits for stratum reflected, which is not installed
@@ -196,60 +195,58 @@ verse charter -a demo -d out/ --prune   # …and remove what out/ leaves out at 
 ```
 
 An install adds and replaces by name, so a rule missing from the directory stays installed.
-`--prune` makes the directory the whole truth under an address. The result is the same as
-`verse c -R demo` followed by `verse c -a -d out/`, done as one step. A rule, level or schedule
-missing from a file is removed, and so is a package with no file. Rules the directory keeps go
-on running and are not stopped and restarted. Every file must be at or under the address. If
-anything is refused, the removals are put back along with the installs.
+`--prune` makes the directory the whole truth under an address:
 
-The writer lays the files out by address. That layout is a default, not a rule: the `at:` in
-each file is what says where it goes, because the rules in it name absolute paths. A directory
-laid out any other way, by project and with READMEs beside the charters, installs the same.
-`--paths` lists every charter as one path per rule and level.
+- It is `verse c -R demo` followed by `verse c -a -d out/`, as one step.
+- A rule, level or schedule missing from a file is removed, and so is a package with no file.
+- Rules the directory keeps go on running. They are not stopped and started again.
+- Every file must be at or under the address.
+- If anything is refused, the removals are put back along with the installs.
 
-A package is removed whole too: its rules, its levels, what it reads, and the engine that runs
-them. What the package *wrote* stays, because the writes of a charter belong to the world.
-`verse data -rm` removes those.
+`-d` lays the files out by address. That layout is a default, not a rule: the `at:` in each file
+says where it goes. A directory laid out any other way, by project and with READMEs beside the
+charters, installs the same. `--paths` lists every charter as one path per rule and level.
+
+A package is removed whole: its rules, its levels, what it reads, and the engine that runs them.
+What the package *wrote* stays. `verse data -rm` removes that.
 
 ```sh
 verse c -r merge
 verse c -R demo                          # …and every charter under that address
 ```
 
-**Two more things a package does not confine.** They are stated here because the boundary is
-easy to overstate.
+**Two things a package does not confine:**
 
 | Thing | Why a package does not confine it |
 |---|---|
-| a spawn | A task acts in the world under its `grant`. Confinement in the store is not confinement in the world (see [provider selection](../provider-selection.md)). |
+| a spawn | A task acts in the world, outside the store. What it may do there is its [policy](tasks.md#the-policy), held to its runner's ceiling. |
 | verse's own records, such as the mirror of a task or a posed question | The engine writes them into [`verse`'s own part of the tree](entities.md). No charter may be installed there, and no charter may write there. |
 
-A package has the same shape as a [scope](../glossary.md#scope), on another
-axis.
+A package has the same shape as a [scope](../glossary.md#scope), along another line:
 
 | | What it says | How it comes back |
 |---|---|---|
-| a scope | whose *copy* of the store a charter acts in | It waits for its developer to reconnect, because its layer cannot be enumerated. |
-| an address | which *part* of the store a charter acts on | It comes back at every start, because its address is a stamp that anyone can list. |
+| a scope | whose *copy* of the store a charter acts in | It waits for its developer to reconnect, because nothing lists the scopes. |
+| an address | which *part* of the store a charter acts on | It comes back at every start, because anyone can list the addresses. |
 
-Both stamp their records, so a restore takes only its own.
+Both mark their records, so a restore takes only its own.
 
 ## The charter is durable
 
 Installing a rule writes it into the store as `verse.trigger.rule.<name>`. For a package the
 entity is `verse.trigger.rule.<package>:<name>`, so two packages may use one name. Removing a
-rule deletes that entity. A start reads the rules back before anything observes. So a verse
-comes back running the program that it stopped with.
+rule deletes that entity. A start reads the rules back before anything else runs. So a verse
+comes back running the program it stopped with.
 
 The record holds the rule as `spec`. It also holds the `scope` and the package address `at`
 that the rule was installed in, when it has them.
 
-The record does not hold who installed the rule. The installer is the owner on the permissions
-record of the rule itself ([perms](perms.md)). That owner is the principal that the install
-acted as. For the charter that the deployment names, the owner is `system:charter`.
+The record does not hold who installed the rule. The installer is the owner on the rule's
+permissions record ([records](perms.md#records)): the principal the install acted as. For the
+charter the deployment names, the owner is `system:charter`.
 
-A restore installs the rule again as that owner. When verse refuses a charter file part way,
-it puts a replaced rule back as its installer, and not as the system.
+A restore installs the rule again as that owner. When verse refuses a charter file part way, it
+puts a replaced rule back as its installer, not as the system.
 
 Everything else that a restart needs is durable in the same way.
 
@@ -261,20 +258,17 @@ Everything else that a restart needs is durable in the same way.
 | an open question | a record, with its ballots on it |
 | an open selection | a channel, with its ballots beside it |
 
-At a resume, verse poses the open question again. From these records it also restores the
-hooks of a chain and the awaiter of the selection.
+At a restart, verse poses each open question again. From these records it also restores the
+hooks of a chain and the awaiter of a selection. The rules must be durable too, or a verse
+would come back with its work in progress and nothing to react to it.
 
-The program must be durable too. Without that, a verse comes back with its work in progress
-intact and nothing left to react to it.
+**There is one entity for each rule.** An install writes one entity, a removal deletes one, and
+neither reads the others. So two installs cannot lose each other's rules, and a rule has an
+address (`verse data verse trigger rule review`).
 
-**There is one entity for each rule**, because the operations already have that shape. An
-install writes one entity, a removal deletes one, and neither reads the others. So two
-installs cannot lose each other, and a rule has an address
-(`verse data verse trigger rule review`).
-
-**A rule is stored as structure, under the `!raw` escape.** `!raw` says *this tag is data*.
-The store keeps the subtree verbatim, and interprets nothing beneath it at any depth. The
-store consumes the escape itself, so the rule lands with its own tags.
+**A rule is stored as structure, under the `!raw` tag.** `!raw` says *the tags beneath me are
+data*. The store keeps the subtree as written, and runs no operator beneath it at any depth. The
+store removes the `!raw` itself, so the rule lands with its own tags.
 [A rule is stored under `!raw`](../design/reference-charter.md#a-rule-is-stored-under-raw) gives the reason.
 
 | Function | What it does |
@@ -282,12 +276,12 @@ store consumes the escape itself, so the rule lands with its own tags.
 | `entity.Raw` | wraps a rule in the escape on the way in |
 | `entity.AsData` | escapes a rule that was read back, so that it can be put back. `entity.Modify` does this for its callers. |
 
-A rule that is read back is ordinary data, so putting it back means escaping it again.
-Without the escape, a record that holds a document would execute its own operators as soon as
-anything else about the record changed.
+A rule that is read back is ordinary data, so putting it back means wrapping it again. Without
+`!raw`, a record that holds a rule would run the rule's own operators as soon as anything else
+about the record changed.
 
-Raw also *replaces*, and does not merge. So installing a rule again cannot leave a field of
-the earlier version in the later version.
+`!raw` also *replaces*; it does not merge. So installing a rule again cannot leave a field of the
+earlier version behind.
 
 The gain is that the record is the rule:
 
@@ -295,14 +289,13 @@ The gain is that the record is the rule:
 - A change to a charter is an observable fact about a shape, and not about a string.
 - Nothing has to parse the rule again to ask a question about it.
 
-**A rule keeps the comments it was written with.** So the record carries the reasons, and not
+**A rule keeps the comments it was written with.** So the record carries the reasons, not
 only the shape. The rule `review` in [The trigger](../trigger-model.md#the-trigger) reads back
 with all three of its notes in place.
 
-A comment attaches to the *value* that it is written about. It stands above the value, or
-beside it on the same line. Something must carry the comment: the type of the value, the field
-that holds the value, or the codec of what the value sits inside. Together they cover a
-charter:
+A comment belongs to the *value* it is written about. It stands above the value, or beside it on
+the same line. Something must carry the comment: the type of the value, the field that holds the
+value, or the codec of what the value sits inside. Together they cover a charter:
 
 | a comment on | kept by |
 |---|---|
@@ -315,18 +308,17 @@ The two positions are one question asked twice, and verse carries both.
 `name: review # the short name` reads back as it was written, and so does
 `# what this rule is for` above it.
 
-The exception is the fields of a spawn: `driver:`, `prompt:`, `runner:` and the rest. Verse
+The exception is the fields of a spawn: `doer:`, `prompt:`, `runner:` and the rest. Verse
 keeps a comment above or beside `spawn:`. It does not keep a comment on a field inside the
 spawn.
 
-**A comment above a container and one above its first entry are the same comment.** A block
-list begins at its first element, and an object at its first field. So both comments head the
-container: they merge, and they come back together above it. Every entry after the first keeps
-its own comment.
+**A comment above a list and one above its first entry are the same comment.** A block list
+begins at its first element, and an object at its first field. So both comments belong to the
+container: they merge, and come back together above it. Every entry after the first keeps its
+own comment.
 
-For this reason a comment above `subject:` reads back in one of two places. It reads back
-above the condition when `subject:` is written first, and beside the field when it is not. The
-text survives in both cases, and only its carrier changes.
+So a comment above `subject:` reads back in one of two places: above the condition when
+`subject:` is written first, and beside the field when it is not. The text is kept either way.
 
 ```tony
 gates:
@@ -346,33 +338,45 @@ first rule belongs to the file. To attach the comment to the rule, write it insi
   name: review
 ```
 
-**Restoring a rule is an ordinary install**, so it **replays**. A subtree watch is
-level-triggered at the open, so a restored rule acts on what already matches it. That includes
-what arrived while verse was down ([the backlog](condition.md#the-backlog)).
+**Restoring a rule is an ordinary install**, so the rule acts on what already matches it,
+including what arrived while verse was down ([the backlog](condition.md#the-backlog)).
 
-A **scoped charter** (`verse c -a -scope`) is restored in the same way, when the engine of the
-scope is next built. Verse builds that engine on demand, which in practice is when the
-developer reconnects.
+A **charter in a scope** (`verse c -a -scope`) is restored the same way, when the scope's engine
+is next built. Verse builds that engine when it is needed: in practice, when the developer
+reconnects. The record of a rule in a scope carries `scope: <name>`. A scope reads baseline
+beneath it, so a listing in a scope returns the rules of both, and only the record says which is
+which. The restore skips the rules of baseline, because a scope runs what was installed into it
+([scopes](scopes.md#the-charter-a-scope-runs)). A restart cannot bring back a scope nobody has
+asked for again, because nothing lists the scopes.
 
-The record of a scoped rule carries `scope: <name>`, and this makes the restore possible. A
-scoped store reads baseline layered underneath. So a listing in a scope returns the rules of
-baseline and the rules of the scope, and only the record says which is which. The restore
-passes over the rules of baseline, because a scope runs what was installed into it (see
-[scopes](scopes.md#the-charter-a-scope-runs)).
+**A rule can watch the charter**, because the charter is a place in the store like any other:
+`subject: {path: "verse.trigger.rule.*"}`. The rule must *name* the place. `verse.trigger.*` and
+`verse.task.*` are the engine's own records. A rule reaches either only with a path that begins
+with `verse`, so a rule does not react to its own records by accident.
 
-A restart cannot bring back a scope that nobody has asked for again. To enumerate the scopes
-that have a charter, a scope must be a thing that can be listed, and it is not.
+The permissions records (`verse.perms`) belong to the system, and no grant opens them to
+anybody. So only the system's own charter can read them. Verse refuses at install a rule of
+anybody else that names them, rather than installing a rule that matches nothing
+([verse's own half](../perms.md#verses-own-half)). A rule reads as its owner, all the way down.
 
-The charter is an observable place like any other, so a rule can watch it
-(`subject: {path: "verse.trigger.rule.*"}`). The rule must *name* the place.
-`verse.trigger.*` and `verse.task.*` are the engine's own machinery. A rule reaches either
-only with a path that begins with `verse`, so the loop cannot start from its own records. A
-rule can still observe the rules, and it does so only on purpose.
+## What an install does not check
 
-The permissions records (`verse.perms`) are one step further. They belong to the system, and
-no grant opens them to anybody. So only the system's own charter can read them. Verse refuses
-at install a rule of anybody else that names them. It does not install the rule to match
-nothing ([perms.md](../perms.md)). A rule reads as its owner, all the way down.
+An install refuses an unknown field of a rule, an unknown operator in a `value` predicate, a
+spawn with no [latch](../glossary.md#latch), and a spawn whose doer the runner does not offer.
+It accepts each of these:
+
+| What the rule holds | What happens |
+|---|---|
+| an unknown field inside `spawn:`, such as `promt:` | Verse drops the field and says nothing. The task runs without it, and `verse charter <address> rules <name>` prints the rule without it. |
+| a key spelled wrongly inside `patch:` or inside the `value` of a `derive` | Verse writes the key as spelled. The keys of a payload are yours. |
+| a reference that names nothing, such as `$subject.valeu.x` | The firing fails and writes nothing. The rule gets `trouble`. |
+| a spawn with a `runner:` that is not installed | The patch of the action lands, and the task fails at once: `verse task` shows `status: failed` and the reason in `err`. The rule gets no `trouble`. |
+| a condition over a place that the rule's owner may not read | The rule selects nothing, and nothing reports it. A rule reads the store as its owner does. |
+
+In the fourth and fifth rows the subject is already past the latch, so the rule does not fire
+for it again. For the fourth, give the action an `onFailed` hook, which writes a state you can
+see. In the fifth no task starts and no hook runs; read the rule's `trouble`, and
+[when a rule does nothing](../trigger-model.md#when-a-rule-does-nothing).
 
 ## Why it is this way
 

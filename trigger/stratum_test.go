@@ -13,6 +13,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
@@ -199,7 +200,7 @@ func TestDeriveMustLandStrictlyAbove(t *testing.T) {
 			Name: "x4", Stratum: "sdlc",
 			Condition: Condition{Subject: mm("signadot.feature.*")},
 			Action: Action{
-				Spawn:  &launch.Spec{Prompt: "review $subject"},
+				Spawn:  &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "review $subject"},
 				OnDone: &Action{Derive: deriveAction("gh.issue", entity.Obj{"a": 1}).Derive},
 			},
 		},
@@ -877,7 +878,7 @@ func TestTheCausalChainCrossesTheLevel(t *testing.T) {
 // the bare key and leaves the text "demo.pr.1.name", which is why this is pinned.
 func TestSubjectPartsBindInSpawnStrings(t *testing.T) {
 	b := bindingFor(entity.Obj{"stage": "open"}.Payload(), entity.RefAt("demo", "pr", "1"))
-	spec := launch.Spec{Prompt: "review $subject.name at $subject.ref ($subject) at $stage"}
+	spec := launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "review $subject.name at $subject.ref ($subject) at $stage"}
 	got := spec.Bind(b).Prompt
 	if want := `review 1 at demo.pr."1" (demo.pr."1") at open`; got != want {
 		t.Fatalf("task = %q, want %q", got, want)

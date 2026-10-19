@@ -11,14 +11,21 @@ import (
 )
 
 // pose publishes one question, the way the registry's OnPost does.
-func pose(t *testing.T, store entity.Store, id, gate, taskID string, effs ...task.Effect) {
+func pose(t *testing.T, store entity.Store, id, gate, taskID string, step task.Step) {
 	t.Helper()
 	origin, _, _ := strings.Cut(id, task.GateSep)
 	PostQuestion(store, task.Pending{
-		Question: task.GateQuestion{ID: id, Origin: origin, Gate: gate, Subject: `demo.pr."1"`},
+		Question: task.GateQuestion{ID: id, Origin: origin, Gate: gate, Subject: `demo.pr."1"`, Step: step},
 		Tool:     "write",
-		Effects:  effs,
 	}, taskID)
+}
+
+// writeStep is the step a write of path is; runStep the step running a command is.
+func writeStep(path string) task.Step {
+	return task.Step{Name: task.StepFilesWrite, Fields: map[string]string{"path": path}}
+}
+func runStep(command string) task.Step {
+	return task.Step{Name: task.StepCommandsRun, Fields: map[string]string{"command": command}}
 }
 
 // ids returns the question ids a pattern picks, so a test can say what a rule would fire on.
@@ -46,11 +53,11 @@ func only(t *testing.T, got []string, want string) {
 func TestAPatternSelectsPendingQuestions(t *testing.T) {
 	store := entitytest.Store(t)
 	pose(t, store, "run-a~d1", "write-guard", "run-a",
-		task.Effect{Verb: task.Write, Resource: task.File("cfg/app.tony")})
-	pose(t, store, "run-a~d2", "net-guard", "run-a",
-		task.Effect{Verb: task.Network, Resource: task.Resource{Kind: task.KindHost, Ref: "api.example"}})
+		writeStep("cfg/app.tony"))
+	pose(t, store, "run-a~d2", "shell-guard", "run-a",
+		runStep("curl api.example"))
 	pose(t, store, "run-b~d1", "write-guard", "run-b",
-		task.Effect{Verb: task.Write, Resource: task.File("cfg/other.tony")})
+		writeStep("cfg/other.tony"))
 
 	// By the run that raised it. The id carries its origin, so one run's questions are
 	// selectable without a second field to join on.
@@ -58,22 +65,21 @@ func TestAPatternSelectsPendingQuestions(t *testing.T) {
 		t.Fatalf("selected %v, want both of run-a's questions", got)
 	}
 
-	// By what the action would DO. This is the one a supervisor cares about: `verbs: [write]`
+	// By what the action would DO. This is the one a supervisor cares about: `step: files.write`
 	// is the sentence a charter rule says, and it has to be true of the record without the
-	// reader knowing the shape of a Go Effect. It picks both writes and leaves the network
-	// question alone, which is the discrimination that makes it worth saying.
+	// reader knowing the shape of a Go Step. It picks both writes and leaves the command alone,
+	// which is the discrimination that makes it worth saying.
 	if got := ids(t, store, entity.Pattern{
-		At:        []string{"effects"},
-		Predicate: entity.Obj{"verbs": []any{"write"}}.Payload(),
+		Predicate: entity.Obj{"step": task.StepFilesWrite}.Payload(),
 	}); len(got) != 2 {
-		t.Fatalf("selected %v on verbs: [write], want both writes and not the network gate", got)
+		t.Fatalf("selected %v on step: files.write, want both writes and not the command", got)
 	}
 
 	// And by the path, which is the same fact reached the other way — a rule that guards a
-	// directory says it in paths, not in resources.
+	// directory says it in the step's fields.
 	only(t, ids(t, store, entity.Pattern{
-		At:        []string{"effects"},
-		Predicate: entity.Obj{"paths": []any{"cfg/app.tony"}}.Payload(),
+		At:        []string{"fields"},
+		Predicate: entity.Obj{"path": "cfg/app.tony"}.Payload(),
 	}), "run-a~d1")
 }
 
@@ -83,7 +89,7 @@ func TestAPatternSelectsPendingQuestions(t *testing.T) {
 // like a harmless one. It publishes what it knows and says nothing it does not.
 func TestAQuestionWithNoEffectsIsStillOnTheDocket(t *testing.T) {
 	store := entitytest.Store(t)
-	pose(t, store, "run-a~d1", "unknown-tool", "run-a")
+	pose(t, store, "run-a~d1", "unknown-tool", "run-a", task.Step{})
 
 	e, ok, _ := store.Get(QuestionRef("run-a~d1"))
 	if !ok {
@@ -118,11 +124,11 @@ func TestAQuestionWithNoEffectsIsStillOnTheDocket(t *testing.T) {
 // question to decide, already stamped with who decided it and what they said.
 func TestReposingOverASettledQuestionClearsTheAnswer(t *testing.T) {
 	store := entitytest.Store(t)
-	pose(t, store, "guard~1", "approval", "")
+	pose(t, store, "guard~1", "approval", "", task.Step{})
 	AnswerQuestion(store, "guard~1", task.Resolution{
 		Proceed: true, By: "human:scott", Steer: []string{"ship it"}})
 
-	pose(t, store, "guard~1", "approval", "") // posed again under the id it had
+	pose(t, store, "guard~1", "approval", "", task.Step{}) // posed again under the id it had
 
 	e, ok, err := store.Get(QuestionRef("guard~1"))
 	if err != nil || !ok {
@@ -149,7 +155,7 @@ func TestReposingOverASettledQuestionClearsTheAnswer(t *testing.T) {
 // having been asked before.
 func TestAFirstPosingIsNotMarked(t *testing.T) {
 	store := entitytest.Store(t)
-	pose(t, store, "guard~2", "approval", "")
+	pose(t, store, "guard~2", "approval", "", task.Step{})
 	e, _, _ := store.Get(QuestionRef("guard~2"))
 	if got := entity.ToObj(e.Payload); got["askedAgain"] != nil {
 		t.Fatalf("a first posing was marked as a repeat: %+v", got)
@@ -356,7 +362,7 @@ func TestAnAnsweredQuestionStaysAnswered(t *testing.T) {
 	ev := task.Event{Kind: task.EventPending, ID: "t1~d1", Gate: "ship"}
 	answered := func() entity.Store {
 		store := docket(t)
-		if !PostFrameQuestion(store, ev, "t1", "", []string{ann}) {
+		if !PostFrameQuestion(store, ev, "t1", "", []string{ann}, nil) {
 			t.Fatal("not posed")
 		}
 		AnswerQuestion(store, ev.ID, task.Choose(task.Proceed, ann))
@@ -368,7 +374,7 @@ func TestAnAnsweredQuestionStaysAnswered(t *testing.T) {
 	}
 
 	store := answered()
-	PostFrameQuestion(store, ev, "t1", "", []string{ann}) // late: the same asking, reported again
+	PostFrameQuestion(store, ev, "t1", "", []string{ann}, nil) // late: the same asking, reported again
 	if s := status(store); s != QuestionAnswered {
 		t.Errorf("a late frame left the answered question %s", s)
 	}
@@ -426,7 +432,7 @@ func TestAFramePosedQuestionSaysWhomItWaitsOn(t *testing.T) {
 	store := docket(t)
 	const ann = "user:ann@example.com"
 	ev := task.Event{Kind: task.EventPending, ID: "t1~d1", Gate: "ship"}
-	if !PostFrameQuestion(store, ev, "t1", "", []string{ann}) {
+	if !PostFrameQuestion(store, ev, "t1", "", []string{ann}, nil) {
 		t.Fatal("not posed")
 	}
 	same(t, waitsOn(t, store, ev.ID), []string{ann})
@@ -452,7 +458,7 @@ func TestAQuestionCarriesTheAction(t *testing.T) {
 
 	// From a remote runner's frame, the same.
 	PostFrameQuestion(store, task.Event{Kind: task.EventPending, ID: "run-b~d1", Gate: "write", Tool: "apply_patch",
-		Action: "update docs/x.md", Text: "verb write"}, "run-b", "", nil)
+		Action: "update docs/x.md", Text: "verb write"}, "run-b", "", nil, nil)
 	e, ok, _ = store.Get(QuestionRef("run-b~d1"))
 	if !ok {
 		t.Fatal("the frame's question was not posted")
@@ -461,7 +467,7 @@ func TestAQuestionCarriesTheAction(t *testing.T) {
 		t.Errorf("action from a frame is %v, want the patch's paths", got)
 	}
 
-	pose(t, store, "run-c~d1", "x", "run-c")
+	pose(t, store, "run-c~d1", "x", "run-c", task.Step{})
 	e, _, _ = store.Get(QuestionRef("run-c~d1"))
 	if _, present := entity.ToObj(e.Payload)["action"]; present {
 		t.Error("an action that said nothing has an action field")

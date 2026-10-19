@@ -28,7 +28,7 @@ func raise(t *testing.T, srv *Server, id string, opts []task.Option) chan task.R
 	answered := make(chan task.Resolution, 1)
 	go func() {
 		res, _ := srv.Reg.Resolve(context.Background(),
-			task.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: task.Ask, Options: opts},
+			task.GateQuestion{ID: id, Origin: "review", Gate: "review", Options: opts},
 			task.ToolUse{Name: "verse.trigger.review"})
 		answered <- res
 	}()
@@ -233,7 +233,7 @@ func TestAQuestionAskedAgainIsNotAnsweredWithTheOldOptions(t *testing.T) {
 		again := make(chan task.Resolution, 1)
 		go func() {
 			res, _ := srv.Reg.Resolve(context.Background(),
-				task.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: task.Ask, Options: three},
+				task.GateQuestion{ID: id, Origin: "review", Gate: "review", Options: three},
 				task.ToolUse{Name: "verse.trigger.review"})
 			again <- res
 		}()

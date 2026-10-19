@@ -185,7 +185,7 @@ type held struct {
 
 // charterHolding is the addresses whose charter holds a rule or a level by this name, asked of
 // the ENGINES rather than of the tree: they hold the installed charter in memory, so this costs
-// no read, and it is the same question ResumeSelections asks when a selection names a rule.
+// no read.
 func (s *Server) charterHolding(name string) []held {
 	var out []held
 	look := func(at string, eng *trigger.Engine) {

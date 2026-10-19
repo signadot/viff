@@ -17,7 +17,13 @@ import (
 // poses it, and the seed holds out creating an ask to everyone.
 func asking(t *testing.T) (*Server, *httptest.Server) {
 	t.Helper()
-	srv := testServer(t)
+	return askingOn(t, testServer(t))
+}
+
+// askingOn is asking over a server built elsewhere: one whose tasks' actions are steps
+// (stepBuilder), for a test about a then-task's own gate.
+func askingOn(t *testing.T, srv *Server) (*Server, *httptest.Server) {
+	t.Helper()
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
@@ -108,6 +114,44 @@ func TestAnAskIsAnsweredAndItsThenRunsForTheAsker(t *testing.T) {
 	}
 	if got := entity.Str(task.Payload, "flow"); got != land.String() {
 		t.Fatalf("its then is about %q, want the ask", got)
+	}
+}
+
+// A THEN'S RECORD SAYS WHAT IT RUNS UNDER: the policy its asker wrote beside the script, as a
+// spawn's is.
+func TestAThenRunsRecordCarriesItsPolicy(t *testing.T) {
+	srv, ts := asking(t)
+	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
+	id := askID(t, ask(t, daniel, ts.URL, `{name: tag, question: "Tag v1?", answerers: [oscar@example.com],
+		then: {script: "true", policy: [{match: {system: question}, then: allow}, {then: deny}]}}`))
+	tag := mirror.AskRef(id)
+	posed(t, srv, tag)
+	if resp := answerAs(t, davido, ts.URL, id); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("davido's answer: %s: %s", resp.Status, bodyOf(t, resp))
+	}
+	then := thenTaskOf(t, srv, tag)
+	if p := mirror.PolicyOf(then.Payload); len(p) != 2 || p[0].Match.System != "question" || p[0].Then.Mode != "allow" {
+		t.Errorf("the then-task's record holds the policy %v, want the one written beside the script", p)
+	}
+	if got := entity.Str(then.Payload, "doer"); got != "script" {
+		t.Errorf("the then-task's record names the doer %q, want script", got)
+	}
+}
+
+// A THEN'S POLICY IS CHECKED WHEN IT IS ASKED, as a run's is when it is started: a row that is no
+// row, or a policy beside something that runs nothing, is refused and no ask stands.
+func TestAThensPolicyIsCheckedWhenAsked(t *testing.T) {
+	_, ts := asking(t)
+	for _, then := range []string{
+		`{prompt: "go", policy: [{then: sometimes}]}`,
+		`{prompt: "go", policy: [{match: {verb: push}, then: allow}, {then: deny}]}`,
+		`{answer: {ask: other, choice: proceed}, policy: [{then: deny}]}`,
+	} {
+		resp := ask(t, "user:daniel@example.com", ts.URL, `{name: bad, question: "Go?", then: `+then+`}`)
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("then %s: %s %s, want 400", then, resp.Status, bodyOf(t, resp))
+		}
+		resp.Body.Close()
 	}
 }
 

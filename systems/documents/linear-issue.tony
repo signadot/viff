@@ -1,0 +1,15 @@
+name: linear-issue
+description: "The issues of a Linear workspace. Each verb is a call the runner makes to Linear with the credential it holds, which the task never has; a runner without one offers none of them."
+verbs:
+- name: create
+  description: "Create an issue in a team, named by its key, with a title and description."
+  params:
+  - {name: team, form: upper, description: "the team's key (ENG)"}
+- name: comment
+  description: "Comment on an issue, by its identifier."
+  params:
+  - {name: issue, form: upper, description: "the issue's identifier (ENG-42)"}
+- name: close
+  description: "Close an issue, by its identifier: it moves to its team's completed state."
+  params:
+  - {name: issue, form: upper, description: "the issue's identifier (ENG-42)"}

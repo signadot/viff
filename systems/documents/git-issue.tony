@@ -1,0 +1,25 @@
+name: git-issue
+description: "A repository's own issue tracker: the issues `git issue` keeps as refs in the repository, distributed as its code is. The task files, comments and closes in its checkout with no credential, as it commits; push is what sends the tracker to the remote, with the runner's credential, and pull brings the remote's tracker into the checkout."
+verbs:
+- name: create
+  description: "File an issue in the checkout's tracker. Nothing has left until push."
+  params:
+  - {name: repo, form: repo, description: "the repository, as `host/owner/name` in lower case (`github.com/acme/app`), whichever way the spawn named it"}
+- name: comment
+  description: "Comment on an issue in the checkout's tracker, by its id."
+  params:
+  - {name: repo, form: repo, description: "the repository, as `host/owner/name` in lower case (`github.com/acme/app`), whichever way the spawn named it"}
+  - {name: issue, description: "the issue's id, or an unambiguous prefix of it"}
+- name: close
+  description: "Close an issue in the checkout's tracker, by its id, naming the commit that closed it when there is one."
+  params:
+  - {name: repo, form: repo, description: "the repository, as `host/owner/name` in lower case (`github.com/acme/app`), whichever way the spawn named it"}
+  - {name: issue, description: "the issue's id, or an unambiguous prefix of it"}
+- name: pull
+  description: "Bring the remote's tracker into the checkout: its issue refs, fetched by the runner and set here."
+  params:
+  - {name: repo, form: repo, description: "the repository, as `host/owner/name` in lower case (`github.com/acme/app`), whichever way the spawn named it"}
+- name: push
+  description: "Send the checkout's tracker to the remote: every issue filed or changed here, as one push the runner makes with its credential."
+  params:
+  - {name: repo, form: repo, description: "the repository, as `host/owner/name` in lower case (`github.com/acme/app`), whichever way the spawn named it"}

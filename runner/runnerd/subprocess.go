@@ -2,6 +2,7 @@ package runnerd
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -12,7 +13,9 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -36,13 +39,12 @@ import (
 //
 // The runner's own secrets don't reach the process by its environment: Command's process gets
 // Env and nothing else, and Config on its stdin.
-//
-// A runner whose tasks need more than a directory gives the handler a Preparer: it readies what
-// a task's process gets before it starts, and is told how the task ended.
 type SubprocessHandler struct {
 	SubprocessConfig
 
 	describe runner.Description
+	owned    []string      // the variables a task's shell is given by the runner (CheckLaunch)
+	linger   time.Duration // lingerAfterEnd, as it was when the handler was made
 	seq      atomic.Uint64
 	mu       sync.Mutex
 	tasks    map[string]*proc
@@ -59,67 +61,20 @@ type SubprocessConfig struct {
 	Config []byte
 	// Sandbox confines the task process.
 	Sandbox Sandbox
+	// Programs are the other programs a task runs, found inside the sandbox where they are
+	// outside it: a script's verse-call-tool.
+	Programs []string
+	// Repos checks out the repos a launch names, and performs what a task asks over its channel:
+	// a push, a proposal, a tracker's act. Nil refuses a launch that names repos, and opens no
+	// channel.
+	Repos *Repos
+	// AgentHosts are the hosts an agent's task reaches whatever its network: its model. Under
+	// network none it gets a proxy that allows them alone.
+	AgentHosts []string
 	// Work is where the tasks' directories are made, and Control where their sockets are: a
 	// directory no task's sandbox binds.
 	Work, Control string
 	Log           io.Writer
-
-	// Preparer, when set, readies each task before its process starts and is told how the task
-	// ended. With one, a spawn is answered as soon as it is admitted, and the task is prepared
-	// behind the answer: what a task needs may take longer than a caller waits for an answer.
-	Preparer Preparer
-
-	// LingerAfterEnd is how long a finished task's process is kept, so a reader attached at its
-	// last frame gets it; StopGrace how long a process has to exit after its lifeline closes,
-	// before it is killed. Zero is the default of each.
-	LingerAfterEnd, StopGrace time.Duration
-}
-
-// Preparer readies a task before its process starts, and is told how it ended.
-//
-// A SPAWN IS ANSWERED BEFORE THE TASK IS PREPARED. The caller bounds a control request at
-// client.ControlTimeout, which is its patience for an answer and not for the work, and what a
-// task may need before its process can start — a repository to clone, the first time it is
-// seen — takes what it takes. So Admit is everything the runner can refuse without doing any
-// work, answered 400; Prepare is the work, run behind a 202, under a context a cancel of the
-// task ends. Meanwhile the task is a running one to every reader, and a preparation that fails
-// is remembered as the task's end, with the reason, on the plane the caller is already reading.
-type Preparer interface {
-	// Admit checks a spawn before anything is done for it, and may fill in what the runner
-	// decides about it, such as the driver a spawn that names none gets. An error refuses the
-	// spawn, in the runner's words.
-	Admit(spawn *task.SpawnRequest) error
-	// Prepare readies the task's process: its directory and whatever else it is given. An
-	// error, or ctx ending first, ends the task before it started: failed with the error, or
-	// cancelled.
-	Prepare(ctx context.Context, spawn task.SpawnRequest) (*Prepared, error)
-}
-
-// Prepared is what a task's process gets, as a Preparer readied it. Each field left empty is the
-// handler's default.
-type Prepared struct {
-	// Dir is the process's working directory, kept when the task ends. Empty: a fresh directory
-	// under Work, removed when the task ends.
-	Dir string
-	// Config is the process's stdin. Nil: the handler's Config.
-	Config []byte
-	// Env is the process's whole environment, as given. Nil: the handler's Env, with HOME and
-	// TMPDIR set.
-	Env []string
-	// Extra are descriptors the process inherits after the control listener and the lifeline:
-	// fd 5, 6, and so on, in this order. The handler closes its copies once the process has
-	// started, or has failed to.
-	Extra []*os.File
-	// Network is what the process may reach, built by the handler's Sandbox around Dir. The
-	// zero value is the runner's own network.
-	Network Network
-	// Serve, when set, runs beside the task's process from the moment it starts; a server for
-	// the runner's end of a channel in Extra, say. It returns when it has nothing more to do.
-	Serve func()
-	// Ended, when set, is told how the task ended once its process is gone: the task's last
-	// snapshot. Called exactly once for every Prepared returned, including one whose process
-	// never started.
-	Ended func(final task.Snapshot)
 }
 
 // Timings, variables so the tests can shorten them.
@@ -139,11 +94,13 @@ var (
 //
 // fd 3 is a listening socket: the process serves on it, and its path is in the runner's Control
 // directory, outside the sandbox, so the task can't reach its own control plane. fd 4 is a
-// lifeline, a pipe the runner never writes: it reads EOF when the runner closes it or dies.
-// What a Preparer adds (Prepared.Extra) follows, from fd 5.
+// lifeline, a pipe the runner never writes: it reads EOF when the runner closes it or dies. fd 5,
+// for a task that names repos, is its delivery channel (package delivery).
 const (
 	controlFD  = 3
 	lifelineFD = 4
+	// DeliveryFD is the task's end of its delivery channel, when its launch names repos.
+	DeliveryFD = 5
 )
 
 // NewSubprocessHandler is a standalone runner that starts its tasks' processes as c says.
@@ -151,11 +108,15 @@ func NewSubprocessHandler(c SubprocessConfig) *SubprocessHandler {
 	if c.Log == nil {
 		c.Log = os.Stderr
 	}
-	return &SubprocessHandler{SubprocessConfig: c, tasks: map[string]*proc{}}
+	return &SubprocessHandler{SubprocessConfig: c, linger: lingerAfterEnd, tasks: map[string]*proc{}}
 }
 
 // Describe sets what the runner offers. Set it before the runner is served.
 func (h *SubprocessHandler) Describe(desc runner.Description) { h.describe = desc }
+
+// OwnEnv names the variables the runner gives a task's shell itself, which a launch's `with.env`
+// may not name. Unset is task.DefaultShellEnv.
+func (h *SubprocessHandler) OwnEnv(names []string) { h.owned = names }
 
 // HTTPHandler serves the task contract and GET /describe.
 func (h *SubprocessHandler) HTTPHandler() http.Handler {
@@ -163,56 +124,121 @@ func (h *SubprocessHandler) HTTPHandler() http.Handler {
 	mux.HandleFunc("GET /describe", func(w http.ResponseWriter, r *http.Request) {
 		writeOut(w, r, http.StatusOK, h.describe)
 	})
-	mux.HandleFunc("POST /tasks", h.spawn)
+	mux.HandleFunc("POST /tasks", h.launch)
 	mux.HandleFunc("GET /tasks", h.list)
 	mux.HandleFunc("/tasks/{id}", h.forward)
 	mux.HandleFunc("/tasks/{id}/{op}", h.forward)
 	return mux
 }
 
-func (h *SubprocessHandler) linger() time.Duration {
-	if h.LingerAfterEnd > 0 {
-		return h.LingerAfterEnd
-	}
-	return lingerAfterEnd
-}
-
-func (h *SubprocessHandler) grace() time.Duration {
-	if h.StopGrace > 0 {
-		return h.StopGrace
-	}
-	return stopGrace
-}
-
 // proc is one task's process, from the runner's side.
 type proc struct {
-	id     string
-	dir    string
-	ownDir bool // the handler made dir, and removes it
-	sock   string
-	cmd    *exec.Cmd
-	life   *os.File // the lifeline's write end
-	prep   *Prepared
-	rt     task.Runner
-	prox   *httputil.ReverseProxy
-	// pending is the task as it stands until its process hosts it.
-	pending task.Snapshot
-	// abort ends a preparation; nil without a Preparer. Once the process hosts the task it ends
-	// nothing. Set before the proc is on the list, which is what lets forward read it without
-	// the lock.
-	abort context.CancelFunc
-	// ready is closed once the process hosts the task, or the task has ended without one: a
-	// start that failed (err, without a Preparer) or a preparation that did (remembered).
+	id string
+	// known is the task as the runner knows it from its launch, for when its process can't say.
+	known task.Snapshot
+	// l is the launch: what a replacement of the task's policy is held to (replacePolicy).
+	l    *runner.Launch
+	dir  string
+	sock string
+	cmd  *exec.Cmd
+	life *os.File // the lifeline's write end
+	rt   task.Runner
+	prox *httputil.ReverseProxy
+	co   *checkout     // the task's repos, when its launch names some
+	eg   *EgressServer // the task's way out, when its network allows hosts
+	// abort ends the task before its process hosts it: a cancel, or the runner shutting down.
+	abort context.CancelCauseFunc
+	// ready is closed once the process hosts the task, or the task has ended without it.
 	ready chan struct{}
-	err   error
-	// gone is closed when the process has exited, by the one goroutine that waits for it; or by
-	// stop, for a task that never had one.
+	// gone is closed when the process has exited, by the one goroutine that waits for it.
 	gone chan struct{}
+	// done is closed once the runner is through with the task: its process stopped, its repos
+	// settled (what didn't leave salvaged), its directory removed or kept. Shutdown waits on it.
+	done chan struct{}
 
-	mu    sync.Mutex
-	exit  error
-	final *task.Snapshot // the last word on the task, once there is one
-	dead  bool
+	mu sync.Mutex
+	// hosted is set, under mu, once the process hosts the task: from then a cancel is the
+	// task's to carry out, and before it the runner's.
+	hosted bool
+	exit   error
+	final  *task.Snapshot // the last word on the task, once there is one
+	dead   bool
+	// events is the task's read plane as the runner followed it, so a reader can still replay
+	// it once the process has exited: the last task.RingCap of it, as the task itself keeps.
+	events []task.Event
+}
+
+// record keeps an event the runner followed, once.
+func (p *proc) record(e task.Event) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if e.Kind == task.EventGap {
+		return
+	}
+	if n := len(p.events); n > 0 && e.Cursor <= p.events[n-1].Cursor {
+		return
+	}
+	p.events = append(p.events, e)
+	if len(p.events) > task.RingCap {
+		p.events = p.events[len(p.events)-task.RingCap:]
+	}
+}
+
+// eventsSince is the followed events after the cursor since. A reader behind what is kept, or
+// reading across a hole the runner's own following left (a reconnect that fell behind), is told
+// so first with a gap marker, and resyncs from the snapshot: what the task's own stream does.
+func (p *proc) eventsSince(since int64) []task.Event {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var out []task.Event
+	next := since + 1
+	missed := 0
+	for _, e := range p.events {
+		if e.Cursor <= since {
+			continue
+		}
+		missed += int(e.Cursor - next)
+		next = e.Cursor + 1
+		out = append(out, e)
+	}
+	if missed > 0 {
+		gap := task.Event{Kind: task.EventGap, Task: p.id, Cursor: next - 1, Dropped: missed}
+		out = append([]task.Event{gap}, out...)
+	}
+	return out
+}
+
+// current is the task's snapshot as its process reports it, or, when that can't be had, the
+// task as the runner knows it: its id, running.
+func (p *proc) current() task.Snapshot {
+	if final, done := p.snapshot(); done {
+		return final
+	}
+	if !p.isReady() {
+		return p.as(task.Running, "")
+	}
+	if lister, ok := p.rt.(task.Lister); ok {
+		if in, err := lister.TaskSnapshot(p.id); err == nil {
+			return in
+		}
+	}
+	return p.as(task.Running, "")
+}
+
+// as is the task as the runner knows it, with a status and an error.
+func (p *proc) as(status task.Status, err string) task.Snapshot {
+	snap := p.known
+	snap.Status, snap.Err = status, err
+	return snap
+}
+
+func (p *proc) isReady() bool {
+	select {
+	case <-p.ready:
+		return true
+	default:
+		return false
+	}
 }
 
 func (p *proc) running() bool {
@@ -221,17 +247,6 @@ func (p *proc) running() bool {
 		return false
 	default:
 		return true
-	}
-}
-
-// hosting is whether the process is up and hosting the task, or the task has ended: from then
-// on every request is answered by the process, or from what is remembered.
-func (p *proc) hosting() bool {
-	select {
-	case <-p.ready:
-		return true
-	default:
-		return false
 	}
 }
 
@@ -264,24 +279,37 @@ func (p *proc) exitStatus() string {
 	return p.exit.Error()
 }
 
-// spawn is POST /tasks: start a process for the task, and pass the spawn on to it.
-func (h *SubprocessHandler) spawn(w http.ResponseWriter, r *http.Request) {
-	var body task.SpawnRequest
-	if err := codec.Read(r, &body); err != nil {
-		http.Error(w, fmt.Sprintf("the spawn does not parse: %v", err), http.StatusBadRequest)
-		return
-	}
-	if body.ID == "" {
-		body.ID = fmt.Sprintf("p%d", h.seq.Add(1))
-	}
-	// Refused before anything is done for it, in the runner's words: client.HTTP reads the
-	// status, so a launch this runner will not host comes back as a refusal on the flow that
-	// asked, rather than as a task that failed at once.
-	if h.Preparer != nil {
-		if err := h.Preparer.Admit(&body); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+// launch is POST /tasks: take the task, answer with its snapshot, and then start it — check out
+// its repos, start its process, pass the launch on to it. A task that can't be started fails,
+// with the reason; one cancelled before its process hosts it ends cancelled.
+func (h *SubprocessHandler) launch(w http.ResponseWriter, r *http.Request) {
+	// Checked here, before anything is started for it: a launch this runner refuses costs no
+	// sandbox. The task's process checks it again as it arrives.
+	body, ok := readLaunch(w, r, func(l *runner.Launch) error {
+		if err := CheckLaunch(l, h.describe, h.owned); err != nil {
+			return err
 		}
+		if len(l.Doer.With.Git) > 0 && h.Repos == nil {
+			return errNoRepos
+		}
+		// What the launch asked for first, so a refusal names it, and then what the task gets:
+		// an agent's none is an allow, for its model.
+		if err := h.Sandbox.Provides(Network{Mode: l.Doer.With.NetworkMode()}); err != nil {
+			return fmt.Errorf("with.network: %w", err)
+		}
+		network, allow := h.network(l)
+		if err := h.Sandbox.Provides(network); err != nil {
+			return err
+		}
+		if network.Mode == NetworkAllow {
+			if _, err := NewEgress(l.ID, allow, nil); err != nil {
+				return fmt.Errorf("with.network: %w", err)
+			}
+		}
+		return nil
+	})
+	if !ok {
+		return
 	}
 	raw, err := codec.Marshal(&body, codec.Tony)
 	if err != nil {
@@ -289,153 +317,101 @@ func (h *SubprocessHandler) spawn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// A task is spawned once while it runs: a second spawn of a live id is answered by the task
-	// that has it, which is what makes a spawn safe to retry. A finished id runs again.
+	// A task is launched once while it runs: a second launch of a live id is answered by the task
+	// that has it, which is what makes a launch safe to retry. A finished id runs again.
 	h.mu.Lock()
 	p := h.tasks[body.ID]
 	if p != nil {
-		if _, done := p.snapshot(); done || !p.running() {
+		if _, done := p.snapshot(); done {
 			p = nil
 		}
 	}
 	created := p == nil
-	var preparing context.Context
 	if created {
-		p = &proc{
-			id: body.ID, ready: make(chan struct{}), gone: make(chan struct{}),
-			pending: task.Snapshot{ID: body.ID, Prompt: body.Prompt, Driver: body.Driver, Status: task.Running},
-		}
-		if h.Preparer != nil {
-			preparing, p.abort = context.WithCancel(context.Background())
-		}
+		ctx, abort := context.WithCancelCause(context.Background())
+		p = &proc{id: body.ID, abort: abort, ready: make(chan struct{}), gone: make(chan struct{}),
+			done:  make(chan struct{}),
+			known: task.Snapshot{ID: body.ID, Prompt: body.Prompt, Driver: body.Doer.Name(), Occurrence: body.Occurrence},
+			l:     &body}
 		h.tasks[body.ID] = p
+		go h.run(ctx, p, &body, raw)
 	}
 	h.mu.Unlock()
 
-	if created && h.Preparer != nil {
-		// Accepted, and answered now; the work is behind it (Preparer).
-		go h.prepare(preparing, p, body, raw)
-		writeOut(w, r, http.StatusAccepted, runner.SpawnResponse{ID: p.id})
-		return
-	}
+	status := http.StatusOK
 	if created {
-		p.err = h.start(p, raw, nil)
-		close(p.ready)
-		if p.err != nil {
-			fmt.Fprintf(h.Log, "runnerd: %s: %v\n", p.id, p.err)
-			h.mu.Lock()
-			if h.tasks[p.id] == p {
-				delete(h.tasks, p.id)
-			}
-			h.mu.Unlock()
-			http.Error(w, p.err.Error(), http.StatusBadGateway)
-			return
-		}
-		go h.supervise(p)
-		writeOut(w, r, http.StatusCreated, runner.SpawnResponse{ID: p.id})
-		return
+		status = http.StatusCreated
 	}
-	if !p.hosting() && p.abort != nil {
-		// Asked again while still being prepared: the same answer as the first time.
-		writeOut(w, r, http.StatusAccepted, runner.SpawnResponse{ID: p.id})
-		return
-	}
-	select {
-	case <-p.ready:
-	case <-r.Context().Done():
-		return
-	}
-	if p.err != nil {
-		http.Error(w, p.err.Error(), http.StatusBadGateway)
-		return
-	}
-	writeOut(w, r, http.StatusOK, runner.SpawnResponse{ID: p.id})
+	writeOut(w, r, status, p.current())
 }
 
-// prepare is the work a spawn with a Preparer was answered before: the Preparer's own, then the
-// process, then the spawn handed to it. A preparation that does not reach a hosted task is
-// remembered as the task's end, with the reason, as a process that exits without one is: to
-// the caller both are a task that did not finish and why.
-func (h *SubprocessHandler) prepare(ctx context.Context, p *proc, spawn task.SpawnRequest, raw []byte) {
-	before := func(status task.Status, err error) {
-		fmt.Fprintf(h.Log, "runnerd: %s: %s before it started: %v\n", p.id, status, err)
-		p.remember(task.Snapshot{Prompt: spawn.Prompt, Driver: spawn.Driver, Status: status, Err: err.Error()})
-		h.stop(p)
-		if p.ownDir {
-			os.RemoveAll(p.dir)
-		}
-		if p.prep != nil && p.prep.Ended != nil {
-			final, _ := p.snapshot()
-			p.prep.Ended(final)
-		}
+// run starts a task and follows it to its end. The task's process hosts it once start returns;
+// a cancel that came first is carried out here, and the process, if it had started, is stopped.
+func (h *SubprocessHandler) run(ctx context.Context, p *proc, l *runner.Launch, raw []byte) {
+	defer close(p.done)
+	err := h.start(ctx, p, l, raw)
+	p.mu.Lock()
+	if err == nil && ctx.Err() != nil {
+		err = context.Cause(ctx)
+	}
+	p.hosted = err == nil
+	p.mu.Unlock()
+	if err == nil {
 		close(p.ready)
-	}
-	cancelled := errors.New("cancelled while the task was being prepared")
-
-	prep, err := h.Preparer.Prepare(ctx, spawn)
-	switch {
-	case err != nil && ctx.Err() != nil:
-		before(task.Cancelled, cancelled)
+		h.supervise(p)
 		return
-	case err != nil:
-		before(task.Failed, err)
-		return
-	case prep == nil:
-		prep = &Prepared{}
 	}
-	p.prep = prep
+	p.stop(h.Log)
+	p.eg.Stop()
+	if p.co != nil {
+		p.co.abandon()
+	}
+	os.RemoveAll(p.dir)
 	if ctx.Err() != nil {
-		closeAll(prep.Extra)
-		before(task.Cancelled, cancelled)
-		return
-	}
-	if err := h.start(p, raw, prep); err != nil {
-		if ctx.Err() != nil {
-			err = cancelled
-		}
-		before(task.Failed, err)
-		return
-	}
-	if ctx.Err() != nil {
-		// The cancel came while the process was starting, and was answered: the process is up and
-		// the task is not, so it ends here rather than running on under a cancel nobody will
-		// send again.
-		before(task.Cancelled, cancelled)
-		return
+		p.remember(p.as(task.Cancelled, context.Cause(ctx).Error()))
+	} else {
+		fmt.Fprintf(h.Log, "runnerd: %s: %v\n", p.id, err)
+		p.remember(p.as(task.Failed, err.Error()))
 	}
 	close(p.ready)
-	h.supervise(p)
 }
 
-// start makes the task's directory, starts its process in the sandbox, and hands it the spawn.
-// prep is what a Preparer readied, or nil for the handler's defaults throughout.
-func (h *SubprocessHandler) start(p *proc, spawn []byte, prep *Prepared) error {
-	if prep == nil {
-		prep = &Prepared{}
-	}
-	dir := prep.Dir
-	if dir == "" {
-		var err error
-		if dir, err = os.MkdirTemp(h.Work, "task-"); err != nil {
-			closeAll(prep.Extra)
-			return fmt.Errorf("the task's directory could not be made: %w", err)
-		}
-		p.ownDir = true
+// start makes the task's directory, checks out its repos in it, starts its process in the
+// sandbox, and hands it the launch. What it leaves behind on an error, run cleans up.
+func (h *SubprocessHandler) start(ctx context.Context, p *proc, l *runner.Launch, launch []byte) error {
+	dir, err := os.MkdirTemp(h.Work, "task-")
+	if err != nil {
+		return fmt.Errorf("the task's directory could not be made: %w", err)
 	}
 	p.dir = dir
-	fail := func(err error) error {
-		h.stop(p)
-		if p.ownDir {
-			os.RemoveAll(dir)
+	root := dir
+	var extra []*os.File
+	// The checkout and the channel, wherever the runner performs anything for its tasks: a
+	// task with no repos still asks it for a tracker's acts over the same channel.
+	if h.Repos != nil {
+		co, err := h.Repos.prepare(ctx, l, dir, h.Log)
+		if err != nil {
+			return fmt.Errorf("checking out the task's repos: %w", err)
 		}
+		p.co, root = co, co.ws.Root
+		extra = append(extra, co.ch.Child()) // fd 5
+	}
+	if err := ctx.Err(); err != nil {
 		return err
+	}
+	network, allow := h.network(l)
+	if network.Mode == NetworkAllow {
+		eg, err := ServeEgress(h.Control, p.id, allow, h.Log)
+		if err != nil {
+			return err
+		}
+		p.eg, network.Egress = eg, eg.Sock()
 	}
 
 	sock := fmt.Sprintf("%s/t%d.sock", h.Control, h.seq.Add(1))
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
-		closeAll(prep.Extra)
-		return fail(fmt.Errorf("the task's control socket: %w", err))
+		return fmt.Errorf("the task's control socket: %w", err)
 	}
 	p.sock = sock
 	ul := ln.(*net.UnixListener)
@@ -445,48 +421,33 @@ func (h *SubprocessHandler) start(p *proc, spawn []byte, prep *Prepared) error {
 	lf, err := ul.File()
 	ln.Close()
 	if err != nil {
-		closeAll(prep.Extra)
-		return fail(fmt.Errorf("the task's control socket: %w", err))
+		return fmt.Errorf("the task's control socket: %w", err)
 	}
 	defer lf.Close()
 	lifeR, lifeW, err := os.Pipe()
 	if err != nil {
-		closeAll(prep.Extra)
-		return fail(err)
+		return err
 	}
 	defer lifeR.Close()
 	p.life = lifeW
 
 	cmd := exec.Command(h.Command[0], h.Command[1:]...)
-	config := prep.Config
-	if config == nil {
-		config = h.Config
-	}
-	cmd.Stdin = bytes.NewReader(config)
-	// The environment the whole task tree gets, built rather than inherited: a nil Env would
-	// hand the process the runner's own, and every secret in it.
-	cmd.Env = prep.Env
-	if cmd.Env == nil {
-		cmd.Env = append(append([]string{}, h.Env...), "HOME="+dir, "TMPDIR=/tmp")
-	}
+	cmd.Stdin = bytes.NewReader(h.Config)
+	cmd.Env = append(append([]string{}, h.Env...), "HOME="+root, "TMPDIR=/tmp")
 	out := tagged(h.Log, p.id)
 	cmd.Stdout, cmd.Stderr = out, out
-	cmd.ExtraFiles = append([]*os.File{lf, lifeR}, prep.Extra...) // fd 3, fd 4, and the Preparer's
-	if err := h.Sandbox.Wrap(cmd, dir, prep.Network); err != nil {
-		closeAll(prep.Extra)
-		return fail(err)
+	cmd.ExtraFiles = append([]*os.File{lf, lifeR}, extra...) // fd 3, fd 4, and fd 5
+	if err := h.Sandbox.Wrap(cmd, root, network, h.Programs); err != nil {
+		return err
 	}
-	err = cmd.Start()
-	// The process has its own copies now, or never will.
-	closeAll(prep.Extra)
-	if err != nil {
-		return fail(fmt.Errorf("starting the task's process: %w", err))
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("starting the task's process: %w", err)
 	}
 	p.cmd = cmd
-	// Beside the process from its start: what it is served on a channel in Extra it may need
-	// while it is still taking the spawn.
-	if prep.Serve != nil {
-		go prep.Serve()
+	if p.co != nil {
+		// The process has its own copy of its end now, and the runner answers on the other.
+		_ = p.co.ch.Child().Close()
+		go p.co.ch.Serve()
 	}
 	go func() {
 		err := cmd.Wait()
@@ -511,20 +472,12 @@ func (h *SubprocessHandler) start(p *proc, spawn []byte, prep *Prepared) error {
 	}
 
 	if err := p.awaitReady(); err != nil {
-		return fail(err)
+		return err
 	}
-	if err := post(tr, base+"/tasks", spawn); err != nil {
-		return fail(fmt.Errorf("the task's process refused the spawn: %w", err))
+	if err := post(tr, base+"/tasks", launch); err != nil {
+		return fmt.Errorf("the task's process refused the launch: %w", err)
 	}
 	return nil
-}
-
-func closeAll(fs []*os.File) {
-	for _, f := range fs {
-		if f != nil {
-			f.Close()
-		}
-	}
 }
 
 // awaitReady waits until the process answers GET /tasks, or exits.
@@ -566,9 +519,9 @@ func post(tr http.RoundTripper, url string, body []byte) error {
 	return nil
 }
 
-// supervise follows a task to its end, remembers how it ended, and then stops its process, tells
-// the Preparer, and removes the directory it made. A process that exits without the task ending
-// is a failed task.
+// supervise follows a task to its end, remembers how it ended, and then stops its process,
+// settles its repos and removes its directory. A process that exits without the task ending is
+// a failed task.
 func (h *SubprocessHandler) supervise(p *proc) {
 	var since int64
 	for {
@@ -586,20 +539,18 @@ func (h *SubprocessHandler) supervise(p *proc) {
 				snap.Status = end
 			}
 			p.remember(snap)
-			time.Sleep(h.linger())
+			time.Sleep(h.linger)
 			break
 		}
 	}
-	h.stop(p)
-	p.remember(task.Snapshot{Status: task.Failed, Err: fmt.Sprintf(
-		"the task's process exited (%s) before the task ended", p.exitStatus())})
-	if p.prep != nil && p.prep.Ended != nil {
-		final, _ := p.snapshot()
-		p.prep.Ended(final)
+	p.stop(h.Log)
+	p.remember(p.as(task.Failed, fmt.Sprintf(
+		"the task's process exited (%s) before the task ended", p.exitStatus())))
+	p.eg.Stop() // a way out outliving its task would be a route into the runner's network
+	if p.co != nil && h.Repos.settle(p.co, h.Log) {
+		return // the workspace is the only copy of work that could not be staged: kept
 	}
-	if p.ownDir {
-		os.RemoveAll(p.dir)
-	}
+	os.RemoveAll(p.dir)
 }
 
 // follow reads the task's events from since until a terminal status, and returns it with the
@@ -610,6 +561,7 @@ func (p *proc) follow(since int64) (task.Status, int64) {
 	for {
 		frames, cancel := h.SubscribeSince(since)
 		for f := range frames {
+			p.record(f)
 			if f.Cursor > since {
 				since = f.Cursor
 			}
@@ -645,9 +597,8 @@ func (p *proc) settled() (task.Snapshot, bool) {
 	return last, false
 }
 
-// stop closes the lifeline, then kills the process if it hasn't exited. Idempotent. A task that
-// never had a process is marked gone.
-func (h *SubprocessHandler) stop(p *proc) {
+// stop closes the lifeline, then kills the process if it hasn't exited. Idempotent.
+func (p *proc) stop(log io.Writer) {
 	p.mu.Lock()
 	if p.dead {
 		p.mu.Unlock()
@@ -661,8 +612,8 @@ func (h *SubprocessHandler) stop(p *proc) {
 	if p.cmd != nil {
 		select {
 		case <-p.gone:
-		case <-time.After(h.grace()):
-			fmt.Fprintf(h.Log, "runnerd: %s: the task's process didn't exit; killing it\n", p.id)
+		case <-time.After(stopGrace):
+			fmt.Fprintf(log, "runnerd: %s: the task's process didn't exit; killing it\n", p.id)
 			p.cmd.Process.Kill()
 			<-p.gone
 		}
@@ -675,8 +626,7 @@ func (h *SubprocessHandler) stop(p *proc) {
 }
 
 // forward is every /tasks/{id} route. A live task's process answers it; a finished task is
-// answered from what the runner remembers; one still being prepared says it runs, and a cancel
-// ends the preparation.
+// answered from what the runner remembers.
 func (h *SubprocessHandler) forward(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	h.mu.Lock()
@@ -686,17 +636,16 @@ func (h *SubprocessHandler) forward(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if !p.hosting() {
-		// Still being prepared. A snapshot and a cancel are answered here: the first is what
-		// the caller polls, and must not wait; the second is what ends the preparation.
-		// Anything else is the process's, and waits for it.
-		switch op := r.PathValue("op"); {
-		case r.Method == http.MethodGet && op == "":
-			writeOut(w, r, http.StatusOK, p.pending)
+	op := r.PathValue("op")
+	if _, done := p.snapshot(); !done && !p.isReady() {
+		// Not hosted yet: its repos are being checked out, or its process started. A cancel is
+		// the runner's to carry out, and a look is answered from what the runner knows; the
+		// rest wait for the process.
+		switch {
+		case op == "cancel" && cancelEarly(w, r, p):
 			return
-		case op == "cancel" && p.abort != nil:
-			p.abort()
-			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && op == "":
+			writeOut(w, r, http.StatusOK, p.current())
 			return
 		}
 		select {
@@ -705,39 +654,212 @@ func (h *SubprocessHandler) forward(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if p.err != nil {
-		http.NotFound(w, r)
-		return
-	}
 	final, done := p.snapshot()
 	if !done {
+		if r.Method == http.MethodPut && op == "policy" {
+			h.replacePolicy(w, r, p)
+			return
+		}
+		if r.Method == http.MethodPost && op == "resolve" {
+			h.relayResolve(w, r, p)
+			return
+		}
 		p.prox.ServeHTTP(w, r)
 		return
 	}
-	switch op := r.PathValue("op"); {
+	switch {
 	case r.Method == http.MethodGet && op == "":
 		writeOut(w, r, http.StatusOK, final)
 	case r.Method == http.MethodGet && op == "events":
-		// A finished task's stream is its end, and closes: what a late reader gets from an
-		// InProcessHandler too.
+		// A finished task's stream is what the runner followed of it, from the reader's cursor,
+		// and then it closes: what a late reader gets from an InProcessHandler too. A task whose
+		// process died before it said how it ended gets that end said for it.
 		sse, err := codec.NewSSE(w, r)
 		if err != nil {
 			codec.HTTPError(w, r, http.StatusInternalServerError, err.Error())
 			return
 		}
-		_ = sse.Send(task.Event{Kind: task.EventStatus, Text: string(final.Status), Err: final.Err})
+		since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
+		events := p.eventsSince(since)
+		if n := len(events); n == 0 || !(events[n-1].Kind == task.EventStatus && task.Status(events[n-1].Text).Terminal()) {
+			events = append(events, task.Event{Kind: task.EventStatus, Task: id, Text: string(final.Status), Err: final.Err})
+		}
+		if r.URL.Query().Get("since") == "" {
+			events = events[len(events)-1:] // a live attach to an ended task gets its end
+		}
+		for _, e := range events {
+			_ = sse.Send(e)
+		}
 		sse.Flush()
-	// The rest as an InProcessHandler answers them for an ended task: a cancel, pause, resume or
-	// vector does nothing and says so with 204, a say is 410, and no gate is left to resolve.
-	case op == "cancel" || op == "pause" || op == "resume" || op == "vector":
+	// The rest as an InProcessHandler answers them for an ended task: a cancel, pause or resume
+	// does nothing and says so with 204, a say is 410, and no gate is left to resolve.
+	case op == "cancel" || op == "pause" || op == "resume":
 		w.WriteHeader(http.StatusNoContent)
-	case op == "say":
+	case op == "say" || op == "gates":
 		http.Error(w, fmt.Sprintf("task %s has ended (%s)", id, final.Status), http.StatusGone)
 	case op == "resolve":
 		http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+// replacePolicy is PUT /tasks/{id}/policy for a task its process hosts. The replacement is
+// checked HERE, in the runner's process, against what the runner keeps fixed (CheckPolicy: the
+// launch's verbs and withheld set, the offer, the ceilings) before the task is told of it, and
+// once the task has taken it, it is set on the task's channel, so what the runner decides at
+// each act follows the task from the next one. The task's process checks it again, and that is
+// not what holds the line: it is the process the policy constrains.
+func (h *SubprocessHandler) replacePolicy(w http.ResponseWriter, r *http.Request, p *proc) {
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	again := func() {
+		r.Body = io.NopCloser(bytes.NewReader(data))
+		r.ContentLength = int64(len(data))
+	}
+	again()
+	var body runner.PolicyRequest
+	if err := codec.ReadStrict(r, &body); err != nil {
+		http.Error(w, fmt.Sprintf("the policy does not parse: %v", err), http.StatusBadRequest)
+		return
+	}
+	if l := p.l; l != nil {
+		if err := CheckPolicy(body.Policy, l.Policy, l.Doer.Name(), l.Doer.With, h.describe); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	again()
+	rec := &statusRecorder{ResponseWriter: w}
+	p.prox.ServeHTTP(rec, r)
+	if rec.code == http.StatusNoContent && p.co != nil {
+		p.co.ch.SetPolicy(body.Policy)
+	}
+}
+
+// relayResolve is POST /tasks/{id}/resolve for a task its process hosts: the answer to one of
+// its questions, relayed to the process, and KEPT HERE too, with the call the question was about
+// as the task's pending gate names it. An act a row asks about is performed by this process on
+// such an answer and on nothing else (delivery.Task.Answered): the task's process holds the
+// model and reports whatever it likes, and this side is the one that saw the answer given, and
+// by whom. A question about no call (a bare ask) leaves nothing to keep.
+func (h *SubprocessHandler) relayResolve(w http.ResponseWriter, r *http.Request, p *proc) {
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	again := func() {
+		r.Body = io.NopCloser(bytes.NewReader(data))
+		r.ContentLength = int64(len(data))
+	}
+	again()
+	var body runner.ResolveRequest
+	if err := codec.ReadStrict(r, &body); err != nil {
+		http.Error(w, fmt.Sprintf("the resolve does not parse: %v", err), http.StatusBadRequest)
+		return
+	}
+	step, about := p.gateAbout(body.ID)
+	again()
+	rec := &statusRecorder{ResponseWriter: w}
+	p.prox.ServeHTTP(rec, r)
+	if rec.code == http.StatusNoContent && about && p.co != nil {
+		p.co.ch.Answer(step, body.Choice, body.By)
+	}
+}
+
+// gateAbout is the call a pending gate of the task is about, by the gate's id: from the task's
+// snapshot, where its process answers, else from the events this side followed. False for a
+// gate about no call, or one this side does not know.
+func (p *proc) gateAbout(id string) (task.Step, bool) {
+	if lister, ok := p.rt.(task.Lister); ok && lister != nil {
+		if snap, err := lister.TaskSnapshot(p.id); err == nil {
+			for _, g := range snap.Pending {
+				if g.ID == id {
+					return task.Step{Name: g.Step, Fields: g.Fields}, g.Step != ""
+				}
+			}
+		}
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for i := len(p.events) - 1; i >= 0; i-- {
+		if e := p.events[i]; e.Kind == task.EventPending && e.ID == id {
+			return task.Step{Name: e.Step, Fields: e.Fields}, e.Step != ""
+		}
+	}
+	return task.Step{}, false
+}
+
+// statusRecorder is a ResponseWriter that remembers the status it wrote.
+type statusRecorder struct {
+	http.ResponseWriter
+	code int
+}
+
+func (s *statusRecorder) WriteHeader(code int) {
+	s.code = code
+	s.ResponseWriter.WriteHeader(code)
+}
+
+func (s *statusRecorder) Write(b []byte) (int, error) {
+	if s.code == 0 {
+		s.code = http.StatusOK
+	}
+	return s.ResponseWriter.Write(b)
+}
+
+// network is the network a launch's task gets, as the sandbox builds it, and the hosts its proxy
+// allows: what `with.network` says, absent being none; and an agent reaches its model under any
+// network, so under none or allow its proxy allows AgentHosts too.
+func (h *SubprocessHandler) network(l *runner.Launch) (Network, []string) {
+	n := Network{Mode: l.Doer.With.NetworkMode()}
+	var allow []string
+	if w := l.Doer.With.Network; w != nil {
+		allow = slices.Clone(w.Allow)
+	}
+	if l.Doer.Agent != "" && n.Mode != NetworkOpen && len(h.AgentHosts) > 0 {
+		n.Mode, allow = NetworkAllow, append(allow, h.AgentHosts...)
+	}
+	return n, allow
+}
+
+// cancelEarly cancels a task its process doesn't host yet, and answers the request; false, with
+// the request as it came, once the process hosts the task, whose cancel it then is.
+func cancelEarly(w http.ResponseWriter, r *http.Request, p *proc) bool {
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return true
+	}
+	again := func() { r.Body = io.NopCloser(bytes.NewReader(data)) }
+	again()
+	var req runner.CancelRequest
+	if err := codec.Read(r, &req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return true
+	}
+	again() // for the process, should it host the task first
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.hosted {
+		return false
+	}
+	reason := cmp.Or(req.Reason, "no reason given")
+	why := fmt.Errorf("cancelled: %s", reason)
+	if req.By != "" {
+		why = fmt.Errorf("cancelled by %s: %s", req.By, reason)
+	}
+	p.abort(why)
+	// Said now: a first clone runs to its end whatever the task (workspace.Mirrors.Ensure), and
+	// the task is over before it is.
+	final := p.as(task.Cancelled, why.Error())
+	p.final = &final
+	w.WriteHeader(http.StatusNoContent)
+	return true
 }
 
 // list is GET /tasks: every task the runner runs or has run.
@@ -755,11 +877,12 @@ func (h *SubprocessHandler) Snapshots() []task.Snapshot {
 	h.mu.Unlock()
 	out := make([]task.Snapshot, 0, len(ps))
 	for _, p := range ps {
-		if !p.hosting() {
-			out = append(out, p.pending)
+		if final, done := p.snapshot(); done {
+			out = append(out, final)
 			continue
 		}
-		if p.err != nil {
+		if !p.isReady() {
+			out = append(out, p.as(task.Running, ""))
 			continue
 		}
 		if final, done := p.snapshot(); done {
@@ -769,7 +892,7 @@ func (h *SubprocessHandler) Snapshots() []task.Snapshot {
 		snap, err := p.rt.(task.Lister).TaskSnapshot(p.id)
 		if err != nil {
 			// Still the runner's task: leaving it out would read as a runner with less work.
-			snap = task.Snapshot{ID: p.id, Status: task.Running, Err: err.Error()}
+			snap = p.as(task.Running, err.Error())
 		}
 		out = append(out, snap)
 	}
@@ -777,8 +900,7 @@ func (h *SubprocessHandler) Snapshots() []task.Snapshot {
 	return out
 }
 
-// Shutdown stops every task's process and removes the directories it made. A task still being
-// prepared is cancelled.
+// Shutdown stops every task's process and removes its directory.
 func (h *SubprocessHandler) Shutdown() {
 	h.mu.Lock()
 	ps := make([]*proc, 0, len(h.tasks))
@@ -789,14 +911,18 @@ func (h *SubprocessHandler) Shutdown() {
 	var wg sync.WaitGroup
 	for _, p := range ps {
 		wg.Go(func() {
-			if p.abort != nil {
-				p.abort()
+			p.abort(errors.New("the runner is shutting down"))
+			if !p.isReady() {
+				// Not hosted yet, and maybe waiting on a first clone, which runs to its end: run
+				// ends it when it returns, and a process it started dies with the runner (its
+				// lifeline).
+				return
 			}
-			<-p.ready
-			h.stop(p)
-			if p.ownDir && p.dir != "" {
-				os.RemoveAll(p.dir)
-			}
+			// The process stops, and the task's own goroutine settles it: what didn't leave is
+			// salvaged before its directory goes. Removing the directory here would race that, and
+			// a rollout would lose whatever a task committed and didn't push.
+			p.stop(h.Log)
+			<-p.done
 		})
 	}
 	wg.Wait()

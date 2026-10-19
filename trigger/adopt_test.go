@@ -19,18 +19,18 @@ func (h *recHandle) Subscribe() (<-chan task.Event, func()) { return h.ch, func(
 func (h *recHandle) SubscribeSince(int64) (<-chan task.Event, func()) {
 	return h.ch, func() {}
 }
-func (h *recHandle) Pause() error {
+func (h *recHandle) Pause(string) error {
 	h.mu.Lock()
 	h.paused = true
 	h.mu.Unlock()
 	return nil
 }
-func (h *recHandle) Resume() error                        { return nil }
-func (h *recHandle) Cancel(string) error                  { return nil }
-func (h *recHandle) Steer(string, string, string) error   { return nil }
-func (h *recHandle) SetVector(*task.Vector, string) error { return nil }
-func (h *recHandle) Result() string                       { return "" }
-func (h *recHandle) Err() string                          { return "" }
+func (h *recHandle) Resume(string) error                 { return nil }
+func (h *recHandle) Cancel(string, string) error         { return nil }
+func (h *recHandle) Steer(string, string, string) error  { return nil }
+func (h *recHandle) SetPolicy(task.Policy, string) error { return nil }
+func (h *recHandle) Result() string                      { return "" }
+func (h *recHandle) Err() string                         { return "" }
 
 // A resumed task (Adopt) must be steerable, not merely observed: it is re-tracked
 // under its flow, so a selection of its subject reaches it and flow control holds it.

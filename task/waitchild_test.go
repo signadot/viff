@@ -29,14 +29,14 @@ func TestEndingATurnIsHowAParentWaits(t *testing.T) {
 		Name:      "call_agent",
 		CallAgent: &CallAgentRequest{Agent: "kid", Prompt: "do a thing"},
 	}}}
-	parent := NewTask("p", NewSupervisor(&Vector{Default: Auto}, AutoResolver{}), d, &recExec{})
+	parent := NewTask("p", toolSup(allowAll(), AutoResolver{}), d, &recExec{})
 
 	childRan := make(chan struct{})
-	parent.SetSpawn(func(p *Task, mode ChildMode, req *CallAgentRequest) (*Task, error) {
+	parent.SetDelegate(func(p *Task, req *CallAgentRequest) (*Task, error) {
 		// A child that takes a moment, so the parent genuinely has to wait rather than
 		// finding the result already there.
 		kid := &slowDriver{after: 60 * time.Millisecond, done: childRan}
-		return p.NewChild("c", mode, req, kid, &recExec{})
+		return p.NewChild("c", req, kid, &recExec{}), nil
 	})
 
 	oc, err := parent.Run(context.Background())

@@ -85,7 +85,7 @@ func TestTheGateCharterAsksEachPersonAQuestionWaitsOn(t *testing.T) {
 	go func() {
 		_, _ = srv.Reg.Resolve(context.Background(),
 			task.GateQuestion{
-				ID: id, Origin: "review", Gate: "review", Mode: task.Ask,
+				ID: id, Origin: "review", Gate: "review",
 				Subject:   `demo.pr."1"`,
 				Answerers: []string{"user:ana@example.com", "user:bo@example.com"},
 			},
@@ -180,7 +180,7 @@ func TestTheGateCharterLeavesSettledQuestionsAlone(t *testing.T) {
 	go func() {
 		_, _ = srv.Reg.Resolve(context.Background(),
 			task.GateQuestion{
-				ID: id, Origin: "review", Gate: "review", Mode: task.Ask,
+				ID: id, Origin: "review", Gate: "review",
 				Subject: `demo.pr."2"`, Answerers: []string{"user:ana@example.com"},
 			},
 			task.ToolUse{Name: "verse.trigger.review"})
@@ -250,7 +250,7 @@ func TestTheGateCharterPutsALabelledAskToItsChannel(t *testing.T) {
 	raise := func(id string, answerers ...string) {
 		go func() {
 			_, _ = srv.Reg.Resolve(context.Background(),
-				task.GateQuestion{ID: id, Origin: "train-run", Gate: "merge-to-main", Mode: task.Ask,
+				task.GateQuestion{ID: id, Origin: "train-run", Gate: "merge-to-main",
 					Answerers: answerers, Labels: map[string]string{"slack": "C123"}},
 				task.ToolUse{Name: "verse.trigger.train-run"})
 		}()
@@ -373,7 +373,7 @@ func TestTheGateCharterLeavesDocketQuestionsToTheDocket(t *testing.T) {
 	const id = "verse.trigger.review.review~3"
 	go func() {
 		_, _ = srv.Reg.Resolve(context.Background(),
-			task.GateQuestion{ID: id, Origin: "review", Gate: "review", Mode: task.Ask,
+			task.GateQuestion{ID: id, Origin: "review", Gate: "review",
 				Subject: `demo.pr."3"`}, // nobody named
 			task.ToolUse{Name: "verse.trigger.review"})
 	}()

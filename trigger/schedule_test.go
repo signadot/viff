@@ -10,6 +10,7 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/schedule"
 	"github.com/signadot/verse/task"
 )
@@ -27,7 +28,7 @@ func tickRule(name string) Trigger {
 	return Trigger{
 		Name:      name,
 		Condition: Condition{Subject: mm("verse.schedule.hourly.tick.*")},
-		Action:    Action{Spawn: &launch.Spec{Prompt: name + " for $subject"}},
+		Action:    Action{Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: name + " for $subject"}},
 	}
 }
 

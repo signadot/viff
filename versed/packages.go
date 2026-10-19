@@ -60,6 +60,7 @@ func (s *Server) packageEngineLocked(confine trigger.Subtree) (*trigger.Engine, 
 	}
 	eng.SetSpawner(s.spawnerFor(s.Store, "", eng))
 	eng.SetDeadlineMover(s.moveDeadline)
+	eng.SetOfferCheck(s.offerCheck(s.Store))
 	ctx, cancel := context.WithCancel(s.ctx)
 	// Per-trigger observation, exactly as a scope's engine has: each rule watches the subtrees
 	// it reads, which for a package is usually wider than what it may write.
@@ -102,53 +103,6 @@ func (s *Server) packageEngines() []*trigger.Engine {
 		}
 	}
 	return out
-}
-
-// resumeSelections gives every open selection its awaiter back — across ALL the engines this verse
-// runs, which is the part that was missing.
-//
-// A motion is opened by a rule, a rule lives in a charter, and a charter runs in an engine of
-// its own. Only baseline's engine was asked to resume, so a package's motions were swept by an
-// engine that could not see the rule that opened them and settled as `the rule that opened it
-// is no longer in the charter`. On staging that took a live merge gate off the docket while
-// its rule was installed and running (`train-run`, in verse-dev.merge).
-//
-// Two halves, and both are needed. Each package engine resumes what its own charter opened,
-// which is what makes the answer right for motions written from here on (they carry `at`). And
-// baseline — which sweeps everything older than that field — is told how to ask the others
-// before it settles anything, because "not in my charter" was never the question.
-//
-// EACH ENGINE ONCE. An engine's resume lists the docket, and a listing that did not happen
-// resumed nothing (entity.IsUnread) — so the phase is asked again, and when it is, the engines
-// that did answer are not asked twice: an awaiter given twice would answer twice.
-func (s *Server) resumeSelections() error {
-	if err := s.awaiting(phaseTasks, phaseStrata, phaseCharter, phasePackages); err != nil {
-		return err
-	}
-	pkgs := s.packageEngines()
-	s.Eng.KnowsElsewhere(func(name string) bool {
-		for _, e := range pkgs {
-			if e.Knows(name) {
-				return true
-			}
-		}
-		return false
-	})
-	if s.resumed == nil {
-		s.resumed = map[*trigger.Engine]bool{}
-	}
-	var unread error
-	for _, e := range append([]*trigger.Engine{s.Eng}, pkgs...) {
-		if s.resumed[e] {
-			continue
-		}
-		if _, err := e.ResumeSelections(); err != nil {
-			unread = err
-			continue
-		}
-		s.resumed[e] = true
-	}
-	return unread
 }
 
 // restorePackages installs each package's durable charter back into an engine of its own.

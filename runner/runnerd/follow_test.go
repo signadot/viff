@@ -46,9 +46,8 @@ type fakeProcess struct {
 	since   []int64
 }
 
-func (f *fakeProcess) Spawn(task.Launch) task.Handle { return nil }
-func (f *fakeProcess) Attach(string) task.Handle     { return fakeHandle{f: f} }
-func (f *fakeProcess) Ref() string                   { return "fake" }
+func (f *fakeProcess) Attach(string) task.Handle { return fakeHandle{f: f} }
+func (f *fakeProcess) Ref() string               { return "fake" }
 func (f *fakeProcess) ListTasks() ([]task.Snapshot, error) {
 	return nil, nil
 }

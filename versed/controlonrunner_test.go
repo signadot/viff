@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
 )
@@ -26,11 +27,11 @@ import (
 // not.
 func TestControlOnPerSpawnRunner(t *testing.T) {
 	// A face that keeps working until it is stopped, so cancel has something to do.
-	build := func(l task.Launch, reg *task.Registry) *task.Task {
-		return task.NewTask(l.ID, task.NewSupervisor(&task.Vector{Default: task.Auto}, reg),
+	build := func(l runner.Launch, reg *task.Registry) *task.Task {
+		return task.NewTask(l.ID, task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, reg),
 			&foreverDriver{}, okExecutor{})
 	}
-	face := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
+	face := httptest.NewServer(offeringAll(runnerd.NewInProcessHandler(build), "fake").HTTPHandler())
 	t.Cleanup(face.Close)
 
 	srv := testServer(t)
@@ -54,7 +55,7 @@ func TestControlOnPerSpawnRunner(t *testing.T) {
 	})
 
 	resp := postTony(t, ts.URL+"/tasks", map[string]any{
-		"prompt": "work", "runner": "verse.runners.code", "name": "onrunner",
+		"doer": map[string]any{"agent": "fake"}, "prompt": "work", "runner": "verse.runners.code", "name": "onrunner",
 	})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("spawn = %s", resp.Status)

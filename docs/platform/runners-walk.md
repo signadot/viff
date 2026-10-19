@@ -2,7 +2,7 @@
 
 This page walks through running a task away from the verse you started: on a remote verse,
 or on a runner you install. It continues
-[§3 of the tutorial](../tutorial.md#3-tasks).
+[the tasks page of the tutorial](../tutorial/tasks.md).
 
 A task need not run on this verse. The same verbs drive a task on a remote verse:
 `up -runner <url>`. Verse drives it through the same handle, so nothing above changes.
@@ -14,7 +14,7 @@ that names no runner goes to the default.
 ```sh
 go run ./docs/reference/examples/runner -addr :9800   # a runner you can copy and change
 verse runner add demo http://localhost:9800           # `reach: a runner` — the install probes it
-verse task run -runner verse.runners.demo "fetch the data; retrain; report"
+verse task run -runner verse.runners.demo -agent sample "fetch the data; retrain; report"
 verse ps -runner verse.runners.demo
 ```
 

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/task/tasktest"
@@ -22,15 +23,13 @@ func TestConformance(t *testing.T) {
 
 // localProducer drives runnerd with a driver it builds itself.
 //
-// It cannot reuse verse's ScriptedBuilder: that lives in package versed, which imports
-// task, so a suite under task/ reaching for it would close an import cycle. The
-// driver below is the smaller thing the properties actually need — something that ends the
-// run either with an answer or with an error.
+// The driver below is the smallest thing the properties need: something that ends the run either
+// with an answer or with an error.
 type localProducer struct {
 	d *runnerd.InProcessHandler
 	n int
 
-	// specs carries each spawn's intent to the Builder. runnerd begins executing the
+	// specs carries each launch's intent to the Builder. runnerd begins executing the
 	// instant it is handed a task, so the outcome has to be decided at build time —
 	// there is no "now fail it" for a task that is already running.
 	mu    sync.Mutex
@@ -47,11 +46,11 @@ func (p *localProducer) Caps() tasktest.Caps {
 	return tasktest.Caps{FailureReason: true, CompletionAnswer: true}
 }
 
-func (p *localProducer) build(l task.Launch, reg *task.Registry) *task.Task {
+func (p *localProducer) build(l runner.Launch, reg *task.Registry) *task.Task {
 	p.mu.Lock()
 	spec := p.specs[l.ID]
 	p.mu.Unlock()
-	sup := task.NewSupervisor(&task.Vector{Default: task.Auto}, reg)
+	sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, reg)
 	return task.NewTask(l.ID, sup, &conformanceDriver{spec: spec}, noopExec{})
 }
 
@@ -62,7 +61,9 @@ func (p *localProducer) Start(t *testing.T, spec tasktest.Spec) string {
 	p.mu.Lock()
 	p.specs[id] = spec
 	p.mu.Unlock()
-	p.d.Spawn(task.Launch{ID: id, Prompt: "a task", Driver: spec.Driver})
+	if _, err := p.d.Launch(runner.Launch{ID: id, Doer: runner.Doer{Agent: spec.Driver, With: runner.With{Network: openNet}}, Prompt: "a task"}); err != nil {
+		t.Fatal(err)
+	}
 	return id
 }
 

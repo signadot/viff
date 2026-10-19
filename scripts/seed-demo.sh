@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# seed-demo.sh — put a small demo world into a RUNNING verse: a charter, the entities it
-# reacts to, and a provider registry, so every listing has something to show and there is
-# a live gate waiting for you the moment it finishes.
+# seed-demo.sh — put a small demo world into a RUNNING verse: a charter and the entities it
+# reacts to, so every listing has something to show and there is a live gate waiting for you
+# the moment it finishes.
 #
 # It is the missing first five minutes. `verse up` gives you an empty verse, and an empty
 # verse looks the same as a broken one: `verse data`, `verse charter` and `verse question`
@@ -90,7 +90,6 @@ TRIGGERS=(demo-review demo-escalate)
 ENTITIES=(
 	"demo pr 1" "demo pr 2"
 	"demo task hotfix-1" "demo task cleanup-1"
-	"provider review claude" "provider review cheapo"
 )
 
 if $clean; then
@@ -121,7 +120,7 @@ v charter -a -f - >/dev/null <<'TONY' || die "charter -a failed"
   - { name: approval, mode: ask, onDenied: { patch: { stage: rejected } } }
   action:
     patch: { stage: reviewing }
-    spawn: { driver: scripted, vector: auto, prompt: "echo reviewing $subject; sleep 45" }
+    spawn: { doer: {script: 'echo reviewing "$SUBJECT"; sleep 45', with: {network: {mode: open}, env: {SUBJECT: $subject}}} }
     onDone:
       patch: { stage: reviewed }
 
@@ -141,12 +140,6 @@ ok "demo.pr.1 (open — demo-review fires on it), demo.pr.2 (draft — it does n
 v data demo task hotfix-1 --put '{priority: high, title: "expiring cert"}' >/dev/null
 v data demo task cleanup-1 --put '{priority: low, title: "tidy the fixtures"}' >/dev/null
 ok "demo.task.hotfix-1 (high — demo-escalate fires), demo.task.cleanup-1 (low — it does not)"
-
-# Providers are ordinary entities, which is the point: `verse provider` is a view of the
-# store, and a spawn that SELECTS its doer picks from these by capability and attributes.
-v data provider review claude --put '{driver: llm, tier: premium}' >/dev/null
-v data provider review cheapo --put '{driver: scripted, tier: basic}' >/dev/null
-ok "two review providers (premium + basic) in the registry"
 
 # ── what the seed produced ───────────────────────────────────────────────────
 # The engine reacts, so both of these are races against it rather than reads of a settled

@@ -57,9 +57,9 @@ func TestASpawnAsTheSubjectActsForTheRecordsOwner(t *testing.T) {
 	}
 	resp := installAs(t, installer, ts.URL, `[
 		{name: for-the-asker, condition: {subject: {path: "ask.*", value: !and [{question: null}, !not {asked: null}]}},
-		 action: {spawn: {driver: scripted, prompt: "true", as: subject}, onDone: {patch: {asked: true}}}},
+		 action: {spawn: {doer: {script: "true"}, as: subject, policy: `+stepAsksTony+`}, onDone: {patch: {asked: true}}}},
 		{name: for-the-rule, condition: {subject: {path: "ask.*", value: !and [{question: null}, !not {ruled: null}]}},
-		 action: {spawn: {driver: scripted, prompt: "true"}, onDone: {patch: {ruled: true}}}},
+		 action: {spawn: {doer: {agent: verse}, prompt: "true", policy: `+stepAsksTony+`}, onDone: {patch: {ruled: true}}}},
 	]`)
 	if resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
@@ -80,7 +80,7 @@ func TestASpawnAsTheSubjectActsForTheRecordsOwner(t *testing.T) {
 	if got := entity.Str(asked.Payload, "asker"); got != daniel {
 		t.Errorf("the task says it acts for %q, want the ask's owner", got)
 	}
-	if got, _ := entity.OwnerOf(srv.Store, asked.Ref); got != daniel {
+	if got, _ := entity.SettledOwnerOf(srv.Store, asked.Ref, 2*time.Second); got != daniel {
 		t.Errorf("the task spawned as the subject is %q's, want the asker's", got)
 	}
 
@@ -88,7 +88,7 @@ func TestASpawnAsTheSubjectActsForTheRecordsOwner(t *testing.T) {
 	if got := entity.Str(plain.Payload, "asker"); got != "" {
 		t.Errorf("a rule without `as` says it acts for %q", got)
 	}
-	if got, _ := entity.OwnerOf(srv.Store, plain.Ref); got != installer {
+	if got, _ := entity.SettledOwnerOf(srv.Store, plain.Ref, 2*time.Second); got != installer {
 		t.Errorf("the task spawned as the rule is %q's, want its installer's", got)
 	}
 }
@@ -102,9 +102,9 @@ func TestAChartersSpawnCannotNameWhoItActsFor(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	for name, c := range map[string]struct{ spawn, says string }{
-		"an as that is not subject":  {`{driver: scripted, prompt: "true", as: object}`, "spawn `as: object`"},
-		"an asker the charter names": {`{driver: scripted, prompt: "true", asker: "user:ceo@example.com"}`, "spawn `asker:` is the engine's to set"},
-		"$principal on a rule's task": {`{driver: scripted, prompt: "true", gates: [{name: shell, mode: ask, answerers: [$principal]}]}`,
+		"an as that is not subject":  {`{doer: {script: "true"}, as: object}`, "spawn `as: object`"},
+		"an asker the charter names": {`{doer: {script: "true"}, asker: "user:ceo@example.com"}`, "spawn `asker:` is the engine's to set"},
+		"$principal on a rule's task": {`{doer: {script: "true"}, policy: [{name: shell, match: {system: commands, verb: run}, then: {ask: {answerers: [$principal]}}}, {then: ask}]}`,
 			"this rule's task acts for nobody"},
 	} {
 		spawn := c.spawn
@@ -130,8 +130,8 @@ func TestAChartersSpawnCannotNameWhoItActsFor(t *testing.T) {
 	// Acting for the subject's owner, the task has somebody to ask.
 	resp = installAs(t, "user:installer@example.com", ts.URL, `{name: p,
 		condition: {subject: {path: "ask.*", value: !and [{question: null}, !not {asked: null}]}},
-		action: {spawn: {driver: scripted, prompt: "true", as: subject,
-			gates: [{name: shell, mode: ask, answerers: [$principal]}]}, onDone: {patch: {asked: true}}}}`)
+		action: {spawn: {doer: {script: "true"}, as: subject,
+			policy: [{name: shell, match: {system: commands, verb: run}, then: {ask: {answerers: [$principal]}}}, {then: ask}]}, onDone: {patch: {asked: true}}}}`)
 	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if resp.StatusCode >= 300 {
@@ -168,13 +168,13 @@ func TestARuleActsAsTheSubjectOnlyInItsInstallersPlace(t *testing.T) {
 		want          int
 	}{
 		{"as the subject over daniel's space", rule("harvest", "spaces.daniel.*",
-			`{spawn: {driver: scripted, prompt: "true", as: subject}, onDone: {patch: {done: true}}}`), http.StatusForbidden},
+			`{spawn: {doer: {script: "true"}, as: subject}, onDone: {patch: {done: true}}}`), http.StatusForbidden},
 		{"as the subject in a hook, over daniel's space", rule("harvest-later", "spaces.daniel.*",
-			`{spawn: {driver: scripted, prompt: "true"}, onDone: {patch: {done: true}, spawn: {driver: scripted, prompt: "true", as: subject}}}`), http.StatusForbidden},
+			`{spawn: {doer: {agent: verse}, prompt: "true"}, onDone: {patch: {done: true}, spawn: {doer: {script: "true"}, as: subject}}}`), http.StatusForbidden},
 		{"as the subject in the installer's place", rule("asks", "ask.*",
-			`{spawn: {driver: scripted, prompt: "true", as: subject}, onDone: {patch: {done: true}}}`), http.StatusCreated},
+			`{spawn: {doer: {script: "true"}, as: subject}, onDone: {patch: {done: true}}}`), http.StatusCreated},
 		{"as itself over daniel's space", rule("watch-daniel", "spaces.daniel.*",
-			`{spawn: {driver: scripted, prompt: "true"}, onDone: {patch: {done: true}}}`), http.StatusCreated},
+			`{spawn: {doer: {agent: verse}, prompt: "true"}, onDone: {patch: {done: true}}}`), http.StatusCreated},
 	} {
 		resp := installAs(t, installer, ts.URL, c.charter)
 		body, _ := io.ReadAll(resp.Body)
@@ -209,7 +209,7 @@ func taskQuestion(t *testing.T, srv *Server, ref entity.Ref) string {
 // person; run for daniel's ask, it is held out to daniel alone — nobody else says go for him.
 // The same rule without `as` asks as it always did, openly.
 func TestATaskActingForTheAskerAsksThem(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := NewWithStore(stepBuilder(t), entitytest.Store(t)) // its action is a step, so its own gate asks
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -224,9 +224,9 @@ func TestATaskActingForTheAskerAsksThem(t *testing.T) {
 	}
 	resp := installAs(t, installer, ts.URL, `[
 		{name: for-the-asker, condition: {subject: {path: "ask.*", value: !and [{question: null}, !not {asked: null}]}},
-		 action: {spawn: {driver: scripted, prompt: "true", as: subject}, onDone: {patch: {asked: true}}}},
+		 action: {spawn: {doer: {script: "true"}, as: subject, policy: `+stepAsksTony+`}, onDone: {patch: {asked: true}}}},
 		{name: for-the-rule, condition: {subject: {path: "ask.*", value: !and [{question: null}, !not {ruled: null}]}},
-		 action: {spawn: {driver: scripted, prompt: "true"}, onDone: {patch: {ruled: true}}}},
+		 action: {spawn: {doer: {agent: verse}, prompt: "true", policy: `+stepAsksTony+`}, onDone: {patch: {ruled: true}}}},
 	]`)
 	if resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
@@ -270,7 +270,7 @@ func taskStatus(t *testing.T, srv *Server, ref entity.Ref) string {
 // on it as it runs is written as them: were it written as the pair, the rule's installer would
 // have to hold the asker's record too, and the task would stand `running` after it was done.
 func TestATaskActingForTheAskerIsSeenToFinish(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := NewWithStore(stepBuilder(t), entitytest.Store(t)) // its action is a step, so its own gate asks
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -285,7 +285,7 @@ func TestATaskActingForTheAskerIsSeenToFinish(t *testing.T) {
 	}
 	resp := installAs(t, installer, ts.URL, `{name: for-the-asker,
 		condition: {subject: {path: "ask.*", value: !and [{question: null}, !not {asked: null}]}},
-		action: {spawn: {driver: scripted, prompt: "true", as: subject, vector: auto}, onDone: {patch: {asked: "yes"}}}}`)
+		action: {spawn: {doer: {script: "true"}, as: subject, policy: [{then: allow}]}, onDone: {patch: {asked: "yes"}}}}`)
 	if resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("install: %s: %s", resp.Status, body)

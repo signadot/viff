@@ -9,89 +9,72 @@ import (
 	"os"
 	"strconv"
 	"sync"
-	"sync/atomic"
+	"time"
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
-// Builder constructs a hosted task from a task.Launch — the id, the prompt, the
-// requested driver (e.g. "scripted"/"llm"; "" = the builder's default), and the frame and
-// tool set that shape the agent — plus the Registry that serves as its gate resolver. It is
-// injected so the host stays decoupled from any particular driver/runtime, and picks the
-// driver per spawn.
-type Builder func(l task.Launch, reg *task.Registry) *task.Task
+// Builder constructs a hosted task from a launch the handler has checked (CheckLaunch), plus the
+// Registry that serves as its gate resolver. It is injected so the host stays decoupled from any
+// particular doer: the builder picks the doer, and gives the task the launch's policy.
+type Builder func(l runner.Launch, reg *task.Registry) *task.Task
 
 // InProcessHandler is a task handler that runs its tasks in its own process: it hosts a set of
 // running tasks, built by its runner's Builder, and says what the runner offers.
 type InProcessHandler struct {
 	mu    sync.Mutex
 	tasks map[string]*hosted
-	seq   atomic.Uint64
 	build Builder
 	log   io.Writer
 	// describe is what the runner offers, answered on GET /describe.
 	describe runner.Description
-	// onQuestion, when set, is called as each hosted task poses a gate question. The
-	// host holds no store and should not: publishing a question is the job of whoever
-	// owns one, and this is the seam that hands it over with the derived effects still
-	// attached — the read plane's own EventPending frame carries only what an attached client
-	// needs to see, which is less than a record needs to be matchable.
-	//
-	// THE LAUNCH is passed with it, because what a record needs beyond the question — where it
-	// goes, and what it is about — is the launch's to say, and the launch is the one thing that
-	// exists before the task does. The SCOPE because this host is one runtime shared by
-	// baseline and every scoped engine, and a publisher that closed over a single store sent
-	// every scope's questions to that one (git-issue kwxxm8cth12ksn99fhn0). The SUBJECT because
-	// the only other place it is written is the task's own record, which lands after the task
-	// is started, and a task can ask before it does (git-issue nkptp9b3h12ksx3kg9n0). The
-	// host still holds no store and makes no decision about where anything goes — it
-	// repeats what the launch said, and the publisher decides what that means.
-	onQuestion func(l task.Launch, p task.Pending)
-	onCheck    func(l task.Launch, q task.GateQuestion) error
-	// onDrop is the counterpart, and is not optional in the way it looks. A question is
-	// WITHDRAWN when its last waiter stops waiting — an intervention that redirects the run,
-	// a pause, a deadline — and without a publisher for that half the record posted by
-	// onQuestion above stays `pending` on the docket, offering a decision nothing is left to
-	// receive. It was announced and never retracted, so `verse question` listed a withdrawn
-	// question beside a live one with nothing to tell them apart, and answering it was a 404
-	// (git-issue zdaqh9vkh12ksxneg9n0).
-	//
-	// It carries the scope for the reason onQuestion does: the retraction has to reach the
-	// store the post went to, or a scope's question is published in one place and retired in
-	// another.
-	onDrop func(taskID, scope, questionID, why string)
+	// owned is the variables the runner gives a task's shell itself (CheckLaunch).
+	owned []string
+	// taskProcess is set in a task's process (ServeTask), whose runner checked its repos out and
+	// built its network before starting it. Otherwise a launch that names repos, or a network
+	// other than open, is refused: a task in the runner's own process has no checkout, no
+	// channel to push over, and the runner's network.
+	taskProcess bool
+	// onQuestion, when set, is called as each hosted task poses a gate question, with the task's
+	// id. The host holds no store and should not: publishing a question is the job of whoever
+	// owns one, and this is the seam that hands it over, with the step it is about.
+	onQuestion func(taskID string, p task.Pending)
+	onCheck    func(taskID string, q task.GateQuestion) error
+	// onDrop is the counterpart: a question WITHDRAWN when its last waiter stops waiting (an
+	// intervention, a pause, a deadline). Without it the record onQuestion posted stays
+	// `pending` on the docket, offering a decision nothing is left to receive (git-issue
+	// zdaqh9vkh12ksxneg9n0).
+	onDrop func(taskID, questionID, why string)
 }
 
 // OnQuestion registers the publisher. Optional: runnerd runs standalone in tests and under
 // `verse task run` with nothing behind it.
-func (d *InProcessHandler) OnQuestion(f func(l task.Launch, p task.Pending)) { d.onQuestion = f }
+func (d *InProcessHandler) OnQuestion(f func(taskID string, p task.Pending)) { d.onQuestion = f }
 
 // OnCheck registers what may refuse a hosted task's question before it is posed (Registry.OnCheck),
-// told the task's launch as onQuestion is.
-func (d *InProcessHandler) OnCheck(f func(l task.Launch, q task.GateQuestion) error) { d.onCheck = f }
+// told the task's id as onQuestion is.
+func (d *InProcessHandler) OnCheck(f func(taskID string, q task.GateQuestion) error) { d.onCheck = f }
 
 // OnDrop registers the publisher's other half — a question leaving the docket unanswered. A
 // caller that registers one without the other publishes questions it never retires.
-func (d *InProcessHandler) OnDrop(f func(taskID, scope, questionID, why string)) { d.onDrop = f }
+func (d *InProcessHandler) OnDrop(f func(taskID, questionID, why string)) { d.onDrop = f }
 
 type hosted struct {
 	task   *task.Task
 	reg    *task.Registry
 	prompt string
-	// driver is retained, not just passed to build, because it is the only durable record
-	// of WHO was picked when a spawn's doer came from a `provider` selection. A remote runner's
-	// snapshot reports it; a locally-run task did not, so an auto-selected doer was
-	// observable nowhere but a trace line.
-	driver string
-	// occurrence is which run this is (see task.Launch.Occurrence), retained so the snapshot
-	// can say so: the process, and not only the entity, knows which run it is.
+	// doer is who runs it (the agent's name, or "script"), reported on the snapshot; with is what
+	// it works with, held against the ceilings when its policy is replaced; policy is the policy
+	// as last set, and launched the launch's, whose verbs and withheld set a replacement keeps.
+	doer     string
+	with     runner.With
+	policy   task.Policy
+	launched task.Policy
+	// occurrence is which run this is (Launch.Occurrence), retained so the snapshot can say so:
+	// the process, and not only the entity, knows which run it is.
 	occurrence int64
-	// scope is the copy-on-write scope the task was launched in (task.Launch.Scope), retained so the
-	// runtime can say whose a task is: one runtime hosts baseline's and every scope's, and a
-	// control write from the wrong scope is refused by asking, not by reaching the task.
-	scope string
 
 	mu     sync.Mutex
 	status task.Status
@@ -100,9 +83,9 @@ type hosted struct {
 	result string // the task's final output (driver's last message), once completed
 }
 
-// done reports whether this run has finished — the question the spawn dedupe is actually
+// done reports whether this run has finished — the question the launch dedupe is actually
 // asking. A live task of the same id is the SAME work and joins; a finished one is a previous
-// run, and the next spawn is a new one.
+// run, and the next launch is a new one.
 func (h *hosted) done() bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -117,11 +100,15 @@ func (h *hosted) snapshot() task.Snapshot {
 	for _, p := range pend {
 		pending = append(pending, task.PendingGate{
 			ID: p.Question.ID, Origin: p.Question.Origin, Tool: p.Tool, Action: p.Action,
-			Gate: p.Question.Gate, Mode: p.Question.Mode.String(), Reason: p.Question.Reason,
+			Gate: p.Question.Gate, Step: p.Question.Step.Name, Fields: p.Question.Step.Fields, Reason: p.Question.Reason,
 		})
 	}
+	status := h.status
+	if status == task.Running && h.task.Paused() {
+		status = task.Paused
+	}
 	return task.Snapshot{
-		ID: h.task.ID, Prompt: h.prompt, Driver: h.driver, Status: h.status,
+		ID: h.task.ID, Prompt: h.prompt, Driver: h.doer, Status: status,
 		Err: h.err, Result: h.result, Pending: pending, Occurrence: h.occurrence,
 		Cursor: h.task.Cursor(), // resume the event stream with ?since=<cursor>
 	}
@@ -135,6 +122,13 @@ func NewInProcessHandler(build Builder) *InProcessHandler {
 // Describe sets what the runner offers. Set it before the runner is served.
 func (d *InProcessHandler) Describe(desc runner.Description) { d.describe = desc }
 
+// Description is what the runner offers, as GET /describe answers it.
+func (d *InProcessHandler) Description() runner.Description { return d.describe }
+
+// OwnEnv names the variables the runner gives a task's shell itself, which a launch's `with.env`
+// may not name. Unset is task.DefaultShellEnv. Set it before the runner is served.
+func (d *InProcessHandler) OwnEnv(names []string) { d.owned = names }
+
 // HTTPHandler returns the HTTP routes (Go 1.22 method+wildcard patterns): the task contract, and
 // GET /describe.
 func (d *InProcessHandler) HTTPHandler() http.Handler {
@@ -142,7 +136,7 @@ func (d *InProcessHandler) HTTPHandler() http.Handler {
 	mux.HandleFunc("GET /describe", func(w http.ResponseWriter, r *http.Request) {
 		writeOut(w, r, http.StatusOK, d.describe)
 	})
-	mux.HandleFunc("POST /tasks", d.spawn)
+	mux.HandleFunc("POST /tasks", d.launch)
 	mux.HandleFunc("GET /tasks", d.list)
 	mux.HandleFunc("GET /tasks/{id}", d.get)
 	mux.HandleFunc("GET /tasks/{id}/events", d.events)
@@ -151,7 +145,7 @@ func (d *InProcessHandler) HTTPHandler() http.Handler {
 	mux.HandleFunc("POST /tasks/{id}/cancel", d.control("cancel"))
 	mux.HandleFunc("POST /tasks/{id}/pause", d.control("pause"))
 	mux.HandleFunc("POST /tasks/{id}/resume", d.control("resume"))
-	mux.HandleFunc("PUT /tasks/{id}/vector", d.setVector)
+	mux.HandleFunc("PUT /tasks/{id}/policy", d.policy)
 	return mux
 }
 
@@ -171,28 +165,48 @@ func (d *InProcessHandler) Lookup(id string) *task.Task {
 	return nil
 }
 
-// Spawn builds, hosts, and runs a task for the given prompt — the programmatic
-// seam the engine's Spawner uses, so a trigger-spawned task is hosted and
-// controllable (list/get/attach/cancel) exactly like a `verse task run` one.
-// Returns the running task (already Run in the background).
-func (d *InProcessHandler) Spawn(l task.Launch) *task.Task {
-	h, _ := d.spawnHosted(l)
-	return h.task
+// Launch checks a launch as POST /tasks does, then builds, hosts and runs its task — the
+// programmatic seam, so a task started in process is hosted and controllable exactly like one
+// posted over HTTP. It returns the running task, or why the launch was refused.
+func (d *InProcessHandler) Launch(l runner.Launch) (*task.Task, error) {
+	if err := d.check(&l); err != nil {
+		return nil, err
+	}
+	h, _ := d.host(l)
+	return h.task, nil
 }
 
-// spawnHosted builds, registers, wires the read plane, and runs a task. Shared
-// by Spawn and the HTTP spawn handler. The bool reports whether it BUILT one; false means
+// check is CheckLaunch, and, outside a task's process, a refusal of repos and of a network named
+// but open. An absent network is refused by the offer, which says this handler builds open
+// alone (`verse up`'s); a handler with no offers refuses nothing it is not told, as CheckOffer
+// has it.
+func (d *InProcessHandler) check(l *runner.Launch) error {
+	if err := CheckLaunch(l, d.describe, d.owned); err != nil {
+		return err
+	}
+	switch n := l.Doer.With.Network; {
+	case d.taskProcess:
+	case len(l.Doer.With.Git) > 0:
+		return errNoRepos
+	case n != nil && n.Mode != runner.NetworkOpen:
+		return errNoNetwork
+	}
+	return nil
+}
+
+// host builds, registers, wires the read plane, and runs a task. Shared
+// by Launch and POST /tasks. The bool reports whether it BUILT one; false means
 // the id was already hosted and that task is what came back.
 //
-// An id is spawned ONCE. A second spawn of one that is already hosted returns the existing
+// An id is launched ONCE. A second launch of one that is already hosted returns the existing
 // task rather than building beside it — because the alternative is not two tasks but
 // one lost one: registration is a map assignment, so the newcomer took the id and the
 // original kept running with nothing able to reach it, address it, or stop it.
 //
-// That makes the spawn safe to RETRY, which is the point. A caller whose spawn request
+// That makes the launch safe to RETRY, which is the point. A caller whose launch request
 // timed out cannot know whether the far side acted, and until now its only options were to
 // abandon real work or to destroy it.
-func (d *InProcessHandler) spawnHosted(l task.Launch) (*hosted, bool) {
+func (d *InProcessHandler) host(l runner.Launch) (*hosted, bool) {
 	d.mu.Lock()
 	if h, ok := d.tasks[l.ID]; ok && !h.done() {
 		d.mu.Unlock()
@@ -203,42 +217,29 @@ func (d *InProcessHandler) spawnHosted(l task.Launch) (*hosted, bool) {
 	reg := task.NewRegistry()
 	tk := d.build(l, reg)
 
-	// Install the spawn's authority axes here rather than in the Builder, because they are
-	// properties of the RUNTIME's contract with verse, not of any driver: a scripted
-	// task and an LLM one are bounded the same way, and a Builder that forgot to apply
-	// them would silently hand back an unbounded task. Both are conditional — a spawn
-	// that named neither gets exactly what it got before (wildcard scope, the builder's
-	// own vector), so this narrows only what a caller asked to have narrowed.
-	if l.Grant != nil {
-		tk.SetScope(*l.Grant)
-	}
-	if l.Vector != nil {
-		tk.SetVector(l.Vector, "launch")
-	}
-	tk.SetRetain(l.Retain) // how much of its read plane a resuming reader can still see
 	if l.Converse {
 		tk.SetConverse(reg) // the person's turn is a question on this task's own docket
 	}
-	h := &hosted{task: tk, reg: reg, prompt: l.Prompt, driver: l.Driver,
-		occurrence: l.Occurrence, scope: l.Scope, status: task.Running}
+	h := &hosted{task: tk, reg: reg, prompt: l.Prompt, doer: l.Doer.Name(), with: l.Doer.With, policy: l.Policy, launched: l.Policy,
+		occurrence: l.Occurrence, status: task.Running}
 
 	// Surface pending decisions on the same read plane as the loop's events, so an
 	// attached client sees what a gate is blocked on and can resolve it by id.
 	reg.OnCheck(func(q task.GateQuestion) error {
 		if d.onCheck != nil {
-			return d.onCheck(l, q)
+			return d.onCheck(l.ID, q)
 		}
 		return nil
 	})
 	reg.OnPost(func(p task.Pending) {
 		if d.onQuestion != nil {
-			d.onQuestion(l, p)
+			d.onQuestion(l.ID, p)
 		}
 		// Whom it asks crosses too: verse poses a remote task's question from this frame, and a
 		// turn or an ask naming $principal is the task's person's, not the docket's.
 		tk.Emit(task.Event{
 			Kind: task.EventPending, ID: p.Question.ID, Tool: p.Tool, Action: p.Action,
-			Gate: p.Question.Gate, Mode: p.Question.Mode.String(), Text: p.Question.Reason,
+			Gate: p.Question.Gate, Step: p.Question.Step.Name, Fields: p.Question.Step.Fields, Text: p.Question.Reason,
 			Options: p.Question.Options, Deadline: p.Question.Deadline, Answerers: p.Question.Answerers,
 		})
 	})
@@ -247,15 +248,15 @@ func (d *InProcessHandler) spawnHosted(l task.Launch) (*hosted, bool) {
 	// nobody registered to hear it.
 	reg.OnDrop(func(q task.GateQuestion, why string) {
 		if d.onDrop != nil {
-			d.onDrop(l.ID, l.Scope, q.ID, why)
+			d.onDrop(l.ID, q.ID, why)
 		}
 	})
 
-	// Re-checked under the lock: two concurrent spawns of one id race the check above, and
+	// Re-checked under the lock: two concurrent launches of one id race the check above, and
 	// the loser must not start a second loop. Whoever registered first is the task.
 	//
 	// A TERMINATED ONE IS NOT A WINNER OF THAT RACE. Nothing reaps this map, so a task that
-	// finished stayed in it forever and every later spawn of the same id was answered with it:
+	// finished stayed in it forever and every later launch of the same id was answered with it:
 	// the call returned instantly, carrying the FIRST run's answer, with the second run's
 	// prompt on the record beside it. The model was never called, and a completion hook then
 	// ran on the replayed answer and advanced the flow as though the work had been done
@@ -265,7 +266,7 @@ func (d *InProcessHandler) spawnHosted(l task.Launch) (*hosted, bool) {
 	// spawning twice — so any rule whose subject OUTLIVES one task (a cursor, a queue head,
 	// anything that walks) got one real run and then unbounded silent no-ops that each looked
 	// like success. The dedupe is meant to be against a task that is still running, which is
-	// what "the engine dedups a spawn against a live task" says everywhere else; this is the
+	// what "the engine dedups a launch against a live task" says everywhere else; this is the
 	// one place that read it as "a task that ever existed".
 	d.mu.Lock()
 	if existing, ok := d.tasks[l.ID]; ok && !existing.done() {
@@ -276,7 +277,12 @@ func (d *InProcessHandler) spawnHosted(l task.Launch) (*hosted, bool) {
 	d.mu.Unlock()
 
 	go func() {
-		// A hosted task outlives its spawn call, so it must NOT derive from a
+		if limit, err := time.ParseDuration(l.Timeout); err == nil && limit > 0 {
+			ended := make(chan struct{})
+			defer close(ended)
+			go timeout(tk, reg, limit, ended)
+		}
+		// A hosted task outlives its launch call, so it must NOT derive from a
 		// request context. Its own subtree cancel (task.Cancel, via POST /cancel) is
 		// the stop path.
 		out, err := tk.Run(context.Background())
@@ -309,43 +315,47 @@ func (d *InProcessHandler) spawnHosted(l task.Launch) (*hosted, bool) {
 	return h, true
 }
 
-func (d *InProcessHandler) spawn(w http.ResponseWriter, r *http.Request) {
-	// The launch as the contract declares it (task.SpawnRequest), which is what the caller
-	// rendered: a field this end had its own name for is a field the two could disagree on.
-	var body task.SpawnRequest
-	// A BODY THAT DOES NOT PARSE IS REFUSED. Spawned anyway it is a task with no prompt under
-	// the id of nothing, answered `201`, and the caller is told its work is running. No body
-	// at all is a launch that says nothing, which is a spawn of the runner's defaults.
-	if err := codec.Read(r, &body); err != nil {
-		http.Error(w, fmt.Sprintf("the spawn does not parse: %v", err), http.StatusBadRequest)
+// timeout cancels a task once it has run for limit (Launch.Timeout), not counting the time it
+// spends waiting for an answer: while one of its questions is open, the clock stands still.
+func timeout(tk *task.Task, reg *task.Registry, limit time.Duration, ended <-chan struct{}) {
+	tick := time.NewTicker(timeoutTick)
+	defer tick.Stop()
+	var used time.Duration
+	last := time.Now()
+	for {
+		select {
+		case <-ended:
+			return
+		case now := <-tick.C:
+			if len(reg.Pending()) == 0 {
+				used += now.Sub(last)
+			}
+			last = now
+			if used >= limit {
+				tk.Cancel(fmt.Sprintf("timed out: it ran for %s, not counting time waiting for an answer", limit), "")
+				return
+			}
+		}
+	}
+}
+
+// timeoutTick is how often a task's clock is read.
+const timeoutTick = 100 * time.Millisecond
+
+// launch is POST /tasks: the launch checked, its task launched, and its snapshot the answer.
+func (d *InProcessHandler) launch(w http.ResponseWriter, r *http.Request) {
+	l, ok := readLaunch(w, r, d.check)
+	if !ok {
 		return
 	}
-	l := body.Launch()
-	// a runner client (the engine) passes its own id so it matches the task:instance entity;
-	// an ad-hoc spawn gets a fresh one
-	if l.ID == "" {
-		l.ID = fmt.Sprintf("p%d", d.seq.Add(1))
-	}
-	// THE WHOLE LAUNCH reaches the builder. Everything that shapes or bounds the agent rides
-	// the wire, so a task hosted on a REMOTE runner is framed and bounded exactly as a local
-	// one — the seam is complete or the guarantee is local-only. The vector and grant arrive
-	// as resolved predicates rather than names for the reason task.Launch gives: the
-	// vocabulary lives at one end, so the two cannot drift apart.
-	h, created := d.spawnHosted(l)
+	h, created := d.host(l)
 	// 201 built it, 200 found it already running. A retrying client needs no more than
 	// that, and a client that does not care can ignore it: both mean "this id is running".
 	status := http.StatusCreated
 	if !created {
 		status = http.StatusOK
 	}
-	writeOut(w, r, status, runner.SpawnResponse{ID: h.task.ID})
-}
-
-// Count returns the number of hosted tasks (live and completed-but-unreaped).
-func (d *InProcessHandler) Count() int {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	return len(d.tasks)
+	writeOut(w, r, status, h.snapshot())
 }
 
 func (d *InProcessHandler) list(w http.ResponseWriter, r *http.Request) {
@@ -362,18 +372,6 @@ func (d *InProcessHandler) Snapshots() []task.Snapshot {
 		out = append(out, h.snapshot())
 	}
 	return out
-}
-
-// ScopeOf is the scope a hosted task was launched in — "" for baseline — and whether id is
-// hosted here at all.
-func (d *InProcessHandler) ScopeOf(id string) (string, bool) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	h := d.tasks[id]
-	if h == nil {
-		return "", false
-	}
-	return h.scope, true
 }
 
 // SnapshotOf returns one hosted task's snapshot, or false if this runner doesn't host it.
@@ -424,7 +422,7 @@ func (d *InProcessHandler) events(w http.ResponseWriter, r *http.Request) {
 		for _, p := range h.reg.Pending() {
 			_ = sse.Send(task.Event{
 				Kind: task.EventPending, ID: p.Question.ID, Tool: p.Tool, Action: p.Action,
-				Gate: p.Question.Gate, Mode: p.Question.Mode.String(), Text: p.Question.Reason,
+				Gate: p.Question.Gate, Step: p.Question.Step.Name, Fields: p.Question.Step.Fields, Text: p.Question.Reason,
 				Options: p.Question.Options, Deadline: p.Question.Deadline, Answerers: p.Question.Answerers,
 			})
 		}
@@ -499,23 +497,71 @@ func (d *InProcessHandler) say(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Empty `by` is an unattributed caller, said as such. An ended task hears nothing, and says
-	// so; one whose driver has nowhere to put words says why.
+	// so, as one whose driver has no turn for words does.
 	if err := h.task.Steer(body.Instruction, body.By, body.Ask); err != nil {
-		code := http.StatusGone
+		status := http.StatusGone
 		if errors.Is(err, task.ErrUnsteerable) {
-			code = http.StatusUnprocessableEntity
+			status = http.StatusUnprocessableEntity
 		}
-		http.Error(w, err.Error(), code)
+		http.Error(w, err.Error(), status)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// cancelledHere is the reason a cancel gives when its caller gave none.
-const cancelledHere = "cancelled via daemon"
+// policy is PUT /tasks/{id}/policy: the running task's policy, replaced from its next step.
+func (d *InProcessHandler) policy(w http.ResponseWriter, r *http.Request) {
+	h := d.lookup(r)
+	if h == nil {
+		http.NotFound(w, r)
+		return
+	}
+	var body runner.PolicyRequest
+	if err := codec.ReadStrict(r, &body); err != nil {
+		http.Error(w, fmt.Sprintf("the policy does not parse: %v", err), http.StatusBadRequest)
+		return
+	}
+	if err := d.setPolicy(h, body.Policy, body.By); errors.Is(err, task.ErrEnded) {
+		http.Error(w, fmt.Sprintf("task %s has ended", h.task.ID), http.StatusGone)
+		return
+	} else if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
 
-// control returns a handler for the subtree ops. A cancel carries why (runner.CancelRequest);
-// pause and resume carry nothing.
+// SetPolicy replaces a hosted task's policy as PUT /tasks/{id}/policy does, for the caller
+// that hosts this handler in its own process: checked against what the runner keeps fixed
+// (CheckPolicy) and then set, so a task is held the same way however its policy is changed.
+func (d *InProcessHandler) SetPolicy(id string, p task.Policy, by string) error {
+	d.mu.Lock()
+	h := d.tasks[id]
+	d.mu.Unlock()
+	if h == nil {
+		return task.ErrNoSuchTask
+	}
+	return d.setPolicy(h, p, by)
+}
+
+func (d *InProcessHandler) setPolicy(h *hosted, p task.Policy, by string) error {
+	// Held to the launch's policy, not the last one set: a verb a replacement dropped is still
+	// one the run asked of its runner when it started, and may come back.
+	if err := CheckPolicy(p, h.launched, h.doer, h.with, d.describe); err != nil {
+		return err
+	}
+	if err := h.task.SetPolicy(p, by); err != nil {
+		return err
+	}
+	h.mu.Lock()
+	h.policy = p
+	h.mu.Unlock()
+	return nil
+}
+
+// control returns a handler for the subtree ops: a cancel carries why and who
+// (runner.CancelRequest), a pause and a resume who (PauseRequest, ResumeRequest). Each is a
+// command all the same with no body.
 func (d *InProcessHandler) control(op string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		h := d.lookup(r)
@@ -533,38 +579,24 @@ func (d *InProcessHandler) control(op string) http.HandlerFunc {
 				http.Error(w, fmt.Sprintf("the cancel does not parse: %v", err), http.StatusBadRequest)
 				return
 			}
-			if body.Reason == "" {
-				body.Reason = cancelledHere
-			}
-			h.task.Cancel(body.Reason)
+			h.task.Cancel(body.Reason, body.By)
 		case "pause":
-			h.task.Pause()
+			var body runner.PauseRequest
+			if err := codec.Read(r, &body); err != nil {
+				http.Error(w, fmt.Sprintf("the pause does not parse: %v", err), http.StatusBadRequest)
+				return
+			}
+			h.task.Pause(body.By)
 		case "resume":
-			h.task.Resume()
+			var body runner.ResumeRequest
+			if err := codec.Read(r, &body); err != nil {
+				http.Error(w, fmt.Sprintf("the resume does not parse: %v", err), http.StatusBadRequest)
+				return
+			}
+			h.task.Resume(body.By)
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}
-}
-
-func (d *InProcessHandler) setVector(w http.ResponseWriter, r *http.Request) {
-	h := d.lookup(r)
-	if h == nil {
-		http.NotFound(w, r)
-		return
-	}
-	var body task.VectorRequest
-	if err := codec.Read(r, &body); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	// Refused here rather than at the next boundary: a gate whose question cannot be posed
-	// as written would hold the task on a question nobody can answer.
-	if err := body.Vector.Validate(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	h.task.SetVector(&body.Vector, body.By)
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func writeOut(w http.ResponseWriter, r *http.Request, code int, v any) {

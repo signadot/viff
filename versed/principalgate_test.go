@@ -12,6 +12,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
 )
@@ -29,12 +30,12 @@ func waitingOn(t *testing.T, srv *Server, id string) []string {
 // A GATE NAMING $principal ASKS WHOEVER RAN THE TASK, and the task's record says whom it acts for.
 // A gate naming nobody is the docket's (TestARunsGateTakesAThreshold).
 func TestAGateNamingPrincipalAsksWhoeverRanTheTask(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := NewWithStore(stepBuilder(t), entitytest.Store(t))
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	gates := shellGate(0, nil)
-	gates[0].Answerers = []string{task.PrincipalAnswerer}
-	resp := postTony(t, ts.URL+"/tasks", api.Spawn{ID: "mine", Prompt: "true", Gates: gates})
+	gates[0].Then.Ask.Answerers = []string{task.PrincipalAnswerer}
+	resp := postTony(t, ts.URL+"/tasks", api.Spawn{ID: "mine", Doer: runner.Doer{Script: "true"}, Policy: gates})
 	if resp.StatusCode >= 300 {
 		t.Fatalf("spawn = %s: %s", resp.Status, bodyOf(t, resp))
 	}
@@ -51,9 +52,9 @@ func TestAGateNamingPrincipalAsksWhoeverRanTheTask(t *testing.T) {
 // AN ASK'S `then` ASKS ITS ASKER: the task acts for daniel, so its own question, naming nobody,
 // waits on him rather than on the docket, and its record keeps that across a restart.
 func TestAThenTasksOwnQuestionAsksTheAsker(t *testing.T) {
-	srv, ts := asking(t)
+	srv, ts := askingOn(t, NewWithStore(stepBuilder(t), entitytest.Store(t)))
 	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Land it?", answerers: [oscar@example.com], then: {prompt: "true"}}`))
+	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Land it?", answerers: [oscar@example.com], then: {prompt: "true", policy: `+stepAsksTony+`}}`))
 	land := mirror.AskRef(id)
 	posed(t, srv, land)
 	if resp := answerAs(t, davido, ts.URL, id); resp.StatusCode != http.StatusNoContent {
@@ -75,14 +76,33 @@ func TestAGateNamingPrincipalIsRefusedForNobody(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	gates := shellGate(0, nil)
-	gates[0].Answerers = []string{task.PrincipalAnswerer}
-	b, err := codec.Marshal(api.Spawn{ID: "nobodys", Prompt: "true", Gates: gates}, codec.Tony)
+	gates[0].Then.Ask.Answerers = []string{task.PrincipalAnswerer}
+	b, err := codec.Marshal(api.Spawn{ID: "nobodys", Doer: runner.Doer{Script: "true"}, Policy: gates}, codec.Tony)
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp := postAs(t, runnerID, ts.URL+"/tasks", "application/tony", string(b))
 	if msg := bodyOf(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(msg, "acts for nobody") {
 		t.Fatalf("a runner's run naming $principal: %s %q, want 400 saying it acts for nobody", resp.Status, msg)
+	}
+}
+
+// A THRESHOLD NOBODY CAN REACH IS REFUSED for a run started by hand, as a charter's is at its
+// install: two approvals from one person is a question proceed can never settle.
+func TestAThresholdOverTooFewAnswerersIsRefused(t *testing.T) {
+	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	gates := shellGate(0, nil)
+	gates[0].Then.Ask.Need = 2
+	gates[0].Then.Ask.Answerers = []string{"user:ana@example.com"}
+	b, err := codec.Marshal(api.Spawn{ID: "unreachable", Doer: runner.Doer{Script: "true"}, Policy: gates}, codec.Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp := postAs(t, "user:"+tester, ts.URL+"/tasks", "application/tony", string(b))
+	if msg := bodyOf(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(msg, "nobody can settle") {
+		t.Fatalf("a run needing two approvals of one person: %s %q, want 400 saying nobody can settle it", resp.Status, msg)
 	}
 }
 
@@ -94,8 +114,8 @@ func TestAVectorNamingPrincipalNeedsSomebodyToAsk(t *testing.T) {
 	defer ts.Close()
 	slide := func(as, id string) *http.Response {
 		t.Helper()
-		req, _ := http.NewRequest(http.MethodPut, ts.URL+"/tasks/"+id+"/vector", strings.NewReader(
-			`{vector: {default: auto, gates: [{name: shell, mode: ask, answerers: [$principal]}]}}`))
+		req, _ := http.NewRequest(http.MethodPut, ts.URL+"/tasks/"+id+"/policy", strings.NewReader(
+			`{policy: [{name: shell, match: {system: commands, verb: run}, then: {ask: {answerers: [$principal]}}}, {then: allow}]}`))
 		req.Header.Set("Content-Type", "application/tony")
 		req.Header.Set(api.PrincipalHeader, as)
 		resp, err := http.DefaultClient.Do(req)
@@ -105,7 +125,8 @@ func TestAVectorNamingPrincipalNeedsSomebodyToAsk(t *testing.T) {
 		return resp
 	}
 	for _, c := range []struct{ as, id string }{{runnerID, "runners"}, {tester, "testers"}} {
-		b, _ := codec.Marshal(api.Spawn{ID: c.id, Prompt: "sleep 5", Vector: "auto"}, codec.Tony)
+		b, _ := codec.Marshal(api.Spawn{ID: c.id, Doer: runner.Doer{Script: "sleep 5"}, Policy: task.Policy{
+			{Match: &task.Match{System: "commands", Verb: "run"}, Then: task.Then{Mode: task.ThenAllow}}, {Then: task.Then{Mode: task.ThenAllow}}}}, codec.Tony)
 		if resp := postAs(t, c.as, ts.URL+"/tasks", "application/tony", string(b)); resp.StatusCode >= 300 {
 			t.Fatalf("spawn %s: %s: %s", c.id, resp.Status, bodyOf(t, resp))
 		}
@@ -125,15 +146,15 @@ func TestAVectorNamingPrincipalNeedsSomebodyToAsk(t *testing.T) {
 // runner's frame says the turn names $principal, verse puts the launcher there, and the record
 // says it waits on them.
 func TestARemoteConversationsTurnIsItsLaunchers(t *testing.T) {
-	build := func(l task.Launch, reg *task.Registry) *task.Task {
-		tk := task.NewTask(l.ID, task.NewSupervisor(&task.Vector{Default: task.Auto}, reg),
+	build := func(l runner.Launch, reg *task.Registry) *task.Task {
+		tk := task.NewTask(l.ID, task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, reg),
 			talkingDriver{&slowDriver{}}, noopExec{})
 		if l.Converse {
 			tk.SetConverse(reg)
 		}
 		return tk
 	}
-	face := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
+	face := httptest.NewServer(offeringAll(runnerd.NewInProcessHandler(build), "fake").HTTPHandler())
 	t.Cleanup(face.Close)
 	var spawned string
 	t.Cleanup(func() { // end the conversation at the runner, so its stream closes
@@ -149,7 +170,7 @@ func TestARemoteConversationsTurnIsItsLaunchers(t *testing.T) {
 	defer ts.Close()
 	postTony(t, ts.URL+"/runners", map[string]any{"name": "face", "url": face.URL}).Body.Close()
 	resp := postTony(t, ts.URL+"/tasks", map[string]any{
-		"prompt": "turn", "runner": "verse.runners.face", "name": "talk", "converse": true,
+		"doer": map[string]any{"agent": "fake"}, "prompt": "turn", "runner": "verse.runners.face", "name": "talk", "converse": true,
 	})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("spawn = %s: %s", resp.Status, bodyOf(t, resp))

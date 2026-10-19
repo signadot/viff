@@ -7,10 +7,11 @@ A charter is a list of rules, and comments make it easier to read.
 
 Tony adds one thing that the charter grammar uses: *tags*. A tag names what a value is, at
 the place where the value stands: `!glob "hotfix-*"`, `!or [ … ]`, `!not { … }`. With tags, a
-charter is a structure that the engine walks. It is not a string that the engine parses again.
+charter is a structure that verse reads as it stands. It is not a string that verse parses a
+second time.
 
-Verse reads tony, JSON and YAML. It writes tony and YAML, and it does not write JSON.
-This difference is deliberate.
+Verse reads tony, JSON and YAML. It writes tony and YAML, and it does not write JSON, on
+purpose ([no JSON as output](#no-json-as-output)).
 
 ```sh
 verse charter             # tony (the default)
@@ -46,7 +47,7 @@ syntax for a tag. So a charter rendered as JSON could not say what the charter s
 
 The same fact limits JSON input: a charter written in JSON has no operators. It can write
 paths of names and `*`, and predicates of plain equality. Write an operator in tony (see
-[the trigger model](../trigger-model.md)).
+[the charter reference](../trigger-model.md)).
 
 ## Color
 
@@ -77,7 +78,7 @@ Three settings name a format to write:
 | `format.output` | the output of the CLI on stdout. It overrides the default. |
 | `format.wire` | the bodies of HTTP responses. It overrides the default. |
 
-You may want tony on the wire and YAML on stdout, so the two are separate settings. All three
+You may want tony over HTTP and YAML on your terminal, so the two are separate settings. All three
 name a format to write, so all three refuse `json`.
 
 ```tony

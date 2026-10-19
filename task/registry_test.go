@@ -22,8 +22,8 @@ func waitFor(t *testing.T, cond func() bool) {
 // mismatch — the decision-addressed seam.
 func TestRegistryConcurrentResolveByID(t *testing.T) {
 	r := NewRegistry()
-	d1 := GateQuestion{ID: "a#d1", Origin: "a", Mode: Ask, Gate: "g"}
-	d2 := GateQuestion{ID: "b#d1", Origin: "b", Mode: Ask, Gate: "g"}
+	d1 := GateQuestion{ID: "a#d1", Origin: "a", Gate: "g"}
+	d2 := GateQuestion{ID: "b#d1", Origin: "b", Gate: "g"}
 	res1 := make(chan Resolution, 1)
 	res2 := make(chan Resolution, 1)
 	go func() { rr, _ := r.Resolve(context.Background(), d1, ToolUse{Name: "t1"}); res1 <- rr }()
@@ -32,7 +32,7 @@ func TestRegistryConcurrentResolveByID(t *testing.T) {
 	waitFor(t, func() bool { return len(r.Pending()) == 2 })
 
 	// answer out of order
-	if !r.Answer("b#d1", Resolution{Proceed: true, By: "human", ChildMode: ChildAutonomous}) {
+	if !r.Answer("b#d1", Resolution{Proceed: true, By: "human"}) {
 		t.Fatal("answer b failed")
 	}
 	if !r.Answer("a#d1", Resolution{Proceed: false, By: "human"}) {
@@ -44,7 +44,7 @@ func TestRegistryConcurrentResolveByID(t *testing.T) {
 	if r1.Proceed || r1.Question.ID != "a#d1" {
 		t.Fatalf("a resolved wrong: %+v", r1)
 	}
-	if !r2.Proceed || r2.Question.ID != "b#d1" || r2.ChildMode != ChildAutonomous {
+	if !r2.Proceed || r2.Question.ID != "b#d1" {
 		t.Fatalf("b resolved wrong: %+v", r2)
 	}
 	if len(r.Pending()) != 0 {
@@ -55,40 +55,6 @@ func TestRegistryConcurrentResolveByID(t *testing.T) {
 	}
 }
 
-// The ChildMode chosen when answering a CallAgent ASK reaches the spawn.
-func TestChildModeFromAskAnswer(t *testing.T) {
-	reg := NewRegistry()
-	vec := &Vector{Default: Auto, Gates: []Gate{
-		{Name: "delegate", Mode: Ask, Match: GateMatch{Verbs: []Verb{CallAgent}}},
-	}}
-	parent := NewTask("p", NewSupervisor(vec, reg), &callThenDone{}, &recExec{})
-
-	gotMode := ChildCareful // sentinel (not the expected answer)
-	spawned := make(chan struct{}, 1)
-	parent.SetSpawn(func(pTask *Task, mode ChildMode, req *CallAgentRequest) (*Task, error) {
-		gotMode = mode
-		spawned <- struct{}{}
-		return pTask.NewChild("kid", mode, req, &scriptDriver{}, &recExec{})
-	})
-
-	done := make(chan struct{})
-	go func() { parent.Run(context.Background()); close(done) }()
-
-	// the CallAgent's ASK gate posts a pending decision; answer it "autonomous"
-	waitFor(t, func() bool { return len(reg.Pending()) == 1 })
-	p := reg.Pending()[0]
-	if p.Question.Origin != "p" {
-		t.Fatalf("decision origin = %q, want p", p.Question.Origin)
-	}
-	reg.Answer(p.Question.ID, Resolution{Proceed: true, By: "human", ChildMode: ChildAutonomous})
-
-	<-spawned
-	<-done
-	if gotMode != ChildAutonomous {
-		t.Fatalf("child spawned with mode %s, want autonomous", gotMode)
-	}
-}
-
 // A re-posted question is JOINED, not duplicated: one docket entry, and one answer releases
 // every caller waiting on it. This is what makes a deterministic gate id safe — a poser that
 // re-asks about the same subject asks the standing question again rather than filling the
@@ -96,7 +62,7 @@ func TestChildModeFromAskAnswer(t *testing.T) {
 func TestRegistryJoinsAQuestionAlreadyPending(t *testing.T) {
 	r := NewRegistry()
 	const id = "verse.trigger.ship.ship~deadbeef"
-	q := GateQuestion{ID: id, Origin: "ship", Mode: Ask, Gate: "ship", Subject: `demo.pr."1"`}
+	q := GateQuestion{ID: id, Origin: "ship", Gate: "ship", Subject: `demo.pr."1"`}
 
 	var posts atomic.Int32
 	r.OnPost(func(Pending) { posts.Add(1) })
@@ -151,7 +117,7 @@ func TestRegistryJoinsAQuestionAlreadyPending(t *testing.T) {
 func TestRegistryCancelledWaiterLeavesTheQuestionStanding(t *testing.T) {
 	r := NewRegistry()
 	const id = "verse.trigger.ship.ship~cafe"
-	q := GateQuestion{ID: id, Origin: "ship", Mode: Ask}
+	q := GateQuestion{ID: id, Origin: "ship"}
 
 	stay := make(chan Resolution, 1)
 	go func() {

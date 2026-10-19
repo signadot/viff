@@ -61,7 +61,7 @@ func TestTheWaitAdviceNamesAToolThatIsActuallyOffered(t *testing.T) {
 // yield is offered ALWAYS, and is the one tool that never was optional.
 //
 // It carries the only structural way to say "I could not", which everything downstream depends
-// on — a task that merely stops reads as success — and now also the only way to wait. A spawn
+// on — a task that merely stops reads as success — and now also the only way to wait. A launch
 // that withheld it would turn every failure into a completed task with an excuse, and every
 // wait into whatever the model could improvise.
 func TestYieldIsNotOptional(t *testing.T) {
@@ -106,16 +106,16 @@ func TestWaitEndsTheTurnAndCostsOneModelCallPerResult(t *testing.T) {
 	d := &llmDriver{client: fake, prompt: "summarise each file", log: io.Discard}
 
 	ex := &recExec{}
-	p := task.NewTask("p", task.NewSupervisor(&task.Vector{Default: task.Auto}, task.AutoResolver{}), d, ex)
+	p := task.NewTask("p", task.NewSupervisor(task.Policy{{Match: &task.Match{System: "agent"}, Then: task.Then{Mode: task.ThenAllow}}, {Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), d, ex)
 	p.SetLog(io.Discard)
 	var kids int
-	p.SetSpawn(func(parent *task.Task, mode task.ChildMode, req *task.CallAgentRequest) (*task.Task, error) {
+	p.SetDelegate(func(parent *task.Task, req *task.CallAgentRequest) (*task.Task, error) {
 		kids++
 		// Staggered, so they report SEPARATELY. Simultaneous results fold together into one
 		// call — the loop drains everything waiting at a boundary — which is the loop being
 		// efficient and would make this assertion pass for the wrong reason.
-		return parent.NewChild(fmt.Sprintf("kid%d", kids), mode, req,
-			&slowChild{after: time.Duration(kids) * 60 * time.Millisecond}, &recExec{})
+		return parent.NewChild(fmt.Sprintf("kid%d", kids), req,
+			&slowChild{after: time.Duration(kids) * 60 * time.Millisecond}, &recExec{}), nil
 	})
 
 	out, err := p.Run(context.Background())
@@ -123,7 +123,7 @@ func TestWaitEndsTheTurnAndCostsOneModelCallPerResult(t *testing.T) {
 		t.Fatalf("run: reason=%q err=%v", out.Reason, err)
 	}
 	if kids != 2 {
-		t.Errorf("%d children spawned, want 2 — anything more is filler work", kids)
+		t.Errorf("%d children started, want 2 — anything more is filler work", kids)
 	}
 	// `wait` is not an action. It must never reach an executor, which would both do nothing
 	// and, being an action in flight, be the one moment a child's result CANNOT be folded in.

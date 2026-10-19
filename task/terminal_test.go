@@ -52,7 +52,7 @@ func sawTerminal(kinds []string) bool {
 // forever, mirror.Reflect's goroutine never returned, and onDone never fired.
 func TestABehindSubscriberStillGetsTheTerminal(t *testing.T) {
 	for _, n := range []int{10, 300, 5000} {
-		p := NewTask("p", NewSupervisor(&Vector{Default: Auto}, AutoResolver{}), nil, nil)
+		p := NewTask("p", toolSup(allowAll(), AutoResolver{}), nil, nil)
 		ch, unsub := p.Subscribe()
 		burst(t, p, n) // nothing is draining ch while this runs
 		unsub()
@@ -88,7 +88,7 @@ func TestAnOrdinaryFrameCannotTakeTheLastSlot(t *testing.T) {
 // leaking: that is how a mirror goroutine and, behind it, an HTTP connection to a remote
 // runner survived their task indefinitely.
 func TestTheStreamEndsAfterTheTerminal(t *testing.T) {
-	p := NewTask("p", NewSupervisor(&Vector{Default: Auto}, AutoResolver{}), nil, nil)
+	p := NewTask("p", toolSup(allowAll(), AutoResolver{}), nil, nil)
 	ch, unsub := p.Subscribe()
 	defer unsub()
 	burst(t, p, 3)
@@ -108,7 +108,7 @@ func TestTheStreamEndsAfterTheTerminal(t *testing.T) {
 // finished. Answering with nothing at all is what strands a mirror on a completed task —
 // the failure FailedHandle exists to avoid, reachable by a second route.
 func TestSubscribingToAFinishedTask(t *testing.T) {
-	p := NewTask("p", NewSupervisor(&Vector{Default: Auto}, AutoResolver{}), nil, nil)
+	p := NewTask("p", toolSup(allowAll(), AutoResolver{}), nil, nil)
 	burst(t, p, 3)
 
 	ch, unsub := p.Subscribe()
@@ -131,7 +131,7 @@ func TestSubscribingToAFinishedTask(t *testing.T) {
 // A task that never ran has no outcome to report, and must not invent one by handing a
 // late subscriber the last thing it happened to say.
 func TestSubscribingToALiveTaskStaysOpen(t *testing.T) {
-	p := NewTask("p", NewSupervisor(&Vector{Default: Auto}, AutoResolver{}), nil, nil)
+	p := NewTask("p", toolSup(allowAll(), AutoResolver{}), nil, nil)
 	p.emit(Event{Kind: EventExec, Tool: "noop"})
 
 	ch, unsub := p.Subscribe()
@@ -151,10 +151,10 @@ func TestSubscribingToALiveTaskStaysOpen(t *testing.T) {
 // client of this call and nothing else, so it reconnected, learned it was behind, and could
 // not see the open question it exists to answer.
 func TestAResumeBelowTheWindowReplaysOpenGates(t *testing.T) {
-	p := NewTask("p", NewSupervisor(&Vector{Default: Auto}, AutoResolver{}), nil, nil)
-	p.emit(Event{Kind: EventPending, ID: "p~d1", Gate: "write", Mode: "ASK"})
+	p := NewTask("p", toolSup(allowAll(), AutoResolver{}), nil, nil)
+	p.emit(Event{Kind: EventPending, ID: "p~d1", Gate: "write"})
 	gateAt := p.Cursor()
-	for range ringCap + 10 { // it keeps talking while the gate stands
+	for range RingCap + 10 { // it keeps talking while the gate stands
 		p.emit(Event{Kind: EventSay, Text: "thinking"})
 	}
 
@@ -178,11 +178,11 @@ func TestAResumeBelowTheWindowReplaysOpenGates(t *testing.T) {
 // And a gate that has been ANSWERED is not replayed: it is not open, and re-announcing it
 // would put a settled question back on a reader's docket.
 func TestAResumeDoesNotReplayAnsweredGates(t *testing.T) {
-	p := NewTask("p", NewSupervisor(&Vector{Default: Auto}, AutoResolver{}), nil, nil)
+	p := NewTask("p", toolSup(allowAll(), AutoResolver{}), nil, nil)
 	p.emit(Event{Kind: EventPending, ID: "p~d1", Gate: "write"})
 	gateAt := p.Cursor()
 	p.emit(Event{Kind: EventDecision, ID: "p~d1", Proceed: true, By: "human:scott"})
-	for range ringCap + 10 {
+	for range RingCap + 10 {
 		p.emit(Event{Kind: EventSay, Text: "thinking"})
 	}
 
@@ -199,7 +199,7 @@ func TestAResumeDoesNotReplayAnsweredGates(t *testing.T) {
 // Without a gap there is nothing to re-announce: the ring covers everything since the cursor,
 // so replaying open gates as well would show the reader the same question twice.
 func TestAResumeInsideTheWindowDoesNotDuplicate(t *testing.T) {
-	p := NewTask("p", NewSupervisor(&Vector{Default: Auto}, AutoResolver{}), nil, nil)
+	p := NewTask("p", toolSup(allowAll(), AutoResolver{}), nil, nil)
 	p.emit(Event{Kind: EventSay, Text: "starting"})
 	from := p.Cursor()
 	p.emit(Event{Kind: EventPending, ID: "p~d1", Gate: "write"})
@@ -215,37 +215,5 @@ func TestAResumeInsideTheWindowDoesNotDuplicate(t *testing.T) {
 	}
 	if gates != 1 {
 		t.Fatalf("the standing gate appeared %d times in a resume inside the window", gates)
-	}
-}
-
-// The retained window is per task, because how much of the past is worth keeping is a
-// property of the work: a task that narrates every token and one that reports four
-// boundaries an hour want windows two orders of magnitude apart, and no package constant is
-// right for both.
-func TestTheRetainedWindowIsPerTask(t *testing.T) {
-	wide := NewTask("wide", NewSupervisor(&Vector{Default: Auto}, AutoResolver{}), nil, nil)
-	wide.SetRetain(ringCap * 4)
-	narrow := NewTask("narrow", NewSupervisor(&Vector{Default: Auto}, AutoResolver{}), nil, nil)
-	narrow.SetRetain(8)
-
-	for range ringCap * 2 {
-		wide.emit(Event{Kind: EventSay, Text: "chatty"})
-		narrow.emit(Event{Kind: EventSay, Text: "chatty"})
-	}
-
-	// The wide one still has the beginning; the narrow one long since let it go.
-	if got := wide.ring[0].Cursor; got != 1 {
-		t.Errorf("the wide window starts at cursor %d, want 1 — it asked to keep everything so far", got)
-	}
-	if got := len(narrow.ring); got != 8 {
-		t.Errorf("the narrow window holds %d, want 8", got)
-	}
-	// And a task that asks for nothing gets the default.
-	plain := NewTask("plain", NewSupervisor(&Vector{Default: Auto}, AutoResolver{}), nil, nil)
-	for range ringCap * 2 {
-		plain.emit(Event{Kind: EventSay, Text: "chatty"})
-	}
-	if got := len(plain.ring); got != ringCap {
-		t.Errorf("the default window holds %d, want %d", got, ringCap)
 	}
 }

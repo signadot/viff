@@ -21,10 +21,10 @@ import (
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
-	"github.com/go-git/go-git/v5/plumbing/storer"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
@@ -34,7 +34,7 @@ import (
 // A runner that shells out inherits an ambient world: whichever `git` is on PATH, whatever
 // credential helper the machine has configured, whatever `~/.gitconfig` says. All three are
 // invisible in the code and none of them is declared anywhere — which is the same complaint
-// verse makes about `run_bash` inheriting the server's environment. In particular the
+// verse makes about `run_bash` inheriting the server's environment variables. In particular the
 // CREDENTIAL becomes ambient, and a runner whose whole delivery model rests on the task not
 // being able to reach the credential should be able to say where the credential comes from.
 //
@@ -54,12 +54,12 @@ import (
 // part.
 //
 // One thing gets simpler in exchange, and it is not nothing. With linked worktrees the task
-// branches live in the mirror's own ref namespace, so a `fetch --prune` on the next spawn
+// branches live in the mirror's own ref namespace, so a `fetch --prune` on the next launch
 // deletes the branch of every running task — a silent failure that leaves a worktree's HEAD
 // pointing at nothing. With a clone per task, task branches live in the task's own repository
 // and the mirror holds upstream refs only, so pruning cannot reach them.
 
-// Workspace is one task's working directory: every repository the spawn names, cloned side by
+// Workspace is one task's working directory: every repository the launch names, cloned side by
 // side under one root, each on the same task branch.
 //
 // The root is what the agent gets as its working directory, so `verse/task/loop.go` and
@@ -92,26 +92,21 @@ type Tree struct {
 	// Salvage tells work that left from work that did not: a tree whose head is what was
 	// delivered has nothing to hold.
 	Delivered string
+	// upstream is the mirror's branch tips as the runner last wrote them into the checkout, at
+	// open and at each refresh: what a delivery's commits are measured beyond (AuthoredWork).
+	// Kept here rather than read back from the checkout's mirror/* refs, which the task can
+	// point anywhere.
+	upstream []plumbing.Hash
 
 	// repo is the checkout. There is no credential beside it, on either side of the process
 	// boundary: the runner pushes from its mirror with its own.
 	repo *git.Repository
 }
 
-// Primary is the repository a singular question is about — the first one the spawn names.
-// `task.RepoContext` has one Branch and one Base, and a workspace has as many as it has
-// repositories, so the two do not fit: see RepoContext.
-func (w *Workspace) Primary() *Tree {
-	if len(w.Trees) == 0 {
-		return nil
-	}
-	return w.Trees[0]
-}
-
 // Mirrors keeps one bare mirror per repository, fetched before a task clones off it — and, since
 // staging, the place a task's work waits on its way out (stage.go).
 //
-// It is per REPOSITORY rather than per environment so two environments on one repo at different
+// It is per REPOSITORY rather than per task so two tasks on one repo at different
 // bases share it — and the lock is per repository too, because two concurrent fetches into one
 // directory are not safe.
 type Mirrors struct {
@@ -120,6 +115,12 @@ type Mirrors struct {
 	mu    sync.Mutex
 	locks map[string]*sync.Mutex
 }
+
+// ForgeTimeout is how long one request's calls to a forge may take: a fetch, a push, a ref
+// lookup, a proposal. They are made holding the mirror's lock, and a forge that stops answering
+// would hold every task on that repository with it. Ensure bounds a refetch by it, whoever calls;
+// a first clone isn't bounded, and outlives the caller.
+const ForgeTimeout = 10 * time.Minute
 
 func NewMirrors(root string, auth func(remote string) transport.AuthMethod) *Mirrors {
 	return &Mirrors{root: root, auth: auth, locks: map[string]*sync.Mutex{}}
@@ -161,10 +162,12 @@ func TokenAuth(token string) func(string) transport.AuthMethod {
 	}
 }
 
-// ensure creates the mirror if it is not there and fetches it either way. The fetch happens on
-// every spawn, which is the honest place for it: a task that starts from a base an hour stale is
-// a task whose work is against a tree nobody has.
+// Ensure creates the mirror if it is not there and fetches it either way, with the mirrors' own
+// credential for the remote. The fetch happens on every launch, which is the honest place for
+// it: a task that starts from a base an hour stale is a task whose work is against a tree nobody
+// has.
 func (m *Mirrors) Ensure(ctx context.Context, remote string) (string, error) {
+	auth := m.auth(remote)
 	dir := m.Dir(remote)
 	lock := m.lockFor(dir)
 	lock.Lock()
@@ -185,7 +188,7 @@ func (m *Mirrors) Ensure(ctx context.Context, remote string) (string, error) {
 		// It is also what makes the STAGED namespaces safe, and that is now the load-bearing
 		// half. go-git's pruneRemotes removes only refs matching the reverse of a configured
 		// refspec, so `refs/pending/*` and `refs/held/*` (stage.go) are outside everything this
-		// prunes. Put work under `refs/heads/` instead and the next spawn deletes it without a
+		// prunes. Put work under `refs/heads/` instead and the next launch deletes it without a
 		// word — which has happened once, to the task branches of every running task.
 		if _, err = r.CreateRemote(&config.RemoteConfig{
 			Name: "origin", URLs: []string{remote},
@@ -197,24 +200,26 @@ func (m *Mirrors) Ensure(ctx context.Context, remote string) (string, error) {
 		return "", fmt.Errorf("mirror %s: %w", remote, err)
 	}
 
-	// A FIRST clone outlives the caller. The spawn that asks for it is bounded by versed's
-	// control deadline (client.ControlTimeout, 30s), and a clone of anything real is longer than
-	// that; a clone under the request's context would be cancelled with it, leaving no mirror
-	// and the next spawn to start the same race from nothing. Made under the runner's own
-	// context, the clone finishes whatever the caller did — and the caller is then told, below,
-	// that it ran out of time rather than being handed a workspace nobody is waiting for.
-	fetchCtx := ctx
+	// A FIRST clone outlives the caller. A clone of anything real takes minutes, and a task can
+	// be cancelled or time out while it waits; a clone under the task's context would be
+	// cancelled with it, leaving no mirror and the next launch to start the same clone from
+	// nothing. Made under the runner's own context, the clone finishes whatever the caller did —
+	// and the caller is then told, below, that it gave up rather than being handed a workspace
+	// nobody is waiting for.
+	// A refetch is bounded, as every call to the forge made holding the lock is (ForgeTimeout).
+	fetchCtx, cancel := context.WithTimeout(ctx, ForgeTimeout)
+	defer cancel()
 	if fresh {
 		fetchCtx = context.WithoutCancel(ctx)
 	}
-	err = r.FetchContext(fetchCtx, &git.FetchOptions{RemoteName: "origin", Prune: true, Auth: m.auth(remote)})
+	err = r.FetchContext(fetchCtx, &git.FetchOptions{RemoteName: "origin", Prune: true, Auth: auth})
 	if fresh && err == nil && ctx.Err() != nil {
-		// The mirror is complete and the spawn is not: a workspace made now would start a task
-		// against a spawn its caller already recorded as failed. Refused with what happened,
-		// so the retry — which is the same spawn again, and now fast — is the obvious next act.
+		// The mirror is complete and the task is gone: a workspace made now would start a task
+		// nobody is waiting for. Refused with what happened, so the retry — the same launch
+		// again, and now fast — is the obvious next act.
 		// No dir with it: a dir beside an error reads as "fetch failed, use what the mirror
 		// has" one level up, and this is the one refusal that must not be used past.
-		return "", fmt.Errorf("the mirror of %s was made, and this spawn ran out of time waiting for it (%w) — spawn again, and the mirror is there", remote, ctx.Err())
+		return "", fmt.Errorf("the mirror of %s was made, and this task ended while waiting for it (%w) — launch again, and the mirror is there", remote, ctx.Err())
 	}
 	switch {
 	case err == nil, errors.Is(err, git.NoErrAlreadyUpToDate):
@@ -227,6 +232,15 @@ func (m *Mirrors) Ensure(ctx context.Context, remote string) (string, error) {
 			return dir, fmt.Errorf("mirror %s: %w", remote, err)
 		}
 		return dir, nil
+	case fresh:
+		// A first fetch that failed leaves a mirror with nothing in it, and nothing to use past:
+		// the repo isn't there, or can't be reached. Removed, so the next launch tries afresh.
+		_ = os.RemoveAll(dir)
+		return "", fmt.Errorf("fetch %s: %w", remote, err)
+	case refused(err):
+		// The forge said no to the credential. A mirror is shared, and what it holds is not
+		// served to a task the forge turned away.
+		return "", fmt.Errorf("fetch %s: refused with the runner's credential: %w", remote, err)
 	default:
 		// Not fatal on its own: the mirror still holds whatever it had, and a task off a
 		// slightly stale base beats no task at all when a remote is briefly unreachable. It is
@@ -236,10 +250,19 @@ func (m *Mirrors) Ensure(ctx context.Context, remote string) (string, error) {
 	}
 }
 
+// refused reports whether a fetch failed because the forge refused its credentials, as against
+// failing to reach the forge at all. A forge that hides a private repo from a caller says it
+// isn't there.
+func refused(err error) bool {
+	return errors.Is(err, transport.ErrAuthenticationRequired) ||
+		errors.Is(err, transport.ErrAuthorizationFailed) ||
+		errors.Is(err, transport.ErrRepositoryNotFound)
+}
+
 // fixHead points a mirror's HEAD at a branch that exists, preferring the conventional defaults
 // and otherwise taking the first in name order so two runs agree. A mirror with no branches at
 // all is left alone: there is nothing to point at, and the clone's error is then about the base
-// the environment named, which is the more useful complaint.
+// the launch named, which is the more useful complaint.
 func fixHead(r *git.Repository) error {
 	if _, err := r.Head(); err == nil {
 		return nil
@@ -283,7 +306,7 @@ type Author struct{ Name, Email string }
 
 // RunnerAuthor is the identity when no person's can be derived: a charter firing, whose
 // principal is an agent or nobody, and the runner's own commits.
-var RunnerAuthor = Author{Name: "verse coderunner", Email: "coderunner@invalid"}
+var RunnerAuthor = Author{Name: "verse runner", Email: "runner@invalid"}
 
 // AuthorFor derives the identity from the launch's principal and the driver that works for it.
 //
@@ -351,12 +374,12 @@ func (m *Mirrors) Open(ctx context.Context, id string, repos []Repo, worktrees s
 // the repository: the tree is usable and its base may be older than upstream, which the caller
 // says somewhere a reader of the task will see.
 func (m *Mirrors) open(ctx context.Context, r Repo, branch, root string, author Author) (t *Tree, warning string, err error) {
-	mirror, err := m.Ensure(ctx, r.Repo)
+	mirror, err := m.Ensure(ctx, r.Remote)
 	if err != nil && mirror == "" {
-		return nil, "", fmt.Errorf("repo %s: %w", r.Name, err)
+		return nil, "", fmt.Errorf("repo %s: %w", r.Name(), err)
 	}
 	if err != nil {
-		warning = fmt.Sprintf("repo %s: %v", r.Name, err)
+		warning = fmt.Sprintf("repo %s: %v", r.Name(), err)
 	}
 	// Resolve the base against the MIRROR, which handles a branch, a tag and a sha uniformly —
 	// so `base: main`, `base: v1.2.0` and `base: 9fceb02` all mean what they look like. No base
@@ -364,26 +387,26 @@ func (m *Mirrors) open(ctx context.Context, r Repo, branch, root string, author 
 	// the name is written back so the tree says where it started rather than that it was not told.
 	mr, err := git.PlainOpen(mirror)
 	if err != nil {
-		return nil, "", fmt.Errorf("repo %s: %w", r.Name, err)
+		return nil, "", fmt.Errorf("repo %s: %w", r.Name(), err)
 	}
-	if r.Base == "" {
+	if r.From == "" {
 		head, err := mr.Reference(plumbing.HEAD, false)
 		if err != nil || head.Type() != plumbing.SymbolicReference {
-			return nil, "", fmt.Errorf("repo %s: no branch named and the repository has no default branch", r.Name)
+			return nil, "", fmt.Errorf("repo %s: no branch named and the repository has no default branch", r.Name())
 		}
-		r.Base = head.Target().Short()
+		r.From = head.Target().Short()
 	}
-	base, err := mr.ResolveRevision(plumbing.Revision(r.Base))
+	base, err := mr.ResolveRevision(plumbing.Revision(r.From))
 	if err != nil {
-		return nil, "", fmt.Errorf("repo %s: base %q: %w", r.Name, r.Base, err)
+		return nil, "", fmt.Errorf("repo %s: base %q: %w", r.Name(), r.From, err)
 	}
 
-	dir := filepath.Join(root, r.Name)
+	dir := filepath.Join(root, r.Name())
 	// The checkout's objects ARE the mirror's, linked rather than cloned, and the reason is
-	// what a spawn costs against a repository of any size. A clone from the local mirror is no
+	// what a launch costs against a repository of any size. A clone from the local mirror is no
 	// network, but it is go-git re-packing every object into the workspace: 6s for a 217MB
-	// monorepo on a laptop, and past versed's 30s control deadline on the node that runs this,
-	// so the spawn was cancelled before the task began. A hardlink per object file is the
+	// monorepo on a laptop, and more than 30s on a staging node, before
+	// the task could begin. A hardlink per object file is the
 	// clone git itself makes of a local repository, costs a directory walk, and can never go
 	// stale: a pack is immutable, and a fetch that brings more objects writes a new one beside
 	// it rather than into it. (Not `objects/info/alternates`, which go-git honours by
@@ -395,46 +418,50 @@ func (m *Mirrors) open(ctx context.Context, r Repo, branch, root string, author 
 	// a task's shell reads a sibling's delivery through.
 	repo, err := git.PlainInit(dir, false)
 	if err != nil {
-		return nil, "", fmt.Errorf("repo %s: init: %w", r.Name, err)
+		return nil, "", fmt.Errorf("repo %s: init: %w", r.Name(), err)
 	}
 	if err := linkObjects(mirror, dir); err != nil {
-		return nil, "", fmt.Errorf("repo %s: sharing the mirror's objects: %w", r.Name, err)
+		return nil, "", fmt.Errorf("repo %s: sharing the mirror's objects: %w", r.Name(), err)
 	}
 	// Reopened so the storage sees the objects it now has.
 	if repo, err = git.PlainOpen(dir); err != nil {
-		return nil, "", fmt.Errorf("repo %s: %w", r.Name, err)
+		return nil, "", fmt.Errorf("repo %s: %w", r.Name(), err)
 	}
 	if _, err := repo.CreateRemote(&config.RemoteConfig{Name: "mirror", URLs: []string{mirror},
 		Fetch: []config.RefSpec{"+refs/heads/*:refs/remotes/mirror/*"}}); err != nil {
-		return nil, "", fmt.Errorf("repo %s: %w", r.Name, err)
+		return nil, "", fmt.Errorf("repo %s: %w", r.Name(), err)
 	}
-	if err := mirrorRefs(mr, repo); err != nil {
-		return nil, "", fmt.Errorf("repo %s: %w", r.Name, err)
+	_, upstream, err := syncMirrorRefs(mr, repo)
+	if err != nil {
+		return nil, "", fmt.Errorf("repo %s: %w", r.Name(), err)
 	}
 	// The checkout knows who commits in it, so an agent's `git commit` is attributed without the
 	// agent being asked and without it choosing: a clone with no identity makes git refuse the
 	// first commit, and an agent that meets the refusal invents a name.
 	cfg, err := repo.Config()
 	if err != nil {
-		return nil, "", fmt.Errorf("repo %s: %w", r.Name, err)
+		return nil, "", fmt.Errorf("repo %s: %w", r.Name(), err)
 	}
 	cfg.User.Name, cfg.User.Email = author.Name, author.Email
+	// Where the checkout started, said in the checkout: the task's process reopens it knowing
+	// the launch, which names no base when it is the default branch (Reopen).
+	cfg.Raw.Section(baseSection).SetOption(baseOption, r.From)
 	if err := repo.SetConfig(cfg); err != nil {
-		return nil, "", fmt.Errorf("repo %s: author: %w", r.Name, err)
+		return nil, "", fmt.Errorf("repo %s: author: %w", r.Name(), err)
 	}
 	// No `origin`: the checkout has one remote, the mirror, and the runner is the only thing
 	// that pushes upstream (delivery). A remote naming the real repository would be a route out
 	// of the workspace that passes no gate — for a repository on this filesystem, a working one.
 	wt, err := repo.Worktree()
 	if err != nil {
-		return nil, "", fmt.Errorf("repo %s: %w", r.Name, err)
+		return nil, "", fmt.Errorf("repo %s: %w", r.Name(), err)
 	}
 	if err := wt.Checkout(&git.CheckoutOptions{
 		Hash: *base, Branch: plumbing.NewBranchReferenceName(branch), Create: true,
 	}); err != nil {
-		return nil, "", fmt.Errorf("repo %s at %s: %w", r.Name, r.Base, err)
+		return nil, "", fmt.Errorf("repo %s at %s: %w", r.Name(), r.From, err)
 	}
-	return &Tree{Repo: r, Dir: dir, Head: base.String(), repo: repo}, warning, nil
+	return &Tree{Repo: r, Dir: dir, Head: base.String(), repo: repo, upstream: upstream}, warning, nil
 }
 
 // linkObjects hardlinks every file under the mirror's object store into the checkout's, and
@@ -474,26 +501,20 @@ func linkObjects(mirror, dir string) error {
 	})
 }
 
-// mirrorRefs writes the mirror's heads into the checkout as `refs/remotes/mirror/<name>`.
-func mirrorRefs(mirror, repo *git.Repository) error {
-	_, err := syncMirrorRefs(mirror, repo)
-	return err
-}
-
 // syncMirrorRefs sets `refs/remotes/mirror/<branch>` in the checkout to each branch of the mirror
 // and reports the ones that moved, as `mirror/<branch> <was>..<now>` (`<was>` is `new` for a
-// branch the checkout had not seen). Branches the mirror no longer has are left: a ref that
+// branch the checkout had not seen), and the mirror's branch tips, as read from the mirror. Branches the mirror no longer has are left: a ref that
 // vanishes under a running agent is a surprise, and a stale remote-tracking ref is not.
-func syncMirrorRefs(mirror, repo *git.Repository) ([]string, error) {
+func syncMirrorRefs(mirror, repo *git.Repository) (moved []string, tips []plumbing.Hash, err error) {
 	refs, err := mirror.References()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	var moved []string
 	err = refs.ForEach(func(ref *plumbing.Reference) error {
 		if !ref.Name().IsBranch() {
 			return nil
 		}
+		tips = append(tips, ref.Hash())
 		short := strings.TrimPrefix(ref.Name().String(), "refs/heads/")
 		name := plumbing.NewRemoteReferenceName("mirror", short)
 		was := "new"
@@ -510,7 +531,7 @@ func syncMirrorRefs(mirror, repo *git.Repository) ([]string, error) {
 		return nil
 	})
 	sort.Strings(moved)
-	return moved, err
+	return moved, tips, err
 }
 
 // Refresh brings one checkout's view of upstream up to the mirror, which the caller has just
@@ -523,31 +544,42 @@ func syncMirrorRefs(mirror, repo *git.Repository) ([]string, error) {
 // written are the remote-tracking ones nothing in the checkout holds a lock on.
 func (t *Tree) Refresh(mirror string) ([]string, error) {
 	if err := linkObjects(mirror, t.Dir); err != nil {
-		return nil, fmt.Errorf("repo %s: sharing the mirror's objects: %w", t.Repo.Name, err)
+		return nil, fmt.Errorf("repo %s: sharing the mirror's objects: %w", t.Repo.Name(), err)
 	}
+	// Reopened, so this side sees the packs just linked in: go-git reads a repository's list of
+	// packs once.
+	repo, err := git.PlainOpen(t.Dir)
+	if err != nil {
+		return nil, fmt.Errorf("repo %s: %w", t.Repo.Name(), err)
+	}
+	t.repo = repo
 	mr, err := git.PlainOpen(mirror)
 	if err != nil {
-		return nil, fmt.Errorf("repo %s: %w", t.Repo.Name, err)
+		return nil, fmt.Errorf("repo %s: %w", t.Repo.Name(), err)
 	}
-	moved, err := syncMirrorRefs(mr, t.repo)
+	moved, upstream, err := syncMirrorRefs(mr, t.repo)
 	if err != nil {
-		return nil, fmt.Errorf("repo %s: %w", t.Repo.Name, err)
+		return nil, fmt.Errorf("repo %s: %w", t.Repo.Name(), err)
 	}
+	t.upstream = upstream
 	return moved, nil
 }
 
 // Tree is the checkout of the repository named, or nil.
 func (w *Workspace) Tree(name string) *Tree {
 	for _, t := range w.Trees {
-		if t.Repo.Name == name {
+		if t.Repo.Name() == name {
 			return t
 		}
 	}
 	return nil
 }
 
+// The checkout's git config says where it started: `verse.base`.
+const baseSection, baseOption = "verse", "base"
+
 // Reopen rebuilds a Workspace over a checkout that already exists — the task process's view of
-// what the runner prepared for it.
+// what the runner prepared for it. A repo with no From gets the base its checkout records.
 //
 // There is no auth on these trees, and no mirrors: the task process asks for a push over the
 // delivery channel, and the runner makes it from its mirror with its own credential.
@@ -558,12 +590,19 @@ func (w *Workspace) Tree(name string) *Tree {
 func Reopen(root string, repos []Repo, branch string, bases map[string]string) (*Workspace, error) {
 	w := &Workspace{Repos: repos, Root: root, Branch: branch}
 	for _, r := range repos {
-		dir := filepath.Join(root, r.Name)
+		dir := filepath.Join(root, r.Name())
 		repo, err := git.PlainOpen(dir)
 		if err != nil {
-			return nil, fmt.Errorf("reopen %s in %s: %w", r.Name, root, err)
+			return nil, fmt.Errorf("reopen %s in %s: %w", r.Name(), root, err)
 		}
-		w.Trees = append(w.Trees, &Tree{Repo: r, Dir: dir, repo: repo, Head: bases[r.Name]})
+		if r.From == "" {
+			cfg, err := repo.Config()
+			if err != nil {
+				return nil, fmt.Errorf("reopen %s in %s: %w", r.Name(), root, err)
+			}
+			r.From = cfg.Raw.Section(baseSection).Option(baseOption)
+		}
+		w.Trees = append(w.Trees, &Tree{Repo: r, Dir: dir, repo: repo, Head: bases[r.Name()]})
 	}
 	return w, nil
 }
@@ -590,41 +629,11 @@ func (w *Workspace) Brief() string {
 		fmt.Fprintf(&b, "%d repositories, side by side:\n", len(w.Trees))
 	}
 	for _, t := range w.Trees {
-		fmt.Fprintf(&b, "  %s/ — %s at %s (%s)\n", t.Repo.Name, t.Repo.Repo, t.Repo.Base, t.Repo.Allowance())
+		fmt.Fprintf(&b, "  %s/ — %s at %s\n", t.Repo.Name(), t.Repo.Repo.Repo, t.Repo.From)
 	}
 	fmt.Fprintf(&b, "Every path is relative to that directory, so a file in the first repository "+
-		"above is `%s/…`. Each checkout is on your branch, `%s`.\n\n", w.Trees[0].Repo.Name, w.Branch)
+		"above is `%s/…`. Each checkout is on your branch, `%s`.\n\n", w.Trees[0].Repo.Name(), w.Branch)
 	return b.String()
-}
-
-// RepoContext is what a gate can match on: the branch this work is on, the base it came from,
-// and what it has touched. `GateMatch.Branches` reads exactly this, so a charter can say
-// `vector: ask` on anything touching a release branch.
-//
-// It is recomputed per call rather than cached because ChangedFiles is the whole point and it
-// changes under the task's own hands.
-//
-// The awkward part, named rather than hidden: `task.RepoContext` is SINGULAR and a workspace is
-// not. Root and ChangedFiles generalize cleanly — the root is the working directory and paths
-// are relative to it, so `verse/task/loop.go` says which repository it is in. Branch does too,
-// since every repository carries the same task branch. Base does not, so it reports the PRIMARY
-// repository's, and a gate matching on it is asking about that one. A workspace whose
-// repositories have different bases is exactly the case that wants a plural RepoContext, and
-// this is where it would go. Where work goes is not here at all: a push names its branch, and
-// the effect it derives is what a gate matches on.
-func (w *Workspace) RepoContext() *task.RepoContext {
-	rc := &task.RepoContext{Root: w.Root, Branch: w.Branch}
-	if p := w.Primary(); p != nil {
-		rc.Base = p.Repo.Base
-	}
-	for _, t := range w.Trees {
-		for _, f := range t.Changed() {
-			// Repo-relative becomes workspace-relative, which is what the agent sees and what a
-			// `paths:` predicate in a charter should be written against.
-			rc.ChangedFiles = append(rc.ChangedFiles, filepath.Join(t.Repo.Name, f))
-		}
-	}
-	return rc
 }
 
 // changed is this tree's dirty paths, relative to itself, sorted so two readers see one order
@@ -664,7 +673,7 @@ func ShortSha(sha string) string {
 // at the far end about who it was for, so the only externally checkable link back into the verse is
 // what this writes down — and it is checkable, by anyone who can read both the repository and the
 // verse.
-func (t *Tree) CommitWork(l task.Launch, result string) (bool, error) {
+func (t *Tree) CommitWork(l *runner.Launch, result string) (bool, error) {
 	// What counts as work is "the branch moved OR the tree is dirty", not "the tree is dirty".
 	//
 	// The difference is not pedantry: an agent that commits its own edits — which a coding
@@ -691,16 +700,16 @@ func (t *Tree) CommitWork(l task.Launch, result string) (bool, error) {
 	}
 	wt, err := t.repo.Worktree()
 	if err != nil {
-		return false, fmt.Errorf("repo %s: %w", t.Repo.Name, err)
+		return false, fmt.Errorf("repo %s: %w", t.Repo.Name(), err)
 	}
 	if err := wt.AddWithOptions(&git.AddOptions{All: true}); err != nil {
-		return false, fmt.Errorf("repo %s: %w", t.Repo.Name, err)
+		return false, fmt.Errorf("repo %s: %w", t.Repo.Name(), err)
 	}
 	// The runner made this commit itself, for a program with no agent to commit; it says so,
 	// and who it was for is a trailer.
 	sig := &object.Signature{Name: RunnerAuthor.Name, Email: RunnerAuthor.Email, When: time.Now()}
 	if _, err := wt.Commit(CommitMessage(l, result), &git.CommitOptions{Author: sig, Committer: sig}); err != nil {
-		return false, fmt.Errorf("repo %s: commit: %w", t.Repo.Name, err)
+		return false, fmt.Errorf("repo %s: commit: %w", t.Repo.Name(), err)
 	}
 	return true, nil
 }
@@ -745,7 +754,7 @@ const deliveryRemote = "verse-delivery"
 
 // commitMessage carries the provenance the runner was given. Every trailer is conditional: an
 // absent one means verse did not know, and writing it out empty would claim to have asked.
-func CommitMessage(l task.Launch, result string) string {
+func CommitMessage(l *runner.Launch, result string) string {
 	subject, body := firstLine(result), ""
 	if isDocument(result) {
 		// A CONTRACT-shaped answer is not a sentence, and a subject line is. A task with an
@@ -805,7 +814,7 @@ func isDocument(result string) bool {
 // describe is the subject line for work that did not come with a sentence: what fired, about
 // what. `comment-drift on drift.head.head-moved@git.head.verse` says more to somebody reading
 // `git log` than the task id does, and both are recorded in the trailers below anyway.
-func describe(l task.Launch) string {
+func describe(l *runner.Launch) string {
 	p := l.Provenance
 	switch {
 	case p.Chain != "" && p.Subject != "":
@@ -816,16 +825,12 @@ func describe(l task.Launch) string {
 	return "work by " + l.ID
 }
 
-// Deliverable reports whether any repository here may send work somewhere. False means a
-// read-only workspace — nothing was ever going to leave it — which is the only case where
-// removing it after delivering nothing is not destroying something.
-func (w *Workspace) Deliverable() bool {
-	for _, t := range w.Trees {
-		if t.Repo.Writes() {
-			return true
-		}
-	}
-	return false
+// Deliverable reports whether work here may be sent somewhere: there is a repository, and the
+// launch's policy does not refuse every push. False means a read-only workspace — nothing was
+// ever going to leave it — which is the only case where removing it after delivering nothing
+// is not destroying something.
+func (w *Workspace) Deliverable(l *runner.Launch) bool {
+	return len(w.Trees) > 0 && l.Policy.Possible(task.Step{Name: task.StepGitPush})
 }
 
 // Remove drops the whole workspace. The runner calls it when a task ends, unless it was told to
@@ -849,7 +854,7 @@ func firstLine(s string) string {
 }
 
 // safeSeg makes a task id usable as ONE directory name and ONE git ref component. A task id is
-// chosen by whoever spawns — including a client posting straight at the runner — so it is
+// chosen by whoever launches — including a client posting straight at the runner — so it is
 // untrusted input that becomes a path and a ref.
 //
 // Dots are mapped out along with everything else, which is not fussiness. `.` and `..` are
@@ -860,7 +865,7 @@ func firstLine(s string) string {
 //
 // It is lossy, so a rewrite gets a hash of the ORIGINAL appended: without it `a.b` and `a_b`
 // would share a workspace, which is two tasks in one checkout. Same discipline as
-// trigger.spawnID, which disambiguates its own safeSeg the same way and for the same reason.
+// verse's trigger.spawnID, which disambiguates its own safeSeg the same way and for the same reason.
 func SafeSeg(s string) string {
 	var b strings.Builder
 	for _, r := range s {
@@ -888,7 +893,7 @@ func SafeSeg(s string) string {
 // link from a commit on the forge back into the verse, so a delivery without them is refused
 // rather than quietly repaired — repairing would rewrite the agent's commits, and the agent
 // would no longer know the SHAs it delivered.
-func RequiredTrailers(l task.Launch) []string {
+func RequiredTrailers(l *runner.Launch) []string {
 	lines := []string{"Verse-Task: " + l.ID}
 	if p := l.Provenance.Principal; p != "" {
 		lines = append(lines, "Verse-Principal: "+p)
@@ -904,53 +909,138 @@ const authoredWorkMax = 200
 // base, each carrying the required trailers. ok reports whether there is anything to deliver at
 // all; refusal is why the push must not go, in words the agent can act on, or "" when it may.
 // Uncommitted changes are not looked at: what is not committed is not delivered.
-func (t *Tree) AuthoredWork(l task.Launch) (ok bool, refusal string, err error) {
-	head, err := t.repo.Head()
+func (t *Tree) AuthoredWork(l *runner.Launch) (ok bool, refusal string, head plumbing.Hash, err error) {
+	// Opened afresh: the task's own git may have fetched objects into packs this side's open
+	// repository has never listed (go-git reads the list once).
+	repo, err := git.PlainOpen(t.Dir)
 	if err != nil {
-		return false, "", fmt.Errorf("repo %s: %w", t.Repo.Name, err)
+		return false, "", head, fmt.Errorf("repo %s: %w", t.Repo.Name(), err)
 	}
-	if head.Hash().String() == t.Head {
-		return false, "", nil
-	}
-	iter, err := t.repo.Log(&git.LogOptions{From: head.Hash()})
+	ref, err := repo.Head()
 	if err != nil {
-		return false, "", fmt.Errorf("repo %s: %w", t.Repo.Name, err)
+		return false, "", head, fmt.Errorf("repo %s: %w", t.Repo.Name(), err)
 	}
-	defer iter.Close()
+	head = ref.Hash()
+	if head.String() == t.Head {
+		return false, "", head, nil
+	}
+	upstream, err := upstreamOf(repo, t.upstream, t.Head)
+	if err != nil {
+		return false, "", head, fmt.Errorf("repo %s: %w", t.Repo.Name(), err)
+	}
+	// Every commit reachable from the head and not beyond a boundary — the base, or a commit
+	// already upstream (one a rebase or a merge of mirror/* put beneath the task's work) — is the
+	// task's. Each path stops at its own boundary, so a merge's other side is read too.
 	var bad []string
-	n, reachedBase := 0, false
-	err = iter.ForEach(func(c *object.Commit) error {
-		if c.Hash.String() == t.Head {
-			reachedBase = true
-			return storer.ErrStop
-		}
+	n, offBase := 0, false
+	err = walk(repo, head, func(h plumbing.Hash) bool {
+		return h.String() == t.Head || upstream[h]
+	}, func(c *object.Commit) bool {
 		n++
-		if n > authoredWorkMax {
-			return storer.ErrStop
+		if n > authoredWorkMax || c.NumParents() == 0 {
+			offBase = true // a history that doesn't come back to the base, or too far to read
+			return false
 		}
 		if why := MissingTrailers(c.Message, l); why != "" {
 			bad = append(bad, ShortSha(c.Hash.String())+" ("+why+")")
 		}
-		return nil
+		return true
 	})
 	if err != nil {
-		return false, "", fmt.Errorf("repo %s: %w", t.Repo.Name, err)
+		return false, "", head, fmt.Errorf("repo %s: %w", t.Repo.Name(), err)
 	}
-	if !reachedBase {
+	if n == 0 {
+		return false, "", head, nil // on upstream, with nothing of its own on top
+	}
+	if offBase {
 		return true, fmt.Sprintf("not pushed: the branch no longer descends from the base this task "+
-			"started at (%s); deliver work on top of it", ShortSha(t.Head)), nil
+			"started at (%s); deliver work on top of it", ShortSha(t.Head)), head, nil
 	}
 	if len(bad) > 0 {
 		return true, fmt.Sprintf("not pushed: every commit delivered must end with these trailers, as "+
 			"the last paragraph of its message:\n  %s\nThese commits do not: %s. Amend or re-commit "+
-			"with them, then push again.", strings.Join(RequiredTrailers(l), "\n  "), strings.Join(bad, "; ")), nil
+			"with them, then push again.", strings.Join(RequiredTrailers(l), "\n  "), strings.Join(bad, "; ")), head, nil
 	}
-	return true, "", nil
+	return true, "", head, nil
+}
+
+// Tip is the commit the task has checked out now (its HEAD), read afresh.
+func (t *Tree) Tip() (plumbing.Hash, error) {
+	repo, err := git.PlainOpen(t.Dir)
+	if err != nil {
+		return plumbing.ZeroHash, fmt.Errorf("repo %s: %w", t.Repo.Name(), err)
+	}
+	ref, err := repo.Head()
+	if err != nil {
+		return plumbing.ZeroHash, fmt.Errorf("repo %s: %w", t.Repo.Name(), err)
+	}
+	return ref.Hash(), nil
+}
+
+// Made reports whether commit h is this task's own: in the checkout, with the trailers every
+// commit the task delivers carries. A branch whose tip it is was made by the task, however it
+// reached the forge (its own push, or the sweep retrying one).
+func (t *Tree) Made(h plumbing.Hash, l *runner.Launch) bool {
+	repo, err := git.PlainOpen(t.Dir)
+	if err != nil {
+		return false
+	}
+	c, err := repo.CommitObject(h)
+	return err == nil && MissingTrailers(c.Message, l) == ""
+}
+
+// upstreamMax bounds how many commits are read from the mirror's branches for the ones already
+// upstream: a branch that forked before the base this task started at is read no further. Past
+// it, an upstream commit beneath the task's work reads as the task's, and the delivery is refused
+// naming it (or as no longer descending from the base): safe, and unlikely in a task's life.
+const upstreamMax = 5000
+
+// upstreamOf is the commits already upstream: those reachable from tips, the mirror's branches as
+// the runner last wrote them into the checkout, back to base, at most upstreamMax of them. A
+// delivery's commits are the ones beyond them. The tips are the runner's record, never the
+// checkout's mirror/* refs: those are the task's to move, and one pointed at an unsigned commit
+// would pass it as upstream.
+func upstreamOf(repo *git.Repository, tips []plumbing.Hash, base string) (map[plumbing.Hash]bool, error) {
+	seen := map[plumbing.Hash]bool{}
+	for _, tip := range tips {
+		err := walk(repo, tip, func(h plumbing.Hash) bool {
+			return h.String() == base || seen[h]
+		}, func(c *object.Commit) bool {
+			seen[c.Hash] = true
+			return len(seen) < upstreamMax
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return seen, nil
+}
+
+// walk visits the commits reachable from from, each once, newest first along each path, not
+// past a commit stop says is a boundary. visit reports whether to read on beyond the commit.
+func walk(repo *git.Repository, from plumbing.Hash, stop func(plumbing.Hash) bool, visit func(*object.Commit) bool) error {
+	queue, done := []plumbing.Hash{from}, map[plumbing.Hash]bool{}
+	for len(queue) > 0 {
+		h := queue[0]
+		queue = queue[1:]
+		if done[h] || stop(h) {
+			continue
+		}
+		done[h] = true
+		c, err := repo.CommitObject(h)
+		if err != nil {
+			return err
+		}
+		if visit(c) {
+			queue = append(queue, c.ParentHashes...)
+		}
+	}
+	return nil
 }
 
 // missingTrailers says which required trailer a commit message lacks, reading them the way git
 // does: the last paragraph, every line a `Key: value`. "" when all are there.
-func MissingTrailers(msg string, l task.Launch) string {
+func MissingTrailers(msg string, l *runner.Launch) string {
 	paras := strings.Split(strings.TrimRight(msg, "\n"), "\n\n")
 	last := paras[len(paras)-1]
 	have := map[string]string{}

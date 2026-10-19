@@ -9,6 +9,7 @@ import (
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/runner"
 )
 
 // An id is the prefix of every gate question a run raises, and answering one recovers the owner
@@ -21,7 +22,7 @@ func TestASpawnIdMayNotBreakTheSurfacesItCrosses(t *testing.T) {
 	defer ts.Close()
 
 	for _, bad := range []string{"a~b", "a/b", "a b", "a#b", "a?b"} {
-		resp := postTony(t, ts.URL+"/tasks", api.Spawn{ID: bad, Prompt: "true"})
+		resp := postTony(t, ts.URL+"/tasks", api.Spawn{ID: bad, Doer: runner.Doer{Script: "true"}})
 		raw, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		body := string(raw)
@@ -43,7 +44,7 @@ func TestANameBecomesASafeUniqueID(t *testing.T) {
 
 	ids := map[string]bool{}
 	for range 2 {
-		resp := postTony(t, ts.URL+"/tasks", api.Spawn{Name: "re~view me", Prompt: "true"})
+		resp := postTony(t, ts.URL+"/tasks", api.Spawn{Name: "re~view me", Doer: runner.Doer{Script: "true"}})
 		sp := spawned(t, resp)
 		if strings.ContainsAny(sp.ID, "~/ ") {
 			t.Fatalf("a derived id kept a character the id space cannot carry: %q", sp.ID)
@@ -57,7 +58,7 @@ func TestANameBecomesASafeUniqueID(t *testing.T) {
 		ids[sp.ID] = true
 	}
 	// And with no name at all, the id it always minted.
-	resp := postTony(t, ts.URL+"/tasks", api.Spawn{Prompt: "true"})
+	resp := postTony(t, ts.URL+"/tasks", api.Spawn{Doer: runner.Doer{Script: "true"}})
 	sp := spawned(t, resp)
 	if !strings.HasPrefix(sp.ID, "run-") {
 		t.Fatalf("an unnamed run is %q, want run-…", sp.ID)

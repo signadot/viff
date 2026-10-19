@@ -9,6 +9,7 @@
 package mirror
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"slices"
@@ -16,10 +17,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/answer"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
@@ -126,6 +129,9 @@ type Meta struct {
 	// the clock — and carried back verbatim by a re-attach, which is the only caller that
 	// knows this task is older than this verse.
 	StartedAt string
+	// Started is the record's `started`, carried back verbatim by a re-attach as StartedAt is,
+	// so the run's record still says when the run started. Empty is now.
+	Started string
 	// Chain is the kpath of the action that spawned it, inside its trigger: "review",
 	// "review.onDone". Empty for a task with no trigger behind it (`verse task run`).
 	Chain string
@@ -133,32 +139,15 @@ type Meta struct {
 	// identity to a reader — so it belongs on the index next to what the task produced,
 	// not only on the read plane that outlives nothing.
 	Prompt string
-	// Driver is what ran it (`llm`, `calls`, `codex`), as the launch named it. On the record
-	// for the reader of a failure, whose next question is which driver failed, and for a task
-	// on a named runner, whose snapshot is a trip away.
-	Driver string
-	// Doer, Grant and Tools are the ENVELOPE the task runs under: which doer a governed
-	// selection picked, and what the resulting launch may do.
-	//
-	// They are published for every spawn, not only voted ones, because the surface that would
-	// otherwise carry them does not exist for most of them. `select: auto` opens no motion at
-	// all — deliberately, since an auto pick has no voter and casts no ballot — so a doer
-	// chosen that way appeared on no docket, and the task entity showed only a driver that
-	// two different doers can share. A reader asking "what was this allowed to do" had
-	// nowhere to look.
-	//
-	// Grant is the NAME a charter or a provider wrote ("read-only"), not the resolved
-	// predicates: the name is the vocabulary a person reads, writes and greps for, and the
-	// predicates are already what crosses to the runtime. Nil Tools is a spawn that named none,
-	// and the runner's floor applies; `[]` is no tools — both as on the spec.
-	Doer  string
-	Grant string
-	Tools []string
-	// Repos is what the run was allowed to touch outside the verse: each repository it works in,
-	// its access, where it started, and the branches it may push to (task.Repo). On the record
-	// for the same reason Grant and Tools are — a reader asking what this run could do to a
-	// repository should not need the charter that spawned it, which may since have changed.
-	Repos []task.Repo
+	// Doer is what did the work, as the launch named it: the agent's name, or `script`. On the
+	// record for the reader of a failure, whose next question is what failed, and for a task on
+	// a named runner, whose snapshot is a trip away.
+	Doer string
+	// Git is the repositories the run works in, and where each started (runner.Repo): the facts
+	// of the `git` system, on the record so a reader asking what this run worked on need not
+	// read the charter that spawned it, which may since have changed. What may leave each is
+	// the policy's, beside it.
+	Git []runner.Repo
 	// Asker is the person the run acts for: beside its rule, where the rule said `as: subject`
 	// (the owner of the record that fired it), or alone, where a person ran it or an ask's `then`
 	// did. Published so "whose authority is this running with" is read off the record rather than
@@ -176,13 +165,18 @@ type Meta struct {
 	// suspensions that paused it — asked at every write, since the engine holding the task is
 	// who knows and this record is replaced whole at each one. Nil holds nothing.
 	HeldBy func() []string
-	// SlidBy is the last slide of this task's vector the control route relayed: the actor the
-	// route checked, and the mode it relayed. by is "" where none was.
-	SlidBy func() (by, mode string)
-	// Gates are the spawn's own gates, the policy a task's questions are posed under. A gate a
-	// worker raises by a name the spawn's gates carry is held out to THEIR answerers, whatever
-	// the frame says: that gate is the charter's, and the runner does not get to soften it.
-	Gates []task.Gate
+	// SlidBy is the last policy the control route relayed to this task: the actor the route
+	// checked, and the policy's summary (task.Policy.Summary) it relayed. by is "" where none
+	// was.
+	SlidBy func() (by, summary string)
+	// Policy is the spawn's own policy, which a task's questions are posed under. A question a
+	// worker raises by a row's name is held out to THAT row's answerers, whatever the frame
+	// says: the row is the charter's, and the runner does not get to soften it.
+	Policy task.Policy
+	// PolicyNow is the task's policy as it stands, where it can change while it runs (a `task
+	// policy` slide): what the control route set, read when a question is posed. Nil is
+	// Policy, as the spawn wrote it.
+	PolicyNow func() task.Policy
 	// Arm starts the clock on a question a FRAME posed with a deadline, when set. The record
 	// is written here; the timer that settles it is the server's, so the server hands one in.
 	Arm func(questionID, within string)
@@ -225,12 +219,12 @@ func TriggerOf(chain string) string {
 //
 // `hook` is the engine's, written onto the same record when a hook fails (trigger.recordHookFailure).
 var RecordFields = map[string]bool{
-	"answerers": true, "asker": true, "chain": true, "credential": true, "cursor": true, "data": true, "doer": true,
-	"driver": true, "ended": true, "err": true, "flow": true, "grant": true, "hook": true,
+	"answerers": true, "asker": true, "chain": true, "credential": true, "cursor": true, "data": true,
+	"doer": true, "ended": true, "err": true, "flow": true, "git": true, "hook": true,
 	"lastAction": true, "lastOutput": true, "observed": true, "occurrence": true,
-	"paused": true, "pending": true, "prompt": true, "result": true,
+	"paused": true, "pending": true, "policy": true, "policyBy": true, "prompt": true, "result": true,
 	"runner": true, "runnerName": true, "say": true, "started": true, "startedAt": true,
-	"status": true, "tools": true, "trigger": true, "vector": true, "vectorBy": true,
+	"status": true, "trigger": true,
 	HeldByField: true,
 }
 
@@ -241,7 +235,7 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	// which wakes every trigger watching this slice for no fact anybody wrote — and the two
 	// instants somebody actually asks about are the two ends. RFC3339, the same spelling
 	// `verse.meta.vanishing` and a source's `lastReflect` use.
-	st := entity.Obj{"status": string(task.Running), "started": nowStamp()}
+	st := entity.Obj{"status": string(task.Running), "started": cmp.Or(m.Started, nowStamp())}
 	if m.Subject != "" {
 		st["flow"] = m.Subject
 	}
@@ -278,10 +272,6 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	if m.Prompt != "" {
 		st["prompt"] = m.Prompt
 	}
-	if m.Driver != "" {
-		st["driver"] = m.Driver
-	}
-	// The envelope: who was picked, and what the launch may do. See Meta.
 	if m.Doer != "" {
 		st["doer"] = m.Doer
 	}
@@ -291,19 +281,17 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	if len(m.Answerers) > 0 {
 		st["answerers"] = m.Answerers
 	}
-	if m.Grant != "" {
-		st["grant"] = m.Grant
-	}
 	if c := m.Credential; c != nil {
 		st["credential"] = entity.Obj{"audience": c.Audience, "sub": c.Sub, "jti": c.JTI, "expires": c.Expires}
 	}
-	// Nil is a spawn that named none; `[]` is one that named no tools, and the record keeps
-	// the difference the wire does.
-	if m.Tools != nil {
-		st["tools"] = m.Tools
+	if len(m.Git) > 0 {
+		st["git"] = gitOf(m.Git)
 	}
-	if len(m.Repos) > 0 {
-		st["repos"] = reposOf(m.Repos)
+	// The task's policy, verse's part with it (what silence settles on, the labels): on the
+	// record so that a verse that restarts while the task runs elsewhere still poses its
+	// questions under it (PolicyOf), and so a reader sees what the run asks about.
+	if p := m.policy(); len(p) > 0 {
+		st["policy"] = p
 	}
 	// WHICH RUN this record is about. A firing knows — it is the commit that woke it, carried
 	// on Meta — and anything else learns it here, from the commit its own first write landed
@@ -389,17 +377,124 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	}()
 }
 
+// launchAsk is the ask of the policy's row a frame's question is about, by the row's name:
+// verse's part of it, which the runner never read, comes from here. Nil where the row has no
+// shape, or the question is not a row's.
+func launchAsk(m Meta, ev task.Event) *task.Ask {
+	if r, ok := m.policy().Named(ev.Gate); ok {
+		return r.Then.Ask
+	}
+	return nil
+}
+
+// policy is the task's policy as it stands: PolicyNow where the server keeps it, else the
+// spawn's.
+func (m Meta) policy() task.Policy {
+	if m.PolicyNow != nil {
+		if p := m.PolicyNow(); p != nil {
+			return p
+		}
+	}
+	return m.Policy
+}
+
+// PolicyOf reads a task's policy back off its record, for a verse that restarts while the task
+// runs elsewhere: what it poses the task's questions under from then on.
+func PolicyOf(p entity.Payload) task.Policy {
+	n := entity.Get(p, "policy")
+	if n == nil {
+		return nil
+	}
+	var pol task.Policy
+	if err := gomap.FromTonyIR(n, &pol); err != nil {
+		return nil
+	}
+	return pol
+}
+
+// CredentialOf is what a task's record says of the credential minted for it (Meta.Credential),
+// read back for a verse that re-attaches to it after a restart; nil where it says none.
+func CredentialOf(p entity.Payload) *Minted {
+	c := entity.Get(p, "credential")
+	if c == nil {
+		return nil
+	}
+	return &Minted{Audience: entity.Str(c, "audience"), Sub: entity.Str(c, "sub"),
+		JTI: entity.Str(c, "jti"), Expires: entity.Str(c, "expires")}
+}
+
+// GitOf is the repositories a task's record says it works in (Meta.Git), read back for a verse
+// that re-attaches to it after a restart.
+func GitOf(p entity.Payload) []runner.Repo {
+	n := entity.Get(p, "git")
+	if n == nil {
+		return nil
+	}
+	var repos []runner.Repo
+	if err := gomap.FromTonyIR(n, &repos); err != nil {
+		return nil
+	}
+	return repos
+}
+
+// withVersesPart is a row's question with verse's part of it put in: how long it stands, what
+// silence settles on and how many approvals it needs are the row's, whatever the frame says.
+// The question is the worker's; the rule it is decided by is the charter's, and a frame that
+// set its own deadline, default or need would loosen it. A question that is no row's, a task's
+// own `question-ask` or a conversation's turn, keeps what its frame says.
+func withVersesPart(m Meta, ev task.Event) task.Event {
+	r, ok := m.policy().Named(ev.Gate)
+	if !ok {
+		return ev
+	}
+	ev.Deadline, ev.Options = nil, nil
+	a := r.Then.Ask
+	if a == nil {
+		return ev
+	}
+	if a.Within != "" || a.Default != "" {
+		ev.Deadline = &task.Deadline{Within: a.Within, Default: a.Default}
+	}
+	if a.Need > 1 {
+		ev.Options = []task.Option{{ID: task.Proceed, Need: a.Need}, {ID: task.Deny, Need: 1}}
+	}
+	return ev
+}
+
+// asPosed is a frame's question as it was posed, with whom it is held out to and its labels: a
+// question already on record keeps the record's, so a frame replayed after a restart, under a
+// policy replaced since, does not re-pose it under the new one; a question not yet posed takes
+// verse's part of its row (withVersesPart, answerersFor, labelsFor).
+func asPosed(docket entity.Store, m Meta, ev task.Event) (task.Event, []string, map[string]string) {
+	e, ok, err := docket.Get(QuestionRef(ev.ID))
+	if err != nil || !ok {
+		ev = withVersesPart(m, ev)
+		return ev, answerersFor(m, ev), labelsFor(m, ev)
+	}
+	ev.Options = OptionsOf(e.Payload)
+	ev.Deadline = nil
+	if within, dflt, _ := DeadlineOf(e.Payload); within != "" || dflt != "" {
+		ev.Deadline = &task.Deadline{Within: within, Default: dflt}
+	}
+	return ev, entity.Strs(e.Payload, AnswerersField), LabelsOf(e.Payload)
+}
+
+// labelsFor is what the row's ask says about its question for whoever watches asks.
+func labelsFor(m Meta, ev task.Event) map[string]string {
+	if a := launchAsk(m, ev); a != nil {
+		return a.Labels
+	}
+	return nil
+}
+
 // answerersFor is who a worker-raised gate's question is held out to: the spawn's gate of that
 // name, when it has answerers of its own — the charter's policy, which the frame cannot soften
 // — then whoever the frame named, which is a worker asking somebody, then whom the task's
 // questions naming nobody go to (Meta.Answerers). task.PrincipalAnswerer is put as the asker.
 func answerersFor(m Meta, ev task.Event) []string {
 	names := ev.Answerers
-	for _, g := range m.Gates {
-		if g.Name == ev.Gate && len(g.Answerers) > 0 {
-			names = g.Answerers
-			break
-		}
+	if a := launchAsk(m, ev); a != nil && len(a.Answerers) > 0 {
+		names = a.Answerers
 	}
 	if len(names) == 0 {
 		names = m.Answerers
@@ -409,7 +504,7 @@ func answerersFor(m Meta, ev task.Event) []string {
 
 // WithPrincipal is answerers with task.PrincipalAnswerer put as actsFor, whom the task acts for.
 // Where it acts for nobody (a firing, as its rule, or the system) the name is dropped, so a
-// question naming nobody else is the docket's: only the `ask` tool and a turn reach here that
+// question naming nobody else is the docket's: only the `question-ask` tool and a turn reach here that
 // way, since a gate naming it is refused at the spawn (CheckPrincipal).
 func WithPrincipal(answerers []string, actsFor string) []string {
 	if !task.NamesPrincipal(answerers) {
@@ -445,11 +540,11 @@ func ActsFor(principal string) string {
 	return Launcher(principal)
 }
 
-// CheckPrincipal refuses gates naming task.PrincipalAnswerer for a task that acts for nobody:
-// asked, they would be the docket's, which is not what they say.
-func CheckPrincipal(gates []task.Gate, actsFor string) error {
-	if (actsFor == "" || entity.IsSystem(actsFor)) && task.GatesNamePrincipal(gates) {
-		return fmt.Errorf("a gate names %s, and this task acts for nobody: it runs as its rule or "+
+// CheckPrincipal refuses a policy whose rows name task.PrincipalAnswerer for a task that acts
+// for nobody: asked, they would be the docket's, which is not what they say.
+func CheckPrincipal(p task.Policy, actsFor string) error {
+	if (actsFor == "" || entity.IsSystem(actsFor)) && p.NamesPrincipal() {
+		return fmt.Errorf("a row names %s, and this task acts for nobody: it runs as its rule or "+
 			"the system, so name who answers, or spawn it `as: subject`", task.PrincipalAnswerer)
 	}
 	return nil
@@ -494,12 +589,12 @@ func settleRelayed(docket entity.Store, questionID string, res task.Resolution, 
 }
 
 // slidBy is who a relayed task's slide is recorded as by: the actor the control route relayed
-// this mode for (Meta.SlidBy), and the worker of record for a slide to a mode nobody relayed.
-// The relayed slide is not used up by the first frame that matches it: the runner reports the
-// slide itself and the worker echoes it, and both are the same slide.
-func slidBy(m Meta, mode, claimant string) string {
+// this policy for (Meta.SlidBy, by the policy's summary), and the worker of record for a slide
+// to a policy nobody relayed. The relayed slide is not used up by the first frame that matches
+// it: the runner reports the slide itself and the worker echoes it, and both are the same slide.
+func slidBy(m Meta, summary, claimant string) string {
 	if m.SlidBy != nil {
-		if by, relayed := m.SlidBy(); by != "" && relayed == mode {
+		if by, relayed := m.SlidBy(); by != "" && relayed == summary {
 			return by
 		}
 	}
@@ -618,7 +713,10 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				// A frame carries no subject — the deriver that knew it ran on another
 				// machine — so it comes from what this mirror already holds: the run's flow.
 				subject := entity.Str(st.Payload(), "flow")
-				posed := PostFrameQuestion(docket, ev, id, subject, answerersFor(m, ev))
+				var answerers []string
+				var labels map[string]string
+				ev, answerers, labels = asPosed(docket, m, ev)
+				posed := PostFrameQuestion(docket, ev, id, subject, answerers, labels)
 				// The clock, if the frame set one: the question is the worker's, but the
 				// timer that settles it runs where the record is kept.
 				if posed && ev.Deadline != nil && ev.Deadline.Within != "" && m.Arm != nil {
@@ -630,7 +728,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				// difference between a gate that clears and a task that looks blocked
 				// forever. (Under whole-value replace this was `delete` and read the same.)
 				// Settle the record only if this decision ANSWERED a standing question.
-				// A gate the vector allowed outright reports a decision without ever having
+				// A step the policy allowed outright reports a decision without ever having
 				// been pending, and settling that would mint a `gate:question:` entity for a
 				// question nobody was ever asked.
 				// AND ONLY THE QUESTION THIS TASK IS WAITING ON. A frame names the question it
@@ -710,14 +808,20 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				}
 				project(store, id, st, m)
 				continue
-			case task.EventVector: // an autonomy slide — project the dial so `entity get` shows it
-				st["vector"] = ev.Mode
+			case task.EventPolicy: // the policy replaced — project it so `entity get` shows it
 				by := ev.By
 				if relayed {
-					by = slidBy(m, ev.Mode, *claimant)
+					by = slidBy(m, ev.Text, *claimant)
 				}
 				if by != "" {
-					st["vectorBy"] = by
+					st["policyBy"] = by
+				}
+				// The policy as it now stands, verse's part with it, which the frame does not
+				// carry: the slide's route set it before relaying it.
+				if p := m.policy(); len(p) > 0 {
+					st["policy"] = p
+				} else {
+					st["policy"] = entity.Removed()
 				}
 			default: // boundary / steer / child / gap: not projected (index, not warehouse)
 				continue
@@ -886,31 +990,14 @@ func IsTask(ref entity.Ref) bool { return ref.ChildOf(entity.VerseRoot, System, 
 // IsTaskish is the whole task namespace: an instance, its run record, its claim.
 func IsTaskish(ref entity.Ref) bool { return ref.Under(entity.VerseRoot, System) }
 
-// reposOf is a spawn's repositories as the record carries them: what each run was allowed, in
-// the words the spawn used (`access`, `from`, `push`), so a reader of the record and a reader of
-// the charter see one vocabulary.
-func reposOf(repos []task.Repo) []any {
+// gitOf is a spawn's repositories as the record carries them, in the words the spawn used
+// (`repo`, `from`), so a reader of the record and a reader of the charter see one vocabulary.
+func gitOf(repos []runner.Repo) []any {
 	out := make([]any, 0, len(repos))
 	for _, r := range repos {
 		o := entity.Obj{"repo": r.Repo}
-		if r.Access != "" {
-			o["access"] = r.Access
-		}
 		if r.From != "" {
 			o["from"] = r.From
-		}
-		if p := r.Push; p != nil {
-			push := entity.Obj{}
-			if len(p.New) > 0 {
-				push["new"] = anyStrings(p.New)
-			}
-			if len(p.Existing) > 0 {
-				push["existing"] = anyStrings(p.Existing)
-			}
-			if p.Force {
-				push["force"] = true
-			}
-			o["push"] = push
 		}
 		out = append(out, o)
 	}

@@ -1,25 +1,22 @@
 package client
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"net/http"
+	"time"
 
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
-// Reach is what a url said when asked, and it is the whole of what verse knows about a
-// runner's health. There is no fourth state and no stored one: a probe is answered live,
-// reported, and discarded, so nothing verse records can be stale in the direction that costs —
-// telling an operator a runner is well because it was well when something last looked.
+// Reach is what a probe found at a url: a runner, something else answering, or nothing.
 type Reach int
 
 const (
-	// IsRunner: it answered, and the body decoded as the task list the contract promises.
 	IsRunner Reach = iota
-	// NotRunner: it answered, and is not that: a url pointed at some unrelated service, or at
-	// a face of a runner that is not its task list.
 	NotRunner
-	// Unreachable: nothing answered, or what answered said nothing about what it is. Both are
-	// facts that can change on their own, which is what separates this from NotRunner.
 	Unreachable
 )
 
@@ -34,30 +31,45 @@ func (r Reach) String() string {
 	}
 }
 
-// Probe asks a url what it is, with the cheapest question that has an answer: GET /tasks,
-// which the verse-facing contract already serves and which has no effect on the runner.
-//
-// It needs nothing new because ListTasks now reports how it failed. Its three outcomes are
-// already the three this wants — nil, ErrUnsupported, ErrUnreachable — for the reason a probe
-// is a control call carrying no work.
-//
-// A runner answering 500 lands in Unreachable rather than NotRunner, and deliberately. The
-// division that matters to the caller is not answered-vs-silent, it is whether waiting could
-// change the answer: something at that url is speaking HTTP and failing, which is a runner
-// having a bad day at least as often as it is the wrong url, and refusing the install on it
-// would be refusing a fact that fixes itself.
-func Probe(baseURL string) (Reach, error) {
-	l, ok := HTTP(baseURL).(task.Lister)
-	if !ok {
-		return Unreachable, errors.New("runner: the HTTP client cannot list tasks")
-	}
-	_, err := l.ListTasks()
+// Probe asks a url what it is: a runner is what describes itself (GET /describe), and the
+// description is what the runner offers. A url that answers and does not describe itself is
+// not a runner; one nothing answers is unreachable, which may be the ordinary state of a
+// runner not yet deployed.
+func Probe(baseURL string) (Reach, runner.Description, error) {
+	d, err := Describe(baseURL)
 	switch {
 	case err == nil:
-		return IsRunner, nil
+		return IsRunner, d, nil
 	case errors.Is(err, task.ErrUnsupported):
-		return NotRunner, err
+		return NotRunner, runner.Description{}, err
 	default:
-		return Unreachable, err
+		return Unreachable, runner.Description{}, err
 	}
+}
+
+// Describe reads what a runner offers, GET /describe. A url that does not serve it, or serves
+// something that is not a description, is task.ErrUnsupported; one that does not answer is
+// task.ErrUnreachable.
+func Describe(baseURL string) (runner.Description, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/describe", nil)
+	if err != nil {
+		return runner.Description{}, fmt.Errorf("%w: %s is not a usable runner url: %w", task.ErrUnreachable, baseURL, err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return runner.Description{}, fmt.Errorf("%w: %s: %w", task.ErrUnreachable, baseURL, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return runner.Description{}, fmt.Errorf("%w: %s does not describe itself (GET /describe: %s)",
+			task.ErrUnsupported, baseURL, resp.Status)
+	}
+	var d runner.Description
+	if err := decodeResp(resp, &d); err != nil {
+		return runner.Description{}, fmt.Errorf("%w: %s answered an undecodable description: %w",
+			task.ErrUnsupported, baseURL, err)
+	}
+	return d, nil
 }

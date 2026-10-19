@@ -26,7 +26,7 @@ flowchart TB
     remote["remote<br/>client.HTTP"]
   end
 
-  rt["task runtime (task, runner/runnerd)<br/>Task · Supervisor · Vector · Event stream · gate registry"]
+  rt["task runtime (task, runner/runnerd)<br/>Task · Supervisor · Policy · Event stream · gate registry"]
 
   cli -->|"HTTP"| versed
   obs --> store
@@ -54,9 +54,9 @@ resolves gates through a shared registry, and fires actions. Each rule watches o
 subtree its match names. No watch covers the whole store. A spawn goes through the engine's
 `Spawner`, which hosts the task through task control and mirrors it back into the store.
 
-**`task`** is the task runtime. A `Task` runs a *driver*: `scripted`, `calls` or `llm`. A
-`Supervisor` governs it, under a `Vector`: the gates of the task, and the mode for an action
-that no gate matches. The task emits a stream of events. The stream has a cursor, keeps a
+**`task`** is the task runtime. A `Task` runs a *driver*: the verse agent's loop, a script, or
+one you write. A `Supervisor` governs it, under its `Policy`: the rows of the task, the last
+of which decides a step that no other matches. The task emits a stream of events. The stream has a cursor, keeps a
 bounded number of events, and can be resumed. The task posts its gate decisions to a registry.
 
 **`runner/runnerd`** hosts a runner's tasks. Verse embeds it to run work in its own process
@@ -80,8 +80,8 @@ start it reconciles the tasks a previous run left: it resumes some and orphans t
 
 **`runner`** is how a task runs outside the verse process. It is described below.
 
-**`io`** reflects external state into the store: Git, GitHub and the others, each writing the
-place it owns. See [ios](../io.md).
+**`iod`** reflects external state into the store: Git, GitHub and the others, each writing the
+place it owns. See [iods](../io.md).
 
 ## Design decisions
 
@@ -110,7 +110,7 @@ you can always stop a flow in time. See
 A *seam* is a boundary between two parts that can become a network connection.
 
 `task.Runner` has `Spawn`, `Attach` and `Ref`. `Spawn` and `Attach` return a `task.Handle`,
-which has `Subscribe`, `Pause`, `Resume`, `Cancel`, `Steer`, `SetVector` and `Result`. The
+which has `Subscribe`, `Pause`, `Resume`, `Cancel`, `Steer`, `SetPolicy` and `Result`. The
 engine drives every task through the handle. It never touches the runtime directly, and no
 local path has special rights.
 
@@ -157,7 +157,7 @@ verse refuses the rest. A grant made in a scope governs that scope alone
 it carries the definition it was installed from. At a restart verse installs the stored rules
 before anything observes. Restoring replays, as installing does, so verse acts on a change
 that arrived while it was down. See
-[the trigger model](../reference/charter.md#the-charter-is-durable).
+[the charter](../reference/charter.md#the-charter-is-durable).
 
 **Resume, not orphan.** At a restart, `versed.reconcileTasks` looks at each task that had not
 ended.
@@ -180,13 +180,13 @@ later report changes nothing.
 
 | Point | What you supply |
 |---|---|
-| Driver | how a task decides what to do next: `scripted`, `calls`, `llm`, or your own `Next` |
+| Driver | how a task decides what to do next: the verse agent, a script, or your own `Next` |
 | Task control | where and how a task runs: a Kubernetes Job, a lambda, another verse |
 | Store | logd and docd, or anything that implements the `Store` interface |
-| Io | a program that reflects an external system into a place it owns in the store. You deploy it and install it ([ios](../io.md)). |
+| Iod | a program that reflects an external system into a place it owns in the store. You deploy it and install it ([iods](../io.md)). |
 
-An io is not a *docd controller*. A controller serves bytes that somebody asks for. An io
-writes facts that something reacts to ([ios](../io.md#a-source-is-not-a-docd-controller-and-cannot-be)).
+An iod is not a *docd controller*. A controller serves bytes that somebody asks for. An iod
+writes facts that something reacts to ([iods](../io.md#a-source-is-not-a-docd-controller-and-cannot-be)).
 
 ## Deployment
 

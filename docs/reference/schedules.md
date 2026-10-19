@@ -3,7 +3,7 @@
 This page describes schedules: the records that make time a cause that a
 [rule](../glossary.md#rule) can fire on. It says what a schedule writes, how a rule reads it,
 and how a [charter](../glossary.md#charter) declares its own.
-[The trigger model](../trigger-model.md) is the model of a rule.
+[The charter reference](../trigger-model.md) is the model of a rule.
 
 ## Schedules: time as a cause
 
@@ -30,13 +30,13 @@ A rule takes the tick as its subject:
     subject: {path: "verse.schedule.hourly.tick.*"}
   action:
     spawn:
-      driver: scripted
+      doer: {agent: verse, with: {network: {mode: open}}}
       prompt: "refresh the drift report for the hour ending $subject.name"
 ```
 
-A rule about a tick needs no [latch](../glossary.md#latch), and may not write one. The store
-consumes the tick, because only a replacement touches the place. So the rule fires once for
-each tick, and so does every rule that reads the schedule.
+A rule about a tick needs no [latch](../glossary.md#latch), and may not write one. Each tick has
+an address of its own, and only the next tick replaces it. So the rule fires once for each tick,
+and so does every rule that reads the schedule.
 
 | Part of the rule | How it behaves about a tick |
 |---|---|
@@ -52,8 +52,8 @@ The tick carries these fields.
 | `missed` | how many instants before it went unticked. A verse that was down ticks once when it comes up, and `missed` says how late. |
 | `date`, `time`, `year`, `month`, `day`, `weekday`, `timezone` | the calendar of the due instant, in the daemon's zone (`TZ`) |
 
-**The calendar is the cron line.** Every verse carries the base charter. The base charter has
-four schedules and two rules.
+**The calendar takes the place of a cron line.** Every verse installs a charter of its own when it
+starts ([versed/system.tony](../../versed/system.tony)). It has four schedules and two rules.
 
 The four schedules are `minutely`, `hourly`, `daily` and `weekly`. Their phase is a Monday at
 midnight in the zone.
@@ -90,13 +90,20 @@ Take a verse that is down from 08:30 to 10:30. It writes the 10:00 hourly tick w
 
 **A charter declares a schedule of its own** in its head document, beside the strata. The
 schedule belongs to the installer. Verse writes its ticks with the grant of the installer, and
-removes them with the charter:
+removes them with the charter. This is the head of the charter that proposes a next step for
+each issue of the verse repository ([issue-next.tony](../../.verse/charters/issue-next.tony)):
 
 ```tony
-- name: nightly
-  every: 24h
-  from: 2026-01-01T02:00:00Z     # the phase: ticks stand at from + n*every; default is Monday 00:00
+at: repos.verse.git-issue
+reads: [git-issue, verse.schedule]
+schedules:
+- name: sweep
+  every: 3h
+  # from: 2026-01-01T02:00:00Z   the phase: ticks stand at from + n*every; default is Monday 00:00
 ```
+
+A package's schedule carries its address, as a package's rule does:
+`verse.schedule."repos.verse.git-issue:sweep"`.
 
 A period of whole days steps by calendar days. So a nightly schedule keeps its wall-clock time
 across a DST change.
@@ -104,4 +111,4 @@ across a DST change.
 | Command | What it does |
 |---|---|
 | `verse schedule` | lists every schedule, with its `next` and its standing tick |
-| `verse schedule tick <name> --due <instant>` | backfills one tick. It writes the same entity that the schedule writes, so a rule about the tick fires in the same way. |
+| `verse schedule tick <name> --due <instant> [--at <address>]` | writes one tick for a past instant. It writes the same entity that the schedule writes, so a rule about the tick fires in the same way. `--at` names the package of a schedule a charter declared. |

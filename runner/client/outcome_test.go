@@ -31,11 +31,10 @@ func TestControlAgainstADeadRemoteIsUnreachable(t *testing.T) {
 		what string
 		err  error
 	}{
-		{"cancel", h.Cancel("stop")},
-		{"pause", h.Pause()},
-		{"resume", h.Resume()},
+		{"cancel", h.Cancel("stop", "")},
+		{"pause", h.Pause("")},
+		{"resume", h.Resume("")},
 		{"steer", h.Steer("do it differently", "human:scott", "")},
-		{"set-vector", h.SetVector(&task.Vector{Default: task.Ask}, "human:scott")},
 		{"resolve", h.(resolver).Resolve("d1", "proceed", "", "human:scott")},
 	} {
 		if !errors.Is(c.err, task.ErrUnreachable) {
@@ -53,7 +52,7 @@ func TestControlAgainstARefusingRemoteIsNotUnreachable(t *testing.T) {
 	defer srv.Close()
 
 	h := client.HTTP(srv.URL).Attach("p")
-	err := h.Cancel("stop")
+	err := h.Cancel("stop", "")
 	if err == nil {
 		t.Fatal("a refused cancel reported success")
 	}
@@ -89,7 +88,7 @@ func TestARemoteResolveDistinguishesItsRefusals(t *testing.T) {
 
 // A remote that accepts the connection and never answers is bounded. Without a deadline the
 // caller waits on that forever, holding whatever goroutine issued the call — which is how a
-// spawn, a cancel and an answer each hang.
+// launch, a cancel and an answer each hang.
 //
 // The bound is the runner's OWN client. http.DefaultClient is shared task-wide, so a
 // timeout set on it would silently bound every other caller in the binary.
@@ -115,7 +114,7 @@ func TestControlAgainstAHangingRemoteIsBounded(t *testing.T) {
 	}
 
 	done := make(chan error, 1)
-	go func() { done <- client.HTTP(srv.URL).Attach("p").Cancel("stop") }()
+	go func() { done <- client.HTTP(srv.URL).Attach("p").Cancel("stop", "") }()
 	select {
 	case err := <-done:
 		if !errors.Is(err, task.ErrUnreachable) {

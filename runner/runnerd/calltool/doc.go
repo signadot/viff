@@ -1,8 +1,10 @@
-// Package calltool is how a PROGRAM in a task's workspace calls the task's tools: `ask`, `push`,
-// `fetch`, the pull-request tools, and whatever the runner offers next. The verse agent and codex
-// have those tools because each is wired to the loop in Go; a coding agent the environment names
-// under `agents:`, or a script, has only a shell. This gives the shell one command,
-// `verse-call-tool` (cmd/verse-call-tool), and the task process one socket to answer it on.
+// Package calltool is how a PROGRAM in a task's workspace calls the task's tools: `question-ask`,
+// `git-push`, `git-fetch`, `github-create-pr`, `github-update-pr`, and whatever the runner
+// offers next. The verse agent has those tools because each is wired to the loop in Go; a script
+// has only a shell. This gives the shell one command, `verse-call-tool` (cmd/verse-call-tool), and
+// the task process one socket to answer it on.
+//
+// It knows no agent package: the host offers its tools as Tool and performs a call by name.
 //
 // The two ends speak HTTP over a unix socket, with tony bodies through package codec, and there
 // are two routes:
@@ -15,9 +17,9 @@
 // time it runs. That is what lets the list grow without the binary changing.
 //
 // What PERFORMING a call means is the host's to say, through Server.Call. In a task process the
-// host is a driver, and the right answer is the one the codex agent gives for codex's calls: the
-// call goes in front of the loop as an ordinary action, the autonomy gates it, the docket lists
-// it, the read plane narrates it, and the tool's own Do runs once it is approved. A call the gate
+// host is the script's driver: the call goes in front of the loop as an ordinary action, as the
+// agent's use of the same tool would, the task's policy decides it, the docket lists it,
+// the read plane narrates it, and the tool's own Do runs once it is approved. A call the gate
 // declines comes back refused — an answer the caller re-plans on, as against a failure.
 //
 // The socket is a PATH, where the delivery channel is an inherited descriptor, because the whole

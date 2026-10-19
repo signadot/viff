@@ -121,8 +121,8 @@ See [Scopes](reference/scopes.md#scopes).
 ### charter
 
 A charter is the [rules](#rule) you install at one address, from one file: `verse charter -a
--f charter.tony`. The file holds them under `rules:`, beside its `strata:` and `schedules:`,
-and a package's file says where it goes and what it reads with `at:` and `reads:`.
+-f charter.tony`. The file lists the rules under `rules:`. It may also hold `strata:` and
+`schedules:`. A package's file says where it goes with `at:`, and what it reads with `reads:`.
 
 See [The charter](reference/charter.md).
 
@@ -130,11 +130,12 @@ See [The charter](reference/charter.md).
 
 A rule is one entry of a charter: a name, a [condition](#condition), a list of
 [gates](#gate-of-a-rule) and an [action](#action). When the condition holds and every gate
-passes, the action fires. An installed rule is the entity `verse.trigger.rule.<name>`.
+passes, the action fires. An installed rule is an entity: `verse.trigger.rule.<name>`, or
+`verse.trigger.rule."<address>:<name>"` for a rule of a package.
 
 Also written: trigger (the Go type `trigger.Trigger`, and the output of an install).
 
-See [The trigger model](trigger-model.md#the-rule).
+See [The charter reference](trigger-model.md#the-rule).
 
 ### baseline charter
 
@@ -159,9 +160,9 @@ See [The charter](reference/charter.md#a-charter-can-be-installed-at-an-address)
 
 ### outbox
 
-An outbox is a place inside a package that an io reads what is asked of it, declared by the
-package's `sends:` line: `sends: [{from: out.slack, to: slack.Signadot.out}]`. The io reads the
-inputs there and writes each status beside them, inside the package.
+An outbox is a place inside a package where its rules ask an iod to act on the iod's system.
+The package declares it with `sends:`: `sends: [{from: out.slack, to: slack.Signadot.out}]`.
+The iod reads each input there, carries it out to the system, and writes its status beside it.
 
 See [The charter](reference/charter.md#a-charter-can-be-installed-at-an-address).
 
@@ -198,14 +199,14 @@ See [The condition of a rule](reference/condition.md).
 The `subject` of a condition is the match that selects the entities the rule acts on. It is
 required. The subject of a firing, a task or a question is the one entity that it is about.
 
-See [The condition of a rule](reference/condition.md#subject--what-the-firing-is-about-and-required).
+See [The condition of a rule](reference/condition.md#subject-what-the-firing-is-about-and-required).
 
 ### when
 
 `when` is an optional match in a condition. The rule fires only if it holds at the commit. It
 may be about an entity that is not the subject.
 
-See [The condition of a rule](reference/condition.md#on-and-when--the-cause-and-the-condition).
+See [The condition of a rule](reference/condition.md#on-and-when-the-cause-and-the-condition).
 
 ### on
 
@@ -214,7 +215,7 @@ and did not hold at the commit before. That change is an edge.
 
 Also written: the cause.
 
-See [The condition of a rule](reference/condition.md#on-and-when--the-cause-and-the-condition).
+See [The condition of a rule](reference/condition.md#on-and-when-the-cause-and-the-condition).
 
 ### level rule
 
@@ -225,44 +226,44 @@ This "level" is the opposite of an edge. For the other meanings, see
 [level (of a stratum)](#level-of-a-stratum) and
 [level (of a permission)](#level-of-a-permission).
 
-See [The condition of a rule](reference/condition.md#on-and-when--the-cause-and-the-condition).
+See [The condition of a rule](reference/condition.md#on-and-when-the-cause-and-the-condition).
 
 ### firing
 
 A firing is one reaction of one rule at one commit, about one entity. A subject that selects
 three entities gives three firings.
 
-See [The trigger model](trigger-model.md#the-rule).
+See [The charter reference](trigger-model.md#the-rule).
 
 ### action
 
 The action of a rule is what the rule does when it fires. It is data: any of `patch`,
 `derive`, `spawn` and `seq`, with optional hooks. It acts on the subject.
 
-See [The action of a rule](reference/action.md#action--what-fires).
+See [The action of a rule](reference/action.md#action-what-fires).
 
 ### patch
 
 `patch` changes the payload of the subject: `patch: {stage: reviewing}`. Verse merges it into
 the payload.
 
-See [The action of a rule](reference/action.md#action--what-fires).
+See [The action of a rule](reference/action.md#action-what-fires).
 
 ### derive
 
 `derive` writes an entity that is not the subject. Only a rule in a [stratum](#stratum) may
 derive, and only into a stratum of a higher level.
 
-See [Strata](strata.md#derive--identity-not-state).
+See [Strata](strata.md#derive-identity-not-state).
 
 ### spawn
 
-`spawn` starts a [task](#task). Its fields say how the task runs, such as `driver`, `prompt`,
-`vector`, `grant` and `runner`.
+`spawn` starts a [task](#task). Its fields say what does the work and how: `doer`, `prompt`,
+`policy`, `answer`, `timeout` and `runner`.
 
 Also written: launch spec (the Go type `launch.Spec`).
 
-See [The action of a rule](reference/action.md#action--what-fires).
+See [The action of a rule](reference/action.md#action-what-fires).
 
 ### seq
 
@@ -277,7 +278,7 @@ A hook is an action that fires when the task of a `spawn`, or a `seq`, ends, suc
 `onDone`. `onDenied` is a field of a gate: it fires when somebody answers no.
 
 See [The action of a rule](reference/action.md#completion-hooks-one-trigger-chaining-visible)
-and [The gates of a rule](reference/gates.md#ondenied--what-a-no-means).
+and [The gates of a rule](reference/gates.md#ondenied-what-a-no-means).
 
 ### latch
 
@@ -289,9 +290,9 @@ See [Convergence](convergence.md#what-ends-a-firing).
 
 ### binding
 
-A binding is a name that begins with `$`, inside an action. An [account binding](#account-binding)
-is another thing. Verse replaces it with a value
-when the rule fires, such as `$subject` for the address of the subject.
+A binding is a name that begins with `$`, inside an action. Verse replaces it with a value
+when the rule fires, such as `$subject` for the address of the subject. An
+[account binding](#account-binding) is another thing.
 
 See [The action of a rule](reference/action.md#bindings).
 
@@ -308,12 +309,13 @@ The answer contract of a task is a pattern that the final message of the task mu
 task that never matches it fails. It is `answer:` in a `spawn`, and `-answer-contract` on
 `verse task run`.
 
-See [Tasks](reference/tasks.md#-answer-contract-what-finished-means).
+See [Tasks](reference/tasks.md#--answer-contract-what-finished-means).
 
 ### chain (of an action)
 
 The chain of an action is its position inside its rule, written as a path, such as
-`review.onDone`. The id of a spawned task is `<chain>@<subject>`.
+`review.onDone` or `review.seq[2]`. The id of a spawned task is built from it:
+`review.seq.2@demo.pr.1`, with the charter's address in front for a package.
 
 A chain of this kind is a string, such as the `chain` field of a task.
 
@@ -358,7 +360,7 @@ See [Strata](strata.md#installing-and-the-order-it-does-not-depend-on).
 `trouble` is what `verse charter` prints on a rule whose firings went wrong. Its kinds are
 `failed` and `unread`.
 
-See [The trigger model](trigger-model.md#when-a-rule-does-nothing).
+See [The charter reference](trigger-model.md#when-a-rule-does-nothing).
 
 ### schedule
 
@@ -385,39 +387,39 @@ A gate of a rule is a check that a firing passes before the action fires:
 
 Also written: charter gate, trigger gate.
 
-See [The gates of a rule](reference/gates.md#gates--whether-it-proceeds).
+See [The gates of a rule](reference/gates.md#gates-whether-it-proceeds).
 
 ### gate (of a task)
 
-A gate of a task is one entry of the [vector](#vector) of the task:
-`{name: shell, mode: ask, match: {verbs: [exec]}}`. Its `match` selects actions by what they
-do.
+A gate of a task is a row of its [policy](#policy) that asks:
+`{name: release, match: {system: git, verb: push, ref: refs/heads/main}, then: {ask: {answerers: [user:ana@example.com]}}}`.
+Its `match` names a [step](#step-of-a-task) by its system and verb and narrows it by the
+step's fields; the row asks before the task takes such a step. A verb that no row names is not
+the task's: it has no tool, and a call of it is refused.
 
 The question of such a gate has the id `<task id>~d<n>`.
 
-See [Tasks](reference/tasks.md#a-gates-question).
+See [Tasks](reference/tasks.md#a-rows-question).
 
 ### gate (raised by a worker)
 
-A worker raises a gate when it reaches a decision that it may not make, by reporting a
-pending frame. A worker never answers its own gate.
+A worker on a runner raises the gates of its task's policy itself. It reports a `pending`
+frame, and verse puts the question on the docket. A worker never answers its own gate.
 
-The question of such a gate has the id `<name>-<hex>`, and no `mode`.
-
-See [Tasks](reference/tasks.md#executing-one-by-hand).
+See [Tasks](reference/tasks.md#running-one).
 
 ### mode
 
-A mode is one of three values on a gate. `auto` runs the action, `ask` poses a question and
-waits for the answer, and `park` holds the action.
+A mode is one of three values on a gate of a rule. `auto` runs the action, `ask` poses a
+question and waits for the answer, and `park` holds the action.
 
-See [Tasks](reference/tasks.md#the-dial).
+See [The gates of a rule](reference/gates.md#gates-whether-it-proceeds).
 
 ### ask
 
 An ask is something asked of somebody, with a clock and with what follows the answer, in one
 record at `verse.ask.<id>`. A person raises one with `verse ask`. A rule's gate raises one when its
-mode is not `auto`, and a task raises one with its `ask` tool. Once it has settled it stands for its
+mode is not `auto`, and a task raises one with its `question-ask` tool. Once it has settled it stands for its
 keep, a week unless said otherwise, and is then removed.
 
 See [Asking](asking.md).
@@ -436,21 +438,21 @@ See [Tasks](reference/tasks.md#the-question-record).
 The docket is every pending ask you can read, whoever raised it and whoever it waits on.
 `verse question --all` prints it.
 
-See [Tutorial](tutorial.md#4-gates-and-the-docket).
+See [Questions](tutorial/questions.md#who-sees-it).
 
 ### option
 
 An option is one outcome that a question can settle on. A question has the options `proceed`
 and `deny`, unless its gate names others. The option it settles on is its `verdict`.
 
-See [Tutorial](tutorial.md#no-is-a-real-outcome).
+See [Charters](tutorial/charters.md#no-is-a-real-outcome).
 
 ### ballot
 
 A ballot is the choice of one answerer on one question. The question keeps each ballot under
 `ballots`, by the name of who cast it.
 
-See [Tutorial](tutorial.md#4-gates-and-the-docket).
+See [Questions](tutorial/questions.md#a-question-is-data).
 
 ### need
 
@@ -459,16 +461,16 @@ See [Tutorial](tutorial.md#4-gates-and-the-docket).
 
 Also written: threshold.
 
-See [Tutorial](tutorial.md#4-gates-and-the-docket).
+See [Charters](tutorial/charters.md#no-is-a-real-outcome).
 
 ### answerers
 
 `answerers` is the field of a gate that names who may answer its question, as a list of
-[grantees](#grantee), each of whom must be able to read what the question is about. Where it
-names nobody, whoever may write what the question is about answers it, or any person or agent
-where it is about nothing. On a task's own gate, `$principal` names whom the task acts for, and
-it is whom the `ask` tool asks unless the call names `answerers` of its own. The owner of what
-asked may always answer.
+[grantees](#grantee). Each of them must be able to read what the question is about. Where it
+names nobody, whoever may write what the question is about answers it; for a question about
+nothing, any person or agent does. On a task's own gate, `$principal` names whom the task acts
+for. The `question-ask` tool asks that principal, unless the call names `answerers` of its own.
+The owner of what asked may always answer.
 
 See [Permissions reference](reference/perms.md#questions).
 
@@ -482,7 +484,7 @@ See [Gates](reference/gates.md).
 ### reason
 
 `reason` is the field of a question that says where the question comes from, such as
-`verb write` for a gate of a task.
+`files.write path=docs/x.md` for a gate of a task.
 
 See [Tasks](reference/tasks.md#the-dial).
 
@@ -491,9 +493,7 @@ See [Tasks](reference/tasks.md#the-dial).
 The deadline of a gate says how long its question waits, and which option the question then
 settles on: `deadline: {within: "4h", default: deny}`.
 
-A deadline of a gate settles the question.
-
-See [Tasks](reference/tasks.md#a-gates-question).
+See [The gates of a rule](reference/gates.md#a-deadline-settles).
 
 ### resolver
 
@@ -544,12 +544,13 @@ See [Tasks](reference/tasks.md#one-id-many-runs).
 | Status | Meaning |
 |---|---|
 | `running` | the work is in progress |
+| `paused` | a hold stopped the run at a boundary, until somebody resumes it |
 | `done` | the task finished |
 | `failed` | the task ran and did not succeed |
 | `cancelled` | an operator stopped the task |
 | `orphaned` | the process that ran the task ended, and the work did not complete |
 
-See [Overview](overview.md#data-and-failure-model).
+See [architecture.md](platform/architecture.md#data-and-failure-model), in the repository.
 
 ### instance record
 
@@ -574,61 +575,82 @@ In a page about tasks, "the mirror" has this meaning.
 
 See [Tasks](reference/tasks.md#the-mirror).
 
-### driver
-
-The driver of a task decides what the task does next. It is `scripted`, `calls` or `llm`.
-
-See [Tasks](reference/tasks.md#the-drivers).
-
 ### executor
 
-The executor of a task performs each action that the driver proposes, after the gates pass.
+The executor of a task performs each action that the doer proposes, once the task's
+[policy](#policy) lets it.
 A [worker](#worker) on a runner is an executor too.
 
 See [External tasks](external-tasks.md#a-task-is-a-contract-not-a-runtime).
 
 ### tool
 
-A tool is a named action that a task may take, such as `read_file` or `run_bash`. The `tools`
-field of a `spawn` narrows the tools that the driver offers.
+A tool is a named action that a task may take: an agent's, such as `read_file` or `run_bash`,
+or one a script calls with `verse-call-tool`, such as `git-push` or `question-ask`. The runner
+offers them. The task's [policy](#policy) decides each use of a tool that is a
+[step](#step-of-a-task).
 
-See [The action of a rule](reference/action.md#action--what-fires).
+See [The action of a rule](reference/action.md#action-what-fires).
 
 ### boundary
 
-A boundary is the point between two actions of a task. Verse evaluates the vector there, and
-a hold or a `say` lands there.
+A boundary is the point between two actions of a task. The task's policy decides there
+whether the next action is refused, asks or goes ahead, and a hold or a `say` lands there.
 
 See [Control](control.md#a-hold-on-a-run).
 
-### vector
+### policy
 
-The vector of a task is the list of its gates, with a default mode for an action that no gate
-matches. It can change while the task runs: `verse task vector <id> ask`.
+The policy of a task is an ordered list of rows over its steps. Each row names steps by
+system, verb and fields, and says what happens to them: `deny`, `ask` or `allow`. A row may
+also `withhold` a system or a verb, which takes it out of the run.
 
-Also written: gate vector, the dial.
+The policy is what the task is given: a verb is the task's only if a row names it, by its system
+alone (every verb of the system) or with the verb. A verb no row names has no tool, and a call of
+it is refused. A spawn with no policy is given no verb.
 
-See [Task control](task-control.md#the-two-names).
+The first row that matches a step decides it. The last row names no step and decides the calls
+of the named verbs that no row above matched: it is the task's dial. A task's network is no
+step: it is the launch's `with.network`, built once when the run starts, and none when the
+launch says nothing. The policy can be replaced while the task runs, by a whole one that names
+no verb it did not: `verse task policy <id> '[{match: {system: commands}, then: allow}, {then: ask}]'`. A row on `files` or `commands` is advisory: it decides the act
+as the doer names it, and a write through the shell is a command
+([why](systems/inside.md#a-row-on-files-or-commands-is-advisory)).
 
-### grant (of a spawn)
+Also written: the dial.
 
-The grant of a spawn is the limit on what the task may do at all. Verse refuses an action
-outside it, and asks nobody. It is one word: `all`, `read-only`, `no-delegate` or `none`.
+See [Tasks](reference/tasks.md#the-policy).
 
-For a line of a record, see [grant (permission)](#grant-permission).
+### system
 
-Also written: envelope (the grant with the tools), scope (in the Go source).
+A system is something outside verse that verse reads or acts on: a repository (`git`), its
+issue tracker (`git-issue`), a forge (`github`), Linear (`linear-issue`), Slack (`slack`). An
+iod writes the system's state into the store, and carries a rule's writes back out to it. A
+task calls the system's verbs through a runner. Verse keeps one document per system at
+`verse.systems.<name>`, naming its verbs and their params.
 
-See [Provider selection](provider-selection.md#the-ceiling).
+See [Systems](systems/README.md).
 
-### frame (of a spawn)
+### ceiling
 
-The `frame` of a spawn is the standing instructions under which the task reads its prompt.
-For an agent it is the system prompt.
+A ceiling is the limit a runner's operator sets on what any task may do with a system the
+runner performs for it. It is rows of `allow` and `deny`, written as a policy is, one list per
+system in the runner's configuration. The runner publishes it with its offers. Verse refuses to
+install a spawn with a row the ceiling refuses every call of; what is fixed at install is which
+verbs the task has, and the rest of a row is a dial, turned at the act, where the runner reads
+the ceiling again.
 
-A frame of this kind is a string in a `spawn` or on a provider.
+See [the verse runner](reference/runnerd.md#what-it-offers).
 
-See [Provider selection](provider-selection.md#the-registry).
+### step (of a task)
+
+A step of a task is what the task is about to do, as the spec names it: `git.push`,
+`github.create-pr`, `files.write`, `commands.run` or `agent.call-sub-agent`, with the fields of
+that step: the repository and ref of a push, the path of a write, the command of a run, the
+sub-agent called. A policy row's `match` names a
+step and narrows it by its fields. A script's own run is no step; the calls it makes are.
+
+See [Tasks](reference/tasks.md#a-rows-question).
 
 ### event stream
 
@@ -654,8 +676,8 @@ A runner is a place where verse runs a task. Verse connects to it.
 
 | Runner | What it is |
 |---|---|
-| `local` | the verse process itself |
-| an installed runner | another host, at a URL. It is the entity `verse.runners.<name>`. |
+| `local` | the verse process itself: what a spawn that names no runner gets |
+| an installed runner | another host, at a URL. It is the entity `verse.runners.<name>`, which keeps what the runner offers: the agents and scripts it runs, as the runner described itself when it was installed or last checked. |
 
 See [Runners](runners.md).
 
@@ -679,100 +701,88 @@ A claim of this kind is about one task.
 
 See [Runners](runners.md).
 
+### agent
+
+An agent is a registered program that works a prompt one turn at a time. `verse` is verse's
+own agent. A runner offers others by name, such as `claude` or `codex`. A spawn names one as
+its doer: `doer: {agent: verse}`.
+
+See [Tasks](reference/tasks.md#the-doer).
+
 ### doer
 
-A doer is who does the work of a `spawn`. A [provider selection](#provider-selection) picks
-it, and the task records it: `doer: provider.treat.fixer`.
+A doer is what does the work of a task: an agent the runner offers by name, `doer: {agent:
+verse}`, or a script, `doer: {script: "go test ./..."}`, with what it works with under `with`
+(its repositories, its environment, its model). The task's record says which agent ran as
+its `doer`.
 
-See [Provider selection](provider-selection.md).
-
-### provider
-
-A provider is a doer that is registered as an entity, `provider.<capability>.<id>`. Its
-payload holds what a selection matches on, and what the provider gives to the spawn.
-
-A "model provider" is another thing: the service that serves a model to the `llm` driver. So
-is an [identity provider](#identity-provider).
-
-See [Provider selection](provider-selection.md#the-registry).
-
-### provider selection
-
-A provider selection is the `provider` field of a `spawn`. With it, verse chooses the doer
-when the rule fires. The `select` field says who chooses: `auto`, `ask` or `vote`.
-
-See [Provider selection](provider-selection.md#selecting).
+See [Tasks](reference/tasks.md#the-doer).
 
 ### virtual key
 
-A virtual key is the model credential that a task runs under. The `virtualKey` field holds
-the address of the node that holds the key, such as `acme.keys.review`.
+A virtual key is the model credential that a task runs under. A spawn names it by address, as
+`virtualKey: acme.keys.review`; verse reads the address as whoever named it, and the runner
+gets it as the annotation `verse.portkey/virtual-key`.
 
-See [Provider selection](provider-selection.md#which-credential-it-runs-under).
+See [the spawn](reference/action.md#action-what-fires).
 
-### environment
+## Iods
 
-An environment is what a runner defines about a run: which agent runs it, what may run against
-the checkout, what its shell inherits, what it may reach. A `spawn` names one with
-`environment:`, and brings its own repositories with `repos:`.
+### iod
 
-See [Examples](reference/examples/README.md#the-environment-is-the-unit-of-narrowing).
-
-## Ios
-
-### io
-
-An io is a program that connects verse to one external system, such as a git repository. It
-has two halves, a [source](#source) and a [sink](#sink). An installed io is the entity
+An iod is a program that connects verse to one external system, such as a git repository, in
+both directions. It has two halves: a [source](#source) writes what the system holds into the
+store, and a [sink](#sink) carries what a rule writes back out to the system. An installed iod is the entity
 `verse.io.<name>`.
 
-Also written: connector, source (in the Go source, for the whole io), registration.
+Also written: connector, source (in the Go source, for the whole iod), registration.
 
-See [Ios](io.md).
+See [Iods](io.md).
 
-### root (of an io)
+### root (of an iod)
 
-The root of an io is the first segment of every address that the io writes, such as `git`.
+The root of an iod is the first segment of every address that the iod writes, such as `git`.
 `verse io add` takes it as `-root git`.
 
-See [Ios (reference)](reference/io.md).
+See [Iods (reference)](reference/io.md).
 
-### claim (of an io)
+### claim (of an iod)
 
-A claim of an io is a pattern that names what only that io may write:
-`owns: [{at: "git.verse"}]`. Verse refuses an io whose claims overlap the claims of another.
+A claim of an iod is a pattern that names what only that iod may write:
+`owns: [{at: "git.verse"}]`. Verse refuses an iod whose claims overlap the claims of another.
 
 Also written: owns, ownership claim.
 
-See [Ios (reference)](reference/io.md#ownership).
+See [Iods (reference)](reference/io.md#ownership).
 
 ### source
 
-A source is the in half of an io. Verse asks it what is true in the external system, and it
+A source is the in half of an iod. Verse asks it what is true in the external system, and it
 answers with a [reflection](platform/glossary.md#reflection). It does not write to the store.
 
-See [Ios](io.md#the-seam-a-source-answers-verse-converges).
+See [Iods](io.md#the-seam-a-source-answers-verse-converges).
 
 ### reflect
 
 To reflect an external system is to keep its state in the store, as entities. The source
 reads the system, and the [reflector](platform/glossary.md#reflector) writes the store.
 
-See [Ios](io.md).
+See [Iods](io.md).
 
 ### hint
 
-A hint is a message from an io to verse that says which addresses went stale. It writes
+A hint is a message from an iod to verse that says which addresses went stale. It writes
 nothing. Verse answers it by reflecting those addresses again.
 
-See [Ios](io.md#the-core-law-a-hint-is-a-hint-reconcile-is-the-truth).
+See [Iods](io.md#the-core-law-a-hint-is-a-hint-reconcile-is-the-truth).
 
 ### sink
 
-A sink is the out half of an io. Somebody writes an input, which is a node with a `to` field.
-The sink makes the external system match it, and writes the result at `<name>~status`.
+A sink is the out half of an iod. A rule, a task or a person writes an input, which is a node
+with a `to` field. The sink carries it out: it makes the external system match the input, and
+writes the result at `<name>~status`.
 
-See [Ios (reference)](reference/io.md#the-out-half).
+See [Iods (reference)](reference/io.md#the-out-half).
 
 ## Permissions
 
@@ -800,9 +810,10 @@ See [Permissions, walked](perms-guide.md#before-the-first-step-who-you-are).
 
 ### identity provider
 
-An identity provider is a party whose signed statement of who a person is the verse accepts: an
-OpenID Connect issuer the deployment names under `auth.principal.providers`. `verse account
-login` logs in there, and the verse verifies the token. The deployment's own ios are verified
+An identity provider is a party that signs a statement of who a person is, and the verse
+accepts that statement. It is an OpenID Connect issuer that the deployment names under
+`auth.principal.providers`. `verse account login` logs in there, and the verse verifies the
+token. The deployment's own iods are verified
 the same way against their workload issuer (`auth.iod`). Slack and GitHub are not identity
 providers here; their accounts are bound by a nonce.
 
@@ -810,10 +821,10 @@ See [Who a request is from](reference/perms.md#who-a-request-is-from).
 
 ### account binding
 
-An account binding is the record that an account in another system, a Slack member, a GitHub
-login, an account at an identity provider, is a principal. It is written by the system alone,
-from evidence it checked, at `verse.identity.<provider>.account.<id>`. A person makes their own
-with `verse account -link <provider>`, by saying a nonce from the account or by logging in. An io
+An account binding is the record that an account in another system is a principal: a Slack
+member, a GitHub login, or an account at an identity provider. Only the system writes it, from
+evidence it checked, at `verse.identity.<provider>.account.<id>`. A person makes their own
+with `verse account -link <provider>`, by saying a nonce from the account or by logging in. An iod
 that acts for a person is admitted only through one. One account is one principal.
 
 See [Accounts in other systems](reference/perms.md#accounts-in-other-systems).
@@ -830,7 +841,7 @@ See [Accounts in other systems](reference/perms.md#accounts-in-other-systems).
 ### first sight
 
 A first sight is a binding made the first time an account is seen, from a verified email in one
-of the provider's `domains`: by a token at the door, or by a trusted io relaying the person. A
+of the provider's `domains`: by a token at the door, or by a trusted iod relaying the person. A
 provider with no `domains` admits bound accounts only.
 
 See [Who a request is from](reference/perms.md#who-a-request-is-from).
@@ -880,8 +891,6 @@ See [Permissions reference](reference/perms.md#records).
 A grant is one line of a record, such as `- read: [user:ana@example.com]`. It gives a level
 to grantees who are not the owner. It reaches down to the next record that names an owner.
 
-For the word in a `spawn`, see [grant (of a spawn)](#grant-of-a-spawn).
-
 See [Permissions](perms.md#grants).
 
 ### level (of a permission)
@@ -894,7 +903,7 @@ See [Permissions reference](reference/perms.md#levels).
 ### control (permission level)
 
 `control` is the level that admits steering work: run, cancel, pause, resume, `say`, a change
-of vector, and suspend. No other level includes it. The owner of a task holds it, and so does
+of policy, and suspend. No other level includes it. The owner of a task holds it, and so does
 the worker that claimed the task.
 
 Written as code, `control` is this level.
@@ -930,9 +939,9 @@ See [Deployment and steering](deployment-and-steering.md#two-planes).
 ### steering
 
 To steer is to act on work in progress: to answer a gate, to hold or resume, to `say`, to
-cancel, to change a vector.
+cancel, to change the policy.
 
-See [Overview](overview.md#observation-and-control-are-separate-planes).
+See [Overview](concepts.md#two-planes-what-changes-and-what-is-allowed).
 
 ### flow
 
@@ -970,17 +979,9 @@ See [converge](platform/glossary.md#converge), in the repository.
 
 See [cover (of a reflection)](platform/glossary.md#cover-of-a-reflection), in the repository.
 
-### epoch
-
-See [epoch](platform/glossary.md#epoch), in the repository.
-
 ### frame (of an event stream)
 
 See [frame (of an event stream)](platform/glossary.md#frame-of-an-event-stream), in the repository.
-
-### iod
-
-See [iod](platform/glossary.md#iod), in the repository.
 
 ### mirror (of a git repository)
 
@@ -998,10 +999,6 @@ See [reflection](platform/glossary.md#reflection), in the repository.
 
 See [reflector](platform/glossary.md#reflector), in the repository.
 
-### report
-
-See [report](platform/glossary.md#report), in the repository.
-
 ### root (of verse up)
 
 See [root (of verse up)](platform/glossary.md#root-of-verse-up), in the repository.
@@ -1009,17 +1006,24 @@ See [root (of verse up)](platform/glossary.md#root-of-verse-up), in the reposito
 ### tombstone
 
 See [tombstone](platform/glossary.md#tombstone), in the repository.
+
 ## Index
+
++ [account binding](#account-binding)
 
 + [action](#action)
 
 + [address](#address)
+
++ [agent](#agent)
 
 + [answer contract](#answer-contract)
 
 + [answerer](#answerer)
 
 + [answerers](#answerers)
+
++ [ask](#ask)
 
 + [ballot](#ballot)
 
@@ -1030,6 +1034,8 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 + [binding](#binding)
 
 + [boundary](#boundary)
+
++ [ceiling](#ceiling)
 
 + [chain (of an action)](#chain-of-an-action)
 
@@ -1043,7 +1049,9 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 
 + [claim (of a worker)](#claim-of-a-worker)
 
-+ [claim (of an io)](#claim-of-an-io)
++ [claim (of an iod)](#claim-of-an-iod)
+
++ [claimant (of a binding)](#claimant-of-a-binding)
 
 + [commit](#commit)
 
@@ -1053,6 +1061,10 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 
 + [control plane](#control-plane)
 
++ [converge](#converge)
+
++ [cover (of a reflection)](#cover-of-a-reflection)
+
 + [deadline (of a gate)](#deadline-of-a-gate)
 
 + [derive](#derive)
@@ -1061,11 +1073,7 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 
 + [doer](#doer)
 
-+ [driver](#driver)
-
 + [entity](#entity)
-
-+ [environment](#environment)
 
 + [event stream](#event-stream)
 
@@ -1073,17 +1081,17 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 
 + [firing](#firing)
 
++ [first sight](#first-sight)
+
 + [flow](#flow)
 
-+ [frame (of a spawn)](#frame-of-a-spawn)
++ [frame (of an event stream)](#frame-of-an-event-stream)
 
 + [gate (of a rule)](#gate-of-a-rule)
 
 + [gate (of a task)](#gate-of-a-task)
 
 + [gate (raised by a worker)](#gate-raised-by-a-worker)
-
-+ [grant (of a spawn)](#grant-of-a-spawn)
 
 + [grant (permission)](#grant-permission)
 
@@ -1099,9 +1107,11 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 
 + [hook](#hook)
 
++ [identity provider](#identity-provider)
+
 + [instance record](#instance-record)
 
-+ [io](#io)
++ [iod](#iod)
 
 + [kinded path](#kinded-path)
 
@@ -1119,6 +1129,8 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 
 + [match](#match)
 
++ [mirror (of a git repository)](#mirror-of-a-git-repository)
+
 + [mirror (of permissions)](#mirror-of-permissions)
 
 + [mirror (of tasks)](#mirror-of-tasks)
@@ -1129,6 +1141,8 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 
 + [node](#node)
 
++ [observation plane](#observation-plane)
+
 + [occurrence](#occurrence)
 
 + [on](#on)
@@ -1138,6 +1152,8 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 + [operator](#operator)
 
 + [option](#option)
+
++ [outbox](#outbox)
 
 + [owner](#owner)
 
@@ -1151,15 +1167,13 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 
 + [payload](#payload)
 
++ [policy](#policy)
+
 + [pose](#pose)
 
 + [predicate](#predicate)
 
 + [principal](#principal)
-
-+ [provider](#provider)
-
-+ [provider selection](#provider-selection)
 
 + [question](#question)
 
@@ -1171,13 +1185,19 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 
 + [reflect](#reflect)
 
++ [reflection](#reflection)
+
++ [reflector](#reflector)
+
 + [resolver](#resolver)
 
 + [revision](#revision)
 
-+ [root (of an io)](#root-of-an-io)
++ [root (of an iod)](#root-of-an-iod)
 
 + [root (of the store)](#root-of-the-store)
+
++ [root (of verse up)](#root-of-verse-up)
 
 + [rule](#rule)
 
@@ -1201,12 +1221,13 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 
 + [spawn](#spawn)
 
-
 + [status (of a task)](#status-of-a-task)
 
 + [steering](#steering)
 
 + [step](#step)
+
++ [step (of a task)](#step-of-a-task)
 
 + [store](#store)
 
@@ -1216,15 +1237,17 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 
 + [suspension](#suspension)
 
++ [system](#system)
+
 + [task](#task)
 
 + [tick](#tick)
 
++ [tombstone](#tombstone)
+
 + [tool](#tool)
 
 + [trouble](#trouble)
-
-+ [vector](#vector)
 
 + [verse's own half](#verses-own-half)
 

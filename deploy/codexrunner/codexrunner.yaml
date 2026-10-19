@@ -1,0 +1,149 @@
+# The codex runner: the verse runner in its own image with Codex in it, offering the codex agent
+# (`doer: {agent: codex}`), which it drives over Codex's client protocol so that every command
+# and patch Codex proposes is decided by the task's policy (docs/reference/runnerd.md,
+# "Codex, gated inside the run").
+#
+# It is a SECOND runner beside verse-runner, not a change to it: its own image, Deployment,
+# Service, ConfigMap and credential, under its own tier label, so it ships and is removed on its
+# own and the runner the charters name goes on untouched. Verse learns about it the same way:
+#
+#   verse runner add codex http://codexrunner:9802 --identity codexrunner
+#
+# Everything about the pod that is bubblewrap's — hostUsers, procMount, seccompProfile — is as
+# deploy/verse-runner/verse-runner.yaml has it, and explained there.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: codexrunner-config
+  labels: {app: verse, tier: codexrunner, runner: codex}
+data:
+  verse-runner.tony: |
+    listen: ":9802"
+    shellEnv: [PATH, HOME, USER, LANG]
+    repos:
+      mirrors: /state/mirrors
+    # The operator's line over every system this runner holds for its tasks, read again at
+    # each act whatever a spawn's policy says. The four it performs with its token are kept to
+    # signadot's repositories; the ones it stops inside a run are stated as open, so the list
+    # is the whole of what any task here may reach.
+    systems:
+      git:
+        ceiling:
+        - {match: {repo: "github.com/signadot/**"}, then: allow}
+        - {then: deny}
+      git-issue:
+        ceiling:
+        - {match: {repo: "github.com/signadot/**"}, then: allow}
+        - {then: deny}
+      github:
+        ceiling:
+        - {match: {repo: "github.com/signadot/**"}, then: allow}
+        - {then: deny}
+      github-issue:
+        ceiling:
+        - {match: {repo: "github.com/signadot/**"}, then: allow}
+        - {then: deny}
+      files:
+        ceiling: [{then: allow}]
+      commands:
+        ceiling: [{then: allow}]
+      agent:
+        ceiling: [{then: allow}]
+
+    # How Codex runs here. `apiKeyEnv` is the NAME of a variable the runner holds (the
+    # verse-codex Secret, below); the task process writes it as Codex's login file in a
+    # CODEX_HOME of its own, so it is in no environment a command could inherit. The model is
+    # one the key's project serves, and a spawn's `with.model` overrides it. The sandbox is
+    # Codex's own, inside bwrap's: an approved command may write the workspace and /tmp, and
+    # nothing else. Codex's API is reachable from a task whatever its network.
+    codex:
+      model: gpt-5.3-codex
+      sandbox: workspace-write
+      apiKeyEnv: OPENAI_API_KEY
+      config:
+        # Go's build cache lives under the home directory, which Codex's sandbox refuses; /tmp
+        # it allows.
+        "shell_environment_policy.set": '{GOCACHE = "/tmp/codex-gocache"}'
+        # Codex's sandbox denies commands the network by default. Here the network is the
+        # launch's `with.network`, already drawn by bwrap, so Codex does not deny it again.
+        "sandbox_workspace_write.network_access": "true"
+        # Nothing here wants a newer Codex than the one the image pins.
+        "check_for_update_on_startup": "false"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: codexrunner
+  labels: {app: verse, tier: codexrunner, runner: codex}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: verse, tier: codexrunner, runner: codex}
+  template:
+    metadata:
+      labels: {app: verse, tier: codexrunner, runner: codex}
+    spec:
+      hostUsers: false
+      containers:
+      - name: codexrunner
+        image: signadot/verse-runner:codex
+        args:
+        - verse
+        - -config
+        - /config/verse-runner.tony
+        - -sandbox
+        - bwrap
+        ports:
+        - {name: control, containerPort: 9802}
+        - {name: admin, containerPort: 9803}
+        # The model key, by the variable name the ConfigMap's `apiKeyEnv` reads. The runner
+        # holds it; the task process writes it into a login file for Codex alone.
+        #
+        #   kubectl -n verse create secret generic verse-codex \
+        #     --from-literal=OPENAI_API_KEY=<key>
+        envFrom:
+        - secretRef:
+            name: verse-codex
+            optional: true
+        env:
+        # Codex writes its logs and state under $HOME/.codex when it is given no login of its
+        # own, and the login it is given lives under /tmp; either way the home has to be a
+        # writable path inside the sandbox, and /tmp is the one there is.
+        - name: HOME
+          value: /tmp
+        # What this runner pushes with: the same token verse-runner pushes with, held by a
+        # different process. The task never sees it.
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef: {name: verse-runner, key: gitToken, optional: true}
+        volumeMounts:
+        - {name: config, mountPath: /config, readOnly: true}
+        - {name: state, mountPath: /state}
+        readinessProbe:
+          httpGet: {path: /describe, port: control}
+          initialDelaySeconds: 2
+          periodSeconds: 10
+        securityContext:
+          seccompProfile:
+            type: Unconfined
+          procMount: Unmasked
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 65532
+          capabilities: {drop: ["ALL"]}
+      volumes:
+      - name: config
+        configMap: {name: codexrunner-config}
+      - name: state
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: codexrunner
+  labels: {app: verse, tier: codexrunner, runner: codex}
+spec:
+  selector: {app: verse, tier: codexrunner, runner: codex}
+  ports:
+  - {name: control, port: 9802, targetPort: control}

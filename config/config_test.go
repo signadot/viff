@@ -270,12 +270,12 @@ func TestUserFromFileAndEnv(t *testing.T) {
 	if c.User != "scott@example.com" {
 		t.Errorf("user = %q, want the file's", c.User)
 	}
-	t.Setenv("VERSE_USER", "coderunner-bot")
+	t.Setenv("VERSE_USER", "verse-runner-bot")
 	c, err = Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.User != "coderunner-bot" {
+	if c.User != "verse-runner-bot" {
 		t.Errorf("user = %q, want VERSE_USER over the file", c.User)
 	}
 }

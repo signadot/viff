@@ -91,7 +91,7 @@ func RefAt(segs ...string) Ref {
 }
 
 // VerseRef builds an address in verse's own half of the tree: `VerseRef("task", "instance", id)`
-// is `verse:task:instance:<id>`. It is a separate constructor rather than a flag on RefAt so
+// is `verse.task.instance.<id>`. It is a separate constructor rather than a flag on RefAt so
 // that reading a call says which half it is in.
 func VerseRef(segs ...string) Ref {
 	return RefAt(append([]string{VerseRoot}, segs...)...)

@@ -1,7 +1,7 @@
 // Package agent assembles a real LLM agent on top of the verse task loop: an
 // OpenAI-compatible Chat Completions driver (served via Portkey), a filesystem
-// executor confined to a working directory, the tool→capability deriver, and the
-// gate vector. Build wires them into a Task with a call_agent SpawnFunc.
+// executor confined to a working directory, under the launch's gates. Build wires them into a Task
+// with a call_agent DelegateFunc.
 //
 // It is an injectable driver: the daemon and the demo both build tasks via a
 // Builder, so nothing in the task substrate depends on this package.
@@ -11,35 +11,33 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/answer"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
-// defaultFrame is the frame used when a spawn does not write one — and it is DERIVED, from
-// the tools actually offered and the vector actually installed, rather than being the
-// package constant it replaces.
+// defaultFrame is the frame used when a launch does not write one — and it is DERIVED, from
+// the tools actually offered and the policy actually installed, because two things it says
+// are things a constant cannot get right.
 //
-// That constant had two defects, and both are of a kind a constant cannot avoid.
+// The final assistant message is what Result() returns, which is what a completed task's
+// `result` carries, which is what a charter's `$result` derefs. trigger/deref.go resolves
+// $result.findings[0].severity structurally, so a frame that asked for a closing summary in
+// prose would get prose where a structure is read. So it says the final message is the answer
+// itself, and a launch wanting a particular shape states it in its own frame, which is what the
+// field is for.
 //
-// It ended "Complete the user's task, then stop with a one-paragraph summary." The final
-// assistant message is what Result() returns, which is what a completed task's `result`
-// carries, which is what a charter's `$result` derefs. trigger/deref.go is built to resolve
-// $result.findings[0].severity structurally — against a prompt instructing prose. The two
-// were in direct contradiction and the prompt won: structured answers came back as
-// paragraphs. So this says the opposite, and a spawn wanting a particular shape states it
-// in its own frame, which is what the field is for.
-//
-// It also said "prefer call_agent to run them in parallel" while Vector(), a few lines
-// below, ASK-gates the call-agent verb. Two package constants, adjacent, disagreeing: the
-// prompt recommended the one action guaranteed to stop and wait for a human, which for an
-// unattended trigger firing means park. Rewording the constant would not fix it, because
-// the vector is per-spawn and slidable while the constant is neither. Deriving the advice
-// from the vector does: below, each tool is described as it will actually behave.
-func defaultFrame(tds []toolDef, vec *task.Vector, extra map[string]Tool, converse bool) string {
+// What it says about each tool follows the policy. Advice to prefer call_agent, under a policy
+// that asks before every delegation, recommends the one action guaranteed to stop and wait for
+// a person, which for an unattended firing means park. The policy is per launch and replaceable
+// while the task runs, and a constant is neither, so below each tool is described as it will
+// actually behave.
+func defaultFrame(tds []toolDef, p task.Policy, converse bool, extra map[string]Tool) string {
 	var free, gated []string
 	asks := false
 	for _, td := range tds {
@@ -50,7 +48,7 @@ func defaultFrame(tds []toolDef, vec *task.Vector, extra map[string]Tool, conver
 		if name == yieldTool || name == askTool {
 			continue // not actions on the world; each is described on its own terms
 		}
-		if gateModeFor(name, vec, extra).Blocks() {
+		if mayAsk(name, p, extra) {
 			gated = append(gated, name)
 			continue
 		}
@@ -65,15 +63,12 @@ func defaultFrame(tds []toolDef, vec *task.Vector, extra map[string]Tool, conver
 	}
 	if len(gated) > 0 {
 		// Naming the cost is the point. An agent told that a tool suspends it until a human
-		// answers reaches for it when the task needs it and not otherwise — the behaviour
-		// the old "prefer call_agent" advice inverted.
+		// answers reaches for it when the task needs it and not otherwise.
 		fmt.Fprintf(&b, "These tools STOP the loop until a supervisor approves each use, and may be "+
 			"denied: %s. Use them where the task requires it, not by preference.\n", strings.Join(gated, ", "))
 	}
 	fmt.Fprintf(&b, "A tool result that says DENIED is a decision, not a transient error: do not retry "+
 		"the same action — take another approach, or hand control back with %s.\n", yieldHint)
-	b.WriteString("A result saying an action is outside your grant is final. Nobody present can " +
-		"approve it and no rephrasing makes it permitted.\n")
 	if converse {
 		// A conversation: the loop hands the person the turn whenever the model stops, so the
 		// model is told to stop when it has said its piece, and that ending is the person's.
@@ -140,53 +135,36 @@ func withoutContract(frame string) string {
 	return frame
 }
 
-// gateModeFor evaluates one tool against the vector the way the loop will, using a probe
-// action carrying representative arguments.
-//
-// The arguments matter. The deriver classifies read_file/write_file by their `path` and
-// run_bash by its `command`, and an action with no derived effect matches no verb gate — so
-// probing with empty input would report every tool as ungated, quietly reintroducing the
-// exact disagreement this function exists to prevent.
-func gateModeFor(tool string, vec *task.Vector, extra map[string]Tool) task.Mode {
-	if vec == nil {
-		return task.Auto
-	}
-	tu := task.ToolUse{Name: tool, Input: map[string]any{"path": "probe", "command": "probe"}}
+// mayAsk reports whether a tool may be stopped before it runs: it is a step, and the policy's
+// row that would decide it is not an allow. Whether it is stopped this time depends on the
+// fields, so the frame says it may.
+func mayAsk(tool string, p task.Policy, extra map[string]Tool) bool {
+	tu := task.ToolUse{Name: tool}
 	if tool == "call_agent" {
-		tu.CallAgent = &task.CallAgentRequest{Agent: "probe"}
+		tu.CallAgent = &task.CallAgentRequest{}
 	}
-	demoDeriver{extra: extra}.Derive(&tu)
-	return vec.Evaluate(tu).Mode
-}
-
-// Vector is the demo gate vector: read freely; ASK before writing a file, running
-// a shell command, or delegating to a sub-agent.
-func Vector() *task.Vector {
-	return &task.Vector{
-		Default: task.Auto,
-		Gates: []task.Gate{
-			{Name: "write", Mode: task.Ask, Match: task.GateMatch{Verbs: []task.Verb{task.Write}}},
-			{Name: "shell", Mode: task.Ask, Match: task.GateMatch{Verbs: []task.Verb{task.Exec}}},
-			{Name: "delegate", Mode: task.Ask, Match: task.GateMatch{Verbs: []task.Verb{task.CallAgent}}},
-		},
+	st, ok := task.StepOf(tu)
+	if t, isExtra := extra[tool]; isExtra {
+		st, ok = task.Step{Name: t.Step}, t.Step != ""
 	}
+	if !ok {
+		return false
+	}
+	return p.MayAsk(st.Name)
 }
 
 // A Tool is one action a RUNTIME adds to the agent's vocabulary, beyond the four this package
-// implements. It is the same seam Finisher is, in the other direction: Finisher is the runtime
-// acting on its own behalf at the end, and this is the runtime offering the AGENT something only
-// the runtime knows how to do.
+// implements: the runtime offering the AGENT something only the runtime knows how to do.
 //
 // The case it exists for is a coding runner's push. The runner holds the credential, the
-// repositories and what may be pushed to each are the spawn's, and neither is anything this package can know
+// destinations are its environment's to declare, and neither is anything this package can know
 // about — but the action has to be an ACTION, derived and gated and narrated like every other,
-// or it is a capability outside the vector. Wiring it as a fifth case in fsExec would put git in
+// or it is a capability outside the gates. Wiring it as a fifth case in fsExec would put git in
 // a package that has no business knowing what git is; wiring it as a private channel would put
-// it outside the loop, which is exactly what the delivery push already was and what
-// task.Finisher exists to have fixed.
+// it outside the loop, where no gate sees it.
 //
 // It is offered to CHILDREN too, on the same argument the tool set is: a sub-agent should not be
-// handed a capability its parent's spawn withheld, and it should not lose one its parent had.
+// handed a capability its parent's launch withheld, and it should not lose one its parent had.
 type Tool struct {
 	Name        string
 	Description string
@@ -196,11 +174,12 @@ type Tool struct {
 	// something it discovers by being refused.
 	Params   map[string]any
 	Required []string
-	// Derive stamps the typed effects the vector matches on, exactly as the deriver does for
-	// this package's own tools. An action left with NO effect is one no capability gate can
-	// match, which is the right answer for a request that cannot be performed at all: nobody is
-	// asked to approve something that is about to be refused.
-	Derive func(tu *task.ToolUse)
+	// Step, when the tool is one, is the step each use of it is (git.push), and Fields that
+	// use's fields: what its gates match and what a question about it says. Fields reports false
+	// for a use refused before any gate, which Do then says. A tool with no Step is no step, and
+	// nothing asks before it.
+	Step   string
+	Fields func(input map[string]any) (map[string]string, bool)
 	// Do performs it once the gate has approved. out is what the model reads and what the read
 	// plane narrates.
 	//
@@ -211,6 +190,28 @@ type Tool struct {
 	// authority verse deliberately does not hold, and routing that through err would fill the
 	// record with alarm about the thing working as intended.
 	Do func(ctx context.Context, tu task.ToolUse) (out string, blocked bool, err error)
+}
+
+// ownSteps is the step each of the agent's own tools is: a tool is offered only where the
+// policy provides its verb (task.Policy.Provides), so the model never proposes one it lacks.
+var ownSteps = map[string]string{"write_file": task.StepFilesWrite, "run_bash": task.StepCommandsRun, "call_agent": task.StepAgentCallSubAgent}
+
+// lessUnprovided is the tool definitions less the agent's own tools whose verb p does not
+// provide. Its tools that are no verb (`read_file`, `yield`) stay.
+func lessUnprovided(tds []toolDef, p task.Policy) []toolDef {
+	return slices.DeleteFunc(tds, func(td toolDef) bool {
+		st, own := ownSteps[td.Function.Name]
+		return own && !p.Provides(st)
+	})
+}
+
+// provided is the extra tools whose verb p provides; the agent's own are dropped by
+// lessUnprovided after selectTools.
+func provided(p task.Policy, extra []Tool) []Tool {
+	return slices.DeleteFunc(slices.Clone(extra), func(t Tool) bool {
+		system, verb, ok := systems.SplitTool(t.Name)
+		return ok && !p.Provides(systems.StepName(system, verb))
+	})
 }
 
 func byName(extra []Tool) map[string]Tool {
@@ -237,64 +238,53 @@ type Config struct {
 	// what this process holds — see task.ShellEnv and task.DefaultShellEnv.
 	Env []string
 	// Set is the variables run_bash is given outright, each `NAME=value`, beside what Env passes
-	// through: what whoever built this task has to tell its shell, such as where the task's
-	// credential file is (task.CredentialFile). A delegated child's shell does not get them.
+	// through: what whoever built this task has to tell its shell, such as the launch's
+	// `with.env` and where its credential file is.
 	Set []string
+	// ChildSet is what a delegated sub-agent's shell is given outright instead: the launch's
+	// `with.env`, and not the credential, which is the task's alone.
+	ChildSet []string
 
 	// Frame is the agent's system prompt; empty → defaultFrame, derived from the tools
-	// offered and the vector installed. Tools narrows the offered set; nil → all of them,
-	// an empty list → none but what the contract keeps. Both come from the spawn
-	// (launch.Spec.frame / .tools), which is the point: see task.Launch.
+	// offered and the gates installed. Tools narrows the offered set; empty → all of
+	// them. The launch carries neither, so a runner leaves both empty.
 	Frame string
 	Tools []string
-	// Answer is this spawn's answer contract as a tony match pattern; nil → no contract,
+	// Answer is this task's answer contract as a tony match pattern; nil → no contract,
 	// and the run ends wherever the model stops. See package answer.
 	Answer *ir.Node
-	// Vector overrides the demo gate vector. It is here rather than applied by the caller
-	// afterwards because the frame is derived from it, and a vector installed after Build
-	// would be described by a frame written against the wrong one.
-	Vector *task.Vector
+	// Policy is the launch's. It is here rather than applied by the caller afterwards because
+	// the frame is derived from it, so the agent is told which of its tools may be stopped.
+	Policy task.Policy
+	// Ceilings are the runner's, by system, read at each step after the policy
+	// (task.Supervisor.SetCeilings).
+	Ceilings map[string]task.Policy
 
 	// Extra are tools the RUNTIME adds to this agent's vocabulary, beyond the ones this
 	// package implements. See Tool.
 	Extra []Tool
-	// Converse: the run is a conversation (task.Launch.Converse), so the frame says the person
-	// is handed the turn whenever the model stops, and `ask` is not how to hand it over.
+	// Converse: the run is a conversation (the launch's `converse`), so the frame says the person
+	// is handed the turn whenever the model stops, and `question-ask` is not how to hand it over.
 	Converse bool
-
-	// Finish is the RUNTIME's own closing act, composed onto the end of this task's loop: a
-	// coding runner's push, and anything else a runtime does with the work rather than to it.
-	// nil → nothing is composed and the loop ends where the driver does.
-	//
-	// It is a Config field rather than something the caller wraps afterwards because Build
-	// returns a finished Task and exposes neither driver nor executor — so there was nothing to
-	// compose onto, and a runner that wanted its delivery gated had to reimplement the harness
-	// to get one. See task.Finisher for what it buys.
-	//
-	// The agent is not told about it. It is not a tool, it is not in the frame, and it is
-	// proposed after the driver has stopped.
-	Finish task.Finisher
 
 	// LLM creds for the model client, RESOLVED BY THE CALLER — versed reads them from verse
 	// config (file ← env) and passes them here. Empty base URL and model take package
 	// defaults; an empty key or virtual key is sent as an empty header, which the gateway
 	// reports as "Invalid API Key" rather than as the missing configuration it is.
 	//
-	// It used to say these fell back to the environment. They do not: newLLMClient reads the
-	// environment and passes the values in, and clientFrom below defaults only the two fields
-	// that have a sensible default. A local caller that set LLMModel and left the keys empty
-	// spent a while being told its key was invalid.
+	// Nothing falls back to the environment: clientFrom defaults only the two fields that have a
+	// sensible default. A local caller that set LLMModel and left the keys empty spent a while
+	// being told its key was invalid.
 	LLMBaseURL    string
 	LLMKey        string
 	LLMVirtualKey string
 	LLMModel      string
 }
 
-// Build assembles a Task (real LLM driver + filesystem executor + gate vector)
-// and returns it alongside an accessor for the executor's ledger. A call_agent
-// action spawns a concurrent sub-task built the same way (child scope ⊆ parent
-// via NewChild; supervision from the ASK answer).
-func Build(cfg Config) (*task.Task, func() []ExecRecord) {
+// Build assembles a Task (real LLM driver + filesystem executor, under the launch's policy). A
+// call_agent action starts a concurrent sub-agent built the same way, under the same policy
+// (NewChild).
+func Build(cfg Config) *task.Task {
 	if cfg.Client == nil {
 		cfg.Client = clientFrom(cfg.LLMBaseURL, cfg.LLMKey, cfg.LLMVirtualKey, cfg.LLMModel)
 	}
@@ -302,42 +292,40 @@ func Build(cfg Config) (*task.Task, func() []ExecRecord) {
 		cfg.Log = io.Discard
 	}
 	// The harness's own fifth tool, offered on the runtime tools' terms: narrowable by a
-	// spawn's `tools:`, handed to children, dispatched through the same seam. See askTool.
-	cfg.Extra = append(append([]Tool{}, cfg.Extra...), askFor(cfg.Resolver))
+	// launch's tools, handed to children, dispatched through the same seam. See askTool.
+	cfg.Extra = append(append([]Tool{}, cfg.Extra...), Ask(cfg.Resolver))
 	extra := byName(cfg.Extra)
-	tools, err := selectTools(cfg.Tools, cfg.Extra)
+	tools, err := selectTools(cfg.Tools, provided(cfg.Policy, cfg.Extra))
 	if err != nil {
-		// A spawn that named a tool this build does not have gets a FAILED task, not a
+		// A task that named a tool this build does not have gets a FAILED task, not a
 		// quietly smaller toolset. The charter asked for a specific set; running with a
 		// different one and saying nothing is how `grant: read-only` came to mean nothing.
-		return task.NewFailed(cfg.ID, cfg.Resolver, "launch tools: "+err.Error()), func() []ExecRecord { return nil }
+		return task.NewFailed(cfg.ID, cfg.Resolver, "launch tools: "+err.Error())
 	}
-	// A contract that cannot be parsed fails the spawn, for the reason an unknown tool
+	tools = lessUnprovided(tools, cfg.Policy)
+	// A contract that cannot be parsed fails the task, for the reason an unknown tool
 	// name does: the charter asked for something specific, and running without it while
 	// saying nothing is how a field comes to mean nothing. It is parsed here as well as on
-	// the engine side because a task can be spawned straight at a runtime (`task
+	// the engine side because a task can be launched straight at a runner (`task
 	// run`, a remote POST) without ever passing through a charter.
 	var contract *answer.Contract
 	if cfg.Answer != nil {
 		var err error
 		if contract, err = answer.Parse(cfg.Answer); err != nil {
-			return task.NewFailed(cfg.ID, cfg.Resolver, "answer contract: "+err.Error()), func() []ExecRecord { return nil }
+			return task.NewFailed(cfg.ID, cfg.Resolver, "answer contract: "+err.Error())
 		}
 	}
-	vec := cfg.Vector
-	if vec == nil {
-		vec = Vector()
-	}
-	sup := task.NewSupervisor(vec, cfg.Resolver)
-	sup.SetDeriver(demoDeriver{extra: extra})
+	sup := task.NewSupervisor(cfg.Policy, cfg.Resolver)
+	sup.SetCeilings(cfg.Ceilings)
+	sup.SetStepOf(func(tu task.ToolUse) (task.Step, bool) { return stepOf(tu, extra) })
 
-	// The frame is derived from THIS task's tools and vector when the spawn did not
+	// The frame is derived from THIS task's tools and gates when the launch did not
 	// write one, so what the agent is told matches what it will actually meet.
 	frame := cfg.Frame
 	if frame == "" {
-		frame = defaultFrame(tools, vec, extra, cfg.Converse)
+		frame = defaultFrame(tools, cfg.Policy.OrDefault(), cfg.Converse, extra)
 	}
-	// The contract is stated in the frame even when the spawn wrote the frame itself, and
+	// The contract is stated in the frame even when the launch wrote the frame itself, and
 	// appending to an author's text is otherwise not this function's business. It is
 	// warranted here because this is not advice about the task: it is a fact about how the
 	// loop will behave — the final message is checked and a failure comes back — and an
@@ -352,25 +340,21 @@ func Build(cfg Config) (*task.Task, func() []ExecRecord) {
 	ex := &fsExec{root: cfg.Root, log: cfg.Log, extra: extra, env: cfg.Env, set: cfg.Set}
 	p := task.NewTask(cfg.ID, sup, driver, ex)
 	p.SetLog(cfg.Log)
-	// The two things that decide when a task is OVER, installed on the loop rather than
-	// wrapped around the driver. Both used to sit inside the driver, where the only thing
-	// visible was "the model stopped talking" — which with a child outstanding means the
-	// opposite of finished. See task.Finisher and task.AnswerCheck.
-	if cfg.Finish != nil {
-		p.SetFinisher(cfg.Finish)
-	}
+	// What decides when a task is OVER is installed on the loop rather than wrapped around the
+	// driver, where the only thing visible was "the model stopped talking" — which with a child
+	// outstanding means the opposite of finished. See task.AnswerCheck.
 	if contract != nil {
 		p.SetAnswerCheck(&answer.Checker{C: contract, FailHint: yieldHint})
 	}
 	driver.emit = p.Emit // narration onto this task's read plane
 
 	var kid int
-	p.SetSpawn(func(parent *task.Task, mode task.ChildMode, req *task.CallAgentRequest) (*task.Task, error) {
+	p.SetDelegate(func(parent *task.Task, req *task.CallAgentRequest) (*task.Task, error) {
 		kid++
 		childID := fmt.Sprintf("%s.%s%s%d", parent.ID, req.Agent, task.GateSep, kid)
 		// A child inherits the parent's tool set and frame. Inheriting the tools is the
 		// conservative reading of delegation — a sub-agent should not be handed a
-		// capability its parent's spawn withheld — and inheriting the frame keeps the
+		// capability its parent's launch withheld — and inheriting the frame keeps the
 		// answer shape the charter asked for, since a child's result folds into the
 		// parent's conversation and thence into what $result reads.
 		//
@@ -380,25 +364,43 @@ func Build(cfg Config) (*task.Task, func() []ExecRecord) {
 		// as one more tool result for the parent to read. Forcing the parent's shape onto
 		// it would demand a verdict from an agent that was asked to go read a file, and
 		// would fail runs over a document nothing downstream reads. A child that needs a
-		// contract is a spawn of its own.
+		// contract is a task of its own.
 		//
 		// (frame carries the parent's contract clause. It is text about a check the child
 		// does not run, so it is trimmed rather than left to mislead.)
 		childDriver := &llmDriver{client: cfg.Client, tools: tools, frame: withoutContract(frame),
 			prompt: req.Prompt, log: cfg.Log}
-		childExec := &fsExec{root: cfg.Root, log: cfg.Log, extra: extra, env: cfg.Env}
-		child, err := parent.NewChild(childID, mode, req, childDriver, childExec)
-		if err == nil {
-			childDriver.emit = child.Emit // child narration onto the child's read plane
-		}
-		return child, err
+		childExec := &fsExec{root: cfg.Root, log: cfg.Log, extra: extra, env: cfg.Env, set: cfg.ChildSet}
+		child := parent.NewChild(childID, req, childDriver, childExec)
+		childDriver.emit = child.Emit // child narration onto the child's read plane
+		return child, nil
 	})
-	return p, ex.Records
+	return p
 }
 
-// NewClient builds the default Portkey/OpenAI Chat Completions client from the
-// environment (PORTKEY_API_KEY / PORTKEY_VIRTUAL_KEY / OPENAI_MODEL).
-func NewClient() completer { return newLLMClient() }
+// StepOf is how a supervisor classifies the uses of tools as steps (Supervisor.SetStepOf), for a
+// task whose actions are those tools' uses: a script's calls are the same steps the agent's uses
+// of the same tools are, so the same gates match them.
+func StepOf(tools []Tool) func(task.ToolUse) (task.Step, bool) {
+	extra := byName(tools)
+	return func(tu task.ToolUse) (task.Step, bool) { return stepOf(tu, extra) }
+}
+
+// stepOf is the step an action is: one of the verse tools' (task.StepOf), or a runtime tool's.
+func stepOf(tu task.ToolUse, extra map[string]Tool) (task.Step, bool) {
+	t, ok := extra[tu.Name]
+	if !ok {
+		return task.StepOf(tu)
+	}
+	if t.Step == "" {
+		return task.Step{}, false
+	}
+	fields, ok := t.Fields(tu.Input)
+	if !ok {
+		return task.Step{}, false
+	}
+	return task.Step{Name: t.Step, Fields: fields}, true
+}
 
 func truncate(s string, n int) string {
 	if len(s) <= n {

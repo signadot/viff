@@ -152,7 +152,7 @@ func (r *socketRig) raise(t *testing.T) {
 	t.Helper()
 	go func() {
 		_, _ = r.srv.Reg.Resolve(context.Background(),
-			task.GateQuestion{ID: askedQuestion, Origin: "review", Gate: "review", Mode: task.Ask},
+			task.GateQuestion{ID: askedQuestion, Origin: "review", Gate: "review"},
 			task.ToolUse{Name: "verse.trigger.review"})
 	}()
 	stood := false

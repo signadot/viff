@@ -8,6 +8,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
@@ -43,7 +44,7 @@ func TestASpawnCarriesTheCommitThatCausedIt(t *testing.T) {
 			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewing"}},
 		},
 		Action: Action{
-			Spawn:  &launch.Spec{Prompt: "review $subject"},
+			Spawn:  &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "review $subject"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 		},
 	}); err != nil {

@@ -57,7 +57,7 @@ type Config struct {
 	// User is the principal this CLI acts as: who every request is made by, and so who every
 	// write it causes is attributed to and who owns what it creates. An email for a person,
 	// which goes on the wire as `user:<email>`; a principal of another kind spelled as one
-	// (`runner:coderunner`). Self-asserted, and `--as` overrides it on the commands that take one.
+	// (`runner:verse-runner`). Self-asserted, and `--as` overrides it on the commands that take one.
 	// A login (`verse account login`) comes before it: the CLI then acts as whoever the login proves.
 	// Env: VERSE_USER.
 	User string `tony:"field=user,omitzero"`

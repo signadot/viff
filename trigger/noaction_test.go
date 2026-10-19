@@ -70,8 +70,8 @@ func TestAnyOneActionIsEnough(t *testing.T) {
 		{"patch", `patch: {stage: seen}`},
 		// A spawn latches through its completion hook, which is the ordinary shape and
 		// what the latch check asks for — the point here is only that a spawn is an action.
-		{"spawn", "spawn: {driver: scripted, vector: auto, prompt: \"hi\"}\n    onDone: {patch: {stage: done}}"},
-		{"seq", "seq: [{spawn: {driver: scripted, vector: auto, prompt: \"hi\"}}]\n    onDone: {patch: {stage: done}}"},
+		{"spawn", "spawn: {doer: {script: \"echo hi\"}, policy: [{then: allow}]}\n    onDone: {patch: {stage: done}}"},
+		{"seq", "seq: [{spawn: {doer: {script: \"echo hi\"}, policy: [{then: allow}]}}]\n    onDone: {patch: {stage: done}}"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			eng := New(entitytest.Store(t), task.AutoResolver{})

@@ -209,7 +209,6 @@ func rootCmd() *cli.Command {
 			permsCmd(),
 			groupCmd(),
 			ioCmd(),
-			providerCmd(),
 			statusCmd(),
 			accountCmd(),
 			whoamiCmd(),

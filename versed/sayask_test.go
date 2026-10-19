@@ -15,6 +15,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
 )
@@ -59,7 +60,7 @@ func (noopExec) Execute(_ context.Context, tu task.ToolUse) (task.StepResult, []
 // `mute` many slow steps and no conversation, `turn` a conversation that goes quiet at once.
 func sayServer(t *testing.T) (*Server, *httptest.Server) {
 	t.Helper()
-	build := func(l task.Launch, reg *task.Registry) *task.Task {
+	build := func(l runner.Launch, reg *task.Registry) *task.Task {
 		var d task.Driver
 		switch l.Prompt {
 		case "talk":
@@ -69,7 +70,7 @@ func sayServer(t *testing.T) (*Server, *httptest.Server) {
 		default:
 			d = &slowDriver{steps: 10}
 		}
-		tk := task.NewTask(l.ID, task.NewSupervisor(&task.Vector{Default: task.Auto}, reg), d, noopExec{})
+		tk := task.NewTask(l.ID, task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, reg), d, noopExec{})
 		if l.Converse {
 			tk.SetConverse(reg)
 		}
@@ -84,7 +85,7 @@ func sayServer(t *testing.T) (*Server, *httptest.Server) {
 
 func spawnSaying(t *testing.T, url, as, id, prompt string, converse bool) {
 	t.Helper()
-	b, _ := codec.Marshal(map[string]any{"id": id, "prompt": prompt, "converse": converse}, codec.Tony)
+	b, _ := codec.Marshal(map[string]any{"id": id, "doer": map[string]any{"agent": "fake"}, "prompt": prompt, "converse": converse}, codec.Tony)
 	resp := postAs(t, as, url+"/tasks", "application/tony", string(b))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("spawn %s: %s: %s", id, resp.Status, bodyOf(t, resp))

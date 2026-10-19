@@ -63,6 +63,7 @@ func TestTheCheckFindsNoChangeAfterARestart(t *testing.T) {
 	first := NewWithStore(ScriptedBuilder, store)
 	first.Start(t.Context())
 	ts := httptest.NewServer(first.Handler())
+	registerRunner(t, ts, "verse-runner", "verse") // the tree's spawns name it
 	installCharter(t, ts, "", tree)
 	before := checkAt(t, ts, repoChartersAt, tree)
 	for _, p := range before.Packages {

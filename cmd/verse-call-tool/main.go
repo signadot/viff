@@ -1,12 +1,13 @@
-// Command verse-call-tool calls one tool of the task whose workspace it runs in: `ask`, `push`,
-// `fetch`, the pull-request tools, and whatever the task's runner offers. It is the shell's way
+// Command verse-call-tool calls one tool of the task whose workspace it runs in: `question-ask`,
+// `git-push`, `git-fetch`, `github-create-pr`, `github-update-pr`, and whatever the task's runner
+// offers. It is the shell's way
 // to what the verse agent and codex have as tools of their own, for a coding agent or a script
 // the environment runs as a program.
 //
 //	verse-call-tool                                 the tools on offer here, with their arguments
 //	verse-call-tool <tool> -help                    one tool's arguments
-//	verse-call-tool push -branch verse/x            one call; the flags are the tool's parameters
-//	verse-call-tool ask -question "ship it?" -options yes -options no -within 30m
+//	verse-call-tool git-push -branch verse/x        one call; the flags are the tool's parameters
+//	verse-call-tool question-ask -question "ship it?" -options yes -options no -within 30m
 //	verse-call-tool <tool> -input '<document>'      the whole input as a tony or json document
 //
 // The result is stdout. Exit 0: it was done. Exit 3: it was refused — by a gate, or by the far

@@ -9,8 +9,8 @@ import (
 // The kinds a name carries before its colon. A principal is `<kind>:<id>` for an identity and
 // `via:<path>` for a place acting; a grantee is a principal, a kind with `*` for every principal
 // of it, a group, or `*` for everyone. The kind is IN THE NAME, so nothing consults a listing to
-// tell a runner called coderunner from a person called that: `runner:coderunner` and
-// `user:coderunner` are different strings.
+// tell a runner called verse-runner from a person called that: `runner:verse-runner` and
+// `user:verse-runner` are different strings.
 const (
 	// UserKind is a person, by email.
 	UserKind = "user"
@@ -79,7 +79,7 @@ const Everyone = "*"
 // ("" for any): a rule fires as `verse.trigger.rule.<name>`, a source reflects as
 // `verse.io.<name>`, a resolver answers as `verse.resolvers.<name>`. A
 // `via:` naming anywhere else names nobody — a runner has an address and acts as
-// `runner:<identity>`, so `via:verse.runners.coderunner` would look right and admit no one.
+// `runner:<identity>`, so `via:verse.runners.verse-runner` would look right and admit no one.
 // The owning packages import this one, so the names are spelled here and a test in versed holds
 // them to the packages' own.
 var actors = map[string]string{"trigger": "rule", "io": "", "resolvers": ""}
@@ -109,7 +109,7 @@ func Grammar() string {
 // ParseGrantee reads a name in the grammar. A bare string holding an `@` and no colon is a
 // person's email, `user:<s>` — unless it is an address in verse's own half, which is no
 // person. Every other
-// bare word names nothing and is refused — which is where `user`, `agent`, `coderunner` and
+// bare word names nothing and is refused — which is where `user`, `agent`, `verse-runner` and
 // `verse.principal.group.<name>` stop meaning anything.
 func ParseGrantee(s string) (Grantee, error) {
 	if s == Everyone {

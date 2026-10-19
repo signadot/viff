@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 )
 
@@ -167,6 +168,23 @@ func Read(r *http.Request, v any) error {
 		return nil // no body
 	}
 	return FromNode(StripBrackets(node), v)
+}
+
+// ReadStrict is Read for a body whose type refuses keys it does not know, so a field the far
+// end misspelled, or one this end no longer has, is an error rather than silently dropped.
+func ReadStrict(r *http.Request, v any) error {
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		return fmt.Errorf("reading the request body: %w", err)
+	}
+	node, err := ParseNodeOrNil(data, RequestFormat(r))
+	if err != nil {
+		return fmt.Errorf("decoding the request body: %w", err)
+	}
+	if node == nil {
+		return nil // no body
+	}
+	return gomap.FromTonyIR(StripBrackets(node), v, gomap.Strict())
 }
 
 // ReadNode reads a request body as a document, for a handler that forwards it rather than

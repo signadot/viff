@@ -14,13 +14,13 @@ import (
 
 	tony "github.com/signadot/tony-format/go-tony"
 	tonyeval "github.com/signadot/tony-format/go-tony/eval"
-	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/schedule"
 	"github.com/signadot/verse/task"
 )
@@ -93,12 +93,11 @@ type Engine struct {
 	store    entity.Store
 	resolver task.Resolver // answers trigger ASK/PARK gates
 	// elsewhere answers whether a rule name is installed in another engine of this verse.
-	// Set by whoever runs more than one (versed); see KnowsElsewhere.
-	elsewhere func(name string) bool
-	spawn     Spawner // optional: how actions spawn tasks
+	spawn Spawner // optional: how actions spawn tasks
 	// moveDeadline moves a standing question's deadline (SetDeadlineMover); nil leaves a date a
 	// question reads from its subject fixed at the instant it was posed with.
 	moveDeadline func(scope, id string, at time.Time) error
+	offerCheck   func(runnerName string, l runner.Launch) error // optional: what the spawn's runner offers
 	triggers     []Trigger
 	// logger carries both the running dispatch commentary (Debug) and anything an
 	// operator has to act on (Warn). One channel with levels, rather than a verbose
@@ -272,6 +271,11 @@ func (e *Engine) SetSpawner(s Spawner) { e.spawn = s }
 // the record is. A gate reading its date from the subject calls it when the date is edited.
 func (e *Engine) SetDeadlineMover(m func(scope, id string, at time.Time) error) { e.moveDeadline = m }
 
+// SetOfferCheck sets what an install checks a spawn against: what the runner the spawn names
+// (""/the default) offers, as the runner described itself. The launch is the spawn as written,
+// with its templated values standing in. Optional: with none set, the runner says at the launch.
+func (e *Engine) SetOfferCheck(f func(runnerName string, l runner.Launch) error) { e.offerCheck = f }
+
 // SetScope names the scope this engine acts in — a named scope, or "" for
 // baseline. Set before anything is installed, because it is stamped on what this engine
 // persists.
@@ -315,7 +319,7 @@ func (e *Engine) Fired() int {
 // is dispatched, and while paused no change is dispatched at all — so control can
 // never queue behind an observation backlog. See docs/deployment-and-steering.md.
 func (e *Engine) Start(ctx context.Context) {
-	e.bgctx = ctx            // also bounds action-time monitors (provider selection) — cancelled on stop
+	e.bgctx = ctx            // bounds what the engine starts in the background — cancelled on stop
 	e.cursor = e.store.Rev() // start live from now; Observe() delivers rev>cursor
 	// NO PATTERNS: this loop asks each commit whether it touched what a rule reads
 	// (Trigger.touches), which the commit answers from its own delta. The task records it acts
@@ -794,8 +798,7 @@ func (e *Engine) countFire() {
 //
 // Empty when the action has no spawn: a set-only trigger starts no task, and inventing an
 // id for one would be worse than saying nothing. Note the id is what the task WILL be
-// called — the gate may be denied, or a provider selection may fail to resolve a doer, and
-// then nothing by that name is ever created.
+// called — the gate may be denied, and then nothing by that name is ever created.
 func (e *Engine) spawnLabel(t Trigger, subjects []entity.Ref) string {
 	if t.Action.Spawn == nil || len(subjects) == 0 {
 		return ""
@@ -1053,7 +1056,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 			continue
 		}
 		d := task.GateQuestion{
-			ID: ids[gi], Origin: t.Name, Mode: m, Gate: gname,
+			ID: ids[gi], Origin: t.Name, Gate: gname,
 			Reason: fmt.Sprintf("trigger %s gate %s on %s", t.Name, gname, subj),
 			// And the same thing in words, when the gate wrote any. `reason` says which rule
 			// asked; `pose` says what is being decided, which is the half a person needs.
@@ -1296,202 +1299,6 @@ func refIDs(refs []entity.Ref) []string {
 	return out
 }
 
-// ── the who-axis: governed provider selection ───────────────────────────────
-
-// eligibleProviders resolves a spawn's selectable options to {option → fragment}, in a
-// deterministic order — the candidates that both match and may run under this spawn.
-func (e *Engine) eligibleProviders(spawn launch.Spec) ([]string, map[string]launch.Fragment) {
-	var options []string
-	frags := map[string]launch.Fragment{}
-	for _, c := range e.providerCandidates(spawn) {
-		if c.refused != "" {
-			continue
-		}
-		options = append(options, c.id)
-		frags[c.id] = c.frag
-	}
-	return options, frags
-}
-
-// providerCandidate is one doer the selection considered, and — when it may not run under
-// this spawn — why not. Refusals are carried rather than dropped so whyNoEligible can explain
-// an empty ballot without re-deriving the reasoning that produced it.
-type providerCandidate struct {
-	id      string
-	frag    launch.Fragment
-	refused string // "" = eligible
-}
-
-// providerCandidates lists every doer the spawn's Provider names or matches, each marked
-// eligible or refused. Inline Eligible: the option IS the driver, and contributes nothing
-// else — an inline list is a list of names, and a name has no attributes to carry. Registry
-// Capability: list provider.<capability>.* whose attributes satisfy Match (a tony merge
-// match); the option is the provider id and the fragment is read off its payload.
-//
-// The payload is one namespace holding two kinds of key: SELECTION attributes (`tier`,
-// `risk`, `cost` — whatever the charter's Match talks about) and FRAGMENT fields (the four
-// launch.Fragment names). They are not separated, and should not be: `driver` was always both
-// — matchable and bound — and splitting them would make a provider entity a schema instead of
-// the free-form thing that lets a new attribute be invented without a code change.
-//
-// A refused candidate is INELIGIBLE, not trimmed. It never reaches a ballot, so a vote cannot
-// elect a doer that then fails to be seated — a decision with no seat, which no voter could
-// have known they were making. The alternative, quietly dropping the offending field and
-// running the doer anyway, would put a task under an envelope different from the one its
-// own entity states; task/authority.go was written to end exactly that.
-func (e *Engine) providerCandidates(spawn launch.Spec) []providerCandidate {
-	p := spawn.Provider
-	if p == nil {
-		return nil
-	}
-	ceiling, declared, ceilErr := task.NamedGrant(spawn.Grant)
-	var out []providerCandidate
-	seen := map[string]bool{}
-	add := func(id string, f launch.Fragment, payload entity.Payload) {
-		if seen[id] {
-			return
-		}
-		seen[id] = true
-		out = append(out, providerCandidate{
-			id: id, frag: f,
-			refused: refuseProvider(f, payload, spawn, ceiling, declared, ceilErr),
-		})
-	}
-	for _, d := range p.Eligible {
-		add(d, launch.Fragment{ID: d, Driver: d}, nil)
-	}
-	if p.Capability != "" {
-		var pattern *ir.Node
-		if len(p.Match) > 0 {
-			pattern, _ = gomap.ToTonyIR(p.Match)
-		}
-		ents := entity.Below(e.store, func(r entity.Ref) bool {
-			return r.ChildOf("provider", p.Capability)
-		}, 1, "provider", p.Capability)
-		sort.Slice(ents, func(i, j int) bool { return ents[i].Ref.Name() < ents[j].Ref.Name() })
-		for _, en := range ents {
-			if pattern != nil && !providerMatches(en.Payload, pattern) {
-				continue
-			}
-			add(en.Ref.Name(), providerFragment(en.Ref, en.Payload), en.Payload)
-		}
-	}
-	return out
-}
-
-// unhonoredProviderFields are the launch-spec fields a provider entity may NOT set. They are
-// refused rather than ignored: a doer whose entity says `vector: auto` and which then runs at
-// the charter's `ask` is a doer nobody described.
-//
-// `vector` is here because it is the one axis that can widen without touching authority — it
-// says whether a person sees an action at all, and `vector: auto` means "this firing already
-// answered its gates" (task/authority.go), which is the charter's claim to make. An
-// ordering over auto|ask|park that would let a doer TIGHTEN autonomy is a later question.
-// `resolver` and `environment` are here because neither has semantics to resolve to yet
-// (versed.launchOf), so honoring them would be a promise nothing keeps.
-var unhonoredProviderFields = []string{"vector", "resolver", "environment"}
-
-// refuseProvider reports why a doer may not run under this spawn, "" when it may. The three
-// refusals are the three ways a provider entity — an ordinary entity, writable by anyone who
-// can write entities — could otherwise obtain authority the charter never granted.
-func refuseProvider(f launch.Fragment, payload entity.Payload, spawn launch.Spec,
-	ceiling task.Grant, declared bool, ceilErr error) string {
-
-	for _, name := range unhonoredProviderFields {
-		if entity.Get(payload, name) != nil {
-			return fmt.Sprintf("it sets `%s`, which a provider may not: that field is the charter's", name)
-		}
-	}
-	if f.Grant != "" {
-		switch {
-		case ceilErr != nil:
-			return fmt.Sprintf("it declares a grant and the spawn's own grant %q does not resolve (%v)", spawn.Grant, ceilErr)
-		case !declared:
-			// Unreachable through AddTrigger, which requires a grant on any spawn carrying a
-			// provider. Kept because the reachable-today answer and the safe answer differ: an
-			// undeclared ceiling is UNBOUNDED (task.Launch.Grant nil), so taking it as the
-			// bound would make every provider grant a "narrowing" of everything.
-			return "it declares a grant and the spawn declares none, so there is no ceiling to check it against"
-		}
-		g, ok, err := task.NamedGrant(f.Grant)
-		if err != nil || !ok {
-			return fmt.Sprintf("its grant %q does not resolve (%v)", f.Grant, err)
-		}
-		if !ceiling.Subset(g) {
-			return fmt.Sprintf("its grant %q is not within the spawn's %q — a doer may narrow authority, never widen it",
-				f.Grant, spawn.Grant)
-		}
-	}
-	// Everything else the overlay itself can refuse — today, tool lists that share nothing.
-	// Asking Overlay rather than restating its rules keeps one answer to "may these compose".
-	if _, err := spawn.Overlay(f); err != nil {
-		return err.Error()
-	}
-	return ""
-}
-
-// providerFragment reads a provider entity's launch fragment off its payload. A provider
-// with no `driver` falls back to its own id, which is what let `provider:review:claude` mean
-// the claude driver before the field was conventional.
-func providerFragment(ref entity.Ref, payload entity.Payload) launch.Fragment {
-	f := launch.Fragment{
-		ID:     ref.String(),
-		Driver: entity.Str(payload, "driver"),
-		Frame:  entity.Str(payload, "frame"),
-		Grant:  entity.Str(payload, "grant"),
-		Tools:  entity.Strs(payload, "tools"),
-
-		VirtualKey: entity.Str(payload, "virtualKey"),
-	}
-	if f.Driver == "" {
-		f.Driver = ref.Name()
-	}
-	return f
-}
-
-// whyNoEligible explains an empty eligible set in terms of what to go fix. The four
-// causes need different answers — register a doer, loosen the match, narrow a doer (or widen
-// the spawn), or write a provider into the spec — and "no eligible doer" tells you which one
-// to try only by accident.
-func (e *Engine) whyNoEligible(spawn launch.Spec) string {
-	p := spawn.Provider
-	if p == nil {
-		return "the spawn declares no provider"
-	}
-	// Matched, and then refused for what it would run as. This is checked before the registry
-	// counts below because it is the only cause whose fix is in TWO places — the doer's entity
-	// or the spawn's own grant — so the message has to name both sides of the comparison.
-	if refused := refusedProviders(e.providerCandidates(spawn)); len(refused) > 0 {
-		return fmt.Sprintf("%d matching doer(s) may not run under this spawn: %s",
-			len(refused), strings.Join(refused, "; "))
-	}
-	if p.Capability == "" {
-		return "the spawn's provider lists no eligible doers and names no capability"
-	}
-	// Registered-but-excluded and not-registered-at-all look the same from the caller and
-	// are fixed in opposite places, so count the registry before the match is applied.
-	registered := len(entity.Below(e.store, func(r entity.Ref) bool {
-		return r.ChildOf("provider", p.Capability)
-	}, 1, "provider", p.Capability))
-	if registered == 0 {
-		return fmt.Sprintf("no provider.%s.* is registered (register one, e.g. "+
-			"`verse data provider %s <id> --put '{driver: llm}'`)", p.Capability, p.Capability)
-	}
-	return fmt.Sprintf("all %d registered provider.%s.* were excluded by match %s",
-		registered, p.Capability, matchText(p.Match))
-}
-
-// refusedProviders renders the refused candidates as "<id>: <why>", for the message above.
-func refusedProviders(cands []providerCandidate) []string {
-	var out []string
-	for _, c := range cands {
-		if c.refused != "" {
-			out = append(out, c.id+": "+c.refused)
-		}
-	}
-	return out
-}
-
 // matchText renders a match pattern the way the charter that declared it is written, so
 // the operator can compare the message against their own file rather than translate Go's
 // map formatting back into tony.
@@ -1503,21 +1310,6 @@ func matchText(m map[string]any) string {
 	return strings.Join(strings.Fields(string(b)), " ")
 }
 
-// providerMatches reports whether a provider's attributes satisfy an eligibility pattern,
-// evaluated as a tony (RFC-7396 merge) match — the attributes are converted to a tony
-// node and matched against the pattern. Tag-ops (!and/!or/!glob/…) work whatever dialect
-// the pattern was authored in, since JSON input is parsed by the tony parser too; an
-// untagged pattern stays a structural merge match.
-func providerMatches(attrs entity.Payload, pattern *ir.Node) bool {
-	// A payload IS a node, so there is nothing to convert — this used to marshal the map
-	// through gomap first. Same call, one fewer representation.
-	ok, err := entity.SafeMatch(attrs, pattern)
-	return err == nil && ok
-}
-
-// Spawn asks the Spawner to launch a task from a launch.Spec — non-blocking.
-// The Spawner owns build/mirror/run; the task's state appears in the verse and
-// its acts write entities, closing the loop. Requires a Spawner.
 func (e *Engine) Spawn(id string, spec launch.Spec) task.Handle {
 	return e.spawnHooked(id, spec, nil, "")
 }
@@ -1530,8 +1322,7 @@ func (e *Engine) spawnHooked(id string, spec launch.Spec, hooks *Action, chain s
 		e.tracef("no spawner configured; cannot spawn %q", id)
 		return nil
 	}
-	// THE BACKSTOP every spawn passes through: a provider selection resumed at restart reaches
-	// here with no firing and no hook above it, and a suspended subject starts nothing.
+	// THE BACKSTOP every spawn passes through: a suspended subject starts nothing.
 	subj, _ := entity.ParseAddr(spec.Subject)
 	if held := e.settled(mirror.TriggerOf(chain), subj); len(held) > 0 {
 		e.tracef("spawn %s: suspended (%s); not spawning", id, strings.Join(held, ", "))
@@ -1561,13 +1352,17 @@ func (e *Engine) spawnHooked(id string, spec launch.Spec, hooks *Action, chain s
 		}
 	}
 
-	e.tracef("spawn task %s (driver=%s): %s", id, spec.Driver, spec.Prompt)
+	e.tracef("spawn task %s (doer=%s): %s", id, spec.Doer.Name(), spec.Prompt)
 	h := e.spawn(id, spec)
 	if h != nil && spec.Subject != "" {
 		e.track(flowTask{id: id, subject: spec.Subject, h: h, hooks: hooks, chain: chain})
 	}
 	return h
 }
+
+// engineActor is the name the engine acts under on a task's handle: who paused, resumed or
+// cancelled it, for the record. The engine is verse's own, so it is the system's.
+const engineActor = "system:trigger"
 
 // track registers a live task and arms its lifecycle-driven reaper. A task a suspension covers
 // is held as it is tracked — a task re-attached after a restart, or one run by hand about a
@@ -1580,13 +1375,13 @@ func (e *Engine) track(fp flowTask) {
 		// A firing that was already past its gate when the work was dropped: what it started
 		// has no program left to belong to.
 		e.liveMu.Unlock()
-		fp.h.Cancel(why)
+		fp.h.Cancel(why, engineActor)
 		return
 	}
 	e.live[fp.id] = fp
 	e.liveMu.Unlock()
 	if len(held) > 0 {
-		fp.h.Pause()
+		fp.h.Pause(engineActor)
 		e.recordHold(fp)
 	}
 	go e.reapOnDone(fp) // retire it when it ends
@@ -1981,9 +1776,9 @@ func (e *Engine) HoldTask(id string, hold bool) (LiveTask, bool) {
 	}
 	switch {
 	case hold:
-		fp.h.Pause()
+		fp.h.Pause(engineActor)
 	case len(held) == 0:
-		fp.h.Resume()
+		fp.h.Resume(engineActor)
 	}
 	e.recordHold(fp)
 	return fp.live(), true
@@ -2012,7 +1807,7 @@ func (e *Engine) CancelLive(reason string) []string {
 	e.liveMu.Unlock()
 	ids := make([]string, 0, len(live))
 	for id, fp := range live {
-		fp.h.Cancel(reason)
+		fp.h.Cancel(reason, engineActor)
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)

@@ -121,9 +121,8 @@ build:
     # Operator, and why nothing here is required.
     #
     # One knob per credential rather than one for all of them, because they are held by
-    # different processes and revoked on different days: the git source's PAT and the
-    # coderunner's push token can be the same secret and should still be two entries, so
-    # taking one away does not take the other.
+    # different processes and revoked on different days: two sources' tokens can be the same
+    # secret and should still be two entries, so taking one away does not take the other.
     #
     # The entry's OWN key names land in the Secret verbatim — deploy/README.md tabulates what
     # each consumer reads. An entry that spells them differently syncs green and configures
@@ -134,7 +133,7 @@ build:
     slackSecretKey: ""
     linearSecretKey: ""
     githubSecretKey: ""
-    coderunnerSecretKey: ""
+    runnerSecretKey: ""
     # Comma-separated grantees who may take a top-level place (`scott@example.com,agent:ops`).
     # "" is the open verse. See the patch below for how it reaches versed, and what changing it
     # on a running verse takes.
@@ -147,17 +146,22 @@ build:
     # an OPENAI_MODEL in the Secret, which is the right way round.
     llmModel: ""
 
-    # The coderunner: a place code work RUNS (its own image, bubblewrap containment, a
+    # The verse runner: a place code work RUNS (its own image, bubblewrap containment, a
     # workspace and a process per task). Off by default and independent of everything above —
-    # deploying it does not install it, which is `verse runner add coderunner
-    # http://coderunner:9802` and is somebody's verb for the reason a source's is.
+    # deploying it does not install it, which is `verse runner add verse-runner
+    # http://verse-runner:9802` and is somebody's verb for the reason a source's is.
     #
     # Its own image because the two are sized by different things: the runtime image is thin
     # and pinned to the engine, this one carries the toolchain the repositories it serves need
     # to build. A separate REPOSITORY is not required by that — a tag in the same one is
     # cheaper to grant a pull credential access to.
-    coderunner: false
-    coderunnerImage: "example/verse-coderunner:latest"
+    runner: false
+    runnerImage: "signadot/verse-runner:latest"
+    # The codex runner beside it: the same runner in an image with Codex in it, offering the codex
+    # agent, with its own credential (the verse-codex Secret, created by hand). Installing it is
+    # `verse runner add codex http://codexrunner:9802`.
+    codexrunner: false
+    codexrunnerImage: "signadot/verse-runner:codex"
 
     # ── Sources: what reflects an external system into the verse ──────────────
     #
@@ -311,8 +315,10 @@ build:
     dir: linear-io
   - if: '.[githubIO]'
     dir: github-io
-  - if: '.[coderunner]'
-    dir: coderunner
+  - if: '.[runner]'
+    dir: verse-runner
+  - if: '.[codexrunner]'
+    dir: codexrunner
 
   patches:
   # The Namespace object's own name.
@@ -427,21 +433,21 @@ build:
         name: verse-github
     patch: !delete null
 
-  - if: '.[ coderunnerSecretKey != "" ]'
+  - if: '.[ runnerSecretKey != "" ]'
     match:
       kind: ExternalSecret
       metadata:
-        name: verse-coderunner
+        name: verse-runner
     patch:
       spec:
         dataFrom:
         - extract:
-            key: $[coderunnerSecretKey]
-  - if: '.[ coderunnerSecretKey == "" ]'
+            key: $[runnerSecretKey]
+  - if: '.[ runnerSecretKey == "" ]'
     match:
       kind: ExternalSecret
       metadata:
-        name: verse-coderunner
+        name: verse-runner
     patch: !delete null
 
   # The pull secret, onto the `default` ServiceAccount every pod here runs as.
@@ -846,33 +852,59 @@ build:
         annotations:
           tailscale.com/tags: $[tailscaleTags]
 
-  # The coderunner's image — its own, so it takes coderunnerImage rather than image. The pull
+  # The verse runner's image — its own, so it takes runnerImage rather than image. The pull
   # secret it needs is already handled: it runs as the namespace's `default` ServiceAccount
   # like everything else here, so nothing about a private registry is this deployment's
   # problem. imagePullPolicy tracks the same knob the other tiers do, for the local case.
-  - if: '.[coderunner]'
+  - if: '.[runner]'
     match:
       kind: Deployment
       metadata:
-        name: coderunner
+        name: verse-runner
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: coderunner
-              image: $[coderunnerImage]
-  - if: '.[ coderunner && imagePullPolicy != "" ]'
+            - name: verse-runner
+              image: $[runnerImage]
+  - if: '.[ runner && imagePullPolicy != "" ]'
     match:
       kind: Deployment
       metadata:
-        name: coderunner
+        name: verse-runner
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: coderunner
+            - name: verse-runner
+              imagePullPolicy: $[imagePullPolicy]
+
+  # The codex runner's image, the same way.
+  - if: '.[codexrunner]'
+    match:
+      kind: Deployment
+      metadata:
+        name: codexrunner
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: codexrunner
+              image: $[codexrunnerImage]
+  - if: '.[ codexrunner && imagePullPolicy != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: codexrunner
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: codexrunner
               imagePullPolicy: $[imagePullPolicy]
 
   # The source connectors. One image, three roles: these run `iod`, versed runs `verse`,

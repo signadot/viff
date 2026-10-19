@@ -1,11 +1,11 @@
 # The action of a rule
 
 This page describes the `action` field of a [rule](../glossary.md#rule): `patch`, `derive`,
-`spawn`, `calls` and `seq`. It also describes what an action can read, the answer contract,
+`spawn` and `seq`. It also describes what an action can read, the answer contract,
 completion hooks, and the ids and progress facts that a firing writes. The model that the
-action belongs to is in [the trigger model](../trigger-model.md).
+action belongs to is in [the charter reference](../trigger-model.md).
 
-## `action` — what fires
+## `action`: what fires
 
 The [action](../glossary.md#action) of a rule is data, not code. An action needs no target of
 its own. It acts on the [subject](../glossary.md#subject) of the condition.
@@ -15,21 +15,25 @@ its own. It acts on the [subject](../glossary.md#subject) of the condition.
 | `patch` | changes the payload of the subject ([patch](#patch)) |
 | `derive` | writes an entity that is not the subject ([derive](#derive)) |
 | `spawn` | starts a task ([spawn](#spawn)) |
-| `calls` | inside a `spawn`: the list of actions the task runs, written by the charter ([calls](#calls--when-the-charter-knows-the-actions)) |
 | `seq` | runs a list of actions in order ([seq](#seq-sequence-along-the-chain-parallel-across-triggers)) |
 | `onDone` | an action that fires when the task ends `done` ([completion hooks](#completion-hooks-one-trigger-chaining-visible)) |
 | `onFailed` | an action that fires when the task ends `failed` ([completion hooks](#completion-hooks-one-trigger-chaining-visible)) |
 | `onCancelled` | an action that fires when the task ends `cancelled` ([completion hooks](#completion-hooks-one-trigger-chaining-visible)) |
 
+An action writes to the store, and it can also act on a system outside verse. A `patch` or a
+`derive` that writes to an [iod](../glossary.md#iod)'s out place asks the iod to act: to post a
+comment, to set a label, to merge. The iod carries the write out to its system, and writes back
+what happened ([the out half](io.md#the-out-half)). For work that needs a judgment or a
+checkout, the action spawns a task.
+
 **Every rule has an action, and verse refuses at install a rule that would do nothing.** Any one
-of `patch`, `derive`, `spawn` or `seq` is enough. A rule with none of them would install and
-report itself installed. It would then watch its subtree for the life of the store and never
-write anything.
+of `patch`, `derive`, `spawn` or `seq` is enough. A rule with none of them would install, watch
+its subtree for the life of the store, and never write anything.
 
 Completion hooks do not count as an action. A hook is what happens when something finishes, and
-without a spawn or a seq nothing is there to finish. For the same reason, verse refuses an `onX`
-without a spawn or a seq. A gate does not count either. A gate on a rule with no action poses a
-question whose answer nothing reads.
+without a spawn or a seq nothing finishes. For the same reason, verse refuses an `onX` without a
+spawn or a seq. A gate does not count either: on a rule with no action, a gate asks a question
+whose answer nothing reads.
 
 **An action resolves everything, then writes.** The order is:
 
@@ -80,53 +84,54 @@ that grows structure depends on this.
 
 `derive` writes an entity that is *not* the subject. A `patch` cannot do this. A
 [derive](../glossary.md#derive) is a list of entries. Each entry names an address as a path, and
-what goes there: `- {path: "verse-dev.drift.head", value: …}`. Its content may reference its own
-subject. It may also reference other entities, at or below its own level.
+what goes there: `- {path: "repos.verse.drift.head", value: …}`. Its content may reference its
+own subject. It may also reference other entities, at or below its own level.
 
 A derive is installable only inside a declared order of levels, and it must land strictly above
 the rule that writes it. See [strata](../strata.md).
 
-**Unnamed, the address is the engine's, and it is the provenance.** The address is the place,
-then the rule, then the segments of the subject. A rule that selects `git.verse.ref.*` and derives
-into `[verse-dev, merge, proposal]` writes
+**Without a name, the engine chooses the address, and the address says where the entity came
+from.** The address is the place, then the rule, then the segments of the subject. A rule
+`proposal-appeared` that selects `git.verse.ref.*` and derives into
+`[repos, verse, merge, proposal]` writes
 
-    verse-dev.merge.proposal.proposal-appeared.git.verse.ref."verse/auto/…"
+    repos.verse.merge.proposal.proposal-appeared.git.verse.ref."verse/auto/…"
 
-This address has **eight** segments: three for the place, one for the rule, four for the
-subject. No two rules can address the same entity.
+This address has **nine** segments: four for the place, one for the rule, four for the subject.
+No two rules can address the same entity.
 
 **So a reader of a derivation says how deep one is.** The depth follows from the depth of the
-subjects that the producing rule selects. `[verse-dev, merge, proposal, "*"]` has four segments.
-It selects the *rule* level, whose payload is the whole subtree of the derivations of that rule,
-and not any one of them.
+subjects that the producing rule selects. `[repos, verse, merge, proposal, "*"]` has five
+segments. It selects the *rule* level, whose payload is the whole subtree of that rule's
+derivations, and not any one of them.
 [The pattern says how deep its subjects are](condition.md#the-pattern-says-how-deep-its-subjects-are)
 says what a wrong depth does.
 
 **Naming one is how a derive stays shallow.** `id:` puts the entity at the place plus that one
-segment: `verse-dev.merge.proposal."verse/auto/…"`, which has four segments. A reader already
+segment: `repos.verse.merge.proposal."verse/auto/…"`, which has five segments. A reader already
 spells that address. A derive usually wants an `id:` when its subjects stand under one place and
 the rules that read them name the place literally.
 
 One firing derives one entity, unless it says `!each`. `!each` fans out over a list and derives
-one entity per element. The address of each takes a key read out of the element. This is the
-same invariant, with the key in the address. With it, the twelve findings of a task become
-twelve facts, and not eleven paragraphs. See
-[strata](../strata.md#each--when-one-answer-holds-many-facts).
+one entity per element. The address of each takes a key read out of the element. The rule is the
+same, with the key in the address. With it, the twelve findings of a task become twelve facts,
+and not one long paragraph. See
+[strata](../strata.md#each-when-one-answer-holds-many-facts).
 
 A single derive may carry a `key:` too:
-`- {path: "verse-dev.merge.train", key: $subject.value.sha, value: …}`. Its address is then a
+`- {path: "repos.verse.merge.train", key: $subject.value.sha, value: …}`. Its address is then a
 function of (rule, subject, key), and not of (rule, subject). It gives one entity per value of
 something, where the same subject keeps moving. See
 [strata](../strata.md#a-key-on-a-single-derive).
 
-**`id:` is that key with the composition dropped.** The difference is for the reader. A keyed
-entity stands at `verse-dev.drift.head.head-moved.git.verse.head.aaaa1111`: the place, the rule,
-the subject, the key. Nothing in the grammar composes that address from a subject. So a reader
-that wants the record must *describe* it, with a `"*"` per segment and a predicate on a field it
-happens to know. It cannot name it.
+**`id:` is that key without the rule and the subject.** The difference is for the reader. A keyed
+entity stands at `repos.verse.drift.head.head-moved.git.verse.head.aaaa1111`: the place, the
+rule, the subject, the key. Nothing in the grammar builds that address from a subject. So a
+reader that wants the record must *describe* it, with a `"*"` per segment and a predicate on a
+field it happens to know. It cannot name it.
 
-With `id: $subject.value.sha` the record is `verse-dev.drift.head.aaaa1111`, and a reader spells
-it: `!get-path {at: [verse-dev, drift, head, $subject.value.sha], path: result.report}`.
+With `id: $subject.value.sha` the record is `repos.verse.drift.head.aaaa1111`, and a reader
+spells it: `!get-path {at: [repos, verse, drift, head, $subject.value.sha], path: result.report}`.
 
 `id:` gives the author the job of keeping addresses unique.
 
@@ -155,10 +160,10 @@ Installing a charter evaluates its rules against what is already in the store
 acts on the world, and not only on what happens next. A `derive` is a patch merged at depth, so
 it overwrites exactly the fields it names.
 
-Together, these two facts mean: a derive that names a field that *another* rule owns rewrites
-that field **every time the charter is installed**. It writes over whatever state the flow had
-reached. A rule that has not changed, applied again, sets a flow at `reviewed: baseline` back to
-`pending` and `gathered`. Nothing fails. The derive writes its own value again.
+So a derive that names a field that *another* rule owns rewrites that field **every time the
+charter is installed**. It writes over whatever state the flow had reached. A rule that has not
+changed, applied again, sets a flow at `reviewed: baseline` back to `pending` and `gathered`.
+Nothing fails: the derive writes its own value again.
 
 So a derive states the facts it owns. The rule that follows it starts from an **absence**:
 
@@ -179,91 +184,131 @@ the field.
 
 ### `spawn`
 
-`spawn` launches a [task](../glossary.md#task) from a `launch.Spec`. Instead of a fixed
-`driver`, a spawn may carry a `provider` selection, which chooses the doer and is governed. Verse
-tags the spawned task with the subject. The tag makes the task part of the flow of that subject.
+`spawn` launches a [task](../glossary.md#task). Verse tags the spawned task with the subject.
+The tag makes the task part of the flow of that subject.
 
-A [provider selection](../glossary.md#provider-selection) binds the whole doer, and not only its
-driver. The `driver`, `frame`, `tools` and `grant` of the winning provider entity overlay those of
-the spawn. So two doers on one driver can differ in what they are told and what they may do.
+A spawn answers three questions, and each is a field:
 
-The overlay only narrows:
-
-- the grant of a doer must be within the grant of the spawn, so `grant:` is required on a spawn
-  that selects;
-- the tools of a doer intersect the tools of the spawn, and do not replace them;
-- `vector` is not for a doer to set.
-
-Verse refuses a doer that would widen the spawn at *eligibility*, so it never appears on a
-ballot. See [provider selection](../provider-selection.md).
-
-The fields of the spec fall into three groups. The group of a field decides what a charter can
-say with it.
-
-| Group | Fields | What they are |
+| Question | Field | What it names |
 |---|---|---|
-| *The request* | `prompt`, `frame` | text you write |
-| *The contract* | `answer` | the shape the final message must have. Verse checks it. |
-| *The envelope* | `vector`, `grant`, `tools` | names of things, not text |
+| what is the work | `prompt` | the job, in text. An agent reads it as its prompt; a script needs none. |
+| what does it | `doer` | an agent the runner offers (`doer: {agent: verse}`), or a script (`doer: {script: "…"}`), and what it works with, under `with` |
+| what each step gets | `policy` | one ordered list of rows over the task's steps: a verb no row names is not the task's, the first row that matches a step denies it, asks about it, or allows it, and the last row decides the calls of named verbs no row above matched |
 
-**The request.** `prompt` is the one job. `frame` is the standing instructions under which the
-task reads the prompt. For an agent it is the system prompt. The default frame tells the agent
-that its last message *is* the result, and not to summarise. Only the charter knows what shape
-it wants back. So write a frame whenever the charter, and not a person, reads the answer.
+The spawn can also carry a [contract](#the-answer-contract) (`answer`) that the result must
+satisfy.
 
-**The contract.** `answer` is not advice, as the frame is. Verse checks it. See
-[the answer contract](#the-answer-contract).
+**The doer.** `doer` is one of two things. `agent` names an agent by the name the runner offers
+it under: `verse` is verse's own agent. `script` is a shell script; it runs by its `#!` line, or
+under bash. A doer that names both, or neither, is refused.
 
-**The envelope.**
+`with` is what the doer works with: facts about what the run is set up with, such as the
+repositories to check out and the network it may reach. A fact is no permission. What the task
+may do with it is the policy's.
+
 
 | Field | What it does |
 |---|---|
-| `vector` | sets how much the task must confirm. A firing that already answered its own `gates` can say `vector: auto`, and does not ask again for each action. |
-| `grant` | the hard authority. Verse *refuses* an action outside it, and asks nobody. |
-| `tools` | the tools the task is offered. Absent, the runner's: what it makes available for this launch, within the environment's floor and the runner's own. `tools: []` is no tools. `tools: [read_file, list_dir]` on a review agent means that shell and delegation never come up; a name the runner cannot offer for this launch — `push` with no writable repository, a tool it has not got — refuses the spawn. |
+| `git` | the repositories the task works in: `[{repo: acme/app, from: main}]`. `repo` is `owner/name` at GitHub, or `host/owner/name` on another forge; `from` omitted is the default branch. Both take `$vars`, so a charter can write `from: $subject.value.head`. What may leave each repository is the policy's, in rows over `git.push` (by `repo`, `ref`, `delete`, `force`, and `exists` and `own`, which the runner fills) and `github.create-pr`; a row's `repo` is the one spelling `host/owner/name`, so `github.com/acme/app` names the repository above. Verse checks the shape at install and carries the list to the runner, which refuses a launch it cannot honour rather than weakening it. The record of the task carries `git`, so a reader sees what the run worked on without the charter. |
+| `git-issue` | the repository trackers the task works with: `[{repo: acme/app}]`, each naming a repository of `git`, in whose checkout the tracker is |
+| `network` | what the run may reach: `{mode: none}`, `{mode: open}` (the host's network), or `{mode: allow, allow: [api.github.com, "pypi.org:443"]}`. Absent is `none`. The runner builds it once, when the run starts, and refuses a mode its sandbox cannot build: an unconfined runner, such as `verse up`'s, builds only `open` ([the network](../systems/inside.md#the-network-is-the-launchs)). |
+| `env` | variables set in the task's shell, by name. This is how a script gets data from the subject without splicing it into its text: `env: {BRANCH: $subject.value.head}`. A runner refuses a name it owns. |
+| `model`, `effort` | for an agent: which model it runs under, and at which effort, where the runner's offer takes them. |
 
-The values are `vector: auto|ask|park` and `grant: read-only|no-delegate|none|all`.
+`doer.annotations` are settings for the runner, such as `verse.portkey/virtual-key`. Verse
+writes that one itself from `virtualKey`, the address of the model credential the run spends
+([virtual key](../glossary.md#virtual-key)), and refuses it written in `annotations`.
 
-A spawn that wants the task gated for each action writes the task's own `gates:` beside it.
-These gates have the same shape as the gates of the rule, and each poses its question. They run
-at every boundary of the task, and not once for the firing. See
-[a gate's question](tasks.md#a-gates-question).
+**A script is one action, and no step.** Nothing asks before it runs: verse decided to start
+it. What it may do beyond its workspace is call the task's tools from its shell with
+`verse-call-tool`: `git-push`, `github-create-pr` and `git-fetch` for the repositories `with.git` gave it,
+their issue trackers' verbs (`git-issue-create`, `github-issue-comment`, `linear-issue-close`,
+…), Slack's (`slack-post`, `slack-read`, …), and `question-ask`. Each call is an action of
+the task, and the same step an agent's use of the tool is, so the same rows decide it. A refusal is an answer the script reads, not the end of its run.
 
-Nobody at a console was given the authority to widen what the charter granted. For this reason
-verse refuses an action outside the `grant`, and does not ask about it.
+**The policy.** A step is what a task is about to do, a verb of a [system](../systems/README.md): `git.push`,
+`github.create-pr`, `files.write`, `commands.run`, `agent.call-sub-agent`, and the
+trackers' and Slack's acts, `git-issue.push`, `github-issue.create`, `slack.post` and the rest of
+[the table](tasks.md#the-policy). `policy` is one ordered list of rows over them: the first
+row that matches a step decides it, and the last row, which names no step, decides the calls of
+the named verbs that no row above matched. A verb no row names is not the task's: it has no
+tool, and a call of it is refused, so a spawn with no policy is given no verb. A firing that
+already answered its own `gates` allows the verbs it decided, `{match: {system: git, verb:
+push}, then: allow}`, and does not ask again for each action. What a task may
+reach is not a step: it is the doer's `with.network`, and a spawn that leaves it out has none
+([the network](../systems/inside.md#the-network-is-the-launchs)).
 
-`yield` is always offered, whatever `tools` lists. It is how a task hands control back. With the
-reason `cannot`, it is how a task reports that it could not do the work.
+Each row poses its question, or refuses, at the step it matches, at every boundary of the
+task, and not once for the firing:
 
-An unknown `vector`, `grant` or tool name fails the spawn. Verse does not fall back to
-unbounded. A field that reads back as written and enforces nothing is the failure that this rule
-prevents.
+```tony
+policy:
+- name: release
+  match: {system: git, verb: push, ref: refs/heads/main}
+  then:
+    ask:
+      need: 2
+      answerers: [group:release]
+      within: 4h
+      default: deny
+      labels: {slack: C0C3KHG9B0W}
+- {match: {system: git, verb: push}, then: allow}
+- {then: ask}
+```
+
+| Field | What it does |
+|---|---|
+| `name` | what the question names, and what a hook's `onDenied` refers to; absent, the row is named by its place, `policy[0]`. Two rows of one name are refused, and so are `turn`, `ask` and `question-ask`, the questions that are no row's |
+| `match` | the step's `system`, which every row but the default names, its `verb`, left out for any of the system's, and the step's fields: `repo`, `ref`, `delete` and `force` for `git.push`, and `exists` and `own`, which the runner fills from the forge; `repo`, `base`, `head` and `own` for `github.create-pr`; `repo`, `head`, `base` and `own` for `github.update-pr`; `path` for `files.write`; `command` for `commands.run`; `agent` for `agent.call-sub-agent`; `repo` and `issue` for a tracker's acts, `team` for a Linear filing; `channel`, and `thread` or `emoji`, for Slack's. Each [system's page](../systems/README.md) lists its verbs and their fields. A field left out matches anything; `*` matches within a segment and `**` across. A field is written as the runner spells it: `repo` as `host/owner/name` in lower case (`github.com/acme/app`), `ref` a full ref (`refs/heads/main`), `base` and `head` a branch's name (`main`), `delete` and `force` `true` or `false`, a Linear `team` or `issue` uppercase, a Slack `channel` lowercase with no `#`; a pattern it is never spelled as is refused. A field the step does not have is refused, and so is a `$`: a match is a pattern over what the task does, not bound by the firing. A row with no `match` is the default, and it is last. |
+| `then` | `deny`, `ask` or `allow`; `{ask: {…}}`, an ask with its shape; or `withhold`, on a system or a verb, which leaves it out of the run |
+| `then.ask.need` | how many approvals the step takes; absent is one |
+| `then.ask.answerers` | who is asked, in the grammar a rule's gate uses (`user:…`, `group:…`, `$principal`); absent is the docket |
+| `then.ask.within`, `then.ask.default` | how long the question stands, and what silence settles on |
+| `then.ask.labels` | what the question says about itself for whoever watches asks: `team: payments`, `slack: C…` |
+
+The runner reads the step, the approvals, the answerers and the deadline's duration, and says
+which gate matched. Verse adds the rest when it poses the question. See
+[a gate's question](tasks.md#a-rows-question).
+
+What a run works with is what its doer is set up with: a repository checked out, a network it
+may reach. The runner refuses what the spawn did not give, and asks nobody. What a run may do
+to it is the policy's, within the runner's ceilings. A runner publishes, for each system it
+performs, the ceiling its operator wrote. What the spawn fixes is which verbs the task has, the
+ones its rows name; a row that allows or asks about calls the ceiling refuses every one of fails
+the spawn, naming both rows, since it could never do anything. The rest of a row is a dial: the
+runner decides each call at the act, by the row and then by the ceiling, which it reads again
+([the verse runner](runnerd.md#what-it-offers)).
+
+An unknown step in a row, or a doer the runner does not offer, fails the spawn when the rule is
+installed. Verse does not fall back to a default. An unknown field inside `spawn:` is a
+different case: verse drops it and says nothing
+([what an install does not check](charter.md#what-an-install-does-not-check)).
 
 | Field | What it names |
 |---|---|
-| `resolver` | the resolver that answers the gates of this run. Verse refuses a spawn that names a resolver that is not installed, and does not leave the run unsupervised. See [attached resolvers](../attached-resolvers.md). |
-| `environment` | the workspace that the task runs in. Verse carries the name to the runner. The runner resolves it, and refuses a name it does not have. |
-| `repos` | the repositories the task works in, and what it may push to each: `[{repo: acme/app, access: write, from: main, push: {new: ["verse/*"], existing: [main]}}]`. `repo` is `owner/name` at GitHub or a git url; `access` is `read` (the default) or `write`, and `write` names what it may push in `push`; `from` omitted is the default branch; `force` lets a push rewrite an `existing` branch. `repo`, `from` and `existing` take `$vars`, so a charter can write `existing: [$subject.head]`; `new` does not. Verse checks the shape at install, carries the list to the runner, which refuses a launch it cannot honour rather than weakening it, and writes it on the task's record as `repos`, so a reader sees what the run was allowed without the charter. |
+| `runner` | where the run runs: `verse.runners.<name>`, a runner installed with `verse runner add`. Absent is the verse's default. See [runners](../runners.md). |
+| `timeout` | how long the run may take, as a duration. Verse cancels it after that, on every runner. |
 | `credential` | `{audience: <name>}` asks verse for a token that vouches for the task to a system outside verse: the rule's gate let this work through. It is for a rule's own spawn, of a rule with a gate that asks. See [a credential for what a gate let through](gates.md#a-credential-for-what-a-gate-let-through). |
+| `virtualKey` | the address of the model credential the run spends, such as `acme.keys.review`. Verse reads it as whoever installed the rule, so a rule cannot name a key its owner may not read. Absent is the runner's default ([virtual key](../glossary.md#virtual-key)). |
+| `retain` | how many of the task's events verse keeps for a reader who attaches late. Absent is the default. |
+
+A spawn names no resolver. A question goes to the people a row or a gate names, and each of
+them grants the [resolver](../attached-resolvers.md) that answers for them (`verse resolver
+grant`). Verse refuses a `resolver:` on a spawn at install.
 
 ```tony
 spawn:
-  driver: llm
+  doer: {agent: verse, with: {network: {mode: open}}}
   prompt:   "Review $subject for security defects."
   answer:
     severity: !or [low, high]
     note:     !irtype string
-  grant:  read-only
-  vector: auto
-  tools:  [read_file, list_dir]
-  retain: 4096
+  policy:
+  - name: write
+    match: {system: files, verb: write}
+    then: ask
+  - then: allow
 ```
-
-`retain` is how many events of the task's event stream verse keeps for a reader that resumes.
-A `?since=` below that window gets a resync marker instead of the events. Omit it, and the
-default of the runtime applies. That default is small. A longer window costs memory for each
-live task. The reason `retain` is set per spawn is in
-[Why it is this way](../design/reference-action.md#retain-is-per-spawn).
 
 ### `as: subject` — a task for whoever wrote the record
 
@@ -272,7 +317,7 @@ the record that fired it as well:
 
 ```tony
 spawn:
-  driver: llm
+  doer: {agent: verse, with: {network: {mode: open}}}
   prompt: $subject.value.then
   as: subject
 ```
@@ -293,60 +338,53 @@ owner is the system, the task acts as the rule alone.
 `subject` is the only value that `as` takes. Verse refuses any other at install. It also refuses
 a charter that writes `asker:` itself, because the engine sets it.
 
-### `calls` — when the charter knows the actions
+### A script — when the charter knows the actions
 
-A spawn can carry the work itself, instead of a prompt for something to work the work out. A
-merge is four git commands. A model that finds them again at each firing adds nothing but the
-chance of doing something else.
+A spawn can carry the work itself, instead of a prompt for an agent to work it out. A merge is a
+few git commands. A model that finds them again at each firing adds nothing but the chance of
+doing something else.
 
 ```tony
 spawn:
-  vector: auto
-  calls:
-  - tool: run_bash
-    input: {command: "git merge --ff-only origin/$branch"}
-  - tool: push
-    input: {branch: main}
+  doer:
+    with:
+      git:
+      - {repo: acme/app, from: main}
+      network: {mode: open}
+      env: {BRANCH: $subject.value.head}
+    script: |
+      git -C app merge --ff-only "mirror/$BRANCH"
+      verse-call-tool git-push -branch main
+  policy:
+  - {match: {system: git, verb: push, ref: refs/heads/main}, then: allow}
+  - {match: {system: git, verb: push}, then: deny}
+  - {then: allow}
 ```
 
-The presence of `calls` **is** the driver. `driver: calls` may be written, and it must not
-contradict the list. Each entry becomes an ordinary action. It is derived, gated and narrated in
-the same way as any other. So a gate written for the push of an agent holds this push too.
+The script runs in the workspace that `with.git` checked out, with `with.env` in its shell.
+Its calls to `verse-call-tool` are the task's actions. Each is a step, as an agent's call is: the
+same rows decide it, and the task's record shows it. So a row written for an agent's push holds
+this push too. A call
+the runner declines is an answer on the call's output, and the script decides what it means:
+`verse-call-tool git-push -branch "$BRANCH" -delete || true` is a sweep that one declined ref does
+not stop.
 
-Verse expands values for each argument separately. So a `$branch` that contains a quote is one
-argument. It is not text that has to survive being spliced into a command.
+**A script's text is not bound.** `$subject` in a prompt is the subject; in a script it is the
+shell's, and verse leaves it alone. A value from the firing reaches a script as a variable in
+`with.env`, which the shell reads and never parses: spliced into the text, a branch named
+`x;curl …` would be a program.
 
-An entry may narrow what ends the list:
+The result of the task is the script's output. The task ends `done` when the script exits 0,
+and `failed` with the reason otherwise, so a hook never fires `onDone` for a command that did
+not work.
 
-```tony
-  - tool: push
-    input: {branch: $branch, delete: true}
-    fatal: [err]        # a remote declining one ref is not a reason to stop
-```
+A script does not get what belongs to a model:
 
-`fatal` lists outcomes from these three:
-
-| Outcome | Meaning |
-|---|---|
-| `err` | the action failed |
-| `blocked` | the action was refused, by a gate or by the far side |
-| `nonzero` | a command exited non-zero |
-
-An absent `fatal` means all three, because a list is ordered when its calls depend on each other.
-`fatal: []` means that this call ends nothing, which is what a sweep says. The two are different
-statements, so writing neither is not the same as writing the empty one.
-
-A list with an unknown outcome, no tool, or a driver that contradicts it fails the *firing*.
-There its author can read why. A tool name that verse cannot check belongs to the runner, and
-the runner refuses it.
-
-A call list does not get what belongs to a model:
-
-- no `answer` contract, because nothing can repair one. A spawn that carries both fails.
-- no delegation.
+- no `answer` contract, because nothing can repair one. A spawn that carries both is refused.
+- no sub-agents to call.
 - no choice of the next action from what the last result said.
 
-The last one is the trade. It is right for four git commands, and wrong for anything that
+The last one is the cost. A script is right for a few git commands, and wrong for anything that
 branches.
 
 ### Bindings
@@ -392,7 +430,7 @@ name. They do not resolve to a silent zero.
 In the strings of a spawn, the parts of the identity bind flatly. `.value` does not bind there,
 because a payload has no text form and its top-level fields are already bound by name.
 
-### `!get-path` and `!list-paths` — reaching another entity
+### `!get-path` and `!list-paths`: reaching another entity
 
 Everything in [Bindings](#bindings) reads the subject of the firing, or the task that just
 finished. A [path read](../glossary.md#path-read) reaches an entity that is neither of those:
@@ -417,10 +455,10 @@ action:
     head:     !get-path git.verse.head
     # and `at:` names the address as a path, at whatever depth the tree is
     says: !get-path
-      at: "verse-dev.drift.head.aaaa1111"
+      at: "repos.verse.drift.head.aaaa1111"
       path: result.report
     open: !list-paths
-      at: "verse-dev.drift.finding.*"
+      at: "repos.verse.drift.finding.*"
       value: {status: open}
       path: says
 ```
@@ -525,7 +563,7 @@ way, under the same `!raw` escape:
 
 ```tony
 spawn:
-  driver: llm
+  doer: {agent: verse, with: {network: {mode: open}}}
   prompt:   "Review $subject."
   answer:
     class:    !or [bug, nit, risk]
@@ -563,11 +601,10 @@ A run whose answer never satisfies its contract **fails**. This has four consequ
   parent worded, and its result comes back as one more tool result. Only the final message of the
   parent is what a charter reads.
 
-A contract that the driver cannot parse fails the firing where it is written, before any call to
-a model. An unknown tool name does the same. A driver with no model to ask again, such as
-`scripted`, fails the spawn. It does not run the spawn unchecked. The charter downstream was
-written in the belief that the contract holds, so a contract dropped without a word is worse than
-none.
+A contract that cannot be parsed fails the firing where it is written, before any call to a
+model. A doer with no model to ask again, a script, is refused with a contract. It does not run
+the spawn unchecked. The charter downstream was written in the belief that the contract holds,
+so a contract dropped without a word is worse than none.
 
 A `patch` resolves references too. There a reference is a **deref by kpath**, not a template
 substitution. It names a value, and does not compute one:
@@ -662,9 +699,7 @@ of live tasks, keyed by task id. So a hook needs no `flow` match and no separate
 action:
   patch:  { stage: reviewing }
   spawn:
-    driver: scripted
-    vector: auto
-    prompt: "review $subject"
+    doer: {script: 'review "$SUBJECT"', with: {network: {mode: open}, env: {SUBJECT: $subject}}}
   onDone:
     patch: { stage: reviewed }
 ```
@@ -675,7 +710,8 @@ out into several reactions, advance a different subject, or be written separatel
 for a linear chain that one rule owns, with the task step visible in the rule.
 
 The four hooks are named fields. So an unknown status cannot be written: no field exists to write
-it in. A misspelled `onDoen` is dropped, like any other unknown field.
+it in. Verse refuses a misspelled `onDoen` at install, as it refuses any field an action does not
+have.
 
 Hooks survive a restart. Resume restores them from the chain of the task, so `done`, `failed`
 and `cancelled` still fire.
@@ -700,13 +736,9 @@ orphaned, and never tracked. So no tracked task reaches that status.
   action:
     seq:
     - spawn:
-        driver: scripted
-        vector: auto
-        prompt: "lint $subject"
+        doer: {script: 'lint "$SUBJECT"', with: {network: {mode: open}, env: {SUBJECT: $subject}}}
     - spawn:
-        driver: scripted
-        vector: auto
-        prompt: "review $subject"
+        doer: {script: 'review "$SUBJECT"', with: {network: {mode: open}, env: {SUBJECT: $subject}}}
       onFailed:
         patch: { stage: rejected }
     - patch: { stage: reviewed }
@@ -769,12 +801,12 @@ that a firing makes begins with the charter that made it:
 - the name of a scope, and `::`;
 - nothing, for the charter of baseline.
 
-The task, its gate questions and its provider selection all carry it:
+The task and its gate questions carry it:
 
 | the charter | task id | gate question id |
 |---|---|---|
 | baseline's | `review@demo.pr.1` | `verse.trigger.review.ok~…` |
-| the package at `verse-dev.drift` | `verse-dev.drift:review@demo.pr.1` | `verse-dev.drift:verse.trigger.review.ok~…` |
+| the package at `repos.verse.drift` | `repos.verse.drift:review@demo.pr.1` | `repos.verse.drift:verse.trigger.review.ok~…` |
 | scope `me`'s | `me::review@demo.pr.1` | `me::verse.trigger.review.ok~…` |
 
 For this reason the name of a rule may not contain `:`, as it may not contain `@`.

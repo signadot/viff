@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -28,21 +29,18 @@ import (
 // silence settles on; at the deadline the model reads that nobody answered, and goes on. Without
 // `within` the question waits until it is answered, which is what a conversation needs: a person
 // is handed the turn and may take it whenever they come back.
-const askTool = "ask"
+//
+// It is the step `question.ask`, a verb like any other: offered where a row names `question`,
+// and decided by the row that matches it.
+var askTool = systems.Tool("question", "ask")
 
 // replyOption is the one outcome a question has when the model named none: an answer in words.
 const replyOption = "reply"
 
-// AskToolName is what the tool is called, for a floor that names it.
-const AskToolName = askTool
-
-// Ask is the tool for a runtime that offers it to something other than this package's agent: a
-// program calling it from its shell, say. Its result names who answered, as the model's does.
-func Ask(resolver task.Resolver) Tool { return askFor(resolver) }
-
-// askFor builds the tool over the resolver a task's questions go to. The tool result names who
-// answered, because the model is reading somebody's words and should know whose.
-func askFor(resolver task.Resolver) Tool {
+// Ask builds the tool over the resolver a task's questions go to: the verse agent's, and a
+// script's, which calls it from its shell. The tool result names who answered, because the
+// model is reading somebody's words and should know whose.
+func Ask(resolver task.Resolver) Tool {
 	return Tool{
 		Name: askTool,
 		Description: "Say something to the person this task is running for and wait for their " +
@@ -64,11 +62,8 @@ func askFor(resolver task.Resolver) Tool {
 				"description": "who may answer, as grantees (user:ana@example.com, user:*, group:owners); omit for the person this task runs for"},
 		},
 		Required: []string{"question"},
-		// One effect, with the verb that says what this is: a question, which no grant bounds
-		// and no vector gates (task.ToolUse.IsQuestion).
-		Derive: func(tu *task.ToolUse) {
-			tu.Effects = []task.Effect{{Verb: task.Question}}
-		},
+		Step:     task.StepQuestionAsk,
+		Fields:   func(map[string]any) (map[string]string, bool) { return map[string]string{}, true },
 		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
 			question := strings.TrimSpace(str(tu.Input, "question"))
 			if question == "" {
@@ -84,15 +79,13 @@ func askFor(resolver task.Resolver) Tool {
 			// `~d<n>` decisions.
 			origin, _, _ := strings.Cut(tu.ID, task.GateSep)
 			// WHOM IT IS HELD OUT TO: the person this task runs for, unless the call names
-			// answerers. A charter's call list asks for a party the charter names, which for
-			// a system charter is the one way its question reaches anybody: the system is
-			// nobody's docket.
+			// answerers.
 			answerers := strsOf(tu.Input, "answerers")
 			if len(answerers) == 0 {
 				answerers = []string{task.PrincipalAnswerer}
 			}
 			q := task.GateQuestion{
-				ID: tu.ID, Origin: origin, Gate: askTool, Mode: task.Ask,
+				ID: tu.ID, Origin: origin, Gate: askTool,
 				Reason: question, Options: opts, Deadline: deadline,
 				Answerers: answerers,
 			}

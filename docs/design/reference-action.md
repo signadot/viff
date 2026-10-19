@@ -7,13 +7,6 @@ The reasons behind [The action of a rule](../reference/action.md). They are for 
 An install evaluates the rules against what is already there, so that an install acts on the
 world and not only on what happens next. This is why a derive must write only the fields it owns.
 
-## `retain` is per spawn
-
-The right window is a property of the work. A task that narrates every token and a task that
-reports four boundaries an hour want windows two orders of magnitude apart. No single default is
-right for both. The charter knows which kind of task it starts. A longer window costs memory for
-each live task, so the author chooses it, and does not inherit it.
-
 ## `at:` and `path:` in a read
 
 The address is `at:` in a read and `path:` in a condition. This looks inconsistent, and is not.
@@ -36,9 +29,9 @@ Without a contract, verse checks that dependency at patch time. The work is done
 tokens are spent. What is left is a hook error on the task entity, and a subject stuck at a stage
 that no rule matches.
 
-A frame that asks for a shape does not prevent this. An agent that has just read nine files
-narrates, and puts its answer in a fence. A frame is advice that a model may ignore. `answer` is
-the same request, made enforceable.
+A prompt that asks for a shape does not prevent this. An agent that has just read nine files
+narrates, and puts its answer in a fence. A prompt is advice that a model may ignore. `answer`
+is the same request, made enforceable.
 
 ## The two kinds of substitution
 
