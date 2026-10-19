@@ -1,0 +1,7 @@
+# runnerd: a task's directory is not removed when the task left a read-only tree in it (Go's module cache)
+
+Staging codexrunner, 2026-10-20, after a task ran `go vet`: `delivery: run-e2ee8be096a6: remove workspace: unlinkat /tmp/verse-runner-…/run-e2ee8be096a6/go/pkg/mod/github.com/signadot/tony-format/go-tony@v0.0.244/.gitignore: permission denied`. The task was done; its directory stayed.
+
+A task's HOME is its directory (`cmd.Env = …, "HOME="+root`), so `go` keeps its module cache at `$HOME/go/pkg/mod`, which it writes read-only (0444 files in 0555 directories), and `os.RemoveAll` (workspace.Remove, and the runner's own `os.RemoveAll(p.dir)` in supervise and abandon) stops at the first entry it cannot unlink. Any task that leaves a read-only tree does this; `go` is the common case. The directory leaks on the pod's disk for every such task.
+
+Two parts. The runner removes a task's directory whatever modes the task left: a removal that meets a permission error makes the tree writable (u+w on every directory, and on the files it must unlink) and removes again, in one helper the three sites share, with a test that plants a read-only subtree. And the shells of both deployed runners get `GOMODCACHE` (and `GOCACHE` for the verse runner, as codex's config already sets it) outside the task directory, under `/tmp`, so the cache is shared across a runner's tasks rather than downloaded per task and removed with it.
