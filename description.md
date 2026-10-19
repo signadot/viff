@@ -1,0 +1,3 @@
+# versed: a runner with no offers on record takes any spawn, and stored registrations are not re-checked at start
+
+Daniel's Medium 4 on PR #24. `checkOffer` accepts a launch for a runner with no offers on record (installed with `?probe=false`, or unreachable at install): by design, the runner checks its launches itself, and `deploy/repopulate.sh` probes `verse-runner` on `runner add`, so staging is covered. Two follow-ups: a registration stored with no offers should be re-probed when verse starts (and the spawns that name it checked once the offers arrive), and a spawn admitted unchecked should say so on its record.
