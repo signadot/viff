@@ -1,0 +1,5 @@
+# delivery: an `ask` row's answer is the task process's word; the runner re-checks only deny rows and the ceiling
+
+Daniel's Low 2 on PR #24. When a push's row is `ask`, the question is posed and answered in the task's process through the runner's registry, and the runner performs the push on that process's say-so: `Server.refused` re-decides deny rows and the ceiling, and takes an `ask` as answered. A task process that lied about an answer would get its push. #22's `Permit` re-applied the branch rule in the runner itself.
+
+The fix is for the runner's process to hold the record of the questions it relayed and their answers, and to perform an `ask`-decided act only against an answer it saw given (by whom, and `proceed`); a standalone runner forwards gate resolutions through `forward`, so it is the place that can keep that record. Until then, what holds the line on a push is the deny rows, the ceiling, and `exists`/`own` (3mf9wqb3), all re-read by the runner.
