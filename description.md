@@ -1,0 +1,5 @@
+# docs: what verse holds at install is which verbs a task has; a row's decision is a dial turned at the act
+
+Found by Daniel's review of PR #24 (Medium 2). The docs promise that verse refuses to install a spawn whose policy allows or asks about a call the ceiling refuses, field by field. The code is deliberate and narrower (`checkCeilings`, `Policy.Refuses`): a row is refused at install only when the ceiling refuses every call it could make, so `{system: git, verb: push} → allow` installs under a ceiling that denies `refs/heads/release/**`, and the runner's ceiling decides each push at the act.
+
+Scott's reading, which the docs now say: the ceiling verse enforces from a task's creation onward is the presence or absence of verbs, which rows name and which the runner offers; everything else a row says is a dial, turned at the act, where the runner reads its own ceiling again. A row that could never do anything is refused at install, naming both rows; a row wider than the ceiling is not a widening, since the ceiling holds at the act.
