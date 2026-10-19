@@ -65,15 +65,17 @@ func TestARelayedAnswerIsKeptWithTheCallItIsAbout(t *testing.T) {
 		res.Body.Close()
 		return res.StatusCode
 	}
-	if c := resolve(`{id: x~d2, choice: proceed, by: "user:ana"}`); c != http.StatusNoContent || ch.Answers() != 0 {
-		t.Fatalf("a bare ask answered = %d, %d answer(s) kept; want 204 and none", c, ch.Answers())
+	// Every answer the process took is kept, by the decision's id: the one about a call this
+	// side read, and the one about none (an act names its decision, so the id is what matches).
+	if c := resolve(`{id: x~d2, choice: proceed, by: "user:ana"}`); c != http.StatusNoContent || ch.Answers() != 1 {
+		t.Fatalf("a bare ask answered = %d, %d answer(s) kept; want 204 and one", c, ch.Answers())
 	}
 	code.Store(http.StatusGone)
-	if c := resolve(`{id: x~d1, choice: proceed, by: "user:ana"}`); c != http.StatusGone || ch.Answers() != 0 {
-		t.Fatalf("an answer the process refused = %d, %d kept; want 410 and none", c, ch.Answers())
+	if c := resolve(`{id: x~d1, choice: proceed, by: "user:ana"}`); c != http.StatusGone || ch.Answers() != 1 {
+		t.Fatalf("an answer the process refused = %d, %d kept; want 410 and still one", c, ch.Answers())
 	}
 	code.Store(http.StatusNoContent)
-	if c := resolve(`{id: x~d1, choice: proceed, by: "user:ana"}`); c != http.StatusNoContent || ch.Answers() != 1 {
-		t.Fatalf("an answer about a push = %d, %d kept; want 204 and one", c, ch.Answers())
+	if c := resolve(`{id: x~d1, choice: proceed, by: "user:ana"}`); c != http.StatusNoContent || ch.Answers() != 2 {
+		t.Fatalf("an answer about a push = %d, %d kept; want 204 and two", c, ch.Answers())
 	}
 }

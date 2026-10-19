@@ -72,7 +72,7 @@ func (s *Server) slack(ctx context.Context, tk Task, req Request) Reply {
 		}
 		fields["emoji"] = emoji
 	}
-	if why := s.refused(tk, task.Step{Name: req.Op, Fields: fields}); why != "" {
+	if why := s.refused(tk, req.Decision, task.Step{Name: req.Op, Fields: fields}); why != "" {
 		return Reply{Refused: why}
 	}
 	token, base, hc := s.Services.SlackToken, s.Services.SlackAPI, s.http()

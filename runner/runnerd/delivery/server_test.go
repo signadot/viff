@@ -401,11 +401,11 @@ func TestAnAskedPushIsPerformedOnTheAnswerTheRunnerRelayed(t *testing.T) {
 	if rep, err := cl.Ask(push); err != nil || !strings.Contains(rep.Refused, "relayed no answer") {
 		t.Fatalf("with no answer relayed: %+v %v, want it refused saying so", rep, err)
 	}
-	ch.Answer(about, task.Deny, "user:ana")
+	ch.Answer("t1~d1", about, task.Deny, "user:ana")
 	if rep, err := cl.Ask(push); err != nil || !strings.Contains(rep.Refused, "relayed no answer") {
 		t.Fatalf("on a relayed deny: %+v %v, want it refused", rep, err)
 	}
-	ch.Answer(about, task.Proceed, "user:ana")
+	ch.Answer("t1~d2", about, task.Proceed, "user:ana")
 	if rep, err := cl.Ask(push); err != nil || !rep.OK {
 		t.Fatalf("on the relayed answer: %+v %v", rep, err)
 	}
@@ -419,9 +419,25 @@ func TestAnAskedPushIsPerformedOnTheAnswerTheRunnerRelayed(t *testing.T) {
 		t.Fatalf("a second push on the one answer: %+v %v, want it refused", rep, err)
 	}
 	about.Fields["exists"], about.Fields["own"] = "true", "true"
-	ch.Answer(about, task.Proceed, "user:bo")
+	ch.Answer("t1~d3", about, task.Proceed, "user:bo")
 	if rep, err := cl.Ask(push); err != nil || !rep.OK {
 		t.Fatalf("on the second answer, about the update: %+v %v", rep, err)
+	}
+	// An act that names its decision is matched by it: the answer need not say what call it
+	// was about, and an act naming a decision nobody answered is refused naming it.
+	commit(t, filepath.Join(ws.Root, "svc"), "again\n\nVerse-Task: t1\n")
+	ch.Answer("t1~d4", task.Step{}, task.Proceed, "user:cy")
+	named := push
+	named.Decision = "t1~d5"
+	if rep, err := cl.Ask(named); err != nil || !strings.Contains(rep.Refused, "t1~d5") {
+		t.Fatalf("an act naming an unanswered decision: %+v %v, want it refused naming the decision", rep, err)
+	}
+	named.Decision = "t1~d4"
+	if rep, err := cl.Ask(named); err != nil || !rep.OK {
+		t.Fatalf("an act naming the answered decision: %+v %v", rep, err)
+	}
+	if n := ch.Answers(); n != 1 {
+		t.Errorf("%d answer(s) left, want the deny alone", n)
 	}
 }
 
@@ -541,13 +557,13 @@ func TestAVerbThePolicyDoesNotNameIsRefused(t *testing.T) {
 		nil,
 	} {
 		tk := Task{ID: "t1", Workspace: &workspace.Workspace{}, Launch: &runner.Launch{Policy: p}}
-		if why := s.refused(tk, task.Step{Name: task.StepGitPush, Fields: repo}); !strings.Contains(why, "names no git.push") {
+		if why := s.refused(tk, "", task.Step{Name: task.StepGitPush, Fields: repo}); !strings.Contains(why, "names no git.push") {
 			t.Errorf("a push under %v: %q, want it refused as no verb of the policy's", p, why)
 		}
 	}
 	tk := Task{ID: "t1", Workspace: &workspace.Workspace{}, Launch: &runner.Launch{Policy: task.Policy{
 		{Match: &task.Match{System: "git-issue"}, Then: allow}, {Then: allow}}}}
-	if why := s.refused(tk, task.Step{Name: task.StepGitIssuePush, Fields: repo}); why != "" {
+	if why := s.refused(tk, "", task.Step{Name: task.StepGitIssuePush, Fields: repo}); why != "" {
 		t.Errorf("a tracker push under a policy naming git-issue: refused, %q", why)
 	}
 }

@@ -219,7 +219,7 @@ func gitIssuePull(cl *delivery.Client, ws *workspace.Workspace, names []string) 
 			if t == nil {
 				return noSuchRepo(tu.Input, names), true, nil
 			}
-			rep, err := cl.Ask(delivery.Request{Op: delivery.OpGitIssuePull, Repo: t.Repo.Name()})
+			rep, err := cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpGitIssuePull, Repo: t.Repo.Name()})
 			switch {
 			case err != nil:
 				return "", false, fmt.Errorf("asking the runner to pull the issues of %s: %w", t.Repo.Name(), err)
@@ -256,7 +256,7 @@ func gitIssuePush(cl *delivery.Client, ws *workspace.Workspace, names []string) 
 			if t == nil {
 				return noSuchRepo(tu.Input, names), true, nil
 			}
-			return relay(cl.Ask(delivery.Request{Op: delivery.OpGitIssuePush, Repo: t.Repo.Name()}))
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpGitIssuePush, Repo: t.Repo.Name()}))
 		},
 	}
 }
@@ -292,7 +292,7 @@ func githubIssueCreate(cl *delivery.Client, ws *workspace.Workspace, names []str
 			if strings.TrimSpace(title) == "" {
 				return "not filed: an issue needs a title", true, nil
 			}
-			return relay(cl.Ask(delivery.Request{Op: delivery.OpGitHubIssueCreate, Repo: t.Repo.Name(), Title: title, Body: str(tu.Input, "body")}))
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpGitHubIssueCreate, Repo: t.Repo.Name(), Title: title, Body: str(tu.Input, "body")}))
 		},
 	}
 }
@@ -335,7 +335,7 @@ func githubIssueVerb(cl *delivery.Client, ws *workspace.Workspace, names []strin
 			if op == delivery.OpGitHubIssueComment && strings.TrimSpace(str(tu.Input, "body")) == "" {
 				return "not commented: a comment needs a body", true, nil
 			}
-			return relay(cl.Ask(delivery.Request{Op: op, Repo: t.Repo.Name(), Issue: strconv.Itoa(n), Body: str(tu.Input, "body")}))
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: op, Repo: t.Repo.Name(), Issue: strconv.Itoa(n), Body: str(tu.Input, "body")}))
 		},
 	}
 }
@@ -386,7 +386,7 @@ func linearIssueCreate(cl *delivery.Client) agent.Tool {
 			case strings.TrimSpace(title) == "":
 				return "not filed: an issue needs a title", true, nil
 			}
-			return relay(cl.Ask(delivery.Request{Op: delivery.OpLinearIssueCreate, Team: team, Title: title, Body: str(tu.Input, "description")}))
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpLinearIssueCreate, Team: team, Title: title, Body: str(tu.Input, "description")}))
 		},
 	}
 }
@@ -422,7 +422,7 @@ func linearIssueVerb(cl *delivery.Client, name, op, step string) agent.Tool {
 			case op == delivery.OpLinearIssueComment && strings.TrimSpace(str(tu.Input, "body")) == "":
 				return "not commented: a comment needs a body", true, nil
 			}
-			return relay(cl.Ask(delivery.Request{Op: op, Issue: id, Body: str(tu.Input, "body")}))
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: op, Issue: id, Body: str(tu.Input, "body")}))
 		},
 	}
 }

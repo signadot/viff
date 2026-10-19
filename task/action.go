@@ -14,6 +14,11 @@ type ToolUse struct {
 	Name      string            // the tool
 	Input     map[string]any    // its arguments
 	CallAgent *CallAgentRequest // set when this action delegates to a sub-agent
+	// Decision is the id of the decision that let this use through (the question Supervisor.Ask
+	// posed, `<task>~d<n>`), set by the loop before the executor runs it; empty for a use no
+	// gate decided. A tool the runner performs carries it, so the runner can match the act to
+	// the answer it relayed by id rather than by the call's fields.
+	Decision string
 }
 
 // CallAgentRequest is a delegation: a sub-agent, by name, given a prompt. The sub-agent runs

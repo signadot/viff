@@ -718,6 +718,7 @@ func (s *state) resolved(v inGate) []effect {
 		s.conv = append(s.conv, convMsg{text: note, by: v.res.By, kind: convGate})
 	}
 	s.step = v.res.Question.Step
+	s.action.Decision = v.res.Question.ID // the act names the decision that let it through
 	if !v.res.Proceed {
 		// The step, not the reason: a reason spells out the step's fields (the command), which
 		// are the task's, and the log is the runtime's. The read plane has the whole question.

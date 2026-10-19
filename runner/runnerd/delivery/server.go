@@ -2,6 +2,7 @@ package delivery
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"fmt"
 	"io"
@@ -60,10 +61,11 @@ type Task struct {
 	// Policy is the task's current policy, where something holds it apart from the launch (a
 	// Channel, after a replacement); nil reads the launch's.
 	Policy func() task.Policy
-	// Answered is who answered proceed to the question a row asked about this call, taking
-	// that answer (Channel.answered): what an act a row asks about is performed on. nil is a
-	// side that relayed no answers, where such an act is refused.
-	Answered func(task.Step) (string, bool)
+	// Answered is who answered proceed to the question a row asked about this call, by the
+	// decision the act names or by the call, taking that answer (Channel.answered): what an act
+	// a row asks about is performed on. nil is a side that relayed no answers, where such an
+	// act is refused.
+	Answered func(task.Step, string) (string, bool)
 	// Credential is the secret a push to one of the task's repositories is made with, or why
 	// there is none. The runner decides; its own forge token is the usual answer.
 	Credential func(repo workspace.Repo) (string, error)
@@ -146,7 +148,7 @@ func (s *Server) refresh(ctx context.Context, tk Task, req Request) Reply {
 	if t == nil {
 		return Reply{Error: fmt.Sprintf("no repository %q in this workspace", req.Repo)}
 	}
-	if why := s.refused(tk, task.Step{Name: task.StepGitFetch, Fields: map[string]string{"repo": t.Repo.Repo.Canonical()}}); why != "" {
+	if why := s.refused(tk, req.Decision, task.Step{Name: task.StepGitFetch, Fields: map[string]string{"repo": t.Repo.Repo.Canonical()}}); why != "" {
 		return Reply{Refused: why}
 	}
 	mirror, err := s.Mirrors.Ensure(ctx, t.Repo.Remote)
@@ -204,7 +206,7 @@ func (s *Server) push(ctx context.Context, tk Task, req Request) Reply {
 	if err != nil {
 		return Reply{Error: err.Error()}
 	}
-	if why := s.refused(tk, task.Step{Name: task.StepGitPush, Fields: pushFields(t, ref, req.Delete, req.Force, st)}); why != "" {
+	if why := s.refused(tk, req.Decision, task.Step{Name: task.StepGitPush, Fields: pushFields(t, ref, req.Delete, req.Force, st)}); why != "" {
 		return Reply{Refused: why}
 	}
 	// A branch this run created is its own to rewrite; any other is rewritten only when the
@@ -311,7 +313,7 @@ func (s *Server) pullRequest(ctx context.Context, tk Task, req Request) Reply {
 	if base != "" {
 		fields["base"] = base // an update that names none keeps the base
 	}
-	if why := s.refused(tk, task.Step{Name: step, Fields: fields}); why != "" {
+	if why := s.refused(tk, req.Decision, task.Step{Name: step, Fields: fields}); why != "" {
 		return Reply{Refused: why}
 	}
 	if _, has := s.Ceilings["github"]; !has {
@@ -354,7 +356,7 @@ func (s *Server) pullRequest(ctx context.Context, tk Task, req Request) Reply {
 // from what the runner itself relayed to that process (Task.Answered), once per act, and never
 // from the process's word. The ceiling is read after the policy, and is the operator's: a task's
 // policy cannot open what it closes.
-func (s *Server) refused(tk Task, st task.Step) string {
+func (s *Server) refused(tk Task, decision string, st task.Step) string {
 	if p, ok := tk.policy(); ok {
 		p = p.OrDefault()
 		if !p.Provides(st.Name) {
@@ -368,13 +370,13 @@ func (s *Server) refused(tk Task, st task.Step) string {
 			by := ""
 			answered := false
 			if tk.Answered != nil {
-				by, answered = tk.Answered(st)
+				by, answered = tk.Answered(st, decision)
 			}
 			if !answered {
-				return fmt.Sprintf("refused: the policy's row %s asks about %s, and this runner relayed no answer to a "+
-					"question about it", p.NameOf(i), st)
+				return fmt.Sprintf("refused: the policy's row %s asks about %s, and this runner relayed no answer to "+
+					"the question (%s)", p.NameOf(i), st, cmp.Or(decision, "the act names no decision"))
 			}
-			fmt.Fprintf(s.Log, "delivery: %s: %s on the answer of %s\n", tk.ID, st, by)
+			fmt.Fprintf(s.Log, "delivery: %s: %s on the answer of %s (%s)\n", tk.ID, st, by, cmp.Or(decision, "by the call"))
 		}
 	}
 	system, _, _ := systems.Split(st.Name)

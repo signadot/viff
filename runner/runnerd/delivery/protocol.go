@@ -33,6 +33,10 @@ type Request struct {
 	// runner decides it by the launch's policy — the task decided it too, and the task is the
 	// side that must not be trusted about what it may touch. A `fetch` names none.
 	Branch string `tony:"field=branch,omitzero"`
+	// Decision is the id of the decision that let this act through in the task's process
+	// (ToolUse.Decision, `<task>~d<n>`), so the runner matches the act to the answer it relayed
+	// for that decision by id, and only then by the call's fields. Empty where no gate decided it.
+	Decision string `tony:"field=decision,omitzero"`
 	// Delete asks to remove Branch rather than push to it: a different act, decided apart from a
 	// push (git.push, delete=true). Force asks to rewrite what the branch holds (git.push,
 	// force=true); without it a push fast-forwards, except to a branch this run created, which

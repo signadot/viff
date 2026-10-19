@@ -49,20 +49,23 @@ type Channel struct {
 	served  chan struct{}
 }
 
-// answer is one gate answer the runner relayed: the call the question was about, as the task's
-// pending event named it, the choice, and who gave it.
+// answer is one gate answer the runner relayed: the decision it answered, by id, the call the
+// question was about where the runner could read it (the task's pending gate), the choice, and
+// who gave it.
 type answer struct {
-	step   task.Step
-	choice string
-	by     string
+	decision string
+	step     task.Step
+	choice   string
+	by       string
 }
 
 // Answer records a gate answer the runner relayed to the task's process, for the act it is
-// about to perform on it.
-func (c *Channel) Answer(step task.Step, choice, by string) {
+// about to perform on it. The decision's id is always known, since it is what the answer names;
+// the call is kept where the runner read it, and an act is matched by the id first.
+func (c *Channel) Answer(decision string, step task.Step, choice, by string) {
 	c.answersMu.Lock()
 	defer c.answersMu.Unlock()
-	c.answers = append(c.answers, answer{step: step, choice: choice, by: by})
+	c.answers = append(c.answers, answer{decision: decision, step: step, choice: choice, by: by})
 }
 
 // Answers is how many relayed answers no act has taken yet.
@@ -72,16 +75,30 @@ func (c *Channel) Answers() int {
 	return len(c.answers)
 }
 
-// answered is who answered proceed to the question about this call, and takes that answer, so
-// one answer performs one act and a second act on the same call is asked about again. False
-// where the runner relayed no such answer, whatever the task's process says.
-func (c *Channel) answered(st task.Step) (string, bool) {
+// answered is who answered proceed to the question this act was decided by, and takes that
+// answer, so one answer performs one act and a second act on the same call is asked about
+// again. The act names its decision (Request.Decision) and that is matched first; an act that
+// names none is matched to an answer about the same call, by step and fields. False where the
+// runner relayed no such answer, whatever the task's process says.
+func (c *Channel) answered(st task.Step, decision string) (string, bool) {
 	c.answersMu.Lock()
 	defer c.answersMu.Unlock()
+	take := func(i int) (string, bool) {
+		by := c.answers[i].by
+		c.answers = append(c.answers[:i], c.answers[i+1:]...)
+		return by, true
+	}
+	if decision != "" {
+		for i, a := range c.answers {
+			if a.decision == decision && a.choice == task.Proceed {
+				return take(i)
+			}
+		}
+		return "", false
+	}
 	for i, a := range c.answers {
 		if a.step.Name == st.Name && maps.Equal(a.step.Fields, st.Fields) && a.choice == task.Proceed {
-			c.answers = append(c.answers[:i], c.answers[i+1:]...)
-			return a.by, true
+			return take(i)
 		}
 	}
 	return "", false

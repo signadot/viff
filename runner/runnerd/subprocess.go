@@ -766,8 +766,18 @@ func (h *SubprocessHandler) relayResolve(w http.ResponseWriter, r *http.Request,
 	again()
 	rec := &statusRecorder{ResponseWriter: w}
 	p.prox.ServeHTTP(rec, r)
-	if rec.code == http.StatusNoContent && about && p.co != nil {
-		p.co.ch.Answer(step, body.Choice, body.By)
+	switch {
+	case rec.code != http.StatusNoContent:
+		fmt.Fprintf(h.Log, "runnerd: %s: the answer %s to %s was not taken (%d); nothing kept\n", p.id, body.Choice, body.ID, rec.code)
+	case p.co == nil:
+		// A task with no channel performs nothing this side: nothing to keep an answer for.
+	default:
+		p.co.ch.Answer(body.ID, step, body.Choice, body.By)
+		what := "about no call this side read"
+		if about {
+			what = "about " + step.String()
+		}
+		fmt.Fprintf(h.Log, "runnerd: %s: kept the answer %s to %s by %s, %s\n", p.id, body.Choice, body.ID, body.By, what)
 	}
 }
 

@@ -124,7 +124,7 @@ func pushToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) a
 			if err != nil {
 				return "not pushed: " + err.Error(), true, nil
 			}
-			return relay(cl.Ask(delivery.Request{Op: "push", Repo: t.Repo.Name(), Branch: branch, Delete: del, Force: force}))
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: "push", Repo: t.Repo.Name(), Branch: branch, Delete: del, Force: force}))
 		},
 	}
 }
@@ -204,7 +204,7 @@ func prTool(cl *delivery.Client, ws *workspace.Workspace, names []string, name s
 			if name == updatePRTool {
 				op = delivery.OpUpdatePR
 			}
-			return relay(cl.Ask(delivery.Request{Op: op, Repo: t.Repo.Name(), Branch: head, Base: base,
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: op, Repo: t.Repo.Name(), Branch: head, Base: base,
 				Title: str(tu.Input, "title"), Body: str(tu.Input, "body")}))
 		},
 	}
@@ -237,7 +237,7 @@ func fetchToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) 
 				return fmt.Sprintf("there is no repository %q here; it has: %s",
 					str(tu.Input, "repo"), strings.Join(names, ", ")), true, nil
 			}
-			rep, err := cl.Ask(delivery.Request{Op: "fetch", Repo: t.Repo.Name()})
+			rep, err := cl.Ask(delivery.Request{Decision: tu.Decision, Op: "fetch", Repo: t.Repo.Name()})
 			switch {
 			case err != nil:
 				return "", false, fmt.Errorf("asking the runner to fetch %s: %w", t.Repo.Name(), err)
