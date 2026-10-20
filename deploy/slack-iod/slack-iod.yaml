@@ -11,7 +11,7 @@
 # and a pod that starts anyway would install clean and fail every pass — so it fails to start,
 # in front of whoever deployed it.
 #
-# Install it once the pods are up (the name must match `slackIOName`, because the hint url
+# Install it once the pods are up (the name must match `slackIodName`, because the hint url
 # below carries it):
 #   verse iod add workspace http://slack-iod:9801 -root slack
 apiVersion: apps/v1
@@ -20,7 +20,7 @@ metadata:
   name: slack-iod
   labels:
     app: verse
-    tier: iod
+    tier: iods
     io: slack
 spec:
   replicas: 1
@@ -30,13 +30,13 @@ spec:
   selector:
     matchLabels:
       app: verse
-      tier: iod
+      tier: iods
       io: slack
   template:
     metadata:
       labels:
         app: verse
-        tier: iod
+        tier: iods
         io: slack
     spec:
       containers:
@@ -67,7 +67,7 @@ spec:
         # Where a verified delivery becomes a hint. The registration name in this path is what
         # ties the two together: verse 404s a hint for a name it has no registration under.
         - name: VERSE_HINT_URL
-          value: http://verse:9797/io/workspace/hint
+          value: http://verse:9797/iods/workspace/hint
         envFrom:
         - secretRef:
             name: verse-slack
@@ -88,12 +88,12 @@ metadata:
   name: slack-iod
   labels:
     app: verse
-    tier: iod
+    tier: iods
     io: slack
 spec:
   selector:
     app: verse
-    tier: iod
+    tier: iods
     io: slack
   ports:
   - name: source
@@ -110,7 +110,7 @@ metadata:
   name: slack-iod
   labels:
     app: verse
-    tier: iod
+    tier: iods
     io: slack
 spec:
   rules:

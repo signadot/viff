@@ -300,7 +300,7 @@ may also send verse a **hint**, which says which addresses went stale. Verse ref
 those addresses again at once.
 
 ```
-POST /io/{name}/hint?at=<address>
+POST /iods/{name}/hint?at=<address>
 ```
 
 `{name}` is the name the iod was installed under. The parameter is `at`, and it may repeat.
@@ -326,14 +326,14 @@ verse data git verse head
 ```
 
 ```
-at: verse.iod.sample
+at: verse.iods.sample
 owns:
 - at: git.verse
 reach: "a source"
 ```
 
 ```
-at: verse.iod.sample
+at: verse.iods.sample
 reach: "a source"
 says:
   owns:

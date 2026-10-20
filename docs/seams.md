@@ -165,7 +165,7 @@ GET {url}/io                  → Descriptor  { root, owns }
 GET {url}/reflect[?at=<address>] → Reflection  { covers, entities }
 ```
 
-The source dials verse to **hint**, with `POST /io/{name}/hint`. A hint says which address went
+The source dials verse to **hint**, with `POST /iods/{name}/hint`. A hint says which address went
 stale, and nothing else.
 
 ```mermaid
@@ -182,7 +182,7 @@ sequenceDiagram
 
   Note over X,V: the low-latency half — the source says "look now"
   X->>Src: a push, a webhook
-  Src->>V: POST /io/{name}/hint?at=…
+  Src->>V: POST /iods/{name}/hint?at=…
   V->>Src: GET /reflect?at=…
   Src-->>V: Reflection (that place)
   V->>V: converge
@@ -199,7 +199,7 @@ way, so this seam may be unreliable and still correct.
 1. It reads what is asked of it under the address it owns.
 2. It makes the external system match.
 3. It writes a status for each request.
-4. It reports each pass with `POST /io/{name}/pass`, because verse cannot see a half that verse
+4. It reports each pass with `POST /iods/{name}/pass`, because verse cannot see a half that verse
    does not dial.
 
 Nothing is pushed to the sink, and nothing is delivered exactly once. For this reason the two
@@ -215,7 +215,7 @@ The iod dials out, so clicks and replies arrive with no public URL anywhere.
 The direction matters in a deployment. In the Kubernetes build:
 
 - verse reaches the source at `http://<source>:9801/reflect`;
-- the source calls back at `http://verse:9797/io/<name>/hint`.
+- the source calls back at `http://verse:9797/iods/<name>/hint`.
 
 Neither side is only the client of the other.
 

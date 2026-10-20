@@ -110,7 +110,7 @@ func TestAStrangersRemovalLeavesASourceRunning(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	dir := repoWithCommit(t)
-	if resp := postTony(t, ts.URL+"/io", map[string]any{
+	if resp := postTony(t, ts.URL+"/iods", map[string]any{
 		"root": "git", "name": "local", "dir": dir,
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install = %s: %s", resp.Status, bodyOf(t, resp))
@@ -125,7 +125,7 @@ func TestAStrangersRemovalLeavesASourceRunning(t *testing.T) {
 		t.Fatal("the fixture is wrong: the source is not running")
 	}
 	for _, q := range []string{"?keep=true", "?forget=true"} {
-		resp := deleteAs(t, "mallory@example.com", ts.URL+"/io/local"+q)
+		resp := deleteAs(t, "mallory@example.com", ts.URL+"/iods/local"+q)
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusForbidden {
 			t.Errorf("mallory's DELETE%s: %s, want 403", q, resp.Status)

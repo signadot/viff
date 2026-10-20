@@ -2578,7 +2578,7 @@ func (s *Status) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		for i, v := range s.IOs {
 			slice[i] = ir.FromString(string(v))
 		}
-		irMap["iod"] = ir.FromSlice(slice)
+		irMap["iods"] = ir.FromSlice(slice)
 	}
 
 	// Field: Charter (optional)
@@ -2731,7 +2731,7 @@ func (s *Status) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			} else {
 				return fmt.Errorf("%s: expected array, got %v", "field \"runners\"", fieldNodeUnwrapped.Type)
 			}
-		case "iod":
+		case "iods":
 			// Field: IOs
 			if fieldNodeUnwrapped.Type == ir.ArrayType {
 				slice := make([]string, len(fieldNodeUnwrapped.Values))
@@ -2746,7 +2746,7 @@ func (s *Status) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				}
 				s.IOs = slice
 			} else {
-				return fmt.Errorf("%s: expected array, got %v", "field \"iod\"", fieldNodeUnwrapped.Type)
+				return fmt.Errorf("%s: expected array, got %v", "field \"iods\"", fieldNodeUnwrapped.Type)
 			}
 		case "charter":
 			if gomap.GetUnmapComments(opts...) {

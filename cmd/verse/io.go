@@ -23,7 +23,7 @@ func ioCmd() *cli.Command {
 	if err != nil {
 		panic(err)
 	}
-	return filteredCollection("iod", "iods", "/io",
+	return filteredCollection("iod", "iods", "/iods",
 		"iod — a connector between the verse and an external system: it reflects in, and it acts "+
 			"out [--probe]; add|show|check|remove one",
 		opts, func() url.Values {
@@ -39,7 +39,7 @@ func ioCmd() *cli.Command {
 
 // ioPath turns the address an operator types into the route — see namePath,
 // the one reader the three registries share.
-func ioPath(ref string) (string, error) { return namePath("io", "iod", ref) }
+func ioPath(ref string) (string, error) { return namePath("iods", "iods", ref) }
 
 type ioShowConfig struct{ *cli.Command }
 
@@ -175,7 +175,7 @@ func (cfg *ioAddConfig) run(cc *cli.Context, args []string) error {
 	// and refusing them that would make the common case the awkward one.
 	if cfg.File == "" && len(args) >= 1 && (len(args) == 2 || cfg.Dir != "") {
 		ref := args[0]
-		name, ok := nameSeg("iod", ref)
+		name, ok := nameSeg("iods", ref)
 		if !ok {
 			return fmt.Errorf("%w: want `iod add <name> <url> --root <root>`, got %q",
 				cli.ErrUsage, ref)
@@ -200,7 +200,7 @@ func (cfg *ioAddConfig) run(cc *cli.Context, args []string) error {
 		if out := cfg.outHalf(root); out != nil {
 			body["out"] = out
 		}
-		resp, err := httpPostTo("/io", q, body)
+		resp, err := httpPostTo("/iods", q, body)
 		return ioAdded(cc, resp, err)
 	}
 	src := cfg.File
@@ -218,7 +218,7 @@ func (cfg *ioAddConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("iod add: %w", err)
 	}
-	resp, err := httpPostNodeTo("/io", q, node)
+	resp, err := httpPostNodeTo("/iods", q, node)
 	return ioAdded(cc, resp, err)
 }
 

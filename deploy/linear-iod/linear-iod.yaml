@@ -9,7 +9,7 @@
 # LINEAR_API_KEY is the Authorization header verbatim: a personal API key (Settings → API) goes
 # bare, an OAuth access token as `Bearer lin_oauth_…`.
 #
-# Install it once the pods are up (the name must match `linearIOName`, because the hint url
+# Install it once the pods are up (the name must match `linearIodName`, because the hint url
 # below carries it):
 #   verse iod add teams http://linear-iod:9801 -root linear
 apiVersion: apps/v1
@@ -18,7 +18,7 @@ metadata:
   name: linear-iod
   labels:
     app: verse
-    tier: iod
+    tier: iods
     io: linear
 spec:
   replicas: 1
@@ -28,13 +28,13 @@ spec:
   selector:
     matchLabels:
       app: verse
-      tier: iod
+      tier: iods
       io: linear
   template:
     metadata:
       labels:
         app: verse
-        tier: iod
+        tier: iods
         io: linear
     spec:
       containers:
@@ -60,7 +60,7 @@ spec:
           containerPort: 9802
         env:
         - name: VERSE_HINT_URL
-          value: http://verse:9797/io/teams/hint
+          value: http://verse:9797/iods/teams/hint
         envFrom:
         - secretRef:
             name: verse-linear
@@ -81,12 +81,12 @@ metadata:
   name: linear-iod
   labels:
     app: verse
-    tier: iod
+    tier: iods
     io: linear
 spec:
   selector:
     app: verse
-    tier: iod
+    tier: iods
     io: linear
   ports:
   - name: source
@@ -103,7 +103,7 @@ metadata:
   name: linear-iod
   labels:
     app: verse
-    tier: iod
+    tier: iods
     io: linear
 spec:
   rules:

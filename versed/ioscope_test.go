@@ -16,7 +16,7 @@ import (
 // response, so a test can assert on a refusal as well as on a success.
 func installScoped(t *testing.T, ts *httptest.Server, scope, name, dir string) *http.Response {
 	t.Helper()
-	u := ts.URL + "/io"
+	u := ts.URL + "/iods"
 	if scope != "" {
 		u += "?scope=" + scope
 	}
@@ -93,7 +93,7 @@ func TestAScopedRegistrationNamesItsScopeOnce(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp := postTony(t, ts.URL+"/io?scope=a", map[string]any{
+	resp := postTony(t, ts.URL+"/iods?scope=a", map[string]any{
 		"root": "git", "name": "x", "dir": repoWithCommit(t), "scope": "b",
 	})
 	if resp.StatusCode != http.StatusBadRequest {
@@ -207,7 +207,7 @@ func TestTwoOwnersOfOneThingInstallAlongsideEachOther(t *testing.T) {
 	defer ts.Close()
 
 	owner := func(name, team string) *http.Response {
-		return postTony(t, ts.URL+"/io?probe=false", map[string]any{
+		return postTony(t, ts.URL+"/iods?probe=false", map[string]any{
 			"root": "linear", "name": name, "url": "http://x:1",
 			"owns": []any{map[string]any{"at": "linear.project.*.owners." + team}},
 		})
@@ -241,7 +241,7 @@ func TestAScopedSourceMayShadowABaselineSlot(t *testing.T) {
 	defer ts.Close()
 
 	slot := func(scope, name string) *http.Response {
-		u := ts.URL + "/io?probe=false"
+		u := ts.URL + "/iods?probe=false"
 		if scope != "" {
 			u += "&scope=" + scope
 		}
@@ -273,13 +273,13 @@ func TestASourceThatClaimsNothingIsStillRefusedBesideASlotSource(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	if resp := postTony(t, ts.URL+"/io?probe=false", map[string]any{
+	if resp := postTony(t, ts.URL+"/iods?probe=false", map[string]any{
 		"root": "linear", "name": "eng", "url": "http://x:1",
 		"owns": []any{map[string]any{"at": "linear.project.*", "path": []any{"owners", "ENG"}}},
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("slot install = %s: %s", resp.Status, bodyOf(t, resp))
 	}
-	resp := postTony(t, ts.URL+"/io?probe=false", map[string]any{
+	resp := postTony(t, ts.URL+"/iods?probe=false", map[string]any{
 		"root": "linear", "name": "quiet", "url": "http://x:1",
 	})
 	if resp.StatusCode != http.StatusConflict {

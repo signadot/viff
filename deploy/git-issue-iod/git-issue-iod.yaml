@@ -24,7 +24,7 @@ metadata:
   name: git-issue-iod
   labels:
     app: verse
-    tier: iod
+    tier: iods
     io: git-issue
 spec:
   replicas: 1
@@ -37,13 +37,13 @@ spec:
   selector:
     matchLabels:
       app: verse
-      tier: iod
+      tier: iods
       io: git-issue
   template:
     metadata:
       labels:
         app: verse
-        tier: iod
+        tier: iods
         io: git-issue
     spec:
       containers:
@@ -111,12 +111,12 @@ metadata:
   name: git-issue-iod
   labels:
     app: verse
-    tier: iod
+    tier: iods
     io: git-issue
 spec:
   selector:
     app: verse
-    tier: iod
+    tier: iods
     io: git-issue
   ports:
   - name: source

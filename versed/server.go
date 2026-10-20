@@ -1296,19 +1296,19 @@ func (s *Server) Handler() http.Handler {
 	// sources — what REFLECTS an external system into the verse, as against where work runs.
 	// Addressed by the slice reflected, because that is a question verse already asks: who
 	// writes `git:*`. See docs/io.md.
-	rt.handle("GET /io", s.listIOs, "", nothing)
-	rt.handle("POST /io", s.addIO, "", nothing)
-	rt.handle("GET /io/{name}", s.getIO, "", nothing)
-	rt.handle("GET /io/{name}/check", s.checkIO, "", nothing)
-	rt.handle("DELETE /io/{name}", s.removeIO, "", nothing)
+	rt.handle("GET /iods", s.listIOs, "", nothing)
+	rt.handle("POST /iods", s.addIO, "", nothing)
+	rt.handle("GET /iods/{name}", s.getIO, "", nothing)
+	rt.handle("GET /iods/{name}/check", s.checkIO, "", nothing)
+	rt.handle("DELETE /iods/{name}", s.removeIO, "", nothing)
 	// What a package declared it sends to an io's out place (outbox.go), asked by that io.
 	rt.handle("GET /outboxes", s.listOutboxes, "", nothing)
 	// The hint: a delivery that carries WHICH SLICE and nothing else, so it can cost at most
 	// a reconcile of a slice its sender does not choose the contents of.
-	rt.handleUnattributed("POST /io/{name}/hint", s.hintIO, "", nothing)
+	rt.handleUnattributed("POST /iods/{name}/hint", s.hintIO, "", nothing)
 	// And the out half's counterpart. Verse dials a reflection and therefore knows how it is
 	// doing; it never dials an out half, so the only way it can know is to be told.
-	rt.handleUnattributed("POST /io/{name}/pass", s.passIO, "", nothing)
+	rt.handleUnattributed("POST /iods/{name}/pass", s.passIO, "", nothing)
 	// accounts — which account in an external system is which principal (identity.go). A person
 	// claims an account and proves it; the system binds it; an io looks a comment's author up.
 	// Verse as an issuer: the discovery document and the key set a relying party verifies its

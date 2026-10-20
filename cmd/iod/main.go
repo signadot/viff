@@ -124,7 +124,7 @@ func (c *common) bind(fs *flag.FlagSet) {
 	fs.StringVar(&c.adminAddr, "admin-addr", envOr("SOURCED_ADMIN_ADDR", ""),
 		"admin/pprof listen address, or off to disable (default: the -addr port + 1)")
 	fs.StringVar(&c.hintURL, "hint-url", os.Getenv("VERSE_HINT_URL"),
-		"verse's hint route for THIS registration (http://verse:9797/io/<name>/hint); "+
+		"verse's hint route for THIS registration (http://verse:9797/iods/<name>/hint); "+
 			"without it, deliveries are received and dropped and only the resync net converges")
 	fs.StringVar(&c.verseAddr, "verse-addr", os.Getenv("VERSE_ADDR"),
 		"the verse the out half reads and writes, host:port (default: the host of -hint-url)")
@@ -179,7 +179,7 @@ func (c *common) principal(connector string) string {
 }
 
 // registration is the name verse installed this iod under, read off the hint url, which is the one
-// place a deployment already spells it (`http://verse:9797/io/<name>/hint`). Empty when there is
+// place a deployment already spells it (`http://verse:9797/iods/<name>/hint`). Empty when there is
 // no hint url, and then a pass is done and not reported — which is the honest outcome, since
 // nothing here can invent the name the registration was given.
 func (c *common) registration() string {
@@ -191,7 +191,7 @@ func (c *common) registration() string {
 		return ""
 	}
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-	if len(parts) >= 2 && parts[0] == "io" {
+	if len(parts) >= 2 && parts[0] == "iods" {
 		return parts[1]
 	}
 	return ""

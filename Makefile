@@ -154,11 +154,11 @@ ship: ## build+push the images at the current commit and deploy staging at that 
 # can read:
 #
 #   kubectl --context <ctx> -n verse scale deploy/versed --replicas=0
-#   make ship-docd && make ship-versed && make ship-iods && make ship-runner && make ship-codex-runner
+#   make ship-docd && make ship-versed && make ship-iods && make ship-runners
 #
 # The tier is the `tier` label every object in deploy/ carries, which is what `-l` selects on:
-# docd (the store), versed (the engine and its two Services), source (the connectors), runner
-# (the verse runner, its own image) and codex-runner (the same with Codex in it). An object with
+# docd (the store), versed (the engine and its two Services), iods (the connectors) and runners
+# (the verse runner and the codex runner, each its own image). An object with
 # no `tier` — the Namespace, the ServiceAccount, the ExternalSecrets — belongs to none of them
 # and is shipped by a full `make deploy`; these targets update a deployment that already exists
 # rather than standing one up.
@@ -178,38 +178,34 @@ ship-clean:
 # Each image is pushed by tag, and pushing one that is already there is cheap — the layers
 # exist, so it is a manifest check. That is why every tier target pushes rather than trusting
 # a previous one to have: `make ship-versed` alone must be a whole ship.
-.PHONY: ship-push ship-push-runner ship-push-codex-runner
+.PHONY: ship-push ship-push-runners
 ship-push: ship-clean
 	@echo "ship: staging → $(STAGING_SHA)"
 	$(MAKE) push IMAGE_ARCH=amd64 PUSH_IMAGE=$(SHIP_IMAGE)
-ship-push-runner: ship-clean
-	@echo "ship: staging verse runner → $(STAGING_SHA)"
+ship-push-runners: ship-clean
+	@echo "ship: staging runners → $(STAGING_SHA), codex-$(STAGING_SHA)"
 	$(MAKE) runner-push IMAGE_ARCH=amd64 RUNNER_IMAGE=$(SHIP_RUNNER)
-ship-push-codex-runner: ship-clean
-	@echo "ship: staging codex runner → codex-$(STAGING_SHA)"
 	$(MAKE) codex-runner-push IMAGE_ARCH=amd64 CODEX_RUNNER_IMAGE=$(SHIP_CODEX_RUNNER)
 
 # The apply half, shared: staging's profile, the sha-tagged images, one tier, and block on it.
 SHIP_DEPLOY = $(MAKE) deploy PROFILE=staging WAIT=1 IMAGE=$(SHIP_IMAGE) \
 	  E="-e runnerImage=$(SHIP_RUNNER) -e codexRunnerImage=$(SHIP_CODEX_RUNNER)"
 
-.PHONY: ship-docd ship-versed ship-iods ship-runner ship-codex-runner
+.PHONY: ship-docd ship-versed ship-iods ship-runners
 ship-docd: ship-push ## ship the store tier alone, and wait for it (roll this FIRST)
 	$(SHIP_DEPLOY) SELECT=tier=docd
 ship-versed: ship-push ## ship the engine alone, and wait for it (after docd)
 	$(SHIP_DEPLOY) SELECT=tier=versed
-ship-iods: ship-push ## ship the io connectors alone, and wait for them
-	$(SHIP_DEPLOY) SELECT=tier=iod
-ship-runner: ship-push-runner ## ship the verse runner alone (its own image), and wait for it
-	$(SHIP_DEPLOY) SELECT=tier=runner
-ship-codex-runner: ship-push-codex-runner ## ship the codex runner alone (its own image), and wait for it
-	$(SHIP_DEPLOY) SELECT=tier=codex-runner
+ship-iods: ship-push ## ship the iods alone, and wait for them
+	$(SHIP_DEPLOY) SELECT=tier=iods
+ship-runners: ship-push-runners ## ship the runners alone (their own images), and wait for them
+	$(SHIP_DEPLOY) SELECT=tier=runners
 
 # make deploy PROFILE=minikube                     # default SC (no mount)
 # make deploy PROFILE=minikube HOSTPV=true HOSTPATH=/mnt/verse   # host-linked (needs --mount)
 # make deploy PROFILE=staging                      # the profile's own registry ref
 # make deploy PROFILE=staging IMAGE=example/verse-staging:v3    # …a particular build of it
-# make deploy E='-e gitIO=true -e slackIO=true'          # …plus source connectors
+# make deploy E='-e gitIod=true -e slackIod=true'          # …plus source connectors
 #
 # `-O yaml` is not decoration. The default output is TONY, which for block-style input happens
 # to also be valid YAML — every manifest here was, so this went unnoticed until one used flow

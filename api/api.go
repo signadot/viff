@@ -513,7 +513,7 @@ type Status struct {
 	//
 	// Runners are the refs a spawn may name (`verse.runners.code`), which is a different question
 	// from `runner` below — that one is how THIS verse runs a task when a spawn names nobody.
-	// IOs are the refs of what reaches the world for this verse (`verse.iod.slack`) — the one
+	// IOs are the refs of what reaches the world for this verse (`verse.iods.slack`) — the one
 	// line here that says anything is arriving at all, since a verse whose iods are gone goes on
 	// reporting a fine store rev and an idle charter.
 	//
@@ -527,7 +527,7 @@ type Status struct {
 	// when its last pass completed, whether it is failing, what its out half delivered — is on
 	// `verse iod`.
 	Runners []string `tony:"field=runners,omitzero"`
-	IOs     []string `tony:"field=iod,omitzero"`
+	IOs     []string `tony:"field=iods,omitzero"`
 	// Charter is the charter as a CENSUS: how much is installed, and where.
 	//
 	//	charter:

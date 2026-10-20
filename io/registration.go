@@ -12,10 +12,10 @@ import (
 	"github.com/signadot/verse/entity"
 )
 
-// System is where installed sources live: `verse.iod.<name>`. A source's name is the whole
+// System is where installed sources live: `verse.iods.<name>`. A source's name is the whole
 // of its address. WHAT it reflects is on the registration, not in it: `root`, the root segment
 // of the tree the source writes (`git`, `github`), and `owns`, the places it claims there.
-const System = "iod"
+const System = "iods"
 
 // Ref addresses an installed source.
 func Ref(name string) entity.Ref {
@@ -36,7 +36,7 @@ func Ref(name string) entity.Ref {
 // field PRESENT says which it is, and refusing `dir` would delete a working, zero-deployment
 // path to buy a symmetry nobody reads.
 type Entity struct {
-	// Name is the address: `verse.iod.<name>`.
+	// Name is the address: `verse.iods.<name>`.
 	Name string `tony:"field=name"`
 	// Root is the root segment of the tree this source writes — `git`, `github`, `linear` —
 	// which is also which connector it is: an install checks it against what the source says
@@ -99,7 +99,7 @@ type OutHalf struct {
 	Requesters []string `tony:"field=requesters,omitzero"`
 	// LastPass, Delivered, Failed and LastError are written by the IO, not by an operator: when
 	// it last finished a pass, what that pass did, and the last failure that stopped one. Verse
-	// never dials an out half, so the only way it can know is to be told (POST /io/<name>/pass).
+	// never dials an out half, so the only way it can know is to be told (POST /iods/<name>/pass).
 	LastPass  string   `tony:"field=lastPass,omitzero"`
 	Delivered int      `tony:"field=delivered,omitzero"`
 	Failed    int      `tony:"field=failed,omitzero"`
@@ -397,7 +397,7 @@ func ownsAreDocuments(node *ir.Node) error {
 }
 
 // Find reads one installed source by what a CLI argument names: its address as it is stored and
-// listed (`verse.iod.laptop`), or its name (`laptop`) — an operator reading `verse data` and
+// listed (`verse.iods.laptop`), or its name (`laptop`) — an operator reading `verse data` and
 // one typing `verse iod show` should not have to know two spellings of one thing.
 //
 // FindErr is the same read reporting whether it HAPPENED — see versed's findRunnerErr.

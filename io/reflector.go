@@ -522,7 +522,7 @@ func covered(covers []entity.Pattern, current map[entity.Ref]entity.Payload) []s
 // tells verse which refs went stale; a second implementation of "map a delivery to refs" per
 // source is exactly how the law comes to be broken in one of two places, and across a network
 // a divergence is least recoverable. The route that reaches this is
-// POST /io/<name>/hint?at=…
+// POST /iods/<name>/hint?at=…
 //
 // A full queue drops the hint rather than blocking; the periodic net catches it.
 func (rf *Reflector) Hint(refs ...entity.Ref) {

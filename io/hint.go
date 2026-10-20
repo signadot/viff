@@ -41,7 +41,7 @@ type Hinter func(ctx context.Context, refs ...entity.Ref)
 // program does not know what an operator called it, so the url is configuration handed to the
 // source (a flag, an env var, a line in a git hook) rather than something it can derive.
 func HintPath(name string) string {
-	return "/io/" + name + "/hint"
+	return "/iods/" + name + "/hint"
 }
 
 // HintURL joins a verse base url to that route: HintURL("http://verse:9797", "acme").

@@ -26,7 +26,7 @@ func TestPostHintCarriesTheRefsAndNoBody(t *testing.T) {
 	defer srv.Close()
 
 	url := verseio.HintURL(srv.URL, "laptop")
-	if !strings.HasSuffix(url, "/io/laptop/hint") {
+	if !strings.HasSuffix(url, "/iods/laptop/hint") {
 		t.Fatalf("hint url %q", url)
 	}
 	err := verseio.PostHint(context.Background(), url,

@@ -25,7 +25,7 @@ func TestRegistrationRefRoundTrips(t *testing.T) {
 			t.Fatalf("%q round-tripped to %q", ref, parsed)
 		}
 		if !slices.Equal(parsed.Segs(), []string{entity.VerseRoot, verseio.System, name}) {
-			t.Fatalf("the address should be verse.iod.<name>, got %+v", parsed)
+			t.Fatalf("the address should be verse.iods.<name>, got %+v", parsed)
 		}
 	}
 }
@@ -161,7 +161,7 @@ func TestRegistrationFindAndList(t *testing.T) {
 		t.Fatalf("List order = %+v", got)
 	}
 
-	for _, spelling := range []string{"laptop", "verse.iod.laptop"} {
+	for _, spelling := range []string{"laptop", "verse.iods.laptop"} {
 		e, ok := verseio.Find(store, spelling)
 		if !ok {
 			t.Fatalf("Find(%q) found nothing", spelling)
@@ -177,7 +177,7 @@ func TestRegistrationFindAndList(t *testing.T) {
 	}
 	// The middle form — the address without its reserved root — is not a spelling of it, and
 	// neither is a path with more to it than a name.
-	for _, not := range []string{"sources.laptop", "git.laptop", "verse.iod.git.laptop"} {
+	for _, not := range []string{"sources.laptop", "git.laptop", "verse.iods.git.laptop"} {
 		if _, ok := verseio.Find(store, not); ok {
 			t.Fatalf("Find(%q) found a registration: that is no spelling of one", not)
 		}

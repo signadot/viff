@@ -169,7 +169,7 @@ func TestAnOutboxFollowsItsIO(t *testing.T) {
 	if !answers() {
 		t.Fatal("the io could not answer in the outbox it was declared")
 	}
-	if resp := deleteAs(t, ana, ts.URL+"/io/workspace"); resp.StatusCode >= 300 {
+	if resp := deleteAs(t, ana, ts.URL+"/iods/workspace"); resp.StatusCode >= 300 {
 		t.Fatalf("io removal: %s: %s", resp.Status, bodyOf(t, resp))
 	}
 	if answers() {

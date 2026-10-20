@@ -29,7 +29,7 @@ func TestAStartWhoseReadsFailedIsAskedAgain(t *testing.T) {
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install the rule = %s: %s", resp.Status, bodyOf(t, resp))
 	}
-	if resp := postTony(t, ts.URL+"/io?probe=false", map[string]any{
+	if resp := postTony(t, ts.URL+"/iods?probe=false", map[string]any{
 		"root": "git", "name": "far", "url": "http://127.0.0.1:1",
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install the source = %s: %s", resp.Status, bodyOf(t, resp))

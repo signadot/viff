@@ -11,8 +11,8 @@
 #
 # Install it once the pods are up. The name is free here, unlike the Slack/Linear/GitHub ones:
 # those bake a hint url containing their name into the pod, so the name has to be decided
-# before it starts and there is a `<x>IOName` knob for it. This one is polled and posts no
-# hints, so there is nothing to match and no knob (there never was a `gitIOName`).
+# before it starts and there is a `<x>IodName` knob for it. This one is polled and posts no
+# hints, so there is nothing to match and no knob (there never was a `gitIodName`).
 #   verse iod add cluster http://git-iod:9801 -root git
 apiVersion: apps/v1
 kind: Deployment
@@ -20,7 +20,7 @@ metadata:
   name: git-iod
   labels:
     app: verse
-    tier: iod
+    tier: iods
     io: git
 spec:
   replicas: 1
@@ -33,13 +33,13 @@ spec:
   selector:
     matchLabels:
       app: verse
-      tier: iod
+      tier: iods
       io: git
   template:
     metadata:
       labels:
         app: verse
-        tier: iod
+        tier: iods
         io: git
     spec:
       containers:
@@ -131,12 +131,12 @@ metadata:
   name: git-iod
   labels:
     app: verse
-    tier: iod
+    tier: iods
     io: git
 spec:
   selector:
     app: verse
-    tier: iod
+    tier: iods
     io: git
   ports:
   - name: source

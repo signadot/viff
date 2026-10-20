@@ -182,7 +182,7 @@ build:
     # a second vocabulary for one fact, and `cluster`, `issues`, `repos` and `teams` were exactly
     # that. A second instance of one connector is where a name earns its keep, and it can say so
     # then.
-    gitIO: false
+    gitIod: false
     gitMirror: "https://github.com/signadot/verse.git"
     # The git iod fetches and pushes AS THE GITHUB APP: its three keys, read from the github iod's
     # Secret (verse-github), make the app's installation token the only credential git presents,
@@ -202,7 +202,7 @@ build:
     #
     # Empty means "whatever gitMirror says", which is what it always did, so a deployment that
     # names no set is unchanged by the split.
-    gitIssueIO: false
+    gitIssueIod: false
     gitIssueMirror: ""
     # Whether to reflect each issue's DESCRIPTION BODY. On is `iod`'s own default and the
     # shape a charter reacting to an issue's text needs; off keeps the tracker's structure —
@@ -213,8 +213,8 @@ build:
     # today, so a slice nobody reads still shows up in the latency of everything that does.
     gitIssueBodies: true
 
-    slackIO: false
-    slackIOName: "slack"
+    slackIod: false
+    slackIodName: "slack"
     # "" takes the team name the bot token belongs to — the id prefix every slack:* entity
     # carries and the ownership claim is spelled with.
     slackWorkspace: ""
@@ -222,14 +222,14 @@ build:
     # on the periodic resync instead of on delivery.
     slackWebhookHost: ""
 
-    linearIO: false
-    linearIOName: "linear"
+    linearIod: false
+    linearIodName: "linear"
     # Comma-separated team keys (ENG,OPS); "" is every team the credential can see.
     linearTeams: ""
     linearWebhookHost: ""
 
-    githubIO: false
-    githubIOName: "github"
+    githubIod: false
+    githubIodName: "github"
     # Comma-separated repositories (org/name,org/other). Required: a GitHub source with none
     # reflects nothing, claims nothing and never writes, so it refuses to start.
     githubRepos: ""
@@ -268,7 +268,7 @@ build:
     # at /var/run/verse/token, named to iod by VERSE_TOKEN_FILE: how an iod proves it is the iod.
     # The token's subject is system:serviceaccount:<namespace>:<iod>, which `auth.iod.accounts` in
     # the auth config maps to the iod's principal. The cluster is the issuer.
-    ioTokens: false
+    iodTokens: false
 
   sources:
   # Namespace first — kubectl applies the stream in order, so namespaced resources must not
@@ -297,23 +297,23 @@ build:
     dir: auth-config
   - dir: source
   # Before the iods, since a pod names its ServiceAccount when it is created.
-  - if: '.[ioTokens]'
-    dir: io-tokens
+  - if: '.[iodTokens]'
+    dir: iod-tokens
   - if: '.[issuerDiscoveryOpen]'
     dir: issuer-discovery
   - if: '.[emitStorageClass]'
     dir: eks
   - if: '.[hostPV]'
     dir: hostpv
-  - if: '.[gitIO]'
+  - if: '.[gitIod]'
     dir: git-iod
-  - if: '.[gitIssueIO]'
+  - if: '.[gitIssueIod]'
     dir: git-issue-iod
-  - if: '.[slackIO]'
+  - if: '.[slackIod]'
     dir: slack-iod
-  - if: '.[linearIO]'
+  - if: '.[linearIod]'
     dir: linear-iod
-  - if: '.[githubIO]'
+  - if: '.[githubIod]'
     dir: github-iod
   - if: '.[runner]'
     dir: verse-runner
@@ -452,7 +452,7 @@ build:
 
   # The pull secret, onto the `default` ServiceAccount every pod here runs as.
   # Every ServiceAccount this deploy emits: `default`, which every pod that names none runs as,
-  # and an iod's own (deploy/io-tokens), which its pod names instead and so would not inherit
+  # and an iod's own (deploy/iod-tokens), which its pod names instead and so would not inherit
   # `default`'s.
   - if: '.[ imagePullSecret != "" ]'
     match:
@@ -910,7 +910,7 @@ build:
   # The source connectors. One image, three roles: these run `iod`, versed runs `verse`,
   # docd runs `o`. Each patch below re-emits the whole `command`, because that is what a list
   # does — and a source's command IS its configuration, so there is nothing to merge into.
-  - if: '.[gitIO]'
+  - if: '.[gitIod]'
     match:
       kind: Deployment
       metadata:
@@ -948,7 +948,7 @@ build:
   # TWO BLOCKS, one knob: a set of its own when gitIssueMirror names one, and gitMirror's when
   # it does not. A command is a list, so there is nothing to merge into and no way to write a
   # default that a later patch overrides — the same reason llmSecretKey is spelled as a pair.
-  - if: '.[ gitIssueIO && gitIssueMirror != "" ]'
+  - if: '.[ gitIssueIod && gitIssueMirror != "" ]'
     match:
       kind: Deployment
       metadata:
@@ -973,7 +973,7 @@ build:
               - -mirror
               - $[gitIssueMirror]
 
-  - if: '.[ gitIssueIO && gitIssueMirror == "" ]'
+  - if: '.[ gitIssueIod && gitIssueMirror == "" ]'
     match:
       kind: Deployment
       metadata:
@@ -998,7 +998,7 @@ build:
               - -mirror
               - $[gitMirror]
 
-  - if: '.[slackIO]'
+  - if: '.[slackIod]'
     match:
       kind: Deployment
       metadata:
@@ -1012,12 +1012,12 @@ build:
               image: $[image]
               env: !key(name)
               - name: VERSE_HINT_URL
-                value: "http://verse:9797/io/$[slackIOName]/hint"
+                value: "http://verse:9797/iods/$[slackIodName]/hint"
 
-  # The iod's own credential (ioTokens): its ServiceAccount, and a projected token at the path
+  # The iod's own credential (iodTokens): its ServiceAccount, and a projected token at the path
   # VERSE_TOKEN_FILE names, asked for with the audience `verse` and rotated by the kubelet. The
   # env rather than a flag, since the command is restated whole by the patch below.
-  - if: '.[ ioTokens && slackIO ]'
+  - if: '.[ iodTokens && slackIod ]'
     match:
       kind: Deployment
       metadata:
@@ -1046,7 +1046,7 @@ build:
                     path: token
 
   # The workspace label, when the operator would rather name it than take the team's own name.
-  - if: '.[ slackIO && slackWorkspace != "" ]'
+  - if: '.[ slackIod && slackWorkspace != "" ]'
     match:
       kind: Deployment
       metadata:
@@ -1068,7 +1068,7 @@ build:
               - -workspace
               - $[slackWorkspace]
 
-  - if: '.[linearIO]'
+  - if: '.[linearIod]'
     match:
       kind: Deployment
       metadata:
@@ -1082,9 +1082,9 @@ build:
               image: $[image]
               env: !key(name)
               - name: VERSE_HINT_URL
-                value: "http://verse:9797/io/$[linearIOName]/hint"
+                value: "http://verse:9797/iods/$[linearIodName]/hint"
 
-  - if: '.[githubIO]'
+  - if: '.[githubIod]'
     match:
       kind: Deployment
       metadata:
@@ -1098,11 +1098,11 @@ build:
               image: $[image]
               env: !key(name)
               - name: VERSE_HINT_URL
-                value: "http://verse:9797/io/$[githubIOName]/hint"
+                value: "http://verse:9797/iods/$[githubIodName]/hint"
 
   # The git iod as the GitHub App (gitAsApp): the app's keys from the github iod's Secret, which
   # iod git reads as the github iod does (cmd/iod/git.go).
-  - if: '.[ gitIO && gitAsApp ]'
+  - if: '.[ gitIod && gitAsApp ]'
     match:
       kind: Deployment
       metadata:
@@ -1122,7 +1122,7 @@ build:
                 valueFrom: {secretKeyRef: {name: verse-github, key: GITHUB_APP_PRIVATE_KEY}}
 
   # The github iod's credential, as the slack iod's above.
-  - if: '.[ ioTokens && githubIO ]'
+  - if: '.[ iodTokens && githubIod ]'
     match:
       kind: Deployment
       metadata:
@@ -1152,7 +1152,7 @@ build:
 
   # The git iod's credential, as the github iod's: verified, it may relay the person an install is
   # for (`Verse-For-Principal`), which the auth config trusts it to for GitHub accounts.
-  - if: '.[ ioTokens && gitIO ]'
+  - if: '.[ iodTokens && gitIod ]'
     match:
       kind: Deployment
       metadata:
@@ -1187,7 +1187,7 @@ build:
   # `-discussions` is spelled `=value` so one patch carries both knobs. A source with no
   # repositories refuses to start, which is why this is conditional on there being some rather
   # than defaulting to a list nobody meant.
-  - if: '.[ githubIO && githubRepos != "" ]'
+  - if: '.[ githubIod && githubRepos != "" ]'
     match:
       kind: Deployment
       metadata:
@@ -1214,7 +1214,7 @@ build:
               - -tree
               - .verse/charters
 
-  - if: '.[ linearIO && linearTeams != "" ]'
+  - if: '.[ linearIod && linearTeams != "" ]'
     match:
       kind: Deployment
       metadata:

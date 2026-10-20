@@ -49,7 +49,7 @@ Every subcommand accepts these flags.
 | `-addr` | `SOURCED_ADDR` | `:9801` | the address that the iod listens on |
 | `-admin-addr` | `SOURCED_ADMIN_ADDR` | the port of `-addr`, plus 1 | the address of the admin listener, which serves pprof. The value `off` disables it. |
 | `-min-interval` | | off | a window of time. When verse asks again inside the window, the iod answers from its last reflection. |
-| `-hint-url` | `VERSE_HINT_URL` | none | the hint route of verse for this installed iod: `http://verse:9797/io/<name>/hint` |
+| `-hint-url` | `VERSE_HINT_URL` | none | the hint route of verse for this installed iod: `http://verse:9797/iods/<name>/hint` |
 | `-root` | | the name of the subcommand | the [root](../glossary.md#root-of-an-iod) of the iod: the first segment of every [address](../glossary.md#address) that it writes |
 | `-verse-addr` | `VERSE_ADDR` | the host of `-hint-url` | the verse that the out half reads and writes, as `host:port` |
 | `-as` | | `agent:<root>-iod`, such as `agent:slack-iod` | the [principal](../glossary.md#principal) that the out half reads and writes as. The Slack out half reads the asks in a message to a person as that person, since a person's ask is read by whom it asks. |
@@ -1107,8 +1107,8 @@ words). Neither is a 5xx. Both are tried again on the next pass.
 
 The manifests are `deploy/git-iod`, `deploy/git-issue-iod`, `deploy/slack-iod`,
 `deploy/linear-iod` and `deploy/github-iod`: one for each of the five iods. A setting of its own
-switches each manifest on, such as `-e slackIO=true`, or
-`-e githubIO=true -e githubRepos=org/name`. The manifests carry the label `tier: iod`, and
+switches each manifest on, such as `-e slackIod=true`, or
+`-e githubIod=true -e githubRepos=org/name`. The manifests carry the label `tier: iods`, and
 `make ship-iods` selects on that label.
 
 A readiness probe asks each iod `GET /io`. This is the route by which an iod says what it is.

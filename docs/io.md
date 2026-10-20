@@ -42,7 +42,7 @@ verse iod
 ```
 
 **Name an iod after its connector, unless two of them run.** The name is the whole of the
-address (`verse.iod.<name>`), and you choose it freely. Where one iod of a kind runs, the name
+address (`verse.iods.<name>`), and you choose it freely. Where one iod of a kind runs, the name
 `git` says what `--root git` already says. The reader has nothing new to learn.
 
 Where two iods of one kind run, the name is the only thing that tells them apart. For example,
@@ -341,7 +341,7 @@ Verse writes `lastReflect` and `lastError` on the registration.
 | `lastError` | on a **transition** only. A source that fails every minute writes once. The write that clears it says that the source recovered. |
 | `lastReflect` | only when a pass **wrote** something. It is the poll cursor. |
 
-Suppose verse stamped `lastReflect` on every pass. It would write to `verse.iod.*` once per
+Suppose verse stamped `lastReflect` on every pass. It would write to `verse.iods.*` once per
 resync interval, forever. A rule that watches those addresses would fire on a verse where
 nothing happens.
 

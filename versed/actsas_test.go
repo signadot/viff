@@ -64,7 +64,7 @@ func TestAnInstallerHoldingLessThanOwnerInstallsNothing(t *testing.T) {
 			schedule.Ref(schedule.RecordID("", "carols-hour"))},
 		{"a resolver", postAs(t, carol, ts.URL+"/resolvers", "application/tony",
 			`{name: carols-review, match: {}, method: {driver: service}}`), resolver.Ref("carols-review")},
-		{"a source", postAs(t, carol, ts.URL+"/io", "application/tony",
+		{"a source", postAs(t, carol, ts.URL+"/iods", "application/tony",
 			fmt.Sprintf(`{name: carols-repo, root: git, dir: %q}`, dir)), verseio.Ref("carols-repo")},
 	} {
 		body := bodyOf(t, c.resp)

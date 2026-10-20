@@ -36,7 +36,7 @@ func TestGitInstallHook(t *testing.T) {
 	g := verseio.NewGit()
 	id := g.AddRepo("", dir)
 
-	if err := g.InstallHook(id, "http://127.0.0.1:9999/io/git/laptop/hint"); err != nil {
+	if err := g.InstallHook(id, "http://127.0.0.1:9999/iods/git/laptop/hint"); err != nil {
 		t.Fatalf("install: %v", err)
 	}
 	path := filepath.Join(dir, ".git", "hooks", "reference-transaction")
@@ -54,7 +54,7 @@ func TestGitInstallHook(t *testing.T) {
 	// segment that kpath quotes (an id that looks like a number, which is exactly what AddRepo
 	// hands out) carries its quotes through the escaping.
 	want := "at=" + url.QueryEscape(g.RepoRef(id).String())
-	if s := string(b); !contains(s, "/io/git/laptop/hint") || !contains(s, want) {
+	if s := string(b); !contains(s, "/iods/git/laptop/hint") || !contains(s, want) {
 		t.Fatalf("hook does not POST a hint at the registration: %s", s)
 	}
 
@@ -62,7 +62,7 @@ func TestGitInstallHook(t *testing.T) {
 	if err := os.WriteFile(path, []byte("#!/bin/sh\necho mine\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := g.InstallHook(id, "http://x/io/git/laptop/hint"); err == nil {
+	if err := g.InstallHook(id, "http://x/iods/git/laptop/hint"); err == nil {
 		t.Fatal("install should refuse to overwrite a foreign hook")
 	}
 	// RemoveHook leaves the foreign hook alone.

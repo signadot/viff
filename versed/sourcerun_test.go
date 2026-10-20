@@ -59,7 +59,7 @@ func TestAnInstalledSourceReflects(t *testing.T) {
 	defer ts.Close()
 
 	dir := repoWithCommit(t)
-	if resp := postTony(t, ts.URL+"/io", map[string]any{
+	if resp := postTony(t, ts.URL+"/iods", map[string]any{
 		"root": "git", "name": "local", "dir": dir,
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install = %s: %s", resp.Status, bodyOf(t, resp))
@@ -72,7 +72,7 @@ func TestAnInstalledSourceReflects(t *testing.T) {
 	// --forget, because by now it HAS reflected something and a bare remove is refused until
 	// told which (the fork is TestRemovingASourceForksOnWhatItReflected); what is being
 	// asserted here is that either answer stops the reflector.
-	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/io/local?forget=true", nil)
+	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/iods/local?forget=true", nil)
 	req.Header.Set(api.PrincipalHeader, tester)
 	resp, err := sendAsTester(req)
 	if err != nil {
@@ -98,7 +98,7 @@ func TestSourcesAreRestoredOnRestart(t *testing.T) {
 
 	first := NewWithStore(ScriptedBuilder, store)
 	ts := httptest.NewServer(first.Handler())
-	if resp := postTony(t, ts.URL+"/io", map[string]any{
+	if resp := postTony(t, ts.URL+"/iods", map[string]any{
 		"root": "git", "name": "local", "dir": dir,
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install = %s", resp.Status)
@@ -317,7 +317,7 @@ func TestAHintReconcilesTheSliceItNames(t *testing.T) {
 	defer ts.Close()
 
 	dir := repoWithCommit(t)
-	if resp := postTony(t, ts.URL+"/io", map[string]any{
+	if resp := postTony(t, ts.URL+"/iods", map[string]any{
 		"root": "git", "name": "local", "dir": dir,
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install = %s", resp.Status)
@@ -325,7 +325,7 @@ func TestAHintReconcilesTheSliceItNames(t *testing.T) {
 	waitForRef(t, srv.Store, entity.RefAt(verseio.GitRoot, baseOf(dir), "head"))
 
 	gitIn(t, dir, "branch", "hinted")
-	hint := ts.URL + "/io/local/hint?ref=" +
+	hint := ts.URL + "/iods/local/hint?ref=" +
 		url.QueryEscape(verseio.RepoRef(baseOf(dir)).String())
 	resp, err := ts.Client().Post(hint, "", nil)
 	if err != nil {
@@ -339,7 +339,7 @@ func TestAHintReconcilesTheSliceItNames(t *testing.T) {
 	// A hint naming nothing is a full resync, which is what a delivery that could not say which
 	// slice asks for.
 	gitIn(t, dir, "branch", "resynced")
-	if resp, err := ts.Client().Post(ts.URL+"/io/local/hint", "", nil); err != nil ||
+	if resp, err := ts.Client().Post(ts.URL+"/iods/local/hint", "", nil); err != nil ||
 		resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("bare hint = %v (%v)", resp.Status, err)
 	}
@@ -355,20 +355,20 @@ func TestHintRefusals(t *testing.T) {
 
 	// A hint for a registration nobody installed is a 404, not a quiet 204. A sender told
 	// nothing goes on believing its changes are landing.
-	resp, err := ts.Client().Post(ts.URL+"/io/nope/hint", "", nil)
+	resp, err := ts.Client().Post(ts.URL+"/iods/nope/hint", "", nil)
 	if err != nil || resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("hint at an unknown source = %v (%v), want 404", resp.Status, err)
 	}
 
 	dir := repoWithCommit(t)
-	if resp := postTony(t, ts.URL+"/io", map[string]any{
+	if resp := postTony(t, ts.URL+"/iods", map[string]any{
 		"root": "git", "name": "local", "dir": dir,
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install = %s", resp.Status)
 	}
 	// A ref that is not one is a 400 rather than a resync: a delivery that meant something
 	// specific must not silently become "reflect everything".
-	bad := ts.URL + "/io/local/hint?at=" + url.QueryEscape("a..b")
+	bad := ts.URL + "/iods/local/hint?at=" + url.QueryEscape("a..b")
 	if resp, err := ts.Client().Post(bad, "", nil); err != nil ||
 		resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("hint with a malformed ref = %v (%v), want 400", resp.Status, err)
@@ -377,7 +377,7 @@ func TestHintRefusals(t *testing.T) {
 	// Installed but not running: said out loud, because a swallowed hint looks exactly like one
 	// that worked.
 	srv.stopSource(verseio.Ref("local"))
-	if resp, err := ts.Client().Post(ts.URL+"/io/local/hint", "", nil); err != nil ||
+	if resp, err := ts.Client().Post(ts.URL+"/iods/local/hint", "", nil); err != nil ||
 		resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("hint at a stopped source = %v (%v), want 503", resp.Status, err)
 	}
@@ -398,7 +398,7 @@ func TestRemovingASourceForksOnWhatItReflected(t *testing.T) {
 	dir := repoWithCommit(t)
 	install := func(name string) {
 		t.Helper()
-		if resp := postTony(t, ts.URL+"/io", map[string]any{
+		if resp := postTony(t, ts.URL+"/iods", map[string]any{
 			"root": "git", "name": name, "dir": dir,
 		}); resp.StatusCode != http.StatusCreated {
 			t.Fatalf("install %s = %s: %s", name, resp.Status, bodyOf(t, resp))
@@ -406,7 +406,7 @@ func TestRemovingASourceForksOnWhatItReflected(t *testing.T) {
 	}
 	remove := func(name, flag string) *http.Response {
 		t.Helper()
-		u := ts.URL + "/io/" + name
+		u := ts.URL + "/iods/" + name
 		if flag != "" {
 			u += "?" + flag + "=true"
 		}
@@ -464,12 +464,12 @@ func TestRemovingASourceThatReflectedNothingNeedsNoFlag(t *testing.T) {
 	// Unreachable, so it installs (with a warning) and reflects nothing.
 	dead := httptest.NewServer(http.NotFoundHandler())
 	dead.Close()
-	if resp := postTony(t, ts.URL+"/io", map[string]any{
+	if resp := postTony(t, ts.URL+"/iods", map[string]any{
 		"root": "git", "name": "never", "url": dead.URL,
 	}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install = %s", resp.Status)
 	}
-	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/io/never", nil)
+	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/iods/never", nil)
 	req.Header.Set(api.PrincipalHeader, tester)
 	resp, err := sendAsTester(req)
 	if err != nil || resp.StatusCode != http.StatusOK {

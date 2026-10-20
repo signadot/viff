@@ -4,7 +4,7 @@ This page is the surface of an io. For what an iod *is* (one program, two halves
 dials each half), see [../io.md](../io.md). To build one, copy
 [examples/io](examples/io/main.go).
 
-An [iod](../glossary.md#iod) is an entity at `verse.iod.<name>`:
+An [iod](../glossary.md#iod) is an entity at `verse.iods.<name>`:
 
 | | |
 |---|---|
@@ -27,7 +27,7 @@ half, the [sink](../glossary.md#sink), which dials verse.
 connection comes from. `Reflect` is the same call on all three. For a runner, absence means
 something. Here it does not: the field that is present says which way it is.
 
-The address of an iod is its name and nothing else: `verse.iod.<name>`. It is under the reserved
+The address of an iod is its name and nothing else: `verse.iods.<name>`. It is under the reserved
 root, like everything verse keeps about its own running. So an operator tells two iods of one
 connector apart by the names the operator gave them.
 
@@ -133,7 +133,7 @@ verse iod add <name> <url> -root <root>       install one, probing the url first
               [-keep]                        …the truth is moving: leave the last known state
 ```
 
-A `<ref>` is `verse.iod.laptop` or `laptop`: the whole address or the bare name. The middle form
+A `<ref>` is `verse.iods.laptop` or `laptop`: the whole address or the bare name. The middle form
 (`io.laptop`) is not accepted.
 
 `verse status` names the installed iods under `iod:`. It shows the refs only. `verse iod` shows
@@ -150,12 +150,12 @@ scope it reflects into.
 
 | | |
 |---|---|
-| `GET /io` | list; `?probe=true` adds a live `reach` per iod |
-| `POST /io` | install; `?probe=false` skips the check, `?allow-overlap=true` the disjointness proof. `201` with `{at, reach}`, plus `owns` when taken from the probe and `warning` when unreachable |
-| `GET /io/{name}` | the entity |
-| `GET /io/{name}/check` | `{at, reach}`, plus `url` when the iod has one and `why` when the probe gave a reason, plus `says: {root, owns}` when it answered |
-| `DELETE /io/{name}` | remove. `?forget=true` or `?keep=true`; `409` with both named when it reflected something and neither is given |
-| `POST /io/{name}/hint` | `?at=<address>` (repeatable): reconcile those addresses. None means a full resync. `204` |
+| `GET /iods` | list; `?probe=true` adds a live `reach` per iod |
+| `POST /iods` | install; `?probe=false` skips the check, `?allow-overlap=true` the disjointness proof. `201` with `{at, reach}`, plus `owns` when taken from the probe and `warning` when unreachable |
+| `GET /iods/{name}` | the entity |
+| `GET /iods/{name}/check` | `{at, reach}`, plus `url` when the iod has one and `why` when the probe gave a reason, plus `says: {root, owns}` when it answered |
+| `DELETE /iods/{name}` | remove. `?forget=true` or `?keep=true`; `409` with both named when it reflected something and neither is given |
+| `POST /iods/{name}/hint` | `?at=<address>` (repeatable): reconcile those addresses. None means a full resync. `204` |
 | `GET /outboxes` | `?to=<out place>`: the outboxes packages declare sending there, as `[{from, to}]`. Only the iod whose out half reads the place (its `as`) may ask; `403` for anybody else, `404` when no iod reads it |
 
 A route that names one iod has two answers when it does not find the iod:
@@ -193,7 +193,7 @@ The contract has two routes, no state and no way to write:
 
 | | |
 |---|---|
-| `GET /io` | `{root, owns}` — what this program is. Has no effect, which is what makes it the probe |
+| `GET /iods` | `{root, owns}` — what this program is. Has no effect, which is what makes it the probe |
 | `GET /reflect` | `?at=<address>` (absent = everything it owns) → a `Reflection` |
 
 ```tony
@@ -412,7 +412,7 @@ Verse dials a reflection, so it knows how the reflection is doing. Verse never d
 so the out half reports:
 
 ```
-POST /io/<name>/pass   {delivered, failed, error?}
+POST /iods/<name>/pass   {delivered, failed, error?}
 ```
 
 The report lands on the registration as `lastPass`, `delivered`, `failed` and `lastError`.

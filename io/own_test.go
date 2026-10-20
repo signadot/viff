@@ -382,7 +382,7 @@ func TestNoClaimReachesVersesOwnHalf(t *testing.T) {
 		for _, ref := range []entity.Ref{
 			entity.VerseRef("task", "instance", "run-1"),
 			entity.VerseRef("trigger", "rule", "review"),
-			entity.VerseRef("iod", "git", "verse"),
+			entity.VerseRef("iods", "git", "verse"),
 		} {
 			if got := verseio.Claimed(claims, ref); len(got) > 0 {
 				t.Errorf("owns %q claims %s → %v, want nothing in verse's half", spell, ref, got)

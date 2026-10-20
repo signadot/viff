@@ -124,8 +124,8 @@ func TestEveryWritingRouteRefusesARequestThatNamesNobody(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	unattributed := map[string]bool{
-		"POST /io/{name}/hint": true, // a hook's nudge: what is reflected is reflected as the source
-		"POST /io/{name}/pass": true, // an out half saying what it just did, about its own half of the world
+		"POST /iods/{name}/hint": true, // a hook's nudge: what is reflected is reflected as the source
+		"POST /iods/{name}/pass": true, // an out half saying what it just did, about its own half of the world
 	}
 	fill := strings.NewReplacer("{system}", "git", "{name}", "x", "{kind}", "k", "{id}", "x")
 	send := func(method, path, as string) (int, string) {

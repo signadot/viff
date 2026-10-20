@@ -17,7 +17,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: verse-runner-config
-  labels: {app: verse, tier: runner, runner: verse}
+  labels: {app: verse, tier: runners, runner: verse}
 data:
   # What the runner offers and how it reaches what it needs. Nothing here is a default the image
   # could have guessed. What a task works on — its repositories, what may leave each, the network
@@ -77,7 +77,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: verse-runner
-  labels: {app: verse, tier: runner, runner: verse}
+  labels: {app: verse, tier: runners, runner: verse}
 spec:
   replicas: 1
   # Recreate, for a reason a source shares and a runner has more sharply: the mirrors and
@@ -86,10 +86,10 @@ spec:
   # second replica would make "3 tasks are running on it" ambiguous about where.
   strategy: {type: Recreate}
   selector:
-    matchLabels: {app: verse, tier: runner, runner: verse}
+    matchLabels: {app: verse, tier: runners, runner: verse}
   template:
     metadata:
-      labels: {app: verse, tier: runner, runner: verse}
+      labels: {app: verse, tier: runners, runner: verse}
     spec:
       # The pod gets its own user namespace, which is here for two reasons and only one of
       # them is bwrap's. The API requires it before it will accept `procMount: Unmasked`
@@ -210,8 +210,8 @@ apiVersion: v1
 kind: Service
 metadata:
   name: verse-runner
-  labels: {app: verse, tier: runner, runner: verse}
+  labels: {app: verse, tier: runners, runner: verse}
 spec:
-  selector: {app: verse, tier: runner, runner: verse}
+  selector: {app: verse, tier: runners, runner: verse}
   ports:
   - {name: control, port: 9802, targetPort: control}

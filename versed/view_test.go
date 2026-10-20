@@ -95,7 +95,7 @@ func TestARunnerReadThatFailedIsNotARunnerNotInstalled(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	for _, route := range []string{"/runners/gpu", "/runners/gpu/check", "/io/git", "/io/git/check"} {
+	for _, route := range []string{"/runners/gpu", "/runners/gpu/check", "/iods/git", "/iods/git/check"} {
 		resp := getAs(t, tester, ts.URL+route)
 		body := readBody(t, resp)
 		if resp.StatusCode != http.StatusServiceUnavailable {

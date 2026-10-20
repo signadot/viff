@@ -385,7 +385,7 @@ define:
   firings: .[nullable(verse-firings)]
   flows: !verse-flow-count null
   gates: .[int]
-  iod: .[array(string)]
+  iods: .[array(string)]
   listen: .[nullable(verse-listen)]
   llm: .[nullable(verse-llm)]
   perms: .[nullable(verse-perms)]

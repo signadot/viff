@@ -32,7 +32,7 @@ func TestASourceTakesTheNodesItsClaimsName(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		resp := postAs(t, as, ts.URL+"/io?allow-overlap=true", "application/tony", string(body))
+		resp := postAs(t, as, ts.URL+"/iods?allow-overlap=true", "application/tony", string(body))
 		defer resp.Body.Close()
 		msg, _ := io.ReadAll(resp.Body)
 		return resp.StatusCode, string(msg)

@@ -191,7 +191,7 @@ const hookMarker = "# verse git Source hook"
 // verse on every ref change — the git-native "webhook". It refuses to clobber a pre-existing
 // reference-transaction hook that isn't ours. Idempotent for ours.
 //
-// hintURL is the registration's hint route, `<verse>/io/<name>/hint`. The ref is
+// hintURL is the registration's hint route, `<verse>/iods/<name>/hint`. The ref is
 // appended HERE, because which ref targets a repo is git's knowledge and not the route's: a
 // reconcile of `git.<id>` is a reconcile of that repo. verse never parses this delivery —
 // there is nothing to parse, which is the point.

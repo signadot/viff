@@ -18,7 +18,7 @@ import (
 
 // ── sources: what reflects an external system into the verse ─────────────────
 //
-// A source is installed at `verse.iod.<name>` carrying one way in, and it is the single
+// A source is installed at `verse.iods.<name>` carrying one way in, and it is the single
 // writer of the tree under its `root`. The root is a question verse asks of every registration
 // — who writes `git.*` — so it is on the record, and an overlap is visible in a listing. See
 // docs/io.md.

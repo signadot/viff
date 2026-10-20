@@ -733,7 +733,7 @@ See [the spawn](reference/action.md#action-what-fires).
 An iod is a program that connects verse to one external system, such as a git repository, in
 both directions. It has two halves: a [source](#source) writes what the system holds into the
 store, and a [sink](#sink) carries what a rule writes back out to the system. An installed iod is the entity
-`verse.iod.<name>`.
+`verse.iods.<name>`.
 
 Also written: connector, source (in the Go source, for the whole iod), registration.
 

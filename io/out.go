@@ -315,7 +315,7 @@ func (o *Out) report(p OutPass) {
 	if o.name == "" {
 		return
 	}
-	resp, err := o.verse.Post("/io/"+url.PathEscape(o.name)+"/pass", nil, p)
+	resp, err := o.verse.Post("/iods/"+url.PathEscape(o.name)+"/pass", nil, p)
 	if err != nil {
 		o.log("io out: reporting a pass: %v", err)
 		return

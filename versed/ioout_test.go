@@ -23,7 +23,7 @@ func installIO(t *testing.T, ts *httptest.Server, as string, body map[string]any
 	if err != nil {
 		t.Fatal(err)
 	}
-	return postAs(t, as, ts.URL+"/io?probe=false", "application/tony", string(b))
+	return postAs(t, as, ts.URL+"/iods?probe=false", "application/tony", string(b))
 }
 
 func TestAnIoWithAnOutHalfHasItsGrantsWritten(t *testing.T) {
@@ -169,7 +169,7 @@ func TestRemovingAnIoTakesItsOutGrantsBack(t *testing.T) {
 		t.Fatalf("an asker could not ask: %v", err)
 	}
 
-	req, err := http.NewRequest(http.MethodDelete, ts.URL+"/io/workspace?forget=true", nil)
+	req, err := http.NewRequest(http.MethodDelete, ts.URL+"/iods/workspace?forget=true", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +220,7 @@ func TestAnOutHalfReportsItsPasses(t *testing.T) {
 	})
 	resp.Body.Close()
 
-	pass := postTony(t, ts.URL+"/io/workspace/pass", verseio.OutPass{Delivered: 3})
+	pass := postTony(t, ts.URL+"/iods/workspace/pass", verseio.OutPass{Delivered: 3})
 	pass.Body.Close()
 	if pass.StatusCode != http.StatusNoContent {
 		t.Fatalf("reporting a pass = %s", pass.Status)
@@ -232,7 +232,7 @@ func TestAnOutHalfReportsItsPasses(t *testing.T) {
 
 	// A failure carries WHEN IT STARTED, kept across repeats: an error that has been the same
 	// since breakfast reads as "now" otherwise.
-	first := postTony(t, ts.URL+"/io/workspace/pass", verseio.OutPass{Failed: 1, Error: "slack refused"})
+	first := postTony(t, ts.URL+"/iods/workspace/pass", verseio.OutPass{Failed: 1, Error: "slack refused"})
 	first.Body.Close()
 	e, _ = verseio.Find(srv.Store, "workspace")
 	if e.Out.LastError == nil || e.Out.LastError.When == nil {
@@ -240,7 +240,7 @@ func TestAnOutHalfReportsItsPasses(t *testing.T) {
 	}
 	began := *e.Out.LastError.When
 
-	again := postTony(t, ts.URL+"/io/workspace/pass", verseio.OutPass{Failed: 1, Error: "slack refused"})
+	again := postTony(t, ts.URL+"/iods/workspace/pass", verseio.OutPass{Failed: 1, Error: "slack refused"})
 	again.Body.Close()
 	e, _ = verseio.Find(srv.Store, "workspace")
 	if when := *e.Out.LastError.When; when != began {
@@ -248,7 +248,7 @@ func TestAnOutHalfReportsItsPasses(t *testing.T) {
 	}
 
 	// And a pass that worked ends it.
-	ok := postTony(t, ts.URL+"/io/workspace/pass", verseio.OutPass{Delivered: 1})
+	ok := postTony(t, ts.URL+"/iods/workspace/pass", verseio.OutPass{Delivered: 1})
 	ok.Body.Close()
 	e, _ = verseio.Find(srv.Store, "workspace")
 	if e.Out.LastError != nil {
@@ -263,7 +263,7 @@ func TestAPassForNoSuchIoIsRefused(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp := postTony(t, ts.URL+"/io/nobody/pass", verseio.OutPass{Delivered: 1})
+	resp := postTony(t, ts.URL+"/iods/nobody/pass", verseio.OutPass{Delivered: 1})
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("a pass for an io that is not installed = %s, want 404", resp.Status)
@@ -287,7 +287,7 @@ func TestAnOutHalfIsCheckedAgainstTheClaimTheProbeRead(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp := postAsTony(t, "user:ana@example.com", ts.URL+"/io", map[string]any{
+	resp := postAsTony(t, "user:ana@example.com", ts.URL+"/iods", map[string]any{
 		"root": "git", "name": "laptop", "url": face.URL,
 		"out": map[string]any{"places": []any{"git.verse.out"}, "as": "agent:git-iod"},
 	})
@@ -303,7 +303,7 @@ func TestAnOutHalfIsCheckedAgainstTheClaimTheProbeRead(t *testing.T) {
 	}
 
 	// …and a place outside that claim is still refused, now for the right reason.
-	bad := postAsTony(t, "user:ana@example.com", ts.URL+"/io", map[string]any{
+	bad := postAsTony(t, "user:ana@example.com", ts.URL+"/iods", map[string]any{
 		"root": "git", "name": "laptop2", "url": face.URL,
 		"out": map[string]any{"places": []any{"elsewhere.out"}, "as": "agent:git-iod"},
 	})

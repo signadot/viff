@@ -15,7 +15,7 @@
 # person's: GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID and GITHUB_APP_PRIVATE_KEY (the PEM). Given
 # with GITHUB_TOKEN, the app is used. deploy/README.md, "The GitHub App", has signadot-verse's.
 #
-# Install it once the pods are up (the name must match `githubIOName`, because the hint url
+# Install it once the pods are up (the name must match `githubIodName`, because the hint url
 # below carries it):
 #   verse iod add repos http://github-iod:9801 -root github
 apiVersion: apps/v1
@@ -24,7 +24,7 @@ metadata:
   name: github-iod
   labels:
     app: verse
-    tier: iod
+    tier: iods
     io: github
 spec:
   replicas: 1
@@ -36,13 +36,13 @@ spec:
   selector:
     matchLabels:
       app: verse
-      tier: iod
+      tier: iods
       io: github
   template:
     metadata:
       labels:
         app: verse
-        tier: iod
+        tier: iods
         io: github
     spec:
       containers:
@@ -69,7 +69,7 @@ spec:
           containerPort: 9802
         env:
         - name: VERSE_HINT_URL
-          value: http://verse:9797/io/repos/hint
+          value: http://verse:9797/iods/repos/hint
         envFrom:
         - secretRef:
             name: verse-github
@@ -89,12 +89,12 @@ metadata:
   name: github-iod
   labels:
     app: verse
-    tier: iod
+    tier: iods
     io: github
 spec:
   selector:
     app: verse
-    tier: iod
+    tier: iods
     io: github
   ports:
   - name: source
@@ -114,7 +114,7 @@ metadata:
   name: github-iod
   labels:
     app: verse
-    tier: iod
+    tier: iods
     io: github
 spec:
   rules:

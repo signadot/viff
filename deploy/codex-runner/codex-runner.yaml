@@ -4,8 +4,9 @@
 # "Codex, gated inside the run").
 #
 # It is a SECOND runner beside verse-runner, not a change to it: its own image, Deployment,
-# Service, ConfigMap and credential, under its own tier label, so it ships and is removed on its
-# own and the runner the charters name goes on untouched. Verse learns about it the same way:
+# Service, ConfigMap and credential, in the `runners` tier beside it with `runner: codex` to
+# select it alone, so it can be removed on its own and the runner the charters name goes on
+# untouched. Verse learns about it the same way:
 #
 #   verse runner add codex http://codex-runner:9802 --identity codex-runner
 #
@@ -15,7 +16,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: codex-runner-config
-  labels: {app: verse, tier: codex-runner, runner: codex}
+  labels: {app: verse, tier: runners, runner: codex}
 data:
   verse-runner.tony: |
     listen: ":9802"
@@ -74,15 +75,15 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: codex-runner
-  labels: {app: verse, tier: codex-runner, runner: codex}
+  labels: {app: verse, tier: runners, runner: codex}
 spec:
   replicas: 1
   strategy: {type: Recreate}
   selector:
-    matchLabels: {app: verse, tier: codex-runner, runner: codex}
+    matchLabels: {app: verse, tier: runners, runner: codex}
   template:
     metadata:
-      labels: {app: verse, tier: codex-runner, runner: codex}
+      labels: {app: verse, tier: runners, runner: codex}
     spec:
       hostUsers: false
       containers:
@@ -142,8 +143,8 @@ apiVersion: v1
 kind: Service
 metadata:
   name: codex-runner
-  labels: {app: verse, tier: codex-runner, runner: codex}
+  labels: {app: verse, tier: runners, runner: codex}
 spec:
-  selector: {app: verse, tier: codex-runner, runner: codex}
+  selector: {app: verse, tier: runners, runner: codex}
   ports:
   - {name: control, port: 9802, targetPort: control}

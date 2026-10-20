@@ -56,7 +56,7 @@ func TestAListingRefusesRatherThanAnsweringEmpty(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	for _, path := range []string{"/io", "/runners", "/resolvers", "/asks", "/asks?all=true", "/state"} {
+	for _, path := range []string{"/iods", "/runners", "/resolvers", "/asks", "/asks?all=true", "/state"} {
 		fs.on = false
 		resp, err := http.Get(ts.URL + path)
 		if err != nil {
