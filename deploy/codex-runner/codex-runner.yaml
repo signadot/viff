@@ -7,15 +7,15 @@
 # Service, ConfigMap and credential, under its own tier label, so it ships and is removed on its
 # own and the runner the charters name goes on untouched. Verse learns about it the same way:
 #
-#   verse runner add codex http://codexrunner:9802 --identity codexrunner
+#   verse runner add codex http://codex-runner:9802 --identity codex-runner
 #
 # Everything about the pod that is bubblewrap's — hostUsers, procMount, seccompProfile — is as
 # deploy/verse-runner/verse-runner.yaml has it, and explained there.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: codexrunner-config
-  labels: {app: verse, tier: codexrunner, runner: codex}
+  name: codex-runner-config
+  labels: {app: verse, tier: codex-runner, runner: codex}
 data:
   verse-runner.tony: |
     listen: ":9802"
@@ -73,20 +73,20 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: codexrunner
-  labels: {app: verse, tier: codexrunner, runner: codex}
+  name: codex-runner
+  labels: {app: verse, tier: codex-runner, runner: codex}
 spec:
   replicas: 1
   strategy: {type: Recreate}
   selector:
-    matchLabels: {app: verse, tier: codexrunner, runner: codex}
+    matchLabels: {app: verse, tier: codex-runner, runner: codex}
   template:
     metadata:
-      labels: {app: verse, tier: codexrunner, runner: codex}
+      labels: {app: verse, tier: codex-runner, runner: codex}
     spec:
       hostUsers: false
       containers:
-      - name: codexrunner
+      - name: codex-runner
         image: signadot/verse-runner:codex
         args:
         - verse
@@ -134,16 +134,16 @@ spec:
           capabilities: {drop: ["ALL"]}
       volumes:
       - name: config
-        configMap: {name: codexrunner-config}
+        configMap: {name: codex-runner-config}
       - name: state
         emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: codexrunner
-  labels: {app: verse, tier: codexrunner, runner: codex}
+  name: codex-runner
+  labels: {app: verse, tier: codex-runner, runner: codex}
 spec:
-  selector: {app: verse, tier: codexrunner, runner: codex}
+  selector: {app: verse, tier: codex-runner, runner: codex}
   ports:
   - {name: control, port: 9802, targetPort: control}
