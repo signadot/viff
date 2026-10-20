@@ -143,7 +143,7 @@ type AuthConfig struct {
 	// verse accepts. The server reads it to verify a request's bearer, and the CLI reads it to
 	// know which providers `verse account login` can log in to.
 	Principal PrincipalAuthConfig `tony:"field=principal,omitzero"`
-	// Iod is how an io is authenticated: the issuer of the workload tokens the deployment's ios
+	// Iod is how an io is authenticated: the issuer of the workload tokens the deployment's iods
 	// present, and which io each token's subject is. Server-side, read by `verse up`.
 	Iod IodAuthConfig `tony:"field=iod,omitzero"`
 	// Issuer makes this verse an issuer of its own: it signs a short-lived token for a task whose
@@ -207,11 +207,11 @@ type AuthProviderConfig struct {
 	// been bound from before needs a verified email in one of them, and a person an io relays
 	// needs an email in one of them. Empty admits nobody new.
 	Domains []string `tony:"field=domains,omitzero"`
-	// IOs names the installed ios the verse trusts for this provider's accounts, by the name each
+	// IOs names the installed iods the verse trusts for this provider's accounts, by the name each
 	// is installed under: an io whose reflection is evidence of an account (`github`, proved by
 	// a comment), and an io that relays a person it identified (`slack`, by the member who
-	// typed). A provider has an issuer or ios, not both. Empty trusts none.
-	IOs []string `tony:"field=ios,omitzero"`
+	// typed). A provider has an issuer or iods, not both. Empty trusts none.
+	IOs []string `tony:"field=iods,omitzero"`
 	// Acts is what a trusted io may do as a person it relays: `control` (unset), the reads and
 	// the acts that answer, say and steer, which is all an io does; or `any`.
 	Acts string `tony:"field=acts,omitzero"`
@@ -225,20 +225,20 @@ const (
 	ActsAny = "any"
 )
 
-// IodProvider is the name the ios' accounts stand under (`verse.identity.iod`), which no
+// IodProvider is the name the iods' accounts stand under (`verse.identity.iod`), which no
 // provider of people may take.
 const IodProvider = "iod"
 
 // GitHubProvider is the provider GitHub accounts are bound under. GitHub issues no id_token for
-// a person, so it is never an OpenID Connect issuer: its entry names the ios whose reflected
+// a person, so it is never an OpenID Connect issuer: its entry names the iods whose reflected
 // comments are evidence of its accounts.
 const GitHubProvider = "github"
 
-// IodAuthConfig is how the deployment's ios are authenticated at the door.
+// IodAuthConfig is how the deployment's iods are authenticated at the door.
 //
 //tony:schemagen=verse-iod-auth-config,notag
 type IodAuthConfig struct {
-	// Issuer is the URL of the issuer of the ios' workload tokens: on Kubernetes the cluster's
+	// Issuer is the URL of the issuer of the iods' workload tokens: on Kubernetes the cluster's
 	// own, which signs a pod's projected service-account token (on EKS,
 	// `https://oidc.eks.<region>.amazonaws.com/id/<id>`). Its discovery document is under it.
 	Issuer string `tony:"field=issuer,omitzero"`
@@ -253,7 +253,7 @@ type IodAuthConfig struct {
 	// Accounts maps a token's subject (`system:serviceaccount:<namespace>:<name>`) to the io it
 	// is. Written at start, never at first sight.
 	Accounts map[string]IodAccountConfig `tony:"field=accounts,omitzero"`
-	// Static is the ios of a deployment with no issuer: each presents the token in a file, and
+	// Static is the iods of a deployment with no issuer: each presents the token in a file, and
 	// the verse keeps the token's hash. Read at start.
 	Static []IodStaticConfig `tony:"field=static,omitzero"`
 }
@@ -264,9 +264,9 @@ type IodAuthConfig struct {
 type IodAccountConfig struct {
 	// Principal is the `agent:` the io acts as.
 	Principal string `tony:"field=principal"`
-	// IO is the name the io is installed under, which is how a provider's `ios` names it. An io
+	// IO is the name the io is installed under, which is how a provider's `iods` names it. An io
 	// that relays nobody needs none.
-	IO string `tony:"field=io,omitzero"`
+	IO string `tony:"field=iod,omitzero"`
 }
 
 // IodStaticConfig is one io that presents a fixed token.
@@ -278,7 +278,7 @@ type IodStaticConfig struct {
 	// Principal is the `agent:` the io acts as.
 	Principal string `tony:"field=principal"`
 	// IO is the name the io is installed under.
-	IO string `tony:"field=io,omitzero"`
+	IO string `tony:"field=iod,omitzero"`
 }
 
 // Validate refuses an auth block that names no usable provider or mode. It runs at load, where
@@ -307,22 +307,22 @@ func (a AuthConfig) Validate() error {
 			return fmt.Errorf("%s: a provider's name is one plain address segment", at)
 		}
 		if name == IodProvider {
-			return fmt.Errorf("%s: %q is the ios' own, whose accounts are auth.iod's; give the provider another name", at, name)
+			return fmt.Errorf("%s: %q is the iods' own, whose accounts are auth.iod's; give the provider another name", at, name)
 		}
 		byIssuer, byIOs := prov.Issuer != "" || prov.ClientID != "", len(prov.IOs) > 0
 		switch {
 		case byIssuer && byIOs:
-			return fmt.Errorf("%s: a provider has an issuer, whose token is its evidence, or ios, "+
+			return fmt.Errorf("%s: a provider has an issuer, whose token is its evidence, or iods, "+
 				"whose word is; not both", at)
 		case !byIssuer && !byIOs:
-			return fmt.Errorf("%s: a provider has an issuer and a clientId, or names the ios it "+
+			return fmt.Errorf("%s: a provider has an issuer and a clientId, or names the iods it "+
 				"trusts", at)
 		case name == GitHubProvider && byIssuer:
 			return fmt.Errorf("%s: %q is the provider GitHub accounts are bound under, by proof "+
 				"by action, and GitHub is no OpenID Connect issuer for people: its entry takes "+
-				"`ios`; give an issuer another name", at, name)
+				"`iods`; give an issuer another name", at, name)
 		case byIssuer && prov.Acts != "":
-			return fmt.Errorf("%s.acts: what a trusted io may do goes with `ios`", at)
+			return fmt.Errorf("%s.acts: what a trusted io may do goes with `iods`", at)
 		}
 		switch prov.Acts {
 		case "", ActsControl, ActsAny:

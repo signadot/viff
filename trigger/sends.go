@@ -25,7 +25,7 @@ import (
 //
 // ONE IO PER ENTRY: a `from` feeds exactly one `to`, which is the simplest thing to audit. And no
 // `from` beneath another: an io reads its outbox at every depth, so an outbox inside another would
-// be read by both ios, each writing a status beside the same inputs.
+// be read by both iods, each writing a status beside the same inputs.
 const SendsField = "sends"
 
 // Send is one outbox: From is the place inside the package (as an address, once read against the
@@ -77,7 +77,7 @@ func SendsFromNode(node *ir.Node, at string) ([]Send, error) {
 		for _, b := range out {
 			if a.From != b.From && strings.HasPrefix(a.From, b.From+".") {
 				return nil, fmt.Errorf("sends[%d]: %s is inside %s, which is sent from too — an io "+
-					"reads its outbox at every depth, so both ios would answer for what is asked "+
+					"reads its outbox at every depth, so both iods would answer for what is asked "+
 					"there", i, a.From, b.From)
 			}
 		}

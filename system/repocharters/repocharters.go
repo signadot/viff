@@ -45,7 +45,7 @@ const (
 // the deployment's own, so that the io's obsolete sweep may settle it with nobody granting
 // anything. A rendering with no answerers asks the docket, which the io is not, and its questions
 // are not swept.
-const gitIO = "agent:git-io"
+const gitIO = "agent:git-iod"
 
 // Params name the one repository a rendering is for.
 type Params struct {

@@ -16,7 +16,7 @@ import (
 	"github.com/signadot/verse/entity"
 )
 
-// ios at the door, and a person relayed by a trusted io (git-issue hfh7km3th12ksd6nqsn0 §1.7;
+// iods at the door, and a person relayed by a trusted io (git-issue hfh7km3th12ksd6nqsn0 §1.7;
 // the plan is hqh7km3th12ks1qxqsn0, step 3).
 //
 // AN IO IS THE DEPLOYMENT'S OWN PROGRAM, and it proves it is the io with the token its runtime
@@ -25,7 +25,7 @@ import (
 // verifies the first with the verifier it uses for a person's provider, checking `aud` against
 // the audience the token was asked for, and the second by its hash. Which io a token is, is
 // config (AuthIod.Accounts), written at start and never at first sight: `system:serviceaccount:
-// verse:slack-io` is `agent:slack-io`, installed as `workspace`. A verified io is its principal
+// verse:slack-iod` is `agent:slack-iod`, installed as `workspace`. A verified io is its principal
 // under every mode.
 //
 // A PERSON RELAYED BY A TRUSTED IO. An io that acts for a person — the Slack member who typed an
@@ -34,7 +34,7 @@ import (
 // is refused" (auth.go) admits exactly that, when all of these hold, in order:
 //
 //  1. the bearer verifies to an io (above);
-//  2. that io is in the provider's `ios`: the deployment said this io's word counts for that
+//  2. that io is in the provider's `iods`: the deployment said this io's word counts for that
 //     provider's accounts, and for nobody else's;
 //  3. the request names the account (api.ForPrincipalHeader, `<provider>:<id>`), which is what the io
 //     saw, beside the person it concluded (api.PrincipalHeader);
@@ -51,7 +51,7 @@ import (
 // person's bearer beside another person's name stays refused.
 const iodProvider = "iod"
 
-// AuthIod is how the deployment's ios are authenticated: the issuer of their workload tokens and
+// AuthIod is how the deployment's iods are authenticated: the issuer of their workload tokens and
 // which io each token's subject is, or a token in a file for a deployment with no issuer.
 type AuthIod struct {
 	Issuer   string
@@ -64,7 +64,7 @@ type AuthIod struct {
 }
 
 // IodAccount is one io: the principal it acts as, and the name it is installed under, which is
-// how a provider's `ios` names it. An io that relays nobody needs no name.
+// how a provider's `iods` names it. An io that relays nobody needs no name.
 type IodAccount struct {
 	Principal string
 	IO        string
@@ -88,13 +88,13 @@ const (
 	actsAny = "any"
 )
 
-// iodAuth is the ios as the door asks for them: by a token's subject, and by a static token's hash.
+// iodAuth is the iods as the door asks for them: by a token's subject, and by a static token's hash.
 type iodAuth struct {
 	accounts map[string]IodAccount
 	static   map[[sha256.Size]byte]IodAccount
 }
 
-// setIod reads the ios' block: the issuer's verifier, the accounts, and the static tokens' hashes.
+// setIod reads the iods' block: the issuer's verifier, the accounts, and the static tokens' hashes.
 // It writes the accounts to the store as system:identity, so the store says what the config does.
 func (s *Server) setIod(a AuthIod) (*authProvider, *iodAuth, error) {
 	out := &iodAuth{accounts: map[string]IodAccount{}, static: map[[sha256.Size]byte]IodAccount{}}
@@ -166,7 +166,7 @@ func ioPrincipal(p string) error {
 	return nil
 }
 
-// writeIodAccounts records the ios at `verse.identity.iod.account.<sub>` and
+// writeIodAccounts records the iods at `verse.identity.iod.account.<sub>` and
 // `verse.identity.iod.static.<hash>`, everyone's to read, replacing what stood: the door answers
 // from memory, and the record is how an operator sees what the door was told.
 func (s *Server) writeIodAccounts(a AuthIod, io *iodAuth) error {
@@ -276,7 +276,7 @@ func (s *Server) relay(io IodAccount, presented, account string, a act) (princip
 	p := n.byName[pname]
 	if p == nil || len(p.IOs) == 0 {
 		return "", "", "", turnAway(http.StatusForbidden, "%s is no provider of this verse that "+
-			"trusts ios (auth.principal.providers.<name>.ios)", pname)
+			"trusts iods (auth.principal.providers.<name>.iods)", pname)
 	}
 	trusted := false
 	for _, name := range p.IOs {
@@ -286,7 +286,7 @@ func (s *Server) relay(io IodAccount, presented, account string, a act) (princip
 	}
 	if !trusted {
 		return "", "", "", turnAway(http.StatusForbidden, "%s is not an io this verse trusts for %s "+
-			"accounts (auth.principal.providers.%s.ios names %s)", io.Principal, pname, pname,
+			"accounts (auth.principal.providers.%s.iods names %s)", io.Principal, pname, pname,
 			strings.Join(p.IOs, ", "))
 	}
 	// Nothing below writes until the act is one the io may do: a refused request leaves no

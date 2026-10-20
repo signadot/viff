@@ -27,7 +27,7 @@ import (
 
 const (
 	askedOnPR = "verse.trigger.deploy.ok~1"
-	ioToken   = "the-github-ios-own-token"
+	ioToken   = "the-github-iods-own-token"
 )
 
 // asksRig is a verse that verifies people and knows this io by a static token, a fake GitHub with
@@ -56,7 +56,7 @@ func newAsksRig(t *testing.T) *asksRig {
 	if err := srv.SetAuth(versed.Auth{Mode: versed.AuthRequired, Providers: map[string]versed.AuthProvider{
 		"corp":   {Issuer: "https://idp.example.com", ClientID: "verse-cli"},
 		"github": {IOs: []string{"github"}},
-	}, Iod: versed.AuthIod{Static: []versed.IodStatic{{File: file, Principal: "agent:github-io", IO: "github"}}}}); err != nil {
+	}, Iod: versed.AuthIod{Static: []versed.IodStatic{{File: file, Principal: "agent:github-iod", IO: "github"}}}}); err != nil {
 		t.Fatal(err)
 	}
 	bearer := func(context.Context) (string, error) {
@@ -67,7 +67,7 @@ func newAsksRig(t *testing.T) *asksRig {
 	f := newFake()
 	f.repo("signadot/verse").pr(42, "a change", "open", "2026-09-01T00:00:00Z", "abc")
 	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
-	verse := client.NewAs(addr, "agent:github-io", bearer)
+	verse := client.NewAs(addr, "agent:github-iod", bearer)
 	sink := src.Sink()
 	sink.Verse = verse
 	sink.As = verseio.As(addr, bearer)
@@ -190,7 +190,7 @@ func TestAQuestionOnAPullRequestIsAnsweredByTheAuthorOfAVerseComment(t *testing.
 		t.Fatalf("ana's command answered %q by %q, want proceed by ana; comments %q; question %v", entity.Str(q, "verdict"), entity.Str(q, "by"), r.fake.commentsOn("signadot/verse", 42), q)
 	}
 	ballot := entity.Get(entity.Get(q, "ballots"), "user:ana@example.com")
-	if entity.Str(ballot, "authenticated") != "github" || entity.Str(ballot, "via") != "agent:github-io" {
+	if entity.Str(ballot, "authenticated") != "github" || entity.Str(ballot, "via") != "agent:github-iod" {
 		t.Errorf("ana's ballot = %v, want authenticated by github via this io", ballot)
 	}
 	if said := strings.Join(entity.Strs(ballot, "say"), " "); !strings.Contains(said, "ship it") {
@@ -316,7 +316,7 @@ func TestALinkReplyBindsTheAuthorsAccount(t *testing.T) {
 	r := newAsksRig(t)
 	if err := r.srv.SetAuth(versed.Auth{Mode: versed.AuthOptional, Providers: map[string]versed.AuthProvider{
 		"github": {IOs: []string{"github"}},
-	}, Iod: versed.AuthIod{Static: []versed.IodStatic{{File: r.tokenFile, Principal: "agent:github-io", IO: "github"}}}}); err != nil {
+	}, Iod: versed.AuthIod{Static: []versed.IodStatic{{File: r.tokenFile, Principal: "agent:github-iod", IO: "github"}}}}); err != nil {
 		t.Fatal(err)
 	}
 	r.raise(t)

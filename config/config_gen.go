@@ -775,7 +775,7 @@ func (s *AuthProviderConfig) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error)
 		for i, v := range s.IOs {
 			slice[i] = ir.FromString(string(v))
 		}
-		irMap["ios"] = ir.FromSlice(slice)
+		irMap["iods"] = ir.FromSlice(slice)
 	}
 
 	// Field: Acts
@@ -851,7 +851,7 @@ func (s *AuthProviderConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption
 			} else {
 				return fmt.Errorf("%s: expected array, got %v", "field \"domains\"", fieldNodeUnwrapped.Type)
 			}
-		case "ios":
+		case "iods":
 			// Field: IOs
 			if fieldNodeUnwrapped.Type == ir.ArrayType {
 				slice := make([]string, len(fieldNodeUnwrapped.Values))
@@ -866,7 +866,7 @@ func (s *AuthProviderConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption
 				}
 				s.IOs = slice
 			} else {
-				return fmt.Errorf("%s: expected array, got %v", "field \"ios\"", fieldNodeUnwrapped.Type)
+				return fmt.Errorf("%s: expected array, got %v", "field \"iods\"", fieldNodeUnwrapped.Type)
 			}
 		case "acts":
 			// Field: Acts
@@ -1087,7 +1087,7 @@ func (s *IodAccountConfig) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 
 	// Field: IO
 	if s.IO != "" {
-		irMap["io"] = ir.FromString(string(s.IO))
+		irMap["iod"] = ir.FromString(string(s.IO))
 	}
 
 	return ir.FromMap(irMap), nil
@@ -1129,10 +1129,10 @@ func (s *IodAccountConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) 
 				return fmt.Errorf("field %q: expected string, got %v", "principal", fieldNodeUnwrapped.Type)
 			}
 			s.Principal = string(fieldNodeUnwrapped.String)
-		case "io":
+		case "iod":
 			// Field: IO
 			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "io", fieldNodeUnwrapped.Type)
+				return fmt.Errorf("field %q: expected string, got %v", "iod", fieldNodeUnwrapped.Type)
 			}
 			s.IO = string(fieldNodeUnwrapped.String)
 		default:
@@ -1183,7 +1183,7 @@ func (s *IodStaticConfig) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 
 	// Field: IO
 	if s.IO != "" {
-		irMap["io"] = ir.FromString(string(s.IO))
+		irMap["iod"] = ir.FromString(string(s.IO))
 	}
 
 	return ir.FromMap(irMap), nil
@@ -1231,10 +1231,10 @@ func (s *IodStaticConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) e
 				return fmt.Errorf("field %q: expected string, got %v", "principal", fieldNodeUnwrapped.Type)
 			}
 			s.Principal = string(fieldNodeUnwrapped.String)
-		case "io":
+		case "iod":
 			// Field: IO
 			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "io", fieldNodeUnwrapped.Type)
+				return fmt.Errorf("field %q: expected string, got %v", "iod", fieldNodeUnwrapped.Type)
 			}
 			s.IO = string(fieldNodeUnwrapped.String)
 		default:

@@ -67,7 +67,7 @@ func newOutRig(t *testing.T) *outRig {
 	t.Cleanup(ts.Close)
 	place := entity.RefAt("demo", "out")
 	sink := &noted{}
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:demo-io")
+	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:demo-iod")
 	return &outRig{store: store, sink: sink, place: place,
 		out: verseio.NewOut(sink, place, verse, nil)}
 }
@@ -378,7 +378,7 @@ func TestAKeeperIsToldOfARefusedInput(t *testing.T) {
 	sink := &keeping{}
 	sink.err = verseio.Permanent(errors.New("msg_too_long"))
 	out := verseio.NewOut(sink, entity.RefAt("demo", "out"),
-		client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:demo-io"), nil)
+		client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:demo-iod"), nil)
 	ask(t, store, "C111", "note", entity.Obj{"text": "long"})
 	for range 3 {
 		if err := out.Pass(context.Background()); err != nil {

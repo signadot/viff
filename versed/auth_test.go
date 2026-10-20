@@ -333,7 +333,7 @@ func TestAuthRefusesWhatItCannotServe(t *testing.T) {
 	for what, a := range map[string]Auth{
 		"an unknown mode":             {Mode: "sometimes"},
 		"an issuer named github":      {Mode: AuthOptional, Providers: map[string]AuthProvider{githubProvider: p}},
-		"ios on an issuer":            {Mode: AuthOptional, Providers: map[string]AuthProvider{"a": {Issuer: p.Issuer, ClientID: "c", IOs: []string{"gh"}}}},
+		"iods on an issuer":           {Mode: AuthOptional, Providers: map[string]AuthProvider{"a": {Issuer: p.Issuer, ClientID: "c", IOs: []string{"gh"}}}},
 		"required with no issuer":     {Mode: AuthRequired, Providers: map[string]AuthProvider{githubProvider: {IOs: []string{"gh"}}}},
 		"a provider with no client":   {Mode: AuthOptional, Providers: map[string]AuthProvider{"a": {Issuer: p.Issuer}}},
 		"two providers of one issuer": {Mode: AuthOptional, Providers: map[string]AuthProvider{"a": p, "b": p}},
@@ -596,12 +596,12 @@ func TestRequiredAdmitsAPersonOnlyFromAToken(t *testing.T) {
 	}
 }
 
-// Proof by action reads a comment only under the ios the deployment trusts for GitHub. A comment
+// Proof by action reads a comment only under the iods the deployment trusts for GitHub. A comment
 // an untrusted io reflects is no evidence, and where none is trusted nothing is claimed at all.
 func TestOnlyATrustedIosReflectionIsEvidence(t *testing.T) {
 	srv, ts := identityServer(t)
 	resp := installIO(t, ts, idBo, map[string]any{
-		"name": "mirror", "root": "mirror", "url": "http://mirror-io:9801",
+		"name": "mirror", "root": "mirror", "url": "http://mirror-iod:9801",
 		"owns": []any{map[string]any{"at": "mirror.signadot"}},
 	})
 	resp.Body.Close()
@@ -623,7 +623,7 @@ func TestOnlyATrustedIosReflectionIsEvidence(t *testing.T) {
 	// The trusted set is the store's to show, to anybody.
 	code, out := call(t, http.MethodGet, idBo, ts.URL+"/entity?at="+trustRef(githubProvider).String(), "")
 	if code != http.StatusOK || !strings.Contains(fmt.Sprint(out), "gh") {
-		t.Errorf("the trusted ios as a person reads them = %d %v", code, out)
+		t.Errorf("the trusted iods as a person reads them = %d %v", code, out)
 	}
 
 	// Trusting both, the same comment is evidence; the config at the next start says which.
@@ -656,7 +656,7 @@ func TestSetAuthIsJudgedByTheConfigsRules(t *testing.T) {
 	}
 }
 
-// A verse whose only issuer is the ios' tells a person it verifies no person's bearer rather
+// A verse whose only issuer is the iods' tells a person it verifies no person's bearer rather
 // than offering them `iod`.
 func TestAVerseWithOnlyTheIosIssuerVerifiesNoPerson(t *testing.T) {
 	cluster, people := idptest.New(t), idptest.New(t)
@@ -669,7 +669,7 @@ func TestAVerseWithOnlyTheIosIssuerVerifiesNoPerson(t *testing.T) {
 	defer ts.Close()
 	code, body := bearer(t, http.MethodGet, ts.URL+"/whoami", people.Token(authClient, "sub-ana", person("ana@example.com")), "", "")
 	if code != http.StatusUnauthorized || !strings.Contains(body, "verifies no person's bearer") || strings.Contains(body, "iod") {
-		t.Errorf("a person's token at a verse with only the ios' issuer = %d %q", code, strings.TrimSpace(body))
+		t.Errorf("a person's token at a verse with only the iods' issuer = %d %q", code, strings.TrimSpace(body))
 	}
 	// A verified person cannot bind an io's token as an account of theirs.
 	srv2, ts2, idp := authServer(t, AuthOptional)
@@ -685,12 +685,12 @@ func TestAVerseWithOnlyTheIosIssuerVerifiesNoPerson(t *testing.T) {
 		t.Errorf("linking an io's token as an account = %d %q, want 400", code, strings.TrimSpace(body))
 	}
 	if _, found, _ := srv2.Store.Get(accountRef(iodProvider, "system:serviceaccount:verse:stranger")); found {
-		t.Error("a person bound a stranger under the ios' accounts")
+		t.Error("a person bound a stranger under the iods' accounts")
 	}
 }
 
-// A provider that keeps its name and drops its ios has its trust node cleared, so nothing reads
-// yesterday's ios as trusted.
+// A provider that keeps its name and drops its iods has its trust node cleared, so nothing reads
+// yesterday's iods as trusted.
 func TestATrustNodeFollowsTheConfig(t *testing.T) {
 	idp := idptest.New(t)
 	srv := testServer(t)

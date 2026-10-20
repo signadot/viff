@@ -999,7 +999,7 @@ func (tx *charterTx) imports(def *ir.Node) (int, error) {
 		eng.SetReads(before)
 		return tx.s.putPackageDecl(tx.store, at, prev, had)
 	})
-	// The OUTBOXES with it, from the same document: what the package reads and where it asks ios
+	// The OUTBOXES with it, from the same document: what the package reads and where it asks iods
 	// for things are both its declaration (outbox.go). Undone before the record is put back, so
 	// the io is held out exactly the outboxes the restored record names.
 	installer := tx.as()

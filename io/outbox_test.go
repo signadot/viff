@@ -23,9 +23,9 @@ func TestAnOutHalfReadsTheOutboxesSendingToIt(t *testing.T) {
 	srv := versed.NewWithStore(versed.ScriptedBuilder, store)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
-	const as = "agent:demo-io"
+	const as = "agent:demo-iod"
 	entitytest.Set(t, store, verseio.Ref("demo"), entity.Obj{
-		"name": "demo", "root": "demo-io",
+		"name": "demo", "root": "demo-iod",
 		"out": entity.Obj{"places": []any{"demo.out"}, "as": as},
 	}.Payload())
 

@@ -47,7 +47,7 @@ func withSlackIO(t *testing.T, srv *Server) {
 	t.Helper()
 	entitytest.Set(t, srv.Store, verseio.Ref("slack"), entity.Obj{
 		"name": "slack", "root": "slack",
-		"out": entity.Obj{"places": []any{"slack.Signadot.out"}, "as": "agent:slack-io"},
+		"out": entity.Obj{"places": []any{"slack.Signadot.out"}, "as": "agent:slack-iod"},
 	}.Payload())
 }
 

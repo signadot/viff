@@ -241,7 +241,7 @@ func loginSetup(ctx context.Context, name string) (*loginProvider, error) {
 			name, providerNames())
 	}
 	if p.Issuer == "" {
-		return nil, fmt.Errorf("%q names the ios it trusts and no issuer, so it is nobody's to log in to "+
+		return nil, fmt.Errorf("%q names the iods it trusts and no issuer, so it is nobody's to log in to "+
 			"(the providers to log in to: %s)", name, providerNames())
 	}
 	prov, err := oidc.NewProvider(ctx, p.Issuer)
@@ -311,7 +311,7 @@ func pickProvider(args []string, usage string) (string, error) {
 	case len(args) == 1:
 		return args[0], nil
 	}
-	// The providers a person logs in to are the issuers. One that names the ios it trusts
+	// The providers a person logs in to are the issuers. One that names the iods it trusts
 	// (`github`, `slack`) issues no tokens, and is nobody's to log in to.
 	provs := map[string]config.AuthProviderConfig{}
 	for name, p := range appCfg.Auth.Principal.Providers {
@@ -615,11 +615,11 @@ func claimThrough(cc *cli.Context, name, account string) error {
 		Expires string `tony:"field=expires"`
 	}
 	decodeClose(resp, &claim)
-	ios := strings.Join(appCfg.Auth.Principal.Providers[name].IOs, ", ")
+	iods := strings.Join(appCfg.Auth.Principal.Providers[name].IOs, ", ")
 	fmt.Fprintf(cc.Out, "say this from your %s account, where the io it trusts (%s) hears you, "+
 		"on a line of its own:\n\n    %s\n\nin Slack, a message to the app; on GitHub, a comment on "+
 		"a pull request the io reflects. The verse binds the account when the io reports it, "+
-		"and the words stand until %s.\n", name, ios, claim.Say, claim.Expires)
+		"and the words stand until %s.\n", name, iods, claim.Say, claim.Expires)
 	return nil
 }
 

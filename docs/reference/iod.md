@@ -36,8 +36,8 @@ You install one of the five as you install any other iod:
 
 ```sh
 iod slack -addr :9801
-verse io add slack http://localhost:9801 -root slack
-verse io
+verse iod add slack http://localhost:9801 -root slack
+verse iod
 ```
 
 ## Common flags
@@ -52,7 +52,7 @@ Every subcommand accepts these flags.
 | `-hint-url` | `VERSE_HINT_URL` | none | the hint route of verse for this installed iod: `http://verse:9797/io/<name>/hint` |
 | `-root` | | the name of the subcommand | the [root](../glossary.md#root-of-an-iod) of the iod: the first segment of every [address](../glossary.md#address) that it writes |
 | `-verse-addr` | `VERSE_ADDR` | the host of `-hint-url` | the verse that the out half reads and writes, as `host:port` |
-| `-as` | | `agent:<root>-io`, such as `agent:slack-io` | the [principal](../glossary.md#principal) that the out half reads and writes as. The Slack out half reads the asks in a message to a person as that person, since a person's ask is read by whom it asks. |
+| `-as` | | `agent:<root>-iod`, such as `agent:slack-iod` | the [principal](../glossary.md#principal) that the out half reads and writes as. The Slack out half reads the asks in a message to a person as that person, since a person's ask is read by whom it asks. |
 | `-out-every` | | `5s` | how often the out half reads what is asked of it |
 | `-token-file` | `VERSE_TOKEN_FILE` | none | the file holding the iod's own credential toward verse: on Kubernetes, the pod's projected service-account token, which verse's `auth.iod` names the iod by ([iods at the door](perms.md#iods-at-the-door)). Read on every request, since the kubelet rotates it. Without it, the iod is whoever `-as` says. |
 
@@ -115,7 +115,7 @@ and in the shell history, and an environment variable is not.
 
 | Credential | What it is |
 |---|---|
-| none of its own | Without the App's keys, `iod git` reads no credential from the environment. `-mirror` runs git, so a private remote needs a credential that git finds by itself. The manifest `deploy/git-io` gives git a credential helper that reads a Secret. With `-out`, a mirror pushes with the same credential, which must then be allowed to push. The charters it installs it installs as itself (`-as`, `agent:git-io` by default), so it needs `child-owner` where they go. |
+| none of its own | Without the App's keys, `iod git` reads no credential from the environment. `-mirror` runs git, so a private remote needs a credential that git finds by itself. The manifest `deploy/git-iod` gives git a credential helper that reads a Secret. With `-out`, a mirror pushes with the same credential, which must then be allowed to push. The charters it installs it installs as itself (`-as`, `agent:git-iod` by default), so it needs `child-owner` where they go. |
 | `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, `GITHUB_APP_PRIVATE_KEY` | a GitHub App's installation, as the github iod takes it. Given, the installation's token is the only credential git presents over https, as `x-access-token`, minted again before it lapses, and any helper set before it is not tried: a fetch and a push are the App's. The three go together. |
 
 ```
@@ -128,7 +128,7 @@ iod git -repo   [<id>=]<dir>    a repository already on disk (repeatable, comma-
 ```
 
 **`-repo`** is for a machine that already has the repository. Verse can also reflect a local
-repository with no program at all: `verse io add -dir`.
+repository with no program at all: `verse iod add -dir`.
 
 **`-mirror`** is for a deployed io. A
 [mirror](../glossary.md#mirror-of-a-git-repository) is a copy of a remote repository, kept
@@ -258,7 +258,7 @@ verse data git verse out livecheck -put '{to: check.repos.verse, ref: verse/live
   the tree or none, and what the tree leaves out under the address removed. A tree with no
   charter file, the empty tree among them, removes every charter at the address. So the iod has to own
   the address, or hold `child-owner` above it (`verse perms repos --grants '[{child-owner:
-  [agent:git-io]}]'` on a deployment). A tree the repository lacks, a file that does not parse, or
+  [agent:git-iod]}]'` on a deployment). A tree the repository lacks, a file that does not parse, or
   a charter the verse refuses is refused for good until the input changes; a verse that cannot be
   reached is tried again. A tree already installed for the same commit costs nothing. It is how
   the repo-charters reconciler installs what the team said yes to (git-issue dzxn44gw).
@@ -426,7 +426,7 @@ iod slack -workspace <name>    the id prefix (default: the team name the token b
               -out                 also say in Slack what is written under slack.<ws>.out, and answer
                                    the questions those messages ask (see below)
               -verse-addr <addr>   the verse the out half reads and writes (VERSE_ADDR; default: -hint-url's host)
-              -as <principal>      who the out half reads and writes as (default agent:slack-io)
+              -as <principal>      who the out half reads and writes as (default agent:slack-iod)
               -out-every <d>       how often the out half reads what is asked (default 5s)
 ```
 
@@ -547,21 +547,21 @@ as an input. When somebody removes an input, its status stays, and the message s
 is.
 
 **Only the iod writes a status, and the permissions of verse enforce it.** The iod reads and
-writes the store as its own principal. The principal is `-as`, and it is `agent:slack-io` by
+writes the store as its own principal. The principal is `-as`, and it is `agent:slack-iod` by
 default.
 
 **The install writes the grants.** You name the out half when you install the iod, with three
-flags of `verse io add` ([the out half](io.md#the-out-half)).
+flags of `verse iod add` ([the out half](io.md#the-out-half)).
 
-| Flag of `verse io add` | What it names |
+| Flag of `verse iod add` | What it names |
 |---|---|
 | `-out` | the address under which the out half reads inputs |
-| `-as` | the principal that the out half acts as. The default is `agent:<root>-io`. |
+| `-as` | the principal that the out half acts as. The default is `agent:<root>-iod`. |
 | `-requesters` | who may write an input, as a list of [grantees](../glossary.md#grantee) with commas between them |
 
 ```sh
-verse io add slack http://localhost:9801 -root slack \
-  -out slack.acme.out -as agent:slack-io -requesters group:verse-dev
+verse iod add slack http://localhost:9801 -root slack \
+  -out slack.acme.out -as agent:slack-iod -requesters group:verse-dev
 ```
 
 The install writes four [grants](../glossary.md#grant-permission) on the record of the out
@@ -580,8 +580,8 @@ commands:
 
 ```sh
 verse perms slack acme out --grant '{read-write: [<askers>]}' --below
-verse perms slack acme out --grant '{read: [agent:slack-io]}' --below
-verse perms slack acme out --grant '{child-owner: [agent:slack-io]}'
+verse perms slack acme out --grant '{read: [agent:slack-iod]}' --below
+verse perms slack acme out --grant '{child-owner: [agent:slack-iod]}'
 verse perms slack acme out --child-grants '{read: ["*"]}'
 ```
 
@@ -695,7 +695,7 @@ that person, so the permissions of verse decide whether the person may answer.
 | the answer is accepted | in the thread, where everyone who reads the thread can see it |
 | the answer is refused: the person is not an [answerer](../glossary.md#answerer), or somebody answered first | to the person alone, in the words of verse. A refusal is about the person, and not about the question. |
 
-The iod never answers as `-as`. An answer recorded as `agent:slack-io` is an answer that
+The iod never answers as `-as`. An answer recorded as `agent:slack-iod` is an answer that
 nobody gave. An answer also asks for a pass at once, so the iod draws the message again while
 the person looks at it.
 
@@ -789,7 +789,7 @@ outside every cover of the reflection.
 | input | anywhere under `linear.<KEY>.out` | whoever asks | `to`, which is the identifier of the issue, such as `ENG-42`, and `text` |
 | status | the sibling `<name>~status` | the iod alone | `comment, url, postedAt, updatedAt, posted`, and `error` while an error stands. `comment` is the id of the comment, and `posted` is the fingerprint of its text. |
 
-A pass runs every `-out-every`, as the principal of `-as`, which is `agent:linear-io` by
+A pass runs every `-out-every`, as the principal of `-as`, which is `agent:linear-iod` by
 default.
 
 | The input | What the pass does |
@@ -934,7 +934,7 @@ claim of its repository and outside every cover of the reflection.
 | input | anywhere under `github.<org>.<name>.out`, or in an outbox sending there | whoever asks | `to`, which is `pr.<n>` or `issue.<n>`, and `text`; or `text` and `asks` (below); or `to: branch.<name>` and `open`, with `commitStatus`; or `to: issue` and `open`; or `to: pr.<n>` and `merge` or `review`; or `to: pr.<n>` or `issue.<n>` and `close` (below) |
 | status | the sibling `<name>~status` | the iod alone | `comment, url, postedAt, updatedAt, posted`, and `error` while an error stands. `comment` is the id of the comment, and `posted` is the fingerprint of its text. With `asks`, also `handled`: the replies acted on. With `commitStatus`, `commitStatus.<context>`: `state`, `sha` and `at`. |
 
-A pass runs every `-out-every`, as the principal of `-as`, which is `agent:github-io` by
+A pass runs every `-out-every`, as the principal of `-as`, which is `agent:github-iod` by
 default, proving itself with `-token-file` where it has one.
 
 **A question asked on a pull request.** An input carrying `asks`, one
@@ -1105,11 +1105,11 @@ words). Neither is a 5xx. Both are tried again on the next pass.
 
 ## Deploying them
 
-The manifests are `deploy/git-io`, `deploy/git-issue-io`, `deploy/slack-io`,
-`deploy/linear-io` and `deploy/github-io`: one for each of the five ios. A setting of its own
+The manifests are `deploy/git-iod`, `deploy/git-issue-iod`, `deploy/slack-iod`,
+`deploy/linear-iod` and `deploy/github-iod`: one for each of the five iods. A setting of its own
 switches each manifest on, such as `-e slackIO=true`, or
 `-e githubIO=true -e githubRepos=org/name`. The manifests carry the label `tier: iod`, and
-`make ship-ios` selects on that label.
+`make ship-iods` selects on that label.
 
 A readiness probe asks each iod `GET /io`. This is the route by which an iod says what it is.
 So a pod is ready exactly when it can answer what verse asks it.

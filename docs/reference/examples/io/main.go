@@ -1,11 +1,11 @@
-// Command io is a verse io you can copy and change: the smallest thing that serves
+// Command io is a verse iod you can copy and change: the smallest thing that serves
 // the verse-facing reflection contract, so a drive can reflect a system verse itself knows
 // nothing about — one behind a corp firewall, one whose credentials belong to somebody else,
 // one that has not been written yet.
 //
 //	go run ./docs/reference/examples/io -addr :9801 -repo verse=/path/to/verse
-//	verse io add build-host http://localhost:9801 -root git
-//	verse io
+//	verse iod add build-host http://localhost:9801 -root git
+//	verse iod
 //
 // It is a real program and it compiles with the tree, which is the point: a stub in a fenced
 // block goes stale the first time a signature moves and nobody finds out. It also is not a
@@ -63,7 +63,7 @@ func main() {
 	// it sees. verse drives exactly this over HTTP, and its own in-process source is the same
 	// value behind the same handler — so there is no privileged local path for this to differ
 	// from.
-	log.Printf("source listening on %s — install it with: verse io add <name> http://<host>%s -root <root>",
+	log.Printf("source listening on %s — install it with: verse iod add <name> http://<host>%s -root <root>",
 		*addr, *addr)
 	if err := http.ListenAndServe(*addr, verseiod.New(src).Handler()); err != nil {
 		log.Fatalf("source: %v", err)

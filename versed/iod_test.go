@@ -19,21 +19,21 @@ import (
 // person's account binding (iod.go).
 
 const (
-	ioSub       = "system:serviceaccount:verse:slack-io"
-	ioAgent     = "agent:slack-io"
+	ioSub       = "system:serviceaccount:verse:slack-iod"
+	ioAgent     = "agent:slack-iod"
 	ioName      = "workspace"
 	slackProv   = "slack"
-	staticToken = "s3cret-static-token-for-the-git-io"
-	staticIo    = "agent:git-io"
+	staticToken = "s3cret-static-token-for-the-git-iod"
+	staticIo    = "agent:git-iod"
 )
 
-// iodServer is a server in mode with people from `corp`, ios from a cluster issuer (the second fake
-// IdP), one io `workspace` acting as agent:slack-io, a static io, and slack trusting `workspace`
+// iodServer is a server in mode with people from `corp`, iods from a cluster issuer (the second fake
+// IdP), one io `workspace` acting as agent:slack-iod, a static io, and slack trusting `workspace`
 // as the provider slack says.
 func iodServer(t *testing.T, mode string, slack AuthProvider) (*Server, *httptest.Server, *idptest.IdP, *idptest.IdP) {
 	t.Helper()
 	people, cluster := idptest.New(t), idptest.New(t)
-	file := filepath.Join(t.TempDir(), "git-io.token")
+	file := filepath.Join(t.TempDir(), "git-iod.token")
 	if err := os.WriteFile(file, []byte(staticToken+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestAnIoProvesItselfWithItsWorkloadToken(t *testing.T) {
 		t.Errorf("the static io's record = %v", statics)
 	}
 
-	// Ios are verified whatever the people's mode: a verse that verifies no person still knows its ios.
+	// Iods are verified whatever the people's mode: a verse that verifies no person still knows its iods.
 	off, tsOff, _, clusterOff := iodServer(t, AuthOff, AuthProvider{})
 	_ = off
 	if code, body := relay(t, http.MethodGet, tsOff.URL+"/whoami?format=tony", clusterOff.Token(iodAudience, ioSub, nil), "", "", ""); code != http.StatusOK || tonyOf(t, body)["principal"] != ioAgent {
@@ -151,7 +151,7 @@ func TestAnIoProvesItselfWithItsWorkloadToken(t *testing.T) {
 	}
 }
 
-// The ios' issuer may sit behind a CA no public root signed, a cluster's own API server: named a
+// The iods' issuer may sit behind a CA no public root signed, a cluster's own API server: named a
 // bundle, the door reaches it; not named one, it cannot, and says so rather than admitting.
 func TestAnIssuerBehindTheClustersCAIsReachedThroughIt(t *testing.T) {
 	cluster := idptest.NewTLS(t)
@@ -279,7 +279,7 @@ func TestARelayIsRefusedWhereItMustBe(t *testing.T) {
 		code                        int
 	}{
 		{"no account named", idAna, "", "names none", http.StatusForbidden},
-		{"an account of a provider that trusts no ios", idAna, authProvName + ":sub-ana", "trusts ios", http.StatusForbidden},
+		{"an account of a provider that trusts no iods", idAna, authProvName + ":sub-ana", "trusts iods", http.StatusForbidden},
 		{"an account of no provider", idAna, "nowhere:1", "no provider of this verse", http.StatusForbidden},
 		{"a person who is no person", "agent:bot", slackProv + ":T1/U2", "relays a person", http.StatusForbidden},
 		{"a runner", "runner:gpu", slackProv + ":T1/U2", "relays a person", http.StatusForbidden},

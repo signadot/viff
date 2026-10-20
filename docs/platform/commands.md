@@ -33,7 +33,7 @@ verse
                                              (default: its name)
           check <ref>                        ask a runner what it is, right now
           remove <ref> [-cancel "<why>" | -leave]     what becomes of the work still on it
-  io (ios) [-probe]                          a connector between the verse and an external
+  iod (iods) [-probe]                          a connector between the verse and an external
                                              system: it reflects in, and it acts out
           add <name> <url> -root <root> [-out <place>] [-requesters <who>]
                                             [-as <principal>] [-no-probe] [-allow-overlap]

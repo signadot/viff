@@ -62,7 +62,7 @@ const (
 type Auth struct {
 	Mode      string
 	Providers map[string]AuthProvider
-	// Iod is how the deployment's ios are authenticated (iod.go).
+	// Iod is how the deployment's iods are authenticated (iod.go).
 	Iod AuthIod
 }
 
@@ -74,9 +74,9 @@ type AuthProvider struct {
 	ClientID string
 	// Domains are the email domains a first sight is admitted from.
 	Domains []string
-	// IOs are the installed ios the verse trusts for the provider's accounts, by the name each is
+	// IOs are the installed iods the verse trusts for the provider's accounts, by the name each is
 	// installed under: `github`'s, whose accounts are proved by a comment an io reflects, and
-	// `slack`'s, whose io relays the member who typed (iod.go). A provider has an issuer or ios.
+	// `slack`'s, whose io relays the member who typed (iod.go). A provider has an issuer or iods.
 	IOs []string
 	// Acts is what a trusted io may do as a person it relays: actsControl (""), or actsAny.
 	Acts string
@@ -122,7 +122,7 @@ func (a Auth) config() config.AuthConfig {
 }
 
 // authn is a server's providers as the door asks for them: by the issuer a token names, and by
-// name, for the provider a relayed account is under; and the ios (iod.go).
+// name, for the provider a relayed account is under; and the iods (iod.go).
 type authn struct {
 	mode     string
 	byIssuer map[string]*authProvider
@@ -132,12 +132,12 @@ type authn struct {
 
 // authProvider is one provider and its verifier, which is built the first time a token names it:
 // a provider that is down when versed starts stops nothing but the requests that need it. The
-// ios' issuer is one too (iod), whose tokens name an io rather than a person.
+// iods' issuer is one too (iod), whose tokens name an io rather than a person.
 type authProvider struct {
 	name string
 	iod  bool
 	AuthProvider
-	// client reaches the issuer where the system's roots do not: the ios' issuer behind a
+	// client reaches the issuer where the system's roots do not: the iods' issuer behind a
 	// cluster's own CA (AuthIod.CA). nil is the default client.
 	client *http.Client
 
@@ -147,10 +147,10 @@ type authProvider struct {
 	failure  error
 }
 
-// SetAuth says how this verse authenticates people, and writes down which ios each provider
+// SetAuth says how this verse authenticates people, and writes down which iods each provider
 // trusts as evidence (trustRef). It is called before the server serves.
 //
-// THE TRUSTED IOS COME FROM HERE AND NOWHERE ELSE. Which ios' reflections count as evidence
+// THE TRUSTED IOS COME FROM HERE AND NOWHERE ELSE. Which iods' reflections count as evidence
 // decides what a binding guarantees, so it is set by the one input that does not come through the
 // door: the deployment's own config. It is written to the store as system:identity, where it is
 // read like any record, and written again at every start, so the store says what the config does.
@@ -188,7 +188,7 @@ func (s *Server) SetAuth(a Auth) error {
 	return nil
 }
 
-// writeTrusts records each provider's trusted ios, and clears a provider's that the config no
+// writeTrusts records each provider's trusted iods, and clears a provider's that the config no
 // longer names, so the store says what the config does.
 func (s *Server) writeTrusts(providers map[string]AuthProvider) error {
 	sys := entity.As(s.Store, entity.SystemIdentity)
@@ -203,15 +203,15 @@ func (s *Server) writeTrusts(providers map[string]AuthProvider) error {
 	for name, p := range providers {
 		if len(p.IOs) > 0 || name == githubProvider {
 			if err := s.writeTrust(name, p.IOs); err != nil {
-				return fmt.Errorf("auth.principal.providers.%s.ios: %w", name, err)
+				return fmt.Errorf("auth.principal.providers.%s.iods: %w", name, err)
 			}
 			written[name] = true
 		}
 	}
 	// A trust node the config no longer speaks for — its provider gone, or kept and now an
-	// issuer — is cleared, so nothing reads yesterday's ios as trusted.
+	// issuer — is cleared, so nothing reads yesterday's iods as trusted.
 	for _, e := range standing {
-		if name := e.Ref.Segs()[2]; !written[name] && len(entity.Strs(e.Payload, "ios")) > 0 {
+		if name := e.Ref.Segs()[2]; !written[name] && len(entity.Strs(e.Payload, "iods")) > 0 {
 			if err := s.writeTrust(name, nil); err != nil {
 				return err
 			}
@@ -230,7 +230,7 @@ func (s *Server) verifiesPeople() bool {
 }
 
 // providerNames is the names of the providers people's tokens may come from, for a refusal that
-// says what would be taken. The ios' issuer is not one of them.
+// says what would be taken. The iods' issuer is not one of them.
 func (n *authn) providerNames() string {
 	names := make([]string, 0, len(n.byIssuer))
 	for _, p := range n.byIssuer {

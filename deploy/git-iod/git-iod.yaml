@@ -7,20 +7,20 @@
 # git"). `-tree .verse/charters` puts the tree sha of the charters directory on every ref, which is what
 # the repo-charters reconciler keys approval on. For a repo that already exists somewhere (a
 # build host, a laptop), run the same binary there with `-repo` instead, or use verse's
-# in-process path (`verse io add --dir`) and skip this entirely.
+# in-process path (`verse iod add --dir`) and skip this entirely.
 #
 # Install it once the pods are up. The name is free here, unlike the Slack/Linear/GitHub ones:
 # those bake a hint url containing their name into the pod, so the name has to be decided
 # before it starts and there is a `<x>IOName` knob for it. This one is polled and posts no
 # hints, so there is nothing to match and no knob (there never was a `gitIOName`).
-#   verse io add cluster http://git-io:9801 -root git
+#   verse iod add cluster http://git-iod:9801 -root git
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: git-io
+  name: git-iod
   labels:
     app: verse
-    tier: io
+    tier: iod
     io: git
 spec:
   replicas: 1
@@ -33,17 +33,17 @@ spec:
   selector:
     matchLabels:
       app: verse
-      tier: io
+      tier: iod
       io: git
   template:
     metadata:
       labels:
         app: verse
-        tier: io
+        tier: iod
         io: git
     spec:
       containers:
-      - name: git-io
+      - name: git-iod
         image: signadot/verse:latest
         # The mirror spec comes from the build (`-e gitMirror=…`); see deploy/build.tony.
         command:
@@ -84,7 +84,7 @@ spec:
         # nothing for `store` and `erase`.
         env:
         # The out half reads what is asked of it from versed, which the reflection never dials
-        # (versed dials it). The other ios derive this from their hint url; git has no hint url,
+        # (versed dials it). The other iods derive this from their hint url; git has no hint url,
         # since its hint is a hook, so it is named here.
         - name: VERSE_ADDR
           value: verse:9797
@@ -128,15 +128,15 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: git-io
+  name: git-iod
   labels:
     app: verse
-    tier: io
+    tier: iod
     io: git
 spec:
   selector:
     app: verse
-    tier: io
+    tier: iod
     io: git
   ports:
   - name: source

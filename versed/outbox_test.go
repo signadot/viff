@@ -14,13 +14,13 @@ import (
 )
 
 const (
-	slackIO  = "agent:slack-io"
+	slackIO  = "agent:slack-iod"
 	slackOut = "slack.ws.out"
 	alice    = "user:alice@example.com"
 )
 
 // outboxServer is a verse whose root holds nothing out, with an io whose out half reads
-// slack.ws.out as agent:slack-io. Its registration is written straight into the store: what is
+// slack.ws.out as agent:slack-iod. Its registration is written straight into the store: what is
 // tested here is what a package's declaration does with it, not how an io is installed.
 func outboxServer(t *testing.T) (*Server, *httptest.Server) {
 	t.Helper()
@@ -148,7 +148,7 @@ func TestAnOutboxFollowsItsIO(t *testing.T) {
 	defer ts.Close()
 	const ana = "user:ana@example.com"
 	io := map[string]any{
-		"name": "workspace", "root": "slack", "url": "http://slack-io:9801",
+		"name": "workspace", "root": "slack", "url": "http://slack-iod:9801",
 		"owns": []any{map[string]any{"at": "slack.ws"}},
 		"out":  map[string]any{"places": []any{slackOut}, "as": slackIO},
 	}

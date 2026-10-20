@@ -47,7 +47,7 @@ func (f *failReads) ReadError() error {
 // A FAILED READ IS NOT AN EMPTY LIST, on every listing an operator reads state from.
 //
 // List answers nil when the read did not happen, so a listing that renders it verbatim says
-// "nothing is installed" about a verse that is merely busy. `verse io` did exactly that on
+// "nothing is installed" about a verse that is merely busy. `verse iod` did exactly that on
 // a verse holding three sources, which is the one answer somebody acts on — and the two
 // listings that already carried this guard (/state, /charter) are why the shape was recognised.
 func TestAListingRefusesRatherThanAnsweringEmpty(t *testing.T) {

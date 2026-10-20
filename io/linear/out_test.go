@@ -36,7 +36,7 @@ func newOutRig(t *testing.T) *outRig {
 	if len(places) != 1 {
 		t.Fatalf("out places %v, want one per team", places)
 	}
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:linear-io")
+	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:linear-iod")
 	return &outRig{store: store, fake: f,
 		out: verseio.NewOut(src.Sink(), places[0], verse, nil)}
 }

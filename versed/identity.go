@@ -49,8 +49,8 @@ import (
 // means does not depend on how it was proved, and its `proof` says which way that was.
 //
 // A COMMENT'S EVIDENCE IS AS TRUSTWORTHY AS THE REFLECTION, which is as trustworthy as an io's
-// asserted principal: the comment is read under the roots of the ios the deployment trusts for the
-// provider (trustRef), where only those ios write, and under no other io's.
+// asserted principal: the comment is read under the roots of the iods the deployment trusts for the
+// provider (trustRef), where only those iods write, and under no other io's.
 const (
 	// githubProvider is the provider GitHub accounts are bound under.
 	githubProvider = "github"
@@ -71,36 +71,36 @@ func identityRef(provider string, segs ...string) entity.Ref {
 func claimRef(provider, nonce string) entity.Ref { return identityRef(provider, "claim", nonce) }
 func accountRef(provider, sub string) entity.Ref { return identityRef(provider, "account", sub) }
 
-// trustRef is where a provider's trusted ios stand: `{ios: [<name>…]}`, the installed ios whose
+// trustRef is where a provider's trusted iods stand: `{iods: [<name>…]}`, the installed iods whose
 // reflections count as evidence of the provider's accounts. It is written from the deployment's
 // config at start (SetAuth) and by nothing else, and is everyone's to read.
 func trustRef(provider string) entity.Ref { return identityRef(provider, "trust") }
 
-// writeTrust records the ios a provider trusts, replacing what stood.
-func (s *Server) writeTrust(provider string, ios []string) error {
+// writeTrust records the iods a provider trusts, replacing what stood.
+func (s *Server) writeTrust(provider string, iods []string) error {
 	ref := trustRef(provider)
 	grants := []entity.Grant{{At: ref.Segs(), To: map[entity.Level][]string{entity.Read: {entity.Everyone}}}}
 	if err := entity.Establish(s.Store, ref, entity.SystemIdentity, entity.Ref{}, grants); err != nil {
 		return err
 	}
-	names := make([]any, len(ios))
-	for i, name := range ios {
+	names := make([]any, len(iods))
+	for i, name := range iods {
 		names[i] = name
 	}
 	_, _, err := entity.As(s.Store, entity.SystemIdentity).Write(entity.Write{
-		At: ref.At("ios"), Value: entity.Val(names),
+		At: ref.At("iods"), Value: entity.Val(names),
 	})
 	return err
 }
 
-// trustedIOs is the installed ios a provider trusts as evidence, by name.
+// trustedIOs is the installed iods a provider trusts as evidence, by name.
 func trustedIOs(sys entity.Store, provider string) (map[string]bool, error) {
 	rec, found, err := sys.Get(trustRef(provider))
 	if err != nil || !found {
 		return nil, err
 	}
 	out := map[string]bool{}
-	for _, name := range entity.Strs(rec.Payload, "ios") {
+	for _, name := range entity.Strs(rec.Payload, "iods") {
 		out[name] = true
 	}
 	return out, nil
@@ -108,7 +108,7 @@ func trustedIOs(sys entity.Store, provider string) (map[string]bool, error) {
 
 // errNoTrustedIO is what a claim or a verify is refused with where no io is trusted as evidence.
 var errNoTrustedIO = errors.New("no io is trusted as evidence of an account under this provider on this " +
-	"verse, so none can be proved: the deployment names them in its config (auth.principal.providers.<name>.ios)")
+	"verse, so none can be proved: the deployment names them in its config (auth.principal.providers.<name>.iods)")
 
 // isAccount reports whether ref is a binding's address, under whichever provider.
 func isAccount(ref entity.Ref) bool {
@@ -161,7 +161,7 @@ func (s *Server) claimAccount(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "a claim names the GitHub login it claims", http.StatusBadRequest)
 		return
 	}
-	// A provider whose accounts an io proves has a trust record, the ios it names (writeTrust);
+	// A provider whose accounts an io proves has a trust record, the iods it names (writeTrust);
 	// an issuer has none, and its accounts are proved by its tokens. Refused before a nonce is
 	// given out, so nobody says one where no io's word would be taken. (The verify route below is
 	// `github`'s alone; another provider's nonce is reported heard.)
@@ -172,7 +172,7 @@ func (s *Server) claimAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	if trusted == nil {
 		http.Error(w, fmt.Sprintf("%q is no provider whose accounts an io proves on this verse "+
-			"(auth.principal.providers.<name>.ios)", provider), http.StatusNotFound)
+			"(auth.principal.providers.<name>.iods)", provider), http.StatusNotFound)
 		return
 	}
 	if len(trusted) == 0 {
@@ -238,12 +238,12 @@ func (s *Server) heardAccount(w http.ResponseWriter, r *http.Request) {
 	p := s.providerNamed(provider)
 	if p == nil || len(p.IOs) == 0 {
 		http.Error(w, fmt.Sprintf("%q is no provider whose accounts an io proves on this verse "+
-			"(auth.principal.providers.<name>.ios)", provider), http.StatusNotFound)
+			"(auth.principal.providers.<name>.iods)", provider), http.StatusNotFound)
 		return
 	}
 	if io.IO == "" || !slices.Contains(p.IOs, io.IO) {
 		http.Error(w, fmt.Sprintf("%s is not an io this verse trusts for %s accounts "+
-			"(auth.principal.providers.%s.ios names %s)", io.Principal, provider, provider,
+			"(auth.principal.providers.%s.iods names %s)", io.Principal, provider, provider,
 			strings.Join(p.IOs, ", ")), http.StatusForbidden)
 		return
 	}
@@ -441,7 +441,7 @@ func (s *Server) linkAccount(w http.ResponseWriter, r *http.Request) {
 	provider := r.PathValue("provider")
 	if v.provider.iod {
 		// A workload token names an io, which is config and never a person's account (iod.go).
-		http.Error(w, "the evidence is a workload token of the ios' issuer, which binds no person's account", http.StatusBadRequest)
+		http.Error(w, "the evidence is a workload token of the iods' issuer, which binds no person's account", http.StatusBadRequest)
 		return
 	}
 	if v.provider.name != provider {
@@ -476,7 +476,7 @@ func oidcBinding(v *verified, who, claimant string) entity.Obj {
 }
 
 // linkComment is the reflected comment in which login says the nonce, nil where none is. It is
-// read under the roots of the ios the provider trusts (trustRef) and no others, at the github io's
+// read under the roots of the iods the provider trusts (trustRef) and no others, at the github io's
 // comment places, `<root>.<org>.<name>.comment.<number>.<id>`, and counts only a comment that
 // carries its author's number, since that number is what the binding keys on.
 func (s *Server) linkComment(sys entity.Store, login, nonce string) (*entity.Entity, error) {
@@ -487,12 +487,12 @@ func (s *Server) linkComment(sys entity.Store, login, nonce string) (*entity.Ent
 	if len(trusted) == 0 {
 		return nil, errNoTrustedIO
 	}
-	ios, err := verseio.ListErr(sys)
+	iods, err := verseio.ListErr(sys)
 	if err != nil {
 		return nil, err
 	}
 	said := linkWord + " " + nonce
-	for _, io := range ios {
+	for _, io := range iods {
 		if io.Root == "" || !trusted[io.Name] {
 			continue
 		}

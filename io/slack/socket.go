@@ -59,7 +59,7 @@ import (
 // since it is about them rather than about the question. The question's own record is what the
 // message then shows, redrawn by the out half (out.go, body), which Answered asks for at once.
 //
-// It is never made as this program's own principal: an answer recorded as agent:slack-io would be
+// It is never made as this program's own principal: an answer recorded as agent:slack-iod would be
 // an answer nobody gave. The Slack user comes from an envelope on a socket the app token
 // authenticated, and this program presents that person to verse with the account they are,
 // `slack:<user id>`, beside its own credential; a verse that verifies people admits the request

@@ -1,8 +1,8 @@
-# verse's `auth` block on minikube: the ios prove themselves with their pods' projected tokens,
+# verse's `auth` block on minikube: the iods prove themselves with their pods' projected tokens,
 # whose issuer is the cluster's own API server, behind the cluster's CA, which a pod has mounted.
 # Nobody logs in here (no issuer for people), so the mode stays `optional`, and a person binds
 # their Slack or GitHub account by saying the nonce `verse account -link <provider>` gives them:
-# no provider names domains, so the ios relay bound accounts only.
+# no provider names domains, so the iods relay bound accounts only.
 #
 # The issuer is what `kubectl get --raw /.well-known/openid-configuration` prints as `issuer`;
 # kubeadm's default, and minikube's, is below. The discovery document is readable by nobody-in-
@@ -12,14 +12,14 @@ auth:
     mode: optional
     providers:
       github:
-        ios: [github, git]
+        iods: [github, git]
       slack:
-        ios: [slack]
+        iods: [slack]
   iod:
     issuer: "https://kubernetes.default.svc.cluster.local"
     audience: verse
     ca: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
     accounts:
-      "system:serviceaccount:verse:slack-io": {principal: "agent:slack-io", io: slack}
-      "system:serviceaccount:verse:github-io": {principal: "agent:github-io", io: github}
-      "system:serviceaccount:verse:git-io": {principal: "agent:git-io", io: git}
+      "system:serviceaccount:verse:slack-iod": {principal: "agent:slack-iod", iod: slack}
+      "system:serviceaccount:verse:github-iod": {principal: "agent:github-iod", iod: github}
+      "system:serviceaccount:verse:git-iod": {principal: "agent:git-iod", iod: git}

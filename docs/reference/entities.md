@@ -303,7 +303,7 @@ or a read is checked against, is in [perms.md](../perms.md).
 You read what is under `verse` like anything else. Only the verbs that own it write it.
 `verse data verse trigger rule review` reads a rule. Verse refuses `verse data -put` at any
 address under `verse`, and says which verb to use instead: `verse c -a`, `verse resolver add`,
-`verse runner add`, `verse io add`, `verse question approve`.
+`verse runner add`, `verse iod add`, `verse question approve`.
 
 Each verb makes its own checks: what a rule may read, what a runner is, whether the claim of an
 iod overlaps another. Under every verb, the store checks the write against what its place

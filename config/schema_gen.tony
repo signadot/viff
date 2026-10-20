@@ -2,7 +2,7 @@
 context:
 - tony-format/context
 define:
-  io: .[string]
+  iod: .[string]
   principal: .[string]
 signature:
   name: verse-iod-account-config
@@ -11,7 +11,7 @@ context:
 - tony-format/context
 define:
   file: .[string]
-  io: .[string]
+  iod: .[string]
   principal: .[string]
 signature:
   name: verse-iod-static-config
@@ -42,7 +42,7 @@ define:
   clientId: .[string]
   clientSecret: .[string]
   domains: .[array(string)]
-  ios: .[array(string)]
+  iods: .[array(string)]
   issuer: .[string]
 signature:
   name: verse-auth-provider-config

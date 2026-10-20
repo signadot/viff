@@ -38,7 +38,7 @@ func TestTheGitOutHalfSettlesQuestionsNothingProposes(t *testing.T) {
 `)
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/answer"):
 			b, _ := io.ReadAll(r.Body)
-			if !strings.Contains(string(b), "obsolete") || !strings.Contains(string(b), "agent:git-io") {
+			if !strings.Contains(string(b), "obsolete") || !strings.Contains(string(b), "agent:git-iod") {
 				t.Errorf("an answer that is not `obsolete` by the io: %s", b)
 			}
 			answered = append(answered, strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/asks/"), "/answer"))
@@ -52,8 +52,8 @@ func TestTheGitOutHalfSettlesQuestionsNothingProposes(t *testing.T) {
 	g := verseio.NewGit()
 	g.AddRepo("r", t.TempDir())
 	sink := g.Sink()
-	sink.Verse = client.New(strings.TrimPrefix(fake.URL, "http://"), "agent:git-io")
-	sink.As = "agent:git-io"
+	sink.Verse = client.New(strings.TrimPrefix(fake.URL, "http://"), "agent:git-iod")
+	sink.As = "agent:git-iod"
 	in := verseio.Input{Place: g.OutRef("r"), To: "obsolete", Value: entity.Obj{
 		"to": "obsolete", "prefix": prefix, "before": "2026-10-04T21:00:00Z",
 		"keep": entity.Obj{"state": []any{"kept"}, "pulls": []any{""}},

@@ -33,9 +33,9 @@ grants or reaches:
 > o build deploy -O yaml -p <profile> | kubectl apply -f -
 > ```
 
-Optionally a third tier: **ios**, one `Deployment` + `Service` each, running `iod` (git,
-git-issue, Slack, Linear, GitHub). Each is a singleton for the reason versed is — an io is
-the single writer of its slice — and each is off by default. See [Ios](#ios-optional).
+Optionally a third tier: **iods**, one `Deployment` + `Service` each, running `iod` (git,
+git-issue, Slack, Linear, GitHub). Each is a singleton for the reason versed is — an iod is
+the single writer of its slice — and each is off by default. See [Iods](#iods-optional).
 
 ## Build the image
 
@@ -51,7 +51,7 @@ make docker IMAGE_ARCH=amd64      # target amd64 nodes (default: your host arch)
 
 `make deploy PROFILE=minikube HOSTPATH=/Users/<you>/.verse/minikube-default` renders and
 applies in one step (`make help` lists all targets). The image bundles `verse`, the pinned
-`o` (which docd's pod runs), `iod` (the ios), and `git` — one image, several
+`o` (which docd's pod runs), `iod` (the iods), and `git` — one image, several
 roles, so there is one ref to pin and one build to cache.
 
 ## Render + apply
@@ -182,7 +182,7 @@ with an `OwnerRefInvalidNamespace` event as the only trace.
 
 The knob attaches it to the namespace's **`default` ServiceAccount**, not to each pod spec:
 the ServiceAccount admission plugin copies `imagePullSecrets` into every pod created in the
-namespace, so versed, docd and every io are covered by one object rather than a
+namespace, so versed, docd and every iod are covered by one object rather than a
 patch each. The build emits that ServiceAccount immediately after the Namespace, before the
 workloads, because the copy happens **at pod creation** — an account that gains the secret
 later does nothing for pods already standing:
@@ -250,16 +250,16 @@ should be passed the Service name directly rather than discovering it.
 | `gitSecretKey` / `slackSecretKey` / `linearSecretKey` / `githubSecretKey` / `runnerSecretKey` | `""` | the same, one per credential |
 | `llmModel` | `""` | `OPENAI_MODEL` for versed; `""` leaves the driver's `gpt-4o` |
 | `systemCharter` | `""` | a charter under `deploy/`, mounted into versed and installed at start as the system (`VERSE_SYSTEM_CHARTER`); read at start, so a change takes a restart. Staging: `charters/verse/workspace/Signadot/gate-ask.tony` |
-| `authConfig` | `""` | verse's `auth` block, a file under `deploy/`, mounted into versed as its config (`VERSE_CONFIG`): who verifies people, which ios are trusted for whose accounts, how the ios prove themselves ([Who a request is from](#who-a-request-is-from-authconfig-iotokens)). Staging: `auth/staging.tony` |
-| `ioTokens` | `false` | give the slack, github and git ios a ServiceAccount each and a projected token, so each proves it is the io (staging and minikube: on) |
-| `issuerDiscoveryOpen` | `false` | let anyone reaching the API server read its OpenID discovery and keys, which versed needs where the cluster itself is the ios' issuer (minikube: on; EKS needs none) |
+| `authConfig` | `""` | verse's `auth` block, a file under `deploy/`, mounted into versed as its config (`VERSE_CONFIG`): who verifies people, which iods are trusted for whose accounts, how the iods prove themselves ([Who a request is from](#who-a-request-is-from-authconfig-iotokens)). Staging: `auth/staging.tony` |
+| `ioTokens` | `false` | give the slack, github and git iods a ServiceAccount each and a projected token, so each proves it is the iod (staging and minikube: on) |
+| `issuerDiscoveryOpen` | `false` | let anyone reaching the API server read its OpenID discovery and keys, which versed needs where the cluster itself is the iods' issuer (minikube: on; EKS needs none) |
 | `runner` | `false` | deploy the verse runner (its own image; install it with `verse runner add`) |
 | `runnerImage` | `signadot/verse-runner:latest` | its image ref — a tag in another repository is fine |
 | `codexRunner` | `false` | deploy the codex runner beside it: the verse runner in an image with Codex in it, offering the codex agent |
 | `codexRunnerImage` | `signadot/verse-runner:codex` | its image ref |
-| the io knobs | off | see [Ios](#ios-optional) |
+| the iod knobs | off | see [Iods](#iods-optional) |
 
-## Ios (optional)
+## Iods (optional)
 
 The seam to an external system — reflecting it in, and acting out
 ([docs/io.md](../docs/io.md)). Five are shipped, each its own Deployment + Service, each **off
@@ -277,10 +277,10 @@ They run `iod`, the connector binary in the same image
 standing, so it stays a verb somebody runs.
 
 ```sh
-verse io add git       http://git-io:9801   -root git
-verse io add slack http://slack-io:9801 -root slack
-verse io add linear    http://linear-io:9801 -root linear
-verse io
+verse iod add git       http://git-iod:9801   -root git
+verse iod add slack http://slack-iod:9801 -root slack
+verse iod add linear    http://linear-iod:9801 -root linear
+verse iod
 ```
 
 Run from wherever your `verse` reaches the API — no `kubectl exec` needed, and none wanted: it
@@ -294,29 +294,29 @@ so the address has to be reachable from where the client is.
 (`http://verse:9797/io/<name>/hint`), so a registration under a different name means
 verse 404s every delivery — loud, but only if you look.
 
-⚠️ **Widening what an io reflects is two steps, and the deploy is only the first.** A
+⚠️ **Widening what an iod reflects is two steps, and the deploy is only the first.** A
 registration stores the ownership claim as it stood when it was installed, so adding a
 repository to `gitMirror`, `gitIssueMirror` or `githubRepos` and rolling the pod leaves verse
-holding the old claim — and it FENCES the new slice out rather than letting the io write
-outside what was proved. The symptom is an io that looks healthy and reflects nothing new.
-Re-run the same `verse io add` afterwards; it updates the claim in place.
+holding the old claim — and it FENCES the new slice out rather than letting the iod write
+outside what was proved. The symptom is an iod that looks healthy and reflects nothing new.
+Re-run the same `verse iod add` afterwards; it updates the claim in place.
 
 ```sh
-verse io show git-issue    # `owns` is what verse holds
-verse io check git-issue   # `says` is what the io claims now
-verse io add git-issue http://git-issue-io:9801 -root git-issue   # reconcile them
+verse iod show git-issue    # `owns` is what verse holds
+verse iod check git-issue   # `says` is what the iod claims now
+verse iod add git-issue http://git-issue-iod:9801 -root git-issue   # reconcile them
 ```
 
-Driven, on an io moved from one repository to two: only the first repository's entities were
+Driven, on an iod moved from one repository to two: only the first repository's entities were
 written while the claim was stale, `check` showed the two values side by side, and the second
 repository's appeared within a pass of the re-add. Removal is the other direction and needs no
 such care — but note it asks for `-forget` or `-keep`, and there is nothing to forget on a
-io you are only widening.
+iod you are only widening.
 
 ### Credentials
 
 The three that need one (Slack, Linear, GitHub) take it from a Secret, and `optional` is **false** on purpose: a Slack
-io with no token has nothing to reflect, so it fails to start rather than installing clean
+iod with no token has nothing to reflect, so it fails to start rather than installing clean
 and failing every pass. Either name a store entry — `slackSecretKey`, `linearSecretKey`,
 `githubSecretKey`, see [Credentials](#credentials) — or create the Secret yourself:
 
@@ -332,10 +332,10 @@ kubectl -n verse create secret generic verse-linear \
 
 ### Webhooks
 
-verse dials an io, and the io dials verse — only the *delivery* leg comes from the
-internet, and only the three SaaS ios have one (`slackWebhookHost`, `linearWebhookHost`,
+verse dials an iod, and the iod dials verse — only the *delivery* leg comes from the
+internet, and only the three SaaS iods have one (`slackWebhookHost`, `linearWebhookHost`,
 `githubWebhookHost`). Set a host and an Ingress is emitted for it;
-leave it empty and there is none, and the io converges on the periodic resync (one minute)
+leave it empty and there is none, and the iod converges on the periodic resync (one minute)
 instead of on delivery.
 
 ```sh
@@ -344,7 +344,7 @@ o build deploy -O yaml -e slackIO=true -e slackWebhookHost=slack.verse.example.c
 ```
 
 Then point Slack's Event Subscriptions request url at `https://<host>/slack/events`, and
-Linear's Settings → API → Webhooks at `https://<host>/linear/webhook`. Each io verifies its
+Linear's Settings → API → Webhooks at `https://<host>/linear/webhook`. Each iod verifies its
 own signature; verse never sees the delivery.
 
 ### A private mirror needs a credential
@@ -367,10 +367,10 @@ writes the file back on success *and* on failure, so against a read-only mount i
 ⚠️ **The shipped `gitMirror` default is `signadot/verse`, which is private** — so the connector
 crash-loops until that Secret exists, with git's own "could not read Username" in the log.
 
-### The git io has no repositories
+### The git iod has no repositories
 
 A pod has none, so `-mirror` makes one: it clones the remote at startup and fetches on every
-pass. That is the read. The pod also runs the git io's out half (`-out`): a tag or a branch
+pass. That is the read. The pod also runs the git iod's out half (`-out`): a tag or a branch
 asked for under `git.<repo>.out` is pushed to the remote with the same credential, so the
 `verse-git` credential must be allowed to push ([the out half of
 git](../docs/reference/iod.md#the-out-half-of-git)); nothing is pushed that nobody asked for.
@@ -380,12 +380,12 @@ installs that tree into the verse when the reconciler asks (`{to: install.<addre
 itself: `repopulate.sh` holds `repos` out to it with `child-owner`. The mirror
 lives on an `emptyDir`, so a restart re-clones; swap in a PVC if that gets expensive. For a
 repository that already exists somewhere, run the same binary next to it with `-repo`, or skip
-the deployment entirely and use `verse io add -dir`.
+the deployment entirely and use `verse iod add -dir`.
 
 ### Carrying what people wrote across a wipe
 
 A wipe takes the store with it, and `repopulate.sh` puts back what files in this repository
-describe: the charters, the ios, the runner. What people wrote by hand in places no charter
+describe: the charters, the iods, the runner. What people wrote by hand in places no charter
 manages is carried by `carry.sh`, over a list somebody keeps of those places,
 `carry/<deployment>.places`:
 
@@ -416,12 +416,12 @@ succeeds. Each reopens for the next round rather than multiplying. The pieces on
 - **`repoCharters`** in versed's config file (`deploy/auth/staging.tony`, mounted by the
   `authConfig` knob) names the repository, its GitHub name, the address its charters install at
   and who may answer; versed renders and installs the reconciler as the system at start, after
-  the ios are restored ([up](../docs/reference/up.md)).
-- **The git io** with `-tree .verse/charters -out` (on), registered with its out place
-  (`repopulate.sh`), and `child-owner` under `repos` for `agent:git-io`, so it installs the
+  the iods are restored ([up](../docs/reference/up.md)).
+- **The git iod** with `-tree .verse/charters -out` (on), registered with its out place
+  (`repopulate.sh`), and `child-owner` under `repos` for `agent:git-iod`, so it installs the
   charters as itself. With `gitAsApp` it pushes as the App, which is what lets it move
   `verse/live` once only the App may.
-- **The github io** with `githubOut` on, registered with its out place, and the App allowed
+- **The github iod** with `githubOut` on, registered with its out place, and the App allowed
   `statuses: write` for the commit status ([the GitHub App](#the-github-app-signadot-verse)).
 - **On GitHub**, a branch protection on `verse/live` that lets the App alone push, so verse is
   the only writer of what runs. A repository setting, not a knob here.
@@ -438,7 +438,7 @@ slices (`git.*`, `git-issue.*`): run one, the other, or both. Register it like t
 under any name you like — it is polled and posts no hints, so nothing has to match:
 
 ```sh
-verse io add git-issue http://git-issue-io:9801 -root git-issue
+verse iod add git-issue http://git-issue-iod:9801 -root git-issue
 ```
 
 It mirrors whatever `gitMirror` names, until you say otherwise with `gitIssueMirror`. Say
@@ -452,10 +452,10 @@ cloning one it can reflect nothing from.
 | `gitMirror` | the verse repo | `[<id>=]<url>` to mirror; comma-separated for several |
 | `gitIssueIO` | `false` | deploy the git-issue connector |
 | `gitIssueMirror` | `""` | its own mirror set, when it differs; `""` follows `gitMirror` |
-| `gitAsApp` | `false` | the git io fetches and pushes as the GitHub App, its keys read from `verse-github`, in place of the `verse-git` PAT (staging: on) |
-| `githubOut` | `false` | the github io acts back as the App: comments, pull requests, merges, reviews, closes, checks and issues asked for under `github.<org>.<name>.out` (staging: on) |
+| `gitAsApp` | `false` | the git iod fetches and pushes as the GitHub App, its keys read from `verse-github`, in place of the `verse-git` PAT (staging: on) |
+| `githubOut` | `false` | the github iod acts back as the App: comments, pull requests, merges, reviews, closes, checks and issues asked for under `github.<org>.<name>.out` (staging: on) |
 | `slackIO` | `false` | deploy the Slack connector (needs the `verse-slack` Secret) |
-| `slackIOName` | `slack` | the registration name — must match `verse io add <name> -root slack` |
+| `slackIOName` | `slack` | the registration name — must match `verse iod add <name> -root slack` |
 | `slackWorkspace` | `""` | the id prefix; `""` takes the team name from the token |
 | `slackWebhookHost` | `""` | Ingress host for `/slack/events`; `""` emits none |
 | `linearIO` | `false` | deploy the Linear connector (needs the `verse-linear` Secret) |
@@ -467,21 +467,21 @@ cloning one it can reflect nothing from.
 ## Who a request is from (`authConfig`, `ioTokens`)
 
 Without `authConfig`, a request to versed is whoever its header says, as it has always been on a
-tailnet nobody else reaches. With it, versed verifies people and its own ios
+tailnet nobody else reaches. With it, versed verifies people and its own iods
 ([who a request is from](../docs/reference/perms.md#who-a-request-is-from)):
 
 - **`authConfig`** mounts the named file as versed's config (`VERSE_CONFIG`). Staging's,
-  `deploy/auth/staging.tony`, names the slack and github ios as trusted for their own systems'
-  accounts and the git io for GitHub's, and the cluster as the issuer of the ios' tokens. It
+  `deploy/auth/staging.tony`, names the slack and github iods as trusted for their own systems'
+  accounts and the git iod for GitHub's, and the cluster as the issuer of the iods' tokens. It
   names no issuer for people: a person is who their CLI says (`mode: optional`), and binds their
   Slack or GitHub account by saying the nonce `verse account -link <provider>` gives them to the
   app ([accounts in other systems](../docs/reference/perms.md#accounts-in-other-systems)). An
   issuer for people, and `required`, come with the team's identity provider.
-- **`ioTokens`** gives the slack, github and git ios a ServiceAccount each (`deploy/io-tokens`)
+- **`ioTokens`** gives the slack, github and git iods a ServiceAccount each (`deploy/io-tokens`)
   and a projected token with the audience `verse` at `/var/run/verse/token`, which `iod` reads as
   `VERSE_TOKEN_FILE` and sends with every request. The token's subject is
-  `system:serviceaccount:<namespace>:<io>`, which the auth config's `auth.iod.accounts` maps to
-  the io's principal and its installed name. The issuer is the cluster's own: `kubectl --context
+  `system:serviceaccount:<namespace>:<iod>`, which the auth config's `auth.iod.accounts` maps to
+  the iod's principal and its installed name. The issuer is the cluster's own: `kubectl --context
   <ctx> get --raw /.well-known/openid-configuration` prints it, and on EKS it is `aws eks
   describe-cluster --query cluster.identity.oidc.issuer`. Where the issuer is the API server
   itself (minikube, kubeadm), the auth file also names the cluster's CA (`auth.iod.ca`, the
@@ -489,7 +489,7 @@ tailnet nobody else reaches. With it, versed verifies people and its own ios
   document, which such a cluster otherwise grants to service accounts alone.
   `deploy/auth/minikube.tony` and the minikube profile are the worked example.
 
-Each io's ServiceAccount carries the pull secret the way `default` does: the `imagePullSecret`
+Each iod's ServiceAccount carries the pull secret the way `default` does: the `imagePullSecret`
 patch covers every ServiceAccount this deploy emits.
 
 ## Credentials
@@ -501,7 +501,7 @@ knob naming the secret-store entry it comes from, and each emits an `ExternalSec
 right answer on a cluster with no External Secrets Operator.
 
 One knob per credential rather than one for all, because they are held by different processes
-and revoked on different days: the git io's PAT and the runner's push token can be the
+and revoked on different days: the git iod's PAT and the runner's push token can be the
 same secret and should still be two entries, so taking one away does not take the other.
 
 ⚠️ **The entry's own key names land in the Secret verbatim** (`dataFrom.extract` copies them
@@ -576,7 +576,7 @@ printf '{"GITHUB_TOKEN":"%s"}' "$tok" > /tmp/e.json
 aws secretsmanager put-secret-value --region us-west-2 \
   --secret-id staging/verse/github --secret-string file:///tmp/e.json && rm /tmp/e.json
 kubectl -n verse annotate externalsecret verse-github force-sync=$(date +%s) --overwrite
-kubectl -n verse rollout restart deploy/github-io
+kubectl -n verse rollout restart deploy/github-iod
 ```
 
 The last two lines are why a rotation is three commands and not one: `refreshInterval` is an
@@ -585,7 +585,7 @@ start, so the connector needs restarting to see the new value even once the Secr
 
 **Create the entry before setting the knob.** A knob naming an entry that does not exist is an
 `ExternalSecret` stuck in `SecretSyncedError` and a Secret that never appears — which for the
-Slack io is a pod that will not start, and for the git io is an empty credential
+Slack iod is a pod that will not start, and for the git iod is an empty credential
 mount, an anonymous clone, and a private repository answering 404.
 
 **`envFrom` and secret volumes are read when the pod starts**, so a Secret that lands after its
@@ -594,7 +594,7 @@ of the workloads so a first apply does not need that.
 
 ### The GitHub App (`signadot-verse`)
 
-The github io's out half would act as an app rather than as a person's token: as
+The github iod's out half would act as an app rather than as a person's token: as
 `signadot-verse[bot]`, it can review pull requests that people open, and people can review the
 ones it opens. A person's token can do neither, since GitHub refuses a review from a pull
 request's own author.
@@ -603,7 +603,7 @@ request's own author.
 |---|---|
 | app | `signadot-verse`, id **5154941**, owned by signadot, private: <https://github.com/apps/signadot-verse> |
 | installation | id **167005587**, on signadot, with selected repositories: **example/app, signadot/verse, example/infra** |
-| webhook | off: the io's events come from repository webhooks ([Webhooks](#webhooks)) |
+| webhook | off: the iod's events come from repository webhooks ([Webhooks](#webhooks)) |
 
 **`iod github` authenticates as the app when its entry carries the app.** That is three keys:
 `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, and `GITHUB_APP_PRIVATE_KEY`, the PEM. Given with
@@ -623,14 +623,14 @@ holds:
 aws secretsmanager put-secret-value --region us-west-2 \
   --secret-id staging/verse/github --secret-string file:///tmp/e.json && rm /tmp/e.json
 kubectl -n verse annotate externalsecret verse-github force-sync=$(date +%s) --overwrite
-kubectl -n verse rollout restart deploy/github-io
+kubectl -n verse rollout restart deploy/github-iod
 ```
 
-The io's log says `authenticating as app 5154941, installation 167005587` when it starts. Once it
+The iod's log says `authenticating as app 5154941, installation 167005587` when it starts. Once it
 does, `GITHUB_TOKEN` can be removed from the entry the same way, with `del(.GITHUB_TOKEN)` as the
 jq program.
 
-**A repository the io reflects must be in the installation.** Add it under the app's installation
+**A repository the iod reflects must be in the installation.** Add it under the app's installation
 settings (signadot → Settings → GitHub Apps → signadot-verse → Configure → Repository access).
 
 It was created on 2026-10-01 from this manifest, through GitHub's
@@ -642,7 +642,7 @@ and `hook_attributes.url` is a placeholder, since the webhook is inactive:
 {
   "name": "signadot-verse",
   "url": "https://github.com/signadot/verse",
-  "description": "verse's github io: reflects repositories into verse and acts back on them (comments, pull requests, merges, reviews, closes).",
+  "description": "verse's github iod: reflects repositories into verse and acts back on them (comments, pull requests, merges, reviews, closes).",
   "public": false,
   "hook_attributes": {"url": "https://example.invalid/github/webhook", "active": false},
   "redirect_url": "http://127.0.0.1:8765/done",
@@ -713,7 +713,7 @@ choice is deployment config and belongs in the open, not smuggled into a store e
 A place code work **runs** — its own `Deployment` + `Service` + `ConfigMap`, a workspace and a
 process per task, bubblewrap around the process. It is `runnerd verse`
 ([reference/runnerd.md](../docs/reference/runnerd.md)) with the configuration its ConfigMap
-holds; what a task works on is its spawn's. Not an io and not the engine: verse reaches it by url, and deploying it does not
+holds; what a task works on is its spawn's. Not an iod and not the engine: verse reaches it by url, and deploying it does not
 install it.
 
 ```sh
@@ -726,7 +726,7 @@ The install's name is what the charters spawn on (`runner: verse.runners.verse-r
 url is the Service.
 
 That last line is the install, and it probes — so `reach: "a runner"` is the deployment's own
-acceptance test, and the first thing that exercises bubblewrap on the node. As with an io,
+acceptance test, and the first thing that exercises bubblewrap on the node. As with an iod,
 the url is the in-cluster Service name because versed dials it (`client.Probe`, server-side);
 your CLI needs to reach the *API*, not the runner.
 
@@ -810,7 +810,7 @@ kubectl --context $CTX -n verse wait --for=delete pod -l app=verse,tier=versed -
 
 make ship-docd          # the store; versed is down, so nothing is talking to it
 make ship-versed        # the engine, against a docd that is already up and new
-make ship-ios           # the connectors
+make ship-iods           # the connectors
 make ship-runner        # the verse runner, its own image
 make ship-codex-runner   # the codex runner, its own image
 ```
@@ -833,7 +833,7 @@ profile that is not staging.
 
 Every daemon here — versed, each `iod`, the runners — serves `net/http/pprof`, full goroutine
 stacks, and a short index of what it is and where it listens, on a port **one up from the one
-it serves on**: versed's API is 9797, its admin face 9798; an io's 9801/9802; the runners'
+it serves on**: versed's API is 9797, its admin face 9798; an iod's 9801/9802; the runners'
 9802/9803.
 
 ```

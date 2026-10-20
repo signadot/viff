@@ -29,7 +29,7 @@
 #   verse's own half, `verse.*`: bindings, groups, questions, tasks, flows. Only verse writes there,
 #                and linking an account again after a wipe is the cost.
 #
-# An io's reflection is not listed either: the io fills it again on its own.
+# An iod's reflection is not listed either: the iod fills it again on its own.
 #
 # CAPTURE READS AS WHOEVER RUNS IT, so run it as an admin: each place's record and data are read,
 # and a place somebody may not read is refused, not skipped.

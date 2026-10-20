@@ -1,5 +1,5 @@
-# verse's `auth` block, as a file: who verifies people, which ios are trusted for whose accounts,
-# and how the ios prove themselves (docs/reference/up.md, `auth`). The file `authConfig` names,
+# verse's `auth` block, as a file: who verifies people, which iods are trusted for whose accounts,
+# and how the iods prove themselves (docs/reference/up.md, `auth`). The file `authConfig` names,
 # carried in whole, and named to versed by VERSE_CONFIG (deploy/build.tony's authConfig patch).
 # Only a binary is in the image, so the file comes in as a ConfigMap.
 apiVersion: v1

@@ -216,7 +216,7 @@ git iod's id for the repository (`git.<repo>`), `github` is the repository as Gi
 (`org/name`), `at` is the address the repository's charters install at, `tree` is the name the
 git iod and the github iod report the charters directory's tree under (each one's `-tree`;
 `charters` by default), and `answerers` is who may answer the question a change raises, as a
-gate's `answerers` names them; the rendering adds the git iod (`agent:git-io`), whose minute
+gate's `answerers` names them; the rendering adds the git iod (`agent:git-iod`), whose minute
 sweep settles a question nothing proposes any more as `obsolete`, and an entry without
 `answerers` asks the docket, whose questions are not swept. The git iod installs at `at` as
 itself, so it owns that address or holds `child-owner` above it. The question is asked on a pull request to main that changes the
@@ -247,9 +247,9 @@ auth:
         clientId: verse-cli
         domains: [example.com]
       github:
-        ios: [github]
+        iods: [github]
       slack:
-        ios: [workspace]
+        iods: [workspace]
         domains: [example.com]
 ```
 
@@ -267,7 +267,7 @@ auth:
       a public client a secret and wants it back at its token endpoint, as Google's device flow
       does; it is not confidential (every copy of the CLI carries it), the CLI sends it where it
       is set, and the server never reads it.
-    - **Iods**, with `ios`, the installed iods the verse trusts for the provider's accounts, by the
+    - **Iods**, with `iods`, the installed iods the verse trusts for the provider's accounts, by the
       name each is installed under. `github`'s iods reflect the comments that prove a GitHub
       account, and `slack`'s iod relays the member who typed
       ([a person relayed by a trusted iod](perms.md#a-person-relayed-by-a-trusted-iod)). GitHub
@@ -289,10 +289,10 @@ auth:
     issuer: https://oidc.eks.us-west-2.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE
     audience: verse
     accounts:
-      "system:serviceaccount:verse:slack-io":  {principal: "agent:slack-io", io: workspace}
-      "system:serviceaccount:verse:github-io": {principal: "agent:github-io", io: github}
+      "system:serviceaccount:verse:slack-iod":  {principal: "agent:slack-iod", iod: workspace}
+      "system:serviceaccount:verse:github-iod": {principal: "agent:github-iod", iod: github}
     static:
-      - {file: /var/run/verse/git-io.token, principal: "agent:git-io"}
+      - {file: /var/run/verse/git-iod.token, principal: "agent:git-iod"}
 ```
 
 - `issuer` is the issuer of the iods' workload tokens. On Kubernetes it is the cluster's own,
@@ -309,7 +309,7 @@ auth:
   reads it as nobody, so the deploy's `issuerDiscoveryOpen` opens it. Unset trusts the system's
   roots, which a public issuer (EKS's) needs and nothing more.
 - `accounts` maps a token's subject to the iod it is: the `agent:` it acts as, and `io`, the
-  name it is installed under, which is how a provider's `ios` names it. An iod that relays nobody
+  name it is installed under, which is how a provider's `iods` names it. An iod that relays nobody
   needs no `io`. The accounts are written at start, never at first sight.
 - `static` is the iods of a deployment with no issuer, a laptop or CI: the path of a file holding
   the token each presents, read at start. The verse keeps the hash and never the token.

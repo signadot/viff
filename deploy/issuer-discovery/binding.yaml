@@ -1,5 +1,5 @@
 # The API server's OpenID discovery document and keys, readable by anyone who reaches it: what
-# versed needs to verify the ios' projected tokens on a cluster whose issuer is the API server
+# versed needs to verify the iods' projected tokens on a cluster whose issuer is the API server
 # itself (minikube, kubeadm), where the default grants the read to service accounts alone and
 # versed reads as nobody. A public issuer (EKS) needs none of this; the knob is off unless a
 # profile says otherwise. Cluster-scoped, so no namespace.

@@ -54,14 +54,14 @@ func addr(ts *httptest.Server) string { return strings.TrimPrefix(ts.URL, "http:
 func TestTransportStampsVersionAndPrincipal(t *testing.T) {
 	ts, h := stub(t, "", http.StatusOK, "ok: true\n")
 	c := &client.Client{Addr: addr(ts), HTTP: &http.Client{Transport: client.Transport{
-		Version: "v1.2.0", Principal: client.Static("agent:slack-io"),
+		Version: "v1.2.0", Principal: client.Static("agent:slack-iod"),
 	}}}
 	resp, err := c.Get("/status", nil)
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
 	resp.Body.Close()
-	if h.version != "v1.2.0" || h.principal != "agent:slack-io" {
+	if h.version != "v1.2.0" || h.principal != "agent:slack-iod" {
 		t.Errorf("the server heard version %q, principal %q", h.version, h.principal)
 	}
 }
@@ -131,7 +131,7 @@ func TestTransportRelaysAPersonBesideTheBearer(t *testing.T) {
 			h.authorization, h.principal, h.account)
 	}
 	// And a program that proves itself names nobody beside the bearer, as before.
-	c = client.NewAs(addr(ts), "agent:slack-io", func(context.Context) (string, error) { return "tok", nil })
+	c = client.NewAs(addr(ts), "agent:slack-iod", func(context.Context) (string, error) { return "tok", nil })
 	if resp, err = c.Get("/status", nil); err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -219,12 +219,12 @@ func TestTransportSilentWithoutAVersion(t *testing.T) {
 // New stamps this build's version and the principal it was given.
 func TestNewStampsThisBuildAndThePrincipal(t *testing.T) {
 	ts, h := stub(t, "", http.StatusOK, "ok: true\n")
-	resp, err := client.New(addr(ts), "agent:slack-io").Get("/status", nil)
+	resp, err := client.New(addr(ts), "agent:slack-iod").Get("/status", nil)
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
 	resp.Body.Close()
-	if h.version != api.Version() || h.principal != "agent:slack-io" {
+	if h.version != api.Version() || h.principal != "agent:slack-iod" {
 		t.Errorf("heard version %q, principal %q", h.version, h.principal)
 	}
 }

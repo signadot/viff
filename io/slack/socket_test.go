@@ -110,7 +110,7 @@ func newSocketRigWith(t *testing.T, bearer client.BearerFunc) *socketRig {
 		{"id": "U9", "name": "nobody", "profile": map[string]any{}},
 	}
 	src := newSource(t, f, slack.Config{})
-	verse := client.NewAs(addr, "agent:slack-io", bearer)
+	verse := client.NewAs(addr, "agent:slack-iod", bearer)
 	sink := src.Sink(verse)
 	sink.As = verseio.As(addr, bearer) // as cmd/iod wires it: an ask for somebody is read as them
 	out := verseio.NewOut(sink, src.OutRef(), verse, nil)
@@ -202,7 +202,7 @@ func TestAQuestionAskedInAThreadIsAnsweredThere(t *testing.T) {
 // is told.
 func TestAReplyIsAdmittedAsThePersonWhereVerseVerifiesPeople(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "token")
-	if err := os.WriteFile(file, []byte("the-slack-ios-own-token\n"), 0o600); err != nil {
+	if err := os.WriteFile(file, []byte("the-slack-iods-own-token\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	bearer := func(context.Context) (string, error) {
@@ -213,7 +213,7 @@ func TestAReplyIsAdmittedAsThePersonWhereVerseVerifiesPeople(t *testing.T) {
 		// An issuer nobody reaches: `required` wants one, and nothing here logs in through it.
 		"corp":  {Issuer: "https://idp.example.com", ClientID: "verse-cli"},
 		"slack": {IOs: []string{"slack"}, Domains: []string{"example.com"}},
-	}, Iod: versed.AuthIod{Static: []versed.IodStatic{{File: file, Principal: "agent:slack-io", IO: "slack"}}}}
+	}, Iod: versed.AuthIod{Static: []versed.IodStatic{{File: file, Principal: "agent:slack-iod", IO: "slack"}}}}
 
 	r := newSocketRigWith(t, bearer)
 	if err := r.srv.SetAuth(verifying); err != nil {
@@ -232,7 +232,7 @@ func TestAReplyIsAdmittedAsThePersonWhereVerseVerifiesPeople(t *testing.T) {
 	}
 	e, _, _ := r.store.Get(mirror.QuestionRef(askedQuestion))
 	ballot := entity.Get(entity.Get(e.Payload, "ballots"), "user:scott@example.com")
-	if entity.Str(ballot, "authenticated") != "slack" || entity.Str(ballot, "via") != "agent:slack-io" {
+	if entity.Str(ballot, "authenticated") != "slack" || entity.Str(ballot, "via") != "agent:slack-iod" {
 		t.Errorf("scott's ballot = %v, want authenticated by slack via this io", ballot)
 	}
 
@@ -620,7 +620,7 @@ func TestARefusedEditIsNotRememberedAsShown(t *testing.T) {
 // admitted as the person. The dogfood shape: people asserted (`optional`), bindings by the nonce.
 func TestLinkSaidToTheAppBindsTheAccountAndAdmitsTheReply(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "token")
-	if err := os.WriteFile(file, []byte("the-slack-ios-own-token\n"), 0o600); err != nil {
+	if err := os.WriteFile(file, []byte("the-slack-iods-own-token\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	bearer := func(context.Context) (string, error) {
@@ -630,7 +630,7 @@ func TestLinkSaidToTheAppBindsTheAccountAndAdmitsTheReply(t *testing.T) {
 	r := newSocketRigWith(t, bearer)
 	if err := r.srv.SetAuth(versed.Auth{Mode: versed.AuthOptional, Providers: map[string]versed.AuthProvider{
 		"slack": {IOs: []string{"slack"}},
-	}, Iod: versed.AuthIod{Static: []versed.IodStatic{{File: file, Principal: "agent:slack-io", IO: "slack"}}}}); err != nil {
+	}, Iod: versed.AuthIod{Static: []versed.IodStatic{{File: file, Principal: "agent:slack-iod", IO: "slack"}}}}); err != nil {
 		t.Fatal(err)
 	}
 	r.asking(t)

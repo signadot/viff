@@ -13,7 +13,7 @@
 #
 # Install it once the pods are up. The name is free, as the git source's is: this one is polled
 # and posts no hints, so there is nothing for a baked-in url to have to match.
-#   verse io add issues http://git-issue-io:9801 -root git-issue
+#   verse iod add issues http://git-issue-iod:9801 -root git-issue
 #
 # What it reflects is the drive's own notices: an issue filed before a breaking push lands in
 # this slice, which is what makes `verse docket`'s neighbourhood
@@ -21,10 +21,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: git-issue-io
+  name: git-issue-iod
   labels:
     app: verse
-    tier: io
+    tier: iod
     io: git-issue
 spec:
   replicas: 1
@@ -37,17 +37,17 @@ spec:
   selector:
     matchLabels:
       app: verse
-      tier: io
+      tier: iod
       io: git-issue
   template:
     metadata:
       labels:
         app: verse
-        tier: io
+        tier: iod
         io: git-issue
     spec:
       containers:
-      - name: git-issue-io
+      - name: git-issue-iod
         image: signadot/verse:latest
         # The mirror spec comes from the build (`-e gitMirror=…`); see deploy/build.tony, where
         # this shares the git source's knob because the ordinary case is both over one repo.
@@ -69,7 +69,7 @@ spec:
           containerPort: 9802
         # The same read-only credential helper the git source carries, and for the same reasons
         # — the Secret is optional, so a public mirror needs nothing and a private one needs no
-        # change here. See deploy/git-io/git-io.yaml, which explains why this is a
+        # change here. See deploy/git-iod/git-iod.yaml, which explains why this is a
         # `get`-only helper rather than `store --file=…`.
         env:
         - name: GIT_CONFIG_COUNT
@@ -108,15 +108,15 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: git-issue-io
+  name: git-issue-iod
   labels:
     app: verse
-    tier: io
+    tier: iod
     io: git-issue
 spec:
   selector:
     app: verse
-    tier: io
+    tier: iod
     io: git-issue
   ports:
   - name: source

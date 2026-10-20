@@ -11,8 +11,8 @@
 //
 // Then install it, from anywhere that can reach verse:
 //
-//	verse io add build-host http://localhost:9801 -root git
-//	verse io
+//	verse iod add build-host http://localhost:9801 -root git
+//	verse iod
 //
 // WHY THIS IS A SECOND BINARY, and not three subcommands of `verse`: a source is a program
 // somebody deploys, and the whole argument for the seam is that verse does not have to be
@@ -103,8 +103,8 @@ type common struct {
 	verseAddr string
 	as        string
 	every     time.Duration
-	// tokenFile is where this io's own credential is: the token its runtime gave it, read on
-	// every request since a kubelet rotates the file. Empty, the io is whoever -as says.
+	// tokenFile is where this iod's own credential is: the token its runtime gave it, read on
+	// every request since a kubelet rotates the file. Empty, the iod is whoever -as says.
 	tokenFile string
 }
 
@@ -129,16 +129,16 @@ func (c *common) bind(fs *flag.FlagSet) {
 	fs.StringVar(&c.verseAddr, "verse-addr", os.Getenv("VERSE_ADDR"),
 		"the verse the out half reads and writes, host:port (default: the host of -hint-url)")
 	fs.StringVar(&c.as, "as", "", "the principal the out half reads and writes as "+
-		"(default: agent:<connector>-io)")
+		"(default: agent:<connector>-iod)")
 	fs.DurationVar(&c.every, "out-every", 5*time.Second,
 		"how often the out half reads what is asked of it")
 	fs.StringVar(&c.tokenFile, "token-file", os.Getenv("VERSE_TOKEN_FILE"),
-		"the file holding this io's own credential toward verse: on Kubernetes the pod's "+
+		"the file holding this iod's own credential toward verse: on Kubernetes the pod's "+
 			"projected service-account token (auth.iod in verse's config). Read on every request, "+
-			"since the kubelet rotates it. Without it the io is whoever -as says")
+			"since the kubelet rotates it. Without it the iod is whoever -as says")
 }
 
-// bearer is how this io proves who it is: the token in -token-file, read fresh each time, or
+// bearer is how this iod proves who it is: the token in -token-file, read fresh each time, or
 // nothing, in which case it names itself.
 func (c *common) bearer() client.BearerFunc {
 	if c.tokenFile == "" {
@@ -148,7 +148,7 @@ func (c *common) bearer() client.BearerFunc {
 	return func(context.Context) (string, error) {
 		data, err := os.ReadFile(file)
 		if err != nil {
-			return "", fmt.Errorf("this io's credential: %w", err)
+			return "", fmt.Errorf("this iod's credential: %w", err)
 		}
 		return strings.TrimSpace(string(data)), nil
 	}
@@ -169,16 +169,16 @@ func (c *common) verse() string {
 }
 
 // principal is who the out half acts as: what -as says, or the connector's own name, since one
-// deployment per external system is the shape and `agent:slack-io` is what its grants are written
+// deployment per external system is the shape and `agent:slack-iod` is what its grants are written
 // against.
 func (c *common) principal(connector string) string {
 	if c.as != "" {
 		return c.as
 	}
-	return "agent:" + connector + "-io"
+	return "agent:" + connector + "-iod"
 }
 
-// registration is the name verse installed this io under, read off the hint url, which is the one
+// registration is the name verse installed this iod under, read off the hint url, which is the one
 // place a deployment already spells it (`http://verse:9797/io/<name>/hint`). Empty when there is
 // no hint url, and then a pass is done and not reported — which is the honest outcome, since
 // nothing here can invent the name the registration was given.
@@ -201,8 +201,8 @@ func (c *common) registration() string {
 //
 // THE ROOT IS THE CONNECTOR'S, not the -root flag's. `-root` is how one deployment takes a slice
 // of its own and is usually not given, so reading the principal off it made an out half act as
-// `agent:-io` — a name the install seeds no grants for, so every status it wrote was refused
-// while the registration held grants for `agent:slack-io`.
+// `agent:-iod` — a name the install seeds no grants for, so every status it wrote was refused
+// while the registration held grants for `agent:slack-iod`.
 func (c *common) outHalf(ctx context.Context, root string, sink verseio.Sink, places []entity.Ref, verse *client.Client) ([]*verseio.Out, error) {
 	addr := c.verse()
 	if addr == "" {
@@ -222,7 +222,7 @@ func (c *common) outHalf(ctx context.Context, root string, sink verseio.Sink, pl
 	return outs, nil
 }
 
-// outClient is the client the out half reads and writes the verse with, as this io: its bearer
+// outClient is the client the out half reads and writes the verse with, as this iod: its bearer
 // where it has one (-token-file), its name otherwise. One per process; a sink that reads the verse
 // itself is handed the same one.
 func (c *common) outClient(root string) *client.Client {
@@ -254,7 +254,7 @@ func (c *common) serve(root string, src verseio.Source, routes map[string]http.H
 	for pattern, h := range routes {
 		mux.Handle(pattern, h)
 	}
-	log.Printf("%s io on %s — install it with: verse io add <name> %s -root %s",
+	log.Printf("%s iod on %s — install it with: verse iod add <name> %s -root %s",
 		root, c.addr, dialable(c.addr), root)
 	if c.hintURL == "" && len(routes) > 0 {
 		log.Printf("no -hint-url: deliveries will be verified and dropped, and only verse's " +

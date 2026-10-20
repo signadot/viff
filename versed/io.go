@@ -18,7 +18,7 @@ import (
 
 // ── sources: what reflects an external system into the verse ─────────────────
 //
-// A source is installed at `verse.io.<name>` carrying one way in, and it is the single
+// A source is installed at `verse.iod.<name>` carrying one way in, and it is the single
 // writer of the tree under its `root`. The root is a question verse asks of every registration
 // — who writes `git.*` — so it is on the record, and an overlap is visible in a listing. See
 // docs/io.md.
@@ -133,7 +133,7 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			// An ownership claim the operator did not write is taken from what the source SAID,
-			// which is how `verse io add git:laptop <url>` gets one at all. It is a snapshot
+			// which is how `verse iod add git:laptop <url>` gets one at all. It is a snapshot
 			// exactly as the url is: what the source claimed when somebody installed it.
 			if len(e.Owns) == 0 && len(d.Owns) > 0 {
 				e.Owns = d.Owns
@@ -236,7 +236,7 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 	if e.Out != nil {
 		s.grantOutboxesTo(e.Out.Places, e.Out.As)
 		// And a system charter refused at start for want of an io to send to, which this may be
-		// (Server.installSystemCharters): a verse whose ios were registered after its start (a
+		// (Server.installSystemCharters): a verse whose iods were registered after its start (a
 		// wipe, then repopulate) gets it now rather than at the next restart.
 		s.installWaitingSystemCharters()
 	}
@@ -258,7 +258,7 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 // as a forged hint — a reconcile of a slice the sender does not get to choose the contents of.
 //
 // It writes onto the registration rather than into a log, because what a reader wants is one
-// listing saying how both halves are doing: `verse io` already shows `lastReflect`, and an io
+// listing saying how both halves are doing: `verse iod` already shows `lastReflect`, and an io
 // whose out half has been refused for an hour should not read as healthy there.
 func (s *Server) passIO(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
@@ -504,7 +504,7 @@ func (s *Server) listIOs(w http.ResponseWriter, r *http.Request) {
 	}
 	// A FAILED READ IS NOT AN EMPTY LIST. List answers nil when the read did not happen, so
 	// without this a store that could not be read renders as "nothing is installed" — and
-	// `verse io` answered `[]` on a verse holding three sources, which is the one shape an
+	// `verse iod` answered `[]` on a verse holding three sources, which is the one shape an
 	// operator acts on. Same guard /state has carried all along, for the same reason. THIS
 	// read's error, not the store's last one — see unreadable.
 	if unreadable(w, r, readErr) {
@@ -976,7 +976,7 @@ func (s *Server) recordPass(ctx context.Context, store entity.Store, ref entity.
 		//
 		// That is not hypothetical. Staging recorded an error, recovered on the next pass, and
 		// the clearing write timed out (`recording error: … context deadline exceeded`, which
-		// is this very line). Two passes later `verse io` still reported the source in
+		// is this very line). Two passes later `verse iod` still reported the source in
 		// error while the entity it had failed on was present and correct — the one field an
 		// operator reads to decide whether a source is healthy, stuck on a transient.
 		// A REFUSED WRITE IS NOT A WRITE. Store.Write answers (committed, rev, err) and a

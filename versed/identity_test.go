@@ -17,7 +17,7 @@ import (
 const (
 	idAna  = "user:ana@example.com"
 	idBo   = "user:bo@example.com"
-	idIO   = "agent:github-io"
+	idIO   = "agent:github-iod"
 	anaSub = "101"
 )
 
@@ -28,7 +28,7 @@ func identityServer(t *testing.T) (*Server, *httptest.Server) {
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	resp := installIO(t, ts, idAna, map[string]any{
-		"name": "gh", "root": "github", "url": "http://github-io:9801",
+		"name": "gh", "root": "github", "url": "http://github-iod:9801",
 		"owns": []any{map[string]any{"at": "github.signadot"}},
 	})
 	resp.Body.Close()

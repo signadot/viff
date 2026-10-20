@@ -12,10 +12,10 @@ import (
 	"github.com/signadot/verse/entity"
 )
 
-// System is where installed sources live: `verse.io.<name>`. A source's name is the whole
+// System is where installed sources live: `verse.iod.<name>`. A source's name is the whole
 // of its address. WHAT it reflects is on the registration, not in it: `root`, the root segment
 // of the tree the source writes (`git`, `github`), and `owns`, the places it claims there.
-const System = "io"
+const System = "iod"
 
 // Ref addresses an installed source.
 func Ref(name string) entity.Ref {
@@ -36,7 +36,7 @@ func Ref(name string) entity.Ref {
 // field PRESENT says which it is, and refusing `dir` would delete a working, zero-deployment
 // path to buy a symmetry nobody reads.
 type Entity struct {
-	// Name is the address: `verse.io.<name>`.
+	// Name is the address: `verse.iod.<name>`.
 	Name string `tony:"field=name"`
 	// Root is the root segment of the tree this source writes — `git`, `github`, `linear` —
 	// which is also which connector it is: an install checks it against what the source says
@@ -67,7 +67,7 @@ type Entity struct {
 
 	// LastReflect and LastError are written by VERSE, not by an operator: when verse last wrote
 	// from this source, and the last failure (cleared by the next success). They are declared
-	// here so that `verse io show` piped back into `verse io add` is not refused for
+	// here so that `verse iod show` piped back into `verse iod add` is not refused for
 	// carrying fields it was just handed, and so a listing can read them without a second
 	// decode. Check ignores them.
 	LastReflect string   `tony:"field=lastReflect,omitzero"`
@@ -78,7 +78,7 @@ type Entity struct {
 //
 // It exists so that an install is ONE act. Before it, standing up an out half meant a flag naming
 // a principal, a place hardcoded in the connector, and four `verse perms` lines an operator had to
-// know and get right — and a verse that knew none of it, so `verse io` could show a healthy io
+// know and get right — and a verse that knew none of it, so `verse iod` could show a healthy io
 // whose out half had been refused for an hour.
 type OutHalf struct {
 	// Places are where it reads what is asked of it, as kinded paths. Each must lie inside this
@@ -89,7 +89,7 @@ type OutHalf struct {
 	// A LIST, because one io may serve several: a Linear io reads a place per team, since a
 	// claim per team is what keeps two installs from writing each other's.
 	Places []string `tony:"field=places"`
-	// As is the principal the out half reads and writes as — `agent:slack-io`. It is what the
+	// As is the principal the out half reads and writes as — `agent:slack-iod`. It is what the
 	// grants below are written against, and what owns every status the io writes.
 	As string `tony:"field=as"`
 	// Requesters are the grantees who may ask: they get `read-write` BELOW each place, which is
@@ -125,7 +125,7 @@ type OutPass struct {
 //
 // When is the instant the source ENTERED this failure, not the last time it repeated. A source
 // failing the same way every minute keeps the When it started with, so the distance between it
-// and lastPass is how long this has been going on, and a `verse io` listing can say "since
+// and lastPass is how long this has been going on, and a `verse iod` listing can say "since
 // 20:39" rather than "now" about something that has been broken since breakfast. A NEW error —
 // different text — is a new failure and takes a new When.
 //
@@ -249,7 +249,7 @@ func (o *OutHalf) check(name string) error {
 // CheckClaimed refuses an out half whose places fall outside what the io claims, and is asked
 // with the claim the install SETTLED ON rather than the one the request carried.
 //
-// The difference is the whole reason it is its own call. An operator types `verse io add slack
+// The difference is the whole reason it is its own call. An operator types `verse iod add slack
 // <url> --root slack --out slack.Signadot.out` and names no claim at all: the claim comes from
 // probing the io, which happens after the request is read. Asked of the request, this check saw
 // an empty claim and refused every out half an operator ever typed — the deployment path, since
@@ -397,8 +397,8 @@ func ownsAreDocuments(node *ir.Node) error {
 }
 
 // Find reads one installed source by what a CLI argument names: its address as it is stored and
-// listed (`verse.io.laptop`), or its name (`laptop`) — an operator reading `verse data` and
-// one typing `verse io show` should not have to know two spellings of one thing.
+// listed (`verse.iod.laptop`), or its name (`laptop`) — an operator reading `verse data` and
+// one typing `verse iod show` should not have to know two spellings of one thing.
 //
 // FindErr is the same read reporting whether it HAPPENED — see versed's findRunnerErr.
 func Find(r entity.Reader, ref string) (Entity, bool) {

@@ -77,12 +77,12 @@ const Everyone = "*"
 
 // actors is where in verse's half a place acts, by system, and the kind beneath it that does
 // ("" for any): a rule fires as `verse.trigger.rule.<name>`, a source reflects as
-// `verse.io.<name>`, a resolver answers as `verse.resolvers.<name>`. A
+// `verse.iod.<name>`, a resolver answers as `verse.resolvers.<name>`. A
 // `via:` naming anywhere else names nobody — a runner has an address and acts as
 // `runner:<identity>`, so `via:verse.runners.verse-runner` would look right and admit no one.
 // The owning packages import this one, so the names are spelled here and a test in versed holds
 // them to the packages' own.
-var actors = map[string]string{"trigger": "rule", "io": "", "resolvers": ""}
+var actors = map[string]string{"trigger": "rule", "iod": "", "resolvers": ""}
 
 // Grantee is a name in the grammar, parsed: the kind before the colon and what follows it.
 type Grantee struct {
@@ -183,7 +183,7 @@ func viaPath(s string) ([]string, error) {
 	kind, acts := actors[segs[1]]
 	if !acts || (kind != "" && len(segs) > 2 && segs[2] != Everyone && segs[2] != kind) {
 		return nil, fmt.Errorf("nothing acts through %s: a rule acts as verse.trigger.rule.<name>, "+
-			"a source as verse.io.<name>, a resolver as verse.resolvers.<name>", s)
+			"a source as verse.iod.<name>, a resolver as verse.resolvers.<name>", s)
 	}
 	return segs, nil
 }

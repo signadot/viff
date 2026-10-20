@@ -36,13 +36,13 @@ GitHub. For them, see [reference/iod.md](reference/iod.md). To build your own io
 tree.
 
 ```sh
-verse io add git   http://git-io:9801    -root git
-verse io add slack http://slack-io:9801  -root slack
-verse io
+verse iod add git   http://git-iod:9801    -root git
+verse iod add slack http://slack-iod:9801  -root slack
+verse iod
 ```
 
 **Name an iod after its connector, unless two of them run.** The name is the whole of the
-address (`verse.io.<name>`), and you choose it freely. Where one iod of a kind runs, the name
+address (`verse.iod.<name>`), and you choose it freely. Where one iod of a kind runs, the name
 `git` says what `--root git` already says. The reader has nothing new to learn.
 
 Where two iods of one kind run, the name is the only thing that tells them apart. For example,
@@ -50,7 +50,7 @@ one reflects the repositories on the cluster, and one reflects the repositories 
 host. Give the second a name of its own:
 
 ```sh
-verse io add git-buildhost http://build-host:9801 -root git
+verse iod add git-buildhost http://build-host:9801 -root git
 ```
 
 ## The core law: a hint is a hint, reconcile is the truth
@@ -341,13 +341,13 @@ Verse writes `lastReflect` and `lastError` on the registration.
 | `lastError` | on a **transition** only. A source that fails every minute writes once. The write that clears it says that the source recovered. |
 | `lastReflect` | only when a pass **wrote** something. It is the poll cursor. |
 
-Suppose verse stamped `lastReflect` on every pass. It would write to `verse.io.*` once per
+Suppose verse stamped `lastReflect` on every pass. It would write to `verse.iod.*` once per
 resync interval, forever. A rule that watches those addresses would fire on a verse where
 nothing happens.
 
 `lastReflect` cannot show a source that is *wedged*: alive and answering, and reflecting
 nothing new. On a quiet repository a healthy source looks the same. So **verse reports when a
-pass last completed, and never stores it.** `verse io` reads it live from the reflector.
+pass last completed, and never stores it.** `verse iod` reads it live from the reflector.
 
 A runner follows the same rule about wellness. A fact about reachability that is written down
 can be stale, and stale in the direction that costs.

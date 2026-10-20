@@ -25,7 +25,7 @@ import (
 // Scott: "as a matter of ontological cleanliness"): its own route and file, no charter lock, no
 // transaction, and no engine that runs anything. It asks the checks an install asks, each without
 // its write: the files split into packages as an install splits them, the prune's targets as an
-// install computes them, the address as the installer's to take, the outboxes against the ios
+// install computes them, the address as the installer's to take, the outboxes against the iods
 // registered, and each package's strata and rules in an engine of the check's own that is never
 // started (trigger.Check). A verdict of `installs` says the install would not be refused by any
 // of these; what it cannot say is what the store answers on the day, which is the install's own.
@@ -97,7 +97,7 @@ func (s *Server) checkPackage(store entity.Store, installer string, g charterGro
 		for _, send := range sends {
 			if _, ok := ioFor(s.Store, send.To); !ok {
 				return pkg, errors.New("sends: " + send.To + " is no io's out place — an outbox sends to a place " +
-					"a registered io reads (`verse io` lists them, with their `out.places`)")
+					"a registered io reads (`verse iod` lists them, with their `out.places`)")
 			}
 		}
 	}

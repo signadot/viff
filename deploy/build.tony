@@ -168,26 +168,26 @@ build:
     # Each is off by default and independent of the others, because each costs something
     # different to turn on: the git one costs a clone, the other two cost a credential in the
     # cluster. Turning one on deploys the connector; INSTALLING it is still a verb somebody
-    # runs (`verse io add …`), since a registration carries an ownership claim verse checks
+    # runs (`verse iod add …`), since a registration carries an ownership claim verse checks
     # against what is already standing, and a manifest is not where that conversation happens.
     #
     # The `<x>IOName` knobs are the registration name each will be added under. They are
-    # here because the hint url an io posts deliveries to contains it, so the name has to be
+    # here because the hint url an iod posts deliveries to contains it, so the name has to be
     # decided before the pod starts — and verse 404s a hint for a name it has no registration
     # under, which is how a mismatch announces itself.
     #
     # NAMED AFTER THE CONNECTOR, because this deployment runs one of each. The name is free —
-    # two ios may share a root, and then the name is what tells them apart (`git` on the cluster
+    # two iods may share a root, and then the name is what tells them apart (`git` on the cluster
     # and `git-laptop` somewhere else) — but a name that says nothing more than the root does is
     # a second vocabulary for one fact, and `cluster`, `issues`, `repos` and `teams` were exactly
     # that. A second instance of one connector is where a name earns its keep, and it can say so
     # then.
     gitIO: false
     gitMirror: "https://github.com/signadot/verse.git"
-    # The git io fetches and pushes AS THE GITHUB APP: its three keys, read from the github io's
+    # The git iod fetches and pushes AS THE GITHUB APP: its three keys, read from the github iod's
     # Secret (verse-github), make the app's installation token the only credential git presents,
     # in place of the `verse-git` PAT. Then a branch only the app may push to (verse/live, the
-    # repo-charters reconciler's) is one the git io can move. Needs githubSecretKey's entry to
+    # repo-charters reconciler's) is one the git iod can move. Needs githubSecretKey's entry to
     # carry the app (deploy/README.md, The GitHub App).
     gitAsApp: false
 
@@ -254,7 +254,7 @@ build:
     systemCharter: ""
 
     # verse's `auth` block, as a path under deploy/ (VERSE_CONFIG, config/config.go): who verifies
-    # people, which ios are trusted for whose accounts, and how the ios prove themselves
+    # people, which iods are trusted for whose accounts, and how the iods prove themselves
     # (docs/reference/up.md). "" leaves versed as it is: a request is whoever it says. The env
     # verse reads (VERSE_PERMS_ADMINS, the model's) still applies over the file. Read at start.
     authConfig: ""
@@ -264,10 +264,10 @@ build:
     # that to service accounts alone by default, and versed reads the document as nobody; a
     # cluster with a public issuer (EKS) needs none of this. Cluster-scoped, and off by default.
     issuerDiscoveryOpen: false
-    # Give the slack, github and git ios a ServiceAccount each and a projected token, audience `verse`,
-    # at /var/run/verse/token, named to iod by VERSE_TOKEN_FILE: how an io proves it is the io.
-    # The token's subject is system:serviceaccount:<namespace>:<io>, which `auth.iod.accounts` in
-    # the auth config maps to the io's principal. The cluster is the issuer.
+    # Give the slack, github and git iods a ServiceAccount each and a projected token, audience `verse`,
+    # at /var/run/verse/token, named to iod by VERSE_TOKEN_FILE: how an iod proves it is the iod.
+    # The token's subject is system:serviceaccount:<namespace>:<iod>, which `auth.iod.accounts` in
+    # the auth config maps to the iod's principal. The cluster is the issuer.
     ioTokens: false
 
   sources:
@@ -296,7 +296,7 @@ build:
   - if: '.[ authConfig != "" ]'
     dir: auth-config
   - dir: source
-  # Before the ios, since a pod names its ServiceAccount when it is created.
+  # Before the iods, since a pod names its ServiceAccount when it is created.
   - if: '.[ioTokens]'
     dir: io-tokens
   - if: '.[issuerDiscoveryOpen]'
@@ -306,15 +306,15 @@ build:
   - if: '.[hostPV]'
     dir: hostpv
   - if: '.[gitIO]'
-    dir: git-io
+    dir: git-iod
   - if: '.[gitIssueIO]'
-    dir: git-issue-io
+    dir: git-issue-iod
   - if: '.[slackIO]'
-    dir: slack-io
+    dir: slack-iod
   - if: '.[linearIO]'
-    dir: linear-io
+    dir: linear-iod
   - if: '.[githubIO]'
-    dir: github-io
+    dir: github-iod
   - if: '.[runner]'
     dir: verse-runner
   - if: '.[codexRunner]'
@@ -452,7 +452,7 @@ build:
 
   # The pull secret, onto the `default` ServiceAccount every pod here runs as.
   # Every ServiceAccount this deploy emits: `default`, which every pod that names none runs as,
-  # and an io's own (deploy/io-tokens), which its pod names instead and so would not inherit
+  # and an iod's own (deploy/io-tokens), which its pod names instead and so would not inherit
   # `default`'s.
   - if: '.[ imagePullSecret != "" ]'
     match:
@@ -914,13 +914,13 @@ build:
     match:
       kind: Deployment
       metadata:
-        name: git-io
+        name: git-iod
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: git-io
+            - name: git-iod
               image: $[image]
               command:
               - iod
@@ -940,7 +940,7 @@ build:
               - $[gitMirror]
               # The tree sha of the charters directory on every ref, and the out half that
               # makes the tags and moves the branches the repo-charters reconciler asks for
-              # (deploy/git-io). VERSE_ADDR in the source manifest says where it reads them.
+              # (deploy/git-iod). VERSE_ADDR in the source manifest says where it reads them.
               - -tree
               - .verse/charters
               - -out
@@ -952,13 +952,13 @@ build:
     match:
       kind: Deployment
       metadata:
-        name: git-issue-io
+        name: git-issue-iod
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: git-issue-io
+            - name: git-issue-iod
               image: $[image]
               command:
               - iod
@@ -977,13 +977,13 @@ build:
     match:
       kind: Deployment
       metadata:
-        name: git-issue-io
+        name: git-issue-iod
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: git-issue-io
+            - name: git-issue-iod
               image: $[image]
               command:
               - iod
@@ -1002,33 +1002,33 @@ build:
     match:
       kind: Deployment
       metadata:
-        name: slack-io
+        name: slack-iod
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: slack-io
+            - name: slack-iod
               image: $[image]
               env: !key(name)
               - name: VERSE_HINT_URL
                 value: "http://verse:9797/io/$[slackIOName]/hint"
 
-  # The io's own credential (ioTokens): its ServiceAccount, and a projected token at the path
+  # The iod's own credential (ioTokens): its ServiceAccount, and a projected token at the path
   # VERSE_TOKEN_FILE names, asked for with the audience `verse` and rotated by the kubelet. The
   # env rather than a flag, since the command is restated whole by the patch below.
   - if: '.[ ioTokens && slackIO ]'
     match:
       kind: Deployment
       metadata:
-        name: slack-io
+        name: slack-iod
     patch:
       spec:
         template:
           spec:
-            serviceAccountName: slack-io
+            serviceAccountName: slack-iod
             containers: !key(name)
-            - name: slack-io
+            - name: slack-iod
               env: !key(name)
               - name: VERSE_TOKEN_FILE
                 value: /var/run/verse/token
@@ -1050,13 +1050,13 @@ build:
     match:
       kind: Deployment
       metadata:
-        name: slack-io
+        name: slack-iod
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: slack-io
+            - name: slack-iod
               command:
               - iod
               - slack
@@ -1072,13 +1072,13 @@ build:
     match:
       kind: Deployment
       metadata:
-        name: linear-io
+        name: linear-iod
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: linear-io
+            - name: linear-iod
               image: $[image]
               env: !key(name)
               - name: VERSE_HINT_URL
@@ -1088,31 +1088,31 @@ build:
     match:
       kind: Deployment
       metadata:
-        name: github-io
+        name: github-iod
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: github-io
+            - name: github-iod
               image: $[image]
               env: !key(name)
               - name: VERSE_HINT_URL
                 value: "http://verse:9797/io/$[githubIOName]/hint"
 
-  # The git io as the GitHub App (gitAsApp): the app's keys from the github io's Secret, which
-  # iod git reads as the github io does (cmd/iod/git.go).
+  # The git iod as the GitHub App (gitAsApp): the app's keys from the github iod's Secret, which
+  # iod git reads as the github iod does (cmd/iod/git.go).
   - if: '.[ gitIO && gitAsApp ]'
     match:
       kind: Deployment
       metadata:
-        name: git-io
+        name: git-iod
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: git-io
+            - name: git-iod
               env: !key(name)
               - name: GITHUB_APP_ID
                 valueFrom: {secretKeyRef: {name: verse-github, key: GITHUB_APP_ID}}
@@ -1121,19 +1121,19 @@ build:
               - name: GITHUB_APP_PRIVATE_KEY
                 valueFrom: {secretKeyRef: {name: verse-github, key: GITHUB_APP_PRIVATE_KEY}}
 
-  # The github io's credential, as the slack io's above.
+  # The github iod's credential, as the slack iod's above.
   - if: '.[ ioTokens && githubIO ]'
     match:
       kind: Deployment
       metadata:
-        name: github-io
+        name: github-iod
     patch:
       spec:
         template:
           spec:
-            serviceAccountName: github-io
+            serviceAccountName: github-iod
             containers: !key(name)
-            - name: github-io
+            - name: github-iod
               env: !key(name)
               - name: VERSE_TOKEN_FILE
                 value: /var/run/verse/token
@@ -1150,20 +1150,20 @@ build:
                     expirationSeconds: 3600
                     path: token
 
-  # The git io's credential, as the github io's: verified, it may relay the person an install is
+  # The git iod's credential, as the github iod's: verified, it may relay the person an install is
   # for (`Verse-For-Principal`), which the auth config trusts it to for GitHub accounts.
   - if: '.[ ioTokens && gitIO ]'
     match:
       kind: Deployment
       metadata:
-        name: git-io
+        name: git-iod
     patch:
       spec:
         template:
           spec:
-            serviceAccountName: git-io
+            serviceAccountName: git-iod
             containers: !key(name)
-            - name: git-io
+            - name: git-iod
               env: !key(name)
               - name: VERSE_TOKEN_FILE
                 value: /var/run/verse/token
@@ -1191,13 +1191,13 @@ build:
     match:
       kind: Deployment
       metadata:
-        name: github-io
+        name: github-iod
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: github-io
+            - name: github-iod
               command:
               - iod
               - github
@@ -1218,13 +1218,13 @@ build:
     match:
       kind: Deployment
       metadata:
-        name: linear-io
+        name: linear-iod
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: linear-io
+            - name: linear-iod
               command:
               - iod
               - linear
@@ -1242,37 +1242,37 @@ build:
     match:
       kind: Deployment
       metadata:
-        name: git-io
+        name: git-iod
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: git-io
+            - name: git-iod
               imagePullPolicy: $[imagePullPolicy]
   - if: '.[ imagePullPolicy != "" ]'
     match:
       kind: Deployment
       metadata:
-        name: slack-io
+        name: slack-iod
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: slack-io
+            - name: slack-iod
               imagePullPolicy: $[imagePullPolicy]
   - if: '.[ imagePullPolicy != "" ]'
     match:
       kind: Deployment
       metadata:
-        name: linear-io
+        name: linear-iod
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: linear-io
+            - name: linear-iod
               imagePullPolicy: $[imagePullPolicy]
 
   # The two webhook Ingresses. A source that cannot be reached from the internet still
@@ -1282,7 +1282,7 @@ build:
     match:
       kind: Ingress
       metadata:
-        name: slack-io
+        name: slack-iod
     patch:
       spec:
         rules:
@@ -1293,14 +1293,14 @@ build:
               pathType: Prefix
               backend:
                 service:
-                  name: slack-io
+                  name: slack-iod
                   port:
                     number: 9801
   - if: '.[ slackWebhookHost == "" ]'
     match:
       kind: Ingress
       metadata:
-        name: slack-io
+        name: slack-iod
     # `!delete null`, not a bare `!delete`: a dangling `:` is not in tony's grammar (an
     # omitted value is the bracketed key-set form, `{a b c}`), and it is accepted only as the
     # LAST pair of a document — so a bare one parses until somebody adds a patch below it.
@@ -1311,7 +1311,7 @@ build:
     match:
       kind: Ingress
       metadata:
-        name: linear-io
+        name: linear-iod
     patch:
       spec:
         rules:
@@ -1322,25 +1322,25 @@ build:
               pathType: Prefix
               backend:
                 service:
-                  name: linear-io
+                  name: linear-iod
                   port:
                     number: 9801
   - if: '.[ linearWebhookHost == "" ]'
     match:
       kind: Ingress
       metadata:
-        name: linear-io
+        name: linear-iod
     patch: !delete null
 
   # The GitHub one, which had neither half until a staging deploy emitted its Ingress with the
   # base manifest's placeholder host — so `githubWebhookHost` was inert, and the cluster was
-  # asked to route `github-io.example.com` to a Service. A knob that does nothing is worse
+  # asked to route `github-iod.example.com` to a Service. A knob that does nothing is worse
   # than an absent one: the deployment says a thing it is not doing.
   - if: '.[ githubWebhookHost != "" ]'
     match:
       kind: Ingress
       metadata:
-        name: github-io
+        name: github-iod
     patch:
       spec:
         rules:
@@ -1351,14 +1351,14 @@ build:
               pathType: Prefix
               backend:
                 service:
-                  name: github-io
+                  name: github-iod
                   port:
                     number: 9801
   - if: '.[ githubWebhookHost == "" ]'
     match:
       kind: Ingress
       metadata:
-        name: github-io
+        name: github-iod
     patch: !delete null
 
   - if: '.[ ingressClassName != "" ]'

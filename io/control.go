@@ -27,7 +27,7 @@ import (
 //     refused.
 //   - WHO it is made as is the person, established by the external system (a Slack id on a
 //     socket the app token opened, an authenticated sender), never the io's own principal. An
-//     answer recorded as `agent:slack-io` would be an answer nobody gave.
+//     answer recorded as `agent:slack-iod` would be an answer nobody gave.
 //
 // What makes the person's name more than an assertion is the connector's own credential beside
 // it: a verse that verifies people admits the request through the person's account binding, from

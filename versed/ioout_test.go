@@ -33,11 +33,11 @@ func TestAnIoWithAnOutHalfHasItsGrantsWritten(t *testing.T) {
 
 	const installer = "user:ana@example.com"
 	resp := installIO(t, ts, installer, map[string]any{
-		"name": "workspace", "root": "slack", "url": "http://slack-io:9801",
+		"name": "workspace", "root": "slack", "url": "http://slack-iod:9801",
 		"owns": []any{map[string]any{"at": "slack.Acme"}},
 		"out": map[string]any{
 			"places":     []any{"slack.Acme.out"},
-			"as":         "agent:slack-io",
+			"as":         "agent:slack-iod",
 			"requesters": []any{"user:bo@example.com"},
 		},
 	})
@@ -50,7 +50,7 @@ func TestAnIoWithAnOutHalfHasItsGrantsWritten(t *testing.T) {
 	// the four parties would do.
 	input := entity.RefAt("slack", "Acme", "out", "U1", "hello")
 	status := entity.RefAt("slack", "Acme", "out", "U1", "hello"+verseio.StatusSuffix)
-	asker, io, stranger := "user:bo@example.com", "agent:slack-io", "user:cara@example.com"
+	asker, io, stranger := "user:bo@example.com", "agent:slack-iod", "user:cara@example.com"
 
 	if err := write(srv.Store, asker, input, entity.Obj{"text": "say this"}); err != nil {
 		t.Errorf("an asker could not ask: %v", err)
@@ -89,17 +89,17 @@ func TestAnOutHalfIsCheckedAtInstall(t *testing.T) {
 		out  map[string]any
 		want string
 	}{
-		{"no places", map[string]any{"as": "agent:slack-io"}, "out.places is required"},
+		{"no places", map[string]any{"as": "agent:slack-iod"}, "out.places is required"},
 		{"nobody to be", map[string]any{"places": []any{"slack.Acme.out"}}, "out.as is required"},
 		{"a principal the grammar refuses", map[string]any{
-			"places": []any{"slack.Acme.out"}, "as": "slack-io"}, "out.as"},
+			"places": []any{"slack.Acme.out"}, "as": "slack-iod"}, "out.as"},
 		{"a place outside the claim", map[string]any{
-			"places": []any{"elsewhere.out"}, "as": "agent:slack-io"}, "outside what this io claims"},
+			"places": []any{"elsewhere.out"}, "as": "agent:slack-iod"}, "outside what this io claims"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			resp := installIO(t, ts, "user:ana@example.com", map[string]any{
 				"name": "workspace-" + strings.ReplaceAll(c.name, " ", "-"),
-				"root": "slack", "url": "http://slack-io:9801",
+				"root": "slack", "url": "http://slack-iod:9801",
 				"owns": []any{map[string]any{"at": "slack.Acme"}},
 				"out":  c.out,
 			})
@@ -121,7 +121,7 @@ func TestAnIoThatOnlyReflectsSeedsNothing(t *testing.T) {
 	defer ts.Close()
 
 	resp := installIO(t, ts, "user:ana@example.com", map[string]any{
-		"name": "cluster", "root": "git", "url": "http://git-io:9801",
+		"name": "cluster", "root": "git", "url": "http://git-iod:9801",
 		"owns": []any{map[string]any{"at": "git"}},
 	})
 	resp.Body.Close()
@@ -155,10 +155,10 @@ func TestRemovingAnIoTakesItsOutGrantsBack(t *testing.T) {
 	defer ts.Close()
 
 	resp := installIO(t, ts, "user:ana@example.com", map[string]any{
-		"name": "workspace", "root": "slack", "url": "http://slack-io:9801",
+		"name": "workspace", "root": "slack", "url": "http://slack-iod:9801",
 		"owns": []any{map[string]any{"at": "slack.Acme"}},
 		"out": map[string]any{
-			"places": []any{"slack.Acme.out"}, "as": "agent:slack-io",
+			"places": []any{"slack.Acme.out"}, "as": "agent:slack-iod",
 			"requesters": []any{"user:bo@example.com"},
 		},
 	})
@@ -214,9 +214,9 @@ func TestAnOutHalfReportsItsPasses(t *testing.T) {
 	defer ts.Close()
 
 	resp := installIO(t, ts, "user:ana@example.com", map[string]any{
-		"name": "workspace", "root": "slack", "url": "http://slack-io:9801",
+		"name": "workspace", "root": "slack", "url": "http://slack-iod:9801",
 		"owns": []any{map[string]any{"at": "slack.Acme"}},
-		"out":  map[string]any{"places": []any{"slack.Acme.out"}, "as": "agent:slack-io"},
+		"out":  map[string]any{"places": []any{"slack.Acme.out"}, "as": "agent:slack-iod"},
 	})
 	resp.Body.Close()
 
@@ -275,7 +275,7 @@ func TestAPassForNoSuchIoIsRefused(t *testing.T) {
 
 // THE OPERATOR'S PATH: an out half named on the command line, with no claim in the request.
 //
-// `verse io add slack <url> --root slack --out slack.Signadot.out` says nothing about what the
+// `verse iod add slack <url> --root slack --out slack.Signadot.out` says nothing about what the
 // io owns — the claim comes from PROBING it. So the check that an out place is inside the claim
 // cannot be asked of the request, and asking it there refused every out half an operator typed,
 // including the one repopulate.sh types. The other tests here pass `owns` explicitly and so
@@ -289,7 +289,7 @@ func TestAnOutHalfIsCheckedAgainstTheClaimTheProbeRead(t *testing.T) {
 
 	resp := postAsTony(t, "user:ana@example.com", ts.URL+"/io", map[string]any{
 		"root": "git", "name": "laptop", "url": face.URL,
-		"out": map[string]any{"places": []any{"git.verse.out"}, "as": "agent:git-io"},
+		"out": map[string]any{"places": []any{"git.verse.out"}, "as": "agent:git-iod"},
 	})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
@@ -305,7 +305,7 @@ func TestAnOutHalfIsCheckedAgainstTheClaimTheProbeRead(t *testing.T) {
 	// …and a place outside that claim is still refused, now for the right reason.
 	bad := postAsTony(t, "user:ana@example.com", ts.URL+"/io", map[string]any{
 		"root": "git", "name": "laptop2", "url": face.URL,
-		"out": map[string]any{"places": []any{"elsewhere.out"}, "as": "agent:git-io"},
+		"out": map[string]any{"places": []any{"elsewhere.out"}, "as": "agent:git-iod"},
 	})
 	defer bad.Body.Close()
 	if bad.StatusCode != http.StatusBadRequest {

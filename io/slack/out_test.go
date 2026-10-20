@@ -31,7 +31,7 @@ func newOutRig(t *testing.T) *outRig {
 	t.Cleanup(ts.Close)
 	f := newFake()
 	src := newSource(t, f, slack.Config{})
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:slack-io")
+	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:slack-iod")
 	sink := src.Sink(verse)
 	return &outRig{store: store, fake: f, sink: sink,
 		out: verseio.NewOut(sink, src.OutRef(), verse, nil)}

@@ -67,7 +67,7 @@ type Server struct {
 	// text with a name for the log: what `verse up` renders from the config for charters verse
 	// ships at the system level (system/repocharters), which the engine knows nothing of.
 	SystemCharters []SystemCharter
-	// systemWaiting are those of SystemCharters refused at start, tried again as ios are
+	// systemWaiting are those of SystemCharters refused at start, tried again as iods are
 	// registered (installWaitingSystemCharters); systemMu orders the two.
 	systemMu      sync.Mutex
 	systemWaiting []SystemCharter
@@ -1210,7 +1210,7 @@ func (s *Server) Start(ctx context.Context) {
 	phase(phaseRunners, s.probeRunners)
 	// And the charters verse ships at the system level, rendered by `verse up` from the config
 	// (Server.SystemCharters). After the sources: such a charter declares outboxes to the places
-	// the ios read, and the declaration is checked against the ios the restore registered. Over
+	// the iods read, and the declaration is checked against the iods the restore registered. Over
 	// what stood, as the system charter file is, and every time, for the same reason.
 	phase(phaseSystemTexts, func() error {
 		if err := s.awaiting(phaseSystem, phaseSources); err != nil {
@@ -2693,7 +2693,7 @@ func (s *Server) listDocket(w http.ResponseWriter, r *http.Request) {
 	}
 	// A FAILED READ IS NOT AN EMPTY LIST. List answers nil when the read did not happen, so
 	// without this a store that could not be read renders as "nothing is installed" — and
-	// `verse io` answered `[]` on a verse holding three sources, which is the one shape an
+	// `verse iod` answered `[]` on a verse holding three sources, which is the one shape an
 	// operator acts on. Same guard /state has carried all along, for the same reason.
 	if unreadable(w, r, readErr) {
 		return
@@ -3452,7 +3452,7 @@ func (s *Server) listResolvers(w http.ResponseWriter, r *http.Request) {
 	}
 	// A FAILED READ IS NOT AN EMPTY LIST. List answers nil when the read did not happen, so
 	// without this a store that could not be read renders as "nothing is installed" — and
-	// `verse io` answered `[]` on a verse holding three sources, which is the one shape an
+	// `verse iod` answered `[]` on a verse holding three sources, which is the one shape an
 	// operator acts on. Same guard /state has carried all along, for the same reason.
 	if unreadable(w, r, readErr) {
 		return
@@ -3839,10 +3839,10 @@ func (s *Server) installSystemCharter() {
 
 // installSystemCharters applies the charters handed to the server as text (SystemCharters), as
 // the system, after the sources are restored: one that sends to an io's place is checked against
-// the ios registered, and a text that cannot be installed is reported and the rest go on.
+// the iods registered, and a text that cannot be installed is reported and the rest go on.
 //
 // ONE REFUSED FOR WANT OF ITS IOS WAITS FOR THEM. A verse started on an empty store (a wipe) has
-// no ios at start, and its ios are registered afterwards (deploy/repopulate.sh), so such a
+// no iods at start, and its iods are registered afterwards (deploy/repopulate.sh), so such a
 // charter is refused here and would stay missing until the next restart. It is kept, and tried
 // again each time an io with an out half is registered (installWaitingSystemCharters).
 func (s *Server) installSystemCharters() {
@@ -4082,7 +4082,7 @@ func runnerRefs(store entity.Store) []string {
 // reason — but it earns its line here for one of its own: every other counter measures what
 // verse is doing with what it was given, and none of them can tell "nothing is happening" from
 // "nothing is arriving". A verse whose only io was dropped reports a steady store rev and an
-// idle charter, which is what a healthy quiet one reports too. `verse io` carries the health.
+// idle charter, which is what a healthy quiet one reports too. `verse iod` carries the health.
 func ioRefs(store entity.Store) []string {
 	es := verseio.List(store)
 	out := make([]string, 0, len(es))

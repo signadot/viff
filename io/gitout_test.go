@@ -87,7 +87,7 @@ func newGitOutRig(t *testing.T, g *verseio.Git, id string) *gitOutRig {
 	store := entitytest.Store(t)
 	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
 	t.Cleanup(ts.Close)
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:git-io")
+	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:git-iod")
 	sink := g.Sink()
 	sink.Verse = verse // an install input installs into the rig's verse, as the io
 	return &gitOutRig{store: store, id: id, verse: verse, out: verseio.NewOut(sink, g.OutRef(id), verse, nil)}

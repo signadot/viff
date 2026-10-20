@@ -79,8 +79,8 @@ func TestSourceAddListShow(t *testing.T) {
 	}
 	var got map[string]any
 	decodeResp(t, resp, &got)
-	if got["at"] != "verse.io.laptop" {
-		t.Fatalf("at = %v, want verse.io.laptop", got["at"])
+	if got["at"] != "verse.iod.laptop" {
+		t.Fatalf("at = %v, want verse.iod.laptop", got["at"])
 	}
 	if got["reach"] != "a source" {
 		t.Fatalf("reach = %v — a live source face read as something else", got["reach"])
@@ -107,7 +107,7 @@ func TestSourceAddListShow(t *testing.T) {
 	}
 	var list []map[string]any
 	decodeResp(t, lr, &list)
-	if len(list) != 1 || list[0]["at"] != "verse.io.laptop" || list[0]["url"] != face.URL {
+	if len(list) != 1 || list[0]["at"] != "verse.iod.laptop" || list[0]["url"] != face.URL {
 		t.Fatalf("list = %+v, want the one installed source with its url", list)
 	}
 }
@@ -167,7 +167,7 @@ func TestSourceAddProvesDisjointness(t *testing.T) {
 		t.Fatalf("two sources over one repo = %s, want 409", resp.Status)
 	}
 	body := bodyOf(t, resp)
-	for _, want := range []string{"git.verse", "verse.io.a", "--allow-overlap"} {
+	for _, want := range []string{"git.verse", "verse.iod.a", "--allow-overlap"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("the refusal should mention %q, got: %s", want, body)
 		}

@@ -111,7 +111,7 @@ The tutorial has four pages, one for each part of verse: data, questions, tasks 
   grants it to answer for them, and its answer is then theirs. To consult somebody it raises an
   onward ask, whose answer comes back as its own.
 - `io/` and `cmd/iod/` — the connection to an external system. An *io* has two halves: it
-  reflects state in, and it acts out. You deploy an io and install it (`verse io add`). It
+  reflects state in, and it acts out. You deploy an io and install it (`verse iod add`). It
   owns a place in the store, such as `git`, and rules react to that place. Verse ships five
   (`iod git|git-issue|slack|linear|github`). To write another, copy the sample program and
   write one function.
@@ -146,7 +146,7 @@ describes what runs today, and so does the site mkdocs builds from it. Start wit
   each topic: [starting a verse](docs/reference/up.md),
   [entities](docs/reference/entities.md), [tasks](docs/reference/tasks.md),
   [resolvers](docs/reference/resolvers.md), [runners](docs/reference/runners.md),
-  [ios](docs/reference/io.md) and [the five that ship](docs/reference/iod.md),
+  [iods](docs/reference/io.md) and [the five that ship](docs/reference/iod.md),
   [scopes](docs/reference/scopes.md),
   [the store](docs/reference/store.md), [representation](docs/reference/representation.md).
 - [Kubernetes deploy](deploy/README.md) — build the image (`make docker`) and run verse on a

@@ -311,7 +311,7 @@ func Claimed(claims []Claim, ref entity.Ref) []entity.Path {
 	// NOTHING IN VERSE'S OWN HALF, whatever a claim says. ParseClaim refuses one that NAMES it,
 	// but a wildcard first level — `*.*.*`, which a source with no neighbour may register —
 	// still reaches `verse.task.instance.x` and `verse.trigger.rule.y` as readily as the world's. The caller that deletes writes straight to the store, below
-	// the refusal that guards the HTTP face, so `verse io remove --forget` was the one
+	// the refusal that guards the HTTP face, so `verse iod remove --forget` was the one
 	// client-reachable path that could tombstone the charter. A source reflects the world; the
 	// half verse keeps about itself is not a slice anybody may claim.
 	if ref.Reserved() {

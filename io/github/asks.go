@@ -29,7 +29,7 @@ import (
 // up for who they are (docs/reference/perms.md, "accounts in other systems"), and the answer is
 // made as that person with the account beside it, which a verse that verifies people admits
 // through the binding and records on the ballot. It is never made as this io: an answer recorded
-// as agent:github-io would be an answer nobody gave.
+// as agent:github-iod would be an answer nobody gave.
 //
 // A reply this io cannot act on — by somebody verse does not know, or naming no option the
 // question offers — is told so once, in a reply of its own, and not again: every reply acted on

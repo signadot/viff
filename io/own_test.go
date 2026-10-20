@@ -371,7 +371,7 @@ func TestASourcesSystemIsTheOperatorsToChoose(t *testing.T) {
 // A claim carries no root, so `task.*.*` — and the wildcard `*:*:*`, which
 // a source may register when nothing else is installed — asks about `verse.task.instance.x` as
 // readily as about the world's `task.instance.x`. It must own neither: the caller that deletes
-// (`verse io remove --forget`) writes straight to the store, below the refusal that guards
+// (`verse iod remove --forget`) writes straight to the store, below the refusal that guards
 // the HTTP face, so this was the one client-reachable path to a tombstone over verse's charter.
 func TestNoClaimReachesVersesOwnHalf(t *testing.T) {
 	for _, spell := range []string{"*.*.*", "task.*.*", "trigger.rule.*", "sources.git.verse"} {
@@ -382,7 +382,7 @@ func TestNoClaimReachesVersesOwnHalf(t *testing.T) {
 		for _, ref := range []entity.Ref{
 			entity.VerseRef("task", "instance", "run-1"),
 			entity.VerseRef("trigger", "rule", "review"),
-			entity.VerseRef("io", "git", "verse"),
+			entity.VerseRef("iod", "git", "verse"),
 		} {
 			if got := verseio.Claimed(claims, ref); len(got) > 0 {
 				t.Errorf("owns %q claims %s → %v, want nothing in verse's half", spell, ref, got)

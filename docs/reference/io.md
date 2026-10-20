@@ -4,7 +4,7 @@ This page is the surface of an io. For what an iod *is* (one program, two halves
 dials each half), see [../io.md](../io.md). To build one, copy
 [examples/io](examples/io/main.go).
 
-An [iod](../glossary.md#iod) is an entity at `verse.io.<name>`:
+An [iod](../glossary.md#iod) is an entity at `verse.iod.<name>`:
 
 | | |
 |---|---|
@@ -27,7 +27,7 @@ half, the [sink](../glossary.md#sink), which dials verse.
 connection comes from. `Reflect` is the same call on all three. For a runner, absence means
 something. Here it does not: the field that is present says which way it is.
 
-The address of an iod is its name and nothing else: `verse.io.<name>`. It is under the reserved
+The address of an iod is its name and nothing else: `verse.iod.<name>`. It is under the reserved
 root, like everything verse keeps about its own running. So an operator tells two iods of one
 connector apart by the names the operator gave them.
 
@@ -50,7 +50,7 @@ An iod reflects the world outside verse. It never reflects what verse keeps unde
 
 `owns` is a list of [claims](../glossary.md#claim-of-an-iod). The claims do three things:
 
-- An install proves them disjoint from the claims of other ios.
+- An install proves them disjoint from the claims of other iods.
 - They bound what a `-forget` removal may tombstone.
 - They name the nodes the iod owns.
 
@@ -119,9 +119,9 @@ claims apart from nothing. So verse refuses it beside any other registration in 
 ## Commands
 
 ```
-verse io                                what is installed, with lastReflect/lastError
+verse iod                                what is installed, with lastReflect/lastError
         [-probe]                             …and what each one says right now (not recorded)
-verse io add <name> <url> -root <root>       install one, probing the url first
+verse iod add <name> <url> -root <root>       install one, probing the url first
        add -dir <d> <name>                  …or a local git repo, reflected in task
        add [-file <f>] | [file] | stdin      …or as a document (.tony/.json/.yaml)
            [-no-probe]                       install without asking it what it is
@@ -133,10 +133,10 @@ verse io add <name> <url> -root <root>       install one, probing the url first
               [-keep]                        …the truth is moving: leave the last known state
 ```
 
-A `<ref>` is `verse.io.laptop` or `laptop`: the whole address or the bare name. The middle form
+A `<ref>` is `verse.iod.laptop` or `laptop`: the whole address or the bare name. The middle form
 (`io.laptop`) is not accepted.
 
-`verse status` names the installed iods under `iod:`. It shows the refs only. `verse io` shows
+`verse status` names the installed iods under `iod:`. It shows the refs only. `verse iod` shows
 their health.
 
 The list is in `verse status` because it is the one line that says whether anything is
@@ -286,7 +286,7 @@ registration describes:
 ```tony
 out:
   places:     [slack.Signadot.out]     # where it reads what is asked of it
-  as:         agent:slack-io           # who it acts as, and owns every status it writes
+  as:         agent:slack-iod           # who it acts as, and owns every status it writes
   requesters: [group:verse-dev]        # who may ask it for something
 ```
 
@@ -298,8 +298,8 @@ out:
 | `lastPass` `delivered` `failed` `lastError` | what the last pass did, and the failure that stopped one. The iod writes these (see below) |
 
 ```sh
-verse io add slack http://slack-io:9801 --root slack \
-  --out slack.Signadot.out --as agent:slack-io --requesters group:verse-dev
+verse iod add slack http://slack-iod:9801 --root slack \
+  --out slack.Signadot.out --as agent:slack-iod --requesters group:verse-dev
 ```
 
 **The install writes four grants**, from the record, once:
@@ -416,7 +416,7 @@ POST /io/<name>/pass   {delivered, failed, error?}
 ```
 
 The report lands on the registration as `lastPass`, `delivered`, `failed` and `lastError`.
-`verse io` shows them beside the columns of the reflection. So an iod with a healthy reflection
+`verse iod` shows them beside the columns of the reflection. So an iod with a healthy reflection
 and an out half refused for an hour does not look healthy.
 
 The counts are those of the last pass, not totals. Somebody can act on "the last pass delivered
@@ -441,7 +441,7 @@ Three invariants hold for every connector:
 - **What** it may ask for is bounded by what the record already offers, such as the options on a
   question. It never invents one.
 - **Who** it is made as is the person, never the iod's own principal. An answer recorded as
-  `agent:slack-io` is an answer that nobody gave.
+  `agent:slack-iod` is an answer that nobody gave.
 
 The connector asserts that person to verse in the way the CLI asserts its own user. Verse trusts
 the assertion as it trusts the CLI's. The fix is a principal that verse verifies for itself, and

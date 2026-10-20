@@ -28,7 +28,7 @@ func TestTheOutHalfKeepsACommentInStep(t *testing.T) {
 	if len(places) != 1 || places[0].String() != "github.signadot.verse.out" {
 		t.Fatalf("out places %v, want github.signadot.verse.out", places)
 	}
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-io")
+	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
 	out := verseio.NewOut(src.Sink(), places[0], verse, nil)
 	pass := func() {
 		t.Helper()
@@ -96,7 +96,7 @@ func TestTheOutHalfOpensOrAdoptsAPullRequest(t *testing.T) {
 	f := newFake()
 	f.repo("signadot/verse").pr(7, "a person's own", "open", "2026-09-01T00:00:00Z", "abc") // head feature-7
 	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-io")
+	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
 	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
 	pass := func() {
 		t.Helper()
@@ -178,7 +178,7 @@ func TestTheOutHalfMergesAtASha(t *testing.T) {
 	r.pr(42, "decided", "open", "2026-09-01T00:00:00Z", "abc")
 	r.pr(43, "merged by a person", "closed", "2026-09-01T00:00:00Z", "def")
 	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-io")
+	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
 	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
 	pass := func() {
 		t.Helper()
@@ -240,7 +240,7 @@ func TestTheOutHalfClosesAnIssueOrAPullRequest(t *testing.T) {
 	r.issue(7, "an issue", "open", "2026-09-01T00:00:00Z")
 	r.issue(8, "done", "open", "2026-09-01T00:00:00Z")
 	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-io")
+	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
 	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
 	pass := func() {
 		t.Helper()
@@ -306,7 +306,7 @@ func TestTheOutHalfReviewsAPullRequest(t *testing.T) {
 	f := newFake()
 	f.repo("signadot/verse").pr(42, "a person's", "open", "2026-09-01T00:00:00Z", "abc")
 	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-io")
+	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
 	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
 	pass := func() {
 		t.Helper()
@@ -366,7 +366,7 @@ func TestARefusalIsAskedOnceAndARateLimitAgain(t *testing.T) {
 	r.pr(42, "the io's own", "open", "2026-09-01T00:00:00Z", "abc").selfOpened = true
 	r.issue(7, "an issue", "open", "2026-09-01T00:00:00Z")
 	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-io")
+	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
 	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
 	pass := func() {
 		t.Helper()
@@ -420,7 +420,7 @@ func TestAPullRequestWaitsForItsBranch(t *testing.T) {
 	repo := f.repo("signadot/verse")
 	repo.missingHeads = map[string]bool{"verse/candidate/aaaa": true}
 	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-io")
+	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
 	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
 	entitytest.Set(t, store, entity.RefAt("github", "signadot", "verse", "out", "candidate"), entity.Obj{
 		"to": "branch.verse/candidate/aaaa", "open": entity.Obj{"base": "verse/live", "title": "charters: aaaa"},
@@ -455,7 +455,7 @@ func TestAnOpenInputPutsACommitStatusOnThePullRequestsHead(t *testing.T) {
 	f := newFake()
 	f.repo("signadot/verse")
 	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-io")
+	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
 	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
 	ref := entity.RefAt("github", "signadot", "verse", "out", "candidate")
 	in := entity.Obj{
@@ -536,7 +536,7 @@ func TestARefusedCommitStatusLeavesTheRestOfTheInput(t *testing.T) {
 	repo := f.repo("signadot/verse")
 	repo.statusesForbidden = true
 	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-io")
+	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
 	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
 	ref := entity.RefAt("github", "signadot", "verse", "out", "candidate")
 	in := entity.Obj{
@@ -597,7 +597,7 @@ func TestAnOpenInputFilesAnIssue(t *testing.T) {
 	f := newFake()
 	f.repo("signadot/verse")
 	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-io")
+	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
 	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
 	ref := entity.RefAt("github", "signadot", "verse", "out", "install-failed")
 	in := entity.Obj{"to": "issue", "open": entity.Obj{"title": "charters: the install of aaaa failed", "body": "exit status 1"}}

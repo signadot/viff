@@ -61,7 +61,7 @@ The rules of the grammar:
 |---|---|
 | `<kind>:<id>` | the principal named exactly that, and anything installed that acts as them |
 | `<kind>:*` | any principal of the kind, and anything installed that acts as one |
-| `via:<address>` | the installed thing at that address and nothing else. It does not admit the thing's owner. A trailing `*` covers what acts beneath (`via:verse.io.*`). Only a rule, an iod or a resolver is named this way. A runner acts as `runner:<identity>`. |
+| `via:<address>` | the installed thing at that address and nothing else. It does not admit the thing's owner. A trailing `*` covers what acts beneath (`via:verse.iod.*`). Only a rule, an iod or a resolver is named this way. A runner acts as `runner:<identity>`. |
 | `group:<name>` | the group's members, each matched as above. A member may be another group, and verse follows it. Verse does not enter a group it already met on the walk, so groups that name each other do not loop. They admit exactly the members found along the walk. |
 | `audience:<address>` | whoever holds, at the address, the level this grantee is listed under: in `read`, whoever may read the address, and in `read-write`, whoever may write it. It is allowed in `read` and `read-write` only, since owning a place is not owning what is about it. Verse follows it one address deep: an `audience:` met while answering another admits nobody. It is never a principal. |
 | `answering:<address>` | whoever holds `answer` at the address: the resolvers answering for a person at `verse.for.<person>`, or for a place. It is allowed in `read` only. An ask's `read` names `answering:` for each of its parties, so the resolvers serving it can read it. Verse follows it one address deep, as it does `audience:`. It is never a principal. |
@@ -392,7 +392,7 @@ system identified: the Slack member who typed an answer, or the GitHub login who
 Verse admits such a request as the person when all of these hold, in order:
 
 1. The bearer verifies as an iod.
-2. That iod is in the provider's `ios` (`auth.principal.providers.<provider>.ios`): the deployment
+2. That iod is in the provider's `iods` (`auth.principal.providers.<provider>.iods`): the deployment
    said this iod's word counts for that provider's accounts, and for nobody else's.
 3. The request names the account, `Verse-For-Principal: <provider>:<id>`, beside the person's name in
    `Verse-Principal`. The account is what the iod saw; the name is who it concluded.
@@ -475,7 +475,7 @@ rewrite what they own.
   - A nonce nobody claimed binds nobody.
 - **Trusted iods.** Verse reads a comment only under the root of an iod the deployment trusts,
   and only an iod the deployment trusts relays a person. The deployment names a provider's iods
-  in its config, `auth.principal.providers.<provider>.ios`. At every start verse writes each list
+  in its config, `auth.principal.providers.<provider>.iods`. At every start verse writes each list
   to `verse.identity.<provider>.trust`, where anyone can read it. Nothing else writes it. Where no
   iod is trusted for `github`, a claim and a verify are refused with 409.
 - **One account is one principal.** Proving an account that is bound to somebody else is refused

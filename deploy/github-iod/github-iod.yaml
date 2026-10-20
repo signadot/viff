@@ -17,14 +17,14 @@
 #
 # Install it once the pods are up (the name must match `githubIOName`, because the hint url
 # below carries it):
-#   verse io add repos http://github-io:9801 -root github
+#   verse iod add repos http://github-iod:9801 -root github
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: github-io
+  name: github-iod
   labels:
     app: verse
-    tier: io
+    tier: iod
     io: github
 spec:
   replicas: 1
@@ -36,17 +36,17 @@ spec:
   selector:
     matchLabels:
       app: verse
-      tier: io
+      tier: iod
       io: github
   template:
     metadata:
       labels:
         app: verse
-        tier: io
+        tier: iod
         io: github
     spec:
       containers:
-      - name: github-io
+      - name: github-iod
         image: signadot/verse:latest
         command:
         - iod
@@ -86,15 +86,15 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: github-io
+  name: github-iod
   labels:
     app: verse
-    tier: io
+    tier: iod
     io: github
 spec:
   selector:
     app: verse
-    tier: io
+    tier: iod
     io: github
   ports:
   - name: source
@@ -111,20 +111,20 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: github-io
+  name: github-iod
   labels:
     app: verse
-    tier: io
+    tier: iod
     io: github
 spec:
   rules:
-  - host: github-io.example.com
+  - host: github-iod.example.com
     http:
       paths:
       - path: /github/webhook
         pathType: Prefix
         backend:
           service:
-            name: github-io
+            name: github-iod
             port:
               number: 9801

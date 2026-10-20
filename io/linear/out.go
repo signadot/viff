@@ -49,7 +49,7 @@ func (l *Linear) Sink() *Sink { return &Sink{l: l, now: time.Now} }
 // what somebody asked for.
 //
 // ONE PER TEAM rather than one for the connector, because a claim is what keeps two installs from
-// writing the same slice: two Linear ios over different teams would both claim `linear.out` and be
+// writing the same slice: two Linear iods over different teams would both claim `linear.out` and be
 // refused as overlapping, while `linear.ENG.out` and `linear.OPS.out` are as disjoint as the teams
 // they belong to.
 func (l *Linear) OutRefs() []entity.Ref {

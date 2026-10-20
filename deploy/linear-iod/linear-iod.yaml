@@ -11,14 +11,14 @@
 #
 # Install it once the pods are up (the name must match `linearIOName`, because the hint url
 # below carries it):
-#   verse io add teams http://linear-io:9801 -root linear
+#   verse iod add teams http://linear-iod:9801 -root linear
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: linear-io
+  name: linear-iod
   labels:
     app: verse
-    tier: io
+    tier: iod
     io: linear
 spec:
   replicas: 1
@@ -28,17 +28,17 @@ spec:
   selector:
     matchLabels:
       app: verse
-      tier: io
+      tier: iod
       io: linear
   template:
     metadata:
       labels:
         app: verse
-        tier: io
+        tier: iod
         io: linear
     spec:
       containers:
-      - name: linear-io
+      - name: linear-iod
         image: signadot/verse:latest
         command:
         - iod
@@ -78,15 +78,15 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: linear-io
+  name: linear-iod
   labels:
     app: verse
-    tier: io
+    tier: iod
     io: linear
 spec:
   selector:
     app: verse
-    tier: io
+    tier: iod
     io: linear
   ports:
   - name: source
@@ -100,20 +100,20 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: linear-io
+  name: linear-iod
   labels:
     app: verse
-    tier: io
+    tier: iod
     io: linear
 spec:
   rules:
-  - host: linear-io.example.com
+  - host: linear-iod.example.com
     http:
       paths:
       - path: /linear/webhook
         pathType: Prefix
         backend:
           service:
-            name: linear-io
+            name: linear-iod
             port:
               number: 9801

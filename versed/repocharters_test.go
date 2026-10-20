@@ -160,10 +160,10 @@ func TestTheReconcilerInstallsForARepositoryCalledVerse(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	for _, io := range []map[string]any{
-		{"name": "git", "root": "git", "url": "http://git-io:9801", "owns": []any{map[string]any{"at": "git.verse"}},
-			"out": map[string]any{"places": []any{"git.verse.out"}, "as": "agent:git-io"}},
-		{"name": "github", "root": "github", "url": "http://github-io:9801", "owns": []any{map[string]any{"at": "github.signadot.verse"}},
-			"out": map[string]any{"places": []any{"github.signadot.verse.out"}, "as": "agent:github-io"}},
+		{"name": "git", "root": "git", "url": "http://git-iod:9801", "owns": []any{map[string]any{"at": "git.verse"}},
+			"out": map[string]any{"places": []any{"git.verse.out"}, "as": "agent:git-iod"}},
+		{"name": "github", "root": "github", "url": "http://github-iod:9801", "owns": []any{map[string]any{"at": "github.signadot.verse"}},
+			"out": map[string]any{"places": []any{"github.signadot.verse.out"}, "as": "agent:github-iod"}},
 	} {
 		resp := installIO(t, ts, "user:"+tester, io)
 		resp.Body.Close()
@@ -197,10 +197,10 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 
 	// The git io and the github io, as registered on a deployment.
 	for _, io := range []map[string]any{
-		{"name": "git", "root": "git", "url": "http://git-io:9801", "owns": []any{map[string]any{"at": "git.r"}},
-			"out": map[string]any{"places": []any{"git.r.out"}, "as": "agent:git-io"}},
-		{"name": "github", "root": "github", "url": "http://github-io:9801", "owns": []any{map[string]any{"at": "github.signadot.r"}},
-			"out": map[string]any{"places": []any{"github.signadot.r.out"}, "as": "agent:github-io"}},
+		{"name": "git", "root": "git", "url": "http://git-iod:9801", "owns": []any{map[string]any{"at": "git.r"}},
+			"out": map[string]any{"places": []any{"git.r.out"}, "as": "agent:git-iod"}},
+		{"name": "github", "root": "github", "url": "http://github-iod:9801", "owns": []any{map[string]any{"at": "github.signadot.r"}},
+			"out": map[string]any{"places": []any{"github.signadot.r.out"}, "as": "agent:github-iod"}},
 	} {
 		resp := installIO(t, ts, "user:"+tester, io)
 		resp.Body.Close()
@@ -215,14 +215,14 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 		t.Fatal(err)
 	}
 	installCharter(t, ts, "repo-charters.r", string(charter))
-	// The outboxes the install holds out to the ios are the places the rules derive into: an
+	// The outboxes the install holds out to the iods are the places the rules derive into: an
 	// io reads what it is sent from exactly there, and a declaration that named another place
 	// would leave every input unread (the trial found that one).
 	for place, wants := range map[string][]string{
 		"git.r.out":             {"repo-charters.r.install", "repo-charters.r.check", "repo-charters.r.out.git"},
 		"github.signadot.r.out": {"repo-charters.r.out.github"},
 	} {
-		io := map[string]string{"git.r.out": "agent:git-io", "github.signadot.r.out": "agent:github-io"}[place]
+		io := map[string]string{"git.r.out": "agent:git-iod", "github.signadot.r.out": "agent:github-iod"}[place]
 		req, err := http.NewRequest(http.MethodGet, ts.URL+"/outboxes?to="+place+"&format=tony", nil)
 		if err != nil {
 			t.Fatal(err)
@@ -259,7 +259,7 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	}
 	answer := func(qid, choice string) { answerSaying(qid, choice, "") }
 
-	// 1. A tree on main: a candidate and its question; nothing asked of the ios yet, and no pull
+	// 1. A tree on main: a candidate and its question; nothing asked of the iods yet, and no pull
 	// request, since verse/live does not stand.
 	mainAt(t, srv, sha(1), treeA)
 	cand := entity.RefAt("repo-charters", "r", "candidate", treeA)
@@ -687,7 +687,7 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	waitQuestionID(t, srv, qidL)
 	prAt(t, srv, 13, strings.Repeat("8", 40), "")
 	time.Sleep(200 * time.Millisecond)
-	if resp := postAs(t, "agent:git-io", ts.URL+answerPath(qidL), "application/tony", "{choice: obsolete}"); resp.StatusCode/100 != 2 {
+	if resp := postAs(t, "agent:git-iod", ts.URL+answerPath(qidL), "application/tony", "{choice: obsolete}"); resp.StatusCode/100 != 2 {
 		t.Fatalf("the git io's obsolete answer = %s: %s", resp.Status, readBody(t, resp))
 	}
 	candL := entity.RefAt("repo-charters", "r", "candidate", treeL)

@@ -292,7 +292,7 @@ dials.
 
 | Route | What it answers |
 |---|---|
-| `GET /io` | `{root, owns}`: what the program is. `verse io add` and `verse io check` ask it. |
+| `GET /io` | `{root, owns}`: what the program is. `verse iod add` and `verse iod check` ask it. |
 | `GET /reflect[?at=<address>]` | a `Reflection`. With no `at`, the answer is for everything the iod owns. `iod` answers `500` when `Reflect` returns an error. |
 
 Verse asks for a full reflection when you install the iod, and again every minute. The iod
@@ -320,20 +320,20 @@ go run ./docs/reference/examples/io -addr 127.0.0.1:9811 -repo verse=.
 Then install the iod, check it, and read what it reflected.
 
 ```sh
-verse io add sample http://127.0.0.1:9811 -root git
-verse io check sample
+verse iod add sample http://127.0.0.1:9811 -root git
+verse iod check sample
 verse data git verse head
 ```
 
 ```
-at: verse.io.sample
+at: verse.iod.sample
 owns:
 - at: git.verse
 reach: "a source"
 ```
 
 ```
-at: verse.io.sample
+at: verse.iod.sample
 reach: "a source"
 says:
   owns:
@@ -376,7 +376,7 @@ reflection on the wire.
    claim of every installed iod in the same scope. It refuses an install that it cannot prove
    separate, with `409` and both claims in the message.
 4. **The root you name is the root the iod says.** Verse refuses
-   `verse io add … -root github` for the sample with `400`, because the sample says `git`.
+   `verse iod add … -root github` for the sample with `400`, because the sample says `git`.
 5. **A reflection passes `Reflection.Check`.** Verse runs the check before it writes
    anything, and it refuses the whole answer for one fault.
 

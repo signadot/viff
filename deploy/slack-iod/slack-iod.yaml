@@ -13,14 +13,14 @@
 #
 # Install it once the pods are up (the name must match `slackIOName`, because the hint url
 # below carries it):
-#   verse io add workspace http://slack-io:9801 -root slack
+#   verse iod add workspace http://slack-iod:9801 -root slack
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: slack-io
+  name: slack-iod
   labels:
     app: verse
-    tier: io
+    tier: iod
     io: slack
 spec:
   replicas: 1
@@ -30,17 +30,17 @@ spec:
   selector:
     matchLabels:
       app: verse
-      tier: io
+      tier: iod
       io: slack
   template:
     metadata:
       labels:
         app: verse
-        tier: io
+        tier: iod
         io: slack
     spec:
       containers:
-      - name: slack-io
+      - name: slack-iod
         image: signadot/verse:latest
         command:
         - iod
@@ -85,15 +85,15 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: slack-io
+  name: slack-iod
   labels:
     app: verse
-    tier: io
+    tier: iod
     io: slack
 spec:
   selector:
     app: verse
-    tier: io
+    tier: iod
     io: slack
   ports:
   - name: source
@@ -107,20 +107,20 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: slack-io
+  name: slack-iod
   labels:
     app: verse
-    tier: io
+    tier: iod
     io: slack
 spec:
   rules:
-  - host: slack-io.example.com
+  - host: slack-iod.example.com
     http:
       paths:
       - path: /slack/events
         pathType: Prefix
         backend:
           service:
-            name: slack-io
+            name: slack-iod
             port:
               number: 9801

@@ -15,7 +15,7 @@ import (
 
 // The git source, served rather than run in task.
 //
-// verse can already reflect a local repository with `verse io add --dir`, and that path is
+// verse can already reflect a local repository with `verse iod add --dir`, and that path is
 // not going anywhere. This is for the two cases it cannot reach: a repository on a machine
 // verse is not running on, and a repository that does not exist yet where the source lives —
 // which is every pod, and is what -mirror answers.

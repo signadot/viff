@@ -42,7 +42,7 @@ func sourceFace(t *testing.T, repo string) *httptest.Server {
 	return srv
 }
 
-// `verse io add` reaches the route, through the client the way a person types it.
+// `verse iod add` reaches the route, through the client the way a person types it.
 //
 // This test exists for the reason the runner's does: every other test of this feature drives
 // the HTTP layer directly, so all of them can pass while the command an operator would run
@@ -55,11 +55,11 @@ func TestSourceAddThroughTheClient(t *testing.T) {
 	store := serve(t)
 	face := sourceFace(t, "verse")
 
-	out, err := runCLI(t, "io", "add", "--root", "git", "laptop", face.URL)
+	out, err := runCLI(t, "iod", "add", "--root", "git", "laptop", face.URL)
 	if err != nil {
 		t.Fatalf("io add: %v", err)
 	}
-	if !strings.Contains(out, "verse.io.laptop") {
+	if !strings.Contains(out, "verse.iod.laptop") {
 		t.Fatalf("add printed %q, want the ref it installed", out)
 	}
 	// The probe ran and said what it found — the half of `add` that only happens on the way
@@ -72,15 +72,15 @@ func TestSourceAddThroughTheClient(t *testing.T) {
 	}
 
 	// It is listed, shown, and checked by the same address the operator typed.
-	if out, err := runCLI(t, "ios"); err != nil || !strings.Contains(out, "verse.io.laptop") {
+	if out, err := runCLI(t, "iods"); err != nil || !strings.Contains(out, "verse.iod.laptop") {
 		t.Fatalf("sources = %q (%v)", out, err)
 	}
-	if out, err := runCLI(t, "io", "show", "laptop"); err != nil ||
+	if out, err := runCLI(t, "iod", "show", "laptop"); err != nil ||
 		!strings.Contains(out, face.URL) {
 		t.Fatalf("source show = %q (%v)", out, err)
 	}
 	// check asks it NOW, and reports what it says beside what was recorded.
-	if out, err := runCLI(t, "io", "check", "verse.io.laptop"); err != nil ||
+	if out, err := runCLI(t, "iod", "check", "verse.iod.laptop"); err != nil ||
 		!strings.Contains(out, "a source") {
 		t.Fatalf("source check = %q (%v)", out, err)
 	}
@@ -88,10 +88,10 @@ func TestSourceAddThroughTheClient(t *testing.T) {
 	// the way a person types them — the half of a command that is silently unreachable when the
 	// client builds its request wrongly.
 	waitForCLI(t, store, entity.RefAt(verseio.GitRoot, "verse", "head"))
-	if _, err := runCLI(t, "io", "remove", "laptop"); err == nil {
+	if _, err := runCLI(t, "iod", "remove", "laptop"); err == nil {
 		t.Fatal("a bare remove with a reflected slice should be refused")
 	}
-	if _, err := runCLI(t, "io", "remove", "--keep", "laptop"); err != nil {
+	if _, err := runCLI(t, "iod", "remove", "--keep", "laptop"); err != nil {
 		t.Fatalf("source remove --keep: %v", err)
 	}
 	if payloadOf(t, store, verseio.Ref("verse")) != nil {
@@ -113,11 +113,11 @@ func TestSourceAddFlagsThroughTheClient(t *testing.T) {
 	// --no-probe installs something that is not a source, because nothing asked.
 	dead := httptest.NewServer(http.NotFoundHandler())
 	defer dead.Close()
-	if _, err := runCLI(t, "io", "add", "--no-probe", "--root", "git", "blind", dead.URL); err != nil {
+	if _, err := runCLI(t, "iod", "add", "--no-probe", "--root", "git", "blind", dead.URL); err != nil {
 		t.Fatalf("--no-probe should install without asking: %v", err)
 	}
 	// Without it, the same url is refused.
-	if _, err := runCLI(t, "io", "add", "git:seeing", dead.URL); err == nil {
+	if _, err := runCLI(t, "iod", "add", "git:seeing", dead.URL); err == nil {
 		t.Fatal("a url that answers and is not a source should be refused")
 	}
 
@@ -142,7 +142,7 @@ func TestSourceAddDirThroughTheClient(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
-	out, err := runCLI(t, "io", "add", "--dir", dir, "local")
+	out, err := runCLI(t, "iod", "add", "--dir", dir, "local")
 	if err != nil {
 		t.Fatalf("--dir: %v", err)
 	}
@@ -167,8 +167,8 @@ func TestSourceAddFromAFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte(doc), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := runCLI(t, "io", "add", "--file", path); err != nil ||
-		!strings.Contains(out, "verse.io.laptop") {
+	if out, err := runCLI(t, "iod", "add", "--file", path); err != nil ||
+		!strings.Contains(out, "verse.iod.laptop") {
 		t.Fatalf("io add --file = %q (%v)", out, err)
 	}
 
@@ -177,7 +177,7 @@ func TestSourceAddFromAFile(t *testing.T) {
 	if err := os.WriteFile(bad, []byte("name: b\nroot: git\nulr: \"http://x:1\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := runCLI(t, "io", "add", "--file", bad)
+	_, err := runCLI(t, "iod", "add", "--file", bad)
 	if err == nil {
 		t.Fatal("`ulr:` should be named, not dropped")
 	}

@@ -74,7 +74,7 @@ func TestWireFmtKeepsAWritableInputFormat(t *testing.T) {
 var collections = map[string]string{
 	"question": "questions", "task": "tasks",
 	"flow": "flows", "charter": "charters",
-	"resolver": "resolvers", "runner": "runners", "io": "ios",
+	"resolver": "resolvers", "runner": "runners", "iod": "iods",
 }
 
 // A collection is ONE command, named in the singular, and bare it lists. The plural is an

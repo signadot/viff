@@ -52,7 +52,7 @@ func (s *Server) setPackageSends(store entity.Store, installer, at string, sends
 		e, ok := ioFor(s.Store, send.To)
 		if !ok {
 			return fmt.Errorf("sends: %s is no io's out place — an outbox sends to a place a "+
-				"registered io reads (`verse io` lists them, with their `out.places`)", send.To)
+				"registered io reads (`verse iod` lists them, with their `out.places`)", send.To)
 		}
 		readers[i] = e.Out.As
 	}

@@ -36,7 +36,7 @@ type Resolution struct {
 	// Via is the party an answer came through, where By is whose answer it is. A resolver
 	// answering for a party it serves (9ce3bva0, stage 4), `via:verse.resolvers.<name>`: the
 	// ballot is the party's, given by the resolver they granted, and nothing authenticated them.
-	// Or an io relaying a person it identified, `agent:slack-io`: the ballot is the person's, who
+	// Or an io relaying a person it identified, `agent:slack-iod`: the ballot is the person's, who
 	// the io's provider vouched for, and Authenticated says so. Empty for an answer somebody gave
 	// as themselves. The two read apart by Authenticated.
 	Via string

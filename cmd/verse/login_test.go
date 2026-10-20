@@ -33,7 +33,7 @@ func serveLogin(t *testing.T, device bool) (entity.Store, *idptest.Logins) {
 	return serveLoginWith(t, device, false)
 }
 
-// serveLoginWith is serveLogin, with a github provider that names ios beside the issuer when asked.
+// serveLoginWith is serveLogin, with a github provider that names iods beside the issuer when asked.
 func serveLoginWith(t *testing.T, device, withIOs bool) (entity.Store, *idptest.Logins) {
 	t.Helper()
 	idp := idptest.New(t)
@@ -53,7 +53,7 @@ func serveLoginWith(t *testing.T, device, withIOs bool) (entity.Store, *idptest.
 	cfg := filepath.Join(t.TempDir(), "verse.tony")
 	body := "auth:\n  principal:\n    providers:\n      corp:\n        issuer: \"" + idp.URL + "\"\n        clientId: " + loginClient + "\n"
 	if withIOs {
-		body += "      github:\n        ios: [gh]\n"
+		body += "      github:\n        iods: [gh]\n"
 	}
 	if err := os.WriteFile(cfg, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
@@ -206,15 +206,15 @@ func TestALoginByAuthorizationCode(t *testing.T) {
 	}
 }
 
-// A provider that names the ios it trusts and no issuer is nobody's to log in to: a bare
+// A provider that names the iods it trusts and no issuer is nobody's to log in to: a bare
 // `verse account login` picks the one issuer beside it, and naming it is refused plainly.
 func TestOnlyAnIssuerIsAProviderToLogInTo(t *testing.T) {
-	serveLoginWith(t, false, true) // corp, the issuer, beside github, which has ios alone
+	serveLoginWith(t, false, true) // corp, the issuer, beside github, which has iods alone
 	if out, err := runLogin(t, "account", "login"); err != nil || !strings.Contains(out, "as user:ana@example.com (corp)") {
 		t.Fatalf("a bare login with one issuer = %q, %v", out, err)
 	}
 	if _, err := runLogin(t, "account", "login", "github"); err == nil || !strings.Contains(err.Error(), "nobody's to log in to") {
-		t.Errorf("logging in to an ios-only provider: err = %v, want a plain refusal", err)
+		t.Errorf("logging in to an iods-only provider: err = %v, want a plain refusal", err)
 	}
 }
 
@@ -379,7 +379,7 @@ func TestLoginLinkClaimsAnAccountAnIoProves(t *testing.T) {
 	t.Cleanup(ts.Close)
 	testAddr = strings.TrimPrefix(ts.URL, "http://")
 	cfg := filepath.Join(t.TempDir(), "verse.tony")
-	body := "auth: {principal: {providers: {slack: {ios: [workspace]}, github: {ios: [gh]}}}}\n"
+	body := "auth: {principal: {providers: {slack: {iods: [workspace]}, github: {iods: [gh]}}}}\n"
 	if err := os.WriteFile(cfg, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -403,7 +403,7 @@ func TestLoginLinkClaimsAnAccountAnIoProves(t *testing.T) {
 	}
 	// Nothing to log in to: the provider is nobody's issuer.
 	if _, err := runLogin(t, "account", "login", "slack"); err == nil || !strings.Contains(err.Error(), "no issuer") {
-		t.Errorf("login at an ios provider: %v", err)
+		t.Errorf("login at an iods provider: %v", err)
 	}
 }
 
