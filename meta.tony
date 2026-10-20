@@ -6,7 +6,9 @@ commits: []
 created: "2026-10-20T18:30:36.086547+02:00"
 duplicates: []
 id: 124bdajwh12krb4qtxn0
-labels: []
+labels:
+- defect
+- runner
 related_issues: []
 status: open
-updated: "2026-10-20T18:30:36.086547+02:00"
+updated: "2026-10-20T18:30:36.180947+02:00"
