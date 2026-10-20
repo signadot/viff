@@ -79,7 +79,7 @@ which addresses went stale. Without `-hint-url`, the iod verifies each delivery 
 it. Only the full reflection of every minute then
 [converges](../glossary.md#converge) the store.
 
-**`-root`** belongs to the operator who deploys the io. It separates two iods more coarsely
+**`-root`** belongs to the operator who deploys the iod. It separates two iods more coarsely
 than `owns` does. `owns` is the list of the [claims](../glossary.md#claim-of-an-iod) of an iod:
 the patterns that name what only that iod may write.
 
@@ -130,7 +130,7 @@ iod git -repo   [<id>=]<dir>    a repository already on disk (repeatable, comma-
 **`-repo`** is for a machine that already has the repository. Verse can also reflect a local
 repository with no program at all: `verse iod add -dir`.
 
-**`-mirror`** is for a deployed io. A
+**`-mirror`** is for a deployed iod. A
 [mirror](../glossary.md#mirror-of-a-git-repository) is a copy of a remote repository, kept
 fetched. A pod has no repositories, so the iod clones the remote at startup and fetches it at
 every reflection.
@@ -947,7 +947,7 @@ is looked up for who they are ([accounts in other systems](perms.md#accounts-in-
 and the answer is made as that person with the account beside it, which a verse that verifies
 people admits through the binding and records on the ballot
 ([a person relayed by a trusted iod](perms.md#a-person-relayed-by-a-trusted-iod)). It is never
-made as the io. An author verse does not know, or a command naming no option the question
+made as the iod. An author verse does not know, or a command naming no option the question
 offers, is told so in one reply and not again. A reply that says `/verse link <nonce>` on a line
 of its own is the author proving the account is theirs (`verse account -link github -account
 <login>` printed it): the iod reports to the verse, as itself, that this account said it
@@ -1124,7 +1124,7 @@ the claim against what already stands in the store.
 
 ### The root is a flag
 
-Operators deploy more than one io. Whoever runs the iods decides how to divide the work
+Operators deploy more than one iod. Whoever runs the iods decides how to divide the work
 between them: by credential, by budget, or by which repositories are busy. That division has
 no reason to follow the way the external system is organised.
 
@@ -1208,7 +1208,7 @@ with five options is five ids in a row.
 
 ### How much of a reply is read
 
-People talk under the messages of the io. No reading of their sentences may let a
+People talk under the messages of the iod. No reading of their sentences may let a
 conversation answer a question by accident. So a reply to the thread must say an option, in
 one word.
 

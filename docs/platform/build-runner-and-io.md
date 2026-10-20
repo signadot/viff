@@ -1,6 +1,6 @@
 # Build a runner and an iod
 
-This page has two recipes for a developer who extends verse: a runner and an io.
+This page has two recipes for a developer who extends verse: a runner and an iod.
 
 Each recipe needs a verse on your own machine, started as
 [Before you start](../build.md#before-you-start) says.

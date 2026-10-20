@@ -110,8 +110,8 @@ The tutorial has four pages, one for each part of verse: data, questions, tasks 
   whoever runs it. Its `match` says which asks it watches; a person or a place's owner on record
   grants it to answer for them, and its answer is then theirs. To consult somebody it raises an
   onward ask, whose answer comes back as its own.
-- `io/` and `cmd/iod/` — the connection to an external system. An *io* has two halves: it
-  reflects state in, and it acts out. You deploy an io and install it (`verse iod add`). It
+- `io/` and `cmd/iod/` — the connection to an external system. An *iod* has two halves: it
+  reflects state in, and it acts out. You deploy an iod and install it (`verse iod add`). It
   owns a place in the store, such as `git`, and rules react to that place. Verse ships five
   (`iod git|git-issue|slack|linear|github`). To write another, copy the sample program and
   write one function.
@@ -131,7 +131,7 @@ The tutorial has four pages, one for each part of verse: data, questions, tasks 
 ## Docs
 
 [docs/](docs/README.md) is the index. It groups the pages by who reads them: somebody
-running a verse, writing a charter, building a runner or an io, or changing verse itself. It
+running a verse, writing a charter, building a runner or an iod, or changing verse itself. It
 describes what runs today, and so does the site mkdocs builds from it. Start with:
 
 - [Overview](docs/overview.md) — the architecture, the model, the seams, and the decisions

@@ -273,7 +273,7 @@ auth:
       ([a person relayed by a trusted iod](perms.md#a-person-relayed-by-a-trusted-iod)). GitHub
       is no issuer for people, so `github` is always of this kind.
 - `domains` are the email domains a person may arrive from the first time, through a token or
-  relayed by a trusted io. With none, only an account that is already bound is admitted.
+  relayed by a trusted iod. With none, only an account that is already bound is admitted.
 - `acts`, on a provider with iods, is what a trusted iod may do as a person it relays: `control`
   (unset), the reads and the acts that answer, say and steer, which is all an iod does; or `any`.
 

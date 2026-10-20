@@ -211,7 +211,7 @@ The reasons are in [Why it is this way](#why-it-is-this-way).
 
 `io.HTTP` is the client that verse drives an iod with. `runnerd` uses the same pattern, for the
 same reason. `io.Git` behind `iod` *is* the sample external io. The same value behind the
-reflector of verse is the built-in io. So a deployed iod has no privileged local path to differ
+reflector of verse is the built-in iod. So a deployed iod has no privileged local path to differ
 from.
 
 **Three ways to reach an iod, and one contract.** A registration carries exactly one of these:

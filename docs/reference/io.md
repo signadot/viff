@@ -1,6 +1,6 @@
 # Iods
 
-This page is the surface of an io. For what an iod *is* (one program, two halves, and which side
+This page is the surface of an iod. For what an iod *is* (one program, two halves, and which side
 dials each half), see [../io.md](../io.md). To build one, copy
 [examples/io](examples/io/main.go).
 
@@ -16,7 +16,7 @@ An [iod](../glossary.md#iod) is an entity at `verse.iods.<name>`:
 | `owns` | the addresses this iod claims to be the single writer of (see below) |
 | `out` | its out half: where it reads what is asked of it, whom it acts as, and who may ask (see below) |
 | `scope` | the copy-on-write scope it reflects into. Empty is baseline |
-| `lastReflect` | when verse last *wrote* from this io. Verse writes it |
+| `lastReflect` | when verse last *wrote* from this iod. Verse writes it |
 | `lastError` | the last failure of the reflection. The next success clears it. Verse writes it |
 
 The first four rows and `lastReflect` belong to the in half, the
@@ -33,7 +33,7 @@ connector apart by the names the operator gave them.
 
 `root` answers the question that verse asks of a registration: who writes `git.*`? The root is
 one segment of an address. So it may not contain `:`, `/` or `.`. A name may not contain `/`,
-because a name is a segment of the route that serves the io.
+because a name is a segment of the route that serves the iod.
 
 **The convention is to name an iod after its connector**, such as `git`, `git-issue` or `slack`.
 Most verses run one iod of each kind. A name that says no more than `root` says would be a second
@@ -218,7 +218,7 @@ The `path` of a [cover](../glossary.md#cover-of-a-reflection) is a pattern. It h
 per level, and `*` matches any one segment. The path is also what converge **reads**: the refs
 under `git.verse.ref` and the node `git.verse.head`, not all of `git`.
 
-The first segment of a cover is a literal, and it is the `root` of this io. A cover that begins
+The first segment of a cover is a literal, and it is the `root` of this iod. A cover that begins
 with `*` would claim every address it is compared against, so verse refuses it.
 
 A cover may add `value`, a payload predicate. Use it where an address alone cannot say what the
