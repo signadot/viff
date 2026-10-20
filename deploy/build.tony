@@ -159,9 +159,9 @@ build:
     runnerImage: "signadot/verse-runner:latest"
     # The codex runner beside it: the same runner in an image with Codex in it, offering the codex
     # agent, with its own credential (the verse-codex Secret, created by hand). Installing it is
-    # `verse runner add codex http://codexrunner:9802`.
-    codexrunner: false
-    codexrunnerImage: "signadot/verse-runner:codex"
+    # `verse runner add codex http://codex-runner:9802`.
+    codexRunner: false
+    codexRunnerImage: "signadot/verse-runner:codex"
 
     # ── Sources: what reflects an external system into the verse ──────────────
     #
@@ -317,8 +317,8 @@ build:
     dir: github-io
   - if: '.[runner]'
     dir: verse-runner
-  - if: '.[codexrunner]'
-    dir: codexrunner
+  - if: '.[codexRunner]'
+    dir: codex-runner
 
   patches:
   # The Namespace object's own name.
@@ -882,29 +882,29 @@ build:
               imagePullPolicy: $[imagePullPolicy]
 
   # The codex runner's image, the same way.
-  - if: '.[codexrunner]'
+  - if: '.[codexRunner]'
     match:
       kind: Deployment
       metadata:
-        name: codexrunner
+        name: codex-runner
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: codexrunner
-              image: $[codexrunnerImage]
-  - if: '.[ codexrunner && imagePullPolicy != "" ]'
+            - name: codex-runner
+              image: $[codexRunnerImage]
+  - if: '.[ codexRunner && imagePullPolicy != "" ]'
     match:
       kind: Deployment
       metadata:
-        name: codexrunner
+        name: codex-runner
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: codexrunner
+            - name: codex-runner
               imagePullPolicy: $[imagePullPolicy]
 
   # The source connectors. One image, three roles: these run `iod`, versed runs `verse`,

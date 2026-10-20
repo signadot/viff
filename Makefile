@@ -22,7 +22,7 @@ PUSH_IMAGE?= $(REGISTRY)/$(NAME):$(TAG)     # registry ref for `make push`
 IMAGE_ARCH?= $(GOARCH)
 
 RUNNER_IMAGE     ?= $(REGISTRY)/verse-runner:$(TAG)         # the verse runner, its own image (deploy/verse-runner)
-CODEXRUNNER_IMAGE ?= $(REGISTRY)/verse-runner:codex-$(TAG)  # the verse runner with Codex in it (deploy/codexrunner)
+CODEX_RUNNER_IMAGE ?= $(REGISTRY)/verse-runner:codex-$(TAG)  # the verse runner with Codex in it (deploy/codex-runner)
 
 DIST := dist
 
@@ -101,14 +101,14 @@ runner-push: runner-docker ## build + push $(RUNNER_IMAGE)
 # The codex runner: the verse runner image plus a pinned Codex, for the codex agent. A tag in
 # the runner's repository rather than a repository of its own, for the reason the comment above
 # gives.
-.PHONY: codexrunner-docker
-codexrunner-docker: runner-linux ## build the codex runner image (verse runner + Codex)
+.PHONY: codex-runner-docker
+codex-runner-docker: runner-linux ## build the codex runner image (verse runner + Codex)
 	$(DOCKER) build --platform linux/$(IMAGE_ARCH) --build-arg TARGETARCH=$(IMAGE_ARCH) \
-	  -t $(CODEXRUNNER_IMAGE) -f deploy/codexrunner/Dockerfile .
+	  -t $(CODEX_RUNNER_IMAGE) -f deploy/codex-runner/Dockerfile .
 
-.PHONY: codexrunner-push
-codexrunner-push: codexrunner-docker ## build + push $(CODEXRUNNER_IMAGE)
-	$(DOCKER) push $(CODEXRUNNER_IMAGE)
+.PHONY: codex-runner-push
+codex-runner-push: codex-runner-docker ## build + push $(CODEX_RUNNER_IMAGE)
+	$(DOCKER) push $(CODEX_RUNNER_IMAGE)
 
 .PHONY: load
 load: docker ## build + load the image into minikube (Docker Desktop k8s needs no load)
@@ -138,9 +138,9 @@ ship: ## build+push the images at the current commit and deploy staging at that 
 	@echo "ship: staging → $(STAGING_SHA)"
 	$(MAKE) push IMAGE_ARCH=amd64 PUSH_IMAGE=$(REGISTRY)/verse-staging:$(STAGING_SHA)
 	$(MAKE) runner-push IMAGE_ARCH=amd64 RUNNER_IMAGE=$(REGISTRY)/verse-runner:$(STAGING_SHA)
-	$(MAKE) codexrunner-push IMAGE_ARCH=amd64 CODEXRUNNER_IMAGE=$(REGISTRY)/verse-runner:codex-$(STAGING_SHA)
+	$(MAKE) codex-runner-push IMAGE_ARCH=amd64 CODEX_RUNNER_IMAGE=$(REGISTRY)/verse-runner:codex-$(STAGING_SHA)
 	$(MAKE) deploy PROFILE=staging IMAGE=$(REGISTRY)/verse-staging:$(STAGING_SHA) \
-	  E="-e runnerImage=$(REGISTRY)/verse-runner:$(STAGING_SHA) -e codexrunnerImage=$(REGISTRY)/verse-runner:codex-$(STAGING_SHA)"
+	  E="-e runnerImage=$(REGISTRY)/verse-runner:$(STAGING_SHA) -e codexRunnerImage=$(REGISTRY)/verse-runner:codex-$(STAGING_SHA)"
 
 # ONE TIER AT A TIME, because `ship` above applies all of them in a single kubectl apply and
 # the tiers do not always tolerate rolling together. versed and docd speak logd's session
@@ -154,17 +154,17 @@ ship: ## build+push the images at the current commit and deploy staging at that 
 # can read:
 #
 #   kubectl --context <ctx> -n verse scale deploy/versed --replicas=0
-#   make ship-docd && make ship-versed && make ship-ios && make ship-runner && make ship-codexrunner
+#   make ship-docd && make ship-versed && make ship-ios && make ship-runner && make ship-codex-runner
 #
 # The tier is the `tier` label every object in deploy/ carries, which is what `-l` selects on:
 # docd (the store), versed (the engine and its two Services), source (the connectors), runner
-# (the verse runner, its own image) and codexrunner (the same with Codex in it). An object with
+# (the verse runner, its own image) and codex-runner (the same with Codex in it). An object with
 # no `tier` — the Namespace, the ServiceAccount, the ExternalSecrets — belongs to none of them
 # and is shipped by a full `make deploy`; these targets update a deployment that already exists
 # rather than standing one up.
 SHIP_IMAGE       = $(REGISTRY)/verse-staging:$(STAGING_SHA)
 SHIP_RUNNER      = $(REGISTRY)/verse-runner:$(STAGING_SHA)
-SHIP_CODEXRUNNER = $(REGISTRY)/verse-runner:codex-$(STAGING_SHA)
+SHIP_CODEX_RUNNER = $(REGISTRY)/verse-runner:codex-$(STAGING_SHA)
 
 # ship-clean is `ship`'s dirty-tree refusal, factored out so each tier inherits it: the tag
 # names a commit somebody can check out, and that is no less true when shipping one tier.
@@ -178,22 +178,22 @@ ship-clean:
 # Each image is pushed by tag, and pushing one that is already there is cheap — the layers
 # exist, so it is a manifest check. That is why every tier target pushes rather than trusting
 # a previous one to have: `make ship-versed` alone must be a whole ship.
-.PHONY: ship-push ship-push-runner ship-push-codexrunner
+.PHONY: ship-push ship-push-runner ship-push-codex-runner
 ship-push: ship-clean
 	@echo "ship: staging → $(STAGING_SHA)"
 	$(MAKE) push IMAGE_ARCH=amd64 PUSH_IMAGE=$(SHIP_IMAGE)
 ship-push-runner: ship-clean
 	@echo "ship: staging verse runner → $(STAGING_SHA)"
 	$(MAKE) runner-push IMAGE_ARCH=amd64 RUNNER_IMAGE=$(SHIP_RUNNER)
-ship-push-codexrunner: ship-clean
+ship-push-codex-runner: ship-clean
 	@echo "ship: staging codex runner → codex-$(STAGING_SHA)"
-	$(MAKE) codexrunner-push IMAGE_ARCH=amd64 CODEXRUNNER_IMAGE=$(SHIP_CODEXRUNNER)
+	$(MAKE) codex-runner-push IMAGE_ARCH=amd64 CODEX_RUNNER_IMAGE=$(SHIP_CODEX_RUNNER)
 
 # The apply half, shared: staging's profile, the sha-tagged images, one tier, and block on it.
 SHIP_DEPLOY = $(MAKE) deploy PROFILE=staging WAIT=1 IMAGE=$(SHIP_IMAGE) \
-	  E="-e runnerImage=$(SHIP_RUNNER) -e codexrunnerImage=$(SHIP_CODEXRUNNER)"
+	  E="-e runnerImage=$(SHIP_RUNNER) -e codexRunnerImage=$(SHIP_CODEX_RUNNER)"
 
-.PHONY: ship-docd ship-versed ship-ios ship-runner ship-codexrunner
+.PHONY: ship-docd ship-versed ship-ios ship-runner ship-codex-runner
 ship-docd: ship-push ## ship the store tier alone, and wait for it (roll this FIRST)
 	$(SHIP_DEPLOY) SELECT=tier=docd
 ship-versed: ship-push ## ship the engine alone, and wait for it (after docd)
@@ -202,8 +202,8 @@ ship-ios: ship-push ## ship the io connectors alone, and wait for them
 	$(SHIP_DEPLOY) SELECT=tier=io
 ship-runner: ship-push-runner ## ship the verse runner alone (its own image), and wait for it
 	$(SHIP_DEPLOY) SELECT=tier=runner
-ship-codexrunner: ship-push-codexrunner ## ship the codex runner alone (its own image), and wait for it
-	$(SHIP_DEPLOY) SELECT=tier=codexrunner
+ship-codex-runner: ship-push-codex-runner ## ship the codex runner alone (its own image), and wait for it
+	$(SHIP_DEPLOY) SELECT=tier=codex-runner
 
 # make deploy PROFILE=minikube                     # default SC (no mount)
 # make deploy PROFILE=minikube HOSTPV=true HOSTPATH=/mnt/verse   # host-linked (needs --mount)

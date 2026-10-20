@@ -255,8 +255,8 @@ should be passed the Service name directly rather than discovering it.
 | `issuerDiscoveryOpen` | `false` | let anyone reaching the API server read its OpenID discovery and keys, which versed needs where the cluster itself is the ios' issuer (minikube: on; EKS needs none) |
 | `runner` | `false` | deploy the verse runner (its own image; install it with `verse runner add`) |
 | `runnerImage` | `signadot/verse-runner:latest` | its image ref — a tag in another repository is fine |
-| `codexrunner` | `false` | deploy the codex runner beside it: the verse runner in an image with Codex in it, offering the codex agent |
-| `codexrunnerImage` | `signadot/verse-runner:codex` | its image ref |
+| `codexRunner` | `false` | deploy the codex runner beside it: the verse runner in an image with Codex in it, offering the codex agent |
+| `codexRunnerImage` | `signadot/verse-runner:codex` | its image ref |
 | the io knobs | off | see [Ios](#ios-optional) |
 
 ## Ios (optional)
@@ -741,11 +741,11 @@ it runs as the namespace's `default` ServiceAccount like everything else here.
 `ConfigMap`'s `models.model` must be a model the `verse-llm` credential's provider serves — the
 same value as `llmModel`. It fails at the first spawn rather than at deploy.
 
-**The codex runner** (`codexrunner`) is the same runner in an image with Codex pinned in it
-(`deploy/codexrunner`), offering the codex agent. Its key is the `verse-codex` Secret, made by
+**The codex runner** (`codex-runner`) is the same runner in an image with Codex pinned in it
+(`deploy/codex-runner`), offering the codex agent. Its key is the `verse-codex` Secret, made by
 hand (`kubectl -n verse create secret generic verse-codex --from-literal=OPENAI_API_KEY=<key>`),
-and it pushes with the same token. Install it as `verse runner add codex http://codexrunner:9802
---identity codexrunner`, and spawn on it with `runner: verse.runners.codex`.
+and it pushes with the same token. Install it as `verse runner add codex http://codex-runner:9802
+--identity codex-runner`, and spawn on it with `runner: verse.runners.codex`.
 
 ⚠️ **It needs three things from the pod spec, and each was found by a spawn refusing itself.**
 `hostUsers: false`, `procMount: Unmasked`, `seccompProfile: Unconfined` — in that order of
@@ -812,7 +812,7 @@ make ship-docd          # the store; versed is down, so nothing is talking to it
 make ship-versed        # the engine, against a docd that is already up and new
 make ship-ios           # the connectors
 make ship-runner        # the verse runner, its own image
-make ship-codexrunner   # the codex runner, its own image
+make ship-codex-runner   # the codex runner, its own image
 ```
 
 `ship-versed` restores `replicas: 1` from the manifest, so the scale to 0 costs no
@@ -822,7 +822,7 @@ runs before applying, so any one of them alone is a whole ship; pushing a tag th
 there is a manifest check, not an upload.
 
 The tier is the `tier` label every object in `deploy/` carries — `docd`, `versed`, `io`,
-`runner`, `codexrunner` — and `kubectl apply -l` is what selects on it. Objects with no tier (the Namespace,
+`runner`, `codex-runner` — and `kubectl apply -l` is what selects on it. Objects with no tier (the Namespace,
 the ServiceAccount, the ExternalSecrets) belong to none and are applied by a full `make
 deploy`: these targets update a deployment that exists rather than standing one up.
 
