@@ -1,0 +1,5 @@
+# make ship-<tier> skips the untiered objects, so a changed auth file or system charter does not ship with versed
+
+deploy/README.md says each `ship-<tier>` target alone is a whole ship. It is not when the auth block or the system charter changed: both are ConfigMaps (`verse-auth`, `verse-system-charter`) with no `tier` label, and the targets apply with `-l tier=<x>`, so they stay as they were. On 2026-10-20 (deploy/staging.21) versed shipped against an auth file that still said `ios:` and crash-looped until `make deploy PROFILE=staging SELECT='!tier'` applied the untiered set by hand. The six ExternalSecrets, the Namespace and the default ServiceAccount are untiered the same way.
+
+Either `ship-versed` applies the untiered objects too (they are versed's configuration), or the two ConfigMaps carry `tier: versed`, or the README stops promising. The first reads right: what versed reads at start ships with versed.
