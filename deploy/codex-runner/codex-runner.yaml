@@ -99,10 +99,14 @@ spec:
         - {name: control, containerPort: 9802}
         - {name: admin, containerPort: 9803}
         # The model key, by the variable name the ConfigMap's `apiKeyEnv` reads. The runner
-        # holds it; the task process writes it into a login file for Codex alone.
+        # holds it; the task process writes it into a login file for Codex alone. The Secret
+        # comes from the store entry `codexSecretKey` names (deploy/README.md, Credentials),
+        # and is made by hand only where that knob is empty:
         #
         #   kubectl -n verse create secret generic verse-codex \
         #     --from-literal=OPENAI_API_KEY=<key>
+        #
+        # Optional: a runner without it starts, and its first codex spawn fails.
         envFrom:
         - secretRef:
             name: verse-codex

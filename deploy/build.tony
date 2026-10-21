@@ -134,6 +134,7 @@ build:
     linearSecretKey: ""
     githubSecretKey: ""
     runnerSecretKey: ""
+    codexSecretKey: ""
     # Comma-separated grantees who may take a top-level place (`scott@example.com,agent:ops`).
     # "" is the open verse. See the patch below for how it reaches versed, and what changing it
     # on a running verse takes.
@@ -158,7 +159,8 @@ build:
     runner: false
     runnerImage: "signadot/verse-runner:latest"
     # The codex runner beside it: the same runner in an image with Codex in it, offering the codex
-    # agent, with its own credential (the verse-codex Secret, created by hand). Installing it is
+    # agent, with its own credential (the verse-codex Secret, from the entry codexSecretKey
+    # names). Installing it is
     # `verse runner add codex http://codex-runner:9802`.
     codexRunner: false
     codexRunnerImage: "signadot/verse-runner:codex"
@@ -448,6 +450,23 @@ build:
       kind: ExternalSecret
       metadata:
         name: verse-runner
+    patch: !delete null
+
+  - if: '.[ codexSecretKey != "" ]'
+    match:
+      kind: ExternalSecret
+      metadata:
+        name: verse-codex
+    patch:
+      spec:
+        dataFrom:
+        - extract:
+            key: $[codexSecretKey]
+  - if: '.[ codexSecretKey == "" ]'
+    match:
+      kind: ExternalSecret
+      metadata:
+        name: verse-codex
     patch: !delete null
 
   # The pull secret, onto the `default` ServiceAccount every pod here runs as.

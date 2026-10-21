@@ -247,7 +247,7 @@ should be passed the Service name directly rather than discovering it.
 | `tailscaleTags` | `""` | `tailscale.com/tags` for both; `""` leaves the operator's `tag:k8s` |
 | `secretStore` | `aws-secretsmanager` | the `ClusterSecretStore` every entry below comes from |
 | `llmSecretKey` | `""` | entry for `verse-llm`; `""` emits no `ExternalSecret` |
-| `gitSecretKey` / `slackSecretKey` / `linearSecretKey` / `githubSecretKey` / `runnerSecretKey` | `""` | the same, one per credential |
+| `gitSecretKey` / `slackSecretKey` / `linearSecretKey` / `githubSecretKey` / `runnerSecretKey` / `codexSecretKey` | `""` | the same, one per credential |
 | `llmModel` | `""` | `OPENAI_MODEL` for versed; `""` leaves the driver's `gpt-4o` |
 | `systemCharter` | `""` | a charter under `deploy/`, mounted into versed and installed at start as the system (`VERSE_SYSTEM_CHARTER`); read at start, so a change takes a restart. Staging: `charters/verse/workspace/Signadot/gate-ask.tony` |
 | `authConfig` | `""` | verse's `auth` block, a file under `deploy/`, mounted into versed as its config (`VERSE_CONFIG`): who verifies people, which iods are trusted for whose accounts, how the iods prove themselves ([Who a request is from](#who-a-request-is-from-authconfig-iotokens)). Staging: `auth/staging.tony` |
@@ -500,6 +500,14 @@ knob naming the secret-store entry it comes from, and each emits an `ExternalSec
 `ExternalSecret` is emitted at all — then the Secret is yours to create by hand, which is the
 right answer on a cluster with no External Secrets Operator.
 
+A Secret made by hand stands in a knob's way: the `ExternalSecret` owns the Secret it makes
+(`creationPolicy: Owner`) and does not take over one it did not. So moving a credential from a
+Secret made by hand to a knob is three steps, in this order: create the entry, delete the
+Secret, deploy with the knob set. Deployed with the old Secret still there, the
+`ExternalSecret` sits in `SecretSyncedError` while the pods keep the old value and look
+healthy; a pod that starts after the Secret is gone and before the next sync comes up without
+it.
+
 One knob per credential rather than one for all, because they are held by different processes
 and revoked on different days: the git iod's PAT and the runner's push token can be the
 same secret and should still be two entries, so taking one away does not take the other.
@@ -516,6 +524,7 @@ are the names each consumer reads:
 | `linearSecretKey` | `verse-linear` | `LINEAR_API_KEY` (the `Authorization` header verbatim), `LINEAR_WEBHOOK_SECRET` | env |
 | `githubSecretKey` | `verse-github` | `GITHUB_TOKEN`, or `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID` and `GITHUB_APP_PRIVATE_KEY` ([The GitHub App](#the-github-app-signadot-verse)); and `GITHUB_WEBHOOK_SECRET` | env; **not** optional — no Secret, no start |
 | `runnerSecretKey` | `verse-runner` | `gitToken` | env (`GITHUB_TOKEN`), in the runners and never in the sandbox |
+| `codexSecretKey` | `verse-codex` | `OPENAI_API_KEY` | env, in the codex runner, `optional: true` — a runner without it starts, and its first codex spawn fails; written as each task's Codex login |
 
 ### Creating the entries
 
@@ -547,6 +556,9 @@ put staging/verse/linear /tmp/e.json
 
 printf '{"GITHUB_TOKEN":"%s","GITHUB_WEBHOOK_SECRET":"%s"}' "$tok" "$sig" > /tmp/e.json
 put staging/verse/github /tmp/e.json
+
+printf '{"OPENAI_API_KEY":"%s"}' "$key" > /tmp/e.json
+put staging/verse/codex /tmp/e.json
 
 rm -f /tmp/e.json
 ```
@@ -742,9 +754,10 @@ it runs as the namespace's `default` ServiceAccount like everything else here.
 same value as `llmModel`. It fails at the first spawn rather than at deploy.
 
 **The codex runner** (`codex-runner`) is the same runner in an image with Codex pinned in it
-(`deploy/codex-runner`), offering the codex agent. Its key is the `verse-codex` Secret, made by
-hand (`kubectl -n verse create secret generic verse-codex --from-literal=OPENAI_API_KEY=<key>`),
-and it pushes with the same token. Install it as `verse runner add codex http://codex-runner:9802
+(`deploy/codex-runner`), offering the codex agent. Its key is the `verse-codex` Secret, from
+the store entry `codexSecretKey` names ([Credentials](#credentials)), or made by hand where the
+knob is empty (`kubectl -n verse create secret generic verse-codex
+--from-literal=OPENAI_API_KEY=<key>`); it pushes with the same token. Install it as `verse runner add codex http://codex-runner:9802
 --identity codex-runner`, and spawn on it with `runner: verse.runners.codex`.
 
 ⚠️ **It needs three things from the pod spec, and each was found by a spawn refusing itself.**
