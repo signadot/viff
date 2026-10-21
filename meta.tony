@@ -6,7 +6,9 @@ commits: []
 created: "2026-10-21T12:34:39.236481+02:00"
 duplicates: []
 id: tdk97ayqh12krfwnv1n0
-labels: []
+labels:
+- branch
+- mcp
 related_issues: []
 status: open
-updated: "2026-10-21T12:34:39.236481+02:00"
+updated: "2026-10-21T12:34:44.505477+02:00"
