@@ -15,8 +15,8 @@ import (
 
 // SLACK IS A SYSTEM, and each tool here is one of its verbs (package systems): `slack-post`,
 // `slack-reply`, `slack-read` and `slack-react`, each a call the runner makes with its bot token
-// over the task's channel (delivery.OpSlackPost, …), and each a step the task's policy decides
-// by the channel's name. The name the policy sees is the one the runner acts on: both are
+// over the task's channel (delivery.OpSlackPost, …), and each a step the task's autonomy decides
+// by the channel's name. The name the autonomy sees is the one the runner acts on: both are
 // slack.ChannelName of what the call gave, and a channel's id is no name.
 var (
 	slackPostTool  = systems.Tool("slack", "post")

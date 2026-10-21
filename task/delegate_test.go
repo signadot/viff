@@ -3,15 +3,17 @@ package task
 import (
 	"context"
 	"testing"
+
+	"github.com/signadot/verse/systems/systemstest"
 )
 
 // A delegation a row names asks first, and `deny` is a no: the sub-agent never starts.
 func TestADelegationDeniedStartsNothing(t *testing.T) {
 	reg := NewRegistry()
-	g := Policy{
+	g := Autonomy{
 		{Name: "delegate", Match: on("agent", "call-sub-agent", "agent", "child"), Then: Then{Mode: ThenAsk}},
 		{Then: Then{Mode: ThenAllow}}}
-	parent := NewTask("p", NewSupervisor(g, reg), &callThenDone{}, &recExec{})
+	parent := NewTask("p", systemstest.Opened(NewSupervisor(anyEnv(), g, reg), anyEnv()), &callThenDone{}, &recExec{})
 	parent.SetDelegate(func(pTask *Task, req *CallAgentRequest) (*Task, error) {
 		t.Error("a denied delegation started a child")
 		return pTask.NewChild("kid", req, &scriptDriver{}, &recExec{}), nil

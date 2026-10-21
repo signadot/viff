@@ -9,27 +9,30 @@
 // points at native semantics; the runner that builds the task resolves the references against
 // its own offer. It maps onto the spawn spec's axes:
 //
-//	Doer      → who does the work: an agent the runner offers, or a script, and what it works
-//	            with (git repositories and trackers, network, environment, model)
-//	Prompt    → the job, written for whoever does it
-//	Policy    → what happens to each step: denied, asked about (approvals, deadline,
-//	            answerers, labels), or allowed; the last row is the dial
-//	Runner    → where it runs
+//	Prompt      → the job, for an agent; or
+//	Script      → a script, which is its own doer
+//	Agent       → which agent a prompt is for, and how it works (absent: the runner's default)
+//	Environment → what the run can reach, fixed when it starts (systems.Environment)
+//	Autonomy    → what happens to each step within it: denied, asked about (approvals,
+//	              deadline, answerers, labels), or allowed; the last row is the dial
+//	Runner      → where it runs
 //
-// What a run works with is what its doer is set up with — a repository checked out, a
-// network it may reach — and never a dial: the runner refuses what the spawn did not give.
+// What a run can reach is its environment, never the autonomy: a turn of the dial decides
+// within it and never widens it, and the runner refuses what the environment did not give.
 package launch
 
 //go:generate go tool tony-codegen -dir .
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -47,31 +50,31 @@ type Spec struct {
 	// and they exist so a charter read back is the one its author wrote.
 	Doc  []string `tony:"-"`
 	Note []string `tony:"-"`
-	// Prompt is the job, written for whoever does it. A script's doer reads it as its standing
-	// instructions; an agent's as the prompt.
+	// Prompt is the job, written for an agent. Exactly one of Prompt and Script.
 	Prompt string `tony:"field=prompt,omitzero"`
-	// Doer is who does the work and what it works with (runner.Doer): `agent: verse` or another
-	// agent the runner offers, or `script: "…"`, with `with: {git, git-issue, env, model}` and the runner's annotations. The repositories under `git` are checked out for
-	// it, and what may leave each is the policy's: a push no row allows or asks about is read
-	// only. `repo`, `from` and `update` take $vars, so a charter can say `update:
-	// [$subject.head]`; `create` and `delete` do not: a pattern says how far a run may reach,
-	// and payload text must not widen what a run may push. A script is expanded as the prompt
-	// is, since it is this spawn's own text.
-	Doer runner.Doer `tony:"field=doer,omitzero"`
-	// Policy is what the task is given and what happens to each step of it (task.Policy): a
-	// verb no row names is not the task's, the first row that matches a step denies it, asks
-	// about it (how many approvals, who answers, how long the question stands, what silence
-	// settles on, what it says about itself) or allows it, and the last row, which names no
-	// step, decides the calls of named verbs no row above matched. The trigger's `gates:` are
-	// the FIRING's and run once before the action; the policy decides every step of the task
-	// it starts. Absent gives the task no verb of any system; a firing that already answered
-	// its own gates allows the verbs it names, `{match: {system: git}, then: allow}`, and does
-	// not ask again for each action.
+	// Script is a script's text, its own doer; data reaches it as the environment's vars, and
+	// it is not expanded (bindSpec).
+	Script string `tony:"field=script,omitzero"`
+	// Agent is the agent a prompt is for, and how it works; absent is the runner's default.
+	// Its name and its settings take $vars.
+	Agent *runner.Agent `tony:"field=agent,omitzero"`
+	// Person is reserved for a person doing the work; no runner takes one yet.
+	Person string `tony:"field=person,omitzero"`
+	// Environment is what the run can reach and the variables its shell is given
+	// (systems.Environment). A block's attributes and the vars take $vars, so a charter can
+	// check out `$subject.value.repo`; a shape does not, and neither does the network: a
+	// pattern says how far a run may reach, and payload text must not widen it.
+	Environment systems.Environment `tony:"field=environment,omitzero"`
+	// Autonomy is what happens to each step of the task (task.Autonomy): the first row that
+	// matches it denies it, asks about it (how many approvals, who answers, how long the
+	// question stands, what silence settles on, what it says about itself) or allows it, and
+	// the last row, which names no step, decides the rest. The trigger's `gates:` are the
+	// FIRING's and run once before the action; the autonomy decides every step of the task it
+	// starts. Absent asks before every step.
 	//
 	// Not expanded: a row's match names a step and its fields, and a $var in one could only
-	// name a repository or a ref chosen by whoever last wrote the entity being matched — the
-	// widening-by-binding risk `create` patterns are not expanded for either.
-	Policy task.Policy `tony:"field=policy,omitzero"`
+	// name a repository or a ref chosen by whoever last wrote the entity being matched.
+	Autonomy task.Autonomy `tony:"field=autonomy,omitzero"`
 	// Timeout bounds the run: a duration ("1h"). Verse enforces it by cancelling, so it holds
 	// on every runner. Empty is no bound.
 	Timeout string `tony:"field=timeout,omitzero"`
@@ -220,8 +223,11 @@ func (s Spec) Bind(b Binding) Spec {
 		Runner:  expand(s.Runner, b),
 		Subject: expand(s.Subject, b),
 		Timeout: s.Timeout,
-		Doer:    bindDoer(s.Doer, b),
+		Script:  s.Script,
+		Person:  s.Person,
 	}
+	out.Agent = bindAgent(s.Agent, b)
+	out.Environment = bindEnvironment(s.Environment, b)
 	out.Retain = s.Retain
 	// The contract is a pattern a reader of the result applies, not text about the thing the
 	// firing is about: it is carried across as it was written.
@@ -231,9 +237,9 @@ func (s Spec) Bind(b Binding) Spec {
 	// wrote the entity being matched, which would let payload text decide whose budget this
 	// firing spends.
 	out.VirtualKey = s.VirtualKey
-	// The policy is copied and not expanded: a row's match is a pattern over what the task
+	// The autonomy is copied and not expanded: a row's match is a pattern over what the task
 	// does, and its answerers are names the question is held out to.
-	out.Policy = s.Policy.Clone()
+	out.Autonomy = s.Autonomy.Clone()
 	// As is carried and not expanded: it takes one word (AsSubject), and payload text deciding
 	// whose authority a task runs with is the thing it exists to prevent. Asker is NOT carried —
 	// it is the engine's answer to As, set after binding (trigger.launch).
@@ -248,41 +254,116 @@ func (s Spec) Bind(b Binding) Spec {
 	return out
 }
 
-// bindDoer expands what a charter has reason to build out of the firing — which agent, its
-// model and effort, which repository, which branch it starts from, which tracker, the values
-// of its environment — and copies the rest.
+// CheckByHand is what a spawn written by hand — `verse task run -f`, an ask's `then: {spawn}` —
+// has to be beside Launch.Check: nothing fires for it, so it sets none of what a firing sets
+// (chain, occurrence, as, asker, credential, passed), and a `$` in a field that names something
+// — where a firing would bind one (Bind) and it can mean nothing else — is refused rather than
+// left as written, since there is nothing to bind it. The prompt and the vars are prose and shell
+// values, where a `$` is as likely literal (`$HOME`, `$5`), and are left as written, as a charter
+// leaves a `$key` it has no binding for.
+func (s Spec) CheckByHand() error {
+	for _, f := range []struct {
+		field string
+		set   bool
+	}{
+		{"chain", s.Chain != ""}, {"occurrence", s.Occurrence != 0}, {"as", s.As != ""}, {"asker", s.Asker != ""},
+		{"credential", s.Credential != nil}, {"passed", len(s.Passed) > 0},
+	} {
+		if f.set {
+			return fmt.Errorf("%s: a firing's, and nothing fires for a spawn written by hand", f.field)
+		}
+	}
+	bound := map[string]string{"runner": s.Runner, "subject": s.Subject}
+	if s.Agent != nil {
+		bound["agent.name"] = s.Agent.Name
+		for k, v := range s.Agent.Settings {
+			bound["agent."+k] = v
+		}
+	}
+	for name, blocks := range s.Environment.Systems {
+		for i, b := range blocks {
+			for k, v := range b.Attributes {
+				bound[fmt.Sprintf("environment.systems.%s[%d].%s", name, i, k)] = v
+			}
+		}
+	}
+	for _, field := range slices.Sorted(maps.Keys(bound)) {
+		if strings.Contains(bound[field], "$") {
+			return fmt.Errorf("%s: a `$` is bound when a rule fires, and nothing fires for a spawn written by hand", field)
+		}
+	}
+	return nil
+}
+
+// Who is who does the work, as a record says it: the agent's name, "script", or "" for the
+// runner's default agent.
+func (s Spec) Who() string {
+	switch {
+	case s.Script != "":
+		return "script"
+	case s.Agent != nil:
+		return s.Agent.Name
+	}
+	return ""
+}
+
+// bindAgent expands which agent, its model and its effort, and copies its annotations.
+func bindAgent(a *runner.Agent, b Binding) *runner.Agent {
+	if a == nil {
+		return nil
+	}
+	out := &runner.Agent{Name: expand(a.Name, b)}
+	if a.Settings != nil {
+		out.Settings = make(map[string]string, len(a.Settings))
+		for k, v := range a.Settings {
+			out.Settings[k] = expand(v, b)
+		}
+	}
+	if a.Annotations != nil {
+		out.Annotations = maps.Clone(a.Annotations)
+	}
+	return out
+}
+
+// bindEnvironment expands what a charter has reason to build out of the firing — which
+// repository, which branch it starts from, which tracker, the values of its variables — and
+// copies the rest.
 //
 // A SCRIPT'S TEXT IS NOT EXPANDED. It is a program, and a value spliced into it is part of the
 // program: a branch named `x;curl …` reflected from a remote would run. Data reaches a script
-// as its environment instead, `with: {env: {BRANCH: $branch}}`, which the shell reads as
-// `"$BRANCH"` and never parses. It also leaves the script's own `$b` to the shell. The network
-// is not expanded either: what a run may reach is the charter's to say, never the subject's.
+// as its variables instead, `environment: {vars: {BRANCH: $branch}}`, which the shell reads as
+// `"$BRANCH"` and never parses. Shapes are not expanded, and nothing of the network is: what a
+// run may reach is the charter's to say, never the subject's.
 //
-// Copied, never shared: a bound spec aliasing the charter's slices would let one firing's edit
+// Copied, never shared: a bound spec aliasing the charter's maps would let one firing's edit
 // reach every later one.
-func bindDoer(d runner.Doer, b Binding) runner.Doer {
-	out := runner.Doer{Agent: expand(d.Agent, b), Script: d.Script}
-	out.With.Model, out.With.Effort = expand(d.With.Model, b), expand(d.With.Effort, b)
-	if d.With.Env != nil {
-		out.With.Env = make(map[string]string, len(d.With.Env))
-		for k, v := range d.With.Env {
-			out.With.Env[k] = expand(v, b)
+func bindEnvironment(e systems.Environment, b Binding) systems.Environment {
+	var out systems.Environment
+	if e.Vars != nil {
+		out.Vars = make(map[string]string, len(e.Vars))
+		for k, v := range e.Vars {
+			out.Vars[k] = expand(v, b)
 		}
 	}
-	if d.Annotations != nil {
-		out.Annotations = make(map[string]string, len(d.Annotations))
-		for k, v := range d.Annotations {
-			out.Annotations[k] = v
+	if e.Systems != nil {
+		out.Systems = systems.Systems{}
+		for name, blocks := range e.Systems {
+			for _, blk := range blocks {
+				nb := systems.Block{Attributes: make(map[string]string, len(blk.Attributes)), Verbs: make(map[string][]systems.Shape, len(blk.Verbs))}
+				for k, v := range blk.Attributes {
+					if name != "network" {
+						v = expand(v, b)
+					}
+					nb.Attributes[k] = v
+				}
+				for verb, shapes := range blk.Verbs {
+					for _, sh := range shapes {
+						nb.Verbs[verb] = append(nb.Verbs[verb], maps.Clone(sh))
+					}
+				}
+				out.Systems[name] = append(out.Systems[name], nb)
+			}
 		}
-	}
-	for _, r := range d.With.Git {
-		out.With.Git = append(out.With.Git, runner.Repo{Repo: expand(r.Repo, b), From: expand(r.From, b)})
-	}
-	for _, t := range d.With.GitIssue {
-		out.With.GitIssue = append(out.With.GitIssue, runner.Tracker{Repo: expand(t.Repo, b)})
-	}
-	if n := d.With.Network; n != nil {
-		out.With.Network = &runner.Network{Mode: n.Mode, Allow: slices.Clone(n.Allow)}
 	}
 	return out
 }
@@ -308,16 +389,19 @@ func expand(s string, b Binding) string {
 	return s
 }
 
-// AnnotationVirtualKey is the doer annotation the verse runner reads its Portkey virtual key
+// AnnotationVirtualKey is the agent annotation the verse runner reads its Portkey virtual key
 // from: the name verse resolved a spawn's `virtualKey` address to.
 const AnnotationVirtualKey = "verse.portkey/virtual-key"
 
-// CheckAnnotations refuses a doer whose annotations name the virtual key. Verse writes that one
+// CheckAnnotations refuses an agent whose annotations name the virtual key. Verse writes that one
 // itself, from `virtualKey`, once whoever named the address may read it (versed.credentialAt):
 // a key written straight into the annotations would be spent without that read.
-func CheckAnnotations(d runner.Doer) error {
-	if _, ok := d.Annotations[AnnotationVirtualKey]; ok {
-		return fmt.Errorf("doer.annotations: %s is verse's to write: name the credential's address "+
+func CheckAnnotations(a *runner.Agent) error {
+	if a == nil {
+		return nil
+	}
+	if _, ok := a.Annotations[AnnotationVirtualKey]; ok {
+		return fmt.Errorf("agent.annotations: %s is verse's to write: name the credential's address "+
 			"as `virtualKey`, and verse resolves it as whoever named it", AnnotationVirtualKey)
 	}
 	return nil

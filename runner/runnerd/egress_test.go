@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,7 +30,7 @@ func TestEgressAllowlist(t *testing.T) {
 		"api.anthropic.com",
 		"*.githubusercontent.com",
 		"registry.internal:5000",
-	}, nil)
+	}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,21 +74,21 @@ func TestEgressAllowlist(t *testing.T) {
 // Two allowlists that are not allowlists, refused where they are written rather than where they
 // would have surprised somebody.
 func TestEgressRefusesANonList(t *testing.T) {
-	if _, err := runnerd.NewEgress("t", nil, nil); err == nil {
+	if _, err := runnerd.NewEgress("t", nil, nil, nil); err == nil {
 		t.Error("an empty allowlist was accepted — it permits nothing, which is no network")
 	}
-	if _, err := runnerd.NewEgress("t", []string{"*"}, nil); err == nil {
+	if _, err := runnerd.NewEgress("t", []string{"*"}, nil, nil); err == nil {
 		t.Error("`*` was accepted as an allowlist — it is an open network under another name")
 	}
-	if _, err := runnerd.NewEgress("t", []string{"*.com"}, nil); err == nil {
+	if _, err := runnerd.NewEgress("t", []string{"*.com"}, nil, nil); err == nil {
 		t.Error("`*.com` was accepted")
 	}
 	for _, unread := range []string{"2001:DB8:0:0::1", "[2001:db8:0::1]:8443", "::ffff:10.0.0.1"} {
-		if _, err := runnerd.NewEgress("t", []string{unread}, nil); err == nil {
+		if _, err := runnerd.NewEgress("t", []string{unread}, nil, nil); err == nil {
 			t.Errorf("%s was accepted, though the proxy never reads a destination so", unread)
 		}
 	}
-	if _, err := runnerd.NewEgress("t", []string{"2001:db8::1", "[2001:db8::1]:8443", "10.0.0.1:8080"}, nil); err != nil {
+	if _, err := runnerd.NewEgress("t", []string{"2001:db8::1", "[2001:db8::1]:8443", "10.0.0.1:8080"}, nil, nil); err != nil {
 		t.Errorf("an address as Go writes it was refused: %v", err)
 	}
 }
@@ -107,7 +108,7 @@ func TestEgressProxiesWhatIsAllowedAndRefusesTheRest(t *testing.T) {
 
 	var log bytes.Buffer
 	// The allowlist names the upstream by host:port, since httptest binds an ephemeral one.
-	e, err := runnerd.NewEgress("t9", []string{u.Host}, &log)
+	e, err := runnerd.NewEgress("t9", []string{u.Host}, nil, &log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +154,7 @@ func TestEgressTunnelsTLSAndRefusesByName(t *testing.T) {
 	defer upstream.Close()
 	u, _ := url.Parse(upstream.URL)
 
-	e, err := runnerd.NewEgress("t10", []string{u.Host}, nil)
+	e, err := runnerd.NewEgress("t10", []string{u.Host}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +182,7 @@ func TestEgressTunnelsTLSAndRefusesByName(t *testing.T) {
 	}
 	// The explanation has to be in the reason phrase, because Go's transport reads a failed
 	// CONNECT and returns errors.New(reasonPhrase) — dropping the status code and the body.
-	for _, want := range []string{"egress allowlist", "not-on-the-list.example:443"} {
+	for _, want := range []string{"none of the hosts this task's proxy reaches", "not-on-the-list.example:443"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("a refused tunnel does not tell the caller %q: %v", want, err)
 		}
@@ -191,7 +192,7 @@ func TestEgressTunnelsTLSAndRefusesByName(t *testing.T) {
 // A served egress is a socket the runner owns, stopped with the task that had it.
 func TestAServedEgressIsASocketThatStopsWithItsTask(t *testing.T) {
 	dir := shortTempDir(t)
-	eg, err := runnerd.ServeEgress(dir, "t11", []string{"api.anthropic.com"}, io.Discard)
+	eg, err := runnerd.ServeEgress(dir, "t11", []string{"api.anthropic.com"}, nil, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +250,7 @@ func serveEgress(t *testing.T, e *runnerd.Egress) *url.URL {
 // An absolute-form request is checked against the port its scheme defaults to: https:// with no
 // port is :443, not :80.
 func TestEgressDefaultsAnAbsoluteRequestsPortByScheme(t *testing.T) {
-	e, err := runnerd.NewEgress("t12", []string{"allowed.example:80"}, io.Discard)
+	e, err := runnerd.NewEgress("t12", []string{"allowed.example:80"}, nil, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +289,7 @@ func TestEgressPassesAHalfCloseThrough(t *testing.T) {
 		n, _ := io.Copy(io.Discard, c) // to the client's EOF
 		fmt.Fprintf(c, "read %d bytes", n)
 	}()
-	e, err := runnerd.NewEgress("t13", []string{far.Addr().String()}, io.Discard)
+	e, err := runnerd.NewEgress("t13", []string{far.Addr().String()}, nil, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,7 +339,7 @@ func TestEgressKeepsTheClientsSideOpenAfterTheFarSideFinishes(t *testing.T) {
 		got, _ := io.ReadAll(c)
 		late <- string(got)
 	}()
-	e, err := runnerd.NewEgress("t14", []string{far.Addr().String()}, io.Discard)
+	e, err := runnerd.NewEgress("t14", []string{far.Addr().String()}, nil, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -366,5 +367,55 @@ func TestEgressKeepsTheClientsSideOpenAfterTheFarSideFinishes(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("the far side never read the client's end")
+	}
+}
+
+// A DESTINATION THAT IS NONE OF THE RUNNER'S OWN HOSTS IS DECIDED: what decide refuses is refused,
+// over plain HTTP and in a tunnel alike, naming why; what it admits goes through; and it is asked
+// with the host as the shapes spell it, lower case and without a trailing dot.
+func TestEgressDecidesWhatIsNotItsOwn(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, "reached")
+	}))
+	defer upstream.Close()
+	u, _ := url.Parse(upstream.URL)
+	var refuse atomic.Bool
+	refuse.Store(true)
+	var asked atomic.Value
+	e, err := runnerd.NewEgress("t15", nil, func(host, port string) error {
+		asked.Store(host)
+		if refuse.Load() {
+			return fmt.Errorf("egress: %s:%s is refused by the autonomy's row not-yet", host, port)
+		}
+		return nil
+	}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Permits("Example.COM.:443"); err == nil || asked.Load() != "example.com" {
+		t.Fatalf("decide asked about %v (%v), want example.com", asked.Load(), err)
+	}
+	cl := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(serveEgress(t, e))}}
+	resp, err := cl.Get(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden || !strings.Contains(string(body), "not-yet") {
+		t.Fatalf("a refused host = %d %q, want 403 naming the row", resp.StatusCode, body)
+	}
+	if e.Refusals()[u.Host] == 0 {
+		t.Errorf("the refusal was not counted: %v", e.Refusals())
+	}
+	refuse.Store(false)
+	resp, err = cl.Get(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if string(body) != "reached" {
+		t.Fatalf("an admitted host = %d %q", resp.StatusCode, body)
 	}
 }

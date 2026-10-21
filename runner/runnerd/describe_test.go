@@ -16,8 +16,8 @@ func TestDescribeAnswersTheOffers(t *testing.T) {
 	d := runnerd.NewInProcessHandler(func(l runner.Launch, reg *task.Registry) *task.Task {
 		return task.NewFailed(l.ID, reg, "no tasks here")
 	})
-	d.Describe(runner.Description{Offers: []runner.Offer{{Agent: "verse",
-		With: map[string]runner.Accepts{"model": runner.AcceptsAny}}, {Script: true}}})
+	d.Describe(runner.Description{Version: runner.DescriptionVersion, Offers: []runner.Offer{
+		{Agent: &runner.AgentOffer{Name: "verse", Settings: map[string]runner.Setting{"model": {Values: []string{"claude-*"}}}}}, {Script: true}}})
 	srv := httptest.NewServer(d.HTTPHandler())
 	t.Cleanup(srv.Close)
 
@@ -30,8 +30,8 @@ func TestDescribeAnswersTheOffers(t *testing.T) {
 	if err := codec.Decode(resp.Body, &got, codec.Tony); err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Offers) != 2 || got.Offers[0].Agent != "verse" || !got.Offers[0].With["model"].Any ||
-		!got.Offers[1].Script {
+	if got.Version != runner.DescriptionVersion || len(got.Offers) != 2 || got.Offers[0].Name() != "verse" ||
+		got.Offers[0].Agent.Settings["model"].Values[0] != "claude-*" || !got.Offers[1].Script {
 		t.Fatalf("described %+v", got)
 	}
 }

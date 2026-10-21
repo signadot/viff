@@ -43,7 +43,7 @@ import (
 // not what anybody hits on the way in.
 //
 // What it does NOT confine is a spawn. A rule's task acts in the world under its `grant`, and
-// store confinement is not world confinement: the task's policy is the dial that
+// store confinement is not world confinement: the task's autonomy is the dial that
 // is. Nor does it confine what the ENGINE writes about its own running (a task's mirror, a
 // motion, a posed question): those are verse's, they land in verse's half of the tree, and a
 // charter cannot address them anyway.

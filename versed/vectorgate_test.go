@@ -11,18 +11,18 @@ import (
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
 // shellGate is one gate over the scripted task's one action, with the question it poses.
-func shellGate(need int, clock *task.Deadline) task.Policy {
+func shellGate(need int, clock *task.Deadline) task.Autonomy {
 	ask := &task.Ask{Need: need}
 	if clock != nil {
 		ask.Within, ask.Default = clock.Within, clock.Default
 	}
-	return task.Policy{
+	return task.Autonomy{
 		{Name: "shell", Match: &task.Match{System: "commands", Verb: "run"}, Then: task.Then{Mode: task.ThenAsk, Ask: ask}},
 		{Then: task.Then{Mode: task.ThenAllow}},
 	}
@@ -54,7 +54,7 @@ func TestARunsGateTakesAThreshold(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp := postTony(t, ts.URL+"/tasks", api.Spawn{ID: "voted", Doer: runner.Doer{Script: "true"}, Policy: shellGate(2, nil)})
+	resp := postTony(t, ts.URL+"/tasks", api.Spawn{ID: "voted", Spawn: launch.Spec{Script: "true", Environment: stepEnv, Autonomy: shellGate(2, nil)}})
 	resp.Body.Close()
 	if resp.StatusCode >= 300 {
 		t.Fatalf("spawn = %s", resp.Status)
@@ -115,8 +115,7 @@ func TestARunsGateDeadlineAnswersTheLoop(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp := postTony(t, ts.URL+"/tasks", api.Spawn{ID: "unattended", Doer: runner.Doer{Script: "true"},
-		Policy: shellGate(0, &task.Deadline{Within: "150ms", Default: task.Deny})})
+	resp := postTony(t, ts.URL+"/tasks", api.Spawn{ID: "unattended", Spawn: launch.Spec{Script: "true", Environment: stepEnv, Autonomy: shellGate(0, &task.Deadline{Within: "150ms", Default: task.Deny})}})
 	resp.Body.Close()
 	if resp.StatusCode >= 300 {
 		t.Fatalf("spawn = %s", resp.Status)
@@ -144,20 +143,20 @@ func TestASpawnWithAGateThatAsksNobodyIsRefused(t *testing.T) {
 
 	gates := shellGate(2, nil)
 	gates[0].Match = nil // a row about every call before the last decides for the rows after it
-	resp := postTony(t, ts.URL+"/tasks", api.Spawn{ID: "malformed", Doer: runner.Doer{Script: "true"}, Policy: gates})
+	resp := postTony(t, ts.URL+"/tasks", api.Spawn{ID: "malformed", Spawn: launch.Spec{Script: "true", Autonomy: gates}})
 	raw, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(string(raw), "policy[0]") {
+	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(string(raw), "spawn.autonomy[0]") {
 		t.Fatalf("spawn = %s %s, want 400 naming the gate", resp.Status, strings.TrimSpace(string(raw)))
 	}
 	if _, ok, _ := srv.Store.Get(mirror.Ref("malformed")); ok {
 		t.Fatal("a refused spawn was mirrored anyway")
 	}
 	// The same document over the running task's dial is refused the same way.
-	ok := postTony(t, ts.URL+"/tasks", api.Spawn{ID: "running", Doer: runner.Doer{Script: "sleep 5"}, Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}})
+	ok := postTony(t, ts.URL+"/tasks", api.Spawn{ID: "running", Spawn: launch.Spec{Script: "sleep 5", Environment: openNet, Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}}})
 	ok.Body.Close()
-	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/tasks/running/policy",
-		strings.NewReader(`{policy: [{name: shell, match: {system: commands, verb: run}, then: {ask: {need: 2}}}, {then: sometimes}], by: "user:scott@example.com"}`))
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/tasks/running/autonomy",
+		strings.NewReader(`{autonomy: [{name: shell, match: {system: commands, verb: run}, then: {ask: {need: 2}}}, {then: sometimes}], by: "user:scott@example.com"}`))
 	req.Header.Set("Content-Type", "application/tony")
 	req.Header.Set(api.PrincipalHeader, tester)
 	slid, err := http.DefaultClient.Do(req)

@@ -22,7 +22,7 @@
 //	POST /tasks/{id}/resolve                ResolveRequest  204                     control.go
 //	POST /tasks/{id}/pause                  PauseRequest    204                     control.go
 //	POST /tasks/{id}/resume                 ResumeRequest   204                     control.go
-//	PUT  /tasks/{id}/policy                 PolicyRequest   204                     control.go
+//	PUT  /tasks/{id}/autonomy               AutonomyRequest 204                     control.go
 //
 // # Names
 //
@@ -34,10 +34,10 @@
 // concrete request it receives. POST /tasks answers with the task's snapshot: 201 when it
 // started the task, 200 when the task was already running.
 //
-// The launch's policy is the task's (task.Policy), since the task's steps are decided under it,
-// and PUT /tasks/{id}/policy replaces it on a running task. A runner checks a launch as it
+// The launch's autonomy is the task's (task.Autonomy), since the task's steps are decided under it,
+// and PUT /tasks/{id}/autonomy replaces it on a running task. A runner checks a launch as it
 // arrives and refuses what it can't honour with `400` and the reason (runnerd.CheckLaunch), and
-// a new policy the same way (runnerd.CheckPolicy).
+// a new autonomy the same way (runnerd.CheckAutonomy).
 //
 // Bodies are tony by default; a request's Content-Type and Accept pick the format. A refusal
 // is a status, and the client reads each as one of the errors in task/errors.go.

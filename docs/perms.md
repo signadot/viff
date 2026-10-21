@@ -22,7 +22,7 @@ The rest of this page says what those words mean, in the order you need them.
 | **node** | anything with an [address](glossary.md#address): `demo.pr.1`, a field of it (`demo.pr.1.stage`), or a rule (`verse.trigger.rule.review`). An address has steps, so every node has nodes above it, up to the root. |
 | **principal** | who is acting: a person, an agent, a runner, or verse itself |
 | **record** | what verse keeps about a node: its owner, the grants on it, and the grants that a node created beneath it starts with. Only verse writes records. You read and set your own records with `verse perms`. |
-| **permission level** | what somebody may do at a node: `read`, `read-write` or `owner`. Each of the three includes the one before it. `control` is a fourth level beside them. It lets somebody steer work: run, cancel, pause, resume, say, change a policy, and suspend. |
+| **permission level** | what somebody may do at a node: `read`, `read-write` or `owner`. Each of the three includes the one before it. `control` is a fourth level beside them. It lets somebody steer work: run, cancel, pause, resume, say, change an autonomy, and suspend. |
 | **grant** | a line on a node's record. It gives a permission level to somebody who is not the node's owner. |
 
 On this page, "level" means a permission level. It does not mean the level of a
@@ -185,7 +185,7 @@ A resolver answers a question only when the question is held out to that resolve
 that works a task cannot answer that task's questions. The runner's grant is on the task, and a
 question is not part of the task.
 
-Verse records an answer, a `say`, a cancel or a change of policy as made *by* whoever made the
+Verse records an answer, a `say`, a cancel or a change of autonomy as made *by* whoever made the
 request. A remote worker reports on its own task: its status, its output, the decisions it saw.
 That report never decides who answered a question or what they chose.
 

@@ -8,29 +8,36 @@ to run a task, watch it, steer it and answer its questions.
 ## Running one
 
 ```sh
-verse task run "summarize the open issues"              # prints a run-… id
-verse task run --wait "summarize the open issues"       # …and block for the final output
-verse task run --attach 'Write a file hello.txt containing "hi".'    # …and stream it
-verse task run --script "go test ./..."                 # a script, no model
-verse task run --agent codex "fix the flaky test"       # an agent by the name its runner offers;
-                                                        # a bare prompt is for the verse agent
-verse task run --answer-contract shape.tony "…"         # …and declare the shape its answer must have
-verse task run --policy policy.tony "…"    # …under a policy of its own: what each step gets
-verse task run --git git.tony "…"          # …in a workspace of these repositories
+cat > spawn.tony <<'EOF'
+prompt: summarize the open issues
+environment: {systems: {network: {mode: open}}}
+EOF
+verse task run -f spawn.tony               # prints a run-… id
+verse task run -f spawn.tony --wait        # …and block for the final output
+verse task run -f spawn.tony --attach      # …and stream it
+echo '{script: "go test ./...", environment: {systems: {network: {mode: open}}}}' |
+  verse task run -f -                      # a script, no model, from stdin
 verse task
-verse task get <id>        # snapshot: status, prompt, doer, runner, result, pending gates, policy
+verse task get <id>        # snapshot: status, prompt, agent, runner, result, pending gates, autonomy
 verse task say <id> "also mention the dial"   # an ask to the task: said to <id>: <ask id>
-verse task policy <id> '[{match: {system: commands}, then: ask}, {then: ask}]' --as you@example.com
-verse task policy <id> --file policy.tony
+verse task autonomy <id> '[{match: {system: commands}, then: ask}, {then: ask}]' --as you@example.com
+verse task autonomy <id> --file autonomy.tony
 verse task cancel <id>
 ```
 
-`say` and `policy` do different things:
+`task run` takes a spawn, written as a charter's `spawn:` is: the work (`prompt` or `script`),
+the `agent` a prompt is for, the `environment` the run works in, its `autonomy`, and the rest
+([the action of a rule](action.md#action-what-fires)). It means only what it says: a spawn that
+names no network has none, and a runner that builds only the host's network, as `verse up`'s
+does, refuses it until it writes `network: {mode: open}`. Only how this terminal follows the run
+is a flag: `--attach`, `--wait`, `--converse`, `--name` and `--as`.
+
+`say` and `autonomy` do different things:
 
 | Command | What it does |
 |---|---|
 | `say` | gives the agent new instructions |
-| `policy` | replaces the [policy](../glossary.md#policy), what the task may do and what it asks about, with a whole one. The runner checks it against the launch's verbs and its own ceilings, and applies it at the next [boundary](../glossary.md#boundary), with no restart. The new policy may re-decide, narrow or drop the verbs the task's policy named, and names no other: the verbs a policy names are what the run asked of its runner when it started. What was withheld stays withheld, so the new policy repeats its `withhold` rows: one that leaves them out, or adds one, is refused. |
+| `autonomy` | replaces the [autonomy](../glossary.md#autonomy), what each step gets, with a whole one. The runner checks each row against the task's environment, which is fixed for the run, and applies it at the next [boundary](../glossary.md#boundary), with no restart. A replacement decides among what the environment gives and adds nothing to it: a row that can match nothing the environment gives is refused. |
 
 `--as` names who made the change. Both commands work wherever the task runs: the local runtime
 applies them directly, and a remote worker gets them through its runner.
@@ -38,14 +45,16 @@ applies them directly, and a remote worker gets them through its runner.
 The `spawn` of a [rule](../glossary.md#rule) runs a task the same way. What a charter may say
 in a spawn is in [the action of a rule](action.md#action-what-fires).
 
-### `--answer-contract`: what finished means
+### `answer`: what finished means
 
-```sh
-verse task run --answer-contract shape.tony "check every reference in docs/runners.md"
+```tony
+prompt: check every reference in docs/runners.md
+answer: {broken: !irtype []}
+environment: {systems: {network: {mode: open}}}
 ```
 
-`--answer-contract <file>` names a tony match pattern. It is the run's definition of **done**,
-and the same thing as a charter's `answer:`.
+A spawn's `answer` is a tony match pattern. It is the run's definition of **done**, whether a
+charter or `task run` wrote the spawn.
 
 Without a contract, a run is finished when the model stops calling tools. A model that only
 describes its next step also stops calling tools, and from outside the two look the same. So a
@@ -71,66 +80,76 @@ A contract is for an agent. A script's output is its result as it is, so verse r
 that gives a script a contract.
 
 <a id="the-drivers"></a>
-## The doer
+<a id="the-doer"></a>
+## Who does the work, and with what
 
-A task has one [doer](../glossary.md#doer): an agent, or a script.
+A task's work is a `prompt`, for an agent, or a `script`, which is its own doer.
 
-| Doer | What it does |
+| Spawn | What it does |
 |---|---|
-| `doer: {agent: <name>}` | gives the prompt to an agent the runner offers under that name (`verse` is verse's own; a runner may offer `claude` or `codex`). The agent decides what to do, one turn at a time. |
-| `doer: {script: "…"}` | runs the script once, by its `#!` line or with bash. Its output is the result. It takes no prompt: data reaches it in `with.env`. |
+| `prompt: …`, `agent: {name: <name>}` | gives the prompt to an agent the runner offers under that name (`verse` is verse's own; a runner may offer `claude` or `codex`). The agent decides what to do, one turn at a time. Without `agent`, the prompt is for the runner's default agent, the first one it offers. |
+| `script: "…"` | runs the script once, by its `#!` line or with bash. Its output is the result. It takes no `agent`: data reaches it as the environment's `vars`. |
+
+An agent's settings are written beside its name, `agent: {name: codex, model: gpt-5-codex,
+effort: high}`, each one its runner's offer takes, with a value it takes. The task's record says
+which agent ran and with what, the runner's defaults filled in.
 
 ```tony
 spawn:
-  doer:
-    script: |
-      git -C app merge --ff-only "mirror/$BRANCH"
-      verse-call-tool git-push -branch main
-    with:
-      git:
-      - {repo: acme/app, from: main}
+  script: |
+    git -C app merge --ff-only "mirror/$BRANCH"
+    verse-call-tool git-push -branch main
+  environment:
+    vars: {BRANCH: $branch}
+    systems:
       network: {mode: open}
-      env: {BRANCH: $branch}
-  policy:
-  - {match: {system: git, verb: push, ref: refs/heads/main}, then: allow}
-  - {match: {system: git, verb: push}, then: deny}
+      git:
+      - repo: acme/app
+        from: main
+        fetch: {}
+        push: {ref: refs/heads/main, force: "false", delete: "false"}
+  autonomy:
   - {then: allow}
 ```
 
-`with` is what the doer runs with, and the runner enforces it:
+`environment` is what the run works in, and the runner enforces it. `vars` are variables set in
+the task's shell: how a script gets data from the subject without putting it into its text.
+`systems` is what the task may do, one block per system, and it is the whole of it: a step no
+block gives is refused before any row is read ([systems](../systems/README.md#a-block-gives-verbs)).
 
-| Field | What it says |
+| System | What its block says |
 |---|---|
-| `git` | the repositories checked out in the task's workspace: `repo` (`owner/name`, or `host/owner/name`) and `from` (the branch the checkout starts on; absent is the default branch). What may leave each repository is the policy's to say ([git](../systems/git.md)). |
-| `git-issue` | the repository trackers the task works with, each `{repo}` naming one of `git`. This gives the task the `git-issue-*` tools ([git-issue](../systems/git-issue.md)). |
-| `network` | what the run may reach: `{mode: none}`, `{mode: open}` (the host's network), or `{mode: allow, allow: [host, "host:port", …]}`. Absent is `none`. It is built once, when the run starts, and the runner refuses a mode its sandbox cannot build ([the network](../systems/inside.md#the-network-is-the-launchs)). |
-| `env` | variables set in the task's shell. This is how a script gets data from the subject without putting it into its text. |
-| `model`, `effort` | an agent's model and effort level, where the runner's offer takes them |
+| `git` | a repository checked out in the task's workspace: `repo` (`owner/name`, or `host/owner/name`), `from` (the branch the checkout starts on; absent is the default branch), and the verbs it gives with their shapes, `fetch: {}` and the `push` shapes ([git](../systems/git.md)). |
+| `git-issue` | a repository's own tracker, of a repository `git` checks out. `{repo: acme/app}` gives every one of its verbs ([git-issue](../systems/git-issue.md)). |
+| `network` | what the run may reach: `{mode: none}`, `{mode: open}` (the host's network), or `{mode: allow, tcp-client: [{host: …, port: …}]}`. Absent is `none`. It is built once, when the run starts, and the runner refuses a mode its sandbox cannot build ([the network](../systems/inside.md#the-network)). |
+| `files`, `commands`, `agent`, `question` | what a doer does inside its run. `files: {}` gives every write, `commands: {run: {command: "make *"}}` the commands it names ([files, commands and agent](../systems/inside.md)). |
 
 A script calls the task's tools from its shell with `verse-call-tool`: `git-push`, `git-fetch`,
-`github-create-pr`, `question-ask`, and the others its runner offers. Each call is an action of
-the task. Verse decides it, and reports it on the event stream, exactly as it does an agent's.
+`github-create-pr`, `question-ask`, and the others its environment gives. Each call is an action
+of the task. Verse decides it, and reports it on the event stream, exactly as it does an agent's.
 So a row written for an agent's push also holds a push that a script makes. A refused call is
 an answer the script reads (a non-zero exit, and the reason on stdout). It does not end the
 run.
 
-The runner refuses a spawn that names both an agent and a script, an agent with no prompt, or a
-script with one. It refuses what it does not offer: an agent it does not have, a model it does
-not serve, repositories on a forge it does not reach.
+The runner refuses a spawn with both a prompt and a script, neither, or an agent for a script.
+It refuses what it does not offer: an agent it does not have, a setting its agent does not take,
+a system it does not hold, an environment beyond its ceilings, and an environment missing a step
+its agent can't run without (Codex needs `commands` and `files`).
 
 <a id="the-dial"></a>
-## The policy
+<a id="the-policy"></a>
+## The autonomy
 
 A task decides before each **step**: a write to a file, a command, a push, a pull request, a
-call to a sub-agent. Reading a file, listing a directory, and asking a person are
-not steps, and nothing decides before them.
+call to a sub-agent, asking a person (`question.ask`), a connection under a network of `allow`.
+Reading a file or listing a directory is no step, and nothing decides before it.
 
-A spawn's `policy` says what happens to each step. It is one ordered list of rows. The first row
+A step outside the environment is refused first, saying what the environment gives. Within it, a
+spawn's `autonomy` says what happens to each step. It is one ordered list of rows. The first row
 that matches a step decides it.
 
 ```tony
-policy:
-- {match: {system: git, verb: push, ref: refs/heads/main}, then: deny}
+autonomy:
 - {match: {system: git, verb: push, ref: "refs/heads/verse/auto/*", exists: "false"}, then: allow}
 - {match: {system: git, verb: push, ref: "refs/heads/verse/auto/*", own: "true"}, then: allow}
 - {match: {system: git, verb: push}, then: {ask: {need: 2, answerers: [group:release], within: 4h, default: deny}}}
@@ -142,31 +161,32 @@ policy:
 | `then: deny` | the step is refused in the row's name, and nobody is asked |
 | `then: ask` | the step waits for a person first. `{ask: {…}}` says how: who is asked, how many ballots, how long the question stands |
 | `then: allow` | the step goes ahead |
-| `then: withhold` | the verb is absent from the run: its tool is not offered, so the step cannot happen, whatever row stands above it. It names a system or a verb, never a call's params, and it is fixed when the run starts: a policy changed later withholds exactly what the old one did, and says so in its own rows. "No shell" is `{match: {system: commands}, then: withhold}`; "never `main`" is a deny. |
-| the last row, with no `match` | what a call of a verb the rows name gets when no row above matched it: the task's dial |
+| the last row, with no `match` | what every step no row above matched gets: the task's dial |
 
-**The policy is what the task is given.** A verb is the task's only if a row names it:
-`{system: git}` gives every git verb, and `{system: git, verb: push}` the push alone. A verb no
-row names has no tool, so the doer never sees it, and a call of it is refused, whatever the last
-row says. A spawn with no policy is given no verb: an agent reads and answers, and a script runs
-as written with no tool to call. A policy replaced while the task runs names no verb the
-task's did not, so a replacement re-decides what the task has and never adds to it.
+**No autonomy asks on every step.** A spawn that writes none is decided by the default row
+alone, `{then: ask}`, so each step the environment gives waits for a person. The last row is the
+one place a run is made unattended: `{then: allow}` lets every step the environment gives go
+ahead unasked, and the rows above it are the exceptions.
 
-**The network is not a step.** No row decides a connection: what a run may reach is its
-launch's `with.network`, and a spawn that leaves it out has none
-([the network](../systems/inside.md#the-network-is-the-launchs)).
+**The environment is what the task may do; the autonomy decides among it.** A row never gives
+a step the environment does not: "never `main`" is a `git` block whose push shapes leave `main`
+out, and "no shell" is an environment with no `commands`. A row that can match nothing the
+environment gives is refused where it is written, since it would never decide.
 
-**A script is one action, and not a step.** It runs whatever the policy says. What is decided is
-each call it makes. So `verse task run --script "go test ./..."` runs with no question. For a
-run you type, the CLI sends the host's network, unless
-`--network none` or `--network <hosts>` says less, on a runner that can build it (`verse up`'s
-builds only the host's): you are at the prompt, so the CLI writes what says you know. A
-charter's spawn says its own.
+**A connection is decided too.** Under `network: {mode: allow}`, the task's proxy decides each
+connection as the step `network.tcp-client`: outside the environment's `tcp-client` shapes it is
+refused, and within them a row on the network allows or denies it. A connection can't wait for an
+answer, so such a row never asks, and the default row doesn't decide a connection: a host the
+shapes give is reached unless a row on the network denies it. What the proxy refused is on the
+task's record. Under `open` or `none` there is nothing to decide
+([the network](../systems/inside.md#the-network)).
+
+**A script is one action, and not a step.** It runs whatever the autonomy says. What is decided
+is each call it makes.
 
 **An agent asks before a step it chose.** Its reads run freely. Under rows that `ask` on
 `files`, `commands`, `git` and `agent`, each write, command, push and call to a sub-agent waits
-until somebody approves it. Approving a
-command the agent made up is a real decision.
+until somebody approves it. Approving a command the agent made up is a real decision.
 
 **A row on `files` or `commands` is advisory.** It decides the act as the doer names it. A
 write through the shell is a `commands.run` step, not `files.write`, and a `command` pattern
@@ -176,12 +196,12 @@ act, and the network is built into the run
 
 An `allow` row is how a charter says "the firing already decided this":
 `{match: {system: git, verb: push}, then: allow}`. The rule's own `gates:` run before the
-action, once for each firing. The allow stops the same decision from being made twice. A runner that ignored a spawn's `policy:` would silently disobey a
-charter that asks to be asked.
+action, once for each firing. The allow stops the same decision from being made twice. A runner
+that ignored a spawn's `autonomy:` would silently disobey a charter that asks to be asked.
 
 ```sh
 verse question                              # task questions, and engine gates that ASK
-# - gate: policy[1]
+# - gate: autonomy[1]
 #   id: run-f3e31ed0390f~d1
 #   task: run-f3e31ed0390f
 #   reason: "files.write path=docs/x.md"
@@ -192,7 +212,7 @@ verse question approve run-f3e31ed0390f~d1 --as you@example.com  # or: task appr
 ```
 
 A question names the row that asked it: the row's `name`, or its place in the list, such as
-`policy[1]`. Its clock, its default and its `need` are the row's, whatever the runner sends.
+`autonomy[1]`. Its clock, its default and its `need` are the row's, whatever the runner sends.
 `turn`, `ask` and `question-ask` name the questions that are no row's, a conversation's turn and
 a task's own, so no row takes one of those names.
 The `~` between the task and the gate needs no quotes, in a shell or in a URL.
@@ -204,7 +224,7 @@ the answer is still theirs. A charter gate is listed here too, with its `options
 `deadline` ([the tally](gates.md#the-tally)).
 
 With an identity, `run --attach` and `attach` ask inline instead
-(`⏸ gate "policy[1]" (write_file) — approve? [y/n]`). Answer `y` to allow and `n` to deny. Any
+(`⏸ gate "autonomy[1]" (write_file) — approve? [y/n]`). Answer `y` to allow and `n` to deny. Any
 other answer is asked again; it is not read as a no. A denied step comes back to the agent as an
 error, and the agent makes a new plan. Without an identity, `attach` only streams, and prints
 the `verse question` command that answers. It is the same question either way: it stays in
@@ -213,8 +233,8 @@ the `verse question` command that answers. It is the same question either way: i
 ### A row's question
 
 An `ask` row poses the same record that a charter gate poses. It says how many ballots settle
-it, what silence settles on, and how long it stands. A run with a policy of its own writes it as
-the `policy:` of a spawn, or as a file given to `--policy`:
+it, what silence settles on, and how long it stands. It is a row of a spawn's `autonomy:`, a
+charter's or one given to `task run`:
 
 ```tony
 - name: shell
@@ -235,7 +255,7 @@ the `policy:` of a spawn, or as a file given to `--policy`:
 verb or a param the row leaves out matches anything: `{system: git}` is every git call. `*`
 matches within a segment and `**` across. A command matches as a whole string, with `*`
 matching anything. The last row names no step, and is what a call of a named verb gets when no
-row above matched it. Verse refuses a policy that ends with a named step, or that puts a row
+row above matched it. Verse refuses an autonomy that ends with a named step, or that puts a row
 with no match before the end.
 
 Each step is a verb of a system, written `<system>.<verb>`. The tool a doer calls for it is
@@ -244,12 +264,13 @@ params are the verb's:
 
 | Step | Params |
 |---|---|
-| `git.push` | `repo`, `ref`, `delete`, `force`; `exists` and `own`, filled by the runner |
+| `git.push` | `repo`, `from`, `ref`, `delete`, `force`; `exists` and `own`, filled by the runner |
 | `github.create-pr` | `repo`, `base`, `head`; `own`, filled by the runner |
 | `github.update-pr` | `repo`, `head`, `base`; `own`, filled by the runner |
 | `files.write` | `path` |
 | `commands.run` | `command` |
 | `agent.call-sub-agent` | `agent` |
+| `network.tcp-client` | `host`, `port` (under a network of `allow`) |
 
 The issue trackers' verbs (`git-issue`, `github-issue`, `linear-issue`) and Slack's are on
 [their pages](../systems/README.md), one page for each system. Verse keeps each system's verbs
@@ -259,7 +280,7 @@ A runner's tools are checked against these documents when it starts.
 An ask's `need`, `within`, `default`, `answerers` and `labels` mean what `need`, `deadline`,
 `answerers` and `labels` mean on a [charter gate](gates.md#gates-whether-it-proceeds). Verse
 refuses them the same way when they cannot be posed as written: at the spawn, or at
-`task policy`, and never in the middle of a run. A row's question is answered `proceed` or
+`task autonomy`, and never in the middle of a run. A row's question is answered `proceed` or
 `deny`, so `default` is one of the two. It also refuses a param the step does not have,
 a pattern its field is never spelled as, and a system or a verb that no document describes. A
 `repo` is `host/owner/name` in lower case (`github.com/acme/app`), a
@@ -282,14 +303,20 @@ people it names.
 is `commands.run`. So a row over it stops the command before it runs:
 
 ```sh
-cat > policy.tony <<'EOF'
+cat > tests.tony <<'EOF'
+prompt: run the tests
+environment:
+  systems:
+    network: {mode: open}
+    commands: {}
+autonomy:
 - name: shell
   match: {system: commands, verb: run}
   then: {ask: {within: "10m", default: deny}}
 - then: allow
 EOF
 
-verse task run --policy policy.tony "run the tests"      # run-4e919ce01f99
+verse task run -f tests.tony                                      # run-4e919ce01f99
 verse question
 # - gate: shell
 #   id: run-4e919ce01f99~d1
@@ -304,9 +331,9 @@ verse question approve run-4e919ce01f99~d1 --as ana@example.com   # the command 
 verse task get run-4e919ce01f99                                   # status: done
 ```
 
-The policy names `commands` and no other system, so the run has a shell and nothing else: no
-`write_file`, no sub-agent. The last row is the dial over the verbs the rows name, and here it
-decides nothing, since the `shell` row matches every command.
+The environment gives `commands` and no other system, so the run has a shell and nothing else:
+no `write_file`, no sub-agent. The last row is the dial, and here it decides nothing, since the
+`shell` row matches every command.
 
 If nobody answers, the deadline settles the question on `deny` after ten minutes. The command
 never runs. The question's record says `by: deadline` and `verdict: deny`. The refusal comes back
@@ -323,7 +350,8 @@ and does not settle it. Both times are on the record, and the earlier one fires 
 
 A task can ask the person it runs for. The `question-ask` tool poses a question and waits until
 it is answered, and the answer is the tool's result. It is the step `question.ask`, the task's
-where a row names `question`, as `{match: {system: question}, then: allow}` does. An agent has it
+where its environment gives `question` (`question: {}`), and a row such as
+`{match: {system: question}, then: allow}` lets it put the question unasked. An agent has it
 as a tool, and a script calls it with `verse-call-tool question-ask`. The question is an ordinary ask: on the docket, in
 `verse question`, in Slack, answerable from any of them, and withdrawn if the task is cancelled.
 
@@ -393,15 +421,14 @@ orphans it like any question.
 ### Which one you meant: an agent or a command
 
 When you ask an *agent* to do something, you expect it to ask before it writes. When you give a
-*command*, you expect it to run. Typed as a prompt, `verse task run "go test ./..."` goes to an
-agent, and with no `--policy` the agent has no shell to run it in. Verse cannot tell from the
-prompt which one you meant, so you say it:
+*command*, you expect it to run. A spawn says which: `prompt: "go test ./..."` goes to an agent,
+and with no `commands` in its environment the agent has no shell to run it in. So you write it:
 
-| You want | You pass |
+| You want | You write |
 |---|---|
-| to run the prompt as a command | `--script` |
-| to keep the agent and not be asked | `--policy` with a row allowing what it may do, `{match: {system: commands}, then: allow}` |
-| to change how it is decided after the task starts | `task policy <id>` with the rows, naming no verb the task's policy did not |
+| to run it as a command | `script: "go test ./..."` |
+| to keep the agent and not be asked | `commands: {}` in the environment, and a row allowing what it may do, `{match: {system: commands}, then: allow}` |
+| to change how it is decided after the task starts | `task autonomy <id>` with the rows, each reaching what the task's environment gives |
 
 A rule meets the same problem from the other side. Its gates approve *the firing*, not the
 actions that the agent then chooses. The rule says it already decided with `allow` rows on the
@@ -421,17 +448,19 @@ verse data verse task instance <id>
 
 ```tony
 payload:
-  policy: [{match: {system: commands}, then: ask}, {then: ask}]
-  policyBy: user:you@example.com
-  doer: verse
+  autonomy: [{match: {system: commands}, then: ask}, {then: ask}]
+  autonomyBy: user:you@example.com
+  agent: {name: verse, model: claude-sonnet-5}
   lastAction: run_bash
   lastOutput: summarizing
   runner: local
   status: done
 ```
 
-`doer` is who did the work: the agent's name, or `script`. `git` is the repositories the spawn
-gave the task, in the spawn's words.
+`agent` is who did the work and with what: the agent's name and its settings, as the spawn asked
+until the runner reports and as the runner resolved them once the task runs, the runner's
+defaults filled in. A script's record says `script: true` instead. `git` is the repositories the
+spawn gave the task, in the spawn's words, and `refused` the connections its proxy refused.
 
 `observed: false` appears while the mirror cannot reach the runner that holds the task. The
 other fields are then the last thing the mirror heard, not the current state.
@@ -518,8 +547,8 @@ a bare claim ([bindings](action.md#bindings), [the answer contract](action.md#th
 ## Steering
 
 A [flow](../glossary.md#flow) is a query over live tasks, so steering takes a selection, not one
-task. A task you run by hand is a flow too: the flow of its `--subject`, or of its own id when it
-names none. The verbs, their flags, and how a hold differs from a suspension are in
+task. A task you run by hand is a flow too: the flow of its spawn's `subject`, or of its own id when
+it names none. The verbs, their flags, and how a hold differs from a suspension are in
 [control](../control.md). This section says what they do to a task.
 
 ```sh

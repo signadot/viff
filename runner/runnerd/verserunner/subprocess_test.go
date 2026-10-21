@@ -51,7 +51,7 @@ func serveLogging(t *testing.T, s Secrets, sb runnerd.Sandbox, log io.Writer) (r
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := Standalone(Config{}, s, Tokens{}, sb, []string{os.Args[0], "-test.run=^$", taskArg}, work, control, log)
+	h, err := Standalone(opened(Config{}), s, Tokens{}, sb, []string{os.Args[0], "-test.run=^$", taskArg}, work, control, log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func serveLogging(t *testing.T, s Secrets, sb runnerd.Sandbox, log io.Writer) (r
 // script runs a script as a task, and returns its output once it has ended.
 func script(t *testing.T, rt client.Launcher, id, src string) task.Snapshot {
 	t.Helper()
-	rt.Launch(runner.Launch{ID: id, Doer: runner.Doer{Script: src, With: runner.With{Network: netOpen}}, Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}})
+	rt.Launch(runner.Launch{ID: id, Script: src, Environment: envOf(netOpen, nil, nil), Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}})
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		if in, err := rt.(task.Lister).TaskSnapshot(id); err == nil && in.Status.Terminal() {
@@ -161,27 +161,27 @@ touch /tmp/scratch && echo own-tmp
 // client's handle is how verse does it.
 func TestGatesReachATaskInItsOwnProcess(t *testing.T) {
 	rt, _ := serve(t, Secrets{}, runnerd.Unconfined{})
-	if l := rt.Launch(runner.Launch{ID: "t1", Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, Doer: runner.Doer{Script: "sleep 2", With: runner.With{Network: netOpen}}}); l.Err() != "" {
+	if l := rt.Launch(runner.Launch{ID: "t1", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, Script: "sleep 2", Environment: envOf(netOpen, nil, nil)}); l.Err() != "" {
 		t.Fatalf("launch: %s", l.Err())
 	}
 	h := rt.Attach("t1")
-	g := task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}
+	g := task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}
 	var err error
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
-		if err = h.SetPolicy(g, "user:ana"); err == nil {
+		if err = h.SetAutonomy(g, "user:ana"); err == nil {
 			break
 		}
 	}
 	if err != nil {
 		t.Fatalf("SetGating: %v", err)
 	}
-	if err := h.SetPolicy(task.Policy{{Name: "c", Match: &task.Match{System: "commands", Verb: "run"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAsk}}}, "x"); err == nil {
+	if err := h.SetAutonomy(task.Autonomy{{Name: "c", Match: &task.Match{System: "commands", Verb: "run"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAsk}}}, "x"); err == nil {
 		t.Error("a gate a script can't stop was installed")
 	}
 	events, stop := h.SubscribeSince(0)
 	defer stop()
 	for e := range events {
-		if e.Kind == task.EventPolicy && e.By == "user:ana" {
+		if e.Kind == task.EventAutonomy && e.By == "user:ana" {
 			return
 		}
 	}

@@ -2,10 +2,10 @@
 
 The reasons behind [Tasks](../reference/tasks.md). They are for somebody changing verse; the page itself says what verse does.
 
-## Why a script gets its data in `with.env`
+## Why a script gets its data in `environment.vars`
 
 A value spliced into a script's text is part of the script, so a value with a quote in it can
-change what the script does. A variable cannot: `with.env` sets it beside the script, and
+change what the script does. A variable cannot: `environment.vars` sets it beside the script, and
 `verse-call-tool` takes it as a flag's value, whole.
 
 ## Why a script's calls go through the gates

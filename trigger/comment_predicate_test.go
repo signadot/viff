@@ -147,7 +147,7 @@ func TestACommentDoesNotHideAScalar(t *testing.T) {
 			t.Errorf("%s: %v", tc.name, err)
 			continue
 		}
-		got, ok := scalarText(ir.Get(unwrap(n), "a"))
+		got, ok := scalarText(ir.Get(ir.Uncomment(n), "a"))
 		if !ok || got != tc.want {
 			t.Errorf("%s: scalarText = %q, %v — a firing that needs this text fails", tc.name, got, ok)
 		}

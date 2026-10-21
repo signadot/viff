@@ -83,7 +83,7 @@ repository).
 
 So a write of the [control plane](../glossary.md#control-plane) in a scope reaches only what the
 scope created. These are the control writes: `flow suspend|resume|say|cancel`,
-`task cancel|say|policy`, `question <id> --answer` and `charter -r`. What a suspension covers
+`task cancel|say|autonomy`, `question <id> --answer` and `charter -r`. What a suspension covers
 in a scope is in [control](../control.md#scopes).
 
 Verse **refuses** a control write in a scope that names something the scope did not create. The

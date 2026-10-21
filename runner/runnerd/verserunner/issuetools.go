@@ -18,7 +18,7 @@ import (
 // AN ISSUE TRACKER IS A SYSTEM WITH A NAME, and each tool here is one verb of one system
 // (package systems): `git-issue` (a repository's own tracker: create, comment, close, pull,
 // push), `github-issue` (the forge's: create, comment, close) and `linear-issue` (a Linear
-// team's: create, comment, close). Each verb is a step the task's policy decides
+// team's: create, comment, close). Each verb is a step the task's autonomy decides
 // (task.StepGitIssueCreate, …). The remote trackers' verbs the runner performs with a credential.
 // A repository's own tracker is written in the checkout, in the task's own process, with no
 // credential, as a commit is; `git-issue-push` makes the issues leave, and `git-issue-pull`
@@ -38,7 +38,7 @@ var (
 )
 
 // issueTools are the issue tools a task has: git-issue's for the repositories the launch names
-// under `with.git-issue`, github-issue's for the repositories of `with.git` where the runner's
+// under its environment's `git-issue`, github-issue's for the repositories of its `git` where the runner's
 // forge is a GitHub (github), and linear-issue's where the runner holds a Linear credential
 // (linear-issue).
 func issueTools(cl *delivery.Client, ws *workspace.Workspace, trackers []runner.Tracker, github, linear bool) []agent.Tool {

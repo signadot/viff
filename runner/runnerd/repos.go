@@ -1,6 +1,7 @@
 package runnerd
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"io"
@@ -9,7 +10,7 @@ import (
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/delivery"
 	"github.com/signadot/verse/runner/runnerd/workspace"
-	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/systems"
 )
 
 // Repos is how a SubprocessHandler checks out a launch's repos and pushes from them: the git
@@ -32,8 +33,8 @@ type Repos struct {
 	Services delivery.Services
 	// Ceilings are the operator's bounds on what any task may do with each system the runner
 	// performs, by system (runner.Offer.Systems): read again at each act, whatever the task's
-	// policy said.
-	Ceilings map[string]task.Policy
+	// autonomy said.
+	Ceilings map[string]systems.Ceiling
 }
 
 // DefaultForge is where a runner fetches `owner/name` when its configuration names nowhere else.
@@ -64,12 +65,12 @@ type checkout struct {
 // whatever earlier tasks were approved to push to them and did not land. The workspace's root
 // is the task's working directory.
 func (rs *Repos) prepare(ctx context.Context, l *runner.Launch, dir string, log io.Writer) (*checkout, error) {
-	repos, err := workspace.FromLaunch(l.Doer.With.Git, rs.Forge)
+	repos, err := workspace.FromLaunch(l.Repos(), rs.Forge)
 	if err != nil {
 		return nil, err
 	}
 	ws, err := rs.Mirrors.Open(ctx, l.ID, repos, dir,
-		workspace.AuthorFor(l.Provenance.Principal, l.Doer.Name()))
+		workspace.AuthorFor(l.Provenance.Principal, cmp.Or(l.Who(), "agent")))
 	// The mirrors were just fetched, so this is the cheapest place to retry: in the background,
 	// because a backlog against a remote that is down must not hold up this task.
 	go func() {

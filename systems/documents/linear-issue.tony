@@ -3,13 +3,13 @@ description: "The issues of a Linear workspace. Each verb is a call the runner m
 verbs:
 - name: create
   description: "Create an issue in a team, named by its key, with a title and description."
-  params:
+  fields:
   - {name: team, form: upper, description: "the team's key (ENG)"}
 - name: comment
   description: "Comment on an issue, by its identifier."
-  params:
+  fields:
   - {name: issue, form: upper, description: "the issue's identifier (ENG-42)"}
 - name: close
   description: "Close an issue, by its identifier: it moves to its team's completed state."
-  params:
+  fields:
   - {name: issue, form: upper, description: "the issue's identifier (ENG-42)"}

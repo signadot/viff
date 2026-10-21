@@ -18,6 +18,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -328,9 +329,10 @@ func TestARepoIsBuiltFromTheLaunchs(t *testing.T) {
 	if err != nil || repos[0].Remote != "/srv/forge/acme/app" {
 		t.Errorf("a local forge: %+v, %v", repos, err)
 	}
-	// What a launch's check refuses is refused here too.
-	if _, err := FromLaunch([]runner.Repo{{Repo: "acme/app"}, {Repo: "other/app"}}, "https://github.com"); err == nil {
-		t.Error("two repositories named app checked out over each other")
+	// What a launch's check refuses is refused here too (two repositories in one directory are
+	// the environment's to refuse).
+	if _, err := FromLaunch([]runner.Repo{{Repo: "acme/app.git"}}, "https://github.com"); err == nil {
+		t.Error("a repository named with .git was checked out")
 	}
 }
 
@@ -573,21 +575,19 @@ func TestWorkThatCouldNotBePushedIsInTheMirror(t *testing.T) {
 	pushes := []Repo{
 		{Repo: runner.Repo{Repo: "acme/svc", From: "main"}, Remote: origin},
 	}
-	allows := &runner.Launch{Policy: pushing}
+	allows := &runner.Launch{Environment: pushing("acme/svc")}
 	if !(&Workspace{Repos: pushes, Trees: []*Tree{{Repo: pushes[0]}}}).Deliverable(allows) {
 		t.Error("a workspace with a push target reports nothing to deliver")
 	}
-	// Read-only too: a policy that names no git gives the task no push, whatever its last row.
-	for _, p := range []task.Policy{nil, {{Then: task.Then{Mode: task.ThenAllow}}}} {
-		if (&Workspace{Trees: []*Tree{{Repo: pushes[0]}}}).Deliverable(&runner.Launch{Policy: p}) {
-			t.Errorf("a workspace under %v, which provides no push, claims it delivers", p)
+	// Read-only: an environment that gives no push, whatever the autonomy says, so nothing was
+	// ever going to leave, and removing it destroys nothing.
+	fetchOnly := systems.Environment{Systems: systems.Systems{"git": {{Attributes: map[string]string{"repo": "acme/svc"},
+		Verbs: map[string][]systems.Shape{"fetch": {{}}}}}}}
+	allowAll := task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}
+	for _, e := range []systems.Environment{{}, fetchOnly} {
+		if (&Workspace{Trees: []*Tree{{Repo: pushes[0]}}}).Deliverable(&runner.Launch{Environment: e, Autonomy: allowAll}) {
+			t.Errorf("a workspace under %+v, which gives no push, claims it delivers", e)
 		}
-	}
-	// Read-only: the policy refuses every push, so nothing was ever going to leave, and
-	// removing it destroys nothing.
-	denies := &runner.Launch{Policy: task.Policy{{Match: &task.Match{System: "git", Verb: "push"}, Then: task.Then{Mode: task.ThenDeny}}, {Then: task.Then{Mode: task.ThenAllow}}}}
-	if (&Workspace{Trees: []*Tree{{Repo: pushes[0]}}}).Deliverable(denies) {
-		t.Error("a read-only workspace claims it delivers")
 	}
 
 	ws, err := m.Open(context.Background(), "p1", pushes, t.TempDir(), Author{})

@@ -23,10 +23,10 @@ const token = "eyJ.token.sig"
 // the task has ended.
 func TestAScriptGetsItsCredentialAsAFile(t *testing.T) {
 	root := t.TempDir()
-	d := New(Config{}, Secrets{}, root, io.Discard)
-	p := d.Build(runner.Launch{ID: "t1", Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, Credential: token,
-		Doer: runner.Doer{Script: "#!/bin/sh\necho \"$" + task.CredentialFileEnv + "\"\ncat \"$" +
-			task.CredentialFileEnv + "\"; echo\nenv | grep -c " + token + " || true", With: runner.With{Network: netOpen}}}, task.NewRegistry())
+	d := New(opened(Config{}), Secrets{}, root, io.Discard)
+	p := d.Build(runner.Launch{ID: "t1", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, Credential: token,
+		Script: "#!/bin/sh\necho \"$" + task.CredentialFileEnv + "\"\ncat \"$" +
+			task.CredentialFileEnv + "\"; echo\nenv | grep -c " + token + " || true", Environment: envOf(netOpen, nil, nil)}, task.NewRegistry())
 	if _, err := p.Run(context.Background()); err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -56,9 +56,9 @@ func TestAScriptGetsItsCredentialAsAFile(t *testing.T) {
 
 // A launch with no credential gets no file, and its shell no variable.
 func TestNoCredentialNoFile(t *testing.T) {
-	d := New(Config{}, Secrets{}, t.TempDir(), io.Discard)
-	p := d.Build(runner.Launch{ID: "t1", Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}},
-		Doer: runner.Doer{Script: "echo \"[$" + task.CredentialFileEnv + "]\"", With: runner.With{Network: netOpen}}}, task.NewRegistry())
+	d := New(opened(Config{}), Secrets{}, t.TempDir(), io.Discard)
+	p := d.Build(runner.Launch{ID: "t1", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}},
+		Script: "echo \"[$" + task.CredentialFileEnv + "]\"", Environment: envOf(netOpen, nil, nil)}, task.NewRegistry())
 	if _, err := p.Run(context.Background()); err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -76,9 +76,9 @@ func TestTheAgentGetsItsCredentialAsAFile(t *testing.T) {
 		}
 		return modeltest.Use("run_bash", map[string]any{"command": "cat \"$" + task.CredentialFileEnv + "\"; echo"})
 	})
-	d := New(Config{}, Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL}, t.TempDir(), io.Discard)
-	p := d.Build(runner.Launch{ID: "t1", Prompt: "read your credential", Policy: allowing("commands"),
-		Credential: token, Doer: runner.Doer{Agent: AgentName, With: runner.With{Network: netOpen}}}, task.NewRegistry())
+	d := New(opened(Config{}), Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL}, t.TempDir(), io.Discard)
+	p := d.Build(runner.Launch{ID: "t1", Prompt: "read your credential", Autonomy: allowing("commands"),
+		Credential: token, Agent: &runner.Agent{Name: AgentName}, Environment: giving(envOf(netOpen, nil, nil), "commands")}, task.NewRegistry())
 	if _, err := p.Run(context.Background()); err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -91,8 +91,8 @@ func TestTheAgentGetsItsCredentialAsAFile(t *testing.T) {
 // the file is made there.
 func TestATaskInItsOwnProcessGetsItsCredential(t *testing.T) {
 	rt, _ := serve(t, Secrets{}, runnerd.Unconfined{})
-	rt.Launch(runner.Launch{ID: "t1", Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, Credential: token,
-		Doer: runner.Doer{Script: "#!/bin/sh\ncat \"$" + task.CredentialFileEnv + "\"", With: runner.With{Network: netOpen}}})
+	rt.Launch(runner.Launch{ID: "t1", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, Credential: token,
+		Script: "#!/bin/sh\ncat \"$" + task.CredentialFileEnv + "\"", Environment: envOf(netOpen, nil, nil)})
 	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
 		in, err := rt.(task.Lister).TaskSnapshot("t1")
 		if err != nil || !in.Status.Terminal() {
@@ -128,9 +128,9 @@ func TestASubAgentGetsTheEnvAndNotTheCredential(t *testing.T) {
 		}
 		return modeltest.Use("yield", map[string]any{"reason": "waiting"})
 	})
-	r := New(Config{}, Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL}, t.TempDir(), io.Discard)
-	p := r.Build(runner.Launch{ID: "t1", Prompt: "delegate", Policy: allowing("commands", "agent"), Credential: token,
-		Doer: runner.Doer{Agent: AgentName, With: runner.With{Network: netOpen, Env: map[string]string{"BRANCH": "main"}}}}, task.NewRegistry())
+	r := New(opened(Config{}), Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL}, t.TempDir(), io.Discard)
+	p := r.Build(runner.Launch{ID: "t1", Prompt: "delegate", Autonomy: allowing("commands", "agent"), Credential: token,
+		Agent: &runner.Agent{Name: AgentName}, Environment: giving(withVars(envOf(netOpen, nil, nil), map[string]string{"BRANCH": "main"}), "agent", "commands")}, task.NewRegistry())
 	if _, err := p.Run(context.Background()); err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -144,8 +144,8 @@ func TestASubAgentGetsTheEnvAndNotTheCredential(t *testing.T) {
 func TestTheLogNeverHoldsTheCredential(t *testing.T) {
 	var log lockedLog
 	rt, _ := serveLogging(t, Secrets{}, runnerd.Unconfined{}, &log)
-	rt.Launch(runner.Launch{ID: "t1", Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, Credential: token,
-		Doer: runner.Doer{Script: "#!/bin/sh\ntest -s \"$" + task.CredentialFileEnv + "\" && echo has-it", With: runner.With{Network: netOpen}}})
+	rt.Launch(runner.Launch{ID: "t1", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, Credential: token,
+		Script: "#!/bin/sh\ntest -s \"$" + task.CredentialFileEnv + "\" && echo has-it", Environment: envOf(netOpen, nil, nil)})
 	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
 		if in, err := rt.(task.Lister).TaskSnapshot("t1"); err == nil && in.Status.Terminal() {
 			if in.Result != "has-it" {

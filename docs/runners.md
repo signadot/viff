@@ -82,8 +82,9 @@ action:
   spawn:
     prompt:   "retrain the ranker on $subject"
     runner: verse.runners.gpu                             # ← where it runs
-    doer: {agent: verse, with: {network: {mode: open}}}   # ← what runs it
-    policy:                                               # ← what it may do, and alone
+    agent: {name: verse}                                  # ← who does it
+    environment: {systems: {network: {mode: open}, files: {}, commands: {}}}   # ← what it may reach
+    autonomy:                                             # ← what it may do unasked
     - {match: {system: files}, then: allow}
     - {match: {system: commands}, then: allow}
     - {then: ask}
@@ -91,10 +92,11 @@ action:
     patch: { stage: retrained }       # the latch: out of its own selection
 ```
 
-An ad-hoc run names a runner too:
+An ad-hoc run names a runner too, in the spawn it runs:
 
 ```sh
-verse task run -runner verse.runners.gpu "retrain the ranker"
+echo '{prompt: "retrain the ranker", runner: verse.runners.gpu, environment: {systems: {network: {mode: open}}}}' |
+  verse task run -f -
 ```
 
 A spawn names a runner by **name**, not by URL. The name is an indirection, and the reason
@@ -111,11 +113,11 @@ does not fall back to the default runner.
 A spawn that names no runner goes to the default runner of this verse, which
 `verse up -runner` sets.
 
-### Not the doer
+### Not the agent
 
-A spawn's `doer` says **who** does the work: which agent, under which model and credential. A
-runner is **where the work runs**. The two are independent: the same doer may run in either of
-two places, and the same place may host either of two doers.
+A spawn's `agent` says **who** does the work: which agent, under which model and credential (or a
+`script`, which is its own). A runner is **where the work runs**. The two are independent: the
+same agent may run in either of two places, and the same place may host either of two agents.
 
 ## Seeing where
 
@@ -211,23 +213,24 @@ The narrowing lives *at the runner*. Whoever deploys the runner declares it. The
 runner, `runnerd verse`, is the worked example; its configuration names:
 
 - which systems it holds for its tasks, and the ceiling over what any task may do with each, the forge its repositories come from among them;
-- which models its agent may use;
-- which agents it offers, and what each takes.
+- which agents it offers, and the settings each takes (which models among them);
+- what its sandbox can build, which the runner says itself rather than its configuration.
 
 The runner publishes that at `GET /describe`, and verse reads it: `verse runner add` is the
-probe, and what the runner offers is kept on its registration (`offers`, which `verse runner
+probe, and what the runner offers is kept on its registration (`described`, which `verse runner
 show` prints); `verse runner check` reads it again, so a runner that offers more after a
-restart says so. Each offer says which networks it builds, under `with.network`, or verse
-does not install the runner. A spawn says what its task works with, under `with:` (the repositories, the
-network it may reach), and what it may do, in its `policy:` (what may leave each repository),
-and verse checks the spawn against the offers of the runner it names where the spawn is
-written: a charter is refused at install, and `verse task run` at the prompt, naming an agent
-the runner does not offer, a model it does not take, a network it does not build, or a forge it
-has no repositories on. The runner checks the launch again when it
-arrives, and refuses what it cannot honour. So a charter says where work runs, and the
-deployment says what running there permits. What comes back is an ordinary step, which the
-task's policy decides like any other, so nothing in the arrangement is private to
-the runner. The sample in [examples/runner](reference/examples/runner/main.go) is the one to
+restart says so, and a registration kept from an older runner or verse is asked again. Each
+offer holds the network, with the modes its sandbox builds under `builds`, or verse does not
+install the runner. A spawn says what its task may reach, in its `environment` (the
+repositories and what may leave each, the network, the other systems), and what it does unasked,
+in its `autonomy`, and verse checks the spawn against the offer of the runner it names where the
+spawn is written: a charter is refused at install, and `verse task run` at the prompt, naming
+an agent the runner does not offer, a setting it does not take, a system it does not hold, a
+block beyond its ceiling, a network it does not build, or a step its agent can't run without
+and the environment leaves out. The runner checks the launch again when it arrives, and
+refuses what it cannot honour. So a charter says where work runs, and the deployment says what
+running there permits. What comes back is an ordinary step, which the task's environment and
+autonomy decide like any other, so nothing in the arrangement is private to the runner. The sample in [examples/runner](reference/examples/runner/main.go) is the one to
 copy for a runner of your own.
 
 **Running work cannot be moved.** Writing a different runner onto a `verse.task.instance`
@@ -283,10 +286,10 @@ A misspelled runner that ran the work in-process would be the same kind of bug a
 misspelled resolver that left work unsupervised. The deployment says one thing, and verse does
 another.
 
-### Why a runner is not the doer
+### Why a runner is not the agent
 
-A place and a doer are independent. One field that chose both would make one choice answer
-two questions, and force one entry for each pair of doer and place.
+A place and an agent are independent. One field that chose both would make one choice answer
+two questions, and force one entry for each pair of agent and place.
 
 ### Why health is not recorded or polled
 
@@ -366,7 +369,7 @@ writer may name runners at all.
 
 ### Why a runner entity says nothing about what work may do
 
-A limit of the form "work here may only do this" is the same narrowing that a doer answers.
+A limit of the form "work here may only do this" is the same narrowing a runner's ceiling answers.
 Answering it in two places, without deciding how the two compose, is how a ceiling comes to
 mean two things. The runner's offer gives that composition, so verse does not invent a second
 vocabulary for it.

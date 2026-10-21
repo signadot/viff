@@ -1,9 +1,11 @@
 package verserunner
 
 import (
+	"cmp"
 	"context"
 	"io"
 	"maps"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -22,6 +24,7 @@ import (
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/runner/runnerd/verserunner/agent/modeltest"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -37,7 +40,35 @@ func serveReposAt(t *testing.T, forge string, sec Secrets, mirrors string) clien
 	return serveConfigured(t, Config{Repos: &Repos{Mirrors: mirrors, Forge: forge}}, sec, Tokens{})
 }
 
-// serveConfigured serves the verse runner configured by c, with the secrets and tokens given.
+// opened is c with each system it holds and writes no ceiling for under an open one
+// (systems.Open), its `git` ceiling within its forge: what a test that is not about ceilings
+// configures, a ceiling written nowhere being closed.
+func opened(c Config) Config {
+	held := maps.Clone(c.Systems)
+	if held == nil {
+		held = map[string]System{}
+	}
+	names := c.performs()
+	for name := range inner {
+		names = append(names, name)
+	}
+	for _, name := range names {
+		sys := held[name]
+		if len(sys.Ceiling) == 0 {
+			sys.Ceiling = systems.Open()
+			if name == "git" {
+				host, _ := c.Repos.forge()
+				sys.Ceiling[0].Attributes = map[string][]string{"repo": {strings.ToLower(host) + "/**"}}
+			}
+		}
+		held[name] = sys
+	}
+	c.Systems = held
+	return c
+}
+
+// serveConfigured serves the verse runner configured by c, with the secrets and tokens given:
+// each system it holds and writes no ceiling for under an open one (opened).
 func serveConfigured(t *testing.T, c Config, sec Secrets, tokens Tokens) client.Launcher {
 	t.Helper()
 	work, err := filepath.EvalSymlinks(t.TempDir())
@@ -48,7 +79,7 @@ func serveConfigured(t *testing.T, c Config, sec Secrets, tokens Tokens) client.
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := Standalone(c, sec, tokens, runnerd.Unconfined{},
+	h, err := Standalone(opened(c), sec, tokens, runnerd.Unconfined{},
 		[]string{os.Args[0], "-test.run=^$", taskArg}, work, control, io.Discard)
 	if err != nil {
 		t.Fatal(err)
@@ -67,10 +98,7 @@ func TestALaunchsReposAreCheckedOutForIt(t *testing.T) {
 	forge := t.TempDir()
 	seed(t, forge, "acme/svc")
 	rt := serveRepos(t, forge, Secrets{})
-	rt.Launch(runner.Launch{ID: "t1", Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, Doer: runner.Doer{
-		Script: "#!/bin/sh\nset -e\nls\ncd svc\ngit branch --show-current\ngit remote\ncat README\nfor f in /proc/$$/fd/*; do readlink $f; done | grep -c socket || true\nfor fd in 3 4 5; do [ ! -e /proc/$$/fd/$fd ] || echo fd$fd; done",
-		With:   runner.With{Network: netOpen, Git: []runner.Repo{{Repo: "acme/svc"}}},
-	}})
+	rt.Launch(runner.Launch{ID: "t1", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, Script: "#!/bin/sh\nset -e\nls\ncd svc\ngit branch --show-current\ngit remote\ncat README\nfor f in /proc/$$/fd/*; do readlink $f; done | grep -c socket || true\nfor fd in 3 4 5; do [ ! -e /proc/$$/fd/$fd ] || echo fd$fd; done", Environment: envOf(netOpen, []runner.Repo{{Repo: "acme/svc"}}, nil)})
 	snap := ended(t, rt, "t1")
 	if snap.Status != task.Done {
 		t.Fatalf("task: %+v", snap)
@@ -102,10 +130,9 @@ func TestAnAgentsPushIsGatedAndTheRunnerMakesIt(t *testing.T) {
 		}
 	})
 	rt := serveRepos(t, forge, Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL})
-	rt.Launch(runner.Launch{ID: "t1", Prompt: "do the work", Policy: append(task.Policy{{Name: "push", Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"ref": "refs/heads/verse/auto/*"}}, Then: task.Then{Mode: task.ThenAsk}}},
+	rt.Launch(runner.Launch{ID: "t1", Prompt: "do the work", Autonomy: append(task.Autonomy{{Name: "push", Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"ref": "refs/heads/verse/auto/*"}}, Then: task.Then{Mode: task.ThenAsk}}},
 		allowing("git", "commands", "files")...),
-		Doer: runner.Doer{Agent: AgentName, With: runner.With{Network: netOpen,
-			Git: []runner.Repo{{Repo: "acme/svc"}}}}})
+		Agent: &runner.Agent{Name: AgentName}, Environment: giving(envOf(netOpen, []runner.Repo{{Repo: "acme/svc"}}, nil), "commands", "files")})
 
 	var q task.PendingGate
 	for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline) && q.ID == ""; time.Sleep(20 * time.Millisecond) {
@@ -114,7 +141,7 @@ func TestAnAgentsPushIsGatedAndTheRunnerMakesIt(t *testing.T) {
 		}
 	}
 	// The runner's two facts are on the question too: the branch is not at the forge yet.
-	want := map[string]string{"repo": "github.com/acme/svc", "ref": "refs/heads/verse/auto/t1", "delete": "false", "force": "false",
+	want := map[string]string{"repo": "github.com/acme/svc", "from": "main", "ref": "refs/heads/verse/auto/t1", "delete": "false", "force": "false",
 		"exists": "false", "own": "false"}
 	if q.Step != task.StepGitPush || q.Gate != "push" || !maps.Equal(q.Fields, want) {
 		t.Fatalf("the question was %+v, want the push gate on %v", q, want)
@@ -129,7 +156,7 @@ func TestAnAgentsPushIsGatedAndTheRunnerMakesIt(t *testing.T) {
 	if snap.Status != task.Done || !strings.Contains(snap.Result, "pushed svc -> refs/heads/verse/auto/t1") {
 		t.Fatalf("task: %+v", snap)
 	}
-	if !strings.Contains(brief, "svc/ — acme/svc at main") || !strings.Contains(brief, "Verse-Task: t1") ||
+	if !strings.Contains(brief, "svc/ — github.com/acme/svc at main") || !strings.Contains(brief, "Verse-Task: t1") ||
 		!strings.HasSuffix(brief, "do the work") {
 		t.Errorf("the agent was briefed:\n%s", brief)
 	}
@@ -148,12 +175,11 @@ func TestARunnerWithoutReposRefusesThem(t *testing.T) {
 		t.Fatal("a runner with no mirrors offers repos")
 	}
 	rt, _ := serve(t, Secrets{}, runnerd.Unconfined{})
-	h := rt.Launch(runner.Launch{ID: "t1", Policy: task.Policy{{Then: task.Then{Mode: task.ThenAsk}}}, Doer: runner.Doer{Script: "#!/bin/sh\ntrue",
-		With: runner.With{Network: netOpen, Git: []runner.Repo{{Repo: "acme/svc"}}}}})
+	h := rt.Launch(runner.Launch{ID: "t1", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAsk}}}, Script: "#!/bin/sh\ntrue", Environment: envOf(netOpen, []runner.Repo{{Repo: "acme/svc"}}, nil)})
 	frames, stop := h.Subscribe()
 	defer stop()
 	f := <-frames
-	if f.Kind != task.EventStatus || task.Status(f.Text) != task.Failed || !strings.Contains(f.Err, "intercepts no `git`") {
+	if f.Kind != task.EventStatus || task.Status(f.Text) != task.Failed || !strings.Contains(f.Err, "holds no `git`") {
 		t.Fatalf("the launch came back %+v", f)
 	}
 }
@@ -174,9 +200,7 @@ func TestATaskCancelledWhileItsReposAreCheckedOutIsCancelled(t *testing.T) {
 	rt := serveRepos(t, forge.URL, Secrets{})
 	t.Cleanup(func() { close(release); forge.Close() }) // first: the runner's own cleanup waits on its clone
 
-	h := rt.Launch(runner.Launch{ID: "t1", Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, Doer: runner.Doer{
-		Script: "#!/bin/sh\necho ran", With: runner.With{Network: netOpen, Git: []runner.Repo{{Repo: "acme/svc"}}},
-	}})
+	h := rt.Launch(runner.Launch{ID: "t1", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, Script: "#!/bin/sh\necho ran", Environment: envOf(netOpen, []runner.Repo{{Repo: "acme/svc"}}, nil)})
 	select {
 	case <-asked:
 	case <-time.After(10 * time.Second):
@@ -201,18 +225,19 @@ func TestATaskWithoutItsChannelFails(t *testing.T) {
 	defer r.Close()
 	defer w.Close()
 	// An agent and a script alike: both call their repos' tools over it.
-	for _, doer := range []runner.Doer{{Agent: AgentName}, {Script: "true"}} {
+	for _, l := range []runner.Launch{{Agent: &runner.Agent{Name: AgentName}}, {Script: "true"}} {
 		// Attach closes what it is given, as a task's process owns fd 5: so it is given a copy.
 		fd, err := syscall.Dup(int(r.Fd()))
 		if err != nil {
 			t.Fatal(err)
 		}
-		d := New(Config{Repos: &Repos{Mirrors: "unused"}}, Secrets{}, t.TempDir(), io.Discard)
+		d := New(opened(Config{Repos: &Repos{Mirrors: "unused"}}), Secrets{}, t.TempDir(), io.Discard)
 		d.deliveryFD = uintptr(fd)
-		doer.With = runner.With{Git: []runner.Repo{{Repo: "acme/svc"}}}
-		p := d.Build(runner.Launch{ID: "t1", Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, Doer: doer}, task.NewRegistry())
+		l.ID, l.Environment = "t1", envOf(nil, []runner.Repo{{Repo: "acme/svc"}}, nil)
+		l.Autonomy = task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}
+		p := d.Build(l, task.NewRegistry())
 		if _, err := p.Run(context.Background()); err == nil || !strings.Contains(err.Error(), "delivery channel") {
-			t.Fatalf("%s ran without its channel: %v", doer.Name(), err)
+			t.Fatalf("%s ran without its channel: %v", cmp.Or(l.Who(), "agent"), err)
 		}
 	}
 }
@@ -272,3 +297,70 @@ func seed(t *testing.T, forge, name string) {
 // netOpen is the network every launch on a test runner names: an unconfined runner builds no
 // other, and absent is none.
 var netOpen = &runner.Network{Mode: runner.NetworkOpen}
+
+// envOf is the environment a test's launch works in: the network n (nil: no network block, which
+// is none), the repositories repos, each fetched and pushed anywhere (what may leave is the
+// autonomy's to decide), and the trackers of trackers.
+func envOf(n *runner.Network, repos []runner.Repo, trackers []runner.Tracker) systems.Environment {
+	e := systems.Environment{Systems: systems.Systems{}}
+	if n != nil {
+		b := systems.Block{Attributes: map[string]string{"mode": n.Mode}}
+		for _, entry := range n.Allow {
+			host, port, err := net.SplitHostPort(entry)
+			if err != nil {
+				host, port = entry, ""
+			}
+			if b.Verbs == nil {
+				b.Verbs = map[string][]systems.Shape{}
+			}
+			shape := systems.Shape{"host": host}
+			if port != "" {
+				shape["port"] = port
+			}
+			b.Verbs["tcp-client"] = append(b.Verbs["tcp-client"], shape)
+		}
+		e.Systems["network"] = []systems.Block{b}
+	}
+	for _, r := range repos {
+		attrs := map[string]string{"repo": r.Repo}
+		if r.From != "" {
+			attrs["from"] = r.From
+		}
+		e.Systems["git"] = append(e.Systems["git"], systems.Block{Attributes: attrs,
+			Verbs: map[string][]systems.Shape{"fetch": {{}}, "push": {{}}}})
+	}
+	for _, tr := range trackers {
+		e.Systems["git-issue"] = append(e.Systems["git-issue"], systems.Block{Attributes: map[string]string{"repo": tr.Repo},
+			Verbs: everyVerb("git-issue")})
+	}
+	return e
+}
+
+// giving is e with a block for each of names giving every verb of it: the systems of one block
+// (files, commands, agent, question, slack, …), for a task whose rows decide them.
+func giving(e systems.Environment, names ...string) systems.Environment {
+	out := systems.Environment{Vars: e.Vars, Systems: systems.Systems{}}
+	for k, v := range e.Systems {
+		out.Systems[k] = v
+	}
+	for _, name := range names {
+		out.Systems[name] = []systems.Block{{Verbs: everyVerb(name)}}
+	}
+	return out
+}
+
+// everyVerb is every verb of a system, each with one shape that names nothing.
+func everyVerb(system string) map[string][]systems.Shape {
+	d, _ := systems.Get(system)
+	out := map[string][]systems.Shape{}
+	for _, v := range d.Verbs {
+		out[v.Name] = []systems.Shape{{}}
+	}
+	return out
+}
+
+// withVars is e with the variables vars.
+func withVars(e systems.Environment, vars map[string]string) systems.Environment {
+	e.Vars = vars
+	return e
+}

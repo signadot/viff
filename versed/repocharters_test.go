@@ -188,7 +188,7 @@ func TestTheReconcilerInstallsForARepositoryCalledVerse(t *testing.T) {
 func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	dir := t.TempDir()
 	// Hosted as `verse up` hosts tasks, so a call list can ask.
-	drivers := verserunner.New(verserunner.Config{}, verserunner.Secrets{}, dir, io.Discard)
+	drivers := verserunner.New(verserunner.Config{Systems: verserunner.OpenInside()}, verserunner.Secrets{}, dir, io.Discard)
 	srv := NewWithStore(drivers.Build, entitytest.Store(t))
 	t.Cleanup(srv.stopAllIOs)
 	srv.Start(t.Context())

@@ -3,6 +3,8 @@ package task
 import (
 	"context"
 	"errors"
+
+	"github.com/signadot/verse/systems"
 )
 
 // NewFailed builds a task that terminates immediately with msg as its error — used
@@ -11,7 +13,7 @@ import (
 // any task (visible via `task get`, status error), rather than a nil that
 // vanishes or a panic that stops the loop.
 func NewFailed(id string, reg Resolver, msg string) *Task {
-	sup := NewSupervisor(Policy{{Then: Then{Mode: ThenAllow}}}, reg) // nothing to start, so nothing to ask
+	sup := NewSupervisor(systems.Environment{}, Autonomy{{Then: Then{Mode: ThenAllow}}}, reg) // nothing to start, so nothing to ask
 	return NewTask(id, sup, failDriver{msg: msg}, nopExec{})
 }
 

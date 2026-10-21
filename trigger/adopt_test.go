@@ -25,12 +25,14 @@ func (h *recHandle) Pause(string) error {
 	h.mu.Unlock()
 	return nil
 }
-func (h *recHandle) Resume(string) error                 { return nil }
-func (h *recHandle) Cancel(string, string) error         { return nil }
-func (h *recHandle) Steer(string, string, string) error  { return nil }
-func (h *recHandle) SetPolicy(task.Policy, string) error { return nil }
-func (h *recHandle) Result() string                      { return "" }
-func (h *recHandle) Err() string                         { return "" }
+func (h *recHandle) Resume(string) error                     { return nil }
+func (h *recHandle) Cancel(string, string) error             { return nil }
+func (h *recHandle) Steer(string, string, string) error      { return nil }
+func (h *recHandle) SetAutonomy(task.Autonomy, string) error { return nil }
+func (h *recHandle) Result() string                          { return "" }
+func (h *recHandle) Err() string                             { return "" }
+func (*recHandle) Refused() map[string]int                   { return nil }
+func (*recHandle) Agent() (string, map[string]string)        { return "", nil }
 
 // A resumed task (Adopt) must be steerable, not merely observed: it is re-tracked
 // under its flow, so a selection of its subject reaches it and flow control holds it.

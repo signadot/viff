@@ -57,6 +57,9 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 		return nil, err
 	}
 	nets := networks(sb)
+	if err := c.checkBuilds(nets); err != nil {
+		return nil, err
+	}
 	// The binary a script calls its tools with: bound into each task's sandbox where it is, and
 	// named in the task's configuration, so the task process uses the one the runner bound.
 	tool := FindCallTool(command[0])
@@ -179,7 +182,7 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 		return task.NewFailed(l.ID, reg, err.Error())
 	}
 	cleanup = append(cleanup, remove)
-	set = append(envSet(l.Doer.With.Env), set...)
+	set = append(envSet(l.Vars()), set...)
 	prompt, tools := l.Prompt, []agent.Tool(nil)
 	var cl *delivery.Client
 	if r.performs() {
@@ -189,11 +192,11 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 		if ws, cl, err = r.checkout(l); err != nil {
 			return ended(task.NewFailed(l.ID, reg, err.Error()))
 		}
-		tools = append(repoTools(cl, ws, r.cfg.atGitHub()), issueTools(cl, ws, l.Doer.With.GitIssue, r.cfg.atGitHub(), r.cfg.Systems["linear-issue"].Credential != "")...)
+		tools = append(repoTools(cl, ws, r.cfg.atGitHub()), issueTools(cl, ws, l.Trackers(), r.cfg.atGitHub(), r.cfg.Systems["linear-issue"].Credential != "")...)
 		if r.cfg.Systems["slack"].Credential != "" {
 			tools = append(tools, slackTools(cl)...)
 		}
-		tools = offered(tools, l.Policy)
+		tools = offered(tools, l.Environment)
 		// The brief: how to deliver, where there are repos, and what reaches the world from
 		// here, from the tools the task was left with, so a prompt that says "file an issue"
 		// finds the tool rather than a shell that has no client for the tracker.
@@ -202,7 +205,7 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 		}
 		prompt = toolsBrief(tools) + prompt
 	}
-	if l.Doer.Script != "" {
+	if l.Script != "" {
 		p, stop, err := newScriptTask(l, r.root, r.cfg.shellEnv(), set, tools, r.callTool, reg, r.cfg.taskCeilings())
 		if err != nil {
 			if cl != nil {
@@ -213,7 +216,8 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 		cleanup = append(cleanup, stop)
 		return ended(p)
 	}
-	if l.Doer.Agent == codex.Agent {
+	who := cmp.Or(l.Who(), r.defaultAgent())
+	if who == codex.Agent {
 		// The codex agent (package codex): each command and patch it proposes is an action of
 		// this loop, gated and narrated like the verse agent's own, and the runner's tools are
 		// offered to it as its own. The same brief and the same delivery as the verse agent's.
@@ -229,30 +233,46 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 		return ended(p)
 	}
 	switch {
-	case l.Doer.Agent != AgentName:
-		return ended(task.NewFailed(l.ID, reg, "this runner offers no agent "+l.Doer.Agent))
+	case who != AgentName:
+		return ended(task.NewFailed(l.ID, reg, "this runner offers no agent "+who))
 	case r.secrets.PortkeyAPIKey == "":
 		return ended(task.NewFailed(l.ID, reg, "the verse agent has no model key on this runner"))
 	}
 	p := agent.Build(agent.Config{
 		ID: l.ID, Prompt: prompt, Root: r.root, Resolver: reg, Log: r.log, Extra: tools,
-		Answer: l.Answer, Policy: l.Policy, Ceilings: r.cfg.taskCeilings(), Env: r.cfg.shellEnv(),
-		Set: set, ChildSet: envSet(l.Doer.With.Env),
+		Answer: l.Answer, Environment: l.Environment, Autonomy: l.Autonomy, Ceilings: r.cfg.taskCeilings(), Env: r.cfg.shellEnv(),
+		Set: set, ChildSet: envSet(l.Vars()),
 		LLMBaseURL: r.secrets.PortkeyBaseURL, LLMKey: r.secrets.PortkeyAPIKey,
-		LLMVirtualKey: cmp.Or(l.Doer.Annotations[AnnotationVirtualKey], r.cfg.Models.Portkey.VirtualKey, r.secrets.PortkeyVirtualKey),
-		LLMModel:      cmp.Or(l.Doer.With.Model, r.cfg.Models.Model),
+		LLMVirtualKey: cmp.Or(l.AgentSettings().Annotations[AnnotationVirtualKey], r.cfg.Models.Portkey.VirtualKey, r.secrets.PortkeyVirtualKey),
+		LLMModel:      cmp.Or(l.AgentSettings().Model(), r.cfg.Models.Model),
 		Converse:      l.Converse,
 	})
+	// What it runs with, the configured model where the launch named none: the record's to say.
+	settings := map[string]string{}
+	if model := cmp.Or(l.AgentSettings().Model(), r.cfg.Models.Model); model != "" {
+		settings[runner.SettingModel] = model
+	}
+	p.SetAgent(AgentName, settings)
 	return ended(p)
 }
 
-// offered is the runner's tools whose verb the policy provides: a tool is its system's verb
-// (systems.SplitTool), and a verb no row names, or one withheld, is not offered, so the doer
-// never sees it.
-func offered(tools []agent.Tool, p task.Policy) []agent.Tool {
+// defaultAgent is the agent a prompt that names none is for: the first the runner offers
+// (Config.agents, as Describe orders them), and the verse agent where it offers none, which then
+// refuses for want of a model key.
+func (r *Runner) defaultAgent() string {
+	if agents := r.cfg.agents(r.secrets); len(agents) > 0 {
+		return agents[0]
+	}
+	return AgentName
+}
+
+// offered is the runner's tools whose verb the environment gives: a tool is its system's verb
+// (systems.SplitTool), and one the environment does not give is not offered, so the doer never
+// sees it.
+func offered(tools []agent.Tool, env systems.Environment) []agent.Tool {
 	return slices.DeleteFunc(slices.Clone(tools), func(t agent.Tool) bool {
 		system, verb, ok := systems.SplitTool(t.Name)
-		return ok && !p.Provides(systems.StepName(system, verb))
+		return ok && !env.Gives(systems.StepName(system, verb))
 	})
 }
 
@@ -265,8 +285,9 @@ func (r *Runner) performs() bool { return len(r.cfg.performs()) > 0 }
 // a push goes back over. A task that can't reach the channel doesn't run: its work would have no
 // way out.
 func (r *Runner) checkout(l runner.Launch) (*workspace.Workspace, *delivery.Client, error) {
-	repos := make([]workspace.Repo, len(l.Doer.With.Git))
-	for i, lr := range l.Doer.With.Git {
+	lrs := l.Repos()
+	repos := make([]workspace.Repo, len(lrs))
+	for i, lr := range lrs {
 		repos[i] = workspace.Repo{Repo: lr}
 	}
 	cl, err := delivery.Attach(r.deliveryFD)

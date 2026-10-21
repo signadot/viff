@@ -35,15 +35,16 @@ that a rule names under `linear.<KEY>.out`
 
 ## What a task can do
 
-A task gets Linear from its runner, when the runner holds a credential. Nothing in the spawn
-names Linear: a tracker is not a checkout, so the spawn has nothing to give the task. The
-policy decides each call by the team or the issue:
+A task gets Linear from its runner, when the runner holds a credential, and from its environment:
+a `linear-issue` block gives the verbs, its shapes the teams or issues. Linear is not a checkout,
+so the block names no repository. The autonomy decides each call by the team or the issue:
 
 ```tony
 spawn:
-  doer: {agent: verse, with: {network: {mode: open}}}
+  agent: {name: verse}
+  environment: {systems: {network: {mode: open}, linear-issue: {create: {team: ENG}, comment: {}, close: {}}}}
   prompt: "Read $subject and file the follow-ups it names in ENG."
-  policy:
+  autonomy:
   - {match: {system: linear-issue, verb: create, team: ENG}, then: allow}
   - {match: {system: linear-issue}, then: ask}
   - {then: allow}
@@ -55,9 +56,9 @@ spawn:
 | `linear-issue-comment` | comments on an issue, by its identifier | `linear-issue.comment`, with `issue` |
 | `linear-issue-close` | closes an issue, by its identifier: the issue moves to its team's completed state | `linear-issue.close`, with `issue` |
 
-Every verb is a step. In a row, `team` is the team's key and `issue` is the identifier, as a
-person types them. A script calls the same tools with `verse-call-tool`, and the same rows
-decide them.
+Every verb is a step. In a row or a shape, `team` is the team's key and `issue` is the
+identifier, as a person types them. A script calls the same tools with `verse-call-tool`, and the
+same environment and rows decide them.
 
 ## Where the credential lives
 
@@ -75,8 +76,5 @@ credential or two.
 systems:
   linear-issue:
     credential: LINEAR_API_KEY
-    ceiling:
-    - {match: {verb: create, team: ENG}, then: allow}
-    - {match: {verb: comment}, then: allow}
-    - {then: deny}
+    ceiling: {create: {team: ENG}, comment: {}}
 ```

@@ -1,13 +1,13 @@
 # files, commands and agent
 
-Three systems are not outside verse. They are what a doer does inside its run: it writes files,
-runs commands and calls sub-agents. The runner intercepts each of these for the task's policy to
-decide. A charter writes rows about them as it writes rows about a push, and a runner offers
-them as it offers `git`.
+Three systems are not outside verse. They are what an agent does inside its run: it writes files,
+runs commands and calls sub-agents. A spawn gives them in its environment as it gives `git`, the
+runner intercepts each act for the task's autonomy to decide, and a runner offers them as it
+offers `git`.
 
 | System | Verb | Params | What the runner does |
 |---|---|---|---|
-| `files` | `write` | `path` | stops a write the doer asks for before it happens ([advisory](#a-row-on-files-or-commands-is-advisory)) |
+| `files` | `write` | `path` | stops a write the agent asks for before it happens ([advisory](#a-row-on-files-or-commands-is-advisory)) |
 | `commands` | `run` | `command` | stops a command before it runs, and matches the command as one string ([advisory](#a-row-on-files-or-commands-is-advisory)) |
 | `agent` | `call-sub-agent` | `agent` | stops a call to a sub-agent, a child run inside the runner |
 
@@ -18,48 +18,64 @@ each step is an event that names the verb and its params ([tasks](../reference/t
 
 ## What a charter writes
 
-Rows. The policy says what happens to each act:
+An environment and rows. The environment gives the systems, the autonomy says what happens to
+each act within them:
 
 ```tony
-policy:
+environment:
+  systems:
+    files: {}
+    commands: {}
+autonomy:
 - {match: {system: files, verb: write, path: "db/**"}, then: ask}
 - {match: {system: commands, verb: run, command: "make ship*"}, then: ask}
-- {match: {system: agent}, then: withhold}
 - {then: allow}
 ```
 
-"No shell" is `{match: {system: commands}, then: withhold}`. The tool is then not offered at
-all, rather than refused at each call.
+A block that names no verb, `files: {}`, gives every verb of its system. "No shell" is leaving
+`commands` out of the environment: the tool is then not offered at all, rather than refused at
+each call. Here `agent` is left out, so the task calls no sub-agent.
 
-## The network is the launch's
+## The network
 
-What a run may reach is not a system and has no rows. It is a fact of the launch, under the
-doer's `with`, as its repositories are:
+What a run may reach is the `network` system, given in the environment as any system is. Its
+`mode` is fixed when the run starts, and under `allow` its `tcp-client` shapes name what it may
+connect to:
 
 ```tony
-doer:
-  agent: verse
-  with:
-    network: {mode: allow, allow: [api.github.com, "pypi.org:443"]}
+environment:
+  systems:
+    network:
+      mode: allow
+      tcp-client: [{host: api.github.com}, {host: pypi.org, port: "443"}]
 ```
 
 | `mode` | What the run reaches |
 |---|---|
 | `none` | nothing. This is the network when `network` is left out. |
-| `open` | the host's network |
-| `allow` | only the hosts in `allow`, each `host` or `host:port`; a host with no port is its web ports, 80 and 443, `*.example.com` is every host under `example.com`, and an address is written in its short form (`2001:db8::1`, `[2001:db8::1]:8443`) |
+| `open` | the host's network, which the runner does not see into |
+| `allow` | only what a `tcp-client` shape matches, through a proxy the runner serves the task: `host`, with `port` or without it (then any port); `*.example.com` is every host under `example.com`, and an address is written in its short form (`2001:db8::1`) |
 
-The runner builds the network once, when the run starts. Nothing asks about a connection, and a
-change to the policy does not change it. An agent always reaches its model: under `none` or
-`allow` the runner allows the model's host beside the ones the launch names.
+Under `allow`, each connection is the step `network.tcp-client`, with `host` (lower case, no
+trailing dot) and `port`, decided as a step is: outside the shapes it is refused, saying what
+they are; within them a row on the network allows or denies it. A connection can't wait for an
+answer, so a row on the network never asks, and the default row doesn't decide a connection: the
+shapes are what the task reaches, and a host they give is reached unless a row on the network
+denies it (`{match: {system: network, host: api.github.com}, then: deny}`), whatever the default
+row says. The runner's network ceiling holds after the rows. A replaced autonomy decides the
+next connection. What the proxy refused is on the task's record, under `refused`, by destination
+and how often.
 
-A runner offers the networks its sandbox can build. One that runs its tasks unconfined, such as
-`verse up`'s or one on macOS, builds only `open`, so a launch there says `network: {mode: open}`
-and is refused without it ([what it offers](../reference/runnerd.md#what-it-offers)).
+An agent always reaches its model: under `none` or `allow` the runner's proxy lets the model's
+host through, outside any step.
+
+A runner says which modes its sandbox builds, under the network's `builds`. One that runs its
+tasks unconfined, such as `verse up`'s or one on macOS, builds only `open`, so a spawn there says
+`network: {mode: open}` and is refused without it ([what it offers](../reference/runnerd.md#what-it-offers)).
 
 ## A row on files or commands is advisory
 
-A row on `files` or `commands` decides the act as the doer names it. It does not decide every
+A row on `files` or `commands` decides the act as the agent names it. It does not decide every
 way to the same result:
 
 - A write through the shell, such as `echo x > db/x.sql`, is a `commands.run` step. It is not a
@@ -73,7 +89,7 @@ run. Enforcing `files` and `commands` in the kernel is planned in issue bst6zbs0
 
 ## What a task can do
 
-What its doer does:
+What the one doing the work does:
 
 - The verse agent writes files, runs commands and calls sub-agents with its own tools, and
   reaches the network from its shell.
@@ -81,10 +97,13 @@ What its doer does:
 - A script is one action, not a series of steps, so nothing inside it is stopped. Only its
   network is confined.
 
-Verse refuses to install a row on a system that the doer's offer does not intercept.
+Verse refuses to install a spawn whose environment gives a system the runner's offer does not
+hold, or one beyond the offer's ceiling. Codex can't run without `commands.run` and
+`files.write`, which its offer says (`requires`), so a Codex spawn whose environment leaves them
+out is refused, naming `commands: {}` or `commands: {run: {}}` to add.
 
 ## Where the credential lives
 
-Nowhere: none of these uses a credential. The runner stops each call for the policy to decide,
-on the systems its offer names for the doer.
+Nowhere: none of these uses a credential. The runner stops each call for the autonomy to decide,
+on the systems its offer holds for the agent.
 [What it offers](../reference/runnerd.md#what-it-offers) has the details.

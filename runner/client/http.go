@@ -321,8 +321,8 @@ func (h *remoteHandle) Steer(instr, by, ask string) error {
 	return h.post("/say", runner.SayRequest{Instruction: instr, By: by, Ask: ask})
 }
 
-func (h *remoteHandle) SetPolicy(p task.Policy, by string) error {
-	return h.send(http.MethodPut, "/policy", runner.PolicyRequest{Policy: p, By: by})
+func (h *remoteHandle) SetAutonomy(p task.Autonomy, by string) error {
+	return h.send(http.MethodPut, "/autonomy", runner.AutonomyRequest{Autonomy: p, By: by})
 }
 
 // Resolve answers a gate the remote's task is blocked on, and reports whether the answer
@@ -387,6 +387,18 @@ func (h *remoteHandle) snapshot() (task.Snapshot, bool) {
 func (h *remoteHandle) Err() string {
 	snap, _ := h.snapshot()
 	return snap.Err
+}
+
+// Agent reads who ran it and with what off the snapshot.
+func (h *remoteHandle) Agent() (string, map[string]string) {
+	snap, _ := h.snapshot()
+	return snap.Agent, snap.Settings
+}
+
+// Refused reads the refused connections off the snapshot.
+func (h *remoteHandle) Refused() map[string]int {
+	snap, _ := h.snapshot()
+	return snap.Refused
 }
 
 // Result reads the terminal result off the snapshot.

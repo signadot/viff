@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http/httptest"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/verserunner"
 	"github.com/signadot/verse/runner/runnerd/verserunner/agent"
+	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/versed"
 )
@@ -32,13 +34,13 @@ import (
 func serveCalls(t *testing.T) entity.Store {
 	t.Helper()
 	root := t.TempDir()
-	scripts := verserunner.New(verserunner.Config{}, verserunner.Secrets{}, root, io.Discard).Build
+	scripts := verserunner.New(verserunner.Config{Systems: verserunner.OpenInside()}, verserunner.Secrets{}, root, io.Discard).Build
 	build := func(l runner.Launch, reg *task.Registry) *task.Task {
-		if l.Doer.Agent != "steps" {
+		if l.Who() != "steps" {
 			return scripts(l, reg)
 		}
 		ask := agent.Ask(reg)
-		return task.NewTask(l.ID, task.NewSupervisor(l.Policy, reg), &stepsDriver{prompt: l.Prompt}, stepsExec{ask: ask})
+		return task.NewTask(l.ID, systemstest.Opened(task.NewSupervisor(l.Environment, l.Autonomy, reg), l.Environment), &stepsDriver{prompt: l.Prompt}, stepsExec{ask: ask})
 	}
 	store := entitytest.Store(t)
 	srv := versed.NewWithStore(build, store)
@@ -160,28 +162,36 @@ func pendingQuestionFor(t *testing.T, store entity.Store, taskID string) string 
 
 const askScript = `verse-call-tool question-ask -question "which one?"`
 
-// policyFile is a policy for `--policy`, written to a file of the test's: rows is the policy,
-// in tony.
-func policyFile(t *testing.T, rows string) string {
+// spawnFile is a spawn for `task run -f`, written to a file of the test's: text is the spawn, in
+// tony, as a charter writes one.
+func spawnFile(t *testing.T, text string) string {
 	t.Helper()
-	p := filepath.Join(t.TempDir(), "policy.tony")
-	if err := os.WriteFile(p, []byte(rows), 0o644); err != nil {
+	p := filepath.Join(t.TempDir(), "spawn.tony")
+	if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return p
 }
 
-// asking is the policy a script that asks runs under: the question is its, and nothing else.
-const asking = "- {match: {system: question}, then: allow}\n- {then: deny}\n"
+// asking is a spawn of a script that asks: the host's network, and the question is its, and
+// nothing else.
+func asking(script string) string {
+	return fmt.Sprintf("script: %q\nenvironment: {systems: {network: {mode: open}, question: {ask: {}}}}\n"+
+		"autonomy:\n- {match: {system: question}, then: allow}\n- {then: deny}\n", script)
+}
 
-// gating is the policy the `steps` agent runs under for a test about a gate: its commands ask.
-const gating = "- {match: {system: commands}, then: ask}\n- {then: ask}\n"
+// gating is a spawn of the `steps` agent for a test about a gate: its commands ask, and it may
+// ask in words.
+func gating(prompt string) string {
+	return fmt.Sprintf("prompt: %q\nagent: {name: steps}\nenvironment: {systems: {network: {mode: open}, commands: {run: {}}, question: {ask: {}}}}\n"+
+		"autonomy:\n- {match: {system: commands}, then: ask}\n- {then: ask}\n", prompt)
+}
 
 // AN ANSWER IN WORDS REACHES THE TASK as the ask's result, from the attach prompt.
 func TestAttachAnswersAnAskInWords(t *testing.T) {
 	serveCalls(t)
 	out, done := runCLIIn(t, strings.NewReader("the second\n"),
-		"task", "run", "--script", askScript, "--policy", policyFile(t, asking), "--attach", "--as", "user:t")
+		"task", "run", "-f", spawnFile(t, asking(askScript)), "--attach", "--as", "user:t")
 	got := waitEnd(t, out, done)
 	if !strings.Contains(got, "user:t: the second") {
 		t.Fatalf("the answer did not reach the task as its result:\n%s", got)
@@ -196,7 +206,7 @@ func TestAttachAnswersAnAskInWords(t *testing.T) {
 func TestLinesTypedBeforeAnAskGoAsOneReply(t *testing.T) {
 	serveCalls(t)
 	out, done := runCLIIn(t, strings.NewReader("first\nsecond\n"),
-		"task", "run", "--script", askScript, "--policy", policyFile(t, asking), "--attach", "--as", "user:t")
+		"task", "run", "-f", spawnFile(t, asking(askScript)), "--attach", "--as", "user:t")
 	got := waitEnd(t, out, done)
 	if n := strings.Count(got, "→ sent"); n != 1 {
 		t.Fatalf("sent %d replies, want one:\n%s", n, got)
@@ -211,7 +221,7 @@ func TestLinesTypedBeforeAnAskGoAsOneReply(t *testing.T) {
 func TestALineTypedBeforeAGateIsNotItsAnswer(t *testing.T) {
 	store := serveCalls(t)
 	out, done := runCLIIn(t, strings.NewReader("hello\n"),
-		"task", "run", "--agent", "steps", "--policy", policyFile(t, gating), "--attach", "--as", "user:t", "run echo ran; ask and?")
+		"task", "run", "-f", spawnFile(t, gating("run echo ran; ask and?")), "--attach", "--as", "user:t")
 	waitFor(t, out, "answer it: verse question approve")
 	id := strings.TrimSpace(strings.SplitN(out.String(), "\n", 2)[0])
 	qid := pendingQuestionFor(t, store, id)
@@ -232,7 +242,7 @@ func TestALineTypedBeforeAGateIsNotItsAnswer(t *testing.T) {
 func TestEOFLeavesTheQuestionPending(t *testing.T) {
 	store := serveCalls(t)
 	out, done := runCLIIn(t, strings.NewReader(""),
-		"task", "run", "--script", askScript, "--policy", policyFile(t, asking), "--attach", "--as", "user:t")
+		"task", "run", "-f", spawnFile(t, asking(askScript)), "--attach", "--as", "user:t")
 	waitFor(t, out, "answer it: verse question")
 	id := strings.TrimSpace(strings.SplitN(out.String(), "\n", 2)[0])
 	qid := pendingQuestionFor(t, store, id)
@@ -251,7 +261,7 @@ func TestAPromptTakesALineTypedAfterIt(t *testing.T) {
 	pr, pw := io.Pipe()
 	defer pw.Close()
 	out, done := runCLIIn(t, pr,
-		"task", "run", "--agent", "steps", "--policy", policyFile(t, gating), "--attach", "--as", "user:t", "run echo ran")
+		"task", "run", "-f", spawnFile(t, gating("run echo ran")), "--attach", "--as", "user:t")
 	waitFor(t, out, "approve? [y/n]")
 	io.WriteString(pw, "maybe\n")
 	deadline := time.Now().Add(10 * time.Second)
@@ -295,7 +305,7 @@ func TestPromptTake(t *testing.T) {
 func TestATasksAskSettlesAtItsDeadline(t *testing.T) {
 	serveCalls(t)
 	out, done := runCLIIn(t, strings.NewReader(""),
-		"task", "run", "--script", `verse-call-tool question-ask -question "which one?" -within 1s`, "--policy", policyFile(t, asking), "--attach", "--as", "user:t")
+		"task", "run", "-f", spawnFile(t, asking(`verse-call-tool question-ask -question "which one?" -within 1s`)), "--attach", "--as", "user:t")
 	got := waitEnd(t, out, done)
 	if !strings.Contains(got, "nobody answered within 1s") {
 		t.Fatalf("the task did not read that its question ran out:\n%s", got)

@@ -26,12 +26,14 @@ func (h *endsOnCancel) Subscribe() (<-chan task.Event, func()) { return h.ch, fu
 func (h *endsOnCancel) SubscribeSince(int64) (<-chan task.Event, func()) {
 	return h.ch, func() {}
 }
-func (h *endsOnCancel) Pause(string) error                  { return nil }
-func (h *endsOnCancel) Resume(string) error                 { return nil }
-func (h *endsOnCancel) Steer(string, string, string) error  { return nil }
-func (h *endsOnCancel) SetPolicy(task.Policy, string) error { return nil }
-func (h *endsOnCancel) Result() string                      { return "" }
-func (h *endsOnCancel) Err() string                         { return "" }
+func (h *endsOnCancel) Pause(string) error                      { return nil }
+func (h *endsOnCancel) Resume(string) error                     { return nil }
+func (h *endsOnCancel) Steer(string, string, string) error      { return nil }
+func (h *endsOnCancel) SetAutonomy(task.Autonomy, string) error { return nil }
+func (h *endsOnCancel) Result() string                          { return "" }
+func (h *endsOnCancel) Err() string                             { return "" }
+func (*endsOnCancel) Refused() map[string]int                   { return nil }
+func (*endsOnCancel) Agent() (string, map[string]string)        { return "", nil }
 func (h *endsOnCancel) Cancel(string, string) error {
 	h.once.Do(func() {
 		h.done.Store(true)
@@ -64,7 +66,7 @@ func TestCancelLiveCancelsWithoutHooks(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:       entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn:       &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "review $subject"},
+			Spawn:       &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
 			OnCancelled: &Action{Patch: entity.Obj{"stage": "hooked"}.Payload()},
 		},
 	}); err != nil {

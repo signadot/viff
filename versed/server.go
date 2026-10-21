@@ -90,10 +90,10 @@ type Server struct {
 	// users is every principal this process has recorded as `verse.principal.user.<principal>`; see noteUser.
 	users sync.Map
 	// slides is, by task id, the last slide the control route relayed — who for, and which
-	// policy, by its summary (mirror.Meta.SlidBy).
+	// autonomy, by its summary (mirror.Meta.SlidBy).
 	slides sync.Map
-	// replacing is, by task id, the lock a policy replacement holds from verse's copy to the
-	// runner's answer, so a refused change rolls back to the policy it replaced and not over
+	// replacing is, by task id, the lock an autonomy replacement holds from verse's copy to the
+	// runner's answer, so a refused change rolls back to the autonomy it replaced and not over
 	// one that came after it.
 	replacing sync.Map
 	Reg       *task.Registry
@@ -195,7 +195,7 @@ type Server struct {
 //
 // It is here rather than a NewWithStore argument because a scope engine is built lazily, on first
 // use, and a pace applied only to the baseline would leave a scope running
-// a different policy from the verse it overlays.
+// a different autonomy from the verse it overlays.
 func (s *Server) SetTripPace(d time.Duration) {
 	s.scopeMu.Lock()
 	s.tripPace, s.tripPaceSet = d, true
@@ -264,9 +264,9 @@ func NewWithStore(build runnerd.Builder, store entity.Store, opts ...Option) *Se
 	}
 	// And what the system holds out, written before anything is asked of the store on
 	// anybody's behalf: a request that arrived before the seed would be checked against a
-	// policy admitting nobody.
+	// autonomy admitting nobody.
 	// A FAILED SEED IS FATAL, and it is kept here for StartServing to refuse on. The seed IS the
-	// policy — the root's record is what admits anybody at all — so a verse that serves without
+	// autonomy — the root's record is what admits anybody at all — so a verse that serves without
 	// it refuses every request from every person, which looks like a verse that has lost its
 	// data.
 	// THE MIGRATION FIRST, since the seed and every check after it read the mirror in the new
@@ -387,9 +387,12 @@ func NewWithStore(build runnerd.Builder, store entity.Store, opts ...Option) *Se
 
 // offerCheck is what an install checks a charter's spawn against: what the runner it names
 // offers, as that runner described itself. The launch is the spawn as written, its templated
-// values standing in, so a spawn a runner would refuse is refused with the author present.
+// values standing in and its environment unbound (runnerd.CheckOfferAsWritten), so a spawn a
+// runner would refuse is refused with the author present.
 func (s *Server) offerCheck(store entity.Reader) func(name string, l runner.Launch) error {
-	return func(name string, l runner.Launch) error { return s.checkOffer(store, name, &l) }
+	return func(name string, l runner.Launch) error {
+		return s.checkOfferBy(store, name, &l, runnerd.CheckOfferAsWritten)
+	}
 }
 
 // hostedQuestion is a hosted task's question as the docket poses it: about the task's subject where
@@ -411,7 +414,7 @@ func hostedQuestion(ht hostedTask, q task.GateQuestion) task.GateQuestion {
 	q.Answerers = mirror.WithPrincipal(q.Answerers, mirror.ActsFor(ht.principal))
 	// Verse's part of the row's ask: what silence settles on, and what the question says about
 	// itself. The runner read the deadline's duration and nothing else.
-	if r, ok := ht.policy.Named(q.Gate); ok && r.Then.Ask != nil {
+	if r, ok := ht.autonomy.Named(q.Gate); ok && r.Then.Ask != nil {
 		a := r.Then.Ask
 		if a.Within != "" || a.Default != "" {
 			d := task.Deadline{}
@@ -436,19 +439,19 @@ func hostedQuestion(ht hostedTask, q task.GateQuestion) task.GateQuestion {
 type hostedTask struct {
 	scope, subject, principal string
 	answerers                 []string
-	policy                    task.Policy // the launch's, for what the runner never reads of it
+	autonomy                  task.Autonomy // the launch's, for what the runner never reads of it
 }
 
 // host records what verse keeps of a task it is about to launch, before the launch, so the
 // first question the task raises finds it.
 func (s *Server) host(id string, ht hostedTask) { s.hosted.Store(id, ht) }
 
-// repolicy keeps a task's new policy where its questions are posed from (hostedTask), for a
-// task verse hosts: what a `task policy` slide set, verse's part with it.
-func (s *Server) repolicy(id string, p task.Policy) {
+// repolicy keeps a task's new autonomy where its questions are posed from (hostedTask), for a
+// task verse hosts: what a `task autonomy` slide set, verse's part with it.
+func (s *Server) repolicy(id string, p task.Autonomy) {
 	if v, ok := s.hosted.Load(id); ok {
 		ht := v.(hostedTask)
-		ht.policy = p
+		ht.autonomy = p
 		s.hosted.Store(id, ht)
 	}
 }
@@ -505,16 +508,16 @@ func (l localRunner) Attach(id string) task.Handle {
 	return nil
 }
 
-// localHandle is a task the embedded runner hosts, whose policy is changed through the runner,
-// so the change is checked as a runner reached by url checks it (runnerd.CheckPolicy): what is
-// withheld, and the rows on a system the runner does not police, stay as the launch had them.
+// localHandle is a task the embedded runner hosts, whose autonomy is changed through the runner,
+// so the change is checked as a runner reached by url checks it (runnerd.CheckAutonomy): each row
+// reaches the launch's environment, which stays as the launch had it.
 type localHandle struct {
 	*task.Task
 	d *runnerd.InProcessHandler
 }
 
-func (h localHandle) SetPolicy(p task.Policy, by string) error {
-	return h.d.SetPolicy(h.Task.ID, p, by)
+func (h localHandle) SetAutonomy(p task.Autonomy, by string) error {
+	return h.d.SetAutonomy(h.Task.ID, p, by)
 }
 
 func (localRunner) Ref() string { return "local" }
@@ -584,7 +587,7 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 		if err != nil {
 			// Same shape as the envelope and the resolver below: a spawn that cannot run
 			// where it said does not run somewhere else instead.
-			meta := mirror.Meta{Subject: spec.Subject, Chain: spec.Chain, Prompt: spec.Prompt, Doer: spec.Doer.Name()}
+			meta := mirror.Meta{Subject: spec.Subject, Chain: spec.Chain, Prompt: spec.Prompt, Agent: recordAgent(spec.Agent), Script: spec.Script != ""}
 			h := task.FailedHandle(fmt.Sprintf("spawn %s: %v", id, err))
 			s.reflect(rec, id, h, meta)
 			return h
@@ -594,10 +597,10 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 		// about what was attempted.
 		meta := mirror.Meta{
 			Subject: spec.Subject, Runner: place.Ref(), RunnerName: placeName,
-			Chain: spec.Chain, Prompt: spec.Prompt, Doer: spec.Doer.Name(), Occurrence: spec.Occurrence,
-			Git: spec.Doer.With.Git, Asker: spec.Asker,
-			Policy: spec.Policy,
-			HeldBy: func() []string { return eng.HeldBy(id) },
+			Chain: spec.Chain, Prompt: spec.Prompt, Agent: recordAgent(spec.Agent), Script: spec.Script != "", Occurrence: spec.Occurrence,
+			Git: (&runner.Launch{Environment: spec.Environment}).Repos(), Asker: spec.Asker,
+			Autonomy: spec.Autonomy,
+			HeldBy:   func() []string { return eng.HeldBy(id) },
 		}
 		// WHICH CREDENTIAL, resolved as the rule that named it — before the launch, so a spawn
 		// that may not spend what it asked for never starts.
@@ -630,7 +633,7 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 		// rule's task acts for nobody, and such a gate is refused rather than left to the docket.
 		// Before the credential, so a refused spawn mints none.
 		actsFor := mirror.ActsFor(by)
-		if err := mirror.CheckPrincipal(spec.Policy, actsFor); err != nil {
+		if err := mirror.CheckPrincipal(spec.Autonomy, actsFor); err != nil {
 			h := task.FailedHandle(fmt.Sprintf("spawn %s: %v", id, err))
 			s.reflect(rec, id, h, meta)
 			return h
@@ -648,7 +651,7 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 			// On the task's record from its first write: what it is good for and until when.
 			l.Credential, meta.Credential = token, minted
 		}
-		ht := hostedTask{scope: scope, subject: spec.Subject, principal: by, policy: spec.Policy} // where this task's records live, so its questions land there too
+		ht := hostedTask{scope: scope, subject: spec.Subject, principal: by, autonomy: spec.Autonomy} // where this task's records live, so its questions land there too
 		if actsFor != "" {
 			ht.answerers = []string{task.PrincipalAnswerer}
 			meta.Answerers = ht.answerers
@@ -714,18 +717,19 @@ func principalOrNobody(p string) string {
 	return p
 }
 
-// launchOf turns a bound launch.Spec into the runner-facing launch (runner.Launch): the doer and
-// what it works with, the prompt, how its steps are decided, and the provenance the runner's
+// launchOf turns a bound launch.Spec into the runner-facing launch (runner.Launch): the prompt or
+// script, the agent, the environment, its autonomy, and the provenance the runner's
 // effects carry. The engine resolves what it can before the spawn crosses the seam: the answer
 // contract is parsed here as well as at the runner, so a charter that wrote one it cannot mean
 // fails its firing now rather than after a run, and the model credential verse resolved rides
-// as the doer's annotation, the key's name and never the address.
+// as the agent's annotation, the key's name and never the address.
 func launchOf(id string, spec launch.Spec, principal string) (runner.Launch, error) {
-	if err := launch.CheckAnnotations(spec.Doer); err != nil {
+	if err := launch.CheckAnnotations(spec.Agent); err != nil {
 		return runner.Launch{}, err
 	}
 	l := runner.Launch{
-		ID: id, Prompt: spec.Prompt, Doer: spec.Doer, Policy: spec.Policy,
+		ID: id, Prompt: spec.Prompt, Script: spec.Script, Agent: spec.Agent, Person: spec.Person,
+		Environment: spec.Environment, Autonomy: spec.Autonomy,
 		Answer: spec.Answer, Timeout: spec.Timeout,
 		// A firing has no launcher, so its principal is the rule that fired — the address of
 		// its record, which the runner can read back. See trigger.Engine.Principal.
@@ -737,12 +741,27 @@ func launchOf(id string, spec launch.Spec, principal string) (runner.Launch, err
 		}
 	}
 	if spec.VirtualKey != "" {
-		l.Doer.Annotations = withAnnotation(l.Doer.Annotations, AnnotationVirtualKey, spec.VirtualKey)
+		// The prompt's agent, the runner's default where it names none: the key is the model's.
+		a := runner.Agent{}
+		if l.Agent != nil {
+			a = *l.Agent
+		}
+		a.Annotations = withAnnotation(a.Annotations, AnnotationVirtualKey, spec.VirtualKey)
+		l.Agent = &a
 	}
 	return l, nil
 }
 
-// AnnotationVirtualKey is the doer annotation the verse runner reads its Portkey virtual key
+// recordAgent is a spawn's agent as a task's record keeps it: its name and settings, never its
+// annotations, which are the runner's plumbing (the virtual key's name among them).
+func recordAgent(a *runner.Agent) *runner.Agent {
+	if a == nil {
+		return nil
+	}
+	return &runner.Agent{Name: a.Name, Settings: a.Settings}
+}
+
+// AnnotationVirtualKey is the agent annotation the verse runner reads its Portkey virtual key
 // from (launch.AnnotationVirtualKey).
 const AnnotationVirtualKey = launch.AnnotationVirtualKey
 
@@ -812,6 +831,7 @@ func (s *Server) reconcileTasks() error {
 			place := task.Runner(client.HTTP(runnerRef))
 			if h := attachOn(place, ent.Ref.Name()); h != nil {
 				// re-attach: observe
+				recAgent, recScript := mirror.AgentOf(ent.Payload)
 				s.reflect(s.Store, ent.Ref.Name(), h, mirror.Meta{
 					Subject: subject, Runner: runnerRef, Chain: chain,
 					// Carried for the same reason chain is: Reflect REPLACES the payload, so
@@ -828,23 +848,24 @@ func (s *Server) reconcileTasks() error {
 					// restart rather than forgetting on the first re-reflection.
 					Asker:     entity.Str(ent.Payload, "asker"),
 					Answerers: entity.Strs(ent.Payload, "answerers"),
-					// And the policy it runs under, verse's part with it: the questions it
+					// And the autonomy it runs under, verse's part with it: the questions it
 					// raises from here on are posed under it as they were before.
-					Policy: mirror.PolicyOf(ent.Payload),
+					Autonomy: mirror.AutonomyOf(ent.Payload),
 					// And what else the record carries of its launch, which the runner still
-					// holds: the job, the doer, the repositories, the credential minted for it,
+					// holds: the job, the agent, the repositories, the credential minted for it,
 					// and which run it is, so the resumed record is not stamped as a new one.
 					Prompt:     entity.Str(ent.Payload, "prompt"),
-					Doer:       entity.Str(ent.Payload, "doer"),
+					Agent:      recAgent,
+					Script:     recScript,
 					Git:        mirror.GitOf(ent.Payload),
 					Credential: mirror.CredentialOf(ent.Payload),
 					Occurrence: mirror.OccurrenceOf(ent.Payload),
 					HeldBy:     func() []string { return s.Eng.HeldBy(ent.Ref.Name()) },
 				})
-				// Hosted again, as at its launch: a slide of its policy is kept where its
+				// Hosted again, as at its launch: a slide of its autonomy is kept where its
 				// questions are posed from, and whose it is reads the same as before the restart.
 				s.host(ent.Ref.Name(), hostedTask{subject: subject, principal: entity.Str(ent.Payload, "asker"),
-					answerers: entity.Strs(ent.Payload, "answerers"), policy: mirror.PolicyOf(ent.Payload)})
+					answerers: entity.Strs(ent.Payload, "answerers"), autonomy: mirror.AutonomyOf(ent.Payload)})
 				// re-track: steerable, AND its hooks rehydrated from the chain, so the
 				// chain or sequence it belongs to carries on rather than ending silently.
 				// A task about no subject is the flow of its own id, as at spawn.
@@ -1083,7 +1104,7 @@ func (s *Server) restoreScopeCharter(eng *trigger.Engine, scope string) {
 }
 
 // SeedError is what the permission seed refused with, nil when it landed. A server holding one
-// has no policy and must not serve; `verse up` says so and stops.
+// has no autonomy and must not serve; `verse up` says so and stops.
 func (s *Server) SeedError() error { return s.seedErr }
 
 // StartServing is Start for a server that is about to serve: it takes the lifetime context
@@ -1382,12 +1403,12 @@ func (s *Server) Handler() http.Handler {
 		}
 		s.answerQuestion(w, r, body, r.PathValue("id"), s.scopedStore(r))
 	}, "verse-resolve", nothing)
-	// a new policy for a running task — runner-agnostic like cancel/say: the handle relays
+	// a new autonomy for a running task — runner-agnostic like cancel/say: the handle relays
 	// it, in process or over the wire, and it applies to the task's later steps and not to a
 	// question already waiting.
-	rt.handle("PUT /tasks/{id}/policy", func(w http.ResponseWriter, r *http.Request) {
-		s.taskControl(w, r, ph, "policy")
-	}, "verse-set-policy", nothing)
+	rt.handle("PUT /tasks/{id}/autonomy", func(w http.ResponseWriter, r *http.Request) {
+		s.taskControl(w, r, ph, "autonomy")
+	}, "verse-set-autonomy", nothing)
 	rt.mount("/tasks", ph)
 	rt.mount("/tasks/", ph)
 	s.routes = rt.routes
@@ -1539,8 +1560,9 @@ func (s *Server) notePrincipal(p string) {
 }
 
 // ScriptedBuilder is the verse runner embedded with no model credential: it runs scripts, and
-// refuses an agent. What tests and a keyless `verse up` host tasks with.
-var ScriptedBuilder = verserunner.New(verserunner.Config{}, verserunner.Secrets{}, scriptedRoot(), io.Discard).Build
+// refuses an agent. What tests and a keyless `verse up` host tasks with, its operator being their
+// author, so what it stops inside a run is open (verserunner.OpenInside).
+var ScriptedBuilder = verserunner.New(verserunner.Config{Systems: verserunner.OpenInside()}, verserunner.Secrets{}, scriptedRoot(), io.Discard).Build
 
 // scriptedRoot is where ScriptedBuilder's tasks work: a directory of its own under the temporary
 // directory, since the runner keeps a task's credential and its tools socket OUTSIDE the
@@ -3332,10 +3354,10 @@ func (s *Server) settleOverdueIn(store entity.Store, pending []entity.Entity) bo
 // asking each to remember it.
 func (s *Server) reflect(store entity.Store, id string, h task.Handle, m mirror.Meta) {
 	m.Arm = func(id, within string) { s.armDeadline(store, id, within) }
-	// The policy as it stands, where verse hosts the task: a slide changes it while it runs.
-	m.PolicyNow = func() task.Policy {
+	// The autonomy as it stands, where verse hosts the task: a slide changes it while it runs.
+	m.AutonomyNow = func() task.Autonomy {
 		if v, ok := s.hosted.Load(id); ok {
-			return v.(hostedTask).policy
+			return v.(hostedTask).autonomy
 		}
 		return nil
 	}
@@ -4191,8 +4213,10 @@ func spawnID(body api.Spawn) (string, error) {
 const badInID = "~/\\#?% \t\n"
 
 func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
+	// Read STRICTLY, as a charter's spawn is at install: a key the spawn does not have is refused
+	// rather than dropped, which would run the task without what it said.
 	var body api.Spawn
-	if err := codec.Read(r, &body); err != nil {
+	if err := codec.ReadStrict(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -4202,16 +4226,6 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	// who never asked for it.
 	var ok bool
 	if body.Principal, ok = actor(w, s.scopedStore(r), body.Principal); !ok {
-		return
-	}
-	// One or the other says what the work IS. A script is the work, so a spawn carrying one
-	// needs no prompt — and a spawn with neither has not said anything to do.
-	if body.Prompt == "" && body.Doer.Script == "" {
-		http.Error(w, "prompt is required (or a script, under doer)", http.StatusBadRequest)
-		return
-	}
-	if body.Doer.Agent != "" && body.Doer.Script != "" {
-		http.Error(w, "doer names an agent and a script; a doer is one of the two", http.StatusBadRequest)
 		return
 	}
 	id, err := spawnID(body)
@@ -4234,84 +4248,74 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	// And whose it is: the record of a task somebody typed is owned by whoever typed it.
 	scope := r.URL.Query().Get("scope")
 	store := s.scopedStore(r)
-	if err := body.Policy.Check(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	spec := body.Spawn
+	if err := spec.CheckByHand(); err != nil {
+		http.Error(w, "spawn."+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := spec.Autonomy.Check(); err != nil {
+		http.Error(w, "spawn.autonomy"+err.Error(), http.StatusBadRequest)
 		return
 	}
 	// Whom it acts for: whoever ran it, where that is a person or an agent. Its rows name
 	// nobody to ask the docket, and $principal to ask them.
 	actsFor := mirror.ActsFor(body.Principal)
-	if err := mirror.CheckPrincipal(body.Policy, actsFor); err != nil {
+	if err := mirror.CheckPrincipal(spec.Autonomy, actsFor); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := s.engineOf(scope).CheckPolicyAnswerers(body.Policy); err != nil {
+	if err := s.engineOf(scope).CheckAutonomyAnswerers(spec.Autonomy); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	// The second spawn path, refusing the same way the first does. A misspelled runner that
 	// quietly ran the work in-process says one thing in the deployment and does another in
 	// the verse. Refused BEFORE the spawn, so nothing is started and nothing is mirrored.
-	place, placeName, err := s.runnerFor(store, body.Runner)
+	place, placeName, err := s.runnerFor(store, spec.Runner)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	// Parsed here as well as at the runtime, and for the reason launchOf parses a charter's:
-	// a contract that cannot be meant should fail before a model call is paid for, not after
-	// a run and a repair round.
-	if body.Answer != nil {
-		if _, err := answer.Parse(body.Answer); err != nil {
-			http.Error(w, "answer contract: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-	}
-	// The repositories and trackers, checked as a charter's are at install: somebody is
-	// standing here, so the refusal is a 400 with the reason rather than a task that fails.
-	if err := runner.CheckWith(body.Doer.With); err != nil {
-		http.Error(w, "doer."+err.Error(), http.StatusBadRequest)
-		return
-	}
-	if err := launch.CheckAnnotations(body.Doer); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	// The credential this run spends, read as WHOEVER ASKED — the same rule a charter's spawn
 	// gets, and the reason typing an address buys nothing a person could not already read. The
 	// refusal is a 400 rather than a task that fails, because somebody is standing here.
-	credential, err := credentialAt(store, body.Principal, body.VirtualKey)
+	credential, err := credentialAt(store, body.Principal, spec.VirtualKey)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	doer := body.Doer
-	if credential != "" {
-		doer.Annotations = withAnnotation(doer.Annotations, AnnotationVirtualKey, credential)
-	}
-	l := runner.Launch{
-		ID: id, Prompt: body.Prompt, Doer: doer, Converse: body.Converse, Timeout: body.Timeout,
-		Policy: body.Policy, Answer: body.Answer,
-		// Somebody typed this, and the principal is theirs; a firing's is the rule that
-		// fired — see launchOf.
-		Provenance: runner.Provenance{Principal: body.Principal, Subject: body.Subject},
-	}
-	// Its shape, as the runner checks it (a doer that is neither an agent nor a script, a script
-	// with a prompt, a model on a script, an environment name the runner owns), and what the
-	// runner offers, as it described itself: an agent it does not offer, a model it does not
-	// take, repos on a forge it has none on. Refused here, with the reason, rather than by the
-	// runner after a record of a failed task is written.
-	if err := l.Check(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	spec.VirtualKey = credential
+	// The launch as a firing's is made (launchOf): its answer contract parsed before a model
+	// call is paid for, the credential on the agent. Somebody typed this, and the principal is
+	// theirs; a firing's is the rule that fired.
+	l, err := launchOf(id, spec, body.Principal)
+	if err != nil {
+		http.Error(w, "spawn: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := s.checkOffer(store, body.Runner, &l); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	l.Converse = body.Converse
+	// Its shape, as the runner checks it (neither a prompt nor a script, or both, an agent for a
+	// script, an environment the documents refuse, repositories that collide), and what the
+	// runner offers, as it described itself: an agent it does not offer, a model it does not
+	// take, a system it does not hold, repos its ceiling refuses. Refused here, with the
+	// reason, rather than by the runner after a record of a failed task is written. And each row
+	// reaches what the environment gives, as where any spawn is written.
+	err = l.Check()
+	if err == nil {
+		err = runner.CheckReach(l.Autonomy, l.Environment)
+	}
+	if err != nil {
+		http.Error(w, "spawn: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := s.checkOffer(store, spec.Runner, &l); err != nil {
+		http.Error(w, "spawn: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	// The same scope the record above goes to, so this run's questions reach the docket of
 	// whoever asked for it rather than everybody's; and whom it acts for, which its rows naming
 	// nobody ask.
-	s.host(id, hostedTask{scope: scope, subject: body.Subject, principal: body.Principal, policy: body.Policy})
+	s.host(id, hostedTask{scope: scope, subject: spec.Subject, principal: body.Principal, autonomy: spec.Autonomy})
 	h := place.Launch(l)
 	eng := s.engineOf(scope)
 	s.reflect(store, id, h, mirror.Meta{
@@ -4319,8 +4323,8 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 		// What it was asked and what ran it, on the record as a rule's spawn puts them: the
 		// two facts a reader of this task wants beside its status, and for a task on a named
 		// runner the record is the only place they can be read without that runner.
-		Prompt: body.Prompt, Doer: body.Doer.Name(),
-		Subject: body.Subject, Policy: body.Policy, Asker: actsFor, Git: body.Doer.With.Git,
+		Prompt: spec.Prompt, Agent: recordAgent(spec.Agent), Script: spec.Script != "",
+		Subject: spec.Subject, Autonomy: spec.Autonomy, Asker: actsFor, Git: l.Repos(),
 		HeldBy: func() []string { return eng.HeldBy(id) },
 		// No Occurrence: nothing caused this one, so there is no commit to name and the
 		// mirror stamps the revision its own first write landed at instead. Reading
@@ -4332,7 +4336,7 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	// flow` lists it, the flow verbs reach it, and what holds a subject's work holds this too. A
 	// flow is a query over live tasks' subjects, and a task about no subject is the flow of its
 	// own id, the one address it has.
-	flow := body.Subject
+	flow := spec.Subject
 	if flow == "" {
 		flow = id
 	}
@@ -4475,7 +4479,7 @@ type liveTask struct {
 //   - WHEN: a live snapshot knows it is hosting the task, and the mirror is what wrote down
 //     when that began. A row for a running task would otherwise carry no start at all, which
 //     is the one it is most often asked for.
-//   - UNDER WHAT POLICY: the runner holds the rows it decides by, and the record holds them
+//   - UNDER WHAT AUTONOMY: the runner holds the rows it decides by, and the record holds them
 //     with verse's part of each ask (what silence settles on, the labels) and who last
 //     replaced them, kept after the task ends.
 func taskOf(id string, live *liveTask, payload entity.Payload) api.Task {
@@ -4488,9 +4492,10 @@ func taskOf(id string, live *liveTask, payload entity.Payload) api.Task {
 		t.Runner = live.on
 	} else {
 		t = api.Task{
-			ID: id, Prompt: str("prompt"), Doer: str("doer"),
+			ID: id, Prompt: str("prompt"),
 			Status: task.Status(str("status")), Result: str("result"), Err: str("err"),
 		}
+		t.Agent, t.Script = mirror.AgentOf(payload)
 	}
 	if on := str("runner"); on != "" {
 		t.Runner = on
@@ -4505,7 +4510,16 @@ func taskOf(id string, live *liveTask, payload entity.Payload) api.Task {
 	if t.Ended == "" {
 		t.Ended = str("ended")
 	}
-	t.Policy, t.PolicyBy = mirror.PolicyOf(payload), str("policyBy")
+	t.Autonomy, t.AutonomyBy = mirror.AutonomyOf(payload), str("autonomyBy")
+	// What its proxy turned away, once the runner no longer holds it to say.
+	if t.Refused == nil {
+		if n := entity.Get(payload, "refused"); n != nil {
+			var refused map[string]int
+			if codec.FromNode(n, &refused) == nil && len(refused) > 0 {
+				t.Refused = refused
+			}
+		}
+	}
 	return t
 }
 
@@ -4850,7 +4864,7 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 	// both record who did them, and that is whoever the request is made as (actor). The
 	// runtime's own handler takes the request as it stands and records the body's `by`, so the
 	// party checked for control would not be the party written down.
-	if _, ok := s.Embedded.SnapshotOf(id); ok && op != "say" && op != "policy" {
+	if _, ok := s.Embedded.SnapshotOf(id); ok && op != "say" && op != "autonomy" {
 		runtime.ServeHTTP(w, r) // local runtime owns it
 		return
 	}
@@ -4894,35 +4908,35 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 		}
 		writeOut(w, r, http.StatusOK, api.Asked{ID: ask})
 		return
-	case "policy":
-		// replace the policy of a running task: {policy, by} is relayed to the runner via the
+	case "autonomy":
+		// replace the autonomy of a running task: {autonomy, by} is relayed to the runner via the
 		// handle, `by` attributing the operator who set it. Read strictly: a row's misspelled
 		// key dropped would make it another row, the last of them a default that allows.
-		var body api.SetPolicy
+		var body api.SetAutonomy
 		if err := codec.ReadStrict(r, &body); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err := body.Policy.Check(); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		if err := body.Autonomy.Check(); err != nil {
+			http.Error(w, "autonomy"+err.Error(), http.StatusBadRequest)
 			return
 		}
 		// No rows is the default, every call asking, as at a launch: said as that row, so the
-		// runner, verse's part and the record all hold the one policy the task runs under.
-		body.Policy = body.Policy.OrDefault()
+		// runner, verse's part and the record all hold the one autonomy the task runs under.
+		body.Autonomy = body.Autonomy.OrDefault()
 		// $principal is whom the task acts for, which its record says (`asker:`).
-		if body.Policy.NamesPrincipal() {
+		if body.Autonomy.NamesPrincipal() {
 			e, _, err := s.scopedStore(r).Get(mirror.Ref(id))
 			if unreadable(w, r, err) {
 				return
 			}
-			if err := mirror.CheckPrincipal(body.Policy, entity.Str(e.Payload, "asker")); err != nil {
+			if err := mirror.CheckPrincipal(body.Autonomy, entity.Str(e.Payload, "asker")); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
 		}
 		scope, _ := s.hostedScope(id)
-		if err := s.engineOf(scope).CheckPolicyAnswerers(body.Policy); err != nil {
+		if err := s.engineOf(scope).CheckAutonomyAnswerers(body.Autonomy); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -4932,20 +4946,20 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 		}
 		// Who set it is handed to the projection HERE, where it was checked, and not read back
 		// off the worker's echo, which says whatever the worker wrote (mirror.Meta.SlidBy).
-		// Keyed by the task's id, which is what both ends have, and matched by the policy's
+		// Keyed by the task's id, which is what both ends have, and matched by the autonomy's
 		// summary, which is what the runner's event says.
 		mu, _ := s.replacing.LoadOrStore(id, &sync.Mutex{})
 		mu.(*sync.Mutex).Lock()
 		defer mu.(*sync.Mutex).Unlock()
 		prevSlide, hadSlide := s.slides.Load(id)
-		s.slides.Store(id, [2]string{by, body.Policy.Summary()})
-		// And verse's part of the new policy, which the runner never reads (what silence
+		s.slides.Store(id, [2]string{by, body.Autonomy.Summary()})
+		// And verse's part of the new autonomy, which the runner never reads (what silence
 		// settles on, the labels): kept where the task's questions are posed from, before the
 		// runner can raise one under it. A change the runner refuses never happened, so both
 		// go back to what they were.
-		prev := s.hostedOf(id).policy
-		s.repolicy(id, body.Policy)
-		if err := h.SetPolicy(body.Policy, by); err != nil {
+		prev := s.hostedOf(id).autonomy
+		s.repolicy(id, body.Autonomy)
+		if err := h.SetAutonomy(body.Autonomy, by); err != nil {
 			s.repolicy(id, prev)
 			if hadSlide {
 				s.slides.Store(id, prevSlide)

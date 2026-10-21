@@ -649,14 +649,21 @@ func fingerprint(body string) string {
 	return hex.EncodeToString(sum[:8])
 }
 
-// thenWords is what an ask's `then` runs, in words for a message: the prompt a model works from, or
-// the calls a call list makes, by tool. Empty for an ask that runs nothing.
+// thenWords is what an ask's `then` runs, in words for a message: the prompt a model works from or
+// the script that runs, another ask it answers, or one it raises. Empty for an ask that runs
+// nothing.
 func thenWords(then *ir.Node) string {
 	if then == nil {
 		return ""
 	}
-	if prompt := entity.Str(then, "prompt"); prompt != "" {
-		return "“" + prompt + "”"
+	if sp := entity.Get(then, "spawn"); sp != nil {
+		if prompt := entity.Str(sp, "prompt"); prompt != "" {
+			return "“" + prompt + "”"
+		}
+		if script := entity.Str(sp, "script"); script != "" {
+			return "the script `" + script + "`"
+		}
+		return ""
 	}
 	// An answer to another ask, or another ask: what it answers, or whom it asks what.
 	if a := entity.Get(then, "answer"); a != nil {
@@ -670,15 +677,7 @@ func thenWords(then *ir.Node) string {
 		}
 		return line
 	}
-	calls := ir.Uncomment(entity.Get(then, "calls"))
-	if calls == nil || calls.Type != ir.ArrayType {
-		return ""
-	}
-	tools := make([]string, 0, len(calls.Values))
-	for _, c := range calls.Values {
-		tools = append(tools, "`"+entity.Str(c, "tool")+"`")
-	}
-	return fmt.Sprintf("%d call(s): %s", len(tools), strings.Join(tools, ", "))
+	return ""
 }
 
 // servedFor is the resolver serving ask id for whom reader acts as, "" where none does or verse

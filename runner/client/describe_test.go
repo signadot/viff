@@ -10,6 +10,7 @@ import (
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 )
 
@@ -18,9 +19,10 @@ import (
 // nothing answers is unreachable.
 func TestProbeReadsWhatARunnerOffers(t *testing.T) {
 	d := runnerd.NewInProcessHandler(func(l runner.Launch, reg *task.Registry) *task.Task {
-		return task.NewTask(l.ID, task.NewSupervisor(l.Policy, reg), &noDriver{}, noExec{})
+		return task.NewTask(l.ID, systemstest.Opened(task.NewSupervisor(l.Environment, l.Autonomy, reg), l.Environment), &noDriver{}, noExec{})
 	})
-	d.Describe(runner.Description{Offers: []runner.Offer{{Agent: "codex", With: map[string]runner.Accepts{"model": runner.AcceptsAny}}, {Script: true}}})
+	d.Describe(runner.Description{Version: runner.DescriptionVersion, Offers: []runner.Offer{
+		{Agent: &runner.AgentOffer{Name: "codex", Settings: map[string]runner.Setting{"model": {Default: true}}}}, {Script: true}}})
 	face := httptest.NewServer(d.HTTPHandler())
 	defer face.Close()
 
@@ -28,7 +30,7 @@ func TestProbeReadsWhatARunnerOffers(t *testing.T) {
 	if err != nil || reach != client.IsRunner {
 		t.Fatalf("probe = %s, %v; want a runner", reach, err)
 	}
-	if len(desc.Offers) != 2 || desc.Offers[0].Agent != "codex" || !desc.Offers[1].Script || !desc.Offers[0].With["model"].Any {
+	if len(desc.Offers) != 2 || desc.Offers[0].Name() != "codex" || !desc.Offers[1].Script || !desc.Offers[0].Agent.Settings["model"].Default {
 		t.Fatalf("offers = %+v; want what the runner described", desc.Offers)
 	}
 

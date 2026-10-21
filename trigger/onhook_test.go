@@ -3,6 +3,7 @@ package trigger
 import (
 	"context"
 	"fmt"
+	"github.com/signadot/verse/systems"
 	"strings"
 	"sync"
 	"testing"
@@ -27,7 +28,7 @@ func (failing) Next(context.Context, task.StepResult) (task.ToolUse, bool, error
 // (terminal failed), everything else completes (terminal done). It mirrors the task into
 // the store under spec.Subject, exactly as a real Spawner would.
 func startHookTask(store entity.Store, id string, spec launch.Spec) *task.Task {
-	sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+	sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 	var p *task.Task
 	if strings.Contains(spec.Prompt, "fail") {
 		p = task.NewTask(id, sup, failing{}, noExec{})
@@ -90,7 +91,7 @@ func TestOnDoneFiresUnderScoped(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:  entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn:  &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "review $subject"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 		},
 	}); err != nil {
@@ -123,13 +124,13 @@ func TestOnDoneChains(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "review $subject"},
+			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
 			OnDone: &Action{
 				Patch: entity.Obj{"stage": "reviewed"}.Payload(),
-				Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "merge $subject"},
+				Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "merge $subject"},
 				OnDone: &Action{
 					Patch: entity.Obj{"stage": "merged"}.Payload(),
-					Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "approve $subject"},
+					Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "approve $subject"},
 					OnDone: &Action{
 						Patch: entity.Obj{"stage": "approved"}.Payload(),
 					},
@@ -181,7 +182,7 @@ func TestOnFailed(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:    entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn:    &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "review and fail $subject"},
+			Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review and fail $subject"},
 			OnDone:   &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 			OnFailed: &Action{Patch: entity.Obj{"stage": "rejected"}.Payload()},
 		},
@@ -210,9 +211,9 @@ func TestOnHookPerTask(t *testing.T) {
 
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	subj := prRef("1").String()
-	eng.spawnHooked("pa", launch.Spec{Doer: runner.Doer{Agent: "verse"}, Subject: subj, Prompt: "a"},
+	eng.spawnHooked("pa", launch.Spec{Agent: &runner.Agent{Name: "verse"}, Subject: subj, Prompt: "a"},
 		&Action{OnDone: &Action{Patch: entity.Obj{"a": "1"}.Payload()}}, "pa")
-	eng.spawnHooked("pb", launch.Spec{Doer: runner.Doer{Agent: "verse"}, Subject: subj, Prompt: "b"},
+	eng.spawnHooked("pb", launch.Spec{Agent: &runner.Agent{Name: "verse"}, Subject: subj, Prompt: "b"},
 		&Action{OnDone: &Action{Patch: entity.Obj{"b": "1"}.Payload()}}, "pb")
 
 	waitField(t, store, prRef("1"), "a", "1")
@@ -236,7 +237,7 @@ func TestOnHookValidation(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "b", Condition: cond,
 		Action: Action{
-			Spawn:  &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "t"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "t"},
 			OnDone: &Action{OnFailed: &Action{Patch: entity.Obj{"x": "1"}.Payload()}}, // nested hook, no nested spawn
 		},
 	}); err == nil {
@@ -245,7 +246,7 @@ func TestOnHookValidation(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "c", Condition: cond,
 		Action: Action{
-			Spawn:  &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "t"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "t"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "done"}.Payload()},
 		},
 	}); err != nil {
@@ -256,7 +257,7 @@ func TestOnHookValidation(t *testing.T) {
 // The onX hooks round-trip through the tony codec under their canonical field names.
 func TestOnHookTonyRoundTrip(t *testing.T) {
 	a := Action{
-		Spawn:    &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "review"},
+		Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review"},
 		OnDone:   &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 		OnFailed: &Action{Patch: entity.Obj{"stage": "rejected"}.Payload()},
 	}
@@ -290,7 +291,7 @@ func TestAdoptDropsHooks(t *testing.T) {
 	eng.ObserveScoped(ctx)
 
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
-	sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+	sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 	p := task.NewTask("adopted", sup, immediate{}, noExec{})
 	mirror.Reflect(store, "adopted", p, mirror.Meta{Subject: prRef("1").String(), Runner: "local"})
 	eng.Adopt(prRef("1").String(), "adopted", p)
@@ -318,7 +319,7 @@ func TestAdoptChainRehydratesHooks(t *testing.T) {
 		Name:      "review",
 		Condition: Condition{Subject: prSubject("never")}, // installed for its shape, not to fire
 		Action: Action{
-			Spawn:  &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "review"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 		},
 	}); err != nil {
@@ -330,7 +331,7 @@ func TestAdoptChainRehydratesHooks(t *testing.T) {
 	// point is that adoption re-attaches the hooks a completion will look for. (Built here
 	// rather than with startHookTask, which starts the task itself — adopting a task
 	// that may already have finished would test nothing.)
-	sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+	sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 	p := task.NewTask("review@demo.pr.1", sup, immediate{}, noExec{})
 	mirror.Reflect(store, p.ID, p, mirror.Meta{Subject: prRef("1").String(), Runner: "local", Chain: "review"})
 	eng.AdoptChain(prRef("1").String(), p.ID, "review", p)
@@ -345,7 +346,7 @@ func TestAdoptChainRehydratesHooks(t *testing.T) {
 func TestAdoptChainSurvivesAMissingCharter(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
-	sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+	sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 	p := task.NewTask("gone@demo.pr.1", sup, immediate{}, noExec{})
 	eng.AdoptChain(prRef("1").String(), p.ID, "gone.onDone", p)
 	if got := eng.SubjectOf("gone@demo.pr.1"); got != prRef("1").String() {
@@ -374,9 +375,9 @@ func TestOnHookDoesNotCrossSubjects(t *testing.T) {
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	entitytest.Set(t, store, prRef("2"), entity.Obj{"stage": "open"}.Payload())
 
-	eng.spawnHooked("pa", launch.Spec{Doer: runner.Doer{Agent: "verse"}, Subject: prRef("1").String(), Prompt: "a"},
+	eng.spawnHooked("pa", launch.Spec{Agent: &runner.Agent{Name: "verse"}, Subject: prRef("1").String(), Prompt: "a"},
 		&Action{OnDone: &Action{Patch: entity.Obj{"from": "a"}.Payload()}}, "pa")
-	eng.spawnHooked("pb", launch.Spec{Doer: runner.Doer{Agent: "verse"}, Subject: prRef("2").String(), Prompt: "b"},
+	eng.spawnHooked("pb", launch.Spec{Agent: &runner.Agent{Name: "verse"}, Subject: prRef("2").String(), Prompt: "b"},
 		&Action{OnDone: &Action{Patch: entity.Obj{"from": "b"}.Payload()}}, "pb")
 
 	waitField(t, store, prRef("1"), "from", "a")
@@ -425,7 +426,7 @@ func TestHookReadsTheSubjectAtTheCausingCommit(t *testing.T) {
     subject: {path: "demo.pr.*", value: {stage: open}}
   action:
     patch: {stage: reviewing}
-    spawn: {doer: {agent: verse}, prompt: "review $subject"}
+    spawn: {agent: {name: verse}, prompt: "review $subject"}
     onDone:
       patch:
         stage: reviewed
@@ -469,8 +470,8 @@ func TestSeqCarrierHookReadsTheCausingCommit(t *testing.T) {
   action:
     patch: {stage: deploying}
     seq:
-    - spawn: {doer: {agent: verse}, prompt: "canary $subject"}
-    - spawn: {doer: {agent: verse}, prompt: "rollout $subject"}
+    - spawn: {agent: {name: verse}, prompt: "canary $subject"}
+    - spawn: {agent: {name: verse}, prompt: "rollout $subject"}
     onDone:
       patch:
         stage:   deployed

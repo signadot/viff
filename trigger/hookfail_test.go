@@ -3,6 +3,7 @@ package trigger
 import (
 	"context"
 	"errors"
+	"github.com/signadot/verse/systems"
 	"strings"
 	"testing"
 
@@ -35,7 +36,7 @@ func structuredEngine(t *testing.T, d task.Driver) (*Engine, entity.Store) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
-		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+		sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 		p := task.NewTask(id, sup, d, noExec{})
 		mirror.Reflect(store, id, p, mirror.Meta{
 			Subject: spec.Subject, Runner: "local", Chain: spec.Chain, Prompt: spec.Prompt,
@@ -57,7 +58,7 @@ func TestDerefIntoTaskData(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "review $subject"},
+			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
 			OnDone: &Action{Patch: entity.Obj{
 				"stage":    "reviewed",
 				"severity": "$data.severity",
@@ -84,7 +85,7 @@ func TestProseAnswerCannotSatisfyADeref(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:  entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn:  &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "review $subject"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed", "severity": "$data.severity"}.Payload()},
 		},
 	}); err != nil {
@@ -127,7 +128,7 @@ func TestDriverErrorIsProjectedAsErr(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "review $subject"},
+			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
 		},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -174,7 +175,7 @@ func TestDerefReadsAFencedAnswer(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "review $subject"},
+			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
 			OnDone: &Action{Patch: entity.Obj{
 				"stage":    "reviewed",
 				"severity": "$data.severity",

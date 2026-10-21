@@ -31,61 +31,58 @@ func serveKeyless(t *testing.T) {
 
 // AN ATTACHED SCRIPT RUNS: a conversation is an agent's, so a script run with --attach asks for
 // none, and the runner, which holds none with a script, takes it. The embedded runner builds an
-// open network alone, and a typed run has the host's network unless --network says otherwise,
-// so nothing more is typed.
+// open network alone, and the spawn says so.
 func TestAnAttachedScriptRuns(t *testing.T) {
 	serveKeyless(t)
-	out, err := runCLI(t, "task", "run", "--script", "echo hi", "--attach", "--as", "user:t")
+	out, err := runCLI(t, "task", "run", "-f", spawnFile(t, `{script: "echo hi", environment: {systems: {network: {mode: open}}}}`), "--attach", "--as", "user:t")
 	if err != nil {
-		t.Fatalf("task run --script --attach: %v\n%s", err, out)
+		t.Fatalf("task run --attach: %v\n%s", err, out)
 	}
 	if !strings.Contains(out, "hi") {
 		t.Fatalf("the attached script's output is not in the stream:\n%s", out)
 	}
 }
 
-// A PROMPT IS FOR VERSE'S OWN AGENT when the run names no doer, and a verse that does not offer
-// it says so, by name.
-func TestAPromptIsForTheVerseAgent(t *testing.T) {
+// A PROMPT IS FOR THE RUNNER'S DEFAULT AGENT when the run names none, and a runner that offers
+// no agent says so; one named that it does not offer is refused by name.
+func TestAPromptIsForTheRunnersDefaultAgent(t *testing.T) {
 	serveKeyless(t)
-	_, err := runCLI(t, "task", "run", "--as", "user:t", "fix the typo")
+	_, err := runCLI(t, "task", "run", "-f", spawnFile(t, `{prompt: "fix the typo", environment: {systems: {network: {mode: open}}}}`), "--as", "user:t")
+	if err == nil || !strings.Contains(err.Error(), "offers no agent for a prompt") {
+		t.Fatalf("a prompt on a keyless verse: %v, want it refused for want of an agent", err)
+	}
+	_, err = runCLI(t, "task", "run", "-f", spawnFile(t, `{prompt: "fix the typo", agent: {name: verse}, environment: {systems: {network: {mode: open}}}}`), "--as", "user:t")
 	if err == nil || !strings.Contains(err.Error(), `agent "verse"`) {
-		t.Fatalf("a prompt on a keyless verse: %v, want it refused naming the verse agent", err)
+		t.Fatalf("an agent verse on a keyless verse: %v, want it refused naming the verse agent", err)
 	}
 }
 
-// --NETWORK IS THE RUN'S `with.network`: open unless it says, `none`, or hosts as an allow list.
-// The embedded runner, which builds open alone, refuses the others by name.
-func TestTaskRunsNetworkFlagIsItsNetwork(t *testing.T) {
+// THE SPAWN MEANS WHAT IT SAYS: a network it does not name is none, as in a charter, and the
+// embedded runner, which builds open alone, refuses it and any other mode by name.
+func TestTaskRunsNetworkIsTheSpawns(t *testing.T) {
 	serveKeyless(t)
-	for _, c := range []struct{ flag, says string }{
-		{"none", "builds the network open, not none"},
-		{"api.github.com:443", "builds the network open, not allow"},
-		{"open", ""},
-		{"", ""},
+	for _, c := range []struct{ env, says string }{
+		{"", "mode none: this runner builds open only"},
+		{`environment: {systems: {network: {mode: none}}}`, "mode none: this runner builds open only"},
+		{`environment: {systems: {network: {mode: allow, tcp-client: {host: api.github.com, port: "443"}}}}`, "mode allow: this runner builds open only"},
+		{openNet, ""},
 	} {
-		args := []string{"task", "run", "--script", "echo hi", "--wait", "--as", "user:t"}
-		if c.flag != "" {
-			args = append(args, "--network", c.flag)
-		}
-		out, err := runCLI(t, args...)
+		spec := "script: \"echo hi\"\n" + c.env + "\n"
+		out, err := runCLI(t, "task", "run", "-f", spawnFile(t, spec), "--wait", "--as", "user:t")
 		switch {
 		case c.says == "" && err != nil:
-			t.Errorf("--network %q: %v\n%s", c.flag, err, out)
+			t.Errorf("%q: %v\n%s", c.env, err, out)
 		case c.says != "" && (err == nil || !strings.Contains(err.Error()+out, c.says)):
-			t.Errorf("--network %q: %v\n%s\nwant it refused saying %q", c.flag, err, out, c.says)
+			t.Errorf("%q: %v\n%s\nwant it refused saying %q", c.env, err, out, c.says)
 		}
-	}
-	if _, err := runCLI(t, "task", "run", "--script", "echo", "--network", ",", "--as", "user:t"); err == nil || !strings.Contains(err.Error(), "not open, none, or hosts") {
-		t.Errorf("--network ,: %v", err)
-	}
-	if n, _ := networkOf("a.example,b.example:8443"); n.Mode != runner.NetworkAllow || strings.Join(n.Allow, " ") != "a.example b.example:8443" {
-		t.Errorf("hosts: %+v", n)
 	}
 }
 
-// AN ASK'S THEN RUNS ON `verse up`: what follows a yes is the asker's run, as `task run` makes
-// it, with the host's network, which is the one the embedded runner builds.
+// openNet is the environment of a run on the host's network, which the embedded runner builds.
+const openNet = `environment: {systems: {network: {mode: open}}}`
+
+// AN ASK'S THEN RUNS ON `verse up`: what follows a yes is the asker's run, a spawn as `task run`
+// takes one, here on the host's network, which is the one the embedded runner builds.
 func TestAnAsksThenRunsOnTheEmbeddedRunner(t *testing.T) {
 	cfg, secrets := verserunner.Config{}, verserunner.Secrets{}
 	store := entitytest.Store(t)
@@ -97,7 +94,7 @@ func TestAnAsksThenRunsOnTheEmbeddedRunner(t *testing.T) {
 	t.Cleanup(ts.CloseClientConnections)
 	testAddr = strings.TrimPrefix(ts.URL, "http://")
 
-	id := askAs(t, daniel, "land", "-q", "go?", "--to", daniel, "--then", `{script: "echo landed"}`)
+	id := askAs(t, daniel, "land", "-q", "go?", "--to", daniel, "--then", `{spawn: {script: "echo landed", environment: {systems: {network: {mode: open}}}}}`)
 	ref := mirror.AskRef(id)
 	if out, err := runCLI(t, "gate", questionOn(t, store, ref), "--answer", "proceed"); err != nil {
 		t.Fatalf("answer: %v\n%s", err, out)
@@ -121,19 +118,19 @@ func TestAnAsksThenRunsOnTheEmbeddedRunner(t *testing.T) {
 }
 
 // A POLICY CHANGE IS A WHOLE POLICY, held as the runner holds a launch: on the embedded runner,
-// `task policy <id> <rows>` replaces the run's policy and is taken, and a policy naming a verb the
-// standing one did not is refused by the runner, as a runner reached by url refuses it, and
-// leaves the policy that stands. There is no dial: a bare `ask` is not a policy.
+// `task autonomy <id> <rows>` replaces the run's autonomy and is taken, and a policy with a row that
+// matches nothing the run's environment gives is refused by the runner, as a runner reached by
+// url refuses it, and leaves the policy that stands. There is no dial: a bare `ask` is not a policy.
 func TestAPolicyChangeIsAWholePolicy(t *testing.T) {
 	serveKeyless(t)
-	out, err := runCLI(t, "task", "run", "--script", "sleep 30", "--as", "user:t")
+	out, err := runCLI(t, "task", "run", "-f", spawnFile(t, `{script: "sleep 30", environment: {systems: {network: {mode: open}}}}`), "--as", "user:t")
 	if err != nil {
 		t.Fatalf("task run: %v\n%s", err, out)
 	}
 	id := strings.TrimSpace(out)
 	t.Cleanup(func() { runCLI(t, "task", "cancel", id) })
-	if out, err := runCLI(t, "task", "policy", id, "[{then: ask}]", "--as", "user:t"); err != nil {
-		t.Fatalf("task policy: %v\n%s", err, out)
+	if out, err := runCLI(t, "task", "autonomy", id, "[{then: ask}]", "--as", "user:t"); err != nil {
+		t.Fatalf("task autonomy: %v\n%s", err, out)
 	}
 	// The snapshot follows the task's stream, which takes the change a moment after the PUT.
 	var got string
@@ -149,19 +146,19 @@ func TestAPolicyChangeIsAWholePolicy(t *testing.T) {
 	if err := os.WriteFile(bad, []byte("- {match: {system: commands, verb: run}, then: deny}\n- {then: allow}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := runCLI(t, "task", "policy", id, "--file", bad, "--as", "user:t"); err == nil ||
-		!strings.Contains(err.Error(), "adds none") {
-		t.Fatalf("a policy naming commands.run, which the task's did not: %v, want the runner to refuse it\n%s", err, out)
+	if out, err := runCLI(t, "task", "autonomy", id, "--file", bad, "--as", "user:t"); err == nil ||
+		!strings.Contains(err.Error(), "matches nothing the environment gives") {
+		t.Fatalf("a policy naming commands.run, which the task's environment does not give: %v, want the runner to refuse it\n%s", err, out)
 	}
 	if out, err := runCLI(t, "task", "get", id); err != nil || !strings.Contains(out, "then: ask") {
 		t.Fatalf("after a refused change the policy should be the one that stands: %v\n%s", err, out)
 	}
-	if out, err := runCLI(t, "task", "policy", id, "allow", "--as", "user:t"); err == nil {
+	if out, err := runCLI(t, "task", "autonomy", id, "allow", "--as", "user:t"); err == nil {
 		t.Fatalf("a bare dial was taken as a policy:\n%s", out)
 	}
 	// A misspelled key is refused, not dropped: `mtch` dropped would make the row a default
 	// that allows everything.
-	if out, err := runCLI(t, "task", "policy", id, "[{mtch: {system: commands}, then: allow}]", "--as", "user:t"); err == nil {
+	if out, err := runCLI(t, "task", "autonomy", id, "[{mtch: {system: commands}, then: allow}]", "--as", "user:t"); err == nil {
 		t.Fatalf("a row with a misspelled match was taken:\n%s", out)
 	}
 }

@@ -107,7 +107,7 @@ func waitFieldCLI(t *testing.T, store entity.Store, ref entity.Ref, field string
 func TestAnAskIsAskedAnsweredAndSeen(t *testing.T) {
 	store := serveAsking(t)
 	id := askAs(t, daniel, "land", "-q", "Review verse/ask?", "--to", "oscar@example.com",
-		"--due", "48h", "--on-silence", "yes", "--then", `{prompt: "merge verse/ask"}`, "--keep", "72h")
+		"--due", "48h", "--on-silence", "yes", "--then", `{spawn: {prompt: "merge verse/ask", environment: {systems: {network: {mode: open}}}}}`, "--keep", "72h")
 	ref := mirror.AskRef(id)
 	rec := payloadOf(t, store, ref)
 	if rec["onSilence"] != "proceed" {
@@ -317,8 +317,10 @@ func TestAnAskIsCheckedBeforeItIsWritten(t *testing.T) {
 		{"ask", "land", "-q", "x?", "--due", "2020-01-01T00:00:00Z"},
 		{"ask", "land", "-q", "x?", "--due", "tomorrow"},
 		{"ask", "land", "-q", "x?", "--then", "merge it"},
-		{"ask", "land", "-q", "x?", "--then", `{prompt: a, script: ""}`},
+		{"ask", "land", "-q", "x?", "--then", `{spawn: {prompt: a, script: b}}`},
 		{"ask", "land", "-q", "x?", "--then", `{shell: "rm -rf /"}`},
+		{"ask", "land", "-q", "x?", "--then", `{prompt: "merge it"}`},
+		{"ask", "land", "-q", "x?", "--then", `{spawn: {script: "echo hi", environment: {systems: {git: {repo: $subject.value.repo, fetch: {}}}}}}`},
 		{"ask", "-q", "x?"},
 		{"ask", "land", "--to", "oscar@example.com"},
 		{"ask", "land", "-q", "x?", "--on-silence", "yes"},
@@ -336,7 +338,7 @@ func TestAnAskIsCheckedBeforeItIsWritten(t *testing.T) {
 // it again as its next edit, and --about, which says what a new ask is, is refused.
 func TestAWaitingAskIsChangedByItsAsker(t *testing.T) {
 	store := serveAsking(t)
-	id := askAs(t, daniel, "land", "-q", "Review?", "--to", "oscar@example.com", "--due", "1h", "--then", `{prompt: "merge it"}`)
+	id := askAs(t, daniel, "land", "-q", "Review?", "--to", "oscar@example.com", "--due", "1h", "--then", `{spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}`)
 	ref := mirror.AskRef(id)
 	questionOn(t, store, ref)
 	if out, err := runCLI(t, "ask", "land", "--due", "72h"); err != nil || !strings.Contains(out, "moved "+id) {
@@ -349,7 +351,7 @@ func TestAWaitingAskIsChangedByItsAsker(t *testing.T) {
 	if got := mirror.EditOf(entity.Val(payloadOf(t, store, ref))); got != 1 {
 		t.Fatalf("moving the date asked again: edit %d", got)
 	}
-	out, err := runCLI(t, "ask", "land", "--then", `{prompt: "merge it and tag it"}`)
+	out, err := runCLI(t, "ask", "land", "--then", `{spawn: {prompt: "merge it and tag it", environment: {systems: {network: {mode: open}}}}}`)
 	if err != nil || !strings.Contains(out, "as edit 2") {
 		t.Fatalf("changing then: %v\n%s", err, out)
 	}
@@ -393,7 +395,7 @@ func TestAWithdrawnAskIsGoneAndAsksNobody(t *testing.T) {
 func TestACallsThenRunsItsCalls(t *testing.T) {
 	store := serveCalls(t)
 	id := askAs(t, daniel, "land", "-q", "Tag it?", "--to", "oscar@example.com",
-		"--then", `{script: "echo tagged"}`)
+		"--then", `{spawn: {script: "echo tagged", environment: {systems: {network: {mode: open}}}}}`)
 	ref := mirror.AskRef(id)
 	questionOn(t, store, ref)
 	as(t, davido)

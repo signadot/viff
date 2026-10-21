@@ -3,5 +3,5 @@ description: "The commands a doer runs in the task's shell, in its own process. 
 verbs:
 - name: run
   description: "Run a command in the task's shell."
-  params:
-  - {name: command, description: "the command line, as the doer gave it"}
+  fields:
+  - {name: command, form: text, description: "the command line, as the doer gave it"}

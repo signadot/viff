@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/signadot/verse/systems"
 )
 
-// Repo is one repository a run works in: a fact of the `git` system, under `with.git`. What may
-// leave it is not here: a push is a step, `git.push`, and the task's policy decides each by its
-// repo, ref, and whether it deletes or rewrites.
+// Repo is one repository a run checks out: a `git` block of its environment, as the runner reads
+// it (Launch.Repos). What may leave it is the block's push shapes and the autonomy's.
 //
 //tony:schemagen=verse-runner-repo,notag
 type Repo struct {
@@ -19,9 +20,8 @@ type Repo struct {
 	From string `tony:"field=from,omitzero"`
 }
 
-// Tracker is a repository's own issue tracker a run works with: a fact of the `git-issue`
-// system, under `with.git-issue`, naming a repository of `with.git`, in whose checkout the
-// tracker is.
+// Tracker is a repository's own issue tracker a run works with: a `git-issue` block of its
+// environment, naming a repository it checks out, in whose checkout the tracker is.
 //
 //tony:schemagen=verse-runner-tracker,notag
 type Tracker struct {
@@ -56,48 +56,22 @@ func (r Repo) Name() string {
 }
 
 // Canonical is the repo as a step's `repo` field spells it, however the spawn wrote it:
-// `host/owner/name`, in lower case, as the forge reads a name. A policy's or a ceiling's `repo`
+// `host/owner/name`, in lower case, as the forge reads a name. An autonomy's or a ceiling's `repo`
 // pattern is held against this spelling, so `Acme/Secret` in a spawn is the repository a row
 // on `github.com/acme/secret` names.
-func (r Repo) Canonical() string { return strings.ToLower(r.Host() + "/" + r.Path()) }
+func (r Repo) Canonical() string { return systems.Canonical(systems.FormRepo, r.Repo) }
 
-// CheckWith checks the facts under `with`: each repo of `git`, that no two check out into one
-// directory (the same repo twice, or two repos with one name under different owners or
-// forges), and that each tracker of `git-issue` names a repo of `git`.
-func CheckWith(w With) error {
-	if err := CheckGit(w.Git); err != nil {
-		return err
-	}
-	for i, t := range w.GitIssue {
-		if !hasRepo(w.Git, t.Repo) {
-			return fmt.Errorf("with.git-issue[%d]: %q is not a repo of with.git, whose checkout the tracker is in", i, t.Repo)
-		}
-	}
-	return nil
-}
-
-// CheckGit checks each repo of `with.git`, and that no two check out into one directory.
-func CheckGit(repos []Repo) error {
-	dirs := map[string]string{}
+// CheckRepos checks each repository the run checks out (Launch.Repos): a name a forge could
+// have. That no two check out into one directory, and that a tracker's is one of them, is the
+// environment's to check (systems.Environment.Check). The launch is bound, so a `$` is part of
+// the name, which no forge's has: a charter's `$` is stood in for before install checks it.
+func CheckRepos(repos []Repo) error {
 	for i, r := range repos {
 		if err := r.check(); err != nil {
-			return fmt.Errorf("with.git[%d]: %w", i, err)
+			return fmt.Errorf("environment.systems.git[%d]: %w", i, err)
 		}
-		if other, dup := dirs[r.Name()]; dup {
-			return fmt.Errorf("with.git[%d]: %s and %s would both check out as %s/", i, other, r.Repo, r.Name())
-		}
-		dirs[r.Name()] = r.Repo
 	}
 	return nil
-}
-
-func hasRepo(repos []Repo, name string) bool {
-	for _, r := range repos {
-		if r.Repo == name {
-			return true
-		}
-	}
-	return false
 }
 
 func (r Repo) check() error {

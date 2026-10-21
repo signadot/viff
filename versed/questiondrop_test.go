@@ -8,8 +8,8 @@ import (
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/runner"
 )
 
 // A WITHDRAWN QUESTION LEAVES THE DOCKET WHEN IT IS WITHDRAWN, not when the task ends.
@@ -29,7 +29,7 @@ func TestAnInterruptedHostedTaskWithdrawsItsQuestionAtOnce(t *testing.T) {
 	ops := httptest.NewServer(srv.Handler())
 	defer ops.Close()
 
-	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "held-1", Doer: runner.Doer{Script: "true"}, Subject: `demo.pr."1"`, Policy: stepAsks})
+	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "held-1", Spawn: launch.Spec{Script: "true", Subject: `demo.pr."1"`, Environment: stepEnv, Autonomy: stepAsks}})
 	spawn.Body.Close()
 	if spawn.StatusCode >= 300 {
 		t.Fatalf("spawn = %s", spawn.Status)

@@ -11,9 +11,11 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 )
 
@@ -35,7 +37,7 @@ func TestAGateNamingPrincipalAsksWhoeverRanTheTask(t *testing.T) {
 	defer ts.Close()
 	gates := shellGate(0, nil)
 	gates[0].Then.Ask.Answerers = []string{task.PrincipalAnswerer}
-	resp := postTony(t, ts.URL+"/tasks", api.Spawn{ID: "mine", Doer: runner.Doer{Script: "true"}, Policy: gates})
+	resp := postTony(t, ts.URL+"/tasks", api.Spawn{ID: "mine", Spawn: launch.Spec{Script: "true", Environment: stepEnv, Autonomy: gates}})
 	if resp.StatusCode >= 300 {
 		t.Fatalf("spawn = %s: %s", resp.Status, bodyOf(t, resp))
 	}
@@ -54,7 +56,7 @@ func TestAGateNamingPrincipalAsksWhoeverRanTheTask(t *testing.T) {
 func TestAThenTasksOwnQuestionAsksTheAsker(t *testing.T) {
 	srv, ts := askingOn(t, NewWithStore(stepBuilder(t), entitytest.Store(t)))
 	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Land it?", answerers: [oscar@example.com], then: {prompt: "true", policy: `+stepAsksTony+`}}`))
+	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Land it?", answerers: [oscar@example.com], then: {spawn: {prompt: "true", environment: {systems: {network: {mode: open}, commands: {run: {}}}}, autonomy: `+stepAsksTony+`}}}`))
 	land := mirror.AskRef(id)
 	posed(t, srv, land)
 	if resp := answerAs(t, davido, ts.URL, id); resp.StatusCode != http.StatusNoContent {
@@ -77,7 +79,7 @@ func TestAGateNamingPrincipalIsRefusedForNobody(t *testing.T) {
 	defer ts.Close()
 	gates := shellGate(0, nil)
 	gates[0].Then.Ask.Answerers = []string{task.PrincipalAnswerer}
-	b, err := codec.Marshal(api.Spawn{ID: "nobodys", Doer: runner.Doer{Script: "true"}, Policy: gates}, codec.Tony)
+	b, err := codec.Marshal(api.Spawn{ID: "nobodys", Spawn: launch.Spec{Script: "true", Autonomy: gates}}, codec.Tony)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +98,7 @@ func TestAThresholdOverTooFewAnswerersIsRefused(t *testing.T) {
 	gates := shellGate(0, nil)
 	gates[0].Then.Ask.Need = 2
 	gates[0].Then.Ask.Answerers = []string{"user:ana@example.com"}
-	b, err := codec.Marshal(api.Spawn{ID: "unreachable", Doer: runner.Doer{Script: "true"}, Policy: gates}, codec.Tony)
+	b, err := codec.Marshal(api.Spawn{ID: "unreachable", Spawn: launch.Spec{Script: "true", Autonomy: gates}}, codec.Tony)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,8 +116,8 @@ func TestAVectorNamingPrincipalNeedsSomebodyToAsk(t *testing.T) {
 	defer ts.Close()
 	slide := func(as, id string) *http.Response {
 		t.Helper()
-		req, _ := http.NewRequest(http.MethodPut, ts.URL+"/tasks/"+id+"/policy", strings.NewReader(
-			`{policy: [{name: shell, match: {system: commands, verb: run}, then: {ask: {answerers: [$principal]}}}, {then: allow}]}`))
+		req, _ := http.NewRequest(http.MethodPut, ts.URL+"/tasks/"+id+"/autonomy", strings.NewReader(
+			`{autonomy: [{name: shell, match: {system: commands, verb: run}, then: {ask: {answerers: [$principal]}}}, {then: allow}]}`))
 		req.Header.Set("Content-Type", "application/tony")
 		req.Header.Set(api.PrincipalHeader, as)
 		resp, err := http.DefaultClient.Do(req)
@@ -125,8 +127,8 @@ func TestAVectorNamingPrincipalNeedsSomebodyToAsk(t *testing.T) {
 		return resp
 	}
 	for _, c := range []struct{ as, id string }{{runnerID, "runners"}, {tester, "testers"}} {
-		b, _ := codec.Marshal(api.Spawn{ID: c.id, Doer: runner.Doer{Script: "sleep 5"}, Policy: task.Policy{
-			{Match: &task.Match{System: "commands", Verb: "run"}, Then: task.Then{Mode: task.ThenAllow}}, {Then: task.Then{Mode: task.ThenAllow}}}}, codec.Tony)
+		b, _ := codec.Marshal(api.Spawn{ID: c.id, Spawn: launch.Spec{Script: "sleep 5", Environment: stepEnv, Autonomy: task.Autonomy{
+			{Match: &task.Match{System: "commands", Verb: "run"}, Then: task.Then{Mode: task.ThenAllow}}, {Then: task.Then{Mode: task.ThenAllow}}}}}, codec.Tony)
 		if resp := postAs(t, c.as, ts.URL+"/tasks", "application/tony", string(b)); resp.StatusCode >= 300 {
 			t.Fatalf("spawn %s: %s: %s", c.id, resp.Status, bodyOf(t, resp))
 		}
@@ -147,7 +149,7 @@ func TestAVectorNamingPrincipalNeedsSomebodyToAsk(t *testing.T) {
 // says it waits on them.
 func TestARemoteConversationsTurnIsItsLaunchers(t *testing.T) {
 	build := func(l runner.Launch, reg *task.Registry) *task.Task {
-		tk := task.NewTask(l.ID, task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, reg),
+		tk := task.NewTask(l.ID, systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, reg), l.Environment),
 			talkingDriver{&slowDriver{}}, noopExec{})
 		if l.Converse {
 			tk.SetConverse(reg)
@@ -169,9 +171,7 @@ func TestARemoteConversationsTurnIsItsLaunchers(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	postTony(t, ts.URL+"/runners", map[string]any{"name": "face", "url": face.URL}).Body.Close()
-	resp := postTony(t, ts.URL+"/tasks", map[string]any{
-		"doer": map[string]any{"agent": "fake"}, "prompt": "turn", "runner": "verse.runners.face", "name": "talk", "converse": true,
-	})
+	resp := postTony(t, ts.URL+"/tasks", map[string]any{"name": "talk", "converse": true, "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "turn", "runner": "verse.runners.face"}})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("spawn = %s: %s", resp.Status, bodyOf(t, resp))
 	}

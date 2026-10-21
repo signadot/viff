@@ -160,7 +160,7 @@ type state struct {
 	frames  []*frame
 	failing bool // fail-fast has already fired
 
-	// Configuration the machine consults. Copied in at the start; the policy is NOT here,
+	// Configuration the machine consults. Copied in at the start; the autonomy is NOT here,
 	// because a change to it takes effect where it is read (the supervisor) rather than where
 	// the machine records it.
 	failFast       bool
@@ -185,11 +185,11 @@ func (s state) clone() state {
 //
 //   - an INTERVENTION (cancel, pause, resume, say) is an operator redirecting THIS RUN. It
 //     preempts, including a pending gate.
-//   - a POLICY change (Task.SetPolicy) is prospective. It does NOT preempt, and it is not an
-//     input at all: the supervisor reads the new policy at the next step, and a question
+//   - an AUTONOMY change (Task.SetAutonomy) is prospective. It does NOT preempt, and it is not an
+//     input at all: the supervisor reads the new autonomy at the next step, and a question
 //     already asked stands. Changing a running task to `allow` says "stop asking me about steps
 //     like this", not "approve the one already in front of me", and dissolving the pending
-//     question would turn a policy change into approval of a specific step nobody looked at.
+//     question would turn an autonomy change into approval of a specific step nobody looked at.
 //   - WORK THE TASK PRODUCED FOR ITSELF (a child's result) folds at the hinge and never
 //     overtakes an action already proposed. Preemption is for people.
 //

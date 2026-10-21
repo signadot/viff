@@ -254,7 +254,7 @@ func TestADatedDeadlineIsWrittenAsWhereTheDateIs(t *testing.T) {
 	for name, c := range map[string]struct{ rule, says string }{
 		"within and atFrom": {`{name: r, ` + cond + `, gates: [{name: a, deadline: {within: "1h", atFrom: by}}], action: {patch: {answer: yes}}}`, "both `within` and `atFrom`"},
 		"a written at":      {`{name: r, ` + cond + `, gates: [{name: a, deadline: {at: "2026-10-02T17:00:00Z"}}], action: {patch: {answer: yes}}}`, "`at:` is the engine's"},
-		"a spawn row":       {`{name: r, ` + cond + `, action: {spawn: {doer: {script: "true"}, policy: [{name: g, match: {system: commands, verb: run}, then: {ask: {within: soon}}}, {then: ask}]}, onDone: {patch: {answer: yes}}}}`, "is not a duration"},
+		"a spawn row":       {`{name: r, ` + cond + `, action: {spawn: {script: "true", autonomy: [{name: g, match: {system: commands, verb: run}, then: {ask: {within: soon}}}, {then: ask}]}, onDone: {patch: {answer: yes}}}}`, "is not a duration"},
 	} {
 		resp := installAs(t, "alice@example.com", ts.URL, c.rule)
 		body, _ := io.ReadAll(resp.Body)

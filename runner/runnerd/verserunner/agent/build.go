@@ -22,7 +22,7 @@ import (
 )
 
 // defaultFrame is the frame used when a launch does not write one — and it is DERIVED, from
-// the tools actually offered and the policy actually installed, because two things it says
+// the tools actually offered and the autonomy actually installed, because two things it says
 // are things a constant cannot get right.
 //
 // The final assistant message is what Result() returns, which is what a completed task's
@@ -32,12 +32,12 @@ import (
 // itself, and a launch wanting a particular shape states it in its own frame, which is what the
 // field is for.
 //
-// What it says about each tool follows the policy. Advice to prefer call_agent, under a policy
+// What it says about each tool follows the autonomy. Advice to prefer call_agent, under an autonomy
 // that asks before every delegation, recommends the one action guaranteed to stop and wait for
-// a person, which for an unattended firing means park. The policy is per launch and replaceable
+// a person, which for an unattended firing means park. The autonomy is per launch and replaceable
 // while the task runs, and a constant is neither, so below each tool is described as it will
 // actually behave.
-func defaultFrame(tds []toolDef, p task.Policy, converse bool, extra map[string]Tool) string {
+func defaultFrame(tds []toolDef, p task.Autonomy, converse bool, extra map[string]Tool) string {
 	var free, gated []string
 	asks := false
 	for _, td := range tds {
@@ -135,10 +135,10 @@ func withoutContract(frame string) string {
 	return frame
 }
 
-// mayAsk reports whether a tool may be stopped before it runs: it is a step, and the policy's
+// mayAsk reports whether a tool may be stopped before it runs: it is a step, and the autonomy's
 // row that would decide it is not an allow. Whether it is stopped this time depends on the
 // fields, so the frame says it may.
-func mayAsk(tool string, p task.Policy, extra map[string]Tool) bool {
+func mayAsk(tool string, p task.Autonomy, extra map[string]Tool) bool {
 	tu := task.ToolUse{Name: tool}
 	if tool == "call_agent" {
 		tu.CallAgent = &task.CallAgentRequest{}
@@ -193,24 +193,24 @@ type Tool struct {
 }
 
 // ownSteps is the step each of the agent's own tools is: a tool is offered only where the
-// policy provides its verb (task.Policy.Provides), so the model never proposes one it lacks.
+// environment gives its verb (systems.Environment.Gives), so the model never proposes one it lacks.
 var ownSteps = map[string]string{"write_file": task.StepFilesWrite, "run_bash": task.StepCommandsRun, "call_agent": task.StepAgentCallSubAgent}
 
-// lessUnprovided is the tool definitions less the agent's own tools whose verb p does not
-// provide. Its tools that are no verb (`read_file`, `yield`) stay.
-func lessUnprovided(tds []toolDef, p task.Policy) []toolDef {
+// lessUngiven is the tool definitions less the agent's own tools whose verb env does not give.
+// Its tools that are no verb (`read_file`, `yield`) stay.
+func lessUngiven(tds []toolDef, env systems.Environment) []toolDef {
 	return slices.DeleteFunc(tds, func(td toolDef) bool {
 		st, own := ownSteps[td.Function.Name]
-		return own && !p.Provides(st)
+		return own && !env.Gives(st)
 	})
 }
 
-// provided is the extra tools whose verb p provides; the agent's own are dropped by
-// lessUnprovided after selectTools.
-func provided(p task.Policy, extra []Tool) []Tool {
+// given is the extra tools whose verb env gives; the agent's own are dropped by lessUngiven
+// after selectTools.
+func given(env systems.Environment, extra []Tool) []Tool {
 	return slices.DeleteFunc(slices.Clone(extra), func(t Tool) bool {
 		system, verb, ok := systems.SplitTool(t.Name)
-		return ok && !p.Provides(systems.StepName(system, verb))
+		return ok && !env.Gives(systems.StepName(system, verb))
 	})
 }
 
@@ -253,12 +253,15 @@ type Config struct {
 	// Answer is this task's answer contract as a tony match pattern; nil → no contract,
 	// and the run ends wherever the model stops. See package answer.
 	Answer *ir.Node
-	// Policy is the launch's. It is here rather than applied by the caller afterwards because
-	// the frame is derived from it, so the agent is told which of its tools may be stopped.
-	Policy task.Policy
-	// Ceilings are the runner's, by system, read at each step after the policy
+	// Environment is the launch's: what the task may do at all, so which tools it is offered and
+	// which steps are refused before the autonomy is read.
+	Environment systems.Environment
+	// Autonomy is the launch's autonomy. It is here rather than applied by the caller afterwards
+	// because the frame is derived from it, so the agent is told which of its tools may be stopped.
+	Autonomy task.Autonomy
+	// Ceilings are the runner's, by system, read at each step after the autonomy
 	// (task.Supervisor.SetCeilings).
-	Ceilings map[string]task.Policy
+	Ceilings map[string]systems.Ceiling
 
 	// Extra are tools the RUNTIME adds to this agent's vocabulary, beyond the ones this
 	// package implements. See Tool.
@@ -281,8 +284,8 @@ type Config struct {
 	LLMModel      string
 }
 
-// Build assembles a Task (real LLM driver + filesystem executor, under the launch's policy). A
-// call_agent action starts a concurrent sub-agent built the same way, under the same policy
+// Build assembles a Task (real LLM driver + filesystem executor, under the launch's autonomy). A
+// call_agent action starts a concurrent sub-agent built the same way, under the same autonomy
 // (NewChild).
 func Build(cfg Config) *task.Task {
 	if cfg.Client == nil {
@@ -295,14 +298,14 @@ func Build(cfg Config) *task.Task {
 	// launch's tools, handed to children, dispatched through the same seam. See askTool.
 	cfg.Extra = append(append([]Tool{}, cfg.Extra...), Ask(cfg.Resolver))
 	extra := byName(cfg.Extra)
-	tools, err := selectTools(cfg.Tools, provided(cfg.Policy, cfg.Extra))
+	tools, err := selectTools(cfg.Tools, given(cfg.Environment, cfg.Extra))
 	if err != nil {
 		// A task that named a tool this build does not have gets a FAILED task, not a
 		// quietly smaller toolset. The charter asked for a specific set; running with a
 		// different one and saying nothing is how `grant: read-only` came to mean nothing.
 		return task.NewFailed(cfg.ID, cfg.Resolver, "launch tools: "+err.Error())
 	}
-	tools = lessUnprovided(tools, cfg.Policy)
+	tools = lessUngiven(tools, cfg.Environment)
 	// A contract that cannot be parsed fails the task, for the reason an unknown tool
 	// name does: the charter asked for something specific, and running without it while
 	// saying nothing is how a field comes to mean nothing. It is parsed here as well as on
@@ -315,7 +318,7 @@ func Build(cfg Config) *task.Task {
 			return task.NewFailed(cfg.ID, cfg.Resolver, "answer contract: "+err.Error())
 		}
 	}
-	sup := task.NewSupervisor(cfg.Policy, cfg.Resolver)
+	sup := task.NewSupervisor(cfg.Environment, cfg.Autonomy, cfg.Resolver)
 	sup.SetCeilings(cfg.Ceilings)
 	sup.SetStepOf(func(tu task.ToolUse) (task.Step, bool) { return stepOf(tu, extra) })
 
@@ -323,7 +326,7 @@ func Build(cfg Config) *task.Task {
 	// write one, so what the agent is told matches what it will actually meet.
 	frame := cfg.Frame
 	if frame == "" {
-		frame = defaultFrame(tools, cfg.Policy.OrDefault(), cfg.Converse, extra)
+		frame = defaultFrame(tools, cfg.Autonomy.OrDefault(), cfg.Converse, extra)
 	}
 	// The contract is stated in the frame even when the launch wrote the frame itself, and
 	// appending to an author's text is otherwise not this function's business. It is

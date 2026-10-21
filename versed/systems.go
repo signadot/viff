@@ -19,7 +19,7 @@ func systemRef(name string) entity.Ref {
 // installSystems writes every system's document (package systems) at its address, as the
 // system: the binary ships them, and the store holds them for whoever reads what a step or a
 // tool may be named. A document there of a system the binary does not ship is removed, so
-// the store says what this verse checks policies against and nothing it no longer does. One
+// the store says what this verse checks autonomies against and nothing it no longer does. One
 // that cannot be written is reported, and the rest go in.
 func (s *Server) installSystems() error {
 	store := entity.As(s.Store, entity.SystemCharter)

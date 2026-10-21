@@ -52,7 +52,7 @@ func TestAScheduleDeclaredInACharterIsARecordWithANext(t *testing.T) {
 		{name: mine, every: 1h},
 		{name: note-ticks,
 		 condition: {subject: {path: "verse.schedule.mine.tick.*"}},
-		 action: {spawn: {doer: {agent: verse}, prompt: "echo $subject"}}},
+		 action: {spawn: {agent: {name: verse}, prompt: "echo $subject"}}},
 	]`
 	if resp := installAs(t, "alice@example.com", ts.URL, file); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install: %s %s", resp.Status, readBody(t, resp))

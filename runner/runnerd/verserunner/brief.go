@@ -8,13 +8,13 @@ import (
 )
 
 // toolsBrief is the paragraph that says what reaches the world from a task: the tools it was
-// left with after its policy pruned them, by system, and the two facts that hold for every one
+// left with after its autonomy pruned them, by system, and the two facts that hold for every one
 // of them. Built from the offered list and nothing else, so it cannot name a tool the task does
 // not have, nor leave one out; a task with no performed tools gets no paragraph.
 //
 // The two facts are what a model that reaches for a shell client lacks: there is no client for
 // any of these systems in its shell and nothing it installs there reaches them, since the
-// credentials are the runner's; and a call the policy refuses is a decision, not a transient.
+// credentials are the runner's; and a call the autonomy refuses is a decision, not a transient.
 func toolsBrief(tools []agent.Tool) string {
 	bySystem := map[string][]string{}
 	for _, t := range tools {
@@ -36,6 +36,6 @@ func toolsBrief(tools []agent.Tool) string {
 	return "What reaches the world from here is these tools, and nothing else: " +
 		strings.Join(lines, "; ") + ". There is no command-line client for any of these systems " +
 		"in your shell, and nothing you install there can reach them: the runner holds the " +
-		"credentials and performs each call, and your policy decides each one. A call the policy " +
+		"credentials and performs each call, and your autonomy decides each one. A call the autonomy " +
 		"refuses is a decision, not an error to retry; say so and stop.\n\n"
 }

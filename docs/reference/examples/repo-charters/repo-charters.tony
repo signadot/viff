@@ -349,16 +349,19 @@ rules:
           - {answer: !regexp "^\\S+ chose obsolete(: |\\z)", seen: !gt.get-path(root) askedAt}
   action:
     spawn:
-      policy:
+      autonomy:
       - match: {system: question}
         then: allow
       - then: deny
-      doer:
+      environment:
         # The question as the script's environment: its text is the candidate's, and spliced
         # into the script it would be a program.
-        with: {network: {mode: open}, env: {ASK: $ask}}
-        script: |
-          verse-call-tool question-ask -question "$ASK" -options proceed -options deny -options obsolete
+        vars: {ASK: $ask}
+        systems:
+          network: {mode: open}
+          question: {}
+      script: |
+        verse-call-tool question-ask -question "$ASK" -options proceed -options deny -options obsolete
     onDone:
       patch: {answer: $result, askedAt: $subject.value.seen}
 # WHAT VERSE SAYS ABOUT A TREE on any pull request that proposes it, from its answer and its

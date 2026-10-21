@@ -113,7 +113,7 @@ Three processes, in [.verse/charters/](../.verse/charters/):
 
 **Comment drift** reviews everything that landed since the last review, against the code as it
 is now. An agent does the review, and fixes each stale comment in place. The runner delivers the
-work as a branch, `verse/auto/<task>`. The spawn's policy lets the task push only there, so a
+work as a branch, `verse/auto/<task>`. The spawn's environment lets the task push only there, so a
 fix is a proposal, never a change to main. The agent's answer has a fixed shape (an
 [answer contract](reference/action.md#the-answer-contract)), so the charter can read the
 findings. A finding stays open until a later review reads main and finds the comment true.

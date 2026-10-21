@@ -10,6 +10,8 @@ import (
 	"github.com/signadot/verse/client"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/runnerd/verserunner"
 	"github.com/signadot/verse/task"
 )
 
@@ -37,7 +39,7 @@ func askID(t *testing.T, resp *http.Response) string {
 func TestAnAskIsItsAskersAndReadByWhomItAsks(t *testing.T) {
 	srv, ts := asking(t)
 	const daniel, davido, bob = "user:daniel@example.com", "user:oscar@example.com", "user:bob@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge verse/ask?", answerers: [oscar@example.com], then: {prompt: "merge it"}}`))
+	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge verse/ask?", answerers: [oscar@example.com], then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}`))
 	if !strings.HasPrefix(id, "land-") {
 		t.Fatalf("id %q is not derived from the name", id)
 	}
@@ -90,7 +92,7 @@ func TestAnAskIsItsAskersAndReadByWhomItAsks(t *testing.T) {
 // refuses, and not by owning anything above it, since nobody but the system does.
 func TestNobodyElseWritesAnAsk(t *testing.T) {
 	srv, ts := asking(t)
-	id := askID(t, ask(t, "user:daniel@example.com", ts.URL, `{name: land, question: "Merge?", answerers: [oscar@example.com], then: {prompt: "merge it"}}`))
+	id := askID(t, ask(t, "user:daniel@example.com", ts.URL, `{name: land, question: "Merge?", answerers: [oscar@example.com], then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}`))
 	ref := mirror.AskRef(id)
 	for _, who := range []string{"user:bob@example.com", tester} {
 		if _, _, err := entity.As(srv.Store, who).Write(entity.Write{
@@ -107,17 +109,20 @@ func TestAnAskIsCheckedWhereItIsAsked(t *testing.T) {
 	soon := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
 	for body, want := range map[string]string{
 		`{name: x}`: "question is required",
-		`{name: x, question: q, answerers: [davido]}`:                   "a bare word names nothing",
-		`{name: x, question: q, due: tomorrow}`:                         "RFC 3339",
-		`{name: x, question: q, due: "` + past + `"}`:                   "not in the future",
-		`{name: x, question: q, then: {prompt: a, script: ""}}`:         "one key",
-		`{name: x, question: q, then: {shell: "rm -rf /"}}`:             "not something an ask runs",
-		`{name: x, question: q, then: {prompt: ""}}`:                    "is text",
-		`{name: x, question: q, then: {script: ""}}`:                    "then.script",
-		`{name: x, question: q, then: {script: 7}}`:                     "then.script",
-		`{name: x, question: q, labels: {"a b": c}}`:                    "a label's name is a word",
-		`{name: x, question: q, onSilence: yes}`:                        "has no due",
-		`{name: x, question: q, due: "` + soon + `", onSilence: maybe}`: "yes or no",
+		`{name: x, question: q, answerers: [davido]}`:                                                          "a bare word names nothing",
+		`{name: x, question: q, due: tomorrow}`:                                                                "RFC 3339",
+		`{name: x, question: q, due: "` + past + `"}`:                                                          "not in the future",
+		`{name: x, question: q, then: {prompt: a, script: ""}}`:                                                "one key",
+		`{name: x, question: q, then: {shell: "rm -rf /"}}`:                                                    "not something an ask runs",
+		`{name: x, question: q, then: {spawn: {prompt: "", environment: {systems: {network: {mode: open}}}}}}`: "then.spawn: a `prompt`",
+		`{name: x, question: q, then: {prompt: "merge it"}}`:                                                   "not something an ask runs (spawn, answer, ask)",
+		`{name: x, question: q, then: {spawn: {prompt: go, doer: {agent: verse}}}}`:                            "then.spawn: ",
+		`{name: x, question: q, then: {spawn: {prompt: "merge it", runner: $runner}}}`:                         "then.spawn.runner: a `$`",
+		`{name: x, question: q, then: {spawn: {script: "true", chain: review}}}`:                               "then.spawn.chain: a firing's",
+		`{name: x, question: q, then: {spawn: {script: "true", subject: demo.pr.x}}}`:                          "then.spawn.subject: a then's task is about its ask",
+		`{name: x, question: q, labels: {"a b": c}}`:                                                           "a label's name is a word",
+		`{name: x, question: q, onSilence: yes}`:                                                               "has no due",
+		`{name: x, question: q, due: "` + soon + `", onSilence: maybe}`:                                        "yes or no",
 	} {
 		resp := ask(t, "user:daniel@example.com", ts.URL, body)
 		if msg := bodyOf(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(msg, want) {
@@ -126,6 +131,23 @@ func TestAnAskIsCheckedWhereItIsAsked(t *testing.T) {
 	}
 	if n := len(entity.Below(srv.Store, mirror.IsAsk, 2, entity.VerseRoot, mirror.AskSystem)); n != 0 {
 		t.Fatalf("%d refused asks were written", n)
+	}
+}
+
+// A THEN'S SPAWN IS HELD TO THE RUNNER WHEN IT IS ASKED: one the runner cannot run is refused on
+// the asker's terminal, and no ask stands to fail after somebody answers it. Written by hand, it
+// gets no network it does not name, and this runner builds only the host's.
+func TestAThensSpawnIsHeldToTheRunnerWhenAsked(t *testing.T) {
+	srv, ts := asking(t)
+	cfg, secrets := verserunner.Config{Systems: verserunner.OpenInside()}, verserunner.Secrets{}
+	srv.Embedded.Describe(cfg.Describe(secrets, []string{runner.NetworkOpen}))
+	resp := ask(t, "user:daniel@example.com", ts.URL, `{name: x, question: q, then: {spawn: {script: "true"}}}`)
+	if msg := bodyOf(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(msg, "mode none: this runner builds open only") {
+		t.Errorf("a then whose network the runner does not build: %s %q, want 400", resp.Status, msg)
+	}
+	resp = ask(t, "user:daniel@example.com", ts.URL, `{name: y, question: q, then: {spawn: {script: "true", environment: {systems: {network: {mode: open}}}}}}`)
+	if msg := bodyOf(t, resp); resp.StatusCode != http.StatusCreated {
+		t.Errorf("a then the runner runs: %s %q, want 201", resp.Status, msg)
 	}
 }
 

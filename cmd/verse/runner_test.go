@@ -11,6 +11,8 @@ import (
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/systems"
+	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 )
 
@@ -19,7 +21,7 @@ import (
 func runnerFace(t *testing.T) *httptest.Server {
 	t.Helper()
 	build := func(l runner.Launch, _ *task.Registry) *task.Task {
-		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+		sup := systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), l.Environment)
 		return task.NewTask(l.ID, sup, doneAfter{}, okExec{})
 	}
 	srv := httptest.NewServer(offeringAll(runnerd.NewInProcessHandler(build)).HTTPHandler())
@@ -30,8 +32,9 @@ func runnerFace(t *testing.T) *httptest.Server {
 // offeringAll is h describing itself as a runner verse registers must: offering scripts, and
 // building every network.
 func offeringAll(h *runnerd.InProcessHandler) *runnerd.InProcessHandler {
-	h.Describe(runner.Description{Offers: []runner.Offer{{Script: true,
-		With: map[string]runner.Accepts{"network": runner.AcceptsOneOf(runner.NetworkOpen, runner.NetworkNone, runner.NetworkAllow)}}}})
+	h.Describe(runner.Description{Version: runner.DescriptionVersion, Offers: []runner.Offer{{Script: true,
+		Systems: map[string]runner.System{"network": {Builds: systems.Ceiling{{Attributes: map[string][]string{
+			"mode": {runner.NetworkOpen, runner.NetworkNone, runner.NetworkAllow}}}}}}}}})
 	return h
 }
 

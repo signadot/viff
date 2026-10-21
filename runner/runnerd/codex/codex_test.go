@@ -13,10 +13,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/systems"
+	"github.com/signadot/verse/systems/systemstest"
+
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/verserunner/agent"
 	"github.com/signadot/verse/task"
 )
+
+// workEnv is the environment codex runs in: its shell, its edits and its questions, which it
+// cannot run without (the first two) or asks through (the third).
+var workEnv = systems.Environment{Systems: systems.Systems{
+	"commands": {{Verbs: map[string][]systems.Shape{"run": {{}}}}},
+	"files":    {{Verbs: map[string][]systems.Shape{"write": {{}}}}},
+	"question": {{Verbs: map[string][]systems.Shape{"ask": {{}}}}},
+}}
 
 // The codex agent is tested against a stand-in `codex app-server`: this test binary,
 // re-executed (TestMain) with fakeEnvVar naming a scenario. The stand-in speaks
@@ -408,8 +419,8 @@ func TestCodexActionsAreGatedOnTheDocket(t *testing.T) {
 	reg := task.NewRegistry()
 	creds, logPath := fakeCreds(t, "basic")
 	dir := t.TempDir()
-	tk, err := Task(runner.Launch{ID: "run-codex-1", Prompt: "fix the flaky test", Doer: runner.Doer{Agent: Agent}, Policy: namedGates},
-		reg, creds, fakeEnv(), dir, nil, nil)
+	tk, err := Task(runner.Launch{ID: "run-codex-1", Prompt: "fix the flaky test", Agent: &runner.Agent{Name: Agent}, Environment: workEnv, Autonomy: namedGates},
+		reg, creds, fakeEnv(), dir, nil, systemstest.Open(workEnv))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -498,7 +509,7 @@ func TestCodexActionsAreGatedOnTheDocket(t *testing.T) {
 }
 
 // allowAll gives codex its shell, its edits and its questions, and asks about none of them.
-var allowAll = task.Policy{
+var allowAll = task.Autonomy{
 	{Match: &task.Match{System: "commands"}, Then: task.Then{Mode: task.ThenAllow}},
 	{Match: &task.Match{System: "files"}, Then: task.Then{Mode: task.ThenAllow}},
 	{Match: &task.Match{System: "question"}, Then: task.Then{Mode: task.ThenAllow}},
@@ -507,7 +518,7 @@ var allowAll = task.Policy{
 
 // namedGates is the policy the tests that look at a question's row run under: commands as
 // `shell`, writes as `write`.
-var namedGates = task.Policy{
+var namedGates = task.Autonomy{
 	{Name: "shell", Match: &task.Match{System: "commands", Verb: "run"}, Then: task.Then{Mode: task.ThenAsk}},
 	{Name: "write", Match: &task.Match{System: "files", Verb: "write"}, Then: task.Then{Mode: task.ThenAsk}},
 	{Match: &task.Match{System: "question"}, Then: task.Then{Mode: task.ThenAllow}},
@@ -528,8 +539,8 @@ func renderFrames(fs []task.Event) string {
 func TestCodexNarratesWhatItDidNotAsk(t *testing.T) {
 	reg := task.NewRegistry()
 	creds, _ := fakeCreds(t, "trusted")
-	tk, err := Task(runner.Launch{ID: "run-codex-2", Prompt: "look around", Doer: runner.Doer{Agent: Agent},
-		Policy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), nil, nil)
+	tk, err := Task(runner.Launch{ID: "run-codex-2", Prompt: "look around", Agent: &runner.Agent{Name: Agent}, Environment: workEnv,
+		Autonomy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), nil, systemstest.Open(workEnv))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -611,8 +622,8 @@ func TestCodexSteerReachesTheRunningTurn(t *testing.T) {
 func TestCodexCancelInterruptsTheTurn(t *testing.T) {
 	reg := task.NewRegistry()
 	creds, logPath := fakeCreds(t, "hang")
-	tk, err := Task(runner.Launch{ID: "run-codex-4", Prompt: "wait", Doer: runner.Doer{Agent: Agent},
-		Policy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), nil, nil)
+	tk, err := Task(runner.Launch{ID: "run-codex-4", Prompt: "wait", Agent: &runner.Agent{Name: Agent}, Environment: workEnv,
+		Autonomy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), nil, systemstest.Open(workEnv))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -639,8 +650,8 @@ func TestCodexCancelInterruptsTheTurn(t *testing.T) {
 func TestCodexTurnFailureFailsTheRun(t *testing.T) {
 	reg := task.NewRegistry()
 	creds, _ := fakeCreds(t, "fail")
-	tk, err := Task(runner.Launch{ID: "run-codex-5", Prompt: "x", Doer: runner.Doer{Agent: Agent},
-		Policy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), nil, nil)
+	tk, err := Task(runner.Launch{ID: "run-codex-5", Prompt: "x", Agent: &runner.Agent{Name: Agent}, Environment: workEnv,
+		Autonomy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), nil, systemstest.Open(workEnv))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -659,8 +670,8 @@ func TestCodexKeyIsHandedAsALogin(t *testing.T) {
 	reg := task.NewRegistry()
 	creds, logPath := fakeCreds(t, "trusted")
 	creds.Key = "sk-test-not-a-real-key"
-	tk, err := Task(runner.Launch{ID: "run-codex-7", Prompt: "x", Doer: runner.Doer{Agent: Agent},
-		Policy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), nil, nil)
+	tk, err := Task(runner.Launch{ID: "run-codex-7", Prompt: "x", Agent: &runner.Agent{Name: Agent}, Environment: workEnv,
+		Autonomy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), nil, systemstest.Open(workEnv))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -694,8 +705,8 @@ func TestCodexKeyIsHandedAsALogin(t *testing.T) {
 // A CODEX THAT IS NOT THERE fails the run with a message that says so.
 func TestCodexMissingBinaryFailsTheRun(t *testing.T) {
 	reg := task.NewRegistry()
-	tk, err := Task(runner.Launch{ID: "run-codex-6", Prompt: "x", Doer: runner.Doer{Agent: Agent}, Policy: namedGates},
-		reg, Creds{Bin: filepath.Join(t.TempDir(), "no-such-codex")}, fakeEnv(), t.TempDir(), nil, nil)
+	tk, err := Task(runner.Launch{ID: "run-codex-6", Prompt: "x", Agent: &runner.Agent{Name: Agent}, Environment: workEnv, Autonomy: namedGates},
+		reg, Creds{Bin: filepath.Join(t.TempDir(), "no-such-codex")}, fakeEnv(), t.TempDir(), nil, systemstest.Open(workEnv))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -834,11 +845,11 @@ func TestARequestOfSeveralStepsIsAskedUnderTheGateThatNamesOne(t *testing.T) {
 		{Name: task.StepFilesWrite, Fields: map[string]string{"path": "a.go"}},
 		{Name: task.StepFilesWrite, Fields: map[string]string{"path": "db/b.sql"}},
 	}}
-	sup := task.NewSupervisor(task.Policy{{Name: "schema", Match: &task.Match{System: "files", Verb: "write", Params: map[string]string{"path": "db/**"}}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+	sup := systemstest.Opened(task.NewSupervisor(workEnv, task.Autonomy{{Name: "schema", Match: &task.Match{System: "files", Verb: "write", Params: map[string]string{"path": "db/**"}}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), workEnv)
 	if st, ok := d.stepOf(sup)(task.ToolUse{}); !ok || st.Fields["path"] != "db/b.sql" {
 		t.Fatalf("asked about %v (%v), want the write the gate names", st, ok)
 	}
-	sup.SetPolicy(allowAll)
+	sup.SetAutonomy(allowAll)
 	if st, ok := d.stepOf(sup)(task.ToolUse{}); !ok || st.Fields["path"] != "a.go" {
 		t.Fatalf("with no gate, asked about %v (%v), want the first write", st, ok)
 	}
@@ -899,8 +910,8 @@ func greetTool() agent.Tool {
 func TestCodexIsOfferedTheRunnersTools(t *testing.T) {
 	reg := task.NewRegistry()
 	creds, logPath := fakeCreds(t, "tool")
-	tk, err := Task(runner.Launch{ID: "run-codex-8", Prompt: "greet", Doer: runner.Doer{Agent: Agent},
-		Policy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), []agent.Tool{greetTool()}, nil)
+	tk, err := Task(runner.Launch{ID: "run-codex-8", Prompt: "greet", Agent: &runner.Agent{Name: Agent}, Environment: workEnv,
+		Autonomy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), []agent.Tool{greetTool()}, systemstest.Open(workEnv))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -939,8 +950,8 @@ func TestCodexIsOfferedTheRunnersTools(t *testing.T) {
 func TestARefusedToolCallIsCodexsToRead(t *testing.T) {
 	reg := task.NewRegistry()
 	creds, logPath := fakeCreds(t, "tool")
-	tk, err := Task(runner.Launch{ID: "run-codex-9", Prompt: "greet", Doer: runner.Doer{Agent: Agent}, Policy: namedGates},
-		reg, creds, fakeEnv(), t.TempDir(), []agent.Tool{greetTool()}, nil)
+	tk, err := Task(runner.Launch{ID: "run-codex-9", Prompt: "greet", Agent: &runner.Agent{Name: Agent}, Environment: workEnv, Autonomy: namedGates},
+		reg, creds, fakeEnv(), t.TempDir(), []agent.Tool{greetTool()}, systemstest.Open(workEnv))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -977,8 +988,8 @@ func TestARefusedToolCallIsCodexsToRead(t *testing.T) {
 func TestCodexTakesTheSpawnsModelAndEffort(t *testing.T) {
 	reg := task.NewRegistry()
 	creds, logPath := fakeCreds(t, "trusted")
-	tk, err := Task(runner.Launch{ID: "run-codex-10", Prompt: "x", Doer: runner.Doer{Agent: Agent, With: runner.With{Model: "gpt-5.3-codex", Effort: "high"}},
-		Policy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), nil, nil)
+	tk, err := Task(runner.Launch{ID: "run-codex-10", Prompt: "x", Agent: &runner.Agent{Name: Agent, Settings: map[string]string{"model": "gpt-5.3-codex", "effort": "high"}}, Environment: workEnv,
+		Autonomy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), nil, systemstest.Open(workEnv))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -994,6 +1005,19 @@ func TestCodexTakesTheSpawnsModelAndEffort(t *testing.T) {
 	if !logHas(entries, "turn/start", `"model":"gpt-5.3-codex"`, `"effort":"high"`) {
 		t.Errorf("the spawn's model and effort did not reach turn/start:\n%s", render(entries))
 	}
+	// And the task says what it ran with, for the record.
+	if _, set := tk.Agent(); set["model"] != "gpt-5.3-codex" || set["effort"] != "high" {
+		t.Errorf("the task's settings: %v", set)
+	}
+	// A spawn naming no model runs the section's, and says so.
+	tk2, err := Task(runner.Launch{ID: "run-codex-11", Prompt: "x", Agent: &runner.Agent{Name: Agent}, Environment: workEnv,
+		Autonomy: allowAll}, task.NewRegistry(), creds, fakeEnv(), t.TempDir(), nil, systemstest.Open(workEnv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, set := tk2.Agent(); set["model"] != "fake-model" || set["effort"] != "" {
+		t.Errorf("the default's settings: %v", set)
+	}
 }
 
 // THE CREDENTIAL FILE IS CODEX'S TOO: what a spawn's `credential` minted is handed to the codex
@@ -1001,8 +1025,8 @@ func TestCodexTakesTheSpawnsModelAndEffort(t *testing.T) {
 func TestCodexIsHandedTheTasksCredential(t *testing.T) {
 	reg := task.NewRegistry()
 	creds, logPath := fakeCreds(t, "trusted")
-	tk, err := Task(runner.Launch{ID: "run-codex-11", Prompt: "x", Doer: runner.Doer{Agent: Agent},
-		Policy: allowAll}, reg, creds, append(fakeEnv(), task.CredentialFileEnv+"=/run/cred"), t.TempDir(), nil, nil)
+	tk, err := Task(runner.Launch{ID: "run-codex-11", Prompt: "x", Agent: &runner.Agent{Name: Agent}, Environment: workEnv,
+		Autonomy: allowAll}, reg, creds, append(fakeEnv(), task.CredentialFileEnv+"=/run/cred"), t.TempDir(), nil, systemstest.Open(workEnv))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1022,26 +1046,4 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 	os.Exit(m.Run())
-}
-
-// CODEX CANNOT RUN WITHOUT ITS SHELL OR ITS EDITS: a launch whose policy does not provide
-// `commands` or `files`, naming neither or withholding one, is refused, naming the step.
-func TestCodexRefusesAPolicyWithoutItsShell(t *testing.T) {
-	creds, _ := fakeCreds(t, "basic")
-	allow, withhold := task.Then{Mode: task.ThenAllow}, task.Then{Mode: task.ThenWithhold}
-	for _, tc := range []struct {
-		p    task.Policy
-		says string
-	}{
-		{task.Policy{{Match: &task.Match{System: "commands"}, Then: withhold}, {Match: &task.Match{System: "files"}, Then: allow}, {Then: allow}}, "commands.run"},
-		{task.Policy{{Match: &task.Match{System: "commands"}, Then: allow}, {Match: &task.Match{System: "files"}, Then: withhold}, {Then: allow}}, "files.write"},
-		{task.Policy{{Match: &task.Match{System: "files"}, Then: allow}, {Then: allow}}, "commands.run"},
-		{task.Policy{{Match: &task.Match{System: "commands"}, Then: allow}, {Then: allow}}, "files.write"},
-		{nil, "commands.run"},
-	} {
-		l := runner.Launch{ID: "run-codex-w", Prompt: "x", Doer: runner.Doer{Agent: Agent}, Policy: tc.p}
-		if _, err := Task(l, task.NewRegistry(), creds, fakeEnv(), t.TempDir(), nil, nil); err == nil || !strings.Contains(err.Error(), "does not provide "+tc.says) {
-			t.Errorf("%+v: %v, want it refused for %s", tc.p, err, tc.says)
-		}
-	}
 }

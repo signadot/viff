@@ -38,7 +38,7 @@ type Network struct {
 	Egress string
 }
 
-// The network a sandbox builds a task, as the launch's `with.network` names it: the runner's
+// The network a sandbox builds a task, as the launch's environment's `network` names it: the runner's
 // own (open), none, or the hosts a proxy allows (allow).
 const (
 	NetworkOpen  = runner.NetworkOpen

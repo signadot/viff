@@ -307,7 +307,7 @@ func scalarText(n entity.Payload) (string, bool) {
 	// element's `key`, and what a keyed derive's address is made of, and each of those treats
 	// "no text" as a failure of the firing. A comment must not decide whether a rule can name
 	// its own subject.
-	n = unwrap(n)
+	n = ir.Uncomment(n)
 	if n == nil {
 		return "", false
 	}

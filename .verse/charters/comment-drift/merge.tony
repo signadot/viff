@@ -213,47 +213,49 @@ rules:
     spawn:
       runner: verse.runners.verse-runner
       # `main` is the consequential branch: a merge task's work IS the merge, so there is nothing
-      # to propose separately. A push to it is a fast-forward or nothing — the policy refuses a
+      # to propose separately. A push to it is a fast-forward or nothing — the autonomy refuses a
       # push that says `force` or `delete` — so what stops it being merely a prompt is
       # `receive.denyNonFastForwards` on main at the far end, and the runner refuses to rewrite
       # it before the remote ever sees the push.
-      policy:
+      autonomy:
       - {match: {system: git, verb: push, ref: refs/heads/main, force: "false", delete: "false"}, then: allow}
       - {match: {system: git, verb: push}, then: deny}
       - {then: allow}
       #
       # WHAT DECIDES IT is this rule's gate — `!until [!quorum 1, !deadline "24h"]`, which
-      # denies on the clock — and not the task's policy, which allows its one push unasked:
+      # denies on the clock — and not the task's autonomy, which allows its one push unasked:
       # the decision has been made by a person about the thing that matters, and making the
       # task re-ask per action would be the same question in two vocabularies.
-      doer:
-        with:
+      environment:
+        systems:
           network: {mode: open}
           git:
           - repo: signadot/verse
             from: main
-        # A STATIC LIST OVER A DYNAMIC SET: the branches are not interpolated into the command,
-        # they are FOUND in the clone. The train's `branches` field is for the person reading the
-        # docket; the task reads the refs it has.
-        #
-        # EACH CAR IS REBASED ONTO THE TASK BRANCH BEFORE IT IS FAST-FORWARDED IN, and without
-        # that the batch is nominal: the first `--ff-only` moves the branch and every sibling
-        # after it is then neither ancestor nor descendant and is refused. A train of N landed
-        # exactly ONE (issue ezh7m9akh12ksde5g9n0). A rebase that cannot apply is aborted and
-        # that car is skipped — safe here because a comment fix is a textual edit localized to
-        # the symbol in the finding, so there is no judgment for a conflict to need.
-        script: |
-          set -e
-          tb=$(git -C verse rev-parse --abbrev-ref HEAD)
-          for b in $(git -C verse for-each-ref --format='%(refname)' 'refs/remotes/mirror/verse/auto/*'); do
-            git -C verse checkout -B _car "$b" || continue
-            if git -C verse -c user.name='verse runner' -c user.email=verse-runner@invalid rebase "$tb"; then
-              git -C verse checkout "$tb" && git -C verse merge --ff-only _car
-            else
-              git -C verse rebase --abort || true; git -C verse checkout "$tb"
-            fi
-          done
-          verse-call-tool git-push -branch main
+            fetch: {}
+            push: {ref: refs/heads/main, force: "false", delete: "false"}
+      # A STATIC LIST OVER A DYNAMIC SET: the branches are not interpolated into the command,
+      # they are FOUND in the clone. The train's `branches` field is for the person reading the
+      # docket; the task reads the refs it has.
+      #
+      # EACH CAR IS REBASED ONTO THE TASK BRANCH BEFORE IT IS FAST-FORWARDED IN, and without
+      # that the batch is nominal: the first `--ff-only` moves the branch and every sibling
+      # after it is then neither ancestor nor descendant and is refused. A train of N landed
+      # exactly ONE (issue ezh7m9akh12ksde5g9n0). A rebase that cannot apply is aborted and
+      # that car is skipped — safe here because a comment fix is a textual edit localized to
+      # the symbol in the finding, so there is no judgment for a conflict to need.
+      script: |
+        set -e
+        tb=$(git -C verse rev-parse --abbrev-ref HEAD)
+        for b in $(git -C verse for-each-ref --format='%(refname)' 'refs/remotes/mirror/verse/auto/*'); do
+          git -C verse checkout -B _car "$b" || continue
+          if git -C verse -c user.name='verse runner' -c user.email=verse-runner@invalid rebase "$tb"; then
+            git -C verse checkout "$tb" && git -C verse merge --ff-only _car
+          else
+            git -C verse rebase --abort || true; git -C verse checkout "$tb"
+          fi
+        done
+        verse-call-tool git-push -branch main
     onDone:
       patch:
         decided: landed
@@ -302,20 +304,22 @@ rules:
       # about delivery writes a row on `git.push` with `delete: "true"`. And
       # `receive.denyDeletes` must NOT be set on this pattern at the far end, or the sweep is
       # refused every time — the one rule that has to be ABSENT rather than present.
-      policy:
+      autonomy:
       - {match: {system: git, verb: push, ref: "refs/heads/verse/auto/*", delete: "true"}, then: allow}
       - {match: {system: git, verb: push}, then: deny}
       - {then: allow}
-      doer:
-        with:
+      environment:
+        # The branch as the script's environment: a ref name read from the remote is data, and
+        # spliced into the script's text it would be a program.
+        vars: {BRANCH: $branch}
+        systems:
           network: {mode: open}
           git:
           - repo: signadot/verse
             from: main
-          # The branch as the script's environment: a ref name read from the remote is data, and
-          # spliced into the script's text it would be a program.
-          env: {BRANCH: $branch}
-        script: 'verse-call-tool git-push -branch "$BRANCH" -delete'
+            fetch: {}
+            push: {ref: "refs/heads/verse/auto/*", delete: "true"}
+      script: 'verse-call-tool git-push -branch "$BRANCH" -delete'
       # No `answer:`: a script has no model to repair a contract with. What used to be read out
       # of the answer — which branches went — is the script itself, and the ref is in the record
       # before the task starts.

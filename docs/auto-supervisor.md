@@ -33,7 +33,7 @@ Verse has a Go type called `Supervisor`, and it is not the supervisor of this pa
 
 | | what it decides | who writes it |
 |---|---|---|
-| `task.Supervisor` (+ a `Resolver`) | whether *one step* inside a running task proceeds | Go code, per runtime. It applies the task's [policy](glossary.md#policy): a row that asks asks whom it names, and a [resolver](attached-resolvers.md) they grant may answer for them. |
+| `task.Supervisor` (+ a `Resolver`) | whether *one step* inside a running task proceeds | Go code, per runtime. It applies the task's [autonomy](reference/tasks.md#the-autonomy) within what its environment gives: a row that asks asks whom it names, and a [resolver](attached-resolvers.md) they grant may answer for them. |
 | the supervisor here | whether *a firing* proceeds. This is the question at the level of the charter that a gate would put to a person. | a rule of a charter, which you can install over the wire |
 
 An automatic supervisor of the second kind needs nothing new. A charter can already do each
@@ -59,7 +59,8 @@ verse c -a -f - <<'TONY'
   action:
     patch: { stage: assessing }
     spawn:
-      doer: {agent: verse, with: {network: {mode: open}}}
+      agent: {name: verse}
+      environment: {systems: {network: {mode: open}}}
       prompt: |
         Assess $subject for landing. Read the change and the tests it touches.
         You are a review supervisor. Decide what is yours to decide and promote what is
@@ -70,9 +71,7 @@ verse c -a -f - <<'TONY'
         decision: !or [approve, escalate, reject]
         risk:     !or [low, medium, high]
         why:      !irtype string
-      policy:
-      - {name: no-writes, match: {system: files, verb: write}, then: deny}
-      - {name: no-commands, match: {system: commands, verb: run}, then: deny}
+      autonomy:
       - {then: allow}
     onDone:
       patch:
@@ -145,15 +144,15 @@ Two routes are *not* in the table:
 
 ## Three things keep it honest
 
-**The supervisor cannot act. It can only answer.** Its spawn names no repositories, so it has
-nothing to push. Two rows of its [policy](glossary.md#policy) refuse a write and a command, and
-ask nobody. So the supervisor cannot write the field that routes its own decision.
+**The supervisor cannot act. It can only answer.** Its environment gives the network and
+nothing else: no repository, so it has nothing to push, and no files or commands, so it has no
+tool to write with or run. So the supervisor cannot write the field that routes its own decision.
 
 Its one way to reach the store is its final message. The `answer` field gives that message a
 type: `decision` is one of three words, or the run fails and `onFailed` takes over. A
-supervisor that talks instead of deciding gets no vote. The last row of its policy,
-`then: allow`, lets the task read without asking anybody. With its writes refused, there is
-nothing left to ask about.
+supervisor that talks instead of deciding gets no vote. Its environment gives it the network
+and nothing to write with, so the one row of its autonomy, `then: allow`, lets it read without
+asking anybody: there is nothing else it could do.
 
 **The remit belongs to the charter.** `land-auto` requires three things, and the supervisor
 writes only one of them:
@@ -286,7 +285,7 @@ supervisor. Three things show the result:
   `assess`-style rules that write to different fields, with `land-auto` requiring both.
 - **The inside is a different layer.** The supervisor here decides whether a change lands, by
   writing to the subject. What the *worker* agent may do while it produces the change is the
-  other layer of supervision: the rows of the run's policy, which ask whom they name, and the
+  other layer of supervision: the rows of the run's autonomy, which ask whom they name, and the
   [resolvers](attached-resolvers.md) those people grant. The two layers compose. This charter decides
   about the change. A resolver decides about the actions taken to produce it.
 

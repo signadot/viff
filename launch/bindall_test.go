@@ -31,8 +31,8 @@ func TestBindCarriesEveryField(t *testing.T) {
 		case reflect.Pointer:
 			f.Set(reflect.New(f.Type().Elem()))
 		case reflect.Struct:
-			// The doer: filled by its first string field, which is enough for Bind to carry.
-			f.Field(0).SetString("x")
+			// The environment: filled to its leaves, which carried below checks one level down.
+			fill(t, f, v.Type().Field(i).Name)
 		default:
 			t.Fatalf("Spec.%s is a %s and this test does not know how to fill one; "+
 				"teach it rather than skipping, or the guard has a hole",
@@ -74,13 +74,15 @@ func TestBindCarriesEveryField(t *testing.T) {
 	}
 }
 
-// Bind carries EVERY field of the doer, its `with` included, to the leaf: a `with` field added
-// and not copied is a fact of the charter that every firing quietly drops, as the network was.
-func TestBindCarriesEveryDoerField(t *testing.T) {
+// Bind carries EVERY field of the agent and of the environment to the leaf: a field added and
+// not copied is a fact of the charter that every firing quietly drops, as the network was.
+func TestBindCarriesEveryAgentAndEnvironmentField(t *testing.T) {
 	var spec Spec
-	fill(t, reflect.ValueOf(&spec.Doer).Elem(), "Doer")
-	got := spec.Bind(Binding{}).Doer
-	carried(t, reflect.ValueOf(got), "Doer")
+	fill(t, reflect.ValueOf(&spec.Agent).Elem(), "Agent")
+	fill(t, reflect.ValueOf(&spec.Environment).Elem(), "Environment")
+	got := spec.Bind(Binding{})
+	carried(t, reflect.ValueOf(got.Agent), "Agent")
+	carried(t, reflect.ValueOf(got.Environment), "Environment")
 }
 
 // fill sets every leaf of v to something other than its zero value.

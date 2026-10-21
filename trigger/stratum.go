@@ -104,7 +104,7 @@ func (ms Matches) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 // FromTonyIR accepts either spelling: one match (an address string or the object form), or a
 // list of them.
 func (ms *Matches) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
-	node = unwrap(node)
+	node = ir.Uncomment(node)
 	if node == nil || node.Type == ir.NullType {
 		*ms = nil
 		return nil
@@ -166,7 +166,7 @@ func (s *Stratum) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 
 // FromTonyIR reads it back.
 func (s *Stratum) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
-	node = unwrap(node)
+	node = ir.Uncomment(node)
 	if node == nil || node.Type == ir.NullType {
 		return nil
 	}
@@ -174,7 +174,7 @@ func (s *Stratum) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 		return fmt.Errorf("stratum: want an object of {name, level, match}, got %v", node.Type)
 	}
 	for i, field := range node.Fields {
-		val := unwrap(node.Values[i])
+		val := ir.Uncomment(node.Values[i])
 		switch field.String {
 		case "name":
 			if val.Type != ir.StringType {
@@ -1077,13 +1077,13 @@ func soleRef(n entity.Payload) (string, bool) {
 func (a Action) derives() []deriveTarget {
 	// UNWRAPPED AT EVERY LEVEL, because a charter is where people write comments and a head
 	// comment WRAPS the value it precedes; a comment is not a container.
-	d := unwrap(a.Derive)
+	d := ir.Uncomment(a.Derive)
 	if d == nil || d.Type != ir.ArrayType {
 		return nil // refused by validate; nothing to walk
 	}
 	var out []deriveTarget
 	for _, el := range d.Values {
-		t, ok := derivePathTarget(unwrap(el))
+		t, ok := derivePathTarget(ir.Uncomment(el))
 		if !ok {
 			continue // refused by validate; nothing to walk
 		}
@@ -1104,7 +1104,7 @@ func derivePathTarget(el *ir.Node) (deriveTarget, bool) {
 		if key == nil || key.Type != ir.StringType {
 			continue
 		}
-		val := unwrap(el.Values[i])
+		val := ir.Uncomment(el.Values[i])
 		switch key.String {
 		case "path":
 			segs, ok := addressSegs(val)
@@ -1138,7 +1138,7 @@ func deriveContentNode(el *ir.Node) *ir.Node {
 	}
 	for i, key := range el.Fields {
 		if key != nil && key.Type == ir.StringType && key.String == "value" {
-			return unwrap(el.Values[i])
+			return ir.Uncomment(el.Values[i])
 		}
 	}
 	return nil
@@ -1160,7 +1160,7 @@ func addressSegs(n *ir.Node) ([]string, bool) {
 	}
 	out := make([]string, 0, len(n.Values))
 	for _, v := range n.Values {
-		text, ok := stepText(unwrap(v))
+		text, ok := stepText(ir.Uncomment(v))
 		if !ok || text == "" {
 			return nil, false
 		}
@@ -1203,22 +1203,22 @@ func (a Action) validateDerive() error {
 	}
 	// Past the comment wrapper before asking what the shape is — see derives(), which walks the
 	// same block and refused a correctly written rule for the same reason.
-	d := unwrap(a.Derive)
+	d := ir.Uncomment(a.Derive)
 	// Each entry names its place as a path, and its content is a literal payload or an `!each`.
 	if d.Type == ir.ArrayType {
 		if len(d.Values) == 0 {
 			return fmt.Errorf("action.derive is empty: it names where to write and what goes there")
 		}
 		for i, el := range d.Values {
-			t, ok := derivePathTarget(unwrap(el))
+			t, ok := derivePathTarget(ir.Uncomment(el))
 			if !ok {
 				return fmt.Errorf("action.derive[%d] must be {path: \"<a.kinded.path>\", value: …}: the "+
 					"path is where it writes and the value is what goes there", i)
 			}
-			if isEach(deriveContentNode(unwrap(el))) {
+			if isEach(deriveContentNode(ir.Uncomment(el))) {
 				// The `!each` NODE, not the entry holding it: the entry carries `path` and
 				// `value`, and the fan-out's closed keyspace is over/key/value.
-				if err := validateEach(deriveContentNode(unwrap(el))); err != nil {
+				if err := validateEach(deriveContentNode(ir.Uncomment(el))); err != nil {
 					return fmt.Errorf("action.derive[%d]: %w", i, err)
 				}
 				continue

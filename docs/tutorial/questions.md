@@ -14,7 +14,7 @@ This page needs [a verse running](README.md#start), and nothing else.
 
 ```sh
 verse ask deploy -q "Deploy the release to staging?" --to ana@example.com --due 1h \
-  --then '{script: "echo deploying"}'
+  --then '{spawn: {script: "echo deploying", environment: {systems: {network: {mode: open}}}}}'
 # asked deploy-b8a7d6bea9e3: Deploy the release to staging?
 ```
 
@@ -23,7 +23,7 @@ verse ask deploy -q "Deploy the release to staging?" --to ana@example.com --due 
 | `-q` | the question |
 | `--to` | who may answer. Without it, anyone may. |
 | `--due` | when it settles if nobody answers, as a date or a duration from now. Without it, it waits until somebody answers. |
-| `--then` | what runs after a yes, on your authority. Here it is a script, run as written. `{prompt: …}` gives the job to an agent instead, and a `policy` beside it says what the agent may do, as a spawn's does. Without it, the ask only records the answer. |
+| `--then` | what runs after a yes, on your authority: a spawn, written as a charter's is. Here it is a script, run as written, with the host's network; a `prompt` gives the job to an agent instead, and `autonomy` says what it may do unasked. Without `--then`, the ask only records the answer. |
 
 The name, `deploy`, is yours. The id adds a suffix, and commands take either one.
 
@@ -78,7 +78,7 @@ verse task
 ```
 
 ```tony
-- doer: script
+- script: true
   id: deploy-b8a7d6bea9e3-74645a658d25
   result: deploying
   status: done

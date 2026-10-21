@@ -32,7 +32,7 @@ func TestCharterRoundTrip(t *testing.T) {
 			},
 			Gates: []Gate{{Name: "human", Mode: "ask"}},
 			Action: Action{Spawn: &launch.Spec{
-				Doer: runner.Doer{Agent: "verse"}, Prompt: "review $subject", Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}},
+				Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}},
 			}},
 		},
 		{
@@ -79,9 +79,9 @@ func TestCharterRoundTrip(t *testing.T) {
 				if (got.Action.Spawn == nil) != (want.Action.Spawn == nil) {
 					t.Errorf("spawn survived differently\n%s", b)
 				}
-				if got.Action.Spawn != nil && got.Action.Spawn.Doer.Name() != want.Action.Spawn.Doer.Name() {
-					t.Errorf("spawn.doer: got %q want %q\n%s",
-						got.Action.Spawn.Doer.Name(), want.Action.Spawn.Doer.Name(), b)
+				if got.Action.Spawn != nil && got.Action.Spawn.Who() != want.Action.Spawn.Who() {
+					t.Errorf("spawn.agent: got %q want %q\n%s",
+						got.Action.Spawn.Who(), want.Action.Spawn.Who(), b)
 				}
 			})
 		}

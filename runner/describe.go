@@ -1,147 +1,222 @@
 package runner
 
 import (
+	"errors"
 	"fmt"
-	"github.com/signadot/verse/task"
+	"maps"
 	"slices"
+	"strconv"
 	"strings"
 
-	"github.com/signadot/tony-format/go-tony/gomap"
-	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/verse/systems"
 )
 
 // Description is what a runner answers on GET /describe: what it offers. Verse reads it when the
 // runner is registered, and whenever the runner restarts or reports a change, and keeps it with
 // the registration.
 //
-// What an offer says about the world is its Systems: each system the offer intercepts for its
-// tasks, and the ceiling over it. A SYSTEM OFFERED IS A SYSTEM INTERCEPTED: the runner performs
-// or stops each of its calls for the policy to decide (`git`, `slack`, `files`, `commands`).
-// What a run is set up with, its repositories and its network, is a fact of the launch's
-// `with`, not a system. There is no list of steps beside it: a row of a launch's policy on a system the offer does
-// not hold is refused, since nothing there could honour it. A task's start is no step: verse
-// decides it before it launches the task.
+// Each offer is a doer, an agent or scripts, and the systems it holds for its tasks: for each,
+// what the runner builds of it (Builds, its nature) and what its operator allows (Ceiling, a
+// choice), published apart so a refusal can say which. A launch's environment lies within both.
 type Description struct {
-	Offers []Offer `tony:"field=offers"`
+	// Version is the shape of the description, DescriptionVersion when a runner writes it. One
+	// kept from an older runner is refused rather than read as this one (Check): the runner is
+	// asked again.
+	Version int     `tony:"field=version,omitzero"`
+	Offers  []Offer `tony:"field=offers"`
 }
 
-// Check is what a description must say for verse to register the runner: at least one offer,
-// and each offer names the networks it builds, under `with.network`, by mode. A runner silent
-// on its offers, or an offer silent on its network, would leave a spawn's network unchecked
-// where the spawn is written.
+// DescriptionVersion is the shape a runner describes itself in.
+const DescriptionVersion = 2
+
+// Check is what a description must say for verse to register the runner, or to read one it
+// kept: its version, at least one offer, each holding the network with the modes it builds, each
+// ceiling and each `builds` within its system's document, each setting of an agent typed and none
+// called `name` or `annotations`.
 func (d Description) Check() error {
-	modes := []string{NetworkOpen, NetworkNone, NetworkAllow}
+	if d.Version != DescriptionVersion {
+		return fmt.Errorf("it describes itself in version %d, not %d: the runner is older or newer than this verse, and is asked again (`verse runner check`)",
+			d.Version, DescriptionVersion)
+	}
 	if len(d.Offers) == 0 {
-		return fmt.Errorf("it offers nothing; a runner offers an agent or scripts, each saying which of %s it builds under with.network",
-			strings.Join(modes, ", "))
+		return errors.New("it offers nothing; a runner offers an agent or scripts")
 	}
 	for _, o := range d.Offers {
-		name := o.Agent
-		if o.Script {
-			name = "script"
+		if (o.Agent == nil) == !o.Script {
+			return errors.New("an offer is an agent or scripts, one of the two")
 		}
-		a, ok := o.With["network"]
-		if !ok || a.Any || len(a.Values) == 0 {
-			return fmt.Errorf("offer %s: with.network names no network the runner builds; an offer says which of %s it builds",
-				name, strings.Join(modes, ", "))
+		if o.Agent != nil {
+			if o.Agent.Name == "" {
+				return errors.New("an agent offer names its agent")
+			}
+			for _, name := range slices.Sorted(maps.Keys(o.Agent.Settings)) {
+				if ReservedSetting(name) {
+					return fmt.Errorf("offer %s: a setting may not be called %s: an agent is written with it beside its settings", o.Name(), name)
+				}
+				if err := o.Agent.Settings[name].check(); err != nil {
+					return fmt.Errorf("offer %s: settings.%s: %w", o.Name(), name, err)
+				}
+			}
 		}
-		for _, v := range a.Values {
-			if !slices.Contains(modes, v) {
-				return fmt.Errorf("offer %s: with.network: %q is not a network mode (%s)", name, v, strings.Join(modes, ", "))
+		for _, step := range o.Requires {
+			system, verb, ok := systems.Split(step)
+			if _, isVerb := systemsVerb(system, verb); !ok || !isVerb {
+				return fmt.Errorf("offer %s: requires %q, which is no step of a system", o.Name(), step)
+			}
+			sys, held := o.Systems[system]
+			if !held {
+				return fmt.Errorf("offer %s: requires %s, of a system it does not hold", o.Name(), step)
+			}
+			if !sys.Ceiling.Gives(step) {
+				return fmt.Errorf("offer %s: requires %s, which its ceiling for %s does not give: no launch could run it", o.Name(), step, system)
+			}
+		}
+		net, held := o.Systems["network"]
+		if !held || len(net.Builds) == 0 {
+			return fmt.Errorf("offer %s: the network's `builds` names no network the runner builds", o.Name())
+		}
+		for _, name := range slices.Sorted(maps.Keys(o.Systems)) {
+			sys := o.Systems[name]
+			if err := sys.Builds.Check(name); err != nil {
+				return fmt.Errorf("offer %s: systems.%s.builds%w", o.Name(), name, err)
+			}
+			if err := sys.Ceiling.Check(name); err != nil {
+				return fmt.Errorf("offer %s: systems.%s.ceiling%w", o.Name(), name, err)
 			}
 		}
 	}
 	return nil
 }
 
+// systemsVerb is a system's verb, by their names.
+func systemsVerb(system, verb string) (systems.Verb, bool) {
+	d, ok := systems.Get(system)
+	if !ok {
+		return systems.Verb{}, false
+	}
+	return d.Verb(verb)
+}
+
 // Offer is one kind of doer a runner runs: an agent, by name, or scripts. An agent name is
-// offered by exactly one registered runner, and only one runner offers scripts.
+// offered by exactly one registered runner, and only one runner offers scripts. The first agent
+// offer is the runner's default agent, a prompt's that names none.
 type Offer struct {
-	// Agent is the agent's name, as a launch says it (`agent: verse`). Empty for scripts.
-	Agent string `tony:"field=agent,omitzero"`
+	// Agent is the agent offered, and what it takes. Nil for scripts.
+	Agent *AgentOffer `tony:"field=agent,omitzero"`
 	// Script is set on the offer for scripts.
 	Script bool `tony:"field=script,omitzero"`
 	// Version is what the runner runs for this offer (a Claude Code version, say), and it goes
 	// on the record of every task the offer runs.
 	Version string `tony:"field=version,omitzero"`
-	// With is the `with` values the offer accepts, by key: the doer's own parameters (`model`,
-	// `effort`), and the networks the runner builds (`network`: none, open, allow). A key not
-	// listed is not accepted. A system's facts (`with.git`) come with the
-	// system, under Systems, not here.
-	With map[string]Accepts `tony:"field=with,omitzero"`
-	// Annotations is the annotations the offer accepts, by name, with the type of their value.
-	Annotations map[string]string `tony:"field=annotations,omitzero"`
-	// Systems are the systems the offer intercepts for its tasks, by name (package systems),
-	// each with its ceiling. A system absent here is not intercepted for the offer: a launch
-	// naming it in a row, or giving its facts, is refused.
+	// Systems are the systems the offer holds for its tasks, by name (package systems): what the
+	// runner builds of each and the ceiling over it. A system absent here is not held: a launch
+	// whose environment gives it is refused.
 	Systems map[string]System `tony:"field=systems,omitzero"`
+	// Requires is the steps the offer's doer can't run without (`commands.run`, `files.write`):
+	// a launch whose environment gives none of one is refused where it is written, naming what to
+	// add, rather than run to fail at its first action. Verbs, not systems: a doer needs a verb,
+	// and a system's other verbs are no stand-in for it. Absent is nothing required.
+	Requires []string `tony:"field=requires,omitzero"`
 	// Converse is whether a launch for this offer may ask for a conversation (Launch.Converse):
 	// the agent hands the person the turn when it goes quiet. A script offer never does.
 	Converse bool `tony:"field=converse,omitzero"`
 }
 
-// System is one system an offer intercepts, and the ceiling over it.
+// Name is who the offer runs, as a message says it: the agent's name, or "script".
+func (o Offer) Name() string {
+	if o.Agent == nil {
+		return "script"
+	}
+	return o.Agent.Name
+}
+
+// AgentOffer is an agent a runner offers: its name, the settings it takes, and the annotations
+// verse or the runner may write for it.
+//
+//tony:schemagen=verse-runner-agent-offer,notag
+type AgentOffer struct {
+	Name string `tony:"field=name"`
+	// Settings are what a launch's agent may set, by name (Agent.Settings), each with the values
+	// it takes, the operator's narrowing already in them. A setting not listed is refused.
+	Settings map[string]Setting `tony:"field=settings,omitzero"`
+	// Annotations is the annotations the agent takes, by name, with the type of their value.
+	Annotations map[string]string `tony:"field=annotations,omitzero"`
+}
+
+// Setting is one setting an agent takes: its form, the values it takes as patterns (absent, any of
+// its form), and whether the agent has a default of its own where a launch names none, which the
+// record then says (the task's snapshot, Settings).
+//
+//tony:schemagen=verse-runner-setting,notag
+type Setting struct {
+	// Form is the value's kind: string (absent), number or bool. Values are strings on the wire,
+	// as a charter binds them; the runner reads them by form.
+	Form string `tony:"field=form,omitzero"`
+	// Values are the values taken, as patterns (`claude-*`); absent, any of the form.
+	Values []string `tony:"field=values,omitzero"`
+	// Default is whether the agent has its own value where a launch names none.
+	Default bool `tony:"field=default,omitzero"`
+}
+
+// The forms of a setting's value.
+const (
+	FormString = "string"
+	FormNumber = "number"
+	FormBool   = "bool"
+)
+
+func (s Setting) check() error {
+	switch s.Form {
+	case "", FormString, FormNumber, FormBool:
+	default:
+		return fmt.Errorf("form: %q is not string, number or bool", s.Form)
+	}
+	// A value listed is one of its form, or a pattern that could be: a list no value of the form
+	// can match takes nothing.
+	for _, v := range s.Values {
+		if strings.Contains(v, "*") {
+			continue
+		}
+		if err := (Setting{Form: s.Form}).Takes(v); err != nil {
+			return fmt.Errorf("values: %w", err)
+		}
+	}
+	return nil
+}
+
+// Takes is why a setting does not take a value, or nil: of its form, and matching one of its
+// values where it lists them. The value is bound: a charter's `$` setting is left out at install
+// (trigger.installLaunch) and checked here once the launch has bound it, `$` and all.
+// A setting's `*` matches across `/`, unlike a path's: a model's name is one word, whatever it
+// spells (`*` takes `anthropic/claude-sonnet-5`).
+func (s Setting) Takes(v string) error {
+	switch s.Form {
+	case FormNumber:
+		if _, err := strconv.ParseFloat(v, 64); err != nil {
+			return fmt.Errorf("%q is not a number", v)
+		}
+	case FormBool:
+		if v != "true" && v != "false" {
+			return fmt.Errorf("%q is not true or false", v)
+		}
+	}
+	if len(s.Values) > 0 && !slices.ContainsFunc(s.Values, func(p string) bool { return systems.Match(p, v, true) }) {
+		return fmt.Errorf("%q is none of %s", v, strings.Join(s.Values, ", "))
+	}
+	return nil
+}
+
+// System is one system an offer holds: what the runner builds of it, and the ceiling over it.
 //
 //tony:schemagen=verse-runner-system,notag
 type System struct {
-	// Ceiling is the operator's policy over the system's calls: `allow` and `deny` rows
-	// (task.Policy, never `ask`), the last the default. It bounds what a launch's policy may
-	// allow or ask about, and what a task may do: the runner reads it again at each act.
-	Ceiling task.Policy `tony:"field=ceiling"`
-}
-
-// Accepts is the values a `with` key accepts: any value, which is passed through as is
-// (`model: any`), or one of a list (`effort: [low, medium, high]`).
-type Accepts struct {
-	Any    bool
-	Values []string
-}
-
-// AcceptsAny is the Accepts of a key whose values are passed through as is.
-var AcceptsAny = Accepts{Any: true}
-
-// AcceptsOneOf is the Accepts of a key that takes one of values.
-func AcceptsOneOf(values ...string) Accepts { return Accepts{Values: values} }
-
-// Accept reports whether a value is accepted.
-func (a Accepts) Accept(v string) bool {
-	return a.Any || slices.Contains(a.Values, v)
-}
-
-// ToTonyIR writes `any`, or the list of values.
-func (a Accepts) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
-	if a.Any {
-		return ir.FromString("any"), nil
-	}
-	vs := make([]*ir.Node, len(a.Values))
-	for i, v := range a.Values {
-		vs[i] = ir.FromString(v)
-	}
-	return ir.FromSlice(vs), nil
-}
-
-// FromTonyIR reads `any`, or a list of values.
-func (a *Accepts) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
-	for node != nil && node.Type == ir.CommentType && len(node.Values) > 0 {
-		node = node.Values[0]
-	}
-	switch {
-	case node == nil:
-		return fmt.Errorf("accepts: no value (want any, or a list of values)")
-	case node.Type == ir.StringType && node.String == "any":
-		*a = AcceptsAny
-		return nil
-	case node.Type == ir.ArrayType:
-		out := Accepts{Values: make([]string, 0, len(node.Values))}
-		for _, v := range node.Values {
-			if v.Type != ir.StringType {
-				return fmt.Errorf("accepts: a value must be a string, not %s", v.Type)
-			}
-			out.Values = append(out.Values, v.String)
-		}
-		*a = out
-		return nil
-	default:
-		return fmt.Errorf("accepts: want any, or a list of values, not %s", node.Type)
-	}
+	// Builds is what the runner can build of the system, by its nature (its sandbox), in the
+	// ceiling's form: the network's modes, today. Never written in a config: the runner says it.
+	// Empty is the whole of the system's document.
+	Builds systems.Ceiling `tony:"field=builds,omitzero"`
+	// Ceiling is the operator's bound on the system (systems.Ceiling): blocks in the
+	// environment's form, closed, which a launch's environment must lie within, and which the
+	// runner holds each act to again. Empty is nothing of the system, but for the network, whose
+	// empty ceiling is no bound beyond what the runner builds.
+	Ceiling systems.Ceiling `tony:"field=ceiling,omitzero"`
 }

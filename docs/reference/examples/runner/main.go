@@ -38,6 +38,7 @@ import (
 
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -52,11 +53,15 @@ func main() {
 	d := runnerd.NewInProcessHandler(build)
 	// What it offers, which verse reads when the runner is installed and checks each spawn
 	// against: one agent, `sample`. Its tasks run in this process, unconfined, so the only
-	// network it builds them is the host's (`open`); a launch asking for `none` or a list of
-	// hosts is refused rather than run with more than it asked for. CHANGE THIS with build.
-	d.Describe(runner.Description{Offers: []runner.Offer{{
-		Agent: "sample",
-		With:  map[string]runner.Accepts{"network": runner.AcceptsOneOf(runner.NetworkOpen)},
+	// network it builds them is the host's (`open`), which it says under the network's
+	// `builds`; a launch asking for `none` or a list of hosts is refused rather than run with
+	// more than it asked for. It takes no setting and holds no other system. CHANGE THIS with
+	// build.
+	d.Describe(runner.Description{Version: runner.DescriptionVersion, Offers: []runner.Offer{{
+		Agent: &runner.AgentOffer{Name: "sample"},
+		Systems: map[string]runner.System{"network": {
+			Builds: systems.Ceiling{{Attributes: map[string][]string{"mode": {runner.NetworkOpen}}}},
+		}},
 	}}})
 	log.Printf("runner listening on %s — install it with: verse runner add <name> http://<host>%s",
 		*addr, *addr)
@@ -67,22 +72,26 @@ func main() {
 
 // build turns one launch into one task. CHANGE THIS.
 //
-// The Launch carries what the spawn said: the prompt, the doer (an agent by name, or a
-// script) and what it works with, the policy its steps are decided under, and the
+// The Launch carries what the spawn said: the prompt or the script, the agent and its settings,
+// the environment the run may reach, the autonomy its steps are decided under, and the
 // provenance. A runner that cannot honour something it was handed should say so — see the
 // note on refusing, below.
 func build(l runner.Launch, reg *task.Registry) *task.Task {
-	// The supervisor decides what happens before each action: the launch's policy says which
-	// steps are refused, asked about or allowed (a verb no row names is refused), and `reg` is the registry
-	// runnerd serves answers into, so a question becomes one an operator answers through
+	// The supervisor decides what happens before each action: a step outside the launch's
+	// environment is refused, and within it the autonomy says which are refused, asked about or
+	// allowed. `reg` is the registry runnerd serves answers into, so a question becomes one an operator answers through
 	// verse (`verse question`) while the task waits.
 	//
 	// The sample's `do` action is no step (task.StepOf), so nothing asks before it and the
 	// sample runs to completion unattended. Propose `run_bash` with a `command` instead and
-	// each action is a `commands.run` step: a spawn saying nothing refuses each, one saying
-	// `policy: [{match: {system: commands}, then: allow}, {then: ask}]` runs them, and an ask
-	// row on the step asks whom it names.
-	sup := task.NewSupervisor(l.Policy, reg)
+	// each action is a `commands.run` step: a spawn whose environment gives no `commands`
+	// refuses each; one giving `commands: {}` with `autonomy: [{match: {system: commands}, then:
+	// allow}, {then: ask}]` runs them, and an ask row on the step asks whom it names.
+	//
+	// The ceilings are this runner's own line over each system, read after the autonomy. A
+	// system with none is closed, so the sample says it leaves `commands` open.
+	sup := task.NewSupervisor(l.Environment, l.Autonomy, reg)
+	sup.SetCeilings(map[string]systems.Ceiling{"commands": systems.Open()})
 	return task.NewTask(l.ID, sup, &planDriver{prompt: l.Prompt}, &echoExecutor{})
 }
 

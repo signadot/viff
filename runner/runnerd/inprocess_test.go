@@ -10,10 +10,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/systems"
+	"github.com/signadot/verse/systems/systemstest"
+
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
+
+// workEnv is an environment giving the shell and file writes, the steps these tests' drivers
+// take: a step outside its environment is refused before any row is read.
+var workEnv = systems.Environment{Systems: systems.Systems{
+	"commands": {{Verbs: map[string][]systems.Shape{"run": {{}}}}},
+	"files":    {{Verbs: map[string][]systems.Shape{"write": {{}}}}},
+}}
 
 // seqDriver emits one action per step, then reports done — no model.
 type seqDriver struct {
@@ -39,9 +49,9 @@ func (okExec) Execute(_ context.Context, tu task.ToolUse) (task.StepResult, []ta
 // fakeBuild makes a hosted task whose single command a gate names, so the resolve/read-plane
 // paths are exercised without a live model.
 func fakeBuild(l runner.Launch, reg *task.Registry) *task.Task {
-	g := task.Policy{{Name: "shell", Match: &task.Match{System: "commands", Verb: "run"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAllow}}}
+	g := task.Autonomy{{Name: "shell", Match: &task.Match{System: "commands", Verb: "run"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAllow}}}
 	tu := task.ToolUse{Name: "run_bash", Input: map[string]any{"command": "x"}}
-	return task.NewTask(l.ID, task.NewSupervisor(g, reg), &seqDriver{steps: []task.ToolUse{tu}}, okExec{})
+	return task.NewTask(l.ID, systemstest.Opened(task.NewSupervisor(workEnv, g, reg), workEnv), &seqDriver{steps: []task.ToolUse{tu}}, okExec{})
 }
 
 func newTestServer(t *testing.T) *httptest.Server {
@@ -56,7 +66,7 @@ func TestDaemonLaunchObserveResolve(t *testing.T) {
 	defer srv.Close()
 
 	// launch
-	resp, err := http.Post(srv.URL+"/tasks", "application/json", strings.NewReader(`{"id":"p1","doer":{"agent":"test"},"prompt":"t"}`))
+	resp, err := http.Post(srv.URL+"/tasks", "application/json", strings.NewReader(`{"id":"p1","agent":{"name":"test"},"prompt":"t","environment":{"systems":{"network":{"mode":"open"}}}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +143,7 @@ func TestDaemonResolveUnknown(t *testing.T) {
 	srv := newTestServer(t)
 	defer srv.Close()
 
-	resp, _ := http.Post(srv.URL+"/tasks", "application/json", strings.NewReader(`{"id":"p1","doer":{"agent":"test"},"prompt":"t"}`))
+	resp, _ := http.Post(srv.URL+"/tasks", "application/json", strings.NewReader(`{"id":"p1","agent":{"name":"test"},"prompt":"t","environment":{"systems":{"network":{"mode":"open"}}}}`))
 	var sp struct {
 		ID string `tony:"field=id"`
 	}
@@ -159,7 +169,7 @@ func TestDaemonResolveWithoutChoice(t *testing.T) {
 	srv := newTestServer(t)
 	defer srv.Close()
 
-	resp, _ := http.Post(srv.URL+"/tasks", "application/json", strings.NewReader(`{"id":"p1","doer":{"agent":"test"},"prompt":"t"}`))
+	resp, _ := http.Post(srv.URL+"/tasks", "application/json", strings.NewReader(`{"id":"p1","agent":{"name":"test"},"prompt":"t","environment":{"systems":{"network":{"mode":"open"}}}}`))
 	var sp struct {
 		ID string `tony:"field=id"`
 	}

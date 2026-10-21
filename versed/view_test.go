@@ -69,9 +69,7 @@ func TestASpawnNamingARunnerOutsideTheSpawnersViewSaysWhoseViewItIs(t *testing.T
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp := postAsTony(t, "bob@example.com", ts.URL+"/tasks", map[string]any{
-		"id": "bobs", "doer": map[string]any{"agent": "fake"}, "prompt": "t", "runner": "verse.runners.gpu",
-	})
+	resp := postAsTony(t, "bob@example.com", ts.URL+"/tasks", map[string]any{"id": "bobs", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t", "runner": "verse.runners.gpu"}})
 	msg := readBody(t, resp)
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("bob's spawn onto alice's runner = %s, want 400: %s", resp.Status, msg)
@@ -109,9 +107,7 @@ func TestARunnerReadThatFailedIsNotARunnerNotInstalled(t *testing.T) {
 		}
 	}
 
-	resp := postTony(t, ts.URL+"/tasks", map[string]any{
-		"id": "waits", "doer": map[string]any{"agent": "fake"}, "prompt": "t", "runner": "verse.runners.gpu",
-	})
+	resp := postTony(t, ts.URL+"/tasks", map[string]any{"id": "waits", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t", "runner": "verse.runners.gpu"}})
 	msg := readBody(t, resp)
 	if !strings.Contains(msg, "could not be read") || !strings.Contains(msg, "context deadline exceeded") {
 		t.Errorf("spawn with the store unreadable = %s %q, want the read's failure", resp.Status, msg)

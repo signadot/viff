@@ -14,8 +14,8 @@ import (
 func TestARelayedQuestionAsksWhomItNames(t *testing.T) {
 	const daniel, ani = "user:daniel@example.com", "user:ani@example.com"
 	me := []string{task.PrincipalAnswerer}
-	named := task.Policy{{Name: "ship", Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{Answerers: []string{ani}}}}}
-	mine := task.Policy{{Name: "ship", Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{Answerers: []string{task.PrincipalAnswerer, "group:payments"}}}}}
+	named := task.Autonomy{{Name: "ship", Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{Answerers: []string{ani}}}}}
+	mine := task.Autonomy{{Name: "ship", Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{Answerers: []string{task.PrincipalAnswerer, "group:payments"}}}}}
 	for _, c := range []struct {
 		name string
 		m    Meta
@@ -24,8 +24,8 @@ func TestARelayedQuestionAsksWhomItNames(t *testing.T) {
 	}{
 		{"a launch whose questions are its asker's", Meta{Asker: daniel, Answerers: me}, task.Event{Gate: "ship"}, []string{daniel}},
 		{"a hand-run task's nameless gate", Meta{Asker: daniel}, task.Event{Gate: "ship"}, nil},
-		{"a gate naming its answerers", Meta{Asker: daniel, Answerers: me, Policy: named}, task.Event{Gate: "ship"}, []string{ani}},
-		{"a gate naming $principal and a group", Meta{Asker: daniel, Policy: mine}, task.Event{Gate: "ship"}, []string{daniel, "group:payments"}},
+		{"a gate naming its answerers", Meta{Asker: daniel, Answerers: me, Autonomy: named}, task.Event{Gate: "ship"}, []string{ani}},
+		{"a gate naming $principal and a group", Meta{Asker: daniel, Autonomy: mine}, task.Event{Gate: "ship"}, []string{daniel, "group:payments"}},
 		{"a frame naming its answerers", Meta{Asker: daniel, Answerers: me}, task.Event{Gate: "ship", Answerers: []string{"user:bo@example.com"}}, []string{"user:bo@example.com"}},
 		{"the ask tool, from a person's task", Meta{Asker: daniel}, task.Event{Gate: "ask", Answerers: me}, []string{daniel}},
 		{"the ask tool, acting for nobody", Meta{}, task.Event{Gate: "ask", Answerers: me}, nil},

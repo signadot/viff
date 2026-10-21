@@ -11,6 +11,7 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/verserunner"
+	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/versed"
 )
@@ -46,11 +47,11 @@ func (nopExec) Execute(_ context.Context, tu task.ToolUse) (task.StepResult, []t
 func serveParrot(t *testing.T) entity.Store {
 	t.Helper()
 	build := func(l runner.Launch, reg *task.Registry) *task.Task {
-		if l.Doer.Agent != "parrot" {
-			return verserunner.New(verserunner.Config{}, verserunner.Secrets{}, t.TempDir(), io.Discard).Build(l, reg)
+		if l.Who() != "parrot" {
+			return verserunner.New(verserunner.Config{Systems: verserunner.OpenInside()}, verserunner.Secrets{}, t.TempDir(), io.Discard).Build(l, reg)
 		}
 		d := &parrot{}
-		tk := task.NewTask(l.ID, task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, reg), d, nopExec{})
+		tk := task.NewTask(l.ID, systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, reg), l.Environment), d, nopExec{})
 		d.emit = tk.Emit
 		if l.Converse {
 			tk.SetConverse(reg)
@@ -66,13 +67,16 @@ func serveParrot(t *testing.T) entity.Store {
 	return store
 }
 
+// parrotSpawn is the spawn of a conversation with the parrot agent.
+const parrotSpawn = `{prompt: chat, agent: {name: parrot}, environment: {systems: {network: {mode: open}}}}`
+
 // A CONVERSATION FROM THE TERMINAL: `task run -attach` hands the person the turn when the model
 // goes quiet, a typed line is the next message, and Ctrl-D ends it — the run finishes `done`
 // with the last message as its result.
 func TestTaskRunAttachIsAConversationEndedByEOF(t *testing.T) {
 	serveParrot(t)
 	out, done := runCLIIn(t, strings.NewReader("first thing\n"),
-		"task", "run", "--agent", "parrot", "--attach", "--as", "user:t", "chat")
+		"task", "run", "-f", spawnFile(t, parrotSpawn), "--attach", "--as", "user:t")
 	got := waitEnd(t, out, done)
 	for _, want := range []string{"gate: turn", "→ sent", "you said: first thing", "→ ended", "text: done"} {
 		if !strings.Contains(got, want) {
@@ -88,7 +92,7 @@ func TestTaskRunAttachIsAConversationEndedByEOF(t *testing.T) {
 func TestNoConverseEndsWhenTheModelStops(t *testing.T) {
 	serveParrot(t)
 	out, done := runCLIIn(t, strings.NewReader("never read\n"),
-		"task", "run", "--agent", "parrot", "--attach", "--no-converse", "--as", "user:t", "chat")
+		"task", "run", "-f", spawnFile(t, parrotSpawn), "--attach", "--no-converse", "--as", "user:t")
 	got := waitEnd(t, out, done)
 	if strings.Contains(got, "gate: turn") {
 		t.Fatalf("a turn was handed over under -no-converse:\n%s", got)
@@ -101,7 +105,7 @@ func TestNoConverseEndsWhenTheModelStops(t *testing.T) {
 // Without -attach nobody is there to take a turn, so no turn is posed whatever the flag says.
 func TestConverseMeansNothingWithoutAttach(t *testing.T) {
 	serveParrot(t)
-	out, err := runCLI(t, "task", "run", "--agent", "parrot", "--wait", "--as", "user:t", "chat")
+	out, err := runCLI(t, "task", "run", "-f", spawnFile(t, parrotSpawn), "--wait", "--as", "user:t")
 	if err != nil {
 		t.Fatalf("task run -wait: %v\n%s", err, out)
 	}
@@ -118,9 +122,17 @@ func TestASayWhileTheTurnStandsDoesNotBreakTheNextTurn(t *testing.T) {
 	pr, pw := io.Pipe()
 	defer pw.Close()
 	// As the test config's own user, so the out-of-band say (which takes no --as) holds control.
-	out, done := runCLIIn(t, pr, "task", "run", "--agent", "parrot", "--attach", "--as", "user:tester@example.com", "chat")
+	out, done := runCLIIn(t, pr, "task", "run", "-f", spawnFile(t, parrotSpawn), "--attach", "--as", "user:tester@example.com")
 	waitFor(t, out, "id: ")
-	id := strings.TrimSpace(strings.SplitN(out.String(), "\n", 2)[0])
+	// The first line that is not task run's word to stderr (the parrot is given no system, and
+	// is told so) is the id.
+	var id string
+	for _, line := range strings.Split(out.String(), "\n") {
+		if !strings.HasPrefix(line, "task run:") {
+			id = strings.TrimSpace(line)
+			break
+		}
+	}
 	waitFor(t, out, "~t1 kind: pending")
 	if _, err := runCLI(t, "task", "say", id, "hello oob"); err != nil {
 		t.Fatalf("say: %v", err)

@@ -10,6 +10,11 @@ import (
 	"testing"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/runner/runnerd/verserunner"
+	"github.com/signadot/verse/systems/systemstest"
+	"github.com/signadot/verse/task"
 )
 
 // systemCharter is the charter a deployment has versed install at start as the system (deploy's
@@ -84,7 +89,7 @@ func TestEveryDeployedCharterInstalls(t *testing.T) {
 	// The Slack io, as repopulate installs it before the charters that send through it, and
 	// the runner the charters spawn on, which repopulate installs first for the same reason.
 	withSlackIO(t, srv)
-	registerRunner(t, ts, "verse-runner", "verse")
+	registerDeployed(t, ts, "verse-runner")
 	for _, name := range deployOrder {
 		files, err := charterFilesUnder(filepath.Join("../deploy/charters", name))
 		if err != nil {
@@ -168,4 +173,70 @@ func charterFilesUnder(path string) ([]string, error) {
 		return err
 	})
 	return out, err
+}
+
+// registerDeployed registers, under name, a runner offering what the deployed verse runner offers:
+// its offers built from deploy/verse-runner's config, as it describes itself with a model key
+// and a sandbox building every network. So a deployed charter is held at install to the ceilings
+// the deployment runs, and a ceiling that would refuse one is found here.
+func registerDeployed(t *testing.T, ts *httptest.Server, name string) {
+	t.Helper()
+	cfg := deployedConfig(t, "../deploy/verse-runner/verse-runner.yaml")
+	desc := cfg.Describe(verserunner.Secrets{PortkeyAPIKey: "k"}, []string{runner.NetworkNone, runner.NetworkOpen, runner.NetworkAllow})
+	release := make(chan struct{})
+	build := func(l runner.Launch, _ *task.Registry) *task.Task {
+		sup := systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), l.Environment)
+		return task.NewTask(l.ID, sup, &blockedDriver{release: release}, okExecutor{})
+	}
+	h := runnerd.NewInProcessHandler(build)
+	h.Describe(desc)
+	face := httptest.NewServer(h.HTTPHandler())
+	t.Cleanup(func() {
+		close(release)
+		face.Close()
+	})
+	if resp := postTony(t, ts.URL+"/runners", map[string]any{"name": name, "url": face.URL}); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("runner add %s = %s", name, resp.Status)
+	}
+}
+
+// deployedConfig is a deployed runner's configuration, as its manifest's ConfigMap carries it
+// (`verse-runner.tony: |`), loaded and checked as the runner loads it at start.
+func deployedConfig(t *testing.T, manifest string) verserunner.Config {
+	t.Helper()
+	text, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, after, ok := strings.Cut(string(text), "verse-runner.tony: |\n")
+	if !ok {
+		t.Fatalf("%s has no verse-runner.tony", manifest)
+	}
+	var lines []string
+	for _, line := range strings.Split(after, "\n") {
+		if strings.TrimSpace(line) != "" && !strings.HasPrefix(line, "    ") {
+			break
+		}
+		lines = append(lines, strings.TrimPrefix(line, "    "))
+	}
+	path := filepath.Join(t.TempDir(), "verse-runner.tony")
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, cfg, err := verserunner.Load(path)
+	if err != nil {
+		t.Fatalf("%s: the runner would not start: %v", manifest, err)
+	}
+	return cfg
+}
+
+// EVERY DEPLOYED RUNNER'S CONFIGURATION LOADS, its ceilings checked as the runner checks them at
+// start, so one it would refuse is found here and not at the deploy.
+func TestEveryDeployedRunnerConfigLoads(t *testing.T) {
+	for _, manifest := range []string{"../deploy/verse-runner/verse-runner.yaml", "../deploy/codex-runner/codex-runner.yaml"} {
+		cfg := deployedConfig(t, manifest)
+		if len(cfg.Systems["git"].Ceiling) == 0 {
+			t.Errorf("%s: no git ceiling, so its tasks reach no repository", manifest)
+		}
+	}
 }

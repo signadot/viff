@@ -17,6 +17,8 @@ import (
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/systems"
+	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 )
 
@@ -44,7 +46,7 @@ func remote(t *testing.T, d task.Driver) (*httptest.Server, func() runner.Launch
 		mu.Lock()
 		got = l
 		mu.Unlock()
-		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+		sup := systemstest.Opened(task.NewSupervisor(workEnv, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), workEnv)
 		return task.NewTask(l.ID, sup, d, okExec{})
 	}
 	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
@@ -62,10 +64,14 @@ func TestALaunchReachesARemoteRunnerWhole(t *testing.T) {
 	srv, handed := remote(t, &doneDriver{steps: 1})
 	sent := runner.Launch{
 		ID: "review@demo.pr.1",
-		Doer: runner.Doer{Agent: "verse",
-			With:        runner.With{Model: "m-1", Env: map[string]string{"BRANCH": "main"}},
+		Agent: &runner.Agent{Name: "verse", Settings: map[string]string{"model": "m-1"},
 			Annotations: map[string]string{"verse.portkey/virtual-key": "route-a"}},
-		Prompt: "review it", Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, Converse: true,
+		Environment: systems.Environment{Vars: map[string]string{"BRANCH": "main"}, Systems: systems.Systems{
+			// As the environment reads back: a block's attributes and verbs are maps, if empty.
+			"slack":   {{Attributes: map[string]string{}, Verbs: map[string][]systems.Shape{"post": {{"channel": "deploys"}}}}},
+			"network": {{Attributes: map[string]string{"mode": runner.NetworkOpen}, Verbs: map[string][]systems.Shape{}}},
+		}},
+		Prompt: "review it", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, Converse: true,
 		Answer:     ir.FromMap(map[string]*ir.Node{"verdict": ir.FromString("ok")}),
 		Occurrence: 4217,
 		Provenance: runner.Provenance{Principal: "user:ana@example.com", Subject: "demo.pr.1", Chain: "review"},
@@ -86,8 +92,8 @@ func TestALaunchReachesARemoteRunnerWhole(t *testing.T) {
 	}
 	// And the runner says back which run it is, and who runs it.
 	snap, err := client.HTTP(srv.URL).(task.Lister).TaskSnapshot(sent.ID)
-	if err != nil || snap.Occurrence != sent.Occurrence || snap.Driver != "verse" {
-		t.Errorf("the snapshot says occurrence %d, doer %q (%v); want %d, verse", snap.Occurrence, snap.Driver, err, sent.Occurrence)
+	if err != nil || snap.Occurrence != sent.Occurrence || snap.Agent != "verse" {
+		t.Errorf("the snapshot says occurrence %d, doer %q (%v); want %d, verse", snap.Occurrence, snap.Agent, err, sent.Occurrence)
 	}
 	// …and never says the credential back.
 	for _, path := range []string{"/tasks", "/tasks/" + sent.ID} {
@@ -107,7 +113,7 @@ func TestALaunchReachesARemoteRunnerWhole(t *testing.T) {
 func TestACancelsReasonReachesARemoteTask(t *testing.T) {
 	srv, _ := remote(t, &paced{n: 500})
 	r := client.HTTP(srv.URL)
-	h := r.Launch(runner.Launch{ID: "long", Doer: runner.Doer{Agent: "test"}, Prompt: "wait"})
+	h := r.Launch(runner.Launch{ID: "long", Agent: &runner.Agent{Name: "test"}, Prompt: "wait", Environment: openNet})
 	if err := h.Cancel("the place is going away", ""); err != nil {
 		t.Fatalf("cancel: %v", err)
 	}
@@ -141,7 +147,7 @@ func TestALaunchThatDoesNotParseIsRefused(t *testing.T) {
 	if code := post(`{id: "broken", prompt: [unclosed`); code != http.StatusBadRequest {
 		t.Errorf("a launch that does not parse = %d, want 400", code)
 	}
-	if code := post(`{id: "typed", doer: {agent: a}, prompt: p, occurrence: "many"}`); code != http.StatusBadRequest {
+	if code := post(`{id: "typed", agent: {name: a}, prompt: p, occurrence: "many"}`); code != http.StatusBadRequest {
 		t.Errorf("a launch whose field is the wrong type = %d, want 400", code)
 	}
 	tasks, err := client.HTTP(srv.URL).(task.Lister).ListTasks()

@@ -89,7 +89,7 @@ func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewing"}},
 		},
 		Action: Action{
-			Spawn:  &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "follow up on $subject"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "follow up on $subject"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "followed"}.Payload()},
 		},
 	}); err != nil {

@@ -54,9 +54,11 @@ func (h *idleHandle) Pause(string) error                               { return 
 func (h *idleHandle) Resume(string) error                              { return h.got("resume") }
 func (h *idleHandle) Cancel(string, string) error                      { return h.got("cancel") }
 func (h *idleHandle) Steer(string, string, string) error               { return h.got("say") }
-func (h *idleHandle) SetPolicy(task.Policy, string) error              { return h.got("policy") }
+func (h *idleHandle) SetAutonomy(task.Autonomy, string) error          { return h.got("policy") }
 func (h *idleHandle) Result() string                                   { return "" }
 func (h *idleHandle) Err() string                                      { return "" }
+func (*idleHandle) Refused() map[string]int                            { return nil }
+func (*idleHandle) Agent() (string, map[string]string)                 { return "", nil }
 
 // flowRows lists the rows `GET /flows` answers in a scope, narrowed by a selection.
 func flowRows(t *testing.T, ts *httptest.Server, scope string, sel api.FlowSelect) []api.FlowRow {
@@ -453,10 +455,11 @@ func TestAHandSpawnedTaskIsAFlow(t *testing.T) {
 		if scope != "" {
 			url += "?scope=" + scope
 		}
-		body := map[string]any{"id": id, "doer": map[string]any{"script": "true"}, "policy": stepAsks}
+		spec := map[string]any{"script": "true", "environment": stepEnv, "autonomy": stepAsks}
 		if subject != "" {
-			body["subject"] = subject
+			spec["subject"] = subject
 		}
+		body := map[string]any{"id": id, "spawn": spec}
 		resp := postTony(t, url, body)
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {

@@ -258,8 +258,10 @@ See [Strata](strata.md#derive-identity-not-state).
 
 ### spawn
 
-`spawn` starts a [task](#task). Its fields say what does the work and how: `doer`, `prompt`,
-`policy`, `answer`, `timeout` and `runner`.
+`spawn` starts a [task](#task). Its fields say what the work is, who does it, what it works in
+and how each step is decided: `prompt` or `script`, `agent`, `environment`, `autonomy`, `answer`,
+`timeout` and `runner`. `verse task run -f <file>` and an ask's `then: {spawn: …}` take the same
+spawn.
 
 Also written: launch spec (the Go type `launch.Spec`).
 
@@ -309,7 +311,7 @@ The answer contract of a task is a pattern that the final message of the task mu
 task that never matches it fails. It is `answer:` in a `spawn`, and `-answer-contract` on
 `verse task run`.
 
-See [Tasks](reference/tasks.md#--answer-contract-what-finished-means).
+See [Tasks](reference/tasks.md#answer-what-finished-means).
 
 ### chain (of an action)
 
@@ -391,11 +393,11 @@ See [The gates of a rule](reference/gates.md#gates-whether-it-proceeds).
 
 ### gate (of a task)
 
-A gate of a task is a row of its [policy](#policy) that asks:
+A gate of a task is a row of its [autonomy](#autonomy) that asks:
 `{name: release, match: {system: git, verb: push, ref: refs/heads/main}, then: {ask: {answerers: [user:ana@example.com]}}}`.
 Its `match` names a [step](#step-of-a-task) by its system and verb and narrows it by the
-step's fields; the row asks before the task takes such a step. A verb that no row names is not
-the task's: it has no tool, and a call of it is refused.
+step's fields; the row asks before the task takes such a step. A step its
+[environment](#environment) does not give is refused before any row is read, and nobody is asked.
 
 The question of such a gate has the id `<task id>~d<n>`.
 
@@ -403,7 +405,7 @@ See [Tasks](reference/tasks.md#a-rows-question).
 
 ### gate (raised by a worker)
 
-A worker on a runner raises the gates of its task's policy itself. It reports a `pending`
+A worker on a runner raises the gates of its task's autonomy itself. It reports a `pending`
 frame, and verse puts the question on the docket. A worker never answers its own gate.
 
 See [Tasks](reference/tasks.md#running-one).
@@ -577,8 +579,8 @@ See [Tasks](reference/tasks.md#the-mirror).
 
 ### executor
 
-The executor of a task performs each action that the doer proposes, once the task's
-[policy](#policy) lets it.
+The executor of a task performs each action that the agent or script proposes, once the task's
+[environment](#environment) gives it and its [autonomy](#autonomy) lets it.
 A [worker](#worker) on a runner is an executor too.
 
 See [External tasks](external-tasks.md#a-task-is-a-contract-not-a-runtime).
@@ -587,39 +589,50 @@ See [External tasks](external-tasks.md#a-task-is-a-contract-not-a-runtime).
 
 A tool is a named action that a task may take: an agent's, such as `read_file` or `run_bash`,
 or one a script calls with `verse-call-tool`, such as `git-push` or `question-ask`. The runner
-offers them. The task's [policy](#policy) decides each use of a tool that is a
-[step](#step-of-a-task).
+offers those whose verb the task's [environment](#environment) gives. The task's
+[autonomy](#autonomy) decides each use of a tool that is a [step](#step-of-a-task).
 
 See [The action of a rule](reference/action.md#action-what-fires).
 
 ### boundary
 
-A boundary is the point between two actions of a task. The task's policy decides there
+A boundary is the point between two actions of a task. The task's autonomy decides there
 whether the next action is refused, asks or goes ahead, and a hold or a `say` lands there.
 
 See [Control](control.md#a-hold-on-a-run).
 
-### policy
+<a id="policy"></a>
+### autonomy
 
-The policy of a task is an ordered list of rows over its steps. Each row names steps by
-system, verb and fields, and says what happens to them: `deny`, `ask` or `allow`. A row may
-also `withhold` a system or a verb, which takes it out of the run.
+The autonomy of a task is an ordered list of rows over its steps. Each row names steps by
+system, verb and fields, and says what happens to them: `deny`, `ask` or `allow`. The first row
+that matches a step decides it. The last row names no step and decides every step that no row
+above matched: it is the task's dial.
 
-The policy is what the task is given: a verb is the task's only if a row names it, by its system
-alone (every verb of the system) or with the verb. A verb no row names has no tool, and a call of
-it is refused. A spawn with no policy is given no verb.
-
-The first row that matches a step decides it. The last row names no step and decides the calls
-of the named verbs that no row above matched: it is the task's dial. A task's network is no
-step: it is the launch's `with.network`, built once when the run starts, and none when the
-launch says nothing. The policy can be replaced while the task runs, by a whole one that names
-no verb it did not: `verse task policy <id> '[{match: {system: commands}, then: allow}, {then: ask}]'`. A row on `files` or `commands` is advisory: it decides the act
-as the doer names it, and a write through the shell is a command
-([why](systems/inside.md#a-row-on-files-or-commands-is-advisory)).
+A task with no autonomy asks on every step, so the last row is the one place a run is made
+unattended. The autonomy decides among what the task's [environment](#environment) gives and
+never adds to it: a step outside the environment is refused before any row is read, and a row
+that can match nothing the environment gives is refused where it is written. Under a network of
+`allow`, each connection is decided too, and a row on the network allows or denies, never asks.
+The autonomy can be replaced while the task runs:
+`verse task autonomy <id> '[{match: {system: commands}, then: allow}, {then: ask}]'`. A row on
+`files` or `commands` is advisory: it decides the act as the agent names it, and a write through
+the shell is a command ([why](systems/inside.md#a-row-on-files-or-commands-is-advisory)).
 
 Also written: the dial.
 
-See [Tasks](reference/tasks.md#the-policy).
+See [Tasks](reference/tasks.md#the-autonomy).
+
+### environment
+
+The environment of a task is what it works in: the variables its shell is given (`vars`), and
+the [systems](#system) it may use (`systems`), one block per system, each naming the verbs it gives
+and their shapes. It is the whole of what the task may do: a step no block gives is refused,
+and the task is offered no tool for a verb it does not give. A block that names no verb gives
+every verb of its system, the network apart, whose `mode` is its reach. It is fixed when the run
+starts, and it lies within the runner's [ceilings](#ceiling).
+
+See [Tasks](reference/tasks.md#the-doer).
 
 ### system
 
@@ -634,11 +647,12 @@ See [Systems](systems/README.md).
 ### ceiling
 
 A ceiling is the limit a runner's operator sets on what any task may do with a system the
-runner performs for it. It is rows of `allow` and `deny`, written as a policy is, one list per
-system in the runner's configuration. The runner publishes it with its offers. Verse refuses to
-install a spawn with a row the ceiling refuses every call of; what is fixed at install is which
-verbs the task has, and the rest of a row is a dial, turned at the act, where the runner reads
-the ceiling again.
+runner holds for it. It is written as an environment is, blocks of the system's attributes and
+verbs, each attribute a pattern, under `systems.<name>.ceiling` in the runner's configuration,
+and it lists what it allows: a system with no ceiling is closed, the network apart. The runner
+publishes it with its offers, beside what it `builds` of the system by its nature. A spawn's
+[environment](#environment) lies within it: verse refuses to install one beyond it, and the
+runner holds it again at the launch and at each act.
 
 See [the verse runner](reference/runnerd.md#what-it-offers).
 
@@ -647,8 +661,8 @@ See [the verse runner](reference/runnerd.md#what-it-offers).
 A step of a task is what the task is about to do, as the spec names it: `git.push`,
 `github.create-pr`, `files.write`, `commands.run` or `agent.call-sub-agent`, with the fields of
 that step: the repository and ref of a push, the path of a write, the command of a run, the
-sub-agent called. A policy row's `match` names a
-step and narrows it by its fields. A script's own run is no step; the calls it makes are.
+sub-agent called, and under a network of `allow` a connection, `network.tcp-client`. An autonomy
+row's `match` names a step and narrows it by its fields. A script's own run is no step; the calls it makes are.
 
 See [Tasks](reference/tasks.md#a-rows-question).
 
@@ -704,17 +718,17 @@ See [Runners](runners.md).
 ### agent
 
 An agent is a registered program that works a prompt one turn at a time. `verse` is verse's
-own agent. A runner offers others by name, such as `claude` or `codex`. A spawn names one as
-its doer: `doer: {agent: verse}`.
+own agent. A runner offers others by name, such as `claude` or `codex`, each with the settings it
+takes. A spawn names one, with its settings beside the name: `agent: {name: codex, model:
+gpt-5-codex}`. A prompt that names none is for the runner's default agent, the first it offers.
 
 See [Tasks](reference/tasks.md#the-doer).
 
 ### doer
 
-A doer is what does the work of a task: an agent the runner offers by name, `doer: {agent:
-verse}`, or a script, `doer: {script: "go test ./..."}`, with what it works with under `with`
-(its repositories, its environment, its model). The task's record says which agent ran as
-its `doer`.
+A doer is what does the work of a task: the [agent](#agent) a `prompt` is for, or a `script`,
+which is its own. The task's record says which agent ran and with what settings as its `agent`,
+or `script: true`.
 
 See [Tasks](reference/tasks.md#the-doer).
 
@@ -903,7 +917,7 @@ See [Permissions reference](reference/perms.md#levels).
 ### control (permission level)
 
 `control` is the level that admits steering work: run, cancel, pause, resume, `say`, a change
-of policy, and suspend. No other level includes it. The owner of a task holds it, and so does
+of autonomy, and suspend. No other level includes it. The owner of a task holds it, and so does
 the worker that claimed the task.
 
 Written as code, `control` is this level.
@@ -939,7 +953,7 @@ See [Deployment and steering](deployment-and-steering.md#two-planes).
 ### steering
 
 To steer is to act on work in progress: to answer a gate, to hold or resume, to `say`, to
-cancel, to change the policy.
+cancel, to change the autonomy.
 
 See [Overview](concepts.md#two-planes-what-changes-and-what-is-allowed).
 
@@ -1025,6 +1039,8 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 
 + [ask](#ask)
 
++ [autonomy](#autonomy)
+
 + [ballot](#ballot)
 
 + [baseline](#baseline)
@@ -1074,6 +1090,8 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 + [doer](#doer)
 
 + [entity](#entity)
+
++ [environment](#environment)
 
 + [event stream](#event-stream)
 
@@ -1166,8 +1184,6 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 + [pattern](#pattern)
 
 + [payload](#payload)
-
-+ [policy](#policy)
 
 + [pose](#pose)
 

@@ -3,6 +3,7 @@ package trigger
 import (
 	"context"
 	"fmt"
+	"github.com/signadot/verse/systems"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -86,7 +87,7 @@ func TestFanOutSpawnsPerMember(t *testing.T) {
 	got := make(chan spawned, 8)
 	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
 		got <- spawned{id, spec}
-		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+		sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 		return task.NewTask(id, sup, blockForever{}, noExec{})
 	})
 	if err := eng.AddTrigger(Trigger{
@@ -96,7 +97,7 @@ func TestFanOutSpawnsPerMember(t *testing.T) {
 			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewed"}},
 		},
 		Action: Action{
-			Spawn:  &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "ship $subject"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "ship $subject"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 		},
 	}); err != nil {
@@ -162,7 +163,7 @@ func TestFanOutRefireIsIdempotentPerMember(t *testing.T) {
 	var spawns atomic.Int64
 	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
 		spawns.Add(1)
-		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+		sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 		return task.NewTask(id, sup, blockForever{}, noExec{})
 	})
 	if err := eng.AddTrigger(Trigger{
@@ -172,7 +173,7 @@ func TestFanOutRefireIsIdempotentPerMember(t *testing.T) {
 			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewed"}},
 		},
 		Action: Action{
-			Spawn:  &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "ship $subject"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "ship $subject"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 		},
 	}); err != nil {
@@ -499,7 +500,7 @@ func TestSpawnLabelIsTheIDApplyWillUse(t *testing.T) {
 		entity.RefAt("demo", "pr", "1"),
 		entity.RefAt("demo", "pr", "path/with/slashes"), // safeSeg rewrites → hashed
 	}
-	trig := Trigger{Name: "review", Action: Action{Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}}}}
+	trig := Trigger{Name: "review", Action: Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}}}}
 
 	for _, ref := range refs {
 		announced := New(nil, nil).spawnLabel(trig, []entity.Ref{ref})

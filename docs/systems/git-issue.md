@@ -27,22 +27,21 @@ and closes in a checkout, then pushes.
 
 ## What a task can do
 
-A task gets a repository's tracker with the repository. `with.git` checks the repository out,
-and `with.git-issue` names the repository again for its tracker.
+A task gets a repository's tracker with a `git-issue` block for a repository its `git` block
+checks out. A block that names no verb gives all of them.
 
 ```tony
 spawn:
-  doer:
-    agent: verse
-    with:
-      git: [{repo: acme/app}]
-      git-issue: [{repo: acme/app}]
-      network: {mode: open}
+  agent: {name: verse}
   prompt: "File an issue for each TODO in the README, labelled triage=needed."
-  policy:
+  environment:
+    systems:
+      network: {mode: open}
+      git: [{repo: acme/app, fetch: {}}]
+      git-issue: [{repo: acme/app}]
+  autonomy:
   - {match: {system: git-issue, verb: push, repo: github.com/acme/app}, then: ask}
-  - {match: {system: git-issue}, then: allow}
-  - {then: deny}
+  - {then: allow}
 ```
 
 | Tool | What it does | Step |
@@ -53,11 +52,11 @@ spawn:
 | `git-issue-pull` | brings the remote's tracker into the checkout | `git-issue.pull`, with `repo` |
 | `git-issue-push` | sends every issue filed or changed in the checkout to the remote | `git-issue.push`, with the param `repo` |
 
-Only a push leaves the task. So the policy above lets the agent file, comment, close and pull
-freely, and asks before the issues reach `github.com/acme/app`; `git.push` is named by no row,
-so the task has no `git-push` at all. In a row, `repo` is the repository as
-`host/owner/name`, however `with.git` named it. A script calls the same tools with
-`verse-call-tool`, and the same rows decide them.
+Only a push leaves the task. So the autonomy above lets the agent file, comment, close and pull
+freely, and asks before the issues reach `github.com/acme/app`; the `git` block gives no push, so
+the task has no `git-push` at all. In a row or a shape, `repo` is the repository as
+`host/owner/name`, however the spawn named it. A script calls the same tools with
+`verse-call-tool`, and the same environment and rows decide them.
 
 ## Where the credential lives
 
@@ -74,11 +73,8 @@ configuration:
 ```tony
 systems:
   git-issue:
-    ceiling:
-    - {match: {verb: push, repo: "github.com/acme/**"}, then: allow}
-    - {then: deny}
+    ceiling: {repo: "github.com/acme/**", create: {}, comment: {}, close: {}, pull: {}, push: {}}
 ```
 
-Verse refuses to install a spawn whose policy allows or asks about a push to another
-repository. The refusal names the policy's row and the ceiling's
-([the verse runner](../reference/runnerd.md#what-it-offers)).
+Verse refuses to install a spawn whose environment gives a tracker of another repository. The
+refusal says what the ceiling gives ([the verse runner](../reference/runnerd.md#what-it-offers)).

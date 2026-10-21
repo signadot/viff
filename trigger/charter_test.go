@@ -123,7 +123,7 @@ func TestCharterRoundTripsOperators(t *testing.T) {
 		action: {
 			patch:  {stage: reviewed, tmp: !delete null},
 			spawn:  {
-				doer:   {agent: verse},
+				agent:  {name: verse},
 				prompt: "review ",
 				answer: {class: !or [bug, nit], severity: !or [low, high]},
 			},
@@ -301,7 +301,7 @@ func TestAbsenceLatchSurvivesTheCharterStore(t *testing.T) {
       value: !not
         reviewed: null
   action:
-    spawn: {doer: {agent: verse}, prompt: "review it"}
+    spawn: {agent: {name: verse}, prompt: "review it"}
     onDone: {patch: {reviewed: done}}
 `
 	trigs, _, _, _, ok := parseBlock(src)

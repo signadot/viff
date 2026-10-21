@@ -217,7 +217,7 @@ func (e *fsExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResult,
 // close at exit and never wait at all. So it is "how long to wait for an orphan to flush",
 // where too short truncates a straggler and too long stalls a task that deliberately detached
 // something. It is not a command timeout — a command nobody cancels still runs as long as it
-// likes, which is a policy question for whoever installs the executor.
+// likes, which is an autonomy question for whoever installs the executor.
 const orphanWaitDelay = 2 * time.Second
 
 // runBash executes a command with stdout and stderr captured into SEPARATE

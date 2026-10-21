@@ -12,6 +12,7 @@ import (
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/systems/systemstest"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
@@ -32,7 +33,7 @@ func runnerFace(t *testing.T) *httptest.Server {
 	// waits on outstanding requests — the test hangs on its own teardown rather than failing.
 	release := make(chan struct{})
 	build := func(l runner.Launch, _ *task.Registry) *task.Task {
-		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+		sup := systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), l.Environment)
 		return task.NewTask(l.ID, sup, &blockedDriver{release: release}, okExecutor{})
 	}
 	srv := httptest.NewServer(offeringAll(runnerd.NewInProcessHandler(build), "fake").HTTPHandler())
@@ -47,19 +48,28 @@ func runnerFace(t *testing.T) *httptest.Server {
 // named, each holding a conversation and intercepting every system with nothing over it, and
 // scripts; every offer building every network.
 func offeringAll(h *runnerd.InProcessHandler, agents ...string) *runnerd.InProcessHandler {
-	with := func() map[string]runner.Accepts {
-		return map[string]runner.Accepts{"network": runner.AcceptsOneOf(runner.NetworkOpen, runner.NetworkNone, runner.NetworkAllow)}
-	}
 	held := map[string]runner.System{}
 	for _, doc := range systems.All() {
-		held[doc.Name] = runner.System{Ceiling: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}}
+		if doc.Name == "network" {
+			// What it builds, every network, and no ceiling: an unwritten network ceiling
+			// bounds nothing, where Open would allow no connection.
+			held[doc.Name] = builds(runner.NetworkOpen, runner.NetworkNone, runner.NetworkAllow)
+			continue
+		}
+		held[doc.Name] = runner.System{Ceiling: systems.Open()}
 	}
-	var d runner.Description
+	d := runner.Description{Version: runner.DescriptionVersion}
 	for _, a := range agents {
-		d.Offers = append(d.Offers, runner.Offer{Agent: a, With: with(), Converse: true, Systems: held})
+		d.Offers = append(d.Offers, runner.Offer{Agent: &runner.AgentOffer{Name: a, Settings: map[string]runner.Setting{"model": {}, "effort": {}}},
+			Converse: true, Systems: held})
 	}
-	h.Describe(runner.Description{Offers: append(d.Offers, runner.Offer{Script: true, With: with(), Systems: held})})
+	h.Describe(runner.Description{Version: d.Version, Offers: append(d.Offers, runner.Offer{Script: true, Systems: held})})
 	return h
+}
+
+// builds is the network as a runner holds it that builds these modes and has no ceiling over it.
+func builds(modes ...string) runner.System {
+	return runner.System{Builds: systems.Ceiling{{Attributes: map[string][]string{"mode": modes}}}}
 }
 
 // a driver that never finishes on its own, so a task stays live long enough to be work that
@@ -269,7 +279,7 @@ func TestRunnerRemoveRefusesUntilToldWhich(t *testing.T) {
 	// A task running ON it. Spawned through the runner face and mirrored the way a spawn
 	// does, which is what makes it work this removal has to answer for.
 	p := client.HTTP(face.URL)
-	p.Launch(runner.Launch{ID: "w1", Doer: runner.Doer{Script: "long work"}})
+	p.Launch(runner.Launch{ID: "w1", Script: "long work"})
 	setInstance(t, srv, "w1", entity.Obj{
 		"status": "running", "runner": face.URL, "runnerName": "verse.runners.gpu",
 	})
@@ -343,7 +353,7 @@ func TestRunnerRemoveCancelReportsWhatItCouldNotReach(t *testing.T) {
 	}).Body.Close()
 
 	p := client.HTTP(face.URL)
-	h := p.Launch(runner.Launch{ID: "c1", Doer: runner.Doer{Script: "long work"}})
+	h := p.Launch(runner.Launch{ID: "c1", Script: "long work"})
 	setInstance(t, srv, "c1", entity.Obj{
 		"status": "running", "runner": face.URL, "runnerName": "verse.runners.gpu",
 	})
@@ -455,8 +465,8 @@ func TestSpawnNamesItsRunner(t *testing.T) {
 	}).Body.Close()
 
 	// One naming the runner, one naming none.
-	named := spawnOK(t, ts, map[string]any{"id": "on-gpu", "doer": map[string]any{"agent": "fake"}, "prompt": "t", "runner": "verse.runners.gpu"})
-	deflt := spawnOK(t, ts, map[string]any{"id": "on-default", "doer": map[string]any{"script": "true"}})
+	named := spawnOK(t, ts, map[string]any{"id": "on-gpu", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t", "runner": "verse.runners.gpu"}})
+	deflt := spawnOK(t, ts, map[string]any{"id": "on-default", "spawn": map[string]any{"script": "true", "environment": openEnv}})
 
 	// It really went there: the runner face has it, and the default one does not.
 	remote := client.HTTP(face.URL).(task.Lister)
@@ -497,9 +507,7 @@ func TestSpawnNamingAnUninstalledRunnerIsRefused(t *testing.T) {
 	defer ts.Close()
 
 	// The ad-hoc path.
-	resp := postTony(t, ts.URL+"/tasks", map[string]any{
-		"id": "nope", "doer": map[string]any{"agent": "fake"}, "prompt": "t", "runner": "verse.runners.typo",
-	})
+	resp := postTony(t, ts.URL+"/tasks", map[string]any{"id": "nope", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t", "runner": "verse.runners.typo"}})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("spawn naming an uninstalled runner = %s, want 400", resp.Status)
@@ -517,7 +525,7 @@ func TestSpawnNamingAnUninstalledRunnerIsRefused(t *testing.T) {
 	// The charter path, where the refusal has to travel as a failed spawn rather than as an
 	// HTTP status, because there is nobody to answer.
 	h := srv.spawnerFor(srv.Store, "", srv.Eng)("fired", launch.Spec{
-		Doer: runner.Doer{Script: "t"}, Runner: "verse.runners.typo",
+		Script: "t", Runner: "verse.runners.typo",
 	})
 	if h == nil {
 		t.Fatal("a refused charter spawn returned no handle at all")
@@ -572,7 +580,7 @@ func TestRestartReattachesEvenAfterTheRunnerIsRemoved(t *testing.T) {
 	postTony(t, ts.URL+"/runners", map[string]any{
 		"name": "gpu", "url": face.URL,
 	}).Body.Close()
-	id := spawnOK(t, ts, map[string]any{"id": "survivor", "doer": map[string]any{"agent": "fake"}, "prompt": "long work", "runner": "verse.runners.gpu"})
+	id := spawnOK(t, ts, map[string]any{"id": "survivor", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "long work", "runner": "verse.runners.gpu"}})
 	ts.Close()
 
 	// The drive tears the runner down: the ENTITY goes, the work does not. This is what
@@ -600,9 +608,7 @@ func TestRestartReattachesEvenAfterTheRunnerIsRemoved(t *testing.T) {
 	// there is reachable, and the name is not installed.
 	ts2 := httptest.NewServer(second.Handler())
 	defer ts2.Close()
-	resp := postTony(t, ts2.URL+"/tasks", map[string]any{
-		"id": "later", "doer": map[string]any{"agent": "fake"}, "prompt": "t", "runner": "verse.runners.gpu",
-	})
+	resp := postTony(t, ts2.URL+"/tasks", map[string]any{"id": "later", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t", "runner": "verse.runners.gpu"}})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("spawn naming the removed runner = %s, want 400", resp.Status)
@@ -620,8 +626,8 @@ func TestOperatorCanSeeWhere(t *testing.T) {
 	postTony(t, ts.URL+"/runners", map[string]any{
 		"name": "gpu", "url": face.URL,
 	}).Body.Close()
-	named := spawnOK(t, ts, map[string]any{"id": "there", "doer": map[string]any{"agent": "fake"}, "prompt": "t", "runner": "verse.runners.gpu"})
-	here := spawnOK(t, ts, map[string]any{"id": "here", "doer": map[string]any{"script": "true"}})
+	named := spawnOK(t, ts, map[string]any{"id": "there", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t", "runner": "verse.runners.gpu"}})
+	here := spawnOK(t, ts, map[string]any{"id": "here", "spawn": map[string]any{"script": "true"}})
 
 	// ps names the runner per task, and the default reads `local` rather than blank.
 	byID := map[string]map[string]any{}
@@ -680,7 +686,7 @@ func TestPsDoesNotFanOutOverRunners(t *testing.T) {
 	postTony(t, ts.URL+"/runners", map[string]any{
 		"name": "gpu", "url": face.URL,
 	}).Body.Close()
-	live := spawnOK(t, ts, map[string]any{"id": "live", "doer": map[string]any{"agent": "fake"}, "prompt": "t", "runner": "verse.runners.gpu"})
+	live := spawnOK(t, ts, map[string]any{"id": "live", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t", "runner": "verse.runners.gpu"}})
 
 	// A second installed runner that is not there at all, carrying work of its own.
 	gone := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
@@ -690,7 +696,7 @@ func TestPsDoesNotFanOutOverRunners(t *testing.T) {
 		"name": "ghost", "url": goneURL,
 	}).Body.Close()
 	setInstance(t, srv, "stranded", entity.Obj{
-		"status": "running", "doer": map[string]any{"agent": "fake"}, "prompt": "t", "runner": goneURL, "runnerName": "verse.runners.ghost",
+		"status": "running", "agent": map[string]any{"name": "fake"}, "prompt": "t", "runner": goneURL, "runnerName": "verse.runners.ghost",
 	})
 
 	ids := map[string]bool{}

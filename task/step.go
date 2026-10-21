@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"path"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -12,7 +11,8 @@ import (
 )
 
 // Step is what a task is about to do: a call of a system's verb, `<system>.<verb>`
-// (`commands.run`), and its fields, the verb's params (`command: make test`). A policy's rows
+// (`commands.run`), and its fields, its block's attributes and its verb's fields as the
+// document names them (`command: make test`). An autonomy's rows
 // match on steps, and a question about one says which.
 //
 // A step is not every action. Reading a file or listing a directory isn't one, and nothing asks
@@ -24,13 +24,13 @@ type Step struct {
 
 // The steps a gate can name: each a verb of a system (package systems), `<system>.<verb>`, and
 // naming one here claims it as a step the runner stops, with the fields the code fills on it,
-// which systems.Check holds to the document's params. Every verb a document describes is a
-// step, so a row on it decides it as written. A builder fills the fields a call has: an update
+// which systems.Check holds to what the document gives the step. Every verb a document
+// describes is a step, so a row on it decides it as written. A builder fills the fields a call has: an update
 // that keeps its base has no `base`, a read of a channel no `thread`, and a row on an absent
 // field does not match.
 var (
-	StepGitPush           = systems.Step("git", "push", "repo", "ref", "delete", "force", "exists", "own")
-	StepGitFetch          = systems.Step("git", "fetch", "repo")
+	StepGitPush           = systems.Step("git", "push", "repo", "from", "ref", "delete", "force", "exists", "own")
+	StepGitFetch          = systems.Step("git", "fetch", "repo", "from")
 	StepGitHubCreatePR    = systems.Step("github", "create-pr", "repo", "base", "head", "own")
 	StepGitHubUpdatePR    = systems.Step("github", "update-pr", "repo", "head", "base", "own")
 	StepFilesWrite        = systems.Step("files", "write", "path")
@@ -58,6 +58,9 @@ var (
 	StepSlackReact = systems.Step("slack", "react", "channel", "emoji")
 	// A question the doer puts to a person, the `question-ask` tool's or codex's own.
 	StepQuestionAsk = systems.Step("question", "ask")
+	// A connection a task opens through the runner's proxy, which only a network of allow has:
+	// the proxy decides it, by the host and the port it sees.
+	StepNetworkTCPClient = systems.Step("network", "tcp-client", "mode", "host", "port")
 )
 
 // String is the step in one line: `files.write path=db/x.sql`.
@@ -90,27 +93,4 @@ func StepOf(tu ToolUse) (Step, bool) {
 // A symlink inside the root can still lead elsewhere in it; the gate sees the path as given.
 func rootRelative(p string) string {
 	return strings.TrimPrefix(path.Clean("/"+p), "/")
-}
-
-// fieldMatch matches one field: `*` within a segment and `**` across, or, for a command, the
-// whole string with `*` matching anything.
-func fieldMatch(pattern, value string, command bool) bool {
-	var re strings.Builder
-	re.WriteString("(?s)^") // `*` crosses a newline: a command can be several lines
-	for i := 0; i < len(pattern); i++ {
-		switch {
-		case pattern[i] == '*' && (command || strings.HasPrefix(pattern[i:], "**")):
-			re.WriteString(".*")
-			if !command {
-				i++
-			}
-		case pattern[i] == '*':
-			re.WriteString("[^/]*")
-		default:
-			re.WriteString(regexp.QuoteMeta(pattern[i : i+1]))
-		}
-	}
-	re.WriteString("$")
-	ok, _ := regexp.MatchString(re.String(), value)
-	return ok
 }

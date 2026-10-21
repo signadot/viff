@@ -79,7 +79,8 @@ A rule in a charter:
     patch:
       stage: reviewing
     spawn:
-      doer: {script: 'echo reviewing "$SUBJECT"', with: {network: {mode: open}, env: {SUBJECT: $subject}}}
+      script: 'echo reviewing "$SUBJECT"'
+      environment: {vars: {SUBJECT: $subject}, systems: {network: {mode: open}}}
     onDone:
       patch:
         stage: reviewed
@@ -138,12 +139,12 @@ a spawning action that cannot latch.
     patch:
       stage: reviewing
     spawn:
-      doer:
-        agent: verse
-        with:
+      agent: {name: verse}
+      environment:
+        systems:
           network: {mode: open}
       prompt: "review $subject"
-      policy:
+      autonomy:
       - then: allow
 - name: ship-green
   condition:
@@ -246,7 +247,7 @@ There are two kinds.
 
 | `kind` | What happened | What the entry says |
 |---|---|---|
-| `failed` | An action did not do what the rule says: a reference did not resolve, a patch or a derive failed, no doer was eligible for a spawn, a gate's `pose` did not expand. | `chain`, the place in the rule (`copies`, `copies.onDone`, `copies.approval.onDenied`), and `subject` |
+| `failed` | An action did not do what the rule says: a reference did not resolve, a patch or a derive failed, no agent was eligible for a spawn, a gate's `pose` did not expand. | `chain`, the place in the rule (`copies`, `copies.onDone`, `copies.approval.onDenied`), and `subject` |
 | `unread` | The rule could not read the store at a commit. It did not evaluate that commit, and it does not go back to it. | `rev`, the commit |
 
 Each entry is the latest of its kind. `count` is how many times it happened since the rule was
@@ -259,7 +260,7 @@ A completion hook that fails is written on the record of its task, under `hook`.
 
 A spawn that starts and then fails is not the rule's trouble. It is a task that failed, such
 as a spawn that names a runner that is not installed. The task's record says so
-(`verse task`), and the rule's `onFailed` hook fires. A spawn whose doer names an agent the
+(`verse task`), and the rule's `onFailed` hook fires. A spawn naming an agent the
 runner does not offer is refused at install.
 
 ## Flow: a subject-match over live tasks

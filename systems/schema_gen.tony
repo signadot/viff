@@ -2,24 +2,40 @@
 context:
 - tony-format/context
 define:
+  default: .[string]
   description: .[string]
   form: .[string]
   name: .[string]
+  required: .[bool]
+  unique: .[bool]
+  values: .[array(string)]
 signature:
-  name: verse-system-param
+  name: verse-system-attribute
 ---
 context:
 - tony-format/context
 define:
   description: .[string]
+  form: .[string]
   name: .[string]
-  params: .[array(verse-system-param)]
+  required: .[bool]
+  values: .[array(string)]
+signature:
+  name: verse-system-field
+---
+context:
+- tony-format/context
+define:
+  description: .[string]
+  fields: .[array(verse-system-field)]
+  name: .[string]
 signature:
   name: verse-system-verb
 ---
 context:
 - tony-format/context
 define:
+  attributes: .[array(verse-system-attribute)]
   description: .[string]
   name: .[string]
   verbs: .[array(verse-system-verb)]

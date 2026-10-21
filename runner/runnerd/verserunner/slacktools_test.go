@@ -12,6 +12,7 @@ import (
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd/delivery"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -62,7 +63,7 @@ func (f *slackAPI) serve(t *testing.T) string {
 
 // slackRunner is a verse runner that holds a Slack bot token and no repos, under the ceiling
 // given.
-func slackRunner(t *testing.T, api string, ceiling task.Policy) client.Launcher {
+func slackRunner(t *testing.T, api string, ceiling systems.Ceiling) client.Launcher {
 	t.Helper()
 	return serveConfigured(t, Config{Systems: map[string]System{"slack": {Credential: "SLACK_BOT_TOKEN", Ceiling: ceiling}}},
 		Secrets{}, Tokens{Slack: "xoxb-runners-own", SlackAPI: api})
@@ -71,21 +72,22 @@ func slackRunner(t *testing.T, api string, ceiling task.Policy) client.Launcher 
 // A SCRIPT POSTS TO A CHANNEL ITS POLICY ASKS ABOUT, AND READS A THREAD BACK, with the runner's
 // bot token, which the script never holds. The question names the channel and shows the text;
 // the approval has the runner post it, ending with the footer that names the task; a post to a
-// channel the runner's ceiling closes is refused at the step, the script reading the refusal;
-// and a launch whose policy would ask about posting there is refused at install, naming the
-// policy's row and the ceiling's.
+// channel its environment does not give is refused at the step, the script reading the refusal;
+// and a launch whose environment would give posting where the runner's ceiling does not is
+// refused at install, saying what the ceiling gives.
 func TestAScriptPostsToSlackUnderAnAskingPolicy(t *testing.T) {
 	withCallTool(t)
 	api := &slackAPI{}
-	ceiling := task.Policy{{Name: "deploys", Match: &task.Match{Params: map[string]string{"channel": "deploys"}}, Then: task.Then{Mode: task.ThenAllow}},
-		{Then: task.Then{Mode: task.ThenDeny}}}
-	rt := slackRunner(t, api.serve(t), ceiling)
+	deploys := map[string][]systems.Shape{"post": {{"channel": "deploys"}}, "read": {{"channel": "deploys"}}}
+	rt := slackRunner(t, api.serve(t), systems.Ceiling{{Verbs: deploys}})
+	env := envOf(netOpen, nil, nil)
+	env.Systems["slack"] = []systems.Block{{Verbs: deploys}}
 	script := "#!/bin/sh\n" +
 		"verse-call-tool slack-post -channel '#deploys' -text 'v1.3 is rolling out'\necho \"exit=$?\"\n" +
 		"verse-call-tool slack-post -channel general -text 'hello all'\necho \"exit=$?\"\n" +
 		"verse-call-tool slack-read -channel deploys -thread 1790000000.000100\n" +
 		"env | grep -c xoxb || true"
-	rt.Launch(runner.Launch{ID: "s1", Doer: runner.Doer{Script: script, With: runner.With{Network: netOpen}}, Policy: task.Policy{
+	rt.Launch(runner.Launch{ID: "s1", Script: script, Environment: env, Autonomy: task.Autonomy{
 		{Name: "announce", Match: &task.Match{System: "slack", Verb: "post", Params: map[string]string{"channel": "deploys"}}, Then: task.Then{Mode: task.ThenAsk}},
 		{Match: &task.Match{System: "slack"}, Then: task.Then{Mode: task.ThenAllow}},
 		{Then: task.Then{Mode: task.ThenAllow}}}})
@@ -102,7 +104,7 @@ func TestAScriptPostsToSlackUnderAnAskingPolicy(t *testing.T) {
 	}
 	for _, want := range []string{
 		"posted in #deploys: ts 1790000000.000200 https://acme.slack.com/archives/C1/p1790000000000200\nexit=0",
-		"denied by ceiling: refused by the runner's ceiling, its row policy[1] for slack: slack.post channel=general\nexit=3",
+		"outside the environment: no shape of `post` the environment's `slack` gives matches (channel=general): it gives {channel: deploys}\nexit=3",
 		"#deploys, the thread 1790000000.000100: 2 message(s), newest last\n1790000000.000100 U1: shipping v1.3? [1 replies]\n1790000000.000150 U2: after the migration",
 	} {
 		if !strings.Contains(snap.Result, want) {
@@ -128,11 +130,11 @@ func TestAScriptPostsToSlackUnderAnAskingPolicy(t *testing.T) {
 		t.Errorf("Slack saw %v, want the one post in C1 with the task's footer", api.posted)
 	}
 
-	h := rt.Launch(runner.Launch{ID: "s2", Doer: runner.Doer{Script: "#!/bin/sh\necho hi", With: runner.With{Network: netOpen}}, Policy: task.Policy{
-		{Name: "everyone", Match: &task.Match{System: "slack", Verb: "post", Params: map[string]string{"channel": "general"}}, Then: task.Then{Mode: task.ThenAsk}},
-		{Then: task.Then{Mode: task.ThenAllow}}}})
-	if err := h.Err(); !strings.Contains(err, "policy[1]") || !strings.Contains(err, "slack.post channel=general") || !strings.Contains(err, "its row policy[1]: deny everything") {
-		t.Errorf("a policy asking about a channel the ceiling closes: %q", err)
+	general := envOf(netOpen, nil, nil)
+	general.Systems["slack"] = []systems.Block{{Verbs: map[string][]systems.Shape{"post": {{"channel": "general"}}}}}
+	h := rt.Launch(runner.Launch{ID: "s2", Script: "#!/bin/sh\necho hi", Environment: general, Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}})
+	if err := h.Err(); !strings.Contains(err, "beyond this runner's ceiling for slack") || !strings.Contains(err, "{channel: deploys}") {
+		t.Errorf("an environment posting where the ceiling closes: %q", err)
 	}
 }
 
@@ -183,16 +185,16 @@ func TestASlackToolsStepNamesTheChannel(t *testing.T) {
 }
 
 // A RUNNER PERFORMS SLACK WHERE ITS CONFIGURATION NAMES THE BOT TOKEN'S VARIABLE, and every offer
-// then holds the system; a `slack` section naming none is refused, saying what it
-// needs, and a ceiling that asks is refused as every ceiling that asks is.
+// then holds the system, closed until a ceiling says what of it; a `slack` section naming none is
+// refused, saying what it needs, and a ceiling its document refuses is refused.
 func TestARunnerPerformsSlackWithItsBotToken(t *testing.T) {
 	c := Config{Systems: map[string]System{"slack": {Credential: "SLACK_BOT_TOKEN"}}}
 	if err := c.Check(); err != nil {
 		t.Fatal(err)
 	}
 	for _, o := range c.Describe(Secrets{PortkeyAPIKey: "k"}, nil).Offers {
-		if s, ok := o.Systems["slack"]; !ok || len(s.Ceiling) != 1 {
-			t.Errorf("the offer %s/%v does not intercept slack, with its ceiling: %+v", o.Agent, o.Script, o.Systems["slack"])
+		if s, ok := o.Systems["slack"]; !ok || len(s.Ceiling) != 0 {
+			t.Errorf("the offer %s/%v does not intercept slack, with its ceiling: %+v", o.Name(), o.Script, o.Systems["slack"])
 		}
 	}
 	t.Setenv("SLACK_BOT_TOKEN", "")
@@ -203,14 +205,8 @@ func TestARunnerPerformsSlackWithItsBotToken(t *testing.T) {
 	if err := none.Check(); err == nil || !strings.Contains(err.Error(), "Slack bot token") {
 		t.Errorf("a slack section with no credential: %v", err)
 	}
-	asks := Config{Systems: map[string]System{"slack": {Credential: "K", Ceiling: task.Policy{{Then: task.Then{Mode: task.ThenAsk}}}}}}
-	if err := asks.Check(); err == nil {
-		t.Error("a ceiling that asks passed")
-	}
-	// A withhold in a ceiling would be refused at the launch and let through at the act.
-	withholds := Config{Systems: map[string]System{"slack": {Credential: "K", Ceiling: task.Policy{
-		{Match: &task.Match{Verb: "post"}, Then: task.Then{Mode: task.ThenWithhold}}}}}}
-	if err := withholds.Check(); err == nil || !strings.Contains(err.Error(), "withholding is a task's policy's") {
-		t.Errorf("a ceiling that withholds: %v", err)
+	unknown := Config{Systems: map[string]System{"slack": {Credential: "K", Ceiling: systems.Ceiling{{Verbs: map[string][]systems.Shape{"shout": {{}}}}}}}}
+	if err := unknown.Check(); err == nil || !strings.Contains(err.Error(), `no attribute or verb "shout"`) {
+		t.Errorf("a ceiling giving a verb slack has not: %v", err)
 	}
 }

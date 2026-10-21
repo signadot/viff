@@ -14,13 +14,15 @@ import (
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/delivery"
 	"github.com/signadot/verse/runner/runnerd/workspace"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
 // A REPLACED POLICY IS CHECKED BY THE RUNNER'S OWN PROCESS, before the task's process hears of
 // it, and once the task has taken it, it is the one the runner decides the task's acts by. The
-// task's process here is a stub that takes anything, so what refuses the slide past the ceiling
-// is this side, and what the channel holds afterwards is the replacement.
+// task's process here is a stub that takes anything, so what refuses a slide reaching past the
+// environment (which lies within the ceiling) is this side, and what the channel holds afterwards
+// is the replacement.
 func TestAReplacedPolicyIsCheckedByTheRunnerAndReachesItsChannel(t *testing.T) {
 	var reached atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -33,17 +35,16 @@ func TestAReplacedPolicyIsCheckedByTheRunnerAndReachesItsChannel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	allow, deny, ask := task.Then{Mode: task.ThenAllow}, task.Then{Mode: task.ThenDeny}, task.Then{Mode: task.ThenAsk}
+	allow, ask := task.Then{Mode: task.ThenAllow}, task.Then{Mode: task.ThenAsk}
 	h := NewSubprocessHandler(SubprocessConfig{Log: io.Discard})
-	h.Describe(runner.Description{Offers: []runner.Offer{{Agent: "verse", With: builds(),
+	h.Describe(runner.Description{Version: runner.DescriptionVersion, Offers: []runner.Offer{{Agent: &runner.AgentOffer{Name: "verse"},
 		Systems: map[string]runner.System{
-			"git": {Ceiling: task.Policy{
-				{Name: "no-release", Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"ref": "refs/heads/release/**"}}, Then: deny},
-				{Then: allow},
-			}},
+			"git": {Ceiling: ceiling(t, `{repo: "github.com/acme/**", fetch: {}, push: {ref: "refs/heads/verse/**"}}`)},
 		}}}})
-	l := &runner.Launch{ID: "x", Doer: runner.Doer{Agent: "verse", With: runner.With{Git: []runner.Repo{{Repo: "acme/app"}}}},
-		Policy: task.Policy{{Match: &task.Match{System: "git"}, Then: ask}, {Then: ask}}}
+	env := gitEnv("acme/app")
+	env.Systems["git"][0].Verbs["push"] = []systems.Shape{{"ref": "refs/heads/verse/**"}}
+	l := &runner.Launch{ID: "x", Prompt: "p", Agent: &runner.Agent{Name: "verse"}, Environment: env,
+		Autonomy: task.Autonomy{{Match: &task.Match{System: "git"}, Then: ask}, {Then: ask}}}
 	ch, err := delivery.Open(l.ID, &workspace.Workspace{}, nil, func(workspace.Repo) (string, error) { return "", nil }, delivery.Services{}, nil, l, io.Discard)
 	if err != nil {
 		t.Fatal(err)
@@ -60,7 +61,7 @@ func TestAReplacedPolicyIsCheckedByTheRunnerAndReachesItsChannel(t *testing.T) {
 
 	put := func(body string) (int, string) {
 		t.Helper()
-		req, err := http.NewRequest(http.MethodPut, srv.URL+"/tasks/x/policy", strings.NewReader(body))
+		req, err := http.NewRequest(http.MethodPut, srv.URL+"/tasks/x/autonomy", strings.NewReader(body))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -74,26 +75,26 @@ func TestAReplacedPolicyIsCheckedByTheRunnerAndReachesItsChannel(t *testing.T) {
 		return res.StatusCode, string(msg)
 	}
 
-	// Past the ceiling: refused here, and the task's process never asked.
-	if code, msg := put(`{policy: [{name: r, match: {system: git, verb: push, ref: refs/heads/release/1.0}, then: allow}, {then: ask}]}`); code != http.StatusBadRequest || !strings.Contains(msg, "no-release") {
-		t.Errorf("a slide past the ceiling = %d %q, want 400 naming the ceiling's row", code, msg)
+	// Past the environment: refused here, and the task's process never asked.
+	if code, msg := put(`{autonomy: [{name: r, match: {system: git, verb: push, ref: refs/heads/release/1.0}, then: allow}, {then: ask}]}`); code != http.StatusBadRequest || !strings.Contains(msg, "matches nothing the environment gives") {
+		t.Errorf("a slide past the environment = %d %q, want 400 saying so", code, msg)
 	}
 	if n := reached.Load(); n != 0 {
 		t.Errorf("the task's process was asked %d time(s) about a policy the runner refuses", n)
 	}
-	if got := ch.Policy(); !reflect.DeepEqual(got, l.Policy) {
+	if got := ch.Autonomy(); !reflect.DeepEqual(got, l.Autonomy) {
 		t.Errorf("the channel's policy moved on a refused replacement: %v", got)
 	}
 
 	// Within it: the task's process takes it, and the channel holds it from then on.
-	want := task.Policy{{Name: "auto", Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"ref": "refs/heads/verse/auto/*"}}, Then: allow}, {Then: ask}}
-	if code, msg := put(`{policy: [{name: auto, match: {system: git, verb: push, ref: "refs/heads/verse/auto/*"}, then: allow}, {then: ask}]}`); code != http.StatusNoContent {
+	want := task.Autonomy{{Name: "auto", Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"ref": "refs/heads/verse/auto/*"}}, Then: allow}, {Then: ask}}
+	if code, msg := put(`{autonomy: [{name: auto, match: {system: git, verb: push, ref: "refs/heads/verse/auto/*"}, then: allow}, {then: ask}]}`); code != http.StatusNoContent {
 		t.Fatalf("a replacement within the ceiling = %d %q, want 204", code, msg)
 	}
 	if n := reached.Load(); n != 1 {
 		t.Errorf("the task's process was asked %d time(s), want once", n)
 	}
-	if got := ch.Policy(); !reflect.DeepEqual(got, want) {
+	if got := ch.Autonomy(); !reflect.DeepEqual(got, want) {
 		t.Errorf("the channel's policy after the replacement:\n got %+v\nwant %+v", got, want)
 	}
 }

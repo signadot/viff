@@ -16,7 +16,7 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/workspace"
-	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/systems"
 )
 
 // openIssues is a workspace on one repository, svc, checked out from a fresh origin, and the
@@ -44,8 +44,8 @@ func TestAGitIssueIsFiledHereAndPushedThere(t *testing.T) {
 	if remote, _ := issuelib.NewGitStoreAt(origin, io.Discard).List(false); len(remote) != 0 {
 		t.Fatalf("the filing left before any push: %+v", remote)
 	}
-	s := &Server{Mirrors: m, Log: io.Discard}
-	tk := Task{ID: "i1", Workspace: ws, Credential: func(workspace.Repo) (string, error) { return "", nil }}
+	s := &Server{Mirrors: m, Log: io.Discard, Ceilings: performs("git-issue")}
+	tk := Task{ID: "i1", Workspace: ws, Launch: within([]string{"acme/svc"}, "git-issue"), Credential: func(workspace.Repo) (string, error) { return "", nil }}
 	rep := s.answer(tk, frame(t, Request{Op: OpGitIssuePush, Repo: "svc"}))
 	if !rep.OK || !strings.Contains(rep.Out, "pushed the issues of svc (1 ref(s))") {
 		t.Fatalf("push: %+v", rep)
@@ -73,8 +73,8 @@ func TestATrackerIsPulledIntoTheCheckout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &Server{Mirrors: m, Log: io.Discard}
-	tk := Task{ID: "f2", Workspace: ws, Credential: func(workspace.Repo) (string, error) { return "", nil }}
+	s := &Server{Mirrors: m, Log: io.Discard, Ceilings: performs("git-issue")}
+	tk := Task{ID: "f2", Workspace: ws, Launch: within([]string{"acme/svc"}, "git-issue"), Credential: func(workspace.Repo) (string, error) { return "", nil }}
 	rep := s.answer(tk, frame(t, Request{Op: OpGitIssuePull, Repo: "svc"}))
 	if !rep.OK || !strings.Contains(rep.Out, "1 open:") || !strings.Contains(rep.Out, filed.ID+"  the roof leaks") || len(rep.Updated) != 1 {
 		t.Fatalf("reply: %+v", rep)
@@ -106,7 +106,7 @@ func TestAGitHubIssueIsOpenedWithTheRunnersToken(t *testing.T) {
 	defer forge.Close()
 	ws := githubTree("acme/app", "https://github.com/acme/app.git")
 	s := &Server{Log: io.Discard, Services: Services{GitHubAPI: forge.URL}, Ceilings: performs("github-issue")}
-	tk := Task{ID: "i2", Workspace: ws, Credential: func(workspace.Repo) (string, error) { return "the-runners-own", nil }}
+	tk := Task{ID: "i2", Workspace: ws, Launch: within([]string{"acme/app"}, "github-issue"), Credential: func(workspace.Repo) (string, error) { return "the-runners-own", nil }}
 	rep := s.answer(tk, frame(t, Request{Op: OpGitHubIssueCreate, Repo: "app", Title: "the roof leaks", Body: "when it rains"}))
 	if !rep.OK || rep.Out != "opened issue #7 at acme/app: https://github.com/acme/app/issues/7" {
 		t.Fatalf("reply: %+v", rep)
@@ -115,7 +115,7 @@ func TestAGitHubIssueIsOpenedWithTheRunnersToken(t *testing.T) {
 		t.Errorf("the forge saw %+v", got)
 	}
 	local := githubTree("x/l", "/tmp/x.git")
-	if rep := s.answer(Task{ID: "i3", Workspace: local, Credential: tk.Credential}, frame(t, Request{Op: OpGitHubIssueCreate, Repo: "l", Title: "x"})); rep.Refused == "" {
+	if rep := s.answer(Task{ID: "i3", Workspace: local, Launch: tk.Launch, Credential: tk.Credential}, frame(t, Request{Op: OpGitHubIssueCreate, Repo: "l", Title: "x"})); rep.Refused == "" {
 		t.Errorf("a local repository: %+v, want a refusal", rep)
 	}
 }
@@ -150,7 +150,7 @@ func TestALinearIssueIsCreatedWithTheRunnersCredential(t *testing.T) {
 	}))
 	defer api.Close()
 	s := &Server{Log: io.Discard, Services: Services{LinearAuth: "lin_api_x", LinearAPI: api.URL}, Ceilings: performs("linear-issue")}
-	tk := Task{ID: "i4", Workspace: &workspace.Workspace{}}
+	tk := Task{ID: "i4", Workspace: &workspace.Workspace{}, Launch: within(nil, "linear-issue")}
 	rep := s.answer(tk, frame(t, Request{Op: OpLinearIssueCreate, Team: "ENG", Title: "the roof leaks", Body: "when it rains"}))
 	if !rep.OK || rep.Out != "created ENG-42: https://linear.app/acme/issue/ENG-42" {
 		t.Fatalf("reply: %+v", rep)
@@ -204,7 +204,7 @@ func TestCommentAndCloseAtTheRemoteTrackers(t *testing.T) {
 	defer api.Close()
 	ws := githubTree("acme/app", "https://github.com/acme/app.git")
 	s := &Server{Log: io.Discard, Services: Services{GitHubAPI: forge.URL, LinearAuth: "k", LinearAPI: api.URL}, Ceilings: performs("github-issue", "linear-issue")}
-	tk := Task{ID: "v1", Workspace: ws, Credential: func(workspace.Repo) (string, error) { return "tok", nil }}
+	tk := Task{ID: "v1", Workspace: ws, Launch: within([]string{"acme/app"}, "github-issue", "linear-issue"), Credential: func(workspace.Repo) (string, error) { return "tok", nil }}
 
 	if rep := s.answer(tk, frame(t, Request{Op: OpGitHubIssueComment, Repo: "app", Issue: "7", Body: "on it"})); !rep.OK || !strings.Contains(rep.Out, "commented on issue #7 at acme/app") {
 		t.Errorf("github comment: %+v", rep)
@@ -230,10 +230,10 @@ func TestCommentAndCloseAtTheRemoteTrackers(t *testing.T) {
 }
 
 // performs is a runner's ceilings for the systems named, each allowing everything.
-func performs(systems ...string) map[string]task.Policy {
-	out := map[string]task.Policy{}
-	for _, s := range systems {
-		out[s] = task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}
+func performs(names ...string) map[string]systems.Ceiling {
+	out := map[string]systems.Ceiling{}
+	for _, s := range names {
+		out[s] = systems.Open()
 	}
 	return out
 }

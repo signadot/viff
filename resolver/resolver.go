@@ -188,7 +188,7 @@ func CheckFields(node *ir.Node) error {
 // checkFields refuses a field that is unknown, and one that is known-but-unread with the
 // reason. The two are different news: one is a typo, the other is a thing that is coming.
 func checkFields(node *ir.Node, what string, fields map[string]string, descend func(string, *ir.Node) error) error {
-	node = unwrap(node)
+	node = ir.Uncomment(node)
 	if node == nil || node.Type != ir.ObjectType {
 		return nil // not an object: the decoder's complaint to make, in its own terms
 	}
@@ -214,22 +214,12 @@ func checkFields(node *ir.Node, what string, fields map[string]string, descend f
 			return fmt.Errorf("%s: %q is not read yet — %s", what, name, notYet)
 		}
 		if descend != nil {
-			if err := descend(name, unwrap(node.Values[i])); err != nil {
+			if err := descend(name, ir.Uncomment(node.Values[i])); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
-}
-
-// unwrap steps past a comment wrapper, as the charter's own reader does: a resolver file is
-// exactly where a person writes comments, and a commented value is a CommentType node holding
-// the real one.
-func unwrap(n *ir.Node) *ir.Node {
-	for n != nil && n.Type == ir.CommentType && len(n.Values) > 0 {
-		n = n.Values[0]
-	}
-	return n
 }
 
 // List reads every installed resolver, ordered by name.

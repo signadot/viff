@@ -204,7 +204,7 @@ rules:
       # no branch. "Its own" is two rows, on facts the runner fills: a branch not at the forge
       # (`exists`), and one whose tip this task made (`own`). Another task's `verse/auto/*` is
       # neither, so a fast-forward onto it is refused with the rest.
-      policy:
+      autonomy:
       - {match: {system: git, verb: push, ref: "refs/heads/verse/auto/*", exists: "false", force: "false", delete: "false"}, then: allow}
       - {match: {system: git, verb: push, ref: "refs/heads/verse/auto/*", own: "true", force: "false", delete: "false"}, then: allow}
       - {match: {system: git, verb: push}, then: deny}
@@ -214,13 +214,21 @@ rules:
       - {match: {system: agent}, then: allow}
       - {match: {system: question}, then: allow}
       - {then: allow}
-      doer:
-        agent: verse
-        with:
+      agent: {name: verse}
+      environment:
+        systems:
           network: {mode: open}
           git:
           - repo: signadot/verse
             from: main
+            fetch: {}
+            push:
+            - {ref: "refs/heads/verse/auto/*", exists: "false", force: "false", delete: "false"}
+            - {ref: "refs/heads/verse/auto/*", own: "true", force: "false", delete: "false"}
+          files: {}
+          commands: {}
+          agent: {}
+          question: {}
       # THE ANSWER IS A CONTRACT rather than a request in the prose. "Your final message is JSON"
       # was obeyed on one run and ignored on the next, and an unparseable answer is not a bad
       # answer — it is no answer: `$data` resolves to nothing, the completion hook is refused,

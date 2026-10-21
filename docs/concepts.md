@@ -90,7 +90,7 @@ in two places:
 | Face | Who uses it | How |
 |---|---|---|
 | **reflected** | charters | an [iod](glossary.md#iod) writes what the system holds into the store as entities, and a rule reacts to them. What a rule writes back, such as a comment or a tag, goes out to the system through the same iod. |
-| **called** | tasks | a task calls the system's verbs, such as `git.push` or `linear-issue.create`. The task's [policy](glossary.md#policy) decides each call. The runner makes the call with a credential the task never holds, within the runner's [ceiling](glossary.md#ceiling). |
+| **called** | tasks | a task calls the system's verbs, such as `git.push` or `linear-issue.create`. The task's [environment](glossary.md#environment) gives it, and its [autonomy](glossary.md#autonomy) decides each call. The runner makes the call with a credential the task never holds, within the runner's [ceiling](glossary.md#ceiling). |
 
 Verse describes each system once, as a document that names its verbs and what each verb is
 about. [Systems](systems/README.md) has a page for each.

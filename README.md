@@ -46,7 +46,8 @@ The flow of work is therefore not written down anywhere. Verse *derives* it when
 | the mirror | what has already happened |
 | the live registry | what is running now |
 
-You write the rules, and each rule's policy says what its task may do, and what it asks about.
+You write the rules, and each rule's spawn says what its task may reach, its environment, and
+what it does without asking, its autonomy.
 
 ## Quick start
 

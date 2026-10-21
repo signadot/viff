@@ -22,7 +22,7 @@ func reasonRunner(t *testing.T, reason string) *httptest.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /describe", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", codec.MediaType(codec.Tony))
-		w.Write([]byte("{offers: [{agent: codex, with: {network: [open, none, allow]}}]}\n"))
+		w.Write([]byte("{version: 2, offers: [{agent: {name: codex}, systems: {network: {builds: {mode: [open, none, allow]}}}}]}\n"))
 	})
 	mux.HandleFunc("POST /tasks", func(w http.ResponseWriter, r *http.Request) {
 		var l runner.Launch
@@ -72,23 +72,21 @@ func TestAFailedTaskOnANamedRunnerSaysWhy(t *testing.T) {
 	defer ts.Close()
 	postTony(t, ts.URL+"/runners", map[string]any{"name": "codex", "url": face.URL}).Body.Close()
 
-	id := spawnOK(t, ts, map[string]any{
-		"id": "run-quota", "doer": map[string]any{"agent": "codex"}, "prompt": "triage the issue", "runner": "verse.runners.codex",
-	})
+	id := spawnOK(t, ts, map[string]any{"id": "run-quota", "spawn": map[string]any{"agent": map[string]any{"name": "codex"}, "prompt": "triage the issue", "runner": "verse.runners.codex"}})
 	waitTerminal(t, srv.Store, id)
 
 	rec := instanceOf(t, srv, id)
 	if rec["status"] != string(task.Failed) || rec["err"] != reason {
 		t.Fatalf("the record of a failed task: status %v, err %v; want failed with the frame's reason", rec["status"], rec["err"])
 	}
-	if rec["prompt"] != "triage the issue" || rec["doer"] != "codex" {
-		t.Errorf("the record says prompt %v, doer %v; want what the spawn said", rec["prompt"], rec["doer"])
+	if agent, _ := rec["agent"].(map[string]any); rec["prompt"] != "triage the issue" || agent["name"] != "codex" {
+		t.Errorf("the record says prompt %v, agent %v; want what the spawn said", rec["prompt"], rec["agent"])
 	}
 
 	var got api.Task
 	decodeResp(t, getAs(t, tester, ts.URL+"/tasks/"+id), &got)
-	if got.Status != task.Failed || got.Err != reason || got.Prompt != "triage the issue" || got.Doer != "codex" {
-		t.Errorf("task get = %+v; want the failure's reason, the prompt and the doer", got)
+	if got.Status != task.Failed || got.Err != reason || got.Prompt != "triage the issue" || got.Who() != "codex" {
+		t.Errorf("task get = %+v; want the failure's reason, the prompt and the agent", got)
 	}
 	var rows []api.Task
 	decodeResp(t, getAs(t, tester, ts.URL+"/tasks"), &rows)

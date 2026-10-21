@@ -219,7 +219,7 @@ verse c -R demo                          # …and every charter under that addre
 
 | Thing | Why a package does not confine it |
 |---|---|
-| a spawn | A task acts in the world, outside the store. What it may do there is its [policy](tasks.md#the-policy), held to its runner's ceiling. |
+| a spawn | A task acts in the world, outside the store. What it may do there is its [environment](tasks.md#the-doer), held to its runner's ceiling, and its [autonomy](tasks.md#the-autonomy) decides each step. |
 | verse's own records, such as the mirror of a task or a posed question | The engine writes them into [`verse`'s own part of the tree](entities.md). No charter may be installed there, and no charter may write there. |
 
 A package has the same shape as a [scope](../glossary.md#scope), along another line:
@@ -308,7 +308,7 @@ The two positions are one question asked twice, and verse carries both.
 `name: review # the short name` reads back as it was written, and so does
 `# what this rule is for` above it.
 
-The exception is the fields of a spawn: `doer:`, `prompt:`, `runner:` and the rest. Verse
+The exception is the fields of a spawn: `prompt:`, `agent:`, `environment:` and the rest. Verse
 keeps a comment above or beside `spawn:`. It does not keep a comment on a field inside the
 spawn.
 
@@ -361,13 +361,13 @@ anybody else that names them, rather than installing a rule that matches nothing
 
 ## What an install does not check
 
-An install refuses an unknown field of a rule, an unknown operator in a `value` predicate, a
-spawn with no [latch](../glossary.md#latch), and a spawn whose doer the runner does not offer.
-It accepts each of these:
+An install refuses an unknown field of a rule or of a spawn, an unknown operator in a `value`
+predicate, a spawn with no [latch](../glossary.md#latch), and a spawn the runner does not offer
+what it asks: an agent, a setting, a system, an environment beyond its ceilings. It accepts each
+of these:
 
 | What the rule holds | What happens |
 |---|---|
-| an unknown field inside `spawn:`, such as `promt:` | Verse drops the field and says nothing. The task runs without it, and `verse charter <address> rules <name>` prints the rule without it. |
 | a key spelled wrongly inside `patch:` or inside the `value` of a `derive` | Verse writes the key as spelled. The keys of a payload are yours. |
 | a reference that names nothing, such as `$subject.valeu.x` | The firing fails and writes nothing. The rule gets `trouble`. |
 | a spawn with a `runner:` that is not installed | The patch of the action lands, and the task fails at once: `verse task` shows `status: failed` and the reason in `err`. The rule gets no `trouble`. |

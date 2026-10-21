@@ -23,11 +23,11 @@ contract, and anything can fulfil the contract. The contract has six parts:
 
 | Part | What it does |
 |---|---|
-| a driver | proposes the next step: `Driver.Next(ctx, prev) → (ToolUse, more)`. It is what a [doer](glossary.md#doer) runs as. |
+| a driver | proposes the next step: `Driver.Next(ctx, prev) → (ToolUse, more)`. It is what an agent, or a script, runs as. |
 | an [executor](glossary.md#executor) | performs a step after the gates approve it: `Executor.Execute(ctx, tu) → StepResult` |
-| the [policy](glossary.md#policy) | decides a step before it runs: the first row that matches it denies it, asks about it or allows it. A step is what an action is about to do, such as `commands.run` with its command. |
+| the [environment](glossary.md#environment) and the [autonomy](glossary.md#autonomy) | decide a step before it runs: one outside the environment is refused, and otherwise the first row of the autonomy that matches it denies it, asks about it or allows it. A step is what an action is about to do, such as `commands.run` with its command. |
 | the [event stream](glossary.md#event-stream) | streams structured `Event`s: `EventSay` narration, `EventExec` results, `EventPending` waits on a gate, `EventStatus` lifecycle and `EventBoundary` cursor |
-| the [control plane](glossary.md#control-plane) | applies steering at a [boundary](glossary.md#boundary): `Pause`, `Resume`, `Cancel`, `Say` and `SetPolicy`. Its rule is "stop between actions, never undo one". |
+| the [control plane](glossary.md#control-plane) | applies steering at a [boundary](glossary.md#boundary): `Pause`, `Resume`, `Cancel`, `Say` and `SetAutonomy`. Its rule is "stop between actions, never undo one". |
 | the [mirror](glossary.md#mirror-of-tasks) | writes the task into the [store](glossary.md#store) as a `verse.task.instance.*` [entity](glossary.md#entity). The task ends with a terminal outcome and a result. |
 
 The contract does not say *where* the driver or the executor runs. An external task is
@@ -156,14 +156,14 @@ is the runner, not the task's process.
 
 - **The runner performs what crosses a credential.** A push, a pull request, a tracker's or
   Slack's act is made by the runner's own process, with a credential the task never holds, and
-  decided there again by the task's current policy and the runner's ceiling. A row that refuses
+  decided there again by the task's environment, its current autonomy and the runner's ceiling. A row that refuses
   such a step prevents it. A step the runner can only stop inside the run (a file write, a
   command) is held by stopping what the agent proposes: a prompt, said so on
   [inside](systems/inside.md), until a seam below the task makes it a bound.
 - **What the runner reports is the record.** Every call is an event on the task's stream,
   naming the step and its fields, the row that decided it, and whoever answered. Verse holds
   the stream and the entity; it does not re-derive a step from outside the process.
-- **The existing mechanism carries it.** The task's `Policy`, the `Registry` and the `Resolver`
+- **The existing mechanism carries it.** The task's `Autonomy`, the `Registry` and the `Resolver`
   let a person answer an agent's question, and a task on a runner raises the same question
   through the runner. It is the same mechanism, and an agent or a person answers it.
 

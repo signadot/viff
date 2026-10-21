@@ -14,7 +14,8 @@ that names no runner goes to the default.
 ```sh
 go run ./docs/reference/examples/runner -addr :9800   # a runner you can copy and change
 verse runner add demo http://localhost:9800           # `reach: a runner` — the install probes it
-verse task run -runner verse.runners.demo -agent sample "fetch the data; retrain; report"
+echo '{runner: verse.runners.demo, agent: {name: sample}, prompt: "fetch the data; retrain; report", environment: {systems: {network: {mode: open}}}}' |
+  verse task run -f -
 verse ps -runner verse.runners.demo
 ```
 

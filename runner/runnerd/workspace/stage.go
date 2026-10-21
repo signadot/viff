@@ -16,7 +16,6 @@ import (
 	"github.com/go-git/go-git/v5/storage/memory"
 
 	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/task"
 )
 
 // Work waits in the MIRROR, and the mirror is where it waits whether or not it ever leaves.
@@ -127,9 +126,9 @@ func (w *Workspace) Salvage(ctx context.Context, l *runner.Launch) Delivery {
 	var d Delivery
 	var errs []error
 	for _, t := range w.Trees {
-		// A repository the policy refuses every push to is a reference tree: nothing leaves and
+		// A repository the environment gives no push to is a reference tree: nothing leaves and
 		// nothing is staged, because there is nowhere to hold work FOR.
-		if !l.Policy.Possible(task.Step{Name: task.StepGitPush, Fields: map[string]string{"repo": t.Repo.Repo.Canonical()}}) {
+		if !l.Pushes(t.Repo.Repo.Canonical()) {
 			continue
 		}
 		work, err := t.CommitWork(l, "")

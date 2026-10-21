@@ -48,7 +48,7 @@ func postTony(t *testing.T, url string, v any) *http.Response {
 		as = orTester(body.By)
 	case api.Say:
 		as = orTester(body.By)
-	case api.SetPolicy:
+	case api.SetAutonomy:
 		as = orTester(body.By)
 	}
 	return postAs(t, as, url, "application/tony", string(b))

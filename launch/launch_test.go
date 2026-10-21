@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"strings"
 	"testing"
 
 	tony "github.com/signadot/tony-format/go-tony"
@@ -8,15 +9,16 @@ import (
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
 func TestBindExpandsSubject(t *testing.T) {
 	s := Spec{
-		Doer:   runner.Doer{Agent: "verse", Script: ""},
-		Prompt: "review $subject and report",
-		Runner: "verse.runners.$subject",
-		Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}},
+		Agent:    &runner.Agent{Name: "verse"},
+		Prompt:   "review $subject and report",
+		Runner:   "verse.runners.$subject",
+		Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}},
 	}
 	got := s.Bind(Binding{"subject": `demo.pr."1"`})
 
@@ -26,7 +28,7 @@ func TestBindExpandsSubject(t *testing.T) {
 	if got.Runner != `verse.runners.demo.pr."1"` {
 		t.Fatalf("Runner = %q", got.Runner)
 	}
-	if got.Doer.Agent != "verse" || got.Policy.Default() != task.ThenAllow {
+	if got.Agent.Name != "verse" || got.Autonomy.Default() != task.ThenAllow {
 		t.Fatalf("plain fields changed: %+v", got)
 	}
 }
@@ -52,36 +54,46 @@ func TestBindLongestKeyFirst(t *testing.T) {
 
 // A SCRIPT'S TEXT IS NOT BOUND: it is a program, and a value spliced into it would be part of
 // the program — a branch named `x;curl …` would run. The value reaches the script as its
-// environment, bound there, and the script's own `$b` is the shell's. The doer's annotations and
-// the autonomy are words from fixed sets, chosen by the charter: not expanded either.
+// variables, bound there, and the script's own `$b` is the shell's. The agent's annotations, the
+// shapes and the autonomy are words from fixed sets, chosen by the charter: not expanded either;
+// nor is anything of the network.
 func TestBindLeavesTheScriptAndTheWordsAndBindsTheEnvironment(t *testing.T) {
 	const script = `for b in x; do verse-call-tool git-push -branch "$BRANCH"; echo "$b"; done`
-	s := Spec{Doer: runner.Doer{Script: script,
-		With:        runner.With{Env: map[string]string{"BRANCH": "$subject.head"}, Model: "$model"},
-		Annotations: map[string]string{"verse.portkey/virtual-key": "$sneaky"}},
-		Policy: task.Policy{{Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"ref": "$sneaky"}}, Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{Answerers: []string{"$sneaky"}}}}, {Then: task.Then{Mode: task.ThenAsk}}}}
+	s := Spec{Script: script,
+		Agent: &runner.Agent{Name: "verse", Settings: map[string]string{"model": "$model"}, Annotations: map[string]string{"verse.portkey/virtual-key": "$sneaky"}},
+		Environment: systems.Environment{
+			Vars: map[string]string{"BRANCH": "$subject.head"},
+			Systems: systems.Systems{
+				"git":     {{Attributes: map[string]string{"repo": "acme/app"}, Verbs: map[string][]systems.Shape{"push": {{"ref": "refs/heads/$sneaky"}}}}},
+				"network": {{Attributes: map[string]string{"mode": "$sneaky"}, Verbs: map[string][]systems.Shape{"tcp-client": {{"host": "$sneaky"}}}}},
+			},
+		},
+		Autonomy: task.Autonomy{{Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"ref": "$sneaky"}}, Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{Answerers: []string{"$sneaky"}}}}, {Then: task.Then{Mode: task.ThenAsk}}}}
 	got := s.Bind(Binding{"subject.head": "x;curl evil", "b": "BOUND", "sneaky": "auto", "model": "large"})
-	if got.Doer.Script != script {
-		t.Fatalf("Script = %q, want the text as written", got.Doer.Script)
+	if got.Script != script {
+		t.Fatalf("Script = %q, want the text as written", got.Script)
 	}
-	if got.Doer.With.Env["BRANCH"] != "x;curl evil" {
-		t.Fatalf("env = %v, want the value bound into the variable", got.Doer.With.Env)
+	if got.Environment.Vars["BRANCH"] != "x;curl evil" {
+		t.Fatalf("vars = %v, want the value bound into the variable", got.Environment.Vars)
 	}
-	if got.Doer.With.Model != "large" {
-		t.Fatalf("model = %q, want it bound", got.Doer.With.Model)
+	if got.Agent.Model() != "large" {
+		t.Fatalf("model = %q, want it bound", got.Agent.Model())
 	}
-	if got.Doer.Annotations["verse.portkey/virtual-key"] != "$sneaky" || got.Policy[0].Match.Params["ref"] != "$sneaky" ||
-		got.Policy[0].Then.Ask.Answerers[0] != "$sneaky" {
+	net := got.Environment.Systems["network"][0]
+	if got.Agent.Annotations["verse.portkey/virtual-key"] != "$sneaky" || got.Autonomy[0].Match.Params["ref"] != "$sneaky" ||
+		got.Autonomy[0].Then.Ask.Answerers[0] != "$sneaky" || got.Environment.Systems["git"][0].Verbs["push"][0]["ref"] != "refs/heads/$sneaky" ||
+		net.Attributes["mode"] != "$sneaky" || net.Verbs["tcp-client"][0]["host"] != "$sneaky" {
 		t.Fatalf("a word was expanded: %+v", got)
 	}
-	got.Doer.Annotations["verse.portkey/virtual-key"] = "changed"
-	if s.Doer.Annotations["verse.portkey/virtual-key"] != "$sneaky" {
-		t.Fatal("Bind aliased the receiver's annotations")
+	got.Agent.Annotations["verse.portkey/virtual-key"] = "changed"
+	got.Environment.Systems["git"][0].Verbs["push"][0]["ref"] = "changed"
+	if s.Agent.Annotations["verse.portkey/virtual-key"] != "$sneaky" || s.Environment.Systems["git"][0].Verbs["push"][0]["ref"] != "refs/heads/$sneaky" {
+		t.Fatal("Bind aliased the receiver's annotations or shapes")
 	}
 }
 
 func TestAnswerContractIsADocumentWithItsOperators(t *testing.T) {
-	const src = "doer: {agent: verse}\nanswer:\n  severity: !or [low, high]\n  note: !irtype string\n"
+	const src = "agent: {name: verse}\nanswer:\n  severity: !or [low, high]\n  note: !irtype string\n"
 	var s Spec
 	if err := codec.Unmarshal([]byte(src), &s, codec.Tony); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -125,4 +137,30 @@ func matches(t *testing.T, pattern *ir.Node, doc string) bool {
 		t.Fatalf("match: %v", err)
 	}
 	return ok
+}
+
+// A SPAWN WRITTEN BY HAND BINDS NOTHING: a `$` in a field that names something is refused, since
+// nothing fires to bind it; in the prompt and the vars, prose and shell values, it is left as
+// written; and what only a firing sets is refused, the first of them in a fixed order.
+func TestASpawnWrittenByHand(t *testing.T) {
+	git := func(repo string) systems.Environment {
+		return systems.Environment{Systems: systems.Systems{"git": {{Attributes: map[string]string{"repo": repo}}}}}
+	}
+	for _, c := range []struct {
+		spec Spec
+		want string
+	}{
+		{Spec{Prompt: "fix `echo $HOME` in the README; it costs $5"}, ""},
+		{Spec{Script: "echo \"$P\"", Environment: systems.Environment{Vars: map[string]string{"P": "$HOME"}}}, ""},
+		{Spec{Prompt: "go", Subject: "$subject"}, "subject: a `$`"},
+		{Spec{Prompt: "go", Runner: "$runner"}, "runner: a `$`"},
+		{Spec{Prompt: "go", Agent: &runner.Agent{Settings: map[string]string{"model": "$model"}}}, "agent.model: a `$`"},
+		{Spec{Prompt: "go", Environment: git("$subject.value.repo")}, "environment.systems.git[0].repo: a `$`"},
+		{Spec{Prompt: "go", Chain: "review", Passed: []Passed{{How: PassedAuto}}}, "chain: a firing's"},
+	} {
+		err := c.spec.CheckByHand()
+		if c.want == "" && err != nil || c.want != "" && (err == nil || !strings.Contains(err.Error(), c.want)) {
+			t.Errorf("%+v: %v, want %q", c.spec, err, c.want)
+		}
+	}
 }

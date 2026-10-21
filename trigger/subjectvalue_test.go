@@ -45,8 +45,8 @@ func TestSubjectValueResolvesInAString(t *testing.T) {
   action:
     patch: {stage: claimed}
     spawn:
-      doer: {agent: verse}
-      policy: [{then: allow}]
+      agent: {name: verse}
+      autonomy: [{then: allow}]
       prompt: "flat=$sha one=$subject.value.sha two=$subject.value.covering deep=$subject.value.result.report bare=$subject"
 `)); err != nil {
 		t.Fatalf("AddTrigger: %v", err)

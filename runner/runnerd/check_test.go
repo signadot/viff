@@ -27,7 +27,7 @@ func TestARefusedQuestionIsNeverPosed(t *testing.T) {
 	d.OnQuestion(func(string, task.Pending) { posted.Store(true) })
 	srv := httptest.NewServer(d.HTTPHandler())
 	defer srv.Close()
-	resp, err := http.Post(srv.URL+"/tasks", "application/json", strings.NewReader(`{"id":"run-refused","doer":{"agent":"test"},"prompt":"t"}`))
+	resp, err := http.Post(srv.URL+"/tasks", "application/json", strings.NewReader(`{"id":"run-refused","agent":{"name":"test"},"prompt":"t","environment":{"systems":{"network":{"mode":"open"}}}}`))
 	if err != nil {
 		t.Fatal(err)
 	}

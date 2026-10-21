@@ -10,11 +10,25 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/systems"
+	"github.com/signadot/verse/systems/systemstest"
+
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
 )
+
+// workEnv is an environment giving the shell and file writes, the steps these tests' drivers
+// take: a step outside its environment is refused before any row is read.
+var workEnv = systems.Environment{Systems: systems.Systems{
+	"commands": {{Verbs: map[string][]systems.Shape{"run": {{}}}}},
+	"files":    {{Verbs: map[string][]systems.Shape{"write": {{}}}}},
+}}
+
+// openNet is an environment of the open network alone: what a launch on a handler with no offers
+// names, since no network block is the network none, which that handler can't build.
+var openNet = systems.Environment{Systems: systems.Systems{"network": {{Attributes: map[string]string{"mode": runner.NetworkOpen}}}}}
 
 // a driver that takes `steps` no-op actions then completes.
 // doneDriver proposes steps actions, of tool (absent: one that is no step), and is done.
@@ -43,14 +57,14 @@ func (okExec) Execute(_ context.Context, tu task.ToolUse) (task.StepResult, []ta
 // base-URL decoupling.
 func TestHTTPRunnerDrivesRemoteTaskd(t *testing.T) {
 	build := func(l runner.Launch, reg *task.Registry) *task.Task {
-		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+		sup := systemstest.Opened(task.NewSupervisor(workEnv, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), workEnv)
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 2}, okExec{})
 	}
 	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	defer srv.Close()
 
 	pol := client.HTTP(srv.URL)
-	h := pol.Launch(runner.Launch{ID: "t1", Doer: runner.Doer{Agent: "test"}, Prompt: "do a thing"})
+	h := pol.Launch(runner.Launch{ID: "t1", Agent: &runner.Agent{Name: "test"}, Prompt: "do a thing", Environment: openNet})
 
 	ch, unsub := h.Subscribe()
 	defer unsub()
@@ -93,14 +107,14 @@ loop:
 // `get`: ListTasks/TaskSnapshot are a thin client over the remote's GET /tasks.
 func TestHTTPRunnerListsRemoteTasks(t *testing.T) {
 	build := func(l runner.Launch, reg *task.Registry) *task.Task {
-		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+		sup := systemstest.Opened(task.NewSupervisor(workEnv, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), workEnv)
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 2}, okExec{})
 	}
 	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	defer srv.Close()
 
 	pol := client.HTTP(srv.URL)
-	pol.Launch(runner.Launch{ID: "r1", Doer: runner.Doer{Agent: "test"}, Prompt: "remote task"})
+	pol.Launch(runner.Launch{ID: "r1", Agent: &runner.Agent{Name: "test"}, Prompt: "remote task", Environment: openNet})
 
 	// task.Lister by NAME, not a structural assertion written out here. Spelling the
 	// signature inline is what let a widened one report false instead of failing to build.
@@ -155,7 +169,7 @@ func TestHTTPRunnerLaunchReadsARefusal(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			h := client.HTTP(srv.URL).Launch(runner.Launch{ID: "x", Doer: runner.Doer{Agent: "test"}, Prompt: "t"})
+			h := client.HTTP(srv.URL).Launch(runner.Launch{ID: "x", Agent: &runner.Agent{Name: "test"}, Prompt: "t"})
 
 			// The refusal has to arrive as a terminal on the plane the flow already reads,
 			// which is what FailedHandle is for.
@@ -225,15 +239,15 @@ func TestHTTPRunnerListReportsWhyItIsEmpty(t *testing.T) {
 // outlived it (versed.reconcileTasks).
 func TestResumeReAttachesToRemoteTask(t *testing.T) {
 	build := func(l runner.Launch, reg *task.Registry) *task.Task {
-		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+		sup := systemstest.Opened(task.NewSupervisor(workEnv, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), workEnv)
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 2}, okExec{})
 	}
 	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	defer srv.Close()
 
 	pol := client.HTTP(srv.URL)
-	pol.Launch(runner.Launch{ID: "t1", Doer: runner.Doer{Agent: "test"}, Prompt: "task"}) // runs on the remote to completion
-	time.Sleep(300 * time.Millisecond)                                                    // let it finish (retained in the ring)
+	pol.Launch(runner.Launch{ID: "t1", Agent: &runner.Agent{Name: "test"}, Prompt: "task", Environment: openNet}) // runs on the remote to completion
+	time.Sleep(300 * time.Millisecond)                                                                            // let it finish (retained in the ring)
 
 	// "verse restart": attach afresh, and read the stream until it says how the task ended.
 	events, stop := pol.Attach("t1").Subscribe()
@@ -265,14 +279,14 @@ func TestHTTPRunnerAnswersARemoteGate(t *testing.T) {
 	build := func(l runner.Launch, reg *task.Registry) *task.Task {
 		// Its one command asks, resolved by the daemon's own registry — so the task really
 		// blocks and really waits for an answer to arrive over HTTP.
-		sup := task.NewSupervisor(task.Policy{{Match: &task.Match{System: "commands"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAsk}}}, reg)
+		sup := systemstest.Opened(task.NewSupervisor(workEnv, task.Autonomy{{Match: &task.Match{System: "commands"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAsk}}}, reg), workEnv)
 		return task.NewTask(l.ID, sup, &doneDriver{steps: 1, tool: "run_bash"}, okExec{})
 	}
 	srv := httptest.NewServer(runnerd.NewInProcessHandler(build).HTTPHandler())
 	defer srv.Close()
 
 	pol := client.HTTP(srv.URL)
-	h := pol.Launch(runner.Launch{ID: "t-gate", Doer: runner.Doer{Agent: "test"}, Prompt: "do a thing"})
+	h := pol.Launch(runner.Launch{ID: "t-gate", Agent: &runner.Agent{Name: "test"}, Prompt: "do a thing", Environment: openNet})
 	ch, unsub := h.Subscribe()
 	defer unsub()
 

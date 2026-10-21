@@ -71,8 +71,8 @@ func TestACharteredPushIsThePushItNames(t *testing.T) {
 	}
 }
 
-// chartedPolicies is every `policy` list in a charter file, in the order the file has them.
-func chartedPolicies(t *testing.T, file string) []task.Policy {
+// chartedPolicies is every `autonomy` list in a charter file, in the order the file has them.
+func chartedPolicies(t *testing.T, file string) []task.Autonomy {
 	t.Helper()
 	data, err := os.ReadFile(file)
 	if err != nil {
@@ -82,15 +82,15 @@ func chartedPolicies(t *testing.T, file string) []task.Policy {
 	if err != nil {
 		t.Fatalf("%s: %v", file, err)
 	}
-	var out []task.Policy
+	var out []task.Autonomy
 	var walk func(n *ir.Node)
 	walk = func(n *ir.Node) {
 		if n == nil {
 			return
 		}
 		for i, v := range n.Values {
-			if n.Type == ir.ObjectType && n.Fields[i].String == "policy" && v.Type == ir.ArrayType {
-				var p task.Policy
+			if n.Type == ir.ObjectType && n.Fields[i].String == "autonomy" && v.Type == ir.ArrayType {
+				var p task.Autonomy
 				for _, row := range v.Values {
 					var r task.Row
 					if err := r.FromTonyIR(row); err != nil {

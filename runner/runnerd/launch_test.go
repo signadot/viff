@@ -4,42 +4,128 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
+
+// gitEnv is an environment that checks out repos, fetching each.
+func gitEnv(repos ...string) systems.Environment {
+	e := systems.Environment{Systems: systems.Systems{}}
+	for _, r := range repos {
+		e.Systems["git"] = append(e.Systems["git"], systems.Block{Attributes: map[string]string{"repo": r},
+			Verbs: map[string][]systems.Shape{"fetch": {{}}}})
+	}
+	return e
+}
+
+// reachEnv is an environment checking out repo with its fetch and any push, and giving every verb
+// of each of the other named systems (in repo's block, for one a repo names its blocks by): what a
+// run may do is then its rows' and the ceilings', which is what the tests using it look at.
+func reachEnv(repo string, names ...string) systems.Environment {
+	e := gitEnv(repo)
+	e.Systems["git"][0].Verbs["push"] = []systems.Shape{{}}
+	for _, name := range names {
+		d, _ := systems.Get(name)
+		verbs := map[string][]systems.Shape{}
+		for _, v := range d.Verbs {
+			verbs[v.Name] = []systems.Shape{{}}
+		}
+		b := systems.Block{Verbs: verbs}
+		if u, ok := d.Unique(); ok {
+			b.Attributes = map[string]string{u.Name: repo}
+		}
+		e.Systems[name] = []systems.Block{b}
+	}
+	return e
+}
+
+// netEnv is an environment whose network is mode, under allow reaching hosts.
+func netEnv(mode string, hosts ...string) systems.Environment {
+	b := systems.Block{Attributes: map[string]string{"mode": mode}}
+	for _, h := range hosts {
+		if b.Verbs == nil {
+			b.Verbs = map[string][]systems.Shape{}
+		}
+		b.Verbs["tcp-client"] = append(b.Verbs["tcp-client"], systems.Shape{"host": h})
+	}
+	return systems.Environment{Systems: systems.Systems{"network": {b}}}
+}
 
 // offering is a handler that offers the verse agent (with a model, a conversation, the steps it
 // intercepts and the virtual-key annotation) and scripts, as verse-runner does.
 func offering(t *testing.T) *httptest.Server {
 	t.Helper()
 	d := NewInProcessHandler(fakeBuild)
-	d.Describe(runner.Description{Offers: []runner.Offer{
-		{Agent: "verse", With: map[string]runner.Accepts{"model": runner.AcceptsAny, "network": everyNetwork},
-			Annotations: map[string]string{"verse.portkey/virtual-key": "string"}, Converse: true,
-			Systems: intercepted("files", "commands", "agent")},
-		{Script: true, With: builds()},
+	d.Describe(runner.Description{Version: runner.DescriptionVersion, Offers: []runner.Offer{
+		{Agent: &runner.AgentOffer{Name: "verse", Settings: map[string]runner.Setting{"model": {}},
+			Annotations: map[string]string{"verse.portkey/virtual-key": "string"}}, Converse: true,
+			Systems: withNet(intercepted("files", "commands", "agent"))},
+		{Script: true, Systems: withNet(nil)},
 	}})
 	srv := httptest.NewServer(d.HTTPHandler())
 	t.Cleanup(srv.Close)
 	return srv
 }
 
-// everyNetwork is an offer's network that builds every mode.
-var everyNetwork = runner.AcceptsOneOf(runner.NetworkOpen, runner.NetworkNone, runner.NetworkAllow)
+// builds is the network an offer holds, building the modes given, or every mode, with no ceiling.
+func builds(modes ...string) runner.System {
+	if len(modes) == 0 {
+		modes = []string{runner.NetworkOpen, runner.NetworkNone, runner.NetworkAllow}
+	}
+	b := systems.CeilingBlock{Attributes: map[string][]string{"mode": modes}}
+	if slices.Contains(modes, runner.NetworkAllow) {
+		b.Verbs = map[string][]systems.Shape{"tcp-client": {{}}} // allow builds a connection to any host
+	}
+	return runner.System{Builds: systems.Ceiling{b}}
+}
 
-// builds is an offer's with that builds every network and accepts nothing else.
-func builds() map[string]runner.Accepts { return map[string]runner.Accepts{"network": everyNetwork} }
+// withNet is sys with the network an offer holds, building every mode (builds), where sys does
+// not hold it already.
+func withNet(sys map[string]runner.System) map[string]runner.System {
+	out := map[string]runner.System{}
+	for k, v := range sys {
+		out[k] = v
+	}
+	if _, held := out["network"]; !held {
+		out["network"] = builds()
+	}
+	return out
+}
 
-// intercepted is systems an offer intercepts, each allowing everything.
+// agentOffer is the verse agent's offer, holding sys and the network, taking a model.
+func agentOffer(sys map[string]runner.System) runner.Offer {
+	return runner.Offer{Agent: &runner.AgentOffer{Name: "verse", Settings: map[string]runner.Setting{"model": {}}}, Systems: withNet(sys)}
+}
+
+// described is a description of the offers given, at this verse's version.
+func described(offers ...runner.Offer) runner.Description {
+	return runner.Description{Version: runner.DescriptionVersion, Offers: offers}
+}
+
+// intercepted is systems an offer intercepts, each under an open ceiling (systems.Open).
 func intercepted(names ...string) map[string]runner.System {
 	out := map[string]runner.System{}
 	for _, n := range names {
-		out[n] = runner.System{Ceiling: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}}
+		out[n] = runner.System{Ceiling: systems.Open()}
 	}
 	return out
+}
+
+// ceiling reads a ceiling as a runner's config writes it.
+func ceiling(t *testing.T, text string) systems.Ceiling {
+	t.Helper()
+	var c systems.Ceiling
+	if err := codec.Unmarshal([]byte(text), &c, codec.Tony); err != nil {
+		t.Fatalf("%s: %v", text, err)
+	}
+	return c
 }
 
 func postLaunch(t *testing.T, url, body string) (int, string) {
@@ -57,9 +143,10 @@ func postLaunch(t *testing.T, url, body string) (int, string) {
 func TestALaunchItOffersRuns(t *testing.T) {
 	srv := offering(t)
 	for _, body := range []string{
-		`{id: a1, doer: {agent: verse, with: {model: m, env: {BRANCH: main}}, annotations: {verse.portkey/virtual-key: k}}, prompt: go, policy: [{then: allow}], converse: true}`,
-		`{id: s1, doer: {script: "echo hi"}}`,
-		`{id: a2, doer: {agent: verse}, prompt: go, policy: [{name: m, match: {system: files, verb: write, path: "db/**"}, then: ask}, {name: c, match: {system: commands, verb: run, command: "git push*"}, then: deny}, {name: d, match: {system: agent, verb: call-sub-agent}, then: ask}, {then: allow}]}`,
+		`{id: a1, agent: {name: verse, model: m, annotations: {verse.portkey/virtual-key: k}}, environment: {vars: {BRANCH: main}}, prompt: go, autonomy: [{then: allow}], converse: true}`,
+		`{id: s1, script: "echo hi"}`,
+		`{id: a0, prompt: go}`, // the runner's default agent
+		`{id: a2, agent: {name: verse}, prompt: go, environment: {systems: {files: {write: {}}, commands: {run: {}}, agent: {call-sub-agent: {}}}}, autonomy: [{name: m, match: {system: files, verb: write, path: "db/**"}, then: ask}, {name: c, match: {system: commands, verb: run, command: "git push*"}, then: deny}, {name: d, match: {system: agent, verb: call-sub-agent}, then: ask}, {then: allow}]}`,
 	} {
 		if code, msg := postLaunch(t, srv.URL, body); code != http.StatusCreated {
 			t.Errorf("%s = %d %s, want 201", body, code, msg)
@@ -73,33 +160,35 @@ func TestALaunchItCannotHonourIsRefused(t *testing.T) {
 	srv := offering(t)
 	for _, tc := range []struct{ body, says string }{
 		{`{prompt: go, driver: llm}`, "unknown field"},                           // the old launch
-		{`{id: x, doer: {agent: verse}, prompt: go, frame: f}`, "unknown field"}, // a dropped field
-		{`{doer: {agent: verse}, prompt: go}`, "id"},
-		{`{id: x, doer: {agent: verse, script: "echo"}, prompt: go}`, "exclude"},
-		{`{id: x, doer: {}}`, "agent"},
-		{`{id: x, doer: {agent: verse}}`, "prompt"},
-		{`{id: x, doer: {agent: claude}, prompt: go}`, "no agent \"claude\""},
-		{`{id: x, doer: {script: "echo", with: {model: m}}}`, "model"},
-		{`{id: x, doer: {agent: verse, with: {effort: high}}, prompt: go}`, "effort"},
-		{`{id: x, doer: {agent: verse, annotations: {other: v}}, prompt: go}`, "other"},
-		{`{id: x, doer: {script: "echo"}, converse: true}`, "conversation"},
-		{`{id: x, doer: {script: "echo"}, policy: [{then: sometimes}]}`, "not one of deny, ask, allow"},
-		{`{id: x, doer: {script: "echo", with: {env: {PATH: /x}}}}`, "PATH"},
-		{`{id: x, doer: {script: "echo", with: {env: {VERSE_CREDENTIAL_FILE: /x}}}}`, "VERSE_CREDENTIAL_FILE"},
-		{`{id: x, doer: {script: "echo", with: {env: {"1X": v}}}}`, "variable name"},
-		{`{id: x, doer: {script: "echo"}, prompt: go}`, "a script takes no `prompt`"},
-		{`{id: x, doer: {script: "echo"}, timeout: soon}`, "not a duration"},
-		{`{id: x, doer: {script: "echo"}, timeout: "-1h"}`, "not a duration"},
-		{`{id: x, doer: {agent: verse}, prompt: go, policy: [{name: w, match: {system: files, verb: write, repo: a/b}, then: ask}, {then: ask}]}`, "match.repo: not a param"},
-		{`{id: x, doer: {script: "echo", with: {git: [{repo: a/b}]}}}`, "intercepts no `git`"},
-		{`{id: x, doer: {script: "echo"}, policy: [{name: g, match: {system: commands, verb: run}, then: ask}, {then: allow}]}`, "intercepts no commands"},
-		{`{id: x, doer: {script: "echo"}, policy: [{name: g, match: {system: commands, verb: run}, then: deny}, {then: allow}]}`, "intercepts no commands"},
-		{`{id: x, doer: {agent: verse}, prompt: go, policy: [{name: g, match: {system: git, verb: push}, then: ask}, {then: ask}]}`, "intercepts no git, so there is nothing to ask"},
-		{`{id: x, doer: {agent: verse}, prompt: go, policy: [{name: g, match: {system: network, verb: tcp-client}, then: ask}, {then: ask}]}`, "not a system"},
-		{`{id: x, doer: {script: "echo"}, answer: {ok: !irtype true}}`, "answer"},
-		{`{id: x, doer: {script: "echo"}, policy: [{name: s, match: {system: task, verb: start}, then: ask}, {then: ask}]}`, "not a system"},
-		{`{id: x, doer: {script: "echo"}, policy: [{name: g, match: {system: files, verb: write, command: ls}, then: ask}, {then: ask}]}`, "match.command: not a param"},
-		{`{id: x, doer: {script: "echo"}, policy: [{name: g, match: {system: files, verb: write}, then: ask}]}`, "ends with its default row"},
+		{`{id: x, agent: {name: verse}, prompt: go, frame: f}`, "unknown field"}, // a dropped field
+		{`{id: x, doer: {agent: verse}, prompt: go}`, "unknown field"},           // the doer, gone
+		{`{id: x, prompt: go, policy: [{then: allow}]}`, "unknown field"},        // the policy, now autonomy
+		{`{agent: {name: verse}, prompt: go}`, "id"},
+		{`{id: x, script: "echo", prompt: go}`, "exclude"},
+		{`{id: x, agent: {name: verse}, script: "echo"}`, "a script takes no `agent`"},
+		{`{id: x, agent: {name: verse, model: m}, script: "echo"}`, "a script takes no `agent`"},
+		{`{id: x, person: "user:ana@example.com", prompt: go}`, "no runner takes a person yet"},
+		{`{id: x, agent: {name: verse}}`, "prompt"},
+		{`{id: x, agent: {name: claude}, prompt: go}`, "no agent \"claude\""},
+		{`{id: x, agent: {name: verse, effort: high}, prompt: go}`, "effort"},
+		{`{id: x, agent: {name: verse, annotations: {other: v}}, prompt: go}`, "other"},
+		{`{id: x, script: "echo", converse: true}`, "conversation"},
+		{`{id: x, script: "echo", autonomy: [{then: sometimes}]}`, "not one of deny, ask, allow"},
+		{`{id: x, script: "echo", environment: {vars: {PATH: /x}}}`, "PATH"},
+		{`{id: x, script: "echo", environment: {vars: {VERSE_CREDENTIAL_FILE: /x}}}`, "VERSE_CREDENTIAL_FILE"},
+		{`{id: x, script: "echo", environment: {vars: {"1X": v}}}`, "a variable's name"},
+		{`{id: x, script: "echo", environment: {systems: {pager: {page: {}}}}}`, "not a system"},
+		{`{id: x, script: "echo", timeout: soon}`, "not a duration"},
+		{`{id: x, script: "echo", timeout: "-1h"}`, "not a duration"},
+		{`{id: x, agent: {name: verse}, prompt: go, autonomy: [{name: w, match: {system: files, verb: write, repo: a/b}, then: ask}, {then: ask}]}`, "match.repo: not a field"},
+		{`{id: x, script: "echo", environment: {systems: {git: {repo: a/b, fetch: {}}}}}`, "holds no `git`"},
+		// A row matching nothing the environment gives never decides, and is refused where it is
+		// written; a system the environment gives that the offer does not hold is refused too.
+		{`{id: x, script: "echo", environment: {systems: {commands: {run: {}}}}}`, "holds no `commands`"},
+		{`{id: x, script: "echo", answer: {ok: !irtype true}}`, "answer"},
+		{`{id: x, script: "echo", autonomy: [{name: s, match: {system: task, verb: start}, then: ask}, {then: ask}]}`, "not a system"},
+		{`{id: x, script: "echo", autonomy: [{name: g, match: {system: files, verb: write, command: ls}, then: ask}, {then: ask}]}`, "match.command: not a field"},
+		{`{id: x, script: "echo", autonomy: [{name: g, match: {system: files, verb: write}, then: ask}]}`, "ends with its default row"},
 	} {
 		code, msg := postLaunch(t, srv.URL, tc.body)
 		if code != http.StatusBadRequest || !strings.Contains(msg, tc.says) {
@@ -113,21 +202,36 @@ func TestALaunchItCannotHonourIsRefused(t *testing.T) {
 func TestAHandlerWithNoOffersChecksTheShapeOnly(t *testing.T) {
 	srv := httptest.NewServer(NewInProcessHandler(fakeBuild).HTTPHandler())
 	defer srv.Close()
-	if code, msg := postLaunch(t, srv.URL, `{id: x, doer: {agent: anything}, prompt: go}`); code != http.StatusCreated {
+	if code, msg := postLaunch(t, srv.URL, `{id: x, agent: {name: anything}, prompt: go, environment: {systems: {network: {mode: open}}}}`); code != http.StatusCreated {
 		t.Errorf("= %d %s, want 201", code, msg)
 	}
-	if code, _ := postLaunch(t, srv.URL, `{id: y, doer: {agent: anything}}`); code != http.StatusBadRequest {
+	if code, _ := postLaunch(t, srv.URL, `{id: y, agent: {name: anything}}`); code != http.StatusBadRequest {
 		t.Errorf("an agent with no prompt = %d, want 400", code)
+	}
+}
+
+// A HANDLER WITH NO OFFERS REFUSES A LAUNCH NAMING NO NETWORK: no network block is the network
+// none, which a handler running tasks in its own process can't build, and with no offers there is
+// nothing else to refuse it. An open network runs.
+func TestAHandlerWithNoOffersRefusesAnAbsentNetwork(t *testing.T) {
+	srv := httptest.NewServer(NewInProcessHandler(fakeBuild).HTTPHandler())
+	defer srv.Close()
+	if code, msg := postLaunch(t, srv.URL, `{id: none, agent: {name: anything}, prompt: go}`); code != http.StatusBadRequest ||
+		!strings.Contains(msg, "can't take the network away from them; only open") {
+		t.Errorf("no network block = %d %q, want 400 refusing it", code, msg)
+	}
+	if code, msg := postLaunch(t, srv.URL, `{id: open, agent: {name: anything}, prompt: go, environment: {systems: {network: {mode: open}}}}`); code != http.StatusCreated {
+		t.Errorf("an open network = %d %q, want 201", code, msg)
 	}
 }
 
 // Launch, the programmatic seam, refuses as POST /tasks does.
 func TestLaunchChecksTheLaunch(t *testing.T) {
 	d := NewInProcessHandler(fakeBuild)
-	if _, err := d.Launch(runner.Launch{ID: "x", Doer: runner.Doer{Agent: "a"}}); err == nil {
+	if _, err := d.Launch(runner.Launch{ID: "x", Agent: &runner.Agent{Name: "a"}}); err == nil {
 		t.Fatal("an agent with no prompt was launched")
 	}
-	p, err := d.Launch(runner.Launch{ID: "y", Doer: runner.Doer{Agent: "a"}, Prompt: "go"})
+	p, err := d.Launch(runner.Launch{ID: "y", Agent: &runner.Agent{Name: "a"}, Prompt: "go", Environment: netEnv(runner.NetworkOpen)})
 	if err != nil || p == nil {
 		t.Fatalf("Launch = %v, %v", p, err)
 	}
@@ -141,9 +245,9 @@ func TestARunnersOwnVariablesAreRefused(t *testing.T) {
 	srv := httptest.NewServer(d.HTTPHandler())
 	defer srv.Close()
 	for body, want := range map[string]int{
-		`{id: a, doer: {script: "echo", with: {env: {FOO: x}}}}`:                   http.StatusBadRequest,
-		`{id: b, doer: {script: "echo", with: {env: {VERSE_CREDENTIAL_FILE: x}}}}`: http.StatusBadRequest,
-		`{id: c, doer: {script: "echo", with: {env: {BAR: x}}}}`:                   http.StatusCreated,
+		`{id: a, script: "echo", environment: {vars: {FOO: x}}}`:                                   http.StatusBadRequest,
+		`{id: b, script: "echo", environment: {vars: {VERSE_CREDENTIAL_FILE: x}}}`:                 http.StatusBadRequest,
+		`{id: c, script: "echo", environment: {vars: {BAR: x}, systems: {network: {mode: open}}}}`: http.StatusCreated,
 	} {
 		if code, msg := postLaunch(t, srv.URL, body); code != want {
 			t.Errorf("%s = %d %s, want %d", body, code, msg, want)
@@ -151,23 +255,19 @@ func TestARunnersOwnVariablesAreRefused(t *testing.T) {
 	}
 }
 
-// A launch's repo is on a forge the runner's offer lists.
+// A launch's repo is on a forge the runner's ceiling lists.
 func TestARepoIsOnAForgeTheRunnerServes(t *testing.T) {
-	allow, deny := task.Then{Mode: task.ThenAllow}, task.Then{Mode: task.ThenDeny}
-	desc := runner.Description{Offers: []runner.Offer{{Agent: "verse", With: builds(),
-		Systems: map[string]runner.System{"git": {Ceiling: task.Policy{
-			{Match: &task.Match{System: "git", Params: map[string]string{"repo": "github.com/**"}}, Then: allow},
-			{Match: &task.Match{System: "git", Params: map[string]string{"repo": "git.example.com/**"}}, Then: allow},
-			{Then: deny}}}}}}}
+	desc := runner.Description{Offers: []runner.Offer{{Agent: &runner.AgentOffer{Name: "verse"},
+		Systems: map[string]runner.System{"git": {Ceiling: ceiling(t, `{repo: ["github.com/**", "git.example.com/**"], fetch: {}}`)}}}}}
 	for _, c := range []struct {
 		repo runner.Repo
 		says string // "" = accepted
 	}{
 		{runner.Repo{Repo: "acme/app"}, ""},
 		{runner.Repo{Repo: "git.example.com/acme/app"}, ""},
-		{runner.Repo{Repo: "gitlab.com/acme/app"}, "with.git[0]: this runner's ceiling refuses git on gitlab.com/acme/app"},
+		{runner.Repo{Repo: "gitlab.com/acme/app"}, "environment.systems.git: beyond this runner's ceiling for git: repo gitlab.com/acme/app is beyond github.com/**, git.example.com/**"},
 	} {
-		l := &runner.Launch{ID: "x", Prompt: "p", Doer: runner.Doer{Agent: "verse", With: runner.With{Git: []runner.Repo{c.repo}}}}
+		l := &runner.Launch{ID: "x", Prompt: "p", Agent: &runner.Agent{Name: "verse"}, Environment: gitEnv(c.repo.Repo)}
 		err := CheckLaunch(l, desc, nil)
 		switch {
 		case c.says == "" && err != nil:
@@ -178,13 +278,41 @@ func TestARepoIsOnAForgeTheRunnerServes(t *testing.T) {
 	}
 }
 
+// A VALUE A FIRING BOUND IS HELD AS WRITTEN: payload text with a `$` in it is not read as a
+// binding still to come, so a branch named `$x` is no way past a ceiling of `main`, and a repo of
+// `$a/../..` none past the name check and an owner's ceiling.
+func TestAValueAFiringBoundIsHeldAsWritten(t *testing.T) {
+	desc := runner.Description{Offers: []runner.Offer{{Agent: &runner.AgentOffer{Name: "verse"},
+		Systems: map[string]runner.System{"git": {Ceiling: ceiling(t, `{repo: ["github.com/acme/**"], from: [main], fetch: {}}`)}}}}}
+	spec := launch.Spec{Prompt: "p", Environment: systems.Environment{Systems: systems.Systems{"git": {{
+		Attributes: map[string]string{"repo": "$repo", "from": "$head"}, Verbs: map[string][]systems.Shape{"fetch": {{}}}}}}}}
+	for _, c := range []struct {
+		b    launch.Binding
+		says string // "" = accepted
+	}{
+		{launch.Binding{"repo": "acme/app", "head": "main"}, ""},
+		{launch.Binding{"repo": "acme/app", "head": "$x"}, "from $x is beyond main"},
+		{launch.Binding{"repo": "$a/../..", "head": "main"}, `repo: "$a/../.."`},
+		{launch.Binding{"repo": "acme/$x", "head": "main"}, `repo: "acme/$x"`},
+	} {
+		l := &runner.Launch{ID: "x", Prompt: "p", Agent: &runner.Agent{Name: "verse"}, Environment: spec.Bind(c.b).Environment}
+		err := CheckLaunch(l, desc, nil)
+		switch {
+		case c.says == "" && err != nil:
+			t.Errorf("%v: refused: %v", c.b, err)
+		case c.says != "" && (err == nil || !strings.Contains(err.Error(), c.says)):
+			t.Errorf("%v: %v, want %q", c.b, err, c.says)
+		}
+	}
+}
+
 // A script's repos are an agent's: it calls the same tools, so rows on the git and github steps
 // decide its calls as they do the agent's.
 func TestAScriptsReposMayBeWrittenAndGated(t *testing.T) {
-	desc := runner.Description{Offers: []runner.Offer{{Script: true, With: builds(), Systems: intercepted("git", "github")}}}
+	desc := runner.Description{Offers: []runner.Offer{{Script: true, Systems: intercepted("git", "github")}}}
 	launch := func(r runner.Repo, rows ...task.Row) *runner.Launch {
-		return &runner.Launch{ID: "x", Policy: append(task.Policy(rows), task.Row{Then: task.Then{Mode: task.ThenAsk}}),
-			Doer: runner.Doer{Script: "echo", With: runner.With{Git: []runner.Repo{r}}}}
+		return &runner.Launch{ID: "x", Autonomy: append(task.Autonomy(rows), task.Row{Then: task.Then{Mode: task.ThenAsk}}),
+			Script: "echo", Environment: reachEnv(r.Repo, "github")}
 	}
 	if err := CheckLaunch(launch(runner.Repo{Repo: "acme/app"}), desc, nil); err != nil {
 		t.Errorf("refused for a script: %v", err)
@@ -194,59 +322,64 @@ func TestAScriptsReposMayBeWrittenAndGated(t *testing.T) {
 		if err := CheckLaunch(launch(runner.Repo{Repo: "acme/app"}, row), desc, nil); err != nil {
 			t.Errorf("a script's row on %s.%s: %v", m.System, m.Verb, err)
 		}
-		p := task.Policy{row, {Then: task.Then{Mode: task.ThenAsk}}}
-		if err := CheckPolicy(p, p, "script", runner.With{}, desc); err != nil {
+		l := launch(runner.Repo{Repo: "acme/app"}, row)
+		if err := CheckAutonomy(l.Autonomy, l); err != nil {
 			t.Errorf("a running script's new row on %s.%s: %v", m.System, m.Verb, err)
 		}
 	}
 }
 
-// CONTAINMENT: a launch's policy opens nothing the runner's ceilings close. A row that allows
-// or asks about a call the ceiling refuses is refused at the launch, naming both lines; a row
-// naming no repo is held against each repository the launch checks out; a repository the git
-// ceiling refuses every call on is refused as a fact; a row on a system the offer does not
-// perform is refused; and a slide is checked the same way, with the task's repositories.
-func TestALaunchsPolicyIsWithinTheRunnersCeilings(t *testing.T) {
-	allow, deny, ask := task.Then{Mode: task.ThenAllow}, task.Then{Mode: task.ThenDeny}, task.Then{Mode: task.ThenAsk}
-	desc := runner.Description{Offers: []runner.Offer{{Script: true, With: builds(),
+// CONTAINMENT: each block of a launch's environment lies within its system's ceiling, one
+// ceiling block holding it whole. A repository outside the ceiling's patterns, a push shape wider
+// than any of the ceiling's, a bare verb under a ceiling that names a field, a verb the ceiling
+// block does not give, and a system held with an empty ceiling are refused, naming the ceiling;
+// a system the ceiling leaves open is not; the autonomy is not held to the ceiling (its rows
+// reach the environment, which is within it), so a slide is the reach check alone.
+func TestALaunchsEnvironmentIsWithinTheRunnersCeilings(t *testing.T) {
+	ask := task.Then{Mode: task.ThenAsk}
+	desc := runner.Description{Offers: []runner.Offer{{Script: true,
 		Systems: map[string]runner.System{
-			"git": {Ceiling: task.Policy{
-				{Name: "no-release", Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"ref": "refs/heads/release/**"}}, Then: deny},
-				{Name: "ours", Match: &task.Match{System: "git", Params: map[string]string{"repo": "github.com/acme/**"}}, Then: allow},
-				{Name: "nobody-elses", Match: &task.Match{System: "git"}, Then: deny},
-			}},
-			"github":   {Ceiling: task.Policy{{Then: allow}}},
-			"commands": {Ceiling: task.Policy{{Then: allow}}},
+			"git": {Ceiling: ceiling(t, `
+- repo: "github.com/acme/**"
+  fetch: {}
+  push: [{ref: "refs/heads/verse/**"}, {ref: "refs/heads/release/*", force: "false"}]
+- repo: github.com/acme/site
+  fetch: {}`)},
+			"github":   {Ceiling: systems.Open()},
+			"commands": {Ceiling: ceiling(t, `{run: {command: "make *"}}`)},
+			"files":    {},
 		}}}}
-	launch := func(repo string, rows ...task.Row) *runner.Launch {
-		return &runner.Launch{ID: "x", Policy: append(task.Policy(rows), task.Row{Then: ask}),
-			Doer: runner.Doer{Script: "echo", With: runner.With{Git: []runner.Repo{{Repo: repo}}}}}
-	}
-	push := func(then task.Then, params ...string) task.Row {
-		m := &task.Match{System: "git", Verb: "push", Params: map[string]string{}}
-		for i := 0; i+1 < len(params); i += 2 {
-			m.Params[params[i]] = params[i+1]
+	env := func(git string, more ...string) systems.Environment {
+		t.Helper()
+		e, err := readEnvText(`systems: {git: ` + git + strings.Join(more, "") + `}`)
+		if err != nil {
+			t.Fatal(err)
 		}
-		return task.Row{Name: "r", Match: m, Then: then}
+		return e
+	}
+	launch := func(e systems.Environment) *runner.Launch {
+		return &runner.Launch{ID: "x", Autonomy: task.Autonomy{{Then: ask}}, Script: "echo", Environment: e}
 	}
 	for _, c := range []struct {
 		name string
-		l    *runner.Launch
+		env  systems.Environment
 		says string // "" = accepted
 	}{
-		{"a push the ceiling allows", launch("acme/app", push(allow, "ref", "refs/heads/verse/auto/*")), ""},
-		{"an ask about a push the ceiling allows", launch("acme/app", push(ask, "ref", "refs/heads/main")), ""},
-		{"a push to a ref the ceiling refuses", launch("acme/app", push(allow, "ref", "refs/heads/release/1.0")), "its row no-release: deny verb=push ref=refs/heads/release/**"},
-		{"a pattern wider than the ceiling's", launch("acme/app", push(allow, "ref", "refs/heads/**")), ""},
-		{"an ask about a refused ref", launch("acme/app", push(ask, "ref", "refs/heads/release/1.0")), "policy[0]: this runner's ceiling refuses what the row would ask"},
-		{"a deny row beyond the ceiling", launch("acme/app", push(deny, "ref", "refs/heads/release/1.0")), ""},
-		{"a row on a repo the ceiling does not serve", launch("acme/app", push(allow, "repo", "github.com/other/app")), "its row nobody-elses"},
-		{"a repo the ceiling refuses every call on", launch("other/app"), "with.git[0]: this runner's ceiling refuses git on github.com/other/app"},
-		{"a row on a system the runner does not perform", launch("acme/app", task.Row{Match: &task.Match{System: "linear-issue", Verb: "create"}, Then: allow}), "intercepts no linear-issue"},
-		{"a row on a system held inside the run", launch("acme/app", task.Row{Match: &task.Match{System: "commands", Verb: "run"}, Then: ask}), ""},
-		{"a row on a performed system with no ceiling written", launch("acme/app", task.Row{Match: &task.Match{System: "github", Verb: "create-pr"}, Then: allow}), ""},
+		{"a push within", env(`{repo: acme/app, fetch: {}, push: {ref: "refs/heads/verse/auto/*"}}`), ""},
+		{"a release push that keeps force out", env(`{repo: acme/app, push: {ref: "refs/heads/release/1.0", force: "false"}}`), ""},
+		{"a second block of the ceiling", env(`{repo: acme/site, fetch: {}}`), ""},
+		{"a repository outside", env(`{repo: other/app, fetch: {}}`),
+			"environment.systems.git: beyond this runner's ceiling for git: [0]: repo github.com/other/app is beyond github.com/acme/**"},
+		{"a push wider than any shape", env(`{repo: acme/app, push: {ref: "refs/heads/**"}}`), "push {ref: refs/heads/**} is within no shape of its"},
+		{"a bare push under a ceiling naming ref", env(`{repo: acme/app, push: {}}`), "push {} is within no shape of its: {ref: refs/heads/verse/**}"},
+		{"a release push leaving force open", env(`{repo: acme/app, push: {ref: "refs/heads/release/1.0"}}`), "within no shape"},
+		{"a verb the block does not give", env(`{repo: acme/site, push: {ref: refs/heads/main}}`), "[1]: it gives no `push` (it gives: fetch)"},
+		{"an open ceiling", env(`{repo: acme/app, fetch: {}}`, `, github: {repo: acme/app, create-pr: {}}`), ""},
+		{"a command within", env(`{repo: acme/app, fetch: {}}`, `, commands: {run: {command: "make test"}}`), ""},
+		{"a command beyond", env(`{repo: acme/app, fetch: {}}`, `, commands: {run: {}}`), "environment.systems.commands: beyond this runner's ceiling for commands"},
+		{"a system held with an empty ceiling", env(`{repo: acme/app, fetch: {}}`, `, files: {write: {}}`), "environment.systems.files: beyond this runner's ceiling for files: the ceiling gives nothing of it"},
 	} {
-		err := CheckLaunch(c.l, desc, nil)
+		err := CheckLaunch(launch(c.env), desc, nil)
 		switch {
 		case c.says == "" && err != nil:
 			t.Errorf("%s: refused: %v", c.name, err)
@@ -254,45 +387,71 @@ func TestALaunchsPolicyIsWithinTheRunnersCeilings(t *testing.T) {
 			t.Errorf("%s: %v, want it refused saying %q", c.name, err, c.says)
 		}
 	}
-	// The slide, with the task's repositories as they are.
-	with := runner.With{Git: []runner.Repo{{Repo: "acme/app"}}}
-	prev := task.Policy{push(ask), {Then: ask}}
-	if err := CheckPolicy(task.Policy{push(allow, "ref", "refs/heads/release/2.0"), {Then: ask}}, prev, "script", with, desc); err == nil || !strings.Contains(err.Error(), "no-release") {
-		t.Errorf("a slide past the ceiling: %v, want it refused naming the ceiling's row", err)
+	// The slide is held to the environment the launch had, which is within the ceilings.
+	running := launch(env(`{repo: acme/app, push: {ref: "refs/heads/verse/**"}}`))
+	push := func(ref string) task.Row {
+		return task.Row{Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"ref": ref}}, Then: task.Then{Mode: task.ThenAllow}}
 	}
-	if err := CheckPolicy(task.Policy{push(allow, "ref", "refs/heads/verse/auto/*"), {Then: ask}}, prev, "script", with, desc); err != nil {
-		t.Errorf("a slide within the ceiling: %v", err)
+	if err := CheckAutonomy(task.Autonomy{push("refs/heads/release/2.0"), {Then: ask}}, running); err == nil || !strings.Contains(err.Error(), "matches nothing the environment gives") {
+		t.Errorf("a slide reaching past the environment: %v", err)
+	}
+	if err := CheckAutonomy(task.Autonomy{push("refs/heads/verse/auto/*"), {Then: ask}}, running); err != nil {
+		t.Errorf("a slide within the environment: %v", err)
+	}
+}
+
+// A NETWORK WITH NO CEILING IS BOUNDED ONLY BY WHAT THE RUNNER BUILDS; one with a ceiling holds
+// the environment's network block within it.
+func TestANetworkCeilingBoundsOnlyWhereWritten(t *testing.T) {
+	offer := func(sys map[string]runner.System) runner.Description {
+		return runner.Description{Offers: []runner.Offer{{Script: true, Systems: sys}}}
+	}
+	l := &runner.Launch{ID: "x", Script: "echo", Environment: netEnv(runner.NetworkAllow, "pypi.org")}
+	for name, sys := range map[string]map[string]runner.System{
+		"held with no ceiling": {"network": {}},
+		"not held":             nil,
+	} {
+		if err := CheckLaunch(l, offer(sys), nil); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	bounded := offer(map[string]runner.System{"network": {Ceiling: ceiling(t, `{mode: [none, allow], tcp-client: {host: "*.github.com"}}`)}})
+	if err := CheckLaunch(l, bounded, nil); err == nil || !strings.Contains(err.Error(), "beyond this runner's ceiling for network") {
+		t.Errorf("a host beyond the network ceiling: %v", err)
+	}
+	if err := CheckLaunch(&runner.Launch{ID: "x", Script: "echo", Environment: netEnv(runner.NetworkAllow, "api.github.com")}, bounded, nil); err != nil {
+		t.Errorf("a host within the network ceiling: %v", err)
 	}
 }
 
 // THE NETWORK IS A FACT OF THE RUN, ABSENT BEING NONE, and an offer says which networks its
-// runner builds: a launch asking for one it does not build is refused where it is written, the
-// absent one among them on a runner that cannot take the network away. An offer that names no
-// network builds none a launch may ask for.
+// runner builds (the network's `builds`): a launch asking for one it does not build is refused
+// where it is written, saying what it builds, the absent one among them on a runner that cannot
+// take the network away. (An offer holding no network is no registered runner's:
+// Description.Check refuses it.)
 func TestTheNetworkIsAFactTheOfferBuilds(t *testing.T) {
 	offer := func(modes ...string) runner.Description {
-		return runner.Description{Offers: []runner.Offer{{Script: true, With: map[string]runner.Accepts{"network": runner.AcceptsOneOf(modes...)}}}}
+		return described(runner.Offer{Script: true, Systems: map[string]runner.System{"network": builds(modes...)}})
 	}
 	sandboxed, unconfined := offer(runner.NetworkOpen, runner.NetworkNone, runner.NetworkAllow), offer(runner.NetworkOpen)
-	launch := func(n *runner.Network) *runner.Launch {
-		return &runner.Launch{ID: "x", Doer: runner.Doer{Script: "echo", With: runner.With{Network: n}}}
+	launch := func(e systems.Environment) *runner.Launch {
+		return &runner.Launch{ID: "x", Script: "echo", Environment: e}
 	}
-	open, none := &runner.Network{Mode: runner.NetworkOpen}, &runner.Network{Mode: runner.NetworkNone}
-	hosts := &runner.Network{Mode: runner.NetworkAllow, Allow: []string{"pypi.org"}}
+	open, none := netEnv(runner.NetworkOpen), netEnv(runner.NetworkNone)
+	hosts := netEnv(runner.NetworkAllow, "pypi.org")
+	absent := systems.Environment{}
 	for _, c := range []struct {
 		name string
 		desc runner.Description
-		n    *runner.Network
+		n    systems.Environment
 		says string
 	}{
-		{"sandboxed, absent", sandboxed, nil, ""},
+		{"sandboxed, absent", sandboxed, absent, ""},
 		{"sandboxed, hosts", sandboxed, hosts, ""},
 		{"unconfined, open", unconfined, open, ""},
-		{"unconfined, absent", unconfined, nil, "builds the network open, not none (absent is none)"},
-		{"unconfined, none", unconfined, none, "not none"},
-		{"unconfined, hosts", unconfined, hosts, "not allow"},
-		{"silent, absent", runner.Description{Offers: []runner.Offer{{Script: true}}}, nil, "not none"},
-		{"silent, open", runner.Description{Offers: []runner.Offer{{Script: true}}}, open, "not open"},
+		{"unconfined, absent", unconfined, absent, "environment.systems.network: mode none: this runner builds open only"},
+		{"unconfined, none", unconfined, none, "mode none: this runner builds open only"},
+		{"unconfined, hosts", unconfined, hosts, "mode allow: this runner builds open only"},
 	} {
 		err := CheckLaunch(launch(c.n), c.desc, nil)
 		switch {
@@ -307,14 +466,87 @@ func TestTheNetworkIsAFactTheOfferBuilds(t *testing.T) {
 // A TRACKER IS A FACT OF `git-issue` as a repository is of `git`: an offer that holds git and
 // not git-issue refuses a launch naming a tracker, and one that holds both takes it.
 func TestATrackerNeedsTheGitIssueSystem(t *testing.T) {
-	l := runner.Launch{ID: "x", Doer: runner.Doer{Script: "echo", With: runner.With{
-		Git: []runner.Repo{{Repo: "acme/app"}}, GitIssue: []runner.Tracker{{Repo: "acme/app"}}}}}
-	gitOnly := runner.Description{Offers: []runner.Offer{{Script: true, With: builds(), Systems: intercepted("git")}}}
-	if err := CheckOffer(&l, gitOnly); err == nil || !strings.Contains(err.Error(), "intercepts no `git-issue`") {
+	l := runner.Launch{ID: "x", Script: "echo", Environment: gitEnv("acme/app")}
+	l.Environment.Systems["git-issue"] = []systems.Block{{Attributes: map[string]string{"repo": "acme/app"}}}
+	gitOnly := runner.Description{Offers: []runner.Offer{{Script: true, Systems: intercepted("git")}}}
+	if err := CheckOffer(&l, gitOnly); err == nil || !strings.Contains(err.Error(), "holds no `git-issue`") {
 		t.Errorf("a tracker on an offer without git-issue: %v", err)
 	}
-	both := runner.Description{Offers: []runner.Offer{{Script: true, With: builds(), Systems: intercepted("git", "git-issue")}}}
+	both := runner.Description{Offers: []runner.Offer{{Script: true, Systems: intercepted("git", "git-issue")}}}
 	if err := CheckOffer(&l, both); err != nil {
 		t.Errorf("a tracker on an offer with git-issue: %v", err)
+	}
+}
+
+// readEnvText reads an environment as a spawn writes it.
+func readEnvText(text string) (systems.Environment, error) {
+	var e systems.Environment
+	err := codec.Unmarshal([]byte(text), &e, codec.Tony)
+	return e, err
+}
+
+// AN AGENT'S SETTINGS ARE THE ONES ITS OFFER TAKES, each a value it takes: an undeclared one is
+// refused naming what the agent takes, a value outside its patterns or of the wrong form is
+// refused, a value bound at the firing passes, and an annotation the offer does not name is
+// refused.
+func TestAnAgentsSettingsAreTheOffers(t *testing.T) {
+	o := agentOffer(nil)
+	o.Agent.Settings = map[string]runner.Setting{
+		"model":       {Values: []string{"claude-*"}, Default: true},
+		"temperature": {Form: runner.FormNumber},
+	}
+	o.Agent.Annotations = map[string]string{"verse.portkey/virtual-key": "string"}
+	desc := described(o)
+	for _, c := range []struct {
+		settings, annotations map[string]string
+		says                  string // "" = accepted
+	}{
+		{map[string]string{"model": "claude-sonnet-5", "temperature": "0.2"}, nil, ""},
+		{nil, nil, ""},
+		{map[string]string{"model": "$subject.model"}, nil, `"$subject.model" is none of claude-*`},
+		{map[string]string{"effort": "high"}, nil, "agent.effort: verse on this runner takes no `effort` (it takes: model, temperature)"},
+		{map[string]string{"model": "gpt-5"}, nil, `agent.model: verse on this runner takes no such model: "gpt-5" is none of claude-*`},
+		{map[string]string{"temperature": "warm"}, nil, `"warm" is not a number`},
+		{nil, map[string]string{"verse.portkey/virtual-key": "k"}, ""},
+		{nil, map[string]string{"other": "x"}, `takes no "other"`},
+	} {
+		l := &runner.Launch{ID: "x", Prompt: "go", Agent: &runner.Agent{Name: "verse", Settings: c.settings, Annotations: c.annotations},
+			Environment: netEnv(runner.NetworkOpen)}
+		err := CheckOffer(l, desc)
+		switch {
+		case c.says == "" && err != nil:
+			t.Errorf("%v %v: refused: %v", c.settings, c.annotations, err)
+		case c.says != "" && (err == nil || !strings.Contains(err.Error(), c.says)):
+			t.Errorf("%v %v: %v, want it refused saying %q", c.settings, c.annotations, err, c.says)
+		}
+	}
+}
+
+// WHAT A DOER CAN'T RUN WITHOUT, ITS ENVIRONMENT GIVES: a launch missing a required step is
+// refused where it is written, naming both ways to add it; the empty block gives it.
+func TestADoersRequiredStepsAreGiven(t *testing.T) {
+	o := agentOffer(intercepted("commands", "files"))
+	o.Agent.Name = "codex"
+	o.Requires = []string{task.StepCommandsRun, task.StepFilesWrite}
+	desc := described(o)
+	env := func(text string) systems.Environment {
+		t.Helper()
+		var e systems.Environment
+		if err := codec.Unmarshal([]byte(text), &e, codec.Tony); err != nil {
+			t.Fatal(err)
+		}
+		return e
+	}
+	for text, says := range map[string]string{
+		`{systems: {network: {mode: open}, files: {write: {}}}}`:                                       "codex on this runner requires commands.run: add `commands: {}` or `commands: {run: {}}`",
+		`{systems: {network: {mode: open}, commands: {run: {}}}}`:                                      "requires files.write: add `files: {}` or `files: {write: {}}`",
+		`{systems: {network: {mode: open}, commands: {}, files: {}}}`:                                  "",
+		`{systems: {network: {mode: open}, commands: {run: {command: "make *"}}, files: {write: {}}}}`: "", // narrowed, but given
+	} {
+		l := &runner.Launch{ID: "x", Prompt: "go", Agent: &runner.Agent{Name: "codex"}, Environment: env(text)}
+		err := CheckOffer(l, desc)
+		if says == "" && err != nil || says != "" && (err == nil || !strings.Contains(err.Error(), says)) {
+			t.Errorf("%s: %v, want %q", text, err, says)
+		}
 	}
 }

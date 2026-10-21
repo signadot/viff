@@ -109,8 +109,8 @@ func (s *Server) checkThen(asker string, then map[string]any, self string, now t
 	if m, ok := asMap(then["answer"]); ok {
 		return s.checkThenAnswer(asker, m, self)
 	}
-	if v, ok := then["policy"]; ok {
-		return s.checkThenPolicy(asker, v)
+	if v, ok := then["spawn"]; ok {
+		return s.checkThenSpawn(asker, v)
 	}
 	m, ok := asMap(then["ask"])
 	if !ok {
@@ -137,25 +137,39 @@ func (s *Server) checkThen(asker string, then map[string]any, self string, now t
 	return 0, nil
 }
 
-// checkThenPolicy checks the policy a then's prompt or script runs under as a run started by hand
-// is checked: its shape, `$principal` asking the asker, and answerers who can settle its asks.
-func (s *Server) checkThenPolicy(asker string, v any) (int, error) {
+// checkThenSpawn checks a then's spawn as a run started by hand is checked, where the asker is
+// present to hear what is wrong: as written (thenSpec), its autonomy's `$principal` asking the
+// asker with answerers who can settle its asks, the credential it names readable by the asker,
+// and what the runner it names offers — so a spawn the runner can't run is refused now rather
+// than after the yes.
+func (s *Server) checkThenSpawn(asker string, v any) (int, error) {
 	n, ok := v.(*ir.Node)
 	if !ok {
 		var err error
 		if n, err = gomap.ToTonyIR(v); err != nil {
-			return http.StatusBadRequest, fmt.Errorf("policy: %w", err)
+			return http.StatusBadRequest, fmt.Errorf("spawn: %w", err)
 		}
 	}
-	p, err := thenPolicy(n)
-	if err == nil {
-		err = mirror.CheckPrincipal(p, asker)
+	spec, err := thenSpec(n)
+	if err != nil {
+		return http.StatusBadRequest, fmt.Errorf("spawn%w", err)
 	}
+	if err := mirror.CheckPrincipal(spec.Autonomy, asker); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("spawn.autonomy: %w", err)
+	}
+	if err := s.engineOf("").CheckAutonomyAnswerers(spec.Autonomy); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("spawn.autonomy: %w", err)
+	}
+	store := entity.As(s.Store, asker)
+	if spec.VirtualKey, err = credentialAt(store, asker, spec.VirtualKey); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("spawn.virtualKey: %w", err)
+	}
+	l, err := launchOf("then", spec, asker)
 	if err == nil {
-		err = s.engineOf("").CheckPolicyAnswerers(p)
+		err = s.checkOffer(store, spec.Runner, &l)
 	}
 	if err != nil {
-		return http.StatusBadRequest, fmt.Errorf("policy: %w", err)
+		return http.StatusBadRequest, fmt.Errorf("spawn: %w", err)
 	}
 	return 0, nil
 }

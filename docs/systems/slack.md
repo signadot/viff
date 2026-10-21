@@ -35,14 +35,16 @@ Slack, and how the person's answer comes back.
 
 ## What a task can do
 
-A task gets Slack from its runner, when the runner holds a bot token. Nothing in the spawn
-names Slack. The policy decides each call by the channel:
+A task gets Slack from its runner, when the runner holds a bot token, and from its environment: a
+`slack` block gives the verbs, its shapes the channels. The autonomy decides each call within
+it:
 
 ```tony
 spawn:
-  doer: {agent: verse, with: {network: {mode: open}}}
+  agent: {name: verse}
+  environment: {systems: {network: {mode: open}, slack: {post: {channel: deploys}, read: {channel: deploys}}}}
   prompt: "Post the release notes for v1.3 in #deploys, then read the thread for objections."
-  policy:
+  autonomy:
   - {match: {system: slack, verb: post, channel: deploys}, then: ask}
   - {match: {system: slack, verb: read, channel: deploys}, then: allow}
   - {match: {system: slack}, then: deny}
@@ -57,11 +59,11 @@ spawn:
 | `slack-react` | adds a reaction to a message, by its ts | `slack.react`, with `channel` and `emoji` |
 
 Every verb is a step, a read too. What a channel holds is not the task's until the task reads
-it, and a policy may keep a channel from it.
+it, and an environment that gives no read of a channel keeps it from the task.
 
 **A channel is named by its name**, without the `#`: `deploys`, never its id. The runner finds
-the name among the channels the bot is in. The channel the policy decided about is the channel
-the runner posts in.
+the name among the channels the bot is in. The channel the environment and the autonomy decided
+about is the channel the runner posts in.
 
 **Every message a task writes ends with a line that names the task**, `verse task <id>`. All
 tasks on a runner post as one bot, so the line says which task wrote each message. The iod
@@ -93,12 +95,12 @@ systems:
   slack:
     credential: SLACK_BOT_TOKEN
     ceiling:
-    - {match: {channel: deploys}, then: allow}
-    - {match: {verb: read, channel: "eng-*"}, then: allow}
-    - {then: deny}
+      post: {channel: deploys}
+      reply: {channel: deploys}
+      read: [{channel: deploys}, {channel: "eng-*"}]
+      react: {channel: deploys}
 ```
 
-Verse refuses to install a spawn whose policy allows or asks about posting to another channel.
-The refusal names the policy's row and the ceiling's
-([the verse runner](../reference/runnerd.md#what-it-offers)). A call that only the policy's
-last row lets through is still held to the ceiling when the runner makes it.
+Verse refuses to install a spawn whose environment gives posting to another channel. The refusal
+says what the ceiling gives ([the verse runner](../reference/runnerd.md#what-it-offers)). A call is
+still held to the ceiling when the runner makes it, whatever the autonomy said.

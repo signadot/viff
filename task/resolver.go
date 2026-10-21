@@ -4,8 +4,8 @@ import "context"
 
 // Resolver answers a blocking gate. It is late-bound and substitutable (model
 // invariant #3): the boundary neither knows nor cares whether a human, another
-// task, or a rule answers. This substitutability is what makes a policy
-// compositional — "policy agnostic" implies "supervisor agnostic."
+// task, or a rule answers. This substitutability is what makes an autonomy
+// compositional — "autonomy agnostic" implies "supervisor agnostic."
 type Resolver interface {
 	Resolve(ctx context.Context, q GateQuestion, tu ToolUse) (Resolution, error)
 }
@@ -69,7 +69,7 @@ func Choose(choice, by string) Resolution {
 // their own, rather than the runtime settling a question nobody answered.
 func (r Resolution) Cast() bool {
 	switch r.By {
-	case "", ByAuto, ByPolicy, ByCancelled, ByDeadline:
+	case "", ByAuto, ByAutonomy, ByCancelled, ByDeadline:
 		return false
 	}
 	return true

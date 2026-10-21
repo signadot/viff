@@ -53,14 +53,14 @@ func deployRule(gates, spawn string) string {
 		name: deploy,
 		condition: {subject: {path: "demo.pr.*", value: {stage: ready}}},
 		gates: ` + gates + `,
-		action: {patch: {stage: deploying}, spawn: {policy: [{then: allow}], ` + spawn + `}},
+		action: {patch: {stage: deploying}, spawn: {environment: {systems: {network: {mode: open}}}, autonomy: [{then: allow}], ` + spawn + `}},
 	}`
 }
 
 // showsCredential is a spawn's command that prints the path its shell was given for a credential
 // file, and copies the file to dir/token where it was given one, for the test to read.
 func showsCredential(dir string) string {
-	return `doer: {script: "echo \"[$VERSE_CREDENTIAL_FILE]\"; if [ -n \"$VERSE_CREDENTIAL_FILE\" ]; then cp \"$VERSE_CREDENTIAL_FILE\" ` + dir + `/token; fi"}`
+	return `script: "echo \"[$VERSE_CREDENTIAL_FILE]\"; if [ -n \"$VERSE_CREDENTIAL_FILE\" ]; then cp \"$VERSE_CREDENTIAL_FILE\" ` + dir + `/token; fi"`
 }
 
 // ruleTask waits for the task the deploy rule started about a subject to end, and answers its

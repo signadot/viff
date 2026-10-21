@@ -15,7 +15,7 @@ import (
 // SLACK IS A SYSTEM WITH FOUR VERBS, each a call the runner makes with its bot token over the
 // task's channel: `slack.post` and `slack.reply` write, `slack.react` marks a message, and
 // `slack.read` brings a channel's or a thread's messages into the task. A read is a step too: what
-// a channel holds is not the task's until it is read, and a policy may keep a channel from it.
+// a channel holds is not the task's until it is read, and an autonomy may keep a channel from it.
 //
 // EVERY MESSAGE THE TASK WRITES SAYS WHOSE IT IS. The bot is the runner's, and every task the
 // runner runs posts as it; the footer names the task, so a person reading the channel knows which
@@ -38,7 +38,7 @@ const (
 func SlackFooter(taskID string) string { return "_verse task " + taskID + "_" }
 
 // slack answers a `slack.*` op with the runner's bot token: the channel by its name, decided by
-// the launch's policy and the runner's ceiling on the name, then the call.
+// the launch's autonomy and the runner's ceiling on the name, then the call.
 func (s *Server) slack(ctx context.Context, tk Task, req Request) Reply {
 	if s.Services.SlackToken == "" {
 		return Reply{Error: "this runner has no Slack bot token (the config's `systems.slack.credential`), so it cannot act in Slack"}
@@ -60,8 +60,8 @@ func (s *Server) slack(ctx context.Context, tk Task, req Request) Reply {
 		case req.Op == OpSlackReply:
 			fields["thread"] = req.Thread
 		case req.Thread != "":
-			// The policy decides a post by its channel and a reply by its thread too: a post
-			// naming a thread is a reply the policy was not asked about.
+			// The autonomy decides a post by its channel and a reply by its thread too: a post
+			// naming a thread is a reply the autonomy was not asked about.
 			return Reply{Refused: "a post names no thread: a message in a thread is a reply"}
 		}
 	case OpSlackRead:

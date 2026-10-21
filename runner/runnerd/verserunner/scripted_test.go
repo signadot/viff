@@ -26,8 +26,8 @@ type scriptRun struct {
 // runScript runs script as a task of its own, as a launch would.
 func runScript(t *testing.T, script string) scriptRun {
 	t.Helper()
-	p := New(Config{}, Secrets{}, t.TempDir(), io.Discard).Build(runner.Launch{ID: "s",
-		Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, Doer: runner.Doer{Script: script, With: runner.With{Network: netOpen}}}, task.NewRegistry())
+	p := New(opened(Config{}), Secrets{}, t.TempDir(), io.Discard).Build(runner.Launch{ID: "s",
+		Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, Script: script, Environment: envOf(netOpen, nil, nil)}, task.NewRegistry())
 	_, _ = p.Run(context.Background()) // a failed script is a failed task, which Err says
 	var err error
 	if msg := p.Err(); msg != "" {
@@ -116,14 +116,14 @@ func TestAShebangWithNoProgramFails(t *testing.T) {
 // A script's task ends with its output: done when it exits 0, failed with the reason otherwise,
 // and the output it wrote is the result either way.
 func TestAScriptsTaskEndsWithItsOutput(t *testing.T) {
-	r := New(Config{}, Secrets{}, t.TempDir(), io.Discard)
+	r := New(opened(Config{}), Secrets{}, t.TempDir(), io.Discard)
 	for _, tc := range []struct {
 		script, status, result, err string
 	}{
 		{"echo hello", "done", "hello", ""},
 		{"echo partial; exit 3", "failed", "partial", "the script failed: exit status 3"},
 	} {
-		p := r.Build(runner.Launch{ID: "s", Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, Doer: runner.Doer{Script: tc.script, With: runner.With{Network: netOpen}}}, task.NewRegistry())
+		p := r.Build(runner.Launch{ID: "s", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, Script: tc.script, Environment: envOf(netOpen, nil, nil)}, task.NewRegistry())
 		oc, _ := p.Run(context.Background())
 		if oc.Reason != tc.status || p.Result() != tc.result || p.Err() != tc.err {
 			t.Errorf("%q: %s %q %q, want %s %q %q", tc.script, oc.Reason, p.Result(), p.Err(), tc.status, tc.result, tc.err)
@@ -134,9 +134,9 @@ func TestAScriptsTaskEndsWithItsOutput(t *testing.T) {
 // A launch's timeout ends a task that runs too long, cancelled with the reason; the time it spends
 // waiting for an answer doesn't count.
 func TestATimeoutEndsATaskButNotItsWaiting(t *testing.T) {
-	h := runnerd.NewInProcessHandler(New(Config{}, Secrets{}, t.TempDir(), io.Discard).Build)
-	_, err := h.Launch(runner.Launch{ID: "slow", Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, Timeout: "300ms",
-		Doer: runner.Doer{Script: "sleep 5", With: runner.With{Network: netOpen}}})
+	h := runnerd.NewInProcessHandler(New(opened(Config{}), Secrets{}, t.TempDir(), io.Discard).Build)
+	_, err := h.Launch(runner.Launch{ID: "slow", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, Timeout: "300ms",
+		Script: "sleep 5", Environment: envOf(netOpen, nil, nil)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,9 +147,9 @@ func TestATimeoutEndsATaskButNotItsWaiting(t *testing.T) {
 		}
 		return modeltest.Use("run_bash", map[string]any{"command": "echo ran"})
 	})
-	agents := runnerd.NewInProcessHandler(New(Config{}, Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL},
+	agents := runnerd.NewInProcessHandler(New(opened(Config{}), Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL},
 		t.TempDir(), io.Discard).Build)
-	_, err = agents.Launch(runner.Launch{ID: "waits", Prompt: "go", Timeout: "300ms", Policy: task.Policy{{Match: &task.Match{System: "commands"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAsk}}}, Doer: runner.Doer{Agent: AgentName, With: runner.With{Network: netOpen}}})
+	_, err = agents.Launch(runner.Launch{ID: "waits", Prompt: "go", Timeout: "300ms", Autonomy: task.Autonomy{{Match: &task.Match{System: "commands"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAsk}}}, Agent: &runner.Agent{Name: AgentName}, Environment: giving(envOf(netOpen, nil, nil), "commands")})
 	if err != nil {
 		t.Fatal(err)
 	}

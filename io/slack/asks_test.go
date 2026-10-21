@@ -23,7 +23,7 @@ func (r *socketRig) askAni(t *testing.T) string {
 	t.Helper()
 	resp, err := client.New(r.addr, "user:scott@example.com").Post("/asks", nil, verseapi.Ask{
 		Name: "land", Question: "Merge verse/ask?", Answerers: []string{ani},
-		Then: entity.Obj{"prompt": "merge verse/ask to main"}.Payload(),
+		Then: entity.Obj{"spawn": entity.Obj{"prompt": "merge verse/ask to main", "environment": entity.Obj{"systems": entity.Obj{"network": entity.Obj{"mode": "open"}}}}}.Payload(),
 	})
 	if err != nil || resp.StatusCode != http.StatusCreated {
 		t.Fatalf("asking ani: %v %v", err, resp)
@@ -91,7 +91,7 @@ func TestAReplyToAnAskSinceChangedIsRefused(t *testing.T) {
 	id := r.askAni(t)
 	r.pass(t)
 	r.ts, _ = r.fake.posted[0]["ts"].(string)
-	b, _ := codec.Marshal(verseapi.AskChange{Then: entity.Obj{"prompt": "merge it and tag it"}.Payload()}, codec.Tony)
+	b, _ := codec.Marshal(verseapi.AskChange{Then: entity.Obj{"spawn": entity.Obj{"prompt": "merge it and tag it", "environment": entity.Obj{"systems": entity.Obj{"network": entity.Obj{"mode": "open"}}}}}.Payload()}, codec.Tony)
 	req, _ := http.NewRequest(http.MethodPatch, "http://"+r.addr+"/asks/"+id, strings.NewReader(string(b)))
 	req.Header.Set("Content-Type", "application/tony")
 	req.Header.Set(verseapi.PrincipalHeader, "user:scott@example.com")
@@ -128,7 +128,7 @@ func TestAReplyToAMessageNotYetRedrawnIsRefused(t *testing.T) {
 	r.pass(t)
 	r.ts, _ = r.fake.posted[0]["ts"].(string)
 	if code := r.send(t, "user:scott@example.com", "", http.MethodPatch, "/asks/"+id,
-		`{then: {prompt: "merge it and tag it"}}`); code != http.StatusOK {
+		`{then: {spawn: {prompt: "merge it and tag it", environment: {systems: {network: {mode: open}}}}}}`); code != http.StatusOK {
 		t.Fatalf("scott's change: %d", code)
 	}
 	r.fake.fail["chat.update"] = "cant_update_message" // refused, and the message stands with its old words

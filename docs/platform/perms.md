@@ -129,7 +129,7 @@ verse's built-in clock and calendar) is installed as the system and acts as the 
 ## A relayed task's frames
 
 - **A relayed task's frames are not evidence of who did what.** A *frame* is an event that a
-  running task streams back: a status, a pending gate, a decision, a `say`, a change of policy. For
+  running task streams back: a status, a pending gate, a decision, a `say`, a change of autonomy. For
   a task that verse hosts, verse makes the frames. For a task that verse relays to, a remote
   runner's, the frames are whatever the worker sent. So for a relayed
   task:
@@ -139,7 +139,7 @@ verse's built-in clock and calendar) is installed as the system and acts as the 
   - a gate that nobody was asked about is settled with the frame's verdict, by the worker of
     record (or the runtime's `auto`, `deadline`, `cancelled`), and casts no ballot;
   - only the question that the task is waiting on is the task's to settle;
-  - a change of policy is by whoever the control route relayed that policy for, or else by
+  - a change of autonomy is by whoever the control route relayed that autonomy for, or else by
     the worker.
 
 ## The author of a commit

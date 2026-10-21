@@ -2,6 +2,7 @@ package trigger
 
 import (
 	"context"
+	"github.com/signadot/verse/systems"
 	"testing"
 
 	"github.com/signadot/verse/entity"
@@ -27,7 +28,7 @@ func hookResultEngine(t *testing.T, answer string) (*Engine, entity.Store) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
-		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+		sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 		p := task.NewTask(id, sup, answering{r: answer}, noExec{})
 		mirror.Reflect(store, id, p, mirror.Meta{
 			Subject: spec.Subject, Runner: "local", Chain: spec.Chain, Prompt: spec.Prompt,
@@ -53,7 +54,7 @@ func TestHookBindsTerminalStatusAndResult(t *testing.T) {
 			hookPrompt = spec.Prompt
 			close(done)
 		}
-		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+		sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 		p := task.NewTask(id, sup, answering{r: "SHIPIT"}, noExec{})
 		mirror.Reflect(store, id, p, mirror.Meta{
 			Subject: spec.Subject, Runner: "local", Chain: spec.Chain, Prompt: spec.Prompt,
@@ -67,9 +68,9 @@ func TestHookBindsTerminalStatusAndResult(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "review $subject"},
+			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
 			OnDone: &Action{
-				Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "s=$status r=$result f=$flow"},
+				Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "s=$status r=$result f=$flow"},
 			},
 		},
 	}); err != nil {
@@ -98,7 +99,7 @@ func TestHookResultPatchesSubjectAndDrivesNextTrigger(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "review $subject"},
+			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
 			OnDone: &Action{
 				// the task's finding becomes a field on the subject
 				Patch: entity.Obj{"stage": "reviewed", "severity": "$result"}.Payload(),
@@ -135,7 +136,7 @@ func TestHookUnresolvedReferenceFailsTheFiring(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "review $subject"},
+			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
 			OnDone: &Action{
 				Patch: entity.Obj{"stage": "reviewed", "sev": "$nosuchfield"}.Payload(),
 			},

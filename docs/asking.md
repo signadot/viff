@@ -19,7 +19,7 @@ All of them are the same record, on one docket.
 | **on silence** | what the ask settles on at its date if nobody answers: `no`, unless you say `--on-silence yes` |
 | **question** | an ask as the person asked sees it: one that waits on you. `verse question` lists them |
 | **docket** | every pending ask you can read, whoever raised it and whoever it waits on. `verse question --all` lists it |
-| **then** | what follows a yes, as one key: `{prompt: <text>}` is a task an agent works from that prompt; `{script: <text>}` is a shell script, run as written; `{answer: {ask: <id>, choice: <option>}}` answers another ask as you; `{ask: {…}}` raises another ask. A prompt or a script takes a `policy` beside it, what the run is given, written as a spawn's ([the policy](reference/tasks.md#the-policy)); without one the run is given no tool. Absent, the ask is a **vote** |
+| **then** | what follows a yes, as one key: `{spawn: {…}}` is a task, written as a charter's spawn is (`prompt` or `script`, `agent`, `environment`, `autonomy`, …) and meaning only what it says; `{answer: {ask: <id>, choice: <option>}}` answers another ask as you; `{ask: {…}}` raises another ask. Absent, the ask is a **vote** |
 | **else** | what follows a no, whether answered or by silence at the date. It takes one key, as `then` does |
 | **answer** | what is written back: `yes` or `no` |
 | **edit** | which version of your ask an answer agreed to: 1 as first asked, and one more each time you change what it asks |
@@ -29,18 +29,25 @@ All of them are the same record, on one docket.
 
 ```sh
 cat > then.tony <<'EOF'
-prompt: merge verse/ask to main
-policy:
-- match: {system: commands}
-  then: allow
-- then: deny
+spawn:
+  prompt: merge verse/ask to main
+  environment:
+    systems:
+      network: {mode: open}
+      commands: {run: {}}
+  autonomy:
+  - match: {system: commands}
+    then: allow
+  - then: deny
 EOF
 verse ask land -q "Review verse/ask this week? If not, any objection?" \
   --to dana@example.com --due 48h --on-silence yes --then @then.tony
 ```
 
-`then.tony` is what follows a yes: an agent given the prompt, under a policy that gives it the
-shell and nothing else.
+`then.tony` is what follows a yes: an agent given the prompt, in an environment that gives it the
+network and the shell, and an autonomy that runs the shell unasked and refuses anything else.
+A spawn means only what it says: one that names no network has none, and verse checks it
+against the runner it would run on when you ask, not after the yes.
 
 `verse ask` answers with the ask's id: `land-` and a suffix. Commands take the name or the id.
 If you have used one name for two asks, verse refuses the name and prints both ids, so you can
@@ -59,11 +66,11 @@ date moves.
 Leave out `--to`, and anyone may answer. Leave out `--then`, and the ask is a vote: the answer
 is all it leaves.
 
-A `then` that is a script runs exactly what it says, as `verse task run --script` does:
+A `then` that is a script runs exactly what it says, as `verse task run` runs one:
 
 ```sh
 verse ask tag -q "Tag v1.2?" --to dana@example.com \
-  --then '{script: "git tag v1.2 && git push origin v1.2"}'
+  --then '{spawn: {script: "git tag v1.2 && git push origin v1.2", environment: {systems: {network: {mode: open}}}}}'
 ```
 
 A prompt lets an agent choose its own actions, so that task's own gates ask you. A script is

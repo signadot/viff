@@ -108,7 +108,7 @@ A permission level is what a principal may do at a node.
 | `read` | reading the node and what is beneath it |
 | `read-write` | writing into the node, with fields removed as well as set |
 | `owner` | everything: deleting the node (which takes what is beneath it), replacing it whole, and setting its record. The owner on record and the owners above hold it. `child-owner` gives it only on a creation. |
-| `control` | steering work: run, cancel, pause, resume, say, change a policy, suspend. An owner by record holds it, and so does whoever it is granted to. |
+| `control` | steering work: run, cancel, pause, resume, say, change an autonomy, suspend. An owner by record holds it, and so does whoever it is granted to. |
 | `answer` | which resolvers may answer for the party the node stands for: a place's owner, at the place, or a person, at `verse.for.<person>`. It is held only by being named: owning the node gives none of it, and a resolver gets none through whoever installed it. An owner above may take it back but not give it, and no `child-grants` passes it down. It reaches beneath its node as a grant does. `verse resolver grant` writes it. |
 
 A spawn carries the identity of whoever runs it, and verse writes the task's record as that
@@ -226,7 +226,7 @@ record. Its `under` is what asked it. A person's ask has its asker's record inst
   charter's owner. Also whoever the question's own `read-write` line names. Verse takes that
   line from the first of these that applies:
   1. for a rule's gate, the gate's `answerers`;
-  2. for a question a task raises, the `answerers` of the policy row that asked; else whom the
+  2. for a question a task raises, the `answerers` of the autonomy row that asked; else whom the
      worker named when it asked; else whom the task acts for (`$principal`), where it acts for
      somebody;
   3. for a question about something, `audience:<subject>`: whoever may write it;
@@ -247,7 +247,7 @@ record. Its `under` is what asked it. A person's ask has its asker's record inst
 - **Answerable once posed.** Posing is two writes: the record, then the question. An answer that
   arrives before both waits a moment, and then gets `503 … still being posed`.
 - **By whoever made the request.** A ballot is keyed by the principal the check admitted, and a
-  record names that principal. This holds for an answer, a `say`, a cancel, a change of policy,
+  record names that principal. This holds for an answer, a `say`, a cancel, a change of autonomy,
   and the `principal` a spawn is answerable to. `need` counts one ballot for each.
 - **What a worker reports is not evidence of who answered.** For a task on a remote runner, who
   works the task is who claimed it. How verse reads what such a worker sends is in

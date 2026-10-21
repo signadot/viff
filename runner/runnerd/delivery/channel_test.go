@@ -15,11 +15,47 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/workspace"
+	"github.com/signadot/verse/systems"
+	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 )
 
 // pushing is a launch's policy that gives the task git and lets every call of it go.
-var pushing = task.Policy{{Match: &task.Match{System: "git"}, Then: task.Then{Mode: task.ThenAllow}}, {Then: task.Then{Mode: task.ThenAllow}}}
+var pushing = task.Autonomy{{Match: &task.Match{System: "git"}, Then: task.Then{Mode: task.ThenAllow}}, {Then: task.Then{Mode: task.ThenAllow}}}
+
+// gitLaunch is a launch of the verse agent that checks out repo, with a fetch and a push to any
+// branch of it, under policy.
+func gitLaunch(id string, repo runner.Repo, policy task.Autonomy) *runner.Launch {
+	attrs := map[string]string{"repo": repo.Repo}
+	if repo.From != "" {
+		attrs["from"] = repo.From
+	}
+	return &runner.Launch{ID: id, Prompt: "p", Agent: &runner.Agent{Name: "verse"}, Autonomy: policy,
+		Environment: systems.Environment{Systems: systems.Systems{"git": {{Attributes: attrs,
+			Verbs: map[string][]systems.Shape{"fetch": {{}}, "push": {{"ref": "refs/heads/**"}}}}}}}}
+}
+
+// within is a launch whose environment gives every verb of each named system: in a block per repo
+// for a system a repo names its blocks by, one block otherwise, under an autonomy that allows
+// them all. What a call may do is then the ceiling's, or a test's own autonomy's.
+func within(repos []string, names ...string) *runner.Launch {
+	env := systems.Environment{Systems: systems.Systems{}}
+	for _, name := range names {
+		d, _ := systems.Get(name)
+		verbs := map[string][]systems.Shape{}
+		for _, v := range d.Verbs {
+			verbs[v.Name] = []systems.Shape{{}}
+		}
+		if u, ok := d.Unique(); ok {
+			for _, r := range repos {
+				env.Systems[name] = append(env.Systems[name], systems.Block{Attributes: map[string]string{u.Name: r}, Verbs: verbs})
+			}
+			continue
+		}
+		env.Systems[name] = []systems.Block{{Verbs: verbs}}
+	}
+	return &runner.Launch{ID: "t", Prompt: "p", Environment: env, Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}}
+}
 
 // A push the task asked for before its process died is finished before anything decides what
 // did not leave. Settle closes the channel and then waits for the request in flight; without
@@ -29,10 +65,8 @@ func TestSettleWaitsForThePushInFlight(t *testing.T) {
 	ctx := context.Background()
 	forge := t.TempDir()
 	origin := initRepo(t, forge, "acme/svc")
-	l := &runner.Launch{ID: "s1", Doer: runner.Doer{Agent: "verse", With: runner.With{Git: []runner.Repo{
-		{Repo: "acme/svc"},
-	}}}, Policy: pushing}
-	repos, err := workspace.FromLaunch(l.Doer.With.Git, forge)
+	l := gitLaunch("s1", runner.Repo{Repo: "acme/svc"}, pushing)
+	repos, err := workspace.FromLaunch(l.Repos(), forge)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +86,7 @@ func TestSettleWaitsForThePushInFlight(t *testing.T) {
 	// a push in flight at the moment the process dies.
 	asked, release := make(chan struct{}), make(chan struct{})
 	cred := func(workspace.Repo) (string, error) { close(asked); <-release; return "", nil }
-	ch, err := Open(l.ID, ws, m, cred, Services{}, nil, l, io.Discard)
+	ch, err := Open(l.ID, ws, m, cred, Services{}, systemstest.Open(l.Environment), l, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}

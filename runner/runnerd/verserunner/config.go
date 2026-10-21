@@ -42,6 +42,10 @@ const (
 // Config is the verse runner's own configuration, beside runnerd.Config in the same file.
 type Config struct {
 	Models Models `tony:"field=models,omitzero"`
+	// Agents is the operator's narrowing of each agent's settings, by agent and setting: the
+	// values a launch may set, as patterns (`verse: {model: ["claude-sonnet-*"]}`). A setting
+	// the agent does not take is refused; one not named here takes any value of its form.
+	Agents map[string]map[string][]string `tony:"field=agents,omitzero"`
 	// Annotations is the annotations a launch may set, with the type of their value.
 	Annotations map[string]string `tony:"field=annotations,omitzero"`
 	// ShellEnv is the variables of the runner's environment a task's shell is given, by name.
@@ -74,12 +78,12 @@ type System struct {
 	// API is where the forge's API is, for `github` and `github-issue`: absent is github.com's,
 	// and a GitHub Enterprise Server's is `https://<host>/api/v3`.
 	API string `tony:"field=api,omitzero"`
-	// Ceiling is the operator's policy over the system's calls: rows of `allow` and `deny`
-	// (never `ask`), the system implied, read as a task's policy is (task.Policy) and ending
-	// with what the rest get; absent, or ending without a default, the rest are allowed. It is
-	// published with the runner's offers, holds a launch's policy at install (nothing it
-	// allows or asks about may lie outside), and is read again at each act the runner performs.
-	Ceiling task.Policy `tony:"field=ceiling,omitzero"`
+	// Ceiling is the operator's bound on the system (systems.Ceiling): blocks in the
+	// environment's form, attributes as patterns, closed, so absent is nothing of the system (the
+	// network apart, whose absent ceiling bounds nothing beyond what the sandbox builds). It is
+	// published with the runner's offers, holds a launch's environment at install and at launch
+	// (every block within it), and is read again at each act.
+	Ceiling systems.Ceiling `tony:"field=ceiling,omitzero"`
 }
 
 // Repos is how the runner checks out a launch's repos.
@@ -185,29 +189,33 @@ var inner = map[string][]string{
 	"question": {AgentName, codex.Agent, "script"},
 }
 
-// ceilings is each performed system's ceiling as the channel reads it at each act: the rows
-// with the system named, ending with a default that allows where none was written. The `git`
-// ceiling is bounded to the runner's forge: what the operator wrote holds for repositories on
-// it, and a repository elsewhere is refused, since the runner fetches from nowhere else.
-func (c Config) ceilings() map[string]task.Policy {
-	out := map[string]task.Policy{}
-	for _, name := range c.performs() {
-		out[name] = ceilingOf(name, c.Systems[name].Ceiling)
+// OpenInside is the systems the runner stops inside a run (files, commands, agent, question),
+// each under an open ceiling (systems.Open): the configuration of a runner whose operator is the
+// author of its tasks, `verse up`'s, which says so rather than leaving them closed.
+func OpenInside() map[string]System {
+	out := map[string]System{}
+	for name := range inner {
+		out[name] = System{Ceiling: systems.Open()}
 	}
-	if c.Repos != nil {
-		host, _ := c.Repos.forge()
-		out["git"] = withinForge(host, c.Systems["git"].Ceiling)
+	return out
+}
+
+// ceilings is each performed system's ceiling as the channel reads it at each act, as written:
+// a `git` ceiling keeps to the runner's forge (Check).
+func (c Config) ceilings() map[string]systems.Ceiling {
+	out := map[string]systems.Ceiling{}
+	for _, name := range c.performs() {
+		out[name] = c.Systems[name].Ceiling
 	}
 	return out
 }
 
 // taskCeilings is every system's ceiling, inner and performed, for the supervisor inside a
-// run: a step the ceiling denies is refused there, before anyone is asked about it, rather than
-// asked and then refused when the channel performs it.
-func (c Config) taskCeilings() map[string]task.Policy {
+// run: a step beyond one is refused there, before anyone is asked about it.
+func (c Config) taskCeilings() map[string]systems.Ceiling {
 	out := c.ceilings()
 	for name := range inner {
-		out[name] = ceilingOf(name, c.Systems[name].Ceiling)
+		out[name] = c.Systems[name].Ceiling
 	}
 	return out
 }
@@ -216,12 +224,12 @@ func (c Config) taskCeilings() map[string]task.Policy {
 // performed systems for every doer, and the inner systems the doer is stopped on.
 func (c Config) intercepted(doer string) map[string]runner.System {
 	out := map[string]runner.System{}
-	for name, p := range c.ceilings() {
-		out[name] = runner.System{Ceiling: p}
+	for name, ceiling := range c.ceilings() {
+		out[name] = runner.System{Ceiling: ceiling}
 	}
 	for name, doers := range inner {
 		if slices.Contains(doers, doer) {
-			out[name] = runner.System{Ceiling: ceilingOf(name, c.Systems[name].Ceiling)}
+			out[name] = runner.System{Ceiling: c.Systems[name].Ceiling}
 		}
 	}
 	return out
@@ -236,30 +244,6 @@ func networks(sb runnerd.Sandbox) []string {
 		}
 	}
 	return out
-}
-
-// ceilingOf is a system's ceiling as written, completed: the system on every row, and `allow`
-// for the rest where the operator wrote no default.
-func ceilingOf(system string, rows task.Policy) task.Policy {
-	p := rows.WithSystem(system)
-	if len(p) == 0 || !p[len(p)-1].Match.Any() {
-		p = append(p, task.Row{Then: task.Then{Mode: task.ThenAllow}})
-	}
-	return p
-}
-
-// withinForge is the `git` ceiling as written, within the runner's forge: the operator's rows,
-// then what the operator's default (or `allow`) says for the forge's repositories, then `deny`
-// for every other.
-func withinForge(host string, rows task.Policy) task.Policy {
-	p := rows.WithSystem("git")
-	rest := task.ThenAllow
-	if n := len(p); n > 0 && p[n-1].Match.Any() {
-		rest, p = p[n-1].Then.Mode, p[:n-1]
-	}
-	return append(p,
-		task.Row{Match: &task.Match{System: "git", Params: map[string]string{"repo": strings.ToLower(host) + "/**"}}, Then: task.Then{Mode: rest}},
-		task.Row{Then: task.Then{Mode: task.ThenDeny}})
 }
 
 // shellEnv is the variables a task's shell is given, and the proxy's: a task whose network
@@ -298,10 +282,50 @@ func Load(path string) (runnerd.Config, Config, error) {
 	return rc, c, nil
 }
 
+// checkForge refuses a `git` ceiling block reaching past the runner's forge: it fetches from
+// nowhere else, so each block names its repositories, each within `<host>/**`.
+func (c *Config) checkForge() error {
+	ceiling := c.Systems["git"].Ceiling
+	if len(ceiling) == 0 || c.Repos == nil {
+		return nil
+	}
+	host, _ := c.Repos.forge()
+	forge := strings.ToLower(host) + "/**"
+	for i, b := range ceiling {
+		repos := b.Attributes["repo"]
+		if len(repos) == 0 {
+			return fmt.Errorf("systems.git.ceiling[%d]: names no repo; a git ceiling names the repositories it is for, on the forge (%s)", i, forge)
+		}
+		for _, p := range repos {
+			if p = systems.Canonical(systems.FormRepo, p); !systems.PatternContains(forge, p, false) {
+				return fmt.Errorf("systems.git.ceiling[%d].repo: %s is beyond the runner's forge (%s): it fetches from nowhere else", i, p, forge)
+			}
+		}
+	}
+	return nil
+}
+
+// checkBuilds refuses a network ceiling naming a mode the sandbox can't build: the runner would
+// publish a ceiling no launch could meet, and every spawn would be refused for it. Said at start.
+func (c Config) checkBuilds(networks []string) error {
+	for i, b := range c.Systems["network"].Ceiling {
+		for _, mode := range b.Attributes["mode"] {
+			if !slices.ContainsFunc(networks, func(n string) bool { return systems.Match(mode, n, false) }) {
+				return fmt.Errorf("systems.network.ceiling[%d].mode: %s is no network this runner's sandbox builds (it builds: %s)",
+					i, mode, strings.Join(networks, ", "))
+			}
+		}
+	}
+	return nil
+}
+
 // Check validates the configuration.
 func (c *Config) Check() error {
 	if c.Repos != nil && c.Repos.Mirrors == "" {
 		return fmt.Errorf("repos: `mirrors` names the directory the runner keeps its mirrors in")
+	}
+	if err := c.checkForge(); err != nil {
+		return err
 	}
 	performs := c.performs()
 	for _, name := range slices.Sorted(maps.Keys(c.Systems)) {
@@ -309,7 +333,7 @@ func (c *Config) Check() error {
 		if _, ok := systems.Get(name); !ok {
 			return fmt.Errorf("systems.%s: no system is called that", name)
 		}
-		if _, isInner := inner[name]; isInner {
+		if _, isInner := inner[name]; isInner || name == "network" {
 			if sys.Credential != "" || sys.API != "" {
 				return fmt.Errorf("systems.%s: the runner stops %s inside a run with no credential; its section is a ceiling alone", name, name)
 			}
@@ -317,22 +341,47 @@ func (c *Config) Check() error {
 			return fmt.Errorf("systems.%s: this runner does not perform %s (it performs: %s); %s", name, name,
 				cmp.Or(strings.Join(performs, ", "), "nothing"), needsFor(name))
 		}
+		// A section saying nothing is the system closed, as no section is; refused, so that
+		// `name: {}` is never read beside `name: {ceiling: {}}`, which opens it.
+		if sys.Credential == "" && sys.API == "" && len(sys.Ceiling) == 0 {
+			return fmt.Errorf("systems.%s: a section names a credential, an api or a ceiling; with none it closes "+
+				"%s, as leaving it out does (`ceiling: {}` opens it)", name, name)
+		}
 		if sys.API != "" && name != "github" && name != "github-issue" {
 			return fmt.Errorf("systems.%s: `api` is where a GitHub forge's API is, for github and github-issue", name)
 		}
-		for i, r := range sys.Ceiling {
-			if r.Match != nil && r.Match.System != "" && r.Match.System != name {
-				return fmt.Errorf("systems.%s.ceiling[%d]: names the system %s; a ceiling's rows are its own system's", name, i, r.Match.System)
+		if err := sys.Ceiling.Check(name); err != nil {
+			return fmt.Errorf("systems.%s.ceiling%w", name, err)
+		}
+	}
+	for _, agent := range slices.Sorted(maps.Keys(c.Agents)) {
+		takes, ok := takes[agent]
+		if !ok {
+			return fmt.Errorf("agents.%s: the verse runner runs no agent %q (it runs: %s, %s)", agent, agent, AgentName, codex.Agent)
+		}
+		for _, setting := range slices.Sorted(maps.Keys(c.Agents[agent])) {
+			if _, ok := takes[setting]; !ok {
+				return fmt.Errorf("agents.%s.%s: %s takes no setting %q (it takes: %s)", agent, setting, agent, setting,
+					strings.Join(slices.Sorted(maps.Keys(takes)), ", "))
 			}
-			switch r.Then.Mode {
-			case task.ThenAsk:
-				return fmt.Errorf("systems.%s.ceiling[%d]: a ceiling allows or denies; asking is a task's policy's", name, i)
-			case task.ThenWithhold:
-				return fmt.Errorf("systems.%s.ceiling[%d]: a ceiling allows or denies; withholding is a task's policy's, and a deny is the ceiling's", name, i)
+			if len(c.Agents[agent][setting]) == 0 {
+				return fmt.Errorf("agents.%s.%s: an empty list takes nothing; leave the setting out for any", agent, setting)
 			}
 		}
-		if err := ceilingOf(name, sys.Ceiling).Check(); err != nil {
-			return fmt.Errorf("systems.%s.ceiling: %w", name, err)
+	}
+	// A default the operator configured is held to the operator's own narrowing: the offer
+	// would refuse it named and run it unnamed.
+	defaults := map[string]string{AgentName: c.Models.Model}
+	if c.Codex != nil {
+		defaults[codex.Agent] = c.Codex.Model
+	}
+	for _, agent := range slices.Sorted(maps.Keys(defaults)) {
+		model := defaults[agent]
+		if model == "" {
+			continue
+		}
+		if err := (runner.Setting{Values: c.Agents[agent][runner.SettingModel]}).Takes(model); err != nil {
+			return fmt.Errorf("agents.%s.model: the configured default model is outside it: %w", agent, err)
 		}
 	}
 	for name, typ := range c.Annotations {
@@ -348,6 +397,15 @@ func (c *Config) Check() error {
 	if c.Codex != nil {
 		if err := c.Codex.Validate(); err != nil {
 			return err
+		}
+		// What Codex can't run without, its ceilings give: else no Codex spawn could ever be
+		// written here, and each would be refused for its environment when the runner is at fault.
+		for _, step := range requires[codex.Agent] {
+			system, verb, _ := systems.Split(step)
+			if !c.Systems[system].Ceiling.Gives(step) {
+				return fmt.Errorf("systems.%s.ceiling: codex can't run without %s, which the ceiling does not give: write `%s: {ceiling: {}}` or `%s: {ceiling: {%s: {}}}`",
+					system, step, system, system, verb)
+			}
 		}
 	}
 	return nil

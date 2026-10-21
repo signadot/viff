@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/systems"
+	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 )
 
@@ -27,17 +29,37 @@ func askCallWith(id string, args map[string]any) toolCall {
 }
 
 // unasked is a policy that gives the task its questions and asks about nothing.
-var unasked = task.Policy{{Match: &task.Match{System: "question"}, Then: task.Then{Mode: task.ThenAllow}}, {Then: task.Then{Mode: task.ThenAllow}}}
+var unasked = task.Autonomy{{Match: &task.Match{System: "question"}, Then: task.Then{Mode: task.ThenAllow}}, {Then: task.Then{Mode: task.ThenAllow}}}
 
 // askRun builds a task whose model asks once and then stops, and runs it against reg under g. It
 // returns the fake (to read what the model was told) and the run's end.
-func askRun(t *testing.T, ctx context.Context, reg *task.Registry, g task.Policy, call toolCall) (*fakeCompleter, <-chan error) {
+func askRun(t *testing.T, ctx context.Context, reg *task.Registry, g task.Autonomy, call toolCall) (*fakeCompleter, <-chan error) {
+	t.Helper()
+	return askRunIn(t, ctx, reg, envGiving("question", "files", "commands", "agent"), g, call)
+}
+
+// envGiving is an environment of one block for each of names, giving every verb of it.
+func envGiving(names ...string) systems.Environment {
+	e := systems.Environment{Systems: systems.Systems{}}
+	for _, name := range names {
+		d, _ := systems.Get(name)
+		verbs := map[string][]systems.Shape{}
+		for _, v := range d.Verbs {
+			verbs[v.Name] = []systems.Shape{{}}
+		}
+		e.Systems[name] = []systems.Block{{Verbs: verbs}}
+	}
+	return e
+}
+
+// askRunIn is askRun in env.
+func askRunIn(t *testing.T, ctx context.Context, reg *task.Registry, env systems.Environment, g task.Autonomy, call toolCall) (*fakeCompleter, <-chan error) {
 	t.Helper()
 	fake := &fakeCompleter{turns: []scriptedTurn{
 		{msg: chatMessage{Role: "assistant", ToolCalls: []toolCall{call}}, finish: "tool_calls"},
 		{msg: chatMessage{Role: "assistant", Content: "thanks"}, finish: "stop"},
 	}}
-	p := Build(Config{ID: "t1", Prompt: "chat", Root: t.TempDir(), Resolver: reg, Client: fake, Policy: g})
+	p := Build(Config{ID: "t1", Prompt: "chat", Root: t.TempDir(), Resolver: reg, Client: fake, Environment: env, Ceilings: systemstest.Open(env), Autonomy: g})
 	done := make(chan error, 1)
 	go func() {
 		_, err := p.Run(ctx)
@@ -152,7 +174,7 @@ func TestAnAllowedAskIsAskedOnce(t *testing.T) {
 	var posted int
 	reg.OnPost(func(task.Pending) { posted++ })
 	ask := task.Then{Mode: task.ThenAsk}
-	fake, done := askRun(t, context.Background(), reg, task.Policy{
+	fake, done := askRun(t, context.Background(), reg, task.Autonomy{
 		{Name: "w", Match: &task.Match{System: "files", Verb: "write"}, Then: ask},
 		{Name: "c", Match: &task.Match{System: "commands", Verb: "run"}, Then: ask},
 		{Name: "d", Match: &task.Match{System: "agent", Verb: "call-sub-agent"}, Then: ask},
@@ -175,14 +197,14 @@ func TestAnAllowedAskIsAskedOnce(t *testing.T) {
 	}
 }
 
-// AN ASK NO ROW NAMES IS REFUSED. A policy that names no `question` does not give the task its
-// questions: the tool is not offered, and a call of it anyway puts nothing on the docket and is
-// refused, whatever the default row says.
-func TestAnAskNoRowNamesIsRefused(t *testing.T) {
+// AN ASK THE ENVIRONMENT DOES NOT GIVE IS REFUSED. An environment with no `question` does not
+// give the task its questions: the tool is not offered, and a call of it anyway puts nothing on
+// the docket and is refused, whatever the default row says.
+func TestAnAskTheEnvironmentDoesNotGiveIsRefused(t *testing.T) {
 	reg := task.NewRegistry()
 	var posted int
 	reg.OnPost(func(task.Pending) { posted++ })
-	fake, done := askRun(t, context.Background(), reg, task.Policy{
+	fake, done := askRunIn(t, context.Background(), reg, envGiving("files"), task.Autonomy{
 		{Match: &task.Match{System: "files"}, Then: task.Then{Mode: task.ThenAllow}},
 		{Then: task.Then{Mode: task.ThenAllow}},
 	}, askCall("c1", "go on?"))
@@ -192,7 +214,7 @@ func TestAnAskNoRowNamesIsRefused(t *testing.T) {
 	if posted != 0 {
 		t.Fatalf("%d questions were posed, want none", posted)
 	}
-	if got := toldAfterAsk(t, fake); !strings.Contains(got, "not provided") {
+	if got := toldAfterAsk(t, fake); !strings.Contains(got, "the environment gives no `question` (it gives: files)") {
 		t.Fatalf("the model read %q, want the refusal", got)
 	}
 }

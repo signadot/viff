@@ -374,12 +374,7 @@ func Recompact(s string, in, out Format) string {
 // not a value with a comment attached. Anything that inspects a node's Type or Tag must
 // unwrap first or it will mis-read every commented value — and a charter file is exactly
 // where a human writes comments.
-func Unwrap(n *ir.Node) *ir.Node {
-	for n != nil && n.Type == ir.CommentType && len(n.Values) > 0 {
-		n = n.Values[0]
-	}
-	return n
-}
+func Unwrap(n *ir.Node) *ir.Node { return ir.Uncomment(n) }
 
 // AsInt64 reports v as an integer, whatever numeric Go type the decoder chose for it.
 //

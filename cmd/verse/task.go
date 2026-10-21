@@ -11,13 +11,13 @@ import (
 	"time"
 
 	"github.com/scott-cotton/cli"
-	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/client"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/launch"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -31,7 +31,7 @@ func taskSubs() []*cli.Command {
 		taskAttachCmd(),
 		taskCancelCmd(),
 		taskSayCmd(),
-		taskPolicyCmd(),
+		taskAutonomyCmd(),
 		taskAnswerCmd(true),
 		taskAnswerCmd(false),
 	}
@@ -97,18 +97,18 @@ func (cfg *taskAnswerConfig) run(cc *cli.Context, args []string, verb string, ap
 
 type taskRunConfig struct {
 	*cli.Command
-	Wait   bool `cli:"name=wait desc='block until the task completes, then print the result (composes with --attach)'"`
-	Attach bool `cli:"name=attach desc='stream the live transcript (words, actions, questions) until it ends'"`
+	// File is the spawn: what runs, as a charter's spawn writes it (`prompt` or `script`,
+	// `agent`, `environment`, `autonomy`, `answer`, `runner`, `subject`, …), meaning only what it
+	// says. The flags beside it are about this invocation, never the work.
+	File   string `cli:"name=file aliases=f desc='the spawn to run, as a charter writes one, from FILE (- = stdin); also accepts a positional [file]'"`
+	Wait   bool   `cli:"name=wait desc='block until the task completes, then print the result (composes with --attach)'"`
+	Attach bool   `cli:"name=attach desc='stream the live transcript (words, actions, questions) until it ends'"`
 	// Converse is on by default and means something only with -attach: a person is at the
 	// terminal, so when the model goes quiet they are handed the turn (a question on the
 	// docket) and the run ends when they end it — Ctrl-D, or `end` from anywhere. Without
 	// -attach nobody is there to take a turn, so the run ends when the model stops, whatever
 	// this says. -no-converse is an attached run that should end when the model stops.
 	Converse bool `cli:"name=converse default=true desc='with -attach: hand me the turn when the model goes quiet, until I end it (Ctrl-D); -no-converse ends the run when the model stops'"`
-	// Who does the work: an agent the runner offers (`verse`, `codex`), or a script, which
-	// runs as written and is the prompt's place.
-	Agent  string `cli:"name=agent desc='the agent that does the work, by the name the runner offers it under (default: verse, the agent verse runs itself)'"`
-	Script string `cli:"name=script desc='run this shell script instead of prompting an agent; the prompt is then not needed'"`
 	// Name is a LABEL, not an address. The id is derived from it and returned, because a
 	// caller-chosen id is a caller-chosen prefix on every gate question the run raises
 	// (`<id>~d1`) — and answering one recovers the owner by cutting at the first `~`, so a
@@ -116,37 +116,12 @@ type taskRunConfig struct {
 	// always sanitised its own ids (safeSeg) for exactly this; the ad-hoc face never had to,
 	// because it never let anyone choose one.
 	Name string `cli:"name=name desc='label for the run; the id is derived from it and printed'"`
-	// The two fields a spawn has carried all along with no way to type them.
-	Subject string `cli:"name=subject desc='the entity this run is about — it joins that flow'"`
-	// The run's own policy, from a file — the ad-hoc face of a spawn's `policy:`. A row names
-	// the calls it is about and what happens to them (deny, ask, allow): `--policy policy.tony`.
-	// It is what the run is given: without one, no verb of any system is the run's.
-	Policy string `cli:"name=policy desc='file holding the policy for this run (a list of rows; .tony/.json/.yaml); without it the run is given no tools'"`
-	// What the run may reach over the network, as its `with.network` (networkOf): the host's
-	// network unless told otherwise, since whoever typed the command knows what it reaches.
-	Network string `cli:"name=network desc='what the run may reach: open (the default), none, or hosts as host[:port],…'"`
 	// Who is running this — used twice, because it is one fact. A gate that arrives while
 	// attached is answered as this (watching needs no identity; answering has needed one
 	// since a decision became a durable record), and it rides the spawn as the run's
 	// PRINCIPAL, so a runner whose effects leave the verse can say on whose account.
 	// Self-asserted, like every other `--as` here.
-	As     string `cli:"name=as desc='who is running this: the run principal, and the identity for a gate answered while attached'"`
-	Runner string `cli:"name=runner desc='where this run runs: an installed runner (verse.runners.<name>, or the bare <name>); default: the verse default'"`
-	// The shape this run's final message must have — a tony match pattern in a file, the
-	// ad-hoc face of a charter's `answer:`. Without one, "finished" means only that the model
-	// stopped calling tools, which is also what a model narrating its next step looks like.
-	//
-	// `--answer-contract`, and not `--answer`: `verse question <id> --answer <option>` answers a
-	// question, and one name for the file that says what an answer must be and for the answer
-	// itself would be read as either.
-	AnswerContract string `cli:"name=answer-contract desc='file holding the answer contract for this run (a tony match pattern)'"`
-	// Which repositories this run works in — the ad-hoc face of a charter's `with.git`, in a
-	// file for the same reason `--policy` is: it is a list of records. What may leave each is
-	// the policy's.
-	Git string `cli:"name=git desc='file holding the repositories this run works in (a list of {repo, from}; .tony/.json/.yaml)'"`
-	// Which credential this run spends, by address. Read as the person running it, so this
-	// flag hands nobody anything they could not already read.
-	VirtualKey string `cli:"name=virtual-key desc='address of the model credential this run spends (a node holding {key: <name>}, readable by you); default: the runtime default'"`
+	As string `cli:"name=as desc='who is running this: the run principal, and the identity for a gate answered while attached'"`
 }
 
 func taskRunCmd() *cli.Command {
@@ -156,36 +131,19 @@ func taskRunCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "run").
-		WithSynopsis("run a task: run <prompt…> [--name <label>] [--subject <ref>] " +
-			"[--policy <file>] [--network open|none|<hosts>] [--git <file>] [--attach] [--wait] " +
-			"[--agent <name> | --script <text>]").
+		WithSynopsis("run a task: run -f <spawn file> (- = stdin) | [file] [--name <label>] [--attach] [--wait]").
 		WithOpts(opts...).
 		WithRun(cfg.run)
 }
 
-// defaultAgent is the agent a prompt is for when the run names no doer: verse's own.
-const defaultAgent = "verse"
-
-// networkOf is what --network says about the run's network, as its `with.network`: `open`,
-// `none`, or hosts as host[:port],…. Given nothing, open: an ad-hoc run is its author's, and the
-// author is at the prompt; a charter's spawn, which nobody typed, says its own, absent being
-// none.
-func networkOf(flag string) (*runner.Network, error) {
-	switch flag {
-	case "", runner.NetworkOpen:
-		return &runner.Network{Mode: runner.NetworkOpen}, nil
-	case runner.NetworkNone:
-		return &runner.Network{Mode: runner.NetworkNone}, nil
-	}
-	n := &runner.Network{Mode: runner.NetworkAllow}
-	for _, entry := range strings.Split(flag, ",") {
-		host := strings.TrimSpace(entry)
-		if h, _, _ := strings.Cut(host, ":"); h == "" {
-			return nil, fmt.Errorf("--network: %q is not open, none, or hosts as host[:port],…", flag)
+// givesASystem is whether an environment gives some system a step is of, beside the network.
+func givesASystem(env systems.Environment) bool {
+	for name := range env.Systems {
+		if name != "network" {
+			return true
 		}
-		n.Allow = append(n.Allow, host)
 	}
-	return n, nil
+	return false
 }
 
 func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
@@ -193,61 +151,43 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(args) < 1 && cfg.Script == "" {
-		return fmt.Errorf("%w: task run wants a prompt, or --script", cli.ErrUsage)
+	src := cfg.File
+	switch {
+	case src == "" && len(args) == 1:
+		src = args[0]
+	case src == "" && len(args) == 0:
+		return fmt.Errorf("%w: task run takes the spawn to run: -f <file>, - for stdin", cli.ErrUsage)
+	case len(args) > 0:
+		return fmt.Errorf("%w: task run takes one spawn file, and got %q", cli.ErrUsage, strings.Join(args, " "))
 	}
-	if cfg.Agent != "" && cfg.Script != "" {
-		return fmt.Errorf("%w: task run takes --agent or --script, not both", cli.ErrUsage)
-	}
-	prompt := strings.Join(args, " ")
-	var contract *ir.Node
-	if cfg.AnswerContract != "" {
-		n, _, err := codec.ReadFileNode(cfg.AnswerContract)
-		if err != nil {
-			return fmt.Errorf("task run: --answer-contract: %w", err)
-		}
-		contract = n
-	}
-	// Read here, so a row that will not parse is a message on the terminal of whoever wrote
-	// it; what goes over the wire is the field, the same one a charter's spawn carries.
-	var policy task.Policy
-	if cfg.Policy != "" {
-		if err := codec.ReadFileStrict(cfg.Policy, &policy); err != nil {
-			return fmt.Errorf("task run: %s is not a policy: %w", cfg.Policy, err)
-		}
-	}
-	network, err := networkOf(cfg.Network)
+	// Read here, strictly, so a key the spawn does not have is a message on the terminal of
+	// whoever wrote it; the server reads it again, as strictly.
+	data, srcFmt, err := codec.ReadSource(cc.In, src, inFmt())
 	if err != nil {
-		return fmt.Errorf("%w: task run: %v", cli.ErrUsage, err)
+		return fmt.Errorf("task run: %w", err)
 	}
-	if err := policy.Check(); err != nil {
-		return fmt.Errorf("%w: task run: %v", cli.ErrUsage, err)
+	var spec launch.Spec
+	if err := codec.UnmarshalStrict(data, &spec, srcFmt); err != nil {
+		return fmt.Errorf("task run: %s is not a spawn: %w", src, err)
 	}
-	// A prompt with no doer named is for verse's own agent: what a person typing a sentence
-	// means, and the agent every verse runner offers.
-	doer := runner.Doer{Agent: cfg.Agent, Script: cfg.Script}
-	if doer.Agent == "" && doer.Script == "" {
-		doer.Agent = defaultAgent
+	if err := spec.CheckByHand(); err != nil {
+		return fmt.Errorf("task run: %s: %w", src, err)
 	}
-	doer.With.Network = network
-	if cfg.Git != "" {
-		if err := codec.ReadFile(cfg.Git, &doer.With.Git); err != nil {
-			return fmt.Errorf("task run: %s is not a list of repositories: %w", cfg.Git, err)
-		}
-		if err := runner.CheckWith(doer.With); err != nil {
-			return fmt.Errorf("task run: %s: %w", cfg.Git, err)
-		}
+	// A prompt whose environment gives no system is an agent with no tool: it can read and
+	// answer, and every step it tries is refused. Said once, before the run, in what to add.
+	if spec.Prompt != "" && !givesASystem(spec.Environment) {
+		fmt.Fprintln(cc.Err, "task run: the spawn's environment gives no system, so the agent gets no tool and every "+
+			"step is refused; name what it works with under environment.systems (`files: {write: {}}`, "+
+			"`commands: {run: {}}`, `git: [{repo: …, fetch: {}}]`, …)")
 	}
 	by, err := principal(cfg.As)
 	if err != nil {
 		return err
 	}
 	resp, err := httpPost("/tasks", api.Spawn{
-		Prompt: prompt, Doer: doer, Name: cfg.Name,
-		Subject: cfg.Subject, Policy: policy,
-		Runner: cfg.Runner, VirtualKey: cfg.VirtualKey, Principal: by,
+		Spawn: spec, Name: cfg.Name, Principal: by,
 		// A conversation is an agent's: a script has no turn to hand anybody.
-		Answer: contract, Converse: cfg.Attach && cfg.Converse && doer.Agent != "",
+		Converse: cfg.Attach && cfg.Converse && spec.Script == "",
 	})
 	if err != nil {
 		return fmt.Errorf("task run: %w", err)
@@ -259,7 +199,14 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		return fmt.Errorf("task run: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
+		why := strings.TrimSpace(string(msg))
+		// The refusal a first run most likely meets: a spawn means only what it says, and one
+		// that names no network has none, which a runner building only open refuses.
+		if _, named := spec.Environment.Systems["network"]; !named && strings.Contains(why, "environment.systems.network") {
+			why += "\n(a spawn that names no network has none; to give it the host's, write " +
+				"`environment: {systems: {network: {mode: open}}}`)"
+		}
+		return fmt.Errorf("task run: %s: %s", resp.Status, why)
 	}
 	var sp api.Spawned
 	decodeClose(resp, &sp)
@@ -858,71 +805,72 @@ func (cfg *taskSayConfig) run(cc *cli.Context, args []string) error {
 	return nil
 }
 
-// ── policy (replace the policy of a running task) ──────────────────────────
+// ── autonomy (replace the autonomy of a running task) ──────────────────────────
 
-type taskPolicyConfig struct {
+type taskAutonomyConfig struct {
 	*cli.Command
 	// Not "from JSON": codec.ReadFile takes the dialect from the suffix, so a .tony policy is
 	// as readable as a .json one — and tony is what the rest of the CLI writes.
-	File string `cli:"name=file aliases=f desc='load the policy from FILE (a list of rows; .tony/.json/.yaml)'"`
+	File string `cli:"name=file aliases=f desc='load the autonomy from FILE (a list of rows; .tony/.json/.yaml)'"`
 	As   string `cli:"name=as desc='operator identity to attribute the change to (recorded on the read plane)'"`
 }
 
-func taskPolicyCmd() *cli.Command {
-	cfg := &taskPolicyConfig{}
+func taskAutonomyCmd() *cli.Command {
+	cfg := &taskAutonomyConfig{}
 	opts, err := cli.StructOpts(cfg)
 	if err != nil {
 		panic(err)
 	}
-	return cli.NewCommandAt(&cfg.Command, "policy").
-		WithSynopsis("policy <id> (<rows> | --file <policy.tony>) — replace the policy of a running task").
+	return cli.NewCommandAt(&cfg.Command, "autonomy").
+		WithSynopsis("autonomy <id> (<rows> | --file <autonomy.tony>) — replace the autonomy of a running task").
 		WithOpts(opts...).WithRun(cfg.run)
 }
 
-// run replaces a task's policy with a whole one, given inline as tony or by --file. The runner
-// takes it when it names no verb the standing policy did not and withholds what that one did
-// (runnerd.CheckPolicy). It rides a PUT to /tasks/{id}/policy, which is runner-agnostic — the
-// handle relays it, in process or over the wire — and applies to the task's later steps.
-func (cfg *taskPolicyConfig) run(cc *cli.Context, args []string) error {
+// run replaces a task's autonomy with a whole one, given inline as tony or by --file. The runner
+// takes it when each row reaches the task's environment, which is fixed for the run and lies
+// within the runner's ceilings (runnerd.CheckAutonomy). It rides a PUT to /tasks/{id}/autonomy,
+// which is runner-agnostic — the handle relays it, in process or over the wire — and applies to
+// the task's later steps.
+func (cfg *taskAutonomyConfig) run(cc *cli.Context, args []string) error {
 	args, err := cfg.Parse(cc, args)
 	if err != nil {
 		return err
 	}
 	if len(args) < 1 {
-		return fmt.Errorf("%w: task policy wants a task id", cli.ErrUsage)
+		return fmt.Errorf("%w: task autonomy wants a task id", cli.ErrUsage)
 	}
 	id := args[0]
-	var body api.SetPolicy
+	var body api.SetAutonomy
 	switch {
 	case cfg.File != "" && len(args) >= 2:
-		return fmt.Errorf("%w: task policy takes the rows or --file, not both", cli.ErrUsage)
+		return fmt.Errorf("%w: task autonomy takes the rows or --file, not both", cli.ErrUsage)
 	case cfg.File != "":
-		if err := codec.ReadFileStrict(cfg.File, &body.Policy); err != nil {
-			return fmt.Errorf("task policy: %s is not a policy: %w", cfg.File, err)
+		if err := codec.ReadFileStrict(cfg.File, &body.Autonomy); err != nil {
+			return fmt.Errorf("task autonomy: %s is not an autonomy: %w", cfg.File, err)
 		}
 	case len(args) >= 2:
-		if err := codec.UnmarshalStrict([]byte(strings.Join(args[1:], " ")), &body.Policy, codec.Tony); err != nil {
-			return fmt.Errorf("%w: task policy: %q is not a policy, a list of rows: %v", cli.ErrUsage, strings.Join(args[1:], " "), err)
+		if err := codec.UnmarshalStrict([]byte(strings.Join(args[1:], " ")), &body.Autonomy, codec.Tony); err != nil {
+			return fmt.Errorf("%w: task autonomy: %q is not an autonomy, a list of rows: %v", cli.ErrUsage, strings.Join(args[1:], " "), err)
 		}
 	default:
-		return fmt.Errorf("%w: task policy wants the whole policy: its rows, or --file", cli.ErrUsage)
+		return fmt.Errorf("%w: task autonomy wants the whole autonomy: its rows, or --file", cli.ErrUsage)
 	}
-	if err := body.Policy.Check(); err != nil {
-		return fmt.Errorf("%w: task policy: %v", cli.ErrUsage, err)
+	if err := body.Autonomy.Check(); err != nil {
+		return fmt.Errorf("%w: task autonomy: autonomy%v", cli.ErrUsage, err)
 	}
 	if body.By, err = principal(cfg.As); err != nil {
 		return err
 	}
-	resp, err := httpPut("/tasks/"+id+"/policy", body)
+	resp, err := httpPut("/tasks/"+id+"/autonomy", body)
 	if err != nil {
-		return fmt.Errorf("task policy: %w", err)
+		return fmt.Errorf("task autonomy: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		msg, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("task policy: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
+		return fmt.Errorf("task autonomy: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
 	}
-	fmt.Fprintln(cc.Out, "task policy", id, body.Policy.Summary())
+	fmt.Fprintln(cc.Out, "task autonomy", id, body.Autonomy.Summary())
 	return nil
 }
 

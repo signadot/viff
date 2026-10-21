@@ -5,6 +5,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/signadot/verse/systems/systemstest"
 )
 
 // A run emits the loop-level events to a subscriber.
@@ -75,10 +77,10 @@ func TestEventBusGapMarker(t *testing.T) {
 // what was called, under which row, and what came of it without matching tools to steps. A
 // call the policy denies has a decision and no exec; an action that is no step names none.
 func TestEachCallsEventsNameTheCall(t *testing.T) {
-	sup := NewSupervisor(Policy{
+	sup := systemstest.Opened(NewSupervisor(anyEnv(), Autonomy{
 		{Name: "no-deploy", Match: on("commands", "run", "command", "deploy"), Then: Then{Mode: ThenDeny}},
 		{Then: Then{Mode: ThenAllow}},
-	}, AutoResolver{})
+	}, AutoResolver{}), anyEnv())
 	sup.stepOf = func(tu ToolUse) (Step, bool) {
 		if tu.Name == "read" {
 			return Step{}, false
@@ -119,7 +121,7 @@ func TestEachCallsEventsNameTheCall(t *testing.T) {
 		have = append(have, seen{ev.Kind, ev.Tool, ev.Gate, ev.Step, ev.Fields["command"], ev.Proceed})
 	}
 	want := []seen{
-		{EventDecision, "build", "policy[1]", StepCommandsRun, "build", true},
+		{EventDecision, "build", "autonomy[1]", StepCommandsRun, "build", true},
 		{EventExec, "build", "", StepCommandsRun, "build", false},
 		{EventDecision, "deploy", "no-deploy", StepCommandsRun, "deploy", false},
 		{EventDecision, "read", "", "", "", true},

@@ -97,15 +97,17 @@ signature:
 context:
 - tony-format/context
 define:
+  agent: .[string]
   cursor: .[int]
-  driver: .[string]
   ended: .[string]
   err: .[string]
   id: .[string]
   occurrence: .[int]
   pending: .[array(verse-pending-gate)]
   prompt: .[string]
+  refused: .[object(int)]
   result: .[string]
+  settings: .[object(string)]
   started: .[string]
   status: .[string]
 signature:

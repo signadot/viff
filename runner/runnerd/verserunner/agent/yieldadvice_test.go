@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/systems"
+	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 )
 
@@ -106,7 +108,7 @@ func TestWaitEndsTheTurnAndCostsOneModelCallPerResult(t *testing.T) {
 	d := &llmDriver{client: fake, prompt: "summarise each file", log: io.Discard}
 
 	ex := &recExec{}
-	p := task.NewTask("p", task.NewSupervisor(task.Policy{{Match: &task.Match{System: "agent"}, Then: task.Then{Mode: task.ThenAllow}}, {Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), d, ex)
+	p := task.NewTask("p", systemstest.Opened(task.NewSupervisor(systems.Environment{Systems: systems.Systems{"agent": {{Verbs: map[string][]systems.Shape{"call-sub-agent": {{}}}}}}}, task.Autonomy{{Match: &task.Match{System: "agent"}, Then: task.Then{Mode: task.ThenAllow}}, {Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), systems.Environment{Systems: systems.Systems{"agent": {{Verbs: map[string][]systems.Shape{"call-sub-agent": {{}}}}}}}), d, ex)
 	p.SetLog(io.Discard)
 	var kids int
 	p.SetDelegate(func(parent *task.Task, req *task.CallAgentRequest) (*task.Task, error) {

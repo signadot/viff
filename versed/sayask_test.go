@@ -17,6 +17,7 @@ import (
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 )
 
@@ -70,7 +71,7 @@ func sayServer(t *testing.T) (*Server, *httptest.Server) {
 		default:
 			d = &slowDriver{steps: 10}
 		}
-		tk := task.NewTask(l.ID, task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, reg), d, noopExec{})
+		tk := task.NewTask(l.ID, systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, reg), l.Environment), d, noopExec{})
 		if l.Converse {
 			tk.SetConverse(reg)
 		}
@@ -85,7 +86,7 @@ func sayServer(t *testing.T) (*Server, *httptest.Server) {
 
 func spawnSaying(t *testing.T, url, as, id, prompt string, converse bool) {
 	t.Helper()
-	b, _ := codec.Marshal(map[string]any{"id": id, "doer": map[string]any{"agent": "fake"}, "prompt": prompt, "converse": converse}, codec.Tony)
+	b, _ := codec.Marshal(map[string]any{"id": id, "converse": converse, "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": prompt, "environment": openEnv}}, codec.Tony)
 	resp := postAs(t, as, url+"/tasks", "application/tony", string(b))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("spawn %s: %s: %s", id, resp.Status, bodyOf(t, resp))

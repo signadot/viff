@@ -24,18 +24,21 @@ context:
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 - runner: github.com/signadot/verse/runner
 define:
+  agent: .[nullable(runner:verse-runner-agent)]
   answer: .[tony-base:ir]
   as: .[string]
   asker: .[string]
+  autonomy: !irtype {}
   chain: .[string]
   credential: .[nullable(verse-launch-credential)]
-  doer: !runner:verse-runner-doer null
+  environment: !irtype {}
   occurrence: .[int]
   passed: .[array(verse-launch-passed)]
-  policy: !irtype {}
+  person: .[string]
   prompt: .[string]
   retain: .[int]
   runner: .[string]
+  script: .[string]
   subject: .[string]
   timeout: .[string]
   virtualKey: .[string]

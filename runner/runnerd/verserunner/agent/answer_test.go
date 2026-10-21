@@ -8,6 +8,8 @@ import (
 
 	"github.com/signadot/verse/answer"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/systems"
+	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 )
 
@@ -36,7 +38,7 @@ func runWithContract(t *testing.T, c *answer.Contract, turns ...scriptedTurn) (*
 	t.Helper()
 	fake := &fakeCompleter{turns: turns}
 	d := &llmDriver{client: fake, prompt: "review it", log: io.Discard}
-	p := task.NewTask("t", task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), d, &fsExec{root: t.TempDir()})
+	p := task.NewTask("t", systemstest.Opened(task.NewSupervisor(systems.Environment{Systems: systems.Systems{"files": {{Verbs: map[string][]systems.Shape{"write": {{}}}}}, "commands": {{Verbs: map[string][]systems.Shape{"run": {{}}}}}}}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), systems.Environment{Systems: systems.Systems{"files": {{Verbs: map[string][]systems.Shape{"write": {{}}}}}, "commands": {{Verbs: map[string][]systems.Shape{"run": {{}}}}}}}), d, &fsExec{root: t.TempDir()})
 	if c != nil {
 		p.SetAnswerCheck(&answer.Checker{C: c, FailHint: yieldHint})
 	}
@@ -139,7 +141,7 @@ func TestNoContractLeavesTheLoopAlone(t *testing.T) {
 // The contract is stated in the frame, so an agent meets it before it stops rather than as
 // a rejection — and it comes back OFF for a child, which runs no such check.
 func TestContractClauseGoesOnAndComesOff(t *testing.T) {
-	base := defaultFrame(toolDefs(), task.Policy{}, false, nil)
+	base := defaultFrame(toolDefs(), task.Autonomy{}, false, nil)
 	c := contract(t)
 	framed := strings.TrimRight(base, "\n") + "\n\n" + contractClause(c)
 	for _, line := range strings.Split(c.Source(), "\n") { // indented into the clause

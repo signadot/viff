@@ -106,7 +106,7 @@ func quotedName(n *ir.Node) (string, bool) {
 	if tagName(n) != "or" || n.Type != ir.ArrayType || len(n.Values) != 1 {
 		return "", false
 	}
-	v := unwrap(n.Values[0])
+	v := ir.Uncomment(n.Values[0])
 	if v == nil || v.Type != ir.StringType {
 		return "", false
 	}
@@ -116,7 +116,7 @@ func quotedName(n *ir.Node) (string, bool) {
 // FromTonyIR accepts the address string or the object form — the same two shapes the JSON
 // codec takes, since this is one grammar in two syntaxes.
 func (m *Match) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
-	node = unwrap(node)
+	node = ir.Uncomment(node)
 	if node == nil || node.Type == ir.NullType {
 		*m = nil
 		return nil
@@ -163,7 +163,7 @@ func matchFromObject(node *ir.Node) (Match, error) {
 	out := Match{}
 	for i, key := range node.Fields {
 		k := key.String
-		val := unwrap(node.Values[i])
+		val := ir.Uncomment(node.Values[i])
 		switch k {
 		case mKeyPath:
 			// A KINDED PATH, which is the one spelling an address has: `demo.pr.*`, the same
@@ -218,7 +218,7 @@ func (f Formula) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 // and deadline are `need:` and `deadline:` on the gate, and waiting for a fact is a
 // condition's own match.
 func (f *Formula) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
-	node = unwrap(node)
+	node = ir.Uncomment(node)
 	if node == nil || node.Type == ir.NullType {
 		*f = Formula{}
 		return nil
@@ -258,17 +258,10 @@ func headLines(n *ir.Node) []string {
 // the value itself rather than wrapping it, so it is read from INSIDE any head wrapper, which
 // is the one asymmetry between the two positions.
 func lineLines(n *ir.Node) []string {
-	if v := unwrap(n); v != nil && v.Comment != nil {
+	if v := ir.Uncomment(n); v != nil && v.Comment != nil {
 		return v.Comment.Lines
 	}
 	return nil
-}
-
-func unwrap(n *ir.Node) *ir.Node {
-	for n != nil && n.Type == ir.CommentType && len(n.Values) > 0 {
-		n = n.Values[0]
-	}
-	return n
 }
 
 // tagName is a node's semantic tag without the "!", ignoring the layout hints a parser
@@ -332,7 +325,7 @@ func (c Condition) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 }
 
 func (c *Condition) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
-	node = unwrap(node)
+	node = ir.Uncomment(node)
 	if node == nil || node.Type == ir.NullType {
 		*c = Condition{}
 		return nil
@@ -347,21 +340,21 @@ func (c *Condition) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 		headLines(ir.Get(node, "on")), headLines(ir.Get(node, "when"))
 	c.SubjectNote, c.OnNote, c.WhenNote = lineLines(ir.Get(node, "subject")),
 		lineLines(ir.Get(node, "on")), lineLines(ir.Get(node, "when"))
-	if o := unwrap(ir.Get(node, "on")); o != nil && o.Type != ir.NullType {
+	if o := ir.Uncomment(ir.Get(node, "on")); o != nil && o.Type != ir.NullType {
 		var f Formula
 		if err := f.FromTonyIR(o, opts...); err != nil {
 			return fmt.Errorf("condition.on: %w", err)
 		}
 		c.On = &f
 	}
-	if w := unwrap(ir.Get(node, "when")); w != nil && w.Type != ir.NullType {
+	if w := ir.Uncomment(ir.Get(node, "when")); w != nil && w.Type != ir.NullType {
 		var f Formula
 		if err := f.FromTonyIR(w, opts...); err != nil {
 			return fmt.Errorf("condition.when: %w", err)
 		}
 		c.When = &f
 	}
-	if s := unwrap(ir.Get(node, "subject")); s != nil && s.Type != ir.NullType {
+	if s := ir.Uncomment(ir.Get(node, "subject")); s != nil && s.Type != ir.NullType {
 		if err := c.Subject.FromTonyIR(s, opts...); err != nil {
 			return fmt.Errorf("condition.subject: %w", err)
 		}

@@ -13,6 +13,7 @@ import (
 
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/workspace"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -31,10 +32,10 @@ type Channel struct {
 	near net.Conn
 	far  *os.File
 
-	// policy is the task's CURRENT policy: the launch's until a replacement is set (SetPolicy),
+	// autonomy is the task's CURRENT autonomy: the launch's until a replacement is set (SetPolicy),
 	// and what the server decides each act by and settle reads. The launch's own copy (l) never
 	// moves, since it is what a replacement is held to.
-	policy atomic.Pointer[task.Policy]
+	autonomy atomic.Pointer[task.Autonomy]
 
 	// answers are the gate answers the runner relayed to this task (Answer), each about one
 	// call of one system, and each taken by the one act it is for (answered). An act a row
@@ -104,14 +105,14 @@ func (c *Channel) answered(st task.Step, decision string) (string, bool) {
 	return "", false
 }
 
-// SetPolicy is the task's policy from the next act on, as PUT /tasks/{id}/policy replaced it.
+// SetAutonomy is the task's autonomy from the next act on, as PUT /tasks/{id}/autonomy replaced it.
 // Without it the runner would keep deciding by the launch's rows: a deny a replacement lifted
 // would still refuse here, and a deny it added would hold only in the task's own process.
-func (c *Channel) SetPolicy(p task.Policy) { c.policy.Store(&p) }
+func (c *Channel) SetAutonomy(p task.Autonomy) { c.autonomy.Store(&p) }
 
-// Policy is the task's current policy.
-func (c *Channel) Policy() task.Policy {
-	if p := c.policy.Load(); p != nil {
+// Autonomy is the task's current autonomy.
+func (c *Channel) Autonomy() task.Autonomy {
+	if p := c.autonomy.Load(); p != nil {
 		return *p
 	}
 	return nil
@@ -126,7 +127,7 @@ func (c *Channel) Policy() task.Policy {
 // there is none. services is what the runner holds for the systems beyond it (Services), and
 // ceilings the operator's bounds on each system (Server.Ceilings).
 func Open(id string, ws *workspace.Workspace, mirrors *workspace.Mirrors,
-	credential func(workspace.Repo) (string, error), services Services, ceilings map[string]task.Policy,
+	credential func(workspace.Repo) (string, error), services Services, ceilings map[string]systems.Ceiling,
 	l *runner.Launch, log io.Writer) (*Channel, error) {
 	near, far, err := SocketPair()
 	if err != nil {
@@ -137,7 +138,7 @@ func Open(id string, ws *workspace.Workspace, mirrors *workspace.Mirrors,
 		near: near, far: far, served: make(chan struct{}),
 	}
 	if l != nil {
-		c.SetPolicy(l.Policy)
+		c.SetAutonomy(l.Autonomy)
 	}
 	return c, nil
 }
@@ -149,7 +150,7 @@ func (c *Channel) Child() *os.File { return c.far }
 func (c *Channel) Serve() {
 	c.serving.Store(true)
 	defer close(c.served)
-	c.srv.Serve(Task{ID: c.id, Workspace: c.ws, Launch: c.l, Policy: c.Policy, Answered: c.answered, Credential: c.cred}, c.near)
+	c.srv.Serve(Task{ID: c.id, Workspace: c.ws, Launch: c.l, Policy: c.Autonomy, Answered: c.answered, Credential: c.cred}, c.near)
 }
 
 // Close shuts the near end. The far end is the handler's to close once the process has it.
@@ -164,7 +165,7 @@ func (c *Channel) Close() {
 // is the only copy, or keep says otherwise. It returns whether the workspace is still there.
 //
 // Delivery is not something this function does. It is the task's own action, decided by its
-// policy and recorded on its events (a git.push step) — so what happens here is only the
+// autonomy and recorded on its events (a git.push step) — so what happens here is only the
 // decision about each tree, from what delivery staged out of it. A tree whose head an approved
 // push staged has left; every other tree with work in it has not, whatever happened to its
 // siblings.
@@ -185,12 +186,8 @@ func (c *Channel) Settle(ctx context.Context, l *runner.Launch, keep bool) bool 
 	// reaching its delivery step, a process that died, and a task that delivered one repository
 	// and left work in another. In each the runner has work and nobody said it could leave.
 	// Whether what WAS staged landed is the remote's to say — the pending ref settles itself on
-	// the sweep. Judged by the policy the task ended under, not the one it started with.
-	cur := *l
-	if p := c.Policy(); p != nil {
-		cur.Policy = p
-	}
-	d := c.ws.Salvage(ctx, &cur)
+	// the sweep. Judged by the environment, which is the launch's for the whole run.
+	d := c.ws.Salvage(ctx, l)
 	for _, ref := range d.Staged {
 		fmt.Fprintf(c.log, "delivery: %s: the work did not leave; it is held in this "+
 			"runner's mirror at %s\n", c.id, ref)

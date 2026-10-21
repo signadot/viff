@@ -90,20 +90,20 @@ such a gate with `mode: auto`, because `auto` asks nobody.
 | `*` | everyone |
 | `group:<name>` | a group |
 | `via:verse.resolvers.<name>` | a resolver |
-| `$principal` | whom a task acts for: in an `ask` row of a task's policy only (below) |
+| `$principal` | whom a task acts for: in an `ask` row of a task's autonomy only (below) |
 
 A gate that names nobody asks the docket.
 
 **`$principal`** is whom a task acts for: whoever ran it as themselves, the asker of an ask whose
 `then` it runs, or the subject's owner for a spawn `as: subject`. It goes in an `ask` row of
-the task's [policy](tasks.md#the-policy):
+the task's [autonomy](tasks.md#the-autonomy):
 `{match: {system: git, verb: push}, then: {ask: {answerers: [$principal]}}}`. Verse puts that
 person in its place when it poses the question, so the record names them. It is one answerer
 with one ballot: `answerers: [$principal, group:payments], need: 2` takes the person and one
 ballot from payments.
 
 A rule's own gate is asked by the rule, and a rule acts for nobody. So verse refuses
-`$principal` on a rule's gate at install. It also refuses it in a spawn's policy unless the spawn
+`$principal` on a rule's gate at install. It also refuses it in a spawn's autonomy unless the spawn
 says `as: subject`. And it refuses the spawn when the subject's owner is the system.
 
 When verse poses the question, it writes `answerers` as the question's `read-write` grant, in
@@ -152,7 +152,7 @@ asks nobody in that case.
 questions can match on them: a resolver, or a charter that posts each question carrying a
 `slack: <channel>` label to that Slack channel. A label is a name and a value that the charter's author and the reader
 agree on. Verse itself reads nothing into a label and routes nothing by one. A name holding a
-space is refused at install. An `ask` row of a task's policy takes the same field.
+space is refused at install. An `ask` row of a task's autonomy takes the same field.
 
 ### The tally
 
@@ -255,7 +255,7 @@ it posts the question.
 Whoever may write the record may move the date.
 
 Do not write `within` and `atFrom` together. `at` is the instant the engine worked out and
-wrote; a rule never writes it. An `ask` row of a task's policy has `within` only, because there
+wrote; a rule never writes it. An `ask` row of a task's autonomy has `within` only, because there
 is no record for it to read a date from.
 
 ### A question outlives the verse that asked it
@@ -329,7 +329,8 @@ rule whose gate passed. You set up the outside system to accept such a token and
   action:
     patch: {stage: deploying}
     spawn:
-      doer: {script: "AWS_WEB_IDENTITY_TOKEN_FILE=$VERSE_CREDENTIAL_FILE aws s3 sync build s3://releases", with: {network: {mode: open}}}
+      script: "AWS_WEB_IDENTITY_TOKEN_FILE=$VERSE_CREDENTIAL_FILE aws s3 sync build s3://releases"
+      environment: {systems: {network: {mode: open}}}
       credential: {audience: sts.amazonaws.com}
 ```
 
@@ -366,7 +367,8 @@ asking anybody writes a gate that says that:
   action:
     patch: {stage: staging}
     spawn:
-      doer: {script: "AWS_WEB_IDENTITY_TOKEN_FILE=$VERSE_CREDENTIAL_FILE aws s3 sync build s3://staging", with: {network: {mode: open}}}
+      script: "AWS_WEB_IDENTITY_TOKEN_FILE=$VERSE_CREDENTIAL_FILE aws s3 sync build s3://staging"
+      environment: {systems: {network: {mode: open}}}
       credential: {audience: sts.amazonaws.com}
 ```
 

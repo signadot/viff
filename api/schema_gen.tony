@@ -331,29 +331,20 @@ signature:
 context:
 - tony-format/context
 define:
+  autonomy: !irtype {}
   by: .[string]
-  policy: !irtype {}
 signature:
-  name: verse-set-policy
+  name: verse-set-autonomy
 ---
 context:
 - tony-format/context
-- tony-base: github.com/signadot/tony-format/go-tony/schema
-- runner: github.com/signadot/verse/runner
+- launch: github.com/signadot/verse/launch
 define:
-  answer: .[tony-base:ir]
   converse: .[bool]
-  doer: !runner:verse-runner-doer null
   id: .[string]
   name: .[string]
-  policy: !irtype {}
   principal: .[string]
-  prompt: .[string]
-  retain: .[int]
-  runner: .[string]
-  subject: .[string]
-  timeout: .[string]
-  virtualKey: .[string]
+  spawn: !launch:verse-launch-spec null
 signature:
   name: verse-spawn
 ---
@@ -411,21 +402,24 @@ signature:
 ---
 context:
 - tony-format/context
+- runner: github.com/signadot/verse/runner
 - task: github.com/signadot/verse/task
 define:
+  agent: .[nullable(runner:verse-runner-agent)]
+  autonomy: !irtype {}
+  autonomyBy: .[string]
   cursor: .[int]
-  doer: .[string]
   ended: .[string]
   err: .[string]
   id: .[string]
   occurrence: .[int]
   pending: .[array(task:verse-pending-gate)]
-  policy: !irtype {}
-  policyBy: .[string]
   prompt: .[string]
+  refused: .[object(int)]
   result: .[string]
   runner: .[string]
   runnerName: .[string]
+  script: .[bool]
   started: .[string]
   status: .[string]
 signature:

@@ -142,11 +142,11 @@ func TestDocCharartersInstall(t *testing.T) {
 // A spawn naming another runner, or an agent `verse up` does not offer, is for a runner set up
 // elsewhere, and is not this test's to judge.
 func upOffers(name string, l runner.Launch) error {
-	if name != "" || (l.Doer.Agent != "" && l.Doer.Agent != verserunner.AgentName) {
+	if name != "" || (l.Who() != "" && l.Who() != verserunner.AgentName) {
 		return nil
 	}
 	desc := verserunner.Config{}.Describe(verserunner.Secrets{PortkeyAPIKey: "k"}, []string{runner.NetworkOpen})
-	return runnerd.CheckOffer(&l, desc)
+	return runnerd.CheckOfferAsWritten(&l, desc)
 }
 
 type block struct {

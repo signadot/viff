@@ -8,7 +8,7 @@ import (
 
 // Repo is one repository in a workspace: the launch's repo (its name and where its checkout
 // starts), and the remote it is fetched from. FromLaunch is the one way to make one from a
-// launch. What the task may push to it is the launch's policy, decided at each push.
+// launch. What the task may push to it is its block's push shapes, and the autonomy's at each push.
 type Repo struct {
 	runner.Repo
 	// Remote is a git remote or a local path. It is fetched into a bare mirror shared by every
@@ -21,7 +21,7 @@ type Repo struct {
 // forge, where the runner reaches its repos' host (`https://github.com`, or a directory holding
 // `owner/name` repositories), and checked out under its name.
 func FromLaunch(repos []runner.Repo, forge string) ([]Repo, error) {
-	if err := runner.CheckGit(repos); err != nil {
+	if err := runner.CheckRepos(repos); err != nil {
 		return nil, err
 	}
 	out := make([]Repo, len(repos))

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/signadot/verse/answer"
+	"github.com/signadot/verse/systems"
+	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 )
 
@@ -145,8 +147,8 @@ func drive(t *testing.T, withVerb bool) driveResult {
 	// resolves for itself, correctly, from selectTools.
 	client := clientFrom(os.Getenv("PORTKEY_BASE_URL"), os.Getenv("PORTKEY_API_KEY"),
 		os.Getenv("PORTKEY_VIRTUAL_KEY"), model)
-	vec := task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}
-	sup := task.NewSupervisor(vec, task.AutoResolver{})
+	vec := task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}
+	sup := systemstest.Opened(task.NewSupervisor(driveEnv, vec, task.AutoResolver{}), driveEnv)
 	contract, err := answer.ParseSource(driveContract)
 	if err != nil {
 		t.Fatal(err)
@@ -243,8 +245,8 @@ func TestDriveAnImpossibleJobYieldsCannot(t *testing.T) {
 	}
 	client := clientFrom(os.Getenv("PORTKEY_BASE_URL"), os.Getenv("PORTKEY_API_KEY"),
 		os.Getenv("PORTKEY_VIRTUAL_KEY"), model)
-	vec := task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}
-	sup := task.NewSupervisor(vec, task.AutoResolver{})
+	vec := task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}
+	sup := systemstest.Opened(task.NewSupervisor(driveEnv, vec, task.AutoResolver{}), driveEnv)
 	d := &llmDriver{client: client, tools: tds, frame: defaultFrame(tds, vec, false, nil), log: os.Stderr,
 		prompt: "Read the file `quarterly-revenue.csv` in your working directory and report the " +
 			"total revenue for Q3. Report the number and nothing else."}
@@ -340,3 +342,9 @@ func TestDriveTheVerbStopsThePolling(t *testing.T) {
 		t.Errorf("outcome %q, want done", r.outcome)
 	}
 }
+
+// driveEnv is the environment a drive arm runs in: the agent's own shell and edits.
+var driveEnv = systems.Environment{Systems: systems.Systems{
+	"files":    {{Verbs: map[string][]systems.Shape{"write": {{}}}}},
+	"commands": {{Verbs: map[string][]systems.Shape{"run": {{}}}}},
+}}

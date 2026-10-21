@@ -5,9 +5,10 @@ The reasons behind [Tutorial](../tutorial/README.md). They are for somebody chan
 ## Why a script you type runs unasked
 
 A gate asks about what you have not already authorized. A script is one action and no step,
-and `task run --script` runs it as typed: an argument about **who addressed the request**. When you type a shell command, you authorized that command. What the script then
-calls (`verse-call-tool git-push`, say) is a step, and the policy decides it. An agent asks before
-its steps because the agent *chose* them.
+and a spawn's `script` runs as written: an argument about **who addressed the request**. When
+you write a shell command, you authorized that command. What the script then calls
+(`verse-call-tool git-push`, say) is a step, which the spawn's environment and autonomy decide.
+An agent asks before its steps because the agent *chose* them.
 
 ## Why a spawning rule must latch
 

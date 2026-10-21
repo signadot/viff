@@ -179,7 +179,7 @@ A [task](glossary.md#task) is an entity that the runtime mirrors. The mirror wri
 *as whoever asked for it*:
 
 ```sh
-verse task run 'check the migration' -subject demo.pr.1 -policy policy.tony
+verse task run -f check.tony                 # a spawn: prompt, subject, environment, autonomy
 verse perms verse task instance <id>
 ```
 
@@ -203,15 +203,19 @@ A [question](glossary.md#question) that the task raises is an ask, at its own ad
 `verse.ask.<id>`. A grant on the task does not reach the ask. So the worker may not answer its
 own question ([perms.md](perms.md#grants)).
 
-**What you may say about its questions.** Two flags, and they answer different questions:
+**What you may say about its questions.** Two things, and they answer different questions:
 
-- `-policy <file>` is *what* the task is given, and *which* of its steps are refused, asked
-  about or allowed, and what each question
-  takes to settle. The file is a list of rows, the shape of a spawn's `policy:`: a `match` over
-  a step's system, verb and params, and a `then`. For an ask, the `then` carries `need`,
-  `within`, `default`, `answerers` and `labels` ([a row's question](reference/tasks.md#a-rows-question)).
+- The spawn's `autonomy` is *which* of its steps are refused, asked about or allowed, and what
+  each question takes to settle. It is a list of rows: a `match` over a step's system, verb and
+  params, and a `then`. For an ask, the `then` carries `need`, `within`, `default`,
+  `answerers` and `labels` ([a row's question](reference/tasks.md#a-rows-question)).
 
   ```tony
+  # check.tony
+  prompt: check the migration
+  subject: demo.pr.1
+  environment: {systems: {network: {mode: open}, commands: {}}}
+  autonomy:
   - name: shell
     match: {system: commands, verb: run}
     then: {ask: {need: 1, within: "4h", default: deny, answerers: [ana@example.com]}}
@@ -224,10 +228,10 @@ own question ([perms.md](perms.md#grants)).
 - `-as <who>` is who the run is. So it is who owns the run, and who co-owns what the run asks.
 
 What the task may *do* in the world is a different question: push, open a pull request, call a
-sub-agent. The spawn's `policy:` says that, row by row (what it may reach on the network is
-the launch's `with.network`, fixed when it starts), and the runner refuses a launch whose
-policy goes past what it offers ([the policy](reference/tasks.md#the-policy)). A permissions
-grant says who may touch an entity. A task's policy says what the task may do.
+sub-agent, reach a host. The spawn's `environment` says that, system by system, fixed when it
+starts, and the runner refuses a launch whose environment goes past what it offers
+([who does the work, and with what](reference/tasks.md#who-does-the-work-and-with-what)). A permissions grant says who may touch an
+entity. A task's environment says what the task may do, and its autonomy what it does unasked.
 
 **Answering.** You answer your task's questions as their co-owner, and so does whoever the
 line names. Verse refuses the runner ([perms.md](perms.md#tasks-and-gates)).

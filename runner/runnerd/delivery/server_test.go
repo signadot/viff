@@ -17,6 +17,8 @@ import (
 
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/workspace"
+	"github.com/signadot/verse/systems"
+	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 )
 
@@ -27,14 +29,12 @@ import (
 func TestTheRunnerActsOnWhatTheTaskAsks(t *testing.T) {
 	forge := t.TempDir()
 	origin := initRepo(t, forge, "acme/svc")
-	l := &runner.Launch{ID: "t1", Doer: runner.Doer{Agent: "verse", With: runner.With{Git: []runner.Repo{
-		{Repo: "acme/svc"},
-	}}}, Policy: task.Policy{
+	l := gitLaunch("t1", runner.Repo{Repo: "acme/svc"}, task.Autonomy{
 		{Name: "no-main", Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"ref": "refs/heads/main"}}, Then: task.Then{Mode: task.ThenDeny}},
 		{Match: &task.Match{System: "git"}, Then: task.Then{Mode: task.ThenAllow}},
 		{Then: task.Then{Mode: task.ThenAllow}},
-	}}
-	repos, err := workspace.FromLaunch(l.Doer.With.Git, forge)
+	})
+	repos, err := workspace.FromLaunch(l.Repos(), forge)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,10 +43,11 @@ func TestTheRunnerActsOnWhatTheTaskAsks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ceilings := map[string]task.Policy{"git": {
-		{Name: "no-release", Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"ref": "refs/heads/release/**"}}, Then: task.Then{Mode: task.ThenDeny}},
-		{Then: task.Then{Mode: task.ThenAllow}},
-	}}
+	// The runner's ceiling gives the task's own branches and main, and no release branch.
+	ceilings := map[string]systems.Ceiling{"git": {{
+		Attributes: map[string][]string{"repo": {"github.com/acme/**"}},
+		Verbs:      map[string][]systems.Shape{"fetch": {{}}, "push": {{"ref": "refs/heads/main"}, {"ref": "refs/heads/verse/**"}}},
+	}}}
 	ch, err := Open(l.ID, ws, mirrors, func(workspace.Repo) (string, error) { return "", nil }, Services{}, ceilings, l, io.Discard)
 	if err != nil {
 		t.Fatal(err)
@@ -66,12 +67,14 @@ func TestTheRunnerActsOnWhatTheTaskAsks(t *testing.T) {
 	// A branch a row of the policy denies: refused here too, whatever the task decided, and
 	// nothing reaches the remote.
 	rep, err := cl.Ask(Request{Op: "push", Repo: "svc", Branch: "main"})
-	if err != nil || rep.Refused == "" || !strings.Contains(rep.Refused, "refused by the policy's row no-main") {
+	if err != nil || rep.Refused == "" || !strings.Contains(rep.Refused, "refused by the autonomy's row no-main") {
 		t.Fatalf("a push to main: %+v %v", rep, err)
 	}
-	// And one the runner's ceiling denies, which the policy allowed: the operator's line holds.
+	// And one beyond the runner's ceiling, which the environment and the policy allowed: the
+	// operator's line holds at the act, as a check that missed.
 	rep, err = cl.Ask(Request{Op: "push", Repo: "svc", Branch: "release/1.0"})
-	if err != nil || rep.Refused == "" || !strings.Contains(rep.Refused, "refused by the runner's ceiling, its row no-release for git") {
+	if err != nil || rep.Refused == "" || !strings.Contains(rep.Refused, "beyond the runner's ceiling for git") ||
+		!strings.Contains(rep.Refused, "{ref: refs/heads/main}, {ref: refs/heads/verse/**}") {
 		t.Fatalf("a push to release/1.0: %+v %v", rep, err)
 	}
 	// Its own branch: pushed.
@@ -199,13 +202,11 @@ func TestABranchIsTheTasksOwnWhenItMadeIt(t *testing.T) {
 	}
 	forge := t.TempDir()
 	origin := initRepo(t, forge, "acme/svc")
-	l := &runner.Launch{ID: "t1", Doer: runner.Doer{Agent: "verse", With: runner.With{Git: []runner.Repo{
-		{Repo: "acme/svc"},
-	}}}, Policy: task.Policy{
+	l := gitLaunch("t1", runner.Repo{Repo: "acme/svc"}, task.Autonomy{
 		{Name: "no-rewrite", Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"force": "true"}}, Then: task.Then{Mode: task.ThenDeny}},
 		{Then: task.Then{Mode: task.ThenAllow}},
-	}}
-	repos, err := workspace.FromLaunch(l.Doer.With.Git, forge)
+	})
+	repos, err := workspace.FromLaunch(l.Repos(), forge)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +215,7 @@ func TestABranchIsTheTasksOwnWhenItMadeIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ch, err := Open(l.ID, ws, mirrors, func(workspace.Repo) (string, error) { return "", nil }, Services{}, nil, l, io.Discard)
+	ch, err := Open(l.ID, ws, mirrors, func(workspace.Repo) (string, error) { return "", nil }, Services{}, systemstest.Open(l.Environment), l, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +261,7 @@ func TestABranchIsTheTasksOwnWhenItMadeIt(t *testing.T) {
 
 	// The task's own branch is rewritten without saying so: a push of it after a rewrite of
 	// the work lands. Another run's branch is not the task's own: a push that would rewrite it
-	// is what `force` says, and the policy's row refuses that.
+	// is what `force` says, and the autonomy's row refuses that.
 	r, err := git.PlainOpen(origin)
 	if err != nil {
 		t.Fatal(err)
@@ -273,7 +274,7 @@ func TestABranchIsTheTasksOwnWhenItMadeIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	if rep, err := cl.Ask(Request{Op: "push", Repo: "svc", Branch: "verse/auto/t0", Force: true}); err != nil || !strings.Contains(rep.Refused, "no-rewrite") {
-		t.Errorf("a forced push to another run's branch: %+v %v, want the policy's row to refuse it", rep, err)
+		t.Errorf("a forced push to another run's branch: %+v %v, want the autonomy's row to refuse it", rep, err)
 	}
 	if rep, err := cl.Ask(Request{Op: "push", Repo: "svc", Branch: ws.Branch}); err != nil || !rep.OK {
 		t.Errorf("the task's own branch, pushed again: %+v %v", rep, err)
@@ -292,7 +293,7 @@ func TestAnotherTasksBranchIsNotThisTasksToPush(t *testing.T) {
 	push := func(name string, params map[string]string) task.Row {
 		return task.Row{Name: name, Match: &task.Match{System: "git", Verb: "push", Params: params}, Then: allow}
 	}
-	own := task.Policy{
+	own := task.Autonomy{
 		push("create", map[string]string{"ref": "refs/heads/verse/auto/*", "exists": "false"}),
 		push("update", map[string]string{"ref": "refs/heads/verse/auto/*", "own": "true"}),
 		{Name: "rest", Match: &task.Match{System: "git", Verb: "push"}, Then: deny},
@@ -360,19 +361,19 @@ func TestTheRunnerDecidesByTheTasksCurrentPolicy(t *testing.T) {
 	row := func(name string, then task.Then) task.Row {
 		return task.Row{Name: name, Match: &task.Match{System: "git", Verb: "push"}, Then: then}
 	}
-	rest := task.Policy{{Match: &task.Match{System: "git"}, Then: allow}, {Then: allow}}
-	ws, _, ch, cl := openChannel(t, forge, runner.Repo{}, append(task.Policy{row("launched", deny)}, rest...))
+	rest := task.Autonomy{{Match: &task.Match{System: "git"}, Then: allow}, {Then: allow}}
+	ws, _, ch, cl := openChannel(t, forge, runner.Repo{}, append(task.Autonomy{row("launched", deny)}, rest...))
 	commit(t, filepath.Join(ws.Root, "svc"), "work\n\nVerse-Task: t1\n")
 	push := Request{Op: "push", Repo: "svc", Branch: ws.Branch}
 	if rep, err := cl.Ask(push); err != nil || !strings.Contains(rep.Refused, "launched") {
 		t.Fatalf("under the launch's rows: %+v %v, want its deny row to refuse", rep, err)
 	}
-	ch.SetPolicy(append(task.Policy{row("opened", allow)}, rest...))
+	ch.SetAutonomy(append(task.Autonomy{row("opened", allow)}, rest...))
 	if rep, err := cl.Ask(push); err != nil || !rep.OK {
 		t.Fatalf("once a replacement allows it: %+v %v", rep, err)
 	}
 	commit(t, filepath.Join(ws.Root, "svc"), "more\n\nVerse-Task: t1\n")
-	ch.SetPolicy(append(task.Policy{row("closed", deny)}, rest...))
+	ch.SetAutonomy(append(task.Autonomy{row("closed", deny)}, rest...))
 	if rep, err := cl.Ask(push); err != nil || !strings.Contains(rep.Refused, "closed") {
 		t.Fatalf("once a replacement refuses it: %+v %v, want the replacement's row to refuse", rep, err)
 	}
@@ -386,7 +387,7 @@ func TestAnAskedPushIsPerformedOnTheAnswerTheRunnerRelayed(t *testing.T) {
 	forge := t.TempDir()
 	initRepo(t, forge, "acme/svc")
 	allow, ask := task.Then{Mode: task.ThenAllow}, task.Then{Mode: task.ThenAsk}
-	asked := task.Policy{
+	asked := task.Autonomy{
 		{Name: "gate", Match: &task.Match{System: "git", Verb: "push"}, Then: ask},
 		{Match: &task.Match{System: "git"}, Then: allow},
 		{Then: allow},
@@ -395,7 +396,7 @@ func TestAnAskedPushIsPerformedOnTheAnswerTheRunnerRelayed(t *testing.T) {
 	commit(t, filepath.Join(ws.Root, "svc"), "work\n\nVerse-Task: t1\n")
 	push := Request{Op: "push", Repo: "svc", Branch: ws.Branch}
 	about := task.Step{Name: task.StepGitPush, Fields: map[string]string{
-		"repo": "github.com/acme/svc", "ref": "refs/heads/" + ws.Branch, "delete": "false", "force": "false",
+		"repo": "github.com/acme/svc", "from": "main", "ref": "refs/heads/" + ws.Branch, "delete": "false", "force": "false",
 		"exists": "false", "own": "false"}}
 
 	if rep, err := cl.Ask(push); err != nil || !strings.Contains(rep.Refused, "relayed no answer") {
@@ -449,18 +450,18 @@ func openTask(t *testing.T, forge string, repo runner.Repo) (*workspace.Workspac
 }
 
 // openTaskUnder is openTask with the task's policy given.
-func openTaskUnder(t *testing.T, forge string, repo runner.Repo, policy task.Policy) (*workspace.Workspace, *workspace.Mirrors, *Client) {
+func openTaskUnder(t *testing.T, forge string, repo runner.Repo, policy task.Autonomy) (*workspace.Workspace, *workspace.Mirrors, *Client) {
 	t.Helper()
 	ws, mirrors, _, cl := openChannel(t, forge, repo, policy)
 	return ws, mirrors, cl
 }
 
 // openChannel is openTaskUnder with the runner's side of the channel too.
-func openChannel(t *testing.T, forge string, repo runner.Repo, policy task.Policy) (*workspace.Workspace, *workspace.Mirrors, *Channel, *Client) {
+func openChannel(t *testing.T, forge string, repo runner.Repo, policy task.Autonomy) (*workspace.Workspace, *workspace.Mirrors, *Channel, *Client) {
 	t.Helper()
 	repo.Repo = "acme/svc"
-	l := &runner.Launch{ID: "t1", Doer: runner.Doer{Agent: "verse", With: runner.With{Git: []runner.Repo{repo}}}, Policy: policy}
-	repos, err := workspace.FromLaunch(l.Doer.With.Git, forge)
+	l := gitLaunch("t1", repo, policy)
+	repos, err := workspace.FromLaunch(l.Repos(), forge)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -469,7 +470,7 @@ func openChannel(t *testing.T, forge string, repo runner.Repo, policy task.Polic
 	if err != nil {
 		t.Fatal(err)
 	}
-	ch, err := Open(l.ID, ws, mirrors, func(workspace.Repo) (string, error) { return "", nil }, Services{}, nil, l, io.Discard)
+	ch, err := Open(l.ID, ws, mirrors, func(workspace.Repo) (string, error) { return "", nil }, Services{}, systemstest.Open(l.Environment), l, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -545,25 +546,54 @@ func TestThePushIsWhatTheTaskHasCheckedOut(t *testing.T) {
 	}
 }
 
-// A VERB THE POLICY DOES NOT NAME IS NOT THE TASK'S: the channel refuses a call of it, whatever the
-// policy's last row says, and says which verb; a verb a row names is decided by the rows.
-func TestAVerbThePolicyDoesNotNameIsRefused(t *testing.T) {
-	s := &Server{Log: io.Discard}
+// A STEP OUTSIDE THE ENVIRONMENT IS NOT THE TASK'S: the channel refuses it, whatever the policy's
+// rows say, before any is read, saying what the environment gives; a step it gives is decided by
+// the rows.
+func TestAStepOutsideTheEnvironmentIsRefused(t *testing.T) {
+	s := &Server{Log: io.Discard, Ceilings: performs("git", "git-issue")}
 	allow := task.Then{Mode: task.ThenAllow}
 	repo := map[string]string{"repo": "github.com/acme/svc"}
-	for _, p := range []task.Policy{
-		{{Match: &task.Match{System: "git-issue"}, Then: allow}, {Then: allow}},
+	for _, p := range []task.Autonomy{
+		{{Match: &task.Match{System: "git"}, Then: allow}, {Then: allow}},
 		{{Then: allow}},
 		nil,
 	} {
-		tk := Task{ID: "t1", Workspace: &workspace.Workspace{}, Launch: &runner.Launch{Policy: p}}
-		if why := s.refused(tk, "", task.Step{Name: task.StepGitPush, Fields: repo}); !strings.Contains(why, "names no git.push") {
-			t.Errorf("a push under %v: %q, want it refused as no verb of the policy's", p, why)
+		l := within([]string{"acme/svc"}, "git-issue")
+		l.Autonomy = p
+		tk := Task{ID: "t1", Workspace: &workspace.Workspace{}, Launch: l}
+		if why := s.refused(tk, "", task.Step{Name: task.StepGitPush, Fields: repo}); !strings.Contains(why, "outside the environment: the environment gives no `git` (it gives: git-issue)") {
+			t.Errorf("a push under %v: %q, want it refused as outside the environment", p, why)
+		}
+		if why := s.refused(tk, "", task.Step{Name: task.StepGitIssuePush, Fields: repo}); p != nil && why != "" {
+			t.Errorf("a tracker push the environment gives, under %v: refused, %q", p, why)
 		}
 	}
-	tk := Task{ID: "t1", Workspace: &workspace.Workspace{}, Launch: &runner.Launch{Policy: task.Policy{
-		{Match: &task.Match{System: "git-issue"}, Then: allow}, {Then: allow}}}}
-	if why := s.refused(tk, "", task.Step{Name: task.StepGitIssuePush, Fields: repo}); why != "" {
-		t.Errorf("a tracker push under a policy naming git-issue: refused, %q", why)
+	if why := s.refused(Task{ID: "t2"}, "", task.Step{Name: task.StepGitIssuePush, Fields: repo}); !strings.Contains(why, "outside the environment") {
+		t.Errorf("a task nothing is known of has an empty environment: %q", why)
+	}
+}
+
+// A PUSH WITHIN A SHAPE BY ITS OWNERSHIP ALONE IS DECIDED ON THE RUNNER'S FACTS: a shape naming
+// `own: true` lets the push of a branch the task's own commit tops go, on the fields the runner
+// fills, and refuses another's, quoting the shapes it gives so the call can be corrected.
+func TestAPushWithinAShapeByOwnershipAlone(t *testing.T) {
+	s := &Server{Log: io.Discard, Ceilings: performs("git")}
+	l := &runner.Launch{ID: "t1", Prompt: "p", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}},
+		Environment: systems.Environment{Systems: systems.Systems{"git": {{Attributes: map[string]string{"repo": "github.com/acme/svc"},
+			Verbs: map[string][]systems.Shape{"push": {{"ref": "refs/heads/verse/**", "own": "true"}}}}}}}}
+	tk := Task{ID: "t1", Workspace: &workspace.Workspace{}, Launch: l}
+	push := func(own bool) task.Step {
+		return task.Step{Name: task.StepGitPush, Fields: pushFields(&workspace.Tree{Repo: workspace.Repo{Repo: runner.Repo{Repo: "acme/svc", From: "main"}}},
+			"refs/heads/verse/fix", false, false, runner.BranchState{Exists: true, Own: own})}
+	}
+	if why := s.refused(tk, "", push(true)); why != "" {
+		t.Errorf("a push of the task's own branch: refused, %q", why)
+	}
+	why := s.refused(tk, "", push(false))
+	if !strings.Contains(why, "outside the environment") || !strings.Contains(why, "it gives {own: true, ref: refs/heads/verse/**}") {
+		t.Errorf("a push of another's branch: %q, want it refused quoting the shape", why)
+	}
+	if !l.Environment.Allows(task.StepGitPush, push(true).Fields) || l.Environment.Allows(task.StepGitPush, push(false).Fields) {
+		t.Error("the task's own check, on the same fields, does not agree with the runner's")
 	}
 }

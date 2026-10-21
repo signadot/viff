@@ -39,7 +39,7 @@ func answerAs(t *testing.T, as, url, id string) *http.Response {
 
 func spawnAs(t *testing.T, as, url, id, subject string) {
 	t.Helper()
-	body := fmt.Sprintf(`{id: %q, doer: {script: "true"}, subject: %q, policy: %s}`, id, subject, stepAsksTony)
+	body := fmt.Sprintf(`{id: %q, spawn: {script: "true", subject: %q, environment: %s, autonomy: %s}}`, id, subject, stepEnvTony, stepAsksTony)
 	resp := postAs(t, as, url+"/tasks", "application/tony", body)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {

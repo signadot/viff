@@ -2,6 +2,7 @@ package trigger
 
 import (
 	"context"
+	"github.com/signadot/verse/systems"
 	"strings"
 	"testing"
 	"time"
@@ -49,7 +50,7 @@ func TestASpawnCarriesTheGatesItsFiringPassed(t *testing.T) {
 			specs := make(chan launch.Spec, 4)
 			eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
 				specs <- spec
-				sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+				sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 				p := task.NewTask(id, sup, answering{r: "done"}, noExec{})
 				go p.Run(context.Background())
 				return p
@@ -61,8 +62,8 @@ func TestASpawnCarriesTheGatesItsFiringPassed(t *testing.T) {
 				Gates:     []Gate{{Name: "free", Mode: "auto"}, {Name: "ok", Mode: "ask"}},
 				Action: Action{
 					Patch:  entity.Obj{"stage": "deploying"}.Payload(),
-					Spawn:  &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "deploy $subject"},
-					OnDone: &Action{Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "after $subject"}},
+					Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "deploy $subject"},
+					OnDone: &Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "after $subject"}},
 				},
 			}); err != nil {
 				t.Fatalf("AddTrigger: %v", err)
@@ -101,7 +102,7 @@ func TestASequencesStepsCarryNoGate(t *testing.T) {
 	specs := make(chan launch.Spec, 4)
 	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
 		specs <- spec
-		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+		sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 		p := task.NewTask(id, sup, answering{r: "done"}, noExec{})
 		go p.Run(context.Background())
 		return p
@@ -113,7 +114,7 @@ func TestASequencesStepsCarryNoGate(t *testing.T) {
 		Gates:     []Gate{{Name: "ok", Mode: "ask"}},
 		Action: Action{
 			Patch: entity.Obj{"stage": "deploying"}.Payload(),
-			Seq:   []Action{{Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "one $subject"}}, {Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "two $subject"}}},
+			Seq:   []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "one $subject"}}, {Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "two $subject"}}},
 		},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -143,14 +144,14 @@ func TestACredentialNobodyCouldMintIsRefusedAtInstall(t *testing.T) {
 		t    Trigger
 		want string
 	}{
-		{"no audience", Trigger{Gates: ask, Action: Action{Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "p", Credential: cred(" ")}}}, "names no audience"},
-		{"a derived audience", Trigger{Gates: ask, Action: Action{Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "p", Credential: cred("$target")}}}, "declared and not derived"},
-		{"no gate", Trigger{Action: Action{Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "p", Credential: cred("sts")}}}, "the rule has no gate"},
-		{"a hook's spawn", Trigger{Gates: ask, Action: Action{Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "p"},
-			OnDone: &Action{Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "q", Credential: cred("sts")}}}}, "onDone asks for a credential"},
+		{"no audience", Trigger{Gates: ask, Action: Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "p", Credential: cred(" ")}}}, "names no audience"},
+		{"a derived audience", Trigger{Gates: ask, Action: Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "p", Credential: cred("$target")}}}, "declared and not derived"},
+		{"no gate", Trigger{Action: Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "p", Credential: cred("sts")}}}, "the rule has no gate"},
+		{"a hook's spawn", Trigger{Gates: ask, Action: Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "p"},
+			OnDone: &Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "q", Credential: cred("sts")}}}}, "onDone asks for a credential"},
 		{"a sequence step's spawn", Trigger{Gates: ask, Action: Action{
-			Seq: []Action{{Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "q", Credential: cred("sts")}}}}}, "seq[0] asks for a credential"},
-		{"passed written by the charter", Trigger{Gates: ask, Action: Action{Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "p",
+			Seq: []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "q", Credential: cred("sts")}}}}}, "seq[0] asks for a credential"},
+		{"passed written by the charter", Trigger{Gates: ask, Action: Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "p",
 			Passed: []launch.Passed{{Question: "q", How: launch.PassedBallots}}}}}, "the engine's to set"},
 	} {
 		eng := New(entitytest.Store(t), task.AutoResolver{})
@@ -168,7 +169,7 @@ func TestACredentialNobodyCouldMintIsRefusedAtInstall(t *testing.T) {
 		eng := New(entitytest.Store(t), task.AutoResolver{})
 		if err := eng.AddTrigger(Trigger{
 			Name: "deploy", Condition: Condition{Subject: prSubject("open")}, Gates: gates,
-			Action: Action{Patch: entity.Obj{"stage": "deploying"}.Payload(), Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "p", Credential: cred("sts.example.com")}},
+			Action: Action{Patch: entity.Obj{"stage": "deploying"}.Payload(), Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "p", Credential: cred("sts.example.com")}},
 		}); err != nil {
 			t.Errorf("%s, and its rule's own spawn asking for a credential: %v", name, err)
 		}

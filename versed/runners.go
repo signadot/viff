@@ -56,6 +56,7 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 	// the pod is pending, and the entity is already written. Refusing that would make
 	// deployment order-dependent for a fact that fixes itself.
 	body := entity.Obj{"name": e.Name, "url": e.URL}
+	var described *runner.Description
 	if e.Identity != "" {
 		body["identity"] = e.Identity
 	}
@@ -82,14 +83,22 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 			}
 			out["reach"] = reach.String()
 			out["offers"] = desc.Offers
-			body["offers"] = desc.Offers
+			described = &desc
 		}
 	}
-	if _, _, err := s.scopedStore(r).Write(entity.Write{
+	store := s.scopedStore(r)
+	if _, _, err := store.Write(entity.Write{
 		At: runnerEntityRef(e.Name).At(), Value: body.Payload(),
 	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	// What it offers replaces what a registration of the name kept, never merges into it.
+	if described != nil {
+		if err := writeDescribed(store, e.Name, *described); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 	writeOut(w, r, http.StatusCreated, out)
 }
@@ -170,9 +179,7 @@ func (s *Server) checkRunner(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		out["offers"] = desc.Offers
-		if _, _, err := s.storeForScope(r.URL.Query().Get("scope")).Write(entity.Write{
-			At: runnerEntityRef(name).At(), Value: entity.Obj{"offers": offersValue(desc.Offers)}.Payload(),
-		}); err != nil {
+		if err := writeDescribed(s.storeForScope(r.URL.Query().Get("scope")), name, desc); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -180,30 +187,32 @@ func (s *Server) checkRunner(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, out)
 }
 
-// offersValue is a runner's offers as a record writes them: removed where there are none, so
-// a runner that stopped describing offers holds none out.
-func offersValue(offers []runner.Offer) any {
-	if len(offers) == 0 {
-		return entity.Removed()
+// writeDescribed keeps a runner's description on its registration, under `described`, in place
+// of what stood there: a write merges, a list element by element (so ReplaceAt's removals, which
+// reach a value's fields and not its list's elements, would leave an old offer's fields on a new
+// one), so what it said before is removed first, and `offers`, which an older verse kept the
+// offers under, with it.
+//
+// BETWEEN THE TWO WRITES the registration has no description, and that is safe: a spawn naming
+// the runner reads it through offersOf, which asks the runner again where the registration is
+// not Current, so a spawn arriving then is checked against what the runner says, at the cost of
+// one more probe, never against nothing.
+func writeDescribed(w entity.Store, name string, desc runner.Description) error {
+	at := runnerEntityRef(name).At()
+	if _, _, err := w.Write(entity.Write{At: at, Value: entity.Obj{"described": entity.Removed(), "offers": entity.Removed()}.Payload()}); err != nil {
+		return err
 	}
-	return offers
+	_, _, err := w.Write(entity.Write{At: at, Value: entity.Obj{"described": desc}.Payload()})
+	return err
 }
 
-// descriptionFor is what the runner a spawn names offers, for the check a spawn is made against
-// before it is launched: the embedded runner's for none, an installed runner's as it described
-// itself. A runner with no recorded offers is checked by nobody but itself.
-func (s *Server) descriptionFor(store entity.Reader, name string) runner.Description {
-	if name == "" {
-		// The embedded runner's offers, where it is the default. A default reached by url
-		// (`verse up --runner`) has no registration to keep its offers on: it checks its
-		// launches itself.
-		if _, local := s.runner.(localRunner); local {
-			return s.Embedded.Description()
-		}
-		return runner.Description{}
-	}
-	if e, ok := findRunner(store, name); ok {
-		return e.Description()
+// defaultDescription is what the default runner offers, for the check a spawn naming no runner
+// is made against before it is launched (offersOf reads an installed runner's).
+func (s *Server) defaultDescription() runner.Description {
+	// The embedded runner's offers, where it is the default. A default reached by url (`verse up
+	// --runner`) has no registration to keep its offers on: it checks its launches itself.
+	if _, local := s.runner.(localRunner); local {
+		return s.Embedded.Description()
 	}
 	return runner.Description{}
 }
@@ -218,6 +227,12 @@ func (s *Server) descriptionFor(store entity.Reader, name string) runner.Descrip
 // by url alone (`verse up --runner`) has no registration to keep offers on, and is the one
 // exception: it checks its launches itself.
 func (s *Server) checkOffer(store entity.Reader, name string, l *runner.Launch) error {
+	return s.checkOfferBy(store, name, l, runnerd.CheckOffer)
+}
+
+// checkOfferBy is checkOffer with the check made: runnerd.CheckOffer for a launch, bound, and
+// runnerd.CheckOfferAsWritten for a charter's spawn at install (offerCheck).
+func (s *Server) checkOfferBy(store entity.Reader, name string, l *runner.Launch, check func(*runner.Launch, runner.Description) error) error {
 	desc, where, err := s.offersOf(store, name)
 	if err != nil {
 		return err
@@ -225,7 +240,7 @@ func (s *Server) checkOffer(store entity.Reader, name string, l *runner.Launch) 
 	if len(desc.Offers) == 0 {
 		return nil
 	}
-	if err := runnerd.CheckOffer(l, desc); err != nil {
+	if err := check(l, desc); err != nil {
 		return fmt.Errorf("%s: %w", where, err)
 	}
 	return nil
@@ -235,7 +250,7 @@ func (s *Server) checkOffer(store entity.Reader, name string, l *runner.Launch) 
 // answers now, and the name a refusal calls it by.
 func (s *Server) offersOf(store entity.Reader, name string) (runner.Description, string, error) {
 	if name == "" {
-		return s.descriptionFor(store, ""), "the default runner", nil
+		return s.defaultDescription(), "the default runner", nil
 	}
 	e, ok, err := findRunnerErr(store, name)
 	if err != nil && !errors.Is(err, entity.ErrForbidden) {
@@ -246,7 +261,7 @@ func (s *Server) offersOf(store entity.Reader, name string) (runner.Description,
 			"not installed is refused rather than run somewhere else", name)
 	}
 	where := runnerEntityRef(e.Name).String()
-	if len(e.Offers) > 0 {
+	if e.Current() {
 		return e.Description(), where, nil
 	}
 	reach, desc, why := client.Probe(e.URL)
@@ -269,9 +284,7 @@ func (s *Server) recordOffers(store entity.Reader, name string, desc runner.Desc
 	if !ok {
 		return
 	}
-	if _, _, err := w.Write(entity.Write{
-		At: runnerEntityRef(name).At(), Value: entity.Obj{"offers": offersValue(desc.Offers)}.Payload(),
-	}); err != nil {
+	if err := writeDescribed(w, name, desc); err != nil {
 		fmt.Fprintf(os.Stderr, "verse: runner %s: keeping what it offers: %v\n", runnerEntityRef(name), err)
 	}
 }
@@ -287,7 +300,7 @@ func (s *Server) probeRunners() error {
 		return err
 	}
 	for _, e := range runners {
-		if len(e.Offers) > 0 {
+		if e.Current() {
 			continue
 		}
 		reach, desc, why := client.Probe(e.URL)

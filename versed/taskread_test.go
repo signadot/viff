@@ -17,7 +17,7 @@ func privateWithTasks(t *testing.T) (*Server, *httptest.Server) {
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	for _, body := range []map[string]any{
-		{"id": "hosted", "doer": map[string]any{"script": "sleep 30"}},
+		{"id": "hosted", "spawn": map[string]any{"script": "sleep 30"}},
 	} {
 		resp := postAsTony(t, "alice@example.com", ts.URL+"/tasks", body)
 		if msg := readBody(t, resp); resp.StatusCode >= http.StatusBadRequest {
@@ -57,7 +57,7 @@ func TestATaskInTheOpenVerseIsAnybodysToRead(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	resp := postAsTony(t, "alice@example.com", ts.URL+"/tasks",
-		map[string]any{"id": "open", "doer": map[string]any{"script": "sleep 30"}})
+		map[string]any{"id": "open", "spawn": map[string]any{"script": "sleep 30"}})
 	resp.Body.Close()
 	for _, who := range []string{"bob@example.com", ""} {
 		resp := getAs(t, who, ts.URL+"/tasks/open")

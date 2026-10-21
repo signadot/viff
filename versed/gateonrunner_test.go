@@ -12,6 +12,7 @@ import (
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 )
 
@@ -30,12 +31,12 @@ func TestGateOnPerSpawnRunnerIsAnswerable(t *testing.T) {
 	// A face that asks before it acts, so there is a real question to answer. Its registry is
 	// the one that must receive the answer, and it is not this verse's.
 	build := func(l runner.Launch, reg *task.Registry) *task.Task {
-		gating := task.Policy{{Name: "act", Match: &task.Match{System: "commands", Verb: "run"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAllow}}}
+		gating := task.Autonomy{{Name: "act", Match: &task.Match{System: "commands", Verb: "run"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAllow}}}
 		// ONE action, then done. A driver that keeps proposing would park on a second gate
 		// after this test answers the first, and a task that never reaches a terminal holds
 		// the mirror's stream open — so the test would hang in httptest.Close rather than
 		// fail. Same hazard runnerFace guards with its release channel.
-		sup := task.NewSupervisor(gating, reg)
+		sup := systemstest.Opened(task.NewSupervisor(l.Environment, gating, reg), l.Environment)
 		sup.SetStepOf(commandStep)
 		return task.NewTask(l.ID, sup, &oneAction{}, okExecutor{})
 	}
@@ -68,9 +69,7 @@ func TestGateOnPerSpawnRunnerIsAnswerable(t *testing.T) {
 
 	// Spawned onto that runner BY NAME. The verse's own default runner is the in-process one
 	// and knows nothing about this task, which is the condition being tested.
-	resp := postTony(t, ts.URL+"/tasks", map[string]any{
-		"doer": map[string]any{"agent": "fake"}, "prompt": "work", "runner": "verse.runners.code", "name": "onrunner",
-	})
+	resp := postTony(t, ts.URL+"/tasks", map[string]any{"name": "onrunner", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "work", "runner": "verse.runners.code", "environment": stepEnv}})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("spawn = %s", resp.Status)
 	}
@@ -163,9 +162,7 @@ func TestAttachToTaskOnPerSpawnRunner(t *testing.T) {
 		"name": "code", "url": face.URL,
 	}).Body.Close()
 
-	resp := postTony(t, ts.URL+"/tasks", map[string]any{
-		"doer": map[string]any{"agent": "fake"}, "prompt": "work", "runner": "verse.runners.code", "name": "streamed",
-	})
+	resp := postTony(t, ts.URL+"/tasks", map[string]any{"name": "streamed", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "work", "runner": "verse.runners.code", "environment": stepEnv}})
 	var sp map[string]any
 	decodeResp(t, resp, &sp)
 	id, _ := sp["id"].(string)

@@ -221,7 +221,7 @@ func TestWhatTheSystemMakesInItsOwnHalfIsNotAnybodysToTake(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{
 		name: system-spawn,
 		condition: {subject: {path: "demo.sys.*", value: {stage: open}}},
-		action: {spawn: {doer: {agent: verse}, prompt: "sleep 5"}, patch: {stage: spawned}},
+		action: {spawn: {agent: {name: verse}, prompt: "sleep 5"}, patch: {stage: spawned}},
 	}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +304,7 @@ func TestANameTheSystemHasNotUsedYetCannotBeReserved(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{
 		name: system-spawn,
 		condition: {subject: {path: "demo.sys.*", value: {stage: open}}},
-		action: {spawn: {doer: {agent: verse}, prompt: "sleep 5"}, patch: {stage: spawned}},
+		action: {spawn: {agent: {name: verse}, prompt: "sleep 5"}, patch: {stage: spawned}},
 	}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -359,7 +359,7 @@ func TestANameTheSystemHasNotUsedYetCannotBeReserved(t *testing.T) {
 	}
 	// …and run a task under the next one before the rule does.
 	second := strings.Replace(first, "demo.sys.1", "demo.sys.2", 1)
-	resp = postAs(t, bob, ts.URL+"/tasks", "application/tony", fmt.Sprintf(`{id: %q, doer: {script: "true"}}`, second))
+	resp = postAs(t, bob, ts.URL+"/tasks", "application/tony", fmt.Sprintf(`{id: %q, spawn: {script: "true"}}`, second))
 	resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
 		t.Fatalf("bob running a task under an id of his choosing: %s", resp.Status)
@@ -391,7 +391,7 @@ func TestANameTheSystemHasNotUsedYetCannotBeReserved(t *testing.T) {
 		t.Errorf("after the rule fired, the task at bob's id is %q's", got)
 	}
 	// And bob, for his part, does not run one under the system's.
-	resp = postAs(t, bob, ts.URL+"/tasks", "application/tony", fmt.Sprintf(`{id: %q, prompt: "true"}`, first))
+	resp = postAs(t, bob, ts.URL+"/tasks", "application/tony", fmt.Sprintf(`{id: %q, spawn: {prompt: "true"}}`, first))
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("bob running a task under the system's task's id: %s, want 409", resp.Status)

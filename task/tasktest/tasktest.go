@@ -98,8 +98,8 @@ func Run(t *testing.T, p Producer) {
 func driverIsReported(t *testing.T, p Producer) {
 	id := p.Start(t, Spec{Driver: "scripted"})
 	inst := snapshot(t, p, id)
-	if inst.Driver != "scripted" {
-		t.Errorf("Driver = %q, want scripted — the launch's chosen doer must be readable back", inst.Driver)
+	if inst.Agent != "scripted" {
+		t.Errorf("Driver = %q, want scripted — the launch's chosen agent must be readable back", inst.Agent)
 	}
 }
 

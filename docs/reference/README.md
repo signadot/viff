@@ -8,7 +8,7 @@ the docs, see [the docs index](../README.md).
 
 | | |
 |---|---|
-| [tasks.md](tasks.md) | the task surface: doers, the policy, attaching, the mirror, and steering |
+| [tasks.md](tasks.md) | the task surface: the work, the agent, the environment, the autonomy, attaching, the mirror, and steering |
 | [scopes.md](scopes.md) | scopes: a private copy of the store, what runs in it, and what it owns |
 | [entities.md](entities.md) | addresses, payloads, merging writes, conditional writes, selection, and watching |
 | [perms.md](perms.md) | permissions in detail: the grammar, the fields of a record, what verse checks on a write and a read, installed things, questions, the seed, and `verse perms`. The model itself is in [../perms.md](../perms.md). |
@@ -133,7 +133,7 @@ Your own questions to somebody, with a date ([asking](../asking.md)).
 |---|---|
 | `ask` | your asks: each with its id, question, who is asked, its date, and its answer or `pending` |
 | `ask <name\|id>` | that one, and whom it waits on. A name used for two asks is refused with both ids. Whoever it asks answers with `question <id> -answer`. |
-| `ask <name> -question (-q) <text> [-to <who>,…] [-due <when>] [-then <value>] [-else <value>] [-about <path>] [-keep <duration>]` | ask it, under an id derived from the name. `-to` uses the grammar of a grant. `-due` is RFC 3339 or a duration from now (`48h`). `-then` is what follows a yes: one key, `{prompt: <text>}`, `{script: <text>}`, `{answer: {ask, choice}}` or `{ask: {...}}`, a prompt or a script with the `policy` it runs under beside it, or `-` / `@<file>` to read it. `-else` is what follows a no, answered or by silence. `-keep` is how long it stands once settled (default a week). |
+| `ask <name> -question (-q) <text> [-to <who>,…] [-due <when>] [-then <value>] [-else <value>] [-about <path>] [-keep <duration>]` | ask it, under an id derived from the name. `-to` uses the grammar of a grant. `-due` is RFC 3339 or a duration from now (`48h`). `-then` is what follows a yes: one key, `{spawn: {...}}` (a spawn as a charter writes one), `{answer: {ask, choice}}` or `{ask: {...}}`, or `-` / `@<file>` to read it. `-else` is what follows a no, answered or by silence. `-keep` is how long it stands once settled (default a week). |
 | `ask <name\|id> -due <when>` | move its date while it waits; asks nothing again |
 | `ask <name\|id> -then <value>` · `-else <value>` · `-to <who>,…` | change what it asks while it waits. It is asked again, and answers to the earlier version do not count. |
 | `ask <name\|id> -withdraw` | take it back: off the docket, and removed |
@@ -167,18 +167,12 @@ them, installs at the path. A directory of charter files is several packages
 | Form | What it does |
 |---|---|
 | `task [-runner <ref>]` | every task, whatever runs it |
-| `task run <prompt…> [-agent <name> \| -script <text>] [-wait]` | run one. It honors the runner, and is mirrored. |
+| `task run -f <spawn> [-name <label>] [-wait]` | run one: a spawn as a charter writes one, from a file or `-` for stdin. It honors the runner it names, and is mirrored. |
 | `task run … -attach [-no-converse]` | a conversation: the turn is yours whenever the model goes quiet. Ctrl-D ends it. |
-| `task run … -runner <ref>` | on an installed runner, not the verse's default |
-| `task run … -name <label> -subject <ref> -as <who>` | what the run is called, what it is about, and who it is |
-| `task run … -policy <file>` | what the run is given, and what each step gets: refused, asked about, or allowed |
-| `task run … -answer-contract <file>` | the shape its final message must have |
-| `task run … -git <file>` | the repositories the run works in |
-| `task run … -network open\|none\|<hosts>` | what the run may reach: the host's network (the default), none, or `host[:port],…`, as the launch's `with.network`. `verse up`'s runner builds only the host's. |
-| `task run … -virtual-key <address>` | the model credential the run spends |
+| `task run … -name <label> -as <who>` | what the run is called, and who it is. What it is about, where it runs, what it may reach and do, its answer and its credential are keys of the spawn (`subject`, `runner`, `environment`, `autonomy`, `answer`, `virtualKey`) |
 | `task get <id>` · `task attach <id>` | the operator's view, for any backend. `attach` prompts for each gate, and for a question asked in words, with an identity. |
 | `task cancel <id>` · `task say <id> <text…>` | end it · tell it something |
-| `task policy <id> <rows> [-as <who>]` · `task policy <id> -file <f>` | replace its policy with a whole one, naming no verb it did not |
+| `task autonomy <id> <rows> [-as <who>]` · `task autonomy <id> -file <f>` | replace its autonomy with a whole one, each row reaching what its environment gives |
 | `task approve\|deny <id> <decision> [-say <text>]` | answer its gate (also `y`, `yes`, `n`, `no`) |
 
 [Tasks](tasks.md) has the whole task surface.

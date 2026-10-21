@@ -14,6 +14,7 @@ import (
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 )
 
@@ -64,7 +65,7 @@ func cuttingProxy(t *testing.T, upstream string, cutAfter int) *httptest.Server 
 func remoteRuntime(t *testing.T, steps int) *httptest.Server {
 	t.Helper()
 	d := runnerd.NewInProcessHandler(func(l runner.Launch, reg *task.Registry) *task.Task {
-		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, reg)
+		sup := systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, reg), l.Environment)
 		return task.NewTask(l.ID, sup, &pacedDriver{n: steps}, noopExecutor{})
 	})
 	srv := httptest.NewServer(offeringAll(d).HTTPHandler())
@@ -97,7 +98,7 @@ func TestTheMirrorReconnectsAStreamThatDies(t *testing.T) {
 	remote := remoteRuntime(t, 40)
 	proxy := cuttingProxy(t, remote.URL, 300)
 
-	client.HTTP(remote.URL).Launch(runner.Launch{ID: "p", Doer: runner.Doer{Script: "true"}})
+	client.HTTP(remote.URL).Launch(runner.Launch{ID: "p", Script: "true"})
 	store := entitytest.Store(t)
 	mirror.Reflect(store, "p", client.HTTP(proxy.URL).Attach("p"), mirror.Meta{Runner: proxy.URL})
 
@@ -128,7 +129,7 @@ func TestTheMirrorReconnectsAStreamThatDies(t *testing.T) {
 // "the last thing I heard was that it was running".
 func TestADisconnectedMirrorSaysSo(t *testing.T) {
 	remote := remoteRuntime(t, 200) // long enough to still be running while we look
-	client.HTTP(remote.URL).Launch(runner.Launch{ID: "p", Doer: runner.Doer{Script: "true"}})
+	client.HTTP(remote.URL).Launch(runner.Launch{ID: "p", Script: "true"})
 
 	// Mirrored through a runner that cannot be REACHED, which is distinct from one that
 	// answers with an error: a rejected subscribe is deliberately reported as a failed

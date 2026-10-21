@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/workspace"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -47,12 +47,15 @@ func slackAPI(t *testing.T, saw *[]string) string {
 // a runner with no bot token says where one is configured.
 func TestATasksSlackMessageNamesTheTask(t *testing.T) {
 	var saw []string
-	ceiling := task.Policy{{Match: &task.Match{System: "slack", Params: map[string]string{"channel": "general"}}, Then: task.Then{Mode: task.ThenDeny}},
-		{Then: task.Then{Mode: task.ThenAllow}}}
-	s := &Server{Log: io.Discard, Services: Services{SlackToken: "xoxb-own", SlackAPI: slackAPI(t, &saw)}, Ceilings: map[string]task.Policy{"slack": ceiling}}
-	tk := Task{ID: "t7", Workspace: &workspace.Workspace{}, Launch: &runner.Launch{Policy: task.Policy{
+	// The runner's ceiling gives #deploys alone.
+	deploys := []systems.Shape{{"channel": "deploys"}}
+	ceiling := systems.Ceiling{{Verbs: map[string][]systems.Shape{"post": deploys, "reply": deploys, "read": deploys, "react": deploys}}}
+	s := &Server{Log: io.Discard, Services: Services{SlackToken: "xoxb-own", SlackAPI: slackAPI(t, &saw)}, Ceilings: map[string]systems.Ceiling{"slack": ceiling}}
+	l := within(nil, "slack")
+	l.Autonomy = task.Autonomy{
 		{Name: "quiet", Match: &task.Match{System: "slack", Verb: "react"}, Then: task.Then{Mode: task.ThenDeny}},
-		{Match: &task.Match{System: "slack"}, Then: task.Then{Mode: task.ThenAllow}}, {Then: task.Then{Mode: task.ThenAllow}}}}}
+		{Match: &task.Match{System: "slack"}, Then: task.Then{Mode: task.ThenAllow}}, {Then: task.Then{Mode: task.ThenAllow}}}
+	tk := Task{ID: "t7", Workspace: &workspace.Workspace{}, Launch: l}
 
 	if rep := s.answer(tk, frame(t, Request{Op: OpSlackPost, Channel: "#Deploys", Body: "v1.3 is out"})); !rep.OK || rep.Out != "posted in #deploys: ts 17.2 https://acme.slack.com/p17" {
 		t.Errorf("post: %+v", rep)
@@ -70,11 +73,8 @@ func TestATasksSlackMessageNamesTheTask(t *testing.T) {
 	if rep := s.answer(tk, frame(t, Request{Op: OpSlackPost, Channel: "general", Body: "hi"})); !strings.Contains(rep.Refused, "the runner's ceiling") {
 		t.Errorf("a post the ceiling closes: %+v", rep)
 	}
-	if rep := s.answer(tk, frame(t, Request{Op: OpSlackReact, Channel: "deploys", Message: "17.2", Emoji: ":rocket:"})); !strings.Contains(rep.Refused, "the policy's row quiet") {
+	if rep := s.answer(tk, frame(t, Request{Op: OpSlackReact, Channel: "deploys", Message: "17.2", Emoji: ":rocket:"})); !strings.Contains(rep.Refused, "the autonomy's row quiet") {
 		t.Errorf("a reaction the policy denies: %+v", rep)
-	}
-	if rep := s.answer(tk, frame(t, Request{Op: OpSlackPost, Channel: "C1", Body: "hi"})); !strings.Contains(rep.Refused, "no channel named c1") {
-		t.Errorf("a channel's id: %+v", rep)
 	}
 	want := []string{
 		"Bearer xoxb-own post C1  v1.3 is out\n\n_verse task t7_",
@@ -84,9 +84,12 @@ func TestATasksSlackMessageNamesTheTask(t *testing.T) {
 		t.Errorf("Slack saw %q, want %q", saw, want)
 	}
 
-	free := &Server{Log: io.Discard, Services: s.Services, Ceilings: map[string]task.Policy{"slack": {{Then: task.Then{Mode: task.ThenAllow}}}}}
-	if rep := free.answer(Task{ID: "t8"}, frame(t, Request{Op: OpSlackReact, Channel: "deploys", Message: "17.2", Emoji: ":rocket:"})); !rep.OK || rep.Out != "reacted :rocket: to 17.2 in #deploys" {
+	free := &Server{Log: io.Discard, Services: s.Services, Ceilings: map[string]systems.Ceiling{"slack": systems.Open()}}
+	if rep := free.answer(Task{ID: "t8", Launch: within(nil, "slack")}, frame(t, Request{Op: OpSlackReact, Channel: "deploys", Message: "17.2", Emoji: ":rocket:"})); !rep.OK || rep.Out != "reacted :rocket: to 17.2 in #deploys" {
 		t.Errorf("react: %+v", rep)
+	}
+	if rep := free.answer(Task{ID: "t8", Launch: within(nil, "slack")}, frame(t, Request{Op: OpSlackPost, Channel: "C1", Body: "hi"})); !strings.Contains(rep.Refused, "no channel named c1") {
+		t.Errorf("a channel's id: %+v", rep)
 	}
 	none := &Server{Log: io.Discard}
 	if rep := none.answer(tk, frame(t, Request{Op: OpSlackPost, Channel: "deploys", Body: "x"})); !strings.Contains(rep.Error, "systems.slack.credential") {

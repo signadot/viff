@@ -131,7 +131,8 @@ rules:
   action:
     patch: {stage: reviewing}
     spawn:
-      doer: {agent: verse, with: {network: {mode: open}}}
+      agent: {name: verse}
+      environment: {systems: {network: {mode: open}}}
       prompt: "Review this issue: $title. Is it a bug or a feature, and how severe is it?"
       answer:
         kind:     !or [bug, feature]
@@ -145,12 +146,12 @@ verse task                                 # the task, while it runs, and its re
 verse data verse-tutorial issue 1          # stage: reviewed, kind: bug, severity: high
 ```
 
-The spawn names its **doer**: here `verse`, verse's own agent, with the host's network and a
+The spawn names its **agent**: here `verse`, verse's own, with the host's network and a
 `prompt` that is the one job. `$subject` and every field of the issue are bound in the action,
-so `$title` in the prompt is the issue's title. The spawn names no policy, so the agent is given
-no verb: it reads and answers, and cannot write a file, run a command or push
-([the policy](tasks.md#the-policy)). A script is
-`doer: {script: …}`, and the script is the work.
+so `$title` in the prompt is the issue's title. Its environment gives only the network, so the
+agent is given no verb: it reads and answers, and cannot write a file, run a command or push
+([the environment and the autonomy](tasks.md#the-environment-and-the-autonomy)). A spawn with a
+`script` in place of the prompt runs that script, and the script is the work.
 
 `onDone` fires when the task is done, and what it reads is the task: `$result` is the
 [answer](tasks.md#the-answer) as text, and `$data` is the answer read as a document. So
@@ -166,8 +167,8 @@ tells the agent the contract when it starts, and checks the answer when it stops
 misses is sent back with what was wrong, and the agent repairs it; one that never fits fails the
 task. So `$data.kind` in `onDone` is never absent, and `onFailed` says what happens when the
 task could not say it, with `$err` the reason
-([the answer contract](../reference/action.md#the-answer-contract)). Only a doer that can be
-asked again can carry a contract, so a script carries none.
+([the answer contract](../reference/action.md#the-answer-contract)). Only an agent, which can be
+asked again, can carry a contract, so a script carries none.
 
 The first patch is what makes this rule safe to leave installed. It moves the issue out of the
 rule's own selection, so the rule does not fire on the same issue twice. Verse refuses at install
@@ -255,8 +256,8 @@ steps.
 You have the four parts now. A charter of your own is made of the same kinds of rule, over
 your own data. On real systems the shapes stay the same. [Iods](../io.md) connect verse to a
 repository, a forge or a chat workspace: they write the entities, and they carry what a rule
-writes back out to the system. Tasks run agents on [runners](../runners.md), with a policy in
-the spawn that says what each step may do. An irreversible step is behind a gate with named
+writes back out to the system. Tasks run agents on [runners](../runners.md), with an environment in
+the spawn that says what the task may reach, and an autonomy that says what it does unasked. An irreversible step is behind a gate with named
 answerers and a deadline.
 
 - [Charters, continued](charters-2.md) has the rest of what a rule can say: the backlog, the

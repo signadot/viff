@@ -1,6 +1,6 @@
 # The codex runner: the verse runner in its own image with Codex in it, offering the codex agent
-# (`doer: {agent: codex}`), which it drives over Codex's client protocol so that every command
-# and patch Codex proposes is decided by the task's policy (docs/reference/runnerd.md,
+# (`agent: {name: codex}`), which it drives over Codex's client protocol so that every command
+# and patch Codex proposes is decided by the task's autonomy (docs/reference/runnerd.md,
 # "Codex, gated inside the run").
 #
 # It is a SECOND runner beside verse-runner, not a change to it: its own image, Deployment,
@@ -23,38 +23,35 @@ data:
     shellEnv: [PATH, HOME, USER, LANG]
     repos:
       mirrors: /state/mirrors
-    # The operator's line over every system this runner holds for its tasks, read again at
-    # each act whatever a spawn's policy says. The four it performs with its token are kept to
-    # signadot's repositories; the ones it stops inside a run are stated as open, so the list
-    # is the whole of what any task here may reach.
+    # The operator's line over every system this runner holds for its tasks: what a spawn's
+    # environment may give, held at install, at launch and again at each act. A ceiling lists
+    # what it allows and nothing else is allowed, so a system with no ceiling here is closed; a
+    # block naming no verb (`{}`) allows every verb of its system.
+    # signadot's repositories, and their branches under verse/; main of verse's own, which its
+    # comment-drift merge lands on. No network ceiling: tasks get what the sandbox builds.
     systems:
       git:
         ceiling:
-        - {match: {repo: "github.com/signadot/**"}, then: allow}
-        - {then: deny}
-      git-issue:
-        ceiling:
-        - {match: {repo: "github.com/signadot/**"}, then: allow}
-        - {then: deny}
-      github:
-        ceiling:
-        - {match: {repo: "github.com/signadot/**"}, then: allow}
-        - {then: deny}
-      github-issue:
-        ceiling:
-        - {match: {repo: "github.com/signadot/**"}, then: allow}
-        - {then: deny}
-      files:
-        ceiling: [{then: allow}]
-      commands:
-        ceiling: [{then: allow}]
-      agent:
-        ceiling: [{then: allow}]
+        - repo: github.com/signadot/verse
+          fetch: {}
+          push:
+          - {ref: refs/heads/main, force: "false", delete: "false"}
+          - {ref: "refs/heads/verse/**"}
+        - repo: "github.com/signadot/**"
+          fetch: {}
+          push: {ref: "refs/heads/verse/**"}
+      git-issue: {ceiling: {repo: "github.com/signadot/**"}}
+      github: {ceiling: {repo: "github.com/signadot/**"}}
+      github-issue: {ceiling: {repo: "github.com/signadot/**"}}
+      files: {ceiling: {}}
+      commands: {ceiling: {}}
+      question: {ceiling: {}}
+      agent: {ceiling: {}}
 
     # How Codex runs here. `apiKeyEnv` is the NAME of a variable the runner holds (the
     # verse-codex Secret, below); the task process writes it as Codex's login file in a
     # CODEX_HOME of its own, so it is in no environment a command could inherit. The model is
-    # one the key's project serves, and a spawn's `with.model` overrides it. The sandbox is
+    # one the key's project serves, and a spawn's `agent.model` overrides it. The sandbox is
     # Codex's own, inside bwrap's: an approved command may write the workspace and /tmp, and
     # nothing else. Codex's API is reachable from a task whatever its network.
     codex:
@@ -66,7 +63,7 @@ data:
         # it allows.
         "shell_environment_policy.set": '{GOCACHE = "/tmp/codex-gocache"}'
         # Codex's sandbox denies commands the network by default. Here the network is the
-        # launch's `with.network`, already drawn by bwrap, so Codex does not deny it again.
+        # launch environment's `network`, already drawn by bwrap, so Codex does not deny it again.
         "sandbox_workspace_write.network_access": "true"
         # Nothing here wants a newer Codex than the one the image pins.
         "check_for_update_on_startup": "false"

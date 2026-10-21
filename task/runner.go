@@ -54,7 +54,7 @@ type Lister interface {
 }
 
 // Handle is verse's governing handle on one running task — the control plane
-// (pause/resume/cancel/say/set-policy) plus the read plane (Subscribe). It hides whether
+// (pause/resume/cancel/say/set-autonomy) plus the read plane (Subscribe). It hides whether
 // the task runs in-process or behind a URL, so the engine tracks handles, not the
 // concrete *Task. The local handle is *Task itself; a remote handle wraps an HTTP
 // client of a runner base URL.
@@ -73,14 +73,20 @@ type Handle interface {
 	// Steer says words to the task, taken at its next boundary; ask is the ask they are, echoed
 	// on the say frame when they are taken, and empty for words nobody tracks.
 	Steer(instruction, by, ask string) error
-	// SetPolicy replaces the task's policy from its next step; by is who did.
-	SetPolicy(p Policy, by string) error
+	// SetAutonomy replaces the task's autonomy from its next step; by is who did.
+	SetAutonomy(p Autonomy, by string) error
 	Result() string
 	// Err is why a terminal task failed or was cancelled — independent of Result, not
 	// exclusive with it: a driver can say something and then fail. It is on the Handle
 	// rather than inferred from status because status says a task STOPPED and nothing
 	// about why, and the mirror can only project what the handle exposes.
 	Err() string
+	// Refused is the connections the task's proxy refused, by destination, and how often
+	// (Snapshot.Refused); nil where the runner serves it no proxy.
+	Refused() map[string]int
+	// Agent is who ran it and with what (Snapshot.Agent, Snapshot.Settings): "" where the runner
+	// did not say, as for a script.
+	Agent() (name string, settings map[string]string)
 }
 
 // *Task is the local Handle.
@@ -116,6 +122,8 @@ func (failedHandle) Pause(string) error                 { return ErrNoSuchTask }
 func (failedHandle) Resume(string) error                { return ErrNoSuchTask }
 func (failedHandle) Cancel(string, string) error        { return ErrNoSuchTask }
 func (failedHandle) Steer(string, string, string) error { return ErrNoSuchTask }
-func (failedHandle) SetPolicy(Policy, string) error     { return ErrNoSuchTask }
+func (failedHandle) SetAutonomy(Autonomy, string) error { return ErrNoSuchTask }
 func (failedHandle) Result() string                     { return "" }
 func (f failedHandle) Err() string                      { return f.err }
+func (failedHandle) Refused() map[string]int            { return nil }
+func (failedHandle) Agent() (string, map[string]string) { return "", nil }

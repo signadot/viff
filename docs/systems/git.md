@@ -35,34 +35,42 @@ that passed, or move a branch forward, with no task.
 
 ## What a task can do
 
-A task gets a repository with `with.git`. The runner checks the repository out from the branch
-that `from` names, onto a branch of the task's own. That is a fact of the spawn, not a rule.
-The policy says what may leave:
+A task gets a repository with a `git` block in its environment. The runner checks the
+repository out from the branch that `from` names, onto a branch of the task's own. The block's
+verbs say what the task may do with it, and its push shapes which pushes are within reach; a
+push no shape matches is refused before any row is read. The autonomy then decides among what
+the environment gives:
 
 ```tony
 spawn:
-  doer:
-    agent: verse
-    with:
-      git: [{repo: acme/app, from: main}]
-      network: {mode: open}
+  agent: {name: verse}
   prompt: "Make the failing check on $subject pass."
-  policy:
-  - {match: {system: git, verb: push, ref: refs/heads/main}, then: deny}
-  - {match: {system: git, verb: push, ref: "refs/heads/verse/auto/*", exists: "false"}, then: allow}
-  - {match: {system: git, verb: push, ref: "refs/heads/verse/auto/*", own: "true"}, then: allow}
-  - {match: {system: git, verb: push}, then: ask}
+  environment:
+    systems:
+      network: {mode: open}
+      git:
+      - repo: acme/app
+        from: main
+        fetch: {}
+        push:
+        - {ref: "refs/heads/verse/auto/*", exists: "false"}
+        - {ref: "refs/heads/verse/auto/*", own: "true"}
+  autonomy:
   - {then: allow}
 ```
 
 Two of a push's fields are the runner's to fill, from the forge: `exists`, whether the branch is
 there before the push, and `own`, whether its tip is a commit this task made (every commit a
-task delivers carries its trailers). They are how a row keeps a task to its own branches: the
-second row above allows a branch the task makes, the third one it made, and another task's
-`verse/auto/*` branch is neither, so a push onto it, a rewrite of it or its deletion falls to
-the row after. A row with no `exists` or `own` decides by the ref alone, so `{ref:
-"refs/heads/verse/auto/*"}` lets a task push onto every task's branch; the merge train's
-`delete: "true"` row is written that way on purpose, to retire branches that landed.
+task delivers carries its trailers). They are how a shape keeps a task to its own branches: the
+first shape above gives a branch the task makes, the second one it made, and another task's
+`verse/auto/*` branch is neither, so a push onto it, a rewrite of it or its deletion is outside
+the environment. A push to `main` is too, since no shape names it. A shape with no `exists` or
+`own` gives by the ref alone, so `{ref: "refs/heads/verse/auto/*"}` lets a task push onto every
+task's branch; the merge train's `delete: "true"` shape is written that way on purpose, to
+retire branches that landed.
+
+A `git` block that names no verb gives every verb of git, any call: every push, forced or
+deleting, of any branch. A charter that ships writes its push shapes instead.
 
 | Tool | What it does | Step |
 |---|---|---|
@@ -94,13 +102,14 @@ repos:
 systems:
   git:
     ceiling:
-    - {match: {verb: push, ref: refs/heads/release/**}, then: deny}
-    - {match: {repo: "github.com/acme/**"}, then: allow}
-    - {then: deny}
+    - repo: "github.com/acme/**"
+      fetch: {}
+      push: {ref: "refs/heads/verse/**"}
 ```
 
-Verse refuses to install a spawn whose policy allows or asks about pushes the ceiling refuses
-every one of, naming the policy's row and the ceiling's. A row wider than the ceiling installs:
+Verse refuses to install a spawn whose environment gives a push beyond the ceiling, every shape
+within one of the ceiling's, saying what the ceiling gives. A ceiling lists what it allows, so
+`release/**` is beyond this one, written nowhere. A row wider than the environment installs:
 what is fixed at install is that the task has `git.push` at all, and each push is decided at the
 act, by the row and then by the ceiling, which the runner reads again
 ([the verse runner](../reference/runnerd.md#what-it-offers)).

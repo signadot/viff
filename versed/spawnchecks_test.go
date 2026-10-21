@@ -15,8 +15,8 @@ import (
 	"github.com/signadot/verse/task"
 )
 
-// A HAND RUN IS CHECKED AS THE RUNNER WILL CHECK IT, at the prompt: a run that names no doer, or
-// a script given a prompt, is a 400 with the reason, and leaves no record of a task.
+// A HAND RUN IS CHECKED AS THE RUNNER WILL CHECK IT, at the prompt: a run with nothing to do, a
+// script given a prompt or an agent, is a 400 with the reason, and leaves no record of a task.
 func TestAHandRunIsCheckedAsTheRunnerWillCheckIt(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
@@ -26,8 +26,15 @@ func TestAHandRunIsCheckedAsTheRunnerWillCheckIt(t *testing.T) {
 		spawn map[string]any
 		want  string
 	}{
-		{"no doer", map[string]any{"id": "bare", "prompt": "go"}, "an `agent` or a `script`"},
-		{"a script given a prompt", map[string]any{"id": "both", "doer": map[string]any{"script": "true"}, "prompt": "go"}, "takes no `prompt`"},
+		{"nothing to do", map[string]any{"id": "bare"}, "a `prompt`, for an agent, or a `script`"},
+		{"a script given a prompt", map[string]any{"id": "both", "spawn": map[string]any{"script": "true", "prompt": "go"}}, "exclude each other"},
+		{"a script given an agent", map[string]any{"id": "agented", "spawn": map[string]any{"script": "true", "agent": map[string]any{"name": "verse"}}}, "a script takes no `agent`"},
+		// Written by hand, it is read as strictly as a charter's spawn and binds nothing.
+		{"a key the spawn does not have", map[string]any{"id": "doer", "spawn": map[string]any{"prompt": "go", "doer": map[string]any{"agent": "verse"}}}, `unknown field "doer"`},
+		{"a key the request does not have", map[string]any{"id": "flat", "prompt": "go"}, `unknown field "prompt"`},
+		{"a $ where a firing binds one", map[string]any{"id": "dollar", "spawn": map[string]any{"prompt": "review it", "subject": "$subject"}}, "spawn.subject: a `$` is bound when a rule fires"},
+		{"what only a firing sets", map[string]any{"id": "chained", "spawn": map[string]any{"script": "true", "chain": "review"}}, "spawn.chain: a firing's"},
+		{"rows of no shape", map[string]any{"id": "rowless", "spawn": map[string]any{"script": "true", "autonomy": []map[string]any{{"then": "sometimes"}}}}, "spawn.autonomy[0]: "},
 	} {
 		t.Run(c.what, func(t *testing.T) {
 			resp := postTony(t, ts.URL+"/tasks", c.spawn)
@@ -52,7 +59,7 @@ func TestADefaultRunnerByURLIsNotJudgedByTheEmbeddedOnesOffers(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	resp := installAs(t, "user:"+tester, ts.URL, `[{name: r, condition: {subject: {path: "x.*", value: {go: true}}},
-	  action: {patch: {go: false}, spawn: {doer: {agent: codex}, prompt: go}}}]`)
+	  action: {patch: {go: false}, spawn: {agent: {name: codex}, prompt: go}}}]`)
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("a charter for the default runner's agent = %s: %s", resp.Status, readBody(t, resp))
 	}
@@ -65,7 +72,7 @@ func TestAFiringRefusedBeforeItsLaunchIsGivenNoCredential(t *testing.T) {
 	srv, ts, idp := credentialServer(t)
 	ana := idp.Token(authClient, "sub-ana", person("ana@example.com"))
 	if code, out := bearer(t, http.MethodPost, ts.URL+"/charter", ana, "",
-		deployRule(`[{name: ok, mode: auto}]`, `doer: {agent: codex}, prompt: go, credential: {audience: `+credAudience+`}`)); code != http.StatusCreated {
+		deployRule(`[{name: ok, mode: auto}]`, `agent: {name: codex}, prompt: go, credential: {audience: `+credAudience+`}`)); code != http.StatusCreated {
 		t.Fatalf("install = %d %s", code, out)
 	}
 	// The runner describes itself after the install, and offers no codex.
@@ -90,12 +97,12 @@ func TestAFiringRefusedBeforeItsLaunchIsGivenNoCredential(t *testing.T) {
 // `verse up`, whose runner builds only the open network, the firing would launch with none.
 func TestACharterFiresWithItsNetwork(t *testing.T) {
 	srv := testServer(t)
-	srv.Embedded.Describe(verserunner.Config{}.Describe(verserunner.Secrets{}, []string{runner.NetworkOpen}))
+	srv.Embedded.Describe(verserunner.Config{Systems: verserunner.OpenInside()}.Describe(verserunner.Secrets{}, []string{runner.NetworkOpen}))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	installCharter(t, ts, "", `[{name: r, condition: {subject: {path: "demo.pr.*", value: {stage: ready}}},
-	  action: {patch: {stage: done}, spawn: {doer: {script: "echo hi", with: {network: {mode: open}}}, policy: [{then: allow}]}}}]`)
+	  action: {patch: {stage: done}, spawn: {script: "echo hi", environment: {systems: {network: {mode: open}}}, autonomy: [{then: allow}]}}}]`)
 	if resp := postTony(t, ts.URL+"/entity", api.PutEntity{At: "demo.pr.1", Payload: entity.Obj{"stage": "ready"}.Payload()}); resp.StatusCode/100 != 2 {
 		t.Fatalf("put = %s: %s", resp.Status, readBody(t, resp))
 	} else {

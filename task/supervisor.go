@@ -114,11 +114,14 @@ func CheckLabels(labels map[string]string) error {
 // The `by` of a settle that nobody made. A person or a resolver answers under a name of
 // their own; these are the runtime's, and none of them casts a ballot.
 const (
-	ByAuto      = "auto"      // the policy allowed the step, so it went ahead without asking
-	ByPolicy    = "policy"    // the policy denied the step, so nobody was asked
-	ByCeiling   = "ceiling"   // the runner's ceiling refused the step, so nobody was asked
-	ByCancelled = "cancelled" // the wait ended before anyone answered
-	ByDeadline  = "deadline"  // the clock passed with no decision
+	ByAuto     = "auto"     // the policy allowed the step, so it went ahead without asking
+	ByAutonomy = "autonomy" // the autonomy denied the step, so nobody was asked
+	ByCeiling  = "ceiling"  // the runner's ceiling refused the step, so nobody was asked
+	// ByEnvironment: the step is outside the task's environment, so no row decided it and nobody
+	// was asked.
+	ByEnvironment = "environment"
+	ByCancelled   = "cancelled" // the wait ended before anyone answered
+	ByDeadline    = "deadline"  // the clock passed with no decision
 )
 
 // The two options every question has unless it says otherwise.
@@ -172,35 +175,42 @@ func OptionIDs(opts []Option) []string {
 	return out
 }
 
-// Supervisor asks the task's policy about each step before it goes ahead. Its policy can be
-// replaced while the task runs, and a sub-agent's supervisor shares it, so a change reaches the
-// sub-agents too.
+// Supervisor decides each step before it goes ahead: outside the task's environment, refused;
+// within it, as the autonomy says, then the runner's ceiling. The environment is fixed for the
+// run; the autonomy can be replaced while the task runs, and a sub-agent's supervisor shares both,
+// so a change reaches the sub-agents too.
 type Supervisor struct {
-	policy   *atomic.Pointer[Policy]
-	ceilings map[string]Policy // the runner's, by system: read after the policy, at each step
+	env      systems.Environment
+	autonomy *atomic.Pointer[Autonomy]
+	ceilings map[string]systems.Ceiling // the runner's, by system: read after the policy, at each step
 	resolver Resolver
 	stepOf   func(ToolUse) (Step, bool) // StepOf; a test's own tools map to steps its way
 	origin   string                     // task id, stamped onto each GateQuestion
 	dc       uint64                     // question counter (one Check goroutine per Supervisor)
 }
 
-func NewSupervisor(p Policy, r Resolver) *Supervisor {
-	s := &Supervisor{policy: &atomic.Pointer[Policy]{}, resolver: r, stepOf: StepOf}
+// NewSupervisor is the supervisor of a task in env, deciding under p, asking through r.
+func NewSupervisor(env systems.Environment, p Autonomy, r Resolver) *Supervisor {
+	s := &Supervisor{env: env, autonomy: &atomic.Pointer[Autonomy]{}, resolver: r, stepOf: StepOf}
 	p = p.OrDefault()
-	s.policy.Store(&p)
+	s.autonomy.Store(&p)
 	return s
 }
 
-// child is a sub-agent's supervisor: the same policy, the same resolver.
+// child is a sub-agent's supervisor: the same environment, autonomy and resolver.
 func (s *Supervisor) child() *Supervisor {
-	return &Supervisor{policy: s.policy, ceilings: s.ceilings, resolver: s.resolver, stepOf: s.stepOf}
+	return &Supervisor{env: s.env, autonomy: s.autonomy, ceilings: s.ceilings, resolver: s.resolver, stepOf: s.stepOf}
 }
 
 // SetCeilings gives the supervisor the runner's ceilings, by system (runner.Offer.Systems): THE
-// RUNNER'S OWN LINE, read at each step after the policy, whatever the policy said and whoever
-// answered its questions. A step a ceiling's `deny` row matches is refused with the row named,
-// and nobody is asked. Its sub-agents' supervisors share them.
-func (s *Supervisor) SetCeilings(c map[string]Policy) { s.ceilings = c }
+// RUNNER'S OWN LINE, read at each step after the autonomy, whatever the autonomy said and whoever
+// answered its questions. A step beyond its system's ceiling is refused saying what the ceiling
+// gives, and nobody is asked. A launch held to the runner's offer has its environment within
+// the ceilings, and a step within the environment within them, so for one such a refusal is a
+// check that missed: its note says so. A system they name no ceiling for is closed, as a
+// ceiling written nowhere is, and so is every system for a supervisor given none. Its
+// sub-agents' supervisors share them.
+func (s *Supervisor) SetCeilings(c map[string]systems.Ceiling) { s.ceilings = c }
 
 // SetStepOf sets which step an action is, for a driver whose tools are steps StepOf doesn't
 // know: a runtime's own tools (a push is git.push). Its sub-agents' supervisors share it.
@@ -209,13 +219,13 @@ func (s *Supervisor) SetStepOf(f func(ToolUse) (Step, bool)) { s.stepOf = f }
 // SetOrigin stamps this supervisor's questions with a task id (attribution).
 func (s *Supervisor) SetOrigin(id string) { s.origin = id }
 
-// Policy is the policy the next step is decided under.
-func (s *Supervisor) Policy() Policy { return *s.policy.Load() }
+// Autonomy is the autonomy the next step is decided under.
+func (s *Supervisor) Autonomy() Autonomy { return *s.autonomy.Load() }
 
-// SetPolicy replaces the policy, from the next step on.
-func (s *Supervisor) SetPolicy(p Policy) {
+// SetAutonomy replaces the autonomy, from the next step on.
+func (s *Supervisor) SetAutonomy(p Autonomy) {
 	p = p.OrDefault()
-	s.policy.Store(&p)
+	s.autonomy.Store(&p)
 }
 
 // Check asks before an action, if it is a step a gate names (StepOf). It returns how the action
@@ -229,44 +239,34 @@ func (s *Supervisor) Check(ctx context.Context, tu ToolUse) (Resolution, error) 
 	return s.Ask(ctx, st, tu)
 }
 
-// Ask decides a step by the policy: a verb the policy does not provide is refused, and
-// otherwise the row that matches it allows it, denies it with its name and nobody asked, or
-// asks, and the answer decides.
+// Ask decides a step: one outside the environment is refused saying what the environment gives,
+// before any row is read; otherwise the row that matches it allows it, denies it with its name
+// and nobody asked, or asks, and the answer decides.
 func (s *Supervisor) Ask(ctx context.Context, st Step, tu ToolUse) (Resolution, error) {
-	p := *s.policy.Load()
-	row, i := p.Decide(st)
-	// A withhold holds wherever it stands: a row above it does not bring the verb back.
-	if w, at, ok := p.withholding(st.Name); ok {
-		row, i = w, at
-	}
-	name := p.NameOf(i)
 	s.dc++
-	q := row.question(name, st)
-	q.Step, q.Origin = st, s.origin
-	q.ID = fmt.Sprintf("%s%sd%d", s.origin, GateSep, s.dc)
-	switch row.Then.Mode {
-	case ThenDeny:
-		q.Reason = "denied by " + name
-		return Resolution{Choice: Deny, By: ByPolicy, Note: "denied by the policy's row " + name + ": " + st.String(), Question: q}, nil
-	case ThenWithhold:
-		// A withheld verb has no tool, so a call of it is a driver's mistake; refused as a
-		// deny is, in the row's name.
-		q.Reason = "withheld by " + name
-		return Resolution{Choice: Deny, By: ByPolicy, Note: "withheld by the policy's row " + name + ": " + st.String(), Question: q}, nil
+	id := fmt.Sprintf("%s%sd%d", s.origin, GateSep, s.dc)
+	if why, outside := s.env.Refuses(st.Name, st.Fields); outside {
+		q := GateQuestion{ID: id, Gate: EnvironmentGate, Step: st, Origin: s.origin, Reason: "outside the environment: " + why}
+		return Resolution{Choice: Deny, By: ByEnvironment, Note: "outside the environment: " + why, Question: q}, nil
 	}
-	// A verb no row names is not the task's: it has no tool, and the default row does not
-	// decide it.
-	if !p.Provides(st.Name) {
-		q.Reason = "not provided: no row of the policy names " + st.Name
-		return Resolution{Choice: Deny, By: ByPolicy, Note: "not provided by the policy, which names no " + st.Name + ": " + st.String(), Question: q}, nil
+	p := *s.autonomy.Load()
+	row, i := p.Decide(st)
+	name := p.NameOf(i)
+	q := row.question(name, st)
+	q.Step, q.Origin, q.ID = st, s.origin, id
+	if row.Then.Mode == ThenDeny {
+		q.Reason = "denied by " + name
+		return Resolution{Choice: Deny, By: ByAutonomy, Note: "denied by the autonomy's row " + name + ": " + st.String(), Question: q}, nil
 	}
 	if system, _, ok := systems.Split(st.Name); ok {
-		if c, has := s.ceilings[system]; has {
-			if crow, at := c.Decide(st); crow.Then.Mode == ThenDeny {
-				q.Reason = "refused by the runner's ceiling, its row " + c.NameOf(at)
-				return Resolution{Choice: Deny, By: ByCeiling, Note: "refused by the runner's ceiling, its row " +
-					c.NameOf(at) + " for " + system + ": " + st.String(), Question: q}, nil
+		if why, beyond := systems.Beyond(s.ceilings, st.Name, st.Fields); beyond {
+			q.Reason = "beyond the runner's ceiling: " + why
+			note := "beyond the runner's ceiling for " + system + ": " + why
+			if _, stated := s.ceilings[system]; stated {
+				// A launch held to the runner's offer lies within the ceilings it states.
+				note += " (a launch held to the runner's offer is within its ceilings, so there this is a check that missed)"
 			}
+			return Resolution{Choice: Deny, By: ByCeiling, Note: note, Question: q}, nil
 		}
 	}
 	if row.Then.Mode == ThenAllow {

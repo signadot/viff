@@ -10,6 +10,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/parse"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/systems"
 	"reflect"
 )
 
@@ -31,22 +32,41 @@ func (s *Spec) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["prompt"] = ir.FromString(string(s.Prompt))
 	}
 
-	// Field: Doer (optional)
-	if !isZeroValue_Spec_Doer(s.Doer) {
-		node, err = s.Doer.ToTonyIR(opts...)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert field %q: %w", "Doer", err)
-		}
-		irMap["doer"] = node
+	// Field: Script
+	if s.Script != "" {
+		irMap["script"] = ir.FromString(string(s.Script))
 	}
 
-	// Field: Policy
-	if s.Policy != nil {
-		node, err = gomap.ToTonyIR(s.Policy, opts...)
+	// Field: Agent (optional)
+	if s.Agent != nil {
+		node, err = s.Agent.ToTonyIR(opts...)
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert field %q: %w", "Policy", err)
+			return nil, err
 		}
-		irMap["policy"] = node
+		irMap["agent"] = node
+	}
+
+	// Field: Person
+	if s.Person != "" {
+		irMap["person"] = ir.FromString(string(s.Person))
+	}
+
+	// Field: Environment (optional)
+	if !isZeroValue_Spec_Environment(s.Environment) {
+		node, err = s.Environment.ToTonyIR(opts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert field %q: %w", "Environment", err)
+		}
+		irMap["environment"] = node
+	}
+
+	// Field: Autonomy
+	if s.Autonomy != nil {
+		node, err = gomap.ToTonyIR(s.Autonomy, opts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert field %q: %w", "Autonomy", err)
+		}
+		irMap["autonomy"] = node
 	}
 
 	// Field: Timeout
@@ -175,15 +195,33 @@ func (s *Spec) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "prompt", fieldNodeUnwrapped.Type)
 			}
 			s.Prompt = string(fieldNodeUnwrapped.String)
-		case "doer":
-			// Field: Doer
-			if err := s.Doer.FromTonyIR(fieldNode, opts...); err != nil {
-				return fmt.Errorf("field %q: %w", "doer", err)
+		case "script":
+			// Field: Script
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "script", fieldNodeUnwrapped.Type)
 			}
-		case "policy":
-			// Field: Policy
-			if err := gomap.FromTonyIR(fieldNode, &s.Policy, opts...); err != nil {
-				return fmt.Errorf("field %q: %w", "policy", err)
+			s.Script = string(fieldNodeUnwrapped.String)
+		case "agent":
+			// Field: Agent
+			s.Agent = &runner.Agent{}
+			if err := s.Agent.FromTonyIR(fieldNode, opts...); err != nil {
+				return err
+			}
+		case "person":
+			// Field: Person
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "person", fieldNodeUnwrapped.Type)
+			}
+			s.Person = string(fieldNodeUnwrapped.String)
+		case "environment":
+			// Field: Environment
+			if err := s.Environment.FromTonyIR(fieldNode, opts...); err != nil {
+				return fmt.Errorf("field %q: %w", "environment", err)
+			}
+		case "autonomy":
+			// Field: Autonomy
+			if err := gomap.FromTonyIR(fieldNode, &s.Autonomy, opts...); err != nil {
+				return fmt.Errorf("field %q: %w", "autonomy", err)
 			}
 		case "timeout":
 			// Field: Timeout
@@ -529,6 +567,6 @@ func (s *Passed) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 }
 
 // Zero-value check helpers
-func isZeroValue_Spec_Doer(v runner.Doer) bool {
+func isZeroValue_Spec_Environment(v systems.Environment) bool {
 	return reflect.ValueOf(v).IsZero()
 }

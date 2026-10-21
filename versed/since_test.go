@@ -15,6 +15,7 @@ import (
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 )
 
@@ -73,7 +74,7 @@ func cursors(fs []task.Event) []string {
 func TestSinceMeansTheSameOnEveryRunner(t *testing.T) {
 	// A drive of identical shape on each runner: N actions, then done.
 	drive := func(l runner.Launch, reg *task.Registry) *task.Task {
-		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, reg)
+		sup := systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, reg), l.Environment)
 		return task.NewTask(l.ID, sup, &countingDriver{n: 6}, noopExecutor{})
 	}
 
@@ -81,7 +82,7 @@ func TestSinceMeansTheSameOnEveryRunner(t *testing.T) {
 		srv := NewWithStore(drive, entitytest.Store(t))
 		ts := httptest.NewServer(srv.Handler())
 		defer ts.Close()
-		spawn := postTony(t, ts.URL+"/tasks", map[string]any{"id": "p", "doer": map[string]any{"script": "work"}})
+		spawn := postTony(t, ts.URL+"/tasks", map[string]any{"id": "p", "spawn": map[string]any{"script": "work", "environment": openEnv}})
 		spawn.Body.Close()
 		assertSince(t, ts.URL+"/tasks/p/events")
 	})
@@ -93,7 +94,7 @@ func TestSinceMeansTheSameOnEveryRunner(t *testing.T) {
 		srv.SetRunner(client.HTTP(remote.URL))
 		ts := httptest.NewServer(srv.Handler())
 		defer ts.Close()
-		spawn := postTony(t, ts.URL+"/tasks", map[string]any{"id": "p", "doer": map[string]any{"script": "work"}})
+		spawn := postTony(t, ts.URL+"/tasks", map[string]any{"id": "p", "spawn": map[string]any{"script": "work", "environment": openEnv}})
 		spawn.Body.Close()
 		assertSince(t, ts.URL+"/tasks/p/events")
 	})
@@ -169,7 +170,7 @@ func (noopExecutor) Execute(_ context.Context, tu task.ToolUse) (task.StepResult
 func TestBelowTheWatermarkResyncs(t *testing.T) {
 	// Past the retained window (task.ringCap is 256), so the early frames are gone.
 	drive := func(l runner.Launch, reg *task.Registry) *task.Task {
-		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, reg)
+		sup := systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, reg), l.Environment)
 		return task.NewTask(l.ID, sup, &countingDriver{n: 400}, noopExecutor{})
 	}
 
@@ -209,7 +210,7 @@ func TestBelowTheWatermarkResyncs(t *testing.T) {
 		srv := NewWithStore(drive, entitytest.Store(t))
 		ts := httptest.NewServer(srv.Handler())
 		defer ts.Close()
-		mustLaunch(t, srv, runner.Launch{ID: "p", Doer: runner.Doer{Script: "true"}})
+		mustLaunch(t, srv, runner.Launch{ID: "p", Script: "true", Environment: openNet})
 		assertGap(t, ts.URL+"/tasks/p/events")
 	})
 
@@ -220,7 +221,7 @@ func TestBelowTheWatermarkResyncs(t *testing.T) {
 		remote := httptest.NewServer(runnerd.NewInProcessHandler(drive).HTTPHandler())
 		defer remote.Close()
 		pol := client.HTTP(remote.URL)
-		pol.Launch(runner.Launch{ID: "p", Doer: runner.Doer{Script: "true"}})
+		pol.Launch(runner.Launch{ID: "p", Script: "true", Environment: openNet})
 
 		srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
 		srv.SetRunner(pol)
@@ -241,11 +242,11 @@ func TestBelowTheWatermarkResyncs(t *testing.T) {
 func TestAFastTaskIsStillRecordedAsFinished(t *testing.T) {
 	for _, n := range []int{50, 300, 5000} {
 		drive := func(l runner.Launch, reg *task.Registry) *task.Task {
-			sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, reg)
+			sup := systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, reg), l.Environment)
 			return task.NewTask(l.ID, sup, &countingDriver{n: n}, noopExecutor{})
 		}
 		srv := NewWithStore(drive, entitytest.Store(t))
-		h := mustLaunch(t, srv, runner.Launch{ID: "p", Doer: runner.Doer{Script: "true"}})
+		h := mustLaunch(t, srv, runner.Launch{ID: "p", Script: "true", Environment: openNet})
 		mirror.Reflect(srv.Store, "p", h, mirror.Meta{Runner: "local"})
 
 		var last string

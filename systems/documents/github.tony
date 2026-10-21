@@ -1,17 +1,17 @@
 name: github
 description: "GitHub as the forge of a repository the task checked out: pull requests, which are the forge's and not git's. The runner acts with its credential for the repository."
+attributes:
+- {name: repo, form: repo, unique: true, required: true, description: "the repository, as `host/owner/name` in lower case (`github.com/acme/app`), whichever way the spawn named it"}
 verbs:
 - name: create-pr
   description: "Open a pull request from a branch the task pushed into a base branch; one already open from that branch is found rather than opened twice."
-  params:
-  - {name: repo, form: repo, description: "the repository, as `host/owner/name` in lower case (`github.com/acme/app`), whichever way the spawn named it"}
+  fields:
   - {name: base, form: branch, description: "the branch the pull request is into"}
   - {name: head, form: branch, description: "the branch it is from"}
   - {name: own, form: bool, description: "true when the head's tip at the forge is a commit this task made. The runner fills it; a task cannot say it."}
 - name: update-pr
   description: "Change the open pull request from a branch the task pushed: its title, body or base."
-  params:
-  - {name: repo, form: repo, description: "the repository, as `host/owner/name` in lower case (`github.com/acme/app`), whichever way the spawn named it"}
+  fields:
   - {name: head, form: branch, description: "the branch the pull request is from"}
   - {name: base, form: branch, description: "the branch the pull request is moved into, when the update moves it; absent when it keeps its base"}
   - {name: own, form: bool, description: "true when the head's tip at the forge is a commit this task made. The runner fills it; a task cannot say it."}

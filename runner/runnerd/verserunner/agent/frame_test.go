@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -55,7 +56,7 @@ func TestDefaultFrameDescribesNoGatesAsUngated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	frame := defaultFrame(tds, task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, false, nil)
+	frame := defaultFrame(tds, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, false, nil)
 	if strings.Contains(frame, "STOP the loop") {
 		t.Error("no tool is gated, so nothing should be described as stopping the loop")
 	}
@@ -234,8 +235,8 @@ func TestDefaultFrameDescribesAConversation(t *testing.T) {
 }
 
 // gatesOnEveryStep gates each step the agent's tools can take: writes, commands and delegation.
-func gatesOnEveryStep() task.Policy {
-	return task.Policy{{Name: "write", Match: &task.Match{System: "files", Verb: "write"}, Then: task.Then{Mode: task.ThenAsk}}, {Name: "shell", Match: &task.Match{System: "commands", Verb: "run"}, Then: task.Then{Mode: task.ThenAsk}}, {Name: "delegate", Match: &task.Match{System: "agent", Verb: "delegate"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAllow}}}
+func gatesOnEveryStep() task.Autonomy {
+	return task.Autonomy{{Name: "write", Match: &task.Match{System: "files", Verb: "write"}, Then: task.Then{Mode: task.ThenAsk}}, {Name: "shell", Match: &task.Match{System: "commands", Verb: "run"}, Then: task.Then{Mode: task.ThenAsk}}, {Name: "delegate", Match: &task.Match{System: "agent", Verb: "delegate"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAllow}}}
 }
 
 // Under the default policy every step asks, so the frame tells the model which of its tools
@@ -245,7 +246,7 @@ func TestUnderAskTheFrameSaysEveryStepStops(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	frame := defaultFrame(tds, task.DefaultPolicy(), false, nil)
+	frame := defaultFrame(tds, task.DefaultAutonomy(), false, nil)
 	idx := strings.Index(frame, "STOP the loop")
 	if idx < 0 {
 		t.Fatalf("nothing is described as stopping under ask:\n%s", frame)
@@ -260,22 +261,17 @@ func TestUnderAskTheFrameSaysEveryStepStops(t *testing.T) {
 	}
 }
 
-// A TOOL IS OFFERED ONLY WHERE THE POLICY PROVIDES ITS VERB: the agent's own tools and a
-// runtime's are left out of what the model sees where no row names their verb, or a row
-// withholds it, while the tools that are no verb stay, `read_file` and `yield` among them.
-func TestAToolIsOfferedOnlyWhereThePolicyProvidesItsVerb(t *testing.T) {
-	withhold, allow := task.Then{Mode: task.ThenWithhold}, task.Then{Mode: task.ThenAllow}
-	p := task.Policy{
-		{Match: &task.Match{System: "commands"}, Then: withhold},
-		{Match: &task.Match{System: "files"}, Then: allow},
-		{Match: &task.Match{System: "agent", Verb: "call-sub-agent"}, Then: withhold},
-		{Match: &task.Match{System: "slack", Verb: "post"}, Then: withhold},
-		{Match: &task.Match{System: "slack", Verb: "read"}, Then: allow},
-		{Match: &task.Match{System: "git"}, Then: allow},
-		{Then: allow},
-	}
+// A TOOL IS OFFERED IFF THE ENVIRONMENT GIVES ITS VERB: the agent's own tools and a runtime's
+// are left out of what the model sees where no block gives their verb, whatever the autonomy
+// says, while the tools that are no verb stay, `read_file` and `yield` among them.
+func TestAToolIsOfferedIffTheEnvironmentGivesItsVerb(t *testing.T) {
+	env := systems.Environment{Systems: systems.Systems{
+		"files": {{Verbs: map[string][]systems.Shape{"write": {{}}}}},
+		"slack": {{Verbs: map[string][]systems.Shape{"read": {{}}}}},
+		"git":   {{Attributes: map[string]string{"repo": "acme/app"}, Verbs: map[string][]systems.Shape{"push": {{}}}}},
+	}}
 	extra := []Tool{{Name: "slack-post"}, {Name: "slack-read"}, {Name: "slack-react"}, {Name: "git-push"}, {Name: "question-ask"}}
-	left := provided(p, extra)
+	left := given(env, extra)
 	if names := fmt.Sprint(toolNamesOf(left)); names != "[slack-read git-push]" {
 		t.Errorf("extra tools offered: %s", names)
 	}
@@ -283,10 +279,10 @@ func TestAToolIsOfferedOnlyWhereThePolicyProvidesItsVerb(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := strings.Join(toolNames(lessUnprovided(tds, p)), " ")
+	got := strings.Join(toolNames(lessUngiven(tds, env)), " ")
 	for _, absent := range []string{"run_bash", "call_agent", "slack-post", "slack-react", "question-ask"} {
 		if strings.Contains(got, absent) {
-			t.Errorf("%s is offered under a policy that does not provide it: %s", absent, got)
+			t.Errorf("%s is offered in an environment that does not give it: %s", absent, got)
 		}
 	}
 	for _, present := range []string{"read_file", "write_file", "slack-read", "git-push", "yield"} {
@@ -294,15 +290,15 @@ func TestAToolIsOfferedOnlyWhereThePolicyProvidesItsVerb(t *testing.T) {
 			t.Errorf("%s is missing: %s", present, got)
 		}
 	}
-	// No policy provides no verb: only the tools that are no verb are left.
-	none := strings.Join(toolNames(lessUnprovided(selectToolsOrDie(t, provided(nil, extra)), nil)), " ")
+	// An empty environment gives no verb: only the tools that are no verb are left.
+	none := strings.Join(toolNames(lessUngiven(selectToolsOrDie(t, given(systems.Environment{}, extra)), systems.Environment{})), " ")
 	for _, absent := range []string{"run_bash", "write_file", "call_agent", "slack-read", "git-push", "question-ask"} {
 		if strings.Contains(none, absent) {
-			t.Errorf("%s is offered under no policy: %s", absent, none)
+			t.Errorf("%s is offered in an empty environment: %s", absent, none)
 		}
 	}
 	if !strings.Contains(none, "read_file") || !strings.Contains(none, "yield") {
-		t.Errorf("under no policy, the tools that are no verb are missing: %s", none)
+		t.Errorf("in an empty environment, the tools that are no verb are missing: %s", none)
 	}
 }
 

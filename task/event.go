@@ -18,7 +18,7 @@ type Event struct {
 	Action string `tony:"field=action,omitzero"`
 	Gate   string `tony:"field=gate,omitzero"`
 	// Step and Fields are the system call a pending, a decision or an exec event is about
-	// (task.Step), when it is one: `<system>.<verb>` and the call's params, what a policy row
+	// (task.Step), when it is one: `<system>.<verb>` and the call's params, what an autonomy row
 	// matches. A decision names the row that decided it as Gate; the exec that follows it names
 	// the same call, with its outcome.
 	Step    string            `tony:"field=step,omitzero"`
@@ -34,7 +34,7 @@ type Event struct {
 	Deadline *Deadline `tony:"field=deadline,omitzero"`
 	// Answerers is who a worker raising a gate wants it held out to — a worker asking somebody.
 	// The launch's own gate of the same name, when it has answerers, stands
-	// over this: that gate is the charter's policy.
+	// over this: that gate is the charter's autonomy.
 	Answerers []string `tony:"field=answerers,omitzero"`
 	Text      string   `tony:"field=text,omitzero"` // reason / detail / result
 	Err       string   `tony:"field=err,omitzero"`
@@ -54,9 +54,9 @@ const (
 	// resolver (what was "steer"). One kind, speaker in By — "you say to it, it says back".
 	EventSay = "say"
 	EventGap = "gap" // a slow subscriber missed N events
-	// EventPolicy is the task's policy replaced while it runs: By is who replaced it, and Text
-	// the policy in one line (Policy.Summary).
-	EventPolicy = "policy"
+	// EventAutonomy is the task's autonomy replaced while it runs: By is who replaced it, and Text
+	// the autonomy in one line (Autonomy.Summary).
+	EventAutonomy = "autonomy"
 )
 
 type subscriber struct {

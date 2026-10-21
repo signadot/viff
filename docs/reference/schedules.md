@@ -30,7 +30,8 @@ A rule takes the tick as its subject:
     subject: {path: "verse.schedule.hourly.tick.*"}
   action:
     spawn:
-      doer: {agent: verse, with: {network: {mode: open}}}
+      agent: {name: verse}
+      environment: {systems: {network: {mode: open}}}
       prompt: "refresh the drift report for the hour ending $subject.name"
 ```
 

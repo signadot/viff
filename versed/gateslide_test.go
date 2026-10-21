@@ -13,13 +13,14 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 )
 
-// slideGates is `verse task policy <id>` as tester: the body, a PUT to the task's policy.
+// slideGates is `verse task autonomy <id>` as tester: the body, a PUT to the task's autonomy.
 func slideGates(t *testing.T, url, id, body string) {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodPut, url+"/tasks/"+id+"/policy", strings.NewReader(body))
+	req, err := http.NewRequest(http.MethodPut, url+"/tasks/"+id+"/autonomy", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +35,7 @@ func slideGates(t *testing.T, url, id, body string) {
 	resp.Body.Close()
 }
 
-// A SLID ROW IS ASKED UNDER THE CHARTER'S CLOCK: `task policy` sets verse's part of the new
+// A SLID ROW IS ASKED UNDER THE CHARTER'S CLOCK: `task autonomy` sets verse's part of the new
 // policy too (what silence settles on, the labels), and the task's next question is posed under
 // it, not under the policy it was spawned with. `task get` and `ps` show the policy as it now
 // stands, verse's part with it, and who replaced it.
@@ -42,7 +43,7 @@ func TestASlidGateIsAskedWithItsDefaultAndLabels(t *testing.T) {
 	release := make(chan struct{})
 	t.Cleanup(func() { close(release) })
 	srv := NewWithStore(func(l runner.Launch, reg *task.Registry) *task.Task {
-		sup := task.NewSupervisor(l.Policy, reg)
+		sup := systemstest.Opened(task.NewSupervisor(l.Environment, l.Autonomy, reg), l.Environment)
 		sup.SetStepOf(commandStep)
 		return task.NewTask(l.ID, sup, &blockedDriver{release: release}, okExecutor{})
 	}, entitytest.Store(t))
@@ -53,13 +54,12 @@ func TestASlidGateIsAskedWithItsDefaultAndLabels(t *testing.T) {
 			tk.Cancel("the test is over", "test")
 		}
 	})
-	resp := postTony(t, ts.URL+"/tasks", map[string]any{"id": "slid", "doer": map[string]any{"script": "true"},
-		"policy": []map[string]any{{"match": map[string]any{"system": "commands", "verb": "run"}, "then": "allow"}, {"then": "allow"}}})
+	resp := postTony(t, ts.URL+"/tasks", map[string]any{"id": "slid", "spawn": map[string]any{"script": "true", "environment": stepEnv, "autonomy": []map[string]any{{"match": map[string]any{"system": "commands", "verb": "run"}, "then": "allow"}, {"then": "allow"}}}})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("spawn = %s: %s", resp.Status, readBody(t, resp))
 	}
 	resp.Body.Close()
-	slideGates(t, ts.URL, "slid", `{policy: [{name: hold, match: {system: commands, verb: run},
+	slideGates(t, ts.URL, "slid", `{autonomy: [{name: hold, match: {system: commands, verb: run},
 	  then: {ask: {within: 1h, default: deny, labels: {slack: C9}}}}, {then: allow}]}`)
 	qid := waitQuestion(t, srv, "slid")
 	rec, _, _ := srv.Store.Get(mirror.QuestionRef(qid))
@@ -71,16 +71,16 @@ func TestASlidGateIsAskedWithItsDefaultAndLabels(t *testing.T) {
 	}
 	shows := func(what string, tk api.Task) {
 		t.Helper()
-		if len(tk.Policy) != 2 || tk.Policy[0].Name != "hold" || tk.Policy[0].Then.Ask == nil ||
-			tk.Policy[0].Then.Ask.Default != task.Deny || tk.Policy[1].Then.Mode != task.ThenAllow ||
-			tk.PolicyBy != "user:"+tester {
-			t.Errorf("%s shows the policy %v by %q, want the slid one, its default with it, by the requester", what, tk.Policy, tk.PolicyBy)
+		if len(tk.Autonomy) != 2 || tk.Autonomy[0].Name != "hold" || tk.Autonomy[0].Then.Ask == nil ||
+			tk.Autonomy[0].Then.Ask.Default != task.Deny || tk.Autonomy[1].Then.Mode != task.ThenAllow ||
+			tk.AutonomyBy != "user:"+tester {
+			t.Errorf("%s shows the policy %v by %q, want the slid one, its default with it, by the requester", what, tk.Autonomy, tk.AutonomyBy)
 		}
 	}
 	// The question can be posed before the slide reaches the record, which is the mirror's to
 	// write as the task's events arrive.
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
-		if e, ok, _ := srv.Store.Get(mirror.Ref("slid")); ok && entity.Str(e.Payload, "policyBy") != "" {
+		if e, ok, _ := srv.Store.Get(mirror.Ref("slid")); ok && entity.Str(e.Payload, "autonomyBy") != "" {
 			break
 		}
 	}
@@ -104,14 +104,13 @@ func TestASlideOfGatesAloneIsTheRequestersOnARelayedTask(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	postTony(t, ts.URL+"/runners", map[string]any{"name": "gpu", "url": face.URL}).Body.Close()
-	id := spawnOK(t, ts, map[string]any{"id": "far", "doer": map[string]any{"agent": "fake"}, "prompt": "t", "runner": "verse.runners.gpu",
-		"policy": []map[string]any{{"match": map[string]any{"system": "commands", "verb": "run"}, "then": "ask"}, {"then": "ask"}}})
-	slideGates(t, ts.URL, id, `{policy: [{name: g, match: {system: commands, verb: run}, then: ask}, {then: ask}]}`)
+	id := spawnOK(t, ts, map[string]any{"id": "far", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t", "runner": "verse.runners.gpu", "environment": stepEnv, "autonomy": []map[string]any{{"match": map[string]any{"system": "commands", "verb": "run"}, "then": "ask"}, {"then": "ask"}}}})
+	slideGates(t, ts.URL, id, `{autonomy: [{name: g, match: {system: commands, verb: run}, then: ask}, {then: ask}]}`)
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if e, ok, _ := srv.Store.Get(mirror.Ref(id)); ok && entity.Str(e.Payload, "policyBy") != "" {
-			if got := entity.Str(e.Payload, "policyBy"); got != "user:"+tester {
-				t.Fatalf("policyBy = %q, want the requester", got)
+		if e, ok, _ := srv.Store.Get(mirror.Ref(id)); ok && entity.Str(e.Payload, "autonomyBy") != "" {
+			if got := entity.Str(e.Payload, "autonomyBy"); got != "user:"+tester {
+				t.Fatalf("autonomyBy = %q, want the requester", got)
 			}
 			return
 		}
@@ -126,7 +125,7 @@ func TestAPolicyReplacedByNoneIsTheDefault(t *testing.T) {
 	release := make(chan struct{})
 	t.Cleanup(func() { close(release) })
 	srv := NewWithStore(func(l runner.Launch, reg *task.Registry) *task.Task {
-		sup := task.NewSupervisor(l.Policy, reg)
+		sup := systemstest.Opened(task.NewSupervisor(l.Environment, l.Autonomy, reg), l.Environment)
 		sup.SetStepOf(commandStep)
 		return task.NewTask(l.ID, sup, &blockedDriver{release: release}, okExecutor{})
 	}, entitytest.Store(t))
@@ -137,22 +136,21 @@ func TestAPolicyReplacedByNoneIsTheDefault(t *testing.T) {
 			tk.Cancel("the test is over", "test")
 		}
 	})
-	resp := postTony(t, ts.URL+"/tasks", map[string]any{"id": "none", "doer": map[string]any{"script": "true"},
-		"policy": []map[string]any{{"then": "allow"}}})
+	resp := postTony(t, ts.URL+"/tasks", map[string]any{"id": "none", "spawn": map[string]any{"script": "true", "environment": openEnv, "autonomy": []map[string]any{{"then": "allow"}}}})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("spawn = %s: %s", resp.Status, readBody(t, resp))
 	}
 	resp.Body.Close()
-	slideGates(t, ts.URL, "none", `{policy: []}`)
+	slideGates(t, ts.URL, "none", `{autonomy: []}`)
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		e, _, _ := srv.Store.Get(mirror.Ref("none"))
-		p := mirror.PolicyOf(e.Payload)
-		if entity.Str(e.Payload, "policyBy") != "" && len(p) == 1 && p[0].Then.Mode == task.ThenAsk {
+		p := mirror.AutonomyOf(e.Payload)
+		if entity.Str(e.Payload, "autonomyBy") != "" && len(p) == 1 && p[0].Then.Mode == task.ThenAsk {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("the record's policy is %v by %q, want the default, every call asking", p, entity.Str(e.Payload, "policyBy"))
+			t.Fatalf("the record's policy is %v by %q, want the default, every call asking", p, entity.Str(e.Payload, "autonomyBy"))
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

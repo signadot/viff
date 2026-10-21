@@ -57,9 +57,9 @@ func TestASpawnAsTheSubjectActsForTheRecordsOwner(t *testing.T) {
 	}
 	resp := installAs(t, installer, ts.URL, `[
 		{name: for-the-asker, condition: {subject: {path: "ask.*", value: !and [{question: null}, !not {asked: null}]}},
-		 action: {spawn: {doer: {script: "true"}, as: subject, policy: `+stepAsksTony+`}, onDone: {patch: {asked: true}}}},
+		 action: {spawn: {script: "true", as: subject, environment: `+stepEnvTony+`, autonomy: `+stepAsksTony+`}, onDone: {patch: {asked: true}}}},
 		{name: for-the-rule, condition: {subject: {path: "ask.*", value: !and [{question: null}, !not {ruled: null}]}},
-		 action: {spawn: {doer: {agent: verse}, prompt: "true", policy: `+stepAsksTony+`}, onDone: {patch: {ruled: true}}}},
+		 action: {spawn: {agent: {name: verse}, prompt: "true", environment: `+stepEnvTony+`, autonomy: `+stepAsksTony+`}, onDone: {patch: {ruled: true}}}},
 	]`)
 	if resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
@@ -102,9 +102,9 @@ func TestAChartersSpawnCannotNameWhoItActsFor(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	for name, c := range map[string]struct{ spawn, says string }{
-		"an as that is not subject":  {`{doer: {script: "true"}, as: object}`, "spawn `as: object`"},
-		"an asker the charter names": {`{doer: {script: "true"}, asker: "user:ceo@example.com"}`, "spawn `asker:` is the engine's to set"},
-		"$principal on a rule's task": {`{doer: {script: "true"}, policy: [{name: shell, match: {system: commands, verb: run}, then: {ask: {answerers: [$principal]}}}, {then: ask}]}`,
+		"an as that is not subject":  {`{script: "true", as: object}`, "spawn `as: object`"},
+		"an asker the charter names": {`{script: "true", asker: "user:ceo@example.com"}`, "spawn `asker:` is the engine's to set"},
+		"$principal on a rule's task": {`{script: "true", environment: {systems: {commands: {run: {}}}}, autonomy: [{name: shell, match: {system: commands, verb: run}, then: {ask: {answerers: [$principal]}}}, {then: ask}]}`,
 			"this rule's task acts for nobody"},
 	} {
 		spawn := c.spawn
@@ -130,8 +130,8 @@ func TestAChartersSpawnCannotNameWhoItActsFor(t *testing.T) {
 	// Acting for the subject's owner, the task has somebody to ask.
 	resp = installAs(t, "user:installer@example.com", ts.URL, `{name: p,
 		condition: {subject: {path: "ask.*", value: !and [{question: null}, !not {asked: null}]}},
-		action: {spawn: {doer: {script: "true"}, as: subject,
-			policy: [{name: shell, match: {system: commands, verb: run}, then: {ask: {answerers: [$principal]}}}, {then: ask}]}, onDone: {patch: {asked: true}}}}`)
+		action: {spawn: {script: "true", as: subject, environment: {systems: {commands: {run: {}}}},
+			autonomy: [{name: shell, match: {system: commands, verb: run}, then: {ask: {answerers: [$principal]}}}, {then: ask}]}, onDone: {patch: {asked: true}}}}`)
 	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if resp.StatusCode >= 300 {
@@ -168,13 +168,13 @@ func TestARuleActsAsTheSubjectOnlyInItsInstallersPlace(t *testing.T) {
 		want          int
 	}{
 		{"as the subject over daniel's space", rule("harvest", "spaces.daniel.*",
-			`{spawn: {doer: {script: "true"}, as: subject}, onDone: {patch: {done: true}}}`), http.StatusForbidden},
+			`{spawn: {script: "true", as: subject}, onDone: {patch: {done: true}}}`), http.StatusForbidden},
 		{"as the subject in a hook, over daniel's space", rule("harvest-later", "spaces.daniel.*",
-			`{spawn: {doer: {agent: verse}, prompt: "true"}, onDone: {patch: {done: true}, spawn: {doer: {script: "true"}, as: subject}}}`), http.StatusForbidden},
+			`{spawn: {agent: {name: verse}, prompt: "true"}, onDone: {patch: {done: true}, spawn: {script: "true", as: subject}}}`), http.StatusForbidden},
 		{"as the subject in the installer's place", rule("asks", "ask.*",
-			`{spawn: {doer: {script: "true"}, as: subject}, onDone: {patch: {done: true}}}`), http.StatusCreated},
+			`{spawn: {script: "true", as: subject}, onDone: {patch: {done: true}}}`), http.StatusCreated},
 		{"as itself over daniel's space", rule("watch-daniel", "spaces.daniel.*",
-			`{spawn: {doer: {agent: verse}, prompt: "true"}, onDone: {patch: {done: true}}}`), http.StatusCreated},
+			`{spawn: {agent: {name: verse}, prompt: "true"}, onDone: {patch: {done: true}}}`), http.StatusCreated},
 	} {
 		resp := installAs(t, installer, ts.URL, c.charter)
 		body, _ := io.ReadAll(resp.Body)
@@ -224,9 +224,9 @@ func TestATaskActingForTheAskerAsksThem(t *testing.T) {
 	}
 	resp := installAs(t, installer, ts.URL, `[
 		{name: for-the-asker, condition: {subject: {path: "ask.*", value: !and [{question: null}, !not {asked: null}]}},
-		 action: {spawn: {doer: {script: "true"}, as: subject, policy: `+stepAsksTony+`}, onDone: {patch: {asked: true}}}},
+		 action: {spawn: {script: "true", as: subject, environment: `+stepEnvTony+`, autonomy: `+stepAsksTony+`}, onDone: {patch: {asked: true}}}},
 		{name: for-the-rule, condition: {subject: {path: "ask.*", value: !and [{question: null}, !not {ruled: null}]}},
-		 action: {spawn: {doer: {agent: verse}, prompt: "true", policy: `+stepAsksTony+`}, onDone: {patch: {ruled: true}}}},
+		 action: {spawn: {agent: {name: verse}, prompt: "true", environment: `+stepEnvTony+`, autonomy: `+stepAsksTony+`}, onDone: {patch: {ruled: true}}}},
 	]`)
 	if resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
@@ -285,7 +285,7 @@ func TestATaskActingForTheAskerIsSeenToFinish(t *testing.T) {
 	}
 	resp := installAs(t, installer, ts.URL, `{name: for-the-asker,
 		condition: {subject: {path: "ask.*", value: !and [{question: null}, !not {asked: null}]}},
-		action: {spawn: {doer: {script: "true"}, as: subject, policy: [{then: allow}]}, onDone: {patch: {asked: "yes"}}}}`)
+		action: {spawn: {script: "true", as: subject, environment: {systems: {network: {mode: open}}}, autonomy: [{then: allow}]}, onDone: {patch: {asked: "yes"}}}}`)
 	if resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("install: %s: %s", resp.Status, body)

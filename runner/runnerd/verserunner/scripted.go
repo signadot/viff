@@ -16,6 +16,7 @@ import (
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/calltool"
 	"github.com/signadot/verse/runner/runnerd/verserunner/agent"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -42,9 +43,9 @@ import (
 //
 // stop ends the socket, once the task has ended.
 func newScriptTask(l runner.Launch, root string, env, set []string, tools []agent.Tool, bin string,
-	reg *task.Registry, ceilings map[string]task.Policy) (p *task.Task, stop func(), err error) {
-	tools = offered(append(append([]agent.Tool{}, tools...), agent.Ask(reg)), l.Policy)
-	s := &scriptTask{script: l.Doer.Script, root: root, env: env, set: set, bin: bin,
+	reg *task.Registry, ceilings map[string]systems.Ceiling) (p *task.Task, stop func(), err error) {
+	tools = offered(append(append([]agent.Tool{}, tools...), agent.Ask(reg)), l.Environment)
+	s := &scriptTask{script: l.Script, root: root, env: env, set: set, bin: bin,
 		tools: map[string]agent.Tool{}, calls: make(chan *toolCall)}
 	for _, t := range tools {
 		s.tools[t.Name] = t
@@ -70,7 +71,7 @@ func newScriptTask(l runner.Launch, root string, env, set []string, tools []agen
 		return nil, nil, err
 	}
 	s.sock = srv.Path()
-	sup := task.NewSupervisor(l.Policy, reg)
+	sup := task.NewSupervisor(l.Environment, l.Autonomy, reg)
 	sup.SetCeilings(ceilings)
 	sup.SetStepOf(agent.StepOf(tools))
 	return task.NewTask(l.ID, sup, s, s), func() { srv.Close(); os.RemoveAll(dir) }, nil

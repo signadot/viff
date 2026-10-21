@@ -8,7 +8,7 @@ Each part is data to the next. A question is an entity, and so is a task. A char
 over entities, and the rules ask questions and start tasks. Once you know the four, you can write
 charters for your own work.
 
-A real deployment adds more data and more doers. [Iods](../io.md) connect verse to a
+A real deployment adds more data, agents and runners. [Iods](../io.md) connect verse to a
 repository, a forge or a chat workspace. An iod writes what the system holds into the store, and
 carries what a rule writes back out to the system: a comment, a tag, a message.
 [Runners](../runners.md) do the work of tasks. An operator installs iods and runners for you.

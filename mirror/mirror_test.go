@@ -3,6 +3,7 @@ package mirror
 import (
 	"context"
 	"fmt"
+	"github.com/signadot/verse/systems"
 	"strings"
 	"testing"
 	"time"
@@ -55,7 +56,7 @@ func (s *sayer) Result() string { return s.result }
 // full final answer land on the task:instance entity, readable after the run.
 func TestReflectProjectsOutput(t *testing.T) {
 	store := entitytest.Store(t)
-	sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+	sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 	d := &sayer{result: "here is the summary you asked for"}
 	p := task.NewTask("p2", sup, d, noopExec{})
 	d.emit = p.Emit // narration onto the read plane, as agent.Build wires it
@@ -94,7 +95,7 @@ func TestReflectProjectsTaskState(t *testing.T) {
 	ch, unsub := store.Observe(entity.PrefixPattern(Ref("").Segs()[:3], 4))
 	defer unsub()
 
-	sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+	sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 	p := task.NewTask("p1", sup, &steps{n: 2}, noopExec{})
 	Reflect(store, p.ID, p, Meta{Runner: "local"})
 
@@ -138,7 +139,7 @@ func TestReflectProjectsTaskState(t *testing.T) {
 // match can express — rather than a glob over ids.
 func TestReflectPublishesChainAndTrigger(t *testing.T) {
 	store := entitytest.Store(t)
-	sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+	sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 	p := task.NewTask("p-chain", sup, &sayer{}, noopExec{})
 	Reflect(store, p.ID, p, Meta{
 		Subject: `demo.pr."1"`,
@@ -164,7 +165,7 @@ func TestReflectPublishesChainAndTrigger(t *testing.T) {
 // be given an empty one — an empty `trigger` field would match a predicate looking for it.
 func TestReflectOmitsChainWhenAbsent(t *testing.T) {
 	store := entitytest.Store(t)
-	sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+	sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 	p := task.NewTask("p-bare", sup, &sayer{}, noopExec{})
 	Reflect(store, p.ID, p, Meta{Runner: "local"})
 	e, ok, _ := store.Get(Ref("p-bare"))
@@ -187,13 +188,15 @@ func (f *fakeHandle) Subscribe() (<-chan task.Event, func()) { return f.ch, func
 func (f *fakeHandle) SubscribeSince(int64) (<-chan task.Event, func()) {
 	return f.ch, func() {}
 }
-func (f *fakeHandle) Pause(string) error                  { return nil }
-func (f *fakeHandle) Resume(string) error                 { return nil }
-func (f *fakeHandle) Cancel(string, string) error         { return nil }
-func (f *fakeHandle) Steer(string, string, string) error  { return nil }
-func (f *fakeHandle) SetPolicy(task.Policy, string) error { return nil }
-func (f *fakeHandle) Result() string                      { return "" }
-func (f *fakeHandle) Err() string                         { return "" }
+func (f *fakeHandle) Pause(string) error                      { return nil }
+func (f *fakeHandle) Resume(string) error                     { return nil }
+func (f *fakeHandle) Cancel(string, string) error             { return nil }
+func (f *fakeHandle) Steer(string, string, string) error      { return nil }
+func (f *fakeHandle) SetAutonomy(task.Autonomy, string) error { return nil }
+func (f *fakeHandle) Result() string                          { return "" }
+func (f *fakeHandle) Err() string                             { return "" }
+func (*fakeHandle) Refused() map[string]int                   { return nil }
+func (*fakeHandle) Agent() (string, map[string]string)        { return "", nil }
 
 // A gate that has been answered must LEAVE the entity, not linger on it. Reflect writes the
 // state it knows, and a write merges — so clearing a field means saying so, and the field
@@ -253,16 +256,16 @@ func TestReflectClearsAnAnsweredGate(t *testing.T) {
 // on another runner can read it.
 func TestReflectPublishesTheEnvelope(t *testing.T) {
 	store := entitytest.Store(t)
-	sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+	sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 	p := task.NewTask("e1", sup, &steps{n: 1}, noopExec{})
 	Reflect(store, p.ID, p, Meta{ // the initial Put is synchronous
-		Runner: "local", Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}},
+		Runner: "local", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}},
 		Git: []runner.Repo{{Repo: "acme/app", From: "main"}, {Repo: "acme/docs"}},
 	})
 
 	got, _, _ := store.Get(Ref("e1"))
 	obj := entity.ToObj(got.Payload)
-	if p := PolicyOf(got.Payload); len(p) != 1 || p[0].Then.Mode != task.ThenAllow {
+	if p := AutonomyOf(got.Payload); len(p) != 1 || p[0].Then.Mode != task.ThenAllow {
 		t.Errorf("the policy not published: %+v", got.Payload)
 	}
 	// What the run worked on, in the spawn's own words: a reader of the record sees which
@@ -280,7 +283,7 @@ func TestReflectPublishesTheEnvelope(t *testing.T) {
 // omission" from "bounded to nothing".
 func TestReflectOmitsAnUndeclaredEnvelope(t *testing.T) {
 	store := entitytest.Store(t)
-	sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+	sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 	p := task.NewTask("e2", sup, &steps{n: 1}, noopExec{})
 	Reflect(store, p.ID, p, Meta{Runner: "local"})
 
@@ -302,7 +305,7 @@ func TestReflectOmitsAnUndeclaredEnvelope(t *testing.T) {
 // this slice for a fact nobody wrote.
 func TestReflectStampsWhenATaskStartedAndEnded(t *testing.T) {
 	store := entitytest.Store(t)
-	sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+	sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 	p := task.NewTask("when1", sup, &steps{n: 1}, noopExec{})
 	Reflect(store, p.ID, p, Meta{Runner: "local"})
 
@@ -348,5 +351,101 @@ func TestReflectStampsWhenATaskStartedAndEnded(t *testing.T) {
 	// Stamped ONCE: a start that moves is a start nobody can reason about.
 	if e, _, _ := store.Get(ref); entity.Str(e.Payload, "started") != started {
 		t.Errorf("started moved to %q", entity.Str(e.Payload, "started"))
+	}
+}
+
+// refusingHandle is a fake whose runner reports connections its proxy refused.
+type refusingHandle struct {
+	fakeHandle
+	refused map[string]int
+}
+
+func (r *refusingHandle) Refused() map[string]int { return r.refused }
+
+// WHAT A TASK'S PROXY REFUSED IS ON ITS RECORD when it ends, by destination and how often: the
+// runner's account, which no frame carries.
+func TestARefusedConnectionIsOnTheRecord(t *testing.T) {
+	store := entitytest.Store(t)
+	h := &refusingHandle{fakeHandle: fakeHandle{ch: make(chan task.Event, 1)}, refused: map[string]int{"evil.example:443": 3}}
+	done := make(chan struct{})
+	go func() { Reflect(store, "r1", h, Meta{Runner: "local"}); close(done) }()
+	h.ch <- task.Event{Kind: task.EventStatus, Text: string(task.Done)}
+	deadline := time.After(5 * time.Second)
+	for {
+		e, _, _ := store.Get(Ref("r1"))
+		if r, ok := entity.ToObj(e.Payload)["refused"].(map[string]any); ok {
+			if fmt.Sprint(r["evil.example:443"]) != "3" {
+				t.Fatalf("refused on the record: %v", r)
+			}
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("no refused on the record: %+v", entity.ToObj(e.Payload))
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}
+
+// agentHandle is a fake whose runner reports which agent runs and with what.
+type agentHandle struct {
+	fakeHandle
+	name     string
+	settings map[string]string
+}
+
+func (a *agentHandle) Agent() (string, map[string]string) { return a.name, a.settings }
+
+// recordOf is the record of id once ok holds of it, or a failure after a while.
+func recordOf(t *testing.T, store entity.Store, id string, ok func(map[string]any) bool) map[string]any {
+	t.Helper()
+	deadline := time.After(5 * time.Second)
+	for {
+		e, found, _ := store.Get(Ref(id))
+		if found {
+			if f := entity.ToObj(e.Payload); ok(f) {
+				return f
+			}
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("%s: never as wanted: %+v", id, entity.ToObj(e.Payload))
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}
+
+// WHO RAN A TASK IS ON ITS RECORD: the spawn's agent from the first write, its name and settings
+// and never its annotations, so a task that never started says what was asked; the runner's
+// resolved agent and the settings it ran with once it runs, so a running or finished task says
+// what ran. A script's record says it is one, and has no agent.
+func TestTheRecordSaysWhoRanTheTask(t *testing.T) {
+	store := entitytest.Store(t)
+	h := &agentHandle{fakeHandle: fakeHandle{ch: make(chan task.Event, 2)}, name: "verse", settings: map[string]string{"model": "claude-sonnet-5"}}
+	asked := &runner.Agent{Settings: map[string]string{"effort": "high"}, Annotations: map[string]string{"verse.portkey/virtual-key": "vk"}}
+	go Reflect(store, "a1", h, Meta{Runner: "local", Agent: asked})
+	first := recordOf(t, store, "a1", func(f map[string]any) bool { return f["agent"] != nil })
+	agent, _ := first["agent"].(map[string]any)
+	if agent["effort"] != "high" || agent["name"] != nil || agent["annotations"] != nil {
+		t.Fatalf("at first write the record says %v, want the spawn's settings, no name, no annotations", agent)
+	}
+	if first["script"] != nil {
+		t.Errorf("an agent's record says script: %v", first["script"])
+	}
+	h.ch <- task.Event{Kind: task.EventStatus, Text: string(task.Running)}
+	recordOf(t, store, "a1", func(f map[string]any) bool {
+		a, _ := f["agent"].(map[string]any)
+		return a["name"] == "verse" && a["model"] == "claude-sonnet-5" && a["effort"] == nil
+	})
+
+	script := &agentHandle{fakeHandle: fakeHandle{ch: make(chan task.Event, 2)}}
+	go Reflect(store, "s1", script, Meta{Runner: "local", Script: true})
+	script.ch <- task.Event{Kind: task.EventStatus, Text: string(task.Running)}
+	rec := recordOf(t, store, "s1", func(f map[string]any) bool { return f["script"] == true && f["status"] == string(task.Running) })
+	if rec["agent"] != nil {
+		t.Errorf("a script's record has an agent: %v", rec["agent"])
+	}
+	if a, script := AgentOf(entity.Obj(rec).Payload()); a != nil || !script {
+		t.Errorf("AgentOf a script's record: %v %v", a, script)
 	}
 }

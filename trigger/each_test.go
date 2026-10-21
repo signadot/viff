@@ -32,7 +32,7 @@ func TestEachInstallsInEitherLayout(t *testing.T) {
   condition:
     subject: {path: "git.commit.*", value: {reviewed: pending}}
   action:
-    spawn: {doer: {agent: verse}, prompt: "review $sha"}
+    spawn: {agent: {name: verse}, prompt: "review $sha"}
     onDone:
       patch: {reviewed: done}
       derive:
@@ -58,7 +58,7 @@ func TestEachInstallsInEitherLayout(t *testing.T) {
   condition:
     subject: {path: "git.commit.*", value: {reviewed: pending}}
   action:
-    spawn: {doer: {agent: verse}, prompt: "review $sha"}
+    spawn: {agent: {name: verse}, prompt: "review $sha"}
     onDone:
       patch: {reviewed: done}
       derive: [{path: "drift.finding", value: !each {over: $data.findings, key: $item.symbol, value: {symbol: $item.symbol}}}]
@@ -119,7 +119,7 @@ func TestEachRefusals(t *testing.T) {
   condition:
     subject: {path: "git.commit.*", value: {reviewed: pending}}
   action:
-    spawn: {doer: {agent: verse}, prompt: "x"}
+    spawn: {agent: {name: verse}, prompt: "x"}
     onDone:
       patch: {reviewed: done}
       derive: [{path: "drift.finding", value: !each ` + c.derive + `}]
@@ -198,7 +198,7 @@ func TestEachInAHookFacesTheLevelCheck(t *testing.T) {
   condition:
     subject: {path: "drift.head.*", value: {reviewed: pending}}
   action:
-    spawn: {doer: {agent: verse}, prompt: "x"}
+    spawn: {agent: {name: verse}, prompt: "x"}
     onDone:
       patch: {reviewed: done}
       derive: [{path: "drift.finding", value: !each {over: $data.f, key: $item.k, value: {a: $item.k}}}]
@@ -453,7 +453,7 @@ func TestEachOverATaskAnswer(t *testing.T) {
   condition:
     subject: {path: "git.commit.*", value: {reviewed: pending}}
   action:
-    spawn: {doer: {agent: verse}, prompt: "review $sha"}
+    spawn: {agent: {name: verse}, prompt: "review $sha"}
     onDone:
       patch: {reviewed: done}
       derive:

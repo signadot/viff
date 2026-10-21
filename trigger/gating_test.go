@@ -38,6 +38,27 @@ func TestAResolverNamedForGatesIsRetired(t *testing.T) {
 	}
 }
 
+// A SPAWN'S KEYS ARE READ STRICTLY: one the spawn does not have, the `doer` and `policy` it
+// had before the environment, is refused at install rather than dropped, which would install a
+// task without what its charter says; a value bound at the firing is still the firing's.
+func TestASpawnsUnknownKeysAreRefused(t *testing.T) {
+	for doc, want := range map[string]string{
+		`{name: v, condition: {subject: {path: "a.*"}}, action: {spawn: {prompt: p, doer: {agent: verse}}}}`:                                                                       "spawn: unknown field \"doer\"",
+		`{name: v, condition: {subject: {path: "a.*"}}, action: {seq: [{spawn: {prompt: p, policy: []}}]}}`:                                                                        "seq[0]: spawn: unknown field \"policy\"",
+		`{name: v, condition: {subject: {path: "a.*"}}, action: {spawn: {prompt: p}, onDone: {spawn: {script: s, with: {}}}}}`:                                                     "onDone: spawn: unknown field \"with\"",
+		`{name: v, condition: {subject: {path: "a.*"}}, action: {spawn: {prompt: p, environment: {vars: {A: $subject}, systems: {git: {repo: $subject.value.repo, fetch: {}}}}}}}`: "",
+	} {
+		node, err := codec.ParseNode([]byte(doc), codec.Tony)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = CheckFields(node)
+		if want == "" && err != nil || want != "" && (err == nil || !strings.Contains(err.Error(), want)) {
+			t.Errorf("%s: %v, want %q", doc, err, want)
+		}
+	}
+}
+
 // `gates:` at the top level still means what it always did.
 func TestTopLevelGatesStillMeanTheSame(t *testing.T) {
 	trig := rule(t, `{

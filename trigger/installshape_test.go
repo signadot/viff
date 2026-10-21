@@ -7,6 +7,8 @@ import (
 
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -14,23 +16,26 @@ import (
 // charter the runner would refuse at every firing is refused at its install, with the reason.
 func TestASpawnsShapeIsCheckedAtInstall(t *testing.T) {
 	for _, c := range []struct{ what, spawn, want string }{
-		{"a script with a prompt", `{doer: {script: "true"}, prompt: go}`, "a script takes no `prompt`"},
-		{"a model on a script", `{doer: {script: "true", with: {model: large}}}`, "`model` is for an agent"},
-		{"no doer", `{prompt: go}`, "an `agent` or a `script`"},
-		{"an agent with no prompt", `{doer: {agent: verse}}`, "needs a `prompt`"},
-		{"a withhold on a call", `{doer: {script: "true"}, policy: [{match: {system: commands, verb: run, command: "rm *"}, then: withhold}, {then: ask}]}`, "withhold names a system or a verb, not a call"},
-		{"a timeout that is no duration", `{doer: {script: "true"}, timeout: soon}`, "is not a duration"},
-		{"an environment name that is no name", `{doer: {script: "true", with: {env: {"A-B": x}}}}`, "is not a variable name"},
-		{"a host the proxy cannot take", `{doer: {script: "true", with: {network: {mode: allow, allow: ["**.example.com"]}}}}`, "is not a host"},
-		{"a wildcard over a top-level domain", `{doer: {script: "true", with: {network: {mode: allow, allow: ["*.com"]}}}}`, "matches too much"},
-		{"an allowlist of everything", `{doer: {script: "true", with: {network: {mode: allow, allow: ["*"]}}}}`, "wants an open network"},
-		{"two ports", `{doer: {script: "true", with: {network: {mode: allow, allow: ["example.com:443:443"]}}}}`, "is not a host and a port"},
-		{"a port spelled with a zero", `{doer: {script: "true", with: {network: {mode: allow, allow: ["example.com:0443"]}}}}`, "is not a port"},
-		{"a host with a trailing dot", `{doer: {script: "true", with: {network: {mode: allow, allow: ["example.com."]}}}}`, "is not a host"},
-		{"a host in brackets", `{doer: {script: "true", with: {network: {mode: allow, allow: ["[example.com]"]}}}}`, "is not a host"},
-		{"a port that is no port", `{doer: {script: "true", with: {network: {mode: allow, allow: ["api.example.com:http"]}}}}`, "is not a port"},
-		{"a virtual key written as an annotation", `{doer: {agent: verse, annotations: {verse.portkey/virtual-key: vk-prod}}, prompt: go}`, "is verse's to write"},
-		{"a row whose match is bound", `{doer: {script: "true"}, policy: [{name: head, match: {system: git, verb: push, ref: $subject.head}, then: ask}, {then: ask}]}`, "is not bound"},
+		{"a script with a prompt", `{script: "true", prompt: go}`, "`prompt` and `script` exclude each other"},
+		{"an agent for a script", `{script: "true", agent: {name: verse}}`, "a script takes no `agent`"},
+		{"neither a prompt nor a script", `{agent: {name: verse}}`, "a `prompt`, for an agent, or a `script`"},
+		{"a person", `{person: "user:ana", prompt: go}`, "no runner takes a person yet"},
+		{"a withhold, which is no more", `{script: "true", autonomy: [{match: {system: commands}, then: withhold}, {then: ask}]}`, `"withhold" is not one of deny, ask, allow`},
+		{"a row the environment gives nothing to", `{script: "true", environment: {systems: {commands: {run: {}}}}, autonomy: [{match: {system: files, verb: write}, then: deny}, {then: ask}]}`, "autonomy[0]: matches nothing the environment gives (system=files verb=write)"},
+		{"a row no shape has a value in common with", `{script: "true", environment: {systems: {git: {repo: acme/app, push: {ref: "refs/heads/verse/*"}}}}, autonomy: [{match: {system: git, verb: push, ref: "refs/tags/*"}, then: allow}, {then: ask}]}`, "matches nothing the environment gives"},
+		{"a timeout that is no duration", `{script: "true", timeout: soon}`, "is not a duration"},
+		{"a variable name that is no name", `{script: "true", environment: {vars: {"A-B": x}}}`, "a variable's name"},
+		{"a host the proxy cannot take", `{script: "true", environment: {systems: {network: {mode: allow, tcp-client: [{host: "**.example.com"}]}}}}`, "is not a host"},
+		{"a wildcard over a top-level domain", `{script: "true", environment: {systems: {network: {mode: allow, tcp-client: [{host: "*.com"}]}}}}`, "matches too much"},
+		{"an allowlist of everything", `{script: "true", environment: {systems: {network: {mode: allow, tcp-client: [{host: "*"}]}}}}`, "wants an open network"},
+		{"a port spelled with a zero", `{script: "true", environment: {systems: {network: {mode: allow, tcp-client: [{host: example.com, port: "0443"}]}}}}`, "is not a port"},
+		{"a host with a trailing dot", `{script: "true", environment: {systems: {network: {mode: allow, tcp-client: [{host: "example.com."}]}}}}`, "is not a host"},
+		{"a host in brackets", `{script: "true", environment: {systems: {network: {mode: allow, tcp-client: [{host: "[example.com]"}]}}}}`, "is not a host"},
+		{"a port that is no port", `{script: "true", environment: {systems: {network: {mode: allow, tcp-client: [{host: api.example.com, port: http}]}}}}`, "is not a port"},
+		{"hosts under a mode that is not allow", `{script: "true", environment: {systems: {network: {mode: open, tcp-client: [{host: example.com}]}}}}`, "tcp-client is for mode allow"},
+		{"a virtual key written as an annotation", `{agent: {name: verse, annotations: {verse.portkey/virtual-key: vk-prod}}, prompt: go}`, "is verse's to write"},
+		{"a row whose match is bound", `{script: "true", autonomy: [{name: head, match: {system: git, verb: push, ref: $subject.head}, then: ask}, {then: ask}]}`, "is not bound"},
+		{"a shape that is bound", `{script: "true", environment: {systems: {git: {repo: acme/app, push: {ref: $subject.head}}}}}`, "is not bound"},
 	} {
 		t.Run(c.what, func(t *testing.T) {
 			eng := New(entitytest.Store(t), task.AutoResolver{})
@@ -46,16 +51,45 @@ func TestASpawnsShapeIsCheckedAtInstall(t *testing.T) {
 	}
 }
 
-// WHAT THE FIRING BINDS IS STOOD IN FOR at install, and only that: two repositories the firing
-// names apart are two checkouts, a host and an owner written before the `$` are what a runner's
-// offer is checked for, a virtual key is the annotation the firing carries, and a doer the
-// firing picks or binds is not checked against an offer at all.
+// A ROW NAMING A REPOSITORY THE FIRING BINDS IS CHECKED AGAINST THE ENVIRONMENT AS WRITTEN: the
+// `$` repo could be any, so the row reaches it; it is not held against the placeholder install
+// stands in for the repo, which no row names. A block naming no verb gives every verb of its
+// system, and installs.
+func TestARowOnABoundRepoInstalls(t *testing.T) {
+	eng := New(entitytest.Store(t), task.AutoResolver{})
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: r
+  condition: {subject: {path: "demo.pr.*", value: {stage: open}}}
+  action:
+    patch: {stage: started}
+    spawn:
+      script: "true"
+      environment: {systems: {git: [{repo: $subject.value.repo, fetch: {}, push: {ref: "refs/heads/verse/*"}}]}}
+      autonomy: [{match: {system: git, verb: push, repo: github.com/acme/app}, then: allow}, {then: ask}]
+`)); err != nil {
+		t.Fatalf("a row on the repo the firing binds: %v", err)
+	}
+	err := eng.AddTrigger(mustParseCharter(t, `
+- name: s
+  condition: {subject: {path: "demo.pr.*", value: {stage: open}}}
+  action: {patch: {stage: started}, spawn: {script: "true", environment: {systems: {git: {repo: acme/app, fetch: {}}, git-issue: {repo: acme/app}}}}}
+`))
+	if err != nil {
+		t.Fatalf("a block naming no verb, which gives them all: %v", err)
+	}
+}
+
+// WHAT THE FIRING BINDS IS STOOD IN FOR at install where the launch's shape is checked, and
+// not where the runner's offer is: two repositories the firing names apart are two checkouts,
+// the offer is asked about the environment as written (a host and an owner written before the
+// `$` held to its ceiling there), a virtual key is the annotation the firing carries, and an
+// agent the firing picks or binds is not checked against an offer at all.
 func TestWhatTheFiringBindsIsStoodInForAtInstall(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
 	var checked []runner.Launch
 	eng.SetOfferCheck(func(_ string, l runner.Launch) error {
 		checked = append(checked, l)
-		if l.Doer.Agent != "verse" {
+		if l.Who() != "verse" {
 			return errors.New("offers no such agent")
 		}
 		return nil
@@ -66,32 +100,34 @@ func TestWhatTheFiringBindsIsStoodInForAtInstall(t *testing.T) {
   action:
     patch: {stage: started}
     spawn:
-      doer:
-        agent: verse
-        with:
+      agent: {name: verse}
+      environment:
+        systems:
           git:
-          - {repo: $subject.repo, from: $subject.head}
-          - {repo: ghe.corp/$subject.lib}
-          - {repo: acme/$subject.app}
+          - {repo: $subject.repo, from: $subject.head, fetch: {}}
+          - {repo: ghe.corp/$subject.lib, fetch: {}}
+          - {repo: acme/$subject.app, fetch: {}}
       prompt: go
       virtualKey: verse.credentials.team
 `)); err != nil {
 		t.Fatalf("templated repositories: %v", err)
 	}
-	if len(checked) != 1 || len(checked[0].Doer.With.Git) != 3 {
+	if len(checked) != 1 || len(checked[0].Repos()) != 3 {
 		t.Fatalf("the offer was asked about %+v", checked)
 	}
-	if h := checked[0].Doer.With.Git[1].Host(); h != "ghe.corp" {
-		t.Errorf("the second repository is on %q at install, want the host it was written on", h)
+	// The offer is asked about the environment AS WRITTEN, each `$` still there: the runner's
+	// ceiling holds a binding within where some value of it could be (systems.Ceiling.Contains),
+	// which no stand-in for it would be.
+	for i, want := range []string{"$subject.repo", "ghe.corp/$subject.lib", "acme/$subject.app"} {
+		if got := checked[0].Repos()[i].Repo; got != want {
+			t.Errorf("repository %d is %q at the offer check, want it as written, %q", i, got, want)
+		}
 	}
-	if o, _, _ := strings.Cut(checked[0].Doer.With.Git[2].Path(), "/"); o != "acme" {
-		t.Errorf("the third repository is %s at install, want the owner it was written under", checked[0].Doer.With.Git[2].Repo)
-	}
-	if _, ok := checked[0].Doer.Annotations["verse.portkey/virtual-key"]; !ok {
-		t.Errorf("the offer was asked about %+v, without the virtual key the firing carries", checked[0].Doer)
+	if _, ok := checked[0].AgentSettings().Annotations["verse.portkey/virtual-key"]; !ok {
+		t.Errorf("the offer was asked about %+v, without the virtual key the firing carries", checked[0].Agent)
 	}
 	for i, spawn := range []string{
-		`{doer: {agent: $subject.agent}, prompt: go}`,
+		`{agent: {name: $subject.agent}, prompt: go}`,
 	} {
 		checked = nil
 		if err := eng.AddTrigger(mustParseCharter(t, `
@@ -102,7 +138,48 @@ func TestWhatTheFiringBindsIsStoodInForAtInstall(t *testing.T) {
 			t.Fatalf("%s: %v", spawn, err)
 		}
 		if len(checked) != 0 {
-			t.Errorf("%s: a doer the firing decides was checked against an offer: %+v", spawn, checked)
+			t.Errorf("%s: an agent the firing decides was checked against an offer: %+v", spawn, checked)
 		}
+	}
+}
+
+// A SPAWN'S ENVIRONMENT IS HELD TO ITS RUNNER'S CEILING AT INSTALL, as written: a repository the
+// firing binds whole could be within, and installs; one whose owner is written before the `$`
+// and lies outside, and a literal one outside, are refused; and a push shape wider than every one
+// of the ceiling's is refused naming what the ceiling gives.
+func TestASpawnsEnvironmentIsHeldToTheCeilingAtInstall(t *testing.T) {
+	ceiling := systems.Ceiling{{
+		Attributes: map[string][]string{"repo": {"github.com/signadot/**"}},
+		Verbs:      map[string][]systems.Shape{"fetch": {{}}, "push": {{"ref": "refs/heads/verse/**"}}},
+	}}
+	desc := runner.Description{Version: runner.DescriptionVersion, Offers: []runner.Offer{{Script: true,
+		Systems: map[string]runner.System{
+			"git":     {Ceiling: ceiling},
+			"network": {Builds: systems.Ceiling{{Attributes: map[string][]string{"mode": {runner.NetworkNone}}}}},
+		}}}}
+	for _, c := range []struct{ what, git, want string }{
+		{"a repository the firing binds", `{repo: $subject.value.repo, fetch: {}, push: {ref: "refs/heads/verse/auto/*"}}`, ""},
+		{"an owner's repository the firing names", `{repo: "github.com/signadot/$subject.value.name", fetch: {}}`, ""},
+		{"another owner before the $", `{repo: "github.com/other/$subject.value.name", fetch: {}}`, "is beyond github.com/signadot/**"},
+		{"a literal repository outside", `{repo: other/app, fetch: {}}`, "repo github.com/other/app is beyond"},
+		{"a push wider than the ceiling's", `{repo: signadot/app, push: {ref: "refs/heads/**"}}`, "within no shape of its: {ref: refs/heads/verse/**}"},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			eng := New(entitytest.Store(t), task.AutoResolver{})
+			eng.SetOfferCheck(func(_ string, l runner.Launch) error { return runnerd.CheckOfferAsWritten(&l, desc) })
+			err := eng.AddTrigger(mustParseCharter(t, `
+- name: r
+  condition: {subject: {path: "demo.pr.*", value: {stage: open}}}
+  action: {patch: {stage: started}, spawn: {script: "true", environment: {systems: {git: `+c.git+`}}}}
+`))
+			switch {
+			case c.want == "" && err != nil:
+				t.Fatalf("refused: %v", err)
+			case c.want != "" && (err == nil || !strings.Contains(err.Error(), c.want)):
+				t.Fatalf("install = %v, want it refused saying %q", err, c.want)
+			case c.want != "" && !strings.Contains(err.Error(), "beyond this runner's ceiling for git"):
+				t.Errorf("the refusal does not name the ceiling: %v", err)
+			}
+		})
 	}
 }

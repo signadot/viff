@@ -607,13 +607,14 @@ done
 has "$(v flow)" 'smoke-susp' && die "the lifted suspension is still listed"
 ok "resumed through verse flow --args | xargs -L1 verse flow resume: settle acted, approve asked, and nothing is suspended"
 
-# ── task runtime + the policy surface (a script: hermetic) ──────
+# ── task runtime + the autonomy surface (a script: hermetic) ──────
 # A script runs as a real shell command, so `sleep 30` is a genuinely live task to exercise
 # the control surfaces against (and observe the slide on).
 # One principal for the run and its control: a task is its requester's, and control is held
 # by the owner and the runner, so the party that spawned it is the party that steers it.
 step "task run + control surfaces"
-VERSE_USER=user:smoke v task run --script "sleep 30" >/dev/null || die "task run failed"
+echo '{script: "sleep 30", environment: {systems: {network: {mode: open}}}}' |
+	VERSE_USER=user:smoke v task run -f - >/dev/null || die "task run failed"
 ID=$(v task -o tony | awk -F'[:[:space:]]+' '/^[[:space:]]*-?[[:space:]]*id:/ {print $NF; exit}')
 [ -n "$ID" ] || die "no task id from list"
 ok "spawned $ID (sleep 30)"
@@ -624,20 +625,20 @@ ok "task get"
 out=$(VERSE_USER=user:smoke v task say "$ID" "also mention the token TTL" 2>&1) && die "a say to a script was accepted: $out"
 has "$out" "no turn for words" || die "the say to a script was refused for another reason: $out"
 ok "task say to a script is refused (a script has no turn for words)"
-out=$(VERSE_USER=user:smoke v task policy "$ID" '[{then: ask}]' --as user:smoke) || die "task policy failed"
-has "$out" "default ask" || die "task policy did not report the new policy"
-ok "task policy → ask (as user:smoke)"
+out=$(VERSE_USER=user:smoke v task autonomy "$ID" '[{then: ask}]' --as user:smoke) || die "task autonomy failed"
+has "$out" "default ask" || die "task autonomy did not report the new autonomy"
+ok "task autonomy → ask (as user:smoke)"
 # the slide is observable on the read plane (the task is live, so the mirror projects it)
 observed=
 for _ in $(seq 1 25); do
-	if haskv "$(v data verse task instance "$ID" 2>/dev/null || true)" policyBy user:smoke; then
+	if haskv "$(v data verse task instance "$ID" 2>/dev/null || true)" autonomyBy user:smoke; then
 		observed=1
 		break
 	fi
 	sleep 0.2
 done
-[ -n "$observed" ] || die "slide not observable on the entity (policy/policyBy not projected)"
-ok "slide observable on the entity (policy/policyBy projected)"
+[ -n "$observed" ] || die "slide not observable on the entity (autonomy/autonomyBy not projected)"
+ok "slide observable on the entity (autonomy/autonomyBy projected)"
 VERSE_USER=user:smoke v task cancel "$ID" >/dev/null 2>&1 || true # stop the sleep (frees the runtime promptly)
 ok "task cancel (kills the running command)"
 

@@ -187,62 +187,70 @@ the field.
 `spawn` launches a [task](../glossary.md#task). Verse tags the spawned task with the subject.
 The tag makes the task part of the flow of that subject.
 
-A spawn answers three questions, and each is a field:
+A spawn answers four questions, and each is a field:
 
 | Question | Field | What it names |
 |---|---|---|
-| what is the work | `prompt` | the job, in text. An agent reads it as its prompt; a script needs none. |
-| what does it | `doer` | an agent the runner offers (`doer: {agent: verse}`), or a script (`doer: {script: "…"}`), and what it works with, under `with` |
-| what each step gets | `policy` | one ordered list of rows over the task's steps: a verb no row names is not the task's, the first row that matches a step denies it, asks about it, or allows it, and the last row decides the calls of named verbs no row above matched |
+| what is the work | `prompt` or `script` | a prompt, the job in text, for an agent; or a script, which is the work and its own doer. Exactly one. |
+| who does it | `agent` | for a prompt, the agent the runner offers (`agent: {name: verse}`), with its settings; absent is the runner's default agent |
+| what it works in | `environment` | the variables its shell is given (`vars`), and the systems it may use (`systems`): the whole of what the task may do |
+| what each step gets | `autonomy` | one ordered list of rows over the task's steps: the first row that matches a step denies it, asks about it, or allows it, and the last row decides every step no row above matched |
 
 The spawn can also carry a [contract](#the-answer-contract) (`answer`) that the result must
 satisfy.
 
-**The doer.** `doer` is one of two things. `agent` names an agent by the name the runner offers
-it under: `verse` is verse's own agent. `script` is a shell script; it runs by its `#!` line, or
-under bash. A doer that names both, or neither, is refused.
+**The work and who does it.** A `prompt` is for an agent. `agent` names one by the name the
+runner offers it under (`verse` is verse's own agent); without `agent`, it is the runner's
+default agent, the first it offers. A `script` is a shell script; it runs by its `#!` line, or
+under bash, and takes no `agent`. A spawn with both, or neither, is refused.
 
-`with` is what the doer works with: facts about what the run is set up with, such as the
-repositories to check out and the network it may reach. A fact is no permission. What the task
-may do with it is the policy's.
-
-
-| Field | What it does |
-|---|---|
-| `git` | the repositories the task works in: `[{repo: acme/app, from: main}]`. `repo` is `owner/name` at GitHub, or `host/owner/name` on another forge; `from` omitted is the default branch. Both take `$vars`, so a charter can write `from: $subject.value.head`. What may leave each repository is the policy's, in rows over `git.push` (by `repo`, `ref`, `delete`, `force`, and `exists` and `own`, which the runner fills) and `github.create-pr`; a row's `repo` is the one spelling `host/owner/name`, so `github.com/acme/app` names the repository above. Verse checks the shape at install and carries the list to the runner, which refuses a launch it cannot honour rather than weakening it. The record of the task carries `git`, so a reader sees what the run worked on without the charter. |
-| `git-issue` | the repository trackers the task works with: `[{repo: acme/app}]`, each naming a repository of `git`, in whose checkout the tracker is |
-| `network` | what the run may reach: `{mode: none}`, `{mode: open}` (the host's network), or `{mode: allow, allow: [api.github.com, "pypi.org:443"]}`. Absent is `none`. The runner builds it once, when the run starts, and refuses a mode its sandbox cannot build: an unconfined runner, such as `verse up`'s, builds only `open` ([the network](../systems/inside.md#the-network-is-the-launchs)). |
-| `env` | variables set in the task's shell, by name. This is how a script gets data from the subject without splicing it into its text: `env: {BRANCH: $subject.value.head}`. A runner refuses a name it owns. |
-| `model`, `effort` | for an agent: which model it runs under, and at which effort, where the runner's offer takes them. |
-
-`doer.annotations` are settings for the runner, such as `verse.portkey/virtual-key`. Verse
+An agent's settings are written beside its name: `agent: {name: codex, model: gpt-5-codex,
+effort: high}`. Each is one the runner's offer declares, with a value it takes; one it does not
+declare is refused. They take `$vars`, so a charter can write `model: $subject.value.model`.
+`agent.annotations` are settings for the runner, such as `verse.portkey/virtual-key`. Verse
 writes that one itself from `virtualKey`, the address of the model credential the run spends
 ([virtual key](../glossary.md#virtual-key)), and refuses it written in `annotations`.
 
+**The environment.** `environment` is what the run works in. `vars` are variables set in the
+task's shell, by name: how a script gets data from the subject without splicing it into its
+text, `vars: {BRANCH: $subject.value.head}`. A runner refuses a name it owns. `systems` is what
+the task may do, one block per [system](../systems/README.md), and it is the whole of it: a step
+no block gives is refused before any row is read. A block names the verbs it gives, each with its
+shapes; a block that names no verb gives every verb of its system, the network apart.
+
+| System | What its block does |
+|---|---|
+| `git` | a repository the task works in: `{repo: acme/app, from: main, fetch: {}, push: [{ref: "refs/heads/verse/auto/*", exists: "false"}, {ref: "refs/heads/verse/auto/*", own: "true"}]}`. `repo` is `owner/name` at GitHub, or `host/owner/name` on another forge; `from` omitted is the default branch. Both take `$vars`, so a charter can write `from: $subject.value.head`. Its `push` shapes are what may leave it, by `ref`, `delete`, `force`, and `exists` and `own`, which the runner fills from the forge; a charter that ships writes them rather than an empty block, which would give every push. The record of the task carries `git`, so a reader sees what the run worked on without the charter. |
+| `git-issue` | a repository's own tracker, of a repository `git` checks out: `{repo: acme/app}` gives all its verbs |
+| `network` | what the run may reach: `{mode: none}`, `{mode: open}` (the host's network), or `{mode: allow, tcp-client: [{host: api.github.com}, {host: pypi.org, port: "443"}]}`. Absent is `none`. The runner builds it once, when the run starts, and refuses a mode its sandbox cannot build: an unconfined runner, such as `verse up`'s, builds only `open` ([the network](../systems/inside.md#the-network)). |
+| `files`, `commands`, `agent`, `question` | what a doer does inside its run: `files: {}`, `commands: {run: {command: "make *"}}` |
+
 **A script is one action, and no step.** Nothing asks before it runs: verse decided to start
 it. What it may do beyond its workspace is call the task's tools from its shell with
-`verse-call-tool`: `git-push`, `github-create-pr` and `git-fetch` for the repositories `with.git` gave it,
-their issue trackers' verbs (`git-issue-create`, `github-issue-comment`, `linear-issue-close`,
-…), Slack's (`slack-post`, `slack-read`, …), and `question-ask`. Each call is an action of
-the task, and the same step an agent's use of the tool is, so the same rows decide it. A refusal is an answer the script reads, not the end of its run.
+`verse-call-tool`: `git-push`, `github-create-pr` and `git-fetch` for the repositories its
+environment gives, their issue trackers' verbs (`git-issue-create`, `github-issue-comment`,
+`linear-issue-close`, …), Slack's (`slack-post`, `slack-read`, …), and `question-ask`. Each call
+is an action of the task, and the same step an agent's use of the tool is, so the same rows
+decide it. A refusal is an answer the script reads, not the end of its run.
 
-**The policy.** A step is what a task is about to do, a verb of a [system](../systems/README.md): `git.push`,
-`github.create-pr`, `files.write`, `commands.run`, `agent.call-sub-agent`, and the
-trackers' and Slack's acts, `git-issue.push`, `github-issue.create`, `slack.post` and the rest of
-[the table](tasks.md#the-policy). `policy` is one ordered list of rows over them: the first
-row that matches a step decides it, and the last row, which names no step, decides the calls of
-the named verbs that no row above matched. A verb no row names is not the task's: it has no
-tool, and a call of it is refused, so a spawn with no policy is given no verb. A firing that
-already answered its own `gates` allows the verbs it decided, `{match: {system: git, verb:
-push}, then: allow}`, and does not ask again for each action. What a task may
-reach is not a step: it is the doer's `with.network`, and a spawn that leaves it out has none
-([the network](../systems/inside.md#the-network-is-the-launchs)).
+**The autonomy.** A step is what a task is about to do, a verb of a
+[system](../systems/README.md): `git.push`, `github.create-pr`, `files.write`, `commands.run`,
+`agent.call-sub-agent`, the trackers' and Slack's acts, and a connection under a network of
+`allow`, `network.tcp-client` ([the table](tasks.md#the-autonomy)). A step outside the
+environment is refused first. `autonomy` is one ordered list of rows over the rest: the first row
+that matches a step decides it, and the last row, which names no step, decides every step no row
+above matched. With no autonomy, every step is asked about: the last row is the one place a run
+is made unattended. A firing that already answered its own `gates` allows the steps it decided,
+`{match: {system: git, verb: push}, then: allow}`, and does not ask again for each action. A row
+on the network allows or denies, since a connection can't wait for an answer, and the default row
+doesn't decide a connection: a host the environment's `tcp-client` shapes give is reached unless a
+row on the network denies it.
 
 Each row poses its question, or refuses, at the step it matches, at every boundary of the
 task, and not once for the firing:
 
 ```tony
-policy:
+autonomy:
 - name: release
   match: {system: git, verb: push, ref: refs/heads/main}
   then:
@@ -258,9 +266,9 @@ policy:
 
 | Field | What it does |
 |---|---|
-| `name` | what the question names, and what a hook's `onDenied` refers to; absent, the row is named by its place, `policy[0]`. Two rows of one name are refused, and so are `turn`, `ask` and `question-ask`, the questions that are no row's |
-| `match` | the step's `system`, which every row but the default names, its `verb`, left out for any of the system's, and the step's fields: `repo`, `ref`, `delete` and `force` for `git.push`, and `exists` and `own`, which the runner fills from the forge; `repo`, `base`, `head` and `own` for `github.create-pr`; `repo`, `head`, `base` and `own` for `github.update-pr`; `path` for `files.write`; `command` for `commands.run`; `agent` for `agent.call-sub-agent`; `repo` and `issue` for a tracker's acts, `team` for a Linear filing; `channel`, and `thread` or `emoji`, for Slack's. Each [system's page](../systems/README.md) lists its verbs and their fields. A field left out matches anything; `*` matches within a segment and `**` across. A field is written as the runner spells it: `repo` as `host/owner/name` in lower case (`github.com/acme/app`), `ref` a full ref (`refs/heads/main`), `base` and `head` a branch's name (`main`), `delete` and `force` `true` or `false`, a Linear `team` or `issue` uppercase, a Slack `channel` lowercase with no `#`; a pattern it is never spelled as is refused. A field the step does not have is refused, and so is a `$`: a match is a pattern over what the task does, not bound by the firing. A row with no `match` is the default, and it is last. |
-| `then` | `deny`, `ask` or `allow`; `{ask: {…}}`, an ask with its shape; or `withhold`, on a system or a verb, which leaves it out of the run |
+| `name` | what the question names, and what a hook's `onDenied` refers to; absent, the row is named by its place, `autonomy[0]`. Two rows of one name are refused, and so are `turn`, `ask`, `question-ask` and `environment`, the questions that are no row's |
+| `match` | the step's `system`, which every row but the default names, its `verb`, left out for any of the system's, and the step's fields: `repo`, `from`, `ref`, `delete` and `force` for `git.push`, and `exists` and `own`, which the runner fills from the forge; `repo`, `base`, `head` and `own` for `github.create-pr`; `repo`, `head`, `base` and `own` for `github.update-pr`; `path` for `files.write`; `command` for `commands.run`; `agent` for `agent.call-sub-agent`; `repo` and `issue` for a tracker's acts, `team` for a Linear filing; `channel`, and `thread` or `emoji`, for Slack's; `host` and `port` for `network.tcp-client`. Each [system's page](../systems/README.md) lists its verbs and their fields. A field left out matches anything; `*` matches within a segment and `**` across. A field is written as the runner spells it: `repo` as `host/owner/name` in lower case (`github.com/acme/app`), `ref` a full ref (`refs/heads/main`), `base` and `head` a branch's name (`main`), `delete` and `force` `true` or `false`, a Linear `team` or `issue` uppercase, a Slack `channel` lowercase with no `#`; a pattern it is never spelled as is refused. A field the step does not have is refused, and so is a `$`: a match is a pattern over what the task does, not bound by the firing. A row with no `match` is the default, and it is last. A row that can match nothing the environment gives is refused, since it would never decide. |
+| `then` | `deny`, `ask` or `allow`; or `{ask: {…}}`, an ask with its shape |
 | `then.ask.need` | how many approvals the step takes; absent is one |
 | `then.ask.answerers` | who is asked, in the grammar a rule's gate uses (`user:…`, `group:…`, `$principal`); absent is the docket |
 | `then.ask.within`, `then.ask.default` | how long the question stands, and what silence settles on |
@@ -270,19 +278,16 @@ The runner reads the step, the approvals, the answerers and the deadline's durat
 which gate matched. Verse adds the rest when it poses the question. See
 [a gate's question](tasks.md#a-rows-question).
 
-What a run works with is what its doer is set up with: a repository checked out, a network it
-may reach. The runner refuses what the spawn did not give, and asks nobody. What a run may do
-to it is the policy's, within the runner's ceilings. A runner publishes, for each system it
-performs, the ceiling its operator wrote. What the spawn fixes is which verbs the task has, the
-ones its rows name; a row that allows or asks about calls the ceiling refuses every one of fails
-the spawn, naming both rows, since it could never do anything. The rest of a row is a dial: the
-runner decides each call at the act, by the row and then by the ceiling, which it reads again
-([the verse runner](runnerd.md#what-it-offers)).
+What a run may do is its environment, and the runner refuses the rest and asks nobody. The
+environment lies within the runner's ceilings: a runner publishes, for each system it holds, the
+ceiling its operator wrote, blocks in the environment's form, and an environment beyond one fails
+the spawn when the rule is installed, naming the ceiling, as does one its sandbox can't build.
+The runner holds the environment to its ceilings again at the launch and at each act
+([the verse runner](runnerd.md#what-it-offers)). The autonomy is the dial over the rest.
 
-An unknown step in a row, or a doer the runner does not offer, fails the spawn when the rule is
-installed. Verse does not fall back to a default. An unknown field inside `spawn:` is a
-different case: verse drops it and says nothing
-([what an install does not check](charter.md#what-an-install-does-not-check)).
+An unknown step in a row, an agent the runner does not offer, a setting it does not take, or an
+unknown field inside `spawn:` fails the spawn when the rule is installed. Verse does not fall back
+to a default, and it drops nothing.
 
 | Field | What it names |
 |---|---|
@@ -298,12 +303,13 @@ grant`). Verse refuses a `resolver:` on a spawn at install.
 
 ```tony
 spawn:
-  doer: {agent: verse, with: {network: {mode: open}}}
+  agent: {name: verse}
+  environment: {systems: {network: {mode: open}}}
   prompt:   "Review $subject for security defects."
   answer:
     severity: !or [low, high]
     note:     !irtype string
-  policy:
+  autonomy:
   - name: write
     match: {system: files, verb: write}
     then: ask
@@ -317,7 +323,8 @@ the record that fired it as well:
 
 ```tony
 spawn:
-  doer: {agent: verse, with: {network: {mode: open}}}
+  agent: {name: verse}
+  environment: {systems: {network: {mode: open}}}
   prompt: $subject.value.then
   as: subject
 ```
@@ -346,22 +353,24 @@ doing something else.
 
 ```tony
 spawn:
-  doer:
-    with:
-      git:
-      - {repo: acme/app, from: main}
+  script: |
+    git -C app merge --ff-only "mirror/$BRANCH"
+    verse-call-tool git-push -branch main
+  environment:
+    vars: {BRANCH: $subject.value.head}
+    systems:
       network: {mode: open}
-      env: {BRANCH: $subject.value.head}
-    script: |
-      git -C app merge --ff-only "mirror/$BRANCH"
-      verse-call-tool git-push -branch main
-  policy:
-  - {match: {system: git, verb: push, ref: refs/heads/main}, then: allow}
-  - {match: {system: git, verb: push}, then: deny}
+      git:
+      - repo: acme/app
+        from: main
+        fetch: {}
+        push: {ref: refs/heads/main, force: "false", delete: "false"}
+  autonomy:
   - {then: allow}
 ```
 
-The script runs in the workspace that `with.git` checked out, with `with.env` in its shell.
+The environment gives the push to `main` and no other, so no row has to refuse the rest. The
+script runs in the workspace its `git` blocks checked out, with its `vars` in its shell.
 Its calls to `verse-call-tool` are the task's actions. Each is a step, as an agent's call is: the
 same rows decide it, and the task's record shows it. So a row written for an agent's push holds
 this push too. A call
@@ -371,7 +380,7 @@ not stop.
 
 **A script's text is not bound.** `$subject` in a prompt is the subject; in a script it is the
 shell's, and verse leaves it alone. A value from the firing reaches a script as a variable in
-`with.env`, which the shell reads and never parses: spliced into the text, a branch named
+the environment's `vars`, which the shell reads and never parses: spliced into the text, a branch named
 `x;curl …` would be a program.
 
 The result of the task is the script's output. The task ends `done` when the script exits 0,
@@ -563,7 +572,8 @@ way, under the same `!raw` escape:
 
 ```tony
 spawn:
-  doer: {agent: verse, with: {network: {mode: open}}}
+  agent: {name: verse}
+  environment: {systems: {network: {mode: open}}}
   prompt:   "Review $subject."
   answer:
     class:    !or [bug, nit, risk]
@@ -602,7 +612,7 @@ A run whose answer never satisfies its contract **fails**. This has four consequ
   parent is what a charter reads.
 
 A contract that cannot be parsed fails the firing where it is written, before any call to a
-model. A doer with no model to ask again, a script, is refused with a contract. It does not run
+model. A script, with no model to ask again, is refused with a contract. It does not run
 the spawn unchecked. The charter downstream was written in the belief that the contract holds,
 so a contract dropped without a word is worse than none.
 
@@ -699,7 +709,8 @@ of live tasks, keyed by task id. So a hook needs no `flow` match and no separate
 action:
   patch:  { stage: reviewing }
   spawn:
-    doer: {script: 'review "$SUBJECT"', with: {network: {mode: open}, env: {SUBJECT: $subject}}}
+    script: 'review "$SUBJECT"'
+    environment: {vars: {SUBJECT: $subject}, systems: {network: {mode: open}}}
   onDone:
     patch: { stage: reviewed }
 ```
@@ -736,9 +747,11 @@ orphaned, and never tracked. So no tracked task reaches that status.
   action:
     seq:
     - spawn:
-        doer: {script: 'lint "$SUBJECT"', with: {network: {mode: open}, env: {SUBJECT: $subject}}}
+        script: 'lint "$SUBJECT"'
+        environment: {vars: {SUBJECT: $subject}, systems: {network: {mode: open}}}
     - spawn:
-        doer: {script: 'review "$SUBJECT"', with: {network: {mode: open}, env: {SUBJECT: $subject}}}
+        script: 'review "$SUBJECT"'
+        environment: {vars: {SUBJECT: $subject}, systems: {network: {mode: open}}}
       onFailed:
         patch: { stage: rejected }
     - patch: { stage: reviewed }

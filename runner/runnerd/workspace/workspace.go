@@ -25,7 +25,6 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 
 	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/task"
 )
 
 // Git is go-git, not the git binary, and the difference is worth stating because it decides the
@@ -826,11 +825,17 @@ func describe(l *runner.Launch) string {
 }
 
 // Deliverable reports whether work here may be sent somewhere: there is a repository, and the
-// launch's policy does not refuse every push. False means a read-only workspace — nothing was
+// launch's environment gives a push to one. False means a read-only workspace — nothing was
 // ever going to leave it — which is the only case where removing it after delivering nothing
 // is not destroying something.
+//
+// THE ENVIRONMENT IS THE AUTHORITY on what may leave, here and in Salvage: a push is the run's
+// when a block gives one. The act itself is still decided by the autonomy's rows alone until
+// presence in the environment is the reach (the next step of the environment plan), so a run
+// whose rows allow a push its environment does not give could push and still be judged
+// read-only here; written spawns keep the two aligned until then.
 func (w *Workspace) Deliverable(l *runner.Launch) bool {
-	return len(w.Trees) > 0 && l.Policy.Possible(task.Step{Name: task.StepGitPush})
+	return len(w.Trees) > 0 && l.Pushes("")
 }
 
 // Remove drops the whole workspace. The runner calls it when a task ends, unless it was told to

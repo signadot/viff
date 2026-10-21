@@ -2,55 +2,45 @@
 context:
 - tony-format/context
 define:
+  Annotations: .[object(string)]
+  Name: .[string]
+  Settings: .[object(string)]
+signature:
+  name: verse-runner-agent
+---
+context:
+- tony-format/context
+define:
+  default: .[bool]
+  form: .[string]
+  values: .[array(string)]
+signature:
+  name: verse-runner-setting
+---
+context:
+- tony-format/context
+define:
+  annotations: .[object(string)]
+  name: .[string]
+  settings: .[object(verse-runner-setting)]
+signature:
+  name: verse-runner-agent-offer
+---
+context:
+- tony-format/context
+define:
+  autonomy: !irtype {}
+  by: .[string]
+signature:
+  name: verse-runner-autonomy
+---
+context:
+- tony-format/context
+define:
   by: .[string]
   reason: .[string]
 signature:
   name: verse-runner-cancel
----
-context:
-- tony-format/context
-define:
-  allow: .[array(string)]
-  mode: .[string]
-signature:
-  name: verse-runner-network
----
-context:
-- tony-format/context
-define:
-  from: .[string]
-  repo: .[string]
-signature:
-  name: verse-runner-repo
----
-context:
-- tony-format/context
-define:
-  repo: .[string]
-signature:
-  name: verse-runner-tracker
----
-context:
-- tony-format/context
-define:
-  effort: .[string]
-  env: .[object(string)]
-  git: .[array(verse-runner-repo)]
-  git-issue: .[array(verse-runner-tracker)]
-  model: .[string]
-  network: .[nullable(verse-runner-network)]
-signature:
-  name: verse-runner-with
----
-context:
-- tony-format/context
-define:
-  agent: .[string]
-  annotations: .[object(string)]
-  script: .[string]
-  with: !verse-runner-with null
-signature:
-  name: verse-runner-doer
 ---
 context:
 - tony-format/context
@@ -65,18 +55,29 @@ context:
 - tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
+  agent: .[nullable(verse-runner-agent)]
   answer: .[tony-base:ir]
+  autonomy: !irtype {}
   converse: .[bool]
   credential: .[string]
-  doer: !verse-runner-doer null
+  environment: !irtype {}
   id: .[string]
   occurrence: .[int]
-  policy: !irtype {}
+  person: .[string]
   prompt: .[string]
   provenance: !verse-runner-provenance null
+  script: .[string]
   timeout: .[string]
 signature:
   name: verse-runner-launch
+---
+context:
+- tony-format/context
+define:
+  allow: .[array(string)]
+  mode: .[string]
+signature:
+  name: verse-runner-network
 ---
 context:
 - tony-format/context
@@ -88,10 +89,10 @@ signature:
 context:
 - tony-format/context
 define:
-  by: .[string]
-  policy: !irtype {}
+  from: .[string]
+  repo: .[string]
 signature:
-  name: verse-runner-policy
+  name: verse-runner-repo
 ---
 context:
 - tony-format/context
@@ -122,6 +123,14 @@ signature:
 context:
 - tony-format/context
 define:
+  builds: !irtype {}
   ceiling: !irtype {}
 signature:
   name: verse-runner-system
+---
+context:
+- tony-format/context
+define:
+  repo: .[string]
+signature:
+  name: verse-runner-tracker

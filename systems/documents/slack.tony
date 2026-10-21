@@ -3,20 +3,20 @@ description: "The channels of a Slack workspace that the runner's bot is in. Eac
 verbs:
 - name: post
   description: "Post a message in a channel. What you read back is the message's ts, which a reply and a reaction name, and its link."
-  params:
+  fields:
   - {name: channel, form: lower, description: "the channel's name, lowercase and without the `#` (deploys)"}
 - name: reply
   description: "Reply in a thread of a channel, under the message whose ts is the thread's."
-  params:
+  fields:
   - {name: channel, form: lower, description: "the channel's name, lowercase and without the `#` (deploys)"}
   - {name: thread, description: "the ts of the thread's first message"}
 - name: read
   description: "Read a channel's recent messages, or a thread's, newest last; since a ts, when one is given. What a person wrote comes into the task's context as it is."
-  params:
+  fields:
   - {name: channel, form: lower, description: "the channel's name, lowercase and without the `#` (deploys)"}
   - {name: thread, description: "the ts of the thread's first message, or empty for the channel's own messages"}
 - name: react
   description: "Add a reaction to a message, by the message's ts and the emoji's name."
-  params:
+  fields:
   - {name: channel, form: lower, description: "the channel's name, lowercase and without the `#` (deploys)"}
   - {name: emoji, description: "the emoji's name, without the colons (white_check_mark)"}

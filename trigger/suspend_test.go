@@ -351,9 +351,11 @@ func (h *heldHandle) Pause(string) error                               { h.mu.Lo
 func (h *heldHandle) Resume(string) error                              { return nil }
 func (h *heldHandle) Cancel(string, string) error                      { return nil }
 func (h *heldHandle) Steer(string, string, string) error               { return nil }
-func (h *heldHandle) SetPolicy(task.Policy, string) error              { return nil }
+func (h *heldHandle) SetAutonomy(task.Autonomy, string) error          { return nil }
 func (h *heldHandle) Result() string                                   { return "" }
 func (h *heldHandle) Err() string                                      { return "" }
+func (*heldHandle) Refused() map[string]int                            { return nil }
+func (*heldHandle) Agent() (string, map[string]string)                 { return "", nil }
 
 // finish ends the task done.
 func (h *heldHandle) finish() {
@@ -414,10 +416,10 @@ func TestAHookLandsAndItsLaunchParks(t *testing.T) {
 			Condition: Condition{Subject: prSubject("open")},
 			Action: Action{
 				Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-				Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "review"},
+				Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review"},
 				OnDone: &Action{
 					Patch: entity.Obj{"stage": "reviewed"}.Payload(),
-					Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "merge"},
+					Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "merge"},
 				},
 			},
 		},
@@ -426,10 +428,10 @@ func TestAHookLandsAndItsLaunchParks(t *testing.T) {
 			Condition: Condition{Subject: prSubject("picking")},
 			Action: Action{
 				Patch: entity.Obj{"stage": "picked"}.Payload(),
-				Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "pick"},
+				Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "pick"},
 				OnDone: &Action{
 					Patch: entity.Obj{"stage": "chosen"}.Payload(),
-					Spawn: &launch.Spec{Prompt: "act", Doer: runner.Doer{Agent: "verse"}},
+					Spawn: &launch.Spec{Prompt: "act", Agent: &runner.Agent{Name: "verse"}},
 				},
 			},
 		},
@@ -438,7 +440,7 @@ func TestAHookLandsAndItsLaunchParks(t *testing.T) {
 			Condition: Condition{Subject: Match{"path": pathOf("demo", "issue", "*"), "value": map[string]any{"stage": "open"}}},
 			Action: Action{
 				Patch:  entity.Obj{"stage": "triaging"}.Payload(),
-				Spawn:  &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "triage"},
+				Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "triage"},
 				OnDone: &Action{Patch: entity.Obj{"stage": "triaged"}.Payload()},
 			},
 		},
@@ -518,14 +520,14 @@ func TestDrainingRefusesAFiringWhileAParkedLaunchStarts(t *testing.T) {
 			Condition: Condition{Subject: prSubject("open")},
 			Action: Action{
 				Patch:  entity.Obj{"stage": "reviewing"}.Payload(),
-				Spawn:  &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "review"},
-				OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload(), Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "notify"}},
+				Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review"},
+				OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload(), Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "notify"}},
 			},
 		},
 		{
 			Name:      "merge",
 			Condition: Condition{Subject: prSubject("reviewed")},
-			Action:    Action{Patch: entity.Obj{"stage": "merging"}.Payload(), Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "merge"}},
+			Action:    Action{Patch: entity.Obj{"stage": "merging"}.Payload(), Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "merge"}},
 		},
 	} {
 		if err := eng.AddTrigger(trig); err != nil {

@@ -21,7 +21,7 @@ metadata:
 data:
   # What the runner offers and how it reaches what it needs. Nothing here is a default the image
   # could have guessed. What a task works on — its repositories, what may leave each, the network
-  # it may reach — is the SPAWN's to say (`doer.with` on the charter); the runner checks each
+  # it may reach — is the SPAWN's to say (its `environment` on the charter); the runner checks each
   # launch against this, pushes from its own mirror with its own token, and the task never has a
   # route to the forge.
   verse-runner.tony: |
@@ -45,33 +45,30 @@ data:
     # github.com, and the token is GITHUB_TOKEN (the verse-runner Secret, below).
     repos:
       mirrors: /state/mirrors
-    # The operator's line over every system this runner holds for its tasks, read again at
-    # each act whatever a spawn's policy says. The four it performs with its token are kept to
-    # signadot's repositories; the three it stops inside a run are stated as open, so the list
-    # is the whole of what any task here may reach.
+    # The operator's line over every system this runner holds for its tasks: what a spawn's
+    # environment may give, held at install, at launch and again at each act. A ceiling lists
+    # what it allows and nothing else is allowed, so a system with no ceiling here is closed; a
+    # block naming no verb (`{}`) allows every verb of its system.
+    # signadot's repositories, and their branches under verse/; main of verse's own, which its
+    # comment-drift merge lands on. No network ceiling: tasks get what the sandbox builds.
     systems:
       git:
         ceiling:
-        - {match: {repo: "github.com/signadot/**"}, then: allow}
-        - {then: deny}
-      git-issue:
-        ceiling:
-        - {match: {repo: "github.com/signadot/**"}, then: allow}
-        - {then: deny}
-      github:
-        ceiling:
-        - {match: {repo: "github.com/signadot/**"}, then: allow}
-        - {then: deny}
-      github-issue:
-        ceiling:
-        - {match: {repo: "github.com/signadot/**"}, then: allow}
-        - {then: deny}
-      files:
-        ceiling: [{then: allow}]
-      commands:
-        ceiling: [{then: allow}]
-      agent:
-        ceiling: [{then: allow}]
+        - repo: github.com/signadot/verse
+          fetch: {}
+          push:
+          - {ref: refs/heads/main, force: "false", delete: "false"}
+          - {ref: "refs/heads/verse/**"}
+        - repo: "github.com/signadot/**"
+          fetch: {}
+          push: {ref: "refs/heads/verse/**"}
+      git-issue: {ceiling: {repo: "github.com/signadot/**"}}
+      github: {ceiling: {repo: "github.com/signadot/**"}}
+      github-issue: {ceiling: {repo: "github.com/signadot/**"}}
+      files: {ceiling: {}}
+      commands: {ceiling: {}}
+      question: {ceiling: {}}
+      agent: {ceiling: {}}
 ---
 apiVersion: apps/v1
 kind: Deployment

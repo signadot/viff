@@ -29,7 +29,7 @@ var (
 
 // repoTools are what a task with repositories may ask its runner for: push and fetch for every
 // repository, and the pull request tools where the runner's forge is a GitHub (github). Each
-// may be called as many times as the work needs, and the task's policy decides each call.
+// may be called as many times as the work needs, and the task's autonomy decides each call.
 func repoTools(cl *delivery.Client, ws *workspace.Workspace, github bool) []agent.Tool {
 	var all []string
 	for _, t := range ws.Trees {
@@ -68,7 +68,7 @@ func oneOf(names []string) []string {
 }
 
 // pushToolFor is the agent's way to send work out of the sandbox: a branch of one repo, pushed,
-// deleted or rewritten, as the task's policy decides. No branch named is the task's own. The
+// deleted or rewritten, as the task's autonomy decides. No branch named is the task's own. The
 // runner decides again, knowing more: a deny row refuses there whatever the task sent.
 func pushToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) agent.Tool {
 	resolve := func(in map[string]any) (t *workspace.Tree, branch, ref string, del, force bool, err error) {
@@ -92,9 +92,9 @@ func pushToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) a
 			"your brief names; uncommitted changes are never delivered, and a commit without the trailers " +
 			"is refused with what is missing. `branch` is where it goes; omit it to push your own branch " +
 			"under its own name. A push fast-forwards unless `force` says it may rewrite the branch; a " +
-			"branch you created is yours to rewrite. The task's policy decides each push by its " +
+			"branch you created is yours to rewrite. The task's autonomy decides each push by its " +
 			"repository, branch, and whether it deletes or rewrites: your brief says what it decides. The " +
-			"runner holds the credential; you never see it. A push may be refused, by the policy, by a " +
+			"runner holds the credential; you never see it. A push may be refused, by the autonomy, by a " +
 			"supervisor or by the remote's own rules about its history, and a refusal is an answer, not " +
 			"an error to retry. Repositories: " + strings.Join(names, ", ") + ".",
 		Params: map[string]any{
@@ -110,8 +110,8 @@ func pushToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) a
 			if err != nil {
 				return nil, false // refused before any question, by Do
 			}
-			fields := map[string]string{"repo": t.Repo.Repo.Canonical(), "ref": ref, "delete": strconv.FormatBool(del), "force": strconv.FormatBool(force)}
-			// What the runner knows of the branch, asked for now so the policy decides here on
+			fields := map[string]string{"repo": t.Repo.Repo.Canonical(), "from": t.Repo.From, "ref": ref, "delete": strconv.FormatBool(del), "force": strconv.FormatBool(force)}
+			// What the runner knows of the branch, asked for now so the autonomy decides here on
 			// the facts the runner decides on at the act. A runner that cannot say leaves them
 			// out, and a row that names them does not match.
 			if rep, err := askState(cl, t.Repo.Name(), branch); err == nil && rep.OK {
@@ -130,7 +130,7 @@ func pushToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) a
 }
 
 // prTool opens or updates a pull request from a branch the task pushed: its own when none is
-// named, into the branch its checkout started from when no base is named. The task's policy
+// named, into the branch its checkout started from when no base is named. The task's autonomy
 // decides it (github.create-pr, github.update-pr), and the runner requires the branch to be one
 // this run pushed.
 func prTool(cl *delivery.Client, ws *workspace.Workspace, names []string, name string) agent.Tool {
@@ -229,7 +229,7 @@ func fetchToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) 
 			if t == nil {
 				return nil, false
 			}
-			return map[string]string{"repo": t.Repo.Repo.Canonical()}, true
+			return map[string]string{"repo": t.Repo.Repo.Canonical(), "from": t.Repo.From}, true
 		},
 		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
 			t := treeOf(ws, names, tu.Input)
@@ -268,21 +268,21 @@ func relay(rep delivery.Reply, err error) (string, bool, error) {
 }
 
 // repoBrief tells the agent what its working directory holds, and how its work leaves: commit
-// it, with the trailers, then push, as the policy decides. It rides the prompt, for the reason
+// it, with the trailers, then push, as the autonomy decides. It rides the prompt, for the reason
 // #16 gave: the default frame is derived from the tools and gates, and this is the runner's
 // convention, not advice.
 func repoBrief(ws *workspace.Workspace, trailers []string, l *runner.Launch) string {
 	b := ws.Brief()
 	if !ws.Deliverable(l) {
 		if len(ws.Trees) > 0 {
-			b += "Nothing here is delivered anywhere: the task's policy refuses every push.\n\n"
+			b += "Nothing here is delivered anywhere: the task's autonomy refuses every push.\n\n"
 		}
 		return b
 	}
 	b += "To deliver work, commit it in the repository it belongs to, then call `git-push`, naming the " +
 		"branch it goes to; with no branch it pushes your own branch, `" + ws.Branch + "`, under that " +
-		"name. What the task's policy decides about a push (by repo, ref, delete, force): " +
-		l.Policy.About(task.StepGitPush) + ". Only commits are delivered; uncommitted " +
+		"name. What the task's autonomy decides about a push (by repo, ref, delete, force): " +
+		l.Autonomy.About(task.StepGitPush) + ". Only commits are delivered; uncommitted " +
 		"changes stay here. End every commit message with these trailers, as its last paragraph, exactly:\n"
 	for _, line := range trailers {
 		b += "  " + line + "\n"

@@ -33,17 +33,22 @@ import (
 // told to use it, and nothing stops it opening its own socket. That is why Unconfined refuses
 // NetworkAllow rather than claiming it.
 
-// Egress is an allowlisting HTTP proxy for one task.
+// Egress is one task's HTTP proxy, deciding each connection: the runner's own hosts for the task
+// (its model), and every other destination as the network's `tcp-client` step, decided by the
+// task's environment, its autonomy and the runner's ceiling (decide; see connectionRefused).
 //
-// Per task rather than per runner, because the allowlist is the launch's and the refusals
+// Per task rather than per runner, because what it decides by is the launch's and the refusals
 // are worth attributing. A refusal is the interesting event here: it is the only place a runner
 // finds out that a task tried to reach something nobody said it could, which is a signal about
 // the work — a dependency nobody declared, or an agent doing something surprising — as much as
 // about security.
 type Egress struct {
 	id    string
-	rules []rule
+	rules []rule // the runner's own hosts for the task
 	log   io.Writer
+	// decide is why a destination that is none of the runner's own hosts is refused, or nil to
+	// let it through, by its host (lower case, no trailing dot) and port. Nil refuses it.
+	decide func(host, port string) error
 
 	dial net.Dialer
 
@@ -51,24 +56,23 @@ type Egress struct {
 	refused map[string]int // destination → times, so a log does not repeat forever
 }
 
-// rule is one allowlist entry.
+// rule is one of the runner's own hosts.
 type rule struct {
 	host     string // lowercased, no port
 	wildcard bool   // the entry was `*.example.com`: match any subdomain, not the bare domain
 	port     string // "" = the web ports only, see permits
 }
 
-// NewEgress builds a proxy over an allowlist. An empty allowlist is an error rather than a proxy
-// that permits nothing: a launch that asked for an allow network and listed nothing has
-// said something contradictory, and a task that cannot reach anything is a task that should have
-// asked for none.
-func NewEgress(id string, allow []string, log io.Writer) (*Egress, error) {
-	if len(allow) == 0 {
-		return nil, fmt.Errorf("an egress allowlist with no entries permits nothing — " +
+// NewEgress builds a proxy over the runner's own hosts for the task (own: its model's, as
+// `host`, `host:port` or `*.domain`, a host with no port being the web ports) and decide for every
+// other destination. One with neither is an error rather than a proxy that permits nothing.
+func NewEgress(id string, own []string, decide func(host, port string) error, log io.Writer) (*Egress, error) {
+	if len(own) == 0 && decide == nil {
+		return nil, fmt.Errorf("an egress proxy with no host of its own and nothing to decide by permits nothing — " +
 			"a launch that means that wants network none")
 	}
-	rules := make([]rule, 0, len(allow))
-	for _, entry := range allow {
+	rules := make([]rule, 0, len(own))
+	for _, entry := range own {
 		r, err := parseAllow(entry)
 		if err != nil {
 			return nil, err
@@ -76,7 +80,7 @@ func NewEgress(id string, allow []string, log io.Writer) (*Egress, error) {
 		rules = append(rules, r)
 	}
 	return &Egress{
-		id: id, rules: rules, log: log,
+		id: id, rules: rules, log: log, decide: decide,
 		dial:    net.Dialer{Timeout: 20 * time.Second},
 		refused: map[string]int{},
 	}, nil
@@ -100,8 +104,11 @@ func parseAllow(entry string) (rule, error) {
 	return r, nil
 }
 
-// Permits reports whether a destination (host:port) is on the allowlist, and says what it was
-// measured against when it is not — a refusal nobody can read is a refusal somebody will disable.
+// Permits is why a destination (host:port) is refused, or nil: one of the runner's own hosts
+// for the task, or else as decide says. The host is read in lower case and without a trailing
+// dot, the one spelling the environment's shapes are written in, so `Example.com.` is not a way
+// past a row on `example.com`. A refusal says what it was measured against: a refusal nobody can
+// read is a refusal somebody will disable.
 func (e *Egress) Permits(hostport string) error {
 	host, port, err := net.SplitHostPort(hostport)
 	if err != nil {
@@ -112,21 +119,17 @@ func (e *Egress) Permits(hostport string) error {
 		if !r.matchHost(host) {
 			continue
 		}
-		if r.port == "" {
-			// An entry that named no port means the web ports and not "anything on this host".
-			// The narrower reading is the right default: an allowlist is written to name a
-			// service, and a host with a database on it is the case that would silently widen.
-			if port == "80" || port == "443" {
-				return nil
-			}
-			continue
-		}
-		if r.port == port {
+		// An entry that named no port means the web ports and not "anything on this host": the
+		// runner's own hosts are services, and a host with a database on it would silently widen.
+		if (r.port == "" && (port == "80" || port == "443")) || r.port == port {
 			return nil
 		}
 	}
-	return fmt.Errorf("egress: %s is not on this task's allowlist (%s)",
-		hostport, strings.Join(e.allowed(), ", "))
+	if e.decide == nil {
+		return fmt.Errorf("egress: %s is none of the hosts this task's proxy reaches (%s)",
+			hostport, strings.Join(e.allowed(), ", "))
+	}
+	return e.decide(host, port)
 }
 
 func (r rule) matchHost(host string) bool {
@@ -207,7 +210,7 @@ func (e *Egress) connect(w http.ResponseWriter, r *http.Request) {
 	}
 	if perr := e.Permits(dest); perr != nil {
 		e.note(dest, perr)
-		e.refuseTunnel(w, dest)
+		e.refuseTunnel(w, perr)
 		return
 	}
 	up, derr := e.dial.DialContext(r.Context(), "tcp", dest)
@@ -245,9 +248,8 @@ func (e *Egress) connect(w http.ResponseWriter, r *http.Request) {
 // So the explanation goes in the REASON PHRASE, which is the one part that survives. ASCII and one
 // line, because that is what a status line is; the long version is in the body for a client that
 // does read it, and on the runner's log either way.
-func (e *Egress) refuseTunnel(w http.ResponseWriter, dest string) {
-	why := fmt.Sprintf("Forbidden: %s is not on this task's egress allowlist (%s)",
-		dest, strings.Join(e.allowed(), " "))
+func (e *Egress) refuseTunnel(w http.ResponseWriter, refused error) {
+	why := "Forbidden: " + strings.Join(strings.Fields(strings.TrimPrefix(refused.Error(), "egress: ")), " ")
 	hj, ok := w.(http.Hijacker)
 	if !ok {
 		http.Error(w, why, http.StatusForbidden)
@@ -311,10 +313,10 @@ type EgressServer struct {
 	srv    *http.Server
 }
 
-// ServeEgress serves a proxy over allow for one task, on a socket in dir: a directory no sandbox
-// binds, so the path is the runner's; the sandbox binds it in at EgressPath.
-func ServeEgress(dir, id string, allow []string, log io.Writer) (*EgressServer, error) {
-	eg, err := NewEgress(id, allow, log)
+// ServeEgress serves a proxy for one task (NewEgress), on a socket in dir: a directory no
+// sandbox binds, so the path is the runner's; the sandbox binds it in at EgressPath.
+func ServeEgress(dir, id string, own []string, decide func(host, port string) error, log io.Writer) (*EgressServer, error) {
+	eg, err := NewEgress(id, own, decide, log)
 	if err != nil {
 		return nil, err
 	}

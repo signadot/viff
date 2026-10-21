@@ -3,5 +3,5 @@ description: "The files of the task's workspace, which a doer reads and writes i
 verbs:
 - name: write
   description: "Write a file under the workspace root."
-  params:
+  fields:
   - {name: path, description: "the path written, relative to the workspace root; in a workspace with repositories it begins with the repository's directory"}

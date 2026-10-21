@@ -154,7 +154,7 @@ func flatRefs(p entity.Payload) []string {
 // write instead of only what is wrong.
 //
 // A warning rather than an error for the other reason too: re-asking is a legitimate thing to
-// want. "Ask again next time somebody touches it" is a real policy, and a rule that means it
+// want. "Ask again next time somebody touches it" is a real autonomy, and a rule that means it
 // is indistinguishable from one that forgot.
 func adviseDenyLatch(t Trigger) []string {
 	pred := t.Condition.Subject.Predicate()

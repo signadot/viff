@@ -17,16 +17,16 @@ import (
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/runner/runnerd/verserunner"
 	"github.com/signadot/verse/task"
 )
 
 // thenKinds is what may follow a yes, by the key that names it. One key per kind, so what runs
 // is said by which key is there, and a record never carries two things to do. A prompt or a
-// script takes a `policy` beside it, what its run is given (thenPolicy).
-var thenKinds = map[string]bool{"prompt": true, "script": true, "answer": true, "ask": true}
+// spawn is a task written as a charter's spawn is (thenSpec).
+var thenKinds = map[string]bool{"spawn": true, "answer": true, "ask": true}
 
 // askGate is the gate a person's ask poses under: the ask is the question, and nothing else
 // asked it.
@@ -130,31 +130,22 @@ func (s *Server) raiseAsk(store entity.Store, asker string, body api.Ask, now ti
 }
 
 // followRecord checks what follows an answer, `then` on a yes or `else` on a no, as field names it,
-// and answers it as the record keeps it: one key naming one thing to run, and with a prompt or a
-// script the policy its run is given.
+// and answers it as the record keeps it: one key naming one thing to run.
 func followRecord(field string, follow entity.Payload, asker string, now time.Time) (entity.Obj, error) {
 	fields := entity.Fields(follow)
-	policy, hasPolicy := fields["policy"]
-	delete(fields, "policy")
 	if len(fields) != 1 {
-		return nil, fmt.Errorf("%s names one thing to run, as one key (prompt); it has %d", field, len(fields))
+		return nil, fmt.Errorf("%s names one thing to run, as one key (spawn, answer, ask); it has %d", field, len(fields))
 	}
 	for k, v := range fields {
 		if !thenKinds[k] {
-			return nil, fmt.Errorf("%s: %q is not something an ask runs yet (prompt, script, answer, ask)", field, k)
-		}
-		if hasPolicy && k != "prompt" && k != "script" {
-			return nil, fmt.Errorf("%s.policy: a policy is what a prompt or a script runs under, and %s runs neither", field, k)
+			return nil, fmt.Errorf("%s: %q is not something an ask runs (spawn, answer, ask)", field, k)
 		}
 		switch k {
-		case "prompt":
-			if entity.Str(follow, k) == "" {
-				return nil, fmt.Errorf("%s.prompt is text, and says what to do", field)
+		case "spawn":
+			if _, err := thenSpec(v); err != nil {
+				return nil, fmt.Errorf("%s.spawn%w", field, err)
 			}
-		case "script":
-			if entity.Str(follow, k) == "" {
-				return nil, fmt.Errorf("%s.script is text, and is run as a shell script", field)
-			}
+			return entity.Obj{k: v}, nil
 		case "answer":
 			if _, err := thenAnswerOf(entity.ToObj(v)); err != nil {
 				return nil, fmt.Errorf("%s.answer: %w", field, err)
@@ -170,33 +161,41 @@ func followRecord(field string, follow entity.Payload, asker string, now time.Ti
 			}
 			return entity.Obj{k: entity.ToObj(v)}, nil
 		}
-		out := entity.Obj{k: v}
-		if hasPolicy {
-			if _, err := thenPolicy(policy); err != nil {
-				return nil, fmt.Errorf("%s.policy: %w", field, err)
-			}
-			out["policy"] = policy
-		}
-		return out, nil
 	}
 	return nil, nil
 }
 
-// thenPolicy is the policy a then's run is given, read strictly as a policy a person writes is,
-// and checked. Absent, none: the run is given no verb.
-func thenPolicy(n *ir.Node) (task.Policy, error) {
-	if n == nil {
-		return nil, nil
-	}
+// thenSpec reads a then's spawn: a spawn as a charter writes one (launch.Spec), read strictly and
+// meaning only what it says, written by hand (launch.Spec.CheckByHand), and of the shape a runner
+// checks (runner.Launch.Check). Its task is about the ask, so it names no subject of its own. A
+// refusal starts with the field it is about (`: …` for the whole, `.environment…` for a key).
+func thenSpec(n *ir.Node) (launch.Spec, error) {
+	var spec launch.Spec
 	var b bytes.Buffer
-	if err := codec.EncodeNode(&b, n, codec.Tony); err != nil {
-		return nil, err
+	err := codec.EncodeNode(&b, n, codec.Tony)
+	if err == nil {
+		err = codec.UnmarshalStrict(b.Bytes(), &spec, codec.Tony)
 	}
-	var p task.Policy
-	if err := codec.UnmarshalStrict(b.Bytes(), &p, codec.Tony); err != nil {
-		return nil, err
+	if err != nil {
+		return spec, fmt.Errorf(": %w", err)
 	}
-	return p, p.Check()
+	if spec.Subject != "" {
+		return spec, errors.New(".subject: a then's task is about its ask")
+	}
+	if err := spec.CheckByHand(); err != nil {
+		return spec, fmt.Errorf(".%w", err)
+	}
+	l, err := launchOf("then", spec, "")
+	if err == nil {
+		err = l.Check()
+	}
+	if err == nil {
+		err = runner.CheckReach(l.Autonomy, l.Environment)
+	}
+	if err != nil {
+		return spec, fmt.Errorf(": %w", err)
+	}
+	return spec, nil
 }
 
 // askGrants is who reads an ask and who answers it: read by its asker and whom it asks, and
@@ -563,12 +562,11 @@ func (s *Server) followAsk(ref entity.Ref, field string) {
 			return
 		}
 	}
-	prompt := entity.Str(then, "prompt")
-	script := entity.Str(then, "script")
-	policy, perr := thenPolicy(entity.Get(then, "policy"))
-	if (prompt == "" && script == "") || asker == "" || entity.Get(ent.Payload, field+"-task") != nil {
+	node := entity.Get(then, "spawn")
+	if node == nil || asker == "" || entity.Get(ent.Payload, field+"-task") != nil {
 		return
 	}
+	spec, perr := thenSpec(node)
 	id, err := spawnID(api.Spawn{Name: ref.Name()})
 	if err != nil {
 		return
@@ -587,7 +585,7 @@ func (s *Server) followAsk(ref entity.Ref, field string) {
 	}
 	err = perr
 	if err == nil {
-		err = s.runThen(id, ref, asker, prompt, script, policy)
+		err = s.runThen(id, ref, asker, spec)
 	}
 	if err != nil {
 		// Marked, so it is not tried again at every restart, and said, since the mark names a task
@@ -599,33 +597,29 @@ func (s *Server) followAsk(ref entity.Ref, field string) {
 
 // runThen starts what follows a yes, as a task of the asker's: its principal and its record are
 // theirs, and its subject is the ask. It is the spawn `verse task run` makes, on the asker's
-// authority alone: a prompt for a model, or a script run as written, under the policy the asker
-// wrote beside it.
-func (s *Server) runThen(id string, ref entity.Ref, asker, prompt, script string, policy task.Policy) error {
+// authority alone, as the asker wrote it (thenSpec).
+func (s *Server) runThen(id string, ref entity.Ref, asker string, spec launch.Spec) error {
 	store := entity.As(s.Store, asker)
-	place, placeName, err := s.runnerFor(store, "")
+	place, placeName, err := s.runnerFor(store, spec.Runner)
 	if err != nil {
 		return err
 	}
-	// It is given what its policy names, as a spawn is; with none, no verb of any system, so a
-	// prompt's model reads and answers, and a script runs as written with no tools to call. Either
-	// has the host's network, as `task run` gives a run nobody narrowed: the asker is the author.
-	doer := runner.Doer{Agent: verserunner.AgentName}
-	if script != "" {
-		doer = runner.Doer{Script: script}
+	if spec.VirtualKey, err = credentialAt(store, asker, spec.VirtualKey); err != nil {
+		return err
 	}
-	doer.With.Network = &runner.Network{Mode: runner.NetworkOpen}
+	l, err := launchOf(id, spec, asker)
+	if err != nil {
+		return err
+	}
 	// ITS QUESTIONS ARE THE ASKER'S: a gate or an ask of its own naming nobody waits on them.
 	answerers := []string{task.PrincipalAnswerer}
-	s.host(id, hostedTask{subject: ref.String(), principal: asker, answerers: answerers, policy: policy})
-	h := place.Launch(runner.Launch{
-		ID: id, Prompt: prompt, Doer: doer, Policy: policy,
-		Provenance: runner.Provenance{Principal: asker, Subject: ref.String()},
-	})
+	s.host(id, hostedTask{subject: ref.String(), principal: asker, answerers: answerers, autonomy: l.Autonomy})
+	l.Provenance.Subject = ref.String()
+	h := place.Launch(l)
 	eng := s.engineOf("")
 	s.reflect(store, id, h, mirror.Meta{
-		Runner: place.Ref(), RunnerName: placeName, Subject: ref.String(), Prompt: prompt,
-		Doer: doer.Name(), Policy: policy, Asker: asker, Answerers: answerers,
+		Runner: place.Ref(), RunnerName: placeName, Subject: ref.String(), Prompt: l.Prompt,
+		Agent: recordAgent(l.Agent), Script: l.Script != "", Autonomy: l.Autonomy, Asker: asker, Answerers: answerers,
 		HeldBy: func() []string { return eng.HeldBy(id) },
 	})
 	eng.Adopt(ref.String(), id, h)

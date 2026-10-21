@@ -282,11 +282,11 @@ func TestAnElseIsCheckedAndChangingItAsksAgain(t *testing.T) {
 	}
 	id := askID(t, ask(t, thScott, ts.URL, `{name: ship, question: "Ship it?", answerers: [ann@example.com]}`))
 	posed(t, srv, mirror.AskRef(id))
-	if resp := change(t, thScott, ts.URL, id, `{else: {prompt: "tell the channel it was declined"}}`); resp.StatusCode != http.StatusOK {
+	if resp := change(t, thScott, ts.URL, id, `{else: {spawn: {prompt: "tell the channel it was declined", environment: {systems: {network: {mode: open}}}}}}`); resp.StatusCode != http.StatusOK {
 		t.Fatalf("a new else: %s: %s", resp.Status, bodyOf(t, resp))
 	}
 	e, _, _ := srv.Store.Get(mirror.AskRef(id))
-	if got := mirror.EditOf(e.Payload); got != 2 || entity.Str(entity.Get(e.Payload, "else"), "prompt") == "" {
+	if got := mirror.EditOf(e.Payload); got != 2 || entity.Str(entity.Get(entity.Get(e.Payload, "else"), "spawn"), "prompt") == "" {
 		t.Fatalf("after a new else the ask is at edit %d with else %v, want edit 2 and the new else", got, entity.Get(e.Payload, "else"))
 	}
 }

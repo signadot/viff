@@ -42,7 +42,8 @@ rules:
   action:
     patch: {stage: reviewing}
     spawn:
-      doer: {script: 'echo reviewing "$SUBJECT"; sleep 2', with: {network: {mode: open}, env: {SUBJECT: $subject}}}
+      script: 'echo reviewing "$SUBJECT"; sleep 2'
+      environment: {vars: {SUBJECT: $subject}, systems: {network: {mode: open}}}
     onDone:
       patch: {stage: reviewed}
 EOF
@@ -54,7 +55,7 @@ verse data verse-tutorial latch 1                # stage: reviewing, then review
 the entity. `onDone` is a completion [hook](../glossary.md#hook): when that task reaches `done`,
 the engine fires it about the same subject
 ([completion hooks](../reference/action.md#completion-hooks-one-trigger-chaining-visible)). A
-script reads the subject from its environment, `with.env`, rather than from its text: data
+script reads the subject from its environment's vars, `environment: {vars: …}`, rather than from its text: data
 reaches a script as a variable, never spliced into a command.
 
 ## Steps in order
@@ -73,9 +74,11 @@ rules:
     patch: {stage: building}
     seq:
     - spawn:
-        doer: {script: 'echo lint "$SUBJECT"', with: {network: {mode: open}, env: {SUBJECT: $subject}}}
+        script: 'echo lint "$SUBJECT"'
+        environment: {vars: {SUBJECT: $subject}, systems: {network: {mode: open}}}
     - spawn:
-        doer: {script: 'echo test "$SUBJECT"', with: {network: {mode: open}, env: {SUBJECT: $subject}}}
+        script: 'echo test "$SUBJECT"'
+        environment: {vars: {SUBJECT: $subject}, systems: {network: {mode: open}}}
       onFailed:
         patch: {stage: broken}
     onDone:

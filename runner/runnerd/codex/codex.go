@@ -1,5 +1,5 @@
 // Package codex is the codex agent: OpenAI's Codex as a verse task, with every command and every
-// patch it proposes decided by the task's policy and shown on the read plane. A spawn asks for it
+// patch it proposes decided by the task's autonomy and shown on the read plane. A spawn asks for it
 // with `doer: {agent: codex}`, and a runner that hosts it builds its task with Task.
 //
 // It is an agent of its own beside verse's (package agent), and it exists because of what the
@@ -18,24 +18,24 @@
 //   - Next waits on codex. Each approval codex requests is the next proposed action, with the
 //     steps it is derived here — `commands.run` for a command, `files.write` for each path of
 //     a patch. A host a command asks to reach is no step: what the task reaches is its
-//     `with.network`, built around codex's process, whatever codex is told. A request that is several
+//     environment's `network`, built around codex's process, whatever codex is told. A request that is several
 //     steps is asked about once, under the first of them a gate names (stepOf). The supervisor
-//     gates it exactly as it gates the verse agent's `run_bash` or `write_file`: the policy
+//     gates it exactly as it gates the verse agent's `run_bash` or `write_file`: the autonomy
 //     decides, a blocked question goes to the docket, `verse question` answers it.
 //     A question codex has for a person is the step `question.ask`, as the `question-ask` tool's use is,
-//     and once the policy lets it go it is put to them.
+//     and once the autonomy lets it go it is put to them.
 //     The gate model gains nothing new.
 //   - Execute answers codex. Proceed is `accept`, and the executor then waits for the item to
 //     complete so the loop's exec frame carries what the command printed and how it exited. A
 //     refused gate is `decline`, and codex is told why through the turn, so the model plans
 //     around it rather than retrying it.
 //   - Approval policy `untrusted` makes codex ask about every command it does not know to be
-//     read-only and every patch. Under a policy that allows them verse answers yes at once, and the
+//     read-only and every patch. Under an autonomy that allows them verse answers yes at once, and the
 //     run is unattended but narrated and on the record, action by action.
 //
 // The runner's own tools are offered to codex as its own (`dynamicTools` on `thread/start`, in
 // codex's experimental API), and a call codex makes of one (`item/tool/call`) is an action of
-// the loop like an approval is: the tool's own step classifies it, the policy decides
+// the loop like an approval is: the tool's own step classifies it, the autonomy decides
 // it, its Do performs it in this process, and the result is the call's output. `git-push` is the first; it is
 // how codex delivers, since there is no finisher doing it for an agent that can decide.
 //
@@ -43,7 +43,7 @@
 // `with.effort` the reasoning effort of its turns, over the `codex:` section's model.
 //
 // What codex does WITHOUT asking is the part that is attested rather than enforced: the
-// commands its own policy trusts as read-only (listing, reading, searching), and its web
+// commands its own autonomy trusts as read-only (listing, reading, searching), and its web
 // search. Those are narrated when they complete, so the read plane shows them, but no gate saw
 // them first. The verse agent has the same shape for its reads, which are no step; here the set
 // of free reads is codex's to define, and this comment is where that is said.
@@ -74,6 +74,7 @@ import (
 	"github.com/signadot/verse/answer"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/verserunner/agent"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -184,8 +185,8 @@ const (
 // Task builds a task that runs Codex over its app-server protocol in dir, with env as the codex
 // process's environment (the runner's allowlist, the launch's `with.env`, and where the task's
 // credential file is, for a task that has one), offering it tools (the runner's) as its own.
-// A launch whose policy does not name codex's shell and edits is refused: they are how it works.
-func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir string, tools []agent.Tool, ceilings map[string]task.Policy) (*task.Task, error) {
+// A launch whose autonomy does not name codex's shell and edits is refused: they are how it works.
+func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir string, tools []agent.Tool, ceilings map[string]systems.Ceiling) (*task.Task, error) {
 	var contract *answer.Contract
 	if l.Answer != nil {
 		c, err := answer.Parse(l.Answer)
@@ -194,17 +195,13 @@ func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir st
 		}
 		contract = c
 	}
-	// Codex's shell and its edits are its own: a policy may deny or ask about each, and
-	// cannot take them away, so a policy for codex names both.
-	for _, step := range []string{task.StepCommandsRun, task.StepFilesWrite} {
-		if !l.Policy.Provides(step) {
-			return nil, fmt.Errorf("the policy does not provide %s, which codex cannot run without; "+
-				"name it in a row, and deny it there to refuse every call", step)
-		}
-	}
+	// Codex's shell and its edits are its own: it can't run without them, which its offer says
+	// (Requires), so a launch whose environment gives none of one is refused where it is written
+	// (runnerd.CheckOffer), at install and again by the runner, not here. A handler with no
+	// offers checks nothing, and there such a task runs to fail at its first action.
 	d := &driver{
 		creds: creds, prompt: l.Prompt, dir: dir,
-		model: cmp.Or(l.Doer.With.Model, creds.Model), effort: l.Doer.With.Effort,
+		model: cmp.Or(l.AgentSettings().Model(), creds.Model), effort: l.AgentSettings().Settings["effort"],
 		env:      env,
 		resolver: reg,
 		log:      os.Stderr,
@@ -218,10 +215,21 @@ func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir st
 		d.contractSrc = contract.Source()
 	}
 	d.toolStep = agent.StepOf(tools)
-	sup := task.NewSupervisor(l.Policy, reg)
+	sup := task.NewSupervisor(l.Environment, l.Autonomy, reg)
 	sup.SetCeilings(ceilings)
 	sup.SetStepOf(d.stepOf(sup))
 	t := task.NewTask(l.ID, sup, d, &executor{d: d})
+	// What it runs with, Codex's section's model where the launch named none: the record's to
+	// say. One neither names is Codex's own, which it reports only to its log.
+	settings := map[string]string{}
+	for name, v := range map[string]string{runner.SettingModel: d.model, "effort": d.effort} {
+		if v != "" {
+			settings[name] = v
+		}
+	}
+	if len(settings) > 0 {
+		t.SetAgent(Agent, settings)
+	}
 	t.SetLog(os.Stderr)
 	if contract != nil {
 		t.SetAnswerCheck(&answer.Checker{C: contract, FailHint: "saying you cannot"})
@@ -235,7 +243,7 @@ type driver struct {
 	creds       Creds
 	prompt      string
 	contractSrc string
-	// model and effort are the spawn's `with`, the model over the section's own; "" leaves each
+	// model and effort are the spawn's agent's, the model over the section's own; "" leaves each
 	// to codex.
 	model, effort string
 	dir           string
@@ -293,7 +301,7 @@ type proposal struct {
 
 // stepOf is the supervisor's: the step the proposed request is decided by. A request that is
 // several steps is decided once, so it is decided by the first of them a row of the task's
-// policy names (one that is not the default and not an allow), as the policy stands now (a
+// autonomy names (one that is not the default and not an allow), as the autonomy stands now (a
 // slide changes it); where no row names any, by the first, which the rows on its verb decide. A
 // request that is no step asks nothing.
 func (d *driver) stepOf(sup *task.Supervisor) func(task.ToolUse) (task.Step, bool) {
@@ -302,7 +310,7 @@ func (d *driver) stepOf(sup *task.Supervisor) func(task.ToolUse) (task.Step, boo
 		if p == nil || len(p.steps) == 0 {
 			return task.Step{}, false
 		}
-		pol := sup.Policy()
+		pol := sup.Autonomy()
 		for _, st := range p.steps {
 			for _, r := range pol {
 				if !r.Match.Any() && r.Then.Mode != task.ThenAllow && r.Match.Matches(st) {
@@ -394,7 +402,7 @@ func (d *driver) start(ctx context.Context) error {
 		"approvalPolicy": "untrusted",
 		"sandbox":        cmp.Or(d.creds.Sandbox, defaultSandbox),
 		// Approvals come to this side and to nothing else: codex can route them to a reviewing
-		// subagent of its own, which would be a second decider the policy never sees.
+		// subagent of its own, which would be a second decider the autonomy never sees.
 		"approvalsReviewer": "user",
 		"ephemeral":         true,
 	}
@@ -605,7 +613,7 @@ func (d *driver) propose(ev event) (*proposal, task.ToolUse, error) {
 		for _, q := range p.ui.Questions {
 			qs = append(qs, q.Question)
 		}
-		// The step `question.ask`, as the `question-ask` tool's use is: decided by the policy,
+		// The step `question.ask`, as the `question-ask` tool's use is: decided by the autonomy,
 		// then put to the person.
 		p.steps = []task.Step{{Name: task.StepQuestionAsk, Fields: map[string]string{}}}
 		return p, task.ToolUse{Name: kindAsk, Input: map[string]any{"questions": qs}}, nil
@@ -700,7 +708,7 @@ func (d *driver) decline(ctx context.Context, p *proposal, note string) {
 		_ = d.rpc.Respond(p.ev.ID, toolCallAnswer(false, why+". Do not retry it; plan around it."))
 		return
 	case kindAsk:
-		// The policy refused the question, or the loop cancelled it: the model gets no answers.
+		// The autonomy refused the question, or the loop cancelled it: the model gets no answers.
 		_ = d.rpc.Respond(p.ev.ID, map[string]any{"answers": map[string]any{}})
 	}
 	why := "verse refused this " + p.kind

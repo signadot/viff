@@ -18,7 +18,7 @@ func TestTonyRoundTrip(t *testing.T) {
 		want func() any
 	}{
 		{"instance", Snapshot{
-			ID: "run-1", Prompt: "review", Driver: "llm", Status: Running,
+			ID: "run-1", Prompt: "review", Agent: "llm", Status: Running,
 			Cursor:  7,
 			Pending: []PendingGate{{ID: "d1", Gate: "shell", Step: StepCommandsRun, Fields: map[string]string{"command": "ls"}, Reason: "why"}},
 		}, func() any { return &Snapshot{} }},
@@ -34,14 +34,14 @@ func TestTonyRoundTrip(t *testing.T) {
 			Gate: "shell", Step: StepCommandsRun, Fields: map[string]string{"command": "ls"}, By: "user:walter@example.com", Proceed: true, Text: "ok",
 		}, func() any { return &Event{} }},
 
-		{"policy", Policy{
+		{"autonomy", Autonomy{
 			{Name: "release", Match: &Match{System: "git", Verb: "push", Params: map[string]string{"repo": "signadot/verse", "ref": "refs/heads/release/*"}},
 				Then: Then{Mode: ThenAsk, Ask: &Ask{Need: 2, Within: "24h", Answerers: []string{"group:release"}, Default: "deny", Labels: map[string]string{"team": "release"}}}},
 			{Match: &Match{Verb: "push"}, Then: Then{Mode: ThenDeny}},
 			{Then: Then{Mode: ThenAsk}},
-		}, func() any { return &Policy{} }},
+		}, func() any { return &Autonomy{} }},
 
-		{"policy-minimal", Policy{{Then: Then{Mode: ThenAllow}}}, func() any { return &Policy{} }},
+		{"policy-minimal", Autonomy{{Then: Then{Mode: ThenAllow}}}, func() any { return &Autonomy{} }},
 	}
 
 	for _, c := range cases {

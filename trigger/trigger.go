@@ -25,6 +25,7 @@ import (
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -865,22 +866,24 @@ func (a Action) validate() error {
 					"not derived, so text in the subject cannot choose which system a token is good for", aud)
 			}
 		}
-		// Which repositories and trackers the task works with: the shape is checked here, with
-		// the author present, rather than at a firing.
-		if err := runner.CheckWith(templatedWith(a.Spawn.Doer.With)); err != nil {
-			return fmt.Errorf("spawn.doer.%w", err)
-		}
-		if a.Spawn.Doer.Agent != "" && a.Spawn.Doer.Script != "" {
-			return fmt.Errorf("spawn.doer: names an agent and a script; a doer is one of the two")
+		// What the task can reach: the shape is checked here, with the author present, rather
+		// than at a firing.
+		if err := templatedEnvironment(a.Spawn.Environment).Check(); err != nil {
+			return fmt.Errorf("spawn.environment.%w", err)
 		}
 		// $principal is whom the task acts for, and a rule's task acts for somebody only `as:
 		// subject`.
-		if a.Spawn.As == "" && a.Spawn.Policy.NamesPrincipal() {
-			return fmt.Errorf("spawn.policy: %s is whom the task acts for, and this rule's task acts "+
+		if a.Spawn.As == "" && a.Spawn.Autonomy.NamesPrincipal() {
+			return fmt.Errorf("spawn.autonomy: %s is whom the task acts for, and this rule's task acts "+
 				"for nobody but its rule; spawn it `as: subject`, or name who answers", task.PrincipalAnswerer)
 		}
-		// A spawn's policy is checked as the runner will check it, here, with the author present.
-		if err := a.Spawn.Policy.Check(); err != nil {
+		// A spawn's autonomy is checked as the runner will check it, here, with the author present.
+		if err := a.Spawn.Autonomy.Check(); err != nil {
+			return fmt.Errorf("spawn.autonomy%w", err)
+		}
+		// Each row reaches the environment as written, its `$` attributes still unbound, before
+		// they are stood in for below.
+		if err := runner.CheckReach(a.Spawn.Autonomy, a.Spawn.Environment); err != nil {
 			return fmt.Errorf("spawn.%w", err)
 		}
 		// THE WHOLE SHAPE, as the runner checks it at the launch: a script with a prompt, a
@@ -889,7 +892,7 @@ func (a Action) validate() error {
 		if l, _ := installLaunch(*a.Spawn); l.Check() != nil {
 			return fmt.Errorf("spawn: %w", l.Check())
 		}
-		if err := launch.CheckAnnotations(a.Spawn.Doer); err != nil {
+		if err := launch.CheckAnnotations(a.Spawn.Agent); err != nil {
 			return fmt.Errorf("spawn.%w", err)
 		}
 	}
@@ -1267,44 +1270,69 @@ func (e *Engine) launch(a Action, chain string, subj entity.Ref, root entity.Pay
 // a runner offers here.
 func installLaunch(spec launch.Spec) (l runner.Launch, known bool) {
 	l = runner.Launch{
-		ID: "install", Prompt: spec.Prompt, Doer: spec.Doer, Policy: spec.Policy, Timeout: spec.Timeout,
+		ID: "install", Prompt: spec.Prompt, Script: spec.Script, Person: spec.Person,
+		Environment: templatedEnvironment(spec.Environment), Autonomy: spec.Autonomy, Timeout: spec.Timeout,
 	}
-	l.Doer.With = templatedWith(spec.Doer.With)
+	known = true
+	if spec.Agent != nil {
+		a := *spec.Agent
+		a.Annotations = maps.Clone(spec.Agent.Annotations)
+		if strings.Contains(a.Name, "$") {
+			known, a.Name = false, "chosen-at-the-firing"
+		}
+		// A setting the firing binds is the launch's to check, bound: left out here.
+		a.Settings = maps.Clone(spec.Agent.Settings)
+		maps.DeleteFunc(a.Settings, func(_, v string) bool { return strings.Contains(v, "$") })
+		l.Agent = &a
+	}
 	if spec.VirtualKey != "" {
 		// The firing carries the key's name as an annotation, which the runner's offer must take.
-		l.Doer.Annotations = maps.Clone(spec.Doer.Annotations)
-		if l.Doer.Annotations == nil {
-			l.Doer.Annotations = map[string]string{}
+		if l.Agent == nil {
+			l.Agent = &runner.Agent{}
 		}
-		l.Doer.Annotations[launch.AnnotationVirtualKey] = "install"
-	}
-	known = !strings.Contains(spec.Doer.Agent, "$")
-	if !known && l.Doer.Script == "" {
-		l.Doer.Agent = "chosen-at-the-firing"
-	}
-	for _, v := range []*string{&l.Doer.With.Model, &l.Doer.With.Effort} {
-		if strings.Contains(*v, "$") {
-			*v = ""
+		if l.Agent.Annotations == nil {
+			l.Agent.Annotations = map[string]string{}
 		}
+		l.Agent.Annotations[launch.AnnotationVirtualKey] = "install"
 	}
 	return l, known
 }
 
-// templatedWith is a spawn's `with` with each `$var` in a field the firing expands (a repo's
-// `repo` and `from`, a tracker's `repo`) stood in by a placeholder that passes the shape check,
-// so a charter writing `repo: $subject.repo` is checked for everything but the name it cannot
-// know yet. Each templated name stands in for its own text, so two that the firing names apart
-// read as two checkouts and a tracker written as its repo is reads as that repo's; a host
-// written before the `$` is kept, since which forge a repository is on is what a runner's
-// offer is checked for.
-func templatedWith(w runner.With) runner.With {
-	w.Git = templatedRepos(w.Git)
-	trackers := make([]runner.Tracker, 0, len(w.GitIssue))
-	for _, t := range w.GitIssue {
-		trackers = append(trackers, runner.Tracker{Repo: templatedRepoName(t.Repo)})
+// templatedEnvironment is a spawn's environment with each `$var` in an attribute the firing
+// expands (a repo's `repo` and `from`, a tracker's `repo`) stood in by a placeholder that
+// passes the shape check, so a charter writing `repo: $subject.repo` is checked for everything
+// but the name it cannot know yet. Each templated name stands in for its own text, so two that
+// the firing names apart read as two checkouts and a tracker written as its repo is reads as
+// that repo's; a host written before the `$` is kept, since which forge a repository is on is
+// what a runner's offer is checked for.
+func templatedEnvironment(e systems.Environment) systems.Environment {
+	out := systems.Environment{Vars: e.Vars}
+	if e.Systems == nil {
+		return out
 	}
-	w.GitIssue = trackers
-	return w
+	out.Systems = systems.Systems{}
+	for name, blocks := range e.Systems {
+		d, _ := systems.Get(name)
+		for _, b := range blocks {
+			nb := systems.Block{Attributes: map[string]string{}, Verbs: b.Verbs}
+			for k, v := range b.Attributes {
+				if strings.Contains(v, "$") {
+					a, _ := d.Attribute(k)
+					switch a.Form {
+					case systems.FormRepo:
+						v = templatedRepoName(v)
+					case systems.FormBranch:
+						v = "main"
+					default:
+						v = "templated"
+					}
+				}
+				nb.Attributes[k] = v
+			}
+			out.Systems[name] = append(out.Systems[name], nb)
+		}
+	}
+	return out
 }
 
 // templatedRepoName is a repo's name with a `$` in it stood in by a placeholder for that text.
@@ -1328,19 +1356,6 @@ func templatedRepoName(name string) string {
 	if host, rest, ok := strings.Cut(name, "/"); ok && strings.Contains(host, ".") &&
 		!strings.Contains(host, "$") && rest != "" {
 		out = host + "/" + out
-	}
-	return out
-}
-
-func templatedRepos(repos []runner.Repo) []runner.Repo {
-	out := make([]runner.Repo, 0, len(repos))
-	for _, r := range repos {
-		nr := r
-		nr.Repo = templatedRepoName(r.Repo)
-		if strings.Contains(r.From, "$") {
-			nr.From = "main"
-		}
-		out = append(out, nr)
 	}
 	return out
 }

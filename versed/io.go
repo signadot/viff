@@ -382,7 +382,7 @@ func overlaps(r entity.Reader, e verseio.Entity) string {
 		// intersects nothing. But a registration that carries no claim has not said it writes
 		// nothing — it has not said anything, so there is nothing to prove with, and a source
 		// that turns out to write the same slice would be discovered by its neighbour's refs
-		// disappearing. Set arithmetic stays in verseio.Disjoint; this is the install's policy.
+		// disappearing. Set arithmetic stays in verseio.Disjoint; this is the install's autonomy.
 		if len(e.Owns) == 0 || len(other.Owns) == 0 {
 			return refusal(e, other)
 		}

@@ -112,12 +112,13 @@ offers depends on the model credentials.
 The **server** reads the credentials. So set them before `up`, and not in the environment of
 the client. `verse status` shows an `llm` block with `available` and a masked key.
 
-Each spawn names its [doer](../glossary.md#doer): a rule's `spawn.doer`, and `task run --agent
-<name>` or `--script <text>`, where a bare prompt is for the `verse` agent. Verse checks a spawn
-against what the runner offers where it is written: with no credentials configured, a charter
-naming the `verse` agent is refused at its install, and `task run "…"` at the prompt, each
-saying the runner offers no such agent. The engine keeps running. What a doer means for gates is in
-[tasks.md](tasks.md#the-dial).
+Each spawn says who does its work: a `script`, or a `prompt` for an [agent](../glossary.md#agent),
+the one its `agent` names or else the runner's default, which on `verse up` is the `verse` agent.
+Verse checks a spawn against what the runner offers where it is written: with no credentials
+configured, a charter whose prompt is for the `verse` agent is refused at its install, and
+`task run` at the prompt, each saying the runner offers no agent for it. The engine keeps
+running. `verse up`'s runner builds only the host's network, so a spawn it runs says
+`network: {mode: open}`. What decides each step is in [tasks.md](tasks.md#the-dial).
 
 ## The agent root
 

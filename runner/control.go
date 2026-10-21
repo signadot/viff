@@ -3,7 +3,7 @@ package runner
 import "github.com/signadot/verse/task"
 
 // The bodies of the control routes: `POST /tasks/{id}/say`, `/cancel` and `/resolve`, and
-// `/pause` and `/resume`, and `PUT /tasks/{id}/gates`.
+// `/pause` and `/resume`, and `PUT /tasks/{id}/autonomy`.
 //
 // ONE DECLARATION, for both ends: the client that drives a runner (runner/client) and the
 // runtime a runner is built on (runner/runnerd). A body written by hand at each end loses a
@@ -65,14 +65,14 @@ type ResolveRequest struct {
 	Say []string `tony:"field=say,omitzero"`
 }
 
-// PolicyRequest is the body of `PUT /tasks/{id}/policy`: the running task's new policy, in the
+// AutonomyRequest is the body of `PUT /tasks/{id}/autonomy`: the running task's new autonomy, in the
 // launch's shape, replacing the one it had, and who replaced it. It applies from the task's
 // next step, its sub-agents' included; a question already asked stands as asked. The task's
-// read plane says who changed it (a `policy` event). Refused with 400 as a launch's policy
+// read plane says who changed it (a `autonomy` event). Refused with 400 as a launch's autonomy
 // would be, and with 410 once the task has ended.
 //
-//tony:schemagen=verse-runner-policy,notag
-type PolicyRequest struct {
-	Policy task.Policy `tony:"field=policy,omitzero"`
-	By     string      `tony:"field=by,omitzero"`
+//tony:schemagen=verse-runner-autonomy,notag
+type AutonomyRequest struct {
+	Autonomy task.Autonomy `tony:"field=autonomy,omitzero"`
+	By       string        `tony:"field=by,omitzero"`
 }

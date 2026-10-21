@@ -26,7 +26,7 @@ flowchart TB
     remote["remote<br/>client.HTTP"]
   end
 
-  rt["task runtime (task, runner/runnerd)<br/>Task · Supervisor · Policy · Event stream · gate registry"]
+  rt["task runtime (task, runner/runnerd)<br/>Task · Supervisor · Autonomy · Event stream · gate registry"]
 
   cli -->|"HTTP"| versed
   obs --> store
@@ -55,8 +55,8 @@ subtree its match names. No watch covers the whole store. A spawn goes through t
 `Spawner`, which hosts the task through task control and mirrors it back into the store.
 
 **`task`** is the task runtime. A `Task` runs a *driver*: the verse agent's loop, a script, or
-one you write. A `Supervisor` governs it, under its `Policy`: the rows of the task, the last
-of which decides a step that no other matches. The task emits a stream of events. The stream has a cursor, keeps a
+one you write. A `Supervisor` governs it: a step outside the task's `Environment` is refused,
+and the rows of its `Autonomy` decide the rest, the last deciding a step that no other matches. The task emits a stream of events. The stream has a cursor, keeps a
 bounded number of events, and can be resumed. The task posts its gate decisions to a registry.
 
 **`runner/runnerd`** hosts a runner's tasks. Verse embeds it to run work in its own process
@@ -110,7 +110,7 @@ you can always stop a flow in time. See
 A *seam* is a boundary between two parts that can become a network connection.
 
 `task.Runner` has `Spawn`, `Attach` and `Ref`. `Spawn` and `Attach` return a `task.Handle`,
-which has `Subscribe`, `Pause`, `Resume`, `Cancel`, `Steer`, `SetPolicy` and `Result`. The
+which has `Subscribe`, `Pause`, `Resume`, `Cancel`, `Steer`, `SetAutonomy` and `Result`. The
 engine drives every task through the handle. It never touches the runtime directly, and no
 local path has special rights.
 

@@ -18,7 +18,7 @@ import (
 
 // Builder constructs a hosted task from a launch the handler has checked (CheckLaunch), plus the
 // Registry that serves as its gate resolver. It is injected so the host stays decoupled from any
-// particular doer: the builder picks the doer, and gives the task the launch's policy.
+// particular doer: the builder picks the doer, and gives the task the launch's autonomy.
 type Builder func(l runner.Launch, reg *task.Registry) *task.Task
 
 // InProcessHandler is a task handler that runs its tasks in its own process: it hosts a set of
@@ -65,13 +65,12 @@ type hosted struct {
 	task   *task.Task
 	reg    *task.Registry
 	prompt string
-	// doer is who runs it (the agent's name, or "script"), reported on the snapshot; with is what
-	// it works with, held against the ceilings when its policy is replaced; policy is the policy
-	// as last set, and launched the launch's, whose verbs and withheld set a replacement keeps.
+	// doer is who runs it (the agent's name, or "script"), reported on the snapshot; launch is
+	// the launch, whose environment and autonomy a replacement is held to; autonomy is the
+	// autonomy as last set.
 	doer     string
-	with     runner.With
-	policy   task.Policy
-	launched task.Policy
+	launch   *runner.Launch
+	autonomy task.Autonomy
 	// occurrence is which run this is (Launch.Occurrence), retained so the snapshot can say so:
 	// the process, and not only the entity, knows which run it is.
 	occurrence int64
@@ -108,10 +107,16 @@ func (h *hosted) snapshot() task.Snapshot {
 		status = task.Paused
 	}
 	return task.Snapshot{
-		ID: h.task.ID, Prompt: h.prompt, Driver: h.doer, Status: status,
-		Err: h.err, Result: h.result, Pending: pending, Occurrence: h.occurrence,
+		ID: h.task.ID, Prompt: h.prompt, Agent: h.doer, Status: status,
+		Err: h.err, Result: h.result, Pending: pending, Occurrence: h.occurrence, Settings: taskSettings(h.task),
 		Cursor: h.task.Cursor(), // resume the event stream with ?since=<cursor>
 	}
+}
+
+// taskSettings is what a task's agent runs with, as its runner said it.
+func taskSettings(t *task.Task) map[string]string {
+	_, settings := t.Agent()
+	return settings
 }
 
 // NewInProcessHandler returns an InProcessHandler that builds hosted tasks with build.
@@ -145,7 +150,7 @@ func (d *InProcessHandler) HTTPHandler() http.Handler {
 	mux.HandleFunc("POST /tasks/{id}/cancel", d.control("cancel"))
 	mux.HandleFunc("POST /tasks/{id}/pause", d.control("pause"))
 	mux.HandleFunc("POST /tasks/{id}/resume", d.control("resume"))
-	mux.HandleFunc("PUT /tasks/{id}/policy", d.policy)
+	mux.HandleFunc("PUT /tasks/{id}/autonomy", d.autonomy)
 	return mux
 }
 
@@ -176,19 +181,22 @@ func (d *InProcessHandler) Launch(l runner.Launch) (*task.Task, error) {
 	return h.task, nil
 }
 
-// check is CheckLaunch, and, outside a task's process, a refusal of repos and of a network named
-// but open. An absent network is refused by the offer, which says this handler builds open
-// alone (`verse up`'s); a handler with no offers refuses nothing it is not told, as CheckOffer
-// has it.
+// check is CheckLaunch, and, outside a task's process, a refusal of repos and of any network but
+// open. A task in this process has the process's network, which this handler can't take away.
+//
+// A network named and not open is refused here. So is an absent one, which means none, but only
+// on a handler with no offers: with offers, an absent network is the offer's to refuse
+// (checkBuilds), as `verse up`'s does, since it builds open alone. An offer that claims to build
+// none on this handler would get past both; only test helpers such as versed's offeringAll write one.
 func (d *InProcessHandler) check(l *runner.Launch) error {
 	if err := CheckLaunch(l, d.describe, d.owned); err != nil {
 		return err
 	}
-	switch n := l.Doer.With.Network; {
+	switch n := l.Network(); {
 	case d.taskProcess:
-	case len(l.Doer.With.Git) > 0:
+	case len(l.Repos()) > 0:
 		return errNoRepos
-	case n != nil && n.Mode != runner.NetworkOpen:
+	case n.Mode != runner.NetworkOpen && (len(l.Environment.Systems["network"]) > 0 || len(d.describe.Offers) == 0):
 		return errNoNetwork
 	}
 	return nil
@@ -220,7 +228,8 @@ func (d *InProcessHandler) host(l runner.Launch) (*hosted, bool) {
 	if l.Converse {
 		tk.SetConverse(reg) // the person's turn is a question on this task's own docket
 	}
-	h := &hosted{task: tk, reg: reg, prompt: l.Prompt, doer: l.Doer.Name(), with: l.Doer.With, policy: l.Policy, launched: l.Policy,
+	lc := l
+	h := &hosted{task: tk, reg: reg, prompt: l.Prompt, doer: doerName(&l, d.describe), launch: &lc, autonomy: l.Autonomy,
 		occurrence: l.Occurrence, status: task.Running}
 
 	// Surface pending decisions on the same read plane as the loop's events, so an
@@ -509,19 +518,19 @@ func (d *InProcessHandler) say(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// policy is PUT /tasks/{id}/policy: the running task's policy, replaced from its next step.
-func (d *InProcessHandler) policy(w http.ResponseWriter, r *http.Request) {
+// autonomy is PUT /tasks/{id}/autonomy: the running task's autonomy, replaced from its next step.
+func (d *InProcessHandler) autonomy(w http.ResponseWriter, r *http.Request) {
 	h := d.lookup(r)
 	if h == nil {
 		http.NotFound(w, r)
 		return
 	}
-	var body runner.PolicyRequest
+	var body runner.AutonomyRequest
 	if err := codec.ReadStrict(r, &body); err != nil {
-		http.Error(w, fmt.Sprintf("the policy does not parse: %v", err), http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("the autonomy does not parse: %v", err), http.StatusBadRequest)
 		return
 	}
-	if err := d.setPolicy(h, body.Policy, body.By); errors.Is(err, task.ErrEnded) {
+	if err := d.setAutonomy(h, body.Autonomy, body.By); errors.Is(err, task.ErrEnded) {
 		http.Error(w, fmt.Sprintf("task %s has ended", h.task.ID), http.StatusGone)
 		return
 	} else if err != nil {
@@ -531,30 +540,30 @@ func (d *InProcessHandler) policy(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// SetPolicy replaces a hosted task's policy as PUT /tasks/{id}/policy does, for the caller
+// SetAutonomy replaces a hosted task's autonomy as PUT /tasks/{id}/autonomy does, for the caller
 // that hosts this handler in its own process: checked against what the runner keeps fixed
-// (CheckPolicy) and then set, so a task is held the same way however its policy is changed.
-func (d *InProcessHandler) SetPolicy(id string, p task.Policy, by string) error {
+// (CheckAutonomy) and then set, so a task is held the same way however its autonomy is changed.
+func (d *InProcessHandler) SetAutonomy(id string, p task.Autonomy, by string) error {
 	d.mu.Lock()
 	h := d.tasks[id]
 	d.mu.Unlock()
 	if h == nil {
 		return task.ErrNoSuchTask
 	}
-	return d.setPolicy(h, p, by)
+	return d.setAutonomy(h, p, by)
 }
 
-func (d *InProcessHandler) setPolicy(h *hosted, p task.Policy, by string) error {
-	// Held to the launch's policy, not the last one set: a verb a replacement dropped is still
+func (d *InProcessHandler) setAutonomy(h *hosted, p task.Autonomy, by string) error {
+	// Held to the launch's autonomy, not the last one set: a verb a replacement dropped is still
 	// one the run asked of its runner when it started, and may come back.
-	if err := CheckPolicy(p, h.launched, h.doer, h.with, d.describe); err != nil {
+	if err := CheckAutonomy(p, h.launch); err != nil {
 		return err
 	}
-	if err := h.task.SetPolicy(p, by); err != nil {
+	if err := h.task.SetAutonomy(p, by); err != nil {
 		return err
 	}
 	h.mu.Lock()
-	h.policy = p
+	h.autonomy = p
 	h.mu.Unlock()
 	return nil
 }

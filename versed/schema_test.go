@@ -453,17 +453,17 @@ func TestSchemaPublishesTheRunnerContract(t *testing.T) {
 		t.Fatal("/schema has no define")
 	}
 	for _, name := range []string{
-		"verse-runner-launch", "verse-runner-doer", "verse-runner-with", "verse-runner-repo",
+		"verse-runner-launch", "verse-runner-agent", "verse-runner-repo",
 		"verse-runner-provenance", "verse-task-policy-row", "verse-task-policy-match", "verse-task-policy-then", "verse-task-policy-ask",
 		"verse-task-snapshot", "verse-pending-gate", "verse-task-event",
-		"verse-runner-say", "verse-runner-cancel", "verse-runner-resolve", "verse-runner-policy",
+		"verse-runner-say", "verse-runner-cancel", "verse-runner-resolve", "verse-runner-autonomy",
 	} {
 		if ir.Get(defs, name) == nil {
 			t.Errorf("/schema does not define %s", name)
 		}
 	}
 	spawn := ir.Get(defs, "verse-runner-launch")
-	for _, field := range []string{"doer", "policy", "occurrence", "provenance", "answer"} {
+	for _, field := range []string{"agent", "environment", "autonomy", "occurrence", "provenance", "answer"} {
 		if spawn != nil && ir.Get(spawn, field) == nil {
 			t.Errorf("verse-runner-launch has no %s", field)
 		}

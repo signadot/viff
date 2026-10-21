@@ -126,23 +126,23 @@ func TestAWorkersVectorFrameDoesNotSayWhoSlidIt(t *testing.T) {
 	const worker, ana = "runner:bot", "user:ana@example.com"
 	store := entitytest.Store(t)
 	h := &fakeHandle{ch: make(chan task.Event)}
-	asks := task.Policy{{Then: task.Then{Mode: task.ThenAsk}}}
+	asks := task.Autonomy{{Then: task.Then{Mode: task.ThenAsk}}}
 	Reflect(store, "t1", h, Meta{Runner: "http://runner.test", As: worker, SlidBy: func() (string, string) { return ana, asks.Summary() }})
 	// The slide the control route relayed for ana: the runner reports it and the worker echoes
 	// it, under whatever name, and both are her slide.
 	for i, by := range []string{ana, entity.SystemDocket} {
-		h.ch <- task.Event{Kind: task.EventPolicy, Text: asks.Summary(), By: by}
+		h.ch <- task.Event{Kind: task.EventAutonomy, Text: asks.Summary(), By: by}
 		h.ch <- task.Event{Kind: task.EventExec, Tool: []string{"first", "second"}[i]}
 		got := awaitFields(t, store, Ref("t1"), "the slide", func(f map[string]any) bool { return f["lastAction"] == []string{"first", "second"}[i] })
-		if got["policyBy"] != ana {
-			t.Fatalf("after frame %d: policy by %v, want who it was relayed for: %+v", i, got["policyBy"], got)
+		if got["autonomyBy"] != ana {
+			t.Fatalf("after frame %d: policy by %v, want who it was relayed for: %+v", i, got["autonomyBy"], got)
 		}
 	}
 	// A policy nobody relayed: the worker slid it, whatever it says.
-	h.ch <- task.Event{Kind: task.EventPolicy, Text: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}.Summary(), By: ana}
-	got := awaitFields(t, store, Ref("t1"), "the second slide", func(f map[string]any) bool { return f["policyBy"] == worker })
-	if got["policyBy"] != worker {
-		t.Fatalf("policyBy = %v, want the worker of record: %+v", got["policyBy"], got)
+	h.ch <- task.Event{Kind: task.EventAutonomy, Text: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}.Summary(), By: ana}
+	got := awaitFields(t, store, Ref("t1"), "the second slide", func(f map[string]any) bool { return f["autonomyBy"] == worker })
+	if got["autonomyBy"] != worker {
+		t.Fatalf("policyBy = %v, want the worker of record: %+v", got["autonomyBy"], got)
 	}
 }
 
@@ -152,10 +152,10 @@ func TestAHostedTasksFramesAreTrusted(t *testing.T) {
 	store := entitytest.Store(t)
 	h := &fakeHandle{ch: make(chan task.Event)}
 	Reflect(store, "t1", h, Meta{Runner: LocalRunner})
-	h.ch <- task.Event{Kind: task.EventPolicy, Text: task.DefaultPolicy().Summary(), By: ana}
-	got := awaitFields(t, store, Ref("t1"), "the slide", func(f map[string]any) bool { return f["policyBy"] == ana })
-	if got["policyBy"] != ana {
-		t.Fatalf("policyBy = %v, want %s", got["policyBy"], ana)
+	h.ch <- task.Event{Kind: task.EventAutonomy, Text: task.DefaultAutonomy().Summary(), By: ana}
+	got := awaitFields(t, store, Ref("t1"), "the slide", func(f map[string]any) bool { return f["autonomyBy"] == ana })
+	if got["autonomyBy"] != ana {
+		t.Fatalf("policyBy = %v, want %s", got["autonomyBy"], ana)
 	}
 	h.ch <- task.Event{Kind: task.EventPending, ID: "q1", Gate: "write"}
 	awaitFields(t, store, Ref("t1"), "the gate", func(f map[string]any) bool { return f["pending"] != nil })

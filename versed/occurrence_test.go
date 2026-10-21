@@ -9,6 +9,7 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 )
 
@@ -50,7 +51,7 @@ func TestATaskRecordSaysWhichRunItIs(t *testing.T) {
 	// run holding it is over. A second spawn of a LIVE id is deduped by the runtime, which is
 	// the property the id exists for and not the one under test here.
 	drive := func(l runner.Launch, reg *task.Registry) *task.Task {
-		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, reg)
+		sup := systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, reg), l.Environment)
 		return task.NewTask(l.ID, sup, &countingDriver{n: 1}, noopExecutor{})
 	}
 	store := entitytest.Store(t)

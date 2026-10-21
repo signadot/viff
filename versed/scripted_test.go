@@ -8,8 +8,8 @@ import (
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
 
@@ -58,7 +58,7 @@ func TestASpawnWithNoPolicyIsGivenNoVerb(t *testing.T) {
 	ops := httptest.NewServer(srv.Handler())
 	defer ops.Close()
 
-	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "unstated", Doer: runner.Doer{Script: "true"}})
+	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "unstated", Spawn: launch.Spec{Script: "true", Environment: openNet}})
 	spawn.Body.Close()
 	if spawn.StatusCode >= 300 {
 		t.Fatalf("spawn = %s", spawn.Status)
@@ -73,7 +73,7 @@ func TestAScriptedSpawnCanSayAuto(t *testing.T) {
 	ops := httptest.NewServer(srv.Handler())
 	defer ops.Close()
 
-	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "vectored", Doer: runner.Doer{Script: "true"}, Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}})
+	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "vectored", Spawn: launch.Spec{Script: "true", Environment: openNet, Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}}})
 	spawn.Body.Close()
 	if spawn.StatusCode >= 300 {
 		t.Fatalf("spawn = %s", spawn.Status)
@@ -89,7 +89,7 @@ func TestAScriptedCommandThatFailsFailsTheTask(t *testing.T) {
 	ops := httptest.NewServer(srv.Handler())
 	defer ops.Close()
 
-	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "broken", Doer: runner.Doer{Script: "exit 3"}, Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}})
+	spawn := postTony(t, ops.URL+"/tasks", api.Spawn{ID: "broken", Spawn: launch.Spec{Script: "exit 3", Environment: openNet, Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}}})
 	spawn.Body.Close()
 	if spawn.StatusCode >= 300 {
 		t.Fatalf("spawn = %s", spawn.Status)

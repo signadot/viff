@@ -8,11 +8,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/systems"
+	"github.com/signadot/verse/systems/systemstest"
+
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
 )
+
+// workEnv is an environment giving the shell and file writes, the steps these tests' drivers
+// take: a step outside its environment is refused before any row is read.
+var workEnv = systems.Environment{Systems: systems.Systems{
+	"commands": {{Verbs: map[string][]systems.Shape{"run": {{}}}}},
+	"files":    {{Verbs: map[string][]systems.Shape{"write": {{}}}}},
+}}
 
 // steady takes n steps at a pace, so a task is still running when a second launch arrives.
 type steady struct{ n int }
@@ -38,7 +48,7 @@ func (echoExec) Execute(_ context.Context, tu task.ToolUse) (task.StepResult, []
 func hosting(t *testing.T) (*runnerd.InProcessHandler, *httptest.Server) {
 	t.Helper()
 	d := runnerd.NewInProcessHandler(func(l runner.Launch, reg *task.Registry) *task.Task {
-		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, reg)
+		sup := systemstest.Opened(task.NewSupervisor(workEnv, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, reg), workEnv)
 		return task.NewTask(l.ID, sup, &steady{n: 50}, echoExec{})
 	})
 	srv := httptest.NewServer(d.HTTPHandler())
@@ -48,7 +58,8 @@ func hosting(t *testing.T) (*runnerd.InProcessHandler, *httptest.Server) {
 
 func launchOne(t *testing.T, url, id string) int {
 	t.Helper()
-	b, err := codec.Marshal(map[string]any{"id": id, "doer": map[string]any{"agent": "test"}, "prompt": "work"}, codec.Tony)
+	b, err := codec.Marshal(map[string]any{"id": id, "agent": map[string]any{"name": "test"}, "prompt": "work",
+		"environment": map[string]any{"systems": map[string]any{"network": map[string]any{"mode": "open"}}}}, codec.Tony)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
@@ -140,7 +151,7 @@ func TestLaunchingAnIDThatAlreadyCompletedRunsAgain(t *testing.T) {
 	var built int
 	answers := []string{"first run", "second run"}
 	d := runnerd.NewInProcessHandler(func(l runner.Launch, reg *task.Registry) *task.Task {
-		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, reg)
+		sup := systemstest.Opened(task.NewSupervisor(workEnv, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, reg), workEnv)
 		drv := &quick{answer: answers[min(built, len(answers)-1)]}
 		built++
 		return task.NewTask(l.ID, sup, drv, echoExec{})

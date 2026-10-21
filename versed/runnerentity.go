@@ -46,16 +46,26 @@ type runnerEntity struct {
 	// reports are written as, and what the spawn grants `read-write` and `control` on the task. A runner acts as itself,
 	// not as whoever installed it or whoever's work it runs. Defaults to the runner's name.
 	Identity string `tony:"field=identity,omitzero"`
-	// Offers is what the runner offers, as it described itself (GET /describe) when it was
-	// installed or last checked: the agents and scripts it runs, and what each takes. Verse
-	// writes it, from the runner, and checks a spawn naming this runner against it. None is a
-	// runner that was installed unprobed, or has not described itself yet; its launches are
-	// checked by the runner alone.
-	Offers []runner.Offer `tony:"field=offers,omitzero"`
+	// Described is what the runner offers, as it described itself (GET /describe) when it was
+	// installed or last checked: the agents and scripts it runs, what each takes, and the
+	// systems each holds. Verse writes it, from the runner, and checks a spawn naming this runner
+	// against it. None is a runner that was installed unprobed, or has not described itself yet;
+	// and one that no longer passes Check (kept from an older runner or verse) is read as none:
+	// the runner is asked again (Current).
+	Described *runner.Description `tony:"field=described,omitzero"`
 }
 
 // Description is what the runner offers, as a description.
-func (e runnerEntity) Description() runner.Description { return runner.Description{Offers: e.Offers} }
+func (e runnerEntity) Description() runner.Description {
+	if e.Described == nil {
+		return runner.Description{}
+	}
+	return *e.Described
+}
+
+// Current is whether the registration holds a description this verse reads: one there is, that
+// passes Check. Otherwise the runner is asked again, and what it says replaces it.
+func (e runnerEntity) Current() bool { return e.Described != nil && e.Described.Check() == nil }
 
 // Principal is who the runner acts as: `runner:` its identity, or its name.
 func (e runnerEntity) Principal() string {
@@ -115,7 +125,7 @@ func (e runnerEntity) Check() error {
 // url is the entire content of this entity, so the silence is total.
 func checkRunnerFields(node *ir.Node) error {
 	known := map[string]string{"name": "", "url": "", "identity": ""}
-	node = unwrapRunnerNode(node)
+	node = ir.Uncomment(node)
 	if node == nil || node.Type != ir.ObjectType {
 		return nil // not an object: the decoder's complaint to make, in its own terms
 	}
@@ -129,21 +139,14 @@ func checkRunnerFields(node *ir.Node) error {
 			want = append(want, k)
 		}
 		sort.Strings(want)
-		if name == "offers" {
-			return fmt.Errorf("runner `offers:` is read from the runner, which describes itself " +
+		if name == "described" || name == "offers" {
+			return fmt.Errorf("what a runner offers is read from the runner, which describes itself " +
 				"when it is installed and checked; it is not written by hand")
 		}
 		return fmt.Errorf("runner has no field %q (want any of %s) — an unknown field decodes "+
 			"silently, and url is the whole of what this entity carries", name, strings.Join(want, ", "))
 	}
 	return nil
-}
-
-func unwrapRunnerNode(n *ir.Node) *ir.Node {
-	for n != nil && n.Type == ir.CommentType && len(n.Values) > 0 {
-		n = n.Values[0]
-	}
-	return n
 }
 
 // findRunner reads one installed runner by what a charter or a CLI argument names: its address as it

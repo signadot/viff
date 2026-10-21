@@ -141,7 +141,7 @@ GET    {base}/tasks                        list
 GET    {base}/tasks/{id}                   snapshot
 GET    {base}/tasks/{id}/events?since=<n>  the read plane, resumable
 POST   {base}/tasks/{id}/cancel|say|resolve
-PUT    {base}/tasks/{id}/policy
+PUT    {base}/tasks/{id}/autonomy
 ```
 
 Verse hands `?since=` to the cursor of the *remote*. The remote knows what it still keeps, so
@@ -264,7 +264,7 @@ installer sees. [Resolvers](attached-resolvers.md) has the model.
 
 ## 9. The model provider
 
-The verse agent, `doer: {agent: verse}`, dials a model provider from the place where the task
+The verse agent, `agent: {name: verse}`, dials a model provider from the place where the task
 runs. That place is not always where the charter was installed, and this often surprises
 people. For this reason `GET /status` publishes a summary of the LLM configuration of *this*
 server, which is the server that hosts the runtime. The summary is safe to show: it leaves out
@@ -288,7 +288,7 @@ These parts are not wires. They are named here so that the map does not look big
 
 | Part | What it is |
 |---|---|
-| the **driver** behind a [doer](glossary.md#doer): the agent's loop, a script, or your own `Next` | a Go interface, and never a wire |
+| the **driver** behind a task: the agent's loop, a script, or your own `Next` | a Go interface, and never a wire |
 | a `-dir` **source** | runs in task |
 | the **local runner** | a Go call |
 | the `Store` interface | admits an implementation in memory, with no daemon behind it. The tests run on it. |

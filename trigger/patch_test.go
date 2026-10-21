@@ -150,7 +150,7 @@ func TestFailedPatchDoesNotSpawn(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: bad,
-			Spawn: &launch.Spec{Doer: runner.Doer{Agent: "verse"}, Prompt: "must not run"},
+			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "must not run"},
 		},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)

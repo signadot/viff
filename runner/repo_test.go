@@ -8,8 +8,8 @@ import (
 )
 
 // What a launch says about its repos is checked before anything is checked out: a name that
-// isn't one, and two repos in one directory, are each refused with the reason; and a tracker
-// names a repo of the checkout.
+// isn't one is refused with the reason. Two repos in one directory, and a tracker of a repo not
+// checked out, are the environment's to refuse (systems.Environment.Check).
 func TestALaunchsReposAreChecked(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -31,13 +31,10 @@ func TestALaunchsReposAreChecked(t *testing.T) {
 		{"a character GitHub doesn't spell", []Repo{{Repo: "acme/a b"}}, "is not owner/name"},
 		{"a .git suffix", []Repo{{Repo: "acme/app.git"}}, "without .git: acme/app"},
 		{"dots and dashes", []Repo{{Repo: "my-org/app.v2_x"}}, ""},
-		{"the same repo twice", []Repo{{Repo: "acme/app"}, {Repo: "acme/app"}}, "would both check out as app/"},
-		{"two repos with one name", []Repo{{Repo: "acme/app"}, {Repo: "other/app"}}, "would both check out as app/"},
-		{"one name on two forges", []Repo{{Repo: "acme/app"}, {Repo: "gitlab.com/acme/app"}}, "would both check out as app/"},
 		{"two names", []Repo{{Repo: "acme/app"}, {Repo: "acme/lib"}}, ""},
 	}
 	for _, c := range cases {
-		err := CheckWith(With{Git: c.repos})
+		err := CheckRepos(c.repos)
 		switch {
 		case c.want == "" && err != nil:
 			t.Errorf("%s: refused: %v", c.name, err)
@@ -46,12 +43,6 @@ func TestALaunchsReposAreChecked(t *testing.T) {
 		case c.want != "" && !strings.Contains(err.Error(), c.want):
 			t.Errorf("%s: refused for %q, want %q in it", c.name, err, c.want)
 		}
-	}
-	if err := CheckWith(With{Git: []Repo{{Repo: "acme/app"}}, GitIssue: []Tracker{{Repo: "acme/app"}}}); err != nil {
-		t.Errorf("a tracker of a checked-out repo: %v", err)
-	}
-	if err := CheckWith(With{Git: []Repo{{Repo: "acme/app"}}, GitIssue: []Tracker{{Repo: "acme/lib"}}}); err == nil || !strings.Contains(err.Error(), "with.git-issue[0]") {
-		t.Errorf("a tracker of a repo not checked out: %v", err)
 	}
 }
 
@@ -72,7 +63,7 @@ func TestARepoIsReadOffItsSpelling(t *testing.T) {
 // A REPO IS NAMED IN LOWER CASE in a step, as the forge reads it: a spawn's `Acme/Secret` is the
 // repository a row on `github.com/acme/secret` denies.
 func TestARowNamesARepoWhateverItsCase(t *testing.T) {
-	p := task.Policy{{Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"repo": "github.com/acme/secret"}},
+	p := task.Autonomy{{Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"repo": "github.com/acme/secret"}},
 		Then: task.Then{Mode: task.ThenDeny}}, {Then: task.Then{Mode: task.ThenAllow}}}
 	if err := p.Check(); err != nil {
 		t.Fatal(err)

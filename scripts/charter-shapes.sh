@@ -66,7 +66,7 @@ shape_tony() {
 			    subject: {path: "demo.latch.*", value: { stage: open }}
 			  action:
 			    patch:  { stage: reviewing }
-			    spawn:  { doer: {script: 'echo reviewing "$SUBJECT"; sleep 2', with: {network: {mode: open}, env: {SUBJECT: $subject}}} }
+			    spawn:  { script: 'echo reviewing "$SUBJECT"; sleep 2', environment: {vars: {SUBJECT: $subject}, systems: {network: {mode: open}}} }
 			    onDone: { patch: { stage: reviewed } }
 		TONY
 		;;
@@ -79,7 +79,7 @@ shape_tony() {
 			  - { name: approval, mode: ask, onDenied: { patch: { stage: rejected } } }
 			  action:
 			    patch:  { stage: reviewing }
-			    spawn:  { doer: {script: 'echo reviewing "$SUBJECT"; sleep 2', with: {network: {mode: open}, env: {SUBJECT: $subject}}} }
+			    spawn:  { script: 'echo reviewing "$SUBJECT"; sleep 2', environment: {vars: {SUBJECT: $subject}, systems: {network: {mode: open}}} }
 			    onDone: { patch: { stage: reviewed } }
 		TONY
 		;;
@@ -90,8 +90,8 @@ shape_tony() {
 			    subject: {path: "demo.seq.*", value: { stage: ready }}
 			  action:
 			    seq:
-			    - spawn: { doer: {script: 'echo lint "$SUBJECT"', with: {network: {mode: open}, env: {SUBJECT: $subject}}} }
-			    - spawn:    { doer: {script: 'echo test "$SUBJECT"', with: {network: {mode: open}, env: {SUBJECT: $subject}}} }
+			    - spawn: { script: 'echo lint "$SUBJECT"', environment: {vars: {SUBJECT: $subject}, systems: {network: {mode: open}}} }
+			    - spawn:    { script: 'echo test "$SUBJECT"', environment: {vars: {SUBJECT: $subject}, systems: {network: {mode: open}}} }
 			      onFailed: { patch: { stage: broken } }
 			    onDone:
 			      patch: { stage: built }

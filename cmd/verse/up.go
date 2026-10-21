@@ -51,7 +51,7 @@ type upConfig struct {
 	// Empty derives it from --addr (see adminface); `off` disables it.
 	AdminAddr string `cli:"name=admin-addr desc='admin/pprof listen address, or off to disable (default: the --addr port + 1)'"`
 	// ReseedPerms writes the deployment's top — the root record, verse's half and the admin
-	// group — OVER what stands, for the one start that applies a policy that changed. Without
+	// group — OVER what stands, for the one start that applies an autonomy that changed. Without
 	// it the seed writes them once, since after that they are where an operator's own edits
 	// live and nothing can tell an edit from a config that moved.
 	ReseedPerms bool `cli:"name=reseed-perms desc='write the root, verse and admin-group records from config OVER what stands (a policy change; the seed is once otherwise)'"`
@@ -373,7 +373,7 @@ func advertised(dialled, advertise string) string {
 // permsPolicy reads the deployment's permission settings: the root's default, and the admins
 // the seed writes into the `admin` group and the root holds `owner` out to.
 //
-// Every value is parsed HERE, at startup, and a bad one is an error rather than a policy nobody
+// Every value is parsed HERE, at startup, and a bad one is an error rather than an autonomy nobody
 // meant. An admin that does not parse is the whole point of refusing: a grantee the grammar
 // cannot read admits nobody, so a verse seeded with one would stand with a top no living person
 // can create beneath.
@@ -426,12 +426,15 @@ func authOf(c config.AuthConfig) versed.Auth {
 
 // embeddedRunner is the runner `verse up` runs its tasks on, in its own process: the verse agent
 // on the deployment's model credential, which a launch may route by a virtual key it was let
-// spend (versed's `verse.portkey/virtual-key` annotation).
+// spend (versed's `verse.portkey/virtual-key` annotation). Its operator is the person running
+// it, so what it stops inside a run is open to them, said as open ceilings: a ceiling written
+// nowhere is closed.
 func embeddedRunner(llm config.LLMConfig, shellEnv []string) (verserunner.Config, verserunner.Secrets) {
 	return verserunner.Config{
 			Models:      verserunner.Models{Portkey: verserunner.Portkey{VirtualKey: llm.VirtualKey}, Model: llm.Model},
 			ShellEnv:    shellEnv,
 			Annotations: map[string]string{verserunner.AnnotationVirtualKey: "string"},
+			Systems:     verserunner.OpenInside(),
 		},
 		verserunner.Secrets{PortkeyAPIKey: llm.APIKey, PortkeyBaseURL: llm.BaseURL}
 }

@@ -32,8 +32,8 @@ func TestARelayedAnswerIsKeptWithTheCallItIsAbout(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := NewSubprocessHandler(SubprocessConfig{Log: io.Discard})
-	l := &runner.Launch{ID: "x", Doer: runner.Doer{Agent: "verse", With: runner.With{Git: []runner.Repo{{Repo: "acme/app"}}}},
-		Policy: task.Policy{{Match: &task.Match{System: "git"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAsk}}}}
+	l := &runner.Launch{ID: "x", Prompt: "p", Agent: &runner.Agent{Name: "verse"}, Environment: gitEnv("acme/app"),
+		Autonomy: task.Autonomy{{Match: &task.Match{System: "git"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAsk}}}}
 	ch, err := delivery.Open(l.ID, &workspace.Workspace{}, nil, func(workspace.Repo) (string, error) { return "", nil }, delivery.Services{}, nil, l, io.Discard)
 	if err != nil {
 		t.Fatal(err)

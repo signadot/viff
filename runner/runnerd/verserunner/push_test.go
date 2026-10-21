@@ -35,9 +35,8 @@ func commitWork(id string) map[string]any {
 // launchPusher launches an agent on acme/svc, allowed to push its own branches, under rows and
 // then git, its shell and its writes, allowed.
 func launchPusher(rt client.Launcher, id string, rows ...task.Row) {
-	rt.Launch(runner.Launch{ID: id, Prompt: "work", Policy: append(append(task.Policy(nil), rows...), allowing("git", "commands", "files")...),
-		Doer: runner.Doer{Agent: AgentName, With: runner.With{Network: netOpen,
-			Git: []runner.Repo{{Repo: "acme/svc"}}}}})
+	rt.Launch(runner.Launch{ID: id, Prompt: "work", Autonomy: append(append(task.Autonomy(nil), rows...), allowing("git", "commands", "files")...),
+		Agent: &runner.Agent{Name: AgentName}, Environment: giving(envOf(netOpen, []runner.Repo{{Repo: "acme/svc"}}, nil), "commands", "files")})
 }
 
 // pushGate asks before any push, and noMain refuses a push to main.
@@ -256,7 +255,7 @@ func TestShuttingDownHoldsWhatATaskCommitted(t *testing.T) {
 		work["command"] = work["command"].(string) + " && touch ../committed && sleep 60"
 		return modeltest.Use("run_bash", work)
 	})
-	h, err := Standalone(Config{Repos: &Repos{Mirrors: mirrors, Forge: forge}},
+	h, err := Standalone(opened(Config{Repos: &Repos{Mirrors: mirrors, Forge: forge}}),
 		Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL}, Tokens{},
 		runnerd.Unconfined{}, []string{os.Args[0], "-test.run=^$", taskArg}, work, control, io.Discard)
 	if err != nil {
@@ -335,8 +334,8 @@ func TestAPushAfterARebaseOntoUpstreamLands(t *testing.T) {
 // shell and its writes, allowed.
 func launchWith(rt client.Launcher, id string, repo runner.Repo, rows ...task.Row) {
 	repo.Repo = "acme/svc"
-	rt.Launch(runner.Launch{ID: id, Prompt: "work", Policy: append(append(task.Policy(nil), rows...), allowing("git", "commands", "files")...),
-		Doer: runner.Doer{Agent: AgentName, With: runner.With{Network: netOpen, Git: []runner.Repo{repo}}}})
+	rt.Launch(runner.Launch{ID: id, Prompt: "work", Autonomy: append(append(task.Autonomy(nil), rows...), allowing("git", "commands", "files")...),
+		Agent: &runner.Agent{Name: AgentName}, Environment: giving(envOf(netOpen, []runner.Repo{repo}, nil), "commands", "files")})
 }
 
 // agentDoing is a fake model that makes the agent use each of steps in turn, then report what

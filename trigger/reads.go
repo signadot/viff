@@ -367,7 +367,7 @@ func (e *Engine) RecheckReads() error {
 // that took only the dotted form would be the one place in the grammar where the printed form
 // of an address cannot be pasted back.
 func ReadsFromNode(node *ir.Node) ([]Subtree, error) {
-	node = unwrap(node)
+	node = ir.Uncomment(node)
 	if node == nil {
 		return nil, nil
 	}
@@ -379,7 +379,7 @@ func ReadsFromNode(node *ir.Node) ([]Subtree, error) {
 			}
 		}
 	}
-	field = unwrap(field)
+	field = ir.Uncomment(field)
 	if field == nil {
 		return nil, nil
 	}
@@ -404,7 +404,7 @@ func importSubtree(v *ir.Node) (Subtree, error) {
 		return Subtree{}, fmt.Errorf("reads: !%s is not a spelling of an address — write the "+
 			"kinded path (`git`, `demo.pr`)", VersePathTag)
 	}
-	text, ok := stepText(unwrap(v))
+	text, ok := stepText(ir.Uncomment(v))
 	if !ok {
 		return Subtree{}, fmt.Errorf("reads: an address is a kinded path; got %v", v.Type)
 	}

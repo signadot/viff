@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
@@ -168,6 +169,11 @@ func (e *Engine) vet(t Trigger, as string) (bool, error) {
 			if !known {
 				return // the doer is picked or bound at the firing, and checked against its runner then
 			}
+			// Held to the runner's ceilings on its environment AS WRITTEN: a `$` attribute is
+			// within where some binding of it could be (runnerd.CheckOfferAsWritten), which the
+			// stand-ins installLaunch writes for it, being no binding, never are. The launch is
+			// held to them again, bound.
+			l.Environment = spec.Environment
 			if err := e.offerCheck(spec.Runner, l); err != nil {
 				refused = fmt.Errorf("trigger %q: spawn: %w", chain, err)
 			}
@@ -618,7 +624,8 @@ func namedSegs(key string) []string { return []string{key} }
 //
 // It is a check at the DECODE BOUNDARY rather than in the codec, because the codec is
 // generated. Depth stops where the shape stops being this package's: a spawn is a launch.Spec,
-// and a patch or a derive is an arbitrary payload whose keys are the author's.
+// read strictly as one, and a patch or a derive is an arbitrary payload whose keys are the
+// author's.
 func CheckFields(node *ir.Node) error {
 	return checkFields(node, "trigger", map[string]bool{
 		"name": true, "stratum": true, "condition": true, "gates": true, "gating": true,
@@ -654,12 +661,12 @@ func CheckFields(node *ir.Node) error {
 // of gate, and a charter that still writes one is told what replaced it rather than that
 // the field is unknown.
 func checkGates(node *ir.Node) error {
-	node = unwrap(node)
+	node = ir.Uncomment(node)
 	if node == nil || node.Type != ir.ArrayType {
 		return nil
 	}
 	for i, el := range node.Values {
-		el = unwrap(el)
+		el = ir.Uncomment(el)
 		if el != nil && el.Type == ir.ObjectType && ir.Get(el, "formula") != nil {
 			return fmt.Errorf("gates[%d] carries a `formula`, which is no longer a kind of gate. A "+
 				"gate is a question with options: write `need: N` for a threshold on proceed, "+
@@ -700,12 +707,18 @@ func checkAction(node *ir.Node) error {
 			if val != nil && val.Type == ir.ObjectType && ir.Get(val, "resolver") != nil {
 				return fmt.Errorf("spawn.resolver: %s", retiredResolver)
 			}
+			// A spawn's own keys are launch.Spec's, read strictly: one it does not have (`doer`,
+			// `autonomy`) would install a task that runs without what it says.
+			var spec launch.Spec
+			if err := gomap.FromTonyIR(ir.Uncomment(val), &spec, gomap.Strict()); err != nil {
+				return fmt.Errorf("spawn: %w", err)
+			}
 		case "seq":
 			if val.Type != ir.ArrayType {
 				return nil // shape is validate's to report, in its own words
 			}
 			for i, el := range val.Values {
-				if err := checkAction(unwrap(el)); err != nil {
+				if err := checkAction(ir.Uncomment(el)); err != nil {
 					return fmt.Errorf("seq[%d]: %w", i, err)
 				}
 			}
@@ -720,7 +733,7 @@ func checkAction(node *ir.Node) error {
 
 // checkFields names any key outside the known set, and descends where descend says to.
 func checkFields(node *ir.Node, what string, known map[string]bool, descend func(string, *ir.Node) error) error {
-	node = unwrap(node)
+	node = ir.Uncomment(node)
 	if node == nil || node.Type != ir.ObjectType {
 		return nil // not an object: the decoder's complaint to make, in its own terms
 	}
@@ -737,7 +750,7 @@ func checkFields(node *ir.Node, what string, known map[string]bool, descend func
 				what, name, strings.Join(want, ", "))
 		}
 		if descend != nil {
-			if err := descend(name, unwrap(node.Values[i])); err != nil {
+			if err := descend(name, ir.Uncomment(node.Values[i])); err != nil {
 				return err
 			}
 		}
@@ -1005,30 +1018,30 @@ func ParseMode(s string) (Mode, error) {
 // The spawn's own gates are checked the same way, since a task's questions are posed under
 // them; a hook's spawn beneath the action is not walked here.
 func (e *Engine) checkAnswerers(t Trigger) error {
-	var policy task.Policy
+	var policy task.Autonomy
 	if t.Action.Spawn != nil {
-		policy = t.Action.Spawn.Policy
+		policy = t.Action.Spawn.Autonomy
 	}
 	for i, g := range t.AllGates() {
 		if err := e.checkGateAnswerers(g.Answerers, g.Need, nil); err != nil {
 			return fmt.Errorf("trigger %q gates[%d]: %w", t.Name, i, err)
 		}
 	}
-	if err := e.CheckPolicyAnswerers(policy); err != nil {
+	if err := e.CheckAutonomyAnswerers(policy); err != nil {
 		return fmt.Errorf("trigger %q spawn.%w", t.Name, err)
 	}
 	return nil
 }
 
-// CheckPolicyAnswerers checks each ask row's answerers as a gate's are checked (checkAnswerers):
-// for a policy a charter's spawn carries, a run started by hand, or a replacement.
-func (e *Engine) CheckPolicyAnswerers(p task.Policy) error {
+// CheckAutonomyAnswerers checks each ask row's answerers as a gate's are checked (checkAnswerers):
+// for an autonomy a charter's spawn carries, a run started by hand, or a replacement.
+func (e *Engine) CheckAutonomyAnswerers(p task.Autonomy) error {
 	for i, r := range p {
 		if r.Then.Ask == nil {
 			continue
 		}
 		if err := e.checkGateAnswerers(r.Then.Ask.Answerers, r.Then.Ask.Need, nil); err != nil {
-			return fmt.Errorf("policy[%d]: %w", i, err)
+			return fmt.Errorf("autonomy[%d]: %w", i, err)
 		}
 	}
 	return nil

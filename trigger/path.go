@@ -327,7 +327,7 @@ func readSpec(n *ir.Node) (pathSpec, error) {
 		return pathSpec{}, fmt.Errorf("not a path read")
 	}
 	spec := pathSpec{kind: kind}
-	body := unwrap(n)
+	body := ir.Uncomment(n)
 	if body == nil {
 		return spec, fmt.Errorf("!%s has no address", kind)
 	}
@@ -340,7 +340,7 @@ func readSpec(n *ir.Node) (pathSpec, error) {
 		spec.At, spec.Path = at, path
 	case ir.ObjectType:
 		for i, f := range body.Fields {
-			v := unwrap(body.Values[i])
+			v := ir.Uncomment(body.Values[i])
 			switch f.String {
 			case mKeyValue:
 				if kind == GetPathTag {
@@ -418,7 +418,7 @@ func eachPathRead(n entity.Payload, fn func(*ir.Node) error) error {
 	// that asks the type without unwrapping stops at the comment — so a read under one was not
 	// counted among what a rule reads, and the subtree it names was not in the snapshot the
 	// condition was evaluated against. Same reason derives() unwraps, and the same class of bug.
-	n = unwrap(n)
+	n = ir.Uncomment(n)
 	if n == nil {
 		return nil
 	}
@@ -428,7 +428,7 @@ func eachPathRead(n entity.Payload, fn func(*ir.Node) error) error {
 	switch n.Type {
 	case ir.ObjectType, ir.ArrayType:
 		for _, v := range n.Values {
-			if err := eachPathRead(unwrap(v), fn); err != nil {
+			if err := eachPathRead(ir.Uncomment(v), fn); err != nil {
 				return err
 			}
 		}

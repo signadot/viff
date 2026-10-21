@@ -150,9 +150,9 @@ func TestAScriptFilesALinearIssueWithTheRunnersCredential(t *testing.T) {
 	if snap := ended(t, none, "t2"); snap.Status != task.Done || strings.TrimSpace(snap.Result) != "0" {
 		t.Errorf("a runner with no linear section lists: %+v", snap)
 	}
-	h := none.Launch(runner.Launch{ID: "t3", Policy: task.Policy{{Name: "linear", Match: &task.Match{System: "linear-issue", Verb: "create"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAllow}}},
-		Doer: runner.Doer{Script: "#!/bin/sh\necho hi", With: runner.With{Network: netOpen, Git: []runner.Repo{{Repo: "acme/svc"}}}}})
-	if err := h.Err(); !strings.Contains(err, "intercepts no linear-issue") {
+	h := none.Launch(runner.Launch{ID: "t3", Autonomy: task.Autonomy{{Name: "linear", Match: &task.Match{System: "linear-issue", Verb: "create"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAllow}}},
+		Script: "#!/bin/sh\necho hi", Environment: giving(envOf(netOpen, []runner.Repo{{Repo: "acme/svc"}}, nil), "linear-issue")})
+	if err := h.Err(); !strings.Contains(err, "holds no `linear-issue`") {
 		t.Errorf("a gate on a step the runner has nothing for: %q", err)
 	}
 }
@@ -251,7 +251,7 @@ func TestTheOffersInterceptTheTrackersSteps(t *testing.T) {
 	for _, o := range github.Describe(Secrets{PortkeyAPIKey: "k"}, nil).Offers {
 		for _, name := range []string{"git-issue", "github-issue", "linear-issue"} {
 			if _, has := o.Systems[name]; !has {
-				t.Errorf("the offer %s/%v does not hold %s: %v", o.Agent, o.Script, name, slices.Sorted(maps.Keys(o.Systems)))
+				t.Errorf("the offer %s/%v does not hold %s: %v", o.Name(), o.Script, name, slices.Sorted(maps.Keys(o.Systems)))
 			}
 		}
 	}
@@ -264,7 +264,7 @@ func TestTheOffersInterceptTheTrackersSteps(t *testing.T) {
 			t.Errorf("a directory forge with no linear: %v", slices.Sorted(maps.Keys(o.Systems)))
 		}
 	}
-	if o := (Config{}).Describe(Secrets{}, nil).Offers[0]; !slices.Equal(slices.Sorted(maps.Keys(o.Systems)), []string{"question"}) {
-		t.Errorf("no repos, no trackers: %v, want a script intercepted on its questions alone", o.Systems)
+	if o := (Config{}).Describe(Secrets{}, nil).Offers[0]; !slices.Equal(slices.Sorted(maps.Keys(o.Systems)), []string{"network", "question"}) {
+		t.Errorf("no repos, no trackers: %v, want a script holding the network and its questions alone", o.Systems)
 	}
 }

@@ -24,6 +24,7 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -136,16 +137,21 @@ type proc struct {
 	id string
 	// known is the task as the runner knows it from its launch, for when its process can't say.
 	known task.Snapshot
-	// l is the launch: what a replacement of the task's policy is held to (replacePolicy).
-	l    *runner.Launch
-	dir  string
-	sock string
-	cmd  *exec.Cmd
-	life *os.File // the lifeline's write end
-	rt   task.Runner
-	prox *httputil.ReverseProxy
-	co   *checkout     // the task's repos, when its launch names some
-	eg   *EgressServer // the task's way out, when its network allows hosts
+	// l is the launch: what a replacement of the task's autonomy is held to (replacePolicy).
+	l *runner.Launch
+	// autonomy is the task's CURRENT autonomy, the launch's until a replacement lands
+	// (replacePolicy): what its proxy decides each connection by (connections).
+	autonomy atomic.Pointer[task.Autonomy]
+	dir      string
+	sock     string
+	cmd      *exec.Cmd
+	life     *os.File // the lifeline's write end
+	rt       task.Runner
+	prox     *httputil.ReverseProxy
+	co       *checkout     // the task's repos, when its launch names some
+	eg       *EgressServer // the task's way out, when its network allows hosts
+	// egress is eg's proxy, for what it refused, read without p.mu by whatever reports the task.
+	egress atomic.Pointer[Egress]
 	// abort ends the task before its process hosts it: a cancel, or the runner shutting down.
 	abort context.CancelCauseFunc
 	// ready is closed once the process hosts the task, or the task has ended without it.
@@ -219,7 +225,7 @@ func (p *proc) current() task.Snapshot {
 	}
 	if lister, ok := p.rt.(task.Lister); ok {
 		if in, err := lister.TaskSnapshot(p.id); err == nil {
-			return in
+			return p.withRefused(in)
 		}
 	}
 	return p.as(task.Running, "")
@@ -229,6 +235,17 @@ func (p *proc) current() task.Snapshot {
 func (p *proc) as(status task.Status, err string) task.Snapshot {
 	snap := p.known
 	snap.Status, snap.Err = status, err
+	return p.withRefused(snap)
+}
+
+// withRefused is snap with the connections the task's proxy refused, which only the runner
+// knows: the task's process sees a 403, never the decision.
+func (p *proc) withRefused(snap task.Snapshot) task.Snapshot {
+	if eg := p.egress.Load(); eg != nil {
+		if r := eg.Refusals(); len(r) > 0 {
+			snap.Refused = r
+		}
+	}
 	return snap
 }
 
@@ -266,6 +283,7 @@ func (p *proc) remember(in task.Snapshot) {
 	defer p.mu.Unlock()
 	if p.final == nil {
 		in.ID = p.id
+		in = p.withRefused(in)
 		p.final = &in
 	}
 }
@@ -289,21 +307,21 @@ func (h *SubprocessHandler) launch(w http.ResponseWriter, r *http.Request) {
 		if err := CheckLaunch(l, h.describe, h.owned); err != nil {
 			return err
 		}
-		if len(l.Doer.With.Git) > 0 && h.Repos == nil {
+		if len(l.Repos()) > 0 && h.Repos == nil {
 			return errNoRepos
 		}
 		// What the launch asked for first, so a refusal names it, and then what the task gets:
 		// an agent's none is an allow, for its model.
-		if err := h.Sandbox.Provides(Network{Mode: l.Doer.With.NetworkMode()}); err != nil {
-			return fmt.Errorf("with.network: %w", err)
+		if err := h.Sandbox.Provides(Network{Mode: l.Network().Mode}); err != nil {
+			return fmt.Errorf("environment.systems.network: %w", err)
 		}
-		network, allow := h.network(l)
+		network, own := h.network(l)
 		if err := h.Sandbox.Provides(network); err != nil {
 			return err
 		}
 		if network.Mode == NetworkAllow {
-			if _, err := NewEgress(l.ID, allow, nil); err != nil {
-				return fmt.Errorf("with.network: %w", err)
+			if _, err := NewEgress(l.ID, own, func(string, string) error { return nil }, nil); err != nil {
+				return fmt.Errorf("environment.systems.network: %w", err)
 			}
 		}
 		return nil
@@ -331,7 +349,7 @@ func (h *SubprocessHandler) launch(w http.ResponseWriter, r *http.Request) {
 		ctx, abort := context.WithCancelCause(context.Background())
 		p = &proc{id: body.ID, abort: abort, ready: make(chan struct{}), gone: make(chan struct{}),
 			done:  make(chan struct{}),
-			known: task.Snapshot{ID: body.ID, Prompt: body.Prompt, Driver: body.Doer.Name(), Occurrence: body.Occurrence},
+			known: task.Snapshot{ID: body.ID, Prompt: body.Prompt, Agent: doerName(&body, h.describe), Occurrence: body.Occurrence},
 			l:     &body}
 		h.tasks[body.ID] = p
 		go h.run(ctx, p, &body, raw)
@@ -399,13 +417,14 @@ func (h *SubprocessHandler) start(ctx context.Context, p *proc, l *runner.Launch
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	network, allow := h.network(l)
+	network, own := h.network(l)
 	if network.Mode == NetworkAllow {
-		eg, err := ServeEgress(h.Control, p.id, allow, h.Log)
+		eg, err := ServeEgress(h.Control, p.id, own, p.connections(l, h.describe), h.Log)
 		if err != nil {
 			return err
 		}
 		p.eg, network.Egress = eg, eg.Sock()
+		p.egress.Store(eg.Egress)
 	}
 
 	sock := fmt.Sprintf("%s/t%d.sock", h.Control, h.seq.Add(1))
@@ -656,8 +675,12 @@ func (h *SubprocessHandler) forward(w http.ResponseWriter, r *http.Request) {
 	}
 	final, done := p.snapshot()
 	if !done {
-		if r.Method == http.MethodPut && op == "policy" {
-			h.replacePolicy(w, r, p)
+		if r.Method == http.MethodGet && op == "" {
+			writeOut(w, r, http.StatusOK, p.current()) // the process's, with what its proxy refused
+			return
+		}
+		if r.Method == http.MethodPut && op == "autonomy" {
+			h.replaceAutonomy(w, r, p)
 			return
 		}
 		if r.Method == http.MethodPost && op == "resolve" {
@@ -695,7 +718,7 @@ func (h *SubprocessHandler) forward(w http.ResponseWriter, r *http.Request) {
 	// does nothing and says so with 204, a say is 410, and no gate is left to resolve.
 	case op == "cancel" || op == "pause" || op == "resume":
 		w.WriteHeader(http.StatusNoContent)
-	case op == "say" || op == "gates":
+	case op == "say":
 		http.Error(w, fmt.Sprintf("task %s has ended (%s)", id, final.Status), http.StatusGone)
 	case op == "resolve":
 		http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
@@ -704,13 +727,29 @@ func (h *SubprocessHandler) forward(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// replacePolicy is PUT /tasks/{id}/policy for a task its process hosts. The replacement is
-// checked HERE, in the runner's process, against what the runner keeps fixed (CheckPolicy: the
-// launch's verbs and withheld set, the offer, the ceilings) before the task is told of it, and
+// connections is how the task's proxy decides each connection to a host that is none of the
+// runner's own (connectionRefused): by the launch's environment, the task's current autonomy (the
+// launch's until a replacement lands), and the network ceiling of its doer's offer in desc.
+func (p *proc) connections(l *runner.Launch, desc runner.Description) func(host, port string) error {
+	a := l.Autonomy
+	p.autonomy.Store(&a)
+	var ceiling systems.Ceiling
+	if o, err := offerFor(l.Who(), desc); err == nil {
+		ceiling = o.Systems["network"].Ceiling
+	}
+	return func(host, port string) error {
+		return connectionRefused(l.Environment, *p.autonomy.Load(), ceiling, host, port)
+	}
+}
+
+// replaceAutonomy is PUT /tasks/{id}/autonomy for a task its process hosts. The replacement is
+// checked HERE, in the runner's process, against what the runner keeps fixed (CheckAutonomy: each
+// row reaching the launch's environment, which lies within the ceilings) before the task is told
+// of it, and
 // once the task has taken it, it is set on the task's channel, so what the runner decides at
 // each act follows the task from the next one. The task's process checks it again, and that is
-// not what holds the line: it is the process the policy constrains.
-func (h *SubprocessHandler) replacePolicy(w http.ResponseWriter, r *http.Request, p *proc) {
+// not what holds the line: it is the process the autonomy constrains.
+func (h *SubprocessHandler) replaceAutonomy(w http.ResponseWriter, r *http.Request, p *proc) {
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -721,13 +760,13 @@ func (h *SubprocessHandler) replacePolicy(w http.ResponseWriter, r *http.Request
 		r.ContentLength = int64(len(data))
 	}
 	again()
-	var body runner.PolicyRequest
+	var body runner.AutonomyRequest
 	if err := codec.ReadStrict(r, &body); err != nil {
-		http.Error(w, fmt.Sprintf("the policy does not parse: %v", err), http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("the autonomy does not parse: %v", err), http.StatusBadRequest)
 		return
 	}
 	if l := p.l; l != nil {
-		if err := CheckPolicy(body.Policy, l.Policy, l.Doer.Name(), l.Doer.With, h.describe); err != nil {
+		if err := CheckAutonomy(body.Autonomy, l); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -735,8 +774,12 @@ func (h *SubprocessHandler) replacePolicy(w http.ResponseWriter, r *http.Request
 	again()
 	rec := &statusRecorder{ResponseWriter: w}
 	p.prox.ServeHTTP(rec, r)
-	if rec.code == http.StatusNoContent && p.co != nil {
-		p.co.ch.SetPolicy(body.Policy)
+	if rec.code == http.StatusNoContent {
+		if p.co != nil {
+			p.co.ch.SetAutonomy(body.Autonomy)
+		}
+		a := body.Autonomy
+		p.autonomy.Store(&a)
 	}
 }
 
@@ -822,19 +865,17 @@ func (s *statusRecorder) Write(b []byte) (int, error) {
 	return s.ResponseWriter.Write(b)
 }
 
-// network is the network a launch's task gets, as the sandbox builds it, and the hosts its proxy
-// allows: what `with.network` says, absent being none; and an agent reaches its model under any
-// network, so under none or allow its proxy allows AgentHosts too.
+// network is the network a launch's task gets, as the sandbox builds it, and the runner's own
+// hosts its proxy reaches for it: the environment's network block's mode, absent being none, its
+// connections decided by the proxy under allow (connections); and an agent reaches its model under
+// any network, so under none or allow its proxy reaches AgentHosts too.
 func (h *SubprocessHandler) network(l *runner.Launch) (Network, []string) {
-	n := Network{Mode: l.Doer.With.NetworkMode()}
-	var allow []string
-	if w := l.Doer.With.Network; w != nil {
-		allow = slices.Clone(w.Allow)
+	n := Network{Mode: l.Network().Mode}
+	var own []string
+	if l.Script == "" && n.Mode != NetworkOpen && len(h.AgentHosts) > 0 {
+		n.Mode, own = NetworkAllow, slices.Clone(h.AgentHosts)
 	}
-	if l.Doer.Agent != "" && n.Mode != NetworkOpen && len(h.AgentHosts) > 0 {
-		n.Mode, allow = NetworkAllow, append(allow, h.AgentHosts...)
-	}
-	return n, allow
+	return n, own
 }
 
 // cancelEarly cancels a task its process doesn't host yet, and answers the request; false, with
@@ -904,7 +945,7 @@ func (h *SubprocessHandler) Snapshots() []task.Snapshot {
 			// Still the runner's task: leaving it out would read as a runner with less work.
 			snap = p.as(task.Running, err.Error())
 		}
-		out = append(out, snap)
+		out = append(out, p.withRefused(snap))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out

@@ -40,23 +40,29 @@ pull request once its checks pass, or comment to say why not, with no task.
 
 ## What a task can do
 
-A task gets the forge with the repository. `with.git` checks the repository out, and where the
-runner's forge is GitHub, `github-create-pr` and `github-update-pr` come with it. Nothing else in the spawn names
-the forge.
+A task gets the forge's pull requests with a `github` block for a repository its `git` block
+checks out, where the runner's forge is GitHub. The block's verbs and shapes say which pull
+requests are within reach; the autonomy decides among them.
 
 ```tony
 spawn:
-  doer:
-    agent: verse
-    with:
-      git: [{repo: acme/app, from: main}]
-      network: {mode: open}
+  agent: {name: verse}
   prompt: "Make the failing check on $subject pass, and open a pull request."
-  policy:
-  - {match: {system: git, verb: push, ref: "refs/heads/verse/auto/*", exists: "false"}, then: allow}
-  - {match: {system: git, verb: push, ref: "refs/heads/verse/auto/*", own: "true"}, then: allow}
-  - {match: {system: github, verb: create-pr, base: main, own: "true"}, then: ask}
-  - {match: {system: git, verb: push}, then: deny}
+  environment:
+    systems:
+      network: {mode: open}
+      git:
+      - repo: acme/app
+        from: main
+        fetch: {}
+        push:
+        - {ref: "refs/heads/verse/auto/*", exists: "false"}
+        - {ref: "refs/heads/verse/auto/*", own: "true"}
+      github:
+      - repo: acme/app
+        create-pr: {base: main, own: "true"}
+  autonomy:
+  - {match: {system: github, verb: create-pr}, then: ask}
   - {then: allow}
 ```
 
@@ -88,12 +94,9 @@ in the runner's configuration, and `repos.host` to the host.
 ```tony
 systems:
   github:
-    ceiling:
-    - {match: {verb: create-pr, base: main}, then: allow}
-    - {match: {verb: update-pr}, then: allow}
-    - {then: deny}
+    ceiling: {repo: "github.com/acme/**", create-pr: {base: main}, update-pr: {}}
 ```
 
-Verse refuses to install a spawn whose policy allows or asks about proposals the ceiling refuses
-every one of, naming the policy's row and the ceiling's; a wider row installs, and the runner
-decides each proposal at the act, by the row and then by the ceiling.
+Verse refuses to install a spawn whose environment gives proposals beyond the ceiling, saying
+what the ceiling gives; the runner holds each proposal at the act to the environment, the row,
+and then the ceiling.

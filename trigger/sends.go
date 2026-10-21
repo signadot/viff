@@ -43,7 +43,7 @@ const (
 // SendsFromNode reads a fielded charter's `sends:`, each `from` read against at, the package's
 // address. A charter with no `sends:` declares no outbox.
 func SendsFromNode(node *ir.Node, at string) ([]Send, error) {
-	field := unwrap(entity.Get(unwrap(node), SendsField))
+	field := ir.Uncomment(entity.Get(ir.Uncomment(node), SendsField))
 	if field == nil {
 		return nil, nil
 	}
@@ -62,7 +62,7 @@ func SendsFromNode(node *ir.Node, at string) ([]Send, error) {
 	out := make([]Send, 0, len(field.Values))
 	seen := map[string]bool{}
 	for i, el := range field.Values {
-		send, err := sendOf(unwrap(el), pkg)
+		send, err := sendOf(ir.Uncomment(el), pkg)
 		if err != nil {
 			return nil, fmt.Errorf("sends[%d]: %w", i, err)
 		}
@@ -92,7 +92,7 @@ func sendOf(n *ir.Node, pkg Subtree) (Send, error) {
 	}
 	var from, to string
 	for i, key := range n.Fields {
-		v := unwrap(n.Values[i])
+		v := ir.Uncomment(n.Values[i])
 		if key == nil || v == nil || v.Type != ir.StringType || v.String == "" {
 			return Send{}, fmt.Errorf("an outbox's `%s` is an address", sendKeyText(key))
 		}
@@ -137,7 +137,7 @@ func StampSends(in []Send) []any {
 
 // SendsOf reads the outboxes a package's record keeps, already resolved.
 func SendsOf(p entity.Payload) []Send {
-	field := unwrap(entity.Get(p, SendsField))
+	field := ir.Uncomment(entity.Get(p, SendsField))
 	if field == nil || field.Type != ir.ArrayType {
 		return nil
 	}

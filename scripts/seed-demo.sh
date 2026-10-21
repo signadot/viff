@@ -120,7 +120,7 @@ v charter -a -f - >/dev/null <<'TONY' || die "charter -a failed"
   - { name: approval, mode: ask, onDenied: { patch: { stage: rejected } } }
   action:
     patch: { stage: reviewing }
-    spawn: { doer: {script: 'echo reviewing "$SUBJECT"; sleep 45', with: {network: {mode: open}, env: {SUBJECT: $subject}}} }
+    spawn: { script: 'echo reviewing "$SUBJECT"; sleep 45', environment: {vars: {SUBJECT: $subject}, systems: {network: {mode: open}}} }
     onDone:
       patch: { stage: reviewed }
 

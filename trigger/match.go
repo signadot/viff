@@ -488,7 +488,7 @@ func (m Match) SegNodes() []*ir.Node {
 func PathMatch(steps []*ir.Node) (Match, error) {
 	segs := make([]*ir.Node, 0, len(steps))
 	for i, n := range steps {
-		u := unwrap(n)
+		u := ir.Uncomment(n)
 		if u == nil {
 			return nil, fmt.Errorf("match: segment %d of a path is empty", i+1)
 		}

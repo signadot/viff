@@ -9,6 +9,7 @@ import (
 
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/task/tasktest"
 )
@@ -50,7 +51,7 @@ func (p *localProducer) build(l runner.Launch, reg *task.Registry) *task.Task {
 	p.mu.Lock()
 	spec := p.specs[l.ID]
 	p.mu.Unlock()
-	sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, reg)
+	sup := systemstest.Opened(task.NewSupervisor(workEnv, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, reg), workEnv)
 	return task.NewTask(l.ID, sup, &conformanceDriver{spec: spec}, noopExec{})
 }
 
@@ -61,7 +62,7 @@ func (p *localProducer) Start(t *testing.T, spec tasktest.Spec) string {
 	p.mu.Lock()
 	p.specs[id] = spec
 	p.mu.Unlock()
-	if _, err := p.d.Launch(runner.Launch{ID: id, Doer: runner.Doer{Agent: spec.Driver, With: runner.With{Network: openNet}}, Prompt: "a task"}); err != nil {
+	if _, err := p.d.Launch(runner.Launch{ID: id, Agent: &runner.Agent{Name: spec.Driver}, Environment: openNet, Prompt: "a task"}); err != nil {
 		t.Fatal(err)
 	}
 	return id

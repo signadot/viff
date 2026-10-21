@@ -19,8 +19,8 @@ func TestARunnersQuestionIsPosedUnderTheChartersClock(t *testing.T) {
 	armed := map[string]string{}
 	h := &fakeHandle{ch: make(chan task.Event)}
 	Reflect(store, "t1", h, Meta{Runner: "http://runner.test", As: "runner:bot",
-		Policy: task.Policy{{Name: "release", Match: &task.Match{System: "git", Verb: "push"}, Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{Within: "4h", Default: task.Deny, Labels: map[string]string{"slack": "C1"}}}}, {Then: task.Then{Mode: task.ThenAsk}}},
-		Arm:    func(id, within string) { mu.Lock(); armed[id] = within; mu.Unlock() },
+		Autonomy: task.Autonomy{{Name: "release", Match: &task.Match{System: "git", Verb: "push"}, Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{Within: "4h", Default: task.Deny, Labels: map[string]string{"slack": "C1"}}}}, {Then: task.Then{Mode: task.ThenAsk}}},
+		Arm:      func(id, within string) { mu.Lock(); armed[id] = within; mu.Unlock() },
 	})
 	h.ch <- task.Event{Kind: task.EventPending, ID: "q1", Gate: "release"} // no deadline on the frame
 	q := awaitFields(t, store, QuestionRef("q1"), "the question", func(f map[string]any) bool { return f["status"] == QuestionPending })
@@ -46,8 +46,8 @@ func TestAFrameCannotLoosenItsRowsAsk(t *testing.T) {
 	armed := map[string]string{}
 	h := &fakeHandle{ch: make(chan task.Event)}
 	Reflect(store, "t1", h, Meta{Runner: "http://runner.test", As: "runner:bot",
-		Policy: task.Policy{{Name: "release", Match: &task.Match{System: "git", Verb: "push"}, Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{Need: 2, Within: "4h", Default: task.Deny}}}, {Then: task.Then{Mode: task.ThenAsk}}},
-		Arm:    func(id, within string) { mu.Lock(); armed[id] = within; mu.Unlock() },
+		Autonomy: task.Autonomy{{Name: "release", Match: &task.Match{System: "git", Verb: "push"}, Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{Need: 2, Within: "4h", Default: task.Deny}}}, {Then: task.Then{Mode: task.ThenAsk}}},
+		Arm:      func(id, within string) { mu.Lock(); armed[id] = within; mu.Unlock() },
 	})
 	h.ch <- task.Event{Kind: task.EventPending, ID: "q1", Gate: "release",
 		Deadline: &task.Deadline{Within: "1s", Default: task.Proceed}, Options: []task.Option{{ID: task.Proceed, Need: 1}, {ID: task.Deny, Need: 1}}}
@@ -72,16 +72,16 @@ func TestAFrameCannotLoosenItsRowsAsk(t *testing.T) {
 func TestAReplayedQuestionKeepsItsAsk(t *testing.T) {
 	store := entitytest.Store(t)
 	var mu sync.Mutex
-	policy := task.Policy{{Name: "release", Match: &task.Match{System: "git", Verb: "push"}, Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{Need: 2, Within: "4h", Default: task.Deny,
+	policy := task.Autonomy{{Name: "release", Match: &task.Match{System: "git", Verb: "push"}, Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{Need: 2, Within: "4h", Default: task.Deny,
 		Answerers: []string{"user:a", "user:b"}, Labels: map[string]string{"slack": "C1"}}}}, {Then: task.Then{Mode: task.ThenAsk}}}
 	h := &fakeHandle{ch: make(chan task.Event)}
-	Reflect(store, "t1", h, Meta{Runner: "http://runner.test", As: "runner:bot", Policy: policy,
-		PolicyNow: func() task.Policy { mu.Lock(); defer mu.Unlock(); return policy }})
+	Reflect(store, "t1", h, Meta{Runner: "http://runner.test", As: "runner:bot", Autonomy: policy,
+		AutonomyNow: func() task.Autonomy { mu.Lock(); defer mu.Unlock(); return policy }})
 	frame := task.Event{Kind: task.EventPending, ID: "q1", Gate: "release"}
 	h.ch <- frame
 	awaitFields(t, store, QuestionRef("q1"), "the question", func(f map[string]any) bool { return f["status"] == QuestionPending })
 	mu.Lock()
-	policy = task.Policy{{Name: "release", Match: &task.Match{System: "git", Verb: "push"}, Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{
+	policy = task.Autonomy{{Name: "release", Match: &task.Match{System: "git", Verb: "push"}, Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{
 		Answerers: []string{"user:c"}, Labels: map[string]string{"slack": "C2", "team": "x"}}}}, {Then: task.Then{Mode: task.ThenAsk}}}
 	mu.Unlock()
 	h.ch <- frame
@@ -106,29 +106,29 @@ func TestAReplayedQuestionKeepsItsAsk(t *testing.T) {
 // while the task runs elsewhere poses its questions under (PolicyOf), and what a slide changed.
 func TestTheRecordCarriesThePolicyAsItStands(t *testing.T) {
 	store := entitytest.Store(t)
-	spawned := task.Policy{{Name: "release", Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"ref": "refs/heads/main"}},
+	spawned := task.Autonomy{{Name: "release", Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"ref": "refs/heads/main"}},
 		Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{Within: "4h", Default: task.Deny, Labels: map[string]string{"slack": "C1"}}}},
 		{Then: task.Then{Mode: task.ThenAsk}}}
 	var mu sync.Mutex
 	now := spawned
 	h := &fakeHandle{ch: make(chan task.Event)}
-	Reflect(store, "t1", h, Meta{Runner: "http://runner.test", As: "runner:bot", Policy: spawned,
-		PolicyNow: func() task.Policy { mu.Lock(); defer mu.Unlock(); return now }})
-	got := awaitFields(t, store, Ref("t1"), "the record", func(f map[string]any) bool { return f["policy"] != nil })
+	Reflect(store, "t1", h, Meta{Runner: "http://runner.test", As: "runner:bot", Autonomy: spawned,
+		AutonomyNow: func() task.Autonomy { mu.Lock(); defer mu.Unlock(); return now }})
+	got := awaitFields(t, store, Ref("t1"), "the record", func(f map[string]any) bool { return f["autonomy"] != nil })
 	e, _, _ := store.Get(Ref("t1"))
-	back := PolicyOf(e.Payload)
+	back := AutonomyOf(e.Payload)
 	if len(back) != 2 || back[0].Name != "release" || back[0].Match.Params["ref"] != "refs/heads/main" || back[0].Then.Ask == nil ||
 		back[0].Then.Ask.Default != task.Deny || back[0].Then.Ask.Labels["slack"] != "C1" || back[1].Then.Mode != task.ThenAsk {
 		t.Fatalf("the record's policy reads back as %+v, want the spawn's whole: %+v", back, got)
 	}
 
 	mu.Lock()
-	now = task.Policy{{Name: "writes", Match: &task.Match{System: "files", Verb: "write", Params: map[string]string{"path": "db/**"}}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAllow}}}
+	now = task.Autonomy{{Name: "writes", Match: &task.Match{System: "files", Verb: "write", Params: map[string]string{"path": "db/**"}}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAllow}}}
 	mu.Unlock()
-	h.ch <- task.Event{Kind: task.EventPolicy, Text: now.Summary()}
+	h.ch <- task.Event{Kind: task.EventAutonomy, Text: now.Summary()}
 	awaitFields(t, store, Ref("t1"), "the slide", func(f map[string]any) bool {
 		e, _, _ := store.Get(Ref("t1"))
-		gs := PolicyOf(e.Payload)
+		gs := AutonomyOf(e.Payload)
 		return len(gs) == 2 && gs[0].Name == "writes"
 	})
 }

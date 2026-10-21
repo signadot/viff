@@ -8,15 +8,15 @@ import (
 	"github.com/signadot/verse/task"
 )
 
-// A spawn's policy is the task's own: which call each row is about, what happens to it, and for
+// A spawn's autonomy is the task's own: which call each row is about, what happens to it, and for
 // an ask how many approvals, who answers, how long it stands and what silence settles on, and
 // what the question says about itself. The runner carries the rows whole; verse keeps what the
 // runner never reads.
-func TestASpawnCarriesItsPolicy(t *testing.T) {
+func TestASpawnCarriesItsAutonomy(t *testing.T) {
 	var spec Spec
 	err := codec.Unmarshal([]byte(`{
-		doer: {agent: verse}, prompt: "review $subject",
-		policy: [
+		agent: {name: verse}, prompt: "review $subject",
+		autonomy: [
 		  {name: release, match: {system: git, verb: push, ref: refs/heads/main}, then: {ask: {need: 2, answerers: ["user:*"],
 		   within: "4h", default: deny, labels: {slack: C0C3KHG9B0W}}}},
 		  {name: shell, match: {system: commands, verb: run}, then: ask},
@@ -27,7 +27,7 @@ func TestASpawnCarriesItsPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	p := spec.Policy
+	p := spec.Autonomy
 	if len(p) != 4 || p[0].Then.Ask == nil || p[0].Then.Ask.Need != 2 || p[0].Then.Ask.Default != "deny" ||
 		p[0].Then.Ask.Labels["slack"] != "C0C3KHG9B0W" || p[0].Then.Ask.Within != "4h" || p[0].Then.Ask.Answerers[0] != "user:*" {
 		t.Fatalf("policy = %+v", p)
@@ -51,10 +51,10 @@ func TestASpawnCarriesItsPolicy(t *testing.T) {
 		}
 	}
 	bound := spec.Bind(Binding{"subject": "demo.pr.1"})
-	bound.Policy[0].Then.Ask.Need = 9
-	bound.Policy[0].Then.Ask.Labels["slack"] = "changed"
-	bound.Policy[0].Match.Params["ref"] = "changed"
+	bound.Autonomy[0].Then.Ask.Need = 9
+	bound.Autonomy[0].Then.Ask.Labels["slack"] = "changed"
+	bound.Autonomy[0].Match.Params["ref"] = "changed"
 	if p[0].Then.Ask.Need != 2 || p[0].Then.Ask.Labels["slack"] != "C0C3KHG9B0W" || p[0].Match.Params["ref"] != "refs/heads/main" {
-		t.Fatal("a bound spec aliases the charter's policy")
+		t.Fatal("a bound spec aliases the charter's autonomy")
 	}
 }

@@ -13,7 +13,7 @@ coordination. Verse separates two kinds of work:
 | Kind | What it is | How it travels |
 |---|---|---|
 | *Data coordination* | Actions write entities, and [rules](glossary.md#rule) react to them. | Through the store. It may lag: it is eventual, queued and recoverable. |
-| *Control* | Holding a run, cancelling it, answering a gate, changing the [policy](glossary.md#policy) of a task, or sending an instruction with `say`. | Not through the store at all. |
+| *Control* | Holding a run, cancelling it, answering a gate, changing the [autonomy](reference/tasks.md#the-autonomy) of a task, or sending an instruction with `say`. | Not through the store at all. |
 
 What an operator can stop, and for how long, is in [control](control.md).
 

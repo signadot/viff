@@ -31,7 +31,7 @@ import (
 //
 //	verse ask                                       your asks
 //	verse ask land                                  one of them, and whom it waits on
-//	verse ask land -q "Review verse/ask?" --to ani@example.com --due 48h --then '{prompt: "merge it"}'
+//	verse ask land -q "Review verse/ask?" --to ani@example.com --due 48h --then @then.tony
 //	verse ask land --withdraw                       take it back
 //	verse ask --watch                               a line when one settles, or a question waits on you
 //
@@ -46,7 +46,7 @@ type askConfig struct {
 	To        string `cli:"name=to desc='who is asked: a name or a comma-separated list, in the grammar a grant uses; absent, anyone may answer'"`
 	Due       string `cli:"name=due desc='when it settles if nobody answers: an RFC 3339 date or a duration from now (48h)'"`
 	OnSilence string `cli:"name=on-silence desc='with --due: what it settles on if nobody answers by then, yes or no (the default); yes runs the then'"`
-	Then      string `cli:"name=then desc='what follows a yes, on your authority: one key naming it, {prompt: <text>}, {script: <text>}, {answer: {ask: <id>, choice: <option>}} or {ask: {name: …, question: …, …}}, a prompt or a script with the policy it runs under beside it, {prompt: <text>, policy: [<rows>]}; - reads it from stdin, @<file> from a file'"`
+	Then      string `cli:"name=then desc='what follows a yes, on your authority: one key naming it: {spawn: <a spawn, as a charter writes one>}, {answer: {ask: <id>, choice: <option>}} or {ask: {name: …, question: …, …}}; - reads it from stdin, @<file> from a file'"`
 	Else      string `cli:"name=else desc='what follows a no, on your authority: a no answered, or silence settling on no at --due; one key, as --then takes'"`
 	About     string `cli:"name=about desc='the path the ask is about, as a kinded path'"`
 	Keep      string `cli:"name=keep desc='how long it stands once settled, as a duration (72h); absent, a week'"`
@@ -241,7 +241,7 @@ func thenOf(cc *cli.Context, s string) (entity.Payload, error) {
 		return nil, fmt.Errorf("%w: --then: %v", cli.ErrUsage, err)
 	}
 	if !entity.IsObj(n) {
-		return nil, fmt.Errorf("%w: --then is one key naming what runs: {prompt: <text>} or {script: <text>}", cli.ErrUsage)
+		return nil, fmt.Errorf("%w: --then is one key naming what runs: {spawn: …}, {answer: …} or {ask: …}", cli.ErrUsage)
 	}
 	return n, nil
 }

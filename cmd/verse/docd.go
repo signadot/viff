@@ -230,7 +230,7 @@ func resolveO(explicit string, cc *cli.Context) (string, error) {
 // what the disk holds. A verse is a long-lived store written to by an engine that fires on
 // every commit, so "keep everything forever" is not a default it can live on.
 //
-// ONE FIELD, and the rest is logd's. The cutoff is the only part of the policy verse has an
+// ONE FIELD, and the rest is logd's. The cutoff is the only part of the autonomy verse has an
 // opinion about: it is how far back an EXACT replay works, and past it history degrades to
 // snapshot granularity. Every cursor verse issues is minutes old at most — the engine's own
 // catch-up, `verse watch --since`, a source resuming — and a replay that falls below the
@@ -250,7 +250,7 @@ compaction: {
 // named one, and otherwise verse's own written into the data dir.
 //
 // It is written into the DATA DIR rather than a temp file so that a store being debugged
-// carries the policy it was run under beside the data that policy shaped — `ls /data` says
+// carries the autonomy it was run under beside the data that autonomy shaped — `ls /data` says
 // what compaction was asked for. It is rewritten every up, and says so in its own first line,
 // because it is verse's statement about the store rather than the store's own configuration:
 // an operator with something to say passes --logd-config, which replaces it entirely.

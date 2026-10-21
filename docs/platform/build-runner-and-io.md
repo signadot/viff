@@ -29,9 +29,11 @@ The lines of the sample that matter are below. The file has the rest.
 func main() {
 	// …
 	d := runnerd.NewInProcessHandler(build)
-	d.Describe(runner.Description{Offers: []runner.Offer{{
-		Agent: "sample",
-		With:  map[string]runner.Accepts{"network": runner.AcceptsOneOf(runner.NetworkOpen)},
+	d.Describe(runner.Description{Version: runner.DescriptionVersion, Offers: []runner.Offer{{
+		Agent: &runner.AgentOffer{Name: "sample"},
+		Systems: map[string]runner.System{"network": {
+			Builds: systems.Ceiling{{Attributes: map[string][]string{"mode": {runner.NetworkOpen}}}},
+		}},
 	}}})
 	if err := http.ListenAndServe(*addr, d.HTTPHandler()); err != nil {
 		log.Fatalf("runner: %v", err)
@@ -39,7 +41,8 @@ func main() {
 }
 
 func build(l runner.Launch, reg *task.Registry) *task.Task {
-	sup := task.NewSupervisor(l.Policy, reg)
+	sup := task.NewSupervisor(l.Environment, l.Autonomy, reg)
+	sup.SetCeilings(map[string]systems.Ceiling{"commands": systems.Open()})
 	return task.NewTask(l.ID, sup, &planDriver{prompt: l.Prompt}, &echoExecutor{})
 }
 
@@ -55,10 +58,10 @@ func (echoExecutor) Execute(_ context.Context, tu task.ToolUse) (task.StepResult
 | Part | What it does |
 |---|---|
 | `runnerd.NewInProcessHandler(build)` | makes a task handler that runs tasks in this program's process, with no sandbox. It calls `build` once for each spawn. (`runnerd verse` uses a `runnerd.SubprocessHandler` instead, which runs each task in a sandboxed process of its own.) |
-| `d.Describe(…)` | what the runner offers, which `GET /describe` answers: one agent, `sample`. Each offer says which networks it builds under `with.network`. The sample runs its tasks unconfined, so it builds only `open`. Verse does not install a runner that offers nothing, or whose offer leaves out its networks. |
+| `d.Describe(…)` | what the runner offers, which `GET /describe` answers, in `version: 2`: one agent, `sample`, taking no settings. Each offer says which networks it builds, under its network's `builds`. The sample runs its tasks unconfined, so it builds only `open`. Verse does not install a runner that offers nothing, or whose offer leaves out what network it builds. |
 | `d.HTTPHandler()` | the HTTP routes of the contract, and `GET /describe` |
-| `build` | a `runnerd.Builder`. It makes one task from one `runner.Launch`. The launch carries what the spawn said: the prompt, the doer and what it works with, and the policy. |
-| `task.NewSupervisor` | decides what happens before each action of the task. `l.Policy` is the launch's policy: a verb no row names is refused, the first row that matches a step denies it, asks about it or allows it, and the last row decides the calls of named verbs no row above matched. A person answers an ask with `verse question`. An action that is no step (`task.StepOf`), such as the sample's `do`, asks nobody. |
+| `build` | a `runnerd.Builder`. It makes one task from one `runner.Launch`. The launch carries what the spawn said: the prompt or the script, the agent and its settings, the environment, and the autonomy. |
+| `task.NewSupervisor` | decides what happens before each action of the task. A step outside `l.Environment` is refused. Within it, `l.Autonomy`'s first row that matches the step denies it, asks about it or allows it, and the last row decides what no row above matched. A person answers an ask with `verse question`. An action that is no step (`task.StepOf`), such as the sample's `do`, asks nobody. `SetCeilings` gives the runner's own line over each system, read after the autonomy: a system the runner states no ceiling for is closed, so a runner says what it leaves open (`systems.Open()`), as the sample does for `commands`. |
 | `Next` | the driver. It returns the next action and `true`, or `false` when the work is done. An error fails the task. |
 | `Execute` | the executor. It carries out one action. The driver receives its `StepResult` as `prev` at the next call. |
 
@@ -74,7 +77,7 @@ A `Builder` returns no error. To refuse a launch, return
 
 | Method and path | Body | What to answer |
 |---|---|---|
-| `GET /describe` | none | `200` and what the runner offers: its agents and whether it runs scripts, what each takes under `with` (the networks it builds among them), and the systems each intercepts, with the ceiling over each. Verse checks a spawn against it. |
+| `GET /describe` | none | `200` and what the runner offers: its agents, with the settings each takes, and whether it runs scripts, and the systems each holds, with what the runner builds of each (`builds`, the network's modes) and the ceiling over each. Verse checks a spawn against it. |
 | `GET /tasks` | none | `200` and a list of `verse-task-snapshot`, one for each task the runner hosts |
 | `GET /tasks/{id}` | none | `200` and one `verse-task-snapshot` |
 | `GET /tasks/{id}/events?since=N` | none | the event stream of the task, as server-sent events. Each holds one event, a `verse-task-event`. |
@@ -84,7 +87,7 @@ A `Builder` returns no error. To refuse a launch, return
 | `POST /tasks/{id}/cancel` | `verse-runner-cancel`, or no body | `204` when applied |
 | `POST /tasks/{id}/pause` | none | `204` when applied |
 | `POST /tasks/{id}/resume` | none | `204` when applied |
-| `PUT /tasks/{id}/policy` | `verse-runner-policy` | `204` when applied |
+| `PUT /tasks/{id}/autonomy` | `verse-runner-autonomy` | `204` when applied |
 
 Every route with an `{id}` answers `404` for a task that the runner does not host.
 
@@ -96,15 +99,18 @@ verse schema verse-runner-launch
 
 ```
 verse-runner-launch:
+  agent: .[nullable(verse-runner-agent)]   # {name, <setting>: …, annotations}; absent is the runner's default
   answer: .[tony-base:ir]
+  autonomy: !irtype {}                 # the rows {name, match, then}; absent asks about every step
   converse: .[bool]
   credential: .[string]
-  doer: !verse-runner-doer null        # {agent | script, with: {git, git-issue, network, env, model, effort}, annotations}
+  environment: !irtype {}              # {vars, systems}: what the task may reach
   id: .[string]
   occurrence: .[int]
-  policy: !irtype {}                   # the task's policy, its rows {name, match, then}; absent gives the task no verb
-  prompt: .[string]
+  person: .[string]                    # reserved; refused
+  prompt: .[string]                    # a prompt, or
   provenance: !verse-runner-provenance null
+  script: .[string]                    # a script
   timeout: .[string]
 ```
 
@@ -130,26 +136,33 @@ Then install the runner, check it, and run a task on it.
 ```sh
 verse runner add sample http://127.0.0.1:9810
 verse runner check sample
-verse task run -runner sample -agent sample -wait "fetch the data; train the model"
+echo '{runner: sample, agent: {name: sample}, prompt: "fetch the data; train the model", environment: {systems: {network: {mode: open}}}}' |
+  verse task run -f - -wait
 ```
 
 ```
 at: verse.runners.sample
 offers:
-- agent: sample
-  with:
+- agent:
+    name: sample
+  systems:
     network:
-    - open
+      builds:
+        mode:
+        - open
 reach: "a runner"
 ```
 
 ```
 at: verse.runners.sample
 offers:
-- agent: sample
-  with:
+- agent:
+    name: sample
+  systems:
     network:
-    - open
+      builds:
+        mode:
+        - open
 reach: "a runner"
 url: http://127.0.0.1:9810
 ```
@@ -188,7 +201,7 @@ On way A, `runnerd` does the first five for you. The other four are yours on bot
    [`since` semantics](../task-control.md#since-semantics-and-the-two-restarts) has the detail.
 5. **A control call says what became of it.** It answers `204` when the runner applied it,
    and `404` for a task that the runner does not host.
-6. **The doer's annotation `verse.portkey/virtual-key` is the model credential itself.** In
+6. **The agent's annotation `verse.portkey/virtual-key` is the model credential itself.** In
    the `spawn` of a rule, `virtualKey` holds an address. In the launch that a runner receives,
    the annotation holds what the address resolved to. Use it for that task only, and do not
    write it to a log.
@@ -203,20 +216,20 @@ On way A, `runnerd` does the first five for you. The other four are yours on bot
    shape that the last message of the task must have
    ([the answer contract](../reference/action.md#the-answer-contract)).
 8. **The runner refuses a spawn that names what it does not have.** An agent it does not
-   offer, a model or effort that agent does not take, a repository on a forge it has none
-   on, a policy row that opens what its ceilings close, a row on a system it does not hold, a
-   network it does not build. `GET /describe` says what it has.
+   offer, a setting that agent does not take, an environment beyond its ceilings or what it
+   builds (a repository on a forge it has none on, a system it does not hold, a network it
+   does not build), and one missing a step its doer requires. `GET /describe` says what it has.
 9. **A failure sets `err`, and not `result`.** `result` is the answer of a task that ended
    with `done`.
 
-The sample does not do 7 and 8. Its `build` reads the id, the prompt and the policy of the
-launch and no other field. Add the refusals before you deploy a copy of it.
+The sample does not do 7 and 8. Its `build` reads the id, the prompt, the environment and the autonomy of
+the launch and no other field. Add the refusals before you deploy a copy of it.
 
 Verse has no conformance test that a new runner can run against itself. There is one
 exception, for Go. The package `task/tasktest` tests a Go type that produces a
 `task.Snapshot`. It tests four properties.
 
-- The snapshot reports the doer.
+- The snapshot reports the agent.
 - A failure is an `err`.
 - A completion is a `result`.
 - The reason of a gate reaches the snapshot.

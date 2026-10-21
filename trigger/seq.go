@@ -76,7 +76,7 @@ func (e *Engine) startSeq(chain string, carrier Action, oc occasion, subj entity
 	}
 	// From here the decision is exclusive. `done` is a POLICY about repeating; the claim is a
 	// MECHANISM for exclusion. They answer different questions, and fusing them is what forced
-	// the policy to be maximally strict back when the mechanism could not be trusted.
+	// the autonomy to be maximally strict back when the mechanism could not be trusted.
 	shape := e.shapeOf(chain)
 	if e.seqConcluded(chain, subj, shape) {
 		e.tracef("seq %s: already ran to a conclusion for %s at this shape; not re-running", chain, subj)
@@ -156,7 +156,7 @@ func (e *Engine) finishSeq(chain string, carrier Action, oc occasion, subj entit
 // released nothing, so the run claim stood forever and blocked the next run — which looked like
 // fail-stop and was not one: `Server.reconcileClaims` clears a claim no resumed task
 // explains, so a failed sequence ran again at the next restart and never before it. A repeat
-// policy that turns on whether anybody bounced the server is not a policy.
+// autonomy that turns on whether anybody bounced the server is not an autonomy.
 //
 // The record goes down BEFORE the claim comes back, for the reason startSeq takes the claim
 // before reading `done`: between the two there is a window, and whatever is not yet written in
@@ -225,10 +225,10 @@ func (e *Engine) resumeSeq(chain string, subj entity.Ref, oc occasion) bool {
 // nothing to say. What is left is the question the registry could never answer: should a
 // sequence that already ran run again?
 //
-// TWO CONCLUSIONS, one policy. A run that finished is `done`; a run that stopped at an off-ramp
+// TWO CONCLUSIONS, one autonomy. A run that finished is `done`; a run that stopped at an off-ramp
 // is `ended`, and the second used to be enforced by a claim nobody released (see stopSeq).
 // Asking about both here is what lets that claim be released, which is what keeps the mechanism
-// and the policy apart — the separation startSeq's own comment names as the thing that let each
+// and the autonomy apart — the separation startSeq's own comment names as the thing that let each
 // shrink.
 //
 // Scoped to the shape, so editing the sequence frees it — the same signal that stops a live

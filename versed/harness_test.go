@@ -22,7 +22,7 @@ func harnessServer(t *testing.T, modelURL string) *Server {
 	if modelURL != "" {
 		s = verserunner.Secrets{PortkeyAPIKey: "test-key", PortkeyBaseURL: modelURL}
 	}
-	h := verserunner.New(verserunner.Config{}, s, t.TempDir(), io.Discard)
+	h := verserunner.New(verserunner.Config{Systems: verserunner.OpenInside()}, s, t.TempDir(), io.Discard)
 	srv := NewWithStore(h.Build, entitytest.Store(t))
 	srv.Start(t.Context())
 	var trig trigger.Trigger
@@ -30,7 +30,7 @@ func harnessServer(t *testing.T, modelURL string) *Server {
 		name: read,
 		condition: {subject: {path: "demo.note.*", value: !and [{text: null}, !not {read: null}]}},
 		action: {
-			spawn:  {doer: {agent: verse}, prompt: "answer in one word: $subject.value.text", policy: [{then: allow}]},
+			spawn:  {agent: {name: verse}, prompt: "answer in one word: $subject.value.text", environment: {systems: {network: {mode: open}}}, autonomy: [{then: allow}]},
 			onDone: {patch: {read: $result}},
 			onFailed: {patch: {read: failed}},
 		},

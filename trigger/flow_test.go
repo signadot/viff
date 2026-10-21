@@ -2,6 +2,7 @@ package trigger
 
 import (
 	"context"
+	"github.com/signadot/verse/systems"
 	"slices"
 	"sync"
 	"testing"
@@ -24,14 +25,14 @@ func TestHoldTaskHoldsThenReleases(t *testing.T) {
 
 	var tk *task.Task
 	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
-		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+		sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 		tk = task.NewTask(id, sup, immediate{}, noExec{})
 		mirror.Reflect(store, id, tk, mirror.Meta{Subject: spec.Subject, Runner: "local"})
 		return tk // the test starts Run after arranging the pause
 	})
 
 	subj := `demo.pr."1"`
-	eng.Spawn("work-1", launch.Spec{Doer: runner.Doer{Agent: "verse"}, Subject: subj})
+	eng.Spawn("work-1", launch.Spec{Agent: &runner.Agent{Name: "verse"}, Subject: subj})
 	if tk == nil {
 		t.Fatal("spawner was not invoked")
 	}
@@ -72,7 +73,7 @@ func TestFlowReapedOnCompletion(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
-		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+		sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 		p := task.NewTask(id, sup, immediate{}, noExec{})
 		mirror.Reflect(store, id, p, mirror.Meta{Subject: spec.Subject, Runner: "local"})
 		go p.Run(context.Background())
@@ -84,7 +85,7 @@ func TestFlowReapedOnCompletion(t *testing.T) {
 	eng.Start(ctx) // the engine must observe the store to reap
 
 	subj := `demo.pr."1"`
-	eng.Spawn("work-1", launch.Spec{Doer: runner.Doer{Agent: "verse"}, Subject: subj})
+	eng.Spawn("work-1", launch.Spec{Agent: &runner.Agent{Name: "verse"}, Subject: subj})
 
 	deadline := time.After(2 * time.Second)
 	for slices.Contains(eng.Flows(), subj) {
@@ -104,7 +105,7 @@ func TestReapVsFlowControlNoRace(t *testing.T) {
 	const subj = `demo.pr."1"`
 	sel := mustSelect(t, "*", subj)
 	mkTask := func(id string) *task.Task {
-		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+		sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 		return task.NewTask(id, sup, immediate{}, noExec{})
 	}
 	terminal := entity.Event{

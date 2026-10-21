@@ -14,12 +14,19 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/systems"
 )
 
-// pushing is a launch's policy that gives the task git and lets every call of it go: its work
-// may leave, so work that did not is held.
-var pushing = task.Policy{{Match: &task.Match{System: "git"}, Then: task.Then{Mode: task.ThenAllow}}, {Then: task.Then{Mode: task.ThenAllow}}}
+// pushing is a launch's environment that gives the task a push to each repo: its work may
+// leave, so work that did not is held.
+func pushing(repos ...string) systems.Environment {
+	e := systems.Environment{Systems: systems.Systems{}}
+	for _, r := range repos {
+		e.Systems["git"] = append(e.Systems["git"], systems.Block{Attributes: map[string]string{"repo": r},
+			Verbs: map[string][]systems.Shape{"push": {{"ref": "refs/heads/**"}}}})
+	}
+	return e
+}
 
 // A fetch must not prune staged work.
 //
@@ -41,7 +48,7 @@ func TestFetchDoesNotPruneStagedWork(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws.Root, "svc", "work.txt"), []byte("x\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	held := ws.Salvage(context.Background(), &runner.Launch{ID: "p1", Policy: pushing})
+	held := ws.Salvage(context.Background(), &runner.Launch{ID: "p1", Environment: pushing("acme/svc")})
 	if held.Err != nil || len(held.Staged) != 1 {
 		t.Fatalf("salvage: %+v", held)
 	}
@@ -96,7 +103,7 @@ func TestReflectRetriesApprovedWorkAndNeverHeldWork(t *testing.T) {
 		StagedRef(StagePending, "ok1", "svc", "refs/heads/verse/auto/ok1"), tipOf(t, approved.Trees[0])); err != nil {
 		t.Fatal(err)
 	}
-	held := refused.Salvage(context.Background(), &runner.Launch{ID: "no1", Policy: pushing})
+	held := refused.Salvage(context.Background(), &runner.Launch{ID: "no1", Environment: pushing("acme/svc")})
 	if len(held.Staged) != 1 || !strings.Contains(held.Staged[0], "refs/held/") {
 		t.Fatalf("a refused delivery did not go to held: %+v", held)
 	}
@@ -146,11 +153,10 @@ func TestSalvageHoldsWorkNobodyAuthorizedToLeave(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// The policy refuses every push to the reference repository: nothing of it leaves.
-	l := &runner.Launch{ID: "s1", Policy: task.Policy{
-		{Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"repo": "github.com/acme/ref"}}, Then: task.Then{Mode: task.ThenDeny}},
-		{Then: task.Then{Mode: task.ThenAllow}},
-	}}
+	// The environment gives no push to the reference repository: nothing of it leaves.
+	l := &runner.Launch{ID: "s1", Environment: pushing("acme/svc")}
+	l.Environment.Systems["git"] = append(l.Environment.Systems["git"], systems.Block{
+		Attributes: map[string]string{"repo": "acme/ref"}, Verbs: map[string][]systems.Shape{"fetch": {{}}}})
 	d := ws.Salvage(context.Background(), l)
 	if d.Err != nil {
 		t.Fatalf("salvage: %v", d.Err)
@@ -242,7 +248,7 @@ func TestSalvageHoldsOnlyTheWorkThatDidNotLeave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	l := &runner.Launch{ID: "s2", Policy: pushing}
+	l := &runner.Launch{ID: "s2", Environment: pushing("acme/a", "acme/b")}
 	for _, name := range []string{"a", "b"} {
 		if err := os.WriteFile(filepath.Join(ws.Root, name, "work.txt"), []byte("x\n"), 0o644); err != nil {
 			t.Fatal(err)

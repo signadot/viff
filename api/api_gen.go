@@ -11,7 +11,6 @@ import (
 	"github.com/signadot/tony-format/go-tony/parse"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
-	"reflect"
 )
 
 // ToTonyIR converts PutEntity to a Tony IR node.
@@ -561,62 +560,16 @@ func (s *Spawn) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["name"] = ir.FromString(string(s.Name))
 	}
 
-	// Field: Prompt
-	if s.Prompt != "" {
-		irMap["prompt"] = ir.FromString(string(s.Prompt))
+	// Field: Spawn
+	node, err = s.Spawn.ToTonyIR(opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert field %q: %w", "Spawn", err)
 	}
-
-	// Field: Doer (optional)
-	if !isZeroValue_Spawn_Doer(s.Doer) {
-		node, err = s.Doer.ToTonyIR(opts...)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert field %q: %w", "Doer", err)
-		}
-		irMap["doer"] = node
-	}
-
-	// Field: Retain
-	if s.Retain != 0 {
-		irMap["retain"] = ir.FromInt(int64(s.Retain))
-	}
+	irMap["spawn"] = node
 
 	// Field: Converse
 	if s.Converse {
 		irMap["converse"] = ir.FromBool(bool(s.Converse))
-	}
-
-	// Field: Subject
-	if s.Subject != "" {
-		irMap["subject"] = ir.FromString(string(s.Subject))
-	}
-
-	// Field: Policy
-	if s.Policy != nil {
-		node, err = gomap.ToTonyIR(s.Policy, opts...)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert field %q: %w", "Policy", err)
-		}
-		irMap["policy"] = node
-	}
-
-	// Field: Timeout
-	if s.Timeout != "" {
-		irMap["timeout"] = ir.FromString(string(s.Timeout))
-	}
-
-	// Field: Runner
-	if s.Runner != "" {
-		irMap["runner"] = ir.FromString(string(s.Runner))
-	}
-
-	// Field: VirtualKey
-	if s.VirtualKey != "" {
-		irMap["virtualKey"] = ir.FromString(string(s.VirtualKey))
-	}
-
-	// Field: Answer (optional)
-	if s.Answer != nil {
-		irMap["answer"] = s.Answer
 	}
 
 	// Field: Principal
@@ -669,64 +622,17 @@ func (s *Spawn) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "name", fieldNodeUnwrapped.Type)
 			}
 			s.Name = string(fieldNodeUnwrapped.String)
-		case "prompt":
-			// Field: Prompt
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "prompt", fieldNodeUnwrapped.Type)
+		case "spawn":
+			// Field: Spawn
+			if err := s.Spawn.FromTonyIR(fieldNode, opts...); err != nil {
+				return fmt.Errorf("field %q: %w", "spawn", err)
 			}
-			s.Prompt = string(fieldNodeUnwrapped.String)
-		case "doer":
-			// Field: Doer
-			if err := s.Doer.FromTonyIR(fieldNode, opts...); err != nil {
-				return fmt.Errorf("field %q: %w", "doer", err)
-			}
-		case "retain":
-			// Field: Retain
-			if fieldNodeUnwrapped.Int64 == nil {
-				return fmt.Errorf("field %q: expected number, got %v", "retain", fieldNodeUnwrapped.Type)
-			}
-			s.Retain = int(*fieldNodeUnwrapped.Int64)
 		case "converse":
 			// Field: Converse
 			if fieldNodeUnwrapped.Type != ir.BoolType {
 				return fmt.Errorf("field %q: expected bool, got %v", "converse", fieldNodeUnwrapped.Type)
 			}
 			s.Converse = bool(fieldNodeUnwrapped.Bool)
-		case "subject":
-			// Field: Subject
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "subject", fieldNodeUnwrapped.Type)
-			}
-			s.Subject = string(fieldNodeUnwrapped.String)
-		case "policy":
-			// Field: Policy
-			if err := gomap.FromTonyIR(fieldNode, &s.Policy, opts...); err != nil {
-				return fmt.Errorf("field %q: %w", "policy", err)
-			}
-		case "timeout":
-			// Field: Timeout
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "timeout", fieldNodeUnwrapped.Type)
-			}
-			s.Timeout = string(fieldNodeUnwrapped.String)
-		case "runner":
-			// Field: Runner
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "runner", fieldNodeUnwrapped.Type)
-			}
-			s.Runner = string(fieldNodeUnwrapped.String)
-		case "virtualKey":
-			// Field: VirtualKey
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "virtualKey", fieldNodeUnwrapped.Type)
-			}
-			s.VirtualKey = string(fieldNodeUnwrapped.String)
-		case "answer":
-			if gomap.GetUnmapComments(opts...) {
-				s.Answer = fieldNode
-			} else {
-				s.Answer = fieldNodeUnwrapped
-			}
 		case "principal":
 			// Field: Principal
 			if fieldNodeUnwrapped.Type != ir.StringType {
@@ -784,11 +690,6 @@ func (s *Task) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Field: Prompt
 	if s.Prompt != "" {
 		irMap["prompt"] = ir.FromString(string(s.Prompt))
-	}
-
-	// Field: Doer
-	if s.Doer != "" {
-		irMap["doer"] = ir.FromString(string(s.Doer))
 	}
 
 	// Field: Status
@@ -851,18 +752,41 @@ func (s *Task) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["pending"] = ir.FromSlice(slice)
 	}
 
-	// Field: Policy
-	if s.Policy != nil {
-		node, err = gomap.ToTonyIR(s.Policy, opts...)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert field %q: %w", "Policy", err)
+	// Field: Refused
+	if len(s.Refused) > 0 {
+		mapNodes := make(map[string]*ir.Node)
+		for k, v := range s.Refused {
+			mapNodes[k] = ir.FromInt(int64(v))
 		}
-		irMap["policy"] = node
+		irMap["refused"] = ir.FromMap(mapNodes)
 	}
 
-	// Field: PolicyBy
-	if s.PolicyBy != "" {
-		irMap["policyBy"] = ir.FromString(string(s.PolicyBy))
+	// Field: Agent (optional)
+	if s.Agent != nil {
+		node, err = s.Agent.ToTonyIR(opts...)
+		if err != nil {
+			return nil, err
+		}
+		irMap["agent"] = node
+	}
+
+	// Field: Script
+	if s.Script {
+		irMap["script"] = ir.FromBool(bool(s.Script))
+	}
+
+	// Field: Autonomy
+	if s.Autonomy != nil {
+		node, err = gomap.ToTonyIR(s.Autonomy, opts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert field %q: %w", "Autonomy", err)
+		}
+		irMap["autonomy"] = node
+	}
+
+	// Field: AutonomyBy
+	if s.AutonomyBy != "" {
+		irMap["autonomyBy"] = ir.FromString(string(s.AutonomyBy))
 	}
 
 	return ir.FromMap(irMap), nil
@@ -910,12 +834,6 @@ func (s *Task) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "prompt", fieldNodeUnwrapped.Type)
 			}
 			s.Prompt = string(fieldNodeUnwrapped.String)
-		case "doer":
-			// Field: Doer
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "doer", fieldNodeUnwrapped.Type)
-			}
-			s.Doer = string(fieldNodeUnwrapped.String)
 		case "status":
 			if fieldNodeUnwrapped.Type != ir.StringType {
 				return fmt.Errorf("field %q: expected string for TextUnmarshaler, got %v", "status", fieldNodeUnwrapped.Type)
@@ -986,17 +904,47 @@ func (s *Task) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			} else {
 				return fmt.Errorf("%s: expected array, got %v", "field \"pending\"", fieldNodeUnwrapped.Type)
 			}
-		case "policy":
-			// Field: Policy
-			if err := gomap.FromTonyIR(fieldNode, &s.Policy, opts...); err != nil {
-				return fmt.Errorf("field %q: %w", "policy", err)
+		case "refused":
+			// Field: Refused
+			if fieldNodeUnwrapped.Type == ir.ObjectType {
+				m := make(map[string]int)
+				irMap := ir.ToMap(fieldNodeUnwrapped)
+				for k, v := range irMap {
+					ctx := fmt.Sprintf("map value at key %q", k)
+					var val int
+					if v.Int64 == nil {
+						return fmt.Errorf("%s: expected number, got %v", ctx, v.Type)
+					}
+					val = int(*v.Int64)
+					m[k] = val
+				}
+				s.Refused = m
+			} else {
+				return fmt.Errorf("%s: expected object, got %v", "field \"refused\"", fieldNodeUnwrapped.Type)
 			}
-		case "policyBy":
-			// Field: PolicyBy
+		case "agent":
+			// Field: Agent
+			s.Agent = &runner.Agent{}
+			if err := s.Agent.FromTonyIR(fieldNode, opts...); err != nil {
+				return err
+			}
+		case "script":
+			// Field: Script
+			if fieldNodeUnwrapped.Type != ir.BoolType {
+				return fmt.Errorf("field %q: expected bool, got %v", "script", fieldNodeUnwrapped.Type)
+			}
+			s.Script = bool(fieldNodeUnwrapped.Bool)
+		case "autonomy":
+			// Field: Autonomy
+			if err := gomap.FromTonyIR(fieldNode, &s.Autonomy, opts...); err != nil {
+				return fmt.Errorf("field %q: %w", "autonomy", err)
+			}
+		case "autonomyBy":
+			// Field: AutonomyBy
 			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "policyBy", fieldNodeUnwrapped.Type)
+				return fmt.Errorf("field %q: expected string, got %v", "autonomyBy", fieldNodeUnwrapped.Type)
 			}
-			s.PolicyBy = string(fieldNodeUnwrapped.String)
+			s.AutonomyBy = string(fieldNodeUnwrapped.String)
 		default:
 			if gomap.IsStrict(opts...) {
 				return fmt.Errorf("unknown field %q for Task", fieldName.String)
@@ -1204,8 +1152,8 @@ func (s *Say) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	return s.FromTonyIR(node, opts...)
 }
 
-// ToTonyIR converts SetPolicy to a Tony IR node.
-func (s *SetPolicy) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+// ToTonyIR converts SetAutonomy to a Tony IR node.
+func (s *SetAutonomy) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if s == nil {
 		return ir.Null(), nil
 	}
@@ -1217,13 +1165,13 @@ func (s *SetPolicy) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Create IR object map
 	irMap := make(map[string]*ir.Node)
 
-	// Field: Policy
-	if s.Policy != nil {
-		node, err = gomap.ToTonyIR(s.Policy, opts...)
+	// Field: Autonomy
+	if s.Autonomy != nil {
+		node, err = gomap.ToTonyIR(s.Autonomy, opts...)
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert field %q: %w", "Policy", err)
+			return nil, fmt.Errorf("failed to convert field %q: %w", "Autonomy", err)
 		}
-		irMap["policy"] = node
+		irMap["autonomy"] = node
 	}
 
 	// Field: By
@@ -1234,8 +1182,8 @@ func (s *SetPolicy) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	return ir.FromMap(irMap), nil
 }
 
-// FromTonyIR populates SetPolicy from a Tony IR node.
-func (s *SetPolicy) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+// FromTonyIR populates SetAutonomy from a Tony IR node.
+func (s *SetAutonomy) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 	if node == nil {
 		return nil
 	}
@@ -1253,7 +1201,7 @@ func (s *SetPolicy) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 		return nil
 	}
 	if node.Type != ir.ObjectType {
-		return fmt.Errorf("expected map for SetPolicy, got %v", node.Type)
+		return fmt.Errorf("expected map for SetAutonomy, got %v", node.Type)
 	}
 
 	for i, fieldName := range node.Fields {
@@ -1264,10 +1212,10 @@ func (s *SetPolicy) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
 		}
 		switch fieldName.String {
-		case "policy":
-			// Field: Policy
-			if err := gomap.FromTonyIR(fieldNode, &s.Policy, opts...); err != nil {
-				return fmt.Errorf("field %q: %w", "policy", err)
+		case "autonomy":
+			// Field: Autonomy
+			if err := gomap.FromTonyIR(fieldNode, &s.Autonomy, opts...); err != nil {
+				return fmt.Errorf("field %q: %w", "autonomy", err)
 			}
 		case "by":
 			// Field: By
@@ -1277,7 +1225,7 @@ func (s *SetPolicy) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			s.By = string(fieldNodeUnwrapped.String)
 		default:
 			if gomap.IsStrict(opts...) {
-				return fmt.Errorf("unknown field %q for SetPolicy", fieldName.String)
+				return fmt.Errorf("unknown field %q for SetAutonomy", fieldName.String)
 			}
 		}
 	}
@@ -1285,8 +1233,8 @@ func (s *SetPolicy) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 	return nil
 }
 
-// ToTony converts SetPolicy to Tony format bytes.
-func (s *SetPolicy) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+// ToTony converts SetAutonomy to Tony format bytes.
+func (s *SetAutonomy) ToTony(opts ...gomap.MapOption) ([]byte, error) {
 	node, err := s.ToTonyIR(opts...)
 	if err != nil {
 		return nil, err
@@ -1298,8 +1246,8 @@ func (s *SetPolicy) ToTony(opts ...gomap.MapOption) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// FromTony parses Tony format bytes and populates SetPolicy.
-func (s *SetPolicy) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+// FromTony parses Tony format bytes and populates SetAutonomy.
+func (s *SetAutonomy) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
 	if err != nil {
 		return err
@@ -5342,9 +5290,4 @@ func (s *CharterCheckPackage) FromTony(data []byte, opts ...gomap.UnmapOption) e
 		return err
 	}
 	return s.FromTonyIR(node, opts...)
-}
-
-// Zero-value check helpers
-func isZeroValue_Spawn_Doer(v runner.Doer) bool {
-	return reflect.ValueOf(v).IsZero()
 }

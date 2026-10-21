@@ -11,7 +11,7 @@
 // the task did not push does not leave.
 //
 //	task    a tool or a script asks to push a repository to a branch
-//	        the task's policy asks a person, when it says to
+//	        the task's autonomy asks a person, when it says to
 //	        approved: the task process asks the runner over the channel
 //	runner  checks the branch against the launch and the commits for their trailers, stages the
 //	        work in its mirror, pushes from there, and answers with what happened

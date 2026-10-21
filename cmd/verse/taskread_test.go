@@ -131,16 +131,26 @@ func TestWaitWaitsUntilInterrupted(t *testing.T) {
 	}
 }
 
-// `task run` names its contract file `--answer-contract`. `--answer` is the gate's, an option
-// id, and on `task run` it is no flag at all.
-func TestTaskRunNamesItsContractFileAnswerContract(t *testing.T) {
+// `task run` TAKES THE SPAWN, AND ONLY THE SPAWN: what the work is — its prompt or script, its
+// contract — is a key of the spawn, never a flag, and a spawn is read as strictly as a charter's.
+// Nothing fires for one written by hand, so a `$` and what a firing sets are refused.
+func TestTaskRunTakesTheSpawn(t *testing.T) {
 	serve(t)
-	_, err := runCLI(t, "task", "run", "--script", "true", "--answer", "shape.tony")
-	if err == nil || !strings.Contains(err.Error(), "answer") {
-		t.Fatalf("task run --answer: err = %v, want the flag refused", err)
-	}
-	_, err = runCLI(t, "task", "run", "--script", "true", "--answer-contract", "no-such-file.tony")
-	if err == nil || !strings.Contains(err.Error(), "--answer-contract") || !strings.Contains(err.Error(), "no-such-file.tony") {
-		t.Fatalf("task run --answer-contract <missing file>: err = %v, want the file named", err)
+	for _, c := range []struct {
+		args []string
+		says string
+	}{
+		{[]string{"--script", "true"}, "script"},
+		{[]string{"--answer-contract", "shape.tony"}, "answer-contract"},
+		{[]string{"-f", "no-such-file.tony"}, "no-such-file.tony"},
+		{[]string{}, "the spawn to run"},
+		{[]string{"-f", spawnFile(t, `{script: "true", doer: {agent: verse}}`)}, `"doer"`},
+		{[]string{"-f", spawnFile(t, `{prompt: "review it", runner: $runner}`)}, "runner: a `$`"},
+		{[]string{"-f", spawnFile(t, `{script: "true", chain: review}`)}, "chain: a firing's"},
+	} {
+		_, err := runCLI(t, append([]string{"task", "run", "--as", "user:t"}, c.args...)...)
+		if err == nil || !strings.Contains(err.Error(), c.says) {
+			t.Errorf("task run %v: err = %v, want it refused saying %q", c.args, err, c.says)
+		}
 	}
 }

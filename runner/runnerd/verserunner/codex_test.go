@@ -25,29 +25,32 @@ func TestTheCodexSectionOffersTheAgent(t *testing.T) {
 	if _, _, err := Load(write("codex: {sandbox: everywhere}\n")); err == nil || !strings.Contains(err.Error(), "sandbox") {
 		t.Errorf("a codex section with no such sandbox loaded: %v", err)
 	}
-	_, c, err := Load(write("codex: {model: m}\n"))
+	_, c, err := Load(write("codex: {model: m}\nsystems: {commands: {ceiling: {}}, files: {ceiling: {}}}\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var offer *runner.Offer
 	for _, o := range c.Describe(Secrets{}, nil).Offers {
-		if o.Agent == "codex" {
+		if o.Agent != nil && o.Agent.Name == "codex" {
 			offer = &o
 		}
 	}
 	if offer == nil {
 		t.Fatal("the codex agent is not among the offers")
 	}
-	if _, ok := offer.With["effort"]; !ok {
-		t.Errorf("the codex offer takes no effort: %+v", offer.With)
+	if s, ok := offer.Agent.Settings["effort"]; !ok || !s.Default {
+		t.Errorf("the codex offer takes no effort, or has no default of its own: %+v", offer.Agent.Settings)
+	}
+	if s, ok := offer.Agent.Settings[runner.SettingModel]; !ok || !s.Default {
+		t.Errorf("the codex offer takes no model, or has no default of its own: %+v", offer.Agent.Settings)
 	}
 	hosts, err := modelHosts(c, Secrets{})
 	if err != nil || !strings.Contains(strings.Join(hosts, ","), "api.openai.com") {
 		t.Errorf("model hosts %v (%v), want Codex's API among them", hosts, err)
 	}
 
-	r := New(Config{}, Secrets{}, t.TempDir(), os.Stderr)
-	tk := r.Build(runner.Launch{ID: "c1", Prompt: "go", Doer: runner.Doer{Agent: "codex"}}, task.NewRegistry())
+	r := New(opened(Config{}), Secrets{}, t.TempDir(), os.Stderr)
+	tk := r.Build(runner.Launch{ID: "c1", Prompt: "go", Agent: &runner.Agent{Name: "codex"}}, task.NewRegistry())
 	if _, err := tk.Run(t.Context()); err == nil || !strings.Contains(err.Error(), "codex:") {
 		t.Errorf("a runner with no codex section ran codex: %v, want it failed saying why", err)
 	}

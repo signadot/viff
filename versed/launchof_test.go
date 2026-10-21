@@ -7,62 +7,83 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
-// The spec's envelope reaches the launch: the doer and what it works with, the autonomy, the
+// The spec's envelope reaches the launch: the agent, the environment, the autonomy, the
 // gates as the runner reads them (their step half), the answer contract, and the provenance.
 func TestLaunchOfCarriesTheSpec(t *testing.T) {
 	l, err := launchOf("rev-1", launch.Spec{
-		Prompt:  "review it",
-		Doer:    runner.Doer{Agent: "verse", With: runner.With{Git: []runner.Repo{{Repo: "acme/app"}}}},
-		Timeout: "1h",
-		Policy:  task.Policy{{Name: "release", Match: &task.Match{System: "git", Verb: "push"}, Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{Need: 2, Within: "4h", Default: task.Deny, Labels: map[string]string{"slack": "C1"}}}}, {Then: task.Then{Mode: task.ThenAllow}}},
-		Subject: `demo.pr."1"`, Chain: "review",
+		Prompt: "review it",
+		Agent:  &runner.Agent{Name: "verse"},
+		Environment: systems.Environment{Systems: systems.Systems{"git": {{Attributes: map[string]string{"repo": "acme/app"},
+			Verbs: map[string][]systems.Shape{"fetch": {{}}}}}}},
+		Timeout:  "1h",
+		Autonomy: task.Autonomy{{Name: "release", Match: &task.Match{System: "git", Verb: "push"}, Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{Need: 2, Within: "4h", Default: task.Deny, Labels: map[string]string{"slack": "C1"}}}}, {Then: task.Then{Mode: task.ThenAllow}}},
+		Subject:  `demo.pr."1"`, Chain: "review",
 	}, "verse.charters.review")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if l.ID != "rev-1" || l.Prompt != "review it" || l.Doer.Agent != "verse" || l.Policy.Default() != task.ThenAllow || l.Timeout != "1h" {
+	if l.ID != "rev-1" || l.Prompt != "review it" || l.Who() != "verse" || l.Autonomy.Default() != task.ThenAllow || l.Timeout != "1h" {
 		t.Errorf("launch = %+v", l)
 	}
-	if len(l.Doer.With.Git) != 1 || l.Doer.With.Git[0].Repo != "acme/app" {
-		t.Errorf("repos = %+v, want the spawn's", l.Doer.With.Git)
+	if repos := l.Repos(); len(repos) != 1 || repos[0].Repo != "acme/app" {
+		t.Errorf("repos = %+v, want the spawn's", repos)
 	}
-	if len(l.Policy) != 2 || l.Policy[0].Name != "release" || l.Policy[0].Then.Ask.Need != 2 || l.Policy[0].Then.Ask.Within != "4h" ||
-		l.Policy[0].Then.Ask.Default != task.Deny || l.Policy[0].Match.System != "git" || l.Policy[0].Match.Verb != "push" {
-		t.Errorf("policy = %+v, want the spawn's whole", l.Policy)
+	if len(l.Autonomy) != 2 || l.Autonomy[0].Name != "release" || l.Autonomy[0].Then.Ask.Need != 2 || l.Autonomy[0].Then.Ask.Within != "4h" ||
+		l.Autonomy[0].Then.Ask.Default != task.Deny || l.Autonomy[0].Match.System != "git" || l.Autonomy[0].Match.Verb != "push" {
+		t.Errorf("autonomy = %+v, want the spawn's whole", l.Autonomy)
 	}
 	if l.Provenance.Principal != "verse.charters.review" || l.Provenance.Subject != `demo.pr."1"` || l.Provenance.Chain != "review" {
 		t.Errorf("provenance = %+v", l.Provenance)
 	}
 }
 
-// A spec that names no policy produces none, so the runner's default stands: resolving
+// A spec that names no autonomy and no agent produces none, so the runner's default stands: resolving
 // "unstated" to a value would change every existing charter.
 func TestLaunchOfLeavesUnstatedAxesUnset(t *testing.T) {
 	l, err := launchOf("p1", launch.Spec{Prompt: "go"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(l.Policy) != 0 || l.Doer.Annotations != nil {
+	if len(l.Autonomy) != 0 || l.Agent != nil {
 		t.Fatalf("unstated axes resolved to %+v, want them unset", l)
 	}
 }
 
-// The model credential verse resolved rides as the doer's annotation, the key's name, beside
+// The model credential verse resolved rides as the agent's annotation, the key's name, beside
 // whatever annotations the charter wrote, which are left as they were.
-func TestLaunchOfPutsTheCredentialOnTheDoer(t *testing.T) {
-	spec := launch.Spec{Prompt: "go", VirtualKey: "review-key", Doer: runner.Doer{Annotations: map[string]string{"x": "y"}}}
+func TestLaunchOfPutsTheCredentialOnTheAgent(t *testing.T) {
+	spec := launch.Spec{Prompt: "go", VirtualKey: "review-key", Agent: &runner.Agent{Name: "verse", Annotations: map[string]string{"x": "y"}}}
 	l, err := launchOf("p1", spec, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if l.Doer.Annotations[AnnotationVirtualKey] != "review-key" || l.Doer.Annotations["x"] != "y" {
-		t.Errorf("annotations = %v", l.Doer.Annotations)
+	if a := l.AgentSettings(); a.Name != "verse" || a.Annotations[AnnotationVirtualKey] != "review-key" || a.Annotations["x"] != "y" {
+		t.Errorf("agent = %+v", a)
 	}
-	if _, in := spec.Doer.Annotations[AnnotationVirtualKey]; in {
+	if _, in := spec.Agent.Annotations[AnnotationVirtualKey]; in {
 		t.Error("launchOf wrote into the charter's annotations")
+	}
+}
+
+// A PROMPT FOR THE DEFAULT AGENT SPENDS ITS CREDENTIAL TOO: the key rides an agent that names
+// none, which is the runner's default with that setting, and the launch is one the runner takes.
+func TestLaunchOfPutsTheCredentialOnTheDefaultAgent(t *testing.T) {
+	l, err := launchOf("p1", launch.Spec{Prompt: "go", VirtualKey: "review-key"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a := l.AgentSettings(); a.Name != "" || a.Annotations[AnnotationVirtualKey] != "review-key" {
+		t.Errorf("agent = %+v, want the default agent carrying the key", a)
+	}
+	if l.Who() != "" {
+		t.Errorf("who = %q, want the runner's default", l.Who())
+	}
+	if err := l.Check(); err != nil {
+		t.Errorf("a prompt-only launch with a credential: %v", err)
 	}
 }
 

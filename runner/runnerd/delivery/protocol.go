@@ -13,7 +13,7 @@ import (
 
 // Request / Reply are the whole protocol, and each op is an act the runner performs for the
 // task. `push` is for WRITING the world: the task names a repository and a branch, the runner
-// decides it by the launch's policy, stages the committed work in its mirror and pushes it from
+// decides it by the launch's autonomy, stages the committed work in its mirror and pushes it from
 // there. `create-pr` opens a pull request from such a branch, and `update-pr` changes the open
 // one. `fetch` is for READING it: the runner brings its mirror up to upstream
 // and the checkout's `mirror/*` refs up to the mirror. Nothing crosses but requests and answers: the credential
@@ -30,7 +30,7 @@ type Request struct {
 	// own gate, its own result and its own place in the record.
 	Repo string `tony:"field=repo,omitzero"`
 	// Branch is where a push goes, or the head a proposal is from, as the task named it. The
-	// runner decides it by the launch's policy — the task decided it too, and the task is the
+	// runner decides it by the launch's autonomy — the task decided it too, and the task is the
 	// side that must not be trusted about what it may touch. A `fetch` names none.
 	Branch string `tony:"field=branch,omitzero"`
 	// Decision is the id of the decision that let this act through in the task's process

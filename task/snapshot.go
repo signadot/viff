@@ -9,7 +9,9 @@ package task
 type Snapshot struct {
 	ID     string `tony:"field=id"`
 	Prompt string `tony:"field=prompt,omitzero"`
-	Driver string `tony:"field=driver,omitzero"`
+	// Agent is who ran it: the agent's name as its runner resolved it (the runner's default where
+	// the launch named none), or `script`.
+	Agent  string `tony:"field=agent,omitzero"`
 	Status Status `tony:"field=status"`
 	Cursor int64  `tony:"field=cursor,omitzero"` // resume the event stream with ?since=<cursor>
 	// Occurrence is which RUN this is: the store revision it is about. An id names the work
@@ -27,6 +29,13 @@ type Snapshot struct {
 	Result  string        `tony:"field=result,omitzero"`  // the driver's final answer, once completed
 	Err     string        `tony:"field=err,omitzero"`     // failure detail (e.g. "driver error: …")
 	Pending []PendingGate `tony:"field=pending,omitzero"` // open gates awaiting resolution
+	// Refused is the connections the task's proxy refused, by destination (`host:port`), and how
+	// often: the runner's account, since the proxy is the runner's and the task never sees the
+	// decision, only the 403. A refusal is where a run tried to reach what nobody gave it.
+	Refused map[string]int `tony:"field=refused,omitzero"`
+	// Settings is what the agent ran with, by setting (`model`, `effort`): the launch's, and the
+	// runner's defaults where it named none, so the record says which model ran (beside Agent).
+	Settings map[string]string `tony:"field=settings,omitzero"`
 }
 
 // PendingGate is one open gate on a task, in Snapshot's `pending`: a raised GateQuestion awaiting a

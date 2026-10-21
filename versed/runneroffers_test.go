@@ -10,6 +10,8 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/systems"
+	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 )
 
@@ -17,7 +19,7 @@ import (
 func offeringFace(t *testing.T, agents ...string) (*httptest.Server, *runnerd.InProcessHandler) {
 	t.Helper()
 	d := runnerd.NewInProcessHandler(func(l runner.Launch, reg *task.Registry) *task.Task {
-		return task.NewTask(l.ID, task.NewSupervisor(l.Policy, reg), &oneAction{}, okExecutor{})
+		return task.NewTask(l.ID, systemstest.Opened(task.NewSupervisor(l.Environment, l.Autonomy, reg), l.Environment), &oneAction{}, okExecutor{})
 	})
 	d.Describe(offering(agents...))
 	face := httptest.NewServer(d.HTTPHandler())
@@ -28,13 +30,12 @@ func offeringFace(t *testing.T, agents ...string) (*httptest.Server, *runnerd.In
 // offering is a description offering agents and scripts, each building only the network
 // `none`.
 func offering(agents ...string) runner.Description {
-	none := runner.AcceptsOneOf(runner.NetworkNone)
-	var d runner.Description
+	d := runner.Description{Version: runner.DescriptionVersion}
 	for _, a := range agents {
-		d.Offers = append(d.Offers, runner.Offer{Agent: a, With: map[string]runner.Accepts{"model": runner.AcceptsOneOf("small", "large"), "network": none},
-			Systems: map[string]runner.System{"commands": {Ceiling: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}}}})
+		d.Offers = append(d.Offers, runner.Offer{Agent: &runner.AgentOffer{Name: a, Settings: map[string]runner.Setting{"model": {Values: []string{"small", "large"}}}},
+			Systems: map[string]runner.System{"commands": {Ceiling: systems.Open()}, "network": builds(runner.NetworkNone)}})
 	}
-	d.Offers = append(d.Offers, runner.Offer{Script: true, With: map[string]runner.Accepts{"network": none}})
+	d.Offers = append(d.Offers, runner.Offer{Script: true, Systems: map[string]runner.System{"network": builds(runner.NetworkNone)}})
 	return d
 }
 
@@ -58,8 +59,8 @@ func TestARunnerIsInstalledWithWhatItOffers(t *testing.T) {
 		t.Fatalf("add said %+v, want the offers it read", added)
 	}
 	rec, ok := findRunner(srv.Store, "verse.runners.code")
-	if !ok || len(rec.Offers) != 2 || rec.Offers[0].Agent != "codex" || !rec.Offers[1].Script {
-		t.Fatalf("the registration holds offers %+v, want codex and scripts", rec.Offers)
+	if !ok || len(rec.Description().Offers) != 2 || rec.Description().Offers[0].Name() != "codex" || !rec.Description().Offers[1].Script {
+		t.Fatalf("the registration holds offers %+v, want codex and scripts", rec.Described)
 	}
 
 	// The runner comes to offer another agent; a check reads it afresh.
@@ -73,8 +74,8 @@ func TestARunnerIsInstalledWithWhatItOffers(t *testing.T) {
 	}
 	check.Body.Close()
 	rec, _ = findRunner(srv.Store, "verse.runners.code")
-	if len(rec.Offers) != 3 || rec.Offers[1].Agent != "claude" {
-		t.Fatalf("after the check the registration holds %+v, want claude among the offers", rec.Offers)
+	if len(rec.Description().Offers) != 3 || rec.Description().Offers[1].Name() != "claude" {
+		t.Fatalf("after the check the registration holds %+v, want claude among the offers", rec.Described)
 	}
 
 	// The field is the runner's to say, not the installer's.
@@ -85,7 +86,7 @@ func TestARunnerIsInstalledWithWhatItOffers(t *testing.T) {
 
 	// A runner whose offer names no network is no registration, and a check that finds one
 	// keeps what the runner said before.
-	d.Describe(runner.Description{Offers: []runner.Offer{{Script: true}}})
+	d.Describe(runner.Description{Version: runner.DescriptionVersion, Offers: []runner.Offer{{Script: true}}})
 	check, err = http.Get(ts.URL + "/runners/code/check")
 	if err != nil {
 		t.Fatal(err)
@@ -93,8 +94,8 @@ func TestARunnerIsInstalledWithWhatItOffers(t *testing.T) {
 	if body := readBody(t, check); check.StatusCode != http.StatusBadGateway || !strings.Contains(body, "the networks it builds") {
 		t.Fatalf("a check finding an offer with no network = %s: %s, want 502", check.Status, body)
 	}
-	if rec, _ = findRunner(srv.Store, "verse.runners.code"); len(rec.Offers) != 3 {
-		t.Fatalf("after a refused check the registration holds %+v, want the three before", rec.Offers)
+	if rec, _ = findRunner(srv.Store, "verse.runners.code"); len(rec.Description().Offers) != 3 {
+		t.Fatalf("after a refused check the registration holds %+v, want the three before", rec.Described)
 	}
 	resp = postTony(t, ts.URL+"/runners", map[string]any{"name": "silent", "url": face.URL})
 	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "the networks it builds") {
@@ -103,7 +104,7 @@ func TestARunnerIsInstalledWithWhatItOffers(t *testing.T) {
 	if _, ok := findRunner(srv.Store, "verse.runners.silent"); ok {
 		t.Fatal("a refused runner was registered")
 	}
-	d.Describe(runner.Description{})
+	d.Describe(runner.Description{Version: runner.DescriptionVersion})
 	resp = postTony(t, ts.URL+"/runners", map[string]any{"name": "empty", "url": face.URL})
 	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "it offers nothing") {
 		t.Fatalf("add of a runner that offers nothing = %s: %s, want 400", resp.Status, body)
@@ -127,11 +128,11 @@ func TestASpawnIsCheckedAgainstWhatItsRunnerOffers(t *testing.T) {
 		spawn map[string]any
 		want  string // "" is accepted
 	}{
-		{"an agent the runner offers", map[string]any{"doer": map[string]any{"agent": "codex"}, "prompt": "go", "runner": "verse.runners.code"}, ""},
-		{"an agent it does not", map[string]any{"doer": map[string]any{"agent": "claude"}, "prompt": "go", "runner": "verse.runners.code"}, "verse.runners.code: "},
-		{"a model the offer does not take", map[string]any{"doer": map[string]any{"agent": "codex", "with": map[string]any{"model": "huge"}}, "prompt": "go", "runner": "verse.runners.code"}, "takes none called"},
-		{"an agent of the default runner", map[string]any{"doer": map[string]any{"agent": "verse"}, "prompt": "go"}, "the default runner: "},
-		{"a script on the default runner", map[string]any{"doer": map[string]any{"script": "true"}}, ""},
+		{"an agent the runner offers", map[string]any{"spawn": map[string]any{"agent": map[string]any{"name": "codex"}, "prompt": "go", "runner": "verse.runners.code"}}, ""},
+		{"an agent it does not", map[string]any{"spawn": map[string]any{"agent": map[string]any{"name": "claude"}, "prompt": "go", "runner": "verse.runners.code"}}, "verse.runners.code: "},
+		{"a model the offer does not take", map[string]any{"spawn": map[string]any{"agent": map[string]any{"name": "codex", "model": "huge"}, "prompt": "go", "runner": "verse.runners.code"}}, `takes no such model: "huge" is none of small, large`},
+		{"an agent of the default runner", map[string]any{"spawn": map[string]any{"agent": map[string]any{"name": "verse"}, "prompt": "go"}}, "the default runner: "},
+		{"a script on the default runner", map[string]any{"spawn": map[string]any{"script": "true"}}, ""},
 	} {
 		t.Run(c.what, func(t *testing.T) {
 			c.spawn["id"] = "run-" + strings.ReplaceAll(c.what, " ", "-")
@@ -154,7 +155,7 @@ func TestASpawnIsCheckedAgainstWhatItsRunnerOffers(t *testing.T) {
 	// A charter's spawn, at install.
 	rule := func(agent string) string {
 		return `[{name: r, condition: {subject: {path: "x.*", value: {go: true}}},
-		  action: {patch: {go: false}, spawn: {doer: {agent: ` + agent + `}, prompt: go, runner: verse.runners.code}}}]`
+		  action: {patch: {go: false}, spawn: {agent: {name: ` + agent + `}, prompt: go, runner: verse.runners.code}}}]`
 	}
 	if resp := installAs(t, "user:"+tester, ts.URL, rule("claude")); resp.StatusCode != http.StatusBadRequest ||
 		!strings.Contains(readBody(t, resp), "verse.runners.code") {

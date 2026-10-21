@@ -202,18 +202,20 @@ type Outcome struct {
 }
 
 // Task is a first-class, addressable governed task — the handle every
-// policy shares (invariant #1). It drives a cursor between actions: it
+// autonomy shares (invariant #1). It drives a cursor between actions: it
 // only ever advances or holds; it never reverses. Control (pause/cancel) is
 // latched and honored at the next boundary.
 type Task struct {
-	ID     string
-	sup    *Supervisor
-	driver Driver
-	exec   Executor
-	turn   Resolver    // where the person's turn is posed, when this run is a conversation; nil = it is not
-	turns  int         // turns handed over, for their ids
-	ansck  AnswerCheck // what this launch declared its answer must be; nil = no contract
-	log    io.Writer
+	ID       string
+	agent    string            // the agent that runs it, as its runner said it (SetAgent)
+	settings map[string]string // what the agent runs with, likewise
+	sup      *Supervisor
+	driver   Driver
+	exec     Executor
+	turn     Resolver    // where the person's turn is posed, when this run is a conversation; nil = it is not
+	turns    int         // turns handed over, for their ids
+	ansck    AnswerCheck // what this launch declared its answer must be; nil = no contract
+	log      io.Writer
 
 	// touched only by the Run goroutine:
 	idc        int
@@ -233,7 +235,7 @@ type Task struct {
 	mu     sync.Mutex
 	cancel context.CancelCauseFunc
 	// inbox is ONE queue for everything that arrives from outside the Run goroutine — an
-	// operator's say, a pause, a policy change, a child reporting. One queue because the
+	// operator's say, a pause, an autonomy change, a child reporting. One queue because the
 	// merge policy has to be stated somewhere, and it cannot be stated over three mechanisms
 	// (a mutex-guarded slice, a buffered channel, a registry callback) that cannot be ordered
 	// against each other. It is a slice rather than a channel so nothing ever blocks a
@@ -781,21 +783,21 @@ func (p *Task) teardown(ctx context.Context, td effTeardown) (Outcome, error) {
 	return out, td.cause
 }
 
-// Policy is the task's policy as it stands.
-func (p *Task) Policy() Policy { return p.sup.Policy() }
+// Autonomy is the task's autonomy as it stands.
+func (p *Task) Autonomy() Autonomy { return p.sup.Autonomy() }
 
-// SetPolicy replaces the task's policy while it runs. It applies from the next step, a
+// SetAutonomy replaces the task's autonomy while it runs. It applies from the next step, a
 // sub-agent's included; a question already asked stands as it was asked. by is who replaced it,
-// and the task's read plane says so (EventPolicy, with Policy.Summary as its text). An ended
-// task's policy is not replaced: ErrEnded.
-func (p *Task) SetPolicy(pol Policy, by string) error {
+// and the task's read plane says so (EventAutonomy, with Autonomy.Summary as its text). An ended
+// task's autonomy is not replaced: ErrEnded.
+func (p *Task) SetAutonomy(pol Autonomy, by string) error {
 	if err := pol.Check(); err != nil {
-		return err
+		return fmt.Errorf("autonomy%w", err)
 	}
-	if !p.emitLive(Event{Kind: EventPolicy, By: by, Text: pol.Summary()}) {
+	if !p.emitLive(Event{Kind: EventAutonomy, By: by, Text: pol.Summary()}) {
 		return ErrEnded
 	}
-	p.sup.SetPolicy(pol)
+	p.sup.SetAutonomy(pol)
 	return nil
 }
 
@@ -908,6 +910,19 @@ func (p *Task) Err() string {
 	defer p.mu.Unlock()
 	return p.err
 }
+
+// Refused is nil: a task in its runner's process is served no proxy (its runner builds no allow
+// network).
+func (p *Task) Refused() map[string]int { return nil }
+
+// SetAgent says which agent runs the task and with what (Snapshot.Agent, Snapshot.Settings): its
+// runner's to say, the agent resolved and its defaults filled in, before the task starts.
+func (p *Task) SetAgent(name string, settings map[string]string) {
+	p.agent, p.settings = name, settings
+}
+
+// Agent is which agent runs the task and with what, as its runner said it (SetAgent).
+func (p *Task) Agent() (string, map[string]string) { return p.agent, p.settings }
 
 // unwind runs a frame's defers LIFO, best-effort. It uses a context detached
 // from cancellation so cancel-time teardown can still make progress, and it does

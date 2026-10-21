@@ -1,17 +1,15 @@
 name: github-issue
 description: "The issues of a repository at GitHub. Each verb is a call the runner makes to the forge with its credential for the repository."
+attributes:
+- {name: repo, form: repo, unique: true, required: true, description: "the repository, as `host/owner/name` in lower case (`github.com/acme/app`), whichever way the spawn named it"}
 verbs:
 - name: create
   description: "Open an issue at the repository, with a title and body."
-  params:
-  - {name: repo, form: repo, description: "the repository, as `host/owner/name` in lower case (`github.com/acme/app`), whichever way the spawn named it"}
 - name: comment
   description: "Comment on an issue at the repository, by its number."
-  params:
-  - {name: repo, form: repo, description: "the repository, as `host/owner/name` in lower case (`github.com/acme/app`), whichever way the spawn named it"}
+  fields:
   - {name: issue, description: "the issue's number"}
 - name: close
   description: "Close an issue at the repository, by its number."
-  params:
-  - {name: repo, form: repo, description: "the repository, as `host/owner/name` in lower case (`github.com/acme/app`), whichever way the spawn named it"}
+  fields:
   - {name: issue, description: "the issue's number"}

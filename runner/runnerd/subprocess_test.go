@@ -16,6 +16,8 @@ import (
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/systems"
+	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/task/tasktest"
 )
@@ -31,7 +33,7 @@ func TestMain(m *testing.M) {
 		err := runnerd.ServeTask(func(l runner.Launch, reg *task.Registry) *task.Task {
 			var spec tasktest.Spec
 			outcome, text, _ := strings.Cut(strings.TrimPrefix(l.Prompt, "spec "), "\n")
-			sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, reg)
+			sup := systemstest.Opened(task.NewSupervisor(workEnv, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, reg), workEnv)
 			switch outcome {
 			case "exit": // the process dies under its running task
 				return task.NewTask(l.ID, sup, dyingDriver{}, noopExec{})
@@ -117,7 +119,7 @@ func (p *subprocessProducer) Start(t *testing.T, spec tasktest.Spec) string {
 	t.Helper()
 	p.n++
 	id := fmt.Sprintf("s%d", p.n)
-	p.rt.Launch(runner.Launch{ID: id, Doer: runner.Doer{Agent: spec.Driver, With: runner.With{Network: openNet}}, Prompt: "spec " + string(spec.Outcome) + "\n" + spec.Text})
+	p.rt.Launch(runner.Launch{ID: id, Agent: &runner.Agent{Name: spec.Driver}, Environment: openNet, Prompt: "spec " + string(spec.Outcome) + "\n" + spec.Text})
 	return id
 }
 
@@ -142,9 +144,9 @@ func TestAProcessThatWontStartFailsItsTask(t *testing.T) {
 	srv := httptest.NewServer(h.HTTPHandler())
 	defer srv.Close()
 	rt := client.HTTP(srv.URL)
-	rt.Launch(runner.Launch{ID: "t1", Doer: runner.Doer{Agent: "test", With: runner.With{Network: openNet}}, Prompt: "hi"})
+	rt.Launch(runner.Launch{ID: "t1", Agent: &runner.Agent{Name: "test"}, Environment: openNet, Prompt: "hi"})
 	snap := waitEnded(t, rt, "t1")
-	if snap.Status != task.Failed || !strings.Contains(snap.Err, "starting the task's process") || snap.Driver != "test" {
+	if snap.Status != task.Failed || !strings.Contains(snap.Err, "starting the task's process") || snap.Agent != "test" {
 		t.Fatalf("the task ended %+v", snap)
 	}
 }
@@ -167,7 +169,7 @@ func TestATaskRunsInADirectoryOfItsOwn(t *testing.T) {
 	defer runnerd.SetLingerAfterEnd(0)()
 	h, rt := newSubprocess(t)
 	work := h.Work
-	in := runToEnd(t, rt, runner.Launch{ID: "t1", Doer: runner.Doer{Agent: "test", With: runner.With{Network: openNet}}, Prompt: "pwd\n"})
+	in := runToEnd(t, rt, runner.Launch{ID: "t1", Agent: &runner.Agent{Name: "test"}, Environment: openNet, Prompt: "pwd\n"})
 	if in.Status != task.Done || filepath.Dir(in.Result) != work ||
 		!strings.HasPrefix(filepath.Base(in.Result), "task-") {
 		t.Fatalf("ran in %q (%+v), want a task- directory under %s", in.Result, in, work)
@@ -182,7 +184,7 @@ func TestATaskRunsInADirectoryOfItsOwn(t *testing.T) {
 func TestAnEndedTaskIsAnsweredAsEmbeddedAnswersIt(t *testing.T) {
 	defer runnerd.SetLingerAfterEnd(0)()
 	_, rt := newSubprocess(t)
-	in := runToEnd(t, rt, runner.Launch{ID: "t1", Doer: runner.Doer{Agent: "test", With: runner.With{Network: openNet}}, Prompt: "pwd\n"})
+	in := runToEnd(t, rt, runner.Launch{ID: "t1", Agent: &runner.Agent{Name: "test"}, Environment: openNet, Prompt: "pwd\n"})
 	waitGone(t, in.Result)
 	h := rt.Attach("t1")
 	for name, err := range map[string]error{
@@ -208,7 +210,7 @@ func TestAnEndedTaskIsAnsweredAsEmbeddedAnswersIt(t *testing.T) {
 func TestAnEndedTasksEventsReplay(t *testing.T) {
 	defer runnerd.SetLingerAfterEnd(0)()
 	_, rt := newSubprocess(t)
-	in := runToEnd(t, rt, runner.Launch{ID: "t1", Doer: runner.Doer{Agent: "test", With: runner.With{Network: openNet}}, Prompt: "pwd\n"})
+	in := runToEnd(t, rt, runner.Launch{ID: "t1", Agent: &runner.Agent{Name: "test"}, Environment: openNet, Prompt: "pwd\n"})
 	waitGone(t, in.Result)
 	events, stop := rt.Attach("t1").SubscribeSince(0)
 	defer stop()
@@ -229,7 +231,7 @@ func TestAnEndedTasksEventsReplay(t *testing.T) {
 func TestAProcessThatDiesFailsItsTask(t *testing.T) {
 	defer runnerd.SetLingerAfterEnd(0)()
 	_, rt := newSubprocess(t)
-	in := runToEnd(t, rt, runner.Launch{ID: "t1", Doer: runner.Doer{Agent: "test", With: runner.With{Network: openNet}}, Prompt: "exit\n"})
+	in := runToEnd(t, rt, runner.Launch{ID: "t1", Agent: &runner.Agent{Name: "test"}, Environment: openNet, Prompt: "exit\n"})
 	if in.Status != task.Failed || !strings.Contains(in.Err, "exit status 3") {
 		t.Fatalf("got %+v", in)
 	}
@@ -270,6 +272,6 @@ func TestSandboxNamed(t *testing.T) {
 	}
 }
 
-// openNet is the network a test's launch names: the host's, which is what an unconfined handler
+// openNet is the environment a test's launch names: the host's network, which is what an unconfined handler
 // can give, since absent is none.
-var openNet = &runner.Network{Mode: runner.NetworkOpen}
+var openNet = systems.Environment{Systems: systems.Systems{"network": {{Attributes: map[string]string{"mode": runner.NetworkOpen}}}}}

@@ -11,6 +11,7 @@ import (
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/runner/runnerd/verserunner/agent/modeltest"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -33,17 +34,22 @@ func TestDescribeOffersTheAgentOnlyWithAKey(t *testing.T) {
 	c := Config{Annotations: map[string]string{AnnotationVirtualKey: "string"}}
 
 	d := c.Describe(Secrets{}, nil)
-	if len(d.Offers) != 1 || !d.Offers[0].Script || d.Offers[0].With != nil {
+	if len(d.Offers) != 1 || !d.Offers[0].Script || d.Offers[0].Agent != nil {
 		t.Fatalf("without a key: %+v", d)
 	}
 
 	d = c.Describe(Secrets{PortkeyAPIKey: "pk-test"}, nil)
-	if len(d.Offers) != 2 || d.Offers[0].Agent != AgentName {
+	if len(d.Offers) != 2 || d.Offers[0].Agent == nil || d.Offers[0].Agent.Name != AgentName {
 		t.Fatalf("with a key: %+v", d)
 	}
 	agent := d.Offers[0]
-	if !agent.With["model"].Any || agent.Annotations[AnnotationVirtualKey] != "string" ||
-		agent.Systems["files"].Ceiling == nil || agent.Systems["commands"].Ceiling == nil || agent.Systems["agent"].Ceiling == nil {
+	// The systems it stops inside a run are held, closed until a ceiling says what of them.
+	_, files := agent.Systems["files"]
+	_, commands := agent.Systems["commands"]
+	_, sub := agent.Systems["agent"]
+	model, takesModel := agent.Agent.Settings[runner.SettingModel]
+	if !takesModel || len(model.Values) != 0 || agent.Agent.Annotations[AnnotationVirtualKey] != "string" || !files || !commands || !sub ||
+		len(agent.Systems["commands"].Ceiling) != 0 {
 		t.Fatalf("agent offer: %+v", agent)
 	}
 }
@@ -52,14 +58,14 @@ func TestDescribeOffersTheAgentOnlyWithAKey(t *testing.T) {
 // the configured one is.
 func TestTheVirtualKeyAnnotation(t *testing.T) {
 	model := modeltest.New(t, func(modeltest.Request) modeltest.Reply { return modeltest.Say("ok") })
-	r := New(Config{Models: Models{Portkey: Portkey{VirtualKey: "default-vk"}},
-		Annotations: map[string]string{AnnotationVirtualKey: "string"}},
+	r := New(opened(Config{Models: Models{Portkey: Portkey{VirtualKey: "default-vk"}},
+		Annotations: map[string]string{AnnotationVirtualKey: "string"}}),
 		Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL}, t.TempDir(), io.Discard)
 	for i, picked := range []string{"picked", ""} {
-		l := runner.Launch{ID: fmt.Sprint("t", i), Prompt: "go", Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}},
-			Doer: runner.Doer{Agent: AgentName, With: runner.With{Network: netOpen}}}
+		l := runner.Launch{ID: fmt.Sprint("t", i), Prompt: "go", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}},
+			Agent: &runner.Agent{Name: AgentName}, Environment: envOf(netOpen, nil, nil)}
 		if picked != "" {
-			l.Doer.Annotations = map[string]string{AnnotationVirtualKey: picked}
+			l.Agent.Annotations = map[string]string{AnnotationVirtualKey: picked}
 		}
 		if _, err := r.Build(l, task.NewRegistry()).Run(context.Background()); err != nil {
 			t.Fatal(err)
@@ -77,8 +83,8 @@ func TestTheVirtualKeyFromTheEnvironment(t *testing.T) {
 	model := modeltest.New(t, func(modeltest.Request) modeltest.Reply { return modeltest.Say("ok") })
 	secrets := Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL, PortkeyVirtualKey: "env-vk"}
 	for i, cfg := range []Config{{}, {Models: Models{Portkey: Portkey{VirtualKey: "config-vk"}}}} {
-		l := runner.Launch{ID: fmt.Sprint("t", i), Prompt: "go", Policy: task.Policy{{Then: task.Then{Mode: task.ThenAllow}}},
-			Doer: runner.Doer{Agent: AgentName, With: runner.With{Network: netOpen}}}
+		l := runner.Launch{ID: fmt.Sprint("t", i), Prompt: "go", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}},
+			Agent: &runner.Agent{Name: AgentName}, Environment: envOf(netOpen, nil, nil)}
 		if _, err := New(cfg, secrets, t.TempDir(), io.Discard).Build(l, task.NewRegistry()).Run(context.Background()); err != nil {
 			t.Fatal(err)
 		}
@@ -92,8 +98,8 @@ func TestTheVirtualKeyFromTheEnvironment(t *testing.T) {
 // Without a model key the runner offers no agent, and an agent launch that reaches it anyway
 // fails its own task.
 func TestWithNoKeyThereIsNoAgent(t *testing.T) {
-	_, err := New(Config{}, Secrets{}, t.TempDir(), io.Discard).Build(runner.Launch{ID: "t1",
-		Doer: runner.Doer{Agent: AgentName}, Prompt: "go"}, task.NewRegistry()).Run(context.Background())
+	_, err := New(opened(Config{}), Secrets{}, t.TempDir(), io.Discard).Build(runner.Launch{ID: "t1",
+		Agent: &runner.Agent{Name: AgentName}, Prompt: "go"}, task.NewRegistry()).Run(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "no model key") {
 		t.Errorf("got %v", err)
 	}
@@ -110,11 +116,10 @@ func TestAnAgentLaunchRunsTheVerseAgent(t *testing.T) {
 		}
 		return modeltest.Use("run_bash", map[string]any{"command": "echo $BRANCH"})
 	})
-	d := New(Config{Models: Models{Model: "the-default"}}, Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL},
+	d := New(opened(Config{Models: Models{Model: "the-default"}}), Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL},
 		t.TempDir(), io.Discard)
-	l := runner.Launch{ID: "t1", Prompt: "which branch?", Policy: allowing("commands"),
-		Doer: runner.Doer{Agent: AgentName,
-			With: runner.With{Network: netOpen, Model: "m-2", Env: map[string]string{"BRANCH": "main"}}}}
+	l := runner.Launch{ID: "t1", Prompt: "which branch?", Autonomy: allowing("commands"),
+		Agent: &runner.Agent{Name: AgentName, Settings: map[string]string{runner.SettingModel: "m-2"}}, Environment: giving(withVars(envOf(netOpen, nil, nil), map[string]string{"BRANCH": "main"}), "commands")}
 	p := d.Build(l, task.NewRegistry())
 	if _, err := p.Run(context.Background()); err != nil {
 		t.Fatalf("run: %v", err)
@@ -125,6 +130,15 @@ func TestAnAgentLaunchRunsTheVerseAgent(t *testing.T) {
 	seen := model.Seen()
 	if len(seen) == 0 || seen[0].Model != "m-2" || seen[0].Prompt() != "which branch?" {
 		t.Fatalf("the model was asked %+v, want model m-2 and the launch's prompt", seen)
+	}
+	// What it ran with is the record's to say: the launch's model, and the configured one where
+	// the launch named none.
+	if name, settings := p.Agent(); name != AgentName || settings[runner.SettingModel] != "m-2" {
+		t.Errorf("the task says it ran as %q with model %q, want verse with m-2", name, settings[runner.SettingModel])
+	}
+	l.ID, l.Agent = "t2", &runner.Agent{Name: AgentName}
+	if name, settings := d.Build(l, task.NewRegistry()).Agent(); name != AgentName || settings[runner.SettingModel] != "the-default" {
+		t.Errorf("a launch naming no model: the task says %q with %q, want verse with the configured default", name, settings[runner.SettingModel])
 	}
 }
 
@@ -137,10 +151,10 @@ func TestAnAgentsGatedCommandAsks(t *testing.T) {
 		}
 		return modeltest.Use("run_bash", map[string]any{"command": "git push origin main"})
 	})
-	d := New(Config{}, Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL}, t.TempDir(), io.Discard)
+	d := New(opened(Config{}), Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL}, t.TempDir(), io.Discard)
 	reg := task.NewRegistry()
-	p := d.Build(runner.Launch{ID: "t1", Prompt: "push it", Doer: runner.Doer{Agent: AgentName, With: runner.With{Network: netOpen}},
-		Policy: task.Policy{{Name: "push", Match: &task.Match{System: "commands", Verb: "run", Params: map[string]string{"command": "git push*"}}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAllow}}}}, reg)
+	p := d.Build(runner.Launch{ID: "t1", Prompt: "push it", Agent: &runner.Agent{Name: AgentName}, Environment: giving(envOf(netOpen, nil, nil), "commands"),
+		Autonomy: task.Autonomy{{Name: "push", Match: &task.Match{System: "commands", Verb: "run", Params: map[string]string{"command": "git push*"}}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAllow}}}}, reg)
 	done := make(chan error, 1)
 	go func() { _, err := p.Run(context.Background()); done <- err }()
 	var pend []task.Pending
@@ -174,8 +188,8 @@ func TestTheLogKeepsACommandsOutputOut(t *testing.T) {
 		return modeltest.Use("run_bash", map[string]any{"command": "echo the-secret-$((40+2)) # the-secret-arg"})
 	})
 	var log strings.Builder
-	r := New(Config{}, Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL}, t.TempDir(), &log)
-	p := r.Build(runner.Launch{ID: "t1", Prompt: "go", Policy: allowing("commands"), Doer: runner.Doer{Agent: AgentName, With: runner.With{Network: netOpen}}}, task.NewRegistry())
+	r := New(opened(Config{}), Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL}, t.TempDir(), &log)
+	p := r.Build(runner.Launch{ID: "t1", Prompt: "go", Autonomy: allowing("commands"), Agent: &runner.Agent{Name: AgentName}, Environment: giving(envOf(netOpen, nil, nil), "commands")}, task.NewRegistry())
 	if _, err := p.Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +199,7 @@ func TestTheLogKeepsACommandsOutputOut(t *testing.T) {
 }
 
 // An agent's command asks under a row that names `commands` and asks, with no other gate written,
-// and nothing asks before it starts. With no policy the agent has no shell: a command it
+// and nothing asks before it starts. With no environment the agent has no shell: a command it
 // proposes anyway is refused, and nobody is asked.
 func TestUnderAskAnAgentsCommandAsks(t *testing.T) {
 	model := modeltest.New(t, func(r modeltest.Request) modeltest.Reply {
@@ -194,17 +208,17 @@ func TestUnderAskAnAgentsCommandAsks(t *testing.T) {
 		}
 		return modeltest.Use("run_bash", map[string]any{"command": "ls"})
 	})
-	r := New(Config{}, Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL}, t.TempDir(), io.Discard)
+	r := New(opened(Config{}), Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL}, t.TempDir(), io.Discard)
 	reg := task.NewRegistry()
-	p := r.Build(runner.Launch{ID: "t1", Prompt: "look", Doer: runner.Doer{Agent: AgentName},
-		Policy: task.Policy{{Match: &task.Match{System: "commands"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenDeny}}}}, reg)
+	p := r.Build(runner.Launch{ID: "t1", Prompt: "look", Agent: &runner.Agent{Name: AgentName},
+		Autonomy: task.Autonomy{{Match: &task.Match{System: "commands"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenDeny}}}, Environment: giving(systems.Environment{}, "commands")}, reg)
 	done := make(chan error, 1)
 	go func() { _, err := p.Run(context.Background()); done <- err }()
 	var pend []task.Pending
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline) && len(pend) == 0; time.Sleep(10 * time.Millisecond) {
 		pend = reg.Pending()
 	}
-	if len(pend) != 1 || pend[0].Question.Step.Name != task.StepCommandsRun || pend[0].Question.Gate != "policy[0]" {
+	if len(pend) != 1 || pend[0].Question.Step.Name != task.StepCommandsRun || pend[0].Question.Gate != "autonomy[0]" {
 		t.Fatalf("pending %+v, want %s asked under the row on commands", pend, task.StepCommandsRun)
 	}
 	reg.Answer(pend[0].Question.ID, task.Choose(task.Proceed, "user:ana"))
@@ -215,19 +229,19 @@ func TestUnderAskAnAgentsCommandAsks(t *testing.T) {
 	reg = task.NewRegistry()
 	var posted int
 	reg.OnPost(func(task.Pending) { posted++ })
-	p = r.Build(runner.Launch{ID: "t2", Prompt: "look", Doer: runner.Doer{Agent: AgentName}}, reg)
+	p = r.Build(runner.Launch{ID: "t2", Prompt: "look", Agent: &runner.Agent{Name: AgentName}}, reg)
 	if _, err := p.Run(context.Background()); err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if posted != 0 || !strings.Contains(p.Result(), "not provided") {
-		t.Fatalf("with no policy: %d question(s), result %q; want the command refused and nobody asked", posted, p.Result())
+	if posted != 0 || !strings.Contains(p.Result(), "outside the environment") {
+		t.Fatalf("with no environment: %d question(s), result %q; want the command refused and nobody asked", posted, p.Result())
 	}
 }
 
 // A model base URL that names no host is refused as the runner starts: no network could let the
 // agent reach it, and the launch would otherwise be accepted and fail only once the agent called.
 func TestAHostlessModelURLIsAConfigError(t *testing.T) {
-	_, err := Standalone(Config{}, Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: "/v1"}, Tokens{},
+	_, err := Standalone(opened(Config{}), Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: "/v1"}, Tokens{},
 		runnerd.Unconfined{}, []string{"true"}, t.TempDir(), t.TempDir(), io.Discard)
 	if err == nil || !strings.Contains(err.Error(), EnvPortkeyBaseURL) {
 		t.Fatalf("Standalone with a hostless base url = %v, want it refused naming %s", err, EnvPortkeyBaseURL)

@@ -14,8 +14,8 @@ import (
 // for, at the package's init, so code naming an undocumented verb does not build. A Step names
 // the verb's fields as the code fills them, which is the one place the code says so. Check is
 // the other direction: every documented verb was claimed by something, and the fields a step
-// names are the params its document lists, neither more nor fewer, so a param added to a
-// document that nothing fills, or a field the code fills that no document names, is named at
+// names are the ones its document gives the step (its attributes and the verb's fields),
+// neither more nor fewer, so a field added to a document that nothing fills, or a field the code fills that no document names, is named at
 // the test that calls Check rather than by a row that never matches.
 //
 // What Check holds is a property of the source tree, not of a runner: every binary links every
@@ -36,10 +36,10 @@ func Tool(system, verb string) string {
 }
 
 // Step is the step name of a system's verb, `<system>.<verb>`, claimed as Tool is, with the
-// fields the code fills on the step: what a row's params match. Check holds them to the
-// document's params.
+// fields the code fills on the step: what a row's match names. Check holds them to the
+// document's attributes and the verb's fields.
 func Step(system, verb string, fields ...string) string {
-	claim(system, verb, append([]string{}, fields...)) // a list, empty for a verb with no params
+	claim(system, verb, append([]string{}, fields...)) // a list, empty for a step with no fields
 	return StepName(system, verb)
 }
 
@@ -60,7 +60,8 @@ func claim(system, verb string, fields []string) {
 }
 
 // Check is whether the code has claimed every verb the documents describe, naming its fields,
-// and whether those fields are the document's params: what is missing or extra is named. A test
+// and whether those fields are the step's as the document gives them (its attributes and the
+// verb's fields): what is missing or extra is named. A test
 // asks it, since what it holds is the tree's; a runner may ask at start as well.
 func Check() error {
 	claimMu.Lock()
@@ -82,7 +83,11 @@ func check(docs []Document, claimed map[string][]string) error {
 				wrong = append(wrong, name+": no step names its fields")
 				continue
 			}
-			params := v.ParamNames()
+			stepFields, _ := d.StepFields(v.Name)
+			params := make([]string, len(stepFields))
+			for i, f := range stepFields {
+				params[i] = f.Name
+			}
 			var missing, extra []string
 			for _, p := range params {
 				if !slices.Contains(fields, p) {

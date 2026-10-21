@@ -23,14 +23,17 @@ This interface governs how one [task](glossary.md#task) runs. It is not a genera
 policy. Nothing here decides anything about the engine, its charter, or how a
 [firing](glossary.md#firing) passes its gates.
 
-Each of the two settings has its own name, and neither name is "policy". What runs a task is its
-[runner](glossary.md#runner). How much it may do without asking is its
-[policy](glossary.md#policy): the rows that name the steps it refuses, asks about or allows.
+Each of the settings has its own name, and none of them is "policy". What runs a task is its
+[runner](glossary.md#runner). What it may reach at all is its
+[environment](glossary.md#environment), fixed when it starts. How much of that it may do without
+asking is its [autonomy](glossary.md#autonomy): the rows that name the steps it refuses, asks
+about or allows.
 
 | meaning | interface | wire | flag |
 |---|---|---|---|
 | what runs a task | `task.Runner`, returning a `task.Handle` | `runner` on a `verse.task.instance` and on `verse status` | `verse up -runner <url>` |
-| how much it may do unasked | `task.Policy` | `policy` on a launch | `verse task policy <id>` |
+| what it may reach | `systems.Environment` | `environment` on a launch | fixed for the run |
+| how much it may do unasked | `task.Autonomy` | `autonomy` on a launch | `verse task autonomy <id>` |
 
 A policy layer over the engine is a plausible thing to want later. A name "policy" here would
 collide with it.
@@ -39,9 +42,10 @@ collide with it.
 
 Verse defines a task as a contract, not as "an LLM loop":
 
-1. A [doer](glossary.md#doer) proposes an action: an agent's driver, or a script's call.
+1. An agent's driver, or a script's call, proposes an action.
 2. An [executor](glossary.md#executor) performs it.
-3. The policy decides each [step](glossary.md#step) at a [boundary](glossary.md#boundary).
+3. Each [step](glossary.md#step) is decided at a [boundary](glossary.md#boundary): refused if
+   it is outside the environment, then by the autonomy.
 4. A read plane streams events.
 5. A control plane steers the task at boundaries.
 6. Verse mirrors the whole task to a `verse.task.instance` entity, and the task ends with a
@@ -50,19 +54,19 @@ Verse defines a task as a contract, not as "an LLM loop":
 Task control is the durable form of the in-process `Supervisor`, which enforces that contract.
 
 In process, verse enforces the contract by interception. The loop cannot `Execute` an action
-until `Supervisor.Check` returns proceed. `Supervisor.Check` derives the step, asks the policy
-which row decides it, and for an ask calls `Resolver.Resolve`. Verse is trusted because it runs the loop
+until `Supervisor.Check` returns proceed. `Supervisor.Check` derives the step, refuses it
+if the environment does not give it, asks the autonomy which row decides it, and for an ask calls `Resolver.Resolve`. Verse is trusted because it runs the loop
 itself.
 
 On a [runner](glossary.md#runner), the same supervisor runs in the task's process, and the
 runner holds the line around it. Each verb that crosses a credential (a push, a pull request, a
 tracker's or Slack's act) is performed by the runner's own process, which decides it again by
-the task's current policy and by its own ceiling before anything moves, and fills the facts only
+the task's environment, its current autonomy and the runner's own ceiling before anything moves, and fills the facts only
 it knows (a push's `exists` and `own`). An act a row asks about is performed on an answer the
 runner itself relayed to the task, about that call, once per act; the task's process holds the
-model, and its word that a question was answered is not taken. A change of policy goes to the runner first, which holds
-it to the launch's verbs and its ceilings and refuses what reaches past them; what the task's
-process says of it is not what holds the line, since that is the process the policy constrains.
+model, and its word that a question was answered is not taken. A change of autonomy goes to the runner first, which
+refuses a row reaching nothing in the task's environment; what the task's process says of it is
+not what holds the line, since that is the process the autonomy constrains.
 Verse holds the spawn to the runner's offer at install, and its record is what the runner
 reports: every call, the row that decided it, and whoever answered.
 
@@ -71,7 +75,7 @@ So there is one control contract, and what a row guarantees depends on who perfo
 | the step | who performs it | what a row is |
 |---|---|---|
 | a verb the runner performs (`git.push`, `github.create-pr`, a tracker's, Slack's) | the runner, with its credential | **a bound**: refused there is prevented |
-| a verb the runner stops inside the run (`files.write`, `commands.run`, `agent.call-sub-agent`) | the doer, as it proposed it | **a prompt** over what the agent proposes, until a seam below the task makes it a bound ([inside](systems/inside.md)) |
+| a verb the runner stops inside the run (`files.write`, `commands.run`, `agent.call-sub-agent`) | the agent, as it proposed it | **a prompt** over what the agent proposes, until a seam below the task makes it a bound ([inside](systems/inside.md)) |
 
 Rows, the resolver, boundaries and the terminal are the same wherever the task runs.
 
@@ -99,14 +103,15 @@ that an event arrives.
 | Input | Examples | What it does |
 |---|---|---|
 | an *intervention* | cancel, pause, resume, say | An operator redirects this run. It preempts, and it preempts a pending gate too. |
-| a *policy change* | a new policy | It applies to later steps and does not preempt. |
+| an *autonomy change* | a new autonomy | It applies to later steps and does not preempt. |
 | *work the task produced for itself* | the result of a child | It folds in at the hinge. It never overtakes an action that is already proposed. |
 
 Preemption is for people.
 
-Suppose you change a running task to `auto`. That means "stop asking me about steps like
-this". It does not mean "approve the step already in front of me". If the change dissolved the
-pending question, a policy change would approve one specific action that nobody looked at.
+Suppose you change a running task's autonomy to allow by default. That means "stop asking me
+about steps like this". It does not mean "approve the step already in front of me". If the change
+dissolved the pending question, an autonomy change would approve one specific action that nobody
+looked at.
 
 A task-control backend is a reconciler over the `verse.task.instance` resource. It is not itself
 a gated task. Governing a task must not require another governed task, or the regress never
@@ -166,7 +171,7 @@ mirrors the stream into the `verse.task.instance` entity. Durability is in verse
 runner.
 
 Each spawn binds its runner. The binding is `runner: <name>` in the charter or spec, and names
-an installed runner, as `doer.agent` names an agent the runner offers. There is no in-memory
+an installed runner, as `agent.name` names an agent the runner offers. There is no in-memory
 shortcut: `verse task cancel|say` and `verse flow suspend -task` go through the same dispatch as
 for a remote task.
 
@@ -208,7 +213,7 @@ POST   /tasks/{id}/say      {instruction, by?}             say to it (re-prompt)
 POST   /tasks/{id}/cancel   {reason?, by?}                 end it, and say why
 POST   /tasks/{id}/pause    {by?}                          the operator's hold (docs/control.md)
 POST   /tasks/{id}/resume   {by?}
-PUT    /tasks/{id}/policy   {policy, by?}                  replace the policy
+PUT    /tasks/{id}/autonomy {autonomy, by?}                replace the autonomy
        204 applied · 400 a row it cannot decide · 410 it has ended
 ```
 
@@ -218,34 +223,35 @@ A resolve without a `choice` answers `400`, and the gate stays open.
 ### The bodies
 
 Each body is one Go type: the launch and the requests of the runner's own in package `runner`,
-and a task's snapshot, events and policy in package `task`. Verse uses them when it sends
+and a task's snapshot, events and autonomy in package `task`. Verse uses them when it sends
 and the stock runner (`runner/runnerd`) when it reads. Each is in the schema under its name
 (`verse schema`), which is where a runner in another language reads it.
 
 | Route | Type | Schema name |
 |---|---|---|
-| `GET /describe` | `runner.Description` | none: an offer's `with` takes `any` or a list of values, which the schema generator has no type for |
-| `POST /tasks` | `runner.Launch` | `verse-runner-launch`, with `verse-runner-doer`, `verse-runner-with`, `verse-runner-repo`, `verse-runner-network` and `verse-runner-provenance`; the policy is the task's own rows (task.Policy) |
+| `GET /describe` | `runner.Description` | its parts: `verse-runner-agent-offer`, `verse-runner-setting` and `verse-runner-system`, a ceiling and `builds` being blocks in an environment's form |
+| `POST /tasks` | `runner.Launch` | `verse-runner-launch`, with `verse-runner-agent` and `verse-runner-provenance`; the environment is blocks per system (systems.Environment), and the autonomy the task's own rows (task.Autonomy) |
 | `POST /tasks/{id}/say` | `runner.SayRequest` | `verse-runner-say` |
 | `POST /tasks/{id}/cancel` | `runner.CancelRequest` | `verse-runner-cancel` |
 | `POST /tasks/{id}/pause`, `…/resume` | `runner.PauseRequest`, `runner.ResumeRequest` | `verse-runner-pause`, `verse-runner-resume` |
 | `POST /tasks/{id}/resolve` | `runner.ResolveRequest` | `verse-runner-resolve` |
-| `PUT /tasks/{id}/policy` | `runner.PolicyRequest` | `verse-runner-policy` |
+| `PUT /tasks/{id}/autonomy` | `runner.AutonomyRequest` | `verse-runner-autonomy` |
 | `GET /tasks`, `GET /tasks/{id}` | `task.Snapshot` | `verse-task-snapshot` |
 | `GET /tasks/{id}/events` | `task.Event` | `verse-task-event` |
 
 **The launch.** It is the spawn as the charter wrote it, with verse's references resolved, and
 the runner reads it as it is. A runner checks it strictly: an
-unknown key, a doer that is both or neither of an agent and a script, or a value its offer does
+unknown key, both or neither of a prompt and a script, an environment or a setting its offer does
 not take is refused with `400` and the reason. A refused launch is a failed spawn, never a task
 run without what it asked for.
 
 | Field | What it is |
 |---|---|
 | `id` | the task's id. Verse mints it, so that it matches the task's record. |
-| `doer` | who does the work: `{agent: <name>}`, an agent the runner offers, or `{script: "…"}`; `with` is what it runs with (`git`, `git-issue`, `network`, `env`, `model`, `effort`), and `annotations` are settings for the runner, such as `verse.portkey/virtual-key`. The runner refuses an annotation it does not know. |
-| `prompt` | the one job. Required with an agent; a script takes none. |
-| `policy` | what happens to each step: rows, each a `match` on a step's system, verb and fields and a `then` of `deny`, `ask`, `allow` or `withhold`, the last with no match. An ask's shape rides whole (`need`, `answerers`, `within`, `default`, `labels`); the runner reads the first three and never `default` or `labels`, which are verse's ([a row's question](reference/tasks.md#a-rows-question)). A verb no row names is not the task's; absent gives the task no verb. |
+| `prompt` or `script` | the one job: a prompt, for an agent, or a script, which does its own work. Exactly one. |
+| `agent` | the agent a prompt is for, written flat: `{name: <agent>, <setting>: …, annotations: {…}}`. Absent, or with no name, the runner's default, its first agent offer. Each setting is one the offer declares; `annotations` are verse's or the runner's to write, such as `verse.portkey/virtual-key`, and the runner refuses one it does not know. A script takes none. |
+| `environment` | what the run may reach: `vars` for its shell, and `systems`, a block per system or repository (`git`, `git-issue`, `network`, …) giving the verbs and their shapes. A step outside it is refused before any row is read. Fixed when the run starts, and within the runner's ceilings. |
+| `autonomy` | what happens to each step within the environment: rows, each a `match` on a step's system, verb and fields and a `then` of `deny`, `ask` or `allow`, the last with no match. An ask's shape rides whole (`need`, `answerers`, `within`, `default`, `labels`); the runner reads the first three and never `default` or `labels`, which are verse's ([a row's question](reference/tasks.md#a-rows-question)). Absent asks about every step. |
 | `answer` | the answer contract, a tony match pattern. A runner that cannot enforce one refuses the launch; a script takes none. |
 | `timeout` | how long the task may run, as a duration. Time spent waiting for an answer does not count; time paused does. |
 | `converse` | the run is a conversation: when the agent goes quiet, the person gets the turn as a question, and the run ends when they end it. Only for an offer whose `converse` is true. |
@@ -284,12 +290,12 @@ Verse keeps its high-water cursor on the entity. On a restart, it knows where to
 | `say` | `text, by` | an utterance: `by` empty = the agent's narration → `say` preview; `by` set = a say-to folded in → journal only |
 | `exec` | `tool, step?, fields?, text, err` | `lastAction`, `lastOutput` + journal; `step` and `fields` name the call, as its `decision` did |
 | `pending` | `id, gate, step, fields, tool, reason, options?, deadline?, answerers?` | `pending {id, gate}` — verse routes it to a Resolver; `options` (each `{id, need}`) and `deadline` (`{within}`) shape the question as a charter gate's would, defaulting to proceed or deny at one each |
-| `decision` | `id, gate, step?, fields?, choice, proceed, by, reason` | clears `pending`; records the resolution — `choice` is the option, `proceed` the same as yes or no; `gate` is the policy row that decided the call, whether it allowed, denied or asked |
+| `decision` | `id, gate, step?, fields?, choice, proceed, by, reason` | clears `pending`; records the resolution — `choice` is the option, `proceed` the same as yes or no; `gate` is the autonomy's row that decided the call, whether it allowed, denied or asked, or `environment` for a step outside it |
 | `child` | `child, status` | flow-tracking (sub-task spawn/join) |
-| `policy` | `text, by` | records a change of policy: `text` is the policy in one line, `2 row(s), default ask` |
+| `autonomy` | `text, by` | records a change of autonomy: `text` is the autonomy in one line, `2 row(s), default ask` |
 | `status` | `text: running\|paused\|resumed\|done\|failed\|cancelled`, `result?`, `err?` | `status`, `paused`; on terminal `result` (CAS-once) and `err`, why it ended, which the status alone never says |
 
-That table is the durable contract. It is `mirror.Reflect`, plus `policy`, minus the
+That table is the durable contract. It is `mirror.Reflect`, plus `autonomy`, minus the
 `gap` marker. The `gap` marker says something about the *reading*, and not about the task.
 
 ### `since` semantics and the two restarts

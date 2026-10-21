@@ -11,6 +11,7 @@ import (
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 )
 
@@ -21,7 +22,7 @@ func registerRunner(t *testing.T, ts *httptest.Server, name string, agents ...st
 	t.Helper()
 	release := make(chan struct{})
 	build := func(l runner.Launch, _ *task.Registry) *task.Task {
-		sup := task.NewSupervisor(task.Policy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+		sup := systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), l.Environment)
 		return task.NewTask(l.ID, sup, &blockedDriver{release: release}, okExecutor{})
 	}
 	face := httptest.NewServer(offeringAll(runnerd.NewInProcessHandler(build), agents...).HTTPHandler())
@@ -49,9 +50,7 @@ func TestASpawnOnARunnerThatHasNotDescribedItselfIsRefused(t *testing.T) {
 	if resp := postTony(t, ts.URL+"/runners?probe=false", map[string]any{"name": "pending", "url": deadURL}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("--no-probe add = %s", resp.Status)
 	}
-	resp := postTony(t, ts.URL+"/tasks", map[string]any{
-		"id": "p1", "doer": map[string]any{"agent": "fake"}, "prompt": "t", "runner": "verse.runners.pending",
-	})
+	resp := postTony(t, ts.URL+"/tasks", map[string]any{"id": "p1", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t", "runner": "verse.runners.pending"}})
 	defer resp.Body.Close()
 	if msg := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(msg, "has not described itself") {
 		t.Fatalf("a spawn on a runner that never answered = %s %q, want 400 saying it has not described itself", resp.Status, msg)
@@ -59,7 +58,7 @@ func TestASpawnOnARunnerThatHasNotDescribedItselfIsRefused(t *testing.T) {
 	// The charter path refuses the same spawn as a failed task; here it fails one step earlier,
 	// since the rule's view in this harness reads no registration at all (the uninstalled-runner
 	// test above), and that refusal names the runner too.
-	h := srv.spawnerFor(srv.Store, "", srv.Eng)("fired", launch.Spec{Doer: runner.Doer{Script: "t"}, Runner: "verse.runners.pending"})
+	h := srv.spawnerFor(srv.Store, "", srv.Eng)("fired", launch.Spec{Script: "t", Runner: "verse.runners.pending"})
 	if h == nil || !strings.Contains(h.Err(), "verse.runners.pending") {
 		t.Fatalf("a charter spawn on it: %v, want it failed naming the runner", h)
 	}
@@ -68,17 +67,15 @@ func TestASpawnOnARunnerThatHasNotDescribedItselfIsRefused(t *testing.T) {
 	if resp := postTony(t, ts.URL+"/runners?probe=false", map[string]any{"name": "late", "url": face.URL}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("--no-probe add = %s", resp.Status)
 	}
-	if e, ok := findRunner(srv.Store, "late"); !ok || len(e.Offers) != 0 {
+	if e, ok := findRunner(srv.Store, "late"); !ok || len(e.Description().Offers) != 0 {
 		t.Fatalf("a --no-probe registration keeps offers: %+v", e)
 	}
-	spawnOK(t, ts, map[string]any{"id": "l1", "doer": map[string]any{"agent": "fake"}, "prompt": "t", "runner": "verse.runners.late"})
-	if e, ok := findRunner(srv.Store, "late"); !ok || len(e.Offers) == 0 {
+	spawnOK(t, ts, map[string]any{"id": "l1", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t", "runner": "verse.runners.late"}})
+	if e, ok := findRunner(srv.Store, "late"); !ok || len(e.Description().Offers) == 0 {
 		t.Fatalf("the first spawn did not keep what the runner said: %+v", e)
 	}
 	// …and what it said is what the next spawn is checked against: an agent it does not offer.
-	resp = postTony(t, ts.URL+"/tasks", map[string]any{
-		"id": "l2", "doer": map[string]any{"agent": "other"}, "prompt": "t", "runner": "verse.runners.late",
-	})
+	resp = postTony(t, ts.URL+"/tasks", map[string]any{"id": "l2", "spawn": map[string]any{"agent": map[string]any{"name": "other"}, "prompt": "t", "runner": "verse.runners.late"}})
 	defer resp.Body.Close()
 	if msg := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(msg, "verse.runners.late") {
 		t.Fatalf("a spawn the runner's offer refuses = %s %q, want 400 naming the runner", resp.Status, msg)
@@ -110,10 +107,10 @@ func TestStartProbesRunnersWithoutOffers(t *testing.T) {
 	if err := second.probeRunners(); err != nil {
 		t.Fatal(err)
 	}
-	if e, ok := findRunner(store, "up"); !ok || len(e.Offers) == 0 {
+	if e, ok := findRunner(store, "up"); !ok || len(e.Description().Offers) == 0 {
 		t.Errorf("the runner that answers was not asked at start: %+v", e)
 	}
-	if e, ok := findRunner(store, "down"); !ok || len(e.Offers) != 0 {
+	if e, ok := findRunner(store, "down"); !ok || len(e.Description().Offers) != 0 {
 		t.Errorf("the runner that does not answer gained offers: %+v", e)
 	}
 }

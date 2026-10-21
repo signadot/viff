@@ -86,7 +86,7 @@ func thenTaskOf(t *testing.T, srv *Server, ref entity.Ref) entity.Entity {
 func TestAnAskIsAnsweredAndItsThenRunsForTheAsker(t *testing.T) {
 	srv, ts := asking(t)
 	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Review verse/ask?", answerers: [oscar@example.com], then: {prompt: "merge verse/ask to main"}}`))
+	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Review verse/ask?", answerers: [oscar@example.com], then: {spawn: {prompt: "merge verse/ask to main", environment: {systems: {network: {mode: open}}}}}}`))
 	land := mirror.AskRef(id)
 	posed(t, srv, land)
 	if got := heldOutTo(t, srv, id); len(got) != 1 || got[0] != davido {
@@ -123,29 +123,29 @@ func TestAThenRunsRecordCarriesItsPolicy(t *testing.T) {
 	srv, ts := asking(t)
 	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
 	id := askID(t, ask(t, daniel, ts.URL, `{name: tag, question: "Tag v1?", answerers: [oscar@example.com],
-		then: {script: "true", policy: [{match: {system: question}, then: allow}, {then: deny}]}}`))
+		then: {spawn: {script: "true", environment: {systems: {network: {mode: open}, question: {ask: {}}}}, autonomy: [{match: {system: question}, then: allow}, {then: deny}]}}}`))
 	tag := mirror.AskRef(id)
 	posed(t, srv, tag)
 	if resp := answerAs(t, davido, ts.URL, id); resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("davido's answer: %s: %s", resp.Status, bodyOf(t, resp))
 	}
 	then := thenTaskOf(t, srv, tag)
-	if p := mirror.PolicyOf(then.Payload); len(p) != 2 || p[0].Match.System != "question" || p[0].Then.Mode != "allow" {
+	if p := mirror.AutonomyOf(then.Payload); len(p) != 2 || p[0].Match.System != "question" || p[0].Then.Mode != "allow" {
 		t.Errorf("the then-task's record holds the policy %v, want the one written beside the script", p)
 	}
-	if got := entity.Str(then.Payload, "doer"); got != "script" {
-		t.Errorf("the then-task's record names the doer %q, want script", got)
+	if _, script := mirror.AgentOf(then.Payload); !script {
+		t.Errorf("the then-task's record is no script's: %v", entity.ToObj(then.Payload))
 	}
 }
 
-// A THEN'S POLICY IS CHECKED WHEN IT IS ASKED, as a run's is when it is started: a row that is no
-// row, or a policy beside something that runs nothing, is refused and no ask stands.
-func TestAThensPolicyIsCheckedWhenAsked(t *testing.T) {
+// A THEN'S AUTONOMY IS CHECKED WHEN IT IS ASKED, as a run's is when it is started: a row that is no
+// row, or an autonomy beside an answer, which runs nothing, is refused and no ask stands.
+func TestAThensAutonomyIsCheckedWhenAsked(t *testing.T) {
 	_, ts := asking(t)
 	for _, then := range []string{
-		`{prompt: "go", policy: [{then: sometimes}]}`,
-		`{prompt: "go", policy: [{match: {verb: push}, then: allow}, {then: deny}]}`,
-		`{answer: {ask: other, choice: proceed}, policy: [{then: deny}]}`,
+		`{spawn: {prompt: "go", environment: {systems: {network: {mode: open}}}, autonomy: [{then: sometimes}]}}`,
+		`{spawn: {prompt: "go", environment: {systems: {network: {mode: open}}}, autonomy: [{match: {verb: push}, then: allow}, {then: deny}]}}`,
+		`{answer: {ask: other, choice: proceed}, autonomy: [{then: deny}]}`,
 	} {
 		resp := ask(t, "user:daniel@example.com", ts.URL, `{name: bad, question: "Go?", then: `+then+`}`)
 		if resp.StatusCode != http.StatusBadRequest {
@@ -174,7 +174,7 @@ func TestAnAskWithoutAThenIsAVote(t *testing.T) {
 func TestANoToAnAskIsRecordedAndRunsNothing(t *testing.T) {
 	srv, ts := asking(t)
 	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge verse/ask?", answerers: [oscar@example.com], then: {prompt: "merge verse/ask to main"}}`))
+	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge verse/ask?", answerers: [oscar@example.com], then: {spawn: {prompt: "merge verse/ask to main", environment: {systems: {network: {mode: open}}}}}}`))
 	land := mirror.AskRef(id)
 	posed(t, srv, land)
 	resp := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "deny", By: davido})
@@ -211,7 +211,7 @@ func TestAnAskOutlivesARestart(t *testing.T) {
 	first.Start(ctx)
 	ts := httptest.NewServer(first.Handler())
 	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", answerers: [oscar@example.com], then: {prompt: "merge it"}}`))
+	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", answerers: [oscar@example.com], then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}`))
 	land := mirror.AskRef(id)
 	posed(t, first, land)
 	ts.Close()

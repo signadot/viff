@@ -18,7 +18,7 @@
 //
 // What PERFORMING a call means is the host's to say, through Server.Call. In a task process the
 // host is the script's driver: the call goes in front of the loop as an ordinary action, as the
-// agent's use of the same tool would, the task's policy decides it, the docket lists it,
+// agent's use of the same tool would, the task's autonomy decides it, the docket lists it,
 // the read plane narrates it, and the tool's own Do runs once it is approved. A call the gate
 // declines comes back refused — an answer the caller re-plans on, as against a failure.
 //

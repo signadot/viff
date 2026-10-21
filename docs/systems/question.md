@@ -1,10 +1,10 @@
 # question
 
-The `question` system is the questions that a task puts to people. The doer hands the turn over
-and waits on the docket for an answer.
+The `question` system is the questions that a task puts to people. The agent or script hands the
+turn over and waits on the docket for an answer.
 
-It is not the question a runner asks before a step, when a row of the task's policy says
-`ask`. That question comes from the policy, not from a call of the doer.
+It is not the question a runner asks before a step, when a row of the task's autonomy says
+`ask`. That question comes from the autonomy, not from a call of the task.
 
 ## What a charter sees
 
@@ -21,16 +21,17 @@ task asks.
 
 ## What a task can do
 
-A doer has `question-ask` when its policy names `question`, as it has any tool. Asking a person
-is the step `question.ask`, and the row that matches it decides it: `allow` puts the question at
+A task has `question-ask` when its environment gives `question`, as it has any tool. Asking a
+person is the step `question.ask`, and the row that matches it decides it: `allow` puts the question at
 once, `deny` refuses it, and `ask` asks before the question is put. Codex's own question for a
 person is the same step.
 
 ```tony
 spawn:
-  doer: {agent: verse, with: {network: {mode: open}}}
+  agent: {name: verse}
+  environment: {systems: {network: {mode: open}, question: {}}}
   prompt: "Decide whether $subject can be rolled back, and ask before you say so."
-  policy:
+  autonomy:
   - match: {system: question}
     then: allow
   - then: deny

@@ -44,7 +44,7 @@ func Load(path string, own any) (Config, error) {
 	if err != nil {
 		return c, err
 	}
-	node = unwrap(node)
+	node = ir.Uncomment(node)
 	if node == nil || node.Type != ir.ObjectType {
 		return c, fmt.Errorf("%s: want an object of settings", path)
 	}
@@ -72,7 +72,7 @@ func Load(path string, own any) (Config, error) {
 // checkFields refuses a key of node that none of the struct types has a field for, and
 // descends into the fields that are structs themselves. A map's keys are its own to name.
 func checkFields(node *ir.Node, at string, types ...reflect.Type) error {
-	node = unwrap(node)
+	node = ir.Uncomment(node)
 	if node == nil || node.Type != ir.ObjectType {
 		return nil // not an object: the decoder's complaint to make, in its own terms
 	}
@@ -121,11 +121,4 @@ func fieldName(f reflect.StructField) string {
 		}
 	}
 	return ""
-}
-
-func unwrap(n *ir.Node) *ir.Node {
-	for n != nil && n.Type == ir.CommentType && len(n.Values) > 0 {
-		n = n.Values[0]
-	}
-	return n
 }

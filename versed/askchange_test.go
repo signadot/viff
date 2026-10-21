@@ -74,10 +74,10 @@ func mustTime(t *testing.T, s string) time.Time {
 // what it says now.
 func TestAChangedThenAsksAgain(t *testing.T) {
 	srv, ts := asking(t)
-	id := askID(t, ask(t, chAsker, ts.URL, `{name: land, question: "Merge?", answerers: [oscar@example.com], then: {prompt: "merge it"}}`))
+	id := askID(t, ask(t, chAsker, ts.URL, `{name: land, question: "Merge?", answerers: [oscar@example.com], then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}`))
 	ref := mirror.AskRef(id)
 	posed(t, srv, ref)
-	if resp := change(t, chAsker, ts.URL, id, `{then: {prompt: "merge it and tag it"}}`); resp.StatusCode != http.StatusOK {
+	if resp := change(t, chAsker, ts.URL, id, `{then: {spawn: {prompt: "merge it and tag it", environment: {systems: {network: {mode: open}}}}}}`); resp.StatusCode != http.StatusOK {
 		t.Fatalf("changing then: %s: %s", resp.Status, bodyOf(t, resp))
 	}
 	resp := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "proceed", By: chDavido, Edit: 1})

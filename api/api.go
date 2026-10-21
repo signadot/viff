@@ -28,6 +28,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
 )
@@ -160,8 +161,8 @@ type Resolve struct {
 	Force bool `tony:"field=force,omitzero"`
 }
 
-// Spawn runs an ad-hoc task (`POST /tasks`) — the `task run` path, which has
-// no subject or flow, unlike a trigger's spawn.
+// Spawn runs a task by hand (`POST /tasks`, `verse task run -f`): a spawn as a charter writes
+// one, and what is about this request rather than the work — its id, a conversation, who asks.
 //
 //tony:schemagen=verse-spawn,notag
 type Spawn struct {
@@ -175,56 +176,15 @@ type Spawn struct {
 	// Name is a label for the run, from which the id is derived and returned. It exists so a
 	// caller can say what a run IS without choosing its address: `--name review` becomes
 	// `review-8f306077b1c2`, which is readable, unique, and cannot be malformed.
-	Name   string `tony:"field=name,omitzero"`
-	Prompt string `tony:"field=prompt,omitzero"`
-	// Doer is who does the work and what it works with — the ad-hoc face of a spawn's `doer:`
-	// (runner.Doer): `agent: verse`, or `script: "…"`, with its repositories, network and
-	// environment. Empty is the runner's default agent. A script's doer needs no prompt.
-	Doer runner.Doer `tony:"field=doer,omitzero"`
-	// Retain is how many read-plane events to keep for a resuming reader; 0 = the runtime's
-	// default. A charter says it per spawn (launch.Spec.Retain) and this is the ad-hoc face
-	// of the same field, so `verse task run` and a firing can ask for the same thing.
-	Retain int `tony:"field=retain,omitzero"`
+	Name string `tony:"field=name,omitzero"`
+	// Spawn is the work, as a charter's spawn writes it (launch.Spec), read as strictly and
+	// meaning the same: nothing is filled in that it does not say. Nothing fires for it, so it
+	// binds no `$` and sets none of what a firing sets (launch.Spec.CheckByHand).
+	Spawn launch.Spec `tony:"field=spawn"`
 	// Converse makes the run a conversation: when the model goes quiet the person is handed
 	// the turn as a question, and the run ends when they end it. `task run -attach` sends it
 	// unless told `-no-converse`; it has no charter face, deliberately.
 	Converse bool `tony:"field=converse,omitzero"`
-	// Subject is the flow this run belongs to — the entity it is about. A trigger spawn
-	// carries one from its firing; this is the ad-hoc face of the same field, and without it
-	// a `task run` is about nothing, which is a real state and not a useful default.
-	Subject string `tony:"field=subject,omitzero"`
-	// Policy is what happens to each step of this run — the ad-hoc face of a spawn's
-	// `policy:` (task.Policy): `verse task run --policy policy.tony`. It is what the run is
-	// given: absent, no verb of any system is the run's.
-	Policy task.Policy `tony:"field=policy,omitzero"`
-	// Timeout bounds the run, a duration: the ad-hoc face of a spawn's `timeout:`.
-	Timeout string `tony:"field=timeout,omitzero"`
-	// Runner names WHERE this run runs — `verse.runners.<name>`, installed with `verse
-	// runner add`. Empty means the verse's own default runner, which is what `local` means
-	// on a task:instance.
-	//
-	// It is orthogonal to the doer: the doer is WHO does the work, and this is the place. The
-	// same doer may run in either of two places and the same place may host either of two
-	// doers, so folding them together would make one name answer two questions.
-	Runner string `tony:"field=runner,omitzero"`
-	// VirtualKey is the ADDRESS of the model credential this run spends — the ad-hoc face of a
-	// spawn's `virtualKey:`, so `verse task run` can ask for the review budget the way a
-	// charter's provider does.
-	//
-	// Read as the run's Principal before anything starts, so typing an address buys nothing a
-	// person could not already read — which is the whole of the authority story here, and the
-	// reason this needs no flag, group or list of its own.
-	VirtualKey string `tony:"field=virtualKey,omitzero"`
-	// Answer is this run's ANSWER CONTRACT — the shape its final message must have, as a tony
-	// match pattern. The ad-hoc face of a spawn's `answer:`, so `verse task run` can declare
-	// what a charter can.
-	//
-	// It is not decoration on this path. Without a contract a driver's only definition of
-	// "finished" is the model declining to call another tool, and a model that narrates a plan
-	// between steps ends the task mid-investigation — observed, with the result reading "Let me
-	// focus on:". A contract is what makes done CHECKABLE: the answer is validated when the
-	// model stops, the complaint is fed back, and the run fails if the shape never arrives.
-	Answer *ir.Node `tony:"field=answer,omitzero"`
 	// Principal is who is answerable for this run. Self-asserted — the same standing `--as`
 	// has everywhere else, and for the same reason: verifying a caller is authority's
 	// subject, not this field's. It is carried so a runner whose effects LEAVE the verse can
@@ -248,7 +208,6 @@ type Spawn struct {
 type Task struct {
 	ID         string             `tony:"field=id"`
 	Prompt     string             `tony:"field=prompt,omitzero"`
-	Doer       string             `tony:"field=doer,omitzero"`
 	Status     task.Status        `tony:"field=status"`
 	Runner     string             `tony:"field=runner,omitzero"` // where it runs or ran: local, or the runner's url
 	RunnerName string             `tony:"field=runnerName,omitzero"`
@@ -259,20 +218,46 @@ type Task struct {
 	Result     string             `tony:"field=result,omitzero"`
 	Err        string             `tony:"field=err,omitzero"`
 	Pending    []task.PendingGate `tony:"field=pending,omitzero"`
-	// Policy is the task's policy as it stands, verse's part of its asks with it, and PolicyBy
-	// who last replaced it while it ran: the record's, so a finished task shows the policy it
+	Refused    map[string]int     `tony:"field=refused,omitzero"`
+	// Agent is who ran it and with what, its name and settings as the runner resolved them, or
+	// as the spawn asked before the runner reported; nil for a script (Script). Its annotations
+	// are the runner's plumbing and never here.
+	Agent  *runner.Agent `tony:"field=agent,omitzero"`
+	Script bool          `tony:"field=script,omitzero"`
+	// Autonomy is the task's autonomy as it stands, verse's part of its asks with it, and AutonomyBy
+	// who last replaced it while it ran: the record's, so a finished task shows the autonomy it
 	// ended under.
-	Policy   task.Policy `tony:"field=policy,omitzero"`
-	PolicyBy string      `tony:"field=policyBy,omitzero"`
+	Autonomy   task.Autonomy `tony:"field=autonomy,omitzero"`
+	AutonomyBy string        `tony:"field=autonomyBy,omitzero"`
 }
 
 // TaskFrom is the task as verse reports it, from what a runner reports of it.
 func TaskFrom(snap task.Snapshot) Task {
-	return Task{
-		ID: snap.ID, Prompt: snap.Prompt, Doer: snap.Driver, Status: snap.Status,
+	t := Task{
+		ID: snap.ID, Prompt: snap.Prompt, Status: snap.Status,
 		Cursor: snap.Cursor, Occurrence: snap.Occurrence, Started: snap.Started, Ended: snap.Ended,
-		Result: snap.Result, Err: snap.Err, Pending: snap.Pending,
+		Result: snap.Result, Err: snap.Err, Pending: snap.Pending, Refused: snap.Refused,
 	}
+	switch snap.Agent {
+	case "script":
+		t.Script = true
+	case "":
+	default:
+		t.Agent = &runner.Agent{Name: snap.Agent, Settings: snap.Settings}
+	}
+	return t
+}
+
+// Who is who ran the task, in a word, for a listing: `script`, the agent's name, or `agent` for
+// the runner's default not yet resolved.
+func (t Task) Who() string {
+	switch {
+	case t.Script:
+		return "script"
+	case t.Agent != nil && t.Agent.Name != "":
+		return t.Agent.Name
+	}
+	return "agent"
 }
 
 // Spawned is what a spawn answers with: the id to address the new task by.
@@ -291,14 +276,14 @@ type Say struct {
 	By          string `tony:"field=by,omitzero"` // attribution; empty is an unattributed caller
 }
 
-// SetPolicy replaces a running task's policy, applied to its later steps and not to a
-// question already waiting (`PUT /tasks/{id}/policy`). The runner carries the rows whole;
+// SetAutonomy replaces a running task's autonomy, applied to its later steps and not to a
+// question already waiting (`PUT /tasks/{id}/autonomy`). The runner carries the rows whole;
 // verse keeps what it reads of them (what silence settles on, the labels).
 //
-//tony:schemagen=verse-set-policy,notag
-type SetPolicy struct {
-	Policy task.Policy `tony:"field=policy,omitzero"`
-	By     string      `tony:"field=by,omitzero"` // who set it, for the record
+//tony:schemagen=verse-set-autonomy,notag
+type SetAutonomy struct {
+	Autonomy task.Autonomy `tony:"field=autonomy,omitzero"`
+	By       string        `tony:"field=by,omitzero"` // who set it, for the record
 }
 
 // FlowSelect names the work a `verse flow` verb reaches, and narrows what `GET /flows` lists (as
@@ -558,7 +543,7 @@ type Status struct {
 	LLM    *LLM          `tony:"field=llm,omitzero"`
 	Listen *Listen       `tony:"field=listen,omitzero"`
 	// Perms is what the permission check has refused since this process started: a count
-	// that climbs is a flow somebody is being refused, which is either the policy's intent or
+	// that climbs is a flow somebody is being refused, which is either the autonomy's intent or
 	// a row the seed is missing.
 	Perms *Perms `tony:"field=perms,omitzero"`
 	// Restoring is the phases of the server's start still being asked again, by name: each
@@ -597,12 +582,11 @@ type Group struct {
 // when, and what follows a yes. The ask is written at `verse.ask.<id>` as its asker's record, with
 // the id derived from Name, and the verb poses it (docs/asking.md).
 //
-// Then is one key naming what follows a yes, on the asker's authority: `{prompt: <text>}`, a task a
-// model works from that prompt; `{script: <text>}`, a script run as written; `{answer: {ask,
-// choice, say?, force?}}`, an answer to another ask as the asker; or `{ask: {…}}`, another ask the
-// asker raises, whose `due` may be a duration from the yes. A prompt or a script takes a `policy`
-// beside it, what its run is given, read as a spawn's is; without one the run is given no verb.
-// Absent, the ask is a vote and the answer is all it leaves.
+// Then is one key naming what follows a yes, on the asker's authority: `{spawn: {…}}`, a task
+// written as a charter's spawn is (its prompt or script, agent, environment and autonomy) and
+// meaning only what it says; `{answer: {ask, choice, say?, force?}}`, an answer to another ask as
+// the asker; or `{ask: {…}}`, another ask the asker raises, whose `due` may be a duration from
+// the yes. Absent, the ask is a vote and the answer is all it leaves.
 //
 //tony:schemagen=verse-ask,notag
 type Ask struct {

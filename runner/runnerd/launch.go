@@ -19,7 +19,7 @@ import (
 // CheckLaunch is what a runner built on runnerd checks a launch against when it arrives: the
 // spec's shape (Launch.Check), then what no runnerd runner can honour yet, then what this
 // runner offers (desc). owned is the variables the runner gives a task's shell itself, which
-// `with.env` may not name; nil is task.DefaultShellEnv. A handler with no offers — one a test or
+// the environment's vars may not name; nil is task.DefaultShellEnv. A handler with no offers — one a test or
 // an example builds — checks the first two only.
 //
 // What is refused is said, with the field: a launch that ran without what it asked for would
@@ -34,204 +34,182 @@ func CheckLaunch(l *runner.Launch, desc runner.Description, owned []string) erro
 	if owned == nil {
 		owned = task.DefaultShellEnv
 	}
-	for name := range l.Doer.With.Env {
+	for name := range l.Vars() {
 		if slices.Contains(owned, name) || name == task.CredentialFileEnv {
-			return fmt.Errorf("with.env: %s is the runner's to set, not the launch's", name)
+			return fmt.Errorf("environment.vars: %s is the runner's to set, not the launch's", name)
 		}
 	}
 	return CheckOffer(l, desc)
 }
 
-// CheckOffer checks a launch against what a runner offers (its description): that the doer is
-// one of its offers, and that what the launch asks of the offer — `with`, repositories within
-// its `git` ceiling, annotations, a conversation, rows on systems it holds — is what the offer
-// takes. A runner with no offers takes no repos and otherwise refuses nothing. Verse
-// makes this check with the description it read from the runner, so a spawn is refused where
-// it is written rather than at its first firing.
-func CheckOffer(l *runner.Launch, desc runner.Description) error {
+// CheckOffer checks a launch against what a runner offers (its description): that its doer is
+// one of its offers, and that what the launch asks of the offer — the agent's settings, systems
+// it holds (and repositories within its `git` ceiling), a network it builds, a conversation,
+// rows on systems it holds — is what the offer takes. A runner with no offers takes no repos and
+// otherwise refuses nothing. Verse makes this check with the description it read from the
+// runner, so a spawn is refused where it is written rather than at its first firing.
+//
+// The launch is bound: a `$` in a value is part of it (systems.Ceiling.Contains). A charter's
+// spawn, checked at install before anything is bound, is CheckOfferAsWritten's.
+func CheckOffer(l *runner.Launch, desc runner.Description) error { return checkOffer(l, desc, false) }
+
+// CheckOfferAsWritten is CheckOffer for a charter's spawn at install, its environment as written:
+// a `$` attribute is within a ceiling where some binding of it could be
+// (systems.Ceiling.ContainsAsWritten). The launch is checked again, bound, by CheckOffer.
+func CheckOfferAsWritten(l *runner.Launch, desc runner.Description) error {
+	return checkOffer(l, desc, true)
+}
+
+func checkOffer(l *runner.Launch, desc runner.Description, written bool) error {
 	if len(desc.Offers) == 0 {
-		if len(l.Doer.With.Git) > 0 {
-			return unsupported("with.git")
+		if len(l.Repos()) > 0 {
+			return unsupported("a git repository")
 		}
 		return nil
 	}
-	o, err := offerFor(l.Doer, desc)
+	o, err := offerFor(l.Who(), desc)
 	if err != nil {
 		return err
 	}
-	for key, v := range map[string]string{"model": l.Doer.With.Model, "effort": l.Doer.With.Effort} {
-		if v == "" {
+	// The agent's settings, each one its offer takes and a value it takes; its annotations,
+	// each one the offer names.
+	a := l.AgentSettings()
+	if o.Agent != nil {
+		for _, key := range slices.Sorted(maps.Keys(a.Settings)) {
+			setting, ok := o.Agent.Settings[key]
+			if !ok {
+				return fmt.Errorf("agent.%s: %s on this runner takes no `%s` (it takes: %s)", key, o.Name(), key,
+					cmp.Or(strings.Join(slices.Sorted(maps.Keys(o.Agent.Settings)), ", "), "none"))
+			}
+			if err := setting.Takes(a.Settings[key]); err != nil {
+				return fmt.Errorf("agent.%s: %s on this runner takes no such %s: %w", key, o.Name(), key, err)
+			}
+		}
+		for name := range a.Annotations {
+			if _, ok := o.Agent.Annotations[name]; !ok {
+				return fmt.Errorf("agent.annotations: %s takes no %q on this runner", o.Name(), name)
+			}
+		}
+	}
+	// A system of the environment is one the offer holds: the runner sets it up and performs
+	// or stops its steps. The network is built by the sandbox, and the offer says which modes.
+	for _, name := range slices.Sorted(maps.Keys(l.Environment.Systems)) {
+		if name == "network" {
 			continue
 		}
-		accepts, ok := o.With[key]
-		if !ok {
-			return fmt.Errorf("with: %s takes no `%s`", l.Doer.Name(), key)
-		}
-		if !accepts.Accept(v) {
-			return fmt.Errorf("with.%s: %s takes none called %q", key, l.Doer.Name(), v)
+		if _, held := o.Systems[name]; !held {
+			return fmt.Errorf("environment.systems.%s: %s on this runner holds no `%s`", name, o.Name(), name)
 		}
 	}
-	// A repository is a fact of the `git` system: the offer holds it, and its ceiling lets a
-	// task reach the repository at all. One whose every git call the ceiling refuses, a forge
-	// the runner has no repositories on among them, is a repository this runner does not serve.
-	git, holdsGit := o.Systems["git"]
-	if len(l.Doer.With.Git) > 0 && !holdsGit {
-		return fmt.Errorf("with.git: %s on this runner intercepts no `git`, so it checks out no repositories", l.Doer.Name())
+	if err := checkCeilings(l.Environment, o, written); err != nil {
+		return err
 	}
-	// A tracker is a fact of the `git-issue` system, as a repository is of `git`.
-	if _, holds := o.Systems["git-issue"]; len(l.Doer.With.GitIssue) > 0 && !holds {
-		return fmt.Errorf("with.git-issue: %s on this runner intercepts no `git-issue`, so it keeps no trackers", l.Doer.Name())
+	// The network is built when the run starts, absent being none: one the runner can't build is
+	// refused here, where the spawn is written, rather than at the launch, and said as that.
+	if err := checkBuilds(l, o); err != nil {
+		return err
 	}
-	for i, r := range l.Doer.With.Git {
-		c := git.Ceiling
-		if row, at, refused := c.Refuses(task.Step{Name: task.StepGitFetch, Fields: map[string]string{"repo": r.Canonical()}}); refused {
-			return fmt.Errorf("with.git[%d]: this runner's ceiling refuses git on %s (its row %s: %s)",
-				i, r.Canonical(), c.NameOf(at), rowWords(row))
-		}
-	}
-	// The network is a fact of the run, absent being none: one the runner does not build is
-	// refused here, where the spawn is written, rather than at the launch. An offer that names
-	// no network builds none a launch may ask for.
-	if accepts := o.With["network"]; !accepts.Accept(l.Doer.With.NetworkMode()) {
-		return fmt.Errorf("with.network: %s on this runner builds the network %s, not %s (absent is none)",
-			l.Doer.Name(), strings.Join(accepts.Values, " or "), l.Doer.With.NetworkMode())
-	}
-	for name := range l.Doer.Annotations {
-		if _, ok := o.Annotations[name]; !ok {
-			return fmt.Errorf("annotations: %s takes no %q on this runner", l.Doer.Name(), name)
+	// What the doer can't run without, refused where it is written rather than run to fail.
+	for _, step := range o.Requires {
+		if !l.Environment.Gives(step) {
+			system, verb, _ := systems.Split(step)
+			return fmt.Errorf("environment.systems.%s: %s on this runner requires %s: add `%s: {}` or `%s: {%s: {}}` under environment.systems",
+				system, o.Name(), step, system, system, verb)
 		}
 	}
 	if l.Converse && !o.Converse {
-		return fmt.Errorf("converse: %s on this runner can't hold a conversation", l.Doer.Name())
+		return fmt.Errorf("converse: %s on this runner can't hold a conversation", o.Name())
 	}
-	if err := checkPolicy(l.Policy, l.Doer.Name(), o); err != nil {
-		return err
-	}
-	return checkCeilings(l.Policy, l.Doer.With, o)
+	return nil
 }
 
-// checkCeilings is CONTAINMENT: a launch's policy opens nothing the runner's ceilings close.
-// Each row that allows or asks about a held system's calls is held against that system's
-// ceiling, field by field: the row's params as the call's known fields (a pattern read as the
-// text it is, so a pattern within a pattern is the narrower written inside the wider), and,
-// where the row names no `repo`, each repository of `with.git` in turn. A row the ceiling
-// refuses every call of is refused here, naming both lines. A row naming no system, the
-// default row among them, opens nothing by name, and the ceiling decides each of its calls as
-// they are made.
-func checkCeilings(p task.Policy, w runner.With, o runner.Offer) error {
-	for i, r := range p {
-		if r.Match.Any() || r.Match.System == "" || r.Then.Mode == task.ThenDeny || r.Then.Mode == task.ThenWithhold {
+// checkBuilds is what the runner can build of each system the environment gives (Builds, its
+// nature, apart from the operator's ceiling): today the network's modes. A run with no network
+// block has the network none, which the runner has to build too.
+func checkBuilds(l *runner.Launch, o runner.Offer) error {
+	for name, sys := range o.Systems {
+		if len(sys.Builds) == 0 {
 			continue
 		}
-		c := o.Systems[r.Match.System].Ceiling
-		doc, _ := systems.Get(r.Match.System)
-		var verbs []string
-		if r.Match.Verb != "" {
-			verbs = []string{r.Match.Verb}
-		} else {
-			for _, v := range doc.Verbs {
-				verbs = append(verbs, v.Name)
-			}
+		blocks := l.Environment.Systems[name]
+		if name == "network" && len(blocks) == 0 {
+			blocks = []systems.Block{{}}
 		}
-		for _, verb := range verbs {
-			step := task.Step{Name: systems.StepName(r.Match.System, verb), Fields: map[string]string{}}
-			for k, v := range r.Match.Params {
-				step.Fields[k] = v
-			}
-			shapes := []task.Step{step}
-			v, _ := doc.Verb(verb)
-			if _, named := step.Fields["repo"]; !named && len(w.Git) > 0 && slices.Contains(v.ParamNames(), "repo") {
-				shapes = nil
-				for _, repo := range w.Git {
-					st := task.Step{Name: step.Name, Fields: maps.Clone(step.Fields)}
-					st.Fields["repo"] = repo.Canonical()
-					shapes = append(shapes, st)
+		for _, b := range blocks {
+			if err := sys.Builds.Contains(name, b); err != nil {
+				if name == "network" && len(sys.Builds) == 1 {
+					mode := cmp.Or(b.Attributes["mode"], runner.NetworkNone)
+					if modes := sys.Builds[0].Attributes["mode"]; !slices.Contains(modes, mode) {
+						return fmt.Errorf("environment.systems.network: mode %s: this runner builds %s only", mode, strings.Join(modes, ", "))
+					}
 				}
-			}
-			for _, st := range shapes {
-				if row, at, refused := c.Refuses(st); refused {
-					return fmt.Errorf("policy[%d]: this runner's ceiling refuses what the row would %s (%s): its row %s: %s",
-						i, r.Then.Mode, st, c.NameOf(at), rowWords(row))
-				}
+				return fmt.Errorf("environment.systems.%s: this runner can't build it (%s): %w", name, buildsWords(name, sys.Builds), err)
 			}
 		}
 	}
 	return nil
 }
 
-// rowWords is a ceiling's row in words, for a refusal that names it.
-func rowWords(r task.Row) string {
-	var fs []string
-	if r.Match != nil {
-		if r.Match.Verb != "" {
-			fs = append(fs, "verb="+r.Match.Verb)
-		}
-		for _, k := range slices.Sorted(maps.Keys(r.Match.Params)) {
-			fs = append(fs, k+"="+r.Match.Params[k])
-		}
+// buildsWords is what a runner builds of a system, as a refusal says it.
+func buildsWords(system string, builds systems.Ceiling) string {
+	if system == "network" && len(builds) == 1 {
+		return "it builds: " + strings.Join(builds[0].Attributes["mode"], ", ")
 	}
-	if len(fs) == 0 {
-		return r.Then.Mode + " everything"
-	}
-	return r.Then.Mode + " " + strings.Join(fs, " ")
+	return "its offer's `builds` says what it builds"
 }
 
-// checkPolicy refuses a row on a system the doer's offer does not intercept, since nothing
-// there could honour it. A row naming no system covers whatever the offer holds,
-// and is not checked.
-func checkPolicy(p task.Policy, doer string, o runner.Offer) error {
-	for i, r := range p {
-		if r.Match.Any() || r.Match.System == "" {
+// checkCeilings is CONTAINMENT: each block of the environment lies within the ceiling of its
+// system the offer publishes (systems.Ceiling.Contains), a ceiling being closed, so a system
+// held with none gives nothing. The network is the one whose empty ceiling bounds nothing beyond
+// what the runner builds. Held at install on the environment as the charter wrote it (written: a
+// `$` attribute within where some binding of it could be), and at the launch on the bound one.
+// The autonomy is not held to the ceiling: each row reaches the environment (runner.CheckReach),
+// which lies within it.
+func checkCeilings(env systems.Environment, o runner.Offer, written bool) error {
+	names := slices.Sorted(maps.Keys(env.Systems))
+	if _, given := env.Systems["network"]; !given {
+		names = append(names, "network")
+	}
+	for _, name := range names {
+		sys, held := o.Systems[name]
+		if !held || (name == "network" && len(sys.Ceiling) == 0) {
 			continue
 		}
-		if _, held := o.Systems[r.Match.System]; !held {
-			return fmt.Errorf("policy[%d]: %s on this runner intercepts no %s, so there is nothing to %s",
-				i, doer, r.Match.System, r.Then.Mode)
+		blocks := env.Systems[name]
+		if name == "network" && len(blocks) == 0 {
+			blocks = []systems.Block{{}} // no network block is the network none, bounded too
+		}
+		for i, b := range blocks {
+			contains := sys.Ceiling.Contains
+			if written {
+				contains = sys.Ceiling.ContainsAsWritten
+			}
+			if err := contains(name, b); err != nil {
+				at := "environment.systems." + name
+				if len(blocks) > 1 {
+					at = fmt.Sprintf("%s[%d]", at, i)
+				}
+				return fmt.Errorf("%s: beyond this runner's ceiling for %s: %w", at, name, err)
+			}
 		}
 	}
 	return nil
 }
 
-// CheckPolicy is what a running task's new policy is checked against (PUT /tasks/{id}/policy):
-// the shape, that it withholds what the launch's policy (prev) withheld and no more, that it
-// names no verb prev did not, that each row's system is one the task's doer holds, and that it
-// opens nothing the runner's ceilings close (checkCeilings), with the task's repositories as
-// they are.
-func CheckPolicy(p task.Policy, prev task.Policy, doer string, w runner.With, desc runner.Description) error {
+// CheckAutonomy is what a running task's new autonomy is checked against (PUT
+// /tasks/{id}/autonomy): the shape, and that each row reaches the task's environment, which is
+// fixed for the run and lies within the runner's ceilings (runner.CheckReach).
+func CheckAutonomy(p task.Autonomy, l *runner.Launch) error {
 	if err := p.Check(); err != nil {
-		return err
+		return fmt.Errorf("autonomy%w", err)
 	}
-	if err := p.OrDefault().KeepsWithheld(prev.OrDefault()); err != nil {
-		return err
-	}
-	if err := p.KeepsVerbs(prev); err != nil {
-		return err
-	}
-	if len(desc.Offers) == 0 {
-		return nil
-	}
-	o, err := offerFor(doerOf(doer), desc)
-	if err != nil {
-		return err
-	}
-	if err := checkPolicy(p, doer, o); err != nil {
-		return err
-	}
-	return checkCeilings(p, w, o)
-}
-
-// doerOf is the doer a task's name for it (the agent's name, or "script") stands for.
-func doerOf(doer string) runner.Doer {
-	if doer == "script" {
-		return runner.Doer{Script: "-"}
-	}
-	return runner.Doer{Agent: doer}
+	return runner.CheckReach(p, l.Environment)
 }
 
 // notYet refuses what a launch may say and no runnerd runner can honour yet, naming the field:
 // refused, never ignored, until the step of the runners plan that brings it.
 func notYet(l *runner.Launch) error {
-	if l.Doer.Script != "" && l.Answer != nil {
+	if l.Script != "" && l.Answer != nil {
 		return unsupported("an `answer` for a script")
 	}
 	return nil
@@ -242,32 +220,45 @@ func unsupported(what string) error {
 }
 
 // offerFor is the offer a doer runs under.
-func offerFor(d runner.Doer, desc runner.Description) (runner.Offer, error) {
+// doerName is who does a launch's work, as a task's record says it: the agent's name, the
+// runner's default agent's for a prompt that names none, or "script".
+func doerName(l *runner.Launch, desc runner.Description) string {
+	if o, err := offerFor(l.Who(), desc); err == nil {
+		return o.Name()
+	}
+	return cmp.Or(l.Who(), "agent")
+}
+
+func offerFor(who string, desc runner.Description) (runner.Offer, error) {
 	var agents []string
 	for _, o := range desc.Offers {
 		switch {
-		case d.Script != "" && o.Script:
+		case who == "script" && o.Script:
 			return o, nil
-		case d.Agent != "" && o.Agent == d.Agent:
+		case who != "script" && o.Agent != nil && (who == "" || o.Agent.Name == who):
+			// No agent named is the runner's default: its first agent offer.
 			return o, nil
-		case o.Agent != "":
-			agents = append(agents, o.Agent)
+		case o.Agent != nil:
+			agents = append(agents, o.Agent.Name)
 		}
 	}
-	if d.Script != "" {
+	if who == "script" {
 		return runner.Offer{}, fmt.Errorf("this runner doesn't run scripts")
 	}
+	if who == "" {
+		return runner.Offer{}, errors.New("this runner offers no agent for a prompt")
+	}
 	slices.Sort(agents)
-	return runner.Offer{}, fmt.Errorf("this runner offers no agent %q (it offers: %s)", d.Agent,
+	return runner.Offer{}, fmt.Errorf("this runner offers no agent %q (it offers: %s)", who,
 		cmp.Or(strings.Join(agents, ", "), "none"))
 }
 
 // errNoRepos refuses a launch that names repos on a handler that checks none out.
-var errNoRepos = errors.New("with.git: this runner checks out no repos")
+var errNoRepos = errors.New("environment.systems.git: this runner checks out no repos")
 
 // errNoNetwork refuses a network other than open on a handler whose tasks run in its own
 // process.
-var errNoNetwork = errors.New("with.network: this runner runs its tasks in its own process, " +
+var errNoNetwork = errors.New("environment.systems.network: this runner runs its tasks in its own process, " +
 	"and can't take the network away from them; only open")
 
 // readLaunch reads and checks POST /tasks' launch. A refusal is answered `400` with the reason,

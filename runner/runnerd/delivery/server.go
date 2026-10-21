@@ -32,9 +32,10 @@ type Server struct {
 	// credential, a Slack bot token, and where their APIs are when a test moves them.
 	Services Services
 	// Ceilings are the operator's bounds on what any task may do with each system this runner
-	// performs, by system: THE RUNNER'S OWN LINE, read at each act after the task's policy,
-	// whatever the policy said and whoever answered its questions.
-	Ceilings map[string]task.Policy
+	// performs, by system: THE RUNNER'S OWN LINE, read at each act after the task's autonomy,
+	// whatever the autonomy said and whoever answered its questions. A system they name no
+	// ceiling for is closed (systems.Beyond).
+	Ceilings map[string]systems.Ceiling
 }
 
 // Services is what a runner holds for the systems beyond its git token: a Linear credential (the
@@ -58,9 +59,9 @@ type Task struct {
 	ID        string
 	Workspace *workspace.Workspace
 	Launch    *runner.Launch
-	// Policy is the task's current policy, where something holds it apart from the launch (a
+	// Autonomy is the task's current autonomy, where something holds it apart from the launch (a
 	// Channel, after a replacement); nil reads the launch's.
-	Policy func() task.Policy
+	Policy func() task.Autonomy
 	// Answered is who answered proceed to the question a row asked about this call, by the
 	// decision the act names or by the call, taking that answer (Channel.answered): what an act
 	// a row asks about is performed on. nil is a side that relayed no answers, where such an
@@ -148,7 +149,7 @@ func (s *Server) refresh(ctx context.Context, tk Task, req Request) Reply {
 	if t == nil {
 		return Reply{Error: fmt.Sprintf("no repository %q in this workspace", req.Repo)}
 	}
-	if why := s.refused(tk, req.Decision, task.Step{Name: task.StepGitFetch, Fields: map[string]string{"repo": t.Repo.Repo.Canonical()}}); why != "" {
+	if why := s.refused(tk, req.Decision, task.Step{Name: task.StepGitFetch, Fields: map[string]string{"repo": t.Repo.Repo.Canonical(), "from": t.Repo.From}}); why != "" {
 		return Reply{Refused: why}
 	}
 	mirror, err := s.Mirrors.Ensure(ctx, t.Repo.Remote)
@@ -167,10 +168,10 @@ func (s *Server) refresh(ctx context.Context, tk Task, req Request) Reply {
 	return Reply{OK: true, Updated: moved}
 }
 
-// push answers a `push`: decide it by the launch's policy, check what the task committed, stage
+// push answers a `push`: decide it by the launch's autonomy, check what the task committed, stage
 // it, and push it from the mirror. Or, with Delete, remove the branch.
 //
-// THE POLICY IS READ HERE TOO, whatever the task decided. The task holds a model and the request
+// THE AUTONOMY IS READ HERE TOO, whatever the task decided. The task holds a model and the request
 // is whatever it chose to send, so the side that holds the secret refuses what a `deny` row
 // refuses, and nothing moves. An `ask` row's question was posed and answered in the task's
 // process, through the runner's registry, and that answer is taken as it is.
@@ -210,7 +211,7 @@ func (s *Server) push(ctx context.Context, tk Task, req Request) Reply {
 		return Reply{Refused: why}
 	}
 	// A branch this run created is its own to rewrite; any other is rewritten only when the
-	// push says so, which the policy saw. A branch not there yet is created, never forced:
+	// push says so, which the autonomy saw. A branch not there yet is created, never forced:
 	// there is nothing to rewrite, and a create is the same act whatever the push said.
 	force := st.Created || (req.Force && st.Exists)
 	key := t.Repo.Name() + " " + ref
@@ -279,7 +280,7 @@ const (
 
 // pullRequest answers a `create-pr` or an `update-pr`: a pull request from a branch the task has
 // pushed into a base, opened or updated with this runner's token at GitHub, as the launch's
-// policy decides it.
+// autonomy decides it.
 func (s *Server) pullRequest(ctx context.Context, tk Task, req Request) Reply {
 	t := tk.Workspace.Tree(req.Repo)
 	if t == nil {
@@ -349,23 +350,24 @@ func (s *Server) pullRequest(ctx context.Context, tk Task, req Request) Reply {
 	return Reply{OK: true, Out: out}
 }
 
-// refused is why the task's policy or the runner's ceiling refuses a step, or "" where neither
-// does: a verb the policy does not provide, the `deny` row that matches it, by name, or an `ask`
-// row whose question this runner saw no answer to. An `allow` needs nobody. An `ask` is decided
+// refused is why the task's environment, its autonomy or the runner's ceiling refuses a step, or ""
+// where none does: a step outside the environment, saying what it gives (on the fields the runner
+// filled, `exists` and `own` among them, as the task's own check saw them), the `deny` row that
+// matches it, by name, or an `ask` row whose question this runner saw no answer to. An `allow` needs nobody. An `ask` is decided
 // in the task's process, which holds the model and says what it likes, so the answer is taken
 // from what the runner itself relayed to that process (Task.Answered), once per act, and never
-// from the process's word. The ceiling is read after the policy, and is the operator's: a task's
-// policy cannot open what it closes.
+// from the process's word. The ceiling is read after the autonomy, and is the operator's: a task's
+// autonomy cannot open what it closes.
 func (s *Server) refused(tk Task, decision string, st task.Step) string {
+	if why, outside := tk.environment().Refuses(st.Name, st.Fields); outside {
+		return "refused: outside the environment: " + why
+	}
 	if p, ok := tk.policy(); ok {
 		p = p.OrDefault()
-		if !p.Provides(st.Name) {
-			return fmt.Sprintf("refused: the policy names no %s: %s", st.Name, st)
-		}
 		row, i := p.Decide(st)
 		switch row.Then.Mode {
 		case task.ThenDeny:
-			return fmt.Sprintf("refused by the policy's row %s: %s", p.NameOf(i), st)
+			return fmt.Sprintf("refused by the autonomy's row %s: %s", p.NameOf(i), st)
 		case task.ThenAsk:
 			by := ""
 			answered := false
@@ -373,29 +375,39 @@ func (s *Server) refused(tk Task, decision string, st task.Step) string {
 				by, answered = tk.Answered(st, decision)
 			}
 			if !answered {
-				return fmt.Sprintf("refused: the policy's row %s asks about %s, and this runner relayed no answer to "+
+				return fmt.Sprintf("refused: the autonomy's row %s asks about %s, and this runner relayed no answer to "+
 					"the question (%s)", p.NameOf(i), st, cmp.Or(decision, "the act names no decision"))
 			}
 			fmt.Fprintf(s.Log, "delivery: %s: %s on the answer of %s (%s)\n", tk.ID, st, by, cmp.Or(decision, "by the call"))
 		}
 	}
 	system, _, _ := systems.Split(st.Name)
-	if c, has := s.Ceilings[system]; has {
-		if row, i := c.Decide(st); row.Then.Mode == task.ThenDeny {
-			return fmt.Sprintf("refused by the runner's ceiling, its row %s for %s: %s", c.NameOf(i), system, st)
-		}
+	if why, beyond := systems.Beyond(s.Ceilings, st.Name, st.Fields); beyond {
+		// The launch's environment lies within the ceiling, and this step within the
+		// environment: a check that missed, said loudly.
+		fmt.Fprintf(s.Log, "delivery: %s: BUG: %s within the environment is beyond the ceiling: %s\n", tk.ID, st, why)
+		return fmt.Sprintf("refused: beyond the runner's ceiling for %s: %s", system, why)
 	}
 	return ""
 }
 
-// policy is the task's policy as it stands: what holds it apart from the launch, else the
+// environment is the task's environment: its launch's, and none where nothing is known of it, as
+// a server built bare in a test, so that nothing is within it.
+func (tk Task) environment() systems.Environment {
+	if tk.Launch == nil {
+		return systems.Environment{}
+	}
+	return tk.Launch.Environment
+}
+
+// autonomy is the task's autonomy as it stands: what holds it apart from the launch, else the
 // launch's; false where nothing is known of it, as a server built bare in a test.
-func (tk Task) policy() (task.Policy, bool) {
+func (tk Task) policy() (task.Autonomy, bool) {
 	switch {
 	case tk.Policy != nil:
 		return tk.Policy(), true
 	case tk.Launch != nil:
-		return tk.Launch.Policy, true
+		return tk.Launch.Autonomy, true
 	}
 	return nil, false
 }
@@ -421,12 +433,12 @@ func (s *Server) state(ctx context.Context, tk Task, t *workspace.Tree, branch s
 	return runner.BranchState{Exists: exists, Own: own, Created: created}, nil
 }
 
-// pushFields is a git.push step as the policy and the ceiling see it: what the task asked (the
+// pushFields is a git.push step as the autonomy and the ceiling see it: what the task asked (the
 // branch, delete, force), and what the runner knows of the branch (exists, own). The last two
 // are filled here and nowhere else, so a row naming them is decided on the forge's word.
 func pushFields(t *workspace.Tree, ref string, del, force bool, st runner.BranchState) map[string]string {
 	return map[string]string{
-		"repo": t.Repo.Repo.Canonical(), "ref": ref,
+		"repo": t.Repo.Repo.Canonical(), "from": t.Repo.From, "ref": ref,
 		"delete": strconv.FormatBool(del), "force": strconv.FormatBool(force),
 		"exists": strconv.FormatBool(st.Exists), "own": strconv.FormatBool(st.Own),
 	}
@@ -435,8 +447,8 @@ func pushFields(t *workspace.Tree, ref string, del, force bool, st runner.Branch
 // OpState asks what the runner knows of a branch: whether it is at the forge, and whether its
 // tip is this task's. The task's push and pull-request tools ask before their own decision, so
 // a row naming `exists` or `own` is decided in the task's process on the same facts the runner
-// decides it on at the act. It is answered for a task whose policy has `git.push` at all, and
-// says nothing a fetch would not.
+// decides it on at the act. It is answered for a task whose environment gives `git.push` at all,
+// and says nothing a fetch would not.
 const OpState = "state"
 
 // branchState answers a `state`.
@@ -445,8 +457,8 @@ func (s *Server) branchState(ctx context.Context, tk Task, req Request) Reply {
 	if t == nil {
 		return Reply{Error: fmt.Sprintf("no repository %q in this workspace", req.Repo)}
 	}
-	if p, ok := tk.policy(); ok && !p.OrDefault().Provides(task.StepGitPush) {
-		return Reply{Refused: "refused: the policy names no git.push, so there is no push to decide"}
+	if !tk.environment().Gives(task.StepGitPush) {
+		return Reply{Refused: "refused: the environment gives no git.push, so there is no push to decide"}
 	}
 	tok, err := tk.Credential(t.Repo)
 	if err != nil {
