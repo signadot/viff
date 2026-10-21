@@ -6,7 +6,9 @@ commits: []
 created: "2026-10-21T14:09:06.95422+02:00"
 duplicates: []
 id: s3eedgt3h12krrnbv1n0
-labels: []
+labels:
+- bug
+- cli
 related_issues: []
 status: open
-updated: "2026-10-21T14:09:06.95422+02:00"
+updated: "2026-10-21T14:09:07.026143+02:00"
