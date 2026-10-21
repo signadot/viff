@@ -2,6 +2,7 @@
 blocked_by: []
 blocks: []
 branches: []
+closed_by: 4596d67e5dad833ad315aae4f6a497bb0eda4068
 commits: []
 created: "2026-10-21T12:27:25.681963+02:00"
 duplicates: []
@@ -10,5 +11,5 @@ labels:
 - defect
 - runner
 related_issues: []
-status: open
-updated: "2026-10-21T12:35:34.212604+02:00"
+status: closed
+updated: "2026-10-21T12:37:29.763095+02:00"
