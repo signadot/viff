@@ -426,9 +426,11 @@ succeeds. Each reopens for the next round rather than multiplying. The pieces on
 - **On GitHub**, a branch protection on `verse/live` that lets the App alone push, so verse is
   the only writer of what runs. A repository setting, not a knob here.
 
-Pausing it is `verse flow suspend -charter repos.verse -r -why …` for the repository's charters,
-or `-charter repo-charters.verse -r` for its reconciler (`repo-charters -r` for every
-repository's).
+Pausing the repository's charters is `verse flow suspend -charter repos.verse -r -why …`. The
+reconciler is the system's, and no request may suspend it. Turning it off is dropping the
+repository's entry from `repoCharters` and restarting versed: the reconciler goes, with its state
+under `repo-charters.<repo>`, and the charters it installed at `at` go on running
+([up](../docs/reference/up.md)).
 
 `gitIssueIod` reflects the issues `git issue` keeps inside a repository — a mirror clone maps
 every ref (`+refs/*:refs/*`), so `refs/git-issues/*` is already there and this needs no credential

@@ -231,6 +231,12 @@ repoCharters:
   answerers: ["user:*"]
 ```
 
+The config is what the system runs. At start, a charter package the system installed that
+neither `systemCharter` nor `repoCharters` names any more is taken down, with what it kept at its
+address. So dropping an entry from `repoCharters` turns that repository's reconciler off at the
+next start: the reconciler goes, with its state under `repo-charters.<repo>`, and the charters it
+installed at `at` stay as they are.
+
 **`auth: {principal: {…}}`** says how people are authenticated. The server reads it to verify a
 request's token ([who a request is from](perms.md#who-a-request-is-from)). Without it, a
 request is whoever it says it is. The CLI reads the same `providers` to know where

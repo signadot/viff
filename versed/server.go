@@ -1217,6 +1217,9 @@ func (s *Server) Start(ctx context.Context) {
 			return err
 		}
 		s.installSystemCharters()
+		// And what the system installed that the config no longer names goes, which is how
+		// dropping a charter from the config turns it off.
+		s.pruneSystemCharters()
 		return nil
 	})
 	s.reportActingAsNobody()
