@@ -75,7 +75,7 @@ if ! printf '%s\n' "$_verse_cmds" | grep -qE '^ *data '; then
      Rebuild it (go build -o verse ./cmd/verse), remove a stale ./verse so \$PATH wins,
      or point VERSE=<path> at a current one."
 fi
-v() { "$BIN" "${scope[@]}" "$@"; }
+v() { "$BIN" ${scope[@]+"${scope[@]}"} "$@"; }
 
 v status >/dev/null 2>&1 ||
 	die "no verse answering at ${VERSE_ADDR:-its default address} — start one with \`$BIN up\`"

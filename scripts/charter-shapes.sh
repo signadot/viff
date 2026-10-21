@@ -214,7 +214,7 @@ if ! printf '%s\n' "$_verse_cmds" | grep -qE '^ *data '; then
      Rebuild it (go build -o verse ./cmd/verse), remove a stale ./verse so \$PATH wins,
      or point VERSE=<path> at a current one."
 fi
-v() { "$BIN" "${scope[@]}" "$@"; }
+v() { "$BIN" ${scope[@]+"${scope[@]}"} "$@"; }
 
 known() {
 	for s in "${SHAPES[@]}"; do [ "$s" = "$1" ] && return 0; done

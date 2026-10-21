@@ -79,7 +79,7 @@ if ! printf '%s\n' "$_verse_cmds" | grep -qE '^ *data '; then
      Rebuild it (go build -o verse ./cmd/verse), remove a stale ./verse so \$PATH wins,
      or point VERSE=<path> at a current one."
 fi
-v() { "$BIN" "${scope[@]}" "$@"; }
+v() { "$BIN" ${scope[@]+"${scope[@]}"} "$@"; }
 
 # Talk to it before writing to it: every failure below would otherwise be one "connection
 # refused" per command, which reads as a broken script rather than a verse that isn't up.
