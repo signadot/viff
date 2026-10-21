@@ -43,6 +43,20 @@ data:
       git-issue: {ceiling: {repo: "github.com/signadot/**"}}
       github: {ceiling: {repo: "github.com/signadot/**"}}
       github-issue: {ceiling: {repo: "github.com/signadot/**"}}
+      # Linear and Slack, made with the credentials the iods hold (verse-linear, verse-slack),
+      # named here because naming the variable is what makes the runner offer the system. ENG
+      # is the team the Linear iod reflects; the channels are the ones the Slack bot is in. A
+      # Slack shape names one channel, so two channels are two shapes.
+      linear-issue:
+        credential: LINEAR_API_KEY
+        ceiling: {create: {team: ENG}, comment: {issue: "ENG-*"}, close: {issue: "ENG-*"}}
+      slack:
+        credential: SLACK_BOT_TOKEN
+        ceiling:
+          read: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
+          post: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
+          reply: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
+          react: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
       files: {ceiling: {}}
       commands: {ceiling: {}}
       question: {ceiling: {}}
@@ -96,7 +110,8 @@ spec:
         - {name: control, containerPort: 9802}
         - {name: admin, containerPort: 9803}
         # The model key, by the variable name the ConfigMap's `apiKeyEnv` reads. The runner
-        # holds it; the task process writes it into a login file for Codex alone. The Secret
+        # holds it; the task process writes it into Codex's login file, which a command Codex
+        # runs can read (docs/reference/runnerd.md, Codex). The Secret
         # comes from the store entry `codexSecretKey` names (deploy/README.md, Credentials),
         # and is made by hand only where that knob is empty:
         #
@@ -119,6 +134,14 @@ spec:
         - name: GITHUB_TOKEN
           valueFrom:
             secretKeyRef: {name: verse-runner, key: gitToken, optional: true}
+        # Linear's and Slack's, for the tasks' linear-issue and slack calls: the keys the iods read
+        # from the same Secrets. The runner makes each call itself, so a task never has them.
+        - name: LINEAR_API_KEY
+          valueFrom:
+            secretKeyRef: {name: verse-linear, key: LINEAR_API_KEY, optional: true}
+        - name: SLACK_BOT_TOKEN
+          valueFrom:
+            secretKeyRef: {name: verse-slack, key: SLACK_BOT_TOKEN, optional: true}
         volumeMounts:
         - {name: config, mountPath: /config, readOnly: true}
         - {name: state, mountPath: /state}

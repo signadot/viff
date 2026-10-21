@@ -19,7 +19,7 @@
 //     steps it is derived here — `commands.run` for a command, `files.write` for each path of
 //     a patch. A host a command asks to reach is no step: what the task reaches is its
 //     environment's `network`, built around codex's process, whatever codex is told. A request that is several
-//     steps is asked about once, under the first of them a gate names (stepOf). The supervisor
+//     steps goes ahead only where each of them would (stepsOf). The supervisor
 //     gates it exactly as it gates the verse agent's `run_bash` or `write_file`: the autonomy
 //     decides, a blocked question goes to the docket, `verse question` answers it.
 //     A question codex has for a person is the step `question.ask`, as the `question-ask` tool's use is,
@@ -69,7 +69,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/signadot/verse/answer"
 	"github.com/signadot/verse/runner"
@@ -217,7 +219,7 @@ func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir st
 	d.toolStep = agent.StepOf(tools)
 	sup := task.NewSupervisor(l.Environment, l.Autonomy, reg)
 	sup.SetCeilings(ceilings)
-	sup.SetStepOf(d.stepOf(sup))
+	sup.SetStepsOf(d.stepsOf)
 	t := task.NewTask(l.ID, sup, d, &executor{d: d})
 	// What it runs with, Codex's section's model where the launch named none: the record's to
 	// say. One neither names is Codex's own, which it reports only to its log.
@@ -275,8 +277,9 @@ type driver struct {
 	queued []event
 
 	// proposed is the request Next last put in front of the loop, until Execute answers it or
-	// Next learns it was refused.
-	proposed *proposal
+	// Next learns it was refused. Atomic: the supervisor reads it (stepsOf) on the gate's own
+	// goroutine, which an intervention can leave behind while the next Next runs.
+	proposed atomic.Pointer[proposal]
 
 	last string // the agent's last message: this task's result
 
@@ -299,27 +302,14 @@ type proposal struct {
 	steps []task.Step
 }
 
-// stepOf is the supervisor's: the step the proposed request is decided by. A request that is
-// several steps is decided once, so it is decided by the first of them a row of the task's
-// autonomy names (one that is not the default and not an allow), as the autonomy stands now (a
-// slide changes it); where no row names any, by the first, which the rows on its verb decide. A
-// request that is no step asks nothing.
-func (d *driver) stepOf(sup *task.Supervisor) func(task.ToolUse) (task.Step, bool) {
-	return func(tu task.ToolUse) (task.Step, bool) {
-		p := d.proposed
-		if p == nil || len(p.steps) == 0 {
-			return task.Step{}, false
-		}
-		pol := sup.Autonomy()
-		for _, st := range p.steps {
-			for _, r := range pol {
-				if !r.Match.Any() && r.Then.Mode != task.ThenAllow && r.Match.Matches(st) {
-					return st, true
-				}
-			}
-		}
-		return p.steps[0], true
+// stepsOf is the supervisor's (Supervisor.SetStepsOf): the steps the proposed request is, each
+// of which it decides, so a patch goes ahead only where every write in it would. None is no
+// step.
+func (d *driver) stepsOf(task.ToolUse) []task.Step {
+	if p := d.proposed.Load(); p != nil {
+		return p.steps
 	}
+	return nil
 }
 
 // itemWait bounds how long the executor waits for an item codex said it would run before
@@ -328,9 +318,8 @@ var itemWait = 24 * time.Hour
 
 // Next implements task.Driver: what codex wants to do next, as an action.
 func (d *driver) Next(ctx context.Context, prev task.StepResult) (task.ToolUse, bool, error) {
-	if p := d.proposed; p != nil {
+	if p := d.proposed.Swap(nil); p != nil {
 		// The loop decided about the last proposal without executing it.
-		d.proposed = nil
 		switch {
 		case prev.Err != nil:
 			return task.ToolUse{}, false, prev.Err
@@ -370,8 +359,9 @@ func (d *driver) start(ctx context.Context) error {
 		// `codex login --with-api-key` writes under CODEX_HOME. So the task writes that file
 		// itself, into a CODEX_HOME of its own that dies with the task, and points codex at it.
 		// The key is then in no environment, but the file is in the sandbox's /tmp, as the
-		// task's user: a command codex runs can read it, so what bounds the key is the run's
-		// network, and a run on an open network can send it anywhere.
+		// task's user: a command codex runs can read it, and once read it leaves however the
+		// task's output does: over the run's network, and, whatever the network, in what the
+		// task hands back (its messages, a question, a push).
 		home, err := writeLogin(d.creds.Key)
 		if err != nil {
 			return err
@@ -506,7 +496,7 @@ func (d *driver) await(ctx context.Context) (task.ToolUse, bool, error) {
 				_ = d.rpc.RespondError(ev.ID, -32601, err.Error())
 				continue
 			}
-			d.proposed = p
+			d.proposed.Store(p)
 			return tu, true, nil
 		}
 		turnEnded, err := d.handle(ev)
@@ -763,7 +753,11 @@ func (d *driver) handle(ev event) (bool, error) {
 // observer sees the free reads too.
 func (d *driver) narrate(it item) {
 	if it.Type == "agentMessage" && it.Text != "" {
-		d.last = it.Text // the result, whether or not anybody is watching
+		// The result, whether or not anybody is watching; under the lock, since a snapshot
+		// reads it while the run goes on.
+		d.mu.Lock()
+		d.last = it.Text
+		d.mu.Unlock()
 	}
 	if d.emit == nil {
 		return
@@ -906,8 +900,12 @@ func (d *driver) drain() string {
 	return s
 }
 
-// Result implements task.Resulter: the agent's last message.
-func (d *driver) Result() string { return d.last }
+// Result implements task.Resulter: the agent's last message, so far.
+func (d *driver) Result() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.last
+}
 
 func (d *driver) logf(format string, args ...any) {
 	if d.log != nil {
@@ -920,11 +918,10 @@ type executor struct{ d *driver }
 
 func (e *executor) Execute(ctx context.Context, tu task.ToolUse) (task.StepResult, []task.ToolUse, error) {
 	d := e.d
-	p := d.proposed
+	p := d.proposed.Swap(nil)
 	if p == nil {
 		return task.StepResult{Use: tu}, nil, errors.New("codex: nothing proposed to execute")
 	}
-	d.proposed = nil
 	switch p.kind {
 	case kindShell, kindPatch:
 		if err := d.rpc.Respond(p.ev.ID, map[string]any{"decision": "accept"}); err != nil {
@@ -1039,7 +1036,11 @@ func commandOutput(it item) string {
 	out := strings.TrimSpace(it.AggregatedOutput)
 	const keep = 4000
 	if len(out) > keep {
-		out = "…" + out[len(out)-keep:]
+		i := len(out) - keep
+		for i < len(out) && !utf8.RuneStart(out[i]) {
+			i++
+		}
+		out = "…" + out[i:]
 	}
 	if it.ExitCode != nil && *it.ExitCode != 0 {
 		if out == "" {

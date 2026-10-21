@@ -12,6 +12,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/parse"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/runner/runnerd/claude"
 	"github.com/signadot/verse/runner/runnerd/codex"
 	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
@@ -264,9 +265,10 @@ func TestDescribePublishesBuildsAndSettings(t *testing.T) {
 // it takes, a list that takes something.
 func TestTheAgentsSectionIsChecked(t *testing.T) {
 	for says, agents := range map[string]map[string]map[string][]string{
-		"runs no agent":                  {"claude": {runner.SettingModel: {"x"}}},
+		"runs no agent":                  {"gemini": {runner.SettingModel: {"x"}}},
 		`takes no setting "temperature"`: {AgentName: {"temperature": {"0.2"}}},
 		"an empty list takes nothing":    {codex.Agent: {"effort": {}}},
+		`"minimal" is none of low`:       {claude.Agent: {"effort": {"high", "minimal"}}},
 	} {
 		c := Config{Agents: agents}
 		if err := c.Check(); err == nil || !strings.Contains(err.Error(), says) {
@@ -276,6 +278,14 @@ func TestTheAgentsSectionIsChecked(t *testing.T) {
 	c := Config{Agents: map[string]map[string][]string{codex.Agent: {"effort": {"high"}, runner.SettingModel: {"gpt-5*"}}}}
 	if err := c.Check(); err != nil {
 		t.Errorf("a narrowing of codex: %v", err)
+	}
+	// Claude's efforts narrowed to two of them: the offer takes those two and nothing else.
+	cl := Config{Claude: &claude.Config{}, Systems: map[string]System{"commands": {Ceiling: systems.Open()}, "files": {Ceiling: systems.Open()}}, Agents: map[string]map[string][]string{claude.Agent: {"effort": {"low", "high"}}}}
+	if err := cl.Check(); err != nil {
+		t.Errorf("a narrowing of claude's efforts: %v", err)
+	}
+	if e := cl.settings(claude.Agent)["effort"]; e.Takes("high") != nil || e.Takes("max") == nil {
+		t.Errorf("claude's narrowed effort: %+v", e)
 	} // A configured default is held to the narrowing: the offer would refuse it named and run it
 	// unnamed.
 	off := Config{Models: Models{Model: "gpt-5"}, Agents: map[string]map[string][]string{AgentName: {runner.SettingModel: {"claude-*"}}}}
@@ -302,9 +312,9 @@ func TestARunnerRefusesACeilingItsSandboxCantBuild(t *testing.T) {
 	}
 }
 
-// CODEX'S OFFER SAYS WHAT IT CAN'T RUN WITHOUT, and a runner whose ceilings can't give it does
-// not start: no Codex spawn could ever be written there.
-func TestCodexRequiresItsShellAndEdits(t *testing.T) {
+// CODEX'S AND CLAUDE'S OFFERS SAY WHAT EACH CAN'T RUN WITHOUT, and a runner whose ceilings can't
+// give it does not start: no spawn of that agent could ever be written there.
+func TestCodexAndClaudeRequireTheirShellAndEdits(t *testing.T) {
 	open := map[string]System{"commands": {Ceiling: systems.Open()}, "files": {Ceiling: systems.Open()}}
 	c := Config{Codex: &codex.Config{}, Systems: open}
 	if err := c.Check(); err != nil {
@@ -320,5 +330,10 @@ func TestCodexRequiresItsShellAndEdits(t *testing.T) {
 	closed := Config{Codex: &codex.Config{}, Systems: map[string]System{"files": {Ceiling: systems.Open()}}}
 	if err := closed.Check(); err == nil || !strings.Contains(err.Error(), "systems.commands.ceiling: codex can't run without commands.run") {
 		t.Errorf("a codex runner whose commands ceiling is closed: %v", err)
+	}
+	// Claude's are the same steps, held the same way.
+	closed = Config{Claude: &claude.Config{}, Systems: map[string]System{"files": {Ceiling: systems.Open()}}}
+	if err := closed.Check(); err == nil || !strings.Contains(err.Error(), "systems.commands.ceiling: claude can't run without commands.run") {
+		t.Errorf("a claude runner whose commands ceiling is closed: %v", err)
 	}
 }

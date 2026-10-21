@@ -93,6 +93,12 @@ type Withdrawer interface {
 	Withdrawn(tu ToolUse) <-chan struct{}
 }
 
+// WithdrawnNote begins the Note of the Blocked StepResult a driver reads when the question about
+// its action was withdrawn (by a say, a pause, a cancel, or the driver's own Withdrawer) rather
+// than answered: not a refusal of the action, which the driver may propose again if it still
+// applies, and a driver that tells its model otherwise reads this to tell the two apart.
+const WithdrawnNote = "the question about this action was withdrawn"
+
 // Ender is an optional Driver capability: after Next returns !more, whether the driver ended the
 // RUN rather than its turn. A model that stops talking has ended its turn, and in a
 // conversation the person's turn follows; `yield done` is the model ending the conversation,

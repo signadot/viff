@@ -23,8 +23,9 @@ task asks.
 
 A task has `question-ask` when its environment gives `question`, as it has any tool. Asking a
 person is the step `question.ask`, and the row that matches it decides it: `allow` puts the question at
-once, `deny` refuses it, and `ask` asks before the question is put. Codex's own question for a
-person is the same step.
+once, `deny` refuses it, and `ask` asks before the question is put. Codex's and Claude's own
+questions for a person are the same step, and Claude is offered its question tool only where
+the environment gives `question`.
 
 ```tony
 spawn:

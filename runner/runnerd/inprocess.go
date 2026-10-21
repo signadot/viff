@@ -79,7 +79,6 @@ type hosted struct {
 	status task.Status
 	reason string
 	err    string
-	result string // the task's final output (driver's last message), once completed
 }
 
 // done reports whether this run has finished — the question the launch dedupe is actually
@@ -108,7 +107,10 @@ func (h *hosted) snapshot() task.Snapshot {
 	}
 	return task.Snapshot{
 		ID: h.task.ID, Prompt: h.prompt, Agent: h.doer, Status: status,
-		Err: h.err, Result: h.result, Pending: pending, Occurrence: h.occurrence, Settings: taskSettings(h.task),
+		// The answer is read live from the driver, not from a copy taken when Run returns: the
+		// terminal frame leaves from inside Run, and a reader it brings (versed's mirror) asks
+		// for the snapshot before Run has returned. The driver has its answer before it ends.
+		Err: h.err, Result: h.task.Result(), Pending: pending, Occurrence: h.occurrence, Settings: taskSettings(h.task),
 		Cursor: h.task.Cursor(), // resume the event stream with ?since=<cursor>
 	}
 }
@@ -297,7 +299,6 @@ func (d *InProcessHandler) host(l runner.Launch) (*hosted, bool) {
 		out, err := tk.Run(context.Background())
 		h.mu.Lock()
 		h.reason, h.status = out.Reason, task.Status(out.Reason)
-		h.result = tk.Result() // the driver's final answer, if any
 		// AN ERROR IS A CAUSE, NOT A STATUS, and conflating the two made every cancel read as a
 		// failure. Run returns the run's cause alongside its outcome — that is how a cancel's
 		// reason reaches a caller at all — so `err != nil` is true for a task somebody stopped

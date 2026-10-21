@@ -244,3 +244,45 @@ func streamFmt(resp *http.Response) codec.Format {
 	}
 	return codec.JSON
 }
+
+// answering is a driver that has its answer from the start and ends when released: the shape
+// of every agent at its terminal frame, which leaves from inside Run with the answer already
+// said.
+type answering struct{ release chan struct{} }
+
+func (a *answering) Next(ctx context.Context, _ task.StepResult) (task.ToolUse, bool, error) {
+	select {
+	case <-a.release:
+	case <-ctx.Done():
+	}
+	return task.ToolUse{}, false, nil
+}
+
+func (a *answering) Result() string { return "the answer" }
+
+// THE ANSWER IS ON THE SNAPSHOT BEFORE THE RUN RETURNS. The terminal frame leaves from inside
+// Run, and a reader it brings (versed's mirror) asks for the snapshot at once; a snapshot that
+// learns the answer only when Run returns answers that reader with nothing, and the record ends
+// with no result.
+func TestTheAnswerIsOnTheSnapshotBeforeTheRunReturns(t *testing.T) {
+	a := &answering{release: make(chan struct{})}
+	d := NewInProcessHandler(func(l runner.Launch, reg *task.Registry) *task.Task {
+		return task.NewTask(l.ID, task.NewSupervisor(workEnv, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, reg), a, okExec{})
+	})
+	if _, err := d.Launch(runner.Launch{ID: "a1", Agent: &runner.Agent{Name: "test"}, Environment: systems.Environment{Systems: systems.Systems{"network": {{Attributes: map[string]string{"mode": runner.NetworkOpen}}}}}, Prompt: "t"}); err != nil {
+		t.Fatal(err)
+	}
+	snap, ok := d.SnapshotOf("a1")
+	if !ok || snap.Status.Terminal() || snap.Result != "the answer" {
+		t.Fatalf("while the run goes on the snapshot is %+v (%v), want the driver's answer on it", snap, ok)
+	}
+	close(a.release)
+	deadline := time.Now().Add(5 * time.Second)
+	for !snap.Status.Terminal() && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+		snap, _ = d.SnapshotOf("a1")
+	}
+	if snap.Status != task.Done || snap.Result != "the answer" {
+		t.Fatalf("after the run: %+v", snap)
+	}
+}

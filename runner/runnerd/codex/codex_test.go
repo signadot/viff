@@ -836,27 +836,48 @@ func TestCodexSteps(t *testing.T) {
 	}
 }
 
-// A REQUEST THAT IS SEVERAL STEPS IS ASKED ABOUT ONCE, under the first of them a gate names: a
-// patch writing a.go and db/b.sql is asked about by the gate on `db/**`, as b.sql, and under no
-// such gate by the first write, which the autonomy decides.
-func TestARequestOfSeveralStepsIsAskedUnderTheGateThatNamesOne(t *testing.T) {
+// A REQUEST THAT IS SEVERAL STEPS GOES AHEAD ONLY WHERE EACH WOULD: a patch writing a.go and
+// db/b.sql is asked about by the gate on `db/**`, as b.sql, refused by a deny on it below an
+// allow that covers a.go, and allowed unasked where every write is.
+func TestARequestOfSeveralStepsGoesAheadOnlyWhereEachWould(t *testing.T) {
 	d := &driver{}
-	d.proposed = &proposal{steps: []task.Step{
+	d.proposed.Store(&proposal{steps: []task.Step{
 		{Name: task.StepFilesWrite, Fields: map[string]string{"path": "a.go"}},
 		{Name: task.StepFilesWrite, Fields: map[string]string{"path": "db/b.sql"}},
-	}}
-	sup := systemstest.Opened(task.NewSupervisor(workEnv, task.Autonomy{{Name: "schema", Match: &task.Match{System: "files", Verb: "write", Params: map[string]string{"path": "db/**"}}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), workEnv)
-	if st, ok := d.stepOf(sup)(task.ToolUse{}); !ok || st.Fields["path"] != "db/b.sql" {
-		t.Fatalf("asked about %v (%v), want the write the gate names", st, ok)
+	}})
+	var asked []string
+	sup := systemstest.Opened(task.NewSupervisor(workEnv, task.Autonomy{
+		{Name: "schema", Match: &task.Match{System: "files", Verb: "write", Params: map[string]string{"path": "db/**"}}, Then: task.Then{Mode: task.ThenAsk}},
+		{Then: task.Then{Mode: task.ThenAllow}},
+	}, resolveWith(func(q task.GateQuestion) { asked = append(asked, q.Gate+" "+q.Step.Fields["path"]) })), workEnv)
+	sup.SetStepsOf(d.stepsOf)
+	if res, err := sup.Check(context.Background(), task.ToolUse{}); err != nil || !res.Proceed || strings.Join(asked, ", ") != "schema db/b.sql" {
+		t.Fatalf("asked %v (%+v, %v), want the write the gate names", asked, res, err)
+	}
+	asked = nil
+	sup.SetAutonomy(task.Autonomy{
+		{Name: "go", Match: &task.Match{System: "files", Verb: "write", Params: map[string]string{"path": "*.go"}}, Then: task.Then{Mode: task.ThenAllow}},
+		{Name: "rest", Match: &task.Match{System: "files", Verb: "write"}, Then: task.Then{Mode: task.ThenDeny}},
+	})
+	if res, _ := sup.Check(context.Background(), task.ToolUse{}); res.Proceed || res.Question.Gate != "rest" || len(asked) != 0 {
+		t.Fatalf("allow *.go, deny the rest: %+v (asked %v), want refused by rest", res, asked)
 	}
 	sup.SetAutonomy(allowAll)
-	if st, ok := d.stepOf(sup)(task.ToolUse{}); !ok || st.Fields["path"] != "a.go" {
-		t.Fatalf("with no gate, asked about %v (%v), want the first write", st, ok)
+	if res, _ := sup.Check(context.Background(), task.ToolUse{}); !res.Proceed || len(asked) != 0 {
+		t.Fatalf("with no gate: %+v (asked %v), want allowed unasked", res, asked)
 	}
-	d.proposed = &proposal{}
-	if _, ok := d.stepOf(sup)(task.ToolUse{}); ok {
-		t.Fatal("a request that is no step was asked about")
+	d.proposed.Store(&proposal{})
+	if res, _ := sup.Check(context.Background(), task.ToolUse{}); !res.Proceed || res.Question.Reason != "not a step" {
+		t.Fatalf("a request that is no step: %+v, want no step", res)
 	}
+}
+
+// resolveWith answers every question yes, telling f what it was.
+type resolveWith func(task.GateQuestion)
+
+func (f resolveWith) Resolve(_ context.Context, q task.GateQuestion, _ task.ToolUse) (task.Resolution, error) {
+	f(q)
+	return task.Resolution{Choice: task.Proceed, Proceed: true, Question: q}, nil
 }
 
 // THE CONFIG SAYS HOW CODEX RUNS: the sandbox is checked where it is written, the key is read
@@ -1046,4 +1067,13 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 	os.Exit(m.Run())
+}
+
+// A COMMAND'S OUTPUT IS CUT WHERE A RUNE STARTS: its last 4000 bytes or fewer, so a rune across
+// the bound is left out whole rather than split.
+func TestACommandsOutputIsCutWhereARuneStarts(t *testing.T) {
+	out := "é" + strings.Repeat("b", 3999) // the last 4000 bytes start inside é
+	if got := commandOutput(item{AggregatedOutput: out}); got != "…"+strings.Repeat("b", 3999) {
+		t.Errorf("commandOutput: %q", got[:8])
+	}
 }

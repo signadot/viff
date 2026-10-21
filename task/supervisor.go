@@ -5,6 +5,7 @@ import (
 
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"unicode"
@@ -184,14 +185,14 @@ type Supervisor struct {
 	autonomy *atomic.Pointer[Autonomy]
 	ceilings map[string]systems.Ceiling // the runner's, by system: read after the policy, at each step
 	resolver Resolver
-	stepOf   func(ToolUse) (Step, bool) // StepOf; a test's own tools map to steps its way
-	origin   string                     // task id, stamped onto each GateQuestion
-	dc       uint64                     // question counter (one Check goroutine per Supervisor)
+	stepsOf  func(ToolUse) []Step // StepOf, as one step; a test's own tools map to steps its way
+	origin   string               // task id, stamped onto each GateQuestion
+	dc       uint64               // question counter (one Check goroutine per Supervisor)
 }
 
 // NewSupervisor is the supervisor of a task in env, deciding under p, asking through r.
 func NewSupervisor(env systems.Environment, p Autonomy, r Resolver) *Supervisor {
-	s := &Supervisor{env: env, autonomy: &atomic.Pointer[Autonomy]{}, resolver: r, stepOf: StepOf}
+	s := &Supervisor{env: env, autonomy: &atomic.Pointer[Autonomy]{}, resolver: r, stepsOf: oneStep(StepOf)}
 	p = p.OrDefault()
 	s.autonomy.Store(&p)
 	return s
@@ -199,7 +200,7 @@ func NewSupervisor(env systems.Environment, p Autonomy, r Resolver) *Supervisor 
 
 // child is a sub-agent's supervisor: the same environment, autonomy and resolver.
 func (s *Supervisor) child() *Supervisor {
-	return &Supervisor{env: s.env, autonomy: s.autonomy, ceilings: s.ceilings, resolver: s.resolver, stepOf: s.stepOf}
+	return &Supervisor{env: s.env, autonomy: s.autonomy, ceilings: s.ceilings, resolver: s.resolver, stepsOf: s.stepsOf}
 }
 
 // SetCeilings gives the supervisor the runner's ceilings, by system (runner.Offer.Systems): THE
@@ -214,7 +215,23 @@ func (s *Supervisor) SetCeilings(c map[string]systems.Ceiling) { s.ceilings = c 
 
 // SetStepOf sets which step an action is, for a driver whose tools are steps StepOf doesn't
 // know: a runtime's own tools (a push is git.push). Its sub-agents' supervisors share it.
-func (s *Supervisor) SetStepOf(f func(ToolUse) (Step, bool)) { s.stepOf = f }
+func (s *Supervisor) SetStepOf(f func(ToolUse) (Step, bool)) { s.stepsOf = oneStep(f) }
+
+// SetStepsOf sets which steps an action is, for a driver whose one action can be several: an
+// edit decided on the path named and on the file it lands on, a patch on each path it touches.
+// Check lets such an action go ahead only where every one of its steps would (Check). None is
+// no step. Its sub-agents' supervisors share it.
+func (s *Supervisor) SetStepsOf(f func(ToolUse) []Step) { s.stepsOf = f }
+
+// oneStep is a classifier of one step as one of several.
+func oneStep(f func(ToolUse) (Step, bool)) func(ToolUse) []Step {
+	return func(tu ToolUse) []Step {
+		if st, ok := f(tu); ok {
+			return []Step{st}
+		}
+		return nil
+	}
+}
 
 // SetOrigin stamps this supervisor's questions with a task id (attribution).
 func (s *Supervisor) SetOrigin(id string) { s.origin = id }
@@ -230,33 +247,95 @@ func (s *Supervisor) SetAutonomy(p Autonomy) {
 
 // Check asks before an action, if it is a step a gate names (StepOf). It returns how the action
 // was let through or held. This is the one call the loop makes before executing each action.
+//
+// An action that is several steps goes ahead only where each of them would on its own. Every
+// step is decided by the environment, the autonomy and the ceiling before anybody is asked: one
+// refused refuses the action, under what refused it; otherwise each row that asks about any of
+// them asks once, about the first step it asks about, in order, and the action goes ahead only
+// on a yes from each; otherwise it is allowed. The resolution is the last question's, carrying
+// what every answer steered.
 func (s *Supervisor) Check(ctx context.Context, tu ToolUse) (Resolution, error) {
-	st, ok := s.stepOf(tu)
-	if !ok {
+	steps := s.stepsOf(tu)
+	if len(steps) == 0 {
 		return Resolution{Choice: Proceed, Proceed: true, By: ByAuto, Question: GateQuestion{
 			Origin: s.origin, Reason: "not a step"}}, nil
 	}
-	return s.Ask(ctx, st, tu)
+	p := *s.autonomy.Load()
+	var allowed verdict
+	var asks []verdict // one per row that asks, in the order its first step came
+	for i, st := range steps {
+		v := s.decide(p, st)
+		switch {
+		case v.ask:
+			if !slices.ContainsFunc(asks, func(a verdict) bool { return a.at == v.at }) {
+				asks = append(asks, v)
+			}
+		case !v.res.Proceed:
+			return s.posed(v).res, nil
+		case i == 0:
+			allowed = v
+		}
+	}
+	if len(asks) == 0 {
+		return s.posed(allowed).res, nil
+	}
+	var res Resolution
+	var steer []string
+	for _, a := range asks {
+		r, err := s.resolver.Resolve(ctx, s.posed(a).res.Question, tu)
+		steer = append(steer, r.Steer...)
+		r.Steer = steer
+		if err != nil || !r.Proceed {
+			return r, err
+		}
+		res = r
+	}
+	return res, nil
 }
 
 // Ask decides a step: one outside the environment is refused saying what the environment gives,
 // before any row is read; otherwise the row that matches it allows it, denies it with its name
 // and nobody asked, or asks, and the answer decides.
 func (s *Supervisor) Ask(ctx context.Context, st Step, tu ToolUse) (Resolution, error) {
-	s.dc++
-	id := fmt.Sprintf("%s%sd%d", s.origin, GateSep, s.dc)
-	if why, outside := s.env.Refuses(st.Name, st.Fields); outside {
-		q := GateQuestion{ID: id, Gate: EnvironmentGate, Step: st, Origin: s.origin, Reason: "outside the environment: " + why}
-		return Resolution{Choice: Deny, By: ByEnvironment, Note: "outside the environment: " + why, Question: q}, nil
+	v := s.posed(s.decide(*s.autonomy.Load(), st))
+	if v.ask {
+		return s.resolver.Resolve(ctx, v.res.Question, tu)
 	}
-	p := *s.autonomy.Load()
+	return v.res, nil
+}
+
+// verdict is how the environment, the autonomy and the ceiling settle a step before anybody is
+// asked: refused or allowed (res), or to be asked (ask), the question being res.Question; at is
+// the place of the autonomy's row that decides it (-1 for a step outside the environment).
+type verdict struct {
+	res Resolution
+	ask bool
+	at  int
+}
+
+// posed is v with its question numbered, as each question this supervisor poses or settles is.
+func (s *Supervisor) posed(v verdict) verdict {
+	s.dc++
+	v.res.Question.ID = fmt.Sprintf("%s%sd%d", s.origin, GateSep, s.dc)
+	return v
+}
+
+// decide is how the environment, p and the ceilings settle st, or that a question decides it.
+func (s *Supervisor) decide(p Autonomy, st Step) verdict {
+	if why, outside := s.env.Refuses(st.Name, st.Fields); outside {
+		q := GateQuestion{Gate: EnvironmentGate, Step: st, Origin: s.origin, Reason: "outside the environment: " + why}
+		return verdict{res: Resolution{Choice: Deny, By: ByEnvironment, Note: "outside the environment: " + why, Question: q}, at: -1}
+	}
 	row, i := p.Decide(st)
 	name := p.NameOf(i)
 	q := row.question(name, st)
-	q.Step, q.Origin, q.ID = st, s.origin, id
+	q.Step, q.Origin = st, s.origin
+	refused := func(by, note string) verdict {
+		return verdict{res: Resolution{Choice: Deny, By: by, Note: note, Question: q}, at: i}
+	}
 	if row.Then.Mode == ThenDeny {
 		q.Reason = "denied by " + name
-		return Resolution{Choice: Deny, By: ByAutonomy, Note: "denied by the autonomy's row " + name + ": " + st.String(), Question: q}, nil
+		return refused(ByAutonomy, "denied by the autonomy's row "+name+": "+st.String())
 	}
 	if system, _, ok := systems.Split(st.Name); ok {
 		if why, beyond := systems.Beyond(s.ceilings, st.Name, st.Fields); beyond {
@@ -266,12 +345,12 @@ func (s *Supervisor) Ask(ctx context.Context, st Step, tu ToolUse) (Resolution, 
 				// A launch held to the runner's offer lies within the ceilings it states.
 				note += " (a launch held to the runner's offer is within its ceilings, so there this is a check that missed)"
 			}
-			return Resolution{Choice: Deny, By: ByCeiling, Note: note, Question: q}, nil
+			return refused(ByCeiling, note)
 		}
 	}
 	if row.Then.Mode == ThenAllow {
 		q.Reason = "allowed by " + name
-		return Resolution{Choice: Proceed, Proceed: true, By: ByAuto, Question: q}, nil
+		return verdict{res: Resolution{Choice: Proceed, Proceed: true, By: ByAuto, Question: q}, at: i}
 	}
-	return s.resolver.Resolve(ctx, q, tu)
+	return verdict{res: Resolution{Question: q}, ask: true, at: i}
 }

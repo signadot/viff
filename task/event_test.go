@@ -81,12 +81,12 @@ func TestEachCallsEventsNameTheCall(t *testing.T) {
 		{Name: "no-deploy", Match: on("commands", "run", "command", "deploy"), Then: Then{Mode: ThenDeny}},
 		{Then: Then{Mode: ThenAllow}},
 	}, AutoResolver{}), anyEnv())
-	sup.stepOf = func(tu ToolUse) (Step, bool) {
+	sup.SetStepOf(func(tu ToolUse) (Step, bool) {
 		if tu.Name == "read" {
 			return Step{}, false
 		}
 		return Step{Name: StepCommandsRun, Fields: map[string]string{"command": tu.Name}}, true
-	}
+	})
 	p := NewTask("t", sup, &scriptDriver{steps: []ToolUse{tool("build"), tool("deploy"), tool("read")}}, &recExec{})
 	ch, unsub := p.Subscribe()
 	defer unsub()

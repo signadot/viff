@@ -26,6 +26,10 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 #                            — the codex app-server protocol: JSON-RPC over the process's stdio.
 #                              The JSON stops at that file, and what leaves it is typed Go
 #                              values the agent (codex.go) reads.
+#   runner/runnerd/claude/wire.go
+#                            — Claude Code's stream protocol: one JSON message per line over the
+#                              process's stdio, control requests both ways and the MCP server
+#                              this side serves inside it. The JSON stops at that file too.
 #   runner/runnerd/delivery/github.go
 #                            — GitHub's pull-request endpoints, the one forge write a runner
 #                              makes that is not a ref. Same exception as source/github: the
@@ -42,7 +46,7 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 # The source connectors are the shape to copy: JSON stops at the
 # package boundary. What they hand back is an entity.Payload, and what they serve is rendered
 # by codec like everything else — so no verse surface acquires a second dialect from this.
-allow='runner/runnerd/verserunner/agent/llm\.go|runner/runnerd/verserunner/agent/modeltest/model\.go|codec/codec.go|io/slack/[a-z]+\.go|io/linear/[a-z]+\.go|io/github/[a-z]+\.go|runner/runnerd/delivery/github\.go|runner/runnerd/codex/rpc\.go|versed/idptest/idp\.go|versed/issuer\.go'
+allow='runner/runnerd/verserunner/agent/llm\.go|runner/runnerd/verserunner/agent/modeltest/model\.go|codec/codec.go|io/slack/[a-z]+\.go|io/linear/[a-z]+\.go|io/github/[a-z]+\.go|runner/runnerd/delivery/github\.go|runner/runnerd/codex/rpc\.go|runner/runnerd/claude/wire\.go|versed/idptest/idp\.go|versed/issuer\.go'
 
 # git ls-files, not a filesystem walk: the tree carries untracked worktree copies and
 # scratch dirs, and a guard that trips on those is a guard people learn to ignore.

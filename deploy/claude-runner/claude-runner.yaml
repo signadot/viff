@@ -1,0 +1,162 @@
+# The claude runner: the verse runner in its own image with Claude Code in it, offering the
+# claude agent (`agent: {name: claude}`), which it drives over Claude Code's stream protocol so
+# that every command, edit and question Claude proposes is decided by the task's autonomy
+# (docs/reference/runnerd.md, "Claude, gated inside the run").
+#
+# It is a THIRD runner beside verse-runner and codex-runner, not a change to either: its own
+# image, Deployment, Service, ConfigMap and credential, in the `runners` tier beside them with
+# `runner: claude` to select it alone, so it can be removed on its own and the runners the
+# charters name go on untouched. Verse learns about it the same way:
+#
+#   verse runner add claude http://claude-runner:9802 --identity claude-runner
+#
+# Everything about the pod that is bubblewrap's — hostUsers, procMount, seccompProfile — is as
+# deploy/verse-runner/verse-runner.yaml has it, and explained there.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: claude-runner-config
+  labels: {app: verse, tier: runners, runner: claude}
+data:
+  verse-runner.tony: |
+    listen: ":9802"
+    shellEnv: [PATH, HOME, USER, LANG]
+    repos:
+      mirrors: /state/mirrors
+    # The operator's line over every system this runner holds for its tasks: what a spawn's
+    # environment may give, held at install, at launch and again at each act. A ceiling lists
+    # what it allows and nothing else is allowed, so a system with no ceiling here is closed; a
+    # block naming no verb (`{}`) allows every verb of its system.
+    # signadot's repositories, and their branches under verse/; main of verse's own, as the
+    # codex runner's. No network ceiling: tasks get what the sandbox builds.
+    systems:
+      git:
+        ceiling:
+        - repo: github.com/signadot/verse
+          fetch: {}
+          push:
+          - {ref: refs/heads/main, force: "false", delete: "false"}
+          - {ref: "refs/heads/verse/**"}
+        - repo: "github.com/signadot/**"
+          fetch: {}
+          push: {ref: "refs/heads/verse/**"}
+      git-issue: {ceiling: {repo: "github.com/signadot/**"}}
+      github: {ceiling: {repo: "github.com/signadot/**"}}
+      github-issue: {ceiling: {repo: "github.com/signadot/**"}}
+      # Linear and Slack, made with the credentials the iods hold (verse-linear, verse-slack),
+      # named here because naming the variable is what makes the runner offer the system. ENG
+      # is the team the Linear iod reflects; the channels are the ones the Slack bot is in. A
+      # Slack shape names one channel, so two channels are two shapes.
+      linear-issue:
+        credential: LINEAR_API_KEY
+        ceiling: {create: {team: ENG}, comment: {issue: "ENG-*"}, close: {issue: "ENG-*"}}
+      slack:
+        credential: SLACK_BOT_TOKEN
+        ceiling:
+          read: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
+          post: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
+          reply: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
+          react: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
+      files: {ceiling: {}}
+      commands: {ceiling: {}}
+      question: {ceiling: {}}
+
+    # How Claude runs here. `credentialEnv` is the NAME of a variable the runner holds (the
+    # verse-claude Secret, below) and the name Claude reads it under; the task process puts it
+    # in the claude process's environment, with a CLAUDE_CONFIG_DIR of the task's own. The
+    # model is an alias Claude Code resolves to the current one of that family, and a spawn's
+    # `agent.model` overrides it. Claude's API is reachable from a task whatever its network.
+    claude:
+      model: sonnet
+      credentialEnv: ANTHROPIC_API_KEY
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: claude-runner
+  labels: {app: verse, tier: runners, runner: claude}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: verse, tier: runners, runner: claude}
+  template:
+    metadata:
+      labels: {app: verse, tier: runners, runner: claude}
+    spec:
+      hostUsers: false
+      containers:
+      - name: claude-runner
+        image: signadot/verse-runner:claude
+        args:
+        - verse
+        - -config
+        - /config/verse-runner.tony
+        - -sandbox
+        - bwrap
+        ports:
+        - {name: control, containerPort: 9802}
+        - {name: admin, containerPort: 9803}
+        # The credential, by the variable name the ConfigMap's `credentialEnv` reads. The
+        # runner holds it; the task process puts it in the claude process's environment, which
+        # every command Claude runs inherits (docs/reference/runnerd.md, Claude). The Secret
+        # comes from the store entry `claudeSecretKey` names (deploy/README.md, Credentials),
+        # and is made by hand only where that knob is empty:
+        #
+        #   kubectl -n verse create secret generic verse-claude \
+        #     --from-literal=ANTHROPIC_API_KEY=<key>
+        #
+        # Optional: a runner without it starts, and its first claude spawn fails, not logged in.
+        envFrom:
+        - secretRef:
+            name: verse-claude
+            optional: true
+        env:
+        # Claude writes its state under $HOME when it is given no CLAUDE_CONFIG_DIR, and the
+        # one it is given lives under /tmp; either way the home has to be a writable path
+        # inside the sandbox, and /tmp is the one there is.
+        - name: HOME
+          value: /tmp
+        # What this runner pushes with: the same token verse-runner pushes with, held by a
+        # different process. The task never sees it.
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef: {name: verse-runner, key: gitToken, optional: true}
+        # Linear's and Slack's, for the tasks' linear-issue and slack calls: the keys the iods read
+        # from the same Secrets. The runner makes each call itself, so a task never has them.
+        - name: LINEAR_API_KEY
+          valueFrom:
+            secretKeyRef: {name: verse-linear, key: LINEAR_API_KEY, optional: true}
+        - name: SLACK_BOT_TOKEN
+          valueFrom:
+            secretKeyRef: {name: verse-slack, key: SLACK_BOT_TOKEN, optional: true}
+        volumeMounts:
+        - {name: config, mountPath: /config, readOnly: true}
+        - {name: state, mountPath: /state}
+        readinessProbe:
+          httpGet: {path: /describe, port: control}
+          initialDelaySeconds: 2
+          periodSeconds: 10
+        securityContext:
+          seccompProfile:
+            type: Unconfined
+          procMount: Unmasked
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 65532
+          capabilities: {drop: ["ALL"]}
+      volumes:
+      - name: config
+        configMap: {name: claude-runner-config}
+      - name: state
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: claude-runner
+  labels: {app: verse, tier: runners, runner: claude}
+spec:
+  selector: {app: verse, tier: runners, runner: claude}
+  ports:
+  - {name: control, port: 9802, targetPort: control}

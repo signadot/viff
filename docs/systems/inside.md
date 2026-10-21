@@ -93,7 +93,8 @@ What the one doing the work does:
 
 - The verse agent writes files, runs commands and calls sub-agents with its own tools, and
   reaches the network from its shell.
-- Codex does the same through its own sandbox. The runner stops it at the same places.
+- Codex does the same through its own sandbox, and Claude Code through its permission prompts.
+  The runner stops each at the same places.
 - A script is one action, not a series of steps, so nothing inside it is stopped. Only its
   network is confined.
 

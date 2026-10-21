@@ -233,7 +233,7 @@ func deployedConfig(t *testing.T, manifest string) verserunner.Config {
 // EVERY DEPLOYED RUNNER'S CONFIGURATION LOADS, its ceilings checked as the runner checks them at
 // start, so one it would refuse is found here and not at the deploy.
 func TestEveryDeployedRunnerConfigLoads(t *testing.T) {
-	for _, manifest := range []string{"../deploy/verse-runner/verse-runner.yaml", "../deploy/codex-runner/codex-runner.yaml"} {
+	for _, manifest := range []string{"../deploy/verse-runner/verse-runner.yaml", "../deploy/codex-runner/codex-runner.yaml", "../deploy/claude-runner/claude-runner.yaml"} {
 		cfg := deployedConfig(t, manifest)
 		if len(cfg.Systems["git"].Ceiling) == 0 {
 			t.Errorf("%s: no git ceiling, so its tasks reach no repository", manifest)

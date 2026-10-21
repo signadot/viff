@@ -84,6 +84,13 @@ func verseMain(args []string) error {
 				"passes through, or its turns will fail.", why)
 		}
 	}
+	if c.Claude != nil {
+		s.ClaudeKey = c.Claude.Key()
+		if why := c.Claude.MissingKey(); why != "" {
+			log.Printf("WARNING: %s. Claude will have to be logged in under the HOME its environment "+
+				"passes through, or its turns will fail.", why)
+		}
+	}
 	tokens, unset := verserunner.TokensFromEnv(c)
 	for _, name := range unset {
 		log.Printf("%s is not set: what reads it is refused where it reaches for it", name)

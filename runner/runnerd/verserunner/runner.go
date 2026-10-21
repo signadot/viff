@@ -15,6 +15,7 @@ import (
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/runner/runnerd/calltool"
+	"github.com/signadot/verse/runner/runnerd/claude"
 	"github.com/signadot/verse/runner/runnerd/codex"
 	"github.com/signadot/verse/runner/runnerd/delivery"
 	"github.com/signadot/verse/runner/runnerd/verserunner/agent"
@@ -34,6 +35,10 @@ type Secrets struct {
 	// CodexKey is the OpenAI API key the `codex:` section names a variable for, read from the
 	// runner's environment (codex.Config.Key) and written by the task process as codex's login.
 	CodexKey string `tony:"field=codexKey,omitzero"`
+	// ClaudeKey is the credential the `claude:` section names a variable for, read from the
+	// runner's environment (claude.Config.Key) and put in the claude process's environment by
+	// the task process, under the variable's own name.
+	ClaudeKey string `tony:"field=claudeKey,omitzero"`
 }
 
 // SecretsFromEnv reads the runner's secrets from its environment.
@@ -101,8 +106,9 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 }
 
 // modelHosts is where the runner's agents call their models, which they reach whatever their
-// network: the verse agent's gateway, and Codex's API where the runner runs Codex. A base URL
-// that names no host is refused: no network could let the agent reach it.
+// network: the verse agent's gateway, Codex's API where the runner runs Codex, and Claude's
+// where it runs Claude. A base URL that names no host is refused: no network could let the
+// agent reach it.
 func modelHosts(c Config, s Secrets) ([]string, error) {
 	base := cmp.Or(s.PortkeyBaseURL, agent.DefaultBaseURL)
 	u, err := url.Parse(base)
@@ -112,6 +118,9 @@ func modelHosts(c Config, s Secrets) ([]string, error) {
 	hosts := []string{u.Host}
 	if c.Codex != nil {
 		hosts = append(hosts, codex.ModelHost)
+	}
+	if c.Claude != nil {
+		hosts = append(hosts, claude.ModelHost)
 	}
 	return hosts, nil
 }
@@ -227,6 +236,21 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 		l.Prompt = prompt
 		env := append(task.ShellEnv(r.cfg.shellEnv()), set...)
 		p, err := codex.Task(l, reg, r.cfg.Codex.Creds(r.secrets.CodexKey), env, r.root, tools, r.cfg.taskCeilings())
+		if err != nil {
+			return ended(task.NewFailed(l.ID, reg, err.Error()))
+		}
+		return ended(p)
+	}
+	if who == claude.Agent {
+		// The claude agent (package claude), on the same terms as codex: each command, edit
+		// and question it proposes is an action of this loop, and the runner's tools are
+		// served to it as its own.
+		if r.cfg.Claude == nil {
+			return ended(task.NewFailed(l.ID, reg, "this runner has no `claude:` section, so it cannot run claude"))
+		}
+		l.Prompt = prompt
+		env := append(task.ShellEnv(r.cfg.shellEnv()), set...)
+		p, err := claude.Task(l, reg, r.cfg.Claude.Creds(r.secrets.ClaudeKey), env, r.root, tools, r.cfg.taskCeilings())
 		if err != nil {
 			return ended(task.NewFailed(l.ID, reg, err.Error()))
 		}

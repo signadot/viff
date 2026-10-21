@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/signadot/verse/task"
@@ -276,16 +277,20 @@ type llmDriver struct {
 	client   completer
 	tools    []toolDef
 	messages []chatMessage
-	pending  []toolCall
-	idx      int
-	last     *toolCall
-	started  bool
-	frame    string // system prompt; empty is legal (a driver built without one)
-	prompt   string
-	log      io.Writer
-	emit     func(task.Event) // publish narration onto the task read plane; nil = log only
-	folding  []chatMessage    // messages waiting to land, folded in before the next model turn
-	ended    bool             // the model ended the RUN (yield done), not merely its turn
+	// answer is the model's last words, so far: what Result reports, under its own lock since
+	// a snapshot reads it while the run goes on.
+	answer  string
+	amu     sync.Mutex
+	pending []toolCall
+	idx     int
+	last    *toolCall
+	started bool
+	frame   string // system prompt; empty is legal (a driver built without one)
+	prompt  string
+	log     io.Writer
+	emit    func(task.Event) // publish narration onto the task read plane; nil = log only
+	folding []chatMessage    // messages waiting to land, folded in before the next model turn
+	ended   bool             // the model ended the RUN (yield done), not merely its turn
 }
 
 // Ended reports whether the model ended the run itself. In a conversation the loop hands the
@@ -346,6 +351,9 @@ func (d *llmDriver) Next(ctx context.Context, prev task.StepResult) (task.ToolUs
 		}
 		d.messages = append(d.messages, msg)
 		if c := strings.TrimSpace(msg.Content); c != "" {
+			d.amu.Lock()
+			d.answer = msg.Content
+			d.amu.Unlock()
 			fmt.Fprintf(d.log, "\n🗣  said %d characters\n", len(c)) // the words are the task's: on its read plane, not this log
 			if d.emit != nil {                                      // put the agent's words on the read plane (attach sees them)
 				d.emit(task.Event{Kind: task.EventSay, Text: c})
@@ -394,15 +402,12 @@ func toToolUse(tc toolCall) task.ToolUse {
 	return tu
 }
 
-// Result implements task.Resulter — the driver's final assistant message,
-// folded into the parent when this (sub-)task completes.
+// Result implements task.Resulter — the driver's last assistant message, folded into the
+// parent when this (sub-)task completes, and on the snapshot while it runs.
 func (d *llmDriver) Result() string {
-	for i := len(d.messages) - 1; i >= 0; i-- {
-		if d.messages[i].Role == "assistant" && strings.TrimSpace(d.messages[i].Content) != "" {
-			return d.messages[i].Content
-		}
-	}
-	return ""
+	d.amu.Lock()
+	defer d.amu.Unlock()
+	return d.answer
 }
 
 func resultContent(prev task.StepResult) string {

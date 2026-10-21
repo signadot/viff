@@ -23,6 +23,7 @@ IMAGE_ARCH?= $(GOARCH)
 
 RUNNER_IMAGE     ?= $(REGISTRY)/verse-runner:$(TAG)         # the verse runner, its own image (deploy/verse-runner)
 CODEX_RUNNER_IMAGE ?= $(REGISTRY)/verse-runner:codex-$(TAG)  # the verse runner with Codex in it (deploy/codex-runner)
+CLAUDE_RUNNER_IMAGE ?= $(REGISTRY)/verse-runner:claude-$(TAG)  # the verse runner with Claude Code in it (deploy/claude-runner)
 
 DIST := dist
 
@@ -110,6 +111,17 @@ codex-runner-docker: runner-linux ## build the codex runner image (verse runner 
 codex-runner-push: codex-runner-docker ## build + push $(CODEX_RUNNER_IMAGE)
 	$(DOCKER) push $(CODEX_RUNNER_IMAGE)
 
+# The claude runner: the verse runner image plus a pinned Claude Code, for the claude agent, a
+# tag in the runner's repository for the same reason.
+.PHONY: claude-runner-docker
+claude-runner-docker: runner-linux ## build the claude runner image (verse runner + Claude Code)
+	$(DOCKER) build --platform linux/$(IMAGE_ARCH) --build-arg TARGETARCH=$(IMAGE_ARCH) \
+	  -t $(CLAUDE_RUNNER_IMAGE) -f deploy/claude-runner/Dockerfile .
+
+.PHONY: claude-runner-push
+claude-runner-push: claude-runner-docker ## build + push $(CLAUDE_RUNNER_IMAGE)
+	$(DOCKER) push $(CLAUDE_RUNNER_IMAGE)
+
 .PHONY: load
 load: docker ## build + load the image into minikube (Docker Desktop k8s needs no load)
 	minikube image load $(IMAGE)
@@ -139,8 +151,9 @@ ship: ## build+push the images at the current commit and deploy staging at that 
 	$(MAKE) push IMAGE_ARCH=amd64 PUSH_IMAGE=$(REGISTRY)/verse-staging:$(STAGING_SHA)
 	$(MAKE) runner-push IMAGE_ARCH=amd64 RUNNER_IMAGE=$(REGISTRY)/verse-runner:$(STAGING_SHA)
 	$(MAKE) codex-runner-push IMAGE_ARCH=amd64 CODEX_RUNNER_IMAGE=$(REGISTRY)/verse-runner:codex-$(STAGING_SHA)
+	$(MAKE) claude-runner-push IMAGE_ARCH=amd64 CLAUDE_RUNNER_IMAGE=$(REGISTRY)/verse-runner:claude-$(STAGING_SHA)
 	$(MAKE) deploy PROFILE=staging IMAGE=$(REGISTRY)/verse-staging:$(STAGING_SHA) \
-	  E="-e runnerImage=$(REGISTRY)/verse-runner:$(STAGING_SHA) -e codexRunnerImage=$(REGISTRY)/verse-runner:codex-$(STAGING_SHA)"
+	  E="-e runnerImage=$(REGISTRY)/verse-runner:$(STAGING_SHA) -e codexRunnerImage=$(REGISTRY)/verse-runner:codex-$(STAGING_SHA) -e claudeRunnerImage=$(REGISTRY)/verse-runner:claude-$(STAGING_SHA)"
 
 # ONE TIER AT A TIME, because `ship` above applies all of them in a single kubectl apply and
 # the tiers do not always tolerate rolling together. versed and docd speak logd's session
@@ -158,13 +171,14 @@ ship: ## build+push the images at the current commit and deploy staging at that 
 #
 # The tier is the `tier` label every object in deploy/ carries, which is what `-l` selects on:
 # docd (the store), versed (the engine and its two Services), iods (the connectors) and runners
-# (the verse runner and the codex runner, each its own image). An object with
+# (the verse runner, the codex runner and the claude runner, each its own image). An object with
 # no `tier` — the Namespace, the ServiceAccount, the ExternalSecrets — belongs to none of them
 # and is shipped by a full `make deploy`; these targets update a deployment that already exists
 # rather than standing one up.
 SHIP_IMAGE       = $(REGISTRY)/verse-staging:$(STAGING_SHA)
 SHIP_RUNNER      = $(REGISTRY)/verse-runner:$(STAGING_SHA)
 SHIP_CODEX_RUNNER = $(REGISTRY)/verse-runner:codex-$(STAGING_SHA)
+SHIP_CLAUDE_RUNNER = $(REGISTRY)/verse-runner:claude-$(STAGING_SHA)
 
 # ship-clean is `ship`'s dirty-tree refusal, factored out so each tier inherits it: the tag
 # names a commit somebody can check out, and that is no less true when shipping one tier.
@@ -183,13 +197,14 @@ ship-push: ship-clean
 	@echo "ship: staging → $(STAGING_SHA)"
 	$(MAKE) push IMAGE_ARCH=amd64 PUSH_IMAGE=$(SHIP_IMAGE)
 ship-push-runners: ship-clean
-	@echo "ship: staging runners → $(STAGING_SHA), codex-$(STAGING_SHA)"
+	@echo "ship: staging runners → $(STAGING_SHA), codex-$(STAGING_SHA), claude-$(STAGING_SHA)"
 	$(MAKE) runner-push IMAGE_ARCH=amd64 RUNNER_IMAGE=$(SHIP_RUNNER)
 	$(MAKE) codex-runner-push IMAGE_ARCH=amd64 CODEX_RUNNER_IMAGE=$(SHIP_CODEX_RUNNER)
+	$(MAKE) claude-runner-push IMAGE_ARCH=amd64 CLAUDE_RUNNER_IMAGE=$(SHIP_CLAUDE_RUNNER)
 
 # The apply half, shared: staging's profile, the sha-tagged images, one tier, and block on it.
 SHIP_DEPLOY = $(MAKE) deploy PROFILE=staging WAIT=1 IMAGE=$(SHIP_IMAGE) \
-	  E="-e runnerImage=$(SHIP_RUNNER) -e codexRunnerImage=$(SHIP_CODEX_RUNNER)"
+	  E="-e runnerImage=$(SHIP_RUNNER) -e codexRunnerImage=$(SHIP_CODEX_RUNNER) -e claudeRunnerImage=$(SHIP_CLAUDE_RUNNER)"
 
 .PHONY: ship-docd ship-versed ship-iods ship-runners
 ship-docd: ship-push ## ship the store tier alone, and wait for it (roll this FIRST)

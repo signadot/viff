@@ -135,6 +135,7 @@ build:
     githubSecretKey: ""
     runnerSecretKey: ""
     codexSecretKey: ""
+    claudeSecretKey: ""
     # Comma-separated grantees who may take a top-level place (`scott@example.com,agent:ops`).
     # "" is the open verse. See the patch below for how it reaches versed, and what changing it
     # on a running verse takes.
@@ -164,6 +165,11 @@ build:
     # `verse runner add codex http://codex-runner:9802`.
     codexRunner: false
     codexRunnerImage: "signadot/verse-runner:codex"
+    # The claude runner, the same way: the runner in an image with Claude Code in it, offering
+    # the claude agent, with its own credential (the verse-claude Secret, from the entry
+    # claudeSecretKey names). Installing it is `verse runner add claude http://claude-runner:9802`.
+    claudeRunner: false
+    claudeRunnerImage: "signadot/verse-runner:claude"
 
     # ── Sources: what reflects an external system into the verse ──────────────
     #
@@ -321,6 +327,8 @@ build:
     dir: verse-runner
   - if: '.[codexRunner]'
     dir: codex-runner
+  - if: '.[claudeRunner]'
+    dir: claude-runner
 
   patches:
   # The Namespace object's own name.
@@ -467,6 +475,23 @@ build:
       kind: ExternalSecret
       metadata:
         name: verse-codex
+    patch: !delete null
+
+  - if: '.[ claudeSecretKey != "" ]'
+    match:
+      kind: ExternalSecret
+      metadata:
+        name: verse-claude
+    patch:
+      spec:
+        dataFrom:
+        - extract:
+            key: $[claudeSecretKey]
+  - if: '.[ claudeSecretKey == "" ]'
+    match:
+      kind: ExternalSecret
+      metadata:
+        name: verse-claude
     patch: !delete null
 
   # The pull secret, onto the `default` ServiceAccount every pod here runs as.
@@ -924,6 +949,32 @@ build:
           spec:
             containers: !key(name)
             - name: codex-runner
+              imagePullPolicy: $[imagePullPolicy]
+
+  # The claude runner's image, the same way.
+  - if: '.[claudeRunner]'
+    match:
+      kind: Deployment
+      metadata:
+        name: claude-runner
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: claude-runner
+              image: $[claudeRunnerImage]
+  - if: '.[ claudeRunner && imagePullPolicy != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: claude-runner
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: claude-runner
               imagePullPolicy: $[imagePullPolicy]
 
   # The source connectors. One image, three roles: these run `iod`, versed runs `verse`,

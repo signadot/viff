@@ -543,10 +543,9 @@ func (s *state) interrupt(why string) []effect {
 		s.turned = false
 		return append([]effect{effDropGate{why: why}}, s.hinge()...)
 	case phGate:
-		// The action is not taken. The driver is told so as a refusal it can re-plan around,
-		// which is the same shape a denial already has.
-		s.prev = StepResult{Use: s.action, Blocked: true,
-			Note: "the question about this action was withdrawn: " + why}
+		// The action is not taken. The driver is told so in the shape a denial has, Blocked,
+		// with a Note that begins WithdrawnNote: it was not refused, and may be proposed again.
+		s.prev = StepResult{Use: s.action, Blocked: true, Note: WithdrawnNote + ": " + why}
 		effs := []effect{effDropGate{why: why}}
 		return append(effs, s.hinge()...)
 	case phHinge:

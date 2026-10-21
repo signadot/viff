@@ -14,6 +14,7 @@ import (
 
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/runner/runnerd/claude"
 	"github.com/signadot/verse/runner/runnerd/codex"
 	"github.com/signadot/verse/runner/runnerd/delivery"
 	"github.com/signadot/verse/systems"
@@ -57,6 +58,8 @@ type Config struct {
 	// Codex is how this runner runs the codex agent (package codex). Absent, the agent is not
 	// offered: a runner that has not said how to run Codex does not guess.
 	Codex *codex.Config `tony:"field=codex,omitzero"`
+	// Claude is how this runner runs the claude agent (package claude), on the same terms.
+	Claude *claude.Config `tony:"field=claude,omitzero"`
 	// Systems is the operator's say over each system the runner holds for its tasks, by name
 	// (System): the credential it acts with, and the ceiling over what any task may do. `git`
 	// and `git-issue` come with `repos`, `github` and `github-issue` where the forge is GitHub,
@@ -180,13 +183,14 @@ func (c Config) performs() []string {
 }
 
 // inner is the systems the runner stops inside a run rather than performs over the channel,
-// and which doers it stops them for: the verse agent all four, codex what it proposes, a
-// script its questions alone, since its commands and files are one action and no step.
+// and which doers it stops them for: the verse agent all four, codex and claude what each
+// proposes, a script its questions alone, since its commands and files are one action and no
+// step.
 var inner = map[string][]string{
-	"files":    {AgentName, codex.Agent},
-	"commands": {AgentName, codex.Agent},
+	"files":    {AgentName, codex.Agent, claude.Agent},
+	"commands": {AgentName, codex.Agent, claude.Agent},
 	"agent":    {AgentName},
-	"question": {AgentName, codex.Agent, "script"},
+	"question": {AgentName, codex.Agent, claude.Agent, "script"},
 }
 
 // OpenInside is the systems the runner stops inside a run (files, commands, agent, question),
@@ -357,15 +361,26 @@ func (c *Config) Check() error {
 	for _, agent := range slices.Sorted(maps.Keys(c.Agents)) {
 		takes, ok := takes[agent]
 		if !ok {
-			return fmt.Errorf("agents.%s: the verse runner runs no agent %q (it runs: %s, %s)", agent, agent, AgentName, codex.Agent)
+			return fmt.Errorf("agents.%s: the verse runner runs no agent %q (it runs: %s, %s, %s)", agent, agent, AgentName, codex.Agent, claude.Agent)
 		}
 		for _, setting := range slices.Sorted(maps.Keys(c.Agents[agent])) {
-			if _, ok := takes[setting]; !ok {
+			own, ok := takes[setting]
+			if !ok {
 				return fmt.Errorf("agents.%s.%s: %s takes no setting %q (it takes: %s)", agent, setting, agent, setting,
 					strings.Join(slices.Sorted(maps.Keys(takes)), ", "))
 			}
 			if len(c.Agents[agent][setting]) == 0 {
 				return fmt.Errorf("agents.%s.%s: an empty list takes nothing; leave the setting out for any", agent, setting)
+			}
+			// A narrowing narrows: where the agent lists the values it takes (Claude's efforts),
+			// the operator's are among them, or the offer would take a value the agent refuses
+			// when the task runs.
+			if len(own.Values) > 0 {
+				for _, v := range c.Agents[agent][setting] {
+					if err := own.Takes(v); err != nil {
+						return fmt.Errorf("agents.%s.%s: %s does not take it: %w", agent, setting, agent, err)
+					}
+				}
 			}
 		}
 	}
@@ -374,6 +389,9 @@ func (c *Config) Check() error {
 	defaults := map[string]string{AgentName: c.Models.Model}
 	if c.Codex != nil {
 		defaults[codex.Agent] = c.Codex.Model
+	}
+	if c.Claude != nil {
+		defaults[claude.Agent] = c.Claude.Model
 	}
 	for _, agent := range slices.Sorted(maps.Keys(defaults)) {
 		model := defaults[agent]
@@ -398,13 +416,16 @@ func (c *Config) Check() error {
 		if err := c.Codex.Validate(); err != nil {
 			return err
 		}
-		// What Codex can't run without, its ceilings give: else no Codex spawn could ever be
-		// written here, and each would be refused for its environment when the runner is at fault.
-		for _, step := range requires[codex.Agent] {
+	}
+	// What an offered agent can't run without, the ceilings give: else no spawn of it could
+	// ever be written here, and each would be refused for its environment when the runner is
+	// at fault.
+	for _, agent := range c.agents(Secrets{}) {
+		for _, step := range requires[agent] {
 			system, verb, _ := systems.Split(step)
 			if !c.Systems[system].Ceiling.Gives(step) {
-				return fmt.Errorf("systems.%s.ceiling: codex can't run without %s, which the ceiling does not give: write `%s: {ceiling: {}}` or `%s: {ceiling: {%s: {}}}`",
-					system, step, system, system, verb)
+				return fmt.Errorf("systems.%s.ceiling: %s can't run without %s, which the ceiling does not give: write `%s: {ceiling: {}}` or `%s: {ceiling: {%s: {}}}`",
+					system, agent, step, system, system, verb)
 			}
 		}
 	}

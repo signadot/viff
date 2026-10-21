@@ -70,12 +70,12 @@ func on(system, verb string, params ...string) *Match {
 // command. The runner's ceilings leave the environment open, so the autonomy decides.
 func toolSup(p Autonomy, r Resolver) *Supervisor {
 	s := systemstest.Opened(NewSupervisor(anyEnv(), p, r), anyEnv())
-	s.stepOf = func(tu ToolUse) (Step, bool) {
+	s.SetStepOf(func(tu ToolUse) (Step, bool) {
 		if st, ok := StepOf(tu); ok {
 			return st, true
 		}
 		return Step{Name: StepCommandsRun, Fields: map[string]string{"command": tu.Name}}, true
-	}
+	})
 	return s
 }
 
@@ -547,6 +547,85 @@ func TestTheCeilingIsReadAfterThePolicy(t *testing.T) {
 	sup.SetCeilings(nil)
 	if res, _ := sup.Check(context.Background(), ToolUse{Name: "run_bash", Input: map[string]any{"command": "ls"}}); res.Proceed || res.By != ByCeiling {
 		t.Errorf("a step under no ceilings = %+v, want it refused by the ceiling", res)
+	}
+}
+
+// AN ACTION OF SEVERAL STEPS GOES AHEAD ONLY WHERE EACH WOULD: a write named `docs/x` that lands
+// on `db/x` is refused by a row, the environment or a ceiling on either, wherever the row
+// stands; each row that asks about either asks once, in the order of the steps, and every answer
+// must be a yes; a row asking about both asks once.
+func TestAnActionOfSeveralStepsGoesAheadOnlyWhereEachWould(t *testing.T) {
+	write := func(path string) Step { return Step{Name: StepFilesWrite, Fields: map[string]string{"path": path}} }
+	steps := []Step{write("docs/x"), write("db/x")}
+	var asked []string
+	supIn := func(env systems.Environment, p Autonomy, no string) *Supervisor {
+		asked = nil
+		s := NewSupervisor(env, p, resolverFunc(func(q GateQuestion) Resolution {
+			asked = append(asked, q.Gate+" "+q.Step.Fields["path"])
+			if q.Gate == no {
+				return Resolution{Choice: Deny, Steer: []string{"no from " + q.Gate}}
+			}
+			return Resolution{Choice: Proceed, Proceed: true, Steer: []string{"yes from " + q.Gate}}
+		}))
+		s.SetStepsOf(func(ToolUse) []Step { return steps })
+		s.SetCeilings(systemstest.Open(env))
+		return s
+	}
+	sup := func(p Autonomy, no string) *Supervisor { return supIn(anyEnv(), p, no) }
+	check := func(s *Supervisor) Resolution {
+		t.Helper()
+		res, err := s.Check(context.Background(), ToolUse{Name: "write"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res
+	}
+	docs := Row{Name: "docs", Match: on("files", "write", "path", "docs/**"), Then: Then{Mode: ThenAllow}}
+	allowFiles := Autonomy{{Match: &Match{System: "files"}, Then: Then{Mode: ThenAllow}}}
+	onlyDocs := systems.Ceiling{{Verbs: map[string][]systems.Shape{"write": {{"path": "docs/**"}}}}}
+
+	// A catch-all deny below an allow on the path named: the step it lands on is refused.
+	if res := check(sup(Autonomy{docs, {Name: "rest", Match: on("files", "write"), Then: Then{Mode: ThenDeny}}}, "")); res.Proceed ||
+		res.By != ByAutonomy || res.Question.Gate != "rest" || res.Question.Step.Fields["path"] != "db/x" || len(asked) != 0 {
+		t.Errorf("allow docs, deny the rest: %+v (asked %v), want refused by rest on db/x", res, asked)
+	}
+	// An environment that gives writes under docs alone, under an autonomy that allows every write.
+	if res := check(supIn(systems.Environment{Systems: systems.Systems{"files": {{Verbs: map[string][]systems.Shape{"write": {{"path": "docs/**"}}}}}}}, allowFiles, "")); res.Proceed ||
+		res.By != ByEnvironment || res.Question.Step.Fields["path"] != "db/x" {
+		t.Errorf("environment of docs: %+v, want refused by the environment on db/x", res)
+	}
+	// The runner's ceiling on where it lands, under an autonomy that allows every write.
+	s := sup(allowFiles, "")
+	s.SetCeilings(map[string]systems.Ceiling{"files": onlyDocs})
+	if res := check(s); res.Proceed || res.By != ByCeiling || res.Question.Step.Fields["path"] != "db/x" {
+		t.Errorf("ceiling of docs: %+v, want refused by the ceiling on db/x", res)
+	}
+	// Two rows ask: each once, in the order of the steps, and both answers decide.
+	asks := Autonomy{
+		{Name: "schema", Match: on("files", "write", "path", "db/**"), Then: Then{Mode: ThenAsk}},
+		{Name: "doc", Match: on("files", "write", "path", "docs/**"), Then: Then{Mode: ThenAsk}},
+	}
+	if res := check(sup(asks, "")); !res.Proceed || strings.Join(asked, ", ") != "doc docs/x, schema db/x" ||
+		strings.Join(res.Steer, ", ") != "yes from doc, yes from schema" {
+		t.Errorf("two asking rows, both yes: %+v (asked %v)", res, asked)
+	}
+	if res := check(sup(asks, "schema")); res.Proceed || res.Question.Gate != "schema" ||
+		strings.Join(res.Steer, ", ") != "yes from doc, no from schema" {
+		t.Errorf("two asking rows, the second no: %+v (asked %v), want refused by schema", res, asked)
+	}
+	// One row asking about both asks once, about the first.
+	if res := check(sup(Autonomy{{Name: "w", Match: on("files", "write"), Then: Then{Mode: ThenAsk}}}, "")); !res.Proceed ||
+		strings.Join(asked, ", ") != "w docs/x" {
+		t.Errorf("one asking row: %+v (asked %v), want one question about docs/x", res, asked)
+	}
+	// An allow on the path named and an ask on where it lands: asked about where it lands.
+	if res := check(sup(Autonomy{docs, {Then: Then{Mode: ThenAsk}}}, "")); !res.Proceed || strings.Join(asked, ", ") != "autonomy[1] db/x" {
+		t.Errorf("allow docs, ask the rest: %+v (asked %v), want one question about db/x", res, asked)
+	}
+	// Every step allowed: allowed, nobody asked, as the first step.
+	if res := check(sup(allowFiles, "")); !res.Proceed ||
+		res.By != ByAuto || len(asked) != 0 || res.Question.Step.Fields["path"] != "docs/x" {
+		t.Errorf("all allowed: %+v (asked %v)", res, asked)
 	}
 }
 

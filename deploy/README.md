@@ -247,7 +247,7 @@ should be passed the Service name directly rather than discovering it.
 | `tailscaleTags` | `""` | `tailscale.com/tags` for both; `""` leaves the operator's `tag:k8s` |
 | `secretStore` | `aws-secretsmanager` | the `ClusterSecretStore` every entry below comes from |
 | `llmSecretKey` | `""` | entry for `verse-llm`; `""` emits no `ExternalSecret` |
-| `gitSecretKey` / `slackSecretKey` / `linearSecretKey` / `githubSecretKey` / `runnerSecretKey` / `codexSecretKey` | `""` | the same, one per credential |
+| `gitSecretKey` / `slackSecretKey` / `linearSecretKey` / `githubSecretKey` / `runnerSecretKey` / `codexSecretKey` / `claudeSecretKey` | `""` | the same, one per credential |
 | `llmModel` | `""` | `OPENAI_MODEL` for versed; `""` leaves the driver's `gpt-4o` |
 | `systemCharter` | `""` | a charter under `deploy/`, mounted into versed and installed at start as the system (`VERSE_SYSTEM_CHARTER`); read at start, so a change takes a restart. Staging: `charters/verse/workspace/Signadot/gate-ask.tony` |
 | `authConfig` | `""` | verse's `auth` block, a file under `deploy/`, mounted into versed as its config (`VERSE_CONFIG`): who verifies people, which iods are trusted for whose accounts, how the iods prove themselves ([Who a request is from](#who-a-request-is-from-authconfig-iotokens)). Staging: `auth/staging.tony` |
@@ -257,6 +257,8 @@ should be passed the Service name directly rather than discovering it.
 | `runnerImage` | `signadot/verse-runner:latest` | its image ref — a tag in another repository is fine |
 | `codexRunner` | `false` | deploy the codex runner beside it: the verse runner in an image with Codex in it, offering the codex agent |
 | `codexRunnerImage` | `signadot/verse-runner:codex` | its image ref |
+| `claudeRunner` | `false` | deploy the claude runner beside them: the verse runner in an image with Claude Code in it, offering the claude agent |
+| `claudeRunnerImage` | `signadot/verse-runner:claude` | its image ref |
 | the iod knobs | off | see [Iods](#iods-optional) |
 
 ## Iods (optional)
@@ -522,11 +524,12 @@ are the names each consumer reads:
 |---|---|---|---|
 | `llmSecretKey` | `verse-llm` | `PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY` (`PORTKEY_BASE_URL`, `OPENAI_MODEL` optional) | env, by versed **and** the verse runner |
 | `gitSecretKey` | `verse-git` | `credential` — the value being `username=x-access-token\npassword=<PAT>\n` | a **file** at `/git-credentials/credential` |
-| `slackSecretKey` | `verse-slack` | `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET` | env; **not** optional — no token, no start |
-| `linearSecretKey` | `verse-linear` | `LINEAR_API_KEY` (the `Authorization` header verbatim), `LINEAR_WEBHOOK_SECRET` | env |
+| `slackSecretKey` | `verse-slack` | `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET` | env; **not** optional — no token, no start. `SLACK_BOT_TOKEN` also in the runners, `optional: true` — without it their tasks' `slack-*` calls are refused |
+| `linearSecretKey` | `verse-linear` | `LINEAR_API_KEY` (the `Authorization` header verbatim), `LINEAR_WEBHOOK_SECRET` | env; `LINEAR_API_KEY` also in the runners, `optional: true` — without it their tasks' `linear-issue-*` calls are refused |
 | `githubSecretKey` | `verse-github` | `GITHUB_TOKEN`, or `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID` and `GITHUB_APP_PRIVATE_KEY` ([The GitHub App](#the-github-app-signadot-verse)); and `GITHUB_WEBHOOK_SECRET` | env; **not** optional — no Secret, no start |
 | `runnerSecretKey` | `verse-runner` | `gitToken` | env (`GITHUB_TOKEN`), in the runners and never in the sandbox |
 | `codexSecretKey` | `verse-codex` | `OPENAI_API_KEY` | env, in the codex runner, `optional: true` — a runner without it starts, and its first codex spawn fails; written as each task's Codex login |
+| `claudeSecretKey` | `verse-claude` | `ANTHROPIC_API_KEY` | env, in the claude runner, `optional: true` — a runner without it starts, and its first claude spawn fails, not logged in; handed to each task's claude process |
 
 ### Creating the entries
 
@@ -561,6 +564,9 @@ put staging/verse/github /tmp/e.json
 
 printf '{"OPENAI_API_KEY":"%s"}' "$key" > /tmp/e.json
 put staging/verse/codex /tmp/e.json
+
+printf '{"ANTHROPIC_API_KEY":"%s"}' "$key" > /tmp/e.json
+put staging/verse/claude /tmp/e.json
 
 rm -f /tmp/e.json
 ```
@@ -762,6 +768,15 @@ knob is empty (`kubectl -n verse create secret generic verse-codex
 --from-literal=OPENAI_API_KEY=<key>`); it pushes with the same token. Install it as `verse runner add codex http://codex-runner:9802
 --identity codex-runner`, and spawn on it with `runner: verse.runners.codex`.
 
+**The claude runner** (`claude-runner`) is the same runner in an image with Claude Code pinned
+in it (`deploy/claude-runner`), offering the claude agent. Its credential is the `verse-claude`
+Secret, from the store entry `claudeSecretKey` names ([Credentials](#credentials)), or made by
+hand where the knob is empty (`kubectl -n verse create secret generic verse-claude
+--from-literal=ANTHROPIC_API_KEY=<key>`): an API key of the Console workspace the work is
+billed to. It pushes with the same token the verse runner does. Install it as `verse runner add claude
+http://claude-runner:9802 --identity claude-runner`, and spawn on it with `runner:
+verse.runners.claude`.
+
 ⚠️ **It needs three things from the pod spec, and each was found by a spawn refusing itself.**
 `hostUsers: false`, `procMount: Unmasked`, `seccompProfile: Unconfined` — in that order of
 dependency, because the API will not accept the second without the first.
@@ -826,7 +841,7 @@ kubectl --context $CTX -n verse wait --for=delete pod -l app=verse,tier=versed -
 make ship-docd          # the store; versed is down, so nothing is talking to it
 make ship-versed        # the engine, against a docd that is already up and new
 make ship-iods          # the iods
-make ship-runners       # the verse runner and the codex runner, their own images
+make ship-runners       # the verse, codex and claude runners, their own images
 ```
 
 `ship-versed` restores `replicas: 1` from the manifest, so the scale to 0 costs no
@@ -837,7 +852,7 @@ there is a manifest check, not an upload.
 
 The tier is the `tier` label every object in `deploy/` carries — `docd`, `versed`, `iods`,
 `runners` — and `kubectl apply -l` is what selects on it; the `runner` label beside it names which
-runner (`-l runner=codex`). Objects with no tier (the Namespace,
+runner (`-l runner=codex`, `-l runner=claude`). Objects with no tier (the Namespace,
 the ServiceAccount, the ExternalSecrets) belong to none and are applied by a full `make
 deploy`: these targets update a deployment that exists rather than standing one up.
 
