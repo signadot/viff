@@ -97,6 +97,7 @@ context:
 define:
   answerers: .[array(string)]
   at: .[string]
+  branch: .[string]
   github: .[string]
   repo: .[string]
   tree: .[string]

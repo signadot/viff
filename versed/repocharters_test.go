@@ -178,6 +178,60 @@ func TestTheReconcilerInstallsForARepositoryCalledVerse(t *testing.T) {
 	installCharter(t, ts, "repo-charters.verse", string(charter))
 }
 
+// A reconciler rendered for another branch follows that branch: its tree is a candidate, and so is
+// what a pull request onto it proposes, while main and a pull request onto main propose nothing.
+func TestTheReconcilerFollowsItsBranch(t *testing.T) {
+	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	t.Cleanup(srv.stopAllIOs)
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	for _, io := range []map[string]any{
+		{"name": "git", "root": "git", "url": "http://git-iod:9801", "owns": []any{map[string]any{"at": "git.r"}},
+			"out": map[string]any{"places": []any{"git.r.out"}, "as": "agent:git-iod"}},
+		{"name": "github", "root": "github", "url": "http://github-iod:9801", "owns": []any{map[string]any{"at": "github.signadot.r"}},
+			"out": map[string]any{"places": []any{"github.signadot.r.out"}, "as": "agent:github-iod"}},
+	} {
+		resp := installIO(t, ts, "user:"+tester, io)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("installing the %s io = %s", io["name"], resp.Status)
+		}
+	}
+	charter, err := repocharters.Render(repocharters.Params{Repo: "r", GitHub: "signadot/r", Branch: "master", InstallAt: "repos.r", Answerers: []string{"user:*"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	installCharter(t, ts, "repo-charters.r", string(charter))
+
+	const onMain, onMaster, ontoMain, ontoMaster = "aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111", "bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222",
+		"cccc3333cccc3333cccc3333cccc3333cccc3333", "dddd4444dddd4444dddd4444dddd4444dddd4444"
+	// What does not concern it is written first, so by the time what does is seen, the rest has been.
+	mainAt(t, srv, strings.Repeat("1", 40), onMain)
+	prAt(t, srv, 1, strings.Repeat("3", 40), ontoMain)
+	entitytest.Set(t, srv.Store, entity.RefAt("git", "r", "ref", "master"), entity.Obj{
+		"repo": "r", "name": "master", "sha": strings.Repeat("2", 40), "type": "commit", "tree": entity.Obj{"charters": onMaster},
+	}.Payload())
+	pr := entity.Obj{
+		"repo": "signadot/r", "number": 2, "state": "open", "base": "master", "head": "topic-2", "headSha": strings.Repeat("4", 40),
+		"updatedAt": time.Now().UTC().Format(time.RFC3339Nano), "changes": entity.Obj{"charters": ontoMaster},
+	}
+	entitytest.Set(t, srv.Store, entity.RefAt("github", "signadot", "r", "pr", "2"), pr.Payload())
+
+	waitEntity(t, srv, entity.RefAt("repo-charters", "r", "state", "main"), func(p entity.Payload) bool { return entity.Str(p, "tree") == onMaster })
+	waitEntity(t, srv, entity.RefAt("repo-charters", "r", "candidate", ontoMaster), func(p entity.Payload) bool { return entity.Str(p, "tree") == ontoMaster })
+	waitEntity(t, srv, entity.RefAt("repo-charters", "r", "pull", "2"), func(p entity.Payload) bool { return entity.Str(p, "tree") == ontoMaster })
+	for _, ref := range []entity.Ref{
+		entity.RefAt("repo-charters", "r", "candidate", onMain),
+		entity.RefAt("repo-charters", "r", "candidate", ontoMain),
+		entity.RefAt("repo-charters", "r", "pull", "1"),
+	} {
+		if _, ok, _ := srv.Store.Get(ref); ok {
+			t.Errorf("%s stands: the reconciler for master read main", ref)
+		}
+	}
+}
+
 // The reconciler: main's charters tree is a candidate; an unanswered one is asked about; a yes on
 // main's tree makes verse/live hold it, and the tree verse/live holds is handed to the git io to
 // install; the io's answer records what runs and tags it. A candidate asked about while

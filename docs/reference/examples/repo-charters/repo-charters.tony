@@ -2,6 +2,9 @@
 # the design is j5vbwvja and its parts, and the decision on j5vbwvja: the gate is the install,
 # not the merge). RENDERED by system/repocharters from charter.tony.tmpl: edit the template.
 #
+# MAIN, in what follows and in the records' names, is the branch the repository's charters
+# follow, which for this rendering is `main`.
+#
 # WHAT IT KEEPS TRUE: what runs in verse is the last state of the repository's charters directory
 # on main that an ask answered yes to, however it reached main. These records keep the states
 # apart, and every rule's subject is one of them or an effect of one:
@@ -210,7 +213,7 @@ rules:
   condition:
     subject:
       path: "github.signadot.verse.pr.*"
-      value: {state: open, base: main, headSha: !glob "*", changes: {charters: !glob "*"}}
+      value: {state: open, base: "main", headSha: !glob "*", changes: {charters: !glob "*"}}
   action:
     derive:
     - path: "repo-charters.verse.candidate"
@@ -227,7 +230,7 @@ rules:
   condition:
     subject:
       path: "github.signadot.verse.pr.*"
-      value: !and [{state: open, base: main, headSha: !glob "*"}, !not.has-path changes.charters]
+      value: !and [{state: open, base: "main", headSha: !glob "*"}, !not.has-path changes.charters]
   action:
     derive:
     - path: "repo-charters.verse.pull"
@@ -898,4 +901,4 @@ rules:
         before: $subject.value.due
         keep:
           state: !list-paths {at: "repo-charters.verse.state.*", path: tree}
-          pulls: !list-paths {at: "github.signadot.verse.pr.*", value: {state: open, base: main}, path: changes.charters}
+          pulls: !list-paths {at: "github.signadot.verse.pr.*", value: {state: open, base: "main"}, path: changes.charters}

@@ -98,7 +98,7 @@ type Config struct {
 }
 
 // RepoCharterConfig is one repository whose charters verse reconciles: what runs in verse is the
-// last state of the repository's charters directory on main that the team said yes to.
+// last state of the repository's charters directory on its branch that the team said yes to.
 //
 //tony:schemagen=verse-repo-charter-config,notag
 type RepoCharterConfig struct {
@@ -107,6 +107,9 @@ type RepoCharterConfig struct {
 	// GitHub is the repository as GitHub names it, `org/name`: where the candidate pull request
 	// is opened, through the github io.
 	GitHub string `tony:"field=github"`
+	// Branch is the branch the charters follow: the one a pull request proposes a change onto,
+	// and whose charters verse/live is moved to. Empty is `main`.
+	Branch string `tony:"field=branch,omitzero"`
 	// At is the address the repository's charters install at, as `verse c -a` spells one
 	// (`repos.verse`). The git io installs there as itself, so it owns the address or holds
 	// `child-owner` above it.

@@ -212,17 +212,17 @@ behind. A request cannot be made as the system, so this key is the way to instal
 **`repoCharters`** is read by the server. Each entry has `verse up` install the
 [repo-charters reconciler](examples/repo-charters/repo-charters.tony) for one repository, as
 the system, beside the file above: the charter that keeps what runs in verse equal to the last
-state of the repository's charters directory on main that the team said yes to. `repo` is the
+state of the repository's charters directory on its branch that the team said yes to. `repo` is the
 git iod's id for the repository (`git.<repo>`), `github` is the repository as GitHub names it
-(`org/name`), `at` is the address the repository's charters install at, `tree` is the name the
+(`org/name`), `branch` is the branch the charters follow (`main` by default), `at` is the address the repository's charters install at, `tree` is the name the
 git iod and the github iod report the charters directory's tree under (each one's `-tree`;
 `charters` by default), and `answerers` is who may answer the question a change raises, as a
 gate's `answerers` names them; the rendering adds the git iod (`agent:git-iod`), whose minute
 sweep settles a question nothing proposes any more as `obsolete`, and an entry without
 `answerers` asks the docket, whose questions are not swept. The git iod installs at `at` as
-itself, so it owns that address or holds `child-owner` above it. The question is asked on a pull request to main that changes the
+itself, so it owns that address or holds `child-owner` above it. The question is asked on a pull request onto the branch that changes the
 charters, which the github iod reports only with its `-tree`; without it, a change is asked about
-once it reaches main.
+once it reaches the branch.
 
 ```tony
 repoCharters:
@@ -383,7 +383,7 @@ Every key, and the variable that sets it:
 | `agent` | `VERSE_AGENT` | every command | the operator agent the CLI acts as, in place of `user` |
 | `format: {default, output, wire}` | `VERSE_FORMAT`, `VERSE_OUTPUT_FORMAT`, `VERSE_WIRE_FORMAT` | every command | the format to write in: `tony` or `yaml` ([representation](representation.md)) |
 | `systemCharter` | `VERSE_SYSTEM_CHARTER` | `verse up` | a charter file installed at start as the system |
-| `repoCharters: [{repo, github, at, tree, answerers}]` | | `verse up` | the repo-charters reconciler, installed as the system for each repository named |
+| `repoCharters: [{repo, github, branch, at, tree, answerers}]` | | `verse up` | the repo-charters reconciler, installed as the system for each repository named |
 | `auth: {principal: {mode, providers}}` | | `verse up`, `verse account login` | the identity providers whose tokens say who a request is from |
 | `auth: {iod: {issuer, audience, accounts, static}}` | | `verse up` | the issuer of the iods' workload tokens, and which iod each is |
 | `auth: {issuer: {url, key}}` | | `verse up` | the address and signing key the verse issues its own tokens with |

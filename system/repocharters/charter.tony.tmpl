@@ -2,6 +2,9 @@
 # the design is j5vbwvja and its parts, and the decision on j5vbwvja: the gate is the install,
 # not the merge). RENDERED by system/repocharters from charter.tony.tmpl: edit the template.
 #
+# MAIN, in what follows and in the records' names, is the branch the repository's charters
+# follow, which for this rendering is `{{.Branch}}`.
+#
 # WHAT IT KEEPS TRUE: what runs in verse is the last state of the repository's charters directory
 # on main that an ask answered yes to, however it reached main. These records keep the states
 # apart, and every rule's subject is one of them or an effect of one:
@@ -173,7 +176,7 @@ rules:
   stratum: reflected
   condition:
     subject:
-      path: "git.{{.Repo}}.ref.main"
+      path: "git.{{.Repo}}.ref.{{.BranchSeg}}"
       value: {tree: {{"{"}}{{.Tree}}: !glob "*"}}
   action:
     derive:
@@ -210,7 +213,7 @@ rules:
   condition:
     subject:
       path: "github.{{.GitHubOrg}}.{{.GitHubName}}.pr.*"
-      value: {state: open, base: main, headSha: !glob "*", changes: {{"{"}}{{.Tree}}: !glob "*"}}
+      value: {state: open, base: "{{.Branch}}", headSha: !glob "*", changes: {{"{"}}{{.Tree}}: !glob "*"}}
   action:
     derive:
     - path: "repo-charters.{{.Repo}}.candidate"
@@ -227,7 +230,7 @@ rules:
   condition:
     subject:
       path: "github.{{.GitHubOrg}}.{{.GitHubName}}.pr.*"
-      value: !and [{state: open, base: main, headSha: !glob "*"}, !not.has-path changes.{{.Tree}}]
+      value: !and [{state: open, base: "{{.Branch}}", headSha: !glob "*"}, !not.has-path changes.{{.Tree}}]
   action:
     derive:
     - path: "repo-charters.{{.Repo}}.pull"
@@ -281,8 +284,8 @@ rules:
       value:
         to: issue
         open:
-          title: "charters: main's charters would be refused"
-          body: "verse's charter check says an install of the charters on main (tree $subject.value.tree) into {{.InstallAt}} would be refused:\n\n$subject.value.refusal\n\nThis issue closes when the charters on main pass the check."
+          title: "charters: {{.Branch}}'s charters would be refused"
+          body: "verse's charter check says an install of the charters on {{.Branch}} (tree $subject.value.tree) into {{.InstallAt}} would be refused:\n\n$subject.value.refusal\n\nThis issue closes when the charters on {{.Branch}} pass the check."
         closed: false
 - name: main-passed
   stratum: checks
@@ -581,7 +584,7 @@ rules:
       value:
         to: "branch.verse/candidate/$subject.value.tree"
         open: {base: "verse/live", title: "charters: $subject.value.title"}
-        text: "What is on main against what runs. An answer here installs it."
+        text: "What is on {{.Branch}} against what runs. An answer here installs it."
         asks: "repo-charters.{{.Repo}}:propose@repo-charters.{{.Repo}}.candidate.$subject.value.tree~2"
         commitStatus: {verse: {state: pending, description: "waiting for an answer to the question on this pull request", sha: $subject.value.sha}}
         closed: false
@@ -782,8 +785,8 @@ rules:
       value:
         to: issue
         open:
-          title: "charters: main's charters were answered no"
-          body: "The charters on main (tree $subject.value.tree) were answered no: $subject.value.answer.\n\nWhat runs at {{.InstallAt}} stays as it was. This issue closes when main's charters change."
+          title: "charters: {{.Branch}}'s charters were answered no"
+          body: "The charters on {{.Branch}} (tree $subject.value.tree) were answered no: $subject.value.answer.\n\nWhat runs at {{.InstallAt}} stays as it was. This issue closes when {{.Branch}}'s charters change."
         closed: false
 - name: main-not-denied
   stratum: candidates
@@ -846,7 +849,7 @@ rules:
         to: issue
         open:
           title: "charters: verse/live is not what runs"
-          body: "verse/live (commit $subject.value.sha, tree $subject.value.tree) differs from the charters installed at {{.InstallAt}} by $subject.value.changes charter(s). Nothing installs from it while it does.\n\nOpen a pull request to main to change the charters, or move verse/live back in step; this issue closes when it is."
+          body: "verse/live (commit $subject.value.sha, tree $subject.value.tree) differs from the charters installed at {{.InstallAt}} by $subject.value.changes charter(s). Nothing installs from it while it does.\n\nOpen a pull request to {{.Branch}} to change the charters, or move verse/live back in step; this issue closes when it is."
         closed: false
 - name: live-refused
   stratum: livecheck
@@ -862,7 +865,7 @@ rules:
         to: issue
         open:
           title: "charters: verse/live is not what runs"
-          body: "verse/live (commit $subject.value.sha, tree $subject.value.tree) holds charters an install at {{.InstallAt}} would refuse:\n\n$subject.value.refusal\n\nOpen a pull request to main to change the charters, or move verse/live back in step; this issue closes when it is."
+          body: "verse/live (commit $subject.value.sha, tree $subject.value.tree) holds charters an install at {{.InstallAt}} would refuse:\n\n$subject.value.refusal\n\nOpen a pull request to {{.Branch}} to change the charters, or move verse/live back in step; this issue closes when it is."
         closed: false
 - name: live-missing
   stratum: livecheck
@@ -898,4 +901,4 @@ rules:
         before: $subject.value.due
         keep:
           state: !list-paths {at: "repo-charters.{{.Repo}}.state.*", path: tree}
-          pulls: !list-paths {at: "github.{{.GitHubOrg}}.{{.GitHubName}}.pr.*", value: {state: open, base: main}, path: changes.{{.Tree}}}
+          pulls: !list-paths {at: "github.{{.GitHubOrg}}.{{.GitHubName}}.pr.*", value: {state: open, base: "{{.Branch}}"}, path: changes.{{.Tree}}}

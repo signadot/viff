@@ -416,8 +416,9 @@ passes the check. A refused install has an issue of its own, closed by the next 
 succeeds. Each reopens for the next round rather than multiplying. The pieces on a deployment:
 
 - **`repoCharters`** in versed's config file (`deploy/auth/staging.tony`, mounted by the
-  `authConfig` knob) names the repository, its GitHub name, the address its charters install at
-  and who may answer; versed renders and installs the reconciler as the system at start, after
+  `authConfig` knob) names the repository, its GitHub name, the branch its charters follow
+  (`main` unless the entry says `branch`), the address its charters install at and who may
+  answer; versed renders and installs the reconciler as the system at start, after
   the iods are restored ([up](../docs/reference/up.md)).
 - **The git iod** with `-tree .verse/charters -out` (on), registered with its out place
   (`repopulate.sh`), and `child-owner` under `repos` for `agent:git-iod`, so it installs the

@@ -1,7 +1,7 @@
 // Package repocharters is the reconciler of a repository's charters: a system-level charter
 // verse ships, rendered for one repository and installed by a deployment, which keeps what runs
-// in verse equal to the last state of the repository's charters directory on main that the team
-// said yes to (git-issue dzxn44gw; the design is j5vbwvja and its parts).
+// in verse equal to the last state of the repository's charters directory on its main branch
+// that the team said yes to (git-issue dzxn44gw; the design is j5vbwvja and its parts).
 //
 // IT IS NOT PART OF THE ENGINE. Nothing in versed knows this charter: it is a charter like any
 // other, written against the rule grammar, the git io's reflection and out half, and the github
@@ -17,6 +17,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"text/template"
 
@@ -54,6 +55,9 @@ type Params struct {
 	// GitHub is the repository as GitHub names it, `org/name`, which the github io reflects as
 	// `github.<org>.<name>` and reads inputs for under `github.<org>.<name>.out`.
 	GitHub string
+	// Branch is the branch the repository's charters follow, the one a change is proposed onto
+	// and verse/live is moved to: `main`, or `master`. Empty is `main`.
+	Branch string
 	// InstallAt is the address the repository's charters install at, as `verse c -a` spells
 	// one: `repos.verse`. The git io installs there as itself, so it has to own the address or
 	// hold `child-owner` above it.
@@ -67,6 +71,10 @@ type Params struct {
 	// them.
 	Answerers []string
 }
+
+// branchName is a branch as a rendering names one: what git takes in a ref, less what the
+// charter's strings and paths would read as something else (a quote, a `$`, a `*`, a space).
+var branchName = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._/-]*$`)
 
 // Example is the laptop instance the reference example is rendered from: the verse repository,
 // reflected by a git io beside a clone, its charters installed at `repos.verse`.
@@ -92,6 +100,13 @@ func Render(p Params) ([]byte, error) {
 	if strings.ContainsAny(tree, ".* \t\n\"") {
 		return nil, fmt.Errorf("repo-charters: Tree %q is not one plain word", tree)
 	}
+	branch := p.Branch
+	if branch == "" {
+		branch = "main"
+	}
+	if !branchName.MatchString(branch) || strings.Contains(branch, "..") || strings.HasSuffix(branch, ".lock") {
+		return nil, fmt.Errorf("repo-charters: Branch %q is not a branch name", branch)
+	}
 	var quoted []string
 	for _, a := range p.Answerers {
 		a = strings.TrimSpace(a)
@@ -105,11 +120,14 @@ func Render(p Params) ([]byte, error) {
 	}
 	data := struct {
 		Repo, GitHub, GitHubOrg, GitHubName, InstallAt, Tree string
-		Answerers                                            []string
-		AnswererFlags, Proceed, Deny, Obsolete, EmptyTree    string
+		// Branch is the branch as text, in the charter's strings; BranchSeg is it as a segment
+		// of a path inside a double-quoted string, quoted where a path needs it (`"release/1"`).
+		Branch, BranchSeg                                 string
+		Answerers                                         []string
+		AnswererFlags, Proceed, Deny, Obsolete, EmptyTree string
 	}{
 		Repo: p.Repo, GitHub: p.GitHub, GitHubOrg: org, GitHubName: name, InstallAt: entity.JoinSegs(segs),
-		Tree: tree, Answerers: quoted, AnswererFlags: answererFlags(append(quoted, `"`+gitIO+`"`)),
+		Tree: tree, Branch: branch, BranchSeg: strings.ReplaceAll(entity.JoinSegs([]string{branch}), `"`, `\"`), Answerers: quoted, AnswererFlags: answererFlags(append(quoted, `"`+gitIO+`"`)),
 		Proceed: answeredProceed, Deny: answeredDeny, Obsolete: answeredObsolete, EmptyTree: verseio.EmptyTree,
 	}
 	tmpl, err := template.New("repo-charters").Parse(charterTemplate)

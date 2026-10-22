@@ -263,7 +263,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	// repository and not installed is the worse verse.
 	for _, rc := range appCfg.RepoCharters {
 		text, err := repocharters.Render(repocharters.Params{
-			Repo: rc.Repo, GitHub: rc.GitHub, InstallAt: rc.At, Tree: rc.Tree, Answerers: rc.Answerers,
+			Repo: rc.Repo, GitHub: rc.GitHub, Branch: rc.Branch, InstallAt: rc.At, Tree: rc.Tree, Answerers: rc.Answerers,
 		})
 		if err != nil {
 			return fmt.Errorf("repoCharters: %w", err)

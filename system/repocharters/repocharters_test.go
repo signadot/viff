@@ -77,9 +77,48 @@ func TestARenderingIsForItsRepository(t *testing.T) {
 		{Repo: "r", GitHub: "acme", InstallAt: "repos.r"},
 		{Repo: "r", GitHub: "acme/r", InstallAt: ""},
 		{Repo: "r", GitHub: "acme/r", InstallAt: "repos.r", Tree: "a.b"},
+		{Repo: "r", GitHub: "acme/r", InstallAt: "repos.r", Branch: "a b"},
+		{Repo: "r", GitHub: "acme/r", InstallAt: "repos.r", Branch: `a"b`},
+		{Repo: "r", GitHub: "acme/r", InstallAt: "repos.r", Branch: "$b"},
+		{Repo: "r", GitHub: "acme/r", InstallAt: "repos.r", Branch: "a..b"},
+		{Repo: "r", GitHub: "acme/r", InstallAt: "repos.r", Branch: "-b"},
 	} {
 		if _, err := Render(bad); err == nil {
 			t.Errorf("Render(%+v) rendered, want a refusal", bad)
+		}
+	}
+}
+
+// A rendering follows its branch: it reads that ref, asks about pull requests onto it, and names
+// it where it speaks to people. Unnamed, the branch is main.
+func TestARenderingFollowsItsBranch(t *testing.T) {
+	for _, tc := range []struct{ branch, ref, other string }{
+		{"", `path: "git.r.ref.main"`, "master"},
+		{"master", `path: "git.r.ref.master"`, "main"},
+		{"release-1.2", `path: "git.r.ref.\"release-1.2\""`, "main"},
+	} {
+		got, err := Render(Params{Repo: "r", GitHub: "acme/r", InstallAt: "repos.r", Branch: tc.branch})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := codec.ParseNodes(got, codec.Tony); err != nil {
+			t.Fatalf("the rendering for branch %q does not parse: %v", tc.branch, err)
+		}
+		s := string(got)
+		branch := tc.branch
+		if branch == "" {
+			branch = "main"
+		}
+		for _, want := range []string{
+			tc.ref, `base: "` + branch + `"`, "charters: " + branch + "'s charters would be refused",
+			"Open a pull request to " + branch + " to change the charters",
+		} {
+			if !strings.Contains(s, want) {
+				t.Errorf("the rendering for branch %q lacks %q", tc.branch, want)
+			}
+		}
+		if strings.Contains(s, "git.r.ref."+tc.other+`"`) || strings.Contains(s, `base: "`+tc.other+`"`) {
+			t.Errorf("the rendering for branch %q follows %s", tc.branch, tc.other)
 		}
 	}
 }

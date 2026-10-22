@@ -281,6 +281,11 @@ func (s *RepoCharterConfig) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) 
 	// Field: GitHub
 	irMap["github"] = ir.FromString(string(s.GitHub))
 
+	// Field: Branch
+	if s.Branch != "" {
+		irMap["branch"] = ir.FromString(string(s.Branch))
+	}
+
 	// Field: At
 	irMap["at"] = ir.FromString(string(s.At))
 
@@ -343,6 +348,12 @@ func (s *RepoCharterConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption)
 				return fmt.Errorf("field %q: expected string, got %v", "github", fieldNodeUnwrapped.Type)
 			}
 			s.GitHub = string(fieldNodeUnwrapped.String)
+		case "branch":
+			// Field: Branch
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "branch", fieldNodeUnwrapped.Type)
+			}
+			s.Branch = string(fieldNodeUnwrapped.String)
 		case "at":
 			// Field: At
 			if fieldNodeUnwrapped.Type != ir.StringType {
