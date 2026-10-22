@@ -1704,6 +1704,55 @@ func TestALateSayIsTheNextTurn(t *testing.T) {
 	}
 }
 
+// A CONVERSATION WITH CLAUDE: when its turn ends the person is handed the turn, their words are
+// Claude's next turn, and the run ends when they end it.
+func TestClaudeHoldsAConversation(t *testing.T) {
+	reg := task.NewRegistry()
+	creds, _ := fakeCreds(t, "trusted")
+	tk, err := Task(runner.Launch{ID: "run-claude-30", Prompt: "look around", Agent: &runner.Agent{Name: Agent}, Environment: workEnv,
+		Autonomy: allowAll, Converse: true}, reg, creds, fakeEnv(), t.TempDir(), nil, systemstest.Open(workEnv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tk.SetConverse(reg)
+	done := make(chan task.Outcome, 1)
+	go func() {
+		oc, _ := tk.Run(context.Background())
+		done <- oc
+	}()
+
+	turn := pendingOn(t, reg)
+	if turn.Question.Gate != "turn" || tk.Result() != "two files" {
+		t.Fatalf("after the first turn: %+v, result %q", turn.Question, tk.Result())
+	}
+	reg.Answer(turn.Question.ID, task.Resolution{Choice: task.Reply, By: "user:ana", Steer: []string{"and the tests?"}})
+	deadline := time.Now().Add(10 * time.Second)
+	var second task.Pending
+	for time.Now().Before(deadline) && second.Question.ID == "" {
+		for _, p := range reg.Pending() {
+			if p.Question.Gate == "turn" && p.Question.ID != turn.Question.ID {
+				second = p
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if second.Question.ID == "" {
+		t.Fatal("the person was not handed the turn again")
+	}
+	if got := tk.Result(); got != "again: and the tests?" {
+		t.Errorf("result %q, want Claude's answer to the person's words", got)
+	}
+	reg.Answer(second.Question.ID, task.Resolution{Choice: task.End, By: "user:ana"})
+	select {
+	case oc := <-done:
+		if oc.Reason != string(task.Done) {
+			t.Fatalf("the run ended %s", oc.Reason)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("the run did not end when the person ended it")
+	}
+}
+
 // CLAUDE IS NOT OFFERED A QUESTION THE ENVIRONMENT DOES NOT GIVE: an environment with no
 // `question` leaves Claude without its question tool, as it leaves the verse agent without
 // `question-ask`.

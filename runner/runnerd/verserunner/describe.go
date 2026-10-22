@@ -13,9 +13,10 @@ import (
 // AgentName is the agent the verse runner offers.
 const AgentName = "verse"
 
-// Describe is what the verse runner offers under c and s: verse's own agent, which holds a
-// conversation, when it has a model to reach; Codex and Claude, each when the configuration says
-// how to run it; and scripts always. The first is the runner's default agent (defaultAgent).
+// Describe is what the verse runner offers under c and s: verse's own agent when it has a model
+// to reach; Codex and Claude, each when the configuration says how to run it; and scripts always.
+// The first is the runner's default agent (defaultAgent). Every agent holds a conversation: each
+// driver takes words between turns as its next turn (task.Conversation); a script has no turn.
 //
 // Each offer holds the systems it intercepts (Config.intercepted), each under its ceiling, and
 // the network, with what the sandbox builds of it (networks) beside the operator's ceiling. An
@@ -23,9 +24,9 @@ const AgentName = "verse"
 func (c Config) Describe(s Secrets, networks []string) runner.Description {
 	d := runner.Description{Version: runner.DescriptionVersion}
 	for _, name := range c.agents(s) {
-		o := runner.Offer{Agent: &runner.AgentOffer{Name: name, Settings: c.settings(name)}, Systems: c.intercepted(name)}
+		o := runner.Offer{Agent: &runner.AgentOffer{Name: name, Settings: c.settings(name)}, Systems: c.intercepted(name), Converse: true}
 		if name == AgentName {
-			o.Agent.Annotations, o.Converse = c.Annotations, true
+			o.Agent.Annotations = c.Annotations
 		}
 		o.Requires = requires[name]
 		d.Offers = append(d.Offers, o)

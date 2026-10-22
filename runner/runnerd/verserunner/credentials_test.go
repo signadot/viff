@@ -212,8 +212,9 @@ func TestOpenInsideOpensWhatARunIsStoppedOn(t *testing.T) {
 }
 
 // WHAT THE RUNNER DESCRIBES: its version; its agents, the verse agent first (the default), each
-// with the settings it takes narrowed by the operator (Config.Agents); and every offer holding the
-// network, with what the sandbox builds of it beside the operator's ceiling, as written.
+// with the settings it takes narrowed by the operator (Config.Agents) and holding a conversation;
+// and every offer holding the network, with what the sandbox builds of it beside the operator's
+// ceiling, as written.
 func TestDescribePublishesBuildsAndSettings(t *testing.T) {
 	c := Config{
 		Models: Models{Model: "claude-sonnet-5"},
@@ -245,6 +246,9 @@ func TestDescribePublishesBuildsAndSettings(t *testing.T) {
 		t.Errorf("codex's model, not narrowed: %+v", m)
 	}
 	for _, o := range d.Offers {
+		if o.Converse != (o.Agent != nil) {
+			t.Errorf("%s: converse %v, want every agent to hold a conversation and a script none", o.Name(), o.Converse)
+		}
 		net := o.Systems["network"]
 		if len(net.Builds) != 1 || strings.Join(net.Builds[0].Attributes["mode"], ",") != "none,open,allow" {
 			t.Errorf("%s: network builds %+v, want the sandbox's", o.Name(), net.Builds)

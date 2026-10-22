@@ -617,6 +617,55 @@ func TestCodexSteerReachesTheRunningTurn(t *testing.T) {
 	}
 }
 
+// A CONVERSATION WITH CODEX: when its turn ends the person is handed the turn, their words are
+// Codex's next turn, and the run ends when they end it.
+func TestCodexHoldsAConversation(t *testing.T) {
+	reg := task.NewRegistry()
+	creds, _ := fakeCreds(t, "trusted")
+	tk, err := Task(runner.Launch{ID: "run-codex-30", Prompt: "look around", Agent: &runner.Agent{Name: Agent}, Environment: workEnv,
+		Autonomy: allowAll, Converse: true}, reg, creds, fakeEnv(), t.TempDir(), nil, systemstest.Open(workEnv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tk.SetConverse(reg)
+	done := make(chan task.Outcome, 1)
+	go func() {
+		oc, _ := tk.Run(context.Background())
+		done <- oc
+	}()
+
+	turn := pendingOn(t, reg)
+	if turn.Question.Gate != "turn" || tk.Result() != "two files" {
+		t.Fatalf("after the first turn: %+v, result %q", turn.Question, tk.Result())
+	}
+	reg.Answer(turn.Question.ID, task.Resolution{Choice: task.Reply, By: "user:ana", Steer: []string{"and the tests?"}})
+	deadline := time.Now().Add(10 * time.Second)
+	var second task.Pending
+	for time.Now().Before(deadline) && second.Question.ID == "" {
+		for _, p := range reg.Pending() {
+			if p.Question.Gate == "turn" && p.Question.ID != turn.Question.ID {
+				second = p
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if second.Question.ID == "" {
+		t.Fatal("the person was not handed the turn again")
+	}
+	if got := tk.Result(); got != "again: and the tests?" {
+		t.Errorf("result %q, want Codex's answer to the person's words", got)
+	}
+	reg.Answer(second.Question.ID, task.Resolution{Choice: task.End, By: "user:ana"})
+	select {
+	case oc := <-done:
+		if oc.Reason != string(task.Done) {
+			t.Fatalf("the run ended %s", oc.Reason)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("the run did not end when the person ended it")
+	}
+}
+
 // CANCEL INTERRUPTS THE TURN: a command codex is still running when the run is cancelled is not
 // left running.
 func TestCodexCancelInterruptsTheTurn(t *testing.T) {

@@ -401,8 +401,10 @@ quiet, you get the turn: the same kind of record, `gate: turn`, with the options
 - From anywhere else, answer with `verse question <id> --answer reply --say "…"` or
   `--answer end`. A `task say` while the turn waits is your reply.
 
-The model is told this, so it says its piece and stops, rather than calling `question-ask`.
-`yield` with reason `done` is the model ending the conversation. The last message is the result.
+Every agent holds a conversation: verse's own, Claude and Codex. The verse agent is told it is
+in one, so it says its piece and stops, rather than calling `question-ask`, and `yield` with
+reason `done` is the model ending the conversation. Claude and Codex go quiet at the end of each
+turn, and your reply is their next. The last message is the result.
 If the run has a finisher, it runs once, after the end.
 
 ```
