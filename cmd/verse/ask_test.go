@@ -265,7 +265,7 @@ func TestTheQuestionListingIsWhatWaitsOnYou(t *testing.T) {
 // wait on you when the verse says it does.
 func TestTheQuestionWatchAsksTheVerseWhatItCannotRead(t *testing.T) {
 	var asked string
-	w := newAskWatch(daniel, false, true)
+	w := newAskWatch(apiClient(), daniel, false, true)
 	w.askVerse = func(id string) bool { asked = id; return true }
 	var said []string
 	w.frame(askFrame{at: "verse.ask.q1", rev: "5", to: entity.Obj{
@@ -534,7 +534,7 @@ func TestTheWatchFollowsAgainWhenItsStreamEnds(t *testing.T) {
 
 // A GAP IS SAID, with the revision to replay it from: the last the watch met.
 func TestTheWatchSaysAGap(t *testing.T) {
-	w := newAskWatch(daniel, true, false)
+	w := newAskWatch(apiClient(), daniel, true, false)
 	var said []string
 	say := func(rev, line string) { said = append(said, "@"+rev+" "+line) }
 	w.frame(askFrame{at: "verse.ask.a1", op: "set", rev: "5", to: entity.Obj{"asker": davido}.Payload()}, say)

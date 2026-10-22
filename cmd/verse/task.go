@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -146,6 +147,62 @@ func givesASystem(env systems.Environment) bool {
 	return false
 }
 
+// readSpawn is the spawn data holds, read strictly and checked as a spawn by hand is, so a key the
+// spawn does not have is a message to whoever wrote it; the server reads it again, as strictly.
+// src is where it was read from.
+func readSpawn(data []byte, f codec.Format, src string) (launch.Spec, error) {
+	var spec launch.Spec
+	if err := codec.UnmarshalStrict(data, &spec, f); err != nil {
+		return spec, fmt.Errorf("task run: %s is not a spawn: %w", src, err)
+	}
+	if err := spec.CheckByHand(); err != nil {
+		return spec, fmt.Errorf("task run: %s: %w", src, err)
+	}
+	return spec, nil
+}
+
+// noSystem is what a run of spec is told before it starts when it is a prompt whose environment
+// gives no system: an agent with no tool, which can read and answer, and every step it tries is
+// refused. Said in what to add; empty when the environment gives one.
+func noSystem(spec launch.Spec) string {
+	if spec.Prompt == "" || givesASystem(spec.Environment) {
+		return ""
+	}
+	return "task run: the spawn's environment gives no system, so the agent gets no tool and every " +
+		"step is refused; name what it works with under environment.systems (`files: {write: {}}`, " +
+		"`commands: {run: {}}`, `git: [{repo: …, fetch: {}}]`, …)"
+}
+
+// spawnVia starts sp, and answers the task's id.
+func spawnVia(c *client.Client, sp api.Spawn) (string, error) {
+	resp, err := c.Post("/tasks", nil, sp)
+	if err != nil {
+		return "", fmt.Errorf("task run: %w", err)
+	}
+	// The server's reason, not a guess at it. A refused spawn — a resolver that is not
+	// installed, an id that would break the surfaces an id crosses — says exactly what is
+	// wrong, and "no id returned" threw that away and sent the reader looking at the wrong
+	// thing.
+	if resp.StatusCode != http.StatusOK {
+		msg, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		why := strings.TrimSpace(string(msg))
+		// The refusal a first run most likely meets: a spawn means only what it says, and one
+		// that names no network has none, which a runner building only open refuses.
+		if _, named := sp.Spawn.Environment.Systems["network"]; !named && strings.Contains(why, "environment.systems.network") {
+			why += "\n(a spawn that names no network has none; to give it the host's, write " +
+				"`environment: {systems: {network: {mode: open}}}`)"
+		}
+		return "", fmt.Errorf("task run: %s: %s", resp.Status, why)
+	}
+	var out api.Spawned
+	decodeClose(resp, &out)
+	if out.ID == "" {
+		return "", fmt.Errorf("task run: no id returned")
+	}
+	return out.ID, nil
+}
+
 func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 	args, err := cfg.Parse(cc, args)
 	if err != nil {
@@ -160,60 +217,30 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 	case len(args) > 0:
 		return fmt.Errorf("%w: task run takes one spawn file, and got %q", cli.ErrUsage, strings.Join(args, " "))
 	}
-	// Read here, strictly, so a key the spawn does not have is a message on the terminal of
-	// whoever wrote it; the server reads it again, as strictly.
 	data, srcFmt, err := codec.ReadSource(cc.In, src, inFmt())
 	if err != nil {
 		return fmt.Errorf("task run: %w", err)
 	}
-	var spec launch.Spec
-	if err := codec.UnmarshalStrict(data, &spec, srcFmt); err != nil {
-		return fmt.Errorf("task run: %s is not a spawn: %w", src, err)
+	spec, err := readSpawn(data, srcFmt, src)
+	if err != nil {
+		return err
 	}
-	if err := spec.CheckByHand(); err != nil {
-		return fmt.Errorf("task run: %s: %w", src, err)
-	}
-	// A prompt whose environment gives no system is an agent with no tool: it can read and
-	// answer, and every step it tries is refused. Said once, before the run, in what to add.
-	if spec.Prompt != "" && !givesASystem(spec.Environment) {
-		fmt.Fprintln(cc.Err, "task run: the spawn's environment gives no system, so the agent gets no tool and every "+
-			"step is refused; name what it works with under environment.systems (`files: {write: {}}`, "+
-			"`commands: {run: {}}`, `git: [{repo: …, fetch: {}}]`, …)")
+	if note := noSystem(spec); note != "" {
+		fmt.Fprintln(cc.Err, note)
 	}
 	by, err := principal(cfg.As)
 	if err != nil {
 		return err
 	}
-	resp, err := httpPost("/tasks", api.Spawn{
+	id, err := spawnVia(apiClient(), api.Spawn{
 		Spawn: spec, Name: cfg.Name, Principal: by,
 		// A conversation is an agent's: a script has no turn to hand anybody.
 		Converse: cfg.Attach && cfg.Converse && spec.Script == "",
 	})
 	if err != nil {
-		return fmt.Errorf("task run: %w", err)
+		return err
 	}
-	// The server's reason, not a guess at it. A refused spawn — a resolver that is not
-	// installed, an id that would break the surfaces an id crosses — says exactly what is
-	// wrong, and "no id returned" threw that away and sent the reader looking at the wrong
-	// thing.
-	if resp.StatusCode != http.StatusOK {
-		msg, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		why := strings.TrimSpace(string(msg))
-		// The refusal a first run most likely meets: a spawn means only what it says, and one
-		// that names no network has none, which a runner building only open refuses.
-		if _, named := spec.Environment.Systems["network"]; !named && strings.Contains(why, "environment.systems.network") {
-			why += "\n(a spawn that names no network has none; to give it the host's, write " +
-				"`environment: {systems: {network: {mode: open}}}`)"
-		}
-		return fmt.Errorf("task run: %s: %s", resp.Status, why)
-	}
-	var sp api.Spawned
-	decodeClose(resp, &sp)
-	if sp.ID == "" {
-		return fmt.Errorf("task run: no id returned")
-	}
-	fmt.Fprintln(cc.Out, sp.ID)
+	fmt.Fprintln(cc.Out, id)
 	if cfg.Attach {
 		// Spawn + watch in one command: the transcript streams live, so you SEE the agent
 		// hit a gate. It blocks there until you resolve it (another terminal) — then the
@@ -222,7 +249,7 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 		// running before this request reached it, so its first frames were already gone — a
 		// run that answered in one turn printed from cursor 2. This command spawned it, so
 		// everything it has said is what was asked for.
-		if err := streamEvents(cc, sp.ID, by, "0"); err != nil {
+		if err := streamEvents(cc, id, by, "0"); err != nil {
 			return err
 		}
 	}
@@ -233,15 +260,18 @@ func (cfg *taskRunConfig) run(cc *cli.Context, args []string) error {
 	if !cfg.Wait {
 		return nil
 	}
-	return waitForResult(cc, sp.ID)
+	return waitForResult(cc, id)
 }
 
 // taskSnapshot reads a task's snapshot into v, for a command that goes on to act on what it
 // says. An answer that is not a snapshot — the task is not in the asker's view, the store did
 // not answer — is the server's own words as an error (client.Error), so no command describes a
 // task it did not read.
-func taskSnapshot(id string, v any) error {
-	r, err := httpGet("/tasks/"+id, nil)
+func taskSnapshot(id string, v any) error { return taskSnapshotVia(apiClient(), id, v) }
+
+// taskSnapshotVia is taskSnapshot through c.
+func taskSnapshotVia(c *client.Client, id string, v any) error {
+	r, err := c.Get("/tasks/"+id, nil)
 	if err != nil {
 		return err
 	}
@@ -446,7 +476,7 @@ func streamEvents(cc *cli.Context, id, as, since string) error {
 	// Frames and typed lines both arrive on channels, so a prompt never stops the stream: a
 	// question answered elsewhere while its prompt is up closes the prompt here, and a task
 	// that ends while somebody is deciding is seen to end.
-	frames := scanFrames(resp.Body)
+	frames, short := scanFrames(resp.Body)
 	lines := readLines(cc.In)
 	// Lines typed while no prompt is up are for the task's NEXT question. A line cannot answer
 	// a question it was typed before — on a yes-or-no gate it would deny an action the person
@@ -482,6 +512,9 @@ func streamEvents(cc *cli.Context, id, as, since string) error {
 
 		case data, ok := <-frames:
 			if !ok {
+				if err := short(); err != nil {
+					return fmt.Errorf("task attach %s: %w", id, err)
+				}
 				return nil
 			}
 			// Wire, always: a transcript is a running commentary, and the loop below reads
@@ -533,20 +566,29 @@ func streamEvents(cc *cli.Context, id, as, since string) error {
 	}
 }
 
-// scanFrames hands the stream's frames over a channel, closed when the stream ends.
-func scanFrames(body io.Reader) <-chan string {
+// frameMax is the longest frame scanFrames reads.
+const frameMax = 1 << 20
+
+// scanFrames hands the stream's frames over a channel, closed when the stream ends, and, once it
+// is closed, what stopped it short: a frame longer than frameMax, which every read from before it
+// would stop at again. A stream that ends or breaks stops nothing short: the cursor goes on.
+func scanFrames(body io.Reader) (<-chan string, func() error) {
 	ch := make(chan string, 16)
+	var short error
 	go func() {
 		defer close(ch)
 		sc := bufio.NewScanner(body)
-		sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
+		sc.Buffer(make([]byte, 0, 64*1024), frameMax)
 		for sc.Scan() {
 			if data, ok := strings.CutPrefix(sc.Text(), "data: "); ok {
 				ch <- data
 			}
 		}
+		if errors.Is(sc.Err(), bufio.ErrTooLong) {
+			short = fmt.Errorf("a frame of the transcript is longer than the %d bytes this reads", frameMax)
+		}
 	}()
-	return ch
+	return ch, func() error { return short }
 }
 
 // readLines hands what is typed over a channel, line by line, closed at EOF. A nil reader is
@@ -704,8 +746,11 @@ func answerPrompt(cc *cli.Context, pr *prompt, choice string, say []string, as s
 // it ended without a reason — because the caller does the same thing in all three: report
 // the transport error it already has. Only a terminal status WITH a reason displaces that,
 // since only then is there something better to say.
-func recordedFailure(id string) string {
-	resp, err := httpGet("/tasks/"+id, nil)
+func recordedFailure(id string) string { return recordedFailureVia(apiClient(), id) }
+
+// recordedFailureVia is recordedFailure through c.
+func recordedFailureVia(c *client.Client, id string) string {
+	resp, err := c.Get("/tasks/"+id, nil)
 	if err != nil {
 		return ""
 	}
@@ -855,23 +900,41 @@ func (cfg *taskAutonomyConfig) run(cc *cli.Context, args []string) error {
 	default:
 		return fmt.Errorf("%w: task autonomy wants the whole autonomy: its rows, or --file", cli.ErrUsage)
 	}
-	if err := body.Autonomy.Check(); err != nil {
-		return fmt.Errorf("%w: task autonomy: autonomy%v", cli.ErrUsage, err)
+	if err := checkAutonomy(body.Autonomy); err != nil {
+		return err
 	}
 	if body.By, err = principal(cfg.As); err != nil {
 		return err
 	}
-	resp, err := httpPut("/tasks/"+id+"/autonomy", body)
+	said, err := setAutonomyVia(apiClient(), id, body)
 	if err != nil {
-		return fmt.Errorf("task autonomy: %w", err)
+		return err
+	}
+	fmt.Fprintln(cc.Out, said)
+	return nil
+}
+
+// checkAutonomy refuses an autonomy `task autonomy` refuses, before who sends it is asked.
+func checkAutonomy(a task.Autonomy) error {
+	if err := a.Check(); err != nil {
+		return fmt.Errorf("%w: task autonomy: autonomy%v", cli.ErrUsage, err)
+	}
+	return nil
+}
+
+// setAutonomyVia replaces the autonomy of the running task id with a checked one, and says what it
+// now is.
+func setAutonomyVia(c *client.Client, id string, body api.SetAutonomy) (string, error) {
+	resp, err := c.Put("/tasks/"+id+"/autonomy", body)
+	if err != nil {
+		return "", fmt.Errorf("task autonomy: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		msg, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("task autonomy: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
+		return "", fmt.Errorf("task autonomy: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
 	}
-	fmt.Fprintln(cc.Out, "task autonomy", id, body.Autonomy.Summary())
-	return nil
+	return fmt.Sprintf("task autonomy %s %s", id, body.Autonomy.Summary()), nil
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────

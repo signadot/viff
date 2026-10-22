@@ -40,8 +40,10 @@ tmp=$(mktemp -d)
 BIN="$tmp/verse"
 SRV=""
 CONN=""
+MCP=""
 cleanup() {
 	[ -n "$CONN" ] && kill -INT "$CONN" 2>/dev/null || true
+	[ -n "$MCP" ] && kill "$MCP" 2>/dev/null || true
 	[ -n "$SRV" ] && kill "$SRV" 2>/dev/null || true # SIGTERM → up reaps logd+docd (own pgroup)
 	wait 2>/dev/null || true
 	rm -rf "$tmp"
@@ -641,6 +643,53 @@ done
 ok "slide observable on the entity (autonomy/autonomyBy projected)"
 VERSE_USER=user:smoke v task cancel "$ID" >/dev/null 2>&1 || true # stop the sleep (frees the runtime promptly)
 ok "task cancel (kills the running command)"
+
+# ── mcp: a host drives `verse mcp` on stdio ──────────────────────────────────
+# What a host does: initialize, list the tools, call one. One JSON-RPC message per line, as the
+# stdio transport frames them; stdin stays open until the call is answered, since the server
+# ends at its end.
+step "mcp (a host on stdio)"
+v data smokemcp x 1 --put '{k: v}' >/dev/null || die "data --put for the mcp step failed"
+mkfifo "$tmp/mcp.in"
+"$BIN" --addr "$ADDR" mcp <"$tmp/mcp.in" >"$tmp/mcp.out" 2>"$tmp/mcp.err" &
+MCP=$!
+exec 3>"$tmp/mcp.in"
+printf '%s\n' \
+	'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}' \
+	'{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+	'{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+	'{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"verse_data","arguments":{"at":"smokemcp.x.1"}}}' \
+	'{"jsonrpc":"2.0","id":4,"method":"prompts/list"}' >&3
+answered=
+for _ in $(seq 1 50); do
+	if grep -q '"id":3' "$tmp/mcp.out" && grep -q '"id":4' "$tmp/mcp.out"; then
+		answered=1
+		break
+	fi
+	kill -0 "$MCP" 2>/dev/null || break
+	sleep 0.2
+done
+exec 3>&-
+wait "$MCP" 2>/dev/null || true
+MCP=""
+[ -n "$answered" ] || { cat "$tmp/mcp.err" "$tmp/mcp.out" >&2; die "verse mcp never answered the call"; }
+grep '"id":1' "$tmp/mcp.out" | grep -q '"name":"verse"' || die "initialize did not name the server: $(cat "$tmp/mcp.out")"
+tools=$(grep '"id":2' "$tmp/mcp.out")
+for tool in verse_data verse_data_put verse_data_rm verse_question verse_ask verse_wait verse_task verse_task_events verse_flow_cancel \
+	verse_charter verse_charter_check verse_charter_install verse_charter_remove verse_status verse_schema \
+	verse_flow verse_flow_show; do
+	has "$tools" "\"name\":\"$tool\"" || die "tools/list does not name $tool"
+done
+ok "initialize, and tools/list names the tools"
+call=$(grep '"id":3' "$tmp/mcp.out")
+has "$call" '"isError":true' && die "verse_data was an error: $call"
+haskv "$call" k v || die "verse_data did not answer smokemcp.x.1: $call"
+ok "tools/call verse_data answers smokemcp.x.1"
+prompts=$(grep '"id":4' "$tmp/mcp.out")
+for prompt in explain-charter why-not; do
+	has "$prompts" "\"name\":\"$prompt\"" || die "prompts/list does not name $prompt: $prompts"
+done
+ok "prompts/list names explain-charter and why-not"
 
 # ── scopes: a scoped write is the scope, and a scope owns only what it creates ───────
 step "scopes"

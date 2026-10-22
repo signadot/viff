@@ -10,6 +10,7 @@ import (
 	"github.com/scott-cotton/cli"
 
 	"github.com/signadot/verse/api"
+	"github.com/signadot/verse/client"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 )
@@ -131,32 +132,41 @@ func rowArgs(row api.FlowRow, scope string) string {
 // narrowed refuses a verb whose selection does not say what it acts on, with the verb's usage —
 // before anything is sent, so a verb typed to see its usage changes nothing.
 func (sel *flowFlags) narrowed(verb string) error {
-	usage := func(want string) error {
+	if sel.Args {
+		return fmt.Errorf("%w: verse flow %s: --args prints the listing's rows; a verb takes the "+
+			"flags one row printed", cli.ErrUsage, verb)
+	}
+	if want := sel.unnarrowed(verb, func(name string) string { return "--" + name }); want != "" {
 		return fmt.Errorf("%w: verse flow %s: %s", cli.ErrUsage, verb, want)
 	}
-	if sel.Args {
-		return usage("--args prints the listing's rows; a verb takes the flags one row printed")
-	}
+	return nil
+}
+
+// unnarrowed is what a verb's selection lacks to say what it acts on, or "" when it says: the
+// command's usage and the tool's refusal, with name spelling a selection's part as each reader
+// gives it.
+func (sel *flowFlags) unnarrowed(verb string, name func(string) string) string {
+	task, charter, subject := name("task"), name("charter"), name("subject")
 	if sel.Task != "" && (sel.Charter != "" || sel.Subject != "" || sel.Recursive) {
-		return usage("--task names one run, and combines with neither --charter nor --subject")
+		return fmt.Sprintf("%s names one run, and combines with neither %s nor %s", task, charter, subject)
 	}
 	switch verb {
 	case "suspend", "resume":
 		if sel.Task == "" && sel.Charter == "" && sel.Subject == "" {
-			return usage("--task <id>, or --charter <address>[:<rule>], --subject <address> or both; " +
-				"the one left out is '*'")
+			return fmt.Sprintf("%s <id>, or %s <address>[:<rule>], %s <address> or both; "+
+				"the one left out is '*'", task, charter, subject)
 		}
 	case "say":
 		if sel.Task == "" && sel.Charter == "" && sel.Subject == "" {
-			return usage("--task, --charter or --subject: what to say it to")
+			return fmt.Sprintf("%s, %s or %s: what to say it to", task, charter, subject)
 		}
 	case "cancel":
 		if sel.Task == "" {
-			return usage("--task <id>: cancel names one run; suspend a charter or a subject, then " +
-				"cancel its runs one by one")
+			return fmt.Sprintf("%s <id>: cancel names one run; suspend a charter or a subject, then "+
+				"cancel its runs one by one", task)
 		}
 	}
-	return nil
+	return ""
 }
 
 type flowSuspendConfig struct {
@@ -288,11 +298,20 @@ func noVerbArgs(cmd *cli.Command, cc *cli.Context, args []string, verb string) e
 
 // postFlow sends a verb and prints what it answers.
 func postFlow(cc *cli.Context, verb string, body api.FlowSelect) error {
-	resp, err := httpPost("/flow/"+verb, body)
+	resp, err := postFlowVia(apiClient(), verb, body)
 	if err != nil {
-		return fmt.Errorf("flow %s: %w", verb, err)
+		return err
 	}
 	return printBody(cc, resp)
+}
+
+// postFlowVia sends a verb through c, answering the response for the caller to render.
+func postFlowVia(c *client.Client, verb string, body api.FlowSelect) (*http.Response, error) {
+	resp, err := c.Post("/flow/"+verb, nil, body)
+	if err != nil {
+		return nil, fmt.Errorf("flow %s: %w", verb, err)
+	}
+	return resp, nil
 }
 
 type flowShowConfig struct {

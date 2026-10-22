@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"github.com/scott-cotton/cli"
 	"github.com/signadot/tony-format/go-tony/ir"
 
+	"github.com/signadot/verse/client"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 )
@@ -29,6 +31,7 @@ import (
 //	verse c -a demo pr -f <file>            install a charter there (or baseline, with no path)
 //	verse c -a -d <dir>                     install every charter file in a directory, as one step
 //	verse c -a demo -d <dir> --prune        …and remove what it leaves out at and under demo
+//	verse c --check demo -d <dir>           whether that install would go, and what it would change
 //	verse c -r verse-dev drift              take that package down whole
 //	verse c -r verse-dev drift rules watcher   …or one rule out of it
 //	verse c -R verse-dev                    …or a place and everything under it
@@ -76,6 +79,11 @@ type charterFlags struct {
 	// Prune makes `-a -d` a sync: what stands at and under the path afterwards is what the
 	// directory holds. It is `-R <path>` then `-a -d`, as one step (versed/charterprune.go).
 	Prune bool `cli:"name=prune desc='with --add --dir, remove what the directory leaves out at and under the path'"`
+	// Check asks whether the charters of -d or -f would install at the path as `-a -d --prune`
+	// installs them, and what would change, installing nothing (versed/chartercheck.go). -f is a
+	// directory holding that one file, the prune included. A refusal is its answer, as an
+	// install's verdict, not an error.
+	Check bool `cli:"name=check desc='with -d, or -f as a directory of that one file: whether the charters would install at the path as -a -d --prune would, and what would change; installs nothing'"`
 	// Paths prints one path per line instead of the document, as `verse data --paths` does and
 	// for the same reason: a document cannot be piped back into the command that answered it.
 	Paths bool `cli:"name=paths desc='print one path per rule and level instead of the document, as steps'"`
@@ -131,6 +139,27 @@ func charterCmd() *cli.Command {
 			case trig.Prune && (!trig.Add || trig.Dir == ""):
 				return fmt.Errorf("%w: --prune syncs an address to a directory: "+
 					"`verse c -a <address> -d <dir> --prune`", cli.ErrUsage)
+			case trig.Check && (trig.Add || trig.Rm || trig.RmR):
+				return fmt.Errorf("%w: --check asks what an install would do, and does nothing; "+
+					"it goes with no --add or --rm", cli.ErrUsage)
+			case trig.Check:
+				at, err := charterPath(steps)
+				if err != nil {
+					return err
+				}
+				if at == "" {
+					return fmt.Errorf("%w: a check names the address the charters would be installed "+
+						"at, as `-a <address> -d <dir> --prune` does", cli.ErrUsage)
+				}
+				docs, err := charterSource(cc, trig.File, trig.Dir)
+				if err != nil {
+					return fmt.Errorf("charter --check: %w", err)
+				}
+				resp, err := charterCheckVia(apiClient(), at, docs)
+				if err != nil {
+					return err
+				}
+				return printBody(cc, resp)
 			case trig.Add:
 				at, err := charterPath(steps)
 				if err != nil {
@@ -161,32 +190,14 @@ func charterCmd() *cli.Command {
 // key of the address above it. `verse c verse-dev -- rules` is the key; `verse c verse-dev rules`
 // is the package. It rides as `?at=`, which is what that query has always meant.
 func printCharter(cc *cli.Context, steps []string) error {
-	q := url.Values{}
-	at, reach, split := cutAt(steps, "--")
-	full, err := charterPath(steps) // everything typed, which is what --paths prefixes its lines with
+	names, at, err := charterNames(steps)
 	if err != nil {
 		return err
 	}
-	if split {
-		atPath, err := charterPath(at)
-		if err != nil {
-			return err
-		}
-		q.Set("at", atPath)
-		steps = reach
-		if full, err = charterPath(append(append([]string{}, at...), reach...)); err != nil {
-			return err
-		}
-	}
-	if len(steps) > 0 {
-		path, err := charterPath(steps)
-		if err != nil {
-			return err
-		}
-		q.Set("path", path)
-	}
-	if trig.Depth >= 0 {
-		q.Set("depth", fmt.Sprint(trig.Depth))
+	q, full := charterQuery(names, at, trig.Depth)
+	out, err := outFmt()
+	if err != nil {
+		return err
 	}
 	resp, err := httpGet("/charter", q)
 	if err != nil {
@@ -194,27 +205,11 @@ func printCharter(cc *cli.Context, steps []string) error {
 	}
 	// Either flag asks for the listing; --kpaths only says which spelling.
 	if (trig.Paths || trig.KPaths) && resp.StatusCode < http.StatusBadRequest {
-		return printCharterPaths(cc, resp, full)
+		return renderCharterPaths(cc.Out, resp, full, trig.KPaths)
 	}
-	if resp.StatusCode == http.StatusNotFound {
-		// The SERVER's words: it knows which half of the path failed and where else a name it
-		// was given actually lives, and repeating a guess over the top of that would be this
-		// end pretending to know the tree.
-		defer resp.Body.Close()
-		msg, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("charter: %s", strings.TrimSpace(string(msg)))
-	}
-	defer resp.Body.Close()
-	body, err := okBody(resp)
+	node, err := charterNode(resp, out)
 	if err != nil {
-		return fmt.Errorf("charter: %w", err)
-	}
-	node, err := codec.ParseNode(body, respFmt(resp))
-	if err != nil {
-		return fmt.Errorf("charter: decoding the response: %w", err)
-	}
-	if out, err := outFmt(); err == nil && out != respFmt(resp) {
-		node = codec.StripLayout(node) // see printBody
+		return err
 	}
 	// A NODE OF THE TREE prints as the charter file it is (charterfile.go); a reach into one —
 	// a rule, the list of them — prints as it stands, which is already what installs it.
@@ -224,7 +219,77 @@ func printCharter(cc *cli.Context, steps []string) error {
 	case trig.Dir != "":
 		return writeCharterDir(cc, node, full, trig.Dir)
 	}
-	return printCharterFile(cc, node, full)
+	f, err := readFilters()
+	if err != nil {
+		return err
+	}
+	return renderCharterFile(cc.Out, cc.Err, node, full, f, out, colorize(cc.Out), asSteps)
+}
+
+// charterQuery is the read of the charter tree at a path of names, depth levels deep (-1 for
+// all), and the path whole, which a listing prefixes its lines with. at is how many of the names
+// are the address, or -1 to leave that split to the server.
+func charterQuery(names []string, at, depth int) (url.Values, string) {
+	q := url.Values{}
+	addr, reach := splitAt(names, at)
+	if at >= 0 {
+		q.Set("at", entity.JoinSegs(addr))
+	}
+	if len(reach) > 0 {
+		q.Set("path", entity.JoinSegs(reach))
+	}
+	if depth >= 0 {
+		q.Set("depth", fmt.Sprint(depth))
+	}
+	return q, entity.JoinSegs(names)
+}
+
+// splitAt is a path of names as the address and what reaches into it: the first at names, or with
+// at -1 none, the split being the server's.
+func splitAt(names []string, at int) (addr, reach []string) {
+	if at < 0 {
+		return nil, names
+	}
+	return names[:at], names[at:]
+}
+
+// charterNames is the steps typed as names, and how many of them are the address: those before a
+// `--`, or -1 when no `--` says.
+func charterNames(steps []string) ([]string, int, error) {
+	addr, reach, split := cutAt(steps, "--")
+	names, err := entity.StepNames(append(append([]string{}, addr...), reach...))
+	if err != nil {
+		return nil, 0, fmt.Errorf("%w: charter: %s", cli.ErrUsage, err)
+	}
+	if !split {
+		return names, -1, nil
+	}
+	return names, len(addr), nil
+}
+
+// charterNode reads a charter answer: the node, ready to render in out, or the server's refusal.
+func charterNode(resp *http.Response, out codec.Format) (*ir.Node, error) {
+	if resp.StatusCode == http.StatusNotFound {
+		// The SERVER's words: it knows which half of the path failed and where else a name it
+		// was given actually lives, and repeating a guess over the top of that would be this
+		// end pretending to know the tree.
+		defer resp.Body.Close()
+		msg, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("charter: %s", strings.TrimSpace(string(msg)))
+	}
+	defer resp.Body.Close()
+	body, err := okBody(resp)
+	if err != nil {
+		return nil, fmt.Errorf("charter: %w", err)
+	}
+	node, err := codec.ParseNode(body, respFmt(resp))
+	if err != nil {
+		return nil, fmt.Errorf("charter: decoding the response: %w", err)
+	}
+	if out != respFmt(resp) {
+		node = codec.StripLayout(node) // see printBody
+	}
+	return node, nil
 }
 
 // charterPath is a charter path's steps as the one token the server reads back with
@@ -244,7 +309,7 @@ func charterPath(steps []string) (string, error) {
 	return entity.JoinSegs(names), nil
 }
 
-// printCharterPaths prints what is installed, ONE PATH PER LINE, each of them a path this same
+// renderCharterPaths writes what is installed, ONE PATH PER LINE, each of them a path this same
 // command takes back:
 //
 //	rules base-rule                       baseline's, which has no address
@@ -271,7 +336,7 @@ func stepsOf(at string) string {
 	return entity.JoinSteps(segs)
 }
 
-func printCharterPaths(cc *cli.Context, resp *http.Response, at string) error {
+func renderCharterPaths(w io.Writer, resp *http.Response, at string, kpaths bool) error {
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -297,18 +362,18 @@ func printCharterPaths(cc *cli.Context, resp *http.Response, at string) error {
 	if n := codec.Unwrap(node); n != nil && n.Type == ir.ArrayType {
 		for _, el := range n.Values {
 			if name := nodeStr(el, "name"); name != "" {
-				fmt.Fprintln(cc.Out, renderAddr(entity.RefAt(append(append([]string{}, prefix...), name)...).At(), trig.KPaths))
+				fmt.Fprintln(w, renderAddr(entity.RefAt(append(append([]string{}, prefix...), name)...).At(), kpaths))
 			}
 		}
 		return nil
 	}
-	walkCharterPaths(cc, node, prefix)
+	walkCharterPaths(w, node, prefix, kpaths)
 	return nil
 }
 
 // walkCharterPaths prints one line per rule and level under a node, and the node's own address
 // when it holds neither.
-func walkCharterPaths(cc *cli.Context, node *ir.Node, at []string) {
+func walkCharterPaths(w io.Writer, node *ir.Node, at []string, kpaths bool) {
 	n := codec.Unwrap(node)
 	if n == nil || n.Type != ir.ObjectType {
 		return
@@ -329,7 +394,7 @@ func walkCharterPaths(cc *cli.Context, node *ir.Node, at []string) {
 			}
 			for _, el := range v.Values {
 				if name := nodeStr(el, "name"); name != "" {
-					fmt.Fprintln(cc.Out, renderAddr(entity.RefAt(append(append([]string{}, at...), key.String, name)...).At(), trig.KPaths))
+					fmt.Fprintln(w, renderAddr(entity.RefAt(append(append([]string{}, at...), key.String, name)...).At(), kpaths))
 					printed = true
 				}
 			}
@@ -338,7 +403,7 @@ func walkCharterPaths(cc *cli.Context, node *ir.Node, at []string) {
 		}
 	}
 	if here && !printed && len(at) > 0 {
-		fmt.Fprintln(cc.Out, renderAddr(entity.RefAt(at...).At(), trig.KPaths))
+		fmt.Fprintln(w, renderAddr(entity.RefAt(at...).At(), kpaths))
 	}
 	if children == nil || children.Type != ir.ObjectType {
 		return
@@ -347,7 +412,7 @@ func walkCharterPaths(cc *cli.Context, node *ir.Node, at []string) {
 		if seg == nil || seg.Type != ir.StringType {
 			continue
 		}
-		walkCharterPaths(cc, children.Values[i], append(append([]string{}, at...), seg.String))
+		walkCharterPaths(w, children.Values[i], append(append([]string{}, at...), seg.String), kpaths)
 	}
 }
 
@@ -401,21 +466,34 @@ func charterAdd(cc *cli.Context, at, file string) error {
 	if at != "" {
 		q.Set("at", at)
 	}
-	resp, err := httpPostNodesTo("/charter", q, defs)
-	if err != nil {
-		return fmt.Errorf("charter -a: %w", err)
-	}
-	return installReply(cc, resp)
+	return installReply(cc, "charter -a", q, defs)
 }
 
-// installReply reports an install's answer: what went where, or the refusal in the server's words.
-func installReply(cc *cli.Context, resp *http.Response) error {
+// installReply installs defs as q says (`at`, or `prune`) and prints what went where. sending
+// names the command in a failure to send (`charter -a -d`); a refusal is `charter -a`'s whatever
+// the command, as it has always read.
+func installReply(cc *cli.Context, sending string, q url.Values, defs []*ir.Node) error {
+	c := apiClient()
+	resp, err := c.PostNodes("/charter", q, defs)
+	if err != nil {
+		return fmt.Errorf("%s: %w", sending, err)
+	}
+	if err := installAnswer(cc.Out, resp, c.Scope, asSteps); err != nil {
+		return fmt.Errorf("charter -a: %w", err)
+	}
+	return nil
+}
+
+// installAnswer writes what an install answered to w, naming addresses as sp spells them; a
+// refusal is the error, in the server's words.
+func installAnswer(w io.Writer, resp *http.Response, scope string, sp spelling) error {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("charter -a: %s: %s", resp.Status, strings.TrimSpace(string(body)))
+		return fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(body)))
 	}
-	return reportInstalled(cc, body, respFmt(resp))
+	reportInstalled(w, body, respFmt(resp), scope, sp)
+	return nil
 }
 
 // reportNotes says what installing one package had to say: the rules held, and the advisories.
@@ -423,40 +501,40 @@ func installReply(cc *cli.Context, resp *http.Response) error {
 // UNDER THE LINE THAT SAYS WHAT WAS INSTALLED, because each changes what that line means: a
 // held rule is counted out of it, and an advisory is a rule that was counted and does something
 // other than it reads. Both are the author's to act on, and this is where the author is.
-func reportNotes(cc *cli.Context, e *ir.Node) {
+func reportNotes(w io.Writer, e *ir.Node) {
 	if held := codec.Unwrap(nodeField(e, "held")); held != nil && held.Type == ir.ArrayType {
 		for _, h := range held.Values {
 			h = codec.Unwrap(h)
-			fmt.Fprintf(cc.Out, "  held: rule %s waits for stratum %s, which is not installed. "+
+			fmt.Fprintf(w, "  held: rule %s waits for stratum %s, which is not installed. "+
 				"It fires on nothing until that stratum is.\n", nodeStr(h, "rule"), nodeStr(h, "stratum"))
 		}
 	}
 	if notes := codec.Unwrap(nodeField(e, "notes")); notes != nil && notes.Type == ir.ArrayType {
 		for _, n := range notes.Values {
 			n = codec.Unwrap(n)
-			fmt.Fprintf(cc.Out, "  note: rule %s: %s\n", nodeStr(n, "rule"), nodeStr(n, "note"))
+			fmt.Fprintf(w, "  note: rule %s: %s\n", nodeStr(n, "rule"), nodeStr(n, "note"))
 		}
 	}
 }
 
 // reportPruned says what a prune took away: out of a package the directory kept, each thing by
 // name; a package it left out, whole.
-func reportPruned(cc *cli.Context, node *ir.Node) {
+func reportPruned(w io.Writer, node *ir.Node, sp spelling) {
 	list := codec.Unwrap(nodeField(node, "pruned"))
 	if list == nil || list.Type != ir.ArrayType {
 		return
 	}
 	for _, el := range list.Values {
 		e := codec.Unwrap(el)
-		where := "package " + stepsOf(nodeStr(e, "at"))
+		where := "package " + sp.of(nodeStr(e, "at"))
 		if u := codec.Unwrap(nodeField(e, "uninstalled")); u != nil && u.Type == ir.BoolType && u.Bool {
-			fmt.Fprintf(cc.Out, "%s: uninstalled, not in the directory; what it wrote is still there\n", where)
+			fmt.Fprintf(w, "%s: uninstalled, not in %s; what it wrote is still there\n", where, sp.tree())
 			continue
 		}
 		if removed := codec.Unwrap(nodeField(e, "removed")); removed != nil && removed.Type == ir.ArrayType {
 			for _, r := range removed.Values {
 				if r = codec.Unwrap(r); r != nil && r.Type == ir.StringType {
-					fmt.Fprintf(cc.Out, "%s: removed the %s, not in its file\n", where, r.String)
+					fmt.Fprintf(w, "%s: removed the %s, not in %s\n", where, r.String, sp.file())
 				}
 			}
 		}
@@ -469,22 +547,22 @@ func reportPruned(cc *cli.Context, node *ir.Node) {
 // word for the default SCOPE, so a scoped install that says only "baseline" reads as the one
 // place it did not go. A scope is the coordinate somebody carries in a flag and forgets, which
 // is exactly the one a report owes them back.
-func reportInstalled(cc *cli.Context, body []byte, format codec.Format) error {
+func reportInstalled(w io.Writer, body []byte, format codec.Format, scope string, sp spelling) {
 	node, err := codec.ParseNode(body, format)
 	if err != nil {
 		// Installed, and the report is unreadable: say the first and do not pretend the second.
-		fmt.Fprintln(cc.Out, "installed")
-		return nil
+		fmt.Fprintln(w, "installed")
+		return
 	}
 	inScope := ""
-	if g.Scope != "" {
-		inScope = " in scope " + g.Scope
+	if scope != "" {
+		inScope = " in scope " + scope
 	}
 	packaged := false
 	list := codec.Unwrap(nodeField(node, "installed"))
 	if list == nil || list.Type != ir.ArrayType {
-		fmt.Fprintln(cc.Out, "installed")
-		return nil
+		fmt.Fprintln(w, "installed")
+		return
 	}
 	for _, el := range list.Values {
 		e := codec.Unwrap(el)
@@ -497,25 +575,24 @@ func reportInstalled(cc *cli.Context, body []byte, format codec.Format) error {
 			// spelled the way `verse c <address>` takes it. The charter FILE declares it as a
 			// path, which is right there — a charter is read by a parser — and this is the line
 			// a person reads.
-			where, packaged = "package "+stepsOf(at), true
+			where, packaged = "package "+sp.of(at), true
 		}
 		where += inScope
 		if strata == 0 {
-			fmt.Fprintf(cc.Out, "%s: installed %d trigger(s)\n", where, rules)
+			fmt.Fprintf(w, "%s: installed %d trigger(s)\n", where, rules)
 		} else {
-			fmt.Fprintf(cc.Out, "%s: installed %d stratum(a) and %d trigger(s)\n", where, strata, rules)
+			fmt.Fprintf(w, "%s: installed %d stratum(a) and %d trigger(s)\n", where, strata, rules)
 		}
-		reportNotes(cc, e)
+		reportNotes(w, e)
 	}
-	reportPruned(cc, node)
+	reportPruned(w, node, sp)
 	// WHERE TO LOOK, said at the moment it is not obvious: a charter installed into packages
 	// leaves `verse c` — the next thing anybody types — answering baseline's rules, which is an
 	// empty list. The listing says so too (elsewhereInPackages); saying it here as well is what
 	// keeps somebody from having to be surprised first.
 	if packaged {
-		fmt.Fprintln(cc.Out, "`verse c` shows every charter and where each may write")
+		fmt.Fprintf(w, "%s shows every charter and where each may write\n", sp.charters())
 	}
-	return nil
 }
 
 const (
@@ -610,6 +687,7 @@ func postGroup(route string, q url.Values, defs []*ir.Node) error {
 //	verse c -r verse-dev drift                take the package down whole
 //	verse c -r verse-dev drift rules watcher  take one rule out of it
 //	verse c -r verse-dev drift strata base    …or one level
+//	verse c -r verse-dev drift schedules nightly   …or one schedule
 //	verse c -r rules watcher                  baseline's, which has no address
 //	verse c -R verse-dev                      a place, and every charter under it
 //
@@ -623,80 +701,80 @@ func postGroup(route string, q url.Values, defs []*ir.Node) error {
 func charterRm(cc *cli.Context, steps []string, recurse bool) error {
 	if len(steps) == 0 {
 		return fmt.Errorf("%w: -r wants a path — an address (`drift`, `demo pr`), or "+
-			"one with `rules <name>` or `strata <name>` after it", cli.ErrUsage)
+			"one with `rules <name>`, `strata <name>` or `schedules <name>` after it", cli.ErrUsage)
 	}
-	q := url.Values{}
-	at, reach, split := cutAt(steps, "--")
-	if split {
-		atPath, err := charterPath(at)
-		if err != nil {
-			return err
-		}
-		q.Set("at", atPath)
-		steps = reach
-	}
-	path, err := charterPath(steps)
+	names, at, err := charterNames(steps)
 	if err != nil {
 		return err
 	}
-	q.Set("path", path)
-	// The names, for what is said back: the quoted clause is gone from them, and they print as
-	// the steps a listing would.
-	names, _ := entity.StepNames(steps)
+	said, err := charterRmVia(apiClient(), names, at, recurse, asSteps)
+	if err != nil {
+		return fmt.Errorf("charter -r: %w", err)
+	}
+	fmt.Fprintln(cc.Out, said)
+	return nil
+}
+
+// charterRmVia removes, through c, what a path of names reaches: a package, or a rule or level
+// of one, and with recurse every charter at and under an address. at is how many of the names
+// are the address, or -1 to leave that to the server. It answers what went, naming the address
+// as sp spells it, or the refusal in the server's words.
+func charterRmVia(c *client.Client, names []string, at int, recurse bool, sp spelling) (string, error) {
+	q, _ := charterQuery(names, at, -1)
+	_, reach := splitAt(names, at)
 	if recurse {
 		q.Set("recurse", "true")
 	}
-	resp, err := httpDelete("/charter", q)
+	resp, err := c.Delete("/charter", q)
 	if err != nil {
-		return fmt.Errorf("charter -r: %w", err)
+		return "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
 		msg, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("charter -r: %s", strings.TrimSpace(string(msg)))
+		return "", errors.New(strings.TrimSpace(string(msg)))
 	}
 	if resp.StatusCode != http.StatusNoContent {
 		msg, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("charter -r: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
+		return "", fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(msg)))
 	}
 	// WHAT WENT is said back, because the path said it and a path is easy to mistype. The two
 	// shapes read differently on purpose: a package leaves its writes behind, and a rule removed
 	// in a SCOPE was the scope's own — an inherited one is refused as baseline's — so baseline
 	// holds what it held.
-	name, kind, item := lastItem(names)
+	name, kind, item := lastItem(reach)
+	where := sp.of(entity.JoinSegs(names))
 	switch {
-	case item && g.Scope != "":
-		fmt.Fprintf(cc.Out, "removed the %s %s in scope %s; baseline is untouched\n",
-			oneOfKind(kind), name, g.Scope)
+	case item && c.Scope != "":
+		return fmt.Sprintf("removed the %s %s in scope %s; baseline is untouched", oneOfKind(kind), name, c.Scope), nil
 	case item:
-		fmt.Fprintf(cc.Out, "removed the %s %s\n", oneOfKind(kind), name)
+		return fmt.Sprintf("removed the %s %s", oneOfKind(kind), name), nil
 	case recurse:
 		// `-r` reaches a PLACE as well as a charter, and often that is all it reaches — the
 		// address itself holding nothing and the charters being under it. Saying "the charter
 		// at demo" about a demo that never had one is a sentence somebody will re-check.
-		fmt.Fprintf(cc.Out, "uninstalled the charters at and under %s; what they wrote is still there\n",
-			entity.JoinSteps(names))
-	default:
-		fmt.Fprintf(cc.Out, "uninstalled the charter at %s; what it wrote is still there\n",
-			entity.JoinSteps(names))
+		return fmt.Sprintf("uninstalled the charters at and under %s; what they wrote is still there", where), nil
 	}
-	return nil
+	return fmt.Sprintf("uninstalled the charter at %s; what it wrote is still there", where), nil
 }
 
-// lastItem reports whether a path ends at a named rule or level, and which.
+// lastItem reports whether a path ends at a named rule, level or schedule, and which.
 func lastItem(steps []string) (name, kind string, ok bool) {
 	if len(steps) >= 2 {
-		if k := steps[len(steps)-2]; k == "rules" || k == "strata" {
+		if k := steps[len(steps)-2]; k == "rules" || k == "strata" || k == "schedules" {
 			return steps[len(steps)-1], k, true
 		}
 	}
 	return "", "", false
 }
 
-// oneOfKind is the key said about a single thing: a charter holds rules and LEVELS.
+// oneOfKind is the key said about a single thing: a charter holds rules, LEVELS and schedules.
 func oneOfKind(kind string) string {
-	if kind == "strata" {
+	switch kind {
+	case "strata":
 		return "level"
+	case "schedules":
+		return "schedule"
 	}
 	return "rule"
 }

@@ -173,10 +173,15 @@ func loginPrincipal() string {
 
 // bearer is the id_token a request carries: the login's, renewed first where it has expired, and
 // "" where the CLI has no login toward this verse or acts as somebody else.
+//
+// THE TOKENS FILE IS READ AGAIN for each request, since a process can outlive what it read
+// (`verse mcp` lives as long as its host): a login, a logout or a renewal made since, by another
+// process, is the one this request goes by.
 func bearer(ctx context.Context) (string, error) {
 	if !actsAsLogin() {
 		return "", nil
 	}
+	logins = nil
 	l, provider, err := currentLogin()
 	if err != nil {
 		return "", fmt.Errorf("reading the login: %w", err)
@@ -206,11 +211,24 @@ func bearer(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("the login to %s through %s has expired, and renewing it %v: %s", g.Addr, provider, err, again)
 	}
+	// Kept in the file as it stands now, not as it stood before the provider answered: the file is
+	// written whole, and what another process wrote in the meantime stays. A login dropped in the
+	// meantime is not put back.
+	logins = nil
+	c, err := loadLogins()
+	if err != nil {
+		return "", fmt.Errorf("reading the login: %w", err)
+	}
+	v := c.Verses[g.Addr]
+	if v == nil || v.Providers[provider] == nil {
+		return raw, nil
+	}
+	l = v.Providers[provider]
 	l.IDToken, l.Expiry = raw, expiry.UTC().Format(time.RFC3339)
 	if tok.RefreshToken != "" {
 		l.RefreshToken = tok.RefreshToken // a provider that rotates them gives the next one
 	}
-	if err := saveLogins(logins); err != nil {
+	if err := saveLogins(c); err != nil {
 		return "", fmt.Errorf("keeping the renewed login: %w", err)
 	}
 	return raw, nil

@@ -15,6 +15,7 @@ import (
 
 	"github.com/scott-cotton/cli"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/config"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
@@ -439,5 +440,44 @@ func TestALoginSendsTheClientSecretTheIssuerWants(t *testing.T) {
 	write(", clientSecret: installed-app-secret")
 	if out, err := runCLI(t, "account", "login"); err != nil || !strings.Contains(out, "as user:ana@example.com (google)") {
 		t.Fatalf("a login with the secret = %q, %v", out, err)
+	}
+}
+
+// A LONG-LIVED PROCESS KEEPS NOBODY ELSE'S LOGINS OUT: what another process wrote to the tokens
+// file after this one read it — a login toward another verse — survives this one renewing its own,
+// since the file is read again at the request and again before the renewal is written.
+func TestARenewalKeepsWhatAnotherProcessWrote(t *testing.T) {
+	_, l := serveLogin(t, true)
+	if _, err := runCLI(t, "account", "login"); err != nil {
+		t.Fatal(err)
+	}
+	expireLogin(t) // and read: what this process holds is the expired login alone
+	other, err := os.ReadFile(config.TokensPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &tokenCache{}
+	if err := codec.Unmarshal(other, c, codec.Tony); err != nil {
+		t.Fatal(err)
+	}
+	c.Verses["elsewhere:1"] = &verseLogins{Current: "corp", Providers: map[string]*loginEntry{
+		"corp": {Principal: "user:ana@example.com", IDToken: "theirs", Expiry: "2099-01-01T00:00:00Z"}}}
+	b, err := codec.Marshal(c, codec.Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config.TokensPath(), b, 0o600); err != nil { // another process's write
+		t.Fatal(err)
+	}
+	if token, err := bearer(t.Context()); err != nil || token == "" || l.Refreshes != 1 {
+		t.Fatalf("the renewal: %q, %v, %d renewals", token, err, l.Refreshes)
+	}
+	logins = nil
+	after, err := loadLogins()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := after.Verses["elsewhere:1"]; e == nil || e.Providers["corp"].IDToken != "theirs" {
+		t.Fatalf("the other process's login is gone: %+v", after.Verses)
 	}
 }

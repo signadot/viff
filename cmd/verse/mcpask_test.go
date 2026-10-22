@@ -1,0 +1,77 @@
+package main
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/signadot/verse/mirror"
+)
+
+// ASKING THROUGH THE TOOLS, END TO END: daniel asks davido, davido sees it waiting and answers it,
+// daniel sees the answer; then a change and a withdrawal. Each person is their own server.
+func TestTheAskToolsAskAnswerAndWithdraw(t *testing.T) {
+	store := serveAsking(t)
+	dan, dav := mcpSessionAs(t, daniel), mcpSessionAs(t, davido)
+
+	out, isErr := callTool(t, dan, "verse_ask_create", map[string]any{
+		"name": "land", "question": "Review verse/ask?", "to": "oscar@example.com", "due": "48h",
+		"then": `{spawn: {prompt: "merge verse/ask"}}`,
+	})
+	if isErr || !strings.HasPrefix(out, "asked ") || !strings.HasSuffix(out, ": Review verse/ask?") {
+		t.Fatalf("the ask: error=%v %q", isErr, out)
+	}
+	id := strings.TrimSuffix(strings.TrimPrefix(out, "asked "), ": Review verse/ask?")
+	qid := questionOn(t, store, mirror.AskRef(id))
+
+	if out, isErr := callTool(t, dav, "verse_question", nil); isErr || !strings.Contains(out, qid) {
+		t.Fatalf("davido's questions: error=%v\n%s", isErr, out)
+	}
+	if out, isErr := callTool(t, dan, "verse_question", nil); isErr || strings.Contains(out, qid) {
+		t.Fatalf("daniel's questions hold his own ask to davido: error=%v\n%s", isErr, out)
+	}
+	if out, isErr := callTool(t, dav, "verse_question_answer", map[string]any{"id": qid, "option": "proceed"}); isErr || out != "answered "+qid {
+		t.Fatalf("davido's answer: error=%v %q", isErr, out)
+	}
+	waitFieldCLI(t, store, mirror.AskRef(id), "answer")
+	if out, isErr := callTool(t, dan, "verse_ask", map[string]any{"name_or_id": "land"}); isErr || !strings.Contains(out, "answer: yes") {
+		t.Fatalf("the answer is not on daniel's ask: error=%v\n%s", isErr, out)
+	}
+
+	out, _ = callTool(t, dan, "verse_ask_create", map[string]any{"name": "lunch", "question": "Lunch?", "to": "oscar@example.com"})
+	second := strings.TrimSuffix(strings.TrimPrefix(out, "asked "), ": Lunch?")
+	questionOn(t, store, mirror.AskRef(second))
+	if out, isErr := callTool(t, dan, "verse_ask_change", map[string]any{"name_or_id": "lunch", "due": "72h"}); isErr || !strings.HasPrefix(out, "moved "+second+" to ") {
+		t.Fatalf("the change: error=%v %q", isErr, out)
+	}
+	if out, isErr := callTool(t, dan, "verse_ask_withdraw", map[string]any{"name_or_id": "lunch"}); isErr || out != "withdrew "+second {
+		t.Fatalf("the withdrawal: error=%v %q", isErr, out)
+	}
+	if out, isErr := callTool(t, dan, "verse_ask", nil); isErr || strings.Contains(out, second) || !strings.Contains(out, id) {
+		t.Fatalf("daniel's asks after the withdrawal: error=%v\n%s", isErr, out)
+	}
+}
+
+// A TOOL ANSWERS WHAT THE COMMAND SAYS: the listing of daniel's asks is the CLI's, word for word.
+func TestTheAskToolListsAsTheCLIDoes(t *testing.T) {
+	store := serveAsking(t)
+	id := askAs(t, daniel, "land", "-q", "Review?", "--to", "oscar@example.com")
+	// Posed first: posing rewrites the record, and the two reads must see one.
+	questionOn(t, store, mirror.AskRef(id))
+	as(t, daniel)
+	want, err := runCLI(t, "ask")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, _ := callTool(t, mcpSessionAs(t, daniel), "verse_ask", nil); out != strings.TrimRight(want, "\n") {
+		t.Fatalf("the tool said\n%s\nthe CLI\n%s", out, want)
+	}
+}
+
+// NOBODY CONFIGURED, NOTHING DONE: a write as nobody is refused by the server before it is sent.
+func TestTheAskToolsRefuseNobody(t *testing.T) {
+	serveAsking(t)
+	out, isErr := callTool(t, mcpSessionAs(t, ""), "verse_ask_create", map[string]any{"name": "x", "question": "Hm?"})
+	if !isErr || !strings.Contains(out, "nobody is configured") {
+		t.Fatalf("error=%v %q", isErr, out)
+	}
+}

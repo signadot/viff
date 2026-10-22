@@ -59,6 +59,7 @@ nav:
   - asking.md
   - perms-guide.md
   - reference/scopes.md
+  - reference/mcp.md
 - Groundskeeper: groundskeeper.md
 - Systems:
   - systems/README.md

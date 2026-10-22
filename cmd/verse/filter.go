@@ -81,18 +81,19 @@ type filters struct{ keep, project *ir.Node }
 func readFilters() (filters, error) {
 	var f filters
 	var err error
-	if f.keep, err = parseFilter("--if", flt.If); err != nil {
+	if f.keep, err = parseFilter("--if", flt.If, inFmt()); err != nil {
 		return f, err
 	}
-	f.project, err = parseFilter("--trim", flt.Trim)
+	f.project, err = parseFilter("--trim", flt.Trim, inFmt())
 	return f, err
 }
 
-func parseFilter(name, src string) (*ir.Node, error) {
+// parseFilter reads a match document, in the format in.
+func parseFilter(name, src string, in codec.Format) (*ir.Node, error) {
 	if src == "" {
 		return nil, nil
 	}
-	n, err := codec.ParseNode([]byte(src), inFmt())
+	n, err := codec.ParseNode([]byte(src), in)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s: %v", cli.ErrUsage, name, err)
 	}
@@ -199,7 +200,7 @@ func (f filters) frame(data string, in codec.Format) (string, bool, error) {
 type until struct{ pat *ir.Node }
 
 func readUntil(src string) (until, error) {
-	pat, err := parseFilter("--until", src)
+	pat, err := parseFilter("--until", src, inFmt())
 	if err != nil {
 		return until{}, err
 	}

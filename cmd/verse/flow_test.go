@@ -175,3 +175,21 @@ func TestFlowArgsSurviveXargs(t *testing.T) {
 		t.Fatalf("xargs read\n%s\nas %q, want %q", out, read, want)
 	}
 }
+
+// THE COMMAND'S REFUSALS ARE ITS OWN, and a selection the server refuses is the server's to
+// refuse: `-r` alone gets the verb's usage, and `-r` with no charter is sent.
+func TestAFlowVerbsRecursiveIsTheServersToRefuse(t *testing.T) {
+	got, _ := flowServer(t, nil)
+	if _, err := runCLI(t, "flow", "resume", "-r"); err == nil || !strings.Contains(err.Error(), "--task <id>, or --charter") {
+		t.Fatalf("verse flow resume -r = %v, want the verb's usage", err)
+	}
+	if _, err := runCLI(t, "flow", "suspend", "-r", "--subject", "demo.pr.1", "--why", "y"); err != nil {
+		t.Fatalf("verse flow suspend -r --subject: %v", err)
+	}
+	if path, _, _ := got(); path != "/flow/suspend" {
+		t.Fatalf("verse flow suspend -r --subject sent %q, want it sent", path)
+	}
+	if _, err := runCLI(t, "charter", "-r"); err == nil || !strings.Contains(err.Error(), "`schedules <name>`") {
+		t.Fatalf("verse charter -r = %v, want a usage naming schedules", err)
+	}
+}

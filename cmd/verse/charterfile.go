@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 	"github.com/scott-cotton/cli"
 	"github.com/signadot/tony-format/go-tony/ir"
 
+	"github.com/signadot/verse/client"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/schedule"
@@ -45,7 +48,7 @@ func isCharterNode(n *ir.Node) bool {
 
 // charterFile renders the charter a tree node holds as the file that installs it at `at`, and
 // the notes that say what the node carried that a file cannot.
-func charterFile(node *ir.Node, at string) (*ir.Node, []string) {
+func charterFile(node *ir.Node, at string, sp spelling) (*ir.Node, []string) {
 	var fields, values []*ir.Node
 	add := func(key string, v *ir.Node) {
 		fields = append(fields, ir.FromString(key))
@@ -64,7 +67,7 @@ func charterFile(node *ir.Node, at string) (*ir.Node, []string) {
 	if rules := codec.Unwrap(nodeField(node, "rules")); rules != nil && rules.Type == ir.ArrayType && len(rules.Values) > 0 {
 		out := make([]*ir.Node, 0, len(rules.Values))
 		for _, r := range rules.Values {
-			r, said := unmarked(r, at)
+			r, said := unmarked(r, at, sp)
 			out = append(out, r)
 			notes = append(notes, said...)
 		}
@@ -87,17 +90,59 @@ func charterFile(node *ir.Node, at string) (*ir.Node, []string) {
 // about it (versed/suspend.go).
 var markKeys = map[string]bool{"held": true, "suspended": true, "trouble": true}
 
-// unmarked is a rule without the listing's marks, and the marks as notes.
-func unmarked(rule *ir.Node, at string) (*ir.Node, []string) {
+// spelling is how a note names a charter's address: as the steps the command line takes, or as
+// the kinded path a tool takes.
+type spelling int
+
+const (
+	asSteps spelling = iota
+	asKPaths
+)
+
+// of is a charter's address, as it is spelled; baseline's is "baseline".
+func (sp spelling) of(at string) string {
+	switch {
+	case at == "":
+		return "baseline"
+	case sp == asKPaths:
+		return at
+	}
+	return stepsOf(at)
+}
+
+// tree and file are what a prune compares with, for the reader sp spells for: the command's
+// directory and its files, or the tool's charters.
+func (sp spelling) tree() string {
+	if sp == asKPaths {
+		return "the charters given"
+	}
+	return "the directory"
+}
+
+func (sp spelling) file() string {
+	if sp == asKPaths {
+		return "its charter"
+	}
+	return "its file"
+}
+
+// charters is what reads every charter, for the reader sp spells for.
+func (sp spelling) charters() string {
+	if sp == asKPaths {
+		return "verse_charter"
+	}
+	return "`verse c`"
+}
+
+// unmarked is a rule without the listing's marks, and the marks as notes naming the charter's
+// address as sp spells it.
+func unmarked(rule *ir.Node, at string, sp spelling) (*ir.Node, []string) {
 	rule = rule.Clone()
 	inner := codec.Unwrap(rule)
 	if inner == nil || inner.Type != ir.ObjectType {
 		return rule, nil
 	}
-	where := "baseline"
-	if at != "" {
-		where = stepsOf(at)
-	}
+	where := sp.of(at)
 	name := nodeStr(inner, "name")
 	var notes []string
 	var fields, values []*ir.Node
@@ -199,9 +244,10 @@ func treeCharters(node *ir.Node, segs []string) []charterAt {
 	return out
 }
 
-// printCharterFile prints the charter at the address asked, as its file, and says on stderr
-// what the file cannot: the marks on its rules, and the charters under it.
-func printCharterFile(cc *cli.Context, tree *ir.Node, full string) error {
+// renderCharterFile writes the charter at the address asked to w, as its file, and says to notes
+// what the file cannot: the marks on its rules, and the charters under it, spelled as sp spells
+// an address.
+func renderCharterFile(w, notesTo io.Writer, tree *ir.Node, full string, f filters, out codec.Format, color bool, sp spelling) error {
 	segs, err := addrSegs(full)
 	if err != nil {
 		return err
@@ -210,24 +256,34 @@ func printCharterFile(cc *cli.Context, tree *ir.Node, full string) error {
 	var notes, under []string
 	for _, c := range all {
 		if len(c.segs) == len(segs) {
-			file, said := charterFile(c.node, fileAt(c))
-			if err := printIR(cc, file); err != nil {
+			file, said := charterFile(c.node, fileAt(c), sp)
+			if err := renderIR(w, file, f, out, color); err != nil {
 				return err
 			}
 			notes = append(notes, said...)
 			continue
 		}
-		under = append(under, stepsOf(c.addr()))
+		under = append(under, sp.of(c.addr()))
 	}
 	for _, n := range notes {
-		fmt.Fprintln(cc.Err, n)
+		fmt.Fprintln(notesTo, n)
 	}
-	if len(under) > 0 {
-		here, cmd := "here", "verse c -d <dir>"
+	if len(under) == 0 {
+		return nil
+	}
+	here := "here"
+	if full != "" {
+		here = sp.of(full)
+	}
+	switch sp {
+	case asKPaths:
+		fmt.Fprintf(notesTo, "note: under %s: %s — each is read at its own path\n", here, strings.Join(under, ", "))
+	default:
+		cmd := "verse c -d <dir>"
 		if full != "" {
-			here, cmd = stepsOf(full), "verse c "+stepsOf(full)+" -d <dir>"
+			cmd = "verse c " + here + " -d <dir>"
 		}
-		fmt.Fprintf(cc.Err, "note: under %s: %s — `%s` writes every charter to a file of its own\n",
+		fmt.Fprintf(notesTo, "note: under %s: %s — `%s` writes every charter to a file of its own\n",
 			here, strings.Join(under, ", "), cmd)
 	}
 	return nil
@@ -282,7 +338,7 @@ func writeCharterDir(cc *cli.Context, tree *ir.Node, full, dir string) error {
 			parts = append(parts, seg)
 		}
 		parts = append(parts, charterFileName+out.Suffix())
-		file, said := charterFile(c.node, fileAt(c))
+		file, said := charterFile(c.node, fileAt(c), asSteps)
 		if len(file.Fields) == 0 {
 			continue // baseline with nothing in it: `{}` installs nothing and says nothing
 		}
@@ -357,7 +413,7 @@ func oneDocument(data []byte, format codec.Format, name string) (*ir.Node, error
 		return out[0], nil
 	}
 	return nil, fmt.Errorf("%s holds %d documents: a file is one charter — `at:`, `reads:`, "+
-		"`rules:`, `schedules:`, `strata:` — and a directory of them installs with -d", name, len(out))
+		"`sends:`, `rules:`, `schedules:`, `strata:` — and a directory of them installs with -d", name, len(out))
 }
 
 // charterAddDir installs every charter file under dir, each at its own `at:`, in one request.
@@ -377,8 +433,23 @@ func charterAddDir(cc *cli.Context, at, dir string, prune bool) error {
 		return fmt.Errorf("%w: charter -a -d installs each file at its own `at:`; drop the path "+
 			"(or add --prune, to remove what the directory leaves out under it)", cli.ErrUsage)
 	}
+	docs, err := charterDirDocs(dir)
+	if err != nil {
+		return fmt.Errorf("charter -a -d: %w", err)
+	}
+	q := url.Values{}
+	if prune {
+		q.Set("prune", at)
+	}
+	return installReply(cc, "charter -a -d", q, docs)
+}
+
+// charterDirDocs reads every charter file under dir, a document apiece: a file whose suffix is no
+// format's is no charter, one that is not a charter is refused, and two charters at one address
+// are.
+func charterDirDocs(dir string) ([]*ir.Node, error) {
 	var docs []*ir.Node
-	byAt := map[string]string{}
+	var names []string
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
@@ -395,9 +466,26 @@ func charterAddDir(cc *cli.Context, at, dir string, prune bool) error {
 		if err != nil {
 			return err
 		}
+		docs, names = append(docs, doc), append(names, path)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(docs) == 0 {
+		return nil, fmt.Errorf("no charter file under %s (%s)", dir, strings.Join(codec.Suffixes(), ", "))
+	}
+	return docs, chartersOnly(docs, names)
+}
+
+// chartersOnly refuses what a tree of charters may not hold: a document that is no charter, and
+// two charters at one address. names[i] is what to call docs[i] in the refusal.
+func chartersOnly(docs []*ir.Node, names []string) error {
+	byAt := map[string]string{}
+	for i, doc := range docs {
 		if !isCharterDoc(doc) {
-			return fmt.Errorf("%s: a file in a directory is a charter — `at:`, `reads:`, "+
-				"`rules:`, `schedules:`, `strata:` — and this one is not", path)
+			return fmt.Errorf("%s is no charter: a charter says `at:`, `reads:`, `sends:`, `rules:`, "+
+				"`schedules:` or `strata:`", names[i])
 		}
 		addr := nodeStr(doc, "at")
 		if prev, ok := byAt[addr]; ok {
@@ -405,26 +493,46 @@ func charterAddDir(cc *cli.Context, at, dir string, prune bool) error {
 			if addr != "" {
 				where = addr
 			}
-			return fmt.Errorf("%s and %s are both the charter at %s", prev, path, where)
+			return fmt.Errorf("%s and %s are both the charter at %s", prev, names[i], where)
 		}
-		byAt[addr] = path
-		docs = append(docs, doc)
-		return nil
-	})
+		byAt[addr] = names[i]
+	}
+	return nil
+}
+
+// charterSource is the charters a check reads: every file under dir, or the one charter in file
+// (- or none is stdin), which says its own `at:` as a file in a directory does.
+func charterSource(cc *cli.Context, file, dir string) ([]*ir.Node, error) {
+	if dir != "" {
+		if file != "" {
+			return nil, fmt.Errorf("%w: a file (-f) or a directory (-d), not both", cli.ErrUsage)
+		}
+		return charterDirDocs(dir)
+	}
+	data, srcFmt, err := codec.ReadSource(cc.In, file, inFmt())
 	if err != nil {
-		return fmt.Errorf("charter -a -d: %w", err)
+		return nil, err
 	}
-	if len(docs) == 0 {
-		return fmt.Errorf("charter -a -d: no charter file under %s (%s)", dir,
-			strings.Join(codec.Suffixes(), ", "))
+	name := file
+	if name == "" || name == "-" {
+		name = "stdin"
 	}
-	q := url.Values{}
-	if prune {
-		q.Set("prune", at)
-	}
-	resp, err := httpPostNodesTo("/charter", q, docs)
+	doc, err := oneDocument(data, srcFmt, name)
 	if err != nil {
-		return fmt.Errorf("charter -a -d: %w", err)
+		return nil, err
 	}
-	return installReply(cc, resp)
+	return []*ir.Node{doc}, chartersOnly([]*ir.Node{doc}, []string{name})
+}
+
+// charterCheckVia asks, through c, whether docs would install at at with a prune, and what would
+// change: POST /charter/check.
+func charterCheckVia(c *client.Client, at string, docs []*ir.Node) (*http.Response, error) {
+	if at == "" {
+		return nil, fmt.Errorf("a check names the address the charters would be installed at")
+	}
+	resp, err := c.PostNodes("/charter/check", url.Values{"at": {at}}, docs)
+	if err != nil {
+		return nil, fmt.Errorf("charter check: %w", err)
+	}
+	return resp, nil
 }

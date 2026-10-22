@@ -16,8 +16,10 @@ import (
 	"time"
 
 	"github.com/scott-cotton/cli"
+	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/api"
+	"github.com/signadot/verse/client"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
@@ -132,55 +134,79 @@ func labelsOf(s string) (map[string]string, error) {
 }
 
 func (cfg *askConfig) create(cc *cli.Context, name string) error {
-	body := api.Ask{Name: name, Question: cfg.Question, About: cfg.About, Keep: cfg.Keep}
-	if cfg.Label != "" {
-		labels, err := labelsOf(cfg.Label)
-		if err != nil {
+	var then, els entity.Payload
+	var err error
+	if cfg.Else != "" {
+		if els, err = thenOf(cc, cfg.Else); err != nil {
 			return err
+		}
+	}
+	if cfg.Then != "" {
+		if then, err = thenOf(cc, cfg.Then); err != nil {
+			return err
+		}
+	}
+	body, err := newAsk(askSpec{Name: name, Question: cfg.Question, To: cfg.To, Due: cfg.Due,
+		OnSilence: cfg.OnSilence, About: cfg.About, Keep: cfg.Keep, Label: cfg.Label, Then: then, Else: els})
+	if err != nil {
+		return err
+	}
+	said, err := createAsk(apiClient(), body)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(cc.Out, said)
+	return nil
+}
+
+// askSpec is a new ask as a person says it: the words of the command's flags, the then and the
+// else already read.
+type askSpec struct {
+	Name, Question, To, Due, OnSilence, About, Keep, Label string
+	Then, Else                                             entity.Payload
+}
+
+// newAsk is the body POST /asks takes for s.
+func newAsk(s askSpec) (api.Ask, error) {
+	body := api.Ask{Name: s.Name, Question: s.Question, About: s.About, Keep: s.Keep,
+		OnSilence: s.OnSilence, Then: s.Then, Else: s.Else}
+	if s.Label != "" {
+		labels, err := labelsOf(s.Label)
+		if err != nil {
+			return body, err
 		}
 		body.Labels = labels
 	}
-	if cfg.To != "" {
-		to, err := answerersOf(cfg.To)
+	if s.To != "" {
+		to, err := answerersOf(s.To)
 		if err != nil {
-			return err
+			return body, err
 		}
 		body.Answerers = to
 	}
-	if cfg.Due != "" {
-		due, err := dateOf(cfg.Due, time.Now())
+	if s.Due != "" {
+		due, err := dateOf(s.Due, time.Now())
 		if err != nil {
-			return err
+			return body, err
 		}
 		body.Due = due
 	}
-	body.OnSilence = cfg.OnSilence
-	if cfg.Else != "" {
-		els, err := thenOf(cc, cfg.Else)
-		if err != nil {
-			return err
-		}
-		body.Else = els
-	}
-	if cfg.Then != "" {
-		then, err := thenOf(cc, cfg.Then)
-		if err != nil {
-			return err
-		}
-		body.Then = then
-	}
-	resp, err := httpPost("/asks", body)
+	return body, nil
+}
+
+// createAsk asks it, and says what it was asked as.
+func createAsk(c *client.Client, body api.Ask) (string, error) {
+	resp, err := c.Post("/asks", nil, body)
 	if err != nil {
-		return fmt.Errorf("ask: %w", err)
+		return "", fmt.Errorf("ask: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
-		return statusError(resp, "ask")
+		return "", statusError(resp, "ask")
 	}
 	var out api.Asked
 	decodeBody(resp, &out)
-	fmt.Fprintf(cc.Out, "asked %s: %s\n", out.ID, cfg.Question)
-	return nil
+	return fmt.Sprintf("asked %s: %s", out.ID, body.Question), nil
 }
 
 // answerersOf reads --to: each name in the grammar a grant uses, spelled canonically. Whether a
@@ -236,7 +262,12 @@ func thenOf(cc *cli.Context, s string) (entity.Payload, error) {
 		}
 		src = b
 	}
-	n, err := codec.ParseNode(src, inFmt())
+	return thenDoc(src, inFmt())
+}
+
+// thenDoc reads what follows an answer from a document in the format in.
+func thenDoc(src []byte, in codec.Format) (entity.Payload, error) {
+	n, err := codec.ParseNode(src, in)
 	if err != nil {
 		return nil, fmt.Errorf("%w: --then: %v", cli.ErrUsage, err)
 	}
@@ -248,23 +279,26 @@ func thenOf(cc *cli.Context, s string) (entity.Payload, error) {
 
 // ── reading ──────────────────────────────────────────────────────────────────
 
-// mine is every ask the caller asked, among those they may read.
-func mine() (string, []entity.Entity, error) {
-	me, err := principal("")
-	if err != nil {
-		return "", nil, err
+// questionQuery is what `verse question` lists: THE QUESTIONS PUT TO YOU, with those a resolver
+// serves for you where served, unless all asks for every pending ask you may read.
+func questionQuery(all, served bool) url.Values {
+	if all {
+		return url.Values{"all": {"true"}}
 	}
-	out, err := asksAt(nil)
-	if err != nil {
-		return "", nil, fmt.Errorf("ask: %w", err)
+	q := url.Values{"waiting": {"me"}}
+	if served {
+		q.Set("served", "true")
 	}
-	return me, out, nil
+	return q
 }
 
 // asksAt reads GET /asks under q, each record as the ask it is: bare, the caller's own asks;
 // `waiting=me`, the questions waiting on them; `all=true`, the docket.
-func asksAt(q url.Values) ([]entity.Entity, error) {
-	resp, err := httpGet("/asks", q)
+func asksAt(q url.Values) ([]entity.Entity, error) { return asksFrom(apiClient(), q) }
+
+// asksFrom is asksAt through c.
+func asksFrom(c *client.Client, q url.Values) ([]entity.Entity, error) {
+	resp, err := c.Get("/asks", q)
 	if err != nil {
 		return nil, err
 	}
@@ -292,10 +326,13 @@ func asksAt(q url.Values) ([]entity.Entity, error) {
 
 // resolve finds the ask a name or an id names: the id itself, or the one ask of the caller's
 // under that name. Several under one name are listed rather than guessed between.
-func resolve(arg string) (entity.Entity, error) {
-	_, asks, err := mine()
+func resolve(arg string) (entity.Entity, error) { return resolveAsk(apiClient(), arg) }
+
+// resolveAsk is resolve through c.
+func resolveAsk(c *client.Client, arg string) (entity.Entity, error) {
+	asks, err := asksFrom(c, nil)
 	if err != nil {
-		return entity.Entity{}, err
+		return entity.Entity{}, fmt.Errorf("ask: %w", err)
 	}
 	var named []entity.Entity
 	for _, e := range asks {
@@ -337,25 +374,51 @@ func askRow(e entity.Entity) entity.Obj {
 }
 
 func listAsks(cc *cli.Context) error {
-	me, asks, err := mine()
+	me, err := principal("")
 	if err != nil {
 		return err
 	}
-	if len(asks) == 0 {
-		fmt.Fprintf(cc.Out, "%s has no asks standing\n", me)
+	return printAsk(cc, func() (*ir.Node, string, error) { return askList(apiClient(), me) })
+}
+
+func showAsk(cc *cli.Context, arg string) error {
+	return printAsk(cc, func() (*ir.Node, string, error) { return askShown(apiClient(), arg) })
+}
+
+// printAsk prints what an ask read answered: a sentence, or the document.
+func printAsk(cc *cli.Context, read func() (*ir.Node, string, error)) error {
+	node, said, err := read()
+	if err != nil {
+		return err
+	}
+	if node == nil {
+		fmt.Fprintln(cc.Out, said)
 		return nil
+	}
+	return printIR(cc, node)
+}
+
+// askList is me's asks as the listing shows them, or the sentence that says there are none.
+func askList(c *client.Client, me string) (*ir.Node, string, error) {
+	asks, err := asksFrom(c, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("ask: %w", err)
+	}
+	if len(asks) == 0 {
+		return nil, fmt.Sprintf("%s has no asks standing", me), nil
 	}
 	rows := make([]any, 0, len(asks))
 	for _, e := range asks {
 		rows = append(rows, askRow(e))
 	}
-	return printIR(cc, entity.Val(rows))
+	return entity.Val(rows), "", nil
 }
 
-func showAsk(cc *cli.Context, arg string) error {
-	e, err := resolve(arg)
+// askShown is one ask, named or numbered, as `verse ask <name|id>` shows it.
+func askShown(c *client.Client, arg string) (*ir.Node, string, error) {
+	e, err := resolveAsk(c, arg)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 	row := askRow(e)
 	// And whom it waits on, while it does: the ask is the question on the docket.
@@ -364,7 +427,7 @@ func showAsk(cc *cli.Context, arg string) error {
 			row["waitingOn"] = w
 		}
 	}
-	return printIR(cc, row.Payload())
+	return row.Payload(), "", nil
 }
 
 // ── changing ─────────────────────────────────────────────────────────────────
@@ -372,66 +435,92 @@ func showAsk(cc *cli.Context, arg string) error {
 // change is `verse ask <name|id> --due …`, `--then …` or `--to …`: the asker changing an ask while
 // it waits. It names the edit it read, so a change to an ask that moved on meanwhile is refused.
 func (cfg *askConfig) change(cc *cli.Context, arg string) error {
-	e, err := resolve(arg)
-	if err != nil {
-		return err
-	}
-	body := api.AskChange{Edit: mirror.EditOf(e.Payload)}
+	var ch askEdit
+	var err error
 	if cfg.Due != "" {
-		if body.Due, err = dateOf(cfg.Due, time.Now()); err != nil {
+		if ch.Due, err = dateOf(cfg.Due, time.Now()); err != nil {
 			return err
 		}
 	}
 	if cfg.To != "" {
-		if body.Answerers, err = answerersOf(cfg.To); err != nil {
+		if ch.To, err = answerersOf(cfg.To); err != nil {
 			return err
 		}
 	}
 	if cfg.Else != "" {
-		if body.Else, err = thenOf(cc, cfg.Else); err != nil {
+		if ch.Else, err = thenOf(cc, cfg.Else); err != nil {
 			return err
 		}
 	}
 	if cfg.Then != "" {
-		if body.Then, err = thenOf(cc, cfg.Then); err != nil {
+		if ch.Then, err = thenOf(cc, cfg.Then); err != nil {
 			return err
 		}
 	}
-	resp, err := httpPatch("/asks/"+url.PathEscape(e.Ref.Name()), body)
+	said, err := changeAsk(apiClient(), arg, ch)
 	if err != nil {
-		return fmt.Errorf("ask: %w", err)
+		return err
+	}
+	fmt.Fprintln(cc.Out, said)
+	return nil
+}
+
+// askEdit is a change to a waiting ask, read: a date, answerers in the grammar, what follows.
+type askEdit struct {
+	Due        string
+	To         []string
+	Then, Else entity.Payload
+}
+
+// changeAsk changes the ask arg names, as the edit it read, and says what became of it.
+func changeAsk(c *client.Client, arg string, ch askEdit) (string, error) {
+	e, err := resolveAsk(c, arg)
+	if err != nil {
+		return "", err
+	}
+	body := api.AskChange{Edit: mirror.EditOf(e.Payload), Due: ch.Due, Answerers: ch.To, Then: ch.Then, Else: ch.Else}
+	resp, err := c.Patch("/asks/"+url.PathEscape(e.Ref.Name()), body)
+	if err != nil {
+		return "", fmt.Errorf("ask: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return statusError(resp, "ask")
+		return "", statusError(resp, "ask")
 	}
 	var out api.Asked
 	decodeBody(resp, &out)
 	if out.Edit != body.Edit {
-		fmt.Fprintf(cc.Out, "asked %s again, as edit %d\n", out.ID, out.Edit)
-	} else {
-		fmt.Fprintf(cc.Out, "moved %s to %s\n", out.ID, body.Due)
+		return fmt.Sprintf("asked %s again, as edit %d", out.ID, out.Edit), nil
 	}
-	return nil
+	return fmt.Sprintf("moved %s to %s", out.ID, body.Due), nil
 }
 
 // ── withdrawing ──────────────────────────────────────────────────────────────
 
 func withdrawAsk(cc *cli.Context, arg string) error {
-	e, err := resolve(arg)
+	said, err := withdrawAskVia(apiClient(), arg)
 	if err != nil {
 		return err
 	}
-	resp, err := httpDelete("/asks/"+url.PathEscape(e.Ref.Name()), nil)
+	fmt.Fprintln(cc.Out, said)
+	return nil
+}
+
+// withdrawAskVia takes back the ask arg names, and says so.
+func withdrawAskVia(c *client.Client, arg string) (string, error) {
+	e, err := resolveAsk(c, arg)
 	if err != nil {
-		return fmt.Errorf("ask: %w", err)
+		return "", err
+	}
+	resp, err := c.Delete("/asks/"+url.PathEscape(e.Ref.Name()), nil)
+	if err != nil {
+		return "", fmt.Errorf("ask: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		return statusError(resp, "ask --withdraw")
+		return "", statusError(resp, "ask --withdraw")
 	}
-	fmt.Fprintf(cc.Out, "withdrew %s\n", e.Ref.Name())
-	return nil
+	return "withdrew " + e.Ref.Name(), nil
 }
 
 // ── following ────────────────────────────────────────────────────────────────
@@ -462,8 +551,7 @@ func watchAsks(cc *cli.Context, since string, asks, questions bool) error {
 		}
 		fmt.Fprintf(cc.Out, "@%s %s\n", rev, line)
 	}
-	w := newAskWatch(me, asks, questions)
-	w.askVerse = waitingOnMe
+	w := newAskWatch(apiClient(), me, asks, questions)
 	return w.follow(ctx, since, say)
 }
 
@@ -493,7 +581,7 @@ func (w *askWatch) follow(ctx context.Context, since string, say func(rev, line 
 		w.fromNow = cursor == ""
 		w.mu.Unlock()
 		carried := false
-		began, err := followFrames(ctx, q, func(f askFrame) { carried = true; w.frame(f, say) })
+		began, err := followFrames(ctx, w.c, q, func(f askFrame) { carried = true; w.frame(f, say) })
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -583,12 +671,8 @@ func (e *watchRefused) Unwrap() error { return e.err }
 // followFrames reads the watch route under q and hands each frame to fn, until the stream ends or
 // ctx does. began says whether a stream was answered at all: a verse refusing the watch, or not
 // answering, is not a stream that ended.
-func followFrames(ctx context.Context, q url.Values, fn func(askFrame)) (began bool, err error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlFor("/watch", q), nil)
-	if err != nil {
-		return false, err
-	}
-	resp, err := verse.Do(req)
+func followFrames(ctx context.Context, c *client.Client, q url.Values, fn func(askFrame)) (began bool, err error) {
+	resp, err := c.With(ctx).Get("/watch", q)
 	if err != nil {
 		if ctx.Err() != nil {
 			return false, nil
@@ -630,6 +714,8 @@ func followFrames(ctx context.Context, q url.Values, fn func(askFrame)) (began b
 // changed from the record it held before: a frame is a level, and the same one met twice says
 // nothing the second time.
 type askWatch struct {
+	// c is the verse the watch follows, and asks what a frame cannot say.
+	c  *client.Client
 	me string
 	// asks and questions are the two sides a watch says: what becomes of the caller's asks, and
 	// what waits on them.
@@ -657,9 +743,10 @@ type askWatch struct {
 	now     func() time.Time
 }
 
-func newAskWatch(me string, asks, questions bool) *askWatch {
-	return &askWatch{me: me, asks: asks, questions: questions, now: time.Now,
-		recs: map[string]entity.Payload{}, answered: map[string]int{}, seen: map[string]bool{}}
+func newAskWatch(c *client.Client, me string, asks, questions bool) *askWatch {
+	return &askWatch{c: c, me: me, asks: asks, questions: questions, now: time.Now,
+		askVerse: func(id string) bool { return waitingOnMe(c, id) },
+		recs:     map[string]entity.Payload{}, answered: map[string]int{}, seen: map[string]bool{}}
 }
 
 func (w *askWatch) frame(f askFrame, say func(rev, line string)) {
@@ -710,7 +797,7 @@ func (w *askWatch) frame(f askFrame, say func(rev, line string)) {
 		if s := entity.Str(rec, "subject"); s != "" {
 			line += " (about " + s + ")"
 		}
-		if by := servedBy(id); by != "" {
+		if by := servedBy(w.c, id); by != "" {
 			line += " (served by " + by + ")"
 		}
 		say(f.rev, line)
@@ -770,8 +857,8 @@ func (w *askWatch) removal(prev entity.Payload) string {
 
 // servedBy is the resolver serving an ask for the caller, "" where none does or the verse did not
 // say (9ce3bva0, stage 5): the watch shows such an ask, and says it is served.
-func servedBy(id string) string {
-	resp, err := httpGet("/asks/"+url.PathEscape(id)+"/served", nil)
+func servedBy(c *client.Client, id string) string {
+	resp, err := c.Get("/asks/"+url.PathEscape(id)+"/served", nil)
 	if err != nil {
 		return ""
 	}
@@ -828,8 +915,8 @@ func (w *askWatch) waitsOnMe(q entity.Payload) (waits, decided bool) {
 
 // waitingOnMe asks the verse whether a pending question waits on the caller: whether it is among
 // the questions put to them (GET /asks?waiting=me), served ones included.
-func waitingOnMe(id string) bool {
-	qs, err := asksAt(url.Values{"waiting": {"me"}, "served": {"true"}})
+func waitingOnMe(c *client.Client, id string) bool {
+	qs, err := asksFrom(c, url.Values{"waiting": {"me"}, "served": {"true"}})
 	if err != nil {
 		return false
 	}

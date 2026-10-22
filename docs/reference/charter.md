@@ -203,6 +203,23 @@ An install adds and replaces by name, so a rule missing from the directory stays
 - Every file must be at or under the address.
 - If anything is refused, the removals are put back along with the installs.
 
+**`--check` asks what an install would do, and does none of it.** It takes `-d` or `-f`, as
+`-a <address> -d <dir> --prune` would install them, and answers a verdict, `installs` or `refused`
+with the install's own words, and for each package the rules and levels it would add, change,
+remove or hold, and the packages the prune would take away:
+
+```sh
+verse charter --check demo -d out/      # verdict: installs, packages: […], pruned: […]
+verse charter --check demo -f pr.tony   # a directory holding this one file
+```
+
+A check with `-f` is the check of a directory that holds that one file, the prune included: the
+answer names what `-a demo -d` with `--prune` would take from under `demo`, which `-a -f` never
+takes. The file says its own `at:`, as a file in a directory does.
+
+A refusal is the answer, not an error, so the command succeeds either way. What the check
+cannot say is what the store answers on the day, which is the install's own.
+
 `-d` lays the files out by address. That layout is a default, not a rule: the `at:` in each file
 says where it goes. A directory laid out any other way, by project and with READMEs beside the
 charters, installs the same. `--paths` lists every charter as one path per rule and level.

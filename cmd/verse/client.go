@@ -109,6 +109,29 @@ func said(cc *cli.Context, resp *http.Response, what string) error {
 }
 
 func printBody(cc *cli.Context, resp *http.Response) error {
+	out, err := outFmt()
+	if err != nil {
+		resp.Body.Close()
+		return err
+	}
+	// --if / --trim, where every listing already passes: which items, and how much of each.
+	f, err := readFilters()
+	if err != nil {
+		resp.Body.Close()
+		return err
+	}
+	empty, err := renderBody(cc.Out, resp, f, out, colorize(cc.Out))
+	// EMPTY, after the filters, is remembered for the one caller that has something to add to
+	// it: `verse charter` lists ONE engine, so an empty answer may mean "this engine has no
+	// rules" while the charter is in packages. See elsewhereInPackages.
+	lastPrintEmpty = empty
+	return err
+}
+
+// renderBody writes a response the server wrote to w in the format out, with f applied: printBody
+// with what the command line decides passed in. It answers whether nothing was left to write. A
+// 4xx/5xx is the error, in the server's words.
+func renderBody(w io.Writer, resp *http.Response, f filters, out codec.Format, color bool) (bool, error) {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= http.StatusBadRequest {
@@ -116,24 +139,15 @@ func printBody(cc *cli.Context, resp *http.Response) error {
 		if msg == "" {
 			msg = resp.Status
 		}
-		return errors.New(msg)
-	}
-	out, err := outFmt()
-	if err != nil {
-		return err
+		return false, errors.New(msg)
 	}
 	in := respFmt(resp)
 	node, err := codec.ParseNode(body, in)
 	if err != nil {
-		return fmt.Errorf("decoding the response: %w", err)
-	}
-	// --if / --trim, where every listing already passes: which items, and how much of each.
-	f, err := readFilters()
-	if err != nil {
-		return err
+		return false, fmt.Errorf("decoding the response: %w", err)
 	}
 	if node, err = f.apply(node); err != nil {
-		return err
+		return false, err
 	}
 	if in != out {
 		// The response's layout (brackets, block literals) describes how the SERVER wrote
@@ -141,17 +155,11 @@ func printBody(cc *cli.Context, resp *http.Response) error {
 		// shape in tony's syntax — is not what -o tony means.
 		node = codec.StripLayout(node)
 	}
-	// EMPTY, after the filters, is remembered for the one caller that has something to add to
-	// it: `verse charter` lists ONE engine, so an empty answer may mean "this engine has no
-	// rules" while the charter is in packages. See elsewhereInPackages.
-	lastPrintEmpty = node == nil || (node.Type == ir.ArrayType && len(node.Values) == 0)
-	if colorize(cc.Out) {
-		return codec.EncodeNodeColor(cc.Out, node, out)
+	empty := node == nil || (node.Type == ir.ArrayType && len(node.Values) == 0)
+	if color {
+		return empty, codec.EncodeNodeColor(w, node, out)
 	}
-	if err := codec.EncodeNode(cc.Out, node, out); err != nil {
-		return err
-	}
-	return nil
+	return empty, codec.EncodeNode(w, node, out)
 }
 
 // lastPrintEmpty reports whether the last collection printed came back empty. Package-level for
@@ -162,12 +170,25 @@ var lastPrintEmpty bool
 // printDoc prints a `state` answer: printBody, with the filters applied to ENTITIES rather than
 // to the document as one item — see filters.applyDoc.
 func printDoc(cc *cli.Context, resp *http.Response, at *kpath.KPath) error {
-	defer resp.Body.Close()
-	body, err := okBody(resp)
+	out, err := outFmt()
 	if err != nil {
+		resp.Body.Close()
 		return err
 	}
-	out, err := outFmt()
+	f, err := readFilters()
+	if err != nil {
+		resp.Body.Close()
+		return err
+	}
+	return renderDoc(cc.Out, resp, at, f, out, colorize(cc.Out))
+}
+
+// renderDoc writes a `state` answer to w in the format out, with f applied to the nodes the path
+// reached. It is printDoc with what the command line decides passed in, for a caller that is not
+// one command of one invocation (`verse mcp`).
+func renderDoc(w io.Writer, resp *http.Response, at *kpath.KPath, f filters, out codec.Format, color bool) error {
+	defer resp.Body.Close()
+	body, err := okBody(resp)
 	if err != nil {
 		return err
 	}
@@ -176,20 +197,16 @@ func printDoc(cc *cli.Context, resp *http.Response, at *kpath.KPath) error {
 	if err != nil {
 		return fmt.Errorf("decoding the response: %w", err)
 	}
-	f, err := readFilters()
-	if err != nil {
-		return err
-	}
 	if node, err = f.applyDoc(node, at); err != nil {
 		return err
 	}
 	if in != out {
 		node = codec.StripLayout(node)
 	}
-	if colorize(cc.Out) {
-		return codec.EncodeNodeColor(cc.Out, node, out)
+	if color {
+		return codec.EncodeNodeColor(w, node, out)
 	}
-	return codec.EncodeNode(cc.Out, node, out)
+	return codec.EncodeNode(w, node, out)
 }
 
 // okBody reads a response body, turning a 4xx/5xx into the error it carries.
@@ -220,13 +237,20 @@ func printIR(cc *cli.Context, node *ir.Node) error {
 	if err != nil {
 		return err
 	}
-	if node, err = f.apply(node); err != nil {
+	return renderIR(cc.Out, node, f, out, colorize(cc.Out))
+}
+
+// renderIR writes a value this CLI computed to w in the format out, with f applied: printIR with
+// what the command line decides passed in.
+func renderIR(w io.Writer, node *ir.Node, f filters, out codec.Format, color bool) error {
+	node, err := f.apply(node)
+	if err != nil {
 		return err
 	}
-	if colorize(cc.Out) {
-		return codec.EncodeNodeColor(cc.Out, node, out)
+	if color {
+		return codec.EncodeNodeColor(w, node, out)
 	}
-	return codec.EncodeNode(cc.Out, node, out)
+	return codec.EncodeNode(w, node, out)
 }
 
 // respFmt reads the format a response declares; see client.ResponseFormat.
@@ -281,14 +305,14 @@ func streamFmt(resp *http.Response) codec.Format {
 // since a GET has no body and so no Content-Type to declare a dialect in. Tags survive the
 // round trip — `!glob "hotfix-*"` reaches the server as itself — which is the whole reason
 // the canonical form is tony rather than JSON.
-func filterBy(q url.Values, pattern, at string) error {
+func filterBy(q url.Values, pattern, at string, in codec.Format) error {
 	if at != "" && pattern == "" {
 		return fmt.Errorf("%w: --if-at roots --if; pass a pattern to root", cli.ErrUsage)
 	}
 	if pattern == "" {
 		return nil
 	}
-	node, err := codec.ParseNode([]byte(pattern), inFmt())
+	node, err := codec.ParseNode([]byte(pattern), in)
 	if err != nil {
 		return fmt.Errorf("--if: %w", err)
 	}
@@ -414,7 +438,7 @@ func (cfg *watchConfig) query(at string) (url.Values, error) {
 	if at != "" {
 		q.Set("at", at)
 	}
-	if err := filterBy(q, cfg.If, cfg.IfAt); err != nil {
+	if err := filterBy(q, cfg.If, cfg.IfAt, inFmt()); err != nil {
 		return nil, err
 	}
 	return q, nil
@@ -680,14 +704,7 @@ func gateCmd() *cli.Command {
 				if cfg.Watch {
 					return watchAsks(cc, cfg.Since, false, true)
 				}
-				// THE QUESTIONS PUT TO YOU, unless --all asks for every pending ask you may read.
-				q := url.Values{"waiting": {"me"}}
-				if cfg.All {
-					q = url.Values{"all": {"true"}}
-				} else if cfg.Served {
-					q.Set("served", "true")
-				}
-				resp, err := httpGet("/asks", q)
+				resp, err := httpGet("/asks", questionQuery(cfg.All, cfg.Served))
 				if err != nil {
 					return fmt.Errorf("question: %w", err)
 				}
@@ -760,28 +777,35 @@ func (cfg *gateConfig) together(id bool) error {
 // answerGate posts one answer and says what became of it: settled, or recorded on a question
 // that takes more than one voice, with where the tally stands.
 func answerGate(cc *cli.Context, id, choice, as, say string, force bool, done string) error {
+	said, err := answerVia(apiClient(), id, choice, as, say, force, done)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(cc.Out, said)
+	return nil
+}
+
+// answerVia is answerGate through c, answering what it says rather than printing it.
+func answerVia(c *client.Client, id, choice, as, say string, force bool, done string) (string, error) {
 	body := api.Resolve{ID: id, Choice: choice, By: as, Force: force}
 	if say != "" {
 		body.Say = []string{say}
 	}
-	resp, err := httpPost("/asks/"+url.PathEscape(id)+"/answer", body)
+	resp, err := c.Post("/asks/"+url.PathEscape(id)+"/answer", nil, body)
 	if err != nil {
-		return fmt.Errorf("answer %s: %w", choice, err)
+		return "", fmt.Errorf("answer %s: %w", choice, err)
 	}
 	defer resp.Body.Close()
+	msg, _ := io.ReadAll(resp.Body)
 	switch resp.StatusCode {
 	case http.StatusNoContent:
-		fmt.Fprintln(cc.Out, done, id)
+		return done + " " + id, nil
 	case http.StatusAccepted:
 		// Recorded and not yet settled: the question takes more than one voice, and the
 		// server says where the tally stands. Not an error, and not settled either.
-		msg, _ := io.ReadAll(resp.Body)
-		fmt.Fprintln(cc.Out, id+":", strings.TrimSpace(string(msg)))
-	default:
-		msg, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("answer %s: %s: %s", choice, resp.Status, strings.TrimSpace(string(msg)))
+		return id + ": " + strings.TrimSpace(string(msg)), nil
 	}
-	return nil
+	return "", fmt.Errorf("answer %s: %s: %s", choice, resp.Status, strings.TrimSpace(string(msg)))
 }
 
 // The answer to a question is a VERB, so it is a command — `question approve <id>` — rather than
@@ -851,20 +875,21 @@ func choiceOf(approve bool) string {
 
 // ── entity ───────────────────────────────────────────────────────────────────
 
-// conditions renders the guard flags as the wire's preconditions. --create and --update are
-// opposite answers to the same question, so asking both is a contradiction rather than a
-// pair of conditions that can never hold — say so from the flags, before anything is sent.
-func (cfg *stateConfig) conditions() ([]api.Condition, error) {
+// conditions renders the guard flags as the wire's preconditions, the pattern read in the format
+// in. --create and --update are opposite answers to the same question, so asking both is a
+// contradiction rather than a pair of conditions that can never hold — say so from the flags,
+// before anything is sent.
+func conditions(create, update bool, expect string, in codec.Format) ([]api.Condition, error) {
 	var out []api.Condition
-	if cfg.Create && cfg.Update {
+	if create && update {
 		return nil, fmt.Errorf("%w: --create and --update are opposites; pass one", cli.ErrUsage)
 	}
-	if cfg.Create || cfg.Update {
-		exists := cfg.Update
+	if create || update {
+		exists := update
 		out = append(out, api.Condition{Exists: &exists})
 	}
-	if cfg.Expect != "" {
-		pattern, err := codec.ParseNode([]byte(cfg.Expect), inFmt())
+	if expect != "" {
+		pattern, err := codec.ParseNode([]byte(expect), in)
 		if err != nil {
 			return nil, fmt.Errorf("--expect: %w", err)
 		}
@@ -1030,23 +1055,42 @@ func (cfg *stateConfig) run(cc *cli.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	kp, err := entity.ParseAt(at)
-	if err != nil {
-		return fmt.Errorf("%w: data: %s", cli.ErrUsage, err)
-	}
-	q := url.Values{}
-	if at != "" {
-		q.Set("at", at)
-	}
-	if err := filterBy(q, cfg.If, cfg.IfAt); err != nil {
-		return fmt.Errorf("data: %w", err)
-	}
 	// EITHER FLAG ASKS FOR THE LISTING; --kpaths only says which spelling, so it need not be
 	// passed beside --paths.
 	listing := cfg.Paths || cfg.KPaths
 	depth, err := cfg.depth(listing)
 	if err != nil {
 		return err
+	}
+	q, kp, err := stateQuery(at, cfg.If, cfg.IfAt, listing, depth, inFmt())
+	if err != nil {
+		return err
+	}
+	resp, err := httpGet("/state", q)
+	if err != nil {
+		return fmt.Errorf("data: %w", err)
+	}
+	if listing {
+		return printPaths(cc, resp, kp, depth, cfg.KPaths)
+	}
+	return printDoc(cc, resp, kp)
+}
+
+// stateQuery is a read of the verse at the kinded path at, as GET /state takes it: the server's
+// selector (pattern, in the format in, rooted at patternAt), and for a listing the paths alone, depth levels deep
+// (entity.Unbounded for all). It answers the path parsed too, which is what the answer is walked
+// by.
+func stateQuery(at, pattern, patternAt string, listing bool, depth int, in codec.Format) (url.Values, *kpath.KPath, error) {
+	kp, err := entity.ParseAt(at)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: data: %s", cli.ErrUsage, err)
+	}
+	q := url.Values{}
+	if at != "" {
+		q.Set("at", at)
+	}
+	if err := filterBy(q, pattern, patternAt, in); err != nil {
+		return nil, nil, fmt.Errorf("data: %w", err)
 	}
 	if listing {
 		// ASKED OF THE SERVER, which asks the store: the addresses come back without the
@@ -1058,14 +1102,7 @@ func (cfg *stateConfig) run(cc *cli.Context, args []string) error {
 			q.Set("depth", strconv.Itoa(depth))
 		}
 	}
-	resp, err := httpGet("/state", q)
-	if err != nil {
-		return fmt.Errorf("data: %w", err)
-	}
-	if listing {
-		return printPaths(cc, resp, kp, depth, cfg.KPaths)
-	}
-	return printDoc(cc, resp, kp)
+	return q, kp, nil
 }
 
 // depth reads --depth: how far beneath the address the listing walks, entity.Unbounded when the
@@ -1089,8 +1126,31 @@ func (cfg *stateConfig) depth(listing bool) (int, error) {
 
 // put writes a payload at the path.
 func (cfg *stateConfig) put(cc *cli.Context, segs []string) error {
+	body, err := dataPut{Payload: cfg.Put, Create: cfg.Create, Update: cfg.Update, Expect: cfg.Expect,
+		Grants: cfg.Grants}.body(segs, inFmt())
+	if err != nil {
+		return err
+	}
+	resp, err := httpPost("/entity", body)
+	if err != nil {
+		return fmt.Errorf("data --put: %w", err)
+	}
+	return printBody(cc, resp)
+}
+
+// dataPut is a write as `data --put` takes it, each part as typed: the payload, the conditions on
+// it, and what a node it creates holds out.
+type dataPut struct {
+	Payload        string
+	Create, Update bool
+	Expect, Grants string
+}
+
+// body is the request the write sends at segs, the payload and the condition read in the format
+// in.
+func (p dataPut) body(segs []string, in codec.Format) (api.PutEntity, error) {
 	if len(segs) == 0 {
-		return fmt.Errorf("%w: --put wants a path to write at (`demo pr 1`, `demo pr 1 labels "+
+		return api.PutEntity{}, fmt.Errorf("%w: --put wants a path to write at (`demo pr 1`, `demo pr 1 labels "+
 			"urgent`, or --at demo.pr.1)", cli.ErrUsage)
 	}
 	// FROM THE SEGMENTS, not from a string: argv already is the vector, and assembling it into
@@ -1099,7 +1159,7 @@ func (cfg *stateConfig) put(cc *cli.Context, segs []string) error {
 	// of names cannot spell — see entity.Path.Access.
 	at, err := entity.TargetOf(segs)
 	if err != nil {
-		return fmt.Errorf("%w: data --put: %s", cli.ErrUsage, err)
+		return api.PutEntity{}, fmt.Errorf("%w: data --put: %s", cli.ErrUsage, err)
 	}
 	// A payload typed on the command line names no format of its own, so it is read as
 	// --ifmt / the configured default. Valid JSON is also valid tony, so `{"stage":"open"}`
@@ -1108,25 +1168,25 @@ func (cfg *stateConfig) put(cc *cli.Context, segs []string) error {
 	// Parsed to a NODE rather than a map: a payload is any tony value, so `42`, `true` and
 	// `[a, b]` are payloads too, and decoding into a map would reject them at the CLI even
 	// though the store and the wire both accept them.
-	payload, err := codec.ParseNode([]byte(cfg.Put), inFmt())
+	payload, err := codec.ParseNode([]byte(p.Payload), in)
 	if err != nil {
-		return fmt.Errorf("data --put: payload: %w", err)
+		return api.PutEntity{}, fmt.Errorf("data --put: payload: %w", err)
 	}
-	when, err := cfg.conditions()
+	when, err := conditions(p.Create, p.Update, p.Expect, in)
 	if err != nil {
-		return fmt.Errorf("data --put: %w", err)
+		return api.PutEntity{}, fmt.Errorf("data --put: %w", err)
 	}
 	// GRANTS ARE GIVEN AT A CREATION, so a write that says something stands is not one: what a
 	// node that stands holds out is changed with `verse perms`.
 	var grants entity.Payload
-	if cfg.Grants != "" {
-		if cfg.Update || cfg.Expect != "" {
-			return fmt.Errorf("%w: data --put --grants creates the node, and --update and --expect "+
+	if p.Grants != "" {
+		if p.Update || p.Expect != "" {
+			return api.PutEntity{}, fmt.Errorf("%w: data --put --grants creates the node, and --update and --expect "+
 				"are about one that stands; change what a node holds out with verse perms --grants",
 				cli.ErrUsage)
 		}
-		if grants, err = codec.ParseNode([]byte(cfg.Grants), codec.Tony); err != nil {
-			return fmt.Errorf("data --put --grants: %w", err)
+		if grants, err = codec.ParseNode([]byte(p.Grants), codec.Tony); err != nil {
+			return api.PutEntity{}, fmt.Errorf("data --put --grants: %w", err)
 		}
 	}
 	// THE WHOLE ADDRESS IS THE PLACE. `verse data verse-dev drift head abc --put '{…}'` writes
@@ -1134,36 +1194,36 @@ func (cfg *stateConfig) put(cc *cli.Context, segs []string) error {
 	// at a path, and where the entity "ends" is a question this command does not answer. The
 	// answer comes back from the address written, so a put still shows the merge wherever the
 	// address IS an entity, which is the ordinary case.
-	resp, err := httpPost("/entity", api.PutEntity{
-		At:      at.Ref.KPath(),
-		Sub:     at.Access,
-		Payload: payload,
-		When:    when,
-		Grants:  grants,
-	})
-	if err != nil {
-		return fmt.Errorf("data --put: %w", err)
-	}
-	return printBody(cc, resp)
+	return api.PutEntity{At: at.Ref.KPath(), Sub: at.Access, Payload: payload, When: when, Grants: grants}, nil
 }
 
 // rm removes what stands at the path — an entity, or one field of one.
 func (cfg *stateConfig) rm(cc *cli.Context, segs []string) error {
+	said, err := rmVia(apiClient(), segs)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(cc.Out, said)
+	return nil
+}
+
+// rmVia is the removal `data --rm` makes, through c, and the line it says.
+func rmVia(c *client.Client, segs []string) (string, error) {
 	if len(segs) == 0 {
-		return fmt.Errorf("%w: --rm wants a path (`demo pr 1`, `demo pr 1 labels urgent`, or "+
+		return "", fmt.Errorf("%w: --rm wants a path (`demo pr 1`, `demo pr 1 labels urgent`, or "+
 			"--at demo.pr.1)", cli.ErrUsage)
 	}
 	at, err := entity.TargetOf(segs)
 	if err != nil {
-		return fmt.Errorf("%w: data --rm: %s", cli.ErrUsage, err)
+		return "", fmt.Errorf("%w: data --rm: %s", cli.ErrUsage, err)
 	}
 	q := url.Values{"at": {at.Ref.KPath()}}
 	if at.Access != "" {
 		q.Set("sub", at.Access)
 	}
-	resp, err := httpDelete("/entity", q)
+	resp, err := c.Delete("/entity", q)
 	if err != nil {
-		return fmt.Errorf("data --rm: %w", err)
+		return "", fmt.Errorf("data --rm: %w", err)
 	}
 	defer resp.Body.Close()
 	// A REFUSAL IS NOT A REMOVAL, and this printed "removed" whatever came back. The one that
@@ -1171,7 +1231,7 @@ func (cfg *stateConfig) rm(cc *cli.Context, segs []string) error {
 	// — verse's own records are written by the verbs that own them — and the CLI said the
 	// record was gone while it stood there untouched.
 	if resp.StatusCode != http.StatusNoContent {
-		return statusError(resp, "data --rm")
+		return "", statusError(resp, "data --rm")
 	}
 	// Nothing stands there now — which is all there is to say, and is equally true of a path
 	// that held nothing to begin with.
@@ -1179,8 +1239,7 @@ func (cfg *stateConfig) rm(cc *cli.Context, segs []string) error {
 	// NAMED IN STEPS, like every other address this command prints, so the line reads as the
 	// one somebody typed rather than as the kpath it was sent as. A path that is not a plain
 	// address — a glob, a reach into an array — is echoed as it stands, since it has no steps.
-	fmt.Fprintf(cc.Out, "removed %s\n", inSteps(at))
-	return nil
+	return "removed " + inSteps(at), nil
 }
 
 // inSteps renders a kinded path as the steps a person types, or as it stands when it is not a
@@ -1212,6 +1271,11 @@ func inSteps(at entity.Path) string {
 // already says. It is the `ls -R` of a read — what a script uses instead of grepping `at:` out
 // of a listing, which is what scripts had to do while the answer was a table.
 func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int, kpaths bool) error {
+	return renderPaths(cc.Out, resp, at, depth, kpaths)
+}
+
+// renderPaths is printPaths to any writer.
+func renderPaths(w io.Writer, resp *http.Response, at *kpath.KPath, depth int, kpaths bool) error {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= http.StatusBadRequest {
@@ -1226,7 +1290,7 @@ func printPaths(cc *cli.Context, resp *http.Response, at *kpath.KPath, depth int
 		return fmt.Errorf("state --paths: decoding the response: %w", err)
 	}
 	for _, addr := range answered(node, at, depth) {
-		fmt.Fprintln(cc.Out, renderAddr(addr, kpaths))
+		fmt.Fprintln(w, renderAddr(addr, kpaths))
 	}
 	return nil
 }

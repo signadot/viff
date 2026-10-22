@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -41,12 +42,22 @@ type skewCheck struct {
 	mine string
 }
 
+// bearerMu serializes the login's bearer, which reads the tokens file once and rewrites it when it
+// renews an expired token: `verse mcp` sends requests side by side through this transport.
+var bearerMu sync.Mutex
+
+func lockedBearer(ctx context.Context) (string, error) {
+	bearerMu.Lock()
+	defer bearerMu.Unlock()
+	return bearer(ctx)
+}
+
 func (s skewCheck) RoundTrip(r *http.Request) (*http.Response, error) {
 	return client.Transport{
 		Base:      s.base,
 		Version:   s.mine,
 		Principal: func() (string, error) { return principal("") },
-		Bearer:    bearer,
+		Bearer:    lockedBearer,
 		Warn: func(msg string) {
 			skewWarned.Do(func() { fmt.Fprintf(warnTo, "verse: %s\n", msg) })
 		},

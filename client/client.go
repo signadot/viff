@@ -38,6 +38,28 @@ type Client struct {
 	// HTTP sends the requests. Its transport is where the version and principal are stamped (see
 	// Transport); nil is http.DefaultClient, which stamps neither.
 	HTTP *http.Client
+	// ctx is what every request is made under (With); nil is context.Background.
+	ctx context.Context
+}
+
+// With is c making its requests under ctx, so a caller that is cancelled ends the request it is
+// waiting on: a tool call its host gave up on, a watch that was stopped.
+func (c *Client) With(ctx context.Context) *Client {
+	cc := *c
+	cc.ctx = ctx
+	return &cc
+}
+
+func (c *Client) context() context.Context {
+	if c.ctx == nil {
+		return context.Background()
+	}
+	return c.ctx
+}
+
+// request is a request to u under the client's context.
+func (c *Client) request(method, u string, body io.Reader) (*http.Request, error) {
+	return http.NewRequestWithContext(c.context(), method, u, body)
 }
 
 // New is the Client for a program acting as principal against the verse at addr, stamping this
@@ -121,7 +143,11 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) { return c.http()
 
 // Get reads path.
 func (c *Client) Get(path string, q url.Values) (*http.Response, error) {
-	return c.http().Get(c.URL(path, q))
+	req, err := c.request(http.MethodGet, c.URL(path, q), nil)
+	if err != nil {
+		return nil, err
+	}
+	return c.Do(req)
 }
 
 // Post sends body, rendered in the wire format.
@@ -188,7 +214,7 @@ func (c *Client) Patch(path string, body any) (*http.Response, error) {
 
 // Delete removes what stands at path.
 func (c *Client) Delete(path string, q url.Values) (*http.Response, error) {
-	req, err := http.NewRequest(http.MethodDelete, c.URL(path, q), nil)
+	req, err := c.request(http.MethodDelete, c.URL(path, q), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +222,7 @@ func (c *Client) Delete(path string, q url.Values) (*http.Response, error) {
 }
 
 func (c *Client) send(method, u string, body []byte) (*http.Response, error) {
-	req, err := http.NewRequest(method, u, bytes.NewReader(body))
+	req, err := c.request(method, u, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}

@@ -9,6 +9,7 @@ the docs, see [the docs index](../README.md).
 | | |
 |---|---|
 | [tasks.md](tasks.md) | the task surface: the work, the agent, the environment, the autonomy, attaching, the mirror, and steering |
+| [mcp.md](mcp.md) | `verse mcp`: verse to an agent's host, as you, the tools it serves and how they wait |
 | [scopes.md](scopes.md) | scopes: a private copy of the store, what runs in it, and what it owns |
 | [entities.md](entities.md) | addresses, payloads, merging writes, conditional writes, selection, and watching |
 | [perms.md](perms.md) | permissions in detail: the grammar, the fields of a record, what verse checks on a write and a read, installed things, questions, the seed, and `verse perms`. The model itself is in [../perms.md](../perms.md). |

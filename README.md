@@ -148,7 +148,7 @@ describes what runs today, and so does the site mkdocs builds from it. Start wit
   [entities](docs/reference/entities.md), [tasks](docs/reference/tasks.md),
   [resolvers](docs/reference/resolvers.md), [runners](docs/reference/runners.md),
   [iods](docs/reference/io.md) and [the five that ship](docs/reference/iod.md),
-  [scopes](docs/reference/scopes.md),
+  [scopes](docs/reference/scopes.md), [MCP](docs/reference/mcp.md),
   [the store](docs/reference/store.md), [representation](docs/reference/representation.md).
 - [Kubernetes deploy](deploy/README.md) — build the image (`make docker`) and run verse on a
   cluster.

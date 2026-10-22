@@ -213,6 +213,7 @@ func rootCmd() *cli.Command {
 			accountCmd(),
 			whoamiCmd(),
 			schemaCmd(),
+			mcpCmd(),
 			downCmd(),
 		)
 }
