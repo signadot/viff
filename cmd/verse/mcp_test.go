@@ -97,6 +97,16 @@ func TestTheDataToolReadsWhatTheCLIWrote(t *testing.T) {
 	}
 }
 
+// -READ-ONLY IS A FLAG OF THE COMMAND: the command line knows it, so a host that starts
+// `verse mcp -read-only` gets the server, not a usage error. An argument after it is refused as
+// one, which says the flag before it was read.
+func TestTheCommandLineTakesReadOnly(t *testing.T) {
+	_, err := runCLI(t, "mcp", "-read-only", "extra")
+	if err == nil || !strings.Contains(err.Error(), "mcp takes no arguments") {
+		t.Fatalf("verse mcp -read-only extra: %v, want the flag read and the argument refused", err)
+	}
+}
+
 // -READ-ONLY SERVES THE READS AND NOTHING ELSE: every tool annotated as a read, and no other, so a
 // write is no tool at all rather than one refused.
 func TestAReadOnlyServerServesOnlyTheReads(t *testing.T) {

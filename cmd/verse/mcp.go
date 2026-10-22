@@ -36,9 +36,13 @@ type mcpConfig struct {
 
 func mcpCmd() *cli.Command {
 	cfg := &mcpConfig{}
+	opts, err := cli.StructOpts(cfg)
+	if err != nil {
+		panic(err)
+	}
 	return cli.NewCommandAt(&cfg.Command, "mcp").
 		WithSynopsis("mcp — serve this verse to an agent's host over MCP on stdin/stdout, as you").
-		WithRun(cfg.run)
+		WithOpts(opts...).WithRun(cfg.run)
 }
 
 func (cfg *mcpConfig) run(cc *cli.Context, args []string) error {
