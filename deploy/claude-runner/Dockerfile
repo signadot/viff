@@ -28,6 +28,9 @@ RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" \
 # fetches it and checked against the same manifest, so there is no node and no npm here. Under
 # /usr/local/bin for the reason the runner is: /usr is what bwrap binds into the sandbox, and a
 # binary installed anywhere else starts nowhere.
+#
+# The download retries, over HTTP/1.1: the CDN drops a long HTTP/2 stream partway and answers a
+# quick retry with 429, and a truncated binary fails its checksum below rather than installing.
 ARG CLAUDE_VERSION=2.1.304
 RUN case "${TARGETARCH}" in \
       amd64) CLAUDE_PLATFORM=linux-x64 ;; \
@@ -35,10 +38,11 @@ RUN case "${TARGETARCH}" in \
       *) echo "no claude build for ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
  && base="https://downloads.claude.ai/claude-code-releases/${CLAUDE_VERSION}" \
- && sum="$(curl -fsSL "${base}/manifest.json" | tr -d ' \n' \
+ && fetch="curl -fsSL --http1.1 --retry 5 --retry-all-errors --retry-delay 5" \
+ && sum="$(${fetch} "${base}/manifest.json" | tr -d ' \n' \
       | grep -o "\"${CLAUDE_PLATFORM}\":{[^{}]*\"checksum\":\"[a-f0-9]\{64\}\"" | grep -o '[a-f0-9]\{64\}')" \
  && test -n "${sum}" \
- && curl -fsSL "${base}/${CLAUDE_PLATFORM}/claude" -o /usr/local/bin/claude \
+ && ${fetch} "${base}/${CLAUDE_PLATFORM}/claude" -o /usr/local/bin/claude \
  && echo "${sum}  /usr/local/bin/claude" | sha256sum -c - \
  && chmod 0755 /usr/local/bin/claude \
  && claude --version
