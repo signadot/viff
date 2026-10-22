@@ -6,7 +6,8 @@ commits: []
 created: "2026-10-22T16:06:10.976851195-03:00"
 duplicates: []
 id: danxdqbwha9xs8jyv9n0
-labels: []
+labels:
+- design
 related_issues: []
 status: open
-updated: "2026-10-22T16:06:10.976851195-03:00"
+updated: "2026-10-22T16:06:11.05598909-03:00"
