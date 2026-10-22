@@ -6,7 +6,8 @@ commits: []
 created: "2026-10-22T10:02:01.327342+02:00"
 duplicates: []
 id: hfcgay94h12ksye2v5n0
-labels: []
+labels:
+- agent
 related_issues: []
 status: open
-updated: "2026-10-22T10:02:01.327342+02:00"
+updated: "2026-10-22T10:02:01.423887+02:00"
