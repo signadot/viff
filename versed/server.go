@@ -269,13 +269,7 @@ func NewWithStore(build runnerd.Builder, store entity.Store, opts ...Option) *Se
 	// autonomy — the root's record is what admits anybody at all — so a verse that serves without
 	// it refuses every request from every person, which looks like a verse that has lost its
 	// data.
-	// THE MIGRATION FIRST, since the seed and every check after it read the mirror in the new
-	// spelling alone: a record still in the old one holds out nothing, so a store left half way
-	// is a verse where nobody can spawn a task. It is fatal for the reason the seed is.
 	seedErr := rootDefault
-	if seedErr == nil {
-		seedErr = migratePerms(store)
-	}
 	if seedErr == nil {
 		seedErr = seedPerms(store, o.perms)
 	}

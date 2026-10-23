@@ -55,12 +55,6 @@ type upConfig struct {
 	// it the seed writes them once, since after that they are where an operator's own edits
 	// live and nothing can tell an edit from a config that moved.
 	ReseedPerms bool `cli:"name=reseed-perms desc='write the root, verse and admin-group records from config OVER what stands (a policy change; the seed is once otherwise)'"`
-	// UnmigratePerms is the step BEFORE rolling the image back past the `child-owner` spelling:
-	// it rewrites the mirror as that binary reads it and exits without serving, since this one
-	// reads the new spelling alone. A binary from before cannot read a record that says
-	// `child-owner`, and a line it cannot read refuses the whole field — so without this every
-	// seed row holds out nothing under it, and nobody spawns a task.
-	UnmigratePerms bool `cli:"name=unmigrate-perms desc='rewrite the perms mirror in the spelling a binary from before child-owner reads, and EXIT without serving: the step before rolling the image back'"`
 }
 
 // validate rejects contradictory flag combinations BEFORE anything is started.
@@ -189,21 +183,6 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("connect to docd at %s: %w", d.clientAddr, err)
 	}
 	defer store.Close()
-	if cfg.UnmigratePerms {
-		// The levels first, since they are found under the field's new name; then the field.
-		view := entity.As(store, entity.SystemPerms)
-		n, err := entity.UnmigrateChildOwner(view)
-		if err != nil {
-			return fmt.Errorf("verse up --unmigrate-perms: %w", err)
-		}
-		m, err := entity.UnmigrateChildGrants(view)
-		if err != nil {
-			return fmt.Errorf("verse up --unmigrate-perms: %w", err)
-		}
-		fmt.Fprintf(cc.Out, "verse up: rewrote %d perms record(s) in the old spelling, and renamed the "+
-			"field on %d; not serving — start the older binary on this store now\n", n, m)
-		return nil
-	}
 	// The permission policy this deployment set, read and REFUSED HERE rather than seeded
 	// wrong: a verse holding out something nobody asked for is what these settings exist to
 	// prevent, and the seed runs inside the constructor below.

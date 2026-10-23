@@ -15,8 +15,6 @@ verse
        [-admin-addr host:port|off]           the admin and pprof face (default: the -addr port + 1)
        [-reseed-perms]                       write the root, verse and admin-group records from
                                              config OVER what stands (see up.md)
-       [-unmigrate-perms]                    rewrite the perms mirror for an older binary, and
-                                             EXIT without serving (see up.md)
        [-docd-addr host:port]                attach to a running docd (client face)
        [-docd-advertise-addr host:port]      publish THIS on /status instead, when a client
                                              reaches docd by a different address than verse does

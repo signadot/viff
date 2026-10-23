@@ -170,31 +170,6 @@ func seedPerms(store entity.Store, p Perms) error {
 	return nil
 }
 
-// migratePerms rewrites the mirror's records into the spelling this binary reads, once, and says
-// what it did: how many it rewrote, and which lost an `owner` held out AT a node, which no
-// longer means anything — a node has one owner, fixed when it is created.
-func migratePerms(store entity.Store) error {
-	renamed, err := entity.MigrateChildGrants(store)
-	if err != nil {
-		return fmt.Errorf("migrating the perms mirror: %w", err)
-	}
-	if renamed > 0 {
-		slog.Info("perms: renamed `default` on records to `"+entity.ChildGrantsField+"`", "records", renamed)
-	}
-	rewrote, narrowed, err := entity.MigrateChildOwner(store)
-	if err != nil {
-		return fmt.Errorf("migrating the perms mirror: %w", err)
-	}
-	if rewrote > 0 {
-		slog.Info("perms: rewrote records holding `owner` out as `"+entity.ChildOwnerKey+"`", "records", rewrote)
-	}
-	for _, at := range narrowed {
-		slog.Warn("perms: a grant held `owner` out AT a node as well as beneath it; it reaches "+
-			"beneath now, and the node is its owner's alone", "record", at)
-	}
-	return nil
-}
-
 // seedTop writes the three records the tree's own top needs: the admin group, the root, and
 // verse's half.
 //

@@ -361,10 +361,6 @@ config, verse logs `perms: the root's record is not what this config would write
 `--reseed-perms` (or `VERSE_RESEED_PERMS`) is the one start that writes the config over the
 record.
 
-`--unmigrate-perms` rewrites the perms mirror in the spelling that a binary from before
-`child-owner` reads. Then it exits, and it serves nothing. Run it before you roll an image
-back past `child-owner`. See [perms.md](../perms.md).
-
 **The `llm` block** is read by the server (`verse up`). The server hosts the task runtime, so
 the `verse` agent reads its model and credentials from the config and the environment of the
 server. Setting it for a `task run` *client* does nothing. The variables `OPENAI_MODEL`,
