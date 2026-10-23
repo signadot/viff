@@ -255,12 +255,8 @@ func askRecord(body api.Ask, asker string, now time.Time) (entity.Obj, []string,
 		}
 		answerers = append(answerers, g.String())
 	}
-	switch len(answerers) {
-	case 0:
-	case 1:
-		rec["answerers"] = answerers[0]
-	default:
-		rec["answerers"] = answerers
+	if len(answerers) > 0 {
+		rec["answerers"] = answerers // a list, however many: one shape for every reader
 	}
 	if body.Due != "" {
 		due, err := time.Parse(time.RFC3339, body.Due)
@@ -421,7 +417,8 @@ func (s *Server) onward(rec entity.Obj, body api.Ask, asker string) (int, error)
 	return 0, nil
 }
 
-// askAnswerers reads whom an ask names: one name, or a list.
+// askAnswerers reads whom an ask names: a list, or the one name an ask written before answerers
+// was always a list carries.
 func askAnswerers(p entity.Payload) []string {
 	if one := entity.Str(p, "answerers"); one != "" {
 		return []string{one}
@@ -526,7 +523,9 @@ func (s *Server) carryBack(ref entity.Ref, p entity.Payload) {
 	choice := entity.Str(p, "verdict")
 	carried := entity.Obj{"at": s.now().UTC().Format(time.RFC3339)}
 	if choice == "" || choice == task.NoOption {
-		carried["status"] = "nothing: the clock settled on no option"
+		// Nothing was carried, so there is no status: the note says why. `status` is only ever
+		// the HTTP code the served ask answered.
+		carried["note"] = "nothing: the clock settled on no option"
 	} else {
 		body := api.Resolve{ID: served, Choice: choice, For: entity.Str(link, "for"), Edit: mirror.EditOf(link)}
 		req, _ := http.NewRequest(http.MethodPost, "/asks/"+served+"/answer", nil)

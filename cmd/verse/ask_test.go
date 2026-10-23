@@ -117,8 +117,8 @@ func TestAnAskIsAskedAnsweredAndSeen(t *testing.T) {
 	if _, err := runCLI(t, "ask", "land", "--on-silence", "no"); err == nil || !strings.Contains(err.Error(), "go with --question") {
 		t.Fatalf("--on-silence on a standing ask: %v, want it refused as going with --question", err)
 	}
-	if rec["answerers"] != davido {
-		t.Fatalf("answerers = %v, want %s in the grammar", rec["answerers"], davido)
+	if got, _ := rec["answerers"].([]any); len(got) != 1 || got[0] != davido {
+		t.Fatalf("answerers = %v, want [%s] in the grammar", rec["answerers"], davido)
 	}
 	if rec["keep"] != "72h0m0s" {
 		t.Fatalf("keep = %v, want 72h", rec["keep"])

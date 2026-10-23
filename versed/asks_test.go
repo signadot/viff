@@ -51,8 +51,8 @@ func TestAnAskIsItsAskersAndReadByWhomItAsks(t *testing.T) {
 	if got := entity.Str(e.Payload, "asker"); got != daniel {
 		t.Fatalf("the ask says its asker is %q", got)
 	}
-	if got := entity.Str(e.Payload, "answerers"); got != davido {
-		t.Fatalf("answerers %q, want %s in the grammar's spelling", got, davido)
+	if got := entity.Strs(e.Payload, "answerers"); len(got) != 1 || got[0] != davido {
+		t.Fatalf("answerers %v, want [%s] in the grammar's spelling", got, davido)
 	}
 	for who, want := range map[string]int{daniel: http.StatusOK, davido: http.StatusOK, bob: http.StatusForbidden} {
 		if resp := getAs(t, who, ts.URL+"/entity?at="+ref.KPath()); resp.StatusCode != want {

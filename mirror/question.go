@@ -296,18 +296,19 @@ const AnswerersField = "answerers"
 const WaitingOnField = "waitingOn"
 
 // waitingOn is who may answer the question at ref as its record now holds it out, as the field
-// carries it. A read that fails answers nil, which leaves whatever the record says standing: a
-// question said to wait on nobody is one every reader would drop.
-func waitingOn(store entity.Store, ref entity.Ref) any {
+// carries it. A read that fails answers false, and the caller writes nothing, which leaves
+// whatever the record says standing: a question said to wait on nobody is one every reader would
+// drop. (A nil written would be `waitingOn: null`, which is data, not "leave it".)
+func waitingOn(store entity.Store, ref entity.Ref) (any, bool) {
 	names, err := entity.LevelAt(store, ref, entity.ReadWrite)
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	if len(names) == 0 {
 		// The record says nothing about who answers, so the default above it does.
 		levels, err := entity.DefaultFor(store, ref)
 		if err != nil {
-			return nil
+			return nil, false
 		}
 		names = levels[entity.ReadWrite]
 	}
@@ -320,7 +321,7 @@ func waitingOn(store entity.Store, ref entity.Ref) any {
 		}
 		out = append(out, n)
 	}
-	return answerersValue(out)
+	return answerersValue(out), true
 }
 
 // about is the one line the question's subject offers about ITSELF, copied onto the question so
@@ -517,7 +518,9 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 	// AFTER the record of who may answer, and read back from it: an asking that named nobody is
 	// held out by the default above, and one posed again while it stands pending keeps whatever
 	// resolver it has been handed to since.
-	rec[WaitingOnField] = waitingOn(store, QuestionRef(q.ID))
+	if on, ok := waitingOn(store, QuestionRef(q.ID)); ok {
+		rec[WaitingOnField] = on
+	}
 	clearPriorAnswer(store, QuestionRef(q.ID), rec)
 	writeAt(store, QuestionRef(q.ID), rec)
 	return true
@@ -656,7 +659,9 @@ func Reword(store entity.Store, id string, from int, rec entity.Obj) (bool, erro
 // changed.
 func WaitOnAgain(store entity.Store, id string) {
 	ref := QuestionRef(id)
-	writeAt(store, ref, entity.Obj{WaitingOnField: waitingOn(store, ref)})
+	if on, ok := waitingOn(store, ref); ok {
+		writeAt(store, ref, entity.Obj{WaitingOnField: on})
+	}
 }
 
 // EditOf is which edit of a person's ask a record stands at, and 0 for one nobody edits.
@@ -842,7 +847,9 @@ func PostFrameQuestion(store entity.Store, ev task.Event, taskID, subject string
 	writeAt(store, ref, rec)
 	// Whom it waits on, read back from the record just written, as PostQuestion does — and with
 	// `status`, since a settled question waits on nobody and a late frame must not say otherwise.
-	posed[WaitingOnField] = waitingOn(store, ref)
+	if on, ok := waitingOn(store, ref); ok {
+		posed[WaitingOnField] = on
+	}
 	// Still pending, or not there at all — a relayed question whose only writer is this frame.
 	// `!not` over the two settled values rather than an equality on `pending`, so a status this
 	// does not know about is not silently treated as re-posable.
