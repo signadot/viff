@@ -95,6 +95,28 @@ signature:
 ---
 context:
 - tony-format/context
+define:
+  at: .[string]
+  authenticated: .[string]
+  choice: .[string]
+  edit: .[int]
+  say: .[array(string)]
+  via: .[string]
+signature:
+  name: verse-ask-ballot
+---
+context:
+- tony-format/context
+define:
+  at: .[string]
+  note: .[string]
+  refused: .[string]
+  status: .[int]
+signature:
+  name: verse-ask-carried
+---
+context:
+- tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
   answerers: .[array(string)]
@@ -105,6 +127,150 @@ define:
   then: .[tony-base:ir]
 signature:
   name: verse-ask-change
+---
+context:
+- tony-format/context
+define:
+  ask: .[string]
+  choice: .[string]
+  edit: .[int]
+  force: .[bool]
+  say: .[string]
+signature:
+  name: verse-ask-follow-answer
+---
+context:
+- tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
+define:
+  answer: .[nullable(verse-ask-follow-answer)]
+  ask: .[tony-base:ir]
+  spawn: .[tony-base:ir]
+signature:
+  name: verse-ask-follow
+---
+context:
+- tony-format/context
+define:
+  ask: .[string]
+  at: .[string]
+  refused: .[string]
+  status: .[int]
+signature:
+  name: verse-ask-follow-answered
+---
+context:
+- tony-format/context
+define:
+  at: .[string]
+  id: .[string]
+  refused: .[string]
+  status: .[int]
+signature:
+  name: verse-ask-follow-asked
+---
+context:
+- tony-format/context
+define:
+  at: .[string]
+  why: .[string]
+signature:
+  name: verse-ask-follow-failed
+---
+context:
+- tony-format/context
+define:
+  by: .[string]
+  text: .[string]
+signature:
+  name: verse-ask-said
+---
+context:
+- tony-format/context
+define:
+  edit: .[int]
+  for: .[string]
+  id: .[string]
+signature:
+  name: verse-ask-serves
+---
+context:
+- tony-format/context
+define:
+  at: .[string]
+  say: .[array(string)]
+  verdict: .[string]
+signature:
+  name: verse-ask-stale
+---
+context:
+- tony-format/context
+define: {}
+signature:
+  name: verse-names
+---
+context:
+- tony-format/context
+- task: github.com/signadot/verse/task
+define:
+  about: .[string]
+  action: .[string]
+  answer: .[string]
+  answeredAt: .[string]
+  answerers: .[array(string)]
+  askedAgain: .[bool]
+  asker: .[string]
+  at: .[string]
+  ballots: .[object(verse-ask-ballot)]
+  by: .[string]
+  carried: .[nullable(verse-ask-carried)]
+  deadline: .[nullable(task:verse-deadline)]
+  due: .[string]
+  edit: .[int]
+  else: .[nullable(verse-ask-follow)]
+  else-answered: .[nullable(verse-ask-follow-answered)]
+  else-asked: .[nullable(verse-ask-follow-asked)]
+  else-failed: .[nullable(verse-ask-follow-failed)]
+  else-task: .[string]
+  expires: .[string]
+  fields: .[object(string)]
+  gate: .[string]
+  id: .[string]
+  keep: .[string]
+  labels: .[object(string)]
+  name: .[string]
+  onSilence: .[string]
+  options: .[array(task:verse-option)]
+  origin: .[nullable(string)]
+  orphanedAt: .[string]
+  pose: .[string]
+  posedAt: .[string]
+  question: .[string]
+  reason: .[string]
+  said: .[object(verse-ask-said)]
+  saidTo: .[string]
+  say: .[array(string)]
+  serves: .[nullable(verse-ask-serves)]
+  spawns: .[string]
+  stale: .[object(verse-ask-stale)]
+  status: .[string]
+  step: .[string]
+  subject: .[string]
+  suspended: .[bool]
+  task: .[string]
+  then: .[nullable(verse-ask-follow)]
+  then-answered: .[nullable(verse-ask-follow-answered)]
+  then-asked: .[nullable(verse-ask-follow-asked)]
+  then-failed: .[nullable(verse-ask-follow-failed)]
+  then-task: .[string]
+  tool: .[string]
+  turn: .[string]
+  verdict: .[string]
+  via: .[string]
+  waitingOn: .[array(string)]
+  why: .[string]
+signature:
+  name: verse-ask-record
 ---
 context:
 - tony-format/context

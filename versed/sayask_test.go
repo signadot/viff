@@ -78,6 +78,7 @@ func sayServer(t *testing.T) (*Server, *httptest.Server) {
 		return tk
 	}
 	srv := NewWithStore(runnerd.Builder(build), entitytest.Store(t))
+	t.Cleanup(func() { checkAskRecords(t, srv.Store) })
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)

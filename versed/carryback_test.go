@@ -55,7 +55,7 @@ func TestAnOnwardAsksAnswerIsCarriedBack(t *testing.T) {
 	first := fmt.Sprint(entity.ToObj(carried(t, srv, onward))["at"])
 	srv.clock.(*fakeClock).Advance(2 * time.Second)
 	if _, _, err := entity.As(srv.Store, entity.SystemDocket).Write(entity.Write{
-		At: mirror.AskRef(onward).At(), Value: entity.Obj{"note": "later"}.Payload(),
+		At: mirror.AskRef(onward).At(), Value: entity.Obj{"reason": "later"}.Payload(),
 	}); err != nil {
 		t.Fatal(err)
 	}

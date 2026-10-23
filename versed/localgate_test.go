@@ -23,7 +23,9 @@ import (
 // blocks on it and there is a real task gate to answer.
 func askingServer(t *testing.T) *Server {
 	t.Helper()
-	return NewWithStore(askingBuilder(t), entitytest.Store(t))
+	srv := NewWithStore(askingBuilder(t), entitytest.Store(t))
+	t.Cleanup(func() { checkAskRecords(t, srv.Store) })
+	return srv
 }
 
 // askingBuilder is askingServer's half that is not the store, for a test that wraps one.

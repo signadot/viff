@@ -17,6 +17,7 @@ func testServer(t *testing.T) *Server {
 	// server nobody started is Background — so without this it outlives the store it writes to
 	// and goes on polling into a closed session, in whichever test runs next.
 	t.Cleanup(s.stopAllIOs)
+	t.Cleanup(func() { checkAskRecords(t, s.Store) })
 	return s
 }
 

@@ -421,6 +421,18 @@ func (s *Server) onward(rec entity.Obj, body api.Ask, asker string) (int, error)
 	return 0, nil
 }
 
+// personsAsk reports whether a record at verse.ask.* is a person's ask, onward or not (api.AskRecord's
+// Kind): what a restart waits on again and what its asker may withdraw. Words said to a task, a
+// task's question and a firing's gate question are not.
+func personsAsk(p entity.Payload) bool {
+	var rec api.AskRecord
+	if codec.FromNode(p, &rec) != nil {
+		return false
+	}
+	k := rec.Kind()
+	return k == api.AskKindPerson || k == api.AskKindOnward
+}
+
 // askAnswerers reads whom an ask names: a list, or the one name an ask written before answerers
 // was always a list carries.
 func askAnswerers(p entity.Payload) []string {
@@ -650,7 +662,7 @@ func (s *Server) resumeAsks() error {
 		return entity.Unread(fmt.Errorf("the asks could not be read, so none was waited on: %w", err))
 	}
 	for _, ent := range ents {
-		if entity.Str(ent.Payload, "asker") == "" || entity.Str(ent.Payload, mirror.SaidToField) != "" {
+		if !personsAsk(ent.Payload) {
 			continue // a gate's or a task's, or words to a task, which the task settles
 		}
 		switch {
@@ -685,7 +697,7 @@ func (s *Server) deleteAsk(w http.ResponseWriter, r *http.Request) {
 	if ent, found, err := entity.As(s.Store, entity.SystemDocket).Get(ref); err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
-	} else if found && (entity.Str(ent.Payload, "asker") == "" || entity.Str(ent.Payload, mirror.SaidToField) != "") {
+	} else if found && !personsAsk(ent.Payload) {
 		http.Error(w, fmt.Sprintf("%s is not a person's ask: what raised it withdraws it", ref.Name()), http.StatusConflict)
 		return
 	}
