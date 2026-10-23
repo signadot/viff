@@ -1,0 +1,5 @@
+# versed: a comment-only change to a system rule leaves its record saying the old words
+
+The skip that leaves an unchanged system rule standing at a start (e1bb05a4) asks `sameValue`, which strips comments: a config whose only change is the comment an author wrote above a rule is "unchanged", so the stored record keeps the old words for as long as the rule means the same thing, while a person applying the same file replays it and gets the new words. The record is the rule as its author left it, comments included (trigger.Trigger, `Doc`/`Note`), so the words are part of what the record should say and no part of what the rule does.
+
+Decided (Scott, 2026-10-23): update the record without treating the change as real. A rule whose value is unchanged and whose text is not has its record rewritten and its engine copy swapped (`trigger.RewriteRuleAs`): no install, no watch, no replay. `sameText` asks about the words beside `sameValue`, through the same canonical key order with the comments kept (`ir.DeepEqualWithComments`). Found by review of the day's changes.
