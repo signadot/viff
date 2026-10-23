@@ -64,7 +64,7 @@
 //	POST   /tasks/{id}/cancel                 runner.CancelRequest  204
 //	POST   /tasks/{id}/pause                  -                     204
 //	POST   /tasks/{id}/resume                 -                     204
-//	POST   /tasks/{id}/resolve                Resolve               204, or 202 and a line       asks.go
+//	POST   /tasks/{id}/resolve                Resolve               Recorded                     asks.go
 //	PUT    /tasks/{id}/autonomy               SetAutonomy           204                          tasks.go
 //
 //	Asks
@@ -73,7 +73,7 @@
 //	GET    /asks/{id}                         -                     entity.Entity
 //	PATCH  /asks/{id}                         AskChange             Asked                        asks.go
 //	DELETE /asks/{id}                         -                     204
-//	POST   /asks/{id}/answer                  Resolve               204, or 202 and a line       asks.go
+//	POST   /asks/{id}/answer                  Resolve               Recorded                     asks.go
 //	POST   /asks/{id}/say                     GateSay               204                          asks.go
 //	GET    /asks/{id}/served                  -                     AskServed                    asks.go
 //
@@ -113,6 +113,9 @@
 //	DELETE /accounts/{provider}/{sub}         -                     204
 //	GET    /.well-known/openid-configuration  -                     JSON, as OIDC has it
 //	GET    /.well-known/jwks.json             -                     JSON, as OIDC has it
+//
+// An answer to a question (POST /asks/{id}/answer, /tasks/{id}/resolve) answers 204 when it
+// settles the question, and 202 and Recorded while the question waits for more answers.
 //
 // Most routes take `?scope=`, which names the copy-on-write scope a request reads or writes;
 // absent is baseline. The query parameters shown are the ones a route's meaning turns on.
@@ -162,7 +165,6 @@
 //     trigger.Stratum for a level's name.
 //   - GET /asks answers the stored asks as written: the asker's own, each with its `id`, or with
 //     `?waiting=me` or `?all=true` the docket's question rows. Neither is typed yet.
-//   - Answering an ask that needs several votes answers 202 and a line of text.
 //   - POST /tasks answers 200 where the Runner API answers 201.
 //   - POST /tasks/{id}/cancel reads the runner's body for a task the embedded runner holds,
 //     with the `by` it says, and cancels a task on an installed runner as versed.

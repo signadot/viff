@@ -1055,8 +1055,9 @@ func noContent(cc *cli.Context, what, path string, body any, id string) error {
 	case http.StatusNoContent:
 	case http.StatusAccepted:
 		// Recorded, not settled: an answer to a question that takes more than one voice.
-		msg, _ := io.ReadAll(resp.Body)
-		fmt.Fprintln(cc.Out, what, id+":", strings.TrimSpace(string(msg)))
+		var rec api.Recorded
+		decodeBody(resp, &rec)
+		fmt.Fprintln(cc.Out, what, id+":", rec)
 		return nil
 	default:
 		msg, _ := io.ReadAll(resp.Body)

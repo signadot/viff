@@ -785,7 +785,11 @@ func answerVia(c *client.Client, id, choice, as, say string, force bool, done st
 	case http.StatusAccepted:
 		// Recorded and not yet settled: the question takes more than one voice, and the
 		// server says where the tally stands. Not an error, and not settled either.
-		return id + ": " + strings.TrimSpace(string(msg)), nil
+		var rec api.Recorded
+		if err := codec.Unmarshal(msg, &rec, respFmt(resp)); err != nil {
+			return "", fmt.Errorf("answer %s: recorded, and the tally did not read: %w", choice, err)
+		}
+		return id + ": " + rec.String(), nil
 	}
 	return "", fmt.Errorf("answer %s: %s: %s", choice, resp.Status, strings.TrimSpace(string(msg)))
 }

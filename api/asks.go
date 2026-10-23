@@ -1,6 +1,10 @@
 package api
 
-import "github.com/signadot/verse/entity"
+import (
+	"fmt"
+
+	"github.com/signadot/verse/entity"
+)
 
 // GateSay says something ABOUT a question without answering it: "checking with ops", "this is the
 // third time this week", "I would, but not before the release".
@@ -129,6 +133,23 @@ type ServedAsk struct {
 //tony:schemagen=verse-ask-served,notag
 type AskServed struct {
 	Resolver string `tony:"field=resolver,omitzero"`
+}
+
+// Recorded is what `POST /asks/{id}/answer` and `POST /tasks/{id}/resolve` answer with 202 when an
+// answer is recorded and the question stays open: it takes Need answers for one choice, and
+// Count have chosen Choice so far. The answer that reaches Need settles the question, and that
+// answers 204.
+//
+//tony:schemagen=verse-recorded,notag
+type Recorded struct {
+	Count  int    `tony:"field=count"`
+	Need   int    `tony:"field=need"`
+	Choice string `tony:"field=choice"`
+}
+
+// String is the tally as a person reads it.
+func (r Recorded) String() string {
+	return fmt.Sprintf("recorded: %d of %d for %s", r.Count, r.Need, r.Choice)
 }
 
 // AskChange is a change to a waiting ask by its asker (`verse ask <id> --due …`, PATCH

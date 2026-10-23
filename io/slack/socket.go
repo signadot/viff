@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"slices"
@@ -619,9 +618,11 @@ func (k *Socket) answer(ctx context.Context, userID string, a Asked, option, say
 	case http.StatusAccepted:
 		// The server says where the tally stands, and the thread is where the others it waits
 		// on will look.
-		tally, _ := io.ReadAll(resp.Body)
-		return fmt.Sprintf("`%s`: %s (<@%s> said *%s*).", id,
-			strings.TrimSpace(string(tally)), userID, option), true, true
+		var tally verseapi.Recorded
+		if err := client.Decode(resp, &tally); err != nil {
+			return fmt.Sprintf("`%s`: recorded (<@%s> said *%s*).", id, userID, option), true, true
+		}
+		return fmt.Sprintf("`%s`: %s (<@%s> said *%s*).", id, tally, userID, option), true, true
 	}
 	return "Not answered: " + client.StatusError(resp, "`"+id+"`").Error(), false, false
 }

@@ -82,8 +82,9 @@ func TestAThresholdOfTwoSettlesOnTheSecondBallot(t *testing.T) {
 	if first.StatusCode != http.StatusAccepted {
 		t.Fatalf("first ballot = %s, want 202 recorded: %s", first.Status, body)
 	}
-	if !strings.Contains(string(body), "1 of 2") {
-		t.Errorf("the answerer is not told where the tally stands: %q", body)
+	var rec api.Recorded
+	if err := codec.Unmarshal(body, &rec, codec.Tony); err != nil || rec != (api.Recorded{Count: 1, Need: 2, Choice: "proceed"}) {
+		t.Errorf("the answerer is not told where the tally stands: %q (%v)", body, err)
 	}
 	stillWaiting(t, answered)
 	q := questionDoc(t, srv, id)
@@ -157,7 +158,11 @@ func TestASecondBallotByTheSameAnswererReplacesTheFirst(t *testing.T) {
 		if resp.StatusCode != http.StatusAccepted {
 			t.Fatalf("%s voting %s = %s, want 202: %s", by, choice, resp.Status, body)
 		}
-		return strings.TrimSpace(string(body))
+		var rec api.Recorded
+		if err := codec.Unmarshal(body, &rec, codec.Tony); err != nil {
+			t.Fatalf("%s voting %s: the tally did not read: %v", by, choice, err)
+		}
+		return rec.String()
 	}
 	cast("user:alice@example.com", "proceed")
 	if got := cast("user:alice@example.com", "proceed"); !strings.Contains(got, "1 of 2") {

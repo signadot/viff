@@ -1273,7 +1273,7 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("GET /asks/{id}", s.getAsk, "", one("verse-entity"))
 	rt.handle("DELETE /asks/{id}", s.deleteAsk, "", nothing)
 	rt.handle("PATCH /asks/{id}", s.patchAsk, "verse-ask-change", one("verse-asked"))
-	rt.handleControl("POST /asks/{id}/answer", s.answerAsk, "verse-resolve", nothing)
+	rt.handleControl("POST /asks/{id}/answer", s.answerAsk, "verse-resolve", one("verse-recorded"))
 	rt.handleControl("POST /asks/{id}/say", s.sayOnAsk, "verse-gate-say", nothing)
 	rt.handle("PUT /perms", s.putPerms, "verse-perms-edit", one("verse-perms-record"))
 	// The live tasks and the suspensions a selection names (flows.go): the work in flight and
@@ -1401,7 +1401,7 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		s.answerQuestion(w, r, body, r.PathValue("id"), s.scopedStore(r))
-	}, "verse-resolve", nothing)
+	}, "verse-resolve", one("verse-recorded"))
 	// a new autonomy for a running task — runner-agnostic like cancel/say: the handle relays
 	// it, in process or over the wire, and it applies to the task's later steps and not to a
 	// question already waiting.
@@ -3133,8 +3133,7 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 				return
 			}
 			if count < need {
-				w.WriteHeader(http.StatusAccepted)
-				fmt.Fprintf(w, "recorded: %d of %d for %s\n", count, need, body.Choice)
+				writeOut(w, r, http.StatusAccepted, api.Recorded{Count: count, Need: need, Choice: body.Choice})
 				return
 			}
 		}

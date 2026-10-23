@@ -382,6 +382,15 @@ signature:
 context:
 - tony-format/context
 define:
+  choice: .[string]
+  count: .[int]
+  need: .[int]
+signature:
+  name: verse-recorded
+---
+context:
+- tony-format/context
+define:
   cancelled: .[array(string)]
   forgotten: .[nullable(int)]
   kept: .[int]
