@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -167,6 +168,70 @@ func TestACharterPackageIsRestoredAtItsAddress(t *testing.T) {
 		e, ok, _ := second.Store.Get(entity.RefAt("notes", "seen", "head"))
 		return ok && entity.Str(e.Payload, "saw") == "yes"
 	})
+}
+
+// charterListings counts the listings of the charter's slice a server makes through it.
+type charterListings struct {
+	entity.Store
+	n int
+}
+
+func (c *charterListings) count(at []string) {
+	if slices.Equal(at, []string{entity.VerseRoot, trigger.CharterSystem}) {
+		c.n++
+	}
+}
+func (c *charterListings) ListAt(at []string, depth int, pred func(entity.Ref) bool) []entity.Entity {
+	c.count(at)
+	return c.Store.ListAt(at, depth, pred)
+}
+func (c *charterListings) ListAtErr(at []string, depth int, pred func(entity.Ref) bool) ([]entity.Entity, error) {
+	c.count(at)
+	return entity.ListAtErr(c.Store, at, depth, pred)
+}
+
+// A RESTART READS THE CHARTER A FIXED NUMBER OF TIMES, however many packages it brings back:
+// one listing, and every package's engine takes its own strata and rules from it. Read per
+// engine, staging's restart read the whole charter twice for each of its packages, one after
+// another, while every restored rule was firing.
+func TestARestartReadsTheCharterOnceForEveryPackage(t *testing.T) {
+	addr := entitytest.Addr(t)
+	// restart stands a server up over the store, installs the packages named, stops it, and
+	// answers how many charter listings its Start made and how many package rules it runs.
+	restart := func(ats ...string) (int, int) {
+		t.Helper()
+		cl := &charterListings{Store: entitytest.StoreAt(t, addr)}
+		srv := NewWithStore(ScriptedBuilder, cl)
+		ctx, stop := context.WithCancel(t.Context())
+		defer stop()
+		srv.Start(ctx)
+		listings := cl.n
+		rules := 0
+		for _, eng := range srv.packageEngines() {
+			rules += len(eng.Triggers())
+		}
+		ts := httptest.NewServer(srv.Handler())
+		defer ts.Close()
+		for _, at := range ats {
+			if code, msg := installAt(t, ts.URL, at, `{
+				name: note,
+				condition: {subject: {path: "`+at+`.seen.*"}},
+				action: {patch: {saw: "yes"}},
+			}`); code != 201 {
+				t.Fatalf("installing at %s = %d: %s", at, code, msg)
+			}
+		}
+		return listings, rules
+	}
+	restart("drift", "lint", "docs")
+	three, rules3 := restart("audit", "deps", "fmt")
+	six, rules6 := restart()
+	if rules3 != 3 || rules6 != 6 {
+		t.Fatalf("restarts brought back %d and %d package rules, want 3 and 6", rules3, rules6)
+	}
+	if six != three {
+		t.Errorf("a restart listed the charter %d times over three packages and %d over six, want the same", three, six)
+	}
 }
 
 // A package reads its own address and what it DECLARES, and nothing else. The refusal names the

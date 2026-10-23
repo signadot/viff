@@ -258,13 +258,10 @@ func (e *Engine) forget(name string) {
 // through the overlay (ownRecord). Baseline's charter running in every live scope is a
 // question about what a scope means, and a restore is not where it gets decided.
 func (e *Engine) LoadCharter() error {
-	var errs []error
 	// At the charter's own slice. A restore is the one moment the store is largest and
 	// nothing else is waiting yet, and this read at the ROOT was 18.8s of staging's 88s
-	// startup — with restorePackages paying it again per package.
-	ents, err := entity.BelowErr(e.store, func(r entity.Ref) bool {
-		return r.ChildOf(entity.VerseRoot, CharterSystem, CharterKind)
-	}, 2, entity.VerseRoot, CharterSystem)
+	// startup.
+	ents, err := entity.BelowErr(e.store, IsCharterRule, 2, entity.VerseRoot, CharterSystem)
 	// A FAILED READ IS NOT AN EMPTY CHARTER. List answers nil either way, and taking the
 	// second reading brings a verse back running NO RULES and saying nothing about it — which
 	// under load is exactly when it happens. Reported as the read it is (entity.IsUnread), so
@@ -277,8 +274,17 @@ func (e *Engine) LoadCharter() error {
 	if err != nil {
 		return entity.Unread(fmt.Errorf("the charter could not be read, so nothing was restored from it: %w", err))
 	}
+	return e.LoadCharterFrom(ents)
+}
+
+// LoadCharterFrom is LoadCharter over records already read: the rules among ents that are this
+// engine's own. It is how many engines restore from ONE read — restorePackages lists the charter
+// once and hands every package's engine the lot, where each reading it for itself read the whole
+// charter once per package.
+func (e *Engine) LoadCharterFrom(ents []entity.Entity) error {
+	var errs []error
 	for _, ent := range ents {
-		if !e.ownRecord(ent) {
+		if !IsCharterRule(ent.Ref) || !e.ownRecord(ent) {
 			continue
 		}
 		t, err := ruleOf(ent)

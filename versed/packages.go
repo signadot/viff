@@ -115,9 +115,9 @@ func (s *Server) packageEngines() []*trigger.Engine {
 // It runs after the baseline charter is loaded, and takes only the records stamped with an
 // address; the baseline load takes only the unstamped ones (Engine.ownRecord).
 //
-// ASKED AGAIN WHOLE when a read did not happen — the listing of packages, or one package's
-// charter (entity.IsUnread): a load skips what already stands, and an engine is found rather
-// than made, so the second run installs what the first could not read and nothing twice.
+// ASKED AGAIN WHOLE when a read did not happen — the listing of packages, or of the charter
+// (entity.IsUnread): both are read before anything is installed, a load skips what already
+// stands, and an engine is found rather than made, so a second run installs nothing twice.
 func (s *Server) restorePackages() error {
 	if err := s.awaiting(phaseSuspensions); err != nil {
 		return err
@@ -164,22 +164,23 @@ func (s *Server) restorePackages() error {
 	// The declarations before the rules: a rule is checked against its package's reads as it
 	// installs, so a restore that loaded the charter first would refuse what it is restoring.
 	s.restorePackageImports()
+	// ONE READ FOR EVERY PACKAGE: the strata and the rules both live under `verse.trigger`, and
+	// each engine takes its own from the lot. Each engine reading for itself read the whole
+	// charter twice per package, one package after another, while the store was at its busiest.
+	records, err := entity.BelowErr(s.Store, isCharterRecord, 2, entity.VerseRoot, trigger.CharterSystem)
+	if err != nil {
+		return entity.Unread(fmt.Errorf("the charter could not be read, so no package was restored: %w", err))
+	}
 	// OFF THE LOCK, for the reason a scope's restore is: loading a charter opens a watch per
 	// rule, and holding the registry lock across that stalls every other lookup behind it.
-	var unread error
 	for _, eng := range engs {
-		for _, load := range []func() error{eng.LoadStrata, eng.LoadCharter} {
-			err := load()
-			if entity.IsUnread(err) {
-				unread = err
-				continue
-			}
-			if err != nil {
+		for _, load := range []func([]entity.Entity) error{eng.LoadStrataFrom, eng.LoadCharterFrom} {
+			if err := load(records); err != nil {
 				logPackage("charter package: %v", err)
 			}
 		}
 	}
-	return unread
+	return nil
 }
 
 // packagesSeen is the addresses that currently have a charter package, for the status surface.

@@ -720,17 +720,21 @@ func (e *Engine) persistStratum(s Stratum, as string, take bool) error {
 // answer for a rule whose stratum has not arrived, and the right one here too: the ordering it
 // asked to be checked against is not in force in this scope.
 func (e *Engine) LoadStrata() error {
-	var errs []error
-	ents, err := entity.BelowErr(e.store, func(r entity.Ref) bool {
-		return r.ChildOf(entity.VerseRoot, StrataSystem, StrataKind)
-	}, 2, entity.VerseRoot, StrataSystem)
+	ents, err := entity.BelowErr(e.store, IsStratum, 2, entity.VerseRoot, StrataSystem)
 	// Asked before anything is installed, and of this read alone, for LoadCharter's reasons: a
 	// load that could not read installed nothing, and is asked again.
 	if err != nil {
 		return entity.Unread(fmt.Errorf("the strata could not be read, so nothing was restored from them: %w", err))
 	}
+	return e.LoadStrataFrom(ents)
+}
+
+// LoadStrataFrom is LoadStrata over records already read, for LoadCharterFrom's reason: the
+// strata among ents that are this engine's own.
+func (e *Engine) LoadStrataFrom(ents []entity.Entity) error {
+	var errs []error
 	for _, ent := range ents {
-		if !e.ownRecord(ent) {
+		if !IsStratum(ent.Ref) || !e.ownRecord(ent) {
 			continue
 		}
 		s, err := stratumOf(ent)
