@@ -74,7 +74,7 @@ func (s *Server) servedAsks(w http.ResponseWriter, r *http.Request) {
 	if unreadable(w, r, err) {
 		return
 	}
-	out := api.ServedAsks{Asks: []api.ServedAsk{}}
+	out := make([]api.ServedAsk, 0)
 	for _, e := range ents {
 		parties, err := serves(s.Store, res, e.Payload)
 		if err != nil {
@@ -91,7 +91,7 @@ func (s *Server) servedAsks(w http.ResponseWriter, r *http.Request) {
 		for _, p := range parties {
 			a.For = append(a.For, partyName(p))
 		}
-		out.Asks = append(out.Asks, a)
+		out = append(out, a)
 	}
 	writeOut(w, r, http.StatusOK, out)
 }

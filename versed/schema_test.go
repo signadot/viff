@@ -148,7 +148,7 @@ func TestRouteTableCoversTheKnownSurface(t *testing.T) {
 		"POST /tasks/{id}/cancel":       {Request: "verse-runner-cancel"},
 		"POST /resolvers/{name}/grant":  {Request: "verse-answer-for"},
 		"POST /resolvers/{name}/revoke": {Request: "verse-answer-for"},
-		"GET /resolvers/{name}/asks":    {Response: "verse-served-asks"},
+		"GET /resolvers/{name}/asks":    {Response: "verse-served-ask"},
 		"GET /asks/{id}/served":         {Response: "verse-ask-served"},
 		"POST /charter":                 {Response: "verse-installed"},
 		"POST /charter/check":           {Response: "verse-charter-check"},

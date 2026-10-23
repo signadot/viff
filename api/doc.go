@@ -101,7 +101,7 @@
 //	DELETE /resolvers/{name}                  -                     204
 //	POST   /resolvers/{name}/grant            AnswerFor             204                          resolvers.go
 //	POST   /resolvers/{name}/revoke           AnswerFor             204                          resolvers.go
-//	GET    /resolvers/{name}/asks             -                     ServedAsks                   asks.go
+//	GET    /resolvers/{name}/asks             -                     []ServedAsk                  asks.go
 //
 //	Accounts
 //	GET    /accounts                          -                     []Account                    accounts.go
@@ -135,6 +135,7 @@
 // Bodies are tony. A request may be JSON, which is valid tony, but an answer is never JSON: a
 // tagged document has no faithful JSON rendering (see package codec). `?format=`, Content-Type
 // and Accept pick between tony and YAML. The two OIDC documents are JSON because OIDC says so.
+// A listing is a bare array of its rows, never an object wrapping one.
 //
 // # Refusals
 //

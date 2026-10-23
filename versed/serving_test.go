@@ -26,12 +26,12 @@ func servedBy(t *testing.T, as, name, url string) map[string][]string {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("served asks: %s: %s", resp.Status, bodyOf(t, resp))
 	}
-	var out api.ServedAsks
+	var out []api.ServedAsk
 	if err := client.Decode(resp, &out); err != nil {
 		t.Fatal(err)
 	}
 	got := map[string][]string{}
-	for _, a := range out.Asks {
+	for _, a := range out {
 		got[a.ID] = a.For
 	}
 	return got

@@ -131,13 +131,6 @@ type AskServed struct {
 	Resolver string `tony:"field=resolver,omitzero"`
 }
 
-// ServedAsks is the listing of them.
-//
-//tony:schemagen=verse-served-asks,notag
-type ServedAsks struct {
-	Asks []ServedAsk `tony:"field=asks"`
-}
-
 // AskChange is a change to a waiting ask by its asker (`verse ask <id> --due …`, PATCH
 // /asks/{id}). A new Due moves its clock and asks nothing again. A new Question, Answerers, Then
 // or Else changes what it asks, so it is asked again, as the next edit, and the ballots cast before

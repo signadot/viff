@@ -515,13 +515,6 @@ signature:
 context:
 - tony-format/context
 define:
-  asks: .[array(verse-served-ask)]
-signature:
-  name: verse-served-asks
----
-context:
-- tony-format/context
-define:
   autonomy: !irtype {}
   by: .[string]
 signature:

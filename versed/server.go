@@ -1310,7 +1310,7 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("GET /resolvers/{name}", s.getResolver, "", one("verse-installed-resolver"))
 	rt.handle("DELETE /resolvers/{name}", s.removeResolver, "", nothing)
 	rt.handle("POST /resolvers/{name}/grant", s.grantResolver, "verse-answer-for", nothing)
-	rt.handle("GET /resolvers/{name}/asks", s.servedAsks, "", one("verse-served-asks"))
+	rt.handle("GET /resolvers/{name}/asks", s.servedAsks, "", list("verse-served-ask"))
 	rt.handle("GET /asks/{id}/served", s.askServed, "", one("verse-ask-served"))
 	rt.handle("POST /resolvers/{name}/revoke", s.revokeResolver, "verse-answer-for", nothing)
 	// sources — what REFLECTS an external system into the verse, as against where work runs.
