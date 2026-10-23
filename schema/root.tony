@@ -15,9 +15,6 @@
 #
 # What is missing, and why:
 #
-#   asks    — its rows are still assembled as map literals, so there is no named shape to point
-#             at. Typing it `object` would be a claim true of anything. It appears here the day
-#             its handler answers in a named type.
 #   watch   — a stream of server-sent events, not a document. The frames carry verse-event, but
 #             the WIRE form of the stream is not described yet; that is worth adding, and this
 #             is where it goes when it is.
@@ -35,6 +32,7 @@ context:
 - tony-format/context
 define:
   accounts: .[array(verse-account)]
+  asks: .[array(verse-ask-record)]
   api: .[verse-routes]
   entity: .[verse-entity]
   groups: .[array(verse-group-row)]

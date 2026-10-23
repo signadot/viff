@@ -10,12 +10,12 @@ import (
 	"github.com/signadot/verse/task"
 )
 
-// AskRecord is an ask as verse stores it at `verse.ask.<id>`: what `GET /asks` answers, as the
-// asker's asks and as the docket's rows (DocketRow). Every question anybody is put is one of
-// these, whoever raised it, so the record holds five kinds (Kind), told apart by which keys they
-// carry: a person's ask, an onward ask raised to serve another, words said to a task, a task's
-// question, and a firing's gate question. Every key is optional: a record carries the ones its
-// kind and its history wrote.
+// AskRecord is an ask as verse stores it at `verse.ask.<id>`: what `GET /asks` answers, each with
+// its id, as the caller's own asks, and what a docket row (DocketRow) is. Every question anybody is
+// put is one of these, whoever raised it, so the record holds five kinds (Kind), told apart by
+// which keys they carry: a person's ask, an onward ask raised to serve another, words said to a
+// task, a task's question, and a firing's gate question. Every key is optional: a record carries
+// the ones its kind and its history wrote.
 //
 // `about` is the first line of what the ask's subject says of itself, copied when the question is
 // posed; the subject's address is `subject`. (api.Ask.About, the request, is the address.)
@@ -122,6 +122,22 @@ type AskRecord struct {
 	ElseAnswered *AskFollowAnswered `tony:"field=else-answered,omitzero"`
 	ThenAsked    *AskFollowAsked    `tony:"field=then-asked,omitzero"`
 	ElseAsked    *AskFollowAsked    `tony:"field=else-asked,omitzero"`
+
+	// Unreadable is a listing's, never stored: why the record at this address does not read as
+	// an AskRecord. Such a row carries only its id beside it, so it can be seen.
+	Unreadable string `tony:"field=unreadable,omitzero"`
+}
+
+// DocketRow is one row of the docket (`GET /asks?waiting=me`, `?all=true`, `?served=true`): a
+// pending question as stored, nothing taken out, with whom a resolver serves it for (ServedBy,
+// with `?served` or `?all`) and which plane raised it (Where: `task` for a task's question,
+// `engine` for the rest). Words said to a task ask nobody and are never on it.
+//
+//tony:schemagen=verse-docket-row,notag
+type DocketRow struct {
+	AskRecord
+	ServedBy string `tony:"field=servedBy,omitzero"`
+	Where    string `tony:"field=where"`
 }
 
 // The kinds of ask record, as Kind tells them apart.

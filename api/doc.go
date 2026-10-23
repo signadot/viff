@@ -68,7 +68,7 @@
 //	PUT    /tasks/{id}/autonomy               SetAutonomy           204                          tasks.go
 //
 //	Asks
-//	GET    /asks?waiting=me|all=|served=      -                     the stored asks
+//	GET    /asks?waiting=me|all=|served=      -                     []AskRecord                  asks_record.go
 //	POST   /asks                              Ask                   Asked                        asks.go
 //	GET    /asks/{id}                         -                     entity.Entity
 //	PATCH  /asks/{id}                         AskChange             Asked                        asks.go
@@ -163,10 +163,9 @@
 //
 // Some acts still answer differently from their neighbours, and are listed here until they are
 // made to agree:
-//   - GET /state answers entity.Paths with `?paths`, and GET /charter/{name} answers a
-//     trigger.Stratum for a level's name.
-//   - GET /asks answers the stored asks as written: the asker's own, each with its `id`, or with
-//     `?waiting=me` or `?all=true` the docket's question rows. Neither is typed yet.
+//   - GET /state answers entity.Paths with `?paths`, GET /charter/{name} answers a
+//     trigger.Stratum for a level's name, and GET /asks answers the docket's DocketRows with
+//     `?waiting=me`, `?all=true` or `?served=true`.
 //   - POST /tasks answers 200 where the Runner API answers 201.
 //   - GET /runners/{name}/check writes what the runner described.
 package api

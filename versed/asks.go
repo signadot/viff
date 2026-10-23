@@ -421,9 +421,9 @@ func (s *Server) onward(rec entity.Obj, body api.Ask, asker string) (int, error)
 	return 0, nil
 }
 
-// personsAsk reports whether a record at verse.ask.* is a person's ask, onward or not (api.AskRecord's
-// Kind): what a restart waits on again and what its asker may withdraw. Words said to a task, a
-// task's question and a firing's gate question are not.
+// personsAsk reports whether a record at verse.ask.* is a person's ask, onward or not
+// (api.AskRecord's Kind): what a restart waits on again and what its asker may withdraw. Words said
+// to a task, a task's question and a firing's gate question are not.
 func personsAsk(p entity.Payload) bool {
 	var rec api.AskRecord
 	if codec.FromNode(p, &rec) != nil {
