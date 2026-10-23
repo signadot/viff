@@ -2,6 +2,7 @@
 blocked_by: []
 blocks: []
 branches: []
+closed_by: e1bb05a45f3391bd9bd7d4cd607e82947017844a
 commits: []
 created: "2026-10-23T11:50:30.854182+02:00"
 duplicates: []
@@ -9,5 +10,5 @@ id: nf6fwh8gh12ksshdvdn0
 labels:
 - agent
 related_issues: []
-status: open
-updated: "2026-10-23T11:58:17.313637+02:00"
+status: closed
+updated: "2026-10-23T12:02:47.15595+02:00"
