@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	tony "github.com/signadot/tony-format/go-tony"
@@ -25,7 +26,7 @@ import (
 const DefaultRoot = "verse"
 
 // subtreeHealAfter and subtreeHealMax bound how long a subtree watch can be DEAD WITHOUT
-// KNOWING IT before it re-establishes itself.
+// KNOWING IT before it finds out.
 //
 // A watch can end for reasons the client did not cause: logd drops a watcher whose buffer it
 // cannot drain, because Broadcast runs on the committing goroutine and will not block on a slow
@@ -45,10 +46,17 @@ const DefaultRoot = "verse"
 // That specific hole is closed upstream. This stays because the shape of it is not specific: a
 // consumer that can only ever be told is a consumer that waits forever whenever the telling is
 // what breaks. So the watch does not only wait — a whole interval of silence, from a slice that
-// may merely be idle or from one whose watch is gone, is answered by re-establishing, whose
-// State resyncs the document and whose diff against the last snapshot emits whatever was missed.
-// The interval DOUBLES while nothing arrives, to subtreeHealMax, so an idle slice settles into a
-// cheap heartbeat rather than paying a full State every interval; any event resets it.
+// may merely be idle or from one whose watch is gone, is answered by ASKING THE WATCH
+// (libctl Watch.Progress): one small request the server answers with its head, which a watch
+// that is gone does not answer. Only then is it re-established, whose State resyncs the document
+// and whose diff against the last snapshot emits whatever was missed. Re-establishing at every
+// silence instead was measured on staging: most slices see an event about once a minute, so
+// ~390 watches each paid a State of their whole subtree every minute, 13 a second, a third of
+// logd's read work (git-issue v13rvrcth12krdjbvdn0). The interval DOUBLES while nothing arrives,
+// to subtreeHealMax, so an idle slice is asked less and less often; any event resets it.
+//
+// healProbeWithin is how long the ask may take before silence is read as death. Generous
+// against a loaded store, since a false death costs the State the ask exists to avoid.
 //
 // Vars, not consts, so a test can shorten them: the failure they answer takes thousands of
 // writes to provoke, and waiting out the production interval to observe the cure would make
@@ -56,7 +64,25 @@ const DefaultRoot = "verse"
 var (
 	subtreeHealAfter = 30 * time.Second
 	subtreeHealMax   = 5 * time.Minute
+	healProbeWithin  = 10 * time.Second
 )
+
+// subtreeReopens counts the subtree watches re-established after they ended or fell silent: an
+// instrument for the test that holds a quiet, live watch is asked and not replaced.
+var subtreeReopens atomic.Int64
+
+// askProgress asks a watch for its progress off the pump's loop, within healProbeWithin, and
+// answers nil for a head and the error for no answer.
+func askProgress(ctx context.Context, w *libctl.Watch) <-chan error {
+	done := make(chan error, 1)
+	go func() {
+		pctx, cancel := context.WithTimeout(ctx, healProbeWithin)
+		defer cancel()
+		_, err := w.Progress(pctx)
+		done <- err
+	}()
+	return done
+}
 
 // sessionBudget is how long ONE call on the session may take: a read, or an attempt to
 // establish a watch. The one call that had no budget at all is what made a store outage
@@ -1765,6 +1791,10 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 		heal := time.NewTimer(subtreeHealAfter)
 		defer heal.Stop()
 		healAfter := subtreeHealAfter
+		// probe is a heal's ask in flight on w, nil while there is none; swallow counts the
+		// progress events those asks draw, which are the pump's and not the consumer's.
+		var probe <-chan error
+		swallow := 0
 		for {
 			// Drain the current watch until it ends. A clean end is a force-end
 			// (a mount/unmount overlapping this subtree changed membership →
@@ -1782,16 +1812,37 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 					w.Close()
 					return
 				case <-heal.C:
-					// Quiet for a whole interval. Either the slice is idle — in which case
-					// re-establishing costs one State and emits nothing — or the watch is
-					// dead and this is the only thing that will ever notice. Back off while
-					// nothing changes, so an idle slice does not pay this every interval.
+					// Quiet for a whole interval. Either the slice is idle or the watch is
+					// dead, and the watch itself is asked which: one request, off this loop so
+					// the stream keeps draining meanwhile. The timer stands still until it
+					// answers, or does not, below.
+					if probe == nil {
+						probe = askProgress(ctx, w)
+						// Counted as sent, not as answered: the progress event an ask draws
+						// can reach the stream before the ask's own answer is read here.
+						swallow++
+					}
+				case err := <-probe:
+					probe = nil
+					// Back off while nothing changes either way, so an idle slice is asked
+					// less often and a dark one is not re-established every interval.
 					healAfter = min(healAfter*2, subtreeHealMax)
 					heal.Reset(healAfter)
-					break pump
+					if err != nil {
+						break pump // no answer: dead, or as good as; re-establish
+					}
 				case ev, ok := <-w.Events():
 					if !ok {
 						break pump // watch ended; re-establish
+					}
+					if ev.Progress && swallow > 0 {
+						// A heal's ask answered, which the answer itself already said. Not an
+						// event about the slice, so neither the heal nor the consumer hears it.
+						swallow--
+						if ev.Commit > rev {
+							rev = ev.Commit
+						}
+						continue
 					}
 					// It is alive: hold the heal off, and forget any backoff it accrued.
 					healAfter = subtreeHealAfter
@@ -1858,6 +1909,10 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 				if err == nil {
 					w = nw
 					stand(nw)
+					// An ask still out on the watch that ended answers for nobody, and the
+					// progress event it would have drawn never reaches this stream.
+					probe, swallow = nil, 0
+					subtreeReopens.Add(1)
 					backoff = 100 * time.Millisecond
 					break
 				}
