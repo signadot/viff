@@ -57,9 +57,9 @@ func (s *Server) suspensionsFor(scope string) *trigger.Suspensions {
 // so a record is the scope's only when its stamp says so, as a rule record is. A read that did
 // not happen is reported as one, so whatever loads the table asks again.
 func readSuspensions(store entity.Store, scope string) ([]trigger.Suspension, error) {
-	ents := entity.Below(store, trigger.IsSuspension, 1, entity.VerseRoot, trigger.CharterSystem, trigger.SuspensionKind)
-	if err := entity.ReadFailed(store); err != nil {
-		return nil, fmt.Errorf("the suspensions could not be read, so everything stays held: %w", err)
+	ents, err := entity.BelowErr(store, trigger.IsSuspension, 1, entity.VerseRoot, trigger.CharterSystem, trigger.SuspensionKind)
+	if err != nil {
+		return nil, entity.Unread(fmt.Errorf("the suspensions could not be read, so everything stays held: %w", err))
 	}
 	var out []trigger.Suspension
 	for _, ent := range ents {

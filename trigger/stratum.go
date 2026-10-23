@@ -721,13 +721,13 @@ func (e *Engine) persistStratum(s Stratum, as string, take bool) error {
 // asked to be checked against is not in force in this scope.
 func (e *Engine) LoadStrata() error {
 	var errs []error
-	ents := entity.Below(e.store, func(r entity.Ref) bool {
+	ents, err := entity.BelowErr(e.store, func(r entity.Ref) bool {
 		return r.ChildOf(entity.VerseRoot, StrataSystem, StrataKind)
 	}, 2, entity.VerseRoot, StrataSystem)
-	// Asked before anything is installed, for LoadCharter's reason: a load that could not
-	// read installed nothing, and is asked again.
-	if err := entity.ReadFailed(e.store); err != nil {
-		return fmt.Errorf("the strata could not be read, so nothing was restored from them: %w", err)
+	// Asked before anything is installed, and of this read alone, for LoadCharter's reasons: a
+	// load that could not read installed nothing, and is asked again.
+	if err != nil {
+		return entity.Unread(fmt.Errorf("the strata could not be read, so nothing was restored from them: %w", err))
 	}
 	for _, ent := range ents {
 		if !e.ownRecord(ent) {

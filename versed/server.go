@@ -787,11 +787,11 @@ func (s *Server) reconcileTasks() error {
 	}
 	var resumed []resumedRun
 	// The task slice, not the verse. This read at the root was 18.9s of staging's startup.
-	tasks := entity.Below(s.Store, mirror.IsTaskish, 2, entity.VerseRoot, mirror.System)
-	if err := entity.ReadFailed(s.Store); err != nil {
+	tasks, err := entity.BelowErr(s.Store, mirror.IsTaskish, 2, entity.VerseRoot, mirror.System)
+	if err != nil {
 		// Not "no tasks outlived us": orphaning nothing is right, and resuming nothing is not.
 		// Reported as the read it is, and the phase asks again.
-		return fmt.Errorf("tasks could not be read, so none were resumed or orphaned: %w", err)
+		return entity.Unread(fmt.Errorf("tasks could not be read, so none were resumed or orphaned: %w", err))
 	}
 	for _, ent := range tasks {
 		if ent.Ref.Under(entity.VerseRoot, mirror.System, mirror.RunKind) {

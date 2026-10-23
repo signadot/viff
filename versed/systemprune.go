@@ -43,9 +43,15 @@ func (s *Server) pruneSystemCharters() {
 		return
 	}
 	defer release()
+	// The listing's own failure: the ActsAs reads below would otherwise set or clear the
+	// store's flag before it was asked.
+	rules, err := entity.BelowErr(s.Store, trigger.IsCharterRule, 2, entity.VerseRoot, trigger.CharterSystem)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "verse: system charters the config dropped: %v\n", err)
+		return
+	}
 	system := map[string]bool{}
-	for _, ent := range entity.Below(s.Store, trigger.IsCharterRule, 2,
-		entity.VerseRoot, trigger.CharterSystem) {
+	for _, ent := range rules {
 		at := entity.Str(ent.Payload, trigger.AtField)
 		if at == "" || named[at] {
 			continue
@@ -53,10 +59,6 @@ func (s *Server) pruneSystemCharters() {
 		if who, err := entity.ActsAs(s.Store, ent.Ref); err == nil && who == entity.SystemCharter {
 			system[at] = true
 		}
-	}
-	if err := entity.ReadFailed(s.Store); err != nil {
-		fmt.Fprintf(os.Stderr, "verse: system charters the config dropped: %v\n", err)
-		return
 	}
 	gone := make([]string, 0, len(system))
 	for at := range system {

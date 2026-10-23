@@ -262,7 +262,7 @@ func (e *Engine) LoadCharter() error {
 	// At the charter's own slice. A restore is the one moment the store is largest and
 	// nothing else is waiting yet, and this read at the ROOT was 18.8s of staging's 88s
 	// startup — with restorePackages paying it again per package.
-	ents := entity.Below(e.store, func(r entity.Ref) bool {
+	ents, err := entity.BelowErr(e.store, func(r entity.Ref) bool {
 		return r.ChildOf(entity.VerseRoot, CharterSystem, CharterKind)
 	}, 2, entity.VerseRoot, CharterSystem)
 	// A FAILED READ IS NOT AN EMPTY CHARTER. List answers nil either way, and taking the
@@ -270,8 +270,12 @@ func (e *Engine) LoadCharter() error {
 	// under load is exactly when it happens. Reported as the read it is (entity.IsUnread), so
 	// the restore asks again — and asked BEFORE anything is installed, so a load that reports
 	// it installed nothing and the next call is the same call.
-	if err := entity.ReadFailed(e.store); err != nil {
-		return fmt.Errorf("the charter could not be read, so nothing was restored from it: %w", err)
+	//
+	// THIS read's failure, not the store's last one: at a restore every restored rule's firings
+	// read through the same store, so its shared flag condemns a load whose read was fine and
+	// clears one whose read failed.
+	if err != nil {
+		return entity.Unread(fmt.Errorf("the charter could not be read, so nothing was restored from it: %w", err))
 	}
 	for _, ent := range ents {
 		if !e.ownRecord(ent) {

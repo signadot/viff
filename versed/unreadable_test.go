@@ -4,12 +4,14 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/trigger"
 )
 
 // failReads is a store whose reads do not happen — the shape of a store under load, where a
@@ -78,5 +80,31 @@ func TestAListingRefusesRatherThanAnsweringEmpty(t *testing.T) {
 			t.Errorf("%s with an unreadable store = %s (%s); want 503 — an empty answer here "+
 				"reads as 'nothing is installed'", path, resp.Status, body)
 		}
+	}
+}
+
+// charterUnread is a store whose listing of the charter does not happen while every other read
+// does, so its shared flag, set by whoever read last, says all is well.
+type charterUnread struct{ entity.Store }
+
+func (c charterUnread) ListAt(at []string, depth int, pred func(entity.Ref) bool) []entity.Entity {
+	out, _ := c.ListAtErr(at, depth, pred)
+	return out
+}
+func (c charterUnread) ListAtErr(at []string, depth int, pred func(entity.Ref) bool) ([]entity.Entity, error) {
+	if slices.Equal(at, []string{entity.VerseRoot, trigger.CharterSystem}) {
+		return nil, errFor("context deadline exceeded")
+	}
+	return entity.ListAtErr(c.Store, at, depth, pred)
+}
+func (charterUnread) ReadError() error { return nil }
+
+// WHICH PACKAGES EXIST IS TWO READS, and each answers for itself: one check of the store's flag
+// after both let the schedules' listing clear the charter's failure, and a restore found no
+// packages to bring back.
+func TestPackagesSeenAnswersForEachRead(t *testing.T) {
+	srv := NewWithStore(ScriptedBuilder, charterUnread{entitytest.Store(t)})
+	if names, err := srv.packagesSeenErr(); !entity.IsUnread(err) {
+		t.Fatalf("packages read as %v with %v while the charter could not be read, want a read that did not happen", names, err)
 	}
 }

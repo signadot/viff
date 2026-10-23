@@ -211,21 +211,28 @@ func (s *Server) packagesSeenErr() ([]string, error) {
 	// wire, filtered here — so this cost three full reads, on a function `verse charter` calls
 	// on every request and installs call again. On staging that was the difference between an
 	// answer and a timeout.
-	for _, ent := range entity.Below(s.Store, isCharterRecord, 2,
-		entity.VerseRoot, trigger.CharterSystem) {
+	//
+	// EACH READ ANSWERS FOR ITSELF. One check of the store's flag after both let the second
+	// read's success clear the first's failure, and a restore then brought back no packages.
+	charter, err := entity.BelowErr(s.Store, isCharterRecord, 2, entity.VerseRoot, trigger.CharterSystem)
+	if err != nil {
+		return nil, entity.Unread(err)
+	}
+	for _, ent := range charter {
 		if at := entity.Str(ent.Payload, trigger.AtField); at != "" {
 			out = append(out, at)
 		}
 	}
 	// And a fourth, which lives apart: a package's schedules are the daemon's records under
 	// verse.schedule, and a package declaring only a schedule is a package.
-	for _, ent := range entity.Below(s.Store, schedule.IsRecord, 1, entity.VerseRoot, schedule.System) {
+	schedules, err := entity.BelowErr(s.Store, schedule.IsRecord, 1, entity.VerseRoot, schedule.System)
+	if err != nil {
+		return nil, entity.Unread(err)
+	}
+	for _, ent := range schedules {
 		if at := entity.Str(ent.Payload, schedule.AtField); at != "" {
 			out = append(out, at)
 		}
-	}
-	if err := entity.ReadFailed(s.Store); err != nil {
-		return nil, err
 	}
 	sort.Strings(out)
 	return dedupe(out), nil

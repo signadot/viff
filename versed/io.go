@@ -1050,10 +1050,10 @@ func (s *Server) restoreSources() error {
 	if err := s.awaiting(phaseStrata, phaseCharter, phasePackages); err != nil {
 		return err
 	}
-	installed := verseio.List(s.Store)
-	if err := entity.ReadFailed(s.Store); err != nil {
-		return fmt.Errorf("sources could not be read, so none were restored — the "+
-			"registrations are still there: %w", err)
+	installed, err := verseio.ListErr(s.Store)
+	if err != nil {
+		return entity.Unread(fmt.Errorf("sources could not be read, so none were restored — the "+
+			"registrations are still there: %w", err))
 	}
 	for _, e := range installed {
 		if e.Scope != "" {
