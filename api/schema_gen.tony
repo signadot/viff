@@ -124,6 +124,14 @@ signature:
 context:
 - tony-format/context
 define:
+  by: .[string]
+  reason: .[string]
+signature:
+  name: verse-cancel
+---
+context:
+- tony-format/context
+define:
   added: .[array(string)]
   at: .[string]
   changed: .[array(string)]

@@ -145,7 +145,7 @@ func TestRouteTableCoversTheKnownSurface(t *testing.T) {
 	// wrong.
 	for route, want := range map[string]api.Route{
 		"POST /tasks/{id}/say":          {Request: "verse-say", Response: "verse-asked"},
-		"POST /tasks/{id}/cancel":       {Request: "verse-runner-cancel"},
+		"POST /tasks/{id}/cancel":       {Request: "verse-cancel"},
 		"POST /resolvers/{name}/grant":  {Request: "verse-answer-for"},
 		"POST /resolvers/{name}/revoke": {Request: "verse-answer-for"},
 		"GET /resolvers/{name}/asks":    {Response: "verse-served-ask"},

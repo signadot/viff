@@ -121,6 +121,16 @@ type Say struct {
 	By          string `tony:"field=by,omitzero"` // attribution; empty is an unattributed caller
 }
 
+// Cancel ends a task (`POST /tasks/{id}/cancel`), wherever it runs. Reason is what the task's
+// charters see on `onCancelled`; By is who cancelled it, which is whoever the request is made as,
+// so a By naming anybody else is refused. A cancel with no body is a cancel all the same.
+//
+//tony:schemagen=verse-cancel,notag
+type Cancel struct {
+	Reason string `tony:"field=reason,omitzero"`
+	By     string `tony:"field=by,omitzero"`
+}
+
 // SetAutonomy replaces a running task's autonomy, applied to its later steps and not to a
 // question already waiting (`PUT /tasks/{id}/autonomy`). The runner carries the rows whole;
 // verse keeps what it reads of them (what silence settles on, the labels).

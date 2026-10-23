@@ -1373,22 +1373,20 @@ func (s *Server) Handler() http.Handler {
 		s.taskEvents(w, r, ph)
 	}, "", stream("verse-task-event"))
 	// cancel/say are runner-agnostic: local tasks go to the runtime, remote
-	// ones to the runner's handle — so `task cancel`/`say` work wherever a task runs. A cancel's
-	// body is the runner's (verse-runner-cancel), read for a task the embedded runner holds and
-	// not passed to an installed runner's.
+	// ones to the runner's handle — so `task cancel`/`say` work wherever a task runs.
 	rt.handle("POST /tasks/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
-		s.taskControl(w, r, ph, "cancel")
-	}, "verse-runner-cancel", nothing)
+		s.taskControl(w, r, "cancel")
+	}, "verse-cancel", nothing)
 	rt.handleControl("POST /tasks/{id}/say", func(w http.ResponseWriter, r *http.Request) {
-		s.taskControl(w, r, ph, "say")
+		s.taskControl(w, r, "say")
 	}, "verse-say", one("verse-asked"))
 	// pause/resume the same way: held at the task's next boundary wherever it runs, and asked
 	// of the task's scope and of control first, as every control verb is.
 	rt.handle("POST /tasks/{id}/pause", func(w http.ResponseWriter, r *http.Request) {
-		s.taskControl(w, r, ph, "pause")
+		s.taskControl(w, r, "pause")
 	}, "", nothing)
 	rt.handle("POST /tasks/{id}/resume", func(w http.ResponseWriter, r *http.Request) {
-		s.taskControl(w, r, ph, "resume")
+		s.taskControl(w, r, "resume")
 	}, "", nothing)
 	// Answering is the ONE path (answerQuestion), not a case of taskControl: this route
 	// differs from `/asks/{id}/answer` only in being TOLD which task holds the question
@@ -1406,7 +1404,7 @@ func (s *Server) Handler() http.Handler {
 	// it, in process or over the wire, and it applies to the task's later steps and not to a
 	// question already waiting.
 	rt.handle("PUT /tasks/{id}/autonomy", func(w http.ResponseWriter, r *http.Request) {
-		s.taskControl(w, r, ph, "autonomy")
+		s.taskControl(w, r, "autonomy")
 	}, "verse-set-autonomy", nothing)
 	rt.mount("/tasks", ph)
 	rt.mount("/tasks/", ph)
@@ -4856,7 +4854,7 @@ func subscribeAt(h task.Handle, since string) (<-chan task.Event, func()) {
 // working it by the grant its claim made. Asked of the store before anything is relayed, the
 // way an answer is, since what a control call does happens elsewhere and leaves no record here
 // to refuse.
-func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime http.Handler, op string) {
+func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, op string) {
 	id := r.PathValue("id")
 	if op == "pause" || op == "resume" {
 		if _, ok := s.holdTask(w, r, id, op == "pause"); ok {
@@ -4871,14 +4869,10 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 	if _, ok := s.controlledTask(w, r, id); !ok {
 		return
 	}
-	// SAY AND AUTONOMY GO THROUGH THE HANDLE WHEREVER THE TASK RUNS, the runtime's own included:
-	// both record who did them, and that is whoever the request is made as (actor). The
+	// CANCEL, SAY AND AUTONOMY GO THROUGH THE HANDLE WHEREVER THE TASK RUNS, the runtime's own
+	// included: each records who did it, and that is whoever the request is made as (actor). The
 	// runtime's own handler takes the request as it stands and records the body's `by`, so the
 	// party checked for control would not be the party written down.
-	if _, ok := s.Embedded.SnapshotOf(id); ok && op != "say" && op != "autonomy" {
-		runtime.ServeHTTP(w, r) // local runtime owns it
-		return
-	}
 	// WHEREVER IT RUNS, not wherever the default runner is. s.attach reads the task's own
 	// record to find the runner hosting it and falls back to the default; s.runner.Attach
 	// asks the default and nothing else. Every task a charter spawns onto a named pool
@@ -4896,7 +4890,19 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 	}
 	switch op {
 	case "cancel":
-		h.Cancel("", versedActor)
+		var body api.Cancel
+		if err := codec.Read(r, &body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		by, ok := actor(w, s.scopedStore(r), body.By)
+		if !ok {
+			return
+		}
+		if err := h.Cancel(body.Reason, by); err != nil && !errors.Is(err, task.ErrEnded) {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
 	case "say":
 		var body api.Say
 		if err := codec.Read(r, &body); err != nil || body.Instruction == "" {

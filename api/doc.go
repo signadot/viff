@@ -61,7 +61,7 @@
 //	GET    /tasks/{id}                        -                     Task                         tasks.go
 //	GET    /tasks/{id}/events?since=          -                     SSE stream of task.Event
 //	POST   /tasks/{id}/say                    Say                   Asked                        tasks.go
-//	POST   /tasks/{id}/cancel                 runner.CancelRequest  204
+//	POST   /tasks/{id}/cancel                 Cancel                204                          tasks.go
 //	POST   /tasks/{id}/pause                  -                     204
 //	POST   /tasks/{id}/resume                 -                     204
 //	POST   /tasks/{id}/resolve                Resolve               Recorded                     asks.go
@@ -166,8 +166,6 @@
 //   - GET /asks answers the stored asks as written: the asker's own, each with its `id`, or with
 //     `?waiting=me` or `?all=true` the docket's question rows. Neither is typed yet.
 //   - POST /tasks answers 200 where the Runner API answers 201.
-//   - POST /tasks/{id}/cancel reads the runner's body for a task the embedded runner holds,
-//     with the `by` it says, and cancels a task on an installed runner as versed.
 //   - `?probe` is opt-in on GET /runners and /iods and opt-out on their POSTs.
 //   - GET /runners/{name}/check writes what the runner described.
 package api

@@ -7708,6 +7708,101 @@ func (s *Say) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	return s.FromTonyIR(node, opts...)
 }
 
+// ToTonyIR converts Cancel to a Tony IR node.
+func (s *Cancel) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: Reason
+	if s.Reason != "" {
+		irMap["reason"] = ir.FromString(string(s.Reason))
+	}
+
+	// Field: By
+	if s.By != "" {
+		irMap["by"] = ir.FromString(string(s.By))
+	}
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates Cancel from a Tony IR node.
+func (s *Cancel) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for Cancel, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "reason":
+			// Field: Reason
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "reason", fieldNodeUnwrapped.Type)
+			}
+			s.Reason = string(fieldNodeUnwrapped.String)
+		case "by":
+			// Field: By
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "by", fieldNodeUnwrapped.Type)
+			}
+			s.By = string(fieldNodeUnwrapped.String)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for Cancel", fieldName.String)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts Cancel to Tony format bytes.
+func (s *Cancel) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates Cancel.
+func (s *Cancel) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
 // ToTonyIR converts SetAutonomy to a Tony IR node.
 func (s *SetAutonomy) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if s == nil {
