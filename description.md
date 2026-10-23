@@ -1,0 +1,7 @@
+# staging runs verse built against the go-tony rc (index walk bound, regions rewrite, store close, scratch)
+
+Staging's logd is CPU-bound on its index walk (tony-format baassnwt: every read visits every retained entry's Spine header at the root and `verse` nodes) and its `index.regions` file grew without bound (tony-format 1xa86mrn). The fixes are on tony-format's `rc` branch (5ec2fe79: interval-tree bound on the commit walk; 21c70fc7 + f5b0f468: the regions rewrite on an open store; 7389e7be: `o` closes the store on SIGTERM; the r482 scratch merge), not yet released.
+
+To run them under staging before a release, `verse/rc-go-tony` replaces go-tony with the rc checkout at `/Users/scott/Dev/github.com/signadot/tony-format/.claude/worktrees/rc/go-tony`. The image build cross-compiles locally and copies the binaries, so the replace reaches `o` (docd and logd) as well as versed. The branch stays off main: a path replace is local to one machine.
+
+Checked against the rc: build, vet, `make check`, the full suite (33 packages, docd-backed). `IndexFormatVersion` is unchanged (5), so docd opens its index files as they are. Rolled docd first, then versed. To watch: `index.regions` shrinking at the first persist whose garbage outgrows the live records, the compaction cycle (25 min before), a 30s profile of `o` with `leafRange` out of the top, and the slow-commit `apply` floor.
