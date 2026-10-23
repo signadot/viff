@@ -127,8 +127,16 @@ func (h *SubprocessHandler) HTTPHandler() http.Handler {
 	})
 	mux.HandleFunc("POST /tasks", h.launch)
 	mux.HandleFunc("GET /tasks", h.list)
-	mux.HandleFunc("/tasks/{id}", h.forward)
-	mux.HandleFunc("/tasks/{id}/{op}", h.forward)
+	// Each route by its method, as an InProcessHandler serves them (runner/doc.go), so a method
+	// the contract does not name is refused 405 rather than taken as the one it does.
+	mux.HandleFunc("GET /tasks/{id}", h.forward(""))
+	mux.HandleFunc("GET /tasks/{id}/events", h.forward("events"))
+	mux.HandleFunc("POST /tasks/{id}/resolve", h.forward("resolve"))
+	mux.HandleFunc("POST /tasks/{id}/say", h.forward("say"))
+	mux.HandleFunc("POST /tasks/{id}/cancel", h.forward("cancel"))
+	mux.HandleFunc("POST /tasks/{id}/pause", h.forward("pause"))
+	mux.HandleFunc("POST /tasks/{id}/resume", h.forward("resume"))
+	mux.HandleFunc("PUT /tasks/{id}/autonomy", h.forward("autonomy"))
 	return mux
 }
 
@@ -646,7 +654,13 @@ func (p *proc) stop(log io.Writer) {
 
 // forward is every /tasks/{id} route. A live task's process answers it; a finished task is
 // answered from what the runner remembers.
-func (h *SubprocessHandler) forward(w http.ResponseWriter, r *http.Request) {
+func (h *SubprocessHandler) forward(op string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) { h.forwardOp(w, r, op) }
+}
+
+// forwardOp answers op on a task: from what the runner knows while the task is not hosted yet or
+// has ended, and otherwise from the task's own process.
+func (h *SubprocessHandler) forwardOp(w http.ResponseWriter, r *http.Request, op string) {
 	id := r.PathValue("id")
 	h.mu.Lock()
 	p := h.tasks[id]
@@ -655,7 +669,6 @@ func (h *SubprocessHandler) forward(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	op := r.PathValue("op")
 	if _, done := p.snapshot(); !done && !p.isReady() {
 		// Not hosted yet: its repos are being checked out, or its process started. A cancel is
 		// the runner's to carry out, and a look is answered from what the runner knows; the
@@ -663,7 +676,7 @@ func (h *SubprocessHandler) forward(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case op == "cancel" && cancelEarly(w, r, p):
 			return
-		case r.Method == http.MethodGet && op == "":
+		case op == "":
 			writeOut(w, r, http.StatusOK, p.current())
 			return
 		}
@@ -675,25 +688,24 @@ func (h *SubprocessHandler) forward(w http.ResponseWriter, r *http.Request) {
 	}
 	final, done := p.snapshot()
 	if !done {
-		if r.Method == http.MethodGet && op == "" {
+		switch op {
+		case "":
 			writeOut(w, r, http.StatusOK, p.current()) // the process's, with what its proxy refused
 			return
-		}
-		if r.Method == http.MethodPut && op == "autonomy" {
+		case "autonomy":
 			h.replaceAutonomy(w, r, p)
 			return
-		}
-		if r.Method == http.MethodPost && op == "resolve" {
+		case "resolve":
 			h.relayResolve(w, r, p)
 			return
 		}
 		p.prox.ServeHTTP(w, r)
 		return
 	}
-	switch {
-	case r.Method == http.MethodGet && op == "":
+	switch op {
+	case "":
 		writeOut(w, r, http.StatusOK, final)
-	case r.Method == http.MethodGet && op == "events":
+	case "events":
 		// A finished task's stream is what the runner followed of it, from the reader's cursor,
 		// and then it closes: what a late reader gets from an InProcessHandler too. A task whose
 		// process died before it said how it ended gets that end said for it.
@@ -715,15 +727,14 @@ func (h *SubprocessHandler) forward(w http.ResponseWriter, r *http.Request) {
 		}
 		sse.Flush()
 	// The rest as an InProcessHandler answers them for an ended task: a cancel, pause or resume
-	// does nothing and says so with 204, a say is 410, and no gate is left to resolve.
-	case op == "cancel" || op == "pause" || op == "resume":
+	// does nothing and says so with 204, a say or a new autonomy is 410, and no question is left
+	// to resolve.
+	case "cancel", "pause", "resume":
 		w.WriteHeader(http.StatusNoContent)
-	case op == "say":
+	case "say", "autonomy":
 		http.Error(w, fmt.Sprintf("task %s has ended (%s)", id, final.Status), http.StatusGone)
-	case op == "resolve":
+	case "resolve":
 		http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
-	default:
-		http.NotFound(w, r)
 	}
 }
 
