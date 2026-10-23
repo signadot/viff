@@ -1,0 +1,9 @@
+# versed: the iods' pass reports live in logd scratch, not the document
+
+An out half reports every pass to versed (`POST /iods/<name>/pass`), and versed merges `lastPass`, `delivered` and `failed` into the registration record at `verse.iods.<name>.out`: one commit per pass per iod, into a document whose every commit is history, replayed and snapshotted, for a fact that is only ever about now. Nothing watches it (no charter, no rule, no versed watch, checked 2026-10-23), nothing reads it at a commit, nothing guards it, and losing the last second of it costs a repeat. Verse already treats the in half's `lastPass` as an opinion about now, read live and never written.
+
+go-tony v0.0.245 carries scratch (tony-format r482sz5r): a second document beside the log with no history, no watches, no scopes, reads and writes only, flushed to `scratch.tony` every second. The pass report moves there, at the record's own address, `verse.iods.<name>.out`. The record keeps what is config and what is a transition: `places`, `as`, and `lastError`, which is written once when the error begins and cleared when a pass succeeds, as now. `verse iod` reads both halves and shows one row.
+
+In verse: a `Scratch` face beside `entity.Store` (`ScratchWrite(at, payload)`, `ScratchRead(at)`), the logd store over libctl's `ScratchWrite`/`ScratchRead`, and the attributed store checking the principal at the address as it would a write or read there, since docd knows no principals. `passIO` writes the report as verse; the listing reads it. Scratch is never reachable from a charter: conditions name document paths and there is no scratch expression.
+
+The registration record's shape changes (`out.lastPass`, `out.delivered`, `out.failed` leave the document), so this lands as a contract.
