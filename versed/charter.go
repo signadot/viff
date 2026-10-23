@@ -56,6 +56,17 @@ func (s *Server) charterTree(at string, depth int) (*ir.Node, error) {
 	segs := want.Path()
 	root := &charterNode{}
 	found := at == ""
+	// The schedules are read ONCE for the tree and handed to each charter by its address: read
+	// per charter, a listing of every installed charter cost one read of every schedule record
+	// per charter, in a row.
+	schedules := map[string][]api.ScheduleRow{}
+	rows, err := s.scheduleRows(s.Store, func(api.ScheduleRow) bool { return true })
+	if err != nil {
+		return nil, fmt.Errorf("schedules: %w", err)
+	}
+	for _, row := range rows {
+		schedules[row.At] = append(schedules[row.At], row)
+	}
 	for _, addr := range append([]string{""}, s.packagesSeen()...) {
 		rest, under := belowAddr(addr, segs)
 		if !under {
@@ -69,7 +80,7 @@ func (s *Server) charterTree(at string, depth int) (*ir.Node, error) {
 		for _, seg := range rest {
 			node = node.child(seg)
 		}
-		if err := s.fillCharter(node, addr); err != nil {
+		if err := s.fillCharter(node, addr, schedules[addr]); err != nil {
 			return nil, err
 		}
 	}
@@ -80,8 +91,8 @@ func (s *Server) charterTree(at string, depth int) (*ir.Node, error) {
 }
 
 // fillCharter reads one charter — its confinement, what it declares it reads, its rules and its levels —
-// off the engine running it.
-func (s *Server) fillCharter(node *charterNode, at string) error {
+// off the engine running it, with the schedules declared at its address.
+func (s *Server) fillCharter(node *charterNode, at string, rows []api.ScheduleRow) error {
 	// BASELINE IS s.Eng, not a package engine at the empty address: packageEngine would create
 	// a second, empty engine keyed on no address and answer from it — a charter that installs
 	// fine and lists as nothing, which is exactly what this is here to prevent.
@@ -119,12 +130,7 @@ func (s *Server) fillCharter(node *charterNode, at string) error {
 	if node.strata, err = codec.ToNode(eng.Strata()); err != nil {
 		return err
 	}
-	// The schedules are the daemon's records rather than the engine's, read by the address
-	// they were declared at.
-	rows, err := s.scheduleRows(s.Store, func(row api.ScheduleRow) bool { return row.At == at })
-	if err != nil {
-		return fmt.Errorf("charter at %q: schedules: %w", at, err)
-	}
+	// The schedules are the daemon's records rather than the engine's, declared at this address.
 	if len(rows) > 0 {
 		if node.schedules, err = codec.ToNode(rows); err != nil {
 			return err

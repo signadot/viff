@@ -3,6 +3,7 @@ package versed
 import (
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -107,6 +108,63 @@ func TestAScheduleDeclaredInACharterIsARecordWithANext(t *testing.T) {
 	}
 	if resp := installAs(t, "bob@example.com", ts.URL, `{name: mine, every: 1h}`); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("bob declaring the freed name: %s %s", resp.Status, readBody(t, resp))
+	}
+}
+
+// scheduleListings counts the listings of the schedule records a server makes through it.
+type scheduleListings struct {
+	entity.Store
+	n int
+}
+
+func (c *scheduleListings) count(at []string) {
+	if slices.Equal(at, []string{entity.VerseRoot, schedule.System}) {
+		c.n++
+	}
+}
+func (c *scheduleListings) ListAt(at []string, depth int, pred func(entity.Ref) bool) []entity.Entity {
+	c.count(at)
+	return c.Store.ListAt(at, depth, pred)
+}
+func (c *scheduleListings) ListAtErr(at []string, depth int, pred func(entity.Ref) bool) ([]entity.Entity, error) {
+	c.count(at)
+	return entity.ListAtErr(c.Store, at, depth, pred)
+}
+
+// THE CHARTER TREE READS THE SCHEDULES A FIXED NUMBER OF TIMES, however many charters it lists:
+// each is handed the ones declared at its address. Read per charter, `verse c` on a verse of
+// fifteen charters read every schedule record fifteen times, one after another.
+func TestTheCharterTreeReadsTheSchedulesOnce(t *testing.T) {
+	cs := &scheduleListings{Store: entitytest.Store(t)}
+	srv := NewWithStore(ScriptedBuilder, cs)
+	srv.Zone = time.UTC
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	listings := func(ats ...string) (int, string) {
+		t.Helper()
+		for _, at := range ats {
+			if code, body := installAt(t, ts.URL, at, `[{name: nightly, every: 24h, from: "2026-01-01T02:00:00Z"}]`); code != http.StatusCreated {
+				t.Fatalf("install at %s: %d %s", at, code, body)
+			}
+		}
+		cs.n = 0
+		resp, err := http.Get(ts.URL + "/charter")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cs.n, readBody(t, resp)
+	}
+	three, _ := listings("drift", "lint", "docs")
+	six, tree := listings("audit", "deps", "fmt")
+	if six != three {
+		t.Errorf("the tree listed the schedules %d times over three charters and %d over six, want the same", three, six)
+	}
+	for _, at := range []string{"drift", "lint", "docs", "audit", "deps", "fmt"} {
+		if !strings.Contains(tree, at+":nightly") {
+			t.Errorf("the tree does not list %s:nightly under its charter:\n%s", at, tree)
+		}
 	}
 }
 
