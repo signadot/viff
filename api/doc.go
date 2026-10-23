@@ -119,6 +119,8 @@
 //
 // Most routes take `?scope=`, which names the copy-on-write scope a request reads or writes;
 // absent is baseline. The query parameters shown are the ones a route's meaning turns on.
+// `?probe` is `true` or `false`, and anything else is refused: an install probes unless told
+// false, and a listing only when told true, since a reachability column is as of now.
 //
 // # Names
 //
@@ -166,6 +168,5 @@
 //   - GET /asks answers the stored asks as written: the asker's own, each with its `id`, or with
 //     `?waiting=me` or `?all=true` the docket's question rows. Neither is typed yet.
 //   - POST /tasks answers 200 where the Runner API answers 201.
-//   - `?probe` is opt-in on GET /runners and /iods and opt-out on their POSTs.
 //   - GET /runners/{name}/check writes what the runner described.
 package api

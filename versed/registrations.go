@@ -1,6 +1,9 @@
 package versed
 
 import (
+	"fmt"
+	"net/http"
+
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 )
@@ -33,4 +36,21 @@ func readRegistrations[T any](r entity.Reader, system string, is func(entity.Ref
 		ok = append(ok, v)
 	}
 	return ok, bad, nil
+}
+
+// probeParam reads `?probe=`, which says whether to ask a runner or an io what it is now. It is
+// `true` or `false`, and absent is dflt: an install probes, a listing does not. Anything else is
+// refused, so a typo never quietly picks the default.
+func probeParam(w http.ResponseWriter, r *http.Request, dflt bool) (probe, ok bool) {
+	switch v := r.URL.Query().Get("probe"); v {
+	case "":
+		return dflt, true
+	case "true":
+		return true, true
+	case "false":
+		return false, true
+	default:
+		http.Error(w, fmt.Sprintf("probe is true or false, not %q", v), http.StatusBadRequest)
+		return false, false
+	}
 }

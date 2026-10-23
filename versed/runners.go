@@ -61,7 +61,11 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 	if e.Identity != "" {
 		body["identity"] = e.Identity
 	}
-	if r.URL.Query().Get("probe") != "false" {
+	probe, ok := probeParam(w, r, true)
+	if !ok {
+		return
+	}
+	if probe {
 		found, desc, whyErr := client.Probe(e.URL)
 		reach = found.String()
 		switch found {
@@ -113,7 +117,10 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listRunners(w http.ResponseWriter, r *http.Request) {
 	store := s.scopedStore(r)
-	probe := r.URL.Query().Get("probe") == "true"
+	probe, ok := probeParam(w, r, false)
+	if !ok {
+		return
+	}
 	out := make([]api.RunnerRow, 0)
 	ents, bad, readErr := readRegistrations[api.Runner](store, runnersSystem, isRunnerRef)
 	// READ ONCE, COUNT PER RUNNER. The counts are a walk of every task instance, and asking

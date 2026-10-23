@@ -109,7 +109,11 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 	var probed bool
 	var why, warning string
 
-	if r.URL.Query().Get("probe") != "false" {
+	probe, ok := probeParam(w, r, true)
+	if !ok {
+		return
+	}
+	if probe {
 		var d verseio.Descriptor
 		var whyErr error
 		reach, d, whyErr = s.describe(r, e)
@@ -444,7 +448,10 @@ func claims(owns []verseio.Own) string {
 
 func (s *Server) listIOs(w http.ResponseWriter, r *http.Request) {
 	store := s.scopedStore(r)
-	probe := r.URL.Query().Get("probe") == "true"
+	probe, ok := probeParam(w, r, false)
+	if !ok {
+		return
+	}
 	out := make([]verseio.Row, 0)
 	ents, bad, readErr := readRegistrations[verseio.Entity](store, verseio.System, verseio.IsRegistration)
 	for _, e := range ents {
