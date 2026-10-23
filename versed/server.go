@@ -2700,17 +2700,15 @@ func (s *Server) listDocket(w http.ResponseWriter, r *http.Request) {
 		if entity.Str(ent.Payload, mirror.SaidToField) != "" {
 			continue // words to a task, which asks no person
 		}
-		p := entity.ToObj(ent.Payload)
-		rec := map[string]any{}
+		// The question as stored, nothing taken out: `status` and `posedAt` are on every pending
+		// question, and a reader deciding by age reads `posedAt` here (the git iod's obsolete
+		// sweep, which skipped every question while the docket left it out).
+		rec := map[string]any(entity.ToObj(ent.Payload))
+		if rec == nil {
+			rec = map[string]any{}
+		}
 		if servedBy != "" {
 			rec["servedBy"] = servedBy
-		}
-		for k, v := range p {
-			switch k {
-			case "status", "posedAt": // structural: every pending question has them
-			default:
-				rec[k] = v
-			}
 		}
 		// where says which plane raised it, and is derived rather than stored: a question
 		// with a task is a run's, one without is a firing's. Storing it would be a third
