@@ -1279,6 +1279,11 @@ build:
               - $[githubRepos]
               - -discussions=$[githubDiscussions]
               - -out=$[githubOut]
+              # One out loop per repository, each reporting its pass to verse: at the default 5s
+              # that report alone is most of the store's commits. A comment's hint kicks a pass at
+              # once, so a minute is what an input written under an outbox waits at most.
+              - -out-every
+              - "1m"
               # The charters directory an open pull request changes, against its merge base: the
               # repo-charters reconciler asks about that change on the pull request to main.
               - -tree
