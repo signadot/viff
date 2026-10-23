@@ -1085,6 +1085,15 @@ func (tx *charterTx) rule(def *ir.Node) (int, error) {
 	if err != nil {
 		return http.StatusServiceUnavailable, err
 	}
+	// THE SYSTEM REAPPLYING A RULE THAT STANDS AS IT IS leaves it standing. A system charter is
+	// applied over what stood at every start, after the restore has brought the same rules back,
+	// and an install replays the rule over everything it selects: on staging that was each
+	// repository's charter replayed once more, eight minutes before the verse was ready, for a
+	// config that had not changed. The same text standing as the system is what the install
+	// would leave, so there is nothing to apply. A person applying a file still replays it.
+	if had && tx.as() == entity.SystemCharter && before == tx.as() && sameValue(old, t) {
+		return http.StatusCreated, nil
+	}
 	if err := eng.InstallTriggerAs(tx.as(), t); err != nil {
 		return charterCode(err), err
 	}

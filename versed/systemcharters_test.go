@@ -1,11 +1,14 @@
 package versed
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/system/repocharters"
 )
 
@@ -66,4 +69,55 @@ func reconcilerStands(srv *Server) bool {
 		}
 	}
 	return false
+}
+
+// packageFirings is how many times the packages' rules have acted since this server started.
+func packageFirings(srv *Server) int {
+	n := 0
+	for _, eng := range srv.packageEngines() {
+		n += eng.Fired()
+	}
+	return n
+}
+
+// A RESTART REPLAYS A SYSTEM CHARTER ONCE, in the restore, however often the config hands it
+// over unchanged. Applying the same text over what the restore brought back replayed every rule
+// a second time: on staging each repository's charter, eight minutes before the verse was ready.
+// A changed text still installs, and replays what it changed.
+func TestAnUnchangedSystemCharterIsNotReplayedAtARestart(t *testing.T) {
+	addr := entitytest.Addr(t)
+	charter := func(stamp string) []SystemCharter {
+		return []SystemCharter{{Name: "notes", Text: []byte(`at: notes
+rules: [{name: mark,
+  condition: {subject: {path: "notes.item.*"}},
+  action: {patch: {seen: "` + stamp + `"}}}]
+`)}}
+	}
+	// start stands a server up over the store with the texts, lets the start's firings settle,
+	// and answers how many there were.
+	start := func(texts []SystemCharter) (*Server, int) {
+		t.Helper()
+		srv := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+		srv.SystemCharters = texts
+		ctx, stop := context.WithCancel(t.Context())
+		t.Cleanup(stop)
+		srv.Start(ctx)
+		time.Sleep(300 * time.Millisecond)
+		return srv, packageFirings(srv)
+	}
+
+	first, _ := start(charter("a"))
+	for _, id := range []string{"1", "2", "3"} {
+		entitytest.Set(t, first.Store, entity.RefAt("notes", "item", id), entity.Obj{"n": id}.Payload())
+	}
+	waitUntil(t, "the rule to mark every item", func() bool { return packageFirings(first) >= 3 })
+
+	if _, fired := start(charter("a")); fired != 3 {
+		t.Errorf("a restart with the text unchanged fired the rule %d times over 3 items, want 3: once in the restore", fired)
+	}
+	changed, _ := start(charter("b"))
+	waitUntil(t, "a changed text to install and replay", func() bool {
+		e, ok, _ := changed.Store.Get(entity.RefAt("notes", "item", "1"))
+		return ok && entity.Str(e.Payload, "seen") == "b"
+	})
 }
