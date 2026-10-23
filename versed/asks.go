@@ -2,6 +2,7 @@ package versed
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -398,7 +399,10 @@ func (s *Server) onward(rec entity.Obj, body api.Ask, asker string) (int, error)
 	}
 	rec["options"] = opts
 	_, silence, at := mirror.DeadlineOf(served.Payload)
-	rec[onSilenceField] = silence
+	// A served ask whose clock has no default settles on no option, and so does this one: said
+	// as task.NoOption, since an absent onSilence reads as deny (askSilence) and an empty one
+	// would be a third spelling. settleByDeadline settles an empty default on the same option.
+	rec[onSilenceField] = cmp.Or(silence, task.NoOption)
 	if at != "" {
 		limit, err := time.Parse(time.RFC3339Nano, at)
 		if err != nil {
