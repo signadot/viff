@@ -1306,7 +1306,7 @@ func (s *Server) Handler() http.Handler {
 	// charter, because it outlives any one rule and is managed by whoever supervises rather
 	// than by whoever wrote the work.
 	rt.handle("GET /resolvers", s.listResolvers, "", list("verse-resolver-row"))
-	rt.handle("POST /resolvers", s.addResolver, "verse-installed-resolver", one("verse-resolver-added"))
+	rt.handle("POST /resolvers", s.addResolver, "verse-installed-resolver", one("verse-resolver-row"))
 	rt.handle("GET /resolvers/{name}", s.getResolver, "", one("verse-installed-resolver"))
 	rt.handle("DELETE /resolvers/{name}", s.removeResolver, "", nothing)
 	rt.handle("POST /resolvers/{name}/grant", s.grantResolver, "verse-answer-for", nothing)
@@ -1317,7 +1317,7 @@ func (s *Server) Handler() http.Handler {
 	// Addressed by the slice reflected, because that is a question verse already asks: who
 	// writes `git:*`. See docs/io.md.
 	rt.handle("GET /iods", s.listIOs, "", list("verse-iod-row"))
-	rt.handle("POST /iods", s.addIO, "verse-installed-iod", one("verse-iod-added"))
+	rt.handle("POST /iods", s.addIO, "verse-installed-iod", one("verse-iod-row"))
 	rt.handle("GET /iods/{name}", s.getIO, "", one("verse-installed-iod"))
 	rt.handle("GET /iods/{name}/check", s.checkIO, "", one("verse-iod-check"))
 	rt.handle("DELETE /iods/{name}", s.removeIO, "", one("verse-removed"))
@@ -1349,7 +1349,7 @@ func (s *Server) Handler() http.Handler {
 	// at startup, so a drive can add one for work this verse does not otherwise need to know
 	// about.
 	rt.handle("GET /runners", s.listRunners, "", list("verse-runner-row"))
-	rt.handle("POST /runners", s.addRunner, "verse-installed-runner", one("verse-runner-added"))
+	rt.handle("POST /runners", s.addRunner, "verse-installed-runner", one("verse-runner-row"))
 	rt.handle("GET /runners/{name}", s.getRunner, "", one("verse-installed-runner"))
 	rt.handle("GET /runners/{name}/check", s.checkRunner, "", one("verse-runner-check"))
 	rt.handle("DELETE /runners/{name}", s.removeRunner, "", one("verse-removed"))
@@ -3469,7 +3469,7 @@ func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
-	writeOut(w, r, http.StatusCreated, resolver.Added{At: ref.String()})
+	writeOut(w, r, http.StatusCreated, resolver.Row{Resolver: res, At: ref.String()})
 }
 
 func (s *Server) listResolvers(w http.ResponseWriter, r *http.Request) {

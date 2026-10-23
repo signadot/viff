@@ -105,22 +105,28 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 	}
 	e.Scope = scope
 	store := s.scopedStore(r)
-	out := verseio.Added{At: verseio.Ref(e.Name).String()}
+	var reach verseio.Reach
+	var probed bool
+	var why, warning string
 
 	if r.URL.Query().Get("probe") != "false" {
-		reach, d, why := s.describe(r, e)
-		out.Reach = reach.String()
+		var d verseio.Descriptor
+		var whyErr error
+		reach, d, whyErr = s.describe(r, e)
+		probed = true
 		switch reach {
 		case verseio.NotSource:
 			http.Error(w, fmt.Sprintf("source %q: %s is not a source: %s — --no-probe installs "+
-				"it anyway", e.Name, e.URL, why), http.StatusBadRequest)
+				"it anyway", e.Name, e.URL, whyErr), http.StatusBadRequest)
 			return
 		case verseio.Unreachable:
 			// Installed, and said so. A manifest landing before its pod is the ordinary state
 			// of a source deployed alongside the entity that names it, so refusing would make
 			// deployment order-dependent for a fact that fixes itself. The warning rides on the
 			// response, because the operator running the command is who can act on it.
-			out.Warning = why.Error()
+			why = whyErr.Error()
+			warning = fmt.Sprintf("installed, but nothing answers at %s yet; `verse iod check %s` "+
+				"asks again", e.URL, e.Name)
 		default:
 			// The check with no runner analogue. A `github` registration pointed at a git
 			// source is the mistake this catches at the moment somebody is present — and it is
@@ -138,7 +144,6 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 			// exactly as the url is: what the source claimed when somebody installed it.
 			if len(e.Owns) == 0 && len(d.Owns) > 0 {
 				e.Owns = d.Owns
-				out.Owns = d.Owns
 			}
 		}
 	}
@@ -231,7 +236,7 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 	// act, and what an operator used to type as four `verse perms` lines is written here, from
 	// the record, where it cannot be typed wrong or forgotten.
 	if warn := seedOut(store, installer, e); warn != "" {
-		out.Warning = warn
+		warning = warn
 	}
 	// And the outboxes packages already declared for its places, which it now reads (outbox.go).
 	if e.Out != nil {
@@ -245,8 +250,14 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 	// nothing until somebody bounced the server would be the same silence `dial-in` is refused
 	// for.
 	if err := s.startSource(e); err != nil {
-		out.Warning = "installed, but not running: " + err.Error()
+		warning = "installed, but not running: " + err.Error()
 	}
+	// The row as the listing would show it, with what the install's own probe found.
+	out := s.ioRow(r, e, false)
+	if probed {
+		out.Reach, out.Why = reach.String(), why
+	}
+	out.Warning = warning
 	writeOut(w, r, http.StatusCreated, out)
 }
 
@@ -437,36 +448,7 @@ func (s *Server) listIOs(w http.ResponseWriter, r *http.Request) {
 	out := make([]verseio.Row, 0)
 	ents, bad, readErr := readRegistrations[verseio.Entity](store, verseio.System, verseio.IsRegistration)
 	for _, e := range ents {
-		// BOTH HALVES IN ONE ROW, which is the whole reason an out half reports at all: an io
-		// whose reflection is healthy and whose out half has been refused for an hour must not
-		// read as healthy here. The in half's columns are verse's own knowledge; the out half's
-		// are what it was told. The error and WHEN IT STARTED travel together, as the stored
-		// pair, or the reader is misled — see verseio.Failure.
-		rec := verseio.Row{Entity: e, At: verseio.Ref(e.Name).String()}
-		// When a pass last COMPLETED, from the live reflector — the signal that catches a source
-		// that has wedged (alive, answering, reflecting nothing new), which the stored
-		// lastReflect cursor cannot: on a quiet repo a healthy source and a wedged one carry the
-		// same cursor. Read here and never written, because it is an opinion about now.
-		s.srcMu.Lock()
-		run := s.ioRuns[verseio.Ref(e.Name).String()]
-		s.srcMu.Unlock()
-		if run != nil {
-			rec.LastPass = run.lastPassAt()
-		} else {
-			running := false
-			rec.Running = &running
-		}
-		// Asked for, never stored. A reachability column is as of now or it is a cache that can
-		// be stale in the direction that costs — saying a source is well because it was well
-		// when something last looked.
-		if probe {
-			reach, _, why := s.describe(r, e)
-			rec.Reach = reach.String()
-			if why != nil {
-				rec.Why = why.Error()
-			}
-		}
-		out = append(out, rec)
+		out = append(out, s.ioRow(r, e, probe))
 	}
 	// A FAILED READ IS NOT AN EMPTY LIST. List answers nil when the read did not happen, so
 	// without this a store that could not be read renders as "nothing is installed" — and
@@ -481,6 +463,41 @@ func (s *Server) listIOs(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	writeOut(w, r, http.StatusOK, out)
+}
+
+// ioRow is an io as the iod routes answer it: the registration, and what verse knows of it now.
+// probe asks the io what it is, as `?probe=true` does.
+func (s *Server) ioRow(r *http.Request, e verseio.Entity, probe bool) verseio.Row {
+	// BOTH HALVES IN ONE ROW, which is the whole reason an out half reports at all: an io
+	// whose reflection is healthy and whose out half has been refused for an hour must not
+	// read as healthy here. The in half's columns are verse's own knowledge; the out half's
+	// are what it was told. The error and WHEN IT STARTED travel together, as the stored
+	// pair, or the reader is misled — see verseio.Failure.
+	rec := verseio.Row{Entity: e, At: verseio.Ref(e.Name).String()}
+	// When a pass last COMPLETED, from the live reflector — the signal that catches a source
+	// that has wedged (alive, answering, reflecting nothing new), which the stored
+	// lastReflect cursor cannot: on a quiet repo a healthy source and a wedged one carry the
+	// same cursor. Read here and never written, because it is an opinion about now.
+	s.srcMu.Lock()
+	run := s.ioRuns[verseio.Ref(e.Name).String()]
+	s.srcMu.Unlock()
+	if run != nil {
+		rec.LastPass = run.lastPassAt()
+	} else {
+		running := false
+		rec.Running = &running
+	}
+	// Asked for, never stored. A reachability column is as of now or it is a cache that can
+	// be stale in the direction that costs — saying a source is well because it was well
+	// when something last looked.
+	if probe {
+		reach, _, why := s.describe(r, e)
+		rec.Reach = reach.String()
+		if why != nil {
+			rec.Why = why.Error()
+		}
+	}
+	return rec
 }
 
 func (s *Server) getIO(w http.ResponseWriter, r *http.Request) {

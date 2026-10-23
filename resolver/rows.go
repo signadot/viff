@@ -1,6 +1,7 @@
 package resolver
 
-// Row is one row of `GET /resolvers`: a resolver as installed, and where.
+// Row is a resolver as `GET /resolvers` lists it and `POST /resolvers` answers it: as
+// installed, and where.
 //
 //tony:schemagen=verse-resolver-row,notag
 type Row struct {
@@ -10,11 +11,4 @@ type Row struct {
 	// else on such a row is read from the record: the row is there so the registration can be
 	// seen and removed by its name.
 	Unreadable string `tony:"field=unreadable,omitzero"`
-}
-
-// Added is what `POST /resolvers` answers: where the resolver was installed.
-//
-//tony:schemagen=verse-resolver-added,notag
-type Added struct {
-	At string `tony:"field=at"`
 }

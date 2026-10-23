@@ -9,16 +9,6 @@ signature:
 context:
 - tony-format/context
 define:
-  at: .[string]
-  owns: .[array(verse-iod-own)]
-  reach: .[string]
-  warning: .[string]
-signature:
-  name: verse-iod-added
----
-context:
-- tony-format/context
-define:
   owns: .[array(verse-iod-own)]
   root: .[string]
 signature:
@@ -99,6 +89,7 @@ define:
   scope: .[string]
   unreadable: .[string]
   url: .[string]
+  warning: .[string]
   why: .[string]
 signature:
   name: verse-iod-row

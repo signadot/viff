@@ -439,17 +439,6 @@ define:
   at: .[string]
   offers: .[array(runner:verse-runner-offer)]
   reach: .[string]
-  warning: .[string]
-signature:
-  name: verse-runner-added
----
-context:
-- tony-format/context
-- runner: github.com/signadot/verse/runner
-define:
-  at: .[string]
-  offers: .[array(runner:verse-runner-offer)]
-  reach: .[string]
   url: .[string]
   why: .[string]
 signature:
@@ -469,6 +458,7 @@ define:
   total: .[int]
   unreadable: .[string]
   url: .[string]
+  warning: .[string]
   why: .[string]
 signature:
   name: verse-runner-row

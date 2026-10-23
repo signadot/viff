@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/runner"
@@ -53,9 +54,9 @@ func TestARunnerIsInstalledWithWhatItOffers(t *testing.T) {
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("add = %s: %s", resp.Status, readBody(t, resp))
 	}
-	var added map[string]any
+	var added api.RunnerRow
 	decodeResp(t, resp, &added)
-	if added["offers"] == nil {
+	if len(added.Description().Offers) != 2 {
 		t.Fatalf("add said %+v, want the offers it read", added)
 	}
 	rec, ok := findRunner(srv.Store, "verse.runners.code")

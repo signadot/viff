@@ -54,7 +54,7 @@ verse task run -runner <ref> <prompt>     run this one there
 | Route | What it does |
 |---|---|
 | `GET /runners` | lists the runners. `?probe=true` adds a live `reach` for each runner. |
-| `POST /runners` | installs a runner. `?probe=false` skips the check. The answer is `201` with `{at, reach}`, plus `warning` when the runner is unreachable. |
+| `POST /runners` | installs a runner. `?probe=false` skips the check. The answer is `201` and the runner's row as the listing shows it, with what the runner described and `reach`, plus `warning` when the runner is unreachable (`api.RunnerRow`). |
 | `GET /runners/{name}` | returns the entity |
 | `GET /runners/{name}/check` | returns `{at, url, reach}`, and `why` when the URL is not a runner |
 | `DELETE /runners/{name}` | removes the runner. Pass `?cancel=<why>` or `?leave=true`. When work is running and you give neither, the answer is `409` and names both. |

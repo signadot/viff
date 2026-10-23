@@ -49,7 +49,7 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	out := api.RunnerAdded{At: runnerEntityRef(e.Name).String()}
+	var reach, why, warning string
 	// The probe, and the two dispositions it feeds. They differ on whether waiting could
 	// change the answer: a url that answers as something else is answering NOW, while a url
 	// nothing answers is the ordinary
@@ -62,16 +62,20 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 		body["identity"] = e.Identity
 	}
 	if r.URL.Query().Get("probe") != "false" {
-		reach, desc, why := client.Probe(e.URL)
-		switch reach {
+		found, desc, whyErr := client.Probe(e.URL)
+		reach = found.String()
+		switch found {
 		case client.NotRunner:
 			http.Error(w, fmt.Sprintf("runner %q: %s is not a runner: %s — --no-probe installs it anyway",
-				e.Name, e.URL, why), http.StatusBadRequest)
+				e.Name, e.URL, whyErr), http.StatusBadRequest)
 			return
 		case client.Unreachable:
-			// Installed, and said so. The warning rides on the response rather than being
-			// logged, because the operator running the command is the one who can act on it.
-			out.Reach, out.Warning = reach.String(), why.Error()
+			// Installed, and said so: why it was not reached, as a probed listing says it, and
+			// what to do about it. The warning rides on the response rather than being logged,
+			// because the operator running the command is the one who can act on it.
+			why = whyErr.Error()
+			warning = fmt.Sprintf("installed, but nothing answers at %s yet; `verse runner check %s` "+
+				"asks again, and a spawn naming it asks before it runs", e.URL, e.Name)
 		default:
 			// What it offers is kept with the registration, so a spawn naming this runner is
 			// checked against it where the spawn is written; a description that says too little
@@ -81,7 +85,6 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 					http.StatusBadRequest)
 				return
 			}
-			out.Reach, out.Offers = reach.String(), desc.Offers
 			described = &desc
 		}
 	}
@@ -99,6 +102,12 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// The row as the listing would show it, with what the runner described and what the
+	// install's own probe found: a name installed again keeps the work recorded on it, and the
+	// counts say so.
+	e.Described = described
+	out := runnerRow(taskRows(store), e, false)
+	out.Reach, out.Why, out.Warning = reach, why, warning
 	writeOut(w, r, http.StatusCreated, out)
 }
 
@@ -112,21 +121,8 @@ func (s *Server) listRunners(w http.ResponseWriter, r *http.Request) {
 	// over the same rows.
 	instances := taskRows(store)
 	for _, e := range ents {
-		ref := runnerEntityRef(e.Name)
 		e.Described = nil // GET /runners/{name} says what it offers; a listing row does not
-		rec := api.RunnerRow{Runner: e, At: ref.String()}
-		rec.Running, rec.Total, rec.LastSpawn = runnerCounts(instances, ref, e.URL)
-		// Asked for, never stored. A reachability column is as of now or it is a cache that
-		// can be stale in the direction that costs — saying a runner is well because it was
-		// well when something last looked.
-		if probe {
-			reach, _, why := client.Probe(e.URL)
-			rec.Reach = reach.String()
-			if why != nil {
-				rec.Why = why.Error()
-			}
-		}
-		out = append(out, rec)
+		out = append(out, runnerRow(instances, e, probe))
 	}
 	for _, b := range bad {
 		out = append(out, api.RunnerRow{Runner: api.Runner{Name: b.Ref.Name()}, At: b.Ref.String(), Unreadable: b.Err.Error()})
@@ -141,6 +137,26 @@ func (s *Server) listRunners(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeOut(w, r, http.StatusOK, out)
+}
+
+// runnerRow is a runner as the runner routes answer it: as installed, and what verse has recorded
+// of the work on it, counted from instances. probe asks the runner what it is, as `?probe=true`
+// does.
+func runnerRow(instances []entity.Entity, e api.Runner, probe bool) api.RunnerRow {
+	ref := runnerEntityRef(e.Name)
+	rec := api.RunnerRow{Runner: e, At: ref.String()}
+	rec.Running, rec.Total, rec.LastSpawn = runnerCounts(instances, ref, e.URL)
+	// Asked for, never stored. A reachability column is as of now or it is a cache that can be
+	// stale in the direction that costs — saying a runner is well because it was well when
+	// something last looked.
+	if probe {
+		reach, _, why := client.Probe(e.URL)
+		rec.Reach = reach.String()
+		if why != nil {
+			rec.Why = why.Error()
+		}
+	}
+	return rec
 }
 
 func (s *Server) getRunner(w http.ResponseWriter, r *http.Request) {

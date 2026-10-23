@@ -151,7 +151,7 @@ scope it reflects into.
 | | |
 |---|---|
 | `GET /iods` | list; `?probe=true` adds a live `reach` per iod |
-| `POST /iods` | install; `?probe=false` skips the check, `?allow-overlap=true` the disjointness proof. `201` with `{at, reach}`, plus `owns` when taken from the probe and `warning` when unreachable |
+| `POST /iods` | install; `?probe=false` skips the check, `?allow-overlap=true` the disjointness proof. `201` and the io's row as the listing shows it, with `reach`, the `owns` it settled on (taken from the probe when you named none), and `warning` when it is unreachable or not running (`io.Row`) |
 | `GET /iods/{name}` | the entity |
 | `GET /iods/{name}/check` | `{at, reach}`, plus `url` when the iod has one and `why` when the probe gave a reason, plus `says: {root, owns}` when it answered |
 | `DELETE /iods/{name}` | remove. `?forget=true` or `?keep=true`; `409` with both named when it reflected something and neither is given |

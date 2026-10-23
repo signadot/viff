@@ -79,14 +79,14 @@
 //
 //	Runners
 //	GET    /runners?probe=                    -                     []RunnerRow                  runners.go
-//	POST   /runners?probe=                    Runner                RunnerAdded                  runners.go
+//	POST   /runners?probe=                    Runner                RunnerRow                    runners.go
 //	GET    /runners/{name}                    -                     Runner                       runners.go
 //	GET    /runners/{name}/check              -                     RunnerCheck                  runners.go
 //	DELETE /runners/{name}?cancel=|leave=     -                     Removed                      runners.go
 //
 //	Iods
 //	GET    /iods?probe=                       -                     []io.Row
-//	POST   /iods?probe=                       io.Entity             io.Added
+//	POST   /iods?probe=                       io.Entity             io.Row
 //	GET    /iods/{name}                       -                     io.Entity
 //	GET    /iods/{name}/check                 -                     io.Checked
 //	DELETE /iods/{name}?forget=|keep=         -                     Removed                      runners.go
@@ -96,7 +96,7 @@
 //
 //	Resolvers
 //	GET    /resolvers                         -                     []resolver.Row
-//	POST   /resolvers                         resolver.Resolver     resolver.Added
+//	POST   /resolvers                         resolver.Resolver     resolver.Row
 //	GET    /resolvers/{name}                  -                     resolver.Resolver
 //	DELETE /resolvers/{name}                  -                     204
 //	POST   /resolvers/{name}/grant            AnswerFor             204                          resolvers.go
@@ -119,13 +119,16 @@
 //
 // # Names
 //
-// What a route answers is named for what it is. A record a route installs and answers is named
-// for the thing (Runner, io.Entity, resolver.Resolver). A listing row embeds the record and adds
-// what verse knows of it now (RunnerRow, io.Row, resolver.Row, GroupRow). What an install
-// answers is <Thing>Added. A registration this verse can't decode is listed as a row saying why
-// (`unreadable`), its GET by name answers 500, and its removal takes it out by its name. A
-// request that is an act is named for the act (Resolve, Say, SetAutonomy, FlowSelect), and says
-// who did it where the act is recorded.
+// What a route answers is named for what it is. A record a route installs is named for the thing
+// (Runner, io.Entity, resolver.Resolver), and a GET by name answers exactly that record, so it
+// can be edited and installed again: the install refuses a field it doesn't know. A listing row
+// embeds the record and adds what verse knows of it now (RunnerRow, io.Row, resolver.Row,
+// GroupRow), and an install answers the row its listing shows, with what a runner described and
+// any warning the install has for the operator. A claim of an account is not an install, so it
+// answers what to do next (AccountClaimed). A registration this verse can't decode is listed as
+// a row saying why (`unreadable`), its GET by name answers 500, and its removal takes it out by
+// its name. A request that is an act is named for the act (Resolve, Say, SetAutonomy,
+// FlowSelect), and says who did it where the act is recorded.
 //
 // # Format
 //
@@ -159,9 +162,6 @@
 //   - GET /asks answers the stored asks as written: the asker's own, each with its `id`, or with
 //     `?waiting=me` or `?all=true` the docket's question rows. Neither is typed yet.
 //   - Answering an ask that needs several votes answers 202 and a line of text.
-//   - A create answers its own report rather than the row its list shows (RunnerAdded, io.Added,
-//     resolver.Added, AccountClaimed), and GET /runners/{name}, /iods/{name} and
-//     /resolvers/{name} answer the record rather than the row.
 //   - POST /tasks answers 200 where the Runner API answers 201.
 //   - POST /tasks/{id}/cancel reads the runner's body for a task the embedded runner holds,
 //     with the `by` it says, and cancels a task on an installed runner as versed.

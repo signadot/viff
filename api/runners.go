@@ -101,11 +101,16 @@ func (e Runner) Check() error {
 	return nil
 }
 
-// RunnerRow is one row of `GET /runners`: the runner as installed, less what it described
-// (`GET /runners/{name}` has that), and what verse has recorded of the work on it. Running is
-// now, Total is ever, and LastSpawn is when it was last used, so a runner nobody names is
-// visible as such. Reach and Why are there only with `?probe=true`: a reachability column is
-// as of now, or it is a cache that can be stale in the direction that costs.
+// RunnerRow is a runner as `GET /runners` lists it and `POST /runners` answers it: the runner as
+// installed, and what verse has recorded of the work on it. Running is now, Total is ever, and
+// LastSpawn is when it was last used, so a runner nobody names is visible as such.
+//
+// A listing row leaves out what the runner described (`GET /runners/{name}` has it); the row an
+// install answers keeps it, since what the runner offers is what the operator installing it
+// wants to see. Reach and Why are what a probe found: on a listing only with `?probe=true`,
+// since a reachability column is as of now or it is a cache that can be stale in the direction
+// that costs, and on an install unless `?probe=false`. Warning is what an install says the
+// operator should act on, such as a runner nothing answers yet; only POST /runners sets it.
 //
 //tony:schemagen=verse-runner-row,notag
 type RunnerRow struct {
@@ -116,23 +121,11 @@ type RunnerRow struct {
 	LastSpawn string `tony:"field=lastSpawn,omitzero"`
 	Reach     string `tony:"field=reach,omitzero"`
 	Why       string `tony:"field=why,omitzero"`
+	Warning   string `tony:"field=warning,omitzero"`
 	// Unreadable is why the stored registration does not decode as this verse reads it. Nothing
 	// else on such a row is read from the record: the row is there so the registration can be
 	// seen and removed by its name.
 	Unreadable string `tony:"field=unreadable,omitzero"`
-}
-
-// RunnerAdded is what `POST /runners` answers: where the runner was installed, and what the
-// probe found unless `?probe=false`. A runner nothing answers is installed with a Warning, since
-// a runner deployed beside the entity that names it is often not up yet; one that answers says
-// what it offers.
-//
-//tony:schemagen=verse-runner-added,notag
-type RunnerAdded struct {
-	At      string         `tony:"field=at"`
-	Reach   string         `tony:"field=reach,omitzero"`
-	Warning string         `tony:"field=warning,omitzero"`
-	Offers  []runner.Offer `tony:"field=offers,omitzero"`
 }
 
 // RunnerCheck is what `GET /runners/{name}/check` answers: the runner probed now. A runner that
