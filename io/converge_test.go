@@ -601,6 +601,41 @@ func TestAPassReadsThePlacesItsAnswerIsAbout(t *testing.T) {
 	}
 }
 
+// unreadableStore answers every listing with a failure, as a store timing out its reads does.
+type unreadableStore struct{ *countingStore }
+
+func (u unreadableStore) ListAt([]string, int, func(entity.Ref) bool) []entity.Entity { return nil }
+func (u unreadableStore) ListAtErr([]string, int, func(entity.Ref) bool) ([]entity.Entity, error) {
+	return nil, fmt.Errorf("context deadline exceeded")
+}
+
+// A PASS WHOSE READ FAILS WRITES NOTHING. The listing is what tells converge what already
+// stands, so one that did not happen is not an empty slice: read as one, every entity in the
+// answer looks absent and the pass rewrites all of them, which is what staging's git-issue
+// sweep did to a repository's issues while docd was timing out its reads.
+func TestAPassWhoseReadFailsWritesNothing(t *testing.T) {
+	store := newStore(t)
+	src := &fakeSource{root: "x", answer: func() verseio.Reflection {
+		rn := verseio.Reflection{Covers: []entity.Pattern{verseio.Cover("x", "A", "issue", "*")}}
+		for _, id := range []string{"1", "2", "3"} {
+			rn.Add(entity.RefAt("x", "A", "issue", id), entity.Obj{"title": id})
+		}
+		return rn
+	}}
+	if err := verseio.NewReflector(src, store, 0).Reconcile(context.Background(), entity.Ref{}); err != nil {
+		t.Fatalf("first pass: %v", err)
+	}
+
+	writes := store.writes
+	err := verseio.NewReflector(src, unreadableStore{store}, 0).Reconcile(context.Background(), entity.Ref{})
+	if err == nil || !strings.Contains(err.Error(), "deadline") {
+		t.Errorf("a pass that could not read what stands reported %v, want the read's failure", err)
+	}
+	if n := store.writes - writes; n != 0 {
+		t.Fatalf("a pass that could not read what stands wrote %d entities", n)
+	}
+}
+
 // A cover names its source's place in its first segment, literally. A `*` there is refused for
 // the reason an empty path is: it claims every place it is compared against.
 func TestAPathCoverNamesItsSystem(t *testing.T) {

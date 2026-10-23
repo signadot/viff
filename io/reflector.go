@@ -217,7 +217,10 @@ func (rf *Reflector) converge(ctx context.Context, rn Reflection) (int, error) {
 		return 0, err
 	}
 	wrote := 0
-	current := rf.current(rn)
+	current, err := rf.current(rn)
+	if err != nil {
+		return 0, err
+	}
 	desired := make(map[string]bool, len(rn.Entities))
 	for _, e := range rn.Entities {
 		for _, p := range places(rn.Covers, e.Ref, e.Payload) {
@@ -398,7 +401,13 @@ func places(covers []entity.Pattern, ref entity.Ref, payload entity.Payload) []s
 // It does not read the whole root, and on a store carrying several repositories under one
 // root that is the difference between a pass reading its own repository and reading every
 // repository's history. This runs on every pass.
-func (rf *Reflector) current(rn Reflection) map[entity.Ref]entity.Payload {
+//
+// A READ THAT FAILS ENDS THE PASS. What it answers is what converge compares against, so a
+// listing that did not happen, read as an empty one, makes every entity in the answer look
+// absent and the pass rewrites the whole slice: staging's git-issue sweep wrote each of a
+// repository's issues again, one after another, into a store already timing out its reads.
+// The next pass reads again.
+func (rf *Reflector) current(rn Reflection) (map[entity.Ref]entity.Payload, error) {
 	var at []place
 	for _, c := range rn.Covers {
 		at = append(at, coverPlace(c))
@@ -423,13 +432,17 @@ func (rf *Reflector) current(rn Reflection) map[entity.Ref]entity.Payload {
 		//
 		// EXACTLY AT THE PLACE'S DEPTH, because a listing also reports a value standing above
 		// it (Reader.ListAt), and a head's fields are not refs.
-		for _, e := range rf.store.ListAt(p.prefix, p.depth, func(ref entity.Ref) bool {
+		ents, err := entity.ListAtErr(rf.store, p.prefix, p.depth, func(ref entity.Ref) bool {
 			return !ref.Reserved() && len(ref.Segs()) == p.depth
-		}) {
+		})
+		if err != nil {
+			return nil, fmt.Errorf("reading %s: %w", strings.Join(p.prefix, "."), err)
+		}
+		for _, e := range ents {
 			out[e.Ref] = e.Payload
 		}
 	}
-	return out
+	return out, nil
 }
 
 // place is one read converge makes: the literal segments to read under, and how deep the
