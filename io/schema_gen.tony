@@ -37,10 +37,7 @@ context:
 - tony-format/context
 define:
   as: .[string]
-  delivered: .[int]
-  failed: .[int]
   lastError: .[nullable(verse-iod-failure)]
-  lastPass: .[string]
   places: .[array(string)]
   requesters: .[array(string)]
 signature:
@@ -74,6 +71,15 @@ signature:
 context:
 - tony-format/context
 define:
+  delivered: .[int]
+  failed: .[int]
+  lastPass: .[string]
+signature:
+  name: verse-iod-report
+---
+context:
+- tony-format/context
+define:
   at: .[string]
   dial-in: .[string]
   dir: .[string]
@@ -84,6 +90,7 @@ define:
   out: .[nullable(verse-iod-out)]
   owns: .[array(verse-iod-own)]
   reach: .[string]
+  report: .[nullable(verse-iod-report)]
   root: .[string]
   running: .[nullable(bool)]
   scope: .[string]

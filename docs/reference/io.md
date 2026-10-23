@@ -176,7 +176,8 @@ at least as often an iod with a temporary fault as a wrong url. Refusing the ins
 a fault that fixes itself.
 
 The listing reports `lastPass` from the live reflector: when a pass last *completed*, whatever
-it did. It reports `running: false` for a registration with no reflector. Verse stores neither.
+it did. It reports `running: false` for a registration with no reflector. Verse stores neither
+in the document.
 
 **A [hint](../glossary.md#hint) carries no data.** It names which address went stale, and
 nothing else. So the route can stay unauthenticated in a wide-open dogfood verse. A delivery
@@ -295,7 +296,7 @@ out:
 | `places` | where it reads what is asked of it, as kinded paths. Each must lie inside what this iod claims, and outside what its reflection covers. It is a list, because one iod may serve several. A Linear iod reads one address per team, since a claim per team is what keeps two installs apart |
 | `as` | the principal it acts as. This principal owns every status the iod writes, so nobody else can forge one |
 | `requesters` | who may ask, as grantees. Empty asks for nobody. That is how an operator says that the grants are managed by hand |
-| `lastPass` `delivered` `failed` `lastError` | what the last pass did, and the failure that stopped one. The iod writes these (see below) |
+| `lastError` | the failure that stopped a pass, and when it began. Verse writes it from the iod's report (see below). What the last pass did is in the report too, kept in scratch rather than on the record |
 
 ```sh
 verse iod add slack http://slack-iod:9801 --root slack \
@@ -415,9 +416,14 @@ so the out half reports:
 POST /iods/<name>/pass   {delivered, failed, error?}
 ```
 
-The report lands on the registration as `lastPass`, `delivered`, `failed` and `lastError`.
-`verse iod` shows them beside the columns of the reflection. So an iod with a healthy reflection
-and an out half refused for an hour does not look healthy.
+When the pass finished and what it did (`lastPass`, `delivered`, `failed`) go to the store's
+*scratch*: a document beside the log with no history and no watches, for facts that are only
+about now, so a pass costs no commit. The failure that stopped a pass (`lastError`, with when it
+began) goes on the registration, written when it begins and removed by the pass that ends it;
+a pass that repeats either writes nothing. `verse iod` reads both and shows them beside the
+columns of the reflection: the report under `report`, the failure under `out.lastError`. So an
+iod with a healthy reflection and an out half refused for an hour does not look healthy. A
+scoped iod's report is its scope's, beside baseline's and not on it, and goes with the scope.
 
 The counts are those of the last pass, not totals. Somebody can act on "the last pass delivered
 nothing and failed twice".

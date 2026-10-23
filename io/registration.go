@@ -104,12 +104,11 @@ type OutHalf struct {
 	// may ask is an io that will never do anything — allowed, since a place whose grants are
 	// managed by hand is a legitimate arrangement, and saying so here is the way to say it.
 	Requesters []string `tony:"field=requesters,omitzero"`
-	// LastPass, Delivered, Failed and LastError are written by the IO, not by an operator: when
-	// it last finished a pass, what that pass did, and the last failure that stopped one. Verse
-	// never dials an out half, so the only way it can know is to be told (POST /iods/<name>/pass).
-	LastPass  string   `tony:"field=lastPass,omitzero"`
-	Delivered int      `tony:"field=delivered,omitzero"`
-	Failed    int      `tony:"field=failed,omitzero"`
+	// LastError is written by verse from what the io reports, not by an operator: the last
+	// failure that stopped a pass, and when it began. Verse never dials an out half, so the only
+	// way it can know is to be told (POST /iods/<name>/pass). When a pass last finished and what
+	// it did are the report's too, and stand in scratch at this record's `out`, not on the
+	// record: they are about now, and a `verse iod` listing reads them from there.
 	LastError *Failure `tony:"field=lastError,omitzero"`
 }
 

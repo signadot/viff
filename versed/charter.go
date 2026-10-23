@@ -1075,6 +1075,15 @@ func (tx *charterTx) rule(def *ir.Node) (int, error) {
 	// Decided before anything is read from the store: whose a rule stands as is the perms
 	// mirror's (ActsAs), and the record snapshot below is only for undoing an install.
 	if had && tx.as() == entity.SystemCharter && before == tx.as() && sameValue(old, t) {
+		// ITS WORDS MAY HAVE MOVED WHILE ITS MEANING STAYED: the comments an author writes above
+		// a rule are part of its record — the rule as its author left it — and not of what it
+		// does. The record follows the text, with no install and nothing replayed.
+		if !sameText(old, t) {
+			if err := eng.RewriteRuleAs(tx.as(), t); err != nil {
+				return charterCode(err), err
+			}
+			tx.push(func() error { return eng.RewriteRuleAs("", old) })
+		}
 		return http.StatusCreated, nil
 	}
 	// AND WHOSE IT STOOD AS, which is its perms record and not anything in the rule. An install

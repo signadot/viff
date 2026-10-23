@@ -87,6 +87,33 @@ func (e *Engine) RestoreTrigger(old Trigger) error {
 	return e.place(old, true, "", false, true)
 }
 
+// RewriteRuleAs writes a rule's record over as t spells it and holds t in the engine in place of
+// what stood, with no install: nothing is vetted again, no watch is opened, nothing replays. It
+// is for a rule that MEANS what it meant and no longer SAYS it the same way — the comments its
+// author left above it have moved — so the record stays the rule as its author left it, and a
+// rule that does what it did fires for nothing. as is who the write is made as, "" for the
+// engine's own (an undo); whose the rule is does not move either way.
+func (e *Engine) RewriteRuleAs(as string, t Trigger) error {
+	if _, stands := e.Rule(t.Name); !stands {
+		return fmt.Errorf("%w: trigger %q: no such rule stands to rewrite", ErrCharter, t.Name)
+	}
+	if err := e.persist(t, as, false); err != nil {
+		return err
+	}
+	// Installed or held: a rule waiting on its stratum stands by name as an installed one does
+	// (Rule), and its record has just been written over, so the engine's copy follows too.
+	e.trigMu.Lock()
+	for _, set := range [][]Trigger{e.triggers, e.pending} {
+		for i := range set {
+			if set[i].Name == t.Name {
+				set[i] = t
+			}
+		}
+	}
+	e.trigMu.Unlock()
+	return nil
+}
+
 // MayRemoveTrigger reports whether principal may remove the rule of this name, installed or
 // held: they hold `owner` on its record, since removing a node is its owner's act and what goes
 // with this one is whatever fires through it. nil where no such rule stands, and for the empty

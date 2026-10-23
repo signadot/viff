@@ -4,8 +4,11 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
@@ -75,8 +78,10 @@ func reconcilerStands(srv *Server) bool {
 // recordGets counts the reads of one record a server makes through it.
 type recordGets struct {
 	entity.Store
-	of entity.Ref
-	n  int
+	of     entity.Ref // the perms record read ahead of an install
+	rule   entity.Ref // the rule's own record, written by an install or a rewrite
+	n      int
+	writes int
 }
 
 func (r *recordGets) Get(ref entity.Ref) (entity.Entity, bool, error) {
@@ -84,6 +89,15 @@ func (r *recordGets) Get(ref entity.Ref) (entity.Entity, bool, error) {
 		r.n++
 	}
 	return r.Store.Get(ref)
+}
+
+// Write counts the writes at rule, the rule's own record: what an install or a rewrite of the
+// rule's words writes, and nothing a restart with the text unchanged should.
+func (r *recordGets) Write(w entity.Write) (bool, int64, error) {
+	if w.At.Ref == r.rule && w.At.Access == "" {
+		r.writes++
+	}
+	return r.Store.Write(w)
 }
 
 // packageFirings is how many times the packages' rules have acted since this server started.
@@ -109,27 +123,29 @@ rules: [{name: mark,
 `)}}
 	}
 	// start stands a server up over the store with the texts, lets the start's firings settle,
-	// and answers how many there were and how often the rule's perms record was read.
-	start := func(texts []SystemCharter) (*Server, int, int) {
+	// and answers how many there were, how often the rule's perms record was read, and how often
+	// the rule's record was written.
+	start := func(texts []SystemCharter) (*Server, int, int, int) {
 		t.Helper()
-		rg := &recordGets{Store: entitytest.StoreAt(t, addr), of: entity.PermsRef(trigger.CharterRefAt("notes", "mark"))}
+		rule := trigger.CharterRefAt("notes", "mark")
+		rg := &recordGets{Store: entitytest.StoreAt(t, addr), of: entity.PermsRef(rule), rule: rule}
 		srv := NewWithStore(ScriptedBuilder, rg)
 		srv.SystemCharters = texts
-		rg.n = 0 // the start is what is counted, not the migrations building the server reads through
+		rg.n, rg.writes = 0, 0 // the start is what is counted, not the migrations building the server reads through
 		ctx, stop := context.WithCancel(t.Context())
 		t.Cleanup(stop)
 		srv.Start(ctx)
 		time.Sleep(300 * time.Millisecond)
-		return srv, packageFirings(srv), rg.n
+		return srv, packageFirings(srv), rg.n, rg.writes
 	}
 
-	first, _, _ := start(charter("a"))
+	first, _, _, _ := start(charter("a"))
 	for _, id := range []string{"1", "2", "3"} {
 		entitytest.Set(t, first.Store, entity.RefAt("notes", "item", id), entity.Obj{"n": id}.Payload())
 	}
 	waitUntil(t, "the rule to mark every item", func() bool { return packageFirings(first) >= 3 })
 
-	_, fired, reads := start(charter("a"))
+	_, fired, reads, writes := start(charter("a"))
 	if fired != 3 {
 		t.Errorf("a restart with the text unchanged fired the rule %d times over 3 items, want 3: once in the restore", fired)
 	}
@@ -138,9 +154,90 @@ rules: [{name: mark,
 	if reads != 0 {
 		t.Errorf("a restart with the text unchanged read the rule's record %d times, want 0", reads)
 	}
-	changed, _, _ := start(charter("b"))
+	// Nor is the record written: the rule's words follow its text (sameText), and a text that
+	// has not moved is the same words — as parsed from the config and as restored from the store.
+	if writes != 0 {
+		t.Errorf("a restart with the text unchanged wrote the rule's record %d times, want 0", writes)
+	}
+	changed, _, _, _ := start(charter("b"))
 	waitUntil(t, "a changed text to install and replay", func() bool {
 		e, ok, _ := changed.Store.Get(entity.RefAt("notes", "item", "1"))
 		return ok && entity.Str(e.Payload, "seen") == "b"
 	})
+}
+
+// A SYSTEM RULE'S WORDS FOLLOW ITS TEXT WITHOUT A REPLAY. The record is the rule as its author
+// left it, comments included; a config whose only change is the comment above a rule changes what
+// the record should say and nothing about what the rule does. The record follows the words, in the
+// engine and in the store, and the rule fires for nothing.
+func TestASystemRulesWordsFollowItsTextWithoutAReplay(t *testing.T) {
+	addr := entitytest.Addr(t)
+	charter := func(words string) []SystemCharter {
+		return []SystemCharter{{Name: "notes", Text: []byte("at: notes\nrules:\n" + words + "\n" +
+			"- name: mark\n  condition: {subject: {path: \"notes.item.*\"}}\n  action: {patch: {seen: a}}\n")}}
+	}
+	start := func(texts []SystemCharter) *Server {
+		t.Helper()
+		srv := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+		srv.SystemCharters = texts
+		ctx, stop := context.WithCancel(t.Context())
+		t.Cleanup(stop)
+		srv.Start(ctx)
+		return srv
+	}
+	// words is the comment the engine holds above the rule, "" while the rule is not installed.
+	words := func(srv *Server) string {
+		for _, eng := range srv.packageEngines() {
+			if r, ok := eng.Rule("mark"); ok {
+				return strings.Join(r.Doc, "\n")
+			}
+		}
+		return ""
+	}
+	first := start(charter("# the first words"))
+	waitUntil(t, "the rule to install with its words", func() bool { return words(first) == "# the first words" })
+	for _, id := range []string{"1", "2", "3"} {
+		entitytest.Set(t, first.Store, entity.RefAt("notes", "item", id), entity.Obj{"n": id}.Payload())
+	}
+	waitUntil(t, "the rule to mark every item", func() bool { return packageFirings(first) >= 3 })
+
+	second := start(charter("# the second words"))
+	waitUntil(t, "the restore to replay the rule once", func() bool { return packageFirings(second) >= 3 })
+	waitUntil(t, "the engine's rule to follow the words", func() bool { return words(second) == "# the second words" })
+	if fired := packageFirings(second); fired != 3 {
+		t.Errorf("a change to the words above the rule fired it %d times over 3 items, want 3: the restore's", fired)
+	}
+	rec, ok, err := second.Store.Get(trigger.CharterRefAt("notes", "mark"))
+	if err != nil || !ok {
+		t.Fatalf("the rule's record: ok=%v err=%v", ok, err)
+	}
+	if !mentions(rec.Payload, "# the second words") {
+		t.Errorf("the record does not carry the words the author left: %v", entity.ToObj(rec.Payload))
+	}
+}
+
+// mentions reports whether any comment in the node, at any depth, carries the line.
+func mentions(n *ir.Node, line string) bool {
+	if n == nil {
+		return false
+	}
+	if n.Comment != nil && mentions(n.Comment, line) {
+		return true
+	}
+	for _, l := range n.Lines {
+		if l == line {
+			return true
+		}
+	}
+	for _, f := range n.Fields {
+		if mentions(f, line) {
+			return true
+		}
+	}
+	for _, v := range n.Values {
+		if mentions(v, line) {
+			return true
+		}
+	}
+	return false
 }

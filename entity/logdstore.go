@@ -2032,6 +2032,12 @@ func (s *LogdStore) DeleteScope(name string) error {
 	}
 	ctx, cancel := s.reqCtx()
 	defer cancel()
+	// Its scratch too, which logd's delete knows nothing of: scratch has no scopes, and the
+	// scope's stands under a root of its own (scratchPath). Cleared first, so a scope whose
+	// scratch could not be cleared still stands to be deleted again.
+	if _, err := s.sess.ScratchWrite(ctx, scopeScratchRoot(s.root, name), deleteOp()); err != nil {
+		return fmt.Errorf("clearing scope %s's scratch: %w", name, err)
+	}
 	return s.sess.DeleteScope(ctx, name)
 }
 

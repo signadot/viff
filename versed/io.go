@@ -250,6 +250,19 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 		// wipe, then repopulate) gets it now rather than at the next restart.
 		s.installWaitingSystemCharters()
 	}
+	// A registration created anew has passed nothing yet, and one installed over without an out
+	// half has nothing to report. A report a predecessor under this name left in scratch — one
+	// removed while a pass was in flight, or the out half this install drops — would be read as
+	// this one's, so it goes. An install over a registration that keeps an out half keeps the
+	// report: the same iod goes on passing under the name, and the report says what its last
+	// pass did.
+	if !stood || e.Out == nil {
+		if sc, ok := entity.ScratchOf(entity.As(store, entity.SystemDefault)); ok {
+			if err := sc.ScratchWrite(outReportRef(ref), nil); err != nil {
+				warning = "installed, but a previous pass report could not be cleared: " + err.Error()
+			}
+		}
+	}
 	// It reflects from here, with no restart. A registration that installed and then did
 	// nothing until somebody bounced the server would be the same silence `dial-in` is refused
 	// for.
@@ -257,7 +270,7 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 		warning = "installed, but not running: " + err.Error()
 	}
 	// The row as the listing would show it, with what the install's own probe found.
-	out := s.ioRow(r, e, false)
+	out := s.ioRow(r, store, e, false)
 	if probed {
 		out.Reach, out.Why = reach.String(), why
 	}
@@ -265,17 +278,23 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusCreated, out)
 }
 
-// passIO records what an out half just did: when its last pass finished, and the failure that
-// stopped one.
+// passIO records what an out half just did: when its last pass finished, what it did, and the
+// failure that stopped one.
 //
 // UNATTRIBUTED, like the hint beside it, and for the same reason: what it carries is a fact about
 // the io's own half of the world, not a write anybody could use to say something about the tree. A
 // forged report costs a misleading timestamp on one registration, which is the same order of harm
 // as a forged hint — a reconcile of a slice the sender does not get to choose the contents of.
 //
-// It writes onto the registration rather than into a log, because what a reader wants is one
-// listing saying how both halves are doing: `verse iod` already shows `lastReflect`, and an io
-// whose out half has been refused for an hour should not read as healthy there.
+// THE REPORT IS AN OPINION ABOUT NOW, and goes to scratch (entity.Scratch) at the record's own
+// address, `verse.iods.<name>.out`: when a pass last finished and what it did has no history
+// anybody reads, nothing watches it, and the next pass says it again. In the document it was a
+// commit per pass per io, replayed and snapshotted for a day each. What a reader wants is still
+// one listing saying how both halves are doing, and `verse iod` reads both halves (listIOs).
+//
+// THE FAILURE IS A TRANSITION, and stays on the record: written once when it begins, with the
+// instant it began, and removed by the pass that ends it. A pass that repeats the same failure, or
+// the same success, writes nothing to the document.
 func (s *Server) passIO(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	ref := verseio.Ref(name)
@@ -290,33 +309,58 @@ func (s *Server) passIO(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := s.now().UTC().Format(time.RFC3339)
-	rec := entity.Obj{"delivered": body.Delivered, "failed": body.Failed}
-	if body.Error == "" {
-		rec["lastPass"] = now
-		rec["lastError"] = entity.Removed()
-	} else {
-		// WHEN IT STARTED, kept across repeats, for the reason the reflection's failure keeps
-		// it: an error that has been the same since breakfast reads as "now" otherwise, and the
-		// distance between it and lastPass is how long this has been going on.
-		when := now
-		if e, ok := verseio.Find(entity.As(store, entity.SystemDefault), entity.JoinSegs([]string{name})); ok &&
-			e.Out != nil && e.Out.LastError != nil && e.Out.LastError.Error == body.Error &&
-			e.Out.LastError.When != nil {
-			when = *e.Out.LastError.When
-		}
-		rec["lastError"] = entity.Obj{"error": body.Error, "when": when}
-	}
 	// Written as VERSE, not as whoever posted: what a report says is verse's own bookkeeping
 	// about an io, the same as the `lastReflect` it writes for the other half, and an io holds
 	// nothing on its own registration — that record is the installer's.
-	if _, _, err := entity.As(store, entity.SystemDefault).Write(entity.Write{
-		At: ref.At("out"), Value: rec.Payload(),
-		When: []entity.Require{stillInstalled(ref)},
-	}); err != nil {
+	verse := entity.As(store, entity.SystemDefault)
+	scratch, ok := entity.ScratchOf(verse)
+	if !ok {
+		http.Error(w, entity.ErrNoScratch.Error(), http.StatusInternalServerError)
+		return
+	}
+	report := entity.Obj{"delivered": body.Delivered, "failed": body.Failed}
+	if body.Error == "" {
+		report["lastPass"] = now
+	}
+	if err := scratch.ScratchWrite(outReportRef(ref), report.Payload()); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// The failure, where it changed. WHEN IT STARTED is kept across repeats by not writing a
+	// repeat, for the reason the reflection's failure keeps it: an error that has been the same
+	// since breakfast reads as "now" otherwise, and the distance between it and lastPass is how
+	// long this has been going on. A NEW error — different text — is a new failure.
+	e, _, err := verseio.FindErr(verse, entity.JoinSegs([]string{name}))
+	if unreadable(w, r, err) {
+		return // a record that was not read says nothing about what stood; the iod reports again
+	}
+	var was *verseio.Failure
+	if e.Out != nil {
+		was = e.Out.LastError
+	}
+	var rec entity.Obj
+	switch {
+	case body.Error == "" && was != nil:
+		rec = entity.Obj{"lastError": entity.Removed()}
+	case body.Error != "" && (was == nil || was.Error != body.Error):
+		rec = entity.Obj{"lastError": entity.Obj{"error": body.Error, "when": now}}
+	}
+	if rec != nil {
+		if _, _, err := verse.Write(entity.Write{
+			At: ref.At("out"), Value: rec.Payload(),
+			When: []entity.Require{stillInstalled(ref)},
+		}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// outReportRef is where an io's pass report stands in scratch: the registration's `out`, the one
+// spelling that in the document holds the out half's config.
+func outReportRef(reg entity.Ref) entity.Ref {
+	return reg.At("out").Ref
 }
 
 // seedOut stands up the out half's places and writes the grants the registration describes. It
@@ -455,7 +499,7 @@ func (s *Server) listIOs(w http.ResponseWriter, r *http.Request) {
 	out := make([]verseio.Row, 0)
 	ents, bad, readErr := readRegistrations[verseio.Entity](store, verseio.System, verseio.IsRegistration)
 	for _, e := range ents {
-		out = append(out, s.ioRow(r, e, probe))
+		out = append(out, s.ioRow(r, store, e, probe))
 	}
 	// A FAILED READ IS NOT AN EMPTY LIST. List answers nil when the read did not happen, so
 	// without this a store that could not be read renders as "nothing is installed" — and
@@ -474,7 +518,7 @@ func (s *Server) listIOs(w http.ResponseWriter, r *http.Request) {
 
 // ioRow is an io as the iod routes answer it: the registration, and what verse knows of it now.
 // probe asks the io what it is, as `?probe=true` does.
-func (s *Server) ioRow(r *http.Request, e verseio.Entity, probe bool) verseio.Row {
+func (s *Server) ioRow(r *http.Request, store entity.Store, e verseio.Entity, probe bool) verseio.Row {
 	// BOTH HALVES IN ONE ROW, which is the whole reason an out half reports at all: an io
 	// whose reflection is healthy and whose out half has been refused for an hour must not
 	// read as healthy here. The in half's columns are verse's own knowledge; the out half's
@@ -502,6 +546,26 @@ func (s *Server) ioRow(r *http.Request, e verseio.Entity, probe bool) verseio.Ro
 		rec.Reach = reach.String()
 		if why != nil {
 			rec.Why = why.Error()
+		}
+	}
+	// What the out half's last pass did is the report's, in scratch (passIO); the failure that
+	// stopped one is the record's, and rides in with the registration.
+	if e.Out != nil {
+		if sc, ok := entity.ScratchOf(store); ok {
+			report, err := sc.ScratchRead(outReportRef(verseio.Ref(e.Name)))
+			switch {
+			case err != nil:
+				// Said, not dropped: a report that could not be read would otherwise look like
+				// an out half that never passed.
+				rec.Warning = "the pass report could not be read: " + err.Error()
+			case report != nil:
+				var rep verseio.Report
+				if err := codec.FromNode(report, &rep); err != nil {
+					rec.Warning = "the pass report could not be read: " + err.Error()
+				} else if rep != (verseio.Report{}) {
+					rec.Report = &rep
+				}
+			}
 		}
 	}
 	return rec
@@ -626,6 +690,15 @@ func (s *Server) removeIO(w http.ResponseWriter, r *http.Request) {
 	// verb deciding more than it was asked.
 	if forget {
 		unseedOut(store, e)
+	}
+	// The pass report goes with the registration: left in scratch, the next io installed under
+	// this name would be listed with what its predecessor last did. Before the record, so a
+	// clear that fails leaves the registration standing to be removed again.
+	if sc, ok := entity.ScratchOf(entity.As(store, entity.SystemDefault)); ok {
+		if err := sc.ScratchWrite(outReportRef(ref), nil); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 	if _, _, err := store.Write(entity.Write{At: ref.At(), Value: nil}); err != nil {
 		if refused(w, err) {

@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"fmt"
 	stdio "io"
 	"net/http"
 	"net/http/httptest"
@@ -208,6 +209,11 @@ func TestRemovingAnIoTakesItsOutGrantsBack(t *testing.T) {
 
 // Verse dials a reflection and knows how it is doing; it never dials an out half, so the out half
 // tells it. Without that, a listing shows one half of an io and calls it the io.
+//
+// WHAT THE PASS DID IS SCRATCH'S, not the document's: when it last passed and what it did is an
+// opinion about now, so it costs no commit, and the record keeps only the out half's config and
+// the failure that stopped a pass — written when the failure begins and when it ends, and not
+// for a pass that repeats either.
 func TestAnOutHalfReportsItsPasses(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
@@ -219,40 +225,110 @@ func TestAnOutHalfReportsItsPasses(t *testing.T) {
 		"out":  map[string]any{"places": []any{"slack.Acme.out"}, "as": "agent:slack-iod"},
 	})
 	resp.Body.Close()
+	// The reflection the install started dials an iod that is not there and records that failure on
+	// the record once; the heads below are measured after it, so what they measure is the report.
+	waitEntity(t, srv, verseio.Ref("workspace"), func(p entity.Payload) bool { return entity.Get(p, "lastError") != nil })
+	scratch, ok := entity.ScratchOf(srv.Store)
+	if !ok {
+		t.Fatal("the test store has no scratch")
+	}
+	report := func() map[string]any {
+		t.Helper()
+		n, err := scratch.ScratchRead(outReportRef(verseio.Ref("workspace")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return entity.ToObj(n)
+	}
+	// Every head below is taken once what could commit has: the reflection's failure, waited for
+	// above, is the install's last word on the document, and the install itself noted its
+	// principal before answering; after that, only a pass route writes, and it has written by
+	// the time it answers.
+	head := func() int64 { return srv.Store.(interface{ Head() int64 }).Head() }
 
 	pass := postTony(t, ts.URL+"/iods/workspace/pass", verseio.OutPass{Delivered: 3})
 	pass.Body.Close()
 	if pass.StatusCode != http.StatusNoContent {
 		t.Fatalf("reporting a pass = %s", pass.Status)
 	}
-	e, _ := verseio.Find(srv.Store, "workspace")
-	if e.Out == nil || e.Out.LastPass == "" || e.Out.Delivered != 3 {
-		t.Fatalf("out half reads %+v, want when it last passed and what it did", e.Out)
+	if rep := report(); rep["lastPass"] == nil || fmt.Sprint(rep["delivered"]) != "3" {
+		t.Fatalf("the report in scratch reads %v, want when it last passed and what it did", rep)
+	}
+	// And the listing shows the report beside the record, one row for both halves.
+	listing := getAs(t, "user:ana@example.com", ts.URL+"/iods")
+	if body := readBody(t, listing); !strings.Contains(body, "lastPass:") || !strings.Contains(body, "delivered: 3") {
+		t.Errorf("the listing does not show what the last pass did: %s", body)
+	}
+	before := head()
+	more := postTony(t, ts.URL+"/iods/workspace/pass", verseio.OutPass{Delivered: 2})
+	more.Body.Close()
+	if fmt.Sprint(report()["delivered"]) != "2" {
+		t.Errorf("the report in scratch did not follow the pass: %v", report())
+	}
+	if h := head(); h != before {
+		t.Errorf("a pass that worked committed to the document (head %d → %d); the report is scratch's", before, h)
+	}
+	rec, _, _ := srv.Store.Get(verseio.Ref("workspace"))
+	if out := entity.Get(rec.Payload, "out"); entity.Get(out, "lastPass") != nil || entity.Get(out, "delivered") != nil {
+		t.Errorf("the record carries the report: %v", entity.ToObj(out))
 	}
 
 	// A failure carries WHEN IT STARTED, kept across repeats: an error that has been the same
-	// since breakfast reads as "now" otherwise.
+	// since breakfast reads as "now" otherwise. The repeat writes nothing.
 	first := postTony(t, ts.URL+"/iods/workspace/pass", verseio.OutPass{Failed: 1, Error: "slack refused"})
 	first.Body.Close()
-	e, _ = verseio.Find(srv.Store, "workspace")
-	if e.Out.LastError == nil || e.Out.LastError.When == nil {
+	e, _ := verseio.Find(srv.Store, "workspace")
+	if e.Out == nil || e.Out.LastError == nil || e.Out.LastError.When == nil {
 		t.Fatalf("out half reads %+v, want the failure and when it began", e.Out)
 	}
 	began := *e.Out.LastError.When
+	if fmt.Sprint(report()["failed"]) != "1" {
+		t.Errorf("the report in scratch does not say the pass failed: %v", report())
+	}
 
+	settled := head()
 	again := postTony(t, ts.URL+"/iods/workspace/pass", verseio.OutPass{Failed: 1, Error: "slack refused"})
 	again.Body.Close()
 	e, _ = verseio.Find(srv.Store, "workspace")
 	if when := *e.Out.LastError.When; when != began {
 		t.Errorf("the same failure began again at %s, was %s", when, began)
 	}
+	if h := head(); h != settled {
+		t.Errorf("the same failure again committed to the document (head %d → %d)", settled, h)
+	}
 
-	// And a pass that worked ends it.
-	ok := postTony(t, ts.URL+"/iods/workspace/pass", verseio.OutPass{Delivered: 1})
-	ok.Body.Close()
+	// And a pass that worked ends it, once.
+	okPass := postTony(t, ts.URL+"/iods/workspace/pass", verseio.OutPass{Delivered: 1})
+	okPass.Body.Close()
 	e, _ = verseio.Find(srv.Store, "workspace")
 	if e.Out.LastError != nil {
 		t.Errorf("the failure outlived the pass that ended it: %+v", e.Out.LastError)
+	}
+	ended := head()
+	okAgain := postTony(t, ts.URL+"/iods/workspace/pass", verseio.OutPass{Delivered: 1})
+	okAgain.Body.Close()
+	if h := head(); h != ended {
+		t.Errorf("a pass that worked after one that worked committed to the document (head %d → %d)", ended, h)
+	}
+
+	// The report goes with the registration: an io removed and installed again under the name
+	// has passed nothing, and is not listed with what its predecessor last did.
+	gone := deleteAs(t, "user:ana@example.com", ts.URL+"/iods/workspace?forget=true")
+	gone.Body.Close()
+	if gone.StatusCode != http.StatusOK {
+		t.Fatalf("removing the io = %s", gone.Status)
+	}
+	if rep := report(); len(rep) != 0 {
+		t.Errorf("the report outlived its registration: %v", rep)
+	}
+	resp = installIO(t, ts, "user:ana@example.com", map[string]any{
+		"name": "workspace", "root": "slack", "url": "http://slack-iod:9801",
+		"owns": []any{map[string]any{"at": "slack.Acme"}},
+		"out":  map[string]any{"places": []any{"slack.Acme.out"}, "as": "agent:slack-iod"},
+	})
+	resp.Body.Close()
+	if rep := report(); len(rep) != 0 {
+		t.Errorf("a registration installed anew carries a report: %v", rep)
 	}
 }
 
@@ -325,4 +401,77 @@ func postAsTony(t *testing.T, as, url string, body map[string]any) *http.Respons
 		t.Fatal(err)
 	}
 	return postAs(t, as, url, "application/tony", string(b))
+}
+
+// A SCOPED IOD'S REPORT IS ITS SCOPE'S. Scratch has no scopes of its own, so a scoped iod of the
+// same name as a baseline one would otherwise report over baseline's counts, and clear them at its
+// install; and the scope's report would outlive the scope, since nothing in a scope's data names
+// it. Each stands in its own scratch, and the scope's goes with the scope.
+func TestAScopedIodsReportIsItsScopes(t *testing.T) {
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	reg := map[string]any{
+		"name": "workspace", "root": "slack", "url": "http://slack-iod:9801",
+		"owns": []any{map[string]any{"at": "slack.Acme"}},
+		"out":  map[string]any{"places": []any{"slack.Acme.out"}, "as": "agent:slack-iod"},
+	}
+	resp := installIO(t, ts, "user:ana@example.com", reg)
+	resp.Body.Close()
+	pass := postTony(t, ts.URL+"/iods/workspace/pass", verseio.OutPass{Delivered: 3})
+	pass.Body.Close()
+	if pass.StatusCode != http.StatusNoContent {
+		t.Fatalf("reporting a pass = %s", pass.Status)
+	}
+	// The same iod, by name and by claim, in a scope: shadowing baseline is what a scope is for.
+	b, err := codec.Marshal(reg, codec.Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopedInstall := postAs(t, "user:ana@example.com", ts.URL+"/iods?probe=false&scope=sandbox", "application/tony", string(b))
+	if scopedInstall.StatusCode != http.StatusCreated {
+		t.Fatalf("a scoped install over a baseline iod of the name = %s: %s", scopedInstall.Status, readBody(t, scopedInstall))
+	}
+	scopedInstall.Body.Close()
+	delivered := func(store entity.Store) string {
+		t.Helper()
+		sc, ok := entity.ScratchOf(store)
+		if !ok {
+			t.Fatal("the store has no scratch")
+		}
+		n, err := sc.ScratchRead(outReportRef(verseio.Ref("workspace")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n == nil {
+			return ""
+		}
+		return fmt.Sprint(entity.ToObj(n)["delivered"])
+	}
+	if got := delivered(srv.Store); got != "3" {
+		t.Fatalf("the scoped install cleared baseline's report: delivered %q, want 3", got)
+	}
+	scopedPass := postTony(t, ts.URL+"/iods/workspace/pass?scope=sandbox", verseio.OutPass{Delivered: 7})
+	scopedPass.Body.Close()
+	if scopedPass.StatusCode != http.StatusNoContent {
+		t.Fatalf("reporting a scoped pass = %s", scopedPass.Status)
+	}
+	if got := delivered(srv.Store.Scope("sandbox")); got != "7" {
+		t.Errorf("the scope's report reads delivered %q, want 7", got)
+	}
+	if got := delivered(srv.Store); got != "3" {
+		t.Errorf("a scoped pass reported over baseline's: delivered %q, want 3", got)
+	}
+	gone := postTony(t, ts.URL+"/scope/delete?scope=sandbox", nil)
+	gone.Body.Close()
+	if gone.StatusCode != http.StatusNoContent {
+		t.Fatalf("deleting the scope = %s", gone.Status)
+	}
+	if got := delivered(srv.Store.Scope("sandbox")); got != "" {
+		t.Errorf("the scope's report outlived the scope: delivered %q", got)
+	}
+	if got := delivered(srv.Store); got != "3" {
+		t.Errorf("deleting the scope took baseline's report: delivered %q, want 3", got)
+	}
 }
