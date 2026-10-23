@@ -1073,14 +1073,6 @@ func (tx *charterTx) rule(def *ir.Node) (int, error) {
 	eng := tx.eng // captured: the transaction spans packages (see imports)
 	tx.keep("rules", t.Name)
 	old, had := eng.Rule(t.Name)
-	// AND WHOSE IT STOOD AS, which is its perms record and not anything in the rule. An install
-	// may move that — the system takes a name it installs at — so an undo that puts back content
-	// alone leaves a person's rule standing under the system's record, firing as the system.
-	// The record is kept beside the content and both go back.
-	whose, err := entity.SnapshotRecord(tx.store, eng.RuleRef(t.Name))
-	if err != nil {
-		return http.StatusServiceUnavailable, err
-	}
 	before, err := entity.ActsAs(tx.store, eng.RuleRef(t.Name))
 	if err != nil {
 		return http.StatusServiceUnavailable, err
@@ -1091,8 +1083,19 @@ func (tx *charterTx) rule(def *ir.Node) (int, error) {
 	// repository's charter replayed once more, eight minutes before the verse was ready, for a
 	// config that had not changed. The same text standing as the system is what the install
 	// would leave, so there is nothing to apply. A person applying a file still replays it.
+	//
+	// Decided before anything is read from the store: whose a rule stands as is the perms
+	// mirror's (ActsAs), and the record snapshot below is only for undoing an install.
 	if had && tx.as() == entity.SystemCharter && before == tx.as() && sameValue(old, t) {
 		return http.StatusCreated, nil
+	}
+	// AND WHOSE IT STOOD AS, which is its perms record and not anything in the rule. An install
+	// may move that — the system takes a name it installs at — so an undo that puts back content
+	// alone leaves a person's rule standing under the system's record, firing as the system.
+	// The record is kept beside the content and both go back.
+	whose, err := entity.SnapshotRecord(tx.store, eng.RuleRef(t.Name))
+	if err != nil {
+		return http.StatusServiceUnavailable, err
 	}
 	if err := eng.InstallTriggerAs(tx.as(), t); err != nil {
 		return charterCode(err), err

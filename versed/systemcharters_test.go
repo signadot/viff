@@ -10,6 +10,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/system/repocharters"
+	"github.com/signadot/verse/trigger"
 )
 
 // A charter handed to the server as text is installed as the system once the sources are
@@ -71,6 +72,20 @@ func reconcilerStands(srv *Server) bool {
 	return false
 }
 
+// recordGets counts the reads of one record a server makes through it.
+type recordGets struct {
+	entity.Store
+	of entity.Ref
+	n  int
+}
+
+func (r *recordGets) Get(ref entity.Ref) (entity.Entity, bool, error) {
+	if ref == r.of {
+		r.n++
+	}
+	return r.Store.Get(ref)
+}
+
 // packageFirings is how many times the packages' rules have acted since this server started.
 func packageFirings(srv *Server) int {
 	n := 0
@@ -94,28 +109,36 @@ rules: [{name: mark,
 `)}}
 	}
 	// start stands a server up over the store with the texts, lets the start's firings settle,
-	// and answers how many there were.
-	start := func(texts []SystemCharter) (*Server, int) {
+	// and answers how many there were and how often the rule's perms record was read.
+	start := func(texts []SystemCharter) (*Server, int, int) {
 		t.Helper()
-		srv := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+		rg := &recordGets{Store: entitytest.StoreAt(t, addr), of: entity.PermsRef(trigger.CharterRefAt("notes", "mark"))}
+		srv := NewWithStore(ScriptedBuilder, rg)
 		srv.SystemCharters = texts
+		rg.n = 0 // the start is what is counted, not the migrations building the server reads through
 		ctx, stop := context.WithCancel(t.Context())
 		t.Cleanup(stop)
 		srv.Start(ctx)
 		time.Sleep(300 * time.Millisecond)
-		return srv, packageFirings(srv)
+		return srv, packageFirings(srv), rg.n
 	}
 
-	first, _ := start(charter("a"))
+	first, _, _ := start(charter("a"))
 	for _, id := range []string{"1", "2", "3"} {
 		entitytest.Set(t, first.Store, entity.RefAt("notes", "item", id), entity.Obj{"n": id}.Payload())
 	}
 	waitUntil(t, "the rule to mark every item", func() bool { return packageFirings(first) >= 3 })
 
-	if _, fired := start(charter("a")); fired != 3 {
+	_, fired, reads := start(charter("a"))
+	if fired != 3 {
 		t.Errorf("a restart with the text unchanged fired the rule %d times over 3 items, want 3: once in the restore", fired)
 	}
-	changed, _ := start(charter("b"))
+	// Nor is the store asked about it: the record a reinstall would snapshot for its undo is
+	// read only by an install that happens, and under a busy store each read is a second.
+	if reads != 0 {
+		t.Errorf("a restart with the text unchanged read the rule's record %d times, want 0", reads)
+	}
+	changed, _, _ := start(charter("b"))
 	waitUntil(t, "a changed text to install and replay", func() bool {
 		e, ok, _ := changed.Store.Get(entity.RefAt("notes", "item", "1"))
 		return ok && entity.Str(e.Payload, "seen") == "b"
