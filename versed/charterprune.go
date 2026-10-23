@@ -8,6 +8,7 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/schedule"
 	"github.com/signadot/verse/trigger"
@@ -241,22 +242,18 @@ func (tx *charterTx) dropSchedule(ref entity.Ref) (int, error) {
 
 // prunedReport is what a prune answers with beside the install: per package it kept, what went
 // out of it; per package it left out, that it went.
-func (tx *charterTx) prunedReport(gone []string) []any {
-	var out []any
+func (tx *charterTx) prunedReport(gone []string) []api.Pruned {
+	var out []api.Pruned
 	ats := make([]string, 0, len(tx.dropped))
 	for at := range tx.dropped {
 		ats = append(ats, at)
 	}
 	sort.Strings(ats)
 	for _, at := range ats {
-		removed := make([]any, len(tx.dropped[at]))
-		for i, what := range tx.dropped[at] {
-			removed[i] = what
-		}
-		out = append(out, map[string]any{"at": at, "removed": removed})
+		out = append(out, api.Pruned{At: at, Removed: tx.dropped[at]})
 	}
 	for _, at := range gone {
-		out = append(out, map[string]any{"at": at, "uninstalled": true})
+		out = append(out, api.Pruned{At: at, Uninstalled: true})
 	}
 	return out
 }

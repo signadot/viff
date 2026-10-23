@@ -526,7 +526,7 @@ func (k *Socket) link(ctx context.Context, channel, thread, user, responseURL, n
 		tell("Not linked: this program was not told which verse to tell.")
 		return
 	}
-	resp, err := k.Verse.Post("/accounts/slack/heard", nil, map[string]string{"nonce": nonce, "account": account(user)})
+	resp, err := k.Verse.Post("/accounts/slack/heard", nil, verseapi.AccountHeard{Nonce: nonce, Account: account(user)})
 	if err != nil {
 		tell("Not linked: " + err.Error())
 		return

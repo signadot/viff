@@ -13,6 +13,7 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	verseio "github.com/signadot/verse/io"
@@ -116,37 +117,12 @@ func isAccount(ref entity.Ref) bool {
 	return len(segs) == 5 && segs[1] == "identity" && segs[3] == "account"
 }
 
-// accountClaim is what POST /accounts/<provider> carries: for `github`, the login the caller says
-// is theirs; for a provider whose io hears the nonce said, nothing.
-type accountClaim struct {
-	Login string `tony:"field=login,omitzero"`
-}
-
-// accountHeard is what POST /accounts/<provider>/heard carries: a nonce an io heard said, the
-// account that said it, and the account's login where the system has one.
-type accountHeard struct {
-	Nonce   string `tony:"field=nonce"`
-	Account string `tony:"field=account"`
-	Login   string `tony:"field=login,omitzero"`
-}
-
-// accountVerify is what POST /accounts/github/verify carries: the nonce the account has said.
-type accountVerify struct {
-	Nonce string `tony:"field=nonce"`
-}
-
-// accountLink is what POST /accounts/<provider>/link carries: an id_token from that provider, as
-// evidence that the caller holds the account it names.
-type accountLink struct {
-	IDToken string `tony:"field=idToken"`
-}
-
 // claimAccount gives the caller a nonce to say from the account they claim, and keeps the claim
 // until it is verified or expires. The claim is under a provider whose accounts are proved by an
 // io's word: `github`, where the login is named and the proof is a reflected comment (verify), or
 // any provider whose io reports the nonce said from an account (heard).
 func (s *Server) claimAccount(w http.ResponseWriter, r *http.Request) {
-	var body accountClaim
+	var body api.AccountClaim
 	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -204,13 +180,7 @@ func (s *Server) claimAccount(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	out := map[string]any{
-		"nonce": nonce, "expires": expires,
-		"say": fmt.Sprintf("%s %s", linkWord, nonce),
-	}
-	if login != "" {
-		out["login"] = login
-	}
+	out := api.AccountClaimed{Nonce: nonce, Expires: expires, Say: fmt.Sprintf("%s %s", linkWord, nonce), Login: login}
 	writeOut(w, r, http.StatusCreated, out)
 }
 
@@ -224,7 +194,7 @@ func (s *Server) claimAccount(w http.ResponseWriter, r *http.Request) {
 // thing that was given out: it is said from one's own account, as any credential is used. A
 // nonce nobody claimed is not confirmed to whoever says it.
 func (s *Server) heardAccount(w http.ResponseWriter, r *http.Request) {
-	var body accountHeard
+	var body api.AccountHeard
 	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -301,7 +271,7 @@ func (s *Server) heardAccount(w http.ResponseWriter, r *http.Request) {
 // claim's principal when it has. The claim is spent either way but one: a comment not reflected
 // yet leaves it standing, to be asked again.
 func (s *Server) verifyAccount(w http.ResponseWriter, r *http.Request) {
-	var body accountVerify
+	var body api.AccountVerify
 	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -413,7 +383,7 @@ func (s *Server) bind(sys entity.Store, provider string, binding entity.Obj, who
 // request said links nothing this way, since the binding would let the account's token act as a
 // name nobody proved.
 func (s *Server) linkAccount(w http.ResponseWriter, r *http.Request) {
-	var body accountLink
+	var body api.AccountLink
 	if err := codec.Read(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -540,7 +510,7 @@ func (s *Server) listAccounts(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	out := make([]map[string]any, 0)
+	out := make([]api.Account, 0)
 	for _, e := range ents {
 		if entity.Str(e.Payload, "principal") == who {
 			out = append(out, accountRow(e.Ref.Segs()[2], e.Payload))
@@ -626,23 +596,20 @@ func (s *Server) revokeAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 // accountRow is a binding as the routes answer it, with the provider its address names.
-func accountRow(provider string, p entity.Payload) map[string]any {
-	row := map[string]any{"provider": provider}
-	for _, k := range []string{"principal", "iss", "sub", "login", "claimant", "via"} {
-		if v := entity.Str(p, k); v != "" {
-			row[k] = v
-		}
+func accountRow(provider string, p entity.Payload) api.Account {
+	row := api.Account{
+		Provider: provider, Principal: entity.Str(p, "principal"), Iss: entity.Str(p, "iss"),
+		Sub: entity.Str(p, "sub"), Login: entity.Str(p, "login"),
+		Claimant: entity.Str(p, "claimant"), Via: entity.Str(p, "via"),
 	}
 	// A proof holds what its method kept: a comment's address, a token's iss, sub and iat, or the
 	// io and account a person was relayed from or heard by.
 	if proof := entity.Get(p, "proof"); proof != nil {
-		shown := map[string]any{}
-		for _, k := range []string{"method", "evidence", "iss", "sub", "iat", "io", "account", "at"} {
-			if v := entity.Str(proof, k); v != "" {
-				shown[k] = v
-			}
+		row.Proof = &api.AccountProof{
+			Method: entity.Str(proof, "method"), Evidence: entity.Str(proof, "evidence"),
+			Iss: entity.Str(proof, "iss"), Sub: entity.Str(proof, "sub"), Iat: entity.Str(proof, "iat"),
+			IO: entity.Str(proof, "io"), Account: entity.Str(proof, "account"), At: entity.Str(proof, "at"),
 		}
-		row["proof"] = shown
 	}
 	return row
 }

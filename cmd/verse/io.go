@@ -10,6 +10,7 @@ import (
 	"github.com/scott-cotton/cli"
 
 	"github.com/signadot/verse/codec"
+	verseio "github.com/signadot/verse/io"
 )
 
 type iosConfig struct {
@@ -191,14 +192,9 @@ func (cfg *ioAddConfig) run(cc *cli.Context, args []string) error {
 			return fmt.Errorf("%w: `iod add %s <url>` wants --root: the root of the tree it "+
 				"writes, which is which connector it is (git, github, linear, slack)", cli.ErrUsage, name)
 		}
-		body := map[string]any{"root": root, "name": name}
-		if cfg.Dir != "" {
-			body["dir"] = cfg.Dir
-		} else {
-			body["url"] = args[1]
-		}
-		if out := cfg.outHalf(root); out != nil {
-			body["out"] = out
+		body := verseio.Entity{Root: root, Name: name, Dir: cfg.Dir, Out: cfg.outHalf(root)}
+		if cfg.Dir == "" {
+			body.URL = args[1]
 		}
 		resp, err := httpPostTo("/iods", q, body)
 		return ioAdded(cc, resp, err)
@@ -225,7 +221,7 @@ func (cfg *ioAddConfig) run(cc *cli.Context, args []string) error {
 // outHalf is the out half an operator spelled on the command line, or nil for an iod that only
 // reflects. `--as` defaults to the connector's own name, since one deployment per external system
 // is the shape and `agent:slack-iod` is what its grants are written against.
-func (cfg *ioAddConfig) outHalf(root string) map[string]any {
+func (cfg *ioAddConfig) outHalf(root string) *verseio.OutHalf {
 	if cfg.Out == "" {
 		return nil
 	}
@@ -233,17 +229,13 @@ func (cfg *ioAddConfig) outHalf(root string) map[string]any {
 	if as == "" {
 		as = "agent:" + root + "-iod"
 	}
-	out := map[string]any{"places": splitList(cfg.Out), "as": as}
-	if cfg.Requesters != "" {
-		out["requesters"] = splitList(cfg.Requesters)
-	}
-	return out
+	return &verseio.OutHalf{Places: splitList(cfg.Out), As: as, Requesters: splitList(cfg.Requesters)}
 }
 
 // splitList reads a comma-separated flag as the list it spells, dropping the empties a trailing
 // comma leaves.
-func splitList(s string) []any {
-	var out []any
+func splitList(s string) []string {
+	var out []string
 	for _, part := range strings.Split(s, ",") {
 		if part = strings.TrimSpace(part); part != "" {
 			out = append(out, part)

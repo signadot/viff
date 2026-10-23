@@ -227,7 +227,10 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	// the store, so it holds when the store is what is wrong) and every address verse
 	// listens on or dials — which is the thing gops cannot do and the reason the face is
 	// worth a port.
-	adm.SetReport(srv.Health)
+	adm.SetReport(func() map[string]any {
+		h := srv.Health()
+		return map[string]any{"ok": h.OK, "started": h.Started, "head": h.Head}
+	})
 	adm.SetAddrs( // its own goes without saying: the index prepends it
 		adminface.Addr{Name: "api", Addr: g.Addr},
 		adminface.Addr{Name: "docd-client", Addr: d.clientAddr},

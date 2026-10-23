@@ -470,10 +470,7 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), code)
 		return
 	}
-	out := map[string]any{"installed": installedReport(groups)}
-	if len(pruned) > 0 {
-		out["pruned"] = pruned
-	}
+	out := api.Installed{Installed: installedReport(groups), Pruned: pruned}
 	writeOut(w, r, http.StatusCreated, out)
 }
 
@@ -494,7 +491,7 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 // dormant because of how it was laid out; then the rules.
 //
 // With a PRUNE ROOT it is also a removal: see charterprune.go.
-func (s *Server) installCharterPruning(store entity.Store, scope, at, prune string, docs []*ir.Node) ([]charterGroup, []any, int, error) {
+func (s *Server) installCharterPruning(store entity.Store, scope, at, prune string, docs []*ir.Node) ([]charterGroup, []api.Pruned, int, error) {
 	groups, err := charterFilesPruning(docs, at, prune)
 	if err != nil {
 		return nil, nil, http.StatusBadRequest, err
@@ -641,28 +638,19 @@ func takePackageAddresses(store entity.Store, installer string, groups []charter
 // `held`, the rules written down and waiting for a stratum, each with the stratum; `notes`, the
 // advisories, each with its rule. `rules` counts the rules that are installed and can fire, so
 // a file whose one rule is held answers 0 and says why.
-func installedReport(groups []charterGroup) []any {
-	out := make([]any, 0, len(groups))
+func installedReport(groups []charterGroup) []api.InstalledPackage {
+	out := make([]api.InstalledPackage, 0, len(groups))
 	for _, g := range groups {
-		var held, notes []any
+		e := api.InstalledPackage{Strata: len(g.strata), At: g.at}
 		for _, n := range g.said {
 			if n.Held != "" {
-				held = append(held, map[string]any{"rule": n.rule, "stratum": n.Held})
+				e.Held = append(e.Held, api.HeldRule{Rule: n.rule, Stratum: n.Held})
 			}
 			for _, a := range n.Advice {
-				notes = append(notes, map[string]any{"rule": n.rule, "note": a})
+				e.Notes = append(e.Notes, api.RuleNote{Rule: n.rule, Note: a})
 			}
 		}
-		e := map[string]any{"rules": len(g.rules) - len(held), "strata": len(g.strata)}
-		if g.at != "" {
-			e["at"] = g.at
-		}
-		if len(held) > 0 {
-			e["held"] = held
-		}
-		if len(notes) > 0 {
-			e["notes"] = notes
-		}
+		e.Rules = len(g.rules) - len(e.Held)
 		out = append(out, e)
 	}
 	return out

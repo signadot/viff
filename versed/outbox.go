@@ -8,6 +8,7 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/entity"
 	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/trigger"
@@ -214,9 +215,9 @@ func (s *Server) listOutboxes(w http.ResponseWriter, r *http.Request) {
 			"to list", place, e.Out.As), http.StatusForbidden)
 		return
 	}
-	out := make([]map[string]any, 0)
+	out := make([]api.Outbox, 0)
 	for _, send := range s.outboxesTo(place) {
-		out = append(out, map[string]any{"from": send.From, "to": send.To})
+		out = append(out, api.Outbox{From: send.From, To: send.To})
 	}
 	writeOut(w, r, http.StatusOK, out)
 }

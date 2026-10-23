@@ -48,7 +48,9 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/config"
 	"github.com/signadot/verse/entity"
+	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/launch"
+	"github.com/signadot/verse/resolver"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
@@ -102,7 +104,7 @@ func load() {
 	aliases := map[string]*ir.Node{}
 
 	// Generated first, so a curated definition overrides rather than races it.
-	for _, src := range [][]byte{api.Schema, entity.Schema, trigger.Schema, task.Schema, runner.Schema, config.Schema, launch.Schema, systems.Schema} {
+	for _, src := range [][]byte{api.Schema, entity.Schema, trigger.Schema, task.Schema, runner.Schema, config.Schema, launch.Schema, systems.Schema, verseio.Schema, resolver.Schema} {
 		if err := fold(src, aliases, false); err != nil {
 			loadErr = err
 			return

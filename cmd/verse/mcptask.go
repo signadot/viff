@@ -413,7 +413,7 @@ func (m *mcpServer) flowVerb(ctx context.Context, verb string, sel flowFlags, ad
 		return nil, nil, err
 	}
 	var buf bytes.Buffer
-	if _, err := renderBody(&buf, resp, filters{}, m.out, false); err != nil {
+	if err := renderBody(&buf, resp, filters{}, m.out, false); err != nil {
 		return nil, nil, err
 	}
 	return answer(&buf)

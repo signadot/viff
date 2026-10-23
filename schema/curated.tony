@@ -148,3 +148,13 @@ context:
 define: .[tony-base:ir]
 signature:
   name: verse-runner-agent
+---
+# io.Failure — a source's last error and when it started: written as `{error, when?}`, and read
+# also as the bare string a registration written before `when` existed carries. A UNION of a
+# string and an object on the way in; the record on the way out.
+context:
+- tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
+define: .[tony-base:ir]
+signature:
+  name: verse-iod-failure

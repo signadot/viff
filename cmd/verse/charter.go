@@ -588,8 +588,7 @@ func reportInstalled(w io.Writer, body []byte, format codec.Format, scope string
 	reportPruned(w, node, sp)
 	// WHERE TO LOOK, said at the moment it is not obvious: a charter installed into packages
 	// leaves `verse c` — the next thing anybody types — answering baseline's rules, which is an
-	// empty list. The listing says so too (elsewhereInPackages); saying it here as well is what
-	// keeps somebody from having to be surprised first.
+	// empty list. Saying so here is what keeps somebody from having to be surprised first.
 	if packaged {
 		fmt.Fprintf(w, "%s shows every charter and where each may write\n", sp.charters())
 	}
@@ -657,28 +656,6 @@ func charterDefs(doc *ir.Node) []*ir.Node {
 		}
 	}
 	return defs
-}
-
-// postGroup installs a package's worth of a charter in ONE request, which is what makes it one
-// step: the server applies the whole file or none of it, in the order the three kinds have to go
-// in (versed/charter.go). `q` carries `?at=`, which is what picks the engine they land in.
-//
-// Sent one document at a time, this is what left a file HALF-APPLIED: the first document installed,
-// the second was refused, and the operator was told the command failed while some of the file
-// stood. Worse where the half that stood was the levels — a package with levels and no rules is a
-// package, its stratum could not be removed by re-applying a corrected file, and `charter
-// uninstall` was the only way out of a state nobody wrote down.
-func postGroup(route string, q url.Values, defs []*ir.Node) error {
-	resp, err := httpPostNodesTo(route, q, defs)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusCreated {
-		msg, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(msg)))
-	}
-	return nil
 }
 
 // charterRm takes something out of the charter, and WHAT is said by the path rather than by a

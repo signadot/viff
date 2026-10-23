@@ -45,6 +45,34 @@ signature:
 context:
 - tony-format/context
 define:
+  builds: !irtype {}
+  ceiling: !irtype {}
+signature:
+  name: verse-runner-system
+---
+context:
+- tony-format/context
+define:
+  agent: .[nullable(verse-runner-agent-offer)]
+  converse: .[bool]
+  requires: .[array(string)]
+  script: .[bool]
+  systems: .[object(verse-runner-system)]
+  version: .[string]
+signature:
+  name: verse-runner-offer
+---
+context:
+- tony-format/context
+define:
+  offers: .[array(verse-runner-offer)]
+  version: .[int]
+signature:
+  name: verse-runner-description
+---
+context:
+- tony-format/context
+define:
   chain: .[string]
   principal: .[string]
   subject: .[string]
@@ -119,14 +147,6 @@ define:
   instruction: .[string]
 signature:
   name: verse-runner-say
----
-context:
-- tony-format/context
-define:
-  builds: !irtype {}
-  ceiling: !irtype {}
-signature:
-  name: verse-runner-system
 ---
 context:
 - tony-format/context

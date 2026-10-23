@@ -298,14 +298,11 @@ const waitPoll = 50 * time.Millisecond
 func waitForResult(cc *cli.Context, id string) error {
 	var last error
 	for {
-		var snap struct {
-			Status string `tony:"field=status"`
-			Result string `tony:"field=result"`
-		}
+		var snap api.Task
 		switch err := taskSnapshot(id, &snap); {
 		case err == nil:
 			last = nil
-			if snap.Status != "" && snap.Status != "running" {
+			if snap.Status != "" && snap.Status != task.Running {
 				fmt.Fprintln(cc.Out, id, snap.Status)
 				if snap.Result != "" { // the agent's final answer
 					fmt.Fprintf(cc.Out, "\n%s\n", snap.Result)

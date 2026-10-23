@@ -97,5 +97,5 @@ func (s *Server) tickSchedule(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), code)
 		return
 	}
-	writeOut(w, r, http.StatusCreated, map[string]any{"schedule": id, "tick": schedule.Key(due)})
+	writeOut(w, r, http.StatusCreated, api.Ticked{Schedule: id, Tick: schedule.Key(due)})
 }

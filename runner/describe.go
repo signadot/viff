@@ -18,6 +18,8 @@ import (
 // Each offer is a doer, an agent or scripts, and the systems it holds for its tasks: for each,
 // what the runner builds of it (Builds, its nature) and what its operator allows (Ceiling, a
 // choice), published apart so a refusal can say which. A launch's environment lies within both.
+//
+//tony:schemagen=verse-runner-description,notag
 type Description struct {
 	// Version is the shape of the description, DescriptionVersion when a runner writes it. One
 	// kept from an older runner is refused rather than read as this one (Check): the runner is
@@ -100,6 +102,8 @@ func systemsVerb(system, verb string) (systems.Verb, bool) {
 // Offer is one kind of doer a runner runs: an agent, by name, or scripts. An agent name is
 // offered by exactly one registered runner, and only one runner offers scripts. The first agent
 // offer is the runner's default agent, a prompt's that names none.
+//
+//tony:schemagen=verse-runner-offer,notag
 type Offer struct {
 	// Agent is the agent offered, and what it takes. Nil for scripts.
 	Agent *AgentOffer `tony:"field=agent,omitzero"`

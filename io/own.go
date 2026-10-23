@@ -50,6 +50,8 @@ import (
 // It is DECLARED but not PARSED: nothing compares two of these. ParseOwns turns them into
 // Claims, once, and everything that reasons about ownership takes those — so there is no path
 // through this package on which an unparseable claim is silently skipped.
+//
+//tony:schemagen=verse-iod-own,notag
 type Own struct {
 	// At is the address, as an address glob: a level may be `*`, and may end in one.
 	// ParseClaim is what reads it.

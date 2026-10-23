@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	verseio "github.com/signadot/verse/io"
@@ -104,11 +105,11 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 	}
 	e.Scope = scope
 	store := s.scopedStore(r)
-	out := map[string]any{"at": verseio.Ref(e.Name).String()}
+	out := verseio.Added{At: verseio.Ref(e.Name).String()}
 
 	if r.URL.Query().Get("probe") != "false" {
 		reach, d, why := s.describe(r, e)
-		out["reach"] = reach.String()
+		out.Reach = reach.String()
 		switch reach {
 		case verseio.NotSource:
 			http.Error(w, fmt.Sprintf("source %q: %s is not a source: %s — --no-probe installs "+
@@ -119,7 +120,7 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 			// of a source deployed alongside the entity that names it, so refusing would make
 			// deployment order-dependent for a fact that fixes itself. The warning rides on the
 			// response, because the operator running the command is who can act on it.
-			out["warning"] = why.Error()
+			out.Warning = why.Error()
 		default:
 			// The check with no runner analogue. A `github` registration pointed at a git
 			// source is the mistake this catches at the moment somebody is present — and it is
@@ -137,7 +138,7 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 			// exactly as the url is: what the source claimed when somebody installed it.
 			if len(e.Owns) == 0 && len(d.Owns) > 0 {
 				e.Owns = d.Owns
-				out["owns"] = d.Owns
+				out.Owns = d.Owns
 			}
 		}
 	}
@@ -230,7 +231,7 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 	// act, and what an operator used to type as four `verse perms` lines is written here, from
 	// the record, where it cannot be typed wrong or forgotten.
 	if warn := seedOut(store, installer, e); warn != "" {
-		out["warning"] = warn
+		out.Warning = warn
 	}
 	// And the outboxes packages already declared for its places, which it now reads (outbox.go).
 	if e.Out != nil {
@@ -244,7 +245,7 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 	// nothing until somebody bounced the server would be the same silence `dial-in` is refused
 	// for.
 	if err := s.startSource(e); err != nil {
-		out["warning"] = "installed, but not running: " + err.Error()
+		out.Warning = "installed, but not running: " + err.Error()
 	}
 	writeOut(w, r, http.StatusCreated, out)
 }
@@ -433,49 +434,15 @@ func claims(owns []verseio.Own) string {
 func (s *Server) listIOs(w http.ResponseWriter, r *http.Request) {
 	store := s.scopedStore(r)
 	probe := r.URL.Query().Get("probe") == "true"
-	out := make([]map[string]any, 0)
-	ents, readErr := verseio.ListErr(store)
+	out := make([]verseio.Row, 0)
+	ents, bad, readErr := readRegistrations[verseio.Entity](store, verseio.System, verseio.IsRegistration)
 	for _, e := range ents {
-		rec := map[string]any{
-			"at": verseio.Ref(e.Name).String(), "name": e.Name, "root": e.Root,
-		}
-		for k, v := range map[string]string{
-			"url": e.URL, "dir": e.Dir, "scope": e.Scope, "lastReflect": e.LastReflect,
-		} {
-			if v != "" {
-				rec[k] = v
-			}
-		}
-		// The error and WHEN IT STARTED travel together or the reader is misled — see
-		// verseio.Failure. Rendered as the stored pair rather than flattened to its text.
-		if e.LastError != nil {
-			rec["lastError"] = e.LastError
-		}
-		if len(e.Owns) > 0 {
-			rec["owns"] = e.Owns
-		}
 		// BOTH HALVES IN ONE ROW, which is the whole reason an out half reports at all: an io
 		// whose reflection is healthy and whose out half has been refused for an hour must not
 		// read as healthy here. The in half's columns are verse's own knowledge; the out half's
-		// are what it was told.
-		if e.Out != nil {
-			half := map[string]any{"places": e.Out.Places, "as": e.Out.As}
-			for k, v := range map[string]string{"lastPass": e.Out.LastPass} {
-				if v != "" {
-					half[k] = v
-				}
-			}
-			if e.Out.Delivered > 0 {
-				half["delivered"] = e.Out.Delivered
-			}
-			if e.Out.Failed > 0 {
-				half["failed"] = e.Out.Failed
-			}
-			if e.Out.LastError != nil {
-				half["lastError"] = e.Out.LastError
-			}
-			rec["out"] = half
-		}
+		// are what it was told. The error and WHEN IT STARTED travel together, as the stored
+		// pair, or the reader is misled — see verseio.Failure.
+		rec := verseio.Row{Entity: e, At: verseio.Ref(e.Name).String()}
 		// When a pass last COMPLETED, from the live reflector — the signal that catches a source
 		// that has wedged (alive, answering, reflecting nothing new), which the stored
 		// lastReflect cursor cannot: on a quiet repo a healthy source and a wedged one carry the
@@ -484,20 +451,19 @@ func (s *Server) listIOs(w http.ResponseWriter, r *http.Request) {
 		run := s.ioRuns[verseio.Ref(e.Name).String()]
 		s.srcMu.Unlock()
 		if run != nil {
-			if pass := run.lastPassAt(); pass != "" {
-				rec["lastPass"] = pass
-			}
+			rec.LastPass = run.lastPassAt()
 		} else {
-			rec["running"] = false
+			running := false
+			rec.Running = &running
 		}
 		// Asked for, never stored. A reachability column is as of now or it is a cache that can
 		// be stale in the direction that costs — saying a source is well because it was well
 		// when something last looked.
 		if probe {
 			reach, _, why := s.describe(r, e)
-			rec["reach"] = reach.String()
+			rec.Reach = reach.String()
 			if why != nil {
-				rec["why"] = why.Error()
+				rec.Why = why.Error()
 			}
 		}
 		out = append(out, rec)
@@ -510,16 +476,25 @@ func (s *Server) listIOs(w http.ResponseWriter, r *http.Request) {
 	if unreadable(w, r, readErr) {
 		return
 	}
+	for _, b := range bad {
+		out = append(out, verseio.Row{Entity: verseio.Entity{Name: b.Ref.Name()}, At: b.Ref.String(), Unreadable: b.Err.Error()})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	writeOut(w, r, http.StatusOK, out)
 }
 
 func (s *Server) getIO(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	e, ok, err := s.scopedStore(r).Get(verseio.Ref(name))
+	ent, ok, err := s.scopedStore(r).Get(verseio.Ref(name))
 	if !installed(w, r, fmt.Sprintf("io %q", name), ok, err) {
 		return
 	}
-	writeOut(w, r, http.StatusOK, entity.ToObj(e.Payload))
+	var e verseio.Entity
+	if err := codec.FromNode(ent.Payload, &e); err != nil {
+		http.Error(w, fmt.Sprintf("io %s is stored in a shape this verse can't read: %v", ent.Ref, err), http.StatusInternalServerError)
+		return
+	}
+	writeOut(w, r, http.StatusOK, e)
 }
 
 // checkIO asks one what it is, right now — including what it claims to own, which is what
@@ -531,19 +506,14 @@ func (s *Server) checkIO(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reach, d, why := s.describe(r, e)
-	out := map[string]any{
-		"at": verseio.Ref(name).String(), "reach": reach.String(),
-	}
-	if e.URL != "" {
-		out["url"] = e.URL
-	}
+	out := verseio.Checked{At: verseio.Ref(name).String(), Reach: reach.String(), URL: e.URL}
 	if why != nil {
-		out["why"] = why.Error()
+		out.Why = why.Error()
 	}
 	// What it says NOW, beside what was recorded at install. Neither is merged into the other:
 	// a claim that has drifted is a fact an operator should see as two values, not as one.
 	if reach == verseio.IsSource {
-		out["says"] = map[string]any{"root": d.Root, "owns": d.Owns}
+		out.Says = &verseio.Says{Root: d.Root, Owns: d.Owns}
 	}
 	writeOut(w, r, http.StatusOK, out)
 }
@@ -568,6 +538,12 @@ func (s *Server) removeIO(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	ref := verseio.Ref(name)
 	e, ok, err := verseio.FindErr(store, entity.JoinSegs([]string{name}))
+	if !ok && err == nil {
+		// A registration this verse can't read is still removed by its name: what it claimed is
+		// not known, so there is nothing to forget or keep, and only the registration goes.
+		_, ok, err = store.Get(ref)
+		e = verseio.Entity{Name: name}
+	}
 	if !installed(w, r, fmt.Sprintf("io %q", name), ok, err) {
 		return
 	}
@@ -604,7 +580,7 @@ func (s *Server) removeIO(w http.ResponseWriter, r *http.Request) {
 		s.releaseOutboxesTo(e.Out.Places, e.Out.As)
 	}
 
-	out := map[string]any{"removed": ref.String()}
+	out := api.Removed{Removed: ref.String()}
 	if forget {
 		var gone int
 		for _, p := range reflected {
@@ -616,9 +592,9 @@ func (s *Server) removeIO(w http.ResponseWriter, r *http.Request) {
 			}
 			gone++
 		}
-		out["forgotten"] = gone
-	} else if len(reflected) > 0 {
-		out["kept"] = len(reflected)
+		out.Forgotten = &gone
+	} else {
+		out.Kept = len(reflected)
 	}
 	// The out half's grants go the way everything else this io left goes: with --forget, which
 	// is the answer to "this io is over". --keep keeps them, since a place whose grants stand is

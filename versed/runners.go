@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
@@ -39,7 +40,7 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	var e runnerEntity
+	var e api.Runner
 	if err := codec.FromNode(node, &e); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -48,7 +49,7 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	out := map[string]any{"at": runnerEntityRef(e.Name).String()}
+	out := api.RunnerAdded{At: runnerEntityRef(e.Name).String()}
 	// The probe, and the two dispositions it feeds. They differ on whether waiting could
 	// change the answer: a url that answers as something else is answering NOW, while a url
 	// nothing answers is the ordinary
@@ -70,8 +71,7 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 		case client.Unreachable:
 			// Installed, and said so. The warning rides on the response rather than being
 			// logged, because the operator running the command is the one who can act on it.
-			out["reach"] = reach.String()
-			out["warning"] = why.Error()
+			out.Reach, out.Warning = reach.String(), why.Error()
 		default:
 			// What it offers is kept with the registration, so a spawn naming this runner is
 			// checked against it where the spawn is written; a description that says too little
@@ -81,8 +81,7 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 					http.StatusBadRequest)
 				return
 			}
-			out["reach"] = reach.String()
-			out["offers"] = desc.Offers
+			out.Reach, out.Offers = reach.String(), desc.Offers
 			described = &desc
 		}
 	}
@@ -106,32 +105,33 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listRunners(w http.ResponseWriter, r *http.Request) {
 	store := s.scopedStore(r)
 	probe := r.URL.Query().Get("probe") == "true"
-	out := make([]map[string]any, 0)
-	ents, readErr := installedRunnersErr(store)
+	out := make([]api.RunnerRow, 0)
+	ents, bad, readErr := readRegistrations[api.Runner](store, runnersSystem, isRunnerRef)
 	// READ ONCE, COUNT PER RUNNER. The counts are a walk of every task instance, and asking
 	// inside the loop made the listing cost runners x instances for an answer that is one pass
 	// over the same rows.
 	instances := taskRows(store)
 	for _, e := range ents {
 		ref := runnerEntityRef(e.Name)
-		rec := map[string]any{
-			"at": ref.String(), "name": e.Name, "url": e.URL,
-		}
-		for k, v := range runnerCounts(instances, ref, e.URL) {
-			rec[k] = v
-		}
+		e.Described = nil // GET /runners/{name} says what it offers; a listing row does not
+		rec := api.RunnerRow{Runner: e, At: ref.String()}
+		rec.Running, rec.Total, rec.LastSpawn = runnerCounts(instances, ref, e.URL)
 		// Asked for, never stored. A reachability column is as of now or it is a cache that
 		// can be stale in the direction that costs — saying a runner is well because it was
 		// well when something last looked.
 		if probe {
 			reach, _, why := client.Probe(e.URL)
-			rec["reach"] = reach.String()
+			rec.Reach = reach.String()
 			if why != nil {
-				rec["why"] = why.Error()
+				rec.Why = why.Error()
 			}
 		}
 		out = append(out, rec)
 	}
+	for _, b := range bad {
+		out = append(out, api.RunnerRow{Runner: api.Runner{Name: b.Ref.Name()}, At: b.Ref.String(), Unreadable: b.Err.Error()})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	// A FAILED READ IS NOT AN EMPTY LIST. List answers nil when the read did not happen, so
 	// without this a store that could not be read renders as "nothing is installed" — and
 	// `verse iod` answered `[]` on a verse holding three sources, which is the one shape an
@@ -145,11 +145,16 @@ func (s *Server) listRunners(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getRunner(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	e, ok, err := s.scopedStore(r).Get(runnerEntityRef(name))
+	ent, ok, err := s.scopedStore(r).Get(runnerEntityRef(name))
 	if !installed(w, r, fmt.Sprintf("runner %q", name), ok, err) {
 		return
 	}
-	writeOut(w, r, http.StatusOK, entity.ToObj(e.Payload))
+	var e api.Runner
+	if err := codec.FromNode(ent.Payload, &e); err != nil {
+		http.Error(w, fmt.Sprintf("runner %s is stored in a shape this verse can't read: %v", ent.Ref, err), http.StatusInternalServerError)
+		return
+	}
+	writeOut(w, r, http.StatusOK, e)
 }
 
 // checkRunner probes one on demand. It is the command an operator runs before choosing between
@@ -162,11 +167,9 @@ func (s *Server) checkRunner(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reach, desc, why := client.Probe(e.URL)
-	out := map[string]any{
-		"at": runnerEntityRef(name).String(), "url": e.URL, "reach": reach.String(),
-	}
+	out := api.RunnerCheck{At: runnerEntityRef(name).String(), URL: e.URL, Reach: reach.String()}
 	if why != nil {
-		out["why"] = why.Error()
+		out.Why = why.Error()
 	}
 	// A runner that answers describes itself afresh: what it offers may have changed since it
 	// was installed (a restart with a model credential, say), and the registration says what
@@ -178,7 +181,7 @@ func (s *Server) checkRunner(w http.ResponseWriter, r *http.Request) {
 				"keeps what it said before", name, e.URL, err), http.StatusBadGateway)
 			return
 		}
-		out["offers"] = desc.Offers
+		out.Offers = desc.Offers
 		if err := writeDescribed(s.storeForScope(r.URL.Query().Get("scope")), name, desc); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -336,6 +339,12 @@ func (s *Server) removeRunner(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	ref := runnerEntityRef(name)
 	e, ok, err := findRunnerErr(store, entity.JoinSegs([]string{name}))
+	if !ok && err == nil {
+		// A registration this verse can't read is still removed by its name: its url is not
+		// known, so its work is found by the name alone, and a cancel reaches none of it.
+		_, ok, err = store.Get(ref)
+		e = api.Runner{Name: name}
+	}
 	if !installed(w, r, fmt.Sprintf("runner %q", name), ok, err) {
 		return
 	}
@@ -359,18 +368,16 @@ func (s *Server) removeRunner(w http.ResponseWriter, r *http.Request) {
 	if refused(w, entity.Check(store, entity.PrincipalOf(store), entity.OwnerLevel, ref, "removing it")) {
 		return
 	}
-	out := map[string]any{"removed": ref.String()}
+	out := api.Removed{Removed: ref.String()}
 	if cancelling && len(live) > 0 {
-		cancelled, unreachable := cancelOn(e.URL, live, why)
-		out["cancelled"] = cancelled
+		var unreachable []string
+		out.Cancelled, unreachable = cancelOn(e.URL, live, why)
 		// What it could not reach, reported rather than counted as ended. Saying "cancelled 3"
 		// when three are unreachable is the same lie as recording a queued answer as
 		// delivered — and an already-gone runner is WHY an operator removes the entity half
 		// the time, so this is the ordinary case rather than the exotic one. Those are
 		// orphans, and the orphan path is what covers them.
-		if len(unreachable) > 0 {
-			out["unreachable"] = unreachable
-		}
+		out.Unreachable = unreachable
 	}
 	if _, _, err := store.Write(entity.Write{At: ref.At(), Value: nil}); err != nil {
 		if refused(w, err) {
@@ -432,9 +439,7 @@ func cancelOn(url string, ids []string, why string) (cancelled, unreachable []st
 // runnerCounts is what a runner is carrying, derived from the store and never probed: verse
 // reports what it has recorded. `running` is now, `total` is ever, and `lastSpawn` is when it
 // was last used — so a runner nobody names is visible as such.
-func runnerCounts(instances []entity.Entity, ref entity.Ref, url string) map[string]any {
-	var running, total int
-	var last string
+func runnerCounts(instances []entity.Entity, ref entity.Ref, url string) (running, total int, last string) {
 	for _, ent := range instances {
 		rec := entity.ToObj(ent.Payload)
 		if rec == nil {
@@ -453,11 +458,7 @@ func runnerCounts(instances []entity.Entity, ref entity.Ref, url string) map[str
 			last = at
 		}
 	}
-	out := map[string]any{"running": running, "total": total}
-	if last != "" {
-		out["lastSpawn"] = last
-	}
-	return out
+	return running, total, last
 }
 
 // runnerFor resolves the runner a spawn NAMED, to the one runner that spawn runs on.

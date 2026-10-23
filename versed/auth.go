@@ -502,12 +502,9 @@ func (s *Server) firstSight(sys entity.Store, v *verified) (string, *turnedAway)
 // verified them, or `asserted` for a caller who is whoever their request said, and `via` the io
 // that relayed them where one did. A request that names nobody is answered with none.
 func (s *Server) whoami(w http.ResponseWriter, r *http.Request) {
-	out := map[string]any{}
+	var out api.WhoAmI
 	if p := principalOf(r); p != "" {
-		out["principal"], out["by"] = p, authenticatedBy(r)
-		if via := relayedBy(r); via != "" {
-			out["via"] = via
-		}
+		out = api.WhoAmI{Principal: p, By: authenticatedBy(r), Via: relayedBy(r)}
 	}
 	writeOut(w, r, http.StatusOK, out)
 }

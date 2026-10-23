@@ -143,7 +143,7 @@ func (m *mcpServer) get(ctx context.Context, what, path string, q url.Values, f 
 		return nil, nil, fmt.Errorf("%s: %w", what, err)
 	}
 	var buf bytes.Buffer
-	if _, err := renderBody(&buf, resp, f, m.out, false); err != nil {
+	if err := renderBody(&buf, resp, f, m.out, false); err != nil {
 		return nil, nil, err
 	}
 	return answer(&buf)

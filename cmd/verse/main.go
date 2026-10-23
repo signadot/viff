@@ -254,13 +254,8 @@ func collection(name, plural, route, synopsis string, subs ...*cli.Command) *cli
 // the SERVER as query parameters rather than being applied to the rows here, because the server
 // is where the record lives — a client-side filter would have to know which field a name is
 // stamped on, and would be a second place that has to agree about it.
-// post runs after a listing has printed, for a collection that has something to SAY about an
-// answer rather than to add to it — a note on stderr, so the document on stdout stays a
-// document. `verse charter` is the one: see elsewhereInPackages.
-type postPrint func(*cli.Context)
-
-func filteredCollectionPost(name, plural, route, synopsis string, opts []*cli.Opt,
-	query func() url.Values, post []postPrint, subs ...*cli.Command,
+func filteredCollection(name, plural, route, synopsis string, opts []*cli.Opt,
+	query func() url.Values, subs ...*cli.Command,
 ) *cli.Command {
 	cfg := &struct{ *cli.Command }{}
 	return cli.NewCommandAt(&cfg.Command, name).
@@ -285,21 +280,8 @@ func filteredCollectionPost(name, plural, route, synopsis string, opts []*cli.Op
 			if err != nil {
 				return fmt.Errorf("%s: %w", name, err)
 			}
-			if err := printBody(cc, resp); err != nil {
-				return err
-			}
-			for _, p := range post {
-				p(cc)
-			}
-			return nil
+			return printBody(cc, resp)
 		})
-}
-
-// filteredCollection is filteredCollectionPost with nothing to say afterwards.
-func filteredCollection(name, plural, route, synopsis string, opts []*cli.Opt,
-	query func() url.Values, subs ...*cli.Command,
-) *cli.Command {
-	return filteredCollectionPost(name, plural, route, synopsis, opts, query, nil, subs...)
 }
 
 // dispatch runs the subcommand named by args[0], when there is one. A collection LISTS when

@@ -1248,8 +1248,10 @@ func (s *Server) Handler() http.Handler {
 	// (or nothing), which is what the published table needs to be right about a listing and
 	// what the root schema is derived from — see rootSignature.
 	rt.handle("GET /status", s.status, "", one("verse-status"))
-	rt.handle("GET /healthz", s.healthz, "", nothing)
+	rt.handle("GET /healthz", s.healthz, "", one("verse-health"))
 	rt.handle("GET /watch", s.watch, "", stream("verse-event"))
+	// With `?paths` the answer is the paths beneath the address instead (verse-paths): one route,
+	// two readings of the same tree, the table naming the one without the parameter.
 	rt.handle("GET /state", s.state, "", one("verse-state"))
 	rt.handle("GET /entity", s.getEntity, "", one("verse-entity"))
 	// A node's permissions, as its owner reads and sets them. The mirror itself is the
@@ -1258,9 +1260,9 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("GET /perms", s.getPerms, "", one("verse-perms-record"))
 	rt.handle("GET /perms/records", s.listPerms, "", list("verse-perms-record"))
 	// Groups: a named set of principals, a grantee whose address admits its members.
-	rt.handle("GET /groups", s.listGroups, "", nothing)
-	rt.handle("POST /groups", s.putGroup, "verse-group", nothing)
-	rt.handle("GET /groups/{name}", s.getGroup, "", nothing)
+	rt.handle("GET /groups", s.listGroups, "", list("verse-group-row"))
+	rt.handle("POST /groups", s.putGroup, "verse-group", one("verse-group-row"))
+	rt.handle("GET /groups/{name}", s.getGroup, "", one("verse-group-row"))
 	rt.handle("DELETE /groups/{name}", s.removeGroup, "", nothing)
 	// THE ASKS, both sides of each: the asker raises, changes and withdraws one and lists theirs;
 	// whom it asks lists the questions waiting on them and answers. Every question is an ask at
@@ -1282,6 +1284,7 @@ func (s *Server) Handler() http.Handler {
 	// ONE ROUTE FOR THE CHARTER: the tree at an address, and one rule or one level by name
 	// inside it. `/triggers` and `/strata` were two surfaces over one idea — see versed/charter.go.
 	rt.handle("GET /charter", s.getCharter, "", nothing)
+	// A rule's name answers the rule (verse-trigger); a level's answers the level (verse-stratum).
 	rt.handle("GET /charter/{name}", s.getCharterItem, "", one("verse-trigger"))
 	// the API describing itself: the route table, and the schema its entries name
 	rt.handle("GET /api", s.serveAPI, "", one("verse-routes"))
@@ -1290,43 +1293,42 @@ func (s *Server) Handler() http.Handler {
 	// mutation + control (out-of-band from observation; priority-serviced)
 	rt.handle("POST /entity", s.putEntity, "verse-put-entity", one("verse-entity"))
 	rt.handle("DELETE /entity", s.deleteEntity, "", nothing)
-	rt.handle("POST /charter", s.addCharter, "verse-trigger", nothing)
+	// The body is one or more documents (codec.ReadNodes): charter files, bare rules, or lists of
+	// either. No one signature is that, so none is declared.
+	rt.handle("POST /charter", s.addCharter, "", one("verse-installed"))
 	// The charter check: what an install of the same documents would do, with nothing installed
 	// (chartercheck.go). A question beside the install, and never part of it.
-	rt.handle("POST /charter/check", s.checkCharter, "verse-trigger", one("verse-charter-check"))
-	rt.handle("POST /schedules/{id}/tick", s.tickSchedule, "verse-schedule-tick", nothing)
+	rt.handle("POST /charter/check", s.checkCharter, "", one("verse-charter-check"))
+	rt.handle("POST /schedules/{id}/tick", s.tickSchedule, "verse-schedule-tick", one("verse-ticked"))
 	rt.handle("DELETE /charter/{name}", s.deleteCharterItem, "", nothing)
 	rt.handle("DELETE /charter", s.deleteCharter, "", nothing)
 	// resolvers — who answers a question. A resolver is installed rather than declared in a
 	// charter, because it outlives any one rule and is managed by whoever supervises rather
 	// than by whoever wrote the work.
-	rt.handle("GET /resolvers", s.listResolvers, "", nothing)
-	rt.handle("POST /resolvers", s.addResolver, "", nothing)
-	rt.handle("GET /resolvers/{name}", s.getResolver, "", nothing)
+	rt.handle("GET /resolvers", s.listResolvers, "", list("verse-resolver-row"))
+	rt.handle("POST /resolvers", s.addResolver, "verse-installed-resolver", one("verse-resolver-added"))
+	rt.handle("GET /resolvers/{name}", s.getResolver, "", one("verse-installed-resolver"))
 	rt.handle("DELETE /resolvers/{name}", s.removeResolver, "", nothing)
-	rt.handle("POST /resolvers/{name}/grant", s.grantResolver, "", nothing)
-	rt.handle("GET /resolvers/{name}/asks", s.servedAsks, "", nothing)
-	rt.handle("GET /asks/{id}/served", s.askServed, "", nothing)
-	rt.handle("POST /resolvers/{name}/revoke", s.revokeResolver, "", nothing)
-	// runners — WHERE work runs, as against who answers for it. Installed rather than chosen
-	// at startup, so a drive can add one for work this verse does not otherwise need to know
-	// about.
+	rt.handle("POST /resolvers/{name}/grant", s.grantResolver, "verse-answer-for", nothing)
+	rt.handle("GET /resolvers/{name}/asks", s.servedAsks, "", one("verse-served-asks"))
+	rt.handle("GET /asks/{id}/served", s.askServed, "", one("verse-ask-served"))
+	rt.handle("POST /resolvers/{name}/revoke", s.revokeResolver, "verse-answer-for", nothing)
 	// sources — what REFLECTS an external system into the verse, as against where work runs.
 	// Addressed by the slice reflected, because that is a question verse already asks: who
 	// writes `git:*`. See docs/io.md.
-	rt.handle("GET /iods", s.listIOs, "", nothing)
-	rt.handle("POST /iods", s.addIO, "", nothing)
-	rt.handle("GET /iods/{name}", s.getIO, "", nothing)
-	rt.handle("GET /iods/{name}/check", s.checkIO, "", nothing)
-	rt.handle("DELETE /iods/{name}", s.removeIO, "", nothing)
+	rt.handle("GET /iods", s.listIOs, "", list("verse-iod-row"))
+	rt.handle("POST /iods", s.addIO, "verse-installed-iod", one("verse-iod-added"))
+	rt.handle("GET /iods/{name}", s.getIO, "", one("verse-installed-iod"))
+	rt.handle("GET /iods/{name}/check", s.checkIO, "", one("verse-iod-check"))
+	rt.handle("DELETE /iods/{name}", s.removeIO, "", one("verse-removed"))
 	// What a package declared it sends to an io's out place (outbox.go), asked by that io.
-	rt.handle("GET /outboxes", s.listOutboxes, "", nothing)
+	rt.handle("GET /outboxes", s.listOutboxes, "", list("verse-outbox"))
 	// The hint: a delivery that carries WHICH SLICE and nothing else, so it can cost at most
 	// a reconcile of a slice its sender does not choose the contents of.
 	rt.handleUnattributed("POST /iods/{name}/hint", s.hintIO, "", nothing)
 	// And the out half's counterpart. Verse dials a reflection and therefore knows how it is
 	// doing; it never dials an out half, so the only way it can know is to be told.
-	rt.handleUnattributed("POST /iods/{name}/pass", s.passIO, "", nothing)
+	rt.handleUnattributed("POST /iods/{name}/pass", s.passIO, "verse-iod-pass", nothing)
 	// accounts — which account in an external system is which principal (identity.go). A person
 	// claims an account and proves it; the system binds it; an io looks a comment's author up.
 	// Verse as an issuer: the discovery document and the key set a relying party verifies its
@@ -1335,22 +1337,22 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("GET "+issuerKeysPath, s.serveIssuerKeys, "", nothing)
 	// Who the request is from, and how versed knows: the provider that verified them, or their
 	// own say-so (auth.go).
-	rt.handle("GET /whoami", s.whoami, "", nothing)
-	rt.handle("GET /accounts", s.listAccounts, "", nothing)
-	rt.handle("POST /accounts/{provider}", s.claimAccount, "", nothing)
-	rt.handle("POST /accounts/github/verify", s.verifyAccount, "", nothing)
-	rt.handle("POST /accounts/{provider}/heard", s.heardAccount, "", nothing)
-	rt.handle("POST /accounts/{provider}/link", s.linkAccount, "", nothing)
-	rt.handle("GET /accounts/{provider}/who", s.whoIsAccount, "", nothing)
+	rt.handle("GET /whoami", s.whoami, "", one("verse-whoami"))
+	rt.handle("GET /accounts", s.listAccounts, "", list("verse-account"))
+	rt.handle("POST /accounts/{provider}", s.claimAccount, "verse-account-claim", one("verse-account-claimed"))
+	rt.handle("POST /accounts/github/verify", s.verifyAccount, "verse-account-verify", one("verse-account"))
+	rt.handle("POST /accounts/{provider}/heard", s.heardAccount, "verse-account-heard", one("verse-account"))
+	rt.handle("POST /accounts/{provider}/link", s.linkAccount, "verse-account-link", one("verse-account"))
+	rt.handle("GET /accounts/{provider}/who", s.whoIsAccount, "", one("verse-account"))
 	rt.handle("DELETE /accounts/{provider}/{sub}", s.revokeAccount, "", nothing)
-	rt.handle("GET /runners", s.listRunners, "", nothing)
-	rt.handle("POST /runners", s.addRunner, "", nothing)
-	rt.handle("GET /runners/{name}", s.getRunner, "", nothing)
-	rt.handle("GET /runners/{name}/check", s.checkRunner, "", nothing)
-	rt.handle("DELETE /runners/{name}", s.removeRunner, "", nothing)
-	// A package's own declaration: what it reads outside its address. It carries `?at=` like
-	// the two above, and it is posted BEFORE them, because a rule is checked against it.
-
+	// runners — WHERE work runs, as against who answers for it. Installed rather than chosen
+	// at startup, so a drive can add one for work this verse does not otherwise need to know
+	// about.
+	rt.handle("GET /runners", s.listRunners, "", list("verse-runner-row"))
+	rt.handle("POST /runners", s.addRunner, "verse-installed-runner", one("verse-runner-added"))
+	rt.handle("GET /runners/{name}", s.getRunner, "", one("verse-installed-runner"))
+	rt.handle("GET /runners/{name}/check", s.checkRunner, "", one("verse-runner-check"))
+	rt.handle("DELETE /runners/{name}", s.removeRunner, "", one("verse-removed"))
 	rt.handle("POST /scope/delete", s.deleteScope, "", nothing)
 	// Holding a run or a suspension, and lifting it; saying to live work, and cancelling a run
 	// (flows.go).
@@ -1358,10 +1360,11 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("POST /flow/resume", s.flowResume, "verse-flow-select", one("verse-flow-row"))
 	rt.handleControl("POST /flow/say", s.flowSay, "verse-flow-select", one("verse-steered"))
 	rt.handle("POST /flow/cancel", s.flowCancel, "verse-flow-select", one("verse-steered"))
-	// task runtime (task) — mounted; serves /tasks[/{id}[/…]]. versed intercepts the
-	// two READ routes to union the local runtime with the active runner's own tasks,
-	// stamping each with its runner; everything else (spawn, events,
-	// control) falls through to the local runtime.
+	// The tasks. Every route a runner serves is registered here, so versed answers each itself:
+	// the reads union the embedded runner's tasks with the installed runners', and the control
+	// routes reach a task through its handle wherever it runs. The embedded runner's handler is
+	// mounted under /tasks after them, and answers only what none of them matches: the 404s and
+	// 405s of a method and path versed doesn't serve.
 	ph := s.Embedded.HTTPHandler()
 	rt.handle("GET /tasks", s.listTasks, "", list("verse-instance"))
 	rt.handle("POST /tasks", s.spawnTask, "verse-spawn", one("verse-spawned"))
@@ -1370,13 +1373,15 @@ func (s *Server) Handler() http.Handler {
 		s.taskEvents(w, r, ph)
 	}, "", stream("verse-task-event"))
 	// cancel/say are runner-agnostic: local tasks go to the runtime, remote
-	// ones to the runner's handle — so `task cancel`/`say` work wherever a task runs.
+	// ones to the runner's handle — so `task cancel`/`say` work wherever a task runs. A cancel's
+	// body is the runner's (verse-runner-cancel), read for a task the embedded runner holds and
+	// not passed to an installed runner's.
 	rt.handle("POST /tasks/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
 		s.taskControl(w, r, ph, "cancel")
-	}, "", nothing)
+	}, "verse-runner-cancel", nothing)
 	rt.handleControl("POST /tasks/{id}/say", func(w http.ResponseWriter, r *http.Request) {
 		s.taskControl(w, r, ph, "say")
-	}, "verse-say", nothing)
+	}, "verse-say", one("verse-asked"))
 	// pause/resume the same way: held at the task's next boundary wherever it runs, and asked
 	// of the task's scope and of control first, as every control verb is.
 	rt.handle("POST /tasks/{id}/pause", func(w http.ResponseWriter, r *http.Request) {
@@ -2302,7 +2307,7 @@ func (s *Server) putGroup(w http.ResponseWriter, r *http.Request) {
 			"holds no space or `*`", body.Name), http.StatusBadRequest)
 		return
 	}
-	members := make([]any, 0, len(body.Members))
+	members := make([]string, 0, len(body.Members))
 	for _, m := range body.Members {
 		g, err := entity.ParseGrantee(m)
 		if err != nil {
@@ -2312,14 +2317,18 @@ func (s *Server) putGroup(w http.ResponseWriter, r *http.Request) {
 		members = append(members, g.String())
 	}
 	ref := entity.GroupRef(body.Name)
-	_, _, err := s.scopedStore(r).Write(entity.Write{At: ref.At(), Value: entity.Obj{entity.MembersField: members}.Payload()})
+	stored := make([]any, len(members))
+	for i, m := range members {
+		stored[i] = m
+	}
+	_, _, err := s.scopedStore(r).Write(entity.Write{At: ref.At(), Value: entity.Obj{entity.MembersField: stored}.Payload()})
 	if refused(w, err) {
 		return
 	} else if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	writeOut(w, r, http.StatusCreated, map[string]any{"at": ref.String(), "members": members})
+	writeOut(w, r, http.StatusCreated, api.GroupRow{Group: api.Group{Name: body.Name, Members: members}, At: ref.String()})
 }
 
 func (s *Server) listGroups(w http.ResponseWriter, r *http.Request) {
@@ -2329,9 +2338,9 @@ func (s *Server) listGroups(w http.ResponseWriter, r *http.Request) {
 	if unreadable(w, r, err) {
 		return
 	}
-	out := make([]map[string]any, 0, len(ents))
+	out := make([]api.GroupRow, 0, len(ents))
 	for _, e := range ents {
-		out = append(out, map[string]any{"at": e.Ref.String(), "name": e.Ref.Name(), "members": entity.Strs(e.Payload, entity.MembersField)})
+		out = append(out, groupRow(e.Ref, e.Payload))
 	}
 	writeOut(w, r, http.StatusOK, out)
 }
@@ -2346,7 +2355,12 @@ func (s *Server) getGroup(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	writeOut(w, r, http.StatusOK, map[string]any{"at": ref.String(), "name": ref.Name(), "members": entity.Strs(e.Payload, entity.MembersField)})
+	writeOut(w, r, http.StatusOK, groupRow(ref, e.Payload))
+}
+
+// groupRow is a stored group as the group routes answer it.
+func groupRow(ref entity.Ref, payload *ir.Node) api.GroupRow {
+	return api.GroupRow{Group: api.Group{Name: ref.Name(), Members: entity.Strs(payload, entity.MembersField)}, At: ref.String()}
 }
 
 func (s *Server) removeGroup(w http.ResponseWriter, r *http.Request) {
@@ -3144,7 +3158,7 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 		return
 	}
 	if errors.Is(err, task.ErrUnsupported) {
-		http.Error(w, "runner does not support gate resolution", http.StatusNotImplemented)
+		http.Error(w, "the runner does not support answering a task's questions", http.StatusNotImplemented)
 		return
 	}
 	if errors.Is(err, task.ErrStaleEdit) {
@@ -3455,20 +3469,19 @@ func (s *Server) addResolver(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
-	writeOut(w, r, http.StatusCreated, map[string]any{"at": ref.String()})
+	writeOut(w, r, http.StatusCreated, resolver.Added{At: ref.String()})
 }
 
 func (s *Server) listResolvers(w http.ResponseWriter, r *http.Request) {
-	out := make([]map[string]any, 0)
-	resolvers, readErr := entity.BelowErr(s.scopedStore(r), resolver.IsResolver, 1, entity.VerseRoot, resolver.System)
-	for _, ent := range resolvers {
-		rec := entity.ToObj(ent.Payload)
-		if rec == nil {
-			continue
-		}
-		rec["at"] = ent.Ref.String()
-		out = append(out, rec)
+	out := make([]resolver.Row, 0)
+	resolvers, bad, readErr := readRegistrations[resolver.Resolver](s.scopedStore(r), resolver.System, resolver.IsResolver)
+	for _, res := range resolvers {
+		out = append(out, resolver.Row{Resolver: res, At: resolver.Ref(res.Name).String()})
 	}
+	for _, b := range bad {
+		out = append(out, resolver.Row{Resolver: resolver.Resolver{Name: b.Ref.Name()}, At: b.Ref.String(), Unreadable: b.Err.Error()})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	// A FAILED READ IS NOT AN EMPTY LIST. List answers nil when the read did not happen, so
 	// without this a store that could not be read renders as "nothing is installed" — and
 	// `verse iod` answered `[]` on a verse holding three sources, which is the one shape an
@@ -3490,7 +3503,12 @@ func (s *Server) getResolver(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	writeOut(w, r, http.StatusOK, entity.ToObj(e.Payload))
+	var out resolver.Resolver
+	if err := codec.FromNode(e.Payload, &out); err != nil {
+		http.Error(w, fmt.Sprintf("resolver %s is stored in a shape this verse can't read: %v", ref, err), http.StatusInternalServerError)
+		return
+	}
+	writeOut(w, r, http.StatusOK, out)
 }
 
 // grantResolver lets a resolver answer for the caller, or for a place the caller owns: an `answer`
@@ -3774,8 +3792,8 @@ func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 // Both callers need the same property for the same reason — the load that makes you ask is the
 // load that would make a store-reading answer never arrive — so they share the one function
 // rather than each promising it. TestHealthzReadsNothing pins the promise.
-func (s *Server) Health() map[string]any {
-	return map[string]any{"ok": true, "started": s.restored.Load(), "head": s.Store.Head()}
+func (s *Server) Health() api.Health {
+	return api.Health{OK: true, Started: s.restored.Load(), Head: s.Store.Head()}
 }
 
 func (s *Server) status(w http.ResponseWriter, r *http.Request) {
@@ -4854,7 +4872,7 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, runtime htt
 	if _, ok := s.controlledTask(w, r, id); !ok {
 		return
 	}
-	// SAY AND GATES GO THROUGH THE HANDLE WHEREVER THE TASK RUNS, the runtime's own included:
+	// SAY AND AUTONOMY GO THROUGH THE HANDLE WHEREVER THE TASK RUNS, the runtime's own included:
 	// both record who did them, and that is whoever the request is made as (actor). The
 	// runtime's own handler takes the request as it stands and records the body's `by`, so the
 	// party checked for control would not be the party written down.

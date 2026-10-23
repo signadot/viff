@@ -2,6 +2,74 @@
 context:
 - tony-format/context
 define:
+  account: .[string]
+  at: .[string]
+  evidence: .[string]
+  iat: .[string]
+  io: .[string]
+  iss: .[string]
+  method: .[string]
+  sub: .[string]
+signature:
+  name: verse-account-proof
+---
+context:
+- tony-format/context
+define:
+  claimant: .[string]
+  iss: .[string]
+  login: .[string]
+  principal: .[string]
+  proof: .[nullable(verse-account-proof)]
+  provider: .[string]
+  sub: .[string]
+  via: .[string]
+signature:
+  name: verse-account
+---
+context:
+- tony-format/context
+define:
+  login: .[string]
+signature:
+  name: verse-account-claim
+---
+context:
+- tony-format/context
+define:
+  expires: .[string]
+  login: .[string]
+  nonce: .[string]
+  say: .[string]
+signature:
+  name: verse-account-claimed
+---
+context:
+- tony-format/context
+define:
+  account: .[string]
+  login: .[string]
+  nonce: .[string]
+signature:
+  name: verse-account-heard
+---
+context:
+- tony-format/context
+define:
+  idToken: .[string]
+signature:
+  name: verse-account-link
+---
+context:
+- tony-format/context
+define:
+  nonce: .[string]
+signature:
+  name: verse-account-verify
+---
+context:
+- tony-format/context
+define:
   for: .[string]
 signature:
   name: verse-answer-for
@@ -179,6 +247,68 @@ signature:
 context:
 - tony-format/context
 define:
+  at: .[string]
+  members: .[array(string)]
+  name: .[string]
+signature:
+  name: verse-group-row
+---
+context:
+- tony-format/context
+define:
+  head: .[int]
+  ok: .[bool]
+  started: .[bool]
+signature:
+  name: verse-health
+---
+context:
+- tony-format/context
+define:
+  rule: .[string]
+  stratum: .[string]
+signature:
+  name: verse-held-rule
+---
+context:
+- tony-format/context
+define:
+  note: .[string]
+  rule: .[string]
+signature:
+  name: verse-rule-note
+---
+context:
+- tony-format/context
+define:
+  at: .[string]
+  held: .[array(verse-held-rule)]
+  notes: .[array(verse-rule-note)]
+  rules: .[int]
+  strata: .[int]
+signature:
+  name: verse-installed-package
+---
+context:
+- tony-format/context
+define:
+  at: .[string]
+  removed: .[array(string)]
+  uninstalled: .[bool]
+signature:
+  name: verse-pruned
+---
+context:
+- tony-format/context
+define:
+  installed: .[array(verse-installed-package)]
+  pruned: .[array(verse-pruned)]
+signature:
+  name: verse-installed
+---
+context:
+- tony-format/context
+define:
   apiKey: .[string]
   available: .[bool]
   baseURL: .[string]
@@ -194,6 +324,14 @@ define:
   api: .[string]
 signature:
   name: verse-listen
+---
+context:
+- tony-format/context
+define:
+  from: .[string]
+  to: .[string]
+signature:
+  name: verse-outbox
 ---
 context:
 - tony-format/context
@@ -244,6 +382,17 @@ signature:
 context:
 - tony-format/context
 define:
+  cancelled: .[array(string)]
+  forgotten: .[nullable(int)]
+  kept: .[int]
+  removed: .[string]
+  unreachable: .[array(string)]
+signature:
+  name: verse-removed
+---
+context:
+- tony-format/context
+define:
   by: .[string]
   choice: .[string]
   edit: .[int]
@@ -271,6 +420,58 @@ define:
   routes: .[array(verse-route)]
 signature:
   name: verse-routes
+---
+context:
+- tony-format/context
+- runner: github.com/signadot/verse/runner
+define:
+  described: .[nullable(runner:verse-runner-description)]
+  identity: .[string]
+  name: .[string]
+  url: .[string]
+signature:
+  name: verse-installed-runner
+---
+context:
+- tony-format/context
+- runner: github.com/signadot/verse/runner
+define:
+  at: .[string]
+  offers: .[array(runner:verse-runner-offer)]
+  reach: .[string]
+  warning: .[string]
+signature:
+  name: verse-runner-added
+---
+context:
+- tony-format/context
+- runner: github.com/signadot/verse/runner
+define:
+  at: .[string]
+  offers: .[array(runner:verse-runner-offer)]
+  reach: .[string]
+  url: .[string]
+  why: .[string]
+signature:
+  name: verse-runner-check
+---
+context:
+- tony-format/context
+- runner: github.com/signadot/verse/runner
+define:
+  at: .[string]
+  described: .[nullable(runner:verse-runner-description)]
+  identity: .[string]
+  lastSpawn: .[string]
+  name: .[string]
+  reach: .[string]
+  running: .[int]
+  total: .[int]
+  unreadable: .[string]
+  url: .[string]
+  why: .[string]
+signature:
+  name: verse-runner-row
 ---
 context:
 - tony-format/context
@@ -424,3 +625,20 @@ define:
   status: .[string]
 signature:
   name: verse-instance
+---
+context:
+- tony-format/context
+define:
+  schedule: .[string]
+  tick: .[string]
+signature:
+  name: verse-ticked
+---
+context:
+- tony-format/context
+define:
+  by: .[string]
+  principal: .[string]
+  via: .[string]
+signature:
+  name: verse-whoami

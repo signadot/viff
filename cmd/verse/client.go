@@ -77,12 +77,6 @@ func httpPostNodeTo(path string, q url.Values, node *ir.Node) (*http.Response, e
 	return apiClient().PostNode(path, q, node)
 }
 
-// httpPostNodesTo posts several documents in one request, `---` separated — the definitions of
-// one charter, or the charters of a directory; see client.Client.PostNodes.
-func httpPostNodesTo(path string, q url.Values, nodes []*ir.Node) (*http.Response, error) {
-	return apiClient().PostNodes(path, q, nodes)
-}
-
 // statusError is the refusal a request came back with, in the words the server used. It matters
 // wherever a command handles its own status code instead of going through printBody, which is
 // every command with a 404 of its own to name; see client.StatusError.
@@ -120,18 +114,12 @@ func printBody(cc *cli.Context, resp *http.Response) error {
 		resp.Body.Close()
 		return err
 	}
-	empty, err := renderBody(cc.Out, resp, f, out, colorize(cc.Out))
-	// EMPTY, after the filters, is remembered for the one caller that has something to add to
-	// it: `verse charter` lists ONE engine, so an empty answer may mean "this engine has no
-	// rules" while the charter is in packages. See elsewhereInPackages.
-	lastPrintEmpty = empty
-	return err
+	return renderBody(cc.Out, resp, f, out, colorize(cc.Out))
 }
 
 // renderBody writes a response the server wrote to w in the format out, with f applied: printBody
-// with what the command line decides passed in. It answers whether nothing was left to write. A
-// 4xx/5xx is the error, in the server's words.
-func renderBody(w io.Writer, resp *http.Response, f filters, out codec.Format, color bool) (bool, error) {
+// with what the command line decides passed in. A 4xx/5xx is the error, in the server's words.
+func renderBody(w io.Writer, resp *http.Response, f filters, out codec.Format, color bool) error {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= http.StatusBadRequest {
@@ -139,15 +127,15 @@ func renderBody(w io.Writer, resp *http.Response, f filters, out codec.Format, c
 		if msg == "" {
 			msg = resp.Status
 		}
-		return false, errors.New(msg)
+		return errors.New(msg)
 	}
 	in := respFmt(resp)
 	node, err := codec.ParseNode(body, in)
 	if err != nil {
-		return false, fmt.Errorf("decoding the response: %w", err)
+		return fmt.Errorf("decoding the response: %w", err)
 	}
 	if node, err = f.apply(node); err != nil {
-		return false, err
+		return err
 	}
 	if in != out {
 		// The response's layout (brackets, block literals) describes how the SERVER wrote
@@ -155,17 +143,11 @@ func renderBody(w io.Writer, resp *http.Response, f filters, out codec.Format, c
 		// shape in tony's syntax — is not what -o tony means.
 		node = codec.StripLayout(node)
 	}
-	empty := node == nil || (node.Type == ir.ArrayType && len(node.Values) == 0)
 	if color {
-		return empty, codec.EncodeNodeColor(w, node, out)
+		return codec.EncodeNodeColor(w, node, out)
 	}
-	return empty, codec.EncodeNode(w, node, out)
+	return codec.EncodeNode(w, node, out)
 }
-
-// lastPrintEmpty reports whether the last collection printed came back empty. Package-level for
-// the reason the filter flags are: one command runs per invocation, and the print funnel is
-// where the answer passes.
-var lastPrintEmpty bool
 
 // printDoc prints a `state` answer: printBody, with the filters applied to ENTITIES rather than
 // to the document as one item — see filters.applyDoc.

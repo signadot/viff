@@ -34,14 +34,22 @@
 context:
 - tony-format/context
 define:
+  accounts: .[array(verse-account)]
   api: .[verse-routes]
   entity: .[verse-entity]
+  groups: .[array(verse-group-row)]
+  healthz: .[verse-health]
+  iods: .[array(verse-iod-row)]
+  outboxes: .[array(verse-outbox)]
   perms: .[verse-perms-record]
+  resolvers: .[array(verse-resolver-row)]
+  runners: .[array(verse-runner-row)]
   flows: .[array(verse-flow-row)]
   schedules: .[array(verse-schedule-row)]
   tasks: .[array(verse-instance)]
   state: .[verse-state]
   status: .[verse-status]
+  whoami: .[verse-whoami]
 
 signature:
   name: root

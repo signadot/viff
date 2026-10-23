@@ -9,6 +9,7 @@ import (
 
 	"github.com/scott-cotton/cli"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 )
 
@@ -170,11 +171,7 @@ func (cfg *runnerAddConfig) run(cc *cli.Context, args []string) error {
 			return fmt.Errorf("%w: want `runner add <name> <url>`, got %q",
 				cli.ErrUsage, ref)
 		}
-		body := map[string]any{"name": name, "url": rawURL}
-		if cfg.Identity != "" {
-			body["identity"] = cfg.Identity
-		}
-		resp, err := httpPostTo("/runners", q, body)
+		resp, err := httpPostTo("/runners", q, api.Runner{Name: name, URL: rawURL, Identity: cfg.Identity})
 		return runnerAdded(cc, resp, err)
 	}
 	// More positionals than either form takes. Worth its own message, because the fall-through

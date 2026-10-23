@@ -34,7 +34,10 @@ func Ref(name string) entity.Ref {
 // IsResolver reports whether an address is a resolver's.
 func IsResolver(ref entity.Ref) bool { return ref.ChildOf(entity.VerseRoot, System) }
 
-// Resolver is a service that watches asks and answers for whoever granted it.
+// Resolver is a service that watches asks and answers for whoever granted it: what
+// `POST /resolvers` takes and `GET /resolvers/{name}` answers.
+//
+//tony:schemagen=verse-installed-resolver,notag
 type Resolver struct {
 	// Name is its address: `verse.resolvers.<name>`.
 	Name string `tony:"field=name"`
@@ -48,6 +51,8 @@ type Resolver struct {
 
 // Match is the asks a resolver watches. An absent dimension admits any ask; an empty match admits
 // every ask put to whoever granted the resolver.
+//
+//tony:schemagen=verse-resolver-match,notag
 type Match struct {
 	// About is the address the ask is about, as a kinded path: an ask about that node or one
 	// beneath it is matched. A path and nothing else: a value changes while an ask stands, and
@@ -100,6 +105,8 @@ func (m *Match) Admits(about entity.Ref, labels map[string]string) bool {
 // Method is what answers. Its service acts as the resolver by being whoever installed it
 // (api.ResolverHeader), and dials verse; verse never dials it, so nothing here is an address verse
 // uses.
+//
+//tony:schemagen=verse-resolver-method,notag
 type Method struct {
 	// Driver is `service`, which runs wherever its installer runs it. `llm` and `script` are
 	// drivers over the same protocol, run by verse, and are not built.

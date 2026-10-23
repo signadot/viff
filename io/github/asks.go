@@ -288,8 +288,8 @@ func (k *Sink) link(ctx context.Context, repo string, number int, c reply, nonce
 	if c.userID == 0 {
 		return tell("not linked: the comment carries no author number, so it is no evidence of whose it is.")
 	}
-	resp, err := k.Verse.Post("/accounts/github/heard", nil, map[string]string{
-		"nonce": nonce, "account": "github:" + strconv.FormatInt(c.userID, 10), "login": c.login,
+	resp, err := k.Verse.Post("/accounts/github/heard", nil, verseapi.AccountHeard{
+		Nonce: nonce, Account: "github:" + strconv.FormatInt(c.userID, 10), Login: c.login,
 	})
 	if err != nil {
 		return false, err

@@ -21,6 +21,7 @@ import (
 	"github.com/scott-cotton/cli"
 	"golang.org/x/oauth2"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/config"
 )
@@ -436,10 +437,7 @@ func whoIs() (principal, by string, err error) {
 	if resp.StatusCode != http.StatusOK {
 		return "", "", statusError(resp, "whoami")
 	}
-	var out struct {
-		Principal string `tony:"field=principal"`
-		By        string `tony:"field=by"`
-	}
+	var out api.WhoAmI
 	decodeClose(resp, &out)
 	return out.Principal, out.By, nil
 }
@@ -595,17 +593,14 @@ func link(cc *cli.Context, name string) error {
 	if err != nil {
 		return fmt.Errorf("account -link: %s %w", name, err)
 	}
-	resp, err := httpPost("/accounts/"+url.PathEscape(name)+"/link", map[string]any{"idToken": raw})
+	resp, err := httpPost("/accounts/"+url.PathEscape(name)+"/link", api.AccountLink{IDToken: raw})
 	if err != nil {
 		return fmt.Errorf("account -link: %w", err)
 	}
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		return statusError(resp, "account -link")
 	}
-	var row struct {
-		Principal string `tony:"field=principal"`
-		Sub       string `tony:"field=sub"`
-	}
+	var row api.Account
 	decodeClose(resp, &row)
 	fmt.Fprintf(cc.Out, "linked the %s account %s to %s\n", name, row.Sub, row.Principal)
 	return nil
@@ -617,21 +612,14 @@ func link(cc *cli.Context, name string) error {
 // since a verse that takes names as asserted takes this binding the same way (the binding's
 // `claimant` says which).
 func claimThrough(cc *cli.Context, name, account string) error {
-	body := map[string]any{}
-	if account != "" {
-		body["login"] = strings.TrimPrefix(account, "@")
-	}
-	resp, err := httpPost("/accounts/"+url.PathEscape(name), body)
+	resp, err := httpPost("/accounts/"+url.PathEscape(name), api.AccountClaim{Login: strings.TrimPrefix(account, "@")})
 	if err != nil {
 		return fmt.Errorf("account -link: %w", err)
 	}
 	if resp.StatusCode != http.StatusCreated {
 		return statusError(resp, "account -link")
 	}
-	var claim struct {
-		Say     string `tony:"field=say"`
-		Expires string `tony:"field=expires"`
-	}
+	var claim api.AccountClaimed
 	decodeClose(resp, &claim)
 	iods := strings.Join(appCfg.Auth.Principal.Providers[name].IOs, ", ")
 	fmt.Fprintf(cc.Out, "say this from your %s account, where the io it trusts (%s) hears you, "+

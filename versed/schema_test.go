@@ -141,6 +141,22 @@ func TestRouteTableCoversTheKnownSurface(t *testing.T) {
 			t.Errorf("%s = %+v, want a verse-flow-select answered by a verse-flow-row", route, r)
 		}
 	}
+	// Each declares the type its handler reads or writes, which they once left unsaid or said
+	// wrong.
+	for route, want := range map[string]api.Route{
+		"POST /tasks/{id}/say":          {Request: "verse-say", Response: "verse-asked"},
+		"POST /tasks/{id}/cancel":       {Request: "verse-runner-cancel"},
+		"POST /resolvers/{name}/grant":  {Request: "verse-answer-for"},
+		"POST /resolvers/{name}/revoke": {Request: "verse-answer-for"},
+		"GET /resolvers/{name}/asks":    {Response: "verse-served-asks"},
+		"GET /asks/{id}/served":         {Response: "verse-ask-served"},
+		"POST /charter":                 {Response: "verse-installed"},
+		"POST /charter/check":           {Response: "verse-charter-check"},
+	} {
+		if r := got[route]; r.Request != want.Request || r.Response != want.Response {
+			t.Errorf("%s declares %q → %q, want %q → %q", route, r.Request, r.Response, want.Request, want.Response)
+		}
+	}
 	for _, gone := range []string{"GET /suspensions", "POST /suspend", "POST /resume", "POST /flow/pause"} {
 		if _, ok := got[gone]; ok {
 			t.Errorf("route table still serves %q", gone)

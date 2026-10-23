@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/codec"
@@ -35,6 +36,10 @@ func Ref(name string) entity.Ref {
 // already meant something — `local` — so a url-less entity would have been ambiguous. Here the
 // field PRESENT says which it is, and refusing `dir` would delete a working, zero-deployment
 // path to buy a symmetry nobody reads.
+//
+// It is what `POST /iods` takes and `GET /iods/{name}` answers.
+//
+//tony:schemagen=verse-installed-iod,notag
 type Entity struct {
 	// Name is the address: `verse.iods.<name>`.
 	Name string `tony:"field=name"`
@@ -80,6 +85,8 @@ type Entity struct {
 // a principal, a place hardcoded in the connector, and four `verse perms` lines an operator had to
 // know and get right — and a verse that knew none of it, so `verse iod` could show a healthy io
 // whose out half had been refused for an hour.
+//
+//tony:schemagen=verse-iod-out,notag
 type OutHalf struct {
 	// Places are where it reads what is asked of it, as kinded paths. Each must lie inside this
 	// registration's claim (an io may only be asked for things in its own slice) and outside the
@@ -111,7 +118,9 @@ type OutHalf struct {
 // COUNTS OF THE LAST PASS, not totals: a total would be a number nobody can act on, while "the
 // last pass delivered nothing and failed twice" is the sentence an operator wants when they ask
 // why a message has not arrived. What the io is doing right now is the pass's own business; this
-// is the part verse cannot see for itself.
+// is the part verse cannot see for itself. It is what `POST /iods/{name}/pass` takes.
+//
+//tony:schemagen=verse-iod-pass,notag
 type OutPass struct {
 	Delivered int    `tony:"field=delivered,omitzero"`
 	Failed    int    `tony:"field=failed,omitzero"`
@@ -137,6 +146,8 @@ type OutPass struct {
 // this carries lastError as a bare string: the error is known, the moment it began is not, and
 // a zero timestamp would say midnight in 1970 rather than "nobody recorded it". FromTonyIR
 // reads that shape and leaves When nil.
+//
+//tony:schemagen=verse-iod-failure,notag,codec=custom
 type Failure struct {
 	Error string  `tony:"field=error"`
 	When  *string `tony:"field=when,omitzero"`
@@ -153,7 +164,7 @@ type Failure struct {
 // before it dispatches on type, which is the one place that can see both shapes.
 //
 // A null is nothing recorded, and is not an error to read.
-func (f *Failure) FromTonyIR(node *ir.Node) error {
+func (f *Failure) FromTonyIR(node *ir.Node, _ ...gomap.UnmapOption) error {
 	if node == nil {
 		return nil
 	}
@@ -180,6 +191,21 @@ func (f *Failure) FromTonyIR(node *ir.Node) error {
 	default:
 		return fmt.Errorf("lastError: expected a record or a string, got %s", node.Type)
 	}
+}
+
+// ToTonyIR writes a failure as the record, which is the only spelling written now, and an empty
+// one as null. The generated decoder allocates a Failure before it reads one, so a stored
+// `lastError: null` arrives as an empty Failure, and writing it back as null keeps "nothing
+// recorded" as it was.
+func (f *Failure) ToTonyIR(_ ...gomap.MapOption) (*ir.Node, error) {
+	if f == nil || (f.Error == "" && f.When == nil) {
+		return ir.Null(), nil
+	}
+	m := map[string]*ir.Node{"error": ir.FromString(f.Error)}
+	if f.When != nil {
+		m["when"] = ir.FromString(*f.When)
+	}
+	return ir.FromMap(m), nil
 }
 
 // Check validates a source before it is installed.

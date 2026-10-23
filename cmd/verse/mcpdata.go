@@ -77,7 +77,7 @@ func (m *mcpServer) dataPut(ctx context.Context, _ *mcp.CallToolRequest, in data
 		return nil, nil, fmt.Errorf("data --put: %w", err)
 	}
 	var buf bytes.Buffer
-	if _, err := renderBody(&buf, resp, filters{}, m.out, false); err != nil {
+	if err := renderBody(&buf, resp, filters{}, m.out, false); err != nil {
 		return nil, nil, err
 	}
 	return answer(&buf)
