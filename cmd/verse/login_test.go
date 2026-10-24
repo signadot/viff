@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -442,11 +443,12 @@ func TestLoginLinkClaimsAnAccountAnIoProves(t *testing.T) {
 		t.Errorf("account -link github of a linked account = %q, %v", out, err)
 	}
 	// The claim spent by another route while this waits, as the io's report spends it, ends the
-	// wait at the binding it made.
+	// wait at the binding it made. The CLI's own verify can get to the comment first, in which
+	// case this one finds the account bound (200) and the wait ended on its own.
 	verifyEvery = time.Second
 	says("bo-gh", 102, func(nonce string) {
 		resp, err := httpPost("/accounts/github/verify", api.AccountVerify{Nonce: nonce})
-		if err != nil || resp.StatusCode != http.StatusCreated {
+		if err != nil || (resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK) {
 			t.Errorf("binding bo-gh beside the CLI: %v %v", resp, err)
 		}
 		if err == nil {
@@ -470,6 +472,17 @@ func TestLoginLinkClaimsAnAccountAnIoProves(t *testing.T) {
 	}()
 	if _, err := runLogin(t, "account", "--link", "github", "--account", "cy-gh"); err == nil || !strings.Contains(err.Error(), "expired") {
 		t.Errorf("account -link github past its claim: %v", err)
+	}
+	// Ctrl-c ends the wait, saying the login is not linked. The CLI installs its handler before
+	// it claims, so a claim the store holds is one the wait answers the signal for.
+	go func() {
+		awaitClaim(t, sys, "dy-gh")
+		if err := syscall.Kill(os.Getpid(), syscall.SIGINT); err != nil {
+			t.Error(err)
+		}
+	}()
+	if _, err := runLogin(t, "account", "--link", "github", "--account", "dy-gh"); err == nil || !strings.Contains(err.Error(), "stopped waiting; dy-gh is not linked") {
+		t.Errorf("account -link github, interrupted: %v", err)
 	}
 	// Nothing to log in to: the provider is nobody's issuer.
 	if _, err := runLogin(t, "account", "login", "slack"); err == nil || !strings.Contains(err.Error(), "no issuer") {

@@ -12,10 +12,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -631,6 +633,14 @@ func claimThrough(cc *cli.Context, name, account string) error {
 			return nil
 		}
 	}
+	// Ctrl-c ends the wait below with a word, not the process. The handler is installed before the
+	// claim, so that a claim the verse holds is one the wait answers for.
+	ctx := cc.Go
+	if name == githubProvider {
+		var stop context.CancelFunc
+		ctx, stop = signal.NotifyContext(cc.Go, os.Interrupt, syscall.SIGTERM)
+		defer stop()
+	}
 	resp, err := httpPost("/accounts/"+url.PathEscape(name), api.AccountClaim{Login: strings.TrimPrefix(account, "@")})
 	if err != nil {
 		return fmt.Errorf("account -link: %w", err)
@@ -655,7 +665,7 @@ func claimThrough(cc *cli.Context, name, account string) error {
 	fmt.Fprintf(cc.Out, "say this from the GitHub account %s, on a line of its own, in a comment on any issue or "+
 		"pull request in %s:\n\n    %s\n\nwaiting for verse to read it there, until %s (ctrl-c stops waiting)\n",
 		login, where, claim.Say, claim.Expires)
-	row, err := awaitGitHub(cc.Go, claim, login)
+	row, err := awaitGitHub(ctx, claim, login)
 	if err != nil {
 		return err
 	}
