@@ -1,8 +1,8 @@
 // Command verse-call-tool calls one tool of the task whose workspace it runs in: `question-ask`,
-// `git-push`, `git-fetch`, `github-create-pr`, `github-update-pr`, and whatever the task's runner
-// offers. It is the shell's way
-// to what the verse agent and codex have as tools of their own, for a coding agent or a script
-// the environment runs as a program.
+// `git-push`, `git-fetch`, `github-create-pr`, `github-update-pr`, `github-list-prs`,
+// `github-read-pr`, and whatever the task's runner offers. It is the shell's way to what the
+// verse agent and codex have as tools of their own, for a coding agent or a script the
+// environment runs as a program.
 //
 //	verse-call-tool                                 the tools on offer here, with their arguments
 //	verse-call-tool <tool> -help                    one tool's arguments

@@ -122,6 +122,8 @@ func (s *Server) answer(tk Task, raw []byte) Reply {
 		return s.push(ctx, tk, req)
 	case OpCreatePR, OpUpdatePR:
 		return s.pullRequest(ctx, tk, req)
+	case OpGitHubListPRs, OpGitHubReadPR:
+		return s.githubRead(ctx, tk, req)
 	case "fetch":
 		return s.refresh(ctx, tk, req)
 	case OpState:

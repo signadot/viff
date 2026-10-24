@@ -1,5 +1,5 @@
 name: github
-description: "GitHub as the forge of a repository the task checked out: pull requests, which are the forge's and not git's. The runner acts with its credential for the repository."
+description: "GitHub as the forge of a repository the task checked out: pull requests, which are the forge's and not git's, opened, updated and read. The runner acts with its credential for the repository."
 attributes:
 - {name: repo, form: repo, unique: true, required: true, description: "the repository, as `host/owner/name` in lower case (`github.com/acme/app`), whichever way the spawn named it"}
 verbs:
@@ -15,3 +15,9 @@ verbs:
   - {name: head, form: branch, description: "the branch the pull request is from"}
   - {name: base, form: branch, description: "the branch the pull request is moved into, when the update moves it; absent when it keeps its base"}
   - {name: own, form: bool, description: "true when the head's tip at the forge is a commit this task made. The runner fills it; a task cannot say it."}
+- name: list-prs
+  description: "Read the repository's open pull requests: each one's number, title, author, branches, when it last changed, and whom a review is waiting on. A read: nothing at the forge changes."
+- name: read-pr
+  description: "Read one pull request by its number: its fields, whom a review is waiting on, the reviews given so far, and its description. What its author and reviewers wrote comes into the task as they wrote it."
+  fields:
+  - {name: pr, description: "the pull request's number"}

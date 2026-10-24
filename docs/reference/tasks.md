@@ -267,6 +267,8 @@ params are the verb's:
 | `git.push` | `repo`, `from`, `ref`, `delete`, `force`; `exists` and `own`, filled by the runner |
 | `github.create-pr` | `repo`, `base`, `head`; `own`, filled by the runner |
 | `github.update-pr` | `repo`, `head`, `base`; `own`, filled by the runner |
+| `github.list-prs` | `repo` |
+| `github.read-pr` | `repo`, `pr` |
 | `files.write` | `path` |
 | `commands.run` | `command` |
 | `agent.call-sub-agent` | `agent` |

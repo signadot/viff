@@ -3,10 +3,17 @@ package delivery
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/signadot/verse/runner/runnerd/workspace"
+	"github.com/signadot/verse/systems"
+	"github.com/signadot/verse/task"
 )
 
 // OpenGitHubPR opens a pull request when none is open from the head, and finds the open one
@@ -118,4 +125,136 @@ func TestUpdateGitHubPRChangesTheOpenOneOrRefuses(t *testing.T) {
 	if patched["title"] != "retitled" || len(patched) != 1 {
 		t.Errorf("patched %v, want the title alone", patched)
 	}
+}
+
+// A TASK READS THE FORGE'S PULL REQUESTS through the runner, with the runner's token: a list that
+// pages, and stops at its most and says so; one pull request with its reviews; and the refusals —
+// a number that is not one, a pull request that is not there, a read the autonomy denies, and a
+// runner with no github system. The forge is a test server answering as GitHub does, which is
+// whole repositories on every listing item, so the page size is checked against the answer's.
+func TestATaskReadsPullRequestsThroughTheRunner(t *testing.T) {
+	var open int // how many pull requests are open; set per case
+	var pages []string
+	forge := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer the-runners-own" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		pull := func(n int) map[string]any {
+			return map[string]any{
+				"number": n, "title": fmt.Sprintf("change %d", n), "state": "open", "draft": n == 2,
+				"user": map[string]any{"login": "ana"}, "base": map[string]any{"ref": "main", "repo": map[string]any{"full_name": "acme/app"}},
+				"head":       map[string]any{"ref": fmt.Sprintf("f%d", n), "repo": map[string]any{"full_name": "acme/app"}},
+				"created_at": "2026-10-20T09:00:00Z", "updated_at": "2026-10-22T09:00:00Z",
+				"html_url": fmt.Sprintf("https://github.com/acme/app/pull/%d", n), "body": "why\nand how",
+				"requested_reviewers": []map[string]any{{"login": "zed"}},
+				"requested_teams":     []map[string]any{{"slug": "platform"}},
+			}
+		}
+		switch path := r.URL.Path; {
+		case path == "/repos/acme/app/pulls":
+			pages = append(pages, r.URL.Query().Get("page"))
+			if r.URL.Query().Get("state") != "open" {
+				t.Errorf("listed with state %q", r.URL.Query().Get("state"))
+			}
+			per, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
+			page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+			out := []map[string]any{}
+			for n := (page-1)*per + 1; n <= min(page*per, open); n++ {
+				out = append(out, pull(n))
+			}
+			_ = json.NewEncoder(w).Encode(out)
+		case path == "/repos/acme/app/pulls/7":
+			_ = json.NewEncoder(w).Encode(pull(7))
+		case path == "/repos/acme/app/pulls/7/reviews":
+			if r.URL.Query().Get("page") != "1" {
+				_, _ = w.Write([]byte(`[]`))
+				return
+			}
+			_, _ = w.Write([]byte(`[{"user": {"login": "bo"}, "state": "CHANGES_REQUESTED", "submitted_at": "2026-10-21T10:00:00Z", "body": "one thing\nand another"},
+				{"user": {"login": "zed"}, "state": "COMMENTED", "submitted_at": "2026-10-21T11:00:00Z", "body": ""}]`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"message": "Not Found"}`))
+		}
+	}))
+	defer forge.Close()
+
+	ws := githubTree("acme/app", "https://github.com/acme/app.git")
+	s := &Server{Log: io.Discard, Services: Services{GitHubAPI: forge.URL}, Ceilings: performs("github")}
+	tk := Task{ID: "r1", Workspace: ws, Launch: within([]string{"acme/app"}, "github"), Credential: func(workspace.Repo) (string, error) { return "the-runners-own", nil }}
+	ask := func(req Request) Reply { return s.answer(tk, frame(t, req)) }
+
+	t.Run("a list that pages", func(t *testing.T) {
+		open, pages = 60, nil
+		rep := ask(Request{Op: OpGitHubListPRs, Repo: "app"})
+		lines := strings.Split(rep.Out, "\n")
+		if !rep.OK || len(lines) != 61 || lines[0] != "acme/app: 60 open pull request(s), most recently changed first" {
+			t.Fatalf("reply: %+v", rep)
+		}
+		if lines[2] != "#2 change 2 — by ana, draft, main <- f2, updated 2026-10-22T09:00:00Z; review requested from zed, teams platform" {
+			t.Errorf("a line: %q", lines[2])
+		}
+		if fmt.Sprint(pages) != "[1 2]" {
+			t.Errorf("pages asked: %v", pages)
+		}
+	})
+	t.Run("a list cut at its most says so", func(t *testing.T) {
+		open, pages = prsMost+30, nil
+		rep := ask(Request{Op: OpGitHubListPRs, Repo: "app"})
+		if !rep.OK || !strings.HasPrefix(rep.Out, fmt.Sprintf("acme/app: %d open pull request(s), most recently changed first; the first %d, and more may be open", prsMost, prsMost)) {
+			t.Fatalf("reply: %.200s", rep.Out)
+		}
+		if len(pages) != prsMost/prsPerPage {
+			t.Errorf("asked %d pages, want %d: the read stops at its most", len(pages), prsMost/prsPerPage)
+		}
+	})
+	t.Run("one pull request with its reviews", func(t *testing.T) {
+		rep := ask(Request{Op: OpGitHubReadPR, Repo: "app", PR: "7"})
+		want := "#7 change 7 (open) https://github.com/acme/app/pull/7\n" +
+			"by ana, main <- f7; created 2026-10-20T09:00:00Z, updated 2026-10-22T09:00:00Z\n" +
+			"review requested from zed, teams platform\n" +
+			"2 review(s), oldest first\n" +
+			"2026-10-21T10:00:00Z bo CHANGES_REQUESTED: one thing\n    and another\n" +
+			"2026-10-21T11:00:00Z zed COMMENTED\n" +
+			"The description, as its author wrote it:\nwhy\nand how"
+		if !rep.OK || rep.Out != want {
+			t.Fatalf("reply: %+v\nwant:\n%s", rep, want)
+		}
+	})
+	for _, tc := range []struct {
+		name, pr, refused string
+	}{
+		{"a number that is not one", "seven", `"seven" is not a pull request number`},
+		{"a pull request that is not there", "9", "there is no pull request #9 at acme/app"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if rep := ask(Request{Op: OpGitHubReadPR, Repo: "app", PR: tc.pr}); rep.Refused != tc.refused {
+				t.Errorf("reply: %+v, want refused %q", rep, tc.refused)
+			}
+		})
+	}
+	t.Run("a read the autonomy denies", func(t *testing.T) {
+		l := within([]string{"acme/app"}, "github")
+		l.Autonomy = task.Autonomy{{Name: "no-reads", Match: &task.Match{System: "github", Verb: "read-pr"}, Then: task.Then{Mode: task.ThenDeny}}, {Then: task.Then{Mode: task.ThenAllow}}}
+		denied := Task{ID: "r2", Workspace: ws, Launch: l, Credential: tk.Credential}
+		if rep := s.answer(denied, frame(t, Request{Op: OpGitHubReadPR, Repo: "app", PR: "7"})); !strings.Contains(rep.Refused, "no-reads") {
+			t.Errorf("reply: %+v, want the deny row named", rep)
+		}
+		if rep := s.answer(denied, frame(t, Request{Op: OpGitHubListPRs, Repo: "app"})); !rep.OK {
+			t.Errorf("a list the row does not name: %+v", rep)
+		}
+	})
+	t.Run("a ceiling that gives only create-pr", func(t *testing.T) {
+		writes := &Server{Log: io.Discard, Services: s.Services, Ceilings: map[string]systems.Ceiling{"github": {{Verbs: map[string][]systems.Shape{"create-pr": {{}}}}}}}
+		if rep := writes.answer(tk, frame(t, Request{Op: OpGitHubListPRs, Repo: "app"})); !strings.Contains(rep.Refused, "ceiling") {
+			t.Errorf("reply: %+v, want the ceiling's refusal", rep)
+		}
+	})
+	t.Run("a runner with no github system", func(t *testing.T) {
+		none := &Server{Log: io.Discard, Services: s.Services, Ceilings: performs("github-issue")}
+		if rep := none.answer(tk, frame(t, Request{Op: OpGitHubListPRs, Repo: "app"})); !strings.Contains(rep.Refused, "it has no `github` system") {
+			t.Errorf("reply: %+v", rep)
+		}
+	})
 }

@@ -341,8 +341,12 @@ func githubIssueVerb(cl *delivery.Client, ws *workspace.Workspace, names []strin
 }
 
 // issueNumber is the issue a call names at the forge, as a number, however the model spelled it.
-func issueNumber(in map[string]any) (int, bool) {
-	switch v := in["issue"].(type) {
+func issueNumber(in map[string]any) (int, bool) { return numberIn(in, "issue") }
+
+// numberIn is a number at the forge a call names under key (an issue, a pull request), however
+// the model spelled it: an integer, a float that is one, or a string with or without a `#`.
+func numberIn(in map[string]any, key string) (int, bool) {
+	switch v := in[key].(type) {
 	case int:
 		return v, v > 0
 	case int64:

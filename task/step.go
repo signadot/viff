@@ -33,6 +33,8 @@ var (
 	StepGitFetch          = systems.Step("git", "fetch", "repo", "from")
 	StepGitHubCreatePR    = systems.Step("github", "create-pr", "repo", "base", "head", "own")
 	StepGitHubUpdatePR    = systems.Step("github", "update-pr", "repo", "head", "base", "own")
+	StepGitHubListPRs     = systems.Step("github", "list-prs", "repo")
+	StepGitHubReadPR      = systems.Step("github", "read-pr", "repo", "pr")
 	StepFilesWrite        = systems.Step("files", "write", "path")
 	StepCommandsRun       = systems.Step("commands", "run", "command")
 	StepAgentCallSubAgent = systems.Step("agent", "call-sub-agent", "agent")

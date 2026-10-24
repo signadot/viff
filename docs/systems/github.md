@@ -78,17 +78,27 @@ branch this run did not push whatever the rows say.
 |---|---|---|
 | `github-create-pr` | opens a pull request from a branch the task pushed into a base; if one is already open from that branch, it finds that one | `github.create-pr`, with `repo`, `base`, `head` |
 | `github-update-pr` | changes the open pull request from a branch the task pushed: its title, body or base. What it does not name stays as it is. | `github.update-pr`, with `repo`, `head`, and `base` when it moves the base |
+| `github-list-prs` | reads the open pull requests, most recently changed first: each one's number, title, author, branches, last change, and whom a review is requested from. It stops at 500 and says so. | `github.list-prs`, with `repo` |
+| `github-read-pr` | reads one pull request by its number: its fields, whom a review is requested from, the reviews given so far, and its description | `github.read-pr`, with `repo`, `pr` |
 
 A pull request must come from a branch this run pushed. A pull request from any other branch
 is refused. Its commits carry the task's trailers, so the iod's copy of the pull request can be
 tied to the task that made it. A script calls the same tools with `verse-call-tool`.
+
+The reads are steps too, as a Slack read is: what the forge holds is not the task's until it is
+read, and a row can keep a task from it. A description and a review are other people's words,
+and they come into the task's context as written. A pull request that is not there is refused,
+and the task re-plans on it.
+
+A block that names no verbs gives every verb, the reads and the writes alike. A task that only
+reads names them: `github: [{repo: acme/app, read-pr: {}}]`.
 
 ## Where the credential lives
 
 **The iod** needs a fine-grained token or a GitHub App for the repositories it reads. For its
 out half, it needs write access on pull requests and issues.
 
-**The task** holds no credential. The runner opens and updates pull requests with its token for
+**The task** holds no credential. The runner opens, updates and reads pull requests with its token for
 the forge: the variable that `systems.git.credential` names in its configuration, or
 `GITHUB_TOKEN`. For a GitHub Enterprise Server, set `systems.github.api: https://<host>/api/v3`
 in the runner's configuration, and `repos.host` to the host.

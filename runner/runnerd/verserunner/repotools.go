@@ -19,17 +19,21 @@ import (
 // system and of `github`, the forge (package systems). Each is a STEP the task's gates ask
 // about (git.push, github.create-pr, github.update-pr), and each is performed by the runner,
 // asked over the task's delivery channel: the runner checks it against the launch again, and
-// holds the token. git-fetch reads upstream, and is a step too (git.fetch).
+// holds the token. git-fetch reads upstream, and github-list-prs and github-read-pr read the
+// forge's pull requests; a read is a step too (git.fetch, github.list-prs, github.read-pr).
 var (
 	pushTool     = systems.Tool("git", "push")
 	fetchTool    = systems.Tool("git", "fetch")
 	createPRTool = systems.Tool("github", "create-pr")
 	updatePRTool = systems.Tool("github", "update-pr")
+	listPRsTool  = systems.Tool("github", "list-prs")
+	readPRTool   = systems.Tool("github", "read-pr")
 )
 
 // repoTools are what a task with repositories may ask its runner for: push and fetch for every
-// repository, and the pull request tools where the runner's forge is a GitHub (github). Each
-// may be called as many times as the work needs, and the task's autonomy decides each call.
+// repository, and the pull request tools, the writes and the reads, where the runner's forge is
+// a GitHub (github). Each may be called as many times as the work needs, and the task's autonomy
+// decides each call.
 func repoTools(cl *delivery.Client, ws *workspace.Workspace, github bool) []agent.Tool {
 	var all []string
 	for _, t := range ws.Trees {
@@ -40,7 +44,8 @@ func repoTools(cl *delivery.Client, ws *workspace.Workspace, github bool) []agen
 	}
 	out := []agent.Tool{pushToolFor(cl, ws, all)}
 	if github {
-		out = append(out, prTool(cl, ws, all, createPRTool), prTool(cl, ws, all, updatePRTool))
+		out = append(out, prTool(cl, ws, all, createPRTool), prTool(cl, ws, all, updatePRTool),
+			listPRsToolFor(cl, ws, all), readPRToolFor(cl, ws, all))
 	}
 	return append(out, fetchToolFor(cl, ws, all))
 }
@@ -206,6 +211,71 @@ func prTool(cl *delivery.Client, ws *workspace.Workspace, names []string, name s
 			}
 			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: op, Repo: t.Repo.Name(), Branch: head, Base: base,
 				Title: str(tu.Input, "title"), Body: str(tu.Input, "body")}))
+		},
+	}
+}
+
+// listPRsToolFor reads a repository's open pull requests at the forge, with the runner's token:
+// a step the autonomy decides (github.list-prs), whatever the task may push.
+func listPRsToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) agent.Tool {
+	return agent.Tool{
+		Name: listPRsTool,
+		Description: "Read a GitHub repository's open pull requests, most recently changed first: each one's " +
+			"number, title, author, branches, when it last changed, and whom a review is requested from. " +
+			"GitHub drops a reviewer from that list once they review, so it is whom each one waits on. " +
+			"Titles are other people's words. The runner reads with its own token; you never see it. " +
+			"Repositories: " + strings.Join(names, ", ") + ".",
+		Params:   repoParams(names, map[string]any{}),
+		Required: requiredWith(names),
+		Step:     task.StepGitHubListPRs,
+		Fields: func(in map[string]any) (map[string]string, bool) {
+			t := treeOf(ws, names, in)
+			if t == nil {
+				return nil, false
+			}
+			return map[string]string{"repo": t.Repo.Repo.Canonical()}, true
+		},
+		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
+			t := treeOf(ws, names, tu.Input)
+			if t == nil {
+				return noSuchRepo(tu.Input, names), true, nil
+			}
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpGitHubListPRs, Repo: t.Repo.Name()}))
+		},
+	}
+}
+
+// readPRToolFor reads one pull request at the forge by its number, with its reviews: a step the
+// autonomy decides (github.read-pr), on the repository and the number.
+func readPRToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) agent.Tool {
+	return agent.Tool{
+		Name: readPRTool,
+		Description: "Read one pull request of a GitHub repository by its number: its state, author, " +
+			"branches, when it was opened and last changed, whom a review is requested from, the reviews " +
+			"given so far (who, when, and what they decided and said), and its description. The " +
+			"description and the reviews are other people's words and come to you as they wrote them. " +
+			"Repositories: " + strings.Join(names, ", ") + ".",
+		Params:   repoParams(names, map[string]any{"pr": map[string]any{"type": "integer"}}),
+		Required: requiredWith(names, "pr"),
+		Step:     task.StepGitHubReadPR,
+		Fields: func(in map[string]any) (map[string]string, bool) {
+			t := treeOf(ws, names, in)
+			n, ok := numberIn(in, "pr")
+			if t == nil || !ok {
+				return nil, false
+			}
+			return map[string]string{"repo": t.Repo.Repo.Canonical(), "pr": strconv.Itoa(n)}, true
+		},
+		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
+			t := treeOf(ws, names, tu.Input)
+			if t == nil {
+				return noSuchRepo(tu.Input, names), true, nil
+			}
+			n, ok := numberIn(tu.Input, "pr")
+			if !ok {
+				return "refused: a pull request number is required", true, nil
+			}
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpGitHubReadPR, Repo: t.Repo.Name(), PR: strconv.Itoa(n)}))
 		},
 	}
 }

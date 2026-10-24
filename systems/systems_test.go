@@ -51,7 +51,7 @@ func TestTheDocumentsDescribeTheSystems(t *testing.T) {
 	if ToolName("git", "push") != "git-push" || StepName("git", "push") != "git.push" {
 		t.Error("the names")
 	}
-	if steps := Steps(); steps[0] != "agent.call-sub-agent" || len(steps) != 24 {
+	if steps := Steps(); steps[0] != "agent.call-sub-agent" || len(steps) != 26 {
 		t.Errorf("steps: %v", steps)
 	}
 }

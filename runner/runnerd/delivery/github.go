@@ -4,16 +4,22 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+
+	"github.com/signadot/verse/task"
 )
 
 // GitHub's pull requests: how a runner whose forge is GitHub carries out the github.create-pr and
-// github.update-pr steps, the one forge write it makes that is not a ref. Another
-// forge's proposals (GitLab's merge requests) would be a second implementation beside this one.
+// github.update-pr steps, the one forge write it makes that is not a ref, and the github.list-prs
+// and github.read-pr steps, which read the forge's pull requests for a task that holds no
+// credential. Another forge's proposals (GitLab's merge requests) would be a second
+// implementation beside this one.
 //
 // A proposal exists for a repository whose default branch nothing may push to: a protected branch takes
 // a merge only through a pull request somebody approves, so "merge this into main" has no act to
@@ -93,6 +99,21 @@ func OpenGitHubPR(ctx context.Context, hc *http.Client, token string, s GitHubPR
 
 // githubAPI is one call to GitHub's REST API, with the runner's token.
 func githubAPI(ctx context.Context, hc *http.Client, token, method, target string, in, out any) error {
+	return githubCall(ctx, hc, token, method, target, in, out, 1<<20)
+}
+
+// githubStatus is the forge's answer when it was not a success, so a caller can tell a pull
+// request that is not there (404) from one it could not read.
+type githubStatus struct {
+	Code int
+	err  error
+}
+
+func (e *githubStatus) Error() string { return e.err.Error() }
+
+// githubCall is githubAPI with a bound on the answer it reads. An answer past the bound is said
+// to be, rather than cut and handed to the decoder as a document that ends early.
+func githubCall(ctx context.Context, hc *http.Client, token, method, target string, in, out any, limit int64) error {
 	var payload io.Reader
 	if in != nil {
 		b, err := json.Marshal(in)
@@ -115,12 +136,15 @@ func githubAPI(ctx context.Context, hc *http.Client, token, method, target strin
 		return err
 	}
 	defer res.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	raw, err := io.ReadAll(io.LimitReader(res.Body, limit+1))
 	if err != nil {
 		return err
 	}
 	if res.StatusCode/100 != 2 {
-		return fmt.Errorf("%s %s: %s: %s", method, target, res.Status, firstLine(string(raw)))
+		return &githubStatus{Code: res.StatusCode, err: fmt.Errorf("%s %s: %s: %s", method, target, res.Status, firstLine(string(raw)))}
+	}
+	if int64(len(raw)) > limit {
+		return fmt.Errorf("%s %s: the answer is over %d bytes", method, target, limit)
 	}
 	return json.Unmarshal(raw, out)
 }
@@ -170,4 +194,233 @@ func UpdateGitHubPR(ctx context.Context, hc *http.Client, token string, s GitHub
 		return "", fmt.Errorf("updating pull request #%d from %s: %w", open[0].Number, s.Head, err)
 	}
 	return fmt.Sprintf("updated pull request #%d from %s: %s", made.Number, s.Head, made.URL), nil
+}
+
+// The pull request reads: github.list-prs and github.read-pr. Each is a step the task's autonomy
+// decides and the runner's ceiling bounds, as the writes are, and each is a GET with the runner's
+// token, so the task reads the forge without holding a credential for it.
+const (
+	OpGitHubListPRs = "github.list-prs"
+	OpGitHubReadPR  = "github.read-pr"
+)
+
+// How the reads page: a listing item carries both repositories whole, so a page of 50 with
+// bodies stays well inside readLimit, and most is where a read stops and says so rather than
+// walking a repository of thousands of open pull requests for one task.
+const (
+	prsPerPage = 50
+	prsMost    = 500
+	readLimit  = 4 << 20
+)
+
+// ghUser and the rest are what the reads decode of GitHub's answers: what the task is told, no
+// more.
+type ghUser struct {
+	Login string `json:"login"`
+}
+
+type ghRef struct {
+	Ref string `json:"ref"`
+}
+
+type ghPR struct {
+	Number             int      `json:"number"`
+	Title              string   `json:"title"`
+	State              string   `json:"state"`
+	Draft              bool     `json:"draft"`
+	Merged             bool     `json:"merged"`
+	User               *ghUser  `json:"user"`
+	Base               *ghRef   `json:"base"`
+	Head               *ghRef   `json:"head"`
+	CreatedAt          string   `json:"created_at"`
+	UpdatedAt          string   `json:"updated_at"`
+	HTMLURL            string   `json:"html_url"`
+	Body               string   `json:"body"`
+	RequestedReviewers []ghUser `json:"requested_reviewers"`
+	RequestedTeams     []struct {
+		Slug string `json:"slug"`
+	} `json:"requested_teams"`
+}
+
+type ghReview struct {
+	User        *ghUser `json:"user"`
+	State       string  `json:"state"`
+	SubmittedAt string  `json:"submitted_at"`
+	Body        string  `json:"body"`
+}
+
+// githubPages reads a listing a page at a time until a short page or most items, and says whether
+// most cut it short.
+func githubPages[T any](ctx context.Context, hc *http.Client, token, target string, perPage, most int) ([]T, bool, error) {
+	var all []T
+	sep := "?"
+	if strings.Contains(target, "?") {
+		sep = "&"
+	}
+	for page := 1; ; page++ {
+		var batch []T
+		if err := githubCall(ctx, hc, token, http.MethodGet, fmt.Sprintf("%s%sper_page=%d&page=%d", target, sep, perPage, page), nil, &batch, readLimit); err != nil {
+			return nil, false, err
+		}
+		all = append(all, batch...)
+		if len(batch) < perPage {
+			return all, false, nil
+		}
+		if len(all) >= most {
+			return all[:most], true, nil
+		}
+	}
+}
+
+// ListGitHubPRs is the repository's open pull requests, one line each, newest change first as
+// GitHub orders them.
+func ListGitHubPRs(ctx context.Context, hc *http.Client, token, api, owner, repo string) (string, error) {
+	pulls := api + "/repos/" + url.PathEscape(owner) + "/" + url.PathEscape(repo) + "/pulls?state=open&sort=updated&direction=desc"
+	prs, cut, err := githubPages[ghPR](ctx, hc, token, pulls, prsPerPage, prsMost)
+	if err != nil {
+		return "", fmt.Errorf("listing the open pull requests of %s/%s: %w", owner, repo, err)
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s/%s: %d open pull request(s), most recently changed first", owner, repo, len(prs))
+	if cut {
+		fmt.Fprintf(&b, "; the first %d, and more may be open", prsMost)
+	}
+	for _, p := range prs {
+		b.WriteString("\n")
+		b.WriteString(prLine(p))
+	}
+	return b.String(), nil
+}
+
+// prLine is one pull request on one line: what a list says of each.
+func prLine(p ghPR) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "#%d %s — by %s", p.Number, p.Title, login(p.User))
+	if p.Draft {
+		b.WriteString(", draft")
+	}
+	if p.Base != nil && p.Head != nil {
+		fmt.Fprintf(&b, ", %s <- %s", p.Base.Ref, p.Head.Ref)
+	}
+	fmt.Fprintf(&b, ", updated %s; %s", p.UpdatedAt, waitingOn(p))
+	return b.String()
+}
+
+// waitingOn is whom a review is requested from: GitHub drops a reviewer once they review and adds
+// them back on a re-request, so these are the people and teams the pull request waits on.
+func waitingOn(p ghPR) string {
+	var people, teams []string
+	for _, u := range p.RequestedReviewers {
+		people = append(people, u.Login)
+	}
+	for _, t := range p.RequestedTeams {
+		teams = append(teams, t.Slug)
+	}
+	if len(people) == 0 && len(teams) == 0 {
+		return "no review requested"
+	}
+	out := "review requested from " + strings.Join(people, ", ")
+	if len(teams) > 0 {
+		if len(people) > 0 {
+			out += ", "
+		}
+		out += "teams " + strings.Join(teams, ", ")
+	}
+	return out
+}
+
+func login(u *ghUser) string {
+	if u == nil || u.Login == "" {
+		return "(nobody)"
+	}
+	return u.Login
+}
+
+// ReadGitHubPR is one pull request: its fields, whom it waits on, its reviews oldest first, and
+// its description last, since that is the part its author wrote and the longest.
+func ReadGitHubPR(ctx context.Context, hc *http.Client, token, api, owner, repo string, n int) (string, error) {
+	one := fmt.Sprintf("%s/repos/%s/%s/pulls/%d", api, url.PathEscape(owner), url.PathEscape(repo), n)
+	var p ghPR
+	if err := githubCall(ctx, hc, token, http.MethodGet, one, nil, &p, readLimit); err != nil {
+		return "", fmt.Errorf("reading pull request #%d of %s/%s: %w", n, owner, repo, err)
+	}
+	reviews, cut, err := githubPages[ghReview](ctx, hc, token, one+"/reviews", 100, prsMost)
+	if err != nil {
+		return "", fmt.Errorf("reading the reviews of pull request #%d of %s/%s: %w", n, owner, repo, err)
+	}
+	var b strings.Builder
+	state := p.State
+	if p.Merged {
+		state = "merged"
+	}
+	if p.Draft {
+		state += ", draft"
+	}
+	fmt.Fprintf(&b, "#%d %s (%s) %s\n", p.Number, p.Title, state, p.HTMLURL)
+	fmt.Fprintf(&b, "by %s", login(p.User))
+	if p.Base != nil && p.Head != nil {
+		fmt.Fprintf(&b, ", %s <- %s", p.Base.Ref, p.Head.Ref)
+	}
+	fmt.Fprintf(&b, "; created %s, updated %s\n%s\n", p.CreatedAt, p.UpdatedAt, waitingOn(p))
+	fmt.Fprintf(&b, "%d review(s), oldest first", len(reviews))
+	if cut {
+		fmt.Fprintf(&b, "; the first %d, and there may be more", prsMost)
+	}
+	for _, r := range reviews {
+		fmt.Fprintf(&b, "\n%s %s %s", r.SubmittedAt, login(r.User), r.State)
+		if body := strings.TrimSpace(r.Body); body != "" {
+			b.WriteString(": " + strings.ReplaceAll(body, "\n", "\n    "))
+		}
+	}
+	if body := strings.TrimSpace(p.Body); body != "" {
+		b.WriteString("\nThe description, as its author wrote it:\n" + body)
+	}
+	return b.String(), nil
+}
+
+// githubRead answers a `github.list-prs` or a `github.read-pr`: the step decided by the launch's
+// autonomy and the runner's ceiling, then the read with this runner's token. A pull request that
+// is not there is a refusal, an answer to re-plan on, where a forge that fails is an error.
+func (s *Server) githubRead(ctx context.Context, tk Task, req Request) Reply {
+	t := tk.Workspace.Tree(req.Repo)
+	if t == nil {
+		return Reply{Error: fmt.Sprintf("no repository %q in this workspace", req.Repo)}
+	}
+	if _, has := s.Ceilings["github"]; !has {
+		return Reply{Refused: "this runner reads nothing at GitHub for its tasks: it has no `github` system"}
+	}
+	fields := map[string]string{"repo": t.Repo.Repo.Canonical()}
+	if req.Op == OpGitHubReadPR {
+		fields["pr"] = req.PR
+	}
+	if why := s.refused(tk, req.Decision, task.Step{Name: req.Op, Fields: fields}); why != "" {
+		return Reply{Refused: why}
+	}
+	owner, name, err := RepoPath(t.Repo.Remote)
+	if err != nil {
+		return Reply{Refused: err.Error()}
+	}
+	tok, err := tk.Credential(t.Repo)
+	if err != nil {
+		return Reply{Error: err.Error()}
+	}
+	var out string
+	if req.Op == OpGitHubListPRs {
+		out, err = ListGitHubPRs(ctx, s.http(), tok, s.Services.GitHubAPI, owner, name)
+	} else {
+		n, nerr := strconv.Atoi(req.PR)
+		if nerr != nil || n <= 0 {
+			return Reply{Refused: fmt.Sprintf("%q is not a pull request number", req.PR)}
+		}
+		out, err = ReadGitHubPR(ctx, s.http(), tok, s.Services.GitHubAPI, owner, name, n)
+		var st *githubStatus
+		if errors.As(err, &st) && st.Code == http.StatusNotFound {
+			return Reply{Refused: fmt.Sprintf("there is no pull request #%d at %s/%s", n, owner, name)}
+		}
+	}
+	if err != nil {
+		return Reply{Error: err.Error()}
+	}
+	fmt.Fprintf(s.Log, "delivery: %s: %s of %s/%s\n", tk.ID, req.Op, owner, name)
+	return Reply{OK: true, Out: out}
 }

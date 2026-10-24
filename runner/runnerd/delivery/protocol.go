@@ -21,7 +21,8 @@ import (
 // ones because tony is a multi-line format: framing a document by newlines would work until the
 // first document that had one.
 type Request struct {
-	// Op is `push`, `create-pr`, `update-pr` or `fetch`, a tracker's act (issues.go): `git-issue.pull`,
+	// Op is `push`, `create-pr`, `update-pr` or `fetch`, a read of the forge's pull requests
+	// (github.go): `github.list-prs` and `github.read-pr`, a tracker's act (issues.go): `git-issue.pull`,
 	// `git-issue.push`, and `github-issue.*` and `linear-issue.*` for create, comment and close, or
 	// Slack's (slack.go): `slack.post`, `.reply`, `.read` and `.react`.
 	Op string `tony:"field=op"`
@@ -47,6 +48,8 @@ type Request struct {
 	Base  string `tony:"field=base,omitzero"`
 	Title string `tony:"field=title,omitzero"`
 	Body  string `tony:"field=body,omitzero"`
+	// PR is the pull request a read names, by its number at the forge.
+	PR string `tony:"field=pr,omitzero"`
 	// A tracker's act: Issue is the issue a comment or a close is about (a number at the forge,
 	// an identifier like `ENG-42` at Linear), Team the Linear team a filing goes to, by key.
 	Issue string `tony:"field=issue,omitzero"`
