@@ -951,7 +951,9 @@ made as the iod. An author verse does not know, or a command naming no option th
 offers, is told so in one reply and not again. A reply that says `/verse link <nonce>` on a line
 of its own is the author proving the account is theirs (`verse account -link github -account
 <login>` printed it): the iod reports to the verse, as itself, that this account said it
-(`POST /accounts/github/heard`), and tells the author what became of it, once. The comment is redrawn as the question settles.
+(`POST /accounts/github/heard`), and tells the author what became of it, once. The same line said
+anywhere else in a reflected repository is read by verse itself, when `verse account -link github`
+asks it to (`POST /accounts/github/verify`). The comment is redrawn as the question settles.
 A reply reaches the reflection on the comment's delivery, which also asks the out half for a pass,
 or on the resync; a reply older than the in half's comment window is not in the reflection and
 is not seen.

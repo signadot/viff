@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -24,6 +25,7 @@ import (
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/config"
+	verseio "github.com/signadot/verse/io"
 )
 
 // Logging in: the CLI proves who is at the keyboard to an identity provider the verse names, and
@@ -607,11 +609,28 @@ func link(cc *cli.Context, name string) error {
 }
 
 // claimThrough claims the caller's account at a provider whose accounts an io proves, and prints
-// the words to say from it. The verse binds the account when a trusted io hears them said, so
-// there is nothing to wait on here; and the claim is whoever the CLI acts as, logged in or not,
-// since a verse that takes names as asserted takes this binding the same way (the binding's
-// `claimant` says which).
+// the words to say from it. The claim is whoever the CLI acts as, logged in or not, since a verse
+// that takes names as asserted takes this binding the same way (the binding's `claimant` says
+// which).
+//
+// A Slack account is bound when the Slack io hears the words in a message to the app, and there
+// is nothing here to wait on. A GITHUB account is bound by asking: the verse reads the comments
+// its github ios reflect for the words (`POST /accounts/github/verify`), so a comment on any issue
+// or pull request in a reflected repository proves it, and this waits for the comment to be
+// reflected. The github io's own report (`heard`) binds only from a reply on a pull request where
+// it is asking a question, and a claim it spends first is seen here as the binding it made
+// (git-issue zr5vx3z2h12kr6dnvhn0).
 func claimThrough(cc *cli.Context, name, account string) error {
+	// A login already linked to the caller is said so, and not claimed again: the io's report of a
+	// second proof spends the claim and leaves the binding as it stood, which nothing here could
+	// tell from a comment not reflected yet.
+	if name == githubProvider && account != "" {
+		if row, ok := boundSince(strings.TrimPrefix(account, "@"), time.Time{}); ok {
+			fmt.Fprintf(cc.Out, "the github account %s (%s) is already linked to %s\n", row.Login, row.Sub, row.Principal)
+			return nil
+		}
+	}
+	since := time.Now().UTC().Truncate(time.Second)
 	resp, err := httpPost("/accounts/"+url.PathEscape(name), api.AccountClaim{Login: strings.TrimPrefix(account, "@")})
 	if err != nil {
 		return fmt.Errorf("account -link: %w", err)
@@ -621,12 +640,138 @@ func claimThrough(cc *cli.Context, name, account string) error {
 	}
 	var claim api.AccountClaimed
 	decodeClose(resp, &claim)
-	iods := strings.Join(appCfg.Auth.Principal.Providers[name].IOs, ", ")
-	fmt.Fprintf(cc.Out, "say this from your %s account, where the io it trusts (%s) hears you, "+
-		"on a line of its own:\n\n    %s\n\nin Slack, a message to the app; on GitHub, a comment on "+
-		"a pull request the io reflects. The verse binds the account when the io reports it, "+
-		"and the words stand until %s.\n", name, iods, claim.Say, claim.Expires)
+	ios := appCfg.Auth.Principal.Providers[name].IOs
+	if name != githubProvider {
+		fmt.Fprintf(cc.Out, "say this from your %s account, in a message to the app, where the io it trusts (%s) "+
+			"hears you, on a line of its own:\n\n    %s\n\nThe verse binds the account when the io reports it, "+
+			"and the words stand until %s.\n", name, strings.Join(ios, ", "), claim.Say, claim.Expires)
+		return nil
+	}
+	login := cmp.Or(claim.Login, strings.TrimPrefix(account, "@"))
+	where := "a repository the github io reflects"
+	if repos := reflectedRepos(ios); repos != "" {
+		where = repos
+	}
+	fmt.Fprintf(cc.Out, "say this from the GitHub account %s, on a line of its own, in a comment on any issue or "+
+		"pull request in %s:\n\n    %s\n\nwaiting for verse to read it there, until %s (ctrl-c stops waiting)\n",
+		login, where, claim.Say, claim.Expires)
+	row, err := awaitGitHub(cc.Go, claim, login, since)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(cc.Out, "linked the github account %s (%s) to %s\n", row.Login, row.Sub, row.Principal)
 	return nil
+}
+
+// githubProvider is the provider whose accounts the verse proves by reading a comment.
+const githubProvider = "github"
+
+// verifyEvery is how often a GitHub link asks the verse whether the comment has been reflected.
+// A comment reaches the store on its webhook's hint within seconds, or on the minute's resync.
+var verifyEvery = 5 * time.Second
+
+// awaitGitHub asks the verse to bind the claimed account from a reflected comment until it does,
+// the claim expires, or ctx ends. A 404 is the comment not reflected yet, or the claim spent by the
+// io's own report; a binding of the login proved since the claim is that report's, and ends it.
+func awaitGitHub(ctx context.Context, claim api.AccountClaimed, login string, since time.Time) (api.Account, error) {
+	if exp, err := time.Parse(time.RFC3339, claim.Expires); err == nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, exp)
+		defer cancel()
+	}
+	tick := time.NewTicker(verifyEvery)
+	defer tick.Stop()
+	for {
+		resp, err := httpPost("/accounts/github/verify", api.AccountVerify{Nonce: claim.Nonce})
+		if err != nil {
+			return api.Account{}, fmt.Errorf("account -link: %w", err)
+		}
+		switch resp.StatusCode {
+		case http.StatusCreated, http.StatusOK:
+			var row api.Account
+			decodeClose(resp, &row)
+			return row, nil
+		case http.StatusNotFound:
+			resp.Body.Close()
+			if row, ok := boundSince(login, since); ok {
+				return row, nil
+			}
+		default:
+			return api.Account{}, statusError(resp, "account -link")
+		}
+		select {
+		case <-ctx.Done():
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return api.Account{}, fmt.Errorf("account -link: verse did not read %q from %s before it "+
+					"expired at %s: claim the account again for new words", claim.Say, login, claim.Expires)
+			}
+			return api.Account{}, fmt.Errorf("account -link: stopped waiting; %s is not linked", login)
+		case <-tick.C:
+		}
+	}
+}
+
+// boundSince is the caller's binding of the GitHub login, when one was proved at or after since;
+// the zero since is any binding of it.
+func boundSince(login string, since time.Time) (api.Account, bool) {
+	resp, err := httpGet("/accounts", nil)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		if err == nil {
+			resp.Body.Close()
+		}
+		return api.Account{}, false
+	}
+	var rows []api.Account
+	decodeClose(resp, &rows)
+	for _, row := range rows {
+		if row.Provider != githubProvider || !strings.EqualFold(row.Login, login) {
+			continue
+		}
+		if row.Proof == nil && !since.IsZero() {
+			continue
+		}
+		if since.IsZero() {
+			return row, true
+		}
+		if at, err := time.Parse(time.RFC3339, row.Proof.At); err == nil && !at.Before(since) {
+			return row, true
+		}
+	}
+	return api.Account{}, false
+}
+
+// reflectedRepos names what the trusted github ios reflect, as `org/name` from each one's claims,
+// or "" when the verse cannot be asked.
+func reflectedRepos(ios []string) string {
+	resp, err := httpGet("/iods", nil)
+	if err != nil {
+		return ""
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return ""
+	}
+	var rows []verseio.Row
+	decodeClose(resp, &rows)
+	var out []string
+	for _, row := range rows {
+		if !slices.Contains(ios, row.Name) {
+			continue
+		}
+		for _, own := range row.Owns {
+			c, err := verseio.ParseClaim(own.At)
+			if err != nil || len(c.Segs) < 2 {
+				continue
+			}
+			segs := make([]string, 0, len(c.Segs)-1)
+			for _, s := range c.Segs[1:] {
+				segs = append(segs, s.String())
+			}
+			out = append(out, strings.Join(segs, "/"))
+		}
+	}
+	slices.Sort(out)
+	return strings.Join(slices.Compact(out), ", ")
 }
 
 // use makes entry the login in use toward addr, through provider.

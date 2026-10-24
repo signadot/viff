@@ -348,7 +348,7 @@ names it. A request that names nobody is answered `{}`.
 |---|---|
 | `verse account` | lists the accounts in other systems that are bound to you |
 | `verse account login [<provider>]` | logs in to an identity provider in the CLI's config, and keeps the tokens. The provider may be left off when the config names one. |
-| `verse account -link <provider>` | binds an account in another system to who you are. At an identity provider, it logs in there and presents the token as evidence; the login in use does not change. At a provider whose accounts an iod proves (`slack`, `github`), it claims the account and prints the words to say from it; `-account <login>` names a GitHub login. |
+| `verse account -link <provider>` | binds an account in another system to who you are. At an identity provider, it logs in there and presents the token as evidence; the login in use does not change. At a provider whose accounts an iod proves (`slack`, `github`), it claims the account and prints the words to say from it; `-account <login>` names a GitHub login. For GitHub it then waits, asking `verify` until verse has read the words in a comment, and ends when the account is bound or the claim expires; a login already bound to you is said so, and not claimed. |
 | `verse whoami` | prints who the verse takes you for, and how: `user:ana@example.com (google)`, or `(asserted)` |
 | `verse account logout [<provider>]` | drops the login toward this verse: every provider's, or the one named |
 
@@ -467,8 +467,10 @@ acts as the person who wrote something there, without keeping a table of its own
 
 In short: a person binds their own accounts, one per system, and the system writes the record.
 
-- For Slack and GitHub, the proof is a nonce. `verse account -link <provider>` gives it, the
-  person says it from the account, the iod that heard it reports it, and the binding is made.
+- For Slack and GitHub, the proof is a nonce. `verse account -link <provider>` gives it, and the
+  person says it from the account. For Slack, the iod that heard it reports it. For GitHub, the
+  CLI asks verse to find it in the comments the github iod reflects. Either way the binding is
+  made.
 - For an identity provider, the proof is a verified token.
 
 A binding says how it was proved (`proof`) and how the person who proved it was authenticated
@@ -505,7 +507,9 @@ rewrite what they own.
   the iod has written that comment into the store, verify answers 404 and the claim still
   stands. An expired claim answers 410, and is removed. Two routes read the same comment: the
   github iod reports it itself (heard, next) when the comment replies to a question it is asking,
-  and the person asks for `verify` for a comment on any pull request the iod watches.
+  and the person asks for `verify` for a comment on any issue or pull request the iod watches.
+  `verse account -link github` asks for `verify` until the comment is read, so the person need not
+  find a question to reply to.
 - **A nonce heard.** The same words, said where a trusted iod hears them, bind the account that
   said them. The iod itself reports it (`heard`). The Slack iod hears `/verse link <nonce>` in a
   message from a member, and names `slack:<their id>`. The github iod reads it in a comment, and

@@ -259,8 +259,10 @@ func (k *Sink) replies(repo string, number int) ([]reply, error) {
 }
 
 // linkWord is the one `/verse` word that is never an answer: `/verse link <nonce>` is how a person
-// proves a GitHub account is theirs (docs/reference/perms.md, "accounts in other systems"), and it
-// is said on whatever pull request is handy, a questioned one included.
+// proves a GitHub account is theirs (docs/reference/perms.md, "accounts in other systems"). It may
+// be said on any issue or pull request this io reflects, where verse reads it itself when the
+// person's CLI asks (`verify`); this io reports it only from a reply on a pull request it is
+// asking a question on, where it reads replies anyway.
 const linkWord = "link"
 
 // linking reads the `/verse link <nonce>` line from a comment, where the line is the comment's own

@@ -87,9 +87,10 @@ verse account -link github -account your-login
 verse account                                   # the bindings that are you
 ```
 
-Say the line it prints from your own account: to the Slack app as `/verse link <nonce>`, or in
-a comment on a pull request where the github iod is asking a question. The iod reports that
-your account said it, and verse binds the account to you. From then on, your replies there
+Say the line it prints from your own account. For Slack, say `/verse link <nonce>` to the app,
+and the Slack iod reports that your account said it. For GitHub, say it in a comment on any
+issue or pull request in a repository verse reflects; the command lists them, and waits until
+verse has read your comment. Either way, verse binds the account to you. From then on, your replies there
 count as you. The ballot records that you answered through Slack or GitHub, and through which
 iod. Nobody but you can make the binding: a nonce said by anyone else binds nothing.
 

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -15,10 +16,12 @@ import (
 
 	"github.com/scott-cotton/cli"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/config"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/versed"
 	"github.com/signadot/verse/versed/idptest"
 )
@@ -387,7 +390,7 @@ func TestLoginLinkClaimsAnAccountAnIoProves(t *testing.T) {
 	t.Setenv(config.EnvConfigPath, cfg)
 
 	out, err := runLogin(t, "account", "--link", "slack")
-	if err != nil || !strings.Contains(out, "/verse link ") || !strings.Contains(out, "(workspace)") {
+	if err != nil || !strings.Contains(out, "/verse link ") || !strings.Contains(out, "(workspace)") || strings.Contains(out, "GitHub") {
 		t.Fatalf("account -link slack = %q, %v", out, err)
 	}
 	nonce := strings.Fields(out[strings.Index(out, "/verse link "):])[2]
@@ -399,8 +402,74 @@ func TestLoginLinkClaimsAnAccountAnIoProves(t *testing.T) {
 	if _, err := runLogin(t, "account", "--link", "github"); err == nil || !strings.Contains(err.Error(), "names the GitHub login") {
 		t.Errorf("account -link github without --account: %v", err)
 	}
-	if out, err := runLogin(t, "account", "--link", "github", "--account", "@ana-gh"); err != nil || !strings.Contains(out, "/verse link ") {
-		t.Errorf("account -link github --account = %q, %v", out, err)
+	// A GitHub link waits for verse to read the words in a comment on any issue or pull request a
+	// trusted github io reflects, and binds the account from the comment itself: the io's own
+	// report hears them only in a reply on a pull request it is asking a question on
+	// (git-issue zr5vx3z2h12kr6dnvhn0).
+	entitytest.Set(t, store, verseio.Ref("gh"), entity.Obj{
+		"name": "gh", "root": "github", "url": "http://gh:9801",
+		"owns": []any{entity.Obj{"at": "github.signadot.verse"}},
+	}.Payload())
+	defer func(d time.Duration) { verifyEvery = d }(verifyEvery)
+	verifyEvery = 50 * time.Millisecond
+	sys := entity.As(store, entity.SystemIdentity)
+	// says has login say the words of its claim, once the CLI has claimed, in a comment on an
+	// issue the io reflects, as the reflection writes one; and then does whatever else the case
+	// needs done with the claim.
+	says := func(login string, authorID int64, then func(nonce string)) {
+		go func() {
+			nonce := awaitClaim(t, sys, login)
+			ref := entity.RefAt("github", "signadot", "verse", "comment", "7", strconv.FormatInt(authorID, 10))
+			if _, _, err := store.Write(entity.Write{At: ref.At(), Value: entity.Obj{
+				"repo": "signadot/verse", "on": 7, "kind": "conversation", "author": login, "authorId": authorID,
+				"body": "/verse link " + nonce, "url": "https://github.com/signadot/verse/issues/7#issuecomment-1",
+			}.Payload()}); err != nil {
+				t.Error(err)
+			}
+			if then != nil {
+				then(nonce)
+			}
+		}()
+	}
+	says("ana-gh", 101, nil)
+	out, err = runLogin(t, "account", "--link", "github", "--account", "@ana-gh")
+	if err != nil || !strings.Contains(out, "any issue or pull request in signadot/verse") ||
+		!strings.Contains(out, "linked the github account ana-gh (101) to "+tester) {
+		t.Fatalf("account -link github --account = %q, %v", out, err)
+	}
+	// Linked already, it says so and claims nothing.
+	if out, err := runLogin(t, "account", "--link", "github", "--account", "ana-gh"); err != nil || !strings.Contains(out, "already linked") {
+		t.Errorf("account -link github of a linked account = %q, %v", out, err)
+	}
+	// The claim spent by another route while this waits, as the io's report spends it, ends the
+	// wait at the binding it made.
+	verifyEvery = time.Second
+	says("bo-gh", 102, func(nonce string) {
+		resp, err := httpPost("/accounts/github/verify", api.AccountVerify{Nonce: nonce})
+		if err != nil || resp.StatusCode != http.StatusCreated {
+			t.Errorf("binding bo-gh beside the CLI: %v %v", resp, err)
+		}
+		if err == nil {
+			resp.Body.Close()
+		}
+	})
+	if out, err := runLogin(t, "account", "--link", "github", "--account", "bo-gh"); err != nil || !strings.Contains(out, "linked the github account bo-gh (102)") {
+		t.Errorf("account -link github, bound by another route = %q, %v", out, err)
+	}
+	// A claim that expires before the words are read ends the wait, saying so.
+	verifyEvery = 50 * time.Millisecond
+	go func() {
+		nonce := awaitClaim(t, sys, "cy-gh")
+		ref := entity.VerseRef("identity", "github", "claim", nonce)
+		rec, _, _ := sys.Get(ref)
+		o := entity.ToObj(rec.Payload)
+		o["expires"] = time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
+		if _, _, err := sys.Write(entity.Write{At: ref.At(), Value: o.Payload()}); err != nil {
+			t.Error(err)
+		}
+	}()
+	if _, err := runLogin(t, "account", "--link", "github", "--account", "cy-gh"); err == nil || !strings.Contains(err.Error(), "expired") {
+		t.Errorf("account -link github past its claim: %v", err)
 	}
 	// Nothing to log in to: the provider is nobody's issuer.
 	if _, err := runLogin(t, "account", "login", "slack"); err == nil || !strings.Contains(err.Error(), "no issuer") {
@@ -480,4 +549,21 @@ func TestARenewalKeepsWhatAnotherProcessWrote(t *testing.T) {
 	if e := after.Verses["elsewhere:1"]; e == nil || e.Providers["corp"].IDToken != "theirs" {
 		t.Fatalf("the other process's login is gone: %+v", after.Verses)
 	}
+}
+
+// awaitClaim is the nonce of the GitHub claim of login, once the CLI has made it.
+func awaitClaim(t *testing.T, sys entity.Store, login string) string {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		claims, _ := entity.BelowErr(sys, func(entity.Ref) bool { return true }, 1, "verse", "identity", "github", "claim")
+		for _, c := range claims {
+			if strings.EqualFold(entity.Str(c.Payload, "login"), login) {
+				return c.Ref.Name()
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Errorf("no claim of %s was made", login)
+	return ""
 }
