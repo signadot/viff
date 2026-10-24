@@ -430,12 +430,21 @@ func (s *Server) authenticate(ctx context.Context, token, presented, account str
 	}
 	p := v.provider
 	if p.iod {
-		io, ok := s.auth.iod.accounts[v.sub]
-		if !ok {
-			return "", "", "", turnAway(http.StatusUnauthorized, "the bearer is a workload token whose "+
-				"subject %s is no io of this verse (auth.iod.accounts)", v.sub)
+		if io, ok := s.auth.iod.accounts[v.sub]; ok {
+			return s.asIo(io, presented, account, a)
 		}
-		return s.asIo(io, presented, account, a)
+		// A runner, by the subject its registration names (runnerauth.go). Its own requests are
+		// made as itself: a name beside its token is its own or nobody's.
+		if e, ok := s.runnerBySubject(v.sub); ok {
+			if presented != "" && presented != e.Principal() {
+				return "", "", "", turnAway(http.StatusForbidden, "the bearer is runner %s and %s names %s: "+
+					"a runner's own request is made as itself", e.Principal(), api.PrincipalHeader, presented)
+			}
+			return e.Principal(), runnerProvider, "", nil
+		}
+		return "", "", "", turnAway(http.StatusUnauthorized, "the bearer is a workload token whose "+
+			"subject %s is no io of this verse (auth.iod.accounts) and no registered runner's "+
+			"(`verse runner add -subject`)", v.sub)
 	}
 	sys := entity.As(s.Store, entity.SystemIdentity)
 	cur, found, err := sys.Get(accountRef(p.name, v.sub))

@@ -22,12 +22,20 @@ const DefaultListen = ":9802"
 type Config struct {
 	// Listen is the address the runner serves verse on.
 	Listen string `tony:"field=listen,omitzero"`
+	// Verse is the one verse this runner serves, by the token versed presents (verseauth.go).
+	// Absent, the runner serves whoever reaches it.
+	Verse *Verse `tony:"field=verse,omitzero"`
 }
 
 // Check fills in the defaults and validates what is set.
 func (c *Config) Check() error {
 	if c.Listen == "" {
 		c.Listen = DefaultListen
+	}
+	if c.Verse != nil {
+		if err := c.Verse.Check(); err != nil {
+			return err
+		}
 	}
 	return nil
 }

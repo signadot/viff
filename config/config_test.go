@@ -374,6 +374,17 @@ func TestAuthPrincipalIsReadAndChecked(t *testing.T) {
 		t.Errorf("auth.issuer = %+v, %v", c.Auth.Issuer, err)
 	}
 
+	// Verse's own issuer is no provider's and not the workload tokens': a token it signs toward a
+	// runner opens nothing at its own door.
+	if _, err := load("auth: {issuer: {url: \"https://login.example.com\", key: /k.pem}, principal: {providers: " +
+		"{corp: {issuer: \"https://login.example.com\", clientId: verse-cli}}}}\n"); err == nil || !strings.Contains(err.Error(), "auth.issuer.url") {
+		t.Errorf("an issuer url that is a provider's = %v", err)
+	}
+	if _, err := load("auth: {issuer: {url: \"https://oidc.example/id/1/\", key: /k.pem}, iod: {issuer: \"https://oidc.example/id/1\"}}\n"); err == nil ||
+		!strings.Contains(err.Error(), "auth.iod.issuer") {
+		t.Errorf("an issuer url that is the workload issuer = %v", err)
+	}
+
 	// Iods: an issuer-less provider trusting an io, with what it may do, and the iods' own block.
 	if c, err := load("auth: {principal: {providers: {slack: {iods: [workspace], domains: [example.com], acts: any}, " +
 		"corp: {issuer: \"https://login.example.com\", clientId: verse-cli}, github: {iods: [gh]}}}, " +

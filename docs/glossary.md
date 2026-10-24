@@ -829,8 +829,9 @@ An identity provider is a party that signs a statement of who a person is, and t
 accepts that statement. It is an OpenID Connect issuer that the deployment names under
 `auth.principal.providers`. `verse account login` logs in there, and the verse verifies the
 token. The deployment's own iods are verified
-the same way against their workload issuer (`auth.iod`). Slack and GitHub are not identity
-providers here; their accounts are bound by a nonce.
+the same way against their workload issuer (`auth.iod`), and so is a runner whose registration
+names its token's subject. Slack and GitHub are not identity providers here; their accounts are
+bound by a nonce.
 
 See [Who a request is from](reference/perms.md#who-a-request-is-from).
 

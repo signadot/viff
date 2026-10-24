@@ -201,6 +201,8 @@ seam, `task.ErrUnreachable` and the errors like it carry it.
 
 ```
 GET    /describe                   what the runner offers: its agents, scripts, and what each takes
+       Verse-Runner-Token: <its workload token>, to a verse the runner verified as its own (docs/runners.md, "Who the runner is")
+GET    /ready                      200 as soon as the runner serves, for a readiness probe; whether its verse has heard it is the registration's to say
 GET    /tasks                      every task the runner hosts, as snapshots
 GET    /tasks/{id}                 level truth: current snapshot
 GET    /tasks/{id}/events?since=N  edge stream (SSE): replay cursor>N, then live
@@ -422,6 +424,12 @@ For each task, an implementation must:
 
 - assign gapless cursors per task;
 - serve `GET /describe` with what it offers, and refuse a launch outside it;
+- where it is registered with a `subject`, verify its verse's bearer on every call but a bare
+  `GET /describe`, which is public, and answer the describe with its own workload token in
+  `Verse-Runner-Token` to the verse it verified, and to nobody else
+  ([who the runner is](runners.md#who-the-runner-is)); announce itself at start with
+  `POST /runners/hello` and that token, in a loop until verse answers 2xx, again after a `401` at
+  verse's door and never after a `403`; and serve `GET /ready` as 200 as soon as it serves;
 - serve `GET /tasks/{id}` as current truth;
 - serve `GET /events?since=` with replay-then-live, and a `gap` frame below its watermark;
 - emit the kinds above;

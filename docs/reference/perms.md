@@ -263,6 +263,7 @@ request carries.
   the token's account is bound to.
 - An iod of the deployment presents its own token. When it acts for a person, it also names the
   person's account, and verse finds the person through that account's binding.
+- A runner registered with a `subject` presents its own token too, and acts as itself.
 
 Bindings are records at `verse.identity.<provider>.account.<id>`. Only the system writes them,
 from evidence it checked itself ([accounts in other systems](#accounts-in-other-systems)).
@@ -307,9 +308,12 @@ A token is checked before the name is read:
 | an iod's token | as the iod, under every mode |
 | an iod's token, a person's name and their account, from an iod trusted for the account's provider | as the person, through the binding ([below](#a-person-relayed-by-a-trusted-iod)) |
 | an iod's token and a person's name, with no account or from an iod not trusted for it | 403 |
+| a registered runner's token | as the runner, under every mode ([below](#runners-at-the-door)) |
+| a registered runner's token and a name that is not the runner's | 403 |
 | no token, under `off` or `optional` | as the `Verse-Principal` it names, or as nobody |
+| no token and the name of a runner registered with a `subject`, under every mode | 401: the runner presents its token |
 | no token and a `user:` name, under `required` | 401, saying to log in |
-| no token and an `agent:` or `runner:` name, under `required` | as that name |
+| no token and an `agent:` name, or a `runner:` registered with no `subject`, under `required` | as that name |
 | no token and no name, under `required` | as nobody: it reads what `*` holds, and writes nothing |
 
 `auth.principal.mode` says how strictly the verse requires a token.
@@ -320,10 +324,11 @@ A token is checked before the name is read:
 | `optional` | whoever their token proves, or whoever the request says where it carries none |
 | `required` | whoever their token proves, and nobody else |
 
-**Verse verifies people and iods, not agents and runners.** The modes above verify people, and
-`auth.iod` verifies the deployment's own iods. An `agent:` or `runner:` principal is taken as
-given, under every mode. An agent may read bindings, so `required` does not close the door to
-everybody who is not verified.
+**Verse verifies people, iods and registered runners, not agents.** The modes above verify
+people, `auth.iod` verifies the deployment's own iods, and a runner's registration says whether
+verse verifies it ([runners at the door](#runners-at-the-door)). An `agent:` principal, and a
+`runner:` whose registration names no `subject`, is taken as given, under every mode. An agent
+may read bindings, so `required` does not close the door to everybody who is not verified.
 
 An [`asserted` binding](#accounts-in-other-systems) is not answered to an iod's lookup under
 `required`, until a verified caller proves the account again.
@@ -384,6 +389,35 @@ installed under. At every start, verse writes the accounts to `verse.identity.io
 and a static token's hash to `verse.identity.iod.static.<hash>`, where anyone can read them. An
 iod is never bound at first sight. A verified iod is its principal under every mode, and `whoami`
 says `by: iod`.
+
+### Runners at the door
+
+A [runner](runners.md) proves which runner it is the same way, with the workload token its
+runtime gives it, from the same issuer (`auth.iod.issuer`, audience `verse`). What differs is
+where verse is told which runner a token is: not in the config, but on the runner's
+registration, whose `subject` is the token's (`verse runner add -subject
+system:serviceaccount:<namespace>:<name>`). Whoever writes the registration vouches for the
+runner, once, and that is the whole decision. Who that may be is the record's to say: the seed
+holds `owner` beneath `verse.runners` out to everyone, the open verse's answer, and a deployment
+narrows it in the record, as `deploy/repopulate.sh` does to `user:admin@verse` with everyone
+still reading. What a runner proved is recorded as verse, whoever asked.
+
+The door keeps one table for both: a workload token's subject is looked up among the iods first
+and the registrations second. A match is `runner:<identity>`, the identity on the registration,
+under every mode; `whoami` says `by: runner`. A runner's own requests are made as itself, so its
+token beside a name that is not its own is refused.
+
+**A name verse can verify is not taken at its word.** A request naming the principal of a
+runner registered with a `subject`, with no token that proves it, is refused with `401`,
+whatever the mode: the runner presents its token, and a request made as it by hand cannot. A
+runner registered with no `subject` is taken as given, as every runner was, and the refusal
+says what the registration lacks. So a verse's embedded runner, a runner on a laptop and a
+verse with no workload issuer go on as they were.
+
+The registration also holds the runner to its subject when verse asks it what it offers
+([runners](runners.md#who-the-runner-is)): a runner that does not prove it is the one registered
+takes no spawn. And verse proves itself to the runner the other way round, with a token it signs
+as the issuer `auth.issuer` makes it, minted for that runner's subject alone.
 
 ### A person relayed by a trusted iod
 

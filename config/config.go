@@ -348,7 +348,25 @@ func (a AuthConfig) Validate() error {
 		}
 		issuers[prov.Issuer] = name
 	}
-	return a.Iod.validate(issuers)
+	if err := a.Iod.validate(issuers); err != nil {
+		return err
+	}
+	// Verse's own issuer is nobody else's: the door finds a token's verifier by its `iss`, and
+	// a token verse signs toward a runner must open nothing at verse's own door, so its issuer
+	// may be neither a provider's nor the workload tokens'.
+	if iss := strings.TrimSuffix(a.Issuer.URL, "/"); iss != "" {
+		for _, spelt := range []string{iss, iss + "/"} {
+			if other, dup := issuers[spelt]; dup {
+				return fmt.Errorf("auth.issuer.url: %s is auth.principal.providers.%s's issuer too, and a "+
+					"token this verse signs would be read as one of theirs", iss, other)
+			}
+		}
+		if iss == strings.TrimSuffix(a.Iod.Issuer, "/") {
+			return fmt.Errorf("auth.issuer.url: %s is auth.iod.issuer too, and a token this verse signs "+
+				"would be read as a workload's", iss)
+		}
+	}
+	return nil
 }
 
 // validate refuses an iod block that names no usable issuer or io.

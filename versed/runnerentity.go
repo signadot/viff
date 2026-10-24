@@ -32,7 +32,7 @@ func runnerEntityRef(name string) entity.Ref {
 // not recognise, so `ulr:` would install a runner with no address and report success — and the
 // url is the entire content of this entity, so the silence is total.
 func checkRunnerFields(node *ir.Node) error {
-	known := map[string]string{"name": "", "url": "", "identity": ""}
+	known := map[string]string{"name": "", "url": "", "identity": "", "subject": ""}
 	node = ir.Uncomment(node)
 	if node == nil || node.Type != ir.ObjectType {
 		return nil // not an object: the decoder's complaint to make, in its own terms
@@ -50,6 +50,10 @@ func checkRunnerFields(node *ir.Node) error {
 		if name == "described" || name == "offers" {
 			return fmt.Errorf("what a runner offers is read from the runner, which describes itself " +
 				"when it is installed and checked; it is not written by hand")
+		}
+		if name == "verified" || name == "unverified" {
+			return fmt.Errorf("whether a runner proved it is its subject is verse's to write, at the " +
+				"describe; it is not written by hand")
 		}
 		return fmt.Errorf("runner has no field %q (want any of %s) — an unknown field decodes "+
 			"silently, and url is the whole of what this entity carries", name, strings.Join(want, ", "))

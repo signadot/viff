@@ -8940,6 +8940,21 @@ func (s *Runner) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["identity"] = ir.FromString(string(s.Identity))
 	}
 
+	// Field: Subject
+	if s.Subject != "" {
+		irMap["subject"] = ir.FromString(string(s.Subject))
+	}
+
+	// Field: Verified
+	if s.Verified != "" {
+		irMap["verified"] = ir.FromString(string(s.Verified))
+	}
+
+	// Field: Unverified
+	if s.Unverified != "" {
+		irMap["unverified"] = ir.FromString(string(s.Unverified))
+	}
+
 	// Field: Described (optional)
 	if s.Described != nil {
 		node, err = s.Described.ToTonyIR(opts...)
@@ -9000,6 +9015,24 @@ func (s *Runner) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "identity", fieldNodeUnwrapped.Type)
 			}
 			s.Identity = string(fieldNodeUnwrapped.String)
+		case "subject":
+			// Field: Subject
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "subject", fieldNodeUnwrapped.Type)
+			}
+			s.Subject = string(fieldNodeUnwrapped.String)
+		case "verified":
+			// Field: Verified
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "verified", fieldNodeUnwrapped.Type)
+			}
+			s.Verified = string(fieldNodeUnwrapped.String)
+		case "unverified":
+			// Field: Unverified
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "unverified", fieldNodeUnwrapped.Type)
+			}
+			s.Unverified = string(fieldNodeUnwrapped.String)
 		case "described":
 			// Field: Described
 			s.Described = &runner.Description{}
@@ -9060,6 +9093,21 @@ func (s *RunnerRow) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Field: Identity
 	if s.Identity != "" {
 		irMap["identity"] = ir.FromString(string(s.Identity))
+	}
+
+	// Field: Subject
+	if s.Subject != "" {
+		irMap["subject"] = ir.FromString(string(s.Subject))
+	}
+
+	// Field: Verified
+	if s.Verified != "" {
+		irMap["verified"] = ir.FromString(string(s.Verified))
+	}
+
+	// Field: Unverified
+	if s.Unverified != "" {
+		irMap["unverified"] = ir.FromString(string(s.Unverified))
 	}
 
 	// Field: Described (optional)
@@ -9156,6 +9204,24 @@ func (s *RunnerRow) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "identity", fieldNodeUnwrapped.Type)
 			}
 			s.Identity = string(fieldNodeUnwrapped.String)
+		case "subject":
+			// Field: Subject
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "subject", fieldNodeUnwrapped.Type)
+			}
+			s.Subject = string(fieldNodeUnwrapped.String)
+		case "verified":
+			// Field: Verified
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "verified", fieldNodeUnwrapped.Type)
+			}
+			s.Verified = string(fieldNodeUnwrapped.String)
+		case "unverified":
+			// Field: Unverified
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "unverified", fieldNodeUnwrapped.Type)
+			}
+			s.Unverified = string(fieldNodeUnwrapped.String)
 		case "described":
 			// Field: Described
 			s.Described = &runner.Description{}

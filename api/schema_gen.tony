@@ -741,7 +741,10 @@ define:
   described: .[nullable(runner:verse-runner-description)]
   identity: .[string]
   name: .[string]
+  subject: .[string]
+  unverified: .[string]
   url: .[string]
+  verified: .[string]
 signature:
   name: verse-installed-runner
 ---
@@ -768,9 +771,12 @@ define:
   name: .[string]
   reach: .[string]
   running: .[int]
+  subject: .[string]
   total: .[int]
   unreadable: .[string]
+  unverified: .[string]
   url: .[string]
+  verified: .[string]
   warning: .[string]
   why: .[string]
 signature:

@@ -20,7 +20,6 @@ import (
 	"github.com/signadot/verse/config"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd/verserunner"
 	"github.com/signadot/verse/system/repocharters"
 	"github.com/signadot/verse/task"
@@ -275,8 +274,8 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	} else if set {
 		srv.SetTripPace(d)
 	}
-	if cfg.Runner != "" { // run tasks on a remote runner instead of in-process
-		srv.SetRunner(client.HTTP(cfg.Runner))
+	if cfg.Runner != "" { // run tasks on a remote runner instead of in-process, reached as this verse
+		srv.SetRunner(srv.Dial(cfg.Runner))
 	}
 
 	// Catch SIGTERM as well as SIGINT so `verse down` (which signals us) triggers the

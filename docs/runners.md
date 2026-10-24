@@ -51,9 +51,57 @@ has three outcomes, and only one of them refuses the install:
 a warning, and does not refuse it. Only 404 and 501, which mean no such route, and a task list
 that does not decode are answers about what is at the URL.
 
+### Who the runner is
+
+Verse decides who a runner is at registration and nowhere else. A runner registered with a
+`subject`, the subject of the workload token its runtime gives it, has to prove it is that
+runner, twice over:
+
+```sh
+verse runner add verse-runner http://verse-runner:9802 -subject system:serviceaccount:verse:verse-runner
+```
+
+- **At the describe.** Verse presents a token it signs itself, as the issuer `auth.issuer`
+  makes it, on every call it makes to a runner registered with a `subject`, and to no other,
+  since a token presented before anything proved what answers is a token given away. The token
+  is minted for that runner alone, its subject the audience, so a copy taken at one runner opens
+  no other's door. A runner whose configuration names its verse (`verse:` in
+  [runnerd.md](reference/runnerd.md#configuration)) reads verse's keys where it reaches verse,
+  holds every bearer to verse's issuer name and its own audience, and refuses every other
+  caller's launch. The
+  description itself is public: anyone may ask what the runner offers. To the verse it
+  verified, and to nobody else, the runner answers `GET /describe` with its own token, and
+  verse checks the token's subject against the registration before it records what the runner
+  offers. The registration
+  then says `verified`, with when. A runner that answered as a runner and did not prove it is
+  the one registered is refused at `add`, since waiting changes nothing; found later, by
+  `verse runner check` or by a spawn that asks, it has `unverified` recorded in place of what it
+  described, and takes no spawn until a check finds it proving itself. The describe is asked
+  again before every launch to a runner registered with a subject, one request, since the launch
+  is what hands whatever answers at the url the prompt, the repositories and the policy: a runner
+  replaced behind the same url receives no launch, and `verified` is the last handshake's result,
+  re-made at each.
+- **At verse's door.** When the runner calls verse, its token makes it `runner:<identity>`
+  ([runners at the door](reference/perms.md#runners-at-the-door)), and its name alone is refused.
+
+The runner's first call is to say it is here. A runner whose configuration names its verse's
+url announces itself at start, `POST /runners/hello` with its token, in a loop until verse
+answers, and verse describes it then and there, so a pod that comes up after its registration,
+or comes back after a restart, is verified within seconds and nobody runs `verse runner check`.
+The door is the acknowledgement: a token no registration names is refused before anything else,
+and that refusal is the runner's cue to keep asking, with one log line saying why. The runner's
+readiness, on `GET /ready`, is its server and nothing else. Whether verse has heard it, and
+whether the describe that followed verified it, is the registration's to say, in `verified` or
+`unverified`, where `verse runner` shows it.
+
+A runner registered without a `subject` is taken at its word, as every runner was: `verse
+up`'s embedded runner, a runner on a laptop, a verse whose deployment names no workload issuer
+or issues no tokens of its own. The record says which.
+
 `-no-probe` installs the runner in every case. A runner installed without its offers takes no
-spawn until it has described itself: verse asks it again when it starts, and at the first spawn
-that names it, and keeps what it says on the registration; `verse runner check` asks on demand.
+spawn until it has described itself: verse asks it again when it starts, at the first spawn
+that names it, and before every launch where the registration names a subject, and keeps what
+it says on the registration; `verse runner check` asks on demand.
 A spawn naming a runner that still has not answered is refused, with the reason.
 
 A [worker](glossary.md#worker) is named on its runner's entity, or names itself on its first

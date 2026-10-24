@@ -147,6 +147,7 @@ systems:
 | Key | What it holds | Default |
 |---|---|---|
 | `listen` | the address the runner serves verse on | `:9802` |
+| `verse` | the one verse this runner serves, by the tokens versed signs for it ([runners at the door](perms.md#runners-at-the-door)): `url`, where the runner reaches versed, announces itself and reads versed's keys (`/.well-known/jwks.json` under it); `issuer`, the name versed's tokens are issued under (`auth.issuer.url` on the verse side), where a verse behind a proxy is called something else than `url` (default `url`); `audience`, the `aud` this runner takes versed's tokens for, its own name (default: the subject of its own token, `VERSE_TOKEN_FILE`, which is what its registration names; the default runner, which has no registration, says `runner`); `ca`, a PEM bundle for a verse served under a certificate no public root signed. With the block, a request whose bearer is not a live token of that issuer for that audience is refused `401` before its body is read, and `503` while versed's keys cannot be read. A bare `GET /describe` is answered to anyone, since the description is public; a bearer presented with it is checked all the same, and the describe answers this runner's own token to the verse it verified, and to nobody else. With a token, the runner announces itself at start, `POST /runners/hello` with its token in a loop until verse answers, so verse describes it then and there and nobody runs `verse runner check`. The runner's readiness (`GET /ready`) is its server and nothing else; whether verse heard it, and whether the describe verified it, is the registration's to say. A deployment whose one configuration serves every cluster names the verse in the environment instead (`VERSE_URL`, `VERSE_ISSUER`, `VERSE_AUDIENCE`, `VERSE_CA`, below); naming it in both is refused. | none: the runner serves whoever reaches it |
 | `models.portkey.virtualKey` | the Portkey virtual key, when a launch doesn't pick one. It is a routing label, not a secret. | none |
 | `models.model` | the agent's model, when a launch doesn't pick one. It is not published; the task's record says which model ran. | the agent's own |
 | `agents.<agent>.<setting>` | the operator's narrowing of what a launch's agent may set: the values it takes, as patterns (`verse: {model: ["gpt-6*"]}`, `codex: {effort: [low, medium]}`). It is what the offer publishes for that setting. A setting not named here takes any value the agent takes. Where the agent lists its own values (Claude's efforts), the ones named here are among them; a value outside them, an agent or setting the runner does not have, or an empty list, is refused. | any value the agent takes |
@@ -168,6 +169,8 @@ puts a Kubernetes Secret.
 | Variable | What it holds |
 |---|---|
 | `PORTKEY_API_KEY` | the Portkey account key. Without it, the runner offers scripts only. |
+| `VERSE_TOKEN_FILE` | the file holding this runner's own workload token (on Kubernetes, the pod's projected token, audience `verse`), answered on `GET /describe` to the verse the `verse` block verified, and to nobody else. It is what a registration naming this runner's `subject` is checked against. A file named and holding nothing is refused when the runner starts. Without a `verse` block it is answered to nobody. |
+| `VERSE_URL`, `VERSE_ISSUER`, `VERSE_AUDIENCE`, `VERSE_CA` | the `verse` block, for a configuration that has none: where the runner reaches its verse and reads its keys, the name its tokens are issued under, the audience the runner takes them for, and a CA bundle for a verse under a certificate no public root signed (the last three may be empty). Where the configuration has the block too, the runner refuses to start: the verse is named once. |
 | `PORTKEY_BASE_URL` | the Portkey endpoint. Default: Portkey's own. |
 | `PORTKEY_VIRTUAL_KEY` | the Portkey virtual key, when neither a launch nor `models.portkey.virtualKey` names one |
 | `GITHUB_TOKEN`, or the variable `systems.git.credential` names | the runner's token for its forge: what it fetches and pushes with. It stays in the runner; a task's process never has it. |
@@ -179,7 +182,10 @@ puts a Kubernetes Secret.
 A variable that is not set is logged when the runner starts, and the runner starts without it:
 no agent, or a repository fetched without a token.
 
-The flags: `-config <file>` (default `verse-runner.tony`), `-sandbox bwrap|none`, and
+The flags: `-config <file>` (default `verse-runner.tony`), `-sandbox bwrap|none`,
+`-token-file <file>` (default `$VERSE_TOKEN_FILE`), `-verse-url`, `-verse-issuer`,
+`-verse-audience` and `-verse-ca` (defaults `$VERSE_URL`, `$VERSE_ISSUER`, `$VERSE_AUDIENCE`,
+`$VERSE_CA`: the `verse` block, where the configuration has none), and
 `-admin-addr` for the admin and pprof face (`VERSE_RUNNER_ADMIN_ADDR`; default: the listen
 port plus one; `off` disables it). `-task` is how the runner starts each task's process, with the
 configuration on stdin, and is not for a person to run.

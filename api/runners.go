@@ -31,6 +31,21 @@ type Runner struct {
 	// A runner acts as itself, not as whoever installed it or whoever's work it runs. Defaults
 	// to the runner's name.
 	Identity string `tony:"field=identity,omitzero"`
+	// Subject is how verse recognises the runner: the subject of its workload token, which on
+	// Kubernetes is `system:serviceaccount:<namespace>:<name>`, from the issuer the deployment
+	// names for its iods (`auth.iod.issuer`). A runner registered with one proves it is the
+	// runner at the describe, and at the door when it calls verse; a `runner:` named with no proof
+	// is refused for it. Empty is a runner taken at its word, which `verse up`'s embedded runner
+	// and a laptop's are. The decision about who a runner is belongs here, at registration, and
+	// nowhere else (versed/runnerauth.go).
+	Subject string `tony:"field=subject,omitzero"`
+	// Verified is when the runner last proved it is the subject, at a describe: the token it
+	// answered with verified to the subject. Verse writes it beside `described`, and a
+	// registration with a subject takes no spawn without it (Current). Unverified is why it last
+	// failed to, written in place of `described`: a runner that does not prove it is the one
+	// registered has its words recorded as nobody's.
+	Verified   string `tony:"field=verified,omitzero"`
+	Unverified string `tony:"field=unverified,omitzero"`
 	// Described is what the runner offers, as it described itself (GET /describe) when it was
 	// installed or last checked: the agents and scripts it runs, what each takes, and the
 	// systems each holds. Verse writes it, from the runner, and checks a spawn naming this runner
@@ -49,8 +64,11 @@ func (e Runner) Description() runner.Description {
 }
 
 // Current is whether the registration holds a description this verse reads: one there is, that
-// passes Check. Otherwise the runner is asked again, and what it says replaces it.
-func (e Runner) Current() bool { return e.Described != nil && e.Described.Check() == nil }
+// passes Check, and, where the registration names a subject, one the runner proved it is the
+// author of. Otherwise the runner is asked again, and what it says replaces it.
+func (e Runner) Current() bool {
+	return e.Described != nil && e.Described.Check() == nil && (e.Subject == "" || e.Verified != "")
+}
 
 // Principal is who the runner acts as: `runner:` its identity, or its name.
 func (e Runner) Principal() string {
@@ -78,6 +96,11 @@ func (e Runner) Check() error {
 	if _, err := entity.ParsePrincipal(e.Principal()); err != nil || (e.Identity != "" && entity.KindOf(e.Identity) != "") {
 		return fmt.Errorf("runner %q: identity %q is the id of the principal it acts as, "+
 			"runner:<identity>, and carries no kind or space of its own", e.Name, e.Identity)
+	}
+	// A subject is a token's `sub`, compared byte for byte at the door: one with space in it
+	// matches no token anybody issues.
+	if err := runner.CheckSubject(e.Subject); err != nil {
+		return fmt.Errorf("runner %q: %w", e.Name, err)
 	}
 	if e.URL == "" {
 		return fmt.Errorf("runner %q: url is required — there is no default and no local "+

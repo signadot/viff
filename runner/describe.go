@@ -1,13 +1,17 @@
 package runner
 
 import (
+	"bytes"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/systems"
 )
 
@@ -30,6 +34,68 @@ type Description struct {
 
 // DescriptionVersion is the shape a runner describes itself in.
 const DescriptionVersion = 2
+
+// TokenHeader is the header a runner answers GET /describe with, carrying the workload token
+// its runtime gave it, to a verse it verified as its own: the runner's half of the handshake.
+// Verse checks the token's subject against the runner's registration before it records the
+// description, so a runner replaced behind the same url is found by the step that admitted the
+// first. A runner that verifies no verse answers none, since a token is for its verse alone.
+const TokenHeader = "Verse-Runner-Token"
+
+// DefaultAudience is the `aud` of the token versed presents to the default runner, the one
+// `verse up -runner` names, which has no registration and so no subject of its own to be the
+// audience. A runner takes it only when its `verse` block says `audience: runner`; a registered
+// runner's door, which takes its own subject, does not.
+const DefaultAudience = "runner"
+
+// TokenSubject is the `sub` of a JWT, read without verifying it: what a runner's own token says
+// it is, which is the audience the runner holds its verse's tokens to. The token is the
+// runtime's and nothing here trusts the claim beyond naming the door.
+func TokenSubject(token string) (string, error) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return "", fmt.Errorf("the token is not a JWT")
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return "", fmt.Errorf("the token's claims do not decode: %w", err)
+	}
+	var claims map[string]any
+	if err := codec.Decode(bytes.NewReader(payload), &claims, codec.JSON); err != nil {
+		return "", fmt.Errorf("the token's claims do not read: %w", err)
+	}
+	sub, _ := claims["sub"].(string)
+	if sub == "" {
+		return "", fmt.Errorf("the token names no subject")
+	}
+	return sub, nil
+}
+
+// ReadTokenFile is the workload token a file holds, as it is now: the runtime rotates the token
+// under the process, so a side that presents one reads the file at each use. A file that is
+// missing or holds nothing is an error naming it, so a path given wrong is refused where it was
+// named rather than guessed at from the other side of the handshake.
+func ReadTokenFile(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("workload token: %w", err)
+	}
+	tok := strings.TrimSpace(string(data))
+	if tok == "" {
+		return "", fmt.Errorf("workload token: %s holds none", path)
+	}
+	return tok, nil
+}
+
+// CheckSubject is whether s can be a workload token's subject, on either side of the handshake:
+// a registration's `subject` and a runner's `verse.audience` are compared with a token's as
+// written, so one with space in it matches no token anybody issues.
+func CheckSubject(s string) error {
+	if s != strings.TrimSpace(s) || strings.ContainsAny(s, " \t\r\n") {
+		return fmt.Errorf("subject %q is a token's subject, compared as it is written, and holds no space", s)
+	}
+	return nil
+}
 
 // Check is what a description must say for verse to register the runner, or to read one it
 // kept: its version, at least one offer, each holding the network with the modes it builds, each

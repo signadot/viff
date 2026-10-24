@@ -28,6 +28,13 @@ import (
 // same runnerd handler the local runner calls in process.
 func runnerFace(t *testing.T) *httptest.Server {
 	t.Helper()
+	h, release := runnerFaceHandler()
+	return faceServing(t, h, release)
+}
+
+// runnerFaceHandler is the face's handler, and what releases the work on it, for a face served
+// behind something (a runner's door, runnerauth_test.go) as well as bare.
+func runnerFaceHandler() (http.Handler, func()) {
 	// Released at cleanup, so the work on this face ENDS before the face does. Without it a
 	// task that never finishes holds the mirror's event stream open, and httptest.Close
 	// waits on outstanding requests — the test hangs on its own teardown rather than failing.
@@ -36,9 +43,15 @@ func runnerFace(t *testing.T) *httptest.Server {
 		sup := systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), l.Environment)
 		return task.NewTask(l.ID, sup, &blockedDriver{release: release}, okExecutor{})
 	}
-	srv := httptest.NewServer(offeringAll(runnerd.NewInProcessHandler(build), "fake").HTTPHandler())
+	return offeringAll(runnerd.NewInProcessHandler(build), "fake").HTTPHandler(), func() { close(release) }
+}
+
+// faceServing serves h as a runner face for the test, releasing its work before it closes.
+func faceServing(t *testing.T, h http.Handler, release func()) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(h)
 	t.Cleanup(func() {
-		close(release)
+		release()
 		srv.Close()
 	})
 	return srv

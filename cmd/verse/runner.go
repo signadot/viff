@@ -138,6 +138,7 @@ type runnerAddConfig struct {
 	File     string `cli:"name=file aliases=f desc='read the runner from FILE (- = stdin); also accepts a positional [file]'"`
 	NoProbe  bool   `cli:"name=no-probe desc='install without asking the url what it is'"`
 	Identity string `cli:"name=identity desc='the id of the principal the runner acts as, runner:<identity> (default: its name): what its reports are written as and what a spawn grants it'"`
+	Subject  string `cli:"name=subject desc='the subject of the workload token the runner presents (system:serviceaccount:<namespace>:<name> on Kubernetes): how verse recognises the runner at the describe and at its door. Without it the runner is taken at its word'"`
 }
 
 func runnerAddCmd() *cli.Command {
@@ -171,7 +172,7 @@ func (cfg *runnerAddConfig) run(cc *cli.Context, args []string) error {
 			return fmt.Errorf("%w: want `runner add <name> <url>`, got %q",
 				cli.ErrUsage, ref)
 		}
-		resp, err := httpPostTo("/runners", q, api.Runner{Name: name, URL: rawURL, Identity: cfg.Identity})
+		resp, err := httpPostTo("/runners", q, api.Runner{Name: name, URL: rawURL, Identity: cfg.Identity, Subject: cfg.Subject})
 		return runnerAdded(cc, resp, err)
 	}
 	// More positionals than either form takes. Worth its own message, because the fall-through

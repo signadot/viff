@@ -101,6 +101,13 @@ type Server struct {
 	// Embedded is the runner this verse embeds, for `verse up`: its tasks run in this process.
 	Embedded *runnerd.InProcessHandler
 	runner   client.Launcher // how tasks are run/governed; the embedded runner unless SetRunner
+	// runnerTokens is the tokens this verse has minted toward its runners, one per audience,
+	// kept until they are about to expire (runnerauth.go).
+	runnerTokens runnerTokens
+	// helloing is the registrations a hello is describing right now, by name: one describe in
+	// flight per registration, so a runner announcing itself in a loop cannot make this verse
+	// dial it in one.
+	helloing sync.Map
 	// hosted is what verse knows of each task it launched that the runner does not carry: the
 	// scope its records live in, what it is about, whom it acts for, and whom its questions
 	// naming nobody go to. Keyed by task id; read when the embedded runner raises a question.
@@ -822,7 +829,7 @@ func (s *Server) reconcileTasks() error {
 			// runner ENTITY still existing, so removing one would orphan work that is running
 			// perfectly well — a deletion with an action at a distance, and the thing that
 			// would make step 1's `--leave` a lie.
-			place := task.Runner(client.HTTP(runnerRef))
+			place := task.Runner(s.dialAt(runnerRef))
 			if h := attachOn(place, ent.Ref.Name()); h != nil {
 				// re-attach: observe
 				recAgent, recScript := mirror.AgentOf(ent.Payload)
@@ -1354,6 +1361,9 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("POST /runners", s.addRunner, "verse-installed-runner", one("verse-runner-row"))
 	rt.handle("GET /runners/{name}", s.getRunner, "", one("verse-installed-runner"))
 	rt.handle("GET /runners/{name}/check", s.checkRunner, "", one("verse-runner-check"))
+	// A runner saying it is here, with its token (runnerauth.go): the check, asked by the runner
+	// itself, so a pod that comes up after its registration is verified without anyone asking.
+	rt.handle("POST /runners/hello", s.helloRunner, "", one("verse-runner-check"))
 	rt.handle("DELETE /runners/{name}", s.removeRunner, "", one("verse-removed"))
 	rt.handle("POST /scope/delete", s.deleteScope, "", nothing)
 	// Holding a run or a suspension, and lifting it; saying to live work, and cancelling a run
@@ -1506,11 +1516,24 @@ func (s *Server) principals(mux *http.ServeMux, unattributed map[string]bool) ht
 				w.Header().Set("WWW-Authenticate", "Bearer")
 				http.Error(w, fmt.Sprintf("this verse admits a person only from an identity provider's "+
 					"token (auth.principal.mode is %s), and this request names %s with none: log in "+
-					"(`verse account login`). People are verified first; an agent or a runner is taken as "+
-					"given until its own authentication is built, and a request that names nobody "+
-					"still reads what everyone may", AuthRequired, g.String()),
+					"(`verse account login`). People are verified first; an agent is taken as given "+
+					"until its own authentication is built, a runner is verified where its registration "+
+					"names its subject, and a request that names nobody still reads what everyone may",
+					AuthRequired, g.String()),
 					http.StatusUnauthorized)
 				return
+			}
+			// A runner verse can verify is not taken at its word, under any mode: its registration
+			// names the token that proves it, and this request carries none (runnerauth.go).
+			if g.Kind == entity.RunnerKind && authenticatedBy(r) == claimantAsserted {
+				if e, ok := s.verifiedRunner(g.String()); ok {
+					w.Header().Set("WWW-Authenticate", "Bearer")
+					http.Error(w, fmt.Sprintf("%s is registered as %s with the subject %s, and this request "+
+						"names it with no token that proves it: a runner verse can verify is not taken at its "+
+						"word. The runner presents its workload token; a request made as it by hand cannot.",
+						g.String(), runnerEntityRef(e.Name), e.Subject), http.StatusUnauthorized)
+					return
+				}
 			}
 			if p = g.String(); p != principalOf(r) {
 				r.Header.Set(api.PrincipalHeader, p)
@@ -4584,7 +4607,7 @@ func (s *Server) placeOf(id string) task.Runner {
 	if ref == "" || ref == "local" || ref == s.runner.Ref() {
 		return nil
 	}
-	return client.HTTP(ref)
+	return s.dialAt(ref)
 }
 
 // taskHoldingGate finds which task has decisionID open, for a gate id that does not

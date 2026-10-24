@@ -61,17 +61,100 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 	if e.Identity != "" {
 		body["identity"] = e.Identity
 	}
+	// A subject names a token this verse would have to verify, so it is refused where nothing
+	// could: a registration nobody can ever prove is a runner that takes no spawn and says why
+	// too late. And it is refused in a named scope: a principal is one thing across the verse,
+	// and the door reads the baseline registrations, so a subject written anywhere else would
+	// neither admit the runner's token nor refuse its bare name.
+	if e.Subject != "" {
+		if s.workloadIssuer() == nil {
+			http.Error(w, fmt.Sprintf("runner %q: a subject is a workload token's, and this verse names "+
+				"no issuer of workload tokens (auth.iod.issuer in its config), so nothing could verify %s",
+				e.Name, e.Subject), http.StatusBadRequest)
+			return
+		}
+		// And the handshake runs both ways: a runner held to its subject holds this verse to
+		// its signature, so a verse that issues nothing could never be let in by it.
+		if s.issuer == nil {
+			http.Error(w, fmt.Sprintf("runner %q: a runner registered with a subject takes this verse's calls "+
+				"by the tokens it signs, and this verse issues none (auth.issuer in its config), so it could "+
+				"never prove itself to %s", e.Name, e.Subject), http.StatusBadRequest)
+			return
+		}
+		if sc := r.URL.Query().Get("scope"); sc != "" {
+			http.Error(w, fmt.Sprintf("runner %q: a subject makes the runner a principal, which is one thing "+
+				"across the verse and not a scope's: register it with its subject in the baseline, not in %q",
+				e.Name, sc), http.StatusBadRequest)
+			return
+		}
+		// One subject, one principal: the door takes a token for the first name that claims
+		// its subject, so a subject two registrations share, or one an iod account holds,
+		// would open a door under a name nobody meant.
+		if s.iodAccountNamed(e.Subject) {
+			http.Error(w, fmt.Sprintf("runner %q: subject %s is an iod's (auth.iod.accounts), and a token proves one principal",
+				e.Name, e.Subject), http.StatusBadRequest)
+			return
+		}
+		if other, ok := s.runnerBySubject(e.Subject); ok && other.Name != e.Name {
+			http.Error(w, fmt.Sprintf("runner %q: subject %s is already runner %q's, and a token proves one principal",
+				e.Name, e.Subject, other.Name), http.StatusBadRequest)
+			return
+		}
+		// ... and one verified principal is one registration: two runners proving two subjects
+		// under one identity would write a record that cannot say which of them acted, and a
+		// hello could not find its registration.
+		if other, ok := s.verifiedRunner(e.Principal()); ok && other.Name != e.Name {
+			http.Error(w, fmt.Sprintf("runner %q: %s is already runner %q's, which proves it with the subject %s; "+
+				"a verified principal is one registration", e.Name, e.Principal(), other.Name, other.Subject), http.StatusBadRequest)
+			return
+		}
+		body["subject"] = e.Subject
+	} else {
+		// A registration is written whole: an add that names no subject takes the runner at its
+		// word, whatever an earlier add said of it.
+		body["subject"] = entity.Removed()
+	}
 	probe, ok := probeParam(w, r, true)
 	if !ok {
 		return
 	}
+	// May they register it at all? Asked BEFORE the probe, because the probe presents this
+	// verse's token to the url the body names: a caller the write would refuse must not have
+	// had the token sent to an address of their choosing first.
+	store := s.scopedStore(r)
+	if who := entity.PrincipalOf(store); who != "" && !entity.IsSystem(who) {
+		ref := runnerEntityRef(e.Name)
+		_, stands, err := store.Get(ref)
+		if err != nil {
+			http.Error(w, notRead(fmt.Sprintf("runner %q", e.Name), err), http.StatusServiceUnavailable)
+			return
+		}
+		if stands {
+			err = entity.Check(store, who, entity.OwnerLevel, ref, "registering a runner again")
+		} else if may, mayErr := entity.MayCreate(store, who, ref); mayErr != nil {
+			err = mayErr
+		} else if !may {
+			err = fmt.Errorf("%w: %s may not register a runner at %s: nothing above it holds `owner` out to them", entity.ErrForbidden, who, ref)
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
+	}
 	if probe {
-		found, desc, whyErr := client.Probe(e.URL)
+		found, desc, whyErr := s.probeRegistered(e)
 		reach = found.String()
 		switch found {
 		case client.NotRunner:
 			http.Error(w, fmt.Sprintf("runner %q: %s is not a runner: %s — --no-probe installs it anyway",
 				e.Name, e.URL, whyErr), http.StatusBadRequest)
+			return
+		case client.Unverified:
+			// Answered as a runner, and not as the one registered: waiting changes nothing, and
+			// a registration nobody could prove would take no spawn and say so too late.
+			http.Error(w, fmt.Sprintf("runner %q: %s answered as a runner and did not prove it is %s: %s. "+
+				"Deploy it with a `verse:` block and its token, or register it without -subject to take it at its word",
+				e.Name, e.URL, e.Subject, whyErr), http.StatusBadRequest)
 			return
 		case client.Unreachable:
 			// Installed, and said so: why it was not reached, as a probed listing says it, and
@@ -92,7 +175,14 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 			described = &desc
 		}
 	}
-	store := s.scopedStore(r)
+	if described == nil {
+		// Nothing was described now, so nothing an earlier add described or verified stands: a
+		// `verified` is the describe's to write, and one left behind a subject this add changed
+		// would send spawns to a runner nobody has checked is that subject.
+		for _, k := range []string{"described", "offers", "verified", "unverified"} {
+			body[k] = entity.Removed()
+		}
+	}
 	if _, _, err := store.Write(entity.Write{
 		At: runnerEntityRef(e.Name).At(), Value: body.Payload(),
 	}); err != nil {
@@ -101,7 +191,7 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 	}
 	// What it offers replaces what a registration of the name kept, never merges into it.
 	if described != nil {
-		if err := writeDescribed(store, e.Name, *described); err != nil {
+		if err := writeDescribed(store, e.Name, *described, s.verifiedNow(e)); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -110,7 +200,10 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 	// install's own probe found: a name installed again keeps the work recorded on it, and the
 	// counts say so.
 	e.Described = described
-	out := runnerRow(taskRows(store), e, false)
+	if described != nil {
+		e.Verified = s.verifiedNow(e)
+	}
+	out := runnerRow(taskRows(store), e, nil)
 	out.Reach, out.Why, out.Warning = reach, why, warning
 	writeOut(w, r, http.StatusCreated, out)
 }
@@ -127,9 +220,16 @@ func (s *Server) listRunners(w http.ResponseWriter, r *http.Request) {
 	// inside the loop made the listing cost runners x instances for an answer that is one pass
 	// over the same rows.
 	instances := taskRows(store)
+	var reach func(api.Runner) (client.Reach, error)
+	if probe {
+		reach = func(e api.Runner) (client.Reach, error) {
+			r, _, why := s.probeRegistered(e)
+			return r, why
+		}
+	}
 	for _, e := range ents {
 		e.Described = nil // GET /runners/{name} says what it offers; a listing row does not
-		out = append(out, runnerRow(instances, e, probe))
+		out = append(out, runnerRow(instances, e, reach))
 	}
 	for _, b := range bad {
 		out = append(out, api.RunnerRow{Runner: api.Runner{Name: b.Ref.Name()}, At: b.Ref.String(), Unreadable: b.Err.Error()})
@@ -147,17 +247,17 @@ func (s *Server) listRunners(w http.ResponseWriter, r *http.Request) {
 }
 
 // runnerRow is a runner as the runner routes answer it: as installed, and what verse has recorded
-// of the work on it, counted from instances. probe asks the runner what it is, as `?probe=true`
-// does.
-func runnerRow(instances []entity.Entity, e api.Runner, probe bool) api.RunnerRow {
+// of the work on it, counted from instances. probe, where given, asks the runner what it is, as
+// `?probe=true` does.
+func runnerRow(instances []entity.Entity, e api.Runner, probe func(api.Runner) (client.Reach, error)) api.RunnerRow {
 	ref := runnerEntityRef(e.Name)
 	rec := api.RunnerRow{Runner: e, At: ref.String()}
 	rec.Running, rec.Total, rec.LastSpawn = runnerCounts(instances, ref, e.URL)
 	// Asked for, never stored. A reachability column is as of now or it is a cache that can be
 	// stale in the direction that costs — saying a runner is well because it was well when
 	// something last looked.
-	if probe {
-		reach, _, why := client.Probe(e.URL)
+	if probe != nil {
+		reach, why := probe(e)
 		rec.Reach = reach.String()
 		if why != nil {
 			rec.Why = why.Error()
@@ -189,26 +289,16 @@ func (s *Server) checkRunner(w http.ResponseWriter, r *http.Request) {
 	if !installed(w, r, fmt.Sprintf("runner %q", name), ok, err) {
 		return
 	}
-	reach, desc, why := client.Probe(e.URL)
-	out := api.RunnerCheck{At: runnerEntityRef(name).String(), URL: e.URL, Reach: reach.String()}
-	if why != nil {
-		out.Why = why.Error()
-	}
 	// A runner that answers describes itself afresh: what it offers may have changed since it
 	// was installed (a restart with a model credential, say), and the registration says what
 	// the runner says now. Written as verse, not as whoever asked: the offers are the runner's
 	// words, recorded the way a task's status is, and anybody who may read the runner may ask.
-	if reach == client.IsRunner {
-		if err := desc.Check(); err != nil {
-			http.Error(w, fmt.Sprintf("runner %q: %s does not say what it offers and the networks it builds: %v; its registration "+
-				"keeps what it said before", name, e.URL, err), http.StatusBadGateway)
-			return
-		}
-		out.Offers = desc.Offers
-		if err := writeDescribed(s.storeForScope(r.URL.Query().Get("scope")), name, desc); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+	// One that answered and did not prove it is the runner registered has that recorded in
+	// place of its words, and takes no spawn until a check finds it proving itself.
+	out, code, err := s.describeAgain(s.storeForScope(r.URL.Query().Get("scope")), e, 1)
+	if err != nil {
+		http.Error(w, err.Error(), code)
+		return
 	}
 	writeOut(w, r, http.StatusOK, out)
 }
@@ -217,18 +307,25 @@ func (s *Server) checkRunner(w http.ResponseWriter, r *http.Request) {
 // of what stood there: a write merges, a list element by element (so ReplaceAt's removals, which
 // reach a value's fields and not its list's elements, would leave an old offer's fields on a new
 // one), so what it said before is removed first, and `offers`, which an older verse kept the
-// offers under, with it.
+// offers under, with it. verified is when the runner proved it is its registration's subject,
+// "" for a registration naming none; what stood under `unverified` goes either way.
 //
 // BETWEEN THE TWO WRITES the registration has no description, and that is safe: a spawn naming
 // the runner reads it through offersOf, which asks the runner again where the registration is
 // not Current, so a spawn arriving then is checked against what the runner says, at the cost of
 // one more probe, never against nothing.
-func writeDescribed(w entity.Store, name string, desc runner.Description) error {
+func writeDescribed(w entity.Store, name string, desc runner.Description, verified string) error {
 	at := runnerEntityRef(name).At()
-	if _, _, err := w.Write(entity.Write{At: at, Value: entity.Obj{"described": entity.Removed(), "offers": entity.Removed()}.Payload()}); err != nil {
+	if _, _, err := w.Write(entity.Write{At: at, Value: entity.Obj{
+		"described": entity.Removed(), "offers": entity.Removed(), "verified": entity.Removed(), "unverified": entity.Removed(),
+	}.Payload()}); err != nil {
 		return err
 	}
-	_, _, err := w.Write(entity.Write{At: at, Value: entity.Obj{"described": desc}.Payload()})
+	rec := entity.Obj{"described": desc}
+	if verified != "" {
+		rec["verified"] = verified
+	}
+	_, _, err := w.Write(entity.Write{At: at, Value: rec.Payload()})
 	return err
 }
 
@@ -290,28 +387,39 @@ func (s *Server) offersOf(store entity.Reader, name string) (runner.Description,
 	if e.Current() {
 		return e.Description(), where, nil
 	}
-	reach, desc, why := client.Probe(e.URL)
-	if reach != client.IsRunner {
+	reach, desc, why := s.probeRegistered(e)
+	switch reach {
+	case client.Unverified:
+		s.recordUnverified(e.Name, why)
+		return runner.Description{}, "", fmt.Errorf("%s has not proved it is the runner registered (%s): %v. A spawn "+
+			"naming it is refused until `verse runner check %s` finds it proving itself", where, e.Subject, why, e.Name)
+	case client.IsRunner:
+	default:
 		return runner.Description{}, "", fmt.Errorf("%s has not described itself (%s: %v): a spawn naming it is "+
 			"refused until it answers `verse runner check %s`", where, reach, why, e.Name)
 	}
 	if err := desc.Check(); err != nil {
 		return runner.Description{}, "", fmt.Errorf("%s does not say what it offers and the networks it builds: %v", where, err)
 	}
-	s.recordOffers(store, e.Name, desc)
+	s.recordOffers(e, desc)
 	return desc, where, nil
 }
 
-// recordOffers keeps what a runner said on its registration, as `verse runner check` does,
-// where the store this read was made in can be written; a view that cannot keeps nothing, and
-// the next spawn asks again.
-func (s *Server) recordOffers(store entity.Reader, name string, desc runner.Description) {
-	w, ok := store.(entity.Store)
-	if !ok {
-		return
+// recordOffers keeps what a runner said on its registration, as `verse runner check` does, and
+// as verse: the offers are the runner's words and the proof is what versed found, recorded the
+// way a task's status is, whoever's spawn or check asked. A spawner need not own the
+// registration, and on a deployment that holds registrations to its admin none but the admin
+// does.
+func (s *Server) recordOffers(e api.Runner, desc runner.Description) {
+	if err := writeDescribed(s.Store, e.Name, desc, s.verifiedNow(e)); err != nil {
+		fmt.Fprintf(os.Stderr, "verse: runner %s: keeping what it offers: %v\n", runnerEntityRef(e.Name), err)
 	}
-	if err := writeDescribed(w, name, desc); err != nil {
-		fmt.Fprintf(os.Stderr, "verse: runner %s: keeping what it offers: %v\n", runnerEntityRef(name), err)
+}
+
+// recordUnverified is recordOffers for a runner that did not prove it is its subject.
+func (s *Server) recordUnverified(name string, why error) {
+	if err := writeUnverified(s.Store, name, why); err != nil {
+		fmt.Fprintf(os.Stderr, "verse: runner %s: recording that it did not prove itself: %v\n", runnerEntityRef(name), err)
 	}
 }
 
@@ -329,8 +437,15 @@ func (s *Server) probeRunners() error {
 		if e.Current() {
 			continue
 		}
-		reach, desc, why := client.Probe(e.URL)
-		if reach != client.IsRunner {
+		reach, desc, why := s.probeRegistered(e)
+		switch reach {
+		case client.Unverified:
+			fmt.Fprintf(os.Stderr, "verse: runner %s has not proved it is %s (%v); a spawn naming it is refused until it does\n",
+				runnerEntityRef(e.Name), e.Subject, why)
+			s.recordUnverified(e.Name, why)
+			continue
+		case client.IsRunner:
+		default:
 			fmt.Fprintf(os.Stderr, "verse: runner %s has not described itself (%s: %v); a spawn naming it is refused until it does\n",
 				runnerEntityRef(e.Name), reach, why)
 			continue
@@ -339,7 +454,7 @@ func (s *Server) probeRunners() error {
 			fmt.Fprintf(os.Stderr, "verse: runner %s does not say what it offers and the networks it builds: %v\n", runnerEntityRef(e.Name), err)
 			continue
 		}
-		s.recordOffers(s.Store, e.Name, desc)
+		s.recordOffers(e, desc)
 	}
 	return nil
 }
@@ -394,7 +509,7 @@ func (s *Server) removeRunner(w http.ResponseWriter, r *http.Request) {
 	out := api.Removed{Removed: ref.String()}
 	if cancelling && len(live) > 0 {
 		var unreachable []string
-		out.Cancelled, unreachable = cancelOn(e.URL, live, why)
+		out.Cancelled, unreachable = s.cancelOn(e.URL, live, why)
 		// What it could not reach, reported rather than counted as ended. Saying "cancelled 3"
 		// when three are unreachable is the same lie as recording a queued answer as
 		// delivered — and an already-gone runner is WHY an operator removes the entity half
@@ -442,8 +557,8 @@ func liveOn(r entity.Reader, ref entity.Ref, url string) []string {
 
 // cancelOn ends each task on a runner, and separates the ones it ended from the ones it
 // could not reach. A cancel that never arrived must not be counted as one that did.
-func cancelOn(url string, ids []string, why string) (cancelled, unreachable []string) {
-	p := client.HTTP(url)
+func (s *Server) cancelOn(url string, ids []string, why string) (cancelled, unreachable []string) {
+	p := s.dialAt(url)
 	for _, id := range ids {
 		h := p.Attach(id)
 		if h == nil {
@@ -541,5 +656,37 @@ func (s *Server) runnerFor(store entity.Reader, name string) (client.Launcher, s
 			"naming a runner that is not installed is refused rather than run somewhere else",
 			who, name, have)
 	}
-	return client.HTTP(e.URL), runnerEntityRef(e.Name).String(), nil
+	if e.Subject != "" {
+		if err := s.handshake(e); err != nil {
+			return nil, "", err
+		}
+	}
+	return client.HTTPOver(e.URL, s.transportFor(e)), runnerEntityRef(e.Name).String(), nil
+}
+
+// handshake asks a runner registered with a subject what it is now, right before a launch to it,
+// and holds it to its registration. A runner proves itself at the describe and nowhere else, and
+// a launch hands whatever answers at the url the prompt, the repositories and the policy, so the
+// describe is asked again at that moment: a pod behind the url that cannot produce the
+// registered subject's token receives no launch, and the registration records what it found,
+// as `verse runner check` would. One GET per launch. What it found is versed's own observation,
+// recorded as verse (recordOffers), not as the spawner.
+func (s *Server) handshake(e api.Runner) error {
+	where := runnerEntityRef(e.Name).String()
+	reach, desc, why := s.probeRegistered(e)
+	switch reach {
+	case client.IsRunner:
+		if err := desc.Check(); err != nil {
+			return fmt.Errorf("%s does not say what it offers and the networks it builds: %v", where, err)
+		}
+		s.recordOffers(e, desc)
+		return nil
+	case client.Unverified:
+		s.recordUnverified(e.Name, why)
+		return fmt.Errorf("%s has not proved it is the runner registered (%s): %v. A spawn naming it is "+
+			"refused until `verse runner check %s` finds it proving itself", where, e.Subject, why, e.Name)
+	default:
+		return fmt.Errorf("%s did not answer the handshake before the launch (%s: %v): the spawn is refused "+
+			"rather than sent to whatever answers there", where, reach, why)
+	}
 }

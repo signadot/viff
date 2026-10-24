@@ -101,9 +101,27 @@ func (s *Server) setIod(a AuthIod) (*authProvider, *iodAuth, error) {
 	if len(a.Accounts) > 0 && a.Issuer == "" {
 		return nil, nil, fmt.Errorf("auth.iod.accounts: an account is a token's subject, and no issuer of those tokens is named (auth.iod.issuer)")
 	}
+	// One subject is one party. The door looks a workload subject up among the accounts before
+	// the registrations (authenticate), so a subject both name would be the io's and the runner
+	// would be gone without a word: a registration naming an account's subject is refused at add
+	// (addRunner), and an account naming a registration's is refused here. The read's own error
+	// refuses too: a check that could not look is not a check that passed.
+	var registered []api.Runner
+	if len(a.Accounts) > 0 {
+		var err error
+		if registered, err = installedRunnersErr(s.Store); err != nil {
+			return nil, nil, fmt.Errorf("auth.iod.accounts: the registrations could not be read to check the subjects against: %w", err)
+		}
+	}
 	for sub, acct := range a.Accounts {
 		if err := ioPrincipal(acct.Principal); err != nil {
 			return nil, nil, fmt.Errorf("auth.iod.accounts.%q: %w", sub, err)
+		}
+		for _, e := range registered {
+			if e.Subject == sub {
+				return nil, nil, fmt.Errorf("auth.iod.accounts.%q: the subject is registration %s's runner "+
+					"(`verse runner add -subject`), and one subject is one party", sub, e.Name)
+			}
 		}
 		out.accounts[sub] = acct
 	}
@@ -205,6 +223,20 @@ func (s *Server) writeIodAccounts(a AuthIod, io *iodAuth) error {
 	for h, acct := range io.static {
 		if err := write(identityRef(iodProvider, "static", hex.EncodeToString(h[:])), acct, nil); err != nil {
 			return fmt.Errorf("auth.iod.static: %w", err)
+		}
+	}
+	return nil
+}
+
+// workloadIssuer is the issuer of the deployment's workload tokens (auth.iod.issuer), which the
+// iods' tokens and the runners' come from, or nil where the deployment names none.
+func (s *Server) workloadIssuer() *authProvider {
+	if s.auth == nil {
+		return nil
+	}
+	for _, p := range s.auth.byIssuer {
+		if p.iod {
+			return p
 		}
 	}
 	return nil

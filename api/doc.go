@@ -82,6 +82,7 @@
 //	POST   /runners?probe=                    Runner                RunnerRow                    runners.go
 //	GET    /runners/{name}                    -                     Runner                       runners.go
 //	GET    /runners/{name}/check              -                     RunnerCheck                  runners.go
+//	POST   /runners/hello                     -                     RunnerCheck                  runners.go
 //	DELETE /runners/{name}?cancel=|leave=     -                     Removed                      runners.go
 //
 //	Iods
@@ -169,5 +170,6 @@
 //     trigger.Stratum for a level's name, and GET /asks answers the docket's DocketRows with
 //     `?waiting=me`, `?all=true` or `?served=true`.
 //   - POST /tasks answers 200 where the Runner API answers 201.
-//   - GET /runners/{name}/check writes what the runner described.
+//   - GET /runners/{name}/check writes what the runner described; POST /runners/hello is the
+//     same check asked by the runner itself, with its workload token.
 package api

@@ -146,6 +146,12 @@ runs.
 Verse refuses a spawn that names a runner that is not installed, by name, rather than run it
 somewhere else.
 
+A runner registered with a `subject` takes this verse's calls by the tokens it signs as an
+issuer (`auth.issuer`, below), each minted for that runner alone
+([who the runner is](../runners.md#who-the-runner-is)). A verse that issues none refuses to
+register such a runner; a runner registered without a `subject` is taken at its word and
+reached bare.
+
 Both places use the same seam, and every `verse task` verb works on both. See also
 [task control](../task-control.md) and [tasks.md](tasks.md).
 
@@ -263,8 +269,9 @@ auth:
 - `mode` is `off`, `optional` or `required`. Unset is `off`: no token is verified. Under
   `optional`, a token is verified where a request carries one, and a request without one is
   still whoever it says it is. Under `required`, a request that names a person and carries no
-  token is refused. The modes verify people, who come first. Agents and runners are next, and
-  are taken as given until then ([who a request is from](perms.md#who-a-request-is-from)).
+  token is refused. The modes verify people. A runner is verified where its registration names
+  its token's subject ([runners at the door](perms.md#runners-at-the-door)); an agent is taken
+  as given ([who a request is from](perms.md#who-a-request-is-from)).
 - `providers` are the parties whose word says which account a person is. Each is under a name
   the deployment gives it. The name is where its accounts are bound (`verse.identity.<name>`),
   so it is one plain word, and `iod` is the iods'. A provider is one of two kinds:
@@ -340,7 +347,10 @@ auth:
   key it cannot read.
 
 Without the block, the verse signs nothing and answers 404 at both addresses. What it signs is
-[a credential for what a gate let through](gates.md#a-credential-for-what-a-gate-let-through).
+[a credential for what a gate let through](gates.md#a-credential-for-what-a-gate-let-through),
+and the token it presents to each runner registered with a `subject`, minted for that runner
+alone ([who the runner is](../runners.md#who-the-runner-is)); the runners read the keys at the
+url they reach the verse at, and hold the tokens to `url` as the issuer's name.
 
 **`perms: {child-grants: {…}}`** is read by the server. It is the `child-grants` of the
 [root](../glossary.md#root-of-the-store): what a node that is created with no record above it
