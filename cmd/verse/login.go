@@ -623,14 +623,14 @@ func link(cc *cli.Context, name string) error {
 func claimThrough(cc *cli.Context, name, account string) error {
 	// A login already linked to the caller is said so, and not claimed again: the io's report of a
 	// second proof spends the claim and leaves the binding as it stood, which nothing here could
-	// tell from a comment not reflected yet.
+	// tell from a comment not reflected yet. It is also what lets the wait below take any binding
+	// of the login as new, with no clock compared to the verse's.
 	if name == githubProvider && account != "" {
-		if row, ok := boundSince(strings.TrimPrefix(account, "@"), time.Time{}); ok {
+		if row, ok := bound(strings.TrimPrefix(account, "@")); ok {
 			fmt.Fprintf(cc.Out, "the github account %s (%s) is already linked to %s\n", row.Login, row.Sub, row.Principal)
 			return nil
 		}
 	}
-	since := time.Now().UTC().Truncate(time.Second)
 	resp, err := httpPost("/accounts/"+url.PathEscape(name), api.AccountClaim{Login: strings.TrimPrefix(account, "@")})
 	if err != nil {
 		return fmt.Errorf("account -link: %w", err)
@@ -655,7 +655,7 @@ func claimThrough(cc *cli.Context, name, account string) error {
 	fmt.Fprintf(cc.Out, "say this from the GitHub account %s, on a line of its own, in a comment on any issue or "+
 		"pull request in %s:\n\n    %s\n\nwaiting for verse to read it there, until %s (ctrl-c stops waiting)\n",
 		login, where, claim.Say, claim.Expires)
-	row, err := awaitGitHub(cc.Go, claim, login, since)
+	row, err := awaitGitHub(cc.Go, claim, login)
 	if err != nil {
 		return err
 	}
@@ -672,8 +672,9 @@ var verifyEvery = 5 * time.Second
 
 // awaitGitHub asks the verse to bind the claimed account from a reflected comment until it does,
 // the claim expires, or ctx ends. A 404 is the comment not reflected yet, or the claim spent by the
-// io's own report; a binding of the login proved since the claim is that report's, and ends it.
-func awaitGitHub(ctx context.Context, claim api.AccountClaimed, login string, since time.Time) (api.Account, error) {
+// io's own report; a binding of the login is that report's, since the login was unbound when the
+// claim was made (claimThrough), and ends the wait.
+func awaitGitHub(ctx context.Context, claim api.AccountClaimed, login string) (api.Account, error) {
 	if exp, err := time.Parse(time.RFC3339, claim.Expires); err == nil {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithDeadline(ctx, exp)
@@ -693,7 +694,7 @@ func awaitGitHub(ctx context.Context, claim api.AccountClaimed, login string, si
 			return row, nil
 		case http.StatusNotFound:
 			resp.Body.Close()
-			if row, ok := boundSince(login, since); ok {
+			if row, ok := bound(login); ok {
 				return row, nil
 			}
 		default:
@@ -711,9 +712,8 @@ func awaitGitHub(ctx context.Context, claim api.AccountClaimed, login string, si
 	}
 }
 
-// boundSince is the caller's binding of the GitHub login, when one was proved at or after since;
-// the zero since is any binding of it.
-func boundSince(login string, since time.Time) (api.Account, bool) {
+// bound is the caller's binding of the GitHub login, when there is one.
+func bound(login string) (api.Account, bool) {
 	resp, err := httpGet("/accounts", nil)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		if err == nil {
@@ -724,16 +724,7 @@ func boundSince(login string, since time.Time) (api.Account, bool) {
 	var rows []api.Account
 	decodeClose(resp, &rows)
 	for _, row := range rows {
-		if row.Provider != githubProvider || !strings.EqualFold(row.Login, login) {
-			continue
-		}
-		if row.Proof == nil && !since.IsZero() {
-			continue
-		}
-		if since.IsZero() {
-			return row, true
-		}
-		if at, err := time.Parse(time.RFC3339, row.Proof.At); err == nil && !at.Before(since) {
+		if row.Provider == githubProvider && strings.EqualFold(row.Login, login) {
 			return row, true
 		}
 	}
