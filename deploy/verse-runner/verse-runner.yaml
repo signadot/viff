@@ -10,7 +10,8 @@
 # It is not a source and not the engine — it is a place work RUNS, reached by url, and verse
 # learns about it the same way it learns about any runner:
 #
-#   verse runner add verse-runner http://verse-runner:9802 --identity verse-runner
+#   verse runner add verse-runner http://verse-runner:9802 --identity verse-runner \
+#     --subject system:serviceaccount:verse:verse-runner
 #
 # That install probes it, so a `reach: "a runner"` is the deployment's own acceptance test.
 apiVersion: v1
@@ -26,6 +27,9 @@ data:
   # route to the forge.
   verse-runner.tony: |
     listen: ":9802"
+    # The one verse this runner serves is not here: the `runnerTokens` patch (deploy/build.tony)
+    # names it in the pod's environment, VERSE_URL and VERSE_ISSUER, from the `issuer` knob,
+    # since this file is every cluster's.
     # The model credentials are read from the runner's environment, by the names versed uses
     # too: PORTKEY_API_KEY, PORTKEY_VIRTUAL_KEY, PORTKEY_BASE_URL (envFrom the verse-llm Secret,
     # below). The gateway is reachable from a task whatever its network, since the verse agent
@@ -162,10 +166,11 @@ spec:
         - {name: config, mountPath: /config, readOnly: true}
         - {name: state, mountPath: /state}
         readinessProbe:
-          # GET /describe is what verse's own install probe asks — the cheapest question with an
-          # answer, and the one that decides whether this is a runner at all. A readiness probe
-          # asking anything else would be a second opinion about the same thing.
-          httpGet: {path: /describe, port: control}
+          # GET /ready is the server up and nothing else (docs/reference/runnerd.md). The runner
+          # announces itself to versed (VERSE_URL) with its token, and whether versed heard it
+          # and verified it is the registration's to say (`verse runner`), not the pod's: a pod
+          # held out of its Service until versed reached it could not be reached by versed.
+          httpGet: {path: /ready, port: control}
           initialDelaySeconds: 2
           periodSeconds: 10
         securityContext:

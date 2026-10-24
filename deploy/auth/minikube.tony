@@ -8,6 +8,14 @@
 # kubeadm's default, and minikube's, is below. The discovery document is readable by nobody-in-
 # particular only with `issuerDiscoveryOpen` (deploy/issuer-discovery).
 auth:
+  # This verse issues tokens of its own: the credential a gate mints for a task, and the token it
+  # presents to each runner, minted for that runner alone (docs/runners.md, "Who the runner is").
+  # The key is the verse-issuer Secret (deploy/build.tony's runnerTokens patch), and the url is
+  # the name the runners hold the tokens to (the `issuer` knob): in-cluster, since nothing outside
+  # verifies them.
+  issuer:
+    url: "http://verse:9797"
+    key: /etc/verse/issuer/issuer.pem
   principal:
     mode: optional
     providers:

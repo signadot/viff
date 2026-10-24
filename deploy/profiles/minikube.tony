@@ -21,3 +21,8 @@ env:
   authConfig: "auth/minikube.tony"
   iodTokens: true
   issuerDiscoveryOpen: true
+  # A runner turned on here (`-e runner=true`) proves itself by its pod's token, as the iods do,
+  # and serves this verse alone by the tokens versed signs for it. The signing key is a Secret
+  # made by hand, since no secret store is here:
+  #   kubectl -n verse create secret generic verse-issuer --from-file=issuer.pem=<(openssl genrsa 2048)
+  runnerTokens: true

@@ -8,7 +8,8 @@
 # select it alone, so it can be removed on its own and the runner the charters name goes on
 # untouched. Verse learns about it the same way:
 #
-#   verse runner add codex http://codex-runner:9802 --identity codex-runner
+#   verse runner add codex http://codex-runner:9802 --identity codex-runner \
+#     --subject system:serviceaccount:verse:codex-runner
 #
 # Everything about the pod that is bubblewrap's — hostUsers, procMount, seccompProfile — is as
 # deploy/verse-runner/verse-runner.yaml has it, and explained there.
@@ -20,6 +21,9 @@ metadata:
 data:
   verse-runner.tony: |
     listen: ":9802"
+    # The one verse this runner serves is not here: the `runnerTokens` patch (deploy/build.tony)
+    # names it in the pod's environment, VERSE_URL and VERSE_ISSUER, from the `issuer` knob,
+    # since this file is every cluster's.
     shellEnv: [PATH, HOME, USER, LANG]
     repos:
       mirrors: /state/mirrors
@@ -146,7 +150,8 @@ spec:
         - {name: config, mountPath: /config, readOnly: true}
         - {name: state, mountPath: /state}
         readinessProbe:
-          httpGet: {path: /describe, port: control}
+          # The server up, and nothing else (deploy/verse-runner, the same probe).
+          httpGet: {path: /ready, port: control}
           initialDelaySeconds: 2
           periodSeconds: 10
         securityContext:

@@ -247,11 +247,13 @@ should be passed the Service name directly rather than discovering it.
 | `tailscaleTags` | `""` | `tailscale.com/tags` for both; `""` leaves the operator's `tag:k8s` |
 | `secretStore` | `aws-secretsmanager` | the `ClusterSecretStore` every entry below comes from |
 | `llmSecretKey` | `""` | entry for `verse-llm`; `""` emits no `ExternalSecret` |
-| `gitSecretKey` / `slackSecretKey` / `linearSecretKey` / `githubSecretKey` / `runnerSecretKey` / `codexSecretKey` / `claudeSecretKey` | `""` | the same, one per credential |
+| `gitSecretKey` / `slackSecretKey` / `linearSecretKey` / `githubSecretKey` / `runnerSecretKey` / `codexSecretKey` / `claudeSecretKey` / `issuerSecretKey` | `""` | the same, one per credential |
 | `llmModel` | `""` | `OPENAI_MODEL` for versed; `""` leaves the driver's `gpt-4o` |
 | `systemCharter` | `""` | a charter under `deploy/`, mounted into versed and installed at start as the system (`VERSE_SYSTEM_CHARTER`); read at start, so a change takes a restart. Staging: `charters/verse/workspace/Signadot/gate-ask.tony` |
 | `authConfig` | `""` | verse's `auth` block, a file under `deploy/`, mounted into versed as its config (`VERSE_CONFIG`): who verifies people, which iods are trusted for whose accounts, how the iods prove themselves ([Who a request is from](#who-a-request-is-from-authconfig-iotokens)). Staging: `auth/staging.tony` |
 | `iodTokens` | `false` | give the slack, github and git iods a ServiceAccount each and a projected token, so each proves it is the iod (staging and minikube: on) |
+| `runnerTokens` | `false` | give each deployed runner a ServiceAccount and a projected token, and versed its signing key (the `verse-issuer` Secret), so a runner serves its verse alone and proves it is the one registered ([Who a request is from](#who-a-request-is-from-authconfig-iodtokens-runnertokens)). Staging and minikube: on |
+| `issuer` | `http://verse:9797` | the name versed's tokens are issued under, the auth file's `auth.issuer.url`: what each runner holds versed's tokens to (`VERSE_ISSUER`). The runners read the keys at versed's in-cluster url, so this is a name |
 | `issuerDiscoveryOpen` | `false` | let anyone reaching the API server read its OpenID discovery and keys, which versed needs where the cluster itself is the iods' issuer (minikube: on; EKS needs none) |
 | `runner` | `false` | deploy the verse runner (its own image; install it with `verse runner add`) |
 | `runnerImage` | `signadot/verse-runner:latest` | its image ref — a tag in another repository is fine |
@@ -420,6 +422,12 @@ succeeds. Each reopens for the next round rather than multiplying. The pieces on
   (`main` unless the entry says `branch`), the address its charters install at and who may
   answer; versed renders and installs the reconciler as the system at start, after
   the iods are restored ([up](../docs/reference/up.md)).
+- **Registrations held to the admin, readable by all.** `repopulate.sh` replaces the rows under
+  `verse.runners` so that `user:admin@verse` alone creates beneath it, and everyone reads the
+  node and what is registered: writing a registration vouches for a runner ([who the runner
+  is](../docs/runners.md#who-the-runner-is)), and on this deployment that is the admin's act.
+  The seed's own row, `owner` beneath `verse.runners` to everyone, is the open verse's and
+  stands on a deployment that skips this.
 - **The git iod** with `-tree .verse/charters -out` (on), registered with its out place
   (`repopulate.sh`), and `child-owner` under `repos` for `agent:git-iod`, so it installs the
   charters as itself. With `gitAsApp` it pushes as the App, which is what lets it move
@@ -469,7 +477,7 @@ cloning one it can reflect nothing from.
 | `linearWebhookHost` | `""` | Ingress host for `/linear/webhook` |
 | `ingressClassName` | `""` | class for both Ingresses; `""` leaves the cluster default |
 
-## Who a request is from (`authConfig`, `iodTokens`)
+## Who a request is from (`authConfig`, `iodTokens`, `runnerTokens`)
 
 Without `authConfig`, a request to versed is whoever its header says, as it has always been on a
 tailnet nobody else reaches. With it, versed verifies people and its own iods
@@ -493,8 +501,27 @@ tailnet nobody else reaches. With it, versed verifies people and its own iods
   bundle every pod has mounted) and `issuerDiscoveryOpen` lets versed read the discovery
   document, which such a cluster otherwise grants to service accounts alone.
   `deploy/auth/minikube.tony` and the minikube profile are the worked example.
+- **`runnerTokens`** does the same for the runners (`deploy/runner-tokens`), and gives versed
+  the other half: the two prove themselves to each other at the describe ([who the runner
+  is](../docs/runners.md#who-the-runner-is)). A runner's token has the audience `verse`: it
+  answers it on the describe to the verse it verified and presents it at versed's door, and
+  `verse runner add -subject system:serviceaccount:verse:<runner>` holds the registration to
+  it, as `repopulate.sh` does for `verse-runner`. Versed's token toward a runner is one it signs
+  itself, as the issuer the auth file's `auth.issuer` makes it, with the `verse-issuer` Secret
+  this patch mounts (`issuerSecretKey`, or a Secret made by hand on minikube): minted for that
+  runner's subject alone, so a copy taken at one runner opens no other's door. The patch names
+  the verse in each runner's environment, `VERSE_URL`, where it reaches versed and reads its
+  keys, and `VERSE_ISSUER` from the `issuer` knob, the name the tokens are issued under; the
+  audience a runner takes is its own token's subject, so nothing is typed per runner. The
+  description stays public. Each runner announces itself at start, in a loop until versed knows
+  it, and versed describes it then and there. A pod's readiness (`GET /ready`) is its server and
+  nothing else, so the ship and the registrations may come in either order: `verse runner add
+  <name> <url> -identity <name> -subject system:serviceaccount:verse:<name>` for each runner
+  after `make ship-runners` is answered by the new pod's handshake, and before it (`--no-probe`,
+  since the old pods cannot answer) is caught up by the new pod's hello within its backoff. A
+  runner pod with no token answers none, and the add is refused rather than the first spawn.
 
-Each iod's ServiceAccount carries the pull secret the way `default` does: the `imagePullSecret`
+Each ServiceAccount here carries the pull secret the way `default` does: the `imagePullSecret`
 patch covers every ServiceAccount this deploy emits.
 
 ## Credentials
@@ -531,6 +558,7 @@ are the names each consumer reads:
 | `runnerSecretKey` | `verse-runner` | `gitToken` | env (`GITHUB_TOKEN`), in the runners and never in the sandbox |
 | `codexSecretKey` | `verse-codex` | `OPENAI_API_KEY` | env, in the codex runner, `optional: true` — a runner without it starts, and its first codex spawn fails; written as each task's Codex login |
 | `claudeSecretKey` | `verse-claude` | `ANTHROPIC_API_KEY` | env, in the claude runner, `optional: true` — a runner without it starts, and its first claude spawn fails, not logged in; handed to each task's claude process |
+| `issuerSecretKey` | `verse-issuer` | `issuer.pem`, an RSA private key in PEM (`openssl genrsa 2048`) | a **file** at `/etc/verse/issuer/issuer.pem`, read by versed alone: what it signs its own tokens with, the gate credential and the token toward each runner |
 
 ### Creating the entries
 
@@ -569,7 +597,13 @@ put staging/verse/codex /tmp/e.json
 printf '{"ANTHROPIC_API_KEY":"%s"}' "$key" > /tmp/e.json
 put staging/verse/claude /tmp/e.json
 
-rm -f /tmp/e.json
+# `issuer.pem` is a FILE versed reads, a multi-line PEM: jq carries its newlines into the JSON
+# string, and nobody but versed ever sees the private half.
+openssl genrsa -out /tmp/issuer.pem 2048
+jq -n --rawfile pem /tmp/issuer.pem '{"issuer.pem": $pem}' > /tmp/e.json
+put staging/verse/issuer /tmp/e.json
+
+rm -f /tmp/e.json /tmp/issuer.pem
 ```
 
 Rotating one later is `put-secret-value --secret-id <name>` instead of `create-secret`; ESO
@@ -740,11 +774,13 @@ install it.
 ```sh
 make runner-push IMAGE_ARCH=amd64 RUNNER_IMAGE=example/verse-staging:runner
 make deploy PROFILE=staging E='-e runner=true -e runnerImage=example/verse-staging:runner'
-verse runner add verse-runner http://verse-runner:9802 -identity verse-runner    # it acts as runner:verse-runner; default: its name
+verse runner add verse-runner http://verse-runner:9802 -identity verse-runner \
+  -subject system:serviceaccount:verse:verse-runner    # it acts as runner:verse-runner, and proves it is the pod
 ```
 
 The install's name is what the charters spawn on (`runner: verse.runners.verse-runner`), and the
-url is the Service.
+url is the Service. The subject is its pod's ServiceAccount (`runnerTokens`): the add is the
+handshake, and a pod that answers no token, or another's, is refused there.
 
 That last line is the install, and it probes — so `reach: "a runner"` is the deployment's own
 acceptance test, and the first thing that exercises bubblewrap on the node. As with an iod,
@@ -767,7 +803,8 @@ same value as `llmModel`. It fails at the first spawn rather than at deploy.
 the store entry `codexSecretKey` names ([Credentials](#credentials)), or made by hand where the
 knob is empty (`kubectl -n verse create secret generic verse-codex
 --from-literal=OPENAI_API_KEY=<key>`); it pushes with the same token. Install it as `verse runner add codex http://codex-runner:9802
---identity codex-runner`, and spawn on it with `runner: verse.runners.codex`.
+--identity codex-runner --subject system:serviceaccount:verse:codex-runner`, and spawn on it with
+`runner: verse.runners.codex`.
 
 **The claude runner** (`claude-runner`) is the same runner in an image with Claude Code pinned
 in it (`deploy/claude-runner`), offering the claude agent. Its credential is the `verse-claude`
@@ -775,8 +812,8 @@ Secret, from the store entry `claudeSecretKey` names ([Credentials](#credentials
 hand where the knob is empty (`kubectl -n verse create secret generic verse-claude
 --from-literal=ANTHROPIC_API_KEY=<key>`): an API key of the Console workspace the work is
 billed to. It pushes with the same token the verse runner does. Install it as `verse runner add claude
-http://claude-runner:9802 --identity claude-runner`, and spawn on it with `runner:
-verse.runners.claude`.
+http://claude-runner:9802 --identity claude-runner --subject system:serviceaccount:verse:claude-runner`,
+and spawn on it with `runner: verse.runners.claude`.
 
 ⚠️ **It needs three things from the pod spec, and each was found by a spawn refusing itself.**
 `hostUsers: false`, `procMount: Unmasked`, `seccompProfile: Unconfined` — in that order of

@@ -136,6 +136,7 @@ build:
     runnerSecretKey: ""
     codexSecretKey: ""
     claudeSecretKey: ""
+    issuerSecretKey: ""
     # Comma-separated grantees who may take a top-level place (`scott@example.com,agent:ops`).
     # "" is the open verse. See the patch below for how it reaches versed, and what changing it
     # on a running verse takes.
@@ -162,12 +163,13 @@ build:
     # The codex runner beside it: the same runner in an image with Codex in it, offering the codex
     # agent, with its own credential (the verse-codex Secret, from the entry codexSecretKey
     # names). Installing it is
-    # `verse runner add codex http://codex-runner:9802`.
+    # `verse runner add codex http://codex-runner:9802 --subject system:serviceaccount:verse:codex-runner`.
     codexRunner: false
     codexRunnerImage: "signadot/verse-runner:codex"
     # The claude runner, the same way: the runner in an image with Claude Code in it, offering
     # the claude agent, with its own credential (the verse-claude Secret, from the entry
-    # claudeSecretKey names). Installing it is `verse runner add claude http://claude-runner:9802`.
+    # claudeSecretKey names). Installing it is `verse runner add claude http://claude-runner:9802
+    # --subject system:serviceaccount:verse:claude-runner`.
     claudeRunner: false
     claudeRunnerImage: "signadot/verse-runner:claude"
 
@@ -277,6 +279,22 @@ build:
     # The token's subject is system:serviceaccount:<namespace>:<iod>, which `auth.iod.accounts` in
     # the auth config maps to the iod's principal. The cluster is the issuer.
     iodTokens: false
+    # Versed and its runners prove themselves to each other (deploy/runner-tokens; docs/runners.md,
+    # "Who the runner is"). Each deployed runner gets a ServiceAccount and a projected token,
+    # audience `verse`, which it answers on the describe and presents at versed's door, and which
+    # its registration's `subject` is held to (`verse runner add -subject
+    # system:serviceaccount:verse:verse-runner`, as repopulate.sh does); the cluster is the issuer,
+    # as for the iods. Versed proves itself the other way: it is an issuer of its own (the auth
+    # file's `auth.issuer`, signing with the verse-issuer Secret this mounts into it), and presents
+    # to each runner a token minted for that runner alone, so a runner serves this verse and no
+    # other, and a token taken at one runner opens no other's door. Off by default; a runner
+    # registered without a subject is taken at its word.
+    runnerTokens: false
+    # The name versed's tokens are issued under, `auth.issuer.url` in the auth file, which each
+    # runner holds them to (VERSE_ISSUER). The runner reads the keys at versed's in-cluster url,
+    # so this is a name, and the in-cluster url is the plain choice where nothing outside the
+    # cluster verifies versed's tokens.
+    issuer: "http://verse:9797"
 
   sources:
   # Namespace first — kubectl applies the stream in order, so namespaced resources must not
@@ -303,6 +321,9 @@ build:
     dir: system-charter
   - if: '.[ authConfig != "" ]'
     dir: auth-config
+  # Before versed and the runners, since a pod names its ServiceAccount when it is created.
+  - if: '.[runnerTokens]'
+    dir: runner-tokens
   - dir: source
   # Before the iods, since a pod names its ServiceAccount when it is created.
   - if: '.[iodTokens]'
@@ -492,6 +513,23 @@ build:
       kind: ExternalSecret
       metadata:
         name: verse-claude
+    patch: !delete null
+
+  - if: '.[ issuerSecretKey != "" ]'
+    match:
+      kind: ExternalSecret
+      metadata:
+        name: verse-issuer
+    patch:
+      spec:
+        dataFrom:
+        - extract:
+            key: $[issuerSecretKey]
+  - if: '.[ issuerSecretKey == "" ]'
+    match:
+      kind: ExternalSecret
+      metadata:
+        name: verse-issuer
     patch: !delete null
 
   # The pull secret, onto the `default` ServiceAccount every pod here runs as.
@@ -976,6 +1014,130 @@ build:
             containers: !key(name)
             - name: claude-runner
               imagePullPolicy: $[imagePullPolicy]
+
+  # Versed's signing key (runnerTokens): the verse-issuer Secret, mounted where the auth file's
+  # `auth.issuer.key` reads it. With it versed signs the token it presents to each runner, minted
+  # for that runner's subject alone; without the Secret the pod does not start, which is said in
+  # its log rather than found at the first spawn.
+  - if: '.[runnerTokens]'
+    match:
+      kind: Deployment
+      metadata:
+        name: versed
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: versed
+              volumeMounts: !key(name)
+              - name: verse-issuer
+                mountPath: /etc/verse/issuer
+                readOnly: true
+            volumes: !key(name)
+            - name: verse-issuer
+              secret:
+                secretName: verse-issuer
+
+  # Each runner's own token (runnerTokens): its ServiceAccount, and a projected token with the
+  # audience `verse`, answered on the describe to the verse the runner verified and presented at
+  # versed's door. `runnerd` reads VERSE_TOKEN_FILE as `iod` does. And the verse the runner
+  # serves, which its configuration leaves to the deployment: where it reaches versed and reads
+  # its keys (VERSE_URL), and the name versed's tokens are issued under (VERSE_ISSUER, the
+  # `issuer` knob). The audience the runner takes them for is its own token's subject.
+  - if: '.[ runnerTokens && runner ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: verse-runner
+    patch:
+      spec:
+        template:
+          spec:
+            serviceAccountName: verse-runner
+            containers: !key(name)
+            - name: verse-runner
+              env: !key(name)
+              - name: VERSE_TOKEN_FILE
+                value: /var/run/verse/token
+              - name: VERSE_URL
+                value: http://verse:9797
+              - name: VERSE_ISSUER
+                value: $[issuer]
+              volumeMounts: !key(name)
+              - name: verse-token
+                mountPath: /var/run/verse
+                readOnly: true
+            volumes: !key(name)
+            - name: verse-token
+              projected:
+                sources:
+                - serviceAccountToken:
+                    audience: verse
+                    expirationSeconds: 3600
+                    path: token
+  - if: '.[ runnerTokens && codexRunner ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: codex-runner
+    patch:
+      spec:
+        template:
+          spec:
+            serviceAccountName: codex-runner
+            containers: !key(name)
+            - name: codex-runner
+              env: !key(name)
+              - name: VERSE_TOKEN_FILE
+                value: /var/run/verse/token
+              - name: VERSE_URL
+                value: http://verse:9797
+              - name: VERSE_ISSUER
+                value: $[issuer]
+              volumeMounts: !key(name)
+              - name: verse-token
+                mountPath: /var/run/verse
+                readOnly: true
+            volumes: !key(name)
+            - name: verse-token
+              projected:
+                sources:
+                - serviceAccountToken:
+                    audience: verse
+                    expirationSeconds: 3600
+                    path: token
+  - if: '.[ runnerTokens && claudeRunner ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: claude-runner
+    patch:
+      spec:
+        template:
+          spec:
+            serviceAccountName: claude-runner
+            containers: !key(name)
+            - name: claude-runner
+              env: !key(name)
+              - name: VERSE_TOKEN_FILE
+                value: /var/run/verse/token
+              - name: VERSE_URL
+                value: http://verse:9797
+              - name: VERSE_ISSUER
+                value: $[issuer]
+              volumeMounts: !key(name)
+              - name: verse-token
+                mountPath: /var/run/verse
+                readOnly: true
+            volumes: !key(name)
+            - name: verse-token
+              projected:
+                sources:
+                - serviceAccountToken:
+                    audience: verse
+                    expirationSeconds: 3600
+                    path: token
 
   # The source connectors. One image, three roles: these run `iod`, versed runs `verse`,
   # docd runs `o`. Each patch below re-emits the whole `command`, because that is what a list
