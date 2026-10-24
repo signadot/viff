@@ -1,6 +1,7 @@
 !issue
 blocked_by: []
-blocks: []
+blocks:
+- pf6fwh8gh12ksgzdvhn0
 branches: []
 commits: []
 created: "2026-10-24T10:07:45.556329+02:00"
@@ -9,4 +10,4 @@ id: pb6fwh8gh12krmb7vhn0
 labels: []
 related_issues: []
 status: open
-updated: "2026-10-24T10:07:45.556329+02:00"
+updated: "2026-10-24T19:42:13.335945+02:00"
