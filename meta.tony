@@ -6,7 +6,9 @@ commits: []
 created: "2026-10-24T13:30:05.665974+02:00"
 duplicates: []
 id: yw5vx3z2h12ksfcpvhn0
-labels: []
+labels:
+- github
+- iod
 related_issues: []
 status: open
-updated: "2026-10-24T13:30:05.665974+02:00"
+updated: "2026-10-24T13:30:05.769774+02:00"
