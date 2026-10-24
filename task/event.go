@@ -272,7 +272,7 @@ func (p *Task) emitTerminal(why Status) {
 	already := p.ended
 	p.busMu.Unlock()
 	if !already {
-		p.emit(Event{Kind: EventStatus, Text: string(why)})
+		p.emit(Event{Kind: EventStatus, Text: string(why), Err: p.Err()})
 	}
 }
 

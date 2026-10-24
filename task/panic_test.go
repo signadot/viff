@@ -141,15 +141,27 @@ func TestAPanickingRootFailsTheTaskAndStillSaysSo(t *testing.T) {
 	if !strings.Contains(p.Err(), "panicked") {
 		t.Errorf("the entity would carry no account of why: %q", p.Err())
 	}
-	var terminal bool
+	terminalSaysWhy(t, ch, "panicked")
+}
+
+// terminalSaysWhy drains a task's stream and checks it ended with a terminal frame carrying the
+// reason. The mirror projects a task's err off that frame; a frame without it left a failed
+// task's entity with its result and no err, and a charter's onFailed binding $err wrote nothing
+// (zm5vx3z2h12ks5x8vhn0).
+func terminalSaysWhy(t *testing.T, ch <-chan Event, why string) {
+	t.Helper()
+	var terminal *Event
 	for f := range ch { // the stream ENDS after the terminal, so this drains and stops
 		if f.Kind == EventStatus && Status(f.Text).Terminal() {
-			terminal = true
+			terminal = &f
 		}
 	}
-	if !terminal {
+	if terminal == nil {
 		t.Fatal("the loop died without a terminal frame: every subscriber is left listening to " +
 			"a task that has stopped speaking")
+	}
+	if !strings.Contains(terminal.Err, why) {
+		t.Errorf("the terminal frame's err is %q, want it to say %q", terminal.Err, why)
 	}
 }
 
@@ -160,6 +172,8 @@ func TestAPanickingRootFailsTheTaskAndStillSaysSo(t *testing.T) {
 func TestAPanickingDriverFailsItsOwnTask(t *testing.T) {
 	p := NewTask("t", toolSup(allowAll(), AutoResolver{}), panicDriver{}, &recExec{})
 	p.SetLog(io.Discard)
+	ch, unsub := p.Subscribe()
+	defer unsub()
 	out, err := p.Run(context.Background())
 	if err == nil {
 		t.Fatal("a driver that panicked completed its task")
@@ -170,4 +184,5 @@ func TestAPanickingDriverFailsItsOwnTask(t *testing.T) {
 	if !strings.Contains(err.Error(), "the child fell over") {
 		t.Errorf("the failure does not carry what happened: %v", err)
 	}
+	terminalSaysWhy(t, ch, "the child fell over")
 }

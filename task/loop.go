@@ -457,7 +457,7 @@ func (p *Task) Run(ctx context.Context) (oc Outcome, err error) {
 			err := fmt.Errorf("the loop has nothing to wait for and nothing to do (phase %s): "+
 				"this is a defect in the machine, not a state a task can be in", s.ph)
 			p.setErr(err)
-			p.emit(Event{Kind: EventStatus, Text: string(Failed)})
+			p.emit(Event{Kind: EventStatus, Text: string(Failed), Err: p.Err()})
 			return Outcome{Task: p.ID, Reason: string(Failed), Boundary: s.seq}, err
 		}
 	}
@@ -771,9 +771,11 @@ func (p *Task) converse(msgs []convMsg) {
 
 // teardown is the last thing a run does: unwind the frames bottom-up and emit the terminal.
 func (p *Task) teardown(ctx context.Context, td effTeardown) (Outcome, error) {
-	// Record the reason BEFORE the terminal frame: the mirror projects err off that frame, and
-	// setting it afterwards would leave the durable entity — the only thing a charter can
-	// match or bind — carrying a failed task with no account of why.
+	// Record the reason BEFORE the terminal frame, and put it ON the frame: the mirror projects
+	// err off that frame. Recorded only on the task, it reached the mirror by a second read of
+	// the runner's snapshot, which in the window between this frame and Run returning still
+	// said running and had no err — so a failed claude task's entity carried its result and
+	// no reason, and a charter's onFailed binding $err wrote nothing (zm5vx3z2h12ks5x8vhn0).
 	p.setErr(td.cause)
 	if len(td.frames) > 0 {
 		p.logf("— %s: unwinding %d frame(s)", td.status, len(td.frames))
@@ -781,7 +783,7 @@ func (p *Task) teardown(ctx context.Context, td effTeardown) (Outcome, error) {
 	for i := len(td.frames) - 1; i >= 0; i-- {
 		p.unwind(ctx, td.frames[i])
 	}
-	p.emit(Event{Kind: EventStatus, Text: string(td.status)})
+	p.emit(Event{Kind: EventStatus, Text: string(td.status), Err: p.Err()})
 	out := Outcome{Task: p.ID, Reason: string(td.status), Boundary: td.seq}
 	if td.status == Done {
 		return out, nil

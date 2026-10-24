@@ -1,6 +1,7 @@
 package runnerd
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -107,10 +108,11 @@ func (h *hosted) snapshot() task.Snapshot {
 	}
 	return task.Snapshot{
 		ID: h.task.ID, Prompt: h.prompt, Agent: h.doer, Status: status,
-		// The answer is read live from the driver, not from a copy taken when Run returns: the
-		// terminal frame leaves from inside Run, and a reader it brings (versed's mirror) asks
-		// for the snapshot before Run has returned. The driver has its answer before it ends.
-		Err: h.err, Result: h.task.Result(), Pending: pending, Occurrence: h.occurrence, Settings: taskSettings(h.task),
+		// The answer and the reason are read live from the task, not from a copy taken when Run
+		// returns: the terminal frame leaves from inside Run, and a reader it brings (versed's
+		// mirror) asks for the snapshot before Run has returned. The task has both before it
+		// ends; h.err is for a run that broke without recording one.
+		Err: cmp.Or(h.task.Err(), h.err), Result: h.task.Result(), Pending: pending, Occurrence: h.occurrence, Settings: taskSettings(h.task),
 		Cursor: h.task.Cursor(), // resume the event stream with ?since=<cursor>
 	}
 }
