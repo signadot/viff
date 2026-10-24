@@ -152,6 +152,9 @@ type fakeItem struct {
 	labels   []string
 	// reviews are the reviews posted on a pull request, oldest first.
 	reviews []*fakeReview
+	// reviewers and teams are whom a pull request's review is requested from, by login and
+	// by slug, in the order GitHub happens to answer them.
+	reviewers, teams []string
 }
 
 // fakeReview is one review on a pull request.
@@ -659,6 +662,18 @@ func (i *fakeItem) renderAs(asPull, detail bool) map[string]any {
 		m["base"] = map[string]any{"ref": base, "sha": "bbbb2222"}
 		m["body"] = i.body
 		m["head"] = map[string]any{"ref": i.head, "sha": i.headSHA}
+		// Requested reviewers and teams are on every pulls endpoint, the listing and the single
+		// read alike, so they go here and not under `detail`.
+		reviewers := make([]map[string]any, 0, len(i.reviewers))
+		for _, r := range i.reviewers {
+			reviewers = append(reviewers, map[string]any{"login": r})
+		}
+		teams := make([]map[string]any, 0, len(i.teams))
+		for _, t := range i.teams {
+			teams = append(teams, map[string]any{"slug": t, "name": strings.ToUpper(t)})
+		}
+		m["requested_reviewers"] = reviewers
+		m["requested_teams"] = teams
 		return m
 	}
 	if i.pull {

@@ -681,6 +681,12 @@ func issuePayload(repo string, i issue) entity.Obj {
 //
 // `headSha` is the join to a git source: a `git.<repo>.commit.<sha>` is addressed by the same
 // sha, so "the commit this proposes" is a field read rather than a key anybody minted.
+//
+// `requestedReviewers` and `requestedTeams` are whom a review is WAITING ON, and only that:
+// GitHub drops a reviewer from the list when they submit a review and adds them back when one is
+// requested again, so "my login is in it" is "this waits on me". A reviewer who has reviewed is
+// not here; their reviews are the task verb's to read (github.read-pr), not the reflection's,
+// since they cost a call per pull request per pass.
 func pullPayload(repo string, p pull) entity.Obj {
 	out := entity.Obj{
 		"repo": repo, "number": p.Number, "title": p.Title, "state": p.State,
@@ -709,6 +715,12 @@ func pullPayload(repo string, p pull) entity.Obj {
 	}
 	if logins := userLogins(p.Assignees); len(logins) > 0 {
 		out["assignees"] = logins
+	}
+	if logins := userLogins(p.RequestedReviewers); len(logins) > 0 {
+		out["requestedReviewers"] = logins
+	}
+	if slugs := teamSlugs(p.RequestedTeams); len(slugs) > 0 {
+		out["requestedTeams"] = slugs
 	}
 	return out
 }
@@ -827,6 +839,16 @@ func userLogins(us []user) []string {
 	for _, u := range us {
 		if u.Login != "" {
 			out = append(out, u.Login)
+		}
+	}
+	return sorted(out)
+}
+
+func teamSlugs(ts []team) []string {
+	out := make([]string, 0, len(ts))
+	for _, t := range ts {
+		if t.Slug != "" {
+			out = append(out, t.Slug)
 		}
 	}
 	return sorted(out)

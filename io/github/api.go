@@ -590,6 +590,17 @@ type pull struct {
 	Labels    []label `json:"labels"`
 	Base      *branch `json:"base"`
 	Head      *branch `json:"head"`
+	// RequestedReviewers and RequestedTeams are whom a review is waiting on. Every endpoint a
+	// pull is read from answers both — the listing, the single read and a commit's pulls — so,
+	// unlike Comments, they cannot make one pass's payload differ from another's.
+	RequestedReviewers []user `json:"requested_reviewers"`
+	RequestedTeams     []team `json:"requested_teams"`
+}
+
+// team is a team a review was requested from. Slug is its identity at the forge, unqualified:
+// `platform`, not `acme/platform` — the second half of an `@acme/platform` mention.
+type team struct {
+	Slug string `json:"slug"`
 }
 
 type branch struct {

@@ -960,6 +960,10 @@ func TestAFullPassAndATargetedPassAgree(t *testing.T) {
 	r := f.repo("acme/app")
 	p := r.pr(7, "a change", "closed", "2026-01-01T00:00:00Z", "cafe1234")
 	p.comments = 4
+	// Unsorted on purpose, as the labels test's are: the payload's order is the source's
+	// contract, so a re-read in GitHub's other order is not a change.
+	p.reviewers = []string{"zed", "ana"}
+	p.teams = []string{"platform", "infra"}
 	i := r.issue(8, "an issue", "open", "2026-01-02T00:00:00Z")
 	i.comments = 2
 	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
@@ -990,6 +994,14 @@ func TestAFullPassAndATargetedPassAgree(t *testing.T) {
 			t.Fatalf("%s differs between a full pass and a targeted one:\n  full     %v\n  targeted %v",
 				tc.ref, want, got)
 		}
+	}
+	// Whom a review waits on is on both passes, sorted, logins and slugs as GitHub names them.
+	pr := whole[`github.acme.app.pr."7"`]
+	if got := fmt.Sprint(pr["requestedReviewers"]); got != "[ana zed]" {
+		t.Fatalf("requestedReviewers = %s, want [ana zed]", got)
+	}
+	if got := fmt.Sprint(pr["requestedTeams"]); got != "[infra platform]" {
+		t.Fatalf("requestedTeams = %s, want [infra platform]", got)
 	}
 	// And a pull request carries no comment COUNT, which is what the two listings being
 	// windowed separately made unsafe: a closed PR can sit inside the pulls window and past the

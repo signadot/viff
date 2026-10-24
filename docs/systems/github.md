@@ -11,9 +11,13 @@ discussions, workflow runs and comments.
 
 | Entity | What it is |
 |---|---|
-| `github.<org>.<name>.pr.<n>` | a pull request: its state, base, head and sha, its checks, labels and assignees |
+| `github.<org>.<name>.pr.<n>` | a pull request: its state, base, head and sha, its checks, labels and assignees, and whom a review is waiting on (`requestedReviewers`, `requestedTeams`) |
 | `github.<org>.<name>.run.<id>` | a workflow run: its status, conclusion, branch and sha |
 | `github.<org>.<name>.comment.<n>.<id>` | a comment, on the pull request or issue that `on` names |
+
+`requestedReviewers` holds a person until they submit a review, and again when one is requested
+of them anew, so a login in it means the pull request is waiting on that person. Their reviews
+are not reflected: a task reads them with `github-read-pr`.
 
 A rule reacts to a pull request as it reacts to any entity. Its `checks` is what CI last said
 about its head: the newest run's conclusion (`success`, `failure`) or what it is still doing
