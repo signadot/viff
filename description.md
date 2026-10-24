@@ -1,0 +1,5 @@
+# github system: a task that only reads pull requests must check the repository out
+
+The github system's tools are offered for the repositories the task's `git` block checks out (`repoTools` takes the workspace's trees), and `github-issue` follows the same rule. That is right for `create-pr` and `update-pr`, which propose a branch the task pushed. It is not needed for `list-prs` and `read-pr`, which read the forge and touch no tree: a task that only reads pull requests (the stale-review alert, ENG-1296) has to check the repository out to be offered them.
+
+Follow-up to the read verbs. Shape it would take: a `github` block names its repositories itself, and a read verb is offered for one with no checkout; the write verbs keep requiring the tree. Touches the tool offering, the launch's validation of a `github` block against its `git` block, and the runner's check that the repository is in the workspace.
