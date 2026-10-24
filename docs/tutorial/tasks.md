@@ -107,8 +107,8 @@ docket, and you answer it the same way. If nobody answers in ten minutes, the an
 command never runs, and the agent hears the refusal and plans again.
 
 `run --attach` streams the transcript and asks you in the terminal. Anyone the gate waits on can
-answer it from anywhere by its id, and anyone who may read the task can watch it and steer it: in
-a shared verse that is the team, not only whoever started the run.
+answer it from anywhere by its id; anyone who may read the task can watch it, and anyone who holds
+control over it can steer it: in a shared verse that is the team, not only whoever started the run.
 [The autonomy](../reference/tasks.md#the-autonomy) has the rows in full.
 
 ## The answer

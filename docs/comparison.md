@@ -58,7 +58,7 @@ three tools and for verse.
 |---|---|
 | GitHub Actions | the repository's: a workflow runs under the repository's token |
 | Temporal | the service's: workers run under the service's identity |
-| an agent framework | one process, run by one person |
+| an agent framework | one process, with the identity its author gave it |
 | **verse** | a team's: one shared store, every act under a person's or an agent's own name, and the work visible and steerable by whoever holds the permission |
 
 **What is kept afterwards?**

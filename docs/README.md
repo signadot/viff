@@ -12,11 +12,11 @@ Verse is not a programming language, and it is not an agent. It is a small runti
 coordinates the agents and tools you already have, under rules you write, and it keeps a record
 of every decision. The rules are the same for one agent or for many.
 
-One verse is shared by a team or an organization. Everything in it is done under a user's
-identity: a write, a task, an answer, each says who. A question goes to the people it names,
-and they answer from wherever they are: the CLI, Slack, a pull request. A task one person
-started is visible to everyone who may read it, and anyone with the permission steers it. Verse
-is not a personal automation, and no one person is its orchestrator.
+One verse is shared by a team or an organization. Everything in it is done under a name, a
+person's, an agent's or a runner's: a write, a task, an answer, each says who. A question goes
+to the people it names, and they answer from wherever they are: the CLI, Slack, a pull request.
+A task one person started is visible to everyone who may read it, and whoever holds control over
+it steers it. Verse is not a personal automation, and no one person is its orchestrator.
 
 ## [Basic concepts](concepts.md)
 

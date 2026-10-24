@@ -75,11 +75,10 @@ A **principal** is a person by email, a runner by its name, an agent, or the sys
 verse itself. Every request and every firing writes as a principal.
 
 A verse is one shared space. Every person on the team, every runner and every agent acts in it
-under their own name, so the record of a task or of an answer says who, and the permissions say
-who may read or steer what. Nothing in verse is one person's process: a task a colleague started
-is on your `verse task` too, if you may read it, and the question it asks waits on whoever it
-names.
-
+under their own name, so the record of a task or of an answer says who, and the permissions say who
+may read what and who may steer it. Nothing in verse is one person's process: a task a colleague
+started is on your `verse task` too, if you may read it, and the question it asks waits on whoever
+it names.
 Every node in the store has one owner. Anybody else acts on it by a *grant* that the owner
 writes. A charter acts as its owner, and reads only what its owner may read.
 [Permissions](perms.md) has the model.

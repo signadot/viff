@@ -60,10 +60,9 @@ what `--due` asked for. If nobody answers by then, the answer is no.
 ## Answer
 
 Only somebody the ask is put to may answer. In a shared verse, Ana answers from her own CLI, or
-from Slack, where the Slack iod carries the question to her and her reply back. On a verse on
-your own machine, `--as` says who is answering, and verse takes the name as given; a deployment
-authenticates you instead.
-
+from Slack, where a charter has the Slack iod carry the question to her and her reply back. On a
+verse on your own machine, `--as` says who is answering, and verse takes the name as given; a
+deployment authenticates you instead.
 ```sh
 verse question deploy-b8a7d6bea9e3 --answer proceed --as bob@example.com
 # answer proceed: 403 Forbidden: refused: user:bob@example.com holds nothing at verse.ask.deploy-b8a7d6bea9e3 …
