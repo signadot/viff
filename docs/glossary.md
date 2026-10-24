@@ -11,7 +11,8 @@ name means several things, each meaning has its own entry, with a qualifier in p
 ### store
 
 The store is the one tree in which a verse keeps its data. It is durable, and it can be
-watched.
+watched. One store is shared by everyone in the verse, people and agents, and every commit to it
+names who made it.
 
 Also written: entity store, entity-verse, the verse.
 

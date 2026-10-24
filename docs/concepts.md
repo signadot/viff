@@ -33,7 +33,7 @@ through the store, not through a scheduler.
 | Term | What it is |
 |---|---|
 | **entity** | anything the work refers to: a pull request, a build, a person. It has an address and a payload. |
-| **store** | the shared log of entities. You can watch it, and every commit has a revision. |
+| **store** | the shared log of entities, one for the whole team. Anyone may watch it, and every commit has a revision and an author. |
 | **trigger**, or **rule** | one rule of a charter: when the condition holds and the gates pass, the action fires. |
 | **gate** | what a firing must pass: `auto` or `ask`. |
 | **action** | what a rule does. It is data, not code. |
@@ -73,6 +73,12 @@ A **task** runs on a runner. You can watch it and steer it. A task is also an en
 
 A **principal** is a person by email, a runner by its name, an agent, or the system, which is
 verse itself. Every request and every firing writes as a principal.
+
+A verse is one shared space. Every person on the team, every runner and every agent acts in it
+under their own name, so the record of a task or of an answer says who, and the permissions say
+who may read or steer what. Nothing in verse is one person's process: a task a colleague started
+is on your `verse task` too, if you may read it, and the question it asks waits on whoever it
+names.
 
 Every node in the store has one owner. Anybody else acts on it by a *grant* that the owner
 writes. A charter acts as its owner, and reads only what its owner may read.

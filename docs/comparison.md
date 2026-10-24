@@ -52,6 +52,15 @@ three tools and for verse.
 | an agent framework | an approval node the author added |
 | **verse** | a gate on the rule or on the task, with named answerers, a threshold and a deadline; or a hold or a suspension at any time |
 
+**Whose is it?**
+
+| | |
+|---|---|
+| GitHub Actions | the repository's: a workflow runs under the repository's token |
+| Temporal | the service's: workers run under the service's identity |
+| an agent framework | one process, run by one person |
+| **verse** | a team's: one shared store, every act under a person's or an agent's own name, and the work visible and steerable by whoever holds the permission |
+
 **What is kept afterwards?**
 
 | | |

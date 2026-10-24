@@ -14,9 +14,12 @@ carries what a rule writes back out to the system: a comment, a tag, a message.
 [Runners](../runners.md) do the work of tasks. An operator installs iods and runners for you.
 The charters are yours.
 
-Every command in the tutorial runs on a verse on your own machine. Each page sets up the data it
-reads. The few runs that go to an agent need a model key, and each page says which. The
-[basic concepts](../concepts.md) cover the same ground in summary.
+Every command in the tutorial runs on a verse on your own machine. It stands in for the shared verse
+a team runs: there, the people an ask names are your colleagues, they answer from their own machines
+or from Slack, and what you start they can see and steer. Here you are everyone, and `--as` lets you
+answer as them. Each page sets up the data it reads. The few runs that go to an agent need a model
+key, and each page says which. The [basic concepts](../concepts.md) cover the same ground in
+summary.
 
 ## Start
 

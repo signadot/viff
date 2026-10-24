@@ -1,7 +1,9 @@
 # verse
 
 Verse is a small runtime. It governs software delivery work across systems that you do not
-own, and you choose how much of that work agents do without asking.
+own, and you choose how much of that work agents do without asking. One verse is shared by a
+team: everyone in it, and every agent, acts under their own name, and whoever holds the
+permission sees and steers the work.
 
 You install a *charter*. A charter is a list of rules, and each rule has an event, a condition
 and an action. Verse keeps a shared store of *entities*, which anyone may observe. When an

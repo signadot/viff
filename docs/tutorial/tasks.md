@@ -106,9 +106,10 @@ The question is an ask like the ones on [the questions page](questions.md). It i
 docket, and you answer it the same way. If nobody answers in ten minutes, the answer is no: the
 command never runs, and the agent hears the refusal and plans again.
 
-`run --attach` streams the transcript and asks you in the terminal. You can also answer the same
-gate from anywhere by its id. [The autonomy](../reference/tasks.md#the-autonomy) has the rows
-in full.
+`run --attach` streams the transcript and asks you in the terminal. Anyone the gate waits on can
+answer it from anywhere by its id, and anyone who may read the task can watch it and steer it: in
+a shared verse that is the team, not only whoever started the run.
+[The autonomy](../reference/tasks.md#the-autonomy) has the rows in full.
 
 ## The answer
 

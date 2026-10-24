@@ -253,12 +253,14 @@ steps.
 
 ## Your own charters
 
-You have the four parts now. A charter of your own is made of the same kinds of rule, over
-your own data. On real systems the shapes stay the same. [Iods](../io.md) connect verse to a
-repository, a forge or a chat workspace: they write the entities, and they carry what a rule
-writes back out to the system. Tasks run agents on [runners](../runners.md), with an environment in
-the spawn that says what the task may reach, and an autonomy that says what it does unasked. An irreversible step is behind a gate with named
-answerers and a deadline.
+You have the four parts now. A charter of your own is made of the same kinds of rule, over your own
+data. On real systems the shapes stay the same, and the verse is shared: a charter you install acts
+under your name, its gates reach the colleagues they name wherever they are, and the tasks it starts
+are on the task list of everyone who may read them. [Iods](../io.md) connect verse to a repository,
+a forge or a chat workspace: they write the entities, and they carry what a rule writes back out to
+the system. Tasks run agents on [runners](../runners.md), with an environment in the spawn that says
+what the task may reach, and an autonomy that says what it does unasked. An irreversible step is
+behind a gate with named answerers and a deadline.
 
 - [Charters, continued](charters-2.md) has the rest of what a rule can say: the backlog, the
   latch, steps in order, a cause rather than a condition. It keeps a charter in a file, finds
