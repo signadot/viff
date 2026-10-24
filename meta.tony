@@ -6,7 +6,10 @@ commits: []
 created: "2026-10-24T22:52:15.028133+02:00"
 duplicates: []
 id: 046bx3z2h12krzrtvnn0
-labels: []
+labels:
+- design
+- io
+- slack
 related_issues: []
 status: open
-updated: "2026-10-24T22:52:15.028133+02:00"
+updated: "2026-10-24T22:52:15.159678+02:00"
