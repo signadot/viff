@@ -6,7 +6,9 @@ commits: []
 created: "2026-10-24T14:24:33.902428+02:00"
 duplicates: []
 id: zc5vx3z2h12ks0d3vhn0
-labels: []
+labels:
+- flaky
+- test
 related_issues: []
 status: open
-updated: "2026-10-24T14:24:33.902428+02:00"
+updated: "2026-10-24T14:24:34.008968+02:00"
