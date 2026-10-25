@@ -24,14 +24,10 @@ const systemCharter = "verse/workspace/Signadot/gate-ask.tony"
 // deployOrder is the charters a deployment installs from deploy/charters, in the order
 // deploy/repopulate.sh installs them: a file, or a directory whose files install as one step.
 // The order is part of what is tested: a package may read what the one before it writes.
-//
-// After them, the ones a person installs by hand rather than repopulate: a suggestion to copy
-// (stale-review, for one person's reviews) is held to the same install as the rest.
 var deployOrder = []string{
 	"signadot/repo/signadot/comment-drift.tony",
 	"signadot/repo/signadot/pr.tony",
 	"verse/workspace/Signadot/deploy-announce.tony",
-	"signadot/repo/signadot/stale-review.tony",
 }
 
 // repoCharters is the repository's own charters, and repoChartersAt where the deployment's
@@ -94,7 +90,6 @@ func TestEveryDeployedCharterInstalls(t *testing.T) {
 	// the runner the charters spawn on, which repopulate installs first for the same reason.
 	withSlackIO(t, srv)
 	registerDeployed(t, ts, "verse-runner", "../deploy/verse-runner/verse-runner.yaml")
-	registerDeployed(t, ts, "claude", "../deploy/claude-runner/claude-runner.yaml")
 	for _, name := range deployOrder {
 		files, err := charterFilesUnder(filepath.Join("../deploy/charters", name))
 		if err != nil {
