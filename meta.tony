@@ -6,7 +6,8 @@ commits: []
 created: "2026-10-25T22:23:46.349358+01:00"
 duplicates: []
 id: pk6fwh8gh12krrkkvsn0
-labels: []
+labels:
+- deploy
 related_issues: []
 status: open
-updated: "2026-10-25T22:23:46.349358+01:00"
+updated: "2026-10-25T22:23:46.435807+01:00"
