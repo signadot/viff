@@ -1,0 +1,7 @@
+# deploy: the iods report a second charters directory, `running`, for a repository of nothing but charters
+
+The git iod and the github iod each take one `-tree` today, `.verse/charters`: the directory a code repository keeps its charters in, beside the code. `signadot/verse-charters`, the repository that holds the organisation's charters and nothing else, keeps them at the top level in `running`, since there is no code for them to sit beside.
+
+Both iods take a repeatable `-tree`, and the repo-charters entry's `tree` names which directory a repository's approval keys on. So the change is a second flag on each iod in `deploy/build.tony`, `-tree running`, and the deploy README saying so. A ref without the directory carries the empty tree under `tree.running`, and a pull request reports only the directories it changes, so the five code repositories are unaffected: nothing on them ever says `changes.running`.
+
+Not in this change: the `repoCharters` entry for verse-charters (`at: signadot, tree: running`), which prunes `signadot.*` and so waits on the two hand-installed charters there moving into the repository; and the repository in the iods' mirrors, which waits on the repository existing on GitHub.
