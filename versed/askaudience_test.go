@@ -77,11 +77,11 @@ func TestAnAskToWhoCannotReadItsSubjectIsRefused(t *testing.T) {
 	srv, ts := shortKeep(t, askKeepDefault)
 	pr := alicesPR(t, srv)
 
-	resp := ask(t, "alice@example.com", ts.URL, `{name: land, question: "land it?", answerers: [bob@example.com], about: "demo.pr.\"1\""}`)
+	resp := ask(t, "alice@example.com", ts.URL, `{name: land, question: "land it?", to: [bob@example.com], about: "demo.pr.\"1\""}`)
 	if resp.StatusCode != http.StatusForbidden || !strings.Contains(bodyOf(t, resp), "user:bob@example.com may not read") {
 		t.Fatalf("alice asked bob about a pr he may not read: %s: %s", resp.Status, bodyOf(t, resp))
 	}
-	resp = ask(t, "bob@example.com", ts.URL, `{name: land, question: "land it?", answerers: [carol@example.com], about: "demo.pr.\"1\""}`)
+	resp = ask(t, "bob@example.com", ts.URL, `{name: land, question: "land it?", to: [carol@example.com], about: "demo.pr.\"1\""}`)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("bob asked about a pr he may not read: %s", resp.Status)
 	}
@@ -101,7 +101,7 @@ func TestAnAskToWhoCannotReadItsSubjectIsRefused(t *testing.T) {
 		t.Fatalf("a firing asked bob about a pr he may not read: %v", err)
 	}
 
-	id := askID(t, ask(t, "alice@example.com", ts.URL, `{name: land, question: "land it?", answerers: [carol@example.com], about: "demo.pr.\"1\""}`))
+	id := askID(t, ask(t, "alice@example.com", ts.URL, `{name: land, question: "land it?", to: [carol@example.com], about: "demo.pr.\"1\""}`))
 	posed(t, srv, mirror.AskRef(id))
 	if err := entity.SetLevel(srv.Store, pr, entity.Read, nil); err != nil {
 		t.Fatal(err)

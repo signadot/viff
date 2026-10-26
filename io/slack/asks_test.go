@@ -22,7 +22,7 @@ const ani = "user:ani@example.com"
 func (r *socketRig) askAni(t *testing.T) string {
 	t.Helper()
 	resp, err := client.New(r.addr, "user:scott@example.com").Post("/asks", nil, verseapi.Ask{
-		Name: "land", Question: "Merge verse/ask?", Answerers: []string{ani},
+		Name: "land", Question: "Merge verse/ask?", To: []string{ani},
 		Then: entity.Obj{"spawn": entity.Obj{"prompt": "merge verse/ask to main", "environment": entity.Obj{"systems": entity.Obj{"network": entity.Obj{"mode": "open"}}}}}.Payload(),
 	})
 	if err != nil || resp.StatusCode != http.StatusCreated {
@@ -267,12 +267,12 @@ func TestADMSaysWhatAYesAndANoRun(t *testing.T) {
 		}
 		return asked.ID
 	}
-	ship := post("user:alice@example.com", verseapi.Ask{Name: "ship", Question: "Ship it?", Answerers: []string{"user:scott@example.com"}})
+	ship := post("user:alice@example.com", verseapi.Ask{Name: "ship", Question: "Ship it?", To: []string{"user:scott@example.com"}})
 	id := post("user:scott@example.com", verseapi.Ask{
-		Name: "ui-ok", Question: "Is the UI ok?", Answerers: []string{ani},
+		Name: "ui-ok", Question: "Is the UI ok?", To: []string{ani},
 		Then: entity.Obj{"answer": entity.Obj{"ask": ship, "choice": "proceed"}}.Payload(),
 		Else: entity.Obj{"ask": entity.Obj{"name": "ship-lead", "question": "Ani said no: ship it?",
-			"answerers": []any{"lead@example.com"}}}.Payload(),
+			"to": []any{"lead@example.com"}}}.Payload(),
 	})
 	r.ask(t, ani, "ui-ok", entity.Obj{"text": "An ask is waiting on you.", "asks": id})
 	r.pass(t)

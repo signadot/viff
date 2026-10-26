@@ -14,7 +14,7 @@ import (
 func TestAnAsksAnswerersAreAListHoweverManyItNames(t *testing.T) {
 	srv, ts := asking(t)
 	const daniel = "user:daniel@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", answerers: [oscar@example.com]}`))
+	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`))
 	posed(t, srv, mirror.AskRef(id))
 	stored := func(when string) {
 		t.Helper()
@@ -22,8 +22,8 @@ func TestAnAsksAnswerersAreAListHoweverManyItNames(t *testing.T) {
 		if err != nil || !ok {
 			t.Fatalf("%s: the ask is not stored: %v", when, err)
 		}
-		if got := entity.Strs(e.Payload, "answerers"); len(got) != 1 || got[0] != "user:oscar@example.com" {
-			t.Fatalf("%s: answerers = %v, want the one name as a list", when, entity.Get(e.Payload, "answerers"))
+		if got := mirror.GranteesTo(e.Payload); len(got) != 1 || got[0] != "user:oscar@example.com" {
+			t.Fatalf("%s: to = %v, want the one name as a list", when, entity.Get(e.Payload, mirror.ToField))
 		}
 	}
 	stored("posed")

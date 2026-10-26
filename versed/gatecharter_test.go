@@ -138,7 +138,7 @@ func TestTheGateCharterAsksWhomAPersonsAskNames(t *testing.T) {
 	defer ts.Close()
 
 	id := askID(t, ask(t, "user:daniel@example.com", ts.URL,
-		`{name: land, question: "Merge verse/ask?", answerers: [ana@example.com]}`))
+		`{name: land, question: "Merge verse/ask?", to: [ana@example.com]}`))
 	var asked map[string]entity.Obj
 	deadline := time.After(10 * time.Second)
 	for len(asked) == 0 {
@@ -296,7 +296,7 @@ func TestAPersonsAskLabelledForAChannelIsStillDMd(t *testing.T) {
 	defer ts.Close()
 
 	id := askID(t, ask(t, "user:daniel@example.com", ts.URL,
-		`{name: land, question: "Merge?", answerers: [ana@example.com], labels: {slack: C123}}`))
+		`{name: land, question: "Merge?", to: [ana@example.com], labels: {slack: C123}}`))
 	var got []entity.Obj
 	for deadline := time.Now().Add(10 * time.Second); len(got) == 0; got = messagesTo(t, srv) {
 		if time.Now().After(deadline) {
@@ -381,5 +381,107 @@ func TestTheGateCharterLeavesDocketQuestionsToTheDocket(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 	if asked := asksIn(t, srv); len(asked) != 0 {
 		t.Errorf("the charter asked %v about a question the docket holds", asked)
+	}
+}
+
+// systemGated is a verse running the shipped charter as the system, as a deployment installs it:
+// only the system's rule reads every ask, a person's and an onward one included.
+func systemGated(t *testing.T) (*Server, *httptest.Server) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "system.tony")
+	if err := os.WriteFile(path, []byte(gateCharter(t)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srv := testServer(t)
+	srv.SystemCharter = path
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	return srv, ts
+}
+
+// messagesAbout is every message the charter wrote about the question id, waiting until there is
+// at least one.
+func messagesAbout(t *testing.T, srv *Server, id string) []entity.Obj {
+	t.Helper()
+	deadline := time.After(10 * time.Second)
+	for {
+		var out []entity.Obj
+		if e, ok, err := srv.Store.Get(entity.RefAt("demo", "out")); err == nil && ok {
+			var walk func(p entity.Payload)
+			walk = func(p entity.Payload) {
+				o := entity.ToObj(p)
+				if to, _ := o["to"].(string); to != "" {
+					if o["asks"] == id {
+						out = append(out, o)
+					}
+					return
+				}
+				for k := range o {
+					if child := entity.Get(p, k); child != nil {
+						walk(child)
+					}
+				}
+			}
+			walk(e.Payload)
+		}
+		if len(out) > 0 {
+			return out
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("the charter wrote nothing about %s", id)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
+// A TASK'S QUESTION REACHES WHOM IT NAMES, under whatever id its runner chose: it is from the
+// task, and the line names the task. One whose id verse did not mint was reached by no rule while
+// who raised it was read off the id.
+func TestTheGateCharterAsksWhomATasksQuestionNames(t *testing.T) {
+	srv, _ := systemGated(t)
+	const id, taskID = "runner-chosen-7", "run-42"
+	mirror.PostQuestion(srv.Store, task.Pending{
+		Question: task.GateQuestion{ID: id, Gate: "push-review", Answerers: []string{"user:ana@example.com"}},
+		Tool:     "git.push",
+	}, taskID)
+	msgs := messagesAbout(t, srv, id)
+	time.Sleep(200 * time.Millisecond)
+	if msgs = messagesAbout(t, srv, id); len(msgs) != 1 || msgs[0]["to"] != "user:ana@example.com" {
+		t.Fatalf("the charter wrote %v about the task's question, want one message to ana", msgs)
+	}
+	if text, _ := msgs[0]["text"].(string); !strings.Contains(text, taskID) || strings.Contains(text, "$") {
+		t.Errorf("the message to ana says %q, want the task that asked, resolved", text)
+	}
+}
+
+// AN ONWARD ASK SAYS WHOM IT ASKS FOR: the resolver raised it, for the party it serves, and the
+// line says both. Once: an onward ask is from a principal as a person's ask is, and the rule for a
+// person's ask leaves it to this one.
+func TestTheGateCharterSaysWhomAnOnwardAskIsFor(t *testing.T) {
+	srv, ts := systemGated(t)
+	if resp := postAs(t, "user:alice@example.com", ts.URL+"/resolvers", "application/tony",
+		`{name: helper, match: {}, method: {driver: service}}`); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("install: %s: %s", resp.Status, bodyOf(t, resp))
+	}
+	if code, msg := grantStatus(t, "user:bob@example.com", ts.URL, "helper", `{}`); code != http.StatusNoContent {
+		t.Fatalf("bob's grant: %d %s", code, msg)
+	}
+	served := askID(t, ask(t, "carol@example.com", ts.URL, `{name: land, question: "land it?", to: [bob@example.com]}`))
+	posed(t, srv, mirror.AskRef(served))
+	onward := askID(t, postAsResolver(t, "user:alice@example.com", "helper", ts.URL+"/asks",
+		`{name: up, question: "should bob land it?", to: [mgr@example.com], serves: `+served+`}`))
+	posed(t, srv, mirror.AskRef(onward))
+
+	msgs := messagesAbout(t, srv, onward)
+	time.Sleep(200 * time.Millisecond)
+	if msgs = messagesAbout(t, srv, onward); len(msgs) != 1 || msgs[0]["to"] != "user:mgr@example.com" {
+		t.Fatalf("the charter wrote %v about the onward ask, want one message to mgr", msgs)
+	}
+	text, _ := msgs[0]["text"].(string)
+	if !strings.Contains(text, "via:verse.resolvers.helper") || !strings.Contains(text, "user:bob@example.com") ||
+		strings.Contains(text, "$") {
+		t.Errorf("the message to mgr says %q, want the resolver and whom it asks for, resolved", text)
 	}
 }

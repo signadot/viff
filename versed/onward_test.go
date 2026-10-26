@@ -82,7 +82,7 @@ func TestAnOnwardAskIsRaisedInsideTheAskItServes(t *testing.T) {
 		return postAsResolver(t, alice, "helper", url+"/asks", body)
 	}
 
-	id := askID(t, raise(`{name: up, question: "should bob land it?", answerers: [mgr@example.com], serves: `+served+`}`))
+	id := askID(t, raise(`{name: up, question: "should bob land it?", to: [mgr@example.com], serves: `+served+`}`))
 	posed(t, srv, mirror.AskRef(id))
 	e, _, _ := srv.Store.Get(mirror.AskRef(id))
 	s, _, _ := srv.Store.Get(mirror.AskRef(served))

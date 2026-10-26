@@ -134,7 +134,9 @@
 // answers what to do next (AccountClaimed). A registration this verse can't decode is listed as
 // a row saying why (`unreadable`), its GET by name answers 500, and its removal takes it out by
 // its name. GET /asks answers each ask as the keys api.AskRecord names, and only those: a check in
-// versed's tests holds every ask they leave to the type, and versed logs a key it drops. A request
+// versed's tests holds every ask they leave to the type, and versed logs a key it drops. Every ask
+// says its parties the same way: who raised it (`from`), whom it is put to (`to`), and who settled
+// it (`by`). A request
 // that is an act is named for the act (Resolve, Say, SetAutonomy, FlowSelect), and says who did it
 // where the act is recorded.
 //

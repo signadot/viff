@@ -15,7 +15,7 @@ import (
 func raiseOnward(t *testing.T, srv *Server, url, served, extra string) string {
 	t.Helper()
 	id := askID(t, postAsResolver(t, "user:alice@example.com", "helper", url+"/asks",
-		`{name: up, question: "should bob land it?", answerers: [mgr@example.com], serves: `+served+extra+`}`))
+		`{name: up, question: "should bob land it?", to: [mgr@example.com], serves: `+served+extra+`}`))
 	posed(t, srv, mirror.AskRef(id))
 	return id
 }

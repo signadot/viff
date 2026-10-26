@@ -77,7 +77,7 @@ func settle(t *testing.T, srv *Server, url, body string) (entity.Ref, string) {
 // A SETTLED ASK GOES AFTER ITS KEEP, and its question with it.
 func TestASettledAskGoesAfterItsKeep(t *testing.T) {
 	srv, ts, clock := keeping(t, 0)
-	ref, qid := settle(t, srv, ts.URL, `{name: land, question: "Merge?", answerers: [oscar@example.com], keep: 2s}`)
+	ref, qid := settle(t, srv, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com], keep: 2s}`)
 	if at, want := expiryOf(t, srv, ref), clock.Now().Add(2*time.Second); !at.Equal(want) {
 		t.Fatalf("expires %s, want 2s after it settled, %s", at, want)
 	}
@@ -95,7 +95,7 @@ func TestASettledAskGoesAfterItsKeep(t *testing.T) {
 // WITHOUT A KEEP, A SETTLED ASK STANDS A WEEK.
 func TestASettledAskStandsAWeekByDefault(t *testing.T) {
 	srv, ts, clock := keeping(t, 0)
-	ref, _ := settle(t, srv, ts.URL, `{name: land, question: "Merge?", answerers: [oscar@example.com]}`)
+	ref, _ := settle(t, srv, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`)
 	if at, want := expiryOf(t, srv, ref), clock.Now().Add(askKeepDefault); !at.Equal(want) {
 		t.Fatalf("expires %s, want a week on, %s", at, want)
 	}
@@ -109,7 +109,7 @@ func TestAnAsksExpiryHoldsAcrossARestart(t *testing.T) {
 	ctx, stop := context.WithCancel(t.Context())
 	first.Start(ctx)
 	ts := httptest.NewServer(first.Handler())
-	ref, _ := settle(t, first, ts.URL, `{name: land, question: "Merge?", answerers: [oscar@example.com], keep: 3s}`)
+	ref, _ := settle(t, first, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com], keep: 3s}`)
 	expiryOf(t, first, ref)
 	first.dropExpiry(ref.Name()) // the timer goes with the process
 	ts.Close()

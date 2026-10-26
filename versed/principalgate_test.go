@@ -56,7 +56,7 @@ func TestAGateNamingPrincipalAsksWhoeverRanTheTask(t *testing.T) {
 func TestAThenTasksOwnQuestionAsksTheAsker(t *testing.T) {
 	srv, ts := askingOn(t, NewWithStore(stepBuilder(t), entitytest.Store(t)))
 	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Land it?", answerers: [oscar@example.com], then: {spawn: {prompt: "true", environment: {systems: {network: {mode: open}, commands: {run: {}}}}, autonomy: `+stepAsksTony+`}}}`))
+	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Land it?", to: [oscar@example.com], then: {spawn: {prompt: "true", environment: {systems: {network: {mode: open}, commands: {run: {}}}}, autonomy: `+stepAsksTony+`}}}`))
 	land := mirror.AskRef(id)
 	posed(t, srv, land)
 	if resp := answerAs(t, davido, ts.URL, id); resp.StatusCode != http.StatusNoContent {

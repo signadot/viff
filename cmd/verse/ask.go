@@ -182,7 +182,7 @@ func newAsk(s askSpec) (api.Ask, error) {
 		if err != nil {
 			return body, err
 		}
-		body.Answerers = to
+		body.To = to
 	}
 	if s.Due != "" {
 		due, err := dateOf(s.Due, time.Now())
@@ -361,7 +361,10 @@ func resolveAsk(c *client.Client, arg string) (entity.Entity, error) {
 func askRow(e entity.Entity) entity.Obj {
 	p := e.Payload
 	row := entity.Obj{"id": e.Ref.Name(), "question": entity.Str(p, "question")}
-	for _, f := range []string{"answerers", "due", "then", "then-answered", "then-asked", "else", "else-answered", "else-asked", "subject", "keep", "expires"} {
+	if to := mirror.GranteesTo(p); len(to) > 0 {
+		row["to"] = to
+	}
+	for _, f := range []string{"due", "then", "then-answered", "then-asked", "else", "else-answered", "else-asked", "subject", "keep", "expires"} {
 		if v := entity.Get(p, f); v != nil {
 			row[f] = v
 		}
@@ -478,7 +481,7 @@ func changeAsk(c *client.Client, arg string, ch askEdit) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	body := api.AskChange{Edit: mirror.EditOf(e.Payload), Due: ch.Due, Answerers: ch.To, Then: ch.Then, Else: ch.Else}
+	body := api.AskChange{Edit: mirror.EditOf(e.Payload), Due: ch.Due, To: ch.To, Then: ch.Then, Else: ch.Else}
 	resp, err := c.Patch("/asks/"+url.PathEscape(e.Ref.Name()), body)
 	if err != nil {
 		return "", fmt.Errorf("ask: %w", err)
@@ -811,7 +814,7 @@ func (w *askWatch) frame(f askFrame, say func(rev, line string)) {
 // where the watch had not met it) and as it stands now (nil once it is gone): asked, asked again,
 // answered, gone.
 func (w *askWatch) saidOfMine(id string, prev, rec entity.Payload, rev string, say func(rev, line string)) {
-	mine := func(p entity.Payload) bool { return p != nil && entity.Str(p, "asker") == w.me }
+	mine := func(p entity.Payload) bool { return p != nil && mirror.PrincipalFrom(p) == w.me }
 	switch {
 	case rec == nil:
 		if mine(prev) {
@@ -896,7 +899,7 @@ func (w *askWatch) waitsOnMe(q entity.Payload) (waits, decided bool) {
 		return true, true
 	}
 	me, err := entity.ParsePrincipal(w.me)
-	if err != nil || entity.Str(q, "asker") == w.me {
+	if err != nil || mirror.PrincipalFrom(q) == w.me {
 		return false, true
 	}
 	decided = true

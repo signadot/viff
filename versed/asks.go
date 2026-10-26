@@ -49,7 +49,9 @@ type askWait struct {
 // and versed waits on it as a task waits on its own question.
 //
 // CHECKED HERE, where the asker is present: the names in the grammar a grant uses, a date in the
-// future, and a `then` of one key this verse knows how to run.
+// future, and a `then` of one key this verse knows how to run. And READ STRICTLY: a key the body
+// does not know is refused, since an ask whose `to` was dropped for being misspelled, or spelled as
+// it once was (`answerers`), names nobody and is put to everyone.
 //
 // THE RECORD BEFORE THE ASK. Who reads an ask, and who answers it, is said on its own record, so
 // the record is written first: an ask is never readable more widely than its asker said, not even
@@ -57,7 +59,7 @@ type askWait struct {
 // somebody else could take is claimed by a record whose ask then failed to land.
 func (s *Server) postAsk(w http.ResponseWriter, r *http.Request) {
 	var body api.Ask
-	if err := codec.Read(r, &body); err != nil {
+	if err := codec.ReadStrict(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -105,7 +107,7 @@ func (s *Server) raiseAsk(store entity.Store, asker string, body api.Ask, now ti
 	}
 	ref := mirror.AskRef(id)
 	// Its asker's record — and a resolver's ask is whoever installed it's, since a resolver acts
-	// as them; `asker` still says the resolver raised it.
+	// as them; `from.principal` still says the resolver raised it.
 	owner := asker
 	if g, err := entity.ParseGrantee(asker); err == nil && g.Kind == entity.ViaKind {
 		if owner, err = entity.OwnerOf(s.Store, entity.RefAt(g.Path...)); err != nil || owner == "" {
@@ -247,17 +249,17 @@ func askRecord(body api.Ask, asker string, now time.Time) (entity.Obj, []string,
 	if strings.TrimSpace(body.Question) == "" {
 		return nil, nil, fmt.Errorf("an ask asks something: question is required")
 	}
-	rec := entity.Obj{"name": body.Name, "asker": asker, "question": body.Question, "edit": 1}
+	rec := entity.Obj{"name": body.Name, mirror.FromField: mirror.FromPrincipal(asker), "question": body.Question, "edit": 1}
 	var answerers []string
-	for _, n := range body.Answerers {
+	for _, n := range body.To {
 		g, err := entity.ParseGrantee(n)
 		if err != nil {
-			return nil, nil, fmt.Errorf("answerers: %w", err)
+			return nil, nil, fmt.Errorf("to: %w", err)
 		}
 		answerers = append(answerers, g.String())
 	}
 	if len(answerers) > 0 {
-		rec["answerers"] = answerers // a list, however many: one shape for every reader
+		rec[mirror.ToField] = entity.Obj{"grantees": answerers}
 	}
 	if body.Due != "" {
 		due, err := time.Parse(time.RFC3339, body.Due)
@@ -330,7 +332,7 @@ func askQuestion(id string, p entity.Payload, about string) task.GateQuestion {
 	q := task.GateQuestion{
 		ID: id, Gate: askGate,
 		Pose: entity.Str(p, "question"), Reason: entity.Str(p, "question"),
-		Subject: about, Answerers: askAnswerers(p), Edit: askEdit(p), Labels: mirror.LabelsOf(p),
+		Subject: about, Answerers: mirror.GranteesTo(p), Edit: askEdit(p), Labels: mirror.LabelsOf(p),
 	}
 	if entity.Get(p, "options") != nil {
 		q.Options = mirror.OptionsOf(p)
@@ -425,25 +427,16 @@ func (s *Server) onward(rec entity.Obj, body api.Ask, asker string) (int, error)
 // (api.AskRecord's Kind): what a restart waits on again and what its asker may withdraw. Words said
 // to a task, a task's question and a firing's gate question are not.
 //
-// A record that does not read as an AskRecord is told by the two keys Kind reads first, `asker`
-// and `saidTo`, so an ask with one bad key is still waited on after a restart and still withdrawn
-// by its asker, which is when the asker most wants it gone.
+// A record that does not read as an AskRecord is told by the two keys Kind reads first, whom it
+// is to and whom it is from, so an ask with one bad key is still waited on after a restart and
+// still withdrawn by its asker, which is when the asker most wants it gone.
 func personsAsk(p entity.Payload) bool {
 	var rec api.AskRecord
 	if codec.FromNode(p, &rec) != nil {
-		return entity.Str(p, "asker") != "" && entity.Str(p, mirror.SaidToField) == ""
+		return mirror.PrincipalFrom(p) != "" && mirror.TaskTo(p) == ""
 	}
 	k := rec.Kind()
 	return k == api.AskKindPerson || k == api.AskKindOnward
-}
-
-// askAnswerers reads whom an ask names: a list, or the one name an ask written before answerers
-// was always a list carries.
-func askAnswerers(p entity.Payload) []string {
-	if one := entity.Str(p, "answerers"); one != "" {
-		return []string{one}
-	}
-	return entity.Strs(p, "answerers")
 }
 
 // awaitAsk waits on a person's ask, as the task that raised a question would: posted through the
@@ -527,7 +520,7 @@ func (s *Server) settleAsk(ref entity.Ref, res task.Resolution) {
 // ask answered with the same ballot, which counts once.
 func (s *Server) carryBack(ref entity.Ref, p entity.Payload) {
 	link := entity.Get(p, servesField)
-	served, asker := entity.Str(link, "id"), entity.Str(p, "asker")
+	served, asker := entity.Str(link, "id"), mirror.PrincipalFrom(p)
 	if served == "" || asker == "" || entity.Str(p, "status") != mirror.QuestionAnswered || entity.Get(p, "carried") != nil {
 		return
 	}
@@ -568,7 +561,7 @@ func (s *Server) followAsk(ref entity.Ref, field string) {
 	if err != nil || !ok {
 		return
 	}
-	then, asker := entity.Get(ent.Payload, field), entity.Str(ent.Payload, "asker")
+	then, asker := entity.Get(ent.Payload, field), mirror.PrincipalFrom(ent.Payload)
 	// An answer or an ask is one more act of the asker's, made by the route that makes it: nothing
 	// is spawned (askthen.go).
 	if asker != "" {
@@ -728,7 +721,7 @@ func (s *Server) deleteAsk(w http.ResponseWriter, r *http.Request) {
 // themselves among whom it asks: an ask is answered by whom it asks, not by its asker, though the
 // asker owns the record.
 func askedBy(q entity.Payload, who string) bool {
-	return entity.Str(q, "asker") == who && !slices.Contains(askAnswerers(q), who)
+	return mirror.PrincipalFrom(q) == who && !slices.Contains(mirror.GranteesTo(q), who)
 }
 
 // askEdit is which edit of a person's ask its record stands at.
@@ -750,7 +743,7 @@ func askEdit(p entity.Payload) int {
 // on the record, since answering is writing to it.
 func (s *Server) patchAsk(w http.ResponseWriter, r *http.Request) {
 	var body api.AskChange
-	if err := codec.Read(r, &body); err != nil {
+	if err := codec.ReadStrict(r, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -766,7 +759,7 @@ func (s *Server) patchAsk(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	if owner, _ := entity.OwnerOf(s.Store, ref); !found || entity.Str(ent.Payload, "asker") == "" || owner != asker {
+	if owner, _ := entity.OwnerOf(s.Store, ref); !found || mirror.PrincipalFrom(ent.Payload) == "" || owner != asker {
 		http.Error(w, fmt.Sprintf("ask %s: only its asker changes it", id), http.StatusForbidden)
 		return
 	}
@@ -780,9 +773,9 @@ func (s *Server) patchAsk(w http.ResponseWriter, r *http.Request) {
 			http.StatusConflict)
 		return
 	}
-	rewords := body.Question != "" || len(body.Answerers) > 0 || body.Then != nil || body.Else != nil
+	rewords := body.Question != "" || len(body.To) > 0 || body.Then != nil || body.Else != nil
 	if body.Due == "" && !rewords {
-		http.Error(w, "a change says what changes: due, question, answerers or then", http.StatusBadRequest)
+		http.Error(w, "a change says what changes: due, question, to or then", http.StatusBadRequest)
 		return
 	}
 	// Checked as an ask is when it is made, over what it will say once changed.
@@ -823,7 +816,7 @@ func (s *Server) patchAsk(w http.ResponseWriter, r *http.Request) {
 	}
 	// The words first, then the date: a change refused whole moves nothing.
 	if rewords {
-		if err := s.reword(id, ref, edit, rec, askAnswerers(ent.Payload), answerers, asker, about); err != nil {
+		if err := s.reword(id, ref, edit, rec, mirror.GranteesTo(ent.Payload), answerers, asker, about); err != nil {
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		}
@@ -868,7 +861,7 @@ func (s *Server) withinServed(served, due string) (int, error) {
 func askChangeOf(p entity.Payload, change api.AskChange) api.Ask {
 	next := api.Ask{
 		Name: entity.Str(p, "name"), Question: entity.Str(p, "question"),
-		Answerers: askAnswerers(p), Due: entity.Str(p, "due"), Then: entity.Get(p, "then"), Else: entity.Get(p, "else"),
+		To: mirror.GranteesTo(p), Due: entity.Str(p, "due"), Then: entity.Get(p, "then"), Else: entity.Get(p, "else"),
 		Keep: entity.Str(p, "keep"),
 	}
 	if change.Due != "" {
@@ -877,8 +870,8 @@ func askChangeOf(p entity.Payload, change api.AskChange) api.Ask {
 	if change.Question != "" {
 		next.Question = change.Question
 	}
-	if len(change.Answerers) > 0 {
-		next.Answerers = change.Answerers
+	if len(change.To) > 0 {
+		next.To = change.To
 	}
 	if change.Then != nil {
 		next.Then = change.Then
@@ -940,7 +933,7 @@ func (s *Server) reword(id string, ref entity.Ref, from int, rec entity.Obj, was
 	// asked again; one whose record will not move is put back as it was.
 	next := entity.ToObj(cur.Payload)
 	next["edit"], next["question"] = from+1, rec["question"]
-	for _, f := range []string{"answerers", "then", "else"} {
+	for _, f := range []string{mirror.ToField, "then", "else"} {
 		if rec[f] == nil {
 			delete(next, f)
 		} else {
@@ -961,11 +954,7 @@ func (s *Server) reword(id string, ref entity.Ref, from int, rec entity.Obj, was
 		return err
 	}
 	fields := entity.Obj{"edit": from + 1, "question": rec["question"], "pose": rec["question"], "reason": rec["question"]}
-	fields["answerers"] = rec["answerers"]
-	if rec["answerers"] == nil {
-		fields["answerers"] = entity.Removed()
-	}
-	for _, f := range []string{"then", "else"} {
+	for _, f := range []string{mirror.ToField, "then", "else"} {
 		fields[f] = rec[f]
 		if rec[f] == nil {
 			fields[f] = entity.Removed()

@@ -130,7 +130,7 @@ func TestWordsToARunningTaskAreAnAskItHears(t *testing.T) {
 	spawnSaying(t, ts.URL, alice, "run-talk", "talk", false)
 	id := sayTo(t, ts.URL, alice, "run-talk", "use the staging bucket")
 	rec := waitAsk(t, srv, id, mirror.QuestionAnswered)
-	if entity.Str(rec, "answer") != mirror.Heard || entity.Str(rec, "asker") != alice ||
+	if entity.Str(rec, "answer") != mirror.Heard || mirror.PrincipalFrom(rec) != alice ||
 		entity.Str(rec, "subject") != mirror.Ref("run-talk").String() || entity.Get(rec, "deadline") != nil {
 		t.Fatalf("the say settled as %s", fmtPayload(rec))
 	}
@@ -187,8 +187,9 @@ func TestARestartDoesNotAskPeopleWhatWasSaidToATask(t *testing.T) {
 		t.Fatal(err)
 	}
 	entitytest.Set(t, srv.Store, ref, entity.Obj{
-		"asker": "user:alice@example.com", "question": "hello", "status": mirror.QuestionPending,
-		mirror.SaidToField: "run-gone", "subject": mirror.Ref("run-gone").String(),
+		mirror.FromField: mirror.FromPrincipal("user:alice@example.com"), "question": "hello",
+		"status": mirror.QuestionPending, mirror.ToField: entity.Obj{"task": "run-gone"},
+		"subject": mirror.Ref("run-gone").String(),
 	}.Payload())
 	if err := srv.resumeAsks(); err != nil {
 		t.Fatal(err)
@@ -213,7 +214,7 @@ func TestWordsToAFlowAreAnAskToEachTask(t *testing.T) {
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		for _, e := range entity.Below(srv.Store, mirror.IsAsk, 1, entity.VerseRoot, mirror.AskSystem) {
-			if entity.Str(e.Payload, mirror.SaidToField) == "run-flow" && entity.Str(e.Payload, "answer") == mirror.Heard {
+			if mirror.TaskTo(e.Payload) == "run-flow" && entity.Str(e.Payload, "answer") == mirror.Heard {
 				return
 			}
 		}

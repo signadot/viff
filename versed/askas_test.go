@@ -193,7 +193,7 @@ func taskQuestion(t *testing.T, srv *Server, ref entity.Ref) string {
 	deadline := time.After(5 * time.Second)
 	for {
 		for _, ent := range entity.Below(srv.Store, mirror.IsQuestion, 1, entity.VerseRoot, mirror.AskSystem) {
-			if id := entity.Str(ent.Payload, "task"); id != "" && mirror.Ref(id) == ref {
+			if id := mirror.TaskFrom(ent.Payload); id != "" && mirror.Ref(id) == ref {
 				return entity.Str(ent.Payload, "id")
 			}
 		}

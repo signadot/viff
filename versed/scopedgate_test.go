@@ -17,8 +17,7 @@ import (
 func questionsIn(store entity.Store, taskID string) []string {
 	var out []string
 	for _, ent := range entity.Below(store, mirror.IsQuestion, 1, entity.VerseRoot, mirror.AskSystem) {
-		p := entity.ToObj(ent.Payload)
-		if p["task"] == taskID && p["status"] == mirror.QuestionPending {
+		if mirror.TaskFrom(ent.Payload) == taskID && entity.Str(ent.Payload, "status") == mirror.QuestionPending {
 			out = append(out, ent.Ref.Name())
 		}
 	}
@@ -103,8 +102,8 @@ func spawnScoped(t *testing.T, ts *httptest.Server, id, scope string) {
 func firingQuestions(store entity.Store, origin string) []string {
 	var out []string
 	for _, ent := range entity.Below(store, mirror.IsQuestion, 1, entity.VerseRoot, mirror.AskSystem) {
-		p := entity.ToObj(ent.Payload)
-		if p["task"] == nil && p["origin"] == origin && p["status"] == mirror.QuestionPending {
+		from := entity.Get(ent.Payload, mirror.FromField)
+		if entity.Str(from, "rule") == origin && entity.Str(ent.Payload, "status") == mirror.QuestionPending {
 			out = append(out, ent.Ref.Name())
 		}
 	}

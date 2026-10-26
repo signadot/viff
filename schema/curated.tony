@@ -158,24 +158,3 @@ context:
 define: .[tony-base:ir]
 signature:
   name: verse-iod-failure
----
-# api.Names — principals or grantees as a list of strings. Written as a list; read also as the one
-# string an ask written before its answerers were always a list holds.
-context:
-- tony-format/context
-define: .[array(string)]
-signature:
-  name: verse-names
----
-# api.AskCarried — how an onward ask's answer was carried back: `{at, status?, refused?, note?}`,
-# `status` the served ask's HTTP code. A record carried before `note` existed holds its sentence in
-# `status`, which is read as the note.
-context:
-- tony-format/context
-define:
-  at: .[string]
-  status: .[int]
-  refused: .[string]
-  note: .[string]
-signature:
-  name: verse-ask-carried

@@ -16,7 +16,7 @@ import (
 func TestTheQuestionsPutToYouAreWhatWaitsOnYou(t *testing.T) {
 	srv, ts := asking(t)
 	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	land := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", answerers: [oscar@example.com]}`))
+	land := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`))
 	lunch := askID(t, ask(t, davido, ts.URL, `{name: lunch, question: "Lunch at noon?"}`))
 	list := func(who, q string) string {
 		t.Helper()
@@ -93,7 +93,7 @@ func TestTheAsksTreeReadsAsEachSideAsks(t *testing.T) {
 	if code, msg := grantStatus(t, bob, ts.URL, "helper", `{}`); code != http.StatusNoContent {
 		t.Fatalf("bob's grant: %d %s", code, msg)
 	}
-	id := askID(t, ask(t, carol, ts.URL, `{name: land, question: "Merge it?", answerers: [bob@example.com]}`))
+	id := askID(t, ask(t, carol, ts.URL, `{name: land, question: "Merge it?", to: [bob@example.com]}`))
 	posed(t, srv, mirror.AskRef(id))
 
 	if resp := getAs(t, carol, ts.URL+"/asks/"+id); resp.StatusCode != http.StatusOK || !strings.Contains(bodyOf(t, resp), "Merge it?") {

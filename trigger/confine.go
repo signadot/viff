@@ -65,7 +65,8 @@ func (e *Engine) Confinement() Subtree { return e.confine }
 //
 // A rule's name is unique within a charter and not across them: two packages may each hold a
 // `review`, which is most of what packages are for. So a name alone does not identify a rule,
-// and everything that stores one — a gate's `origin` — stores half an identity without it.
+// and everything that stores one — a gate question's `from.rule` — stores half an identity
+// without it, which is why `from.at` sits beside it.
 func (e *Engine) At() string { return e.confine.KPath() }
 
 // confined reports whether a subtree is set at all.

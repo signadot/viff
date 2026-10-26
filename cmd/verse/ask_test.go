@@ -117,8 +117,8 @@ func TestAnAskIsAskedAnsweredAndSeen(t *testing.T) {
 	if _, err := runCLI(t, "ask", "land", "--on-silence", "no"); err == nil || !strings.Contains(err.Error(), "go with --question") {
 		t.Fatalf("--on-silence on a standing ask: %v, want it refused as going with --question", err)
 	}
-	if got, _ := rec["answerers"].([]any); len(got) != 1 || got[0] != davido {
-		t.Fatalf("answerers = %v, want [%s] in the grammar", rec["answerers"], davido)
+	if got := mirror.GranteesTo(entity.Obj(rec).Payload()); len(got) != 1 || got[0] != davido {
+		t.Fatalf("to = %v, want [%s] in the grammar", rec[mirror.ToField], davido)
 	}
 	if rec["keep"] != "72h0m0s" {
 		t.Fatalf("keep = %v, want 72h", rec["keep"])
@@ -231,7 +231,7 @@ func TestWhomAnAskWaitsOn(t *testing.T) {
 	} {
 		q := entity.Obj{"waitingOn": c.waiting}
 		if c.asker != "" {
-			q["asker"] = c.asker
+			q[mirror.FromField] = mirror.FromPrincipal(c.asker)
 		}
 		if got, decided := w.waitsOnMe(q.Payload()); got != c.want || decided != c.decided {
 			t.Errorf("waitingOn %v, asker %q: waits on daniel %v (decided %v), want %v (%v)",
@@ -537,7 +537,7 @@ func TestTheWatchSaysAGap(t *testing.T) {
 	w := newAskWatch(apiClient(), daniel, true, false)
 	var said []string
 	say := func(rev, line string) { said = append(said, "@"+rev+" "+line) }
-	w.frame(askFrame{at: "verse.ask.a1", op: "set", rev: "5", to: entity.Obj{"asker": davido}.Payload()}, say)
+	w.frame(askFrame{at: "verse.ask.a1", op: "set", rev: "5", to: entity.Obj{mirror.FromField: mirror.FromPrincipal(davido)}.Payload()}, say)
 	w.frame(askFrame{rev: "9", gap: 2}, say)
 	if len(said) != 1 || said[0] != "@9 gap: 2 commits were not delivered; replay them with --since 5" {
 		t.Fatalf("said %q", said)

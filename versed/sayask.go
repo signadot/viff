@@ -27,8 +27,8 @@ func (s *Server) sayTo(r *http.Request, taskID string, h task.Handle, words, by 
 	}
 	ref, about := mirror.AskRef(askID), mirror.Ref(taskID)
 	rec := entity.Obj{
-		"name": "say", "asker": by, "question": words, "pose": words, "reason": words, "edit": 1,
-		"subject": about.String(), mirror.SaidToField: taskID,
+		"name": "say", mirror.FromField: mirror.FromPrincipal(by), mirror.ToField: entity.Obj{"task": taskID},
+		"question": words, "pose": words, "reason": words, "edit": 1, "subject": about.String(),
 		"status": mirror.QuestionPending, "posedAt": s.now().UTC().Format(time.RFC3339),
 	}
 	answered := false
@@ -69,7 +69,7 @@ func (s *Server) turnOf(taskID string) string {
 		return ""
 	}
 	for _, e := range ents {
-		if entity.Str(e.Payload, "task") == taskID && entity.Str(e.Payload, "gate") == "turn" {
+		if mirror.TaskFrom(e.Payload) == taskID && entity.Str(e.Payload, "gate") == "turn" {
 			return e.Ref.Name()
 		}
 	}

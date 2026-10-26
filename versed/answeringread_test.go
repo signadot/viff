@@ -26,7 +26,7 @@ func TestAnAskIsReadByTheResolversAnsweringForItsParties(t *testing.T) {
 	}
 
 	// A person's ask to bob, read by the resolver bob grants after it was asked.
-	id := askID(t, ask(t, "alice@example.com", ts.URL, `{name: land, question: "land it?", answerers: [bob@example.com]}`))
+	id := askID(t, ask(t, "alice@example.com", ts.URL, `{name: land, question: "land it?", to: [bob@example.com]}`))
 	posed(t, srv, mirror.AskRef(id))
 	if reads("bobs", mirror.AskRef(id)) {
 		t.Fatal("a resolver bob has not granted reads his ask")

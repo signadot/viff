@@ -15,7 +15,7 @@ import (
 func TestTheDocketKeepsWhenAQuestionWasPosed(t *testing.T) {
 	srv, ts := asking(t)
 	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	land := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", answerers: [oscar@example.com]}`))
+	land := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`))
 	posed(t, srv, mirror.AskRef(land))
 
 	resp := getAs(t, davido, ts.URL+"/asks?waiting=me")

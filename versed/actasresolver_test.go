@@ -41,7 +41,7 @@ func TestAResolverIsActedAsByWhoeverInstalledIt(t *testing.T) {
 		`{name: helper, match: {}, method: {driver: service}}`); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install: %s: %s", resp.Status, bodyOf(t, resp))
 	}
-	id := askID(t, ask(t, "carol@example.com", ts.URL, `{name: land, question: "land it?", answerers: [bob@example.com]}`))
+	id := askID(t, ask(t, "carol@example.com", ts.URL, `{name: land, question: "land it?", to: [bob@example.com]}`))
 	posed(t, srv, mirror.AskRef(id))
 	if code, msg := grantStatus(t, bob, ts.URL, "helper", `{}`); code != http.StatusNoContent {
 		t.Fatalf("bob's grant: %d %s", code, msg)

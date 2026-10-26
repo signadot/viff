@@ -80,10 +80,12 @@ type Resolve struct {
 //
 //tony:schemagen=verse-ask,notag
 type Ask struct {
-	Name      string   `tony:"field=name"`
-	Question  string   `tony:"field=question"`
-	Answerers []string `tony:"field=answerers,omitzero"`
-	Due       string   `tony:"field=due,omitzero"`
+	Name     string `tony:"field=name"`
+	Question string `tony:"field=question"`
+	// To is whom it is put to, in the grant grammar; absent, whoever may answer what it is about,
+	// or anyone.
+	To  []string `tony:"field=to,omitzero"`
+	Due string   `tony:"field=due,omitzero"`
 	// OnSilence is what the ask settles on when Due passes and nobody has answered: `no`, the
 	// default, or `yes`, which runs its `then` as an answer would. It needs a Due. An onward ask
 	// takes the served ask's.
@@ -153,17 +155,17 @@ func (r Recorded) String() string {
 }
 
 // AskChange is a change to a waiting ask by its asker (`verse ask <id> --due …`, PATCH
-// /asks/{id}). A new Due moves its clock and asks nothing again. A new Question, Answerers, Then
+// /asks/{id}). A new Due moves its clock and asks nothing again. A new Question, To, Then
 // or Else changes what it asks, so it is asked again, as the next edit, and the ballots cast before
 // are dropped. Edit is the edit the asker changed, where they name it; a change to an ask that has
 // moved on since is refused.
 //
 //tony:schemagen=verse-ask-change,notag
 type AskChange struct {
-	Edit      int            `tony:"field=edit,omitzero"`
-	Due       string         `tony:"field=due,omitzero"`
-	Question  string         `tony:"field=question,omitzero"`
-	Answerers []string       `tony:"field=answerers,omitzero"`
-	Then      entity.Payload `tony:"field=then,omitzero"`
-	Else      entity.Payload `tony:"field=else,omitzero"`
+	Edit     int            `tony:"field=edit,omitzero"`
+	Due      string         `tony:"field=due,omitzero"`
+	Question string         `tony:"field=question,omitzero"`
+	To       []string       `tony:"field=to,omitzero"`
+	Then     entity.Payload `tony:"field=then,omitzero"`
+	Else     entity.Payload `tony:"field=else,omitzero"`
 }

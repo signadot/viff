@@ -24,8 +24,8 @@ import (
 // all. Both are the same shape: the record needs somewhere to live, and "whose it is" does not
 // answer that.
 //
-// The id is the question's own (`<origin>~d<n>`), so the ref carries the origin and a predicate
-// can select one run's questions without a second field to match on.
+// The id is the question's own (`<task>~d<n>`, where verse minted it), and its `from` says who
+// raised it, so a predicate selects one run's questions by `from: {task: …}` whatever the id.
 // QuestionRef addresses one question: the ask it is.
 func QuestionRef(id string) entity.Ref { return AskRef(id) }
 
@@ -268,14 +268,78 @@ func SayOn(store entity.Store, id, by, said string) {
 	})
 }
 
-// AnswerersField is who the gate itself named to answer, on the question: what releasing gives
-// the question back to. Absent where the gate named nobody.
-const AnswerersField = "answerers"
+// A question says its parties in three keys (ENG-1300): who raised it (`from`), whom it is put to
+// (`to`), and who settled it (`by`).
+//
+// `from` is exactly one of `{rule, at}` (a firing's gate: the rule, and the charter it is
+// installed at), `{task}` (a task's question) or `{principal}` (anybody who asked or said
+// something, verbatim: `user:…`, `agent:…`, `via:…`). FROM.PRINCIPAL CARRIES AUTHORITY: an ask's
+// `then` runs as it, an onward ask carries back as it, and its asker does not answer it, so a
+// reader of it is access code.
+//
+// `to` is `{grantees: […]}`, in the grant grammar, or `{task}` for words said to a task, and is
+// absent where a question named nobody: what releasing gives the question back to.
+const (
+	FromField = "from"
+	ToField   = "to"
+)
+
+// FromRule is a firing's gate question's `from`: the rule, and the charter it is installed at
+// where it has one.
+func FromRule(rule, at string) entity.Obj {
+	from := entity.Obj{"rule": rule}
+	if at != "" {
+		from["at"] = at
+	}
+	return from
+}
+
+// FromTask is a task's question's `from`.
+func FromTask(taskID string) entity.Obj { return entity.Obj{"task": taskID} }
+
+// FromPrincipal is the `from` of an ask, an onward ask or words to a task: who asked or said it.
+func FromPrincipal(principal string) entity.Obj { return entity.Obj{"principal": principal} }
+
+// TaskFrom is the task that raised a question, empty for any other.
+func TaskFrom(p entity.Payload) string { return entity.Str(entity.Get(p, FromField), "task") }
+
+// PrincipalFrom is who asked or said a question, verbatim, empty for a rule's or a task's.
+func PrincipalFrom(p entity.Payload) string {
+	return entity.Str(entity.Get(p, FromField), "principal")
+}
+
+// TaskTo is the task words were said to, empty for a question put to people.
+func TaskTo(p entity.Payload) string { return entity.Str(entity.Get(p, ToField), "task") }
+
+// GranteesTo is whom a question is put to, empty where it named nobody.
+func GranteesTo(p entity.Payload) []string { return entity.Strs(entity.Get(p, ToField), "grantees") }
+
+// toGrantees is a question's `to` for the names it is put to, or its removal where it names
+// nobody.
+func toGrantees(names []string) any {
+	if len(names) == 0 {
+		return entity.Removed()
+	}
+	return entity.Obj{"grantees": namesValue(names)}
+}
+
+// namesValue is names as a list, canonical, or its removal where there are none.
+func namesValue(names []string) any {
+	names = entity.Canonical(names)
+	if len(names) == 0 {
+		return entity.Removed()
+	}
+	out := make([]any, len(names))
+	for i, n := range names {
+		out[i] = n
+	}
+	return out
+}
 
 // WaitingOnField is who the question waits on NOW, on the question: every principal who may
 // answer it as it stands.
 //
-// A READER CANNOT WORK THIS OUT. `answerers` is there only where the gate named somebody, and the
+// A READER CANNOT WORK THIS OUT. `to` is there only where the gate named somebody, and the
 // rest of who may answer — the resolver a question was handed to, the rung that took it after an
 // escalation, the docket's own default — is on the question's perms record, which only the system
 // may read. So a docket, a charter deriving one message per person, and `verse question` would each
@@ -286,8 +350,8 @@ const AnswerersField = "answerers"
 // they are written: a question the docket holds out to every person waits on every person, and
 // there is no list of them to write down.
 //
-// Present tense, so it goes when the question settles: what was asked of whom is `answerers`, and
-// who decided is `by`.
+// Present tense, so it goes when the question settles: what was asked of whom is `to`, and who
+// decided is `by`.
 //
 // It moves when the question does — posed, bound, handed up, handed back — because those are
 // writes to the question. Changing the DEFAULT above a docket of pending questions is not: it is a
@@ -321,7 +385,7 @@ func waitingOn(store entity.Store, ref entity.Ref) (any, bool) {
 		}
 		out = append(out, n)
 	}
-	return answerersValue(out), true
+	return namesValue(out), true
 }
 
 // about is the one line the question's subject offers about ITSELF, copied onto the question so
@@ -393,18 +457,6 @@ func LabelsOf(p entity.Payload) map[string]string {
 	return out
 }
 
-func answerersValue(names []string) any {
-	names = entity.Canonical(names)
-	if len(names) == 0 {
-		return entity.Removed()
-	}
-	out := make([]any, len(names))
-	for i, n := range names {
-		out[i] = n
-	}
-	return out
-}
-
 // Question status, monotonic: a question is posed once and settles once.
 const (
 	QuestionPending  = "pending"
@@ -428,8 +480,8 @@ const (
 )
 
 // PostQuestion publishes a posed question. `task` is the run that raised it, empty for a
-// firing's gate — the origin is on the question either way, but a task id is what the docket
-// and the flow tree index by.
+// firing's gate and a person's ask. Its `from` is the task, or the rule, where one raised it; a
+// person's ask is posed onto the record its verb wrote, whose `from` names who asked.
 //
 // The derived effects are published as three flat lists rather than as the Effect structs.
 // A charter matches on values, so `effects: {verbs: [write]}` has to be sayable without
@@ -439,10 +491,15 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 	q := p.Question
 	rec := entity.Obj{
 		"id":      q.ID,
-		"origin":  q.Origin,
 		"gate":    q.Gate,
 		"status":  QuestionPending,
 		"posedAt": time.Now().UTC().Format(time.RFC3339),
+	}
+	switch {
+	case taskID != "":
+		rec[FromField] = FromTask(taskID)
+	case q.Origin != "":
+		rec[FromField] = FromRule(q.Origin, q.At)
 	}
 	// Which edit of a person's ask this is, where it is one: what an answer names (Tally).
 	if q.Edit != 0 {
@@ -450,7 +507,7 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 	}
 	// Absent rather than empty, for the reason the gate listing already compacts: a missing
 	// key is visible, an empty one is camouflage. A bare `verse task run` is about nothing,
-	// and a relayed gate legitimately carries neither origin nor mode.
+	// and a relayed gate legitimately carries no rule and no mode.
 	for k, v := range map[string]string{
 		// What is being decided, in words, when the gate wrote any (trigger.Gate.Pose) — the
 		// one field on the record written for a person to read rather than for a reader to
@@ -459,14 +516,10 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 		"subject": q.Subject,
 		"spawns":  q.Spawns,
 		"reason":  q.Reason,
-		// The charter the asking rule is in. Absent for baseline and for a task's own gate,
-		// where there is no charter to name rather than an unknown one.
-		"at":   q.At,
-		"tool": p.Tool,
+		"tool":    p.Tool,
 		// The action in one line: what is being decided, where `tool` says only who proposed
 		// it and `effects` what verb it derives to. The one field an answerer reads first.
 		"action": p.Action,
-		"task":   taskID,
 	} {
 		if v != "" {
 			rec[k] = v
@@ -479,7 +532,7 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 			rec["fields"] = stringObj(q.Step.Fields)
 		}
 	}
-	rec[AnswerersField] = answerersValue(q.Answerers)
+	rec[ToField] = toGrantees(q.Answerers)
 	rec[LabelsField] = labelsValue(q.Labels)
 	rec["about"] = about(store, q.Subject)
 	// Always written, default included, so the record says what can be chosen without a
@@ -801,21 +854,15 @@ func PostFrameQuestion(store entity.Store, ev task.Event, taskID, subject string
 	posed := entity.Obj{"status": rec["status"], "posedAt": rec["posedAt"]}
 	delete(rec, "status")
 	delete(rec, "posedAt")
-	// The origin is READ OFF the id, and only when the id is one verse minted (`<origin>~d<n>`).
-	// A worker that raises a gate under an id of its own choosing has no origin — it decided
-	// nothing about who answers — and inventing one by taking the id whole would put a name
-	// there that means "the question itself".
-	origin, _, minted := strings.Cut(ev.ID, task.GateSep)
-	if !minted {
-		origin = ""
+	// FROM THE TASK, whatever id the worker raised it under: the task is who asked.
+	if taskID != "" {
+		rec[FromField] = FromTask(taskID)
 	}
 	for k, v := range map[string]string{
-		"origin":  origin,
 		"step":    ev.Step,
 		"reason":  ev.Text,
 		"tool":    ev.Tool,
 		"action":  ev.Action,
-		"task":    taskID,
 		"subject": subject,
 	} {
 		if v != "" {
@@ -825,7 +872,7 @@ func PostFrameQuestion(store entity.Store, ev task.Event, taskID, subject string
 	if len(ev.Fields) > 0 {
 		rec["fields"] = stringObj(ev.Fields)
 	}
-	rec[AnswerersField] = answerersValue(answerers)
+	rec[ToField] = toGrantees(answerers)
 	// What the question offers, as a posed one carries it: the frame's options, or the
 	// default two when the worker named none, and its deadline when it named one.
 	q := task.GateQuestion{Options: ev.Options}
@@ -891,7 +938,7 @@ func answerRecord(res task.Resolution) entity.Obj {
 		"verdict":    res.Chosen(),
 		"answeredAt": time.Now().UTC().Format(time.RFC3339),
 		// Who it waited on is a present-tense fact, and it is settled: `by` says who decided,
-		// `answerers` whom the gate named, `ballots` who voted.
+		// `to` whom the gate named, `ballots` who voted.
 		WaitingOnField: entity.Removed(),
 	}
 	if res.By != "" {
@@ -936,8 +983,8 @@ func OrphanQuestions(store entity.Store, taskID string) {
 		}
 		why := "the task that raised it ended without it being answered"
 		switch {
-		case p["task"] == taskID:
-		case p[SaidToField] == taskID:
+		case TaskFrom(ent.Payload) == taskID:
+		case TaskTo(ent.Payload) == taskID:
 			why = "the task ended before it heard this"
 		default:
 			continue
@@ -950,11 +997,6 @@ func OrphanQuestions(store entity.Store, taskID string) {
 	}
 }
 
-// SaidToField marks an ask that is words said to a running task (9ce3bva0, stage 6), naming the
-// task. The task is its party: it is heard when the task takes the words at its next boundary
-// (HearSay), and no person answers it.
-const SaidToField = "saidTo"
-
 // Heard is what a say settles on when its task takes it.
 const Heard = "heard"
 
@@ -963,7 +1005,7 @@ const Heard = "heard"
 func HearSay(store entity.Store, id, taskID string) {
 	ref := QuestionRef(id)
 	e, ok, err := store.Get(ref)
-	if err != nil || !ok || entity.Str(e.Payload, SaidToField) != taskID {
+	if err != nil || !ok || TaskTo(e.Payload) != taskID {
 		return
 	}
 	settlePending(store, ref, entity.Obj{

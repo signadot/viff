@@ -34,33 +34,18 @@ func checkAskRecords(t *testing.T, store entity.Reader) {
 	}
 }
 
-// AN ASK RECORD SAYS WHICH KIND IT IS by the keys it carries, and the five kinds are told apart
-// in one place.
+// AN ASK RECORD SAYS WHICH KIND IT IS by whom it is from and to, and the five kinds are told
+// apart in one place.
 func TestAnAskRecordSaysItsKind(t *testing.T) {
 	for want, rec := range map[string]api.AskRecord{
-		api.AskKindSay:    {Asker: "user:a@example.com", SaidTo: "run-1"},
-		api.AskKindOnward: {Asker: "via:verse.resolvers.r", Serves: &api.AskServes{ID: "land"}},
-		api.AskKindPerson: {Asker: "user:a@example.com", Gate: "ask"},
-		api.AskKindTask:   {Task: "run-1", Gate: "ask"},
-		api.AskKindGate:   {Tool: "verse:trigger:land"},
+		api.AskKindSay:    {From: &api.AskFrom{Principal: "user:a@example.com"}, To: &api.AskTo{Task: "run-1"}},
+		api.AskKindOnward: {From: &api.AskFrom{Principal: "via:verse.resolvers.r"}, Serves: &api.AskServes{ID: "land"}},
+		api.AskKindPerson: {From: &api.AskFrom{Principal: "user:a@example.com"}, Gate: "ask"},
+		api.AskKindTask:   {From: &api.AskFrom{Task: "run-1"}, Gate: "ask"},
+		api.AskKindGate:   {From: &api.AskFrom{Rule: "land"}, Tool: "verse:trigger:land"},
 	} {
 		if got := rec.Kind(); got != want {
 			t.Errorf("%+v is %q, want %q", rec, got, want)
 		}
-	}
-}
-
-// AN ASK WRITTEN BEFORE ITS SHAPES WERE ONE still reads: one answerer as a string is a list of
-// one, and a carry's sentence in `status` is its note.
-func TestAnOlderAskRecordStillReads(t *testing.T) {
-	var rec api.AskRecord
-	if err := codec.Unmarshal([]byte(`{answerers: user:ana@example.com, carried: {at: "2026-10-01T00:00:00Z", status: "nothing: the clock settled on no option"}}`), &rec, codec.Tony); err != nil {
-		t.Fatal(err)
-	}
-	if len(rec.Answerers) != 1 || rec.Answerers[0] != "user:ana@example.com" {
-		t.Errorf("answerers = %v, want the one name as a list", rec.Answerers)
-	}
-	if rec.Carried == nil || rec.Carried.Status != 0 || rec.Carried.Note == "" {
-		t.Errorf("carried = %+v, want the sentence as its note and no status", rec.Carried)
 	}
 }

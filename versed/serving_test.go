@@ -55,10 +55,10 @@ func TestAResolverServesTheAsksItMatchesForWhoeverGrantedIt(t *testing.T) {
 	}
 	entitytest.Set(t, srv.Store, entity.RefAt("demo", "pr", "2"), entity.Obj{"stage": "open"}.Payload())
 	const about = `about: "demo.pr.\"2\""`
-	served := askID(t, ask(t, "carol@example.com", ts.URL, `{name: a1, question: q, answerers: [bob@example.com], `+about+`, labels: {team: a}}`))
-	otherTeam := askID(t, ask(t, "carol@example.com", ts.URL, `{name: a2, question: q, answerers: [bob@example.com], `+about+`, labels: {team: b}}`))
-	toDan := askID(t, ask(t, "carol@example.com", ts.URL, `{name: a3, question: q, answerers: [dan@example.com], `+about+`, labels: {team: a}}`))
-	toBoth := askID(t, ask(t, "carol@example.com", ts.URL, `{name: a4, question: q, answerers: [bob@example.com, dan@example.com], `+about+`, labels: {team: a}}`))
+	served := askID(t, ask(t, "carol@example.com", ts.URL, `{name: a1, question: q, to: [bob@example.com], `+about+`, labels: {team: a}}`))
+	otherTeam := askID(t, ask(t, "carol@example.com", ts.URL, `{name: a2, question: q, to: [bob@example.com], `+about+`, labels: {team: b}}`))
+	toDan := askID(t, ask(t, "carol@example.com", ts.URL, `{name: a3, question: q, to: [dan@example.com], `+about+`, labels: {team: a}}`))
+	toBoth := askID(t, ask(t, "carol@example.com", ts.URL, `{name: a4, question: q, to: [bob@example.com, dan@example.com], `+about+`, labels: {team: a}}`))
 
 	// And a rule's gate about alice's pr, naming nobody, served for the place.
 	if resp := installAs(t, "alice@example.com", ts.URL, gatedRule); resp.StatusCode != http.StatusCreated {

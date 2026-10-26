@@ -79,7 +79,6 @@ context:
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
   about: .[string]
-  answerers: .[array(string)]
   due: .[string]
   else: .[tony-base:ir]
   for: .[string]
@@ -90,6 +89,7 @@ define:
   question: .[string]
   serves: .[string]
   then: .[tony-base:ir]
+  to: .[array(string)]
 signature:
   name: verse-ask
 ---
@@ -119,12 +119,12 @@ context:
 - tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
-  answerers: .[array(string)]
   due: .[string]
   edit: .[int]
   else: .[tony-base:ir]
   question: .[string]
   then: .[tony-base:ir]
+  to: .[array(string)]
 signature:
   name: verse-ask-change
 ---
@@ -180,6 +180,16 @@ signature:
 context:
 - tony-format/context
 define:
+  at: .[string]
+  principal: .[string]
+  rule: .[string]
+  task: .[string]
+signature:
+  name: verse-ask-from
+---
+context:
+- tony-format/context
+define:
   by: .[string]
   text: .[string]
 signature:
@@ -205,9 +215,11 @@ signature:
 ---
 context:
 - tony-format/context
-define: {}
+define:
+  grantees: .[array(string)]
+  task: .[string]
 signature:
-  name: verse-names
+  name: verse-ask-to
 ---
 context:
 - tony-format/context
@@ -217,10 +229,7 @@ define:
   action: .[string]
   answer: .[string]
   answeredAt: .[string]
-  answerers: .[array(string)]
   askedAgain: .[bool]
-  asker: .[string]
-  at: .[string]
   ballots: .[object(verse-ask-ballot)]
   by: .[string]
   carried: .[nullable(verse-ask-carried)]
@@ -234,6 +243,7 @@ define:
   else-task: .[string]
   expires: .[string]
   fields: .[object(string)]
+  from: .[nullable(verse-ask-from)]
   gate: .[string]
   id: .[string]
   keep: .[string]
@@ -241,14 +251,12 @@ define:
   name: .[string]
   onSilence: .[string]
   options: .[array(task:verse-option)]
-  origin: .[nullable(string)]
   orphanedAt: .[string]
   pose: .[string]
   posedAt: .[string]
   question: .[string]
   reason: .[string]
   said: .[object(verse-ask-said)]
-  saidTo: .[string]
   say: .[array(string)]
   serves: .[nullable(verse-ask-serves)]
   spawns: .[string]
@@ -257,12 +265,12 @@ define:
   step: .[string]
   subject: .[string]
   suspended: .[bool]
-  task: .[string]
   then: .[nullable(verse-ask-follow)]
   then-answered: .[nullable(verse-ask-follow-answered)]
   then-asked: .[nullable(verse-ask-follow-asked)]
   then-failed: .[nullable(verse-ask-follow-failed)]
   then-task: .[string]
+  to: .[nullable(verse-ask-to)]
   tool: .[string]
   turn: .[string]
   verdict: .[string]
@@ -280,10 +288,7 @@ define:
   action: .[string]
   answer: .[string]
   answeredAt: .[string]
-  answerers: .[array(string)]
   askedAgain: .[bool]
-  asker: .[string]
-  at: .[string]
   ballots: .[object(verse-ask-ballot)]
   by: .[string]
   carried: .[nullable(verse-ask-carried)]
@@ -297,6 +302,7 @@ define:
   else-task: .[string]
   expires: .[string]
   fields: .[object(string)]
+  from: .[nullable(verse-ask-from)]
   gate: .[string]
   id: .[string]
   keep: .[string]
@@ -304,14 +310,12 @@ define:
   name: .[string]
   onSilence: .[string]
   options: .[array(task:verse-option)]
-  origin: .[nullable(string)]
   orphanedAt: .[string]
   pose: .[string]
   posedAt: .[string]
   question: .[string]
   reason: .[string]
   said: .[object(verse-ask-said)]
-  saidTo: .[string]
   say: .[array(string)]
   serves: .[nullable(verse-ask-serves)]
   spawns: .[string]
@@ -320,12 +324,12 @@ define:
   step: .[string]
   subject: .[string]
   suspended: .[bool]
-  task: .[string]
   then: .[nullable(verse-ask-follow)]
   then-answered: .[nullable(verse-ask-follow-answered)]
   then-asked: .[nullable(verse-ask-follow-asked)]
   then-failed: .[nullable(verse-ask-follow-failed)]
   then-task: .[string]
+  to: .[nullable(verse-ask-to)]
   tool: .[string]
   turn: .[string]
   unreadable: .[string]
@@ -406,10 +410,7 @@ define:
   action: .[string]
   answer: .[string]
   answeredAt: .[string]
-  answerers: .[array(string)]
   askedAgain: .[bool]
-  asker: .[string]
-  at: .[string]
   ballots: .[object(verse-ask-ballot)]
   by: .[string]
   carried: .[nullable(verse-ask-carried)]
@@ -423,6 +424,7 @@ define:
   else-task: .[string]
   expires: .[string]
   fields: .[object(string)]
+  from: .[nullable(verse-ask-from)]
   gate: .[string]
   id: .[string]
   keep: .[string]
@@ -430,14 +432,12 @@ define:
   name: .[string]
   onSilence: .[string]
   options: .[array(task:verse-option)]
-  origin: .[nullable(string)]
   orphanedAt: .[string]
   pose: .[string]
   posedAt: .[string]
   question: .[string]
   reason: .[string]
   said: .[object(verse-ask-said)]
-  saidTo: .[string]
   say: .[array(string)]
   servedBy: .[string]
   serves: .[nullable(verse-ask-serves)]
@@ -447,12 +447,12 @@ define:
   step: .[string]
   subject: .[string]
   suspended: .[bool]
-  task: .[string]
   then: .[nullable(verse-ask-follow)]
   then-answered: .[nullable(verse-ask-follow-answered)]
   then-asked: .[nullable(verse-ask-follow-asked)]
   then-failed: .[nullable(verse-ask-follow-failed)]
   then-task: .[string]
+  to: .[nullable(verse-ask-to)]
   tool: .[string]
   turn: .[string]
   unreadable: .[string]

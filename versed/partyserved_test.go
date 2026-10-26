@@ -51,7 +51,7 @@ func TestAPartyAnsweringWhatTheirResolverServesIsAsked(t *testing.T) {
 	if code, msg := grantStatus(t, bob, ts.URL, "helper", `{}`); code != http.StatusNoContent {
 		t.Fatalf("bob's grant: %d %s", code, msg)
 	}
-	id := askID(t, ask(t, "carol@example.com", ts.URL, `{name: land, question: q, answerers: [bob@example.com]}`))
+	id := askID(t, ask(t, "carol@example.com", ts.URL, `{name: land, question: q, to: [bob@example.com]}`))
 	posed(t, srv, mirror.AskRef(id))
 
 	docket := func(as, query string) string {

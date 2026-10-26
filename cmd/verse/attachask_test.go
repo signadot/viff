@@ -149,8 +149,7 @@ func pendingQuestionFor(t *testing.T, store entity.Store, taskID string) string 
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		for _, ent := range entity.Below(store, mirror.IsQuestion, 1, entity.VerseRoot, mirror.AskSystem) {
-			o := entity.ToObj(ent.Payload)
-			if o["task"] == taskID && o["status"] == mirror.QuestionPending {
+			if mirror.TaskFrom(ent.Payload) == taskID && entity.Str(ent.Payload, "status") == mirror.QuestionPending {
 				return entity.Str(ent.Payload, "id")
 			}
 		}

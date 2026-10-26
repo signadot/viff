@@ -1,20 +1,16 @@
 package api
 
 import (
-	"fmt"
-
-	"github.com/signadot/tony-format/go-tony/gomap"
-	"github.com/signadot/tony-format/go-tony/ir"
-
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/task"
 )
 
 // AskRecord is an ask as verse stores it at `verse.ask.<id>`: what a row of `GET /asks` (AskRow,
 // DocketRow) holds. Every question anybody is put is one of these, whoever raised it, so the record
-// holds five kinds (Kind), told apart by which keys they carry: a person's ask, an onward ask
-// raised to serve another, words said to a task, a task's question, and a firing's gate question.
-// Every key is optional: a record carries the ones its kind and its history wrote.
+// holds five kinds (Kind): a person's ask, an onward ask raised to serve another, words said to a
+// task, a task's question, and a firing's gate question. Each says its parties the same way: who
+// raised it (From), whom it is put to (To), and who settled it (By). Every other key is optional:
+// a record carries the ones its kind and its history wrote.
 //
 // A listing answers the keys this type names, and only those: a key a writer adds and the type
 // leaves out would drop from GET /asks. A check in versed's tests holds every ask they leave to the
@@ -29,14 +25,15 @@ type AskRecord struct {
 	// none stored; the listing fills it from the address.
 	ID string `tony:"field=id,omitzero"`
 
-	// What a person's ask, an onward ask or words to a task say: its name, who asked, the
-	// question, and its edit (1, and one more for each change to its wording).
+	// From is who raised it, and To whom it is put to, where it names anybody.
+	From *AskFrom `tony:"field=from,omitzero"`
+	To   *AskTo   `tony:"field=to,omitzero"`
+
+	// What a person's ask, an onward ask or words to a task say: its name, the question, and its
+	// edit (1, and one more for each change to its wording).
 	Name     string `tony:"field=name,omitzero"`
-	Asker    string `tony:"field=asker,omitzero"`
 	Question string `tony:"field=question,omitzero"`
 	Edit     int    `tony:"field=edit,omitzero"`
-	// Answerers are whom it is put to, in the grant grammar.
-	Answerers Names `tony:"field=answerers,omitzero"`
 	// Due is when a person's ask settles if nobody answers, and OnSilence what it settles on.
 	Due       string `tony:"field=due,omitzero"`
 	OnSilence string `tony:"field=onSilence,omitzero"`
@@ -48,16 +45,11 @@ type AskRecord struct {
 	// Serves is the ask an onward ask was raised to serve.
 	Serves *AskServes `tony:"field=serves,omitzero"`
 
-	// What the question is, as posed: the rule or task that raised it (Origin), the gate or
-	// row it was asked at, its status (`pending`, `answered`, `orphaned`) and when it was posed.
-	// Origin is kept as stored, an empty one included: a person's ask holds `origin: ""`, and so
-	// does a task's question relayed under an id verse did not mint, while words to a task hold
-	// none. A deployed charter (gate-ask.tony) tells a person's ask by its empty origin. ENG-1300
-	// is about saying who raised a question in one key.
-	Origin  *string `tony:"field=origin,omitzero"`
-	Gate    string  `tony:"field=gate,omitzero"`
-	Status  string  `tony:"field=status,omitzero"`
-	PosedAt string  `tony:"field=posedAt,omitzero"`
+	// What the question is, as posed: the gate or row it was asked at, its status (`pending`,
+	// `answered`, `orphaned`) and when it was posed.
+	Gate    string `tony:"field=gate,omitzero"`
+	Status  string `tony:"field=status,omitzero"`
+	PosedAt string `tony:"field=posedAt,omitzero"`
 	// Pose is the question as put to a person; Reason why it is asked.
 	Pose   string `tony:"field=pose,omitzero"`
 	Reason string `tony:"field=reason,omitzero"`
@@ -65,15 +57,12 @@ type AskRecord struct {
 	// says of itself.
 	Subject string `tony:"field=subject,omitzero"`
 	About   string `tony:"field=about,omitzero"`
-	// Spawns is what a firing's gate would start; At the charter address its rule is installed
-	// at.
+	// Spawns is what a firing's gate would start.
 	Spawns string `tony:"field=spawns,omitzero"`
-	At     string `tony:"field=at,omitzero"`
-	// Tool, Action, Task, Step and Fields are the step a task's question is about: the task, the
-	// tool it called, the system and verb, and the fields of the step.
+	// Tool, Action, Step and Fields are the step a task's question is about: the tool it called,
+	// the system and verb, and the fields of the step.
 	Tool   string            `tony:"field=tool,omitzero"`
 	Action string            `tony:"field=action,omitzero"`
-	Task   string            `tony:"field=task,omitzero"`
 	Step   string            `tony:"field=step,omitzero"`
 	Fields map[string]string `tony:"field=fields,omitzero"`
 	// Labels are what the ask says about itself for whoever watches asks.
@@ -109,9 +98,8 @@ type AskRecord struct {
 	// OrphanedAt is when its task ended with it unanswered.
 	OrphanedAt string `tony:"field=orphanedAt,omitzero"`
 
-	// SaidTo is the task words were said to, and Turn the question they answered.
-	SaidTo string `tony:"field=saidTo,omitzero"`
-	Turn   string `tony:"field=turn,omitzero"`
+	// Turn is the question words said to a task answered.
+	Turn string `tony:"field=turn,omitzero"`
 	// Carried is how an onward ask's answer was carried back to the ask it serves.
 	Carried *AskCarried `tony:"field=carried,omitzero"`
 
@@ -162,23 +150,44 @@ const (
 	AskKindGate = "gate"
 )
 
-// Kind is which of the five kinds the record is, from the keys it carries, since the record
-// stores none: words to a task carry `saidTo`; an onward ask `serves`; a person's ask an `asker`
-// (a task's own `ask`-tool question is asked at the gate `ask` too, and has no asker); a task's
-// question a `task`; and a firing's gate question none of these.
+// Kind is which of the five kinds the record is, from whom it is from and to, since the record
+// stores none: words to a task are to a task; an onward ask `serves` another; a person's ask is
+// from a principal (a task's own `ask`-tool question is asked at the gate `ask` too, and is from
+// the task); a task's question is from a task; and a firing's gate question from a rule.
 func (r AskRecord) Kind() string {
 	switch {
-	case r.SaidTo != "":
+	case r.To != nil && r.To.Task != "":
 		return AskKindSay
 	case r.Serves != nil:
 		return AskKindOnward
-	case r.Asker != "":
+	case r.From != nil && r.From.Principal != "":
 		return AskKindPerson
-	case r.Task != "":
+	case r.From != nil && r.From.Task != "":
 		return AskKindTask
 	default:
 		return AskKindGate
 	}
+}
+
+// AskFrom is who raised a question: exactly one of a rule (with the charter it is installed at),
+// a task, or a principal, verbatim (`user:…`, `agent:…`, `via:…`). The principal carries
+// authority: an ask's `then` runs as it, and an onward ask carries back as it.
+//
+//tony:schemagen=verse-ask-from,notag
+type AskFrom struct {
+	Rule      string `tony:"field=rule,omitzero"`
+	At        string `tony:"field=at,omitzero"`
+	Task      string `tony:"field=task,omitzero"`
+	Principal string `tony:"field=principal,omitzero"`
+}
+
+// AskTo is whom a question is put to: grantees in the grant grammar, or the task words were said
+// to.
+//
+//tony:schemagen=verse-ask-to,notag
+type AskTo struct {
+	Grantees []string `tony:"field=grantees,omitzero"`
+	Task     string   `tony:"field=task,omitzero"`
 }
 
 // AskFollow is what follows a person's ask's yes (`then`) or no (`else`): exactly one of a spawn,
@@ -278,103 +287,10 @@ type AskFollowAsked struct {
 // status the served ask answered, its refusal where it refused, and a Note where nothing was
 // carried (the clock settled on no option).
 //
-// A record carried before the note existed holds that sentence in `status`; it is read as the
-// note.
-//
-//tony:schemagen=verse-ask-carried,notag,codec=custom
+//tony:schemagen=verse-ask-carried,notag
 type AskCarried struct {
 	At      string `tony:"field=at"`
 	Status  int    `tony:"field=status,omitzero"`
 	Refused string `tony:"field=refused,omitzero"`
 	Note    string `tony:"field=note,omitzero"`
-}
-
-// ToTonyIR writes the carry as its record.
-func (c *AskCarried) ToTonyIR(_ ...gomap.MapOption) (*ir.Node, error) {
-	if c == nil {
-		return ir.Null(), nil
-	}
-	m := map[string]*ir.Node{"at": ir.FromString(c.At)}
-	if c.Status != 0 {
-		m["status"] = ir.FromInt(int64(c.Status))
-	}
-	if c.Refused != "" {
-		m["refused"] = ir.FromString(c.Refused)
-	}
-	if c.Note != "" {
-		m["note"] = ir.FromString(c.Note)
-	}
-	return ir.FromMap(m), nil
-}
-
-// FromTonyIR reads a carry, and the sentence an older one kept in `status` as its note.
-func (c *AskCarried) FromTonyIR(node *ir.Node, _ ...gomap.UnmapOption) error {
-	node = ir.Uncomment(node)
-	if node == nil || node.Type == ir.NullType {
-		return nil
-	}
-	if node.Type != ir.ObjectType {
-		return fmt.Errorf("carried: expected a record, got %s", node.Type)
-	}
-	for k, v := range ir.ToMap(node) {
-		v = ir.Uncomment(v)
-		if v == nil {
-			continue
-		}
-		switch {
-		case k == "status" && v.Type == ir.NumberType && v.Int64 != nil:
-			c.Status = int(*v.Int64)
-		case k == "status" && v.Type == ir.StringType:
-			c.Note = v.String
-		case v.Type != ir.StringType:
-			continue
-		case k == "at":
-			c.At = v.String
-		case k == "refused":
-			c.Refused = v.String
-		case k == "note":
-			c.Note = v.String
-		}
-	}
-	return nil
-}
-
-// Names are principals or grantees, as a list. An ask written before its answerers were always a
-// list holds one name as a string, which is read as a list of one.
-//
-//tony:schemagen=verse-names,notag,codec=custom
-type Names []string
-
-// ToTonyIR writes the names as a list.
-func (n *Names) ToTonyIR(_ ...gomap.MapOption) (*ir.Node, error) {
-	if n == nil || *n == nil {
-		return ir.Null(), nil
-	}
-	out := make([]*ir.Node, len(*n))
-	for i, s := range *n {
-		out[i] = ir.FromString(s)
-	}
-	return ir.FromSlice(out), nil
-}
-
-// FromTonyIR reads a list of names, or one name.
-func (n *Names) FromTonyIR(node *ir.Node, _ ...gomap.UnmapOption) error {
-	node = ir.Uncomment(node)
-	switch {
-	case node == nil || node.Type == ir.NullType:
-		*n = nil
-	case node.Type == ir.StringType:
-		*n = Names{node.String}
-	case node.Type == ir.ArrayType:
-		out := make(Names, 0, len(node.Values))
-		for _, v := range node.Values {
-			if v = ir.Uncomment(v); v != nil && v.Type == ir.StringType {
-				out = append(out, v.String)
-			}
-		}
-		*n = out
-	default:
-		return fmt.Errorf("names: expected a list of names, got %s", node.Type)
-	}
-	return nil
 }

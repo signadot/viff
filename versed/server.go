@@ -913,10 +913,10 @@ func (s *Server) reconcileTasks() error {
 //     left as it stands.
 func (s *Server) reconcileQuestions() {
 	for _, ent := range pendingQuestions(s.Store) {
-		if entity.Str(ent.Payload, "asker") != "" {
+		if mirror.PrincipalFrom(ent.Payload) != "" {
 			continue
 		}
-		taskID, _ := entity.ToObj(ent.Payload)["task"].(string)
+		taskID := mirror.TaskFrom(ent.Payload)
 		if taskID != "" {
 			e, ok, err := s.Store.Get(mirror.Ref(taskID))
 			if err != nil {
@@ -2732,7 +2732,7 @@ func (s *Server) listDocket(w http.ResponseWriter, r *http.Request) {
 		if servedBy != "" && !withServed {
 			continue
 		}
-		if entity.Str(ent.Payload, mirror.SaidToField) != "" {
+		if mirror.TaskTo(ent.Payload) != "" {
 			continue // words to a task, which asks no person
 		}
 		// The question as stored, nothing taken out: `status` and `posedAt` are on every pending
@@ -2740,10 +2740,10 @@ func (s *Server) listDocket(w http.ResponseWriter, r *http.Request) {
 		// sweep, which skipped every question while the docket left it out).
 		row := api.DocketRow{AskRow: askRowAt(ent), ServedBy: servedBy}
 		// where says which plane raised it, and is derived rather than stored: a question
-		// with a task is a run's, one without is a firing's. Storing it would be a third
-		// spelling of what `task` already says.
+		// from a task is a run's, one from anybody else is a firing's or a person's. Storing it
+		// would be a second spelling of what `from` already says.
 		row.Where = "engine"
-		if row.Task != "" {
+		if row.From != nil && row.From.Task != "" {
 			row.Where = "task"
 		}
 		out = append(out, row)
@@ -2788,7 +2788,7 @@ func waitsOn(store entity.Store, who string, q entity.Payload) bool {
 // gate, whose id carries no owner by construction.
 func (s *Server) ownerOf(store entity.Store, questionID string) string {
 	if e, ok, err := store.Get(mirror.QuestionRef(questionID)); err == nil && ok {
-		if p := entity.Str(e.Payload, "task"); p != "" {
+		if p := mirror.TaskFrom(e.Payload); p != "" {
 			return p
 		}
 		// The record exists and names no task: a firing raised it, and the registry is
@@ -2892,7 +2892,7 @@ func (s *Server) listAsks(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]api.AskRow, 0)
 	for _, e := range ents {
-		if entity.Str(e.Payload, "asker") != who {
+		if mirror.PrincipalFrom(e.Payload) != who {
 			continue
 		}
 		out = append(out, askRowAt(e))

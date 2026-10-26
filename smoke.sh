@@ -523,7 +523,7 @@ done
 [ -n "$served" ] || die "the desk never served alice's ask: $(desk "http://$ADDR/resolvers/carols-desk/asks")"
 has "$(desk "http://$ADDR/resolvers/carols-desk/asks")" "user:carol" || die "the desk does not say it serves the ask for carol"
 ok "the desk, acting as the resolver, serves $SHIP for carol"
-UP=$(desk -H 'Content-Type: application/tony' -d "{name: up, question: \"Ship alice's?\", answerers: [user:erin], serves: $SHIP}" \
+UP=$(desk -H 'Content-Type: application/tony' -d "{name: up, question: \"Ship alice's?\", to: [user:erin], serves: $SHIP}" \
 	"http://$ADDR/asks" | sed -n 's/^id:[[:space:]]*//p')
 [ -n "$UP" ] || die "the desk could not raise an onward ask"
 upposed=

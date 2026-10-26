@@ -215,6 +215,9 @@ func ToNode(v any) (*ir.Node, error) { return gomap.ToTonyIR(v) }
 // FromNode decodes IR into a Go value.
 func FromNode(n *ir.Node, v any) error { return gomap.FromTonyIR(n, v) }
 
+// FromNodeStrict is FromNode for a type that refuses keys it does not know, as UnmarshalStrict.
+func FromNodeStrict(n *ir.Node, v any) error { return gomap.FromTonyIR(n, v, gomap.Strict()) }
+
 // ── IR ↔ bytes ───────────────────────────────────────────────────────────────
 
 // ParseNode parses one document. Blank input yields a null node, absorbing two upstream

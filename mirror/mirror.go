@@ -521,7 +521,7 @@ func asPosed(docket entity.Store, m Meta, ev task.Event) (task.Event, []string, 
 	if within, dflt, _ := DeadlineOf(e.Payload); within != "" || dflt != "" {
 		ev.Deadline = &task.Deadline{Within: within, Default: dflt}
 	}
-	return ev, entity.Strs(e.Payload, AnswerersField), LabelsOf(e.Payload)
+	return ev, GranteesTo(e.Payload), LabelsOf(e.Payload)
 }
 
 // labelsFor is what the row's ask says about its question for whoever watches asks.

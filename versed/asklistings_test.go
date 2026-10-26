@@ -14,7 +14,7 @@ import (
 func TestTheAskListingsAreTheirTypes(t *testing.T) {
 	srv, ts := asking(t)
 	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	land := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", answerers: [oscar@example.com]}`))
+	land := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`))
 	posed(t, srv, mirror.AskRef(land))
 
 	read := func(as, query string, into any) {
@@ -31,7 +31,7 @@ func TestTheAskListingsAreTheirTypes(t *testing.T) {
 
 	var mine []api.AskRow
 	read(daniel, "", &mine)
-	if len(mine) != 1 || mine[0].ID != land || mine[0].Asker != daniel || mine[0].Kind() != api.AskKindPerson {
+	if len(mine) != 1 || mine[0].ID != land || mine[0].From == nil || mine[0].From.Principal != daniel || mine[0].Kind() != api.AskKindPerson {
 		t.Fatalf("daniel's asks = %+v, want %s, his, a person's ask", mine, land)
 	}
 

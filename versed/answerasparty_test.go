@@ -54,7 +54,7 @@ func TestAResolversAnswerIsThePartys(t *testing.T) {
 	}
 
 	// For bob, who granted it: his answer, through helper.
-	one := askID(t, ask(t, "carol@example.com", ts.URL, `{name: one, question: q, answerers: [bob@example.com]}`))
+	one := askID(t, ask(t, "carol@example.com", ts.URL, `{name: one, question: q, to: [bob@example.com]}`))
 	posed(t, srv, mirror.AskRef(one))
 	if code, msg := answerAsResolver(t, alice, "helper", ts.URL, one, "proceed", "dan@example.com"); code != http.StatusForbidden {
 		t.Fatalf("helper answered for dan, who is not asked: %d %s", code, msg)
@@ -70,7 +70,7 @@ func TestAResolversAnswerIsThePartys(t *testing.T) {
 	}
 
 	// For dan, who granted nothing: nobody's.
-	toDan := askID(t, ask(t, "carol@example.com", ts.URL, `{name: two, question: q, answerers: [dan@example.com]}`))
+	toDan := askID(t, ask(t, "carol@example.com", ts.URL, `{name: two, question: q, to: [dan@example.com]}`))
 	posed(t, srv, mirror.AskRef(toDan))
 	if code, msg := answerAsResolver(t, alice, "helper", ts.URL, toDan, "proceed", ""); code != http.StatusForbidden {
 		t.Fatalf("helper answered an ask to dan: %d %s", code, msg)
@@ -81,14 +81,14 @@ func TestAResolversAnswerIsThePartys(t *testing.T) {
 	if code, msg := grantStatus(t, frank, ts.URL, "places", `{}`); code != http.StatusNoContent {
 		t.Fatalf("frank's grant: %d %s", code, msg)
 	}
-	toFrank := askID(t, ask(t, "carol@example.com", ts.URL, `{name: five, question: q, answerers: [frank@example.com]}`))
+	toFrank := askID(t, ask(t, "carol@example.com", ts.URL, `{name: five, question: q, to: [frank@example.com]}`))
 	posed(t, srv, mirror.AskRef(toFrank))
 	if code, msg := answerAsResolver(t, alice, "places", ts.URL, toFrank, "proceed", ""); code != http.StatusForbidden || !strings.Contains(msg, "answers for nobody") {
 		t.Fatalf("places answered an ask about nothing: %d %s", code, msg)
 	}
 
 	// Two parties, two ballots, each named.
-	both := askID(t, ask(t, "carol@example.com", ts.URL, `{name: three, question: q, answerers: [bob@example.com, erin@example.com]}`))
+	both := askID(t, ask(t, "carol@example.com", ts.URL, `{name: three, question: q, to: [bob@example.com, erin@example.com]}`))
 	posed(t, srv, mirror.AskRef(both))
 	if _, _, err := entity.As(srv.Store, entity.SystemDocket).Write(entity.Write{
 		At: mirror.AskRef(both).At(), Value: entity.Obj{"options": []any{
@@ -140,7 +140,7 @@ func TestAResolversAnswerIsThePartys(t *testing.T) {
 	if resp := answerFor(t, bob, ts.URL, "revoke", "helper", `{}`); resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("bob's revoke: %s", resp.Status)
 	}
-	again := askID(t, ask(t, "carol@example.com", ts.URL, `{name: four, question: q, answerers: [bob@example.com]}`))
+	again := askID(t, ask(t, "carol@example.com", ts.URL, `{name: four, question: q, to: [bob@example.com]}`))
 	posed(t, srv, mirror.AskRef(again))
 	if code, msg := answerAsResolver(t, alice, "helper", ts.URL, again, "proceed", ""); code != http.StatusForbidden {
 		t.Fatalf("helper answered for bob after he revoked it: %d %s", code, msg)

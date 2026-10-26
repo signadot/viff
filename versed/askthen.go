@@ -24,7 +24,7 @@ import (
 // nothing: it is the condition, and what follows is theirs.
 //
 //	then: {answer: {ask: ship-3f2a…, choice: proceed, say: "david says the UI is ok"}}
-//	then: {ask: {name: deploy, question: "Deploy it?", answerers: [ann@…], due: 4h, then: {…}}}
+//	then: {ask: {name: deploy, question: "Deploy it?", to: [ann@…], due: 4h, then: {…}}}
 //
 // NOTHING IS SPAWNED. Each is one more act of the asker's, made by the route that makes it
 // (answerQuestion, raiseAsk), so it is held to what the asker's own act would be when it is made.
@@ -86,7 +86,7 @@ func thenAnswerOf(m entity.Obj) (thenAnswer, error) {
 // now: a duration counts from the yes that raises it, and a date is taken as written.
 func thenAskOf(v entity.Payload, now time.Time) (api.Ask, error) {
 	var body api.Ask
-	if err := codec.FromNode(v, &body); err != nil {
+	if err := codec.FromNodeStrict(v, &body); err != nil {
 		return body, err
 	}
 	if body.Serves != "" || body.For != "" {

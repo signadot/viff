@@ -80,7 +80,7 @@ func (s *Server) withdrawRaisedBy(principal, why string) {
 		return
 	}
 	for _, e := range ents {
-		if entity.Get(e.Payload, servesField) != nil && entity.Str(e.Payload, "asker") == principal {
+		if entity.Get(e.Payload, servesField) != nil && mirror.PrincipalFrom(e.Payload) == principal {
 			s.withdrawOnward(e.Ref.Name(), why)
 		}
 	}

@@ -459,7 +459,7 @@ func (k *Sink) question(reader *client.Client, whom, id string) (posed, error) {
 	}
 	q.status, q.verdict = entity.Str(doc, "status"), entity.Str(doc, "verdict")
 	q.by, q.why = entity.Str(doc, "by"), entity.Str(doc, "why")
-	q.edit, q.asker, q.via = mirror.EditOf(doc), entity.Str(doc, "asker"), entity.Str(doc, "via")
+	q.edit, q.asker, q.via = mirror.EditOf(doc), mirror.PrincipalFrom(doc), entity.Str(doc, "via")
 	q.then = thenWords(entity.Get(doc, "then"))
 	q.els = thenWords(entity.Get(doc, "else"))
 	if whom != "" && q.status == mirror.QuestionPending {
@@ -670,7 +670,7 @@ func thenWords(then *ir.Node) string {
 		return fmt.Sprintf("answers `%s` *%s*", entity.Str(a, "ask"), entity.Str(a, "choice"))
 	}
 	if q := entity.Get(then, "ask"); q != nil {
-		who := verseio.Strs(entity.Get(q, "answerers"))
+		who := verseio.Strs(entity.Get(q, "to"))
 		line := "asks “" + entity.Str(q, "question") + "”"
 		if len(who) > 0 {
 			line += " of " + people(who)

@@ -39,7 +39,7 @@ func askID(t *testing.T, resp *http.Response) string {
 func TestAnAskIsItsAskersAndReadByWhomItAsks(t *testing.T) {
 	srv, ts := asking(t)
 	const daniel, davido, bob = "user:daniel@example.com", "user:oscar@example.com", "user:bob@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge verse/ask?", answerers: [oscar@example.com], then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}`))
+	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge verse/ask?", to: [oscar@example.com], then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}`))
 	if !strings.HasPrefix(id, "land-") {
 		t.Fatalf("id %q is not derived from the name", id)
 	}
@@ -48,11 +48,11 @@ func TestAnAskIsItsAskersAndReadByWhomItAsks(t *testing.T) {
 		t.Fatalf("the ask is %q's, want the asker's", o)
 	}
 	e, _, _ := srv.Store.Get(ref)
-	if got := entity.Str(e.Payload, "asker"); got != daniel {
+	if got := mirror.PrincipalFrom(e.Payload); got != daniel {
 		t.Fatalf("the ask says its asker is %q", got)
 	}
-	if got := entity.Strs(e.Payload, "answerers"); len(got) != 1 || got[0] != davido {
-		t.Fatalf("answerers %v, want [%s] in the grammar's spelling", got, davido)
+	if got := mirror.GranteesTo(e.Payload); len(got) != 1 || got[0] != davido {
+		t.Fatalf("to %v, want [%s] in the grammar's spelling", got, davido)
 	}
 	for who, want := range map[string]int{daniel: http.StatusOK, davido: http.StatusOK, bob: http.StatusForbidden} {
 		if resp := getAs(t, who, ts.URL+"/entity?at="+ref.KPath()); resp.StatusCode != want {
@@ -92,7 +92,7 @@ func TestAnAskIsItsAskersAndReadByWhomItAsks(t *testing.T) {
 // refuses, and not by owning anything above it, since nobody but the system does.
 func TestNobodyElseWritesAnAsk(t *testing.T) {
 	srv, ts := asking(t)
-	id := askID(t, ask(t, "user:daniel@example.com", ts.URL, `{name: land, question: "Merge?", answerers: [oscar@example.com], then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}`))
+	id := askID(t, ask(t, "user:daniel@example.com", ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com], then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}`))
 	ref := mirror.AskRef(id)
 	for _, who := range []string{"user:bob@example.com", tester} {
 		if _, _, err := entity.As(srv.Store, who).Write(entity.Write{
@@ -108,12 +108,12 @@ func TestAnAskIsCheckedWhereItIsAsked(t *testing.T) {
 	past := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
 	soon := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
 	for body, want := range map[string]string{
-		`{name: x}`: "question is required",
-		`{name: x, question: q, answerers: [davido]}`:                                                          "a bare word names nothing",
-		`{name: x, question: q, due: tomorrow}`:                                                                "RFC 3339",
-		`{name: x, question: q, due: "` + past + `"}`:                                                          "not in the future",
-		`{name: x, question: q, then: {prompt: a, script: ""}}`:                                                "one key",
-		`{name: x, question: q, then: {shell: "rm -rf /"}}`:                                                    "not something an ask runs",
+		`{name: x}`:                                             "question is required",
+		`{name: x, question: q, to: [davido]}`:                  "a bare word names nothing",
+		`{name: x, question: q, due: tomorrow}`:                 "RFC 3339",
+		`{name: x, question: q, due: "` + past + `"}`:           "not in the future",
+		`{name: x, question: q, then: {prompt: a, script: ""}}`: "one key",
+		`{name: x, question: q, then: {shell: "rm -rf /"}}`:     "not something an ask runs",
 		`{name: x, question: q, then: {spawn: {prompt: "", environment: {systems: {network: {mode: open}}}}}}`: "then.spawn: a `prompt`",
 		`{name: x, question: q, then: {prompt: "merge it"}}`:                                                   "not something an ask runs (spawn, answer, ask)",
 		`{name: x, question: q, then: {spawn: {prompt: go, doer: {agent: verse}}}}`:                            "then.spawn: ",
@@ -123,6 +123,10 @@ func TestAnAskIsCheckedWhereItIsAsked(t *testing.T) {
 		`{name: x, question: q, labels: {"a b": c}}`:                                                           "a label's name is a word",
 		`{name: x, question: q, onSilence: yes}`:                                                               "has no due",
 		`{name: x, question: q, due: "` + soon + `", onSilence: maybe}`:                                        "yes or no",
+		// A key the ask does not know is refused rather than dropped: `answerers` dropped would
+		// be an ask that names nobody, put to everyone.
+		`{name: x, question: q, answerers: [oscar@example.com]}`:                                      "answerers",
+		`{name: x, question: q, then: {ask: {name: d, question: q, answerers: [oscar@example.com]}}}`: "answerers",
 	} {
 		resp := ask(t, "user:daniel@example.com", ts.URL, body)
 		if msg := bodyOf(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(msg, want) {
@@ -161,7 +165,7 @@ func TestAnAsksSilenceIsNoUnlessItSaysYes(t *testing.T) {
 			want = task.Proceed
 		}
 		due := clock.Now().Add(time.Minute).UTC().Format(time.RFC3339)
-		body := `{name: ` + name + `, question: "Merge?", answerers: [oscar@example.com], due: "` + due + `"` + said + `}`
+		body := `{name: ` + name + `, question: "Merge?", to: [oscar@example.com], due: "` + due + `"` + said + `}`
 		ref := mirror.AskRef(askID(t, ask(t, "user:daniel@example.com", ts.URL, body)))
 		posed(t, srv, ref)
 		clock.Advance(time.Minute)
@@ -187,7 +191,7 @@ func TestAnAsksSilenceIsNoUnlessItSaysYes(t *testing.T) {
 func TestAnAskIsWithdrawnByItsAsker(t *testing.T) {
 	srv, ts := asking(t)
 	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", answerers: [oscar@example.com]}`))
+	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`))
 	ref := mirror.AskRef(id)
 	posed(t, srv, ref)
 	qid := ref.Name()
@@ -222,7 +226,7 @@ func TestAnAskIsWithdrawnByItsAsker(t *testing.T) {
 func TestAnAnswerToAnEarlierEditIsRefused(t *testing.T) {
 	srv, ts := asking(t)
 	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", answerers: [oscar@example.com]}`))
+	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`))
 	ref := mirror.AskRef(id)
 	posed(t, srv, ref)
 	// Asked again, as the verb that changes an ask does it: the record and the waiting question.

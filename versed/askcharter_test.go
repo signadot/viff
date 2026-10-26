@@ -86,7 +86,7 @@ func thenTaskOf(t *testing.T, srv *Server, ref entity.Ref) entity.Entity {
 func TestAnAskIsAnsweredAndItsThenRunsForTheAsker(t *testing.T) {
 	srv, ts := asking(t)
 	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Review verse/ask?", answerers: [oscar@example.com], then: {spawn: {prompt: "merge verse/ask to main", environment: {systems: {network: {mode: open}}}}}}`))
+	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Review verse/ask?", to: [oscar@example.com], then: {spawn: {prompt: "merge verse/ask to main", environment: {systems: {network: {mode: open}}}}}}`))
 	land := mirror.AskRef(id)
 	posed(t, srv, land)
 	if got := heldOutTo(t, srv, id); len(got) != 1 || got[0] != davido {
@@ -122,7 +122,7 @@ func TestAnAskIsAnsweredAndItsThenRunsForTheAsker(t *testing.T) {
 func TestAThenRunsRecordCarriesItsPolicy(t *testing.T) {
 	srv, ts := asking(t)
 	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: tag, question: "Tag v1?", answerers: [oscar@example.com],
+	id := askID(t, ask(t, daniel, ts.URL, `{name: tag, question: "Tag v1?", to: [oscar@example.com],
 		then: {spawn: {script: "true", environment: {systems: {network: {mode: open}, question: {ask: {}}}}, autonomy: [{match: {system: question}, then: allow}, {then: deny}]}}}`))
 	tag := mirror.AskRef(id)
 	posed(t, srv, tag)
@@ -174,7 +174,7 @@ func TestAnAskWithoutAThenIsAVote(t *testing.T) {
 func TestANoToAnAskIsRecordedAndRunsNothing(t *testing.T) {
 	srv, ts := asking(t)
 	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge verse/ask?", answerers: [oscar@example.com], then: {spawn: {prompt: "merge verse/ask to main", environment: {systems: {network: {mode: open}}}}}}`))
+	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge verse/ask?", to: [oscar@example.com], then: {spawn: {prompt: "merge verse/ask to main", environment: {systems: {network: {mode: open}}}}}}`))
 	land := mirror.AskRef(id)
 	posed(t, srv, land)
 	resp := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "deny", By: davido})
@@ -195,7 +195,7 @@ func TestANoToAnAskIsRecordedAndRunsNothing(t *testing.T) {
 func TestAnAskIsNotAnsweredByItsAsker(t *testing.T) {
 	srv, ts := asking(t)
 	const daniel = "user:daniel@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", answerers: [oscar@example.com]}`))
+	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`))
 	posed(t, srv, mirror.AskRef(id))
 	if resp := answerAs(t, daniel, ts.URL, id); resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("daniel answering his own ask: %s, want 403", resp.Status)
@@ -211,7 +211,7 @@ func TestAnAskOutlivesARestart(t *testing.T) {
 	first.Start(ctx)
 	ts := httptest.NewServer(first.Handler())
 	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", answerers: [oscar@example.com], then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}`))
+	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com], then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}`))
 	land := mirror.AskRef(id)
 	posed(t, first, land)
 	ts.Close()

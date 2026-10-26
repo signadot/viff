@@ -13,7 +13,7 @@ import (
 func TestAnAskThatDoesNotReadIsStillItsAskers(t *testing.T) {
 	srv, ts := asking(t)
 	const daniel = "user:daniel@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", answerers: [oscar@example.com]}`))
+	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`))
 	ref := mirror.AskRef(id)
 	posed(t, srv, ref)
 	// An edit that is not a number: the record no longer reads as an api.AskRecord.

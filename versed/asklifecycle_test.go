@@ -25,7 +25,7 @@ func TestAnAnswerDeliveredBeforeARewordingIsNotOvertaken(t *testing.T) {
 	srv, ts := asking(t)
 	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
 	due := time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339)
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", answerers: [oscar@example.com], due: "`+due+`"}`))
+	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com], due: "`+due+`"}`))
 	ref := mirror.AskRef(id)
 	posed(t, srv, ref)
 
@@ -105,7 +105,7 @@ func TestAnOnwardAskKeepsItsRulesWhenChanged(t *testing.T) {
 		t.Fatalf("bob's grant: %d %s", code, msg)
 	}
 	in48 := time.Now().Add(48 * time.Hour).UTC().Format(time.RFC3339)
-	served := askID(t, ask(t, "carol@example.com", ts.URL, `{name: land, question: q, answerers: [bob@example.com], due: "`+in48+`"}`))
+	served := askID(t, ask(t, "carol@example.com", ts.URL, `{name: land, question: q, to: [bob@example.com], due: "`+in48+`"}`))
 	posed(t, srv, mirror.AskRef(served))
 	onward := raiseOnward(t, srv, ts.URL, served, "")
 	in72 := time.Now().Add(72 * time.Hour).UTC().Format(time.RFC3339)
@@ -131,7 +131,7 @@ func TestAnAskThatCannotBeAskedAgainSaysSo(t *testing.T) {
 	ts := httptest.NewServer(first.Handler())
 	pr := alicesPR(t, first)
 	id := askID(t, ask(t, "user:alice@example.com", ts.URL,
-		`{name: land, question: "Land it?", answerers: [carol@example.com], about: "demo.pr.\"1\""}`))
+		`{name: land, question: "Land it?", to: [carol@example.com], about: "demo.pr.\"1\""}`))
 	posed(t, first, mirror.AskRef(id))
 	ts.Close()
 	down()
@@ -167,8 +167,8 @@ func TestAnAnsweredAskWithoutItsAnswerFieldStillFollows(t *testing.T) {
 	ctx, down := context.WithCancel(t.Context())
 	first.Start(ctx)
 	ts := httptest.NewServer(first.Handler())
-	id := askID(t, ask(t, "user:scott@example.com", ts.URL, `{name: ship, question: q, answerers: [ann@example.com],
-		then: {ask: {name: next, question: "And then?", answerers: [lead@example.com]}}}`))
+	id := askID(t, ask(t, "user:scott@example.com", ts.URL, `{name: ship, question: q, to: [ann@example.com],
+		then: {ask: {name: next, question: "And then?", to: [lead@example.com]}}}`))
 	posed(t, first, mirror.AskRef(id))
 	ts.Close()
 	down()

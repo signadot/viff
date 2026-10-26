@@ -24,7 +24,7 @@ func TestAnEscalationIsOnwardAsksOverTwoHops(t *testing.T) {
 
 	hop1 := raiseOnward(t, srv, url, served, "")
 	hop2 := askID(t, postAsResolver(t, alice, "mgr-desk", url+"/asks",
-		`{name: up2, question: "should bob land it?", answerers: [director@example.com], serves: `+hop1+`}`))
+		`{name: up2, question: "should bob land it?", to: [director@example.com], serves: `+hop1+`}`))
 	posed(t, srv, mirror.AskRef(hop2))
 	e, _, _ := srv.Store.Get(mirror.AskRef(hop2))
 	h1, _, _ := srv.Store.Get(mirror.AskRef(hop1))

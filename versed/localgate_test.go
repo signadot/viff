@@ -44,8 +44,7 @@ func waitQuestion(t *testing.T, srv *Server, taskID string) string {
 	deadline := time.After(3 * time.Second)
 	for {
 		for _, ent := range entity.Below(srv.Store, mirror.IsQuestion, 1, entity.VerseRoot, mirror.AskSystem) {
-			p := entity.ToObj(ent.Payload)
-			if p["task"] == taskID && p["status"] == mirror.QuestionPending {
+			if mirror.TaskFrom(ent.Payload) == taskID && entity.Str(ent.Payload, "status") == mirror.QuestionPending {
 				return ent.Ref.Name()
 			}
 		}

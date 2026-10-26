@@ -31,7 +31,7 @@ func TestARemovedResolversGrantsDoNotPassToTheNextOfItsName(t *testing.T) {
 	if resp := postAs(t, mallory, ts.URL+"/resolvers", "application/tony", r1); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("mallory's install: %s: %s", resp.Status, bodyOf(t, resp))
 	}
-	id := askID(t, ask(t, "user:carol@example.com", ts.URL, `{name: land, question: q, answerers: [bob@example.com]}`))
+	id := askID(t, ask(t, "user:carol@example.com", ts.URL, `{name: land, question: q, to: [bob@example.com]}`))
 	posed(t, srv, mirror.AskRef(id))
 	if code, msg := answerAsResolver(t, mallory, "r1", ts.URL, id, "proceed", ""); code < 400 {
 		t.Fatalf("mallory's r1 answered bob's ask: %d %s", code, msg)

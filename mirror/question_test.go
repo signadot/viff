@@ -59,9 +59,9 @@ func TestAPatternSelectsPendingQuestions(t *testing.T) {
 	pose(t, store, "run-b~d1", "write-guard", "run-b",
 		writeStep("cfg/other.tony"))
 
-	// By the run that raised it. The id carries its origin, so one run's questions are
-	// selectable without a second field to join on.
-	if got := ids(t, store, entity.Pattern{Predicate: entity.Obj{"origin": "run-a"}.Payload()}); len(got) != 2 {
+	// By the run that raised it: `from` names it, so one run's questions are selectable without a
+	// second field to join on.
+	if got := ids(t, store, entity.Pattern{Predicate: entity.Obj{FromField: FromTask("run-a")}.Payload()}); len(got) != 2 {
 		t.Fatalf("selected %v, want both of run-a's questions", got)
 	}
 
@@ -302,8 +302,8 @@ func TestASettledQuestionWaitsOnNobody(t *testing.T) {
 		t.Errorf("a settled question waits on %v", got)
 	}
 	e, _, _ := store.Get(QuestionRef("run-a~d1"))
-	if got := entity.Strs(e.Payload, AnswerersField); len(got) != 1 {
-		t.Errorf("answerers %v, want the gate's own kept", got)
+	if got := GranteesTo(e.Payload); len(got) != 1 {
+		t.Errorf("to.grantees %v, want the gate's own kept", got)
 	}
 }
 

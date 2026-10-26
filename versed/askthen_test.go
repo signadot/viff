@@ -63,7 +63,7 @@ func TestAYesCastsTheAskersBallotOnAnother(t *testing.T) {
 		t.Fatalf("bob's ballot: %s: %s", resp.Status, bodyOf(t, resp))
 	}
 
-	id := askID(t, ask(t, thScott, ts.URL, `{name: ui-ok, question: "Is the UI ok to ship?", answerers: [david@example.com],
+	id := askID(t, ask(t, thScott, ts.URL, `{name: ui-ok, question: "Is the UI ok to ship?", to: [david@example.com],
 		then: {answer: {ask: "`+ship+`", choice: proceed, say: "david says the UI is ok"}}}`))
 	posed(t, srv, mirror.AskRef(id))
 	if resp := answerWith(t, thDavid, ts.URL, id, "proceed"); resp.StatusCode != http.StatusNoContent {
@@ -89,7 +89,7 @@ func TestANoCastsNothing(t *testing.T) {
 	srv, ts := asking(t)
 	const ship = "verse.trigger.ship.ship~2"
 	raise(t, srv, ship, []task.Option{{ID: "proceed", Need: 2}, {ID: "deny", Need: 1}})
-	id := askID(t, ask(t, thScott, ts.URL, `{name: ui-ok, question: "UI ok?", answerers: [david@example.com],
+	id := askID(t, ask(t, thScott, ts.URL, `{name: ui-ok, question: "UI ok?", to: [david@example.com],
 		then: {answer: {ask: "`+ship+`", choice: proceed}}}`))
 	posed(t, srv, mirror.AskRef(id))
 	if resp := answerWith(t, thDavid, ts.URL, id, "deny"); resp.StatusCode != http.StatusNoContent {
@@ -111,7 +111,7 @@ func TestAThenThatAnswersIsCheckedWhereItIsAsked(t *testing.T) {
 	srv, ts := asking(t)
 	const ship = "verse.trigger.ship.ship~3"
 	raise(t, srv, ship, []task.Option{{ID: "proceed", Need: 1}, {ID: "deny", Need: 1}})
-	bobs := askID(t, ask(t, "user:alice@example.com", ts.URL, `{name: bobs, question: q, answerers: [bob@example.com]}`))
+	bobs := askID(t, ask(t, "user:alice@example.com", ts.URL, `{name: bobs, question: q, to: [bob@example.com]}`))
 	posed(t, srv, mirror.AskRef(bobs))
 	for then, want := range map[string]int{
 		`{answer: {ask: nothing-here, choice: proceed}}`:            http.StatusNotFound,
@@ -121,15 +121,15 @@ func TestAThenThatAnswersIsCheckedWhereItIsAsked(t *testing.T) {
 		`{answer: {ask: "` + ship + `", choice: proceed, why: x}}`:  http.StatusBadRequest,
 		`{answer: {ask: "` + ship + `", choice: proceed, edit: 7}}`: http.StatusConflict,
 	} {
-		resp := ask(t, thScott, ts.URL, `{name: ui-ok, question: q, answerers: [david@example.com], then: `+then+`}`)
+		resp := ask(t, thScott, ts.URL, `{name: ui-ok, question: q, to: [david@example.com], then: `+then+`}`)
 		if resp.StatusCode != want {
 			t.Errorf("%s: %s %s, want %d", then, resp.Status, bodyOf(t, resp), want)
 		}
 	}
 	// One scott reads and is not asked: his own, put to david.
-	mine := askID(t, ask(t, thScott, ts.URL, `{name: mine, question: q, answerers: [david@example.com]}`))
+	mine := askID(t, ask(t, thScott, ts.URL, `{name: mine, question: q, to: [david@example.com]}`))
 	posed(t, srv, mirror.AskRef(mine))
-	resp := ask(t, thScott, ts.URL, `{name: ui-ok, question: q, answerers: [david@example.com],
+	resp := ask(t, thScott, ts.URL, `{name: ui-ok, question: q, to: [david@example.com],
 		then: {answer: {ask: "`+mine+`", choice: proceed}}}`)
 	if msg := bodyOf(t, resp); resp.StatusCode != http.StatusForbidden || !strings.Contains(msg, "does not wait on") {
 		t.Errorf("an answer to scott's own ask: %s %s, want 403, as it does not wait on him", resp.Status, msg)
@@ -140,9 +140,9 @@ func TestAThenThatAnswersIsCheckedWhereItIsAsked(t *testing.T) {
 // is not answered, and scott's ask says why.
 func TestAThenAnswerToAnAskSinceRewordedIsRefused(t *testing.T) {
 	srv, ts := asking(t)
-	ship := askID(t, ask(t, "user:alice@example.com", ts.URL, `{name: ship, question: "Ship it?", answerers: [scott@example.com]}`))
+	ship := askID(t, ask(t, "user:alice@example.com", ts.URL, `{name: ship, question: "Ship it?", to: [scott@example.com]}`))
 	posed(t, srv, mirror.AskRef(ship))
-	id := askID(t, ask(t, thScott, ts.URL, `{name: ui-ok, question: "UI ok?", answerers: [david@example.com],
+	id := askID(t, ask(t, thScott, ts.URL, `{name: ui-ok, question: "UI ok?", to: [david@example.com],
 		then: {answer: {ask: "`+ship+`", choice: proceed}}}`))
 	posed(t, srv, mirror.AskRef(id))
 	if resp := change(t, "user:alice@example.com", ts.URL, ship, `{question: "Ship it, and the migration?"}`); resp.StatusCode != http.StatusOK {
@@ -164,10 +164,10 @@ func TestAThenAnswerToAnAskSinceRewordedIsRefused(t *testing.T) {
 // from his yes, and ann's yes answers ship for scott.
 func TestAYesRaisesTheNextAskAndItsYesAnswers(t *testing.T) {
 	srv, ts := asking(t)
-	ship := askID(t, ask(t, "user:alice@example.com", ts.URL, `{name: ship, question: "Ship it?", answerers: [scott@example.com]}`))
+	ship := askID(t, ask(t, "user:alice@example.com", ts.URL, `{name: ship, question: "Ship it?", to: [scott@example.com]}`))
 	posed(t, srv, mirror.AskRef(ship))
-	id := askID(t, ask(t, thScott, ts.URL, `{name: ui-ok, question: "UI ok?", answerers: [david@example.com],
-		then: {ask: {name: deploy, question: "Deploy it?", answerers: [ann@example.com], due: 1h,
+	id := askID(t, ask(t, thScott, ts.URL, `{name: ui-ok, question: "UI ok?", to: [david@example.com],
+		then: {ask: {name: deploy, question: "Deploy it?", to: [ann@example.com], due: 1h,
 			then: {answer: {ask: "`+ship+`", choice: proceed}}}}}`))
 	posed(t, srv, mirror.AskRef(id))
 	if resp := answerWith(t, thDavid, ts.URL, id, "proceed"); resp.StatusCode != http.StatusNoContent {
@@ -179,7 +179,7 @@ func TestAYesRaisesTheNextAskAndItsYesAnswers(t *testing.T) {
 		t.Fatalf("then-asked %v, want the deploy ask's id", asked)
 	}
 	d, _, _ := srv.Store.Get(mirror.AskRef(deploy))
-	if got := entity.Str(d.Payload, "asker"); got != thScott {
+	if got := mirror.PrincipalFrom(d.Payload); got != thScott {
 		t.Fatalf("the deploy ask is %q's, want scott's", got)
 	}
 	if due, err := time.Parse(time.RFC3339, entity.Str(d.Payload, "due")); err != nil || time.Until(due) < 50*time.Minute {
@@ -202,12 +202,12 @@ func TestAYesRaisesTheNextAskAndItsYesAnswers(t *testing.T) {
 func TestAThenThatAsksIsCheckedWhereItIsAsked(t *testing.T) {
 	_, ts := asking(t)
 	for then, want := range map[string]int{
-		`{ask: {name: d, question: q, answerers: [ann]}}`:                                http.StatusBadRequest, // a bare word names nothing
+		`{ask: {name: d, question: q, to: [ann]}}`:                                       http.StatusBadRequest, // a bare word names nothing
 		`{ask: {name: d, question: q, due: -1h}}`:                                        http.StatusBadRequest,
 		`{ask: {name: d, question: q, serves: x}}`:                                       http.StatusBadRequest,
 		`{ask: {name: d, question: q, then: {answer: {ask: nothing, choice: proceed}}}}`: http.StatusNotFound,
 	} {
-		resp := ask(t, thScott, ts.URL, `{name: ui-ok, question: q, answerers: [david@example.com], then: `+then+`}`)
+		resp := ask(t, thScott, ts.URL, `{name: ui-ok, question: q, to: [david@example.com], then: `+then+`}`)
 		if resp.StatusCode != want {
 			t.Errorf("%s: %s %s, want %d", then, resp.Status, bodyOf(t, resp), want)
 		}
@@ -223,9 +223,9 @@ func fmtAny(v any) string {
 // a second asks nobody.
 func TestANoRunsTheElse(t *testing.T) {
 	srv, ts := asking(t)
-	const escalate = `else: {ask: {name: ship-lead, question: "Ann said no: ship it?", answerers: [lead@example.com]}}`
-	no := askID(t, ask(t, thScott, ts.URL, `{name: ship, question: "Ship it?", answerers: [ann@example.com], `+escalate+`}`))
-	yes := askID(t, ask(t, thScott, ts.URL, `{name: ship2, question: "Ship it?", answerers: [ann@example.com], `+escalate+`}`))
+	const escalate = `else: {ask: {name: ship-lead, question: "Ann said no: ship it?", to: [lead@example.com]}}`
+	no := askID(t, ask(t, thScott, ts.URL, `{name: ship, question: "Ship it?", to: [ann@example.com], `+escalate+`}`))
+	yes := askID(t, ask(t, thScott, ts.URL, `{name: ship2, question: "Ship it?", to: [ann@example.com], `+escalate+`}`))
 	posed(t, srv, mirror.AskRef(no))
 	posed(t, srv, mirror.AskRef(yes))
 	if resp := answerWith(t, thAnn, ts.URL, no, "deny"); resp.StatusCode != http.StatusNoContent {
@@ -239,8 +239,8 @@ func TestANoRunsTheElse(t *testing.T) {
 	if !strings.HasPrefix(lead, "ship-lead-") {
 		t.Fatalf("else-asked %v, want the lead's ask", asked)
 	}
-	if e, _, _ := srv.Store.Get(mirror.AskRef(lead)); entity.Str(e.Payload, "asker") != thScott {
-		t.Fatalf("the lead's ask is %q's, want scott's", entity.Str(e.Payload, "asker"))
+	if e, _, _ := srv.Store.Get(mirror.AskRef(lead)); mirror.PrincipalFrom(e.Payload) != thScott {
+		t.Fatalf("the lead's ask is %q's, want scott's", mirror.PrincipalFrom(e.Payload))
 	}
 	askField(t, srv, yes, "answer")
 	time.Sleep(200 * time.Millisecond)
@@ -257,8 +257,8 @@ func TestANoRunsTheElse(t *testing.T) {
 func TestSilenceRunsTheElse(t *testing.T) {
 	srv, ts, clock := keeping(t, 0)
 	due := clock.Now().Add(time.Minute).UTC().Format(time.RFC3339)
-	id := askID(t, ask(t, thScott, ts.URL, `{name: ship, question: "Ship it?", answerers: [ann@example.com], due: "`+due+`",
-		else: {ask: {name: ship-lead, question: "Nobody answered: ship it?", answerers: [lead@example.com]}}}`))
+	id := askID(t, ask(t, thScott, ts.URL, `{name: ship, question: "Ship it?", to: [ann@example.com], due: "`+due+`",
+		else: {ask: {name: ship-lead, question: "Nobody answered: ship it?", to: [lead@example.com]}}}`))
 	posed(t, srv, mirror.AskRef(id))
 	clock.Advance(time.Minute)
 	asked := entity.ToObj(entity.Get(askField(t, srv, id, "else-asked"), "else-asked"))
@@ -271,16 +271,16 @@ func TestSilenceRunsTheElse(t *testing.T) {
 func TestAnElseIsCheckedAndChangingItAsksAgain(t *testing.T) {
 	srv, ts := asking(t)
 	for body, want := range map[string]int{
-		`{name: x, question: q, answerers: [ann@example.com], else: {answer: {ask: nothing-here, choice: proceed}}}`: http.StatusNotFound,
-		`{name: x, question: q, answerers: [ann@example.com], else: {shell: "rm -rf /"}}`:                            http.StatusBadRequest,
-		`{name: x, question: q, answerers: [ann@example.com], else: {prompt: a, script: ""}}`:                        http.StatusBadRequest,
+		`{name: x, question: q, to: [ann@example.com], else: {answer: {ask: nothing-here, choice: proceed}}}`: http.StatusNotFound,
+		`{name: x, question: q, to: [ann@example.com], else: {shell: "rm -rf /"}}`:                            http.StatusBadRequest,
+		`{name: x, question: q, to: [ann@example.com], else: {prompt: a, script: ""}}`:                        http.StatusBadRequest,
 	} {
 		resp := ask(t, thScott, ts.URL, body)
 		if msg := bodyOf(t, resp); resp.StatusCode != want || !strings.Contains(msg, "else") {
 			t.Errorf("%s: %s %q, want %d naming the else", body, resp.Status, msg, want)
 		}
 	}
-	id := askID(t, ask(t, thScott, ts.URL, `{name: ship, question: "Ship it?", answerers: [ann@example.com]}`))
+	id := askID(t, ask(t, thScott, ts.URL, `{name: ship, question: "Ship it?", to: [ann@example.com]}`))
 	posed(t, srv, mirror.AskRef(id))
 	if resp := change(t, thScott, ts.URL, id, `{else: {spawn: {prompt: "tell the channel it was declined", environment: {systems: {network: {mode: open}}}}}}`); resp.StatusCode != http.StatusOK {
 		t.Fatalf("a new else: %s: %s", resp.Status, bodyOf(t, resp))

@@ -94,7 +94,7 @@ func TestAReplayedQuestionKeepsItsAsk(t *testing.T) {
 	if within, dflt, _ := DeadlineOf(rec.Payload); within != "4h" || dflt != task.Deny {
 		t.Errorf("the replayed question's clock is %q/%q, want the 4h/deny it was posed with", within, dflt)
 	}
-	if who := entity.Strs(rec.Payload, AnswerersField); len(who) != 2 || who[0] != "user:a" {
+	if who := GranteesTo(rec.Payload); len(who) != 2 || who[0] != "user:a" {
 		t.Errorf("the replayed question is held out to %v, want the user:a and user:b it was posed to", who)
 	}
 	if l := LabelsOf(rec.Payload); l["slack"] != "C1" || l["team"] != "" {

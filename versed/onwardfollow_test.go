@@ -51,7 +51,7 @@ func TestAnOnwardAskIsWithdrawnWhenItsAskIsAskedAgainOrWithdrawn(t *testing.T) {
 	if code, msg := grantStatus(t, "user:bob@example.com", ts.URL, "helper", `{}`); code != http.StatusNoContent {
 		t.Fatalf("bob's grant: %d %s", code, msg)
 	}
-	served := askID(t, ask(t, "carol@example.com", ts.URL, `{name: land, question: "land it?", answerers: [bob@example.com]}`))
+	served := askID(t, ask(t, "carol@example.com", ts.URL, `{name: land, question: "land it?", to: [bob@example.com]}`))
 	posed(t, srv, mirror.AskRef(served))
 
 	reworded := raiseOnward(t, srv, ts.URL, served, "")
@@ -70,7 +70,7 @@ func TestAnOnwardAskIsWithdrawnWhenItsAskIsAskedAgainOrWithdrawn(t *testing.T) {
 	waitWithdrawn(t, srv, gone)
 
 	// And one whose served ask is removed outright, with no withdrawal before it.
-	other := askID(t, ask(t, "carol@example.com", ts.URL, `{name: land2, question: "land it?", answerers: [bob@example.com]}`))
+	other := askID(t, ask(t, "carol@example.com", ts.URL, `{name: land2, question: "land it?", to: [bob@example.com]}`))
 	posed(t, srv, mirror.AskRef(other))
 	removed := raiseOnward(t, srv, ts.URL, other, "")
 	if _, _, err := entity.As(srv.Store, entity.SystemDocket).Write(entity.Write{At: mirror.AskRef(other).At()}); err != nil {
@@ -92,7 +92,7 @@ func TestAnOnwardAsksClockFollowsItsAsksSoonerClock(t *testing.T) {
 		t.Fatalf("bob's grant: %d %s", code, msg)
 	}
 	in48 := time.Now().Add(48 * time.Hour).UTC().Format(time.RFC3339)
-	served := askID(t, ask(t, "carol@example.com", ts.URL, `{name: land, question: q, answerers: [bob@example.com], due: "`+in48+`"}`))
+	served := askID(t, ask(t, "carol@example.com", ts.URL, `{name: land, question: q, to: [bob@example.com], due: "`+in48+`"}`))
 	posed(t, srv, mirror.AskRef(served))
 	onward := raiseOnward(t, srv, ts.URL, served, "")
 	dueOf := func() string { e, _, _ := srv.Store.Get(mirror.AskRef(onward)); return entity.Str(e.Payload, "due") }

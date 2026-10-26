@@ -34,7 +34,7 @@ func serves(store entity.Store, res resolver.Resolver, p entity.Payload) ([]enti
 	}
 	via := entity.Via(resolver.Ref(res.Name))
 	var out []entity.Ref
-	for _, party := range mirror.Parties(store, subject, askAnswerers(p)) {
+	for _, party := range mirror.Parties(store, subject, mirror.GranteesTo(p)) {
 		ok, err := entity.Holds(store, via, entity.Answer, party)
 		if err != nil {
 			return nil, err
