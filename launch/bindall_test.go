@@ -47,7 +47,7 @@ func TestBindCarriesEveryField(t *testing.T) {
 	engineOwned := map[string]string{
 		"Chain":      "the kpath of the spawning action, which only the engine knows",
 		"Occurrence": "the commit that caused this firing, which is a fact about the cause and not a request",
-		"Asker":      "who `as: subject` resolved to at the firing; a charter naming it would act as anybody",
+		"ActsFor":    "who `as: subject` resolved to at the firing; a charter naming it would act as anybody",
 		"Passed":     "the gates the firing passed, which a credential vouches for; a charter naming them would vouch for an answer nobody gave",
 		// A comment describes the spawn AS WRITTEN, so it belongs to the charter and not to the
 		// run: the persisted rule is the un-bound spec, which keeps them, and binding one into a

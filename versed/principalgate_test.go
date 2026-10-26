@@ -46,8 +46,8 @@ func TestAGateNamingPrincipalAsksWhoeverRanTheTask(t *testing.T) {
 	if got := waitingOn(t, srv, waitQuestion(t, srv, "mine")); !slices.Equal(got, []string{me}) {
 		t.Fatalf("the gate waits on %v, want %s alone", got, me)
 	}
-	if e, _, _ := srv.Store.Get(mirror.Ref("mine")); entity.Str(e.Payload, "asker") != me {
-		t.Errorf("the task's record says it acts for %q, want %s", entity.Str(e.Payload, "asker"), me)
+	if e, _, _ := srv.Store.Get(mirror.Ref("mine")); entity.Str(e.Payload, "actsFor") != me {
+		t.Errorf("the task's record says it acts for %q, want %s", entity.Str(e.Payload, "actsFor"), me)
 	}
 }
 

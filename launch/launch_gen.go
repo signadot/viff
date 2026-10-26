@@ -114,9 +114,9 @@ func (s *Spec) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["as"] = ir.FromString(string(s.As))
 	}
 
-	// Field: Asker
-	if s.Asker != "" {
-		irMap["asker"] = ir.FromString(string(s.Asker))
+	// Field: ActsFor
+	if s.ActsFor != "" {
+		irMap["actsFor"] = ir.FromString(string(s.ActsFor))
 	}
 
 	// Field: Credential (optional)
@@ -277,12 +277,12 @@ func (s *Spec) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "as", fieldNodeUnwrapped.Type)
 			}
 			s.As = string(fieldNodeUnwrapped.String)
-		case "asker":
-			// Field: Asker
+		case "actsFor":
+			// Field: ActsFor
 			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "asker", fieldNodeUnwrapped.Type)
+				return fmt.Errorf("field %q: expected string, got %v", "actsFor", fieldNodeUnwrapped.Type)
 			}
-			s.Asker = string(fieldNodeUnwrapped.String)
+			s.ActsFor = string(fieldNodeUnwrapped.String)
 		case "credential":
 			// Field: Credential
 			s.Credential = &Credential{}

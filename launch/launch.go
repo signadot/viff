@@ -151,11 +151,11 @@ type Spec struct {
 	// select only records in a place its installer owns (checked at install): an asker's record
 	// there was written into a place the charter was installed to serve.
 	As string `tony:"field=as,omitzero"`
-	// Asker is who `as: subject` resolved to at the firing: the subject record's owner.
+	// ActsFor is who `as: subject` resolved to at the firing: the subject record's owner.
 	// Engine-owned like Subject and Chain, and more strictly: the engine CLEARS it on every
 	// launch and sets it only from `as`, because a charter that could write it would name whoever
 	// it liked to act as.
-	Asker string `tony:"field=asker,omitzero"`
+	ActsFor string `tony:"field=actsFor,omitzero"`
 	// Credential asks verse to vouch for this task to a system outside it: a short-lived token,
 	// signed by this verse as an issuer, that says which rule's gate let the work through and how:
 	// on the ballots people cast, on its deadline, or as a gate written `auto`. Absent, the task
@@ -167,7 +167,7 @@ type Spec struct {
 	// for a completion hook's or a sequence step's, which start later than the answer was given.
 	Credential *Credential `tony:"field=credential,omitzero"`
 	// Passed is the gates the firing passed before this launch: which questions, and how each
-	// settled. Engine-owned like Asker, and as strictly: the engine clears it on every launch and
+	// settled. Engine-owned like ActsFor, and as strictly: the engine clears it on every launch and
 	// sets it only from the firing's own gates, because it is what a credential vouches for.
 	Passed []Passed `tony:"field=passed,omitzero"`
 }
@@ -216,7 +216,7 @@ type Binding map[string]string
 
 // Bind expands the template against a binding and returns the concrete spec. Pure: the
 // receiver is not changed, and nothing in the result aliases it. Engine-owned fields (Chain,
-// Occurrence, Asker, Passed) are not carried: the engine sets them.
+// Occurrence, ActsFor, Passed) are not carried: the engine sets them.
 func (s Spec) Bind(b Binding) Spec {
 	out := Spec{
 		Prompt:  expand(s.Prompt, b),
@@ -241,12 +241,12 @@ func (s Spec) Bind(b Binding) Spec {
 	// does, and its answerers are names the question is held out to.
 	out.Autonomy = s.Autonomy.Clone()
 	// As is carried and not expanded: it takes one word (AsSubject), and payload text deciding
-	// whose authority a task runs with is the thing it exists to prevent. Asker is NOT carried —
+	// whose authority a task runs with is the thing it exists to prevent. ActsFor is NOT carried —
 	// it is the engine's answer to As, set after binding (trigger.launch).
 	out.As = s.As
 	// Credential is carried and not expanded, for VirtualKey's reason: payload text deciding
 	// which system a token is good for is what declaring it exists to prevent. Passed is NOT
-	// carried, as Asker is not: it is the engine's account of the firing's gates.
+	// carried, as ActsFor is not: it is the engine's account of the firing's gates.
 	if s.Credential != nil {
 		c := *s.Credential
 		out.Credential = &c
@@ -256,7 +256,7 @@ func (s Spec) Bind(b Binding) Spec {
 
 // CheckByHand is what a spawn written by hand — `verse task run -f`, an ask's `then: {spawn}` —
 // has to be beside Launch.Check: nothing fires for it, so it sets none of what a firing sets
-// (chain, occurrence, as, asker, credential, passed), and a `$` in a field that names something
+// (chain, occurrence, as, actsFor, credential, passed), and a `$` in a field that names something
 // — where a firing would bind one (Bind) and it can mean nothing else — is refused rather than
 // left as written, since there is nothing to bind it. The prompt and the vars are prose and shell
 // values, where a `$` is as likely literal (`$HOME`, `$5`), and are left as written, as a charter
@@ -266,7 +266,7 @@ func (s Spec) CheckByHand() error {
 		field string
 		set   bool
 	}{
-		{"chain", s.Chain != ""}, {"occurrence", s.Occurrence != 0}, {"as", s.As != ""}, {"asker", s.Asker != ""},
+		{"chain", s.Chain != ""}, {"occurrence", s.Occurrence != 0}, {"as", s.As != ""}, {"actsFor", s.ActsFor != ""},
 		{"credential", s.Credential != nil}, {"passed", len(s.Passed) > 0},
 	} {
 		if f.set {

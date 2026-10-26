@@ -153,11 +153,12 @@ type Meta struct {
 	// read the charter that spawned it, which may since have changed. What may leave each is
 	// the autonomy's, beside it.
 	Git []runner.Repo
-	// Asker is the person the run acts for: beside its rule, where the rule said `as: subject`
-	// (the owner of the record that fired it), or alone, where a person ran it or an ask's `then`
-	// did. Published so "whose authority is this running with" is read off the record rather than
-	// worked out from a pair of names nobody sees. It is whom task.PrincipalAnswerer names.
-	Asker string
+	// ActsFor is the person the run acts for, the record's `actsFor`: beside its rule, where the
+	// rule said `as: subject` (the owner of the record that fired it), or alone, where a person ran
+	// it or an ask's `then` did. Published so "whose authority is this running with" is read off the
+	// record rather than worked out from a pair of names nobody sees. It is whom
+	// task.PrincipalAnswerer names.
+	ActsFor string
 	// Answerers is whom the task's questions naming nobody are held out to (task.Launch.Answerers),
 	// published as the record's `answerers` so a restart keeps it. Empty is the docket.
 	Answerers []string
@@ -224,7 +225,7 @@ func TriggerOf(chain string) string {
 //
 // `hook` is the engine's, written onto the same record when a hook fails (trigger.recordHookFailure).
 var RecordFields = map[string]bool{
-	"answerers": true, "asker": true, "chain": true, "credential": true, "cursor": true, "data": true,
+	"actsFor": true, "answerers": true, "chain": true, "credential": true, "cursor": true, "data": true,
 	"agent": true, "ended": true, "err": true, "flow": true, "git": true, "hook": true,
 	"lastAction": true, "lastOutput": true, "observed": true, "occurrence": true,
 	"paused": true, "pending": true, "autonomy": true, "autonomyBy": true, "prompt": true, "refused": true, "result": true, "script": true,
@@ -285,8 +286,8 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	default:
 		st["agent"] = AgentRecord("", nil) // the runner's default, named when it reports
 	}
-	if m.Asker != "" {
-		st["asker"] = m.Asker
+	if m.ActsFor != "" {
+		st["actsFor"] = m.ActsFor
 	}
 	if len(m.Answerers) > 0 {
 		st["answerers"] = m.Answerers
@@ -535,7 +536,7 @@ func labelsFor(m Meta, ev task.Event) map[string]string {
 // answerersFor is who a worker-raised gate's question is held out to: the spawn's gate of that
 // name, when it has answerers of its own — the charter's autonomy, which the frame cannot soften
 // — then whoever the frame named, which is a worker asking somebody, then whom the task's
-// questions naming nobody go to (Meta.Answerers). task.PrincipalAnswerer is put as the asker.
+// questions naming nobody go to (Meta.Answerers). task.PrincipalAnswerer is put as whom it acts for.
 func answerersFor(m Meta, ev task.Event) []string {
 	names := ev.Answerers
 	if a := launchAsk(m, ev); a != nil && len(a.Answerers) > 0 {
@@ -544,7 +545,7 @@ func answerersFor(m Meta, ev task.Event) []string {
 	if len(names) == 0 {
 		names = m.Answerers
 	}
-	return WithPrincipal(names, m.Asker)
+	return WithPrincipal(names, m.ActsFor)
 }
 
 // WithPrincipal is answerers with task.PrincipalAnswerer put as actsFor, whom the task acts for.

@@ -556,8 +556,8 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 		// asker's authority (entity.Pair). The engine set the asker from the subject's owner
 		// record and nothing else sets it. A system asker is no party, so the rule acts alone, as
 		// it would without `as`.
-		if spec.Asker != "" && !entity.IsSystem(spec.Asker) {
-			by = entity.Pair(spec.Asker, by)
+		if spec.ActsFor != "" && !entity.IsSystem(spec.ActsFor) {
+			by = entity.Pair(spec.ActsFor, by)
 		}
 		base := st
 		st := entity.As(st, by)
@@ -568,8 +568,8 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 		// which they do not, and the task would stand `running` forever. What the TASK does still
 		// acts as the pair (the launch's principal).
 		rec := st
-		if spec.Asker != "" && !entity.IsSystem(spec.Asker) {
-			rec = entity.As(base, spec.Asker)
+		if spec.ActsFor != "" && !entity.IsSystem(spec.ActsFor) {
+			rec = entity.As(base, spec.ActsFor)
 		}
 		// NOT UNDER SOMEBODY ELSE'S ID. A rule's task id is a function of what fired, so anybody
 		// can run a task under it first; the record this spawn writes would go over theirs, and
@@ -601,7 +601,7 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 		meta := mirror.Meta{
 			Subject: spec.Subject, Runner: place.Ref(), RunnerName: placeName,
 			Chain: spec.Chain, Prompt: spec.Prompt, Agent: recordAgent(spec.Agent), Script: spec.Script != "", Occurrence: spec.Occurrence,
-			Git: (&runner.Launch{Environment: spec.Environment}).Repos(), Asker: spec.Asker,
+			Git: (&runner.Launch{Environment: spec.Environment}).Repos(), ActsFor: spec.ActsFor,
 			Autonomy: spec.Autonomy,
 			HeldBy:   func() []string { return eng.HeldBy(id) },
 		}
@@ -849,7 +849,7 @@ func (s *Server) reconcileTasks() error {
 					// And whose authority it runs with beside its rule: the runner still
 					// holds the pair it launched with, and the record says so across the
 					// restart rather than forgetting on the first re-reflection.
-					Asker:     entity.Str(ent.Payload, "asker"),
+					ActsFor:   entity.Str(ent.Payload, "actsFor"),
 					Answerers: entity.Strs(ent.Payload, "answerers"),
 					// And the autonomy it runs under, verse's part with it: the questions it
 					// raises from here on are posed under it as they were before.
@@ -867,7 +867,7 @@ func (s *Server) reconcileTasks() error {
 				})
 				// Hosted again, as at its launch: a slide of its autonomy is kept where its
 				// questions are posed from, and whose it is reads the same as before the restart.
-				s.host(ent.Ref.Name(), hostedTask{subject: subject, principal: entity.Str(ent.Payload, "asker"),
+				s.host(ent.Ref.Name(), hostedTask{subject: subject, principal: entity.Str(ent.Payload, "actsFor"),
 					answerers: entity.Strs(ent.Payload, "answerers"), autonomy: mirror.AutonomyOf(ent.Payload)})
 				// re-track: steerable, AND its hooks rehydrated from the chain, so the
 				// chain or sequence it belongs to carries on rather than ending silently.
@@ -4357,7 +4357,7 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 		// two facts a reader of this task wants beside its status, and for a task on a named
 		// runner the record is the only place they can be read without that runner.
 		Prompt: spec.Prompt, Agent: recordAgent(spec.Agent), Script: spec.Script != "",
-		Subject: spec.Subject, Autonomy: spec.Autonomy, Asker: actsFor, Git: l.Repos(),
+		Subject: spec.Subject, Autonomy: spec.Autonomy, ActsFor: actsFor, Git: l.Repos(),
 		HeldBy: func() []string { return eng.HeldBy(id) },
 		// No Occurrence: nothing caused this one, so there is no commit to name and the
 		// mirror stamps the revision its own first write landed at instead. Reading
@@ -4965,13 +4965,13 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, op string) 
 		// No rows is the default, every call asking, as at a launch: said as that row, so the
 		// runner, verse's part and the record all hold the one autonomy the task runs under.
 		body.Autonomy = body.Autonomy.OrDefault()
-		// $principal is whom the task acts for, which its record says (`asker:`).
+		// $principal is whom the task acts for, which its record says (`actsFor:`).
 		if body.Autonomy.NamesPrincipal() {
 			e, _, err := s.scopedStore(r).Get(mirror.Ref(id))
 			if unreadable(w, r, err) {
 				return
 			}
-			if err := mirror.CheckPrincipal(body.Autonomy, entity.Str(e.Payload, "asker")); err != nil {
+			if err := mirror.CheckPrincipal(body.Autonomy, entity.Str(e.Payload, "actsFor")); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}

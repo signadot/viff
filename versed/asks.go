@@ -631,7 +631,7 @@ func (s *Server) runThen(id string, ref entity.Ref, asker string, spec launch.Sp
 	eng := s.engineOf("")
 	s.reflect(store, id, h, mirror.Meta{
 		Runner: place.Ref(), RunnerName: placeName, Subject: ref.String(), Prompt: l.Prompt,
-		Agent: recordAgent(l.Agent), Script: l.Script != "", Autonomy: l.Autonomy, Asker: asker, Answerers: answerers,
+		Agent: recordAgent(l.Agent), Script: l.Script != "", Autonomy: l.Autonomy, ActsFor: asker, Answerers: answerers,
 		HeldBy: func() []string { return eng.HeldBy(id) },
 	})
 	eng.Adopt(ref.String(), id, h)

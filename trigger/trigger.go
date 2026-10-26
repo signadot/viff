@@ -838,15 +838,15 @@ func (a Action) validate() error {
 	}
 	// WHOSE AUTHORITY A TASK CARRIES is the charter's to ask for and the engine's to find out:
 	// `as: subject` says "with whoever owns the record this is about", and the engine reads who
-	// that is at the firing. A charter naming the asker itself would be naming whoever it liked
-	// to act as, so that is refused rather than overwritten — the author is here to be told.
+	// that is at the firing. A charter naming whom its task acts for would be naming whoever it
+	// liked to act as, so that is refused rather than overwritten — the author is here to be told.
 	if a.Spawn != nil {
 		if a.Spawn.As != "" && a.Spawn.As != launch.AsSubject {
 			return fmt.Errorf("spawn `as: %s`: the one thing a task can act with beside its rule is "+
 				"`as: subject`, the owner of the record the firing is about", a.Spawn.As)
 		}
-		if a.Spawn.Asker != "" {
-			return fmt.Errorf("spawn `asker:` is the engine's to set, from `as: subject` at the " +
+		if a.Spawn.ActsFor != "" {
+			return fmt.Errorf("spawn `actsFor:` is the engine's to set, from `as: subject` at the " +
 				"firing; a charter naming who its task acts as would act as anybody")
 		}
 		// What the firing's gates settled is the engine's account too, and for a sharper reason:
@@ -1223,12 +1223,12 @@ func (e *Engine) launch(a Action, chain string, subj entity.Ref, root entity.Pay
 	// The subject is the engine's to set, not the charter's: a task is about exactly
 	// one subject, and which one is the Condition's answer.
 	spec.Subject = subj.String()
-	// And who asked, the same way: cleared on every launch, and set only where the rule says
+	// And whom it acts for, the same way: cleared on every launch, and set only where the rule says
 	// `as: subject`, from the subject's owner record — the only account of who wrote it, since
 	// an event carries no writer. A subject nobody owns has nobody to act as, and the spawn
-	// fails rather than running as the rule alone: `as: subject` asked for the asker's bound,
+	// fails rather than running as the rule alone: `as: subject` asked for the owner's bound,
 	// and running without it would lift the one limit the author chose.
-	spec.Asker = ""
+	spec.ActsFor = ""
 	if spec.As == launch.AsSubject {
 		// SETTLED, because this firing may be hearing the write that made the subject before the
 		// record saying who made it has landed (entity.SettledOwnerOf).
@@ -1239,7 +1239,7 @@ func (e *Engine) launch(a Action, chain string, subj entity.Ref, root entity.Pay
 		if owner == "" {
 			return nil, fmt.Errorf("spawn as the owner of %s: no owner is on record for it", subj)
 		}
-		spec.Asker = owner
+		spec.ActsFor = owner
 	}
 	// The chain rides the spec so the SPAWNER can mirror it: mirror.Reflect owns the task
 	// entity's payload and re-Puts it on every event, so a field the engine wrote afterwards

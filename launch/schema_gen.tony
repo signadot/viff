@@ -24,10 +24,10 @@ context:
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 - runner: github.com/signadot/verse/runner
 define:
+  actsFor: .[string]
   agent: .[nullable(runner:verse-runner-agent)]
   answer: .[tony-base:ir]
   as: .[string]
-  asker: .[string]
   autonomy: !irtype {}
   chain: .[string]
   credential: .[nullable(verse-launch-credential)]

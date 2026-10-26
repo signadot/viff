@@ -77,7 +77,7 @@ func TestASpawnAsTheSubjectActsForTheRecordsOwner(t *testing.T) {
 	}
 
 	asked := taskFor(t, srv, "for-the-asker", ask.String())
-	if got := entity.Str(asked.Payload, "asker"); got != daniel {
+	if got := entity.Str(asked.Payload, "actsFor"); got != daniel {
 		t.Errorf("the task says it acts for %q, want the ask's owner", got)
 	}
 	if got, _ := entity.SettledOwnerOf(srv.Store, asked.Ref, 2*time.Second); got != daniel {
@@ -85,7 +85,7 @@ func TestASpawnAsTheSubjectActsForTheRecordsOwner(t *testing.T) {
 	}
 
 	plain := taskFor(t, srv, "for-the-rule", ask.String())
-	if got := entity.Str(plain.Payload, "asker"); got != "" {
+	if got := entity.Str(plain.Payload, "actsFor"); got != "" {
 		t.Errorf("a rule without `as` says it acts for %q", got)
 	}
 	if got, _ := entity.SettledOwnerOf(srv.Store, plain.Ref, 2*time.Second); got != installer {
@@ -102,8 +102,8 @@ func TestAChartersSpawnCannotNameWhoItActsFor(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	for name, c := range map[string]struct{ spawn, says string }{
-		"an as that is not subject":  {`{script: "true", as: object}`, "spawn `as: object`"},
-		"an asker the charter names": {`{script: "true", asker: "user:ceo@example.com"}`, "spawn `asker:` is the engine's to set"},
+		"an as that is not subject":         {`{script: "true", as: object}`, "spawn `as: object`"},
+		"whom the charter says it acts for": {`{script: "true", actsFor: "user:ceo@example.com"}`, "spawn `actsFor:` is the engine's to set"},
 		"$principal on a rule's task": {`{script: "true", environment: {systems: {commands: {run: {}}}}, autonomy: [{name: shell, match: {system: commands, verb: run}, then: {ask: {answerers: [$principal]}}}, {then: ask}]}`,
 			"this rule's task acts for nobody"},
 	} {
