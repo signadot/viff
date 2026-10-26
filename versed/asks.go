@@ -424,10 +424,14 @@ func (s *Server) onward(rec entity.Obj, body api.Ask, asker string) (int, error)
 // personsAsk reports whether a record at verse.ask.* is a person's ask, onward or not
 // (api.AskRecord's Kind): what a restart waits on again and what its asker may withdraw. Words said
 // to a task, a task's question and a firing's gate question are not.
+//
+// A record that does not read as an AskRecord is told by the two keys Kind reads first, `asker`
+// and `saidTo`, so an ask with one bad key is still waited on after a restart and still withdrawn
+// by its asker, which is when the asker most wants it gone.
 func personsAsk(p entity.Payload) bool {
 	var rec api.AskRecord
 	if codec.FromNode(p, &rec) != nil {
-		return false
+		return entity.Str(p, "asker") != "" && entity.Str(p, mirror.SaidToField) == ""
 	}
 	k := rec.Kind()
 	return k == api.AskKindPerson || k == api.AskKindOnward
