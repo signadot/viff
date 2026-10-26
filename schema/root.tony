@@ -32,7 +32,7 @@ context:
 - tony-format/context
 define:
   accounts: .[array(verse-account)]
-  asks: .[array(verse-ask-record)]
+  asks: .[array(verse-ask-row)]
   api: .[verse-routes]
   entity: .[verse-entity]
   groups: .[array(verse-group-row)]

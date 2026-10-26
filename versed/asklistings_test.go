@@ -9,7 +9,7 @@ import (
 	"github.com/signadot/verse/mirror"
 )
 
-// GET /ASKS ANSWERS ITS TWO LISTINGS AS THEIR TYPES: the caller's own asks as api.AskRecords, each
+// GET /ASKS ANSWERS ITS TWO LISTINGS AS THEIR TYPES: the caller's own asks as api.AskRows, each
 // with its id, and the docket as api.DocketRows, each saying which plane raised it.
 func TestTheAskListingsAreTheirTypes(t *testing.T) {
 	srv, ts := asking(t)
@@ -29,7 +29,7 @@ func TestTheAskListingsAreTheirTypes(t *testing.T) {
 		}
 	}
 
-	var mine []api.AskRecord
+	var mine []api.AskRow
 	read(daniel, "", &mine)
 	if len(mine) != 1 || mine[0].ID != land || mine[0].Asker != daniel || mine[0].Kind() != api.AskKindPerson {
 		t.Fatalf("daniel's asks = %+v, want %s, his, a person's ask", mine, land)

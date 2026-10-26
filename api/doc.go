@@ -68,7 +68,7 @@
 //	PUT    /tasks/{id}/autonomy               SetAutonomy           204                          tasks.go
 //
 //	Asks
-//	GET    /asks?waiting=me|all=|served=      -                     []AskRecord                  asks_record.go
+//	GET    /asks?waiting=me|all=|served=      -                     []AskRow                     asks_record.go
 //	POST   /asks                              Ask                   Asked                        asks.go
 //	GET    /asks/{id}                         -                     entity.Entity
 //	PATCH  /asks/{id}                         AskChange             Asked                        asks.go

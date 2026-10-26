@@ -1270,7 +1270,7 @@ func (s *Server) Handler() http.Handler {
 	// two readings.
 	// The caller's own asks, or with `?waiting=me`, `?all=true` or `?served=true` the docket's
 	// rows (verse-docket-row): the table names the first.
-	rt.handle("GET /asks", s.listAsks, "", list("verse-ask-record"))
+	rt.handle("GET /asks", s.listAsks, "", list("verse-ask-row"))
 	rt.handle("POST /asks", s.postAsk, "verse-ask", one("verse-asked"))
 	rt.handle("GET /asks/{id}", s.getAsk, "", one("verse-entity"))
 	rt.handle("DELETE /asks/{id}", s.deleteAsk, "", nothing)
@@ -2705,7 +2705,7 @@ func (s *Server) listDocket(w http.ResponseWriter, r *http.Request) {
 		// The question as stored, nothing taken out: `status` and `posedAt` are on every pending
 		// question, and a reader deciding by age reads `posedAt` here (the git iod's obsolete
 		// sweep, which skipped every question while the docket left it out).
-		row := api.DocketRow{AskRecord: askRecordAt(ent), ServedBy: servedBy}
+		row := api.DocketRow{AskRow: askRowAt(ent), ServedBy: servedBy}
 		// where says which plane raised it, and is derived rather than stored: a question
 		// with a task is a run's, one without is a firing's. Storing it would be a third
 		// spelling of what `task` already says.
@@ -2723,17 +2723,6 @@ func (s *Server) listDocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeOut(w, r, http.StatusOK, out)
-}
-
-// askRecordAt is the ask stored at e as the listings answer it, with its id from its address. One
-// that does not read as an api.AskRecord is answered as its id and why, so it can be seen.
-func askRecordAt(e entity.Entity) api.AskRecord {
-	var rec api.AskRecord
-	if err := codec.FromNode(e.Payload, &rec); err != nil {
-		return api.AskRecord{ID: e.Ref.Name(), Unreadable: err.Error()}
-	}
-	rec.ID = e.Ref.Name()
-	return rec
 }
 
 // waitsOn reports whether a question waits on who: its waitingOn names them as the answer line it
@@ -2868,12 +2857,12 @@ func (s *Server) listAsks(w http.ResponseWriter, r *http.Request) {
 	if unreadable(w, r, err) {
 		return
 	}
-	out := make([]api.AskRecord, 0)
+	out := make([]api.AskRow, 0)
 	for _, e := range ents {
 		if entity.Str(e.Payload, "asker") != who {
 			continue
 		}
-		out = append(out, askRecordAt(e))
+		out = append(out, askRowAt(e))
 	}
 	writeOut(w, r, http.StatusOK, out)
 }
