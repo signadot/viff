@@ -16,6 +16,10 @@ import (
 // raised to serve another, words said to a task, a task's question, and a firing's gate question.
 // Every key is optional: a record carries the ones its kind and its history wrote.
 //
+// A listing answers the keys this type names, and only those: a key a writer adds and the type
+// leaves out would drop from GET /asks. A check in versed's tests holds every ask they leave to the
+// type, and versed logs a key it drops reading a record, once per record and set of keys.
+//
 // `about` is the first line of what the ask's subject says of itself, copied when the question is
 // posed; the subject's address is `subject`. (api.Ask.About, the request, is the address.)
 //
