@@ -6,7 +6,8 @@ commits: []
 created: "2026-10-26T22:08:52.556023+01:00"
 duplicates: []
 id: faxkagtmh12krs61vxn0
-labels: []
+labels:
+- agent
 related_issues: []
 status: open
-updated: "2026-10-26T22:08:52.556023+01:00"
+updated: "2026-10-26T22:08:52.673909+01:00"
