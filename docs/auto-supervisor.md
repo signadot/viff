@@ -244,10 +244,10 @@ verse data change pr 8
 #     why: "docs only"       ← the supervisor's reasoning survives the override
 #   stage: assessed          ← waiting on a person
 verse question
-# - gate: sign-off
+# - from: {rule: land-ask}
+#   gate: sign-off
 #   id: verse.trigger.land-ask.sign-off~090ea377
 #   mode: ASK
-#   origin: land-ask
 #   reason: "trigger land-ask gate sign-off on change.pr.8"
 #   subject: change.pr.8
 verse question approve verse.trigger.land-ask.sign-off~090ea377 --as you@example.com

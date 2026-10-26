@@ -339,11 +339,11 @@ settled part of the subject's path, the last segment left out. Anywhere else, th
 could select somebody's records and run a task of the installer's design as them, so verse
 refuses the charter at install.
 
-The task record is the owner's, and says so as `asker:`. Its own gates ask the owner. Where the
+The task record is the owner's, and says so as `actsFor:`. Its own gates ask the owner. Where the
 owner is the system, the task acts as the rule alone.
 
 `subject` is the only value that `as` takes. Verse refuses any other at install. It also refuses
-a charter that writes `asker:` itself, because the engine sets it.
+a charter that writes `actsFor:` itself, because the engine sets it.
 
 ### A script — when the charter knows the actions
 

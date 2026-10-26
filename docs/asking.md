@@ -13,8 +13,8 @@ All of them are the same record, on one docket.
 | | |
 |---|---|
 | **ask** | a record at `verse.ask.<id>`: what is asked, of whom, by when, and what follows. `verse ask` writes yours, and its id comes from the name you give it |
-| **asker** | whoever raised the ask. Your ask is your record |
-| **answerers** | whom the ask is put to: a name or a list, in the [grammar a grant uses](perms.md#principals-and-grantees). Absent, anyone may answer |
+| **asker** | whoever raised the ask: its record's `from`, `{principal: <you>}`. Your ask is your record |
+| **to** | whom the ask is put to: a name or a list, in the [grammar a grant uses](perms.md#principals-and-grantees). Absent, anyone may answer. The record keeps it as `to: {grantees: […]}` |
 | **due** | the date the ask settles at if nobody answers. Absent, it has no date and waits for an answer |
 | **on silence** | what the ask settles on at its date if nobody answers: `no`, unless you say `--on-silence yes` |
 | **question** | an ask as the person asked sees it: one that waits on you. `verse question` lists them |
@@ -24,6 +24,12 @@ All of them are the same record, on one docket.
 | **answer** | what is written back: `yes` or `no` |
 | **edit** | which version of your ask an answer agreed to: 1 as first asked, and one more each time you change what it asks |
 | **labels** | what the ask says about itself, for whoever watches asks: `--label team=payments,kind=deploy`. Verse routes nothing by them |
+
+Every question on the docket, yours or not, says its parties the same way. `from` is who raised
+it, exactly one of `{rule, at}` (a rule's gate, and the charter it is installed at), `{task}` (a
+task's question) or `{principal}` (an ask, or words said to a task: a person, an agent, or a
+resolver acting as `via:…`). `to` is whom it is put to, `{grantees: […]}` or, for words said to a
+task, `{task}`, and is absent where it names nobody. `by` is who settled it.
 
 ## Asking
 
@@ -55,7 +61,7 @@ pick one.
 
 The ask goes to Dana. It is on the docket, and in Slack where the deployment runs the Slack iod.
 Dana answers it like any ask: `verse question <id> --answer proceed` for yes, or `deny` for no.
-You do not answer your own ask, unless you named yourself among the answerers.
+You do not answer your own ask, unless you named yourself in `--to`.
 
 `--due` takes a date (`2026-10-02T17:00:00Z`) or a duration from now. If Dana answers yes, the
 ask gets `answer: yes`, and its `then` runs as a task for you. A no gets `answer: no` and runs
@@ -117,14 +123,14 @@ Alice's `verse ask ship` reads `answer: yes`, and its record says it was answere
 and `ship` still waits on you. If `ship` needs two proceeds, yours is one ballot, and it waits
 for another.
 
-**Asks chain.** `{ask: {…}}` takes what `verse ask` takes (name, question, answerers, due,
+**Asks chain.** `{ask: {…}}` takes what `verse ask` takes (name, question, to, due,
 onSilence, then, about, labels, keep), and raises that ask as you on a yes. A `due` that is a
 duration counts from the yes. Its own `then` may answer or ask in turn. Here Dana's yes asks Ann
 to deploy, and Ann's yes answers `ship`:
 
 ```sh
 verse ask ui-ok -q "Is the UI ok to ship?" --to dana@example.com --due 24h \
-  --then '{ask: {name: deploy, question: "Deploy the hotfix to staging?", answerers: [ann@example.com],
+  --then '{ask: {name: deploy, question: "Deploy the hotfix to staging?", to: [ann@example.com],
             due: 4h, then: {answer: {ask: ship-3f2a…, choice: proceed}}}}'
 ```
 
@@ -149,7 +155,7 @@ Ann, and if she says no or nobody answers in four hours, ask the lead:
 ```sh
 verse ask ship -q "Ship the hotfix?" --to ann@example.com --due 4h \
   --else '{ask: {name: ship-lead, question: "Ann said no, or did not answer: ship the hotfix?",
-           answerers: [lead@example.com], due: 4h}}'
+           to: [lead@example.com], due: 4h}}'
 ```
 
 `verse ask ship` then reads `else-asked: {id: ship-lead-…}`. An ask withdrawn before anybody
@@ -213,7 +219,7 @@ verse ask land --withdraw                              # take it back
 ```
 
 An answer agrees to what was asked, not to when. So a new date moves the clock and keeps any
-answer already given. A new `then` or new answerers change what is asked, so the ask is asked
+answer already given. A new `then` or a new `--to` changes what is asked, so the ask is asked
 again as its next **edit**. Answers to the earlier edit do not count, and an answer that names
 that edit is refused. So nobody answers words they were not asked.
 

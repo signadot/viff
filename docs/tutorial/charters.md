@@ -73,15 +73,18 @@ The question reaches the docket a moment after the write that raised it; an empt
 read too early.
 
 ```tony
-- answerers:
-  - user:ana@example.com
-  deadline:
+- deadline:
     default: deny
     within: 4h
+  from:
+    at: verse-tutorial
+    rule: ship
   gate: approval
   id: verse-tutorial:verse.trigger.ship.approval~d584bf79
-  origin: ship
   subject: 'verse-tutorial.release."1"'
+  to:
+    grantees:
+    - user:ana@example.com
   …
 ```
 

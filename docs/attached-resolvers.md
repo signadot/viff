@@ -123,7 +123,7 @@ The desk asks Erin before it answers for Carol:
 ```sh
 curl -H 'Verse-Principal: user:dan@example.com' -H 'Verse-Resolver: carols-desk' \
   -H 'Content-Type: application/tony' \
-  -d '{name: up, question: "Ship it, for carol?", answerers: [erin@example.com], serves: <ask>}' \
+  -d '{name: up, question: "Ship it, for carol?", to: [erin@example.com], serves: <ask>}' \
   "$VERSE/asks"
 ```
 
@@ -138,6 +138,12 @@ is answered yes, `by: user:carol@example.com`, `via: via:verse.resolvers.carols-
   A clock that settled on no option carries nothing. The onward ask records `carried`.
 - **It follows the ask it serves.** When that ask settles, is withdrawn, removed, or asked again,
   the onward ask is withdrawn, saying why. A sooner clock there moves its own.
+- **It is changed as it was raised.** Its record says it is from the resolver,
+  `from: {principal: via:verse.resolvers.<name>}`, so `PATCH /asks/<id>` changes it with the
+  `Verse-Resolver` header, as the resolver. Its installer, as themselves, is refused: the record
+  is theirs, since a resolver owns nothing, but they did not ask it.
+
+Any ask a resolver raises, onward or not, is from the resolver, and is changed the same way.
 
 Escalating is an onward ask to whoever is above. Their own resolver may raise one further, and the
 answer comes back over each hop. Removing a resolver withdraws the onward asks it raised.
@@ -150,9 +156,9 @@ erin's yes comes back on alice's ask as carol's, through the desk.
 
 ## Why it is this way
 
-**A match does not route.** Which asks reach whom is the asker's to say, by naming answerers or by
-what the ask is about. A resolver says which of those it serves, and a party's grant says whether
-its answer counts.
+**A match does not route.** Which asks reach whom is the asker's to say, by naming whom it asks
+or by what the ask is about. A resolver says which of those it serves, and a party's grant says
+whether its answer counts.
 
 **Grants, not ownership.** A resolver that owned questions could shut out the people it answered
 for. A grant lends the resolver a party's answer without taking it from them, and it is revoked

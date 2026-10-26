@@ -36,12 +36,11 @@ verse question --all      # the docket: every pending ask you can read
 ```
 
 ```tony
-- answerers:
-  - user:ana@example.com
-  asker: user:you@example.com
-  deadline:
+- deadline:
     at: "2026-10-18T01:08:12Z"
     default: deny
+  from:
+    principal: user:you@example.com
   id: deploy-b8a7d6bea9e3
   options:
   - id: proceed
@@ -49,6 +48,9 @@ verse question --all      # the docket: every pending ask you can read
   - id: deny
     need: 1
   question: "Deploy the release to staging?"
+  to:
+    grantees:
+    - user:ana@example.com
   waitingOn:
   - user:ana@example.com
   …
@@ -105,7 +107,7 @@ verse ask lunch -q "Lunch at noon?"
 verse ask lunch --withdraw
 ```
 
-A new date moves the clock and keeps the answers given. A new `--then` or new answerers change
+A new date moves the clock and keeps the answers given. A new `--then` or a new `--to` changes
 what was asked. So the ask is asked again, and the earlier answers do not count.
 
 ## A question is data

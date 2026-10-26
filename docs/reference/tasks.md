@@ -294,7 +294,7 @@ whom the task acts for, which for a run you start is you. Verse refuses `$princi
 that acts for nobody: one run as the system, or a rule's task without `as: subject`. A task that
 acts for somebody else asks them with every question that names nobody: an ask's `then` asks its
 asker, and a spawn `as: subject` asks the subject's owner. The task's record shows it, as
-`answerers: [$principal]` beside `asker:`. A row's answerers are checked as a gate's are
+`answerers: [$principal]` beside `actsFor:`. A row's answerers are checked as a gate's are
 ([gates](gates.md#gates-whether-it-proceeds)): a group it names has to exist, as
 `group:release` does above only where somebody made it, and `need` can be no more than the
 people it names.
@@ -506,7 +506,7 @@ docket beside every other ask. The task points at it (`pending: verse.ask.<id>`)
 ```tony
 payload:
   id:      review@demo.pr.1~d3
-  origin:  review@demo.pr.1
+  from:    {task: review@demo.pr.1}
   gate:    write-guard
   status:  pending
   subject: demo.pr.1
