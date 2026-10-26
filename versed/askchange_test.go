@@ -15,12 +15,21 @@ import (
 // change patches an ask as who.
 func change(t *testing.T, as, url, id, body string) *http.Response {
 	t.Helper()
+	return changeAs(t, as, "", url, id, body)
+}
+
+// changeAs is change made as the resolver named, presented by as, where one is named.
+func changeAs(t *testing.T, as, resolver, url, id, body string) *http.Response {
+	t.Helper()
 	req, err := http.NewRequest(http.MethodPatch, url+"/asks/"+id, strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
 	req.Header.Set("Content-Type", "application/tony")
 	req.Header.Set(api.PrincipalHeader, as)
+	if resolver != "" {
+		req.Header.Set(api.ResolverHeader, resolver)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -136,5 +145,43 @@ func TestAnAskIsChangedByItsAskerWhileItWaits(t *testing.T) {
 	if resp := change(t, chAsker, ts.URL, id, `{question: "Merge today?"}`); resp.StatusCode != http.StatusConflict ||
 		!strings.Contains(bodyOf(t, resp), "has settled") {
 		t.Fatalf("changing a settled ask: %s, want 409 saying it has settled", resp.Status)
+	}
+}
+
+// AN ONWARD ASK IS CHANGED BY THE RESOLVER THAT RAISED IT, as itself, and not by whoever installed
+// it acting as themselves: the record is the installer's, since a resolver owns nothing, but the
+// installer did not ask it.
+func TestAnOnwardAskIsChangedByTheResolverThatRaisedIt(t *testing.T) {
+	srv, url, served := servedPending(t)
+	const alice = "user:alice@example.com"
+	onward := raiseOnward(t, srv, url, served, "")
+	if resp := changeAs(t, alice, "", url, onward, `{question: "should bob land it today?"}`); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("alice, as herself, changing her resolver's onward ask: %s, want 403", resp.Status)
+	}
+	if resp := changeAs(t, alice, "helper", url, onward, `{question: "should bob land it today?"}`); resp.StatusCode != http.StatusOK {
+		t.Fatalf("the resolver changing its onward ask: %s: %s", resp.Status, bodyOf(t, resp))
+	}
+	e, _, _ := srv.Store.Get(mirror.AskRef(onward))
+	if got := entity.Str(e.Payload, "question"); got != "should bob land it today?" {
+		t.Fatalf("the onward ask asks %q, want the resolver's new words", got)
+	}
+	if got := mirror.PrincipalFrom(e.Payload); got != "via:verse.resolvers.helper" {
+		t.Fatalf("the changed onward ask is from %q, want the resolver still", got)
+	}
+}
+
+// AND SO IS ANY ASK A RESOLVER RAISED: one with no `serves` is from the resolver as much as an
+// onward one, so its installer, as themselves, is refused changing it too.
+func TestAResolversOwnAskIsChangedByTheResolver(t *testing.T) {
+	srv, url, _ := servedPending(t)
+	const alice = "user:alice@example.com"
+	id := askID(t, postAsResolver(t, alice, "helper", url+"/asks",
+		`{name: plain, question: "should bob land it?", to: [mgr@example.com]}`))
+	posed(t, srv, mirror.AskRef(id))
+	if resp := changeAs(t, alice, "", url, id, `{question: "should bob land it today?"}`); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("alice, as herself, changing her resolver's ask: %s, want 403", resp.Status)
+	}
+	if resp := changeAs(t, alice, "helper", url, id, `{question: "should bob land it today?"}`); resp.StatusCode != http.StatusOK {
+		t.Fatalf("the resolver changing its ask: %s: %s", resp.Status, bodyOf(t, resp))
 	}
 }

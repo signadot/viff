@@ -739,8 +739,10 @@ func askEdit(p entity.Payload) int {
 // a new asking: the ask moves to its next edit, the ballots cast for the last one are dropped, and
 // an answer still naming it is refused.
 //
-// ITS ASKER'S, by the owner record and not by who may write it: whom it asks hold `read-write`
-// on the record, since answering is writing to it.
+// ITS ASKER'S, by whom it is from and not by who may write it or who owns it: whom it asks hold
+// `read-write` on the record, since answering is writing to it, and an ask a resolver raised
+// (onward or not) is owned by whoever installed the resolver, which changes it as itself (`via:`),
+// as it asked. Its installer acting as themselves is not its asker.
 func (s *Server) patchAsk(w http.ResponseWriter, r *http.Request) {
 	var body api.AskChange
 	if err := codec.ReadStrict(r, &body); err != nil {
@@ -759,7 +761,7 @@ func (s *Server) patchAsk(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	if owner, _ := entity.OwnerOf(s.Store, ref); !found || mirror.PrincipalFrom(ent.Payload) == "" || owner != asker {
+	if !found || mirror.PrincipalFrom(ent.Payload) != asker {
 		http.Error(w, fmt.Sprintf("ask %s: only its asker changes it", id), http.StatusForbidden)
 		return
 	}

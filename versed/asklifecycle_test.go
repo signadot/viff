@@ -92,7 +92,7 @@ func TestWordsToAnEndedTaskAreRefused(t *testing.T) {
 	}
 }
 
-// AN ONWARD ASK KEEPS ITS RULES WHEN IT IS CHANGED: its installer's PATCH adds no `then` and moves
+// AN ONWARD ASK KEEPS ITS RULES WHEN IT IS CHANGED: its resolver's PATCH adds no `then` and moves
 // its date no later than the served ask's, as raising it would not.
 func TestAnOnwardAskKeepsItsRulesWhenChanged(t *testing.T) {
 	srv, ts := shortKeep(t, askKeepDefault)
@@ -113,7 +113,7 @@ func TestAnOnwardAskKeepsItsRulesWhenChanged(t *testing.T) {
 		`{then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}`: "takes no `then`",
 		`{due: "` + in72 + `"}`: "past ask",
 	} {
-		resp := change(t, alice, ts.URL, onward, body)
+		resp := changeAs(t, alice, "helper", ts.URL, onward, body)
 		if msg := bodyOf(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(msg, want) {
 			t.Errorf("%s on the onward ask: %s %q, want 400 saying %q", body, resp.Status, msg, want)
 		}
