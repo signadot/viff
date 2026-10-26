@@ -2,6 +2,7 @@
 blocked_by: []
 blocks: []
 branches: []
+closed_by: 4e577ab88f595664cb2b6c36bb88fa0b9f60131c
 commits: []
 created: "2026-10-23T15:12:29.661490387-03:00"
 duplicates: []
@@ -10,5 +11,5 @@ labels:
 - bug
 related_issues:
 - danxdqbwha9xs8jyv9n0
-status: open
-updated: "2026-10-23T15:12:36.053663485-03:00"
+status: closed
+updated: "2026-10-26T15:10:12.811816705-03:00"
