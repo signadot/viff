@@ -10,7 +10,7 @@ Every question record at `verse.ask.<id>` says its parties in three keys:
 - `to`: whom it's put to, `{grantees: […]}` or `{task}`, and may be absent;
 - `by`: who settled it (unchanged).
 
-They replace `origin`, `asker`, `answerers`, `saidTo` and the top-level `task`. `serves` marks an onward ask. The request's `answerers` becomes `to` (`api.Ask`, `api.ServedAsk`, `api.AskChange`). A gate's own `answerers:` configuration keeps its name.
+They replace `origin`, `asker`, `answerers`, `saidTo` and the top-level `task`. `serves` marks an onward ask. The request's `answerers` becomes `to` (`api.Ask`, `api.AskChange`), read strictly so the old key is refused. A gate's own `answerers:` configuration keeps its name.
 
 A task's record (`verse.task.instance.<id>`) says whom it acts for as `actsFor`, not `asker`.
 
@@ -18,12 +18,10 @@ A task's record (`verse.task.instance.<id>`) says whom it acts for as `actsFor`,
 
 ## Commits
 
-1. `mirror, trigger, versed, api!:` an ask says who raised it and whom it is put to, as `from` and `to`.
+1. `mirror, versed, api, io, cli, deploy!:` an ask says who raised it and whom it is put to, as `from` and `to`: the record, its readers in versed, mirror, Slack and the CLI, the request's `to`, and `gate-ask.tony`, in one commit, since the charter's and Slack's tests read the records the code writes.
 2. `versed!:` an ask is changed by whoever asked it: `patchAsk` checks `from.principal`, not the owner (a resolver is refused changing its own onward ask today, and its installer is let in).
-3. `io, cli!:` the iods and the CLI read `from` and `to`.
-4. `deploy!:` `gate-ask.tony` has a DM rule per kind of `from`, and two for a principal's.
-5. `mirror, launch, trigger, versed!:` a task's record says whom it acts for as `actsFor`.
-6. `docs:` the pages that show these keys.
+3. `mirror, launch, trigger, versed!:` a task's record says whom it acts for as `actsFor`.
+4. `docs:` the pages that show these keys, including the `then: {ask: … answerers: […]}` examples and wording in docs/asking.md and docs/tutorial/questions.md, which now describe a body refused with 400.
 
 ## Deploy
 
