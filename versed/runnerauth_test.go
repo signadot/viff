@@ -165,6 +165,11 @@ func TestARunnerProvesItselfWithItsWorkloadToken(t *testing.T) {
 	if code, body := relay(t, http.MethodGet, whoami, token, "user:alice@example.com", "", ""); code != http.StatusForbidden || !strings.Contains(body, "made as itself") {
 		t.Errorf("the runner naming a person = %d %s, want 403", code, body)
 	}
+	// A runner relays nobody until its relay is built: an account to relay beside its token is
+	// refused, not carried out as the runner with the account unread.
+	if code, body := relay(t, http.MethodGet, whoami, token, "", "github:alice", ""); code != http.StatusForbidden || !strings.Contains(body, "until a runner's relay is built") {
+		t.Errorf("the runner naming an account to relay = %d %s, want 403", code, body)
+	}
 	for what, bad := range map[string]string{
 		"a token for another audience": cluster.Token("other", runnerSub, nil),
 		"a subject nobody registered":  cluster.Token(iodAudience, "system:serviceaccount:verse:stranger", nil),

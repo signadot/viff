@@ -310,6 +310,7 @@ A token is checked before the name is read:
 | an iod's token and a person's name, with no account or from an iod not trusted for it | 403 |
 | a registered runner's token | as the runner, under every mode ([below](#runners-at-the-door)) |
 | a registered runner's token and a name that is not the runner's | 403 |
+| a registered runner's token and an account to relay (`Verse-For-Principal`) | 403, until a runner's relay is built: a runner relays nobody yet, and the request is not carried out as the runner instead |
 | no token, under `off` or `optional` | as the `Verse-Principal` it names, or as nobody |
 | no token and the name of a runner registered with a `subject`, under every mode | 401: the runner presents its token |
 | no token and a `user:` name, under `required` | 401, saying to log in |

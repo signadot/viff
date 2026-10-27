@@ -428,7 +428,7 @@ func (s *Server) authenticate(ctx context.Context, token, presented, account str
 	if e, ok, err := s.staticRunner(token); err != nil {
 		return "", "", "", turnAway(http.StatusServiceUnavailable, "whether the bearer is a runner's is not known: %v", err)
 	} else if ok {
-		return asRunner(e, presented)
+		return asRunner(e, presented, account)
 	}
 	v, ref := s.verifyToken(ctx, token)
 	if ref != nil {
@@ -446,7 +446,7 @@ func (s *Server) authenticate(ctx context.Context, token, presented, account str
 			return "", "", "", turnAway(http.StatusServiceUnavailable, "whether the bearer is a runner's is not known: %v", err)
 		}
 		if ok {
-			return asRunner(e, presented)
+			return asRunner(e, presented, account)
 		}
 		return "", "", "", turnAway(http.StatusUnauthorized, "the bearer is a workload token whose "+
 			"subject %s is no io of this verse (auth.iod.accounts) and no registered runner's "+
@@ -543,7 +543,18 @@ func authenticatedBy(r *http.Request) string {
 
 // asRunner is a request whose bearer proved the runner e. Its own requests are made as itself: a
 // name beside its token is its own or nobody's.
-func asRunner(e api.Runner, presented string) (principal, provider, via string, _ *turnedAway) {
+//
+// STOP-GAP, UNTIL A RUNNER'S RELAY IS ADMITTED (git-issue 3gf9wqb3h12kr2ymtnn0). A runner relays
+// nobody yet, so a request whose runner token comes with an account to relay
+// (api.ForPrincipalHeader) is refused, rather than carried out as the runner with the account
+// unread: a runner that believes it relays somebody learns that it does not. The relay replaces
+// this check with its own, which admits a task's owner through the task's record.
+func asRunner(e api.Runner, presented, account string) (principal, provider, via string, _ *turnedAway) {
+	if account != "" {
+		return "", "", "", turnAway(http.StatusForbidden, "the bearer is runner %s and %s names an account "+
+			"to relay: verse admits no relay from a runner until a runner's relay is built, and the request "+
+			"is not carried out as the runner instead", e.Principal(), api.ForPrincipalHeader)
+	}
 	if presented != "" && presented != e.Principal() {
 		return "", "", "", turnAway(http.StatusForbidden, "the bearer is runner %s and %s names %s: "+
 			"a runner's own request is made as itself", e.Principal(), api.PrincipalHeader, presented)
