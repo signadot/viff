@@ -10,10 +10,10 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/scott-cotton/cli v0.3.1
 	github.com/signadot/tony-format/git-issue v0.3.2
-	github.com/signadot/tony-format/go-tony v0.0.245
+	github.com/signadot/tony-format/go-tony v0.0.246
 	golang.org/x/net v0.59.0
 	golang.org/x/oauth2 v0.36.0
-	golang.org/x/sys v0.48.0
+	golang.org/x/sys v0.49.0
 )
 
 require (
@@ -34,7 +34,7 @@ require (
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
-	github.com/mattn/go-colorable v0.1.15 // indirect
+	github.com/mattn/go-colorable v0.1.16 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/pjbgf/sha1cd v0.6.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
