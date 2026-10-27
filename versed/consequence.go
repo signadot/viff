@@ -72,14 +72,14 @@ func thenPrincipal(actsFor, launcher, taskID string) string {
 // across (followAsk). A claim with nothing to run behind it costs a key on the record and
 // nothing else.
 //
-// Answers whether this resolution claimed the question, and where it did not, the resolution
-// that holds it. An error is the store's: nothing is known, and nothing ran. store is the
+// Answers whether this resolution claimed the question, and where it did not, the claim that
+// holds it. An error is the store's: nothing is known, and nothing ran. store is the
 // question's, as the system: a scope's question is recorded in its scope, and the claim with it.
-func (s *Server) consequence(store entity.Store, id string, res task.Resolution) (claimed bool, standing task.Resolution, err error) {
+func (s *Server) consequence(store entity.Store, id string, res task.Resolution) (claimed bool, standing askClaim, err error) {
 	ref := mirror.AskRef(id)
 	open, err := codec.ParseNode([]byte(`!not.has-path followed`), codec.Tony)
 	if err != nil {
-		return false, task.Resolution{}, err
+		return false, askClaim{}, err
 	}
 	sys := entity.As(store, entity.SystemDocket)
 	claimed, _, err = sys.Write(entity.Write{
@@ -87,21 +87,48 @@ func (s *Server) consequence(store entity.Store, id string, res task.Resolution)
 		When: []entity.Require{{At: ref.At(), Pattern: entity.Present()}, {Pattern: open}},
 	})
 	if err != nil {
-		return false, task.Resolution{}, err
+		return false, askClaim{}, err
 	}
 	if !claimed {
-		ent, ok, err := sys.Get(ref)
+		standing, ok, err := standingClaim(store, id)
 		if err != nil {
-			return false, task.Resolution{}, err
+			return false, askClaim{}, err
 		}
 		if !ok {
-			return false, task.Resolution{}, fmt.Errorf("%w: question %s is not posed", task.ErrNoSuchDecision, id)
+			return false, askClaim{}, fmt.Errorf("%w: question %s is not posed", task.ErrNoSuchDecision, id)
 		}
-		standing, _ = mirror.ClaimOf(ent.Payload)
 		return false, standing, nil
 	}
 	s.followAsk(ref, followField(res))
-	return true, res, nil
+	return true, askClaim{Resolution: res, pending: true}, nil
+}
+
+// askClaim is the resolution a question's claim holds, as the record says of it: whether the
+// question still waits on it (pending), and whether its delivery failed (undelivered). A claim
+// pending with no note is a settle between its claim and its delivery, or one a crash stopped
+// there, which the posing finishes (finishSettle).
+type askClaim struct {
+	task.Resolution
+	pending, undelivered bool
+}
+
+// of is whether res is the claim's own answer: the same choice by the same hand, whose retry
+// it is.
+func (c askClaim) of(res task.Resolution) bool {
+	return c.By == res.By && c.Chosen() == res.Chosen()
+}
+
+// standingClaim reads the claim on a question's record, where the question is posed. ok is
+// false where it is not; a question posed with no claim on it is the zero claim.
+func standingClaim(store entity.Store, id string) (c askClaim, ok bool, err error) {
+	ent, ok, err := entity.As(store, entity.SystemDocket).Get(mirror.AskRef(id))
+	if err != nil || !ok {
+		return askClaim{}, false, err
+	}
+	c.Resolution, _ = mirror.ClaimOf(ent.Payload)
+	c.pending = entity.Str(ent.Payload, "status") == mirror.QuestionPending
+	c.undelivered = entity.Get(entity.Get(ent.Payload, "followed"), "undelivered") != nil
+	return c, true, nil
 }
 
 // followField is which of a question's consequences a resolution runs: `then` on a yes, by

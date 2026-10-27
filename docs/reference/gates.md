@@ -170,6 +170,21 @@ The question's record keeps the tally. The engine does not count.
 
 The engine asks exactly what was written, and acts on the one answer that comes back.
 
+### The answer is written first
+
+The answer that settles a question is written on its record as `followed` before anything else
+happens: before its `then` or `else` runs, and before the firing or the task hears it. It holds
+the answer as the answered record spells it (`verdict`, `by`, `field`, `at`, and `via`, `why`,
+`say`, `edit` and `authenticated` where the answer has them). The first one written settles the
+question, so two answers landing together cannot disagree. The second is refused with 409, and
+the refusal names whose answer stands. The same answer, by the same answerer, again is a retry
+of the first.
+
+A delivery that fails leaves the question pending and says why on the answer, as
+`undelivered`. The next answer delivers it. So does posing the question again. An answer that
+nothing is left to hear, the awaiter or the task's decision having gone, is answered 202 with
+`the answer stands`. It is delivered when the question is next asked.
+
 Waiting for a fact is not a gate. A rule that acts once CI is green says so in `when:`
 ([the condition](condition.md)).
 
@@ -311,7 +326,10 @@ again:
   `<id>-2`, `<id>-3`, and so on;
 - the spawn id is deterministic per (chain, subject).
 
-One question, and one task, however many paths reach it.
+One question, and one task, however many paths reach it. A question posed again while an answer
+stands on it delivers that answer ([the answer is written first](#the-answer-is-written-first)):
+what follows it runs, kept to once by what it writes on the question, and then the firing hears
+it.
 
 **A scope is not covered.** Its questions are in the scope's own store, and nothing lists them
 at startup. Charters and claims in a scope have the same gap.

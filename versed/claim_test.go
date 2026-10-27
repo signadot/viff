@@ -31,14 +31,16 @@ func claimAsk(t *testing.T, srv *Server, ref entity.Ref, res task.Resolution) {
 	}
 }
 
-// A CLAIM STANDING IS THE ANSWER, WHATEVER LANDS AFTER IT. bob's no claimed alice's ask and was
-// not delivered; carol's yes finds the claim and is refused, naming bob, delivers nothing, and runs
-// nothing: the ask settles on bob's no, and the yes's `then` never starts. bob's no again is that
-// answer's own retry, and is told it took.
+// A CLAIM STANDING IS THE ANSWER, WHATEVER LANDS AFTER IT. bob's no claimed alice's ask, and
+// while its delivery is in flight carol's yes finds the claim and is refused, naming bob: it
+// delivers nothing, since bob's settle delivers, and runs nothing. Once bob's delivery has failed,
+// dave's yes is refused the same way and delivers bob's no in its place: the ask settles on it,
+// and the yes's `then` never starts. bob's no again is that answer's own retry, and is told it
+// took.
 func TestTheClaimSettlesAQuestion(t *testing.T) {
 	srv, ts := asking(t)
-	const alice, bob, carol = "user:alice@example.com", "user:bob@example.com", "user:carol@example.com"
-	id := askID(t, ask(t, alice, ts.URL, `{name: ship, question: "Ship?", to: [bob@example.com, carol@example.com],
+	const alice, bob, carol, dave = "user:alice@example.com", "user:bob@example.com", "user:carol@example.com", "user:dave@example.com"
+	id := askID(t, ask(t, alice, ts.URL, `{name: ship, question: "Ship?", to: [bob@example.com, carol@example.com, dave@example.com],
 		then: {spawn: {prompt: "announce it", environment: {systems: {network: {mode: open}}}}}}`))
 	ref := mirror.AskRef(id)
 	posed(t, srv, ref)
@@ -52,6 +54,15 @@ func TestTheClaimSettlesAQuestion(t *testing.T) {
 	resp := answerWith(t, carol, ts.URL, id, task.Proceed)
 	if body := bodyOf(t, resp); resp.StatusCode != http.StatusConflict || !strings.Contains(body, "by "+bob) {
 		t.Fatalf("carol's yes against bob's claim = %s: %s, want 409 naming bob", resp.Status, body)
+	}
+	if e, _, _ := srv.Store.Get(ref); entity.Str(e.Payload, "status") != mirror.QuestionPending {
+		t.Fatalf("carol's yes delivered bob's no while bob's own delivery was in flight: %v", entity.ToObj(e.Payload))
+	}
+
+	srv.undelivered(srv.Store, id, errors.New("the runner did not answer"))
+	resp = answerWith(t, dave, ts.URL, id, task.Proceed)
+	if body := bodyOf(t, resp); resp.StatusCode != http.StatusConflict || !strings.Contains(body, "by "+bob) {
+		t.Fatalf("dave's yes against bob's undelivered claim = %s: %s, want 409 naming bob", resp.Status, body)
 	}
 	waitValue(t, srv, ref, "status", mirror.QuestionAnswered)
 	e, _, _ := srv.Store.Get(ref)
@@ -180,5 +191,39 @@ func TestAnAnswerNobodyHeardStands(t *testing.T) {
 	c := entity.Get(e.Payload, "followed")
 	if entity.Str(e.Payload, "status") != mirror.QuestionPending || entity.Str(c, "by") != "user:"+tester || entity.Str(c, "undelivered") == "" {
 		t.Fatalf("the record = %v, want pending under the tester's claim, undelivered", entity.ToObj(e.Payload))
+	}
+}
+
+// AN ANSWER NOBODY HEARD STANDS ON A FIRING'S QUESTION TOO. bob's yes claimed a firing's question
+// and its delivery failed, and the firing's waiter is gone with the record still pending: bob's
+// yes again is told the answer stands, as a task's question says it, and carol's no is refused,
+// naming bob.
+func TestAnAnswerNobodyHeardStandsOnAFiring(t *testing.T) {
+	srv, ts := askingOn(t, testServer(t))
+	const bob, carol = "user:bob@example.com", "user:carol@example.com"
+	const id = "verse.trigger.review.review~unheard"
+	// Posed with nothing in the registry waiting on it: the state a waiter leaving between the
+	// claim and its delivery leaves, before the record says it went.
+	mirror.PostQuestion(srv.Store, task.Pending{Question: task.GateQuestion{ID: id, Origin: "review", Gate: "review"}, Tool: "verse.trigger.review"}, "")
+	ref := mirror.AskRef(id)
+	posed(t, srv, ref)
+	claimAsk(t, srv, ref, task.Choose(task.Proceed, bob))
+	srv.undelivered(srv.Store, id, errors.New("nothing waits on it"))
+
+	resp := answerWith(t, bob, ts.URL, id, task.Proceed)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("bob's yes again, nobody waiting = %s: %s, want 202 recorded", resp.Status, bodyOf(t, resp))
+	}
+	var rec api.Recorded
+	decodeResp(t, resp, &rec)
+	if rec.Choice != task.Proceed || !strings.Contains(rec.Note, "the answer stands") {
+		t.Fatalf("recorded = %+v, want proceed with the answer standing", rec)
+	}
+	if resp := answerWith(t, carol, ts.URL, id, task.Deny); resp.StatusCode != http.StatusConflict || !strings.Contains(bodyOf(t, resp), "by "+bob) {
+		t.Fatalf("carol's no against bob's claim, nobody waiting = %s, want 409 naming bob", resp.Status)
+	}
+	e, _, _ := srv.Store.Get(ref)
+	if entity.Str(e.Payload, "status") != mirror.QuestionPending || entity.Str(entity.Get(e.Payload, "followed"), "by") != bob {
+		t.Fatalf("the record = %v, want pending under bob's claim", entity.ToObj(e.Payload))
 	}
 }

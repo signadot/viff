@@ -3269,18 +3269,34 @@ func (s *Server) settle(store entity.Store, id string, res task.Resolution, owne
 	// registry, or settled already, has nobody for one to go to: refused as the delivery would
 	// refuse it, and the record untouched. A task's question is asked of the task, which says.
 	if owner == "" && s.Reg.WaiterCount(id) == 0 {
-		return task.ErrNoSuchDecision
+		// A question still pending under a claim, its waiter gone, has its answer: the claim's,
+		// said as a task's question says it (unheardErr), and delivered when it is posed again.
+		standing, ok, err := standingClaim(store, id)
+		if err != nil {
+			return err
+		}
+		if !ok || !standing.pending || standing.By == "" {
+			return task.ErrNoSuchDecision
+		}
+		if standing.of(res) {
+			return &unheardErr{task.ErrNoSuchDecision}
+		}
+		return &settlingErr{By: standing.By}
 	}
 	claimed, standing, err := s.consequence(store, id, res)
 	if err != nil {
 		return err
 	}
 	if !claimed {
-		// Another answer is settling it. Its delivery is tried again here where it has not taken,
-		// since whoever answered again is whoever would have, and the same answer by the same
-		// hand is that delivery's own result.
-		err := s.finishSettle(entity.As(store, entity.SystemDocket), id, owner)
-		if standing.By == res.By && standing.Chosen() == res.Chosen() {
+		// Another answer is settling it. Its delivery is tried again here where it failed, since
+		// whoever answered again is whoever would have, and the same answer by the same hand is
+		// that delivery's own result. A claim with no note is its settle between the claim and
+		// the delivery, whose delivery is not this one's to race.
+		var err error
+		if standing.pending && standing.undelivered {
+			err = s.finishSettle(entity.As(store, entity.SystemDocket), id, owner)
+		}
+		if standing.of(res) {
 			return err
 		}
 		return &settlingErr{By: standing.By}

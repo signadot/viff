@@ -168,10 +168,17 @@ every ask on the docket, whoever raised it. For your own ask, `--keep 72h` sets 
 `verse ask` shows when it goes, as `expires`. What its `then` ran is a task, and it stays as
 tasks do.
 
-An ask settles once. If a rule's gate fires again after its ask settled, it raises a new ask
-with its own id. The settled ask keeps its answer until it goes. An ask that is asked again
-while it still waits, because a restart or a lifted suspension brings its gate back, is not
-removed: it stays while it waits.
+An ask settles once, on the first answer that settles it. Verse writes that answer on the ask as
+`followed` before its `then` or `else` runs, and before whoever asked hears it. So what runs,
+what the asker hears and what the ask says are that one answer's. An answer that lands after it
+is refused, and the refusal names whose answer stands. If the answer cannot reach whoever waits
+on the ask, `followed` says why, as `undelivered`. The answer still stands: it reaches them when
+the ask is asked again, and answering it again meanwhile says `the answer stands`.
+
+If a rule's gate fires again after its ask settled, it raises a new ask with its own id. The
+settled ask keeps its answer until it goes. An ask that is asked again while it still waits,
+because a restart or a lifted suspension brings its gate back, is not removed: it stays while it
+waits.
 
 ## Who reads it
 
@@ -226,7 +233,8 @@ that edit is refused. So nobody answers words they were not asked.
 Withdrawing an ask takes it off the docket and removes it. Nothing is written on anybody's
 behalf.
 
-Once an ask has settled, it does not change. Anything more is a new ask.
+Once an ask has an answer, it does not change, even before the answer reaches you. Anything more
+is a new ask.
 
 In Slack, the message says who asked and what a yes runs, and a reply answers that edit. The
 message is drawn again when the ask changes. A reply to the old words is refused. A reply to the
