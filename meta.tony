@@ -3,11 +3,12 @@ blocked_by:
 - pb6fwh8gh12krmb7vhn0
 blocks: []
 branches: []
+closed_by: 2eb16425f60322fdcfdda9e3e7b3313464e8da88
 commits: []
 created: "2026-10-24T19:41:23.447908+02:00"
 duplicates: []
 id: pf6fwh8gh12ksgzdvhn0
 labels: []
 related_issues: []
-status: open
-updated: "2026-10-24T20:12:04.063243+02:00"
+status: closed
+updated: "2026-10-27T16:01:49.713168+01:00"
