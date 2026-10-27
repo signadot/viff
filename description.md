@@ -1,6 +1,6 @@
 # an ask says who raised it and whom it is put to, as from and to; a task's record says actsFor
 
-Linear: ENG-1300 (ENG-1300). The design is attached there: "Design: who raised a question, and whom it is put to (from/to/by)", reviewed by Scott.
+Linear: ENG-1300 (ENG-1300). The design is attached there: "Design: who raised a question, and whom it is put to (from/to/by)", reviewed by Scott. PR: #50.
 
 ## What
 
@@ -19,10 +19,12 @@ A task's record (`verse.task.instance.<id>`) says whom it acts for as `actsFor`,
 ## Commits
 
 1. `mirror, versed, api, io, cli, deploy!:` an ask says who raised it and whom it is put to, as `from` and `to`: the record, its readers in versed, mirror, Slack and the CLI, the request's `to`, and `gate-ask.tony`, in one commit, since the charter's and Slack's tests read the records the code writes.
-2. `versed!:` an ask is changed by whoever asked it: `patchAsk` checks `from.principal`, not the owner (a resolver is refused changing its own onward ask today, and its installer is let in).
+2. `versed!:` an ask is changed by whoever asked it: `patchAsk` checks `from.principal`, not the owner, for every ask a resolver raised, onward or not (a resolver was refused changing its own ask, and its installer was let in).
 3. `mirror, launch, trigger, versed!:` a task's record says whom it acts for as `actsFor`.
 4. `docs:` the pages that show these keys, including the `then: {ask: … answerers: […]}` examples and wording in docs/asking.md and docs/tutorial/questions.md, which now describe a body refused with 400.
 
+Folded in from #51, under its own issue `faxkagtmh12krs61vxn0`: four commits after these, in which a rule's gate and a task's autonomy row take `then` and `else`, run as whoever asked before the answer goes back, and the claim on the record settles the question.
+
 ## Deploy
 
-Repopulate, not migrate, after a post in #verse-dev that anyone may veto: pending asks are cleared, and no task running at the deploy survives it. verse, the iods and the charter deploy together.
+Repopulate, not migrate: pending asks are cleared, and no task running at the deploy survives it. verse, the iods, the runners and the charter deploy together.
