@@ -47,7 +47,7 @@ func TestAFiringThatCannotBeResolvedWritesNothing(t *testing.T) {
 			t.Fatalf("stratum %q: %v", s.Name, err)
 		}
 	}
-	if err := eng.addTrigger(trigs[0], false, ""); err != nil {
+	if err := eng.addTrigger(trigs[0], false, "", true); err != nil {
 		t.Fatalf("does not install: %v", err)
 	}
 

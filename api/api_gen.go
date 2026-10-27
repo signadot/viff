@@ -1767,6 +1767,11 @@ func (s *Recorded) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Field: Choice
 	irMap["choice"] = ir.FromString(string(s.Choice))
 
+	// Field: Note
+	if s.Note != "" {
+		irMap["note"] = ir.FromString(string(s.Note))
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -1818,6 +1823,12 @@ func (s *Recorded) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "choice", fieldNodeUnwrapped.Type)
 			}
 			s.Choice = string(fieldNodeUnwrapped.String)
+		case "note":
+			// Field: Note
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "note", fieldNodeUnwrapped.Type)
+			}
+			s.Note = string(fieldNodeUnwrapped.String)
 		default:
 			if gomap.IsStrict(opts...) {
 				return fmt.Errorf("unknown field %q for Recorded", fieldName.String)
@@ -5634,6 +5645,45 @@ func (s *AskFollowed) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["field"] = ir.FromString(string(s.Field))
 	}
 
+	// Field: Verdict
+	if s.Verdict != "" {
+		irMap["verdict"] = ir.FromString(string(s.Verdict))
+	}
+
+	// Field: By
+	if s.By != "" {
+		irMap["by"] = ir.FromString(string(s.By))
+	}
+
+	// Field: Via
+	if s.Via != "" {
+		irMap["via"] = ir.FromString(string(s.Via))
+	}
+
+	// Field: Why
+	if s.Why != "" {
+		irMap["why"] = ir.FromString(string(s.Why))
+	}
+
+	// Field: Say
+	if len(s.Say) > 0 {
+		slice := make([]*ir.Node, len(s.Say))
+		for i, v := range s.Say {
+			slice[i] = ir.FromString(string(v))
+		}
+		irMap["say"] = ir.FromSlice(slice)
+	}
+
+	// Field: Edit
+	if s.Edit != 0 {
+		irMap["edit"] = ir.FromInt(int64(s.Edit))
+	}
+
+	// Field: Authenticated
+	if s.Authenticated != "" {
+		irMap["authenticated"] = ir.FromString(string(s.Authenticated))
+	}
+
 	// Field: Undelivered
 	if s.Undelivered != "" {
 		irMap["undelivered"] = ir.FromString(string(s.Undelivered))
@@ -5684,6 +5734,59 @@ func (s *AskFollowed) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error
 				return fmt.Errorf("field %q: expected string, got %v", "field", fieldNodeUnwrapped.Type)
 			}
 			s.Field = string(fieldNodeUnwrapped.String)
+		case "verdict":
+			// Field: Verdict
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "verdict", fieldNodeUnwrapped.Type)
+			}
+			s.Verdict = string(fieldNodeUnwrapped.String)
+		case "by":
+			// Field: By
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "by", fieldNodeUnwrapped.Type)
+			}
+			s.By = string(fieldNodeUnwrapped.String)
+		case "via":
+			// Field: Via
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "via", fieldNodeUnwrapped.Type)
+			}
+			s.Via = string(fieldNodeUnwrapped.String)
+		case "why":
+			// Field: Why
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "why", fieldNodeUnwrapped.Type)
+			}
+			s.Why = string(fieldNodeUnwrapped.String)
+		case "say":
+			// Field: Say
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]string, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					ctx := fmt.Sprintf("slice element %d", i)
+					var elem string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					elem = v.String
+					slice[i] = string(elem)
+				}
+				s.Say = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"say\"", fieldNodeUnwrapped.Type)
+			}
+		case "edit":
+			// Field: Edit
+			if fieldNodeUnwrapped.Int64 == nil {
+				return fmt.Errorf("field %q: expected number, got %v", "edit", fieldNodeUnwrapped.Type)
+			}
+			s.Edit = int(*fieldNodeUnwrapped.Int64)
+		case "authenticated":
+			// Field: Authenticated
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "authenticated", fieldNodeUnwrapped.Type)
+			}
+			s.Authenticated = string(fieldNodeUnwrapped.String)
 		case "undelivered":
 			// Field: Undelivered
 			if fieldNodeUnwrapped.Type != ir.StringType {

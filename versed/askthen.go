@@ -221,7 +221,10 @@ func (s *Server) checkThenAnswer(asker string, m map[string]any, self string) (i
 	// AND NO LOOP: what this answers may answer another when it settles, and so on, and a chain
 	// that comes back to this ask would settle it from inside its own settle, since what follows a
 	// question runs before its answer is delivered (consequence.go). Refused where the loop would
-	// close, which is here: the ask being changed is the only one a standing chain can name.
+	// close, which is here: the ask being changed is the only one a standing chain can name. A
+	// `then` nested in a `then` that asks (`then: {ask: {then: {answer: …}}}`) is checked with no
+	// self, and cannot close one: the inner ask does not stand until the outer has settled, so
+	// what it answers back to has settled already, and its answer is refused on the record.
 	if self != "" {
 		if path := s.answersBack(a.Ask, self); path != nil {
 			return http.StatusBadRequest, fmt.Errorf("then.answer: ask %s comes back to this ask (%s answers %s): a loop",

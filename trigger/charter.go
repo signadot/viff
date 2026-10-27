@@ -301,7 +301,7 @@ func (e *Engine) LoadCharterFrom(ents []entity.Entity) error {
 		// durable=false: it is already durable — that is where it came from. Re-writing it
 		// would be a no-op with a revision attached, and a charter subtree watch would see
 		// every restart as a charter change. As whoever owns it, which its record says.
-		if err := e.addTrigger(t, false, e.OwnerOf(t.Name)); err != nil {
+		if err := e.addTrigger(t, false, e.OwnerOf(t.Name), false); err != nil {
 			errs = append(errs, fmt.Errorf("charter %s: %w", ent.Ref, err))
 		}
 	}

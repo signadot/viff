@@ -954,26 +954,37 @@ func AnswerQuestion(store entity.Store, id string, res task.Resolution) {
 	writeAt(store, QuestionRef(id), rec)
 }
 
-func answerRecord(res task.Resolution) entity.Obj {
-	rec := entity.Obj{
-		"status":     QuestionAnswered,
-		"verdict":    res.Chosen(),
-		"answeredAt": time.Now().UTC().Format(time.RFC3339),
-		// Who it waited on is a present-tense fact, and it is settled: `by` says who decided,
-		// `to` whom the gate named, `ballots` who voted.
-		WaitingOnField: entity.Removed(),
+// ClaimRecord is a resolution as a question's claim records it (`followed`, api.AskFollowed):
+// when, which of `then` and `else` it runs, and the answer in the keys the answered record
+// uses, so a reader of either reads one shape. The claim is the answer (versed consequence.go).
+func ClaimRecord(res task.Resolution, now time.Time) entity.Obj {
+	rec := resolutionKeys(res)
+	rec["at"] = now.UTC().Format(time.RFC3339)
+	rec["field"] = "else"
+	if res.Chosen() == task.Proceed {
+		rec["field"] = "then"
 	}
+	// What the answered record carries elsewhere, and a restart needs to deliver the same
+	// resolution: the edit it answered, and how the answerer was authenticated.
+	if res.Edit != 0 {
+		rec["edit"] = res.Edit
+	}
+	if res.Authenticated != "" {
+		rec["authenticated"] = res.Authenticated
+	}
+	return rec
+}
+
+// resolutionKeys is a resolution in the keys the answered record spells it in: what it settled
+// on, who decided, through whom, their reason and their words. The claim and the answer share
+// them, so a reader of either reads one shape.
+func resolutionKeys(res task.Resolution) entity.Obj {
+	rec := entity.Obj{"verdict": res.Chosen()}
 	if res.By != "" {
 		rec["by"] = res.By
 	}
 	if res.Via != "" {
 		rec["via"] = res.Via
-	}
-	// The settling ballot rides the settle. One write says both that this answerer chose
-	// this and that the choice reached its threshold, so no reader can see the one without
-	// the other. A settle nobody cast — auto, cancelled, the clock — is not a ballot.
-	if res.Cast() {
-		rec["ballots"] = entity.Obj{res.By: ballot(res)}
 	}
 	if res.Note != "" {
 		rec["why"] = res.Note
@@ -984,6 +995,38 @@ func answerRecord(res task.Resolution) entity.Obj {
 	// keep the yes and lose the condition on it.
 	if len(res.Steer) > 0 {
 		rec["say"] = anyStrings(res.Steer)
+	}
+	return rec
+}
+
+// ClaimOf is the resolution a question's claim holds, where one stands: what a restart delivers
+// to a question posed again under it.
+func ClaimOf(p entity.Payload) (task.Resolution, bool) {
+	c := entity.Get(p, "followed")
+	if c == nil {
+		return task.Resolution{}, false
+	}
+	res := task.Choose(entity.Str(c, "verdict"), entity.Str(c, "by"))
+	res.Via = entity.Str(c, "via")
+	res.Note = entity.Str(c, "why")
+	res.Authenticated = entity.Str(c, "authenticated")
+	res.Edit = intField(c, "edit")
+	res.Steer = entity.Strs(c, "say")
+	return res, true
+}
+
+func answerRecord(res task.Resolution) entity.Obj {
+	rec := resolutionKeys(res)
+	rec["status"] = QuestionAnswered
+	rec["answeredAt"] = time.Now().UTC().Format(time.RFC3339)
+	// Who it waited on is a present-tense fact, and it is settled: `by` says who decided,
+	// `to` whom the gate named, `ballots` who voted.
+	rec[WaitingOnField] = entity.Removed()
+	// The settling ballot rides the settle. One write says both that this answerer chose
+	// this and that the choice reached its threshold, so no reader can see the one without
+	// the other. A settle nobody cast — auto, cancelled, the clock — is not a ballot.
+	if res.Cast() {
+		rec["ballots"] = entity.Obj{res.By: ballot(res)}
 	}
 	return rec
 }
@@ -1227,8 +1270,15 @@ func clearPriorAnswer(store entity.Store, ref entity.Ref, rec entity.Obj) {
 	// orphaned record is the same question with its waiter gone — a restart, a withdrawal —
 	// and whoever re-poses it joins what was already cast. The deadline's stamp stands for
 	// the same reason: the clock started when the question was first asked.
+	// THE CLAIM GOES WITH THE ROUND, AS THE BALLOTS DO. A question that was answered and is
+	// posed again is a new question under an old id, and the claim that settled the last one
+	// (`followed`, versed consequence.go) is not its answer: cleared, so this asking takes a
+	// claim of its own; what the last claim ran stays marked (`then-task` and the rest), so it is
+	// not run again. A PENDING or orphaned question posed again keeps its claim: that is an
+	// answer decided and not yet heard, delivered now that something waits on it again.
 	if status == QuestionAnswered {
 		rec["ballots"] = entity.Removed()
+		rec["followed"] = entity.Removed()
 		// The INSTANT goes with the round it timed; the terms are this asking's own, written
 		// above, and removing the whole deadline would take them with it — a question asked
 		// again with `within: 72h` would stand with no deadline at all.

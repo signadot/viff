@@ -103,8 +103,9 @@ type AskRecord struct {
 	// Carried is how an onward ask's answer was carried back to the ask it serves.
 	Carried *AskCarried `tony:"field=carried,omitzero"`
 
-	// Followed is the one settle whose consequence ran, and which of Then and Else it was: a
-	// question settles once, so an answer that lost the race to settle it runs neither.
+	// Followed is the claim that settled the question, the resolution and which of Then and Else
+	// it ran: a question settles once, by its first claim, so an answer that lost the race to
+	// claim it runs neither and is not delivered.
 	Followed *AskFollowed `tony:"field=followed,omitzero"`
 	// What became of Then and Else: the task they started, a failure, and the answer or ask they
 	// made.
@@ -264,15 +265,23 @@ type AskFollowFailed struct {
 	Why string `tony:"field=why"`
 }
 
-// AskFollowed is the settle whose consequence ran: when, which field (`then` or `else`), and why
-// that settle did not reach whoever asked, where it did not, in which case the settle that does
-// runs its own.
+// AskFollowed is the claim that settled the question: the resolution, in the keys the answered
+// record uses, when it was claimed, and which field (`then` or `else`) it ran. The claim is the
+// answer: a question pending under one has its answer decided and not yet delivered, and
+// Undelivered says why the last delivery failed, until the question is posed again and it is.
 //
 //tony:schemagen=verse-ask-followed,notag
 type AskFollowed struct {
-	At          string `tony:"field=at"`
-	Field       string `tony:"field=field,omitzero"`
-	Undelivered string `tony:"field=undelivered,omitzero"`
+	At            string   `tony:"field=at"`
+	Field         string   `tony:"field=field,omitzero"`
+	Verdict       string   `tony:"field=verdict,omitzero"`
+	By            string   `tony:"field=by,omitzero"`
+	Via           string   `tony:"field=via,omitzero"`
+	Why           string   `tony:"field=why,omitzero"`
+	Say           []string `tony:"field=say,omitzero"`
+	Edit          int      `tony:"field=edit,omitzero"`
+	Authenticated string   `tony:"field=authenticated,omitzero"`
+	Undelivered   string   `tony:"field=undelivered,omitzero"`
 }
 
 // AskFollowAnswered is an answer a then or else made: when it started, the ask it answered, the

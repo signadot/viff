@@ -3,7 +3,7 @@ package versed
 import (
 	"errors"
 	"fmt"
-	"time"
+	"os"
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
@@ -62,44 +62,80 @@ func thenPrincipal(actsFor, launcher, taskID string) string {
 	return entity.Via(mirror.Ref(taskID))
 }
 
-// consequence runs what follows a question that is settling, before the answer is delivered to
-// whoever asked: its `then` on a yes, its `else` otherwise, and reports whether this settle is the
-// one that ran it. ONCE, FOR THE SETTLE THAT COUNTS: two answers landing together both come here,
-// and the delivery decides which settled the question; the consequence is claimed on the record
-// first (`followed`), conditional on no claim standing or the standing one being for a delivery
-// that failed (undelivered), so the one that loses the race runs nothing — not the other field,
-// and not the same one twice — and a settle whose delivery failed leaves the question to be
-// followed by the one that takes. A claim with nothing to run behind it costs a key on the record
-// and nothing else.
-func (s *Server) consequence(id string, res task.Resolution) (claimed bool) {
-	field := "else"
-	if res.Choice == task.Proceed {
-		field = "then"
-	}
+// consequence claims a question for a resolution and runs what follows it, before the answer is
+// delivered to whoever asked: its `then` on a yes, its `else` otherwise. THE CLAIM IS THE ANSWER:
+// the resolution is written on the record as `followed`, conditional on no claim standing, and
+// the first written settles the question. Two answers landing together both come here, and the
+// one whose write fails runs nothing — not the other field, and not the same one twice — and
+// delivers nothing (settle); what the record holds is then what a restart delivers, where the
+// delivery had not yet taken (finishSettle), and what the asks' marks keep the `then` to once
+// across (followAsk). A claim with nothing to run behind it costs a key on the record and
+// nothing else.
+//
+// Answers whether this resolution claimed the question, and where it did not, the resolution
+// that holds it. An error is the store's: nothing is known, and nothing ran. store is the
+// question's, as the system: a scope's question is recorded in its scope, and the claim with it.
+func (s *Server) consequence(store entity.Store, id string, res task.Resolution) (claimed bool, standing task.Resolution, err error) {
 	ref := mirror.AskRef(id)
-	open, err := codec.ParseNode([]byte(`!or [!not.has-path followed, {followed: {undelivered: null}}]`), codec.Tony)
+	open, err := codec.ParseNode([]byte(`!not.has-path followed`), codec.Tony)
 	if err != nil {
-		return false
+		return false, task.Resolution{}, err
 	}
-	claim := entity.Obj{"followed": entity.Obj{
-		"at": s.now().UTC().Format(time.RFC3339), "field": field, "undelivered": entity.Removed(),
-	}}
-	claimed, _, err = entity.As(s.Store, entity.SystemDocket).Write(entity.Write{
-		At: ref.At(), Value: claim.Payload(),
+	sys := entity.As(store, entity.SystemDocket)
+	claimed, _, err = sys.Write(entity.Write{
+		At: ref.At(), Value: entity.Obj{"followed": mirror.ClaimRecord(res, s.now())}.Payload(),
 		When: []entity.Require{{At: ref.At(), Pattern: entity.Present()}, {Pattern: open}},
 	})
-	if err != nil || !claimed {
-		return false
+	if err != nil {
+		return false, task.Resolution{}, err
 	}
-	s.followAsk(ref, field)
-	return true
+	if !claimed {
+		ent, ok, err := sys.Get(ref)
+		if err != nil {
+			return false, task.Resolution{}, err
+		}
+		if !ok {
+			return false, task.Resolution{}, fmt.Errorf("%w: question %s is not posed", task.ErrNoSuchDecision, id)
+		}
+		standing, _ = mirror.ClaimOf(ent.Payload)
+		return false, standing, nil
+	}
+	s.followAsk(ref, followField(res))
+	return true, res, nil
 }
 
-// undelivered says on the question that the settle whose consequence ran did not reach whoever
-// asked, so the consequence of the settle that does is run too (consequence), and the record says
-// why what already ran did.
-func (s *Server) undelivered(id string, err error) {
-	s.writeThen(mirror.AskRef(id), "followed", entity.Obj{"undelivered": err.Error()})
+// followField is which of a question's consequences a resolution runs: `then` on a yes, by
+// what it settled on (Chosen), so a resolution and its claim read one field.
+func followField(res task.Resolution) string {
+	if res.Chosen() == task.Proceed {
+		return "then"
+	}
+	return "else"
+}
+
+// delivered takes the undelivered note off a question's claim, once a delivery that had failed
+// takes: the claim stays, since it is the answer.
+func (s *Server) delivered(store entity.Store, id string) {
+	ref := mirror.AskRef(id)
+	if _, _, err := entity.As(store, entity.SystemDocket).Write(entity.Write{
+		At: ref.At(), Value: entity.Obj{"followed": entity.Obj{"undelivered": entity.Removed()}}.Payload(),
+		When: []entity.Require{{At: ref.At("followed"), Pattern: entity.Present()}},
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "verse: ask %s: that its answer was delivered was not written: %v\n", ref.Name(), err)
+	}
+}
+
+// undelivered says on the question's claim that its answer has not reached whoever asked, and
+// why: the claim stands, since it is the answer, and the delivery is tried again when the
+// question is posed again (finishSettle).
+func (s *Server) undelivered(store entity.Store, id string, err error) {
+	ref := mirror.AskRef(id)
+	if _, _, werr := entity.As(store, entity.SystemDocket).Write(entity.Write{
+		At: ref.At(), Value: entity.Obj{"followed": entity.Obj{"undelivered": err.Error()}}.Payload(),
+		When: []entity.Require{{At: ref.At(), Pattern: entity.Present()}},
+	}); werr != nil {
+		fmt.Fprintf(os.Stderr, "verse: ask %s: that its answer was not delivered was not written: %v\n", ref.Name(), werr)
+	}
 }
 
 // thenCheck is what an install checks a gate's `then` against, as the rule: the shape an ask's
@@ -126,7 +162,8 @@ type taskBound struct {
 func (b *taskBound) holds(spec launch.Spec) error {
 	if b.environment == nil {
 		return errors.New(".environment: the asking task's environment is not known to this verse, which " +
-			"launched it before a restart, so a then that spawns cannot be held within it: run the task again")
+			"launched it before a restart, so a then that spawns cannot be held within it; the row " +
+			"carrying this spawn is refused until the task is run again")
 	}
 	if err := spec.Environment.Within(*b.environment); err != nil {
 		return fmt.Errorf(".environment.%w", err)
@@ -168,7 +205,8 @@ func (s *Server) checkAutonomyThens(asker string, p task.Autonomy, within *taskB
 				continue
 			}
 			if err := s.checkFollow(asker, field, follow, within); err != nil {
-				return fmt.Errorf("autonomy[%d].ask.%w", i, err)
+				// By the row's name where it has one, which is how an operator knows it.
+				return fmt.Errorf("%s.ask.%w", p.NameOf(i), err)
 			}
 		}
 	}

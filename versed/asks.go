@@ -783,6 +783,13 @@ func (s *Server) patchAsk(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("ask %s has settled (%s); a change is a new ask", id, status), http.StatusConflict)
 		return
 	}
+	// AN ASK BEING SETTLED IS NOT CHANGED. A claim on it is its answer, decided and not yet
+	// heard (consequence.go), and a change would make an edit that answer could never be
+	// delivered to, with no answer able to replace it.
+	if claim, ok := mirror.ClaimOf(ent.Payload); ok {
+		http.Error(w, fmt.Sprintf("ask %s is being settled by %s's answer; a change is a new ask", id, claim.By), http.StatusConflict)
+		return
+	}
 	edit := askEdit(ent.Payload)
 	if body.Edit != 0 && body.Edit != edit {
 		http.Error(w, fmt.Sprintf("ask %s is at edit %d, not %d: read it and change it again", id, edit, body.Edit),

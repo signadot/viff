@@ -324,6 +324,9 @@ func NewWithStore(build runnerd.Builder, store entity.Store, opts ...Option) *Se
 		store := s.storeForScope(p.Question.Scope)
 		if mirror.PostQuestion(store, p, "") {
 			arm(store, p.Question)
+			// A question posed again under a claim is one whose answer is decided and not
+			// yet heard: now something waits on it, it is delivered (finishSettle).
+			_ = s.finishSettle(store, p.Question.ID, "")
 		}
 	})
 	// And the counterpart. A question whose last waiter stopped waiting leaves the registry
@@ -378,6 +381,7 @@ func NewWithStore(build runnerd.Builder, store entity.Store, opts ...Option) *Se
 		p.Question = hostedQuestion(ht, p.Question)
 		if mirror.PostQuestion(store, p, taskID) {
 			arm(store, p.Question)
+			_ = s.finishSettle(store, p.Question.ID, taskID)
 		}
 	})
 
@@ -3187,6 +3191,13 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+	// The answer took the question and nobody heard it: recorded, as a ballot short of its
+	// threshold is, and said so, since it is delivered when the question is asked again.
+	var unheard *unheardErr
+	if errors.As(err, &unheard) {
+		writeOut(w, r, http.StatusAccepted, api.Recorded{Choice: res.Chosen(), Note: unheard.Error()})
+		return
+	}
 
 	// Nothing took the answer, and WHY is three different facts. Two of them used to be one
 	// 404 and the third had no way to be said at all.
@@ -3226,6 +3237,11 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
+		// Settled by its claim before its answer was heard: the claim says whose (settle).
+		var settling *settlingErr
+		if won == "" && errors.As(err, &settling) && settling.By != "" {
+			won = settling.By
+		}
 		if won == "" {
 			won = "an earlier answer"
 		}
@@ -3241,15 +3257,65 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 // answerQuestion, or the clock through settleByDeadline. owner is the task holding the
 // question, empty for a firing's gate, which the engine's registry answers here.
 //
-// Delivery first, the record after: the waiter is the arbiter of who settled a question, and
-// a record written ahead of a delivery that then failed would say a decision reached a party
-// it never reached. The error is the delivery's, for the caller to say in its own terms.
+// THE CLAIM IS THE ANSWER. A question is settled by the first resolution written on its record
+// as `followed` (consequence.go), and by nothing else: what follows it runs as whoever asked
+// before the answer reaches them, and the delivery is of that resolution, now or, where it
+// fails, when the question is posed again (finishSettle). Two answers landing together both
+// come here; the one whose claim fails delivers nothing, runs nothing, and is told another
+// answer is settling the question, so the record, what ran and what the asker hears are one
+// resolution's. The same answer again, by the same hand, is that resolution's own retry.
 func (s *Server) settle(store entity.Store, id string, res task.Resolution, owner string) error {
-	// WHAT FOLLOWS, FIRST: the question's `then` or `else` runs as whoever asked before the
-	// answer reaches them, whoever they are (consequence.go). Once, by the claim on the record,
-	// so a second answer landing beside this one runs nothing; and said on the record where the
-	// delivery below then fails, so the settle that does take runs its own.
-	claimed := s.consequence(id, res)
+	// NOT CLAIMED WHERE NOBODY WAITS. A claim is an answer, and a question withdrawn from the
+	// registry, or settled already, has nobody for one to go to: refused as the delivery would
+	// refuse it, and the record untouched. A task's question is asked of the task, which says.
+	if owner == "" && s.Reg.WaiterCount(id) == 0 {
+		return task.ErrNoSuchDecision
+	}
+	claimed, standing, err := s.consequence(store, id, res)
+	if err != nil {
+		return err
+	}
+	if !claimed {
+		// Another answer is settling it. Its delivery is tried again here where it has not taken,
+		// since whoever answered again is whoever would have, and the same answer by the same
+		// hand is that delivery's own result.
+		err := s.finishSettle(entity.As(store, entity.SystemDocket), id, owner)
+		if standing.By == res.By && standing.Chosen() == res.Chosen() {
+			return err
+		}
+		return &settlingErr{By: standing.By}
+	}
+	return s.deliver(store, id, res, owner, false)
+}
+
+// unheardErr is a claim that stands with nobody waiting to hear it: the answer is the question's,
+// and is delivered when the question is asked again (finishSettle).
+type unheardErr struct{ err error }
+
+func (e *unheardErr) Error() string {
+	return "the answer stands, and nothing waits on the question now: it is delivered when the question is asked again (" + e.err.Error() + ")"
+}
+func (e *unheardErr) Unwrap() error { return e.err }
+
+// settlingErr is a settle refused because another resolution claimed the question first: an
+// answer already, by whom.
+type settlingErr struct{ By string }
+
+func (e *settlingErr) Error() string {
+	by := e.By
+	if by == "" {
+		by = "an earlier answer"
+	}
+	return "another answer, by " + by + ", is settling it"
+}
+func (e *settlingErr) Unwrap() error { return task.ErrAlreadyAnswered }
+
+// deliver hands a question's resolution to whatever waits on it and records the answer. A
+// delivery that fails is said on the claim (undelivered) and tried again when the question is
+// posed again; the record stays pending, which is the truth, and the claim stands, which is
+// the answer. One that takes after a failure takes the note with it. The error is the
+// delivery's, for the caller to say in its own terms.
+func (s *Server) deliver(store entity.Store, id string, res task.Resolution, owner string, again bool) error {
 	var err error
 	if owner != "" {
 		err = s.resolveTaskDecision(owner, id, res)
@@ -3257,13 +3323,43 @@ func (s *Server) settle(store entity.Store, id string, res task.Resolution, owne
 		err = s.Reg.Deliver(id, res)
 	}
 	if err != nil {
-		if claimed {
-			s.undelivered(id, err)
+		s.undelivered(store, id, err)
+		if errors.Is(err, task.ErrNoSuchDecision) {
+			// The claim stands and nobody heard: the waiter left between the check and the
+			// claim, or the task's decision closed. Said as what it is, since "no such
+			// question" would send the answerer looking for a typo in an answer that stands.
+			return &unheardErr{err}
 		}
 		return err
 	}
 	mirror.AnswerQuestion(store, id, res)
+	if again {
+		s.delivered(store, id)
+	}
 	return nil
+}
+
+// finishSettle delivers the resolution a question's claim holds, where the question stands
+// pending with a claim on it: a delivery that failed, or a crash between the claim and the
+// delivery, left the answer decided and not heard. Called where the question is posed again,
+// which is when something waits on it once more, and by a settle that found the claim standing.
+// Nothing to finish is nil. store is the question's, a scope's question being recorded in its
+// scope, and the answer is recorded through it: as the system where the one asking is not the
+// claim's own answerer, since the answer is theirs and not whoever happened to post or answer
+// next.
+func (s *Server) finishSettle(store entity.Store, id, owner string) error {
+	ent, ok, err := entity.As(store, entity.SystemDocket).Get(mirror.AskRef(id))
+	if err != nil || !ok || entity.Str(ent.Payload, "status") != mirror.QuestionPending {
+		return err
+	}
+	res, claimed := mirror.ClaimOf(ent.Payload)
+	if !claimed {
+		return nil
+	}
+	// What follows it first, as at the claim: the marks it writes keep it to once, so what ran
+	// before a crash does not run again, and what did not yet runs now.
+	s.followAsk(mirror.AskRef(id), followField(res))
+	return s.deliver(store, id, res, owner, true)
 }
 
 // armDeadline starts the clock on a question posed with a deadline: the instant is stamped on

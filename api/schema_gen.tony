@@ -181,8 +181,15 @@ context:
 - tony-format/context
 define:
   at: .[string]
+  authenticated: .[string]
+  by: .[string]
+  edit: .[int]
   field: .[string]
+  say: .[array(string)]
   undelivered: .[string]
+  verdict: .[string]
+  via: .[string]
+  why: .[string]
 signature:
   name: verse-ask-followed
 ---
@@ -701,6 +708,7 @@ define:
   choice: .[string]
   count: .[int]
   need: .[int]
+  note: .[string]
 signature:
   name: verse-recorded
 ---

@@ -147,10 +147,17 @@ type Recorded struct {
 	Count  int    `tony:"field=count"`
 	Need   int    `tony:"field=need"`
 	Choice string `tony:"field=choice"`
+	// Note is why the answer was recorded rather than delivered, where it is not a tally: an
+	// answer that took the question with nobody waiting to hear it, delivered when the question
+	// is asked again.
+	Note string `tony:"field=note,omitzero"`
 }
 
 // String is the tally as a person reads it.
 func (r Recorded) String() string {
+	if r.Note != "" {
+		return "recorded " + r.Choice + ": " + r.Note
+	}
 	return fmt.Sprintf("recorded: %d of %d for %s", r.Count, r.Need, r.Choice)
 }
 
