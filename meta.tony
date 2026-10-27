@@ -1,5 +1,6 @@
 !issue
-blocked_by: []
+blocked_by:
+- pb6fwh8gh12krmb7vhn0
 blocks: []
 branches: []
 commits: []
@@ -10,4 +11,4 @@ labels:
 - agent
 related_issues: []
 status: open
-updated: "2026-10-27T16:00:32.532028+01:00"
+updated: "2026-10-27T16:00:52.26581+01:00"
