@@ -6,7 +6,9 @@ commits: []
 created: "2026-10-27T22:59:17.87583+01:00"
 duplicates: []
 id: f1kzk84wh12ksd8yw5n0
-labels: []
+labels:
+- agent
+- runner
 related_issues: []
 status: open
-updated: "2026-10-27T22:59:17.87583+01:00"
+updated: "2026-10-27T22:59:17.986003+01:00"
