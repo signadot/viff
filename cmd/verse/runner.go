@@ -11,6 +11,7 @@ import (
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/runner"
 )
 
 type runnersConfig struct {
@@ -135,10 +136,11 @@ func (cfg *runnerRemoveConfig) run(cc *cli.Context, args []string) error {
 
 type runnerAddConfig struct {
 	*cli.Command
-	File     string `cli:"name=file aliases=f desc='read the runner from FILE (- = stdin); also accepts a positional [file]'"`
-	NoProbe  bool   `cli:"name=no-probe desc='install without asking the url what it is'"`
-	Identity string `cli:"name=identity desc='the id of the principal the runner acts as, runner:<identity> (default: its name): what its reports are written as and what a spawn grants it'"`
-	Subject  string `cli:"name=subject desc='the subject of the workload token the runner presents (system:serviceaccount:<namespace>:<name> on Kubernetes): how verse recognises the runner at the describe and at its door. Without it the runner is taken at its word'"`
+	File      string `cli:"name=file aliases=f desc='read the runner from FILE (- = stdin); also accepts a positional [file]'"`
+	NoProbe   bool   `cli:"name=no-probe desc='install without asking the url what it is'"`
+	Identity  string `cli:"name=identity desc='the id of the principal the runner acts as, runner:<identity> (default: its name): what its reports are written as and what a spawn grants it'"`
+	Subject   string `cli:"name=subject desc='the subject of the workload token the runner presents (system:serviceaccount:<namespace>:<name> on Kubernetes): how verse recognises the runner at the describe and at its door. Without it the runner is taken at its word'"`
+	TokenFile string `cli:"name=token-file desc='a FILE holding the static token the runner presents, for a runner no runtime issues a workload token to: verse is told only its hash, which becomes the subject. In place of -subject'"`
 }
 
 func runnerAddCmd() *cli.Command {
@@ -153,6 +155,26 @@ func runnerAddCmd() *cli.Command {
 		WithRun(cfg.run)
 }
 
+// subject is the subject the add names: -subject as given, or the hash of the static token
+// -token-file holds, which never leaves this machine.
+func (cfg *runnerAddConfig) subject() (string, error) {
+	if cfg.TokenFile == "" {
+		return cfg.Subject, nil
+	}
+	if cfg.Subject != "" {
+		return "", fmt.Errorf("%w: -subject and -token-file are two ways to say how verse recognises the runner; give one", cli.ErrUsage)
+	}
+	tok, err := runner.ReadTokenFile(cfg.TokenFile)
+	if err != nil {
+		return "", err
+	}
+	sub, err := runner.StaticSubject(tok)
+	if err != nil {
+		return "", fmt.Errorf("-token-file %s: %w", cfg.TokenFile, err)
+	}
+	return sub, nil
+}
+
 func (cfg *runnerAddConfig) run(cc *cli.Context, args []string) error {
 	args, err := cfg.Parse(cc, args)
 	if err != nil {
@@ -165,6 +187,10 @@ func (cfg *runnerAddConfig) run(cc *cli.Context, args []string) error {
 	// Two ways in, because a runner is three fields and one of them is its address. The
 	// document form is what a deployment writes; the positional form is what a person types,
 	// and refusing them that would make the common case the awkward one.
+	subject, err := cfg.subject()
+	if err != nil {
+		return err
+	}
 	if cfg.File == "" && len(args) == 2 {
 		ref, rawURL := args[0], args[1]
 		name, ok := nameSeg("runners", ref)
@@ -172,7 +198,7 @@ func (cfg *runnerAddConfig) run(cc *cli.Context, args []string) error {
 			return fmt.Errorf("%w: want `runner add <name> <url>`, got %q",
 				cli.ErrUsage, ref)
 		}
-		resp, err := httpPostTo("/runners", q, api.Runner{Name: name, URL: rawURL, Identity: cfg.Identity, Subject: cfg.Subject})
+		resp, err := httpPostTo("/runners", q, api.Runner{Name: name, URL: rawURL, Identity: cfg.Identity, Subject: subject})
 		return runnerAdded(cc, resp, err)
 	}
 	// More positionals than either form takes. Worth its own message, because the fall-through
@@ -187,6 +213,10 @@ func (cfg *runnerAddConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("%w: `runner add` takes `<name> <url>` or one file, and got %d "+
 			"arguments: %q.\nIf you pasted a line with a trailing `#` comment, zsh keeps it — it "+
 			"is not stripped outside a script", cli.ErrUsage, len(args), strings.Join(args, " "))
+	}
+	if cfg.TokenFile != "" {
+		return fmt.Errorf("%w: -token-file goes with `runner add <name> <url>`; a document names its subject, "+
+			"which for a static token is its hash (sha256:<hex>)", cli.ErrUsage)
 	}
 	src := cfg.File
 	if src == "" && len(args) >= 1 {

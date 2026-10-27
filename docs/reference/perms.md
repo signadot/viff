@@ -414,6 +414,16 @@ runner registered with no `subject` is taken as given, as every runner was, and 
 says what the registration lacks. So a verse's embedded runner, a runner on a laptop and a
 verse with no workload issuer go on as they were.
 
+**A static token proves a runner off Kubernetes.** A bearer that is not a JWT, and is no iod's
+static token, is looked up by its hash among the registrations, whose `subject` names a static
+token as `sha256:<hex>` (`verse runner add -token-file`). A match is the runner, as a workload
+token's is. Verse holds only the hash, and each kind of proof finds only its own kind of
+registration.
+
+**A registrations read that did not happen refuses.** Whether a name needs proof is the
+registrations' to say, so where they cannot be read the door answers `503`, to a runner's token
+and to a bare runner name alike, rather than taking the name as one nobody registered.
+
 The registration also holds the runner to its subject when verse asks it what it offers
 ([runners](runners.md#who-the-runner-is)): a runner that does not prove it is the one registered
 takes no spawn. And verse proves itself to the runner the other way round, with a token it signs

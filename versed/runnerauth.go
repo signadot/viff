@@ -3,6 +3,7 @@ package versed
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -48,29 +49,91 @@ import (
 // runnerProvider is what `whoami` says a runner was verified `by`, as iodProvider is an iod's.
 const runnerProvider = "runner"
 
-// runnerBySubject is the registration naming sub as its runner's subject, read as the system:
-// the registrations are a handful, and a token presenting a subject that is no iod's is rare.
-func (s *Server) runnerBySubject(sub string) (api.Runner, bool) {
-	for _, e := range installedRunners(s.Store) {
-		if e.Subject != "" && e.Subject == sub {
-			return e, true
-		}
+// THE DOOR READS THE REGISTRATIONS AS KEPT, NOT AS STORED. Every request a runner makes, and
+// every request naming one, asks who the registrations say it is, so they are read from the store
+// at most once per registrationsFresh and kept on the Server between. An add or a remove through
+// verse forgets what was kept, so what an operator changes is what the next request meets; a
+// registration written past those, straight into the store, is met within registrationsFresh.
+//
+// A READ THAT DID NOT HAPPEN IS NOT A RUNNER THAT IS NOT REGISTERED. Each lookup answers the
+// read's error beside its answer, and every caller refuses on it: a door that could not look up
+// whether a name needs proof has not found that it needs none.
+const registrationsFresh = 5 * time.Second
+
+// keptRegistrations is the registrations as last read, and when.
+type keptRegistrations struct {
+	mu   sync.Mutex
+	at   time.Time
+	list []api.Runner // nil is nothing kept
+}
+
+// registrations is the baseline registrations, as kept while fresh and read again otherwise.
+func (s *Server) registrations() ([]api.Runner, error) {
+	k := &s.keptRegistrations
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.list != nil && time.Since(k.at) < registrationsFresh {
+		return k.list, nil
 	}
-	return api.Runner{}, false
+	list, err := installedRunnersErr(s.Store)
+	if err != nil {
+		return nil, fmt.Errorf("the runners' registrations could not be read: %w", err)
+	}
+	if list == nil {
+		list = []api.Runner{}
+	}
+	k.list, k.at = list, time.Now()
+	return list, nil
+}
+
+// forgetRegistrations drops what was kept, after a write to the registrations through verse.
+func (s *Server) forgetRegistrations() {
+	s.keptRegistrations.mu.Lock()
+	s.keptRegistrations.list = nil
+	s.keptRegistrations.mu.Unlock()
+}
+
+// runnerBySubject is the registration naming sub as its runner's subject, read as the system.
+// A static token's subject is found only by a static token (staticRunner), and a workload
+// token's only by a workload token, so neither kind of proof can claim the other's registration.
+func (s *Server) runnerBySubject(sub string) (api.Runner, bool, error) {
+	if sub == "" || runner.IsStaticSubject(sub) {
+		return api.Runner{}, false, nil
+	}
+	return s.registrationWhere(func(e api.Runner) bool { return e.Subject == sub })
+}
+
+// staticRunner is the registration a bearer that is not a JWT proves, where one names the
+// bearer's hash as its subject.
+func (s *Server) staticRunner(token string) (api.Runner, bool, error) {
+	sub, ok := runner.StaticSubjectOf(token)
+	if !ok {
+		return api.Runner{}, false, nil
+	}
+	return s.registrationWhere(func(e api.Runner) bool { return e.Subject == sub })
 }
 
 // verifiedRunner is the registration of the runner acting as principal, where that registration
 // names a subject: a runner whose name verse can verify, and so does not take on its word.
-func (s *Server) verifiedRunner(principal string) (api.Runner, bool) {
+func (s *Server) verifiedRunner(principal string) (api.Runner, bool, error) {
 	if entity.KindOf(principal) != entity.RunnerKind {
-		return api.Runner{}, false
+		return api.Runner{}, false, nil
 	}
-	for _, e := range installedRunners(s.Store) {
-		if e.Subject != "" && e.Principal() == principal {
-			return e, true
+	return s.registrationWhere(func(e api.Runner) bool { return e.Subject != "" && e.Principal() == principal })
+}
+
+// registrationWhere is the first registration match holds for.
+func (s *Server) registrationWhere(match func(api.Runner) bool) (api.Runner, bool, error) {
+	list, err := s.registrations()
+	if err != nil {
+		return api.Runner{}, false, err
+	}
+	for _, e := range list {
+		if match(e) {
+			return e, true, nil
 		}
 	}
-	return api.Runner{}, false
+	return api.Runner{}, false, nil
 }
 
 // THE TOKEN TOWARD A RUNNER IS MINTED FOR THAT RUNNER ALONE. Versed is an issuer of its own
@@ -172,31 +235,32 @@ func (s *Server) Dial(url string) client.Launcher {
 // where the registration names a subject. A url no registration holds any more is reached bare,
 // since nothing says what was vouched for there; a guarded runner then reads as unreachable,
 // which is what the orphan path expects of a runner whose registration is gone.
+//
+// A registrations read that failed is reached bare too: presenting no token is the side that
+// gives nothing away, and the next reconcile or spawn reads them again.
 func (s *Server) dialAt(url string) client.Launcher {
-	if e, ok := s.registeredAt(url); ok {
+	if e, ok, _ := s.registrationWhere(func(e api.Runner) bool { return e.URL == url }); ok {
 		return client.HTTPOver(url, s.transportFor(e))
 	}
 	return client.HTTP(url)
 }
 
-// registeredAt is the registration whose url is url.
-func (s *Server) registeredAt(url string) (api.Runner, bool) {
-	for _, e := range installedRunners(s.Store) {
-		if e.URL == url {
-			return e, true
-		}
-	}
-	return api.Runner{}, false
-}
-
-// iodAccountNamed is whether sub is an iod's, in auth.iod.accounts: a subject the door would
-// take for the iod before it looked among the registrations.
+// iodAccountNamed is whether sub is an iod's: in auth.iod.accounts, or the hash of a token in
+// auth.iod.static. Either is a subject the door would take for the iod before it looked among the
+// registrations.
 func (s *Server) iodAccountNamed(sub string) bool {
 	if s.auth == nil || s.auth.iod == nil {
 		return false
 	}
-	_, ok := s.auth.iod.accounts[sub]
-	return ok
+	if _, ok := s.auth.iod.accounts[sub]; ok {
+		return true
+	}
+	for h := range s.auth.iod.static {
+		if runner.StaticSubjectOfHash(h) == sub {
+			return true
+		}
+	}
+	return false
 }
 
 // probeRegistered asks a registered runner what it is, as this verse, and holds it to its
@@ -214,11 +278,19 @@ func (s *Server) probeRegistered(e api.Runner) (client.Reach, runner.Description
 }
 
 // verifyRunnerToken is whether the token a runner answered its describe with proves it is
-// subject: a workload token from the deployment's issuer, naming that subject.
+// subject: a workload token from the deployment's issuer naming that subject, or, where the
+// subject is a static token's, a token hashing to it.
 func (s *Server) verifyRunnerToken(token, subject string) error {
 	if token == "" {
 		return fmt.Errorf("it answered no %s: the runner has no token of its own (VERSE_TOKEN_FILE), "+
 			"or no `verse:` block names the verse it would answer one to", runner.TokenHeader)
+	}
+	if runner.IsStaticSubject(subject) {
+		got, ok := runner.StaticSubjectOf(token)
+		if !ok || subtle.ConstantTimeCompare([]byte(got), []byte(subject)) != 1 {
+			return fmt.Errorf("its %s is not the static token the registration names by its hash", runner.TokenHeader)
+		}
+		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), discoveryTimeout)
 	defer cancel()
@@ -259,9 +331,14 @@ func writeUnverified(w entity.Store, name string, why error) error {
 // since a token whose subject no registration names is refused before this handler runs; what
 // the handler adds is the describe, then and there, so a pod that comes up after its
 // registration, or comes back after a restart, is verified within seconds and without anyone
-// running `verse runner check`. The answer is the check's, and a 200 with `not verified` or
-// `unreachable` in it is still a 200: the runner's identity is settled, and what is wrong is
-// its url or its token, which trying again will not fix and which the runner logs.
+// running `verse runner check`. The answer is the check's.
+//
+// A 2XX MEANS THE RUNNER WAS DESCRIBED, AND NOTHING LESS. A runner nothing answered at is
+// answered 503, and so is one whose describe another caller has in flight: in both, verse has
+// not yet heard what the runner is, and the runner's own backoff is what tries again, for as long
+// as it takes its Service to route to it. A runner that answered and did not prove itself is
+// answered 200 with `not verified`: its url reached it, and what is wrong is its token, which
+// trying again will not fix and which the runner logs.
 
 // helloRetries is how many times the hello's describe is asked of a runner nothing answered at,
 // and how long between: the pod announced itself before its Service routed to it.
@@ -279,7 +356,11 @@ func (s *Server) helloRunner(w http.ResponseWriter, r *http.Request) {
 	}
 	// The door settled the principal from the token's subject, and one verified principal is
 	// one registration (addRunner), so the principal names the registration.
-	e, ok := s.verifiedRunner(principalOf(r))
+	e, ok, err := s.verifiedRunner(principalOf(r))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
 	if !ok {
 		http.Error(w, "the token proves a runner no registration names any more", http.StatusNotFound)
 		return
@@ -287,13 +368,17 @@ func (s *Server) helloRunner(w http.ResponseWriter, r *http.Request) {
 	out := api.RunnerCheck{At: runnerEntityRef(e.Name).String(), URL: e.URL}
 	if _, busy := s.helloing.LoadOrStore(e.Name, true); busy {
 		out.Reach, out.Why = "being described", "a describe of this registration is in flight already"
-		writeOut(w, r, http.StatusOK, out)
+		writeOut(w, r, http.StatusServiceUnavailable, out)
 		return
 	}
 	defer s.helloing.Delete(e.Name)
 	out, code, err := s.describeAgain(s.Store, e, helloRetries)
 	if err != nil {
 		http.Error(w, err.Error(), code)
+		return
+	}
+	if out.Reach == client.Unreachable.String() {
+		writeOut(w, r, http.StatusServiceUnavailable, out)
 		return
 	}
 	writeOut(w, r, http.StatusOK, out)

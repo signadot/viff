@@ -67,7 +67,7 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 	// and the door reads the baseline registrations, so a subject written anywhere else would
 	// neither admit the runner's token nor refuse its bare name.
 	if e.Subject != "" {
-		if s.workloadIssuer() == nil {
+		if !runner.IsStaticSubject(e.Subject) && s.workloadIssuer() == nil {
 			http.Error(w, fmt.Sprintf("runner %q: a subject is a workload token's, and this verse names "+
 				"no issuer of workload tokens (auth.iod.issuer in its config), so nothing could verify %s",
 				e.Name, e.Subject), http.StatusBadRequest)
@@ -91,11 +91,18 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 		// its subject, so a subject two registrations share, or one an iod account holds,
 		// would open a door under a name nobody meant.
 		if s.iodAccountNamed(e.Subject) {
-			http.Error(w, fmt.Sprintf("runner %q: subject %s is an iod's (auth.iod.accounts), and a token proves one principal",
+			http.Error(w, fmt.Sprintf("runner %q: subject %s is an iod's (auth.iod.accounts or auth.iod.static), and a token proves one principal",
 				e.Name, e.Subject), http.StatusBadRequest)
 			return
 		}
-		if other, ok := s.runnerBySubject(e.Subject); ok && other.Name != e.Name {
+		// The registrations' own error refuses too: a check that could not look is not a check
+		// that passed.
+		other, ok, err := s.registrationWhere(func(o api.Runner) bool { return o.Subject == e.Subject })
+		if err != nil {
+			http.Error(w, fmt.Sprintf("runner %q: %v", e.Name, err), http.StatusServiceUnavailable)
+			return
+		}
+		if ok && other.Name != e.Name {
 			http.Error(w, fmt.Sprintf("runner %q: subject %s is already runner %q's, and a token proves one principal",
 				e.Name, e.Subject, other.Name), http.StatusBadRequest)
 			return
@@ -103,7 +110,12 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 		// ... and one verified principal is one registration: two runners proving two subjects
 		// under one identity would write a record that cannot say which of them acted, and a
 		// hello could not find its registration.
-		if other, ok := s.verifiedRunner(e.Principal()); ok && other.Name != e.Name {
+		other, ok, err = s.verifiedRunner(e.Principal())
+		if err != nil {
+			http.Error(w, fmt.Sprintf("runner %q: %v", e.Name, err), http.StatusServiceUnavailable)
+			return
+		}
+		if ok && other.Name != e.Name {
 			http.Error(w, fmt.Sprintf("runner %q: %s is already runner %q's, which proves it with the subject %s; "+
 				"a verified principal is one registration", e.Name, e.Principal(), other.Name, other.Subject), http.StatusBadRequest)
 			return
@@ -130,7 +142,9 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if stands {
-			err = entity.Check(store, who, entity.OwnerLevel, ref, "registering a runner again")
+			// The level the write itself asks of a write into a node that stands (attributed.Write),
+			// and no other: this check is the write's, asked early.
+			err = entity.Check(store, who, entity.ReadWrite, ref, "registering a runner again")
 		} else if may, mayErr := entity.MayCreate(store, who, ref); mayErr != nil {
 			err = mayErr
 		} else if !may {
@@ -190,8 +204,11 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// What it offers replaces what a registration of the name kept, never merges into it.
+	s.forgetRegistrations()
+	verified := ""
 	if described != nil {
-		if err := writeDescribed(store, e.Name, *described, s.verifiedNow(e)); err != nil {
+		verified = s.verifiedNow(e)
+		if err := writeDescribed(store, e.Name, *described, verified); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -200,9 +217,7 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 	// install's own probe found: a name installed again keeps the work recorded on it, and the
 	// counts say so.
 	e.Described = described
-	if described != nil {
-		e.Verified = s.verifiedNow(e)
-	}
+	e.Verified = verified
 	out := runnerRow(taskRows(store), e, nil)
 	out.Reach, out.Why, out.Warning = reach, why, warning
 	writeOut(w, r, http.StatusCreated, out)
@@ -524,6 +539,7 @@ func (s *Server) removeRunner(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	s.forgetRegistrations()
 	writeOut(w, r, http.StatusOK, out)
 }
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -136,7 +135,7 @@ func NewGuard(v Verse, tokenFile string) (*Guard, error) {
 			return nil, err
 		}
 		if g.v.Audience == "" {
-			sub, err := runner.TokenSubject(tok)
+			sub, err := runner.SubjectOf(tok)
 			if err != nil {
 				return nil, fmt.Errorf("verse.audience is unset and this runner's own token does not say whose it is: %w", err)
 			}
@@ -245,12 +244,16 @@ func (g *Guard) verifierFor() *oidc.IDTokenVerifier {
 }
 
 // keysUnread is whether verifying failed for want of the verse's keys rather than on the token:
-// the fetch did not reach the verse, or the verse did not answer it with keys. go-oidc wraps the
-// transport's error and spells a refused fetch; nothing else it says is about the fetch.
+// the fetch did not reach the verse, the verse did not answer it with keys, or what it answered
+// did not decode. go-oidc's verifier wraps the key set's error with %v, so no error type survives
+// to be matched, and the one thing every failed fetch says is the key set's own wording
+// (keysFetchFailed); TestKeysUnreadMatchesGoOIDC holds go-oidc to it.
 func keysUnread(err error) bool {
-	var u *url.Error
-	return errors.As(err, &u) || strings.Contains(err.Error(), "get keys failed")
+	return strings.Contains(err.Error(), keysFetchFailed)
 }
+
+// keysFetchFailed is how go-oidc's remote key set begins the error of every fetch that failed.
+const keysFetchFailed = "fetching keys"
 
 // The hello: how long the runner waits between tries, from the first to the longest. Variables,
 // so a test need not wait a second to see the second try.
@@ -307,7 +310,7 @@ func (g *Guard) hello(ctx context.Context, target string) (said string, done boo
 		return err.Error(), false
 	}
 	req.Header.Set("Authorization", "Bearer "+tok)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := g.helloClient().Do(req)
 	if err != nil {
 		return err.Error(), false
 	}
@@ -317,6 +320,20 @@ func (g *Guard) hello(ctx context.Context, target string) (said string, done boo
 		return "the verse describes this runner now: " + strings.TrimSpace(string(body)), true
 	}
 	return fmt.Sprintf("%s: %s", resp.Status, strings.TrimSpace(string(body))), false
+}
+
+// helloTimeout bounds one try of the hello: a verse that takes the connection and never answers
+// is a try that failed, and the backoff tries again.
+var helloTimeout = 30 * time.Second
+
+// helloClient is how the hello reaches the verse: as the door reads its keys, through the roots
+// `verse.ca` names where it names any, and within helloTimeout.
+func (g *Guard) helloClient() *http.Client {
+	c := &http.Client{Timeout: helloTimeout}
+	if g.client != nil {
+		c.Transport = g.client.Transport
+	}
+	return c
 }
 
 // WithReady is h with GET /ready beside it, for a readiness probe: 200 as soon as the runner

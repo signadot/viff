@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
+
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/versed/idptest"
 )
@@ -260,4 +262,74 @@ func TestARunnerAnnouncesItselfUntilHeard(t *testing.T) {
 		t.Fatal(err)
 	}
 	quiet.Announce(ctx, func(string, ...any) { t.Fatal("a runner with no token announced something") })
+}
+
+// The hello reaches the verse as the door reads its keys: through the roots `verse.ca` names, so
+// a verse behind a private CA hears the runner; and a try the verse takes and never answers is a
+// try that failed, so the backoff tries again.
+func TestTheHelloTrustsTheVersesCA(t *testing.T) {
+	helloFirstWait, helloMaxWait = 5*time.Millisecond, 20*time.Millisecond
+	cluster := idptest.New(t)
+	file, _ := ownTokenFile(t, cluster, runnerSub)
+	verse := idptest.NewTLS(t)
+	var hellos atomic.Int32
+	verse.Handle("", "/runners/hello", func(w http.ResponseWriter, r *http.Request) {
+		if hellos.Add(1) == 1 {
+			<-r.Context().Done() // taken, never answered
+			return
+		}
+		w.Write([]byte("reach: a runner"))
+	})
+	old := helloTimeout
+	helloTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { helloTimeout = old })
+
+	g, err := NewGuard(Verse{URL: verse.URL, CA: verse.CAFile()}, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var said []string
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	g.Announce(ctx, func(f string, a ...any) { said = append(said, fmt.Sprintf(f, a...)) })
+	if n := hellos.Load(); n != 2 {
+		t.Fatalf("hellos = %d, want 2: one never answered, one heard; said %q", n, said)
+	}
+	if last := said[len(said)-1]; !strings.Contains(last, "describes this runner now") {
+		t.Fatalf("said = %q, want the verse heard over its CA", said)
+	}
+}
+
+// What go-oidc says when a key fetch fails is the one thing keysUnread reads, since its verifier
+// wraps the key set's error with %v: every way the fetch fails reads as keys unread, and a token
+// that fails on its own does not. A go-oidc that changes its wording fails here.
+func TestKeysUnreadMatchesGoOIDC(t *testing.T) {
+	issuer := idptest.New(t)
+	keys := func(h http.HandlerFunc) string {
+		ts := httptest.NewServer(h)
+		t.Cleanup(ts.Close)
+		return ts.URL
+	}
+	closed := httptest.NewServer(http.NotFoundHandler())
+	closed.Close()
+	verify := func(keysURL, token string) error {
+		ctx := context.Background()
+		v := oidc.NewVerifier(issuer.URL, oidc.NewRemoteKeySet(ctx, keysURL), &oidc.Config{ClientID: "verse"})
+		_, err := v.Verify(ctx, token)
+		return err
+	}
+	good := issuer.Token("verse", runnerSub, nil)
+	for what, at := range map[string]string{
+		"nothing listening":     closed.URL,
+		"a status not 200":      keys(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "down", http.StatusBadGateway) }),
+		"an answer not of keys": keys(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("<html>not keys</html>")) }),
+	} {
+		err := verify(at, good)
+		if err == nil || !keysUnread(err) {
+			t.Errorf("%s: %v, want it read as keys unread", what, err)
+		}
+	}
+	if err := verify(issuer.URL+"/keys", issuer.Forged("verse", runnerSub, nil)); err == nil || keysUnread(err) {
+		t.Errorf("a forged token: %v, want a refusal that is not keys unread", err)
+	}
 }

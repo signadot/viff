@@ -108,6 +108,8 @@ type Server struct {
 	// flight per registration, so a runner announcing itself in a loop cannot make this verse
 	// dial it in one.
 	helloing sync.Map
+	// keptRegistrations is the runners' registrations as the door last read them (runnerauth.go).
+	keptRegistrations keptRegistrations
 	// hosted is what verse knows of each task it launched that the runner does not carry: the
 	// scope its records live in, what it is about, whom it acts for, and whom its questions
 	// naming nobody go to. Keyed by task id; read when the embedded runner raises a question.
@@ -1526,7 +1528,15 @@ func (s *Server) principals(mux *http.ServeMux, unattributed map[string]bool) ht
 			// A runner verse can verify is not taken at its word, under any mode: its registration
 			// names the token that proves it, and this request carries none (runnerauth.go).
 			if g.Kind == entity.RunnerKind && authenticatedBy(r) == claimantAsserted {
-				if e, ok := s.verifiedRunner(g.String()); ok {
+				e, ok, err := s.verifiedRunner(g.String())
+				if err != nil {
+					// Whether this name needs proof is the registrations' to say, and they were
+					// not read: refused as unread, never admitted as unregistered.
+					http.Error(w, fmt.Sprintf("%s: whether it must prove itself is not known: %v", g.String(), err),
+						http.StatusServiceUnavailable)
+					return
+				}
+				if ok {
 					w.Header().Set("WWW-Authenticate", "Bearer")
 					http.Error(w, fmt.Sprintf("%s is registered as %s with the subject %s, and this request "+
 						"names it with no token that proves it: a runner verse can verify is not taken at its "+

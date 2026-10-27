@@ -2,7 +2,9 @@ package runner
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"maps"
@@ -48,6 +50,63 @@ const TokenHeader = "Verse-Runner-Token"
 // runner's door, which takes its own subject, does not.
 const DefaultAudience = "runner"
 
+// A STATIC TOKEN IS KNOWN BY ITS HASH. A runner with no runtime to issue it a workload token, on a
+// machine off Kubernetes, proves itself with a token it and its registrar hold, as an iod may
+// (auth.iod.static). The registration names it by its hash, `sha256:<hex>`, as its subject, so
+// verse never holds the token and the registration stays everyone's to read; and that subject is
+// also the audience the runner holds verse's tokens to, read off its own token as a workload
+// token's `sub` is. A hash everyone may read is only as good as the token is long, so a static
+// token is refused under StaticTokenMin bytes.
+
+// StaticSubjectPrefix begins the subject of a runner proved by a static token.
+const StaticSubjectPrefix = "sha256:"
+
+// StaticTokenMin is the fewest bytes a runner's static token may hold.
+const StaticTokenMin = 32
+
+// IsStaticSubject is whether s names a static token by its hash, rather than a workload token's
+// subject.
+func IsStaticSubject(s string) bool { return strings.HasPrefix(s, StaticSubjectPrefix) }
+
+// isJWT is whether token has a JWT's shape, three parts: a static token is anything else.
+func isJWT(token string) bool { return strings.Count(token, ".") == 2 }
+
+// StaticSubjectOf is the subject a bearer proves as a static token: its hash, where it is not a
+// JWT. A token too short to be a runner's still hashes, and matches no registration.
+func StaticSubjectOf(token string) (string, bool) {
+	if token == "" || isJWT(token) {
+		return "", false
+	}
+	return StaticSubjectOfHash(sha256.Sum256([]byte(token))), true
+}
+
+// StaticSubjectOfHash is the subject of the static token whose hash is h.
+func StaticSubjectOfHash(h [sha256.Size]byte) string {
+	return StaticSubjectPrefix + hex.EncodeToString(h[:])
+}
+
+// StaticSubject is the subject a registration names a runner's static token by, refusing a token
+// too short for its hash to be published, and one that reads as a JWT.
+func StaticSubject(token string) (string, error) {
+	if isJWT(token) {
+		return "", errors.New("the token has a JWT's shape: a static token is not a JWT, and a workload token is registered by its subject (-subject)")
+	}
+	if len(token) < StaticTokenMin {
+		return "", fmt.Errorf("a static token is named by a hash everyone may read, so it holds %d bytes at least, and this one holds %d", StaticTokenMin, len(token))
+	}
+	sub, _ := StaticSubjectOf(token)
+	return sub, nil
+}
+
+// SubjectOf is what a runner's own token says it is: a workload token's `sub`, or a static
+// token's hash.
+func SubjectOf(token string) (string, error) {
+	if isJWT(token) {
+		return TokenSubject(token)
+	}
+	return StaticSubject(token)
+}
+
 // TokenSubject is the `sub` of a JWT, read without verifying it: what a runner's own token says
 // it is, which is the audience the runner holds its verse's tokens to. The token is the
 // runtime's and nothing here trusts the claim beyond naming the door.
@@ -87,12 +146,19 @@ func ReadTokenFile(path string) (string, error) {
 	return tok, nil
 }
 
-// CheckSubject is whether s can be a workload token's subject, on either side of the handshake:
-// a registration's `subject` and a runner's `verse.audience` are compared with a token's as
-// written, so one with space in it matches no token anybody issues.
+// CheckSubject is whether s can be a runner's subject, on either side of the handshake: a
+// registration's `subject` and a runner's `verse.audience` are compared with a token's as
+// written, so one with space in it matches no token anybody issues, and one naming a static
+// token is its hash in full, sha256:<64 hex digits>.
 func CheckSubject(s string) error {
 	if s != strings.TrimSpace(s) || strings.ContainsAny(s, " \t\r\n") {
 		return fmt.Errorf("subject %q is a token's subject, compared as it is written, and holds no space", s)
+	}
+	if IsStaticSubject(s) {
+		h := strings.TrimPrefix(s, StaticSubjectPrefix)
+		if _, err := hex.DecodeString(h); err != nil || len(h) != 2*sha256.Size || h != strings.ToLower(h) {
+			return fmt.Errorf("subject %q names a static token by its hash, %s and %d lowercase hex digits", s, StaticSubjectPrefix, 2*sha256.Size)
+		}
 	}
 	return nil
 }

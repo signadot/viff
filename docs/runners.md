@@ -86,7 +86,7 @@ verse runner add verse-runner http://verse-runner:9802 -subject system:serviceac
 
 The runner's first call is to say it is here. A runner whose configuration names its verse's
 url announces itself at start, `POST /runners/hello` with its token, in a loop until verse
-answers, and verse describes it then and there, so a pod that comes up after its registration,
+has described it, and verse describes it then and there, so a pod that comes up after its registration,
 or comes back after a restart, is verified within seconds and nobody runs `verse runner check`.
 The door is the acknowledgement: a token no registration names is refused before anything else,
 and that refusal is the runner's cue to keep asking, with one log line saying why. The runner's
@@ -94,9 +94,25 @@ readiness, on `GET /ready`, is its server and nothing else. Whether verse has he
 whether the describe that followed verified it, is the registration's to say, in `verified` or
 `unverified`, where `verse runner` shows it.
 
+A runner no runtime issues a workload token to, on a machine off Kubernetes, proves itself
+with a static token instead: one it and its registrar hold, as an iod may. The registration
+names the token by its hash, which becomes the subject, so verse never holds the token and the
+registration stays everyone's to read:
+
+```sh
+verse runner add edge https://edge.example.com:9802 -token-file edge.token
+```
+
+The runner reads the same token at `VERSE_TOKEN_FILE`, answers it at the describe and presents
+it at verse's door, and takes verse's tokens for the same hash as its audience; nothing else is
+configured. A static token holds 32 bytes at least, since its hash is published. Each kind of
+proof finds only its own kind of registration, so a workload token cannot claim a static
+registration, nor a static token a workload one. No workload issuer is needed; verse still
+issues its own tokens (`auth.issuer`), since the handshake runs both ways.
+
 A runner registered without a `subject` is taken at its word, as every runner was: `verse
-up`'s embedded runner, a runner on a laptop, a verse whose deployment names no workload issuer
-or issues no tokens of its own. The record says which.
+up`'s embedded runner, a runner on a laptop, a verse that issues no tokens of its own. The
+record says which.
 
 `-no-probe` installs the runner in every case. A runner installed without its offers takes no
 spawn until it has described itself: verse asks it again when it starts, at the first spawn

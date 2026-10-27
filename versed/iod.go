@@ -14,6 +14,7 @@ import (
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/runner"
 )
 
 // iods at the door, and a person relayed by a trusted io (git-issue hfh7km3th12ksd6nqsn0 §1.7;
@@ -107,10 +108,10 @@ func (s *Server) setIod(a AuthIod) (*authProvider, *iodAuth, error) {
 	// (addRunner), and an account naming a registration's is refused here. The read's own error
 	// refuses too: a check that could not look is not a check that passed.
 	var registered []api.Runner
-	if len(a.Accounts) > 0 {
+	if len(a.Accounts) > 0 || len(a.Static) > 0 {
 		var err error
 		if registered, err = installedRunnersErr(s.Store); err != nil {
-			return nil, nil, fmt.Errorf("auth.iod.accounts: the registrations could not be read to check the subjects against: %w", err)
+			return nil, nil, fmt.Errorf("auth.iod: the registrations could not be read to check the subjects against: %w", err)
 		}
 	}
 	for sub, acct := range a.Accounts {
@@ -137,7 +138,16 @@ func (s *Server) setIod(a AuthIod) (*authProvider, *iodAuth, error) {
 		if token == "" {
 			return nil, nil, fmt.Errorf("auth.iod.static[%d]: %s holds no token", i, st.File)
 		}
-		out.static[sha256.Sum256([]byte(token))] = IodAccount{Principal: st.Principal, IO: st.IO}
+		h := sha256.Sum256([]byte(token))
+		// The same rule for a static token: a runner registered by this token's hash would be
+		// the io at the door, which looks among the iods first.
+		for _, e := range registered {
+			if e.Subject == runner.StaticSubjectOfHash(h) {
+				return nil, nil, fmt.Errorf("auth.iod.static[%d]: the token is registration %s's runner "+
+					"(`verse runner add -token-file`), and one token is one party", i, e.Name)
+			}
+		}
+		out.static[h] = IodAccount{Principal: st.Principal, IO: st.IO}
 	}
 	if err := s.writeIodAccounts(a, out); err != nil {
 		return nil, nil, err
