@@ -48,7 +48,7 @@ func (e *Engine) InstallTriggerAs(as string, t Trigger) error {
 	// AND NOTHING MOVES UNTIL THE REPLACEMENT IS KNOWN GOOD. Every check a rule faces is made
 	// of the replacement first, with the old one still installed: a file re-applied with a
 	// mistake in it is refused and leaves what stood standing.
-	if _, err := e.vet(t, as); err != nil {
+	if _, err := e.vet(t, as, true); err != nil {
 		return err
 	}
 	old, had := e.Rule(t.Name)
@@ -153,8 +153,10 @@ func (e *Engine) addTrigger(t Trigger, durable bool, as string) error {
 }
 
 // vet is every check an install makes of a rule, and changes nothing: it reports whether the
-// rule's stratum is installed (false is a rule to HOLD, not one to refuse).
-func (e *Engine) vet(t Trigger, as string) (bool, error) {
+// rule's stratum is installed (false is a rule to HOLD, not one to refuse). install is whether
+// this is an install, where the author is present, rather than a restore of what was installed:
+// the checks against the verse as it stands now are the install's alone.
+func (e *Engine) vet(t Trigger, as string, install bool) (bool, error) {
 	if err := validTriggerName(t.Name); err != nil {
 		return false, err
 	}
@@ -264,6 +266,20 @@ func (e *Engine) vet(t Trigger, as string) (bool, error) {
 				return false, fmt.Errorf("trigger %q: gate %q onDenied: %w", t.Name, g.Name, err)
 			}
 		}
+		// A gate's `then` and `else` are checked as an ask's are, as the rule, where the author
+		// is present to hear what is wrong: what they name, against the verse as it stands. At
+		// an install only: what they name may have moved since (an ask they answer settles), and
+		// a restore puts back what was answered yes to, not what would be answered yes to now.
+		if e.thenCheck != nil && install {
+			for field, follow := range map[string]entity.Payload{"then": g.Then, "else": g.Else} {
+				if follow == nil {
+					continue
+				}
+				if err := e.thenCheck(e.Principal(t.Name), field, follow); err != nil {
+					return false, fmt.Errorf("trigger %q: gate %q: %w", t.Name, g.Name, err) // the refusal names the field
+				}
+			}
+		}
 	}
 	// LEVEL DISCIPLINE: a subject inside its stratum's pattern, a derive inside some strictly
 	// higher one's. Syntactic like the rest, and neither reads the store.
@@ -322,7 +338,7 @@ func (e *Engine) vet(t Trigger, as string) (bool, error) {
 // it would turn a store that refused one write into a rule that is gone and a name that is
 // anybody's.
 func (e *Engine) place(t Trigger, durable bool, as string, take, over bool) error {
-	ok, err := e.vet(t, as)
+	ok, err := e.vet(t, as, !over)
 	if err != nil {
 		return err
 	}
@@ -702,7 +718,7 @@ func checkGates(node *ir.Node) error {
 		}
 		if err := checkFields(el, "gate", map[string]bool{
 			"name": true, "mode": true, "need": true, "options": true, "deadline": true, "onDenied": true,
-			"answerers": true, "answerersFrom": true, "pose": true, "labels": true,
+			"answerers": true, "answerersFrom": true, "pose": true, "labels": true, "then": true, "else": true,
 		}, func(field string, val *ir.Node) error {
 			if field == "onDenied" {
 				return checkAction(val)

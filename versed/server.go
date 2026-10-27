@@ -49,6 +49,7 @@ import (
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/runner/runnerd/verserunner"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/trigger"
 )
@@ -385,6 +386,7 @@ func NewWithStore(build runnerd.Builder, store entity.Store, opts ...Option) *Se
 	eng.SetSpawner(s.spawnerFor(store, "", eng))
 	eng.SetDeadlineMover(s.moveDeadline)
 	eng.SetOfferCheck(s.offerCheck(store))
+	eng.SetThenCheck(s.thenCheck())
 	return s
 }
 
@@ -431,6 +433,13 @@ func hostedQuestion(ht hostedTask, q task.GateQuestion) task.GateQuestion {
 		if len(a.Labels) > 0 && len(q.Labels) == 0 {
 			q.Labels = a.Labels
 		}
+		// And what its yes, or its no, starts before the task hears the answer (consequence.go).
+		if a.Then != nil && q.Then == nil {
+			q.Then = a.Then
+		}
+		if a.Else != nil && q.Else == nil {
+			q.Else = a.Else
+		}
 	}
 	return q
 }
@@ -443,6 +452,10 @@ type hostedTask struct {
 	scope, subject, principal string
 	answerers                 []string
 	autonomy                  task.Autonomy // the launch's, for what the runner never reads of it
+	// environment is the launch's, for what a question's `then` may spawn to be held within
+	// (taskBound); nil for a task hosted again after a restart, whose launch this verse no longer
+	// holds.
+	environment *systems.Environment
 }
 
 // host records what verse keeps of a task it is about to launch, before the launch, so the
@@ -641,6 +654,13 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 			s.reflect(rec, id, h, meta)
 			return h
 		}
+		// And what its rows' asks start on a yes, as whom those questions' `then` runs as, and
+		// within what this task reaches itself.
+		if err := s.checkAutonomyThens(thenPrincipal(actsFor, by, id), spec.Autonomy, &taskBound{environment: &spec.Environment, autonomy: spec.Autonomy}); err != nil {
+			h := task.FailedHandle(fmt.Sprintf("spawn %s: %v", id, err))
+			s.reflect(rec, id, h, meta)
+			return h
+		}
 		// AND THE GATE'S CREDENTIAL, where the spawn asks for one: minted now, for this task, from
 		// what the firing's gates settled (gatecredential.go). A spawn that asks for one it cannot be
 		// given does not run without it, since the work it names would reach for it and fail later.
@@ -654,7 +674,7 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 			// On the task's record from its first write: what it is good for and until when.
 			l.Credential, meta.Credential = token, minted
 		}
-		ht := hostedTask{scope: scope, subject: spec.Subject, principal: by, autonomy: spec.Autonomy} // where this task's records live, so its questions land there too
+		ht := hostedTask{scope: scope, subject: spec.Subject, principal: by, autonomy: spec.Autonomy, environment: &spec.Environment} // where this task's records live, so its questions land there too
 		if actsFor != "" {
 			ht.answerers = []string{task.PrincipalAnswerer}
 			meta.Answerers = ht.answerers
@@ -1058,6 +1078,7 @@ func (s *Server) scopeEngine(scope string) *trigger.Engine {
 		eng.SetSpawner(s.spawnerFor(scoped, scope, eng))
 		eng.SetDeadlineMover(s.moveDeadline)
 		eng.SetOfferCheck(s.offerCheck(scoped))
+		eng.SetThenCheck(s.thenCheck())
 		sctx, cancel := context.WithCancel(s.ctx)
 		// Per-trigger observation: no root watch. Each scoped trigger watches exactly the
 		// (system,kind) subtree it matches, scoped to this scope. cancel stops them.
@@ -3224,6 +3245,11 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 // a record written ahead of a delivery that then failed would say a decision reached a party
 // it never reached. The error is the delivery's, for the caller to say in its own terms.
 func (s *Server) settle(store entity.Store, id string, res task.Resolution, owner string) error {
+	// WHAT FOLLOWS, FIRST: the question's `then` or `else` runs as whoever asked before the
+	// answer reaches them, whoever they are (consequence.go). Once, by the claim on the record,
+	// so a second answer landing beside this one runs nothing; and said on the record where the
+	// delivery below then fails, so the settle that does take runs its own.
+	claimed := s.consequence(id, res)
 	var err error
 	if owner != "" {
 		err = s.resolveTaskDecision(owner, id, res)
@@ -3231,6 +3257,9 @@ func (s *Server) settle(store entity.Store, id string, res task.Resolution, owne
 		err = s.Reg.Deliver(id, res)
 	}
 	if err != nil {
+		if claimed {
+			s.undelivered(id, err)
+		}
 		return err
 	}
 	mirror.AnswerQuestion(store, id, res)
@@ -4297,6 +4326,10 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if err := s.checkAutonomyThens(thenPrincipal(actsFor, body.Principal, id), spec.Autonomy, &taskBound{environment: &spec.Environment, autonomy: spec.Autonomy}); err != nil {
+		http.Error(w, "spawn."+err.Error(), http.StatusBadRequest)
+		return
+	}
 	if err := s.engineOf(scope).CheckAutonomyAnswerers(spec.Autonomy); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -4348,7 +4381,7 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	// The same scope the record above goes to, so this run's questions reach the docket of
 	// whoever asked for it rather than everybody's; and whom it acts for, which its rows naming
 	// nobody ask.
-	s.host(id, hostedTask{scope: scope, subject: spec.Subject, principal: body.Principal, autonomy: spec.Autonomy})
+	s.host(id, hostedTask{scope: scope, subject: spec.Subject, principal: body.Principal, autonomy: spec.Autonomy, environment: &spec.Environment})
 	h := place.Launch(l)
 	eng := s.engineOf(scope)
 	s.reflect(store, id, h, mirror.Meta{
@@ -4965,16 +4998,24 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, op string) 
 		// No rows is the default, every call asking, as at a launch: said as that row, so the
 		// runner, verse's part and the record all hold the one autonomy the task runs under.
 		body.Autonomy = body.Autonomy.OrDefault()
-		// $principal is whom the task acts for, which its record says (`actsFor:`).
+		// $principal is whom the task acts for, which its record says (`actsFor:`); so is whom
+		// a row's ask's `then` runs as.
+		e, _, err := s.scopedStore(r).Get(mirror.Ref(id))
+		if unreadable(w, r, err) {
+			return
+		}
 		if body.Autonomy.NamesPrincipal() {
-			e, _, err := s.scopedStore(r).Get(mirror.Ref(id))
-			if unreadable(w, r, err) {
-				return
-			}
 			if err := mirror.CheckPrincipal(body.Autonomy, entity.Str(e.Payload, "actsFor")); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
+		}
+		// Within the task's own reach: its environment as launched, where this verse still holds
+		// it, and the autonomy being set.
+		if err := s.checkAutonomyThens(thenPrincipal(entity.Str(e.Payload, "actsFor"), "", id), body.Autonomy,
+			&taskBound{environment: s.hostedOf(id).environment, autonomy: body.Autonomy}); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
 		scope, _ := s.hostedScope(id)
 		if err := s.engineOf(scope).CheckAutonomyAnswerers(body.Autonomy); err != nil {

@@ -105,12 +105,12 @@ func thenAskOf(v entity.Payload, now time.Time) (api.Ask, error) {
 // asker, where the asker is present to hear what is wrong, and fills in the edit an answer
 // consents to. self is the ask the `then` is on, where it has an id yet. It recurses through an
 // ask's own `then`.
-func (s *Server) checkThen(asker string, then map[string]any, self string, now time.Time) (int, error) {
+func (s *Server) checkThen(asker string, then map[string]any, self string, now time.Time, within *taskBound) (int, error) {
 	if m, ok := asMap(then["answer"]); ok {
 		return s.checkThenAnswer(asker, m, self)
 	}
 	if v, ok := then["spawn"]; ok {
-		return s.checkThenSpawn(asker, v)
+		return s.checkThenSpawn(asker, v, within)
 	}
 	m, ok := asMap(then["ask"])
 	if !ok {
@@ -129,7 +129,7 @@ func (s *Server) checkThen(asker string, then map[string]any, self string, now t
 	}
 	for _, field := range []string{"then", "else"} {
 		if inner, ok := asMap(m[field]); ok {
-			if code, err := s.checkThen(asker, inner, "", now); err != nil {
+			if code, err := s.checkThen(asker, inner, "", now, within); err != nil {
 				return code, fmt.Errorf("ask.%s: %w", field, err)
 			}
 		}
@@ -142,7 +142,7 @@ func (s *Server) checkThen(asker string, then map[string]any, self string, now t
 // asker with answerers who can settle its asks, the credential it names readable by the asker,
 // and what the runner it names offers — so a spawn the runner can't run is refused now rather
 // than after the yes.
-func (s *Server) checkThenSpawn(asker string, v any) (int, error) {
+func (s *Server) checkThenSpawn(asker string, v any, within *taskBound) (int, error) {
 	n, ok := v.(*ir.Node)
 	if !ok {
 		var err error
@@ -154,7 +154,17 @@ func (s *Server) checkThenSpawn(asker string, v any) (int, error) {
 	if err != nil {
 		return http.StatusBadRequest, fmt.Errorf("spawn%w", err)
 	}
-	if err := mirror.CheckPrincipal(spec.Autonomy, asker); err != nil {
+	// WITHIN THE TASK IT FOLLOWS, where one asked: a task hands what follows its yes no more
+	// reach and no looser a dial than it has itself (taskBound).
+	if within != nil {
+		if err := within.holds(spec); err != nil {
+			return http.StatusBadRequest, fmt.Errorf("spawn%w", err)
+		}
+	}
+	// As whom the then's task would act for: the asker where they are somebody, and nobody
+	// where the asker is a rule or a task acting for nobody, so a row naming $principal there
+	// is refused where its author can hear it.
+	if err := mirror.CheckPrincipal(spec.Autonomy, mirror.ActsFor(asker)); err != nil {
 		return http.StatusBadRequest, fmt.Errorf("spawn.autonomy: %w", err)
 	}
 	if err := s.engineOf("").CheckAutonomyAnswerers(spec.Autonomy); err != nil {
@@ -286,10 +296,12 @@ func (s *Server) markThen(ref entity.Ref, field string) bool {
 	if err != nil {
 		return false
 	}
+	// ON THE RECORD THAT STANDS: a mark never creates a stub where the ask is not, as it would for
+	// a question kept in a scope this store does not see.
 	marked, _, err := entity.As(s.Store, entity.SystemDocket).Write(entity.Write{
 		At:    ref.At(),
 		Value: entity.Obj{field: entity.Obj{"at": s.now().UTC().Format(time.RFC3339)}}.Payload(),
-		When:  []entity.Require{{Pattern: unmarked}},
+		When:  []entity.Require{{At: ref.At(), Pattern: entity.Present()}, {Pattern: unmarked}},
 	})
 	return err == nil && marked
 }

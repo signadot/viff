@@ -103,6 +103,9 @@ type AskRecord struct {
 	// Carried is how an onward ask's answer was carried back to the ask it serves.
 	Carried *AskCarried `tony:"field=carried,omitzero"`
 
+	// Followed is the one settle whose consequence ran, and which of Then and Else it was: a
+	// question settles once, so an answer that lost the race to settle it runs neither.
+	Followed *AskFollowed `tony:"field=followed,omitzero"`
 	// What became of Then and Else: the task they started, a failure, and the answer or ask they
 	// made.
 	ThenTask     string             `tony:"field=then-task,omitzero"`
@@ -259,6 +262,17 @@ type AskStale struct {
 type AskFollowFailed struct {
 	At  string `tony:"field=at"`
 	Why string `tony:"field=why"`
+}
+
+// AskFollowed is the settle whose consequence ran: when, which field (`then` or `else`), and why
+// that settle did not reach whoever asked, where it did not, in which case the settle that does
+// runs its own.
+//
+//tony:schemagen=verse-ask-followed,notag
+type AskFollowed struct {
+	At          string `tony:"field=at"`
+	Field       string `tony:"field=field,omitzero"`
+	Undelivered string `tony:"field=undelivered,omitzero"`
 }
 
 // AskFollowAnswered is an answer a then or else made: when it started, the ask it answered, the

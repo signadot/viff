@@ -225,6 +225,35 @@ To make a no final without changing the state of the subject itself, use a marke
 
 Removing the marker then opens the question again.
 
+### `then` and `else`: what a yes, or a no, starts first
+
+A gate's `then` is what the question's yes starts before the firing goes on, and its `else` what
+a no starts, before the firing hears the refusal. Each is written as an ask's is
+([asking](../asking.md)): one key naming a spawn, an answer to another ask, or an ask of its own.
+
+```tony
+  gates:
+  - name: approval
+    mode: ask
+    then:
+      spawn: { prompt: "announce the approval in #releases", environment: { systems: { network: { mode: open } } } }
+```
+
+Verse runs it as the rule, on the charter owner's authority, once the question settles on
+`proceed`, and gives the answer back to the firing when it has run. A spawn has run once it is
+launched: the firing does not wait for the task to finish, and the task's record names the
+question as its subject. An answer or an ask is made before the firing goes on. What ran is
+written on the question (`then-task`, `then-answered`, `then-asked`), and a `then` that could
+not start says so there (`then-failed`).
+
+`then` is not the action, and `else` is not `onDenied`. The action and `onDenied` are what the
+rule does about its subject; `then` and `else` are what the answer starts, about the question. A
+refusal may both mark the subject and start something, each said where it belongs. Both are
+checked at install as the rule: a spawn its runner cannot run, an ask naming an audience that
+cannot read its subject, or a row naming `$principal` where the rule acts for nobody, is refused
+with the author present. A task's question has the same `then` and `else`, written on its
+[autonomy row](tasks.md#the-autonomy).
+
 ### A deadline settles
 
 `deadline: {within: "24h", default: deny}` settles the question on `deny` when the time passes

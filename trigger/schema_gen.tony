@@ -75,11 +75,13 @@ signature:
 ---
 context:
 - tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
 - task: github.com/signadot/verse/task
 define:
   answerers: .[array(string)]
   answerersFrom: .[string]
   deadline: .[nullable(task:verse-deadline)]
+  else: .[tony-base:ir]
   labels: .[object(string)]
   mode: .[string]
   name: .[string]
@@ -87,6 +89,7 @@ define:
   onDenied: .[nullable(verse-action)]
   options: .[array(task:verse-option)]
   pose: .[string]
+  then: .[tony-base:ir]
 signature:
   name: verse-trigger-gate
 ---

@@ -93,7 +93,7 @@ func (s *Server) raiseAsk(store entity.Store, asker string, body api.Ask, now ti
 	}
 	for _, field := range []string{"then", "else"} {
 		if follow, ok := asMap(rec[field]); ok {
-			if code, err := s.checkThen(asker, follow, "", now); err != nil {
+			if code, err := s.checkThen(asker, follow, "", now, nil); err != nil {
 				return "", code, fmt.Errorf("%s: %w", field, err)
 			}
 		}
@@ -483,8 +483,8 @@ func (s *Server) awaitAsk(q task.GateQuestion) {
 	}()
 }
 
-// settleAsk writes what an ask came to on the ask, as its answer, and on a yes runs its `then`
-// for the asker.
+// settleAsk writes what an ask came to on the ask, as its answer. Its `then` ran before the
+// answer reached here, as every question's does (settle, consequence.go).
 func (s *Server) settleAsk(ref entity.Ref, res task.Resolution) {
 	answer := "no"
 	if res.Choice == task.Proceed {
@@ -496,14 +496,9 @@ func (s *Server) settleAsk(ref entity.Ref, res task.Resolution) {
 		Value: entity.Val(answer),
 		When:  []entity.Require{{At: ref.At(), Pattern: entity.Present()}},
 	}); err != nil {
-		// Logged, and followed anyway: the verdict on the record says the same (answeredYes), so
-		// what follows is not lost for want of this field.
+		// Logged: the verdict on the record says the same (answeredYes), so what the ask came to
+		// is not lost for want of this field.
 		fmt.Fprintf(os.Stderr, "verse: ask %s: its answer was not written: %v\n", ref.Name(), err)
-	}
-	if answer == "yes" {
-		s.followAsk(ref, "then")
-	} else {
-		s.followAsk(ref, "else")
 	}
 }
 
@@ -552,30 +547,43 @@ func (s *Server) carryBack(ref entity.Ref, p entity.Payload) {
 	_, _, _ = sys.Write(entity.Write{At: ref.At(), Value: entity.Obj{"carried": carried}.Payload()})
 }
 
-// followAsk runs an answered ask's `then` for its asker, once. The task's id is written on the ask
-// first, conditional on none standing, so a restart that finds the ask answered and its `then`
-// not yet run runs it, and one that finds it run does not.
+// followAsk runs a settled question's `then` (or `else`, as field says) as whoever asked, once.
+// The task's id is written on the ask first, conditional on none standing, so a restart that
+// finds the ask answered and its `then` not yet run runs it, and one that finds it run does not.
+//
+// Whoever asked is read from `from` (askerOf): a person, `via:` a rule, or a task's principal. A
+// record naming none, which verse never writes, has its `then` refused on the record rather than
+// skipped, so a `then` that did not run is never silent.
 func (s *Server) followAsk(ref entity.Ref, field string) {
 	sys := entity.As(s.Store, entity.SystemDocket)
 	ent, ok, err := sys.Get(ref)
 	if err != nil || !ok {
 		return
 	}
-	then, asker := entity.Get(ent.Payload, field), mirror.PrincipalFrom(ent.Payload)
+	then := entity.Get(ent.Payload, field)
+	if then == nil {
+		return
+	}
+	asker := s.askerOf(ent.Payload)
+	if asker == "" {
+		if s.markThen(ref, field+"-failed") {
+			s.writeThen(ref, field+"-failed", entity.Obj{"at": s.now().UTC().Format(time.RFC3339),
+				"why": "the question says nobody asked it, so there is nobody to run this as"})
+		}
+		return
+	}
 	// An answer or an ask is one more act of the asker's, made by the route that makes it: nothing
 	// is spawned (askthen.go).
-	if asker != "" {
-		if a := entity.Get(then, "answer"); a != nil {
-			s.thenAnswers(ref, field, asker, entity.ToObj(a))
-			return
-		}
-		if q := entity.Get(then, "ask"); q != nil {
-			s.thenAsks(ref, field, asker, q)
-			return
-		}
+	if a := entity.Get(then, "answer"); a != nil {
+		s.thenAnswers(ref, field, asker, entity.ToObj(a))
+		return
+	}
+	if q := entity.Get(then, "ask"); q != nil {
+		s.thenAsks(ref, field, asker, q)
+		return
 	}
 	node := entity.Get(then, "spawn")
-	if node == nil || asker == "" || entity.Get(ent.Payload, field+"-task") != nil {
+	if node == nil || entity.Get(ent.Payload, field+"-task") != nil {
 		return
 	}
 	spec, perr := thenSpec(node)
@@ -623,15 +631,21 @@ func (s *Server) runThen(id string, ref entity.Ref, asker string, spec launch.Sp
 	if err != nil {
 		return err
 	}
-	// ITS QUESTIONS ARE THE ASKER'S: a gate or an ask of its own naming nobody waits on them.
-	answerers := []string{task.PrincipalAnswerer}
-	s.host(id, hostedTask{subject: ref.String(), principal: asker, answerers: answerers, autonomy: l.Autonomy})
+	// ITS QUESTIONS ARE THE ASKER'S, where the asker is somebody: a gate or an ask of its own
+	// naming nobody waits on them. A `then` run as a rule, or as a task acting for nobody, acts
+	// for nobody too, and such a task's questions naming nobody are the docket's.
+	actsFor := mirror.ActsFor(asker)
+	var answerers []string
+	if actsFor != "" {
+		answerers = []string{task.PrincipalAnswerer}
+	}
+	s.host(id, hostedTask{subject: ref.String(), principal: asker, answerers: answerers, autonomy: l.Autonomy, environment: &spec.Environment})
 	l.Provenance.Subject = ref.String()
 	h := place.Launch(l)
 	eng := s.engineOf("")
 	s.reflect(store, id, h, mirror.Meta{
 		Runner: place.Ref(), RunnerName: placeName, Subject: ref.String(), Prompt: l.Prompt,
-		Agent: recordAgent(l.Agent), Script: l.Script != "", Autonomy: l.Autonomy, ActsFor: asker, Answerers: answerers,
+		Agent: recordAgent(l.Agent), Script: l.Script != "", Autonomy: l.Autonomy, ActsFor: actsFor, Answerers: answerers,
 		HeldBy: func() []string { return eng.HeldBy(id) },
 	})
 	eng.Adopt(ref.String(), id, h)
@@ -647,9 +661,10 @@ func answeredYes(p entity.Payload) bool {
 	return entity.Str(p, "verdict") == task.Proceed
 }
 
-// resumeAsks is the startup phase for a person's asks: wait again on each that waits, since the
-// wait was the last process's, and run the `then` of each answered yes whose `then` had not
-// started.
+// resumeAsks is the startup phase for the asks: wait again on each of a person's that waits,
+// since the wait was the last process's, and run the `then` of each answered question whose
+// `then` had not started, whoever asked it — a rule's or a task's as much as a person's, since
+// what follows a yes is the record's to keep across a restart, and the marks say what ran.
 func (s *Server) resumeAsks() error {
 	if err := s.awaiting(phaseSystem); err != nil {
 		return err
@@ -659,12 +674,11 @@ func (s *Server) resumeAsks() error {
 		return entity.Unread(fmt.Errorf("the asks could not be read, so none was waited on: %w", err))
 	}
 	for _, ent := range ents {
-		if !personsAsk(ent.Payload) {
-			continue // a gate's or a task's, or words to a task, which the task settles
-		}
 		switch {
 		case entity.Str(ent.Payload, "status") == mirror.QuestionPending:
-			s.awaitAsk(askQuestion(ent.Ref.Name(), ent.Payload, ""))
+			if personsAsk(ent.Payload) { // a gate's or a task's is waited on by what asked it
+				s.awaitAsk(askQuestion(ent.Ref.Name(), ent.Payload, ""))
+			}
 		case entity.Str(ent.Payload, "status") == mirror.QuestionAnswered:
 			if answeredYes(ent.Payload) {
 				s.followAsk(ent.Ref, "then")
@@ -790,7 +804,7 @@ func (s *Server) patchAsk(w http.ResponseWriter, r *http.Request) {
 	// A new `then` or `else` that answers or asks is checked as one is when an ask is raised.
 	for field, changed := range map[string]bool{"then": body.Then != nil, "else": body.Else != nil} {
 		if follow, ok := asMap(rec[field]); ok && changed {
-			if code, err := s.checkThen(asker, follow, id, s.now()); err != nil {
+			if code, err := s.checkThen(asker, follow, id, s.now(), nil); err != nil {
 				http.Error(w, field+": "+err.Error(), code)
 				return
 			}

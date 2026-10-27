@@ -104,6 +104,13 @@ type Ask struct {
 	// Labels are what the question says about itself for whoever watches asks: `team:
 	// payments`, `slack: C0C3KHG9B0W`. Verse's: the runner never reads them.
 	Labels map[string]string `tony:"field=labels,omitzero"`
+	// Then is what a yes starts before the task hears the answer: `{spawn: {…}}`, `{answer:
+	// {…}}` or `{ask: {…}}`, as an ask's own `then` is written. Verse's: it runs it as the
+	// task's principal, and the task's turn is delivered once it has run, where a spawn has run
+	// once it is launched. The runner never reads it.
+	Then *ir.Node `tony:"field=then,omitzero"`
+	// Else is what a no starts, the same way, before the task hears the refusal. Verse's too.
+	Else *ir.Node `tony:"field=else,omitzero"`
 }
 
 // Clone is a copy that aliases nothing of the original.
@@ -118,11 +125,149 @@ func (p Autonomy) Clone() Autonomy {
 			nr.Match = &Match{System: r.Match.System, Verb: r.Match.Verb, Params: maps.Clone(r.Match.Params)}
 		}
 		if a := r.Then.Ask; a != nil {
-			nr.Then.Ask = &Ask{Need: a.Need, Answerers: slices.Clone(a.Answerers), Within: a.Within, Default: a.Default, Labels: maps.Clone(a.Labels)}
+			nr.Then.Ask = &Ask{Need: a.Need, Answerers: slices.Clone(a.Answerers), Within: a.Within, Default: a.Default, Labels: maps.Clone(a.Labels), Then: copyFollow(a.Then), Else: copyFollow(a.Else)}
 		}
 		out = append(out, nr)
 	}
 	return out
+}
+
+// Within is why p lets a task do more than outer lets its own, over the calls env gives, or nil.
+// Each row of p is held to every row of outer that could decide a call p's row matches, in
+// outer's order, until one of outer's covers p's row whole: each must be at least as strict, deny
+// below ask below allow. A row of p no row of outer covers is held to outer's default too. Left
+// out are outer's rows a row of p above this one covers whole, since no call of theirs reaches
+// this row, and outer's rows on calls env does not give, since no call of theirs is this task's.
+//
+// Two matches could decide the same call where their systems and verbs agree, or one names none,
+// and each param they both name has patterns that meet (systems.Intersect); one covers the other
+// where it names no more than the other does and each of its patterns contains the other's
+// (systems.PatternContains). Reading patterns against patterns, not against a call, is what makes
+// this sound for a `*` on either side. It is what a task's question's `then` is held to: a task
+// that follows a yes with a spawn hands it no dial above its own.
+func (p Autonomy) Within(outer Autonomy, env systems.Environment) error {
+	outer = outer.OrDefault()
+	inner := p.OrDefault()
+	for i, r := range inner {
+		covered := false
+		for _, o := range outer {
+			if !o.Match.meets(r.Match) || decidedAbove(inner[:i], o.Match) || !reaches(env, o.Match) {
+				continue
+			}
+			if modeRank(r.Then.Mode) > modeRank(o.Then.Mode) {
+				return fmt.Errorf("[%d]: `then: %s` on %s, where the autonomy it must lie within says %s on %s",
+					i, r.Then.Mode, r.Match.words(), o.Then.Mode, o.Match.words())
+			}
+			if o.Match.encloses(r.Match) {
+				covered = true
+				break
+			}
+		}
+		if !covered && modeRank(r.Then.Mode) > modeRank(outer.Default()) {
+			return fmt.Errorf("[%d]: `then: %s` on %s, where the autonomy it must lie within says %s",
+				i, r.Then.Mode, r.Match.words(), outer.Default())
+		}
+	}
+	return nil
+}
+
+// modeRank orders a row's modes by what they let through: deny, then ask, then allow. A mode
+// that is none of these is read as allow, so it is never the one that passes a check it should not.
+func modeRank(mode string) int {
+	switch mode {
+	case ThenDeny:
+		return 0
+	case ThenAsk:
+		return 1
+	}
+	return 2
+}
+
+// decidedAbove is whether a row among rows covers every call m matches, so none of them reaches a
+// row below.
+func decidedAbove(rows Autonomy, m *Match) bool {
+	for _, q := range rows {
+		if q.Match.encloses(m) {
+			return true
+		}
+	}
+	return false
+}
+
+// reaches is whether env gives some call m matches: every call, for a match naming no system.
+func reaches(env systems.Environment, m *Match) bool {
+	if m.Any() || m.System == "" {
+		return true
+	}
+	return env.Reaches(m.System, m.Verb, m.Params)
+}
+
+// meets is whether some call could be matched by both m and n: their systems and verbs agree
+// where both name one, and each param both name has patterns that meet.
+func (m *Match) meets(n *Match) bool {
+	if m.Any() || n.Any() {
+		return true
+	}
+	if (m.System != "" && n.System != "" && m.System != n.System) || (m.Verb != "" && n.Verb != "" && m.Verb != n.Verb) {
+		return false
+	}
+	for name, mp := range m.Params {
+		if np, ok := n.Params[name]; ok && !systems.Intersect(mp, np, m.crossing(name)) {
+			return false
+		}
+	}
+	return true
+}
+
+// encloses is whether every call n matches, m matches too: m names no system, verb or param n does
+// not, and each pattern of m's contains n's for the same param.
+func (m *Match) encloses(n *Match) bool {
+	if m.Any() {
+		return true
+	}
+	if n.Any() {
+		return false
+	}
+	if (m.System != "" && m.System != n.System) || (m.Verb != "" && m.Verb != n.Verb) {
+		return false
+	}
+	for name, mp := range m.Params {
+		np, ok := n.Params[name]
+		if !ok || !systems.PatternContains(mp, np, m.crossing(name)) {
+			return false
+		}
+	}
+	return true
+}
+
+// crossing is whether a param's patterns cross path segments, as the match's step says of it
+// (systems.Crossing); a match naming no verb reads the param as a plain pattern.
+func (m *Match) crossing(name string) bool {
+	if m.System == "" || m.Verb == "" {
+		return false
+	}
+	return systems.Crossing(systems.StepName(m.System, m.Verb), name)
+}
+
+// words is a match in words, for a refusal that names it: `every call` for one naming nothing.
+func (m *Match) words() string {
+	if m.Any() {
+		return "every call"
+	}
+	parts := []string{}
+	if m.System != "" {
+		s := m.System
+		if m.Verb != "" {
+			s = systems.StepName(m.System, m.Verb)
+		}
+		parts = append(parts, s)
+	} else if m.Verb != "" {
+		parts = append(parts, "verb "+m.Verb)
+	}
+	for _, k := range slices.Sorted(maps.Keys(m.Params)) {
+		parts = append(parts, k+"="+m.Params[k])
+	}
+	return strings.Join(parts, " ")
 }
 
 // DefaultAutonomy is what a task with no autonomy runs under: the default row alone, `then: ask`, so
@@ -356,6 +501,11 @@ func (r Row) Check() error {
 		}
 		if err := CheckLabels(a.Labels); err != nil {
 			return fmt.Errorf("then.ask.%w", err)
+		}
+		for field, follow := range map[string]*ir.Node{"then": a.Then, "else": a.Else} {
+			if err := CheckFollow(field, follow); err != nil {
+				return fmt.Errorf("then.ask.%w", err)
+			}
 		}
 	}
 	if strings.ContainsFunc(r.Name, func(c rune) bool { return c == ' ' || c == '[' || c == ']' }) {

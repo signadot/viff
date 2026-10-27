@@ -240,6 +240,12 @@ need that right. The task is your record, so its own gates ask you.
 
 Nobody but you writes your ask. It is yours, and nobody owns a place above it.
 
+The same rule holds for every question, whoever asked it. A rule's gate question runs its `then`
+as the rule, on the charter owner's authority ([gates](reference/gates.md#then-and-else-what-a-yes-or-a-no-starts-first)),
+and a task's question runs its as whom the task acts for ([tasks](reference/tasks.md#the-autonomy)).
+In every case the `then` runs before the answer goes back to whoever asked: the firing goes on,
+or the task hears its answer, once the `then` has run, and a spawn has run once it is launched.
+
 ## Saying something to a running task
 
 Words you say to a running task are an ask to the task:

@@ -132,6 +132,11 @@ func (s *Ask) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if s == nil {
 		return ir.Null(), nil
 	}
+	var node *ir.Node
+	var err error
+	_ = node // suppress unused variable error
+	_ = err  // suppress unused variable error
+
 	// Create IR object map
 	irMap := make(map[string]*ir.Node)
 
@@ -166,6 +171,16 @@ func (s *Ask) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 			mapNodes[k] = ir.FromString(string(v))
 		}
 		irMap["labels"] = ir.FromMap(mapNodes)
+	}
+
+	// Field: Then (optional)
+	if s.Then != nil {
+		irMap["then"] = s.Then
+	}
+
+	// Field: Else (optional)
+	if s.Else != nil {
+		irMap["else"] = s.Else
 	}
 
 	return ir.FromMap(irMap), nil
@@ -253,6 +268,18 @@ func (s *Ask) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				s.Labels = m
 			} else {
 				return fmt.Errorf("%s: expected object, got %v", "field \"labels\"", fieldNodeUnwrapped.Type)
+			}
+		case "then":
+			if gomap.GetUnmapComments(opts...) {
+				s.Then = fieldNode
+			} else {
+				s.Then = fieldNodeUnwrapped
+			}
+		case "else":
+			if gomap.GetUnmapComments(opts...) {
+				s.Else = fieldNode
+			} else {
+				s.Else = fieldNodeUnwrapped
 			}
 		default:
 			if gomap.IsStrict(opts...) {

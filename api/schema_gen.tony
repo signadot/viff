@@ -181,6 +181,15 @@ context:
 - tony-format/context
 define:
   at: .[string]
+  field: .[string]
+  undelivered: .[string]
+signature:
+  name: verse-ask-followed
+---
+context:
+- tony-format/context
+define:
+  at: .[string]
   principal: .[string]
   rule: .[string]
   task: .[string]
@@ -243,6 +252,7 @@ define:
   else-task: .[string]
   expires: .[string]
   fields: .[object(string)]
+  followed: .[nullable(verse-ask-followed)]
   from: .[nullable(verse-ask-from)]
   gate: .[string]
   id: .[string]
@@ -302,6 +312,7 @@ define:
   else-task: .[string]
   expires: .[string]
   fields: .[object(string)]
+  followed: .[nullable(verse-ask-followed)]
   from: .[nullable(verse-ask-from)]
   gate: .[string]
   id: .[string]
@@ -424,6 +435,7 @@ define:
   else-task: .[string]
   expires: .[string]
   fields: .[object(string)]
+  followed: .[nullable(verse-ask-followed)]
   from: .[nullable(verse-ask-from)]
   gate: .[string]
   id: .[string]

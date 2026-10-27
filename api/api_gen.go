@@ -2318,6 +2318,15 @@ func (s *AskRecord) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["carried"] = node
 	}
 
+	// Field: Followed (optional)
+	if s.Followed != nil {
+		node, err = s.Followed.ToTonyIR(opts...)
+		if err != nil {
+			return nil, err
+		}
+		irMap["followed"] = node
+	}
+
 	// Field: ThenTask
 	if s.ThenTask != "" {
 		irMap["then-task"] = ir.FromString(string(s.ThenTask))
@@ -2764,6 +2773,12 @@ func (s *AskRecord) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if err := s.Carried.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
 			}
+		case "followed":
+			// Field: Followed
+			s.Followed = &AskFollowed{}
+			if err := s.Followed.FromTonyIR(fieldNode, opts...); err != nil {
+				return err
+			}
 		case "then-task":
 			// Field: ThenTask
 			if fieldNodeUnwrapped.Type != ir.StringType {
@@ -3151,6 +3166,15 @@ func (s *AskRow) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 			return nil, err
 		}
 		irMap["carried"] = node
+	}
+
+	// Field: Followed (optional)
+	if s.Followed != nil {
+		node, err = s.Followed.ToTonyIR(opts...)
+		if err != nil {
+			return nil, err
+		}
+		irMap["followed"] = node
 	}
 
 	// Field: ThenTask
@@ -3604,6 +3628,12 @@ func (s *AskRow) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if err := s.Carried.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
 			}
+		case "followed":
+			// Field: Followed
+			s.Followed = &AskFollowed{}
+			if err := s.Followed.FromTonyIR(fieldNode, opts...); err != nil {
+				return err
+			}
 		case "then-task":
 			// Field: ThenTask
 			if fieldNodeUnwrapped.Type != ir.StringType {
@@ -3997,6 +4027,15 @@ func (s *DocketRow) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 			return nil, err
 		}
 		irMap["carried"] = node
+	}
+
+	// Field: Followed (optional)
+	if s.Followed != nil {
+		node, err = s.Followed.ToTonyIR(opts...)
+		if err != nil {
+			return nil, err
+		}
+		irMap["followed"] = node
 	}
 
 	// Field: ThenTask
@@ -4456,6 +4495,12 @@ func (s *DocketRow) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			// Field: Carried
 			s.Carried = &AskCarried{}
 			if err := s.Carried.FromTonyIR(fieldNode, opts...); err != nil {
+				return err
+			}
+		case "followed":
+			// Field: Followed
+			s.Followed = &AskFollowed{}
+			if err := s.Followed.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
 			}
 		case "then-task":
@@ -5566,6 +5611,110 @@ func (s *AskFollowFailed) ToTony(opts ...gomap.MapOption) ([]byte, error) {
 
 // FromTony parses Tony format bytes and populates AskFollowFailed.
 func (s *AskFollowFailed) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
+// ToTonyIR converts AskFollowed to a Tony IR node.
+func (s *AskFollowed) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: At
+	irMap["at"] = ir.FromString(string(s.At))
+
+	// Field: Field
+	if s.Field != "" {
+		irMap["field"] = ir.FromString(string(s.Field))
+	}
+
+	// Field: Undelivered
+	if s.Undelivered != "" {
+		irMap["undelivered"] = ir.FromString(string(s.Undelivered))
+	}
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates AskFollowed from a Tony IR node.
+func (s *AskFollowed) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for AskFollowed, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "at":
+			// Field: At
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "at", fieldNodeUnwrapped.Type)
+			}
+			s.At = string(fieldNodeUnwrapped.String)
+		case "field":
+			// Field: Field
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "field", fieldNodeUnwrapped.Type)
+			}
+			s.Field = string(fieldNodeUnwrapped.String)
+		case "undelivered":
+			// Field: Undelivered
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "undelivered", fieldNodeUnwrapped.Type)
+			}
+			s.Undelivered = string(fieldNodeUnwrapped.String)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for AskFollowed", fieldName.String)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts AskFollowed to Tony format bytes.
+func (s *AskFollowed) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates AskFollowed.
+func (s *AskFollowed) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
 	if err != nil {
 		return err

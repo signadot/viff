@@ -1,6 +1,7 @@
 package task
 
 import (
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/systems"
 
 	"context"
@@ -100,6 +101,42 @@ type GateQuestion struct {
 	// `kind: deploy`. A convention between the raiser and the resolvers matching on them; verse
 	// reads nothing into a label, and routes nothing by one.
 	Labels map[string]string
+	// Then is what a yes starts before the answer goes back to whoever asked: one key naming a
+	// spawn, an answer or an ask, in the shape an ask's own `then` has. A rule's gate and a
+	// task's ask row write it; verse runs it as whoever asked, and delivers the answer once it
+	// has run, where a spawn has run once it is launched. Nil asks for nothing to follow.
+	Then *ir.Node
+	// Else is what a no starts, the same way: a refusal answered, or the clock settling on one.
+	Else *ir.Node
+}
+
+// FollowKinds is what a question's `then` or `else` may name, by the key that names it: a task to
+// spawn, an answer to another ask, or an ask of its own. One key per kind.
+var FollowKinds = map[string]bool{"spawn": true, "answer": true, "ask": true}
+
+// CheckFollow refuses a `then` or an `else` (field) that is not one of FollowKinds, as written: an
+// object with exactly one key, naming one of them. Nil is nothing to follow, and fine. What the
+// key names is checked where the asker is known (versed), not here.
+func CheckFollow(field string, n *ir.Node) error {
+	if n == nil {
+		return nil
+	}
+	if n.Type != ir.ObjectType || len(n.Fields) != 1 {
+		return fmt.Errorf("%s: names one thing to run, as one key (spawn, answer, ask)", field)
+	}
+	if k := n.Fields[0].String; !FollowKinds[k] {
+		return fmt.Errorf("%s: %q is not something a question runs (spawn, answer, ask)", field, k)
+	}
+	return nil
+}
+
+// copyFollow is a `then` or `else` copied whole, so a copy aliases nothing of the original, and
+// nothing where there is none: DeepCopy is not nil's to call.
+func copyFollow(n *ir.Node) *ir.Node {
+	if n == nil {
+		return nil
+	}
+	return n.DeepCopy()
 }
 
 // CheckLabels refuses a label a match could not name: an empty name, or one holding a space.

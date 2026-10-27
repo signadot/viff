@@ -97,7 +97,8 @@ type Engine struct {
 	// moveDeadline moves a standing question's deadline (SetDeadlineMover); nil leaves a date a
 	// question reads from its subject fixed at the instant it was posed with.
 	moveDeadline func(scope, id string, at time.Time) error
-	offerCheck   func(runnerName string, l runner.Launch) error // optional: what the spawn's runner offers
+	offerCheck   func(runnerName string, l runner.Launch) error         // optional: what the spawn's runner offers
+	thenCheck    func(asker, field string, follow entity.Payload) error // optional: a gate's `then` or `else`, as the rule
 	triggers     []Trigger
 	// logger carries both the running dispatch commentary (Debug) and anything an
 	// operator has to act on (Warn). One channel with levels, rather than a verbose
@@ -275,6 +276,13 @@ func (e *Engine) SetDeadlineMover(m func(scope, id string, at time.Time) error) 
 // (""/the default) offers, as the runner described itself. The launch is the spawn as written,
 // with its templated values standing in. Optional: with none set, the runner says at the launch.
 func (e *Engine) SetOfferCheck(f func(runnerName string, l runner.Launch) error) { e.offerCheck = f }
+
+// SetThenCheck sets what an install checks a gate's `then` and `else` against, as the principal
+// the rule acts as (Principal): its shape, and what it names, the way an ask's are checked when
+// the ask is raised; field says which. Optional: with none set, they are taken as written.
+func (e *Engine) SetThenCheck(f func(asker, field string, follow entity.Payload) error) {
+	e.thenCheck = f
+}
 
 // SetScope names the scope this engine acts in — a named scope, or "" for
 // baseline. Set before anything is installed, because it is stamped on what this engine
@@ -1085,6 +1093,9 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 			// subject's where it reads them from there (answerersOf, above).
 			Answerers: answerers[gi],
 			Labels:    gate.Labels,
+			// And what its yes, or its no, starts first, as this rule, before the firing hears it.
+			Then: gate.Then,
+			Else: gate.Else,
 		}
 		wg.Add(1)
 		go func(gi int, g Gate, d task.GateQuestion, gname string) {
