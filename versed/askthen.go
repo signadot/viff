@@ -218,6 +218,16 @@ func (s *Server) checkThenAnswer(asker string, m map[string]any, self string) (i
 	if status := entity.Str(ent.Payload, "status"); status != mirror.QuestionPending {
 		return http.StatusConflict, fmt.Errorf("then.answer: ask %s has settled (%s)", a.Ask, status)
 	}
+	// AND NO LOOP: what this answers may answer another when it settles, and so on, and a chain
+	// that comes back to this ask would settle it from inside its own settle, since what follows a
+	// question runs before its answer is delivered (consequence.go). Refused where the loop would
+	// close, which is here: the ask being changed is the only one a standing chain can name.
+	if self != "" {
+		if path := s.answersBack(a.Ask, self); path != nil {
+			return http.StatusBadRequest, fmt.Errorf("then.answer: ask %s comes back to this ask (%s answers %s): a loop",
+				a.Ask, strings.Join(path, ", which answers "), self)
+		}
+	}
 	if !waitsOn(as, asker, ent.Payload) {
 		return http.StatusForbidden, fmt.Errorf("then.answer: ask %s does not wait on %s", a.Ask, asker)
 	}
@@ -238,6 +248,40 @@ func (s *Server) checkThenAnswer(asker string, m map[string]any, self string) (i
 		m["edit"] = edit
 	}
 	return 0, nil
+}
+
+// answersBack is the chain of asks from `from` to one whose `then` or `else` answers self, each
+// answering the next, or nil where none does: what a `then` answering `from` would come back
+// through. Read as the system, since the chain runs through asks the asker may not read.
+func (s *Server) answersBack(from, self string) []string {
+	sys := entity.As(s.Store, entity.SystemDocket)
+	seen := map[string]bool{}
+	var walk func(id string, path []string) []string
+	walk = func(id string, path []string) []string {
+		if seen[id] {
+			return nil
+		}
+		seen[id] = true
+		ent, ok, err := sys.Get(mirror.AskRef(id))
+		if err != nil || !ok {
+			return nil
+		}
+		path = append(path, id)
+		for _, field := range []string{"then", "else"} {
+			next := entity.Str(entity.Get(entity.Get(ent.Payload, field), "answer"), "ask")
+			if next == "" {
+				continue
+			}
+			if next == self {
+				return path
+			}
+			if p := walk(next, path); p != nil {
+				return p
+			}
+		}
+		return nil
+	}
+	return walk(from, nil)
 }
 
 // thenAnswers makes the answer an answered ask's `then` names, as its asker, once: marked on the
