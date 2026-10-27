@@ -4,11 +4,12 @@ blocks:
 - pf6fwh8gh12ksgzdvhn0
 - fexkagtmh12ks45ww1n0
 branches: []
+closed_by: 2eb16425f60322fdcfdda9e3e7b3313464e8da88
 commits: []
 created: "2026-10-24T10:07:45.556329+02:00"
 duplicates: []
 id: pb6fwh8gh12krmb7vhn0
 labels: []
 related_issues: []
-status: open
-updated: "2026-10-27T16:00:52.217183+01:00"
+status: closed
+updated: "2026-10-27T16:01:44.376975+01:00"
