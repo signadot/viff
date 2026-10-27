@@ -18,11 +18,12 @@ The one car already sat on the train's base, so its rebase was a no-op and its c
 
 ## Fix
 
-Decide "nothing to push" against the target branch, as git does:
+When the task has no commits of its own beyond its base, decide against the target branch:
 
-- When the target is at the forge at HEAD, it is up to date: answer OK and push nothing.
-- Otherwise, when every commit beyond the base is already upstream, or HEAD is the base itself, push HEAD to the target. Nothing in it is the task's own authoring, so there are no trailers to check. The autonomy has already decided the push on its ref, `exists` and `own`.
+- **HEAD is still the base:** the task did nothing, so the answer stays "nothing to push", and no branch is made (`TestAPushOfNothingSaysSo`).
+- **The target is at the forge at HEAD:** it is up to date. Answer OK, push nothing, and count the branch as this run's push, so a pull request from it is this run's to open.
+- **Otherwise:** HEAD has moved onto commits already upstream, so push HEAD to the target. None of those commits is the task's own, so there are no trailers to check. The autonomy has already decided the push on its ref, `exists` and `own`.
 
-Commits the task did write are still checked for trailers as before.
+Commits the task did write are checked for trailers as before.
 
 Not in this issue: a train car that is behind master is rebased into new commits carrying the car task's `Verse-Task:`, and the push refuses them as not the train's. That is a separate question, of what counts as a task's own work.
