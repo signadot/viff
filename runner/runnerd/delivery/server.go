@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/signadot/verse/codec"
@@ -203,7 +204,7 @@ func (s *Server) push(ctx context.Context, tk Task, req Request) Reply {
 	// tip is this task's. A row that keeps a task to branches it makes (`exists: "false"`) or
 	// made (`own: "true"`) is decided on what the forge says now, never on what the task said,
 	// and a delete is decided on the same facts as a write.
-	st, err := s.state(ctx, tk, t, req.Branch, auth)
+	st, tip, err := s.state(ctx, tk, t, req.Branch, auth)
 	if err != nil {
 		return Reply{Error: err.Error()}
 	}
@@ -230,12 +231,23 @@ func (s *Server) push(ctx context.Context, tk Task, req Request) Reply {
 		return Reply{OK: true, Out: "deleted " + t.Repo.Name() + " " + ref}
 	}
 	ok, refusal, head, err := t.AuthoredWork(tk.Launch)
+	// NOTHING OF ITS OWN IS NOT NOTHING TO PUSH. A task that moved its branch onto commits already
+	// upstream (a fast-forward onto another branch's work, a rebase that was a no-op) wrote
+	// nothing for the trailers to vouch for, but the target is still to be moved there, as git
+	// moves it. Only a target already at the head is up to date, and a task still at its base has
+	// delivered nothing at all.
 	switch {
 	case err != nil:
 		return Reply{Error: err.Error()}
-	case !ok:
+	case !ok && head.String() == t.Head:
 		return Reply{OK: true, Out: "nothing to push: " + t.Repo.Name() + " has no commits beyond the base it " +
 			"started from; commit what you want delivered, then push"}
+	case !ok && st.Exists && head == tip:
+		// Up to date is a push that succeeded: the branch is where this run would put it, so a
+		// pull request from it is this run's to open.
+		tk.pushed[key] = true
+		return Reply{OK: true, Out: "nothing to push: " + t.Repo.Name() + " " + ref + " is already at " +
+			workspace.ShortSha(head.String())}
 	case refusal != "":
 		return Reply{Refused: refusal}
 	}
@@ -305,7 +317,7 @@ func (s *Server) pullRequest(ctx context.Context, tk Task, req Request) Reply {
 	}
 	// Whether the head is this task's is the runner's word, read before the decision as a
 	// push's facts are.
-	st, err := s.state(ctx, tk, t, req.Branch, workspace.TokenAuth(tok)(t.Repo.Remote))
+	st, _, err := s.state(ctx, tk, t, req.Branch, workspace.TokenAuth(tok)(t.Repo.Remote))
 	if err != nil {
 		return Reply{Error: err.Error()}
 	}
@@ -418,19 +430,19 @@ func (tk Task) policy() (task.Autonomy, bool) {
 // and what is at the forge is the task's own commit (Tree.Made), however it got there — its push,
 // or the sweep's. The commit alone isn't enough: a branch the task never made can come to hold
 // its commit (main, fast-forwarded to a proposal of the task's), and that isn't the task's to
-// rewrite.
-func (s *Server) state(ctx context.Context, tk Task, t *workspace.Tree, branch string, auth transport.AuthMethod) (runner.BranchState, error) {
+// rewrite. The tip is the branch's commit at the forge, zero where it is not there.
+func (s *Server) state(ctx context.Context, tk Task, t *workspace.Tree, branch string, auth transport.AuthMethod) (runner.BranchState, plumbing.Hash, error) {
 	ref := "refs/heads/" + strings.TrimPrefix(strings.TrimSpace(branch), "refs/heads/")
 	tip, exists, err := s.Mirrors.RemoteRef(ctx, t.Repo.Remote, ref, auth)
 	if err != nil {
-		return runner.BranchState{}, fmt.Errorf("asking %s whether %s is there: %w", t.Repo.Remote, ref, err)
+		return runner.BranchState{}, tip, fmt.Errorf("asking %s whether %s is there: %w", t.Repo.Remote, ref, err)
 	}
 	// Own is read off the forge's tip and the checkout, not off anything this channel
 	// remembers, so it holds across a resume: the task that made the branch is the task whose
 	// trailers its tip carries.
 	own := exists && t.Made(tip, tk.Launch)
 	created := tk.created[t.Repo.Name()+" "+ref] && (!exists || own)
-	return runner.BranchState{Exists: exists, Own: own, Created: created}, nil
+	return runner.BranchState{Exists: exists, Own: own, Created: created}, tip, nil
 }
 
 // pushFields is a git.push step as the autonomy and the ceiling see it: what the task asked (the
@@ -464,7 +476,7 @@ func (s *Server) branchState(ctx context.Context, tk Task, req Request) Reply {
 	if err != nil {
 		return Reply{Error: err.Error()}
 	}
-	st, err := s.state(ctx, tk, t, req.Branch, workspace.TokenAuth(tok)(t.Repo.Remote))
+	st, _, err := s.state(ctx, tk, t, req.Branch, workspace.TokenAuth(tok)(t.Repo.Remote))
 	if err != nil {
 		return Reply{Error: err.Error()}
 	}

@@ -546,6 +546,52 @@ func TestThePushIsWhatTheTaskHasCheckedOut(t *testing.T) {
 	}
 }
 
+// NOTHING OF ITS OWN IS NOT NOTHING TO PUSH: a task that fast-forwards onto another task's branch
+// wrote no commit, but its push still moves the target there, as git's would; pushed again, the
+// target is up to date and nothing moves.
+func TestAPushOfUpstreamCommitsMovesTheTarget(t *testing.T) {
+	forge := t.TempDir()
+	origin := initRepo(t, forge, "acme/svc")
+	// Another task's work, delivered before this one opens: a branch the mirror holds.
+	work := t.TempDir()
+	wr, err := git.PlainClone(work, false, &git.CloneOptions{URL: origin, ReferenceName: "refs/heads/main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit(t, work, "a car\n\nVerse-Task: t0\n")
+	if err := wr.Push(&git.PushOptions{RefSpecs: []config.RefSpec{"refs/heads/main:refs/heads/verse/auto/t0"}}); err != nil {
+		t.Fatal(err)
+	}
+	ws, _, cl := openTask(t, forge, runner.Repo{})
+	dir := filepath.Join(ws.Root, "svc")
+	r, err := git.PlainOpen(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	car, err := r.Reference("refs/remotes/mirror/verse/auto/t0", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wt, err := r.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wt.Reset(&git.ResetOptions{Commit: car.Hash(), Mode: git.HardReset}); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := cl.Ask(Request{Op: "push", Repo: "svc", Branch: "verse/train"})
+	if err != nil || !rep.OK || strings.Contains(rep.Out, "nothing to push") {
+		t.Fatalf("a push of another task's commit to a new branch: %+v %v", rep, err)
+	}
+	if msg := message(t, origin, "refs/heads/verse/train"); !strings.HasPrefix(msg, "a car") {
+		t.Fatalf("the forge's verse/train is %q, want the car", msg)
+	}
+	rep, err = cl.Ask(Request{Op: "push", Repo: "svc", Branch: "verse/train"})
+	if err != nil || !rep.OK || !strings.Contains(rep.Out, "already at") {
+		t.Fatalf("a push to a target already at the head: %+v %v", rep, err)
+	}
+}
+
 // A STEP OUTSIDE THE ENVIRONMENT IS NOT THE TASK'S: the channel refuses it, whatever the policy's
 // rows say, before any is read, saying what the environment gives; a step it gives is decided by
 // the rows.
