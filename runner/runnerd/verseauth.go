@@ -270,9 +270,9 @@ var (
 // are one case here: keep asking, with backoff, and say why once per change of answer. Nothing
 // to announce with (no token of its own) returns at once; the runner then waits to be asked.
 //
-// The loop is for the door's refusals (401), never for a verb verse's permissions refuse (403):
-// a refused install is not a lost identity, and must not send a runner with tasks on it back to
-// announcing itself.
+// Every answer but a 2xx is tried again: the door's 401 (a token the verse cannot verify yet),
+// the hello's 404 (no registration names this runner yet) and its 503 (the verse could not reach
+// the runner back) are each one a later try can find changed.
 func (g *Guard) Announce(ctx context.Context, logf func(string, ...any)) {
 	if g.tokenFile == "" {
 		return

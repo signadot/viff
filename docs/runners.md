@@ -105,7 +105,9 @@ verse runner add edge https://edge.example.com:9802 -token-file edge.token
 
 The runner reads the same token at `VERSE_TOKEN_FILE`, answers it at the describe and presents
 it at verse's door, and takes verse's tokens for the same hash as its audience; nothing else is
-configured. A static token holds 32 bytes at least, since its hash is published. Each kind of
+configured. A static token holds 32 bytes at least, since its hash is published, and is not
+shaped like a JWT: one with exactly two `.` reads as a JWT on both sides and is refused at `add`
+(`openssl rand -hex 32` makes one that is neither too short nor dotted). Each kind of
 proof finds only its own kind of registration, so a workload token cannot claim a static
 registration, nor a static token a workload one. No workload issuer is needed; verse still
 issues its own tokens (`auth.issuer`), since the handshake runs both ways.
