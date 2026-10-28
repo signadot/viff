@@ -179,6 +179,11 @@ func TestWaitFollowsAgainWhenItsStreamEnds(t *testing.T) {
 	first := askAs(t, daniel, "first", "-q", "First?")
 	out1, c1 := waitUntil(t, dan, since, "asked "+first+": First?")
 	ts.CloseClientConnections()
+	// That ends every connection to the verse, the CLI's idle ones in the shared pool with the
+	// wait's stream, and a POST on one the CLI has not yet seen close fails rather than being
+	// tried again. A CLI is a process per command and dials afresh; the pool goes so this one
+	// does too.
+	http.DefaultTransport.(*http.Transport).CloseIdleConnections()
 	second := askAs(t, daniel, "second", "-q", "Second?")
 	out2, _ := waitUntil(t, dan, c1, "asked "+second+": Second?")
 	if n := strings.Count(out1+out2, "asked "+first+": First?"); n != 1 {
