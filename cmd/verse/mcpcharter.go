@@ -217,35 +217,9 @@ func (m *mcpServer) charterInstall(ctx context.Context, _ *mcp.CallToolRequest, 
 	if err != nil {
 		return nil, nil, err
 	}
-	if len(docs) == 0 {
-		return nil, nil, fmt.Errorf("charters: there is none to install")
-	}
-	// As `verse c -a` reads them: one document is a file (-f), installed at at, and may be the
-	// shorthand; several, or a prune, are a directory (-d), each a charter at its own at:.
-	q, defs := url.Values{}, docs
-	switch {
-	case in.Prune:
-		if at == "" {
-			return nil, nil, fmt.Errorf("prune clears an address of what the charters leave out: name it in at")
-		}
-		q.Set("prune", at)
-	case len(docs) == 1:
-		if at != "" {
-			q.Set("at", at)
-		}
-		if !charterfile.IsDoc(docs[0]) {
-			if defs = charterfile.Defs(docs[0]); len(defs) == 0 {
-				return nil, nil, fmt.Errorf("charters: no rule, level or charter in it")
-			}
-		}
-	case at != "":
-		return nil, nil, fmt.Errorf("several charters are each installed at their own at:, so at goes " +
-			"with one, or with prune")
-	}
-	if len(docs) > 1 || in.Prune {
-		if err := charterfile.Only(docs, names); err != nil {
-			return nil, nil, fmt.Errorf("charters: %w", err)
-		}
+	q, defs, err := charterfile.InstallQuery(docs, names, at, in.Prune)
+	if err != nil {
+		return nil, nil, err
 	}
 	resp, err := m.c.With(ctx).PostNodes("/charter", q, defs)
 	if err != nil {

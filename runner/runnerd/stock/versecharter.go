@@ -19,17 +19,22 @@ import (
 	"github.com/signadot/verse/task"
 )
 
-// THE VERSE SYSTEM'S CHARTER VERBS that read: the charters read, and asked whether some would
-// install, as `verse charter` and verse_charter and verse_charter_check do. Each tool takes what
-// its MCP tool takes, and reads, filters and answers through the same code (charterfile,
-// api.Filter), carried by the runner on the op's own route (delivery.OpVerseCharterGet,
-// OpVerseCharterCheck).
+// THE VERSE SYSTEM'S CHARTER VERBS: the charters read, asked whether some would install,
+// installed and removed, as `verse charter` and verse_charter, _check, _install and _remove do.
+// Each tool takes what its MCP tool takes, and reads, filters and answers through the same code
+// (charterfile, api.Filter), carried by the runner on the op's own route
+// (delivery.OpVerseCharterGet, OpVerseCharterCheck, OpVerseCharterInstall,
+// OpVerseCharterRemove). What a task installs, verse holds within the task.
 
 var (
 	// charterGetTool is `verse charter`, verse_charter.
 	charterGetTool = systems.Tool("verse", "charter-get")
 	// charterCheckTool is `verse charter --check`, verse_charter_check.
 	charterCheckTool = systems.Tool("verse", "charter-check")
+	// charterInstallTool is `verse charter -a`, verse_charter_install.
+	charterInstallTool = systems.Tool("verse", "charter-install")
+	// charterRemoveTool is `verse charter -r`, verse_charter_remove.
+	charterRemoveTool = systems.Tool("verse", "charter-remove")
 )
 
 // verseCharterTools are the verse system's charter tools.
@@ -47,6 +52,15 @@ func verseCharterTools(cl *delivery.Client) []verse.Tool {
 	check := map[string]any{
 		"at":       text("the address the charters would be installed at, as a kinded path, as an install with a prune would take it: what stands at and under it and the charters leave out would go"),
 		"charters": text("the charters, in tony, each a document saying its own at: (at or under the address) with reads, ttl, strata, schedules and rules as a charter file does; several are separated by lines of ---"),
+	}
+	install := map[string]any{
+		"at":       text("where, as a kinded path: the address one charter, rule or level is installed at (empty is baseline); with prune, the address the charters stand for"),
+		"charters": text("what to install, in tony: one charter (at:, reads:, ttl:, strata:, schedules:, rules:; ttl: how long it stands, as 72h), or a rule, a level or a list of them; several charters are separated by lines of ---, each at its own at:"),
+		"prune":    map[string]any{"type": "boolean", "description": "make at and what is under it hold what the charters hold: a package or a rule they leave out goes, in the same step"},
+	}
+	remove := map[string]any{
+		"path": text("what to remove, as a kinded path: a package's address (verse-dev.drift), or one rule, level or schedule of it (verse-dev.drift.rules.watcher). What it wrote stays"),
+		"at":   text("where the address ends, when verse cannot tell: a package whose address ends in rules, strata or schedules. path is then read beneath it, and without path the package at at is removed"),
 	}
 	return []verse.Tool{{
 		Name: charterGetTool,
@@ -164,26 +178,113 @@ func verseCharterTools(cl *delivery.Client) []verse.Tool {
 			if err != nil {
 				return "not checked: " + err.Error(), true, nil
 			}
-			// One document apiece, as `verse charter --check` sends them (client.PostNodes).
-			var body bytes.Buffer
-			for i, d := range docs {
-				if i > 0 {
-					body.WriteString("---\n")
-				}
-				b, err := codec.NodeBytes(d, codec.Tony)
-				if err != nil {
-					return "not checked: " + err.Error(), true, nil
-				}
-				body.Write(b)
-				if !bytes.HasSuffix(b, []byte("\n")) {
-					body.WriteByte('\n')
-				}
+			body, err := documents(docs)
+			if err != nil {
+				return "not checked: " + err.Error(), true, nil
 			}
 			q := url.Values{"at": {at}}
 			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpVerseCharterCheck,
-				Query: q.Encode(), Body: body.String()}))
+				Query: q.Encode(), Body: body}))
+		},
+	}, {
+		Name: charterInstallTool,
+		Description: "Install charters as the person this task runs for, as `verse charter -a` and " +
+			"verse_charter_install do: one at an address, or several each at its own at:, and with prune " +
+			"what they leave out at and under the address goes, all in one step. Answers what went where, " +
+			"the rules held and the notes on them; verse-charter-check asks first. Each spawn among the " +
+			"rules reaches no further than this task does, less installing charters, under autonomy no " +
+			"looser and with this task's credential, on any runner: verse refuses one that would. A rule's " +
+			"patch, derive and send are theirs, as any charter's are.",
+		Params: install, Required: []string{"charters"}, Step: task.StepVerseCharterInstall, Fields: none,
+		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
+			p, err := paramsOf(tu.Input, install)
+			if err != nil {
+				return "not installed: " + err.Error(), true, nil
+			}
+			segs, err := entity.PathSegs(strings.TrimSpace(p.words["at"]))
+			if err != nil {
+				return "not installed: at: " + err.Error(), true, nil
+			}
+			docs, names, err := charterfile.Text(p.words["charters"], codec.Tony)
+			if err != nil {
+				return "not installed: " + err.Error(), true, nil
+			}
+			q, defs, err := charterfile.InstallQuery(docs, names, entity.JoinSegs(segs), p.flags["prune"])
+			if err != nil {
+				return "not installed: " + err.Error(), true, nil
+			}
+			body, err := documents(defs)
+			if err != nil {
+				return "not installed: " + err.Error(), true, nil
+			}
+			rep, err := cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpVerseCharterInstall,
+				Query: q.Encode(), Body: body})
+			if err != nil || !rep.OK {
+				return relay(rep, err)
+			}
+			node, err := codec.ParseNode([]byte(rep.Out), codec.Tony)
+			if err != nil {
+				return "", false, fmt.Errorf("the verse's answer does not read: %w", err)
+			}
+			var out strings.Builder
+			charterfile.Installed(&out, node, "", true)
+			return strings.TrimSpace(out.String()), false, nil
+		},
+	}, {
+		Name: charterRemoveTool,
+		Description: "Remove a package, or one rule, level or schedule of one, as the person this task " +
+			"runs for, as `verse charter -r` and verse_charter_remove do. What it wrote stays.",
+		Params: remove, Required: []string{}, Step: task.StepVerseCharterRemove, Fields: none,
+		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
+			p, err := paramsOf(tu.Input, remove)
+			if err != nil {
+				return "not removed: " + err.Error(), true, nil
+			}
+			addr, err := entity.PathSegs(p.words["at"])
+			if err != nil {
+				return "not removed: at: " + err.Error(), true, nil
+			}
+			reach, err := entity.PathSegs(p.words["path"])
+			if err != nil {
+				return "not removed: path: " + err.Error(), true, nil
+			}
+			if len(addr) == 0 && len(reach) == 0 {
+				return "not removed: path names what to remove: a package's address, or one with " +
+					"rules.<name>, strata.<name> or schedules.<name> after it", true, nil
+			}
+			split := -1
+			if p.words["at"] != "" {
+				split = len(addr)
+			}
+			names := append(addr, reach...)
+			q, _ := charterfile.Query(names, split, -1)
+			rep, err := cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpVerseCharterRemove, Query: q.Encode()})
+			if err != nil || !rep.OK {
+				return relay(rep, err)
+			}
+			return charterfile.Removed(names, split, "", false, true), false, nil
 		},
 	}}
+}
+
+// documents is charters to send, one tony document apiece, as `verse charter` sends them
+// (client.PostNodes).
+func documents(docs []*ir.Node) (string, error) {
+	var body bytes.Buffer
+	for i, d := range docs {
+		if i > 0 {
+			body.WriteString("---\n")
+		}
+		b, err := codec.NodeBytes(d, codec.Tony)
+		if err != nil {
+			return "", err
+		}
+		body.Write(b)
+		if !bytes.HasSuffix(b, []byte("\n")) {
+			body.WriteByte('\n')
+		}
+	}
+	return body.String(), nil
 }
 
 // matchDoc is a match document a call gives for name (if, trim), or nil for none.

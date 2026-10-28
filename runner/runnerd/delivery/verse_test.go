@@ -164,7 +164,8 @@ func TestATasksListingOfItsOwnersAsksIsCarriedToVerse(t *testing.T) {
 
 // A TASK'S DATA AND CHARTER ACTS ARE CARRIED ON THEIR OWN ROUTES: a read to GET /state, a write
 // to POST /entity with its document, a removal to DELETE /entity, a charter read to GET /charter,
-// a check to POST /charter/check with the charters, each with the query the task's tool read and
+// a check to POST /charter/check with the charters, an install to POST /charter with them, a
+// removal to DELETE /charter, each with the query the task's tool read and
 // nothing else of the task's; each decided by the task's autonomy first, and what verse
 // refuses is a no.
 func TestATasksDataActsAreCarriedToVerse(t *testing.T) {
@@ -189,6 +190,9 @@ func TestATasksDataActsAreCarriedToVerse(t *testing.T) {
 		{Request{Op: OpVerseDataRm, Query: "at=acme.notes.n1"}, carried{http.MethodDelete, "/entity?at=acme.notes.n1", ""}},
 		{Request{Op: OpVerseCharterGet, Query: "path=repos.r.hello"}, carried{http.MethodGet, "/charter?path=repos.r.hello", ""}},
 		{Request{Op: OpVerseCharterCheck, Query: "at=repos.r", Body: "at: repos.r.hello\n"}, carried{http.MethodPost, "/charter/check?at=repos.r", "at: repos.r.hello\n"}},
+		{Request{Op: OpVerseCharterInstall, Query: "prune=repos.r", Body: "at: repos.r.hello\n"}, carried{http.MethodPost, "/charter?prune=repos.r", "at: repos.r.hello\n"}},
+		{Request{Op: OpVerseCharterInstall, Body: "at: repos.r.hello\n"}, carried{http.MethodPost, "/charter", "at: repos.r.hello\n"}},
+		{Request{Op: OpVerseCharterRemove, Query: "path=repos.r.hello.rules.lift"}, carried{http.MethodDelete, "/charter?path=repos.r.hello.rules.lift", ""}},
 	} {
 		saw = nil
 		if rep := s.answer(tk, frame(t, c.req)); !rep.OK || rep.Out != said {
@@ -201,7 +205,8 @@ func TestATasksDataActsAreCarriedToVerse(t *testing.T) {
 
 	saw = nil
 	for _, req := range []Request{{Op: OpVerseDataPut}, {Op: OpVerseDataRm}, {Op: OpVerseDataGet, Query: "%zz"},
-		{Op: OpVerseCharterCheck, Body: "at: repos.r.hello"}, {Op: OpVerseCharterCheck, Query: "at=repos.r"}} {
+		{Op: OpVerseCharterCheck, Body: "at: repos.r.hello"}, {Op: OpVerseCharterCheck, Query: "at=repos.r"},
+		{Op: OpVerseCharterInstall, Query: "at=repos.r"}, {Op: OpVerseCharterRemove}} {
 		if rep := s.answer(tk, frame(t, req)); rep.Refused == "" {
 			t.Errorf("%+v: %+v, want it refused", req, rep)
 		}

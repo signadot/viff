@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 
 	"github.com/scott-cotton/cli"
@@ -404,62 +403,7 @@ func installAnswer(w io.Writer, resp *http.Response, scope string, sp spelling) 
 	return nil
 }
 
-// reportNotes says what installing one package had to say: when its ttl ends, the rules held,
-// and the advisories.
-//
-// UNDER THE LINE THAT SAYS WHAT WAS INSTALLED, because each changes what that line means: a
-// charter with a ttl is installed until then, a held rule is counted out of it, and an advisory
-// is a rule that was counted and does something other than it reads. All are the author's to act
-// on, and this is where the author is.
-func reportNotes(w io.Writer, e *ir.Node) {
-	if expires := nodeStr(e, "expires"); expires != "" {
-		fmt.Fprintf(w, "  ttl: it is removed at %s, as -r removes it; installing it again renews it.\n", expires)
-	}
-	if held := codec.Unwrap(nodeField(e, "held")); held != nil && held.Type == ir.ArrayType {
-		for _, h := range held.Values {
-			h = codec.Unwrap(h)
-			fmt.Fprintf(w, "  held: rule %s waits for stratum %s, which is not installed. "+
-				"It fires on nothing until that stratum is.\n", nodeStr(h, "rule"), nodeStr(h, "stratum"))
-		}
-	}
-	if notes := codec.Unwrap(nodeField(e, "notes")); notes != nil && notes.Type == ir.ArrayType {
-		for _, n := range notes.Values {
-			n = codec.Unwrap(n)
-			fmt.Fprintf(w, "  note: rule %s: %s\n", nodeStr(n, "rule"), nodeStr(n, "note"))
-		}
-	}
-}
-
-// reportPruned says what a prune took away: out of a package the directory kept, each thing by
-// name; a package it left out, whole.
-func reportPruned(w io.Writer, node *ir.Node, sp spelling) {
-	list := codec.Unwrap(nodeField(node, "pruned"))
-	if list == nil || list.Type != ir.ArrayType {
-		return
-	}
-	for _, el := range list.Values {
-		e := codec.Unwrap(el)
-		where := "package " + sp.of(nodeStr(e, "at"))
-		if u := codec.Unwrap(nodeField(e, "uninstalled")); u != nil && u.Type == ir.BoolType && u.Bool {
-			fmt.Fprintf(w, "%s: uninstalled, not in %s; what it wrote is still there\n", where, sp.tree())
-			continue
-		}
-		if removed := codec.Unwrap(nodeField(e, "removed")); removed != nil && removed.Type == ir.ArrayType {
-			for _, r := range removed.Values {
-				if r = codec.Unwrap(r); r != nil && r.Type == ir.StringType {
-					fmt.Fprintf(w, "%s: removed the %s, not in %s\n", where, r.String, sp.file())
-				}
-			}
-		}
-	}
-}
-
-// reportInstalled says what went where, in both coordinates.
-//
-// "baseline" is the unpackaged charter — the one that may write anywhere — and it is also the
-// word for the default SCOPE, so a scoped install that says only "baseline" reads as the one
-// place it did not go. A scope is the coordinate somebody carries in a flag and forgets, which
-// is exactly the one a report owes them back.
+// reportInstalled says what an install answered, as charterfile.Installed says it.
 func reportInstalled(w io.Writer, body []byte, format codec.Format, scope string, sp spelling) {
 	node, err := codec.ParseNode(body, format)
 	if err != nil {
@@ -467,44 +411,7 @@ func reportInstalled(w io.Writer, body []byte, format codec.Format, scope string
 		fmt.Fprintln(w, "installed")
 		return
 	}
-	inScope := ""
-	if scope != "" {
-		inScope = " in scope " + scope
-	}
-	packaged := false
-	list := codec.Unwrap(nodeField(node, "installed"))
-	if list == nil || list.Type != ir.ArrayType {
-		fmt.Fprintln(w, "installed")
-		return
-	}
-	for _, el := range list.Values {
-		e := codec.Unwrap(el)
-		at := nodeStr(e, "at")
-		rules := nodeInt(e, "rules")
-		strata := nodeInt(e, "strata")
-		where := "baseline"
-		if at != "" {
-			// IN STEPS, like every other address a command prints, so the package this names is
-			// spelled the way `verse c <address>` takes it. The charter FILE declares it as a
-			// path, which is right there — a charter is read by a parser — and this is the line
-			// a person reads.
-			where, packaged = "package "+sp.of(at), true
-		}
-		where += inScope
-		if strata == 0 {
-			fmt.Fprintf(w, "%s: installed %d trigger(s)\n", where, rules)
-		} else {
-			fmt.Fprintf(w, "%s: installed %d stratum(a) and %d trigger(s)\n", where, strata, rules)
-		}
-		reportNotes(w, e)
-	}
-	reportPruned(w, node, sp)
-	// WHERE TO LOOK, said at the moment it is not obvious: a charter installed into packages
-	// leaves `verse c` — the next thing anybody types — answering baseline's rules, which is an
-	// empty list. Saying so here is what keeps somebody from having to be surprised first.
-	if packaged {
-		fmt.Fprintf(w, "%s shows every charter and where each may write\n", sp.charters())
-	}
+	charterfile.Installed(w, node, scope, sp == asKPaths)
 }
 
 const (
@@ -585,7 +492,6 @@ func charterRm(cc *cli.Context, steps []string, recurse bool) error {
 // as sp spells it, or the refusal in the server's words.
 func charterRmVia(c *client.Client, names []string, at int, recurse bool, sp spelling) (string, error) {
 	q, _ := charterfile.Query(names, at, -1)
-	_, reach := charterfile.SplitAt(names, at)
 	if recurse {
 		q.Set("recurse", "true")
 	}
@@ -602,81 +508,5 @@ func charterRmVia(c *client.Client, names []string, at int, recurse bool, sp spe
 		msg, _ := io.ReadAll(resp.Body)
 		return "", fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(msg)))
 	}
-	// WHAT WENT is said back, because the path said it and a path is easy to mistype. The two
-	// shapes read differently on purpose: a package leaves its writes behind, and a rule removed
-	// in a SCOPE was the scope's own — an inherited one is refused as baseline's — so baseline
-	// holds what it held.
-	name, kind, item := lastItem(reach)
-	where := sp.of(entity.JoinSegs(names))
-	switch {
-	case item && c.Scope != "":
-		return fmt.Sprintf("removed the %s %s in scope %s; baseline is untouched", oneOfKind(kind), name, c.Scope), nil
-	case item:
-		return fmt.Sprintf("removed the %s %s", oneOfKind(kind), name), nil
-	case recurse:
-		// `-r` reaches a PLACE as well as a charter, and often that is all it reaches — the
-		// address itself holding nothing and the charters being under it. Saying "the charter
-		// at demo" about a demo that never had one is a sentence somebody will re-check.
-		return fmt.Sprintf("uninstalled the charters at and under %s; what they wrote is still there", where), nil
-	}
-	return fmt.Sprintf("uninstalled the charter at %s; what it wrote is still there", where), nil
-}
-
-// lastItem reports whether a path ends at a named rule, level or schedule, and which.
-func lastItem(steps []string) (name, kind string, ok bool) {
-	if len(steps) >= 2 {
-		if k := steps[len(steps)-2]; k == "rules" || k == "strata" || k == "schedules" {
-			return steps[len(steps)-1], k, true
-		}
-	}
-	return "", "", false
-}
-
-// oneOfKind is the key said about a single thing: a charter holds rules, LEVELS and schedules.
-func oneOfKind(kind string) string {
-	switch kind {
-	case "strata":
-		return "level"
-	case "schedules":
-		return "schedule"
-	}
-	return "rule"
-}
-
-// nodeField is one field of an object node, or nil.
-func nodeField(n *ir.Node, name string) *ir.Node {
-	n = codec.Unwrap(n)
-	if n == nil || n.Type != ir.ObjectType {
-		return nil
-	}
-	for i, key := range n.Fields {
-		if key != nil && key.Type == ir.StringType && key.String == name {
-			return n.Values[i]
-		}
-	}
-	return nil
-}
-
-func nodeStr(n *ir.Node, name string) string {
-	if v := codec.Unwrap(nodeField(n, name)); v != nil && v.Type == ir.StringType {
-		return v.String
-	}
-	return ""
-}
-
-// nodeInt reads a number off the NODE, which is not what codec.AsInt64 does: that takes a Go
-// value, and handing it an *ir.Node answers 0 for every number there is.
-func nodeInt(n *ir.Node, name string) int64 {
-	v := codec.Unwrap(nodeField(n, name))
-	if v == nil || v.Type != ir.NumberType {
-		return 0
-	}
-	if v.Int64 != nil {
-		return *v.Int64
-	}
-	i, err := strconv.ParseInt(v.Number, 10, 64)
-	if err != nil {
-		return 0
-	}
-	return i
+	return charterfile.Removed(names, at, c.Scope, recurse, sp == asKPaths), nil
 }

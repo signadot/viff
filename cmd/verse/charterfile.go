@@ -51,30 +51,6 @@ const (
 // of is a charter's address, as it is spelled; baseline's is "baseline".
 func (sp spelling) of(at string) string { return charterfile.Spelled(at, sp == asKPaths) }
 
-// tree and file are what a prune compares with, for the reader sp spells for: the command's
-// directory and its files, or the tool's charters.
-func (sp spelling) tree() string {
-	if sp == asKPaths {
-		return "the charters given"
-	}
-	return "the directory"
-}
-
-func (sp spelling) file() string {
-	if sp == asKPaths {
-		return "its charter"
-	}
-	return "its file"
-}
-
-// charters is what reads every charter, for the reader sp spells for.
-func (sp spelling) charters() string {
-	if sp == asKPaths {
-		return "verse_charter"
-	}
-	return "`verse c`"
-}
-
 // renderCharterFile writes the charter at the address asked to w, as its file, and says to notes
 // what the file cannot: the marks on its rules, and the charters under it, spelled as sp spells
 // an address.

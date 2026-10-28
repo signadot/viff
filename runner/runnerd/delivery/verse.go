@@ -37,6 +37,12 @@ const (
 	// OpVerseCharterCheck asks whether charters would install (POST /charter/check), as `verse
 	// charter --check` does.
 	OpVerseCharterCheck = "verse.charter-check"
+	// OpVerseCharterInstall installs charters (POST /charter), as `verse charter -a` does: what
+	// the task installs is held within it, by verse.
+	OpVerseCharterInstall = "verse.charter-install"
+	// OpVerseCharterRemove removes a package, or a rule, level or schedule of one (DELETE
+	// /charter), as `verse charter -r` does.
+	OpVerseCharterRemove = "verse.charter-remove"
 )
 
 // Verse is how the runner makes a request to its verse for a task it hosts: method on path, with
@@ -158,11 +164,13 @@ func tonyOut(doc entity.Payload) Reply {
 var verseRoutes = map[string]struct {
 	method, path, step string
 }{
-	OpVerseDataGet:      {http.MethodGet, "/state", task.StepVerseDataGet},
-	OpVerseDataPut:      {http.MethodPost, "/entity", task.StepVerseDataPut},
-	OpVerseDataRm:       {http.MethodDelete, "/entity", task.StepVerseDataRm},
-	OpVerseCharterGet:   {http.MethodGet, "/charter", task.StepVerseCharterGet},
-	OpVerseCharterCheck: {http.MethodPost, "/charter/check", task.StepVerseCharterCheck},
+	OpVerseDataGet:        {http.MethodGet, "/state", task.StepVerseDataGet},
+	OpVerseDataPut:        {http.MethodPost, "/entity", task.StepVerseDataPut},
+	OpVerseDataRm:         {http.MethodDelete, "/entity", task.StepVerseDataRm},
+	OpVerseCharterGet:     {http.MethodGet, "/charter", task.StepVerseCharterGet},
+	OpVerseCharterCheck:   {http.MethodPost, "/charter/check", task.StepVerseCharterCheck},
+	OpVerseCharterInstall: {http.MethodPost, "/charter", task.StepVerseCharterInstall},
+	OpVerseCharterRemove:  {http.MethodDelete, "/charter", task.StepVerseCharterRemove},
 }
 
 // verseRouted answers a verb of verseRoutes: decided like any act, then carried to verse on its
@@ -184,6 +192,10 @@ func (s *Server) verseRouted(ctx context.Context, tk Task, req Request) Reply {
 		return Reply{Refused: "a removal names what it removes"}
 	case req.Op == OpVerseCharterCheck && (q.Get("at") == "" || strings.TrimSpace(req.Body) == ""):
 		return Reply{Refused: "a check names the address and carries the charters"}
+	case req.Op == OpVerseCharterInstall && strings.TrimSpace(req.Body) == "":
+		return Reply{Refused: "an install carries the charters"}
+	case req.Op == OpVerseCharterRemove && q.Get("at") == "" && q.Get("path") == "":
+		return Reply{Refused: "a removal names what it removes"}
 	}
 	if why := s.refused(tk, req.Decision, task.Step{Name: route.step, Fields: map[string]string{}}); why != "" {
 		return Reply{Refused: why}

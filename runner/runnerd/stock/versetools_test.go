@@ -342,3 +342,90 @@ func TestAScriptReadsTheChartersTheRunnerCarries(t *testing.T) {
 		t.Errorf("the check carried %q, want the charters one document apiece", checked)
 	}
 }
+
+// A SCRIPT INSTALLS AND REMOVES ITS OWNER'S CHARTERS, and the runner carries each on its route: an
+// install sends the charters as `verse charter -a` does, a rule list at its address or each
+// charter at its own at: with a prune, and answers what went where as verse_charter_install says
+// it; a removal says what went; what verse refuses, the script reads in verse's words.
+func TestAScriptInstallsAndRemovesTheChartersTheRunnerCarries(t *testing.T) {
+	withCallTool(t)
+	var mu sync.Mutex
+	var saw, sent []string
+	carry := func(_ context.Context, taskID, method, path string, body []byte) (int, string, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		saw = append(saw, method+" "+path)
+		switch {
+		case method == http.MethodPost && path == "/charter?at=repos.r.hello":
+			sent = append(sent, string(body))
+			return 201, "{installed: [{at: repos.r.hello, rules: 1, strata: 0}]}", nil
+		case method == http.MethodPost && path == "/charter?prune=repos.r":
+			sent = append(sent, string(body))
+			return 201, "{installed: [{at: repos.r.hello, rules: 0, strata: 0, expires: \"2026-10-31T00:00:00Z\"}], pruned: [{at: repos.r.old, uninstalled: true}]}", nil
+		case method == http.MethodPost:
+			return 403, "rule \"wide\": action.spawn.environment.systems.commands: beyond", nil
+		case method == http.MethodDelete:
+			return 204, "", nil
+		}
+		return 404, method + " " + path, nil
+	}
+	c := Config{Script: &Script{Systems: map[string]System{"verse": {Ceiling: systems.Open()}}}}
+	env := envOf(netOpen, nil, nil)
+	env.Systems["verse"] = []systems.Block{{}}
+	script := "#!/bin/sh\nset -e\n" +
+		"verse-call-tool verse-charter-install -at repos.r.hello -charters '[{name: lift, condition: {subject: repos.r.hello.*}, action: {patch: {seen: true}}}, {name: drop, condition: {subject: repos.r.hello.*}, action: {patch: {seen: false}}}]'\n" +
+		"echo ---\n" +
+		"verse-call-tool verse-charter-install -at repos.r -prune -charters 'at: repos.r.hello\nttl: 72h\n---\nat: repos.r.bye'\n" +
+		"echo ---\n" +
+		"verse-call-tool verse-charter-install -at repos.r.wide -charters '[{name: wide}]' || true\n" +
+		"echo ---\n" +
+		"verse-call-tool verse-charter-remove -path repos.r.hello.rules.lift\n" +
+		"echo ---\n" +
+		"verse-call-tool verse-charter-remove -path repos.r.bye\n" +
+		"echo ---\n" +
+		"verse-call-tool verse-charter-install -at repos.r.a -charters 'at: repos.r.a\n---\nat: repos.r.b' || true\n"
+	allow := task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}
+
+	rt := serveRaising(t, c, Secrets{}, Tokens{}, carry)
+	rt.Launch(runner.Launch{ID: "c1", Script: script, Environment: env, Autonomy: allow})
+	snap := ended(t, rt, "c1")
+	if snap.Status != task.Done {
+		t.Fatalf("the script ended %s: %q", snap.Status, snap.Result)
+	}
+	parts := strings.Split(snap.Result, "---")
+	if len(parts) < 6 {
+		t.Fatalf("the script said %q", snap.Result)
+	}
+	if got := strings.TrimSpace(parts[0]); !strings.HasPrefix(got, "package repos.r.hello: installed 1 trigger(s)") ||
+		!strings.Contains(got, "verse_charter shows every charter") {
+		t.Errorf("the install answered %q, want what went where", got)
+	}
+	if got := parts[1]; !strings.Contains(got, "ttl: it is removed at 2026-10-31T00:00:00Z") ||
+		!strings.Contains(got, "package repos.r.old: uninstalled, not in the charters given") {
+		t.Errorf("the pruning install answered %q, want its ttl and what the prune took", got)
+	}
+	if got := strings.TrimSpace(parts[2]); !strings.HasPrefix(got, "refused: the verse refused it: rule \"wide\"") {
+		t.Errorf("a refused install answered %q, want verse's words", got)
+	}
+	if got := strings.TrimSpace(parts[3]); got != "removed the rule lift" {
+		t.Errorf("the rule's removal answered %q", got)
+	}
+	if got := strings.TrimSpace(parts[4]); got != "uninstalled the charter at repos.r.bye; what it wrote is still there" {
+		t.Errorf("the package's removal answered %q", got)
+	}
+	if got := strings.TrimSpace(parts[5]); !strings.Contains(got, "not installed: several charters are each installed at their own at:") {
+		t.Errorf("several charters at one at answered %q, want it refused before it was carried", got)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	want := []string{"POST /charter?at=repos.r.hello", "POST /charter?prune=repos.r", "POST /charter?at=repos.r.wide",
+		"DELETE /charter?path=repos.r.hello.rules.lift", "DELETE /charter?path=repos.r.bye"}
+	if strings.Join(saw, "|") != strings.Join(want, "|") {
+		t.Errorf("the runner carried %v, want %v", saw, want)
+	}
+	if len(sent) != 2 || !strings.Contains(sent[0], "name: lift") || !strings.Contains(sent[0], "---\n") ||
+		!strings.Contains(sent[1], "ttl: 72h") || !strings.Contains(sent[1], "at: repos.r.bye") {
+		t.Errorf("the installs carried %q, want the rules and the charters one document apiece", sent)
+	}
+}

@@ -26,7 +26,8 @@ type Request struct {
 	// `git-issue.push`, and `github-issue.*` and `linear-issue.*` for create, comment and close,
 	// Slack's (slack.go): `slack.post`, `.reply`, `.read` and `.react`, or a verb of the verse system
 	// (verse.go): `verse.ask-create`, `verse.ask-get`, `verse.ask-list`, `verse.data-get`,
-	// `verse.data-put`, `verse.data-rm`, `verse.charter-get` and `verse.charter-check`.
+	// `verse.data-put`, `verse.data-rm`, `verse.charter-get`, `verse.charter-check`,
+	// `verse.charter-install` and `verse.charter-remove`.
 	Op string `tony:"field=op"`
 	// Repo is which repository this is about, because ONE PUSH ACTION IS ONE REPOSITORY. That is
 	// what stops a mixed outcome from being a state anybody has to model: each action has its
@@ -47,7 +48,8 @@ type Request struct {
 	Delete bool `tony:"field=delete,omitzero"`
 	Force  bool `tony:"field=force,omitzero"`
 	// A pull request: into Base, with Title and Body. A verse system verb's document (a
-	// data-put's api.PutEntity, a charter-check's charters, in tony) is Body too.
+	// data-put's api.PutEntity, a charter-check's or charter-install's charters, in tony) is
+	// Body too.
 	Base  string `tony:"field=base,omitzero"`
 	Title string `tony:"field=title,omitzero"`
 	Body  string `tony:"field=body,omitzero"`
