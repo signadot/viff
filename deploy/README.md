@@ -550,7 +550,7 @@ are the names each consumer reads:
 
 | knob | Secret | keys the entry must have | read as |
 |---|---|---|---|
-| `llmSecretKey` | `verse-llm` | `PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY` (`PORTKEY_BASE_URL`, `OPENAI_MODEL` optional) | env, by versed **and** the verse runner, which does not start without `PORTKEY_API_KEY` (its config offers the verse agent) |
+| `llmSecretKey` | `verse-llm` | `PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY` (`PORTKEY_BASE_URL`, `OPENAI_MODEL` optional) | env, by versed **and** the verse runner, which without `PORTKEY_API_KEY` starts with the verse agent closed, offering scripts alone, and says so |
 | `gitSecretKey` | `verse-git` | `credential` — the value being `username=x-access-token\npassword=<PAT>\n` | a **file** at `/git-credentials/credential` |
 | `slackSecretKey` | `verse-slack` | `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET` | env; **not** optional — no token, no start. `SLACK_BOT_TOKEN` also in the runners, `optional: true` in the pod spec: a runner without it starts with `slack` closed, and says so |
 | `linearSecretKey` | `verse-linear` | `LINEAR_API_KEY` (the `Authorization` header verbatim), `LINEAR_WEBHOOK_SECRET` | env; `LINEAR_API_KEY` also in the runners, `optional: true` in the pod spec: a runner without it starts with `linear-issue` closed, and says so |

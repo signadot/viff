@@ -45,8 +45,9 @@ data:
     agents:
       verse:
         # The model credentials are read from the runner's environment, by the names versed
-        # uses too: PORTKEY_API_KEY (required), PORTKEY_VIRTUAL_KEY, PORTKEY_BASE_URL (envFrom
-        # the verse-llm Secret, below). The gateway is reachable from a task whatever its
+        # uses too: PORTKEY_API_KEY, PORTKEY_VIRTUAL_KEY, PORTKEY_BASE_URL (envFrom the verse-llm
+        # Secret, below). Without PORTKEY_API_KEY the runner starts with this agent closed, and
+        # says so. The gateway is reachable from a task whatever its
         # network, since the verse agent makes the call.
         shellEnv: [PATH, HOME, USER, LANG]
         settings:

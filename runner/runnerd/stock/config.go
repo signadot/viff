@@ -243,12 +243,21 @@ func TokensFromEnv(c Config) Tokens {
 }
 
 // Held is the configuration the runner runs with in the environment it starts in (getenv): c,
-// with each system whose credential is not set (held) left out of every doer's section. The
-// runner then does not perform it and no offer holds it, so a spawn that needs it is refused at
+// with each system whose credential is not set (held) left out of every doer's section, and the
+// verse agent left out where its model key is not set. The runner then does not perform the
+// system, or run the agent, and no offer holds it, so a spawn that needs it is refused at
 // install, where it is written, rather than the runner not starting or the act failing at the
-// service. It says what it closed.
+// service. It says what it closed. Codex and claude are not closed: without a key, a login may
+// still authenticate them (CheckStart).
 func (c Config) Held(getenv func(string) string) (Config, []string) {
 	var warnings []string
+	if _, ok := c.Agents[AgentName]; ok && getenv(verse.EnvAPIKey) == "" {
+		agents := maps.Clone(c.Agents)
+		delete(agents, AgentName)
+		c.Agents = agents
+		warnings = append(warnings, fmt.Sprintf("%s is not set: agents.%s is closed, since the verse agent calls its model with it; a spawn that prompts it is refused at install",
+			verse.EnvAPIKey, AgentName))
+	}
 	for _, s := range held {
 		naming := c.naming(s.system)
 		if len(naming) == 0 || getenv(s.env) != "" {
@@ -282,17 +291,18 @@ func (c Config) without(system string) Config {
 }
 
 // CheckStart refuses what the runner cannot start with, from the environment it starts in
-// (getenv) and the programs it finds (lookPath): the verse agent with no model key, an agent
-// whose program is not there. It returns what it lets start and is worth saying: a forge token
-// missing, which a forge on this filesystem does without and a fetch over the network finds, an
-// agent left to its own login, and claude's API key shadowed by an OAuth token. A system whose
-// credential is not set is not refused here; the runner runs with it closed (Held).
+// (getenv) and the programs it finds (lookPath), given the configuration Held left it: nothing
+// left to offer, an agent whose program is not there. It returns what it lets start and is worth
+// saying: a forge token missing, which a forge on this filesystem does without and a fetch over
+// the network finds, an agent left to its own login, and claude's API key shadowed by an OAuth
+// token. A system whose credential is not set, or the verse agent with no model key, is not
+// refused here; the runner runs with it closed (Held).
 func (c Config) CheckStart(getenv func(string) string, lookPath func(string) (string, error)) (warnings []string, err error) {
 	if c.Repos != nil && getenv(EnvGitHubToken) == "" {
 		warnings = append(warnings, EnvGitHubToken+" is not set: a fetch or a push over the network is refused where it reaches for it")
 	}
-	if _, ok := c.Agents[AgentName]; ok && getenv(verse.EnvAPIKey) == "" {
-		return nil, fmt.Errorf("agents.%s: %s is not set, and the verse agent calls its model with it", AgentName, verse.EnvAPIKey)
+	if len(c.Agents) == 0 && c.Script == nil {
+		return nil, fmt.Errorf("the runner offers nothing it can run: agents.%s is closed, %s not being set, and nothing else is offered", AgentName, verse.EnvAPIKey)
 	}
 	if cc := c.codexConfig(); cc != nil {
 		if _, err := lookPath(cc.Program()); err != nil {

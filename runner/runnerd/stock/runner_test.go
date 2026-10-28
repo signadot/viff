@@ -105,7 +105,7 @@ func TestTheVirtualKeyFromTheEnvironment(t *testing.T) {
 }
 
 // Without a model key an agent launch that reaches the runner fails its own task (a runner
-// configured with the verse agent and no key does not start: CheckStart).
+// configured with the verse agent and no key runs without it: Held).
 func TestWithNoKeyThereIsNoAgent(t *testing.T) {
 	_, err := New(opened(Config{}), Secrets{}, t.TempDir(), io.Discard).Build(runner.Launch{ID: "t1",
 		Agent: &runner.Agent{Name: AgentName}, Prompt: "go"}, task.NewRegistry()).Run(context.Background())

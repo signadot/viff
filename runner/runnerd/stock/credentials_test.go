@@ -140,10 +140,10 @@ func TestTheRunnersSystemsAndCeilings(t *testing.T) {
 	}
 }
 
-// WHAT THE RUNNER CANNOT START WITH IS REFUSED AT START, from the environment it starts in: the
-// verse agent with no model key, an agent whose program is not there. A missing forge token, an
-// agent left to its own login, or claude's API key shadowed by an OAuth token, is said and let
-// start.
+// WHAT THE RUNNER CANNOT START WITH IS REFUSED AT START, from the environment it starts in:
+// nothing left to offer once the verse agent is closed for its model key, an agent whose program
+// is not there. A missing forge token, an agent left to its own login, or claude's API key
+// shadowed by an OAuth token, is said and let start.
 func TestTheRunnerRefusesToStartWithoutWhatItNeeds(t *testing.T) {
 	env := func(set ...string) func(string) string {
 		return func(name string) string {
@@ -154,8 +154,9 @@ func TestTheRunnerRefusesToStartWithoutWhatItNeeds(t *testing.T) {
 		}
 	}
 	found := func(string) (string, error) { return "/bin/x", nil }
-	if _, err := agentWith(AgentName, nil).CheckStart(env(), found); err == nil || !strings.Contains(err.Error(), verse.EnvAPIKey) {
-		t.Errorf("the verse agent with no model key: %v", err)
+	alone, _ := agentWith(AgentName, nil).Held(env())
+	if _, err := alone.CheckStart(env(), found); err == nil || !strings.Contains(err.Error(), "the runner offers nothing it can run") || !strings.Contains(err.Error(), verse.EnvAPIKey) {
+		t.Errorf("the verse agent alone, with no model key: %v", err)
 	}
 	cx := agentWith(codex.Agent, nil)
 	gone := func(string) (string, error) { return "", os.ErrNotExist }
@@ -188,7 +189,13 @@ func TestASystemWithNoCredentialIsClosed(t *testing.T) {
 		Agents: map[string]Agent{AgentName: {Systems: map[string]System{"linear-issue": {Ceiling: systems.Open()}, "question": {Ceiling: systems.Open()}}}},
 		Script: &Script{Systems: map[string]System{"linear-issue": {Ceiling: systems.Open()}}},
 	}
-	none := func(string) string { return "" }
+	// The verse agent's model key is set: only Linear's is missing.
+	none := func(name string) string {
+		if name == verse.EnvAPIKey {
+			return "k"
+		}
+		return ""
+	}
 	got, warnings := lin.Held(none)
 	if len(warnings) != 1 || !strings.Contains(warnings[0], EnvLinearAPIKey+" is not set: linear-issue is closed") ||
 		!strings.Contains(warnings[0], "agents.verse.systems.linear-issue, script.systems.linear-issue") {
@@ -217,13 +224,62 @@ func TestASystemWithNoCredentialIsClosed(t *testing.T) {
 		t.Errorf("a launch needing linear-issue: %v, want it refused", err)
 	}
 	set := func(name string) string {
-		if name == EnvLinearAPIKey {
+		if name == EnvLinearAPIKey || name == verse.EnvAPIKey {
 			return "k"
 		}
 		return ""
 	}
 	if same, warnings := lin.Held(set); len(warnings) != 0 || !slices.Contains(same.performs(), "linear-issue") {
 		t.Errorf("with the key set: %v, performs %v", warnings, same.performs())
+	}
+}
+
+// THE VERSE AGENT WITH NO MODEL KEY IS CLOSED, NOT REFUSED: the runner starts offering what
+// else it offers, saying so, and a prompt on it is refused where it is written. Codex and claude
+// with no key stay offered, since a login may still authenticate them.
+func TestTheVerseAgentWithNoKeyIsClosed(t *testing.T) {
+	c := Config{
+		Agents: map[string]Agent{AgentName: {Systems: OpenInside(AgentName)}, codex.Agent: {Systems: OpenInside(codex.Agent)}},
+		Script: &Script{},
+	}
+	none := func(string) string { return "" }
+	got, warnings := c.Held(none)
+	if len(warnings) != 1 || !strings.Contains(warnings[0], verse.EnvAPIKey+" is not set: agents.verse is closed") {
+		t.Errorf("warnings %v", warnings)
+	}
+	if _, ok := got.Agents[AgentName]; ok {
+		t.Error("the verse agent is still run")
+	}
+	if _, ok := got.Agents[codex.Agent]; !ok {
+		t.Error("codex was closed with it")
+	}
+	if _, ok := c.Agents[AgentName]; !ok {
+		t.Error("Held changed the configuration it was given")
+	}
+	if _, err := got.CheckStart(none, func(string) (string, error) { return "/bin/x", nil }); err != nil {
+		t.Errorf("scripts and codex left: %v", err)
+	}
+	if s := SecretsFromEnv(got); s.PortkeyAPIKey != "" {
+		t.Errorf("secrets %+v", s)
+	}
+	d := got.Describe(nil)
+	for _, o := range d.Offers {
+		if o.Agent != nil && o.Agent.Name == AgentName {
+			t.Error("an offer holds the verse agent")
+		}
+	}
+	l := &runner.Launch{ID: "p", Prompt: "go", Agent: &runner.Agent{Name: AgentName}}
+	if err := runnerd.CheckLaunch(l, d, nil); err == nil {
+		t.Error("a prompt to the closed verse agent is taken")
+	}
+	key := func(name string) string {
+		if name == verse.EnvAPIKey {
+			return "k"
+		}
+		return ""
+	}
+	if same, warnings := c.Held(key); len(warnings) != 0 || len(same.Agents) != 2 {
+		t.Errorf("with the key set: %v, agents %v", warnings, same.Agents)
 	}
 }
 

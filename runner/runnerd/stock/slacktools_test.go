@@ -13,6 +13,7 @@ import (
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd/delivery"
+	"github.com/signadot/verse/runner/runnerd/verse"
 	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
@@ -200,7 +201,12 @@ func TestARunnerPerformsSlackWithItsBotToken(t *testing.T) {
 			t.Errorf("the offer %s does not intercept slack, with its doer's ceiling: %+v", o.Name(), o.Systems["slack"])
 		}
 	}
-	none := func(string) string { return "" }
+	none := func(name string) string { // the verse agent's model key alone
+		if name == verse.EnvAPIKey {
+			return "k"
+		}
+		return ""
+	}
 	if held, warnings := c.Held(none); len(warnings) != 1 || !strings.Contains(warnings[0], "SLACK_BOT_TOKEN") || slices.Contains(held.performs(), "slack") {
 		t.Errorf("no bot token: %v, performs %v", warnings, held.performs())
 	}
