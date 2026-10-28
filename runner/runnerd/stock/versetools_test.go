@@ -20,15 +20,17 @@ import (
 // A SCRIPT RAISES AN ASK FOR ITS OWNER, and the runner carries it to verse: the raiser is handed
 // the task and the ask as the script wrote it, its name this task's id where the script named
 // none, its due a date where the script gave a duration, and the script reads the id verse
-// answered. A runner that reaches no verse refuses a launch that names the verse system.
+// answered, then reads the ask back and lists its owner's asks. A runner that reaches no verse
+// refuses a launch that names the verse system.
 func TestAScriptRaisesAnAskTheRunnerCarriesToVerse(t *testing.T) {
 	withCallTool(t)
 	var mu sync.Mutex
 	var saw []map[string]any
 	raise := func(_ context.Context, taskID, method, path string, ask []byte) (int, string, error) {
-		// What it reads back, after: the ask it raised, answered.
+		// What it reads back, after: the ask it raised, answered, and one its owner raised before.
 		if method == http.MethodGet && path == "/asks" {
-			return 200, `- {id: r1-1a2b, name: r1, question: "Land it?", answer: yes, status: answered}`, nil
+			return 200, `- {id: r1-1a2b, name: r1, question: "Land it?", answer: yes, status: answered}
+- {id: tea-9z9z, name: tea, question: "Tea?", status: pending}`, nil
 		}
 		var doc map[string]any
 		if err := codec.Unmarshal(ask, &doc, codec.Tony); err != nil {
@@ -45,7 +47,8 @@ func TestAScriptRaisesAnAskTheRunnerCarriesToVerse(t *testing.T) {
 	env.Systems["verse"] = []systems.Block{{}}
 	script := "#!/bin/sh\n" +
 		"verse-call-tool verse-ask-create -question 'Land it?' -to 'user:alice@example.com, group:leads' -label team=payments,kind=deploy -due ' 48h ' -then '{spawn: {script: \"true\"}}'\n" +
-		"verse-call-tool verse-ask-get -name_or_id r1-1a2b\n"
+		"verse-call-tool verse-ask-get -name_or_id r1-1a2b\n" +
+		"verse-call-tool verse-ask-list\n"
 	allow := task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}
 
 	rt := serveRaising(t, c, Secrets{}, Tokens{}, raise)
@@ -56,6 +59,9 @@ func TestAScriptRaisesAnAskTheRunnerCarriesToVerse(t *testing.T) {
 	}
 	if !strings.Contains(snap.Result, "answer: yes") {
 		t.Errorf("the script read the ask back as %q, want it answered", snap.Result)
+	}
+	if !strings.Contains(snap.Result, "tea-9z9z") {
+		t.Errorf("the script listed its owner's asks as %q, want the owner's other ask among them", snap.Result)
 	}
 	mu.Lock()
 	defer mu.Unlock()

@@ -5,3 +5,5 @@ verbs:
   description: "Raise an ask as the person the task runs for, as `verse ask` and verse_ask_create do, and go on without waiting: the call answers the ask's id, and the ask stands after the task ends. Its `then` and `else` run as that person when it settles, and a spawn among them reaches no further than the task does, on its runner and with its credential."
 - name: ask-get
   description: "Read one of the asks of the person the task runs for, by the name it was asked under or its id, as `verse ask <name|id>` and verse_ask do: whether it was answered (`status`, and `answer`, `pending` until it settles, or `why` where it settled with no answer), what it asked and of whom, its due, and what its then and else did."
+- name: ask-list
+  description: "List the asks of the person the task runs for, as `verse ask` and verse_ask do: each with its id, question, who is asked, its due, its `status`, and its `answer`, `pending` until it settles."

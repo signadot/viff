@@ -9,6 +9,7 @@ import (
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/task"
 )
@@ -22,6 +23,8 @@ const (
 	OpVerseAskCreate = "verse.ask-create"
 	// OpVerseAskGet reads one of the owner's asks (GET /asks), as `verse ask <name|id>` does.
 	OpVerseAskGet = "verse.ask-get"
+	// OpVerseAskList lists the owner's asks (GET /asks), as `verse ask` does.
+	OpVerseAskList = "verse.ask-list"
 )
 
 // Verse is how the runner makes a request to its verse for a task it hosts: method on path, with
@@ -75,29 +78,64 @@ func (s *Server) verseAskGet(ctx context.Context, tk Task, req Request) Reply {
 	if arg == "" {
 		return Reply{Refused: "a read names the ask, by its name or its id"}
 	}
-	if why := s.refused(tk, req.Decision, task.Step{Name: task.StepVerseAskGet, Fields: map[string]string{}}); why != "" {
-		return Reply{Refused: why}
+	asks, rep := s.ownersAsks(ctx, tk, req, task.StepVerseAskGet)
+	if asks == nil {
+		return rep
+	}
+	e, err := mirror.AskNamed(asks, arg)
+	if err != nil {
+		return Reply{Refused: err.Error()}
+	}
+	return tonyOut(mirror.AskShown(e).Payload())
+}
+
+// verseAskList answers a `verse.ask-list`: the owner's asks, each as `verse ask` lists it
+// (mirror.AskRow), or the sentence that says there are none.
+func (s *Server) verseAskList(ctx context.Context, tk Task, req Request) Reply {
+	if s.Services.Verse == nil {
+		return Reply{Error: noVerse}
+	}
+	asks, rep := s.ownersAsks(ctx, tk, req, task.StepVerseAskList)
+	if asks == nil {
+		return rep
+	}
+	if len(asks) == 0 {
+		return Reply{OK: true, Out: "the person this task runs for has no asks standing"}
+	}
+	rows := make([]any, 0, len(asks))
+	for _, e := range asks {
+		rows = append(rows, mirror.AskRow(e))
+	}
+	return tonyOut(entity.Val(rows))
+}
+
+// ownersAsks is the owner's asks, read from verse for the task (GET /asks) once its autonomy and
+// the runner's ceiling decide step; nil, with the reply that says why, where they were not read.
+func (s *Server) ownersAsks(ctx context.Context, tk Task, req Request, step string) ([]entity.Entity, Reply) {
+	if why := s.refused(tk, req.Decision, task.Step{Name: step, Fields: map[string]string{}}); why != "" {
+		return nil, Reply{Refused: why}
 	}
 	code, said, err := s.Services.Verse(ctx, tk.ID, http.MethodGet, "/asks", nil)
 	switch {
 	case err != nil:
-		return Reply{Error: "the read was not carried to verse: " + err.Error()}
+		return nil, Reply{Error: "the read was not carried to verse: " + err.Error()}
 	case code/100 == 4:
-		return Reply{Refused: "the verse refused the read: " + said}
+		return nil, Reply{Refused: "the verse refused the read: " + said}
 	case code/100 != 2:
-		return Reply{Error: fmt.Sprintf("the verse answered %d: %s", code, said)}
+		return nil, Reply{Error: fmt.Sprintf("the verse answered %d: %s", code, said)}
 	}
 	list, err := codec.ParseNode([]byte(said), codec.Tony)
 	if err != nil {
-		return Reply{Error: "the verse's asks do not read: " + err.Error()}
+		return nil, Reply{Error: "the verse's asks do not read: " + err.Error()}
 	}
-	e, err := mirror.AskNamed(mirror.AsksIn(list), arg)
-	if err != nil {
-		return Reply{Refused: err.Error()}
-	}
-	var doc bytes.Buffer
-	if err := codec.EncodeNode(&doc, mirror.AskShown(e).Payload(), codec.Tony); err != nil {
+	return append([]entity.Entity{}, mirror.AsksIn(list)...), Reply{}
+}
+
+// tonyOut is a read's reply: the document, in tony.
+func tonyOut(doc entity.Payload) Reply {
+	var b bytes.Buffer
+	if err := codec.EncodeNode(&b, doc, codec.Tony); err != nil {
 		return Reply{Error: err.Error()}
 	}
-	return Reply{OK: true, Out: strings.TrimSpace(doc.String())}
+	return Reply{OK: true, Out: strings.TrimSpace(b.String())}
 }

@@ -65,6 +65,8 @@ var (
 	StepVerseAskCreate = systems.Step("verse", "ask-create")
 	// One of that person's asks read back, `verse ask <name|id>`'s: whether it was answered.
 	StepVerseAskGet = systems.Step("verse", "ask-get")
+	// All of that person's asks, `verse ask`'s listing.
+	StepVerseAskList = systems.Step("verse", "ask-list")
 	// A connection a task opens through the runner's proxy, which only a network of allow has:
 	// the proxy decides it, by the host and the port it sees.
 	StepNetworkTCPClient = systems.Step("network", "tcp-client", "mode", "host", "port")

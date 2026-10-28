@@ -25,7 +25,7 @@ type Request struct {
 	// (github.go): `github.list-prs` and `github.read-pr`, a tracker's act (issues.go): `git-issue.pull`,
 	// `git-issue.push`, and `github-issue.*` and `linear-issue.*` for create, comment and close,
 	// Slack's (slack.go): `slack.post`, `.reply`, `.read` and `.react`, or a verb of the verse system
-	// (verse.go): `verse.ask-create` and `verse.ask-get`.
+	// (verse.go): `verse.ask-create`, `verse.ask-get` and `verse.ask-list`.
 	Op string `tony:"field=op"`
 	// Repo is which repository this is about, because ONE PUSH ACTION IS ONE REPOSITORY. That is
 	// what stops a mixed outcome from being a state anybody has to model: each action has its

@@ -21,8 +21,8 @@ import (
 // THE VERSE SYSTEM is verse itself, acted on by a task as the person it runs for would act on it:
 // each verb is a verb of `verse` and of `verse mcp`, its tool spelled as the MCP tool is and taking
 // what that tool takes, carried by the runner to verse's API over the task's channel
-// (delivery.OpVerseAskCreate, OpVerseAskGet) and admitted as the task's owner. A task's own questions, which it
-// waits on as a task, are the question system's (verse.Ask).
+// (delivery.OpVerseAskCreate, OpVerseAskGet, OpVerseAskList) and admitted as the task's owner. A task's
+// own questions, which it waits on as a task, are the question system's (verse.Ask).
 
 // askCreateTool is `verse ask <name> -q <question>`, verse_ask_create: an ask raised as the
 // person the task runs for. It does not wait: the ask outlives the task, and its `then` and `else`
@@ -32,6 +32,9 @@ var askCreateTool = systems.Tool("verse", "ask-create")
 // askGetTool is `verse ask <name|id>`, verse_ask naming one: one of that person's asks read back,
 // so a task that raised one sees whether it was answered.
 var askGetTool = systems.Tool("verse", "ask-get")
+
+// askListTool is `verse ask`, verse_ask naming none: all of that person's asks.
+var askListTool = systems.Tool("verse", "ask-list")
 
 // verseTools are the verse system's tools, where the runner reaches its verse with a token of its
 // own.
@@ -116,6 +119,18 @@ func verseTools(cl *delivery.Client) []verse.Tool {
 				return "not read: name the ask, by its name or its id", true, nil
 			}
 			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpVerseAskGet, Ask: arg}))
+		},
+	}, {
+		Name: askListTool,
+		Description: "List the asks of the person this task runs for, as `verse ask` and verse_ask do: each " +
+			"with its id, question, who is asked, its due, its `status`, and its `answer`, pending until it " +
+			"settles. verse-ask-get reads one of them.",
+		Params:   map[string]any{},
+		Required: []string{},
+		Step:     task.StepVerseAskList,
+		Fields:   func(map[string]any) (map[string]string, bool) { return map[string]string{}, true },
+		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpVerseAskList}))
 		},
 	}}
 }

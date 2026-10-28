@@ -145,6 +145,8 @@ func (s *Server) answer(tk Task, raw []byte) Reply {
 		return s.verseAskCreate(ctx, tk, req)
 	case OpVerseAskGet:
 		return s.verseAskGet(ctx, tk, req)
+	case OpVerseAskList:
+		return s.verseAskList(ctx, tk, req)
 	}
 	return Reply{Error: fmt.Sprintf("unknown operation %q", req.Op)}
 }

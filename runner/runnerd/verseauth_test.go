@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/versed/idptest"
 )
@@ -358,6 +360,43 @@ func TestARaiseRefusedAtTheDoorIsTheRunnersFault(t *testing.T) {
 	door.Store(true)
 	if code, _, err := g.Carry(context.Background(), "t1", http.MethodPost, "/asks", []byte("{question: x}")); err == nil || !strings.Contains(err.Error(), "not this") {
 		t.Errorf("a refusal at the door = %d, %v, want an error saying why", code, err)
+	}
+}
+
+// A READ IS CARRIED AS A READ: the runner's own token and the task's id, the answer asked for in
+// tony on the query beside what the path already asks, and no body or Content-Type where there
+// is nothing to send.
+func TestARunnerCarriesATasksReadToVerse(t *testing.T) {
+	cluster, _, _ := fakeVerse(t)
+	type seen struct {
+		method, uri, task, ctype, body string
+		bearer                         bool
+	}
+	var got seen
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		got = seen{r.Method, r.URL.RequestURI(), r.Header.Get(api.TaskHeader), r.Header.Get("Content-Type"), string(b),
+			strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ")}
+		fmt.Fprint(w, "- {id: a-1}\n")
+	}))
+	t.Cleanup(srv.Close)
+	path, _ := ownTokenFile(t, cluster, runnerSub)
+	g, err := NewGuard(Verse{URL: srv.URL}, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, said, err := g.Carry(context.Background(), "t1", http.MethodGet, "/asks", nil)
+	if err != nil || code != http.StatusOK || said != "- {id: a-1}" {
+		t.Fatalf("a read = %d %q %v", code, said, err)
+	}
+	if want := (seen{http.MethodGet, "/asks?format=tony", "t1", "", "", true}); got != want {
+		t.Errorf("the read was carried as %+v, want %+v", got, want)
+	}
+	if _, _, err := g.Carry(context.Background(), "t1", http.MethodGet, "/asks?waiting=me", nil); err != nil || got.uri != "/asks?waiting=me&format=tony" {
+		t.Errorf("a read with a query was carried to %q (%v)", got.uri, err)
+	}
+	if _, _, err := g.Carry(context.Background(), "t1", http.MethodPost, "/asks", []byte("{question: x}")); err != nil || got.ctype != "application/tony" || got.body != "{question: x}" {
+		t.Errorf("a raise was carried as %+v (%v)", got, err)
 	}
 }
 

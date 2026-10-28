@@ -118,3 +118,46 @@ func TestATasksReadOfAnAskIsCarriedToVerse(t *testing.T) {
 		t.Errorf("a runner that reaches no verse: %+v", rep)
 	}
 }
+
+// A TASK LISTS ITS OWNER'S ASKS, as `verse ask` lists them: each row with its id and its answer,
+// `pending` until it settles, carried to verse for the task (GET /asks) after the task's autonomy;
+// none is said in a sentence.
+func TestATasksListingOfItsOwnersAsksIsCarriedToVerse(t *testing.T) {
+	var saw []string
+	asks := `- {id: land-1a2b, name: land, question: "Land it?", answer: yes, status: answered}
+- {id: tea-1, name: tea, question: "Tea?", status: pending}
+`
+	verse := func(_ context.Context, taskID, method, path string, body []byte) (int, string, error) {
+		saw = append(saw, taskID+" "+method+" "+path)
+		return http.StatusOK, asks, nil
+	}
+	l := within(nil, "verse")
+	l.Autonomy = task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}
+	tk := Task{ID: "t7", Workspace: &workspace.Workspace{}, Launch: l}
+	s := &Server{Log: io.Discard, Services: Services{Verse: verse}, Ceilings: map[string]systems.Ceiling{"verse": systems.Open()}}
+
+	rep := s.answer(tk, frame(t, Request{Op: OpVerseAskList}))
+	if !rep.OK || !strings.Contains(rep.Out, "id: land-1a2b") || !strings.Contains(rep.Out, "id: tea-1") || !strings.Contains(rep.Out, "answer: pending") {
+		t.Errorf("the owner's asks listed: %+v", rep)
+	}
+	if len(saw) != 1 || saw[0] != "t7 GET /asks" {
+		t.Errorf("the listing was carried as %v, want the task's GET /asks", saw)
+	}
+	asks = "[]"
+	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskList})); !rep.OK || !strings.Contains(rep.Out, "no asks standing") {
+		t.Errorf("no asks: %+v, want a sentence saying so", rep)
+	}
+
+	denied := tk
+	dl := *l
+	dl.Autonomy = task.Autonomy{{Name: "no-list", Match: &task.Match{System: "verse", Verb: "ask-list"}, Then: task.Then{Mode: task.ThenDeny}}, {Then: task.Then{Mode: task.ThenAllow}}}
+	denied.Launch = &dl
+	saw = nil
+	if rep := s.answer(denied, frame(t, Request{Op: OpVerseAskList})); !strings.Contains(rep.Refused, "the autonomy's row no-list") || len(saw) != 0 {
+		t.Errorf("a listing the autonomy denies: %+v (carried %v)", rep, saw)
+	}
+	s.Services.Verse = nil
+	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskList})); !strings.Contains(rep.Error, "reaches no verse") {
+		t.Errorf("a runner that reaches no verse: %+v", rep)
+	}
+}

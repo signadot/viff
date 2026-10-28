@@ -34,6 +34,7 @@ spawn:
 |---|---|---|---|
 | `verse-ask-create` | `verse ask <name> -q`, `verse_ask_create` | raises an ask as the person the task runs for: `question`, `to`, `due`, `on_silence`, `then`, `else`, `about`, `keep`, `label` ([asking](../asking.md)). It does not wait: the result is the ask's id, and the ask stands after the task ends. | `verse.ask-create` |
 | `verse-ask-get` | `verse ask <name\|id>`, `verse_ask` | reads one of the person's asks, by `name_or_id`: the name it was asked under or its id. The result is the ask as `verse ask` shows it: its `status` and `answer`, `pending` until it settles (or `why`, where it settled with no answer), what it asked and of whom, its due, and what its `then` and `else` did. | `verse.ask-get` |
+| `verse-ask-list` | `verse ask`, `verse_ask` | lists the person's asks, each as `verse ask` lists it: its id, question, who is asked, its due, its `status`, and its `answer`, `pending` until it settles. | `verse.ask-list` |
 
 The ask is the person's, not the task's. Its `from` names them, with the task beside them, and
 nothing waits on it. Its `then` and `else` run as that person when it settles. A spawn in either
