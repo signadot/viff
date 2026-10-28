@@ -19,7 +19,7 @@ import (
 // verse as its trigger:rule:<name> entity, so it is still there after a restart (see
 // charter.go). It validates each gate's mode and rejects a duplicate name. The engine
 // interprets the trigger directly — there is no separate compiled form.
-func (e *Engine) AddTrigger(t Trigger) error { return e.addTrigger(t, true, "", true) }
+func (e *Engine) AddTrigger(t Trigger) error { return e.addTrigger(t, true, "") }
 
 // InstallTrigger is AddTrigger for a CHARTER FILE: a rule of the same name is REPLACED rather
 // than refused, because the file is what the operator means and re-applying one is the ordinary
@@ -48,7 +48,7 @@ func (e *Engine) InstallTriggerAs(as string, t Trigger) error {
 	// AND NOTHING MOVES UNTIL THE REPLACEMENT IS KNOWN GOOD. Every check a rule faces is made
 	// of the replacement first, with the old one still installed: a file re-applied with a
 	// mistake in it is refused and leaves what stood standing.
-	if _, err := e.vet(t, as, true); err != nil {
+	if _, err := e.vet(t, as); err != nil {
 		return err
 	}
 	old, had := e.Rule(t.Name)
@@ -61,7 +61,7 @@ func (e *Engine) InstallTriggerAs(as string, t Trigger) error {
 		if err != nil {
 			return fmt.Errorf("%w: trigger %q: reading %s: %w", ErrCharter, t.Name, e.RuleRef(t.Name), err)
 		}
-		return e.place(t, true, as, true, stands, false) // vetted above, as an install
+		return e.place(t, true, as, true, stands)
 	}
 	// WRITTEN OVER, NOT DELETED AND WRITTEN. A rule's spec is stored raw, so a write replaces
 	// it whole, and deleting the entity first would take its owner record with it — the grants
@@ -69,7 +69,7 @@ func (e *Engine) InstallTriggerAs(as string, t Trigger) error {
 	// and fire as them. A rule stays its installer's through an edit by a co-owner; only the
 	// system, installing at a name it decides, takes it (takeForTheSystem).
 	e.unplace(t.Name)
-	if err := e.place(t, true, as, true, true, false); err != nil { // vetted above, as an install
+	if err := e.place(t, true, as, true, true); err != nil {
 		if back := e.RestoreTrigger(old); back != nil {
 			e.logger.Error("the rule that stood could not be put back", "trigger", old.Name, "err", back)
 		}
@@ -84,7 +84,7 @@ func (e *Engine) InstallTriggerAs(as string, t Trigger) error {
 // an install would be, a rule put back by the engine would be taken for the system.
 func (e *Engine) RestoreTrigger(old Trigger) error {
 	e.unplace(old.Name)
-	return e.place(old, true, "", false, true, false)
+	return e.place(old, true, "", false, true)
 }
 
 // RewriteRuleAs writes a rule's record over as t spells it and holds t in the engine in place of
@@ -148,20 +148,13 @@ func (e *Engine) RemoveTriggerAs(principal, name string) (bool, error) {
 // entity's definition and reinstalled with it. Writing it out again would give one rule two
 // owners and two lifetimes, and the standalone copy would outlive the owner that reaped it.
 // Goals were the case that motivated the flag; see git-issue 9by2kc0n.
-//
-// install is whether this is an install, where the author is present, or a restore of what was
-// installed, and is the caller's to say: neither durable nor whether a record stands tells them
-// apart, since a restore writes nothing and a rule carried inside another entity is not durable
-// at its install either.
-func (e *Engine) addTrigger(t Trigger, durable bool, as string, install bool) error {
-	return e.place(t, durable, as, true, false, install)
+func (e *Engine) addTrigger(t Trigger, durable bool, as string) error {
+	return e.place(t, durable, as, true, false)
 }
 
 // vet is every check an install makes of a rule, and changes nothing: it reports whether the
-// rule's stratum is installed (false is a rule to HOLD, not one to refuse). install is whether
-// this is an install, where the author is present, rather than a restore of what was installed:
-// the checks against the verse as it stands now are the install's alone.
-func (e *Engine) vet(t Trigger, as string, install bool) (bool, error) {
+// rule's stratum is installed (false is a rule to HOLD, not one to refuse).
+func (e *Engine) vet(t Trigger, as string) (bool, error) {
 	if err := validTriggerName(t.Name); err != nil {
 		return false, err
 	}
@@ -271,20 +264,6 @@ func (e *Engine) vet(t Trigger, as string, install bool) (bool, error) {
 				return false, fmt.Errorf("trigger %q: gate %q onDenied: %w", t.Name, g.Name, err)
 			}
 		}
-		// A gate's `then` and `else` are checked as an ask's are, as the rule, where the author
-		// is present to hear what is wrong: what they name, against the verse as it stands. At
-		// an install only: what they name may have moved since (an ask they answer settles), and
-		// a restore puts back what was answered yes to, not what would be answered yes to now.
-		if e.thenCheck != nil && install {
-			for field, follow := range map[string]entity.Payload{"then": g.Then, "else": g.Else} {
-				if follow == nil {
-					continue
-				}
-				if err := e.thenCheck(e.Principal(t.Name), field, follow); err != nil {
-					return false, fmt.Errorf("trigger %q: gate %q: %w", t.Name, g.Name, err) // the refusal names the field
-				}
-			}
-		}
 	}
 	// LEVEL DISCIPLINE: a subject inside its stratum's pattern, a derive inside some strictly
 	// higher one's. Syntactic like the rest, and neither reads the store.
@@ -335,16 +314,15 @@ func (e *Engine) vet(t Trigger, as string, install bool) (bool, error) {
 // place installs a rule that vet admits: into the engine, and into the store when durable. as
 // is who the write is made as; take is whether a system install claims the record
 // (takeForTheSystem); over is whether a record of this name already stands and is being written
-// over; install is whether the checks an install alone makes are made (vet), which is the
-// caller's to say and not inferred from over.
+// over.
 //
 // OVER DECIDES WHAT A FAILURE UNDOES. A fresh install that cannot be made durable is taken out
 // whole, the record with it. A replacement that cannot is taken out of the ENGINE and nothing
 // else: the record standing is the one before it, with its owner and its grants, and removing
 // it would turn a store that refused one write into a rule that is gone and a name that is
 // anybody's.
-func (e *Engine) place(t Trigger, durable bool, as string, take, over, install bool) error {
-	ok, err := e.vet(t, as, install)
+func (e *Engine) place(t Trigger, durable bool, as string, take, over bool) error {
+	ok, err := e.vet(t, as)
 	if err != nil {
 		return err
 	}
@@ -724,7 +702,7 @@ func checkGates(node *ir.Node) error {
 		}
 		if err := checkFields(el, "gate", map[string]bool{
 			"name": true, "mode": true, "need": true, "options": true, "deadline": true, "onDenied": true,
-			"answerers": true, "answerersFrom": true, "pose": true, "labels": true, "then": true, "else": true,
+			"answerers": true, "answerersFrom": true, "pose": true, "labels": true,
 		}, func(field string, val *ir.Node) error {
 			if field == "onDenied" {
 				return checkAction(val)

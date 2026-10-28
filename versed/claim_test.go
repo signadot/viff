@@ -122,47 +122,6 @@ func TestARestartFinishesAClaimedSettle(t *testing.T) {
 	}
 }
 
-// A RESTORE PUTS BACK WHAT WAS ANSWERED YES TO. alice's rule has a gate whose `then` answers a
-// question that has since settled; the install checked it against the verse as it stood, and the
-// restore does not check it again, so the rule comes back.
-func TestARestoreKeepsARuleWhoseThenAnswersASettledAsk(t *testing.T) {
-	raw := entitytest.Store(t)
-	first := NewWithStore(ScriptedBuilder, raw)
-	t.Cleanup(first.stopAllIOs)
-	_, ts := askingOn(t, first)
-	const alice, bob = "user:alice@example.com", "user:bob@example.com"
-	const ship = "verse.trigger.ship.ship~restore"
-	answered := raise(t, first, ship, nil)
-	// Installed, then given its then: a rule's place acts as whoever owns its record, which the
-	// first install writes, so the then is checked as alice on the replacement.
-	rule := func(then string) string {
-		return `{name: approve-f,
-			condition: {subject: {path: "demo.f.*", value: {stage: open}}},
-			gates: [{name: approval, mode: ask` + then + `}],
-			action: {patch: {stage: reviewing}}}`
-	}
-	for _, then := range []string{"", `, then: {answer: {ask: "` + ship + `", choice: proceed}}`} {
-		resp := installAs(t, alice, ts.URL, rule(then))
-		if resp.StatusCode != http.StatusCreated {
-			t.Fatalf("install with then %q: %s: %s", then, resp.Status, bodyOf(t, resp))
-		}
-		resp.Body.Close()
-	}
-	if resp := answerWith(t, bob, ts.URL, ship, task.Proceed); resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("bob settles ship: %s: %s", resp.Status, bodyOf(t, resp))
-	}
-	<-answered
-	ts.Close()
-	first.stopAllIOs()
-
-	second := NewWithStore(ScriptedBuilder, raw)
-	t.Cleanup(second.stopAllIOs)
-	second.Start(t.Context())
-	if _, ok := second.Eng.Rule("approve-f"); !ok {
-		t.Fatal("the rule whose then answers a settled ask did not come back at the restart")
-	}
-}
-
 // AN ANSWER NOBODY HEARD STANDS. The claim is the answer, so an answer whose delivery finds nobody
 // waiting, the task's decision having closed, is not "no such question": it is recorded, said to
 // stand, and the claim is on the record for the next asking to deliver.

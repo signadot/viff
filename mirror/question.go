@@ -283,8 +283,8 @@ const (
 	FromField = "from"
 	ToField   = "to"
 	// ThenField is what a yes starts before the answer goes back to whoever asked: on an ask, as
-	// its asker wrote it; on a rule's or a task's question, as the gate or the ask row wrote it.
-	// ElseField is the same for a no.
+	// its asker wrote it; on a task's question, as the ask row wrote it. ElseField is the same for
+	// a no.
 	ThenField = "then"
 	ElseField = "else"
 )
@@ -539,10 +539,9 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 	}
 	rec[ToField] = toGrantees(q.Answerers)
 	rec[LabelsField] = labelsValue(q.Labels)
-	// What a yes, or a no, starts before the answer goes back to whoever asked, as the gate or
-	// the row wrote it: the same keys an ask carries, run the same way (versed's followAsk).
-	// Copied: the gate's or the row's node is shared by every question it poses, and a payload
-	// built from a node parents it.
+	// What a yes, or a no, starts before the answer goes back to whoever asked, as the row wrote
+	// it: the same keys an ask carries, run the same way (versed's followAsk). Copied: the row's
+	// node is shared by every question it poses, and a payload built from a node parents it.
 	if q.Then != nil {
 		rec[ThenField] = q.Then.DeepCopy()
 	}

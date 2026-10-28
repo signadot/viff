@@ -371,21 +371,6 @@ type Gate struct {
 	// completion hooks for a spawn — a denied gate has no task to complete, which is why
 	// Action.validate requires a spawn for those and must not for this one.
 	OnDenied *Action `tony:"field=onDenied,omitzero"`
-	// Then is what a YES starts before the firing goes on: one key naming a spawn, an answer or
-	// an ask, in the shape an ask's own `then` has (`{spawn: {…}}`, `{answer: {…}}`, `{ask:
-	// {…}}`). It rides on the gate's question, and verse runs it as this rule once the question
-	// settles on proceed, before the answer is given back to the firing; a spawn has run once
-	// it is launched, and the firing does not wait for it to finish.
-	//
-	// It is not the action. The action is what the rule does about its subject; `then` is what
-	// the question's yes starts, about the question, on the rule's authority — the same thing a
-	// person's ask runs on theirs. Checked at install as the rule, where its author is present
-	// to hear what is wrong (Engine.SetThenCheck).
-	Then entity.Payload `tony:"field=then,omitzero"`
-	// Else is what a NO starts, the same way, before the firing hears the refusal. It is about
-	// the question where OnDenied is about the subject: a refusal may both mark the subject and
-	// start something, and each is said where it belongs.
-	Else entity.Payload `tony:"field=else,omitzero"`
 }
 
 // validate refuses a gate whose question cannot be posed as written. Every refusal names
@@ -396,13 +381,6 @@ func (g Gate) validate() error {
 	}
 	if err := task.CheckLabels(g.Labels); err != nil {
 		return err
-	}
-	// The shape of what a yes or a no starts, which every engine checks; what it names is the
-	// install's to check, as the rule (Engine.SetThenCheck).
-	for field, follow := range map[string]entity.Payload{"then": g.Then, "else": g.Else} {
-		if err := task.CheckFollow(field, follow); err != nil {
-			return err
-		}
 	}
 	if g.Pose != "" && g.Mode == "auto" {
 		return fmt.Errorf("`pose` is the words a question is asked in, and an auto gate asks " +

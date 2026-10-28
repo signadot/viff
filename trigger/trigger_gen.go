@@ -846,16 +846,6 @@ func (s *Gate) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["onDenied"] = node
 	}
 
-	// Field: Then (optional)
-	if s.Then != nil {
-		irMap["then"] = s.Then
-	}
-
-	// Field: Else (optional)
-	if s.Else != nil {
-		irMap["else"] = s.Else
-	}
-
 	res := ir.FromMap(irMap)
 	if len(s.Note) > 0 {
 		res.Comment = &ir.Node{Type: ir.CommentType, Lines: s.Note, Parent: res}
@@ -1007,18 +997,6 @@ func (s *Gate) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			s.OnDenied = &Action{}
 			if err := s.OnDenied.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
-			}
-		case "then":
-			if gomap.GetUnmapComments(opts...) {
-				s.Then = fieldNode
-			} else {
-				s.Then = fieldNodeUnwrapped
-			}
-		case "else":
-			if gomap.GetUnmapComments(opts...) {
-				s.Else = fieldNode
-			} else {
-				s.Else = fieldNodeUnwrapped
 			}
 		default:
 			if gomap.IsStrict(opts...) {

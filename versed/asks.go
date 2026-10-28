@@ -551,9 +551,9 @@ func (s *Server) carryBack(ref entity.Ref, p entity.Payload) {
 // The task's id is written on the ask first, conditional on none standing, so a restart that
 // finds the ask answered and its `then` not yet run runs it, and one that finds it run does not.
 //
-// Whoever asked is read from `from` (askerOf): a person, `via:` a rule, or a task's principal. A
-// record naming none, which verse never writes, has its `then` refused on the record rather than
-// skipped, so a `then` that did not run is never silent.
+// Whoever asked is read from `from` (askerOf): a person, or a task's principal. A record naming
+// neither, which a question carrying a `then` never does, has its `then` refused on the record
+// rather than skipped, so a `then` that did not run is never silent.
 func (s *Server) followAsk(ref entity.Ref, field string) {
 	sys := entity.As(s.Store, entity.SystemDocket)
 	ent, ok, err := sys.Get(ref)

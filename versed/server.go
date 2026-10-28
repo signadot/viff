@@ -390,7 +390,6 @@ func NewWithStore(build runnerd.Builder, store entity.Store, opts ...Option) *Se
 	eng.SetSpawner(s.spawnerFor(store, "", eng))
 	eng.SetDeadlineMover(s.moveDeadline)
 	eng.SetOfferCheck(s.offerCheck(store))
-	eng.SetThenCheck(s.thenCheck())
 	return s
 }
 
@@ -1082,7 +1081,6 @@ func (s *Server) scopeEngine(scope string) *trigger.Engine {
 		eng.SetSpawner(s.spawnerFor(scoped, scope, eng))
 		eng.SetDeadlineMover(s.moveDeadline)
 		eng.SetOfferCheck(s.offerCheck(scoped))
-		eng.SetThenCheck(s.thenCheck())
 		sctx, cancel := context.WithCancel(s.ctx)
 		// Per-trigger observation: no root watch. Each scoped trigger watches exactly the
 		// (system,kind) subtree it matches, scoped to this scope. cancel stops them.

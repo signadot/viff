@@ -11,15 +11,15 @@ import (
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/trigger"
 )
 
 // WHAT FOLLOWS A QUESTION RUNS AS WHOEVER ASKED, BEFORE THE ANSWER GOES BACK TO THEM. That is one
-// rule for every kind of question, and `from` is what makes it one: a person's ask runs its `then`
-// as that person, a rule's question as `via:` the rule, and a task's question as whom the task acts
-// for, or as the task itself where it acts for nobody. The answer is given back — the firing
-// resumed, the task's turn delivered, the asker's wait released — once the `then` has run, and a
-// spawn has run once it is launched: nobody waits for a task that follows a yes to finish.
+// rule for every kind of question that carries one, and `from` is what makes it one: a person's ask
+// runs its `then` as that person, and a task's question as whom the task acts for, or as the task
+// itself where it acts for nobody. A rule's question carries none: what a rule does about a yes is
+// its action. The answer is given back — the task's turn delivered, the asker's wait released —
+// once the `then` has run, and a spawn has run once it is launched: nobody waits for a task that
+// follows a yes to finish.
 //
 // The record keeps it to once. Each `then` marks the ask before it acts (`then-task`,
 // `then-answered`, `then-asked`), conditional on no mark standing, so a delivery that failed and
@@ -27,15 +27,12 @@ import (
 // than doing it twice (followAsk).
 
 // askerOf is the principal a question's `then` runs as, from its `from`: the principal that asked,
-// `via:` the rule that asked, or the task's. Empty for a record that says none of the three, which
-// verse never writes.
+// or the task's. Empty for a record that says neither, which a question carrying a `then` never
+// does.
 func (s *Server) askerOf(p entity.Payload) string {
 	from := entity.Get(p, mirror.FromField)
 	if who := entity.Str(from, "principal"); who != "" {
 		return who
-	}
-	if rule := entity.Str(from, "rule"); rule != "" {
-		return entity.Via(trigger.CharterRefAt(entity.Str(from, "at"), rule))
 	}
 	if id := entity.Str(from, "task"); id != "" {
 		actsFor := ""
@@ -165,16 +162,6 @@ func (s *Server) undelivered(store entity.Store, id string, err error) {
 	}
 }
 
-// thenCheck is what an install checks a gate's `then` against, as the rule: the shape an ask's
-// `then` has, and what it names, checked as a person's is when they raise an ask (checkThen). A
-// rule has no reach of its own to hold a spawn within; the runner's offer and the owner's grants
-// bound it, as they bound a person's.
-func (s *Server) thenCheck() func(asker, field string, follow entity.Payload) error {
-	return func(asker, field string, follow entity.Payload) error {
-		return s.checkFollow(asker, field, follow, nil)
-	}
-}
-
 // taskBound is what a task's question's `then` may not exceed: the task's own environment and
 // autonomy. A task that follows a yes with a spawn hands it no more than it has itself (holds).
 // The environment is nil for a task this verse launched before a restart, which it no longer
@@ -201,7 +188,7 @@ func (b *taskBound) holds(spec launch.Spec) error {
 	return nil
 }
 
-// checkFollow checks a `then` or an `else` (field) written on a gate or an ask row as one written
+// checkFollow checks a `then` or an `else` (field) written on an ask row as one written
 // on an ask is checked: one key naming a spawn, an answer or an ask, and what it names reachable
 // by asker; and a spawn within the task it follows, where within names one.
 func (s *Server) checkFollow(asker, field string, v entity.Payload, within *taskBound) error {

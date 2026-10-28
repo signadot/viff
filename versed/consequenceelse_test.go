@@ -2,40 +2,43 @@ package versed
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
 )
 
-// A NO RUNS THE ELSE, THE SAME WAY: a rule's gate carries an `else` beside its `then`, a refusal
-// starts it as the rule, and the question settles once it has run. The `then` stays untouched.
-func TestARulesGateRunsItsElseOnANo(t *testing.T) {
-	srv, ts := asking(t)
-	const alice = "user:alice@example.com"
-	resp := installAs(t, alice, ts.URL, `{
-		name: approve-f,
-		condition: {subject: {path: "demo.f.*", value: {stage: open}}},
-		gates: [{name: approval, mode: ask,
-			then: {spawn: {prompt: "announce the approval", environment: {systems: {network: {mode: open}}}}},
-			else: {spawn: {prompt: "say why it was refused", environment: {systems: {network: {mode: open}}}}}}],
-		action: {patch: {stage: reviewing}},
-	}`)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("install: %s", resp.Status)
+// A NO RUNS THE ELSE, THE SAME WAY: a task's ask row carries an `else` beside its `then`, a
+// refusal starts it as whom the task acts for, and the question settles once it has run. The
+// `then` stays untouched.
+func TestATasksQuestionRunsItsElseOnANo(t *testing.T) {
+	srv := askingServer(t)
+	ops := httptest.NewServer(srv.Handler())
+	defer ops.Close()
+	open := map[string]any{"systems": map[string]any{"network": map[string]any{"mode": "open"}}}
+	spawn := postTony(t, ops.URL+"/tasks", map[string]any{"id": "ce-1", "spawn": map[string]any{
+		"script": "true", "environment": stepEnv,
+		"autonomy": []map[string]any{
+			{"match": map[string]any{"system": "commands"}, "then": map[string]any{"ask": map[string]any{
+				"then": map[string]any{"spawn": map[string]any{"prompt": "log the step", "environment": open}},
+				"else": map[string]any{"spawn": map[string]any{"prompt": "say why it was refused", "environment": open}}}}},
+			{"then": "ask"},
+		}}})
+	spawn.Body.Close()
+	if spawn.StatusCode >= 300 {
+		t.Fatalf("spawn = %s", spawn.Status)
 	}
-	subject := entity.RefAt("demo", "f", "1")
-	entitytest.Set(t, srv.Store, subject, entity.Obj{"stage": "open"}.Payload())
-	qid := waitRuleQuestion(t, srv, "approve-f", subject.String())
+	qid := waitQuestion(t, srv, "ce-1")
 	question := mirror.QuestionRef(qid)
-	posed(t, srv, question)
 	if q, _, _ := srv.Store.Get(question); entity.Get(entity.Get(q.Payload, "else"), "spawn") == nil {
-		t.Fatalf("the question does not carry the gate's else: %v", entity.ToObj(q.Payload))
+		t.Fatalf("the question does not carry the row's else: %v", entity.ToObj(q.Payload))
 	}
-	if resp := answerWith(t, alice, ts.URL, qid, "deny"); resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("alice's no: %s: %s", resp.Status, bodyOf(t, resp))
+	resp := postTony(t, ops.URL+"/tasks/ce-1/resolve", api.Resolve{ID: qid, Choice: "deny", By: "user:scott@example.com"})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("refusing = %s", resp.Status)
 	}
 	id := waitField(t, srv, question, "else-task")
 	e, ok, _ := srv.Store.Get(mirror.Ref(id))
@@ -43,7 +46,7 @@ func TestARulesGateRunsItsElseOnANo(t *testing.T) {
 		t.Fatalf("the else of %s never ran as %s", question, id)
 	}
 	if got := entity.Str(e.Payload, "prompt"); got != "say why it was refused" {
-		t.Fatalf("the else runs %q, want the gate's else prompt", got)
+		t.Fatalf("the else runs %q, want the row's else prompt", got)
 	}
 	waitValue(t, srv, question, "status", mirror.QuestionAnswered)
 	if q, _, _ := srv.Store.Get(question); entity.Get(q.Payload, "then-task") != nil {

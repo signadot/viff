@@ -102,9 +102,9 @@ type GateQuestion struct {
 	// reads nothing into a label, and routes nothing by one.
 	Labels map[string]string
 	// Then is what a yes starts before the answer goes back to whoever asked: one key naming a
-	// spawn, an answer or an ask, in the shape an ask's own `then` has. A rule's gate and a
-	// task's ask row write it; verse runs it as whoever asked, and delivers the answer once it
-	// has run, where a spawn has run once it is launched. Nil asks for nothing to follow.
+	// spawn, an answer or an ask, in the shape an ask's own `then` has. A task's ask row writes
+	// it; verse runs it as whoever asked, and delivers the answer once it has run, where a spawn
+	// has run once it is launched. Nil asks for nothing to follow.
 	Then *ir.Node
 	// Else is what a no starts, the same way: a refusal answered, or the clock settling on one.
 	Else *ir.Node

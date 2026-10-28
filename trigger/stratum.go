@@ -677,7 +677,7 @@ func (e *Engine) promote(stratum string) {
 		// its subject is outside the stratum that just arrived — is reported and dropped from
 		// memory; its entity stays, so the next restart says the same thing rather than
 		// quietly forgetting a rule someone wrote.
-		if err := e.addTrigger(t, false, e.OwnerOf(t.Name), false); err != nil {
+		if err := e.addTrigger(t, false, e.OwnerOf(t.Name)); err != nil {
 			e.logger.Warn("held rule does not fit the stratum it named",
 				"trigger", t.Name, "stratum", stratum, "err", err)
 			continue

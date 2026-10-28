@@ -173,12 +173,12 @@ The engine asks exactly what was written, and acts on the one answer that comes 
 ### The answer is written first
 
 The answer that settles a question is written on its record as `followed` before anything else
-happens: before its `then` or `else` runs, and before the firing or the task hears it. It holds
-the answer as the answered record spells it (`verdict`, `by`, `field`, `at`, and `via`, `why`,
-`say`, `edit` and `authenticated` where the answer has them). The first one written settles the
-question, so two answers landing together cannot disagree. The second is refused with 409, and
-the refusal names whose answer stands. The same answer, by the same answerer, again is a retry
-of the first.
+happens: before a task's question runs its `then` or `else`, and before the firing or the task
+hears it. It holds the answer as the answered record spells it (`verdict`, `by`, `field`, `at`,
+and `via`, `why`, `say`, `edit` and `authenticated` where the answer has them). The first one
+written settles the question, so two answers landing together cannot disagree. The second is
+refused with 409, and the refusal names whose answer stands. The same answer, by the same
+answerer, again is a retry of the first.
 
 A delivery that fails leaves the question pending and says why on the answer, as
 `undelivered`. The next answer delivers it. So does posing the question again. An answer that
@@ -240,34 +240,9 @@ To make a no final without changing the state of the subject itself, use a marke
 
 Removing the marker then opens the question again.
 
-### `then` and `else`: what a yes, or a no, starts first
-
-A gate's `then` is what the question's yes starts before the firing goes on, and its `else` what
-a no starts, before the firing hears the refusal. Each is written as an ask's is
-([asking](../asking.md)): one key naming a spawn, an answer to another ask, or an ask of its own.
-
-```tony
-  gates:
-  - name: approval
-    mode: ask
-    then:
-      spawn: { prompt: "announce the approval in #releases", environment: { systems: { network: { mode: open } } } }
-```
-
-Verse runs it as the rule, on the charter owner's authority, once the question settles on
-`proceed`, and gives the answer back to the firing when it has run. A spawn has run once it is
-launched: the firing does not wait for the task to finish, and the task's record names the
-question as its subject. An answer or an ask is made before the firing goes on. What ran is
-written on the question (`then-task`, `then-answered`, `then-asked`), and a `then` that could
-not start says so there (`then-failed`).
-
-`then` is not the action, and `else` is not `onDenied`. The action and `onDenied` are what the
-rule does about its subject; `then` and `else` are what the answer starts, about the question. A
-refusal may both mark the subject and start something, each said where it belongs. Both are
-checked at install as the rule: a spawn its runner cannot run, an ask naming an audience that
-cannot read its subject, or a row naming `$principal` where the rule acts for nobody, is refused
-with the author present. A task's question has the same `then` and `else`, written on its
-[autonomy row](tasks.md#the-autonomy).
+A gate starts nothing of its own. What a rule does about a yes is its action, and what a no
+means for the subject is `onDenied`. The `then` and `else` of an [ask](../asking.md) are a
+person's, and an autonomy row's ask has them too ([tasks](tasks.md#the-autonomy)).
 
 ### A deadline settles
 
@@ -327,9 +302,8 @@ again:
 - the spawn id is deterministic per (chain, subject).
 
 One question, and one task, however many paths reach it. A question posed again while an answer
-stands on it delivers that answer ([the answer is written first](#the-answer-is-written-first)):
-what follows it runs, kept to once by what it writes on the question, and then the firing hears
-it.
+stands on it delivers that answer ([the answer is written first](#the-answer-is-written-first)),
+and the firing hears it.
 
 **A scope is not covered.** Its questions are in the scope's own store, and nothing lists them
 at startup. Charters and claims in a scope have the same gap.
