@@ -126,6 +126,11 @@ type Meta struct {
 	// so removing one would orphan running work by making it unreconstructible — a deletion
 	// with an action at a distance.
 	RunnerName string
+	// RunnerSubject is the subject the named runner's registration held at the spawn
+	// (api.Runner.Subject): what the door holds a runner relaying this task to (versed's
+	// relayTask), so a registration rewritten under the same name with another subject relays
+	// nothing of a task it did not host. Empty where the registration names none.
+	RunnerSubject string
 	// StartedAt is when the task began, RFC3339. Empty on a fresh spawn — Reflect stamps
 	// the clock — and carried back verbatim by a re-attach, which is the only caller that
 	// knows this task is older than this verse.
@@ -229,7 +234,7 @@ var RecordFields = map[string]bool{
 	"agent": true, "ended": true, "err": true, "flow": true, "git": true, "hook": true,
 	"lastAction": true, "lastOutput": true, "observed": true, "occurrence": true,
 	"paused": true, "pending": true, "autonomy": true, "autonomyBy": true, "prompt": true, "refused": true, "result": true, "script": true,
-	"runner": true, "runnerName": true, "say": true, "started": true, "startedAt": true,
+	"runner": true, "runnerName": true, "runnerSubject": true, "say": true, "started": true, "startedAt": true,
 	"status": true, "trigger": true,
 	HeldByField: true,
 }
@@ -256,6 +261,9 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	// most want it — the url above is what makes the work still reachable then.
 	if m.RunnerName != "" {
 		st["runnerName"] = m.RunnerName
+	}
+	if m.RunnerSubject != "" {
+		st["runnerSubject"] = m.RunnerSubject
 	}
 	// When this task began, so `verse runner` can say when a runner was last used and a
 	// runner nobody names is visible as such. Written once, at the first reflection, and

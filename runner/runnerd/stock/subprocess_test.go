@@ -51,7 +51,7 @@ func serveLogging(t *testing.T, s Secrets, sb runnerd.Sandbox, log io.Writer) (r
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := Standalone(opened(Config{}), s, Tokens{}, sb, []string{os.Args[0], "-test.run=^$", taskArg}, work, control, log)
+	h, err := Standalone(opened(Config{}), s, Tokens{}, sb, []string{os.Args[0], "-test.run=^$", taskArg}, work, control, nil, log)
 	if err != nil {
 		t.Fatal(err)
 	}

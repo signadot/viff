@@ -63,9 +63,12 @@ func SecretsFromEnv(c Config) Secrets {
 // The process gets the runner's configuration and secrets on its stdin, and an environment with
 // only what its launch's doer's shellEnv names: no task's process holds a variable another
 // doer's shell is given. tokens is what the runner holds that a task never does: its git
-// tokens, for when c checks out repos, and its Linear credential.
+// tokens, for when c checks out repos, and its Linear credential. raise is how the runner
+// carries a task's ask to the verse it serves, with its own token (runnerd.Guard.Raise); nil for
+// a runner with none, whose tasks are not offered `question-raise`.
 func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command []string, work, control string,
-	log io.Writer) (*runnerd.SubprocessHandler, error) {
+	raise delivery.Raiser, log io.Writer) (*runnerd.SubprocessHandler, error) {
+	c.raises = raise != nil
 	hosts, err := modelHosts(c, s)
 	if err != nil {
 		return nil, err
@@ -84,7 +87,7 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 		fmt.Fprintf(log, "runnerd: no %s beside %s or on PATH: a script reaches its tools only by "+
 			"the socket $%s names\n", CallToolBinary, command[0], calltool.Env)
 	}
-	blob, err := codec.Marshal(taskConfig{Config: c, Secrets: s, CallTool: tool, Networks: nets}, codec.Tony)
+	blob, err := codec.Marshal(taskConfig{Config: c, Secrets: s, CallTool: tool, Networks: nets, Raises: c.raises}, codec.Tony)
 	if err != nil {
 		return nil, err
 	}
@@ -102,6 +105,7 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 	}
 	if repos != nil {
 		repos.Services = c.services(tokens)
+		repos.Services.Raise = raise
 		repos.Ceilings = func(l *runner.Launch) map[string]systems.Ceiling { return c.ceilings(c.doer(l)) }
 	}
 	h := runnerd.NewSubprocessHandler(runnerd.SubprocessConfig{
@@ -146,6 +150,9 @@ type taskConfig struct {
 	// Networks is the networks the runner's sandbox builds (networks), so the task's process
 	// describes what the runner described.
 	Networks []string `tony:"field=networks,omitzero"`
+	// Raises is whether the runner carries a task's ask to its verse (Standalone's raise), so the
+	// task's process offers `question-raise` where it does.
+	Raises bool `tony:"field=raises,omitzero"`
 }
 
 // ServeTask is a task's process: it reads the runner's configuration and secrets from stdin,
@@ -163,6 +170,7 @@ func ServeTask(stdin io.Reader, log io.Writer) error {
 	if err != nil {
 		return err
 	}
+	tc.Config.raises = tc.Raises
 	r := New(tc.Config, tc.Secrets, dir, log)
 	r.callTool = tc.CallTool
 	return runnerd.ServeTask(r.Build, tc.Config.Describe(tc.Networks), tc.Config.envOf)
@@ -216,6 +224,9 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 		tools = append(repoTools(cl, ws, r.cfg.atGitHub()), issueTools(cl, ws, l.Trackers(), r.cfg.atGitHub(), slices.Contains(performs, "linear-issue"))...)
 		if slices.Contains(performs, "slack") {
 			tools = append(tools, slackTools(cl)...)
+		}
+		if r.cfg.raises {
+			tools = append(tools, raiseTools(cl)...)
 		}
 		tools = offered(tools, l.Environment)
 		// The brief: how to deliver, where there are repos, and what reaches the world from

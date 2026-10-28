@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
@@ -12,8 +13,10 @@ import (
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
+	"github.com/signadot/verse/task"
 )
 
 // Runners at the door (git-issue pb6fwh8gh12krmb7vhn0).
@@ -30,8 +33,9 @@ import (
 // `runner:<identity>`, under every mode, and `whoami` says `by: runner`. A runner's own requests
 // are made as itself, so a bearer that proves a runner beside a header naming anyone else is
 // refused, as a person's is. A task's verb on verse is the task's, not the runner's: it names
-// the task's owner beside the runner's token, and is admitted through the task's record, which
-// versed wrote at the spawn and which names the runner. That relay comes with the verbs.
+// the task beside the runner's token (api.TaskHeader), and is admitted as the task's owner
+// through the task's record, which versed wrote at the spawn and which names the runner
+// (relayTask).
 //
 // A NAME VERSE CAN VERIFY IS NO LONGER TAKEN ON SOMEBODY'S WORD. A header naming the principal of
 // a runner registered with a subject, with no bearer that proves it, is refused; a runner
@@ -421,4 +425,72 @@ func (s *Server) describeAgain(store entity.Store, e api.Runner, tries int) (api
 		}
 	}
 	return out, http.StatusOK, nil
+}
+
+// relayTask admits a request runner e carries for a task it hosts, as the task's owner. THE
+// BINDING IS THE TASK'S RECORD, which versed wrote at the spawn: its `runnerName` is e's
+// registration, its `runnerSubject` the subject e proved, and the task has not ended. A runner
+// can forge none of it, since it would have to have been given the task by a spawn versed
+// performed. A registration rewritten under the same name with another subject carries nothing
+// of the tasks the old one hosted, and a record from before subjects were recorded carries
+// nothing either.
+//
+// The owner is the record's (entity.OwnerOf): whoever launched the task, or the owner of the
+// charter whose rule spawned it, or the asker a rule's `as: subject` acts for. The runner names
+// nobody, and a name beside the task names that owner or is refused. A task the system owns is
+// relayed for nobody, since a request as the system is one no runner makes.
+//
+// via is the runner, as an io is the via of a person it relays (whoami), and the handler knows
+// the task (relayedTask).
+func (s *Server) relayTask(e api.Runner, presented, id string) (principal, provider, via string, _ *turnedAway) {
+	refuse := func(why string, args ...any) (string, string, string, *turnedAway) {
+		return "", "", "", turnAway(http.StatusForbidden, "runner %s carries a request for task %s, and "+
+			why, append([]any{e.Principal(), id}, args...)...)
+	}
+	scope, _ := s.hostedScope(id)
+	store := entity.As(s.storeForScope(scope), entity.SystemMirror)
+	ref := mirror.Ref(id)
+	rec, ok, err := store.Get(ref)
+	if err != nil {
+		return "", "", "", turnAway(http.StatusServiceUnavailable, "task %s's record could not be read, so "+
+			"whether runner %s hosts it is not known: %v", id, e.Principal(), err)
+	}
+	if !ok {
+		return refuse("no task %s stands", id)
+	}
+	if got, want := entity.Str(rec.Payload, "runnerName"), runnerEntityRef(e.Name).String(); got != want {
+		return refuse("its record says it runs on %s, not %s", cmp.Or(got, "this verse's own runtime"), want)
+	}
+	if got := entity.Str(rec.Payload, "runnerSubject"); got == "" || got != e.Subject {
+		return refuse("its record does not say it was launched to the subject %s proves", e.Principal())
+	}
+	if st := task.Status(entity.Str(rec.Payload, "status")); st == "" || st.Terminal() {
+		return refuse("it is not running (%s)", cmp.Or(string(st), "no status"))
+	}
+	owner, err := entity.OwnerOf(store, ref)
+	if err != nil {
+		return "", "", "", turnAway(http.StatusServiceUnavailable, "whose task %s is could not be read: %v", id, err)
+	}
+	if owner == "" || entity.IsSystem(owner) {
+		return refuse("the task is the system's, and a runner carries no request as the system")
+	}
+	if presented != "" && presented != owner {
+		return refuse("%s names %s, where the task is %s's: the request is made as the task's owner",
+			api.PrincipalHeader, presented, owner)
+	}
+	return owner, runnerProvider, e.Principal(), nil
+}
+
+// relayTaskKey is the context key of the task a runner's request was carried for.
+type relayTaskKey struct{}
+
+// relayingTask marks r as carried by its runner for the task id, admitted through the task's record.
+func relayingTask(r *http.Request, id string) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), relayTaskKey{}, id))
+}
+
+// relayedTask is the task a runner carried r for, "" where it carried none.
+func relayedTask(r *http.Request) string {
+	id, _ := r.Context().Value(relayTaskKey{}).(string)
+	return id
 }

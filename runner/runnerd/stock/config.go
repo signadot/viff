@@ -70,6 +70,11 @@ type Config struct {
 	Agents map[string]Agent `tony:"field=agents,omitzero"`
 	// Script is the runner's scripts: present, it offers them.
 	Script *Script `tony:"field=script,omitzero"`
+
+	// raises is whether the runner carries a task's ask to the verse it serves (Standalone's
+	// raise): not the file's to say, since it follows from the runner's `verse:` block and its
+	// token.
+	raises bool
 }
 
 // Agent is one agent the runner runs: its program's own keys, which are the agent's (codex
@@ -382,6 +387,11 @@ func (c Config) performs() []string {
 		if len(c.naming(name)) > 0 {
 			out = append(out, name)
 		}
+	}
+	// A raise is carried to verse over the channel too, where the runner reaches its verse
+	// with a token of its own (raises); `question`'s ask stays inside the run.
+	if c.raises {
+		out = append(out, "question")
 	}
 	return out
 }

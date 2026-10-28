@@ -162,7 +162,8 @@
 // a verified bearer token (PrincipalHeader). Verse-Version is the build each side was made from
 // (VersionHeader). Verse-Resolver makes a request as a resolver its sender installed
 // (ResolverHeader). Verse-For-Principal is the account an io saw, for a person it relays
-// (ForPrincipalHeader).
+// (ForPrincipalHeader). Verse-Task is the task a runner carries a request for, beside the
+// runner's own token (TaskHeader).
 //
 // # Not yet one shape
 //

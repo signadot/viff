@@ -316,7 +316,7 @@ func TestAScriptGetsTheRunnersBinaryWithoutPATH(t *testing.T) {
 	}
 	defer os.RemoveAll(control)
 	h, err := Standalone(opened(Config{Script: &Script{ShellEnv: []string{"HOME"}}}), Secrets{}, Tokens{}, runnerd.Unconfined{},
-		[]string{os.Args[0], "-test.run=^$", taskArg}, work, control, io.Discard)
+		[]string{os.Args[0], "-test.run=^$", taskArg}, work, control, nil, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}

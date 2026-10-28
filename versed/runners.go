@@ -615,15 +615,6 @@ func runnerCounts(instances []entity.Entity, ref entity.Ref, url string) (runnin
 	return running, total, last
 }
 
-// runnerFor resolves the runner a spawn NAMED, to the one runner that spawn runs on.
-//
-// TWO NAMES, and the default is the one nobody types. Naming nothing means "run this", and
-// the answer is this verse's own runtime; an installed runner means wherever its url says.
-//
-// A spawn naming a runner that is not installed is REFUSED rather than quietly falling back to
-// the default. A misspelled runner that ran the work in-process would be the same class of bug
-// as a misspelled resolver that quietly left work unsupervised: the deployment says one thing
-// and the verse does another.
 // runnerIdentity is the principal a named runner acts as — the identity on its entity, or its
 // name — and "" for the runtimes this process holds, which act as nobody of their own: a local
 // task's mirror is the system's.
@@ -637,15 +628,28 @@ func runnerIdentity(store entity.Reader, name string) string {
 	return ""
 }
 
-func (s *Server) runnerFor(store entity.Reader, name string) (client.Launcher, string, error) {
+// runnerFor resolves the runner a spawn NAMED, to the one runner that spawn runs on.
+//
+// TWO NAMES, and the default is the one nobody types. Naming nothing means "run this", and
+// the answer is this verse's own runtime; an installed runner means wherever its url says.
+//
+// A spawn naming a runner that is not installed is REFUSED rather than quietly falling back to
+// the default. A misspelled runner that ran the work in-process would be the same class of bug
+// as a misspelled resolver that quietly left work unsupervised: the deployment says one thing
+// and the verse does another.
+//
+// Beside the launcher it answers the registration's entity, `verse.runners.<name>`, and its
+// subject, which the spawn records on the task for the door (relayTask); both are "" for the
+// default.
+func (s *Server) runnerFor(store entity.Reader, name string) (client.Launcher, string, string, error) {
 	if name == "" {
-		return s.runner, "", nil
+		return s.runner, "", "", nil
 	}
 	e, ok, err := findRunnerErr(store, name)
 	if err != nil && !errors.Is(err, entity.ErrForbidden) {
 		// The read did not happen, which is not a runner that is not installed: said as what
 		// it is, so whoever reads the refusal waits for the store rather than installs again.
-		return nil, "", errors.New(notRead(fmt.Sprintf("runner %q", name), err))
+		return nil, "", "", errors.New(notRead(fmt.Sprintf("runner %q", name), err))
 	}
 	if !ok {
 		// IN THE SPAWNER'S VIEW: the store is theirs, so a runner they may not read and one
@@ -668,16 +672,16 @@ func (s *Server) runnerFor(store entity.Reader, name string) (client.Launcher, s
 		if st, ok := store.(entity.Store); ok && entity.PrincipalOf(st) != "" {
 			who = entity.PrincipalOf(st)
 		}
-		return nil, "", fmt.Errorf("in the view of %s, no runner %q is installed (%s) — a spawn "+
+		return nil, "", "", fmt.Errorf("in the view of %s, no runner %q is installed (%s) — a spawn "+
 			"naming a runner that is not installed is refused rather than run somewhere else",
 			who, name, have)
 	}
 	if e.Subject != "" {
 		if err := s.handshake(e); err != nil {
-			return nil, "", err
+			return nil, "", "", err
 		}
 	}
-	return client.HTTPOver(e.URL, s.transportFor(e)), runnerEntityRef(e.Name).String(), nil
+	return client.HTTPOver(e.URL, s.transportFor(e)), runnerEntityRef(e.Name).String(), e.Subject, nil
 }
 
 // handshake asks a runner registered with a subject what it is now, right before a launch to it,

@@ -29,6 +29,7 @@ func TestTheDocumentsDescribeTheSystems(t *testing.T) {
 		"commands.run":         "command",
 		"agent.call-sub-agent": "agent",
 		"question.ask":         "",
+		"question.raise":       "",
 		"slack.post":           "channel",
 		"slack.reply":          "channel,thread",
 		"slack.read":           "channel,thread",
@@ -51,7 +52,7 @@ func TestTheDocumentsDescribeTheSystems(t *testing.T) {
 	if ToolName("git", "push") != "git-push" || StepName("git", "push") != "git.push" {
 		t.Error("the names")
 	}
-	if steps := Steps(); steps[0] != "agent.call-sub-agent" || len(steps) != 26 {
+	if steps := Steps(); steps[0] != "agent.call-sub-agent" || len(steps) != 27 {
 		t.Errorf("steps: %v", steps)
 	}
 }

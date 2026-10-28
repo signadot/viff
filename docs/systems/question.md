@@ -1,9 +1,10 @@
 # question
 
-The `question` system is the questions that a task puts to people. The agent or script hands the
-turn over and waits on the docket for an answer.
+The `question` system is the questions that a task puts to people. Either the agent or script
+hands the turn over and waits on the docket for an answer, or it raises an ask for the person it
+runs for and goes on, leaving what a yes starts on the ask.
 
-It is not the question a runner asks before a step, when a row of the task's autonomy says
+It is not the question a runner asks before a step, when an autonomy row of the task says
 `ask`. That question comes from the autonomy, not from a call of the task.
 
 ## What a charter sees
@@ -21,8 +22,9 @@ task asks.
 
 ## What a task can do
 
-A task has `question-ask` when its environment gives `question`, as it has any tool. Asking a
-person is the step `question.ask`, and the row that matches it decides it: `allow` puts the question at
+A task has `question-ask` when its environment gives `question`, as it has any tool, and
+`question-raise` too where its runner reaches verse with a token of its own. Asking a
+person is the step `question.ask`, and the autonomy row that matches it decides it: `allow` puts the question at
 once, `deny` refuses it, and `ask` asks before the question is put. Codex's and Claude's own
 questions for a person are the same step, and Claude is offered its question tool only where
 the environment gives `question`.
@@ -41,13 +43,22 @@ spawn:
 | Tool | What it does | Step |
 |---|---|---|
 | `question-ask` | puts a question to the person the task runs for, or to the answerers it names, and waits; the answer is the call's result. With `options`, the answer is one of them. With `within`, silence settles on `default`. | `question.ask` |
+| `question-raise` | raises an ask as the person the task runs for, as `verse ask` does: `question`, `to`, `due`, `onSilence`, `then`, `else`, … ([asking](../asking.md)). It does not wait: the result is the ask's id, and the ask stands after the task ends. Its `then` and `else` run as that person, and a spawn in them reaches no further than the task does, on its runner and with its credential. | `question.raise` |
 
 The question is the task's, and it is on the docket beside every other question. `verse
 question` lists it, and the answer given there is what the tool returns. In a conversation, the
 agent asks after every answer, to give the person the turn. A script asks with `verse-call-tool
 question-ask`, and reads the answer on its standard output.
 
+A raise is the person's ask, not the task's: its `from` names them, with the task beside them,
+and nothing waits on it. So `question-raise` is for what should follow an answer that may come
+after the task is gone. A task that needs the answer to go on uses `question-ask`.
+
 ## Where the credential lives
 
-Nowhere. A question is verse's own record. The runner poses it, and the answer comes back
-through verse. No system outside verse is reached, so no credential is needed.
+Nowhere outside verse. A question is verse's own record. The runner poses it, and the answer
+comes back through verse. A raise is `POST /asks`, which the runner carries for the task with its
+own token ([permissions](../reference/perms.md#runners-at-the-door)): the task holds no credential, and the runner's
+token makes the request as the task's owner, only while the task runs. A runner carries nothing
+else for a task. A refusal of the runner itself, its token or the task, is an error to the task,
+and a refusal of the ask is a no.

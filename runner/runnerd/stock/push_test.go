@@ -257,7 +257,7 @@ func TestShuttingDownHoldsWhatATaskCommitted(t *testing.T) {
 	})
 	h, err := Standalone(opened(Config{Repos: &Repos{Mirrors: mirrors, Forge: forge}}),
 		Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL}, Tokens{},
-		runnerd.Unconfined{}, []string{os.Args[0], "-test.run=^$", taskArg}, work, control, io.Discard)
+		runnerd.Unconfined{}, []string{os.Args[0], "-test.run=^$", taskArg}, work, control, nil, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -389,8 +389,28 @@ default if there was one, and goes on.
 verse-call-tool question-ask -question "ship it?" -options yes -options no -within 30m
 ```
 
-A row on `question` decides the asking as any row decides its step: an `allow` puts the question
-at once, and an `ask` would ask before the question is put.
+An autonomy row on `question` decides the asking as any autonomy row decides its step: an
+`allow` puts the question at once, and an `ask` would ask before the question is put.
+
+### An ask for the person
+
+`question-raise` raises an ask as the person the task runs for, as they would with `verse ask`
+([asking](../asking.md)), and does not wait. The result is the ask's id. The ask's `from` is
+`{principal: <them>, task: <this task>}`, and it stands after the task ends. Its `then` and
+`else` run as them when it settles. A spawn in either is held within the task when the ask is
+raised: an environment no wider than the task's, an autonomy no looser, the task's runner
+(`runner:` names it) and the task's credential. Once raised, the ask is theirs, and they change
+it as any of their own.
+
+```sh
+verse-call-tool question-raise -question "Land verse/ask?" -to user:dana@example.com \
+  -then '{spawn: {script: "git push origin verse/ask:main", environment: {systems: {git: {}}}}}'
+```
+
+It is the step `question.raise`. The runner carries the ask to verse for the task with its own
+token ([permissions](perms.md#runners-at-the-door)), so a task has it only
+on a runner that has one. A verse that launched the task before a restart no longer knows its
+environment, and refuses a `then` that spawns.
 
 ### A conversation
 

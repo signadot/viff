@@ -251,7 +251,7 @@ func TestUnderAskAnAgentsCommandAsks(t *testing.T) {
 // agent reach it, and the launch would otherwise be accepted and fail only once the agent called.
 func TestAHostlessModelURLIsAConfigError(t *testing.T) {
 	_, err := Standalone(opened(Config{}), Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: "/v1"}, Tokens{},
-		runnerd.Unconfined{}, []string{"true"}, t.TempDir(), t.TempDir(), io.Discard)
+		runnerd.Unconfined{}, []string{"true"}, t.TempDir(), t.TempDir(), nil, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), verse.EnvBaseURL) {
 		t.Fatalf("Standalone with a hostless base url = %v, want it refused naming %s", err, verse.EnvBaseURL)
 	}

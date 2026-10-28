@@ -5,8 +5,9 @@ give one. Their answer is written back on your ask. On a yes, what you said shou
 for you. Every verse can ask: nothing has to be installed for it.
 
 An ask is how anything in verse waits for a person. You raise one with `verse ask`. A rule's
-gate raises one when it stops for a person, and a task raises one with its `question-ask` tool.
-All of them are the same record, on one docket.
+gate raises one when it stops for a person. A task raises one with its `question-ask` tool and
+waits on it, or with `question-raise` as the person it runs for. All of them are the same
+record, on one docket.
 
 ## The words
 
@@ -27,8 +28,9 @@ All of them are the same record, on one docket.
 
 Every question on the docket, yours or not, says its parties the same way. `from` is who raised
 it, exactly one of `{rule, at}` (a rule's gate, and the charter it is installed at), `{task}` (a
-task's question) or `{principal}` (an ask, or words said to a task: a person, an agent, or a
-resolver acting as `via:…`). `to` is whom it is put to, `{grantees: […]}` or, for words said to a
+task's question), `{principal}` (an ask, or words said to a task: a person, an agent, or a
+resolver acting as `via:…`) or `{principal, task}` (an ask a task raised as the person it runs
+for). `to` is whom it is put to, `{grantees: […]}` or, for words said to a
 task, `{task}`, and is absent where it names nobody. `by` is who settled it.
 
 ## Asking
@@ -249,6 +251,11 @@ need that right. The task is your record, so its own gates ask you.
 Nobody but you writes your ask. It is yours, and nobody owns a place above it.
 
 The `then` runs before your wait is released, and a spawn has run once it is launched.
+
+A task's `question-raise` is your ask too, when the task runs for you. Its `then` runs with
+your authority, so a spawn in it is held within the task: its environment no wider than the
+task's, its autonomy no looser, on the task's runner, spending the task's credential. A task
+cannot raise past what you let it do. Once raised, the ask is yours to change as any of yours.
 
 Only an ask has a `then`. You need not be there when the answer comes, so the ask carries what
 follows it. A rule's gate has none: what a rule does about a yes is its action

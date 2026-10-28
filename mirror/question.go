@@ -1016,6 +1016,9 @@ func answerRecord(res task.Resolution) entity.Obj {
 // It is a settle, not a delete, for the reason an answered one is: what was asked, and the
 // fact that it was never decided, is the trail. `orphaned` is the same word a restart uses
 // for the same fact — the party who could have answered no longer exists.
+//
+// An ask the task raised for its owner (`question-raise`) is not the task's to leave open: it is
+// the owner's, versed waits on it, and it stands after the task.
 func OrphanQuestions(store entity.Store, taskID string) {
 	for _, ent := range entity.Below(store, func(ref entity.Ref) bool {
 		return IsQuestion(ref)
@@ -1026,6 +1029,8 @@ func OrphanQuestions(store entity.Store, taskID string) {
 		}
 		why := "the task that raised it ended without it being answered"
 		switch {
+		case TaskFrom(ent.Payload) == taskID && PrincipalFrom(ent.Payload) != "":
+			continue // the owner's ask, raised through the task: it stands
 		case TaskFrom(ent.Payload) == taskID:
 		case TaskTo(ent.Payload) == taskID:
 			why = "the task ended before it heard this"

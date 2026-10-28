@@ -60,6 +60,9 @@ var (
 	StepSlackReact = systems.Step("slack", "react", "channel", "emoji")
 	// A question the doer puts to a person, the `question-ask` tool's or codex's own.
 	StepQuestionAsk = systems.Step("question", "ask")
+	// An ask the doer raises for the person the task runs for, `verse ask`'s, carried to verse by
+	// the runner: it does not wait.
+	StepQuestionRaise = systems.Step("question", "raise")
 	// A connection a task opens through the runner's proxy, which only a network of allow has:
 	// the proxy decides it, by the host and the port it sees.
 	StepNetworkTCPClient = systems.Step("network", "tcp-client", "mode", "host", "port")

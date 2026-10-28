@@ -309,8 +309,10 @@ A token is checked before the name is read:
 | an iod's token, a person's name and their account, from an iod trusted for the account's provider | as the person, through the binding ([below](#a-person-relayed-by-a-trusted-iod)) |
 | an iod's token and a person's name, with no account or from an iod not trusted for it | 403 |
 | a registered runner's token | as the runner, under every mode ([below](#runners-at-the-door)) |
-| a registered runner's token and a name that is not the runner's | 403 |
-| a registered runner's token and an account to relay (`Verse-For-Principal`) | 403, until a runner's relay is built: a runner relays nobody yet, and the request is not carried out as the runner instead |
+| a registered runner's token and a name that is not the runner's, with no task | 403 |
+| a registered runner's token and a task it hosts (`Verse-Task`) | as the task's owner, through the task's record ([below](#a-task-carried-by-its-runner)) |
+| a registered runner's token and an account to relay (`Verse-For-Principal`) | 403: a runner relays a task, never an account, and the request is not carried out as the runner instead |
+| a `Verse-Task` beside any token but a runner's, or beside none | 403 or 401: only the runner hosting a task carries a request for it |
 | no token, under `off` or `optional` | as the `Verse-Principal` it names, or as nobody |
 | no token and the name of a runner registered with a `subject`, under every mode | 401: the runner presents its token |
 | no token and a `user:` name, under `required` | 401, saying to log in |
@@ -407,6 +409,23 @@ The door keeps one table for both: a workload token's subject is looked up among
 and the registrations second. A match is `runner:<identity>`, the identity on the registration,
 under every mode; `whoami` says `by: runner`. A runner's own requests are made as itself, so its
 token beside a name that is not its own is refused.
+
+<a id="a-task-carried-by-its-runner"></a>
+**A task's request is carried by its runner.** A verb a task performs on verse is the task
+owner's act, and the runner hosting the task carries it: the runner's token, and `Verse-Task`
+naming the task. Verse admits it through the task's record, which verse wrote at the spawn. The
+record's `runnerName` is the runner's registration, its `runnerSubject` is the subject the runner
+proved, and the task has not ended. The request is then made as the record's owner: whoever ran
+the task, or the owner of the charter whose rule spawned it, or the person a rule's
+`as: subject` acts for. `whoami` says `by: runner` and `via: runner:<identity>`. A runner
+carries what a task's tools do on verse, raising an ask (`POST /asks`), and `whoami`; any other
+route named with a task is refused, since what follows a task's ask is held within the task only
+where the ask is raised. A refusal at this door carries `WWW-Authenticate`, so a runner tells
+its own fault from a refusal of what it carried. The runner names
+nobody, and a `Verse-Principal` beside the task names that owner or is refused. A registration
+rewritten under the same name with another subject carries nothing of the tasks the old one
+hosted, and a task the system owns is carried for nobody. The embedded runner's tasks reach verse
+in-process and are not carried this way.
 
 **A name verse can verify is not taken at its word.** A request naming the principal of a
 runner registered with a `subject`, with no token that proves it, is refused with `401`,

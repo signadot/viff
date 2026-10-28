@@ -51,6 +51,15 @@ const ResolverHeader = "Verse-Resolver"
 // does not admit.
 const ForPrincipalHeader = "Verse-For-Principal"
 
+// TaskHeader names the task a runner's request is made for: a verb the task performs on verse,
+// carried by the runner that hosts it. The runner's own bearer proves the runner, and versed
+// admits the request as the task's owner through the task's record, which versed wrote at the
+// spawn and which names the runner: the record's `runnerName` is the runner's registration, its
+// `runnerSubject` the registration's subject, and the task has not ended. The owner is the
+// record's, so the runner names nobody; PrincipalHeader beside it names that owner or is left off.
+// Only a runner's bearer carries it: from anyone else it is refused.
+const TaskHeader = "Verse-Task"
+
 // Version is this binary's own verse version, read from its build info — the version that
 // actually shipped, not one written down somewhere and left behind. It is "(devel)" for a
 // build from a checkout, which is what `go run ./cmd/verse` and every test binary report, and

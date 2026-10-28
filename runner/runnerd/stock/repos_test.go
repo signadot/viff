@@ -24,6 +24,7 @@ import (
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/runner/runnerd/delivery"
 	"github.com/signadot/verse/runner/runnerd/verse/modeltest"
 	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
@@ -107,6 +108,12 @@ func forDoer(doer string, sys map[string]System) map[string]System {
 // each system it holds and writes no ceiling for under an open one (opened).
 func serveConfigured(t *testing.T, c Config, sec Secrets, tokens Tokens) client.Launcher {
 	t.Helper()
+	return serveRaising(t, c, sec, tokens, nil)
+}
+
+// serveRaising is serveConfigured for a runner that carries its tasks' asks to a verse with raise.
+func serveRaising(t *testing.T, c Config, sec Secrets, tokens Tokens, raise delivery.Raiser) client.Launcher {
+	t.Helper()
 	work, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -116,7 +123,7 @@ func serveConfigured(t *testing.T, c Config, sec Secrets, tokens Tokens) client.
 		t.Fatal(err)
 	}
 	h, err := Standalone(opened(c), sec, tokens, runnerd.Unconfined{},
-		[]string{os.Args[0], "-test.run=^$", taskArg}, work, control, io.Discard)
+		[]string{os.Args[0], "-test.run=^$", taskArg}, work, control, raise, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}

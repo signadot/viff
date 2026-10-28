@@ -309,7 +309,7 @@ func TestEachDoersShellEnvIsItsOwn(t *testing.T) {
 
 	// The task's process: the environment the runner starts it with is its doer's alone.
 	t.Setenv("MYSQL_PWD", "hunter2")
-	h, err := Standalone(c, Secrets{}, Tokens{}, runnerd.Unconfined{}, []string{os.Args[0]}, t.TempDir(), t.TempDir(), io.Discard)
+	h, err := Standalone(c, Secrets{}, Tokens{}, runnerd.Unconfined{}, []string{os.Args[0]}, t.TempDir(), t.TempDir(), nil, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,19 +347,19 @@ func TestTheConfigShapeIsChecked(t *testing.T) {
 		return p
 	}
 	for body, says := range map[string]string{
-		"listen: \":9802\"\n":                           "the runner offers nothing",
-		"script: {}\nmodels: {model: m}\n":              `no setting "models"`,
-		"script: {}\nshellEnv: [PATH]\n":                `no setting "shellEnv"`,
-		"codex: {sandbox: read-only}\n":                 `no setting "codex"`,
-		"script: {systems: {slack: {credential: K}}}\n": `no setting "script.systems.slack.credential"`,
-		"agents: {claude: {modle: x}}\n":                `no setting "agents.claude.modle"`,
-		"agents: {claude: {sandbox: read-only}}\n":      "agents.claude.sandbox: claude takes no sandbox (its program's keys: bin",
-		"agents: {verse: {bin: /x}}\n":                  "agents.verse.bin: verse takes no bin (its program's keys: none",
-		"agents: {gemini: {}}\n":                        `agents.gemini: this runner runs no agent "gemini" (it runs: verse, codex, claude)`,
+		"listen: \":9802\"\n":                                                          "the runner offers nothing",
+		"script: {}\nmodels: {model: m}\n":                                             `no setting "models"`,
+		"script: {}\nshellEnv: [PATH]\n":                                               `no setting "shellEnv"`,
+		"codex: {sandbox: read-only}\n":                                                `no setting "codex"`,
+		"script: {systems: {slack: {credential: K}}}\n":                                `no setting "script.systems.slack.credential"`,
+		"agents: {claude: {modle: x}}\n":                                               `no setting "agents.claude.modle"`,
+		"agents: {claude: {sandbox: read-only}}\n":                                     "agents.claude.sandbox: claude takes no sandbox (its program's keys: bin",
+		"agents: {verse: {bin: /x}}\n":                                                 "agents.verse.bin: verse takes no bin (its program's keys: none",
+		"agents: {gemini: {}}\n":                                                       `agents.gemini: this runner runs no agent "gemini" (it runs: verse, codex, claude)`,
 		"agents: {verse: {settings: {model: {values: [claude-*], default: gpt-5}}}}\n": "agents.verse.settings.model.default: outside the values taken",
-		"script: {shellEnv: []}\n":                            "script.shellEnv: an empty list gives the shell nothing; leave it out for the default (PATH",
-		"script: {shellEnv: [PATH, GITHUB_TOKEN]}\n":          "script.shellEnv: GITHUB_TOKEN is a credential the runner acts with",
-		"agents: {claude: {shellEnv: [ANTHROPIC_API_KEY]}}\n": "agents.claude.shellEnv: ANTHROPIC_API_KEY is a credential",
+		"script: {shellEnv: []}\n":                                                     "script.shellEnv: an empty list gives the shell nothing; leave it out for the default (PATH",
+		"script: {shellEnv: [PATH, GITHUB_TOKEN]}\n":                                   "script.shellEnv: GITHUB_TOKEN is a credential the runner acts with",
+		"agents: {claude: {shellEnv: [ANTHROPIC_API_KEY]}}\n":                          "agents.claude.shellEnv: ANTHROPIC_API_KEY is a credential",
 	} {
 		if _, _, err := Load(write(body)); err == nil || !strings.Contains(err.Error(), says) {
 			t.Errorf("%q: %v, want %q", body, err, says)
@@ -567,12 +567,12 @@ func TestTheAgentsSettingsAreChecked(t *testing.T) {
 // an unconfined sandbox builds only the open network.
 func TestARunnerRefusesACeilingItsSandboxCantBuild(t *testing.T) {
 	c := Config{Script: &Script{Systems: map[string]System{"network": {Ceiling: ceiling(t, `{mode: [none, allow]}`)}}}}
-	_, err := Standalone(c, Secrets{}, Tokens{}, runnerd.Unconfined{}, []string{os.Args[0]}, t.TempDir(), t.TempDir(), io.Discard)
+	_, err := Standalone(c, Secrets{}, Tokens{}, runnerd.Unconfined{}, []string{os.Args[0]}, t.TempDir(), t.TempDir(), nil, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "script.systems.network.ceiling[0].mode: none is no network this runner's sandbox builds (it builds: open)") {
 		t.Errorf("a ceiling of none and allow on an unconfined sandbox: %v", err)
 	}
 	if _, err := Standalone(Config{Script: &Script{Systems: map[string]System{"network": {Ceiling: ceiling(t, `{mode: open}`)}}}}, Secrets{}, Tokens{},
-		runnerd.Unconfined{}, []string{os.Args[0]}, t.TempDir(), t.TempDir(), io.Discard); err != nil {
+		runnerd.Unconfined{}, []string{os.Args[0]}, t.TempDir(), t.TempDir(), nil, io.Discard); err != nil {
 		t.Errorf("a ceiling of open on an unconfined sandbox: %v", err)
 	}
 }

@@ -103,7 +103,7 @@ func serveNetwork(t *testing.T, sb runnerd.Sandbox) (client.Launcher, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := Standalone(opened(Config{}), Secrets{}, Tokens{}, sb, []string{os.Args[0], "-test.run=^$", taskArg}, work, control, io.Discard)
+	h, err := Standalone(opened(Config{}), Secrets{}, Tokens{}, sb, []string{os.Args[0], "-test.run=^$", taskArg}, work, control, nil, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}

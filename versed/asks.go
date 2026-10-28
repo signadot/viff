@@ -68,7 +68,7 @@ func (s *Server) postAsk(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	id, code, err := s.raiseAsk(store, asker, body, s.now())
+	id, code, err := s.raiseAsk(store, asker, body, s.now(), relayedTask(r))
 	if err != nil {
 		http.Error(w, err.Error(), code)
 		return
@@ -79,10 +79,22 @@ func (s *Server) postAsk(w http.ResponseWriter, r *http.Request) {
 // raiseAsk is an ask checked, written and posed, as asker through store: what POST /asks does, and
 // what a `then` of `{ask}` does for its asker on a yes (askthen.go). It answers the ask's id, or
 // the status a refusal takes and why.
-func (s *Server) raiseAsk(store entity.Store, asker string, body api.Ask, now time.Time) (string, int, error) {
+//
+// A TASK'S RAISE is one its runner carried for it, as its owner (relayTask): taskID names the task,
+// and the ask's `from` says so beside the owner. What its `then` and `else` spawn is held within
+// the task (taskBound), so a task hands what follows its ask no more reach and no looser a dial
+// than it has itself.
+func (s *Server) raiseAsk(store entity.Store, asker string, body api.Ask, now time.Time, taskID string) (string, int, error) {
 	rec, answerers, err := askRecord(body, asker, now)
 	if err != nil {
 		return "", http.StatusBadRequest, err
+	}
+	var within *taskBound
+	if taskID != "" {
+		from := mirror.FromPrincipal(asker)
+		from["task"] = taskID
+		rec[mirror.FromField] = from
+		within = s.boundOf(taskID)
 	}
 	if body.Serves != "" {
 		if code, err := s.onward(rec, body, asker); err != nil {
@@ -93,7 +105,7 @@ func (s *Server) raiseAsk(store entity.Store, asker string, body api.Ask, now ti
 	}
 	for _, field := range []string{"then", "else"} {
 		if follow, ok := asMap(rec[field]); ok {
-			if code, err := s.checkThen(asker, follow, "", now); err != nil {
+			if code, err := s.checkThen(asker, follow, "", now, within); err != nil {
 				return "", code, fmt.Errorf("%s: %w", field, err)
 			}
 		}
@@ -620,7 +632,7 @@ func (s *Server) followAsk(ref entity.Ref, field string) {
 // authority alone, as the asker wrote it (thenSpec).
 func (s *Server) runThen(id string, ref entity.Ref, asker string, spec launch.Spec) error {
 	store := entity.As(s.Store, asker)
-	place, placeName, err := s.runnerFor(store, spec.Runner)
+	place, placeName, placeSubject, err := s.runnerFor(store, spec.Runner)
 	if err != nil {
 		return err
 	}
@@ -639,12 +651,12 @@ func (s *Server) runThen(id string, ref entity.Ref, asker string, spec launch.Sp
 	if actsFor != "" {
 		answerers = []string{task.PrincipalAnswerer}
 	}
-	s.host(id, hostedTask{subject: ref.String(), principal: asker, answerers: answerers, autonomy: l.Autonomy})
+	s.host(id, hostedTask{subject: ref.String(), principal: asker, answerers: answerers, autonomy: l.Autonomy, launched: &launched{spec.Environment, placeName, spec.VirtualKey}})
 	l.Provenance.Subject = ref.String()
 	h := place.Launch(l)
 	eng := s.engineOf("")
 	s.reflect(store, id, h, mirror.Meta{
-		Runner: place.Ref(), RunnerName: placeName, Subject: ref.String(), Prompt: l.Prompt,
+		Runner: place.Ref(), RunnerName: placeName, RunnerSubject: placeSubject, Subject: ref.String(), Prompt: l.Prompt,
 		Agent: recordAgent(l.Agent), Script: l.Script != "", Autonomy: l.Autonomy, ActsFor: actsFor, Answerers: answerers,
 		HeldBy: func() []string { return eng.HeldBy(id) },
 	})
@@ -811,7 +823,7 @@ func (s *Server) patchAsk(w http.ResponseWriter, r *http.Request) {
 	// A new `then` or `else` that answers or asks is checked as one is when an ask is raised.
 	for field, changed := range map[string]bool{"then": body.Then != nil, "else": body.Else != nil} {
 		if follow, ok := asMap(rec[field]); ok && changed {
-			if code, err := s.checkThen(asker, follow, id, s.now()); err != nil {
+			if code, err := s.checkThen(asker, follow, id, s.now(), nil); err != nil {
 				http.Error(w, field+": "+err.Error(), code)
 				return
 			}

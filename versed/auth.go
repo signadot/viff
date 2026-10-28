@@ -1,10 +1,13 @@
 package versed
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"fmt"
+	"maps"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -419,24 +422,35 @@ func (s *Server) verifyToken(ctx context.Context, token string) (*verified, *tur
 // bound at first sight where it is not yet, and the provider that vouched for it. presented is
 // what the request's header says, which names the same principal or nobody — or, for a bearer
 // that proves an io, a person the io relays (iod.go), in which case via is the io. account is the
-// relayed person's account (api.ForPrincipalHeader), and a is what the request does.
-func (s *Server) authenticate(ctx context.Context, token, presented, account string, a act) (principal, provider, via string, _ *turnedAway) {
+// relayed person's account (api.ForPrincipalHeader), task the task a runner's request is made
+// for (api.TaskHeader), and a is what the request does. Only a runner's bearer names a task.
+func (s *Server) authenticate(ctx context.Context, token, presented, account, task string, a act) (principal, provider, via string, _ *turnedAway) {
 	if io, ok := s.auth.staticIo(token); ok {
+		if task != "" {
+			return "", "", "", notARunnersTask(io.Principal, task)
+		}
 		return s.asIo(io, presented, account, a)
 	}
 	// A runner proved by a static token, which its registration names by its hash (runnerauth.go).
 	if e, ok, err := s.staticRunner(token); err != nil {
 		return "", "", "", turnAway(http.StatusServiceUnavailable, "whether the bearer is a runner's is not known: %v", err)
 	} else if ok {
-		return asRunner(e, presented, account)
+		return s.asRunner(e, presented, account, task, a)
 	}
 	v, ref := s.verifyToken(ctx, token)
 	if ref != nil {
 		return "", "", "", ref
 	}
 	p := v.provider
+	if task != "" && !p.iod {
+		return "", "", "", turnAway(http.StatusForbidden, "%s names task %s, and the bearer is a %s "+
+			"account's: only the runner hosting a task makes a request for it", api.TaskHeader, task, p.name)
+	}
 	if p.iod {
 		if io, ok := s.auth.iod.accounts[v.sub]; ok {
+			if task != "" {
+				return "", "", "", notARunnersTask(io.Principal, task)
+			}
 			return s.asIo(io, presented, account, a)
 		}
 		// A runner, by the subject its registration names (runnerauth.go). Its own requests are
@@ -446,7 +460,7 @@ func (s *Server) authenticate(ctx context.Context, token, presented, account str
 			return "", "", "", turnAway(http.StatusServiceUnavailable, "whether the bearer is a runner's is not known: %v", err)
 		}
 		if ok {
-			return asRunner(e, presented, account)
+			return s.asRunner(e, presented, account, task, a)
 		}
 		return "", "", "", turnAway(http.StatusUnauthorized, "the bearer is a workload token whose "+
 			"subject %s is no io of this verse (auth.iod.accounts) and no registered runner's "+
@@ -541,23 +555,46 @@ func authenticatedBy(r *http.Request) string {
 	return claimantAsserted
 }
 
-// asRunner is a request whose bearer proved the runner e. Its own requests are made as itself: a
-// name beside its token is its own or nobody's.
+// asRunner is a request whose bearer proved the runner e: its own, made as itself, or one it
+// carries for a task it hosts (task), admitted through the task's record (relayTask). A name
+// beside its token with no task is its own or nobody's.
 //
-// STOP-GAP, UNTIL A RUNNER'S RELAY IS ADMITTED (git-issue 3gf9wqb3h12kr2ymtnn0). A runner relays
-// nobody yet, so a request whose runner token comes with an account to relay
+// A RUNNER RELAYS A TASK, NEVER AN ACCOUNT. An account to relay beside a runner's token
 // (api.ForPrincipalHeader) is refused, rather than carried out as the runner with the account
-// unread: a runner that believes it relays somebody learns that it does not. The relay replaces
-// this check with its own, which admits a task's owner through the task's record.
-func asRunner(e api.Runner, presented, account string) (principal, provider, via string, _ *turnedAway) {
+// unread: what a runner carries is a task's verb, and the task's record is the binding.
+//
+// A RUNNER CARRIES WHAT A TASK'S TOOLS DO ON VERSE, AND NOTHING ELSE (relayedActs): what follows a
+// task's ask is held within the task where the ask is raised, and a request the tools never make
+// would be the owner's act unheld.
+func (s *Server) asRunner(e api.Runner, presented, account, task string, a act) (principal, provider, via string, _ *turnedAway) {
 	if account != "" {
 		return "", "", "", turnAway(http.StatusForbidden, "the bearer is runner %s and %s names an account "+
-			"to relay: verse admits no relay from a runner until a runner's relay is built, and the request "+
-			"is not carried out as the runner instead", e.Principal(), api.ForPrincipalHeader)
+			"to relay: a runner relays a task it hosts (%s), never an account, and the request is not "+
+			"carried out as the runner instead", e.Principal(), api.ForPrincipalHeader, api.TaskHeader)
+	}
+	if task != "" {
+		if !relayedActs[a.pattern] {
+			return "", "", "", turnAway(http.StatusForbidden, "runner %s carries a request for task %s to "+
+				"%s %s, and a runner carries only what a task's tools do on verse: %s", e.Principal(), task,
+				a.method, cmp.Or(a.pattern, "a route verse does not have"), strings.Join(slices.Sorted(maps.Keys(relayedActs)), ", "))
+		}
+		return s.relayTask(e, presented, task)
 	}
 	if presented != "" && presented != e.Principal() {
 		return "", "", "", turnAway(http.StatusForbidden, "the bearer is runner %s and %s names %s: "+
-			"a runner's own request is made as itself", e.Principal(), api.PrincipalHeader, presented)
+			"a runner's own request is made as itself, and one it carries for a task names the task (%s)",
+			e.Principal(), api.PrincipalHeader, presented, api.TaskHeader)
 	}
 	return e.Principal(), runnerProvider, "", nil
+}
+
+// relayedActs are the routes a runner carries a task's request to: raising an ask
+// (`question-raise`), and saying whom a request is made as.
+var relayedActs = map[string]bool{"POST /asks": true, "GET /whoami": true}
+
+// notARunnersTask refuses a task named beside a bearer that proves an io: only a runner hosting a
+// task carries a request for it.
+func notARunnersTask(io, task string) *turnedAway {
+	return turnAway(http.StatusForbidden, "%s names task %s, and the bearer is io %s's: only the "+
+		"runner hosting a task makes a request for it", api.TaskHeader, task, io)
 }

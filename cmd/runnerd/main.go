@@ -171,7 +171,13 @@ func run(args []string) error {
 	if err := systems.Check(); err != nil {
 		return fmt.Errorf("this runner does not honour the systems' documents: %w", err)
 	}
-	r, err := stock.Standalone(c, s, tokens, sb, []string{self, "-task"}, work, control, os.Stderr)
+	// The door's guard before the runner, since what the runner carries to its verse for a task
+	// (a raise) goes with the guard's own token.
+	guard, err := runnerd.NewGuard(*rc.Verse, *tokenFile)
+	if err != nil {
+		return err
+	}
+	r, err := stock.Standalone(c, s, tokens, sb, []string{self, "-task"}, work, control, guard.Raiser(), os.Stderr)
 	if err != nil {
 		return err
 	}
@@ -180,10 +186,6 @@ func run(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	guard, err := runnerd.NewGuard(*rc.Verse, *tokenFile)
-	if err != nil {
-		return err
-	}
 	h := guard.Wrap(r.HTTPHandler())
 	log.Printf("serving one verse: %s, by the tokens it signs for %s", guard.Verse().Issuer, guard.Verse().Audience)
 	srv := &http.Server{Handler: runnerd.WithReady(h)}

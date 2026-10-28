@@ -333,3 +333,29 @@ func TestKeysUnreadMatchesGoOIDC(t *testing.T) {
 		t.Errorf("a forged token: %v, want a refusal that is not keys unread", err)
 	}
 }
+
+// A RAISE VERSE REFUSED THE RUNNER ON IS THE RUNNER'S FAULT, and an error to the task: verse's
+// door says so with WWW-Authenticate. A refusal of the ask itself is verse's answer, a no.
+func TestARaiseRefusedAtTheDoorIsTheRunnersFault(t *testing.T) {
+	cluster, _, _ := fakeVerse(t)
+	var door atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if door.Load() {
+			w.Header().Set("WWW-Authenticate", `Bearer error="insufficient_scope"`)
+		}
+		http.Error(w, "not this", http.StatusForbidden)
+	}))
+	t.Cleanup(srv.Close)
+	path, _ := ownTokenFile(t, cluster, runnerSub)
+	g, err := NewGuard(Verse{URL: srv.URL}, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, said, err := g.Raise(context.Background(), "t1", []byte("{question: x}")); err != nil || code != http.StatusForbidden || said != "not this" {
+		t.Errorf("a refusal of the ask = %d %q %v, want verse's 403", code, said, err)
+	}
+	door.Store(true)
+	if code, _, err := g.Raise(context.Background(), "t1", []byte("{question: x}")); err == nil || !strings.Contains(err.Error(), "not this") {
+		t.Errorf("a refusal at the door = %d, %v, want an error saying why", code, err)
+	}
+}

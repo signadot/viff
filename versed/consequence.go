@@ -1,18 +1,22 @@
 package versed
 
 import (
+	"cmp"
+	"errors"
 	"fmt"
 	"os"
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/task"
 )
 
 // WHAT FOLLOWS A QUESTION RUNS AS WHOEVER ASKED, BEFORE THE ANSWER GOES BACK TO THEM. Only an
 // asker who does not wait on the answer in the store writes a `then`: a person's ask, which runs
-// its `then` as that person (`from`). A rule's question carries none, since what a rule does about
+// its `then` as that person (`from`), and one a task raises for its owner (`question-raise`),
+// which runs as the owner, held within the task (taskBound). A rule's question carries none, since what a rule does about
 // a yes is its action, and a task's carries none, since what a task does about a yes is its next
 // step. The asker's wait is released once the `then` has run, and a spawn has run once it is
 // launched: nobody waits for a task that follows a yes to finish.
@@ -129,4 +133,51 @@ func (s *Server) undelivered(store entity.Store, id string, err error) {
 	}); werr != nil {
 		fmt.Fprintf(os.Stderr, "verse: ask %s: that its answer was not delivered was not written: %v\n", ref.Name(), werr)
 	}
+}
+
+// taskBound is what an ask a task raised may not exceed in what follows it: the task's own
+// launch, and the autonomy it runs under now. A task that follows a yes with a spawn hands it no
+// more than it has itself (holds). launched is nil for a task this verse launched before a
+// restart, which it no longer knows the launch of.
+//
+// An edit of the ask is not held: a runner carries only the raise (relayedActs), so whoever edits
+// the ask is its owner, and what follows it is theirs to change.
+type taskBound struct {
+	launched *launched
+	autonomy task.Autonomy
+}
+
+// boundOf is the bound on what follows an ask task id raised: the task as this verse launched it,
+// with the autonomy it runs under now.
+func (s *Server) boundOf(id string) *taskBound {
+	ht := s.hostedOf(id)
+	return &taskBound{launched: ht.launched, autonomy: ht.autonomy}
+}
+
+// holds is why a then's spawn would reach beyond the task that raised the ask, or nil: its
+// environment within the task's (systems.Environment.Within), its autonomy no looser
+// (task.Autonomy.Within), on the task's runner (runner, resolved as runnerFor names it), and
+// spending the task's credential (spec.VirtualKey, resolved as credentialAt resolves it).
+func (b *taskBound) holds(spec launch.Spec, runner string) error {
+	if b.launched == nil {
+		return errors.New(": the raising task's launch is not known to this verse, which launched it " +
+			"before a restart, so a then that spawns cannot be held within it, and is refused")
+	}
+	if err := spec.Environment.Within(b.launched.environment); err != nil {
+		return fmt.Errorf(".environment.%w", err)
+	}
+	if err := spec.Autonomy.Within(b.autonomy, spec.Environment); err != nil {
+		return fmt.Errorf(".autonomy%w", err)
+	}
+	if runner != b.launched.runner {
+		return fmt.Errorf(".runner: %s, and the raising task runs on %s: a then's spawn runs where the "+
+			"task does (runner: %s)", cmp.Or(runner, "this verse's own runtime"),
+			cmp.Or(b.launched.runner, "this verse's own runtime"), cmp.Or(b.launched.runner, `""`))
+	}
+	// Compared as resolved, the key each spends, and never said: a refusal is no place for a key.
+	if spec.VirtualKey != b.launched.virtualKey {
+		return errors.New(".virtualKey: it spends another credential than the raising task does: a " +
+			"then's spawn spends the task's credential, named as the task's spawn named it")
+	}
+	return nil
 }

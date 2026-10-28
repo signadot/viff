@@ -49,6 +49,7 @@ import (
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/runner/runnerd/stock"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/trigger"
 )
@@ -447,6 +448,18 @@ type hostedTask struct {
 	scope, subject, principal string
 	answerers                 []string
 	autonomy                  task.Autonomy // the launch's, for what the runner never reads of it
+	// launched is what the launch reached, for what an ask the task raises may spawn to be held
+	// within (taskBound); nil for a task hosted again after a restart, whose launch this verse no
+	// longer holds.
+	launched *launched
+}
+
+// launched is what a task's launch reached: its environment, the runner it went to and the
+// model credential it spends, as this verse resolved them.
+type launched struct {
+	environment systems.Environment
+	runner      string // the registration's ref (runnerEntityRef), "" for this verse's own runtime
+	virtualKey  string
 }
 
 // host records what verse keeps of a task it is about to launch, before the launch, so the
@@ -590,7 +603,7 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 		}
 		// WHERE this runs, resolved before anything is attempted, so the meta below records
 		// the runner the work actually went to rather than the default it did not.
-		place, placeName, err := s.runnerFor(st, spec.Runner)
+		place, placeName, placeSubject, err := s.runnerFor(st, spec.Runner)
 		if err != nil {
 			// Same shape as the envelope and the resolver below: a spawn that cannot run
 			// where it said does not run somewhere else instead.
@@ -603,7 +616,7 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 		// launch may do. Built once so the failure path and the running path cannot disagree
 		// about what was attempted.
 		meta := mirror.Meta{
-			Subject: spec.Subject, Runner: place.Ref(), RunnerName: placeName,
+			Subject: spec.Subject, Runner: place.Ref(), RunnerName: placeName, RunnerSubject: placeSubject,
 			Chain: spec.Chain, Prompt: spec.Prompt, Agent: recordAgent(spec.Agent), Script: spec.Script != "", Occurrence: spec.Occurrence,
 			Git: (&runner.Launch{Environment: spec.Environment}).Repos(), ActsFor: spec.ActsFor,
 			Autonomy: spec.Autonomy,
@@ -658,7 +671,7 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 			// On the task's record from its first write: what it is good for and until when.
 			l.Credential, meta.Credential = token, minted
 		}
-		ht := hostedTask{scope: scope, subject: spec.Subject, principal: by, autonomy: spec.Autonomy} // where this task's records live, so its questions land there too
+		ht := hostedTask{scope: scope, subject: spec.Subject, principal: by, autonomy: spec.Autonomy, launched: &launched{spec.Environment, placeName, spec.VirtualKey}} // where this task's records live, so its questions land there too
 		if actsFor != "" {
 			ht.answerers = []string{task.PrincipalAnswerer}
 			meta.Answerers = ht.answerers
@@ -847,6 +860,8 @@ func (s *Server) reconcileTasks() error {
 					// that lost it on restart would drop out of the answer while still
 					// running there.
 					RunnerName: entity.Str(ent.Payload, "runnerName"),
+					// And the subject the door holds a relaying runner to, for the same reason.
+					RunnerSubject: entity.Str(ent.Payload, "runnerSubject"),
 					// Carried, not re-stamped: a resumed task did not start again.
 					StartedAt: entity.Str(ent.Payload, "startedAt"),
 					Started:   entity.Str(ent.Payload, "started"),
@@ -1476,11 +1491,17 @@ func (s *Server) principals(mux *http.ServeMux, unattributed map[string]bool) ht
 			_, pattern := mux.Handler(r)
 			// A read, a registered control act, or no route at all, which the router answers.
 			ctl := pattern == "" || r.Method == http.MethodGet || r.Method == http.MethodHead || s.control[pattern]
+			taskID := r.Header.Get(api.TaskHeader)
 			who, provider, via, refused := s.authenticate(r.Context(), token, principalOf(r),
-				r.Header.Get(api.ForPrincipalHeader), act{method: r.Method, pattern: pattern, control: ctl})
+				r.Header.Get(api.ForPrincipalHeader), taskID, act{method: r.Method, pattern: pattern, control: ctl})
 			if refused != nil {
-				if refused.code == http.StatusUnauthorized {
+				// The door's refusal, of the credential or of what it may carry, as against the
+				// handler's of the request (RFC 6750): a runner tells its fault from a no by it.
+				switch refused.code {
+				case http.StatusUnauthorized:
 					w.Header().Set("WWW-Authenticate", "Bearer")
+				case http.StatusForbidden:
+					w.Header().Set("WWW-Authenticate", `Bearer error="insufficient_scope"`)
 				}
 				http.Error(w, refused.msg, refused.code)
 				return
@@ -1489,7 +1510,16 @@ func (s *Server) principals(mux *http.ServeMux, unattributed map[string]bool) ht
 			if via != "" {
 				r = relayed(r, via)
 			}
+			if taskID != "" { // admitted only through the task's record (relayTask)
+				r = relayingTask(r, taskID)
+			}
 			r.Header.Set(api.PrincipalHeader, who)
+		} else if id := r.Header.Get(api.TaskHeader); id != "" {
+			// A task named with no bearer is a runner's claim nobody proved: refused, not read as
+			// the request of whoever the header beside it says.
+			http.Error(w, fmt.Sprintf("%s names task %s with no bearer: only the runner hosting a "+
+				"task carries a request for it, beside its own token", api.TaskHeader, id), http.StatusUnauthorized)
+			return
 		}
 		p := principalOf(r)
 		if p == "" && r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -2747,8 +2777,8 @@ func (s *Server) listDocket(w http.ResponseWriter, r *http.Request) {
 		// from a task is a run's, one from anybody else is a firing's or a person's. Storing it
 		// would be a second spelling of what `from` already says.
 		row.Where = "engine"
-		if row.From != nil && row.From.Task != "" {
-			row.Where = "task"
+		if row.From != nil && row.From.Task != "" && row.From.Principal == "" {
+			row.Where = "task" // one a task raised for its owner is the owner's, and versed waits on it
 		}
 		out = append(out, row)
 	}
@@ -2792,7 +2822,9 @@ func waitsOn(store entity.Store, who string, q entity.Payload) bool {
 // gate, whose id carries no owner by construction.
 func (s *Server) ownerOf(store entity.Store, questionID string) string {
 	if e, ok, err := store.Get(mirror.QuestionRef(questionID)); err == nil && ok {
-		if p := mirror.TaskFrom(e.Payload); p != "" {
+		// A person's ask is versed's to wait on, whoever raised it: one a task raised for its
+		// owner names the task beside the owner, and its answer goes to versed's wait.
+		if p := mirror.TaskFrom(e.Payload); p != "" && mirror.PrincipalFrom(e.Payload) == "" {
 			return p
 		}
 		// The record exists and names no task: a firing raised it, and the registry is
@@ -4424,7 +4456,7 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	// The second spawn path, refusing the same way the first does. A misspelled runner that
 	// quietly ran the work in-process says one thing in the deployment and does another in
 	// the verse. Refused BEFORE the spawn, so nothing is started and nothing is mirrored.
-	place, placeName, err := s.runnerFor(store, spec.Runner)
+	place, placeName, placeSubject, err := s.runnerFor(store, spec.Runner)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -4468,11 +4500,11 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	// The same scope the record above goes to, so this run's questions reach the docket of
 	// whoever asked for it rather than everybody's; and whom it acts for, which its rows naming
 	// nobody ask.
-	s.host(id, hostedTask{scope: scope, subject: spec.Subject, principal: body.Principal, autonomy: spec.Autonomy})
+	s.host(id, hostedTask{scope: scope, subject: spec.Subject, principal: body.Principal, autonomy: spec.Autonomy, launched: &launched{spec.Environment, placeName, spec.VirtualKey}})
 	h := place.Launch(l)
 	eng := s.engineOf(scope)
 	s.reflect(store, id, h, mirror.Meta{
-		Runner: place.Ref(), RunnerName: placeName,
+		Runner: place.Ref(), RunnerName: placeName, RunnerSubject: placeSubject,
 		// What it was asked and what ran it, on the record as a rule's spawn puts them: the
 		// two facts a reader of this task wants beside its status, and for a task on a named
 		// runner the record is the only place they can be read without that runner.

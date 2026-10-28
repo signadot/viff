@@ -1,6 +1,7 @@
 package runnerd
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/runner"
 )
 
@@ -334,6 +336,49 @@ func (g *Guard) helloClient() *http.Client {
 		c.Transport = g.client.Transport
 	}
 	return c
+}
+
+// Raise carries a task's ask to the verse this runner serves: POST /asks with the runner's own
+// token and the task's id (api.TaskHeader), the ask a tony document as POST /asks reads it. Verse
+// admits it as the task's owner through the task's record, which names this runner, so the task
+// holds nothing and names nobody. It answers the verse's status and what it said; an error is a
+// request that got no answer. A runner with no token of its own has nothing to carry it with,
+// and Raiser is then nil (cmd/runnerd).
+func (g *Guard) Raise(ctx context.Context, taskID string, ask []byte) (int, string, error) {
+	tok, err := g.ownToken()
+	if err != nil {
+		return 0, "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(g.v.URL, "/")+"/asks?format=tony", bytes.NewReader(ask))
+	if err != nil {
+		return 0, "", err
+	}
+	req.Header.Set("Content-Type", "application/tony")
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set(api.TaskHeader, taskID)
+	resp, err := g.helloClient().Do(req)
+	if err != nil {
+		return 0, "", err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	said := strings.TrimSpace(string(body))
+	// A REFUSAL OF THE RUNNER, NOT OF THE ASK: verse's door says so with WWW-Authenticate (RFC
+	// 6750), a token it did not take or a task it would not carry this runner's request for.
+	// That is this runner's fault to fix, and an error to the task rather than a no.
+	if resp.Header.Get("WWW-Authenticate") != "" {
+		return 0, "", fmt.Errorf("verse refused this runner's request for the task (%d): %s", resp.StatusCode, said)
+	}
+	return resp.StatusCode, said, nil
+}
+
+// Raiser is Raise where the runner holds a token of its own to carry an ask with, and nil where
+// it holds none.
+func (g *Guard) Raiser() func(context.Context, string, []byte) (int, string, error) {
+	if g.tokenFile == "" {
+		return nil
+	}
+	return g.Raise
 }
 
 // WithReady is h with GET /ready beside it, for a readiness probe: 200 as soon as the runner

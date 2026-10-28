@@ -80,7 +80,7 @@ func Ask(resolver task.Resolver) Tool {
 			origin, _, _ := strings.Cut(tu.ID, task.GateSep)
 			// WHOM IT IS HELD OUT TO: the person this task runs for, unless the call names
 			// answerers.
-			answerers := strsOf(tu.Input, "answerers")
+			answerers := StrsOf(tu.Input, "answerers")
 			if len(answerers) == 0 {
 				answerers = []string{task.PrincipalAnswerer}
 			}
@@ -99,7 +99,7 @@ func Ask(resolver task.Resolver) Tool {
 }
 
 // strsOf reads a list of strings the call named under key, blank ones dropped.
-func strsOf(in map[string]any, key string) []string {
+func StrsOf(in map[string]any, key string) []string {
 	var out []string
 	if raw, ok := in[key].([]any); ok {
 		for _, v := range raw {
