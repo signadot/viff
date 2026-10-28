@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -61,13 +62,17 @@ import (
 // that opened the pull request cannot review it: the refusal lands on the status.
 //
 // `comment` is findings that do not block. GitHub counts a reviewer's latest approval or request
-// for changes, and a comment is neither, so a comment after a request for changes would leave the
-// merge held: the io dismisses the requests for changes it left standing before it comments, and
-// what it said last is its verdict.
+// for changes, and a comment is neither, so a comment after either would leave it standing: a
+// request for changes still holding the merge, an approval still counting toward it. The io
+// dismisses the approvals and requests for changes it left standing before it comments, and what
+// it said last is its verdict. If GitHub then refuses the comment, they stay dismissed and no
+// comment replaces them: the pull request is left with no verdict of the io's, which blocks
+// nothing, as the comment would not have.
 //
 // `sha` pins the review to the commit it is about (`review: {event: approve, body: …, sha: <head>}`),
 // so a verdict reached on one head is not read as one on a head pushed since: GitHub shows it as on
-// that commit, and the status carries `sha`. A new sha with the same verdict is a new review.
+// that commit, and the status carries `sha`, which a review without one removes. A new sha with
+// the same verdict is a new review.
 //
 // AND A CLOSE, when the input carries `close`:
 //
@@ -742,9 +747,10 @@ func (k *Sink) keepPull(ctx context.Context, repo string, in verseio.Input) (ent
 }
 
 // reviewBeside keeps verse's review on a pull request as `review` asks, its facts beside the rest
-// of the input's status: `reviewEvent`, `review` (its id), `reviewPosted` (the fingerprint of what
-// it said) and `reviewedAt`. `{event: request-changes, body}` blocks a merge where main's
-// protection requires reviews, and `comment` lifts that block as it comments; `{event: dismiss, body}` dismisses every standing request for
+// of the input's status: `reviewEvent`, `review` (its id), `reviewSha` (the commit it names, when
+// it names one), `reviewPosted` (the fingerprint of what it said) and `reviewedAt`.
+// `{event: request-changes, body}` blocks a merge where main's protection requires reviews, and
+// `comment` lifts that block as it comments; `{event: dismiss, body}` dismisses every standing request for
 // changes this io left on the pull request, `body` being the reason GitHub shows, and answers
 // `dismissed`, how many. The same review asked again costs nothing. What GitHub refuses is
 // `reviewError`, `reviewRefused` holding what was refused so it is not asked again; anything else
@@ -767,19 +773,29 @@ func (k *Sink) reviewBeside(ctx context.Context, repo string, number int, spec, 
 	}
 	now := k.now().UTC().Format(time.RFC3339)
 	if ask.word == "dismiss" {
-		n, err := k.dismissOwn(ctx, repo, number, ask.body)
+		n, err := k.dismissOwn(ctx, repo, number, ask.body, "CHANGES_REQUESTED")
 		if err != nil {
 			return failed(err)
 		}
 		return entity.Obj{"reviewEvent": ask.word, "reviewPosted": ask.fp, "reviewedAt": now, "dismissed": n,
+			"review": entity.Removed(), "reviewSha": entity.Removed(),
 			"reviewError": entity.Removed(), "reviewRefused": entity.Removed()}
 	}
 	r, err := k.post(ctx, repo, number, ask)
 	if err != nil {
 		return failed(err)
 	}
-	return entity.Obj{"review": strconv.FormatInt(r.ID, 10), "reviewEvent": ask.word, "reviewPosted": ask.fp, "reviewedAt": now,
-		"reviewError": entity.Removed(), "reviewRefused": entity.Removed()}
+	return entity.Obj{"review": strconv.FormatInt(r.ID, 10), "reviewEvent": ask.word, "reviewSha": orRemoved(ask.sha),
+		"reviewPosted": ask.fp, "reviewedAt": now, "reviewError": entity.Removed(), "reviewRefused": entity.Removed()}
+}
+
+// orRemoved is a status field that says s, or is removed when s is empty, since a status is merged
+// into and a field left out would keep what an earlier pass wrote.
+func orRemoved(s string) any {
+	if s == "" {
+		return entity.Removed()
+	}
+	return s
 }
 
 // reviewAsk is what a `review` asks for: the input's word for the event, the body, the commit it
@@ -799,7 +815,7 @@ func readReview(spec entity.Payload) reviewAsk {
 }
 
 // post posts the review asked for, a dismissal aside. A comment is preceded by dismissing the
-// requests for changes this io left standing, since a comment does not lift them.
+// approvals and requests for changes this io left standing, since a comment supersedes neither.
 func (k *Sink) post(ctx context.Context, repo string, number int, ask reviewAsk) (review, error) {
 	event, ok := reviewEvents[ask.word]
 	if !ok {
@@ -810,16 +826,17 @@ func (k *Sink) post(ctx context.Context, repo string, number int, ask reviewAsk)
 			"REQUEST_CHANGES": "requests changes", "COMMENT": "comments"}[event]))
 	}
 	if event == "COMMENT" {
-		if _, err := k.dismissOwn(ctx, repo, number, "verse: superseded by a review that does not block"); err != nil {
+		if _, err := k.dismissOwn(ctx, repo, number, "verse: superseded by a later review that comments",
+			"APPROVED", "CHANGES_REQUESTED"); err != nil {
 			return review{}, err
 		}
 	}
 	return k.g.api.createReview(ctx, repo, number, event, ask.body, ask.sha)
 }
 
-// dismissOwn dismisses every request for changes this io left standing on a pull request, and
-// answers how many: all of them, not only the latest, so no earlier one is left to hold the merge.
-func (k *Sink) dismissOwn(ctx context.Context, repo string, number int, message string) (int, error) {
+// dismissOwn dismisses every review in one of states that this io left standing on a pull request,
+// and answers how many: all of them, not only the latest, so no earlier one is left to count.
+func (k *Sink) dismissOwn(ctx context.Context, repo string, number int, message string, states ...string) (int, error) {
 	if strings.TrimSpace(message) == "" {
 		return 0, verseio.Permanent(fmt.Errorf("a dismissal carries a body, the reason GitHub shows"))
 	}
@@ -833,7 +850,7 @@ func (k *Sink) dismissOwn(ctx context.Context, repo string, number int, message 
 	}
 	n := 0
 	for _, r := range reviews {
-		if r.State != "CHANGES_REQUESTED" || r.User == nil || !strings.EqualFold(r.User.Login, self) {
+		if !slices.Contains(states, r.State) || r.User == nil || !strings.EqualFold(r.User.Login, self) {
 			continue
 		}
 		if err := k.g.api.dismissReview(ctx, repo, number, r.ID, message); err != nil {
@@ -858,24 +875,21 @@ func (k *Sink) review(ctx context.Context, repo string, in verseio.Input, spec e
 		return nil, nil // in step: the io's latest review says this
 	}
 	if ask.word == "dismiss" {
-		n, err := k.dismissOwn(ctx, repo, number, ask.body)
+		n, err := k.dismissOwn(ctx, repo, number, ask.body, "CHANGES_REQUESTED")
 		if err != nil {
 			return nil, err
 		}
-		return entity.Obj{"event": ask.word, "dismissed": n, "reviewedAt": k.now().UTC().Format(time.RFC3339), "posted": ask.fp}, nil
+		return entity.Obj{"event": ask.word, "dismissed": n, "reviewedAt": k.now().UTC().Format(time.RFC3339), "posted": ask.fp,
+			"review": entity.Removed(), "url": entity.Removed(), "sha": entity.Removed()}, nil
 	}
 	r, err := k.post(ctx, repo, number, ask)
 	if err != nil {
 		return nil, err
 	}
-	out := entity.Obj{
-		"review": strconv.FormatInt(r.ID, 10), "event": ask.word, "url": r.HTMLURL,
+	return entity.Obj{
+		"review": strconv.FormatInt(r.ID, 10), "event": ask.word, "url": r.HTMLURL, "sha": orRemoved(ask.sha),
 		"reviewedAt": k.now().UTC().Format(time.RFC3339), "posted": ask.fp,
-	}
-	if ask.sha != "" {
-		out["sha"] = ask.sha
-	}
-	return out, nil
+	}, nil
 }
 
 // close closes an issue or a pull request, once.

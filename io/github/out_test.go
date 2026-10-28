@@ -356,7 +356,9 @@ func TestTheOutHalfReviewsAPullRequest(t *testing.T) {
 
 // A VERDICT AT A HEAD: a review naming a sha is about that commit, so the same verdict at the next
 // head is a new review, and a comment after a request for changes dismisses it first, since a
-// comment would leave the merge held while the io's latest word says it should not be.
+// comment would leave the merge held while the io's latest word says it should not be. A comment
+// after an approval dismisses that too, which would otherwise go on counting toward the merge,
+// and a review naming no sha leaves none of an earlier one's on the status.
 func TestTheOutHalfReviewsAtAHeadAndACommentLiftsItsHold(t *testing.T) {
 	store := entitytest.Store(t)
 	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
@@ -400,6 +402,21 @@ func TestTheOutHalfReviewsAtAHeadAndACommentLiftsItsHold(t *testing.T) {
 	if _, dismissed := f.reviewCommits(); len(events) != 3 || events[2] != "COMMENT" || dismissed != 2 {
 		t.Fatalf("reviews %v and %d dismissed, want a COMMENT after both requests for changes were dismissed",
 			events, dismissed)
+	}
+
+	ask(entity.Obj{"event": "approve", "body": "fine", "sha": entity.Removed()}) // a Set merges: the earlier sha is taken out
+	pass()
+	if st := status(); st["event"] != "approve" || st["sha"] != nil {
+		t.Fatalf("status %v, want the approval with no sha: it names no commit", st)
+	}
+	ask(entity.Obj{"event": "comment", "body": "one more note", "sha": "eee"})
+	pass()
+	pr := f.repos["signadot/verse"].find(42)
+	if _, dismissed := f.reviewCommits(); dismissed != 3 || pr.reviews[3].state != "DISMISSED" {
+		t.Fatalf("%d dismissed and reviews %+v, want the approval dismissed before the comment", dismissed, pr.reviews)
+	}
+	if st := status(); st["event"] != "comment" || st["sha"] != "eee" {
+		t.Fatalf("status %v, want the comment at eee", st)
 	}
 
 	entitytest.Set(t, store, entity.RefAt("github", "signadot", "verse", "out", "silent"),

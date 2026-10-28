@@ -1063,7 +1063,8 @@ review: {event: request-changes, body: "an objection stands: …"}   # or approv
 ```
 
 Its status holds `review` (its id), `event`, `url` and `reviewedAt`, and `sha` when the input
-names one.
+names one. A later review that names no sha removes the earlier one's, and a dismissal removes
+`review`, `url` and `sha`, which were about the review it dismissed.
 
 | The input | What the pass does |
 |---|---|
@@ -1075,8 +1076,12 @@ request it opened. It also refuses `request-changes` or `comment` without a body
 refuses first.
 
 `comment` is findings that do not block. GitHub counts a reviewer's latest approval or request
-for changes, and a comment is neither, so the iod dismisses the requests for changes it left
-standing before it comments: what it said last is its verdict.
+for changes, and a comment is neither, so a comment after either would leave it standing: a
+request for changes holding the merge, an approval counting toward it. The iod dismisses the
+approvals and requests for changes it left standing before it comments: what it said last is its
+verdict. If GitHub then refuses the comment, they stay dismissed and nothing replaces them, so
+the pull request is left with no verdict of the iod's, which blocks nothing, as the comment would
+not have.
 
 `sha` pins the review to a commit, `review: {event: approve, body: "…", sha: <head>}`, so a
 verdict reached on one head is not read as one on a head pushed since. GitHub shows the review as
@@ -1092,7 +1097,7 @@ block.
 **Several things on one pull request.** A `pr.<n>` input that carries `commitStatus`, or `review`
 together with `text` or `asks`, keeps all of them on that pull request at once: the question's
 comment (its facts as `comment`, `commentUrl`, `commentPosted`, `commentAt`), the iod's review
-(`reviewEvent`, `review`, `reviewPosted`, `reviewedAt`), and its commit statuses
+(`reviewEvent`, `review`, `reviewSha`, `reviewPosted`, `reviewedAt`), and its commit statuses
 (`commitStatus.<context>`). It is how a question is asked on a pull request somebody else opened
 and the merge held until it is answered:
 

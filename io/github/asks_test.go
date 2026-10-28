@@ -507,11 +507,14 @@ func TestAPullRequestToMainIsAskedAboutAndHeldUntilAnswered(t *testing.T) {
 		t.Fatalf("statuses after the yes = %+v", got)
 	}
 	// A later request for changes (a new change pushed) is posted again.
-	in["review"] = entity.Obj{"event": "request-changes", "body": "verse: a new change waits for an answer"}
+	in["review"] = entity.Obj{"event": "request-changes", "body": "verse: a new change waits for an answer", "sha": "abc"}
 	set()
 	r.pass(t)
 	if len(pr.reviews) != 2 || pr.reviews[1].state != "CHANGES_REQUESTED" {
 		t.Fatalf("a new request for changes: %+v", pr.reviews)
+	}
+	if st := r.status(t, "main-pr"); st["reviewSha"] != "abc" {
+		t.Fatalf("status %v, want the sha the review names", st)
 	}
 	// The pull request stops changing what was asked about: the question leaves the comment, which
 	// says so in place, and the hold is dismissed.
