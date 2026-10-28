@@ -91,7 +91,7 @@ const HeldByOperator = "operator"
 // is throttled by neither, because each sees only its own half of it.
 type Engine struct {
 	store    entity.Store
-	resolver task.Resolver // answers trigger ASK/PARK gates
+	resolver task.Resolver // answers trigger ASK gates
 	// elsewhere answers whether a rule name is installed in another engine of this verse.
 	spawn Spawner // optional: how actions spawn tasks
 	// moveDeadline moves a standing question's deadline (SetDeadlineMover); nil leaves a date a

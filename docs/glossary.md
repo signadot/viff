@@ -413,8 +413,8 @@ See [Tasks](reference/tasks.md#running-one).
 
 ### mode
 
-A mode is one of three values on a gate of a rule. `auto` runs the action, `ask` poses a
-question and waits for the answer, and `park` holds the action.
+A mode is one of two values on a gate of a rule. `auto` runs the action, and `ask` poses a
+question and waits for the answer.
 
 See [The gates of a rule](reference/gates.md#gates-whether-it-proceeds).
 

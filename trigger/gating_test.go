@@ -89,3 +89,19 @@ func TestGatesWrittenTwiceAreRefused(t *testing.T) {
 		t.Fatalf("AddTrigger = %v, want a refusal naming both spellings", err)
 	}
 }
+
+// A GATE'S MODE IS AUTO OR ASK, and anything else is refused at install, naming the two: `park`
+// and `hold` among them, which would otherwise be read as a question by another name.
+func TestAGatesModeIsAutoOrAsk(t *testing.T) {
+	for mode, ok := range map[string]bool{"auto": true, "ask": true, "park": false, "hold": false} {
+		trig := rule(t, `{name: m, condition: {subject: {path: "change.pr.*"}},
+			gates: [{name: ship, mode: `+mode+`}], action: {patch: {stage: x}}}`)
+		err := New(entitytest.Store(t), task.AutoResolver{}).AddTrigger(trig)
+		if ok && err != nil {
+			t.Errorf("mode %s: %v, want it installed", mode, err)
+		}
+		if !ok && (err == nil || !strings.Contains(err.Error(), "want auto|ask")) {
+			t.Errorf("mode %s: %v, want it refused, naming auto|ask", mode, err)
+		}
+	}
+}

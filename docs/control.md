@@ -147,7 +147,7 @@ verse does not keep the hold.
 |---|---|
 | `say` | gives the runs it reaches an instruction. It lands at the same boundary. |
 | `cancel` | ends one run. For a script it ends at once, by killing the process. |
-| a `park` gate | a stop that the *charter* declares on an action. It is answered on the docket ([the gates of a rule](reference/gates.md#gates-whether-it-proceeds)). |
+| an `ask` gate | a stop that the *charter* declares on an action. It is answered on the docket ([the gates of a rule](reference/gates.md#gates-whether-it-proceeds)). |
 
 ## A suspension
 

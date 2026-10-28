@@ -18,7 +18,7 @@ func (denyResolver) Resolve(context.Context, task.GateQuestion, task.ToolUse) (t
 }
 
 // A DENIED FIRING IS NOT A FIRING. Five denied gates leave the counter at zero: what the
-// counter reports is entities ACTED ON, not attempts, so an ask/park-heavy workload does not
+// counter reports is entities ACTED ON, not attempts, so an ask-heavy workload does not
 // read as a busy engine.
 //
 // This used to be a statement about the fire budget — that denials could not exhaust it and

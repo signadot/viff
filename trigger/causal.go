@@ -217,8 +217,8 @@ func (e *Engine) causeFor(t Trigger, c entity.Commit, subj entity.Ref) int64 {
 // parents to see a loop — could not see one that ran through a derive.
 func changedIn(c entity.Commit, ref entity.Ref) bool { return c.Changed(ref) }
 
-// blocks reports whether a firing of this trigger will wait on a decision — an ask or a park
-// posed to whoever answers.
+// blocks reports whether a firing of this trigger will wait on a decision — an ask posed to
+// whoever answers.
 func (t Trigger) blocks() bool {
 	for _, g := range t.AllGates() {
 		if m, err := g.mode(); err == nil && m.Blocks() {

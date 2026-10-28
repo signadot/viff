@@ -459,18 +459,17 @@ func (g Gate) validate() error {
 // mode resolves the gate's mode. Empty is auto, unless the gate carries a
 // threshold, options or a deadline — a question shaped for somebody to answer — and then it
 // is ask.
-// Mode is how a rule's gate decides: `auto` passes the firing without asking, `ask` poses a
-// question and waits, `park` holds the firing until somebody releases it. A rule's gate is
-// verse's own (the firing's), so these are verse's words and not the runner's.
+// Mode is how a rule's gate decides: `auto` passes the firing without asking, and `ask` poses a
+// question and waits. A rule's gate is verse's own (the firing's), so these are verse's words and
+// not the runner's.
 type Mode string
 
 const (
 	ModeAuto Mode = "auto"
 	ModeAsk  Mode = "ask"
-	ModePark Mode = "park"
 )
 
-// Blocks reports whether the mode holds the firing for somebody: ask and park do, auto does not.
+// Blocks reports whether the mode holds the firing for somebody: ask does, auto does not.
 func (m Mode) Blocks() bool { return m != ModeAuto }
 
 func (g Gate) mode() (Mode, error) {

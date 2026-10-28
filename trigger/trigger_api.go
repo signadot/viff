@@ -1028,10 +1028,8 @@ func ParseMode(s string) (Mode, error) {
 		return ModeAuto, nil
 	case "ask":
 		return ModeAsk, nil
-	case "park", "hold":
-		return ModePark, nil
 	default:
-		return ModeAuto, fmt.Errorf("unknown gate mode %q (want auto|ask|park)", s)
+		return ModeAuto, fmt.Errorf("unknown gate mode %q (want auto|ask)", s)
 	}
 }
 
