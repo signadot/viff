@@ -67,6 +67,10 @@ var (
 	StepVerseAskGet = systems.Step("verse", "ask-get")
 	// All of that person's asks, `verse ask`'s listing.
 	StepVerseAskList = systems.Step("verse", "ask-list")
+	// The verse at an address, `verse data`'s: read, written, or removed, as that person.
+	StepVerseDataGet = systems.Step("verse", "data-get")
+	StepVerseDataPut = systems.Step("verse", "data-put")
+	StepVerseDataRm  = systems.Step("verse", "data-rm")
 	// A connection a task opens through the runner's proxy, which only a network of allow has:
 	// the proxy decides it, by the host and the port it sees.
 	StepNetworkTCPClient = systems.Step("network", "tcp-client", "mode", "host", "port")

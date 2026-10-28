@@ -226,7 +226,7 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 			tools = append(tools, slackTools(cl)...)
 		}
 		if r.cfg.reachesVerse {
-			tools = append(tools, verseTools(cl)...)
+			tools = append(append(tools, verseTools(cl)...), verseDataTools(cl)...)
 		}
 		tools = offered(tools, l.Environment)
 		// The brief: how to deliver, where there are repos, and what reaches the world from

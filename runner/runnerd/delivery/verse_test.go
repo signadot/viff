@@ -161,3 +161,66 @@ func TestATasksListingOfItsOwnersAsksIsCarriedToVerse(t *testing.T) {
 		t.Errorf("a runner that reaches no verse: %+v", rep)
 	}
 }
+
+// A TASK'S DATA ACTS ARE CARRIED ON THEIR OWN ROUTES: a read to GET /state, a write to POST
+// /entity with its document, a removal to DELETE /entity, each with the query the task's tool
+// read and nothing else of the task's; each decided by the task's autonomy first, and what verse
+// refuses is a no.
+func TestATasksDataActsAreCarriedToVerse(t *testing.T) {
+	type carried struct{ method, path, body string }
+	var saw []carried
+	status, said := http.StatusOK, "acme: {notes: {n1: {stage: open}}}"
+	verse := func(_ context.Context, taskID, method, path string, body []byte) (int, string, error) {
+		saw = append(saw, carried{method, path, string(body)})
+		return status, said, nil
+	}
+	l := within(nil, "verse")
+	l.Autonomy = task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}
+	tk := Task{ID: "t7", Workspace: &workspace.Workspace{}, Launch: l}
+	s := &Server{Log: io.Discard, Services: Services{Verse: verse}, Ceilings: map[string]systems.Ceiling{"verse": systems.Open()}}
+
+	for _, c := range []struct {
+		req  Request
+		want carried
+	}{
+		{Request{Op: OpVerseDataGet, Query: "at=acme.notes.n1&paths=1"}, carried{http.MethodGet, "/state?at=acme.notes.n1&paths=1", ""}},
+		{Request{Op: OpVerseDataPut, Body: "{at: acme.notes.n1, payload: {stage: open}}"}, carried{http.MethodPost, "/entity", "{at: acme.notes.n1, payload: {stage: open}}"}},
+		{Request{Op: OpVerseDataRm, Query: "at=acme.notes.n1"}, carried{http.MethodDelete, "/entity?at=acme.notes.n1", ""}},
+	} {
+		saw = nil
+		if rep := s.answer(tk, frame(t, c.req)); !rep.OK || rep.Out != said {
+			t.Errorf("%s: %+v, want what verse said", c.req.Op, rep)
+		}
+		if len(saw) != 1 || saw[0] != c.want {
+			t.Errorf("%s was carried as %+v, want %+v", c.req.Op, saw, c.want)
+		}
+	}
+
+	saw = nil
+	for _, req := range []Request{{Op: OpVerseDataPut}, {Op: OpVerseDataRm}, {Op: OpVerseDataGet, Query: "%zz"}} {
+		if rep := s.answer(tk, frame(t, req)); rep.Refused == "" {
+			t.Errorf("%+v: %+v, want it refused", req, rep)
+		}
+	}
+	if len(saw) != 0 {
+		t.Errorf("an act refused by the runner was carried: %v", saw)
+	}
+
+	status, said = http.StatusForbidden, "user:tester may not write verse.task.t7"
+	if rep := s.answer(tk, frame(t, Request{Op: OpVerseDataPut, Body: "{at: verse.task.t7}"})); !strings.Contains(rep.Refused, "may not write") {
+		t.Errorf("a write verse refused: %+v, want a no in verse's words", rep)
+	}
+
+	denied := tk
+	dl := *l
+	dl.Autonomy = task.Autonomy{{Name: "no-writes", Match: &task.Match{System: "verse", Verb: "data-put"}, Then: task.Then{Mode: task.ThenDeny}}, {Then: task.Then{Mode: task.ThenAllow}}}
+	denied.Launch = &dl
+	saw = nil
+	if rep := s.answer(denied, frame(t, Request{Op: OpVerseDataPut, Body: "{at: acme.notes.n1}"})); !strings.Contains(rep.Refused, "the autonomy's row no-writes") || len(saw) != 0 {
+		t.Errorf("a write the autonomy denies: %+v (carried %v)", rep, saw)
+	}
+	s.Services.Verse = nil
+	if rep := s.answer(tk, frame(t, Request{Op: OpVerseDataGet})); !strings.Contains(rep.Error, "reaches no verse") {
+		t.Errorf("a runner that reaches no verse: %+v", rep)
+	}
+}

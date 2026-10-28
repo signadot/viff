@@ -7,3 +7,9 @@ verbs:
   description: "Read one of the asks of the person the task runs for, by the name it was asked under or its id, as `verse ask <name|id>` and verse_ask do: whether it was answered (`status`, and `answer`, `pending` until it settles, or `why` where it settled with no answer), what it asked and of whom, its due, and what its then and else did."
 - name: ask-list
   description: "List the asks of the person the task runs for, as `verse ask` and verse_ask do: each with its id, question, who is asked, its due, its `status`, and its `answer`, `pending` until it settles."
+- name: data-get
+  description: "Read the verse at an address as the person the task runs for, as `verse data` and verse_data do: the document stored there, or with paths the addresses beneath it, chosen by an if pattern and trimmed to what a trim names."
+- name: data-put
+  description: "Write a value at an address as the person the task runs for, as `verse data <address> --put` and verse_data_put do: merged into what stands there, on create, update or expect only on that condition, with grants for a node it creates. Answers what stands there after the write."
+- name: data-rm
+  description: "Remove what stands at an address as the person the task runs for, an entity or one field of one, as `verse data <address> --rm` and verse_data_rm do."

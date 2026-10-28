@@ -268,61 +268,40 @@ func streamFmt(resp *http.Response) codec.Format {
 
 // ── the payload filter (--if / --if-at) ──────────────────────────────────────
 
-// filterBy renders --if / --if-at into a read-plane query.
-//
-// Two commands select entities by what they SAY rather than only by where they live: `watch`
-// streams the changes, `entities` lists the state. They mean exactly the same thing by the
-// pair, so it is rendered in one place here and read back in one place at the far end
-// (versed.queryPattern) — a filter that named different sets depending on which command you
-// reached for would be worse than not having it.
-//
-// Each command declares the two fields itself rather than embedding a shared struct, because
-// cli.StructOpts skips embedded fields (that is how it ignores *cli.Command): a shared struct
-// would carry the tags and declare no flags at all. What is shared is the meaning, which is
-// this function.
-//
-// The predicate is parsed HERE, in --ifmt, and re-rendered as tony for the wire. Parsing it
-// first is what makes a typo a message about the pattern rather than a request that silently
-// matches nothing; re-rendering is what lets `-i json` and `-i yaml` say the same predicate,
-// since a GET has no body and so no Content-Type to declare a dialect in. Tags survive the
-// round trip — `!glob "hotfix-*"` reaches the server as itself — which is the whole reason
-// the canonical form is tony rather than JSON.
+// filterBy puts --if and --if-at on q, as the server's selector (api.FilterQuery).
 func filterBy(q url.Values, pattern, at string, in codec.Format) error {
-	if at != "" && pattern == "" {
-		return fmt.Errorf("%w: --if-at roots --if; pass a pattern to root", cli.ErrUsage)
-	}
-	if pattern == "" {
-		return nil
-	}
-	node, err := codec.ParseNode([]byte(pattern), in)
-	if err != nil {
-		return fmt.Errorf("--if: %w", err)
-	}
-	b, err := codec.NodeBytesWire(node, codec.Tony)
-	if err != nil {
-		return fmt.Errorf("--if: %w", err)
-	}
-	q.Set("if", string(b))
-	// Segment per parameter, as a write's field path travels: the wire takes the address as a
-	// list, so a field name is never re-split at the far end.
-	for _, f := range fieldPath(at) {
-		q.Add("if-at", f)
-	}
-	return nil
+	return dataErr("", api.FilterQuery(q, pattern, at, in))
 }
 
-// fieldPath splits a dot-separated --if-at into the segments the wire takes.
-//
-// It is `--if-at`'s alone now: an ADDRESS is a kinded path (entity.TargetOf), which quotes a
-// field name carrying a dot, while this stays the flat split because `--if-at` says where to
-// root a predicate inside one payload rather than naming a place in the verse. The wire takes
-// the segments as a list either way, so nothing but this spelling is in the way if a dotted
-// field name ever needs rooting.
-func fieldPath(at string) []string {
-	if at == "" {
+// dataFlags is how the command line says each field of the data grammar (api.FieldError): by
+// its flag, the payload by name since --put is the verb, and the address by nothing, since it
+// is given as steps or as --at.
+var dataFlags = map[string]string{
+	"if": "--if", "if_at": "--if-at", "value": "payload", "create": "--create", "update": "--update",
+	"expect": "--expect", "grants": "--grants",
+}
+
+// dataErr is a data grammar error as the command line says it, after what: the flag it is about,
+// and a usage error only for a misuse of the flags, since a value that does not read is not one.
+func dataErr(what string, err error) error {
+	if err == nil {
 		return nil
 	}
-	return strings.Split(at, ".")
+	prefix := ""
+	if what != "" {
+		prefix = what + ": "
+	}
+	var fe *api.FieldError
+	if !errors.As(err, &fe) {
+		return fmt.Errorf("%s%w", prefix, err)
+	}
+	if name := dataFlags[fe.Field]; name != "" {
+		prefix += name + ": "
+	}
+	if fe.Misuse {
+		return fmt.Errorf("%w: %s%w", cli.ErrUsage, prefix, fe.Err)
+	}
+	return fmt.Errorf("%s%w", prefix, fe.Err)
 }
 
 // ── watch ────────────────────────────────────────────────────────────────────
@@ -861,29 +840,6 @@ func choiceOf(approve bool) string {
 
 // ── entity ───────────────────────────────────────────────────────────────────
 
-// conditions renders the guard flags as the wire's preconditions, the pattern read in the format
-// in. --create and --update are opposite answers to the same question, so asking both is a
-// contradiction rather than a pair of conditions that can never hold — say so from the flags,
-// before anything is sent.
-func conditions(create, update bool, expect string, in codec.Format) ([]api.Condition, error) {
-	var out []api.Condition
-	if create && update {
-		return nil, fmt.Errorf("%w: --create and --update are opposites; pass one", cli.ErrUsage)
-	}
-	if create || update {
-		exists := update
-		out = append(out, api.Condition{Exists: &exists})
-	}
-	if expect != "" {
-		pattern, err := codec.ParseNode([]byte(expect), in)
-		if err != nil {
-			return nil, fmt.Errorf("--expect: %w", err)
-		}
-		out = append(out, api.Condition{Pattern: pattern})
-	}
-	return out, nil
-}
-
 // state is the one collection with filters of its own, so it does not go through
 // collection() — the shape is the same, the query is not.
 type stateConfig struct {
@@ -1062,31 +1018,12 @@ func (cfg *stateConfig) run(cc *cli.Context, args []string) error {
 	return printDoc(cc, resp, kp)
 }
 
-// stateQuery is a read of the verse at the kinded path at, as GET /state takes it: the server's
-// selector (pattern, in the format in, rooted at patternAt), and for a listing the paths alone, depth levels deep
-// (entity.Unbounded for all). It answers the path parsed too, which is what the answer is walked
-// by.
+// stateQuery is a read of the verse at the kinded path at, as GET /state takes it
+// (api.StateQuery), and the path parsed, which is what the answer is walked by.
 func stateQuery(at, pattern, patternAt string, listing bool, depth int, in codec.Format) (url.Values, *kpath.KPath, error) {
-	kp, err := entity.ParseAt(at)
+	q, kp, err := api.StateQuery(at, pattern, patternAt, listing, depth, in)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: data: %s", cli.ErrUsage, err)
-	}
-	q := url.Values{}
-	if at != "" {
-		q.Set("at", at)
-	}
-	if err := filterBy(q, pattern, patternAt, in); err != nil {
-		return nil, nil, fmt.Errorf("data: %w", err)
-	}
-	if listing {
-		// ASKED OF THE SERVER, which asks the store: the addresses come back without the
-		// nodes, so a listing of a wide container ships names rather than everything they
-		// stand for. A read with a predicate still answers the document and is walked here,
-		// since `--if` picks per node the path reached.
-		q.Set("paths", "1")
-		if depth != entity.Unbounded {
-			q.Set("depth", strconv.Itoa(depth))
-		}
+		return nil, nil, dataErr("data", err)
 	}
 	return q, kp, nil
 }
@@ -1112,8 +1049,8 @@ func (cfg *stateConfig) depth(listing bool) (int, error) {
 
 // put writes a payload at the path.
 func (cfg *stateConfig) put(cc *cli.Context, segs []string) error {
-	body, err := dataPut{Payload: cfg.Put, Create: cfg.Create, Update: cfg.Update, Expect: cfg.Expect,
-		Grants: cfg.Grants}.body(segs, inFmt())
+	body, err := putBody(api.DataWrite{Payload: cfg.Put, Create: cfg.Create, Update: cfg.Update, Expect: cfg.Expect,
+		Grants: cfg.Grants}, segs, inFmt())
 	if err != nil {
 		return err
 	}
@@ -1124,63 +1061,17 @@ func (cfg *stateConfig) put(cc *cli.Context, segs []string) error {
 	return printBody(cc, resp)
 }
 
-// dataPut is a write as `data --put` takes it, each part as typed: the payload, the conditions on
-// it, and what a node it creates holds out.
-type dataPut struct {
-	Payload        string
-	Create, Update bool
-	Expect, Grants string
-}
-
-// body is the request the write sends at segs, the payload and the condition read in the format
-// in.
-func (p dataPut) body(segs []string, in codec.Format) (api.PutEntity, error) {
+// putBody is the request a write as `data --put` takes it sends at segs (api.DataWrite.Body).
+func putBody(p api.DataWrite, segs []string, in codec.Format) (api.PutEntity, error) {
 	if len(segs) == 0 {
 		return api.PutEntity{}, fmt.Errorf("%w: --put wants a path to write at (`demo pr 1`, `demo pr 1 labels "+
 			"urgent`, or --at demo.pr.1)", cli.ErrUsage)
 	}
-	// FROM THE SEGMENTS, not from a string: argv already is the vector, and assembling it into
-	// a path only to parse the path back is the round trip that could not be right for every
-	// input. See address. The access is set when a step reaches into an ARRAY, which an address
-	// of names cannot spell — see entity.Path.Access.
-	at, err := entity.TargetOf(segs)
+	body, err := p.Body(segs, in)
 	if err != nil {
-		return api.PutEntity{}, fmt.Errorf("%w: data --put: %s", cli.ErrUsage, err)
+		return api.PutEntity{}, dataErr("data --put", err)
 	}
-	// A payload typed on the command line names no format of its own, so it is read as
-	// --ifmt / the configured default. Valid JSON is also valid tony, so `{"stage":"open"}`
-	// keeps working whichever the default is.
-	//
-	// Parsed to a NODE rather than a map: a payload is any tony value, so `42`, `true` and
-	// `[a, b]` are payloads too, and decoding into a map would reject them at the CLI even
-	// though the store and the wire both accept them.
-	payload, err := codec.ParseNode([]byte(p.Payload), in)
-	if err != nil {
-		return api.PutEntity{}, fmt.Errorf("data --put: payload: %w", err)
-	}
-	when, err := conditions(p.Create, p.Update, p.Expect, in)
-	if err != nil {
-		return api.PutEntity{}, fmt.Errorf("data --put: %w", err)
-	}
-	// GRANTS ARE GIVEN AT A CREATION, so a write that says something stands is not one: what a
-	// node that stands holds out is changed with `verse perms`.
-	var grants entity.Payload
-	if p.Grants != "" {
-		if p.Update || p.Expect != "" {
-			return api.PutEntity{}, fmt.Errorf("%w: data --put --grants creates the node, and --update and --expect "+
-				"are about one that stands; change what a node holds out with verse perms --grants",
-				cli.ErrUsage)
-		}
-		if grants, err = codec.ParseNode([]byte(p.Grants), codec.Tony); err != nil {
-			return api.PutEntity{}, fmt.Errorf("data --put --grants: %w", err)
-		}
-	}
-	// THE WHOLE ADDRESS IS THE PLACE. `verse data verse-dev drift head abc --put '{…}'` writes
-	// there, and so does `verse data demo.pr.1.labels.urgent --put true` — a write is a value
-	// at a path, and where the entity "ends" is a question this command does not answer. The
-	// answer comes back from the address written, so a put still shows the merge wherever the
-	// address IS an entity, which is the ordinary case.
-	return api.PutEntity{At: at.Ref.KPath(), Sub: at.Access, Payload: payload, When: when, Grants: grants}, nil
+	return body, nil
 }
 
 // rm removes what stands at the path — an entity, or one field of one.
@@ -1199,13 +1090,9 @@ func rmVia(c *client.Client, segs []string) (string, error) {
 		return "", fmt.Errorf("%w: --rm wants a path (`demo pr 1`, `demo pr 1 labels urgent`, or "+
 			"--at demo.pr.1)", cli.ErrUsage)
 	}
-	at, err := entity.TargetOf(segs)
+	q, at, err := api.RemoveQuery(segs)
 	if err != nil {
-		return "", fmt.Errorf("%w: data --rm: %s", cli.ErrUsage, err)
-	}
-	q := url.Values{"at": {at.Ref.KPath()}}
-	if at.Access != "" {
-		q.Set("sub", at.Access)
+		return "", dataErr("data --rm", err)
 	}
 	resp, err := c.Delete("/entity", q)
 	if err != nil {
@@ -1219,27 +1106,7 @@ func rmVia(c *client.Client, segs []string) (string, error) {
 	if resp.StatusCode != http.StatusNoContent {
 		return "", statusError(resp, "data --rm")
 	}
-	// Nothing stands there now — which is all there is to say, and is equally true of a path
-	// that held nothing to begin with.
-	//
-	// NAMED IN STEPS, like every other address this command prints, so the line reads as the
-	// one somebody typed rather than as the kpath it was sent as. A path that is not a plain
-	// address — a glob, a reach into an array — is echoed as it stands, since it has no steps.
-	return "removed " + inSteps(at), nil
-}
-
-// inSteps renders a kinded path as the steps a person types, or as it stands when it is not a
-// plain address. It is for the lines a command PRINTS at somebody, where one spelling
-// throughout is the point; an `at:` inside a rendered document keeps the document's spelling,
-// which is read by a parser and not by a shell.
-func inSteps(at entity.Path) string {
-	segs := at.Ref.Segs()
-	if len(segs) == 0 {
-		return at.String()
-	}
-	// An access takes no space before it, as it takes no dot in a kpath: `demo pr 1 votes[0]`
-	// is four steps, the last of them reaching into an array.
-	return entity.JoinSteps(segs) + at.Access
+	return api.RemovedLine(at), nil
 }
 
 // printPaths prints one address per line — EVERY address under what was asked for, deepest last
@@ -1275,46 +1142,10 @@ func renderPaths(w io.Writer, resp *http.Response, at *kpath.KPath, depth int, k
 	if err != nil {
 		return fmt.Errorf("state --paths: decoding the response: %w", err)
 	}
-	for _, addr := range answered(node, at, depth) {
+	for _, addr := range api.ListedPaths(node, at, depth) {
 		fmt.Fprintln(w, renderAddr(addr, kpaths))
 	}
 	return nil
-}
-
-// answered is the addresses a listing prints, from either answer the route gives.
-//
-// A LISTING, where the store answered one: the addresses arrive as kinded paths, and an address
-// is recovered by splitting each where it stops naming (LiteralPrefix) -- the names are the ref,
-// the rest is the access, which is the same cut TargetOf makes on the way in.
-//
-// A DOCUMENT, where the read had to answer one: a path with a wildcard or a descent, or a `--if`
-// that picks per node, is answered over the node the read reached, and the walk over it is the
-// listing (entity.Doc.Paths). It is the same set of addresses either way -- which is what
-// TestPathsAtAnswersWhatTheDocumentWalkDoes says of the two walks.
-func answered(node *ir.Node, at *kpath.KPath, depth int) []entity.Path {
-	var listed entity.Paths
-	if err := codec.FromNode(node, &listed); err == nil && listed.Paths != nil {
-		out := make([]entity.Path, 0, len(listed.Paths))
-		for _, kp := range listed.Paths {
-			out = append(out, pathOfKPath(kp))
-		}
-		return out
-	}
-	return (entity.Doc{Node: node}).Paths(at, depth)
-}
-
-// pathOfKPath reads one listed address: the names it spells, and the access below them.
-func pathOfKPath(kp string) entity.Path {
-	parsed, err := entity.ParseAt(kp)
-	if err != nil {
-		return entity.Path{Ref: entity.RefAt(kp)} // unreadable: echoed as it stands
-	}
-	names, rest := entity.LiteralPrefix(parsed)
-	access := ""
-	if rest != nil {
-		access = rest.String()
-	}
-	return entity.Path{Ref: entity.RefAt(names...), Access: access}
 }
 
 // renderAddr is one address in the spelling a listing was asked for: STEPS by default — the

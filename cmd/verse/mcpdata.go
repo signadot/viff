@@ -7,6 +7,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/entity"
 )
 
@@ -67,8 +68,8 @@ func (m *mcpServer) dataPut(ctx context.Context, _ *mcp.CallToolRequest, in data
 	if err != nil {
 		return nil, nil, err
 	}
-	body, err := dataPut{Payload: in.Value, Create: in.Create, Update: in.Update, Expect: in.Expect,
-		Grants: in.Grants}.body(segs, mcpIn)
+	body, err := putBody(api.DataWrite{Payload: in.Value, Create: in.Create, Update: in.Update, Expect: in.Expect,
+		Grants: in.Grants}, segs, mcpIn)
 	if err != nil {
 		return nil, nil, err
 	}

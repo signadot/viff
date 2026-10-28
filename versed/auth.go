@@ -588,10 +588,15 @@ func (s *Server) asRunner(e api.Runner, presented, account, task string, a act) 
 	return e.Principal(), runnerProvider, "", nil
 }
 
-// relayedActs are the routes a runner carries a task's request to: raising an ask
-// (`verse-ask-create`), reading the owner's asks (`verse-ask-get`), and saying whom a request is
-// made as.
-var relayedActs = map[string]bool{"POST /asks": true, "GET /asks": true, "GET /whoami": true}
+// relayedActs are the routes a runner carries a task's request to, the verse system's verbs:
+// raising an ask (`verse-ask-create`), reading the owner's asks (`verse-ask-get`,
+// `verse-ask-list`), reading, writing and removing the verse at an address (`verse-data-get`,
+// `-put`, `-rm`), and saying whom a request is made as.
+var relayedActs = map[string]bool{
+	"POST /asks": true, "GET /asks": true,
+	"GET /state": true, "POST /entity": true, "DELETE /entity": true,
+	"GET /whoami": true,
+}
 
 // notARunnersTask refuses a task named beside a bearer that proves an io: only a runner hosting a
 // task carries a request for it.

@@ -303,3 +303,76 @@ func TestATaskRaisesAnAskForItsOwnerHeldWithinTheTask(t *testing.T) {
 		}
 	}
 }
+
+// carryFor makes a request as a runner carrying it for taskID: the runner's token, the task's id,
+// and body, where there is one, in tony.
+func carryFor(t *testing.T, method, url, token, taskID, body string) (int, string) {
+	t.Helper()
+	var rd io.Reader
+	if body != "" {
+		rd = strings.NewReader(body)
+	}
+	req, err := http.NewRequest(method, url, rd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body != "" {
+		req.Header.Set("Content-Type", "application/tony")
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set(api.TaskHeader, taskID)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	got, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(got)
+}
+
+// A TASK READS AND WRITES THE VERSE AS ITS OWNER, carried by its runner (verse-data-get, -put,
+// -rm): what it writes lands as the owner's write, it reads back what the owner would, it removes
+// what the owner may, and what verse refuses the owner it refuses the task.
+func TestATaskReadsAndWritesTheVerseAsItsOwner(t *testing.T) {
+	srv, ts, cluster := runnerServer(t)
+	token := cluster.Token(iodAudience, runnerSub, nil)
+	face := guardedFace(t, ts.URL, tokenFile(t, t.TempDir(), "gpu", token))
+	resp := postTony(t, ts.URL+"/runners", map[string]any{"name": "gpu", "url": face.URL, "subject": runnerSub})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("add = %s: %s", resp.Status, readBody(t, resp))
+	}
+	resp.Body.Close()
+	spawnOn(t, ts.URL, "keeper", "verse.runners.gpu")
+	waitTaskStatus(t, srv, "keeper", "running")
+	note := entity.RefAt("acme", "notes", "n1")
+
+	if code, body := carryFor(t, http.MethodPost, ts.URL+"/entity?format=tony", token, "keeper",
+		`{at: acme.notes.n1, payload: {stage: open}}`); code/100 != 2 {
+		t.Fatalf("the task's write = %d %s", code, body)
+	}
+	rec, ok, _ := srv.Store.Get(note)
+	if !ok || entity.Str(rec.Payload, "stage") != "open" {
+		t.Fatalf("after the task's write the note is %v (%v), want it open", rec.Payload, ok)
+	}
+	if o, _ := entity.OwnerOf(srv.Store, note); o != "user:"+tester {
+		t.Errorf("the note the task wrote is %q's, want its owner's", o)
+	}
+
+	code, body := carryFor(t, http.MethodGet, ts.URL+"/state?at=acme.notes.n1&format=tony", token, "keeper", "")
+	if code != http.StatusOK || !strings.Contains(body, "stage: open") {
+		t.Errorf("the task's read = %d %s, want the note", code, body)
+	}
+
+	// What verse keeps for itself, the owner may not write, and nor may the task.
+	if code, body := carryFor(t, http.MethodPost, ts.URL+"/entity?format=tony", token, "keeper",
+		`{at: verse.task.keeper, payload: {status: done}}`); code != http.StatusForbidden {
+		t.Errorf("the task's write to its own record = %d %s, want 403", code, body)
+	}
+
+	if code, body := carryFor(t, http.MethodDelete, ts.URL+"/entity?at=acme.notes.n1", token, "keeper", ""); code != http.StatusNoContent {
+		t.Fatalf("the task's removal = %d %s", code, body)
+	}
+	if _, ok, _ := srv.Store.Get(note); ok {
+		t.Error("the note stands after the task removed it")
+	}
+}

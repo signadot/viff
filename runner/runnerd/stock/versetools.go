@@ -4,8 +4,6 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"maps"
-	"slices"
 	"strings"
 	"time"
 
@@ -42,6 +40,21 @@ func verseTools(cl *delivery.Client) []verse.Tool {
 	text := func(what string) map[string]any { return map[string]any{"type": "string", "description": what} }
 	held := " A spawn reaches no further than this task does, its autonomy is no looser, and it runs on " +
 		"this task's runner with this task's model credential."
+	create := map[string]any{
+		"name":       text("what you call the ask; its id is derived from it and answered. Omit for this task's id"),
+		"question":   text("what is asked, in the words the answerers read"),
+		"to":         text("who is asked: a name or a comma-separated list, in the grammar a grant uses (user:ana@example.com, ana@example.com, group:leads); absent, anyone may answer"),
+		"due":        text("when it settles if nobody answers: an RFC 3339 date or a duration from now (48h)"),
+		"on_silence": text("with due: what it settles on if nobody answers by then, yes or no (the default); yes runs the then"),
+		"then":       text("what follows a yes, on their authority, as a tony document of one key: {spawn: <a spawn, as a charter writes one>}, {answer: {ask: <id>, choice: <option>}} or {ask: {name: …, question: …}}." + held),
+		"else":       text("what follows a no, or silence settling on no, on their authority; one key, as then takes." + held),
+		"about":      text("the path the ask is about, as a kinded path"),
+		"keep":       text("how long it stands once settled, as a duration (72h); absent, a week"),
+		"label":      text("what the ask says about itself, name=value, comma-separated (team=payments,kind=deploy)"),
+	}
+	get := map[string]any{
+		"name_or_id": text("one of their asks, by the name it was asked under or its id"),
+	}
 	return []verse.Tool{{
 		Name: askCreateTool,
 		Description: "Ask somebody something, as the person this task runs for, as `verse ask <name> -q " +
@@ -49,28 +62,19 @@ func verseTools(cl *delivery.Client) []verse.Tool {
 			"answers, and what follows a yes or a no, which runs on their authority. It does not wait: the " +
 			"call answers the ask's id, and the ask stands after this task ends. To ask something and wait " +
 			"for the answer yourself, use question-ask.",
-		Params: map[string]any{
-			"name":       text("what you call the ask; its id is derived from it and answered. Omit for this task's id"),
-			"question":   text("what is asked, in the words the answerers read"),
-			"to":         text("who is asked: a name or a comma-separated list, in the grammar a grant uses (user:ana@example.com, ana@example.com, group:leads); absent, anyone may answer"),
-			"due":        text("when it settles if nobody answers: an RFC 3339 date or a duration from now (48h)"),
-			"on_silence": text("with due: what it settles on if nobody answers by then, yes or no (the default); yes runs the then"),
-			"then":       text("what follows a yes, on their authority, as a tony document of one key: {spawn: <a spawn, as a charter writes one>}, {answer: {ask: <id>, choice: <option>}} or {ask: {name: …, question: …}}." + held),
-			"else":       text("what follows a no, or silence settling on no, on their authority; one key, as then takes." + held),
-			"about":      text("the path the ask is about, as a kinded path"),
-			"keep":       text("how long it stands once settled, as a duration (72h); absent, a week"),
-			"label":      text("what the ask says about itself, name=value, comma-separated (team=payments,kind=deploy)"),
-		},
+		Params:   create,
 		Required: []string{"question"},
 		Step:     task.StepVerseAskCreate,
 		Fields:   func(map[string]any) (map[string]string, bool) { return map[string]string{}, true },
 		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
-			// Every parameter is a string, as verse_ask_create takes it; one that is not is
-			// refused rather than read as nothing, which for `to` would put the ask to anyone.
-			w, err := wordsOf(tu.Input)
+			// Every parameter is a string, as verse_ask_create takes it; one that is not, or one
+			// the tool does not take, is refused rather than read as nothing, which for `to` would
+			// put the ask to anyone.
+			p, err := paramsOf(tu.Input, create)
 			if err != nil {
 				return "not raised: " + err.Error(), true, nil
 			}
+			w := p.words
 			question := strings.TrimSpace(w["question"])
 			if question == "" {
 				return "not raised: an ask needs a question", true, nil
@@ -103,18 +107,16 @@ func verseTools(cl *delivery.Client) []verse.Tool {
 			"whether it was answered (`status`, and `answer`, pending until it settles, or `why` where it settled " +
 			"with no answer), what it asked and of whom, its " +
 			"due, and what its then and else did.",
-		Params: map[string]any{
-			"name_or_id": text("one of their asks, by the name it was asked under or its id"),
-		},
+		Params:   get,
 		Required: []string{"name_or_id"},
 		Step:     task.StepVerseAskGet,
 		Fields:   func(map[string]any) (map[string]string, bool) { return map[string]string{}, true },
 		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
-			w, err := wordsOf(tu.Input)
+			p, err := paramsOf(tu.Input, get)
 			if err != nil {
 				return "not read: " + err.Error(), true, nil
 			}
-			arg := strings.TrimSpace(w["name_or_id"])
+			arg := strings.TrimSpace(p.words["name_or_id"])
 			if arg == "" {
 				return "not read: name the ask, by its name or its id", true, nil
 			}
@@ -133,22 +135,6 @@ func verseTools(cl *delivery.Client) []verse.Tool {
 			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpVerseAskList}))
 		},
 	}}
-}
-
-// wordsOf is the call's parameters as the words verse_ask_create and verse_ask take: each a string, absent or
-// null as none. A parameter that is anything else is refused, naming it.
-func wordsOf(in map[string]any) (map[string]string, error) {
-	out := map[string]string{}
-	for _, k := range slices.Sorted(maps.Keys(in)) {
-		switch v := in[k].(type) {
-		case nil:
-		case string:
-			out[k] = v
-		default:
-			return nil, fmt.Errorf("%s is a string, as verse mcp's tool takes it, not %T", k, v)
-		}
-	}
-	return out, nil
 }
 
 // docOf reads a then or an else: a tony document of one key naming what runs, as

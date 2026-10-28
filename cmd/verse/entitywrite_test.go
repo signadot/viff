@@ -314,3 +314,17 @@ func TestEntityPutWithGrantsCreatesTheNodeHeldOut(t *testing.T) {
 		t.Errorf("a usage error wrote: %+v", got)
 	}
 }
+
+// A VALUE THAT DOES NOT READ IS NOT A MISUSE OF THE COMMAND: a payload that does not parse is said
+// as what it is, naming the payload, where flags that contradict each other are a usage error.
+func TestAPayloadThatDoesNotReadIsNotAUsageError(t *testing.T) {
+	serve(t)
+	_, err := runCLI(t, "data", "demo", "pr", "1", "--put", "{stage: ")
+	if err == nil || errors.Is(err, cli.ErrUsage) || !strings.HasPrefix(err.Error(), "data --put: payload: ") {
+		t.Errorf("a payload that does not read = %v, want it said as one, and no usage error", err)
+	}
+	_, err = runCLI(t, "data", "demo", "pr", "1", "--put", "1", "--create", "--update")
+	if !errors.Is(err, cli.ErrUsage) || !strings.Contains(err.Error(), "--create: create and update are opposites") {
+		t.Errorf("--create with --update = %v, want a usage error naming --create", err)
+	}
+}
