@@ -1,0 +1,7 @@
+# The verse system: a task acts on verse as its owner would, with verbs that mirror `verse mcp`; `question.raise` becomes `verse.ask-create`
+
+Two kinds of ask were under one system. A task's own questions are verse running the task: a conversation's turn, `question-ask` handing the turn to the person, an autonomy row's question before a step. They are the task's (`from: {task}`), withdrawn when it ends, posed through the runner's own path, and need no endpoint. A task acting on verse as its owner would is the reflective system, and it goes through the door as the owner.
+
+So the reflective kind is its own system, `verse`, whose verbs mirror the MCP tools `verse mcp` offers, taking what each MCP tool takes. `question.raise` becomes `verse.ask-create` (tool `verse-ask-create`, mirroring `verse_ask_create` and `verse ask <name> -q`): `name`, `question`, `to` (a comma-separated list), `due`, `on_silence`, `then` and `else` (tony documents), `about`, `keep`, `label` (name=value pairs). The `question` system goes back to the task's own questions. A runner that reaches no verse doesn't offer `verse`, and refuses a launch that names it.
+
+`question-ask` stays where it is: it is not a reflective tool. Unpushed so far, so the rename breaks nobody.
