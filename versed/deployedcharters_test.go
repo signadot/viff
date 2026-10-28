@@ -12,7 +12,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
-	"github.com/signadot/verse/runner/runnerd/verserunner"
+	"github.com/signadot/verse/runner/runnerd/stock"
 	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 )
@@ -202,7 +202,7 @@ func registerDeployed(t *testing.T, ts *httptest.Server, name, config string) {
 
 // deployedConfig is a deployed runner's configuration, as its manifest's ConfigMap carries it
 // (`verse-runner.tony: |`), loaded and checked as the runner loads it at start.
-func deployedConfig(t *testing.T, manifest string) verserunner.Config {
+func deployedConfig(t *testing.T, manifest string) stock.Config {
 	t.Helper()
 	text, err := os.ReadFile(manifest)
 	if err != nil {
@@ -223,7 +223,7 @@ func deployedConfig(t *testing.T, manifest string) verserunner.Config {
 	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, cfg, err := verserunner.Load(path)
+	_, cfg, err := stock.Load(path)
 	if err != nil {
 		t.Fatalf("%s: the runner would not start: %v", manifest, err)
 	}

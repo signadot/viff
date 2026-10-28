@@ -35,7 +35,7 @@ type Ceiling []CeilingBlock
 // for any value of its attributes. It is what a runner whose operator is its task's author writes
 // (`verse up`'s), said rather than implied: a ceiling written nowhere is closed. It is for the
 // systems a runner stops inside a run; for one with a unique attribute it would be any
-// repository on any forge, which a `git` ceiling may not be (verserunner's forge check). It is
+// repository on any forge, which a `git` ceiling may not be (the stock runner's forge check). It is
 // not for the network either: the network is apart from the empty block (Block.Given), so Open
 // allows it no connection, where an unwritten network ceiling bounds nothing.
 func Open() Ceiling { return Ceiling{{}} }

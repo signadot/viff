@@ -11,7 +11,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
-	"github.com/signadot/verse/runner/runnerd/verserunner"
+	"github.com/signadot/verse/runner/runnerd/stock"
 	"github.com/signadot/verse/task"
 )
 
@@ -97,7 +97,7 @@ func TestAFiringRefusedBeforeItsLaunchIsGivenNoCredential(t *testing.T) {
 // `verse up`, whose runner builds only the open network, the firing would launch with none.
 func TestACharterFiresWithItsNetwork(t *testing.T) {
 	srv := testServer(t)
-	srv.Embedded.Describe(verserunner.Open().Describe([]string{runner.NetworkOpen}))
+	srv.Embedded.Describe(stock.Open().Describe([]string{runner.NetworkOpen}))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()

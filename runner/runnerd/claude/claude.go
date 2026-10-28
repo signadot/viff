@@ -3,7 +3,7 @@
 // the read plane. A spawn asks for it with `agent: {name: claude}`, and a runner that hosts it
 // builds its task with Task.
 //
-// It is an agent of its own beside verse's (package agent) and codex (package codex), and it
+// It is an agent of its own beside verse's (package verse) and codex (package codex), and it
 // exists for the reason codex does: a program the runner runs and reads the output of is gated
 // once, at the invocation, and nothing inside it is seen. Claude Code offers something else.
 //
@@ -40,7 +40,7 @@
 //
 // What the spawn's agent runs with reaches Claude: its `model` setting is the session's model
 // and its `effort` the session's effort; one the spawn names none of is the runner's configured
-// default, filled in before the launch reaches here (verserunner), or Claude's own.
+// default, filled in before the launch reaches here (package stock), or Claude's own.
 //
 // What Claude does WITHOUT asking is the part that is attested rather than enforced: its reads
 // in the workspace (Read, Glob, Grep). Those are narrated when they complete, so the read plane
@@ -77,7 +77,7 @@ import (
 
 	"github.com/signadot/verse/answer"
 	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/runner/runnerd/verserunner/agent"
+	"github.com/signadot/verse/runner/runnerd/verse"
 	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
@@ -209,7 +209,7 @@ const (
 // claude process's environment (the runner's allowlist, the launch's environment variables, and
 // where the task's credential file is, for a task that has one), offering it tools (the
 // runner's) as its own.
-func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir string, tools []agent.Tool, ceilings map[string]systems.Ceiling) (*task.Task, error) {
+func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir string, tools []verse.Tool, ceilings map[string]systems.Ceiling) (*task.Task, error) {
 	var contract *answer.Contract
 	if l.Answer != nil {
 		c, err := answer.Parse(l.Answer)
@@ -228,7 +228,7 @@ func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir st
 		resolver: reg,
 		log:      os.Stderr,
 		tools:    tools,
-		toolBy:   map[string]agent.Tool{},
+		toolBy:   map[string]verse.Tool{},
 		asks:     l.Environment.Gives(task.StepQuestionAsk),
 	}
 	for _, t := range tools {
@@ -237,7 +237,7 @@ func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir st
 	if contract != nil {
 		d.contractSrc = contract.Source()
 	}
-	d.toolStep = agent.StepOf(tools)
+	d.toolStep = verse.StepOf(tools)
 	sup := task.NewSupervisor(l.Environment, l.Autonomy, reg)
 	sup.SetCeilings(ceilings)
 	sup.SetStepsOf(d.stepsOf)
@@ -276,8 +276,8 @@ type driver struct {
 	log           io.Writer
 	emit          func(task.Event)
 	// tools are the runner's, offered to Claude as an MCP server and run here when it calls one.
-	tools  []agent.Tool
-	toolBy map[string]agent.Tool
+	tools  []verse.Tool
+	toolBy map[string]verse.Tool
 	// toolStep is the step a call of one of the tools is, as the verse agent's is classified.
 	toolStep func(task.ToolUse) (task.Step, bool)
 	// asks is whether the environment gives `question.ask`, so Claude is offered its question tool.
@@ -322,7 +322,7 @@ type driver struct {
 type proposal struct {
 	ev   event
 	kind string // kindBash | kindEdit | kindWrite | kindAsk | kindTool
-	tool agent.Tool
+	tool verse.Tool
 	// steps are what the request is, as the spec names a task's steps. None is no step.
 	steps []task.Step
 	// gone is closed when Claude cancels the request: the question about it is withdrawn

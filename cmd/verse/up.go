@@ -20,7 +20,8 @@ import (
 	"github.com/signadot/verse/config"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/runner/runnerd/verserunner"
+	"github.com/signadot/verse/runner/runnerd/stock"
+	verseagent "github.com/signadot/verse/runner/runnerd/verse"
 	"github.com/signadot/verse/system/repocharters"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/versed"
@@ -168,7 +169,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		shellEnv = task.DefaultShellEnv
 	}
 	runnerCfg, runnerSecrets := embeddedRunner(appCfg.LLM, shellEnv)
-	h := verserunner.New(runnerCfg, runnerSecrets, root, cc.Err)
+	h := stock.New(runnerCfg, runnerSecrets, root, cc.Err)
 
 	// Resolve docd's addresses — connecting to a running one, or bringing logd+docd up
 	// via `o sys up` (see docd.go) — and open the store on its client face.
@@ -410,21 +411,21 @@ func authOf(c config.AuthConfig) versed.Auth {
 // let spend (versed's `verse.portkey/virtual-key` annotation). Its operator is the person running
 // it, so what it stops inside a run is open to them, said as open ceilings: a ceiling written
 // nowhere is closed.
-func embeddedRunner(llm config.LLMConfig, shellEnv []string) (verserunner.Config, verserunner.Secrets) {
-	c := verserunner.Open()
+func embeddedRunner(llm config.LLMConfig, shellEnv []string) (stock.Config, stock.Secrets) {
+	c := stock.Open()
 	c.Script.ShellEnv = shellEnv
 	if llm.APIKey != "" {
-		verse := verserunner.Agent{
+		verse := stock.Agent{
 			ShellEnv: shellEnv,
-			Annotations: map[string]verserunner.Annotation{
-				verserunner.AnnotationVirtualKey: {Type: "string", Default: llm.VirtualKey},
+			Annotations: map[string]stock.Annotation{
+				verseagent.AnnotationVirtualKey: {Type: "string", Default: llm.VirtualKey},
 			},
-			Systems: verserunner.OpenInside(verserunner.AgentName),
+			Systems: stock.OpenInside(stock.AgentName),
 		}
 		if llm.Model != "" {
-			verse.Settings = map[string]verserunner.Setting{runner.SettingModel: {Default: llm.Model}}
+			verse.Settings = map[string]stock.Setting{runner.SettingModel: {Default: llm.Model}}
 		}
-		c.Agents = map[string]verserunner.Agent{verserunner.AgentName: verse}
+		c.Agents = map[string]stock.Agent{stock.AgentName: verse}
 	}
-	return c, verserunner.Secrets{PortkeyAPIKey: llm.APIKey, PortkeyBaseURL: llm.BaseURL}
+	return c, stock.Secrets{PortkeyAPIKey: llm.APIKey, PortkeyBaseURL: llm.BaseURL}
 }

@@ -34,7 +34,7 @@ import (
 
 	"github.com/signadot/verse/adminface"
 	"github.com/signadot/verse/runner/runnerd"
-	"github.com/signadot/verse/runner/runnerd/verserunner"
+	"github.com/signadot/verse/runner/runnerd/stock"
 	"github.com/signadot/verse/systems"
 )
 
@@ -59,7 +59,7 @@ agents:, and scripts where it has a script: section.
 }
 
 // offers is what the runner offers, as its start says it.
-func offers(c verserunner.Config) []string {
+func offers(c stock.Config) []string {
 	var out []string
 	for _, o := range c.Describe(nil).Offers {
 		out = append(out, o.Name())
@@ -99,10 +99,10 @@ func run(args []string) error {
 			strings.Join(fs.Args(), " "))
 	}
 	if *taskProc {
-		return verserunner.ServeTask(os.Stdin, os.Stderr)
+		return stock.ServeTask(os.Stdin, os.Stderr)
 	}
 
-	rc, c, err := verserunner.Load(*config)
+	rc, c, err := stock.Load(*config)
 	if err != nil {
 		return err
 	}
@@ -160,15 +160,15 @@ func run(args []string) error {
 	}
 	defer os.RemoveAll(control)
 
-	s := verserunner.SecretsFromEnv(c)
-	tokens := verserunner.TokensFromEnv(c)
+	s := stock.SecretsFromEnv(c)
+	tokens := stock.TokensFromEnv(c)
 	// The systems' documents say what a task may do (package systems); this runner's code claims
 	// what it implements. A verb documented and not implemented is named here, not found by a
 	// task calling it.
 	if err := systems.Check(); err != nil {
 		return fmt.Errorf("this runner does not honour the systems' documents: %w", err)
 	}
-	r, err := verserunner.Standalone(c, s, tokens, sb, []string{self, "-task"}, work, control, os.Stderr)
+	r, err := stock.Standalone(c, s, tokens, sb, []string{self, "-task"}, work, control, os.Stderr)
 	if err != nil {
 		return err
 	}

@@ -105,7 +105,7 @@ The tutorial has four pages, one for each part of verse: data, questions, tasks 
 - `runner/` — where a task runs. There are two ways: local, in the verse process; and remote,
   on another verse over HTTP. The engine drives both through one interface, so every
   `verse task` command works with each. `runner/runnerd/` hosts a runner, embedded in verse
-  or served over HTTP, and `runner/runnerd/verserunner/` is the runner verse ships.
+  or served over HTTP, and `runner/runnerd/stock/` is the runner verse ships.
 - `mirror/` — writes each running task into the store, as a `verse.task.instance` entity. So
   to observe or steer a task, you observe an entity.
 - `resolver/` — a service that answers asks for whoever grants it. A resolver is installed. It

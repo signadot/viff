@@ -6,7 +6,8 @@ import (
 	"github.com/signadot/verse/config"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
-	"github.com/signadot/verse/runner/runnerd/verserunner"
+	"github.com/signadot/verse/runner/runnerd/stock"
+	verseagent "github.com/signadot/verse/runner/runnerd/verse"
 	"github.com/signadot/verse/systems"
 )
 
@@ -18,8 +19,8 @@ func TestTheEmbeddedRunnerTakesAVirtualKey(t *testing.T) {
 	if err := cfg.Check(); err != nil {
 		t.Fatal(err)
 	}
-	l := runner.Launch{ID: "t1", Prompt: "hi", Agent: &runner.Agent{Name: verserunner.AgentName,
-		Annotations: map[string]string{verserunner.AnnotationVirtualKey: "vk-team"}},
+	l := runner.Launch{ID: "t1", Prompt: "hi", Agent: &runner.Agent{Name: stock.AgentName,
+		Annotations: map[string]string{verseagent.AnnotationVirtualKey: "vk-team"}},
 		Environment: systems.Environment{Systems: systems.Systems{"network": {{Attributes: map[string]string{"mode": runner.NetworkOpen}}}}}}
 	if err := runnerd.CheckOffer(&l, cfg.Describe([]string{runner.NetworkOpen})); err != nil {
 		t.Errorf("a launch on a virtual key was refused: %v", err)

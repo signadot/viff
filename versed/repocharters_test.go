@@ -15,7 +15,7 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/runner/runnerd/verserunner"
+	"github.com/signadot/verse/runner/runnerd/stock"
 	"github.com/signadot/verse/schedule"
 	"github.com/signadot/verse/system/repocharters"
 )
@@ -242,7 +242,7 @@ func TestTheReconcilerFollowsItsBranch(t *testing.T) {
 func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	dir := t.TempDir()
 	// Hosted as `verse up` hosts tasks, so a call list can ask.
-	drivers := verserunner.New(verserunner.Open(), verserunner.Secrets{}, dir, io.Discard)
+	drivers := stock.New(stock.Open(), stock.Secrets{}, dir, io.Discard)
 	srv := NewWithStore(drivers.Build, entitytest.Store(t))
 	t.Cleanup(srv.stopAllIOs)
 	srv.Start(t.Context())

@@ -16,7 +16,10 @@
 // their subtrees — and GET /describe. Load reads the configuration every runner shares.
 //
 // How a task is built is injected as a Builder, so the handler carries no coupling to any
-// particular agent. The runners verse ships are its subpackages (verserunner).
+// particular agent. The agents are its subpackages (verse, codex, claude), and the runner verse
+// ships, which runs them and scripts, is package stock. It does know the systems a runner
+// performs for its tasks: its delivery channel (package delivery) pushes to git and acts at
+// GitHub, Linear and Slack with the runner's credentials, each under the launch's ceilings.
 //
 // Control ops are task- or subtree-scoped (never per-child); the read plane is drop-with-gap.
 //

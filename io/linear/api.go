@@ -16,7 +16,7 @@ import (
 // Linear's GraphQL API, as much of it as a reflection needs.
 //
 // encoding/json rather than codec, and this file is on scripts/check-json.sh's allowlist for
-// the reason runner/runnerd/verserunner/agent/llm.go is: it is somebody else's wire format,
+// the reason runner/runnerd/verse/llm.go is: it is somebody else's wire format,
 // and re-rendering it through codec would buy nothing but a second place for it to be wrong.
 //
 // One endpoint, one verb, three queries. A generated GraphQL client would be a build step and

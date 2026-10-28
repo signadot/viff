@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/runner/runnerd/verserunner/agent"
+	"github.com/signadot/verse/runner/runnerd/verse"
 	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
@@ -982,7 +982,7 @@ func TestClaudeSteps(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	d := &driver{dir: w, toolBy: map[string]agent.Tool{}, toolStep: agent.StepOf(nil),
+	d := &driver{dir: w, toolBy: map[string]verse.Tool{}, toolStep: verse.StepOf(nil),
 		rpc: &rpc{cancels: map[string]chan struct{}{}}}
 	ev := func(tool string, input map[string]any) event {
 		return event{Type: "control_request", RequestID: "r", Req: controlRequest{Subtype: "can_use_tool", ToolName: tool, Input: input, ToolUseID: "u"}}
@@ -1157,8 +1157,8 @@ func TestConfigIsChecked(t *testing.T) {
 
 // greetTool is a runner tool for the tests: a command run, so a gate on commands can stop it, and
 // it says hello.
-func greetTool() agent.Tool {
-	return agent.Tool{
+func greetTool() verse.Tool {
+	return verse.Tool{
 		Name: "greet", Description: "say hello to somebody",
 		Params:   map[string]any{"name": map[string]any{"type": "string"}},
 		Required: []string{"name"},
@@ -1180,7 +1180,7 @@ func TestClaudeIsOfferedTheRunnersTools(t *testing.T) {
 	reg := task.NewRegistry()
 	creds, logPath := fakeCreds(t, "tool")
 	tk, err := Task(runner.Launch{ID: "run-claude-8", Prompt: "greet", Agent: &runner.Agent{Name: Agent}, Environment: workEnv,
-		Autonomy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), []agent.Tool{greetTool()}, systemstest.Open(workEnv))
+		Autonomy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), []verse.Tool{greetTool()}, systemstest.Open(workEnv))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1223,7 +1223,7 @@ func TestARefusedToolCallIsClaudesToRead(t *testing.T) {
 	reg := task.NewRegistry()
 	creds, logPath := fakeCreds(t, "tool")
 	tk, err := Task(runner.Launch{ID: "run-claude-9", Prompt: "greet", Agent: &runner.Agent{Name: Agent}, Environment: workEnv, Autonomy: namedGates},
-		reg, creds, fakeEnv(), t.TempDir(), []agent.Tool{greetTool()}, systemstest.Open(workEnv))
+		reg, creds, fakeEnv(), t.TempDir(), []verse.Tool{greetTool()}, systemstest.Open(workEnv))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1278,7 +1278,7 @@ func TestClaudeTakesTheSpawnsModelAndEffort(t *testing.T) {
 		t.Errorf("the task's settings: %v", set)
 	}
 	// A spawn naming no model reaches the driver naming none, and runs Claude's own: the runner's
-	// configured default is filled in before (verserunner), so the record says it either way.
+	// configured default is filled in before (package stock), so the record says it either way.
 	tk2, err := Task(runner.Launch{ID: "run-claude-10b", Prompt: "x", Agent: &runner.Agent{Name: Agent}, Environment: workEnv,
 		Autonomy: allowAll}, task.NewRegistry(), creds, fakeEnv(), t.TempDir(), nil, systemstest.Open(workEnv))
 	if err != nil {
@@ -1661,7 +1661,7 @@ func TestAnAllowedCallThatNeverArrivesEndsTheWait(t *testing.T) {
 	reg := task.NewRegistry()
 	creds, logPath := fakeCreds(t, "nocall")
 	tk, err := Task(runner.Launch{ID: "run-claude-20", Prompt: "x", Agent: &runner.Agent{Name: Agent}, Environment: workEnv,
-		Autonomy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), []agent.Tool{greetTool()}, systemstest.Open(workEnv))
+		Autonomy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), []verse.Tool{greetTool()}, systemstest.Open(workEnv))
 	if err != nil {
 		t.Fatal(err)
 	}

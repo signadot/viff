@@ -10,7 +10,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/runner/runnerd/verserunner"
+	"github.com/signadot/verse/runner/runnerd/stock"
 	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/versed"
@@ -48,7 +48,7 @@ func serveParrot(t *testing.T) entity.Store {
 	t.Helper()
 	build := func(l runner.Launch, reg *task.Registry) *task.Task {
 		if l.Who() != "parrot" {
-			return verserunner.New(verserunner.Open(), verserunner.Secrets{}, t.TempDir(), io.Discard).Build(l, reg)
+			return stock.New(stock.Open(), stock.Secrets{}, t.TempDir(), io.Discard).Build(l, reg)
 		}
 		d := &parrot{}
 		tk := task.NewTask(l.ID, systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, reg), l.Environment), d, nopExec{})

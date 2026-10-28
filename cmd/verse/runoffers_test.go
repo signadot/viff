@@ -12,7 +12,7 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/runner/runnerd/verserunner"
+	"github.com/signadot/verse/runner/runnerd/stock"
 	"github.com/signadot/verse/versed"
 )
 
@@ -20,8 +20,8 @@ import (
 // scripts, offers no agent, and says so, as up publishes it.
 func serveKeyless(t *testing.T) {
 	t.Helper()
-	cfg, secrets := verserunner.Config{Script: &verserunner.Script{}}, verserunner.Secrets{}
-	srv := versed.NewWithStore(verserunner.New(cfg, secrets, t.TempDir(), io.Discard).Build, entitytest.Store(t))
+	cfg, secrets := stock.Config{Script: &stock.Script{}}, stock.Secrets{}
+	srv := versed.NewWithStore(stock.New(cfg, secrets, t.TempDir(), io.Discard).Build, entitytest.Store(t))
 	srv.Embedded.Describe(cfg.Describe([]string{runner.NetworkOpen}))
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
@@ -84,9 +84,9 @@ const openNet = `environment: {systems: {network: {mode: open}}}`
 // AN ASK'S THEN RUNS ON `verse up`: what follows a yes is the asker's run, a spawn as `task run`
 // takes one, here on the host's network, which is the one the embedded runner builds.
 func TestAnAsksThenRunsOnTheEmbeddedRunner(t *testing.T) {
-	cfg, secrets := verserunner.Config{Script: &verserunner.Script{}}, verserunner.Secrets{}
+	cfg, secrets := stock.Config{Script: &stock.Script{}}, stock.Secrets{}
 	store := entitytest.Store(t)
-	srv := versed.NewWithStore(verserunner.New(cfg, secrets, t.TempDir(), io.Discard).Build, store)
+	srv := versed.NewWithStore(stock.New(cfg, secrets, t.TempDir(), io.Discard).Build, store)
 	srv.Embedded.Describe(cfg.Describe([]string{runner.NetworkOpen}))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())

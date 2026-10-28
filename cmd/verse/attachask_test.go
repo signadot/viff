@@ -19,8 +19,8 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/runner/runnerd/verserunner"
-	"github.com/signadot/verse/runner/runnerd/verserunner/agent"
+	"github.com/signadot/verse/runner/runnerd/stock"
+	verseagent "github.com/signadot/verse/runner/runnerd/verse"
 	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/versed"
@@ -34,12 +34,12 @@ import (
 func serveCalls(t *testing.T) entity.Store {
 	t.Helper()
 	root := t.TempDir()
-	scripts := verserunner.New(verserunner.Open(), verserunner.Secrets{}, root, io.Discard).Build
+	scripts := stock.New(stock.Open(), stock.Secrets{}, root, io.Discard).Build
 	build := func(l runner.Launch, reg *task.Registry) *task.Task {
 		if l.Who() != "steps" {
 			return scripts(l, reg)
 		}
-		ask := agent.Ask(reg)
+		ask := verseagent.Ask(reg)
 		return task.NewTask(l.ID, systemstest.Opened(task.NewSupervisor(l.Environment, l.Autonomy, reg), l.Environment), &stepsDriver{prompt: l.Prompt}, stepsExec{ask: ask})
 	}
 	store := entitytest.Store(t)
@@ -74,7 +74,7 @@ func (d *stepsDriver) Next(context.Context, task.StepResult) (task.ToolUse, bool
 }
 
 // stepsExec performs them: a command echoes, an ask asks.
-type stepsExec struct{ ask agent.Tool }
+type stepsExec struct{ ask verseagent.Tool }
 
 func (e stepsExec) Execute(ctx context.Context, tu task.ToolUse) (task.StepResult, []task.ToolUse, error) {
 	if tu.Name == "ask" {

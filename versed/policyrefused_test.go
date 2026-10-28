@@ -8,7 +8,7 @@ import (
 
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/runner/runnerd/verserunner"
+	"github.com/signadot/verse/runner/runnerd/stock"
 	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
 )
@@ -22,7 +22,7 @@ func TestARefusedPolicyLeavesVersesPart(t *testing.T) {
 	srv := NewWithStore(func(l runner.Launch, reg *task.Registry) *task.Task {
 		return task.NewTask(l.ID, systemstest.Opened(task.NewSupervisor(l.Environment, l.Autonomy, reg), l.Environment), &blockedDriver{release: release}, okExecutor{})
 	}, entitytest.Store(t))
-	srv.Embedded.Describe(verserunner.Open().Describe([]string{runner.NetworkOpen}))
+	srv.Embedded.Describe(stock.Open().Describe([]string{runner.NetworkOpen}))
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	t.Cleanup(func() {

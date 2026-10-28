@@ -2,7 +2,7 @@
 // patch it proposes decided by the task's autonomy and shown on the read plane. A spawn asks for it
 // with `doer: {agent: codex}`, and a runner that hosts it builds its task with Task.
 //
-// It is an agent of its own beside verse's (package agent), and it exists because of what the
+// It is an agent of its own beside verse's (package verse), and it exists because of what the
 // other way of running a foreign agent gives up. A program the runner runs and reads the output
 // of is gated once, at the invocation, and nothing inside it is seen; the read plane is silent
 // until the program exits. That is the honest shape for a program that offers nothing else.
@@ -41,7 +41,7 @@
 //
 // What the spawn's doer runs with reaches codex: `with.model` is the model of the thread and
 // `with.effort` the reasoning effort of its turns; one the spawn names none of is the runner's
-// configured default, filled in before the launch reaches here (verserunner), or codex's own.
+// configured default, filled in before the launch reaches here (package stock), or codex's own.
 //
 // What codex does WITHOUT asking is the part that is attested rather than enforced: the
 // commands its own autonomy trusts as read-only (listing, reading, searching), and its web
@@ -76,7 +76,7 @@ import (
 
 	"github.com/signadot/verse/answer"
 	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/runner/runnerd/verserunner/agent"
+	"github.com/signadot/verse/runner/runnerd/verse"
 	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
@@ -180,7 +180,7 @@ const (
 // process's environment (the runner's allowlist, the launch's `with.env`, and where the task's
 // credential file is, for a task that has one), offering it tools (the runner's) as its own.
 // A launch whose autonomy does not name codex's shell and edits is refused: they are how it works.
-func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir string, tools []agent.Tool, ceilings map[string]systems.Ceiling) (*task.Task, error) {
+func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir string, tools []verse.Tool, ceilings map[string]systems.Ceiling) (*task.Task, error) {
 	var contract *answer.Contract
 	if l.Answer != nil {
 		c, err := answer.Parse(l.Answer)
@@ -200,7 +200,7 @@ func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir st
 		resolver: reg,
 		log:      os.Stderr,
 		tools:    tools,
-		toolBy:   map[string]agent.Tool{},
+		toolBy:   map[string]verse.Tool{},
 	}
 	for _, t := range tools {
 		d.toolBy[t.Name] = t
@@ -208,7 +208,7 @@ func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir st
 	if contract != nil {
 		d.contractSrc = contract.Source()
 	}
-	d.toolStep = agent.StepOf(tools)
+	d.toolStep = verse.StepOf(tools)
 	sup := task.NewSupervisor(l.Environment, l.Autonomy, reg)
 	sup.SetCeilings(ceilings)
 	sup.SetStepsOf(d.stepsOf)
@@ -247,8 +247,8 @@ type driver struct {
 	log           io.Writer
 	emit          func(task.Event)
 	// tools are the runner's, offered to codex on thread/start and run here when it calls one.
-	tools  []agent.Tool
-	toolBy map[string]agent.Tool
+	tools  []verse.Tool
+	toolBy map[string]verse.Tool
 	// toolStep is the step a call of one of the tools is, as the verse agent's is classified.
 	toolStep func(task.ToolUse) (task.Step, bool)
 
@@ -288,7 +288,7 @@ type proposal struct {
 	ui     userInput
 	perm   permissionsRequest
 	call   toolCall
-	tool   agent.Tool
+	tool   verse.Tool
 	// steps are what the request is, as the spec names a task's steps: a command is
 	// `commands.run`, a patch `files.write` for each path it touches. None is no step.
 	steps []task.Step

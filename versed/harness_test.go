@@ -9,8 +9,8 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/runner/runnerd/verserunner"
-	"github.com/signadot/verse/runner/runnerd/verserunner/agent/modeltest"
+	"github.com/signadot/verse/runner/runnerd/stock"
+	"github.com/signadot/verse/runner/runnerd/verse/modeltest"
 	"github.com/signadot/verse/trigger"
 )
 
@@ -18,11 +18,11 @@ import (
 // reaches: the test's, or none.
 func harnessServer(t *testing.T, modelURL string) *Server {
 	t.Helper()
-	s := verserunner.Secrets{}
+	s := stock.Secrets{}
 	if modelURL != "" {
-		s = verserunner.Secrets{PortkeyAPIKey: "test-key", PortkeyBaseURL: modelURL}
+		s = stock.Secrets{PortkeyAPIKey: "test-key", PortkeyBaseURL: modelURL}
 	}
-	h := verserunner.New(verserunner.Open(verserunner.AgentName), s, t.TempDir(), io.Discard)
+	h := stock.New(stock.Open(stock.AgentName), s, t.TempDir(), io.Discard)
 	srv := NewWithStore(h.Build, entitytest.Store(t))
 	srv.Start(t.Context())
 	var trig trigger.Trigger

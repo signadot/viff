@@ -13,10 +13,10 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 
 # PERMANENT exceptions, and every one of them is the SAME exception: a foreign wire format
 # that is not verse's to re-render, at the edge of the process that speaks it.
-#   runner/runnerd/verserunner/agent/llm.go
+#   runner/runnerd/verse/llm.go
 #                            — the OpenAI chat-completions schema.
 #   codec/codec.go           — json.Number, in AsInt64. codec is where formats live.
-#   runner/runnerd/verserunner/agent/modeltest/model.go
+#   runner/runnerd/verse/modeltest/model.go
 #                            — the same OpenAI schema, served: the scripted model tests run
 #                              tasks against. The JSON stops at that file too.
 #   io/slack/*.go        — Slack's Web API and its signed event envelopes.
@@ -46,7 +46,7 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 # The source connectors are the shape to copy: JSON stops at the
 # package boundary. What they hand back is an entity.Payload, and what they serve is rendered
 # by codec like everything else — so no verse surface acquires a second dialect from this.
-allow='runner/runnerd/verserunner/agent/llm\.go|runner/runnerd/verserunner/agent/modeltest/model\.go|codec/codec.go|io/slack/[a-z]+\.go|io/linear/[a-z]+\.go|io/github/[a-z]+\.go|runner/runnerd/delivery/github\.go|runner/runnerd/codex/rpc\.go|runner/runnerd/claude/wire\.go|versed/idptest/idp\.go|versed/issuer\.go'
+allow='runner/runnerd/verse/llm\.go|runner/runnerd/verse/modeltest/model\.go|codec/codec.go|io/slack/[a-z]+\.go|io/linear/[a-z]+\.go|io/github/[a-z]+\.go|runner/runnerd/delivery/github\.go|runner/runnerd/codex/rpc\.go|runner/runnerd/claude/wire\.go|versed/idptest/idp\.go|versed/issuer\.go'
 
 # git ls-files, not a filesystem walk: the tree carries untracked worktree copies and
 # scratch dirs, and a guard that trips on those is a guard people learn to ignore.

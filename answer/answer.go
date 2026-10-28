@@ -1,7 +1,7 @@
 // Package answer is the contract a spawn puts on its own final message.
 //
 // An agent ends by talking: the loop stops when the model stops calling tools, and the
-// result is whatever prose it stopped on (runner/runnerd/verserunner/agent/llm.go). So "the
+// result is whatever prose it stopped on (runner/runnerd/verse/llm.go). So "the
 // model finished the job" and "the model stopped talking" are the same observation, and a
 // charter that derefs `$data.class` finds out at PATCH time — after the work is done and the
 // tokens are spent — that the agent narrated instead of answering. The failure lands on a hook

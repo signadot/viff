@@ -17,7 +17,7 @@ import (
 	"github.com/signadot/verse/systems/systemstest"
 
 	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/runner/runnerd/verserunner/agent"
+	"github.com/signadot/verse/runner/runnerd/verse"
 	"github.com/signadot/verse/task"
 )
 
@@ -958,8 +958,8 @@ func TestConfigIsChecked(t *testing.T) {
 
 // greetTool is a runner tool for the tests: a command run, so a gate on commands can stop it, and
 // it says hello.
-func greetTool() agent.Tool {
-	return agent.Tool{
+func greetTool() verse.Tool {
+	return verse.Tool{
 		Name: "greet", Description: "say hello to somebody",
 		Params:   map[string]any{"name": map[string]any{"type": "string"}},
 		Required: []string{"name"},
@@ -981,7 +981,7 @@ func TestCodexIsOfferedTheRunnersTools(t *testing.T) {
 	reg := task.NewRegistry()
 	creds, logPath := fakeCreds(t, "tool")
 	tk, err := Task(runner.Launch{ID: "run-codex-8", Prompt: "greet", Agent: &runner.Agent{Name: Agent}, Environment: workEnv,
-		Autonomy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), []agent.Tool{greetTool()}, systemstest.Open(workEnv))
+		Autonomy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), []verse.Tool{greetTool()}, systemstest.Open(workEnv))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1021,7 +1021,7 @@ func TestARefusedToolCallIsCodexsToRead(t *testing.T) {
 	reg := task.NewRegistry()
 	creds, logPath := fakeCreds(t, "tool")
 	tk, err := Task(runner.Launch{ID: "run-codex-9", Prompt: "greet", Agent: &runner.Agent{Name: Agent}, Environment: workEnv, Autonomy: namedGates},
-		reg, creds, fakeEnv(), t.TempDir(), []agent.Tool{greetTool()}, systemstest.Open(workEnv))
+		reg, creds, fakeEnv(), t.TempDir(), []verse.Tool{greetTool()}, systemstest.Open(workEnv))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1080,7 +1080,7 @@ func TestCodexTakesTheSpawnsModelAndEffort(t *testing.T) {
 		t.Errorf("the task's settings: %v", set)
 	}
 	// A spawn naming no model reaches the driver naming none, and runs codex's own: the runner's
-	// configured default is filled in before (verserunner), so the record says it either way.
+	// configured default is filled in before (package stock), so the record says it either way.
 	tk2, err := Task(runner.Launch{ID: "run-codex-11", Prompt: "x", Agent: &runner.Agent{Name: Agent}, Environment: workEnv,
 		Autonomy: allowAll}, task.NewRegistry(), creds, fakeEnv(), t.TempDir(), nil, systemstest.Open(workEnv))
 	if err != nil {

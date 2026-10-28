@@ -15,7 +15,7 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
-	"github.com/signadot/verse/runner/runnerd/verserunner"
+	"github.com/signadot/verse/runner/runnerd/stock"
 	"github.com/signadot/verse/task"
 )
 
@@ -142,10 +142,10 @@ func TestDocCharartersInstall(t *testing.T) {
 // A spawn naming another runner, or an agent `verse up` does not offer, is for a runner set up
 // elsewhere, and is not this test's to judge.
 func upOffers(name string, l runner.Launch) error {
-	if name != "" || (l.Who() != "" && l.Who() != verserunner.AgentName) {
+	if name != "" || (l.Who() != "" && l.Who() != stock.AgentName) {
 		return nil
 	}
-	desc := verserunner.Config{Agents: map[string]verserunner.Agent{verserunner.AgentName: {}}, Script: &verserunner.Script{}}.Describe([]string{runner.NetworkOpen})
+	desc := stock.Config{Agents: map[string]stock.Agent{stock.AgentName: {}}, Script: &stock.Script{}}.Describe([]string{runner.NetworkOpen})
 	return runnerd.CheckOfferAsWritten(&l, desc)
 }
 
