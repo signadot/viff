@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
@@ -80,31 +82,34 @@ func TestAScriptRaisesAnAskTheRunnerCarriesToVerse(t *testing.T) {
 	}
 }
 
-// THE TOOL TAKES WHAT verse_ask_create TAKES: `to` a comma-separated list, `then` and `else` tony
-// documents, `label` name=value pairs, as a model writes them; and each as the value a script's
-// verse-call-tool already read it as.
+// THE TOOL TAKES WHAT verse_ask_create TAKES, read as `verse ask` reads it (api.NewAsk): `to` a
+// comma-separated list, `then` and `else` tony documents, `label` name=value pairs, each a string.
+// What the CLI refuses, the tool refuses, and a parameter that is not a string is refused rather
+// than read as nothing.
 func TestTheAskCreateToolTakesWhatTheMCPToolTakes(t *testing.T) {
-	in := map[string]any{
-		"to":    "user:ana@example.com, group:leads",
-		"then":  `{spawn: {script: "true"}}`,
-		"label": "team=payments, kind=deploy",
+	read := func(in map[string]any) (api.Ask, error) {
+		w, err := wordsOf(in)
+		if err != nil {
+			return api.Ask{}, err
+		}
+		return api.NewAsk(api.AskSpec{Question: "q", To: w["to"], Label: w["label"]}, time.Now())
 	}
-	if got := listIn(in, "to"); len(got) != 2 || got[1] != "group:leads" {
-		t.Errorf("to = %v", got)
+	ask, err := read(map[string]any{"to": "user:ana@example.com, group:leads", "label": "team=payments, kind=deploy"})
+	if err != nil || len(ask.To) != 2 || ask.To[1] != "group:leads" || ask.Labels["kind"] != "deploy" || len(ask.Labels) != 2 {
+		t.Errorf("read as %+v, %v", ask, err)
 	}
-	if doc, err := docIn(in, "then"); err != nil || doc["spawn"] == nil {
+	if doc, err := docOf("then", `{spawn: {script: "true"}}`); err != nil || entity.Get(doc, "spawn") == nil {
 		t.Errorf("then = %v, %v", doc, err)
 	}
-	if labels, err := labelsIn(in, "label"); err != nil || labels["kind"] != "deploy" {
-		t.Errorf("label = %v, %v", labels, err)
-	}
-	if _, err := docIn(map[string]any{"then": "spawn it"}, "then"); err == nil {
+	if _, err := docOf("then", "spawn it"); err == nil {
 		t.Error("a then that is no document was taken")
 	}
-	if _, err := labelsIn(map[string]any{"label": "team"}, "label"); err == nil {
-		t.Error("a label with no value was taken")
-	}
-	if got := listIn(map[string]any{"to": []any{"user:ana@example.com"}}, "to"); len(got) != 1 {
-		t.Errorf("a list to = %v", got)
+	for _, bad := range []map[string]any{
+		{"label": "team"}, {"to": "user:ana@example.com,,group:leads"},
+		{"to": []any{"user:ana@example.com"}}, {"label": map[string]any{"team": "payments"}},
+	} {
+		if _, err := read(bad); err == nil {
+			t.Errorf("%v was taken, where verse_ask_create refuses it", bad)
+		}
 	}
 }

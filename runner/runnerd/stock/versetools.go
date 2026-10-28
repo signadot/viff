@@ -4,10 +4,14 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/runner/runnerd/delivery"
 	"github.com/signadot/verse/runner/runnerd/verse"
 	"github.com/signadot/verse/systems"
@@ -54,40 +58,30 @@ func verseTools(cl *delivery.Client) []verse.Tool {
 		Step:     task.StepVerseAskCreate,
 		Fields:   func(map[string]any) (map[string]string, bool) { return map[string]string{}, true },
 		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
-			question := strings.TrimSpace(str(tu.Input, "question"))
+			// Every parameter is a string, as verse_ask_create takes it; one that is not is
+			// refused rather than read as nothing, which for `to` would put the ask to anyone.
+			w, err := wordsOf(tu.Input)
+			if err != nil {
+				return "not raised: " + err.Error(), true, nil
+			}
+			question := strings.TrimSpace(w["question"])
 			if question == "" {
 				return "not raised: an ask needs a question", true, nil
 			}
 			origin, _, _ := strings.Cut(tu.ID, task.GateSep)
-			ask := map[string]any{"name": cmp.Or(strings.TrimSpace(str(tu.Input, "name")), origin), "question": question}
-			for k, field := range map[string]string{"about": "about", "due": "due", "on_silence": "onSilence", "keep": "keep"} {
-				if v := strings.TrimSpace(str(tu.Input, k)); v != "" {
-					ask[field] = v
-				}
-			}
-			// A due as a duration is a date from now, as `verse ask --due 48h` makes it: verse
-			// keeps a date.
-			if d, err := time.ParseDuration(strings.TrimSpace(str(tu.Input, "due"))); err == nil {
-				ask["due"] = time.Now().Add(d).UTC().Format(time.RFC3339)
-			}
-			if to := listIn(tu.Input, "to"); len(to) > 0 {
-				ask["to"] = to
-			}
-			for _, k := range []string{"then", "else"} {
-				doc, err := docIn(tu.Input, k)
-				if err != nil {
-					return "not raised: " + err.Error(), true, nil
-				}
-				if doc != nil {
-					ask[k] = doc
-				}
-			}
-			labels, err := labelsIn(tu.Input, "label")
-			if err != nil {
+			// The words as `verse ask` and verse_ask_create read them (api.NewAsk).
+			spec := api.AskSpec{Name: cmp.Or(strings.TrimSpace(w["name"]), origin), Question: question,
+				To: w["to"], Due: w["due"], OnSilence: strings.TrimSpace(w["on_silence"]),
+				About: strings.TrimSpace(w["about"]), Keep: strings.TrimSpace(w["keep"]), Label: w["label"]}
+			if spec.Then, err = docOf("then", w["then"]); err != nil {
 				return "not raised: " + err.Error(), true, nil
 			}
-			if len(labels) > 0 {
-				ask["labels"] = labels
+			if spec.Else, err = docOf("else", w["else"]); err != nil {
+				return "not raised: " + err.Error(), true, nil
+			}
+			ask, err := api.NewAsk(spec, time.Now())
+			if err != nil {
+				return "not raised: " + err.Error(), true, nil
 			}
 			doc, err := codec.Marshal(ask, codec.Tony)
 			if err != nil {
@@ -98,62 +92,31 @@ func verseTools(cl *delivery.Client) []verse.Tool {
 	}}
 }
 
-// listIn is a list the call named under key, as verse_ask_create takes it, a comma-separated
-// string, or as a list a script's verse-call-tool already made of it.
-func listIn(in map[string]any, key string) []string {
-	if s, ok := in[key].(string); ok {
-		var out []string
-		for _, v := range strings.Split(s, ",") {
-			if v = strings.TrimSpace(v); v != "" {
-				out = append(out, v)
-			}
+// wordsOf is the call's parameters as the words verse_ask_create takes: each a string, absent or
+// null as none. A parameter that is anything else is refused, naming it.
+func wordsOf(in map[string]any) (map[string]string, error) {
+	out := map[string]string{}
+	for _, k := range slices.Sorted(maps.Keys(in)) {
+		switch v := in[k].(type) {
+		case nil:
+		case string:
+			out[k] = v
+		default:
+			return nil, fmt.Errorf("%s is a string, as verse_ask_create takes it, not %T", k, v)
 		}
-		return out
 	}
-	return verse.StrsOf(in, key)
+	return out, nil
 }
 
-// docIn is a document the call named under key: tony, as verse_ask_create takes it, or the object
-// a script's verse-call-tool already read it as. nil where the call named none.
-func docIn(in map[string]any, key string) (map[string]any, error) {
-	switch v := in[key].(type) {
-	case map[string]any:
-		if len(v) == 0 {
-			return nil, nil
-		}
-		return v, nil
-	case string:
-		if strings.TrimSpace(v) == "" {
-			return nil, nil
-		}
-		var doc map[string]any
-		if err := codec.Unmarshal([]byte(v), &doc, codec.Tony); err != nil || len(doc) == 0 {
-			return nil, fmt.Errorf("%s is one key naming what runs: {spawn: …}, {answer: …} or {ask: …}", key)
-		}
-		return doc, nil
+// docOf reads a then or an else: a tony document of one key naming what runs, as
+// verse_ask_create takes it. nil where the call named none.
+func docOf(key, src string) (entity.Payload, error) {
+	if strings.TrimSpace(src) == "" {
+		return nil, nil
 	}
-	return nil, nil
-}
-
-// labelsIn is the labels the call named under key: name=value, comma-separated, as
-// verse_ask_create takes them, or the object a script's verse-call-tool already made of them.
-func labelsIn(in map[string]any, key string) (map[string]any, error) {
-	switch v := in[key].(type) {
-	case map[string]any:
-		return v, nil
-	case string:
-		out := map[string]any{}
-		for _, kv := range strings.Split(v, ",") {
-			if kv = strings.TrimSpace(kv); kv == "" {
-				continue
-			}
-			name, val, ok := strings.Cut(kv, "=")
-			if !ok || strings.TrimSpace(name) == "" {
-				return nil, fmt.Errorf("label %q is name=value", kv)
-			}
-			out[strings.TrimSpace(name)] = strings.TrimSpace(val)
-		}
-		return out, nil
+	n, err := codec.ParseNode([]byte(src), codec.Tony)
+	if err != nil || !entity.IsObj(n) {
+		return nil, fmt.Errorf("%s is one key naming what runs: {spawn: …}, {answer: …} or {ask: …}", key)
 	}
-	return nil, nil
+	return n, nil
 }

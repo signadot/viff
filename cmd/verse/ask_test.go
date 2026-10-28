@@ -420,19 +420,6 @@ func TestACallsThenRunsItsCalls(t *testing.T) {
 	}
 }
 
-// --label is name=value pairs, comma-separated; a pair without its `=` is refused.
-func TestAskLabelsAreNameValuePairs(t *testing.T) {
-	got, err := labelsOf("team=payments, kind=deploy")
-	if err != nil || got["team"] != "payments" || got["kind"] != "deploy" || len(got) != 2 {
-		t.Fatalf("labelsOf = %v, %v", got, err)
-	}
-	for _, bad := range []string{"team", "=payments", "team=payments,"} {
-		if _, err := labelsOf(bad); err == nil {
-			t.Errorf("--label %q was read", bad)
-		}
-	}
-}
-
 // A WATCH OPENED BEFORE sees whole records: an ask standing when it opened is known as daniel's
 // when it is answered, and an answer is said once however much is written on the ask after it (its
 // status, its expiry). The watch is known to be open once it says an ask asked after it.

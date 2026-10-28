@@ -9,6 +9,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/verse/api"
 )
 
 // The question tools mirror `verse question`, the answerer's side: what is asked of you, and
@@ -158,7 +159,7 @@ func (m *mcpServer) askCreate(ctx context.Context, _ *mcp.CallToolRequest, in as
 	if err := m.nobody(); err != nil {
 		return nil, nil, err
 	}
-	spec := askSpec{Name: in.Name, Question: in.Question, To: in.To, Due: in.Due, OnSilence: in.OnSilence,
+	spec := api.AskSpec{Name: in.Name, Question: in.Question, To: in.To, Due: in.Due, OnSilence: in.OnSilence,
 		About: in.About, Keep: in.Keep, Label: in.Label}
 	var err error
 	if in.Then != "" {

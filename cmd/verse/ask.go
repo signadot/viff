@@ -120,19 +120,6 @@ func (cfg *askConfig) run(cc *cli.Context, args []string) error {
 
 // ── asking ───────────────────────────────────────────────────────────────────
 
-// labelsOf reads --label: name=value pairs, comma-separated.
-func labelsOf(s string) (map[string]string, error) {
-	out := map[string]string{}
-	for _, pair := range strings.Split(s, ",") {
-		k, v, ok := strings.Cut(strings.TrimSpace(pair), "=")
-		if !ok || strings.TrimSpace(k) == "" {
-			return nil, fmt.Errorf("%w: --label %q: each label is name=value", cli.ErrUsage, pair)
-		}
-		out[strings.TrimSpace(k)] = strings.TrimSpace(v)
-	}
-	return out, nil
-}
-
 func (cfg *askConfig) create(cc *cli.Context, name string) error {
 	var then, els entity.Payload
 	var err error
@@ -146,7 +133,7 @@ func (cfg *askConfig) create(cc *cli.Context, name string) error {
 			return err
 		}
 	}
-	body, err := newAsk(askSpec{Name: name, Question: cfg.Question, To: cfg.To, Due: cfg.Due,
+	body, err := newAsk(api.AskSpec{Name: name, Question: cfg.Question, To: cfg.To, Due: cfg.Due,
 		OnSilence: cfg.OnSilence, About: cfg.About, Keep: cfg.Keep, Label: cfg.Label, Then: then, Else: els})
 	if err != nil {
 		return err
@@ -159,39 +146,20 @@ func (cfg *askConfig) create(cc *cli.Context, name string) error {
 	return nil
 }
 
-// askSpec is a new ask as a person says it: the words of the command's flags, the then and the
-// else already read.
-type askSpec struct {
-	Name, Question, To, Due, OnSilence, About, Keep, Label string
-	Then, Else                                             entity.Payload
+// newAsk is the body POST /asks takes for s, as of now; a word it refuses is a usage error naming
+// its flag.
+func newAsk(s api.AskSpec) (api.Ask, error) {
+	body, err := api.NewAsk(s, time.Now())
+	return body, usage(err)
 }
 
-// newAsk is the body POST /asks takes for s.
-func newAsk(s askSpec) (api.Ask, error) {
-	body := api.Ask{Name: s.Name, Question: s.Question, About: s.About, Keep: s.Keep,
-		OnSilence: s.OnSilence, Then: s.Then, Else: s.Else}
-	if s.Label != "" {
-		labels, err := labelsOf(s.Label)
-		if err != nil {
-			return body, err
-		}
-		body.Labels = labels
+// usage is err, a refusal of a word naming its field (api.NewAsk), as a usage error naming its
+// flag; nil for nil.
+func usage(err error) error {
+	if err == nil {
+		return nil
 	}
-	if s.To != "" {
-		to, err := answerersOf(s.To)
-		if err != nil {
-			return body, err
-		}
-		body.To = to
-	}
-	if s.Due != "" {
-		due, err := dateOf(s.Due, time.Now())
-		if err != nil {
-			return body, err
-		}
-		body.Due = due
-	}
-	return body, nil
+	return fmt.Errorf("%w: --%w", cli.ErrUsage, err)
 }
 
 // createAsk asks it, and says what it was asked as.
@@ -209,39 +177,16 @@ func createAsk(c *client.Client, body api.Ask) (string, error) {
 	return fmt.Sprintf("asked %s: %s", out.ID, body.Question), nil
 }
 
-// answerersOf reads --to: each name in the grammar a grant uses, spelled canonically. Whether a
-// group named stands is the posing's to check, where the store is asked.
+// answerersOf reads --to (api.AnswerersOf).
 func answerersOf(s string) ([]string, error) {
-	var out []string
-	for _, n := range strings.Split(s, ",") {
-		n = strings.TrimSpace(n)
-		if n == "" {
-			return nil, fmt.Errorf("%w: --to %q names an empty answerer", cli.ErrUsage, s)
-		}
-		g, err := entity.ParseGrantee(n)
-		if err != nil {
-			return nil, fmt.Errorf("%w: --to: %v", cli.ErrUsage, err)
-		}
-		out = append(out, g.String())
-	}
-	return out, nil
+	to, err := api.AnswerersOf(s)
+	return to, usage(err)
 }
 
-// dateOf reads --due: an RFC 3339 date, or a duration from now. The ask always holds a date,
-// which is what its clock reads.
+// dateOf reads --due (api.DueOf).
 func dateOf(s string, now time.Time) (string, error) {
-	at, err := time.Parse(time.RFC3339, s)
-	if err != nil {
-		d, derr := time.ParseDuration(s)
-		if derr != nil {
-			return "", fmt.Errorf("%w: --due %q: an RFC 3339 date (2026-10-02T17:00:00Z) or a duration from now (48h)", cli.ErrUsage, s)
-		}
-		at = now.Add(d)
-	}
-	if !at.After(now) {
-		return "", fmt.Errorf("%w: --due %s is not in the future", cli.ErrUsage, at.UTC().Format(time.RFC3339))
-	}
-	return at.UTC().Format(time.RFC3339), nil
+	due, err := api.DueOf(s, now)
+	return due, usage(err)
 }
 
 // thenOf reads --then as a document in the input format: inline, `-` for stdin, or `@<file>`.
