@@ -15,7 +15,7 @@ import (
 
 // WHAT FOLLOWS A QUESTION RUNS AS WHOEVER ASKED, BEFORE THE ANSWER GOES BACK TO THEM. Only an
 // asker who does not wait on the answer in the store writes a `then`: a person's ask, which runs
-// its `then` as that person (`from`), and one a task raises for its owner (`question-raise`),
+// its `then` as that person (`from`), and one a task raises for its owner (`verse-ask-create`),
 // which runs as the owner, held within the task (taskBound). A rule's question carries none, since what a rule does about
 // a yes is its action, and a task's carries none, since what a task does about a yes is its next
 // step. The asker's wait is released once the `then` has run, and a spawn has run once it is

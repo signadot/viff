@@ -89,6 +89,7 @@ data:
           files: {ceiling: {}}
           commands: {ceiling: {}}
           question: {ceiling: {}}
+          verse: {ceiling: {}}
 ---
 apiVersion: apps/v1
 kind: Deployment

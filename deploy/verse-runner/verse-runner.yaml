@@ -90,6 +90,7 @@ data:
           files: {ceiling: {}}
           commands: {ceiling: {}}
           question: {ceiling: {}}
+          verse: {ceiling: {}}
           agent: {ceiling: {}}
     script:
       # Scripts, the charters' `script:` spawns: the same reach as the agent's, and their
@@ -123,6 +124,7 @@ data:
             reply: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
             react: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
         question: {ceiling: {}}
+        verse: {ceiling: {}}
 ---
 apiVersion: apps/v1
 kind: Deployment

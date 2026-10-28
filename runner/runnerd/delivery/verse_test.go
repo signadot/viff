@@ -25,14 +25,14 @@ func TestATasksRaiseIsCarriedToVerseForTheTask(t *testing.T) {
 			return code, said, nil
 		}
 	}
-	open := map[string]systems.Ceiling{"question": systems.Open()}
-	l := within(nil, "question")
-	l.Autonomy = task.Autonomy{{Match: &task.Match{System: "question", Verb: "raise"}, Then: task.Then{Mode: task.ThenAllow}}, {Then: task.Then{Mode: task.ThenAllow}}}
+	open := map[string]systems.Ceiling{"verse": systems.Open()}
+	l := within(nil, "verse")
+	l.Autonomy = task.Autonomy{{Match: &task.Match{System: "verse", Verb: "ask-create"}, Then: task.Then{Mode: task.ThenAllow}}, {Then: task.Then{Mode: task.ThenAllow}}}
 	tk := Task{ID: "t7", Workspace: &workspace.Workspace{}, Launch: l}
 	const ask = "{name: land, question: \"Land it?\"}"
 
 	s := &Server{Log: io.Discard, Services: Services{Raise: answer(http.StatusCreated, "id: land-1a2b")}, Ceilings: open}
-	if rep := s.answer(tk, frame(t, Request{Op: OpQuestionRaise, Ask: ask})); !rep.OK || !strings.Contains(rep.Out, "raised ask land-1a2b") {
+	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskCreate, Ask: ask})); !rep.OK || !strings.Contains(rep.Out, "raised ask land-1a2b") {
 		t.Errorf("a raise: %+v", rep)
 	}
 	if len(saw) != 1 || saw[0] != (call{"t7", ask}) {
@@ -40,26 +40,26 @@ func TestATasksRaiseIsCarriedToVerseForTheTask(t *testing.T) {
 	}
 
 	s.Services.Raise = answer(http.StatusBadRequest, "then: spawn.environment.systems.network: beyond the task")
-	if rep := s.answer(tk, frame(t, Request{Op: OpQuestionRaise, Ask: ask})); !strings.Contains(rep.Refused, "the verse refused the ask: then: spawn.environment") {
+	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskCreate, Ask: ask})); !strings.Contains(rep.Refused, "the verse refused the ask: then: spawn.environment") {
 		t.Errorf("a raise verse refuses: %+v", rep)
 	}
 
 	denied := tk
 	dl := *l
-	dl.Autonomy = task.Autonomy{{Name: "no-raise", Match: &task.Match{System: "question", Verb: "raise"}, Then: task.Then{Mode: task.ThenDeny}}, {Then: task.Then{Mode: task.ThenAllow}}}
+	dl.Autonomy = task.Autonomy{{Name: "no-raise", Match: &task.Match{System: "verse", Verb: "ask-create"}, Then: task.Then{Mode: task.ThenDeny}}, {Then: task.Then{Mode: task.ThenAllow}}}
 	denied.Launch = &dl
 	saw = nil
-	if rep := s.answer(denied, frame(t, Request{Op: OpQuestionRaise, Ask: ask})); !strings.Contains(rep.Refused, "the autonomy's row no-raise") || len(saw) != 0 {
+	if rep := s.answer(denied, frame(t, Request{Op: OpVerseAskCreate, Ask: ask})); !strings.Contains(rep.Refused, "the autonomy's row no-raise") || len(saw) != 0 {
 		t.Errorf("a raise the autonomy denies: %+v (carried %v)", rep, saw)
 	}
 
 	s.Ceilings = map[string]systems.Ceiling{}
-	if rep := s.answer(tk, frame(t, Request{Op: OpQuestionRaise, Ask: ask})); !strings.Contains(rep.Refused, "ceiling") || len(saw) != 0 {
+	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskCreate, Ask: ask})); !strings.Contains(rep.Refused, "ceiling") || len(saw) != 0 {
 		t.Errorf("a raise beyond the ceiling: %+v (carried %v)", rep, saw)
 	}
 
 	s.Services.Raise = nil
-	if rep := s.answer(tk, frame(t, Request{Op: OpQuestionRaise, Ask: ask})); !strings.Contains(rep.Error, "reaches no verse") {
+	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskCreate, Ask: ask})); !strings.Contains(rep.Error, "reaches no verse") {
 		t.Errorf("a runner with no raiser: %+v", rep)
 	}
 }

@@ -1,7 +1,8 @@
 # Systems
 
 A system is something outside verse that verse reads or acts on: a repository, its issue
-tracker, a forge, Linear, Slack. Verse meets each system in two places
+tracker, a forge, Linear, Slack. The [verse system](verse.md) is verse itself, acted on by a task
+as the person it runs for would. Verse meets each system in two places
 ([basic concepts](../concepts.md#an-outside-system-has-two-faces)):
 
 - An [iod](../glossary.md#iod) connects the system to the store. It writes what the system

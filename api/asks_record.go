@@ -176,7 +176,7 @@ func (r AskRecord) Kind() string {
 // AskFrom is who raised a question: exactly one of a rule (with the charter it is installed at),
 // a task, or a principal, verbatim (`user:…`, `agent:…`, `via:…`). The principal carries
 // authority: an ask's `then` runs as it, and an onward ask carries back as it. An ask a task
-// raised for its owner (`question-raise`) names both: the owner as the principal, and the task
+// raised for its owner (`verse-ask-create`) names both: the owner as the principal, and the task
 // that raised it.
 //
 //tony:schemagen=verse-ask-from,notag

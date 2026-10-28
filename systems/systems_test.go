@@ -29,7 +29,7 @@ func TestTheDocumentsDescribeTheSystems(t *testing.T) {
 		"commands.run":         "command",
 		"agent.call-sub-agent": "agent",
 		"question.ask":         "",
-		"question.raise":       "",
+		"verse.ask-create":     "",
 		"slack.post":           "channel",
 		"slack.reply":          "channel,thread",
 		"slack.read":           "channel,thread",

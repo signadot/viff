@@ -394,24 +394,15 @@ An autonomy row on `question` decides the asking as any autonomy row decides its
 
 ### An ask for the person
 
-`question-raise` raises an ask as the person the task runs for, as they would with `verse ask`
-([asking](../asking.md)), and does not wait. The result is the ask's id. The ask's `from` is
-`{principal: <them>, task: <this task>}`, and it stands after the task ends. Its `then` and
-`else` run as them when it settles. A spawn in either is held within the task when the ask is
-raised: an environment no wider than the task's, an autonomy no looser, the task's runner
-(`runner:` names it) and the task's credential. Once raised, the ask is theirs, and they change
-it as any of their own.
-
-```sh
-verse-call-tool question-raise -question "Land verse/ask?" -to user:dana@example.com \
-  -then '{spawn: {script: "git push origin verse/ask:main", environment: {systems: {git: {}}}}}'
-```
-
-It is the step `question.raise`. The runner carries the ask to verse for the task with its own
-token ([permissions](perms.md#runners-at-the-door)), so a task has it only
-on a runner that has one. The task's record carries its launch: `environment`, and `virtualKey`
-as the address its spawn named, never the key. So a restart that resumes the task holds a
-`then` within it as before.
+A task that asks as the person it runs for, and goes on, uses the
+[verse system](../systems/verse.md)'s `verse-ask-create`, as they would use `verse ask`. The
+ask's `from` is `{principal: <them>, task: <this task>}`, and it stands after the task ends. Its
+`then` and `else` run as them when it settles, and a spawn in either is held within the task:
+an environment no wider than the task's, an autonomy no looser, the task's runner (`runner:`
+names it) and the task's credential. Once raised, the ask is theirs, and they change it as any
+of their own. The task's record carries its launch, `environment` and `virtualKey` (the address
+its spawn named, never the key), so a restart that resumes the task holds a `then` within it as
+before.
 
 ### A conversation
 

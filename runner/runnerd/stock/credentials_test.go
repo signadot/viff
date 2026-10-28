@@ -444,6 +444,15 @@ func TestAnInnerSystemsCeilingIsTheOperatorsLine(t *testing.T) {
 	}
 }
 
+// VERSE'S SECTION IS A CEILING, taken whether or not the runner reaches a verse: the file is
+// checked before that is known, and verse's verbs go with the runner's own token.
+func TestVersesSectionIsTakenBeforeTheRunnerReachesAVerse(t *testing.T) {
+	c := Config{Script: &Script{Systems: map[string]System{"verse": {Ceiling: systems.Open()}}}}
+	if err := c.Check(); err != nil {
+		t.Errorf("a ceiling for verse: %v", err)
+	}
+}
+
 // OPEN INSIDE IS EVERY SYSTEM A RUN OF THE DOER IS STOPPED ON, UNDER AN OPEN CEILING: what `verse
 // up`'s runner, whose operator is its tasks' author, is configured with (Open).
 func TestOpenInsideOpensWhatARunIsStoppedOn(t *testing.T) {

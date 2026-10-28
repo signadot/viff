@@ -65,10 +65,10 @@ func SecretsFromEnv(c Config) Secrets {
 // doer's shell is given. tokens is what the runner holds that a task never does: its git
 // tokens, for when c checks out repos, and its Linear credential. raise is how the runner
 // carries a task's ask to the verse it serves, with its own token (runnerd.Guard.Raise); nil for
-// a runner with none, whose tasks are not offered `question-raise`.
+// a runner with none, whose tasks are not offered `verse-ask-create`.
 func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command []string, work, control string,
 	raise delivery.Raiser, log io.Writer) (*runnerd.SubprocessHandler, error) {
-	c.raises = raise != nil
+	c.reachesVerse = raise != nil
 	hosts, err := modelHosts(c, s)
 	if err != nil {
 		return nil, err
@@ -87,7 +87,7 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 		fmt.Fprintf(log, "runnerd: no %s beside %s or on PATH: a script reaches its tools only by "+
 			"the socket $%s names\n", CallToolBinary, command[0], calltool.Env)
 	}
-	blob, err := codec.Marshal(taskConfig{Config: c, Secrets: s, CallTool: tool, Networks: nets, Raises: c.raises}, codec.Tony)
+	blob, err := codec.Marshal(taskConfig{Config: c, Secrets: s, CallTool: tool, Networks: nets, ReachesVerse: c.reachesVerse}, codec.Tony)
 	if err != nil {
 		return nil, err
 	}
@@ -150,9 +150,9 @@ type taskConfig struct {
 	// Networks is the networks the runner's sandbox builds (networks), so the task's process
 	// describes what the runner described.
 	Networks []string `tony:"field=networks,omitzero"`
-	// Raises is whether the runner carries a task's ask to its verse (Standalone's raise), so the
-	// task's process offers `question-raise` where it does.
-	Raises bool `tony:"field=raises,omitzero"`
+	// ReachesVerse is whether the runner carries the verse system to its verse (Standalone's
+	// raise), so the task's process offers its tools (`verse-ask-create`) where it does.
+	ReachesVerse bool `tony:"field=reachesVerse,omitzero"`
 }
 
 // ServeTask is a task's process: it reads the runner's configuration and secrets from stdin,
@@ -170,7 +170,7 @@ func ServeTask(stdin io.Reader, log io.Writer) error {
 	if err != nil {
 		return err
 	}
-	tc.Config.raises = tc.Raises
+	tc.Config.reachesVerse = tc.ReachesVerse
 	r := New(tc.Config, tc.Secrets, dir, log)
 	r.callTool = tc.CallTool
 	return runnerd.ServeTask(r.Build, tc.Config.Describe(tc.Networks), tc.Config.envOf)
@@ -225,8 +225,8 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 		if slices.Contains(performs, "slack") {
 			tools = append(tools, slackTools(cl)...)
 		}
-		if r.cfg.raises {
-			tools = append(tools, raiseTools(cl)...)
+		if r.cfg.reachesVerse {
+			tools = append(tools, verseTools(cl)...)
 		}
 		tools = offered(tools, l.Environment)
 		// The brief: how to deliver, where there are repos, and what reaches the world from

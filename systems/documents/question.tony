@@ -1,7 +1,5 @@
 name: question
-description: "The questions a task puts to people: a doer's own act of handing the turn over and waiting on the docket for the answer, or of raising an ask for the person the task runs for, as `verse ask` does, and going on. The question a runner poses before a step under the task's gates is not this system's: it is the policy's own act, and no call of the doer's."
+description: "The questions a task puts to people: a doer's own act of handing the turn over, waiting on the docket for an answer. The question a runner poses before a step under the task's gates is not this system's: it is the policy's own act, and no call of the doer's."
 verbs:
 - name: ask
   description: "Put a question to the person the task runs for, or to the answerers named, and wait for the answer, which is the call's result. With options, the answer is one of them; with a deadline, silence settles on the default."
-- name: raise
-  description: "Raise an ask as the person the task runs for, as `verse ask` does, and go on without waiting: the call answers the ask's id. The runner carries it to verse with its own token, naming the task, and verse admits it as the task's owner. Its `then` and `else` run as that owner when it settles, and a spawn among them reaches no further than the task does."

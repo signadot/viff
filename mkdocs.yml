@@ -70,6 +70,7 @@ nav:
   - systems/linear-issue.md
   - systems/slack.md
   - systems/question.md
+  - systems/verse.md
   - systems/inside.md
 - Reference:
   - trigger-model.md

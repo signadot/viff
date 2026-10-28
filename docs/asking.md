@@ -6,7 +6,7 @@ for you. Every verse can ask: nothing has to be installed for it.
 
 An ask is how anything in verse waits for a person. You raise one with `verse ask`. A rule's
 gate raises one when it stops for a person. A task raises one with its `question-ask` tool and
-waits on it, or with `question-raise` as the person it runs for. All of them are the same
+waits on it, or with `verse-ask-create` as the person it runs for. All of them are the same
 record, on one docket.
 
 ## The words
@@ -252,7 +252,7 @@ Nobody but you writes your ask. It is yours, and nobody owns a place above it.
 
 The `then` runs before your wait is released, and a spawn has run once it is launched.
 
-A task's `question-raise` is your ask too, when the task runs for you. Its `then` runs with
+A task's `verse-ask-create` is your ask too, when the task runs for you. Its `then` runs with
 your authority, so a spawn in it is held within the task: its environment no wider than the
 task's, its autonomy no looser, on the task's runner, spending the task's credential. A task
 cannot raise past what you let it do. Once raised, the ask is yours to change as any of yours.

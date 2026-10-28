@@ -589,7 +589,7 @@ func (s *Server) asRunner(e api.Runner, presented, account, task string, a act) 
 }
 
 // relayedActs are the routes a runner carries a task's request to: raising an ask
-// (`question-raise`), and saying whom a request is made as.
+// (`verse-ask-create`), and saying whom a request is made as.
 var relayedActs = map[string]bool{"POST /asks": true, "GET /whoami": true}
 
 // notARunnersTask refuses a task named beside a bearer that proves an io: only a runner hosting a

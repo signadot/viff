@@ -179,7 +179,7 @@ func raiseFor(t *testing.T, ts, token, taskID, ask string) (int, string) {
 	return resp.StatusCode, string(body)
 }
 
-// A TASK RAISES AN ASK AS ITS OWNER, carried by its runner (question-raise): the ask is the
+// A TASK RAISES AN ASK AS ITS OWNER, carried by its runner (verse-ask-create): the ask is the
 // owner's, naming the task beside them; what its `then` spawns is held within the task, on its
 // runner and with its credential; once raised, the owner changes it as any of theirs; it stands
 // after the task ends, since versed waits on it as on any person's ask; and its `then` runs as

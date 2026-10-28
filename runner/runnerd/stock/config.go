@@ -71,10 +71,10 @@ type Config struct {
 	// Script is the runner's scripts: present, it offers them.
 	Script *Script `tony:"field=script,omitzero"`
 
-	// raises is whether the runner carries a task's ask to the verse it serves (Standalone's
-	// raise): not the file's to say, since it follows from the runner's `verse:` block and its
-	// token.
-	raises bool
+	// reachesVerse is whether the runner carries the verse system's verbs to the verse it serves
+	// (Standalone's raise): not the file's to say, since it follows from the runner's `verse:`
+	// block and its token.
+	reachesVerse bool
 }
 
 // Agent is one agent the runner runs: its program's own keys, which are the agent's (codex
@@ -388,10 +388,10 @@ func (c Config) performs() []string {
 			out = append(out, name)
 		}
 	}
-	// A raise is carried to verse over the channel too, where the runner reaches its verse
-	// with a token of its own (raises); `question`'s ask stays inside the run.
-	if c.raises {
-		out = append(out, "question")
+	// The verse system is carried to verse over the channel too, where the runner reaches its
+	// verse with a token of its own (reachesVerse); `question`'s ask stays inside the run.
+	if c.reachesVerse {
+		out = append(out, "verse")
 	}
 	return out
 }
@@ -686,7 +686,10 @@ func (c *Config) checkSystems(doer string, sections map[string]System) error {
 				return fmt.Errorf("%s.%s: the runner does not stop %s on %s inside its run; of those, its section may name %s",
 					at, name, doer, name, strings.Join(innerFor(doer), ", "))
 			}
-		} else if name != "network" && !slices.Contains(performs, name) {
+		} else if name != "network" && name != "verse" && !slices.Contains(performs, name) {
+			// verse's section is taken whether or not the runner reaches a verse, which the file
+			// is checked before knowing (reachesVerse): the runner offers the system only where
+			// it does, with its own token.
 			return fmt.Errorf("%s.%s: this runner does not perform %s (it performs: %s); %s", at, name, name,
 				cmp.Or(strings.Join(performs, ", "), "nothing"), needsFor(name))
 		}
