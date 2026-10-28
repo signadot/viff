@@ -104,13 +104,6 @@ type Ask struct {
 	// Labels are what the question says about itself for whoever watches asks: `team:
 	// payments`, `slack: C0C3KHG9B0W`. Verse's: the runner never reads them.
 	Labels map[string]string `tony:"field=labels,omitzero"`
-	// Then is what a yes starts before the task hears the answer: `{spawn: {…}}`, `{answer:
-	// {…}}` or `{ask: {…}}`, as an ask's own `then` is written. Verse's: it runs it as the
-	// task's principal, and the task's turn is delivered once it has run, where a spawn has run
-	// once it is launched. The runner never reads it.
-	Then *ir.Node `tony:"field=then,omitzero"`
-	// Else is what a no starts, the same way, before the task hears the refusal. Verse's too.
-	Else *ir.Node `tony:"field=else,omitzero"`
 }
 
 // Clone is a copy that aliases nothing of the original.
@@ -125,7 +118,7 @@ func (p Autonomy) Clone() Autonomy {
 			nr.Match = &Match{System: r.Match.System, Verb: r.Match.Verb, Params: maps.Clone(r.Match.Params)}
 		}
 		if a := r.Then.Ask; a != nil {
-			nr.Then.Ask = &Ask{Need: a.Need, Answerers: slices.Clone(a.Answerers), Within: a.Within, Default: a.Default, Labels: maps.Clone(a.Labels), Then: copyFollow(a.Then), Else: copyFollow(a.Else)}
+			nr.Then.Ask = &Ask{Need: a.Need, Answerers: slices.Clone(a.Answerers), Within: a.Within, Default: a.Default, Labels: maps.Clone(a.Labels)}
 		}
 		out = append(out, nr)
 	}
@@ -143,8 +136,7 @@ func (p Autonomy) Clone() Autonomy {
 // and each param they both name has patterns that meet (systems.Intersect); one covers the other
 // where it names no more than the other does and each of its patterns contains the other's
 // (systems.PatternContains). Reading patterns against patterns, not against a call, is what makes
-// this sound for a `*` on either side. It is what a task's question's `then` is held to: a task
-// that follows a yes with a spawn hands it no dial above its own.
+// this sound for a `*` on either side.
 func (p Autonomy) Within(outer Autonomy, env systems.Environment) error {
 	outer = outer.OrDefault()
 	inner := p.OrDefault()
@@ -501,11 +493,6 @@ func (r Row) Check() error {
 		}
 		if err := CheckLabels(a.Labels); err != nil {
 			return fmt.Errorf("then.ask.%w", err)
-		}
-		for field, follow := range map[string]*ir.Node{"then": a.Then, "else": a.Else} {
-			if err := CheckFollow(field, follow); err != nil {
-				return fmt.Errorf("then.ask.%w", err)
-			}
 		}
 	}
 	if strings.ContainsFunc(r.Name, func(c rune) bool { return c == ' ' || c == '[' || c == ']' }) {

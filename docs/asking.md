@@ -248,11 +248,13 @@ need that right. The task is your record, so its own gates ask you.
 
 Nobody but you writes your ask. It is yours, and nobody owns a place above it.
 
-A task's question runs its `then` the same way, as whom the task acts for
-([tasks](reference/tasks.md#the-autonomy)). In both cases the `then` runs before the answer goes
-back to whoever asked: the task hears its answer once the `then` has run, and a spawn has run
-once it is launched. A rule's gate has no `then`: what a rule does about a yes is its action
-([gates](reference/gates.md#ondenied-what-a-no-means)).
+The `then` runs before your wait is released, and a spawn has run once it is launched.
+
+Only an ask has a `then`. You need not be there when the answer comes, so the ask carries what
+follows it. A rule's gate has none: what a rule does about a yes is its action
+([gates](reference/gates.md#ondenied-what-a-no-means)). An autonomy row's ask has none either:
+the task waits on it, and what the task does about a yes is the step it asked about
+([tasks](reference/tasks.md#the-autonomy)).
 
 ## Saying something to a running task
 

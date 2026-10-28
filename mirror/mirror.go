@@ -511,27 +511,18 @@ func withVersesPart(m Meta, ev task.Event) task.Event {
 // question already on record keeps the record's, so a frame replayed after a restart, under a
 // autonomy replaced since, does not re-pose it under the new one; a question not yet posed takes
 // verse's part of its row (withVersesPart, answerersFor, labelsFor).
-func asPosed(docket entity.Store, m Meta, ev task.Event) (task.Event, []string, map[string]string, entity.Payload, entity.Payload) {
+func asPosed(docket entity.Store, m Meta, ev task.Event) (task.Event, []string, map[string]string) {
 	e, ok, err := docket.Get(QuestionRef(ev.ID))
 	if err != nil || !ok {
 		ev = withVersesPart(m, ev)
-		then, els := followsFor(m, ev)
-		return ev, answerersFor(m, ev), labelsFor(m, ev), then, els
+		return ev, answerersFor(m, ev), labelsFor(m, ev)
 	}
 	ev.Options = OptionsOf(e.Payload)
 	ev.Deadline = nil
 	if within, dflt, _ := DeadlineOf(e.Payload); within != "" || dflt != "" {
 		ev.Deadline = &task.Deadline{Within: within, Default: dflt}
 	}
-	return ev, GranteesTo(e.Payload), LabelsOf(e.Payload), entity.Get(e.Payload, ThenField), entity.Get(e.Payload, ElseField)
-}
-
-// followsFor is what the row's ask starts on a yes and on a no, before the task hears the answer.
-func followsFor(m Meta, ev task.Event) (then, els entity.Payload) {
-	if a := launchAsk(m, ev); a != nil {
-		return a.Then, a.Else
-	}
-	return nil, nil
+	return ev, GranteesTo(e.Payload), LabelsOf(e.Payload)
 }
 
 // labelsFor is what the row's ask says about its question for whoever watches asks.
@@ -770,9 +761,8 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				subject := entity.Str(st.Payload(), "flow")
 				var answerers []string
 				var labels map[string]string
-				var then, els entity.Payload
-				ev, answerers, labels, then, els = asPosed(docket, m, ev)
-				posed := PostFrameQuestion(docket, ev, id, subject, answerers, labels, then, els)
+				ev, answerers, labels = asPosed(docket, m, ev)
+				posed := PostFrameQuestion(docket, ev, id, subject, answerers, labels)
 				// The clock, if the frame set one: the question is the worker's, but the
 				// timer that settles it runs where the record is kept.
 				if posed && ev.Deadline != nil && ev.Deadline.Within != "" && m.Arm != nil {

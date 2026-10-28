@@ -173,9 +173,9 @@ The engine asks exactly what was written, and acts on the one answer that comes 
 ### The answer is written first
 
 The answer that settles a question is written on its record as `followed` before anything else
-happens: before a task's question runs its `then` or `else`, and before the firing or the task
-hears it. It holds the answer as the answered record spells it (`verdict`, `by`, `field`, `at`,
-and `via`, `why`, `say`, `edit` and `authenticated` where the answer has them). The first one
+happens: before an ask runs its `then` or `else`, and before the firing or the task hears it. It
+holds the answer as the answered record spells it (`verdict`, `by`, `field`, `at`, and `via`,
+`why`, `say`, `edit` and `authenticated` where the answer has them). The first one
 written settles the question, so two answers landing together cannot disagree. The second is
 refused with 409, and the refusal names whose answer stands. The same answer, by the same
 answerer, again is a retry of the first.
@@ -242,7 +242,7 @@ Removing the marker then opens the question again.
 
 A gate starts nothing of its own. What a rule does about a yes is its action, and what a no
 means for the subject is `onDenied`. The `then` and `else` of an [ask](../asking.md) are a
-person's, and an autonomy row's ask has them too ([tasks](tasks.md#the-autonomy)).
+person's alone.
 
 ### A deadline settles
 

@@ -159,7 +159,7 @@ autonomy:
 | Row | What it says |
 |---|---|
 | `then: deny` | the step is refused in the row's name, and nobody is asked |
-| `then: ask` | the step waits for a person first. `{ask: {…}}` says how: who is asked, how many ballots, how long the question stands, and what a yes or a no starts before the task hears it (`then` and `else`, as an ask's own: `{spawn: {…}}`, `{answer: {…}}` or `{ask: {…}}`, run as whom the task acts for; a spawn is held within this task's own environment and autonomy, so a task hands what follows its answer no more than it has) |
+| `then: ask` | the step waits for a person first. `{ask: {…}}` says how: who is asked, how many ballots, and how long the question stands. It starts nothing of its own: the task waits on the answer, and what it does about a yes is the step |
 | `then: allow` | the step goes ahead |
 | the last row, with no `match` | what every step no row above matched gets: the task's dial |
 

@@ -8,8 +8,7 @@ import (
 
 // Within is why e reaches beyond outer, or nil: every system e gives, outer gives, and each block
 // of e's lies whole within one of outer's, read as a ceiling whose attribute patterns are outer's
-// values (Ceiling.Contains). It is what a task's question's `then` spawn is held to: a task that
-// follows a yes with a spawn hands it no more than it reaches itself.
+// values (Ceiling.Contains).
 func (e Environment) Within(outer Environment) error {
 	for _, system := range slices.Sorted(maps.Keys(e.Systems)) {
 		blocks, ok := outer.Systems[system]

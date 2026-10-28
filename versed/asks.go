@@ -93,7 +93,7 @@ func (s *Server) raiseAsk(store entity.Store, asker string, body api.Ask, now ti
 	}
 	for _, field := range []string{"then", "else"} {
 		if follow, ok := asMap(rec[field]); ok {
-			if code, err := s.checkThen(asker, follow, "", now, nil); err != nil {
+			if code, err := s.checkThen(asker, follow, "", now); err != nil {
 				return "", code, fmt.Errorf("%s: %w", field, err)
 			}
 		}
@@ -551,8 +551,8 @@ func (s *Server) carryBack(ref entity.Ref, p entity.Payload) {
 // The task's id is written on the ask first, conditional on none standing, so a restart that
 // finds the ask answered and its `then` not yet run runs it, and one that finds it run does not.
 //
-// Whoever asked is read from `from` (askerOf): a person, or a task's principal. A record naming
-// neither, which a question carrying a `then` never does, has its `then` refused on the record
+// Whoever asked is read from `from` (askerOf): the person who asked. A record naming nobody,
+// which a question carrying a `then` never is, has its `then` refused on the record
 // rather than skipped, so a `then` that did not run is never silent.
 func (s *Server) followAsk(ref entity.Ref, field string) {
 	sys := entity.As(s.Store, entity.SystemDocket)
@@ -639,7 +639,7 @@ func (s *Server) runThen(id string, ref entity.Ref, asker string, spec launch.Sp
 	if actsFor != "" {
 		answerers = []string{task.PrincipalAnswerer}
 	}
-	s.host(id, hostedTask{subject: ref.String(), principal: asker, answerers: answerers, autonomy: l.Autonomy, environment: &spec.Environment})
+	s.host(id, hostedTask{subject: ref.String(), principal: asker, answerers: answerers, autonomy: l.Autonomy})
 	l.Provenance.Subject = ref.String()
 	h := place.Launch(l)
 	eng := s.engineOf("")
@@ -662,9 +662,9 @@ func answeredYes(p entity.Payload) bool {
 }
 
 // resumeAsks is the startup phase for the asks: wait again on each of a person's that waits,
-// since the wait was the last process's, and run the `then` of each answered question whose
-// `then` had not started, whoever asked it — a rule's or a task's as much as a person's, since
-// what follows a yes is the record's to keep across a restart, and the marks say what ran.
+// since the wait was the last process's, and run the `then` of each answered ask whose `then` had
+// not started, since what follows a yes is the record's to keep across a restart, and the marks
+// say what ran.
 func (s *Server) resumeAsks() error {
 	if err := s.awaiting(phaseSystem); err != nil {
 		return err
@@ -811,7 +811,7 @@ func (s *Server) patchAsk(w http.ResponseWriter, r *http.Request) {
 	// A new `then` or `else` that answers or asks is checked as one is when an ask is raised.
 	for field, changed := range map[string]bool{"then": body.Then != nil, "else": body.Else != nil} {
 		if follow, ok := asMap(rec[field]); ok && changed {
-			if code, err := s.checkThen(asker, follow, id, s.now(), nil); err != nil {
+			if code, err := s.checkThen(asker, follow, id, s.now()); err != nil {
 				http.Error(w, field+": "+err.Error(), code)
 				return
 			}

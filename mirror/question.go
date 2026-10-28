@@ -282,11 +282,6 @@ func SayOn(store entity.Store, id, by, said string) {
 const (
 	FromField = "from"
 	ToField   = "to"
-	// ThenField is what a yes starts before the answer goes back to whoever asked: on an ask, as
-	// its asker wrote it; on a task's question, as the ask row wrote it. ElseField is the same for
-	// a no.
-	ThenField = "then"
-	ElseField = "else"
 )
 
 // FromRule is a firing's gate question's `from`: the rule, and the charter it is installed at
@@ -539,15 +534,6 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 	}
 	rec[ToField] = toGrantees(q.Answerers)
 	rec[LabelsField] = labelsValue(q.Labels)
-	// What a yes, or a no, starts before the answer goes back to whoever asked, as the row wrote
-	// it: the same keys an ask carries, run the same way (versed's followAsk). Copied: the row's
-	// node is shared by every question it poses, and a payload built from a node parents it.
-	if q.Then != nil {
-		rec[ThenField] = q.Then.DeepCopy()
-	}
-	if q.Else != nil {
-		rec[ElseField] = q.Else.DeepCopy()
-	}
 	rec["about"] = about(store, q.Subject)
 	// Always written, default included, so the record says what can be chosen without a
 	// reader having to know what a question with no options means. The tally reads it back.
@@ -824,7 +810,7 @@ func anyStrings(ss []string) []any {
 // A local run posts twice, once from each writer. That is not a conflict: a write merges, so
 // the frame's post cannot erase the effects the registry's post already recorded, and every
 // field the two share they agree on.
-func PostFrameQuestion(store entity.Store, ev task.Event, taskID, subject string, answerers []string, labels map[string]string, then, els entity.Payload) bool {
+func PostFrameQuestion(store entity.Store, ev task.Event, taskID, subject string, answerers []string, labels map[string]string) bool {
 	rec := entity.Obj{
 		"id":      ev.ID,
 		"gate":    ev.Gate,
@@ -887,13 +873,6 @@ func PostFrameQuestion(store entity.Store, ev task.Event, taskID, subject string
 		rec["fields"] = stringObj(ev.Fields)
 	}
 	rec[ToField] = toGrantees(answerers)
-	// What its yes, or its no, starts first, from the row's ask (asPosed).
-	if then != nil {
-		rec[ThenField] = then.DeepCopy()
-	}
-	if els != nil {
-		rec[ElseField] = els.DeepCopy()
-	}
 	// What the question offers, as a posed one carries it: the frame's options, or the
 	// default two when the worker named none, and its deadline when it named one.
 	q := task.GateQuestion{Options: ev.Options}

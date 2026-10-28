@@ -362,7 +362,7 @@ func TestAnAnsweredQuestionStaysAnswered(t *testing.T) {
 	ev := task.Event{Kind: task.EventPending, ID: "t1~d1", Gate: "ship"}
 	answered := func() entity.Store {
 		store := docket(t)
-		if !PostFrameQuestion(store, ev, "t1", "", []string{ann}, nil, nil, nil) {
+		if !PostFrameQuestion(store, ev, "t1", "", []string{ann}, nil) {
 			t.Fatal("not posed")
 		}
 		AnswerQuestion(store, ev.ID, task.Choose(task.Proceed, ann))
@@ -374,7 +374,7 @@ func TestAnAnsweredQuestionStaysAnswered(t *testing.T) {
 	}
 
 	store := answered()
-	PostFrameQuestion(store, ev, "t1", "", []string{ann}, nil, nil, nil) // late: the same asking, reported again
+	PostFrameQuestion(store, ev, "t1", "", []string{ann}, nil) // late: the same asking, reported again
 	if s := status(store); s != QuestionAnswered {
 		t.Errorf("a late frame left the answered question %s", s)
 	}
@@ -432,7 +432,7 @@ func TestAFramePosedQuestionSaysWhomItWaitsOn(t *testing.T) {
 	store := docket(t)
 	const ann = "user:ann@example.com"
 	ev := task.Event{Kind: task.EventPending, ID: "t1~d1", Gate: "ship"}
-	if !PostFrameQuestion(store, ev, "t1", "", []string{ann}, nil, nil, nil) {
+	if !PostFrameQuestion(store, ev, "t1", "", []string{ann}, nil) {
 		t.Fatal("not posed")
 	}
 	same(t, waitsOn(t, store, ev.ID), []string{ann})
@@ -458,7 +458,7 @@ func TestAQuestionCarriesTheAction(t *testing.T) {
 
 	// From a remote runner's frame, the same.
 	PostFrameQuestion(store, task.Event{Kind: task.EventPending, ID: "run-b~d1", Gate: "write", Tool: "apply_patch",
-		Action: "update docs/x.md", Text: "verb write"}, "run-b", "", nil, nil, nil, nil)
+		Action: "update docs/x.md", Text: "verb write"}, "run-b", "", nil, nil)
 	e, ok, _ = store.Get(QuestionRef("run-b~d1"))
 	if !ok {
 		t.Fatal("the frame's question was not posted")

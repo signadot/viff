@@ -1,20 +1,20 @@
 package versed
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
 )
 
-// WHAT FOLLOWS A QUESTION RUNS AS WHOEVER ASKED, BEFORE THE ANSWER GOES BACK TO THEM — for a
-// task's question as for a person's ask (consequence.go). These pin what a person's ask tests
-// (askcharter_test.go, askthen_test.go) do not reach.
+// ONLY A PERSON'S ASK CARRIES WHAT FOLLOWS ITS ANSWER (consequence.go): a rule's gate and an
+// autonomy row's ask are waited on by what asked, so neither takes a `then` or an `else`. What a person's ask runs
+// is pinned in askcharter_test.go and askthen_test.go.
 
 // waitValue waits for a field of a record to hold a value.
 func waitValue(t *testing.T, srv *Server, ref entity.Ref, field, want string) {
@@ -31,44 +31,6 @@ func waitValue(t *testing.T, srv *Server, ref entity.Ref, field, want string) {
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
-}
-
-// A TASK'S QUESTION RUNS ITS THEN AS WHOM THE TASK ACTS FOR. A run spawned by hand asks before its
-// step, with a spawn to follow the yes written on the row's ask; the yes starts the task as the
-// person who ran it, about the question, and the run hears its answer.
-func TestATasksQuestionRunsItsThenForWhomItActsFor(t *testing.T) {
-	srv := askingServer(t)
-	ops := httptest.NewServer(srv.Handler())
-	defer ops.Close()
-	spawn := postTony(t, ops.URL+"/tasks", map[string]any{"id": "cq-1", "spawn": map[string]any{
-		"script": "true", "environment": stepEnv,
-		"autonomy": []map[string]any{
-			{"match": map[string]any{"system": "commands"}, "then": map[string]any{"ask": map[string]any{
-				"then": map[string]any{"spawn": map[string]any{"prompt": "log the step", "environment": map[string]any{"systems": map[string]any{"network": map[string]any{"mode": "open"}}}}}}}},
-			{"then": "ask"},
-		}}})
-	spawn.Body.Close()
-	if spawn.StatusCode >= 300 {
-		t.Fatalf("spawn = %s", spawn.Status)
-	}
-	qid := waitQuestion(t, srv, "cq-1")
-	question := mirror.QuestionRef(qid)
-	if q, _, _ := srv.Store.Get(question); entity.Get(entity.Get(q.Payload, "then"), "spawn") == nil {
-		t.Fatalf("the question does not carry the row's then: %v", entity.ToObj(q.Payload))
-	}
-	resp := postTony(t, ops.URL+"/tasks/cq-1/resolve", api.Resolve{ID: qid, Choice: "proceed", By: "user:scott@example.com"})
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("resolving = %s", resp.Status)
-	}
-	then := thenTaskOf(t, srv, question)
-	if got := entity.Str(then.Payload, "flow"); got != question.String() {
-		t.Fatalf("the then is about %q, want the question", got)
-	}
-	if got := entity.Str(then.Payload, "actsFor"); !strings.Contains(got, tester) {
-		t.Fatalf("the then acts for %q, want whom the run acts for (%s)", got, tester)
-	}
-	waitValue(t, srv, question, "status", mirror.QuestionAnswered)
 }
 
 // A RULE'S GATE STARTS NOTHING OF ITS OWN: what a rule does about a yes is its action, and about
@@ -89,21 +51,30 @@ func TestARulesGateTakesNoThenOrElse(t *testing.T) {
 	}
 }
 
-// A TASK'S ROW THEN IS CHECKED AT THE SPAWN, as whom the task acts for: a run by hand acts for
-// its runner, so a then naming $principal on its own task is fine; a then naming nothing to run
-// is refused before anything starts.
-func TestARowsThenIsCheckedAtTheSpawn(t *testing.T) {
+// A TASK'S QUESTION STARTS NOTHING OF ITS OWN: the task waits on it, and what it does about a yes
+// is its next step. An autonomy row's ask writing `then` or `else` is refused at the spawn, naming
+// the field, before anything starts.
+func TestAnAutonomyRowsAskTakesNoThenOrElse(t *testing.T) {
 	srv := askingServer(t)
 	ops := httptest.NewServer(srv.Handler())
 	defer ops.Close()
-	resp := postTony(t, ops.URL+"/tasks", map[string]any{"id": "cq-2", "spawn": map[string]any{
-		"script": "true", "environment": stepEnv,
-		"autonomy": []map[string]any{
-			{"match": map[string]any{"system": "commands"}, "then": map[string]any{"ask": map[string]any{"then": map[string]any{"notify": "x"}}}},
-			{"then": "ask"},
-		}}})
-	body := bodyOf(t, resp)
-	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "not something a question runs") {
-		t.Fatalf("spawn = %s: %s, want refused for the then", resp.Status, body)
+	for i, field := range []string{"then", "else"} {
+		id := fmt.Sprintf("cq-%d", i)
+		resp := postTony(t, ops.URL+"/tasks", map[string]any{"id": id, "spawn": map[string]any{
+			"script": "true", "environment": stepEnv,
+			"autonomy": []map[string]any{
+				{"match": map[string]any{"system": "commands"}, "then": map[string]any{"ask": map[string]any{
+					field: map[string]any{"spawn": map[string]any{"prompt": "log the step", "environment": map[string]any{"systems": map[string]any{"network": map[string]any{"mode": "open"}}}}}}}},
+				{"then": "ask"},
+			}}})
+		body := bodyOf(t, resp)
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("an autonomy row's ask with %s: spawn = %s, want refused: %s", field, resp.Status, body)
+		} else if !strings.Contains(body, field) {
+			t.Errorf("an autonomy row's ask with %s: refused without naming it: %s", field, body)
+		}
+		if _, ok, _ := srv.Store.Get(mirror.Ref(id)); ok {
+			t.Errorf("an autonomy row's ask with %s: the refused spawn left a task record", field)
+		}
 	}
 }
