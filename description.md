@@ -1,0 +1,5 @@
+# A frame over the delivery channel's cap breaks the task's channel
+
+The channel between a task and its runner carries frames of at most 1 MiB (delivery maxFrame), and the runner reads up to 4 MiB of an answer from verse (Guard.Carry). An answer over the cap (a verse-data-get of a wide container, or of the whole verse) is written to the task anyway; the task's readFrame refuses it and leaves its bytes in the stream, so every later act on the channel (a push, a proposal, an ask) reads garbage for the rest of the run. A request over the cap (a verse-data-put of a large value) ends the runner's Serve, which closes the channel.
+
+Fix: the runner answers an answer too large for the channel as an error that fits; the task refuses to send a request too large, before writing it; a frame over the cap is read and discarded, so the stream stays in step, and the runner answers an oversized request with an error and goes on serving.
