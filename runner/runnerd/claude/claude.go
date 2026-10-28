@@ -39,7 +39,8 @@
 // is how Claude delivers, since there is no finisher doing it for an agent that can decide.
 //
 // What the spawn's agent runs with reaches Claude: its `model` setting is the session's model
-// and its `effort` the session's effort, the model over the `claude:` section's own.
+// and its `effort` the session's effort; one the spawn names none of is the runner's configured
+// default, filled in before the launch reaches here (verserunner), or Claude's own.
 //
 // What Claude does WITHOUT asking is the part that is attested rather than enforced: its reads
 // in the workspace (Read, Glob, Grep). Those are narrated when they complete, so the read plane
@@ -95,55 +96,56 @@ var Efforts = []string{"low", "medium", "high", "xhigh", "max"}
 // `mcp__<server>__`.
 const mcpServer = "verse"
 
-// Config is the `claude:` section of the runner's config: how this runner runs Claude Code. It
-// names a variable for the credential and never holds one.
+// The variables the runner reads Claude's credential from, the first set taken: a
+// subscription's token (`claude setup-token`), which is a person's and runs on a runner that is
+// theirs; then an API key, which is what a shared runner holds. The runner sends the value to the
+// task process (Creds.Credential), which puts it in the claude process's environment under the
+// same name, with a CLAUDE_CONFIG_DIR of its own that dies with the task. Neither set, Claude's own
+// login, under the HOME the environment passes through, is what authenticates it.
+const (
+	EnvOAuthToken = "CLAUDE_CODE_OAUTH_TOKEN"
+	EnvAPIKey     = "ANTHROPIC_API_KEY"
+)
+
+// Config is how this runner runs Claude Code: the program keys of `agents.claude`. It holds no
+// secret.
 type Config struct {
 	// Bin is the program, `claude` on PATH by default.
-	Bin string `tony:"field=bin,omitzero"`
-	// Model is the model to ask for when a spawn picks none; empty leaves it to Claude's own
-	// default.
-	Model string `tony:"field=model,omitzero"`
-	// CredentialEnv is the NAME of the variable holding the credential Claude authenticates
-	// with, and the name Claude reads it under: `ANTHROPIC_API_KEY` for an API key, which is
-	// what a shared runner holds; `CLAUDE_CODE_OAUTH_TOKEN` for a subscription's token (`claude
-	// setup-token`), which is a person's and runs on a runner that is theirs. The runner reads
-	// it and sends the value to the task process (Secrets.ClaudeKey), which puts it in the
-	// claude process's environment under this name, with a CLAUDE_CONFIG_DIR of its own that
-	// dies with the task. Empty means Claude's own login, under the HOME the environment
-	// passes through, is what authenticates it.
-	CredentialEnv string `tony:"field=credentialEnv,omitzero"`
+	Bin string
 }
 
-// Key reads the credential the section names from this process's environment: the runner's,
-// where the deployment put it. "" when the section names no variable.
-func (c *Config) Key() string {
-	if c.CredentialEnv == "" {
-		return ""
+// Program is the program the runner runs.
+func (c *Config) Program() string { return cmp.Or(c.Bin, "claude") }
+
+// Key reads Claude's credential from this process's environment, the runner's: the variable it
+// is under, and its value. Both "" when neither is set.
+func Key() (env, value string) {
+	for _, env := range []string{EnvOAuthToken, EnvAPIKey} {
+		if v := os.Getenv(env); v != "" {
+			return env, v
+		}
 	}
-	return os.Getenv(c.CredentialEnv)
+	return "", ""
 }
 
 // Creds is the section with its credential read: what a task process runs Claude with.
-func (c *Config) Creds(key string) Creds {
-	return Creds{Bin: cmp.Or(c.Bin, "claude"), Model: c.Model, CredentialEnv: c.CredentialEnv, Credential: key}
+func (c *Config) Creds(env, key string) Creds {
+	return Creds{Bin: c.Program(), CredentialEnv: env, Credential: key}
 }
 
 // MissingKey reports why Claude may not be able to authenticate here, or "". A warning rather
 // than a refusal: without a credential, Claude may still be logged in under the HOME it is
 // given, and only a turn can tell.
-func (c *Config) MissingKey() string {
-	if c.CredentialEnv != "" {
-		if _, ok := os.LookupEnv(c.CredentialEnv); !ok {
-			return fmt.Sprintf("claude.credentialEnv names %s, which is not set in this runner's environment", c.CredentialEnv)
-		}
+func MissingKey(getenv func(string) string) string {
+	if getenv(EnvOAuthToken) == "" && getenv(EnvAPIKey) == "" {
+		return fmt.Sprintf("neither %s nor %s is set in this runner's environment", EnvOAuthToken, EnvAPIKey)
 	}
 	return ""
 }
 
-// Creds is the resolved claude configuration: the section's values and the credential it named.
+// Creds is the resolved claude configuration: the section's values and the credential read.
 type Creds struct {
 	Bin           string
-	Model         string
 	CredentialEnv string
 	Credential    string
 }
@@ -221,7 +223,7 @@ func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir st
 	// (runnerd.CheckOffer), at install and again by the runner, not here.
 	d := &driver{
 		creds: creds, prompt: l.Prompt, dir: dir,
-		model: cmp.Or(l.AgentSettings().Model(), creds.Model), effort: l.AgentSettings().Settings["effort"],
+		model: l.AgentSettings().Model(), effort: l.AgentSettings().Settings["effort"],
 		env:      env,
 		resolver: reg,
 		log:      os.Stderr,
@@ -240,8 +242,8 @@ func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir st
 	sup.SetCeilings(ceilings)
 	sup.SetStepsOf(d.stepsOf)
 	t := task.NewTask(l.ID, sup, d, &executor{d: d})
-	// What it runs with, the `claude:` section's model where the launch named none: the
-	// record's to say. One neither names is Claude's own.
+	// What it runs with: the record's to say. A setting the launch names none of is Claude's
+	// own.
 	settings := map[string]string{}
 	for name, v := range map[string]string{runner.SettingModel: d.model, "effort": d.effort} {
 		if v != "" {
@@ -264,7 +266,7 @@ type driver struct {
 	creds       Creds
 	prompt      string
 	contractSrc string
-	// model and effort are the spawn's agent's, the model over the section's own; "" leaves each
+	// model and effort are the launch's agent's, the runner's defaults filled in; "" leaves each
 	// to Claude.
 	model, effort string
 	dir           string

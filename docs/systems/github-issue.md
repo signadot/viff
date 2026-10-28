@@ -63,8 +63,7 @@ them.
 **The iod** needs a token or a GitHub App with write access on issues for its out half.
 
 **The task** holds no credential. The runner files, comments and closes with its token for the
-forge: the variable that `systems.git.credential` names, or `GITHUB_TOKEN`. It calls the API of
-`github.com`, or the one that `systems.github.api` names.
+forge, `GITHUB_TOKEN`. It calls the API of `github.com`, or the one that `repos.api` names.
 
 **The operator** sets a limit on what any task may do with a repository's issues, in the
 runner's configuration:

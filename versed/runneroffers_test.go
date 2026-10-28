@@ -110,6 +110,13 @@ func TestARunnerIsInstalledWithWhatItOffers(t *testing.T) {
 	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "it offers nothing") {
 		t.Fatalf("add of a runner that offers nothing = %s: %s, want 400", resp.Status, body)
 	}
+	// A doer offered twice: a launch names its doer, and could not say which of the two it means.
+	script := runner.Offer{Script: true, Systems: map[string]runner.System{"network": {Builds: systems.Ceiling{{Attributes: map[string][]string{"mode": {runner.NetworkOpen}}}}}}}
+	d.Describe(runner.Description{Version: runner.DescriptionVersion, Offers: []runner.Offer{script, script}})
+	resp = postTony(t, ts.URL+"/runners", map[string]any{"name": "twice", "url": face.URL})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "it offers script twice") {
+		t.Fatalf("add of a runner offering scripts twice = %s: %s, want 400", resp.Status, body)
+	}
 }
 
 // A SPAWN IS CHECKED AGAINST WHAT ITS RUNNER OFFERS, where it is written: a hand run at the

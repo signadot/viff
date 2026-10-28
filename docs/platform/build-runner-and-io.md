@@ -57,7 +57,7 @@ func (echoExecutor) Execute(_ context.Context, tu task.ToolUse) (task.StepResult
 
 | Part | What it does |
 |---|---|
-| `runnerd.NewInProcessHandler(build)` | makes a task handler that runs tasks in this program's process, with no sandbox. It calls `build` once for each spawn. (`runnerd verse` uses a `runnerd.SubprocessHandler` instead, which runs each task in a sandboxed process of its own.) |
+| `runnerd.NewInProcessHandler(build)` | makes a task handler that runs tasks in this program's process, with no sandbox. It calls `build` once for each spawn. (`runnerd` uses a `runnerd.SubprocessHandler` instead, which runs each task in a sandboxed process of its own.) |
 | `d.Describe(…)` | what the runner offers, which `GET /describe` answers, in `version: 2`: one agent, `sample`, taking no settings. Each offer says which networks it builds, under its network's `builds`. The sample runs its tasks unconfined, so it builds only `open`. Verse does not install a runner that offers nothing, or whose offer leaves out what network it builds. |
 | `d.HTTPHandler()` | the HTTP routes of the contract, and `GET /describe` |
 | `build` | a `runnerd.Builder`. It makes one task from one `runner.Launch`. The launch carries what the spawn said: the prompt or the script, the agent and its settings, the environment, and the autonomy. |

@@ -22,12 +22,12 @@ func TestTheClaudeSectionOffersTheAgent(t *testing.T) {
 		}
 		return p
 	}
-	_, c, err := Load(write("claude: {model: m, credentialEnv: ANTHROPIC_API_KEY}\nsystems: {commands: {ceiling: {}}, files: {ceiling: {}}, question: {ceiling: {}}}\n"))
+	_, c, err := Load(write("agents:\n  claude:\n    settings: {model: {default: m}}\n    systems: {commands: {ceiling: {}}, files: {ceiling: {}}, question: {ceiling: {}}}\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var offer *runner.Offer
-	for _, o := range c.Describe(Secrets{}, nil).Offers {
+	for _, o := range c.Describe(nil).Offers {
 		if o.Agent != nil && o.Agent.Name == "claude" {
 			offer = &o
 		}
@@ -53,7 +53,7 @@ func TestTheClaudeSectionOffersTheAgent(t *testing.T) {
 
 	r := New(opened(Config{}), Secrets{}, t.TempDir(), os.Stderr)
 	tk := r.Build(runner.Launch{ID: "c1", Prompt: "go", Agent: &runner.Agent{Name: "claude"}}, task.NewRegistry())
-	if _, err := tk.Run(t.Context()); err == nil || !strings.Contains(err.Error(), "claude:") {
+	if _, err := tk.Run(t.Context()); err == nil || !strings.Contains(err.Error(), "agents.claude") {
 		t.Errorf("a runner with no claude section ran claude: %v, want it failed saying why", err)
 	}
 }

@@ -175,10 +175,17 @@ func (d Description) Check() error {
 	if len(d.Offers) == 0 {
 		return errors.New("it offers nothing; a runner offers an agent or scripts")
 	}
+	// Each doer at most once: a launch names its doer by the agent's name, or by nothing for a
+	// script, so two offers of one doer could not be told apart by the launch meant for either.
+	seen := map[string]bool{}
 	for _, o := range d.Offers {
 		if (o.Agent == nil) == !o.Script {
 			return errors.New("an offer is an agent or scripts, one of the two")
 		}
+		if seen[o.Name()] {
+			return fmt.Errorf("it offers %s twice; a launch names its doer, and could not say which of the two it means", o.Name())
+		}
+		seen[o.Name()] = true
 		if o.Agent != nil {
 			if o.Agent.Name == "" {
 				return errors.New("an agent offer names its agent")

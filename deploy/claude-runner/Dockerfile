@@ -56,4 +56,4 @@ VOLUME ["/state"]
 EXPOSE 9802
 
 ENTRYPOINT ["runnerd"]
-CMD ["verse", "-config", "/config/verse-runner.tony", "-sandbox", "bwrap"]
+CMD ["-config", "/config/verse-runner.tony", "-sandbox", "bwrap"]

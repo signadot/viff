@@ -97,7 +97,7 @@ func TestAFiringRefusedBeforeItsLaunchIsGivenNoCredential(t *testing.T) {
 // `verse up`, whose runner builds only the open network, the firing would launch with none.
 func TestACharterFiresWithItsNetwork(t *testing.T) {
 	srv := testServer(t)
-	srv.Embedded.Describe(verserunner.Config{Systems: verserunner.OpenInside()}.Describe(verserunner.Secrets{}, []string{runner.NetworkOpen}))
+	srv.Embedded.Describe(verserunner.Open().Describe([]string{runner.NetworkOpen}))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()

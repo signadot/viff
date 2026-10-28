@@ -99,8 +99,7 @@ reads names them: `github: [{repo: acme/app, read-pr: {}}]`.
 out half, it needs write access on pull requests and issues.
 
 **The task** holds no credential. The runner opens, updates and reads pull requests with its token for
-the forge: the variable that `systems.git.credential` names in its configuration, or
-`GITHUB_TOKEN`. For a GitHub Enterprise Server, set `systems.github.api: https://<host>/api/v3`
+the forge, `GITHUB_TOKEN`. For a GitHub Enterprise Server, set `repos.api: https://<host>/api/v3`
 in the runner's configuration, and `repos.host` to the host.
 
 **The operator** sets a limit on what any task may propose, in the runner's configuration:

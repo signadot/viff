@@ -22,7 +22,7 @@ func harnessServer(t *testing.T, modelURL string) *Server {
 	if modelURL != "" {
 		s = verserunner.Secrets{PortkeyAPIKey: "test-key", PortkeyBaseURL: modelURL}
 	}
-	h := verserunner.New(verserunner.Config{Systems: verserunner.OpenInside()}, s, t.TempDir(), io.Discard)
+	h := verserunner.New(verserunner.Open(verserunner.AgentName), s, t.TempDir(), io.Discard)
 	srv := NewWithStore(h.Build, entitytest.Store(t))
 	srv.Start(t.Context())
 	var trig trigger.Trigger

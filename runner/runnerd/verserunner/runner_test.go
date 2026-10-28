@@ -15,13 +15,20 @@ import (
 	"github.com/signadot/verse/task"
 )
 
+// verseAgent is a runner configuration offering the verse agent alone, with the annotations
+// and settings given.
+func verseAgent(anns map[string]Annotation, settings map[string]Setting) Config {
+	return Config{Agents: map[string]Agent{AgentName: {Annotations: anns, Settings: settings}}}
+}
+
 func TestCheckRefusesAnnotationsItDoesNotKnow(t *testing.T) {
 	for _, tc := range []struct {
 		c    Config
 		want string
 	}{
-		{Config{Annotations: map[string]string{"verse.portkey/route": "string"}}, "no annotation"},
-		{Config{Annotations: map[string]string{AnnotationVirtualKey: "int"}}, "takes a string"},
+		{verseAgent(map[string]Annotation{"verse.portkey/route": {Type: "string"}}, nil), "takes no annotation"},
+		{verseAgent(map[string]Annotation{AnnotationVirtualKey: {Type: "int"}}, nil), "takes a string"},
+		{Config{Agents: map[string]Agent{"codex": {Annotations: map[string]Annotation{AnnotationVirtualKey: {Type: "string"}}}}}, "codex takes no annotation"},
 	} {
 		if err := tc.c.Check(); err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%+v: got %v, want %q", tc.c, err, tc.want)
@@ -29,18 +36,16 @@ func TestCheckRefusesAnnotationsItDoesNotKnow(t *testing.T) {
 	}
 }
 
-// The agent is offered only when the runner can reach its model; scripts always are.
-func TestDescribeOffersTheAgentOnlyWithAKey(t *testing.T) {
-	c := Config{Annotations: map[string]string{AnnotationVirtualKey: "string"}}
-
-	d := c.Describe(Secrets{}, nil)
-	if len(d.Offers) != 1 || !d.Offers[0].Script || d.Offers[0].Agent != nil {
-		t.Fatalf("without a key: %+v", d)
+// The agent is offered where `agents:` names it, and scripts where `script:` is: presence is the
+// switch.
+func TestDescribeOffersWhatTheConfigNames(t *testing.T) {
+	if d := (Config{Script: &Script{}}).Describe(nil); len(d.Offers) != 1 || !d.Offers[0].Script {
+		t.Fatalf("scripts alone: %+v", d)
 	}
-
-	d = c.Describe(Secrets{PortkeyAPIKey: "pk-test"}, nil)
-	if len(d.Offers) != 2 || d.Offers[0].Agent == nil || d.Offers[0].Agent.Name != AgentName {
-		t.Fatalf("with a key: %+v", d)
+	c := verseAgent(map[string]Annotation{AnnotationVirtualKey: {Type: "string"}}, nil)
+	d := c.Describe(nil)
+	if len(d.Offers) != 1 || d.Offers[0].Agent == nil || d.Offers[0].Agent.Name != AgentName {
+		t.Fatalf("the verse agent alone: %+v", d)
 	}
 	agent := d.Offers[0]
 	// The systems it stops inside a run are held, closed until a ceiling says what of them.
@@ -48,9 +53,13 @@ func TestDescribeOffersTheAgentOnlyWithAKey(t *testing.T) {
 	_, commands := agent.Systems["commands"]
 	_, sub := agent.Systems["agent"]
 	model, takesModel := agent.Agent.Settings[runner.SettingModel]
-	if !takesModel || len(model.Values) != 0 || agent.Agent.Annotations[AnnotationVirtualKey] != "string" || !files || !commands || !sub ||
+	if !takesModel || len(model.Values) != 0 || model.Default || agent.Agent.Annotations[AnnotationVirtualKey] != "string" || !files || !commands || !sub ||
 		len(agent.Systems["commands"].Ceiling) != 0 {
 		t.Fatalf("agent offer: %+v", agent)
+	}
+	c.Script = &Script{}
+	if d := c.Describe(nil); len(d.Offers) != 2 || d.Offers[1].Agent != nil {
+		t.Fatalf("the agent and scripts: %+v", d)
 	}
 }
 
@@ -58,8 +67,7 @@ func TestDescribeOffersTheAgentOnlyWithAKey(t *testing.T) {
 // the configured one is.
 func TestTheVirtualKeyAnnotation(t *testing.T) {
 	model := modeltest.New(t, func(modeltest.Request) modeltest.Reply { return modeltest.Say("ok") })
-	r := New(opened(Config{Models: Models{Portkey: Portkey{VirtualKey: "default-vk"}},
-		Annotations: map[string]string{AnnotationVirtualKey: "string"}}),
+	r := New(opened(verseAgent(map[string]Annotation{AnnotationVirtualKey: {Type: "string", Default: "default-vk"}}, nil)),
 		Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL}, t.TempDir(), io.Discard)
 	for i, picked := range []string{"picked", ""} {
 		l := runner.Launch{ID: fmt.Sprint("t", i), Prompt: "go", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}},
@@ -82,7 +90,7 @@ func TestTheVirtualKeyAnnotation(t *testing.T) {
 func TestTheVirtualKeyFromTheEnvironment(t *testing.T) {
 	model := modeltest.New(t, func(modeltest.Request) modeltest.Reply { return modeltest.Say("ok") })
 	secrets := Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL, PortkeyVirtualKey: "env-vk"}
-	for i, cfg := range []Config{{}, {Models: Models{Portkey: Portkey{VirtualKey: "config-vk"}}}} {
+	for i, cfg := range []Config{verseAgent(nil, nil), verseAgent(map[string]Annotation{AnnotationVirtualKey: {Type: "string", Default: "config-vk"}}, nil)} {
 		l := runner.Launch{ID: fmt.Sprint("t", i), Prompt: "go", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}},
 			Agent: &runner.Agent{Name: AgentName}, Environment: envOf(netOpen, nil, nil)}
 		if _, err := New(cfg, secrets, t.TempDir(), io.Discard).Build(l, task.NewRegistry()).Run(context.Background()); err != nil {
@@ -95,8 +103,8 @@ func TestTheVirtualKeyFromTheEnvironment(t *testing.T) {
 	}
 }
 
-// Without a model key the runner offers no agent, and an agent launch that reaches it anyway
-// fails its own task.
+// Without a model key an agent launch that reaches the runner fails its own task (a runner
+// configured with the verse agent and no key does not start: CheckStart).
 func TestWithNoKeyThereIsNoAgent(t *testing.T) {
 	_, err := New(opened(Config{}), Secrets{}, t.TempDir(), io.Discard).Build(runner.Launch{ID: "t1",
 		Agent: &runner.Agent{Name: AgentName}, Prompt: "go"}, task.NewRegistry()).Run(context.Background())
@@ -116,7 +124,7 @@ func TestAnAgentLaunchRunsTheVerseAgent(t *testing.T) {
 		}
 		return modeltest.Use("run_bash", map[string]any{"command": "echo $BRANCH"})
 	})
-	d := New(opened(Config{Models: Models{Model: "the-default"}}), Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL},
+	d := New(opened(verseAgent(nil, map[string]Setting{runner.SettingModel: {Default: "the-default"}})), Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL},
 		t.TempDir(), io.Discard)
 	l := runner.Launch{ID: "t1", Prompt: "which branch?", Autonomy: allowing("commands"),
 		Agent: &runner.Agent{Name: AgentName, Settings: map[string]string{runner.SettingModel: "m-2"}}, Environment: giving(withVars(envOf(netOpen, nil, nil), map[string]string{"BRANCH": "main"}), "commands")}

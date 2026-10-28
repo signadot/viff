@@ -31,10 +31,10 @@ type Repos struct {
 	// Services is what the runner holds for the systems beyond its git token: a Linear
 	// credential and a Slack bot token, which stay here as the token does (package delivery).
 	Services delivery.Services
-	// Ceilings are the operator's bounds on what any task may do with each system the runner
-	// performs, by system (runner.Offer.Systems): read again at each act, whatever the task's
-	// autonomy said.
-	Ceilings map[string]systems.Ceiling
+	// Ceilings is the operator's bounds on what a launch's task may do with each system the
+	// runner performs, by system: its doer's offer's (runner.Offer.Systems), read again at each
+	// act, whatever the task's autonomy said. Nil bounds nothing beyond the task's autonomy.
+	Ceilings func(*runner.Launch) map[string]systems.Ceiling
 }
 
 // DefaultForge is where a runner fetches `owner/name` when its configuration names nowhere else.
@@ -86,7 +86,11 @@ func (rs *Repos) prepare(ctx context.Context, l *runner.Launch, dir string, log 
 	for _, w := range ws.Warnings {
 		fmt.Fprintf(log, "runnerd: %s: %s\n", l.ID, w)
 	}
-	ch, err := delivery.Open(l.ID, ws, rs.Mirrors, rs.credential, rs.Services, rs.Ceilings, l, log)
+	var ceilings map[string]systems.Ceiling
+	if rs.Ceilings != nil {
+		ceilings = rs.Ceilings(l)
+	}
+	ch, err := delivery.Open(l.ID, ws, rs.Mirrors, rs.credential, rs.Services, ceilings, l, log)
 	if err != nil {
 		_ = ws.Remove(context.Background())
 		return nil, err

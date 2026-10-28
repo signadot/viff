@@ -32,28 +32,39 @@ type Secrets struct {
 	// PortkeyVirtualKey is the virtual key a run uses when neither its launch nor the
 	// configuration names one: the deployment's, beside its API key.
 	PortkeyVirtualKey string `tony:"field=portkeyVirtualKey,omitzero"`
-	// CodexKey is the OpenAI API key the `codex:` section names a variable for, read from the
-	// runner's environment (codex.Config.Key) and written by the task process as codex's login.
+	// CodexKey is the OpenAI API key, read from the runner's environment (codex.Key) where it
+	// runs codex, and written by the task process as codex's login.
 	CodexKey string `tony:"field=codexKey,omitzero"`
-	// ClaudeKey is the credential the `claude:` section names a variable for, read from the
-	// runner's environment (claude.Config.Key) and put in the claude process's environment by
-	// the task process, under the variable's own name.
-	ClaudeKey string `tony:"field=claudeKey,omitzero"`
+	// ClaudeKey is Claude's credential, read from the runner's environment (claude.Key) where it
+	// runs claude, and put in the claude process's environment by the task process under
+	// ClaudeKeyEnv, the variable it was read from.
+	ClaudeKey    string `tony:"field=claudeKey,omitzero"`
+	ClaudeKeyEnv string `tony:"field=claudeKeyEnv,omitzero"`
 }
 
-// SecretsFromEnv reads the runner's secrets from its environment.
-func SecretsFromEnv() Secrets {
-	return Secrets{
-		PortkeyAPIKey:     os.Getenv(EnvPortkeyAPIKey),
-		PortkeyBaseURL:    os.Getenv(EnvPortkeyBaseURL),
-		PortkeyVirtualKey: os.Getenv(EnvPortkeyVirtualKey),
+// SecretsFromEnv reads the runner's secrets from its environment, each where c offers the agent
+// that needs it: a task's process is sent no secret its runner does not use.
+func SecretsFromEnv(c Config) Secrets {
+	var s Secrets
+	if _, ok := c.Agents[AgentName]; ok {
+		s.PortkeyAPIKey = os.Getenv(EnvPortkeyAPIKey)
+		s.PortkeyBaseURL = os.Getenv(EnvPortkeyBaseURL)
+		s.PortkeyVirtualKey = os.Getenv(EnvPortkeyVirtualKey)
 	}
+	if _, ok := c.Agents[codex.Agent]; ok {
+		s.CodexKey = codex.Key()
+	}
+	if _, ok := c.Agents[claude.Agent]; ok {
+		s.ClaudeKeyEnv, s.ClaudeKey = claude.Key()
+	}
+	return s
 }
 
 // Standalone is the verse runner as a standalone runner, with a runnerd.SubprocessHandler: each
 // task in a process of its own, started with command (which calls ServeTask), confined by sb.
 // The process gets the runner's configuration and secrets on its stdin, and an environment with
-// only what c's shellEnv names. tokens is what the runner holds that a task never does: its git
+// only what its launch's doer's shellEnv names: no task's process holds a variable another
+// doer's shell is given. tokens is what the runner holds that a task never does: its git
 // tokens, for when c checks out repos, and its Linear credential.
 func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command []string, work, control string,
 	log io.Writer) (*runnerd.SubprocessHandler, error) {
@@ -93,33 +104,36 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 	}
 	if repos != nil {
 		repos.Services = c.services(tokens)
-		repos.Ceilings = c.ceilings()
+		repos.Ceilings = func(l *runner.Launch) map[string]systems.Ceiling { return c.ceilings(c.doer(l)) }
 	}
 	h := runnerd.NewSubprocessHandler(runnerd.SubprocessConfig{
-		Command: command, Env: task.ShellEnv(c.shellEnv()), Config: blob,
+		Command: command, Env: func(l *runner.Launch) []string { return task.ShellEnv(c.shellEnv(c.doer(l))) }, Config: blob,
 		Sandbox: sb, Programs: programs, Repos: repos, AgentHosts: hosts,
 		Work: work, Control: control, Log: log,
 	})
-	h.Describe(c.Describe(s, nets))
-	h.OwnEnv(c.shellEnv())
+	h.Describe(c.Describe(nets))
+	h.OwnEnv(c.envOf)
 	return h, nil
 }
 
 // modelHosts is where the runner's agents call their models, which they reach whatever their
-// network: the verse agent's gateway, Codex's API where the runner runs Codex, and Claude's
-// where it runs Claude. A base URL that names no host is refused: no network could let the
-// agent reach it.
+// network: the verse agent's gateway where the runner runs it, Codex's API where it runs Codex,
+// and Claude's where it runs Claude. A base URL that names no host is refused: no network could
+// let the agent reach it.
 func modelHosts(c Config, s Secrets) ([]string, error) {
-	base := cmp.Or(s.PortkeyBaseURL, agent.DefaultBaseURL)
-	u, err := url.Parse(base)
-	if err != nil || u.Host == "" {
-		return nil, fmt.Errorf("%s: %q is not a url with a host, and the agent's model is called there", EnvPortkeyBaseURL, base)
+	var hosts []string
+	if _, ok := c.Agents[AgentName]; ok {
+		base := cmp.Or(s.PortkeyBaseURL, agent.DefaultBaseURL)
+		u, err := url.Parse(base)
+		if err != nil || u.Host == "" {
+			return nil, fmt.Errorf("%s: %q is not a url with a host, and the agent's model is called there", EnvPortkeyBaseURL, base)
+		}
+		hosts = append(hosts, u.Host)
 	}
-	hosts := []string{u.Host}
-	if c.Codex != nil {
+	if _, ok := c.Agents[codex.Agent]; ok {
 		hosts = append(hosts, codex.ModelHost)
 	}
-	if c.Claude != nil {
+	if _, ok := c.Agents[claude.Agent]; ok {
 		hosts = append(hosts, claude.ModelHost)
 	}
 	return hosts, nil
@@ -154,7 +168,7 @@ func ServeTask(stdin io.Reader, log io.Writer) error {
 	}
 	r := New(tc.Config, tc.Secrets, dir, log)
 	r.callTool = tc.CallTool
-	return runnerd.ServeTask(r.Build, tc.Config.Describe(tc.Secrets, tc.Networks), tc.Config.shellEnv())
+	return runnerd.ServeTask(r.Build, tc.Config.Describe(tc.Networks), tc.Config.envOf)
 }
 
 // Runner builds the verse runner's tasks from their launch: `agent: verse` is verse's own agent
@@ -201,8 +215,9 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 		if ws, cl, err = r.checkout(l); err != nil {
 			return ended(task.NewFailed(l.ID, reg, err.Error()))
 		}
-		tools = append(repoTools(cl, ws, r.cfg.atGitHub()), issueTools(cl, ws, l.Trackers(), r.cfg.atGitHub(), r.cfg.Systems["linear-issue"].Credential != "")...)
-		if r.cfg.Systems["slack"].Credential != "" {
+		performs := r.cfg.performs()
+		tools = append(repoTools(cl, ws, r.cfg.atGitHub()), issueTools(cl, ws, l.Trackers(), r.cfg.atGitHub(), slices.Contains(performs, "linear-issue"))...)
+		if slices.Contains(performs, "slack") {
 			tools = append(tools, slackTools(cl)...)
 		}
 		tools = offered(tools, l.Environment)
@@ -215,7 +230,7 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 		prompt = toolsBrief(tools) + prompt
 	}
 	if l.Script != "" {
-		p, stop, err := newScriptTask(l, r.root, r.cfg.shellEnv(), set, tools, r.callTool, reg, r.cfg.taskCeilings())
+		p, stop, err := newScriptTask(l, r.root, r.cfg.shellEnv(ScriptDoer), set, tools, r.callTool, reg, r.cfg.taskCeilings(ScriptDoer))
 		if err != nil {
 			if cl != nil {
 				_ = cl.Close()
@@ -225,17 +240,19 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 		cleanup = append(cleanup, stop)
 		return ended(p)
 	}
-	who := cmp.Or(l.Who(), r.defaultAgent())
+	who := r.cfg.doer(&l)
+	l = r.cfg.withDefaults(l, who)
 	if who == codex.Agent {
 		// The codex agent (package codex): each command and patch it proposes is an action of
 		// this loop, gated and narrated like the verse agent's own, and the runner's tools are
 		// offered to it as its own. The same brief and the same delivery as the verse agent's.
-		if r.cfg.Codex == nil {
-			return ended(task.NewFailed(l.ID, reg, "this runner has no `codex:` section, so it cannot run codex"))
+		cc := r.cfg.codexConfig()
+		if cc == nil {
+			return ended(task.NewFailed(l.ID, reg, "this runner has no `agents.codex` section, so it cannot run codex"))
 		}
 		l.Prompt = prompt
-		env := append(task.ShellEnv(r.cfg.shellEnv()), set...)
-		p, err := codex.Task(l, reg, r.cfg.Codex.Creds(r.secrets.CodexKey), env, r.root, tools, r.cfg.taskCeilings())
+		env := append(task.ShellEnv(r.cfg.shellEnv(who)), set...)
+		p, err := codex.Task(l, reg, cc.Creds(r.secrets.CodexKey), env, r.root, tools, r.cfg.taskCeilings(who))
 		if err != nil {
 			return ended(task.NewFailed(l.ID, reg, err.Error()))
 		}
@@ -245,46 +262,51 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 		// The claude agent (package claude), on the same terms as codex: each command, edit
 		// and question it proposes is an action of this loop, and the runner's tools are
 		// served to it as its own.
-		if r.cfg.Claude == nil {
-			return ended(task.NewFailed(l.ID, reg, "this runner has no `claude:` section, so it cannot run claude"))
+		cc := r.cfg.claudeConfig()
+		if cc == nil {
+			return ended(task.NewFailed(l.ID, reg, "this runner has no `agents.claude` section, so it cannot run claude"))
 		}
 		l.Prompt = prompt
-		env := append(task.ShellEnv(r.cfg.shellEnv()), set...)
-		p, err := claude.Task(l, reg, r.cfg.Claude.Creds(r.secrets.ClaudeKey), env, r.root, tools, r.cfg.taskCeilings())
+		env := append(task.ShellEnv(r.cfg.shellEnv(who)), set...)
+		p, err := claude.Task(l, reg, cc.Creds(r.secrets.ClaudeKeyEnv, r.secrets.ClaudeKey), env, r.root, tools, r.cfg.taskCeilings(who))
 		if err != nil {
 			return ended(task.NewFailed(l.ID, reg, err.Error()))
 		}
 		return ended(p)
 	}
-	switch {
-	case who != AgentName:
+	switch _, offered := r.cfg.Agents[who]; {
+	case who != AgentName || !offered:
 		return ended(task.NewFailed(l.ID, reg, "this runner offers no agent "+who))
 	case r.secrets.PortkeyAPIKey == "":
 		return ended(task.NewFailed(l.ID, reg, "the verse agent has no model key on this runner"))
 	}
 	p := agent.Build(agent.Config{
 		ID: l.ID, Prompt: prompt, Root: r.root, Resolver: reg, Log: r.log, Extra: tools,
-		Answer: l.Answer, Environment: l.Environment, Autonomy: l.Autonomy, Ceilings: r.cfg.taskCeilings(), Env: r.cfg.shellEnv(),
+		Answer: l.Answer, Environment: l.Environment, Autonomy: l.Autonomy, Ceilings: r.cfg.taskCeilings(who), Env: r.cfg.shellEnv(who),
 		Set: set, ChildSet: envSet(l.Vars()),
 		LLMBaseURL: r.secrets.PortkeyBaseURL, LLMKey: r.secrets.PortkeyAPIKey,
-		LLMVirtualKey: cmp.Or(l.AgentSettings().Annotations[AnnotationVirtualKey], r.cfg.Models.Portkey.VirtualKey, r.secrets.PortkeyVirtualKey),
-		LLMModel:      cmp.Or(l.AgentSettings().Model(), r.cfg.Models.Model),
+		LLMVirtualKey: cmp.Or(l.AgentSettings().Annotations[AnnotationVirtualKey], r.secrets.PortkeyVirtualKey),
+		LLMModel:      l.AgentSettings().Model(),
 		Converse:      l.Converse,
 	})
-	// What it runs with, the configured model where the launch named none: the record's to say.
+	// What it runs with, the configured model where the launch named none (withDefaults): the
+	// record's to say.
 	settings := map[string]string{}
-	if model := cmp.Or(l.AgentSettings().Model(), r.cfg.Models.Model); model != "" {
+	if model := l.AgentSettings().Model(); model != "" {
 		settings[runner.SettingModel] = model
 	}
 	p.SetAgent(AgentName, settings)
 	return ended(p)
 }
 
-// defaultAgent is the agent a prompt that names none is for: the first the runner offers
-// (Config.agents, as Describe orders them), and the verse agent where it offers none, which then
-// refuses for want of a model key.
-func (r *Runner) defaultAgent() string {
-	if agents := r.cfg.agents(r.secrets); len(agents) > 0 {
+// doer is who runs l: a script, the agent it names, or, for a prompt naming none, the first
+// agent the runner offers (Config.agents, as Describe orders them), and the verse agent where it
+// offers none, which then refuses.
+func (c Config) doer(l *runner.Launch) string {
+	if who := l.Who(); who != "" {
+		return who
+	}
+	if agents := c.agents(); len(agents) > 0 {
 		return agents[0]
 	}
 	return AgentName

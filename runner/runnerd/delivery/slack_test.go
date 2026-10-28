@@ -92,7 +92,7 @@ func TestATasksSlackMessageNamesTheTask(t *testing.T) {
 		t.Errorf("a channel's id: %+v", rep)
 	}
 	none := &Server{Log: io.Discard}
-	if rep := none.answer(tk, frame(t, Request{Op: OpSlackPost, Channel: "deploys", Body: "x"})); !strings.Contains(rep.Error, "systems.slack.credential") {
+	if rep := none.answer(tk, frame(t, Request{Op: OpSlackPost, Channel: "deploys", Body: "x"})); !strings.Contains(rep.Error, "SLACK_BOT_TOKEN") {
 		t.Errorf("a runner with no bot token: %+v", rep)
 	}
 }

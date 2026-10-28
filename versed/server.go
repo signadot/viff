@@ -1616,8 +1616,8 @@ func (s *Server) notePrincipal(p string) {
 
 // ScriptedBuilder is the verse runner embedded with no model credential: it runs scripts, and
 // refuses an agent. What tests and a keyless `verse up` host tasks with, its operator being their
-// author, so what it stops inside a run is open (verserunner.OpenInside).
-var ScriptedBuilder = verserunner.New(verserunner.Config{Systems: verserunner.OpenInside()}, verserunner.Secrets{}, scriptedRoot(), io.Discard).Build
+// author, so what it stops inside a run is open (verserunner.Open).
+var ScriptedBuilder = verserunner.New(verserunner.Open(), verserunner.Secrets{}, scriptedRoot(), io.Discard).Build
 
 // scriptedRoot is where ScriptedBuilder's tasks work: a directory of its own under the temporary
 // directory, since the runner keeps a task's credential and its tools socket OUTSIDE the

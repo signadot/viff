@@ -90,8 +90,7 @@ tools with `verse-call-tool`, and the same rows decide them.
 uses the git credential that git finds where the iod runs.
 
 **The task** holds no credential. The runner fetches and pushes from its own mirror, with its
-token for the forge. The token is in the variable that `systems.git.credential` names in the
-runner's configuration, or in `GITHUB_TOKEN`.
+token for the forge, which it reads from `GITHUB_TOKEN`.
 
 **The operator** sets a limit on what any task may push, in the runner's configuration. A
 repository on another forge than the runner's is refused.

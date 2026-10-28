@@ -17,7 +17,7 @@ import (
 //
 // The process is made non-dumpable first, so the task it runs can't read its memory, where the
 // runner's secrets are.
-func ServeTask(build Builder, desc runner.Description, owned []string) error {
+func ServeTask(build Builder, desc runner.Description, owned EnvOf) error {
 	if err := undumpable(); err != nil {
 		return fmt.Errorf("making the task's process non-dumpable: %w", err)
 	}

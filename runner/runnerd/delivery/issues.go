@@ -168,7 +168,7 @@ func (s *Server) githubIssue(ctx context.Context, tk Task, req Request) Reply {
 // credential. A runner without one answers so, naming how it gets one.
 func (s *Server) linearIssue(ctx context.Context, tk Task, req Request) Reply {
 	if s.Services.LinearAuth == "" {
-		return Reply{Error: "this runner has no Linear credential (the config's `systems.linear-issue.credential`), so it cannot act on a Linear issue"}
+		return Reply{Error: "this runner has no Linear credential (LINEAR_API_KEY), so it cannot act on a Linear issue"}
 	}
 	fields := map[string]string{}
 	if req.Op == OpLinearIssueCreate {

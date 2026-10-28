@@ -241,7 +241,7 @@ func TestLaunchChecksTheLaunch(t *testing.T) {
 // a launch can't set one of them.
 func TestARunnersOwnVariablesAreRefused(t *testing.T) {
 	d := NewInProcessHandler(fakeBuild)
-	d.OwnEnv([]string{"PATH", "FOO"})
+	d.OwnEnv(func(*runner.Launch) []string { return []string{"PATH", "FOO"} })
 	srv := httptest.NewServer(d.HTTPHandler())
 	defer srv.Close()
 	for body, want := range map[string]int{

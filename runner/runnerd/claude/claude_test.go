@@ -550,7 +550,7 @@ func fakeCreds(t *testing.T, scenario string) (Creds, string) {
 	logPath := filepath.Join(t.TempDir(), "claude.log")
 	t.Setenv(fakeEnvVar, scenario)
 	t.Setenv(fakeLogVar, logPath)
-	return Creds{Bin: exe, Model: "fake-model"}, logPath
+	return Creds{Bin: exe}, logPath
 }
 
 // fakeEnv is the environment the stand-in needs to find its scenario, built as the runner builds
@@ -1122,11 +1122,17 @@ func (nopWriteCloser) Close() error { return nil }
 // and that `--effort` takes the five levels Efforts lists, which 2.1.304's `--help` names as
 // its own (issue 0t4bdajwh12krvwatxn0).
 func TestConfigIsChecked(t *testing.T) {
-	c := &Config{Bin: "/opt/claude", Model: "m", CredentialEnv: "K"}
-	t.Setenv("K", "secret")
-	creds := c.Creds(c.Key())
-	if creds.Credential != "secret" || creds.CredentialEnv != "K" || creds.Model != "m" {
+	c := &Config{Bin: "/opt/claude"}
+	t.Setenv(EnvOAuthToken, "")
+	t.Setenv(EnvAPIKey, "secret")
+	creds := c.Creds(Key())
+	if creds.Credential != "secret" || creds.CredentialEnv != EnvAPIKey {
 		t.Errorf("resolved %+v", creds)
+	}
+	// A subscription's token is taken first, where both are set.
+	t.Setenv(EnvOAuthToken, "token")
+	if env, v := Key(); env != EnvOAuthToken || v != "token" {
+		t.Errorf("with both set, read %s=%s", env, v)
 	}
 	got := strings.Join(creds.argv("m2", "high", true, true), " ")
 	for _, want := range []string{"/opt/claude -p", "--replay-user-messages", "--permission-prompt-tool stdio", "--permission-mode manual",
@@ -1141,10 +1147,10 @@ func TestConfigIsChecked(t *testing.T) {
 		strings.Contains(got, "AskUserQuestion") {
 		t.Errorf("argv with nothing to offer, no questions and no model: %q", got)
 	}
-	if why := c.MissingKey(); why != "" {
+	if why := MissingKey(os.Getenv); why != "" {
 		t.Errorf("a set credential reported missing: %s", why)
 	}
-	if why := (&Config{CredentialEnv: "NO_SUCH_KEY_VAR"}).MissingKey(); !strings.Contains(why, "NO_SUCH_KEY_VAR") {
+	if why := MissingKey(func(string) string { return "" }); !strings.Contains(why, EnvOAuthToken) || !strings.Contains(why, EnvAPIKey) {
 		t.Errorf("an unset credential not reported: %q", why)
 	}
 }
@@ -1249,7 +1255,7 @@ func TestARefusedToolCallIsClaudesToRead(t *testing.T) {
 }
 
 // THE SPAWN'S MODEL AND EFFORT REACH CLAUDE: the agent's `model` setting is the session's model,
-// over the section's own, and its `effort` the session's effort.
+// and its `effort` the session's effort.
 func TestClaudeTakesTheSpawnsModelAndEffort(t *testing.T) {
 	reg := task.NewRegistry()
 	creds, logPath := fakeCreds(t, "trusted")
@@ -1265,19 +1271,20 @@ func TestClaudeTakesTheSpawnsModelAndEffort(t *testing.T) {
 	}
 	entries := readLog(t, logPath)
 	if !logHas(entries, "argv", `"--model","claude-opus-5-5"`, `"--effort","high"`) {
-		t.Errorf("the spawn's model and effort did not reach the command line (the section said fake-model):\n%s", render(entries))
+		t.Errorf("the spawn's model and effort did not reach the command line:\n%s", render(entries))
 	}
 	// And the task says what it ran with, for the record.
 	if _, set := tk.Agent(); set["model"] != "claude-opus-5-5" || set["effort"] != "high" {
 		t.Errorf("the task's settings: %v", set)
 	}
-	// A spawn naming no model runs the section's, and says so.
+	// A spawn naming no model reaches the driver naming none, and runs Claude's own: the runner's
+	// configured default is filled in before (verserunner), so the record says it either way.
 	tk2, err := Task(runner.Launch{ID: "run-claude-10b", Prompt: "x", Agent: &runner.Agent{Name: Agent}, Environment: workEnv,
 		Autonomy: allowAll}, task.NewRegistry(), creds, fakeEnv(), t.TempDir(), nil, systemstest.Open(workEnv))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, set := tk2.Agent(); set["model"] != "fake-model" || set["effort"] != "" {
+	if _, set := tk2.Agent(); set["model"] != "" || set["effort"] != "" {
 		t.Errorf("the default's settings: %v", set)
 	}
 }

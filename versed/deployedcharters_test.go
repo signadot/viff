@@ -176,13 +176,13 @@ func charterFilesUnder(path string) ([]string, error) {
 }
 
 // registerDeployed registers, under name, a runner offering what a deployed runner offers: its
-// offers built from its config under deploy/, as it describes itself with a model key
+// offers built from its config under deploy/, as it describes itself
 // and a sandbox building every network. So a deployed charter is held at install to the ceilings
 // the deployment runs, and a ceiling that would refuse one is found here.
 func registerDeployed(t *testing.T, ts *httptest.Server, name, config string) {
 	t.Helper()
 	cfg := deployedConfig(t, config)
-	desc := cfg.Describe(verserunner.Secrets{PortkeyAPIKey: "k"}, []string{runner.NetworkNone, runner.NetworkOpen, runner.NetworkAllow})
+	desc := cfg.Describe([]string{runner.NetworkNone, runner.NetworkOpen, runner.NetworkAllow})
 	release := make(chan struct{})
 	build := func(l runner.Launch, _ *task.Registry) *task.Task {
 		sup := systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), l.Environment)
@@ -235,8 +235,10 @@ func deployedConfig(t *testing.T, manifest string) verserunner.Config {
 func TestEveryDeployedRunnerConfigLoads(t *testing.T) {
 	for _, manifest := range []string{"../deploy/verse-runner/verse-runner.yaml", "../deploy/codex-runner/codex-runner.yaml", "../deploy/claude-runner/claude-runner.yaml"} {
 		cfg := deployedConfig(t, manifest)
-		if len(cfg.Systems["git"].Ceiling) == 0 {
-			t.Errorf("%s: no git ceiling, so its tasks reach no repository", manifest)
+		for _, o := range cfg.Describe([]string{runner.NetworkOpen}).Offers {
+			if len(o.Systems["git"].Ceiling) == 0 {
+				t.Errorf("%s: %s has no git ceiling, so its tasks reach no repository", manifest, o.Name())
+			}
 		}
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -32,48 +33,65 @@ func ceiling(t *testing.T, text string) systems.Ceiling {
 	return c
 }
 
-// THE RUNNER'S SYSTEMS ARE THE OPERATOR'S SAY: each performed system may have a section naming
-// the variable its credential is read from and a ceiling of blocks; a section for a system there
-// is not, or the runner does not perform, or a ceiling its document refuses, is refused as the
-// configuration is loaded. The ceilings are published with every offer as written, and the
-// credentials are read from the environment at start.
+// agentWith is a runner configuration offering one agent under the ceilings sys.
+func agentWith(name string, sys map[string]System) Config {
+	return Config{Agents: map[string]Agent{name: {Systems: sys}}}
+}
+
+// THE RUNNER'S SYSTEMS ARE THE OPERATOR'S SAY, A DOER AT A TIME: each doer's section may hold a
+// ceiling for each system the runner performs; a section for a system there is not, or the runner
+// does not perform, or a ceiling its document refuses, is refused as the configuration is loaded.
+// The ceilings are published with the doer's offer as written, and the credentials are read from
+// fixed variables at start.
 func TestTheRunnersSystemsAndCeilings(t *testing.T) {
 	for _, c := range []struct {
 		cfg  Config
 		says string
 	}{
-		{Config{Systems: map[string]System{"gitlab": {}}}, "no system is called that"},
-		{Config{Systems: map[string]System{"files": {}}}, "a section names a credential, an api or a ceiling"},
-		{Config{Systems: map[string]System{"git": {}}}, "does not perform git"},
-		{Config{Repos: &Repos{Mirrors: "/m"}, Systems: map[string]System{"linear-issue": {Ceiling: ceiling(t, `{create: {}}`)}}}, "does not perform linear-issue"},
-		{Config{Repos: &Repos{Mirrors: "/m", Host: "ghe.corp"}, Systems: map[string]System{"github": {}}}, "does not perform github"},
-		{Config{Repos: &Repos{Mirrors: "/m"}, Systems: map[string]System{"git": {Ceiling: ceiling(t, `{repo: "github.com/acme/**", fly: {}}`)}}}, `no attribute or verb "fly"`},
-		{Config{Repos: &Repos{Mirrors: "/m"}, Systems: map[string]System{"git": {Ceiling: ceiling(t, `{repo: "github.com/acme/**", push: {ref: main}}`)}}}, "push[0].ref"},
-		{Config{Repos: &Repos{Mirrors: "/m"}, Systems: map[string]System{"git": {API: "https://x"}}}, "`api` is where a GitHub forge's API is"},
+		{Config{Script: &Script{Systems: map[string]System{"gitlab": {}}}}, "script.systems.gitlab: no system is called that"},
+		{agentWith(AgentName, map[string]System{"files": {}}), "agents.verse.systems.files: a section names a ceiling"},
+		{Config{Script: &Script{Systems: map[string]System{"git": {Ceiling: systems.Open()}}}}, "does not perform git"},
+		{Config{Repos: &Repos{Mirrors: "/m", Host: "ghe.corp"}, Script: &Script{Systems: map[string]System{"github": {Ceiling: systems.Open()}}}}, "does not perform github"},
+		{Config{Repos: &Repos{Mirrors: "/m"}, Script: &Script{Systems: map[string]System{"git": {Ceiling: ceiling(t, `{repo: "github.com/acme/**", fly: {}}`)}}}}, `no attribute or verb "fly"`},
+		{Config{Repos: &Repos{Mirrors: "/m"}, Script: &Script{Systems: map[string]System{"git": {Ceiling: ceiling(t, `{repo: "github.com/acme/**", push: {ref: main}}`)}}}}, "push[0].ref"},
+		// A script is stopped on its questions alone: its commands and files are one action.
+		{Config{Script: &Script{Systems: map[string]System{"commands": {Ceiling: systems.Open()}}}}, "script.systems.commands: the runner does not stop script on commands inside its run; of those, its section may name question"},
 	} {
 		if err := c.cfg.Check(); err == nil || !strings.Contains(err.Error(), c.says) {
-			t.Errorf("%+v: %v, want %q", c.cfg.Systems, err, c.says)
+			t.Errorf("%+v: %v, want %q", c.cfg, err, c.says)
 		}
 	}
 
-	cfg := Config{Repos: &Repos{Mirrors: "/m", Forge: "/forge"}, Systems: map[string]System{
-		"git":          {Credential: "VERSE_TEST_GIT", Ceiling: ceiling(t, `{repo: "github.com/acme/**", fetch: {}, push: {ref: "refs/heads/verse/**"}}`)},
-		"linear-issue": {Credential: "VERSE_TEST_LINEAR", Ceiling: ceiling(t, `{create: {team: ENG}, comment: {}}`)},
-	}}
+	cfg := Config{Repos: &Repos{Mirrors: "/m", Forge: "/forge"},
+		Agents: map[string]Agent{AgentName: {Systems: map[string]System{
+			"git":          {Ceiling: ceiling(t, `{repo: "github.com/acme/**", fetch: {}, push: {ref: "refs/heads/verse/**"}}`)},
+			"linear-issue": {Ceiling: ceiling(t, `{create: {team: ENG}, comment: {}}`)},
+		}}},
+		Script: &Script{Systems: map[string]System{
+			"git": {Ceiling: ceiling(t, `{repo: "github.com/acme/svc", push: {ref: refs/heads/main}}`)},
+		}},
+	}
 	if err := cfg.Check(); err != nil {
 		t.Fatal(err)
 	}
 	if got := cfg.performs(); !slices.Equal(got, []string{"git", "git-issue", "linear-issue"}) {
 		t.Errorf("performs %v", got)
 	}
-	for _, o := range cfg.Describe(Secrets{PortkeyAPIKey: "k"}, nil).Offers {
-		git := o.Systems["git"].Ceiling
-		if len(git) != 1 || git[0].Attributes["repo"][0] != "github.com/acme/**" || len(git[0].Verbs["push"]) != 1 {
-			t.Errorf("%s offers the git ceiling %+v, want it as written", o.Name(), git)
-		}
-		if lin := o.Systems["linear-issue"].Ceiling; len(lin) != 1 || lin[0].Verbs["create"][0]["team"] != "ENG" {
-			t.Errorf("%s offers the linear ceiling %+v, want it as written", o.Name(), lin)
-		}
+	// Each doer's offer holds every system the runner performs, under that doer's ceiling: the
+	// agent's as the agent's section writes it, the scripts' as theirs does, and a system a
+	// section does not name closed for that doer.
+	d := cfg.Describe(nil)
+	agent, script := d.Offers[0], d.Offers[1]
+	if git := agent.Systems["git"].Ceiling; len(git) != 1 || git[0].Attributes["repo"][0] != "github.com/acme/**" || len(git[0].Verbs["push"]) != 1 {
+		t.Errorf("the agent's git ceiling %+v, want it as its section writes it", git)
+	}
+	if git := script.Systems["git"].Ceiling; len(git) != 1 || git[0].Attributes["repo"][0] != "github.com/acme/svc" {
+		t.Errorf("the scripts' git ceiling %+v, want it as their section writes it", git)
+	}
+	if lin, has := script.Systems["linear-issue"]; !has || len(lin.Ceiling) != 0 {
+		t.Errorf("the scripts hold linear-issue %+v, want it held and closed: their section names none", lin)
+	}
+	for _, o := range d.Offers {
 		if gi, has := o.Systems["git-issue"]; !has || len(gi.Ceiling) != 0 {
 			t.Errorf("%s offers git-issue %+v, want it held with no ceiling: closed", o.Name(), gi)
 		}
@@ -87,13 +105,18 @@ func TestTheRunnersSystemsAndCeilings(t *testing.T) {
 			t.Errorf("%s holds commands: %v; an agent is stopped on them and a script is not", o.Name(), has)
 		}
 	}
-	t.Setenv("VERSE_TEST_GIT", "gt")
-	tokens, unset := TokensFromEnv(cfg)
-	if tokens.Git != "gt" || tokens.Linear != "" {
-		t.Errorf("tokens %+v", tokens)
+	// What the channel holds a task to is its doer's ceiling.
+	if got := cfg.ceilings(ScriptDoer)["git"]; len(got) != 1 || got[0].Attributes["repo"][0] != "github.com/acme/svc" {
+		t.Errorf("the channel's git ceiling for a script: %+v", got)
 	}
-	if len(unset) != 1 || !strings.Contains(unset[0], "VERSE_TEST_LINEAR (linear-issue)") {
-		t.Errorf("unset %v, want the linear variable named", unset)
+	if got := cfg.doer(&runner.Launch{Prompt: "p"}); got != AgentName {
+		t.Errorf("a prompt naming no agent is %q's, want the first agent offered", got)
+	}
+	t.Setenv(EnvGitHubToken, "gt")
+	t.Setenv(EnvLinearAPIKey, "lin")
+	tokens := TokensFromEnv(cfg)
+	if tokens.Git != "gt" || tokens.Linear != "lin" || tokens.Slack != "" {
+		t.Errorf("tokens %+v", tokens)
 	}
 	if cfg.services(tokens).GitHubAPI != "https://api.github.com" {
 		t.Errorf("the GitHub API is %q", cfg.services(tokens).GitHubAPI)
@@ -104,7 +127,7 @@ func TestTheRunnersSystemsAndCeilings(t *testing.T) {
 	}
 
 	// A GitHub Enterprise Server forge is one line: where its API is.
-	ghes := Config{Repos: &Repos{Mirrors: "/m", Host: "ghe.corp"}, Systems: map[string]System{"github": {API: "https://ghe.corp/api/v3"}}}
+	ghes := Config{Repos: &Repos{Mirrors: "/m", Host: "ghe.corp", API: "https://ghe.corp/api/v3"}, Script: &Script{}}
 	if err := ghes.Check(); err != nil {
 		t.Fatal(err)
 	}
@@ -114,15 +137,145 @@ func TestTheRunnersSystemsAndCeilings(t *testing.T) {
 	if (Config{Repos: &Repos{Mirrors: "/m", Host: "ghe.corp"}}).atGitHub() {
 		t.Error("a forge that is not github.com, with no API named, is a GitHub")
 	}
-	_ = runner.DefaultHost
+}
+
+// WHAT THE RUNNER CANNOT START WITH IS REFUSED AT START, from the environment it starts in: a
+// ceiling naming Linear or Slack with its variable unset, the verse agent with no model key, an
+// agent whose program is not there. A missing forge token, or an agent left to its own login, is
+// said and let start.
+func TestTheRunnerRefusesToStartWithoutWhatItNeeds(t *testing.T) {
+	env := func(set ...string) func(string) string {
+		return func(name string) string {
+			if slices.Contains(set, name) {
+				return "x"
+			}
+			return ""
+		}
+	}
+	found := func(string) (string, error) { return "/bin/x", nil }
+	lin := Config{Script: &Script{Systems: map[string]System{"linear-issue": {Ceiling: systems.Open()}}}}
+	if _, err := lin.CheckStart(env(), found); err == nil || !strings.Contains(err.Error(), "script.systems.linear-issue") || !strings.Contains(err.Error(), EnvLinearAPIKey) {
+		t.Errorf("linear with no key: %v", err)
+	}
+	if _, err := lin.CheckStart(env(EnvLinearAPIKey), found); err != nil {
+		t.Errorf("linear with its key: %v", err)
+	}
+	if _, err := agentWith(AgentName, nil).CheckStart(env(), found); err == nil || !strings.Contains(err.Error(), EnvPortkeyAPIKey) {
+		t.Errorf("the verse agent with no model key: %v", err)
+	}
+	cx := agentWith(codex.Agent, nil)
+	gone := func(string) (string, error) { return "", os.ErrNotExist }
+	if _, err := cx.CheckStart(env(), gone); err == nil || !strings.Contains(err.Error(), "agents.codex.bin: codex is not here") {
+		t.Errorf("codex with no program: %v", err)
+	}
+	warnings, err := cx.CheckStart(env(), found)
+	if err != nil || len(warnings) != 1 || !strings.Contains(warnings[0], codex.EnvAPIKey) {
+		t.Errorf("codex with no key: %v %v, want it let start, said", warnings, err)
+	}
+	cl := agentWith(claude.Agent, nil)
+	if warnings, err := cl.CheckStart(env(claude.EnvAPIKey), found); err != nil || len(warnings) != 0 {
+		t.Errorf("claude with an API key: %v %v", warnings, err)
+	}
+	repos := Config{Repos: &Repos{Mirrors: "/m"}, Script: &Script{}}
+	if warnings, err := repos.CheckStart(env(), found); err != nil || len(warnings) != 1 || !strings.Contains(warnings[0], EnvGitHubToken) {
+		t.Errorf("repos with no forge token: %v %v, want it let start, said", warnings, err)
+	}
+}
+
+// EACH DOER'S SHELL IS GIVEN ITS OWN VARIABLES, AND ITS TASK'S PROCESS NOTHING MORE: what the
+// scripts' section names, no agent's shell sees, nor the process an agent's task runs in, whose
+// children could read its environment; and a launch's `with.env` may not name what its own doer's
+// shell is given, and may name what another's is.
+func TestEachDoersShellEnvIsItsOwn(t *testing.T) {
+	c := Config{
+		Agents: map[string]Agent{AgentName: {ShellEnv: []string{"PATH", "HOME"}}},
+		Script: &Script{ShellEnv: []string{"PATH", "MYSQL_PWD"}},
+	}
+	agent := &runner.Launch{ID: "a", Prompt: "p", Agent: &runner.Agent{Name: AgentName}}
+	script := &runner.Launch{ID: "s", Script: "true"}
+	if got := c.envOf(agent); slices.Contains(got, "MYSQL_PWD") || !slices.Contains(got, "HOME") {
+		t.Errorf("the agent's shell: %v", got)
+	}
+	if got := c.envOf(script); !slices.Contains(got, "MYSQL_PWD") || slices.Contains(got, "HOME") {
+		t.Errorf("a script's shell: %v", got)
+	}
+	if got := c.envOf(&runner.Launch{ID: "d", Prompt: "p"}); slices.Contains(got, "MYSQL_PWD") {
+		t.Errorf("a prompt naming no agent is the default agent's: %v", got)
+	}
+	if got := (Config{Script: &Script{}}).shellEnv(ScriptDoer); !slices.Contains(got, task.DefaultShellEnv[0]) {
+		t.Errorf("no shellEnv is the default: %v", got)
+	}
+
+	// The task's process: the environment the runner starts it with is its doer's alone.
+	t.Setenv("MYSQL_PWD", "hunter2")
+	h, err := Standalone(c, Secrets{}, Tokens{}, runnerd.Unconfined{}, []string{os.Args[0]}, t.TempDir(), t.TempDir(), io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env := strings.Join(h.Env(agent), " "); strings.Contains(env, "MYSQL_PWD") {
+		t.Errorf("an agent's task process holds the scripts' variable: %s", env)
+	}
+	if env := strings.Join(h.Env(script), " "); !strings.Contains(env, "MYSQL_PWD=hunter2") {
+		t.Errorf("a script's task process lacks its own variable: %s", env)
+	}
+
+	// `with.env` is held to the launching doer's list.
+	vars := func(l *runner.Launch) *runner.Launch {
+		l.Environment = envOf(netOpen, nil, nil)
+		l.Environment.Vars = map[string]string{"MYSQL_PWD": "x"}
+		return l
+	}
+	if err := runnerd.CheckLaunch(vars(script), runner.Description{}, c.envOf(script)); err == nil || !strings.Contains(err.Error(), "MYSQL_PWD is the runner's to set") {
+		t.Errorf("a script setting its own doer's variable: %v", err)
+	}
+	if err := runnerd.CheckLaunch(vars(agent), runner.Description{}, c.envOf(agent)); err != nil {
+		t.Errorf("an agent setting a variable only the scripts' shells are given: %v", err)
+	}
+}
+
+// THE FILE SAYS WHAT THE PROCESS OFFERS, AND IS READ AS WRITTEN: `agents:` keyed by agent name,
+// `script:`, nothing else at the root of the runner's own; a key the shape has no place for is
+// refused at any depth, the keys of an earlier shape among them; and a runner offering nothing is
+// refused.
+func TestTheConfigShapeIsChecked(t *testing.T) {
+	write := func(body string) string {
+		p := filepath.Join(t.TempDir(), "c.tony")
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	for body, says := range map[string]string{
+		"listen: \":9802\"\n":                           "the runner offers nothing",
+		"script: {}\nmodels: {model: m}\n":              `no setting "models"`,
+		"script: {}\nshellEnv: [PATH]\n":                `no setting "shellEnv"`,
+		"codex: {sandbox: read-only}\n":                 `no setting "codex"`,
+		"script: {systems: {slack: {credential: K}}}\n": `no setting "script.systems.slack.credential"`,
+		"agents: {claude: {modle: x}}\n":                `no setting "agents.claude.modle"`,
+		"agents: {claude: {sandbox: read-only}}\n":      "agents.claude.sandbox: claude takes no sandbox (its program's keys: bin",
+		"agents: {verse: {bin: /x}}\n":                  "agents.verse.bin: verse takes no bin (its program's keys: none",
+		"agents: {gemini: {}}\n":                        `agents.gemini: this runner runs no agent "gemini" (it runs: verse, codex, claude)`,
+		"agents: {verse: {settings: {model: {values: [claude-*], default: gpt-5}}}}\n": "agents.verse.settings.model.default: outside the values taken",
+	} {
+		if _, _, err := Load(write(body)); err == nil || !strings.Contains(err.Error(), says) {
+			t.Errorf("%q: %v, want %q", body, err, says)
+		}
+	}
+	_, c, err := Load(write("script: {}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := c.Describe(nil); len(d.Offers) != 1 || !d.Offers[0].Script || len(d.Offers[0].Systems) != 2 {
+		t.Errorf("`script: {}` is scripts with their questions and the network alone: %+v", d.Offers)
+	}
 }
 
 // A CEILING OF ROWS IS NO CEILING: the allow and deny rows a ceiling was are refused as the
 // configuration is read, saying what a ceiling block is.
 func TestACeilingOfRowsIsRefused(t *testing.T) {
-	c := Config{Systems: map[string]System{"commands": {Ceiling: ceiling(t, `[{then: allow}]`)}}}
+	c := agentWith(AgentName, map[string]System{"commands": {Ceiling: ceiling(t, `[{then: allow}]`)}})
 	err := c.Check()
-	if err == nil || !strings.Contains(err.Error(), "systems.commands.ceiling") || !strings.Contains(err.Error(), `"then"`) {
+	if err == nil || !strings.Contains(err.Error(), "agents.verse.systems.commands.ceiling") || !strings.Contains(err.Error(), `"then"`) {
 		t.Errorf("a ceiling of rows: %v, want it refused naming the key", err)
 	}
 }
@@ -137,29 +290,28 @@ func TestAGitCeilingKeepsToTheForge(t *testing.T) {
 		`{repo: "**", fetch: {}}`:                           "beyond the runner's forge",
 		`{fetch: {}}`:                                       "names no repo",
 	} {
-		c := Config{Repos: &Repos{Mirrors: "/m"}, Systems: map[string]System{"git": {Ceiling: ceiling(t, text)}}}
+		c := Config{Repos: &Repos{Mirrors: "/m"}, Script: &Script{Systems: map[string]System{"git": {Ceiling: ceiling(t, text)}}}}
 		err := c.Check()
 		if says == "" && err != nil || says != "" && (err == nil || !strings.Contains(err.Error(), says)) {
 			t.Errorf("%s: %v, want %q", text, err, says)
 		}
 	}
-	ghes := Config{Repos: &Repos{Mirrors: "/m", Host: "ghe.corp"}, Systems: map[string]System{"git": {Ceiling: ceiling(t, `{repo: "github.com/acme/**", fetch: {}}`)}}}
+	ghes := Config{Repos: &Repos{Mirrors: "/m", Host: "ghe.corp"}, Script: &Script{Systems: map[string]System{"git": {Ceiling: ceiling(t, `{repo: "github.com/acme/**", fetch: {}}`)}}}}
 	if err := ghes.Check(); err == nil || !strings.Contains(err.Error(), "ghe.corp/**") {
 		t.Errorf("github.com's repositories on a GHES runner: %v", err)
 	}
 }
 
-// THE SYSTEMS A RUNNER STOPS INSIDE A RUN TAKE A CEILING AND NOTHING ELSE: a `commands` section
-// with a ceiling is the operator's line over every task's shell, published on the offers that
-// stop commands and held at install, so a spawn whose environment gives a command beyond it is
-// refused saying what the ceiling gives; one with no section is closed; a credential on such a
-// section is refused, since the runner holds none.
+// THE SYSTEMS A RUNNER STOPS INSIDE A RUN TAKE A CEILING: a `commands` section with a ceiling is
+// the operator's line over the doer's shell, published on its offer and held at install, so a
+// spawn whose environment gives a command beyond it is refused saying what the ceiling gives; one
+// with no section is closed.
 func TestAnInnerSystemsCeilingIsTheOperatorsLine(t *testing.T) {
-	c := Config{Systems: map[string]System{"commands": {Ceiling: ceiling(t, `{run: {command: "make *"}}`)}}}
+	c := agentWith(AgentName, map[string]System{"commands": {Ceiling: ceiling(t, `{run: {command: "make *"}}`)}})
 	if err := c.Check(); err != nil {
 		t.Fatal(err)
 	}
-	d := c.Describe(Secrets{PortkeyAPIKey: "k"}, []string{runner.NetworkOpen})
+	d := c.Describe([]string{runner.NetworkOpen})
 	agent := d.Offers[0]
 	if cmds := agent.Systems["commands"]; len(cmds.Ceiling) != 1 || cmds.Ceiling[0].Verbs["run"][0]["command"] != "make *" {
 		t.Errorf("the agent's commands ceiling: %+v", cmds)
@@ -186,24 +338,22 @@ func TestAnInnerSystemsCeilingIsTheOperatorsLine(t *testing.T) {
 	if err := runnerd.CheckLaunch(launch(giving(envOf(netOpen, nil, nil), "files")), d, nil); err == nil || !strings.Contains(err.Error(), "the ceiling gives nothing") {
 		t.Errorf("files, closed: %v", err)
 	}
-	bad := Config{Systems: map[string]System{"commands": {Credential: "K"}}}
-	if err := bad.Check(); err == nil || !strings.Contains(err.Error(), "no credential") {
-		t.Errorf("a credential on commands: %v", err)
-	}
 }
 
-// OPEN INSIDE IS EVERY SYSTEM A RUN IS STOPPED ON, UNDER AN OPEN CEILING: what `verse up`'s
-// runner, whose operator is its tasks' author, is configured with.
+// OPEN INSIDE IS EVERY SYSTEM A RUN OF THE DOER IS STOPPED ON, UNDER AN OPEN CEILING: what `verse
+// up`'s runner, whose operator is its tasks' author, is configured with (Open).
 func TestOpenInsideOpensWhatARunIsStoppedOn(t *testing.T) {
-	open := OpenInside()
-	if got := slices.Sorted(maps.Keys(open)); !slices.Equal(got, slices.Sorted(maps.Keys(inner))) {
-		t.Fatalf("OpenInside covers %v, want %v", got, slices.Sorted(maps.Keys(inner)))
+	if got := slices.Sorted(maps.Keys(OpenInside(AgentName))); !slices.Equal(got, slices.Sorted(maps.Keys(inner))) {
+		t.Fatalf("OpenInside(verse) covers %v, want %v", got, slices.Sorted(maps.Keys(inner)))
 	}
-	c := Config{Systems: open}
+	if got := slices.Sorted(maps.Keys(OpenInside(ScriptDoer))); !slices.Equal(got, []string{"question"}) {
+		t.Fatalf("OpenInside(script) covers %v, want question alone", got)
+	}
+	c := Open(AgentName)
 	if err := c.Check(); err != nil {
 		t.Fatal(err)
 	}
-	d := c.Describe(Secrets{PortkeyAPIKey: "k"}, []string{runner.NetworkOpen})
+	d := c.Describe([]string{runner.NetworkOpen})
 	env := giving(envOf(netOpen, nil, nil), "files", "commands", "agent", "question")
 	l := &runner.Launch{ID: "x", Prompt: "p", Agent: &runner.Agent{Name: AgentName}, Environment: env, Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}}
 	if err := runnerd.CheckLaunch(l, d, nil); err != nil {
@@ -212,20 +362,23 @@ func TestOpenInsideOpensWhatARunIsStoppedOn(t *testing.T) {
 }
 
 // WHAT THE RUNNER DESCRIBES: its version; its agents, the verse agent first (the default), each
-// with the settings it takes narrowed by the operator (Config.Agents) and holding a conversation;
-// and every offer holding the network, with what the sandbox builds of it beside the operator's
-// ceiling, as written.
+// with the settings it takes narrowed by the operator and holding a conversation, a default where
+// the agent has its own or the configuration names one; and every offer holding the network, with
+// what the sandbox builds of it beside the doer's ceiling, as written.
 func TestDescribePublishesBuildsAndSettings(t *testing.T) {
+	net := map[string]System{"network": {Ceiling: ceiling(t, `{mode: [none, allow], tcp-client: {host: "*.github.com"}}`)}}
 	c := Config{
-		Models: Models{Model: "claude-sonnet-5"},
-		Codex:  &codex.Config{},
-		Agents: map[string]map[string][]string{AgentName: {runner.SettingModel: {"claude-*"}}, codex.Agent: {"effort": {"low", "high"}}},
-		Systems: map[string]System{
-			"network":  {Ceiling: ceiling(t, `{mode: [none, allow], tcp-client: {host: "*.github.com"}}`)},
-			"commands": {Ceiling: systems.Open()}, "files": {Ceiling: systems.Open()},
+		Agents: map[string]Agent{
+			AgentName: {Settings: map[string]Setting{runner.SettingModel: {Values: []string{"claude-*"}, Default: "claude-sonnet-5"}}, Systems: net},
+			codex.Agent: {Settings: map[string]Setting{"effort": {Values: []string{"low", "high"}}},
+				Systems: map[string]System{"network": net["network"], "commands": {Ceiling: systems.Open()}, "files": {Ceiling: systems.Open()}}},
 		},
+		Script: &Script{Systems: net},
 	}
-	d := c.Describe(Secrets{PortkeyAPIKey: "k"}, []string{runner.NetworkNone, runner.NetworkOpen, runner.NetworkAllow})
+	if err := c.Check(); err != nil {
+		t.Fatal(err)
+	}
+	d := c.Describe([]string{runner.NetworkNone, runner.NetworkOpen, runner.NetworkAllow})
 	if d.Version != runner.DescriptionVersion {
 		t.Errorf("version %d, want %d", d.Version, runner.DescriptionVersion)
 	}
@@ -257,60 +410,64 @@ func TestDescribePublishesBuildsAndSettings(t *testing.T) {
 			t.Errorf("%s: network ceiling %+v, want it as written", o.Name(), net.Ceiling)
 		}
 	}
-	if m := (Config{}).Describe(Secrets{PortkeyAPIKey: "k"}, nil).Offers[0].Agent.Settings[runner.SettingModel]; m.Default {
+	if m := agentWith(AgentName, nil).Describe(nil).Offers[0].Agent.Settings[runner.SettingModel]; m.Default {
 		t.Error("a verse agent with no configured model has no default of its own")
 	}
-	if d := (Config{Codex: &codex.Config{}}).Describe(Secrets{}, nil); d.Offers[0].Name() != codex.Agent {
-		t.Errorf("with no model key, codex is the default: %s", d.Offers[0].Name())
+	if d := agentWith(codex.Agent, nil).Describe(nil); d.Offers[0].Name() != codex.Agent {
+		t.Errorf("with no verse agent, codex is the default: %s", d.Offers[0].Name())
+	}
+	// A launch naming no setting runs the configured default, and the record says so.
+	l := c.withDefaults(runner.Launch{Prompt: "p"}, AgentName)
+	if l.AgentSettings().Name != AgentName || l.AgentSettings().Model() != "claude-sonnet-5" {
+		t.Errorf("the default filled in: %+v", l.Agent)
+	}
+	named := runner.Launch{Prompt: "p", Agent: &runner.Agent{Name: AgentName, Settings: map[string]string{runner.SettingModel: "claude-opus"}}}
+	if l := c.withDefaults(named, AgentName); l.AgentSettings().Model() != "claude-opus" {
+		t.Errorf("a named model is the launch's: %+v", l.Agent)
 	}
 }
 
 // THE OPERATOR NARROWS WHAT AN AGENT TAKES, and nothing else: an agent the runner runs, a setting
-// it takes, a list that takes something.
-func TestTheAgentsSectionIsChecked(t *testing.T) {
-	for says, agents := range map[string]map[string]map[string][]string{
-		"runs no agent":                  {"gemini": {runner.SettingModel: {"x"}}},
-		`takes no setting "temperature"`: {AgentName: {"temperature": {"0.2"}}},
-		"an empty list takes nothing":    {codex.Agent: {"effort": {}}},
-		`"minimal" is none of low`:       {claude.Agent: {"effort": {"high", "minimal"}}},
+// it takes, a list that takes something, a default within both.
+func TestTheAgentsSettingsAreChecked(t *testing.T) {
+	open := map[string]System{"commands": {Ceiling: systems.Open()}, "files": {Ceiling: systems.Open()}}
+	with := func(agent string, settings map[string]Setting) Config {
+		return Config{Agents: map[string]Agent{agent: {Settings: settings, Systems: open}}}
+	}
+	for says, c := range map[string]Config{
+		`takes no setting "temperature"`:    with(AgentName, map[string]Setting{"temperature": {Values: []string{"0.2"}}}),
+		"an empty list takes nothing":       with(codex.Agent, map[string]Setting{"effort": {Values: []string{}}}),
+		`"minimal" is none of low`:          with(claude.Agent, map[string]Setting{"effort": {Values: []string{"high", "minimal"}}}),
+		"default: outside the values taken": with(claude.Agent, map[string]Setting{"effort": {Default: "extreme"}}),
+		"model.default: outside the values": with(AgentName, map[string]Setting{runner.SettingModel: {Values: []string{"claude-*"}, Default: "gpt-5"}}),
 	} {
-		c := Config{Agents: agents}
 		if err := c.Check(); err == nil || !strings.Contains(err.Error(), says) {
-			t.Errorf("%v: %v, want it refused saying %q", agents, err, says)
+			t.Errorf("%+v: %v, want it refused saying %q", c.Agents, err, says)
 		}
 	}
-	c := Config{Agents: map[string]map[string][]string{codex.Agent: {"effort": {"high"}, runner.SettingModel: {"gpt-5*"}}}}
-	if err := c.Check(); err != nil {
+	cx := with(codex.Agent, map[string]Setting{"effort": {Values: []string{"high"}}, runner.SettingModel: {Values: []string{"gpt-5*"}}})
+	if err := cx.Check(); err != nil {
 		t.Errorf("a narrowing of codex: %v", err)
 	}
 	// Claude's efforts narrowed to two of them: the offer takes those two and nothing else.
-	cl := Config{Claude: &claude.Config{}, Systems: map[string]System{"commands": {Ceiling: systems.Open()}, "files": {Ceiling: systems.Open()}}, Agents: map[string]map[string][]string{claude.Agent: {"effort": {"low", "high"}}}}
+	cl := with(claude.Agent, map[string]Setting{"effort": {Values: []string{"low", "high"}, Default: "high"}})
 	if err := cl.Check(); err != nil {
 		t.Errorf("a narrowing of claude's efforts: %v", err)
 	}
 	if e := cl.settings(claude.Agent)["effort"]; e.Takes("high") != nil || e.Takes("max") == nil {
 		t.Errorf("claude's narrowed effort: %+v", e)
-	} // A configured default is held to the narrowing: the offer would refuse it named and run it
-	// unnamed.
-	off := Config{Models: Models{Model: "gpt-5"}, Agents: map[string]map[string][]string{AgentName: {runner.SettingModel: {"claude-*"}}}}
-	if err := off.Check(); err == nil || !strings.Contains(err.Error(), "agents.verse.model: the configured default model is outside it") {
-		t.Errorf("a default outside the narrowing: %v", err)
-	}
-	on := Config{Models: Models{Model: "claude-sonnet-5"}, Agents: map[string]map[string][]string{AgentName: {runner.SettingModel: {"claude-*"}}}}
-	if err := on.Check(); err != nil {
-		t.Errorf("a default within the narrowing: %v", err)
 	}
 }
 
 // A NETWORK CEILING THE SANDBOX CAN'T MEET IS REFUSED WHEN THE RUNNER STARTS, not at each spawn:
 // an unconfined sandbox builds only the open network.
 func TestARunnerRefusesACeilingItsSandboxCantBuild(t *testing.T) {
-	c := Config{Systems: map[string]System{"network": {Ceiling: ceiling(t, `{mode: [none, allow]}`)}}}
+	c := Config{Script: &Script{Systems: map[string]System{"network": {Ceiling: ceiling(t, `{mode: [none, allow]}`)}}}}
 	_, err := Standalone(c, Secrets{}, Tokens{}, runnerd.Unconfined{}, []string{os.Args[0]}, t.TempDir(), t.TempDir(), io.Discard)
-	if err == nil || !strings.Contains(err.Error(), "mode: none is no network this runner's sandbox builds (it builds: open)") {
+	if err == nil || !strings.Contains(err.Error(), "script.systems.network.ceiling[0].mode: none is no network this runner's sandbox builds (it builds: open)") {
 		t.Errorf("a ceiling of none and allow on an unconfined sandbox: %v", err)
 	}
-	if _, err := Standalone(Config{Systems: map[string]System{"network": {Ceiling: ceiling(t, `{mode: open}`)}}}, Secrets{}, Tokens{},
+	if _, err := Standalone(Config{Script: &Script{Systems: map[string]System{"network": {Ceiling: ceiling(t, `{mode: open}`)}}}}, Secrets{}, Tokens{},
 		runnerd.Unconfined{}, []string{os.Args[0]}, t.TempDir(), t.TempDir(), io.Discard); err != nil {
 		t.Errorf("a ceiling of open on an unconfined sandbox: %v", err)
 	}
@@ -320,24 +477,24 @@ func TestARunnerRefusesACeilingItsSandboxCantBuild(t *testing.T) {
 // give it does not start: no spawn of that agent could ever be written there.
 func TestCodexAndClaudeRequireTheirShellAndEdits(t *testing.T) {
 	open := map[string]System{"commands": {Ceiling: systems.Open()}, "files": {Ceiling: systems.Open()}}
-	c := Config{Codex: &codex.Config{}, Systems: open}
+	c := agentWith(codex.Agent, open)
 	if err := c.Check(); err != nil {
 		t.Fatalf("a codex runner whose ceilings give both: %v", err)
 	}
-	d := c.Describe(Secrets{}, []string{"open"})
+	d := c.Describe([]string{"open"})
 	if got := d.Offers[0].Requires; d.Offers[0].Name() != codex.Agent || !slices.Equal(got, []string{task.StepCommandsRun, task.StepFilesWrite}) {
 		t.Errorf("codex's offer requires %v", got)
 	}
 	if err := d.Check(); err != nil {
 		t.Errorf("the description: %v", err)
 	}
-	closed := Config{Codex: &codex.Config{}, Systems: map[string]System{"files": {Ceiling: systems.Open()}}}
-	if err := closed.Check(); err == nil || !strings.Contains(err.Error(), "systems.commands.ceiling: codex can't run without commands.run") {
+	closed := agentWith(codex.Agent, map[string]System{"files": {Ceiling: systems.Open()}})
+	if err := closed.Check(); err == nil || !strings.Contains(err.Error(), "agents.codex.systems.commands.ceiling: codex can't run without commands.run") {
 		t.Errorf("a codex runner whose commands ceiling is closed: %v", err)
 	}
 	// Claude's are the same steps, held the same way.
-	closed = Config{Claude: &claude.Config{}, Systems: map[string]System{"files": {Ceiling: systems.Open()}}}
-	if err := closed.Check(); err == nil || !strings.Contains(err.Error(), "systems.commands.ceiling: claude can't run without commands.run") {
+	closed = agentWith(claude.Agent, map[string]System{"files": {Ceiling: systems.Open()}})
+	if err := closed.Check(); err == nil || !strings.Contains(err.Error(), "agents.claude.systems.commands.ceiling: claude can't run without commands.run") {
 		t.Errorf("a claude runner whose commands ceiling is closed: %v", err)
 	}
 }

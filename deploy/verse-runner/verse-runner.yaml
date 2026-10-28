@@ -1,7 +1,7 @@
-# The verse runner (`runnerd verse`), as a deployed runner: a workspace per task, a PROCESS per
-# task, and bubblewrap around the process.
+# The verse runner (`runnerd`, offering the verse agent and scripts), as a deployed runner: a
+# workspace per task, a PROCESS per task, and bubblewrap around the process.
 #
-# The pod runs one runner that hosts no task itself. Each task is `runnerd verse -task` under
+# The pod runs one runner that hosts no task itself. Each task is `runnerd -task` under
 # bwrap, serving the same task-control contract back to its parent over an inherited socket, and
 # the parent forwards verse's requests to it. So the sandbox is drawn once, around everything the
 # task does — including the shell — and the git credential below stays outside it by construction
@@ -29,64 +29,97 @@ data:
     listen: ":9802"
     # The one verse this runner serves is not here: the `runnerTokens` patch (deploy/build.tony)
     # names it in the pod's environment, VERSE_URL and VERSE_ISSUER, from the `issuer` knob,
-    # since this file is every cluster's.
-    # The model credentials are read from the runner's environment, by the names versed uses
-    # too: PORTKEY_API_KEY, PORTKEY_VIRTUAL_KEY, PORTKEY_BASE_URL (envFrom the verse-llm Secret,
-    # below). The gateway is reachable from a task whatever its network, since the verse agent
-    # makes the call.
-    models:
-      # A model the virtual key's provider serves, and the same one versed is given
-      # (deploy/profiles/staging.tony): one credential, one provider, one answer about which
-      # model this deployment runs.
-      model: claude-sonnet-5
-    # A spawn that names a virtual key of its own runs under it: verse read it from the address
-    # the spawn named, as whoever named it, and refused there if that read was not theirs.
-    annotations:
-      verse.portkey/virtual-key: string
-    # What a task's shell is given of the runner's environment, by name: never a secret.
-    shellEnv: [PATH, HOME, USER, LANG]
+    # since this file is every cluster's, and gives it its token (VERSE_TOKEN_FILE). The runner
+    # does not start without both.
     # One bare mirror per repository, on the state volume, shared by the tasks. The forge is
     # github.com, and the token is GITHUB_TOKEN (the verse-runner Secret, below).
     repos:
       mirrors: /state/mirrors
-    # The operator's line over every system this runner holds for its tasks: what a spawn's
-    # environment may give, held at install, at launch and again at each act. A ceiling lists
-    # what it allows and nothing else is allowed, so a system with no ceiling here is closed; a
-    # block naming no verb (`{}`) allows every verb of its system.
+    # The operator's line over every system a doer holds for its tasks, a doer at a time: what a
+    # spawn's environment may give, held at install, at launch and again at each act. A ceiling
+    # lists what it allows and nothing else is allowed, so a system with no ceiling under a doer
+    # is closed to it; a block naming no verb (`{}`) allows every verb of its system.
     # signadot's repositories, and their branches under verse/; main of verse's own, which its
-    # comment-drift merge lands on. No network ceiling: tasks get what the sandbox builds.
-    systems:
-      git:
-        ceiling:
-        - repo: github.com/signadot/verse
-          fetch: {}
-          push:
-          - {ref: refs/heads/main, force: "false", delete: "false"}
-          - {ref: "refs/heads/verse/**"}
-        - repo: "github.com/signadot/**"
-          fetch: {}
-          push: {ref: "refs/heads/verse/**"}
-      git-issue: {ceiling: {repo: "github.com/signadot/**"}}
-      github: {ceiling: {repo: "github.com/signadot/**"}}
-      github-issue: {ceiling: {repo: "github.com/signadot/**"}}
-      # Linear and Slack, made with the credentials the iods hold (verse-linear, verse-slack),
-      # named here because naming the variable is what makes the runner offer the system. ENG
-      # is the team the Linear iod reflects; the channels are the ones the Slack bot is in. A
-      # Slack shape names one channel, so two channels are two shapes.
-      linear-issue:
-        credential: LINEAR_API_KEY
-        ceiling: {create: {team: ENG}, comment: {issue: "ENG-*"}, close: {issue: "ENG-*"}}
-      slack:
-        credential: SLACK_BOT_TOKEN
-        ceiling:
-          read: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
-          post: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
-          reply: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
-          react: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
-      files: {ceiling: {}}
-      commands: {ceiling: {}}
-      question: {ceiling: {}}
-      agent: {ceiling: {}}
+    # comment-drift merge lands on. No network ceiling: tasks get what the sandbox builds. What a
+    # doer's shell is given of the runner's environment is its `shellEnv`, by name: never a secret.
+    agents:
+      verse:
+        # The model credentials are read from the runner's environment, by the names versed
+        # uses too: PORTKEY_API_KEY (required), PORTKEY_VIRTUAL_KEY, PORTKEY_BASE_URL (envFrom
+        # the verse-llm Secret, below). The gateway is reachable from a task whatever its
+        # network, since the verse agent makes the call.
+        shellEnv: [PATH, HOME, USER, LANG]
+        settings:
+          # A model the virtual key's provider serves, and the same one versed is given
+          # (deploy/profiles/staging.tony): one credential, one provider, one answer about
+          # which model this deployment runs.
+          model: {default: claude-sonnet-5}
+        # A spawn that names a virtual key of its own runs under it: verse read it from the
+        # address the spawn named, as whoever named it, and refused there if that read was not
+        # theirs.
+        annotations:
+          verse.portkey/virtual-key: {type: string}
+        systems:
+          git:
+            ceiling:
+            - repo: github.com/signadot/verse
+              fetch: {}
+              push:
+              - {ref: refs/heads/main, force: "false", delete: "false"}
+              - {ref: "refs/heads/verse/**"}
+            - repo: "github.com/signadot/**"
+              fetch: {}
+              push: {ref: "refs/heads/verse/**"}
+          git-issue: {ceiling: {repo: "github.com/signadot/**"}}
+          github: {ceiling: {repo: "github.com/signadot/**"}}
+          github-issue: {ceiling: {repo: "github.com/signadot/**"}}
+          # Linear and Slack, made with the credentials the iods hold (LINEAR_API_KEY from
+          # verse-linear, SLACK_BOT_TOKEN from verse-slack): a ceiling naming either is what makes
+          # the runner offer the system, and the runner does not start without its variable. ENG
+          # is the team the Linear iod reflects; the channels are the ones the Slack bot is in. A
+          # Slack shape names one channel, so two channels are two shapes.
+          linear-issue: {ceiling: {create: {team: ENG}, comment: {issue: "ENG-*"}, close: {issue: "ENG-*"}}}
+          slack:
+            ceiling:
+              read: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
+              post: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
+              reply: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
+              react: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
+          files: {ceiling: {}}
+          commands: {ceiling: {}}
+          question: {ceiling: {}}
+          agent: {ceiling: {}}
+    script:
+      # Scripts, the charters' `script:` spawns: the same reach as the agent's, and their
+      # questions; a script's commands and files are its own and no step.
+      shellEnv: [PATH, HOME, USER, LANG]
+      systems:
+        git:
+          ceiling:
+          - repo: github.com/signadot/verse
+            fetch: {}
+            push:
+            - {ref: refs/heads/main, force: "false", delete: "false"}
+            - {ref: "refs/heads/verse/**"}
+          - repo: "github.com/signadot/**"
+            fetch: {}
+            push: {ref: "refs/heads/verse/**"}
+        git-issue: {ceiling: {repo: "github.com/signadot/**"}}
+        github: {ceiling: {repo: "github.com/signadot/**"}}
+        github-issue: {ceiling: {repo: "github.com/signadot/**"}}
+        # Linear and Slack, made with the credentials the iods hold (LINEAR_API_KEY from
+        # verse-linear, SLACK_BOT_TOKEN from verse-slack): a ceiling naming either is what makes
+        # the runner offer the system, and the runner does not start without its variable. ENG
+        # is the team the Linear iod reflects; the channels are the ones the Slack bot is in. A
+        # Slack shape names one channel, so two channels are two shapes.
+        linear-issue: {ceiling: {create: {team: ENG}, comment: {issue: "ENG-*"}, close: {issue: "ENG-*"}}}
+        slack:
+          ceiling:
+            read: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
+            post: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
+            reply: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
+            react: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
+        question: {ceiling: {}}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -117,7 +150,6 @@ spec:
       - name: verse-runner
         image: signadot/verse-runner:latest
         args:
-        - verse
         - -config
         - /config/verse-runner.tony
         # The containment, named rather than sniffed. If the kernel refuses unprivileged user

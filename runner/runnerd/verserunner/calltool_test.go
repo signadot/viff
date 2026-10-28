@@ -121,8 +121,8 @@ func TestAScriptIsHeldToTheRunnersCeiling(t *testing.T) {
 	withCallTool(t)
 	forge := t.TempDir()
 	seed(t, forge, "acme/svc")
-	rt := serveConfigured(t, Config{Repos: &Repos{Mirrors: t.TempDir(), Forge: forge},
-		Systems: map[string]System{"git": {Ceiling: verseOnly}}}, Secrets{}, Tokens{})
+	rt := serveConfigured(t, every(Config{Repos: &Repos{Mirrors: t.TempDir(), Forge: forge}},
+		map[string]System{"git": {Ceiling: verseOnly}}), Secrets{}, Tokens{})
 
 	allow := task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}
 	l := rt.Launch(runner.Launch{ID: "t0", Autonomy: allow, Script: "true", Environment: pushesTo("refs/heads/main")})
@@ -152,8 +152,8 @@ func TestAnAskBeyondTheEnvironmentIsNeverPut(t *testing.T) {
 	withCallTool(t)
 	forge := t.TempDir()
 	seed(t, forge, "acme/svc")
-	rt := serveConfigured(t, Config{Repos: &Repos{Mirrors: t.TempDir(), Forge: forge},
-		Systems: map[string]System{"git": {Ceiling: verseOnly}}}, Secrets{}, Tokens{})
+	rt := serveConfigured(t, every(Config{Repos: &Repos{Mirrors: t.TempDir(), Forge: forge}},
+		map[string]System{"git": {Ceiling: verseOnly}}), Secrets{}, Tokens{})
 	rt.Launch(runner.Launch{ID: "t1", Autonomy: task.Autonomy{pushGate, {Then: task.Then{Mode: task.ThenAllow}}}, Environment: pushesTo("refs/heads/verse/**"),
 		Script: "#!/bin/sh\n" + commitScript + "verse-call-tool git-push -branch main\necho \"main=$?\""})
 	snap := ended(t, rt, "t1")
@@ -315,7 +315,7 @@ func TestAScriptGetsTheRunnersBinaryWithoutPATH(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(control)
-	h, err := Standalone(opened(Config{ShellEnv: []string{"HOME"}}), Secrets{}, Tokens{}, runnerd.Unconfined{},
+	h, err := Standalone(opened(Config{Script: &Script{ShellEnv: []string{"HOME"}}}), Secrets{}, Tokens{}, runnerd.Unconfined{},
 		[]string{os.Args[0], "-test.run=^$", taskArg}, work, control, io.Discard)
 	if err != nil {
 		t.Fatal(err)

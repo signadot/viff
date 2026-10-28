@@ -34,7 +34,7 @@ import (
 func serveCalls(t *testing.T) entity.Store {
 	t.Helper()
 	root := t.TempDir()
-	scripts := verserunner.New(verserunner.Config{Systems: verserunner.OpenInside()}, verserunner.Secrets{}, root, io.Discard).Build
+	scripts := verserunner.New(verserunner.Open(), verserunner.Secrets{}, root, io.Discard).Build
 	build := func(l runner.Launch, reg *task.Registry) *task.Task {
 		if l.Who() != "steps" {
 			return scripts(l, reg)

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -40,31 +41,66 @@ func serveReposAt(t *testing.T, forge string, sec Secrets, mirrors string) clien
 	return serveConfigured(t, Config{Repos: &Repos{Mirrors: mirrors, Forge: forge}}, sec, Tokens{})
 }
 
-// opened is c with each system it holds and writes no ceiling for under an open one
-// (systems.Open), its `git` ceiling within its forge: what a test that is not about ceilings
-// configures, a ceiling written nowhere being closed.
+// opened is c with each system each doer holds and its section writes no ceiling for under an
+// open one (systems.Open), its `git` ceiling within its forge: what a test that is not about
+// ceilings configures, a ceiling written nowhere being closed. A c offering nothing is scripts
+// and the verse agent (every), as a test runner's default.
 func opened(c Config) Config {
-	held := maps.Clone(c.Systems)
+	if len(c.Agents) == 0 && c.Script == nil {
+		c = every(c, nil)
+	}
+	c.Agents = maps.Clone(c.Agents)
+	if c.Script != nil {
+		s := *c.Script
+		s.Systems = openedFor(c, ScriptDoer, s.Systems)
+		c.Script = &s
+	}
+	for name, a := range c.Agents {
+		a.Systems = openedFor(c, name, a.Systems)
+		c.Agents[name] = a
+	}
+	return c
+}
+
+// openedFor is one doer's ceilings, opened as opened says.
+func openedFor(c Config, doer string, sys map[string]System) map[string]System {
+	held := maps.Clone(sys)
 	if held == nil {
 		held = map[string]System{}
 	}
-	names := c.performs()
-	for name := range inner {
-		names = append(names, name)
-	}
-	for _, name := range names {
-		sys := held[name]
-		if len(sys.Ceiling) == 0 {
-			sys.Ceiling = systems.Open()
+	for _, name := range append(c.performs(), innerFor(doer)...) {
+		s := held[name]
+		if len(s.Ceiling) == 0 {
+			s.Ceiling = systems.Open()
 			if name == "git" {
 				host, _ := c.Repos.forge()
-				sys.Ceiling[0].Attributes = map[string][]string{"repo": {strings.ToLower(host) + "/**"}}
+				s.Ceiling[0].Attributes = map[string][]string{"repo": {strings.ToLower(host) + "/**"}}
 			}
 		}
-		held[name] = sys
+		held[name] = s
 	}
-	c.Systems = held
+	return held
+}
+
+// every is c running scripts and the verse agent, each under the ceilings sys, as far as each is
+// stopped on them: a test's runner whose doers share their ceilings, as every runner's did before
+// each doer had its own.
+func every(c Config, sys map[string]System) Config {
+	c.Script = &Script{Systems: forDoer(ScriptDoer, sys)}
+	c.Agents = map[string]Agent{AgentName: {Systems: forDoer(AgentName, sys)}}
 	return c
+}
+
+// forDoer is sys without the inner systems doer is not stopped on.
+func forDoer(doer string, sys map[string]System) map[string]System {
+	out := map[string]System{}
+	for name, s := range sys {
+		if doers, isInner := inner[name]; isInner && !slices.Contains(doers, doer) {
+			continue
+		}
+		out[name] = s
+	}
+	return out
 }
 
 // serveConfigured serves the verse runner configured by c, with the secrets and tokens given:
@@ -171,7 +207,7 @@ func TestAnAgentsPushIsGatedAndTheRunnerMakesIt(t *testing.T) {
 
 // A runner that keeps no mirrors doesn't offer repos, and refuses a launch that names them.
 func TestARunnerWithoutReposRefusesThem(t *testing.T) {
-	if _, ok := (Config{}).Describe(Secrets{}, nil).Offers[0].Systems["git"]; ok {
+	if _, ok := (Config{Script: &Script{}}).Describe(nil).Offers[0].Systems["git"]; ok {
 		t.Fatal("a runner with no mirrors offers repos")
 	}
 	rt, _ := serve(t, Secrets{}, runnerd.Unconfined{})

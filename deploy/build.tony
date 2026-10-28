@@ -287,9 +287,10 @@ build:
     # as for the iods. Versed proves itself the other way: it is an issuer of its own (the auth
     # file's `auth.issuer`, signing with the verse-issuer Secret this mounts into it), and presents
     # to each runner a token minted for that runner alone, so a runner serves this verse and no
-    # other, and a token taken at one runner opens no other's door. Off by default; a runner
-    # registered without a subject is taken at its word.
-    runnerTokens: false
+    # other, and a token taken at one runner opens no other's door. On by default, since a
+    # deployed runner needs it (`runnerd` does not start without the verse it serves and its
+    # token), and so versed needs the verse-issuer Secret (`issuerSecretKey`, or made by hand).
+    runnerTokens: true
     # The name versed's tokens are issued under, `auth.issuer.url` in the auth file, which each
     # runner holds them to (VERSE_ISSUER). The runner reads the keys at versed's in-cluster url,
     # so this is a name, and the in-cluster url is the plain choice where nothing outside the

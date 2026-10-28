@@ -22,15 +22,15 @@ func TestTheCodexSectionOffersTheAgent(t *testing.T) {
 		}
 		return p
 	}
-	if _, _, err := Load(write("codex: {sandbox: everywhere}\n")); err == nil || !strings.Contains(err.Error(), "sandbox") {
+	if _, _, err := Load(write("agents: {codex: {sandbox: everywhere}}\n")); err == nil || !strings.Contains(err.Error(), "sandbox") {
 		t.Errorf("a codex section with no such sandbox loaded: %v", err)
 	}
-	_, c, err := Load(write("codex: {model: m}\nsystems: {commands: {ceiling: {}}, files: {ceiling: {}}}\n"))
+	_, c, err := Load(write("agents:\n  codex:\n    settings: {model: {default: m}}\n    systems: {commands: {ceiling: {}}, files: {ceiling: {}}}\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var offer *runner.Offer
-	for _, o := range c.Describe(Secrets{}, nil).Offers {
+	for _, o := range c.Describe(nil).Offers {
 		if o.Agent != nil && o.Agent.Name == "codex" {
 			offer = &o
 		}
@@ -51,7 +51,7 @@ func TestTheCodexSectionOffersTheAgent(t *testing.T) {
 
 	r := New(opened(Config{}), Secrets{}, t.TempDir(), os.Stderr)
 	tk := r.Build(runner.Launch{ID: "c1", Prompt: "go", Agent: &runner.Agent{Name: "codex"}}, task.NewRegistry())
-	if _, err := tk.Run(t.Context()); err == nil || !strings.Contains(err.Error(), "codex:") {
+	if _, err := tk.Run(t.Context()); err == nil || !strings.Contains(err.Error(), "agents.codex") {
 		t.Errorf("a runner with no codex section ran codex: %v, want it failed saying why", err)
 	}
 }

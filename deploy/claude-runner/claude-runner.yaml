@@ -23,56 +23,60 @@ data:
     listen: ":9802"
     # The one verse this runner serves is not here: the `runnerTokens` patch (deploy/build.tony)
     # names it in the pod's environment, VERSE_URL and VERSE_ISSUER, from the `issuer` knob,
-    # since this file is every cluster's.
-    shellEnv: [PATH, HOME, USER, LANG]
+    # since this file is every cluster's, and gives it its token (VERSE_TOKEN_FILE). The runner
+    # does not start without both.
+    # One bare mirror per repository, on the state volume, shared by the tasks. The forge is
+    # github.com, and the token is GITHUB_TOKEN (the verse-runner Secret, below).
     repos:
       mirrors: /state/mirrors
-    # The operator's line over every system this runner holds for its tasks: what a spawn's
-    # environment may give, held at install, at launch and again at each act. A ceiling lists
-    # what it allows and nothing else is allowed, so a system with no ceiling here is closed; a
-    # block naming no verb (`{}`) allows every verb of its system.
-    # signadot's repositories, and their branches under verse/; main of verse's own, as the
-    # codex runner's. No network ceiling: tasks get what the sandbox builds.
-    systems:
-      git:
-        ceiling:
-        - repo: github.com/signadot/verse
-          fetch: {}
-          push:
-          - {ref: refs/heads/main, force: "false", delete: "false"}
-          - {ref: "refs/heads/verse/**"}
-        - repo: "github.com/signadot/**"
-          fetch: {}
-          push: {ref: "refs/heads/verse/**"}
-      git-issue: {ceiling: {repo: "github.com/signadot/**"}}
-      github: {ceiling: {repo: "github.com/signadot/**"}}
-      github-issue: {ceiling: {repo: "github.com/signadot/**"}}
-      # Linear and Slack, made with the credentials the iods hold (verse-linear, verse-slack),
-      # named here because naming the variable is what makes the runner offer the system. ENG
-      # is the team the Linear iod reflects; the channels are the ones the Slack bot is in. A
-      # Slack shape names one channel, so two channels are two shapes.
-      linear-issue:
-        credential: LINEAR_API_KEY
-        ceiling: {create: {team: ENG}, comment: {issue: "ENG-*"}, close: {issue: "ENG-*"}}
-      slack:
-        credential: SLACK_BOT_TOKEN
-        ceiling:
-          read: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
-          post: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
-          reply: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
-          react: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
-      files: {ceiling: {}}
-      commands: {ceiling: {}}
-      question: {ceiling: {}}
-
-    # How Claude runs here. `credentialEnv` is the NAME of a variable the runner holds (the
-    # verse-claude Secret, below) and the name Claude reads it under; the task process puts it
-    # in the claude process's environment, with a CLAUDE_CONFIG_DIR of the task's own. The
-    # model is an alias Claude Code resolves to the current one of that family, and a spawn's
-    # `agent.model` overrides it. Claude's API is reachable from a task whatever its network.
-    claude:
-      model: sonnet
-      credentialEnv: ANTHROPIC_API_KEY
+    # The operator's line over every system a doer holds for its tasks, a doer at a time: what a
+    # spawn's environment may give, held at install, at launch and again at each act. A ceiling
+    # lists what it allows and nothing else is allowed, so a system with no ceiling under a doer
+    # is closed to it; a block naming no verb (`{}`) allows every verb of its system.
+    # signadot's repositories, and their branches under verse/; main of verse's own, which its
+    # comment-drift merge lands on. No network ceiling: tasks get what the sandbox builds. What a
+    # doer's shell is given of the runner's environment is its `shellEnv`, by name: never a secret.
+    # Claude alone: no `script:`, so this runner offers no scripts.
+    agents:
+      claude:
+        # How Claude runs here. The credential is ANTHROPIC_API_KEY (the verse-claude Secret,
+        # below), or CLAUDE_CODE_OAUTH_TOKEN where that is set; the task process puts it in the
+        # claude process's environment under its own name, with a CLAUDE_CONFIG_DIR of the
+        # task's own. Claude's API is reachable from a task whatever its network.
+        shellEnv: [PATH, HOME, USER, LANG]
+        # The model is an alias Claude Code resolves to the current one of that family, and a
+        # spawn's `agent.model` overrides it.
+        settings:
+          model: {default: sonnet}
+        systems:
+          git:
+            ceiling:
+            - repo: github.com/signadot/verse
+              fetch: {}
+              push:
+              - {ref: refs/heads/main, force: "false", delete: "false"}
+              - {ref: "refs/heads/verse/**"}
+            - repo: "github.com/signadot/**"
+              fetch: {}
+              push: {ref: "refs/heads/verse/**"}
+          git-issue: {ceiling: {repo: "github.com/signadot/**"}}
+          github: {ceiling: {repo: "github.com/signadot/**"}}
+          github-issue: {ceiling: {repo: "github.com/signadot/**"}}
+          # Linear and Slack, made with the credentials the iods hold (LINEAR_API_KEY from
+          # verse-linear, SLACK_BOT_TOKEN from verse-slack): a ceiling naming either is what makes
+          # the runner offer the system, and the runner does not start without its variable. ENG
+          # is the team the Linear iod reflects; the channels are the ones the Slack bot is in. A
+          # Slack shape names one channel, so two channels are two shapes.
+          linear-issue: {ceiling: {create: {team: ENG}, comment: {issue: "ENG-*"}, close: {issue: "ENG-*"}}}
+          slack:
+            ceiling:
+              read: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
+              post: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
+              reply: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
+              react: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
+          files: {ceiling: {}}
+          commands: {ceiling: {}}
+          question: {ceiling: {}}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -93,7 +97,6 @@ spec:
       - name: claude-runner
         image: signadot/verse-runner:claude
         args:
-        - verse
         - -config
         - /config/verse-runner.tony
         - -sandbox
@@ -101,7 +104,8 @@ spec:
         ports:
         - {name: control, containerPort: 9802}
         - {name: admin, containerPort: 9803}
-        # The credential, by the variable name the ConfigMap's `credentialEnv` reads. The
+        # The credential, ANTHROPIC_API_KEY, which a runner running claude reads where no
+        # CLAUDE_CODE_OAUTH_TOKEN is set. The
         # runner holds it; the task process puts it in the claude process's environment, which
         # every command Claude runs inherits (docs/reference/runnerd.md, Claude). The Secret
         # comes from the store entry `claudeSecretKey` names (deploy/README.md, Credentials),

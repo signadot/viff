@@ -162,7 +162,7 @@ func TestALinearIssueIsCreatedWithTheRunnersCredential(t *testing.T) {
 		t.Errorf("an unknown team: %+v", rep)
 	}
 	none := &Server{Log: io.Discard, Ceilings: performs("linear-issue")}
-	if rep := none.answer(tk, frame(t, Request{Op: OpLinearIssueCreate, Team: "ENG", Title: "x"})); !strings.Contains(rep.Error, "systems.linear-issue.credential") {
+	if rep := none.answer(tk, frame(t, Request{Op: OpLinearIssueCreate, Team: "ENG", Title: "x"})); !strings.Contains(rep.Error, "LINEAR_API_KEY") {
 		t.Errorf("a runner without a credential: %+v, want it to say where one is configured", rep)
 	}
 }

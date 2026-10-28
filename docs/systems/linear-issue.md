@@ -66,8 +66,8 @@ same environment and rows decide them.
 a personal key alone, or an OAuth token as `Bearer …`.
 
 **The task** holds no credential. The runner makes each call with its own credential, in the
-same form: the variable that `systems.linear-issue.credential` names in its configuration.
-Without that name, the runner does not offer the system. The iod and the runner may hold one
+same form, `LINEAR_API_KEY`. The runner offers the system where a doer's ceiling in its
+configuration names it, and does not start without the variable then. The iod and the runner may hold one
 credential or two.
 
 **The operator** sets a limit on what any task may do, in the runner's configuration:

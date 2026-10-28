@@ -276,10 +276,10 @@ there.** A grant ceiling, a tool allowlist, a label: verse can express each of t
 is absent by design.
 
 The narrowing lives *at the runner*. Whoever deploys the runner declares it. The shipped
-runner, `runnerd verse`, is the worked example; its configuration names:
+runner, `runnerd`, is the worked example; its configuration names:
 
-- which systems it holds for its tasks, and the ceiling over what any task may do with each, the forge its repositories come from among them;
-- which agents it offers, and the settings each takes (which models among them);
+- which agents it offers, and the settings each takes (which models among them), and whether it offers scripts;
+- for each of those doers, the ceiling over what its tasks may do with each system, and what of the runner's environment its shell sees; and the forge its repositories come from;
 - what its sandbox can build, which the runner says itself rather than its configuration.
 
 The runner publishes that at `GET /describe`, and verse reads it: `verse runner add` is the

@@ -516,3 +516,35 @@ func TestTheHelloIsTheCheckAskedByTheRunner(t *testing.T) {
 		t.Fatalf("a person's hello = %d, want 400", code)
 	}
 }
+
+// A hello whose describe offers a doer twice describes nothing: a launch names its doer, and
+// could not say which of the two it means, so the registration stays undescribed and the runner
+// is told why.
+func TestAHelloOfferingADoerTwiceDescribesNothing(t *testing.T) {
+	helloRetryWait = 10 * time.Millisecond
+	_, ts, cluster := runnerServer(t)
+	own := cluster.Token(iodAudience, runnerSub, nil)
+	g, err := runnerd.NewGuard(runnerd.Verse{URL: ts.URL}, tokenFile(t, t.TempDir(), "gpu", own))
+	if err != nil {
+		t.Fatal(err)
+	}
+	face := faceServing(t, g.Wrap(offeringAll(runnerd.NewInProcessHandler(nil), "fake", "fake").HTTPHandler()), func() {})
+	resp := postTony(t, ts.URL+"/runners?probe=false", map[string]any{"name": "gpu", "url": face.URL, "subject": runnerSub})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("add = %s: %s", resp.Status, readBody(t, resp))
+	}
+	resp.Body.Close()
+	code, body := relay(t, http.MethodPost, ts.URL+"/runners/hello?format=tony", own, "", "", "")
+	if code == http.StatusOK || !strings.Contains(body, "it offers fake twice") {
+		t.Fatalf("the hello of a runner offering fake twice = %d %s, want it refused saying so", code, body)
+	}
+	sr, err := ts.Client().Get(ts.URL + "/runners/gpu")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var one map[string]any
+	decodeResp(t, sr, &one)
+	if one["described"] != nil {
+		t.Fatalf("after the refused hello = %v, want nothing described", one)
+	}
+}

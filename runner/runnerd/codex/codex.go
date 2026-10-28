@@ -40,7 +40,8 @@
 // how codex delivers, since there is no finisher doing it for an agent that can decide.
 //
 // What the spawn's doer runs with reaches codex: `with.model` is the model of the thread and
-// `with.effort` the reasoning effort of its turns, over the `codex:` section's model.
+// `with.effort` the reasoning effort of its turns; one the spawn names none of is the runner's
+// configured default, filled in before the launch reaches here (verserunner), or codex's own.
 //
 // What codex does WITHOUT asking is the part that is attested rather than enforced: the
 // commands its own autonomy trusts as read-only (listing, reading, searching), and its web
@@ -87,26 +88,23 @@ const Agent = "codex"
 // reach whatever the task's network.
 const ModelHost = "api.openai.com"
 
-// Config is the `codex:` section of the runner's config: how this runner runs Codex. It
-// names a variable for the API key and never holds one, for the reason Models does.
+// EnvAPIKey is the variable the runner reads the OpenAI API key from. It sends the value to the
+// task process (Creds.Key), which writes it as a login file in a private CODEX_HOME for the
+// codex process and nothing else (see driver.start). Unset, codex's own login (`codex login`,
+// under the HOME the environment passes through) is what authenticates it.
+const EnvAPIKey = "OPENAI_API_KEY"
+
+// Config is how this runner runs Codex: the program keys of `agents.codex`. It holds no
+// secret.
 type Config struct {
 	// Bin is the program, `codex` on PATH by default. The runner runs `<bin> app-server`.
-	Bin string `tony:"field=bin,omitzero"`
-	// Model is the model to ask for when a spawn picks none; empty leaves it to codex's own
-	// config.
-	Model string `tony:"field=model,omitzero"`
+	Bin string
 	// Sandbox is codex's own sandbox for approved commands: `read-only`, `workspace-write`
 	// (the default) or `danger-full-access`. It is what an APPROVED command runs under, and it
 	// is why approving a command is not the same as approving anything.
-	Sandbox string `tony:"field=sandbox,omitzero"`
-	// APIKeyEnv is the NAME of the variable holding the OpenAI API key. The runner reads it
-	// and sends the value to the task process (Secrets.CodexKey), which writes it as a login
-	// file in a private CODEX_HOME for the codex process and nothing else (see
-	// driver.start). Empty means codex's own login (`codex login`, under the HOME the
-	// environment passes through) is what authenticates it.
-	APIKeyEnv string `tony:"field=apiKeyEnv,omitzero"`
+	Sandbox string
 	// Config is extra codex configuration, as `-c key=value` overrides; the values are TOML.
-	Config map[string]string `tony:"field=config,omitzero"`
+	Config map[string]string
 }
 
 // sandboxes is what Sandbox may say.
@@ -117,42 +115,36 @@ const defaultSandbox = "workspace-write"
 // Validate refuses a section that codex would refuse later, less clearly.
 func (c *Config) Validate() error {
 	if c.Sandbox != "" && !slices.Contains(sandboxes, c.Sandbox) {
-		return fmt.Errorf("codex: sandbox %q is not one of %s", c.Sandbox, strings.Join(sandboxes, ", "))
+		return fmt.Errorf("sandbox %q is not one of %s", c.Sandbox, strings.Join(sandboxes, ", "))
 	}
 	return nil
 }
 
-// Key reads the API key the section names from this process's environment: the runner's, where
-// the deployment put it. "" when the section names no variable.
-func (c *Config) Key() string {
-	if c.APIKeyEnv == "" {
-		return ""
-	}
-	return os.Getenv(c.APIKeyEnv)
-}
+// Program is the program the runner runs.
+func (c *Config) Program() string { return cmp.Or(c.Bin, "codex") }
+
+// Key reads the API key from this process's environment: the runner's, where the deployment put
+// it. "" when it is not set.
+func Key() string { return os.Getenv(EnvAPIKey) }
 
 // Creds is the section with its key read: what a task process runs codex with.
 func (c *Config) Creds(key string) Creds {
-	return Creds{Bin: cmp.Or(c.Bin, "codex"), Model: c.Model,
-		Sandbox: cmp.Or(c.Sandbox, defaultSandbox), Key: key, Config: c.Config}
+	return Creds{Bin: c.Program(), Sandbox: cmp.Or(c.Sandbox, defaultSandbox), Key: key, Config: c.Config}
 }
 
-// MissingKey reports why codex may not be able to authenticate here, or "". A
-// warning rather than a refusal: without a key, codex may still be logged in under the HOME it
-// is given, and only a turn can tell.
-func (c *Config) MissingKey() string {
-	if c.APIKeyEnv != "" {
-		if _, ok := os.LookupEnv(c.APIKeyEnv); !ok {
-			return fmt.Sprintf("codex.apiKeyEnv names %s, which is not set in this runner's environment", c.APIKeyEnv)
-		}
+// MissingKey reports why codex may not be able to authenticate here, or "". A warning rather
+// than a refusal: without a key, codex may still be logged in under the HOME it is given, and
+// only a turn can tell.
+func MissingKey(getenv func(string) string) string {
+	if getenv(EnvAPIKey) == "" {
+		return EnvAPIKey + " is not set in this runner's environment"
 	}
 	return ""
 }
 
-// Creds is the resolved codex configuration: the section's values and the key it named.
+// Creds is the resolved codex configuration: the section's values and the key read.
 type Creds struct {
 	Bin     string
-	Model   string
 	Sandbox string
 	Key     string
 	Config  map[string]string
@@ -203,7 +195,7 @@ func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir st
 	// offers checks nothing, and there such a task runs to fail at its first action.
 	d := &driver{
 		creds: creds, prompt: l.Prompt, dir: dir,
-		model: cmp.Or(l.AgentSettings().Model(), creds.Model), effort: l.AgentSettings().Settings["effort"],
+		model: l.AgentSettings().Model(), effort: l.AgentSettings().Settings["effort"],
 		env:      env,
 		resolver: reg,
 		log:      os.Stderr,
@@ -221,8 +213,8 @@ func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir st
 	sup.SetCeilings(ceilings)
 	sup.SetStepsOf(d.stepsOf)
 	t := task.NewTask(l.ID, sup, d, &executor{d: d})
-	// What it runs with, Codex's section's model where the launch named none: the record's to
-	// say. One neither names is Codex's own, which it reports only to its log.
+	// What it runs with: the record's to say. A setting the launch names none of is Codex's own,
+	// which it reports only to its log.
 	settings := map[string]string{}
 	for name, v := range map[string]string{runner.SettingModel: d.model, "effort": d.effort} {
 		if v != "" {
@@ -245,7 +237,7 @@ type driver struct {
 	creds       Creds
 	prompt      string
 	contractSrc string
-	// model and effort are the spawn's agent's, the model over the section's own; "" leaves each
+	// model and effort are the launch's agent's, the runner's defaults filled in; "" leaves each
 	// to codex.
 	model, effort string
 	dir           string

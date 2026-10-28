@@ -18,6 +18,7 @@ import (
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/delivery"
 	"github.com/signadot/verse/runner/runnerd/workspace"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -121,7 +122,7 @@ func TestAScriptFilesALinearIssueWithTheRunnersCredential(t *testing.T) {
 	defer api.Close()
 	forge := t.TempDir()
 	seed(t, forge, "acme/svc")
-	rt := serveConfigured(t, Config{Repos: &Repos{Mirrors: t.TempDir(), Forge: forge}, Systems: map[string]System{"linear-issue": {Credential: "LINEAR_KEY"}}},
+	rt := serveConfigured(t, every(Config{Repos: &Repos{Mirrors: t.TempDir(), Forge: forge}}, map[string]System{"linear-issue": {}}),
 		Secrets{}, Tokens{Linear: "lin_api_secret", LinearAPI: api.URL})
 	script := "#!/bin/sh\nverse-call-tool linear-issue-create -team eng -title \"the roof leaks\" -description \"when it rains\"\n" +
 		"echo \"exit=$?\"\nenv | grep -c LINEAR || true"
@@ -244,19 +245,19 @@ func TestAnIssueToolsStepNamesItsTracker(t *testing.T) {
 }
 
 // THE OFFERS HOLD THE TRACKERS THE RUNNER HAS WHAT IT TAKES FOR: a repository's tracker with
-// repos, the forge's issues where the forge is GitHub, Linear's with a credential; every offer
+// repos, the forge's issues where the forge is GitHub, Linear's where a ceiling names it; every offer
 // alike, since every doer reaches them through the same tools.
 func TestTheOffersInterceptTheTrackersSteps(t *testing.T) {
-	github := Config{Repos: &Repos{Mirrors: "m"}, Systems: map[string]System{"linear-issue": {Credential: "K"}}}
-	for _, o := range github.Describe(Secrets{PortkeyAPIKey: "k"}, nil).Offers {
+	github := every(Config{Repos: &Repos{Mirrors: "m"}}, map[string]System{"linear-issue": {Ceiling: systems.Open()}})
+	for _, o := range github.Describe(nil).Offers {
 		for _, name := range []string{"git-issue", "github-issue", "linear-issue"} {
 			if _, has := o.Systems[name]; !has {
 				t.Errorf("the offer %s/%v does not hold %s: %v", o.Name(), o.Script, name, slices.Sorted(maps.Keys(o.Systems)))
 			}
 		}
 	}
-	dir := Config{Repos: &Repos{Mirrors: "m", Forge: "/forge"}}
-	for _, o := range dir.Describe(Secrets{}, nil).Offers {
+	dir := every(Config{Repos: &Repos{Mirrors: "m", Forge: "/forge"}}, nil)
+	for _, o := range dir.Describe(nil).Offers {
 		_, gi := o.Systems["git-issue"]
 		_, ghi := o.Systems["github-issue"]
 		_, li := o.Systems["linear-issue"]
@@ -264,7 +265,7 @@ func TestTheOffersInterceptTheTrackersSteps(t *testing.T) {
 			t.Errorf("a directory forge with no linear: %v", slices.Sorted(maps.Keys(o.Systems)))
 		}
 	}
-	if o := (Config{}).Describe(Secrets{}, nil).Offers[0]; !slices.Equal(slices.Sorted(maps.Keys(o.Systems)), []string{"network", "question"}) {
+	if o := (Config{Script: &Script{}}).Describe(nil).Offers[0]; !slices.Equal(slices.Sorted(maps.Keys(o.Systems)), []string{"network", "question"}) {
 		t.Errorf("no repos, no trackers: %v, want a script holding the network and its questions alone", o.Systems)
 	}
 }

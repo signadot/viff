@@ -208,7 +208,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	// What the embedded runner offers, as a runner reached by url would say on GET /describe:
 	// a spawn naming the `verse` agent with no model credential is refused as that, not run. Its
 	// tasks run in verse's own process, so the one network it builds them is open.
-	srv.Embedded.Describe(runnerCfg.Describe(runnerSecrets, []string{runner.NetworkOpen}))
+	srv.Embedded.Describe(runnerCfg.Describe([]string{runner.NetworkOpen}))
 	// NO POLICY, NO SERVING. The root's record is what admits anybody at all now, so a server
 	// that could not write it would refuse every request from every person — which reads as a
 	// verse that lost its data, and is worth failing loudly at the start instead.
@@ -405,17 +405,26 @@ func authOf(c config.AuthConfig) versed.Auth {
 	return a
 }
 
-// embeddedRunner is the runner `verse up` runs its tasks on, in its own process: the verse agent
-// on the deployment's model credential, which a launch may route by a virtual key it was let
-// spend (versed's `verse.portkey/virtual-key` annotation). Its operator is the person running
+// embeddedRunner is the runner `verse up` runs its tasks on, in its own process: scripts, and the
+// verse agent where there is a model credential, which a launch may route by a virtual key it was
+// let spend (versed's `verse.portkey/virtual-key` annotation). Its operator is the person running
 // it, so what it stops inside a run is open to them, said as open ceilings: a ceiling written
 // nowhere is closed.
 func embeddedRunner(llm config.LLMConfig, shellEnv []string) (verserunner.Config, verserunner.Secrets) {
-	return verserunner.Config{
-			Models:      verserunner.Models{Portkey: verserunner.Portkey{VirtualKey: llm.VirtualKey}, Model: llm.Model},
-			ShellEnv:    shellEnv,
-			Annotations: map[string]string{verserunner.AnnotationVirtualKey: "string"},
-			Systems:     verserunner.OpenInside(),
-		},
-		verserunner.Secrets{PortkeyAPIKey: llm.APIKey, PortkeyBaseURL: llm.BaseURL}
+	c := verserunner.Open()
+	c.Script.ShellEnv = shellEnv
+	if llm.APIKey != "" {
+		verse := verserunner.Agent{
+			ShellEnv: shellEnv,
+			Annotations: map[string]verserunner.Annotation{
+				verserunner.AnnotationVirtualKey: {Type: "string", Default: llm.VirtualKey},
+			},
+			Systems: verserunner.OpenInside(verserunner.AgentName),
+		}
+		if llm.Model != "" {
+			verse.Settings = map[string]verserunner.Setting{runner.SettingModel: {Default: llm.Model}}
+		}
+		c.Agents = map[string]verserunner.Agent{verserunner.AgentName: verse}
+	}
+	return c, verserunner.Secrets{PortkeyAPIKey: llm.APIKey, PortkeyBaseURL: llm.BaseURL}
 }

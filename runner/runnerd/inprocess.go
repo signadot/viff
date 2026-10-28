@@ -31,8 +31,8 @@ type InProcessHandler struct {
 	log   io.Writer
 	// describe is what the runner offers, answered on GET /describe.
 	describe runner.Description
-	// owned is the variables the runner gives a task's shell itself (CheckLaunch).
-	owned []string
+	// owned is the variables the runner gives a launch's task shell itself (CheckLaunch).
+	owned EnvOf
 	// taskProcess is set in a task's process (ServeTask), whose runner checked its repos out and
 	// built its network before starting it. Otherwise a launch that names repos, or a network
 	// other than open, is refused: a task in the runner's own process has no checkout, no
@@ -134,9 +134,10 @@ func (d *InProcessHandler) Describe(desc runner.Description) { d.describe = desc
 // Description is what the runner offers, as GET /describe answers it.
 func (d *InProcessHandler) Description() runner.Description { return d.describe }
 
-// OwnEnv names the variables the runner gives a task's shell itself, which a launch's `with.env`
-// may not name. Unset is task.DefaultShellEnv. Set it before the runner is served.
-func (d *InProcessHandler) OwnEnv(names []string) { d.owned = names }
+// OwnEnv names the variables the runner gives a launch's task shell itself, which the launch's
+// `with.env` may not name: its doer's. Unset is task.DefaultShellEnv. Set it before the runner is
+// served.
+func (d *InProcessHandler) OwnEnv(of EnvOf) { d.owned = of }
 
 // HTTPHandler returns the HTTP routes (Go 1.22 method+wildcard patterns): the task contract, and
 // GET /describe.
@@ -193,7 +194,7 @@ func (d *InProcessHandler) Launch(l runner.Launch) (*task.Task, error) {
 // (checkBuilds), as `verse up`'s does, since it builds open alone. An offer that claims to build
 // none on this handler would get past both; only test helpers such as versed's offeringAll write one.
 func (d *InProcessHandler) check(l *runner.Launch) error {
-	if err := CheckLaunch(l, d.describe, d.owned); err != nil {
+	if err := CheckLaunch(l, d.describe, d.owned.of(l)); err != nil {
 		return err
 	}
 	switch n := l.Network(); {

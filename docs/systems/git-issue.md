@@ -64,8 +64,7 @@ the task has no `git-push` at all. In a row or a shape, `repo` is the repository
 uses the git credential that git finds where the iod runs, as `iod git` does.
 
 **The task** holds no credential. It files, comments and closes in its checkout. The runner
-makes each pull and push from its own mirror, with its git token: the variable that
-`systems.git.credential` names in the runner's configuration, or `GITHUB_TOKEN`.
+makes each pull and push from its own mirror, with its git token, `GITHUB_TOKEN`.
 
 **The operator** sets a limit on what any task may do with the tracker, in the runner's
 configuration:

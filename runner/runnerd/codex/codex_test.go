@@ -296,7 +296,7 @@ func fakeCreds(t *testing.T, scenario string) (Creds, string) {
 	logPath := filepath.Join(t.TempDir(), "codex.log")
 	t.Setenv(fakeEnvVar, scenario)
 	t.Setenv(fakeLogVar, logPath)
-	return Creds{Bin: exe, Model: "fake-model", Config: map[string]string{"model_reasoning_effort": "low"}}, logPath
+	return Creds{Bin: exe, Config: map[string]string{"model_reasoning_effort": "low"}}, logPath
 }
 
 // fakeEnv is the environment the stand-in needs to find its scenario, built as the runner builds
@@ -930,28 +930,28 @@ func (f resolveWith) Resolve(_ context.Context, q task.GateQuestion, _ task.Tool
 }
 
 // THE CONFIG SAYS HOW CODEX RUNS: the sandbox is checked where it is written, the key is read
-// from the variable the section names and never kept in it, and the overrides reach the command
-// line in a fixed order.
+// from OPENAI_API_KEY and never kept in the section, and the overrides reach the command line in
+// a fixed order.
 func TestConfigIsChecked(t *testing.T) {
 	if err := (&Config{Sandbox: "everything"}).Validate(); err == nil || !strings.Contains(err.Error(), "sandbox") {
 		t.Errorf("a bad sandbox validated: %v", err)
 	}
-	c := &Config{Bin: "/opt/codex", Model: "m", APIKeyEnv: "K", Config: map[string]string{"b": "2", "a": "1"}}
+	c := &Config{Bin: "/opt/codex", Config: map[string]string{"b": "2", "a": "1"}}
 	if err := c.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("K", "secret")
-	creds := c.Creds(c.Key())
-	if creds.Key != "secret" || creds.Sandbox != defaultSandbox || creds.Model != "m" {
+	t.Setenv(EnvAPIKey, "secret")
+	creds := c.Creds(Key())
+	if creds.Key != "secret" || creds.Sandbox != defaultSandbox {
 		t.Errorf("resolved %+v", creds)
 	}
 	if got := strings.Join(creds.argv(), " "); got != "/opt/codex app-server -c a=1 -c b=2" {
 		t.Errorf("argv %q", got)
 	}
-	if why := c.MissingKey(); why != "" {
+	if why := MissingKey(os.Getenv); why != "" {
 		t.Errorf("a set key reported missing: %s", why)
 	}
-	if why := (&Config{APIKeyEnv: "NO_SUCH_KEY_VAR"}).MissingKey(); !strings.Contains(why, "NO_SUCH_KEY_VAR") {
+	if why := MissingKey(func(string) string { return "" }); !strings.Contains(why, EnvAPIKey) {
 		t.Errorf("an unset key not reported: %q", why)
 	}
 }
@@ -1053,7 +1053,7 @@ func TestARefusedToolCallIsCodexsToRead(t *testing.T) {
 }
 
 // THE SPAWN'S MODEL AND EFFORT REACH CODEX: `with.model` is the thread's model and rides every
-// turn, over the section's own, and `with.effort` is the reasoning effort of its turns. Codex's
+// turn, and `with.effort` is the reasoning effort of its turns. Codex's
 // protocol takes both on `turn/start`, for that turn and the ones after it.
 func TestCodexTakesTheSpawnsModelAndEffort(t *testing.T) {
 	reg := task.NewRegistry()
@@ -1070,7 +1070,7 @@ func TestCodexTakesTheSpawnsModelAndEffort(t *testing.T) {
 	}
 	entries := readLog(t, logPath)
 	if !logHas(entries, "thread/start", `"model":"gpt-5.3-codex"`) {
-		t.Errorf("the spawn's model did not reach thread/start (the section said fake-model):\n%s", render(entries))
+		t.Errorf("the spawn's model did not reach thread/start:\n%s", render(entries))
 	}
 	if !logHas(entries, "turn/start", `"model":"gpt-5.3-codex"`, `"effort":"high"`) {
 		t.Errorf("the spawn's model and effort did not reach turn/start:\n%s", render(entries))
@@ -1079,13 +1079,14 @@ func TestCodexTakesTheSpawnsModelAndEffort(t *testing.T) {
 	if _, set := tk.Agent(); set["model"] != "gpt-5.3-codex" || set["effort"] != "high" {
 		t.Errorf("the task's settings: %v", set)
 	}
-	// A spawn naming no model runs the section's, and says so.
+	// A spawn naming no model reaches the driver naming none, and runs codex's own: the runner's
+	// configured default is filled in before (verserunner), so the record says it either way.
 	tk2, err := Task(runner.Launch{ID: "run-codex-11", Prompt: "x", Agent: &runner.Agent{Name: Agent}, Environment: workEnv,
 		Autonomy: allowAll}, task.NewRegistry(), creds, fakeEnv(), t.TempDir(), nil, systemstest.Open(workEnv))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, set := tk2.Agent(); set["model"] != "fake-model" || set["effort"] != "" {
+	if _, set := tk2.Agent(); set["model"] != "" || set["effort"] != "" {
 		t.Errorf("the default's settings: %v", set)
 	}
 }

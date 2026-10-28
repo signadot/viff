@@ -5,6 +5,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"strings"
 	"sync"
 	"testing"
@@ -65,7 +66,7 @@ func (f *slackAPI) serve(t *testing.T) string {
 // given.
 func slackRunner(t *testing.T, api string, ceiling systems.Ceiling) client.Launcher {
 	t.Helper()
-	return serveConfigured(t, Config{Systems: map[string]System{"slack": {Credential: "SLACK_BOT_TOKEN", Ceiling: ceiling}}},
+	return serveConfigured(t, every(Config{}, map[string]System{"slack": {Ceiling: ceiling}}),
 		Secrets{}, Tokens{Slack: "xoxb-runners-own", SlackAPI: api})
 }
 
@@ -184,28 +185,34 @@ func TestASlackToolsStepNamesTheChannel(t *testing.T) {
 	}
 }
 
-// A RUNNER PERFORMS SLACK WHERE ITS CONFIGURATION NAMES THE BOT TOKEN'S VARIABLE, and every offer
-// then holds the system, closed until a ceiling says what of it; a `slack` section naming none is
-// refused, saying what it needs, and a ceiling its document refuses is refused.
+// A RUNNER PERFORMS SLACK WHERE A DOER'S CEILING NAMES IT, and every offer then holds the
+// system, closed for a doer whose section does not name it; the runner does not start without the
+// bot token in SLACK_BOT_TOKEN, a `slack` section with no ceiling is refused, and a ceiling its
+// document refuses is refused.
 func TestARunnerPerformsSlackWithItsBotToken(t *testing.T) {
-	c := Config{Systems: map[string]System{"slack": {Credential: "SLACK_BOT_TOKEN"}}}
+	c := Config{Agents: map[string]Agent{AgentName: {Systems: map[string]System{"slack": {Ceiling: systems.Open()}}}}, Script: &Script{}}
 	if err := c.Check(); err != nil {
 		t.Fatal(err)
 	}
-	for _, o := range c.Describe(Secrets{PortkeyAPIKey: "k"}, nil).Offers {
-		if s, ok := o.Systems["slack"]; !ok || len(s.Ceiling) != 0 {
-			t.Errorf("the offer %s/%v does not intercept slack, with its ceiling: %+v", o.Name(), o.Script, o.Systems["slack"])
+	for _, o := range c.Describe(nil).Offers {
+		s, ok := o.Systems["slack"]
+		if !ok || (len(s.Ceiling) == 0) != o.Script {
+			t.Errorf("the offer %s does not intercept slack, with its doer's ceiling: %+v", o.Name(), o.Systems["slack"])
 		}
 	}
-	t.Setenv("SLACK_BOT_TOKEN", "")
-	if _, unset := TokensFromEnv(c); len(unset) != 1 || unset[0] != "SLACK_BOT_TOKEN (slack)" {
-		t.Errorf("unset: %v", unset)
+	none := func(string) string { return "" }
+	if _, err := c.CheckStart(none, exec.LookPath); err == nil || !strings.Contains(err.Error(), "SLACK_BOT_TOKEN") {
+		t.Errorf("no bot token: %v", err)
 	}
-	none := Config{Systems: map[string]System{"slack": {}}}
-	if err := none.Check(); err == nil || !strings.Contains(err.Error(), "Slack bot token") {
-		t.Errorf("a slack section with no credential: %v", err)
+	t.Setenv(EnvSlackBotToken, "xoxb-1")
+	if tokens := TokensFromEnv(c); tokens.Slack != "xoxb-1" {
+		t.Errorf("tokens: %+v", tokens)
 	}
-	unknown := Config{Systems: map[string]System{"slack": {Credential: "K", Ceiling: systems.Ceiling{{Verbs: map[string][]systems.Shape{"shout": {{}}}}}}}}
+	empty := Config{Script: &Script{Systems: map[string]System{"slack": {}}}}
+	if err := empty.Check(); err == nil || !strings.Contains(err.Error(), "script.systems.slack: a section names a ceiling") {
+		t.Errorf("a slack section with no ceiling: %v", err)
+	}
+	unknown := Config{Script: &Script{Systems: map[string]System{"slack": {Ceiling: systems.Ceiling{{Verbs: map[string][]systems.Shape{"shout": {{}}}}}}}}}
 	if err := unknown.Check(); err == nil || !strings.Contains(err.Error(), `no attribute or verb "shout"`) {
 		t.Errorf("a ceiling giving a verb slack has not: %v", err)
 	}

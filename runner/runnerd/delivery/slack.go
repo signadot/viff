@@ -41,7 +41,7 @@ func SlackFooter(taskID string) string { return "_verse task " + taskID + "_" }
 // the launch's autonomy and the runner's ceiling on the name, then the call.
 func (s *Server) slack(ctx context.Context, tk Task, req Request) Reply {
 	if s.Services.SlackToken == "" {
-		return Reply{Error: "this runner has no Slack bot token (the config's `systems.slack.credential`), so it cannot act in Slack"}
+		return Reply{Error: "this runner has no Slack bot token (SLACK_BOT_TOKEN), so it cannot act in Slack"}
 	}
 	channel, ok := slack.ChannelName(req.Channel)
 	if !ok {

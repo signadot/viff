@@ -1,5 +1,6 @@
-// Package verserunner is the `verse` runner: it offers verse's own agent (package agent) and
-// scripts. `runnerd verse` serves it.
+// Package verserunner is the runner verse ships: it offers the agents its configuration names
+// under `agents:` (verse's own, package agent; codex; claude) and, where it has a `script:`
+// section, scripts. `runnerd -config` serves it.
 //
 // A launch's doer picks which: `agent: verse` is the verse agent, and `script` runs a script.
 package verserunner
@@ -25,66 +26,99 @@ import (
 // (route, budget), not a secret. The runner holds the Portkey account key.
 const AnnotationVirtualKey = "verse.portkey/virtual-key"
 
-// annotations is every annotation the verse runner knows, with the type of its value. A
+// annotations is every annotation the verse agent knows, with the type of its value. A
 // configuration may accept any of them.
 var annotations = map[string]string{AnnotationVirtualKey: "string"}
 
-// The environment variables the runner reads its secrets from.
+// The environment variables the runner reads its secrets from. No configuration names one: a
+// variable is read where the configuration offers what needs it.
 const (
 	EnvPortkeyAPIKey     = "PORTKEY_API_KEY"
 	EnvPortkeyBaseURL    = "PORTKEY_BASE_URL"
 	EnvPortkeyVirtualKey = "PORTKEY_VIRTUAL_KEY"
-	// EnvGitHubToken is where the runner's token for its forge is read from when `systems.git`
-	// names no variable: what it fetches and pushes with. It stays in the runner; a task's
-	// process never has it.
+	// EnvGitHubToken is the runner's token for its forge: what it fetches and pushes with, and
+	// what it acts at GitHub with. It stays in the runner; a task's process never has it.
 	EnvGitHubToken = "GITHUB_TOKEN"
+	// EnvLinearAPIKey is the Authorization header the runner files at Linear with, verbatim: a
+	// personal key bare, an OAuth token as `Bearer …`.
+	EnvLinearAPIKey = "LINEAR_API_KEY"
+	// EnvSlackBotToken is the bot token (`xoxb-…`) the runner posts to Slack with.
+	EnvSlackBotToken = "SLACK_BOT_TOKEN"
 )
 
-// Config is the verse runner's own configuration, beside runnerd.Config in the same file.
+// ScriptDoer is the doer a script is, as a launch says it (runner.Launch.Who) and as the
+// systems an inner system is stopped for name it.
+const ScriptDoer = "script"
+
+// Config is the verse runner's own configuration, beside runnerd.Config in the same file: the
+// agents the process runs, by name, and whether it runs scripts, each doer under its own
+// ceilings and its own shell environment. Presence is the switch: an agent the map does not name
+// is not offered, and no `script:` offers no scripts.
 type Config struct {
-	Models Models `tony:"field=models,omitzero"`
-	// Agents is the operator's narrowing of each agent's settings, by agent and setting: the
-	// values a launch may set, as patterns (`verse: {model: ["claude-sonnet-*"]}`). A setting
-	// the agent does not take is refused; one not named here takes any value of its form.
-	Agents map[string]map[string][]string `tony:"field=agents,omitzero"`
-	// Annotations is the annotations a launch may set, with the type of their value.
-	Annotations map[string]string `tony:"field=annotations,omitzero"`
-	// ShellEnv is the variables of the runner's environment a task's shell is given, by name.
-	// Absent is task.DefaultShellEnv: enough for a shell to find its tools, and no secret.
-	ShellEnv []string `tony:"field=shellEnv,omitzero"`
 	// Repos is where the runner keeps its git mirrors, and the forge it fetches from. Absent,
 	// the runner takes no launch that names repos.
 	Repos *Repos `tony:"field=repos,omitzero"`
-	// Codex is how this runner runs the codex agent (package codex). Absent, the agent is not
-	// offered: a runner that has not said how to run Codex does not guess.
-	Codex *codex.Config `tony:"field=codex,omitzero"`
-	// Claude is how this runner runs the claude agent (package claude), on the same terms.
-	Claude *claude.Config `tony:"field=claude,omitzero"`
-	// Systems is the operator's say over each system the runner holds for its tasks, by name
-	// (System): the credential it acts with, and the ceiling over what any task may do. `git`
-	// and `git-issue` come with `repos`, `github` and `github-issue` where the forge is GitHub,
-	// and `linear-issue` and `slack` where their credential is named; a section for one of those
-	// the runner does not perform is refused. `files`, `commands` and `agent`, which the runner
-	// stops inside a run, take a ceiling and nothing else.
+	// Agents is the agents this process runs, by name: verse, codex, claude. Each value is how
+	// that program is run and what its tasks get.
+	Agents map[string]Agent `tony:"field=agents,omitzero"`
+	// Script is the runner's scripts: present, it offers them.
+	Script *Script `tony:"field=script,omitzero"`
+}
+
+// Agent is one agent the runner runs: its program's own keys, which are the agent's (codex
+// `bin`, `sandbox`, `config`; claude `bin`; verse none), and the four keys every agent takes.
+type Agent struct {
+	// Bin is the program, the agent's name on PATH by default (codex, claude).
+	Bin string `tony:"field=bin,omitzero"`
+	// Sandbox is codex's own sandbox for approved commands (codex.Config.Sandbox).
+	Sandbox string `tony:"field=sandbox,omitzero"`
+	// Config is extra codex configuration, as `-c key=value` overrides; the values are TOML.
+	Config map[string]string `tony:"field=config,omitzero"`
+	// ShellEnv is the variables of the runner's environment the agent's task shell is given, by
+	// name. Absent is task.DefaultShellEnv: enough for a shell to find its tools, and no secret.
+	ShellEnv []string `tony:"field=shellEnv,omitzero"`
+	// Settings is the operator's say over each setting the agent takes (Setting).
+	Settings map[string]Setting `tony:"field=settings,omitzero"`
+	// Annotations is the annotations a launch of the agent may set (verse only), with the type of
+	// their value and the value used where a launch sets none.
+	Annotations map[string]Annotation `tony:"field=annotations,omitzero"`
+	// Systems is the agent's ceilings, by system (System).
 	Systems map[string]System `tony:"field=systems,omitzero"`
 }
 
-// System is one system's section under `systems:`: how the runner reaches it and how far a
-// task may go with it.
+// Script is the runner's scripts: their ceilings and their shell environment.
+type Script struct {
+	// ShellEnv is the variables of the runner's environment a script's shell is given, by name;
+	// absent is task.DefaultShellEnv. No agent sees them.
+	ShellEnv []string `tony:"field=shellEnv,omitzero"`
+	// Systems is the scripts' ceilings, by system (System).
+	Systems map[string]System `tony:"field=systems,omitzero"`
+}
+
+// Setting is the operator's say over one setting of an agent's.
+type Setting struct {
+	// Values are the values a launch may set, as patterns (`claude-sonnet-*`); absent, any of
+	// the setting's form.
+	Values []string `tony:"field=values,omitzero"`
+	// Default is the value the runner uses where a launch sets none; absent leaves it to the
+	// agent's own, where it has one.
+	Default string `tony:"field=default,omitzero"`
+}
+
+// Annotation is one annotation an agent takes.
+type Annotation struct {
+	// Type is its value's type: `string`.
+	Type string `tony:"field=type"`
+	// Default is the value the runner uses where a launch sets none.
+	Default string `tony:"field=default,omitzero"`
+}
+
+// System is one system's section under a doer's `systems:`: how far its tasks may go with it.
 type System struct {
-	// Credential is the NAME of the variable holding the credential the runner acts with: for
-	// `git`, its forge token (absent is GITHUB_TOKEN); for `linear-issue`, the Authorization header
-	// verbatim (a personal key bare, an OAuth token as `Bearer …`); for `slack`, the bot token
-	// (`xoxb-…`). For those two it is what makes the system offered at all. The runner reads it;
-	// a task never has it. The file carries no secret.
-	Credential string `tony:"field=credential,omitzero"`
-	// API is where the forge's API is, for `github` and `github-issue`: absent is github.com's,
-	// and a GitHub Enterprise Server's is `https://<host>/api/v3`.
-	API string `tony:"field=api,omitzero"`
 	// Ceiling is the operator's bound on the system (systems.Ceiling): blocks in the
 	// environment's form, attributes as patterns, closed, so absent is nothing of the system (the
 	// network apart, whose absent ceiling bounds nothing beyond what the sandbox builds). It is
-	// published with the runner's offers, holds a launch's environment at install and at launch
+	// published with the doer's offer, holds a launch's environment at install and at launch
 	// (every block within it), and is read again at each act.
 	Ceiling systems.Ceiling `tony:"field=ceiling,omitzero"`
 }
@@ -99,6 +133,68 @@ type Repos struct {
 	// Forge is where the host's `owner/name` is fetched from: absent is https://<host>, and a
 	// directory holding `owner/name` repositories serves a runner with no network.
 	Forge string `tony:"field=forge,omitzero"`
+	// API is where the forge's GitHub API is: absent is github.com's where the forge is
+	// github.com, and a GitHub Enterprise Server's is `https://<host>/api/v3`.
+	API string `tony:"field=api,omitzero"`
+}
+
+// agentOrder is the agents this runner runs, in the order it offers them: its default first.
+var agentOrder = []string{AgentName, codex.Agent, claude.Agent}
+
+// program is each agent's own keys under `agents.<name>`, beside the four every agent takes.
+var program = map[string][]string{
+	AgentName:    nil,
+	codex.Agent:  {"bin", "sandbox", "config"},
+	claude.Agent: {"bin"},
+}
+
+// agents is the agents the runner offers, in agentOrder.
+func (c Config) agents() []string {
+	var out []string
+	for _, name := range agentOrder {
+		if _, ok := c.Agents[name]; ok {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// doers is everything the runner offers: its agents, then scripts where it has them.
+func (c Config) doers() []string {
+	out := c.agents()
+	if c.Script != nil {
+		out = append(out, ScriptDoer)
+	}
+	return out
+}
+
+// systemsOf is a doer's ceilings, as its section writes them; nil for a doer not offered.
+func (c Config) systemsOf(doer string) map[string]System {
+	if doer == ScriptDoer {
+		if c.Script == nil {
+			return nil
+		}
+		return c.Script.Systems
+	}
+	return c.Agents[doer].Systems
+}
+
+// codexConfig is how this runner runs codex, nil where it runs none.
+func (c Config) codexConfig() *codex.Config {
+	a, ok := c.Agents[codex.Agent]
+	if !ok {
+		return nil
+	}
+	return &codex.Config{Bin: a.Bin, Sandbox: a.Sandbox, Config: a.Config}
+}
+
+// claudeConfig is how this runner runs claude, nil where it runs none.
+func (c Config) claudeConfig() *claude.Config {
+	a, ok := c.Agents[claude.Agent]
+	if !ok {
+		return nil
+	}
+	return &claude.Config{Bin: a.Bin}
 }
 
 // Tokens is what the runner holds that a task's process never has, read from its environment:
@@ -108,39 +204,92 @@ type Tokens struct {
 	Linear string
 	Slack  string
 	// LinearAPI, GitHubAPI and SlackAPI move the systems' APIs, for a test; empty is each one's
-	// own, or the one `systems.github.api` names.
+	// own, or the one `repos.api` names.
 	LinearAPI, GitHubAPI, SlackAPI string
 }
 
 // services is what the delivery channel performs the acts beyond git's with.
 func (c Config) services(t Tokens) delivery.Services {
-	api := cmp.Or(t.GitHubAPI, c.Systems["github"].API, c.Systems["github-issue"].API, delivery.GitHubAPI)
+	api := delivery.GitHubAPI
+	if c.Repos != nil {
+		api = cmp.Or(c.Repos.API, api)
+	}
+	api = cmp.Or(t.GitHubAPI, api)
 	return delivery.Services{LinearAuth: t.Linear, LinearAPI: t.LinearAPI, GitHubAPI: api, SlackToken: t.Slack, SlackAPI: t.SlackAPI}
 }
 
-// TokensFromEnv reads the runner's tokens from its environment, and names the variables that
-// aren't set.
-func TokensFromEnv(c Config) (Tokens, []string) {
+// TokensFromEnv reads the runner's tokens from its environment, each where the runner performs
+// what needs it.
+func TokensFromEnv(c Config) Tokens {
 	var t Tokens
-	var unset []string
-	if env := c.Systems["linear-issue"].Credential; env != "" {
-		if t.Linear = os.Getenv(env); t.Linear == "" {
-			unset = append(unset, env+" (linear-issue)")
+	performs := c.performs()
+	if slices.Contains(performs, "linear-issue") {
+		t.Linear = os.Getenv(EnvLinearAPIKey)
+	}
+	if slices.Contains(performs, "slack") {
+		t.Slack = os.Getenv(EnvSlackBotToken)
+	}
+	if c.Repos != nil {
+		t.Git = os.Getenv(EnvGitHubToken)
+	}
+	return t
+}
+
+// CheckStart refuses what the runner cannot start with, from the environment it starts in
+// (getenv) and the programs it finds (lookPath): a ceiling naming a system whose credential is
+// not set, the verse agent with no model key, an agent whose program is not there. It returns
+// what it lets start and is worth saying: a forge token missing, which a forge on this filesystem
+// does without and a fetch over the network finds, and an agent left to its own login.
+func (c Config) CheckStart(getenv func(string) string, lookPath func(string) (string, error)) (warnings []string, err error) {
+	performs := c.performs()
+	for _, s := range []struct{ system, env string }{{"linear-issue", EnvLinearAPIKey}, {"slack", EnvSlackBotToken}} {
+		if slices.Contains(performs, s.system) && getenv(s.env) == "" {
+			return nil, fmt.Errorf("%s: a ceiling names %s, and %s, which the runner acts at %s with, is not set",
+				strings.Join(c.naming(s.system), ", "), s.system, s.env, s.system)
 		}
 	}
-	if env := c.Systems["slack"].Credential; env != "" {
-		if t.Slack = os.Getenv(env); t.Slack == "" {
-			unset = append(unset, env+" (slack)")
+	if c.Repos != nil && getenv(EnvGitHubToken) == "" {
+		warnings = append(warnings, EnvGitHubToken+" is not set: a fetch or a push over the network is refused where it reaches for it")
+	}
+	if _, ok := c.Agents[AgentName]; ok && getenv(EnvPortkeyAPIKey) == "" {
+		return nil, fmt.Errorf("agents.%s: %s is not set, and the verse agent calls its model with it", AgentName, EnvPortkeyAPIKey)
+	}
+	if cc := c.codexConfig(); cc != nil {
+		if _, err := lookPath(cc.Program()); err != nil {
+			return nil, fmt.Errorf("agents.%s.bin: %s is not here: %w", codex.Agent, cc.Program(), err)
+		}
+		if why := codex.MissingKey(getenv); why != "" {
+			warnings = append(warnings, why+". Codex will have to be logged in under the HOME its environment passes through, or its turns will fail")
 		}
 	}
-	if c.Repos == nil {
-		return t, unset
+	if cc := c.claudeConfig(); cc != nil {
+		if _, err := lookPath(cc.Program()); err != nil {
+			return nil, fmt.Errorf("agents.%s.bin: %s is not here: %w", claude.Agent, cc.Program(), err)
+		}
+		if why := claude.MissingKey(getenv); why != "" {
+			warnings = append(warnings, why+". Claude will have to be logged in under the HOME its environment passes through, or its turns will fail")
+		}
 	}
-	env := cmp.Or(c.Systems["git"].Credential, EnvGitHubToken)
-	if t.Git = os.Getenv(env); t.Git == "" {
-		unset = append(unset, env+" (git)")
+	return warnings, nil
+}
+
+// naming is the sections whose ceilings name system, as a message says where.
+func (c Config) naming(system string) []string {
+	var out []string
+	for _, doer := range c.doers() {
+		if _, ok := c.systemsOf(doer)[system]; ok {
+			out = append(out, sectionOf(doer)+".systems."+system)
+		}
 	}
-	return t, unset
+	return out
+}
+
+// sectionOf is where a doer's section is in the file.
+func sectionOf(doer string) string {
+	if doer == ScriptDoer {
+		return "script"
+	}
+	return "agents." + doer
 }
 
 // forge is the forge the runner's repos are on, its host, and where it fetches them from (url).
@@ -151,21 +300,23 @@ func (r *Repos) forge() (host, url string) {
 }
 
 // atGitHub reports whether the runner's forge is a GitHub: github.com itself, or one whose API the
-// configuration names (`systems.github.api`). A directory standing in for a forge is neither:
-// it has no pull requests and no issues.
+// configuration names (`repos.api`). A directory standing in for a forge is neither: it has no
+// pull requests and no issues.
 func (c Config) atGitHub() bool {
 	if c.Repos == nil {
 		return false
 	}
-	if c.Systems["github"].API != "" {
+	if c.Repos.API != "" {
 		return true
 	}
 	host, url := c.Repos.forge()
 	return host == runner.DefaultHost && url == "https://"+runner.DefaultHost
 }
 
-// performs is the systems the runner performs for its tasks, from its configuration: the ones
-// its offers list, with their ceilings.
+// performs is the systems the runner performs for its tasks: `git` and `git-issue` where it
+// checks out repos, `github` and `github-issue` where its forge is a GitHub, and `linear-issue`
+// and `slack` where a doer's ceiling names them (their credential is then required at start,
+// CheckStart). Every doer's offer lists them, each under that doer's ceiling.
 func (c Config) performs() []string {
 	var out []string
 	if c.Repos != nil {
@@ -175,7 +326,7 @@ func (c Config) performs() []string {
 		}
 	}
 	for _, name := range []string{"linear-issue", "slack"} {
-		if c.Systems[name].Credential != "" {
+		if len(c.naming(name)) > 0 {
 			out = append(out, name)
 		}
 	}
@@ -190,50 +341,66 @@ var inner = map[string][]string{
 	"files":    {AgentName, codex.Agent, claude.Agent},
 	"commands": {AgentName, codex.Agent, claude.Agent},
 	"agent":    {AgentName},
-	"question": {AgentName, codex.Agent, claude.Agent, "script"},
+	"question": {AgentName, codex.Agent, claude.Agent, ScriptDoer},
 }
 
-// OpenInside is the systems the runner stops inside a run (files, commands, agent, question),
-// each under an open ceiling (systems.Open): the configuration of a runner whose operator is the
-// author of its tasks, `verse up`'s, which says so rather than leaving them closed.
-func OpenInside() map[string]System {
+// OpenInside is the systems the runner stops inside a run for doer, each under an open ceiling
+// (systems.Open): the ceilings of a runner whose operator is the author of its tasks, `verse
+// up`'s, which says so rather than leaving them closed.
+func OpenInside(doer string) map[string]System {
 	out := map[string]System{}
-	for name := range inner {
-		out[name] = System{Ceiling: systems.Open()}
+	for name, doers := range inner {
+		if slices.Contains(doers, doer) {
+			out[name] = System{Ceiling: systems.Open()}
+		}
 	}
 	return out
 }
 
-// ceilings is each performed system's ceiling as the channel reads it at each act, as written:
-// a `git` ceiling keeps to the runner's forge (Check).
-func (c Config) ceilings() map[string]systems.Ceiling {
+// Open is the configuration of a runner whose operator is the author of its tasks: scripts, and
+// each agent named, each with what it is stopped on inside a run open (OpenInside).
+func Open(agents ...string) Config {
+	c := Config{Script: &Script{Systems: OpenInside(ScriptDoer)}}
+	for _, name := range agents {
+		if c.Agents == nil {
+			c.Agents = map[string]Agent{}
+		}
+		c.Agents[name] = Agent{Systems: OpenInside(name)}
+	}
+	return c
+}
+
+// ceilings is each performed system's ceiling for doer, as the channel reads it at each act, as
+// written: a `git` ceiling keeps to the runner's forge (Check). A performed system the doer's
+// section does not name is there, closed.
+func (c Config) ceilings(doer string) map[string]systems.Ceiling {
 	out := map[string]systems.Ceiling{}
 	for _, name := range c.performs() {
-		out[name] = c.Systems[name].Ceiling
+		out[name] = c.systemsOf(doer)[name].Ceiling
 	}
 	return out
 }
 
-// taskCeilings is every system's ceiling, inner and performed, for the supervisor inside a
-// run: a step beyond one is refused there, before anyone is asked about it.
-func (c Config) taskCeilings() map[string]systems.Ceiling {
-	out := c.ceilings()
+// taskCeilings is every system's ceiling for doer, inner and performed, for the supervisor
+// inside a run: a step beyond one is refused there, before anyone is asked about it.
+func (c Config) taskCeilings(doer string) map[string]systems.Ceiling {
+	out := c.ceilings(doer)
 	for name := range inner {
-		out[name] = c.Systems[name].Ceiling
+		out[name] = c.systemsOf(doer)[name].Ceiling
 	}
 	return out
 }
 
 // intercepted is the systems an offer intercepts for a doer, as the offer publishes them: the
-// performed systems for every doer, and the inner systems the doer is stopped on.
+// performed systems, and the inner systems the doer is stopped on, each under the doer's ceiling.
 func (c Config) intercepted(doer string) map[string]runner.System {
 	out := map[string]runner.System{}
-	for name, ceiling := range c.ceilings() {
+	for name, ceiling := range c.ceilings(doer) {
 		out[name] = runner.System{Ceiling: ceiling}
 	}
 	for name, doers := range inner {
 		if slices.Contains(doers, doer) {
-			out[name] = runner.System{Ceiling: c.Systems[name].Ceiling}
+			out[name] = runner.System{Ceiling: c.systemsOf(doer)[name].Ceiling}
 		}
 	}
 	return out
@@ -250,30 +417,28 @@ func networks(sb runnerd.Sandbox) []string {
 	return out
 }
 
-// shellEnv is the variables a task's shell is given, and the proxy's: a task whose network
+// shellEnv is the variables a doer's task shell is given, and the proxy's: a task whose network
 // allows hosts reaches them through the proxy its process announces (runnerd.UseEgress).
-func (c Config) shellEnv() []string {
-	names := c.ShellEnv
+func (c Config) shellEnv(doer string) []string {
+	var names []string
+	if doer == ScriptDoer {
+		if c.Script != nil {
+			names = c.Script.ShellEnv
+		}
+	} else {
+		names = c.Agents[doer].ShellEnv
+	}
 	if len(names) == 0 {
 		names = task.DefaultShellEnv
 	}
 	return append(slices.Clone(names), runnerd.ProxyEnv...)
 }
 
-// Models is how the verse agent reaches its model.
-type Models struct {
-	Portkey Portkey `tony:"field=portkey,omitzero"`
-	// Model is the agent's model when a launch doesn't pick one.
-	Model string `tony:"field=model,omitzero"`
-}
+// envOf is the variables l's doer's shell is given (shellEnv): what its task's process holds of
+// the runner's environment, and what its `with.env` may not name.
+func (c Config) envOf(l *runner.Launch) []string { return c.shellEnv(c.doer(l)) }
 
-// Portkey is the Portkey route. Its account key is read from PORTKEY_API_KEY.
-type Portkey struct {
-	// VirtualKey is used when a launch doesn't pick one, ahead of PORTKEY_VIRTUAL_KEY.
-	VirtualKey string `tony:"field=virtualKey,omitzero"`
-}
-
-// Load reads the verse runner's configuration file, and its secrets from the environment.
+// Load reads the verse runner's configuration file.
 func Load(path string) (runnerd.Config, Config, error) {
 	var c Config
 	rc, err := runnerd.Load(path, &c)
@@ -288,8 +453,8 @@ func Load(path string) (runnerd.Config, Config, error) {
 
 // checkForge refuses a `git` ceiling block reaching past the runner's forge: it fetches from
 // nowhere else, so each block names its repositories, each within `<host>/**`.
-func (c *Config) checkForge() error {
-	ceiling := c.Systems["git"].Ceiling
+func (c *Config) checkForge(at string, sections map[string]System) error {
+	ceiling := sections["git"].Ceiling
 	if len(ceiling) == 0 || c.Repos == nil {
 		return nil
 	}
@@ -298,11 +463,11 @@ func (c *Config) checkForge() error {
 	for i, b := range ceiling {
 		repos := b.Attributes["repo"]
 		if len(repos) == 0 {
-			return fmt.Errorf("systems.git.ceiling[%d]: names no repo; a git ceiling names the repositories it is for, on the forge (%s)", i, forge)
+			return fmt.Errorf("%s.git.ceiling[%d]: names no repo; a git ceiling names the repositories it is for, on the forge (%s)", at, i, forge)
 		}
 		for _, p := range repos {
 			if p = systems.Canonical(systems.FormRepo, p); !systems.PatternContains(forge, p, false) {
-				return fmt.Errorf("systems.git.ceiling[%d].repo: %s is beyond the runner's forge (%s): it fetches from nowhere else", i, p, forge)
+				return fmt.Errorf("%s.git.ceiling[%d].repo: %s is beyond the runner's forge (%s): it fetches from nowhere else", at, i, p, forge)
 			}
 		}
 	}
@@ -312,11 +477,13 @@ func (c *Config) checkForge() error {
 // checkBuilds refuses a network ceiling naming a mode the sandbox can't build: the runner would
 // publish a ceiling no launch could meet, and every spawn would be refused for it. Said at start.
 func (c Config) checkBuilds(networks []string) error {
-	for i, b := range c.Systems["network"].Ceiling {
-		for _, mode := range b.Attributes["mode"] {
-			if !slices.ContainsFunc(networks, func(n string) bool { return systems.Match(mode, n, false) }) {
-				return fmt.Errorf("systems.network.ceiling[%d].mode: %s is no network this runner's sandbox builds (it builds: %s)",
-					i, mode, strings.Join(networks, ", "))
+	for _, doer := range c.doers() {
+		for i, b := range c.systemsOf(doer)["network"].Ceiling {
+			for _, mode := range b.Attributes["mode"] {
+				if !slices.ContainsFunc(networks, func(n string) bool { return systems.Match(mode, n, false) }) {
+					return fmt.Errorf("%s.systems.network.ceiling[%d].mode: %s is no network this runner's sandbox builds (it builds: %s)",
+						sectionOf(doer), i, mode, strings.Join(networks, ", "))
+				}
 			}
 		}
 	}
@@ -328,108 +495,141 @@ func (c *Config) Check() error {
 	if c.Repos != nil && c.Repos.Mirrors == "" {
 		return fmt.Errorf("repos: `mirrors` names the directory the runner keeps its mirrors in")
 	}
-	if err := c.checkForge(); err != nil {
-		return err
+	if len(c.Agents) == 0 && c.Script == nil {
+		return fmt.Errorf("the runner offers nothing: `agents:` names the agents it runs, `script:` says it runs scripts (`script: {}` for scripts with their questions and the network alone)")
 	}
-	performs := c.performs()
-	for _, name := range slices.Sorted(maps.Keys(c.Systems)) {
-		sys := c.Systems[name]
-		if _, ok := systems.Get(name); !ok {
-			return fmt.Errorf("systems.%s: no system is called that", name)
-		}
-		if _, isInner := inner[name]; isInner || name == "network" {
-			if sys.Credential != "" || sys.API != "" {
-				return fmt.Errorf("systems.%s: the runner stops %s inside a run with no credential; its section is a ceiling alone", name, name)
-			}
-		} else if !slices.Contains(performs, name) {
-			return fmt.Errorf("systems.%s: this runner does not perform %s (it performs: %s); %s", name, name,
-				cmp.Or(strings.Join(performs, ", "), "nothing"), needsFor(name))
-		}
-		// A section saying nothing is the system closed, as no section is; refused, so that
-		// `name: {}` is never read beside `name: {ceiling: {}}`, which opens it.
-		if sys.Credential == "" && sys.API == "" && len(sys.Ceiling) == 0 {
-			return fmt.Errorf("systems.%s: a section names a credential, an api or a ceiling; with none it closes "+
-				"%s, as leaving it out does (`ceiling: {}` opens it)", name, name)
-		}
-		if sys.API != "" && name != "github" && name != "github-issue" {
-			return fmt.Errorf("systems.%s: `api` is where a GitHub forge's API is, for github and github-issue", name)
-		}
-		if err := sys.Ceiling.Check(name); err != nil {
-			return fmt.Errorf("systems.%s.ceiling%w", name, err)
+	for _, name := range slices.Sorted(maps.Keys(c.Agents)) {
+		if err := c.checkAgent(name, c.Agents[name]); err != nil {
+			return err
 		}
 	}
-	for _, agent := range slices.Sorted(maps.Keys(c.Agents)) {
-		takes, ok := takes[agent]
+	if c.Script != nil {
+		if err := c.checkSystems(ScriptDoer, c.Script.Systems); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkAgent checks one agent's section.
+func (c *Config) checkAgent(name string, a Agent) error {
+	at := "agents." + name
+	takes, ok := takes[name]
+	if !ok {
+		return fmt.Errorf("%s: this runner runs no agent %q (it runs: %s)", at, name, strings.Join(agentOrder, ", "))
+	}
+	for key, set := range map[string]bool{"bin": a.Bin != "", "sandbox": a.Sandbox != "", "config": a.Config != nil} {
+		if set && !slices.Contains(program[name], key) {
+			own := cmp.Or(strings.Join(program[name], ", "), "none")
+			return fmt.Errorf("%s.%s: %s takes no %s (its program's keys: %s; every agent's: shellEnv, settings, annotations, systems)",
+				at, key, name, key, own)
+		}
+	}
+	if name == codex.Agent {
+		if err := c.codexConfig().Validate(); err != nil {
+			return fmt.Errorf("%s: %w", at, err)
+		}
+	}
+	for _, setting := range slices.Sorted(maps.Keys(a.Settings)) {
+		own, ok := takes[setting]
 		if !ok {
-			return fmt.Errorf("agents.%s: the verse runner runs no agent %q (it runs: %s, %s, %s)", agent, agent, AgentName, codex.Agent, claude.Agent)
+			return fmt.Errorf("%s.settings.%s: %s takes no setting %q (it takes: %s)", at, setting, name, setting,
+				strings.Join(slices.Sorted(maps.Keys(takes)), ", "))
 		}
-		for _, setting := range slices.Sorted(maps.Keys(c.Agents[agent])) {
-			own, ok := takes[setting]
-			if !ok {
-				return fmt.Errorf("agents.%s.%s: %s takes no setting %q (it takes: %s)", agent, setting, agent, setting,
-					strings.Join(slices.Sorted(maps.Keys(takes)), ", "))
+		s := a.Settings[setting]
+		if s.Values != nil && len(s.Values) == 0 {
+			return fmt.Errorf("%s.settings.%s.values: an empty list takes nothing; leave it out for any", at, setting)
+		}
+		// A narrowing narrows: where the agent lists the values it takes (Claude's efforts), the
+		// operator's are among them, or the offer would take a value the agent refuses when the
+		// task runs.
+		if len(own.Values) > 0 {
+			for _, v := range s.Values {
+				if err := own.Takes(v); err != nil {
+					return fmt.Errorf("%s.settings.%s.values: %s does not take it: %w", at, setting, name, err)
+				}
 			}
-			if len(c.Agents[agent][setting]) == 0 {
-				return fmt.Errorf("agents.%s.%s: an empty list takes nothing; leave the setting out for any", agent, setting)
-			}
-			// A narrowing narrows: where the agent lists the values it takes (Claude's efforts),
-			// the operator's are among them, or the offer would take a value the agent refuses
-			// when the task runs.
-			if len(own.Values) > 0 {
-				for _, v := range c.Agents[agent][setting] {
-					if err := own.Takes(v); err != nil {
-						return fmt.Errorf("agents.%s.%s: %s does not take it: %w", agent, setting, agent, err)
-					}
+		}
+		// A default is held to the operator's own narrowing, and to the agent's: the offer would
+		// refuse it named and run it unnamed.
+		if s.Default != "" {
+			for _, values := range [][]string{s.Values, own.Values} {
+				if err := (runner.Setting{Values: values}).Takes(s.Default); err != nil {
+					return fmt.Errorf("%s.settings.%s.default: outside the values taken: %w", at, setting, err)
 				}
 			}
 		}
 	}
-	// A default the operator configured is held to the operator's own narrowing: the offer
-	// would refuse it named and run it unnamed.
-	defaults := map[string]string{AgentName: c.Models.Model}
-	if c.Codex != nil {
-		defaults[codex.Agent] = c.Codex.Model
-	}
-	if c.Claude != nil {
-		defaults[claude.Agent] = c.Claude.Model
-	}
-	for _, agent := range slices.Sorted(maps.Keys(defaults)) {
-		model := defaults[agent]
-		if model == "" {
-			continue
+	for _, ann := range slices.Sorted(maps.Keys(a.Annotations)) {
+		want, ok := annotations[ann]
+		if name != AgentName || !ok {
+			return fmt.Errorf("%s.annotations.%s: %s takes no annotation %q (the verse agent takes: %s)", at, ann, name, ann,
+				strings.Join(slices.Sorted(maps.Keys(annotations)), ", "))
 		}
-		if err := (runner.Setting{Values: c.Agents[agent][runner.SettingModel]}).Takes(model); err != nil {
-			return fmt.Errorf("agents.%s.model: the configured default model is outside it: %w", agent, err)
+		if typ := a.Annotations[ann].Type; typ != want {
+			return fmt.Errorf("%s.annotations.%s.type: %s takes a %s, not %q", at, ann, ann, want, typ)
 		}
 	}
-	for name, typ := range c.Annotations {
-		want, ok := annotations[name]
-		if !ok {
-			return fmt.Errorf("annotations: the verse runner has no annotation %q (it has: %s)",
-				name, strings.Join(slices.Sorted(maps.Keys(annotations)), ", "))
-		}
-		if typ != want {
-			return fmt.Errorf("annotations: %s takes a %s, not a %s", name, want, typ)
-		}
+	if err := c.checkSystems(name, a.Systems); err != nil {
+		return err
 	}
-	if c.Codex != nil {
-		if err := c.Codex.Validate(); err != nil {
-			return err
-		}
-	}
-	// What an offered agent can't run without, the ceilings give: else no spawn of it could
+	// What an offered agent can't run without, its ceilings give: else no spawn of it could
 	// ever be written here, and each would be refused for its environment when the runner is
 	// at fault.
-	for _, agent := range c.agents(Secrets{}) {
-		for _, step := range requires[agent] {
-			system, verb, _ := systems.Split(step)
-			if !c.Systems[system].Ceiling.Gives(step) {
-				return fmt.Errorf("systems.%s.ceiling: %s can't run without %s, which the ceiling does not give: write `%s: {ceiling: {}}` or `%s: {ceiling: {%s: {}}}`",
-					system, agent, step, system, system, verb)
-			}
+	for _, step := range requires[name] {
+		system, verb, _ := systems.Split(step)
+		if !a.Systems[system].Ceiling.Gives(step) {
+			return fmt.Errorf("%s.systems.%s.ceiling: %s can't run without %s, which the ceiling does not give: write `%s: {ceiling: {}}` or `%s: {ceiling: {%s: {}}}`",
+				at, system, name, step, system, system, verb)
 		}
 	}
 	return nil
+}
+
+// checkSystems checks one doer's ceilings.
+func (c *Config) checkSystems(doer string, sections map[string]System) error {
+	at := sectionOf(doer) + ".systems"
+	if err := c.checkForge(at, sections); err != nil {
+		return err
+	}
+	performs := c.performs()
+	for _, name := range slices.Sorted(maps.Keys(sections)) {
+		sys := sections[name]
+		if _, ok := systems.Get(name); !ok {
+			return fmt.Errorf("%s.%s: no system is called that", at, name)
+		}
+		if doers, isInner := inner[name]; isInner {
+			if !slices.Contains(doers, doer) {
+				return fmt.Errorf("%s.%s: the runner does not stop %s on %s inside its run; of those, its section may name %s",
+					at, name, doer, name, strings.Join(innerFor(doer), ", "))
+			}
+		} else if name != "network" && !slices.Contains(performs, name) {
+			return fmt.Errorf("%s.%s: this runner does not perform %s (it performs: %s); %s", at, name, name,
+				cmp.Or(strings.Join(performs, ", "), "nothing"), needsFor(name))
+		}
+		// A section saying nothing is the system closed, as no section is; refused, so that
+		// `name: {}` is never read beside `name: {ceiling: {}}`, which opens it.
+		if len(sys.Ceiling) == 0 {
+			return fmt.Errorf("%s.%s: a section names a ceiling; with none it closes %s, as leaving it out does (`ceiling: {}` opens it)",
+				at, name, name)
+		}
+		if err := sys.Ceiling.Check(name); err != nil {
+			return fmt.Errorf("%s.%s.ceiling%w", at, name, err)
+		}
+	}
+	return nil
+}
+
+// innerFor is the inner systems doer is stopped on, by name.
+func innerFor(doer string) []string {
+	var out []string
+	for name, doers := range inner {
+		if slices.Contains(doers, doer) {
+			out = append(out, name)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // needsFor says what a system's section needs of the configuration to be performed.
@@ -438,11 +638,7 @@ func needsFor(system string) string {
 	case "git", "git-issue":
 		return "a `repos` section is what checks out repos"
 	case "github", "github-issue":
-		return "a `repos` section whose forge is github.com, or `api` naming the forge's GitHub API"
-	case "linear-issue":
-		return "`credential` names the variable the Linear credential is read from"
-	case "slack":
-		return "`credential` names the variable the Slack bot token is read from"
+		return "a `repos` section whose forge is github.com, or `repos.api` naming the forge's GitHub API"
 	}
 	return "the runner performs none of its verbs"
 }

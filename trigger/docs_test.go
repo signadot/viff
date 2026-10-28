@@ -145,7 +145,7 @@ func upOffers(name string, l runner.Launch) error {
 	if name != "" || (l.Who() != "" && l.Who() != verserunner.AgentName) {
 		return nil
 	}
-	desc := verserunner.Config{}.Describe(verserunner.Secrets{PortkeyAPIKey: "k"}, []string{runner.NetworkOpen})
+	desc := verserunner.Config{Agents: map[string]verserunner.Agent{verserunner.AgentName: {}}, Script: &verserunner.Script{}}.Describe([]string{runner.NetworkOpen})
 	return runnerd.CheckOfferAsWritten(&l, desc)
 }
 

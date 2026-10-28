@@ -45,8 +45,8 @@ type GitHubPR struct {
 
 // GitHubAPI is github.com's API, where a runner whose forge is github.com opens pull requests
 // and files issues. The API host is not the push host, which is why a network that allows hosts
-// has to name it separately. A GitHub Enterprise Server forge has its own (`systems.github.api`
-// in the runner's configuration).
+// has to name it separately. A GitHub Enterprise Server forge has its own (`repos.api` in the
+// runner's configuration).
 const GitHubAPI = "https://api.github.com"
 
 // RepoPath is the owner and name a repository url names at its forge: the two path segments a

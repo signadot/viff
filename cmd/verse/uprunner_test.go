@@ -14,14 +14,14 @@ import (
 // agent's `verse.portkey/virtual-key`, and `verse up`'s runner offers that annotation, so the
 // launch is run on the key and not refused at every firing.
 func TestTheEmbeddedRunnerTakesAVirtualKey(t *testing.T) {
-	cfg, secrets := embeddedRunner(config.LLMConfig{APIKey: "pk"}, nil)
+	cfg, _ := embeddedRunner(config.LLMConfig{APIKey: "pk"}, nil)
 	if err := cfg.Check(); err != nil {
 		t.Fatal(err)
 	}
 	l := runner.Launch{ID: "t1", Prompt: "hi", Agent: &runner.Agent{Name: verserunner.AgentName,
 		Annotations: map[string]string{verserunner.AnnotationVirtualKey: "vk-team"}},
 		Environment: systems.Environment{Systems: systems.Systems{"network": {{Attributes: map[string]string{"mode": runner.NetworkOpen}}}}}}
-	if err := runnerd.CheckOffer(&l, cfg.Describe(secrets, []string{runner.NetworkOpen})); err != nil {
+	if err := runnerd.CheckOffer(&l, cfg.Describe([]string{runner.NetworkOpen})); err != nil {
 		t.Errorf("a launch on a virtual key was refused: %v", err)
 	}
 }

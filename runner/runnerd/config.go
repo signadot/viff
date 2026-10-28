@@ -78,7 +78,8 @@ func Load(path string, own any) (Config, error) {
 }
 
 // checkFields refuses a key of node that none of the struct types has a field for, and
-// descends into the fields that are structs themselves. A map's keys are its own to name.
+// descends into the fields that are structs themselves, and into each value of a map of structs.
+// A map's keys are its own to name.
 func checkFields(node *ir.Node, at string, types ...reflect.Type) error {
 	node = ir.Uncomment(node)
 	if node == nil || node.Type != ir.ObjectType {
@@ -109,11 +110,29 @@ func checkFields(node *ir.Node, at string, types ...reflect.Type) error {
 			sort.Strings(want)
 			return fmt.Errorf("no setting %q (want any of %s)", at+name, strings.Join(want, ", "))
 		}
-		for ft.Kind() == reflect.Pointer {
-			ft = ft.Elem()
+		if err := checkValue(node.Values[i], at+name, ft); err != nil {
+			return err
 		}
-		if ft.Kind() == reflect.Struct {
-			if err := checkFields(node.Values[i], at+name+".", ft); err != nil {
+	}
+	return nil
+}
+
+// checkValue checks one value of type t at the key at: a struct's fields, and a map's values,
+// each at its own key.
+func checkValue(node *ir.Node, at string, t reflect.Type) error {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	switch t.Kind() {
+	case reflect.Struct:
+		return checkFields(node, at+".", t)
+	case reflect.Map:
+		node = ir.Uncomment(node)
+		if node == nil || node.Type != ir.ObjectType {
+			return nil
+		}
+		for i, field := range node.Fields {
+			if err := checkValue(node.Values[i], at+"."+field.String, t.Elem()); err != nil {
 				return err
 			}
 		}

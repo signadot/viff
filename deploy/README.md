@@ -252,7 +252,7 @@ should be passed the Service name directly rather than discovering it.
 | `systemCharter` | `""` | a charter under `deploy/`, mounted into versed and installed at start as the system (`VERSE_SYSTEM_CHARTER`); read at start, so a change takes a restart. Staging: `charters/verse/workspace/Signadot/gate-ask.tony` |
 | `authConfig` | `""` | verse's `auth` block, a file under `deploy/`, mounted into versed as its config (`VERSE_CONFIG`): who verifies people, which iods are trusted for whose accounts, how the iods prove themselves ([Who a request is from](#who-a-request-is-from-authconfig-iotokens)). Staging: `auth/staging.tony` |
 | `iodTokens` | `false` | give the slack, github and git iods a ServiceAccount each and a projected token, so each proves it is the iod (staging and minikube: on) |
-| `runnerTokens` | `false` | give each deployed runner a ServiceAccount and a projected token, and versed its signing key (the `verse-issuer` Secret), so a runner serves its verse alone and proves it is the one registered ([Who a request is from](#who-a-request-is-from-authconfig-iodtokens-runnertokens)). Staging and minikube: on |
+| `runnerTokens` | `true` | give each deployed runner a ServiceAccount and a projected token, and versed its signing key (the `verse-issuer` Secret, **required**: versed does not start without it), so a runner serves its verse alone and proves it is the one registered ([Who a request is from](#who-a-request-is-from-authconfig-iodtokens-runnertokens)). A deployed runner needs it: `runnerd` does not start without the verse it serves and its token |
 | `issuer` | `http://verse:9797` | the name versed's tokens are issued under, the auth file's `auth.issuer.url`: what each runner holds versed's tokens to (`VERSE_ISSUER`). The runners read the keys at versed's in-cluster url, so this is a name |
 | `issuerDiscoveryOpen` | `false` | let anyone reaching the API server read its OpenID discovery and keys, which versed needs where the cluster itself is the iods' issuer (minikube: on; EKS needs none) |
 | `runner` | `false` | deploy the verse runner (its own image; install it with `verse runner add`) |
@@ -550,10 +550,10 @@ are the names each consumer reads:
 
 | knob | Secret | keys the entry must have | read as |
 |---|---|---|---|
-| `llmSecretKey` | `verse-llm` | `PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY` (`PORTKEY_BASE_URL`, `OPENAI_MODEL` optional) | env, by versed **and** the verse runner |
+| `llmSecretKey` | `verse-llm` | `PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY` (`PORTKEY_BASE_URL`, `OPENAI_MODEL` optional) | env, by versed **and** the verse runner, which does not start without `PORTKEY_API_KEY` (its config offers the verse agent) |
 | `gitSecretKey` | `verse-git` | `credential` — the value being `username=x-access-token\npassword=<PAT>\n` | a **file** at `/git-credentials/credential` |
-| `slackSecretKey` | `verse-slack` | `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET` | env; **not** optional — no token, no start. `SLACK_BOT_TOKEN` also in the runners, `optional: true` — without it their tasks' `slack-*` calls are refused |
-| `linearSecretKey` | `verse-linear` | `LINEAR_API_KEY` (the `Authorization` header verbatim), `LINEAR_WEBHOOK_SECRET` | env; `LINEAR_API_KEY` also in the runners, `optional: true` — without it their tasks' `linear-issue-*` calls are refused |
+| `slackSecretKey` | `verse-slack` | `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET` | env; **not** optional — no token, no start. `SLACK_BOT_TOKEN` also in the runners, `optional: true` in the pod spec, but a runner whose config names a `slack` ceiling does not start without it |
+| `linearSecretKey` | `verse-linear` | `LINEAR_API_KEY` (the `Authorization` header verbatim), `LINEAR_WEBHOOK_SECRET` | env; `LINEAR_API_KEY` also in the runners, `optional: true` in the pod spec, but a runner whose config names a `linear-issue` ceiling does not start without it |
 | `githubSecretKey` | `verse-github` | `GITHUB_TOKEN`, or `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID` and `GITHUB_APP_PRIVATE_KEY` ([The GitHub App](#the-github-app-signadot-verse)); and `GITHUB_WEBHOOK_SECRET` | env; **not** optional — no Secret, no start |
 | `runnerSecretKey` | `verse-runner` | `gitToken` | env (`GITHUB_TOKEN`), in the runners and never in the sandbox |
 | `codexSecretKey` | `verse-codex` | `OPENAI_API_KEY` | env, in the codex runner, `optional: true` — a runner without it starts, and its first codex spawn fails; written as each task's Codex login |
@@ -766,9 +766,13 @@ choice is deployment config and belongs in the open, not smuggled into a store e
 ## The verse runner (`runner`, off by default)
 
 A place code work **runs** — its own `Deployment` + `Service` + `ConfigMap`, a workspace and a
-process per task, bubblewrap around the process. It is `runnerd verse`
+process per task, bubblewrap around the process. It is `runnerd`
 ([reference/runnerd.md](../docs/reference/runnerd.md)) with the configuration its ConfigMap
-holds; what a task works on is its spawn's. Not an iod and not the engine: verse reaches it by url, and deploying it does not
+holds, offering the verse agent and scripts, each under its own ceilings; what a task works on is
+its spawn's. It needs `runnerTokens`, on by default: a runner does not start without the verse it
+serves and its token to prove itself with. So the `verse-issuer` Secret is required
+(`issuerSecretKey`, or `kubectl -n verse create secret generic verse-issuer
+--from-file=issuer.pem=<(openssl genrsa 2048)`), and the auth file names `auth.issuer` with it. Not an iod and not the engine: verse reaches it by url, and deploying it does not
 install it.
 
 ```sh
@@ -795,11 +799,11 @@ credential you do not have to re-grant. It needs no `imagePullSecrets` of its ow
 it runs as the namespace's `default` ServiceAccount like everything else here.
 
 ⚠️ **One thing it shares with versed has to agree, and nothing checks that it does.** The
-`ConfigMap`'s `models.model` must be a model the `verse-llm` credential's provider serves — the
-same value as `llmModel`. It fails at the first spawn rather than at deploy.
+`ConfigMap`'s `agents.verse.settings.model.default` must be a model the `verse-llm` credential's
+provider serves — the same value as `llmModel`. It fails at the first spawn rather than at deploy.
 
 **The codex runner** (`codex-runner`) is the same runner in an image with Codex pinned in it
-(`deploy/codex-runner`), offering the codex agent. Its key is the `verse-codex` Secret, from
+(`deploy/codex-runner`), offering the codex agent and no scripts (its config has no `script:`). Its key is the `verse-codex` Secret, from
 the store entry `codexSecretKey` names ([Credentials](#credentials)), or made by hand where the
 knob is empty (`kubectl -n verse create secret generic verse-codex
 --from-literal=OPENAI_API_KEY=<key>`); it pushes with the same token. Install it as `verse runner add codex http://codex-runner:9802
@@ -807,7 +811,7 @@ knob is empty (`kubectl -n verse create secret generic verse-codex
 `runner: verse.runners.codex`.
 
 **The claude runner** (`claude-runner`) is the same runner in an image with Claude Code pinned
-in it (`deploy/claude-runner`), offering the claude agent. Its credential is the `verse-claude`
+in it (`deploy/claude-runner`), offering the claude agent and no scripts. Its credential is the `verse-claude`
 Secret, from the store entry `claudeSecretKey` names ([Credentials](#credentials)), or made by
 hand where the knob is empty (`kubectl -n verse create secret generic verse-claude
 --from-literal=ANTHROPIC_API_KEY=<key>`): an API key of the Console workspace the work is

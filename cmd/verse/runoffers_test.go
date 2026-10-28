@@ -20,9 +20,9 @@ import (
 // scripts, offers no agent, and says so, as up publishes it.
 func serveKeyless(t *testing.T) {
 	t.Helper()
-	cfg, secrets := verserunner.Config{}, verserunner.Secrets{}
+	cfg, secrets := verserunner.Config{Script: &verserunner.Script{}}, verserunner.Secrets{}
 	srv := versed.NewWithStore(verserunner.New(cfg, secrets, t.TempDir(), io.Discard).Build, entitytest.Store(t))
-	srv.Embedded.Describe(cfg.Describe(secrets, []string{runner.NetworkOpen}))
+	srv.Embedded.Describe(cfg.Describe([]string{runner.NetworkOpen}))
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	t.Cleanup(ts.CloseClientConnections)
@@ -84,10 +84,10 @@ const openNet = `environment: {systems: {network: {mode: open}}}`
 // AN ASK'S THEN RUNS ON `verse up`: what follows a yes is the asker's run, a spawn as `task run`
 // takes one, here on the host's network, which is the one the embedded runner builds.
 func TestAnAsksThenRunsOnTheEmbeddedRunner(t *testing.T) {
-	cfg, secrets := verserunner.Config{}, verserunner.Secrets{}
+	cfg, secrets := verserunner.Config{Script: &verserunner.Script{}}, verserunner.Secrets{}
 	store := entitytest.Store(t)
 	srv := versed.NewWithStore(verserunner.New(cfg, secrets, t.TempDir(), io.Discard).Build, store)
-	srv.Embedded.Describe(cfg.Describe(secrets, []string{runner.NetworkOpen}))
+	srv.Embedded.Describe(cfg.Describe([]string{runner.NetworkOpen}))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)

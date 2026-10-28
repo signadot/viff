@@ -123,8 +123,8 @@ func TestAnAgentIsWrittenFlat(t *testing.T) {
 	}
 }
 
-// A DESCRIPTION IS OF THIS VERSION, OFFERS SOMETHING, AND SAYS WHAT EACH OFFER BUILDS OF THE
-// NETWORK, or verse does not register the runner (or read one it kept).
+// A DESCRIPTION IS OF THIS VERSION, OFFERS SOMETHING, EACH DOER ONCE, AND SAYS WHAT EACH OFFER
+// BUILDS OF THE NETWORK, or verse does not register the runner (or read one it kept).
 func TestADescriptionIsChecked(t *testing.T) {
 	verse := func(settings map[string]Setting) Offer {
 		return Offer{Agent: &AgentOffer{Name: "verse", Settings: settings}, Systems: map[string]System{"network": builds(NetworkOpen)}}
@@ -146,6 +146,9 @@ func TestADescriptionIsChecked(t *testing.T) {
 		{"a setting called name", Description{Version: DescriptionVersion, Offers: []Offer{verse(map[string]Setting{"name": {}})}}, "may not be called name"},
 		{"a setting called annotations", Description{Version: DescriptionVersion, Offers: []Offer{verse(map[string]Setting{"annotations": {}})}}, "may not be called annotations"},
 		{"a form no setting has", Description{Version: DescriptionVersion, Offers: []Offer{verse(map[string]Setting{"x": {Form: "list"}})}}, "not string, number or bool"},
+		// A launch names its doer, so a doer offered twice could not be told apart.
+		{"an agent offered twice", Description{Version: DescriptionVersion, Offers: []Offer{verse(nil), verse(nil)}}, "it offers verse twice"},
+		{"scripts offered twice", Description{Version: DescriptionVersion, Offers: []Offer{script, verse(nil), script}}, "it offers script twice"},
 	} {
 		err := c.d.Check()
 		switch {

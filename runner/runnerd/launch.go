@@ -17,6 +17,18 @@ import (
 )
 
 // CheckLaunch is what a runner built on runnerd checks a launch against when it arrives: the
+// EnvOf is the variables of a runner's environment a launch's task shell is given, by name: its
+// doer's. nil, or a nil answer, is task.DefaultShellEnv.
+type EnvOf func(*runner.Launch) []string
+
+// of is the variables e gives l's shell.
+func (e EnvOf) of(l *runner.Launch) []string {
+	if e == nil {
+		return nil
+	}
+	return e(l)
+}
+
 // spec's shape (Launch.Check), then what no runnerd runner can honour yet, then what this
 // runner offers (desc). owned is the variables the runner gives a task's shell itself, which
 // the environment's vars may not name; nil is task.DefaultShellEnv. A handler with no offers — one a test or

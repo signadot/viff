@@ -44,7 +44,7 @@ type SubprocessHandler struct {
 	SubprocessConfig
 
 	describe runner.Description
-	owned    []string      // the variables a task's shell is given by the runner (CheckLaunch)
+	owned    EnvOf         // the variables a launch's task shell is given by the runner (CheckLaunch)
 	linger   time.Duration // lingerAfterEnd, as it was when the handler was made
 	seq      atomic.Uint64
 	mu       sync.Mutex
@@ -55,9 +55,10 @@ type SubprocessHandler struct {
 type SubprocessConfig struct {
 	// Command is the task process: a program, and its arguments, that calls ServeTask.
 	Command []string
-	// Env is the task process's whole environment, but HOME, which is the task's directory, and
-	// TMPDIR, which is /tmp (the sandbox's own).
-	Env []string
+	// Env is a launch's task process's whole environment, but HOME, which is the task's
+	// directory, and TMPDIR, which is /tmp (the sandbox's own): what its doer's shell is given,
+	// so a process holds no variable its doer's shell is not given. Nil is an empty one.
+	Env func(*runner.Launch) []string
 	// Config is written to the task process's stdin.
 	Config []byte
 	// Sandbox confines the task process.
@@ -115,9 +116,9 @@ func NewSubprocessHandler(c SubprocessConfig) *SubprocessHandler {
 // Describe sets what the runner offers. Set it before the runner is served.
 func (h *SubprocessHandler) Describe(desc runner.Description) { h.describe = desc }
 
-// OwnEnv names the variables the runner gives a task's shell itself, which a launch's `with.env`
-// may not name. Unset is task.DefaultShellEnv.
-func (h *SubprocessHandler) OwnEnv(names []string) { h.owned = names }
+// OwnEnv names the variables the runner gives a launch's task shell itself, which the launch's
+// `with.env` may not name: its doer's. Unset is task.DefaultShellEnv.
+func (h *SubprocessHandler) OwnEnv(of EnvOf) { h.owned = of }
 
 // HTTPHandler serves the task contract and GET /describe.
 func (h *SubprocessHandler) HTTPHandler() http.Handler {
@@ -312,7 +313,7 @@ func (h *SubprocessHandler) launch(w http.ResponseWriter, r *http.Request) {
 	// Checked here, before anything is started for it: a launch this runner refuses costs no
 	// sandbox. The task's process checks it again as it arrives.
 	body, ok := readLaunch(w, r, func(l *runner.Launch) error {
-		if err := CheckLaunch(l, h.describe, h.owned); err != nil {
+		if err := CheckLaunch(l, h.describe, h.owned.of(l)); err != nil {
 			return err
 		}
 		if len(l.Repos()) > 0 && h.Repos == nil {
@@ -460,7 +461,11 @@ func (h *SubprocessHandler) start(ctx context.Context, p *proc, l *runner.Launch
 
 	cmd := exec.Command(h.Command[0], h.Command[1:]...)
 	cmd.Stdin = bytes.NewReader(h.Config)
-	cmd.Env = append(append([]string{}, h.Env...), "HOME="+root, "TMPDIR=/tmp")
+	var env []string
+	if h.Env != nil {
+		env = h.Env(l)
+	}
+	cmd.Env = append(append([]string{}, env...), "HOME="+root, "TMPDIR=/tmp")
 	out := tagged(h.Log, p.id)
 	cmd.Stdout, cmd.Stderr = out, out
 	cmd.ExtraFiles = append([]*os.File{lf, lifeR}, extra...) // fd 3, fd 4, and fd 5

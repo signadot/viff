@@ -39,7 +39,7 @@ RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" \
  && ln -s /usr/local/go/bin/go /usr/local/bin/go \
  && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt
 
-# Under /usr/local/bin deliberately: each task runs THIS binary again, as `runnerd verse -task`,
+# Under /usr/local/bin deliberately: each task runs THIS binary again, as `runnerd -task`,
 # inside the sandbox — so the program has to exist there, and /usr is what the bwrap sandbox
 # binds read-only. A binary installed outside /usr would start fine and then fail to spawn
 # anything.
@@ -57,4 +57,4 @@ EXPOSE 9802
 # No default config: what the runner offers, where it keeps its mirrors and which forge they are
 # on are a deployment's to state and not an image's to guess. Mount one and point at it.
 ENTRYPOINT ["runnerd"]
-CMD ["verse", "-config", "/config/verse-runner.tony", "-sandbox", "bwrap"]
+CMD ["-config", "/config/verse-runner.tony", "-sandbox", "bwrap"]
