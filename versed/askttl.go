@@ -54,10 +54,34 @@ func askSettled(p entity.Payload) bool {
 // askExpiryField is the instant a settled ask is removed at, RFC 3339.
 const askExpiryField = "expires"
 
-// askExpiries is the timers standing for this process, by ask id.
-type askExpiries struct {
+// expiryTimers is the expiry timers standing for this process, by the id of what each removes:
+// a settled ask's, or a charter's (charterttl.go).
+type expiryTimers struct {
 	mu     sync.Mutex
 	timers map[string]Timer
+}
+
+// set stands t for id, stopping the one it replaces.
+func (e *expiryTimers) set(id string, t Timer) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.timers == nil {
+		e.timers = map[string]Timer{}
+	}
+	if old := e.timers[id]; old != nil {
+		old.Stop()
+	}
+	e.timers[id] = t
+}
+
+// drop stops id's timer, where one stands.
+func (e *expiryTimers) drop(id string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if t := e.timers[id]; t != nil {
+		t.Stop()
+		delete(e.timers, id)
+	}
 }
 
 // armAsks is the startup phase: follow every ask, the ones standing now included, and give each
@@ -133,26 +157,10 @@ func (s *Server) expireLater(ref entity.Ref, p entity.Payload) {
 		fmt.Fprintf(os.Stderr, "verse: ask %s: its expiry %q is not a date, so it stands\n", ref.Name(), at)
 		return
 	}
-	id := ref.Name()
-	s.expiries.mu.Lock()
-	defer s.expiries.mu.Unlock()
-	if s.expiries.timers == nil {
-		s.expiries.timers = map[string]Timer{}
-	}
-	if t := s.expiries.timers[id]; t != nil {
-		t.Stop()
-	}
-	s.expiries.timers[id] = s.at(when, func() { s.expireAsk(ref) })
+	s.expiries.set(ref.Name(), s.at(when, func() { s.expireAsk(ref) }))
 }
 
-func (s *Server) dropExpiry(id string) {
-	s.expiries.mu.Lock()
-	defer s.expiries.mu.Unlock()
-	if t := s.expiries.timers[id]; t != nil {
-		t.Stop()
-		delete(s.expiries.timers, id)
-	}
-}
+func (s *Server) dropExpiry(id string) { s.expiries.drop(id) }
 
 // expireAsk removes an ask whose expiry has come. It reads the ask again first, so a timer
 // outliving what armed it acts on the ask as it stands: one that is waiting again is not removed.

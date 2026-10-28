@@ -6675,6 +6675,11 @@ func (s *InstalledPackage) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["at"] = ir.FromString(string(s.At))
 	}
 
+	// Field: Expires
+	if s.Expires != "" {
+		irMap["expires"] = ir.FromString(string(s.Expires))
+	}
+
 	// Field: Held
 	if len(s.Held) > 0 {
 		slice := make([]*ir.Node, len(s.Held))
@@ -6752,6 +6757,12 @@ func (s *InstalledPackage) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) 
 				return fmt.Errorf("field %q: expected string, got %v", "at", fieldNodeUnwrapped.Type)
 			}
 			s.At = string(fieldNodeUnwrapped.String)
+		case "expires":
+			// Field: Expires
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "expires", fieldNodeUnwrapped.Type)
+			}
+			s.Expires = string(fieldNodeUnwrapped.String)
 		case "held":
 			// Field: Held
 			if fieldNodeUnwrapped.Type == ir.ArrayType {

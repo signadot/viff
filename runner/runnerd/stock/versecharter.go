@@ -46,12 +46,12 @@ func verseCharterTools(cl *delivery.Client) []verse.Tool {
 	}
 	check := map[string]any{
 		"at":       text("the address the charters would be installed at, as a kinded path, as an install with a prune would take it: what stands at and under it and the charters leave out would go"),
-		"charters": text("the charters, in tony, each a document saying its own at: (at or under the address) with reads, strata, schedules and rules as a charter file does; several are separated by lines of ---"),
+		"charters": text("the charters, in tony, each a document saying its own at: (at or under the address) with reads, ttl, strata, schedules and rules as a charter file does; several are separated by lines of ---"),
 	}
 	return []verse.Tool{{
 		Name: charterGetTool,
 		Description: "Read the charter at a path as the person this task runs for would, as `verse charter` " +
-			"and verse_charter do: an installed charter as its file (at, reads, strata, schedules, rules), a " +
+			"and verse_charter do: an installed charter as its file (at, reads, ttl, strata, schedules, rules), a " +
 			"rule or level of one as it stands, or with paths one line per rule and level. What the file " +
 			"cannot say follows it as notes: a rule held, suspended or in trouble, and the charters under " +
 			"the address.",

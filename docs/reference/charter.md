@@ -108,6 +108,29 @@ sends:
 The install refuses a `to` that no iod reads, a `from` sent twice, and `sends:` on a charter
 with no address. [The out half](io.md#the-out-half) says what an iod does with an outbox.
 
+**A charter can stand for a while.** `ttl:` says how long, as a duration:
+
+```tony
+at: repos.verse.watch
+ttl: 72h
+rules:
+- …
+```
+
+- The install says when the charter goes: its own time plus the ttl. At that time verse removes
+  the package as `verse charter -r` removes it: its rules, levels, schedules and declaration, and
+  nothing it wrote. A charter installed under its address is a package of its own, and stays.
+- Like `reads:` and `sends:`, the ttl is the package's declaration, and each install of the file
+  replaces it. Installing the file again starts the ttl over. Installing it without `ttl:` makes
+  it stand until it is removed. Rules installed at the address on their own leave the ttl as it
+  is.
+- `verse charter` writes the ttl in the file, which installs back as it was written. It says
+  when the charter goes in a note beside the file, as it says a rule is held.
+- Anyone who installs a charter may give it a ttl, and nobody has to.
+
+The install refuses a ttl that is not a duration, and `ttl:` on a charter with no address:
+baseline is not removed whole.
+
 **One file is one charter, and a directory holds several.** Each file says where its charter
 goes with its own `at:`, so the layout of the directory is free.
 

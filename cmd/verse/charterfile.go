@@ -197,7 +197,7 @@ func oneDocument(data []byte, format codec.Format, name string) (*ir.Node, error
 		return out[0], nil
 	}
 	return nil, fmt.Errorf("%s holds %d documents: a file is one charter — `at:`, `reads:`, "+
-		"`sends:`, `rules:`, `schedules:`, `strata:` — and a directory of them installs with -d", name, len(out))
+		"`sends:`, `ttl:`, `rules:`, `schedules:`, `strata:` — and a directory of them installs with -d", name, len(out))
 }
 
 // charterAddDir installs every charter file under dir, each at its own `at:`, in one request.

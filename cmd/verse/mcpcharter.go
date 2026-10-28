@@ -30,7 +30,7 @@ type charterIn struct {
 
 type charterCheckIn struct {
 	At       string `json:"at" jsonschema:"the address the charters would be installed at, as a kinded path, as an install with a prune would take it: what stands at and under it and the charters leave out would go"`
-	Charters string `json:"charters" jsonschema:"the charters, in tony, each a document saying its own at: (at or under the address) with reads, strata, schedules and rules as a charter file does; several are separated by lines of ---"`
+	Charters string `json:"charters" jsonschema:"the charters, in tony, each a document saying its own at: (at or under the address) with reads, ttl, strata, schedules and rules as a charter file does; several are separated by lines of ---"`
 }
 
 type statusIn struct {
@@ -43,7 +43,7 @@ var schemaName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 type charterInstallIn struct {
 	At       string `json:"at,omitempty" jsonschema:"where, as a kinded path: the address one charter, rule or level is installed at (empty is baseline); with prune, the address the charters stand for"`
-	Charters string `json:"charters" jsonschema:"what to install, in tony: one charter (at:, reads:, strata:, schedules:, rules:), or a rule, a level or a list of them; several charters are separated by lines of ---, each at its own at:"`
+	Charters string `json:"charters" jsonschema:"what to install, in tony: one charter (at:, reads:, ttl:, strata:, schedules:, rules:; ttl: how long it stands, as 72h), or a rule, a level or a list of them; several charters are separated by lines of ---, each at its own at:"`
 	Prune    bool   `json:"prune,omitempty" jsonschema:"make at and what is under it hold what the charters hold: a package or a rule they leave out goes, in the same step"`
 }
 
@@ -71,7 +71,7 @@ func (m *mcpServer) addCharterTools(s *mcp.Server) {
 	addTool(m, s, &mcp.Tool{
 		Name: "verse_charter",
 		Description: "Read the charter at a path, as `verse charter` does: an installed charter as its " +
-			"file (at, reads, strata, schedules, rules), a rule or level of one as it stands, or with " +
+			"file (at, reads, ttl, strata, schedules, rules), a rule or level of one as it stands, or with " +
 			"paths one line per rule and level. What the file cannot say follows it as notes: a rule " +
 			"held, suspended or in trouble, and the charters under the address.",
 		Annotations: readOnly(),

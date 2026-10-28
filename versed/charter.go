@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
@@ -109,8 +110,12 @@ func (s *Server) fillCharter(node *charterNode, at string, rows []api.ScheduleRo
 	if at != "" {
 		node.writes = at + ".*"
 		node.reads = trigger.StampReads(eng.Reads())
-		if sends, err := s.packageSends(at); err == nil && len(sends) > 0 {
-			node.sends = relativeSends(sends, at)
+		// The declaration once, for what it sends and when it goes.
+		if decl, had, err := s.packageDecl(at); err == nil && had {
+			if sends := trigger.SendsOf(decl); len(sends) > 0 {
+				node.sends = relativeSends(sends, at)
+			}
+			node.ttl, node.expires = entity.Str(decl, charterTTLField), entity.Str(decl, charterExpiresField)
 		}
 	}
 	// THE RULES THAT STAND, the held ones among them: a held rule is written down and occupies
@@ -164,15 +169,18 @@ func belowAddr(at string, want []string) ([]string, bool) {
 // charterNode is one place in the address tree: the charter installed there (or none, for a
 // segment that only leads somewhere) and whatever is installed below it.
 type charterNode struct {
-	here      bool // a charter is installed AT this address, rather than only under it
-	writes    string
-	reads     []string
-	sends     []trigger.Send // `from` relative to the package's address, as the charter wrote it
-	triggers  *ir.Node
-	strata    *ir.Node
-	schedules *ir.Node // the schedules declared here, as `verse schedule` lists them; nil for none
-	kids      map[string]*charterNode
-	kidOrder  []string
+	here   bool // a charter is installed AT this address, rather than only under it
+	writes string
+	reads  []string
+	sends  []trigger.Send // `from` relative to the package's address, as the charter wrote it
+	// ttl is how long the charter stands, as its file wrote it, and expires the instant it goes
+	// at; both empty for one with no ttl (charterttl.go).
+	ttl, expires string
+	triggers     *ir.Node
+	strata       *ir.Node
+	schedules    *ir.Node // the schedules declared here, as `verse schedule` lists them; nil for none
+	kids         map[string]*charterNode
+	kidOrder     []string
 }
 
 func (n *charterNode) child(seg string) *charterNode {
@@ -227,6 +235,10 @@ func (n *charterNode) node() *ir.Node {
 	}
 	if len(n.sends) > 0 {
 		add(trigger.SendsField, sendNodes(n.sends))
+	}
+	if n.ttl != "" {
+		add(charterTTLField, ir.FromString(n.ttl))
+		add(charterExpiresField, ir.FromString(n.expires))
 	}
 	add("rules", orEmptyList(n.triggers))
 	add("strata", orEmptyList(n.strata))
@@ -543,7 +555,8 @@ func (s *Server) installCharterAs(store entity.Store, scope, at string, docs []*
 func (tx *charterTx) install(groups []charterGroup) (int, error) {
 	s, store, scope := tx.s, tx.store, tx.scope
 	installer := entity.PrincipalOf(store)
-	for _, g := range groups {
+	for i := range groups {
+		g := &groups[i]
 		// THE ADDRESS IS THE INSTALLER'S TO TAKE, asked before anything is installed at it: a
 		// package writes beneath its address, and what it writes is owned through the address
 		// (takePackageAddresses), so installing at a place somebody else owns is refused here
@@ -564,6 +577,12 @@ func (tx *charterTx) install(groups []charterGroup) (int, error) {
 		tx.at, tx.eng = g.at, eng
 		for _, def := range g.reads {
 			if code, err := tx.imports(def); err != nil {
+				return tx.refuse(code, err)
+			}
+		}
+		// The ttl with the declaration it is part of, which only a fielded charter writes.
+		if len(g.reads) > 0 {
+			if code, err := tx.expiry(g); err != nil {
 				return tx.refuse(code, err)
 			}
 		}
@@ -641,7 +660,7 @@ func takePackageAddresses(store entity.Store, installer string, groups []charter
 func installedReport(groups []charterGroup) []api.InstalledPackage {
 	out := make([]api.InstalledPackage, 0, len(groups))
 	for _, g := range groups {
-		e := api.InstalledPackage{Strata: len(g.strata), At: g.at}
+		e := api.InstalledPackage{Strata: len(g.strata), At: g.at, Expires: g.expires}
 		for _, n := range g.said {
 			if n.Held != "" {
 				e.Held = append(e.Held, api.HeldRule{Rule: n.rule, Stratum: n.Held})
@@ -663,6 +682,10 @@ type charterGroup struct {
 	strata    []*ir.Node
 	schedules []*ir.Node
 	rules     []*ir.Node
+	// ttl is how long a fielded charter stands, as its file wrote it (ttlText), or zero for as
+	// long as it is not removed; expires is the instant its install gave it (charterttl.go).
+	ttl              time.Duration
+	ttlText, expires string
 	// said is what installing the rules had to say, filled once the file is in.
 	said []ruleNotes
 }
@@ -673,7 +696,7 @@ func (g charterGroup) empty() bool {
 
 // fileKeys are the keys of a fielded charter, and the only ones it may carry. The file is the
 // node `verse c` prints for one address, so what the install reads is what the listing wrote.
-var fileKeys = []string{"at", trigger.ReadsField, trigger.SendsField, "rules", "schedules", "strata"}
+var fileKeys = []string{"at", trigger.ReadsField, trigger.SendsField, charterTTLField, "rules", "schedules", "strata"}
 
 // charterFiles splits a request into the charters it installs, in request order.
 //
@@ -773,6 +796,7 @@ func fieldedCharter(doc *ir.Node, at string) (charterGroup, error) {
 	n := codec.Unwrap(doc)
 	lists := map[string][]*ir.Node{}
 	declared, hasReads, hasSends := "", false, false
+	var ttl *ir.Node
 	for i, key := range n.Fields {
 		if key == nil || key.Type != ir.StringType {
 			continue
@@ -788,6 +812,8 @@ func fieldedCharter(doc *ir.Node, at string) (charterGroup, error) {
 			hasReads = true
 		case trigger.SendsField:
 			hasSends = true
+		case charterTTLField:
+			ttl = v
 		case "rules", "schedules", "strata":
 			if v == nil || v.Type == ir.NullType {
 				continue
@@ -829,6 +855,13 @@ func fieldedCharter(doc *ir.Node, at string) (charterGroup, error) {
 				"send FROM — `sends:` belongs to a package: give it `at: <address>`, or install " +
 				"the file at a path (`verse c -a <address> -f …`)")
 		}
+		// Nor a ttl: baseline is not removed whole (removePackage), so there is nothing for
+		// one to end.
+		if ttl != nil {
+			return charterGroup{}, errors.New("ttl: a charter with no address is baseline's, " +
+				"which is not removed whole — `ttl:` belongs to a package: give it `at: <address>`, " +
+				"or install the file at a path (`verse c -a <address> -f …`)")
+		}
 	} else {
 		// THE DOCUMENT IS THE DECLARATION: trigger.ReadsFromNode reads its `reads:`, and one
 		// that has none declares a package that reads nothing outside itself.
@@ -842,6 +875,13 @@ func fieldedCharter(doc *ir.Node, at string) (charterGroup, error) {
 					kind, kindNoun(want), kindNoun(got))
 			}
 		}
+	}
+	if ttl != nil {
+		d, err := charterTTL(ttl)
+		if err != nil {
+			return charterGroup{}, err
+		}
+		g.ttl, g.ttlText = d, ttl.String
 	}
 	g.strata, g.schedules, g.rules = lists["strata"], lists["schedules"], lists["rules"]
 	return g, nil

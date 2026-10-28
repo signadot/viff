@@ -44,15 +44,17 @@ type Installed struct {
 // InstalledPackage is one package's worth of an install: where it went (At, absent for
 // baseline), the rules installed that can fire, and the strata. A rule written down and waiting
 // for a stratum is Held, not counted in Rules; Notes are advisories, each with its rule. Both are
-// the author's to read and nobody else's to act on.
+// the author's to read and nobody else's to act on. Expires is the instant a charter with a
+// `ttl:` is removed at, RFC 3339; installing it again renews it.
 //
 //tony:schemagen=verse-installed-package,notag
 type InstalledPackage struct {
-	Rules  int        `tony:"field=rules"`
-	Strata int        `tony:"field=strata"`
-	At     string     `tony:"field=at,omitzero"`
-	Held   []HeldRule `tony:"field=held,omitzero"`
-	Notes  []RuleNote `tony:"field=notes,omitzero"`
+	Rules   int        `tony:"field=rules"`
+	Strata  int        `tony:"field=strata"`
+	At      string     `tony:"field=at,omitzero"`
+	Expires string     `tony:"field=expires,omitzero"`
+	Held    []HeldRule `tony:"field=held,omitzero"`
+	Notes   []RuleNote `tony:"field=notes,omitzero"`
 }
 
 // HeldRule is a rule installed and waiting for a stratum the package does not declare.

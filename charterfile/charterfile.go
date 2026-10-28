@@ -5,12 +5,13 @@
 // owner would.
 //
 // WHAT `verse c` PRINTS IS WHAT `verse c -a` INSTALLS, one charter at a time. A FILE IS ONE
-// CHARTER: a fielded document whose keys are `at`, `reads`, `sends`, `rules`, `schedules` and
-// `strata` — the node the server's tree holds for one address, less what a file cannot install.
-// `writes:` is the address plus `.*`. `children:` is what a directory is for. The marks a listing
-// puts on a rule — held, suspended, in trouble — are state, and are said as notes beside the
-// file: as comments they would install as the rule's reason, and a round trip would bake "held"
-// into the author's text.
+// CHARTER: a fielded document whose keys are `at`, `reads`, `sends`, `ttl`, `rules`, `schedules`
+// and `strata` — the node the server's tree holds for one address, less what a file cannot
+// install. `writes:` is the address plus `.*`. `children:` is what a directory is for. The marks a
+// listing puts on a rule — held, suspended, in trouble — are state, and are said as notes beside
+// the file: as comments they would install as the rule's reason, and a round trip would bake
+// "held" into the author's text. So is when a charter with a `ttl:` expires: the ttl is the
+// author's and installs back as written, renewing it, and the instant is the install's.
 package charterfile
 
 import (
@@ -47,7 +48,7 @@ func IsDoc(n *ir.Node) bool {
 		switch key.String {
 		case "condition", "level", "every":
 			return false
-		case "at", "reads", "sends", "rules", "schedules", "strata":
+		case "at", "reads", "sends", "ttl", "rules", "schedules", "strata":
 			charter = true
 		}
 	}
@@ -86,8 +87,8 @@ func Only(docs []*ir.Node, names []string) error {
 	byAt := map[string]string{}
 	for i, doc := range docs {
 		if !IsDoc(doc) {
-			return fmt.Errorf("%s is no charter: a charter says `at:`, `reads:`, `sends:`, `rules:`, "+
-				"`schedules:` or `strata:`", names[i])
+			return fmt.Errorf("%s is no charter: a charter says `at:`, `reads:`, `sends:`, `ttl:`, "+
+				"`rules:`, `schedules:` or `strata:`", names[i])
 		}
 		addr := str(doc, "at")
 		if prev, ok := byAt[addr]; ok {
@@ -322,6 +323,13 @@ func File(node *ir.Node, at string, kpaths bool) (*ir.Node, []string) {
 		add("sends", sends)
 	}
 	var notes []string
+	if ttl := field(node, "ttl"); ttl != nil {
+		add("ttl", ttl)
+		if expires := str(node, "expires"); expires != "" {
+			notes = append(notes, fmt.Sprintf("note: %s: its ttl ends at %s, and it is removed then; "+
+				"installed again, it stands its ttl from then", Spelled(at, kpaths), expires))
+		}
+	}
 	if rules := codec.Unwrap(field(node, "rules")); rules != nil && rules.Type == ir.ArrayType && len(rules.Values) > 0 {
 		out := make([]*ir.Node, 0, len(rules.Values))
 		for _, r := range rules.Values {

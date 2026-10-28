@@ -29,6 +29,7 @@ const (
 	phaseDeadlines   = "armed deadlines"
 	phaseSchedules   = "armed schedules"
 	phaseAsks        = "armed ask expiries"
+	phaseCharters    = "armed charter expiries"
 	phaseAsksWait    = "waited on asks"
 	phaseSources     = "restored sources"
 	// A runner installed without its offers (--no-probe, or a pod that was not up) is asked

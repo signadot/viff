@@ -85,7 +85,10 @@ type Server struct {
 	// (askttl.go).
 	AskKeep time.Duration
 	// expiries is the settled asks' timers this process holds (askttl.go).
-	expiries askExpiries
+	expiries expiryTimers
+	// charterExpiries is the charters' ttl timers this process holds, by declaration id
+	// (charterttl.go).
+	charterExpiries expiryTimers
 	// asks is the person's asks this process waits on (asks.go).
 	asks asksWaiting
 	// users is every principal this process has recorded as `verse.principal.user.<principal>`; see noteUser.
@@ -1300,6 +1303,8 @@ func (s *Server) Start(ctx context.Context) {
 	phase(phaseSchedules, s.armSchedules)
 	// And the asks' expiries, for the same reason: the ask holds `expires`, this process the timer.
 	phase(phaseAsks, s.armAsks)
+	// And the charters', the same again: a package's declaration holds its `expires`.
+	phase(phaseCharters, s.armCharters)
 	// And a person's asks: each that waits is waited on again, since the wait was the last
 	// process's, and a yes whose `then` had not started starts.
 	phase(phaseAsksWait, s.resumeAsks)

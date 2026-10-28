@@ -605,6 +605,7 @@ context:
 - tony-format/context
 define:
   at: .[string]
+  expires: .[string]
   held: .[array(verse-held-rule)]
   notes: .[array(verse-rule-note)]
   rules: .[int]

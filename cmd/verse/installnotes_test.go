@@ -52,3 +52,39 @@ func TestCharterAddPrintsWhatTheInstallHasToSay(t *testing.T) {
 		t.Errorf("the file lists the held rule with its mark, or not at all:\n%s", out)
 	}
 }
+
+// A CHARTER WITH A TTL SAYS WHEN IT GOES: the install says the instant, and the listing writes
+// the ttl in the file, which installs back as written, and the instant on stderr, beside it.
+func TestACharterWithATTLSaysWhenItGoes(t *testing.T) {
+	serve(t)
+	f := filepath.Join(t.TempDir(), "charter.tony")
+	if err := os.WriteFile(f, []byte(`at: demo.watch
+ttl: 72h
+rules:
+- name: look
+  condition:
+    subject: {path: "demo.watch.pr.*", value: {stage: open}}
+  action:
+    patch: {stage: seen}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runCLI(t, "charter", "-a", "-f", f)
+	if err != nil || !strings.Contains(out, "ttl: it is removed at ") {
+		t.Fatalf("charter -a (%v) did not say when it goes:\n%s", err, out)
+	}
+	out, errOut, err := runCLIStreams(t, "charter", "demo", "watch")
+	if err != nil || !strings.Contains(out, "ttl: 72h") || strings.Contains(out, "expires") {
+		t.Fatalf("the file (%v) is not the ttl as written:\n%s", err, out)
+	}
+	if !strings.Contains(errOut, "note: demo watch: its ttl ends at ") {
+		t.Errorf("the listing does not say when it goes:\n%s", errOut)
+	}
+	back := filepath.Join(t.TempDir(), "back.tony")
+	if err := os.WriteFile(back, []byte(out), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if again, err := runCLI(t, "charter", "-a", "-f", back); err != nil || !strings.Contains(again, "ttl: it is removed at ") {
+		t.Errorf("the file read back did not install as it was (%v):\n%s", err, again)
+	}
+}

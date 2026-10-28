@@ -404,12 +404,17 @@ func installAnswer(w io.Writer, resp *http.Response, scope string, sp spelling) 
 	return nil
 }
 
-// reportNotes says what installing one package had to say: the rules held, and the advisories.
+// reportNotes says what installing one package had to say: when its ttl ends, the rules held,
+// and the advisories.
 //
 // UNDER THE LINE THAT SAYS WHAT WAS INSTALLED, because each changes what that line means: a
-// held rule is counted out of it, and an advisory is a rule that was counted and does something
-// other than it reads. Both are the author's to act on, and this is where the author is.
+// charter with a ttl is installed until then, a held rule is counted out of it, and an advisory
+// is a rule that was counted and does something other than it reads. All are the author's to act
+// on, and this is where the author is.
 func reportNotes(w io.Writer, e *ir.Node) {
+	if expires := nodeStr(e, "expires"); expires != "" {
+		fmt.Fprintf(w, "  ttl: it is removed at %s, as -r removes it; installing it again renews it.\n", expires)
+	}
 	if held := codec.Unwrap(nodeField(e, "held")); held != nil && held.Type == ir.ArrayType {
 		for _, h := range held.Values {
 			h = codec.Unwrap(h)
