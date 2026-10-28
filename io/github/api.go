@@ -422,12 +422,16 @@ func (a *api) dismissReview(ctx context.Context, repo string, number int, id int
 		strconv.FormatInt(id, 10)+"/dismissals", map[string]string{"message": message, "event": "DISMISS"}, nil)
 }
 
-// createReview posts a review on a pull request: APPROVE or REQUEST_CHANGES, with a body. A later
-// review by the same reviewer supersedes an earlier one, which is how a review is changed.
-func (a *api) createReview(ctx context.Context, repo string, number int, event, body string) (review, error) {
+// createReview posts a review on a pull request: APPROVE, REQUEST_CHANGES or COMMENT, with a body,
+// at the commit sha names, or at the pull request's head when it names none. A later review by the
+// same reviewer supersedes an earlier one, which is how a review is changed.
+func (a *api) createReview(ctx context.Context, repo string, number int, event, body, sha string) (review, error) {
+	in := map[string]string{"event": event, "body": body}
+	if sha != "" {
+		in["commit_id"] = sha
+	}
 	var r review
-	err := a.send(ctx, http.MethodPost, "/repos/"+repo+"/pulls/"+strconv.Itoa(number)+"/reviews",
-		map[string]string{"event": event, "body": body}, &r)
+	err := a.send(ctx, http.MethodPost, "/repos/"+repo+"/pulls/"+strconv.Itoa(number)+"/reviews", in, &r)
 	return r, err
 }
 

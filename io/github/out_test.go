@@ -343,14 +343,71 @@ func TestTheOutHalfReviewsAPullRequest(t *testing.T) {
 	n := status("self")["number"]
 	ask("own", entity.Obj{"to": fmt.Sprintf("pr.%v", n), "review": entity.Obj{"event": "approve"}})
 	ask("silent-objection", entity.Obj{"to": "pr.42", "review": entity.Obj{"event": "request-changes"}})
-	ask("bad-event", entity.Obj{"to": "pr.42", "review": entity.Obj{"event": "comment"}})
+	ask("bad-event", entity.Obj{"to": "pr.42", "review": entity.Obj{"event": "praise"}})
 	pass()
 	for name, says := range map[string]string{
-		"own": "Can not approve your own", "silent-objection": "carries a body", "bad-event": "approve, request-changes or dismiss",
+		"own": "Can not approve your own", "silent-objection": "carries a body", "bad-event": "approve, request-changes, comment or dismiss",
 	} {
 		if e, _ := status(name)["error"].(string); !strings.Contains(e, says) {
 			t.Errorf("%s: status %v, want an error saying %q", name, status(name), says)
 		}
+	}
+}
+
+// A VERDICT AT A HEAD: a review naming a sha is about that commit, so the same verdict at the next
+// head is a new review, and a comment after a request for changes dismisses it first, since a
+// comment would leave the merge held while the io's latest word says it should not be.
+func TestTheOutHalfReviewsAtAHeadAndACommentLiftsItsHold(t *testing.T) {
+	store := entitytest.Store(t)
+	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
+	t.Cleanup(ts.Close)
+	f := newFake()
+	f.repo("signadot/verse").pr(42, "a person's", "open", "2026-09-01T00:00:00Z", "aaa")
+	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
+	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
+	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
+	pass := func() {
+		t.Helper()
+		if err := out.Pass(context.Background()); err != nil {
+			t.Fatalf("pass: %v", err)
+		}
+	}
+	ask := func(review entity.Obj) {
+		t.Helper()
+		entitytest.Set(t, store, entity.RefAt("github", "signadot", "verse", "out", "verdict"),
+			entity.Obj{"to": "pr.42", "review": review}.Payload())
+	}
+	status := func() entity.Obj {
+		e, _, _ := store.Get(entity.RefAt("github", "signadot", "verse", "out", "verdict"+verseio.StatusSuffix))
+		return entity.ToObj(e.Payload)
+	}
+
+	ask(entity.Obj{"event": "request-changes", "body": "the doc comment still says it retries", "sha": "aaa"})
+	pass()
+	pass()
+	ask(entity.Obj{"event": "request-changes", "body": "the doc comment still says it retries", "sha": "bbb"})
+	pass()
+	if got, _ := f.reviewCommits(); len(got) != 2 || got[0] != "aaa" || got[1] != "bbb" {
+		t.Fatalf("reviews at %v, want one at aaa and one at bbb: the same verdict at a new head", got)
+	}
+	if st := status(); st["sha"] != "bbb" {
+		t.Fatalf("status %v, want the sha its review is about", st)
+	}
+
+	ask(entity.Obj{"event": "comment", "body": "a style note, not a blocker", "sha": "ccc"})
+	pass()
+	events := f.reviewEvents()
+	if _, dismissed := f.reviewCommits(); len(events) != 3 || events[2] != "COMMENT" || dismissed != 2 {
+		t.Fatalf("reviews %v and %d dismissed, want a COMMENT after both requests for changes were dismissed",
+			events, dismissed)
+	}
+
+	entitytest.Set(t, store, entity.RefAt("github", "signadot", "verse", "out", "silent"),
+		entity.Obj{"to": "pr.42", "review": entity.Obj{"event": "comment", "sha": "ddd"}}.Payload())
+	pass()
+	e, _, _ := store.Get(entity.RefAt("github", "signadot", "verse", "out", "silent"+verseio.StatusSuffix))
+	if st := entity.ToObj(e.Payload); !strings.Contains(fmt.Sprint(st["error"]), "comments carries a body") {
+		t.Errorf("status %v, want a comment without a body refused", st)
 	}
 }
 

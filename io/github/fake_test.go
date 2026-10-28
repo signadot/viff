@@ -41,6 +41,7 @@ type fakeGitHub struct {
 	merges       int      // pull requests the out half merged
 	closes       int      // issues and pull requests the out half closed
 	reviews      []string // the events of the reviews the out half posted, in order
+	reviewedAt   []string // the commit each of those named, "" for none
 	// app is an app's public key, set when the source authenticates as an app: the fake then
 	// mints installation tokens for a JWT that key verifies, and accepts those tokens too.
 	app    *rsa.PublicKey
@@ -718,6 +719,7 @@ func (f *fakeGitHub) write(w http.ResponseWriter, r *http.Request, repo *fakeRep
 		Base        string `json:"base"`
 		SHA         string `json:"sha"`
 		Event       string `json:"event"`
+		CommitID    string `json:"commit_id"`
 		State       string `json:"state"`
 		Context     string `json:"context"`
 		Description string `json:"description"`
@@ -764,7 +766,8 @@ func (f *fakeGitHub) write(w http.ResponseWriter, r *http.Request, repo *fakeRep
 		default:
 			f.nextComment++
 			f.reviews = append(f.reviews, body.Event)
-			state := map[string]string{"APPROVE": "APPROVED", "REQUEST_CHANGES": "CHANGES_REQUESTED"}[body.Event]
+			f.reviewedAt = append(f.reviewedAt, body.CommitID)
+			state := map[string]string{"APPROVE": "APPROVED", "REQUEST_CHANGES": "CHANGES_REQUESTED", "COMMENT": "COMMENTED"}[body.Event]
 			i.reviews = append(i.reviews, &fakeReview{id: 7000 + f.nextComment, state: state, login: fakeSelf})
 			writeJSON(w, map[string]any{"id": 7000 + f.nextComment, "state": body.Event,
 				"html_url": "https://github.com/r/" + strconv.FormatInt(7000+f.nextComment, 10)})
@@ -1019,4 +1022,12 @@ func (f *fakeGitHub) reviewEvents() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]string(nil), f.reviews...)
+}
+
+// reviewCommits is the commit each review the out half posted named, in order, and how many
+// reviews it dismissed.
+func (f *fakeGitHub) reviewCommits() ([]string, int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.reviewedAt...), f.dismissals
 }

@@ -1059,18 +1059,29 @@ which is how the state of an ask is shown in GitHub:
 
 ```tony
 to: pr.42
-review: {event: request-changes, body: "an objection stands: …"}   # or approve
+review: {event: request-changes, body: "an objection stands: …"}   # or approve, or comment
 ```
 
-Its status holds `review` (its id), `event`, `url` and `reviewedAt`.
+Its status holds `review` (its id), `event`, `url` and `reviewedAt`, and `sha` when the input
+names one.
 
 | The input | What the pass does |
 |---|---|
-| is new, or its event or body changed | It posts a review. A later review supersedes the iod's earlier one, since GitHub counts a reviewer's latest. |
+| is new, or its event, body or sha changed | It posts a review. A later review supersedes the iod's earlier one, since GitHub counts a reviewer's latest. |
 | says what the iod's latest review says | Nothing. |
 
 GitHub refuses a review from the pull request's own author, so the iod cannot review a pull
-request it opened. It also refuses `request-changes` without a body, which the iod refuses first.
+request it opened. It also refuses `request-changes` or `comment` without a body, which the iod
+refuses first.
+
+`comment` is findings that do not block. GitHub counts a reviewer's latest approval or request
+for changes, and a comment is neither, so the iod dismisses the requests for changes it left
+standing before it comments: what it said last is its verdict.
+
+`sha` pins the review to a commit, `review: {event: approve, body: "…", sha: <head>}`, so a
+verdict reached on one head is not read as one on a head pushed since. GitHub shows the review as
+on that commit, and refuses a sha that is not on the pull request. The same verdict at a new sha
+is a new review.
 
 `{event: dismiss, body}` dismisses every request for changes the iod left standing on the pull
 request, not only its latest, with `body` as the reason GitHub shows; the status says how many,
