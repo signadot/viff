@@ -2,6 +2,7 @@
 blocked_by: []
 blocks: []
 branches: []
+closed_by: 1359bee06023d24874bb8c7335d7f5d0b3a979f2
 commits: []
 created: "2026-10-27T22:59:17.87583+01:00"
 duplicates: []
@@ -10,5 +11,5 @@ labels:
 - agent
 - runner
 related_issues: []
-status: open
-updated: "2026-10-27T23:03:44.734189+01:00"
+status: closed
+updated: "2026-10-28T14:53:54.252523+01:00"
