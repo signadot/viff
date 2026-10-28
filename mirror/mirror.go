@@ -24,6 +24,7 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -191,6 +192,15 @@ type Meta struct {
 	// Arm starts the clock on a question a FRAME posed with a deadline, when set. The record
 	// is written here; the timer that settles it is the server's, so the server hands one in.
 	Arm func(questionID, within string)
+	// Environment is the launch's environment, what the task may do (its systems; never its vars),
+	// and VirtualKey the model credential it spends, as the ADDRESS its spawn named (never the
+	// key): the task's launch, on the record so a restart still knows what the task was given
+	// (EnvironmentOf), which is what a `then` it raises is held within. Environment nil writes
+	// none.
+	Environment *systems.Environment
+	VirtualKey  string
+	// Ended is called once the task has ended and its record says so, where set.
+	Ended func()
 	// Credential is the credential verse minted for the task, where it minted one: what it is
 	// good for and until when, and never the token. It is verse's own account that a token went
 	// out, beside the one the system it is shown to keeps.
@@ -232,10 +242,10 @@ func TriggerOf(chain string) string {
 var RecordFields = map[string]bool{
 	"actsFor": true, "answerers": true, "chain": true, "credential": true, "cursor": true, "data": true,
 	"agent": true, "ended": true, "err": true, "flow": true, "git": true, "hook": true,
-	"lastAction": true, "lastOutput": true, "observed": true, "occurrence": true,
+	"environment": true, "lastAction": true, "lastOutput": true, "observed": true, "occurrence": true,
 	"paused": true, "pending": true, "autonomy": true, "autonomyBy": true, "prompt": true, "refused": true, "result": true, "script": true,
 	"runner": true, "runnerName": true, "runnerSubject": true, "say": true, "started": true, "startedAt": true,
-	"status": true, "trigger": true,
+	"status": true, "trigger": true, "virtualKey": true,
 	HeldByField: true,
 }
 
@@ -305,6 +315,14 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	}
 	if len(m.Git) > 0 {
 		st["git"] = gitOf(m.Git)
+	}
+	// The systems alone, which is what the launch is held to: `vars` are data the spawn hands its
+	// script, and the record is no place to keep them.
+	if m.Environment != nil {
+		st["environment"] = systems.Environment{Systems: m.Environment.Systems}
+	}
+	if m.VirtualKey != "" {
+		st["virtualKey"] = m.VirtualKey
 	}
 	// The task's autonomy, verse's part with it (what silence settles on, the labels): on the
 	// record so that a verse that restarts while the task runs elsewhere still poses its
@@ -429,6 +447,20 @@ func AutonomyOf(p entity.Payload) task.Autonomy {
 		return nil
 	}
 	return pol
+}
+
+// EnvironmentOf is the environment a task's record says its launch was given (Meta.Environment),
+// or nil where the record says none.
+func EnvironmentOf(p entity.Payload) *systems.Environment {
+	n := entity.Get(p, "environment")
+	if n == nil {
+		return nil
+	}
+	var env systems.Environment
+	if err := gomap.FromTonyIR(n, &env); err != nil {
+		return nil
+	}
+	return &env
 }
 
 // AgentRecord is an agent as a task's record writes it: flat, its name (absent for a default not
@@ -870,6 +902,9 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 						// nothing else would ever settle those questions and the docket
 						// would keep offering them for a run that is over.
 						OrphanQuestions(docket, id)
+						if m.Ended != nil {
+							m.Ended()
+						}
 						return true, heard // the TASK ended; the entity remains, terminal
 					}
 				}

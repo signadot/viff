@@ -636,6 +636,7 @@ func (s *Server) runThen(id string, ref entity.Ref, asker string, spec launch.Sp
 	if err != nil {
 		return err
 	}
+	named := spec.VirtualKey // the address the launch is held to, before it is resolved
 	if spec.VirtualKey, err = credentialAt(store, asker, spec.VirtualKey); err != nil {
 		return err
 	}
@@ -651,13 +652,14 @@ func (s *Server) runThen(id string, ref entity.Ref, asker string, spec launch.Sp
 	if actsFor != "" {
 		answerers = []string{task.PrincipalAnswerer}
 	}
-	s.host(id, hostedTask{subject: ref.String(), principal: asker, answerers: answerers, autonomy: l.Autonomy, launched: &launched{spec.Environment, placeName, spec.VirtualKey}})
+	serial := s.host(id, hostedTask{subject: ref.String(), principal: asker, answerers: answerers, autonomy: l.Autonomy, launched: &launched{spec.Environment, placeName, named}})
 	l.Provenance.Subject = ref.String()
 	h := place.Launch(l)
 	eng := s.engineOf("")
-	s.reflect(store, id, h, mirror.Meta{
+	s.reflect(store, id, serial, h, mirror.Meta{
 		Runner: place.Ref(), RunnerName: placeName, RunnerSubject: placeSubject, Subject: ref.String(), Prompt: l.Prompt,
 		Agent: recordAgent(l.Agent), Script: l.Script != "", Autonomy: l.Autonomy, ActsFor: actsFor, Answerers: answerers,
+		Environment: &spec.Environment, VirtualKey: named,
 		HeldBy: func() []string { return eng.HeldBy(id) },
 	})
 	eng.Adopt(ref.String(), id, h)

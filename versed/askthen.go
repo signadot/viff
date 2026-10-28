@@ -164,12 +164,9 @@ func (s *Server) checkThenSpawn(asker string, v any, within *taskBound) (int, er
 		return http.StatusBadRequest, fmt.Errorf("spawn.autonomy: %w", err)
 	}
 	store := entity.As(s.Store, asker)
-	if spec.VirtualKey, err = credentialAt(store, asker, spec.VirtualKey); err != nil {
-		return http.StatusBadRequest, fmt.Errorf("spawn.virtualKey: %w", err)
-	}
 	// WITHIN THE TASK THAT RAISED IT, where a task did: a task hands what follows its ask no more
 	// reach, no looser a dial, no other runtime and no other credential than it has itself
-	// (taskBound).
+	// (taskBound). Before the credential is resolved: the task's is held to by its address.
 	if within != nil {
 		_, runner, _, err := s.runnerFor(store, spec.Runner)
 		if err != nil {
@@ -178,6 +175,9 @@ func (s *Server) checkThenSpawn(asker string, v any, within *taskBound) (int, er
 		if err := within.holds(spec, runner); err != nil {
 			return http.StatusBadRequest, fmt.Errorf("spawn%w", err)
 		}
+	}
+	if spec.VirtualKey, err = credentialAt(store, asker, spec.VirtualKey); err != nil {
+		return http.StatusBadRequest, fmt.Errorf("spawn.virtualKey: %w", err)
 	}
 	l, err := launchOf("then", spec, asker)
 	if err == nil {

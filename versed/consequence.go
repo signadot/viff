@@ -137,8 +137,8 @@ func (s *Server) undelivered(store entity.Store, id string, err error) {
 
 // taskBound is what an ask a task raised may not exceed in what follows it: the task's own
 // launch, and the autonomy it runs under now. A task that follows a yes with a spawn hands it no
-// more than it has itself (holds). launched is nil for a task this verse launched before a
-// restart, which it no longer knows the launch of.
+// more than it has itself (holds). launched is read back off the task's record at a restart, and
+// is nil only where the record carries no `environment`.
 //
 // An edit of the ask is not held: a runner carries only the raise (relayedActs), so whoever edits
 // the ask is its owner, and what follows it is theirs to change.
@@ -157,11 +157,11 @@ func (s *Server) boundOf(id string) *taskBound {
 // holds is why a then's spawn would reach beyond the task that raised the ask, or nil: its
 // environment within the task's (systems.Environment.Within), its autonomy no looser
 // (task.Autonomy.Within), on the task's runner (runner, resolved as runnerFor names it), and
-// spending the task's credential (spec.VirtualKey, resolved as credentialAt resolves it).
+// naming the task's credential (spec.VirtualKey, the address as the spawn named it).
 func (b *taskBound) holds(spec launch.Spec, runner string) error {
 	if b.launched == nil {
-		return errors.New(": the raising task's launch is not known to this verse, which launched it " +
-			"before a restart, so a then that spawns cannot be held within it, and is refused")
+		return errors.New(": the raising task's record says no launch, so a then that spawns cannot be " +
+			"held within it, and is refused")
 	}
 	if err := spec.Environment.Within(b.launched.environment); err != nil {
 		return fmt.Errorf(".environment.%w", err)
@@ -174,10 +174,10 @@ func (b *taskBound) holds(spec launch.Spec, runner string) error {
 			"task does (runner: %s)", cmp.Or(runner, "this verse's own runtime"),
 			cmp.Or(b.launched.runner, "this verse's own runtime"), cmp.Or(b.launched.runner, `""`))
 	}
-	// Compared as resolved, the key each spends, and never said: a refusal is no place for a key.
 	if spec.VirtualKey != b.launched.virtualKey {
-		return errors.New(".virtualKey: it spends another credential than the raising task does: a " +
-			"then's spawn spends the task's credential, named as the task's spawn named it")
+		return fmt.Errorf(".virtualKey: %s, and the raising task spends %s: a then's spawn spends the "+
+			"task's credential, named as the task's spawn named it", cmp.Or(spec.VirtualKey, "the runtime's default"),
+			cmp.Or(b.launched.virtualKey, "the runtime's default"))
 	}
 	return nil
 }

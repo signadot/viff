@@ -409,8 +409,9 @@ verse-call-tool question-raise -question "Land verse/ask?" -to user:dana@example
 
 It is the step `question.raise`. The runner carries the ask to verse for the task with its own
 token ([permissions](perms.md#runners-at-the-door)), so a task has it only
-on a runner that has one. A verse that launched the task before a restart no longer knows its
-environment, and refuses a `then` that spawns.
+on a runner that has one. The task's record carries its launch: `environment`, and `virtualKey`
+as the address its spawn named, never the key. So a restart that resumes the task holds a
+`then` within it as before.
 
 ### A conversation
 

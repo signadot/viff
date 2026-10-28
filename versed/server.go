@@ -115,6 +115,12 @@ type Server struct {
 	// scope its records live in, what it is about, whom it acts for, and whom its questions
 	// naming nobody go to. Keyed by task id; read when the embedded runner raises a question.
 	hosted sync.Map
+	// hostedMu orders the writes to hosted (host, repolicy, retire); reads take none.
+	hostedMu     sync.Mutex
+	hostedSerial atomic.Uint64
+	// HostedRetention is how long what verse hosted of a task stands after the task ends; zero is
+	// an hour (hostedRetentionDefault).
+	HostedRetention time.Duration
 
 	// Addr is this verse's OWN listen address, the operator API, published on /status so a
 	// client can discover where verse listens, as the docd address is published. Set by the
@@ -449,26 +455,67 @@ type hostedTask struct {
 	answerers                 []string
 	autonomy                  task.Autonomy // the launch's, for what the runner never reads of it
 	// launched is what the launch reached, for what an ask the task raises may spawn to be held
-	// within (taskBound); nil for a task hosted again after a restart, whose launch this verse no
-	// longer holds.
+	// within (taskBound): written at the launch, and read back off the task's record when a
+	// restart resumes it. nil where the record says no launch.
 	launched *launched
+	// serial tells this entry from a later run's under the same id (host), so retiring one never
+	// drops the other.
+	serial uint64
 }
 
 // launched is what a task's launch reached: its environment, the runner it went to and the
-// model credential it spends, as this verse resolved them.
+// model credential it spends. The task's record carries the same (mirror.Meta).
 type launched struct {
 	environment systems.Environment
 	runner      string // the registration's ref (runnerEntityRef), "" for this verse's own runtime
-	virtualKey  string
+	virtualKey  string // the credential's address as the spawn named it, never the key
+}
+
+// hostedRetentionDefault is how long verse keeps what it hosted of a task after the task ends
+// (retire), where the Server says nothing. Nothing reads the entry past the end but late settles
+// of what the task left; the task's record is what answers after that.
+const hostedRetentionDefault = time.Hour
+
+// hostedRetention is the Server's HostedRetention, or the default.
+func (s *Server) hostedRetention() time.Duration {
+	if s.HostedRetention > 0 {
+		return s.HostedRetention
+	}
+	return hostedRetentionDefault
 }
 
 // host records what verse keeps of a task it is about to launch, before the launch, so the
-// first question the task raises finds it.
-func (s *Server) host(id string, ht hostedTask) { s.hosted.Store(id, ht) }
+// first question the task raises finds it, and answers the run's serial, which its reflection
+// retires the entry by.
+func (s *Server) host(id string, ht hostedTask) uint64 {
+	s.hostedMu.Lock()
+	defer s.hostedMu.Unlock()
+	ht.serial = s.hostedSerial.Add(1)
+	s.hosted.Store(id, ht)
+	return ht.serial
+}
+
+// retire drops what verse hosted of a run of task id a retention after the run ended
+// (hostedRetention): the entry of that run, by its serial, and not a later run's under the same
+// id. Serial 0 is a run verse hosted nothing of, and retires nothing.
+func (s *Server) retire(id string, serial uint64) {
+	if serial == 0 {
+		return
+	}
+	s.clock.AfterFunc(s.hostedRetention(), func() {
+		s.hostedMu.Lock()
+		defer s.hostedMu.Unlock()
+		if v, ok := s.hosted.Load(id); ok && v.(hostedTask).serial == serial {
+			s.hosted.Delete(id)
+		}
+	})
+}
 
 // repolicy keeps a task's new autonomy where its questions are posed from (hostedTask), for a
 // task verse hosts: what a `task autonomy` slide set, verse's part with it.
 func (s *Server) repolicy(id string, p task.Autonomy) {
+	s.hostedMu.Lock()
+	defer s.hostedMu.Unlock()
 	if v, ok := s.hosted.Load(id); ok {
 		ht := v.(hostedTask)
 		ht.autonomy = p
@@ -609,7 +656,7 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 			// where it said does not run somewhere else instead.
 			meta := mirror.Meta{Subject: spec.Subject, Chain: spec.Chain, Prompt: spec.Prompt, Agent: recordAgent(spec.Agent), Script: spec.Script != ""}
 			h := task.FailedHandle(fmt.Sprintf("spawn %s: %v", id, err))
-			s.reflect(rec, id, h, meta)
+			s.reflect(rec, id, 0, h, meta)
 			return h
 		}
 		// The provenance every reflection of this spawn carries, envelope included: what the
@@ -619,15 +666,16 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 			Subject: spec.Subject, Runner: place.Ref(), RunnerName: placeName, RunnerSubject: placeSubject,
 			Chain: spec.Chain, Prompt: spec.Prompt, Agent: recordAgent(spec.Agent), Script: spec.Script != "", Occurrence: spec.Occurrence,
 			Git: (&runner.Launch{Environment: spec.Environment}).Repos(), ActsFor: spec.ActsFor,
-			Autonomy: spec.Autonomy,
-			HeldBy:   func() []string { return eng.HeldBy(id) },
+			Autonomy:    spec.Autonomy,
+			Environment: &spec.Environment, VirtualKey: spec.VirtualKey, // the address, before it is resolved below
+			HeldBy: func() []string { return eng.HeldBy(id) },
 		}
 		// WHICH CREDENTIAL, resolved as the rule that named it — before the launch, so a spawn
 		// that may not spend what it asked for never starts.
 		key, kerr := credentialAt(st, by, spec.VirtualKey)
 		if kerr != nil {
 			h := task.FailedHandle(fmt.Sprintf("spawn %s: %v", id, kerr))
-			s.reflect(rec, id, h, meta)
+			s.reflect(rec, id, 0, h, meta)
 			return h
 		}
 		spec.VirtualKey = key
@@ -644,7 +692,7 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 		}
 		if err != nil {
 			h := task.FailedHandle(fmt.Sprintf("spawn %s: %v", id, err))
-			s.reflect(rec, id, h, meta)
+			s.reflect(rec, id, 0, h, meta)
 			return h
 		}
 		l.Occurrence = spec.Occurrence // which run it is, so the process can say so too
@@ -655,7 +703,7 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 		actsFor := mirror.ActsFor(by)
 		if err := mirror.CheckPrincipal(spec.Autonomy, actsFor); err != nil {
 			h := task.FailedHandle(fmt.Sprintf("spawn %s: %v", id, err))
-			s.reflect(rec, id, h, meta)
+			s.reflect(rec, id, 0, h, meta)
 			return h
 		}
 		// AND THE GATE'S CREDENTIAL, where the spawn asks for one: minted now, for this task, from
@@ -665,20 +713,20 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 			token, minted, cerr := s.mintCredential(base, eng, id, spec, by)
 			if cerr != nil {
 				h := task.FailedHandle(fmt.Sprintf("spawn %s: %v", id, cerr))
-				s.reflect(rec, id, h, meta)
+				s.reflect(rec, id, 0, h, meta)
 				return h
 			}
 			// On the task's record from its first write: what it is good for and until when.
 			l.Credential, meta.Credential = token, minted
 		}
-		ht := hostedTask{scope: scope, subject: spec.Subject, principal: by, autonomy: spec.Autonomy, launched: &launched{spec.Environment, placeName, spec.VirtualKey}} // where this task's records live, so its questions land there too
+		ht := hostedTask{scope: scope, subject: spec.Subject, principal: by, autonomy: spec.Autonomy, launched: &launched{spec.Environment, placeName, meta.VirtualKey}} // where this task's records live, so its questions land there too
 		if actsFor != "" {
 			ht.answerers = []string{task.PrincipalAnswerer}
 			meta.Answerers = ht.answerers
 		}
-		s.host(id, ht)
+		serial := s.host(id, ht)
 		h := place.Launch(l)
-		s.reflect(rec, id, h, meta)
+		s.reflect(rec, id, serial, h, meta)
 		return h
 	}
 }
@@ -852,7 +900,18 @@ func (s *Server) reconcileTasks() error {
 			if h := attachOn(place, ent.Ref.Name()); h != nil {
 				// re-attach: observe
 				recAgent, recScript := mirror.AgentOf(ent.Payload)
-				s.reflect(s.Store, ent.Ref.Name(), h, mirror.Meta{
+				env := mirror.EnvironmentOf(ent.Payload)
+				// Hosted again, as at its launch, and before it is reflected, as every launch is:
+				// a slide of its autonomy is kept where its questions are posed from, whose it is
+				// reads the same as before the restart, and what it was launched with is read back
+				// off its record.
+				ht := hostedTask{subject: subject, principal: entity.Str(ent.Payload, "actsFor"),
+					answerers: entity.Strs(ent.Payload, "answerers"), autonomy: mirror.AutonomyOf(ent.Payload)}
+				if env != nil {
+					ht.launched = &launched{*env, entity.Str(ent.Payload, "runnerName"), entity.Str(ent.Payload, "virtualKey")}
+				}
+				serial := s.host(ent.Ref.Name(), ht)
+				s.reflect(s.Store, ent.Ref.Name(), serial, h, mirror.Meta{
 					Subject: subject, Runner: runnerRef, Chain: chain,
 					// Carried for the same reason chain is: Reflect REPLACES the payload, so
 					// provenance this does not hand back is provenance the resumed task
@@ -882,12 +941,10 @@ func (s *Server) reconcileTasks() error {
 					Git:        mirror.GitOf(ent.Payload),
 					Credential: mirror.CredentialOf(ent.Payload),
 					Occurrence: mirror.OccurrenceOf(ent.Payload),
-					HeldBy:     func() []string { return s.Eng.HeldBy(ent.Ref.Name()) },
+					// And its launch, which a `then` it raises is held within.
+					Environment: env, VirtualKey: entity.Str(ent.Payload, "virtualKey"),
+					HeldBy: func() []string { return s.Eng.HeldBy(ent.Ref.Name()) },
 				})
-				// Hosted again, as at its launch: a slide of its autonomy is kept where its
-				// questions are posed from, and whose it is reads the same as before the restart.
-				s.host(ent.Ref.Name(), hostedTask{subject: subject, principal: entity.Str(ent.Payload, "actsFor"),
-					answerers: entity.Strs(ent.Payload, "answerers"), autonomy: mirror.AutonomyOf(ent.Payload)})
 				// re-track: steerable, AND its hooks rehydrated from the chain, so the
 				// chain or sequence it belongs to carries on rather than ending silently.
 				// A task about no subject is the flow of its own id, as at spawn.
@@ -3533,8 +3590,11 @@ func (s *Server) settleOverdueIn(store entity.Store, pending []entity.Entity) bo
 
 // reflect mirrors a task, filling in the provenance every call site shares rather than
 // asking each to remember it.
-func (s *Server) reflect(store entity.Store, id string, h task.Handle, m mirror.Meta) {
+func (s *Server) reflect(store entity.Store, id string, serial uint64, h task.Handle, m mirror.Meta) {
 	m.Arm = func(id, within string) { s.armDeadline(store, id, within) }
+	// Its end retires what verse hosted of this run, by the serial host answered (0 for a spawn
+	// refused before it hosted anything, whose end must leave whatever stands under its id).
+	m.Ended = func() { s.retire(id, serial) }
 	// The autonomy as it stands, where verse hosts the task: a slide changes it while it runs.
 	m.AutonomyNow = func() task.Autonomy {
 		if v, ok := s.hosted.Load(id); ok {
@@ -4464,6 +4524,7 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	// The credential this run spends, read as WHOEVER ASKED — the same rule a charter's spawn
 	// gets, and the reason typing an address buys nothing a person could not already read. The
 	// refusal is a 400 rather than a task that fails, because somebody is standing here.
+	named := spec.VirtualKey // the address the launch is held to, before it is resolved
 	credential, err := credentialAt(store, body.Principal, spec.VirtualKey)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -4500,16 +4561,17 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	// The same scope the record above goes to, so this run's questions reach the docket of
 	// whoever asked for it rather than everybody's; and whom it acts for, which its rows naming
 	// nobody ask.
-	s.host(id, hostedTask{scope: scope, subject: spec.Subject, principal: body.Principal, autonomy: spec.Autonomy, launched: &launched{spec.Environment, placeName, spec.VirtualKey}})
+	serial := s.host(id, hostedTask{scope: scope, subject: spec.Subject, principal: body.Principal, autonomy: spec.Autonomy, launched: &launched{spec.Environment, placeName, named}})
 	h := place.Launch(l)
 	eng := s.engineOf(scope)
-	s.reflect(store, id, h, mirror.Meta{
+	s.reflect(store, id, serial, h, mirror.Meta{
 		Runner: place.Ref(), RunnerName: placeName, RunnerSubject: placeSubject,
 		// What it was asked and what ran it, on the record as a rule's spawn puts them: the
 		// two facts a reader of this task wants beside its status, and for a task on a named
 		// runner the record is the only place they can be read without that runner.
 		Prompt: spec.Prompt, Agent: recordAgent(spec.Agent), Script: spec.Script != "",
 		Subject: spec.Subject, Autonomy: spec.Autonomy, ActsFor: actsFor, Git: l.Repos(),
+		Environment: &spec.Environment, VirtualKey: named,
 		HeldBy: func() []string { return eng.HeldBy(id) },
 		// No Occurrence: nothing caused this one, so there is no commit to name and the
 		// mirror stamps the revision its own first write landed at instead. Reading
