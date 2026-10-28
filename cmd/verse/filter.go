@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"sort"
@@ -11,6 +12,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
+	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 )
@@ -102,46 +104,29 @@ func parseFilter(name, src string, in codec.Format) (*ir.Node, error) {
 
 func (f filters) none() bool { return f.keep == nil && f.project == nil }
 
-// item applies both halves to one item: whether it survives, and what of it is written.
+// item applies both halves to one item (api.Filter), saying a pattern that does not apply as
+// the flag it came from.
 func (f filters) item(n *ir.Node) (*ir.Node, bool, error) {
-	if f.keep != nil {
-		ok, err := tony.Match(n, f.keep)
-		if err != nil {
-			return nil, false, fmt.Errorf("%w: --if: %v", cli.ErrUsage, err)
-		}
-		if !ok {
-			return nil, false, nil
-		}
-	}
-	if f.project != nil {
-		return tony.Trim(f.project, n), true, nil
-	}
-	return n, true, nil
+	out, keep, err := f.shared().Item(n)
+	return out, keep, filterErr(err)
 }
 
 // apply filters a printed document: an array by its elements, anything else as one item.
 func (f filters) apply(node *ir.Node) (*ir.Node, error) {
-	if f.none() || node == nil {
-		return node, nil
+	out, err := f.shared().Apply(node)
+	return out, filterErr(err)
+}
+
+// shared is the pair as api applies it.
+func (f filters) shared() api.Filter { return api.Filter{Keep: f.keep, Trim: f.project} }
+
+// filterErr is a filter's error as the command line says it: a usage error naming the flag.
+func filterErr(err error) error {
+	var fe *api.FieldError
+	if errors.As(err, &fe) {
+		return fmt.Errorf("%w: --%s: %v", cli.ErrUsage, fe.Field, fe.Err)
 	}
-	if node.Type != ir.ArrayType {
-		out, keep, err := f.item(node)
-		if err != nil || !keep {
-			return ir.FromSlice(nil), err // an empty list: the question was asked and nothing kept
-		}
-		return out, nil
-	}
-	var kept []*ir.Node
-	for _, v := range node.Values {
-		out, keep, err := f.item(v)
-		if err != nil {
-			return nil, err
-		}
-		if keep {
-			kept = append(kept, out)
-		}
-	}
-	return ir.FromSlice(kept), nil
+	return err
 }
 
 // applyDoc filters `state`'s answer, whose items are the NODES THE PATH REACHED rather than

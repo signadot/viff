@@ -261,3 +261,84 @@ func TestTheDataToolsTakeWhatTheMCPToolsTake(t *testing.T) {
 		}
 	}
 }
+
+// A SCRIPT READS ITS OWNER'S CHARTERS AND CHECKS ITS OWN, and the runner carries each on its
+// route: a charter reads as its file with the notes the file cannot say, as verse_charter answers
+// it; a listing one kinded path per rule and level; a check carries the charters, one document
+// apiece, and answers verse's verdict.
+func TestAScriptReadsTheChartersTheRunnerCarries(t *testing.T) {
+	withCallTool(t)
+	var mu sync.Mutex
+	var saw []string
+	var checked string
+	carry := func(_ context.Context, taskID, method, path string, body []byte) (int, string, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		saw = append(saw, method+" "+path)
+		switch {
+		case method == http.MethodGet && strings.Contains(path, "depth=1"):
+			return 200, "{children: {hello: {writes: [repos.r.hello.*], rules: [{name: lift}], strata: [{name: low}]}}}", nil
+		case method == http.MethodGet:
+			return 200, "{writes: [repos.r.hello.*], rules: [{name: lift, held: high, condition: {subject: {path: repos.r.hello.low.*}}}]}", nil
+		case method == http.MethodPost && path == "/charter/check?at=repos.r":
+			checked = string(body)
+			return 200, "{verdict: installs}", nil
+		}
+		return 404, method + " " + path, nil
+	}
+	c := Config{Script: &Script{Systems: map[string]System{"verse": {Ceiling: systems.Open()}}}}
+	env := envOf(netOpen, nil, nil)
+	env.Systems["verse"] = []systems.Block{{}}
+	script := "#!/bin/sh\nset -e\n" +
+		"verse-call-tool verse-charter-get -path repos.r.hello\n" +
+		"echo ---\n" +
+		"verse-call-tool verse-charter-get -path repos.r -depth 1 -paths\n" +
+		"echo ---\n" +
+		"verse-call-tool verse-charter-check -at repos.r -charters 'at: repos.r.hello\n---\nat: repos.r.bye'\n" +
+		"echo ---\n" +
+		"verse-call-tool verse-charter-get -path repos.r.hello -trim '{at: null}'\n" +
+		"echo ---\n" +
+		"verse-call-tool verse-charter-get -path repos.r.hello -if '{at: !glob [1]}' || true\n"
+	allow := task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}
+
+	rt := serveRaising(t, c, Secrets{}, Tokens{}, carry)
+	rt.Launch(runner.Launch{ID: "c1", Script: script, Environment: env, Autonomy: allow})
+	snap := ended(t, rt, "c1")
+	if snap.Status != task.Done {
+		t.Fatalf("the script ended %s: %q", snap.Status, snap.Result)
+	}
+	parts := strings.Split(snap.Result, "---")
+	if len(parts) < 5 {
+		t.Fatalf("the script said %q", snap.Result)
+	}
+	file := parts[0]
+	if !strings.Contains(file, "at: repos.r.hello") || !strings.Contains(file, "name: lift") || strings.Contains(file, "held: high") ||
+		!strings.Contains(file, "note: repos.r.hello: rule lift is held: it waits for stratum high") {
+		t.Errorf("the charter read as %q, want its file and the note on the held rule", file)
+	}
+	if got := strings.TrimSpace(parts[1]); got != "repos.r.hello.rules.lift\nrepos.r.hello.strata.low" {
+		t.Errorf("the listing answered %q, want one kinded path per rule and level", got)
+	}
+	if !strings.Contains(parts[2], "verdict: installs") {
+		t.Errorf("the check answered %q, want verse's verdict", parts[2])
+	}
+	if trimmed := parts[3]; !strings.Contains(trimmed, "at: repos.r.hello") || strings.Contains(trimmed, "name: lift") {
+		t.Errorf("the trimmed charter read as %q, want its at: alone", trimmed)
+	}
+	// A pattern that does not apply is said, as `verse charter --if` says it, never an answer
+	// that kept nothing.
+	if got := strings.TrimSpace(parts[4]); !strings.HasPrefix(got, "not read: if: cannot glob") {
+		t.Errorf("the charter read with a pattern that does not apply answered %q", got)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	want := []string{"GET /charter?path=repos.r.hello", "GET /charter?depth=1&path=repos.r", "POST /charter/check?at=repos.r",
+		"GET /charter?path=repos.r.hello", "GET /charter?path=repos.r.hello"}
+	if strings.Join(saw, "|") != strings.Join(want, "|") {
+		t.Errorf("the runner carried %v, want %v", saw, want)
+	}
+	if !strings.Contains(checked, "at: repos.r.hello\n---\n") || !strings.Contains(checked, "at: repos.r.bye") {
+		t.Errorf("the check carried %q, want the charters one document apiece", checked)
+	}
+}

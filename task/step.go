@@ -71,6 +71,9 @@ var (
 	StepVerseDataGet = systems.Step("verse", "data-get")
 	StepVerseDataPut = systems.Step("verse", "data-put")
 	StepVerseDataRm  = systems.Step("verse", "data-rm")
+	// The charters, `verse charter`'s: read, or asked whether some would install.
+	StepVerseCharterGet   = systems.Step("verse", "charter-get")
+	StepVerseCharterCheck = systems.Step("verse", "charter-check")
 	// A connection a task opens through the runner's proxy, which only a network of allow has:
 	// the proxy decides it, by the host and the port it sees.
 	StepNetworkTCPClient = systems.Step("network", "tcp-client", "mode", "host", "port")

@@ -32,6 +32,11 @@ const (
 	OpVerseDataPut = "verse.data-put"
 	// OpVerseDataRm removes what stands at an address (DELETE /entity), as `verse data --rm` does.
 	OpVerseDataRm = "verse.data-rm"
+	// OpVerseCharterGet reads the charter at a path (GET /charter), as `verse charter` does.
+	OpVerseCharterGet = "verse.charter-get"
+	// OpVerseCharterCheck asks whether charters would install (POST /charter/check), as `verse
+	// charter --check` does.
+	OpVerseCharterCheck = "verse.charter-check"
 )
 
 // Verse is how the runner makes a request to its verse for a task it hosts: method on path, with
@@ -147,24 +152,27 @@ func tonyOut(doc entity.Payload) Reply {
 	return Reply{OK: true, Out: strings.TrimSpace(b.String())}
 }
 
-// verseData is a data verb's route: the method and the path an op carries to, and the step its
-// autonomy decides. The route is the op's; the task gives only the query and the document.
-var verseData = map[string]struct {
+// verseRoutes are the verbs carried on a route of their own, as they stand: the method and the
+// path an op carries to, and the step its autonomy decides. The route is the op's; the task gives
+// only the query and the document.
+var verseRoutes = map[string]struct {
 	method, path, step string
 }{
-	OpVerseDataGet: {http.MethodGet, "/state", task.StepVerseDataGet},
-	OpVerseDataPut: {http.MethodPost, "/entity", task.StepVerseDataPut},
-	OpVerseDataRm:  {http.MethodDelete, "/entity", task.StepVerseDataRm},
+	OpVerseDataGet:      {http.MethodGet, "/state", task.StepVerseDataGet},
+	OpVerseDataPut:      {http.MethodPost, "/entity", task.StepVerseDataPut},
+	OpVerseDataRm:       {http.MethodDelete, "/entity", task.StepVerseDataRm},
+	OpVerseCharterGet:   {http.MethodGet, "/charter", task.StepVerseCharterGet},
+	OpVerseCharterCheck: {http.MethodPost, "/charter/check", task.StepVerseCharterCheck},
 }
 
-// verseDataAct answers a `verse.data-*`: decided like any act, then carried to verse on its
-// route, with the query and the document the task's tool read as `verse data` reads them
-// (api.StateQuery, api.DataWrite, api.RemoveQuery). Out is what verse said, for the tool to show.
-func (s *Server) verseDataAct(ctx context.Context, tk Task, req Request) Reply {
+// verseRouted answers a verb of verseRoutes: decided like any act, then carried to verse on its
+// route, with the query and the document the task's tool read as the CLI reads them (api's data
+// grammar, charterfile). Out is what verse said, for the tool to show.
+func (s *Server) verseRouted(ctx context.Context, tk Task, req Request) Reply {
 	if s.Services.Verse == nil {
 		return Reply{Error: noVerse}
 	}
-	route := verseData[req.Op]
+	route := verseRoutes[req.Op]
 	q, err := url.ParseQuery(req.Query)
 	if err != nil {
 		return Reply{Refused: "the query does not read: " + err.Error()}
@@ -174,6 +182,8 @@ func (s *Server) verseDataAct(ctx context.Context, tk Task, req Request) Reply {
 		return Reply{Refused: "a write carries what it writes"}
 	case req.Op == OpVerseDataRm && q.Get("at") == "":
 		return Reply{Refused: "a removal names what it removes"}
+	case req.Op == OpVerseCharterCheck && (q.Get("at") == "" || strings.TrimSpace(req.Body) == ""):
+		return Reply{Refused: "a check names the address and carries the charters"}
 	}
 	if why := s.refused(tk, req.Decision, task.Step{Name: route.step, Fields: map[string]string{}}); why != "" {
 		return Reply{Refused: why}

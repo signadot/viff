@@ -38,6 +38,8 @@ spawn:
 | `verse-data-get` | `verse data`, `verse_data` | reads the verse at an address as the person: `at`, `if`, `if_at`, `trim`, and with `paths` the addresses beneath it, `depth` levels deep, one kinded path per line. | `verse.data-get` |
 | `verse-data-put` | `verse data <address> --put`, `verse_data_put` | writes a `value` at an address `at` as the person, merged into what stands there; with `create`, `update` or `expect` only on that condition, with `grants` for a node it creates. The result is what stands there after the write. | `verse.data-put` |
 | `verse-data-rm` | `verse data <address> --rm`, `verse_data_rm` | removes what stands at an address `at` as the person, an entity or one field of one. | `verse.data-rm` |
+| `verse-charter-get` | `verse charter`, `verse_charter` | reads the charter at a `path` as the person: an installed charter as its file, with what the file cannot say (a rule held, suspended or in trouble, the charters under the address) as notes after it; a rule or level of one as it stands; with `paths` one kinded path per rule and level, `depth` levels deep. `at`, `if` and `trim` as `verse charter` takes them. | `verse.charter-get` |
+| `verse-charter-check` | `verse charter --check`, `verse_charter_check` | asks whether `charters`, one tony document apiece, would install at the address `at`: each charter's verdict, and what the install would add, change and take away. Nothing is installed. | `verse.charter-check` |
 
 The ask is the person's, not the task's. Its `from` names them, with the task beside them, and
 nothing waits on it. Its `then` and `else` run as that person when it settles. A spawn in either
@@ -48,6 +50,9 @@ which says whether it was answered.
 
 A task reads and writes with the data tools as the person: what they cannot see, the task cannot
 either, and what they may not write is refused in verse's words.
+
+A task reads the charters with `verse-charter-get` and asks whether its own would install with
+`verse-charter-check`, both as the person. It installs nothing.
 
 ```sh
 verse-call-tool verse-ask-create -question "Land verse/ask?" -to user:dana@example.com -due 48h \

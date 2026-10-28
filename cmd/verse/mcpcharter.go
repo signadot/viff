@@ -10,9 +10,8 @@ import (
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/charterfile"
 	"github.com/signadot/verse/entity"
 )
 
@@ -147,7 +146,7 @@ func (m *mcpServer) charter(ctx context.Context, _ *mcp.CallToolRequest, in char
 	if err != nil {
 		return nil, nil, err
 	}
-	q, full := charterQuery(append(addr, reach...), split, depth)
+	q, full := charterfile.Query(append(addr, reach...), split, depth)
 	resp, err := m.c.With(ctx).Get("/charter", q)
 	if err != nil {
 		return nil, nil, fmt.Errorf("charter: %w", err)
@@ -163,7 +162,7 @@ func (m *mcpServer) charter(ctx context.Context, _ *mcp.CallToolRequest, in char
 	if err != nil {
 		return nil, nil, err
 	}
-	if !isCharterNode(node) {
+	if !charterfile.IsNode(node) {
 		if err := renderIR(&buf, node, f, m.out, false); err != nil {
 			return nil, nil, err
 		}
@@ -190,7 +189,7 @@ func (m *mcpServer) charterCheck(ctx context.Context, _ *mcp.CallToolRequest, in
 	if err != nil {
 		return nil, nil, fmt.Errorf("at: %w", err)
 	}
-	docs, err := charterDocs(in.Charters)
+	docs, err := charterfile.CheckDocs(in.Charters, mcpIn)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -205,39 +204,6 @@ func (m *mcpServer) charterCheck(ctx context.Context, _ *mcp.CallToolRequest, in
 	return answer(&buf)
 }
 
-// charterDocs is the charters a check is given as text, refused as a directory of them would be.
-func charterDocs(text string) ([]*ir.Node, error) {
-	docs, names, err := charterText(text)
-	if err != nil {
-		return nil, err
-	}
-	if len(docs) == 0 {
-		return nil, fmt.Errorf("charters: there is none to check")
-	}
-	if err := chartersOnly(docs, names); err != nil {
-		return nil, fmt.Errorf("charters: %w", err)
-	}
-	return docs, nil
-}
-
-// charterText is the documents of a tool's charters, and what to call each: its place in the
-// text, a null document counted.
-func charterText(text string) ([]*ir.Node, []string, error) {
-	parsed, err := codec.ParseNodes([]byte(text), mcpIn)
-	if err != nil {
-		return nil, nil, fmt.Errorf("charters: %w", err)
-	}
-	var docs []*ir.Node
-	var names []string
-	for i, d := range parsed {
-		if in := codec.Unwrap(d); in == nil || in.Type == ir.NullType {
-			continue
-		}
-		docs, names = append(docs, d), append(names, fmt.Sprintf("document %d", i+1))
-	}
-	return docs, names, nil
-}
-
 func (m *mcpServer) charterInstall(ctx context.Context, _ *mcp.CallToolRequest, in charterInstallIn) (*mcp.CallToolResult, any, error) {
 	if err := m.nobody(); err != nil {
 		return nil, nil, err
@@ -247,7 +213,7 @@ func (m *mcpServer) charterInstall(ctx context.Context, _ *mcp.CallToolRequest, 
 		return nil, nil, fmt.Errorf("at: %w", err)
 	}
 	at := entity.JoinSegs(segs)
-	docs, names, err := charterText(in.Charters)
+	docs, names, err := charterfile.Text(in.Charters, mcpIn)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -267,8 +233,8 @@ func (m *mcpServer) charterInstall(ctx context.Context, _ *mcp.CallToolRequest, 
 		if at != "" {
 			q.Set("at", at)
 		}
-		if !isCharterDoc(docs[0]) {
-			if defs = charterDefs(docs[0]); len(defs) == 0 {
+		if !charterfile.IsDoc(docs[0]) {
+			if defs = charterfile.Defs(docs[0]); len(defs) == 0 {
 				return nil, nil, fmt.Errorf("charters: no rule, level or charter in it")
 			}
 		}
@@ -277,7 +243,7 @@ func (m *mcpServer) charterInstall(ctx context.Context, _ *mcp.CallToolRequest, 
 			"with one, or with prune")
 	}
 	if len(docs) > 1 || in.Prune {
-		if err := chartersOnly(docs, names); err != nil {
+		if err := charterfile.Only(docs, names); err != nil {
 			return nil, nil, fmt.Errorf("charters: %w", err)
 		}
 	}

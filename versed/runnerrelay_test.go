@@ -376,3 +376,38 @@ func TestATaskReadsAndWritesTheVerseAsItsOwner(t *testing.T) {
 		t.Error("the note stands after the task removed it")
 	}
 }
+
+// A TASK READS ITS OWNER'S CHARTERS, AND ASKS WHETHER ITS OWN WOULD INSTALL, carried by its
+// runner (verse-charter-get, -check): the charter reads as the owner reads it, and the check says
+// what an install would do and installs nothing. An install is not carried.
+func TestATaskReadsTheChartersAndChecksItsOwn(t *testing.T) {
+	srv, ts, cluster := runnerServer(t)
+	token := cluster.Token(iodAudience, runnerSub, nil)
+	face := guardedFace(t, ts.URL, tokenFile(t, t.TempDir(), "gpu", token))
+	resp := postTony(t, ts.URL+"/runners", map[string]any{"name": "gpu", "url": face.URL, "subject": runnerSub})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("add = %s: %s", resp.Status, readBody(t, resp))
+	}
+	resp.Body.Close()
+	spawnOn(t, ts.URL, "reader", "verse.runners.gpu")
+	waitTaskStatus(t, srv, "reader", "running")
+	installCharter(t, ts, "", checkedPackage)
+
+	code, body := carryFor(t, http.MethodGet, ts.URL+"/charter?at=repos.r.hello&format=tony", token, "reader", "")
+	if code != http.StatusOK || !strings.Contains(body, "lift") {
+		t.Errorf("the task's read of the charter = %d %s, want its rule", code, body)
+	}
+
+	changed := strings.Replace(checkedPackage, "seen: true", "seen: again", 1)
+	code, body = carryFor(t, http.MethodPost, ts.URL+"/charter/check?at=repos.r&format=tony", token, "reader", changed)
+	if code != http.StatusOK || !strings.Contains(body, "installs") || !strings.Contains(body, "rules.lift") {
+		t.Errorf("the task's check = %d %s, want it to say the change", code, body)
+	}
+	if _, body := carryFor(t, http.MethodGet, ts.URL+"/charter?at=repos.r.hello&format=tony", token, "reader", ""); strings.Contains(body, "again") {
+		t.Errorf("the task's check installed what it checked: %s", body)
+	}
+
+	if code, body := carryFor(t, http.MethodPost, ts.URL+"/charter?format=tony", token, "reader", changed); code != http.StatusForbidden {
+		t.Errorf("the task's install = %d %s, want it refused at the door", code, body)
+	}
+}

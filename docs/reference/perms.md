@@ -421,7 +421,8 @@ the task, or the owner of the charter whose rule spawned it, or the person a rul
 carries what the [verse system](../systems/verse.md)'s tools do on verse, raising an ask
 (`POST /asks`, `verse-ask-create`), reading the owner's asks (`GET /asks`, `verse-ask-get` and `verse-ask-list`), reading,
 writing and removing the verse at an address (`GET /state`, `POST /entity`, `DELETE /entity`;
-`verse-data-get`, `-put`, `-rm`), and
+`verse-data-get`, `-put`, `-rm`), reading the charters and checking an install (`GET /charter`,
+`POST /charter/check`; `verse-charter-get`, `-check`), and
 `whoami`; any other route named with a task is refused, since what follows a task's ask is held within the task only
 where the ask is raised. A refusal at this door carries `WWW-Authenticate`, so a runner tells
 its own fault from a refusal of what it carried. The runner names

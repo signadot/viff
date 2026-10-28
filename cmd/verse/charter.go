@@ -12,6 +12,7 @@ import (
 	"github.com/scott-cotton/cli"
 	"github.com/signadot/tony-format/go-tony/ir"
 
+	"github.com/signadot/verse/charterfile"
 	"github.com/signadot/verse/client"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
@@ -194,7 +195,7 @@ func printCharter(cc *cli.Context, steps []string) error {
 	if err != nil {
 		return err
 	}
-	q, full := charterQuery(names, at, trig.Depth)
+	q, full := charterfile.Query(names, at, trig.Depth)
 	out, err := outFmt()
 	if err != nil {
 		return err
@@ -214,7 +215,7 @@ func printCharter(cc *cli.Context, steps []string) error {
 	// A NODE OF THE TREE prints as the charter file it is (charterfile.go); a reach into one —
 	// a rule, the list of them — prints as it stands, which is already what installs it.
 	switch {
-	case !isCharterNode(node):
+	case !charterfile.IsNode(node):
 		return printIR(cc, node)
 	case trig.Dir != "":
 		return writeCharterDir(cc, node, full, trig.Dir)
@@ -224,33 +225,6 @@ func printCharter(cc *cli.Context, steps []string) error {
 		return err
 	}
 	return renderCharterFile(cc.Out, cc.Err, node, full, f, out, colorize(cc.Out), asSteps)
-}
-
-// charterQuery is the read of the charter tree at a path of names, depth levels deep (-1 for
-// all), and the path whole, which a listing prefixes its lines with. at is how many of the names
-// are the address, or -1 to leave that split to the server.
-func charterQuery(names []string, at, depth int) (url.Values, string) {
-	q := url.Values{}
-	addr, reach := splitAt(names, at)
-	if at >= 0 {
-		q.Set("at", entity.JoinSegs(addr))
-	}
-	if len(reach) > 0 {
-		q.Set("path", entity.JoinSegs(reach))
-	}
-	if depth >= 0 {
-		q.Set("depth", fmt.Sprint(depth))
-	}
-	return q, entity.JoinSegs(names)
-}
-
-// splitAt is a path of names as the address and what reaches into it: the first at names, or with
-// at -1 none, the split being the server's.
-func splitAt(names []string, at int) (addr, reach []string) {
-	if at < 0 {
-		return nil, names
-	}
-	return names[:at], names[at:]
 }
 
 // charterNames is the steps typed as names, and how many of them are the address: those before a
@@ -328,13 +302,7 @@ func charterPath(steps []string) (string, error) {
 // packagesSeen reads all three kinds of record.
 // stepsOf renders a charter address as the steps a command line takes, or as it stands when it
 // is not a plain path.
-func stepsOf(at string) string {
-	segs, err := entity.PathSegs(at)
-	if err != nil || len(segs) == 0 {
-		return at
-	}
-	return entity.JoinSteps(segs)
-}
+func stepsOf(at string) string { return charterfile.Steps(at) }
 
 func renderCharterPaths(w io.Writer, resp *http.Response, at string, kpaths bool) error {
 	defer resp.Body.Close()
@@ -346,74 +314,14 @@ func renderCharterPaths(w io.Writer, resp *http.Response, at string, kpaths bool
 	if err != nil {
 		return fmt.Errorf("charter --paths: decoding the response: %w", err)
 	}
-	// The path asked at is the prefix of everything printed: the answer's keys are relative to
-	// the node it answered, and a path that does not say where it starts pipes back to the
-	// wrong charter (or to none).
-	var prefix []string
-	if at != "" {
-		var err error
-		if prefix, err = entity.PathSegs(at); err != nil {
-			return fmt.Errorf("charter --paths: %w", err)
-		}
+	paths, err := charterfile.Paths(node, at)
+	if err != nil {
+		return fmt.Errorf("charter --paths: %w", err)
 	}
-	// A LIST is what a path into `rules` or `strata` answers, and its elements are named rather
-	// than nested — so the prefix already says which kind they are, and each line is one name
-	// away from being the path that reaches it.
-	if n := codec.Unwrap(node); n != nil && n.Type == ir.ArrayType {
-		for _, el := range n.Values {
-			if name := nodeStr(el, "name"); name != "" {
-				fmt.Fprintln(w, renderAddr(entity.RefAt(append(append([]string{}, prefix...), name)...).At(), kpaths))
-			}
-		}
-		return nil
+	for _, p := range paths {
+		fmt.Fprintln(w, renderAddr(p, kpaths))
 	}
-	walkCharterPaths(w, node, prefix, kpaths)
 	return nil
-}
-
-// walkCharterPaths prints one line per rule and level under a node, and the node's own address
-// when it holds neither.
-func walkCharterPaths(w io.Writer, node *ir.Node, at []string, kpaths bool) {
-	n := codec.Unwrap(node)
-	if n == nil || n.Type != ir.ObjectType {
-		return
-	}
-	here, printed := false, false
-	var children *ir.Node
-	for i, key := range n.Fields {
-		if key == nil || key.Type != ir.StringType {
-			continue
-		}
-		v := codec.Unwrap(n.Values[i])
-		switch key.String {
-		case "writes":
-			here = true
-		case "rules", "strata":
-			if v == nil || v.Type != ir.ArrayType {
-				continue
-			}
-			for _, el := range v.Values {
-				if name := nodeStr(el, "name"); name != "" {
-					fmt.Fprintln(w, renderAddr(entity.RefAt(append(append([]string{}, at...), key.String, name)...).At(), kpaths))
-					printed = true
-				}
-			}
-		case "children":
-			children = v
-		}
-	}
-	if here && !printed && len(at) > 0 {
-		fmt.Fprintln(w, renderAddr(entity.RefAt(at...).At(), kpaths))
-	}
-	if children == nil || children.Type != ir.ObjectType {
-		return
-	}
-	for i, seg := range children.Fields {
-		if seg == nil || seg.Type != ir.StringType {
-			continue
-		}
-		walkCharterPaths(w, children.Values[i], append(append([]string{}, at...), seg.String), kpaths)
-	}
 }
 
 // cutAt splits a list of steps at the first sep, reporting whether there was one.
@@ -454,8 +362,8 @@ func charterAdd(cc *cli.Context, at, file string) error {
 		return fmt.Errorf("charter -a: %w", err)
 	}
 	defs := []*ir.Node{doc}
-	if !isCharterDoc(doc) {
-		defs = charterDefs(doc)
+	if !charterfile.IsDoc(doc) {
+		defs = charterfile.Defs(doc)
 	}
 	if len(defs) == 0 {
 		return fmt.Errorf("charter -a: no trigger found in the input")
@@ -632,32 +540,6 @@ func defKind(n *ir.Node) string {
 	return defUnknown
 }
 
-// charterDefs flattens the shorthand into its definitions: one definition, or a list of them.
-//
-// SENT ONE DOCUMENT APIECE rather than as the list: an element of a list is re-rendered one
-// indent in on the way out, and a comment beside a flow map is lost on the way back through the
-// parser. A definition sent as a document is what the file wrote.
-//
-// UNWRAPPED TO LOOK AT, KEPT AS IT WAS TO SEND: a comment wraps the value it precedes, and it is
-// the author's reason for the rule (trigger.Trigger's Doc field). A `!key(name)` tag on the list
-// is carried through and ignored — it is an array either way.
-func charterDefs(doc *ir.Node) []*ir.Node {
-	inner := codec.Unwrap(doc)
-	if inner == nil || inner.Type == ir.NullType {
-		return nil
-	}
-	if inner.Type != ir.ArrayType {
-		return []*ir.Node{doc}
-	}
-	var defs []*ir.Node
-	for _, elem := range inner.Values {
-		if in := codec.Unwrap(elem); in != nil && in.Type != ir.NullType {
-			defs = append(defs, elem)
-		}
-	}
-	return defs
-}
-
 // charterRm takes something out of the charter, and WHAT is said by the path rather than by a
 // verb.
 //
@@ -697,8 +579,8 @@ func charterRm(cc *cli.Context, steps []string, recurse bool) error {
 // are the address, or -1 to leave that to the server. It answers what went, naming the address
 // as sp spells it, or the refusal in the server's words.
 func charterRmVia(c *client.Client, names []string, at int, recurse bool, sp spelling) (string, error) {
-	q, _ := charterQuery(names, at, -1)
-	_, reach := splitAt(names, at)
+	q, _ := charterfile.Query(names, at, -1)
+	_, reach := charterfile.SplitAt(names, at)
 	if recurse {
 		q.Set("recurse", "true")
 	}
