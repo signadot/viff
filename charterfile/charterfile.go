@@ -8,9 +8,9 @@
 // CHARTER: a fielded document whose keys are `at`, `reads`, `sends`, `ttl`, `rules`, `schedules`
 // and `strata` — the node the server's tree holds for one address, less what a file cannot
 // install. `writes:` is the address plus `.*`. `children:` is what a directory is for. The marks a
-// listing puts on a rule — held, suspended, in trouble — are state, and are said as notes beside
-// the file: as comments they would install as the rule's reason, and a round trip would bake
-// "held" into the author's text. So is when a charter with a `ttl:` expires: the ttl is the
+// listing puts on a rule — held, suspended, in trouble, installed by a task — are state, and are
+// said as notes beside the file: as comments they would install as the rule's reason, and a round
+// trip would bake "held" into the author's text. So is when a charter with a `ttl:` expires: the ttl is the
 // author's and installs back as written, renewing it, and the instant is the install's.
 package charterfile
 
@@ -376,7 +376,7 @@ func Steps(at string) string {
 
 // markKeys are the fields a listing adds to a rule that are not the rule: what the engine knows
 // about it (versed/suspend.go).
-var markKeys = map[string]bool{"held": true, "suspended": true, "trouble": true}
+var markKeys = map[string]bool{"held": true, "suspended": true, "trouble": true, "task": true}
 
 // unmarked is a rule without the listing's marks, and the marks as notes naming the charter's
 // address as kpaths spells it.
@@ -404,6 +404,9 @@ func unmarked(rule *ir.Node, at string, kpaths bool) (*ir.Node, []string) {
 		case "suspended":
 			notes = append(notes, fmt.Sprintf("note: %s: rule %s is suspended by %s", where, name,
 				strings.Join(strValues(v), ", ")))
+		case "task":
+			notes = append(notes, fmt.Sprintf("note: %s: rule %s was installed by task %s: what it "+
+				"spawns stays within that task, less installing charters", where, name, v.String))
 		case "trouble":
 			if v == nil || v.Type != ir.ArrayType {
 				continue

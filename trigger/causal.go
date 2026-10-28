@@ -61,8 +61,7 @@ func (e *Engine) caused(chain string, parent int64) entity.Store {
 // A chain is the trigger name at its root, then the hooks beneath it (review.onDone), and a
 // name cannot carry a dot (validTriggerName), so the root is everything before the first one.
 func (e *Engine) Principal(chain string) string {
-	name, _, _ := strings.Cut(chain, ".")
-	return entity.Via(CharterRefAt(e.confine.stamp(), name))
+	return entity.Via(CharterRefAt(e.confine.stamp(), ChainRule(chain)))
 }
 
 // causal is the store a firing writes through. Everything but Write and Scope delegates to the

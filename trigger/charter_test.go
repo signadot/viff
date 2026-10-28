@@ -51,6 +51,34 @@ func TestCharterSurvivesARestart(t *testing.T) {
 	waitStage(t, store, ref, "reviewed")
 }
 
+// THE TASK THAT INSTALLED A RULE, and the scope it ran in, cross a restart with it, as its record
+// keeps them, and a rule installed again by no task names neither.
+func TestARulesTaskSurvivesARestart(t *testing.T) {
+	addr := entitytest.Addr(t)
+	eng := New(entitytest.StoreAt(t, addr), task.AutoResolver{})
+	rule := Trigger{
+		Name:      "review",
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
+		Action:    setStage("reviewed"),
+		Task:      "installer",
+		TaskScope: "dev",
+	}
+	if err := eng.AddTrigger(rule); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	back, _ := restart(t, addr)
+	if got, _ := back.Rule("review"); got.Task != "installer" || got.TaskScope != "dev" {
+		t.Fatalf("restored, the rule's task is %q in %q, want installer in dev", got.Task, got.TaskScope)
+	}
+	rule.Task, rule.TaskScope = "", ""
+	if err := back.InstallTriggerAs("", rule); err != nil {
+		t.Fatalf("installed again: %v", err)
+	}
+	if again, _ := restart(t, addr); func() string { got, _ := again.Rule("review"); return got.Task + got.TaskScope }() != "" {
+		t.Error("installed again by no task, the rule still names one after a restart")
+	}
+}
+
 // A restored trigger acts on the backlog standing in the verse — the same level-triggered
 // replay a fresh install has (docs/change-events.md). So a change that arrived while verse
 // was down is not lost: the rule that comes back finds it waiting.

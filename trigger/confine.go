@@ -2,7 +2,6 @@ package trigger
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
@@ -158,8 +157,7 @@ func (e *Engine) reservedWrite(chain string, ref entity.Ref) error {
 	if !ref.Reserved() || entity.PolicyOf(e.store) == nil {
 		return nil
 	}
-	name, _, _ := strings.Cut(chain, ".")
-	if entity.IsSystem(e.OwnerOf(name)) {
+	if entity.IsSystem(e.OwnerOf(ChainRule(chain))) {
 		return nil
 	}
 	return fmt.Errorf("%s: %w", ref, errReservedWrite)

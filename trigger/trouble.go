@@ -57,9 +57,11 @@ type Trouble struct {
 	Count int    `tony:"field=count"`
 }
 
-// chainRule is the rule a chain belongs to: the chain's first segment. A rule's name holds no
-// dot (validTriggerName), so the first one bounds it.
-func chainRule(chain string) string {
+// ChainRule is the rule a chain belongs to: the chain's first segment. A rule's name holds no
+// dot (validTriggerName), so the first one bounds it. One reading, for whoever asks which rule
+// a firing is of: who it acts as (Principal), what it may write (reservedWrite), its trouble, and
+// the daemon's hold on a task's rule.
+func ChainRule(chain string) string {
 	rule, _, _ := strings.Cut(chainID(chain), ".")
 	return rule
 }
@@ -69,7 +71,7 @@ func (e *Engine) failed(chain string, subj entity.Ref, err error) {
 	if err == nil {
 		return
 	}
-	t := Trouble{Rule: chainRule(chain), Kind: TroubleFailed, Chain: chainID(chain), Why: err.Error()}
+	t := Trouble{Rule: ChainRule(chain), Kind: TroubleFailed, Chain: chainID(chain), Why: err.Error()}
 	if len(subj.Segs()) > 0 {
 		t.Subject = subj.String()
 	}

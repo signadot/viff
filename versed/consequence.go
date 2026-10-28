@@ -155,16 +155,19 @@ func (s *Server) boundOf(id string) *taskBound {
 }
 
 // holds is why a then's spawn would reach beyond the task that raised the ask, or nil: its
-// environment within the task's (systems.Environment.Within), its autonomy no looser
+// environment within what the task hands on (systems.Environment.Within, launched.handsOn), so
+// what follows a task's ask installs no charter, as what a task's charter spawns does not
+// (chartertask.go); its autonomy no looser
 // (task.Autonomy.Within), on the task's runner (runner, resolved as runnerFor names it), and
-// naming the task's credential (spec.VirtualKey, the address as the spawn named it).
+// naming the task's credential where it spends one (spendsWithin).
 func (b *taskBound) holds(spec launch.Spec, runner string) error {
 	if b.launched == nil {
 		return errors.New(": the raising task's record says no launch, so a then that spawns cannot be " +
 			"held within it, and is refused")
 	}
-	if err := spec.Environment.Within(b.launched.environment); err != nil {
-		return fmt.Errorf(".environment.%w", err)
+	if err := spec.Environment.Within(b.launched.handsOn()); err != nil {
+		return fmt.Errorf(".environment.%w — what follows a task's ask reaches within the task, less %s",
+			err, task.StepVerseCharterInstall)
 	}
 	if err := spec.Autonomy.Within(b.autonomy, spec.Environment); err != nil {
 		return fmt.Errorf(".autonomy%w", err)
@@ -174,7 +177,7 @@ func (b *taskBound) holds(spec launch.Spec, runner string) error {
 			"task does (runner: %s)", cmp.Or(runner, "this verse's own runtime"),
 			cmp.Or(b.launched.runner, "this verse's own runtime"), cmp.Or(b.launched.runner, `""`))
 	}
-	if spec.VirtualKey != b.launched.virtualKey {
+	if !spendsWithin(spec, b.launched.virtualKey) {
 		return fmt.Errorf(".virtualKey: %s, and the raising task spends %s: a then's spawn spends the "+
 			"task's credential, named as the task's spawn named it", cmp.Or(spec.VirtualKey, "the runtime's default"),
 			cmp.Or(b.launched.virtualKey, "the runtime's default"))

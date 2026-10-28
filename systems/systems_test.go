@@ -19,29 +19,31 @@ func TestTheDocumentsDescribeTheSystems(t *testing.T) {
 		}
 	}
 	for step, want := range map[string]string{
-		"git.push":             "repo,from,ref,delete,force,exists,own",
-		"github.create-pr":     "repo,base,head,own",
-		"github.update-pr":     "repo,head,base,own",
-		"git-issue.push":       "repo",
-		"github-issue.comment": "repo,issue",
-		"linear-issue.create":  "team",
-		"files.write":          "path",
-		"commands.run":         "command",
-		"agent.call-sub-agent": "agent",
-		"question.ask":         "",
-		"verse.ask-create":     "",
-		"verse.ask-get":        "",
-		"verse.ask-list":       "",
-		"verse.data-get":       "",
-		"verse.data-put":       "",
-		"verse.data-rm":        "",
-		"verse.charter-get":    "",
-		"verse.charter-check":  "",
-		"slack.post":           "channel",
-		"slack.reply":          "channel,thread",
-		"slack.read":           "channel,thread",
-		"slack.react":          "channel,emoji",
-		"network.tcp-client":   "mode,host,port",
+		"git.push":              "repo,from,ref,delete,force,exists,own",
+		"github.create-pr":      "repo,base,head,own",
+		"github.update-pr":      "repo,head,base,own",
+		"git-issue.push":        "repo",
+		"github-issue.comment":  "repo,issue",
+		"linear-issue.create":   "team",
+		"files.write":           "path",
+		"commands.run":          "command",
+		"agent.call-sub-agent":  "agent",
+		"question.ask":          "",
+		"verse.ask-create":      "",
+		"verse.ask-get":         "",
+		"verse.ask-list":        "",
+		"verse.data-get":        "",
+		"verse.data-put":        "",
+		"verse.data-rm":         "",
+		"verse.charter-get":     "",
+		"verse.charter-check":   "",
+		"verse.charter-install": "",
+		"verse.charter-remove":  "",
+		"slack.post":            "channel",
+		"slack.reply":           "channel,thread",
+		"slack.read":            "channel,thread",
+		"slack.react":           "channel,emoji",
+		"network.tcp-client":    "mode,host,port",
 	} {
 		fields, ok := Fields(step)
 		if !ok || strings.Join(fields, ",") != want {
@@ -59,7 +61,7 @@ func TestTheDocumentsDescribeTheSystems(t *testing.T) {
 	if ToolName("git", "push") != "git-push" || StepName("git", "push") != "git.push" {
 		t.Error("the names")
 	}
-	if steps := Steps(); steps[0] != "agent.call-sub-agent" || len(steps) != 34 {
+	if steps := Steps(); steps[0] != "agent.call-sub-agent" || len(steps) != 36 {
 		t.Errorf("steps: %v", steps)
 	}
 }

@@ -673,6 +673,15 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 			Environment: &spec.Environment, VirtualKey: spec.VirtualKey, // the address, before it is resolved below
 			HeldBy: func() []string { return eng.HeldBy(id) },
 		}
+		// A RULE A TASK INSTALLED launches within the task, as its record says it was launched,
+		// bound as this firing bound it (chartertask.go).
+		if rule, ok := eng.Rule(trigger.ChainRule(spec.Chain)); ok {
+			if err := s.heldByItsTask(rule, spec); err != nil {
+				h := task.FailedHandle(fmt.Sprintf("spawn %s: %v", id, err))
+				s.reflect(rec, id, 0, h, meta)
+				return h
+			}
+		}
 		// WHICH CREDENTIAL, resolved as the rule that named it — before the launch, so a spawn
 		// that may not spend what it asked for never starts.
 		key, kerr := credentialAt(st, by, spec.VirtualKey)

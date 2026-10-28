@@ -123,10 +123,12 @@ func (s *Server) fillCharter(node *charterNode, at string, rows []api.ScheduleRo
 	// rule they are looking for is the one that is missing. Each is marked with the stratum it
 	// waits for.
 	held := eng.Held()
-	node.triggers, err = codec.ToNode(append(eng.Triggers(), held...))
+	listed := append(eng.Triggers(), held...)
+	node.triggers, err = codec.ToNode(listed)
 	if err != nil {
 		return fmt.Errorf("charter at %q: %w", at, err)
 	}
+	markTaskRules(listed, node.triggers)
 	markSuspendedRules(eng, node.triggers)
 	markHeldRules(held, node.triggers)
 	if err := markTroubledRules(eng, node.triggers); err != nil {
@@ -475,9 +477,14 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	hold, err := s.taskCharterOf(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
 	q := r.URL.Query()
 	groups, pruned, code, err := s.installCharterPruning(s.scopedStore(r), q.Get("scope"),
-		q.Get("at"), q.Get("prune"), docs)
+		q.Get("at"), q.Get("prune"), docs, hold)
 	if err != nil {
 		http.Error(w, err.Error(), code)
 		return
@@ -502,8 +509,9 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 // rather than refused, and a file whose author wrote both should not leave half its rules
 // dormant because of how it was laid out; then the rules.
 //
-// With a PRUNE ROOT it is also a removal: see charterprune.go.
-func (s *Server) installCharterPruning(store entity.Store, scope, at, prune string, docs []*ir.Node) ([]charterGroup, []api.Pruned, int, error) {
+// With a PRUNE ROOT it is also a removal: see charterprune.go. With a HOLD it is a task's,
+// and every rule's spawns are held within the task (chartertask.go).
+func (s *Server) installCharterPruning(store entity.Store, scope, at, prune string, docs []*ir.Node, hold *taskCharter) ([]charterGroup, []api.Pruned, int, error) {
 	groups, err := charterFilesPruning(docs, at, prune)
 	if err != nil {
 		return nil, nil, http.StatusBadRequest, err
@@ -523,7 +531,7 @@ func (s *Server) installCharterPruning(store entity.Store, scope, at, prune stri
 			return nil, nil, code, err
 		}
 	}
-	tx := &charterTx{s: s, store: store, scope: scope, dropped: map[string][]string{}}
+	tx := &charterTx{s: s, store: store, scope: scope, hold: hold, dropped: map[string][]string{}}
 	if code, err := tx.install(groups); err != nil {
 		return nil, nil, code, err
 	}
@@ -547,7 +555,7 @@ func (s *Server) installCharterPruning(store entity.Store, scope, at, prune stri
 // acts through, the scope and the address the file is being applied at. The system's own
 // charter comes through here from a file rather than a request (installSystemCharter).
 func (s *Server) installCharterAs(store entity.Store, scope, at string, docs []*ir.Node) ([]charterGroup, int, error) {
-	groups, _, code, err := s.installCharterPruning(store, scope, at, "", docs)
+	groups, _, code, err := s.installCharterPruning(store, scope, at, "", docs, nil)
 	return groups, code, err
 }
 
@@ -955,6 +963,9 @@ type charterTx struct {
 	scope string
 	at    string
 	eng   *trigger.Engine
+	// hold is the task installing, where a runner carries the request for one: what each
+	// rule's spawns are held within (chartertask.go). nil for a person's or the system's.
+	hold *taskCharter
 	// fresh is every address this REQUEST brought into being. A refusal drops each one's
 	// engine: an engine left running at an address with nothing installed observes on behalf
 	// of no charter, and a later install there would find it rather than make one.
@@ -1087,6 +1098,12 @@ func (tx *charterTx) rule(def *ir.Node) (int, error) {
 	}
 	if t.Name == "" {
 		return http.StatusBadRequest, errors.New("a rule needs a name")
+	}
+	if err := tx.hold.holds(t); err != nil {
+		return http.StatusForbidden, err
+	}
+	if tx.hold != nil {
+		t.Task, t.TaskScope = tx.hold.task, tx.hold.scope
 	}
 	// A TASK ACTING AS WHOEVER WROTE A RECORD selects only in its installer's place. It runs on
 	// the record owner's authority (entity.Pair), which is safe where writing the record is

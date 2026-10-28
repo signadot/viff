@@ -591,12 +591,13 @@ func (s *Server) asRunner(e api.Runner, presented, account, task string, a act) 
 // relayedActs are the routes a runner carries a task's request to, the verse system's verbs:
 // raising an ask (`verse-ask-create`), reading the owner's asks (`verse-ask-get`,
 // `verse-ask-list`), reading, writing and removing the verse at an address (`verse-data-get`,
-// `-put`, `-rm`), reading the charters and asking whether some would install
-// (`verse-charter-get`, `-check`), and saying whom a request is made as.
+// `-put`, `-rm`), reading the charters, asking whether some would install, installing and
+// removing them (`verse-charter-get`, `-check`, `-install`, `-remove`; what a task installs is
+// held within it, chartertask.go), and saying whom a request is made as.
 var relayedActs = map[string]bool{
 	"POST /asks": true, "GET /asks": true,
 	"GET /state": true, "POST /entity": true, "DELETE /entity": true,
-	"GET /charter": true, "POST /charter/check": true,
+	"GET /charter": true, "POST /charter/check": true, "POST /charter": true, "DELETE /charter": true,
 	"GET /whoami": true,
 }
 

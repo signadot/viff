@@ -379,7 +379,7 @@ func TestATaskReadsAndWritesTheVerseAsItsOwner(t *testing.T) {
 
 // A TASK READS ITS OWNER'S CHARTERS, AND ASKS WHETHER ITS OWN WOULD INSTALL, carried by its
 // runner (verse-charter-get, -check): the charter reads as the owner reads it, and the check says
-// what an install would do and installs nothing. An install is not carried.
+// what an install would do and installs nothing. What it installs is chartertask_test.go's.
 func TestATaskReadsTheChartersAndChecksItsOwn(t *testing.T) {
 	srv, ts, cluster := runnerServer(t)
 	token := cluster.Token(iodAudience, runnerSub, nil)
@@ -407,7 +407,4 @@ func TestATaskReadsTheChartersAndChecksItsOwn(t *testing.T) {
 		t.Errorf("the task's check installed what it checked: %s", body)
 	}
 
-	if code, body := carryFor(t, http.MethodPost, ts.URL+"/charter?format=tony", token, "reader", changed); code != http.StatusForbidden {
-		t.Errorf("the task's install = %d %s, want it refused at the door", code, body)
-	}
 }

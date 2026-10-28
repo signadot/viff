@@ -131,6 +131,32 @@ rules:
 The install refuses a ttl that is not a duration, and `ttl:` on a charter with no address:
 baseline is not removed whole.
 
+**A charter a task installs launches within the task.** A task installs a charter as the person
+it runs for ([the verse system](../systems/verse.md)), and the charter stands after the task
+ends. Every spawn among its rules is held within the task:
+
+- its environment no wider than the task's, less `verse.charter-install`, so nothing a task
+  installs installs charters;
+- its autonomy no looser than the task's when it installs;
+- the task's credential, named as the task's spawn named it, where the spawn spends one: a
+  script spends none, and may name none;
+- any runner.
+
+The hold is on spawns. A rule's `patch`, `derive` and `send` are the person's own writes, as any
+charter's are, held by nothing the task was: a task given `verse.charter-install` installs rules
+that write what the person may write, whether or not the task itself has `verse.data-put`. A
+spawn's author who gives a task charter-install gives it that.
+
+The install and `verse charter --check` refuse a spawn beyond the task, and an attribute still to
+be bound, such as `repo: $subject.value.repo`, is within where some value of it could be. The rule
+records the task. At each firing the spawn, bound, is held to the task's environment as the
+task's record says it was launched, after the task has ended too: a firing that binds a
+repository the task never reached fails, with the reason in `err`, and so does one whose task has
+no record. A task in a scope installs where its request says, baseline unless it names a scope,
+and its rules are held by its record in its scope. `verse charter` says which task installed a
+rule in a note beside the file. A rule the person installs over the task's is theirs, held by
+nothing the task was.
+
 **One file is one charter, and a directory holds several.** Each file says where its charter
 goes with its own `at:`, so the layout of the directory is free.
 

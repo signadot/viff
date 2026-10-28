@@ -2,7 +2,7 @@ name: verse
 description: "Verse itself, acted on by a task as the person it runs for would act on it: each verb is a verb of `verse` and of `verse mcp`, made through verse's API. The runner carries the request with its own token, naming the task, and verse admits it as the task's owner, only while the task runs. A task's own questions, which it waits on as a task, are the question system's."
 verbs:
 - name: ask-create
-  description: "Raise an ask as the person the task runs for, as `verse ask` and verse_ask_create do, and go on without waiting: the call answers the ask's id, and the ask stands after the task ends. Its `then` and `else` run as that person when it settles, and a spawn among them reaches no further than the task does, on its runner and with its credential."
+  description: "Raise an ask as the person the task runs for, as `verse ask` and verse_ask_create do, and go on without waiting: the call answers the ask's id, and the ask stands after the task ends. Its `then` and `else` run as that person when it settles, and a spawn among them reaches no further than the task does, less charter-install, on its runner and with its credential."
 - name: ask-get
   description: "Read one of the asks of the person the task runs for, by the name it was asked under or its id, as `verse ask <name|id>` and verse_ask do: whether it was answered (`status`, and `answer`, `pending` until it settles, or `why` where it settled with no answer), what it asked and of whom, its due, and what its then and else did."
 - name: ask-list
@@ -17,3 +17,7 @@ verbs:
   description: "Read the charter at a path as the person the task runs for would, as `verse charter` and verse_charter do: an installed charter as its file, with notes saying what the file cannot (a rule held, suspended or in trouble, and the charters under it), a rule or level as it stands, or with paths one kinded path per rule and level."
 - name: charter-check
   description: "Ask whether charters would install at an address, as `verse charter --check` and verse_charter_check do: each charter's verdict, and what the install would add, change and take away. Nothing is installed."
+- name: charter-install
+  description: "Install charters as the person the task runs for, as `verse charter -a` and verse_charter_install do: each a fielded charter at its own `at:` (with `ttl:`, it is removed when that is over), or a bare rule list at an address, applied as one step, with a prune taking what the charters given leave out under the address. Answers what was installed. A spawn among its rules reaches no further than the task does, less this verb, with no looser autonomy and the task's credential where it spends one, on any runner: what the task installs cannot install charters."
+- name: charter-remove
+  description: "Remove what stands in the charters as the person the task runs for, as `verse charter -r` and verse_charter_remove do: a whole charter by its address, or one rule, level or schedule of it by its path."

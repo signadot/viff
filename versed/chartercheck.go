@@ -40,11 +40,18 @@ func (s *Server) checkCharter(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "a check names the address the tree would be installed at (?at=)", http.StatusBadRequest)
 		return
 	}
-	writeOut(w, r, http.StatusOK, s.checkCharterAt(s.scopedStore(r), at, docs))
+	// A task verse holds no launch of is answered as any refusal is: the verdict.
+	hold, err := s.taskCharterOf(r)
+	if err != nil {
+		writeOut(w, r, http.StatusOK, api.CharterCheck{At: at, Verdict: "refused", Refusal: err.Error()})
+		return
+	}
+	writeOut(w, r, http.StatusOK, s.checkCharterAt(s.scopedStore(r), at, docs, hold))
 }
 
 // checkCharterAt is the check, as the store's principal: a refusal is the verdict, never an error.
-func (s *Server) checkCharterAt(store entity.Store, at string, docs []*ir.Node) api.CharterCheck {
+// hold is the task asking, whose install would be held within it (chartertask.go), or nil.
+func (s *Server) checkCharterAt(store entity.Store, at string, docs []*ir.Node, hold *taskCharter) api.CharterCheck {
 	out := api.CharterCheck{At: at, Verdict: "installs"}
 	refuse := func(err error) api.CharterCheck {
 		out.Verdict, out.Refusal, out.Packages = "refused", err.Error(), nil
@@ -67,7 +74,7 @@ func (s *Server) checkCharterAt(store entity.Store, at string, docs []*ir.Node) 
 		if _, err := checkPackageAddress(store, installer, g.at); err != nil {
 			return refuse(err)
 		}
-		pkg, err := s.checkPackage(store, installer, g)
+		pkg, err := s.checkPackage(store, installer, g, hold)
 		if err != nil {
 			return refuse(err)
 		}
@@ -77,7 +84,7 @@ func (s *Server) checkCharterAt(store entity.Store, at string, docs []*ir.Node) 
 }
 
 // checkPackage checks one package of the tree and says what would change in it.
-func (s *Server) checkPackage(store entity.Store, installer string, g charterGroup) (api.CharterCheckPackage, error) {
+func (s *Server) checkPackage(store entity.Store, installer string, g charterGroup, hold *taskCharter) (api.CharterCheckPackage, error) {
 	pkg := api.CharterCheckPackage{At: g.at}
 	confine, err := trigger.ParseAt(g.at)
 	if err != nil {
@@ -120,6 +127,9 @@ func (s *Server) checkPackage(store entity.Store, installer string, g charterGro
 		}
 		if t.Name == "" {
 			return pkg, errors.New("a rule needs a name")
+		}
+		if err := hold.holds(t); err != nil {
+			return pkg, err
 		}
 		rules = append(rules, t)
 	}

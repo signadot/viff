@@ -112,6 +112,14 @@ const scopeField = "scope"
 // belongs to.
 const atField = "at"
 
+// taskField is the task whose tools installed a rule (Trigger.Task), absent for one a person
+// or the system installed, and taskScopeField the scope that task ran in (Trigger.TaskScope),
+// absent for baseline.
+const (
+	taskField      = "task"
+	taskScopeField = "taskScope"
+)
+
 // AtField is atField for a reader outside the package — the server groups the charter by it to
 // bring every package back at a restart.
 const AtField = atField
@@ -132,7 +140,9 @@ func (e *Engine) ownRecord(ent entity.Entity) bool {
 // acts in one and the address it was installed at. One builder, so a rule and a stratum cannot
 // drift on either. WHOSE it is, is not in it: that is its owner record's to say, and a second
 // statement beside it is one that can disagree.
-func (e *Engine) record(doc *ir.Node) entity.Payload {
+func (e *Engine) record(doc *ir.Node) entity.Payload { return e.recordObj(doc).Payload() }
+
+func (e *Engine) recordObj(doc *ir.Node) entity.Obj {
 	p := entity.Obj{specField: entity.Raw(doc)}
 	if e.scope != "" {
 		p[scopeField] = e.scope
@@ -140,7 +150,7 @@ func (e *Engine) record(doc *ir.Node) entity.Payload {
 	if at := e.confine.stamp(); at != "" {
 		p[atField] = at
 	}
-	return p.Payload()
+	return p
 }
 
 // installer is who an install acting as `as` is by: `as`, or the principal the engine's own
@@ -190,9 +200,18 @@ func (e *Engine) persist(t Trigger, as string, take bool) error {
 		return fmt.Errorf("trigger %q: encoding it for the charter: %w", t.Name, err)
 	}
 	ref := CharterRefAt(e.confine.stamp(), t.Name)
+	// The installing task is written with the rule, or taken off: a write merges, and a rule a
+	// person installs over a task's is theirs, held by nothing the task was.
+	rec := e.recordObj(doc)
+	for field, v := range map[string]string{taskField: t.Task, taskScopeField: t.TaskScope} {
+		rec[field] = entity.Removed()
+		if v != "" {
+			rec[field] = v
+		}
+	}
 	if _, _, err := e.store.Write(entity.Write{
 		At:        ref.At(),
-		Value:     e.record(doc),
+		Value:     rec.Payload(),
 		Principal: as,
 	}); err != nil {
 		return fmt.Errorf("%w: trigger %q: writing %s: %w", ErrCharter, t.Name, ref, err)
@@ -324,6 +343,7 @@ func ruleOf(ent entity.Entity) (Trigger, error) {
 	if err := t.FromTonyIR(doc); err != nil {
 		return Trigger{}, fmt.Errorf("charter %s: %w", ent.Ref, err)
 	}
+	t.Task, t.TaskScope = entity.Str(ent.Payload, taskField), entity.Str(ent.Payload, taskScopeField)
 	// The id is the name for baseline and `<address>:<name>` for a package (CharterRefAt), so
 	// the check is against the tail: what has to agree is the NAME, and the package half of the
 	// address is not part of it.

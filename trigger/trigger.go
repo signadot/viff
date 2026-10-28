@@ -106,6 +106,15 @@ type Trigger struct {
 	// was open on one side of the design and shut on the other.
 	Gating *Gating `tony:"field=gating,omitzero"`
 	Action Action  `tony:"field=action"`
+
+	// Task is the task whose tools installed the rule, or "" for one a person or the system
+	// installed: the rule's spawns stay within that task's environment as the task was launched
+	// (the verse daemon checks it as each one fires). TaskScope is the scope the task ran in,
+	// where its record is, "" for baseline: a rule a scoped task installs stands where the
+	// install put it, which need not be the task's scope. Both are the record's, beside the spec
+	// and never in it, so no file can claim them; written with the rule and read back with it.
+	Task      string `tony:"-"`
+	TaskScope string `tony:"-"`
 }
 
 // Gating is a rule's own gates.

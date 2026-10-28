@@ -399,8 +399,8 @@ A task that asks as the person it runs for, and goes on, uses the
 ask's `from` is `{principal: <them>, task: <this task>}`, and it stands after the task ends. Its
 `then` and `else` run as them when it settles, and the task reads it back with `verse-ask-get`
 to see whether it was answered. A spawn in its `then` or `else` is held within the task:
-an environment no wider than the task's, an autonomy no looser, the task's runner (`runner:`
-names it) and the task's credential. Once raised, the ask is theirs, and they change it as any
+an environment no wider than the task's, less `verse.charter-install`, an autonomy no looser, the task's runner (`runner:`
+names it) and the task's credential where it spends one. Once raised, the ask is theirs, and they change it as any
 of their own. The task's record carries its launch, `environment` and `virtualKey` (the address
 its spawn named, never the key), so a restart that resumes the task holds a `then` within it as
 before.
