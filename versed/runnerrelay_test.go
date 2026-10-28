@@ -245,6 +245,41 @@ func TestATaskRaisesAnAskForItsOwnerHeldWithinTheTask(t *testing.T) {
 		t.Fatalf("the ask's from = %v, want the owner and the task", entity.ToObj(from))
 	}
 
+	// The task reads its owner's asks back (verse-ask-get), to see what became of one: pending
+	// until it settles, and answered once it has.
+	read := func(name string) entity.Obj {
+		t.Helper()
+		code, body := asTask(t, http.MethodGet, ts.URL+"/asks?format=tony", token, "raiser", "", "")
+		if code != http.StatusOK {
+			t.Fatalf("the owner's asks read for the task = %d %s", code, body)
+		}
+		list, err := codec.ParseNode([]byte(body), codec.Tony)
+		if err != nil {
+			t.Fatal(err)
+		}
+		e, err := mirror.AskNamed(mirror.AsksIn(list), name)
+		if err != nil {
+			t.Fatalf("the owner's asks read for the task: %v", err)
+		}
+		return mirror.AskShown(e)
+	}
+	if got := read("land"); got["id"] != id || got["answer"] != "pending" {
+		t.Errorf("the ask read back before it is answered = %v, want it pending", got)
+	}
+	code, body = raiseFor(t, ts.URL, token, "raiser", `{name: tea, question: "Tea?", to: [`+alice+`]}`)
+	if code != http.StatusCreated {
+		t.Fatalf("a raise with no then = %d %s", code, body)
+	}
+	tea, _ := tonyOf(t, body)["id"].(string)
+	posed(t, srv, mirror.AskRef(tea))
+	if resp := answerAs(t, alice, ts.URL, tea); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("alice's answer to tea: %s: %s", resp.Status, bodyOf(t, resp))
+	}
+	waitField(t, srv, mirror.AskRef(tea), "answer")
+	if got := read(tea); got["answer"] != "yes" {
+		t.Errorf("the ask read back once answered = %v, want yes", got)
+	}
+
 	// The task ends; the ask is the owner's, and stands.
 	if code, msg := control(t, ts, "/tasks/raiser/cancel", "", map[string]any{"reason": "done here"}); code != http.StatusNoContent {
 		t.Fatalf("cancel = %d %s", code, msg)

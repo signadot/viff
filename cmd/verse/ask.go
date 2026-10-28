@@ -260,13 +260,7 @@ func asksFrom(c *client.Client, q url.Values) ([]entity.Entity, error) {
 	if err != nil {
 		return nil, fmt.Errorf("decoding the asks: %w", err)
 	}
-	var out []entity.Entity
-	for _, rec := range node.Values {
-		if id := entity.Str(rec, "id"); id != "" {
-			out = append(out, entity.Entity{Ref: mirror.AskRef(id), Payload: rec})
-		}
-	}
-	return out, nil
+	return mirror.AsksIn(node), nil
 }
 
 // resolve finds the ask a name or an id names: the id itself, or the one ask of the caller's
@@ -279,46 +273,11 @@ func resolveAsk(c *client.Client, arg string) (entity.Entity, error) {
 	if err != nil {
 		return entity.Entity{}, fmt.Errorf("ask: %w", err)
 	}
-	var named []entity.Entity
-	for _, e := range asks {
-		if e.Ref.Name() == arg {
-			return e, nil
-		}
-		if entity.Str(e.Payload, "name") == arg {
-			named = append(named, e)
-		}
+	e, err := mirror.AskNamed(asks, arg)
+	if err != nil {
+		return entity.Entity{}, fmt.Errorf("ask: %w", err)
 	}
-	switch len(named) {
-	case 0:
-		return entity.Entity{}, fmt.Errorf("ask: you have no ask named or numbered %q", arg)
-	case 1:
-		return named[0], nil
-	}
-	ids := make([]string, 0, len(named))
-	for _, e := range named {
-		ids = append(ids, e.Ref.Name())
-	}
-	return entity.Entity{}, fmt.Errorf("ask: you have %d asks named %q; name one by its id: %s",
-		len(named), arg, strings.Join(ids, ", "))
-}
-
-// askRow is one ask as the listing shows it.
-func askRow(e entity.Entity) entity.Obj {
-	p := e.Payload
-	row := entity.Obj{"id": e.Ref.Name(), "question": entity.Str(p, "question")}
-	if to := mirror.GranteesTo(p); len(to) > 0 {
-		row["to"] = to
-	}
-	for _, f := range []string{"due", "then", "then-answered", "then-asked", "else", "else-answered", "else-asked", "subject", "keep", "expires"} {
-		if v := entity.Get(p, f); v != nil {
-			row[f] = v
-		}
-	}
-	row["answer"] = "pending"
-	if a := entity.Str(p, "answer"); a != "" {
-		row["answer"] = a
-	}
-	return row
+	return e, nil
 }
 
 func listAsks(cc *cli.Context) error {
@@ -357,7 +316,7 @@ func askList(c *client.Client, me string) (*ir.Node, string, error) {
 	}
 	rows := make([]any, 0, len(asks))
 	for _, e := range asks {
-		rows = append(rows, askRow(e))
+		rows = append(rows, mirror.AskRow(e))
 	}
 	return entity.Val(rows), "", nil
 }
@@ -368,13 +327,7 @@ func askShown(c *client.Client, arg string) (*ir.Node, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	row := askRow(e)
-	// And whom it waits on, while it does: the ask is the question on the docket.
-	if entity.Str(e.Payload, "status") == mirror.QuestionPending {
-		if w := entity.Get(e.Payload, "waitingOn"); w != nil {
-			row["waitingOn"] = w
-		}
-	}
+	row := mirror.AskShown(e)
 	return row.Payload(), "", nil
 }
 

@@ -1,6 +1,7 @@
 package runnerd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
@@ -351,11 +352,37 @@ func TestARaiseRefusedAtTheDoorIsTheRunnersFault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if code, said, err := g.Raise(context.Background(), "t1", []byte("{question: x}")); err != nil || code != http.StatusForbidden || said != "not this" {
+	if code, said, err := g.Carry(context.Background(), "t1", http.MethodPost, "/asks", []byte("{question: x}")); err != nil || code != http.StatusForbidden || said != "not this" {
 		t.Errorf("a refusal of the ask = %d %q %v, want verse's 403", code, said, err)
 	}
 	door.Store(true)
-	if code, _, err := g.Raise(context.Background(), "t1", []byte("{question: x}")); err == nil || !strings.Contains(err.Error(), "not this") {
+	if code, _, err := g.Carry(context.Background(), "t1", http.MethodPost, "/asks", []byte("{question: x}")); err == nil || !strings.Contains(err.Error(), "not this") {
 		t.Errorf("a refusal at the door = %d, %v, want an error saying why", code, err)
+	}
+}
+
+// AN ANSWER OVER WHAT THE RUNNER CARRIES IS AN ERROR NAMING THE CAP, not a document cut at the cap:
+// a cut document reads as nothing, or as less than verse said.
+func TestARunnerCarriesNoAnswerOverItsCap(t *testing.T) {
+	cluster, _, _ := fakeVerse(t)
+	var size int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("- {id: "))
+		w.Write(bytes.Repeat([]byte("a"), size))
+		w.Write([]byte("}\n"))
+	}))
+	t.Cleanup(srv.Close)
+	path, _ := ownTokenFile(t, cluster, runnerSub)
+	g, err := NewGuard(Verse{URL: srv.URL}, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	size = carryCap - len("- {id: }\n")
+	if code, said, err := g.Carry(context.Background(), "t1", http.MethodGet, "/asks", nil); err != nil || code != http.StatusOK || len(said) != carryCap-1 {
+		t.Fatalf("an answer at the cap = %d, %d bytes, %v", code, len(said), err)
+	}
+	size++
+	if _, said, err := g.Carry(context.Background(), "t1", http.MethodGet, "/asks", nil); err == nil || !strings.Contains(err.Error(), "over 4194304 bytes") || said != "" {
+		t.Errorf("an answer over the cap = %q, %v; want an error naming the cap", said, err)
 	}
 }

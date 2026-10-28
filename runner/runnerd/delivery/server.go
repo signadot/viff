@@ -51,9 +51,9 @@ type Services struct {
 	GitHubAPI  string
 	SlackToken string
 	SlackAPI   string // "" is Slack's own
-	// Raise carries a task's ask to the verse the runner serves (verse.go); nil for a runner
-	// with no verse to reach, or no token of its own to reach it with.
-	Raise Raiser
+	// Verse carries a task's request to the verse the runner serves, a verb of the verse system
+	// (verse.go); nil for a runner with no verse to reach, or no token of its own to reach it with.
+	Verse Verse
 }
 
 // Task is one task as the server knows it: its id, the workspace it works in, the launch whose
@@ -143,6 +143,8 @@ func (s *Server) answer(tk Task, raw []byte) Reply {
 		return s.slack(ctx, tk, req)
 	case OpVerseAskCreate:
 		return s.verseAskCreate(ctx, tk, req)
+	case OpVerseAskGet:
+		return s.verseAskGet(ctx, tk, req)
 	}
 	return Reply{Error: fmt.Sprintf("unknown operation %q", req.Op)}
 }

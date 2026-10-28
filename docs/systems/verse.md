@@ -33,12 +33,14 @@ spawn:
 | Tool | Mirrors | What it does | Step |
 |---|---|---|---|
 | `verse-ask-create` | `verse ask <name> -q`, `verse_ask_create` | raises an ask as the person the task runs for: `question`, `to`, `due`, `on_silence`, `then`, `else`, `about`, `keep`, `label` ([asking](../asking.md)). It does not wait: the result is the ask's id, and the ask stands after the task ends. | `verse.ask-create` |
+| `verse-ask-get` | `verse ask <name\|id>`, `verse_ask` | reads one of the person's asks, by `name_or_id`: the name it was asked under or its id. The result is the ask as `verse ask` shows it: its `status` and `answer`, `pending` until it settles (or `why`, where it settled with no answer), what it asked and of whom, its due, and what its `then` and `else` did. | `verse.ask-get` |
 
 The ask is the person's, not the task's. Its `from` names them, with the task beside them, and
 nothing waits on it. Its `then` and `else` run as that person when it settles. A spawn in either
 is held within the task when the ask is raised: an environment no wider than the task's, an
 autonomy no looser, the task's runner and the task's credential. A task that needs the answer to
-go on uses `question-ask`.
+go on uses `question-ask`. One that looks again later reads the ask back with `verse-ask-get`,
+which says whether it was answered.
 
 ```sh
 verse-call-tool verse-ask-create -question "Land verse/ask?" -to user:dana@example.com -due 48h \

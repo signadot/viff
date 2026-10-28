@@ -338,22 +338,38 @@ func (g *Guard) helloClient() *http.Client {
 	return c
 }
 
-// Raise carries a task's ask to the verse this runner serves: POST /asks with the runner's own
-// token and the task's id (api.TaskHeader), the ask a tony document as POST /asks reads it. Verse
-// admits it as the task's owner through the task's record, which names this runner, so the task
-// holds nothing and names nobody. It answers the verse's status and what it said; an error is a
-// request that got no answer. A runner with no token of its own has nothing to carry it with,
-// and Raiser is then nil (cmd/runnerd).
-func (g *Guard) Raise(ctx context.Context, taskID string, ask []byte) (int, string, error) {
+// carryCap is the most of verse's answer Carry hands a task.
+const carryCap = 4 << 20
+
+// Carry makes a task's request to the verse this runner serves, a verb of the verse system: method
+// on path, with the runner's own token and the task's id (api.TaskHeader), body a tony document
+// where there is one, and the answer asked for in tony. Verse admits it as the task's owner
+// through the task's record, which names this runner, so the task holds nothing and names nobody,
+// and only on the routes its door carries for a task. It answers the verse's status and what it
+// said; an error is a request that got no answer. A runner with no token of its own has nothing to
+// carry it with, and Carrier is then nil.
+func (g *Guard) Carry(ctx context.Context, taskID, method, path string, body []byte) (int, string, error) {
 	tok, err := g.ownToken()
 	if err != nil {
 		return 0, "", err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(g.v.URL, "/")+"/asks?format=tony", bytes.NewReader(ask))
+	u := strings.TrimRight(g.v.URL, "/") + path
+	if strings.Contains(path, "?") {
+		u += "&format=tony"
+	} else {
+		u += "?format=tony"
+	}
+	var rd io.Reader
+	if body != nil {
+		rd = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, u, rd)
 	if err != nil {
 		return 0, "", err
 	}
-	req.Header.Set("Content-Type", "application/tony")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/tony")
+	}
 	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set(api.TaskHeader, taskID)
 	resp, err := g.helloClient().Do(req)
@@ -361,8 +377,16 @@ func (g *Guard) Raise(ctx context.Context, taskID string, ask []byte) (int, stri
 		return 0, "", err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
-	said := strings.TrimSpace(string(body))
+	// A read of the owner's asks is a listing, so the bound is a listing's. One byte past it tells
+	// an answer that is over it from one that fits, and an answer over it is not handed on cut.
+	got, err := io.ReadAll(io.LimitReader(resp.Body, carryCap+1))
+	if err != nil {
+		return 0, "", fmt.Errorf("reading verse's answer: %w", err)
+	}
+	if len(got) > carryCap {
+		return 0, "", fmt.Errorf("verse's answer is over %d bytes, the most the runner carries to a task: read less at once", carryCap)
+	}
+	said := strings.TrimSpace(string(got))
 	// A REFUSAL OF THE RUNNER, NOT OF THE ASK: verse's door says so with WWW-Authenticate (RFC
 	// 6750), a token it did not take or a task it would not carry this runner's request for.
 	// That is this runner's fault to fix, and an error to the task rather than a no.
@@ -372,13 +396,13 @@ func (g *Guard) Raise(ctx context.Context, taskID string, ask []byte) (int, stri
 	return resp.StatusCode, said, nil
 }
 
-// Raiser is Raise where the runner holds a token of its own to carry an ask with, and nil where
-// it holds none.
-func (g *Guard) Raiser() func(context.Context, string, []byte) (int, string, error) {
+// Carrier is Carry where the runner holds a token of its own to carry a task's request with, and
+// nil where it holds none.
+func (g *Guard) Carrier() func(ctx context.Context, taskID, method, path string, body []byte) (int, string, error) {
 	if g.tokenFile == "" {
 		return nil
 	}
-	return g.Raise
+	return g.Carry
 }
 
 // WithReady is h with GET /ready beside it, for a readiness probe: 200 as soon as the runner

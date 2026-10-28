@@ -397,7 +397,8 @@ An autonomy row on `question` decides the asking as any autonomy row decides its
 A task that asks as the person it runs for, and goes on, uses the
 [verse system](../systems/verse.md)'s `verse-ask-create`, as they would use `verse ask`. The
 ask's `from` is `{principal: <them>, task: <this task>}`, and it stands after the task ends. Its
-`then` and `else` run as them when it settles, and a spawn in either is held within the task:
+`then` and `else` run as them when it settles, and the task reads it back with `verse-ask-get`
+to see whether it was answered. A spawn in its `then` or `else` is held within the task:
 an environment no wider than the task's, an autonomy no looser, the task's runner (`runner:`
 names it) and the task's credential. Once raised, the ask is theirs, and they change it as any
 of their own. The task's record carries its launch, `environment` and `virtualKey` (the address

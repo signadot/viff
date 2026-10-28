@@ -63,12 +63,12 @@ func SecretsFromEnv(c Config) Secrets {
 // The process gets the runner's configuration and secrets on its stdin, and an environment with
 // only what its launch's doer's shellEnv names: no task's process holds a variable another
 // doer's shell is given. tokens is what the runner holds that a task never does: its git
-// tokens, for when c checks out repos, and its Linear credential. raise is how the runner
-// carries a task's ask to the verse it serves, with its own token (runnerd.Guard.Raise); nil for
-// a runner with none, whose tasks are not offered `verse-ask-create`.
+// tokens, for when c checks out repos, and its Linear credential. toVerse is how the runner
+// carries a task's request to the verse it serves, with its own token (runnerd.Guard.Carry); nil
+// for a runner with none, whose tasks are not offered the verse system.
 func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command []string, work, control string,
-	raise delivery.Raiser, log io.Writer) (*runnerd.SubprocessHandler, error) {
-	c.reachesVerse = raise != nil
+	toVerse delivery.Verse, log io.Writer) (*runnerd.SubprocessHandler, error) {
+	c.reachesVerse = toVerse != nil
 	hosts, err := modelHosts(c, s)
 	if err != nil {
 		return nil, err
@@ -105,7 +105,7 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 	}
 	if repos != nil {
 		repos.Services = c.services(tokens)
-		repos.Services.Raise = raise
+		repos.Services.Verse = toVerse
 		repos.Ceilings = func(l *runner.Launch) map[string]systems.Ceiling { return c.ceilings(c.doer(l)) }
 	}
 	h := runnerd.NewSubprocessHandler(runnerd.SubprocessConfig{
@@ -151,7 +151,7 @@ type taskConfig struct {
 	// describes what the runner described.
 	Networks []string `tony:"field=networks,omitzero"`
 	// ReachesVerse is whether the runner carries the verse system to its verse (Standalone's
-	// raise), so the task's process offers its tools (`verse-ask-create`) where it does.
+	// toVerse), so the task's process offers its tools where it does.
 	ReachesVerse bool `tony:"field=reachesVerse,omitzero"`
 }
 

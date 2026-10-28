@@ -3,6 +3,7 @@ package stock
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"testing"
@@ -24,7 +25,11 @@ func TestAScriptRaisesAnAskTheRunnerCarriesToVerse(t *testing.T) {
 	withCallTool(t)
 	var mu sync.Mutex
 	var saw []map[string]any
-	raise := func(_ context.Context, taskID string, ask []byte) (int, string, error) {
+	raise := func(_ context.Context, taskID, method, path string, ask []byte) (int, string, error) {
+		// What it reads back, after: the ask it raised, answered.
+		if method == http.MethodGet && path == "/asks" {
+			return 200, `- {id: r1-1a2b, name: r1, question: "Land it?", answer: yes, status: answered}`, nil
+		}
 		var doc map[string]any
 		if err := codec.Unmarshal(ask, &doc, codec.Tony); err != nil {
 			return 400, err.Error(), nil
@@ -39,7 +44,8 @@ func TestAScriptRaisesAnAskTheRunnerCarriesToVerse(t *testing.T) {
 	env := envOf(netOpen, nil, nil)
 	env.Systems["verse"] = []systems.Block{{}}
 	script := "#!/bin/sh\n" +
-		"verse-call-tool verse-ask-create -question 'Land it?' -to 'user:alice@example.com, group:leads' -label team=payments,kind=deploy -due ' 48h ' -then '{spawn: {script: \"true\"}}'\n"
+		"verse-call-tool verse-ask-create -question 'Land it?' -to 'user:alice@example.com, group:leads' -label team=payments,kind=deploy -due ' 48h ' -then '{spawn: {script: \"true\"}}'\n" +
+		"verse-call-tool verse-ask-get -name_or_id r1-1a2b\n"
 	allow := task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}
 
 	rt := serveRaising(t, c, Secrets{}, Tokens{}, raise)
@@ -47,6 +53,9 @@ func TestAScriptRaisesAnAskTheRunnerCarriesToVerse(t *testing.T) {
 	snap := ended(t, rt, "r1")
 	if snap.Status != task.Done || !strings.Contains(snap.Result, "raised ask r1-1a2b") {
 		t.Fatalf("the script read %q (%s), want the ask's id", snap.Result, snap.Status)
+	}
+	if !strings.Contains(snap.Result, "answer: yes") {
+		t.Errorf("the script read the ask back as %q, want it answered", snap.Result)
 	}
 	mu.Lock()
 	defer mu.Unlock()

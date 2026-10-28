@@ -21,13 +21,17 @@ import (
 // THE VERSE SYSTEM is verse itself, acted on by a task as the person it runs for would act on it:
 // each verb is a verb of `verse` and of `verse mcp`, its tool spelled as the MCP tool is and taking
 // what that tool takes, carried by the runner to verse's API over the task's channel
-// (delivery.OpVerseAskCreate) and admitted as the task's owner. A task's own questions, which it
+// (delivery.OpVerseAskCreate, OpVerseAskGet) and admitted as the task's owner. A task's own questions, which it
 // waits on as a task, are the question system's (verse.Ask).
 
 // askCreateTool is `verse ask <name> -q <question>`, verse_ask_create: an ask raised as the
 // person the task runs for. It does not wait: the ask outlives the task, and its `then` and `else`
 // run as that person when it settles, which is what a stored continuation is for.
 var askCreateTool = systems.Tool("verse", "ask-create")
+
+// askGetTool is `verse ask <name|id>`, verse_ask naming one: one of that person's asks read back,
+// so a task that raised one sees whether it was answered.
+var askGetTool = systems.Tool("verse", "ask-get")
 
 // verseTools are the verse system's tools, where the runner reaches its verse with a token of its
 // own.
@@ -89,10 +93,34 @@ func verseTools(cl *delivery.Client) []verse.Tool {
 			}
 			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpVerseAskCreate, Ask: string(doc)}))
 		},
+	}, {
+		Name: askGetTool,
+		Description: "Read one of the asks of the person this task runs for, as `verse ask <name|id>` and " +
+			"verse_ask do: by the name it was asked under or the id verse-ask-create answered. It says " +
+			"whether it was answered (`status`, and `answer`, pending until it settles, or `why` where it settled " +
+			"with no answer), what it asked and of whom, its " +
+			"due, and what its then and else did.",
+		Params: map[string]any{
+			"name_or_id": text("one of their asks, by the name it was asked under or its id"),
+		},
+		Required: []string{"name_or_id"},
+		Step:     task.StepVerseAskGet,
+		Fields:   func(map[string]any) (map[string]string, bool) { return map[string]string{}, true },
+		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
+			w, err := wordsOf(tu.Input)
+			if err != nil {
+				return "not read: " + err.Error(), true, nil
+			}
+			arg := strings.TrimSpace(w["name_or_id"])
+			if arg == "" {
+				return "not read: name the ask, by its name or its id", true, nil
+			}
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpVerseAskGet, Ask: arg}))
+		},
 	}}
 }
 
-// wordsOf is the call's parameters as the words verse_ask_create takes: each a string, absent or
+// wordsOf is the call's parameters as the words verse_ask_create and verse_ask take: each a string, absent or
 // null as none. A parameter that is anything else is refused, naming it.
 func wordsOf(in map[string]any) (map[string]string, error) {
 	out := map[string]string{}
@@ -102,7 +130,7 @@ func wordsOf(in map[string]any) (map[string]string, error) {
 		case string:
 			out[k] = v
 		default:
-			return nil, fmt.Errorf("%s is a string, as verse_ask_create takes it, not %T", k, v)
+			return nil, fmt.Errorf("%s is a string, as verse mcp's tool takes it, not %T", k, v)
 		}
 	}
 	return out, nil

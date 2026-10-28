@@ -111,8 +111,9 @@ func serveConfigured(t *testing.T, c Config, sec Secrets, tokens Tokens) client.
 	return serveRaising(t, c, sec, tokens, nil)
 }
 
-// serveRaising is serveConfigured for a runner that carries its tasks' asks to a verse with raise.
-func serveRaising(t *testing.T, c Config, sec Secrets, tokens Tokens, raise delivery.Raiser) client.Launcher {
+// serveRaising is serveConfigured for a runner that carries its tasks' requests to a verse with
+// toVerse.
+func serveRaising(t *testing.T, c Config, sec Secrets, tokens Tokens, toVerse delivery.Verse) client.Launcher {
 	t.Helper()
 	work, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -123,7 +124,7 @@ func serveRaising(t *testing.T, c Config, sec Secrets, tokens Tokens, raise deli
 		t.Fatal(err)
 	}
 	h, err := Standalone(opened(c), sec, tokens, runnerd.Unconfined{},
-		[]string{os.Args[0], "-test.run=^$", taskArg}, work, control, raise, io.Discard)
+		[]string{os.Args[0], "-test.run=^$", taskArg}, work, control, toVerse, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}

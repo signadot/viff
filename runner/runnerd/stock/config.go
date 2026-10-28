@@ -72,7 +72,7 @@ type Config struct {
 	Script *Script `tony:"field=script,omitzero"`
 
 	// reachesVerse is whether the runner carries the verse system's verbs to the verse it serves
-	// (Standalone's raise): not the file's to say, since it follows from the runner's `verse:`
+	// (Standalone's toVerse): not the file's to say, since it follows from the runner's `verse:`
 	// block and its token.
 	reachesVerse bool
 }

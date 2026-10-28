@@ -419,7 +419,8 @@ proved, and the task has not ended. The request is then made as the record's own
 the task, or the owner of the charter whose rule spawned it, or the person a rule's
 `as: subject` acts for. `whoami` says `by: runner` and `via: runner:<identity>`. A runner
 carries what the [verse system](../systems/verse.md)'s tools do on verse, raising an ask
-(`POST /asks`, `verse-ask-create`), and `whoami`; any other route named with a task is refused, since what follows a task's ask is held within the task only
+(`POST /asks`, `verse-ask-create`), reading the owner's asks (`GET /asks`, `verse-ask-get`), and
+`whoami`; any other route named with a task is refused, since what follows a task's ask is held within the task only
 where the ask is raised. A refusal at this door carries `WWW-Authenticate`, so a runner tells
 its own fault from a refusal of what it carried. The runner names
 nobody, and a `Verse-Principal` beside the task names that owner or is refused. A registration

@@ -172,12 +172,12 @@ func run(args []string) error {
 		return fmt.Errorf("this runner does not honour the systems' documents: %w", err)
 	}
 	// The door's guard before the runner, since what the runner carries to its verse for a task
-	// (a raise) goes with the guard's own token.
+	// (the verse system's verbs) goes with the guard's own token.
 	guard, err := runnerd.NewGuard(*rc.Verse, *tokenFile)
 	if err != nil {
 		return err
 	}
-	r, err := stock.Standalone(c, s, tokens, sb, []string{self, "-task"}, work, control, guard.Raiser(), os.Stderr)
+	r, err := stock.Standalone(c, s, tokens, sb, []string{self, "-task"}, work, control, guard.Carrier(), os.Stderr)
 	if err != nil {
 		return err
 	}

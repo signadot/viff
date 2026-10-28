@@ -199,6 +199,9 @@ verse ask land           # one of them, and whom it waits on
 verse ask --watch        # a line for each event, until stopped
 ```
 
+An ask that settles with nobody to answer it, because verse could not put it to whom it names,
+has no answer: it shows its `status`, `orphaned`, and `why`.
+
 `--watch` prints a line when an ask of yours is asked, asked again, answered or withdrawn. Each
 line starts with its revision. Pass the last one you saw as `--since` on the next run, and
 verse replays what happened in between. The store can replay for as long as it keeps its full

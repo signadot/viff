@@ -132,7 +132,7 @@ Your own questions to somebody, with a date ([asking](../asking.md)).
 
 | Form | What it does |
 |---|---|
-| `ask` | your asks: each with its id, question, who is asked, its date, and its answer or `pending` |
+| `ask` | your asks: each with its id, question, who is asked, its date, its `status`, and its answer, `pending` until it settles. One that settled with no answer (`orphaned`) says `why`. |
 | `ask <name\|id>` | that one, and whom it waits on. A name used for two asks is refused with both ids. Whoever it asks answers with `question <id> -answer`. |
 | `ask <name> -question (-q) <text> [-to <who>,…] [-due <when>] [-then <value>] [-else <value>] [-about <path>] [-keep <duration>]` | ask it, under an id derived from the name. `-to` uses the grammar of a grant. `-due` is RFC 3339 or a duration from now (`48h`). `-then` is what follows a yes: one key, `{spawn: {...}}` (a spawn as a charter writes one), `{answer: {ask, choice}}` or `{ask: {...}}`, or `-` / `@<file>` to read it. `-else` is what follows a no, answered or by silence. `-keep` is how long it stands once settled (default a week). |
 | `ask <name\|id> -due <when>` | move its date while it waits; asks nothing again |

@@ -575,8 +575,8 @@ func (s *Server) asRunner(e api.Runner, presented, account, task string, a act) 
 	if task != "" {
 		if !relayedActs[a.pattern] {
 			return "", "", "", turnAway(http.StatusForbidden, "runner %s carries a request for task %s to "+
-				"%s %s, and a runner carries only what a task's tools do on verse: %s", e.Principal(), task,
-				a.method, cmp.Or(a.pattern, "a route verse does not have"), strings.Join(slices.Sorted(maps.Keys(relayedActs)), ", "))
+				"%s, and a runner carries only what a task's tools do on verse: %s", e.Principal(), task,
+				cmp.Or(a.pattern, a.method+" on a route verse does not have"), strings.Join(slices.Sorted(maps.Keys(relayedActs)), ", "))
 		}
 		return s.relayTask(e, presented, task)
 	}
@@ -589,8 +589,9 @@ func (s *Server) asRunner(e api.Runner, presented, account, task string, a act) 
 }
 
 // relayedActs are the routes a runner carries a task's request to: raising an ask
-// (`verse-ask-create`), and saying whom a request is made as.
-var relayedActs = map[string]bool{"POST /asks": true, "GET /whoami": true}
+// (`verse-ask-create`), reading the owner's asks (`verse-ask-get`), and saying whom a request is
+// made as.
+var relayedActs = map[string]bool{"POST /asks": true, "GET /asks": true, "GET /whoami": true}
 
 // notARunnersTask refuses a task named beside a bearer that proves an io: only a runner hosting a
 // task carries a request for it.
