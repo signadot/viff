@@ -5,7 +5,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
-	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -186,9 +186,9 @@ func TestASlackToolsStepNamesTheChannel(t *testing.T) {
 }
 
 // A RUNNER PERFORMS SLACK WHERE A DOER'S CEILING NAMES IT, and every offer then holds the
-// system, closed for a doer whose section does not name it; the runner does not start without the
-// bot token in SLACK_BOT_TOKEN, a `slack` section with no ceiling is refused, and a ceiling its
-// document refuses is refused.
+// system, closed for a doer whose section does not name it; without the bot token in
+// SLACK_BOT_TOKEN the runner runs with it closed (Held), a `slack` section with no ceiling is
+// refused, and a ceiling its document refuses is refused.
 func TestARunnerPerformsSlackWithItsBotToken(t *testing.T) {
 	c := Config{Agents: map[string]Agent{AgentName: {Systems: map[string]System{"slack": {Ceiling: systems.Open()}}}}, Script: &Script{}}
 	if err := c.Check(); err != nil {
@@ -201,8 +201,8 @@ func TestARunnerPerformsSlackWithItsBotToken(t *testing.T) {
 		}
 	}
 	none := func(string) string { return "" }
-	if _, err := c.CheckStart(none, exec.LookPath); err == nil || !strings.Contains(err.Error(), "SLACK_BOT_TOKEN") {
-		t.Errorf("no bot token: %v", err)
+	if held, warnings := c.Held(none); len(warnings) != 1 || !strings.Contains(warnings[0], "SLACK_BOT_TOKEN") || slices.Contains(held.performs(), "slack") {
+		t.Errorf("no bot token: %v, performs %v", warnings, held.performs())
 	}
 	t.Setenv(EnvSlackBotToken, "xoxb-1")
 	if tokens := TokensFromEnv(c); tokens.Slack != "xoxb-1" {

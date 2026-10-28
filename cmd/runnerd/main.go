@@ -121,11 +121,14 @@ func run(args []string) error {
 	if *tokenFile == "" {
 		return fmt.Errorf("no -token-file (VERSE_TOKEN_FILE): a runner proves itself to its verse with a token, a workload token or a static one (`verse runner add -subject` or `-token-file`)")
 	}
+	// A system whose credential is not set is closed rather than refused: the runner starts,
+	// and offers what it can perform.
+	c, closed := c.Held(os.Getenv)
 	warnings, err := c.CheckStart(os.Getenv, exec.LookPath)
 	if err != nil {
 		return fmt.Errorf("%s: %w", *config, err)
 	}
-	for _, w := range warnings {
+	for _, w := range append(closed, warnings...) {
 		log.Printf("%s", w)
 	}
 	// The admin face before the work: probing the sandbox can hang on something outside the

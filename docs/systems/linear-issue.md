@@ -67,7 +67,8 @@ a personal key alone, or an OAuth token as `Bearer …`.
 
 **The task** holds no credential. The runner makes each call with its own credential, in the
 same form, `LINEAR_API_KEY`. The runner offers the system where a doer's ceiling in its
-configuration names it, and does not start without the variable then. The iod and the runner may hold one
+configuration names it and the variable is set; without it, the runner starts with the system
+closed, and a spawn that needs it is refused where it is written. The iod and the runner may hold one
 credential or two.
 
 **The operator** sets a limit on what any task may do, in the runner's configuration:

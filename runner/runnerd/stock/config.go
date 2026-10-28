@@ -41,6 +41,18 @@ const (
 	EnvSlackBotToken = "SLACK_BOT_TOKEN"
 )
 
+// credentials is every variable the runner reads a credential from, its own and its agents'. No
+// `shellEnv` names one: what the runner acts with stays in the runner, and no task's shell, nor
+// its process, holds it.
+var credentials = []string{
+	EnvGitHubToken, EnvLinearAPIKey, EnvSlackBotToken,
+	verse.EnvAPIKey, verse.EnvBaseURL, verse.EnvVirtualKey, codex.EnvAPIKey, claude.EnvOAuthToken, claude.EnvAPIKey,
+}
+
+// held is the systems a ceiling may name whose credential the runner reads from its environment:
+// where it is not set, the runner runs with the system closed (Held).
+var held = []struct{ system, env string }{{"linear-issue", EnvLinearAPIKey}, {"slack", EnvSlackBotToken}}
+
 // ScriptDoer is the doer a script is, as a launch says it (runner.Launch.Who) and as the
 // systems an inner system is stopped for name it.
 const ScriptDoer = "script"
@@ -230,19 +242,52 @@ func TokensFromEnv(c Config) Tokens {
 	return t
 }
 
-// CheckStart refuses what the runner cannot start with, from the environment it starts in
-// (getenv) and the programs it finds (lookPath): a ceiling naming a system whose credential is
-// not set, the verse agent with no model key, an agent whose program is not there. It returns
-// what it lets start and is worth saying: a forge token missing, which a forge on this filesystem
-// does without and a fetch over the network finds, and an agent left to its own login.
-func (c Config) CheckStart(getenv func(string) string, lookPath func(string) (string, error)) (warnings []string, err error) {
-	performs := c.performs()
-	for _, s := range []struct{ system, env string }{{"linear-issue", EnvLinearAPIKey}, {"slack", EnvSlackBotToken}} {
-		if slices.Contains(performs, s.system) && getenv(s.env) == "" {
-			return nil, fmt.Errorf("%s: a ceiling names %s, and %s, which the runner acts at %s with, is not set",
-				strings.Join(c.naming(s.system), ", "), s.system, s.env, s.system)
+// Held is the configuration the runner runs with in the environment it starts in (getenv): c,
+// with each system whose credential is not set (held) left out of every doer's section. The
+// runner then does not perform it and no offer holds it, so a spawn that needs it is refused at
+// install, where it is written, rather than the runner not starting or the act failing at the
+// service. It says what it closed.
+func (c Config) Held(getenv func(string) string) (Config, []string) {
+	var warnings []string
+	for _, s := range held {
+		naming := c.naming(s.system)
+		if len(naming) == 0 || getenv(s.env) != "" {
+			continue
 		}
+		c = c.without(s.system)
+		warnings = append(warnings, fmt.Sprintf("%s is not set: %s is closed to every doer, though %s names it; a spawn that needs it is refused at install",
+			s.env, s.system, strings.Join(naming, ", ")))
 	}
+	return c, warnings
+}
+
+// without is c with no doer's section naming system. c's maps are not changed.
+func (c Config) without(system string) Config {
+	if c.Agents != nil {
+		agents := make(map[string]Agent, len(c.Agents))
+		for name, a := range c.Agents {
+			a.Systems = maps.Clone(a.Systems)
+			delete(a.Systems, system)
+			agents[name] = a
+		}
+		c.Agents = agents
+	}
+	if c.Script != nil {
+		script := *c.Script
+		script.Systems = maps.Clone(script.Systems)
+		delete(script.Systems, system)
+		c.Script = &script
+	}
+	return c
+}
+
+// CheckStart refuses what the runner cannot start with, from the environment it starts in
+// (getenv) and the programs it finds (lookPath): the verse agent with no model key, an agent
+// whose program is not there. It returns what it lets start and is worth saying: a forge token
+// missing, which a forge on this filesystem does without and a fetch over the network finds, an
+// agent left to its own login, and claude's API key shadowed by an OAuth token. A system whose
+// credential is not set is not refused here; the runner runs with it closed (Held).
+func (c Config) CheckStart(getenv func(string) string, lookPath func(string) (string, error)) (warnings []string, err error) {
 	if c.Repos != nil && getenv(EnvGitHubToken) == "" {
 		warnings = append(warnings, EnvGitHubToken+" is not set: a fetch or a push over the network is refused where it reaches for it")
 	}
@@ -263,6 +308,9 @@ func (c Config) CheckStart(getenv func(string) string, lookPath func(string) (st
 		}
 		if why := claude.MissingKey(getenv); why != "" {
 			warnings = append(warnings, why+". Claude will have to be logged in under the HOME its environment passes through, or its turns will fail")
+		}
+		if why := claude.Shadowed(getenv); why != "" {
+			warnings = append(warnings, why)
 		}
 	}
 	return warnings, nil
@@ -310,8 +358,8 @@ func (c Config) atGitHub() bool {
 
 // performs is the systems the runner performs for its tasks: `git` and `git-issue` where it
 // checks out repos, `github` and `github-issue` where its forge is a GitHub, and `linear-issue`
-// and `slack` where a doer's ceiling names them (their credential is then required at start,
-// CheckStart). Every doer's offer lists them, each under that doer's ceiling.
+// and `slack` where a doer's ceiling names them (and their credential is set: Held). Every doer's
+// offer lists them, each under that doer's ceiling.
 func (c Config) performs() []string {
 	var out []string
 	if c.Repos != nil {
@@ -499,8 +547,25 @@ func (c *Config) Check() error {
 		}
 	}
 	if c.Script != nil {
+		if err := checkShellEnv("script", c.Script.ShellEnv); err != nil {
+			return err
+		}
 		if err := c.checkSystems(ScriptDoer, c.Script.Systems); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// checkShellEnv checks a doer's `shellEnv`: a list that names something, and no credential.
+func checkShellEnv(at string, names []string) error {
+	if names != nil && len(names) == 0 {
+		return fmt.Errorf("%s.shellEnv: an empty list gives the shell nothing; leave it out for the default (%s)",
+			at, strings.Join(task.DefaultShellEnv, ", "))
+	}
+	for _, name := range names {
+		if slices.Contains(credentials, name) {
+			return fmt.Errorf("%s.shellEnv: %s is a credential the runner acts with, and no task's shell holds one", at, name)
 		}
 	}
 	return nil
@@ -519,6 +584,9 @@ func (c *Config) checkAgent(name string, a Agent) error {
 			return fmt.Errorf("%s.%s: %s takes no %s (its program's keys: %s; every agent's: shellEnv, settings, annotations, systems)",
 				at, key, name, key, own)
 		}
+	}
+	if err := checkShellEnv(at, a.ShellEnv); err != nil {
+		return err
 	}
 	if name == codex.Agent {
 		if err := c.codexConfig().Validate(); err != nil {

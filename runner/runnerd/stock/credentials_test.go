@@ -140,10 +140,10 @@ func TestTheRunnersSystemsAndCeilings(t *testing.T) {
 	}
 }
 
-// WHAT THE RUNNER CANNOT START WITH IS REFUSED AT START, from the environment it starts in: a
-// ceiling naming Linear or Slack with its variable unset, the verse agent with no model key, an
-// agent whose program is not there. A missing forge token, or an agent left to its own login, is
-// said and let start.
+// WHAT THE RUNNER CANNOT START WITH IS REFUSED AT START, from the environment it starts in: the
+// verse agent with no model key, an agent whose program is not there. A missing forge token, an
+// agent left to its own login, or claude's API key shadowed by an OAuth token, is said and let
+// start.
 func TestTheRunnerRefusesToStartWithoutWhatItNeeds(t *testing.T) {
 	env := func(set ...string) func(string) string {
 		return func(name string) string {
@@ -154,13 +154,6 @@ func TestTheRunnerRefusesToStartWithoutWhatItNeeds(t *testing.T) {
 		}
 	}
 	found := func(string) (string, error) { return "/bin/x", nil }
-	lin := Config{Script: &Script{Systems: map[string]System{"linear-issue": {Ceiling: systems.Open()}}}}
-	if _, err := lin.CheckStart(env(), found); err == nil || !strings.Contains(err.Error(), "script.systems.linear-issue") || !strings.Contains(err.Error(), EnvLinearAPIKey) {
-		t.Errorf("linear with no key: %v", err)
-	}
-	if _, err := lin.CheckStart(env(EnvLinearAPIKey), found); err != nil {
-		t.Errorf("linear with its key: %v", err)
-	}
 	if _, err := agentWith(AgentName, nil).CheckStart(env(), found); err == nil || !strings.Contains(err.Error(), verse.EnvAPIKey) {
 		t.Errorf("the verse agent with no model key: %v", err)
 	}
@@ -177,9 +170,60 @@ func TestTheRunnerRefusesToStartWithoutWhatItNeeds(t *testing.T) {
 	if warnings, err := cl.CheckStart(env(claude.EnvAPIKey), found); err != nil || len(warnings) != 0 {
 		t.Errorf("claude with an API key: %v %v", warnings, err)
 	}
+	warnings, err = cl.CheckStart(env(claude.EnvAPIKey, claude.EnvOAuthToken), found)
+	if err != nil || len(warnings) != 1 || !strings.Contains(warnings[0], "claude runs as "+claude.EnvOAuthToken+", and "+claude.EnvAPIKey+" is not used") {
+		t.Errorf("claude with both: %v %v, want it let start, said", warnings, err)
+	}
 	repos := Config{Repos: &Repos{Mirrors: "/m"}, Script: &Script{}}
 	if warnings, err := repos.CheckStart(env(), found); err != nil || len(warnings) != 1 || !strings.Contains(warnings[0], EnvGitHubToken) {
 		t.Errorf("repos with no forge token: %v %v, want it let start, said", warnings, err)
+	}
+}
+
+// A SYSTEM WHOSE CREDENTIAL IS NOT SET IS CLOSED, NOT REFUSED: the runner starts with Linear
+// left out of every doer's section, saying so; no offer holds it, so a launch that needs it is
+// refused where it is written; and with the variable set, the configuration is as written.
+func TestASystemWithNoCredentialIsClosed(t *testing.T) {
+	lin := Config{
+		Agents: map[string]Agent{AgentName: {Systems: map[string]System{"linear-issue": {Ceiling: systems.Open()}, "question": {Ceiling: systems.Open()}}}},
+		Script: &Script{Systems: map[string]System{"linear-issue": {Ceiling: systems.Open()}}},
+	}
+	none := func(string) string { return "" }
+	got, warnings := lin.Held(none)
+	if len(warnings) != 1 || !strings.Contains(warnings[0], EnvLinearAPIKey+" is not set: linear-issue is closed") ||
+		!strings.Contains(warnings[0], "agents.verse.systems.linear-issue, script.systems.linear-issue") {
+		t.Errorf("warnings %v", warnings)
+	}
+	if err := got.Check(); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(got.performs(), "linear-issue") || TokensFromEnv(got).Linear != "" {
+		t.Errorf("performs %v", got.performs())
+	}
+	if _, ok := got.Agents[AgentName].Systems["question"]; !ok {
+		t.Error("Held closed more than linear-issue")
+	}
+	if _, ok := lin.Script.Systems["linear-issue"]; !ok || !slices.Contains(lin.performs(), "linear-issue") {
+		t.Error("Held changed the configuration it was given")
+	}
+	d := got.Describe(nil)
+	for _, o := range d.Offers {
+		if _, ok := o.Systems["linear-issue"]; ok {
+			t.Errorf("the offer %s holds linear-issue", o.Name())
+		}
+	}
+	l := &runner.Launch{ID: "s", Script: "true", Environment: systems.Environment{Systems: systems.Systems{"linear-issue": {{}}}}}
+	if err := runnerd.CheckLaunch(l, d, nil); err == nil || !strings.Contains(err.Error(), "linear-issue") {
+		t.Errorf("a launch needing linear-issue: %v, want it refused", err)
+	}
+	set := func(name string) string {
+		if name == EnvLinearAPIKey {
+			return "k"
+		}
+		return ""
+	}
+	if same, warnings := lin.Held(set); len(warnings) != 0 || !slices.Contains(same.performs(), "linear-issue") {
+		t.Errorf("with the key set: %v, performs %v", warnings, same.performs())
 	}
 }
 
@@ -257,6 +301,9 @@ func TestTheConfigShapeIsChecked(t *testing.T) {
 		"agents: {verse: {bin: /x}}\n":                  "agents.verse.bin: verse takes no bin (its program's keys: none",
 		"agents: {gemini: {}}\n":                        `agents.gemini: this runner runs no agent "gemini" (it runs: verse, codex, claude)`,
 		"agents: {verse: {settings: {model: {values: [claude-*], default: gpt-5}}}}\n": "agents.verse.settings.model.default: outside the values taken",
+		"script: {shellEnv: []}\n":                            "script.shellEnv: an empty list gives the shell nothing; leave it out for the default (PATH",
+		"script: {shellEnv: [PATH, GITHUB_TOKEN]}\n":          "script.shellEnv: GITHUB_TOKEN is a credential the runner acts with",
+		"agents: {claude: {shellEnv: [ANTHROPIC_API_KEY]}}\n": "agents.claude.shellEnv: ANTHROPIC_API_KEY is a credential",
 	} {
 		if _, _, err := Load(write(body)); err == nil || !strings.Contains(err.Error(), says) {
 			t.Errorf("%q: %v, want %q", body, err, says)

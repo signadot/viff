@@ -552,8 +552,8 @@ are the names each consumer reads:
 |---|---|---|---|
 | `llmSecretKey` | `verse-llm` | `PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY` (`PORTKEY_BASE_URL`, `OPENAI_MODEL` optional) | env, by versed **and** the verse runner, which does not start without `PORTKEY_API_KEY` (its config offers the verse agent) |
 | `gitSecretKey` | `verse-git` | `credential` — the value being `username=x-access-token\npassword=<PAT>\n` | a **file** at `/git-credentials/credential` |
-| `slackSecretKey` | `verse-slack` | `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET` | env; **not** optional — no token, no start. `SLACK_BOT_TOKEN` also in the runners, `optional: true` in the pod spec, but a runner whose config names a `slack` ceiling does not start without it |
-| `linearSecretKey` | `verse-linear` | `LINEAR_API_KEY` (the `Authorization` header verbatim), `LINEAR_WEBHOOK_SECRET` | env; `LINEAR_API_KEY` also in the runners, `optional: true` in the pod spec, but a runner whose config names a `linear-issue` ceiling does not start without it |
+| `slackSecretKey` | `verse-slack` | `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET` | env; **not** optional — no token, no start. `SLACK_BOT_TOKEN` also in the runners, `optional: true` in the pod spec: a runner without it starts with `slack` closed, and says so |
+| `linearSecretKey` | `verse-linear` | `LINEAR_API_KEY` (the `Authorization` header verbatim), `LINEAR_WEBHOOK_SECRET` | env; `LINEAR_API_KEY` also in the runners, `optional: true` in the pod spec: a runner without it starts with `linear-issue` closed, and says so |
 | `githubSecretKey` | `verse-github` | `GITHUB_TOKEN`, or `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID` and `GITHUB_APP_PRIVATE_KEY` ([The GitHub App](#the-github-app-signadot-verse)); and `GITHUB_WEBHOOK_SECRET` | env; **not** optional — no Secret, no start |
 | `runnerSecretKey` | `verse-runner` | `gitToken` | env (`GITHUB_TOKEN`), in the runners and never in the sandbox |
 | `codexSecretKey` | `verse-codex` | `OPENAI_API_KEY` | env, in the codex runner, `optional: true` — a runner without it starts, and its first codex spawn fails; written as each task's Codex login |

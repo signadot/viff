@@ -143,6 +143,16 @@ func MissingKey(getenv func(string) string) string {
 	return ""
 }
 
+// Shadowed says, where both variables are set, that the API key goes unused: Key takes the
+// OAuth token, which a runner's environment may hold by accident (someone's own login), and every
+// claude task would run as it. "" where at most one is set.
+func Shadowed(getenv func(string) string) string {
+	if getenv(EnvOAuthToken) != "" && getenv(EnvAPIKey) != "" {
+		return fmt.Sprintf("both %s and %s are set: claude runs as %s, and %s is not used", EnvOAuthToken, EnvAPIKey, EnvOAuthToken, EnvAPIKey)
+	}
+	return ""
+}
+
 // Creds is the resolved claude configuration: the section's values and the credential read.
 type Creds struct {
 	Bin           string
