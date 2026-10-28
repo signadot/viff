@@ -95,7 +95,18 @@ type Reply struct {
 
 // ── framing ─────────────────────────────────────────────────────────────────────────────────
 
+// maxFrame is the most a frame carries either way: a request, or the answer to one.
 const maxFrame = 1 << 20
+
+// frameTooLarge is a frame over maxFrame, read and dropped: THE STREAM STAYS IN STEP, so the
+// channel carries the next request and the next answer as if this one had not been sent. Left
+// in the stream, its bytes would be read as the next frame's length, and every act after it on
+// the channel would read garbage for the rest of the run.
+type frameTooLarge struct{ n int }
+
+func (e frameTooLarge) Error() string {
+	return fmt.Sprintf("%d bytes, more than the %d a frame of the task's channel carries", e.n, maxFrame)
+}
 
 func writeFrame(w io.Writer, body []byte) error {
 	if _, err := io.WriteString(w, strconv.Itoa(len(body))+"\n"); err != nil {
@@ -114,8 +125,14 @@ func readFrame(br *bufio.Reader) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("bad frame length %q: %w", strings.TrimSpace(line), err)
 	}
-	if n < 0 || n > maxFrame {
+	if n < 0 {
 		return nil, fmt.Errorf("frame of %d bytes", n)
+	}
+	if n > maxFrame {
+		if _, err := io.CopyN(io.Discard, br, int64(n)); err != nil {
+			return nil, err
+		}
+		return nil, frameTooLarge{n}
 	}
 	body := make([]byte, n)
 	if _, err := io.ReadFull(br, body); err != nil {

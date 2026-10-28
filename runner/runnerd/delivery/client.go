@@ -41,6 +41,10 @@ func (c *Client) Ask(req Request) (Reply, error) {
 	if err != nil {
 		return Reply{}, err
 	}
+	// Refused before it is sent: the runner would drop it, and the task learns why here.
+	if len(body) > maxFrame {
+		return Reply{}, fmt.Errorf("the request is %w; send less", frameTooLarge{len(body)})
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if err := writeFrame(c.conn, body); err != nil {
@@ -48,7 +52,7 @@ func (c *Client) Ask(req Request) (Reply, error) {
 	}
 	raw, err := readFrame(c.br)
 	if err != nil {
-		return Reply{}, err
+		return Reply{}, fmt.Errorf("the runner's answer: %w", err)
 	}
 	var rep Reply
 	if err := codec.Unmarshal(raw, &rep, codec.Tony); err != nil {

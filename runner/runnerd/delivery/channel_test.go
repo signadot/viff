@@ -130,3 +130,52 @@ func TestSettleWaitsForThePushInFlight(t *testing.T) {
 		}
 	}
 }
+
+// A FRAME TOO LARGE FOR THE CHANNEL LEAVES IT IN STEP: an answer over the cap is said to be one,
+// in a frame that fits; a request over it is refused before it is sent; one sent anyway is
+// dropped and answered. The next act on the channel is carried as if none of them had been.
+func TestAFrameTooLargeLeavesTheChannelInStep(t *testing.T) {
+	big := strings.Repeat("x", maxFrame+1)
+	verse := func(_ context.Context, taskID, method, path string, body []byte) (int, string, error) {
+		if strings.Contains(path, "at=big") {
+			return 200, big, nil
+		}
+		return 200, "{stage: open}", nil
+	}
+	s := &Server{Log: io.Discard, Services: Services{Verse: verse}, Ceilings: map[string]systems.Ceiling{"verse": systems.Open()}}
+	near, far := net.Pipe()
+	t.Cleanup(func() { near.Close() })
+	// A channel out of step blocks rather than errs, so the test's end has a deadline: out of
+	// step is then a failure, not a hang.
+	near.SetDeadline(time.Now().Add(20 * time.Second))
+	go s.Serve(Task{ID: "t7", Workspace: &workspace.Workspace{}, Launch: within(nil, "verse")}, far)
+	cl := NewClient(near)
+	inStep := func(after string) {
+		t.Helper()
+		if rep, err := cl.Ask(Request{Op: OpVerseDataGet, Query: "at=small"}); err != nil || rep.Out != "{stage: open}" {
+			t.Fatalf("after %s, the next read = %+v, %v", after, rep, err)
+		}
+	}
+
+	if rep, err := cl.Ask(Request{Op: OpVerseDataGet, Query: "at=big"}); err != nil || !strings.Contains(rep.Error, "the answer is") {
+		t.Errorf("an answer over the cap = %+v, %v, want an error saying so", rep, err)
+	}
+	inStep("an answer over the cap")
+	if _, err := cl.Ask(Request{Op: OpVerseDataPut, Body: big}); err == nil || !strings.Contains(err.Error(), "send less") {
+		t.Errorf("a request over the cap = %v, want it refused before it is sent", err)
+	}
+	inStep("a request refused before it was sent")
+
+	raw, err := codec.Marshal(Request{Op: OpVerseDataPut, Body: big}, codec.Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFrame(near, raw); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readFrame(cl.br)
+	if err != nil || !strings.Contains(string(got), "the request is") {
+		t.Errorf("a request over the cap sent anyway = %q, %v, want it answered as one", got, err)
+	}
+	inStep("a request over the cap sent anyway")
+}

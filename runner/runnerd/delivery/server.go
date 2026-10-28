@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -92,14 +93,30 @@ func (s *Server) Serve(tk Task, conn net.Conn) {
 	tk.created, tk.pushed = map[string]bool{}, map[string]bool{}
 	br := bufio.NewReader(conn)
 	for {
+		var rep Reply
 		raw, err := readFrame(br)
-		if err != nil {
+		var big frameTooLarge
+		switch {
+		case errors.As(err, &big):
+			rep = Reply{Error: "the request is " + big.Error()} // dropped, and the channel goes on
+		case err != nil:
 			return // the task process is gone, which is the ordinary end
+		default:
+			rep = s.answer(tk, raw)
 		}
-		rep := s.answer(tk, raw)
 		body, err := codec.Marshal(rep, codec.Tony)
 		if err != nil {
 			return
+		}
+		// AN ANSWER THE CHANNEL CANNOT CARRY is said to be one, in a frame it can: what was
+		// done is done, and the task reads that its answer did not fit, and why.
+		if len(body) > maxFrame {
+			fmt.Fprintf(s.Log, "delivery: %s: the answer to it is %d bytes, over the channel's %d\n", tk.ID, len(body), maxFrame)
+			body, err = codec.Marshal(Reply{OK: rep.OK, Error: "the answer is " + frameTooLarge{len(body)}.Error() +
+				"; ask for less of it"}, codec.Tony)
+			if err != nil {
+				return
+			}
 		}
 		if err := writeFrame(conn, body); err != nil {
 			return
