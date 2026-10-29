@@ -220,6 +220,18 @@ func TestATaskRaisesAnAskForItsOwnerHeldWithinTheTask(t *testing.T) {
 		}
 	}
 
+	// An answer: made as the owner, on any ask that waits on them (another task's gate among
+	// them), so nothing that follows a task's ask makes one, at any depth.
+	for what, then := range map[string]string{
+		"a then":              `{answer: {ask: someones-gate, choice: yes}}`,
+		"a then's ask's then": `{ask: {question: "And?", to: [` + alice + `], then: {answer: {ask: someones-gate, choice: yes}}}}`,
+	} {
+		code, body := raiseFor(t, ts.URL, token, "raiser", `{name: settle, question: "Settle it?", to: [`+alice+`], then: `+then+`}`)
+		if code != http.StatusBadRequest || !strings.Contains(body, "answers no ask") {
+			t.Errorf("%s that answers = %d %s, want 400: what follows a task's ask answers no ask", what, code, body)
+		}
+	}
+
 	// Raised, the ask is the owner's to change, beyond the task too.
 	code, body = raiseFor(t, ts.URL, token, "raiser", `{name: mine, question: "Mine?", to: [`+alice+`],
 		then: {spawn: {script: "true", runner: verse.runners.gpu}}}`)

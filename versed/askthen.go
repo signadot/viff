@@ -105,8 +105,18 @@ func thenAskOf(v entity.Payload, now time.Time) (api.Ask, error) {
 // asker, where the asker is present to hear what is wrong, and fills in the edit an answer
 // consents to. self is the ask the `then` is on, where it has an id yet. It recurses through an
 // ask's own `then`.
+//
+// WHAT FOLLOWS A TASK'S ASK ANSWERS NOTHING (within set). An answer is made as the task's owner,
+// on any ask that waits on them, and another task's gate is one: a task allowed only to raise asks
+// would settle a gate its owner was asked, by an ask that answers it on silence, with no person
+// in the loop. A spawn has an environment and an autonomy to hold within the task; an answer has
+// nothing to hold, so it is refused, here and in every `then` beneath.
 func (s *Server) checkThen(asker string, then map[string]any, self string, now time.Time, within *taskBound) (int, error) {
 	if m, ok := asMap(then["answer"]); ok {
+		if within != nil {
+			return http.StatusBadRequest, errors.New("then.answer: what follows a task's ask answers no ask: " +
+				"the answer would be the owner's, and nothing holds it within the task")
+		}
 		return s.checkThenAnswer(asker, m, self)
 	}
 	if v, ok := then["spawn"]; ok {

@@ -259,7 +259,8 @@ A task's `verse-ask-create` is your ask too, when the task runs for you. Its `th
 your authority, so a spawn in it is held within the task: its environment no wider than the
 task's, less installing charters (`verse.charter-install`), its autonomy no looser, on the
 task's runner, spending the task's credential where it spends one (a script spends none). The same holds for its `else`, and for an ask its
-`then` raises. A task cannot raise past what you let it do. Once raised, the ask is yours to change as any of yours.
+`then` raises. An answer in any of them is refused: it would be yours, on any ask that waits on
+you, another task's gate among them. A task cannot raise past what you let it do. Once raised, the ask is yours to change as any of yours.
 
 Only an ask has a `then`. You need not be there when the answer comes, so the ask carries what
 follows it. A rule's gate has none: what a rule does about a yes is its action

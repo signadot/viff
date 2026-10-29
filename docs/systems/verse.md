@@ -46,7 +46,8 @@ spawn:
 The ask is the person's, not the task's. Its `from` names them, with the task beside them, and
 nothing waits on it. Its `then` and `else` run as that person when it settles. A spawn in either
 is held within the task when the ask is raised: an environment no wider than the task's, less
-`verse.charter-install`, an autonomy no looser, the task's runner and the task's credential where it spends one. A task that needs the answer to
+`verse.charter-install`, an autonomy no looser, the task's runner and the task's credential where it spends one. An answer in either is refused,
+since it would be the person's, on any ask that waits on them, another task's gate among them. A task that needs the answer to
 go on uses `question-ask`. One that looks again later reads the ask back with `verse-ask-get`,
 which says whether it was answered.
 
