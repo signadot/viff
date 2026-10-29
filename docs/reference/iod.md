@@ -52,7 +52,7 @@ Every subcommand accepts these flags.
 | `-hint-url` | `VERSE_HINT_URL` | none | the hint route of verse for this installed iod: `http://verse:9797/iods/<name>/hint` |
 | `-root` | | the name of the subcommand | the [root](../glossary.md#root-of-an-iod) of the iod: the first segment of every [address](../glossary.md#address) that it writes |
 | `-verse-addr` | `VERSE_ADDR` | the host of `-hint-url` | the verse that the out half reads and writes, as `host:port` |
-| `-as` | | `agent:<subcommand>-iod`, such as `agent:slack-iod` | the [principal](../glossary.md#principal) that the out half reads and writes as. The Slack out half reads the asks in a message to a person as that person, since a person's ask is read by whom it asks. |
+| `-as` | | `agent:<root>-iod`, such as `agent:slack-iod` | the [principal](../glossary.md#principal) that the out half reads and writes as. The Slack out half reads the asks in a message to a person as that person, since a person's ask is read by whom it asks. |
 | `-out-every` | | `5s` | how often the out half reads what is asked of it |
 | `-token-file` | `VERSE_TOKEN_FILE` | none | the file holding the iod's own credential toward verse: on Kubernetes, the pod's projected service-account token, which verse's `auth.iod` names the iod by ([iods at the door](perms.md#iods-at-the-door)). Read on every request, since the kubelet rotates it. Without it, the iod is whoever `-as` says. |
 
@@ -62,10 +62,10 @@ their Slack account beside it, `slack:<user id>`, so that a verse which verifies
 it through the account's binding and the ballot says which iod it came through
 ([a person relayed by a trusted iod](perms.md#a-person-relayed-by-a-trusted-iod)).
 
-The default of `-as` follows the subcommand, and not `-root`. `verse iod add` defaults its own
-`-as` to `agent:<root>-iod`, and writes the out half's grants for that principal. So an iod
-given a `-root` of its own, such as `iod git -root git-buildhost`, acts as `agent:git-iod` while
-its grants name `agent:git-buildhost-iod`. Give the same `-as` to both.
+The default of `-as` is the iod of its root, as `verse iod add`'s is, and the install writes the
+out half's grants for that principal. So an iod given a `-root` of its own, such as
+`iod git -root git-buildhost`, acts as `agent:git-buildhost-iod` on both sides, and needs no
+`-as`.
 
 `-verse-addr`, `-as`, `-out-every` and `-token-file` configure the out half. Four subcommands
 have an out half, `git`, `slack`, `linear` and `github`, and each starts it with `-out`.

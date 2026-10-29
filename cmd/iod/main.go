@@ -129,7 +129,7 @@ func (c *common) bind(fs *flag.FlagSet) {
 	fs.StringVar(&c.verseAddr, "verse-addr", os.Getenv("VERSE_ADDR"),
 		"the verse the out half reads and writes, host:port (default: the host of -hint-url)")
 	fs.StringVar(&c.as, "as", "", "the principal the out half reads and writes as "+
-		"(default: agent:<connector>-iod)")
+		"(default: agent:<root>-iod, as `verse iod add` grants)")
 	fs.DurationVar(&c.every, "out-every", 5*time.Second,
 		"how often the out half reads what is asked of it")
 	fs.StringVar(&c.tokenFile, "token-file", os.Getenv("VERSE_TOKEN_FILE"),
@@ -168,14 +168,14 @@ func (c *common) verse() string {
 	return ""
 }
 
-// principal is who the out half acts as: what -as says, or the connector's own name, since one
-// deployment per external system is the shape and `agent:slack-iod` is what its grants are written
-// against.
-func (c *common) principal(connector string) string {
+// principal is who the out half acts as: what -as says, or the iod of its root — the connector's
+// own name, or -root's where it is given — since that is the principal `verse iod add` writes the
+// out half's grants for (`agent:slack-iod`, `agent:<root>-iod`).
+func (c *common) principal(root string) string {
 	if c.as != "" {
 		return c.as
 	}
-	return "agent:" + connector + "-iod"
+	return "agent:" + root + "-iod"
 }
 
 // registration is the name verse installed this iod under, read off the hint url, which is the one
@@ -199,10 +199,9 @@ func (c *common) registration() string {
 
 // outHalf starts one pass loop per place, and answers them for whatever else needs to kick one.
 //
-// THE ROOT IS THE CONNECTOR'S, not the -root flag's. `-root` is how one deployment takes a slice
-// of its own and is usually not given, so reading the principal off it made an out half act as
-// `agent:-iod` — a name the install seeds no grants for, so every status it wrote was refused
-// while the registration held grants for `agent:slack-iod`.
+// THE ROOT IS THE SOURCE'S, not the -root flag's: the source's Root, which is -root where it is
+// given and the connector's own name where it is not. The flag alone is usually empty, and
+// `agent:-iod` is a principal the install writes no grants for.
 func (c *common) outHalf(ctx context.Context, root string, sink verseio.Sink, places []entity.Ref, verse *client.Client) ([]*verseio.Out, error) {
 	addr := c.verse()
 	if addr == "" {
