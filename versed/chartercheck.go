@@ -46,12 +46,13 @@ func (s *Server) checkCharter(w http.ResponseWriter, r *http.Request) {
 		writeOut(w, r, http.StatusOK, api.CharterCheck{At: at, Verdict: "refused", Refusal: err.Error()})
 		return
 	}
-	writeOut(w, r, http.StatusOK, s.checkCharterAt(s.scopedStore(r), at, docs, hold))
+	writeOut(w, r, http.StatusOK, s.checkCharterAt(s.scopedStore(r), r.URL.Query().Get("scope"), at, docs, hold))
 }
 
-// checkCharterAt is the check, as the store's principal: a refusal is the verdict, never an error.
-// hold is the task asking, whose install would be held within it (chartertask.go), or nil.
-func (s *Server) checkCharterAt(store entity.Store, at string, docs []*ir.Node, hold *taskCharter) api.CharterCheck {
+// checkCharterAt is the check, as the store's principal, in scope ("" for baseline): a refusal is
+// the verdict, never an error. hold is the task asking, whose install would be held within it
+// (chartertask.go), or nil.
+func (s *Server) checkCharterAt(store entity.Store, scope, at string, docs []*ir.Node, hold *taskCharter) api.CharterCheck {
 	out := api.CharterCheck{At: at, Verdict: "installs"}
 	refuse := func(err error) api.CharterCheck {
 		out.Verdict, out.Refusal, out.Packages = "refused", err.Error(), nil
@@ -72,6 +73,9 @@ func (s *Server) checkCharterAt(store entity.Store, at string, docs []*ir.Node, 
 	out.Pruned = gone
 	for _, g := range groups {
 		if _, err := checkPackageAddress(store, installer, g.at); err != nil {
+			return refuse(err)
+		}
+		if err := ttlInScope(g, scope); err != nil {
 			return refuse(err)
 		}
 		pkg, err := s.checkPackage(store, installer, g, hold)

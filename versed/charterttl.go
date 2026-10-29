@@ -58,13 +58,23 @@ func charterTTL(v *ir.Node) (time.Duration, error) {
 	return d, nil
 }
 
+// ttlInScope is why a package's ttl is refused where it would be installed, or nil: a scope's
+// charter has none. The install (expiry) and the check (checkCharterAt) both ask it, so the check
+// does not answer `installs` for what the install refuses.
+func ttlInScope(g charterGroup, scope string) error {
+	if g.ttl > 0 && scope != "" {
+		return errors.New("ttl: a scope's charter has none: it goes " +
+			"with its scope, and a ttl is for a package in the verse")
+	}
+	return nil
+}
+
 // expiry writes, or takes away, the expiry of the package a fielded charter declares: its ttl
 // from now, or none when the file gives none. The declaration record stands by now (imports),
 // and its undo puts the whole of it back, expiry included.
 func (tx *charterTx) expiry(g *charterGroup) (int, error) {
-	if g.ttl > 0 && tx.scope != "" {
-		return http.StatusBadRequest, errors.New("ttl: a scope's charter has none: it goes " +
-			"with its scope, and a ttl is for a package in the verse")
+	if err := ttlInScope(*g, tx.scope); err != nil {
+		return http.StatusBadRequest, err
 	}
 	confine, err := trigger.ParseAt(g.at)
 	if err != nil {

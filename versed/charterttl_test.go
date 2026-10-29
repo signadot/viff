@@ -168,6 +168,20 @@ func TestACharterTTLIsAPackagesDuration(t *testing.T) {
 	if got := checkAt(t, ts, "repos.r", ttlPackage("repos.r.hello", "2s")); got.Verdict != "installs" {
 		t.Errorf("the check of a charter with a ttl = %+v", got)
 	}
+
+	// In a scope a charter has no ttl: it goes with its scope. The install refuses it, and the
+	// check says so rather than that it installs.
+	resp, err := httpPost(ts.URL+"/charter?scope=sandbox", "application/tony", strings.NewReader(ttlPackage("repos.r.hello", "2s")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "a scope's charter has none") {
+		t.Errorf("a ttl installed in a scope = %s %s, want it refused", resp.Status, body)
+	}
+	if got := checkAt(t, ts, "repos.r&scope=sandbox", ttlPackage("repos.r.hello", "2s")); got.Verdict != "refused" ||
+		!strings.Contains(got.Refusal, "a scope's charter has none") {
+		t.Errorf("the check of a ttl in a scope = %+v, want it refused as the install is", got)
+	}
 }
 
 // A CHARTER'S TTL OUTLIVES THE PROCESS THAT ARMED IT: the declaration holds the instant, and the
