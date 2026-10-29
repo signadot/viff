@@ -142,8 +142,8 @@ ends. Every spawn among its rules is held within the task:
   script spends none, and may name none;
 - any runner.
 
-The hold is on spawns. A rule's `patch`, `derive` and `send` are the person's own writes, as any
-charter's are, held by nothing the task was: a task given `verse.charter-install` installs rules
+The hold is on spawns. A rule's `patch` and `derive`, a write into an outbox among them, are the
+person's own writes, as any charter's are, held by nothing the task was: a task given `verse.charter-install` installs rules
 that write what the person may write, whether or not the task itself has `verse.data-put`. A
 spawn's author who gives a task charter-install gives it that.
 

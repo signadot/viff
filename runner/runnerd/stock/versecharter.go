@@ -194,7 +194,7 @@ func verseCharterTools(cl *delivery.Client) []verse.Tool {
 			"the rules held and the notes on them; verse-charter-check asks first. Each spawn among the " +
 			"rules reaches no further than this task does, less installing charters, under autonomy no " +
 			"looser and with this task's credential, on any runner: verse refuses one that would. A rule's " +
-			"patch, derive and send are theirs, as any charter's are.",
+			"patch and derive are theirs, as any charter's are.",
 		Params: install, Required: []string{"charters"}, Step: task.StepVerseCharterInstall, Fields: none,
 		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
 			p, err := paramsOf(tu.Input, install)
