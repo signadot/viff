@@ -1,0 +1,5 @@
+# docs: a task-installed rule's patch, derive and send run as the owner, held by nothing of the task's
+
+`taskCharter.holds` (versed/chartertask.go) holds a charter a task installs within the task through `Action.EachSpawn`: every spawn's environment, autonomy and credential. A rule's other actions, `patch`, `derive` and `send`, are not spawns, and run as the owner unheld. So a task whose environment gives `verse.charter-install` and not `verse.data-put` installs a rule whose `patch` writes what the task's own verbs never gave it.
+
+Decided: this is documented, not held. `verse.charter-install` is the owner's charter install, and what a charter writes is the owner's write; a spawn's author who gives a task charter-install gives it that. docs/reference/charter.md and docs/systems/verse.md say so where they say what the hold covers.
