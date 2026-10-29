@@ -29,7 +29,7 @@ func TestAScriptRaisesAnAskTheRunnerCarriesToVerse(t *testing.T) {
 	var saw []map[string]any
 	raise := func(_ context.Context, taskID, method, path string, ask []byte) (int, string, error) {
 		// What it reads back, after: the ask it raised, answered, and one its owner raised before.
-		if method == http.MethodGet && path == "/asks" {
+		if method == http.MethodGet && (path == "/asks" || strings.HasPrefix(path, "/asks?")) {
 			return 200, `- {id: r1-1a2b, name: r1, question: "Land it?", answer: yes, status: answered}
 - {id: tea-9z9z, name: tea, question: "Tea?", status: pending}`, nil
 		}
