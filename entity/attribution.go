@@ -3114,7 +3114,7 @@ func Claim(s Store, ref Ref, principal string) error {
 			a.attr.noteRefusal(OwnerLevel)
 			return fmt.Errorf("%w: nothing stands at %s, and in verse's half a place is taken only "+
 				"where something does: what stands there is made by the verb that owns it "+
-				"(charter -a, resolver add, runner add, source add, task run), and is its maker's",
+				"(charter -a, resolver add, runner add, iod add, task run), and is its maker's",
 				ErrForbidden, ref)
 		}
 	}

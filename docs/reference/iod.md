@@ -741,8 +741,8 @@ iod linear -team <KEY>        a team to reflect (repeatable, comma-separated;
                                   default: every team the credential can see)
                -page-size <n>     issues per GraphQL page (default 100)
                -max-issues <n>    refuse a team bigger than this (default 5000)
-               -out               also comment on the issue named by what is written under
-                                  linear.<KEY>.out, and write each one's <name>~status
+               -out               also comment on the issue each input under linear.<KEY>.out
+                                  names in its `to` (ENG-42), and write each one's <name>~status
 ```
 
 In Linear, set Settings → API → Webhooks to `https://<host>/linear/webhook`.

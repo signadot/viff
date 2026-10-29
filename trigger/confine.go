@@ -130,7 +130,7 @@ func (s Subtree) String() string {
 // literally, so its author hears it; and reservedWrite at the write, of the address itself,
 // since a derive's target and a subject's first segment may not be literal.
 var errReservedWrite = fmt.Errorf("%w: what stands under %s is written by the verbs that own it "+
-	"(charter -a, runner add, source add, resolver add, question approve), not by a rule's patch or "+
+	"(charter -a, runner add, iod add, resolver add, question approve), not by a rule's patch or "+
 	"derive; a rule may read it, select it as a subject and spawn about it", entity.ErrForbidden, entity.VerseRoot)
 
 // checkReserved refuses, at install, a rule of anybody's but the system's that names an address

@@ -643,7 +643,7 @@ func gateCmd() *cli.Command {
 	}
 	return cli.NewCommandAt(&cfg.Command, "question").
 		WithAliases("questions", "qs", "gate", "gates").
-		WithSynopsis("question — what is asked of you (also: questions, qs, gate): bare lists the questions waiting on you, --all the whole docket, <id> shows one, <id> --answer <option> answers it (approve|deny are the two default options), --watch follows them").
+		WithSynopsis("question — what is asked of you (also: questions, qs, gate): bare lists the questions waiting on you, --all the whole docket, <id> shows one, <id> --answer <option> answers it (proceed|deny are the two default options), --watch follows them").
 		WithOpts(append(opts, filterOpts()...)...).
 		WithSubs(gateAnswerCmd(true), gateAnswerCmd(false)).
 		WithRun(func(cc *cli.Context, args []string) error {

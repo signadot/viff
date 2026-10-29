@@ -26,7 +26,7 @@ const (
 
 // Descriptor is what a source says it is when asked, and it is what an install probes for.
 //
-// Owns is the ownership claim the registration is checked against (`{ref: "git.*.verse/*"}`)
+// Owns is the ownership claim the registration is checked against (`{at: "git.app"}`)
 // — coarser than a Reflection's Covers, which is per-pass, and an ADDRESS rather than a
 // Pattern because an install compares two declarations with no entities in hand.
 // See own.go. It is optional: a source that declines to say cannot have its disjointness from

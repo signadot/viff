@@ -279,7 +279,8 @@ func (s *Server) setPackageImports(store entity.Store, at string, subs []trigger
 	}
 	if confine.Stamp() == "" {
 		return fmt.Errorf("reads: a charter with no address has nothing to import into — " +
-			"`reads:` belongs to a package, installed with `verse c -a --at <address>`")
+			"`reads:` belongs to a package, one installed at an address: its file's `at:`, or " +
+			"`verse c -a <address> -f <file>`")
 	}
 	graph := s.packageImports()
 	graph[confine.Stamp()] = subs

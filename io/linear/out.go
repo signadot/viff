@@ -25,8 +25,8 @@ import (
 //	an id verse can spell              an identifier (ENG-42) that must be resolved to a uuid
 //	a draw that folds in gate records  the text as written
 //
-// Somebody writes `linear.out.<issue>.<name>` as `{text}` — `<issue>` being the identifier a
-// person types, `ENG-42` — and this answers at `<name>~status`:
+// Somebody writes an input anywhere under `linear.<team>.out` as `{to, text}` — `to` being the
+// identifier a person types, `ENG-42` — and this answers at `<name>~status`:
 //
 //	comment:   the comment's id, which is what an update needs
 //	url:       where a reader finds it

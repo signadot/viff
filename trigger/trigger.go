@@ -429,7 +429,7 @@ func (g Gate) validate() error {
 	if g.Deadline != nil && g.Deadline.AtFrom == "" {
 		d, err := g.Deadline.After()
 		if err != nil {
-			return fmt.Errorf("deadline: %w (quote the duration: within: \"24h\")", err)
+			return fmt.Errorf("deadline: %w (within is a duration, such as 24h or 90m)", err)
 		}
 		if d <= 0 {
 			return fmt.Errorf("deadline: within %q: a deadline is in the future", g.Deadline.Within)

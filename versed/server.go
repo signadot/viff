@@ -2325,7 +2325,7 @@ func reservedWrite(ref entity.Ref) error {
 	}
 	return fmt.Errorf("%s is verse's own: the entity write is for what the world is about, and "+
 		"what verse writes about its own running is written by the verbs that own it "+
-		"(charter -a, resolver add, runner add, source add, question approve)", ref)
+		"(charter -a, resolver add, runner add, iod add, question approve)", ref)
 }
 
 func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {

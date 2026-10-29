@@ -10,7 +10,7 @@ import (
 
 // An ownership claim says what no other source may write, and it is spelled the way every other
 // address in verse is — one pattern per level, at whatever depth — with `*` allowed at any of
-// them and a trailing one making a prefix: `git.*.verse/*`, or just `git` for the whole root.
+// them and a trailing one making a prefix: `github.acme.app-*`, or just `git` for the whole root.
 //
 // It is NOT an entity.Pattern, which is what a Reflection's Covers is and what a charter's
 // `when` becomes, and the difference is where the two questions are asked rather than a
@@ -41,7 +41,8 @@ import (
 // Own is one ownership claim as a source DECLARES it, and as a registration stores and serves
 // it: an address, as a glob.
 //
-//	{at: "git.*.verse/*"}
+//	{at: "git.app"}
+//	{at: "github.acme.app-*"}
 //	{at: "linear.project.*.owners.ENG"}
 //
 // `at` is the address, which is what every other surface means by the word: `!get-path {at:
@@ -188,7 +189,7 @@ func ParseClaim(s string) (Claim, error) {
 	for i := 0; i < len(s); i++ {
 		if s[i] == '*' && i+1 < len(s) && s[i+1] != '.' {
 			return Claim{}, fmt.Errorf("ownership claim %q: a glob is a prefix with a TRAILING "+
-				"`*` (verse/*, or `*` for a whole level) — a `*` anywhere else is refused rather "+
+				"`*` (app-*, or `*` for a whole level) — a `*` anywhere else is refused rather "+
 				"than approximated, since a claim meaning something narrower (or wider) than it "+
 				"looks is a single-writer guarantee resting on a typo", s)
 		}
@@ -199,7 +200,7 @@ func ParseClaim(s string) (Claim, error) {
 	}
 	if len(parts) == 0 {
 		return Claim{}, fmt.Errorf("ownership claim %q: want an address, one pattern per level, "+
-			"where a level may be `*` and may end in one (git.*.verse/*)", s)
+			"where a level may be `*` and may end in one (github.acme.app-*)", s)
 	}
 	// NOTHING IN VERSE'S OWN HALF, said at the parse rather than only where a removal reads the
 	// claim: a source reflects the world, and the half verse keeps about its own running is not
@@ -218,7 +219,7 @@ func ParseClaim(s string) (Claim, error) {
 		if star := strings.Index(p, "*"); star >= 0 {
 			if star != len(p)-1 {
 				return Claim{}, fmt.Errorf("ownership claim %q: a glob is a prefix with a "+
-					"TRAILING `*` (verse/*) — a `*` anywhere else is refused rather than "+
+					"TRAILING `*` (app-*) — a `*` anywhere else is refused rather than "+
 					"approximated, since a claim meaning something narrower than it looks is a "+
 					"single-writer guarantee resting on a typo", s)
 			}

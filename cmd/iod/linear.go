@@ -29,8 +29,8 @@ func linearMain(args []string) error {
 	max := fs.Int("max-issues", linear.DefaultMaxIssues,
 		"refuse to reflect a team with more issues than this, rather than answer partially "+
 			"for a slice the answer claims to cover completely")
-	out := fs.Bool("out", false, "also run the out half: comment on the issue named by what is "+
-		"written under linear.<team>.out.<issue>.<name>, and write each one's <name>~status")
+	out := fs.Bool("out", false, "also run the out half: comment on the issue each input under "+
+		"linear.<team>.out names in its `to` (ENG-42), and write each one's <name>~status")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

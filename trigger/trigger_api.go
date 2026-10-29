@@ -246,8 +246,7 @@ func (e *Engine) vet(t Trigger, as string) (bool, error) {
 	// picking one silently is how a charter comes to gate on something its author removed.
 	if t.Gating != nil && len(t.Gating.Gates) > 0 && len(t.Gates) > 0 {
 		return false, fmt.Errorf("trigger %q: gates are written twice — at the top level and under "+
-			"`gating`. They are one field read two ways; keep the one under `gating`, which "+
-			"is also where a resolver for them is named", t.Name)
+			"`gating`. They are one field read two ways; keep one of them", t.Name)
 	}
 	for _, g := range t.AllGates() {
 		if err := g.validate(); err != nil {

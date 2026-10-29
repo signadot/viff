@@ -54,8 +54,8 @@ type Entity struct {
 	DialIn string `tony:"field=dial-in,omitzero"`
 	Dir    string `tony:"field=dir,omitzero"`
 
-	// Owns is what this registration claims to be the single writer of — an address each, and
-	// optionally a path inside it (`{at: "git.*.verse/*"}`; see own.go). It is what an install
+	// Owns is what this registration claims to be the single writer of — an address each
+	// (`{at: "git.app"}`; see own.go). It is what an install
 	// proves disjointness against, and what a `--forget` removal tombstones. Absent means the
 	// source declined to say, which is refused an install alongside anything it cannot be
 	// proved apart from.

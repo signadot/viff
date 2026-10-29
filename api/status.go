@@ -89,7 +89,7 @@ type Status struct {
 // Firings counts what has gone wrong at the rules' firings, over every charter installed.
 //
 // A count that climbs is a rule doing less than it says. Which rule, where in it, about what
-// and why are on the rule in `verse charter`, under `trouble`.
+// and why are on the rule's record, under `trouble`, which `verse charter` says on stderr.
 //
 //tony:schemagen=verse-firings,notag
 type Firings struct {
