@@ -2,6 +2,7 @@
 blocked_by: []
 blocks: []
 branches: []
+closed_by: 90652467b37c037cc69404c35ff2f5cfa656f176
 commits:
 - ae2e8ff55a575203b8165680bd8ee2a19120e8aa
 created: "2026-10-28T13:57:57.179411+01:00"
@@ -9,5 +10,5 @@ duplicates: []
 id: vqved3g6h12krnfhw5n0
 labels: []
 related_issues: []
-status: open
-updated: "2026-10-29T08:29:05.302925+01:00"
+status: closed
+updated: "2026-10-29T08:29:05.592095+01:00"
