@@ -35,7 +35,10 @@ func main() {
 			Builds: systems.Ceiling{{Attributes: map[string][]string{"mode": {runner.NetworkOpen}}}},
 		}},
 	}}})
-	if err := http.ListenAndServe(*addr, d.HTTPHandler()); err != nil {
+	guard, err := runnerd.NewGuard(runnerd.Verse{URL: *verseURL}, *tokenFile)
+	// …
+	go guard.Announce(context.Background(), log.Printf)
+	if err := http.ListenAndServe(*addr, guard.Wrap(d.HTTPHandler())); err != nil {
 		log.Fatalf("runner: %v", err)
 	}
 }
@@ -57,6 +60,7 @@ func (echoExecutor) Execute(_ context.Context, tu task.ToolUse) (task.StepResult
 
 | Part | What it does |
 |---|---|
+| `runnerd.NewGuard(…)`, `guard.Wrap`, `guard.Announce` | proves the runner to the one verse it serves, with the token in `-token-file`: it answers the token on `GET /describe` to that verse, takes only that verse's tokens on every other route, and tells the verse it is here. The registration names the token by its hash (`verse runner add -token-file`). A runner is never taken at its word, so a runner without one cannot be registered. |
 | `runnerd.NewInProcessHandler(build)` | makes a task handler that runs tasks in this program's process, with no sandbox. It calls `build` once for each spawn. (`runnerd` uses a `runnerd.SubprocessHandler` instead, which runs each task in a sandboxed process of its own.) |
 | `d.Describe(…)` | what the runner offers, which `GET /describe` answers, in `version: 2`: one agent, `sample`, taking no settings. Each offer says which networks it builds, under its network's `builds`. The sample runs its tasks unconfined, so it builds only `open`. Verse does not install a runner that offers nothing, or whose offer leaves out what network it builds. |
 | `d.HTTPHandler()` | the HTTP routes of the contract, and `GET /describe` |
@@ -125,16 +129,19 @@ and [the bodies](../task-control.md#the-bodies) describes each field of a launch
 
 ### Install it and run a task
 
-Start the sample in a terminal of its own.
+Start the sample in a terminal of its own, with a static token it proves itself with.
+`-verse-url` names the verse it serves, `http://localhost:9797` by default, spelled as `verse up`
+prints its issuer: a runner told `127.0.0.1` refuses every token a `localhost` verse signs.
 
 ```sh
-go run ./docs/reference/examples/runner -addr 127.0.0.1:9810
+openssl rand -hex 32 > runner.token
+go run ./docs/reference/examples/runner -addr 127.0.0.1:9810 -token-file runner.token
 ```
 
 Then install the runner, check it, and run a task on it.
 
 ```sh
-verse runner add sample http://127.0.0.1:9810
+verse runner add sample http://127.0.0.1:9810 -token-file runner.token
 verse runner check sample
 echo '{runner: sample, agent: {name: sample}, prompt: "fetch the data; train the model", environment: {systems: {network: {mode: open}}}}' |
   verse task run -f - -wait
@@ -185,7 +192,8 @@ command and what each refuses.
 
 ### What a runner must do that the compiler does not check
 
-On way A, `runnerd` does the first five for you. The other four are yours on both ways.
+On way A, `runnerd` does the first five for you, and its guard the tenth. The others are yours
+on both ways.
 
 1. **A spawn is idempotent by id while the task runs.** A second spawn of a live id answers
    `200` with the task that runs, and starts nothing. A spawn of an id whose task has ended
@@ -221,6 +229,11 @@ On way A, `runnerd` does the first five for you. The other four are yours on bot
    does not build), and one missing a step its doer requires. `GET /describe` says what it has.
 9. **A failure sets `err`, and not `result`.** `result` is the answer of a task that ended
    with `done`.
+10. **The runner proves itself to its verse.** On `GET /describe` from its verse it answers its
+   own token in `Verse-Runner-Token`; on every other route it takes only a bearer its verse
+   signed for it; and its requests to verse carry its token. Verse refuses a registration that
+   names no `subject`, so a runner that cannot prove itself is never registered
+   ([who the runner is](../runners.md#who-the-runner-is)).
 
 The sample does not do 7 and 8. Its `build` reads the id, the prompt, the environment and the autonomy of
 the launch and no other field. Add the refusals before you deploy a copy of it.

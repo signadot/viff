@@ -2,8 +2,9 @@
 // the verse-facing task-control contract, so a drive can deploy somewhere to run work that
 // the verse deployment does not otherwise need to know about.
 //
-//	go run ./docs/reference/examples/runner -addr :9800
-//	verse runner add gpu http://localhost:9800
+//	openssl rand -hex 32 > runner.token
+//	go run ./docs/reference/examples/runner -addr :9800 -token-file runner.token
+//	verse runner add gpu http://localhost:9800 -token-file runner.token
 //	verse task run -runner verse.runners.gpu -agent sample "retrain the ranker"
 //
 // It is a real program and it compiles with the tree, which is the point: a stub in a fenced
@@ -15,7 +16,8 @@
 // Two functions, and they are the two questions a runner answers. The Driver decides what the
 // work IS — one action at a time, until it says it is done — and the Executor carries each
 // action out. Everything else here is plumbing you can leave alone: runnerd serves the
-// contract, tracks the running set, and streams the read plane.
+// contract, tracks the running set, and streams the read plane, and its guard proves the runner
+// to its verse.
 //
 // # What NOT to change
 //
@@ -29,6 +31,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -44,7 +47,23 @@ import (
 
 func main() {
 	addr := flag.String("addr", ":9800", "address to serve the task-control contract on")
+	// A runner is never taken at its word: it proves itself to the one verse it serves with a
+	// token, here a static one, which its registration names by hash (`verse runner add
+	// -token-file`). The verse's url is also the name its tokens are issued under, so spell it
+	// as `verse up` prints its issuer: localhost, not 127.0.0.1.
+	verseURL := flag.String("verse-url", envOr("VERSE_URL", "http://localhost:9797"),
+		"the verse this runner serves, as its issuer is spelled (VERSE_URL)")
+	tokenFile := flag.String("token-file", os.Getenv("VERSE_TOKEN_FILE"),
+		"the file holding this runner's static token, `openssl rand -hex 32`; required (VERSE_TOKEN_FILE)")
 	flag.Parse()
+	if *tokenFile == "" {
+		log.Fatal(errors.New("runner: no -token-file: a runner proves itself to its verse with a token " +
+			"(`openssl rand -hex 32 > runner.token`, and `verse runner add -token-file runner.token`)"))
+	}
+	guard, err := runnerd.NewGuard(runnerd.Verse{URL: *verseURL}, *tokenFile)
+	if err != nil {
+		log.Fatalf("runner: %v", err)
+	}
 
 	// runnerd is the contract: GET /describe for what is on offer, POST /tasks to launch,
 	// GET /tasks[/{id}] to list and snapshot, GET /tasks/{id}/events for the read plane, and
@@ -63,9 +82,12 @@ func main() {
 			Builds: systems.Ceiling{{Attributes: map[string][]string{"mode": {runner.NetworkOpen}}}},
 		}},
 	}}})
-	log.Printf("runner listening on %s — install it with: verse runner add <name> http://<host>%s",
-		*addr, *addr)
-	if err := http.ListenAndServe(*addr, d.HTTPHandler()); err != nil {
+	log.Printf("runner listening on %s — install it with: verse runner add <name> http://<host>%s -token-file %s",
+		*addr, *addr, *tokenFile)
+	// The hello: the verse describes this runner as soon as the runner tells it it is here, and
+	// until a registration names it, the runner keeps telling it.
+	go guard.Announce(context.Background(), log.Printf)
+	if err := http.ListenAndServe(*addr, guard.Wrap(d.HTTPHandler())); err != nil {
 		log.Fatalf("runner: %v", err)
 	}
 }
@@ -144,4 +166,12 @@ func (echoExecutor) Execute(_ context.Context, tu task.ToolUse) (task.StepResult
 	step, _ := tu.Input["step"].(string)
 	fmt.Fprintf(os.Stdout, "runner: %s\n", step)
 	return task.StepResult{Use: tu, Output: "did: " + step}, nil, nil
+}
+
+// envOr is the environment's value for key, or dflt where it sets none.
+func envOr(key, dflt string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return dflt
 }

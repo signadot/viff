@@ -11,13 +11,18 @@ tree.
 ## Running the runner
 
 ```sh
-go run ./docs/reference/examples/runner -addr :9800
+openssl rand -hex 32 > runner.token
+go run ./docs/reference/examples/runner -addr :9800 -token-file runner.token
 ```
+
+The runner proves itself to its verse with that token, and the registration names it by its
+hash. `-verse-url` says which verse the runner serves, `http://localhost:9797` by default, and is
+spelled the way `verse up` prints its issuer: `localhost`, not `127.0.0.1`.
 
 Then run these commands against a verse:
 
 ```sh
-verse runner add gpu http://localhost:9800
+verse runner add gpu http://localhost:9800 -token-file runner.token
 verse task run -runner verse.runners.gpu -agent sample "fetch the data; retrain; report"
 verse ps -runner verse.runners.gpu
 ```
