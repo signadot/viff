@@ -449,3 +449,19 @@ func TestTheRecordSaysWhoRanTheTask(t *testing.T) {
 		t.Errorf("AgentOf a script's record: %v %v", a, script)
 	}
 }
+
+// A RESUMED TASK IS NOT PAUSED: `paused` on the record is whether the latest status said so.
+// Task.Resume says `running`, as a status, so the flag goes with it.
+func TestAResumedTaskIsNotPaused(t *testing.T) {
+	store := entitytest.Store(t)
+	h := &fakeHandle{ch: make(chan task.Event, 3)}
+	go Reflect(store, "p1", h, Meta{Runner: "local", Script: true})
+	h.ch <- task.Event{Kind: task.EventStatus, Text: string(task.Running)}
+	h.ch <- task.Event{Kind: task.EventStatus, Text: string(task.Paused), By: "user:ana@example.com"}
+	recordOf(t, store, "p1", func(f map[string]any) bool { return f["paused"] == true })
+	h.ch <- task.Event{Kind: task.EventStatus, Text: string(task.Running), By: "user:ana@example.com"}
+	rec := recordOf(t, store, "p1", func(f map[string]any) bool { return f["paused"] != true })
+	if rec["status"] != string(task.Running) {
+		t.Fatalf("a resumed task's status = %v, want running", rec["status"])
+	}
+}

@@ -842,15 +842,16 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 					HearSay(docket, ev.ID, id)
 				}
 			case task.EventStatus:
-				// paused/resumed ride the same channel as lifecycle status but are
-				// transient control acks, not a lifecycle state — project them as a
-				// `paused` flag so `status` stays running→completed/cancelled.
+				// A pause rides the same channel as lifecycle status but is a transient hold, not a
+				// lifecycle state — project it as a `paused` flag so `status` stays
+				// running→completed/cancelled. The flag says whether the latest status was a
+				// pause: a resume says `running` (Task.Resume), and every status after a pause
+				// lifts it.
 				switch ev.Text {
-				case "paused":
+				case string(task.Paused):
 					st["paused"] = true
-				case "resumed":
-					st["paused"] = false
 				default:
+					delete(st, "paused") // see write: a replace stores st, so absence is absence
 					// A CLAIM: a worker took the task and named itself. The grant a spawn makes
 					// to its runner is written now, naming the party that actually turned up,
 					// and every report from here on is written as them.
