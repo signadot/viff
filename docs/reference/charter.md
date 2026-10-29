@@ -149,12 +149,11 @@ spawn's author who gives a task charter-install gives it that.
 
 The install and `verse charter --check` refuse a spawn beyond the task, and an attribute still to
 be bound, such as `repo: $subject.value.repo`, is within where some value of it could be. The rule
-records the task. At each firing the spawn, bound, is held to the task's environment as the
-task's record says it was launched, after the task has ended too: a firing that binds a
-repository the task never reached fails, with the reason in `err`, and so does one whose task has
-no record. A task in a scope installs where its request says, baseline unless it names a scope,
-and its rules are held by its record in its scope. `verse charter` says which task installed a
-rule in a note beside the file. A rule the person installs over the task's is theirs, held by
+records the task, and what the task could hand on when it installed it. At each firing the spawn,
+bound, is held to that, after the task has ended too and whatever becomes of the task's record: a
+firing that binds a repository the task never reached fails, with the reason in `err`. A task in a
+scope installs in baseline, as everything a task does on verse is done. `verse charter` says which
+task installed a rule in a note beside the file. A rule the person installs over the task's is theirs, held by
 nothing the task was.
 
 **One file is one charter, and a directory holds several.** Each file says where its charter

@@ -10,7 +10,6 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
-	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/trigger"
@@ -34,20 +33,19 @@ import (
 //
 // AT THE INSTALL, AND AT A CHECK, every spawn as the charter writes it: an attribute still to be
 // bound is within where some value of it could be (systems.Environment.WithinAsWritten). The rule
-// records the task and the scope it ran in (trigger.Trigger.Task, TaskScope), and AT EACH FIRING
-// the spawn, bound, is held to the task's environment as its record there says it was launched
-// (spawnerFor): a `$repo` the firing binds to a repository the task never reached does not
-// launch. A scoped task's install goes where its request names, baseline unless it names a
-// scope, so the rule and the task's record need not share one. Autonomy and credential are
-// written into the spawn and never bound, so the install has them whole.
+// records the task and what it could hand on (trigger.Trigger.Task, TaskEnvironment), and AT EACH
+// FIRING the spawn, bound, is held to that (spawnerFor): a `$repo` the firing binds to a
+// repository the task never reached does not launch. The rule keeps its own hold because it
+// outlives the task's record: a scoped task's record goes with its scope, and its install went
+// to baseline. Autonomy and credential are written into the spawn and never bound, so the
+// install has them whole.
 //
 // A rule the task's owner installs over the task's is theirs, and held by nothing the task was.
 
 // taskCharter is what a charter a task installs is held within: the task's launch less
-// `verse.charter-install` (launched.handsOn), the autonomy it runs under now, and the scope it
-// runs in, which its record is in.
+// `verse.charter-install` (launched.handsOn), and the autonomy it runs under now.
 type taskCharter struct {
-	task, scope string
+	task        string
 	environment systems.Environment
 	autonomy    task.Autonomy
 	virtualKey  string
@@ -72,7 +70,6 @@ func (s *Server) taskCharterFor(id string) (*taskCharter, error) {
 	}
 	return &taskCharter{
 		task:        id,
-		scope:       ht.scope,
 		environment: ht.launched.handsOn(),
 		autonomy:    ht.autonomy,
 		virtualKey:  ht.launched.virtualKey,
@@ -128,28 +125,20 @@ func (h *taskCharter) holds(t trigger.Trigger) error {
 }
 
 // heldByItsTask is why a spawn of rule, bound by its firing, would reach beyond the task that
-// installed the rule, or nil: within what the task hands on (launched.handsOn) as the task's
-// record says it was launched. A rule no task installed is held by nothing here. The record is
-// read in the scope the task ran in (Trigger.TaskScope), which need not be the rule's.
+// installed the rule, or nil: within what the task could hand on when it installed it
+// (Trigger.TaskEnvironment, launched.handsOn then), which the rule's record keeps. A rule no task
+// installed is held by nothing here. The task's own record is not read: it may be gone, with the
+// scope the task ran in, while the rule stands.
 func (s *Server) heldByItsTask(rule trigger.Trigger, spec launch.Spec) error {
 	if rule.Task == "" {
 		return nil
 	}
 	name := rule.Name
-	ent, ok, err := entity.As(s.storeForScope(rule.TaskScope), entity.SystemDefault).Get(mirror.Ref(rule.Task))
-	if err != nil {
-		return fmt.Errorf("rule %s was installed by task %s, whose record could not be read to "+
-			"hold the spawn within it: %w", name, rule.Task, err)
+	if rule.TaskEnvironment == nil {
+		return errors.New("rule " + name + " was installed by task " + rule.Task + ", and its record " +
+			"keeps nothing to hold the spawn within, so it is refused")
 	}
-	var env *systems.Environment
-	if ok {
-		env = mirror.EnvironmentOf(ent.Payload)
-	}
-	if env == nil {
-		return errors.New("rule " + name + " was installed by task " + rule.Task + ", whose record " +
-			"says no launch to hold the spawn within, so it is refused")
-	}
-	if err := spec.Environment.Within((&launched{environment: *env}).handsOn()); err != nil {
+	if err := spec.Environment.Within(*rule.TaskEnvironment); err != nil {
 		return fmt.Errorf("environment.%w — rule %s was installed by task %s, and launches within "+
 			"the task, less %s", err, name, rule.Task, task.StepVerseCharterInstall)
 	}

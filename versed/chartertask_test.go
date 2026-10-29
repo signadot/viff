@@ -127,8 +127,8 @@ func TestATaskInstallsACharterHeldWithinTheTask(t *testing.T) {
 		t.Fatalf("the task's install within it = %d %s", code, body)
 	}
 	rule := trigger.CharterRefAt("repos.r.task", "build")
-	if rec, _, _ := srv.Store.Get(rule); entity.Str(rec.Payload, "task") != "installer" {
-		t.Fatalf("the rule's record = %v, want it to name the task that installed it", rec.Payload)
+	if rec, _, _ := srv.Store.Get(rule); entity.Str(rec.Payload, "task") != "installer" || entity.Get(rec.Payload, "taskEnvironment") == nil {
+		t.Fatalf("the rule's record = %v, want it to name the task that installed it, and keep its hold", rec.Payload)
 	}
 	resp = getAs(t, "user:"+tester, ts.URL+"/charter?at=repos.r.task&format=tony")
 	if read := readBody(t, resp); !strings.Contains(read, "task: installer") {
@@ -144,7 +144,7 @@ func TestATaskInstallsACharterHeldWithinTheTask(t *testing.T) {
 		t.Error("the rule stands after the task removed it")
 	}
 
-	// The task ends; its rule stands, held within it as its record says.
+	// The task ends; its rule stands, held within what it recorded at the install.
 	if code, msg := control(t, ts, "/tasks/installer/cancel", "", map[string]any{"reason": "done here"}); code != http.StatusNoContent {
 		t.Fatalf("cancel = %d %s", code, msg)
 	}
@@ -152,12 +152,13 @@ func TestATaskInstallsACharterHeldWithinTheTask(t *testing.T) {
 	if !launchedFor(t, srv, fired(t, srv, "one")) {
 		t.Error("a firing within the task was not launched")
 	}
-	// With no record of the task's launch, nothing holds the firing within it, and it is refused.
+	// The task's record gone, as a scoped task's goes with its scope: the rule keeps its own hold,
+	// and fires within it as before.
 	if _, _, err := srv.Store.Write(entity.Write{At: mirror.Ref("installer").At()}); err != nil {
 		t.Fatal(err)
 	}
-	if why := refusedFor(t, srv, fired(t, srv, "two")); !strings.Contains(why, "installed by task installer") {
-		t.Errorf("a firing with no record of its task failed for %q, want it refused naming the task", why)
+	if !launchedFor(t, srv, fired(t, srv, "two")) {
+		t.Error("a firing within the task was not launched once the task's record was gone")
 	}
 
 	installCharter(t, ts, "", file)
@@ -169,20 +170,21 @@ func TestATaskInstallsACharterHeldWithinTheTask(t *testing.T) {
 	}
 }
 
-// A FIRING IS HELD WITHIN THE TASK AS ITS RECORD SAYS IT WAS LAUNCHED, bound: a repository the
-// firing binds that the task never reached is refused, though written as `$…` it installed, and
-// charter-install is not given whatever the task was.
+// A FIRING IS HELD WITHIN WHAT ITS RULE RECORDED OF THE TASK AT THE INSTALL, bound: a repository
+// the firing binds that the task never reached is refused, though written as `$…` it installed,
+// and charter-install is not given whatever the task was. No record of the task is read.
 func TestARulesFiringIsHeldWithinTheTaskThatInstalledIt(t *testing.T) {
 	srv := testServer(t)
-	if _, _, err := srv.Store.Write(entity.Write{At: mirror.Ref("installer").At(), Value: entity.Obj{
-		"status": "done", "environment": entity.Obj{"systems": entity.Obj{
-			"git":   []any{entity.Obj{"repo": "github.com/acme/app", "fetch": entity.Obj{}}},
-			"verse": []any{entity.Obj{}},
-		}},
-	}.Payload()}); err != nil {
+	node, err := codec.ParseNode([]byte(`{systems: {git: {repo: github.com/acme/app, fetch: {}}, verse: {}}}`), codec.Tony)
+	if err != nil {
 		t.Fatal(err)
 	}
-	rule := trigger.Trigger{Name: "build", Task: "installer"}
+	var env systems.Environment
+	if err := env.FromTonyIR(node); err != nil {
+		t.Fatal(err)
+	}
+	hands := (&launched{environment: env}).handsOn()
+	rule := trigger.Trigger{Name: "build", Task: "installer", TaskEnvironment: &hands}
 	held := func(rule trigger.Trigger, spec launch.Spec) error { return srv.heldByItsTask(rule, spec) }
 	spawn := func(systems string) launch.Spec {
 		t.Helper()
@@ -212,29 +214,16 @@ func TestARulesFiringIsHeldWithinTheTaskThatInstalledIt(t *testing.T) {
 		t.Errorf("a rule no task installed: %v", err)
 	}
 
-	// A scoped task's record is in its scope, and its rule, wherever it stands, is held there.
-	if _, _, err := srv.Store.Scope("dev").Write(entity.Write{At: mirror.Ref("scoped").At(), Value: entity.Obj{
-		"status": "done", "environment": entity.Obj{"systems": entity.Obj{
-			"git": []any{entity.Obj{"repo": "github.com/acme/app", "fetch": entity.Obj{}}},
-		}},
-	}.Payload()}); err != nil {
-		t.Fatal(err)
-	}
-	within := spawn(`{git: {repo: github.com/acme/app, fetch: {}}}`)
-	if err := held(trigger.Trigger{Name: "build", Task: "scoped", TaskScope: "dev"}, within); err != nil {
-		t.Errorf("a scoped task's rule firing within it: %v", err)
-	}
-	if err := held(trigger.Trigger{Name: "build", Task: "scoped", TaskScope: "dev"}, spawn(`{git: {repo: github.com/other/app, fetch: {}}}`)); err == nil {
-		t.Error("a scoped task's rule firing beyond it was not refused")
-	}
-	if err := held(trigger.Trigger{Name: "build", Task: "scoped"}, within); err == nil || !strings.Contains(err.Error(), "says no launch") {
-		t.Errorf("a rule naming no scope for a scoped task: %v, want its record not found in baseline", err)
+	// A rule that names a task and keeps nothing of it holds nothing, and is refused.
+	if err := held(trigger.Trigger{Name: "build", Task: "installer"}, spawn(`{git: {repo: github.com/acme/app, fetch: {}}}`)); err == nil ||
+		!strings.Contains(err.Error(), "keeps nothing") {
+		t.Errorf("a rule naming a task and keeping no hold: %v, want it refused", err)
 	}
 }
 
 // A TASK'S CREDENTIAL IS HELD WHERE A SPAWN SPENDS ONE: a spawn with a prompt names the task's,
 // and a script, which spends none, may name none, in what a task's charter spawns and in what
-// follows its ask alike. The hold records the scope the task runs in.
+// follows its ask alike.
 func TestATasksCredentialIsHeldWhereASpawnSpendsOne(t *testing.T) {
 	srv := testServer(t)
 	srv.host("keyed", hostedTask{scope: "dev", launched: &launched{
@@ -244,9 +233,6 @@ func TestATasksCredentialIsHeldWhereASpawnSpendsOne(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if hold.scope != "dev" {
-		t.Errorf("the hold's scope = %q, want the task's", hold.scope)
-	}
 	docs, err := codec.ParseNodes([]byte(taskCharterFile(`{script: "true"}`)), codec.Tony)
 	if err != nil {
 		t.Fatal(err)
@@ -255,8 +241,8 @@ func TestATasksCredentialIsHeldWhereASpawnSpendsOne(t *testing.T) {
 		t.Fatalf("the install = %d %v", code, err)
 	}
 	if rec, _, _ := srv.Store.Get(trigger.CharterRefAt("repos.r.task", "spare")); entity.Str(rec.Payload, "task") != "keyed" ||
-		entity.Str(rec.Payload, "taskScope") != "dev" {
-		t.Errorf("the rule's record = %v, want the task and the scope it runs in", rec.Payload)
+		entity.Get(rec.Payload, "taskEnvironment") == nil {
+		t.Errorf("the rule's record = %v, want the task and what it holds the rule within", rec.Payload)
 	}
 	bound := srv.boundOf("keyed")
 	for what, c := range map[string]struct {

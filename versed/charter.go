@@ -1103,7 +1103,8 @@ func (tx *charterTx) rule(def *ir.Node) (int, error) {
 		return http.StatusForbidden, err
 	}
 	if tx.hold != nil {
-		t.Task, t.TaskScope = tx.hold.task, tx.hold.scope
+		env := tx.hold.environment
+		t.Task, t.TaskEnvironment = tx.hold.task, &env
 	}
 	// A TASK ACTING AS WHOEVER WROTE A RECORD selects only in its installer's place. It runs on
 	// the record owner's authority (entity.Pair), which is safe where writing the record is

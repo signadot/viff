@@ -108,13 +108,13 @@ type Trigger struct {
 	Action Action  `tony:"field=action"`
 
 	// Task is the task whose tools installed the rule, or "" for one a person or the system
-	// installed: the rule's spawns stay within that task's environment as the task was launched
-	// (the verse daemon checks it as each one fires). TaskScope is the scope the task ran in,
-	// where its record is, "" for baseline: a rule a scoped task installs stands where the
-	// install put it, which need not be the task's scope. Both are the record's, beside the spec
-	// and never in it, so no file can claim them; written with the rule and read back with it.
-	Task      string `tony:"-"`
-	TaskScope string `tony:"-"`
+	// installed. TaskEnvironment is what that task could hand on when it installed the rule, its
+	// launch less installing charters: the rule's spawns stay within it (the verse daemon checks
+	// it as each one fires) for as long as the rule stands, whatever becomes of the task's own
+	// record. Both are the record's, beside the spec and never in it, so no file can claim them;
+	// written with the rule and read back with it.
+	Task            string               `tony:"-"`
+	TaskEnvironment *systems.Environment `tony:"-"`
 }
 
 // Gating is a rule's own gates.

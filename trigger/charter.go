@@ -24,6 +24,7 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/systems"
 )
 
 // CharterSystem/CharterKind name where the durable charter lives: trigger:rule:<name>, the
@@ -113,11 +114,11 @@ const scopeField = "scope"
 const atField = "at"
 
 // taskField is the task whose tools installed a rule (Trigger.Task), absent for one a person
-// or the system installed, and taskScopeField the scope that task ran in (Trigger.TaskScope),
-// absent for baseline.
+// or the system installed, and taskEnvironmentField what that task could hand on when it did
+// (Trigger.TaskEnvironment), the systems alone.
 const (
-	taskField      = "task"
-	taskScopeField = "taskScope"
+	taskField            = "task"
+	taskEnvironmentField = "taskEnvironment"
 )
 
 // AtField is atField for a reader outside the package — the server groups the charter by it to
@@ -203,10 +204,11 @@ func (e *Engine) persist(t Trigger, as string, take bool) error {
 	// The installing task is written with the rule, or taken off: a write merges, and a rule a
 	// person installs over a task's is theirs, held by nothing the task was.
 	rec := e.recordObj(doc)
-	for field, v := range map[string]string{taskField: t.Task, taskScopeField: t.TaskScope} {
-		rec[field] = entity.Removed()
-		if v != "" {
-			rec[field] = v
+	rec[taskField], rec[taskEnvironmentField] = entity.Removed(), entity.Removed()
+	if t.Task != "" {
+		rec[taskField] = t.Task
+		if t.TaskEnvironment != nil {
+			rec[taskEnvironmentField] = systems.Environment{Systems: t.TaskEnvironment.Systems}
 		}
 	}
 	if _, _, err := e.store.Write(entity.Write{
@@ -343,7 +345,14 @@ func ruleOf(ent entity.Entity) (Trigger, error) {
 	if err := t.FromTonyIR(doc); err != nil {
 		return Trigger{}, fmt.Errorf("charter %s: %w", ent.Ref, err)
 	}
-	t.Task, t.TaskScope = entity.Str(ent.Payload, taskField), entity.Str(ent.Payload, taskScopeField)
+	t.Task = entity.Str(ent.Payload, taskField)
+	if n := entity.Get(ent.Payload, taskEnvironmentField); n != nil && t.Task != "" {
+		var env systems.Environment
+		if err := env.FromTonyIR(n); err != nil {
+			return Trigger{}, fmt.Errorf("charter %s: %s: %w", ent.Ref, taskEnvironmentField, err)
+		}
+		t.TaskEnvironment = &env
+	}
 	// The id is the name for baseline and `<address>:<name>` for a package (CharterRefAt), so
 	// the check is against the tail: what has to agree is the NAME, and the package half of the
 	// address is not part of it.

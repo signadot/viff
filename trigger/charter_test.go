@@ -12,6 +12,7 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -51,30 +52,34 @@ func TestCharterSurvivesARestart(t *testing.T) {
 	waitStage(t, store, ref, "reviewed")
 }
 
-// THE TASK THAT INSTALLED A RULE, and the scope it ran in, cross a restart with it, as its record
-// keeps them, and a rule installed again by no task names neither.
+// THE TASK THAT INSTALLED A RULE, and what it could hand on, cross a restart with it, as its
+// record keeps them, and a rule installed again by no task names neither.
 func TestARulesTaskSurvivesARestart(t *testing.T) {
 	addr := entitytest.Addr(t)
 	eng := New(entitytest.StoreAt(t, addr), task.AutoResolver{})
+	env := systems.Environment{Systems: systems.Systems{"git": {{
+		Attributes: map[string]string{"repo": "github.com/acme/app"}, Verbs: map[string][]systems.Shape{"fetch": {{}}},
+	}}}}
 	rule := Trigger{
-		Name:      "review",
-		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
-		Action:    setStage("reviewed"),
-		Task:      "installer",
-		TaskScope: "dev",
+		Name:            "review",
+		Condition:       Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
+		Action:          setStage("reviewed"),
+		Task:            "installer",
+		TaskEnvironment: &env,
 	}
 	if err := eng.AddTrigger(rule); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
 	back, _ := restart(t, addr)
-	if got, _ := back.Rule("review"); got.Task != "installer" || got.TaskScope != "dev" {
-		t.Fatalf("restored, the rule's task is %q in %q, want installer in dev", got.Task, got.TaskScope)
+	got, _ := back.Rule("review")
+	if got.Task != "installer" || got.TaskEnvironment == nil || got.TaskEnvironment.Within(env) != nil || env.Within(*got.TaskEnvironment) != nil {
+		t.Fatalf("restored, the rule's task is %q holding %+v, want installer holding %+v", got.Task, got.TaskEnvironment, env)
 	}
-	rule.Task, rule.TaskScope = "", ""
+	rule.Task, rule.TaskEnvironment = "", nil
 	if err := back.InstallTriggerAs("", rule); err != nil {
 		t.Fatalf("installed again: %v", err)
 	}
-	if again, _ := restart(t, addr); func() string { got, _ := again.Rule("review"); return got.Task + got.TaskScope }() != "" {
+	if again, _ := restart(t, addr); func() bool { got, _ := again.Rule("review"); return got.Task != "" || got.TaskEnvironment != nil }() {
 		t.Error("installed again by no task, the rule still names one after a restart")
 	}
 }
