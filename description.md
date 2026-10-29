@@ -1,0 +1,3 @@
+# mirror: a resumed task's record may keep `paused: true`
+
+mirror/mirror.go:848-852 projects a status event's text into the record's `paused` flag: `paused` sets it, `resumed` clears it. Nothing emits `resumed`: `Task.Resume` (task/pause.go:105) emits a status of `running`, which falls to the default branch and sets `status: running` but leaves `paused` as it was. Read from the code only (found by the docs pass, ybved3g6h12ksffvw9n0), not reproduced: a test that pauses and resumes a task and reads its record would settle it.
