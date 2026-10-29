@@ -9,13 +9,13 @@ through its runner.
 `iod slack` writes into the store each channel the bot is in, a window of each channel's recent
 messages, and the workspace's people:
 
-| Entity | What it is |
+| Address | What it is |
 |---|---|
 | `slack.<ws>.channel.<C…>` | a channel: its name, whether it is private or archived, its topic |
 | `slack.<ws>.message.<C…>."<ts>"` | a message in the window: its text, its author, its thread and its reactions |
 | `slack.<ws>.user.<U…>` | a person: their name and email |
 
-A rule reacts to a message as it reacts to any entity:
+A rule reacts to a message as it reacts to any data:
 
 ```tony
 condition:
@@ -42,8 +42,12 @@ it:
 ```tony
 spawn:
   agent: {name: verse}
-  environment: {systems: {network: {mode: open}, slack: {post: {channel: deploys}, read: {channel: deploys}}}}
-  prompt: "Post the release notes for v1.3 in #deploys, then read the thread for objections."
+  environment:
+    systems:
+      network: {mode: open}
+      git: [{repo: acme/app, from: main, fetch: {}}]
+      slack: {post: {channel: deploys}, read: {channel: deploys}}
+  prompt: "Draft the release notes for v1.3 from the commits since v1.2, post them in #deploys, then read the thread for objections."
   autonomy:
   - {match: {system: slack, verb: post, channel: deploys}, then: ask}
   - {match: {system: slack, verb: read, channel: deploys}, then: allow}
@@ -89,17 +93,19 @@ starts with the system closed, and a spawn that needs it is refused where it is 
 runner may use the same bot's token or two bots' tokens. Either way, a bot reaches only the
 channels it is in.
 
-**The operator** sets a limit on what any task may do in Slack, in the runner's configuration:
+**The operator** sets a limit on what any task may do in Slack, in the runner's configuration,
+under each doer whose tasks may use it:
 
 ```tony
-systems:
-  slack:
-    credential: SLACK_BOT_TOKEN
-    ceiling:
-      post: {channel: deploys}
-      reply: {channel: deploys}
-      read: [{channel: deploys}, {channel: "eng-*"}]
-      react: {channel: deploys}
+agents:
+  claude:
+    systems:
+      slack:
+        ceiling:
+          post: {channel: deploys}
+          reply: {channel: deploys}
+          read: [{channel: deploys}, {channel: "eng-*"}]
+          react: {channel: deploys}
 ```
 
 Verse refuses to install a spawn whose environment gives posting to another channel. The refusal

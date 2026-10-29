@@ -5,9 +5,9 @@ runner makes to GitHub with its credential for the repository.
 
 ## What a charter sees
 
-`iod github` writes each issue into the store as the entity `github.<org>.<name>.issue.<n>`:
+`iod github` writes each issue into the store as the data at `github.<org>.<name>.issue.<n>`:
 its `title`, its `state`, its `labels` (a list of names, absent when there are none), its body
-and its comments. A rule reacts to an issue as it reacts to any entity, here to an open issue
+and its comments. A rule reacts to an issue as it reacts to any data, here to an open issue
 nobody has labelled yet:
 
 ```tony
@@ -35,7 +35,7 @@ checks out, where the runner's forge is GitHub.
 ```tony
 spawn:
   agent: {name: verse}
-  prompt: "File an issue for each TODO in the README."
+  prompt: "File an issue for each TODO in the README, and close each open TODO issue whose TODO is gone."
   environment:
     systems:
       network: {mode: open}
@@ -66,10 +66,12 @@ them.
 forge, `GITHUB_TOKEN`. It calls the API of `github.com`, or the one that `repos.api` names.
 
 **The operator** sets a limit on what any task may do with a repository's issues, in the
-runner's configuration:
+runner's configuration, under each doer whose tasks may use it:
 
 ```tony
-systems:
-  github-issue:
-    ceiling: {repo: "github.com/acme/**", create: {}, comment: {}, close: {}}
+agents:
+  claude:
+    systems:
+      github-issue:
+        ceiling: {repo: "github.com/acme/**", create: {}, comment: {}, close: {}}
 ```

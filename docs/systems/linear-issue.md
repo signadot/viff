@@ -9,13 +9,13 @@ without one offers none of these verbs.
 `iod linear` writes each team that its credential can see into the store: the team's issues,
 its cycles and the projects it owns.
 
-| Entity | What it is |
+| Address | What it is |
 |---|---|
 | `linear.<KEY>.issue.<KEY>-<n>` | an issue: its title, `state` and `stateType`, priority, assignee, labels and url |
 | `linear.<KEY>.cycle."<n>"` | a cycle: when it starts and ends |
 | `linear.project.<uuid>.owners.<KEY>` | a project, one node for each team that owns it |
 
-A rule reacts to an issue as it reacts to any entity. Match on `stateType`, Linear's own word
+A rule reacts to an issue as it reacts to any data. Match on `stateType`, Linear's own word
 for the kind of state, rather than on the state's name:
 
 ```tony
@@ -71,11 +71,13 @@ configuration names it and the variable is set; without it, the runner starts wi
 closed, and a spawn that needs it is refused where it is written. The iod and the runner may hold one
 credential or two.
 
-**The operator** sets a limit on what any task may do, in the runner's configuration:
+**The operator** sets a limit on what any task may do, in the runner's configuration, under each
+doer whose tasks may use it:
 
 ```tony
-systems:
-  linear-issue:
-    credential: LINEAR_API_KEY
-    ceiling: {create: {team: ENG}, comment: {}}
+agents:
+  claude:
+    systems:
+      linear-issue:
+        ceiling: {create: {team: ENG}, comment: {}}
 ```

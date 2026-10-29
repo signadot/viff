@@ -9,7 +9,7 @@ with its credential for the repository.
 `iod github` writes a repository at GitHub into the store: its pull requests, issues,
 discussions, workflow runs and comments.
 
-| Entity | What it is |
+| Address | What it is |
 |---|---|
 | `github.<org>.<name>.pr.<n>` | a pull request: its state, base, head and sha, its checks, labels and assignees, and whom a review is waiting on (`requestedReviewers`, `requestedTeams`) |
 | `github.<org>.<name>.run.<id>` | a workflow run: its status, conclusion, branch and sha |
@@ -19,7 +19,7 @@ discussions, workflow runs and comments.
 of them anew, so a login in it means the pull request is waiting on that person. Their reviews
 are not reflected: a task reads them with `github-read-pr`.
 
-A rule reacts to a pull request as it reacts to any entity. Its `checks` is what CI last said
+A rule reacts to a pull request as it reacts to any data. Its `checks` is what CI last said
 about its head: the newest run's conclusion (`success`, `failure`) or what it is still doing
 (`in_progress`). Here, an open pull
 request whose checks failed:
@@ -102,12 +102,14 @@ out half, it needs write access on pull requests and issues.
 the forge, `GITHUB_TOKEN`. For a GitHub Enterprise Server, set `repos.api: https://<host>/api/v3`
 in the runner's configuration, and `repos.host` to the host.
 
-**The operator** sets a limit on what any task may propose, in the runner's configuration:
+**The operator** sets a limit on what any task may propose, in the runner's configuration, under each doer whose tasks may use it:
 
 ```tony
-systems:
-  github:
-    ceiling: {repo: "github.com/acme/**", create-pr: {base: main}, update-pr: {}}
+agents:
+  claude:
+    systems:
+      github:
+        ceiling: {repo: "github.com/acme/**", create-pr: {base: main}, update-pr: {}}
 ```
 
 Verse refuses to install a spawn whose environment gives proposals beyond the ceiling, saying

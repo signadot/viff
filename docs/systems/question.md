@@ -10,7 +10,7 @@ It is not the question a runner asks before a step, when an autonomy row of the 
 ## What a charter sees
 
 Every question is a record at `verse.ask.<id>`, whoever asked it: a person with `verse ask`, a
-rule's gate, or a task with this tool. A rule reacts to one as it reacts to any entity. A
+rule's gate, or a task with this tool. A rule reacts to one as it reacts to any data. A
 charter installed at the system level is what carries the docket to people in Slack
 ([asking](../asking.md)).
 

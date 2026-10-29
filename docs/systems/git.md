@@ -8,13 +8,13 @@ on the remote. The runner performs them with its credential, and the task never 
 
 `iod git` writes a repository's refs, its head and its commits into the store:
 
-| Entity | What it is |
+| Address | What it is |
 |---|---|
 | `git.<repo>.ref.<name>` | a branch or a tag: its sha, and the tree of each directory the iod names |
 | `git.<repo>.head` | where the repository's checkout stands, and whether it is dirty |
 | `git.<repo>.commit.<sha>` | a commit: its message, author, parents and trailers |
 
-A rule reacts to a ref that moves as it reacts to any entity:
+A rule reacts to a ref that moves as it reacts to any data:
 
 ```tony
 condition:
@@ -66,21 +66,23 @@ first shape above gives a branch the task makes, the second one it made, and ano
 `verse/auto/*` branch is neither, so a push onto it, a rewrite of it or its deletion is outside
 the environment. A push to `main` is too, since no shape names it. A shape with no `exists` or
 `own` gives by the ref alone, so `{ref: "refs/heads/verse/auto/*"}` lets a task push onto every
-task's branch; the merge train's `delete: "true"` shape is written that way on purpose, to
-retire branches that landed.
+task's branch. A task that retires the branches that landed is given
+`{ref: "refs/heads/verse/auto/*", delete: "true"}` for that reason: the branches it deletes are
+other tasks'.
 
 A `git` block that names no verb gives every verb of git, any call: every push, forced or
 deleting, of any branch. A charter that ships writes its push shapes instead.
 
 | Tool | What it does | Step |
 |---|---|---|
-| `git-push` | pushes the task's committed work to a branch of the remote, or deletes a branch there; fast-forward unless `force`, and a branch this run created is its own to rewrite | `git.push`, with `repo`, `ref`, `delete`, `force`, and `exists` and `own`, which the runner fills |
-| `git-fetch` | updates the checkout's view of the remote: the `mirror/*` refs and the tags move, and nothing of the task's own is touched | `git.fetch`, with `repo` |
+| `git-push` | pushes the task's committed work to a branch of the remote, or deletes a branch there; fast-forward unless `force`, and a branch this run created is its own to rewrite | `git.push`, with `repo`, `from`, `ref`, `delete`, `force`, and `exists` and `own`, which the runner fills |
+| `git-fetch` | updates the checkout's view of the remote: the `mirror/*` refs and the tags move, and nothing of the task's own is touched | `git.fetch`, with `repo` and `from` |
 
 A push sends what the task **committed**, and nothing it left uncommitted. Each commit carries
 trailers that name the task. The runner first puts the work in its own mirror, so a push that
 does not reach the remote is tried again, not lost. In a row, `repo` is the repository as `host/owner/name` in lower
-case, and `ref` is a full ref such as `refs/heads/main`, however the spawn wrote them. A `*`
+case, `from` is the branch the checkout started at, and `ref` is a full ref such as
+`refs/heads/main`, however the spawn wrote them. A `*`
 stays within one `/`: `refs/heads/*` is every branch, and `**` every ref. A script calls the same
 tools with `verse-call-tool`, and the same rows decide them.
 
@@ -92,18 +94,20 @@ uses the git credential that git finds where the iod runs.
 **The task** holds no credential. The runner fetches and pushes from its own mirror, with its
 token for the forge, which it reads from `GITHUB_TOKEN`.
 
-**The operator** sets a limit on what any task may push, in the runner's configuration. A
-repository on another forge than the runner's is refused.
+**The operator** sets a limit on what any task may push, in the runner's configuration, under
+each doer whose tasks may use it. A repository on another forge than the runner's is refused.
 
 ```tony
 repos:
   mirrors: /var/lib/verse-runner/mirrors
-systems:
-  git:
-    ceiling:
-    - repo: "github.com/acme/**"
-      fetch: {}
-      push: {ref: "refs/heads/verse/**"}
+agents:
+  claude:
+    systems:
+      git:
+        ceiling:
+        - repo: "github.com/acme/**"
+          fetch: {}
+          push: {ref: "refs/heads/verse/**"}
 ```
 
 Verse refuses to install a spawn whose environment gives a push beyond the ceiling, every shape

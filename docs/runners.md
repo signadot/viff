@@ -1,7 +1,7 @@
 # Runners
 
 A [runner](glossary.md#runner) is a place where verse runs a [task](glossary.md#task). You
-install a runner as an entity. A [spawn](glossary.md#spawn) names a runner, and the task
+install a runner as data, its registration. A [spawn](glossary.md#spawn) names a runner, and the task
 records which runner it went to.
 
 So a drive can deploy a place to run work that the verse deployment does not otherwise need to
@@ -16,11 +16,13 @@ change.
 
 ## Installing one
 
-A runner lives at `verse.runners.<name>`. It carries a URL: the base URL of
-[task-control](task-control.md) that faces verse. The name of a runner is its address.
+A runner's registration is the data at `verse.runners.<name>`. It carries a URL: the base URL
+of [task-control](task-control.md) that faces verse. The name of a runner is its address. A
+runner that proves who it is, as `runnerd` does, is registered with the subject of its token
+([who the runner is](#who-the-runner-is)):
 
 ```sh
-verse runner add gpu http://runner-gpu.verse.svc:9797
+verse runner add gpu http://runner-gpu.verse.svc:9802 -subject system:serviceaccount:verse:runner-gpu
 verse runner
 verse runner check verse.runners.gpu
 verse runner show verse.runners.gpu
@@ -30,26 +32,28 @@ verse runner show verse.runners.gpu
 
 ```tony
 name: gpu
-url:  "http://runner-gpu.verse.svc:9797"
+url:  "http://runner-gpu.verse.svc:9802"
+subject: "system:serviceaccount:verse:runner-gpu"
 ```
 
-There is no default runner entity, and no special case for local. `local` is what the
+There is no default runner registration, and no special case for local. `local` is what the
 *absence* of a runner on a spawn means. So every installed runner is a place to reach, and
 verse refuses a runner with no `url`.
 
-**Adding a runner probes it.** The probe is `GET /tasks`, the cheapest question that has an
-answer. The contract already serves this route, and it has no effect on the runner. The probe
-has three outcomes, and only one of them refuses the install:
+**Adding a runner probes it.** The probe is `GET /describe`, which every runner serves: its
+answer is what the runner offers, and asking has no effect on the runner. The probe has three
+outcomes, and only one of them refuses the install:
 
 | Outcome | What happened | Result |
 |---|---|---|
-| *a runner* | the URL answered, and the body decoded as the task list that the contract promises | installed |
-| *not a runner* | the URL answered *that it has no task list*: 404 or 501, or a body that does not decode | the install is **refused** |
-| *unreachable* | nothing answered, or what answered was failing and did not say what it is | **installed, with a warning** |
+| *a runner* | the URL answered `200`, with a description that decodes | installed |
+| *not a runner* | the URL answered *that it does not describe itself*: a status other than those below, such as `404`, or a description that does not decode | the install is **refused** |
+| *unreachable* | nothing answered; or the URL answered `401` or `403`, refusing this verse; or `500`, `502`, `503` or `504`, failing without saying what it is | **installed, with a warning** |
 
 **A runner that answers 500 is *unreachable*, not *not a runner***. So verse installs it with
-a warning, and does not refuse it. Only 404 and 501, which mean no such route, and a task list
-that does not decode are answers about what is at the URL.
+a warning, and does not refuse it. A runner that refuses this verse's token is a runner that
+serves another verse, which the deployment fixes. Only an answer that the route is not there, or
+a description that does not decode, is an answer about what is at the URL.
 
 ### Who the runner is
 
@@ -112,7 +116,7 @@ proof finds only its own kind of registration, so a workload token cannot claim 
 registration, nor a static token a workload one. No workload issuer is needed; verse still
 issues its own tokens (`auth.issuer`), since the handshake runs both ways.
 
-A runner registered without a `subject` is taken at its word, as every runner was: `verse
+A runner registered without a `subject` is taken at its word: `verse
 up`'s embedded runner, a runner on a laptop, a verse that issues no tokens of its own. The
 record says which.
 
@@ -122,7 +126,7 @@ that names it, and before every launch where the registration names a subject, a
 it says on the registration; `verse runner check` asks on demand.
 A spawn naming a runner that still has not answered is refused, with the reason.
 
-A [worker](glossary.md#worker) is named on its runner's entity, or names itself on its first
+A [worker](glossary.md#worker) is named on its runner's registration, or names itself on its first
 running status. The [claim](glossary.md#claim-of-a-worker) is where verse assigns the task to
 the worker:
 
@@ -161,7 +165,9 @@ action:
 An ad-hoc run names a runner too, in the spawn it runs:
 
 ```sh
-echo '{prompt: "retrain the ranker", runner: verse.runners.gpu, environment: {systems: {network: {mode: open}}}}' |
+echo '{prompt: "retrain the ranker", runner: verse.runners.gpu, agent: {name: verse},
+  environment: {systems: {network: {mode: open}, files: {}, commands: {}}},
+  autonomy: [{match: {system: files}, then: allow}, {match: {system: commands}, then: allow}, {then: ask}]}' |
   verse task run -f -
 ```
 
@@ -220,7 +226,7 @@ when one runner is down, you lose live detail and not rows.
 `verse.task.instance` records both the resolved **URL** and the **name** that the spawn used.
 
 - A restart rebuilds the runner from the URL. So work outlives the verse that started it, and
-  it *also* outlives the entity that named its runner. Removing a runner entity cannot orphan
+  it *also* outlives the registration that named its runner. Removing a runner's registration cannot orphan
   work by making it impossible to rebuild.
 - A person reads the name, and `verse ps -runner` selects on it.
 
@@ -271,7 +277,7 @@ That failure takes the path that every failed spawn takes.
 **No authority for each runner.** Nothing decides which runners a charter may name. A charter
 that may name any runner may run its work anywhere that the deployment can reach.
 
-**A runner entity carries a URL and who it acts as, and nothing about what work may do
+**A runner's registration carries a URL and who it acts as, and nothing about what work may do
 there.** A grant ceiling, a tool allowlist, a label: verse can express each of these, and each
 is absent by design.
 
@@ -317,7 +323,7 @@ Two cases are open:
 ### Why selection is for each spawn
 
 A runner that every spawn must go to is a whole second verse, with its own store, engine and
-entities. The drive's work is then somewhere else entirely. That is the opposite of running
+data. The drive's work is then somewhere else entirely. That is the opposite of running
 the drive in the deployment it works on.
 
 ### Why the probe refuses only "not a runner"
@@ -325,12 +331,12 @@ the drive in the deployment it works on.
 The three outcomes differ on whether waiting could change the answer. They do not differ on
 whether anything answered.
 
-A URL that answers *that it has no task list* states what it is, and states it now. Something
+A URL that answers *that it does not describe itself* states what it is, and states it now. Something
 is at that address, and it does not serve the runner contract. Verse catches this mistake at
 install, not at the first spawn.
 
-A URL that nothing answers is the ordinary state of a runner that is deployed with the entity
-that names it. The manifest lands, the pod is pending, and the entity is already written. A
+A URL that nothing answers is the ordinary state of a runner that is deployed with the registration
+that names it. The manifest lands, the pod is pending, and the registration is already written. A
 refusal there would make deployment depend on order, for a fact that fixes itself. A spawn
 naming it waits on the same fact: refused, saying so, until the runner answers, and checked
 against what it says from then on.
@@ -374,7 +380,7 @@ go, and that is the point of the feature.
 ### Why the task records both the URL and the name
 
 The split is the one place where this design can fail without a sign. If verse stamped only
-the name, a restart would depend on the runner entity still existing. Removing the entity
+the name, a restart would depend on the runner's registration still existing. Removing the registration
 would then orphan work that is running correctly. A deletion would act at a distance.
 
 ### Why removal asks
@@ -429,11 +435,11 @@ Nothing decides which runners a charter may name, and the effect of a mistake is
 for a resolver. A runner is a place where work executes. So naming a runner is closer to
 choosing where work executes than to choosing an answerer.
 
-The install probe adds a smaller part to the same question. Writing a runner entity makes
+The install probe adds a smaller part to the same question. Writing a runner's registration makes
 verse send a request to an address that the writer chose. Nothing has yet decided that the
 writer may name runners at all.
 
-### Why a runner entity says nothing about what work may do
+### Why a runner's registration says nothing about what work may do
 
 A limit of the form "work here may only do this" is the same narrowing a runner's ceiling answers.
 Answering it in two places, without deciding how the two compose, is how a ceiling comes to
@@ -442,6 +448,6 @@ vocabulary for it.
 
 ### Why writing a runner onto a task does not move it
 
-The entity model invites the assumption. Entities are level truth, so a different runner on
+The data model invites the assumption. Data is level truth, so a different runner on
 `verse.task.instance` looks as if it should move the task. The field is a record, and a record
 does not move running work.

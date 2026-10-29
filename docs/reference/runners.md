@@ -6,7 +6,7 @@ For what a runner is and why it has this shape, see [../runners.md](../runners.m
 contract that a runner serves, see [../task-control.md](../task-control.md). To build a
 runner, copy [examples/runner](examples/runner/main.go).
 
-A runner is an entity at `verse.runners.<name>`. It carries its `name` and three fields:
+A runner is installed as data at `verse.runners.<name>`, its registration. The registration carries its `name` and three fields:
 
 | Field | What it holds |
 |---|---|
@@ -35,7 +35,7 @@ verse runner add <name> <url>              install one, probing the url first
            [-identity <id>]                it acts as runner:<id> (default: its name)
            [-subject <sub>]                verse recognises it by its workload token's subject
            [-token-file <f>]               …or by the hash of the static token in f
-       show <ref>                          the entity
+       show <ref>                          its registration
        check <ref>                         ask this runner what it is, right now
        remove <ref>                        take it away; refused if work is running on it
               [-cancel "<why>"]            …the place is going away: end that work, with a reason
@@ -56,7 +56,7 @@ On the task side:
 
 ```
 verse ps  [-runner <ref>]                  only the work on that runner (`local` = named none)
-verse task run -runner <ref> <prompt>     run this one there
+verse task run -f <spawn>                 run a spawn there: its `runner:` names the runner
 ```
 
 ## Routes
@@ -65,7 +65,7 @@ verse task run -runner <ref> <prompt>     run this one there
 |---|---|
 | `GET /runners` | lists the runners. `?probe=true` adds a live `reach` for each runner. |
 | `POST /runners` | installs a runner. `?probe=false` skips the check. The answer is `201` and the runner's row as the listing shows it, with what the runner described and `reach`, plus `warning` when the runner is unreachable (`api.RunnerRow`). |
-| `GET /runners/{name}` | returns the entity |
+| `GET /runners/{name}` | returns the registration |
 | `GET /runners/{name}/check` | returns `{at, url, reach}`, and `why` when the URL is not a runner or did not prove it is the one registered; records what the runner said, or that it did not prove itself |
 | `POST /runners/hello` | the check, asked by the runner itself with its workload token: verse finds the registration by the token's subject and describes the runner now, retrying briefly a url nothing answers at. The answer is the check's: `200` when the runner was described, even when it says `not verified`, since what is wrong is then its token, which trying again will not fix; `503` when nothing answered at its url, or another describe of it is in flight, so the runner's backoff keeps announcing until verse has heard what it is. A token no registration names is refused `401` at the door; a runner registered without a `subject`, or anyone else, gets `400`: nothing to announce. One describe in flight per registration. |
 | `DELETE /runners/{name}` | removes the runner. Pass `?cancel=<why>` or `?leave=true`. When work is running and you give neither, the answer is `409` and names both. |
@@ -94,7 +94,7 @@ not read the store.
 A spawn names its runner in one of two places:
 
 - `runner:` on the `spawn:` of a charter;
-- `-runner` or `runner` on the ad-hoc path.
+- `runner:` on the spawn that `verse task run` reads, on the ad-hoc path.
 
 An empty runner means the default runner of this verse, which `verse up -runner` sets.
 
@@ -122,9 +122,9 @@ says so, and says nothing about what is installed.
 | `runnerSubject` | the subject that registration held at the spawn. The door holds a runner carrying a request for the task to it ([permissions](perms.md#runners-at-the-door)). |
 | `startedAt` | when the task began. Verse carries it across a new attach, and does not stamp it again. |
 
-A restart can act on the URL with nothing else present. So removing a runner entity cannot
+A restart can act on the URL with nothing else present. So removing a runner's registration cannot
 leave running work stranded. A person reads the name, and `verse ps -runner` selects on the
-name. The name keeps working after the entity is gone.
+name. The name keeps working after the registration is gone.
 
 ## What a caller can tell about a control call
 
@@ -152,7 +152,7 @@ it from the store.
 ### Why the task carries both the URL and the name
 
 A restart must be able to act with nothing else present, and the URL is enough for that. A
-person needs a name to read, and a selection needs a name to match after the entity is gone.
+person needs a name to read, and a selection needs a name to match after the registration is gone.
 One field cannot do both jobs, so the task carries both.
 
 ### Why a ref has no middle form

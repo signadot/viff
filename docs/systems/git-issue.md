@@ -6,9 +6,9 @@ repository's issues inside the repository, as refs, so the issues travel with th
 
 ## What a charter sees
 
-`iod git-issue` writes each issue into the store as the entity `git-issue.<repo>.issue.<id>`:
+`iod git-issue` writes each issue into the store as the data at `git-issue.<repo>.issue.<id>`:
 its `title`, its `status` (`open` or `closed`), its labels, its body and its discussion. A rule
-reacts to an issue as it reacts to any entity:
+reacts to an issue as it reacts to any data:
 
 ```tony
 condition:
@@ -33,7 +33,7 @@ checks out. A block that names no verb gives all of them.
 ```tony
 spawn:
   agent: {name: verse}
-  prompt: "File an issue for each TODO in the README, labelled triage=needed."
+  prompt: "File an issue for each TODO in the README, naming the TODO in its body."
   environment:
     systems:
       network: {mode: open}
@@ -46,7 +46,7 @@ spawn:
 
 | Tool | What it does | Step |
 |---|---|---|
-| `git-issue-create` | files an issue in the checkout's tracker, a write there as a commit is | `git-issue.create`, with `repo` |
+| `git-issue-create` | files an issue in the checkout's tracker, with a title and body, a write there as a commit is | `git-issue.create`, with `repo` |
 | `git-issue-comment` | comments on an issue there, by its id | `git-issue.comment`, with `repo` and `issue` |
 | `git-issue-close` | closes an issue there, and names the commit that closed it if there is one | `git-issue.close`, with `repo` and `issue` |
 | `git-issue-pull` | brings the remote's tracker into the checkout | `git-issue.pull`, with `repo` |
@@ -67,12 +67,14 @@ uses the git credential that git finds where the iod runs, as `iod git` does.
 makes each pull and push from its own mirror, with its git token, `GITHUB_TOKEN`.
 
 **The operator** sets a limit on what any task may do with the tracker, in the runner's
-configuration:
+configuration, under each doer whose tasks may use it:
 
 ```tony
-systems:
-  git-issue:
-    ceiling: {repo: "github.com/acme/**", create: {}, comment: {}, close: {}, pull: {}, push: {}}
+agents:
+  claude:
+    systems:
+      git-issue:
+        ceiling: {repo: "github.com/acme/**", create: {}, comment: {}, close: {}, pull: {}, push: {}}
 ```
 
 Verse refuses to install a spawn whose environment gives a tracker of another repository. The

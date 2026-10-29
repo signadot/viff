@@ -21,7 +21,8 @@ runnerd -config <file> -token-file <file> [-sandbox bwrap|none]
 The same runner also runs embedded. `verse up` hosts the verse runner in its own process and
 reaches it by Go calls, with no `runnerd` process. Both use package `runner/runnerd`, which holds
 a runner's tasks and serves them. A central deployment is meant to run no work in verse itself,
-with each runner a `runnerd` of its own; today an ask's `then:` still runs in verse.
+with each runner a `runnerd` of its own. A person's ask whose `then:` spawns and names no runner
+runs that spawn in verse's own runtime.
 
 ## The sandbox
 
@@ -48,15 +49,17 @@ needs unprivileged user namespaces:
 - **macOS** has no bwrap: run with `-sandbox none`.
 
 The task's process has none of the runner's environment. Its stdin carries the runner's
-configuration and the secrets the runner read from its environment, and its environment has only
-what its doer's `shellEnv` names (`task.DefaultShellEnv` where the section names none), so no
-task's process holds a variable another doer's shell is given. `HOME` is the task's
+configuration and the model keys of the agents the runner offers. The runner's own tokens (its
+forge's, Linear's and Slack's) stay in the runner. The process's environment has only what its
+doer's `shellEnv` names (`task.DefaultShellEnv` where the section names none) and, under the
+network `allow`, the proxy's variables (`HTTP_PROXY`, `HTTPS_PROXY`, `http_proxy`, `https_proxy`),
+so no task's process holds a variable another doer's shell is given. `HOME` is the task's
 directory, and `TMPDIR` is `/tmp`. A process that exits before its task ends fails the task,
 with the process's exit status.
 
 ### What keeps the secrets from the task
 
-The task's process holds the runner's secrets (the Portkey key, its git tokens) in its memory,
+The task's process holds the agents' model keys (the Portkey key, Codex's and Claude's) in its memory,
 and the task's shell, or its script, runs inside the same sandbox: as the same uid, since bwrap
 maps the caller to itself, and in the same pid namespace, so it can see that process.
 
@@ -83,7 +86,7 @@ Code, `claude`; each where `agents:` names it; and scripts, where the configurat
 openssl rand -hex 32 > runner.token
 PORTKEY_API_KEY=… runnerd -config runner.tony -token-file runner.token
 verse runner add my-runner http://localhost:9802 -token-file runner.token
-verse task run --runner my-runner …
+echo '{prompt: "…", runner: verse.runners.my-runner}' | verse task run -f -
 ```
 
 A launch's work picks which: a `prompt` runs an agent with it (`agent: {name: verse}`, or the
@@ -92,8 +95,9 @@ runner's default agent), and a `script` runs the script.
 A script runs by its own `#!` line, which can name any program in the runner's image that reads
 a file: `#!/bin/sh`, `#!/usr/bin/env python3`, `#!/usr/bin/env node`. The line is read as
 the kernel reads it: the program, and at most one argument. A script with no `#!` line runs with
-`bash`. A script calls the task's tools from its shell with `verse-call-tool`, which the runner
-finds beside itself and copies into the task's workspace.
+`bash`. A script calls the task's tools from its shell with `verse-call-tool`. The runner finds
+it beside its own binary or on its `PATH`, binds it read-only into the sandbox at the same path,
+and puts its directory first on the script's `PATH`.
 
 Each task runs in a directory of its own, in a process of its own ([the sandbox](#the-sandbox)).
 A launch whose environment gives repositories (its `git` blocks) gets them checked out there,
@@ -159,7 +163,7 @@ script:                                    # scripts are offered only with this 
 | `agents.<name>` | one agent the process runs: `verse`, `codex` or `claude`; another name is refused. Its value holds the program's own keys, which are the agent's: codex `bin`, `sandbox` and `config` ([Codex](#codex-gated-inside-the-run)); claude `bin` ([Claude](#claude-gated-inside-the-run)); verse none. A key the agent's program does not take is refused, naming the ones it does; a `bin` that is not there is refused when the runner starts. Beside them, the four keys every agent takes, below. | none |
 | `agents.<name>.settings.<setting>` | the operator's say over one setting the agent takes: `values`, what a launch may set, as patterns (`model: {values: ["gpt-6*"]}`), which is what the offer publishes for the setting; and `default`, what the runner uses where a launch sets none, which then goes on the task's record. A setting not named takes any value the agent takes, and the agent's own default. Where the agent lists its own values (Claude's efforts), the ones named are among them; a default is within both. A setting the agent does not take, or an empty `values`, is refused. | any value, the agent's own default |
 | `agents.verse.annotations.<name>` | an annotation a launch may set, with the `type` of its value and the `default` used where a launch sets none. The verse agent knows one, `verse.portkey/virtual-key`, a Portkey virtual key: a routing label, not a secret. Only the verse agent takes annotations. | none |
-| `agents.<name>.shellEnv`, `script.shellEnv` | the variables of the runner's environment the doer's task shell is given, by name: the process's values of those names and nothing else. They are the whole environment of the doer's task process too, and a launch's `with.env` may not name one of its own doer's. No variable the runner reads a credential from may be named (`GITHUB_TOKEN`, `LINEAR_API_KEY`, `SLACK_BOT_TOKEN`, `PORTKEY_API_KEY`, `PORTKEY_BASE_URL`, `PORTKEY_VIRTUAL_KEY`, `OPENAI_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`), and an empty list is refused: leave it out for the default. A declaration, not a wall: exactly as strong as the sandbox, and with `-sandbox none` no stronger than the task's good manners. | `task.DefaultShellEnv`: enough for a shell to find its tools, and no secret |
+| `agents.<name>.shellEnv`, `script.shellEnv` | the variables of the runner's environment the doer's task shell is given, by name: the process's values of those names and nothing else. With the proxy's variables, they are the whole environment of the doer's task process too ([the sandbox](#the-sandbox)), and a launch's `with.env` may not name one of its own doer's. No variable the runner reads a credential from may be named (`GITHUB_TOKEN`, `LINEAR_API_KEY`, `SLACK_BOT_TOKEN`, `PORTKEY_API_KEY`, `PORTKEY_BASE_URL`, `PORTKEY_VIRTUAL_KEY`, `OPENAI_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`), and an empty list is refused: leave it out for the default. A declaration, not a wall: exactly as strong as the sandbox, and with `-sandbox none` no stronger than the task's good manners. | `task.DefaultShellEnv`: enough for a shell to find its tools, and no secret |
 | `agents.<name>.systems.<system>`, `script.systems.<system>` | the doer's ceiling over one system, `{ceiling: …}`. The runner performs `git` and `git-issue` with `repos`, `github` and `github-issue` where the forge is GitHub, and `linear-issue` and `slack` where a section's ceiling names them and their credential is set: where it is not, the runner starts with the system closed to every doer, says so, and no offer holds it, so a spawn that needs it is refused where it is written. It performs [`verse`](../systems/verse.md) too, carried to its verse with the runner's own token. A section for a system the runner does not perform is refused, but for `verse`'s, taken on every doer. Every doer's offer holds each system the runner performs, closed where the doer's section names none. `files`, `commands`, `agent` and `question`, which the runner stops inside a run, are a doer's where the runner stops that doer on them: the verse agent all four, codex and claude `files`, `commands` and `question`, a script `question` alone; another is refused. `network` is every doer's. | closed: nothing of the system. For `network`, no bound beyond what the sandbox builds |
 | `….ceiling` | the ceiling over what the doer's tasks may do with the system: blocks written as a spawn's environment writes the system, a block or a list of them, each attribute a pattern or a list of patterns (`repo: "github.com/acme/**"`, `mode: [none, allow]`), each verb its shapes. A ceiling lists what it allows: a spawn's environment must lie within it, every block within one of its blocks and every shape within one of its shapes, and there is no "all but". A block naming no verb (`files: {ceiling: {}}`) allows every verb of its system, any call; a section with no ceiling at all is refused, since it would close the system as leaving it out does. An attribute a block names bounds every environment block it holds: one that leaves it unsaid stands for its default (network's `mode`, none), or, with none (git's `from`), is beyond the block. A `git` ceiling names its repositories, on the runner's forge. A `network` ceiling naming a mode the runner's sandbox can't build is refused when the runner starts. A runner whose ceilings can't give what an agent requires (codex's and claude's `commands.run` and `files.write`) does not start. | |
 
@@ -203,8 +207,9 @@ flags.
 
 ### What it offers
 
-`GET /describe` answers what the runner offers, from its configuration. For a runner running the
-verse agent and scripts under the same ceilings:
+`GET /describe` answers what the runner offers, from its configuration. The example above runs
+Claude and scripts. Here is the answer of a runner whose configuration runs the verse agent and
+scripts instead, giving both the same ceilings and opening the `verse` system to neither:
 
 ```tony
 version: 2
@@ -229,6 +234,7 @@ offers:
     github-issue: {}
     linear-issue: {ceiling: {close: {}, comment: {}, create: {team: ENG}}}
     slack: {ceiling: {post: {channel: deploys}, read: {channel: deploys}}}
+    verse: {}
     files: {ceiling: {}}
     commands: {ceiling: {}}
     agent: {ceiling: {}}
@@ -248,10 +254,11 @@ offers:
     github-issue: {}
     linear-issue: {ceiling: {close: {}, comment: {}, create: {team: ENG}}}
     slack: {ceiling: {post: {channel: deploys}, read: {channel: deploys}}}
+    verse: {}
     question: {}
 ```
 
-A system held with no ceiling (`github: {}` here) is closed: a spawn naming it is refused. Each
+A system held with no ceiling (`github: {}` and `verse: {}` here) is closed: a spawn naming it is refused. Each
 offer's ceilings are its doer's section's, so a runner whose `script:` names a ceiling its agents'
 sections do not offers it to scripts alone. A description offers each doer once: one offer per
 agent name and one script offer, since a launch names its doer by the agent's name, or by nothing
@@ -279,24 +286,31 @@ the order verse, codex, claude, is the runner's default, a prompt's that names n
 `systems` is each system the offer holds for its tasks, and it is the whole of what an offer says
 about the world. For each, `builds` is what the runner can build of it, by its nature, and
 `ceiling` what its operator allows, apart so that a refusal says which: "this runner can't build
-it (it builds: open)" or "beyond this runner's ceiling". `builds` is never configured; today it is
+it (it builds: open)" or "beyond this runner's ceiling". `builds` is never configured; it is
 the network's modes, from the sandbox (under `bwrap` all three, unconfined only `open`), and
 absent it is the whole of the system. A launch's environment lies within both, at install and at
 the launch, and a run that names no network has the network `none`, which the runner has to build
 too: an unconfined runner refuses it, rather than give the task a network its author did not ask
 for ([the network](../systems/inside.md#the-network)).
 
-The runner performs `git`, `git-issue`, `github`, `github-issue`, `linear-issue` and `slack` for
-every doer, each where it has what it takes (a repository's tracker with `repos`, the forge's
-where the forge is GitHub, Linear's and Slack's where a section's ceiling names them), each under
-the doer's own ceiling. It stops `files`, `commands`
-and `agent` inside a run for the verse agent, `files` and `commands` for codex and claude, and none
-for a script, which is one action and no step. For `files` and `commands` that is the call as the doer
+The runner performs `git`, `git-issue`, `github`, `github-issue`, `linear-issue`, `slack` and
+`verse` for every doer, each where it has what it takes (a repository's tracker with `repos`, the
+forge's where the forge is GitHub, Linear's and Slack's where a section's ceiling names them and
+their credential is set, and verse's with the runner's own token), each under the doer's own
+ceiling. Inside a run it stops these:
+
+| Doer | Stopped on |
+|---|---|
+| the verse agent | `files`, `commands`, `agent`, `question` |
+| codex, claude | `files`, `commands`, `question` |
+| a script | `question` alone: the script is one action, and its commands and files are no step |
+
+For `files` and `commands` that is the call as the doer
 names it ([advisory](../systems/inside.md#a-row-on-files-or-commands-is-advisory)). The runner
 reads its ceilings again at each act, so a ceiling tightened after a launch holds from then on. A
 script offer takes no settings: a script names what runs it in its own `#!` line. With
 `agents.codex` the runner offers `agent: codex`, with `model` and `effort`, intercepting
-`files.write` and `commands.run`; with `agents.claude`, `agent: claude` the same way.
+`files.write`, `commands.run` and `question.ask`; with `agents.claude`, `agent: claude` the same way.
 
 Verse reads it when the runner is installed and whenever `verse runner check` asks, keeps it on
 the runner's registration as `described`, and refuses a spawn naming the runner that its offers
@@ -363,8 +377,8 @@ Codex runs the commands its own policy trusts as read-only without asking, and i
 the web without asking. Both appear on the read plane when they complete, so an observer sees
 them, and no gate saw them first.
 
-**The runner's tools are codex's tools.** The tools a launch's repositories give it (`git-push`,
-`git-fetch`, `github-create-pr`, `github-update-pr`, and their trackers' verbs) are declared to codex when its thread starts, and a call codex makes of
+**The runner's tools are codex's tools.** The runner's tools that the launch's environment gives
+(`git-push`, `github-create-pr`, the trackers' verbs, `slack-post`, `verse-ask-create`, …) are declared to codex when its thread starts, and a call codex makes of
 one is an action of the loop: the tool's own step, decided by the autonomy, performed
 by the runner, its result the call's output. A refused call is refused to codex as its result,
 with the reason. So codex delivers the way the `verse` agent does: it commits with the trailers
@@ -445,8 +459,8 @@ Claude's reads in the workspace run without asking, and appear on the read plane
 complete, so an observer sees them, and no gate saw them first. Claude asks before a read
 outside the workspace, and is refused: the runner offers no reads there.
 
-**The runner's tools are Claude's tools.** The tools a launch's repositories give it
-(`git-push`, `git-fetch`, `github-create-pr`, `github-update-pr`, and their trackers' verbs)
+**The runner's tools are Claude's tools.** The runner's tools that the launch's environment gives
+(`git-push`, `github-create-pr`, the trackers' verbs, `slack-post`, `verse-ask-create`, …)
 are served to Claude as an MCP server over the same pipe, and a call Claude makes of one is an
 action of the loop: the tool's own step, decided by the autonomy, performed by the runner, its
 result the call's output. A refused call is refused to Claude as its result, with the reason.

@@ -99,9 +99,9 @@ What the one doing the work does:
   network is confined.
 
 Verse refuses to install a spawn whose environment gives a system the runner's offer does not
-hold, or one beyond the offer's ceiling. Codex can't run without `commands.run` and
-`files.write`, which its offer says (`requires`), so a Codex spawn whose environment leaves them
-out is refused, naming `commands: {}` or `commands: {run: {}}` to add.
+hold, or one beyond the offer's ceiling. Codex and Claude can't run without `commands.run` and
+`files.write`, which their offers say (`requires`), so a Codex or Claude spawn whose environment
+leaves them out is refused, naming `commands: {}` or `commands: {run: {}}` to add.
 
 ## Where the credential lives
 
