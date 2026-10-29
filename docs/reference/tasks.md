@@ -498,7 +498,8 @@ payload:
   agent: {name: verse, model: claude-sonnet-5}
   lastAction: github-list-prs
   lastOutput: summarizing
-  runner: local
+  runner: http://127.0.0.1:9803
+  runnerName: verse.runners.local
   status: done
 ```
 

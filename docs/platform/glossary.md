@@ -12,15 +12,6 @@ A frame is one event in the event stream of a task: a status, a pending gate, a 
 
 See [Task control](../task-control.md#the-event-envelope-and-the-cursor).
 
-### root (of verse up)
-
-`-root` on `verse up` names the directory in which the tasks of the verse process act. It is a
-directory on disk, and not an address.
-
-Also written: the agent root.
-
-See [Starting a verse](../reference/up.md#the-agent-root).
-
 ## Iods
 
 ### reflection

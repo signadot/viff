@@ -177,7 +177,7 @@ The first patch is what makes this rule safe to leave installed. It moves the is
 rule's own selection, so the rule does not fire on the same issue twice. Verse refuses at install
 a spawning rule that does not do this ([the latch](../glossary.md#latch)).
 
-The agent needs a model key ([the embedded runner](../reference/up.md#the-embedded-runner)).
+The agent needs a model key ([the local runner](../reference/up.md#the-local-runner)).
 Without one, the runner offers no agent, and verse refuses the rule when you install it:
 `this runner offers no agent "verse"`. Nothing is installed, and the issue stays `triaged`. To go
 on, write what the agent would have answered:

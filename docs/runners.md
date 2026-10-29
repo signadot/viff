@@ -39,10 +39,11 @@ url:  "http://runner-gpu.verse.svc:9802"
 subject: "system:serviceaccount:verse:runner-gpu"
 ```
 
-Every installed runner is a place to reach, and verse refuses a runner with no `url`. This verse's
-own runner, the one `verse up` runs tasks on in its own process, is no registration: verse routes
-to it beside the registered ones, unless the config says `localRunner: false`, and a task's
-record calls it `local`.
+Every installed runner is a place to reach, and verse refuses a runner with no `url`. `verse up`'s
+own runner is one of them: a `runnerd` it starts beside itself and registers as
+`verse.runners.local`, proved by a static token in its data dir, unless the config says
+`localRunner: false` ([the local runner](reference/up.md#the-local-runner)). The name `local` is
+`verse up`'s, and refused to anybody else.
 
 **Adding a runner probes it.** The probe is `GET /describe`, which every runner serves: its
 answer is what the runner offers, and asking has no effect on the runner. The probe has three
@@ -119,8 +120,8 @@ registration, nor a static token a workload one. No workload issuer is needed; v
 issues its own tokens (`auth.issuer`), since the handshake runs both ways. This is how a runner
 on a laptop is registered too.
 
-`verse runner add` without `-subject` or `-token-file` is refused. `verse up`'s embedded runner
-is no registration: it runs in verse's own process, and never calls verse's door.
+`verse runner add` without `-subject` or `-token-file` is refused. `verse up` registers its local
+runner the same way, by its static token's hash, as the system.
 
 `-no-probe` installs the runner in every case. A runner installed without its offers takes no
 spawn until it has described itself: at its hello, when verse starts, or at `verse runner
@@ -171,7 +172,7 @@ echo '{prompt: "retrain the ranker", agent: {name: verse},
 Verse routes each spawn when it launches, in its own view of the registrations:
 
 1. **The candidates** are the runners that offer the doer, the agent the spawn names or scripts,
-   as each last described itself, and this verse's own runner where it hosts work. A
+   as each last described itself, the local runner `verse up` starts among them. A
    registration with no description is passed over: the runner's hello, the probe when verse
    starts and `verse runner check` describe a runner, and a spawn does not.
 2. **Fit**: of those, the runners whose offer takes the spawn: the agent's settings, every system
@@ -210,7 +211,7 @@ places, and the same place may host either of two agents.
 ## Seeing where
 
 ```sh
-verse ps                           # each task names its runner; this verse's own reads `local`
+verse ps                           # each task names its runner, `verse.runners.local` among them
 verse ps -runner verse.runners.gpu # only that runner's work
 verse runner                       # what is installed, and what each is carrying
 verse runner -probe                # …and what each of them says right now
@@ -289,7 +290,8 @@ want, and it is a different feature.
 **No scheduling, no capacity, and no health that routes.** Verse hands a spawn to a runner, and
 the runner takes it or does not. There is no queue and no draining. The only second try is at
 the launch: a runner that fails the handshake is passed over for the next that takes the spawn.
-The probes diagnose and never dispatch, and nothing polls. A runner that is down fails the
+The probes diagnose and never dispatch, and nothing polls a registered runner; the one poll is
+`verse up`'s of a local runner a crashed run left ([the local runner](reference/up.md#the-local-runner)). A runner that is down fails the
 handshake of each spawn routed to it, and is tried again by the next; one that took a spawn and
 then failed it fails the task, which takes the path every failed task takes.
 
@@ -336,7 +338,7 @@ Two cases are open:
 - The contract does not say *how* a runner applies control. So verse assumes that anything it
   reaches over a URL applies control synchronously. Verse relies on a runner that queues
   control to refuse it.
-- `local` names this verse's own runner on a task's record. It is not a registration.
+- `local` is the local runner's name, `verse up`'s to register and nobody else's.
 
 ## Why it is this way
 

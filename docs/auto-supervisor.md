@@ -219,7 +219,7 @@ promotion is the one that skips the assessment.
 ## Drive it
 
 The charter needs model credentials to install, because its `assess` rule names the `verse`
-agent. `verse up` reads them: see [the embedded runner](reference/up.md#the-embedded-runner).
+agent. `verse up` reads them: see [the local runner](reference/up.md#the-local-runner).
 The *routing* needs nothing more. A `review` is an ordinary fact, so you can write one yourself
 and watch where it goes. Start with a review that the supervisor cleared inside its remit:
 

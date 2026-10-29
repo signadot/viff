@@ -431,3 +431,31 @@ func WithReady(h http.Handler) http.Handler {
 		h.ServeHTTP(w, r)
 	})
 }
+
+// StopPath is where a runner's verse asks it to stop: POST, on the control face, behind the door,
+// so only the verse it serves may. The runner answers 202 and stops as a signal would stop it,
+// its tasks with it. It is how a verse stops a runner it did not start, or no longer holds the
+// process of: its local runner after the verse itself was restarted.
+const StopPath = "/stop"
+
+// WithStop is h with POST StopPath beside it, calling stop once the answer is written. Wrap it in
+// the guard (Guard.Wrap), so the route is the verse's alone.
+func WithStop(h http.Handler, stop func()) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != StopPath {
+			h.ServeHTTP(w, r)
+			return
+		}
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			http.Error(w, "POST "+StopPath+" stops this runner", http.StatusMethodNotAllowed)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+		fmt.Fprintln(w, "stopping")
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		go stop()
+	})
+}

@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -21,6 +21,7 @@ import (
 	"github.com/signadot/verse/config"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/runner"
+	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/runner/runnerd/stock"
 	verseagent "github.com/signadot/verse/runner/runnerd/verse"
 	"github.com/signadot/verse/system/repocharters"
@@ -30,7 +31,6 @@ import (
 
 type upConfig struct {
 	*cli.Command
-	Root string `cli:"name=root desc='working dir an llm agent reads/acts in; default: isolated temp dir'"`
 
 	// The store is docd (durable): the store client connects to docd's client face.
 	//
@@ -43,13 +43,15 @@ type upConfig struct {
 	// Service name that resolves nowhere else, so a laptop given that name has been told
 	// something true and useless.
 	DocdAdvertiseAddr string `cli:"name=docd-advertise-addr desc='publish this client-face address on /status instead of --docd-addr (for clients that cannot reach it)'"`
-	Data              string `cli:"name=data desc='data dir; verse ups logd+docd here via o sys up. default: a fresh (kept) temp dir'"`
+	Data              string `cli:"name=data desc='data dir; verse ups logd+docd here via o sys up, and keeps the local runner here. default: ~/.verse/<addr> ($VERSE_HOME/<addr>)'"`
 	LogdConfig        string `cli:"name=logd-config desc='logd configuration file (tony) for the spawned daemons, replacing the one verse writes (see docd.go)'"`
 	OBin              string `cli:"name=o-bin desc='path to the o binary for spawning daemons; default: go run the pinned go-tony cmd/o'"`
 	// LocalRunner false is a verse whose own runner hosts nothing: every spawn goes to a registered
 	// runner. Unset is the config's `localRunner`, true by default. A string, since unset is not
 	// false and the flag library takes a bool by value alone.
-	LocalRunner string `cli:"name=local-runner desc='true or false: whether this verse hosts work on its own runner (default: the config, true); false routes every spawn to a registered runner'"`
+	LocalRunner string `cli:"name=local-runner desc='true or false: whether verse up starts a local runner beside itself (default: the config, true); false routes every spawn to a registered runner'"`
+	// RunnerdBin is the runnerd the local runner is, where verse's own resolution should not pick.
+	RunnerdBin string `cli:"name=runnerd-bin desc='path to the runnerd the local runner runs; default: beside verse, else ~/.verse/bin/<version>, else PATH'"`
 	// AdminAddr is the out-of-band face: pprof and goroutine stacks, off the data path.
 	// Empty derives it from --addr (see adminface); `off` disables it.
 	AdminAddr string `cli:"name=admin-addr desc='admin/pprof listen address, or off to disable (default: the --addr port + 1)'"`
@@ -154,30 +156,25 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	// flag to be stale against.
 	codec.SetDefault(appCfg.Format.ResolveWire())
 
-	// Working directory an llm agent acts in: --root, else an isolated temp dir.
-	root := cfg.Root
-	if root == "" {
-		t, err := os.MkdirTemp("", "verse-task-*")
-		if err != nil {
-			return err
-		}
-		root = t
-	} else if abs, err := filepath.Abs(root); err == nil {
-		root = abs
-	}
-	// The verse runner, embedded: its agent when a model credential is configured (so agents
-	// are real out of the box), and scripts either way. An agent spawn with no credential
-	// fails *that* task, not the engine.
-	if appCfg.LLM.Available() {
-		fmt.Fprintf(cc.Err, "agents rooted at %s\n", root)
-	}
-	// What a task's shell inherits from this process, which holds the model credentials.
+	// The local runner: the verse agent when a model credential is configured (so agents are real
+	// out of the box), and scripts either way; what a task's shell inherits from it, which holds
+	// the model credentials. Resolved before anything starts, so a verse that could not start its
+	// runner says so first.
 	shellEnv := appCfg.ShellEnv
 	if len(shellEnv) == 0 {
 		shellEnv = task.DefaultShellEnv
 	}
 	runnerCfg, runnerSecrets := embeddedRunner(appCfg.LLM, shellEnv)
-	h := stock.New(runnerCfg, runnerSecrets, root, cc.Err)
+	hostsLocally := appCfg.HostsLocally()
+	if on, err := strconv.ParseBool(cfg.LocalRunner); err == nil {
+		hostsLocally = on // validate refused anything but unset, true or false
+	}
+	var runnerdBin string
+	if hostsLocally {
+		if runnerdBin, err = resolveRunnerd(cfg.RunnerdBin, cc.Err); err != nil {
+			return err
+		}
+	}
 
 	// Resolve docd's addresses — connecting to a running one, or bringing logd+docd up
 	// via `o sys up` (see docd.go) — and open the store on its client face.
@@ -213,11 +210,8 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		}
 		perms.Reseed = perms.Reseed || on
 	}
-	srv := versed.NewWithStore(h.Build, store, versed.WithPerms(perms))
-	// What the embedded runner offers, as a runner reached by url would say on GET /describe:
-	// a spawn naming the `verse` agent with no model credential is refused as that, not run. Its
-	// tasks run in verse's own process, so the one network it builds them is open.
-	srv.Embedded.Describe(runnerCfg.Describe([]string{runner.NetworkOpen}))
+	// No runner in this process: every task runs on a registered runner, the local one among them.
+	srv := versed.NewWithStore(nil, store, versed.WithPerms(perms))
 	// NO POLICY, NO SERVING. The root's record is what admits anybody at all now, so a server
 	// that could not write it would refuse every request from every person — which reads as a
 	// verse that lost its data, and is worth failing loudly at the start instead.
@@ -307,10 +301,6 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	// Where a spawn runs is verse's to say (versed route.go): the agent a prompt naming none is
 	// for, and whether this verse's own runner is among the runners it routes to.
 	srv.DefaultAgent = appCfg.DefaultAgent
-	srv.NoLocalRunner = !appCfg.HostsLocally()
-	if on, err := strconv.ParseBool(cfg.LocalRunner); err == nil {
-		srv.NoLocalRunner = !on // validate refused anything but unset, true or false
-	}
 
 	// Catch SIGTERM as well as SIGINT so `verse down` (which signals us) triggers the
 	// same graceful shutdown — the deferred d.stop() reaps the spawned daemons.
@@ -334,16 +324,48 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	}
 
 	httpSrv := &http.Server{Handler: srv.Handler()}
+	// THE LOCAL RUNNER, once this verse serves: the runner fetches this verse's keys to take its
+	// calls, and is asked to prove itself, so it is started (or found) behind the listener. A
+	// runner that cannot be had stops the verse, as a store that cannot be opened does.
+	var lrMu sync.Mutex
+	var lr *localRunner
+	var lrErr error
+	if hostsLocally {
+		dir := d.dataDir
+		if dir == "" {
+			if dir, err = defaultDataDir(g.Addr); err != nil {
+				return err
+			}
+		}
+		go func() {
+			got, err := startLocalRunner(ctx, srv, runnerdBin, dir, runnerd.Verse{URL: issuerURLOf(g.Addr), Issuer: issuerURL}, runnerCfg, runnerSecrets, cc.Err)
+			lrMu.Lock()
+			lr, lrErr = got, err
+			lrMu.Unlock()
+			if err != nil {
+				stop()
+			}
+		}()
+	}
 	go func() {
 		<-ctx.Done()
+		lrMu.Lock()
+		running := lr
+		lrMu.Unlock()
+		if running != nil {
+			running.stop() // before the listener closes: the runner checks the stop against this verse's keys
+		}
 		_ = httpSrv.Shutdown(context.Background())
 	}()
 
-	agents := "scripts only"
+	runs := "local runner: scripts only"
 	if appCfg.LLM.Available() {
-		agents = "the verse agent, and scripts"
+		runs = "local runner: the verse agent, and scripts"
 	}
-	fmt.Fprintf(cc.Out, "verse up on %s (engine + store[%s] + runner[%s]). ctrl-c to stop.\n", g.Addr, storeKind, agents)
+	if !hostsLocally {
+		runs = "no local runner: every spawn goes to a registered runner"
+	}
+	fmt.Fprintf(cc.Out, "verse up on %s (engine + store[%s]; %s). ctrl-c to stop.\n", g.Addr, storeKind, runs)
 	// A runner holds versed's tokens to this name exactly: one whose `verse.url` spells the address
 	// another way (127.0.0.1 for localhost) refuses them unless its `verse.issuer` says this.
 	fmt.Fprintf(cc.Out, "issuer: %s (key: %s); a runner's verse.url spells it so, or its verse.issuer does\n", issuerURL, issuerKey)
@@ -351,7 +373,9 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	if err := httpSrv.Serve(ln); err != nil && err != http.ErrServerClosed {
 		return err
 	}
-	return nil
+	lrMu.Lock()
+	defer lrMu.Unlock()
+	return lrErr
 }
 
 func openDocdStore(cfg entity.LogdConfig, wait time.Duration, cc *cli.Context) (*entity.LogdStore, error) {

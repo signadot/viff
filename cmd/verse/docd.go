@@ -8,12 +8,17 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/scott-cotton/cli"
 )
+
+// docdAddrFile is where, in the data dir, verse records the client face of the docd it started,
+// so the next run on the dir finds it by dialing.
+const docdAddrFile = "docd.addr"
 
 // goTonyModule is the pinned go-tony module and goTonyO its daemon runner — the `o`
 // command verse brings logd+docd up with. Keeping the two in one place is what lets
@@ -35,8 +40,8 @@ type docd struct {
 // resolveDocd yields docd's addresses. Three modes, in order:
 //   - --docd-addr given: connect to a running docd (verse spawns nothing).
 //   - --data given: bring logd+docd up on that dir via `o sys up`.
-//   - neither: make a fresh (kept) temp data dir and do the same — a real docd by
-//     default, zero config, for actual use rather than a demo.
+//   - neither: do the same on ~/.verse/<addr> (defaultDataDir), made on the first run and
+//     kept, so a bare `verse up` comes back to the same verse, its local runner with it.
 //
 // For the spawned modes verse reserves free loopback ports and passes them to
 // `o sys up`, so it already knows the addresses (no stdout scraping), and waits for
@@ -56,13 +61,28 @@ func resolveDocd(cfg *upConfig, cc *cli.Context) (docd, error) {
 
 	dataDir := cfg.Data
 	if dataDir == "" {
-		d, err := os.MkdirTemp("", "verse-data-*")
-		if err != nil {
-			return docd{}, err
+		if dataDir, err = defaultDataDir(g.Addr); err != nil {
+			return docd{}, fmt.Errorf("verse up: the data dir: %w", err)
 		}
-		dataDir = d
 	}
 	fmt.Fprintf(cc.Out, "data dir: %s (kept)\n", dataDir)
+
+	// THE PAIR THE LAST RUN LEFT, found by dialing: a `verse up` that crashed left logd and docd
+	// holding this dir, and a second pair started on it would be two stores writing one. What
+	// answers at the client face the last run recorded is used as it stands, and left running
+	// when this run stops, since this run holds no process of it to stop.
+	recorded := filepath.Join(dataDir, docdAddrFile)
+	if b, err := os.ReadFile(recorded); err == nil {
+		if addr := strings.TrimSpace(string(b)); addr != "" {
+			if c, err := net.DialTimeout("tcp", addr, time.Second); err == nil {
+				c.Close()
+				fmt.Fprintf(cc.Out, "docd: %s, left running on this data dir by the last `verse up`, used as it stands\n", addr)
+				return docd{clientAddr: addr, dataDir: dataDir, stop: func() {
+					fmt.Fprintf(cc.Err, "verse up: docd at %s, which this run found running, is left running; the next `verse up` on %s uses it\n", addr, dataDir)
+				}}, nil
+			}
+		}
+	}
 
 	logdCfg, err := resolveLogdConfig(cfg.LogdConfig, dataDir)
 	if err != nil {
@@ -145,6 +165,13 @@ func resolveDocd(cfg *upConfig, cc *cli.Context) (docd, error) {
 		}
 		return docd{}, fmt.Errorf("docd did not come up on %s: %w", clientAddr, err)
 	}
+	// Where the next run finds this pair, should this one not live to stop it.
+	if err := os.WriteFile(recorded, []byte(clientAddr+"\n"), 0o644); err != nil {
+		stop()
+		return docd{}, fmt.Errorf("verse up: recording docd's address: %w", err)
+	}
+	stopped := stop
+	stop = func() { stopped(); _ = os.Remove(recorded) }
 	return docd{clientAddr: clientAddr, dataDir: dataDir, stop: stop}, nil
 }
 

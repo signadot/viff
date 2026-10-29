@@ -425,3 +425,52 @@ func TestARunnerCarriesNoAnswerOverItsCap(t *testing.T) {
 		t.Errorf("an answer over the cap = %q, %v; want an error naming the cap", said, err)
 	}
 }
+
+// A RUNNER'S VERSE MAY STOP IT, and nobody else: POST /stop behind the door answers 202 and stops
+// the runner; with no bearer, or another's, the stop is refused and the runner goes on.
+func TestARunnersVerseMayStopIt(t *testing.T) {
+	cluster, verse, verseURL := fakeVerse(t)
+	file, _ := ownTokenFile(t, cluster, runnerSub)
+	g, err := NewGuard(Verse{URL: verseURL, Issuer: verse.URL}, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stopped := make(chan struct{}, 1)
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok")) })
+	ts := httptest.NewServer(g.Wrap(WithStop(inner, func() { stopped <- struct{}{} })))
+	defer ts.Close()
+	stop := func(method, token string) int {
+		req, _ := http.NewRequest(method, ts.URL+StopPath, nil)
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	for what, token := range map[string]string{"no bearer": "", "another runner's token": verse.Token(otherSub, "verse", nil)} {
+		if code := stop(http.MethodPost, token); code != http.StatusUnauthorized {
+			t.Errorf("a stop with %s = %d, want 401", what, code)
+		}
+	}
+	good := verse.Token(runnerSub, "verse", nil)
+	if code := stop(http.MethodGet, good); code != http.StatusMethodNotAllowed {
+		t.Errorf("GET /stop = %d, want 405", code)
+	}
+	select {
+	case <-stopped:
+		t.Fatal("a refused stop stopped the runner")
+	default:
+	}
+	if code := stop(http.MethodPost, good); code != http.StatusAccepted {
+		t.Fatalf("the verse's stop = %d, want 202", code)
+	}
+	select {
+	case <-stopped:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the verse's stop did not stop the runner")
+	}
+}

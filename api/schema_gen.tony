@@ -811,8 +811,11 @@ signature:
 context:
 - tony-format/context
 define:
-  kind: .[string]
-  resume: .[string]
+  at: .[string]
+  described: .[bool]
+  offers: .[array(string)]
+  url: .[string]
+  why: .[string]
 signature:
   name: verse-runner-status
 ---

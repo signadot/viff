@@ -61,7 +61,7 @@ replaces the runner.
 On the task side:
 
 ```
-verse ps  [-runner <ref>]                  only the work on that runner (`local` = named none)
+verse ps  [-runner <ref>]                  only the work on that runner (`local` = the local runner)
 verse task run -f <spawn>                 run a spawn there: its `runner:` names the runner
 ```
 
@@ -122,7 +122,7 @@ installed.
 
 | Field | What it holds |
 |---|---|
-| `runner` | the resolved URL, or `local`. A restart attaches again with it. |
+| `runner` | the resolved URL. A restart attaches again with it. |
 | `runnerName` | the `verse.runners.<name>` that the spawn named, when it named one |
 | `runnerSubject` | the subject that registration held at the spawn. The door holds a runner carrying a request for the task to it ([permissions](perms.md#runners-at-the-door)). |
 | `startedAt` | when the task began. Verse carries it across a new attach, and does not stamp it again. |

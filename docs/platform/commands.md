@@ -5,11 +5,11 @@ worker. The commands for a user are in [the reference](../reference/README.md#co
 
 ```
 verse
-  up   [-root <dir>]                         start the monolith (engine + store + tasks)
+  up                                         start the monolith (engine + store), and the local runner beside it
                                              the dir the verse agent reads/acts in; default: an
                                              isolated temp dir, printed at start when model
                                              credentials are configured
-       [-data <dir>]                         bring logd+docd up on <dir> (default: fresh temp dir)
+       [-data <dir>]                         bring logd+docd up on <dir> (default: ~/.verse/<host>_<port>)
        [-logd-config <file>]                 a logd configuration for the daemons it spawns,
                                              in place of the one verse writes
        [-admin-addr host:port|off]           the admin and pprof face (default: the -addr port + 1)
@@ -20,7 +20,8 @@ verse
                                              reaches docd by a different address than verse does
        [-o-bin path]                         the o binary to spawn daemons with (default: resolved —
                                              see up.md)
-       [-local-runner=false]                 host no work here: route every spawn to a registered runner
+       [-local-runner=false]                 start no local runner: route every spawn to a registered runner
+       [-runnerd-bin path]                   the runnerd the local runner runs (default: beside verse, see up.md)
   down                                       stop the verse on -addr (it reaps its spawned daemons)
   task (tasks, ps) [-runner <ref>]           every task, whatever runs it
                   [-options id[:need],…] [-deadline within[:default]]    …with outcomes

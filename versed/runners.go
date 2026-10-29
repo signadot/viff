@@ -46,6 +46,11 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if who := entity.PrincipalOf(s.scopedStore(r)); e.Name == LocalRunnerName && !entity.IsSystem(who) {
+		http.Error(w, fmt.Sprintf("runner %q: the name is `verse up`'s, for the runner it starts beside itself; "+
+			"register this one under another", e.Name), http.StatusBadRequest)
+		return
+	}
 	var reach, why, warning string
 	// The probe, and the two dispositions it feeds. They differ on whether waiting could
 	// change the answer: a url that answers as something else is answering NOW, while a url

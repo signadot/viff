@@ -10,8 +10,8 @@ resumable.
 
 - Verse is its client. Verse mirrors it into the durable record at `verse.task.instance.<id>`,
   the [instance record](glossary.md#instance-record).
-- The local supervisor is one built-in implementation of the same URL contract. It has no
-  privileged shortcut.
+- The local runner `verse up` starts is one more `runnerd` behind the same URL contract. It has
+  no privileged shortcut.
 - Anyone else plugs in a URL, completely outside verse: k8s, AWS Lambda, a service for work done
   by people, or a custom runtime.
 
@@ -184,8 +184,7 @@ spawned. It refuses a task that the scope inherited, and names the scope that ho
 One dispatch for every task forces the contract to be complete. It keeps local tasks equivalent
 to remote tasks.
 
-The built-in local supervisor is reached through the same interface, in process. `local` is how
-a task's record names it.
+The local runner is reached through the same interface, as any registered runner is.
 
 ## The verse-facing contract
 

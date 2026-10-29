@@ -25,9 +25,9 @@ import (
 // The steps, at every launch (route):
 //
 //  1. Candidates: the registrations that are described (api.Runner.Current) and offer the doer,
-//     and this verse's own runner where it hosts work. A registration with no description is no
-//     candidate: the hello, the probe at start and `verse runner check` describe it, never a
-//     spawn.
+//     the local runner `verse up` starts among them, and the runner a server was handed in
+//     process, where it was (tests). A registration with no description is no candidate: the
+//     hello, the probe at start and `verse runner check` describe it, never a spawn.
 //  2. Fit: the candidates whose offer takes the launch (runnerd.CheckOffer).
 //  3. Load: fewest tasks on record not yet ended, then by name.
 //  4. Handshake: the first is asked what it is now (handshake); one that does not prove itself,
@@ -39,7 +39,8 @@ import (
 // DefaultAgent is the agent a prompt naming none is for, where the Server names none.
 const DefaultAgent = "verse"
 
-// ownRunner is how a refusal names this verse's own runner, which has no registration.
+// ownRunner is how a refusal names the runner a server was handed in process (tests), which has no
+// registration.
 const ownRunner = "this verse's own runner"
 
 // placed is where a launch went: the runner, and how the task's record names it.
@@ -64,9 +65,9 @@ func (c candidate) name() string {
 
 func (c candidate) where() string { return cmp.Or(c.name(), ownRunner) }
 
-// unsaid is whether this candidate is this verse's own runner with nothing said of what it offers:
-// it takes what it is asked and checks its launches itself, after every runner that said what it
-// offers.
+// unsaid is whether this candidate is the runner a server was handed in process with nothing said
+// of what it offers: it takes what it is asked and checks its launches itself, after every runner
+// that said what it offers. Only a test hands a server a runner, and most say nothing of it.
 func (c candidate) unsaid() bool { return c.reg == nil && len(c.desc.Offers) == 0 }
 
 // defaultAgent is the agent a prompt naming none is for.
@@ -100,12 +101,10 @@ func (s *Server) bindDefaultAgent(l *runner.Launch) {
 	l.Agent = &a
 }
 
-// hostsWork is whether this verse's own runner is a candidate: not where the deployment says
-// it hosts nothing (NoLocalRunner).
-func (s *Server) hostsWork() bool {
-	_, local := s.runner.(localRunner)
-	return local && !s.NoLocalRunner
-}
+// hostsWork is whether this verse's own runner, in process, is a candidate: only for a server
+// handed one (tests), and not where it is told to host nothing (NoLocalRunner). `verse up` hands
+// none: its local runner is a registration like any other (localrunner.go).
+func (s *Server) hostsWork() bool { return s.inProcess && !s.NoLocalRunner }
 
 // doerOf is what a launch asks for, as a refusal says it.
 func doerOf(l *runner.Launch) string {

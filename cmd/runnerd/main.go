@@ -186,7 +186,8 @@ func run(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	h := guard.Wrap(r.HTTPHandler())
+	// Its verse may ask it to stop (POST /stop), behind the door, as a signal would.
+	h := guard.Wrap(runnerd.WithStop(r.HTTPHandler(), stop))
 	log.Printf("serving one verse: %s, by the tokens it signs for %s", guard.Verse().Issuer, guard.Verse().Audience)
 	srv := &http.Server{Handler: runnerd.WithReady(h)}
 	ln, err := net.Listen("tcp", rc.Listen)

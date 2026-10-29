@@ -30,13 +30,17 @@ No other output tells a rule that selects nothing from a rule that selects and f
 `VERSE_LOG` takes any slog level: `debug`, `info`, `warn` or `error`. Verse refuses any other
 value at startup. It does not ignore it.
 
-`up` decides three things for the whole runtime: the store, the runner it embeds and the agent root.
-`up` decides them because it hosts the task runtime, and the clients do not.
+`up` decides two things for the whole runtime: the store, and the local runner it starts beside
+itself. `up` decides them because it hosts the runtime, and the clients do not.
 
 ## The store
 
-By default, `up` uses docd. It brings up logd and docd on a **fresh temporary data
-directory**, through `o sys up`. It prints the directory, and it keeps it. The store is then
+By default, `up` uses docd. It brings up logd and docd on its **data directory**, through
+`o sys up`: `~/.verse/<host>_<port>` for its `--addr` (`~/.verse/localhost_9797` by default), or
+under `$VERSE_HOME` where that is set, made on the first run and kept, so a bare `verse up` comes
+back to the same verse. `--data` names another. It prints the directory. The data dir also holds
+the local runner's configuration and token, and the issuer's key; `rm -rf ~/.verse` is the whole
+wipe. The store is then
 [docd](https://signadot.github.io/tony-format/docd/), the tony-format document store.
 
 You need to know nothing about docd to try verse, because `up` starts it for you. docd gives
@@ -50,7 +54,7 @@ verse its deeper properties:
 See [store.md](store.md).
 
 ```sh
-verse up -data ~/.verse/data                 # a durable dir rather than a fresh temp one
+verse up -data /srv/verse                    # a data dir of your choosing
 verse up -docd-addr host:port                # attach to an already-running docd
 verse up -logd-config logd.tony              # start logd with this configuration
 ```
@@ -103,50 +107,84 @@ for. A deployment that clients reach in two ways publishes the address that its 
 use. `deploy/README.md` is a worked example. There, the pair is the tailnet names of the two
 Services that verse connects to inside the cluster.
 
-## The embedded runner
+## The local runner
 
-`up` embeds the verse runner, which runs a task when the spawn names no other runner. What it
-offers depends on the model credentials.
+`up` starts a [runner](../glossary.md#runner) beside itself, as it starts logd and docd: a
+`runnerd` ([runnerd.md](runnerd.md)), registered as `verse.runners.local`. It is a runner like any
+other: verse routes a spawn to it when it offers the spawn's doer and holds what the spawn asks
+([where a spawn runs](../runners.md#where-a-spawn-runs)), beside any runner registered with this
+verse. What it offers depends on the model credentials.
 
 | Credentials | On offer |
 |---|---|
 | configured: an `llm` block in `~/.config/verse.tony`, or `PORTKEY_*`/`OPENAI_MODEL` in the environment | the `verse` agent, and scripts |
 | none | scripts |
 
-The **server** reads the credentials. So set them before `up`, and not in the environment of
-the client. `verse status` shows an `llm` block with `available` and a masked key.
+The **server** reads the credentials and hands them to the runner. So set them before `up`, and
+not in the environment of the client. `verse status` shows an `llm` block with `available` and a
+masked key.
 
 Each spawn says who does its work: a `script`, or a `prompt` for an [agent](../glossary.md#agent),
 the one its `agent` names or else verse's default agent (`defaultAgent`, the `verse` agent unless
 the config says another). Verse checks a spawn against what the runners offer where it is
 written: with no credentials configured, and no runner registered that offers the `verse` agent,
 a charter whose prompt is for it is refused at its install, and `task run` at the prompt, each
-saying no runner offers it. The engine keeps
-running. `verse up`'s runner builds only the host's network, so a spawn it runs says
-`network: {mode: open}`. What decides each step is in [tasks.md](tasks.md#the-dial).
+saying no runner offers it. The engine keeps running. What decides each step is in
+[tasks.md](tasks.md#the-dial).
 
-## The agent root
+**How it runs.** Each task works in a workspace of its own, as on a deployed runner. On Linux,
+where bubblewrap runs, its tasks are confined as a deployed runner's are; elsewhere (a Mac has no
+bubblewrap), or where bubblewrap does not run, they run unconfined, as you, and `up` says so at
+start. Unconfined, a runner's `shellEnv` is a declaration and nothing more. The runner builds the
+host's network alone where it is unconfined, so a spawn it runs says `network: {mode: open}`.
 
-The agent root is the directory where the `verse` agent acts. `verse up -root <dir>` names
-it, and `-root .` is your own tree. With no flag, `up` makes an isolated temporary directory.
-When the agent is on offer, `up` prints it at start (`agents rooted at …`). For this reason,
-a file that an agent writes is *not* in your working directory.
+**How it proves itself.** `up` makes a static token on the first run on a data dir
+(`local-runner.token`, 0600, 64 hex digits) and keeps it; the registration names it by its hash,
+and the runner reads it ([who the runner is](../runners.md#who-the-runner-is)). Its
+configuration, `local-runner.tony`, is rewritten on every `up`: the verse it serves, at this
+run's `--addr`, and the port it listens on, the one the last run recorded unless something else
+holds it. The runner says hello when it starts, and is described within seconds. Rotating the
+token means removing the file and restarting `up`: a runner holding the old one fails its
+handshake, and is passed over until it is restarted on the new.
 
-## Where tasks run
+**Which `runnerd`.** `up` looks beside the `verse` executable first (`make bin` puts both
+there), then in `~/.verse/bin/<version>/`, then on `PATH`; where none is found and this verse
+has a version, it installs `runnerd` and `verse-call-tool` of that version into
+`~/.verse/bin/<version>/` with `go install`, as it installs `o`. A development build has no
+version to install, and is refused with how to build them. `--runnerd-bin` names one.
 
-A spawn names its doer, and verse routes it to a [runner](../glossary.md#runner) that offers the
-doer and holds what the spawn asks: this verse's own runner, which runs tasks in the verse
-process and offers what `verse up` configures it with, or a runner registered with it
-([where a spawn runs](../runners.md#where-a-spawn-runs)). Verse refuses a spawn no runner takes,
-saying why, rather than run it somewhere else.
+**Across a crash.** `up` finds what a crashed run left by dialing, not by a pid. The runner that
+answers at the recorded port and proves this data dir's token is used as it stands, its tasks
+with it, and is asked every 30 seconds whether it still answers, so one is started in its place
+when it does not; nothing answers, or something else does, and a runner is started, and `up` says
+why it did not use what answered. A runner left serving another `--addr` on the same `--data`
+does not prove itself to this verse, takes no stop from it, and runs on until it is stopped by
+hand. The store pair is found
+the same way, at the docd address the last run recorded in the data dir (`docd.addr`). A runner
+that exits while `up` runs is started again, waiting longer each time it exits quickly.
+
+**When it stops.** `verse down`, or ctrl-c, asks the runner to stop (`POST /stop`, which the
+runner takes from its verse alone), waits for it, and removes its registration (a runner this run
+did not start is waited on by dialing, and its process can outlive `verse down` by a few seconds
+while it drains its connections); logd and docd
+are stopped with it. A store pair `up` found running rather than started is left running, and
+`up` says so: the next `up` on that data dir uses it. After a crash, with no `up` running,
+`verse down` finds nothing to stop; the next `up` on the data dir finds what the crashed one left,
+and its `verse down` stops the runner.
+
+`verse status` says how the local runner is, asked of it then and never stored: under `runner`,
+its registration, its url, whether it is `described` and what it `offers`, and where it is not
+described, `why`.
 
 ```sh
-verse up --local-runner=false     # this verse hosts nothing: every spawn goes to a registered runner
+verse up --local-runner=false     # start no local runner: every spawn goes to a registered runner
 ```
 
-`--local-runner=false`, or `localRunner: false` in the config, is a central verse's: its own
-runner offers nothing. A prompt that names no agent is for `defaultAgent`, `verse` unless the
-config says another.
+`--local-runner=false`, or `localRunner: false` in the config, is a central verse's: `up` starts
+no runner, and hosts nothing. A prompt that names no agent is for `defaultAgent`, `verse` unless
+the config says another.
+
+## The issuer
 
 A registered runner takes this verse's calls by the tokens it signs as an issuer
 (`auth.issuer`, below), each minted for that runner alone
@@ -160,7 +198,7 @@ which is `config`, the file, or `memory`; `verse up` prints the same at start. A
 versed's tokens to that url exactly, so its `verse.url` spells it the same way (`localhost`, not
 `127.0.0.1`), or its `verse.issuer` names it ([runnerd.md](runnerd.md#configuration)).
 
-Both places use the same seam, and every `verse task` verb works on both. See also
+Every runner uses the same seam, and every `verse task` verb works on each. See also
 [task control](../task-control.md) and [tasks.md](tasks.md).
 
 ## Configuration
@@ -398,7 +436,7 @@ Every key, and the variable that sets it:
 | `format: {default, output, wire}` | `VERSE_FORMAT`, `VERSE_OUTPUT_FORMAT`, `VERSE_WIRE_FORMAT` | every command | the format to write in: `tony` or `yaml` ([representation](representation.md)) |
 | `systemCharter` | `VERSE_SYSTEM_CHARTER` | `verse up` | a charter file installed at start as the system |
 | `defaultAgent` | `VERSE_DEFAULT_AGENT` | `verse up` | the agent a spawn's prompt is for where it names none, bound at the spawn. `verse` by default |
-| `localRunner` | `VERSE_LOCAL_RUNNER` | `verse up` | whether this verse's own runner hosts work, beside the runners registered with it; `--local-runner` overrides it. `true` by default |
+| `localRunner` | `VERSE_LOCAL_RUNNER` | `verse up` | whether `up` starts a local runner beside itself ([the local runner](#the-local-runner)); `--local-runner` overrides it. `true` by default |
 | `repoCharters: [{repo, github, branch, at, tree, answerers}]` | | `verse up` | the repo-charters reconciler, installed as the system for each repository named |
 | `auth: {principal: {mode, providers}}` | | `verse up`, `verse account login` | the identity providers whose tokens say who a request is from |
 | `auth: {iod: {issuer, audience, accounts, static}}` | | `verse up` | the issuer of the iods' workload tokens, and which iod each is |

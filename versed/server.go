@@ -102,14 +102,24 @@ type Server struct {
 	replacing sync.Map
 	Reg       *task.Registry
 	Eng       *trigger.Engine
-	// Embedded is the runner this verse embeds, for `verse up`: its tasks run in this process.
+	// Embedded is the runner a server is handed in process (NewWithStore's builder): its tasks
+	// run in this process. Tests hand one; `verse up` hands none and starts a runnerd, its local
+	// runner, which is a registration like any other (localrunner.go). With no builder it is
+	// empty, and nothing is routed to it.
 	Embedded *runnerd.InProcessHandler
 	runner   client.Launcher // the embedded runner, reached in process
+	// inProcess is whether the server was handed a builder, and so a runner in process that
+	// routing may send work to: tests. `verse up` hands none, and starts a runnerd instead.
+	inProcess bool
+	// localRunner is whether a `local` registration is this verse's (RegisterLocalRunner), so
+	// `verse status` says how it is.
+	localRunner bool
 	// DefaultAgent is the agent a prompt naming none is for, bound at the spawn; empty is
 	// DefaultAgent (`defaultAgent` in the config).
 	DefaultAgent string
-	// NoLocalRunner is a verse whose own runner hosts nothing: every spawn goes to a registered
-	// runner (`localRunner: false` in the config). A central deployment's versed.
+	// NoLocalRunner keeps work from the runner the server was handed in process, so every spawn
+	// goes to a registered runner: a test's stand-in for a verse with no local runner
+	// (`localRunner: false`, which `verse up` honours by starting none).
 	NoLocalRunner bool
 	// runnerTokens is the tokens this verse has minted toward its runners, one per audience,
 	// kept until they are about to expire (runnerauth.go).
@@ -318,6 +328,7 @@ func NewWithStore(build runnerd.Builder, store entity.Store, opts ...Option) *Se
 		// cancelled at task exit.
 		ctx: context.Background()}
 	s.runner = localRunner{host} // the in-process runner, reached in process and nowhere else
+	s.inProcess = build != nil
 
 	// Publish every posed question as `gate:question:<id>`, from both places questions are
 	// raised: the engine's own registry for a firing's gates, and each hosted task for a
@@ -4066,8 +4077,8 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		Runners:     runnerRefs(s.scopedStore(r)),
 		IOs:         ioRefs(s.scopedStore(r)),
 		Charter:     s.charterTop(),
-		Runner:      s.runnerStatus(), // how tasks run: kind + resume + dial legs
-		LLM:         s.LLM,            // secrets-safe: are agent creds configured on THIS server
+		Runner:      s.localRunnerStatus(), // the local runner, asked now
+		LLM:         s.LLM,                 // secrets-safe: are agent creds configured on THIS server
 		Perms:       s.permsStatus(),
 		Restoring:   s.Restoring(),
 	}
@@ -4377,44 +4388,14 @@ func ioRefs(store entity.Store) []string {
 	return out
 }
 
-// runnerStatus describes the default runner: where a spawn that names nobody runs, and the
-// VERSE-facing control/re-attach address a restart needs.
-func (s *Server) runnerStatus() *api.RunnerStatus {
-	pol := &api.RunnerStatus{Resume: "ephemeral"}
-	switch {
-	case s.runner.Ref() == "local":
-		pol.Kind = "local"
-	default: // a remote runner base URL — the Ref IS the re-attach address
-		pol.Kind = "remote"
-		pol.Resume = s.runner.Ref()
-	}
-	return pol
-}
-
-// taskLister is task.Lister: a runner that keeps its OWN task registry,
-// distinct from the local runtime. localRunner does NOT implement it — it delegates to the
-// same runnerd the union already lists — so a runner's tasks are added without
-// double-counting local ones.
+// taskLister is task.Lister: a runner that keeps its OWN task registry, as one reached by url
+// does (isTask asks it through placeOf).
 //
 // The declaration moved to the task package so both implementations assert against it and
 // a signature change is a compile error where the implementation is. Asserting it structurally
 // here, as this did, meant a widened signature made the assertion report false rather than
 // fail to build — which is how the same mistake took out gate resolution once already.
 type taskLister = task.Lister
-
-// registries are the runtimes whose OWN task list this verse has to ask, beside the Taskd
-// snapshots every caller reads first: the default runner when it keeps one (a remote runnerd
-// does).
-//
-// The local supervisor is deliberately absent: it delegates to the same Taskd the callers list
-// first, so including it would double-count rather than add anything.
-func (s *Server) registries() []task.Runner {
-	var out []task.Runner
-	if _, ok := s.runner.(taskLister); ok {
-		out = append(out, s.runner)
-	}
-	return out
-}
 
 // gateResolver is a Handle that can answer a gate its worker raised, by relaying the
 // outcome to that worker. It is optional on Handle because only a runner with a worker leg
@@ -4613,12 +4594,16 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 	// `verse ps --runner <name>`: the question a drive asks. It selects on the NAME stamped at
 	// spawn, not on what is installed now, so it keeps answering for a runner that has since
 	// been removed — which is when an operator most wants it, since that is exactly the case
-	// `verse runner` can no longer show. `--runner local` selects the ones that named none.
+	// `verse runner` can no longer show. The runner is named as `verse runner` lists it, by its
+	// address or its bare name: `--runner local` is the local runner, `verse.runners.local`.
 	if want := r.URL.Query().Get("runner"); want != "" {
+		if name, ok := runnerNameOf(want); ok {
+			want = runnerEntityRef(name).String()
+		}
 		kept := make([]api.Task, 0, len(out))
 		for _, inst := range out {
 			if inst.RunnerName == want ||
-				(inst.RunnerName == "" && want == "local" && inst.Runner == "local") {
+				(inst.RunnerName == "" && want == runnerEntityRef(LocalRunnerName).String() && inst.Runner == "local") {
 				kept = append(kept, inst)
 			}
 		}
@@ -4642,8 +4627,8 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 //
 // The ROWS come from the task:instance mirror, and the runtimes are consulted only to
 // enrich them. That inversion is what per-task runners require: a task on a named runner
-// is in neither the local runtime nor the default runner's registry, so a union over those two
-// would simply not list it — and the fix is not to fan out over every installed runner, which
+// is not in the in-process runtime, so a union over the runtimes this process holds would simply
+// not list it — and the fix is not to fan out over every installed runner, which
 // would let one dead runner take out the whole list in a feature whose whole point is that
 // runners come and go. The mirror is written at spawn and is complete without asking anybody.
 //
@@ -4652,22 +4637,11 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 // list. Now it costs neither: the rows are already here, and a runtime that does not answer
 // only means its live detail is missing, so the record's own account stands in.
 func (s *Server) taskSnapshots(store entity.Store) ([]api.Task, error) {
-	// The live view, by id, from whatever can be asked cheaply: the in-process runtime, and
-	// the default runner when it keeps its own registry.
+	// The live view, by id, from what can be asked cheaply: the runner a server was handed in
+	// process. A registered runner's tasks are the records' to say.
 	live := map[string]liveTask{}
 	for _, inst := range s.Embedded.Snapshots() {
 		live[inst.ID] = liveTask{inst, "local"}
-	}
-	for _, p := range s.registries() {
-		// Best effort, deliberately: an error here means this runner's DETAIL is missing, and
-		// the row survives without it. Failing the list on it would be trading a complete
-		// answer for no answer.
-		if insts, err := p.(taskLister).ListTasks(); err == nil {
-			ref := p.Ref()
-			for _, inst := range insts {
-				live[inst.ID] = liveTask{inst, ref}
-			}
-		}
 	}
 	out := make([]api.Task, 0)
 	for _, ent := range taskRows(store) {
@@ -4804,11 +4778,6 @@ func (s *Server) isTask(id string) bool {
 	if _, ok := s.Embedded.SnapshotOf(id); ok {
 		return true
 	}
-	for _, p := range s.registries() {
-		if _, err := p.(taskLister).TaskSnapshot(id); err == nil {
-			return true
-		}
-	}
 	if l, ok := s.placeOf(id).(taskLister); ok {
 		_, err := l.TaskSnapshot(id)
 		return err == nil
@@ -4816,9 +4785,9 @@ func (s *Server) isTask(id string) bool {
 	return false
 }
 
-// placeOf is the runner a task actually ran on, which is not necessarily this verse's DEFAULT
-// one — `runner:` on a spawn picks per task, and that is the whole feature. nil when the task
-// ran locally, ran on the default runner, or is not one this verse knows.
+// placeOf is the runner a task actually ran on, as its record says: routing picks one per task,
+// and that is the whole feature. nil when the task ran in this process, or is not one this verse
+// knows.
 //
 // Everything that reached across the seam used to consult `s.runner` alone, so work sent
 // somewhere by name was invisible to it: a gate raised on a per-spawn runner could be LISTED
@@ -4836,9 +4805,7 @@ func (s *Server) placeOf(id string) task.Runner {
 		return nil
 	}
 	ref := entity.Str(e.Payload, "runner")
-	// `local` means in-process, which the runnerd branch above already covers; equal to the
-	// default runner means the branch above covered it too, and rebuilding a second client
-	// for the same place would lose whatever the configured one knows about itself.
+	// `local` means in process, which the runnerd branch above already covers.
 	if ref == "" || ref == "local" || ref == s.runner.Ref() {
 		return nil
 	}
@@ -4870,19 +4837,6 @@ func (s *Server) taskHoldingGate(decisionID string) string {
 			return inst.ID
 		}
 	}
-	for _, p := range s.registries() {
-		// A runner that did not answer is not a runner holding no gate, and this does not
-		// distinguish them — deliberately, because it is already the fallback: the caller
-		// consults the mirror's question record first and only lands here when no record
-		// names a task. There is nothing better to say from here, and saying it would
-		// mean widening every caller between this and the resolve.
-		insts, _ := p.(taskLister).ListTasks()
-		for _, inst := range insts {
-			if holds(inst) {
-				return inst.ID
-			}
-		}
-	}
 	return ""
 }
 
@@ -4910,16 +4864,15 @@ func (s *Server) resolveTaskDecision(taskID, decisionID string, res task.Resolut
 }
 
 // attach reaches a task wherever it actually runs: the runner its own task:instance records
-// first, this verse's default runner last.
+// first, the runner this process holds last.
 //
 // The order is not a preference. An HTTP runner's Attach hands back a handle for ANY id without
-// asking, so consulting the default first would reach whichever place happens to be configured
-// rather than the one holding the task — silently, and only for work sent somewhere by name.
+// asking, so consulting another first would reach whichever place answers rather than the one
+// holding the task.
 //
 // One helper rather than the same two lines at each call site, because "reach this task" was
-// written three times and every copy assumed the default runner: answering a gate, streaming a
-// read plane, and deciding whether an id is a task at all. A per-spawn runner is the whole point
-// of `runner:` on a spawn, and each copy was blind to it.
+// written three times and every copy assumed one runner: answering a gate, streaming a read
+// plane, and deciding whether an id is a task at all.
 func (s *Server) attach(id string) task.Handle {
 	if p := s.placeOf(id); p != nil {
 		if h := p.Attach(id); h != nil {
@@ -4956,30 +4909,9 @@ func (s *Server) getTask(w http.ResponseWriter, r *http.Request) {
 	if inst, ok := s.Embedded.SnapshotOf(id); ok {
 		live = &liveTask{inst, "local"}
 	}
-	for _, p := range s.registries() {
-		if live != nil {
-			break
-		}
-		inst, err := p.(taskLister).TaskSnapshot(id)
-		switch {
-		case err == nil:
-			live = &liveTask{inst, p.Ref()}
-		case errors.Is(err, task.ErrNoSuchTask):
-			// This one answered and has never heard of it. Not a 404 yet: another registry
-			// may hold it, and a task on a NAMED runner is in none of them. Keep asking, and
-			// the record is asked before anyone gives up.
-		default:
-			// A runner that did not answer is not a runner without this task. Reporting
-			// 404 sent an operator to look for a typo in an id that was never wrong, for a
-			// task that is running somewhere they cannot currently see.
-			codec.HTTPError(w, r, http.StatusBadGateway,
-				fmt.Sprintf("runner %s: %s", p.Ref(), err))
-			return
-		}
-	}
 	// The mirror: what only the record knows, for a live task, and the whole account for a task
-	// no runtime answers for — one on a named runner is held by neither the local runtime nor
-	// the default runner, so without it `task get` would 404 for work that is running.
+	// no runtime here answers for — one on a registered runner is not held by the in-process
+	// runtime, so without it `task get` would 404 for work that is running.
 	var rec entity.Payload
 	if e, ok, _ := s.scopedStore(r).Get(mirror.Ref(id)); ok && entity.ToObj(e.Payload) != nil {
 		rec = e.Payload
@@ -5032,7 +4964,7 @@ func (s *Server) taskEvents(w http.ResponseWriter, r *http.Request, runtime http
 // different stream there are two orders to reconcile and a supervised run that reads
 // differently depending on who is looking.
 func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request, id string) {
-	// Wherever it runs, not wherever the default runner is: `verse task attach` on work sent
+	// Wherever it runs, not wherever this process's runner is: `verse task attach` on work sent
 	// to a per-spawn runner answered 404, and so — per the note above, since an answerer reads
 	// this same stream — did every attempt to supervise it.
 	h := s.attach(id)
@@ -5122,7 +5054,7 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, op string) 
 	// included: each records who did it, and that is whoever the request is made as (actor). The
 	// runtime's own handler takes the request as it stands and records the body's `by`, so the
 	// party checked for control would not be the party written down.
-	// WHEREVER IT RUNS, not wherever the default runner is. s.attach reads the task's own
+	// WHEREVER IT RUNS, not wherever this process's runner is. s.attach reads the task's own
 	// record to find the runner hosting it and falls back to the default; s.runner.Attach
 	// asks the default and nothing else. Every task a charter spawns onto a named pool
 	// therefore had no reachable control at all: `verse ps cancel <id>` answered 404 while

@@ -276,7 +276,7 @@ This table is the summary of the page.
 
 | If it must live… | Use | Because |
 |---|---|---|
-| beside verse | local runner (in process) | no wire at all |
+| beside verse | the local runner (`verse up` starts it) | a runner like any other, on loopback |
 | anywhere verse can reach | remote runner (4) | verse opens the connection |
 | in a system verse may dial | source `url` (6) | verse asks; hints are an optimization |
 | in a system verse may **not** dial | source `dial-in` | **designed, not built** |

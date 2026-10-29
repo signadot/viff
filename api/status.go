@@ -103,13 +103,22 @@ type Firings struct {
 	Unread int `tony:"field=unread,omitzero"`
 }
 
-// RunnerStatus is how this verse runs tasks: local (in-process) or remote (a runner base
-// URL). Resume says what survives a restart.
+// RunnerStatus is this verse's local runner, the runnerd `verse up` starts beside it and
+// registers as `local`: whether it is described and what it offers, and where it is not, why
+// not, asked of the runner when the status is, never stored. Absent where the verse starts none.
 //
 //tony:schemagen=verse-runner-status,notag
 type RunnerStatus struct {
-	Kind   string `tony:"field=kind"`
-	Resume string `tony:"field=resume"`
+	// At is its registration, `verse.runners.local`.
+	At string `tony:"field=at"`
+	// URL is where it serves verse.
+	URL string `tony:"field=url,omitzero"`
+	// Described is whether it has said what it offers since it was registered.
+	Described bool `tony:"field=described"`
+	// Offers is the doers it offers, an agent's name or `script`; empty where it is not described.
+	Offers []string `tony:"field=offers"`
+	// Why is why it is not described, as the runner answers now.
+	Why string `tony:"field=why,omitzero"`
 }
 
 // Docd is the document store's client face: the address store clients connect to.

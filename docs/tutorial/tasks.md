@@ -26,7 +26,7 @@ echo '{script: "echo reproduced", environment: {systems: {network: {mode: open}}
 ```
 
 A `script` runs as a shell script. With a model key configured, a spawn with a `prompt` gives
-your sentence to an *agent* instead ([the embedded runner](../reference/up.md#the-embedded-runner)):
+your sentence to an *agent* instead ([the local runner](../reference/up.md#the-local-runner)):
 
 ```sh
 echo '{prompt: "Summarize this bug report in one line: the login page fails after a password reset.", environment: {systems: {network: {mode: open}}}}' |

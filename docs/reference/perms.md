@@ -436,8 +436,8 @@ raised, and what a task's charter spawns only where the charter is installed
 its own fault from a refusal of what it carried. The runner names
 nobody, and a `Verse-Principal` beside the task names that owner or is refused. A registration
 rewritten under the same name with another subject carries nothing of the tasks the old one
-hosted, and a task the system owns is carried for nobody. The embedded runner's tasks reach verse
-in-process and are not carried this way.
+hosted, and a task the system owns is carried for nobody. The local runner `verse up` starts is a
+registered runner, and carries its tasks' acts this way too.
 
 **A runner is never taken at its word.** A request naming a `runner:` with no token that
 proves it is refused with `401`, whatever the mode, on the name alone and without reading the

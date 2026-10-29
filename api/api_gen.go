@@ -10840,11 +10840,30 @@ func (s *RunnerStatus) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Create IR object map
 	irMap := make(map[string]*ir.Node)
 
-	// Field: Kind
-	irMap["kind"] = ir.FromString(string(s.Kind))
+	// Field: At
+	irMap["at"] = ir.FromString(string(s.At))
 
-	// Field: Resume
-	irMap["resume"] = ir.FromString(string(s.Resume))
+	// Field: URL
+	if s.URL != "" {
+		irMap["url"] = ir.FromString(string(s.URL))
+	}
+
+	// Field: Described
+	irMap["described"] = ir.FromBool(bool(s.Described))
+
+	// Field: Offers
+	{
+		slice := make([]*ir.Node, len(s.Offers))
+		for i, v := range s.Offers {
+			slice[i] = ir.FromString(string(v))
+		}
+		irMap["offers"] = ir.FromSlice(slice)
+	}
+
+	// Field: Why
+	if s.Why != "" {
+		irMap["why"] = ir.FromString(string(s.Why))
+	}
 
 	return ir.FromMap(irMap), nil
 }
@@ -10879,18 +10898,47 @@ func (s *RunnerStatus) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) erro
 			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
 		}
 		switch fieldName.String {
-		case "kind":
-			// Field: Kind
+		case "at":
+			// Field: At
 			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "kind", fieldNodeUnwrapped.Type)
+				return fmt.Errorf("field %q: expected string, got %v", "at", fieldNodeUnwrapped.Type)
 			}
-			s.Kind = string(fieldNodeUnwrapped.String)
-		case "resume":
-			// Field: Resume
+			s.At = string(fieldNodeUnwrapped.String)
+		case "url":
+			// Field: URL
 			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "resume", fieldNodeUnwrapped.Type)
+				return fmt.Errorf("field %q: expected string, got %v", "url", fieldNodeUnwrapped.Type)
 			}
-			s.Resume = string(fieldNodeUnwrapped.String)
+			s.URL = string(fieldNodeUnwrapped.String)
+		case "described":
+			// Field: Described
+			if fieldNodeUnwrapped.Type != ir.BoolType {
+				return fmt.Errorf("field %q: expected bool, got %v", "described", fieldNodeUnwrapped.Type)
+			}
+			s.Described = bool(fieldNodeUnwrapped.Bool)
+		case "offers":
+			// Field: Offers
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]string, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					ctx := fmt.Sprintf("slice element %d", i)
+					var elem string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					elem = v.String
+					slice[i] = string(elem)
+				}
+				s.Offers = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"offers\"", fieldNodeUnwrapped.Type)
+			}
+		case "why":
+			// Field: Why
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "why", fieldNodeUnwrapped.Type)
+			}
+			s.Why = string(fieldNodeUnwrapped.String)
 		default:
 			if gomap.IsStrict(opts...) {
 				return fmt.Errorf("unknown field %q for RunnerStatus", fieldName.String)

@@ -710,7 +710,7 @@ A runner is a place where verse runs a task. Verse connects to it.
 
 | Runner | What it is |
 |---|---|
-| `local` | the verse process itself, which verse routes to beside the installed runners unless `localRunner: false` |
+| `verse.runners.local` | the local runner: the `runnerd` `verse up` starts beside itself and registers, unless `localRunner: false` |
 | an installed runner | another host, at a URL. It stands at `verse.runners.<name>`, which keeps what the runner offers: the agents and scripts it runs, as the runner described itself when it was installed or last checked. |
 
 See [Runners](runners.md).
