@@ -2,6 +2,7 @@ package versed
 
 import (
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/signadot/verse/api"
@@ -33,6 +34,29 @@ func TestTheAskListingsAreTheirTypes(t *testing.T) {
 	read(daniel, "", &mine)
 	if len(mine) != 1 || mine[0].ID != land || mine[0].From == nil || mine[0].From.Principal != daniel || mine[0].Kind() != api.AskKindPerson {
 		t.Fatalf("daniel's asks = %+v, want %s, his, a person's ask", mine, land)
+	}
+
+	// One of daniel's own, by its id or its name; a name two share answers both, for the reader
+	// to tell apart; and it is a narrowing of his own, never of a docket.
+	tea1 := askID(t, ask(t, daniel, ts.URL, `{name: tea, question: "Tea?", to: [alice@example.com]}`))
+	tea2 := askID(t, ask(t, daniel, ts.URL, `{name: tea, question: "Tea again?", to: [alice@example.com]}`))
+	for query, want := range map[string][]string{
+		"?ask=" + land: {land}, "?ask=land": {land}, "?ask=tea": {tea1, tea2}, "?ask=nothing": nil,
+	} {
+		var named []api.AskRow
+		read(daniel, query, &named)
+		var got []string
+		for _, row := range named {
+			got = append(got, row.ID)
+		}
+		slices.Sort(got)
+		slices.Sort(want)
+		if !slices.Equal(got, want) {
+			t.Errorf("GET /asks%s = %v, want %v", query, got, want)
+		}
+	}
+	if resp := getAs(t, davido, ts.URL+"/asks?ask=land&waiting=me"); resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("an ask named beside a docket = %s, want 400", resp.Status)
 	}
 
 	var docket []api.DocketRow

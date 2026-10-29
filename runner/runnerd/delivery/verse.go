@@ -96,7 +96,7 @@ func (s *Server) verseAskGet(ctx context.Context, tk Task, req Request) Reply {
 	if arg == "" {
 		return Reply{Refused: "a read names the ask, by its name or its id"}
 	}
-	asks, rep := s.ownersAsks(ctx, tk, req, task.StepVerseAskGet)
+	asks, rep := s.ownersAsks(ctx, tk, req, task.StepVerseAskGet, url.Values{"ask": {arg}})
 	if asks == nil {
 		return rep
 	}
@@ -113,7 +113,7 @@ func (s *Server) verseAskList(ctx context.Context, tk Task, req Request) Reply {
 	if s.Services.Verse == nil {
 		return Reply{Error: noVerse}
 	}
-	asks, rep := s.ownersAsks(ctx, tk, req, task.StepVerseAskList)
+	asks, rep := s.ownersAsks(ctx, tk, req, task.StepVerseAskList, nil)
 	if asks == nil {
 		return rep
 	}
@@ -128,12 +128,17 @@ func (s *Server) verseAskList(ctx context.Context, tk Task, req Request) Reply {
 }
 
 // ownersAsks is the owner's asks, read from verse for the task (GET /asks) once its autonomy and
-// the runner's ceiling decide step; nil, with the reply that says why, where they were not read.
-func (s *Server) ownersAsks(ctx context.Context, tk Task, req Request, step string) ([]entity.Entity, Reply) {
+// the runner's ceiling decide step, narrowed by q where it names one (`ask`); nil, with the reply
+// that says why, where they were not read.
+func (s *Server) ownersAsks(ctx context.Context, tk Task, req Request, step string, q url.Values) ([]entity.Entity, Reply) {
 	if why := s.refused(tk, req.Decision, task.Step{Name: step, Fields: map[string]string{}}); why != "" {
 		return nil, Reply{Refused: why}
 	}
-	code, said, err := s.Services.Verse(ctx, tk.ID, http.MethodGet, "/asks", nil)
+	path := "/asks"
+	if len(q) > 0 {
+		path += "?" + q.Encode()
+	}
+	code, said, err := s.Services.Verse(ctx, tk.ID, http.MethodGet, path, nil)
 	switch {
 	case err != nil:
 		return nil, Reply{Error: "the read was not carried to verse: " + err.Error()}

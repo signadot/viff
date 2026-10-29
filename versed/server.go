@@ -2977,11 +2977,16 @@ func (s *Server) getAsk(w http.ResponseWriter, r *http.Request) {
 
 // listAsks is GET /asks, as each side reads the asks. Bare, the caller's own, whatever became of
 // them (`verse ask`); `?waiting=me`, the questions waiting on them (`verse question`); `?all=true`,
-// every pending ask they may read, the docket (`verse question --all`).
+// every pending ask they may read, the docket (`verse question --all`). `?ask=<id or name>` keeps
+// only the caller's own that one names, by its id or the name it was asked under, so reading one
+// back (`verse-ask-get`) costs that ask, not every ask they have.
 func (s *Server) listAsks(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	waiting, all := q.Get("waiting"), q.Get("all") == "true"
+	waiting, all, named := q.Get("waiting"), q.Get("all") == "true", q.Get("ask")
 	switch {
+	case named != "" && (waiting != "" || all):
+		http.Error(w, "ask names one of the caller's own asks, and goes with neither waiting nor all", http.StatusBadRequest)
+		return
 	case waiting != "" && waiting != "me":
 		http.Error(w, "waiting names whom the questions wait on, and only `me` is asked for", http.StatusBadRequest)
 		return
@@ -3000,6 +3005,9 @@ func (s *Server) listAsks(w http.ResponseWriter, r *http.Request) {
 	out := make([]api.AskRow, 0)
 	for _, e := range ents {
 		if mirror.PrincipalFrom(e.Payload) != who {
+			continue
+		}
+		if named != "" && e.Ref.Name() != named && entity.Str(e.Payload, "name") != named {
 			continue
 		}
 		out = append(out, askRowAt(e))

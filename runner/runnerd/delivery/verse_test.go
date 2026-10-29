@@ -92,8 +92,8 @@ func TestATasksReadOfAnAskIsCarriedToVerse(t *testing.T) {
 			t.Errorf("the ask read by %q: %+v", arg, rep)
 		}
 	}
-	if len(saw) == 0 || saw[0] != "t7 GET /asks" {
-		t.Errorf("the read was carried as %v, want the task's GET /asks", saw)
+	if len(saw) != 2 || saw[0] != "t7 GET /asks?ask=land-1a2b" || saw[1] != "t7 GET /asks?ask=land" {
+		t.Errorf("the reads were carried as %v, want the task's GET /asks naming the one ask", saw)
 	}
 	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskGet, Ask: "tea-1"})); !strings.Contains(rep.Out, "answer: pending") || !strings.Contains(rep.Out, "dana") {
 		t.Errorf("a pending ask: %+v, want it pending and whom it waits on", rep)
