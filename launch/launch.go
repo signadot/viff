@@ -11,11 +11,13 @@
 //
 //	Prompt      → the job, for an agent; or
 //	Script      → a script, which is its own doer
-//	Agent       → which agent a prompt is for, and how it works (absent: the runner's default)
+//	Agent       → which agent a prompt is for, and how it works (absent: verse's default agent)
 //	Environment → what the run can reach, fixed when it starts (systems.Environment)
 //	Autonomy    → what happens to each step within it: denied, asked about (approvals,
 //	              deadline, answerers, labels), or allowed; the last row is the dial
-//	Runner      → where it runs
+//
+// Nothing says where it runs: verse finds a runner that offers the doer and holds the
+// environment (versed's routing).
 //
 // What a run can reach is its environment, never the autonomy: a turn of the dial decides
 // within it and never widens it, and the runner refuses what the environment did not give.
@@ -55,7 +57,8 @@ type Spec struct {
 	// Script is a script's text, its own doer; data reaches it as the environment's vars, and
 	// it is not expanded (bindSpec).
 	Script string `tony:"field=script,omitzero"`
-	// Agent is the agent a prompt is for, and how it works; absent is the runner's default.
+	// Agent is the agent a prompt is for, and how it works; absent is verse's default agent
+	// (`defaultAgent`), bound at the spawn.
 	// Its name and its settings take $vars.
 	Agent *runner.Agent `tony:"field=agent,omitzero"`
 	// Person is reserved for a person doing the work; no runner takes one yet.
@@ -108,15 +111,6 @@ type Spec struct {
 	// that narrates every token and one that reports four boundaries an hour want windows two
 	// orders of magnitude apart. It bounds memory, so it is a cost the author is choosing.
 	Retain int `tony:"field=retain,omitzero"`
-	// Runner is WHERE this launch runs: `verse.runners.<name>`, an entity installed with
-	// `verse runner add`. Empty means the verse's own default runner.
-	//
-	// A name rather than a url, and that indirection is the point: a url on the spawn would
-	// spread the deployment through the charters, so every charter wanting the gpu pool would
-	// carry its address and moving the pool would mean editing all of them. It is the same
-	// indirection `provider:` and `resolver:` already are. A launch naming a runner that is not
-	// installed is REFUSED rather than run somewhere else — see versed.runnerFor.
-	Runner string `tony:"field=runner,omitzero"`
 	// Subject is the flow this launch belongs to (an entity ref, e.g. a PR). The engine tracks
 	// a flow's tasks by subject so it can be steered/cancelled as a unit. Usually the concrete
 	// matched ref, not a template.
@@ -220,7 +214,6 @@ type Binding map[string]string
 func (s Spec) Bind(b Binding) Spec {
 	out := Spec{
 		Prompt:  expand(s.Prompt, b),
-		Runner:  expand(s.Runner, b),
 		Subject: expand(s.Subject, b),
 		Timeout: s.Timeout,
 		Script:  s.Script,
@@ -273,7 +266,7 @@ func (s Spec) CheckByHand() error {
 			return fmt.Errorf("%s: a firing's, and nothing fires for a spawn written by hand", f.field)
 		}
 	}
-	bound := map[string]string{"runner": s.Runner, "subject": s.Subject}
+	bound := map[string]string{"subject": s.Subject}
 	if s.Agent != nil {
 		bound["agent.name"] = s.Agent.Name
 		for k, v := range s.Agent.Settings {
@@ -295,8 +288,8 @@ func (s Spec) CheckByHand() error {
 	return nil
 }
 
-// Who is who does the work, as a record says it: the agent's name, "script", or "" for the
-// runner's default agent.
+// Who is who does the work, as a record says it: the agent's name, "script", or "" for a spawn
+// as written that names no agent, which takes verse's default agent when it is bound.
 func (s Spec) Who() string {
 	switch {
 	case s.Script != "":

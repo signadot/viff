@@ -37,7 +37,6 @@ define:
   person: .[string]
   prompt: .[string]
   retain: .[int]
-  runner: .[string]
   script: .[string]
   subject: .[string]
   timeout: .[string]

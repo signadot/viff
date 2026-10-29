@@ -15,10 +15,11 @@ import (
 
 // A REGISTRATION KEPT FROM AN OLDER VERSE IS ASKED AGAIN: one holding its offers under `offers`,
 // as an older verse kept them, or a description of an older version, is no description this
-// verse reads; a spawn naming the runner asks it afresh, and what it says replaces the old under
-// `described`, `offers` gone.
+// verse reads. A spawn passes it over, naming it; a check asks it afresh, and what it says
+// replaces the old under `described`, `offers` gone.
 func TestAStaleRegistrationIsAskedAgain(t *testing.T) {
 	srv := testServer(t)
+	srv.NoLocalRunner = true
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	face, _ := offeringFace(t, ts.URL, "codex")
@@ -37,10 +38,20 @@ func TestAStaleRegistrationIsAskedAgain(t *testing.T) {
 			if e, _ := findRunner(srv.Store, "verse.runners.code"); e.Current() {
 				t.Fatal("the stale registration reads as current")
 			}
-			spawnOK(t, ts, map[string]any{"spawn": map[string]any{"agent": map[string]any{"name": "codex"}, "prompt": "go", "runner": "verse.runners.code"}})
+			resp := postTony(t, ts.URL+"/tasks", map[string]any{"spawn": map[string]any{"agent": map[string]any{"name": "codex"}, "prompt": "go"}})
+			if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "verse.runners.code, not described") {
+				t.Fatalf("a spawn only the stale registration might take = %s: %s, want it refused naming it", resp.Status, body)
+			}
+			check, err := http.Get(ts.URL + "/runners/code/check")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if body := readBody(t, check); check.StatusCode != http.StatusOK {
+				t.Fatalf("check = %s: %s", check.Status, body)
+			}
 			e, ok := findRunner(srv.Store, "verse.runners.code")
 			if !ok || !e.Current() || e.Description().Offers[0].Name() != "codex" {
-				t.Fatalf("after the spawn the registration holds %+v, want the runner's description afresh", e.Described)
+				t.Fatalf("after the check the registration holds %+v, want the runner's description afresh", e.Described)
 			}
 			raw, _, _ := srv.Store.Get(ref)
 			if entity.Get(raw.Payload, "offers") != nil {
@@ -54,6 +65,7 @@ func TestAStaleRegistrationIsAskedAgain(t *testing.T) {
 // the agent takes named.
 func TestAModelTheAgentDoesNotTakeIsRefusedAtInstall(t *testing.T) {
 	srv := testServer(t)
+	srv.NoLocalRunner = true
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	face, _ := offeringFace(t, ts.URL, "codex")
@@ -67,7 +79,7 @@ func TestAModelTheAgentDoesNotTakeIsRefusedAtInstall(t *testing.T) {
   condition: {subject: {path: "demo.pr.*", value: {stage: open}}}
   action:
     patch: {stage: started}
-    spawn: {runner: verse.runners.code, agent: {name: codex, model: `+model+`}, prompt: go}
+    spawn: {agent: {name: codex, model: `+model+`}, prompt: go}
 `))
 		if err != nil {
 			t.Fatal(err)
@@ -92,11 +104,13 @@ func TestAModelTheAgentDoesNotTakeIsRefusedAtInstall(t *testing.T) {
 }
 
 // WHO RAN A TASK IS ON ITS RECORD, as `agent`, written as a spawn's is (its name beside its
-// settings), and as what ran once the runner reports: the agent it resolved (its default, where
+// settings), and as what ran once the runner reports: the agent it ran (verse's default, where
 // the spawn named none) and the settings it ran with, its default model filled in. A script's
 // record says `script: true` and names no agent.
 func TestATasksAgentIsOnItsRecord(t *testing.T) {
 	srv := testServer(t)
+	srv.NoLocalRunner = true
+	srv.DefaultAgent = "codex" // verse's default, which this runner offers
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	d := runnerd.NewInProcessHandler(func(l runner.Launch, reg *task.Registry) *task.Task {
@@ -122,10 +136,9 @@ func TestATasksAgentIsOnItsRecord(t *testing.T) {
 	}{
 		{"named, the default model", map[string]any{"agent": map[string]any{"name": "codex"}, "prompt": "go"}, map[string]any{"name": "codex", "model": "large"}},
 		{"named, a model", map[string]any{"agent": map[string]any{"name": "codex", "model": "small"}, "prompt": "go"}, map[string]any{"name": "codex", "model": "small"}},
-		{"the runner's default agent", map[string]any{"prompt": "go"}, map[string]any{"name": "codex", "model": "large"}},
+		{"verse's default agent", map[string]any{"prompt": "go"}, map[string]any{"name": "codex", "model": "large"}},
 		{"a script", map[string]any{"script": "true"}, nil},
 	} {
-		c.spawn["runner"] = "verse.runners.code"
 		id := spawnOK(t, ts, map[string]any{"spawn": c.spawn})
 		waitTerminal(t, srv.Store, id)
 		rec := instanceOf(t, srv, id)

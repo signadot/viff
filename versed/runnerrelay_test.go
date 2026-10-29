@@ -43,12 +43,9 @@ func asTask(t *testing.T, method, url, token, taskID, presented, account string)
 
 // spawnOn starts a script task as the tester, on the runner named, or on this verse's own runtime
 // where none is.
-func spawnOn(t *testing.T, ts string, id, runner string) {
+func spawnOn(t *testing.T, ts string, id string) {
 	t.Helper()
 	spawn := map[string]any{"script": "true"}
-	if runner != "" {
-		spawn["runner"] = runner
-	}
 	resp := postTony(t, ts+"/tasks", map[string]any{"id": id, "spawn": spawn})
 	if out := readBody(t, resp); resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		t.Fatalf("spawn %s = %s: %s", id, resp.Status, out)
@@ -67,9 +64,10 @@ func TestARunnerRelaysTheOwnerOfATaskItHosts(t *testing.T) {
 		t.Fatalf("add = %s: %s", resp.Status, readBody(t, resp))
 	}
 	resp.Body.Close()
-	spawnOn(t, ts.URL, "on-gpu", "verse.runners.gpu")
+	spawnOn(t, ts.URL, "on-gpu")
 	waitTaskStatus(t, srv, "on-gpu", "running")
-	spawnOn(t, ts.URL, "at-home", "")
+	// A task this verse's own runner hosts: an agent gpu does not offer.
+	postTony(t, ts.URL+"/tasks", map[string]any{"id": "at-home", "spawn": map[string]any{"agent": map[string]any{"name": "verse"}, "prompt": "go"}}).Body.Close()
 	whoami := ts.URL + "/whoami?format=tony"
 
 	code, body := asTask(t, http.MethodGet, whoami, token, "on-gpu", "", "")
@@ -135,7 +133,7 @@ func TestARewrittenRegistrationRelaysNoTaskItDidNotHost(t *testing.T) {
 		t.Fatalf("add = %s: %s", resp.Status, readBody(t, resp))
 	}
 	resp.Body.Close()
-	spawnOn(t, ts.URL, "on-gpu", "verse.runners.gpu")
+	spawnOn(t, ts.URL, "on-gpu")
 	waitTaskStatus(t, srv, "on-gpu", "running")
 
 	const other = "system:serviceaccount:verse:other"
@@ -193,26 +191,27 @@ func TestATaskRaisesAnAskForItsOwnerHeldWithinTheTask(t *testing.T) {
 		t.Fatalf("add = %s: %s", resp.Status, readBody(t, resp))
 	}
 	resp.Body.Close()
-	spawnOn(t, ts.URL, "raiser", "verse.runners.gpu")
+	spawnOn(t, ts.URL, "raiser")
 	waitTaskStatus(t, srv, "raiser", "running")
 	const alice = "user:alice@example.com"
 
 	// Beyond the task: it was given no network, and the then's spawn asks for one.
 	code, body := raiseFor(t, ts.URL, token, "raiser", `{name: wide, question: "Open it up?", to: [`+alice+`],
-		then: {spawn: {script: "true", runner: verse.runners.gpu, environment: {systems: {network: {mode: open}}}}}}`)
+		then: {spawn: {script: "true", environment: {systems: {network: {mode: open}}}}}}`)
 	if code != http.StatusBadRequest || !strings.Contains(body, "environment") {
 		t.Fatalf("a then reaching beyond the task = %d %s, want 400 naming the environment", code, body)
 	}
 
-	// Beyond the task: elsewhere than its runner, or spending another credential.
+	// Beyond the task: spending another credential, or a doer its runner does not offer, since
+	// what follows the ask runs where the task does.
 	if _, _, err := entity.As(srv.Store, "user:"+tester).Write(entity.Write{
 		At: entity.RefAt("acme", "keys", "other").At(), Value: entity.Obj{"key": "vk-other"}.Payload(),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	for what, c := range map[string]struct{ spawn, want string }{
-		"this verse's own runtime": {`{script: "true"}`, ".runner"},
-		"another credential":       {`{prompt: "go", runner: verse.runners.gpu, virtualKey: acme.keys.other}`, ".virtualKey"},
+		"another credential":                 {`{prompt: "go", virtualKey: acme.keys.other}`, ".virtualKey"},
+		"an agent its runner does not offer": {`{agent: {name: verse}, prompt: "go"}`, "no runner offers the agent verse"},
 	} {
 		code, body := raiseFor(t, ts.URL, token, "raiser", `{name: off, question: "Off it?", to: [`+alice+`], then: {spawn: `+c.spawn+`}}`)
 		if code != http.StatusBadRequest || !strings.Contains(body, c.want) || strings.Contains(body, "vk-") {
@@ -234,7 +233,7 @@ func TestATaskRaisesAnAskForItsOwnerHeldWithinTheTask(t *testing.T) {
 
 	// Raised, the ask is the owner's to change, beyond the task too.
 	code, body = raiseFor(t, ts.URL, token, "raiser", `{name: mine, question: "Mine?", to: [`+alice+`],
-		then: {spawn: {script: "true", runner: verse.runners.gpu}}}`)
+		then: {spawn: {script: "true"}}}`)
 	if code != http.StatusCreated {
 		t.Fatalf("a raise to change = %d %s", code, body)
 	}
@@ -245,7 +244,7 @@ func TestATaskRaisesAnAskForItsOwnerHeldWithinTheTask(t *testing.T) {
 	}
 
 	code, body = raiseFor(t, ts.URL, token, "raiser", `{name: land, question: "Land it?", to: [`+alice+`],
-		then: {spawn: {script: "true", runner: verse.runners.gpu}}}`)
+		then: {spawn: {script: "true"}}}`)
 	if code != http.StatusCreated {
 		t.Fatalf("a raise within the task = %d %s", code, body)
 	}
@@ -305,6 +304,10 @@ func TestATaskRaisesAnAskForItsOwnerHeldWithinTheTask(t *testing.T) {
 		t.Fatalf("alice's answer: %s: %s", resp.Status, bodyOf(t, resp))
 	}
 	then := thenTaskOf(t, srv, land)
+	// On the task's runner.
+	if rec, _, _ := srv.Store.Get(then.Ref); entity.Str(rec.Payload, "runnerName") != "verse.runners.gpu" {
+		t.Errorf("its then runs on %q, want the task's runner", entity.Str(rec.Payload, "runnerName"))
+	}
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
 		if o, _ := entity.OwnerOf(srv.Store, then.Ref); o == "user:"+tester {
 			break
@@ -354,7 +357,7 @@ func TestATaskReadsAndWritesTheVerseAsItsOwner(t *testing.T) {
 		t.Fatalf("add = %s: %s", resp.Status, readBody(t, resp))
 	}
 	resp.Body.Close()
-	spawnOn(t, ts.URL, "keeper", "verse.runners.gpu")
+	spawnOn(t, ts.URL, "keeper")
 	waitTaskStatus(t, srv, "keeper", "running")
 	note := entity.RefAt("acme", "notes", "n1")
 
@@ -401,7 +404,7 @@ func TestATaskReadsTheChartersAndChecksItsOwn(t *testing.T) {
 		t.Fatalf("add = %s: %s", resp.Status, readBody(t, resp))
 	}
 	resp.Body.Close()
-	spawnOn(t, ts.URL, "reader", "verse.runners.gpu")
+	spawnOn(t, ts.URL, "reader")
 	waitTaskStatus(t, srv, "reader", "running")
 	installCharter(t, ts, "", checkedPackage)
 

@@ -149,8 +149,7 @@ func (s *Server) registrationWhere(match func(api.Runner) bool) (api.Runner, boo
 // could never prove itself to (addRunner).
 //
 // THE TOKEN GOES WHERE A VOUCHED IDENTITY IS. Versed presents a token to every registration, for
-// its subject, and to the default runner `verse up -runner` names, which is the operator's own
-// configuration and gets the audience `runner`, which a registered runner's door does not take.
+// its subject, and to nothing else.
 
 // How long a token toward a runner is good for, and how long before its expiry the next call
 // mints a fresh one rather than present it.
@@ -218,12 +217,6 @@ func (s *Server) runnerTransport(aud string) http.RoundTripper {
 // transportFor is how versed reaches the registered runner e: with a token minted for its subject.
 func (s *Server) transportFor(e api.Runner) http.RoundTripper {
 	return s.runnerTransport(e.Subject)
-}
-
-// Dial is the default runner at url, the one `verse up -runner` names, reached as this verse
-// with a token for the audience `runner`.
-func (s *Server) Dial(url string) client.Launcher {
-	return client.HTTPOver(url, s.runnerTransport(runner.DefaultAudience))
 }
 
 // dialAt is the registered runner at url, reached as its registration says: with a token for its

@@ -14,8 +14,7 @@ import (
 const AgentName = "verse"
 
 // Describe is what the runner offers under c: one offer for each agent `agents:` names, in
-// agentOrder, the first being the runner's default agent (defaultAgent); and scripts where c has
-// a `script:` section. Every agent holds a conversation: each driver takes words between turns as
+// agentOrder; and scripts where c has a `script:` section. Every agent holds a conversation: each driver takes words between turns as
 // its next turn (task.Conversation); a script has no turn.
 //
 // Each offer holds the systems it intercepts (Config.intercepted), each under its doer's ceiling,

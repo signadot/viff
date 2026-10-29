@@ -32,7 +32,6 @@ post, each hour, what landed on `main` in the hour before:
   action:
     spawn:
       agent: {name: verse}
-      runner: verse.runners.build
       prompt: "post to #deploys a summary of what landed on main in the hour before $subject.name"
       environment:
         systems:

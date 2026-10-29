@@ -460,9 +460,9 @@ anybody else that names them, rather than installing a rule that matches nothing
 ## What an install does not check
 
 An install refuses an unknown field of a rule or of a spawn, an unknown operator in a `value`
-predicate, a spawn with no [latch](../glossary.md#latch), a spawn naming a runner that is not
-installed, and a spawn the runner does not offer what it asks: an agent, a setting, a system, an
-environment beyond its ceilings. It accepts each of these:
+predicate, a spawn with no [latch](../glossary.md#latch), a spawn naming a runner, and a spawn no
+runner takes as written: an agent no runner offers, or one whose every runner refuses a setting,
+a system, an environment beyond its ceilings. It accepts each of these:
 
 | What the rule holds | What happens |
 |---|---|

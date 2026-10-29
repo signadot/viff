@@ -215,11 +215,12 @@ func guardedFace(t *testing.T, verseURL, file string) *httptest.Server {
 }
 
 // The handshake before a launch is versed's observation, recorded as versed: a spawner who owns
-// nothing under the registration launches on a runner whose registration holds no description,
-// the handshake finds it proving itself, and the registration holds what it described, which the
-// spawner could not have written.
+// nothing under the registration launches on a runner whose registration holds what it said
+// before, the handshake finds it saying more now, and the registration holds what it says now,
+// which the spawner could not have written.
 func TestTheLaunchHandshakeIsRecordedAsVerse(t *testing.T) {
-	_, ts, cluster := runnerServer(t)
+	srv, ts, cluster := runnerServer(t)
+	srv.NoLocalRunner = true
 	own := tokenFile(t, t.TempDir(), "gpu", cluster.Token(iodAudience, runnerSub, nil))
 	face := guardedFace(t, ts.URL, own)
 	resp := postTony(t, ts.URL+"/runners", map[string]any{"name": "gpu", "url": face.URL, "subject": runnerSub})
@@ -227,33 +228,14 @@ func TestTheLaunchHandshakeIsRecordedAsVerse(t *testing.T) {
 		t.Fatalf("add = %s: %s", resp.Status, readBody(t, resp))
 	}
 	resp.Body.Close()
-	reg := func() map[string]any {
-		sr, err := ts.Client().Get(ts.URL + "/runners/gpu")
-		if err != nil {
-			t.Fatal(err)
-		}
-		var one map[string]any
-		decodeResp(t, sr, &one)
-		return one
-	}
-	// Replaced and found by a check, then itself again, with nothing having asked since.
-	if err := os.WriteFile(own, []byte(cluster.Token(iodAudience, "system:serviceaccount:verse:other", nil)), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if cr, err := ts.Client().Get(ts.URL + "/runners/gpu/check"); err != nil {
-		t.Fatal(err)
-	} else {
-		cr.Body.Close()
-	}
-	if one := reg(); one["described"] != nil {
-		t.Fatalf("the registration after the check = %v, want what it described removed", one)
-	}
-	if err := os.WriteFile(own, []byte(cluster.Token(iodAudience, runnerSub, nil)), 0o600); err != nil {
+	// What it said before: scripts, and nothing more.
+	before := runner.Description{Version: runner.DescriptionVersion, Offers: []runner.Offer{{Script: true, Systems: map[string]runner.System{"network": builds(runner.NetworkNone)}}}}
+	if err := writeDescribed(srv.Store, "gpu", before); err != nil {
 		t.Fatal(err)
 	}
 	// Bob did not register gpu and may not write its registration; the launch's handshake is
 	// recorded all the same.
-	body, err := codec.Marshal(map[string]any{"id": "bobs", "spawn": map[string]any{"script": "true", "runner": "verse.runners.gpu"}}, codec.Tony)
+	body, err := codec.Marshal(map[string]any{"id": "bobs", "spawn": map[string]any{"script": "true"}}, codec.Tony)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,10 +247,10 @@ func TestTheLaunchHandshakeIsRecordedAsVerse(t *testing.T) {
 		t.Fatal(err)
 	}
 	if out := readBody(t, sr); sr.StatusCode != http.StatusCreated && sr.StatusCode != http.StatusOK {
-		t.Fatalf("bob's spawn on a runner proving itself again = %s: %s", sr.Status, out)
+		t.Fatalf("bob's spawn = %s: %s", sr.Status, out)
 	}
-	if one := reg(); one["described"] == nil {
-		t.Fatalf("the registration after bob's launch = %v, want what it described recorded by verse", one)
+	if e, ok := findRunner(srv.Store, "gpu"); !ok || len(e.Description().Offers) != 2 {
+		t.Fatalf("the registration after bob's launch = %+v, want what the runner says now recorded by verse", e.Described)
 	}
 }
 
@@ -277,6 +259,7 @@ func TestTheLaunchHandshakeIsRecordedAsVerse(t *testing.T) {
 // spawn, and a check that finds it proving itself again lets it.
 func TestTheDescribeIsTheHandshake(t *testing.T) {
 	srv, ts, cluster := runnerServer(t)
+	srv.NoLocalRunner = true
 	dir := t.TempDir()
 	own := tokenFile(t, dir, "gpu", cluster.Token(iodAudience, runnerSub, nil))
 	face := guardedFace(t, ts.URL, own)
@@ -330,7 +313,7 @@ func TestTheDescribeIsTheHandshake(t *testing.T) {
 	// Nothing has checked yet and the registration still holds its description: the launch asks anyway,
 	// since the proof is at the describe and the launch is what would hand the impostor the
 	// prompt. The spawn is refused and the registration records what the handshake found.
-	resp = postTony(t, ts.URL+"/tasks", map[string]any{"id": "nope0", "spawn": map[string]any{"script": "true", "runner": "verse.runners.gpu"}})
+	resp = postTony(t, ts.URL+"/tasks", map[string]any{"id": "nope0", "spawn": map[string]any{"script": "true"}})
 	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "has not proved it is the runner registered") {
 		t.Fatalf("a spawn on a replaced runner, before any check = %s: %s", resp.Status, body)
 	}
@@ -349,9 +332,10 @@ func TestTheDescribeIsTheHandshake(t *testing.T) {
 	if one := reg(); one["described"] != nil {
 		t.Fatalf("the registration after the check = %v, want what it described removed", one)
 	}
-	resp = postTony(t, ts.URL+"/tasks", map[string]any{"id": "nope", "spawn": map[string]any{"script": "true", "runner": "verse.runners.gpu"}})
-	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "has not proved it is the runner registered") {
-		t.Fatalf("a spawn on an unverified runner = %s: %s", resp.Status, body)
+	// Its description gone, it is passed over, and named.
+	resp = postTony(t, ts.URL+"/tasks", map[string]any{"id": "nope", "spawn": map[string]any{"script": "true"}})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "verse.runners.gpu, not described") {
+		t.Fatalf("a spawn with only an unverified runner = %s: %s", resp.Status, body)
 	}
 	if _, ok, _ := srv.Store.Get(mirror.Ref("nope")); ok {
 		t.Fatal("the refused spawn was mirrored")

@@ -158,12 +158,13 @@ func TestARunsEndLeavesALaterRunsEntry(t *testing.T) {
 // under the same id keeps its entry.
 func TestARefusedSpawnLeavesTheRunStandingUnderItsID(t *testing.T) {
 	srv := testServer(t)
+	srv.NoLocalRunner = true // and no runner is registered, so nothing takes the spawn
 	srv.HostedRetention = 20 * time.Millisecond
 	srv.host("standing", hostedTask{scope: "live"})
 
-	h := srv.spawnerFor(srv.Store, "", srv.Eng)("standing", launch.Spec{Script: "true", Runner: "verse.runners.nowhere"})
-	if h == nil || !strings.Contains(h.Err(), "verse.runners.nowhere") {
-		t.Fatalf("a spawn on a runner that is not there: %v, want it failed naming the runner", h)
+	h := srv.spawnerFor(srv.Store, "", srv.Eng)("standing", launch.Spec{Script: "true"})
+	if h == nil || !strings.Contains(h.Err(), "no runner offers scripts") {
+		t.Fatalf("a spawn no runner takes: %v, want it failed saying no runner offers it", h)
 	}
 	time.Sleep(10 * srv.HostedRetention)
 	if sc, ok := srv.hostedScope("standing"); !ok || sc != "live" {

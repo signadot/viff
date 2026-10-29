@@ -183,9 +183,9 @@ func (e *Engine) vet(t Trigger, as string) (bool, error) {
 	if err := t.Action.validate(); err != nil {
 		return false, fmt.Errorf("trigger %q: %w", t.Name, err)
 	}
-	// AGAINST WHAT THE RUNNER OFFERS, where the author is present: a spawn naming an agent its
-	// runner does not offer, a model it does not take, or repos on a forge it has none on is
-	// refused here, with the offers named, rather than failing at its first firing.
+	// AGAINST WHAT THE RUNNERS OFFER, where the author is present: a spawn naming an agent no
+	// runner offers, a model none takes, or repos on a forge none has is refused here, with the
+	// offers named, rather than failing at its first firing.
 	if e.offerCheck != nil {
 		var refused error
 		t.Action.eachSpawn(t.Name, func(chain string, spec *launch.Spec) {
@@ -194,14 +194,14 @@ func (e *Engine) vet(t Trigger, as string) (bool, error) {
 			}
 			l, known := installLaunch(*spec)
 			if !known {
-				return // the doer is picked or bound at the firing, and checked against its runner then
+				return // the doer is picked or bound at the firing, and routed then
 			}
 			// Held to the runner's ceilings on its environment AS WRITTEN: a `$` attribute is
 			// within where some binding of it could be (runnerd.CheckOfferAsWritten), which the
 			// stand-ins installLaunch writes for it, being no binding, never are. The launch is
 			// held to them again, bound.
 			l.Environment = spec.Environment
-			if err := e.offerCheck(spec.Runner, l); err != nil {
+			if err := e.offerCheck(l); err != nil {
 				refused = fmt.Errorf("trigger %q: spawn: %w", chain, err)
 			}
 		})

@@ -136,16 +136,26 @@ func TestDocCharartersInstall(t *testing.T) {
 	}
 }
 
-// upOffers checks a spawn for the default runner as `verse up`'s embedded runner, with a model
-// key, would at install: a doc charter is typed in on `verse up` first, and a spawn that runner
-// refuses (it builds only the host's network) is a tutorial that stops at its first install.
-// A spawn naming another runner, or an agent `verse up` does not offer, is for a runner set up
-// elsewhere, and is not this test's to judge.
-func upOffers(name string, l runner.Launch) error {
-	if name != "" || (l.Who() != "" && l.Who() != stock.AgentName) {
+// upOffers checks a spawn as `verse up`'s own runner, with a model key, would at install: a doc
+// charter is typed in on `verse up` first, and a spawn that runner refuses (it builds only the
+// host's network) is a tutorial that stops at its first install. A spawn for an agent `verse up`
+// does not offer, or giving a system its runner does not hold (a repository, a Slack channel), is
+// for a runner set up elsewhere, and is not this test's to judge.
+func upOffers(l runner.Launch) error {
+	if l.Who() != "" && l.Who() != stock.AgentName {
 		return nil
 	}
 	desc := stock.Config{Agents: map[string]stock.Agent{stock.AgentName: {}}, Script: &stock.Script{}}.Describe([]string{runner.NetworkOpen})
+	for _, o := range desc.Offers {
+		if o.Script != (l.Script != "") {
+			continue
+		}
+		for name := range l.Environment.Systems {
+			if _, held := o.Systems[name]; !held && name != "network" {
+				return nil
+			}
+		}
+	}
 	return runnerd.CheckOfferAsWritten(&l, desc)
 }
 

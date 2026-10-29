@@ -70,7 +70,7 @@ func TestAFailedTaskOnANamedRunnerSaysWhy(t *testing.T) {
 	face := reasonRunner(t, ts.URL, reason)
 	postTony(t, ts.URL+"/runners", map[string]any{"name": "codex", "url": face.URL, "subject": face.Subject}).Body.Close()
 
-	id := spawnOK(t, ts, map[string]any{"id": "run-quota", "spawn": map[string]any{"agent": map[string]any{"name": "codex"}, "prompt": "triage the issue", "runner": "verse.runners.codex"}})
+	id := spawnOK(t, ts, map[string]any{"id": "run-quota", "spawn": map[string]any{"agent": map[string]any{"name": "codex"}, "prompt": "triage the issue"}})
 	waitTerminal(t, srv.Store, id)
 
 	rec := instanceOf(t, srv, id)

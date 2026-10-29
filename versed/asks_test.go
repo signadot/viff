@@ -117,7 +117,7 @@ func TestAnAskIsCheckedWhereItIsAsked(t *testing.T) {
 		`{name: x, question: q, then: {spawn: {prompt: "", environment: {systems: {network: {mode: open}}}}}}`: "then.spawn: a `prompt`",
 		`{name: x, question: q, then: {prompt: "merge it"}}`:                                                   "not something an ask runs (spawn, answer, ask)",
 		`{name: x, question: q, then: {spawn: {prompt: go, doer: {agent: verse}}}}`:                            "then.spawn: ",
-		`{name: x, question: q, then: {spawn: {prompt: "merge it", runner: $runner}}}`:                         "then.spawn.runner: a `$`",
+		`{name: x, question: q, then: {spawn: {prompt: "merge it", runner: gpu}}}`:                             `then.spawn: unknown field "runner"`,
 		`{name: x, question: q, then: {spawn: {script: "true", chain: review}}}`:                               "then.spawn.chain: a firing's",
 		`{name: x, question: q, then: {spawn: {script: "true", subject: demo.pr.x}}}`:                          "then.spawn.subject: a then's task is about its ask",
 		`{name: x, question: q, labels: {"a b": c}}`:                                                           "a label's name is a word",

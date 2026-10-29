@@ -110,8 +110,10 @@ define:
   addr: .[string]
   agent: .[string]
   auth: !verse-auth-config null
+  defaultAgent: .[string]
   format: !verse-format null
   llm: !verse-llm null
+  localRunner: .[nullable(bool)]
   perms: !verse-perms-config null
   repoCharters: .[array(verse-repo-charter-config)]
   scope: .[string]

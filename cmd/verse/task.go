@@ -328,7 +328,7 @@ func waitForResult(cc *cli.Context, id string) error {
 // ── list / get ───────────────────────────────────────────────────────────────
 
 type tasksConfig struct {
-	Runner string `cli:"name=runner desc='only the tasks on this runner (verse.runners.<name>, or local for the ones that named none)'"`
+	Runner string `cli:"name=runner desc='only the tasks on this runner (verse.runners.<name>, or local for the tasks this verse hosts itself)'"`
 }
 
 var psFlags = &tasksConfig{}

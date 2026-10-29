@@ -89,11 +89,6 @@ func (s *Spec) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["retain"] = ir.FromInt(int64(s.Retain))
 	}
 
-	// Field: Runner
-	if s.Runner != "" {
-		irMap["runner"] = ir.FromString(string(s.Runner))
-	}
-
 	// Field: Subject
 	if s.Subject != "" {
 		irMap["subject"] = ir.FromString(string(s.Subject))
@@ -247,12 +242,6 @@ func (s *Spec) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected number, got %v", "retain", fieldNodeUnwrapped.Type)
 			}
 			s.Retain = int(*fieldNodeUnwrapped.Int64)
-		case "runner":
-			// Field: Runner
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "runner", fieldNodeUnwrapped.Type)
-			}
-			s.Runner = string(fieldNodeUnwrapped.String)
 		case "subject":
 			// Field: Subject
 			if fieldNodeUnwrapped.Type != ir.StringType {

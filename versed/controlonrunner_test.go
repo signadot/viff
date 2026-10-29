@@ -53,7 +53,7 @@ func TestControlOnPerSpawnRunner(t *testing.T) {
 		}
 	})
 
-	resp := postTony(t, ts.URL+"/tasks", map[string]any{"name": "onrunner", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "work", "runner": "verse.runners.code"}})
+	resp := postTony(t, ts.URL+"/tasks", map[string]any{"name": "onrunner", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "work"}})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("spawn = %s", resp.Status)
 	}

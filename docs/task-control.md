@@ -1,6 +1,6 @@
 # Task control
 
-This page is the contract behind `verse up -runner <url>` and a runner named on a spawn. It is
+This page is the contract behind a runner verse routes a spawn to. It is
 the [seam](glossary.md#seam) between verse and where a task runs. It builds on
 [external tasks](external-tasks.md), where it is the attached shape, and it makes concrete what
 that page calls "wrapping and enforcing the verse invariants".
@@ -31,7 +31,7 @@ about or allows.
 
 | meaning | interface | wire | flag |
 |---|---|---|---|
-| what runs a task | `task.Runner`, returning a `task.Handle` | `runner` on a `verse.task.instance` and on `verse status` | `verse up -runner <url>` |
+| what runs a task | `task.Runner`, returning a `task.Handle` | `runner` on a `verse.task.instance` and on `verse status` | `verse runner add`, and routing ([runners.md](runners.md#where-a-spawn-runs)) |
 | what it may reach | `systems.Environment` | `environment` on a launch | fixed for the run |
 | how much it may do unasked | `task.Autonomy` | `autonomy` on a launch | `verse task autonomy <id>` |
 
@@ -184,8 +184,8 @@ spawned. It refuses a task that the scope inherited, and names the scope that ho
 One dispatch for every task forces the contract to be complete. It keeps local tasks equivalent
 to remote tasks.
 
-The built-in local supervisor is reached through the same interface, in process. `local` is the
-meaning of naming no runner.
+The built-in local supervisor is reached through the same interface, in process. `local` is how
+a task's record names it.
 
 ## The verse-facing contract
 
@@ -253,7 +253,7 @@ run without what it asked for.
 |---|---|
 | `id` | the task's id. Verse mints it, so that it matches the task's record. |
 | `prompt` or `script` | the one job: a prompt, for an agent, or a script, which does its own work. Exactly one. |
-| `agent` | the agent a prompt is for, written flat: `{name: <agent>, <setting>: …, annotations: {…}}`. Absent, or with no name, the runner's default, its first agent offer. Each setting is one the offer declares; `annotations` are verse's or the runner's to write, such as `verse.portkey/virtual-key`, and the runner refuses one it does not know. A script takes none. |
+| `agent` | the agent a prompt is for, written flat: `{name: <agent>, <setting>: …, annotations: {…}}`. Verse always names it: it binds its default agent to a prompt that names none before the launch, and a runner refuses a prompt's launch with no agent. Each setting is one the offer declares; `annotations` are verse's or the runner's to write, such as `verse.portkey/virtual-key`, and the runner refuses one it does not know. A script takes none. |
 | `environment` | what the run may reach: `vars` for its shell, and `systems`, a block per system or repository (`git`, `git-issue`, `network`, …) giving the verbs and their shapes. A step outside it is refused before any row is read. Fixed when the run starts, and within the runner's ceilings. |
 | `autonomy` | what happens to each step within the environment: rows, each a `match` on a step's system, verb and fields and a `then` of `deny`, `ask` or `allow`, the last with no match. An ask's shape rides whole (`need`, `answerers`, `within`, `default`, `labels`); the runner reads the first three and never `default` or `labels`, which are verse's ([a row's question](reference/tasks.md#a-rows-question)). Absent asks about every step. |
 | `answer` | the answer contract, a tony match pattern. A runner that cannot enforce one refuses the launch; a script takes none. |

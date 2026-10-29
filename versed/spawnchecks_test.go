@@ -10,7 +10,6 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd/stock"
 	"github.com/signadot/verse/task"
 )
@@ -48,25 +47,8 @@ func TestAHandRunIsCheckedAsTheRunnerWillCheckIt(t *testing.T) {
 	}
 }
 
-// A DEFAULT RUNNER REACHED BY URL CHECKS ITS OWN LAUNCHES. Its offers are kept on no
-// registration, so a charter naming an agent it offers is not refused for what the embedded
-// runner, which it replaced, does not offer.
-func TestADefaultRunnerByURLIsNotJudgedByTheEmbeddedOnesOffers(t *testing.T) {
-	srv := testServer(t)
-	srv.Embedded.Describe(offering()) // the embedded runner: scripts only
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-	face, _ := offeringFace(t, ts.URL, "codex")
-	srv.SetRunner(client.HTTP(face.Bare))
-	resp := installAs(t, "user:"+tester, ts.URL, `[{name: r, condition: {subject: {path: "x.*", value: {go: true}}},
-	  action: {patch: {go: false}, spawn: {agent: {name: codex}, prompt: go}}}]`)
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("a charter for the default runner's agent = %s: %s", resp.Status, readBody(t, resp))
-	}
-}
-
 // A FIRING REFUSED BEFORE ITS LAUNCH IS GIVEN NO CREDENTIAL. The launch as bound is checked
-// against what its runner offers before anything is minted for it, so a refused spawn's record
+// against what the runners offer before anything is minted for it, so a refused spawn's record
 // says why and holds no token, and none went out.
 func TestAFiringRefusedBeforeItsLaunchIsGivenNoCredential(t *testing.T) {
 	srv, ts, idp := credentialServer(t)
@@ -75,7 +57,7 @@ func TestAFiringRefusedBeforeItsLaunchIsGivenNoCredential(t *testing.T) {
 		deployRule(`[{name: ok, mode: auto}]`, `agent: {name: codex}, prompt: go, credential: {audience: `+credAudience+`}`)); code != http.StatusCreated {
 		t.Fatalf("install = %d %s", code, out)
 	}
-	// The runner describes itself after the install, and offers no codex.
+	// This verse's own runner describes itself after the install, and offers no codex.
 	srv.Embedded.Describe(offering())
 	if code, out := bearer(t, http.MethodPost, ts.URL+"/entity", ana, "", func() string {
 		b, _ := codec.Marshal(api.PutEntity{At: "demo.pr.1", Payload: entity.Obj{"stage": "ready"}.Payload()}, codec.Tony)
@@ -84,7 +66,7 @@ func TestAFiringRefusedBeforeItsLaunchIsGivenNoCredential(t *testing.T) {
 		t.Fatalf("put = %d %s", code, out)
 	}
 	rec := ruleTask(t, srv, `demo.pr."1"`)
-	if rec["status"] != string(task.Failed) || !strings.Contains(entity.Str(entity.Obj(rec).Payload(), "err"), "offers no agent") {
+	if rec["status"] != string(task.Failed) || !strings.Contains(entity.Str(entity.Obj(rec).Payload(), "err"), "no runner offers the agent codex") {
 		t.Fatalf("the task = %v, want it failed for the offer", rec)
 	}
 	if rec["credential"] != nil {

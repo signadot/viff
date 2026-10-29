@@ -28,7 +28,7 @@ func TestARunnerReachedByUrlActsAsItself(t *testing.T) {
 
 	from := srv.Store.Head()
 	resp = postAs(t, "alice@example.com", ts.URL+"/tasks", "application/tony",
-		`{spawn: {script: "true", runner: verse.runners.gpu}}`)
+		`{spawn: {script: "true"}}`)
 	var sp struct {
 		ID string `tony:"field=id"`
 	}

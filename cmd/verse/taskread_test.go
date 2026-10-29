@@ -145,7 +145,7 @@ func TestTaskRunTakesTheSpawn(t *testing.T) {
 		{[]string{"-f", "no-such-file.tony"}, "no-such-file.tony"},
 		{[]string{}, "the spawn to run"},
 		{[]string{"-f", spawnFile(t, `{script: "true", doer: {agent: verse}}`)}, `"doer"`},
-		{[]string{"-f", spawnFile(t, `{prompt: "review it", runner: $runner}`)}, "runner: a `$`"},
+		{[]string{"-f", spawnFile(t, `{prompt: "review it", runner: gpu}`)}, `unknown field "runner"`},
 		{[]string{"-f", spawnFile(t, `{script: "true", chain: review}`)}, "chain: a firing's"},
 	} {
 		_, err := runCLI(t, append([]string{"task", "run", "--as", "user:t"}, c.args...)...)

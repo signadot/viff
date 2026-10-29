@@ -45,7 +45,7 @@ type taskEventsOutput struct {
 }
 
 type taskRunIn struct {
-	Spawn string `json:"spawn" jsonschema:"the spawn to run, as tony, as a charter writes one (prompt or script, agent, environment, autonomy, answer, runner, subject, …). It means only what it says: an environment that gives no system gives the agent no tool, and one that names no network has none"`
+	Spawn string `json:"spawn" jsonschema:"the spawn to run, as tony, as a charter writes one (prompt or script, agent, environment, autonomy, answer, subject, …; verse routes it to a runner that offers its doer). It means only what it says: an environment that gives no system gives the agent no tool, and one that names no network has none"`
 	Name  string `json:"name,omitempty" jsonschema:"a label for the run; the id is derived from it and answered"`
 }
 

@@ -114,7 +114,7 @@ func TestARunnerServesItsVerseAlone(t *testing.T) {
 	// a copy taken at one runner opens no other's door.
 	for what, bad := range map[string]string{
 		"a token the verse minted for another runner": verse.Token(otherSub, "verse", nil),
-		"a token for the default runner's audience":   verse.Token(VerseAudience, "verse", nil),
+		"a token for another audience":                verse.Token("some-audience", "verse", nil),
 		"the cluster's token, not the verse's":        cluster.Token(runnerSub, "verse", nil),
 		"a forged token":                              verse.Forged(runnerSub, "verse", nil),
 	} {
@@ -126,15 +126,15 @@ func TestARunnerServesItsVerseAlone(t *testing.T) {
 	}
 
 	// No token file: the block names the audience, the verse is served, and the describe
-	// carries nothing. This is the default runner's shape.
-	noFile, err := NewGuard(Verse{URL: verseURL, Issuer: verse.URL, Audience: VerseAudience}, "")
+	// carries nothing.
+	noFile, err := NewGuard(Verse{URL: verseURL, Issuer: verse.URL, Audience: "some-audience"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	bare := httptest.NewServer(noFile.Wrap(inner))
 	defer bare.Close()
 	req, _ := http.NewRequest(http.MethodGet, bare.URL+"/describe", nil)
-	req.Header.Set("Authorization", "Bearer "+verse.Token(VerseAudience, "verse", nil))
+	req.Header.Set("Authorization", "Bearer "+verse.Token("some-audience", "verse", nil))
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -260,7 +260,7 @@ func TestARunnerAnnouncesItselfUntilHeard(t *testing.T) {
 	}
 
 	// Nothing to announce with (no token of its own) returns at once.
-	quiet, err := NewGuard(Verse{URL: versed.URL, Audience: VerseAudience}, "")
+	quiet, err := NewGuard(Verse{URL: versed.URL, Audience: "some-audience"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}

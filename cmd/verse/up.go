@@ -46,8 +46,10 @@ type upConfig struct {
 	Data              string `cli:"name=data desc='data dir; verse ups logd+docd here via o sys up. default: a fresh (kept) temp dir'"`
 	LogdConfig        string `cli:"name=logd-config desc='logd configuration file (tony) for the spawned daemons, replacing the one verse writes (see docd.go)'"`
 	OBin              string `cli:"name=o-bin desc='path to the o binary for spawning daemons; default: go run the pinned go-tony cmd/o'"`
-	// runner: where tasks run. Default is the in-process local supervisor.
-	Runner string `cli:"name=runner desc='task-control base URL to run tasks on (default: local, in-process)'"`
+	// LocalRunner false is a verse whose own runner hosts nothing: every spawn goes to a registered
+	// runner. Unset is the config's `localRunner`, true by default. A string, since unset is not
+	// false and the flag library takes a bool by value alone.
+	LocalRunner string `cli:"name=local-runner desc='true or false: whether this verse hosts work on its own runner (default: the config, true); false routes every spawn to a registered runner'"`
 	// AdminAddr is the out-of-band face: pprof and goroutine stacks, off the data path.
 	// Empty derives it from --addr (see adminface); `off` disables it.
 	AdminAddr string `cli:"name=admin-addr desc='admin/pprof listen address, or off to disable (default: the --addr port + 1)'"`
@@ -81,6 +83,11 @@ func (cfg *upConfig) validate() error {
 	// keeps — the failure would land on whoever believed /status, a process away.
 	if cfg.DocdAddr == "" && cfg.DocdAdvertiseAddr != "" {
 		return fmt.Errorf("%w: verse up: --docd-advertise-addr needs --docd-addr (it re-addresses the docd being connected to, and verse spawns its own on ephemeral ports)", cli.ErrUsage)
+	}
+	if cfg.LocalRunner != "" {
+		if _, err := strconv.ParseBool(cfg.LocalRunner); err != nil {
+			return fmt.Errorf("%w: verse up: --local-runner=%q: true or false", cli.ErrUsage, cfg.LocalRunner)
+		}
 	}
 	return nil
 }
@@ -297,8 +304,12 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	} else if set {
 		srv.SetTripPace(d)
 	}
-	if cfg.Runner != "" { // run tasks on a remote runner instead of in-process, reached as this verse
-		srv.SetRunner(srv.Dial(cfg.Runner))
+	// Where a spawn runs is verse's to say (versed route.go): the agent a prompt naming none is
+	// for, and whether this verse's own runner is among the runners it routes to.
+	srv.DefaultAgent = appCfg.DefaultAgent
+	srv.NoLocalRunner = !appCfg.HostsLocally()
+	if on, err := strconv.ParseBool(cfg.LocalRunner); err == nil {
+		srv.NoLocalRunner = !on // validate refused anything but unset, true or false
 	}
 
 	// Catch SIGTERM as well as SIGINT so `verse down` (which signals us) triggers the

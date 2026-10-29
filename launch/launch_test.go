@@ -17,16 +17,12 @@ func TestBindExpandsSubject(t *testing.T) {
 	s := Spec{
 		Agent:    &runner.Agent{Name: "verse"},
 		Prompt:   "review $subject and report",
-		Runner:   "verse.runners.$subject",
 		Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}},
 	}
 	got := s.Bind(Binding{"subject": `demo.pr."1"`})
 
 	if got.Prompt != `review demo.pr."1" and report` {
 		t.Fatalf("Prompt = %q", got.Prompt)
-	}
-	if got.Runner != `verse.runners.demo.pr."1"` {
-		t.Fatalf("Runner = %q", got.Runner)
 	}
 	if got.Agent.Name != "verse" || got.Autonomy.Default() != task.ThenAllow {
 		t.Fatalf("plain fields changed: %+v", got)
@@ -153,7 +149,6 @@ func TestASpawnWrittenByHand(t *testing.T) {
 		{Spec{Prompt: "fix `echo $HOME` in the README; it costs $5"}, ""},
 		{Spec{Script: "echo \"$P\"", Environment: systems.Environment{Vars: map[string]string{"P": "$HOME"}}}, ""},
 		{Spec{Prompt: "go", Subject: "$subject"}, "subject: a `$`"},
-		{Spec{Prompt: "go", Runner: "$runner"}, "runner: a `$`"},
 		{Spec{Prompt: "go", Agent: &runner.Agent{Settings: map[string]string{"model": "$model"}}}, "agent.model: a `$`"},
 		{Spec{Prompt: "go", Environment: git("$subject.value.repo")}, "environment.systems.git[0].repo: a `$`"},
 		{Spec{Prompt: "go", Chain: "review", Passed: []Passed{{How: PassedAuto}}}, "chain: a firing's"},

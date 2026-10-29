@@ -104,7 +104,13 @@ type Server struct {
 	Eng       *trigger.Engine
 	// Embedded is the runner this verse embeds, for `verse up`: its tasks run in this process.
 	Embedded *runnerd.InProcessHandler
-	runner   client.Launcher // how tasks are run/governed; the embedded runner unless SetRunner
+	runner   client.Launcher // the embedded runner, reached in process
+	// DefaultAgent is the agent a prompt naming none is for, bound at the spawn; empty is
+	// DefaultAgent (`defaultAgent` in the config).
+	DefaultAgent string
+	// NoLocalRunner is a verse whose own runner hosts nothing: every spawn goes to a registered
+	// runner (`localRunner: false` in the config). A central deployment's versed.
+	NoLocalRunner bool
 	// runnerTokens is the tokens this verse has minted toward its runners, one per audience,
 	// kept until they are about to expire (runnerauth.go).
 	runnerTokens runnerTokens
@@ -399,17 +405,18 @@ func NewWithStore(build runnerd.Builder, store entity.Store, opts ...Option) *Se
 	// its state into the verse so triggers can react to its completion.
 	eng.SetSpawner(s.spawnerFor(store, "", eng))
 	eng.SetDeadlineMover(s.moveDeadline)
-	eng.SetOfferCheck(s.offerCheck(store))
+	eng.SetOfferCheck(s.offerCheck())
 	return s
 }
 
-// offerCheck is what an install checks a charter's spawn against: what the runner it names
-// offers, as that runner described itself. The launch is the spawn as written, its templated
-// values standing in and its environment unbound (runnerd.CheckOfferAsWritten), so a spawn a
-// runner would refuse is refused with the author present.
-func (s *Server) offerCheck(store entity.Reader) func(name string, l runner.Launch) error {
-	return func(name string, l runner.Launch) error {
-		return s.checkOfferBy(store, name, &l, runnerd.CheckOfferAsWritten)
+// offerCheck is what an install checks a charter's spawn against: whether some runner offers its
+// doer and takes it, as the runners described themselves (fits). The launch is the spawn as
+// written, its templated values standing in and its environment unbound
+// (runnerd.CheckOfferAsWritten), so a spawn no runner would take is refused with the author
+// present. The firing routes it again, bound.
+func (s *Server) offerCheck() func(l runner.Launch) error {
+	return func(l runner.Launch) error {
+		return s.fits(&l, nil, runnerd.CheckOfferAsWritten)
 	}
 }
 
@@ -594,12 +601,6 @@ func (h localHandle) SetAutonomy(p task.Autonomy, by string) error {
 
 func (localRunner) Ref() string { return "local" }
 
-// SetRunner rebinds how this server runs tasks — e.g. to a remote runner base
-// URL (client.HTTP) instead of the in-process local supervisor. The spawnerFor
-// closures read s.runner at spawn time, so this takes effect for subsequent spawns
-// (baseline and scoped).
-func (s *Server) SetRunner(p client.Launcher) { s.runner = p }
-
 // mintNonce returns an unguessable path segment.
 func mintNonce() string {
 	var b [16]byte
@@ -653,23 +654,15 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 			fmt.Fprintf(os.Stderr, "verse: %s\n", why)
 			return task.FailedHandle(why)
 		}
-		// WHERE this runs, resolved before anything is attempted, so the meta below records
-		// the runner the work actually went to rather than the default it did not.
-		place, placeName, placeSubject, err := s.runnerFor(st, spec.Runner)
-		if err != nil {
-			// Same shape as the envelope and the resolver below: a spawn that cannot run
-			// where it said does not run somewhere else instead.
-			meta := mirror.Meta{Subject: spec.Subject, Chain: spec.Chain, Prompt: spec.Prompt, Agent: recordAgent(spec.Agent), Script: spec.Script != ""}
-			h := task.FailedHandle(fmt.Sprintf("spawn %s: %v", id, err))
-			s.reflect(rec, id, 0, h, meta)
-			return h
-		}
+		// The agent a prompt naming none is for, bound now, so the launch, the routing and the
+		// record name the agent that runs it.
+		spec = s.withDefaultAgent(spec)
 		// The provenance every reflection of this spawn carries, envelope included: what the
 		// launch may do. Built once so the failure path and the running path cannot disagree
-		// about what was attempted.
+		// about what was attempted. Where it runs is said once it is routed, below.
 		meta := mirror.Meta{
-			Subject: spec.Subject, Runner: place.Ref(), RunnerName: placeName, RunnerSubject: placeSubject,
-			Chain: spec.Chain, Prompt: spec.Prompt, Agent: recordAgent(spec.Agent), Script: spec.Script != "", Occurrence: spec.Occurrence,
+			Subject: spec.Subject,
+			Chain:   spec.Chain, Prompt: spec.Prompt, Agent: recordAgent(spec.Agent), Script: spec.Script != "", Occurrence: spec.Occurrence,
 			Git: (&runner.Launch{Environment: spec.Environment}).Repos(), ActsFor: spec.ActsFor,
 			Autonomy:    spec.Autonomy,
 			Environment: &spec.Environment, VirtualKey: spec.VirtualKey, // the address, before it is resolved below
@@ -701,14 +694,18 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 		if err == nil {
 			err = l.Check()
 		}
+		// WHERE it runs, routed by what the launch asks of a runner (route.go): a spawn that no
+		// runner takes is a failed task with the reason, and runs nowhere else instead.
+		var place placed
 		if err == nil {
-			err = s.checkOffer(st, spec.Runner, &l)
+			place, err = s.route(&l, nil)
 		}
 		if err != nil {
 			h := task.FailedHandle(fmt.Sprintf("spawn %s: %v", id, err))
 			s.reflect(rec, id, 0, h, meta)
 			return h
 		}
+		meta.Runner, meta.RunnerName, meta.RunnerSubject = place.launcher.Ref(), place.name, place.subject
 		l.Occurrence = spec.Occurrence // which run it is, so the process can say so too
 		// A TASK ACTING FOR SOMEBODY ASKS THEM: `as: subject` runs on the asker's authority, so
 		// its own questions naming nobody are theirs, and a gate naming $principal asks them. A
@@ -733,13 +730,13 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 			// On the task's record from its first write: what it is good for and until when.
 			l.Credential, meta.Credential = token, minted
 		}
-		ht := hostedTask{scope: scope, subject: spec.Subject, principal: by, autonomy: spec.Autonomy, launched: &launched{spec.Environment, placeName, meta.VirtualKey}} // where this task's records live, so its questions land there too
+		ht := hostedTask{scope: scope, subject: spec.Subject, principal: by, autonomy: spec.Autonomy, launched: &launched{spec.Environment, place.name, meta.VirtualKey}} // where this task's records live, so its questions land there too
 		if actsFor != "" {
 			ht.answerers = []string{task.PrincipalAnswerer}
 			meta.Answerers = ht.answerers
 		}
 		serial := s.host(id, ht)
-		h := place.Launch(l)
+		h := place.launcher.Launch(l)
 		s.reflect(rec, id, serial, h, meta)
 		return h
 	}
@@ -1147,7 +1144,7 @@ func (s *Server) scopeEngine(scope string) *trigger.Engine {
 		}
 		eng.SetSpawner(s.spawnerFor(scoped, scope, eng))
 		eng.SetDeadlineMover(s.moveDeadline)
-		eng.SetOfferCheck(s.offerCheck(scoped))
+		eng.SetOfferCheck(s.offerCheck())
 		sctx, cancel := context.WithCancel(s.ctx)
 		// Per-trigger observation: no root watch. Each scoped trigger watches exactly the
 		// (system,kind) subtree it matches, scoped to this scope. cancel stops them.
@@ -4516,6 +4513,7 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "spawn."+err.Error(), http.StatusBadRequest)
 		return
 	}
+	spec = s.withDefaultAgent(spec)
 	if err := spec.Autonomy.Check(); err != nil {
 		http.Error(w, "spawn.autonomy"+err.Error(), http.StatusBadRequest)
 		return
@@ -4528,14 +4526,6 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.engineOf(scope).CheckAutonomyAnswerers(spec.Autonomy); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	// The second spawn path, refusing the same way the first does. A misspelled runner that
-	// quietly ran the work in-process says one thing in the deployment and does another in
-	// the verse. Refused BEFORE the spawn, so nothing is started and nothing is mirrored.
-	place, placeName, placeSubject, err := s.runnerFor(store, spec.Runner)
-	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -4572,18 +4562,21 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "spawn: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := s.checkOffer(store, spec.Runner, &l); err != nil {
+	// WHERE it runs, routed by what it asks of a runner (route.go), and refused BEFORE the
+	// spawn where no runner takes it, so nothing is started and nothing is mirrored.
+	place, err := s.route(&l, nil)
+	if err != nil {
 		http.Error(w, "spawn: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	// The same scope the record above goes to, so this run's questions reach the docket of
 	// whoever asked for it rather than everybody's; and whom it acts for, which its rows naming
 	// nobody ask.
-	serial := s.host(id, hostedTask{scope: scope, subject: spec.Subject, principal: body.Principal, autonomy: spec.Autonomy, launched: &launched{spec.Environment, placeName, named}})
-	h := place.Launch(l)
+	serial := s.host(id, hostedTask{scope: scope, subject: spec.Subject, principal: body.Principal, autonomy: spec.Autonomy, launched: &launched{spec.Environment, place.name, named}})
+	h := place.launcher.Launch(l)
 	eng := s.engineOf(scope)
 	s.reflect(store, id, serial, h, mirror.Meta{
-		Runner: place.Ref(), RunnerName: placeName, RunnerSubject: placeSubject,
+		Runner: place.launcher.Ref(), RunnerName: place.name, RunnerSubject: place.subject,
 		// What it was asked and what ran it, on the record as a rule's spawn puts them: the
 		// two facts a reader of this task wants beside its status, and for a task on a named
 		// runner the record is the only place they can be read without that runner.

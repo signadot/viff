@@ -212,8 +212,8 @@ func scalarString(n *ir.Node) (string, error) {
 	return "", errors.New("a string, a number or a boolean")
 }
 
-// Who is who does the work, as a task's record says it: the agent's name, "script", or "" for
-// a prompt the runner's default agent takes.
+// Who is who does the work, as a task's record says it: the agent's name, "script", or "" for a
+// prompt that names none, which a runner refuses: verse binds its default agent before the launch.
 func (l *Launch) Who() string {
 	switch {
 	case l.Script != "":

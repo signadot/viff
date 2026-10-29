@@ -158,9 +158,9 @@ func (s *Server) boundOf(id string) *taskBound {
 // environment within what the task hands on (systems.Environment.Within, launched.handsOn), so
 // what follows a task's ask installs no charter, as what a task's charter spawns does not
 // (chartertask.go); its autonomy no looser
-// (task.Autonomy.Within), on the task's runner (runner, resolved as runnerFor names it), and
-// naming the task's credential where it spends one (spendsWithin).
-func (b *taskBound) holds(spec launch.Spec, runner string) error {
+// (task.Autonomy.Within), and naming the task's credential where it spends one (spendsWithin).
+// That it runs on the task's runner is the routing's to hold (route, with on).
+func (b *taskBound) holds(spec launch.Spec) error {
 	if b.launched == nil {
 		return errors.New(": the raising task's record says no launch, so a then that spawns cannot be " +
 			"held within it, and is refused")
@@ -171,11 +171,6 @@ func (b *taskBound) holds(spec launch.Spec, runner string) error {
 	}
 	if err := spec.Autonomy.Within(b.autonomy, spec.Environment); err != nil {
 		return fmt.Errorf(".autonomy%w", err)
-	}
-	if runner != b.launched.runner {
-		return fmt.Errorf(".runner: %s, and the raising task runs on %s: a then's spawn runs where the "+
-			"task does (runner: %s)", cmp.Or(runner, "this verse's own runtime"),
-			cmp.Or(b.launched.runner, "this verse's own runtime"), cmp.Or(b.launched.runner, `""`))
 	}
 	if !spendsWithin(spec, b.launched.virtualKey) {
 		return fmt.Errorf(".virtualKey: %s, and the raising task spends %s: a then's spawn spends the "+

@@ -83,7 +83,6 @@ charter has an agent review each open pull request, once somebody says yes:
       stage: reviewing
     spawn:
       agent: {name: verse}
-      runner: verse.runners.build
       prompt: "review the pull request at $subject"
       environment:
         systems:
@@ -253,9 +252,10 @@ is absent when nothing went wrong.
 A completion hook that fails is written on the record of its task, under `hook`.
 
 A spawn that starts and then fails is not the rule's trouble. It is a task that failed, such
-as a spawn whose runner was removed after the rule was installed. The task's record says so
-(`verse task`), and the rule's `onFailed` hook fires. A spawn naming a runner that is not
-installed, or an agent the runner does not offer, is refused at install.
+as a spawn whose agent no runner offers any more, since the runner that did was removed after
+the rule was installed. The task's record says so (`verse task`), and the rule's `onFailed` hook
+fires. A spawn for an agent no runner offers, or one no runner's ceilings hold, is refused at
+install.
 
 ## Flow: a subject-match over live tasks
 

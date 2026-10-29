@@ -21,8 +21,8 @@ runnerd -config <file> -token-file <file> [-sandbox bwrap|none]
 The same runner also runs embedded. `verse up` hosts the verse runner in its own process and
 reaches it by Go calls, with no `runnerd` process. Both use package `runner/runnerd`, which holds
 a runner's tasks and serves them. A central deployment is meant to run no work in verse itself,
-with each runner a `runnerd` of its own. A person's ask whose `then:` spawns and names no runner
-runs that spawn in verse's own runtime.
+with each runner a `runnerd` of its own (`localRunner: false`). What follows a task's ask, its
+`then:` spawn, runs on the task's runner.
 
 ## The sandbox
 
@@ -86,11 +86,13 @@ Code, `claude`; each where `agents:` names it; and scripts, where the configurat
 openssl rand -hex 32 > runner.token
 PORTKEY_API_KEY=… runnerd -config runner.tony -token-file runner.token
 verse runner add my-runner http://localhost:9802 -token-file runner.token
-echo '{prompt: "…", runner: verse.runners.my-runner}' | verse task run -f -
+echo '{prompt: "…", agent: {name: verse}}' | verse task run -f -
 ```
 
-A launch's work picks which: a `prompt` runs an agent with it (`agent: {name: verse}`, or the
-runner's default agent), and a `script` runs the script.
+Verse routes the spawn to a runner that offers its doer ([where a spawn
+runs](../runners.md#where-a-spawn-runs)). A launch's work picks which: a `prompt` runs the agent
+it names (`agent: {name: verse}`; verse binds its `defaultAgent` where the spawn names none),
+and a `script` runs the script.
 
 A script runs by its own `#!` line, which can name any program in the runner's image that reads
 a file: `#!/bin/sh`, `#!/usr/bin/env python3`, `#!/usr/bin/env node`. The line is read as
@@ -155,7 +157,7 @@ script:                                    # scripts are offered only with this 
 | Key | What it holds | Default |
 |---|---|---|
 | `listen` | the address the runner serves verse on | `:9802` |
-| `verse` | the one verse this runner serves, by the tokens versed signs for it ([runners at the door](perms.md#runners-at-the-door)): `url`, where the runner reaches versed, announces itself and reads versed's keys (`/.well-known/jwks.json` under it); `issuer`, the name versed's tokens are issued under (`auth.issuer.url` on the verse side), where a verse behind a proxy is called something else than `url` (default `url`). The runner compares it byte for byte: spell `url` as `verse status` shows the issuer (`verse up` prints it at start), or set `issuer`, since `http://127.0.0.1:9797` is not `http://localhost:9797`; `audience`, the `aud` this runner takes versed's tokens for, its own name (default: the subject of its own token, `VERSE_TOKEN_FILE`, which is what its registration names; the default runner, which has no registration, says `runner`); `ca`, a PEM bundle for a verse served under a certificate no public root signed. A request whose bearer is not a live token of that issuer for that audience is refused `401` before its body is read, and `503` while versed's keys cannot be read. A bare `GET /describe` is answered to anyone, since the description is public; a bearer presented with it is checked all the same, and the describe answers this runner's own token to the verse it verified, and to nobody else. The runner announces itself at start, `POST /runners/hello` with its token in a loop until verse has described it, so verse describes it then and there and nobody runs `verse runner check`. The runner's readiness (`GET /ready`) is its server and nothing else; whether verse heard it, and whether the describe verified it, is the registration's to say. A deployment whose one configuration serves every cluster names the verse in the environment instead (`VERSE_URL`, `VERSE_ISSUER`, `VERSE_AUDIENCE`, `VERSE_CA`, below); naming it in both is refused. | none, and the runner does not start without it, here or in the environment |
+| `verse` | the one verse this runner serves, by the tokens versed signs for it ([runners at the door](perms.md#runners-at-the-door)): `url`, where the runner reaches versed, announces itself and reads versed's keys (`/.well-known/jwks.json` under it); `issuer`, the name versed's tokens are issued under (`auth.issuer.url` on the verse side), where a verse behind a proxy is called something else than `url` (default `url`). The runner compares it byte for byte: spell `url` as `verse status` shows the issuer (`verse up` prints it at start), or set `issuer`, since `http://127.0.0.1:9797` is not `http://localhost:9797`; `audience`, the `aud` this runner takes versed's tokens for, its own name (default: the subject of its own token, `VERSE_TOKEN_FILE`, which is what its registration names); `ca`, a PEM bundle for a verse served under a certificate no public root signed. A request whose bearer is not a live token of that issuer for that audience is refused `401` before its body is read, and `503` while versed's keys cannot be read. A bare `GET /describe` is answered to anyone, since the description is public; a bearer presented with it is checked all the same, and the describe answers this runner's own token to the verse it verified, and to nobody else. The runner announces itself at start, `POST /runners/hello` with its token in a loop until verse has described it, so verse describes it then and there and nobody runs `verse runner check`. The runner's readiness (`GET /ready`) is its server and nothing else; whether verse heard it, and whether the describe verified it, is the registration's to say. A deployment whose one configuration serves every cluster names the verse in the environment instead (`VERSE_URL`, `VERSE_ISSUER`, `VERSE_AUDIENCE`, `VERSE_CA`, below); naming it in both is refused. | none, and the runner does not start without it, here or in the environment |
 | `repos.mirrors` | the directory the runner keeps one bare mirror per repository in, shared by its tasks. Without `repos`, the runner takes no launch that names repositories. | none |
 | `repos.host` | the forge the runner's repositories are on, as a launch's `repo` names it (`host/owner/name`, or `owner/name` for github.com) | `github.com` |
 | `repos.forge` | where the host's `owner/name` is fetched from. A directory holding `owner/name` repositories serves a runner with no network. | `https://<host>` |
@@ -280,8 +282,9 @@ of its `form`, `string` unless it says `number` or `bool`) and whether the agent
 of its own where a launch names none, and the `annotations` verse or the runner may write for it.
 A launch writes its settings flat beside the name, `agent: {name: codex, model: gpt-5-codex,
 effort: high}`, and a setting the offer does not list is refused. `model` is the setting verse
-reads: the task's record says which model ran, its default filled in. The first agent offered, in
-the order verse, codex, claude, is the runner's default, a prompt's that names none.
+reads: the task's record says which model ran, its default filled in. A launch always names its
+agent: verse binds its `defaultAgent` to a prompt that names none, and the runner refuses a
+prompt's launch with no agent.
 
 `systems` is each system the offer holds for its tasks, and it is the whole of what an offer says
 about the world. For each, `builds` is what the runner can build of it, by its nature, and

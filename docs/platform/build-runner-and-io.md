@@ -103,7 +103,7 @@ verse schema verse-runner-launch
 
 ```
 verse-runner-launch:
-  agent: .[nullable(verse-runner-agent)]   # {name, <setting>: …, annotations}; absent is the runner's default
+  agent: .[nullable(verse-runner-agent)]   # {name, <setting>: …, annotations}; verse always names it for a prompt
   answer: .[tony-base:ir]
   autonomy: !irtype {}                 # the rows {name, match, then}; absent asks about every step
   converse: .[bool]
@@ -143,7 +143,7 @@ Then install the runner, check it, and run a task on it.
 ```sh
 verse runner add sample http://127.0.0.1:9810 -token-file runner.token
 verse runner check sample
-echo '{runner: sample, agent: {name: sample}, prompt: "fetch the data; train the model", environment: {systems: {network: {mode: open}}}}' |
+echo '{agent: {name: sample}, prompt: "fetch the data; train the model", environment: {systems: {network: {mode: open}}}}' |
   verse task run -f - -wait
 ```
 

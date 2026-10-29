@@ -190,7 +190,10 @@ func TestTheTaskRunToolReadsTheSpawnAsTheCommandDoes(t *testing.T) {
 	if out, isErr := callTool(t, cs, "verse_task_run", map[string]any{"spawn": "  "}); !isErr || !strings.Contains(out, "takes the spawn") {
 		t.Fatalf("no spawn: error=%v %q", isErr, out)
 	}
-	for _, spawn := range []string{"{prompt: hi}", "{prompt: hi, runner: nosuch}"} {
+	if out, isErr := callTool(t, cs, "verse_task_run", map[string]any{"spawn": `{prompt: hi, runner: nosuch}`}); !isErr || !strings.Contains(out, `unknown field "runner"`) {
+		t.Fatalf("a spawn naming a runner: error=%v %q", isErr, out)
+	}
+	for _, spawn := range []string{"{prompt: hi}"} {
 		if out, _ := callTool(t, cs, "verse_task_run", map[string]any{"spawn": spawn}); !strings.Contains(out, "gives no system") {
 			t.Fatalf("%s:\n%s", spawn, out)
 		}

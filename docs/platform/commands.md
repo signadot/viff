@@ -20,7 +20,7 @@ verse
                                              reaches docd by a different address than verse does
        [-o-bin path]                         the o binary to spawn daemons with (default: resolved —
                                              see up.md)
-       [-runner <url>]                       run tasks on a remote task-control base URL
+       [-local-runner=false]                 host no work here: route every spawn to a registered runner
   down                                       stop the verse on -addr (it reaps its spawned daemons)
   task (tasks, ps) [-runner <ref>]           every task, whatever runs it
                   [-options id[:need],…] [-deadline within[:default]]    …with outcomes

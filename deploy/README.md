@@ -782,8 +782,8 @@ verse runner add verse-runner http://verse-runner:9802 -identity verse-runner \
   -subject system:serviceaccount:verse:verse-runner    # it acts as runner:verse-runner, and proves it is the pod
 ```
 
-The install's name is what the charters spawn on (`runner: verse.runners.verse-runner`), and the
-url is the Service. The subject is its pod's ServiceAccount (`runnerTokens`): the add is the
+Verse routes the charters' scripts and verse-agent spawns to it, as the runner that offers them
+(versed itself hosts nothing: `localRunner: false`). The url is the Service. The subject is its pod's ServiceAccount (`runnerTokens`): the add is the
 handshake, and a pod that answers no token, or another's, is refused there.
 
 That last line is the install, and it probes — so `reach: "a runner"` is the deployment's own
@@ -807,8 +807,8 @@ provider serves — the same value as `llmModel`. It fails at the first spawn ra
 the store entry `codexSecretKey` names ([Credentials](#credentials)), or made by hand where the
 knob is empty (`kubectl -n verse create secret generic verse-codex
 --from-literal=OPENAI_API_KEY=<key>`); it pushes with the same token. Install it as `verse runner add codex http://codex-runner:9802
---identity codex-runner --subject system:serviceaccount:verse:codex-runner`, and spawn on it with
-`runner: verse.runners.codex`.
+--identity codex-runner --subject system:serviceaccount:verse:codex-runner`; verse routes a spawn
+for `agent: {name: codex}` to it.
 
 **The claude runner** (`claude-runner`) is the same runner in an image with Claude Code pinned
 in it (`deploy/claude-runner`), offering the claude agent and no scripts. Its credential is the `verse-claude`
@@ -816,8 +816,8 @@ Secret, from the store entry `claudeSecretKey` names ([Credentials](#credentials
 hand where the knob is empty (`kubectl -n verse create secret generic verse-claude
 --from-literal=ANTHROPIC_API_KEY=<key>`): an API key of the Console workspace the work is
 billed to. It pushes with the same token the verse runner does. Install it as `verse runner add claude
-http://claude-runner:9802 --identity claude-runner --subject system:serviceaccount:verse:claude-runner`,
-and spawn on it with `runner: verse.runners.claude`.
+http://claude-runner:9802 --identity claude-runner --subject system:serviceaccount:verse:claude-runner`;
+verse routes a spawn for `agent: {name: claude}` to it.
 
 ⚠️ **It needs three things from the pod spec, and each was found by a spawn refusing itself.**
 `hostUsers: false`, `procMount: Unmasked`, `seccompProfile: Unconfined` — in that order of

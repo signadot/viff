@@ -17,6 +17,7 @@ import (
 // within it, and one written outside the ceiling is refused with the ceiling named.
 func TestACharterIsHeldToItsRunnersCeilingsAtInstall(t *testing.T) {
 	srv := testServer(t)
+	srv.NoLocalRunner = true
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	h := runnerd.NewInProcessHandler(func(l runner.Launch, _ *task.Registry) *task.Task { return nil })
@@ -36,7 +37,7 @@ func TestACharterIsHeldToItsRunnersCeilingsAtInstall(t *testing.T) {
   condition: {subject: {path: "demo.pr.*", value: {stage: open}}}
   action:
     patch: {stage: started}
-    spawn: {runner: verse.runners.ceiled, script: "true", environment: {systems: {git: `+git+`}}}
+    spawn: {script: "true", environment: {systems: {git: `+git+`}}}
 `))
 		if err != nil {
 			t.Fatal(err)

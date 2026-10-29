@@ -101,7 +101,7 @@ A task's work is a `prompt`, for an agent, or a `script`, which is its own doer.
 
 | Spawn | What it does |
 |---|---|
-| `prompt: …`, `agent: {name: <name>}` | gives the prompt to an agent the runner offers under that name (`verse` is verse's own; a runner may offer `claude` or `codex`). The agent decides what to do, one turn at a time. Without `agent`, the prompt is for the runner's default agent, the first one it offers. |
+| `prompt: …`, `agent: {name: <name>}` | gives the prompt to the agent of that name, on a runner that offers it (`verse` is verse's own; a runner may offer `claude` or `codex`). The agent decides what to do, one turn at a time. Without `agent`, the prompt is for verse's default agent (`defaultAgent`, `verse` by default). |
 | `script: "…"` | runs the script once, by its `#!` line or with bash. Its output is the result. It takes no `agent`: data reaches it as the environment's `vars`. |
 
 An agent's settings are written beside its name, `agent: {name: codex, model: gpt-5-codex,

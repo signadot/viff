@@ -97,25 +97,24 @@ not read the store.
 
 ## On a spawn
 
-A spawn names its runner in one of two places:
+A spawn names no runner. Verse routes it, in its own view of the registrations, to a runner that
+offers its doer and takes it, the one carrying fewest tasks first, then by name, handshaken
+before the launch and passed over for the next where the handshake fails
+([where a spawn runs](../runners.md#where-a-spawn-runs)). A spawn that writes `runner:` is
+refused for the field.
 
-- `runner:` on the `spawn:` of a charter;
-- `runner:` on the spawn that `verse task run` reads, on the ad-hoc path.
+Verse **refuses a spawn that no runner takes**, on both paths:
 
-An empty runner means the default runner of this verse, which `verse up -runner` sets.
+- an ad-hoc run gets `400`, saying why: no runner offers its doer; each runner that offers it,
+  and why it would not take it; the registrations passed over, not described or unreadable; or
+  each runner that failed the handshake;
+- a charter is refused at install where no runner offers its doer or takes its spawn as
+  written, and a firing no runner takes becomes a failed spawn, its reason on the flow.
 
-Verse **refuses a spawn that names a runner that is not installed**, on both paths:
-
-- an ad-hoc run gets `400`, with the name in the message;
-- a charter spawn becomes a failed spawn, and its reason goes onto the flow.
-
-Verse never runs the task somewhere else without saying so.
-
-Verse looks up the runner in the view of the spawner. For a rule, that is the view of the
-rule's owner. Verse refuses a runner that the spawner may not read in the same words as a
-runner that is not installed: `in the view of <spawner>, no runner "<name>" is installed`.
-The runners that the spawner may read follow. When verse could not read the store, the refusal
-says so, and says nothing about what is installed.
+Verse never runs the task somewhere else without saying so. A person's permissions on
+`verse.runners` govern installing, removing and seeing runners, not where their work runs. When
+verse could not read the registrations, the refusal says so, and says nothing about what is
+installed.
 
 ## On the task
 

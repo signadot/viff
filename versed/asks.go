@@ -616,8 +616,17 @@ func (s *Server) followAsk(ref entity.Ref, field string) {
 		return
 	}
 	err = perr
+	// WHERE THE TASK THAT RAISED IT RUNS, where a task did: what follows its ask runs on the
+	// same runner, as it was checked when the ask was raised (checkThenSpawn).
+	var on *string
+	if raisedBy := entity.Str(entity.Get(ent.Payload, mirror.FromField), "task"); err == nil && raisedBy != "" {
+		var runner string
+		if runner, err = s.taskRunner(raisedBy); err == nil {
+			on = &runner
+		}
+	}
 	if err == nil {
-		err = s.runThen(id, ref, asker, spec)
+		err = s.runThen(id, ref, asker, spec, on)
 	}
 	if err != nil {
 		// Marked, so it is not tried again at every restart, and said, since the mark names a task
@@ -629,18 +638,21 @@ func (s *Server) followAsk(ref entity.Ref, field string) {
 
 // runThen starts what follows a yes, as a task of the asker's: its principal and its record are
 // theirs, and its subject is the ask. It is the spawn `verse task run` makes, on the asker's
-// authority alone, as the asker wrote it (thenSpec).
-func (s *Server) runThen(id string, ref entity.Ref, asker string, spec launch.Spec) error {
+// authority alone, as the asker wrote it (thenSpec). on, where set, is the runner it is held to:
+// the one the task that raised the ask runs on.
+func (s *Server) runThen(id string, ref entity.Ref, asker string, spec launch.Spec, on *string) error {
 	store := entity.As(s.Store, asker)
-	place, placeName, placeSubject, err := s.runnerFor(store, spec.Runner)
-	if err != nil {
-		return err
-	}
+	spec = s.withDefaultAgent(spec)
+	var err error
 	named := spec.VirtualKey // the address the launch is held to, before it is resolved
 	if spec.VirtualKey, err = credentialAt(store, asker, spec.VirtualKey); err != nil {
 		return err
 	}
 	l, err := launchOf(id, spec, asker)
+	if err != nil {
+		return err
+	}
+	place, err := s.route(&l, on)
 	if err != nil {
 		return err
 	}
@@ -652,12 +664,12 @@ func (s *Server) runThen(id string, ref entity.Ref, asker string, spec launch.Sp
 	if actsFor != "" {
 		answerers = []string{task.PrincipalAnswerer}
 	}
-	serial := s.host(id, hostedTask{subject: ref.String(), principal: asker, answerers: answerers, autonomy: l.Autonomy, launched: &launched{spec.Environment, placeName, named}})
+	serial := s.host(id, hostedTask{subject: ref.String(), principal: asker, answerers: answerers, autonomy: l.Autonomy, launched: &launched{spec.Environment, place.name, named}})
 	l.Provenance.Subject = ref.String()
-	h := place.Launch(l)
+	h := place.launcher.Launch(l)
 	eng := s.engineOf("")
 	s.reflect(store, id, serial, h, mirror.Meta{
-		Runner: place.Ref(), RunnerName: placeName, RunnerSubject: placeSubject, Subject: ref.String(), Prompt: l.Prompt,
+		Runner: place.launcher.Ref(), RunnerName: place.name, RunnerSubject: place.subject, Subject: ref.String(), Prompt: l.Prompt,
 		Agent: recordAgent(l.Agent), Script: l.Script != "", Autonomy: l.Autonomy, ActsFor: actsFor, Answerers: answerers,
 		Environment: &spec.Environment, VirtualKey: named,
 		HeldBy: func() []string { return eng.HeldBy(id) },

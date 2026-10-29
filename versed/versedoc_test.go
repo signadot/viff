@@ -43,10 +43,10 @@ func TestTheVerseSystemsExampleThenHoldsWithinItsTask(t *testing.T) {
 	}
 	task, follows := spec("the task", block), spec("the then", then[1])
 	bound := &taskBound{
-		launched: &launched{task.Environment, task.Runner, task.VirtualKey},
+		launched: &launched{task.Environment, "verse.runners.verse-runner", task.VirtualKey},
 		autonomy: task.Autonomy,
 	}
-	if err := bound.holds(follows, follows.Runner); err != nil {
+	if err := bound.holds(follows); err != nil {
 		t.Errorf("the doc's then is refused at its raise: spawn%v", err)
 	}
 }

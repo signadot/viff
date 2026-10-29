@@ -25,6 +25,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -70,9 +71,17 @@ type Config struct {
 	// A system-owned charter has to be installed by something, and `--as system` over the api
 	// is exactly the self-assertion that stops being fine once writes are refused; so the file
 	// the deployment ships is the way. Server-side, read by `verse up`. Env: VERSE_SYSTEM_CHARTER.
-	SystemCharter string       `tony:"field=systemCharter,omitzero"`
-	Format        FormatConfig `tony:"field=format,omitzero"`
-	LLM           LLMConfig    `tony:"field=llm,omitzero"`
+	SystemCharter string `tony:"field=systemCharter,omitzero"`
+	// DefaultAgent is the agent a spawn's prompt is for where it names none, bound at the spawn,
+	// so the task's record names the agent that ran it. Empty is `verse`. Server-side, read by
+	// `verse up`. Env: VERSE_DEFAULT_AGENT.
+	DefaultAgent string `tony:"field=defaultAgent,omitzero"`
+	// LocalRunner says whether this verse hosts work on its own runner, beside the runners
+	// registered with it. False is a central verse: every spawn goes to a registered runner.
+	// Unset is true. Server-side, read by `verse up` (`--local-runner`). Env: VERSE_LOCAL_RUNNER.
+	LocalRunner *bool        `tony:"field=localRunner,omitzero"`
+	Format      FormatConfig `tony:"field=format,omitzero"`
+	LLM         LLMConfig    `tony:"field=llm,omitzero"`
 	// TripDuration is D for the cycle throttle: how long a firing waits when its causal chain
 	// has run past the point where some rule must have fired twice about one subject. Empty
 	// means the default; "0" REFUSES the firing instead of pacing it, which stops a runaway
@@ -437,6 +446,9 @@ type PermsConfig struct {
 	Admins []string `tony:"field=admins,omitzero"`
 }
 
+// HostsLocally is LocalRunner, true where it is unset.
+func (c *Config) HostsLocally() bool { return c.LocalRunner == nil || *c.LocalRunner }
+
 // TripPace resolves TripDuration: the duration, whether it was SET at all, and any parse error.
 //
 // The default is not decided here. An unset value reports set=false and the engine keeps its own
@@ -744,6 +756,14 @@ func (c *Config) applyEnv() error {
 	c.User = envOr("VERSE_USER", c.User)
 	c.Agent = envOr("VERSE_AGENT", c.Agent)
 	c.SystemCharter = envOr("VERSE_SYSTEM_CHARTER", c.SystemCharter)
+	c.DefaultAgent = envOr("VERSE_DEFAULT_AGENT", c.DefaultAgent)
+	if v := os.Getenv("VERSE_LOCAL_RUNNER"); v != "" {
+		on, err := strconv.ParseBool(v)
+		if err != nil {
+			return fmt.Errorf("VERSE_LOCAL_RUNNER=%q: true or false", v)
+		}
+		c.LocalRunner = &on
+	}
 	// Comma-separated, because an env var is one string and a deployment sets this one without
 	// a config file: `kubectl set env deploy/versed VERSE_PERMS_ADMINS=…` is how a cluster says
 	// who may take a top-level place, and there is no verse.tony in the pod to say it in.

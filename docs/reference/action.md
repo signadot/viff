@@ -198,16 +198,17 @@ A spawn answers four questions, and each is a field:
 | Question | Field | What it names |
 |---|---|---|
 | what is the work | `prompt` or `script` | a prompt, the job in text, for an agent; or a script, which is the work and its own doer. Exactly one. |
-| who does it | `agent` | for a prompt, the agent the runner offers (`agent: {name: verse}`), with its settings; absent is the runner's default agent |
+| who does it | `agent` | for a prompt, the agent that does it (`agent: {name: verse}`), with its settings; absent is verse's default agent |
 | what it works in | `environment` | the variables its shell is given (`vars`), and the systems it may use (`systems`): the whole of what the task may do |
 | what each step gets | `autonomy` | one ordered list of rows over the task's steps: the first row that matches a step denies it, asks about it, or allows it, and the last row decides every step no row above matched |
 
 The spawn can also carry a [contract](#the-answer-contract) (`answer`) that the result must
 satisfy.
 
-**The work and who does it.** A `prompt` is for an agent. `agent` names one by the name the
-runner offers it under (`verse` is verse's own agent); without `agent`, it is the runner's
-default agent, the first it offers. A `script` is a shell script; it runs by its `#!` line, or
+**The work and who does it.** A `prompt` is for an agent. `agent` names one by the name runners
+offer it under (`verse` is verse's own agent); without `agent`, it is verse's default agent
+(`defaultAgent`, `verse` by default). Verse routes the spawn to a runner that offers it
+([runners](../runners.md#where-a-spawn-runs)). A `script` is a shell script; it runs by its `#!` line, or
 under bash, and takes no `agent`. A spawn with both, or neither, is refused.
 
 An agent's settings are written beside its name: `agent: {name: codex, model: gpt-5-codex,
@@ -293,13 +294,13 @@ the spawn when the rule is installed, naming the ceiling, as does one its sandbo
 The runner holds the environment to its ceilings again at the launch and at each act
 ([the verse runner](runnerd.md#what-it-offers)). The autonomy is the dial over the rest.
 
-An unknown step in a row, an agent the runner does not offer, a setting it does not take, or an
-unknown field inside `spawn:` fails the spawn when the rule is installed. Verse does not fall back
-to a default, and it drops nothing.
+An unknown step in a row, an agent no runner offers, a setting no runner offering it takes, or an
+unknown field inside `spawn:` (`runner:` among them: verse routes a spawn to a runner that offers
+its doer, [runners](../runners.md#where-a-spawn-runs)) fails the spawn when the rule is installed.
+Verse does not fall back to a default, and it drops nothing.
 
 | Field | What it names |
 |---|---|
-| `runner` | where the run runs: `verse.runners.<name>`, a runner installed with `verse runner add`. Absent is the verse's default. See [runners](../runners.md). |
 | `timeout` | how long the run may take, as a duration. Verse cancels it after that, on every runner. |
 | `credential` | `{audience: <name>}` asks verse for a token that vouches for the task to a system outside verse: the rule's gate let this work through. It is for a rule's own spawn, of a rule that writes a gate, `mode: auto` included. See [a credential for what a gate let through](gates.md#a-credential-for-what-a-gate-let-through). |
 | `virtualKey` | the address of the model credential the run spends, such as `acme.keys.review`. Verse reads it as whoever installed the rule, so a rule cannot name a key its owner may not read. Absent is the runner's default ([virtual key](../glossary.md#virtual-key)). |
@@ -770,14 +771,12 @@ orphaned, and never tracked. So no tracked task reaches that status.
     seq:
     - spawn:
         script: 'cd app && make lint'
-        runner: verse.runners.build
         environment:
           systems:
             network: {mode: open}
             git: {repo: acme/app, from: $subject.value.head, fetch: {}}
     - spawn:
         agent: {name: verse}
-        runner: verse.runners.build
         prompt: "review the pull request at $subject"
         environment:
           systems:

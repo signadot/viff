@@ -1,12 +1,10 @@
 package versed
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"sort"
-	"strings"
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
@@ -14,7 +12,6 @@ import (
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
-	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
 )
 
@@ -323,10 +320,9 @@ func (s *Server) checkRunner(w http.ResponseWriter, r *http.Request) {
 // one), so what it said before is removed first, and `offers`, which an older verse kept the
 // offers under, with it, and `verified` and `unverified`, which an older verse wrote beside it.
 //
-// BETWEEN THE TWO WRITES the registration has no description, and that is safe: a spawn naming
-// the runner reads it through offersOf, which asks the runner again where the registration is
-// not Current, so a spawn arriving then is checked against what the runner says, at the cost of
-// one more probe, never against nothing.
+// BETWEEN THE TWO WRITES the registration has no description, and that is safe: routing passes over
+// a registration that is not Current, so a spawn arriving then goes elsewhere or is refused
+// naming it, and is never checked against nothing.
 func writeDescribed(w entity.Store, name string, desc runner.Description) error {
 	at := runnerEntityRef(name).At()
 	if _, _, err := w.Write(entity.Write{At: at, Value: entity.Obj{
@@ -336,85 +332,6 @@ func writeDescribed(w entity.Store, name string, desc runner.Description) error 
 	}
 	_, _, err := w.Write(entity.Write{At: at, Value: entity.Obj{"described": desc}.Payload()})
 	return err
-}
-
-// defaultDescription is what the default runner offers, for the check a spawn naming no runner
-// is made against before it is launched (offersOf reads an installed runner's).
-func (s *Server) defaultDescription() runner.Description {
-	// The embedded runner's offers, where it is the default. A default reached by url (`verse up
-	// --runner`) has no registration to keep its offers on: it checks its launches itself.
-	if _, local := s.runner.(localRunner); local {
-		return s.Embedded.Description()
-	}
-	return runner.Description{}
-}
-
-// checkOffer refuses a launch the runner it is for would refuse, before it leaves: the doer is
-// not on offer there, or what the launch asks of it is not what the offer takes. A runner the
-// launch names that is not installed refuses it, as the launch itself would (runnerFor). One
-// installed with no offers on record (--no-probe, or a pod that was not up when it was added)
-// is asked now, and what it says is kept on its registration and checked against; one that
-// still does not describe itself takes no spawn. A check with nothing to check against is no
-// check, and the runner is the side that answers for what it runs. The default runner reached
-// by url alone (`verse up --runner`) has no registration to keep offers on, and is the one
-// exception: it checks its launches itself.
-func (s *Server) checkOffer(store entity.Reader, name string, l *runner.Launch) error {
-	return s.checkOfferBy(store, name, l, runnerd.CheckOffer)
-}
-
-// checkOfferBy is checkOffer with the check made: runnerd.CheckOffer for a launch, bound, and
-// runnerd.CheckOfferAsWritten for a charter's spawn at install (offerCheck).
-func (s *Server) checkOfferBy(store entity.Reader, name string, l *runner.Launch, check func(*runner.Launch, runner.Description) error) error {
-	desc, where, err := s.offersOf(store, name)
-	if err != nil {
-		return err
-	}
-	if len(desc.Offers) == 0 {
-		return nil
-	}
-	if err := check(l, desc); err != nil {
-		return fmt.Errorf("%s: %w", where, err)
-	}
-	return nil
-}
-
-// offersOf is what the runner a spawn names offers, as its registration keeps it or as it
-// answers now, and the name a refusal calls it by.
-func (s *Server) offersOf(store entity.Reader, name string) (runner.Description, string, error) {
-	if name == "" {
-		return s.defaultDescription(), "the default runner", nil
-	}
-	e, ok, err := findRunnerErr(store, name)
-	if err != nil && !errors.Is(err, entity.ErrForbidden) {
-		return runner.Description{}, "", errors.New(notRead(fmt.Sprintf("runner %q", name), err))
-	}
-	if !ok {
-		if why := unreadableRunner(store, name); why != nil {
-			return runner.Description{}, "", why
-		}
-		return runner.Description{}, "", fmt.Errorf("no runner %q is installed — a spawn naming a runner that is "+
-			"not installed is refused rather than run somewhere else", name)
-	}
-	where := runnerEntityRef(e.Name).String()
-	if e.Current() {
-		return e.Description(), where, nil
-	}
-	reach, desc, why := s.probeRegistered(e)
-	switch reach {
-	case client.Unverified:
-		s.recordUnverified(e.Name)
-		return runner.Description{}, "", fmt.Errorf("%s has not proved it is the runner registered (%s): %v. A spawn "+
-			"naming it is refused until `verse runner check %s` finds it proving itself", where, e.Subject, why, e.Name)
-	case client.IsRunner:
-	default:
-		return runner.Description{}, "", fmt.Errorf("%s has not described itself (%s: %v): a spawn naming it is "+
-			"refused until it answers `verse runner check %s`", where, reach, why, e.Name)
-	}
-	if err := desc.Check(); err != nil {
-		return runner.Description{}, "", fmt.Errorf("%s does not say what it offers and the networks it builds: %v", where, err)
-	}
-	s.recordOffers(e, desc)
-	return desc, where, nil
 }
 
 // recordOffers keeps what a runner said on its registration, as `verse runner check` does, and
@@ -438,9 +355,9 @@ func (s *Server) recordUnverified(name string) {
 
 // probeRunners asks each installed runner with no offers on record what it offers, when verse
 // starts: a registration made with --no-probe, or against a pod that was not up yet, is what a
-// repopulate leaves, and until the runner has described itself a spawn naming it is refused
-// (checkOffer). One that answers has its offers kept; one that does not is named here, and
-// asked again by the next spawn that names it.
+// repopulate leaves, and until the runner has described itself routing passes it over (route.go).
+// One that answers has its offers kept; one that does not is named here, and is described by its
+// hello or a check.
 func (s *Server) probeRunners() error {
 	runners, err := installedRunnersErr(s.Store)
 	if err != nil {
@@ -626,63 +543,6 @@ func runnerIdentity(store entity.Reader, name string) string {
 	return ""
 }
 
-// runnerFor resolves the runner a spawn NAMED, to the one runner that spawn runs on.
-//
-// TWO NAMES, and the default is the one nobody types. Naming nothing means "run this", and
-// the answer is this verse's own runtime; an installed runner means wherever its url says.
-//
-// A spawn naming a runner that is not installed is REFUSED rather than quietly falling back to
-// the default. A misspelled runner that ran the work in-process would be the same class of bug
-// as a misspelled resolver that quietly left work unsupervised: the deployment says one thing
-// and the verse does another.
-//
-// Beside the launcher it answers the registration's entity, `verse.runners.<name>`, and its
-// subject, which the spawn records on the task for the door (relayTask); both are "" for the
-// default.
-func (s *Server) runnerFor(store entity.Reader, name string) (client.Launcher, string, string, error) {
-	if name == "" {
-		return s.runner, "", "", nil
-	}
-	e, ok, err := findRunnerErr(store, name)
-	if err != nil && !errors.Is(err, entity.ErrForbidden) {
-		// The read did not happen, which is not a runner that is not installed: said as what
-		// it is, so whoever reads the refusal waits for the store rather than installs again.
-		return nil, "", "", errors.New(notRead(fmt.Sprintf("runner %q", name), err))
-	}
-	if !ok {
-		if why := unreadableRunner(store, name); why != nil {
-			return nil, "", "", why
-		}
-		// IN THE SPAWNER'S VIEW: the store is theirs, so a runner they may not read and one
-		// that is not there are one answer, and the listing beside it is what they may read.
-		// A failed listing names none rather than saying none are installed.
-		have := "its runners could not be listed"
-		if listed, err := installedRunnersErr(store); err == nil {
-			names := make([]string, 0, len(listed))
-			for _, i := range listed {
-				names = append(names, runnerEntityRef(i.Name).String())
-			}
-			have = "none are installed"
-			if len(names) > 0 {
-				have = "installed: " + strings.Join(names, ", ")
-			}
-		}
-		// Whose view, by name where the store says: a store read as nobody in particular is
-		// the spawner's all the same.
-		who := "the spawner"
-		if st, ok := store.(entity.Store); ok && entity.PrincipalOf(st) != "" {
-			who = entity.PrincipalOf(st)
-		}
-		return nil, "", "", fmt.Errorf("in the view of %s, no runner %q is installed (%s) — a spawn "+
-			"naming a runner that is not installed is refused rather than run somewhere else",
-			who, name, have)
-	}
-	if err := s.handshake(e); err != nil {
-		return nil, "", "", err
-	}
-	return client.HTTPOver(e.URL, s.transportFor(e)), runnerEntityRef(e.Name).String(), e.Subject, nil
-}
-
 // handshake asks a registered runner what it is now, right before a launch to it,
 // and holds it to its registration. A runner proves itself at the describe and nowhere else, and
 // a launch hands whatever answers at the url the prompt, the repositories and the policy, so the
@@ -690,22 +550,21 @@ func (s *Server) runnerFor(store entity.Reader, name string) (client.Launcher, s
 // registered subject's token receives no launch, and the registration records what it found,
 // as `verse runner check` would. One GET per launch. What it found is versed's own observation,
 // recorded as verse (recordOffers), not as the spawner.
-func (s *Server) handshake(e api.Runner) error {
+func (s *Server) handshake(e api.Runner) (runner.Description, error) {
 	where := runnerEntityRef(e.Name).String()
 	reach, desc, why := s.probeRegistered(e)
 	switch reach {
 	case client.IsRunner:
 		if err := desc.Check(); err != nil {
-			return fmt.Errorf("%s does not say what it offers and the networks it builds: %v", where, err)
+			return runner.Description{}, fmt.Errorf("%s does not say what it offers and the networks it builds: %v", where, err)
 		}
 		s.recordOffers(e, desc)
-		return nil
+		return desc, nil
 	case client.Unverified:
 		s.recordUnverified(e.Name)
-		return fmt.Errorf("%s has not proved it is the runner registered (%s): %v. A spawn naming it is "+
-			"refused until `verse runner check %s` finds it proving itself", where, e.Subject, why, e.Name)
+		return runner.Description{}, fmt.Errorf("%s has not proved it is the runner registered (%s): %v; it takes no "+
+			"spawn until `verse runner check %s` finds it proving itself", where, e.Subject, why, e.Name)
 	default:
-		return fmt.Errorf("%s did not answer the handshake before the launch (%s: %v): the spawn is refused "+
-			"rather than sent to whatever answers there", where, reach, why)
+		return runner.Description{}, fmt.Errorf("%s did not answer the handshake before the launch (%s: %v)", where, reach, why)
 	}
 }

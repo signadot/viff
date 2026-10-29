@@ -11,7 +11,6 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/task"
 )
 
@@ -201,7 +200,6 @@ func TestAnUndeliverableAnswerSaysSo(t *testing.T) {
 	dead.Close()
 
 	srv := testServer(t)
-	srv.SetRunner(client.HTTP(deadURL))
 	mirror.PostQuestion(srv.Store, task.Pending{
 		Question: task.GateQuestion{ID: "p~d1", Origin: "p", Gate: "write"},
 	}, "p")

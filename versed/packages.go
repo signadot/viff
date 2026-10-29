@@ -60,7 +60,7 @@ func (s *Server) packageEngineLocked(confine trigger.Subtree) (*trigger.Engine, 
 	}
 	eng.SetSpawner(s.spawnerFor(s.Store, "", eng))
 	eng.SetDeadlineMover(s.moveDeadline)
-	eng.SetOfferCheck(s.offerCheck(s.Store))
+	eng.SetOfferCheck(s.offerCheck())
 	ctx, cancel := context.WithCancel(s.ctx)
 	// Per-trigger observation, exactly as a scope's engine has: each rule watches the subtrees
 	// it reads, which for a package is usually wider than what it may write.

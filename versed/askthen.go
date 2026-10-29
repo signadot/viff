@@ -17,6 +17,7 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/runner/runnerd"
 )
 
 // A `then` THAT ANSWERS OR ASKS: on a yes, the asker answers another ask, or raises one, on their
@@ -177,21 +178,19 @@ func (s *Server) checkThenSpawn(asker string, v any, within *taskBound) (int, er
 	// WITHIN THE TASK THAT RAISED IT, where a task did: a task hands what follows its ask no more
 	// reach, no looser a dial, no other runtime and no other credential than it has itself
 	// (taskBound). Before the credential is resolved: the task's is held to by its address.
+	var on *string
 	if within != nil {
-		_, runner, _, err := s.runnerFor(store, spec.Runner)
-		if err != nil {
-			return http.StatusBadRequest, fmt.Errorf("spawn.runner: %w", err)
-		}
-		if err := within.holds(spec, runner); err != nil {
+		if err := within.holds(spec); err != nil {
 			return http.StatusBadRequest, fmt.Errorf("spawn%w", err)
 		}
+		on = &within.launched.runner
 	}
 	if spec.VirtualKey, err = credentialAt(store, asker, spec.VirtualKey); err != nil {
 		return http.StatusBadRequest, fmt.Errorf("spawn.virtualKey: %w", err)
 	}
 	l, err := launchOf("then", spec, asker)
 	if err == nil {
-		err = s.checkOffer(store, spec.Runner, &l)
+		err = s.fits(&l, on, runnerd.CheckOffer)
 	}
 	if err != nil {
 		return http.StatusBadRequest, fmt.Errorf("spawn: %w", err)

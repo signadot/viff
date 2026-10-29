@@ -34,8 +34,7 @@ import (
 // THE AUDIENCE IS THE RUNNER'S OWN NAME. A token minted for one runner is good at no other: a
 // copy taken at a runner, or sent to a url somebody typed wrong, opens no sibling's door. The
 // audience defaults to the subject of the runner's own token, which is what its registration
-// names, so a registered runner types nothing; the default runner `verse up -runner` names has
-// no registration and takes the audience `runner`, by saying so.
+// names, so a registered runner types nothing.
 //
 // THE DESCRIPTION IS PUBLIC; THE TOKEN IS NOT. GET /describe says what the runner offers, which
 // is no secret, so a bare one is answered to anyone, as an operator at the port or a verse with
@@ -53,10 +52,6 @@ import (
 // same exchange: a spoofed runner cannot receive verse's launches, and verse's runner cannot be
 // driven by anyone else.
 
-// VerseAudience is the audience the default runner, which has no registration, takes versed's
-// tokens for, by saying `audience: runner` in its block.
-const VerseAudience = runner.DefaultAudience
-
 // keySetPath is where an issuer publishes the keys that verify its tokens, in OIDC's well-known
 // place: versed serves it under its own url (versed/issuer.go).
 const keySetPath = "/.well-known/jwks.json"
@@ -72,9 +67,8 @@ type Verse struct {
 	// called where its relying parties are, which a verse behind a proxy may spell differently
 	// from URL. Unset is URL.
 	Issuer string `tony:"field=issuer,omitzero"`
-	// Audience is the `aud` this runner takes versed's tokens for: its own name. Unset is the
-	// subject of the runner's own token (NewGuard), which is what its registration names; the
-	// default runner, which has no registration, says `runner` (VerseAudience).
+	// Audience is the `aud` this runner takes versed's tokens for. Unset is the subject of the
+	// runner's own token (NewGuard), which is what its registration names.
 	Audience string `tony:"field=audience,omitzero"`
 	// CA is the path of the PEM bundle versed's certificate is checked against, for a verse
 	// served over TLS under a certificate no public root signed. Unset trusts the system's roots.
@@ -145,7 +139,7 @@ func NewGuard(v Verse, tokenFile string) (*Guard, error) {
 		}
 	}
 	if g.v.Audience == "" {
-		return nil, fmt.Errorf("verse.audience: a runner with no token of its own names the audience it takes its verse's tokens for (`runner` for the default runner)")
+		return nil, fmt.Errorf("verse.audience: a runner with no token of its own names the audience it takes its verse's tokens for")
 	}
 	if v.CA != "" {
 		pem, err := os.ReadFile(v.CA)

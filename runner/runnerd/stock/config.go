@@ -150,7 +150,7 @@ type Repos struct {
 	API string `tony:"field=api,omitzero"`
 }
 
-// agentOrder is the agents this runner runs, in the order it offers them: its default first.
+// agentOrder is the agents this runner runs, in the order it offers them.
 var agentOrder = []string{AgentName, codex.Agent, claude.Agent}
 
 // program is each agent's own keys under `agents.<name>`, beside the four every agent takes.

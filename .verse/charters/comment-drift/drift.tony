@@ -194,7 +194,6 @@ rules:
         stage: gathered
   action:
     spawn:
-      runner: verse.runners.verse-runner
       # The repository, and what this task may push to it: ONLY a proposal branch of its own,
       # `verse/auto/<task>`, so the deliverable is a diff rather than prose about a diff, and
       # `main` is deliberately refused. A fixing task's work is a PROPOSAL — that is the whole

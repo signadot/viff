@@ -170,9 +170,9 @@ them, installs at the path. A directory of charter files is several packages
 | Form | What it does |
 |---|---|
 | `task [-runner <ref>]` | every task, whatever runs it |
-| `task run -f <spawn> [-name <label>] [-wait]` | run one: a spawn as a charter writes one, from a file or `-` for stdin. It honors the runner it names, and is mirrored. |
+| `task run -f <spawn> [-name <label>] [-wait]` | run one: a spawn as a charter writes one, from a file or `-` for stdin. Verse routes it to a runner that offers its doer, and it is mirrored. |
 | `task run … -attach [-no-converse]` | a conversation: the turn is yours whenever the model goes quiet. Ctrl-D ends it. |
-| `task run … -name <label> -as <who>` | what the run is called, and who it is. What it is about, where it runs, what it may reach and do, its answer and its credential are keys of the spawn (`subject`, `runner`, `environment`, `autonomy`, `answer`, `virtualKey`) |
+| `task run … -name <label> -as <who>` | what the run is called, and who it is. What it is about, what it may reach and do, its answer and its credential are keys of the spawn (`subject`, `environment`, `autonomy`, `answer`, `virtualKey`); where it runs is verse's to say |
 | `task get <id>` · `task attach <id>` | the operator's view, for any backend. `attach` prompts for each gate, and for a question asked in words, with an identity. |
 | `task cancel <id>` · `task say <id> <text…>` | end it · tell it something |
 | `task autonomy <id> <rows> [-as <who>]` · `task autonomy <id> -file <f>` | replace its autonomy with a whole one, each row reaching what its environment gives |

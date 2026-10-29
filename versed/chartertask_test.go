@@ -82,7 +82,7 @@ func TestATaskInstallsACharterHeldWithinTheTask(t *testing.T) {
 	}
 	resp.Body.Close()
 	resp = postTony(t, ts.URL+"/tasks", map[string]any{"id": "installer", "spawn": map[string]any{
-		"script": "true", "runner": "verse.runners.gpu",
+		"script": "true",
 		"environment": map[string]any{"systems": map[string]any{
 			"verse":   map[string]any{},
 			"network": map[string]any{"mode": "open"},
@@ -122,7 +122,7 @@ func TestATaskInstallsACharterHeldWithinTheTask(t *testing.T) {
 		}
 	}
 
-	file := taskCharterFile(`{runner: verse.runners.gpu, script: "true", environment: {systems: {network: {mode: open}}}}`)
+	file := taskCharterFile(`{script: "true", environment: {systems: {network: {mode: open}}}}`)
 	if code, body := carryFor(t, http.MethodPost, ts.URL+"/charter?format=tony", token, "installer", file); code != http.StatusCreated {
 		t.Fatalf("the task's install within it = %d %s", code, body)
 	}
@@ -267,7 +267,7 @@ func TestATasksCredentialIsHeldWhereASpawnSpendsOne(t *testing.T) {
 		if err := hold.holds(rule); (err == nil) != c.ok {
 			t.Errorf("a charter's spawn, %s: %v, want held %v", what, err, c.ok)
 		}
-		if err := bound.holds(spec, ""); (err == nil) != c.ok {
+		if err := bound.holds(spec); (err == nil) != c.ok {
 			t.Errorf("an ask's spawn, %s: %v, want held %v", what, err, c.ok)
 		}
 	}
@@ -286,7 +286,7 @@ func TestATasksAskHandsOnNoCharterInstall(t *testing.T) {
 	}
 	resp.Body.Close()
 	resp = postTony(t, ts.URL+"/tasks", map[string]any{"id": "raiser", "spawn": map[string]any{
-		"script": "true", "runner": "verse.runners.gpu",
+		"script":      "true",
 		"environment": map[string]any{"systems": map[string]any{"verse": map[string]any{}}},
 	}})
 	if out := readBody(t, resp); resp.StatusCode/100 != 2 {
@@ -295,7 +295,7 @@ func TestATasksAskHandsOnNoCharterInstall(t *testing.T) {
 	waitTaskStatus(t, srv, "raiser", "running")
 	const alice = "user:alice@example.com"
 	spawn := func(verse string) string {
-		return `{spawn: {script: "true", runner: verse.runners.gpu, environment: {systems: {verse: ` + verse + `}}}}`
+		return `{spawn: {script: "true", environment: {systems: {verse: ` + verse + `}}}}`
 	}
 
 	for what, follow := range map[string]string{

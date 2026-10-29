@@ -67,7 +67,7 @@ func TestGateOnPerSpawnRunnerIsAnswerable(t *testing.T) {
 
 	// Spawned onto that runner BY NAME. The verse's own default runner is the in-process one
 	// and knows nothing about this task, which is the condition being tested.
-	resp := postTony(t, ts.URL+"/tasks", map[string]any{"name": "onrunner", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "work", "runner": "verse.runners.code", "environment": stepEnv}})
+	resp := postTony(t, ts.URL+"/tasks", map[string]any{"name": "onrunner", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "work", "environment": stepEnv}})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("spawn = %s", resp.Status)
 	}
@@ -160,7 +160,7 @@ func TestAttachToTaskOnPerSpawnRunner(t *testing.T) {
 		"name": "code", "url": face.URL, "subject": face.Subject,
 	}).Body.Close()
 
-	resp := postTony(t, ts.URL+"/tasks", map[string]any{"name": "streamed", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "work", "runner": "verse.runners.code", "environment": stepEnv}})
+	resp := postTony(t, ts.URL+"/tasks", map[string]any{"name": "streamed", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "work", "environment": stepEnv}})
 	var sp map[string]any
 	decodeResp(t, resp, &sp)
 	id, _ := sp["id"].(string)

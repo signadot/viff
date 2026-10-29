@@ -44,12 +44,6 @@ const DescriptionVersion = 2
 // first. A runner that verifies no verse answers none, since a token is for its verse alone.
 const TokenHeader = "Verse-Runner-Token"
 
-// DefaultAudience is the `aud` of the token versed presents to the default runner, the one
-// `verse up -runner` names, which has no registration and so no subject of its own to be the
-// audience. A runner takes it only when its `verse` block says `audience: runner`; a registered
-// runner's door, which takes its own subject, does not.
-const DefaultAudience = "runner"
-
 // A STATIC TOKEN IS KNOWN BY ITS HASH. A runner with no runtime to issue it a workload token, on a
 // machine off Kubernetes, proves itself with a token it and its registrar hold, as an iod may
 // (auth.iod.static). The registration names it by its hash, `sha256:<hex>`, as its subject, so
@@ -238,9 +232,8 @@ func systemsVerb(system, verb string) (systems.Verb, bool) {
 	return d.Verb(verb)
 }
 
-// Offer is one kind of doer a runner runs: an agent, by name, or scripts. An agent name is
-// offered by exactly one registered runner, and only one runner offers scripts. The first agent
-// offer is the runner's default agent, a prompt's that names none.
+// Offer is one kind of doer a runner runs: an agent, by name, or scripts. A runner offers each doer
+// at most once, and several runners may offer one doer: verse routes a launch to one of them.
 //
 //tony:schemagen=verse-runner-offer,notag
 type Offer struct {

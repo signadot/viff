@@ -204,6 +204,7 @@ func TestGateAndTaskAnswerVerbs(t *testing.T) {
 func TestUpValidateRefusesContradictions(t *testing.T) {
 	cases := map[string]upConfig{
 		"--data with --docd-addr": {DocdAddr: "h:1", Data: "/tmp/x"},
+		"--local-runner=maybe":    {LocalRunner: "maybe"},
 	}
 	for name, cfg := range cases {
 		if err := cfg.validate(); !errors.Is(err, cli.ErrUsage) {
@@ -215,7 +216,7 @@ func TestUpValidateRefusesContradictions(t *testing.T) {
 		"defaults":      {},
 		"running docd":  {DocdAddr: "h:1"},
 		"data dir":      {Data: "/tmp/x"},
-		"remote runner": {Runner: "http://x"},
+		"hosts nothing": {LocalRunner: "false"},
 	}
 	for name, cfg := range ok {
 		if err := cfg.validate(); err != nil {

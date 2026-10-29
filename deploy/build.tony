@@ -263,6 +263,11 @@ build:
     # system` over the api is refused. Read at start, so a changed file takes a restart.
     systemCharter: ""
 
+    # Whether versed's own runner hosts work, beside the runners registered with it
+    # (VERSE_LOCAL_RUNNER, `localRunner` in config/config.go). False is a central versed: every
+    # spawn is routed to a registered runner (docs/runners.md, "Where a spawn runs").
+    localRunner: true
+
     # verse's `auth` block, as a path under deploy/ (VERSE_CONFIG, config/config.go): who verifies
     # people, which iods are trusted for whose accounts, and how the iods prove themselves
     # (docs/reference/up.md). "" leaves versed as it is: a request is whoever it says. The env
@@ -583,6 +588,22 @@ build:
               env: !key(name)
               - name: OPENAI_MODEL
                 value: $[llmModel]
+
+  # A versed that hosts nothing routes every spawn to a registered runner.
+  - if: '.[ localRunner == false ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: versed
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: versed
+              env: !key(name)
+              - name: VERSE_LOCAL_RUNNER
+                value: "false"
 
   # The system charter, mounted where VERSE_SYSTEM_CHARTER says (deploy/system-charter).
   - if: '.[ systemCharter != "" ]'

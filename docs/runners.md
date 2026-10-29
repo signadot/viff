@@ -1,14 +1,17 @@
 # Runners
 
 A [runner](glossary.md#runner) is a place where verse runs a [task](glossary.md#task). You
-install a runner as data, its registration. A [spawn](glossary.md#spawn) names a runner, and the task
-records which runner it went to.
+install a runner as data, its registration, and the runner says what it offers: which agents,
+whether scripts, and how far each may reach. A [spawn](glossary.md#spawn) names its doer and what
+it may reach, never a runner; verse finds a runner that offers the doer and holds the
+environment, and the task records which runner it went to.
 
 So a drive can deploy a place to run work that the verse deployment does not otherwise need to
-know about. The drive can use that place for *some* of its work, and not for all of it.
+know about. The drive's work goes there when it is the work that place offers, and not
+otherwise.
 
-**Selection for each spawn is the whole feature.** Deploying a runner is easy: the sample
-runner is one program. The hard part is using a runner for *part* of the work.
+**Routing each spawn is the whole feature.** Deploying a runner is easy: the sample runner is one
+program. The hard part is sending it *part* of the work, and only the part it can do.
 
 To build a runner, start from [the sample runner](reference/examples/runner/main.go). The
 sample is a real program that compiles with the tree. Comments mark the two functions that you
@@ -36,9 +39,10 @@ url:  "http://runner-gpu.verse.svc:9802"
 subject: "system:serviceaccount:verse:runner-gpu"
 ```
 
-There is no default runner registration, and no special case for local. `local` is what the
-*absence* of a runner on a spawn means. So every installed runner is a place to reach, and
-verse refuses a runner with no `url`.
+Every installed runner is a place to reach, and verse refuses a runner with no `url`. This verse's
+own runner, the one `verse up` runs tasks on in its own process, is no registration: verse routes
+to it beside the registered ones, unless the config says `localRunner: false`, and a task's
+record calls it `local`.
 
 **Adding a runner probes it.** The probe is `GET /describe`, which every runner serves: its
 answer is what the runner offers, and asking has no effect on the runner. The probe has three
@@ -119,10 +123,10 @@ on a laptop is registered too.
 is no registration: it runs in verse's own process, and never calls verse's door.
 
 `-no-probe` installs the runner in every case. A runner installed without its offers takes no
-spawn until it has described itself: verse asks it again when it starts, at the first spawn
-that names it, and before every launch, and keeps what
-it says on the registration; `verse runner check` asks on demand.
-A spawn naming a runner that still has not answered is refused, with the reason.
+spawn until it has described itself: at its hello, when verse starts, or at `verse runner
+check`, which asks on demand; verse keeps what it says on the registration, and asks again
+before every launch to it. Until then routing passes it over, and a spawn that only it might
+take is refused naming it.
 
 A [worker](glossary.md#worker) is named on its runner's registration, or names itself on its first
 running status. The [claim](glossary.md#claim-of-a-worker) is where verse assigns the task to
@@ -135,9 +139,9 @@ the worker:
 The grant reaches the task and nothing else. It does not reach the questions that the task
 raises, and the worker may not answer them ([perms.md](perms.md)).
 
-## Naming one on a spawn
+## Where a spawn runs
 
-A charter names a runner by name:
+A charter names its doer and what it may reach, and nothing about where:
 
 ```tony
 name: retrain-on-gpu
@@ -149,50 +153,64 @@ condition:
 action:
   spawn:
     prompt:   "retrain the ranker on $subject"
-    runner: verse.runners.gpu                             # ← where it runs
     agent: {name: verse}                                  # ← who does it
-    environment: {systems: {network: {mode: open}, files: {}, commands: {}}}   # ← what it may reach
-    autonomy:                                             # ← what it may do unasked
-    - {match: {system: files}, then: allow}
-    - {match: {system: commands}, then: allow}
-    - {then: ask}
+    environment: {systems: {network: {mode: open}}}       # ← what it may reach
+    autonomy: [{then: ask}]                               # ← what it may do unasked
   onDone:
     patch: { stage: retrained }       # the latch: out of its own selection
 ```
 
-An ad-hoc run names a runner too, in the spawn it runs:
+An ad-hoc run is the same spawn:
 
 ```sh
-echo '{prompt: "retrain the ranker", runner: verse.runners.gpu, agent: {name: verse},
-  environment: {systems: {network: {mode: open}, files: {}, commands: {}}},
-  autonomy: [{match: {system: files}, then: allow}, {match: {system: commands}, then: allow}, {then: ask}]}' |
+echo '{prompt: "retrain the ranker", agent: {name: verse},
+  environment: {systems: {network: {mode: open}}}, autonomy: [{then: ask}]}' |
   verse task run -f -
 ```
 
-A spawn names a runner by **name**, not by URL. The name is an indirection, and the reason
-for it is in [Why it is this way](#why-it-is-this-way).
+Verse routes each spawn when it launches, in its own view of the registrations:
 
-**Verse refuses a spawn that names a runner that is not installed**, on both spawn paths. It
-does not fall back to the default runner.
+1. **The candidates** are the runners that offer the doer, the agent the spawn names or scripts,
+   as each last described itself, and this verse's own runner where it hosts work. A
+   registration with no description is passed over: the runner's hello, the probe when verse
+   starts and `verse runner check` describe a runner, and a spawn does not.
+2. **Fit**: of those, the runners whose offer takes the spawn: the agent's settings, every system
+   the environment gives within the offer's ceilings, the network a mode it builds.
+3. **Load**: the one carrying fewest tasks that have not ended, as verse has recorded them, then
+   the first by name.
+4. **The handshake**: verse asks that runner what it is now, as it does before every launch. One
+   that does not prove it is the runner registered, or does not answer, is passed over for the
+   next; one that proves itself and still takes the spawn is where it runs.
+
+A prompt that names no agent is for verse's default agent, `verse` unless the config's
+`defaultAgent` says another, and the task's record names the agent that ran it.
+
+**Verse refuses a spawn that no runner takes**, on both spawn paths, and does not run it
+somewhere that does not offer what it asks. The refusal says why: no runner offers the doer;
+each runner that offers it and why it would not take it; the registrations passed over, not
+described or unreadable, and how to find out why; or each runner that failed the handshake.
 
 | Path | What verse does |
 |---|---|
-| ad-hoc run | refuses the run, with the name in the message. Nothing starts. |
-| charter spawn | nobody is there to answer, so verse fails the spawn, and the reason goes onto the flow |
+| ad-hoc run | refuses the run, with the reason. Nothing starts. |
+| charter spawn | refused at install where no runner offers the doer or takes the spawn as written; at a firing, nobody is there to answer, so verse fails the spawn, and the reason goes onto the flow |
 
-A spawn that names no runner goes to the default runner of this verse, which
-`verse up -runner` sets.
+A spawn that writes `runner:` is refused for the field: where work runs is verse's to say.
+
+What follows a task's ask (`then:`, `else:`) runs on the task's runner, as it was checked when the
+task raised the ask ([the verse system](systems/verse.md)).
 
 ### Not the agent
 
 A spawn's `agent` says **who** does the work: which agent, under which model and credential (or a
-`script`, which is its own). A runner is **where the work runs**. The two are independent: the
-same agent may run in either of two places, and the same place may host either of two agents.
+`script`, which is its own). A runner is **where the work runs**. The spawn names the first, and
+verse picks the second among the runners that offer it: the same agent may run in either of two
+places, and the same place may host either of two agents.
 
 ## Seeing where
 
 ```sh
-verse ps                           # each task names its runner; the default reads `local`
+verse ps                           # each task names its runner; this verse's own reads `local`
 verse ps -runner verse.runners.gpu # only that runner's work
 verse runner                       # what is installed, and what each is carrying
 verse runner -probe                # …and what each of them says right now
@@ -206,7 +224,7 @@ verse runner -probe                # …and what each of them says right now
 | `total` | tasks on the runner ever |
 | `lastSpawn` | the last spawn to the runner |
 
-So you can see a runner that nobody names. Verse **derives these columns from the store**.
+So you can see a runner that nothing is routed to. Verse **derives these columns from the store**.
 `-probe` is the only thing that asks anybody.
 
 **The store never records health.** Verse answers a probe live, prints it, and discards it.
@@ -221,7 +239,8 @@ when one runner is down, you lose live detail and not rows.
 
 ## What a restart does
 
-`verse.task.instance` records both the resolved **URL** and the **name** that the spawn used.
+`verse.task.instance` records both the resolved **URL** and the **name** of the registration the
+spawn went to.
 
 - A restart rebuilds the runner from the URL. So work outlives the verse that started it, and
   it *also* outlives the registration that named its runner. Removing a runner's registration cannot orphan
@@ -259,21 +278,24 @@ to leave the work or to end it. Neither choice hands the work on.
 
 ## What this does not do
 
-**No selection beyond a name.** There is no `match`, no `capability` and no
-`select: auto|ask|vote`. A drive that needs the gpu pool names the gpu pool.
+**No routing beyond fit and load.** There is no `match`, no `capability` and no
+`select: auto|ask|vote`. A drive that needs the gpu pool deploys a runner that offers what only
+the gpu pool should do, and spawns that.
 
 **No standing runners.** A condition that matches a subject may attach a resolver. It may not
 attach a runner. "All work about payments runs on the payments pool" is a reasonable thing to
 want, and it is a different feature.
 
-**No scheduling, no capacity, and no health that routes.** Verse hands a spawn to a runner,
-and the runner takes it or does not. There is no queue, no retry on a second runner, and no
-draining. The probes diagnose and never dispatch. Nothing consults a probe before a spawn, and
-verse does not skip or demote an unreachable runner. A runner that is down fails its spawns.
-That failure takes the path that every failed spawn takes.
+**No scheduling, no capacity, and no health that routes.** Verse hands a spawn to a runner, and
+the runner takes it or does not. There is no queue and no draining. The only second try is at
+the launch: a runner that fails the handshake is passed over for the next that takes the spawn.
+The probes diagnose and never dispatch, and nothing polls. A runner that is down fails the
+handshake of each spawn routed to it, and is tried again by the next; one that took a spawn and
+then failed it fails the task, which takes the path every failed task takes.
 
-**No authority for each runner.** Nothing decides which runners a charter may name. A charter
-that may name any runner may run its work anywhere that the deployment can reach.
+**No authority for each runner.** Nothing decides which runners a spawner's work may go to beyond
+what the runners offer. A person's permissions on runners govern installing, removing and
+seeing them, not where their work runs.
 
 **A runner's registration carries a URL and who it acts as, and nothing about what work may do
 there.** A grant ceiling, a tool allowlist, a label: verse can express each of these, and each
@@ -293,13 +315,13 @@ restart says so, and a registration kept from an older runner or verse is asked 
 offer holds the network, with the modes its sandbox builds under `builds`, or verse does not
 install the runner. A spawn says what its task may reach, in its `environment` (the
 repositories and what may leave each, the network, the other systems), and what it does unasked,
-in its `autonomy`, and verse checks the spawn against the offer of the runner it names where the
-spawn is written: a charter is refused at install, and `verse task run` at the prompt, naming
-an agent the runner does not offer, a setting it does not take, a system it does not hold, a
-block beyond its ceiling, a network it does not build, or a step its agent can't run without
-and the environment leaves out. The runner checks the launch again when it arrives, and
-refuses what it cannot honour. So a charter says where work runs, and the deployment says what
-running there permits. What comes back is an ordinary step, which the task's environment and
+in its `autonomy`, and verse checks the spawn against what the runners offer where the spawn is
+written: a charter is refused at install, and `verse task run` at the prompt, where no runner
+offers its agent, or every runner that does refuses a setting it does not take, a system it does
+not hold, a block beyond its ceiling, a network it does not build, or a step its agent can't run
+without and the environment leaves out. The runner checks the launch again when it arrives, and
+refuses what it cannot honour. So a charter says what its work needs, verse picks where it runs,
+and the deployment says what running there permits. What comes back is an ordinary step, which the task's environment and
 autonomy decide like any other, so nothing in the arrangement is private to the runner. The sample in [examples/runner](reference/examples/runner/main.go) is the one to
 copy for a runner of your own.
 
@@ -314,15 +336,16 @@ Two cases are open:
 - The contract does not say *how* a runner applies control. So verse assumes that anything it
   reaches over a URL applies control synchronously. Verse relies on a runner that queues
   control to refuse it.
-- `local` is the meaning of *absent*. It is not a name that a charter can write.
+- `local` names this verse's own runner on a task's record. It is not a registration.
 
 ## Why it is this way
 
-### Why selection is for each spawn
+### Why verse routes each spawn
 
 A runner that every spawn must go to is a whole second verse, with its own store, engine and
 data. The drive's work is then somewhere else entirely. That is the opposite of running
-the drive in the deployment it works on.
+the drive in the deployment it works on. So each spawn goes where its doer is offered, and a
+deployment says which doers run where by what each runner offers.
 
 ### Why the probe refuses only "not a runner"
 
@@ -335,9 +358,9 @@ install, not at the first spawn.
 
 A URL that nothing answers is the ordinary state of a runner that is deployed with the registration
 that names it. The manifest lands, the pod is pending, and the registration is already written. A
-refusal there would make deployment depend on order, for a fact that fixes itself. A spawn
-naming it waits on the same fact: refused, saying so, until the runner answers, and checked
-against what it says from then on.
+refusal there would make deployment depend on order, for a fact that fixes itself. Routing waits
+on the same fact: the runner is passed over, and named in a refusal, until it answers, and
+checked against what it says from then on.
 
 A URL that speaks HTTP and fails has said nothing about whether it serves the contract. It is
 a runner with a temporary fault at least as often as it is the wrong address.
@@ -345,16 +368,19 @@ a runner with a temporary fault at least as often as it is the wrong address.
 `-no-probe` exists because a check with no way past it is a trap. Verse is not the authority
 on what is at the end of a URL that an operator chose.
 
-### Why a spawn names a runner and not a URL
+### Why a spawn names no runner
 
-A URL on the spawn would spread the deployment through the charters. Every charter that wants
-the gpu pool would carry its address, and moving the pool would mean editing all of them.
+A URL on the spawn would spread the deployment through the charters: every charter that wants
+the gpu pool would carry its address, and moving the pool would mean editing all of them. A
+runner's name does the same, one step removed: a charter naming `verse.runners.gpu` carries the
+deployment's layout, and splitting the pool, or moving an agent from one runner to another, means
+editing every charter that spawns it. What a charter knows is what its work needs. Which runner
+has that is the deployment's to say, and it says it in what each runner offers.
 
-### Why an unknown runner is refused
+### Why a spawn no runner takes is refused
 
-A misspelled runner that ran the work in-process would be the same kind of bug as a
-misspelled resolver that left work unsupervised. The deployment says one thing, and verse does
-another.
+Work run where its doer is not offered would be the same kind of bug as a misspelled resolver
+that left work unsupervised. The spawn says one thing, and verse does another.
 
 ### Why a runner is not the agent
 
@@ -394,9 +420,8 @@ forever.
 to a place that exists. A rename is an add and a remove of the same physical runner. A cancel
 there destroys live work for a change of bookkeeping.
 
-So verse asks. The precedent is a spawn that names a runner that is not installed. Verse
-refuses it and does not pick a default, because the author is present and a guess has
-consequences. A removal with nothing running needs no flag, because there is nothing to be
+So verse asks. The precedent is a spawn that no runner takes. Verse refuses it and does not
+run it somewhere else, because the author is present and a guess has consequences. A removal with nothing running needs no flag, because there is nothing to be
 wrong about.
 
 ### Why `-cancel` reports what it could not reach
@@ -410,11 +435,13 @@ A refusal with no way to satisfy it would be a trap. The cost is that `verse ps`
 on a runner that `verse runner` does not list. That is the true state, and the alternatives
 are worse.
 
-### Why there is no selection beyond a name
+### Why routing is by fit and load only
 
-A runner's offers say what it holds, so "any runner that holds what this spawn asks for" can be
-computed when somebody wants it. Building that then, against a real need, will give a better
-answer than guessing the vocabulary now.
+A runner's offers say what it holds, so "a runner that holds what this spawn asks for" is
+computed from them, and nothing else is needed for it. Choosing among agents, by capability or
+cost, is a different construct, and building it against a real need will give a better answer
+than guessing the vocabulary now. The order among runners that fit, fewest tasks then name, is a
+first choice, not a design.
 
 ### Why there are no standing runners
 
@@ -423,19 +450,22 @@ would need a rule of layers to resolve them.
 
 ### Why no health routes a spawn
 
-A check before the spawn looks free, and it is not. **The spawn is the better probe.** It
-asks the only question that matters, and it gets an answer about *this work*, not about the
-runner in general.
+A check before the spawn looks free, and it is not. **The handshake is the better probe.** It
+asks the one runner the spawn is about to go to, right before it goes, and its answer is about
+*this launch*, not about the runner in general. A runner with no description is passed over
+rather than asked, since asking every such runner at every spawn would be the polling this
+avoids; describing it is the runner's hello, verse's probe at start, and `verse runner check`.
 
 ### Why authority over runners matters more than over resolvers
 
-Nothing decides which runners a charter may name, and the effect of a mistake is larger than
-for a resolver. A runner is a place where work executes. So naming a runner is closer to
-choosing where work executes than to choosing an answerer.
+A runner is a place where work executes, so registering one is closer to choosing where work
+executes than to choosing an answerer: the runner receives whatever work it offers to take, from
+every spawner. That is what a person's permissions on `verse.runners` govern: installing, removing
+and seeing runners. They do not govern where a spawner's work runs, which verse decides, in its
+own view of the registrations, from what each runner offers.
 
 The install probe adds a smaller part to the same question. Writing a runner's registration makes
-verse send a request to an address that the writer chose. Nothing has yet decided that the
-writer may name runners at all.
+verse send a request to an address that the writer chose.
 
 ### Why a runner's registration says nothing about what work may do
 

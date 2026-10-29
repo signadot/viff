@@ -710,7 +710,7 @@ A runner is a place where verse runs a task. Verse connects to it.
 
 | Runner | What it is |
 |---|---|
-| `local` | the verse process itself: what a spawn that names no runner gets |
+| `local` | the verse process itself, which verse routes to beside the installed runners unless `localRunner: false` |
 | an installed runner | another host, at a URL. It stands at `verse.runners.<name>`, which keeps what the runner offers: the agents and scripts it runs, as the runner described itself when it was installed or last checked. |
 
 See [Runners](runners.md).
@@ -740,7 +740,8 @@ See [Runners](runners.md).
 An agent is a registered program that works a prompt one turn at a time. `verse` is verse's
 own agent. A runner offers others by name, such as `claude` or `codex`, each with the settings it
 takes. A spawn names one, with its settings beside the name: `agent: {name: codex, model:
-gpt-5-codex}`. A prompt that names none is for the runner's default agent, the first it offers.
+gpt-5-codex}`. A prompt that names none is for verse's default agent, `verse` unless the config's
+`defaultAgent` says another, and verse routes it to a runner that offers it.
 
 See [Tasks](reference/tasks.md#the-doer).
 

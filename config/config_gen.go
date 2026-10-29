@@ -51,6 +51,16 @@ func (s *Config) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["systemCharter"] = ir.FromString(string(s.SystemCharter))
 	}
 
+	// Field: DefaultAgent
+	if s.DefaultAgent != "" {
+		irMap["defaultAgent"] = ir.FromString(string(s.DefaultAgent))
+	}
+
+	// Field: LocalRunner (optional)
+	if s.LocalRunner != nil {
+		irMap["localRunner"] = ir.FromBool(bool(*s.LocalRunner))
+	}
+
 	// Field: Format (optional)
 	if !isZeroValue_Config_Format(s.Format) {
 		node, err = s.Format.ToTonyIR(opts...)
@@ -177,6 +187,24 @@ func (s *Config) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "systemCharter", fieldNodeUnwrapped.Type)
 			}
 			s.SystemCharter = string(fieldNodeUnwrapped.String)
+		case "defaultAgent":
+			// Field: DefaultAgent
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "defaultAgent", fieldNodeUnwrapped.Type)
+			}
+			s.DefaultAgent = string(fieldNodeUnwrapped.String)
+		case "localRunner":
+			// Field: LocalRunner
+			if fieldNodeUnwrapped.Type == ir.NullType {
+				// null value - leave pointer as nil
+			} else {
+				val := new(bool)
+				if fieldNodeUnwrapped.Type != ir.BoolType {
+					return fmt.Errorf("%s: expected bool, got %v", "field \"localRunner\"", fieldNodeUnwrapped.Type)
+				}
+				*val = bool(fieldNodeUnwrapped.Bool)
+				s.LocalRunner = val
+			}
 		case "format":
 			// Field: Format
 			if err := s.Format.FromTonyIR(fieldNode, opts...); err != nil {

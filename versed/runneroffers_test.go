@@ -1,6 +1,8 @@
 package versed
 
 import (
+	"cmp"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -8,7 +10,6 @@ import (
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/systems"
@@ -117,11 +118,11 @@ func TestARunnerIsInstalledWithWhatItOffers(t *testing.T) {
 	}
 }
 
-// A SPAWN IS CHECKED AGAINST WHAT ITS RUNNER OFFERS, where it is written: a hand run at the
-// prompt, a charter at its install. What the offer takes goes; what it does not is refused
-// naming the runner, before a task record is written. The default runner's offers are the
-// embedded runner's.
-func TestASpawnIsCheckedAgainstWhatItsRunnerOffers(t *testing.T) {
+// A SPAWN GOES WHERE ITS DOER IS OFFERED, and is checked against that offer where it is written:
+// a hand run at the prompt, a charter at its install. What some runner takes goes there; what none
+// offers, or none takes, is refused saying so, before a task record is written. This verse's own
+// runner is one of the runners, with its own offers.
+func TestASpawnGoesWhereItsDoerIsOffered(t *testing.T) {
 	srv := testServer(t)
 	srv.Embedded.Describe(offering()) // scripts only, as a keyless `verse up` offers
 	ts := httptest.NewServer(srv.Handler())
@@ -133,12 +134,13 @@ func TestASpawnIsCheckedAgainstWhatItsRunnerOffers(t *testing.T) {
 		what  string
 		spawn map[string]any
 		want  string // "" is accepted
+		on    string // where an accepted spawn runs: the registration, "" for this verse's own runner
 	}{
-		{"an agent the runner offers", map[string]any{"spawn": map[string]any{"agent": map[string]any{"name": "codex"}, "prompt": "go", "runner": "verse.runners.code"}}, ""},
-		{"an agent it does not", map[string]any{"spawn": map[string]any{"agent": map[string]any{"name": "claude"}, "prompt": "go", "runner": "verse.runners.code"}}, "verse.runners.code: "},
-		{"a model the offer does not take", map[string]any{"spawn": map[string]any{"agent": map[string]any{"name": "codex", "model": "huge"}, "prompt": "go", "runner": "verse.runners.code"}}, `takes no such model: "huge" is none of small, large`},
-		{"an agent of the default runner", map[string]any{"spawn": map[string]any{"agent": map[string]any{"name": "verse"}, "prompt": "go"}}, "the default runner: "},
-		{"a script on the default runner", map[string]any{"spawn": map[string]any{"script": "true"}}, ""},
+		{"an agent a runner offers", map[string]any{"spawn": map[string]any{"agent": map[string]any{"name": "codex"}, "prompt": "go"}}, "", "verse.runners.code"},
+		{"an agent none offers", map[string]any{"spawn": map[string]any{"agent": map[string]any{"name": "claude"}, "prompt": "go"}}, "no runner offers the agent claude", ""},
+		{"a model the offer does not take", map[string]any{"spawn": map[string]any{"agent": map[string]any{"name": "codex", "model": "huge"}, "prompt": "go"}}, `no runner takes this spawn: verse.runners.code: agent.model: codex on this runner takes no such model`, ""},
+		{"the default agent, which none offers", map[string]any{"spawn": map[string]any{"prompt": "go"}}, "no runner offers the agent verse", ""},
+		{"a script", map[string]any{"spawn": map[string]any{"script": "true"}}, "", ""},
 	} {
 		t.Run(c.what, func(t *testing.T) {
 			c.spawn["id"] = "run-" + strings.ReplaceAll(c.what, " ", "-")
@@ -154,6 +156,10 @@ func TestASpawnIsCheckedAgainstWhatItsRunnerOffers(t *testing.T) {
 				if _, ok, _ := srv.Store.Get(entity.VerseRef("task", "instance", c.spawn["id"].(string))); ok {
 					t.Fatal("a refused spawn left a task record")
 				}
+				return
+			}
+			if got := instanceOf(t, srv, c.spawn["id"].(string))["runnerName"]; fmt.Sprint(cmp.Or(got, any(""))) != c.on {
+				t.Fatalf("the task's record says runnerName %v, want %q", got, c.on)
 			}
 		})
 	}
@@ -161,14 +167,13 @@ func TestASpawnIsCheckedAgainstWhatItsRunnerOffers(t *testing.T) {
 	// A charter's spawn, at install.
 	rule := func(agent string) string {
 		return `[{name: r, condition: {subject: {path: "x.*", value: {go: true}}},
-		  action: {patch: {go: false}, spawn: {agent: {name: ` + agent + `}, prompt: go, runner: verse.runners.code}}}]`
+		  action: {patch: {go: false}, spawn: {agent: {name: ` + agent + `}, prompt: go}}}]`
 	}
 	if resp := installAs(t, "user:"+tester, ts.URL, rule("claude")); resp.StatusCode != http.StatusBadRequest ||
-		!strings.Contains(readBody(t, resp), "verse.runners.code") {
-		t.Fatalf("a charter naming an agent its runner does not offer installed: %s", resp.Status)
+		!strings.Contains(readBody(t, resp), "no runner offers the agent claude") {
+		t.Fatalf("a charter naming an agent no runner offers installed: %s", resp.Status)
 	}
 	if resp := installAs(t, "user:"+tester, ts.URL, rule("codex")); resp.StatusCode != http.StatusCreated {
-		t.Fatalf("a charter naming an agent its runner offers = %s: %s", resp.Status, readBody(t, resp))
+		t.Fatalf("a charter naming an agent a runner offers = %s: %s", resp.Status, readBody(t, resp))
 	}
-	_ = entitytest.Store
 }

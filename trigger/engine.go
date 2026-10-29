@@ -97,7 +97,7 @@ type Engine struct {
 	// moveDeadline moves a standing question's deadline (SetDeadlineMover); nil leaves a date a
 	// question reads from its subject fixed at the instant it was posed with.
 	moveDeadline func(scope, id string, at time.Time) error
-	offerCheck   func(runnerName string, l runner.Launch) error // optional: what the spawn's runner offers
+	offerCheck   func(l runner.Launch) error // optional: whether some runner offers what the spawn asks
 	triggers     []Trigger
 	// logger carries both the running dispatch commentary (Debug) and anything an
 	// operator has to act on (Warn). One channel with levels, rather than a verbose
@@ -271,10 +271,10 @@ func (e *Engine) SetSpawner(s Spawner) { e.spawn = s }
 // the record is. A gate reading its date from the subject calls it when the date is edited.
 func (e *Engine) SetDeadlineMover(m func(scope, id string, at time.Time) error) { e.moveDeadline = m }
 
-// SetOfferCheck sets what an install checks a spawn against: what the runner the spawn names
-// (""/the default) offers, as the runner described itself. The launch is the spawn as written,
-// with its templated values standing in. Optional: with none set, the runner says at the launch.
-func (e *Engine) SetOfferCheck(f func(runnerName string, l runner.Launch) error) { e.offerCheck = f }
+// SetOfferCheck sets what an install checks a spawn against: whether some runner offers its doer
+// and holds its environment, as the runners described themselves. The launch is the spawn as
+// written, with its templated values standing in. Optional: with none set, the firing says.
+func (e *Engine) SetOfferCheck(f func(l runner.Launch) error) { e.offerCheck = f }
 
 // SetScope names the scope this engine acts in — a named scope, or "" for
 // baseline. Set before anything is installed, because it is stamped on what this engine

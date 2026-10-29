@@ -88,12 +88,16 @@ func TestSinceMeansTheSameOnEveryRunner(t *testing.T) {
 	})
 
 	t.Run("remote", func(t *testing.T) {
-		remote := httptest.NewServer(runnerd.NewInProcessHandler(drive).HTTPHandler())
-		defer remote.Close()
-		srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
-		srv.SetRunner(client.HTTP(remote.URL))
+		srv := testServer(t)
+		srv.NoLocalRunner = true // so the spawn goes to the registered runner
 		ts := httptest.NewServer(srv.Handler())
 		defer ts.Close()
+		d := runnerd.NewInProcessHandler(drive)
+		d.Describe(runner.Description{Version: runner.DescriptionVersion, Offers: []runner.Offer{{Script: true, Systems: map[string]runner.System{"network": builds(runner.NetworkOpen)}}}})
+		face := provenFace(t, ts.URL, d.HTTPHandler(), func() {})
+		if resp := postTony(t, ts.URL+"/runners", face.reg("remote")); resp.StatusCode != http.StatusCreated {
+			t.Fatalf("registering the runner = %s: %s", resp.Status, readBody(t, resp))
+		}
 		spawn := postTony(t, ts.URL+"/tasks", map[string]any{"id": "p", "spawn": map[string]any{"script": "work", "environment": openEnv}})
 		spawn.Body.Close()
 		assertSince(t, ts.URL+"/tasks/p/events")
@@ -224,7 +228,8 @@ func TestBelowTheWatermarkResyncs(t *testing.T) {
 		pol.Launch(runner.Launch{ID: "p", Script: "true", Environment: openNet})
 
 		srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
-		srv.SetRunner(pol)
+		// The task's record says where it runs, as a launch through verse would have left it.
+		entitytest.Set(t, srv.Store, mirror.Ref("p"), entity.Obj{"status": "running", "runner": remote.URL}.Payload())
 		ts := httptest.NewServer(srv.Handler())
 		defer ts.Close()
 		assertGap(t, ts.URL+"/tasks/p/events")

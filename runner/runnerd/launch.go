@@ -231,9 +231,8 @@ func unsupported(what string) error {
 	return fmt.Errorf("this runner doesn't support %s yet", what)
 }
 
-// offerFor is the offer a doer runs under.
-// doerName is who does a launch's work, as a task's record says it: the agent's name, the
-// runner's default agent's for a prompt that names none, or "script".
+// doerName is who does a launch's work, as a task's record says it: the agent's name, or
+// "script".
 func doerName(l *runner.Launch, desc runner.Description) string {
 	if o, err := offerFor(l.Who(), desc); err == nil {
 		return o.Name()
@@ -241,14 +240,18 @@ func doerName(l *runner.Launch, desc runner.Description) string {
 	return cmp.Or(l.Who(), "agent")
 }
 
+// offerFor is the offer a doer runs under. A launch names its doer: verse binds its default agent
+// to a prompt that names none before it launches, so a runner keeps no default of its own.
 func offerFor(who string, desc runner.Description) (runner.Offer, error) {
+	if who == "" {
+		return runner.Offer{}, errors.New("agent: a prompt's launch names its agent (verse binds its default agent before the launch)")
+	}
 	var agents []string
 	for _, o := range desc.Offers {
 		switch {
 		case who == "script" && o.Script:
 			return o, nil
-		case who != "script" && o.Agent != nil && (who == "" || o.Agent.Name == who):
-			// No agent named is the runner's default: its first agent offer.
+		case who != "script" && o.Agent != nil && o.Agent.Name == who:
 			return o, nil
 		case o.Agent != nil:
 			agents = append(agents, o.Agent.Name)
@@ -256,9 +259,6 @@ func offerFor(who string, desc runner.Description) (runner.Offer, error) {
 	}
 	if who == "script" {
 		return runner.Offer{}, fmt.Errorf("this runner doesn't run scripts")
-	}
-	if who == "" {
-		return runner.Offer{}, errors.New("this runner offers no agent for a prompt")
 	}
 	slices.Sort(agents)
 	return runner.Offer{}, fmt.Errorf("this runner offers no agent %q (it offers: %s)", who,

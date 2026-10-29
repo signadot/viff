@@ -164,7 +164,7 @@ func TestARemoteConversationsTurnIsItsLaunchers(t *testing.T) {
 	})
 
 	postTony(t, ts.URL+"/runners", map[string]any{"name": "face", "url": face.URL, "subject": face.Subject}).Body.Close()
-	resp := postTony(t, ts.URL+"/tasks", map[string]any{"name": "talk", "converse": true, "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "turn", "runner": "verse.runners.face"}})
+	resp := postTony(t, ts.URL+"/tasks", map[string]any{"name": "talk", "converse": true, "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "turn"}})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("spawn = %s: %s", resp.Status, bodyOf(t, resp))
 	}

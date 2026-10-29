@@ -211,7 +211,6 @@ rules:
     patch:
       decided: landing
     spawn:
-      runner: verse.runners.verse-runner
       # `main` is the consequential branch: a merge task's work IS the merge, so there is nothing
       # to propose separately. A push to it is a fast-forward or nothing — the autonomy refuses a
       # push that says `force` or `delete` — so what stops it being merely a prompt is
@@ -296,7 +295,6 @@ rules:
     patch:
       state: stale
     spawn:
-      runner: verse.runners.verse-runner
       # DELETING is its own row and says so: only a push that removes a branch of this pattern
       # is allowed. A sweep learns stale branch names by asking the remote and cannot be handed
       # them by this file; the task picks inside this pattern and any other push is refused

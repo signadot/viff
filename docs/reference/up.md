@@ -117,10 +117,11 @@ The **server** reads the credentials. So set them before `up`, and not in the en
 the client. `verse status` shows an `llm` block with `available` and a masked key.
 
 Each spawn says who does its work: a `script`, or a `prompt` for an [agent](../glossary.md#agent),
-the one its `agent` names or else the runner's default, which on `verse up` is the `verse` agent.
-Verse checks a spawn against what the runner offers where it is written: with no credentials
-configured, a charter whose prompt is for the `verse` agent is refused at its install, and
-`task run` at the prompt, each saying the runner offers no agent for it. The engine keeps
+the one its `agent` names or else verse's default agent (`defaultAgent`, the `verse` agent unless
+the config says another). Verse checks a spawn against what the runners offer where it is
+written: with no credentials configured, and no runner registered that offers the `verse` agent,
+a charter whose prompt is for it is refused at its install, and `task run` at the prompt, each
+saying no runner offers it. The engine keeps
 running. `verse up`'s runner builds only the host's network, so a spawn it runs says
 `network: {mode: open}`. What decides each step is in [tasks.md](tasks.md#the-dial).
 
@@ -133,22 +134,19 @@ a file that an agent writes is *not* in your working directory.
 
 ## Where tasks run
 
-By default, the local supervisor in the verse process runs tasks.
+A spawn names its doer, and verse routes it to a [runner](../glossary.md#runner) that offers the
+doer and holds what the spawn asks: this verse's own runner, which runs tasks in the verse
+process and offers what `verse up` configures it with, or a runner registered with it
+([where a spawn runs](../runners.md#where-a-spawn-runs)). Verse refuses a spawn no runner takes,
+saying why, rather than run it somewhere else.
 
 ```sh
-verse up -runner http://other-verse:9797      # send unnamed work to a remote verse
+verse up --local-runner=false     # this verse hosts nothing: every spawn goes to a registered runner
 ```
 
-`-runner` sets the **default**: where a spawn that names no [runner](../glossary.md#runner)
-runs.
-
-| a spawn names | where it runs |
-|---|---|
-| nothing | this verse's own runtime, or `-runner` if one is set |
-| an installed runner | wherever that runner's url says ([runners.md](runners.md)) |
-
-Verse refuses a spawn that names a runner that is not installed, by name, rather than run it
-somewhere else.
+`--local-runner=false`, or `localRunner: false` in the config, is a central verse's: its own
+runner offers nothing. A prompt that names no agent is for `defaultAgent`, `verse` unless the
+config says another.
 
 A registered runner takes this verse's calls by the tokens it signs as an issuer
 (`auth.issuer`, below), each minted for that runner alone
@@ -399,6 +397,8 @@ Every key, and the variable that sets it:
 | `agent` | `VERSE_AGENT` | every command | the operator agent the CLI acts as, in place of `user` |
 | `format: {default, output, wire}` | `VERSE_FORMAT`, `VERSE_OUTPUT_FORMAT`, `VERSE_WIRE_FORMAT` | every command | the format to write in: `tony` or `yaml` ([representation](representation.md)) |
 | `systemCharter` | `VERSE_SYSTEM_CHARTER` | `verse up` | a charter file installed at start as the system |
+| `defaultAgent` | `VERSE_DEFAULT_AGENT` | `verse up` | the agent a spawn's prompt is for where it names none, bound at the spawn. `verse` by default |
+| `localRunner` | `VERSE_LOCAL_RUNNER` | `verse up` | whether this verse's own runner hosts work, beside the runners registered with it; `--local-runner` overrides it. `true` by default |
 | `repoCharters: [{repo, github, branch, at, tree, answerers}]` | | `verse up` | the repo-charters reconciler, installed as the system for each repository named |
 | `auth: {principal: {mode, providers}}` | | `verse up`, `verse account login` | the identity providers whose tokens say who a request is from |
 | `auth: {iod: {issuer, audience, accounts, static}}` | | `verse up` | the issuer of the iods' workload tokens, and which iod each is |

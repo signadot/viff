@@ -19,7 +19,6 @@ answer: the post happens when dana says yes, after the task has ended.
 ```tony
 spawn:
   agent: {name: verse}
-  runner: verse.runners.build
   environment:
     systems:
       verse: {ask-create: {}, ask-get: {}}
@@ -49,7 +48,7 @@ spawn:
 The ask is the person's, not the task's. Its `from` names them, with the task beside them, and
 nothing waits on it. Its `then` and `else` run as that person when it settles. A spawn in either
 is held within the task when the ask is raised: an environment no wider than the task's, less
-`verse.charter-install`, an autonomy no looser, the task's runner and the task's credential where it spends one. An answer in either is refused,
+`verse.charter-install`, an autonomy no looser, and the task's credential where it spends one, and it runs on the task's runner. An answer in either is refused,
 since it would be the person's, on any ask that waits on them, another task's gate among them. A task that needs the answer to
 go on uses `question-ask`. One that looks again later reads the ask back with `verse-ask-get`,
 which says whether it was answered.
@@ -62,7 +61,7 @@ A task reads the charters with `verse-charter-get`, asks whether its own would i
 `verse-charter-check`, and installs and removes them with `verse-charter-install` and
 `-remove`, all as the person. A charter the task installs stands after the task ends, and every
 spawn among its rules is held within the task: an environment no wider than the task's, less
-`verse.charter-install`, an autonomy no looser, the task's credential where it spends one, and any runner. The
+`verse.charter-install`, an autonomy no looser, and the task's credential where it spends one, on whichever runner verse routes it to. The
 install refuses a spawn beyond the task, and each firing is held to the task's environment again,
 bound ([a charter a task installs](../reference/charter.md)). So neither what a task installs nor
 what follows its asks can install charters. The hold is on spawns: a rule's `patch` and `derive`,
@@ -85,13 +84,12 @@ environment:
 verse-call-tool verse-ask-create -question "Post these release notes for v1.3 in #deploys?" \
   -to user:dana@example.com -due 48h \
   -then '{spawn: {script: "verse-call-tool slack-post -channel deploys -text \"v1.3: …\"",
-    runner: verse.runners.build, autonomy: [{then: allow}],
-    environment: {systems: {slack: {post: {channel: deploys}}}}}}'
+    autonomy: [{then: allow}], environment: {systems: {slack: {post: {channel: deploys}}}}}}'
 ```
 
 The `then` above runs on the task's runner, with an environment that gives no more of Slack than
-the task's, and an autonomy no looser. A `then` naming another runner, or a channel the task's
-environment does not give, is refused when the ask is raised. So what follows the ask can do no
+the task's, and an autonomy no looser. A `then` whose doer the task's runner does not offer, or
+naming a channel the task's environment does not give, is refused when the ask is raised. So what follows the ask can do no
 more than the task could have done itself: the ask lets the task end now and leave the post to
 dana's answer, which may come days later.
 
@@ -107,7 +105,7 @@ rules:
   condition: {subject: {path: "github.acme.app.run.*", value: {branch: main, conclusion: failure}}}
   action:
     spawn: {script: "verse-call-tool slack-post -channel deploys -text \"main failed after v1.3: $RUN\"",
-      runner: verse.runners.build, autonomy: [{then: allow}],
+      autonomy: [{then: allow}],
       environment: {vars: {RUN: $subject}, systems: {slack: {post: {channel: deploys}}}}}'
 ```
 

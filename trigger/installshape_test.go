@@ -87,7 +87,7 @@ func TestARowOnABoundRepoInstalls(t *testing.T) {
 func TestWhatTheFiringBindsIsStoodInForAtInstall(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
 	var checked []runner.Launch
-	eng.SetOfferCheck(func(_ string, l runner.Launch) error {
+	eng.SetOfferCheck(func(l runner.Launch) error {
 		checked = append(checked, l)
 		if l.Who() != "verse" {
 			return errors.New("offers no such agent")
@@ -166,7 +166,7 @@ func TestASpawnsEnvironmentIsHeldToTheCeilingAtInstall(t *testing.T) {
 	} {
 		t.Run(c.what, func(t *testing.T) {
 			eng := New(entitytest.Store(t), task.AutoResolver{})
-			eng.SetOfferCheck(func(_ string, l runner.Launch) error { return runnerd.CheckOfferAsWritten(&l, desc) })
+			eng.SetOfferCheck(func(l runner.Launch) error { return runnerd.CheckOfferAsWritten(&l, desc) })
 			err := eng.AddTrigger(mustParseCharter(t, `
 - name: r
   condition: {subject: {path: "demo.pr.*", value: {stage: open}}}

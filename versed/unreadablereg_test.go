@@ -68,10 +68,11 @@ func TestARegistrationThisVerseCantReadIsListedAndRemoved(t *testing.T) {
 // A REGISTRATION NAMING NO SUBJECT is one an older verse wrote, and it decodes: `subject` may be
 // absent. Read as it decodes, it listed as an ordinary runner, took a token minted for nobody at
 // the door, and failed each spawn at the handshake pointing at a check that could never fix it.
-// It is a registration this verse can't read: listed so, no runner at the door, and each surface
-// that names it says to add it again.
+// It is a registration this verse can't read: listed so, no runner at the door or to a spawn, and
+// each surface that names it, a spawn passing it over among them, says to add it again.
 func TestARegistrationNamingNoSubjectIsUnreadable(t *testing.T) {
 	srv := testServer(t)
+	srv.NoLocalRunner = true
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	face, _ := offeringFace(t, ts.URL)
@@ -105,7 +106,7 @@ func TestARegistrationNamingNoSubjectIsUnreadable(t *testing.T) {
 	}{
 		{"show", getAs(t, "user:"+tester, ts.URL+"/runners/old"), http.StatusInternalServerError},
 		{"check", getAs(t, "user:"+tester, ts.URL+"/runners/old/check"), http.StatusConflict},
-		{"spawn", postTony(t, ts.URL+"/tasks", map[string]any{"id": "on-old", "spawn": map[string]any{"script": "true", "runner": "old"}}), http.StatusBadRequest},
+		{"spawn", postTony(t, ts.URL+"/tasks", map[string]any{"id": "on-old", "spawn": map[string]any{"script": "true"}}), http.StatusBadRequest},
 	} {
 		if body := readBody(t, c.resp); c.resp.StatusCode != c.code || !strings.Contains(body, readd) {
 			t.Errorf("%s = %s: %s, want %d saying to add it again", c.what, c.resp.Status, body, c.code)

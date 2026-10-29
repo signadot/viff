@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/mirror"
 )
 
 // alicesRunner installs a runner that is alice's alone, in a verse that holds nothing out.
@@ -61,30 +60,6 @@ func TestARunnerOutsideTheAskersViewIsOneAnswer(t *testing.T) {
 	}
 }
 
-// A spawn naming a runner its spawner may not read is refused in the spawner's view, and the
-// runners named beside the refusal are the ones they may read.
-func TestASpawnNamingARunnerOutsideTheSpawnersViewSaysWhoseViewItIs(t *testing.T) {
-	srv := testServer(t)
-	alicesRunner(t, srv, "gpu")
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-
-	resp := postAsTony(t, "bob@example.com", ts.URL+"/tasks", map[string]any{"id": "bobs", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t", "runner": "verse.runners.gpu"}})
-	msg := readBody(t, resp)
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("bob's spawn onto alice's runner = %s, want 400: %s", resp.Status, msg)
-	}
-	if !strings.Contains(msg, "in the view of user:bob@example.com") {
-		t.Errorf("refusal = %q, want it to say whose view it is", msg)
-	}
-	if strings.Contains(msg, "alice") {
-		t.Errorf("refusal = %q, which says the runner is somebody's", msg)
-	}
-	if _, ok, _ := srv.Store.Get(mirror.Ref("bobs")); ok {
-		t.Fatal("the refused spawn was mirrored")
-	}
-}
-
 // A read that did not happen is not a runner that is not installed: it is the store's error, on
 // the lookup and on the spawn alike, and neither says "installed".
 func TestARunnerReadThatFailedIsNotARunnerNotInstalled(t *testing.T) {
@@ -107,7 +82,7 @@ func TestARunnerReadThatFailedIsNotARunnerNotInstalled(t *testing.T) {
 		}
 	}
 
-	resp := postTony(t, ts.URL+"/tasks", map[string]any{"id": "waits", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t", "runner": "verse.runners.gpu"}})
+	resp := postTony(t, ts.URL+"/tasks", map[string]any{"id": "waits", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t"}})
 	msg := readBody(t, resp)
 	if !strings.Contains(msg, "could not be read") || !strings.Contains(msg, "context deadline exceeded") {
 		t.Errorf("spawn with the store unreadable = %s %q, want the read's failure", resp.Status, msg)

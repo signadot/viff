@@ -43,17 +43,17 @@ func TestAnAttachedScriptRuns(t *testing.T) {
 	}
 }
 
-// A PROMPT IS FOR THE RUNNER'S DEFAULT AGENT when the run names none, and a runner that offers
-// no agent says so; one named that it does not offer is refused by name.
-func TestAPromptIsForTheRunnersDefaultAgent(t *testing.T) {
+// A PROMPT IS FOR VERSE'S DEFAULT AGENT when the run names none, and where no runner offers it
+// the refusal names it, as it names an agent the run names.
+func TestAPromptIsForVersesDefaultAgent(t *testing.T) {
 	serveKeyless(t)
 	_, err := runCLI(t, "task", "run", "-f", spawnFile(t, `{prompt: "fix the typo", environment: {systems: {network: {mode: open}}}}`), "--as", "user:t")
-	if err == nil || !strings.Contains(err.Error(), "offers no agent for a prompt") {
-		t.Fatalf("a prompt on a keyless verse: %v, want it refused for want of an agent", err)
+	if err == nil || !strings.Contains(err.Error(), "no runner offers the agent verse") {
+		t.Fatalf("a prompt on a keyless verse: %v, want it refused naming the default agent", err)
 	}
-	_, err = runCLI(t, "task", "run", "-f", spawnFile(t, `{prompt: "fix the typo", agent: {name: verse}, environment: {systems: {network: {mode: open}}}}`), "--as", "user:t")
-	if err == nil || !strings.Contains(err.Error(), `agent "verse"`) {
-		t.Fatalf("an agent verse on a keyless verse: %v, want it refused naming the verse agent", err)
+	_, err = runCLI(t, "task", "run", "-f", spawnFile(t, `{prompt: "fix the typo", agent: {name: codex}, environment: {systems: {network: {mode: open}}}}`), "--as", "user:t")
+	if err == nil || !strings.Contains(err.Error(), "no runner offers the agent codex") {
+		t.Fatalf("an agent codex on a keyless verse: %v, want it refused naming it", err)
 	}
 }
 

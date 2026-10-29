@@ -145,7 +145,6 @@ func TestALaunchItOffersRuns(t *testing.T) {
 	for _, body := range []string{
 		`{id: a1, agent: {name: verse, model: m, annotations: {verse.portkey/virtual-key: k}}, environment: {vars: {BRANCH: main}}, prompt: go, autonomy: [{then: allow}], converse: true}`,
 		`{id: s1, script: "echo hi"}`,
-		`{id: a0, prompt: go}`, // the runner's default agent
 		`{id: a2, agent: {name: verse}, prompt: go, environment: {systems: {files: {write: {}}, commands: {run: {}}, agent: {call-sub-agent: {}}}}, autonomy: [{name: m, match: {system: files, verb: write, path: "db/**"}, then: ask}, {name: c, match: {system: commands, verb: run, command: "git push*"}, then: deny}, {name: d, match: {system: agent, verb: call-sub-agent}, then: ask}, {then: allow}]}`,
 	} {
 		if code, msg := postLaunch(t, srv.URL, body); code != http.StatusCreated {
@@ -170,6 +169,7 @@ func TestALaunchItCannotHonourIsRefused(t *testing.T) {
 		{`{id: x, person: "user:ana@example.com", prompt: go}`, "no runner takes a person yet"},
 		{`{id: x, agent: {name: verse}}`, "prompt"},
 		{`{id: x, agent: {name: claude}, prompt: go}`, "no agent \"claude\""},
+		{`{id: x, prompt: go}`, "names its agent"}, // verse binds its default agent; a runner keeps none
 		{`{id: x, agent: {name: verse, effort: high}, prompt: go}`, "effort"},
 		{`{id: x, agent: {name: verse, annotations: {other: v}}, prompt: go}`, "other"},
 		{`{id: x, script: "echo", converse: true}`, "conversation"},

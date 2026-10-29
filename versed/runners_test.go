@@ -475,11 +475,13 @@ func waitForStatus(t *testing.T, ch <-chan task.Event, want task.Status) {
 	}
 }
 
-// Two tasks in one verse, running in two places. This is the whole feature: what a drive
-// could not do before was use its own runner for SOME of the work — a second runner meant a
-// second verse, and then everything went there.
-func TestSpawnNamesItsRunner(t *testing.T) {
+// Two tasks in one verse, running in two places. What a drive could not do before was use its
+// own runner for SOME of the work — a second runner meant a second verse, and then everything
+// went there. An agent only gpu offers goes to gpu; a script, which both offer, goes to the one
+// carrying less, this verse's own.
+func TestTwoTasksRunInTwoPlaces(t *testing.T) {
 	srv := testServer(t)
+	srv.Embedded.Describe(offering()) // scripts, building no network
 	ts := httptest.NewServer(srv.Handler())
 	face := runnerFace(t, ts.URL)
 	defer ts.Close()
@@ -488,24 +490,22 @@ func TestSpawnNamesItsRunner(t *testing.T) {
 		"name": "gpu", "url": face.URL, "subject": face.Subject,
 	}).Body.Close()
 
-	// One naming the runner, one naming none.
-	named := spawnOK(t, ts, map[string]any{"id": "on-gpu", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t", "runner": "verse.runners.gpu"}})
-	deflt := spawnOK(t, ts, map[string]any{"id": "on-default", "spawn": map[string]any{"script": "true", "environment": openEnv}})
+	named := spawnOK(t, ts, map[string]any{"id": "on-gpu", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t"}})
+	deflt := spawnOK(t, ts, map[string]any{"id": "on-default", "spawn": map[string]any{"script": "true"}})
 
-	// It really went there: the runner face has it, and the default one does not.
+	// It really went there: the runner face has it, and this verse's own runner does not.
 	remote := client.HTTP(face.Bare).(task.Lister)
 	if _, err := remote.TaskSnapshot(named); err != nil {
-		t.Fatalf("the spawn naming runners.gpu did not reach it: %v", err)
+		t.Fatalf("the agent only gpu offers did not reach it: %v", err)
 	}
 	if _, err := remote.TaskSnapshot(deflt); err == nil {
-		t.Fatal("the spawn naming NO runner went to the named one — the default is what an " +
-			"absent runner means")
+		t.Fatal("the script went to gpu, which carries a task, over this verse's own runner, which carries none")
 	}
 	if _, ok := srv.Embedded.SnapshotOf(deflt); !ok {
-		t.Fatal("the spawn naming no runner did not go to the verse's default runner")
+		t.Fatal("the script did not go to this verse's own runner")
 	}
 	if _, ok := srv.Embedded.SnapshotOf(named); ok {
-		t.Fatal("the spawn naming a runner ALSO ran in-process")
+		t.Fatal("the spawn for gpu's agent ALSO ran in-process")
 	}
 
 	// And each task records where it went, by url and by the name that was written.
@@ -514,51 +514,49 @@ func TestSpawnNamesItsRunner(t *testing.T) {
 		t.Fatalf("runner = %v, want the resolved url — it is what a restart can act on", rec["runner"])
 	}
 	if rec["runnerName"] != "verse.runners.gpu" {
-		t.Fatalf("runnerName = %v, want the name the spawn wrote", rec["runnerName"])
+		t.Fatalf("runnerName = %v, want the registration it went to", rec["runnerName"])
 	}
 	if got := instanceOf(t, srv, deflt)["runnerName"]; got != nil {
-		t.Fatalf("runnerName = %v on a spawn that named none, want absent", got)
+		t.Fatalf("runnerName = %v on a task this verse's own runner hosts, want absent", got)
 	}
 }
 
-// A spawn naming a runner that is not installed is REFUSED, on both spawn paths. A misspelled
-// runner that quietly ran the work in-process would be the same class of bug as a misspelled
-// resolver that quietly left it unsupervised: the deployment says one thing and the verse does
-// another.
-func TestSpawnNamingAnUninstalledRunnerIsRefused(t *testing.T) {
+// A SPAWN NO RUNNER TAKES IS REFUSED, on both spawn paths, rather than run somewhere that does not
+// offer what it asks. And a spawn that names a runner is refused for that: where it runs is
+// verse's to say.
+func TestASpawnNoRunnerTakesIsRefused(t *testing.T) {
 	srv := testServer(t)
+	srv.NoLocalRunner = true // and nothing is registered
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
 	// The ad-hoc path.
-	resp := postTony(t, ts.URL+"/tasks", map[string]any{"id": "nope", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t", "runner": "verse.runners.typo"}})
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("spawn naming an uninstalled runner = %s, want 400", resp.Status)
-	}
-	if msg := readBody(t, resp); !strings.Contains(msg, "verse.runners.typo") {
-		t.Fatalf("refusal = %q, want it to name the runner that is not installed", msg)
+	resp := postTony(t, ts.URL+"/tasks", map[string]any{"id": "nope", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t"}})
+	if msg := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(msg, "no runner offers the agent fake") {
+		t.Fatalf("a spawn no runner takes = %s %q, want 400 saying no runner offers its agent", resp.Status, msg)
 	}
 	if _, ok := srv.Embedded.SnapshotOf("nope"); ok {
-		t.Fatal("the refused spawn ran on the default runner anyway")
+		t.Fatal("the refused spawn ran on this verse's own runner anyway")
 	}
 	if _, ok, _ := srv.Store.Get(mirror.Ref("nope")); ok {
 		t.Fatal("the refused spawn was mirrored — nothing was started, so there is nothing to mirror")
 	}
+	resp = postTony(t, ts.URL+"/tasks", map[string]any{"id": "named", "spawn": map[string]any{"script": "t", "runner": "verse.runners.gpu"}})
+	if msg := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(msg, `unknown field "runner"`) {
+		t.Fatalf("a spawn naming a runner = %s %q, want 400 refusing the field", resp.Status, msg)
+	}
 
 	// The charter path, where the refusal has to travel as a failed spawn rather than as an
 	// HTTP status, because there is nobody to answer.
-	h := srv.spawnerFor(srv.Store, "", srv.Eng)("fired", launch.Spec{
-		Script: "t", Runner: "verse.runners.typo",
-	})
+	h := srv.spawnerFor(srv.Store, "", srv.Eng)("fired", launch.Spec{Script: "t"})
 	if h == nil {
 		t.Fatal("a refused charter spawn returned no handle at all")
 	}
-	if e := h.Err(); !strings.Contains(e, "verse.runners.typo") {
-		t.Fatalf("failure = %q, want the runner named in it", e)
+	if e := h.Err(); !strings.Contains(e, "no runner offers scripts") {
+		t.Fatalf("failure = %q, want it to say no runner offers scripts", e)
 	}
 	if _, ok := srv.Embedded.SnapshotOf("fired"); ok {
-		t.Fatal("a charter spawn naming an uninstalled runner ran on the default instead")
+		t.Fatal("a charter spawn no runner takes ran on this verse's own runner instead")
 	}
 }
 
@@ -604,7 +602,7 @@ func TestRestartReattachesEvenAfterTheRunnerIsRemoved(t *testing.T) {
 	postTony(t, ts.URL+"/runners", map[string]any{
 		"name": "gpu", "url": face.URL, "subject": face.Subject,
 	}).Body.Close()
-	id := spawnOK(t, ts, map[string]any{"id": "survivor", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "long work", "runner": "verse.runners.gpu"}})
+	id := spawnOK(t, ts, map[string]any{"id": "survivor", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "long work"}})
 	ts.Close()
 
 	// The drive tears the runner down: the ENTITY goes, the work does not. This is what
@@ -628,14 +626,15 @@ func TestRestartReattachesEvenAfterTheRunnerIsRemoved(t *testing.T) {
 			"Reflect replaces the payload, so what is not handed back is forgotten", rec["runnerName"])
 	}
 
-	// A NEW spawn naming the removed runner is refused, though: the work that is already
-	// there is reachable, and the name is not installed.
+	// A NEW spawn for what only the removed runner offered is refused, though: the work that is
+	// already there is reachable, and no runner offers its agent now.
+	second.NoLocalRunner = true
 	ts2 := httptest.NewServer(second.Handler())
 	defer ts2.Close()
-	resp := postTony(t, ts2.URL+"/tasks", map[string]any{"id": "later", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t", "runner": "verse.runners.gpu"}})
+	resp := postTony(t, ts2.URL+"/tasks", map[string]any{"id": "later", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t"}})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("spawn naming the removed runner = %s, want 400", resp.Status)
+		t.Fatalf("spawn for the removed runner's agent = %s, want 400", resp.Status)
 	}
 }
 
@@ -643,6 +642,7 @@ func TestRestartReattachesEvenAfterTheRunnerIsRemoved(t *testing.T) {
 // reading a charter.
 func TestOperatorCanSeeWhere(t *testing.T) {
 	srv := testServer(t)
+	srv.Embedded.Describe(offering()) // scripts: with gpu carrying a task, a script goes here
 	ts := httptest.NewServer(srv.Handler())
 	face := runnerFace(t, ts.URL)
 	defer ts.Close()
@@ -650,28 +650,28 @@ func TestOperatorCanSeeWhere(t *testing.T) {
 	postTony(t, ts.URL+"/runners", map[string]any{
 		"name": "gpu", "url": face.URL, "subject": face.Subject,
 	}).Body.Close()
-	named := spawnOK(t, ts, map[string]any{"id": "there", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t", "runner": "verse.runners.gpu"}})
+	named := spawnOK(t, ts, map[string]any{"id": "there", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t"}})
 	here := spawnOK(t, ts, map[string]any{"id": "here", "spawn": map[string]any{"script": "true"}})
 
-	// ps names the runner per task, and the default reads `local` rather than blank.
+	// ps names the runner per task, and this verse's own reads `local` rather than blank.
 	byID := map[string]map[string]any{}
 	for _, m := range psList(t, ts, "") {
 		byID[m["id"].(string)] = m
 	}
 	if got := byID[named]["runnerName"]; got != "verse.runners.gpu" {
-		t.Fatalf("runnerName = %v, want the name it was spawned under", got)
+		t.Fatalf("runnerName = %v, want the registration it went to", got)
 	}
 	if got := byID[here]["runner"]; got != "local" {
-		t.Fatalf("runner = %v for the default, want \"local\" rather than blank", got)
+		t.Fatalf("runner = %v for this verse's own, want \"local\" rather than blank", got)
 	}
 
-	// --runner selects, on the name that was written.
+	// --runner selects, on the registration's name.
 	only := psList(t, ts, "verse.runners.gpu")
 	if len(only) != 1 || only[0]["id"] != named {
 		t.Fatalf("ps --runner = %+v, want just the one on that runner", only)
 	}
 	if local := psList(t, ts, "local"); len(local) != 1 || local[0]["id"] != here {
-		t.Fatalf("ps --runner local = %+v, want just the one that named none", local)
+		t.Fatalf("ps --runner local = %+v, want just the one this verse hosts", local)
 	}
 
 	// `verse runner` counts what it is carrying, from the store.
@@ -710,7 +710,7 @@ func TestPsDoesNotFanOutOverRunners(t *testing.T) {
 	postTony(t, ts.URL+"/runners", map[string]any{
 		"name": "gpu", "url": face.URL, "subject": face.Subject,
 	}).Body.Close()
-	live := spawnOK(t, ts, map[string]any{"id": "live", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t", "runner": "verse.runners.gpu"}})
+	live := spawnOK(t, ts, map[string]any{"id": "live", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t"}})
 
 	// A second installed runner that is not there at all, carrying work of its own.
 	gone := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
