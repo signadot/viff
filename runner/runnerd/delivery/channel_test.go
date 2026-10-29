@@ -157,8 +157,8 @@ func TestAFrameTooLargeLeavesTheChannelInStep(t *testing.T) {
 		}
 	}
 
-	if rep, err := cl.Ask(Request{Op: OpVerseDataGet, Query: "at=big"}); err != nil || !strings.Contains(rep.Error, "the answer is") {
-		t.Errorf("an answer over the cap = %+v, %v, want an error saying so", rep, err)
+	if rep, err := cl.Ask(Request{Op: OpVerseDataGet, Query: "at=big"}); err != nil || rep.OK || !strings.Contains(rep.Error, "the answer is") {
+		t.Errorf("an answer over the cap = %+v, %v, want not OK, and an error saying so", rep, err)
 	}
 	inStep("an answer over the cap")
 	if _, err := cl.Ask(Request{Op: OpVerseDataPut, Body: big}); err == nil || !strings.Contains(err.Error(), "send less") {

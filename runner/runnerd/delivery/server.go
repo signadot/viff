@@ -109,10 +109,12 @@ func (s *Server) Serve(tk Task, conn net.Conn) {
 			return
 		}
 		// AN ANSWER THE CHANNEL CANNOT CARRY is said to be one, in a frame it can: what was
-		// done is done, and the task reads that its answer did not fit, and why.
+		// done is done, and the task reads that its answer did not fit, and why. Not OK, though
+		// the act may have been: a tool that reads Out on OK would read an empty answer as an
+		// empty verse, and say there is nothing where there is too much.
 		if len(body) > maxFrame {
 			fmt.Fprintf(s.Log, "delivery: %s: the answer to it is %d bytes, over the channel's %d\n", tk.ID, len(body), maxFrame)
-			body, err = codec.Marshal(Reply{OK: rep.OK, Error: "the answer is " + frameTooLarge{len(body)}.Error() +
+			body, err = codec.Marshal(Reply{Error: "the answer is " + frameTooLarge{len(body)}.Error() +
 				"; ask for less of it"}, codec.Tony)
 			if err != nil {
 				return
