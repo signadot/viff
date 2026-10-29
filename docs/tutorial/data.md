@@ -1,8 +1,8 @@
 # [Tutorial](README.md) -- Data
 
-An [entity](../glossary.md#entity) is anything the work refers to, such as a pull request, a
-build, a person or a CI status. An entity has an [address](../glossary.md#address), and it holds
-a document. That is the whole data model. The other three parts of the tutorial are built on it.
+[Data](../glossary.md#data) is anything the work refers to, such as a pull request, a build,
+a person or a CI status. Each piece of data has an [address](../glossary.md#address), and it is a
+document. That is the whole data model. The other three parts of the tutorial are built on it.
 
 On the command line you type the segments of an address as separate words:
 `verse-tutorial pr 1`. In a document the same address is one path: `verse-tutorial.pr."1"`.
@@ -12,18 +12,18 @@ This page needs [a verse running](README.md#start). Seed some data to read. It g
 `verse-tutorial`, where everything the tutorial makes lives:
 
 ```sh
-./scripts/seed-entities.sh       # a dozen entities, nothing watching them
+./scripts/seed-entities.sh       # a dozen documents, nothing watching them
 ```
 
 ## Read
 
-The address narrows a read by *where* an entity lives. `-if` narrows it by *what the entity
+The address narrows a read by *where* the data lives. `-if` narrows it by *what the data
 says*, with a [tony match](https://signadot.github.io/tony-format/) against the payload.
 
 ```sh
 verse data                                                          # the whole verse, one document
 verse data verse-tutorial pr '*'                                    # by where it lives
-verse data verse-tutorial pr 1                                      # one entity, whole
+verse data verse-tutorial pr 1                                      # one pull request, whole
 verse data verse-tutorial pr '*' -if '{stage: open}'                # by what it says
 verse data verse-tutorial pr '*' -if '{stage: !or [open, merged]}'  # …with an operator
 verse data verse-tutorial pr '*' -trim '{stage}'                    # …and how much of each to print
@@ -42,7 +42,7 @@ the rest.
 
 ## Write
 
-A put **merges**: the fields you do not name stay as they are. Verse answers with the entity as
+A put **merges**: the fields you do not name stay as they are. Verse answers with the data as
 it stands after the write:
 
 ```sh
@@ -68,12 +68,13 @@ verse watch -if '{stage: open}' verse-tutorial pr '*'
 ```
 
 ```tony
-{at: 'verse-tutorial.pr."1"' op: set rev: 97 to: {labels: {area: auth urgent: true} owner: ana stage: open …}}
+{at: 'verse-tutorial.pr."1"' op: set rev: 97 to: {labels: {area: auth} owner: dee stage: open …}}
+{at: 'verse-tutorial.pr."3"' op: set rev: 97 to: {labels: {area: store urgent: true} owner: ana stage: open …}}
 {at: 'verse-tutorial.pr."5"' op: set rev: 97 to: {labels: {area: engine} owner: cy stage: open …}}
 ```
 
 The watch **replays**: what already matches arrives first, then each new change. Each change is
-one line, and `to` is the whole entity at that commit. In another terminal, run
+one line, and `to` is the whole document at that commit. In another terminal, run
 `verse data verse-tutorial pr 2 -put '{stage: open}'`, and the line arrives. Then write
 `'{stage: reviewing}'`. Nothing arrives, because the filter tests the state, and the new state does
 not match. [Watching](../reference/entities.md) has cursors, `-since` and the rest.
@@ -89,6 +90,5 @@ read it:
 | `verse.task.instance.<id>` | a [task](tasks.md): its status, its prompt and its answer |
 | `verse.trigger.rule.<charter>:<name>` | a rule of a [charter](charters.md), as it was installed |
 
-So a rule can react to an answered question or to a finished task in the same way it reacts to a
-pull request. Nothing in verse is hidden from `verse data` and `verse watch`. Next,
-[questions](questions.md).
+So a rule can react to an answered question or to a finished task as it reacts to any data.
+Nothing in verse is hidden from `verse data` and `verse watch`. Next, [questions](questions.md).

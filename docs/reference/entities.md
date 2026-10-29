@@ -1,20 +1,26 @@
-# Entities
+# Data
 
-An [entity](../glossary.md#entity) is anything the work refers to: a pull request, a build, a
-person, a CI status, a running task. An entity has an [address](../glossary.md#address), such as
-`demo.pr.1` or `repos.verse.drift.finding.abc`, and it holds a document.
-[The data page of the tutorial](../tutorial/data.md) walks through this. This page is the whole
-surface, with the details the tutorial leaves out.
+[Data](../glossary.md#data) is what verse knows about the world: a pull request, a build, a
+person, a CI status, a running task. Each piece of data stands at an
+[address](../glossary.md#address) and holds a document. [The data page of the
+tutorial](../tutorial/data.md) walks through this. This page is the whole surface, with the
+details the tutorial leaves out.
 
-**An entity is not a kind of node.** "Entity" is the word for a [node](../glossary.md#node)
-that a question is about:
+The examples on this page follow one team, acme, as it reviews the pull requests of `acme/app`.
+The team keeps its own review record of each pull request at `demo.pr.<n>`: a `stage`, an
+`owner`, `labels`, the reviewers' `votes`, and the `checks` it ran. The github iod writes what
+GitHub itself says beside it, at `github.acme.app.pr."<n>"`.
+
+**Data has no fixed unit.** The code calls the data at one address an
+[entity](../glossary.md#entity). An entity is not a kind of node. It is the
+[node](../glossary.md#node) that a question is about:
 
 - the subject that a [rule](../glossary.md#rule) selects;
 - one row of a listing;
 - one event of a watch.
 
 Each of those questions carries an address, and the address says the depth. There is no fixed
-entity depth: no `system`, `kind` and `id`, and no length other than the length of the address.
+depth: no `system`, `kind` and `id`, and no length other than the length of the address.
 
 ## Addressing
 
@@ -46,8 +52,8 @@ Which spelling goes where:
 | Spelling | Where |
 |---|---|
 | a path | Anywhere a parser reads one and no shell is involved: inside a document (`at: demo.pr."1"`), in a charter (`subject: demo.pr.1`), on the wire (`?at=`). It has any depth, and it continues into the payload: `demo.pr."1".labels.urgent`. |
-| steps | At a command line, where the shell's quoting is the only quoting: `verse data repos verse drift finding abc`. Verse takes steps as input, and every listing answers with steps. |
-| the same path | In a charter, as the `path` of a match beside a predicate: `{path: "repos.verse.drift.finding.*", value: {…}}` |
+| steps | At a command line, where the shell's quoting is the only quoting: `verse data demo pr 1 checks lint`. Verse takes steps as input, and every listing answers with steps. |
+| the same path | In a charter, as the `path` of a match beside a predicate: `{path: "demo.pr.*", value: {…}}` |
 
 A listing answers with steps, the same spelling that the command line takes. So you can pass a
 line of a listing straight back:
@@ -141,8 +147,8 @@ kpath's: its length, its wildcards, its `..`. The subject of a charter is a kind
 no operator: see [addressing](#addressing).
 
 > **A limit of descent.** Descent in the tree does not follow this model. A match compares a
-> segment as a name, so `repos.verse..finding` and `repos.verse.drift.finding` do not meet, though
-> the first descends to the second. kpath answers false for any pattern that holds `..`, so
+> segment as a name, so `demo..stage` and `demo.pr.*.stage` do not meet, though the first
+> descends to the second. kpath answers false for any pattern that holds `..`, so
 > containment does not use kpath for it. The walk behind `List` also keeps one fixed arity
 > (`listWalkArity`), because a listing that names no address has nothing to count from; every
 > other walk says how far *below its own place* its records stand. The issues are `jabt2frr` here
@@ -236,8 +242,8 @@ verse data verse task instance '*'            # …and every task record under i
 |---|---|
 | `verse data` (reading, `-put` and `-rm`), `verse watch` | steps, several arguments at any depth; or one kinded path after `-at` |
 | `verse flow show <subject>`, and `--subject` on the flow verbs | one token: a kinded path, `*` for any segment |
-| `verse runner/io/resolver show/check/remove` | one token: the name, or the address as stored (`verse.runners.<name>`) |
-| `verse charter [<address>]` | an address in the charter tree, any depth, as steps: `verse charter repos verse drift` |
+| `verse runner` and `verse iod` `show`, `check` and `remove`; `verse resolver` `show` and `remove` | one token: the name, or the address as stored (`verse.runners.<name>`) |
+| `verse charter [<address>]` | an address in the charter tree, any depth, as steps: `verse charter demo pr` |
 | `verse c <address> rules <name>` | a path: the address, then into it |
 | `verse perms <step>…` | the node a record is about, as steps |
 
@@ -266,13 +272,16 @@ These are under `verse`:
 | `task.run.*` | the record of a run that happened |
 | `task.claim.*` | the run claim of a sequence |
 | `ask.*` | the docket: every ask, whoever raised it — a person, a rule's gate, a task's question |
-| `resolvers.*` | who answers the gates |
-| `covers.*` | who watches what: one record per resolver and gate stream (see [resolvers.md](resolvers.md)) |
+| `resolvers.*` | who answers the gates ([resolvers.md](resolvers.md)) |
+| `for.<principal>` | whom a person lets answer for them: the `answer` grants of their resolvers ([resolvers.md](resolvers.md#whom-it-answers-for)) |
 | `trigger.rule.*` | the installed charter. A rule installed at an address is `trigger.rule.<package>:<name>`. |
 | `trigger.strata.*` | the declared levels of the charter |
 | `trigger.package.*` | what each package declares it reads |
+| `trigger.suspension.*` | the [suspensions](../glossary.md#suspension) that stop work ([control](../control.md#a-suspension)) |
 | `runners.*` | where work can run |
-| `io.*` | the installed [iods](../glossary.md#iod): each writes an external system into the store and carries writes back out to it |
+| `iods.*` | the installed [iods](../glossary.md#iod): each writes an external system into the store and carries writes back out to it |
+| `identity.<provider>.*` | the account bindings, the open claims and the trusted iods of each provider ([perms](perms.md#accounts-in-other-systems)) |
+| `systems.<name>` | the document of a [system](../glossary.md#system): its verbs and their params ([systems](../systems/README.md)) |
 | `schedule.<name>` | a schedule: its period, its phase, and the `next` that the daemon is armed for. Under `schedule.<name>.tick.<instant>` stands the tick, written only by the schedule. |
 | `schedule.date`, `schedule.time` and the other calendar facts | what the base charter derives from the hourly tick |
 
@@ -288,6 +297,8 @@ itself, by the kind its name carries:
 - `runner` for a worker that claimed work;
 - `agent` for an operator agent.
 
+A [group](../glossary.md#group) stands beside them, at `principal.group.<name>`.
+
 `perms.node.<address>` is the [mirror of permissions](../glossary.md#mirror-of-permissions).
 It has a [record](../glossary.md#record) wherever ownership changes down the tree, and on a node
 created with grants ([Creating with grants](#creating-with-grants)). The record is
@@ -296,6 +307,8 @@ keyed by the node's own address, spelled as one segment. It holds:
 - `owner`;
 - the `grants` that its owner holds out;
 - for a question, `under`: the address of what posed the question.
+
+The root's record, whose address is the empty path, stands beside the mirror at `perms.root`.
 
 Only versed writes the mirror, and only the system reads it. Who owns a node, and what a write
 or a read is checked against, is in [perms.md](../perms.md).
@@ -350,7 +363,7 @@ same read. `'"*"'` is the name that is an asterisk. See
 ### `--depth`: how far beneath the address
 
 A listing walks everything beneath its address, into payloads and arrays. Nothing in an answer
-says where an entity ends. `--depth` limits the walk: one level gives what is at that level, and
+says where one piece of data ends. `--depth` limits the walk: one level gives what is at that level, and
 leaves out what is deeper. **It is counted from the address the path names**, so the same number
 means the same thing at every address:
 
@@ -362,7 +375,7 @@ verse data demo pr --paths               # everything beneath, into payloads
 ```
 
 To walk deeper, add a step, not a step and a bigger number. An access is a step like any other,
-so `--depth 2` under `merge proposal X` reaches `votes[0]`, and not the fields inside it. Verse
+so `--depth 2` under `demo pr 1` reaches `votes[0]`, and not the fields inside it. Verse
 refuses a negative depth, and a `--depth` with no listing to limit; it does not ignore them.
 
 **The number belongs to the store.** Verse passes it on as you gave it, whatever the path holds: a
@@ -417,14 +430,17 @@ however long the address is. `demo.pr.nosuch` is not there, and neither is `nosu
     verse data demo pr nosuch    in your view, nothing stands at demo.pr."nosuch"
     verse data                   in your view, the verse is empty: nothing has been written yet
 
+A watch of such an address is refused in the same way. `verse watch -wait-if-absent` waits for a
+value to arrive there instead.
+
 The message says "in your view" because a read answers what its reader may read. A wider read
 leaves out a node you may not read, so that node is not in your view. A read *at* an address you
 may not read into is different: verse refuses it, and the refusal names the nearest owner
 ([permissions](perms.md#what-is-checked-on-a-read)).
 
 A `*` reaches the children of the node it lands on. Over a node with no children it reaches
-nothing. `verse data solo '*'` over `solo: {}` is a 404 too. Over `solo: {hollow: {}}` it
-answers `{hollow: {}}`.
+nothing. `verse data demo pr 1 labels '*'` over `labels: {}` is a 404 too. Over
+`labels: {urgent: {}}` it answers `{urgent: {}}`.
 
 An *empty document* means something else: the path reached nodes, and a `-if` predicate kept
 none of them. That answer is about the filter, not the path, so it is a 200 with `{}`. A read
@@ -433,13 +449,13 @@ reports null only where somebody wrote a null.
 `-if` keeps some of the nodes the path reached. It works per node, and never prunes inside a node
 it keeps. **`-if` asks about what the path names.** A path of N segments asks about the nodes N
 segments down, for a name and a `*` alike, so the `*`s a path carries set the depth of the
-question. An issue the git-issue iod writes stands at `git-issue.<repository>.issue.<id>`, so the
+question. An issue the github iod writes stands at `github.<org>.<name>.issue.<n>`, so the
 `*` makes each issue the thing asked about:
 
 ```sh
-verse data git-issue verse issue '*' -if '{status: open}'         # each open issue
-verse data -at 'git-issue.verse.issue.*' -if '{status: open}'     # the same
-verse data git-issue verse issue -if '{status: open}'             # the map of issues, as one: {}
+verse data github acme app issue '*' -if '{state: open}'         # each open issue
+verse data -at 'github.acme.app.issue.*' -if '{state: open}'     # the same
+verse data github acme app issue -if '{state: open}'             # the map of issues, as one: {}
 ```
 
 `-trim` projects the same nodes. `-if` is a
@@ -451,16 +467,16 @@ to tony, and are documented with
 say inside a rule is in [the condition of a rule](condition.md#what-a-match-can-say).
 
 `-if-at` roots the predicate at a dot-separated field path. See
-[Selecting by what an entity says](README.md#selecting-by-what-an-entity-says).
+[Selecting by what the data says](README.md#selecting-by-what-the-data-says).
 
 ### Reaching into an array
 
 `[0]` addresses an array element by position:
 
 ```sh
-verse data merge proposal X votes '[0]'
-verse data merge proposal X votes '[0]' choice
-verse data -at 'merge.proposal.X.votes[0].choice'     # the same, as one token
+verse data demo pr 1 votes '[0]'
+verse data demo pr 1 votes '[0]' choice
+verse data -at 'demo.pr.1.votes[0].choice'     # the same, as one token
 ```
 
 A step that begins with `[`, `{` or `(` **is** that access. `-at` carries the kinded path whole.
@@ -475,13 +491,13 @@ Verse **refuses** a `!key(<field>)` tag in a written payload. `!key` is a tony m
 verse accepted it, the store would hold a positional array while the value claimed a name for each
 element. There is one keying, and it belongs to the store.
 
-A listing spells what a read takes. So `verse data merge proposal X --paths` prints
-`merge proposal X votes '[0]'`, and that line reads and writes as it stands.
+A listing spells what a read takes. So `verse data demo pr 1 votes --paths` prints
+`demo pr 1 votes '[0]'`, and that line reads and writes as it stands.
 
 A write reaches an element too, and changes it in place:
 
 ```sh
-verse data merge proposal X votes '[0]' choice -put '"approve"'
+verse data demo pr 1 votes '[0]' choice -put '"approve"'
 ```
 
 The store guards such a write, so the CLI does not:
@@ -497,10 +513,10 @@ Why the CLI relies on the third row is under
 [Why it is this way](../design/reference-entities.md#the-cli-and-array-writes).
 
 A precondition applies to an element write as to any other write. It is about the *element* the
-write names, not the entity that holds it:
+write names, not the pull request that holds it:
 
 ```sh
-verse data merge proposal X votes '[0]' -expect '{by: ana}' -put '{choice: approve}'
+verse data demo pr 1 votes '[0]' -expect '{by: ana}' -put '{choice: approve}'
 ```
 
 `-create`, `-update` and `-expect` reach the element with tony's `!at`, which walks the path and
@@ -516,19 +532,19 @@ Where a ballot does stand, `-create` refuses to commit over it, as it does anywh
 ## Writing
 
 A put merges: it leaves the fields it does not name alone. So a put answers with what stands at
-the address it wrote, not an echo of what it sent, and two writers that advance one entity do not
+the address it wrote, not an echo of what it sent, and two writers that advance one record do not
 overwrite each other.
 
-The address may be as deep as the tree. `verse data repos verse drift finding abc -put '{status: open}'`
+The address may be as deep as the tree. `verse data demo pr 1 checks lint -put '{status: pass}'`
 writes there, and the answer is that place. A write is a value at an address, so it does not have
-to decide where an entity "ends".
+to decide where a piece of data "ends".
 
 ```sh
 verse data demo pr 1 -put '{stage: open}'       # as steps: nothing needs quoting
 verse data -at demo.pr.1 -put '{owner: ana}'    # …or in one token: adds an owner, keeps the stage
 verse data demo pr 1 labels urgent -put true    # write inside the payload
 verse data demo pr 1 labels urgent -rm          # remove one field
-verse data demo pr 1 -rm                        # the whole entity
+verse data demo pr 1 -rm                        # the whole review record
 ```
 
 The payload follows `-put`. Verse reads it as tony, unless `-ifmt` or the config says
@@ -584,8 +600,8 @@ A node you create holds out what the nearest `child-grants` above it says
 the put. It takes the list `verse perms -grants` takes, and `[]` holds out nothing.
 
 ```sh
-verse data notes ana todo -put '{todo: "buy milk"}' -grants '[]'   # nobody else reads it
-verse data notes ana plan -put '{due: friday}' -grants '[{read: [user:bo@example.com]}]'
+verse data demo pr 1 drafts ana -put '{text: "the retry loop needs a bound"}' -grants '[]'   # nobody else reads it
+verse data demo pr 1 drafts bo -put '{text: "ask about the timeout"}' -grants '[{read: [user:ana@example.com]}]'
 ```
 
 The node and its [record](../glossary.md#record) land in one commit, so no reader and no rule ever
@@ -603,7 +619,7 @@ who wrote the owner, never the group, and the line does not apply above somebody
 ## Conditional writes
 
 Verse checks each condition *with* the write, in one step at the store, so nothing can change in
-between. A refused write leaves the entity unchanged, and the command reports it and exits
+between. A refused write leaves the data unchanged, and the command reports it and exits
 non-zero.
 
 ```sh
@@ -617,7 +633,7 @@ The three flags `-create`, `-update` and `-expect` are preconditions on a write.
 different thing: it filters what a read answers.
 
 This is compare-and-swap (CAS), written as a predicate rather than a revision number: the write
-says what it believes about the entity, not which revision it read.
+says what it believes about the data, not which revision it read.
 
 ## Watching
 
@@ -641,17 +657,19 @@ A watch with no literal prefix (`verse watch`, `verse watch '*' …`) joins the 
 whole verse. That stream has no opening state, and a cursor replays history in its place.
 
 ```tony
-{op: set at: demo.pr.1 rev: 1 to: {stage: open owner: ana}}
-{op: delete at: demo.pr.9 rev: 7}
+{op: set at: demo.pr."1" rev: 1 to: {stage: open owner: ana}}
+{op: delete at: demo.pr."9" rev: 7}
 ```
 
 There is one line per change, in flow form, so you can grep a watch.
 
 | Field | Meaning |
 |---|---|
+| `at` | the address the change is about |
 | `op` | `set` (created **or** updated) or `delete` |
-| `to` | the whole state of the entity as of that commit, not the delta that was written |
+| `to` | the whole state of the node at `at` as of that commit, not the delta that was written |
 | `rev` | an opaque cursor |
+| `gap` | on a frame that follows lost events: how many the watch dropped before it, because the reader fell behind |
 
 Verse does not tell a create from an update: a create is a patch onto nothing.
 
@@ -684,29 +702,32 @@ world, not about what happens next. For the same reason, a long hold costs a cur
 buffer. See [change events](../change-events.md).
 
 A change deeper than the address a watch asks about is reported at the node the address reaches
-above it. A watch of `repos verse drift '*'`, while something is written at
-`repos.verse.drift.finding.abc`, gives:
+above it. A watch of `demo pr '*'`, while `{status: pass}` is written at
+`demo.pr.1.checks.lint` and the record says `stage: open`, gives:
 
 ```tony
-{op: set at: repos.verse.drift.finding rev: 152 to: {abc: {status: open}}}
+{op: set at: demo.pr."1" rev: 152 to: {stage: open checks: {lint: {status: pass}}}}
 ```
 
-The node the address reaches is `finding`. What changed inside it, `abc`, is nested inside `to`.
-Nothing is missed. A rule over that subtree still selects the deep node, because the rule
-evaluates again against the store, not against the event's address alone.
+The node the address reaches is `demo.pr.1`. What changed inside it, `checks.lint`, is nested
+inside `to`. Nothing inside it is missed. A rule over that subtree still selects the deep node,
+because the rule evaluates again against the store, not against the event's address alone.
 
 A watch reports a node where the address reaches it, including a scalar:
 
-- After `verse data a b -put c`, `verse watch a b` reports a `set` at `a.b` holding `c`.
-- `verse watch a` reports a `set` at `a` holding `{b: c}`.
-- `verse data -rm a b` is then a `delete` at `a.b` to a watch on `a b`.
+- After `verse data demo pr 1 stage -put merged`, `verse watch demo pr 1 stage` reports a `set`
+  at `demo.pr.1.stage` holding `merged`.
+- `verse watch demo pr 1` reports a `set` at `demo.pr.1` holding the whole record, `stage: merged`
+  among it.
+- `verse data -rm demo pr 1 stage` is then a `delete` at `demo.pr.1.stage` to a watch on
+  `demo pr 1 stage`.
 
 A write at `demo` wakes a rule that reads `demo.pr`, as a write under `demo.pr` does. The
 write at `demo` replaces what the rule reads.
 
 A `delete` carries no payload, so a `-if` filter does not match it. Before a removal, a node on
 its way out is marked *vanishing*, so a rule does not act on it and bring it back; see
-[lifecycle](../trigger-model.md#lifecycle-how-an-entity-leaves).
+[lifecycle](../trigger-model.md#lifecycle-how-data-leaves).
 
 ## Why it is this way
 

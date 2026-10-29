@@ -26,7 +26,7 @@ An address names one position in the store. It is a list of segments, of any len
 Also written: path, ref (in the Go source), `at` (the field and the flag), place (an address
 that somebody writes at, or owns).
 
-See [Entities](reference/entities.md#addressing).
+See [Data](reference/entities.md#addressing).
 
 ### kinded path
 
@@ -35,42 +35,61 @@ keep a dot inside a segment: `demo.pr."a.b"` has three segments.
 
 Also written: kpath.
 
-See [Entities](reference/entities.md#addressing).
+See [Data](reference/entities.md#addressing).
 
 ### step
 
 A step is one segment of an address, typed as one word on the command line:
 `verse data demo pr 1`.
 
-See [Entities](reference/entities.md#addressing).
+See [Data](reference/entities.md#addressing).
 
 ### pattern
 
 A pattern is an address in which `*` stands for any one segment, such as `demo.pr.*`. It
-names every node that it reaches.
+names every node that it reaches. A pattern may also hold a [descent](#descent), `..`.
 
-See [Entities](reference/entities.md#addressing).
+See [Data](reference/entities.md#addressing).
+
+### descent
+
+A descent is `..` in a pattern. It reaches every depth beneath where it stands, the node itself
+included: `verse data demo '..' stage` reads every `stage` beneath `demo`. Reads, watches and the
+subjects of rules take a descent. A write, a claim, a grant and a permissions record each name one
+place, and refuse it.
+
+See [Data](reference/entities.md#-every-depth-beneath).
 
 ### node
 
 A node is what stands at an address: an object, an array, a scalar or a null.
 `demo.pr.1.stage` is a node inside the node `demo.pr.1`.
 
-See [Entities](reference/entities.md#what-stands-at-a-path).
+See [Data](reference/entities.md#what-stands-at-a-path).
 
 ### payload
 
 The payload of a node is the value that the node holds, such as `{stage: open}`. It may be
 any value.
 
-See [Entities](reference/entities.md).
+See [Data](reference/entities.md).
+
+### data
+
+Data is what verse knows about the world: a pull request, a CI run, a person, a running task.
+Each piece of data stands at an [address](#address) and holds a [payload](#payload).
+`verse data demo pr 1` reads the data at `demo.pr.1`, and
+`verse data demo pr 1 -put '{stage: open}'` writes it. A rule reacts to a change in data
+whoever made it: a person, an iod, a rule or verse itself.
+
+See [Data](reference/entities.md).
 
 ### entity
 
-An entity is a node that something asks about: the subject of a rule, a row of a listing, an
-event of a watch. It has an address and a payload.
+An entity is the data at one address: the subject of a rule, a row of a listing, an event of a
+watch. "Entity" is the word of the code (`entity.Entity`). The docs say [data](#data).
 
-See [Entities](reference/entities.md).
+See [Data](reference/entities.md).
 
 ### root (of the store)
 
@@ -90,7 +109,7 @@ See [Permissions](perms.md#verses-own-half).
 
 ### commit
 
-A commit is one atomic change to the store. It names every entity that it changed.
+A commit is one atomic change to the store. It names every address that it changed.
 
 See [Change events](change-events.md#one-commit-many-entities-the-entity-is-the-reactive-grain).
 
@@ -101,7 +120,7 @@ uses one only as a cursor: `verse watch -since 42`.
 
 Also written: rev, cursor (of the store).
 
-See [Entities](reference/entities.md#watching).
+See [Data](reference/entities.md#watching).
 
 ### scope
 
@@ -131,7 +150,7 @@ See [The charter](reference/charter.md).
 
 A rule is one entry of a charter: a name, a [condition](#condition), a list of
 [gates](#gate-of-a-rule) and an [action](#action). When the condition holds and every gate
-passes, the action fires. An installed rule is an entity: `verse.trigger.rule.<name>`, or
+passes, the action fires. An installed rule is data at `verse.trigger.rule.<name>`, or
 `verse.trigger.rule."<address>:<name>"` for a rule of a package.
 
 Also written: trigger (the Go type `trigger.Trigger`, and the output of an install).
@@ -162,7 +181,7 @@ See [The charter](reference/charter.md#a-charter-can-be-installed-at-an-address)
 ### outbox
 
 An outbox is a place inside a package where its rules ask an iod to act on the iod's system.
-The package declares it with `sends:`: `sends: [{from: out.slack, to: slack.Signadot.out}]`.
+The package declares it with `sends:`: `sends: [{from: out.slack, to: slack.acme.out}]`.
 The iod reads each input there, carries it out to the system, and writes its status beside it.
 
 See [The charter](reference/charter.md#a-charter-can-be-installed-at-an-address).
@@ -197,15 +216,15 @@ See [The condition of a rule](reference/condition.md).
 
 ### subject
 
-The `subject` of a condition is the match that selects the entities the rule acts on. It is
-required. The subject of a firing, a task or a question is the one entity that it is about.
+The `subject` of a condition is the match that selects the data the rule acts on. It is
+required. The subject of a firing, a task or a question is the one address that it is about.
 
 See [The condition of a rule](reference/condition.md#subject-what-the-firing-is-about-and-required).
 
 ### when
 
 `when` is an optional match in a condition. The rule fires only if it holds at the commit. It
-may be about an entity that is not the subject.
+may be about data that is not the subject.
 
 See [The condition of a rule](reference/condition.md#on-and-when-the-cause-and-the-condition).
 
@@ -231,8 +250,8 @@ See [The condition of a rule](reference/condition.md#on-and-when-the-cause-and-t
 
 ### firing
 
-A firing is one reaction of one rule at one commit, about one entity. A subject that selects
-three entities gives three firings.
+A firing is one reaction of one rule at one commit, about one address. A subject that selects
+three addresses gives three firings.
 
 See [The charter reference](trigger-model.md#the-rule).
 
@@ -252,7 +271,7 @@ See [The action of a rule](reference/action.md#action-what-fires).
 
 ### derive
 
-`derive` writes an entity that is not the subject. Only a rule in a [stratum](#stratum) may
+`derive` writes data that is not the subject. Only a rule in a [stratum](#stratum) may
 derive, and only into a stratum of a higher level.
 
 See [Strata](strata.md#derive-identity-not-state).
@@ -309,8 +328,8 @@ See [Strata](strata.md#path-reads-inside-a-derive).
 ### answer contract
 
 The answer contract of a task is a pattern that the final message of the task must match. A
-task that never matches it fails. It is `answer:` in a `spawn`, and `-answer-contract` on
-`verse task run`.
+task that never matches it fails. It is `answer:` in a `spawn`, which is also what the file of
+`verse task run -f` holds.
 
 See [Tasks](reference/tasks.md#answer-what-finished-means).
 
@@ -502,7 +521,7 @@ See [The gates of a rule](reference/gates.md#a-deadline-settles).
 
 A resolver is an installed service that answers asks for whoever grants it: a person, at
 `verse.for.<person>`, or a place, by its owner. Its `match` says which of their asks it watches.
-It is the entity `verse.resolvers.<name>`.
+It stands at `verse.resolvers.<name>`.
 
 See [Resolvers](attached-resolvers.md).
 
@@ -557,14 +576,14 @@ See [architecture.md](platform/architecture.md#data-and-failure-model), in the r
 
 ### instance record
 
-The instance record of a task is the entity `verse.task.instance.<id>`. It holds the state of
+The instance record of a task is the data at `verse.task.instance.<id>`. It holds the state of
 the latest run: the status, the last output, the result, the runner.
 
 See [Tasks](reference/tasks.md#the-mirror).
 
 ### run record
 
-The run record of a run is the entity `verse.task.run.<id>@<occurrence>`. Verse writes it
+The run record of a run is the data at `verse.task.run.<id>@<occurrence>`. Verse writes it
 when the run starts and when the run ends.
 
 See [Tasks](reference/tasks.md#one-id-many-runs).
@@ -692,14 +711,14 @@ A runner is a place where verse runs a task. Verse connects to it.
 | Runner | What it is |
 |---|---|
 | `local` | the verse process itself: what a spawn that names no runner gets |
-| an installed runner | another host, at a URL. It is the entity `verse.runners.<name>`, which keeps what the runner offers: the agents and scripts it runs, as the runner described itself when it was installed or last checked. |
+| an installed runner | another host, at a URL. It stands at `verse.runners.<name>`, which keeps what the runner offers: the agents and scripts it runs, as the runner described itself when it was installed or last checked. |
 
 See [Runners](runners.md).
 
 ### worker
 
 A worker is the program on a [runner](#runner) that does a task and reports it. In
-permissions, a worker acts as `runner:<identity>`, the identity on the runner's entity.
+permissions, a worker acts as `runner:<identity>`, the identity on the runner's registration.
 
 Also written: executor, and claimant, of a task it works; the
 [claimant of a binding](#claimant-of-a-binding) is another thing.
@@ -747,7 +766,7 @@ See [the spawn](reference/action.md#action-what-fires).
 
 An iod is a program that connects verse to one external system, such as a git repository, in
 both directions. It has two halves: a [source](#source) writes what the system holds into the
-store, and a [sink](#sink) carries what a rule writes back out to the system. An installed iod is the entity
+store, and a [sink](#sink) carries what a rule writes back out to the system. An installed iod stands at
 `verse.iods.<name>`.
 
 Also written: connector, source (in the Go source, for the whole iod), registration.
@@ -770,6 +789,15 @@ Also written: owns, ownership claim.
 
 See [Iods (reference)](reference/io.md#ownership).
 
+### probe
+
+A probe is the question verse asks an iod or a runner when it is installed: what are you?
+`GET /io` asks an iod. The answer is one of `a source`, `not a source` and `unreachable`, and
+only `not a source` refuses the install. `verse iod add -no-probe` skips it, and `verse iod
+-probe` asks every iod again without recording the answer.
+
+See [Iods (reference)](reference/io.md#routes).
+
 ### source
 
 A source is the in half of an iod. Verse asks it what is true in the external system, and it
@@ -779,7 +807,7 @@ See [Iods](io.md#the-seam-a-source-answers-verse-converges).
 
 ### reflect
 
-To reflect an external system is to keep its state in the store, as entities. The source
+To reflect an external system is to keep its state in the store, as data. The source
 reads the system, and the [reflector](platform/glossary.md#reflector) writes the store.
 
 See [Iods](io.md).
@@ -799,6 +827,23 @@ writes the result at `<name>~status`.
 
 See [Iods (reference)](reference/io.md#the-out-half).
 
+### input
+
+An input is a request written for a [sink](#sink): a node with a `to` field, anywhere under the
+iod's out place or in an [outbox](#outbox), such as
+`verse data slack acme out hello -put '{to: "user:ana@acme.test", text: "…"}'`. Whoever writes
+it decides where it stands.
+
+See [Iods (reference)](reference/io.md#what-is-asked-and-what-became-of-it).
+
+### status (of an input)
+
+The status of an input is the node the iod writes beside it, at `<name>~status`: what it did,
+and an `error` while a failure stands. Only the iod writes it. A status with `failed: permanent`
+is not offered again until the input changes.
+
+See [Iods (reference)](reference/io.md#what-is-asked-and-what-became-of-it).
+
 ## Permissions
 
 ### principal
@@ -811,8 +856,9 @@ See [Permissions](perms.md#principals-and-grantees).
 
 ### kinds of principal
 
-A principal is of one of five kinds: `user:`, `agent:`, `runner:`, `system:` and `via:`. A
-request presents the first three, and verse makes the other two.
+A principal is of one of six kinds: `user:`, `agent:`, `runner:`, `system:`, `via:` and
+`pair:`. A request presents the first three, and verse makes the other three. `pair:<asker>
+<rule>` is a rule's task acting for whoever owns its subject.
 
 See [Permissions reference](reference/perms.md#the-grammar).
 
@@ -862,18 +908,27 @@ provider with no `domains` admits bound accounts only.
 
 See [Who a request is from](reference/perms.md#who-a-request-is-from).
 
+### trusted iod
+
+A trusted iod is an iod that the deployment names under
+`auth.principal.providers.<provider>.iods`. Its word counts for that provider's accounts: it may
+relay a person it saw, such as the Slack member who typed an answer, and it may report a nonce it
+heard. It proves which iod it is with its own token.
+
+See [A person relayed by a trusted iod](reference/perms.md#a-person-relayed-by-a-trusted-iod).
+
 ### grantee
 
 A grantee is who a grant is to: a principal, every principal of a kind (`user:*`), a
 [group](#group), the audience of an address (`audience:<address>`, whoever holds the same level
-there), or everyone (`*`).
+there), the resolvers that answer for an address (`answering:<address>`), or everyone (`*`).
 
 See [Permissions reference](reference/perms.md#the-grammar).
 
 ### group
 
 A group is a named set of grantees, with an owner: `verse group add payments ana@example.com`.
-It is the entity `verse.principal.group.<name>`.
+It stands at `verse.principal.group.<name>`.
 
 See [Permissions](perms.md#grants).
 
@@ -888,12 +943,21 @@ See [Permissions](perms.md#ownership).
 ### record
 
 A record is what verse keeps about the permissions of one node. It holds the `owner` of the
-node, its `grants` and its `child-grants`. `verse perms <path>` shows it. A node with no
+node, its `grants` and its `child-grants`, and on a question `under`, the address of what asked
+it. `verse perms <path>` shows it. A node with no
 record follows the nearest record above it.
 
 Also written: permissions record, perms record.
 
 See [Permissions reference](reference/perms.md#records).
+
+### seed
+
+The seed is the records that verse writes from the config at its first start: the root's record,
+the record on `verse`, and the `admin` group. Verse writes them only where they are absent, so an
+operator's later edit stands. `verse up -reseed-perms` writes them again over what stands.
+
+See [Starting a verse](reference/up.md#configuration).
 
 ### mirror (of permissions)
 
@@ -911,8 +975,9 @@ See [Permissions](perms.md#grants).
 
 ### level (of a permission)
 
-A level is what a principal may do at a node: `read`, `read-write`, `owner` or
-[`control`](#control-permission-level).
+A level is what a principal may do at a node: `read`, `read-write`, `owner`,
+[`control`](#control-permission-level) or `answer`. `answer` says which resolvers may answer
+for the party the node stands for.
 
 See [Permissions reference](reference/perms.md#levels).
 
@@ -957,7 +1022,7 @@ See [Deployment and steering](deployment-and-steering.md#two-planes).
 To steer is to act on work in progress: to answer a gate, to hold or resume, to `say`, to
 cancel, to change the autonomy.
 
-See [Overview](concepts.md#two-planes-what-changes-and-what-is-allowed).
+See [Basic concepts](concepts.md#what-verse-is-made-of).
 
 ### flow
 
@@ -1083,9 +1148,13 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 
 + [cover (of a reflection)](#cover-of-a-reflection)
 
++ [data](#data)
+
 + [deadline (of a gate)](#deadline-of-a-gate)
 
 + [derive](#derive)
+
++ [descent](#descent)
 
 + [docket](#docket)
 
@@ -1128,6 +1197,8 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 + [hook](#hook)
 
 + [identity provider](#identity-provider)
+
++ [input](#input)
 
 + [instance record](#instance-record)
 
@@ -1193,6 +1264,8 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 
 + [principal](#principal)
 
++ [probe](#probe)
+
 + [question](#question)
 
 + [reads declaration](#reads-declaration)
@@ -1231,6 +1304,8 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 
 + [seam](#seam)
 
++ [seed](#seed)
+
 + [seq](#seq)
 
 + [sink](#sink)
@@ -1238,6 +1313,8 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 + [source](#source)
 
 + [spawn](#spawn)
+
++ [status (of an input)](#status-of-an-input)
 
 + [status (of a task)](#status-of-a-task)
 
@@ -1266,6 +1343,8 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 + [tool](#tool)
 
 + [trouble](#trouble)
+
++ [trusted iod](#trusted-iod)
 
 + [verse's own half](#verses-own-half)
 

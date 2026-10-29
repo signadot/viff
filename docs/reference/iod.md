@@ -5,7 +5,7 @@ program that connects verse to one external system. It has two halves.
 
 | Half | What it does |
 |---|---|
-| the [source](../glossary.md#source), which is the in half | It [reflects](../glossary.md#reflect) the external system: it keeps the state of that system in the [store](../glossary.md#store), as [entities](../glossary.md#entity). |
+| the [source](../glossary.md#source), which is the in half | It [reflects](../glossary.md#reflect) the external system: it keeps the state of that system in the [store](../glossary.md#store), as [data](../glossary.md#data). |
 | the [sink](../glossary.md#sink), which is the out half | It acts on the external system. For example, it posts a message. |
 
 This page says how to run each of the five. Other pages hold the rest.
@@ -52,7 +52,7 @@ Every subcommand accepts these flags.
 | `-hint-url` | `VERSE_HINT_URL` | none | the hint route of verse for this installed iod: `http://verse:9797/iods/<name>/hint` |
 | `-root` | | the name of the subcommand | the [root](../glossary.md#root-of-an-iod) of the iod: the first segment of every [address](../glossary.md#address) that it writes |
 | `-verse-addr` | `VERSE_ADDR` | the host of `-hint-url` | the verse that the out half reads and writes, as `host:port` |
-| `-as` | | `agent:<root>-iod`, such as `agent:slack-iod` | the [principal](../glossary.md#principal) that the out half reads and writes as. The Slack out half reads the asks in a message to a person as that person, since a person's ask is read by whom it asks. |
+| `-as` | | `agent:<subcommand>-iod`, such as `agent:slack-iod` | the [principal](../glossary.md#principal) that the out half reads and writes as. The Slack out half reads the asks in a message to a person as that person, since a person's ask is read by whom it asks. |
 | `-out-every` | | `5s` | how often the out half reads what is asked of it |
 | `-token-file` | `VERSE_TOKEN_FILE` | none | the file holding the iod's own credential toward verse: on Kubernetes, the pod's projected service-account token, which verse's `auth.iod` names the iod by ([iods at the door](perms.md#iods-at-the-door)). Read on every request, since the kubelet rotates it. Without it, the iod is whoever `-as` says. |
 
@@ -61,6 +61,11 @@ With `-token-file`, every request the iod makes carries the token, and one it ma
 their Slack account beside it, `slack:<user id>`, so that a verse which verifies people admits
 it through the account's binding and the ballot says which iod it came through
 ([a person relayed by a trusted iod](perms.md#a-person-relayed-by-a-trusted-iod)).
+
+The default of `-as` follows the subcommand, and not `-root`. `verse iod add` defaults its own
+`-as` to `agent:<root>-iod`, and writes the out half's grants for that principal. So an iod
+given a `-root` of its own, such as `iod git -root git-buildhost`, acts as `agent:git-iod` while
+its grants name `agent:git-buildhost-iod`. Give the same `-as` to both.
 
 `-verse-addr`, `-as`, `-out-every` and `-token-file` configure the out half. Four subcommands
 have an out half, `git`, `slack`, `linear` and `github`, and each starts it with `-out`.
@@ -148,14 +153,14 @@ converges at the full reflection of every minute.
 
 ### What git reflects
 
-| Entity | Payload |
+| Address | Payload |
 |---|---|
 | `git.<repo>.ref.<name>` | `repo, name, sha, type`, and `tree` for each directory `-tree` names: `tree: {<name>: <object sha>}`, the empty tree where the directory is not there. These are branches, tags and remote-tracking branches, and nothing else. |
 | `git.<repo>.head` | `repo, ref, sha, dirty`, and `ahead`/`behind` when an upstream is set |
 | `git.<repo>.commit.<sha>` | `repo, sha, msg, author, parents`, and `trailers` when the commit has any. `parents` is a list of shas: empty for a root commit, two for a merge, first parent first. No [cover](../glossary.md#cover-of-a-reflection) reaches a commit, so history stays. |
 
 A cover is a pattern under which a reflection is complete. Verse
-[tombstones](../glossary.md#tombstone) a stored entity that a cover reaches and that the
+[tombstones](../glossary.md#tombstone) stored data that a cover reaches and that the
 reflection does not hold.
 
 **A repository is a level of the address.** Everything that one repository reflects stands
@@ -235,8 +240,8 @@ an **input** under the repository's out place, `git.<repo>.out`, and the iod ans
 ```sh
 verse data git verse out live -put '{to: tag.live-verse.3, sha: 4f668c1c}'
 verse data git verse out head -put '{to: branch.verse/live, sha: 4f668c1c}'
-verse data git verse out install -put '{to: install.repos.verse, tree: 4b825dc6, sha: 4f668c1c}'
-verse data git verse out check -put '{to: check.repos.verse, tree: 4b825dc6}'
+verse data git verse out install -put '{to: install.repos.verse, tree: 9d5e2b71, sha: 4f668c1c}'
+verse data git verse out check -put '{to: check.repos.verse, tree: 9d5e2b71}'
 verse data git verse out livecheck -put '{to: check.repos.verse, ref: verse/live, round: "1"}'
 ```
 
@@ -328,7 +333,7 @@ coordinates them. [A separate subcommand](#a-separate-subcommand) gives the reas
 
 ### What git-issue reflects
 
-| Entity | Payload |
+| Address | Payload |
 |---|---|
 | `git-issue.<repo>.issue.<xidr>` | `repo, id, title, status`, and `createdAt, updatedAt, body, labels, keys, commits, branches, related, blocks, blockedBy, duplicates, closedBy, metaError, multiValued`. `comments` is how many comments the issue has. With any comment, the payload has `lastCommentAt`. Under `-bodies`, the payload has the `discussion` itself, as `[{at, text}]`. The lists, `keys` and `comments` are always present, and empty when there is nothing, so a charter may name them. |
 | `git-issue.<repo>.repo` | `repo, open, closed, issues` |
@@ -367,7 +372,7 @@ The prefix `git-issue-` is reserved for the conventions of a program that drives
 the title. `-bodies=false` drops the rest of the file. The store then holds an index of the
 state of the issues, and not a copy of what everyone wrote.
 
-**The iod covers the issues once, and the cover is complete.** A closed issue keeps its entity
+**The iod covers the issues once, and the cover is complete.** A closed issue keeps its data
 for as long as its ref exists. The iod tombstones an issue when its ref is deleted, because
 the issue does not exist any more. The iod lists every issue with one `git for-each-ref`, and
 reads every blob of a reflection with one `git cat-file --batch`.
@@ -431,7 +436,7 @@ iod slack -workspace <name>    the id prefix (default: the team name the token b
 ```
 
 `-verse-addr`, `-as` and `-out-every` are [common flags](#common-flags). `iod slack` is one
-of the two subcommands that use them.
+of the four subcommands that use them.
 
 The iod acts as the **bot user** of a Slack app. The bot needs these scopes to reflect.
 
@@ -462,7 +467,7 @@ The app subscribes to the bot events for what it reflects (`message.channels`,
 
 ### What slack reflects
 
-| Entity | Payload |
+| Address | Payload |
 |---|---|
 | `slack.<ws>.channel.<C…>` | `workspace, channel, name, private, archived`, and `topic, purpose, members, created` |
 | `slack.<ws>.message.<C…>."<ts>"` | `workspace, channel, ts, text`, and `user, bot, username, subtype, thread, replies, edited, reactions, url` |
@@ -485,7 +490,7 @@ leaves the window. [The window is covered](#the-window-is-covered) compares this
 commits of `iod git`.
 
 **The people are a separate cover.** When `users.list` fails, the iod drops the cover of the
-users *and* the user entities from its answer. So a missing scope leaves the stored users as
+users *and* the users' data from its answer. So a missing scope leaves the stored users as
 they are, and does not delete them. The iod does not treat the channels in this way: a reflection
 that lost the channels has nothing true to say.
 
@@ -561,7 +566,7 @@ flags of `verse iod add` ([the out half](io.md#the-out-half)).
 
 ```sh
 verse iod add slack http://localhost:9801 -root slack \
-  -out slack.acme.out -as agent:slack-iod -requesters group:verse-dev
+  -out slack.acme.out -as agent:slack-iod -requesters group:acme-dev
 ```
 
 The install writes four [grants](../glossary.md#grant-permission) on the record of the out
@@ -607,8 +612,8 @@ each question says at that moment, and how to answer it:
 ```sh
 verse data slack acme out review -put '{
   to: "user:ana@acme.test",
-  text: "slack-try asks: approve demo.slack.1?",
-  asks: "verse.trigger.slack-try.approval~efcf56b5"}'
+  text: "review asks: approve demo.pr.1?",
+  asks: "verse.trigger.review.approval~efcf56b5"}'
 ```
 
 The iod writes those lines itself, because the words of the writer could say anything. At
@@ -744,7 +749,7 @@ In Linear, set Settings → API → Webhooks to `https://<host>/linear/webhook`.
 
 ### What linear reflects
 
-| Entity | Payload |
+| Address | Payload |
 |---|---|
 | `linear.<KEY>.team` | `team, id, name, private`, and `description` |
 | `linear.<KEY>.issue.<KEY>-<n>` | `team, id, identifier, title, state, stateType, priority, url, createdAt, updatedAt`, and `priorityLabel, completedAt, estimate, assignee, assigneeEmail, labels, project, cycle, parent` |
@@ -842,7 +847,7 @@ content type `application/json`.
 
 ### What github reflects
 
-| Entity | Payload |
+| Address | Payload |
 |---|---|
 | `github.<org>.<name>.repo` | `repo, org, name, private, archived, fork`, and `defaultBranch, defaultBranchSha, cloneUrl, sshUrl, description, topics, url` |
 | `github.<org>.<name>.issue.<n>` | `repo, number, title, state, comments`, and `author, url, createdAt, updatedAt, closedAt, stateReason, body, milestone, labels, assignees` |
@@ -876,7 +881,7 @@ A larger `-runs` prevents this.
 Match `conclusion`, and not a transition. A run goes `queued → in_progress → completed` in
 less than a minute, and one reflection often holds all three as one write.
 
-**Comments are entities, and a window**, like the messages of Slack. The iod keeps the
+**Comments are data, and a window**, like the messages of Slack. The iod keeps the
 `-comments` with the most recent updates, and tombstones what leaves the window. A
 conversation is a stream with no bound, and a store that holds all of one is an archive.
 
@@ -910,7 +915,7 @@ each reflection. This limits one token to about forty repositories. A repository
 not have discussions still costs nothing.
 [Discussions are off by default](#discussions-are-off-by-default) gives the reason.
 
-In three cases the iod drops the covers of the discussions *with* the entities:
+In three cases the iod drops the covers of the discussions *with* their data:
 
 - discussions are switched off;
 - the repository has the feature disabled;
@@ -1190,7 +1195,7 @@ To close an issue is to *move* its ref, and the move keeps the history of the is
 leaves a `status` field in the tree. An issue that somebody edited by hand, or migrated in
 part, can hold a `status` field that disagrees with the ref.
 
-The namespace of the ref cannot be wrong, so the `status` of the entity is the answer of the
+The namespace of the ref cannot be wrong, so the `status` the iod reflects is the answer of the
 namespace.
 
 ### The issues are covered once

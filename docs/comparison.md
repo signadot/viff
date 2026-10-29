@@ -10,10 +10,10 @@ way. It reads and writes git, an issue tracker, bug reports, a sprint board, the
 
 A workflow keeps a position in a plan. That position is a second account of the state of those
 things, and it is wrong as soon as one of them changes between two steps. So verse keeps no
-plan. It reacts to what it last observed. It stores each observation under a commit, so you can
-read anything as of any commit.
+plan. It reacts to what it last observed. It stores each observation as a commit with a
+revision, and a watch replays the changes from any revision the store still keeps.
 
-Here are five questions a team asks before it lets software act for it, each answered for the
+Here are six questions a team asks before it lets software act for it, each answered for the
 three tools and for verse.
 
 **Where is the plan?**
@@ -32,7 +32,7 @@ three tools and for verse.
 | GitHub Actions | the run continues on the checkout it started with; a concurrency group can cancel it |
 | Temporal | whatever the workflow code says; it is code |
 | an agent framework | whatever the next tool call reads |
-| **verse** | the change is one more change to an entity, and it matches a rule or it does not; a stale proposal is retired |
+| **verse** | the change is one more change to the data, and it matches a rule or it does not; a stale proposal is retired |
 
 **Who holds the credentials?**
 
@@ -68,7 +68,7 @@ three tools and for verse.
 | GitHub Actions | logs and artifacts, for a retention period |
 | Temporal | the event history |
 | an agent framework | what the agent logged |
-| **verse** | every task, question and answer, as entities: who decided what, and when |
+| **verse** | every task, question and answer, as data: who decided what, and when |
 
 The tools are not rivals. GitHub Actions runs a pipeline well, and a verse task can run a
 pipeline. Temporal makes a long computation durable; verse makes the state of the world durable,
@@ -79,15 +79,15 @@ scripts and people the same store, the same gates and the same record.
 
 ### The state of the world is observed durably
 
-Verse stores the state of the world as a tree of documents, under a commit. A write is a patch,
-and a read is the whole entity as of a commit. [Iods](glossary.md#iod) carry the world in both
-directions: an iod writes what a system holds into the store, and carries what a rule writes back
-out to the system.
+Verse stores the state of the world as a tree of documents. A write is a patch, made as one
+commit, and a read is the whole document at an address as it stands. [Iods](glossary.md#iod)
+carry the world in both directions: an iod writes what a system holds into the store, and
+carries what a rule writes back out to the system.
 
 ### The state of verse is in the same store
 
 Rules, tasks, questions, iods, runners and permissions are all in the store, under `verse.*`.
-So you read them, watch them and write rules over them as you do any other entity.
+So you read them, watch them and write rules over them as you do any other data.
 
 ### Gates are questions
 

@@ -4,8 +4,8 @@ Verse has four parts: data, questions, tasks and charters. This tutorial has one
 and a second page of charters. The pages go from the simplest part to the one that uses the
 other three.
 
-Each part is data to the next. A question is an entity, and so is a task. A charter is rules
-over entities, and the rules ask questions and start tasks. Once you know the four, you can write
+Each part is data to the next. A question is data, and so is a task. A charter is rules over
+data, and the rules ask questions and start tasks. Once you know the four, you can write
 charters for your own work.
 
 A real deployment adds more data, agents and runners. [Iods](../io.md) connect verse to a
@@ -47,8 +47,8 @@ Then start with [data](data.md).
 
 ## [Data](data.md)
 
-[Entities](../glossary.md#entity): what verse knows about the world, each at an address. You read
-them, write them and watch them change.
+[Data](../glossary.md#data): what verse knows about the world, each document at an address.
+You read it, write it and watch it change.
 
 ## [Questions](questions.md)
 

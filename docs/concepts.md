@@ -1,116 +1,77 @@
 # Basic concepts
 
-This page has four terms, the loop they run in, and the model behind them. Every other page
-uses these words.
+Verse watches the systems a team's work lives in, and when something there changes, it does what
+the team's rules say. This page names the four things you work with, then the parts of verse that
+run them.
 
-## Four things to know
+One example runs through the page. A team keeps its code in `acme/app` on GitHub. When the checks
+on a pull request fail, the team wants an agent to make them pass. When they pass, the pull
+request is merged into `main`, but only once a person says yes.
 
-| Term | What it is | For example |
+## What you work with
+
+| Term | What it is | In the example |
 |---|---|---|
-| **entity** | a fact verse keeps about the world, with an address and a value | `github.signadot.verse.pr.42`, the pull request as GitHub last reported it |
-| **charter** | your rules: when an entity changes like this, do that | "when main moves, review what landed" |
-| **task** | work done in the world by an agent or a script, on a runner | an agent fixes the comments a review found, in its own checkout |
-| **gate** | a check a step passes first: `auto` passes it, `ask` waits for somebody | "merge to main" waits for one yes within a day, or is denied |
+| **data** | what verse knows about the world, each piece at an address | `github.acme.app.pr.42`: pull request 42 as GitHub last reported it, `{state: open, checks: failure, …}` |
+| **charter** | your rules: when the data changes like this, do that | when an open pull request's checks fail, start an agent on it; when they pass, merge it |
+| **task** | work done in the world by an agent or a script | the agent checks out the pull request's branch, makes the checks pass, and pushes the branch |
+| **ask** | a question put to a person, which a step waits on | the merge into `main` waits for dana to answer yes |
 
-The rest of the docs is detail about these four.
+**Data.** The systems verse watches write their state into it, and so do your rules and tasks.
+Every write says who made it. You read the data with `verse data` and follow its changes with
+`verse watch` ([data](tutorial/data.md)).
+
+**Charter.** A charter is a file of rules. Each rule has a condition on the data and an action:
+change the data, or start a task. You install a charter with `verse charter -a`
+([charters](tutorial/charters.md)).
+
+**Task.** A task runs on a runner, which holds the credentials for the systems the task uses.
+Its environment says which systems and repositories it may reach, and its autonomy says which of
+its steps go ahead and which ask first. You watch and steer tasks with `verse task`
+([tasks](reference/tasks.md)).
+
+**Ask.** An ask goes to the people it names, and they answer from the CLI, Slack or a pull
+request. A deadline can settle it when nobody answers. `verse question` lists what waits on you,
+and `verse ask` puts a question of your own, with what to do on a yes ([asking](asking.md)).
 
 ## The loop
 
 ```mermaid
 flowchart LR
-  change["an entity changes"] --> match["a trigger matches<br/>condition holds at that commit"]
-  match --> gate["its gates resolve<br/>auto · ask · a threshold · a deadline"]
-  gate --> act["the action fires<br/>patch · derive · spawn"]
-  act -->|"writes entities"| change
+  change["the data changes"] --> match["a rule's condition holds"]
+  match --> gate["its asks are answered<br/>or it needs none"]
+  gate --> act["its action runs<br/>a change · a task"]
+  act -->|"writes data"| change
 ```
 
-Verse writes the state of each task into the store. So a task that ends is a change to an
-entity, and it can cause the next reaction. A flow with several steps continues this way:
-through the store, not through a scheduler.
+Verse writes the state of each task into the data. So a task that ends is a change, and it can
+start the next rule. In the example, the agent's push changes the pull request's head, GitHub runs
+the checks again, and the new result arrives as data. Now the checks pass, so the merge rule
+holds, and it asks dana. A flow of several steps goes on like this, through the data, not through
+a scheduler.
 
-## The model
+## What verse is made of
 
-| Term | What it is |
+| Part | What it does |
 |---|---|
-| **entity** | anything the work refers to: a pull request, a build, a person. It has an address and a payload. |
-| **store** | the shared log of entities, one for the whole team. Anyone may watch it, and every commit has a revision and an author. |
-| **trigger**, or **rule** | one rule of a charter: when the condition holds and the gates pass, the action fires. |
-| **gate** | what a firing must pass: `auto` or `ask`. |
-| **action** | what a rule does. It is data, not code. |
-| **task** | a unit of work that verse governs and that you can steer. An agent, a script or a remote worker does it. |
-| **principal** | who acts: a person, a runner, an agent, or the system. |
-| **subject** | the entity a piece of work is about. |
-| **flow** | the tasks in progress about one subject, or about the subjects a pattern names. |
+| **the store** | keeps the data, one shared log for the whole team. Every commit has a revision and an author, and anyone may watch it. |
+| **iod** | connects one outside system to the store. `iod github` writes `acme/app`'s pull requests and workflow runs as data, and carries back to GitHub what a rule writes for it, such as the merge. |
+| **runner** | runs tasks, on a machine of your choosing. It holds the credentials, and makes each call a task asks for within its ceiling. A task holds no credential. |
+| **principal** | whoever acts: a person, a runner, an agent, or verse itself. |
 
-An **entity** has an address, such as `demo.pr.1`, `github.signadot.verse.pr.42` or
-`verse.task.instance.review-1`. Its payload is any value.
+**Everyone acts under their own name.** One verse is shared by a team. Each write, task and
+answer records who made it. Each place in the data has one owner, and anybody else acts on it by
+a grant the owner writes. A charter acts as the person who installed it, and reads only what they
+may read ([permissions](perms.md)).
 
-A **rule** has a `condition`, a list of `gates`, and an `action`. The condition names the
-`subject`, which is required. It may also name a cause, `on`, or something that must hold,
-`when`. Every gate must pass. [The charter reference](trigger-model.md) has the model in full.
+**An outside system has two faces.** A charter sees what an iod reflects into the data. A task
+calls the system's verbs, such as `git.push` or `github.create-pr`, through its runner
+([systems](systems/README.md)). Verse itself is one such system: a task can read the data, raise
+asks and install charters as the person it runs for ([the verse system](systems/verse.md)).
 
-A **gate** has one of two modes:
+**What changes, and what is allowed, are kept apart.** The data says what the world last looked
+like. Gates, asks and permissions say what may happen. A stream of changes never stands in front
+of an answer or a stop: you can always halt a flow in time with `verse flow`, whatever is arriving
+([control](control.md)).
 
-| Mode | What happens |
-|---|---|
-| `auto` | the action fires |
-| `ask` | a person or an agent must say yes first |
-
-An **action** can do four things, and one action may do several of them:
-
-| Field | What it does |
-|---|---|
-| `patch` | changes the payload of the subject |
-| `derive` | writes another entity from the subject |
-| `spawn` | starts a task |
-| `seq` | runs a list of actions in order |
-
-An action acts on the subject of its condition, and names no other target. It can read
-`$subject`, and every field of the subject's payload.
-
-A **task** runs on a runner. You can watch it and steer it. A task is also an entity,
-`verse.task.instance.<id>` ([the mirror](glossary.md#mirror-of-tasks)).
-
-A **principal** is a person by email, a runner by its name, an agent, or the system, which is
-verse itself. Every request and every firing writes as a principal.
-
-A verse is one shared space. Every person on the team, every runner and every agent acts in it
-under their own name, so the record of a task or of an answer says who, and the permissions say who
-may read what and who may steer it. Nothing in verse is one person's process: a task a colleague
-started is on your `verse task` too, if you may read it, and the question it asks waits on whoever
-it names.
-Every node in the store has one owner. Anybody else acts on it by a *grant* that the owner
-writes. A charter acts as its owner, and reads only what its owner may read.
-[Permissions](perms.md) has the model.
-
-A **subject** and a **flow** are derived. Verse keeps no record of either. A subject, such as a
-pull request on its way to merge, is part of nearly every id verse keeps: the id of a spawn, the
-id of a gate's question. A flow is built each time you ask for it, and you steer it as one unit.
-
-## An outside system has two faces
-
-Verse meets each system outside it, such as a repository, an issue tracker, GitHub or Linear,
-in two places:
-
-| Face | Who uses it | How |
-|---|---|---|
-| **reflected** | charters | an [iod](glossary.md#iod) writes what the system holds into the store as entities, and a rule reacts to them. What a rule writes back, such as a comment or a tag, goes out to the system through the same iod. |
-| **called** | tasks | a task calls the system's verbs, such as `git.push` or `linear-issue.create`. The task's [environment](glossary.md#environment) gives it, and its [autonomy](glossary.md#autonomy) decides each call. The runner makes the call with a credential the task never holds, within the runner's [ceiling](glossary.md#ceiling). |
-
-Verse describes each system once, as a document that names its verbs and what each verb is
-about. [Systems](systems/README.md) has a page for each.
-
-## Two planes: what changes, and what is allowed
-
-Verse keeps two things apart:
-
-| Plane | What is on it | How you see it |
-|---|---|---|
-| **observation** | what the world last looked like: every entity the iods wrote, and the state of every task as it runs | `verse data`, `verse watch`, `verse task` |
-| **control** | what may happen: the gates a rule or a task must pass, who may answer them, a hold on one run, a suspension of the work about a subject, and who owns what | `verse question`, `verse flow`, `verse perms` |
-
-Observation never decides anything, and control never waits behind the stream of changes. So
-you can always stop a flow in time, whatever is arriving. And a task's own account of what it
-did never decides who answered a question about it.
-[architecture.md](platform/architecture.md#observation-and-control-are-separate-planes) says how
-the two are built.
+[The glossary](glossary.md) defines every other term the docs use.

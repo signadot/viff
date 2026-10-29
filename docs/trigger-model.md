@@ -1,7 +1,8 @@
 # Charter reference
 
-A [charter](glossary.md#charter) is a list of [rules](glossary.md#rule). A rule has a
-condition, a list of gates, and an action. When the condition holds and every gate passes, the
+A [charter](glossary.md#charter) is a set of [rules](glossary.md#rule), with what the rules
+need: the levels they live in, the schedules they read, and the places they read and write. A rule
+has a condition, a list of gates, and an action. When the condition holds and every gate passes, the
 action fires.
 
 This page is the model of a rule: its parts, how it fires, and the two grammars it is written
@@ -9,8 +10,8 @@ in. To write a rule, start with [the tutorial's charters pages](tutorial/charter
 install rules and fire them. This page is the model behind them, and
 [where the rest is](#where-the-rest-is) lists a page for each part.
 
-A rule is about entities. An [entity](glossary.md#entity) is a [node](glossary.md#node) at an
-[address](glossary.md#address), with a small [payload](glossary.md#payload). An address is a
+A rule is about [data](glossary.md#data). Each piece of data is a [node](glossary.md#node) at
+an [address](glossary.md#address), with a small [payload](glossary.md#payload). An address is a
 path in the tree of the [store](glossary.md#store). Its writer decides how long it is.
 
 | Who writes it | Address |
@@ -32,7 +33,7 @@ These pages hold the parts of a rule, and the other things a charter author look
 | [The condition of a rule](reference/condition.md) | `subject`, `on` and `when`, and what a match can say |
 | [The action of a rule](reference/action.md) | `patch`, `derive`, `spawn` and `seq`, what an action reads, the answer contract, hooks, ids and progress facts |
 | [The gates of a rule](reference/gates.md) | what a gate asks, who answers it, and how it settles |
-| [The charter](reference/charter.md) | packages, `reads:`, `verse charter`, how a charter is stored, and what an install does not check |
+| [The charter](reference/charter.md) | packages, `reads:`, `sends:`, `ttl:`, a charter a task installs, `verse charter`, how a charter is stored, and what an install does not check |
 | [Schedules](reference/schedules.md) | time as a cause: schedules, ticks and the calendar |
 | [Entities](reference/entities.md) | addresses, payloads, merging writes, conditional writes, selection and watching |
 | [Strata](strata.md) | a declared order of levels, and `derive` |
@@ -60,27 +61,36 @@ A fifth part is optional: `stratum:`. It names the declared level the rule lives
 land ([strata](strata.md)). A rule with no `stratum:` has no such limit. No rule on this page
 has one.
 
-A rule in a charter:
+The examples on this page keep a team's pull requests as records at `demo.pr.<n>`, each with a
+`stage`, the repository `repo` (such as `acme/app`) and the branch `head`. A rule in their
+charter has an agent review each open pull request, once somebody says yes:
 
 ```tony
 - name: review
-  # what it is about
+  # what it is about: every open pull request
   condition:
     subject:
       path: "demo.pr.*"
       value:
         stage: open
-  # what must pass first
+  # what must pass first: somebody says yes
   gates:
   - name: approval
     mode: ask
-  # what fires
+  # what fires: the record moves on, and an agent reviews the branch
   action:
     patch:
       stage: reviewing
     spawn:
-      script: 'echo reviewing "$SUBJECT"'
-      environment: {vars: {SUBJECT: $subject}, systems: {network: {mode: open}}}
+      agent: {name: verse}
+      runner: verse.runners.build
+      prompt: "review the pull request at $subject"
+      environment:
+        systems:
+          network: {mode: open}
+          git: {repo: $subject.value.repo, from: $subject.value.head, fetch: {}}
+      autonomy:
+      - then: allow
     onDone:
       patch:
         stage: reviewed
@@ -89,7 +99,7 @@ A rule in a charter:
 Every gate must pass. A rule with no gates fires without asking anybody.
 
 A rule is data, with no code in it. So a charter can be installed over the wire, stored, and
-reflected as an entity. The engine reads the rule directly; there is no compiled form. The Go
+read back like any other data. The engine reads the rule directly; there is no compiled form. The Go
 types are in [trigger.go](../trigger/trigger.go).
 
 ## The rule
@@ -97,14 +107,14 @@ types are in [trigger.go](../trigger/trigger.go).
 One sentence says how a rule fires. Everything else on this page follows from it.
 
 > At each commit **C**, for each rule: if `on` is vacuous or **¬on(C-1) ∧ on(C)**, and
-> `when` holds at **C**, fire once for **every entity `subject` selects at C**.
+> `when` holds at **C**, fire once for **every address `subject` selects at C**.
 
 C-1 is the commit before C. An `on` is vacuous when the rule has no `on`.
 
 Three things follow.
 
-**A [firing](glossary.md#firing) is about one entity.** A [subject](glossary.md#subject) that
-selects N entities gives N firings. Each firing has its own gate question and its own spawn id.
+**A [firing](glossary.md#firing) is about one address.** A [subject](glossary.md#subject) that
+selects N addresses gives N firings. Each firing has its own gate question and its own spawn id.
 No firing is about a set.
 
 **Verse reads everything at one snapshot.** The condition and the selection both come from the
@@ -125,31 +135,14 @@ a spawning action that cannot latch.
 
 ## Two rules, read out loud
 
+The first rule is `review` above. The second ships what is reviewed when the checks on `main`
+pass, as the team's CI records them at `ci.status.main`:
+
 ```tony
-- name: review
-  condition:
-    subject:
-      path: "demo.pr.*"
-      value:
-        stage: open
-  gates:
-  - name: approval
-    mode: ask
-  action:
-    patch:
-      stage: reviewing
-    spawn:
-      agent: {name: verse}
-      environment:
-        systems:
-          network: {mode: open}
-      prompt: "review $subject"
-      autonomy:
-      - then: allow
 - name: ship-green
   condition:
     on:
-      path: "ci.status.*"
+      path: "ci.status.main"
       value:
         state: green
     subject:
@@ -164,17 +157,17 @@ a spawning action that cannot latch.
 `review` reads: *while a PR is open, review it*. Its patch moves each PR past `open`, so the
 rule settles.
 
-`ship-green` reads: *at the moment CI goes green, ship everything reviewed*. It fires once, at
-the edge, over the PRs as they stood at that commit. With `when` in place of `on`, it says
+`ship-green` reads: *at the moment CI on `main` goes green, ship everything reviewed*. It fires
+once, at the edge, over the PRs as they stood at that commit. With `when` in place of `on`, it says
 *while CI is green*, and it also ships a PR that is reviewed later.
 
 ## Two layers: point-in-time matches, and matches asked over time
 
-The model has one noun and two grammars. The noun is the entity. The grammars are the match
-and the formula.
+The model has one noun and two grammars. The noun is the data at an address. The grammars are the
+match and the formula.
 
 A *[match](glossary.md#match)* is a tony selector over the store at one moment. It says which
-entities satisfy it now. A match holds no time.
+addresses satisfy it now. A match holds no time.
 
 A *formula* is a match that verse asks of the store as the store changes. For a cause, verse
 asks it at two revisions. For a condition, it asks at one. A formula is its match and nothing
@@ -182,7 +175,7 @@ more.
 
 | Concept | Grammar | What it says |
 |---|---|---|
-| `subject` | match, at one moment | the entities a firing is *about*, selected at the commit. Required |
+| `subject` | match, at one moment | the addresses a firing is *about*, selected at the commit. Required |
 | flow | match, at one moment | which live tasks to steer, by their subject |
 | `on` | formula, a match at two revisions | the **cause**: fire at the commit where this first holds, having not held before |
 | `when` | formula, a match at one revision | the **condition**: this must hold at that commit for the firing to go on |
@@ -202,9 +195,9 @@ argues for that design.
 ## The commit is the unit
 
 The sentence in [the rule](#the-rule) is a question about the whole store at one
-[revision](glossary.md#revision), not about one entity. So verse asks it once per
+[revision](glossary.md#revision), not about one address. So verse asks it once per
 [commit](glossary.md#commit). The store reports each commit whole, with one change for each
-entity it touched.
+address it touched.
 
 Verse skips a rule at a commit that touched nothing the rule reads. The skip is exact, not a
 guess. If nothing the rule reads changed, `on` has no edge. A rule with a vacuous `on` would
@@ -227,23 +220,24 @@ A rule does nothing in four cases. From outside, the four look the same.
 | a gate denied it | ordinary |
 | a firing went wrong | a fault. Verse keeps it on the rule. |
 
-`verse charter` marks a rule whose firings went wrong with `trouble`. Verse writes `trouble`;
-it is not a field you write. `verse charter` prints this:
+Verse keeps what went wrong at a rule's firings as the rule's `trouble`. It is not a field you
+write. `verse charter` prints the rule as its file on stdout, and says its trouble on stderr. Take
+a rule whose patch names a field the pull request does not have:
 
-```
+```tony
 - name: copies
   condition: {subject: {path: "demo.pr.*", value: {stage: open}}}
   action: {patch: {stage: seen, reviewer: $assignee}}
-  trouble:
-  - kind: failed
-    chain: copies
-    subject: 'demo.pr."1"'
-    why: ...
-    at: "2026-09-28T09:14:03Z"
-    count: 3
 ```
 
-There are two kinds.
+After three failed firings, `verse charter` writes this on stderr:
+
+```
+note: baseline: rule copies: failed ×3, last at 2026-09-28T09:14:03Z: … (in copies) about demo.pr."1"
+```
+
+The note says the kind, the count, when it last happened, why, the place in the rule, and the
+subject. There are two kinds.
 
 | `kind` | What happened | What the entry says |
 |---|---|---|
@@ -259,9 +253,9 @@ is absent when nothing went wrong.
 A completion hook that fails is written on the record of its task, under `hook`.
 
 A spawn that starts and then fails is not the rule's trouble. It is a task that failed, such
-as a spawn that names a runner that is not installed. The task's record says so
-(`verse task`), and the rule's `onFailed` hook fires. A spawn naming an agent the
-runner does not offer is refused at install.
+as a spawn whose runner was removed after the rule was installed. The task's record says so
+(`verse task`), and the rule's `onFailed` hook fires. A spawn naming a runner that is not
+installed, or an agent the runner does not offer, is refused at install.
 
 ## Flow: a subject-match over live tasks
 
@@ -280,9 +274,9 @@ match on the subject.
 on what it names. A flow is a query, and verse keeps no index for it.
 [Control](control.md) says how to hold, suspend and cancel that work.
 
-## Lifecycle: how an entity leaves
+## Lifecycle: how data leaves
 
-An entity does not just disappear. First somebody writes the intent to remove it, as
+Data does not just disappear. First somebody writes the intent to remove it, as
 `verse.meta.vanishing`. Its value is the instant the intent was written. The removal comes
 later.
 
@@ -292,7 +286,7 @@ cannot be said. The written intent turns the negative into a positive, and a dep
 an ordinary rising edge:
 
 ```tony
-- name: note-departures
+- name: note-a-departure
   condition:
     on:
       path: "demo.pr.*"
@@ -303,8 +297,14 @@ an ordinary rising edge:
     subject: audit.record.latest
   action:
     patch:
-      saw: "a departure"
+      saw: "a pull request began to leave"
 ```
+
+The `on` rises when some pull request carries the marker and none did at the commit before. So
+`audit.record.latest` says when the first of them began to leave. A second pull request that starts
+to leave while the first is still there does not make the edge rise again. To record each departure,
+derive one record per leaving pull request, with the marker in the subject
+([strata](strata.md)).
 
 Match the *presence* of the marker, not its value. `vanishing: null` is how tony writes
 "present, with any value". The value is a timestamp today, and it may become a record: who
@@ -312,23 +312,23 @@ asked, why, a grace period. A charter that matches one value would have to chang
 
 Three things follow. The first matters most.
 
-**A vanishing entity is not a subject.** A rule acts on what it selects: it patches it, spawns
-about it, raises a gate on it. Work about an entity that is leaving is work about something
-that will not be there. So `subject: {path: "demo.pr.*"}` skips a vanishing entity. A rule
-that names the marker opts in, and sees the entity again. That is how the reaper below works.
+**Vanishing data is not a subject.** A rule acts on what it selects: it patches it, spawns
+about it, raises a gate on it. Work about data that is leaving is work about something that will
+not be there. So `subject: {path: "demo.pr.*"}` skips an address whose data is vanishing. A rule
+that names the marker opts in, and sees that data again. That is how the reaper below works.
 
-A *named* subject (`demo.pr.1`) is skipped too. You may name an entity that does not exist
-yet. You may not name one that is leaving.
+A *named* subject (`demo.pr.1`) is skipped too. You may name an address that holds nothing yet.
+You may not name one whose data is leaving.
 
-Without this, a rule that reacts to a departure would act on the departing entity. A patch
-over an absent entity creates it. So if the removal landed first, the rule would create the
-entity again, as an ordinary entity holding only what the rule wrote, with no marker. To react
-to a departure, write somewhere else: an audit record, or an archive.
+Without this, a rule that reacts to a departure would act on the departing data. A patch at an
+empty address creates data there. So if the removal landed first, the rule would create the data
+again, holding only what the rule wrote, with no marker. To react to a departure, write somewhere
+else: an audit record, or an archive.
 
-`verse data` still shows a vanishing entity, because the marker is there to make the intent
-visible. Only a rule's selection hides it.
+`verse data` still shows vanishing data, because the marker is there to make the intent visible.
+Only a rule's selection hides it.
 
-**The removal itself fires nothing.** When the entity goes, a predicate over it falls from
+**The removal itself fires nothing.** When the data goes, a predicate over it falls from
 true to false, and nothing fires on a falling edge. The intent was the moment to react.
 
 **The reaper is an ordinary rule.** It names the marker, so it selects what is leaving, and it
@@ -347,13 +347,13 @@ removes it. `!delete null` is the removal, at the root as at a field:
     patch: !delete null
 ```
 
-A bare `patch: null` writes the payload `null`. The entity then stands at its address and
-holds nothing. It is not gone.
+A bare `patch: null` writes the payload `null`. The data then stands at its address and holds
+nothing. It is not gone.
 
 | Patch | What it removes |
 |---|---|
 | `{tmp: !delete null}` | a key |
-| `patch: !delete null` | the entity |
+| `patch: !delete null` | the data at the address |
 
 So reaping is a convention, not a mechanism. Nothing in the engine knows how to reap. A
 charter says when to reap, how long to wait, and what happens first.
@@ -375,13 +375,13 @@ operators `!until`, `!quorum`, `!fact` and `!deadline` by name wherever it reads
 
 | Statement | Can a match say it? |
 |---|---|
-| "an entity exists whose payload is not X" | yes, with `!not` |
-| "no entity matching M exists", such as *ship when there is no open blocker* | no |
+| "some address holds a payload that is not X" | yes, with `!not` |
+| "no address matching M holds anything", such as *ship when there is no open blocker* | no |
 
 The model only says what exists. That is why
-[a departure is written down](#lifecycle-how-an-entity-leaves) rather than inferred. A `when`
+[a departure is written down](#lifecycle-how-data-leaves) rather than inferred. A `when`
 about absence works the same way: somebody writes the absence as a positive fact, such as a
-count or a summary entity. That is the author's practice, not part of the grammar.
+count or a summary record. That is the author's practice, not part of the grammar.
 
 All of this rests on [change events](change-events.md). [Convergence](convergence.md) says
 whether a charter written on change events settles, and what evaluating at every commit costs.

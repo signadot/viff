@@ -4,14 +4,18 @@ This page describes the `gates` field of a [rule](../glossary.md#rule): what a g
 answers it, and what a refusal, a deadline and a restart do to the question.
 [The charter reference](../trigger-model.md) has the model that gates belong to.
 
+The examples on this page are a team's releases of `acme/app`. Each release is a record at
+`release.<n>`, with a `title`, a `stage` and the number of `changes` it carries. Rules deploy a
+release when people say yes.
+
 ## `gates`: whether it proceeds
 
 `gates` is a list of [gates](../glossary.md#gate-of-a-rule). Every gate must pass before the
 action fires. A rule with no gates fires without asking anybody. Each gate is
 `{name: …, mode: auto|ask}`: `auto` passes at once, and `ask` waits for an answer.
 
-Gates are per *firing*. A [firing](../glossary.md#firing) is about one entity, so a rule that
-selects twelve PRs asks twelve [questions](../glossary.md#question).
+Gates are per *firing*. A [firing](../glossary.md#firing) is about one address, so a rule that
+selects twelve releases asks twelve [questions](../glossary.md#question).
 
 The id of a question is made from the rule, the gate and the subject. So a rule that is
 evaluated again still asks once. A firing that finds its question already standing joins it,
@@ -20,7 +24,7 @@ waits on a person does not fill the [docket](../glossary.md#docket).
 
 Several gates are several approvals. A deploy that needs a sign-off from security and from a
 release manager is two `ask` gates. One gate that needs more than one person says so on the
-question it poses:
+question it poses. A gate with more to say than yes or no names its own options:
 
 ```tony
   gates:
@@ -29,16 +33,18 @@ question it poses:
     need: 2                                    # proceed takes two ballots; one deny refuses
     deadline: {within: "24h", default: deny}   # and the clock decides silence
     answerers: [dana@example.com, group:payments]   # and whose ballots
-  - name: route
+  - name: timing
+    pose: "Deploy *$[subject.value.title]* now?"
     options:
-    - id: ship
+    - id: proceed
       need: 1
-      says: "merge it now"
+      says: "deploy it now"
     - id: hold
       need: 2
       says: "wait for the release call"
-    - id: drop
+    - id: deny
       need: 1
+      says: "drop this release"
 ```
 
 ### What a question says
@@ -46,8 +52,8 @@ question it poses:
 A question says two things in words, for a person:
 
 - `pose` is the question, written on the gate.
-- `about` is the one line the subject says about itself. An entity that carries a `says` field
-  has one, and verse copies it onto the question when it poses it
+- `about` is the one line the subject says about itself. A subject whose data carries a `says`
+  field has one, and verse copies it onto the question when it poses it
   ([the question record](tasks.md#the-question-record)).
 
 A reader needs no grant on the subject to read either. The other fields of a gate are for the
@@ -74,6 +80,10 @@ A gate that says none of these poses `proceed` and `deny`, at one ballot each.
 | `says` of an option | what choosing the option *means*, for whoever is asked. The `id` is how an answer names the option, and the name the rule reads. |
 | `need` | the short spelling of `options: [{id: proceed, need: N}, {id: deny, need: 1}]`. Do not write `need` and `options` together. |
 | `options` | an ordered list. The first option to reach its threshold settles the question. |
+
+**Only `proceed` lets the firing go on.** Any other option is a no: the action does not run, and
+the gate's [`onDenied`](#ondenied-what-a-no-means) runs instead. In the example above, `hold` and `deny`
+both stop the deploy. A gate whose options leave out `proceed` can never let its action run.
 
 A gate that carries any of these, or a `pose`, and no `mode` has the mode `ask`. Verse refuses
 such a gate with `mode: auto`, because `auto` asks nobody.
@@ -131,13 +141,13 @@ from the rule. So one rule can ask, for each record, whoever that record names.
 
 ```tony
   gates:
-  - name: answer
-    pose: "$[subject.value.question]"
-    answerersFrom: answerers      # {question: …, answerers: dana@example.com}
+  - name: approval
+    pose: "Deploy *$[subject.value.title]*?"
+    answerersFrom: approvers      # {title: …, approvers: dana@example.com}
 ```
 
-The field holds one name or a list, in the same grammar as `answerers`. For a field deeper in
-the record, write it dotted (`review.by`).
+So each release names who approves it. The field holds one name or a list, in the same grammar
+as `answerers`. For a field deeper in the record, write it dotted (`review.by`).
 
 A record without the field changes nothing: the gate's own `answerers` apply, or the docket's
 default where the gate names none.
@@ -227,9 +237,9 @@ To make a no final without changing the state of the subject itself, use a marke
 ```tony
   condition:
     subject:
-      path: "demo.pr.*"
+      path: "release.*"
       value: !and
-      - { stage: open }
+      - { stage: ready }
       - !not { blocked: true }
   gates:
   - name: approval
@@ -279,8 +289,8 @@ is no record for it to read a date from.
 
 ### A question outlives the verse that asked it
 
-The question's record, its options and every ballot are entities. So a restart finds the
-question exactly where it stood.
+The question's record, its options and every ballot are data in the store. So a restart finds
+the question exactly where it stood.
 
 The *awaiter* does not survive a restart. The awaiter is the part of the firing that waits for
 the answer. A question with no awaiter would be the worst entry on the docket: somebody answers
@@ -350,10 +360,20 @@ rule whose gate passed. You set up the outside system to accept such a token and
   action:
     patch: {stage: deploying}
     spawn:
-      script: "AWS_WEB_IDENTITY_TOKEN_FILE=$VERSE_CREDENTIAL_FILE aws s3 sync build s3://releases"
-      environment: {systems: {network: {mode: open}}}
+      script: |
+        set -e
+        cd app && make build
+        AWS_WEB_IDENTITY_TOKEN_FILE=$VERSE_CREDENTIAL_FILE aws s3 sync build s3://releases
+      environment:
+        vars: {AWS_ROLE_ARN: "arn:aws:iam::123456789012:role/releases"}
+        systems:
+          network: {mode: open}
+          git: {repo: acme/app, fetch: {}}
       credential: {audience: sts.amazonaws.com}
 ```
+
+The runner checks out `acme/app`, and the script builds it and syncs the build to S3. AWS takes
+the token from the file and the role from `AWS_ROLE_ARN`.
 
 **The verse is an issuer.** Its config names the address and the signing key
 ([`auth.issuer`](up.md#configuration)). The outside system reads the verse's public keys from
@@ -388,8 +408,15 @@ asking anybody writes a gate that says that:
   action:
     patch: {stage: staging}
     spawn:
-      script: "AWS_WEB_IDENTITY_TOKEN_FILE=$VERSE_CREDENTIAL_FILE aws s3 sync build s3://staging"
-      environment: {systems: {network: {mode: open}}}
+      script: |
+        set -e
+        cd app && make build
+        AWS_WEB_IDENTITY_TOKEN_FILE=$VERSE_CREDENTIAL_FILE aws s3 sync build s3://staging
+      environment:
+        vars: {AWS_ROLE_ARN: "arn:aws:iam::123456789012:role/staging"}
+        systems:
+          network: {mode: open}
+          git: {repo: acme/app, fetch: {}}
       credential: {audience: sts.amazonaws.com}
 ```
 

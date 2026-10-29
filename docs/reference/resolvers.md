@@ -30,10 +30,10 @@ Verse refuses these at install, each with why:
 | no `match` | a resolver watches the asks its match admits, and with none it would watch nothing |
 | `match.about` with a `value` | a value changes while an ask stands, so overlap could not be decided |
 | `match.to` | a match does not route: whom a resolver answers for is granted |
-| `condition`, `byRef`, `deadline`, `exclusive` | retired: nothing owns questions, nothing names a resolver, a resolver escalates by an onward ask, and whose answer counts is the party's grant |
+| `condition`, `byRef`, `deadline`, `escalatesAfter`, `exclusive` | retired: nothing owns questions, nothing names a resolver, a resolver escalates by an onward ask, and whose answer counts is the party's grant |
 | `method.driver: url` | the driver is `service`: verse never dials a resolver's service, which dials verse |
 | `method.driver: person` or `group`, `method.who`, `method.group` | retired: a person answers for themselves, and a resolver that forwards raises an onward ask |
-| `method.autonomy`, `.tools`, `.grant` | retired: a resolver is a service and runs nothing verse gates |
+| `method.vector`, `.tools`, `.grant` | retired: a resolver is a service and runs nothing verse gates |
 | a new `match` that would meet another resolver's where it already answers | two resolvers never answer for one party on one ask (409) |
 | an unknown field | it would decode to nothing |
 

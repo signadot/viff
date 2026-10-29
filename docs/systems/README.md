@@ -3,7 +3,7 @@
 A system is something outside verse that verse reads or acts on: a repository, its issue
 tracker, a forge, Linear, Slack. The [verse system](verse.md) is verse itself, acted on by a task
 as the person it runs for would. Verse meets each system in two places
-([basic concepts](../concepts.md#an-outside-system-has-two-faces)):
+([basic concepts](../concepts.md#what-verse-is-made-of)):
 
 - An [iod](../glossary.md#iod) connects the system to the store. It writes what the system
   holds into the store, where a charter reads it. It also carries what a charter writes back
@@ -52,10 +52,11 @@ of any branch; a charter that ships writes its git push shapes instead.
 | [`github-issue`](github-issue.md) | `create`, `comment`, `close` | [iod github](../reference/iod.md#github) |
 | [`linear-issue`](linear-issue.md) | `create`, `comment`, `close` | [iod linear](../reference/iod.md#linear) |
 | [`slack`](slack.md) | `post`, `reply`, `read`, `react` | [iod slack](../reference/iod.md#slack) |
+| [`verse`](verse.md) | `ask-create`, `ask-get`, `ask-list`, `data-get`, `data-put`, `data-rm`, `charter-get`, `charter-check`, `charter-install`, `charter-remove` | none: verse itself, reached through the runner's own token |
 | [`question`](question.md) | `ask` | none: a question goes to the docket ([asking](../asking.md)) |
 | [`files`, `commands`, `agent`](inside.md) | `write`; `run`; `call-sub-agent` | none: these are what an agent does inside its run |
 | [`network`](inside.md#the-network) | `tcp-client` | none: the connections a run opens through its runner's proxy |
 
-The runner performs the verbs of `git`, `git-issue`, `github`, `github-issue`, `linear-issue`
-and `slack`. It uses its own credential, and stays within the ceiling its configuration puts
+The runner performs the verbs of `git`, `git-issue`, `github`, `github-issue`, `linear-issue`,
+`slack` and `verse`. It uses its own credential, and stays within the ceiling its configuration puts
 over each system ([the verse runner](../reference/runnerd.md#configuration)).

@@ -1,10 +1,9 @@
-| `-docd-addr` | attach to a docd that is already running |
-| `-docd-advertise-addr` | publish a different address on `/status`. Use it when a store client beside verse reaches docd at another address than verse does. |# The store
+# The store
 
 Verse coordinates everything through one [store](../glossary.md#store). The store is a tree of
-entities. It can be watched, and a reader can follow it with a cursor. You do not have to touch
-the store to *use* verse, because `up` brings it up for you. But the deeper properties of verse
-come from the store, and this page is the one place that states them.
+[data](../glossary.md#data). It can be watched, and a reader can follow it with a cursor. You do
+not have to touch the store to *use* verse, because `up` brings it up for you. But the deeper
+properties of verse come from the store, and this page is the one place that states them.
 
 By default the store is [docd](https://signadot.github.io/tony-format/docd/), the tony-format
 document store, over logd. docd gives verse four things:
@@ -12,7 +11,7 @@ document store, over logd. docd gives verse four things:
 | Property | What it means |
 |---|---|
 | **Copy-on-write scopes** | A [scope](../glossary.md#scope) is an overlay. Its writes do not touch [baseline](../glossary.md#baseline), and one operation drops it ([scopes.md](scopes.md#scopes)). |
-| **Conditional and coordinated writes** | A write is an atomic compare-and-swap (CAS). Two writers that advance one entity cannot lose each other's fields ([entities.md](entities.md#conditional-writes)). |
+| **Conditional and coordinated writes** | A write is an atomic compare-and-swap (CAS). Two writers that advance one record cannot lose each other's fields ([data](entities.md#conditional-writes)). |
 | **Edge-faithful watches** | The change stream *is* the patch that each writer applied. No reader rebuilds, reorders or drops an edit. |
 | **Compactions** | A compaction keeps the log bounded and keeps the current state. |
 
@@ -24,6 +23,7 @@ directory. It points the store at the client face of docd. The store flags chang
 | `-data <dir>` | uses a durable directory |
 | `-docd-addr` | attach to a docd that is already running |
 | `-docd-advertise-addr` | publish a different address on `/status`. Use it when a store client beside verse reaches docd at another address than verse does. |
+| `-logd-config <file>` | the logd configuration, in tony, for the daemons that `up` starts, in place of the one verse writes. Verse refuses it beside `-docd-addr`, which starts nothing. |
 
 See [up.md](up.md#the-store).
 
@@ -35,7 +35,7 @@ and nobody addresses it as a level. The node at `demo.pr.1` is the node at that
 Match and Patch. One logd watch drives both the change stream and the
 [revision](../glossary.md#revision) cursor. That tree is all that `verse data` publishes. The
 document that `verse data` answers with *is* this tree, at the same
-[address](../glossary.md#address) ([entities.md](entities.md#reading)).
+[address](../glossary.md#address) ([data](entities.md#reading)).
 
 **Absence is a missing key, not a null.** A removal is `!delete`. logd executes it by taking
 the key out, so a deleted address reads back not_found. A null is a node like any other. The
@@ -94,7 +94,7 @@ Three properties of the store make the reactive loop converge. An author of a
 - **A write is a patch, so a write cannot carry a match operator as data.** `!irtype`, `!or`,
   `!glob`, `!let` and the rest of the match vocabulary are operations. When a payload carries
   one, the store executes it and does not store it. The write itself does not fail. Every later
-  read fails, so the store becomes unreadable, and not only the entity wrong. Verse refuses such
+  read fails, so the store becomes unreadable, and not only that data wrong. Verse refuses such
   a write, and names the operator and the field.
 
   Instead, mark the subtree as data. Use `entity.Raw` (`!raw`) on the way in. A charter rule

@@ -3,9 +3,16 @@
 A question in verse is an [ask](../glossary.md#ask). It is put to the people who may answer it.
 It can have a date, and it can say what a yes runs.
 
-There are three ways to ask. You ask with `verse ask`. A task asks when it reaches something it
-may not do alone ([tasks](tasks.md)). A rule asks at its gate ([charters](charters.md)). All
-three make the same record, and every pending ask is on one list, the
+There are four ways to ask:
+
+| Who asks | How |
+|---|---|
+| you | `verse ask`, on this page |
+| a task, for itself | when it reaches something it may not do alone, and it waits for the answer ([tasks](tasks.md)) |
+| a task, for you | with its `verse-ask-create` tool, when its environment gives it the [`verse` system](../systems/verse.md). The ask is yours, and the task does not wait for it |
+| a rule | at its gate ([charters](charters.md)) |
+
+All four make the same record, and every pending ask is on one list, the
 [docket](../glossary.md#docket).
 
 This page needs [a verse running](README.md#start), and nothing else.
@@ -100,11 +107,13 @@ verse ask hotfix -q "Any objection to the hotfix?" --to dee@example.com --due 10
 verse ask hotfix          # ten seconds later: answer: yes
 ```
 
-While an ask waits, you can change it or take it back:
+While an ask waits, you can change it or take it back. Ask about the production deploy, give it
+more time, and then withdraw it:
 
 ```sh
-verse ask lunch -q "Lunch at noon?"
-verse ask lunch --withdraw
+verse ask deploy-prod -q "Deploy the release to production?" --to ana@example.com --due 1h
+verse ask deploy-prod --due 4h         # moved deploy-prod-… to the date four hours from now
+verse ask deploy-prod --withdraw
 ```
 
 A new date moves the clock and keeps the answers given. A new `--then` or a new `--to` changes
@@ -112,7 +121,7 @@ what was asked. So the ask is asked again, and the earlier answers do not count.
 
 ## A question is data
 
-An ask is an entity at `verse.ask.<id>`, so the verbs of [data](data.md) read it:
+An ask is data at `verse.ask.<id>`, so the verbs of [data](data.md) read it:
 
 ```sh
 verse data verse ask deploy-b8a7d6bea9e3 -trim '{answer, by, verdict, ballots}'
@@ -132,7 +141,7 @@ verdict: proceed
 
 Each answer is a ballot. It says who chose what, and whether verse authenticated them or took
 their word. `verse watch verse ask '*'` follows every ask you can read, and a rule can select an
-ask as it selects any other entity.
+ask as it selects any other data.
 
 [Asking](../asking.md) has the rest: asks that answer other asks, an `else` for a no, how long an
 ask stands, and who may read it. Next, [tasks](tasks.md).

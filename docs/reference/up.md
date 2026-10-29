@@ -50,9 +50,13 @@ verse its deeper properties:
 See [store.md](store.md).
 
 ```sh
-verse up -data ~/.verse/data                        # a durable dir rather than a fresh temp one
-verse up -docd-addr host:port                              # attach to an already-running docd
+verse up -data ~/.verse/data                 # a durable dir rather than a fresh temp one
+verse up -docd-addr host:port                # attach to an already-running docd
+verse up -logd-config logd.tony              # start logd with this configuration
 ```
+
+`-logd-config` replaces the logd configuration that verse writes for the daemons it starts. It
+configures a logd that `up` starts, so verse refuses it beside `-docd-addr`.
 
 **A store call has a time limit, and reads and writes have different limits.**
 
@@ -232,14 +236,14 @@ once it reaches the branch.
 
 ```tony
 repoCharters:
-- repo: verse
-  github: signadot/verse
-  at: repos.verse
+- repo: app
+  github: acme/app
+  at: repos.app
   answerers: ["user:*"]
 ```
 
-The config is what the system runs. At start, a charter package the system installed that
-neither `systemCharter` nor `repoCharters` names any more is taken down, with what it kept at its
+The config is what the system runs. At start, verse takes down each charter package the
+system installed that neither `systemCharter` nor `repoCharters` names, with what it kept at its
 address. So dropping an entry from `repoCharters` turns that repository's reconciler off at the
 next start: the reconciler goes, with its state under `repo-charters.<repo>`, and the charters it
 installed at `at` stay as they are.
@@ -322,9 +326,9 @@ auth:
   cluster also grants the discovery document to service accounts alone by default, and versed
   reads it as nobody, so the deploy's `issuerDiscoveryOpen` opens it. Unset trusts the system's
   roots, which a public issuer (EKS's) needs and nothing more.
-- `accounts` maps a token's subject to the iod it is: the `agent:` it acts as, and `io`, the
+- `accounts` maps a token's subject to the iod it is: the `agent:` it acts as, and `iod`, the
   name it is installed under, which is how a provider's `iods` names it. An iod that relays nobody
-  needs no `io`. The accounts are written at start, never at first sight.
+  needs no `iod`. The accounts are written at start, never at first sight.
 - `static` is the iods of a deployment with no issuer, a laptop or CI: the path of a file holding
   the token each presents, read at start. The verse keeps the hash and never the token.
 
@@ -404,6 +408,9 @@ the file `VERSE_CONFIG` names. Only its owner can read it.
 `VERSE_CONFIG=<file>` names one config file in place of both file layers. `VERSE_RESEED_PERMS`
 is `-reseed-perms`. `VERSE_LOG` sets how much `verse up` logs: `debug`, `info`, `warn` or
 `error`.
+
+`verse up -admin-addr <addr>` is where verse serves its admin listener, which serves pprof. It is
+the port of `-addr` plus one by default, and `off` turns it off.
 
 ## The o binary
 

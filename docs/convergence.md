@@ -77,7 +77,7 @@ snapshot per firing, taken at the commit that caused it**:
 
 - `$subject.value`, the payload of the subject;
 - the two path reads,
-  [`!get-path` / `!list-paths`](reference/action.md#get-path-and-list-paths-reaching-another-entity).
+  [`!get-path` / `!list-paths`](reference/action.md#get-path-and-list-paths-reaching-other-data).
 
 A firing may wait at a gate for a day. It then writes from the state its rule was evaluated
 against, not from the state the store reached while a person decided. A fan-out cannot mix one

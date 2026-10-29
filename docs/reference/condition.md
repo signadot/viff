@@ -5,8 +5,8 @@ This page describes the fields of the [condition](../glossary.md#condition) of a
 the page also says what a [match](../glossary.md#match) can say.
 [The charter reference](../trigger-model.md) is the model that these fields belong to.
 
-A condition reads entities in the store. People write them, rules write them, verse writes its
-own, and an [iod](../glossary.md#iod) writes what a system outside verse holds. The condition
+A condition reads data in the store. People write it, rules write it, verse writes its own, and
+an [iod](../glossary.md#iod) writes what a system outside verse holds. The condition
 does not care which.
 
 ## `subject`: what the firing is about, and required
@@ -23,25 +23,25 @@ A subject resolves in one of two ways. Both use the same match grammar.
 
 | subject | resolves to | example |
 |---|---|---|
-| an [address](../glossary.md#address) naming one entity (`demo.pr.1`) | that [entity](../glossary.md#entity), whether or not it exists. An action's `patch` *creates* it. | publishing a fact nothing has written yet |
-| a [pattern](../glossary.md#pattern), which is a path with `*` or `..` in it (`demo.pr.*`), with an optional payload predicate | every matching entity in the store, at that commit | every reviewed PR |
+| an [address](../glossary.md#address) with no wildcard (`demo.pr.1`) | that address, whether or not [data](../glossary.md#data) stands there. An action's `patch` *creates* it. | publishing a fact nothing has written yet |
+| a [pattern](../glossary.md#pattern), which is a path with `*` or `..` in it (`demo.pr.*`), with an optional payload predicate | every matching address in the store, at that commit | every reviewed PR |
 
-A subject is always a *selection*. It is never "the entity that changed".
+A subject is always a *selection*. It is never "the data that changed".
 [A subject is a selection](../design/reference-condition.md#a-subject-is-a-selection) gives the reason.
 
 "When a PR opens, review it" and "review all of them" therefore settle in the same state. The
 action moves each PR out of the selection, so both end with every open PR reviewed. The two
 differ in the number of firings, and not in the state they end in.
 
-An address with no wildcard is a set of one, *whether or not the entity exists*. To name an
-entity is to address it by identity. It is not to select from what is there.
+An address with no wildcard is a set of one, *whether or not anything stands there*. To name an
+address is to name it by identity. It is not to select from what is there.
 [A name is a set of one](../design/reference-condition.md#a-name-is-a-set-of-one) gives the reason.
 
 A subject that selects must begin with a literal segment, so that it selects out of a place.
-Or the subject names one entity outright. The engine selects and spawns for these two shapes.
-A pattern that selects nothing does nothing. It never creates an entity called `*`.
+Or the subject names one address outright. The engine selects and spawns for these two shapes.
+A pattern that selects nothing does nothing. It never creates data at a segment called `*`.
 
-The engine starts one firing for each selected entity, and each firing is about exactly one
+The engine starts one firing for each selected address, and each firing is about exactly one
 subject. Every part of a firing uses that identity as its key:
 
 - its spawn id
@@ -54,15 +54,15 @@ already firing, and when work that the firing started is already running. So a r
 for a person does not ask again at every commit.
 
 For this reason `subject` is bounded, where a `when` formula ranges freely. `subject` names a
-place, and its predicate is over the [payload](../glossary.md#payload) of one entity.
+place, and its predicate is over the [payload](../glossary.md#payload) at one address.
 "All open PRs" is `{path: "demo.pr.*", value: {stage: open}}`. The same thing deeper in the tree
 is `{path: "repos.verse.drift.head.*", value: {reviewed: pending}}`.
 
 ### The pattern says how deep its subjects are
 
-The depth of an entity is a property of the question, and not of the store. A document that
-holds `{a: {b: {c: {stage: open}}}}` has an entity at `a.b.c`. Or it has an entity at `a.b`
-whose payload is nested. Nothing in the document says which.
+The depth of a piece of data is a property of the question, and not of the store. A document
+that holds `{a: {b: {c: {stage: open}}}}` has data at `a.b.c`. Or it has data at `a.b` whose
+payload is nested. Nothing in the document says which.
 
 The pattern therefore carries the depth. A `path:` of N segments identifies the nodes exactly
 N segments down. A name and a `*` count the same: each is one segment.
@@ -71,7 +71,7 @@ N segments down. A name and a `*` count the same: each is one segment.
 |---|---|
 | `{path: "demo.pr.*"}` | the nodes that stand under `demo.pr` |
 | `{path: "repos.verse.drift.head.*"}` | the nodes under `repos.verse.drift.head` |
-| `{path: "demo.pr"}` | the entity at `demo.pr` itself |
+| `{path: "demo.pr"}` | the node at `demo.pr` itself |
 
 A short path is not a prefix. In a path with no `..` segment, nothing means "at or below".
 
@@ -90,7 +90,7 @@ that level, and would lose anything deeper.
 
 ### The string form is an address, in one grammar
 
-One string grammar addresses entities by identity. Both the charter wire and the CLI
+One string grammar names addresses by identity. Both the charter wire and the CLI
 (`verse flow show <addr>`) parse it. The string is a
 [kinded path](../glossary.md#kinded-path), with `*` for any one segment. So
 `"subject": "demo.pr.*"` in a charter and `verse flow show 'demo.pr.*'` on the command line
@@ -100,7 +100,7 @@ The string is the path that it spells, at every length.
 
 | String | What it means |
 |---|---|
-| `"demo.pr"` | names the entity at `demo.pr` |
+| `"demo.pr"` | names the address `demo.pr` |
 | `"repos.verse.drift.head.*"` | selects five segments deep |
 
 Anything else in a segment is a name. `hotfix-*` in the string is the segment called
@@ -135,13 +135,14 @@ the resolved subject of the firing itself.
 
 ### Acting on a set
 
-A subject that selects advances a whole set:
+A subject that selects advances a whole set. The team's CI records the checks on `main` at
+`ci.status.main`, and this rule ships every reviewed pull request while those checks pass:
 
 ```tony
 - name: ship-reviewed
   condition:
     when:
-      path: "ci.status.*"
+      path: "ci.status.main"
       value: { state: green }
     subject:
       path: "demo.pr.*"
@@ -153,17 +154,17 @@ A subject that selects advances a whole set:
     patch: { stage: shipped }
 ```
 
-Every reviewed PR advances, while CI is green. Each PR is a firing of its own, with its own
-`ask` gate. With a `spawn`, each PR has its own task, tagged with that PR as its subject. So
+Every reviewed PR advances, while CI on `main` is green. Each PR is a firing of its own, with its
+own `ask` gate. With a `spawn`, each PR has its own task, tagged with that PR as its subject. So
 each PR is a [flow](../glossary.md#flow) of its own.
 
 **There is one gate for each member**, and not one gate for the whole set. A firing is about
-one entity, so twelve reviewed PRs are twelve questions
+one address, so twelve reviewed PRs are twelve questions
 ([gates](gates.md#gates-whether-it-proceeds)). An operator gives twelve answers, because `verse question approve` has
 no bulk form.
 
-**The `when` is the condition**: while CI is green. Verse evaluates the rule again at every
-commit that touches either subtree. So the rule also acts on a PR that reaches `reviewed`
+**The `when` is the condition**: while CI on `main` is green. Verse evaluates the rule again at
+every commit that touches either subtree. So the rule also acts on a PR that reaches `reviewed`
 later.
 
 [Two rules, read out loud](../trigger-model.md#two-rules-read-out-loud) says what an `on` in
@@ -205,7 +206,7 @@ explains why. It does not say "unknown key". A match says a create and a delete 
 | Change | How a match says it |
 |---|---|
 | a create | the rising edge of "this exists" |
-| a delete | the rising edge of the [vanishing marker](../trigger-model.md#lifecycle-how-an-entity-leaves) that precedes removal |
+| a delete | the rising edge of the [vanishing marker](../trigger-model.md#lifecycle-how-data-leaves) that precedes removal |
 
 [A match has no `op` key](../design/reference-condition.md#a-match-has-no-op-key) gives the reason.
 
@@ -220,8 +221,8 @@ needs one.
 <a id="the-backlog"></a>
 **Installing a rule fires it on what already matches.** When a rule opens, its observation
 replays the places that the rule reads. So the rule acts at once on the backlog that stands in
-the store at the install. You do not write each entity again to announce a state that it
-already has.
+the store at the install. You do not write the data again to announce a state that it already
+has.
 
 An `on` is the exception, for the same reason that it does not fire again: a predicate that
 already holds has no rising edge.
@@ -290,7 +291,7 @@ about. So `{path: "task.*.*"}`, in a charter about the tasks of the world, reach
 It never reaches the mirror of a run at `verse.task.instance`.
 
 A `..` segment reaches every depth beneath the place where it stands, and the node at that
-place too. Use it for a rule about things that do not all stand at one depth. Derived entities
+place too. Use it for a rule about things that do not all stand at one depth. Derived records
 are such things:
 
 ```tony
@@ -305,7 +306,7 @@ A subject that descends selects by reading the subtree at its literal prefix and
 Verse opens its watch with the pattern, and not with a depth. So a write at any depth that the
 pattern reaches wakes the rule.
 
-A subject that descends names a set. So it is never "one entity named": a rule with a
+A subject that descends names a set. So it is never "one address named": a rule with a
 descending subject selects.
 
 **The payload predicate takes operators.** The predicate is `value`: a tony match, evaluated
@@ -329,7 +330,7 @@ subject:
   value: { used: !ge(0.8).get-path(root) cap }
 ```
 
-`value` is open in shape because a payload is. The payload of an entity is any tony value: a
+`value` is open in shape because a payload is. A payload is any tony value: a
 record, a count, a flag, a state name, a list. So a predicate over it may be any of those, or
 an operator over one. Almost every charter writes the record form. The other forms are why the
 key is not called `fields`.
@@ -339,7 +340,7 @@ key is not called `fields`.
 | a record | a **subset** constraint, as a tony match over an object always is. The fields you name must agree, and any others are ignored. |
 | a scalar | equality. There is nothing to be a subset of, so `value: 42` means the payload *is* 42. |
 
-`value: "stage=open"` is a legal predicate. It matches an entity whose whole payload is the
+`value: "stage=open"` is a legal predicate. It matches data whose whole payload is the
 string `stage=open`. It is not an expression language. There is one name for the predicate,
 and no assertion about its shape. [`value` asserts no shape](../design/reference-condition.md#value-asserts-no-shape) gives
 the reason.

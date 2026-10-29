@@ -19,8 +19,10 @@ direction of a connection decides what is possible on it.
 One program holds both halves. So an iod has one credential, one rate budget, one registration
 and one deployment.
 
-Not every iod has both halves. Git has a source, and it acts out through a **task**. A push
-cannot be taken back, and verse gates each step of an irreversible effect and does it once.
+Git's out half is narrow. It makes a tag, moves a branch to a commit that already exists, and
+installs a tree of charters. A commit, and a push of new work, go through a **task**. A push of
+new work cannot be taken back, and verse gates each step of an irreversible effect and does it
+once.
 
 The rule is reversibility:
 
@@ -29,7 +31,7 @@ The rule is reversibility:
 | a sink | what is kept in step with a record, and corrected by editing the record | a message, a comment, a notice |
 | a task | what cannot be taken back | a push |
 
-For the surface of an iod (the entity, the verbs, the routes, the contracts it serves), see
+For the surface of an iod (the registration, the verbs, the routes, the contracts it serves), see
 [reference/io.md](reference/io.md). Verse ships five iods: git, git-issue, Slack, Linear and
 GitHub. For them, see [reference/iod.md](reference/iod.md). To build your own iod, copy
 [examples/io](reference/examples/io/main.go). It is a real program, and it compiles with the
@@ -68,7 +70,7 @@ Verse makes the same split inside itself:
 
 So the law is:
 
-> **A hint never writes entities.** It schedules a reconcile of the affected ref(s); the
+> **A hint never writes data.** It schedules a reconcile of the affected ref(s); the
 > reconcile reads the source of truth and writes to converge.
 
 A [hint](glossary.md#hint) names the addresses that went stale. A reconcile of those addresses
@@ -90,7 +92,7 @@ A source that owns `github` is the only writer under `github`. So the store has 
 problem there. An address that a source reflects needs no compare-and-swap, because it has one
 writer.
 
-Compare-and-swap still matters where several rules write a shared *subject*. A reflected entity
+Compare-and-swap still matters where several rules write a shared *subject*. Reflected data
 is not a shared subject.
 
 Inside one verse process, one `Git` value keeps the single writer. Across deployments, only the
@@ -128,7 +130,7 @@ The sink differs from the source only in direction, and in what follows from dir
 | | in | out |
 |---|---|---|
 | who dials | verse | the iod |
-| what it carries | entities and covers | inputs, and a status per input |
+| what it carries | data and covers | inputs, and a status per input |
 | the law | the single writer of what it covers; covered-and-omitted is tombstoned | what is asked is compared with what was done, and the difference is done |
 | failure | recorded on the registration, retried by the next pass | recorded on the status, retried by the next pass; a refusal is permanent until the input changes |
 | who verse trusts | what the reflection answers | what the iod says it did (it cannot see for itself) |
@@ -187,16 +189,16 @@ once, and a source does not do it.
 
 `Covers` names what the answer is complete for:
 
-- An entity under a covered pattern and absent from `Entities` is tombstoned.
-- An entity in `Entities` under no covered pattern is written, and never tombstoned.
+- Data under a covered pattern and absent from `Entities` is tombstoned.
+- Data in `Entities` under no covered pattern is written, and never tombstoned.
 
 A cover is a path. Its first segment is the root of the source. Git covers `git.<repo>.ref.*`
 and `git.<repo>.head`, and it does not cover `git.<repo>.commit.*`. So a commit that falls out
 of the bounded window of tips is not mentioned, and it stays. The history that git keeps is a
 declaration in the answer. It is not a branch in the code of verse.
 
-A write **replaces** the entity. It does not merge into it. The answer is what the entity *is*,
-so a field that the source stops reporting is gone.
+A write **replaces** the data at its address. It does not merge into it. The answer is what the
+data *is*, so a field that the source stops reporting is gone.
 
 The reasons are in [Why it is this way](#why-it-is-this-way).
 
@@ -225,8 +227,8 @@ from.
 The three differ only in where the `net.Conn` comes from. `Reflect` is the same call on all
 three. The field that is present says which way it is.
 
-A runner differs here: a runner with no url is refused. For a runner, absence already meant
-`local`, so an entity with no url was ambiguous.
+A runner differs here: a runner with no url is refused. For a runner, absence means
+`local`, so a registration with no url would be ambiguous.
 
 **Verse dials, and the hint goes the other way.** A source that is pulled is a pure function of
 the external truth. It has no ticker, no backoff, no retry policy, no diff, no cursor and no
@@ -261,7 +263,7 @@ reasons:
 | *unreachable* | it did not answer | installs it, with a warning |
 
 A manifest often lands before its pod. That is the ordinary state of a source that is
-deployed beside the entity that names it. So an unreachable source is installed.
+deployed beside the registration that names it. So an unreachable source is installed.
 
 Two checks have no analogue for a runner. An in-process source passes both by construction. An
 external source may not.
@@ -272,7 +274,7 @@ external source may not.
 - **Every claim must be provably disjoint from every registration that stands in the same
   scope.** Otherwise verse refuses the install, and the message shows both claims. Verse could
   not prove them apart, so the operator must decide.
-  - Two sources that write different addresses in the same entities each claim a deeper
+  - Two sources that write different addresses inside one thing each claim a deeper
     address. Verse then proves the claims apart like any others.
   - `-allow-overlap` is for two sources that do write the same address. The cost is stated:
     two writers on one address, each tombstoning what the other reflected.
@@ -376,11 +378,11 @@ and takes the registration, everything reflected and the reflector with it. A sc
 no removal step to forget. It cannot outlive the sandbox it was for.
 
 **A scope can hide what it does not own.** A scoped converge tombstones what the external truth
-no longer has. Inside a scope, most of what it finds is inherited from baseline. The tombstone
-hides the inherited entity from the reads and watches of the scope. Baseline still holds the
-entity. Verse drops the tombstone with the overlay.
+does not hold. Inside a scope, most of what it finds is inherited from baseline. The tombstone
+hides the inherited data from the reads and watches of the scope. Baseline still holds the
+data. Verse drops the tombstone with the overlay.
 
-**Hiding works at every depth.** A scope hides an inherited node beneath an entity in the same
+**Hiding works at every depth.** A scope hides an inherited node deeper inside the data in the same
 way. So a sandbox can say "that team does not own this project in here". Neither direction
 leaks:
 
@@ -443,7 +445,7 @@ and does not ask again.
 
 A throttle costs the latency of a hint during a burst. A source that is rate-limited reflects
 nothing at all until the limit lifts, so this is the better direction. Verse never caches a
-failure. A cached failure would be `every` minutes of a source claiming that an external system
+failure. A cached failure would be a `-min-interval` window of a source claiming that an external system
 is empty.
 
 **Where a system offers one, a conditional request is better than a clock.** GitHub offers
@@ -456,7 +458,7 @@ comparison. The throttle stays underneath, as the backstop for a burst.
 
 **A cover is how a source says what it could not read.** The people in Slack need a scope that
 its channels do not need. So when `users.list` fails, the source drops the cover of users *and*
-the user entities. The answer is then complete for the channels, and complete for nothing else.
+the users' data. The answer is then complete for the channels, and complete for nothing else.
 Verse leaves standing what the source could not read, and does not delete it.
 
 The channels are treated differently. A pass that lost the channels has nothing true left to
@@ -515,8 +517,8 @@ part, is bounded and known. So the source covers the same kind **twice**:
 
 ```tony
 covers:
-- {path: "github.signadot.verse.issue.*", value: {state: open}}
-- {path: "github.signadot.verse.issue.*", value: {state: closed}}
+- {path: "github.acme.app.issue.*", value: {state: open}}
+- {path: "github.acme.app.issue.*", value: {state: closed}}
 ```
 
 | Cover | What the answer holds | What goes |
@@ -546,7 +548,7 @@ network, and it is native to the SDLC.
   registration with `at` set to the address of the repository. It has no signing and no
   network. The delivery says only which address went stale (`Git.InstallHook`).
 - Reflection is **cursorless**, because git is content-addressed. `git for-each-ref` gives a
-  `ref→sha` map. Comparing the shas with the stored entities *is* the level-triggered diff. There
+  `ref→sha` map. Comparing the shas with the stored data *is* the level-triggered diff. There
   is no since-token, and no window of missed events.
 - It is **multi-repo native**. A repository registers under an id, and the id is a level of
   every address (`git.<repo>.ref.<name>`, `git.<repo>.head`). A pass is per repository. So the
@@ -611,7 +613,7 @@ write.
 narrows its `Covers`, and reflects one address at a time. That is the same level-triggered pass
 at a finer grain. If that stops being enough, the answer is a paged reflect, not a stream.
 
-**No authority.** Verse dials a url that a writer of the entity chose, and it accepts hints from
+**No authority.** Verse dials a url that a writer of the registration chose, and it accepts hints from
 anyone. The install probe of a runner opens the same edge.
 
 **Nothing new about credentials.** The events endpoint of the Slack source takes requests from
@@ -625,7 +627,7 @@ about Slack, and every source uses the same hint route.
 
 The law gives three properties: idempotency, self-healing, and independence from order and from
 duplicates. Verse converges against the real state of the system, not against a delivery that
-may fail. Translating the payload of a webhook straight into entity writes is the same mistake as
+may fail. Translating the payload of a webhook straight into writes of data is the same mistake as
 trusting `Observe` without `Since`.
 
 Verse does not map a delivery to addresses itself. A second implementation of that mapping, one
@@ -650,7 +652,7 @@ until a charter fires two hundred times.
 that git keeps is a declaration, and not a branch in the code of verse.
 
 A write replaces and does not merge, for this reason. A merge would leave a stale field
-standing. The check for unchanged compares against what the source said. So the entity would
+standing. The check for unchanged compares against what the source said. So the data would
 differ on every pass, forever, and fire its rules each time.
 
 ### Why verse dials
@@ -665,8 +667,8 @@ that answer from a source that failed. So the source must fail loudly.
 
 ### Why a claim is an address
 
-The reason is where the question is asked. Converge evaluates `Covers` against stored entities,
-and it can read their payloads. An install compares two *declarations*, and it has no entities in
+The reason is where the question is asked. Converge evaluates `Covers` against stored data,
+and it can read the payloads. An install compares two *declarations*, and it has no data in
 hand. Addresses compare statically. Predicates do not.
 
 The limit on a glob in a level makes disjointness a comparison of strings. General disjointness
@@ -687,7 +689,7 @@ the same one. That argument is wrong. A verse whose reflections
 are all shared cannot say "in here, the repository looks like this". A sandbox exists to answer
 that question. Shadowing is the feature, and for this reason the ownership check is per scope.
 
-If a scoped delete could remove only entities local to the scope, a scoped source could not say
+If a scoped delete could remove only data local to the scope, a scoped source could not say
 "that branch does not exist in this sandbox". Every scope would then have the set of baseline as
 a floor.
 

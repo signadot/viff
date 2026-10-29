@@ -20,7 +20,8 @@ it steers it. Verse is not a personal automation, and no one person is its orche
 
 ## [Basic concepts](concepts.md)
 
-Four terms, the loop they run in, and the model behind them. Read this first.
+The four things you work with, data, charters, tasks and asks, and the parts of verse that run
+them. Read this first.
 
 ## [Tutorial](tutorial/README.md)
 

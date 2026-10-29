@@ -5,9 +5,9 @@ own, and you choose how much of that work agents do without asking. One verse is
 team: everyone in it, and every agent, acts under their own name, and whoever holds the
 permission sees and steers the work.
 
-You install a *charter*. A charter is a list of rules, and each rule has an event, a condition
-and an action. Verse keeps a shared store of *entities*, which anyone may observe. When an
-entity changes, verse finds the rules that match and does the work with agents.
+You install a *charter*. A charter is a list of rules, and each rule has a condition and an
+action. Verse keeps a shared store of *data*, which anyone may observe. When data changes, verse
+finds the rules that match and does the work with agents.
 
 Every reaction passes a *gate*. A gate has one of three modes:
 
@@ -21,9 +21,9 @@ You set the mode for each action. The agents that do the work stay observable, a
 steer them while they run.
 
 ```
-entity change ──▶ trigger matches ──▶ gate resolves ──▶ action fires
-     ▲                                                       │
-     └───────────── actions write entities ◀────────────────┘
+data changes ──▶ trigger matches ──▶ gate resolves ──▶ action fires
+     ▲                                                      │
+     └───────────── actions write data ◀───────────────────┘
 ```
 
 ## No orchestrator
@@ -73,7 +73,7 @@ directory, and not only in a checkout.
 You need no configuration to start. Toward a verse on your own machine the CLI acts as
 `user:<login>@localhost`, where `<login>` is your login name.
 
-`scripts/seed-demo.sh` fills the empty verse. It writes two rules and a few entities. When it
+`scripts/seed-demo.sh` fills the empty verse. It writes two rules and some data. When it
 ends, one reaction has already happened and one gate is waiting for you. Then it prints what
 to type next.
 
@@ -82,16 +82,17 @@ You can do the same by hand: `verse charter -a …`, `verse data … --put …`,
 
 Two more scripts seed worlds to read and to react to:
 
-- `scripts/seed-entities.sh` writes entities to select over, for the data page of the
+- `scripts/seed-entities.sh` writes data to select over, for the data page of the
   [tutorial](docs/tutorial/README.md).
-- `scripts/charter-shapes.sh` installs the shapes a rule can have, one command each, for
-  [the tutorial's charters pages](docs/tutorial/charters.md).
+- `scripts/charter-shapes.sh` installs the shapes a rule can have, one command each, under
+  `demo`. Each shape is installed, made to fire, suspended and removed by name.
 
-The tutorial has four pages, one for each part of verse: data, questions, tasks and charters.
+The tutorial has a page for each part of verse, data, questions, tasks and charters, and a
+second page of charters.
 
 ## What's here
 
-- `entity/` — the store of entities. It is one tree, and a kinded path addresses each node.
+- `entity/` — the store. It is one tree of data, and a kinded path addresses each node.
   The store can be watched, and every commit has a revision. It is durable, and a *scope* is a
   copy-on-write view of it. It runs over logd and docd. Every write names who made it. A node
   belongs to whoever created it, and the store refuses a write that the node's permissions do
@@ -103,11 +104,11 @@ The tutorial has four pages, one for each part of verse: data, questions, tasks 
 - `task/` — a *task* is a unit of work that verse governs and that you can steer. An agent or
   a shell command does it.
 - `runner/` — where a task runs. There are two ways: local, in the verse process; and remote,
-  on another verse over HTTP. The engine drives both through one interface, so every
+  on a runner served over HTTP. The engine drives both through one interface, so every
   `verse task` command works with each. `runner/runnerd/` hosts a runner, embedded in verse
   or served over HTTP, and `runner/runnerd/stock/` is the runner verse ships.
-- `mirror/` — writes each running task into the store, as a `verse.task.instance` entity. So
-  to observe or steer a task, you observe an entity.
+- `mirror/` — writes each running task into the store, as data at `verse.task.instance.<id>`.
+  So to observe or steer a task, you observe data.
 - `resolver/` — a service that answers asks for whoever grants it. A resolver is installed. It
   is not written in a charter, because it lasts longer than one rule, and because it belongs to
   whoever runs it. Its `match` says which asks it watches; a person or a place's owner on record
@@ -123,9 +124,11 @@ The tutorial has four pages, one for each part of verse: data, questions, tasks 
 
   | The CLI | Commands |
   |---|---|
-  | governs | `data`, `charter`, `schedule`, `task` (with the `do` verbs for an executor), `flow`, `resolver`, `runner`, `io`, `perms`, `group` |
-  | answers with | `question` |
-  | reads | `status`, `watch`, `provider`, `schema` |
+  | governs | `data`, `charter`, `schedule`, `task`, `flow`, `resolver`, `runner`, `iod`, `perms`, `group` |
+  | asks and answers with | `ask`, `question` |
+  | reads | `status`, `watch`, `schema` |
+  | says who you are | `whoami`, `account` |
+  | serves to an agent's host | `mcp` |
   | runs | `up`, `down` |
 
 - `deploy/` and `Makefile` — build the image locally and run verse on Kubernetes, from a
@@ -133,17 +136,17 @@ The tutorial has four pages, one for each part of verse: data, questions, tasks 
 
 ## Docs
 
-[docs/](docs/README.md) is the index. It groups the pages by who reads them: somebody
-running a verse, writing a charter, building a runner or an iod, or changing verse itself. It
-describes what runs today, and so does the site mkdocs builds from it. Start with:
+[docs/](docs/README.md) is the index: the basic concepts, the tutorial, the systems, control,
+the glossary, a comparison with other tools, and the reference. It describes what runs, and so
+does the site mkdocs builds from it. Start with:
 
-- [Overview](docs/overview.md) — the architecture, the model, the seams, and the decisions
-  the design depends on. Read this first.
-- [Tutorial](docs/tutorial/README.md) — four pages that you run yourself: data, questions,
-  tasks, and the charters that put them together.
+- [Basic concepts](docs/concepts.md) — the four things you work with, the loop they run in,
+  and the parts of verse that run them. Read this first.
+- [Tutorial](docs/tutorial/README.md) — pages that you run yourself: data, questions, tasks,
+  and the charters that put them together.
 - [Charter reference](docs/trigger-model.md) — the model of a rule, and the two grammars a
   charter is written in. It links to the pages that say what each field means.
-- [Seams](docs/seams.md) — the nine places that can be a network, and which side opens
+- [Seams](docs/seams.md) — the seven places that can be a network, and which side opens
   each: what may run remotely, what may sit behind a firewall, and what each costs.
 - [Reference](docs/reference/README.md) — the commands, the config layers, and a page for
   each topic: [starting a verse](docs/reference/up.md),

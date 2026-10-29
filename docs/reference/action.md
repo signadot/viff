@@ -5,6 +5,11 @@ This page describes the `action` field of a [rule](../glossary.md#rule): `patch`
 completion hooks, and the ids and progress facts that a firing writes. The model that the
 action belongs to is in [the charter reference](../trigger-model.md).
 
+Most examples on this page are a team's pull requests of `acme/app`, kept as records at
+`demo.pr.<n>` with a `stage` and the branch `head`. The examples of `derive` and of a read in a
+condition are from comment-drift, the charter that reviews the verse repository's own `main`
+([the charter](charter.md)).
+
 ## `action`: what fires
 
 The [action](../glossary.md#action) of a rule is data, not code. An action needs no target of
@@ -13,12 +18,13 @@ its own. It acts on the [subject](../glossary.md#subject) of the condition.
 | Field | What it does |
 |---|---|
 | `patch` | changes the payload of the subject ([patch](#patch)) |
-| `derive` | writes an entity that is not the subject ([derive](#derive)) |
+| `derive` | writes data at an address that is not the subject ([derive](#derive)) |
 | `spawn` | starts a task ([spawn](#spawn)) |
 | `seq` | runs a list of actions in order ([seq](#seq-sequence-along-the-chain-parallel-across-triggers)) |
 | `onDone` | an action that fires when the task ends `done` ([completion hooks](#completion-hooks-one-trigger-chaining-visible)) |
 | `onFailed` | an action that fires when the task ends `failed` ([completion hooks](#completion-hooks-one-trigger-chaining-visible)) |
 | `onCancelled` | an action that fires when the task ends `cancelled` ([completion hooks](#completion-hooks-one-trigger-chaining-visible)) |
+| `onOrphaned` | an action for a task that ends `orphaned`, which no tracked task does ([completion hooks](#completion-hooks-one-trigger-chaining-visible)) |
 
 An action writes to the store, and it can also act on a system outside verse. A `patch` or a
 `derive` that writes to an [iod](../glossary.md#iod)'s out place asks the iod to act: to post a
@@ -39,11 +45,11 @@ whose answer nothing reads.
 
 1. resolve the `patch` and every `derive`;
 2. write the patch;
-3. write each derived entity;
+3. write each derived record;
 4. `spawn`.
 
 A reference that does not resolve fails the firing before anything is written. So does a read
-of an entity that is not there. The subject stays where it was, so the rule fires again on the
+of an address where nothing stands. The subject stays where it was, so the rule fires again on the
 next commit that touches it. The failure is kept on the rule
 ([when a rule does nothing](../trigger-model.md#when-a-rule-does-nothing)). The same holds for a
 completion hook.
@@ -82,15 +88,15 @@ that grows structure depends on this.
 
 ### `derive`
 
-`derive` writes an entity that is *not* the subject. A `patch` cannot do this. A
+`derive` writes data at an address that is *not* the subject. A `patch` cannot do this. A
 [derive](../glossary.md#derive) is a list of entries. Each entry names an address as a path, and
 what goes there: `- {path: "repos.verse.drift.head", value: …}`. Its content may reference its
-own subject. It may also reference other entities, at or below its own level.
+own subject. It may also reference other data, at or below its own level.
 
 A derive is installable only inside a declared order of levels, and it must land strictly above
 the rule that writes it. See [strata](../strata.md).
 
-**Without a name, the engine chooses the address, and the address says where the entity came
+**Without a name, the engine chooses the address, and the address says where the record came
 from.** The address is the place, then the rule, then the segments of the subject. A rule
 `proposal-appeared` that selects `git.verse.ref.*` and derives into
 `[repos, verse, merge, proposal]` writes
@@ -98,7 +104,7 @@ from.** The address is the place, then the rule, then the segments of the subjec
     repos.verse.merge.proposal.proposal-appeared.git.verse.ref."verse/auto/…"
 
 This address has **nine** segments: four for the place, one for the rule, four for the subject.
-No two rules can address the same entity.
+No two rules can address the same record.
 
 **So a reader of a derivation says how deep one is.** The depth follows from the depth of the
 subjects that the producing rule selects. `[repos, verse, merge, proposal, "*"]` has five
@@ -107,25 +113,25 @@ derivations, and not any one of them.
 [The pattern says how deep its subjects are](condition.md#the-pattern-says-how-deep-its-subjects-are)
 says what a wrong depth does.
 
-**Naming one is how a derive stays shallow.** `id:` puts the entity at the place plus that one
+**Naming one is how a derive stays shallow.** `id:` puts the record at the place plus that one
 segment: `repos.verse.merge.proposal."verse/auto/…"`, which has five segments. A reader already
 spells that address. A derive usually wants an `id:` when its subjects stand under one place and
 the rules that read them name the place literally.
 
-One firing derives one entity, unless it says `!each`. `!each` fans out over a list and derives
-one entity per element. The address of each takes a key read out of the element. The rule is the
+One firing derives one record, unless it says `!each`. `!each` fans out over a list and derives
+one record per element. The address of each takes a key read out of the element. The rule is the
 same, with the key in the address. With it, the twelve findings of a task become twelve facts,
 and not one long paragraph. See
 [strata](../strata.md#each-when-one-answer-holds-many-facts).
 
 A single derive may carry a `key:` too:
 `- {path: "repos.verse.merge.train", key: $subject.value.sha, value: …}`. Its address is then a
-function of (rule, subject, key), and not of (rule, subject). It gives one entity per value of
+function of (rule, subject, key), and not of (rule, subject). It gives one record per value of
 something, where the same subject keeps moving. See
 [strata](../strata.md#a-key-on-a-single-derive).
 
 **`id:` is that key without the rule and the subject.** The difference is for the reader. A keyed
-entity stands at `repos.verse.drift.head.head-moved.git.verse.head.aaaa1111`: the place, the
+record stands at `repos.verse.drift.head.head-moved.git.verse.head.aaaa1111`: the place, the
 rule, the subject, the key. Nothing in the grammar builds that address from a subject. So a
 reader that wants the record must *describe* it, with a `"*"` per segment and a predicate on a
 field it happens to know. It cannot name it.
@@ -137,8 +143,8 @@ spells it: `!get-path {at: [repos, verse, drift, head, $subject.value.sha], path
 
 | Field | Two subjects of one rule that compute the same value | What it claims |
 |---|---|---|
-| `id:` | share one entity | the value identifies the record **across subjects**. This is true when the subject is a singleton, as `git.verse.head` is. |
-| `key:` | get one entity each | the value identifies the record within one subject only |
+| `id:` | share one record | the value identifies the record **across subjects**. This is true when the subject is a singleton, as `git.verse.head` is. |
+| `key:` | get one record each | the value identifies the record within one subject only |
 
 The *place* stays the engine's in both cases, because a derive may write only inside its own
 stratum. Verse checks this at install. Verse refuses a derive that carries both `id:` and `key:`.
@@ -148,7 +154,7 @@ stratum. Verse checks this at install. Verse refuses a derive that carries both 
 - Keyed, every element lands under (rule, subject, key). A fan-out can only create its **own**
   copies.
 - Named, every element lands at the place plus the value. In this way the fan-out of one rule
-  reaches entities that another rule names. It is the only way to say "mark every one of those
+  reaches records that another rule names. It is the only way to say "mark every one of those
   that is already there".
 
 A derive merges at depth, so the mark lands beside the facts, and not over them.
@@ -222,6 +228,8 @@ shapes; a block that names no verb gives every verb of its system, the network a
 |---|---|
 | `git` | a repository the task works in: `{repo: acme/app, from: main, fetch: {}, push: [{ref: "refs/heads/verse/auto/*", exists: "false"}, {ref: "refs/heads/verse/auto/*", own: "true"}]}`. `repo` is `owner/name` at GitHub, or `host/owner/name` on another forge; `from` omitted is the default branch. Both take `$vars`, so a charter can write `from: $subject.value.head`. Its `push` shapes are what may leave it, by `ref`, `delete`, `force`, and `exists` and `own`, which the runner fills from the forge; a charter that ships writes them rather than an empty block, which would give every push. The record of the task carries `git`, so a reader sees what the run worked on without the charter. |
 | `git-issue` | a repository's own tracker, of a repository `git` checks out: `{repo: acme/app}` gives all its verbs |
+| `github`, `github-issue`, `linear-issue`, `slack` | the forge's pull requests, the trackers' issues, and Slack's channels, each a block of its own: `{repo: acme/app}` for `github` and `github-issue`; Linear's and Slack's blocks name their verbs and shapes, such as `{post: {channel: deploys}}` ([the systems](../systems/README.md)) |
+| `verse` | verse itself, acted on as the person the task runs for: reading and writing data, asks, and installing charters (`verse.charter-install`). A charter a task installs launches within the task, less `verse.charter-install` ([the verse system](../systems/verse.md), [the charter](charter.md)) |
 | `network` | what the run may reach: `{mode: none}`, `{mode: open}` (the host's network), or `{mode: allow, tcp-client: [{host: api.github.com}, {host: pypi.org, port: "443"}]}`. Absent is `none`. The runner builds it once, when the run starts, and refuses a mode its sandbox cannot build: an unconfined runner, such as `verse up`'s, builds only `open` ([the network](../systems/inside.md#the-network)). |
 | `files`, `commands`, `agent`, `question` | what a doer does inside its run: `files: {}`, `commands: {run: {command: "make *"}}` |
 
@@ -293,7 +301,7 @@ to a default, and it drops nothing.
 |---|---|
 | `runner` | where the run runs: `verse.runners.<name>`, a runner installed with `verse runner add`. Absent is the verse's default. See [runners](../runners.md). |
 | `timeout` | how long the run may take, as a duration. Verse cancels it after that, on every runner. |
-| `credential` | `{audience: <name>}` asks verse for a token that vouches for the task to a system outside verse: the rule's gate let this work through. It is for a rule's own spawn, of a rule with a gate that asks. See [a credential for what a gate let through](gates.md#a-credential-for-what-a-gate-let-through). |
+| `credential` | `{audience: <name>}` asks verse for a token that vouches for the task to a system outside verse: the rule's gate let this work through. It is for a rule's own spawn, of a rule that writes a gate, `mode: auto` included. See [a credential for what a gate let through](gates.md#a-credential-for-what-a-gate-let-through). |
 | `virtualKey` | the address of the model credential the run spends, such as `acme.keys.review`. Verse reads it as whoever installed the rule, so a rule cannot name a key its owner may not read. Absent is the runner's default ([virtual key](../glossary.md#virtual-key)). |
 | `retain` | how many of the task's events verse keeps for a reader who attaches late. Absent is the default. |
 
@@ -319,20 +327,28 @@ spawn:
 ### `as: subject` — a task for whoever wrote the record
 
 The task of a rule acts as the installer of the rule. `as: subject` makes it act for the owner of
-the record that fired it as well:
+the record that fired it as well. Here a team lets each person file a request for an agent, as a
+record under `requests`, a place the rule's installer owns and grants people to create in:
 
 ```tony
-spawn:
-  agent: {name: verse}
-  environment: {systems: {network: {mode: open}}}
-  prompt: $subject.value.then
-  as: subject
+- name: run-request
+  condition:
+    subject:
+      path: "requests.*"
+      value: {stage: filed}
+  action:
+    patch: {stage: running}
+    spawn:
+      agent: {name: verse}
+      environment: {systems: {network: {mode: open}}}
+      prompt: $subject.value.prompt
+      as: subject
 ```
 
-The task acts as the pair of them, `pair:<owner> <installer>`, on the owner's authority. A
-consequence belongs to whoever raised it: asked "may I merge this?", an answerer's yes lets the
-owner merge what the owner may. Neither the answerer nor the installer needs that right, and the
-installer's reach is not lent to the owner.
+The task acts as the pair of them, `pair:<owner> via:<the rule's address>`, on the owner's
+authority. A consequence belongs to whoever raised it: asked "may I merge this?", an answerer's
+yes lets the owner merge what the owner may. Neither the answerer nor the installer needs that
+right, and the installer's reach is not lent to the owner.
 
 A rule may say `as: subject` only where its subject lies in a place the installer owns: the
 settled part of the subject's path, the last segment left out. Anywhere else, the installer
@@ -404,16 +420,16 @@ resolved subject. Which payload the action reads has exactly two answers. The an
 *why* the action runs.
 
 **A firing of a rule reads the payload of the subject itself.** The change that dispatched the
-firing may name a different entity. The fields of that entity would mean nothing on the subject
-being acted on. So `review $subject` in the prompt of a spawn names the PR the firing is about,
-even when the entity that fired was a task and not the PR. `$stage` is the stage of that PR, and
+firing may be at a different address. Its fields would mean nothing on the subject being acted
+on. So `review $subject` in the prompt of a spawn names the PR the firing is about, even when the
+change that fired was a task's and not the PR's. `$stage` is the stage of that PR, and
 not of the task.
 
 **A completion hook reads the payload of the finished task.** So does an element of a sequence
 that a hook drives. `$status`, `$result`, `$data` and `$err` are the facts it exists to read. The
 engine makes that payload itself, and does not read it from the store. The mirror may not have
 written the terminal facts yet. This is why those bindings resolve at all, and why they are
-flat. They are facts about a run, and no entity holds them at a path.
+flat. They are facts about a run, and no address holds them.
 
 `$subject` is a record. The bare form is its address.
 
@@ -439,10 +455,10 @@ name. They do not resolve to a silent zero.
 In the strings of a spawn, the parts of the identity bind flatly. `.value` does not bind there,
 because a payload has no text form and its top-level fields are already bound by name.
 
-### `!get-path` and `!list-paths`: reaching another entity
+### `!get-path` and `!list-paths`: reaching other data
 
 Everything in [Bindings](#bindings) reads the subject of the firing, or the task that just
-finished. A [path read](../glossary.md#path-read) reaches an entity that is neither of those:
+finished. A [path read](../glossary.md#path-read) reaches data that is neither of those:
 
 ```tony
 action:
@@ -487,15 +503,15 @@ tag that answers that question instead.
 | a string | the address as a kinded path (`git.verse.head`), with nothing in it to expand. It may go on into the payload (`git.verse.head.sha`). |
 | `at` | the address as a path of at least two segments. Every segment above the last is a literal or `*`. The last is a literal, a `$reference`, or (list only) a `*` or an operator. |
 | `path` | a kpath into the payload. Wildcards are list-only. Omitted, you get the whole payload. |
-| `value` | a predicate on the payload, **list only**: of the entities the address selects, the ones that look like this |
+| `value` | a predicate on the payload, **list only**: of the addresses the path selects, the ones that look like this |
 
 No segment above the last is a reference or a glob. The level check asks whether a read lands at
 or below the stratum of the rule. It asks this of the literal prefix, because that is all that is
 known at install.
 
 `!get-path` refuses a `value`, for the same reason it refuses a wildcard. A predicate can name
-several entities. An entity that is not there does not satisfy one, and an entity that is there
-might not either.
+several addresses. An address where nothing stands does not satisfy one, and one where data
+stands might not either.
 
 On the list form, a predicate makes the read *cheaper*. A `*` already walks everything under the
 place, and the predicate narrows it.
@@ -514,7 +530,7 @@ target.
 ### A condition may read too, and that one does track
 
 A read in the predicate of `condition.subject` is answered before the predicate is matched. So a
-rule can select on how its subject compares to another entity. A match alone cannot say that. A
+rule can select on how its subject compares to other data. A match alone cannot say that. A
 match tests a field against a literal or an operator, and never against a value read from
 elsewhere. `!let` binds the read, and the body compares:
 
@@ -522,7 +538,7 @@ elsewhere. `!let` binds the read, and the body compares:
 - name: proposal-outrun
   condition:
     subject:
-      path: "merge.proposal.*"
+      path: "repos.verse.merge.proposal.*"
       value: !let
         let:
         - tip: !get-path
@@ -543,11 +559,11 @@ evaluates the rule `proposal-outrun` again when `git.verse.head` moves, over pro
 not change.
 
 Verse skips a rule at a commit that touched nothing the rule reads. A condition that compares
-against another entity reaches a different verdict as soon as that entity moves. So the read must
+against other data reaches a different verdict as soon as that data moves. So the read must
 count, or the skip would be wrong.
 
 **The read cannot name `$subject`.** In an action the subject is settled, and the action
-addresses other entities by its fields. A condition *chooses* the subject, so no one entity is
+addresses other data by its fields. A condition *chooses* the subject, so no one subject is
 there to read from yet. Verse refuses it at install, and says so. It does not say "unknown
 reference".
 
@@ -709,8 +725,14 @@ of live tasks, keyed by task id. So a hook needs no `flow` match and no separate
 action:
   patch:  { stage: reviewing }
   spawn:
-    script: 'review "$SUBJECT"'
-    environment: {vars: {SUBJECT: $subject}, systems: {network: {mode: open}}}
+    agent: {name: verse}
+    prompt: "review the pull request at $subject"
+    environment:
+      systems:
+        network: {mode: open}
+        git: {repo: acme/app, from: $subject.value.head, fetch: {}}
+    autonomy:
+    - then: allow
   onDone:
     patch: { stage: reviewed }
 ```
@@ -747,11 +769,22 @@ orphaned, and never tracked. So no tracked task reaches that status.
   action:
     seq:
     - spawn:
-        script: 'lint "$SUBJECT"'
-        environment: {vars: {SUBJECT: $subject}, systems: {network: {mode: open}}}
+        script: 'cd app && make lint'
+        runner: verse.runners.build
+        environment:
+          systems:
+            network: {mode: open}
+            git: {repo: acme/app, from: $subject.value.head, fetch: {}}
     - spawn:
-        script: 'review "$SUBJECT"'
-        environment: {vars: {SUBJECT: $subject}, systems: {network: {mode: open}}}
+        agent: {name: verse}
+        runner: verse.runners.build
+        prompt: "review the pull request at $subject"
+        environment:
+          systems:
+            network: {mode: open}
+            git: {repo: acme/app, from: $subject.value.head, fetch: {}}
+        autonomy:
+        - then: allow
       onFailed:
         patch: { stage: rejected }
     - patch: { stage: reviewed }
@@ -800,7 +833,7 @@ The chain addresses the action, and does not name it privately. So the chain is 
 |---|---|
 | a re-fire | is idempotent, because a spawn dedups by id |
 | a lookup back into the charter | is how resume restores the hooks of a task, and how a sequence finds its next step |
-| the task entity | publishes it as `chain`, with its root as `trigger`. So "every task of this rule" is a predicate on the payload, and not a glob over ids. |
+| the task's record | publishes it as `chain`, with its root as `trigger`. So "every task of this rule" is a predicate on the payload, and not a glob over ids. |
 
 The id drops the brackets, and joins with `@`. The dotted form is lossless, because the field set
 of `Action` is closed. A segment after `seq` is an element, and a segment that matches a hook
@@ -832,19 +865,19 @@ writes the position on the subject, under one reserved `verse` root, as each ele
 
 ```tony
 verse:
-  charter:             # what the engine records about rules acting on this entity
+  charter:             # what the engine records about rules acting on this record
     review:            # keyed by trigger
       step:  2         # how many elements have completed
       steps: 3         # len(seq), known at install
       shape: "a3f1…"   # hash of the declared shape, known at install
       done:  true      # latched when step reaches steps
       ended: failed    # …or the terminal status an off-ramp stopped it at
-  meta:                # what verse records about the entity itself
+  meta:                # what verse records about the record itself
     vanishing: "2026-07-29T13:04:05Z"   # the intent to remove it — see Lifecycle
 ```
 
 `meta.vanishing` is described in
-[Lifecycle](../trigger-model.md#lifecycle-how-an-entity-leaves).
+[Lifecycle](../trigger-model.md#lifecycle-how-data-leaves).
 
 A join reads the position at whatever depth it needs:
 

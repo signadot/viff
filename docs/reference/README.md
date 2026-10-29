@@ -1,6 +1,6 @@
 # Commands and the rest
 
-This page has every command, how to select by what an entity says, and the scripts that seed a
+This page has every command, how to select by what the data says, and the scripts that seed a
 verse. What a charter says is in [the charter reference](../trigger-model.md), and the
 [tutorial](../tutorial/README.md) walks through all of it. Running a verse, runners, iods and
 resolvers are in [the platform docs](../platform.md), in the repository. For the map of all
@@ -53,13 +53,13 @@ key with a null. `{id status}` and `{id: null, status: null}` are the same docum
 first.
 
 In `-if`, the same spelling is a **presence** test, because a null matches any value.
-`-if '{status}'` keeps every entity that has a `status`, whatever it says. It is not
+`-if '{status}'` keeps every item that has a `status`, whatever it says. It is not
 equality: `-if '{status open}'` tests for two keys, `status` and `open`. A key nothing has
 selects nothing, so that mistake gives an empty answer, not a wrong one.
 
-On `data` and `watch`, `-if` is the server's selector: it decides which entities the read is
-about before any cross the wire. So those two take `-trim` alone
-([selecting by what an entity says](#selecting-by-what-an-entity-says)).
+On `data` and `watch`, `-if` is the server's selector: it decides which addresses the read is
+about before any data crosses the wire. So those two take `-trim` alone
+([selecting by what the data says](#selecting-by-what-the-data-says)).
 
 Comments need no flag: verse reads and writes them everywhere.
 
@@ -92,20 +92,20 @@ and `-if` kept none of it.
 |---|---|
 | `data <step>…` | the verse at that address |
 | `data -at <path>` | the same, as one kinded path: `demo.pr.1`, `'demo.pr.*.stage'` |
-| `data … -if <pat> [-if-at <path>]` | only entities whose payload matches |
-| `data … -paths [-depth <n>]` | every address under the one asked for, one per line, as steps. `-depth` stops at addresses of at most `<n>` segments (default: no limit). |
+| `data … -if <pat> [-if-at <path>]` | only the data whose payload matches |
+| `data … -paths [-depth <n>]` | every address under the one asked for, one per line, as steps. `-depth` walks at most `<n>` levels beneath the address: `0` is the address alone (default: no limit). |
 | `data … -kpaths` | the same listing, one kinded path per line |
 | `data … -put <payload>` | write it there. A put merges ([writing](entities.md#writing)). |
 | `data … -put -create` · `-put -update` | only if nothing is there yet · only if something is |
 | `data … -put -expect <pattern>` | only if what is there matches |
 | `data … -put -grants <list>` | create it holding out this list (as `perms -grants` takes it; `[]` for nothing) in place of child-grants. Refused where something stands ([creating with grants](entities.md#creating-with-grants)). |
-| `data … -rm` (`-r`) | remove what stands there: an entity, or one field. `-put` has no short form, because `-p` next to `-paths` is a slip that writes. |
+| `data … -rm` (`-r`) | remove what stands there: the data at the address, or one field of it. `-put` has no short form, because `-p` next to `-paths` is a slip that writes. |
 
 ### watch
 
 | Form | What it does |
 |---|---|
-| `watch [<path>]` | stream changes to the store, with a cursor. It names the same entities as a read, and is refused the same way: a path nothing stands at is a non-zero exit, not a stream that never carries anything. |
+| `watch [<path>]` | stream changes to the store, with a cursor. It names the same addresses as a read, and is refused the same way: a path nothing stands at is a non-zero exit, not a stream that never carries anything. |
 | `-since <rev>` | start from a revision |
 | `-wait-if-absent` | watch a path that holds nothing yet, and report when a value arrives. You ask for it, because a mistyped address held open looks exactly like a quiet verse. |
 | `-init` · `-no-init` | open with what already stands at the path, then the changes (the default) · stream from now ([watching](entities.md#watching)) |
@@ -134,7 +134,7 @@ Your own questions to somebody, with a date ([asking](../asking.md)).
 |---|---|
 | `ask` | your asks: each with its id, question, who is asked, its date, its `status`, and its answer, `pending` until it settles. One that settled with no answer (`orphaned`) says `why`. |
 | `ask <name\|id>` | that one, and whom it waits on. A name used for two asks is refused with both ids. Whoever it asks answers with `question <id> -answer`. |
-| `ask <name> -question (-q) <text> [-to <who>,…] [-due <when>] [-then <value>] [-else <value>] [-about <path>] [-keep <duration>]` | ask it, under an id derived from the name. `-to` uses the grammar of a grant. `-due` is RFC 3339 or a duration from now (`48h`). `-then` is what follows a yes: one key, `{spawn: {...}}` (a spawn as a charter writes one), `{answer: {ask, choice}}` or `{ask: {...}}`, or `-` / `@<file>` to read it. `-else` is what follows a no, answered or by silence. `-keep` is how long it stands once settled (default a week). |
+| `ask <name> -question (-q) <text> [-to <who>,…] [-due <when> [-on-silence yes\|no]] [-then <value>] [-else <value>] [-about <path>] [-label <name>=<value>,…] [-keep <duration>]` | ask it, under an id derived from the name. `-to` uses the grammar of a grant. `-due` is RFC 3339 or a duration from now (`48h`). `-on-silence` is what it settles on when nobody answers by then: `no` (the default), or `yes`, which runs the `then`. `-label` is what the ask says about itself for whoever watches asks (`team=payments,kind=deploy`). `-then` is what follows a yes: one key, `{spawn: {...}}` (a spawn as a charter writes one), `{answer: {ask, choice}}` or `{ask: {...}}`, or `-` / `@<file>` to read it. `-else` is what follows a no, answered or by silence. `-keep` is how long it stands once settled (default a week). |
 | `ask <name\|id> -due <when>` | move its date while it waits; asks nothing again |
 | `ask <name\|id> -then <value>` · `-else <value>` · `-to <who>,…` | change what it asks while it waits. It is asked again, and answers to the earlier version do not count. |
 | `ask <name\|id> -withdraw` | take it back: off the docket, and removed |
@@ -143,13 +143,14 @@ Your own questions to somebody, with a date ([asking](../asking.md)).
 ### charter (charters, c)
 
 A charter file is one document. `at:` is where its rules write, `reads:` what they may read
-besides, and `strata:`, `schedules:` and `rules:` what it holds. A bare rule, or a list of
+besides, `sends:` the outboxes an iod reads, `ttl:` how long it stands, and `strata:`,
+`schedules:` and `rules:` what it holds. A bare rule, or a list of
 them, installs at the path. A directory of charter files is several packages
 ([the charter](charter.md#a-charter-can-be-installed-at-an-address)).
 
 | Form | What it does |
 |---|---|
-| `charter [<path>]` | the charter at a path, printed as the file that installs it (`at:` and all). stderr names the charters under it, and marks rules that are held, suspended or in trouble. Bare: baseline's. |
+| `charter [<path>]` | the charter at a path, printed as the file that installs it (`at:` and all). stderr names the charters under it, marks rules that are held, suspended, in trouble or installed by a task, and says when a ttl ends. Bare: baseline's. |
 | `charter [<path>] -d <dir>` | every charter at or under the path, one file each: `<dir>/<address as directories>/charter.tony` |
 | `-depth <n>` | how far under it to go: `0` is that address alone, `-1` (the default) everything |
 | `-scope <name>` | a scope's own charter instead |
@@ -158,6 +159,7 @@ them, installs at the path. A directory of charter files is several packages
 | `charter -a [<address>] -f <file>\|-` | **install** one charter from one file, as one step. Applying an edited file again is how a charter changes. |
 | `charter -a -d <dir>` | every charter file under the directory, each at its own `at:`, all or none |
 | `charter -a <address> -d <dir> -prune` | the same, and **remove** what the directory leaves out at and under the address: `-R` then `-a -d`, as one step |
+| `charter -check <address> -d <dir>` · `-check <address> -f <file>` | whether the charters would install as `-a <address> -d <dir> -prune` installs them, and what would change, installing nothing. `-f` is a directory holding that one file. A refusal is the answer, so the command succeeds either way ([the charter](charter.md)). |
 | `charter -a -scope <name>` | into a scope's own charter |
 | `charter -r <path>` | **remove** what the path names: a package, or one rule or level in it (`c -r repos.verse.drift rules claim`) |
 | `charter -R <address>` | the charter there and every charter under it. (`-R` is not `rm -r`: `-r` is the removal.) |
@@ -228,10 +230,10 @@ nothing.
 | `-ifmt`, `-i <tony\|json\|yaml>` | input format for stdin and files with no extension |
 | `-color auto\|always\|never` | color (auto: only on a terminal) |
 
-## Selecting by what an entity says
+## Selecting by what the data says
 
-The [address](../glossary.md#address) narrows by where an entity lives. `-if` narrows by what
-the entity says. `-if` is a tony match against the [payload](../glossary.md#payload). It is the
+The [address](../glossary.md#address) narrows by where the data lives. `-if` narrows by what
+the data says. `-if` is a tony match against the [payload](../glossary.md#payload). It is the
 same [predicate](../glossary.md#predicate) that a charter carries in `value`, in its `subject`,
 its `on` or its `when`. So `verse data demo pr '*' -if X` names exactly what a rule with the
 subject `{path: "demo.pr.*", value: X}` would select.
@@ -247,7 +249,7 @@ verse watch -until '{to: {stage: merged}}' demo pr '*'  # …until one of them m
 
 | Flag | Where it is answered | How its pattern is written |
 |---|---|---|
-| `-if` | at the **server**, over entities, before there is a frame | the payload pattern, bare |
+| `-if` | at the **server**, over the data, before there is a frame | the payload pattern, bare |
 | `-until` | at the client, over the frames that arrive | in the fields of the frame, with the payload under `to` |
 
 Only the client knows when it has seen enough, so the client answers `-until`. A pattern
@@ -277,8 +279,8 @@ are for reading as much as for running: each is a worked example of the surface 
 
 | | |
 |---|---|
-| `./scripts/seed-demo.sh` | the whole demo at once: a charter, the entities it reacts to, one reaction that has already happened, and one gate waiting for you |
-| `./scripts/seed-entities.sh` | a dozen entities under `verse-tutorial`, and nothing that reacts to them ([the data page of the tutorial](../tutorial/data.md)) |
+| `./scripts/seed-demo.sh` | the whole demo at once: a charter, the data it reacts to, one reaction that has already happened, and one gate waiting for you |
+| `./scripts/seed-entities.sh` | a dozen records under `verse-tutorial`, and nothing that reacts to them ([the data page of the tutorial](../tutorial/data.md)) |
 | `./scripts/charter-shapes.sh` | the coarse shapes that a rule comes in, one command each. It also runs `suspend`/`resume` on one rule, so you can watch the rule hold and then act on the world as it stands ([charters, continued](../tutorial/charters-2.md#stopping-a-rule)) |
 | `./scripts/lineage.sh` | a commit becomes a PR, and the PR becomes a release. It shows how ids from three systems correlate without a fourth id, and the two limits of that design. |
 
@@ -290,7 +292,7 @@ All four take `--scope <name>`, and each one removes what it wrote (`--clean`, o
 - [Tasks](tasks.md): running a task by hand, and answering its gates.
 - [Asking](../asking.md): `verse ask`: a question to somebody, with a date, and what follows a
   yes run on your authority.
-- [Permissions, walked](../perms-guide.md): your own entities, a task and its gates, a charter
+- [Permissions, walked](../perms-guide.md): your own data, a task and its gates, a charter
   and what it owns, a gate with nobody behind it, a gate with a resolver.
 - [Scopes](scopes.md): a private copy of the store for your own work and flows.
 

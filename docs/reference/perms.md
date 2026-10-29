@@ -20,6 +20,7 @@ principal ::= user:<email>          # a person
             | runner:<identity>     # a runner
             | system:<part>         # verse itself
             | via:<address>         # something installed, acting as whoever installed it
+            | pair:<asker> <rule>   # a rule's task, acting for whoever wrote what it is about
 grantee   ::= principal
             | *                     # everyone, a read that names nobody included
             | <kind>:*              # every principal of the kind
@@ -42,15 +43,19 @@ The rules of the grammar:
 
 - A bare email is read as `user:<email>` and stored with its kind. Any other bare word names
   nothing. A bare `verse.…` address names nothing too.
-- **A request presents `user:`, `agent:` or `runner:`.** `via:` and `system:` are names that
-  verse makes. Verse refuses a request that carries one of them with 400, and the same for a
-  name the grammar does not read.
+- **A request presents `user:`, `agent:` or `runner:`.** `via:`, `pair:` and `system:` are
+  names that verse makes. Verse refuses a request that carries one of them with 400, and the
+  same for a name the grammar does not read.
 - **A request that is not a read presents one.** Verse refuses it with 400 when it names
   nobody. Some routes name their own party
   ([routes that name their own party](../platform/perms.md#routes-that-name-their-own-party), in
   the repository).
 - Verse lists a [principal](../glossary.md#principal) the first time it presents itself, under
   `verse.principal.<kind>.<name>`.
+- `pair:<asker> <rule>` is the task of a rule whose spawn says `as: subject`. The asker is the
+  owner on record of the subject, and the rule is named as it acts, `via:<its address>`. The task
+  acts on the asker's authority alone, and the rule's name says what it acted through. A space
+  separates the two, since no principal holds one. It is never a grantee.
 - `system:<part>` names the part of verse that wrote, such as `system:docket` for questions.
   All the parts are one owner
   ([the system parts](../platform/perms.md#the-system-parts), in the repository).
@@ -200,7 +205,7 @@ on the record **at that address**. Where the address has no record, it is nobody
 fall back to the owner above, because above is verse's own half, which is the system's.
 
 - **An install leaves its installer's record, or verse refuses it** with 409.
-- **Whose a rule is, is said on its record and nowhere else.** A rule's own entity carries no
+- **Whose a rule is, is said on its record and nowhere else.** A rule's own data carries no
   installer.
 - **The deployment's charter** is installed as the system, and fires as the system.
 - **No rule but the system's writes under `verse`.** Verse refuses a `patch` of a subject there,
@@ -451,7 +456,7 @@ registrations' to say, so where they cannot be read the door answers `503`, to a
 and to a bare runner name alike, rather than taking the name as one nobody registered.
 
 The registration also holds the runner to its subject when verse asks it what it offers
-([runners](runners.md#who-the-runner-is)): a runner that does not prove it is the one registered
+([runners](../runners.md#who-the-runner-is)): a runner that does not prove it is the one registered
 takes no spawn. And verse proves itself to the runner the other way round, with a token it signs
 as the issuer `auth.issuer` makes it, minted for that runner's subject alone.
 

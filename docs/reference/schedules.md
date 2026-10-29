@@ -22,18 +22,28 @@ does two things:
 The address of a tick is the schedule and the instant:
 `verse.schedule.hourly.tick.2026-09-18T03:00:00Z`. Nothing else ever writes there.
 
-A rule takes the tick as its subject:
+A rule takes the tick as its subject. Here a team that keeps its code in `acme/app` has an agent
+post, each hour, what landed on `main` in the hour before:
 
 ```tony
-- name: drift-report
+- name: hourly-summary
   condition:
     subject: {path: "verse.schedule.hourly.tick.*"}
   action:
     spawn:
       agent: {name: verse}
-      environment: {systems: {network: {mode: open}}}
-      prompt: "refresh the drift report for the hour ending $subject.name"
+      runner: verse.runners.build
+      prompt: "post to #deploys a summary of what landed on main in the hour before $subject.name"
+      environment:
+        systems:
+          network: {mode: open}
+          git: {repo: acme/app, fetch: {}}
+          slack: {post: {channel: deploys}}
+      autonomy:
+      - then: allow
 ```
+
+`$subject.name` is the tick's last segment, the instant it is due.
 
 A rule about a tick needs no [latch](../glossary.md#latch), and may not write one. Each tick has
 an address of its own, and only the next tick replaces it. So the rule fires once for each tick,
@@ -59,7 +69,7 @@ starts ([versed/system.tony](../../versed/system.tony)). It has four schedules a
 The four schedules are `minutely`, `hourly`, `daily` and `weekly`. Their phase is a Monday at
 midnight in the zone.
 
-The two rules derive one entity for each calendar fact.
+The two rules derive one record for each calendar fact.
 
 | The rule reads | The rule derives |
 |---|---|
@@ -89,9 +99,9 @@ Take a verse that is down from 08:30 to 10:30. It writes the 10:00 hourly tick w
 | the calendar | strict cron | It skips the instant. |
 | the tick | anacron | It fires late, once, and `missed` says by how much. |
 
-**A charter declares a schedule of its own** in its head document, beside the strata. The
+**A charter declares a schedule of its own** in its `schedules:`, beside its `strata:`. The
 schedule belongs to the installer. Verse writes its ticks with the grant of the installer, and
-removes them with the charter. This is the head of the charter that proposes a next step for
+removes them with the charter. This is the start of the charter that proposes a next step for
 each issue of the verse repository ([issue-next.tony](../../.verse/charters/issue-next.tony)):
 
 ```tony
@@ -112,4 +122,4 @@ across a DST change.
 | Command | What it does |
 |---|---|
 | `verse schedule` | lists every schedule, with its `next` and its standing tick |
-| `verse schedule tick <name> --due <instant> [--at <address>]` | writes one tick for a past instant. It writes the same entity that the schedule writes, so a rule about the tick fires in the same way. `--at` names the package of a schedule a charter declared. |
+| `verse schedule tick <name> --due <instant> [--at <address>]` | writes one tick for a past instant. It writes the same data that the schedule writes, so a rule about the tick fires in the same way. `--at` names the package of a schedule a charter declared. |

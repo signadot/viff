@@ -4,11 +4,14 @@ This page is the surface of an iod. For what an iod *is* (one program, two halve
 dials each half), see [../io.md](../io.md). To build one, copy
 [examples/io](examples/io/main.go).
 
-An [iod](../glossary.md#iod) is an entity at `verse.iods.<name>`:
+The examples on this page follow one team, acme, which connects verse to its repository `app`,
+to GitHub's `acme/app`, and to its Slack workspace `acme`.
+
+An installed [iod](../glossary.md#iod) is the data at `verse.iods.<name>`:
 
 | | |
 |---|---|
-| `name` | its name, and the whole of its address under `verse.io`. Required |
+| `name` | its name, and the whole of its address under `verse.iods`. Required |
 | `root` | the root of the tree this iod writes, and is the single writer of. It is the first segment of every address it writes (`git`, `github`, …). Required |
 | `url` | verse dials this base for the reflection contract |
 | `dir` | a local git repository, reflected in task, with no network |
@@ -56,23 +59,23 @@ An iod reflects the world outside verse. It never reflects what verse keeps unde
 
 The node of a claim is its levels up to the first glob. Installing takes each such node for the
 installer. So what the iod reflects beneath the node belongs to the installer, with no owner
-record per entity. Verse refuses an install over a node that somebody else owns
+record per address. Verse refuses an install over a node that somebody else owns
 ([perms.md](../perms.md#ownership)).
 
 An ownership claim is an **address**, not a payload predicate. An install compares declarations,
-and it has no entities in hand.
+and it has no data in hand.
 
 ```tony
-{at: "git.verse.head"}         one entity
-{at: "git.verse"}              a whole subtree: everything under it, at every depth
-{at: "linear.ENG.issue.*"}     a level may be `*`, and may END in one — a literal prefix
-{at: "verse-dev.drift"}        …which is how an iod that keeps two levels of its own says so
+{at: "git.app.head"}                  one node
+{at: "git.app"}                       a whole subtree: everything under it, at every depth
+{at: "github.acme.*"}                 a level may be `*`: every repository of acme
+{at: "github.acme.app-*"}             …and may END in one: a literal prefix
 {at: "linear.project.*.owners.ENG"}   one place inside a node several iods share
 ```
 
 A claim is **one pattern per level, at any depth**. This is the same shape as an address. A
 claim owns the node it names and everything under it. So `git` owns every repository, and
-`verse-dev.drift` owns the tree that a package keeps there.
+`github.acme.app` owns everything the github iod writes about one repository.
 
 **Sharing is a deeper address.** Two iods that share a thing do not share a node. They own two
 nodes beneath it, such as `linear.project.p1.owners.ENG` and `…owners.OPS`. These are two
@@ -86,32 +89,31 @@ Two claims are **disjoint** when any level is disjoint. Two levels are disjoint 
 - two prefixes, where neither is a prefix of the other.
 
 If no level separates the claims, the shorter claim contains the longer. For example, `git`
-overlaps `git.verse.ref.x`, and it is not disjoint from it. The path in a payload follows the
-same rule. Verse asks it once of the address and once inside the payload.
+overlaps `git.app.ref.x`, and it is not disjoint from it.
 
 - A `*` level is disjoint from nothing. So verse can prove `git.*.*` apart from nothing under
   the same root.
 - A `*` anywhere but at the end of a level is a parse error. It is not an approximation.
-- Levels and paths both compare **segment by segment**. So `owners.ENG` and `owners.ENGINE` are
-  disjoint. `owners` contains `owners.ENG`, and an absent path contains every path.
+- Levels compare **segment by segment**. So `owners.ENG` and `owners.ENGINE` are disjoint, and
+  `owners` contains `owners.ENG`.
 
 Git claims **one address per repository**, because a repository is a level of every address that
 git writes:
 
 ```tony
 owns:
-- at: "git.verse"
+- at: "git.app"
 ```
 
-Prefer a claim of this kind, with no glob. It is disjoint from `git.verse-extras` by a literal
-comparison, where a glob such as `git.verse*` would claim too much. It is also a node where the
+Prefer a claim of this kind, with no glob. It is disjoint from `git.app-extras` by a literal
+comparison, where a glob such as `git.app*` would claim too much. It is also a node where the
 install can write an owner record. A claim that globs at its second level names only its first
 segment as a node.
 
-**A claim is a document, not a string.** The ids of tasks make this necessary. A terse
-`git.*."verse/*@owners.ENG"` would need `@` as a separator. But `@` already appears inside ids
-(the id of a task is `<chain>@<subject>`), so no parser could read such a claim back. A grammar
-with two forms would have to be read two ways everywhere, so a claim has one form.
+**A claim is a document, not a string.** It has one field, `at`, the address, spelled as every
+other surface spells an address: `POST /entity` takes `at`, and so does `!get-path`. A segment
+may hold any character, `@`, `/` and `:` among them, so no separator could add a second part to
+the string. A second part goes beside `at`, as a field.
 
 An install with no `owns` takes what the probe reported. Verse can prove a registration with no
 claims apart from nothing. So verse refuses it beside any other registration in its scope.
@@ -126,7 +128,7 @@ verse iod add <name> <url> -root <root>       install one, probing the url first
        add [-file <f>] | [file] | stdin      …or as a document (.tony/.json/.yaml)
            [-no-probe]                       install without asking it what it is
            [-allow-overlap]                  install though another iod may write the same place
-       show <ref>                            the entity
+       show <ref>                            the registration
        check <ref>                           ask it what it is and what it claims, right now
        remove <ref>                          take it away; refused if it reflected anything
               [-forget]                      …the reflection is over: tombstone what it wrote
@@ -134,9 +136,9 @@ verse iod add <name> <url> -root <root>       install one, probing the url first
 ```
 
 A `<ref>` is `verse.iods.laptop` or `laptop`: the whole address or the bare name. The middle form
-(`io.laptop`) is not accepted.
+(`iods.laptop`) is not accepted.
 
-`verse status` names the installed iods under `iod:`. It shows the refs only. `verse iod` shows
+`verse status` names the installed iods under `iods:`. It shows the refs only. `verse iod` shows
 their health.
 
 The list is in `verse status` because it is the one line that says whether anything is
@@ -152,7 +154,7 @@ scope it reflects into.
 |---|---|
 | `GET /iods` | list; `?probe=true` adds a live `reach` per iod |
 | `POST /iods` | install; `?probe=false` skips the check, `?allow-overlap=true` the disjointness proof. `201` and the io's row as the listing shows it, with `reach`, the `owns` it settled on (taken from the probe when you named none), and `warning` when it is unreachable or not running (`io.Row`) |
-| `GET /iods/{name}` | the entity |
+| `GET /iods/{name}` | the registration |
 | `GET /iods/{name}/check` | `{at, reach}`, plus `url` when the iod has one and `why` when the probe gave a reason, plus `says: {root, owns}` when it answered |
 | `DELETE /iods/{name}` | remove. `?forget=true` or `?keep=true`; `409` with both named when it reflected something and neither is given |
 | `POST /iods/{name}/hint` | `?at=<address>` (repeatable): reconcile those addresses. None means a full resync. `204` |
@@ -194,37 +196,37 @@ The contract has two routes, no state and no way to write:
 
 | | |
 |---|---|
-| `GET /iods` | `{root, owns}` — what this program is. Has no effect, which is what makes it the probe |
+| `GET /io` | `{root, owns}` — what this program is. Has no effect, which is what makes it the probe |
 | `GET /reflect` | `?at=<address>` (absent = everything it owns) → a `Reflection` |
 
 ```tony
 covers:
-- path: "git.verse.ref.*"
-- path: "git.verse.head"
+- path: "git.app.ref.*"
+- path: "git.app.head"
 entities:
-- at: git.verse.ref.main
-  payload: {repo: verse, name: main, sha: "82bd107…", type: commit}
-- at: git.verse.head
-  payload: {repo: verse, ref: main, sha: "82bd107…", dirty: false}
+- at: git.app.ref.main
+  payload: {repo: app, name: main, sha: "82bd107…", type: commit}
+- at: git.app.head
+  payload: {repo: app, ref: main, sha: "82bd107…", dirty: false}
 ```
 
 `covers` says what the [reflection](../glossary.md#reflection) is **complete for**:
 
-- An entity under a covered pattern and absent from `entities` is tombstoned.
-- An entity under no cover is written, and never tombstoned.
+- Data under a covered pattern and absent from `entities` is tombstoned.
+- Data under no cover is written, and never tombstoned.
 
 This is how git keeps history. Git covers `ref` and `head`, and it does not cover `commit`.
 
 The `path` of a [cover](../glossary.md#cover-of-a-reflection) is a pattern. It has one segment
 per level, and `*` matches any one segment. The path is also what converge **reads**: the refs
-under `git.verse.ref` and the node `git.verse.head`, not all of `git`.
+under `git.app.ref` and the node `git.app.head`, not all of `git`.
 
 The first segment of a cover is a literal, and it is the `root` of this iod. A cover that begins
 with `*` would claim every address it is compared against, so verse refuses it.
 
 A cover may add `value`, a payload predicate. Use it where an address alone cannot say what the
 answer is complete for. GitHub covers the open issues of a repository and its recent closed
-issues as two halves of `github.<org>.<name>.issue.*`.
+issues as two halves of `github.acme.app.issue.*`.
 
 **A cover goes as deep as the answer does.** An iod that owns one address inside a shared thing
 covers that address, such as `linear.project.*.owners.ENG`. Converge writes, compares and
@@ -286,9 +288,9 @@ registration describes:
 
 ```tony
 out:
-  places:     [slack.Signadot.out]     # where it reads what is asked of it
-  as:         agent:slack-iod           # who it acts as, and owns every status it writes
-  requesters: [group:verse-dev]        # who may ask it for something
+  places:     [slack.acme.out]         # where it reads what is asked of it
+  as:         agent:slack-iod          # who it acts as, and owns every status it writes
+  requesters: [group:acme-dev]         # who may ask it for something
 ```
 
 | | |
@@ -300,7 +302,7 @@ out:
 
 ```sh
 verse iod add slack http://slack-iod:9801 --root slack \
-  --out slack.Signadot.out --as agent:slack-iod --requesters group:verse-dev
+  --out slack.acme.out --as agent:slack-iod --requesters group:acme-dev
 ```
 
 **The install writes four grants**, from the record, once:
@@ -338,8 +340,8 @@ A package asks an iod for something through an outbox it declares
 named with the iod's out place.
 
 ```tony
-at: verse-dev.announce
-sends: [{from: out.slack, to: slack.Signadot.out}]
+at: acme.releases
+sends: [{from: out.slack, to: slack.acme.out}]
 ```
 
 Each pass, the out half reads its own place and then every outbox sending to it, which it asks
@@ -437,8 +439,10 @@ A reply or a mention is not a reflection and not a delivery. It is a control req
 and an intervention is never a store write ([control.md](../control.md)). So a connector that
 hears one asks verse for it through the ordinary route. It does not write the record.
 
-`io.Controller` is that seam. It gets `func(principal string) *client.Client`: a factory, not a
-client. So the connector makes each request as whoever the external system says did the thing.
+`io.Controller` is that seam. It gets `func(principal, account string) *client.Client`: a
+factory, not a client. `account` is the person's account in the external system,
+`<provider>:<id>`. So the connector makes each request as whoever the external system says did
+the thing.
 
 Three invariants hold for every connector:
 
@@ -449,6 +453,8 @@ Three invariants hold for every connector:
 - **Who** it is made as is the person, never the iod's own principal. An answer recorded as
   `agent:slack-iod` is an answer that nobody gave.
 
-The connector asserts that person to verse in the way the CLI asserts its own user. Verse trusts
-the assertion as it trusts the CLI's. The fix is a principal that verse verifies for itself, and
-that fix does not belong to this seam.
+The connector presents its own token and names the person's account beside the person
+(`Verse-For-Principal`). Verse admits the request as the person only through that account's
+binding, and only from an iod the deployment trusts for the provider
+([a person relayed by a trusted iod](perms.md#a-person-relayed-by-a-trusted-iod)). Where the
+iod presents no token, verse takes the name as it takes the CLI's.

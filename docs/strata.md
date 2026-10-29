@@ -291,7 +291,7 @@ not arrive hidden inside a fan-out.
 
 ## Path reads inside a derive
 
-[`!get-path` and `!list-paths`](reference/action.md#get-path-and-list-paths-reaching-another-entity)
+[`!get-path` and `!list-paths`](reference/action.md#get-path-and-list-paths-reaching-other-data)
 let an action copy an entity that is not its subject. They are the one thing the ordering must
 limit, because the section above depends on this: nothing a derive writes is reached from a
 level above it.
@@ -420,7 +420,7 @@ longer the charter's own: inside a `spawn`, and inside a `patch` or `derive` pay
 the author's own keys ([what an install does not check](reference/charter.md#what-an-install-does-not-check)).
 
 **Nothing removes a derived entity unless a charter says to.** The
-[protection a subject has](trigger-model.md#lifecycle-how-an-entity-leaves) does not extend to
+[protection a subject has](trigger-model.md#lifecycle-how-data-leaves) does not extend to
 it. A derive addresses its target and does not select it, so the vanishing marker is not in its
 way.
 

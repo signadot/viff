@@ -2,13 +2,14 @@
 
 A [charter](../glossary.md#charter) is a list of [rules](../glossary.md#rule). A rule says:
 when the [data](data.md) looks like this, ask [this](questions.md), and do [that](tasks.md).
-Every rule has the same parts: a `condition` that selects the entities the rule is about, each
-one its **subject**; `gates` that ask before it acts; and an `action` on the subject.
+Every rule has the same parts: a `condition` that selects the data the rule is about, each
+piece its **subject**; `gates` that ask before it acts; and an `action` on the subject.
 
 A charter is installed at an [address](../glossary.md#address), and its rules write only under
 it. The tutorial's charter lives at `verse-tutorial`, where the tutorial's data lives, so
-everything it makes is in one place and leaves in one command. `verse charter` reads a charter
-back as `verse data` reads the store, and prints the file that installs it:
+everything it makes is in one place and leaves in one command. It looks after one team's work
+on `acme/app`: the issues its users open, and the releases that ship the fixes. `verse charter`
+reads a charter back as `verse data` reads the store, and prints the file that installs it:
 
 ```sh
 verse charter verse-tutorial     # the charter, as a file
@@ -17,7 +18,7 @@ verse charter                    # every charter, the baseline one first
 
 This page goes in four steps, each one on from the last. The first rule changes data. The
 second asks first. The third starts a task and writes its answer back into the data. The fourth
-derives an entity of its own, which keeps its lineage, and one more rule reacts to it. Each is
+derives data of its own, which keeps its lineage, and one more rule reacts to it. Each is
 installed from the text shown, on [a verse running](README.md#start), so what you read is what
 runs. [Charters, continued](charters-2.md) has the rest of what a rule can say.
 
@@ -39,13 +40,13 @@ verse data verse-tutorial issue 1          # stage: triaged
 ```
 
 The condition is a path with a wildcard and a pattern on the value. The action has no target of
-its own: it patches the subject. An entity already standing when the rule is installed is acted
-on too. A rule is a statement about the world, not a subscription to what changes next.
+its own: it patches the subject. Data already standing when the rule is installed is acted on
+too. A rule is a statement about the world, not a subscription to what changes next.
 
 ## 2. A rule that asks first
 
-A release is ready, and shipping it matters. The rule ships what is ready while CI is green, and
-only once Ana says yes.
+The team ships `acme/app` in releases, and shipping one matters. The rule ships a release that
+is ready while CI on main is green, and only once Ana, who runs the releases, says yes.
 
 ```sh
 verse charter -a verse-tutorial -f - <<'EOF'
@@ -116,14 +117,13 @@ options: [{id: ship, need: 1}, {id: hold, need: 1}, {id: drop, need: 2}]   # not
 ```
 
 Each answer is a ballot that names its answerer, and the record of the question says who chose
-what. Quote the duration: unquoted, `4h` reads as the number `4` beside a literal `h`, and verse
-refuses it at install ([a deadline settles](../reference/gates.md#a-deadline-settles)).
+what ([a deadline settles](../reference/gates.md#a-deadline-settles)).
 
 ## 3. A rule that starts a task, and reads its answer
 
-The issue from the first rule, and now something is done about it. The rule moves the issue to
-`reviewing` and starts an agent that reviews it. When the agent is done, the rule writes what it
-said onto the issue.
+The issue from the first rule is triaged, and now something is done about it. The rule moves
+the issue to `reviewing` and starts an agent that reviews it. When the agent is done, the rule
+writes what it said onto the issue.
 
 ```sh
 verse charter -a verse-tutorial -f - <<'EOF'
@@ -146,7 +146,7 @@ rules:
       patch: {stage: unreviewed, why: $err}
 EOF
 verse task                                 # the task, while it runs, and its result once it is done
-verse data verse-tutorial issue 1          # stage: reviewed, kind: bug, severity: high
+verse data verse-tutorial issue 1          # stage: reviewed, and the kind and severity the agent chose
 ```
 
 The spawn names its **agent**: here `verse`, verse's own, with the host's network and a
@@ -188,7 +188,7 @@ verse data verse-tutorial issue 1 -put '{stage: reviewed, title: "login fails", 
 
 ## 4. Lineage and derivations
 
-A rule may write an entity that is not its subject. That is `derive`, and because a charter that
+A rule may write data that is not its subject. That is `derive`, and because a charter that
 writes anywhere can write in a circle, it comes with a declared order of levels, the **strata**:
 a rule's subject is in its own stratum, and what it derives lands in a higher one.
 
@@ -230,10 +230,14 @@ verse data verse-tutorial bug 1 verse meta derivedFrom   # rule: raise, subject:
 ```
 
 The issue at `reviewed` with `kind: bug` is standing when this is installed, and the install
-fires over it. The second rule fires on what the first wrote, a moment later. Read the bug
-again if `scheduled` is not there yet.
+fires over it. The second rule fires on what the first wrote, a moment later. Read the bug again
+if `scheduled` is not there yet.
 
-A derived entity keeps its **lineage**: what it came from. The engine writes it at
+The output above is for the review that the write at the end of step 3 records: `kind: bug`,
+`severity: high`. If the agent answered `feature`, `raise` does not fire. If it answered a lower
+severity, `schedule` does not.
+
+Derived data keeps its **lineage**: what it came from. The engine writes it at
 `verse.meta.derivedFrom`, naming the rule and the subject, whatever the derived value says. So a
 bug leads back to its issue, and a read over `derivedFrom` finds everything one rule derived.
 `id: $subject.name` puts the bug at `verse-tutorial.bug.1`, under the name of the issue it is
@@ -260,7 +264,7 @@ You have the four parts now. A charter of your own is made of the same kinds of 
 data. On real systems the shapes stay the same, and the verse is shared: a charter you install acts
 under your name, its gates reach the colleagues they name wherever they are, and the tasks it starts
 are on the task list of everyone who may read them. [Iods](../io.md) connect verse to a repository,
-a forge or a chat workspace: they write the entities, and they carry what a rule writes back out to
+a forge or a chat workspace: they write the data, and they carry what a rule writes back out to
 the system. Tasks run agents on [runners](../runners.md), with an environment in the spawn that says
 what the task may reach, and an autonomy that says what it does unasked. An irreversible step is
 behind a gate with named answerers and a deadline.

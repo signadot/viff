@@ -6,25 +6,38 @@ shape is installed and fired from the text shown, in the same charter at `verse-
 page needs [a verse running](README.md#start) and nothing else. You do not need the pages
 before it.
 
+The rules on this page carry one team's work on `acme/app` from a user's report to a deploy:
+
+| Address | What is there | Rule |
+|---|---|---|
+| `verse-tutorial.report.*` | a bug report from a user | `triage-report` |
+| `verse-tutorial.fix.*` | a fix, which a script reviews | `review-fix` |
+| `verse-tutorial.build.*` | a build of a fix: lint, then test | `build` |
+| `verse-tutorial.deploy.*` | a deploy that waits for the release pipeline | `deploy` |
+| `verse-tutorial.incident.*` | an incident, routed to the team for its area | `route` |
+
+Each stage has an address of its own, so each rule selects only its own data, and a write you
+make reaches the one rule it is for.
+
 ## The backlog
 
 A rule is a statement about the world, so installing it acts on what already stands:
 
 ```sh
-verse data verse-tutorial patch 1 -put '{stage: open}'
-verse data verse-tutorial patch 1                # stage: open — nothing is watching
+verse data verse-tutorial report 1 -put '{stage: open, title: "login fails after a password reset"}'
+verse data verse-tutorial report 1               # stage: open — nothing is watching
 verse charter -a verse-tutorial -f - <<'EOF'
 rules:
-- name: triage-2
+- name: triage-report
   condition:
-    subject: {path: "verse-tutorial.patch.*", value: {stage: open}}
+    subject: {path: "verse-tutorial.report.*", value: {stage: open}}
   action:
     patch: {stage: triaged}
 EOF
-verse data verse-tutorial patch 1                # stage: triaged — installing it acted
+verse data verse-tutorial report 1               # stage: triaged — installing it acted
 ```
 
-Remove the rule, write another entity, and nobody reacts. Install it again, and it acts on that
+Remove the rule, write another report, and nobody reacts. Install it again, and it acts on that
 one too. A rule is not a subscription to future changes.
 
 ## The latch
@@ -36,9 +49,9 @@ patch that does it, and verse refuses at install a spawning rule that has none:
 ```sh
 verse charter -a verse-tutorial -f - <<'EOF'
 rules:
-- name: review-2
+- name: review-fix
   condition:
-    subject: {path: "verse-tutorial.latch.*", value: {stage: open}}
+    subject: {path: "verse-tutorial.fix.*", value: {stage: open}}
   action:
     patch: {stage: reviewing}
     spawn:
@@ -47,12 +60,12 @@ rules:
     onDone:
       patch: {stage: reviewed}
 EOF
-verse data verse-tutorial latch 1 -put '{stage: open}'
-verse data verse-tutorial latch 1                # stage: reviewing, then reviewed
+verse data verse-tutorial fix 1 -put '{stage: open}'
+verse data verse-tutorial fix 1                  # stage: reviewing, then reviewed
 ```
 
 `stage: reviewing` is the latch: once the action has written it, the condition no longer selects
-the entity. `onDone` is a completion [hook](../glossary.md#hook): when that task reaches `done`,
+the fix. `onDone` is a completion [hook](../glossary.md#hook): when that task reaches `done`,
 the engine fires it about the same subject
 ([completion hooks](../reference/action.md#completion-hooks-one-trigger-chaining-visible)). A
 script reads the subject from its environment's vars, `environment: {vars: …}`, rather than from its text: data
@@ -67,9 +80,9 @@ means:
 ```sh
 verse charter -a verse-tutorial -f - <<'EOF'
 rules:
-- name: build-2
+- name: build
   condition:
-    subject: {path: "verse-tutorial.seq.*", value: {stage: open}}
+    subject: {path: "verse-tutorial.build.*", value: {stage: open}}
   action:
     patch: {stage: building}
     seq:
@@ -84,34 +97,34 @@ rules:
     onDone:
       patch: {stage: built}
 EOF
-verse data verse-tutorial seq 1 -put '{stage: open}'
-verse flow show verse-tutorial.seq.1
+verse data verse-tutorial build 1 -put '{stage: open}'
+verse flow show verse-tutorial.build.1
 ```
 
 ```tony
 - roots:
-  - chain: build-2
+  - chain: build
     children:
-    - chain: build-2.seq[0]
-      id: verse-tutorial:build-2.seq.0@verse-tutorial.seq.1
+    - chain: build.seq[0]
+      id: verse-tutorial:build.seq.0@verse-tutorial.build.1
       kind: seq
       lastAction: script
       status: done
-    - chain: build-2.seq[1]
+    - chain: build.seq[1]
       children:
-      - chain: build-2.seq[1].onFailed
+      - chain: build.seq[1].onFailed
         kind: onFailed
         status: skipped
-      id: verse-tutorial:build-2.seq.1@verse-tutorial.seq.1
+      id: verse-tutorial:build.seq.1@verse-tutorial.build.1
       kind: seq
       lastAction: script
       status: done
-    - chain: build-2.onDone
+    - chain: build.onDone
       kind: onDone
       status: applied
     kind: root
     status: done
-  subject: 'verse-tutorial.seq."1"'
+  subject: 'verse-tutorial.build."1"'
 ```
 
 Each node is one action in the charter. Its `chain` is where that action sits in its rule,
@@ -123,61 +136,63 @@ outcome did not choose, and `pending` one that may still fire
 
 ## A cause, not a condition
 
-[The charters page](charters.md#2-a-rule-that-asks-first) used `when`: *while* CI is green,
-every ready entity ships, and one that becomes ready later ships too. `on` says something
-different: fire **at the moment** CI went green, over whatever was waiting then.
+[The charters page](charters.md#2-a-rule-that-asks-first) uses `when`: *while* CI is green,
+every ready release ships, and one that becomes ready later ships too. `on` says something
+different: fire **at the moment** the release pipeline goes green, over whatever is waiting then.
 
 ```sh
 verse charter -a verse-tutorial -f - <<'EOF'
 rules:
-- name: release-2
+- name: deploy
   condition:
-    subject: {path: "verse-tutorial.on.*", value: {stage: waiting}}
+    subject: {path: "verse-tutorial.deploy.*", value: {stage: waiting}}
     on:      {path: "verse-tutorial.ci.release", value: {state: green}}
   action:
-    patch: {stage: released}
+    patch: {stage: deployed}
 EOF
-verse data verse-tutorial on 1 -put '{stage: waiting}'
+verse data verse-tutorial deploy 1 -put '{stage: waiting}'
 verse data verse-tutorial ci release -put '{state: green}'
-verse data verse-tutorial on 1                   # stage: released
+verse data verse-tutorial deploy 1               # stage: deployed
 
-verse data verse-tutorial on 2 -put '{stage: waiting}'   # CI is still green…
-verse data verse-tutorial on 2                   # …and this one stays waiting
+verse data verse-tutorial deploy 2 -put '{stage: waiting}'   # the pipeline is still green…
+verse data verse-tutorial deploy 2               # …and this one stays waiting
 ```
 
-The install prints a note about this rule: `on` reads only the CI entity, so an entity that
-arrives later waits for CI to fall and rise again. Here, that is the point. Verse asks `on` at
-the previous commit and at this one, and fires on the rising edge. So an edge does not fire
+The install prints a note about this rule: `on` covers only the pipeline's data, so a deploy
+that arrives later waits for the pipeline to fall and rise again. Here, that is the point. Verse
+asks `on` at the previous commit and at this one, and fires on the rising edge. So an edge does not fire
 again while it stays true. And an `on` rule does not act on the backlog: a predicate that
 already holds never rose. When you mean "whenever this holds", write `when`.
 
 ## Reading something the rule is not about
 
-The `$references` of an action read the entity the firing is about. To copy from another
-entity, name it:
+The `$references` of an action read the data the firing is about. To copy from other data, name
+it. Say each repository the team keeps is at `verse-tutorial.repo.<name>`, with its default
+branch, and each fix names its repository in `repo`. This action, on a fix, copies the branch the
+fix goes to, and the default branch of every repository:
 
 ```tony
 action:
   patch:
-    branch:   !get-path {at: [verse-tutorial, repo, $subject.value.head], path: branch}
+    base:     !get-path {at: [verse-tutorial, repo, $subject.value.repo], path: branch}
     branches: !list-paths {at: "verse-tutorial.repo.*", path: branch}
 ```
 
 `!get-path` answers with one node and `!list-paths` with a list. Both copy, and neither tracks:
-a later change to the entity read does not reach what was written
-([`!get-path` and `!list-paths`](../reference/action.md#get-path-and-list-paths-reaching-another-entity)).
+a later change to the data read does not reach what was written
+([`!get-path` and `!list-paths`](../reference/action.md#get-path-and-list-paths-reaching-other-data)).
 
 ## A charter in a file
 
-The rules so far were typed into the shell. A charter you keep is a file. Save this as
-`triage.tony`:
+The rules so far were typed into the shell. A charter you keep is a file. Save the triage rule
+as `triage.tony`, with one more field, which puts each report in the support queue:
 
 ```tony
-- name: triage-3
+- name: triage-report
   condition:
-    subject: {path: "verse-tutorial.ticket.*", value: {stage: open}}
+    subject: {path: "verse-tutorial.report.*", value: {stage: open}}
   action:
-    patch: {stage: triaged}
+    patch: {stage: triaged, queue: support}
 ```
 
 ```sh
@@ -186,52 +201,58 @@ verse charter -a verse-tutorial -f triage.tony
 
 ```
 package verse-tutorial: installed 1 trigger(s)
+`verse c` shows every charter and where each may write
 ```
 
 A file installs as one step: if verse refuses one rule in it, it installs none of them. A rule
-whose name is already installed is replaced, and the other rules stay.
+whose name is already installed is replaced, and the other rules stay: `triage-report` is
+replaced, and `review-fix`, `build` and `deploy` are as they were.
 
 An install that succeeds may print more lines. Read them:
 
 ```
-  held: rule waits waits for stratum intake, which is not installed. It fires on nothing until that stratum is.
-  note: rule asks: gate "approval" blocks, and its refusal does not advance the subject past its own predicate (stage): …
+  ttl: it is removed at 2026-11-01T09:00:00Z, as -r removes it; installing it again renews it.
+  held: rule triage-intake waits for stratum intake, which is not installed. It fires on nothing until that stratum is.
+  note: rule approve-deploy: gate "approval" blocks, and its refusal does not advance the subject past its own predicate (stage): …
 ```
 
-`held:` is a rule that names a stratum nobody installed: it is stored, and it fires on nothing
-until the stratum is there. `note:` is a rule that is legal and may not do what you meant; the
+`ttl:` is a charter that stands for a while: a charter file with `at:` and `ttl: 72h` is removed
+72 hours after it is installed, as `verse charter -r` removes it
+([the charter reference](../reference/charter.md)). `held:` is a rule that names a stratum
+nobody installed: it is stored, and it fires on nothing until the stratum is there. `note:` is a
+rule that is legal and may not do what you meant; the
 note says why, and usually what to write instead.
 
 ## When a rule does nothing
 
 A rule that does nothing may have selected nothing, found its condition false, been denied by
-a gate, or failed. Only the last one is a fault, and verse keeps it on the rule. This rule spells `value`
-wrongly:
+a gate, or failed. Only the last one is a fault, and verse keeps it on the rule. This rule routes
+each incident to the team for its area, and spells `value` wrongly:
 
 ```sh
 verse charter -a verse-tutorial -f - <<'EOF'
 rules:
-- name: assign
+- name: route
   condition:
-    subject: {path: "verse-tutorial.defect.*", value: {stage: open}}
+    subject: {path: "verse-tutorial.incident.*", value: {stage: open}}
   action:
-    patch: {stage: assigned, owner: $subject.valeu.reporter}
+    patch: {stage: routed, team: $subject.valeu.area}
 EOF
-verse data verse-tutorial defect 1 -put '{stage: open, reporter: ana}'
-verse data verse-tutorial defect 1               # stage: open — the rule fired and failed
-verse charter verse-tutorial rules assign
+verse data verse-tutorial incident 1 -put '{stage: open, area: billing}'
+verse data verse-tutorial incident 1             # stage: open — the rule fired and failed
+verse charter verse-tutorial rules route
 ```
 
 ```tony
 …
-name: assign
+name: route
 trouble:
 - at: "…"
-  chain: assign
+  chain: route
   count: 1
   kind: failed
-  subject: 'verse-tutorial.defect."1"'
-  why: "$subject.valeu.reporter is not present in the payload that fired this action"
+  subject: 'verse-tutorial.incident."1"'
+  why: "$subject.valeu.area is not present in the payload that fired this action"
 ```
 
 `verse charter` prints a note for every rule in trouble, and `verse status` counts the failed
@@ -246,12 +267,12 @@ A [suspension](../glossary.md#suspension) stops the work about a charter and a s
 ending it: firings, tasks and questions. A rule is named with its charter's address:
 
 ```sh
-verse flow suspend -charter verse-tutorial:triage-2 -why "reading the triage rule"
-verse data verse-tutorial patch 2 -put '{stage: open}'
-verse data verse-tutorial patch 2                # stage: open: nothing fired
-verse flow -charter verse-tutorial:triage-2      # held by you, why, since when
-verse flow resume -charter verse-tutorial:triage-2
-verse data verse-tutorial patch 2                # stage: triaged, as it stands now
+verse flow suspend -charter verse-tutorial:triage-report -why "reading the triage rule"
+verse data verse-tutorial report 2 -put '{stage: open, title: "export times out"}'
+verse data verse-tutorial report 2               # stage: open: nothing fired
+verse flow -charter verse-tutorial:triage-report # held by you, why, since when
+verse flow resume -charter verse-tutorial:triage-report
+verse data verse-tutorial report 2               # stage: triaged, as it stands now
 ```
 
 Verse does not replay what happened during the suspension. It acts on the world as it stands
@@ -267,7 +288,7 @@ verse charter verse-tutorial > charter.tony      # keep it, edit it, install it 
 verse charter -a verse-tutorial -f charter.tony
 ```
 
-A charter is durable: each rule and each stratum is an entity, and a verse that restarts has
+A charter is durable: each rule and each stratum is data in the store, and a verse that restarts has
 them ([the charter is durable](../reference/charter.md#the-charter-is-durable)).
 
 When you are done with the tutorial, take its charter away. What the charter wrote stays, and

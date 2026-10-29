@@ -3,7 +3,7 @@
 A [charter](../glossary.md#charter) is written in [tony](https://signadot.github.io/tony-format/).
 Tony is the document language that verse reads and writes. Like JSON, it has objects, arrays
 and scalars. Unlike JSON, it allows unquoted keys and strings, optional commas and comments.
-A charter is a list of rules, and comments make it easier to read.
+A charter is a document of rules and what they need, and comments make it easier to read.
 
 Tony adds one thing that the charter grammar uses: *tags*. A tag names what a value is, at
 the place where the value stands: `!glob "hotfix-*"`, `!or [ … ]`, `!not { … }`. With tags, a
