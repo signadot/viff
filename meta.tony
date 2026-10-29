@@ -2,6 +2,7 @@
 blocked_by: []
 blocks: []
 branches: []
+closed_by: 3ebb16047888655c7b53e5e417b9df5e51f17722
 commits:
 - ae2e8ff55a575203b8165680bd8ee2a19120e8aa
 - 90652467b37c037cc69404c35ff2f5cfa656f176
@@ -10,5 +11,5 @@ duplicates: []
 id: vzved3g6h12kr97yw5n0
 labels: []
 related_issues: []
-status: open
-updated: "2026-10-29T08:29:06.581859+01:00"
+status: closed
+updated: "2026-10-29T08:29:06.86063+01:00"
