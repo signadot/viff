@@ -206,7 +206,9 @@ func TestATasksDataActsAreCarriedToVerse(t *testing.T) {
 	saw = nil
 	for _, req := range []Request{{Op: OpVerseDataPut}, {Op: OpVerseDataRm}, {Op: OpVerseDataGet, Query: "%zz"},
 		{Op: OpVerseCharterCheck, Body: "at: repos.r.hello"}, {Op: OpVerseCharterCheck, Query: "at=repos.r"},
-		{Op: OpVerseCharterInstall, Query: "at=repos.r"}, {Op: OpVerseCharterRemove}} {
+		{Op: OpVerseCharterInstall, Query: "at=repos.r"}, {Op: OpVerseCharterRemove},
+		{Op: OpVerseDataPut, Query: "scope=elsewhere", Body: "{at: acme.notes.n1}"},
+		{Op: OpVerseCharterInstall, Query: "scope=elsewhere", Body: "at: repos.r.hello\n"}} {
 		if rep := s.answer(tk, frame(t, req)); rep.Refused == "" {
 			t.Errorf("%+v: %+v, want it refused", req, rep)
 		}

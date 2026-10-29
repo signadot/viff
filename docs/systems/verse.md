@@ -52,7 +52,8 @@ go on uses `question-ask`. One that looks again later reads the ask back with `v
 which says whether it was answered.
 
 A task reads and writes with the data tools as the person: what they cannot see, the task cannot
-either, and what they may not write is refused in verse's words.
+either, and what they may not write is refused in verse's words. What a task does on verse is done in
+baseline, whatever scope the task runs in, and the runner refuses a request that names a scope.
 
 A task reads the charters with `verse-charter-get`, asks whether its own would install with
 `verse-charter-check`, and installs and removes them with `verse-charter-install` and

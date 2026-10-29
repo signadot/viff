@@ -185,6 +185,12 @@ func (s *Server) verseRouted(ctx context.Context, tk Task, req Request) Reply {
 	if err != nil {
 		return Reply{Refused: "the query does not read: " + err.Error()}
 	}
+	// NO SCOPE: a task's acts on verse are its owner's in baseline, whatever scope the task ran
+	// in, and the tools send none. A query that names one is not the tools', and where it goes
+	// is not the task's to choose.
+	if q.Has("scope") {
+		return Reply{Refused: "a task's acts on verse are its owner's in baseline: the query names no scope"}
+	}
 	switch {
 	case req.Op == OpVerseDataPut && strings.TrimSpace(req.Body) == "":
 		return Reply{Refused: "a write carries what it writes"}
