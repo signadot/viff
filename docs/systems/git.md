@@ -75,7 +75,7 @@ deleting, of any branch. A charter that ships writes its push shapes instead.
 | Tool | What it does | Step |
 |---|---|---|
 | `git-push` | pushes the task's committed work to a branch of the remote, or deletes a branch there; fast-forward unless `force`, and a branch this run created is its own to rewrite | `git.push`, with `repo`, `ref`, `delete`, `force`, and `exists` and `own`, which the runner fills |
-| `git-fetch` | updates the checkout's view of the remote: the `mirror/*` refs move, and nothing of the task's own is touched | `git.fetch`, with `repo` |
+| `git-fetch` | updates the checkout's view of the remote: the `mirror/*` refs and the tags move, and nothing of the task's own is touched | `git.fetch`, with `repo` |
 
 A push sends what the task **committed**, and nothing it left uncommitted. Each commit carries
 trailers that name the task. The runner first puts the work in its own mirror, so a push that

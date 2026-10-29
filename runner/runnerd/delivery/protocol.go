@@ -16,7 +16,7 @@ import (
 // decides it by the launch's autonomy, stages the committed work in its mirror and pushes it from
 // there. `create-pr` opens a pull request from such a branch, and `update-pr` changes the open
 // one. `fetch` is for READING it: the runner brings its mirror up to upstream
-// and the checkout's `mirror/*` refs up to the mirror. Nothing crosses but requests and answers: the credential
+// and the checkout's `mirror/*` refs and tags up to the mirror. Nothing crosses but requests and answers: the credential
 // stays in the runner, used where it lives. Length-prefixed frames rather than newline-delimited
 // ones because tony is a multi-line format: framing a document by newlines would work until the
 // first document that had one.
@@ -73,8 +73,9 @@ type Reply struct {
 	// Refused is the answer when the act was declined — by the allowance, or by the remote about
 	// its own history — as against failing. The task re-plans on it rather than retrying it.
 	Refused string `tony:"field=refused,omitzero"`
-	// Updated answers a `fetch`: the checkout's `mirror/*` refs that moved, each as
-	// `mirror/<branch> <was>..<now>`. Empty means upstream had nothing the checkout lacked.
+	// Updated answers a `fetch`: the checkout's `mirror/*` refs and tags that moved, each as
+	// `mirror/<branch> <was>..<now>` or `tags/<tag> <was>..<now>`. Empty means upstream had
+	// nothing the checkout lacked.
 	Updated []string `tony:"field=updated,omitzero"`
 	// Exists and Own answer a `state` (OpState): the branch is at the forge, and its tip there
 	// is a commit this task made.

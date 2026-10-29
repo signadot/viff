@@ -281,14 +281,14 @@ func readPRToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string)
 }
 
 // fetchToolFor is the agent's way to see upstream move: the runner fetches, and the checkout's
-// `mirror/*` refs move to where upstream's branches are. What to do with them is the agent's own
-// git: rebase, merge, diff, or nothing.
+// `mirror/*` refs and tags move to where upstream's branches and tags are. What to do with them is
+// the agent's own git: rebase, merge, diff, or nothing.
 func fetchToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) verse.Tool {
 	return verse.Tool{
 		Name: fetchTool,
 		Description: "Bring this checkout's view of a repository's upstream up to date: the runner fetches " +
-			"the remote and moves the `mirror/*` refs here (`mirror/main`, …) to where its branches now are. " +
-			"Your own branch and working tree are not touched; rebase onto or diff against `mirror/<branch>` " +
+			"the remote and moves the `mirror/*` refs here (`mirror/main`, …) and the tags to where its branches " +
+			"and tags now are. Your own branch and working tree are not touched; rebase onto or diff against `mirror/<branch>` " +
 			"yourself. Use it when the base may have moved under you, before pushing to a branch that must " +
 			"fast-forward, or to read what another task delivered. Repositories: " + strings.Join(names, ", ") + ".",
 		Params:   map[string]any{"repo": map[string]any{"type": "string", "enum": names}},
@@ -314,9 +314,9 @@ func fetchToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) 
 			case rep.Error != "":
 				// An answer rather than a failure: the agent can work around a remote it can't
 				// reach now, and mirror/* stand.
-				return "not fetched: " + rep.Error + "; mirror/* are as they were", true, nil
+				return "not fetched: " + rep.Error + "; mirror/* and the tags are as they were", true, nil
 			case len(rep.Updated) == 0:
-				return "fetched " + t.Repo.Name() + ": nothing new; mirror/* already match upstream", false, nil
+				return "fetched " + t.Repo.Name() + ": nothing new; mirror/* and the tags already match upstream", false, nil
 			}
 			return "fetched " + t.Repo.Name() + ": " + strings.Join(rep.Updated, ", "), false, nil
 		},
@@ -358,8 +358,8 @@ func repoBrief(ws *workspace.Workspace, trailers []string, l *runner.Launch) str
 		b += "  " + line + "\n"
 	}
 	b += "A push of a commit without them is refused and tells you what is missing. If upstream may " +
-		"have moved since you started, `git-fetch` updates the `mirror/*` refs here and you rebase onto " +
-		"them yourself.\n\n"
+		"have moved since you started, `git-fetch` updates the `mirror/*` refs and the tags here and you " +
+		"rebase onto them yourself.\n\n"
 	return b
 }
 

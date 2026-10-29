@@ -414,7 +414,10 @@ func (m *Mirrors) open(ctx context.Context, r Repo, branch, root string, author 
 	//
 	// The refs a clone would have made are copied by hand, because they are the other half of
 	// what a clone is: every head of the mirror as `refs/remotes/mirror/<name>`, which is what
-	// a task's shell reads a sibling's delivery through.
+	// a task's shell reads a sibling's delivery through, and every tag of the mirror as
+	// `refs/tags/<name>`, so `git describe --tags` and `git log <tag>..` answer in a checkout as
+	// they do in a clone. The objects behind a tag are linked in with the rest; a tag ref nobody
+	// copied would leave every annotated tag object in the store with nothing naming it.
 	repo, err := git.PlainInit(dir, false)
 	if err != nil {
 		return nil, "", fmt.Errorf("repo %s: init: %w", r.Name(), err)
@@ -422,12 +425,15 @@ func (m *Mirrors) open(ctx context.Context, r Repo, branch, root string, author 
 	if err := linkObjects(mirror, dir); err != nil {
 		return nil, "", fmt.Errorf("repo %s: sharing the mirror's objects: %w", r.Name(), err)
 	}
-	// Reopened so the storage sees the objects it now has.
+	if err := packTags(mr, dir); err != nil {
+		return nil, "", fmt.Errorf("repo %s: the mirror's tags: %w", r.Name(), err)
+	}
+	// Reopened so the storage sees the objects and the tags it now has.
 	if repo, err = git.PlainOpen(dir); err != nil {
 		return nil, "", fmt.Errorf("repo %s: %w", r.Name(), err)
 	}
 	if _, err := repo.CreateRemote(&config.RemoteConfig{Name: "mirror", URLs: []string{mirror},
-		Fetch: []config.RefSpec{"+refs/heads/*:refs/remotes/mirror/*"}}); err != nil {
+		Fetch: []config.RefSpec{"+refs/heads/*:refs/remotes/mirror/*", "+refs/tags/*:refs/tags/*"}}); err != nil {
 		return nil, "", fmt.Errorf("repo %s: %w", r.Name(), err)
 	}
 	_, upstream, err := syncMirrorRefs(mr, repo)
@@ -501,42 +507,94 @@ func linkObjects(mirror, dir string) error {
 }
 
 // syncMirrorRefs sets `refs/remotes/mirror/<branch>` in the checkout to each branch of the mirror
-// and reports the ones that moved, as `mirror/<branch> <was>..<now>` (`<was>` is `new` for a
-// branch the checkout had not seen), and the mirror's branch tips, as read from the mirror. Branches the mirror no longer has are left: a ref that
-// vanishes under a running agent is a surprise, and a stale remote-tracking ref is not.
+// and `refs/tags/<tag>` to each of its tags, and reports the ones that moved, as
+// `mirror/<branch> <was>..<now>` and `tags/<tag> <was>..<now>` (`<was>` is `new` for a ref the
+// checkout had not seen), and the mirror's branch tips, as read from the mirror. Refs the mirror
+// no longer has are left: a ref that vanishes under a running agent is a surprise, and a stale
+// remote-tracking ref or tag is not.
 func syncMirrorRefs(mirror, repo *git.Repository) (moved []string, tips []plumbing.Hash, err error) {
+	// What the checkout has, read once: a lookup per ref reads packed-refs from the top each
+	// time, and a checkout of a repository with thousands of tags has them all packed (packTags).
+	have := map[plumbing.ReferenceName]plumbing.Hash{}
+	own, err := repo.Storer.IterReferences()
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := own.ForEach(func(ref *plumbing.Reference) error {
+		have[ref.Name()] = ref.Hash()
+		return nil
+	}); err != nil {
+		return nil, nil, err
+	}
 	refs, err := mirror.References()
 	if err != nil {
 		return nil, nil, err
 	}
 	err = refs.ForEach(func(ref *plumbing.Reference) error {
-		if !ref.Name().IsBranch() {
+		var name plumbing.ReferenceName
+		var short string
+		switch {
+		case ref.Name().IsBranch():
+			tips = append(tips, ref.Hash())
+			name = plumbing.NewRemoteReferenceName("mirror", ref.Name().Short())
+			short = "mirror/" + ref.Name().Short()
+		case ref.Name().IsTag():
+			// A tag is a tag in the checkout too, under its own name: there is no remote-tracking
+			// place for tags, and git reads `refs/tags/` wherever a tag is named. An annotated
+			// tag's ref is its tag object, as in the mirror.
+			name = ref.Name()
+			short = "tags/" + ref.Name().Short()
+		default:
 			return nil
 		}
-		tips = append(tips, ref.Hash())
-		short := strings.TrimPrefix(ref.Name().String(), "refs/heads/")
-		name := plumbing.NewRemoteReferenceName("mirror", short)
 		was := "new"
-		if old, err := repo.Storer.Reference(name); err == nil {
-			if old.Hash() == ref.Hash() {
+		if old, ok := have[name]; ok {
+			if old == ref.Hash() {
 				return nil
 			}
-			was = ShortSha(old.Hash().String())
+			was = ShortSha(old.String())
 		}
 		if err := repo.Storer.SetReference(plumbing.NewHashReference(name, ref.Hash())); err != nil {
 			return err
 		}
-		moved = append(moved, "mirror/"+short+" "+was+".."+ShortSha(ref.Hash().String()))
+		moved = append(moved, short+" "+was+".."+ShortSha(ref.Hash().String()))
 		return nil
 	})
 	sort.Strings(moved)
 	return moved, tips, err
 }
 
+// packTags writes every tag of the mirror into a fresh checkout's packed-refs, in one write, as
+// a clone does. A ref file per tag is a write per tag: 0.4s for 450 tags on a laptop, at every
+// launch, where a packed-refs file of the same tags is one. syncMirrorRefs then finds each tag in
+// place and writes none; a tag that moves later is written loose over its packed line, which is
+// how git itself keeps the two. No traits are claimed, so git peels an annotated tag as it needs.
+func packTags(mirror *git.Repository, dir string) error {
+	refs, err := mirror.References()
+	if err != nil {
+		return err
+	}
+	var lines []string
+	if err := refs.ForEach(func(ref *plumbing.Reference) error {
+		if ref.Name().IsTag() && ref.Type() == plumbing.HashReference {
+			lines = append(lines, ref.Hash().String()+" "+ref.Name().String()+"\n")
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	if len(lines) == 0 {
+		return nil
+	}
+	sort.Strings(lines)
+	return os.WriteFile(filepath.Join(dir, ".git", "packed-refs"), []byte(strings.Join(lines, "")), 0o644)
+}
+
 // Refresh brings one checkout's view of upstream up to the mirror, which the caller has just
 // fetched: the mirror's new objects are linked in as they were at open, and `refs/remotes/mirror/*`
-// move to where the mirror's branches are. The task's own branch and working tree are untouched;
-// what the agent does with a newer `mirror/main` is its own git. It returns what moved.
+// and `refs/tags/*` move to where the mirror's branches and tags are. The task's own branch and
+// working tree are untouched; what the agent does with a newer `mirror/main` is its own git. It
+// returns what moved.
 //
 // This is the parent writing into a checkout a task is using, and it is safe for the same reason
 // a fetch into a repository someone is working in is: objects are only ever added, and the refs
