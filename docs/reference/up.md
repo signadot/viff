@@ -150,11 +150,17 @@ runs.
 Verse refuses a spawn that names a runner that is not installed, by name, rather than run it
 somewhere else.
 
-A runner registered with a `subject` takes this verse's calls by the tokens it signs as an
-issuer (`auth.issuer`, below), each minted for that runner alone
-([who the runner is](../runners.md#who-the-runner-is)). A verse that issues none refuses to
-register such a runner; a runner registered without a `subject` is taken at its word and
-reached bare.
+A registered runner takes this verse's calls by the tokens it signs as an issuer
+(`auth.issuer`, below), each minted for that runner alone
+([who the runner is](../runners.md#who-the-runner-is)). So `verse up` is always an issuer:
+where its config names no `auth.issuer`, it is one at its own address (`http://<--addr>`, with
+`localhost` for an address that binds every interface), signing with a key it makes in its data
+dir as `issuer.pem` and keeps there, so a restart signs as the same issuer. With `--docd-addr`
+it has no data dir, and the key is made for that process alone: a restart replaces it, and
+every token signed by the last. `verse status` says which, under `issuer`: its `url`, and `key`,
+which is `config`, the file, or `memory`; `verse up` prints the same at start. A runner holds
+versed's tokens to that url exactly, so its `verse.url` spells it the same way (`localhost`, not
+`127.0.0.1`), or its `verse.issuer` names it ([runnerd.md](runnerd.md#configuration)).
 
 Both places use the same seam, and every `verse task` verb works on both. See also
 [task control](../task-control.md) and [tasks.md](tasks.md).

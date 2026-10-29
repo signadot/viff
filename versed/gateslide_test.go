@@ -100,10 +100,10 @@ func TestASlidGateIsAskedWithItsDefaultAndLabels(t *testing.T) {
 // relays it, and the record says who slid it.
 func TestASlideOfGatesAloneIsTheRequestersOnARelayedTask(t *testing.T) {
 	srv := testServer(t)
-	face := runnerFace(t)
 	ts := httptest.NewServer(srv.Handler())
+	face := runnerFace(t, ts.URL)
 	defer ts.Close()
-	postTony(t, ts.URL+"/runners", map[string]any{"name": "gpu", "url": face.URL}).Body.Close()
+	postTony(t, ts.URL+"/runners", map[string]any{"name": "gpu", "url": face.URL, "subject": face.Subject}).Body.Close()
 	id := spawnOK(t, ts, map[string]any{"id": "far", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t", "runner": "verse.runners.gpu", "environment": stepEnv, "autonomy": []map[string]any{{"match": map[string]any{"system": "commands", "verb": "run"}, "then": "ask"}, {"then": "ask"}}}})
 	slideGates(t, ts.URL, id, `{autonomy: [{name: g, match: {system: commands, verb: run}, then: ask}, {then: ask}]}`)
 	deadline := time.Now().Add(5 * time.Second)

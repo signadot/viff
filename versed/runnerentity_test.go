@@ -8,7 +8,7 @@ import (
 
 // A runner acts as `runner:` its identity, or its name, and an identity is the id alone.
 func TestARunnerActsAsItsKindedIdentity(t *testing.T) {
-	e := api.Runner{Name: "verse-runner", URL: "http://verse-runner:9802"}
+	e := api.Runner{Name: "verse-runner", URL: "http://verse-runner:9802", Subject: "system:serviceaccount:verse:verse-runner"}
 	if got := e.Principal(); got != "runner:verse-runner" {
 		t.Fatalf("a runner with no identity acts as %q", got)
 	}

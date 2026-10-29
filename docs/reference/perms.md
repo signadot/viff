@@ -268,7 +268,8 @@ request carries.
   the token's account is bound to.
 - An iod of the deployment presents its own token. When it acts for a person, it also names the
   person's account, and verse finds the person through that account's binding.
-- A runner registered with a `subject` presents its own token too, and acts as itself.
+- A runner presents its own token too, the one its registration names by its `subject`, and acts
+  as itself.
 
 Bindings are records at `verse.identity.<provider>.account.<id>`. Only the system writes them,
 from evidence it checked itself ([accounts in other systems](#accounts-in-other-systems)).
@@ -319,9 +320,9 @@ A token is checked before the name is read:
 | a registered runner's token and an account to relay (`Verse-For-Principal`) | 403: a runner relays a task, never an account, and the request is not carried out as the runner instead |
 | a `Verse-Task` beside any token but a runner's, or beside none | 403 or 401: only the runner hosting a task carries a request for it |
 | no token, under `off` or `optional` | as the `Verse-Principal` it names, or as nobody |
-| no token and the name of a runner registered with a `subject`, under every mode | 401: the runner presents its token |
+| no token and a `runner:` name, under every mode | 401: the runner presents its token |
 | no token and a `user:` name, under `required` | 401, saying to log in |
-| no token and an `agent:` name, or a `runner:` registered with no `subject`, under `required` | as that name |
+| no token and an `agent:` name, under `required` | as that name |
 | no token and no name, under `required` | as nobody: it reads what `*` holds, and writes nothing |
 
 `auth.principal.mode` says how strictly the verse requires a token.
@@ -438,12 +439,11 @@ rewritten under the same name with another subject carries nothing of the tasks 
 hosted, and a task the system owns is carried for nobody. The embedded runner's tasks reach verse
 in-process and are not carried this way.
 
-**A name verse can verify is not taken at its word.** A request naming the principal of a
-runner registered with a `subject`, with no token that proves it, is refused with `401`,
-whatever the mode: the runner presents its token, and a request made as it by hand cannot. A
-runner registered with no `subject` is taken as given, as every runner was, and the refusal
-says what the registration lacks. So a verse's embedded runner, a runner on a laptop and a
-verse with no workload issuer go on as they were.
+**A runner is never taken at its word.** A request naming a `runner:` with no token that
+proves it is refused with `401`, whatever the mode, on the name alone and without reading the
+registrations: the runner presents its token, and a request made as it by hand cannot. Every
+registration names a `subject`, so every runner has a token to present. A verse's embedded
+runner is no registration, and never calls verse's door.
 
 **A static token proves a runner off Kubernetes.** A bearer that is not a JWT, and is no iod's
 static token, is looked up by its hash among the registrations, whose `subject` names a static
@@ -451,9 +451,8 @@ token as `sha256:<hex>` (`verse runner add -token-file`). A match is the runner,
 token's is. Verse holds only the hash, and each kind of proof finds only its own kind of
 registration.
 
-**A registrations read that did not happen refuses.** Whether a name needs proof is the
-registrations' to say, so where they cannot be read the door answers `503`, to a runner's token
-and to a bare runner name alike, rather than taking the name as one nobody registered.
+**A registrations read that did not happen refuses.** Where they cannot be read, the door
+answers a runner's token `503`, rather than taking it as one nobody registered.
 
 The registration also holds the runner to its subject when verse asks it what it offers
 ([runners](../runners.md#who-the-runner-is)): a runner that does not prove it is the one registered

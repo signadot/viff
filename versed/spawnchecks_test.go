@@ -54,10 +54,10 @@ func TestAHandRunIsCheckedAsTheRunnerWillCheckIt(t *testing.T) {
 func TestADefaultRunnerByURLIsNotJudgedByTheEmbeddedOnesOffers(t *testing.T) {
 	srv := testServer(t)
 	srv.Embedded.Describe(offering()) // the embedded runner: scripts only
-	face, _ := offeringFace(t, "codex")
-	srv.SetRunner(client.HTTP(face.URL))
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
+	face, _ := offeringFace(t, ts.URL, "codex")
+	srv.SetRunner(client.HTTP(face.Bare))
 	resp := installAs(t, "user:"+tester, ts.URL, `[{name: r, condition: {subject: {path: "x.*", value: {go: true}}},
 	  action: {patch: {go: false}, spawn: {agent: {name: codex}, prompt: go}}}]`)
 	if resp.StatusCode != http.StatusCreated {

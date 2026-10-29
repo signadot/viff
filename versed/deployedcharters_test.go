@@ -190,12 +190,8 @@ func registerDeployed(t *testing.T, ts *httptest.Server, name, config string) {
 	}
 	h := runnerd.NewInProcessHandler(build)
 	h.Describe(desc)
-	face := httptest.NewServer(h.HTTPHandler())
-	t.Cleanup(func() {
-		close(release)
-		face.Close()
-	})
-	if resp := postTony(t, ts.URL+"/runners", map[string]any{"name": name, "url": face.URL}); resp.StatusCode != http.StatusCreated {
+	face := provenFace(t, ts.URL, h.HTTPHandler(), func() { close(release) })
+	if resp := postTony(t, ts.URL+"/runners", map[string]any{"name": name, "url": face.URL, "subject": face.Subject}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("runner add %s = %s", name, resp.Status)
 	}
 }

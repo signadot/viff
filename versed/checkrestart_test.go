@@ -60,7 +60,7 @@ func TestTheCheckFindsNoChangeAfterARestart(t *testing.T) {
 	tree := strings.Join(docs, "\n---\n")
 
 	store := entitytest.Store(t)
-	first := NewWithStore(ScriptedBuilder, store)
+	first := issuing(t, NewWithStore(ScriptedBuilder, store))
 	first.Start(t.Context())
 	ts := httptest.NewServer(first.Handler())
 	registerRunner(t, ts, "verse-runner", "verse") // the tree's spawns name it

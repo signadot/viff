@@ -35,7 +35,7 @@ func credentialServer(t *testing.T) (*Server, *httptest.Server, *idptest.IdP) {
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
-	if err := srv.SetIssuer(ts.URL, issuerKey(t)); err != nil {
+	if err := srv.SetIssuer(ts.URL, issuerKey(t), "config"); err != nil {
 		t.Fatal(err)
 	}
 	if err := srv.SetAuth(Auth{Mode: AuthOptional, Providers: map[string]AuthProvider{

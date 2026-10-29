@@ -40,8 +40,10 @@ func TestGateOnPerSpawnRunnerIsAnswerable(t *testing.T) {
 		sup.SetStepOf(commandStep)
 		return task.NewTask(l.ID, sup, &oneAction{}, okExecutor{})
 	}
-	face := httptest.NewServer(offeringAll(runnerd.NewInProcessHandler(build), "fake").HTTPHandler())
-	t.Cleanup(face.Close)
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	face := provenFace(t, ts.URL, offeringAll(runnerd.NewInProcessHandler(build), "fake").HTTPHandler(), func() {})
 	// Cleanups run last-registered-first, so this drains before the face closes. Without it a
 	// FAILING run leaves the gate unanswered, the task parked, and the mirror's stream open —
 	// and httptest.Close waits on outstanding requests, so the test would report a timeout
@@ -52,19 +54,15 @@ func TestGateOnPerSpawnRunnerIsAnswerable(t *testing.T) {
 		if spawned == "" {
 			return
 		}
-		if q := pendingOn(t, face.URL, spawned); q != "" {
-			postTony(t, face.URL+"/tasks/"+spawned+"/resolve", map[string]any{
+		if q := pendingOn(t, face.Bare, spawned); q != "" {
+			postTony(t, face.Bare+"/tasks/"+spawned+"/resolve", map[string]any{
 				"id": q, "choice": "proceed", "by": "cleanup",
 			}).Body.Close()
 		}
 	})
 
-	srv := testServer(t)
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-
 	postTony(t, ts.URL+"/runners", map[string]any{
-		"name": "code", "url": face.URL,
+		"name": "code", "url": face.URL, "subject": face.Subject,
 	}).Body.Close()
 
 	// Spawned onto that runner BY NAME. The verse's own default runner is the in-process one
@@ -84,7 +82,7 @@ func TestGateOnPerSpawnRunnerIsAnswerable(t *testing.T) {
 	// Wait for the gate to be posed on the far side, then answer it through verse.
 	var qid string
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
-		if q := pendingOn(t, face.URL, id); q != "" {
+		if q := pendingOn(t, face.Bare, id); q != "" {
 			qid = q
 			break
 		}
@@ -153,13 +151,13 @@ func (d *oneAction) Next(_ context.Context, _ task.StepResult) (task.ToolUse, bo
 // answered `404 page not found`. A resolver reads this same stream (see the note on
 // streamEvents), so supervision of remote work went with it.
 func TestAttachToTaskOnPerSpawnRunner(t *testing.T) {
-	face := runnerFace(t)
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
+	face := runnerFace(t, ts.URL)
 
 	postTony(t, ts.URL+"/runners", map[string]any{
-		"name": "code", "url": face.URL,
+		"name": "code", "url": face.URL, "subject": face.Subject,
 	}).Body.Close()
 
 	resp := postTony(t, ts.URL+"/tasks", map[string]any{"name": "streamed", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "work", "runner": "verse.runners.code", "environment": stepEnv}})

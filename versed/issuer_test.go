@@ -36,7 +36,7 @@ func issuingServer(t *testing.T) (*Server, *httptest.Server) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
-	if err := srv.SetIssuer(ts.URL, issuerKey(t)); err != nil {
+	if err := srv.SetIssuer(ts.URL, issuerKey(t), "config"); err != nil {
 		t.Fatal(err)
 	}
 	return srv, ts
@@ -108,7 +108,9 @@ func TestTheIssuersDocumentsAreReadByNobody(t *testing.T) {
 		t.Errorf("the key set = %s, want the public key under its kid and nothing private", body)
 	}
 
-	plain := httptest.NewServer(testServer(t).Handler())
+	issuesNothing := testServer(t)
+	issuesNothing.issuer = nil
+	plain := httptest.NewServer(issuesNothing.Handler())
 	defer plain.Close()
 	for _, path := range []string{issuerDiscoveryPath, issuerKeysPath} {
 		resp, err := http.Get(plain.URL + path)
@@ -151,7 +153,7 @@ func TestAnIssuerIsRefusedWhatItCannotSignOrServe(t *testing.T) {
 		"a url with no host": {"verse", key},
 		"a url with a query": {"https://verse.example.com/?x=1", key},
 	} {
-		if err := srv.SetIssuer(c.url, c.key); err == nil {
+		if err := srv.SetIssuer(c.url, c.key, "config"); err == nil {
 			t.Errorf("an issuer with %s was taken", what)
 		}
 	}
@@ -181,5 +183,50 @@ func TestAnIssuerIsRefusedWhatItCannotSignOrServe(t *testing.T) {
 	}
 	if _, err := ReadIssuerKey(junk); err == nil {
 		t.Error("a file that is no key was read as one")
+	}
+}
+
+// The key verse up makes where its config names none is kept in its data dir, readable by its
+// owner alone, and read again at the next start: a restart signs as the same issuer.
+func TestTheIssuerKeyIsKeptInTheDataDir(t *testing.T) {
+	dir := t.TempDir()
+	first, path, err := IssuerKeyIn(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Stat(path); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("the key at %s: %v, %v; want it there, mode 0600", path, fi, err)
+	}
+	again, againPath, err := IssuerKeyIn(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if againPath != path || !again.Equal(first) {
+		t.Fatalf("a second start made another key at %s, want %s's again", againPath, path)
+	}
+}
+
+// Status says this verse issues, as what, and where its key is from; and says nothing where it
+// issues nothing.
+func TestStatusSaysTheIssuer(t *testing.T) {
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	status := func() map[string]any {
+		resp, err := http.Get(ts.URL + "/status?format=tony")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out map[string]any
+		decodeResp(t, resp, &out)
+		return out
+	}
+	iss, _ := status()["issuer"].(map[string]any)
+	if iss["url"] != testIssuerURL || iss["key"] != "config" {
+		t.Fatalf("status issuer = %v, want %s from config", iss, testIssuerURL)
+	}
+	srv.issuer = nil
+	if got, ok := status()["issuer"]; ok {
+		t.Fatalf("status of a verse issuing nothing says issuer %v", got)
 	}
 }

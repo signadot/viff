@@ -172,7 +172,7 @@ func TestABearerThatDoesNotProveItsCallerIsRefused(t *testing.T) {
 		{"no account",
 			idp.Token(authClient, "", person("ana@example.com")), "no account"},
 		{"something that is no token",
-			"not-a-jwt", "not an id_token"},
+			"not-a-jwt", "static token that is no io's"},
 	} {
 		code, body := bearer(t, http.MethodPost, ts.URL+"/entity", c.token, "", entityPut(t, "demo.pr.1"))
 		if code != http.StatusUnauthorized || !strings.Contains(body, c.want) {
@@ -580,12 +580,14 @@ func TestRequiredAdmitsAPersonOnlyFromAToken(t *testing.T) {
 	if _, ok, _ := srv.Store.Get(entity.UserRef("bo@example.com")); ok {
 		t.Error("a name nobody proved is on the list of users")
 	}
-	// An agent and a runner are not verified by anything, and are admitted as they were.
-	for _, as := range []string{"agent:ci", "runner:w1"} {
-		code, out := bearer(t, http.MethodGet, ts.URL+"/whoami?format=tony", "", as, "")
-		if who := tonyOf(t, out); code != http.StatusOK || who["principal"] != as || who["by"] != claimantAsserted {
-			t.Errorf("whoami as %s = %d %v", as, code, who)
-		}
+	// An agent is not verified by anything, and is admitted as it was; a runner proves itself by
+	// its token, under this mode as under every other.
+	code, out := bearer(t, http.MethodGet, ts.URL+"/whoami?format=tony", "", "agent:ci", "")
+	if who := tonyOf(t, out); code != http.StatusOK || who["principal"] != "agent:ci" || who["by"] != claimantAsserted {
+		t.Errorf("whoami as agent:ci = %d %v", code, who)
+	}
+	if code, out := bearer(t, http.MethodGet, ts.URL+"/whoami?format=tony", "", "runner:w1", ""); code != http.StatusUnauthorized {
+		t.Errorf("whoami as runner:w1 with no token = %d %q, want 401", code, out)
 	}
 	// A request that names nobody reads what everyone may, and writes nothing, as before.
 	if code, _ := bearer(t, http.MethodGet, ts.URL+"/entity?at=demo.pr.1", "", "", ""); code != http.StatusOK {

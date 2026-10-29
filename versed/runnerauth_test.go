@@ -31,7 +31,7 @@ const runnerSub = "system:serviceaccount:verse:gpu-runner"
 func runnerServer(t *testing.T) (*Server, *httptest.Server, *idptest.IdP) {
 	t.Helper()
 	srv, ts, cluster := wordOnlyServer(t)
-	if err := srv.SetIssuer(ts.URL, issuerKey(t)); err != nil {
+	if err := srv.SetIssuer(ts.URL, issuerKey(t), "config"); err != nil {
 		t.Fatal(err)
 	}
 	return srv, ts, cluster
@@ -43,6 +43,7 @@ func wordOnlyServer(t *testing.T) (*Server, *httptest.Server, *idptest.IdP) {
 	t.Helper()
 	cluster := idptest.New(t)
 	srv := testServer(t)
+	srv.issuer = nil
 	srv.Start(t.Context())
 	if err := srv.SetAuth(Auth{Iod: AuthIod{Issuer: cluster.URL}}); err != nil {
 		t.Fatal(err)
@@ -56,7 +57,7 @@ func wordOnlyServer(t *testing.T) (*Server, *httptest.Server, *idptest.IdP) {
 // nothing could ever verify it.
 func TestARegistrationNamesTheRunnersSubject(t *testing.T) {
 	srv, ts, cluster := runnerServer(t)
-	face := runnerFace(t)
+	face := bareFace(t)
 	// Unprobed: a bare face answers no token, and the handshake is the next test's.
 	resp := postTony(t, ts.URL+"/runners?probe=false", map[string]any{"name": "gpu", "url": face.URL, "subject": runnerSub})
 	if resp.StatusCode != http.StatusCreated {
@@ -106,7 +107,7 @@ func TestARegistrationNamesTheRunnersSubject(t *testing.T) {
 	}
 	tsIod := httptest.NewServer(withIod.Handler())
 	defer tsIod.Close()
-	if err := withIod.SetIssuer(tsIod.URL, issuerKey(t)); err != nil {
+	if err := withIod.SetIssuer(tsIod.URL, issuerKey(t), "config"); err != nil {
 		t.Fatal(err)
 	}
 	resp = postTony(t, tsIod.URL+"/runners?probe=false", map[string]any{"name": "gpu", "url": face.URL, "subject": iodSub})
@@ -137,14 +138,13 @@ func TestARegistrationNamesTheRunnersSubject(t *testing.T) {
 	}
 }
 
-// A runner registered with a subject is its principal when it presents its workload token, under
-// every mode, and its name alone is refused; one registered without a subject is as it was.
+// A runner is its principal when it presents its workload token, under every mode, and its name
+// alone is refused, registered or not.
 func TestARunnerProvesItselfWithItsWorkloadToken(t *testing.T) {
 	_, ts, cluster := runnerServer(t)
-	face := runnerFace(t)
+	face := bareFace(t)
 	for _, body := range []map[string]any{
 		{"name": "gpu", "url": face.URL, "identity": "gpu-bot", "subject": runnerSub},
-		{"name": "cpu", "url": face.URL, "identity": "cpu-bot"},
 	} {
 		resp := postTony(t, ts.URL+"/runners?probe=false", body)
 		if resp.StatusCode != http.StatusCreated {
@@ -183,14 +183,12 @@ func TestARunnerProvesItselfWithItsWorkloadToken(t *testing.T) {
 		t.Errorf("an unregistered subject's refusal does not say so: %s", body)
 	}
 
-	// The name of a runner verse can verify is refused on its own; an asserted runner's is not.
-	code, body = relay(t, http.MethodGet, whoami, "", "runner:gpu-bot", "", "")
-	if code != http.StatusUnauthorized || !strings.Contains(body, "not taken at its word") {
-		t.Errorf("the verified runner's bare name = %d %s, want 401", code, body)
-	}
-	code, body = relay(t, http.MethodGet, whoami, "", "runner:cpu-bot", "", "")
-	if who := tonyOf(t, body); code != http.StatusOK || who["principal"] != "runner:cpu-bot" || who["by"] != claimantAsserted {
-		t.Errorf("the asserted runner's bare name = %d %s", code, body)
+	// A runner's name is refused on its own, a registered runner's and a name nobody registered.
+	for _, name := range []string{"runner:gpu-bot", "runner:cpu-bot"} {
+		code, body = relay(t, http.MethodGet, whoami, "", name, "", "")
+		if code != http.StatusUnauthorized || !strings.Contains(body, "never taken at its word") {
+			t.Errorf("the bare name %s = %d %s, want 401", name, code, body)
+		}
 	}
 }
 
@@ -217,9 +215,9 @@ func guardedFace(t *testing.T, verseURL, file string) *httptest.Server {
 }
 
 // The handshake before a launch is versed's observation, recorded as versed: a spawner who owns
-// nothing under the registration launches on a runner the registration says is unverified, the
-// handshake finds it proving itself, and the registration says verified, which the spawner could
-// not have written.
+// nothing under the registration launches on a runner whose registration holds no description,
+// the handshake finds it proving itself, and the registration holds what it described, which the
+// spawner could not have written.
 func TestTheLaunchHandshakeIsRecordedAsVerse(t *testing.T) {
 	_, ts, cluster := runnerServer(t)
 	own := tokenFile(t, t.TempDir(), "gpu", cluster.Token(iodAudience, runnerSub, nil))
@@ -247,8 +245,8 @@ func TestTheLaunchHandshakeIsRecordedAsVerse(t *testing.T) {
 	} else {
 		cr.Body.Close()
 	}
-	if one := reg(); one["unverified"] == nil {
-		t.Fatalf("the registration after the check = %v, want unverified", one)
+	if one := reg(); one["described"] != nil {
+		t.Fatalf("the registration after the check = %v, want what it described removed", one)
 	}
 	if err := os.WriteFile(own, []byte(cluster.Token(iodAudience, runnerSub, nil)), 0o600); err != nil {
 		t.Fatal(err)
@@ -269,8 +267,8 @@ func TestTheLaunchHandshakeIsRecordedAsVerse(t *testing.T) {
 	if out := readBody(t, sr); sr.StatusCode != http.StatusCreated && sr.StatusCode != http.StatusOK {
 		t.Fatalf("bob's spawn on a runner proving itself again = %s: %s", sr.Status, out)
 	}
-	if one := reg(); one["verified"] == "" || one["verified"] == nil || one["unverified"] != nil {
-		t.Fatalf("the registration after bob's launch = %v, want verified recorded by verse", one)
+	if one := reg(); one["described"] == nil {
+		t.Fatalf("the registration after bob's launch = %v, want what it described recorded by verse", one)
 	}
 }
 
@@ -290,8 +288,8 @@ func TestTheDescribeIsTheHandshake(t *testing.T) {
 		t.Fatalf("add = %s: %s", resp.Status, readBody(t, resp))
 	}
 	decodeResp(t, resp, &row)
-	if row["reach"] != "a runner" || row["verified"] == "" {
-		t.Fatalf("the add's row = %v, want reach \"a runner\" and verified", row)
+	if row["reach"] != "a runner" || row["described"] == nil {
+		t.Fatalf("the add's row = %v, want reach \"a runner\" and described", row)
 	}
 	reg := func() map[string]any {
 		sr, err := ts.Client().Get(ts.URL + "/runners/gpu")
@@ -302,8 +300,8 @@ func TestTheDescribeIsTheHandshake(t *testing.T) {
 		decodeResp(t, sr, &one)
 		return one
 	}
-	if one := reg(); one["verified"] == "" || one["described"] == nil || one["unverified"] != nil {
-		t.Fatalf("the registration = %v, want verified and described", one)
+	if one := reg(); one["described"] == nil {
+		t.Fatalf("the registration = %v, want described", one)
 	}
 
 	// A subject that is another runner's: the token versed mints for it is one that runner's door
@@ -319,7 +317,7 @@ func TestTheDescribeIsTheHandshake(t *testing.T) {
 		t.Fatalf("another runner's subject = %s %v", resp.Status, row)
 	}
 	// A runner answering no token is refused at the add: waiting fixes nothing.
-	resp = postTony(t, ts.URL+"/runners", map[string]any{"name": "gpu3", "url": runnerFace(t).URL, "subject": "system:serviceaccount:verse:gpu3"})
+	resp = postTony(t, ts.URL+"/runners", map[string]any{"name": "gpu3", "url": bareFace(t).URL, "subject": "system:serviceaccount:verse:gpu3"})
 	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "answered no "+runner.TokenHeader) {
 		t.Fatalf("a runner answering no token = %s: %s", resp.Status, body)
 	}
@@ -329,15 +327,15 @@ func TestTheDescribeIsTheHandshake(t *testing.T) {
 	if err := os.WriteFile(own, []byte(cluster.Token(iodAudience, "system:serviceaccount:verse:other", nil)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// Nothing has checked yet and the registration still says verified: the launch asks anyway,
+	// Nothing has checked yet and the registration still holds its description: the launch asks anyway,
 	// since the proof is at the describe and the launch is what would hand the impostor the
 	// prompt. The spawn is refused and the registration records what the handshake found.
 	resp = postTony(t, ts.URL+"/tasks", map[string]any{"id": "nope0", "spawn": map[string]any{"script": "true", "runner": "verse.runners.gpu"}})
 	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "has not proved it is the runner registered") {
 		t.Fatalf("a spawn on a replaced runner, before any check = %s: %s", resp.Status, body)
 	}
-	if one := reg(); one["unverified"] == nil || one["verified"] != nil {
-		t.Fatalf("the registration after the refused launch = %v, want unverified", one)
+	if one := reg(); one["described"] != nil {
+		t.Fatalf("the registration after the refused launch = %v, want what it described removed", one)
 	}
 	cr, err := ts.Client().Get(ts.URL + "/runners/gpu/check")
 	if err != nil {
@@ -348,8 +346,8 @@ func TestTheDescribeIsTheHandshake(t *testing.T) {
 	if check["reach"] != "not verified" || !strings.Contains(fmt.Sprint(check["why"]), "registration says") {
 		t.Fatalf("check of a replaced runner = %v", check)
 	}
-	if one := reg(); one["unverified"] == nil || one["described"] != nil || one["verified"] != nil {
-		t.Fatalf("the registration after the check = %v, want unverified in place of described", one)
+	if one := reg(); one["described"] != nil {
+		t.Fatalf("the registration after the check = %v, want what it described removed", one)
 	}
 	resp = postTony(t, ts.URL+"/tasks", map[string]any{"id": "nope", "spawn": map[string]any{"script": "true", "runner": "verse.runners.gpu"}})
 	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "has not proved it is the runner registered") {
@@ -383,20 +381,19 @@ func TestTheDescribeIsTheHandshake(t *testing.T) {
 		t.Fatalf("re-add with another subject = %s: %s", resp.Status, readBody(t, resp))
 	}
 	resp.Body.Close()
-	if one := reg(); one["subject"] != "system:serviceaccount:verse:other" || one["verified"] != nil || one["described"] != nil || one["unverified"] != nil {
+	if one := reg(); one["subject"] != "system:serviceaccount:verse:other" || one["described"] != nil {
 		t.Fatalf("the registration after a re-add with another subject = %v, want the subject alone", one)
 	}
 	resp = postTony(t, ts.URL+"/runners?probe=false", map[string]any{"name": "gpu", "url": face.URL})
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("re-add without a subject = %s: %s", resp.Status, readBody(t, resp))
+	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "never taken at its word") {
+		t.Fatalf("re-add without a subject = %s: %s, want it refused", resp.Status, body)
 	}
-	resp.Body.Close()
-	if one := reg(); one["subject"] != nil {
-		t.Fatalf("the registration after a re-add without a subject = %v, want no subject", one)
+	if one := reg(); one["subject"] != "system:serviceaccount:verse:other" {
+		t.Fatalf("the registration after a refused re-add = %v, want it as it was", one)
 	}
 
-	// The token goes where a vouched identity is: a registration without a subject is probed
-	// bare, whatever versed holds, and one with a subject is probed as this verse.
+	// The token goes where a vouched identity is, and every registration is one: it is probed as
+	// this verse.
 	var bearerSeen atomic.Bool
 	h, release := runnerFaceHandler()
 	seeing := faceServing(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -405,28 +402,17 @@ func TestTheDescribeIsTheHandshake(t *testing.T) {
 		}
 		h.ServeHTTP(w, r)
 	}), release)
-	resp = postTony(t, ts.URL+"/runners", map[string]any{"name": "word", "url": seeing.URL})
-	if resp.StatusCode != http.StatusCreated || bearerSeen.Load() {
-		t.Fatalf("a registration without a subject = %s, bearer on its describe = %v; want 201 and none", resp.Status, bearerSeen.Load())
-	}
-	resp.Body.Close()
 	resp = postTony(t, ts.URL+"/runners", map[string]any{"name": "vouched", "url": seeing.URL, "subject": "system:serviceaccount:verse:vouched"})
 	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !bearerSeen.Load() {
 		t.Fatalf("a registration with a subject at a bare face = %s, bearer on its describe = %v; want the refusal and the bearer: %s", resp.Status, bearerSeen.Load(), body)
 	}
 
 	// A verse that issues nothing could never prove itself to a guarded runner: a subject is
-	// refused at the add, naming the issuer it lacks; without one the runner is installed on its
-	// word, since the description is public, and the door refuses its launches.
+	// refused at the add, naming the issuer it lacks.
 	_, tsPlain, _ := wordOnlyServer(t)
 	resp = postTony(t, tsPlain.URL+"/runners", map[string]any{"name": "gpu", "url": face.URL, "subject": runnerSub})
 	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "issues none") || !strings.Contains(body, "auth.issuer") {
 		t.Fatalf("a verse issuing nothing adding a guarded runner with its subject = %s: %s", resp.Status, body)
-	}
-	resp = postTony(t, tsPlain.URL+"/runners", map[string]any{"name": "gpu", "url": face.URL})
-	decodeResp(t, resp, &row)
-	if resp.StatusCode != http.StatusCreated || row["reach"] != "a runner" {
-		t.Fatalf("a verse issuing nothing adding a guarded runner on its word = %s %v", resp.Status, row)
 	}
 	// Another verse's token, signed by another key under another name, is refused at the
 	// describe, which the add reads as unreachable: installed, with the warning, since the
@@ -505,11 +491,10 @@ func TestTheHelloIsTheCheckAskedByTheRunner(t *testing.T) {
 	if code, body := relay(t, http.MethodPost, hello, cluster.Token(iodAudience, "system:serviceaccount:verse:stranger", nil), "", "", ""); code != http.StatusUnauthorized {
 		t.Fatalf("a stranger's hello = %d %s, want 401", code, body)
 	}
-	// A runner without a subject is taken at its word, and has nothing to announce.
-	resp = postTony(t, ts.URL+"/runners?probe=false", map[string]any{"name": "cpu", "url": face.URL, "identity": "cpu-bot"})
-	resp.Body.Close()
-	if code, body := relay(t, http.MethodPost, hello, "", "runner:cpu-bot", "", ""); code != http.StatusBadRequest || !strings.Contains(body, "nothing to announce") {
-		t.Fatalf("an asserted runner's hello = %d %s, want 400", code, body)
+	// A runner's name with no token is refused at the door: there is no runner taken at its word
+	// to announce itself.
+	if code, body := relay(t, http.MethodPost, hello, "", "runner:cpu-bot", "", ""); code != http.StatusUnauthorized || !strings.Contains(body, "never taken at its word") {
+		t.Fatalf("a runner's bare name's hello = %d %s, want 401", code, body)
 	}
 	// A person's hello is nobody's.
 	if code, _ := relay(t, http.MethodPost, hello, "", "user:alice@example.com", "", ""); code != http.StatusBadRequest {

@@ -139,7 +139,7 @@ type runnerAddConfig struct {
 	File      string `cli:"name=file aliases=f desc='read the runner from FILE (- = stdin); also accepts a positional [file]'"`
 	NoProbe   bool   `cli:"name=no-probe desc='install without asking the url what it is'"`
 	Identity  string `cli:"name=identity desc='the id of the principal the runner acts as, runner:<identity> (default: its name): what its reports are written as and what a spawn grants it'"`
-	Subject   string `cli:"name=subject desc='the subject of the workload token the runner presents (system:serviceaccount:<namespace>:<name> on Kubernetes): how verse recognises the runner at the describe and at its door. Without it the runner is taken at its word'"`
+	Subject   string `cli:"name=subject desc='the subject of the workload token the runner presents (system:serviceaccount:<namespace>:<name> on Kubernetes): how verse recognises the runner at the describe and at its door. This or -token-file is required: a runner is never taken at its word'"`
 	TokenFile string `cli:"name=token-file desc='a FILE holding the static token the runner presents, for a runner no runtime issues a workload token to: verse is told only its hash, which becomes the subject. In place of -subject'"`
 }
 
@@ -197,6 +197,11 @@ func (cfg *runnerAddConfig) run(cc *cli.Context, args []string) error {
 		if !ok {
 			return fmt.Errorf("%w: want `runner add <name> <url>`, got %q",
 				cli.ErrUsage, ref)
+		}
+		if subject == "" {
+			return fmt.Errorf("%w: runner %q: say how verse recognises it: -subject <its workload token's "+
+				"subject>, or -token-file <the static token it holds>. A runner is never taken at its word",
+				cli.ErrUsage, name)
 		}
 		resp, err := httpPostTo("/runners", q, api.Runner{Name: name, URL: rawURL, Identity: cfg.Identity, Subject: subject})
 		return runnerAdded(cc, resp, err)

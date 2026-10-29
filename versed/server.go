@@ -1537,9 +1537,9 @@ func (s *Server) Handler() http.Handler {
 // WHAT A REQUEST MAY PRESENT without one is `user:`, `agent:` or `runner:`, self-asserted within
 // the three, and a bare email, which is respelled `user:` on the request itself so every write and
 // check below reads the one form. Where the deployment admits people only verified (the mode
-// `required`), a `user:` presented this way is refused 401. People are verified first: `agent:`
-// and `runner:` are next, each under its own block of `auth`, and are taken as asserted until
-// that is built. A name the grammar does not read is refused. So are the names versed
+// `required`), a `user:` presented this way is refused 401. A `runner:` presented this way is
+// refused under every mode: a runner proves itself with its token (runnerauth.go). `agent:` is
+// taken as asserted until its own authentication is built. A name the grammar does not read is refused. So are the names versed
 // makes — `via:` when a rule fires, a source reflects or a resolver answers, `system:` when versed
 // acts — since a header saying either is precisely the assertion that was fine while nothing was
 // refused and is a way to hold what it names once something is. What installs a system-owned
@@ -1626,31 +1626,22 @@ func (s *Server) principals(mux *http.ServeMux, unattributed map[string]bool) ht
 				http.Error(w, fmt.Sprintf("this verse admits a person only from an identity provider's "+
 					"token (auth.principal.mode is %s), and this request names %s with none: log in "+
 					"(`verse account login`). People are verified first; an agent is taken as given "+
-					"until its own authentication is built, a runner is verified where its registration "+
-					"names its subject, and a request that names nobody still reads what everyone may",
+					"until its own authentication is built, a runner is always verified by its token, "+
+					"and a request that names nobody still reads what everyone may",
 					AuthRequired, g.String()),
 					http.StatusUnauthorized)
 				return
 			}
-			// A runner verse can verify is not taken at its word, under any mode: its registration
-			// names the token that proves it, and this request carries none (runnerauth.go).
+			// A runner is never taken at its word, under any mode: every registration names the
+			// token that proves it, and this request carries none (runnerauth.go). Refused on the
+			// name alone, without reading the registrations: no runner is admitted bare.
 			if g.Kind == entity.RunnerKind && authenticatedBy(r) == claimantAsserted {
-				e, ok, err := s.verifiedRunner(g.String())
-				if err != nil {
-					// Whether this name needs proof is the registrations' to say, and they were
-					// not read: refused as unread, never admitted as unregistered.
-					http.Error(w, fmt.Sprintf("%s: whether it must prove itself is not known: %v", g.String(), err),
-						http.StatusServiceUnavailable)
-					return
-				}
-				if ok {
-					w.Header().Set("WWW-Authenticate", "Bearer")
-					http.Error(w, fmt.Sprintf("%s is registered as %s with the subject %s, and this request "+
-						"names it with no token that proves it: a runner verse can verify is not taken at its "+
-						"word. The runner presents its workload token; a request made as it by hand cannot.",
-						g.String(), runnerEntityRef(e.Name), e.Subject), http.StatusUnauthorized)
-					return
-				}
+				w.Header().Set("WWW-Authenticate", "Bearer")
+				http.Error(w, fmt.Sprintf("%s names a runner with no token that proves it, and a runner is "+
+					"never taken at its word: the runner presents its own token (its workload token, or the "+
+					"static token its registration names), and a request made as it by hand cannot",
+					g.String()), http.StatusUnauthorized)
+				return
 			}
 			if p = g.String(); p != principalOf(r) {
 				r.Header.Set(api.PrincipalHeader, p)
@@ -4086,6 +4077,9 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	// When docd-backed, publish the client face, where store clients connect.
 	if s.DocdClient != "" {
 		out.Docd = &api.Docd{Client: s.DocdClient}
+	}
+	if s.issuer != nil {
+		out.Issuer = &api.Issuer{URL: s.issuer.url, Key: s.issuer.from}
 	}
 	// This verse's own listen addresses (the operator API, and the admin face).
 	if s.Addr != "" || s.AdminAddr != "" {

@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -44,12 +45,15 @@ type issuer struct {
 	url string
 	key *rsa.PrivateKey
 	kid string
+	// from is where the key is from, as status says it (api.Issuer.Key).
+	from string
 }
 
-// SetIssuer makes this verse an issuer at url, signing with key. It is called before the server
-// serves. url is the verse's address as a relying party reaches it, which is the deployment's to
-// say: a verse behind a proxy does not know it.
-func (s *Server) SetIssuer(issuerURL string, key *rsa.PrivateKey) error {
+// SetIssuer makes this verse an issuer at url, signing with key, which is from where from says
+// (api.Issuer.Key). It is called before the server serves. url is the verse's address as a
+// relying party reaches it, which is the deployment's to say: a verse behind a proxy does not
+// know it.
+func (s *Server) SetIssuer(issuerURL string, key *rsa.PrivateKey, from string) error {
 	u, err := url.Parse(issuerURL)
 	if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || u.RawQuery != "" || u.Fragment != "" {
 		return fmt.Errorf("the issuer's url %q is not one a relying party can fetch from: it is "+
@@ -61,9 +65,34 @@ func (s *Server) SetIssuer(issuerURL string, key *rsa.PrivateKey) error {
 	if key.N.BitLen() < 2048 {
 		return fmt.Errorf("the issuer's key is %d bits, and RS256 wants 2048 or more", key.N.BitLen())
 	}
-	s.issuer = &issuer{url: strings.TrimSuffix(issuerURL, "/"), key: key, kid: thumbprint(&key.PublicKey)}
+	s.issuer = &issuer{url: strings.TrimSuffix(issuerURL, "/"), key: key, kid: thumbprint(&key.PublicKey), from: from}
 	return nil
 }
+
+// IssuerKeyIn is the signing key kept in dir as issuer.pem, made there, readable by its owner
+// alone, where there is none yet: the key `verse up` signs with where its config names no issuer,
+// kept with the data so a restart signs as the same issuer. path is where it is kept.
+func IssuerKeyIn(dir string) (key *rsa.PrivateKey, path string, _ error) {
+	path = filepath.Join(dir, "issuer.pem")
+	if _, err := os.Stat(path); err == nil {
+		key, err := ReadIssuerKey(path)
+		return key, path, err
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, path, err
+	}
+	key, err := NewIssuerKey()
+	if err != nil {
+		return nil, path, err
+	}
+	data := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return nil, path, err
+	}
+	return key, path, nil
+}
+
+// NewIssuerKey is a fresh signing key, for an issuer that keeps none.
+func NewIssuerKey() (*rsa.PrivateKey, error) { return rsa.GenerateKey(rand.Reader, 2048) }
 
 // ReadIssuerKey reads an issuer's signing key from a PEM file: an RSA private key, PKCS#1 or
 // PKCS#8.

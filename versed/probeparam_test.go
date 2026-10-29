@@ -26,7 +26,7 @@ func TestProbeIsTrueOrFalse(t *testing.T) {
 	}
 	// Installs that would otherwise be taken, refused for the probe alone.
 	for path, body := range map[string]map[string]any{
-		"/runners?probe=no": {"name": "gpu", "url": "http://127.0.0.1:1"},
+		"/runners?probe=no": {"name": "gpu", "url": "http://127.0.0.1:1", "subject": someSubject(t)},
 		"/iods?probe=0":     {"name": "laptop", "root": "git", "dir": t.TempDir()},
 	} {
 		resp := postTony(t, ts.URL+path, body)

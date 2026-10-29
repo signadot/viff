@@ -17,15 +17,13 @@ import (
 )
 
 // offeringFace is a runner face that offers what it is told: the agent named, and scripts.
-func offeringFace(t *testing.T, agents ...string) (*httptest.Server, *runnerd.InProcessHandler) {
+func offeringFace(t *testing.T, verseURL string, agents ...string) (*face, *runnerd.InProcessHandler) {
 	t.Helper()
 	d := runnerd.NewInProcessHandler(func(l runner.Launch, reg *task.Registry) *task.Task {
 		return task.NewTask(l.ID, systemstest.Opened(task.NewSupervisor(l.Environment, l.Autonomy, reg), l.Environment), &oneAction{}, okExecutor{})
 	})
 	d.Describe(offering(agents...))
-	face := httptest.NewServer(d.HTTPHandler())
-	t.Cleanup(face.Close)
-	return face, d
+	return provenFace(t, verseURL, d.HTTPHandler(), func() {}), d
 }
 
 // offering is a description offering agents and scripts, each building only the network
@@ -48,9 +46,9 @@ func TestARunnerIsInstalledWithWhatItOffers(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	face, d := offeringFace(t, "codex")
+	face, d := offeringFace(t, ts.URL, "codex")
 
-	resp := postTony(t, ts.URL+"/runners", map[string]any{"name": "code", "url": face.URL})
+	resp := postTony(t, ts.URL+"/runners", map[string]any{"name": "code", "url": face.URL, "subject": face.Subject})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("add = %s: %s", resp.Status, readBody(t, resp))
 	}
@@ -80,7 +78,7 @@ func TestARunnerIsInstalledWithWhatItOffers(t *testing.T) {
 	}
 
 	// The field is the runner's to say, not the installer's.
-	resp = postTony(t, ts.URL+"/runners", map[string]any{"name": "fake", "url": face.URL, "offers": []any{}})
+	resp = postTony(t, ts.URL+"/runners", map[string]any{"name": "fake", "url": face.URL, "subject": face.Subject, "offers": []any{}})
 	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(readBody(t, resp), "read from the runner") {
 		t.Fatalf("an installer writing offers = %s, want refused as the runner's to say", resp.Status)
 	}
@@ -98,7 +96,7 @@ func TestARunnerIsInstalledWithWhatItOffers(t *testing.T) {
 	if rec, _ = findRunner(srv.Store, "verse.runners.code"); len(rec.Description().Offers) != 3 {
 		t.Fatalf("after a refused check the registration holds %+v, want the three before", rec.Described)
 	}
-	resp = postTony(t, ts.URL+"/runners", map[string]any{"name": "silent", "url": face.URL})
+	resp = postTony(t, ts.URL+"/runners", provenFace(t, ts.URL, d.HTTPHandler(), func() {}).reg("silent"))
 	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "the networks it builds") {
 		t.Fatalf("add of a runner whose offer names no network = %s: %s, want 400", resp.Status, body)
 	}
@@ -106,14 +104,14 @@ func TestARunnerIsInstalledWithWhatItOffers(t *testing.T) {
 		t.Fatal("a refused runner was registered")
 	}
 	d.Describe(runner.Description{Version: runner.DescriptionVersion})
-	resp = postTony(t, ts.URL+"/runners", map[string]any{"name": "empty", "url": face.URL})
+	resp = postTony(t, ts.URL+"/runners", provenFace(t, ts.URL, d.HTTPHandler(), func() {}).reg("empty"))
 	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "it offers nothing") {
 		t.Fatalf("add of a runner that offers nothing = %s: %s, want 400", resp.Status, body)
 	}
 	// A doer offered twice: a launch names its doer, and could not say which of the two it means.
 	script := runner.Offer{Script: true, Systems: map[string]runner.System{"network": {Builds: systems.Ceiling{{Attributes: map[string][]string{"mode": {runner.NetworkOpen}}}}}}}
 	d.Describe(runner.Description{Version: runner.DescriptionVersion, Offers: []runner.Offer{script, script}})
-	resp = postTony(t, ts.URL+"/runners", map[string]any{"name": "twice", "url": face.URL})
+	resp = postTony(t, ts.URL+"/runners", provenFace(t, ts.URL, d.HTTPHandler(), func() {}).reg("twice"))
 	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "it offers script twice") {
 		t.Fatalf("add of a runner offering scripts twice = %s: %s, want 400", resp.Status, body)
 	}
@@ -128,8 +126,8 @@ func TestASpawnIsCheckedAgainstWhatItsRunnerOffers(t *testing.T) {
 	srv.Embedded.Describe(offering()) // scripts only, as a keyless `verse up` offers
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	face, _ := offeringFace(t, "codex")
-	postTony(t, ts.URL+"/runners", map[string]any{"name": "code", "url": face.URL}).Body.Close()
+	face, _ := offeringFace(t, ts.URL, "codex")
+	postTony(t, ts.URL+"/runners", map[string]any{"name": "code", "url": face.URL, "subject": face.Subject}).Body.Close()
 
 	for _, c := range []struct {
 		what  string

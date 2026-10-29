@@ -101,8 +101,8 @@ says how verse knows you: the provider's name, or `asserted` for a name it took 
 and `agent:` in the config, still send a bare name. A verse with `mode: required` refuses a
 person who carries no token, with `401` and a line that says to log in. People are verified, and
 so are the deployment's own iods, which present their own tokens, and a runner whose
-registration names the subject of its token. An agent, or a runner registered without one, is
-not verified: it is whoever it says it is.
+registration names the subject of its token, which every registration does. An agent is not
+verified: it is whoever it says it is.
 
 [Who a request is from](reference/perms.md#who-a-request-is-from) has the rules.
 

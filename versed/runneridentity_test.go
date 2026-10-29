@@ -16,11 +16,11 @@ import (
 // not as the charter's owner whose work it runs.
 func TestARunnerReachedByUrlActsAsItself(t *testing.T) {
 	srv := testServer(t)
-	face := runnerFace(t)
 	ts := httptest.NewServer(srv.Handler())
+	face := runnerFace(t, ts.URL)
 	defer ts.Close()
 	resp := postAs(t, "ops@example.com", ts.URL+"/runners", "application/tony",
-		fmt.Sprintf(`{name: gpu, url: %q, identity: gpu-bot}`, face.URL))
+		fmt.Sprintf(`{name: gpu, url: %q, identity: gpu-bot, subject: %q}`, face.URL, face.Subject))
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("runner add: %s", resp.Status)

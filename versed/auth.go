@@ -19,6 +19,7 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/config"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/runner"
 )
 
 // Who a request is from, verified (git-issue hfh7km3th12ksd6nqsn0, step 1).
@@ -436,6 +437,13 @@ func (s *Server) authenticate(ctx context.Context, token, presented, account, ta
 		return "", "", "", turnAway(http.StatusServiceUnavailable, "whether the bearer is a runner's is not known: %v", err)
 	} else if ok {
 		return s.asRunner(e, presented, account, task, a)
+	}
+	// A bearer that is no JWT is a static token, an io's or a runner's, and is neither: said so,
+	// rather than read as an id_token from a provider it never claimed to be from.
+	if _, static := runner.StaticSubjectOf(token); static {
+		return "", "", "", turnAway(http.StatusUnauthorized, "the bearer is a static token that is no "+
+			"io's (auth.iod.static) and no registered runner's: a runner's registration names its "+
+			"token by its hash (`verse runner add -token-file`), and none names this one")
 	}
 	v, ref := s.verifyToken(ctx, token)
 	if ref != nil {

@@ -51,10 +51,6 @@ func checkRunnerFields(node *ir.Node) error {
 			return fmt.Errorf("what a runner offers is read from the runner, which describes itself " +
 				"when it is installed and checked; it is not written by hand")
 		}
-		if name == "verified" || name == "unverified" {
-			return fmt.Errorf("whether a runner proved it is its subject is verse's to write, at the " +
-				"describe; it is not written by hand")
-		}
 		return fmt.Errorf("runner has no field %q (want any of %s) — an unknown field decodes "+
 			"silently, and url is the whole of what this entity carries", name, strings.Join(want, ", "))
 	}

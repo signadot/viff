@@ -2,8 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -18,15 +22,37 @@ import (
 
 // runnerFace is a real runner for the client to install: the same runnerd handler verse's own
 // in-process runner is, so the install probe has something truthful to find.
-func runnerFace(t *testing.T) *httptest.Server {
+//
+// It serves the verse serve started, behind the door runnerd puts in front of a runner, and
+// holds a static token: tokenFile is where, for `verse runner add -token-file`.
+func runnerFace(t *testing.T) (face *httptest.Server, tokenFile string) {
 	t.Helper()
 	build := func(l runner.Launch, _ *task.Registry) *task.Task {
 		sup := systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), l.Environment)
 		return task.NewTask(l.ID, sup, doneAfter{}, okExec{})
 	}
-	srv := httptest.NewServer(offeringAll(runnerd.NewInProcessHandler(build)).HTTPHandler())
+	tokenFile = runnerTokenFile(t)
+	g, err := runnerd.NewGuard(runnerd.Verse{URL: "http://" + testAddr}, tokenFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(g.Wrap(offeringAll(runnerd.NewInProcessHandler(build)).HTTPHandler()))
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, tokenFile
+}
+
+// runnerTokenFile is a file holding a fresh static token, long enough to be named by its hash.
+func runnerTokenFile(t *testing.T) string {
+	t.Helper()
+	var b [32]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(p, []byte(hex.EncodeToString(b[:])+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
 }
 
 // offeringAll is h describing itself as a runner verse registers must: offering scripts, and
@@ -59,9 +85,13 @@ func (okExec) Execute(_ context.Context, tu task.ToolUse) (task.StepResult, []ta
 // client is a layer, and a layer with no test is a layer that does not work.
 func TestRunnerAddThroughTheClient(t *testing.T) {
 	store := serve(t)
-	face := runnerFace(t)
+	face, tok := runnerFace(t)
 
-	out, err := runCLI(t, "runner", "add", "demo", face.URL)
+	// A runner is never taken at its word: an add says how verse recognises it.
+	if _, err := runCLI(t, "runner", "add", "demo", face.URL); err == nil || !strings.Contains(err.Error(), "-token-file") {
+		t.Fatalf("an add naming no subject = %v, want it refused naming -subject and -token-file", err)
+	}
+	out, err := runCLI(t, "runner", "add", "-token-file", tok, "demo", face.URL)
 	if err != nil {
 		t.Fatalf("runner add: %v", err)
 	}
@@ -80,10 +110,10 @@ func TestRunnerAddThroughTheClient(t *testing.T) {
 	// …and --no-probe, which is the flag that was silently unreachable.
 	dead := httptest.NewServer(http.NewServeMux()) // answers, and is not a runner
 	defer dead.Close()
-	if _, err := runCLI(t, "runner", "add", "nope", dead.URL); err == nil {
+	if _, err := runCLI(t, "runner", "add", "-token-file", tok, "nope", dead.URL); err == nil {
 		t.Fatal("a url that answers as something else installed; the probe did not run")
 	}
-	if _, err := runCLI(t, "runner", "add", "--no-probe", "nope", dead.URL); err != nil {
+	if _, err := runCLI(t, "runner", "add", "--no-probe", "-token-file", runnerTokenFile(t), "nope", dead.URL); err != nil {
 		t.Fatalf("--no-probe: %v — the flag never reached the server", err)
 	}
 	if payloadOf(t, store, entity.VerseRef("runners", "nope")) == nil {
@@ -94,8 +124,8 @@ func TestRunnerAddThroughTheClient(t *testing.T) {
 // The rest of the verbs, over the client: what each one says is what the operator sees.
 func TestRunnerVerbsThroughTheClient(t *testing.T) {
 	store := serve(t)
-	face := runnerFace(t)
-	if _, err := runCLI(t, "runner", "add", "demo", face.URL); err != nil {
+	face, tok := runnerFace(t)
+	if _, err := runCLI(t, "runner", "add", "-token-file", tok, "demo", face.URL); err != nil {
 		t.Fatalf("add: %v", err)
 	}
 

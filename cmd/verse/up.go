@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rsa"
 	"fmt"
 	"log/slog"
 	"net"
@@ -257,15 +258,36 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	if err := srv.SetAuth(authOf(appCfg.Auth)); err != nil {
 		return err
 	}
-	// And whether this verse issues tokens of its own. A key that does not read is a verse that
-	// does not start, rather than one whose tasks find out at their first promotion.
+	// And this verse as an issuer of its own tokens, which is what it proves itself to a
+	// registered runner with: every runner is held to its registration, so every verse issues.
+	// A key that does not read is a verse that does not start, rather than one whose runners and
+	// tasks find out at their first call. Where the config names no issuer, verse up is one at its
+	// own address, with a key it keeps in its data dir, or for this process alone where it has
+	// none (--docd-addr).
+	issuerURL, issuerKey := appCfg.Auth.Issuer.URL, "config"
 	if iss := appCfg.Auth.Issuer; iss.URL != "" {
 		key, err := versed.ReadIssuerKey(iss.Key)
 		if err != nil {
 			return fmt.Errorf("auth.issuer.key: %w", err)
 		}
-		if err := srv.SetIssuer(iss.URL, key); err != nil {
+		if err := srv.SetIssuer(iss.URL, key, "config"); err != nil {
 			return fmt.Errorf("auth.issuer: %w", err)
+		}
+	} else {
+		var key *rsa.PrivateKey
+		var err error
+		from := "memory"
+		if d.dataDir != "" {
+			key, from, err = versed.IssuerKeyIn(d.dataDir)
+		} else {
+			key, err = versed.NewIssuerKey()
+		}
+		if err != nil {
+			return fmt.Errorf("verse up: the issuer's key: %w", err)
+		}
+		issuerURL, issuerKey = issuerURLOf(g.Addr), from
+		if err := srv.SetIssuer(issuerURL, key, from); err != nil {
+			return fmt.Errorf("verse up: issuer: %w", err)
 		}
 	}
 	// The cycle throttle's pace. Refused at startup rather than defaulted, because a server
@@ -311,6 +333,9 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		agents = "the verse agent, and scripts"
 	}
 	fmt.Fprintf(cc.Out, "verse up on %s (engine + store[%s] + runner[%s]). ctrl-c to stop.\n", g.Addr, storeKind, agents)
+	// A runner holds versed's tokens to this name exactly: one whose `verse.url` spells the address
+	// another way (127.0.0.1 for localhost) refuses them unless its `verse.issuer` says this.
+	fmt.Fprintf(cc.Out, "issuer: %s (key: %s); a runner's verse.url spells it so, or its verse.issuer does\n", issuerURL, issuerKey)
 
 	if err := httpSrv.Serve(ln); err != nil && err != http.ErrServerClosed {
 		return err
@@ -428,4 +453,17 @@ func embeddedRunner(llm config.LLMConfig, shellEnv []string) (stock.Config, stoc
 		c.Agents = map[string]stock.Agent{stock.AgentName: verse}
 	}
 	return c, stock.Secrets{PortkeyAPIKey: llm.APIKey, PortkeyBaseURL: llm.BaseURL}
+}
+
+// issuerURLOf is the issuer url of a verse up listening at addr: its own address, with a host a
+// runner beside it can dial where addr binds every interface (`:9797`, `0.0.0.0:9797`).
+func issuerURLOf(addr string) string {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "http://" + addr
+	}
+	if ip := net.ParseIP(host); host == "" || (ip != nil && ip.IsUnspecified()) {
+		host = "localhost"
+	}
+	return "http://" + net.JoinHostPort(host, port)
 }

@@ -31,28 +31,32 @@ type Runner struct {
 	// A runner acts as itself, not as whoever installed it or whoever's work it runs. Defaults
 	// to the runner's name.
 	Identity string `tony:"field=identity,omitzero"`
-	// Subject is how verse recognises the runner: the subject of its workload token, which on
-	// Kubernetes is `system:serviceaccount:<namespace>:<name>`, from the issuer the deployment
-	// names for its iods (`auth.iod.issuer`). A runner registered with one proves it is the
-	// runner at the describe, and at the door when it calls verse; a `runner:` named with no proof
-	// is refused for it. Empty is a runner taken at its word, which `verse up`'s embedded runner
-	// and a laptop's are. The decision about who a runner is belongs here, at registration, and
-	// nowhere else (versed/runnerauth.go).
+	// Subject is how verse recognises the runner, and every registration names one: the subject
+	// of its workload token, which on Kubernetes is `system:serviceaccount:<namespace>:<name>`,
+	// from the issuer the deployment names for its iods (`auth.iod.issuer`), or a static token's
+	// hash (`verse runner add -token-file`). The runner proves it is the runner at the describe,
+	// and at the door when it calls verse; a `runner:` named with no proof is refused. A runner is
+	// never taken at its word. The decision about who a runner is belongs here, at registration,
+	// and nowhere else (versed/runnerauth.go).
 	Subject string `tony:"field=subject,omitzero"`
-	// Verified is when the runner last proved it is the subject, at a describe: the token it
-	// answered with verified to the subject. Verse writes it beside `described`, and a
-	// registration with a subject takes no spawn without it (Current). Unverified is why it last
-	// failed to, written in place of `described`: a runner that does not prove it is the one
-	// registered has its words recorded as nobody's.
-	Verified   string `tony:"field=verified,omitzero"`
-	Unverified string `tony:"field=unverified,omitzero"`
 	// Described is what the runner offers, as it described itself (GET /describe) when it was
 	// installed or last checked: the agents and scripts it runs, what each takes, and the
-	// systems each holds. Verse writes it, from the runner, and checks a spawn naming this runner
-	// against it; `POST /runners` refuses it. None is a runner that was installed unprobed, or
-	// has not described itself yet; and one that no longer passes Check (kept from an older
-	// runner or verse) is read as none: the runner is asked again (Current).
+	// systems each holds. Every describe is a proof, so a description is one the runner proved
+	// it is the author of. Verse writes it, from the runner, and checks a spawn naming this runner
+	// against it; `POST /runners` refuses it. None is a runner that was installed unprobed, has
+	// not described itself yet, or answered and did not prove it is its subject; and one that no
+	// longer passes Check (kept from an older runner or verse) is read as none: the runner is
+	// asked again (Current).
 	Described *runner.Description `tony:"field=described,omitzero"`
+}
+
+// OfferNames is the names of the doers the runner described: an agent's name, or `script`.
+func (e Runner) OfferNames() []string {
+	out := []string{}
+	for _, o := range e.Description().Offers {
+		out = append(out, o.Name())
+	}
+	return out
 }
 
 // Description is what the runner offers, as a description.
@@ -63,11 +67,10 @@ func (e Runner) Description() runner.Description {
 	return *e.Described
 }
 
-// Current is whether the registration holds a description this verse reads: one there is, that
-// passes Check, and, where the registration names a subject, one the runner proved it is the
-// author of. Otherwise the runner is asked again, and what it says replaces it.
+// Current is whether the registration holds a description this verse reads: one there is, and
+// that passes Check. Otherwise the runner is asked again, and what it says replaces it.
 func (e Runner) Current() bool {
-	return e.Described != nil && e.Described.Check() == nil && (e.Subject == "" || e.Verified != "")
+	return e.Described != nil && e.Described.Check() == nil
 }
 
 // Principal is who the runner acts as: `runner:` its identity, or its name.
@@ -121,6 +124,12 @@ func (e Runner) Check() error {
 	if u.Host == "" {
 		return fmt.Errorf("runner %q: url %q has no host", e.Name, e.URL)
 	}
+	// A runner is never taken at its word: a registration says how verse recognises it.
+	if e.Subject == "" {
+		return fmt.Errorf("runner %q: say how verse recognises it: a subject, the workload token's "+
+			"(`verse runner add -subject`) or a static token's hash (`-token-file`). A runner is never "+
+			"taken at its word", e.Name)
+	}
 	return nil
 }
 
@@ -134,17 +143,20 @@ func (e Runner) Check() error {
 // since a reachability column is as of now or it is a cache that can be stale in the direction
 // that costs, and on an install unless `?probe=false`. Warning is what an install says the
 // operator should act on, such as a runner nothing answers yet; only POST /runners sets it.
+// Offers is the names of the doers the runner described (an agent's name, or `script`), on every
+// row, empty where it has described none: what a spawn could run there, at a glance.
 //
 //tony:schemagen=verse-runner-row,notag
 type RunnerRow struct {
 	Runner
-	At        string `tony:"field=at"`
-	Running   int    `tony:"field=running"`
-	Total     int    `tony:"field=total"`
-	LastSpawn string `tony:"field=lastSpawn,omitzero"`
-	Reach     string `tony:"field=reach,omitzero"`
-	Why       string `tony:"field=why,omitzero"`
-	Warning   string `tony:"field=warning,omitzero"`
+	At        string   `tony:"field=at"`
+	Running   int      `tony:"field=running"`
+	Total     int      `tony:"field=total"`
+	LastSpawn string   `tony:"field=lastSpawn,omitzero"`
+	Reach     string   `tony:"field=reach,omitzero"`
+	Why       string   `tony:"field=why,omitzero"`
+	Warning   string   `tony:"field=warning,omitzero"`
+	Offers    []string `tony:"field=offers"`
 	// Unreadable is why the stored registration does not decode as this verse reads it. Nothing
 	// else on such a row is read from the record: the row is there so the registration can be
 	// seen and removed by its name.

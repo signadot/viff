@@ -37,6 +37,10 @@ func TestATaskIsReadAsItsRecordIs(t *testing.T) {
 			for _, who := range []string{"bob@example.com", "runner:w", ""} {
 				resp := getAs(t, who, url)
 				body := readBody(t, resp)
+				// A runner's name with no token is refused at the door, before the record is read.
+				if who == "runner:w" && resp.StatusCode == http.StatusUnauthorized {
+					continue
+				}
 				if resp.StatusCode != http.StatusForbidden || !strings.Contains(body, "refused") {
 					t.Errorf("%q reads /tasks/%s%s: %s %q, want it refused", who, id, route, resp.Status, body)
 				}

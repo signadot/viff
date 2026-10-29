@@ -2,11 +2,13 @@ package main
 
 import (
 	"bytes"
+	"crypto/rsa"
 	"errors"
 	"fmt"
 	"io"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/scott-cotton/cli"
@@ -94,9 +96,23 @@ func serve(t *testing.T) entity.Store {
 	srv := versed.NewWithStore(versed.ScriptedBuilder, store)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
+	// An issuer at its own address, as `verse up` is where its config names none.
+	if err := srv.SetIssuer(ts.URL, testIssuerKey(), "memory"); err != nil {
+		t.Fatal(err)
+	}
 	testAddr = strings.TrimPrefix(ts.URL, "http://")
 	return store
 }
+
+// testIssuerKey is the key every test verse signs with: one per package, since making one is
+// slow.
+var testIssuerKey = sync.OnceValue(func() *rsa.PrivateKey {
+	key, err := versed.NewIssuerKey()
+	if err != nil {
+		panic(err)
+	}
+	return key
+})
 
 func payloadOf(t *testing.T, s entity.Store, ref entity.Ref) map[string]any {
 	t.Helper()

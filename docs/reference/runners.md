@@ -12,14 +12,18 @@ A runner is installed as data at `verse.runners.<name>`, its registration. The r
 |---|---|
 | `url` | the base URL of task control that faces verse. `client.HTTP` drives this URL, and a restart rebuilds the runner from it. Required. |
 | `identity` | the [principal](../glossary.md#principal) that the runner acts as. Verse writes the reports of a task as this principal. A spawn grants this principal `read-write` and `control` on the task. A runner acts as itself. It never acts as its installer, or as the person whose work it runs. Default: the runner's name ([perms.md](../perms.md)). |
-| `subject` | how verse recognises the runner: the subject of its workload token, `system:serviceaccount:<namespace>:<name>` on Kubernetes, from the issuer the deployment names under `auth.iod` ([runners at the door](perms.md#runners-at-the-door)); or, for a runner proved by a static token, the token's hash, `sha256:<64 lowercase hex digits>`, which `verse runner add -token-file` computes. Verse refuses a workload subject where it names no such issuer, any subject where it issues no tokens of its own (`auth.issuer`, which is what it proves itself to the runner with), and one another registration or an iod (`auth.iod.accounts`, or the hash of a token in `auth.iod.static`) already holds, since a token proves one principal, and in a named scope, since a principal is one thing across the verse. Without it, the runner is taken at its word, as `verse up`'s embedded runner is, and verse presents it no token. |
+| `subject` | how verse recognises the runner: the subject of its workload token, `system:serviceaccount:<namespace>:<name>` on Kubernetes, from the issuer the deployment names under `auth.iod` ([runners at the door](perms.md#runners-at-the-door)); or, for a runner proved by a static token, the token's hash, `sha256:<64 lowercase hex digits>`, which `verse runner add -token-file` computes. Required: a runner is never taken at its word. Verse refuses a workload subject where it names no such issuer, any subject where it issues no tokens of its own (`auth.issuer`, which is what it proves itself to the runner with; `verse up` always does), and one another registration or an iod (`auth.iod.accounts`, or the hash of a token in `auth.iod.static`) already holds, since a token proves one principal, and in a named scope, since a principal is one thing across the verse. |
 
-Verse writes three more, and refuses them by hand: `described`, what the runner offers, as it
-said at the last describe ([runners.md](../runners.md#who-the-runner-is)); `verified`, when a
-runner registered with a `subject` last proved it is that subject, beside `described`; and
-`unverified`, why it last failed to, in place of `described`. A registration with a `subject`
-and no `verified` takes no spawn, and the handshake is made again before every launch to one, so
-`verified` is the last launch's result at the latest.
+Verse writes one more, and refuses it by hand: `described`, what the runner offers, as it said
+at the last describe ([runners.md](../runners.md#who-the-runner-is)). Every describe is a proof,
+so a description is there only while the runner proved it is its `subject`: one that answers and
+does not prove it has its description removed, and takes no spawn until a check finds it proving
+itself. The handshake is made again before every launch, so `described` is the last launch's
+result at the latest. A registration an older verse wrote may hold `verified` or `unverified`
+beside it; verse removes both at the next describe.
+
+A listing row (`verse runner`) also says `offers`, the names of the doers the runner described,
+an agent's name or `script`, empty where it has described none.
 
 The `name` is the whole of the address. It may not contain `/`, because it is a segment of
 the route that serves it.
@@ -66,13 +70,13 @@ verse task run -f <spawn>                 run a spawn there: its `runner:` names
 | `GET /runners` | lists the runners. `?probe=true` adds a live `reach` for each runner. |
 | `POST /runners` | installs a runner. `?probe=false` skips the check. The answer is `201` and the runner's row as the listing shows it, with what the runner described and `reach`, plus `warning` when the runner is unreachable (`api.RunnerRow`). |
 | `GET /runners/{name}` | returns the registration |
-| `GET /runners/{name}/check` | returns `{at, url, reach}`, and `why` when the URL is not a runner or did not prove it is the one registered; records what the runner said, or that it did not prove itself |
-| `POST /runners/hello` | the check, asked by the runner itself with its workload token: verse finds the registration by the token's subject and describes the runner now, retrying briefly a url nothing answers at. The answer is the check's: `200` when the runner was described, even when it says `not verified`, since what is wrong is then its token, which trying again will not fix; `503` when nothing answered at its url, or another describe of it is in flight, so the runner's backoff keeps announcing until verse has heard what it is. A token no registration names is refused `401` at the door; a runner registered without a `subject`, or anyone else, gets `400`: nothing to announce. One describe in flight per registration. |
+| `GET /runners/{name}/check` | returns `{at, url, reach}`, and `why` when the URL is not a runner or did not prove it is the one registered; records what the runner said, or removes what it said before where it did not prove itself |
+| `POST /runners/hello` | the check, asked by the runner itself with its own token: verse finds the registration by the token's subject and describes the runner now, retrying briefly a url nothing answers at. The answer is the check's: `200` when the runner was described, even when it says `not verified`, since what is wrong is then its token, which trying again will not fix; `503` when nothing answered at its url, or another describe of it is in flight, so the runner's backoff keeps announcing until verse has heard what it is. A token no registration names, and a runner's name with no token, are refused `401` at the door; anyone else gets `400`. One describe in flight per registration. |
 | `DELETE /runners/{name}` | removes the runner. Pass `?cancel=<why>` or `?leave=true`. When work is running and you give neither, the answer is `409` and names both. |
 | `GET /tasks?runner=<ref>` | lists the work on one runner |
 
-`reach` is one of `a runner`, `not a runner`, `unreachable`, or, for a runner registered with
-a `subject`, `not verified`: it answered as a runner and did not prove it is that subject,
+`reach` is one of `a runner`, `not a runner`, `unreachable`, or `not verified`: it answered
+as a runner and did not prove it is its registration's `subject`,
 which is also what a verse that presented no token of its own gets, since the runner answers
 its token to the verse it verified alone. A runner that refused the token verse presented (it
 serves another verse) is `unreachable`, since the deployment fixes it. Verse writes nothing about `reach` to the

@@ -424,7 +424,7 @@ func (g *Guard) Carrier() func(ctx context.Context, taskID, method, path string,
 // WithReady is h with GET /ready beside it, for a readiness probe: 200 as soon as the runner
 // serves, with or without a door. Readiness is the server's and nothing else's: whether a verse
 // has heard this runner's hello, and whether its describe verified the runner, is the
-// registration's to say (`verified`, `unverified`), where `verse runner` shows it. A readiness
+// registration's to say (`described`), where `verse runner` shows it. A readiness
 // that waited on verse would keep the pod out of its Service until versed had reached it, and
 // versed reaches it through that Service.
 func WithReady(h http.Handler) http.Handler {

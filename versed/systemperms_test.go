@@ -41,9 +41,13 @@ func TestTheDoorAdmitsOnlyWhatARequestMayPresent(t *testing.T) {
 	if refused, _ := entity.PolicyOf(srv.Store).Refusals(); len(refused) != 0 {
 		t.Errorf("a request refused at the door reached the check: %v", refused)
 	}
-	// A PLACE EACH: what a request creates includes the place it brought into being, so three
-	// principals writing into one `demo` would be the first of them owning the other two's rows.
-	for i, p := range []string{"walter@example.com", "agent:harness", "runner:verse-runner"} {
+	// A runner presents its token, and its name alone is refused (runnerauth.go).
+	if resp := putAs(t, "runner:verse-runner", ts.URL, "demo4.pr.4", entity.Obj{"stage": "open"}.Payload()); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("a request as runner:verse-runner with no token: %s %s, want 401", resp.Status, readBody(t, resp))
+	}
+	// A PLACE EACH: what a request creates includes the place it brought into being, so two
+	// principals writing into one `demo` would be the first of them owning the other's rows.
+	for i, p := range []string{"walter@example.com", "agent:harness"} {
 		at := entity.RefAt(fmt.Sprintf("demo%d", i+2), "pr", fmt.Sprint(i+2))
 		resp := putAs(t, p, ts.URL, at.String(), entity.Obj{"stage": "open"}.Payload())
 		body := readBody(t, resp)

@@ -17,7 +17,7 @@ import (
 // runner whose account of a finished task is thinner than its plane does. It is the shape of
 // the first real codex run, whose terminal frame carried the quota refusal while `verse task
 // get` printed a bare `failed`.
-func reasonRunner(t *testing.T, reason string) *httptest.Server {
+func reasonRunner(t *testing.T, verseURL, reason string) *face {
 	t.Helper()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /describe", func(w http.ResponseWriter, r *http.Request) {
@@ -54,9 +54,7 @@ func reasonRunner(t *testing.T, reason string) *httptest.Server {
 		_ = sse.Send(task.Event{Kind: task.EventStatus, Task: r.PathValue("id"), Text: string(task.Failed), Err: reason})
 		sse.Flush()
 	})
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	return srv
+	return provenFace(t, verseURL, mux, func() {})
 }
 
 // A FAILED TASK SAYS WHY, where a task is read. The reason a runner puts on its terminal frame
@@ -67,10 +65,10 @@ func reasonRunner(t *testing.T, reason string) *httptest.Server {
 func TestAFailedTaskOnANamedRunnerSaysWhy(t *testing.T) {
 	const reason = "codex: the turn failed: Quota exceeded. Check your plan and billing details."
 	srv := testServer(t)
-	face := reasonRunner(t, reason)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	postTony(t, ts.URL+"/runners", map[string]any{"name": "codex", "url": face.URL}).Body.Close()
+	face := reasonRunner(t, ts.URL, reason)
+	postTony(t, ts.URL+"/runners", map[string]any{"name": "codex", "url": face.URL, "subject": face.Subject}).Body.Close()
 
 	id := spawnOK(t, ts, map[string]any{"id": "run-quota", "spawn": map[string]any{"agent": map[string]any{"name": "codex"}, "prompt": "triage the issue", "runner": "verse.runners.codex"}})
 	waitTerminal(t, srv.Store, id)

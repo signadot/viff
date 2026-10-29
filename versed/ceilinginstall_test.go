@@ -25,9 +25,8 @@ func TestACharterIsHeldToItsRunnersCeilingsAtInstall(t *testing.T) {
 			Attributes: map[string][]string{"repo": {"github.com/signadot/**"}},
 			Verbs:      map[string][]systems.Shape{"fetch": {{}}, "push": {{"ref": "refs/heads/verse/**"}}},
 		}}}}}}})
-	face := httptest.NewServer(h.HTTPHandler())
-	defer face.Close()
-	if resp := postTony(t, ts.URL+"/runners", map[string]any{"name": "ceiled", "url": face.URL}); resp.StatusCode != http.StatusCreated {
+	face := provenFace(t, ts.URL, h.HTTPHandler(), func() {})
+	if resp := postTony(t, ts.URL+"/runners", map[string]any{"name": "ceiled", "url": face.URL, "subject": face.Subject}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("runner add = %s", resp.Status)
 	}
 	install := func(name, git string) (int, string) {

@@ -78,3 +78,19 @@ func TestVerseLogLevel(t *testing.T) {
 		}
 	}
 }
+
+// Where its config names no issuer, verse up issues as its own address, with a host a runner
+// beside it can dial where the address binds every interface.
+func TestIssuerURLOf(t *testing.T) {
+	for _, c := range []struct{ addr, want string }{
+		{"localhost:9797", "http://localhost:9797"},
+		{"127.0.0.1:9797", "http://127.0.0.1:9797"},
+		{":9797", "http://localhost:9797"},
+		{"0.0.0.0:9797", "http://localhost:9797"},
+		{"[::]:9797", "http://localhost:9797"},
+	} {
+		if got := issuerURLOf(c.addr); got != c.want {
+			t.Errorf("issuerURLOf(%q) = %q, want %q", c.addr, got, c.want)
+		}
+	}
+}

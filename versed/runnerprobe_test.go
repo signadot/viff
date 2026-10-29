@@ -25,12 +25,8 @@ func registerRunner(t *testing.T, ts *httptest.Server, name string, agents ...st
 		sup := systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), l.Environment)
 		return task.NewTask(l.ID, sup, &blockedDriver{release: release}, okExecutor{})
 	}
-	face := httptest.NewServer(offeringAll(runnerd.NewInProcessHandler(build), agents...).HTTPHandler())
-	t.Cleanup(func() {
-		close(release)
-		face.Close()
-	})
-	if resp := postTony(t, ts.URL+"/runners", map[string]any{"name": name, "url": face.URL}); resp.StatusCode != http.StatusCreated {
+	face := provenFace(t, ts.URL, offeringAll(runnerd.NewInProcessHandler(build), agents...).HTTPHandler(), func() { close(release) })
+	if resp := postTony(t, ts.URL+"/runners", face.reg(name)); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("runner add %s = %s", name, resp.Status)
 	}
 }
@@ -47,13 +43,13 @@ func TestASpawnOnARunnerThatHasNotDescribedItselfIsRefused(t *testing.T) {
 	dead := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	deadURL := dead.URL
 	dead.Close()
-	if resp := postTony(t, ts.URL+"/runners?probe=false", map[string]any{"name": "pending", "url": deadURL}); resp.StatusCode != http.StatusCreated {
+	if resp := postTony(t, ts.URL+"/runners?probe=false", map[string]any{"name": "pending", "url": deadURL, "subject": someSubject(t)}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("--no-probe add = %s", resp.Status)
 	}
 	resp := postTony(t, ts.URL+"/tasks", map[string]any{"id": "p1", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t", "runner": "verse.runners.pending"}})
 	defer resp.Body.Close()
-	if msg := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(msg, "has not described itself") {
-		t.Fatalf("a spawn on a runner that never answered = %s %q, want 400 saying it has not described itself", resp.Status, msg)
+	if msg := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(msg, "verse.runners.pending did not answer") {
+		t.Fatalf("a spawn on a runner that never answered = %s %q, want 400 saying it did not answer", resp.Status, msg)
 	}
 	// The charter path refuses the same spawn as a failed task; here it fails one step earlier,
 	// since the rule's view in this harness reads no registration at all (the uninstalled-runner
@@ -63,8 +59,8 @@ func TestASpawnOnARunnerThatHasNotDescribedItselfIsRefused(t *testing.T) {
 		t.Fatalf("a charter spawn on it: %v, want it failed naming the runner", h)
 	}
 
-	face := runnerFace(t)
-	if resp := postTony(t, ts.URL+"/runners?probe=false", map[string]any{"name": "late", "url": face.URL}); resp.StatusCode != http.StatusCreated {
+	face := runnerFace(t, ts.URL)
+	if resp := postTony(t, ts.URL+"/runners?probe=false", face.reg("late")); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("--no-probe add = %s", resp.Status)
 	}
 	if e, ok := findRunner(srv.Store, "late"); !ok || len(e.Description().Offers) != 0 {
@@ -87,20 +83,22 @@ func TestASpawnOnARunnerThatHasNotDescribedItselfIsRefused(t *testing.T) {
 // it was.
 func TestStartProbesRunnersWithoutOffers(t *testing.T) {
 	store := entitytest.Store(t)
-	first := NewWithStore(ScriptedBuilder, store)
+	first := issuing(t, NewWithStore(ScriptedBuilder, store))
 	ts := httptest.NewServer(first.Handler())
-	face := runnerFace(t)
+	face := runnerFace(t, ts.URL)
 	dead := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	deadURL := dead.URL
 	dead.Close()
-	for name, url := range map[string]string{"up": face.URL, "down": deadURL} {
-		if resp := postTony(t, ts.URL+"/runners?probe=false", map[string]any{"name": name, "url": url}); resp.StatusCode != http.StatusCreated {
+	for name, reg := range map[string]map[string]any{"up": face.reg("up"), "down": {"name": "down", "url": deadURL, "subject": someSubject(t)}} {
+		if resp := postTony(t, ts.URL+"/runners?probe=false", reg); resp.StatusCode != http.StatusCreated {
 			t.Fatalf("--no-probe add %s = %s", name, resp.Status)
 		}
 	}
-	ts.Close()
+	// The first verse stops serving its operators; its keys stay where the runner reads them, as
+	// a restarted verse's are, under the same issuer and key.
+	defer ts.Close()
 
-	second := NewWithStore(ScriptedBuilder, store)
+	second := issuing(t, NewWithStore(ScriptedBuilder, store))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	second.ctx = ctx

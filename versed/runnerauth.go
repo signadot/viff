@@ -21,10 +21,11 @@ import (
 
 // Runners at the door (git-issue pb6fwh8gh12krmb7vhn0).
 //
-// WHO A RUNNER IS, VERSE DECIDES AT REGISTRATION AND NOWHERE ELSE. A registration may name the
-// subject of the runner's workload token (api.Runner.Subject): on Kubernetes the pod's projected
-// service-account token, `system:serviceaccount:<namespace>:<name>`, from the issuer the
-// deployment names for its iods (auth.iod.issuer). The one who writes the registration is the one
+// WHO A RUNNER IS, VERSE DECIDES AT REGISTRATION AND NOWHERE ELSE. Every registration names the
+// subject of the runner's token (api.Runner.Subject): its workload token's, on Kubernetes the
+// pod's projected service-account token, `system:serviceaccount:<namespace>:<name>`, from the
+// issuer the deployment names for its iods (auth.iod.issuer); or a static token's hash, for a
+// runner off Kubernetes. The one who writes the registration is the one
 // who vouches for the runner, at the moment they are already doing something deliberate, and
 // there is no per-launch check to forget.
 //
@@ -37,12 +38,10 @@ import (
 // through the task's record, which versed wrote at the spawn and which names the runner
 // (relayTask).
 //
-// A NAME VERSE CAN VERIFY IS NO LONGER TAKEN ON SOMEBODY'S WORD. A header naming the principal of
-// a runner registered with a subject, with no bearer that proves it, is refused; a runner
-// registered without one is asserted, as every runner was, and the refusal names what the
-// registration lacks. So `verse up`'s embedded runner, a laptop's runner and the test suite's
-// faces go on as they were, and a deployment that registers its runners with their subjects
-// closes the door on their names.
+// A RUNNER IS NEVER TAKEN AT ITS WORD. A header naming a `runner:` with no bearer that proves it
+// is refused at the door, on the name alone and without reading the registrations, under every
+// mode. `verse up`'s embedded runner is no registration and never calls the door; a laptop's
+// runner proves itself with a static token, as any runner off Kubernetes does.
 //
 // WHY IT MATTERS NOW. Versed writes a task's reports as the runner itself, from what it mirrors
 // off the runner's stream, so a runner has never had to call verse and nothing at the door has
@@ -117,13 +116,13 @@ func (s *Server) staticRunner(token string) (api.Runner, bool, error) {
 	return s.registrationWhere(func(e api.Runner) bool { return e.Subject == sub })
 }
 
-// verifiedRunner is the registration of the runner acting as principal, where that registration
-// names a subject: a runner whose name verse can verify, and so does not take on its word.
+// verifiedRunner is the registration of the runner acting as principal. Every registration names
+// a subject, so every registered runner is one verse verifies.
 func (s *Server) verifiedRunner(principal string) (api.Runner, bool, error) {
 	if entity.KindOf(principal) != entity.RunnerKind {
 		return api.Runner{}, false, nil
 	}
-	return s.registrationWhere(func(e api.Runner) bool { return e.Subject != "" && e.Principal() == principal })
+	return s.registrationWhere(func(e api.Runner) bool { return e.Principal() == principal })
 }
 
 // registrationWhere is the first registration match holds for.
@@ -149,13 +148,9 @@ func (s *Server) registrationWhere(match func(api.Runner) bool) (api.Runner, boo
 // to be told. A verse that issues nothing presents nothing, and refuses to register a subject it
 // could never prove itself to (addRunner).
 //
-// THE TOKEN GOES WHERE A VOUCHED IDENTITY IS. Versed presents a token to a registration that
-// names a subject, and to the default runner `verse up -runner` names, which is the operator's
-// own configuration and gets the audience `runner`, which a registered runner's door does not
-// take. A registration without a subject is a runner taken at its word, and the handshake runs
-// in neither direction: its url was written at runtime by whoever may register a runner, and a
-// token presented there before anything proved what answers is a token given away. Such a runner
-// with a door of its own installs on its word and refuses the launches.
+// THE TOKEN GOES WHERE A VOUCHED IDENTITY IS. Versed presents a token to every registration, for
+// its subject, and to the default runner `verse up -runner` names, which is the operator's own
+// configuration and gets the audience `runner`, which a registered runner's door does not take.
 
 // How long a token toward a runner is good for, and how long before its expiry the next call
 // mints a fresh one rather than present it.
@@ -220,12 +215,8 @@ func (s *Server) runnerTransport(aud string) http.RoundTripper {
 	return client.Bearer(nil, source)
 }
 
-// transportFor is how versed reaches the runner e: with a token minted for its subject where the
-// registration names one, and bare otherwise.
+// transportFor is how versed reaches the registered runner e: with a token minted for its subject.
 func (s *Server) transportFor(e api.Runner) http.RoundTripper {
-	if e.Subject == "" {
-		return nil
-	}
 	return s.runnerTransport(e.Subject)
 }
 
@@ -235,8 +226,8 @@ func (s *Server) Dial(url string) client.Launcher {
 	return client.HTTPOver(url, s.runnerTransport(runner.DefaultAudience))
 }
 
-// dialAt is the registered runner at url, reached as its registration says: with the token
-// where the registration names a subject. A url no registration holds any more is reached bare,
+// dialAt is the registered runner at url, reached as its registration says: with a token for its
+// subject. A url no registration holds any more is reached bare,
 // since nothing says what was vouched for there; a guarded runner then reads as unreachable,
 // which is what the orphan path expects of a runner whose registration is gone.
 //
@@ -268,11 +259,11 @@ func (s *Server) iodAccountNamed(sub string) bool {
 }
 
 // probeRegistered asks a registered runner what it is, as this verse, and holds it to its
-// registration: where the registration names a subject, a runner that answered as a runner and
-// did not prove it is that subject is Unverified, with why, and what it said is not read.
+// registration: a runner that answered as a runner and did not prove it is the registration's
+// subject is Unverified, with why, and what it said is not read.
 func (s *Server) probeRegistered(e api.Runner) (client.Reach, runner.Description, error) {
 	reach, desc, token, why := client.ProbeOver(e.URL, s.transportFor(e))
-	if reach != client.IsRunner || e.Subject == "" {
+	if reach != client.IsRunner {
 		return reach, desc, why
 	}
 	if err := s.verifyRunnerToken(token, e.Subject); err != nil {
@@ -311,26 +302,20 @@ func (s *Server) verifyRunnerToken(token, subject string) error {
 	return nil
 }
 
-// verifiedNow is what a registration records as `verified` for a runner that proved itself now.
-func (s *Server) verifiedNow(e api.Runner) string {
-	if e.Subject == "" {
-		return ""
-	}
-	return s.now().UTC().Format(time.RFC3339)
-}
-
-// writeUnverified records why a runner did not prove it is its registration's subject, in place
-// of what it described: a runner nobody verified has its words recorded as nobody's, so a spawn
-// naming it is refused until `verse runner check` finds it proving itself.
-func writeUnverified(w entity.Store, name string, why error) error {
+// removeDescribed takes what a runner described off its registration, where the runner did not
+// prove it is its registration's subject: a runner nobody verified has its words recorded as
+// nobody's, so a spawn naming it is refused until `verse runner check` finds it proving itself.
+// Why is the caller's to say, not the registration's to keep: an unverified answer is one way a
+// describe fails, and the others (no answer) leave the description as it was.
+func removeDescribed(w entity.Store, name string) error {
 	_, _, err := w.Write(entity.Write{At: runnerEntityRef(name).At(), Value: entity.Obj{
 		"described": entity.Removed(), "offers": entity.Removed(), "verified": entity.Removed(),
-		"unverified": why.Error(),
+		"unverified": entity.Removed(),
 	}.Payload()})
 	return err
 }
 
-// THE HELLO. A runner registered with a subject says it is here: POST /runners/hello with its
+// THE HELLO. A registered runner says it is here: POST /runners/hello with its
 // own token, in a loop until a 2xx (runnerd.Guard.Announce). The door is the acknowledgement,
 // since a token whose subject no registration names is refused before this handler runs; what
 // the handler adds is the describe, then and there, so a pod that comes up after its
@@ -353,9 +338,8 @@ var helloRetryWait = time.Second
 // helloRunner is POST /runners/hello: the check, asked by the runner itself.
 func (s *Server) helloRunner(w http.ResponseWriter, r *http.Request) {
 	if authenticatedBy(r) != runnerProvider {
-		http.Error(w, "a runner announces itself with its workload token, and this request carries none "+
-			"that proves a registered runner: a runner registered without a subject has nothing to "+
-			"announce, and is described when verse asks", http.StatusBadRequest)
+		http.Error(w, "a runner announces itself with its own token, and this request carries none "+
+			"that proves a registered runner", http.StatusBadRequest)
 		return
 	}
 	// The door settled the principal from the token's subject, and one verified principal is
@@ -416,11 +400,11 @@ func (s *Server) describeAgain(store entity.Store, e api.Runner, tries int) (api
 				"keeps what it said before", e.Name, e.URL, err)
 		}
 		out.Offers = desc.Offers
-		if err := writeDescribed(store, e.Name, desc, s.verifiedNow(e)); err != nil {
+		if err := writeDescribed(store, e.Name, desc); err != nil {
 			return out, http.StatusInternalServerError, err
 		}
 	case client.Unverified:
-		if err := writeUnverified(store, e.Name, why); err != nil {
+		if err := removeDescribed(store, e.Name); err != nil {
 			return out, http.StatusInternalServerError, err
 		}
 	}

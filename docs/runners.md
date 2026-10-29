@@ -57,17 +57,17 @@ a description that does not decode, is an answer about what is at the URL.
 
 ### Who the runner is
 
-Verse decides who a runner is at registration and nowhere else. A runner registered with a
-`subject`, the subject of the workload token its runtime gives it, has to prove it is that
-runner, twice over:
+Verse decides who a runner is at registration and nowhere else, and a runner is never taken at
+its word. Every registration names a `subject`: the subject of the workload token the runner's
+runtime gives it, or a static token's hash (below). The runner has to prove it is that runner,
+twice over:
 
 ```sh
 verse runner add verse-runner http://verse-runner:9802 -subject system:serviceaccount:verse:verse-runner
 ```
 
 - **At the describe.** Verse presents a token it signs itself, as the issuer `auth.issuer`
-  makes it, on every call it makes to a runner registered with a `subject`, and to no other,
-  since a token presented before anything proved what answers is a token given away. The token
+  makes it, on every call it makes to a registered runner. The token
   is minted for that runner alone, its subject the audience, so a copy taken at one runner opens
   no other's door. A runner whose configuration names its verse (`verse:` in
   [runnerd.md](reference/runnerd.md#configuration)) reads verse's keys where it reaches verse,
@@ -76,15 +76,13 @@ verse runner add verse-runner http://verse-runner:9802 -subject system:serviceac
   description itself is public: anyone may ask what the runner offers. To the verse it
   verified, and to nobody else, the runner answers `GET /describe` with its own token, and
   verse checks the token's subject against the registration before it records what the runner
-  offers. The registration
-  then says `verified`, with when. A runner that answered as a runner and did not prove it is
-  the one registered is refused at `add`, since waiting changes nothing; found later, by
-  `verse runner check` or by a spawn that asks, it has `unverified` recorded in place of what it
-  described, and takes no spawn until a check finds it proving itself. The describe is asked
-  again before every launch to a runner registered with a subject, one request, since the launch
-  is what hands whatever answers at the url the prompt, the repositories and the policy: a runner
-  replaced behind the same url receives no launch, and `verified` is the last handshake's result,
-  re-made at each.
+  offers. A registration is described or it is not: a description is one the runner proved.
+  A runner that answered as a runner and did not prove it is the one registered is refused at
+  `add`, since waiting changes nothing; found later, by `verse runner check` or by a spawn that
+  asks, it has what it described removed, and why said to whoever asked, and takes no spawn until
+  a check finds it proving itself. The describe is asked again before every launch, one request,
+  since the launch is what hands whatever answers at the url the prompt, the repositories and
+  the policy: a runner replaced behind the same url receives no launch.
 - **At verse's door.** When the runner calls verse, its token makes it `runner:<identity>`
   ([runners at the door](reference/perms.md#runners-at-the-door)), and its name alone is refused.
 
@@ -95,8 +93,8 @@ or comes back after a restart, is verified within seconds and nobody runs `verse
 The door is the acknowledgement: a token no registration names is refused before anything else,
 and that refusal is the runner's cue to keep asking, with one log line saying why. The runner's
 readiness, on `GET /ready`, is its server and nothing else. Whether verse has heard it, and
-whether the describe that followed verified it, is the registration's to say, in `verified` or
-`unverified`, where `verse runner` shows it.
+whether the describe that followed verified it, is the registration's to say, in `described`,
+where `verse runner` shows it.
 
 A runner no runtime issues a workload token to, on a machine off Kubernetes, proves itself
 with a static token instead: one it and its registrar hold, as an iod may. The registration
@@ -114,15 +112,15 @@ shaped like a JWT: one with exactly two `.` reads as a JWT on both sides and is 
 (`openssl rand -hex 32` makes one that is neither too short nor dotted). Each kind of
 proof finds only its own kind of registration, so a workload token cannot claim a static
 registration, nor a static token a workload one. No workload issuer is needed; verse still
-issues its own tokens (`auth.issuer`), since the handshake runs both ways.
+issues its own tokens (`auth.issuer`), since the handshake runs both ways. This is how a runner
+on a laptop is registered too.
 
-A runner registered without a `subject` is taken at its word: `verse
-up`'s embedded runner, a runner on a laptop, a verse that issues no tokens of its own. The
-record says which.
+`verse runner add` without `-subject` or `-token-file` is refused. `verse up`'s embedded runner
+is no registration: it runs in verse's own process, and never calls verse's door.
 
 `-no-probe` installs the runner in every case. A runner installed without its offers takes no
 spawn until it has described itself: verse asks it again when it starts, at the first spawn
-that names it, and before every launch where the registration names a subject, and keeps what
+that names it, and before every launch, and keeps what
 it says on the registration; `verse runner check` asks on demand.
 A spawn naming a runner that still has not answered is refused, with the reason.
 

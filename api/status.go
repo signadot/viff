@@ -74,6 +74,9 @@ type Status struct {
 	Docd   *Docd         `tony:"field=docd,omitzero"`
 	LLM    *LLM          `tony:"field=llm,omitzero"`
 	Listen *Listen       `tony:"field=listen,omitzero"`
+	// Issuer is this verse as an issuer of its own tokens (auth.issuer): absent where it issues
+	// none.
+	Issuer *Issuer `tony:"field=issuer,omitzero"`
 	// Perms is what the permission check has refused since this process started: a count
 	// that climbs is a flow somebody is being refused, which is either the autonomy's intent or
 	// a row the seed is missing.
@@ -127,6 +130,17 @@ type LLM struct {
 	VirtualKey string `tony:"field=virtualKey,omitzero"`
 	Model      string `tony:"field=model,omitzero"`
 	BaseURL    string `tony:"field=baseURL,omitzero"`
+}
+
+// Issuer is this verse as an issuer: the url every token it signs names as `iss`, and where its
+// key is from. Key is `config` for one auth.issuer names, and otherwise the file `verse up` made
+// it in, in its data dir, or `memory` for one made for this process alone, which a restart
+// replaces and with it every token signed by the last.
+//
+//tony:schemagen=verse-issuer,notag
+type Issuer struct {
+	URL string `tony:"field=url"`
+	Key string `tony:"field=key"`
 }
 
 // Listen is this verse's own addresses: the operator API, and the admin face.

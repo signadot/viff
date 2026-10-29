@@ -21,8 +21,8 @@ func TestAStaleRegistrationIsAskedAgain(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	face, _ := offeringFace(t, "codex")
-	if resp := postTony(t, ts.URL+"/runners", map[string]any{"name": "code", "url": face.URL}); resp.StatusCode != http.StatusCreated {
+	face, _ := offeringFace(t, ts.URL, "codex")
+	if resp := postTony(t, ts.URL+"/runners", map[string]any{"name": "code", "url": face.URL, "subject": face.Subject}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("add = %s", resp.Status)
 	}
 	ref := runnerEntityRef("code")
@@ -56,8 +56,8 @@ func TestAModelTheAgentDoesNotTakeIsRefusedAtInstall(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	face, _ := offeringFace(t, "codex")
-	if resp := postTony(t, ts.URL+"/runners", map[string]any{"name": "code", "url": face.URL}); resp.StatusCode != http.StatusCreated {
+	face, _ := offeringFace(t, ts.URL, "codex")
+	if resp := postTony(t, ts.URL+"/runners", map[string]any{"name": "code", "url": face.URL, "subject": face.Subject}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("add = %s", resp.Status)
 	}
 	install := func(name, model string) (int, string) {
@@ -111,9 +111,8 @@ func TestATasksAgentIsOnItsRecord(t *testing.T) {
 		return p
 	})
 	d.Describe(offering("codex"))
-	face := httptest.NewServer(d.HTTPHandler())
-	defer face.Close()
-	if resp := postTony(t, ts.URL+"/runners", map[string]any{"name": "code", "url": face.URL}); resp.StatusCode != http.StatusCreated {
+	face := provenFace(t, ts.URL, d.HTTPHandler(), func() {})
+	if resp := postTony(t, ts.URL+"/runners", map[string]any{"name": "code", "url": face.URL, "subject": face.Subject}); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("add = %s", resp.Status)
 	}
 	for _, c := range []struct {

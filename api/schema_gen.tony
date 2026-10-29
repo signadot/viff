@@ -633,6 +633,14 @@ signature:
 context:
 - tony-format/context
 define:
+  key: .[string]
+  url: .[string]
+signature:
+  name: verse-issuer
+---
+context:
+- tony-format/context
+define:
   apiKey: .[string]
   available: .[bool]
   baseURL: .[string]
@@ -763,9 +771,7 @@ define:
   identity: .[string]
   name: .[string]
   subject: .[string]
-  unverified: .[string]
   url: .[string]
-  verified: .[string]
 signature:
   name: verse-installed-runner
 ---
@@ -790,14 +796,13 @@ define:
   identity: .[string]
   lastSpawn: .[string]
   name: .[string]
+  offers: .[array(string)]
   reach: .[string]
   running: .[int]
   subject: .[string]
   total: .[int]
   unreadable: .[string]
-  unverified: .[string]
   url: .[string]
-  verified: .[string]
   warning: .[string]
   why: .[string]
 signature:
@@ -901,6 +906,7 @@ define:
   flows: !verse-flow-count null
   gates: .[int]
   iods: .[array(string)]
+  issuer: .[nullable(verse-issuer)]
   listen: .[nullable(verse-listen)]
   llm: .[nullable(verse-llm)]
   perms: .[nullable(verse-perms)]

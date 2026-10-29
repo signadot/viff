@@ -74,7 +74,7 @@ func TestAThenTasksOwnQuestionAsksTheAsker(t *testing.T) {
 // A RUN BY NOBODY CANNOT NAME $principal: a runner acting as itself is no person to ask, so the
 // spawn is refused rather than its gate left to the docket.
 func TestAGateNamingPrincipalIsRefusedForNobody(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := issuing(t, NewWithStore(ScriptedBuilder, entitytest.Store(t)))
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	gates := shellGate(0, nil)
@@ -83,7 +83,7 @@ func TestAGateNamingPrincipalIsRefusedForNobody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp := postAs(t, runnerID, ts.URL+"/tasks", "application/tony", string(b))
+	resp := sendAs(t, http.MethodPost, ts.URL+"/tasks", runnerID, staticRunnerAs(t, ts.URL, runnerID), string(b))
 	if msg := bodyOf(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(msg, "acts for nobody") {
 		t.Fatalf("a runner's run naming $principal: %s %q, want 400 saying it acts for nobody", resp.Status, msg)
 	}
@@ -92,7 +92,7 @@ func TestAGateNamingPrincipalIsRefusedForNobody(t *testing.T) {
 // A THRESHOLD NOBODY CAN REACH IS REFUSED for a run started by hand, as a charter's is at its
 // install: two approvals from one person is a question proceed can never settle.
 func TestAThresholdOverTooFewAnswerersIsRefused(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := issuing(t, NewWithStore(ScriptedBuilder, entitytest.Store(t)))
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	gates := shellGate(0, nil)
@@ -111,25 +111,19 @@ func TestAThresholdOverTooFewAnswerersIsRefused(t *testing.T) {
 // SLIDING A GATE NAMING $principal ONTO A RUNNING TASK is refused as its spawn would be: a run a
 // runner started acts for nobody, and one a person started acts for them.
 func TestAVectorNamingPrincipalNeedsSomebodyToAsk(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := issuing(t, NewWithStore(ScriptedBuilder, entitytest.Store(t)))
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
+	tokens := map[string]string{runnerID: staticRunnerAs(t, ts.URL, runnerID)}
 	slide := func(as, id string) *http.Response {
 		t.Helper()
-		req, _ := http.NewRequest(http.MethodPut, ts.URL+"/tasks/"+id+"/autonomy", strings.NewReader(
-			`{autonomy: [{name: shell, match: {system: commands, verb: run}, then: {ask: {answerers: [$principal]}}}, {then: allow}]}`))
-		req.Header.Set("Content-Type", "application/tony")
-		req.Header.Set(api.PrincipalHeader, as)
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return resp
+		return sendAs(t, http.MethodPut, ts.URL+"/tasks/"+id+"/autonomy", as, tokens[as],
+			`{autonomy: [{name: shell, match: {system: commands, verb: run}, then: {ask: {answerers: [$principal]}}}, {then: allow}]}`)
 	}
 	for _, c := range []struct{ as, id string }{{runnerID, "runners"}, {tester, "testers"}} {
 		b, _ := codec.Marshal(api.Spawn{ID: c.id, Spawn: launch.Spec{Script: "sleep 5", Environment: stepEnv, Autonomy: task.Autonomy{
 			{Match: &task.Match{System: "commands", Verb: "run"}, Then: task.Then{Mode: task.ThenAllow}}, {Then: task.Then{Mode: task.ThenAllow}}}}}, codec.Tony)
-		if resp := postAs(t, c.as, ts.URL+"/tasks", "application/tony", string(b)); resp.StatusCode >= 300 {
+		if resp := sendAs(t, http.MethodPost, ts.URL+"/tasks", c.as, tokens[c.as], string(b)); resp.StatusCode >= 300 {
 			t.Fatalf("spawn %s: %s: %s", c.id, resp.Status, bodyOf(t, resp))
 		}
 		waitField(t, srv, mirror.Ref(c.id), "status")
@@ -156,21 +150,20 @@ func TestARemoteConversationsTurnIsItsLaunchers(t *testing.T) {
 		}
 		return tk
 	}
-	face := httptest.NewServer(offeringAll(runnerd.NewInProcessHandler(build), "fake").HTTPHandler())
-	t.Cleanup(face.Close)
+	srv := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	face := provenFace(t, ts.URL, offeringAll(runnerd.NewInProcessHandler(build), "fake").HTTPHandler(), func() {})
 	var spawned string
 	t.Cleanup(func() { // end the conversation at the runner, so its stream closes
-		if q := pendingOn(t, face.URL, spawned); spawned != "" && q != "" {
-			postTony(t, face.URL+"/tasks/"+spawned+"/resolve", map[string]any{
+		if q := pendingOn(t, face.Bare, spawned); spawned != "" && q != "" {
+			postTony(t, face.Bare+"/tasks/"+spawned+"/resolve", map[string]any{
 				"id": q, "choice": task.End, "by": "cleanup",
 			}).Body.Close()
 		}
 	})
 
-	srv := testServer(t)
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-	postTony(t, ts.URL+"/runners", map[string]any{"name": "face", "url": face.URL}).Body.Close()
+	postTony(t, ts.URL+"/runners", map[string]any{"name": "face", "url": face.URL, "subject": face.Subject}).Body.Close()
 	resp := postTony(t, ts.URL+"/tasks", map[string]any{"name": "talk", "converse": true, "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "turn", "runner": "verse.runners.face"}})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("spawn = %s: %s", resp.Status, bodyOf(t, resp))

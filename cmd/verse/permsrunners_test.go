@@ -20,11 +20,11 @@ func TestRegistrationsCanBeHeldToTheAdmin(t *testing.T) {
 		t.Fatalf("perms verse runners: %v", err)
 	}
 	t.Setenv("VERSE_USER", "ana@example.com")
-	if out, err := runCLI(t, "runner", "add", "--no-probe", "anas", "http://127.0.0.1:1"); err == nil {
+	if out, err := runCLI(t, "runner", "add", "--no-probe", "-token-file", runnerTokenFile(t), "anas", "http://127.0.0.1:1"); err == nil {
 		t.Fatalf("ana registered a runner where only the admin may: %s", out)
 	}
 	t.Setenv("VERSE_USER", "admin@verse")
-	if out, err := runCLI(t, "runner", "add", "--no-probe", "gpu", "http://127.0.0.1:1"); err != nil {
+	if out, err := runCLI(t, "runner", "add", "--no-probe", "-token-file", runnerTokenFile(t), "gpu", "http://127.0.0.1:1"); err != nil {
 		t.Fatalf("the admin registers: %v\n%s", err, out)
 	}
 	t.Setenv("VERSE_USER", "ana@example.com")
@@ -42,11 +42,11 @@ func TestRegistrationsCanBeHeldToTheAdmin(t *testing.T) {
 		t.Fatalf("perms verse runners gpu: %v\n%s", err, out)
 	}
 	t.Setenv("VERSE_USER", "ana@example.com")
-	if out, err := runCLI(t, "runner", "add", "--no-probe", "gpu", "http://127.0.0.1:2"); err != nil {
+	if out, err := runCLI(t, "runner", "add", "--no-probe", "-token-file", runnerTokenFile(t), "gpu", "http://127.0.0.1:2"); err != nil {
 		t.Fatalf("ana, holding read-write, registers gpu again: %v\n%s", err, out)
 	}
 	t.Setenv("VERSE_USER", "bob@example.com")
-	if out, err := runCLI(t, "runner", "add", "--no-probe", "gpu", "http://127.0.0.1:3"); err == nil {
+	if out, err := runCLI(t, "runner", "add", "--no-probe", "-token-file", runnerTokenFile(t), "gpu", "http://127.0.0.1:3"); err == nil {
 		t.Fatalf("bob, holding nothing, registered gpu again: %s", out)
 	}
 }
@@ -64,11 +64,13 @@ func TestARunnerIsAddedByItsStaticTokensHash(t *testing.T) {
 	}
 	sum := sha256.Sum256([]byte(tok))
 	hash := "sha256:" + hex.EncodeToString(sum[:])
-	// This verse issues no tokens of its own, so the add is refused, naming the subject it was
-	// sent: the hash, and not the token.
-	out, err := runCLI(t, "runner", "add", "--no-probe", "edge", "http://127.0.0.1:1", "--token-file", file)
-	if err == nil || !strings.Contains(out+err.Error(), hash) || strings.Contains(out+err.Error(), tok) {
-		t.Fatalf("add by a static token = %v\n%s, want the server naming %s and never the token", err, out, hash)
+	// The registration names the hash, and not the token.
+	if out, err := runCLI(t, "runner", "add", "--no-probe", "edge", "http://127.0.0.1:1", "--token-file", file); err != nil {
+		t.Fatalf("add by a static token = %v\n%s", err, out)
+	}
+	out, err := runCLI(t, "runner", "show", "edge")
+	if err != nil || !strings.Contains(out, hash) || strings.Contains(out, tok) {
+		t.Fatalf("the registration = %v\n%s, want it naming %s and never the token", err, out, hash)
 	}
 	short := filepath.Join(dir, "short")
 	if err := os.WriteFile(short, []byte("tiny"), 0o600); err != nil {

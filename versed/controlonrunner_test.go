@@ -32,15 +32,13 @@ func TestControlOnPerSpawnRunner(t *testing.T) {
 		return task.NewTask(l.ID, systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, reg), l.Environment),
 			&foreverDriver{}, okExecutor{})
 	}
-	face := httptest.NewServer(offeringAll(runnerd.NewInProcessHandler(build), "fake").HTTPHandler())
-	t.Cleanup(face.Close)
-
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
+	face := provenFace(t, ts.URL, offeringAll(runnerd.NewInProcessHandler(build), "fake").HTTPHandler(), func() {})
 
 	postTony(t, ts.URL+"/runners", map[string]any{
-		"name": "code", "url": face.URL,
+		"name": "code", "url": face.URL, "subject": face.Subject,
 	}).Body.Close()
 
 	// Stopped from the far side whatever happens here. A foreverDriver task outlives a
@@ -51,7 +49,7 @@ func TestControlOnPerSpawnRunner(t *testing.T) {
 	var spawned string
 	t.Cleanup(func() {
 		if spawned != "" {
-			postTony(t, face.URL+"/tasks/"+spawned+"/cancel", map[string]any{}).Body.Close()
+			postTony(t, face.Bare+"/tasks/"+spawned+"/cancel", map[string]any{}).Body.Close()
 		}
 	})
 
@@ -81,7 +79,7 @@ func TestControlOnPerSpawnRunner(t *testing.T) {
 	// And it took: the runner holding it reports a terminal status.
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		if st := statusOn(t, face.URL, id); task.Status(st).Terminal() {
+		if st := statusOn(t, face.Bare, id); task.Status(st).Terminal() {
 			return
 		}
 		if time.Now().After(deadline) {

@@ -27,7 +27,9 @@ const (
 // plus a stop that tears down anything verse spawned.
 type docd struct {
 	clientAddr string
-	stop       func()
+	// dataDir is where verse brought docd up, empty where it connected to one (--docd-addr).
+	dataDir string
+	stop    func()
 }
 
 // resolveDocd yields docd's addresses. Three modes, in order:
@@ -143,7 +145,7 @@ func resolveDocd(cfg *upConfig, cc *cli.Context) (docd, error) {
 		}
 		return docd{}, fmt.Errorf("docd did not come up on %s: %w", clientAddr, err)
 	}
-	return docd{clientAddr: clientAddr, stop: stop}, nil
+	return docd{clientAddr: clientAddr, dataDir: dataDir, stop: stop}, nil
 }
 
 // ── resolving o ──────────────────────────────────────────────────────────────
