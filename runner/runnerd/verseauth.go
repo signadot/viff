@@ -338,6 +338,22 @@ func (g *Guard) helloClient() *http.Client {
 	return c
 }
 
+// carryTimeout bounds one request Carry makes for a task. It is longer than verse's own longest
+// wait in front of an act, the charter lock's (30s), and the act behind it: a runner that stopped
+// waiting first would tell the task an install had not been made that verse then made. A request
+// it does stop waiting on may have been done, and the task is told so (delivery).
+var carryTimeout = 2 * time.Minute
+
+// carryClient is how Carry reaches the verse: through the roots the hello uses, within
+// carryTimeout.
+func (g *Guard) carryClient() *http.Client {
+	c := &http.Client{Timeout: carryTimeout}
+	if g.client != nil {
+		c.Transport = g.client.Transport
+	}
+	return c
+}
+
 // carryCap is the most of verse's answer Carry hands a task.
 const carryCap = 4 << 20
 
@@ -372,7 +388,7 @@ func (g *Guard) Carry(ctx context.Context, taskID, method, path string, body []b
 	}
 	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set(api.TaskHeader, taskID)
-	resp, err := g.helloClient().Do(req)
+	resp, err := g.carryClient().Do(req)
 	if err != nil {
 		return 0, "", err
 	}

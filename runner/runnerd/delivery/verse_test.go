@@ -2,6 +2,7 @@ package delivery
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -229,6 +230,19 @@ func TestATasksDataActsAreCarriedToVerse(t *testing.T) {
 	saw = nil
 	if rep := s.answer(denied, frame(t, Request{Op: OpVerseDataPut, Body: "{at: acme.notes.n1}"})); !strings.Contains(rep.Refused, "the autonomy's row no-writes") || len(saw) != 0 {
 		t.Errorf("a write the autonomy denies: %+v (carried %v)", rep, saw)
+	}
+
+	// No answer from verse: a read was not done, and a write may have been.
+	s.Services.Verse = func(context.Context, string, string, string, []byte) (int, string, error) {
+		return 0, "", errors.New("context deadline exceeded")
+	}
+	if rep := s.answer(tk, frame(t, Request{Op: OpVerseDataGet, Query: "at=acme"})); !strings.Contains(rep.Error, "not carried") {
+		t.Errorf("a read verse did not answer: %+v, want it not done", rep)
+	}
+	for _, req := range []Request{{Op: OpVerseDataPut, Body: "{at: acme.notes.n1}"}, {Op: OpVerseCharterInstall, Body: "at: repos.r.hello\n"}} {
+		if rep := s.answer(tk, frame(t, req)); !strings.Contains(rep.Error, "whether it was done is not known") {
+			t.Errorf("%s verse did not answer: %+v, want it said that it may have been done", req.Op, rep)
+		}
 	}
 	s.Services.Verse = nil
 	if rep := s.answer(tk, frame(t, Request{Op: OpVerseDataGet})); !strings.Contains(rep.Error, "reaches no verse") {

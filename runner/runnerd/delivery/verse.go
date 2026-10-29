@@ -70,7 +70,7 @@ func (s *Server) verseAskCreate(ctx context.Context, tk Task, req Request) Reply
 	code, said, err := s.Services.Verse(ctx, tk.ID, http.MethodPost, "/asks", []byte(req.Ask))
 	switch {
 	case err != nil:
-		return Reply{Error: "the ask was not carried to verse: " + err.Error()}
+		return unanswered(http.MethodPost, err)
 	case code/100 == 4:
 		return Reply{Refused: "the verse refused the ask: " + said}
 	case code/100 != 2:
@@ -141,7 +141,7 @@ func (s *Server) ownersAsks(ctx context.Context, tk Task, req Request, step stri
 	code, said, err := s.Services.Verse(ctx, tk.ID, http.MethodGet, path, nil)
 	switch {
 	case err != nil:
-		return nil, Reply{Error: "the read was not carried to verse: " + err.Error()}
+		return nil, unanswered(http.MethodGet, err)
 	case code/100 == 4:
 		return nil, Reply{Refused: "the verse refused the read: " + said}
 	case code/100 != 2:
@@ -152,6 +152,17 @@ func (s *Server) ownersAsks(ctx context.Context, tk Task, req Request, step stri
 		return nil, Reply{Error: "the verse's asks do not read: " + err.Error()}
 	}
 	return append([]entity.Entity{}, mirror.AsksIn(list)...), Reply{}
+}
+
+// unanswered is the reply to an act verse gave the runner no answer to. A read was not done. A
+// write may have been, since verse may do it after the runner stopped waiting, so the task is
+// told to read it back rather than do it again: an ask raised twice is two asks.
+func unanswered(method string, err error) Reply {
+	if method == http.MethodGet {
+		return Reply{Error: "the read was not carried to verse: " + err.Error()}
+	}
+	return Reply{Error: "verse gave no answer, so whether it was done is not known; read it back " +
+		"before doing it again: " + err.Error()}
 }
 
 // tonyOut is a read's reply: the document, in tony.
@@ -222,7 +233,7 @@ func (s *Server) verseRouted(ctx context.Context, tk Task, req Request) Reply {
 	code, said, err := s.Services.Verse(ctx, tk.ID, route.method, path, body)
 	switch {
 	case err != nil:
-		return Reply{Error: "the request was not carried to verse: " + err.Error()}
+		return unanswered(route.method, err)
 	case code/100 == 4:
 		return Reply{Refused: "the verse refused it: " + said}
 	case code/100 != 2:
