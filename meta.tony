@@ -2,7 +2,6 @@
 blocked_by: []
 blocks: []
 branches: []
-closed_by: b37cd9ce4ce7e8dacbb80fee73331b16c72d7c1c
 commits: []
 created: "2026-10-28T11:55:24.571621+01:00"
 duplicates: []
@@ -10,5 +9,5 @@ id: v7ved3g6h12ks76mw5n0
 labels: []
 related_issues:
 - v3ved3g6h12ks76mw5n0
-status: closed
-updated: "2026-10-28T12:06:48.500126+01:00"
+status: open
+updated: "2026-10-29T08:29:02.38982+01:00"
