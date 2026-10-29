@@ -1,0 +1,3 @@
+# versed: a comment in runnerauth_test says the runner relay is not built
+
+versed/runnerauth_test.go, in TestARunnerProvesItselfWithItsWorkloadToken: the comment reads "A runner relays nobody until its relay is built", and the assertion beneath it is that an account to relay is refused as "never an account". The relay is built (versed/auth.go, asRunner and relayTask): a runner carries a task's request as the task's owner, and an account is what it never carries. The comment says so.
