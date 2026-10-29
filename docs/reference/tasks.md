@@ -9,21 +9,31 @@ to run a task, watch it, steer it and answer its questions.
 
 ```sh
 cat > spawn.tony <<'EOF'
-prompt: summarize the open issues
-environment: {systems: {network: {mode: open}}}
+prompt: summarize the open pull requests of acme/app
+environment:
+  systems:
+    network: {mode: open}
+    git: [{repo: acme/app, fetch: {}}]
+    github: [{repo: acme/app, list-prs: {}, read-pr: {}}]
+autonomy:
+- {then: allow}
 EOF
 verse task run -f spawn.tony               # prints a run-… id
 verse task run -f spawn.tony --wait        # …and block for the final output
 verse task run -f spawn.tony --attach      # …and stream it
-echo '{script: "go test ./...", environment: {systems: {network: {mode: open}}}}' |
+echo '{script: "cd app && go test ./...", environment: {systems: {network: {mode: open}, git: [{repo: acme/app, fetch: {}}]}}}' |
   verse task run -f -                      # a script, no model, from stdin
 verse task
 verse task get <id>        # snapshot: status, prompt, agent, runner, result, pending gates, autonomy
-verse task say <id> "also mention the dial"   # an ask to the task: said to <id>: <ask id>
-verse task autonomy <id> '[{match: {system: commands}, then: ask}, {then: ask}]' --as you@example.com
+verse task say <id> "also say which ones wait on a review"   # an ask to the task: said to <id>: <ask id>
+verse task autonomy <id> '[{match: {system: github, verb: read-pr}, then: ask}, {then: allow}]' --as you@example.com
 verse task autonomy <id> --file autonomy.tony
 verse task cancel <id>
 ```
+
+The spawn checks out acme/app, which the task may only fetch, and gives the two reads of its pull
+requests. Its environment gives nothing that writes, so its autonomy lets every step go
+unasked.
 
 `task run` takes a spawn, written as a charter's `spawn:` is: the work (`prompt` or `script`),
 the `agent` a prompt is for, the `environment` the run works in, its `autonomy`, and the rest
@@ -39,8 +49,9 @@ is a flag: `--attach`, `--wait`, `--converse`, `--name` and `--as`.
 | `say` | gives the agent new instructions |
 | `autonomy` | replaces the [autonomy](../glossary.md#autonomy), what each step gets, with a whole one. The runner checks each row against the task's environment, which is fixed for the run, and applies it at the next [boundary](../glossary.md#boundary), with no restart. A replacement decides among what the environment gives and adds nothing to it: a row that can match nothing the environment gives is refused. |
 
-`--as` names who made the change. Both commands work wherever the task runs: the local runtime
-applies them directly, and a remote worker gets them through its runner.
+`autonomy --as` names who made the change. `say` is made as whoever `verse` acts as. Both
+commands work wherever the task runs: the local runtime applies them directly, and a remote
+worker gets them through its runner.
 
 The `spawn` of a [rule](../glossary.md#rule) runs a task the same way. What a charter may say
 in a spawn is in [the action of a rule](action.md#action-what-fires).
@@ -48,9 +59,12 @@ in a spawn is in [the action of a rule](action.md#action-what-fires).
 ### `answer`: what finished means
 
 ```tony
-prompt: check every reference in docs/runners.md
+prompt: check every link in app/docs/install.md
 answer: {broken: !irtype []}
-environment: {systems: {network: {mode: open}}}
+environment:
+  systems:
+    network: {mode: open}
+    git: [{repo: acme/app, fetch: {}}]
 ```
 
 A spawn's `answer` is a tony match pattern. It is the run's definition of **done**, whether a
@@ -122,7 +136,12 @@ block gives is refused before any row is read ([systems](../systems/README.md#a-
 | `git` | a repository checked out in the task's workspace: `repo` (`owner/name`, or `host/owner/name`), `from` (the branch the checkout starts on; absent is the default branch), and the verbs it gives with their shapes, `fetch: {}` and the `push` shapes ([git](../systems/git.md)). |
 | `git-issue` | a repository's own tracker, of a repository `git` checks out. `{repo: acme/app}` gives every one of its verbs ([git-issue](../systems/git-issue.md)). |
 | `network` | what the run may reach: `{mode: none}`, `{mode: open}` (the host's network), or `{mode: allow, tcp-client: [{host: …, port: …}]}`. Absent is `none`. It is built once, when the run starts, and the runner refuses a mode its sandbox cannot build ([the network](../systems/inside.md#the-network)). |
-| `files`, `commands`, `agent`, `question` | what a doer does inside its run. `files: {}` gives every write, `commands: {run: {command: "make *"}}` the commands it names ([files, commands and agent](../systems/inside.md)). |
+| `github` | a GitHub repository's pull requests, of a repository `git` checks out: `create-pr`, `update-pr`, `list-prs` and `read-pr`, where the runner's forge is GitHub ([github](../systems/github.md)). |
+| `github-issue` | a GitHub repository's issues, of a repository `git` checks out: `create`, `comment` and `close` ([github-issue](../systems/github-issue.md)). |
+| `linear-issue` | Linear's issues: `create` in a `team`, `comment` and `close` on an `issue` ([linear-issue](../systems/linear-issue.md)). |
+| `slack` | Slack's channels: `post`, `reply`, `read` and `react`, each in a `channel` ([slack](../systems/slack.md)). |
+| `verse` | verse itself, acted on as the person the task runs for: `ask-create`, `ask-get`, `ask-list`, `data-get`, `data-put`, `data-rm`, `charter-get`, `charter-check`, `charter-install` and `charter-remove`, the verbs of `verse mcp` ([verse](../systems/verse.md)). |
+| `files`, `commands`, `agent`, `question` | what a doer does inside its run. `files: {}` gives every write, `commands: {run: {command: "make *"}}` the commands it names ([files, commands and agent](../systems/inside.md), [question](../systems/question.md)). |
 
 A script calls the task's tools from its shell with `verse-call-tool`: `git-push`, `git-fetch`,
 `github-create-pr`, `question-ask`, and the others its environment gives. Each call is an action
@@ -203,7 +222,7 @@ that ignored a spawn's `autonomy:` would silently disobey a charter that asks to
 verse question                              # task questions, and engine gates that ASK
 # - gate: autonomy[1]
 #   id: run-f3e31ed0390f~d1
-#   task: run-f3e31ed0390f
+#   from: {task: run-f3e31ed0390f}
 #   reason: "files.write path=docs/x.md"
 #   step: files.write
 #   fields: {path: docs/x.md}
@@ -214,7 +233,8 @@ verse question approve run-f3e31ed0390f~d1 --as you@example.com  # or: task appr
 A question names the row that asked it: the row's `name`, or its place in the list, such as
 `autonomy[1]`. Its clock, its default and its `need` are the row's, whatever the runner sends.
 `turn`, `ask` and `question-ask` name the questions that are no row's, a conversation's turn and
-a task's own, so no row takes one of those names.
+a task's own. `environment` names the refusal of a step outside the environment, which no row
+decides. So no row takes one of those four names.
 The `~` between the task and the gate needs no quotes, in a shell or in a URL.
 
 **Verse checks who may answer before it delivers the answer** ([tasks and
@@ -274,8 +294,8 @@ params are the verb's:
 | `agent.call-sub-agent` | `agent` |
 | `network.tcp-client` | `host`, `port` (under a network of `allow`) |
 
-The issue trackers' verbs (`git-issue`, `github-issue`, `linear-issue`) and Slack's are on
-[their pages](../systems/README.md), one page for each system. Verse keeps each system's verbs
+The issue trackers' verbs (`git-issue`, `github-issue`, `linear-issue`), Slack's and verse's
+are on [their pages](../systems/README.md), one page for each system. Verse keeps each system's verbs
 and params as a document at `verse.systems.<name>` (`verse d verse systems git` reads one).
 A runner's tools are checked against these documents when it starts.
 
@@ -306,10 +326,11 @@ is `commands.run`. So a row over it stops the command before it runs:
 
 ```sh
 cat > tests.tony <<'EOF'
-prompt: run the tests
+prompt: run the tests of app
 environment:
   systems:
     network: {mode: open}
+    git: [{repo: acme/app, fetch: {}}]
     commands: {}
 autonomy:
 - name: shell
@@ -333,9 +354,10 @@ verse question approve run-4e919ce01f99~d1 --as ana@example.com   # the command 
 verse task get run-4e919ce01f99                                   # status: done
 ```
 
-The environment gives `commands` and no other system, so the run has a shell and nothing else:
-no `write_file`, no sub-agent. The last row is the dial, and here it decides nothing, since the
-`shell` row matches every command.
+The environment gives a checkout of acme/app that the task may only fetch, and `commands`. So
+the run has the repository and a shell, and nothing else: no `write_file`, no sub-agent, no push.
+The last row is the dial. It lets a fetch go, and decides no command, since the `shell` row
+matches every command.
 
 If nobody answers, the deadline settles the question on `deny` after ten minutes. The command
 never runs. The question's record says `by: deadline` and `verdict: deny`. The refusal comes back
@@ -369,7 +391,7 @@ verse question run-4708ef20b92d~2 --answer reply --say "the second one" --as you
 Attached, you see the question as a prompt:
 
 ```
-{cursor: 4 kind: pending id: run-4708ef20b92d~2 tool: ask text: "which one?" …}
+{cursor: 4 kind: pending id: run-4708ef20b92d~2 tool: question-ask text: "which one?" …}
   ❓ which one?
   > the second one
   → sent
@@ -405,6 +427,11 @@ refused, at any depth: it would be theirs, on any ask that waits on them. Once r
 of their own. The task's record carries its launch, `environment` and `virtualKey` (the address
 its spawn named, never the key), so a restart that resumes the task holds a `then` within it as
 before.
+
+A task may also install charters as that person, with `verse-charter-install`. A spawn among
+their rules is held within the task in the same way, on any runner, and never gives
+`verse.charter-install`: what a task installs cannot install charters
+([the verse system](../systems/verse.md)).
 
 ### A conversation
 
@@ -456,8 +483,8 @@ that.
 ## The mirror
 
 The [mirror](../glossary.md#mirror-of-tasks) writes every task into the store as
-`verse.task.instance.<id>`. So you watch tasks by watching entities. A task that completes is an
-entity that changes, and a rule can react to it.
+`verse.task.instance.<id>`. So you watch tasks as you watch any data. A task that completes is
+data that changes, and a rule reacts to it as it reacts to any data.
 
 ```sh
 verse watch verse task instance '*'
@@ -466,10 +493,10 @@ verse data verse task instance <id>
 
 ```tony
 payload:
-  autonomy: [{match: {system: commands}, then: ask}, {then: ask}]
+  autonomy: [{match: {system: github, verb: read-pr}, then: ask}, {then: allow}]
   autonomyBy: user:you@example.com
   agent: {name: verse, model: claude-sonnet-5}
-  lastAction: run_bash
+  lastAction: github-list-prs
   lastOutput: summarizing
   runner: local
   status: done

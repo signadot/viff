@@ -3,7 +3,7 @@
 This page is the model of permissions. It defines the words and states the rules. Two other
 pages go with it:
 
-- [Permissions, walked](perms-guide.md) shows the model by example, from an entity of your own
+- [Permissions, walked](perms-guide.md) shows the model by example, from data of your own
   to a gate that a resolver answers.
 - [The permissions reference](reference/perms.md) has every field, rule and table.
 
@@ -44,8 +44,9 @@ group's members, `audience:<address>` for whoever holds the same level at that a
 `answering:<address>` for the resolvers answering for it.
 [The grammar](reference/perms.md#the-grammar) is in the reference.
 
-Every request names who makes it. The CLI sends the `user:` or `agent:` in its config. The flag
-`-as` names somebody else. Verse refuses a request that writes and names nobody.
+Every request names who makes it. The CLI sends the `user:` or `agent:` in its config. On the
+commands that take it, the flag `-as` names somebody else. Verse refuses a request that writes
+and names nobody.
 
 **A principal is what the request says, unless the verse verifies it.** By default, verse
 trusts a name as much as it trusts `-as`, and no more. A deployment can name the identity
@@ -139,9 +140,9 @@ The charter a deployment ships is installed as the system, and acts as the syste
 the repository).
 
 **A spawn with `as: subject`** acts for the owner of the record that fired it. Its task acts as
-`pair:<owner> <installer>`, and may do what the owner may. The pair names the installer so that
-the record says what the task acted through. It adds no authority and takes none away. A rule
-may say `as: subject` only over a place its installer owns. So a rule cannot act as somebody
+`pair:<owner> via:<the rule's address>`, and may do what the owner may. The pair names the
+rule so that the record says what the task acted through. It adds no authority and takes none
+away. A rule may say `as: subject` only over a place its installer owns. So a rule cannot act as somebody
 whose records it only selects
 ([`as: subject`](reference/action.md#as-subject--a-task-for-whoever-wrote-the-record)). A pair
 is a principal and never a grantee: nothing is granted to one.
@@ -158,7 +159,7 @@ that an admin opens to them
 
 Everything under `verse` belongs to the system: rules, tasks, runners, iods, resolvers,
 schedules, open questions, and the records themselves. You do not write there directly. You
-make things with the verbs that own them (`charter -a`, `task run`, `io add`,
+make things with the verbs that own them (`charter -a`, `task run`, `iod add`,
 `question approve`). What a verb makes for you is yours.
 
 In an open verse, anybody may use those verbs. Anybody may read what stands under `verse`,
@@ -169,6 +170,12 @@ react to it. A rule may not write into it.
 
 A [task](glossary.md#task) belongs to its spawner. The runner that works the task is granted
 `read-write` and `control` on that task and nothing else.
+
+A task may act on verse itself, as its owner would, through the
+[verse system](systems/verse.md). The runner carries each such request with its own token, and
+names the task. Verse admits it as the task's owner, and only while the task runs
+([a task carried by its runner](reference/perms.md#a-task-carried-by-its-runner)). The runner
+gains nothing by it: the request may do what the owner may, and no more.
 
 These principals may answer a gate's [question](glossary.md#question):
 

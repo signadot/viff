@@ -38,24 +38,30 @@ task, `{task}`, and is absent where it names nobody. `by` is who settled it.
 ```sh
 cat > then.tony <<'EOF'
 spawn:
-  prompt: merge verse/ask to main
+  prompt: fast-forward main to ask-ui, run the tests, and push main
   environment:
     systems:
       network: {mode: open}
-      commands: {run: {}}
+      commands: {}
+      git:
+      - repo: acme/app
+        from: main
+        fetch: {}
+        push: {ref: refs/heads/main, force: "false", delete: "false"}
   autonomy:
-  - match: {system: commands}
-    then: allow
-  - then: deny
+  - {match: {system: commands}, then: allow}
+  - {match: {system: git, verb: fetch}, then: allow}
+  - {then: ask}
 EOF
-verse ask land -q "Review verse/ask this week? If not, any objection?" \
+verse ask land -q "Merge ask-ui into main of acme/app? No answer in 48h is a yes." \
   --to dana@example.com --due 48h --on-silence yes --then @then.tony
 ```
 
 `then.tony` is what follows a yes: an agent given the prompt, in an environment that gives it the
-network and the shell, and an autonomy that runs the shell unasked and refuses anything else.
-A spawn means only what it says: one that names no network has none, and verse checks it
-against the runner it would run on when you ask, not after the yes.
+network, the shell, and a checkout of acme/app that it may fetch and push to `main` without a
+rewrite. The autonomy runs the shell and the fetch unasked, and asks you before the push. A spawn
+means only what it says: one that names no network has none, and verse checks it against the
+runner it would run on when you ask, not after the yes.
 
 `verse ask` answers with the ask's id: `land-` and a suffix. Commands take the name or the id.
 If you have used one name for two asks, verse refuses the name and prints both ids, so you can
@@ -67,9 +73,9 @@ You do not answer your own ask, unless you named yourself in `--to`.
 
 `--due` takes a date (`2026-10-02T17:00:00Z`) or a duration from now. If Dana answers yes, the
 ask gets `answer: yes`, and its `then` runs as a task for you. A no gets `answer: no` and runs
-nothing. No answer by the date is a no, unless you said otherwise. This ask asks for objections,
-so `--on-silence yes` makes silence a yes. You choose it when you ask, and it stays when the
-date moves.
+nothing. No answer by the date is a no, unless you said otherwise. Here silence means nobody
+objects, so `--on-silence yes` makes silence a yes. You choose it when you ask, and it stays
+when the date moves.
 
 Leave out `--to`, and anyone may answer. Leave out `--then`, and the ask is a vote: the answer
 is all it leaves.
@@ -77,12 +83,31 @@ is all it leaves.
 A `then` that is a script runs exactly what it says, as `verse task run` runs one:
 
 ```sh
-verse ask tag -q "Tag v1.2?" --to dana@example.com \
-  --then '{spawn: {script: "git tag v1.2 && git push origin v1.2", environment: {systems: {network: {mode: open}}}}}'
+cat > release.tony <<'EOF'
+spawn:
+  script: |
+    git -C app merge --ff-only mirror/main
+    verse-call-tool git-push -repo app -branch release
+  environment:
+    systems:
+      network: {mode: open}
+      git:
+      - repo: acme/app
+        from: release
+        fetch: {}
+        push: {ref: refs/heads/release, force: "false", delete: "false"}
+  autonomy:
+  - {then: allow}
+EOF
+verse ask release -q "Fast-forward release to main for v1.2?" --to dana@example.com --then @release.tony
 ```
 
-A prompt lets an agent choose its own actions, so that task's own gates ask you. A script is
-what you wrote, so it runs as you wrote it.
+The script fast-forwards the checkout's `release` to `main`, and the runner pushes it. A push is
+the runner's act, with the runner's credential, so the script asks for it with
+`verse-call-tool git-push`, and the `git` block gives that one push.
+
+A prompt lets an agent choose its own actions, so that task's own rows ask you. A script is
+what you wrote, so its autonomy lets it run as you wrote it.
 
 A `then` may also answer another ask, or raise one, as you ([composing asks](#composing-asks)).
 
@@ -126,8 +151,8 @@ and `ship` still waits on you. If `ship` needs two proceeds, yours is one ballot
 for another.
 
 **Asks chain.** `{ask: {…}}` takes what `verse ask` takes (name, question, to, due,
-onSilence, then, about, labels, keep), and raises that ask as you on a yes. A `due` that is a
-duration counts from the yes. Its own `then` may answer or ask in turn. Here Dana's yes asks Ann
+onSilence, then, else, about, labels, keep), and raises that ask as you on a yes. A `due` that
+is a duration counts from the yes. Its own `then` may answer or ask in turn. Here Dana's yes asks Ann
 to deploy, and Ann's yes answers `ship`:
 
 ```sh

@@ -9,7 +9,7 @@ mirrored, a question that a [rule](glossary.md#rule) posed, a branch that an
 [iod](glossary.md#iod) reflected. The permissions on those things follow from who asked for the
 work, not from who typed. This surprises people, so the page walks it in five steps:
 
-1. your own entities;
+1. your own data;
 2. a task you run, and its gates;
 3. a [charter](glossary.md#charter), and what it owns;
 4. a gate with no resolver behind it;
@@ -68,7 +68,7 @@ A name carries its kind before the colon. A request presents one of three kinds:
 |---|---|---|
 | `user:you@example.com` | a person | `user:` or `-as`. A bare email is read as this kind. |
 | `agent:<name>` | a harness that drives verse from outside | `agent:` in its config, instead of `user:` |
-| `runner:<identity>` | a [worker](glossary.md#worker) | it claims work as `-as runner:<identity>`. A runner reached by url acts as the `-identity` on its entity. |
+| `runner:<identity>` | a [worker](glossary.md#worker) | it claims work as `-as runner:<identity>`. A runner reached by url acts as the `identity` its registration names. |
 
 Verse refuses a bare word such as `-as verse-runner`, and the refusal gives the grammar.
 [reference/perms.md](reference/perms.md#the-grammar) has the whole grammar. The name is
@@ -117,10 +117,10 @@ Two things to know before the first step. Each is a reasonable guess, and wrong:
   under its own kind, and grants it exactly what a person is granted. So read
   `[user:*, agent:*]` as "people".
 
-## Step 1: your own entities, and who wrote them
+## Step 1: your own data, and who wrote it
 
-With `user:` set, everything you type is yours. The seeded entities from
-[the tutorial](tutorial/data.md) are a good place to start. So is an address of your own:
+With `user:` set, everything you type is yours. The data that
+[the tutorial](tutorial/data.md) seeds is a good place to start. So is an address of your own:
 
 ```sh
 verse data spaces you notes -put '{todo: [buy milk]}'
@@ -177,7 +177,7 @@ from the mirror ([perms.md](perms.md#verses-own-half)).
 
 ## Step 2: a task you run, and what it may do for its gates
 
-A [task](glossary.md#task) is an entity that the runtime mirrors. The mirror writes the task
+A [task](glossary.md#task) is data that the runtime mirrors. The mirror writes the task
 *as whoever asked for it*:
 
 ```sh
@@ -195,7 +195,10 @@ Verse writes the task's record as whoever runs it, and that write is the check f
 may read the task, by the default it was created with. Only you and the runtime write it.
 
 **The runner that works the task holds the task and nothing else.** A runner reached by url
-acts as `runner:` with the `identity` on its entity, and that is the claim.
+acts as `runner:` with the `identity` its registration names, and that is the claim. What the
+task does on verse itself, through the [verse system](systems/verse.md), the runner carries as
+the task's owner, only while the task runs
+([a task carried by its runner](reference/perms.md#a-task-carried-by-its-runner)).
 
 When a worker claims the task, verse grants it `read-write` and `control` on the task and on
 this run. Every report after that is written as the worker. That grant stops at the task's
@@ -214,9 +217,13 @@ own question ([perms.md](perms.md#grants)).
 
   ```tony
   # check.tony
-  prompt: check the migration
+  prompt: check that the migration in app/db applies to an empty database
   subject: demo.pr.1
-  environment: {systems: {network: {mode: open}, commands: {}}}
+  environment:
+    systems:
+      network: {mode: open}
+      git: [{repo: acme/app, fetch: {}}]
+      commands: {}
   autonomy:
   - name: shell
     match: {system: commands, verb: run}
@@ -232,8 +239,8 @@ own question ([perms.md](perms.md#grants)).
 What the task may *do* in the world is a different question: push, open a pull request, call a
 sub-agent, reach a host. The spawn's `environment` says that, system by system, fixed when it
 starts, and the runner refuses a launch whose environment goes past what it offers
-([who does the work, and with what](reference/tasks.md#who-does-the-work-and-with-what)). A permissions grant says who may touch an
-entity. A task's environment says what the task may do, and its autonomy what it does unasked.
+([who does the work, and with what](reference/tasks.md#who-does-the-work-and-with-what)). A permissions grant says who may touch
+data. A task's environment says what the task may do, and its autonomy what it does unasked.
 
 **Answering.** You answer your task's questions as their co-owner, and so does whoever the
 line names. Verse refuses the runner ([perms.md](perms.md#tasks-and-gates)).
@@ -292,14 +299,15 @@ name: ben-desk
 match: {about: "verse-dev.merge.train.*"}
 method: {driver: service}
 EOF
-verse resolver grant ben-desk -as user:ben@example.com
+VERSE_USER=ben@example.com verse resolver grant ben-desk
 ```
 
-The grant is Ben's, at `verse.for.user:ben@example.com`. From then on, `ben-desk` serves an
-ask put to Ben about a merge train. It may read the ask (`answering:` on the ask's `read`). Its
-answer, made as the resolver, is Ben's ballot, with `via` naming the resolver. For the asks about
-a place that name nobody, the place's owner on record grants at the place. Two resolvers never
-answer for one party on one ask: verse refuses a grant that would let them.
+Ben makes the grant, so `VERSE_USER` names him for that one command. The grant is Ben's, at
+`verse.for.user:ben@example.com`. From then on, `ben-desk` serves an ask put to Ben about a
+merge train. It may read the ask (`answering:` on the ask's `read`). Its answer, made as the
+resolver, is Ben's ballot, with `via` naming the resolver. For the asks about a place that name
+nobody, the place's owner on record grants at the place. Two resolvers never answer for one
+party on one ask: verse refuses a grant that would let them.
 
 **What a service holds.** A resolver's service acts as whoever installed it
 ([platform/perms.md](platform/perms.md#what-a-resolver-service-holds), in the repository).

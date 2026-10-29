@@ -67,7 +67,7 @@ Whether a scope should also run the rules of baseline is an open question
 
 A scope has two halves, and they layer in two different ways.
 
-**The world is copied.** The entities a charter is about, under `demo`, `git`, `notes` or any
+**The world is copied.** The data a charter is about, under `demo`, `git`, `notes` or any
 other place, use the copy-on-write overlay ([using a scope](#scopes)).
 
 **The program is referenced.** Rules, tasks, gates and flows are records in the store. A scope

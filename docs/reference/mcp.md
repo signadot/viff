@@ -43,9 +43,9 @@ claude mcp add verse-read -- verse mcp -read-only
 
 | Tool | The command | What it does |
 |---|---|---|
-| `verse_data` | `verse data` | reads entities at an address: `at`, `if`, `if_at`, `trim`, `paths`, `depth` |
+| `verse_data` | `verse data` | reads the data at an address: `at`, `if`, `if_at`, `trim`, `paths`, `depth` |
 | `verse_data_put` | `verse data <address> --put` | writes a value at an address, on `create`, `update` or `expect`, with `grants` for a node it creates |
-| `verse_data_rm` | `verse data <address> --rm` | removes an entity, or one field of one |
+| `verse_data_rm` | `verse data <address> --rm` | removes the data at an address, or one field of it |
 | `verse_question` | `verse question` | lists the questions waiting on you, or shows one by `id` |
 | `verse_question_answer` | `verse question <id> --answer` | answers a question with an `option` |
 | `verse_ask` | `verse ask` | lists your asks, or shows one by name or id |

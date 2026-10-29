@@ -269,7 +269,7 @@ its live tasks. The tree marks `heldBy` on a live task, and `suspended` on each 
 work is held.
 
 A subject with no work gets a tree too, if something would hold its work. The tree has no
-branches: it is the address itself, or each stored entity that a pattern selects.
+branches: it is the address itself, or each address with data that a pattern selects.
 
 A tree with a live task says `active: true`. `-active` shows only those trees, `-no-active`
 shows only the others, and neither flag shows every tree.

@@ -8,8 +8,8 @@ that page calls "wrapping and enforcing the verse invariants".
 In short, the task-control interface is the `runnerd` HTTP contract behind a base URL, made
 resumable.
 
-- Verse is its client. Verse mirrors it into the durable `verse.task.instance` entity, the
-  [instance record](glossary.md#instance-record).
+- Verse is its client. Verse mirrors it into the durable record at `verse.task.instance.<id>`,
+  the [instance record](glossary.md#instance-record).
 - The local supervisor is one built-in implementation of the same URL contract. It has no
   privileged shortcut.
 - Anyone else plugs in a URL, completely outside verse: k8s, AWS Lambda, a service for work done
@@ -48,8 +48,8 @@ Verse defines a task as a contract, not as "an LLM loop":
    it is outside the environment, then by the autonomy.
 4. A read plane streams events.
 5. A control plane steers the task at boundaries.
-6. Verse mirrors the whole task to a `verse.task.instance` entity, and the task ends with a
-   terminal.
+6. Verse mirrors the whole task to its record at `verse.task.instance.<id>`, and the task ends
+   with a terminal.
 
 Task control is the durable form of the in-process `Supervisor`, which enforces that contract.
 
@@ -113,9 +113,9 @@ about steps like this". It does not mean "approve the step already in front of m
 dissolved the pending question, an autonomy change would approve one specific action that nobody
 looked at.
 
-A task-control backend is a reconciler over the `verse.task.instance` resource. It is not itself
-a gated task. Governing a task must not require another governed task, or the regress never
-stops.
+A task-control backend is a reconciler over the task's record at `verse.task.instance.<id>`.
+It is not itself a gated task. Governing a task must not require another governed task, or the
+regress never stops.
 
 A backend is the dual of the [source](glossary.md#source) of an [iod](io.md). A source reflects
 external state *into* the [store](glossary.md#store). A task-control backend runs and governs
@@ -129,12 +129,11 @@ is a controller, and it is the backend (see
 ## Idempotency ⇒ the restart discipline (`verse down; up`)
 
 A backend is a reconciler. So it must be level-triggered, and verse must be able to rebuild it
-from the durable entity. The same `Observe:Since` and `webhook:reconcile` law holds here as
+from the durable record. The same `Observe:Since` and `webhook:reconcile` law holds here as
 everywhere in verse. Two rules follow.
 
 **No control state of a task lives only in memory.** Pending gates, the worker of record, the control
-fields and the event cursor are all on the `verse.task.instance` entity. A restart reads them
-again.
+fields and the event cursor are all on the task's record. A restart reads them again.
 
 **`verse up` reconciles, and a resumed task is not an orphan.**
 
@@ -145,6 +144,9 @@ again.
 
 The work on a runner went on in the world while verse was down. Verse resumes where the
 work outlived the daemon, and orphans only what died with it.
+
+The reconcile reads baseline's tasks. A task that a [scope](glossary.md#scope) started is
+neither resumed nor orphaned at a restart: its record keeps the status it had.
 
 An open question follows the task that asks it.
 
@@ -167,7 +169,7 @@ goroutine in the verse process.
 ## Everything through the base URL: no privileged local path
 
 The engine is a client of a bound base URL. It spawns there, subscribes to the event stream, and
-mirrors the stream into the `verse.task.instance` entity. Durability is in verse, and not in the
+mirrors the stream into the task's record. Durability is in verse, and not in the
 runner.
 
 Each spawn binds its runner. The binding is `runner: <name>` in the charter or spec, and names
@@ -210,7 +212,7 @@ POST   /tasks               the launch (below)             launch → {id}
        201 built it · 200 it was already running · 400 the body does not parse, or the runner will not host it
 POST   /tasks/{id}/resolve  {id, choice, by, say?}         answer a gate: choice is proceed | deny, or an option the record names
        204 applied · 404 no such decision, or it is already answered
-POST   /tasks/{id}/say      {instruction, by?}             say to it (re-prompt)
+POST   /tasks/{id}/say      {instruction, by?, ask?}       say to it (re-prompt); ask is the ask the words are
        204 applied · 410 it has ended, and hears nothing · 422 it takes no words (a script)
 POST   /tasks/{id}/cancel   {reason?, by?}                 end it, and say why
 POST   /tasks/{id}/pause    {by?}                          the operator's hold (docs/control.md)
@@ -282,20 +284,20 @@ is a plain sequence number that the runner assigns, and it need not be a global 
 The timestamp `at` is not built: an event carries a cursor and no time (see
 [what is built](#what-is-built)).
 
-Verse keeps its high-water cursor on the entity. On a restart, it knows where to resume.
+Verse keeps its high-water cursor on the task's record. On a restart, it knows where to resume.
 
 ### The canonical kinds → what verse mirrors
 
-| `kind` | key fields | entity projection |
+| `kind` | key fields | what the record gets |
 |---|---|---|
 | `boundary` | `seq` | a safe point where control lands |
-| `say` | `text, by` | an utterance: `by` empty = the agent's narration → `say` preview; `by` set = a say-to folded in → journal only |
+| `say` | `text, by, id?` | an utterance: `by` empty = the agent's narration → `say` preview; `by` set = a say-to folded in → journal only; `id` is the ask the words were, which settles as `heard` |
 | `exec` | `tool, step?, fields?, text, err` | `lastAction`, `lastOutput` + journal; `step` and `fields` name the call, as its `decision` did |
-| `pending` | `id, gate, step, fields, tool, reason, options?, deadline?, answerers?` | `pending {id, gate}` — verse routes it to a Resolver; `options` (each `{id, need}`) and `deadline` (`{within}`) shape the question as a charter gate's would, defaulting to proceed or deny at one each |
-| `decision` | `id, gate, step?, fields?, choice, proceed, by, reason` | clears `pending`; records the resolution — `choice` is the option, `proceed` the same as yes or no; `gate` is the autonomy's row that decided the call, whether it allowed, denied or asked, or `environment` for a step outside it |
+| `pending` | `id, gate, step, fields, tool, action, text, options?, deadline?, answerers?` | `pending {id, gate}` — verse routes it to a Resolver; `options` (each `{id, need}`) and `deadline` (`{within}`) shape the question as a charter gate's would, defaulting to proceed or deny at one each |
+| `decision` | `id, gate, step?, fields?, choice, proceed, by, text` | clears `pending`; records the resolution — `choice` is the option, `proceed` the same as yes or no; `gate` is the autonomy's row that decided the call, whether it allowed, denied or asked, or `environment` for a step outside it |
 | `child` | `child, status` | flow-tracking (sub-task spawn/join) |
 | `autonomy` | `text, by` | records a change of autonomy: `text` is the autonomy in one line, `2 row(s), default ask` |
-| `status` | `text: running\|paused\|resumed\|done\|failed\|cancelled`, `result?`, `err?` | `status`, `paused`; on terminal `result` (CAS-once) and `err`, why it ended, which the status alone never says |
+| `status` | `text: running\|paused\|done\|failed\|cancelled`, `by?`, `err?` | `status`, `paused`; on terminal `result` (CAS-once), read from `GET /tasks/{id}`, and `err`, why it ended, which the status alone never says |
 
 That table is the durable contract. It is `mirror.Reflect`, plus `autonomy`, minus the
 `gap` marker. The `gap` marker says something about the *reading*, and not about the task.
@@ -343,15 +345,16 @@ answer.
 **A stream that ends without a terminal did not end because the task ended.** The terminal is
 always the last frame. If it is absent, the connection broke. Resume from the last cursor, and
 conclude nothing about the work. `mirror.Reflect` does exactly that. It backs off between
-attempts, and publishes `observed: false` on the entity while it is disconnected.
+attempts, and publishes `observed: false` on the record while it is disconnected.
 
 An index that looks confident while it is only stale is worse than one that says it is stale.
 
-The terminal is a `status` event: `done|failed|cancelled` plus `result`. Verse CAS-writes it
-once. `?since=<terminal cursor>` replays it and closes. The `/events` of a finished task is a
-finite record that a reader can replay. So a verse that restarts *after* completion still learns
-the outcome. A reader that has seen the terminal should stop connecting again, because there is
-nothing left to connect to.
+The terminal is a `status` event: `done|failed|cancelled`, and `err` where it failed. Verse
+reads the result from the snapshot, and CAS-writes both once. `?since=<terminal cursor>`
+replays the terminal and closes. The `/events` of a finished task is a finite record that a
+reader can replay. So a verse that restarts *after* completion still learns the outcome. A
+reader that has seen the terminal should stop connecting again, because there is nothing left
+to connect to.
 
 The terminal is the one frame that a reader never loses. The runner may drop any other frame for
 a subscriber that cannot keep up, because an observer never stalls the loop. The `gap` marker
@@ -406,9 +409,9 @@ POSTs `resolve` again. If the first answer landed, the runner refuses the second
 answered, and the replay carries `decision@41`. Verse dedups by cursor. In either case there is
 one decision: no gate is lost, and nothing pushes twice.
 
-## Invariants verse CAS-enforces on the entity
+## Invariants verse CAS-enforces on the record
 
-Three things hold on the `verse.task.instance` entity, even when a runner or a worker misbehaves:
+Three things hold on the task's record, even when a runner or a worker misbehaves:
 
 - terminal-once (the status is monotonic);
 - writes by the worker of record only;
@@ -430,6 +433,10 @@ For each task, an implementation must:
   ([who the runner is](runners.md#who-the-runner-is)); announce itself at start with
   `POST /runners/hello` and that token, in a loop until verse answers 2xx, again after a `401` at
   verse's door and never after a `403`; and serve `GET /ready` as 200 as soon as it serves;
+- where it offers the [verse system](systems/verse.md), carry each of a task's verse calls to
+  verse with its own token and `Verse-Task: <the task's id>`, while the task runs; verse admits
+  the call as the task's owner ([a task carried by its runner](reference/perms.md#a-task-carried-by-its-runner)).
+  A runner that reaches no verse does not offer `verse`, and refuses a launch that names it;
 - serve `GET /tasks/{id}` as current truth;
 - serve `GET /events?since=` with replay-then-live, and a `gap` frame below its watermark;
 - emit the kinds above;
@@ -448,7 +455,7 @@ Everything above is built, except what this section names.
 - The seam itself, `task.Runner` and `task.Handle`, carries every task. The engine holds a
   handle, and never a concrete `*Task`.
 - Events carry a per-task cursor with a bounded ring. `GET /events?since=N` replays and then goes
-  live. Verse keeps its high-water cursor on the entity.
+  live. Verse keeps its high-water cursor on the task's record.
 - `client.HTTP(baseURL)` drives a remote runner over the verse-facing contract.
 - The reconcile at startup resumes a task where the work outlived the daemon, and does not orphan
   it.
