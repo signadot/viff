@@ -222,7 +222,7 @@ func (s *Server) listRunners(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := make([]api.RunnerRow, 0)
-	ents, bad, readErr := readRegistrations[api.Runner](store, runnersSystem, isRunnerRef)
+	ents, bad, readErr := readRunners(store)
 	// READ ONCE, COUNT PER RUNNER. The counts are a walk of every task instance, and asking
 	// inside the loop made the listing cost runners x instances for an answer that is one pass
 	// over the same rows.
@@ -280,8 +280,8 @@ func (s *Server) getRunner(w http.ResponseWriter, r *http.Request) {
 	if !installed(w, r, fmt.Sprintf("runner %q", name), ok, err) {
 		return
 	}
-	var e api.Runner
-	if err := codec.FromNode(ent.Payload, &e); err != nil {
+	e, err := decodeRunner(ent.Payload)
+	if err != nil {
 		http.Error(w, fmt.Sprintf("runner %s is stored in a shape this verse can't read: %v", ent.Ref, err), http.StatusInternalServerError)
 		return
 	}
@@ -294,6 +294,12 @@ func (s *Server) getRunner(w http.ResponseWriter, r *http.Request) {
 func (s *Server) checkRunner(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	e, ok, err := findRunnerErr(s.scopedStore(r), entity.JoinSegs([]string{name}))
+	if why := unreadableRunner(s.scopedStore(r), name); !ok && err == nil && why != nil {
+		// A check reads the runner, not the registration: one this verse can't read is added
+		// again, and a check saying "not installed" would send the operator to add a second.
+		codec.HTTPError(w, r, http.StatusConflict, why.Error())
+		return
+	}
 	if !installed(w, r, fmt.Sprintf("runner %q", name), ok, err) {
 		return
 	}
@@ -383,6 +389,9 @@ func (s *Server) offersOf(store entity.Reader, name string) (runner.Description,
 		return runner.Description{}, "", errors.New(notRead(fmt.Sprintf("runner %q", name), err))
 	}
 	if !ok {
+		if why := unreadableRunner(store, name); why != nil {
+			return runner.Description{}, "", why
+		}
 		return runner.Description{}, "", fmt.Errorf("no runner %q is installed — a spawn naming a runner that is "+
 			"not installed is refused rather than run somewhere else", name)
 	}
@@ -641,6 +650,9 @@ func (s *Server) runnerFor(store entity.Reader, name string) (client.Launcher, s
 		return nil, "", "", errors.New(notRead(fmt.Sprintf("runner %q", name), err))
 	}
 	if !ok {
+		if why := unreadableRunner(store, name); why != nil {
+			return nil, "", "", why
+		}
 		// IN THE SPAWNER'S VIEW: the store is theirs, so a runner they may not read and one
 		// that is not there are one answer, and the listing beside it is what they may read.
 		// A failed listing names none rather than saying none are installed.

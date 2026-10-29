@@ -20,7 +20,9 @@ so a description is there only while the runner proved it is its `subject`: one 
 does not prove it has its description removed, and takes no spawn until a check finds it proving
 itself. The handshake is made again before every launch, so `described` is the last launch's
 result at the latest. A registration an older verse wrote may hold `verified` or `unverified`
-beside it; verse removes both at the next describe.
+beside it; verse removes both at the next describe. One an older verse wrote with no `subject`
+is a registration this verse can't read: `verse runner` lists it with why, it is no runner at the
+door and takes no spawn, and `verse runner add` under its name, with its `subject`, replaces it.
 
 A listing row (`verse runner`) also says `offers`, the names of the doers the runner described,
 an agent's name or `script`, empty where it has described none.

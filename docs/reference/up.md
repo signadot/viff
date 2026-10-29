@@ -358,7 +358,7 @@ auth:
 
 Without the block, the verse signs nothing and answers 404 at both addresses. What it signs is
 [a credential for what a gate let through](gates.md#a-credential-for-what-a-gate-let-through),
-and the token it presents to each runner registered with a `subject`, minted for that runner
+and the token it presents to each registered runner, minted for that runner
 alone ([who the runner is](../runners.md#who-the-runner-is)); the runners read the keys at the
 url they reach the verse at, and hold the tokens to `url` as the issuer's name.
 

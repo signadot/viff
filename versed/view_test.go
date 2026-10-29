@@ -17,7 +17,7 @@ func alicesRunner(t *testing.T, srv *Server, name string) {
 	entity.PolicyOf(srv.Store).SetRootChildGrants(nil)
 	if _, _, err := srv.Store.Write(entity.Write{
 		At:    runnerEntityRef(name).At(),
-		Value: entity.Obj{"name": name, "url": "http://127.0.0.1:1"}.Payload(),
+		Value: entity.Obj{"name": name, "url": "http://127.0.0.1:1", "subject": someSubject(t)}.Payload(),
 	}); err != nil {
 		t.Fatalf("installing runner %s: %v", name, err)
 	}

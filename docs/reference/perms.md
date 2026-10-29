@@ -334,9 +334,9 @@ A token is checked before the name is read:
 | `required` | whoever their token proves, and nobody else |
 
 **Verse verifies people, iods and registered runners, not agents.** The modes above verify
-people, `auth.iod` verifies the deployment's own iods, and a runner's registration says whether
-verse verifies it ([runners at the door](#runners-at-the-door)). An `agent:` principal, and a
-`runner:` whose registration names no `subject`, is taken as given, under every mode. An agent
+people, `auth.iod` verifies the deployment's own iods, and a runner proves itself by the
+`subject` its registration names ([runners at the door](#runners-at-the-door)). An `agent:`
+principal is taken as given, under every mode. An agent
 may read bindings, so `required` does not close the door to everybody who is not verified.
 
 An [`asserted` binding](#accounts-in-other-systems) is not answered to an iod's lookup under

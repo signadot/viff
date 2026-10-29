@@ -78,11 +78,73 @@ func findRunnerErr(r entity.Reader, ref string) (api.Runner, bool, error) {
 	if err != nil || !ok {
 		return api.Runner{}, false, err
 	}
-	var out api.Runner
-	if codec.FromNode(e.Payload, &out) != nil {
+	out, err := decodeRunner(e.Payload)
+	if err != nil {
 		return api.Runner{}, false, nil
 	}
 	return out, true, nil
+}
+
+// decodeRunner reads a registration as a runner, and holds it to what an install is held to.
+//
+// A DECODE IS NOT A CHECK. A registration an older verse wrote names no subject, and `subject`
+// may be absent from the document, so it decodes cleanly; read as it decodes, it would list as
+// an ordinary runner with a blank subject, take a token minted for nobody at the door, and fail
+// every spawn at the handshake with a cue (`verse runner check`) that can never fix it. Held to
+// Check, it is a registration this verse can't read, and the error says how to make it one.
+func decodeRunner(payload *ir.Node) (api.Runner, error) {
+	var out api.Runner
+	if err := codec.FromNode(payload, &out); err != nil {
+		return api.Runner{}, err
+	}
+	if err := out.Check(); err != nil {
+		return api.Runner{}, readdHint(out, err)
+	}
+	return out, nil
+}
+
+// readdHint is a registration's failed Check, saying how to make it one this verse reads.
+func readdHint(e api.Runner, err error) error {
+	return fmt.Errorf("%v; add it again with `verse runner add %s %s -subject <sub>` (or `-token-file <file>`)", err, e.Name, e.URL)
+}
+
+// unreadableRunner is why the registration a spawn names, where one is stored, is no runner this
+// verse can read, and nil where none is stored or it reads. A spawn naming it is told that, not
+// that nothing is installed under its name.
+func unreadableRunner(r entity.Reader, ref string) error {
+	name, ok := runnerNameOf(ref)
+	if !ok {
+		return nil
+	}
+	e, ok, err := r.Get(runnerEntityRef(name))
+	if err != nil || !ok {
+		return nil
+	}
+	if _, err := decodeRunner(e.Payload); err != nil {
+		return fmt.Errorf("%s is stored in a shape this verse can't read: %v", e.Ref, err)
+	}
+	return nil
+}
+
+// readRunners is readRegistrations for runners: a registration that decodes and does not check
+// (decodeRunner) is among the unreadable, and no registration at the door or to a spawn.
+func readRunners(r entity.Reader) ([]api.Runner, []unreadableRegistration, error) {
+	registry := []string{entity.VerseRoot, runnersSystem}
+	ents, err := entity.ListAtErr(r, registry, len(registry)+1, isRunnerRef)
+	if err != nil {
+		return nil, nil, err
+	}
+	var ok []api.Runner
+	var bad []unreadableRegistration
+	for _, ent := range ents {
+		e, err := decodeRunner(ent.Payload)
+		if err != nil {
+			bad = append(bad, unreadableRegistration{Ref: ent.Ref, Err: err})
+			continue
+		}
+		ok = append(ok, e)
+	}
+	return ok, bad, nil
 }
 
 // installedRunners reads every installed runner, ordered by address, so two readers see one order.
@@ -97,10 +159,11 @@ func installedRunners(r entity.Reader) []api.Runner {
 //
 // AT THE SUBTREE, not over the document (readRegistrations). A List(pred) is a Match on the ROOT
 // — the whole verse across the wire and filtered here — so a listing of a handful of runners cost
-// a read of everything every source had ever reflected. A registration that does not decode is
-// left out: what reads this decides with the runners it can reach.
+// a read of everything every source had ever reflected. A registration that does not decode, or
+// does not check (decodeRunner), is left out: what reads this decides with the runners it can
+// reach.
 func installedRunnersErr(r entity.Reader) ([]api.Runner, error) {
-	out, _, err := readRegistrations[api.Runner](r, runnersSystem, isRunnerRef)
+	out, _, err := readRunners(r)
 	if err != nil {
 		return nil, err
 	}

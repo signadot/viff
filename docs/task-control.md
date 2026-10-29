@@ -427,7 +427,7 @@ For each task, an implementation must:
 
 - assign gapless cursors per task;
 - serve `GET /describe` with what it offers, and refuse a launch outside it;
-- where it is registered with a `subject`, verify its verse's bearer on every call but a bare
+- verify its verse's bearer on every call but a bare
   `GET /describe`, which is public, and answer the describe with its own workload token in
   `Verse-Runner-Token` to the verse it verified, and to nobody else
   ([who the runner is](runners.md#who-the-runner-is)); announce itself at start with
