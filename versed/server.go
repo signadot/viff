@@ -118,9 +118,10 @@ type Server struct {
 	// scope its records live in, what it is about, whom it acts for, and whom its questions
 	// naming nobody go to. Keyed by task id; read when the embedded runner raises a question.
 	hosted sync.Map
-	// hostedMu orders the writes to hosted (host, repolicy, retire); reads take none.
+	// hostedMu orders the writes to hosted (host, repolicy, retire); reads take none. It guards
+	// hostedSerial, the serial of the last run hosted.
 	hostedMu     sync.Mutex
-	hostedSerial atomic.Uint64
+	hostedSerial uint64
 	// HostedRetention is how long what verse hosted of a task stands after the task ends; zero is
 	// an hour (hostedRetentionDefault).
 	HostedRetention time.Duration
@@ -493,7 +494,8 @@ func (s *Server) hostedRetention() time.Duration {
 func (s *Server) host(id string, ht hostedTask) uint64 {
 	s.hostedMu.Lock()
 	defer s.hostedMu.Unlock()
-	ht.serial = s.hostedSerial.Add(1)
+	s.hostedSerial++
+	ht.serial = s.hostedSerial
 	s.hosted.Store(id, ht)
 	return ht.serial
 }
