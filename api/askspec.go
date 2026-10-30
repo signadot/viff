@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -39,6 +40,17 @@ func NewAsk(s AskSpec, now time.Time) (Ask, error) {
 	}
 	return body, nil
 }
+
+// AskRaised is what raising an ask answers, by `verse ask <name> -q`, verse_ask_create and the
+// verse system's verse-ask-create alike: the id verse gave it, and its question.
+func AskRaised(id, question string) string {
+	return fmt.Sprintf("raised question %s: %s", id, question)
+}
+
+// AskQuery is the GET /asks query that keeps only the caller's own asks arg names, by the id or
+// the name it was asked under: how `verse ask <name|id>`, verse_ask_get and verse-ask-get find
+// one ask without reading every ask.
+func AskQuery(arg string) url.Values { return url.Values{"ask": {arg}} }
 
 // LabelsOf reads an ask's labels: name=value pairs, comma-separated. A pair without its `=`, or an
 // empty one, is refused.

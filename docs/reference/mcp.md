@@ -29,7 +29,7 @@ configured, a tool that writes, and `verse_wait`, is refused.
 ## Reading only
 
 `verse mcp -read-only` serves the tools that read and nothing else: `verse_data`,
-`verse_question`, `verse_ask`, `verse_wait`, `verse_task`, `verse_task_events`, `verse_flow`,
+`verse_question`, `verse_ask_get`, `verse_ask_list`, `verse_wait`, `verse_task`, `verse_task_events`, `verse_flow`,
 `verse_flow_show`, `verse_charter`, `verse_charter_check`, `verse_status` and `verse_schema`, and
 the prompts. An agent that reads what other people wrote may meet instructions in it. A server
 that offers no write leaves it nothing to follow them with, whatever the host's own permissions
@@ -48,7 +48,8 @@ claude mcp add verse-read -- verse mcp -read-only
 | `verse_data_rm` | `verse data <address> --rm` | removes the data at an address, or one field of it |
 | `verse_question` | `verse question` | lists the questions waiting on you, or shows one by `id` |
 | `verse_question_answer` | `verse question <id> --answer` | answers a question with an `option` |
-| `verse_ask` | `verse ask` | lists your asks, or shows one by name or id |
+| `verse_ask_get` | `verse ask <name\|id>` | shows one of your asks, by name or id |
+| `verse_ask_list` | `verse ask` | lists your asks |
 | `verse_ask_create` | `verse ask <name> -q` | asks someone: `question`, `to`, `due`, `then`, `else`, … |
 | `verse_ask_change` | `verse ask <name> --due …` | moves or changes an ask |
 | `verse_ask_withdraw` | `verse ask <name> --withdraw` | withdraws an ask |
@@ -112,7 +113,7 @@ It answers at once when there is something after `since`, otherwise at the next 
 nothing at the `timeout` (300 seconds by default, at most 3600). The server opens one watch on
 the first call and keeps it until it ends, and remembers the last 1024 lines. A cursor older
 than that is refused, and so is one from an earlier server, after the host has started it
-again; call without `since`, and read `verse_question` and `verse_ask`, to catch up.
+again; call without `since`, and read `verse_question` and `verse_ask_list`, to catch up.
 
 `verse_task_events` answers a task's transcript, frame by frame. It says when the task has
 ended, after which nothing follows. A stream that closes while the task still runs is said,

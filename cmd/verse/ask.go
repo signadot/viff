@@ -174,7 +174,7 @@ func createAsk(c *client.Client, body api.Ask) (string, error) {
 	}
 	var out api.Asked
 	decodeBody(resp, &out)
-	return fmt.Sprintf("asked %s: %s", out.ID, body.Question), nil
+	return api.AskRaised(out.ID, body.Question), nil
 }
 
 // answerersOf reads --to (api.AnswerersOf).
@@ -264,12 +264,13 @@ func asksFrom(c *client.Client, q url.Values) ([]entity.Entity, error) {
 }
 
 // resolve finds the ask a name or an id names: the id itself, or the one ask of the caller's
-// under that name. Several under one name are listed rather than guessed between.
+// under that name, read alone (GET /asks?ask=). Several under one name are listed rather than
+// guessed between.
 func resolve(arg string) (entity.Entity, error) { return resolveAsk(apiClient(), arg) }
 
 // resolveAsk is resolve through c.
 func resolveAsk(c *client.Client, arg string) (entity.Entity, error) {
-	asks, err := asksFrom(c, nil)
+	asks, err := asksFrom(c, api.AskQuery(arg))
 	if err != nil {
 		return entity.Entity{}, fmt.Errorf("ask: %w", err)
 	}

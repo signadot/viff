@@ -36,7 +36,7 @@ func TestATasksRaiseIsCarriedToVerseForTheTask(t *testing.T) {
 	const ask = "{name: land, question: \"Land it?\"}"
 
 	s := &Server{Log: io.Discard, Services: Services{Verse: answer(http.StatusCreated, "id: land-1a2b")}, Ceilings: open}
-	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskCreate, Ask: ask})); !rep.OK || !strings.Contains(rep.Out, "raised ask land-1a2b") {
+	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskCreate, Ask: ask})); !rep.OK || rep.Out != "raised question land-1a2b: Land it?" {
 		t.Errorf("a raise: %+v", rep)
 	}
 	if len(saw) != 1 || saw[0] != (call{"t7", ask}) {

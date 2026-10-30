@@ -68,7 +68,7 @@ func askAs(t *testing.T, who string, args ...string) string {
 	if err != nil {
 		t.Fatalf("ask %v: %v\n%s", args, err, out)
 	}
-	id, _, ok := strings.Cut(strings.TrimPrefix(out, "asked "), ":")
+	id, _, ok := strings.Cut(strings.TrimPrefix(out, "raised question "), ":")
 	if !ok {
 		t.Fatalf("ask said %q", out)
 	}

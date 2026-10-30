@@ -1,7 +1,6 @@
 package stock
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"strings"
@@ -27,11 +26,11 @@ import (
 // run as that person when it settles, which is what a stored continuation is for.
 var askCreateTool = systems.Tool("verse", "ask-create")
 
-// askGetTool is `verse ask <name|id>`, verse_ask naming one: one of that person's asks read back,
+// askGetTool is `verse ask <name|id>`, verse_ask_get: one of that person's asks read back,
 // so a task that raised one sees whether it was answered.
 var askGetTool = systems.Tool("verse", "ask-get")
 
-// askListTool is `verse ask`, verse_ask naming none: all of that person's asks.
+// askListTool is `verse ask`, verse_ask_list: all of that person's asks.
 var askListTool = systems.Tool("verse", "ask-list")
 
 // verseTools are the verse system's tools, where the runner reaches its verse with a token of its
@@ -41,7 +40,7 @@ func verseTools(cl *delivery.Client) []verse.Tool {
 	held := " A spawn reaches no further than this task does, its autonomy is no looser, and it runs on " +
 		"this task's runner with this task's model credential."
 	create := map[string]any{
-		"name":       text("what you call the ask; its id is derived from it and answered. Omit for this task's id"),
+		"name":       text("what you call the ask; its id is derived from it and answered"),
 		"question":   text("what is asked, in the words the answerers read"),
 		"to":         text("who is asked: a name or a comma-separated list, in the grammar a grant uses (user:ana@example.com, ana@example.com, group:leads); absent, anyone may answer"),
 		"due":        text("when it settles if nobody answers: an RFC 3339 date or a duration from now (48h)"),
@@ -63,7 +62,7 @@ func verseTools(cl *delivery.Client) []verse.Tool {
 			"call answers the ask's id, and the ask stands after this task ends. To ask something and wait " +
 			"for the answer yourself, use question-ask.",
 		Params:   create,
-		Required: []string{"question"},
+		Required: []string{"name", "question"},
 		Step:     task.StepVerseAskCreate,
 		Fields:   func(map[string]any) (map[string]string, bool) { return map[string]string{}, true },
 		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
@@ -75,13 +74,15 @@ func verseTools(cl *delivery.Client) []verse.Tool {
 				return "not raised: " + err.Error(), true, nil
 			}
 			w := p.words
-			question := strings.TrimSpace(w["question"])
+			name, question := strings.TrimSpace(w["name"]), strings.TrimSpace(w["question"])
+			if name == "" {
+				return "not raised: an ask needs a name", true, nil
+			}
 			if question == "" {
 				return "not raised: an ask needs a question", true, nil
 			}
-			origin, _, _ := strings.Cut(tu.ID, task.GateSep)
 			// The words as `verse ask` and verse_ask_create read them (api.NewAsk).
-			spec := api.AskSpec{Name: cmp.Or(strings.TrimSpace(w["name"]), origin), Question: question,
+			spec := api.AskSpec{Name: name, Question: question,
 				To: w["to"], Due: w["due"], OnSilence: strings.TrimSpace(w["on_silence"]),
 				About: strings.TrimSpace(w["about"]), Keep: strings.TrimSpace(w["keep"]), Label: w["label"]}
 			if spec.Then, err = docOf("then", w["then"]); err != nil {
@@ -103,7 +104,7 @@ func verseTools(cl *delivery.Client) []verse.Tool {
 	}, {
 		Name: askGetTool,
 		Description: "Read one of the asks of the person this task runs for, as `verse ask <name|id>` and " +
-			"verse_ask do: by the name it was asked under or the id verse-ask-create answered. It says " +
+			"verse_ask_get do: by the name it was asked under or the id verse-ask-create answered. It says " +
 			"whether it was answered (`status`, and `answer`, pending until it settles, or `why` where it settled " +
 			"with no answer), what it asked and of whom, its " +
 			"due, and what its then and else did.",
@@ -124,7 +125,7 @@ func verseTools(cl *delivery.Client) []verse.Tool {
 		},
 	}, {
 		Name: askListTool,
-		Description: "List the asks of the person this task runs for, as `verse ask` and verse_ask do: each " +
+		Description: "List the asks of the person this task runs for, as `verse ask` and verse_ask_list do: each " +
 			"with its id, question, who is asked, its due, its `status`, and its `answer`, pending until it " +
 			"settles. verse-ask-get reads one of them.",
 		Params:   map[string]any{},

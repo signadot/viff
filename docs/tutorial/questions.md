@@ -22,7 +22,7 @@ This page needs [a verse running](README.md#start), and nothing else.
 ```sh
 verse ask deploy -q "Deploy the release to staging?" --to ana@example.com --due 1h \
   --then '{spawn: {script: "echo deploying", environment: {systems: {network: {mode: open}}}}}'
-# asked deploy-b8a7d6bea9e3: Deploy the release to staging?
+# raised question deploy-b8a7d6bea9e3: Deploy the release to staging?
 ```
 
 | Flag | What it says |

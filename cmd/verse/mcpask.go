@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -77,9 +78,11 @@ func (m *mcpServer) answer(ctx context.Context, _ *mcp.CallToolRequest, in answe
 	return sentence(said), nil, nil
 }
 
-type askIn struct {
-	NameOrID string `json:"name_or_id,omitempty" jsonschema:"one of your asks, by the name you asked it under or its id; without it, all your asks"`
+type askGetIn struct {
+	NameOrID string `json:"name_or_id" jsonschema:"one of your asks, by the name you asked it under or its id"`
 }
+
+type askListIn struct{}
 
 type askCreateIn struct {
 	Name      string `json:"name" jsonschema:"what you call the ask; its id is derived from it and answered"`
@@ -108,11 +111,18 @@ type askWithdrawIn struct {
 
 func (m *mcpServer) addAskTools(s *mcp.Server) {
 	addTool(m, s, &mcp.Tool{
-		Name: "verse_ask",
-		Description: "Your asks, as `verse ask` lists them, or one of them and whom it waits on. " +
+		Name: "verse_ask_get",
+		Description: "One of your asks, as `verse ask <name|id>` shows it: by the name you asked it under or " +
+			"its id, whether it was answered, whom it waits on, and what its then and else did. " +
 			"What waits on you is verse_question.",
 		Annotations: readOnly(),
-	}, m.ask)
+	}, m.askGet)
+	addTool(m, s, &mcp.Tool{
+		Name: "verse_ask_list",
+		Description: "Your asks, as `verse ask` lists them: each with its id, question, who is asked, its " +
+			"due and its status. verse_ask_get reads one of them. What waits on you is verse_question.",
+		Annotations: readOnly(),
+	}, m.askList)
 	addTool(m, s, &mcp.Tool{
 		Name: "verse_ask_create",
 		Description: "Ask somebody something, as you, as `verse ask <name> -q <question>` does: " +
@@ -133,15 +143,19 @@ func (m *mcpServer) addAskTools(s *mcp.Server) {
 	}, m.askWithdraw)
 }
 
-func (m *mcpServer) ask(ctx context.Context, _ *mcp.CallToolRequest, in askIn) (*mcp.CallToolResult, any, error) {
-	var node *ir.Node
-	var line string
-	var err error
+func (m *mcpServer) askGet(ctx context.Context, _ *mcp.CallToolRequest, in askGetIn) (*mcp.CallToolResult, any, error) {
 	if in.NameOrID == "" {
-		node, line, err = askList(m.c.With(ctx), m.me)
-	} else {
-		node, line, err = askShown(m.c.With(ctx), in.NameOrID)
+		return nil, nil, fmt.Errorf("name the ask, by its name or its id")
 	}
+	return m.askRead(askShown(m.c.With(ctx), in.NameOrID))
+}
+
+func (m *mcpServer) askList(ctx context.Context, _ *mcp.CallToolRequest, _ askListIn) (*mcp.CallToolResult, any, error) {
+	return m.askRead(askList(m.c.With(ctx), m.me))
+}
+
+// askRead answers what an ask read said: a sentence, or the document.
+func (m *mcpServer) askRead(node *ir.Node, line string, err error) (*mcp.CallToolResult, any, error) {
 	if err != nil {
 		return nil, nil, err
 	}
@@ -158,6 +172,9 @@ func (m *mcpServer) ask(ctx context.Context, _ *mcp.CallToolRequest, in askIn) (
 func (m *mcpServer) askCreate(ctx context.Context, _ *mcp.CallToolRequest, in askCreateIn) (*mcp.CallToolResult, any, error) {
 	if err := m.nobody(); err != nil {
 		return nil, nil, err
+	}
+	if strings.TrimSpace(in.Name) == "" {
+		return nil, nil, fmt.Errorf("an ask needs a name")
 	}
 	spec := api.AskSpec{Name: in.Name, Question: in.Question, To: in.To, Due: in.Due, OnSilence: in.OnSilence,
 		About: in.About, Keep: in.Keep, Label: in.Label}

@@ -19,10 +19,9 @@ import (
 )
 
 // A SCRIPT RAISES AN ASK FOR ITS OWNER, and the runner carries it to verse: the raiser is handed
-// the task and the ask as the script wrote it, its name this task's id where the script named
-// none, its due a date where the script gave a duration, and the script reads the id verse
-// answered, then reads the ask back and lists its owner's asks. A runner that reaches no verse
-// refuses a launch that names the verse system.
+// the task and the ask as the script wrote it, its due a date where the script gave a duration,
+// and the script reads the id verse answered, then reads the ask back and lists its owner's asks.
+// A runner that reaches no verse refuses a launch that names the verse system.
 func TestAScriptRaisesAnAskTheRunnerCarriesToVerse(t *testing.T) {
 	withCallTool(t)
 	var mu sync.Mutex
@@ -47,7 +46,7 @@ func TestAScriptRaisesAnAskTheRunnerCarriesToVerse(t *testing.T) {
 	env := envOf(netOpen, nil, nil)
 	env.Systems["verse"] = []systems.Block{{}}
 	script := "#!/bin/sh\n" +
-		"verse-call-tool verse-ask-create -question 'Land it?' -to 'user:alice@example.com, group:leads' -label team=payments,kind=deploy -due ' 48h ' -then '{spawn: {script: \"true\"}}'\n" +
+		"verse-call-tool verse-ask-create -name r1 -question 'Land it?' -to 'user:alice@example.com, group:leads' -label team=payments,kind=deploy -due ' 48h ' -then '{spawn: {script: \"true\"}}'\n" +
 		"verse-call-tool verse-ask-get -name_or_id r1-1a2b\n" +
 		"verse-call-tool verse-ask-list\n"
 	allow := task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}
@@ -55,7 +54,7 @@ func TestAScriptRaisesAnAskTheRunnerCarriesToVerse(t *testing.T) {
 	rt := serveRaising(t, c, Secrets{}, Tokens{}, raise)
 	rt.Launch(runner.Launch{ID: "r1", Script: script, Environment: env, Autonomy: allow})
 	snap := ended(t, rt, "r1")
-	if snap.Status != task.Done || !strings.Contains(snap.Result, "raised ask r1-1a2b") {
+	if snap.Status != task.Done || !strings.Contains(snap.Result, "raised question r1-1a2b: Land it?") {
 		t.Fatalf("the script read %q (%s), want the ask's id", snap.Result, snap.Status)
 	}
 	if !strings.Contains(snap.Result, "answer: yes") {
@@ -63,6 +62,14 @@ func TestAScriptRaisesAnAskTheRunnerCarriesToVerse(t *testing.T) {
 	}
 	if !strings.Contains(snap.Result, "tea-9z9z") {
 		t.Errorf("the script listed its owner's asks as %q, want the owner's other ask among them", snap.Result)
+	}
+	// An ask is raised under a name the script gives, as verse_ask_create and `verse ask <name>`
+	// raise it: one with none is refused at the tool, and verse is handed nothing (below, the
+	// one ask it was handed is r1's).
+	rt.Launch(runner.Launch{ID: "r3", Script: "#!/bin/sh\nverse-call-tool verse-ask-create -question 'Land it?' || true\n",
+		Environment: env, Autonomy: allow})
+	if snap := ended(t, rt, "r3"); strings.HasPrefix(snap.Result, "raised") || !strings.Contains(snap.Result, "name") {
+		t.Errorf("a raise naming no ask read %q (%s), want it refused for its name", snap.Result, snap.Status)
 	}
 	mu.Lock()
 	defer mu.Unlock()

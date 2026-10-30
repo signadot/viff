@@ -80,7 +80,10 @@ func (s *Server) verseAskCreate(ctx context.Context, tk Task, req Request) Reply
 	if err := codec.Unmarshal([]byte(said), &asked, codec.Tony); err != nil || asked.ID == "" {
 		return Reply{Error: "the verse raised the ask and its answer does not say the id: " + said}
 	}
-	out := "raised ask " + asked.ID + ": it stands at verse.ask." + asked.ID + " until it is answered; verse-ask-get " + asked.ID + " reads it"
+	// The question as the task wrote it: verse took the ask, so it reads.
+	var ask api.Ask
+	_ = codec.Unmarshal([]byte(req.Ask), &ask, codec.Tony)
+	out := api.AskRaised(asked.ID, ask.Question)
 	fmt.Fprintf(s.Log, "delivery: %s: %s\n", tk.ID, out)
 	return Reply{OK: true, Out: out}
 }
@@ -96,7 +99,7 @@ func (s *Server) verseAskGet(ctx context.Context, tk Task, req Request) Reply {
 	if arg == "" {
 		return Reply{Refused: "a read names the ask, by its name or its id"}
 	}
-	asks, rep := s.ownersAsks(ctx, tk, req, task.StepVerseAskGet, url.Values{"ask": {arg}})
+	asks, rep := s.ownersAsks(ctx, tk, req, task.StepVerseAskGet, api.AskQuery(arg))
 	if asks == nil {
 		return rep
 	}

@@ -7,7 +7,7 @@ import (
 	"github.com/signadot/verse/entity"
 )
 
-// HOW AN ASK IS SHOWN to whoever asked it, by `verse ask`, verse_ask and the verse system's
+// HOW AN ASK IS SHOWN to whoever asked it, by `verse ask`, verse_ask_get, verse_ask_list and the verse system's
 // verse-ask-get alike: found among the asker's asks (GET /asks) by its id or the name it was asked
 // under (AskNamed), and shown as a row (AskShown).
 

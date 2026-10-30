@@ -60,7 +60,7 @@ func (l *waitLog) seq(cursor string) (uint64, error) {
 	seq, err := strconv.ParseUint(n, 10, 64)
 	if id != l.id || err != nil {
 		return 0, fmt.Errorf("cursor %q is not one this server answered: it is another server's, from "+
-			"before its host started it again; call without since, and verse_question and verse_ask to "+
+			"before its host started it again; call without since, and verse_question and verse_ask_list to "+
 			"catch up", cursor)
 	}
 	return seq, nil
@@ -87,7 +87,7 @@ func (l *waitLog) after(since uint64, all bool) ([]waitLine, <-chan struct{}, er
 	defer l.mu.Unlock()
 	if !all && len(l.lines) > 0 && since+1 < l.lines[0].Seq {
 		return nil, nil, fmt.Errorf("cursor %d is older than the %d lines this server keeps; call "+
-			"without since, and verse_question and verse_ask to catch up", since, waitLogCap)
+			"without since, and verse_question and verse_ask_list to catch up", since, waitLogCap)
 	}
 	var out []waitLine
 	for _, ln := range l.lines {

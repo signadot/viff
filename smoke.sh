@@ -675,7 +675,7 @@ MCP=""
 [ -n "$answered" ] || { cat "$tmp/mcp.err" "$tmp/mcp.out" >&2; die "verse mcp never answered the call"; }
 grep '"id":1' "$tmp/mcp.out" | grep -q '"name":"verse"' || die "initialize did not name the server: $(cat "$tmp/mcp.out")"
 tools=$(grep '"id":2' "$tmp/mcp.out")
-for tool in verse_data verse_data_put verse_data_rm verse_question verse_ask verse_wait verse_task verse_task_events verse_flow_cancel \
+for tool in verse_data verse_data_put verse_data_rm verse_question verse_ask_get verse_ask_list verse_wait verse_task verse_task_events verse_flow_cancel \
 	verse_charter verse_charter_check verse_charter_install verse_charter_remove verse_status verse_schema \
 	verse_flow verse_flow_show; do
 	has "$tools" "\"name\":\"$tool\"" || die "tools/list does not name $tool"

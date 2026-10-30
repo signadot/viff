@@ -17,10 +17,10 @@ func TestTheAskToolsAskAnswerAndWithdraw(t *testing.T) {
 		"name": "land", "question": "Review verse/ask?", "to": "oscar@example.com", "due": "48h",
 		"then": `{spawn: {prompt: "merge verse/ask"}}`,
 	})
-	if isErr || !strings.HasPrefix(out, "asked ") || !strings.HasSuffix(out, ": Review verse/ask?") {
+	if isErr || !strings.HasPrefix(out, "raised question ") || !strings.HasSuffix(out, ": Review verse/ask?") {
 		t.Fatalf("the ask: error=%v %q", isErr, out)
 	}
-	id := strings.TrimSuffix(strings.TrimPrefix(out, "asked "), ": Review verse/ask?")
+	id := strings.TrimSuffix(strings.TrimPrefix(out, "raised question "), ": Review verse/ask?")
 	qid := questionOn(t, store, mirror.AskRef(id))
 
 	if out, isErr := callTool(t, dav, "verse_question", nil); isErr || !strings.Contains(out, qid) {
@@ -33,12 +33,12 @@ func TestTheAskToolsAskAnswerAndWithdraw(t *testing.T) {
 		t.Fatalf("davido's answer: error=%v %q", isErr, out)
 	}
 	waitFieldCLI(t, store, mirror.AskRef(id), "answer")
-	if out, isErr := callTool(t, dan, "verse_ask", map[string]any{"name_or_id": "land"}); isErr || !strings.Contains(out, "answer: yes") {
+	if out, isErr := callTool(t, dan, "verse_ask_get", map[string]any{"name_or_id": "land"}); isErr || !strings.Contains(out, "answer: yes") {
 		t.Fatalf("the answer is not on daniel's ask: error=%v\n%s", isErr, out)
 	}
 
 	out, _ = callTool(t, dan, "verse_ask_create", map[string]any{"name": "lunch", "question": "Lunch?", "to": "oscar@example.com"})
-	second := strings.TrimSuffix(strings.TrimPrefix(out, "asked "), ": Lunch?")
+	second := strings.TrimSuffix(strings.TrimPrefix(out, "raised question "), ": Lunch?")
 	questionOn(t, store, mirror.AskRef(second))
 	if out, isErr := callTool(t, dan, "verse_ask_change", map[string]any{"name_or_id": "lunch", "due": "72h"}); isErr || !strings.HasPrefix(out, "moved "+second+" to ") {
 		t.Fatalf("the change: error=%v %q", isErr, out)
@@ -46,7 +46,7 @@ func TestTheAskToolsAskAnswerAndWithdraw(t *testing.T) {
 	if out, isErr := callTool(t, dan, "verse_ask_withdraw", map[string]any{"name_or_id": "lunch"}); isErr || out != "withdrew "+second {
 		t.Fatalf("the withdrawal: error=%v %q", isErr, out)
 	}
-	if out, isErr := callTool(t, dan, "verse_ask", nil); isErr || strings.Contains(out, second) || !strings.Contains(out, id) {
+	if out, isErr := callTool(t, dan, "verse_ask_list", nil); isErr || strings.Contains(out, second) || !strings.Contains(out, id) {
 		t.Fatalf("daniel's asks after the withdrawal: error=%v\n%s", isErr, out)
 	}
 }
@@ -62,7 +62,7 @@ func TestTheAskToolListsAsTheCLIDoes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out, _ := callTool(t, mcpSessionAs(t, daniel), "verse_ask", nil); out != strings.TrimRight(want, "\n") {
+	if out, _ := callTool(t, mcpSessionAs(t, daniel), "verse_ask_list", nil); out != strings.TrimRight(want, "\n") {
 		t.Fatalf("the tool said\n%s\nthe CLI\n%s", out, want)
 	}
 }
