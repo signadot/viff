@@ -9,6 +9,8 @@ tasks, answers gates) starts at [the docs index](README.md).
 - [Starting a verse](reference/up.md): `verse up`, its flags, and the config file.
 - [Platform commands](platform/commands.md): `up`, `down`, `runner`, `io` and `resolver`,
   and the smoke test.
+- [A verse on your machine, with Claude](platform/local-verse.md): the store, versed and a runner
+  offering claude, as pitchfork daemons, with Claude Code reaching it over MCP; Linux and macOS.
 - [Runners](runners.md): where work runs, and what removing a runner does to the work on it.
   The surface is [reference/runners.md](reference/runners.md).
 - [Where a task runs, walked](platform/runners-walk.md): a remote verse, and a runner you

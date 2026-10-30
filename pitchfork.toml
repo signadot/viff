@@ -1,0 +1,50 @@
+#:schema https://pitchfork.jdx.dev/schema.json
+#
+# A verse on this machine, as pitchfork daemons (https://pitchfork.jdx.dev), laid out as staging is:
+# the store, versed, and a runner, each a process of its own (docs/platform/local-verse.md). The one-time setup first (binaries,
+# configs, keys and token, Claude Code's MCP server, the runner's registration):
+#
+#   scripts/verse-local.sh setup
+#   pitchfork start -l           # this file's daemons: the store, then versed, then the runner
+#   pitchfork stop -l            # all three, in reverse
+#   pitchfork logs store versed runner --tail
+#
+# Inside this repo the short names do; anywhere else they are verse/store, verse/versed and
+# verse/runner, whatever the clone's directory is called.
+#
+# What it reads, all under $HOME and none of it in this repo: ~/.config/verse-local.tony (the
+# verse's config), ~/.verse/localhost_9797 (its data dir) and ~/.verse/runner (the runner's config,
+# token and credentials). Personal changes go in pitchfork.local.toml, which git ignores.
+
+namespace = "verse"
+
+# logd and docd, on the data dir, on fixed loopback ports: logd 9790, docd's client face 9791 (what
+# versed dials), its mount face 9792, its admin face 9793. `o` is the one this tree pins, which
+# setup installs beside verse.
+[daemons.store]
+run = 'exec "$HOME/.local/bin/o" sys up --data "$HOME/.verse/localhost_9797" --logd-addr 127.0.0.1:9790 --docd-addr 127.0.0.1:9791 --docd-mount-addr 127.0.0.1:9792 --admin-addr 127.0.0.1:9793 --config "$HOME/.verse/localhost_9797/logd.verse.tony"'
+ready_port = 9791
+retry = 3
+
+# versed: the engine and the API, on the store above, starting no runner of its own. It signs as
+# the issuer its config names, with the key in the data dir, so a restart keeps every token it
+# signed good. A SIGTERM is its graceful stop.
+[daemons.versed]
+run = 'VERSE_CONFIG="$HOME/.config/verse-local.tony" exec "$HOME/.local/bin/verse" up --addr localhost:9797 --docd-addr 127.0.0.1:9791 --local-runner=false'
+depends = ["store"]
+ready_http = { url = "http://localhost:9797/healthz", timeout = "120s" }
+retry = 3
+stop_signal = { signal = "SIGTERM", timeout = "30s" }
+
+# The runner: scripts, and the agents its runner.tony names (claude; codex where OPENAI_API_KEY or a
+# codex login is there; the verse agent with PORTKEY_API_KEY). Each task runs in a bubblewrap sandbox
+# on Linux, and unconfined, as you, on macOS, which has none; VERSE_SANDBOX (bwrap or none) says
+# otherwise, in ~/.verse/runner/env. Its credentials are in that env, 0600, read into its
+# environment alone. It proves itself to versed with its token; registered once (setup), it says
+# hello at each start.
+[daemons.runner]
+run = 'cd "$HOME/.verse/runner" && export PATH="$HOME/.local/bin:$PATH" && if [ -f env ]; then set -a; . ./env; set +a; fi && sandbox="${VERSE_SANDBOX:-$( [ "$(uname -s)" = Darwin ] && echo none || echo bwrap )}" && exec "$HOME/.local/bin/runnerd" -config runner.tony -token-file token -sandbox "$sandbox"'
+depends = ["versed"]
+ready_http = { url = "http://127.0.0.1:9810/ready", timeout = "30s" }
+retry = true
+stop_signal = { signal = "SIGTERM", timeout = "15s" }

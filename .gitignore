@@ -21,3 +21,6 @@ scripts/mermaid/node_modules/
 # In-tree so a Go file there can import the module; ignored so none of it is a commit.
 scratchpad/
 __pycache__/
+
+# pitchfork.toml is the local verse; a personal override goes here
+pitchfork.local.toml
