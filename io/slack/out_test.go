@@ -2,6 +2,8 @@ package slack_test
 
 import (
 	"context"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/versed/versedtest"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -12,7 +14,6 @@ import (
 	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/io/slack"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/versed"
 )
 
 // outRig is a real verse over a real store, a fake Slack, and the out half between them, reading
@@ -27,7 +28,7 @@ type outRig struct {
 func newOutRig(t *testing.T) *outRig {
 	t.Helper()
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
+	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
 	src := newSource(t, f, slack.Config{})

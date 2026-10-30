@@ -28,6 +28,7 @@ func TestARegistrationThisVerseCantReadIsListedAndRemoved(t *testing.T) {
 	} {
 		t.Run(c.route, func(t *testing.T) {
 			srv := testServer(t)
+			noLocalRunner(t, srv) // the one row listed is the unreadable one
 			ts := httptest.NewServer(srv.Handler())
 			defer ts.Close()
 			// A name that is a list: no registration's `name` decodes from one.
@@ -72,7 +73,7 @@ func TestARegistrationThisVerseCantReadIsListedAndRemoved(t *testing.T) {
 // each surface that names it, a spawn passing it over among them, says to add it again.
 func TestARegistrationNamingNoSubjectIsUnreadable(t *testing.T) {
 	srv := testServer(t)
-	srv.NoLocalRunner = true
+	noLocalRunner(t, srv)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	face, _ := offeringFace(t, ts.URL)

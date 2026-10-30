@@ -14,6 +14,7 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 )
 
 // testIssuerURL is what a test server signs as, until a test makes it an issuer at its own
@@ -30,12 +31,70 @@ var testIssuerKey = sync.OnceValue(func() *rsa.PrivateKey {
 	return key
 })
 
+// localRunners is each test server's local runner, for a test to look at the tasks it holds where
+// they run, or to change what it offers.
+var localRunners sync.Map // *Server → *runnerdtest.Runner
+
+// serverWith is a server over store, with build served as its local runner: a runner like any
+// registered one, offering everything a test asks of it (runnerdtest.Everything), registered as
+// `local` as `verse up` registers its own. No task runs in a verse's process, so a test that runs
+// tasks hands the server a runner this way.
+func serverWith(t testing.TB, build runnerd.Builder, store entity.Store, opts ...Option) *Server {
+	t.Helper()
+	s := NewWithStore(store, opts...)
+	withRunner(t, s, build, runnerdtest.Everything())
+	return s
+}
+
+// withRunner serves build as s's local runner, offering desc, and registers it described.
+func withRunner(t testing.TB, s *Server, build runnerd.Builder, desc runner.Description) *runnerdtest.Runner {
+	t.Helper()
+	r := runnerdtest.Serve(t, build, desc)
+	if err := s.RegisterLocalRunner(r.URL, r.Subject); err != nil {
+		t.Fatalf("registering the local runner: %v", err)
+	}
+	if e, ok := findRunner(s.Store, LocalRunnerName); !ok || !e.Current() {
+		t.Fatalf("the local runner was not described at its registration: %+v", e)
+	}
+	localRunners.Store(s, r)
+	return r
+}
+
+// localOf is s's local runner, served by withRunner.
+func localOf(t testing.TB, s *Server) *runnerdtest.Runner {
+	t.Helper()
+	r, ok := localRunners.Load(s)
+	if !ok {
+		t.Fatal("the server has no local runner served by the test")
+	}
+	return r.(*runnerdtest.Runner)
+}
+
+// describeLocal has s's local runner offer desc, and s read it.
+func describeLocal(t testing.TB, s *Server, desc runner.Description) {
+	t.Helper()
+	r := localOf(t, s)
+	r.Describe(desc)
+	e, _ := findRunner(s.Store, LocalRunnerName)
+	if _, err := s.handshake(e); err != nil {
+		t.Fatalf("describing the local runner again: %v", err)
+	}
+}
+
+// noLocalRunner takes s's local runner out of routing: a verse that hosts nothing.
+func noLocalRunner(t testing.TB, s *Server) {
+	t.Helper()
+	if err := s.RemoveLocalRunner(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // testServer is a server over a store of its own — the assembly `up` performs, minus
 // the daemons it would spawn, so an HTTP-surface test gets the real store the product
 // runs on without knowing how to stand one up.
 func testServer(t *testing.T) *Server {
 	t.Helper()
-	s := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	s := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	issuing(t, s)
 	// A source installed in a test runs a reflector under the server's context, which for a
 	// server nobody started is Background — so without this it outlives the store it writes to

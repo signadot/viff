@@ -1,8 +1,6 @@
 package versed
 
 import (
-	"cmp"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -120,11 +118,11 @@ func TestARunnerIsInstalledWithWhatItOffers(t *testing.T) {
 
 // A SPAWN GOES WHERE ITS DOER IS OFFERED, and is checked against that offer where it is written:
 // a hand run at the prompt, a charter at its install. What some runner takes goes there; what none
-// offers, or none takes, is refused saying so, before a task record is written. This verse's own
-// runner is one of the runners, with its own offers.
+// offers, or none takes, is refused saying so, before a task record is written. The local runner is
+// one of the runners, with its own offers.
 func TestASpawnGoesWhereItsDoerIsOffered(t *testing.T) {
 	srv := testServer(t)
-	srv.Embedded.Describe(offering()) // scripts only, as a keyless `verse up` offers
+	describeLocal(t, srv, offering()) // the local runner: scripts only, as a keyless `verse up`'s
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	face, _ := offeringFace(t, ts.URL, "codex")
@@ -134,13 +132,13 @@ func TestASpawnGoesWhereItsDoerIsOffered(t *testing.T) {
 		what  string
 		spawn map[string]any
 		want  string // "" is accepted
-		on    string // where an accepted spawn runs: the registration, "" for this verse's own runner
+		on    string // where an accepted spawn runs: the registration
 	}{
 		{"an agent a runner offers", map[string]any{"spawn": map[string]any{"agent": map[string]any{"name": "codex"}, "prompt": "go"}}, "", "verse.runners.code"},
 		{"an agent none offers", map[string]any{"spawn": map[string]any{"agent": map[string]any{"name": "claude"}, "prompt": "go"}}, "no runner offers the agent claude", ""},
 		{"a model the offer does not take", map[string]any{"spawn": map[string]any{"agent": map[string]any{"name": "codex", "model": "huge"}, "prompt": "go"}}, `no runner takes this spawn: verse.runners.code: agent.model: codex on this runner takes no such model`, ""},
 		{"the default agent, which none offers", map[string]any{"spawn": map[string]any{"prompt": "go"}}, "no runner offers the agent verse", ""},
-		{"a script", map[string]any{"spawn": map[string]any{"script": "true"}}, "", ""},
+		{"a script, which both offer, first by name", map[string]any{"spawn": map[string]any{"script": "true"}}, "", "verse.runners.code"},
 	} {
 		t.Run(c.what, func(t *testing.T) {
 			c.spawn["id"] = "run-" + strings.ReplaceAll(c.what, " ", "-")
@@ -158,7 +156,7 @@ func TestASpawnGoesWhereItsDoerIsOffered(t *testing.T) {
 				}
 				return
 			}
-			if got := instanceOf(t, srv, c.spawn["id"].(string))["runnerName"]; fmt.Sprint(cmp.Or(got, any(""))) != c.on {
+			if got := instanceOf(t, srv, c.spawn["id"].(string))["runnerName"]; got != c.on {
 				t.Fatalf("the task's record says runnerName %v, want %q", got, c.on)
 			}
 		})

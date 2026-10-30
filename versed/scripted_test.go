@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -54,7 +55,7 @@ func noQuestionWithin(t *testing.T, srv *Server, id string, d time.Duration) {
 // The script a charter writes is one action and no step, so the step here is the task's own
 // (stepBuilder); a script's step is a tool it calls.
 func TestASpawnWithNoPolicyIsGivenNoVerb(t *testing.T) {
-	srv := NewWithStore(stepBuilder(t), entitytest.Store(t))
+	srv := serverWith(t, stepBuilder(t), entitytest.Store(t))
 	ops := httptest.NewServer(srv.Handler())
 	defer ops.Close()
 
@@ -69,7 +70,7 @@ func TestASpawnWithNoPolicyIsGivenNoVerb(t *testing.T) {
 // A script that says `auto` runs unattended, which is how a charter that means it says so: one
 // line, and the same line an agent's spawn uses.
 func TestAScriptedSpawnCanSayAuto(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	ops := httptest.NewServer(srv.Handler())
 	defer ops.Close()
 
@@ -85,7 +86,7 @@ func TestAScriptedSpawnCanSayAuto(t *testing.T) {
 // A failing script fails the task: a trigger's onDone never fires on a command that did not
 // work.
 func TestAScriptedCommandThatFailsFailsTheTask(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	ops := httptest.NewServer(srv.Handler())
 	defer ops.Close()
 

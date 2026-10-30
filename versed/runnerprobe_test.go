@@ -2,6 +2,7 @@ package versed
 
 import (
 	"context"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -37,7 +38,7 @@ func registerRunner(t *testing.T, ts *httptest.Server, name string, agents ...st
 // spawns once a check has described it, and only what it offers.
 func TestARunnerThatHasNotDescribedItselfIsPassedOver(t *testing.T) {
 	srv := testServer(t)
-	srv.NoLocalRunner = true
+	noLocalRunner(t, srv)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -88,7 +89,7 @@ func TestARunnerThatHasNotDescribedItselfIsPassedOver(t *testing.T) {
 // it was.
 func TestStartProbesRunnersWithoutOffers(t *testing.T) {
 	store := entitytest.Store(t)
-	first := issuing(t, NewWithStore(ScriptedBuilder, store))
+	first := issuing(t, serverWith(t, runnerdtest.Scripted, store))
 	ts := httptest.NewServer(first.Handler())
 	face := runnerFace(t, ts.URL)
 	dead := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
@@ -103,7 +104,7 @@ func TestStartProbesRunnersWithoutOffers(t *testing.T) {
 	// a restarted verse's are, under the same issuer and key.
 	defer ts.Close()
 
-	second := issuing(t, NewWithStore(ScriptedBuilder, store))
+	second := issuing(t, serverWith(t, runnerdtest.Scripted, store))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	second.ctx = ctx

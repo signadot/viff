@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/versed/versedtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -45,7 +47,7 @@ func serveLoginWith(t *testing.T, device, withIOs bool) (entity.Store, *idptest.
 	l := idp.Login(loginClient, "sub-ana", map[string]any{"email": "ana@example.com", "email_verified": true}, device)
 
 	store := entitytest.Store(t)
-	srv := versed.NewWithStore(versed.ScriptedBuilder, store)
+	srv := versedtest.Server(t, runnerdtest.Scripted, store)
 	if err := srv.SetAuth(versed.Auth{Mode: versed.AuthOptional, Providers: map[string]versed.AuthProvider{
 		"corp": {Issuer: idp.URL, ClientID: loginClient, Domains: []string{"example.com"}},
 	}}); err != nil {
@@ -299,7 +301,7 @@ func TestLoginLinkBindsASecondProvidersAccount(t *testing.T) {
 	okta.Login(loginClient, "okta-7", nil, false)
 
 	store := entitytest.Store(t)
-	srv := versed.NewWithStore(versed.ScriptedBuilder, store)
+	srv := versedtest.Server(t, runnerdtest.Scripted, store)
 	if err := srv.SetAuth(versed.Auth{Mode: versed.AuthOptional, Providers: map[string]versed.AuthProvider{
 		"corp": {Issuer: corp.URL, ClientID: loginClient, Domains: []string{"example.com"}},
 		"okta": {Issuer: okta.URL, ClientID: loginClient},
@@ -373,7 +375,7 @@ func TestAQuietProviderFailsTheRenewalAndDoesNotHangIt(t *testing.T) {
 // words to say; the verse binds it when the io hears them, so no login is needed first.
 func TestLoginLinkClaimsAnAccountAnIoProves(t *testing.T) {
 	store := entitytest.Store(t)
-	srv := versed.NewWithStore(versed.ScriptedBuilder, store)
+	srv := versedtest.Server(t, runnerdtest.Scripted, store)
 	if err := srv.SetAuth(versed.Auth{Mode: versed.AuthOptional, Providers: map[string]versed.AuthProvider{
 		"slack":  {IOs: []string{"workspace"}},
 		"github": {IOs: []string{"gh"}},
@@ -497,7 +499,7 @@ func TestALoginSendsTheClientSecretTheIssuerWants(t *testing.T) {
 	l := idp.Login(loginClient, "sub-ana", map[string]any{"email": "ana@example.com", "email_verified": true}, true)
 	l.Secret = "installed-app-secret"
 	store := entitytest.Store(t)
-	srv := versed.NewWithStore(versed.ScriptedBuilder, store)
+	srv := versedtest.Server(t, runnerdtest.Scripted, store)
 	if err := srv.SetAuth(versed.Auth{Mode: versed.AuthOptional, Providers: map[string]versed.AuthProvider{
 		"google": {Issuer: idp.URL, ClientID: loginClient, Domains: []string{"example.com"}},
 	}}); err != nil {

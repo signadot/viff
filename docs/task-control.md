@@ -293,6 +293,7 @@ Verse keeps its high-water cursor on the task's record. On a restart, it knows w
 | `say` | `text, by, id?` | an utterance: `by` empty = the agent's narration → `say` preview; `by` set = a say-to folded in → journal only; `id` is the ask the words were, which settles as `heard` |
 | `exec` | `tool, step?, fields?, text, err` | `lastAction`, `lastOutput` + journal; `step` and `fields` name the call, as its `decision` did |
 | `pending` | `id, gate, step, fields, tool, action, text, options?, deadline?, answerers?` | `pending {id, gate}` — verse routes it to a Resolver; `options` (each `{id, need}`) and `deadline` (`{within}`) shape the question as a charter gate's would, defaulting to proceed or deny at one each |
+| `withdrawn` | `id, text` | clears `pending`, and the question leaves the docket then, `text` saying why (a say, a pause, a cancel, a deadline), not when the task ends; only the question the task is waiting on |
 | `decision` | `id, gate, step?, fields?, choice, proceed, by, text` | clears `pending`; records the resolution — `choice` is the option, `proceed` the same as yes or no; `gate` is the autonomy's row that decided the call, whether it allowed, denied or asked, or `environment` for a step outside it |
 | `child` | `child, status` | flow-tracking (sub-task spawn/join) |
 | `autonomy` | `text, by` | records a change of autonomy: `text` is the autonomy in one line, `2 row(s), default ask` |

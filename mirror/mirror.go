@@ -192,6 +192,9 @@ type Meta struct {
 	// Arm starts the clock on a question a FRAME posed with a deadline, when set. The record
 	// is written here; the timer that settles it is the server's, so the server hands one in.
 	Arm func(questionID, within string)
+	// Posed is told each question a frame posed, or posed again: the server delivers there an
+	// answer decided and not yet heard, a claim a crash left (versed finishSettle).
+	Posed func(questionID string)
 	// Environment is the launch's environment, what the task may do (its systems; never its vars),
 	// and VirtualKey the model credential it spends, as the ADDRESS its spawn named (never the
 	// key): the task's launch, on the record so a restart still knows what the task was given
@@ -645,9 +648,6 @@ func Launcher(principal string) string {
 	return ""
 }
 
-// LocalRunner is Meta.Runner for a task hosted in this process, whose frames are verse's own.
-const LocalRunner = "local"
-
 // settleRelayed records a relayed task's decision frame.
 //
 // WHERE THE ANSWER ROUTE ACCEPTED AN ANSWER, the question already says everything — who, what
@@ -756,8 +756,8 @@ func backoff(attempt int) time.Duration {
 // worker's grant at the claim is the mirror's own act (entity.SystemMirror).
 //
 // WHO A FRAME SAYS DID SOMETHING IS NOT THE FRAME'S TO SAY, where the frame came from a worker.
-// A hosted task's frames are made in this process, by routes that checked their actor, and are
-// trusted. A relayed task's — a remote runner's — are whatever the worker
+// Frames verse makes itself, for a spawn that failed before it reached a runner (no Meta.Runner),
+// are trusted. A relayed task's — a runner's, which every task that ran is — are whatever the worker
 // wrote, and a `by` on one is a name the worker chose: a decision "by" the answerer a gate is
 // held out to, a slide "by" the docket. AND WHAT WAS DECIDED IS NOT THE FRAME'S EITHER, where
 // verse already holds it: an answer the route accepted is on the question, verdict, ballot and
@@ -766,7 +766,7 @@ func backoff(attempt int) time.Duration {
 // holds (settleRelayed), and its slide named from what verse relayed (slidBy).
 func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Handle, ch <-chan task.Event, claimant *string) (ended, heard bool) {
 	docket, projector := asPrincipal(store, entity.SystemDocket), asPrincipal(store, entity.SystemMirror)
-	relayed := m.Runner != "" && m.Runner != LocalRunner
+	relayed := m.Runner != ""
 	if *claimant != "" {
 		store = asPrincipal(store, *claimant)
 	}
@@ -802,11 +802,29 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				var answerers []string
 				var labels map[string]string
 				ev, answerers, labels = asPosed(docket, m, ev)
-				posed := PostFrameQuestion(docket, ev, id, subject, answerers, labels)
+				posed := PostFrameQuestion(docket, ev, id, entity.Str(st.Payload(), "startedAt"), subject, answerers, labels)
 				// The clock, if the frame set one: the question is the worker's, but the
 				// timer that settles it runs where the record is kept.
 				if posed && ev.Deadline != nil && ev.Deadline.Within != "" && m.Arm != nil {
 					m.Arm(ev.ID, ev.Deadline.Within)
+				}
+				if posed && m.Posed != nil {
+					m.Posed(ev.ID)
+				}
+			case task.EventWithdrawn:
+				// A question the task posed, withdrawn before it was answered, leaves the docket
+				// now, saying why. Only one this task raised, as its record says: a frame naming
+				// another task's would retire that one. The interruption that withdraws it may
+				// have cleared `pending` already, with the decision frame before this one.
+				mine := st["pending"] == QuestionRef(ev.ID).String()
+				if q, ok, _ := docket.Get(QuestionRef(ev.ID)); ok && TaskFrom(q.Payload) == id {
+					mine = true
+				}
+				if mine {
+					DropQuestion(docket, ev.ID, ev.Text)
+					if st["pending"] == QuestionRef(ev.ID).String() {
+						delete(st, "pending")
+					}
 				}
 			case task.EventDecision:
 				// nil, not delete: a write MERGES, so a field left out of the payload stays

@@ -50,7 +50,7 @@ func waitTaskEnded(t *testing.T, srv *Server, id string) {
 // pass until the second ballot. This is the runtime half of the one gate record — a task's
 // action gates used to pose two-option questions whatever the record could carry.
 func TestARunsGateTakesAThreshold(t *testing.T) {
-	srv := NewWithStore(stepBuilder(t), entitytest.Store(t))
+	srv := serverWith(t, stepBuilder(t), entitytest.Store(t))
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -111,7 +111,7 @@ func noTerminalWithin(t *testing.T, srv *Server, id string, d time.Duration) {
 // it — with `default: deny` the action fails back to the task as a refusal it can re-plan
 // around, and the record says the clock decided.
 func TestARunsGateDeadlineAnswersTheLoop(t *testing.T) {
-	srv := NewWithStore(stepBuilder(t), entitytest.Store(t))
+	srv := serverWith(t, stepBuilder(t), entitytest.Store(t))
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -137,7 +137,7 @@ func TestARunsGateDeadlineAnswersTheLoop(t *testing.T) {
 
 // A gate whose question cannot be posed as written refuses the spawn, before anything runs.
 func TestASpawnWithAGateThatAsksNobodyIsRefused(t *testing.T) {
-	srv := NewWithStore(stepBuilder(t), entitytest.Store(t))
+	srv := serverWith(t, stepBuilder(t), entitytest.Store(t))
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 

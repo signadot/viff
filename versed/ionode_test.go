@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -20,7 +21,7 @@ import (
 func TestASourceTakesTheNodesItsClaimsName(t *testing.T) {
 	requireGit(t)
 	raw := entitytest.Store(t)
-	srv := NewWithStore(ScriptedBuilder, raw)
+	srv := serverWith(t, runnerdtest.Scripted, raw)
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()

@@ -103,10 +103,10 @@ second page of charters.
   its rules read.
 - `task/` — a *task* is a unit of work that verse governs and that you can steer. An agent or
   a shell command does it.
-- `runner/` — where a task runs. There are two ways: local, in the verse process; and remote,
-  on a runner served over HTTP. The engine drives both through one interface, so every
-  `verse task` command works with each. `runner/runnerd/` hosts a runner, embedded in verse
-  or served over HTTP, and `runner/runnerd/stock/` is the runner verse ships.
+- `runner/` — where a task runs: on a runner served over HTTP, the one `verse up` starts beside
+  itself or one registered with it. The engine drives each through one interface, so every
+  `verse task` command works with each. `runner/runnerd/` hosts a runner and serves it over
+  HTTP, and `runner/runnerd/stock/` is the runner verse ships.
 - `mirror/` — writes each running task into the store, as data at `verse.task.instance.<id>`.
   So to observe or steer a task, you observe data.
 - `resolver/` — a service that answers asks for whoever grants it. A resolver is installed. It

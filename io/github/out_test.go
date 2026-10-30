@@ -3,6 +3,8 @@ package github_test
 import (
 	"context"
 	"fmt"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/versed/versedtest"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -12,14 +14,13 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/io/github"
-	"github.com/signadot/verse/versed"
 )
 
 // The out half against the fake: a comment made once, left alone while the text holds, and
 // updated in place when it changes; a `to` it cannot read is refused on the status.
 func TestTheOutHalfKeepsACommentInStep(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
+	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
 	f.repo("signadot/verse").pr(42, "a change", "open", "2026-09-01T00:00:00Z", "abc")
@@ -91,7 +92,7 @@ func TestTheOutHalfKeepsACommentInStep(t *testing.T) {
 // body, and ADOPTED where a person opened one already — whose words are then left as they are.
 func TestTheOutHalfOpensOrAdoptsAPullRequest(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
+	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
 	f.repo("signadot/verse").pr(7, "a person's own", "open", "2026-09-01T00:00:00Z", "abc") // head feature-7
@@ -171,7 +172,7 @@ func TestTheOutHalfOpensOrAdoptsAPullRequest(t *testing.T) {
 // once; a pull request merged before the io was asked is recorded with no commit of the io's.
 func TestTheOutHalfMergesAtASha(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
+	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
 	r := f.repo("signadot/verse")
@@ -231,7 +232,7 @@ func TestTheOutHalfMergesAtASha(t *testing.T) {
 // A CLOSE: once, by the kind `to` names, and recorded as it is where somebody closed it first.
 func TestTheOutHalfClosesAnIssueOrAPullRequest(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
+	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
 	r := f.repo("signadot/verse")
@@ -301,7 +302,7 @@ func TestTheOutHalfClosesAnIssueOrAPullRequest(t *testing.T) {
 // cannot be reviewed by it, and GitHub's refusal lands on the status.
 func TestTheOutHalfReviewsAPullRequest(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
+	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
 	f.repo("signadot/verse").pr(42, "a person's", "open", "2026-09-01T00:00:00Z", "abc")
@@ -361,7 +362,7 @@ func TestTheOutHalfReviewsAPullRequest(t *testing.T) {
 // and a review naming no sha leaves none of an earlier one's on the status.
 func TestTheOutHalfReviewsAtAHeadAndACommentLiftsItsHold(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
+	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
 	f.repo("signadot/verse").pr(42, "a person's", "open", "2026-09-01T00:00:00Z", "aaa")
@@ -433,7 +434,7 @@ func TestTheOutHalfReviewsAtAHeadAndACommentLiftsItsHold(t *testing.T) {
 // is asked once. A 403 that is GitHub's rate limit fixes itself: it is asked again.
 func TestARefusalIsAskedOnceAndARateLimitAgain(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
+	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
 	r := f.repo("signadot/verse")
@@ -488,7 +489,7 @@ func TestARefusalIsAskedOnceAndARateLimitAgain(t *testing.T) {
 // the branch is there.
 func TestAPullRequestWaitsForItsBranch(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
+	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
 	repo := f.repo("signadot/verse")
@@ -524,7 +525,7 @@ func TestAPullRequestWaitsForItsBranch(t *testing.T) {
 // sha, so the page says what verse waits for and then what it decided.
 func TestAnOpenInputPutsACommitStatusOnThePullRequestsHead(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
+	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
 	f.repo("signadot/verse")
@@ -604,7 +605,7 @@ func TestAnOpenInputPutsACommitStatusOnThePullRequestsHead(t *testing.T) {
 // what else it asks is still done. Once a status goes up, the error goes.
 func TestARefusedCommitStatusLeavesTheRestOfTheInput(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
+	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
 	repo := f.repo("signadot/verse")
@@ -666,7 +667,7 @@ func TestARefusedCommitStatusLeavesTheRestOfTheInput(t *testing.T) {
 // know before the issue exists. `closed: true` then closes it.
 func TestAnOpenInputFilesAnIssue(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
+	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
 	f.repo("signadot/verse")

@@ -2,6 +2,7 @@ package versed
 
 import (
 	"context"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -110,7 +111,7 @@ func TestARestartHonoursTheStampedDeadline(t *testing.T) {
 	addr := entitytest.Addr(t)
 	const id = "verse.trigger.review.review~3"
 
-	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	first := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	ctx, stop := context.WithCancel(t.Context())
 	first.Start(ctx)
 	raiseWithDeadline(t, first, id, "10m", "deny")
@@ -118,7 +119,7 @@ func TestARestartHonoursTheStampedDeadline(t *testing.T) {
 	backdate(t, first.Store, id) // the verse is down for longer than the deadline
 	stop()
 
-	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	second := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	second.Start(t.Context())
 	// The reconcile orphaned it (its waiter died with the first verse); the replay re-poses it.
 	answered := raiseWithDeadline(t, second, id, "10m", "deny")

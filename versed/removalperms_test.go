@@ -3,6 +3,7 @@ package versed
 import (
 	"errors"
 	"fmt"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -38,7 +39,7 @@ func deleteAs(t *testing.T, as, url string) *http.Response {
 const alicesRule = `{name: alices, condition: {subject: {path: "demo.al.*", value: {stage: open}}}, action: {patch: {stage: seen}}}`
 
 func TestARuleIsRemovedAndReplacedByItsOwnerAlone(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -143,7 +144,7 @@ func TestAStrangersRemovalLeavesASourceRunning(t *testing.T) {
 // it says the system installed it.
 func TestANameTheSystemInstallsAtIsNotKeptBySomebodyWhoTookItFirst(t *testing.T) {
 	store := entitytest.Store(t)
-	srv := NewWithStore(ScriptedBuilder, store)
+	srv := serverWith(t, runnerdtest.Scripted, store)
 	mallory, rule := "user:mallory@example.com", trigger.CharterRef("calendar")
 	if err := entity.Claim(entity.As(srv.Store, mallory), rule, mallory); !errors.Is(err, entity.ErrForbidden) {
 		t.Fatalf("mallory reserved a rule's name with nothing standing at it: %v", err)
@@ -180,7 +181,7 @@ func TestANameTheSystemInstallsAtIsNotKeptBySomebodyWhoTookItFirst(t *testing.T)
 // first: a stranger's removal is refused with the schedule still ticking — the base charter's
 // own included, which is the calendar every rule reads.
 func TestAStrangersRemovalLeavesAScheduleTicking(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Zone = time.UTC
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
@@ -218,7 +219,7 @@ func TestAStrangersRemovalLeavesAScheduleTicking(t *testing.T) {
 // first, so the owner record and the grants on it stand through an edit, and a co-owner who
 // edits a rule has not become its owner — it goes on firing as whoever installed it.
 func TestReplacingARuleKeepsItsOwnerAndARefusedOneKeepsTheRule(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -314,7 +315,7 @@ func TestARefusedFileLeavesALevelItsInstallers(t *testing.T) {
 // stood: the person's rule, AND its record. Content alone would leave their rule standing
 // under the system's record, firing as the system into places they hold nothing on.
 func TestARefusedSystemFileGivesBackTheNameItTook(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()

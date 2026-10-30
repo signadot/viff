@@ -3,6 +3,7 @@ package versed
 import (
 	"context"
 	"errors"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"io"
 	"net/http/httptest"
 	"slices"
@@ -133,7 +134,7 @@ func TestACharterPackageMayNotBeInstalledInVersesHalf(t *testing.T) {
 // scope waits for its owner to come back, while a package is a stamp anyone can list.
 func TestACharterPackageIsRestoredAtItsAddress(t *testing.T) {
 	addr := entitytest.Addr(t)
-	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	first := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	ctx, stop := context.WithCancel(t.Context())
 	first.Start(ctx)
 	ts := httptest.NewServer(first.Handler())
@@ -151,7 +152,7 @@ func TestACharterPackageIsRestoredAtItsAddress(t *testing.T) {
 	stop()
 	time.Sleep(50 * time.Millisecond)
 
-	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	second := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	second.Start(t.Context())
 
 	// The baseline charter did NOT take it: a package's rules are not baseline's, and a
@@ -201,7 +202,7 @@ func TestARestartReadsTheCharterOnceForEveryPackage(t *testing.T) {
 	restart := func(ats ...string) (int, int) {
 		t.Helper()
 		cl := &charterListings{Store: entitytest.StoreAt(t, addr)}
-		srv := NewWithStore(ScriptedBuilder, cl)
+		srv := serverWith(t, runnerdtest.Scripted, cl)
 		ctx, stop := context.WithCancel(t.Context())
 		defer stop()
 		srv.Start(ctx)
@@ -296,7 +297,7 @@ func TestAnImportCycleBetweenPackagesIsRefused(t *testing.T) {
 // charter first would refuse the very rules it is bringing back.
 func TestAPackagesImportsAreRestored(t *testing.T) {
 	addr := entitytest.Addr(t)
-	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	first := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	ctx, stop := context.WithCancel(t.Context())
 	first.Start(ctx)
 	ts := httptest.NewServer(first.Handler())
@@ -314,7 +315,7 @@ func TestAPackagesImportsAreRestored(t *testing.T) {
 	stop()
 	time.Sleep(50 * time.Millisecond)
 
-	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	second := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	second.Start(t.Context())
 
 	// It runs, which is the whole assertion: the rule reads `git`, and it could only be

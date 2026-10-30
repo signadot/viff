@@ -2,6 +2,7 @@ package versed
 
 import (
 	"fmt"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -89,7 +90,7 @@ func TestATasksOwnerAnswersWhatItAsked(t *testing.T) {
 // A charter's owner answers what their rule asked: a firing's question is linked under the
 // rule's record, and the rule is the installer's.
 func TestACharterOwnerAnswersWhatItsRuleAsked(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()

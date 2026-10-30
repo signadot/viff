@@ -362,7 +362,7 @@ func TestAnAnsweredQuestionStaysAnswered(t *testing.T) {
 	ev := task.Event{Kind: task.EventPending, ID: "t1~d1", Gate: "ship"}
 	answered := func() entity.Store {
 		store := docket(t)
-		if !PostFrameQuestion(store, ev, "t1", "", []string{ann}, nil) {
+		if !PostFrameQuestion(store, ev, "t1", "", "", []string{ann}, nil) {
 			t.Fatal("not posed")
 		}
 		AnswerQuestion(store, ev.ID, task.Choose(task.Proceed, ann))
@@ -374,7 +374,7 @@ func TestAnAnsweredQuestionStaysAnswered(t *testing.T) {
 	}
 
 	store := answered()
-	PostFrameQuestion(store, ev, "t1", "", []string{ann}, nil) // late: the same asking, reported again
+	PostFrameQuestion(store, ev, "t1", "", "", []string{ann}, nil) // late: the same asking, reported again
 	if s := status(store); s != QuestionAnswered {
 		t.Errorf("a late frame left the answered question %s", s)
 	}
@@ -432,7 +432,7 @@ func TestAFramePosedQuestionSaysWhomItWaitsOn(t *testing.T) {
 	store := docket(t)
 	const ann = "user:ann@example.com"
 	ev := task.Event{Kind: task.EventPending, ID: "t1~d1", Gate: "ship"}
-	if !PostFrameQuestion(store, ev, "t1", "", []string{ann}, nil) {
+	if !PostFrameQuestion(store, ev, "t1", "", "", []string{ann}, nil) {
 		t.Fatal("not posed")
 	}
 	same(t, waitsOn(t, store, ev.ID), []string{ann})
@@ -458,7 +458,7 @@ func TestAQuestionCarriesTheAction(t *testing.T) {
 
 	// From a remote runner's frame, the same.
 	PostFrameQuestion(store, task.Event{Kind: task.EventPending, ID: "run-b~d1", Gate: "write", Tool: "apply_patch",
-		Action: "update docs/x.md", Text: "verb write"}, "run-b", "", nil, nil)
+		Action: "update docs/x.md", Text: "verb write"}, "run-b", "", "", nil, nil)
 	e, ok, _ = store.Get(QuestionRef("run-b~d1"))
 	if !ok {
 		t.Fatal("the frame's question was not posted")
@@ -471,5 +471,46 @@ func TestAQuestionCarriesTheAction(t *testing.T) {
 	e, _, _ = store.Get(QuestionRef("run-c~d1"))
 	if _, present := entity.ToObj(e.Payload)["action"]; present {
 		t.Error("an action that said nothing has an action field")
+	}
+}
+
+// A QUESTION A TASK ASKS AGAIN IS POSED AGAIN, from a frame as from the registry: later in the same
+// run, or by another run of the task under the same id, it stands pending once more, the last
+// round's answer cleared. The same asking replayed (a mirror resuming below a frame it had
+// written) leaves the answer standing.
+func TestAQuestionAskedAgainByFrameIsPosedAgain(t *testing.T) {
+	const ann = "user:ann@example.com"
+	store := entitytest.Store(t)
+	ask := func(run string, cursor int64) bool {
+		t.Helper()
+		ev := task.Event{Kind: task.EventPending, ID: "t1~d1", Gate: "write", Cursor: cursor}
+		return PostFrameQuestion(store, ev, "t1", run, "", []string{ann}, nil)
+	}
+	status := func() map[string]any {
+		t.Helper()
+		e, _, _ := store.Get(QuestionRef("t1~d1"))
+		return entity.ToObj(e.Payload)
+	}
+	answer := func() {
+		t.Helper()
+		AnswerQuestion(store, "t1~d1", task.Resolution{Choice: task.Proceed, Proceed: true, By: ann})
+		if got := status()["status"]; got != QuestionAnswered {
+			t.Fatalf("after the answer the question is %v", got)
+		}
+	}
+	ask("run-1", 5)
+	answer()
+	ask("run-1", 5) // the same asking, replayed
+	if got := status(); got["status"] != QuestionAnswered || got["askedAgain"] != nil {
+		t.Fatalf("a replayed frame re-posed the question: %v", got)
+	}
+	ask("run-1", 9) // asked again, later in the run
+	if got := status(); got["status"] != QuestionPending || got["askedAgain"] != true || got["verdict"] != nil {
+		t.Fatalf("asked again later in the run, the question = %v, want it pending and asked again", got)
+	}
+	answer()
+	ask("run-2", 3) // another run of the task, its stream starting over
+	if got := status(); got["status"] != QuestionPending || got["askedAgain"] != true {
+		t.Fatalf("asked by another run, the question = %v, want it pending and asked again", got)
 	}
 }

@@ -3,6 +3,7 @@ package versed
 import (
 	"context"
 	"fmt"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -224,7 +225,7 @@ func TestASuspensionIsMadeOnlyByTheRouteAndSaysWhy(t *testing.T) {
 // wait for it. A restart brings every suspension back.
 func TestSuspensionsLoadBeforeTheRestore(t *testing.T) {
 	addr := entitytest.Addr(t)
-	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	first := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	first.susp.Unload() // where a restore begins
 	testerOwns(t, first, entity.RefAt("verse-dev"))
 	ts := httptest.NewServer(first.Handler())
@@ -268,7 +269,7 @@ func TestSuspensionsLoadBeforeTheRestore(t *testing.T) {
 	down()
 	first.stopAllIOs()
 
-	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	second := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	second.Start(t.Context())
 	sus, ok := second.susp.Get(held.ID)
 	if !ok || sus.Held["user:"+tester].Why != "across a restart" {
@@ -694,7 +695,7 @@ func TestATaskTrackedUnderASuspensionIsHeld(t *testing.T) {
 // the scope's resume is what lets it act.
 func TestAScopesSuspensionsLoadBeforeItsCharterArms(t *testing.T) {
 	addr := entitytest.Addr(t)
-	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	first := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	firstCtx, down := context.WithCancel(t.Context())
 	first.Start(firstCtx)
 	firstHTTP := httptest.NewServer(first.Handler())
@@ -711,7 +712,7 @@ func TestAScopesSuspensionsLoadBeforeItsCharterArms(t *testing.T) {
 	first.stopAllIOs()
 
 	store := entitytest.StoreAt(t, addr)
-	second := NewWithStore(ScriptedBuilder, store)
+	second := serverWith(t, runnerdtest.Scripted, store)
 	second.Start(t.Context())
 	ts := httptest.NewServer(second.Handler())
 	defer ts.Close()

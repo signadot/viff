@@ -799,8 +799,16 @@ func anyStrings(ss []string) []any {
 	return out
 }
 
-// PostFrameQuestion publishes a question reported as a FRAME — the relayed path, where the
-// worker ran the gate on its own machine and sent back what it chose to report.
+// PostFrameQuestion publishes a question reported as a FRAME, the one post a task's question gets:
+// the runner ran the gate and sent back what it chose to report.
+//
+// A QUESTION ASKED AGAIN IS POSED AGAIN. A frame that poses a question already settled is a new
+// asking under an old id, where it came later in the task's stream than the asking that was
+// settled, or came from another run of the task (run, its startedAt): it is posed again as
+// PostQuestion poses one (clearPriorAnswer), the last round's answer cleared and `askedAgain`
+// said. A frame of the same run no later than the one the record was posed from is that asking
+// replayed (a mirror resuming below a frame it had already written), and leaves a settled question
+// as it stands, as the guard below says.
 //
 // It writes less than PostQuestion because the frame carries less: derived effects stayed with
 // the deriver that produced them, so `effects` is absent here rather than empty. That absence
@@ -810,7 +818,7 @@ func anyStrings(ss []string) []any {
 // A local run posts twice, once from each writer. That is not a conflict: a write merges, so
 // the frame's post cannot erase the effects the registry's post already recorded, and every
 // field the two share they agree on.
-func PostFrameQuestion(store entity.Store, ev task.Event, taskID, subject string, answerers []string, labels map[string]string) bool {
+func PostFrameQuestion(store entity.Store, ev task.Event, taskID, run, subject string, answerers []string, labels map[string]string) bool {
 	rec := entity.Obj{
 		"id":      ev.ID,
 		"gate":    ev.Gate,
@@ -854,6 +862,19 @@ func PostFrameQuestion(store entity.Store, ev task.Event, taskID, subject string
 	posed := entity.Obj{"status": rec["status"], "posedAt": rec["posedAt"]}
 	delete(rec, "status")
 	delete(rec, "posedAt")
+	// Which run, and where in its stream, it was posed from, so a later asking can be told from a
+	// replay.
+	again := false
+	if ev.Cursor > 0 && run != "" {
+		if e, ok, err := store.Get(ref); err == nil && ok {
+			switch entity.Str(e.Payload, "status") {
+			case QuestionAnswered, QuestionOrphaned:
+				prior, _ := entity.ToObj(e.Payload)[PosedCursorField].(int64)
+				again = entity.Str(e.Payload, PosedRunField) != run || ev.Cursor > prior
+			}
+		}
+		rec[PosedCursorField], rec[PosedRunField] = ev.Cursor, run
+	}
 	// FROM THE TASK, whatever id the worker raised it under: the task is who asked.
 	if taskID != "" {
 		rec[FromField] = FromTask(taskID)
@@ -897,6 +918,11 @@ func PostFrameQuestion(store entity.Store, ev task.Event, taskID, subject string
 	if on, ok := waitingOn(store, ref); ok {
 		posed[WaitingOnField] = on
 	}
+	if again {
+		clearPriorAnswer(store, ref, posed)
+		writeAt(store, ref, posed)
+		return true
+	}
 	// Still pending, or not there at all — a relayed question whose only writer is this frame.
 	// `!not` over the two settled values rather than an equality on `pending`, so a status this
 	// does not know about is not silently treated as re-posable.
@@ -907,6 +933,14 @@ func PostFrameQuestion(store entity.Store, ev task.Event, taskID, subject string
 	})
 	return true
 }
+
+// PosedCursorField and PosedRunField are where a question was last posed from: the run of its task
+// (its startedAt) and the frame's cursor in that run's stream, which tell a later asking of a
+// settled question from that asking replayed.
+const (
+	PosedCursorField = "posedCursor"
+	PosedRunField    = "posedRun"
+)
 
 // notStatus is the precondition "this record does not say status: s".
 //

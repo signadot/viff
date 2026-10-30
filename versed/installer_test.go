@@ -2,6 +2,7 @@ package versed
 
 import (
 	"context"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -28,7 +29,7 @@ func TestWhoseARuleIsIsSaidOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	addr := entitytest.Addr(t)
-	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	first := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	first.SystemCharter = path
 	firstCtx, down := context.WithCancel(t.Context())
 	first.Start(firstCtx)
@@ -62,7 +63,7 @@ func TestWhoseARuleIsIsSaidOnce(t *testing.T) {
 	down()
 	first.stopAllIOs()
 
-	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	second := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	second.Start(t.Context())
 	ts := httptest.NewServer(second.Handler())
 	defer ts.Close()

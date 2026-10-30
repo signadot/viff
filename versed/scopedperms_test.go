@@ -2,6 +2,7 @@ package versed
 
 import (
 	"context"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -25,7 +26,7 @@ import (
 // scope's own creations answered as nobody's and refused their creator.
 func TestAScopedGrantGovernsTheScopeAlone(t *testing.T) {
 	addr := entitytest.Addr(t)
-	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	first := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	firstCtx, down := context.WithCancel(t.Context())
 	first.Start(firstCtx)
 	firstHTTP := httptest.NewServer(first.Handler())
@@ -114,7 +115,7 @@ func TestAScopedGrantGovernsTheScopeAlone(t *testing.T) {
 	// never held: alice was refused her own entity, and bob his grant. (Before: 403 on both.)
 	down()
 	first.stopAllIOs()
-	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	second := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	second.Start(t.Context())
 	secondHTTP := httptest.NewServer(second.Handler())
 	defer secondHTTP.Close()

@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -25,7 +26,7 @@ func groupAs(t *testing.T, as, url, name string, members ...string) *http.Respon
 // A gate held out to a group is answered by its members, `need` of them; a stranger is refused;
 // and a group is its maker's to change, not anybody's.
 func TestAGateHeldOutToAGroup(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()

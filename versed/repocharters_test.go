@@ -2,6 +2,7 @@ package versed
 
 import (
 	"fmt"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -154,7 +155,7 @@ func tagInputFor(t *testing.T, srv *Server, tree string) entity.Payload {
 // `repo-charters.verse`, and its outboxes are plain names inside it, not `verse.install`, which
 // the outbox check reads as verse's own half (staging's first ship refused it so).
 func TestTheReconcilerInstallsForARepositoryCalledVerse(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	t.Cleanup(srv.stopAllIOs)
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
@@ -181,7 +182,7 @@ func TestTheReconcilerInstallsForARepositoryCalledVerse(t *testing.T) {
 // A reconciler rendered for another branch follows that branch: its tree is a candidate, and so is
 // what a pull request onto it proposes, while main and a pull request onto main propose nothing.
 func TestTheReconcilerFollowsItsBranch(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	t.Cleanup(srv.stopAllIOs)
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
@@ -243,7 +244,7 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	dir := t.TempDir()
 	// Hosted as `verse up` hosts tasks, so a call list can ask.
 	drivers := stock.New(stock.Open(), stock.Secrets{}, dir, io.Discard)
-	srv := NewWithStore(drivers.Build, entitytest.Store(t))
+	srv := serverWith(t, drivers.Build, entitytest.Store(t))
 	t.Cleanup(srv.stopAllIOs)
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())

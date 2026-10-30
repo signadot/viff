@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http/httptest"
 	"sort"
 	"strings"
@@ -16,7 +17,7 @@ import (
 // not one question three waiters have joined. Withdrawing one of them from its scope has to take
 // that one off the docket and leave the others standing, which a shared id cannot do.
 func TestSameNamedRulesInThreeEnginesAskThreeQuestions(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()

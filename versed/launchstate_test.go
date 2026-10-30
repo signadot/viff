@@ -158,7 +158,7 @@ func TestARunsEndLeavesALaterRunsEntry(t *testing.T) {
 // under the same id keeps its entry.
 func TestARefusedSpawnLeavesTheRunStandingUnderItsID(t *testing.T) {
 	srv := testServer(t)
-	srv.NoLocalRunner = true // and no runner is registered, so nothing takes the spawn
+	noLocalRunner(t, srv) // and no runner is registered, so nothing takes the spawn
 	srv.HostedRetention = 20 * time.Millisecond
 	srv.host("standing", hostedTask{scope: "live"})
 

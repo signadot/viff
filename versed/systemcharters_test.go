@@ -2,6 +2,7 @@ package versed
 
 import (
 	"context"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -129,7 +130,7 @@ rules: [{name: mark,
 		t.Helper()
 		rule := trigger.CharterRefAt("notes", "mark")
 		rg := &recordGets{Store: entitytest.StoreAt(t, addr), of: entity.PermsRef(rule), rule: rule}
-		srv := NewWithStore(ScriptedBuilder, rg)
+		srv := serverWith(t, runnerdtest.Scripted, rg)
 		srv.SystemCharters = texts
 		rg.n, rg.writes = 0, 0 // the start is what is counted, not the migrations building the server reads through
 		ctx, stop := context.WithCancel(t.Context())
@@ -178,7 +179,7 @@ func TestASystemRulesWordsFollowItsTextWithoutAReplay(t *testing.T) {
 	}
 	start := func(texts []SystemCharter) *Server {
 		t.Helper()
-		srv := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+		srv := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 		srv.SystemCharters = texts
 		ctx, stop := context.WithCancel(t.Context())
 		t.Cleanup(stop)

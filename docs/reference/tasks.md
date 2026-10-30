@@ -50,8 +50,7 @@ is a flag: `--attach`, `--wait`, `--converse`, `--name` and `--as`.
 | `autonomy` | replaces the [autonomy](../glossary.md#autonomy), what each step gets, with a whole one. The runner checks each row against the task's environment, which is fixed for the run, and applies it at the next [boundary](../glossary.md#boundary), with no restart. A replacement decides among what the environment gives and adds nothing to it: a row that can match nothing the environment gives is refused. |
 
 `autonomy --as` names who made the change. `say` is made as whoever `verse` acts as. Both
-commands work wherever the task runs: the local runtime applies them directly, and a remote
-worker gets them through its runner.
+commands work wherever the task runs: its runner gets them.
 
 The `spawn` of a [rule](../glossary.md#rule) runs a task the same way. What a charter may say
 in a spawn is in [the action of a rule](action.md#action-what-fires).

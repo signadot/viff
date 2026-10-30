@@ -38,29 +38,7 @@ type InProcessHandler struct {
 	// other than open, is refused: a task in the runner's own process has no checkout, no
 	// channel to push over, and the runner's network.
 	taskProcess bool
-	// onQuestion, when set, is called as each hosted task poses a gate question, with the task's
-	// id. The host holds no store and should not: publishing a question is the job of whoever
-	// owns one, and this is the seam that hands it over, with the step it is about.
-	onQuestion func(taskID string, p task.Pending)
-	onCheck    func(taskID string, q task.GateQuestion) error
-	// onDrop is the counterpart: a question WITHDRAWN when its last waiter stops waiting (an
-	// intervention, a pause, a deadline). Without it the record onQuestion posted stays
-	// `pending` on the docket, offering a decision nothing is left to receive (git-issue
-	// zdaqh9vkh12ksxneg9n0).
-	onDrop func(taskID, questionID, why string)
 }
-
-// OnQuestion registers the publisher. Optional: runnerd runs standalone in tests and under
-// `verse task run` with nothing behind it.
-func (d *InProcessHandler) OnQuestion(f func(taskID string, p task.Pending)) { d.onQuestion = f }
-
-// OnCheck registers what may refuse a hosted task's question before it is posed (Registry.OnCheck),
-// told the task's id as onQuestion is.
-func (d *InProcessHandler) OnCheck(f func(taskID string, q task.GateQuestion) error) { d.onCheck = f }
-
-// OnDrop registers the publisher's other half — a question leaving the docket unanswered. A
-// caller that registers one without the other publishes questions it never retires.
-func (d *InProcessHandler) OnDrop(f func(taskID, questionID, why string)) { d.onDrop = f }
 
 type hosted struct {
 	task   *task.Task
@@ -239,16 +217,12 @@ func (d *InProcessHandler) host(l runner.Launch) (*hosted, bool) {
 
 	// Surface pending decisions on the same read plane as the loop's events, so an
 	// attached client sees what a gate is blocked on and can resolve it by id.
-	reg.OnCheck(func(q task.GateQuestion) error {
-		if d.onCheck != nil {
-			return d.onCheck(l.ID, q)
-		}
-		return nil
+	// And its counterpart: a question withdrawn when its last waiter stops waiting leaves the
+	// docket then, not when the task ends (git-issue zdaqh9vkh12ksxneg9n0).
+	reg.OnDrop(func(q task.GateQuestion, why string) {
+		tk.Emit(task.Event{Kind: task.EventWithdrawn, ID: q.ID, Text: why})
 	})
 	reg.OnPost(func(p task.Pending) {
-		if d.onQuestion != nil {
-			d.onQuestion(l.ID, p)
-		}
 		// Whom it asks crosses too: verse poses a remote task's question from this frame, and a
 		// turn or an ask naming $principal is the task's person's, not the docket's.
 		tk.Emit(task.Event{
@@ -257,15 +231,6 @@ func (d *InProcessHandler) host(l runner.Launch) (*hosted, bool) {
 			Options: p.Question.Options, Deadline: p.Question.Deadline, Answerers: p.Question.Answerers,
 		})
 	})
-	// And the counterpart, on the SAME registry. This is the one that was missing: the
-	// registry's own drop wiring works and is tested, and a hosted task's questions simply had
-	// nobody registered to hear it.
-	reg.OnDrop(func(q task.GateQuestion, why string) {
-		if d.onDrop != nil {
-			d.onDrop(l.ID, q.ID, why)
-		}
-	})
-
 	// Re-checked under the lock: two concurrent launches of one id race the check above, and
 	// the loser must not start a second loop. Whoever registered first is the task.
 	//
@@ -375,8 +340,7 @@ func (d *InProcessHandler) list(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, d.Snapshots())
 }
 
-// Snapshots returns every hosted task in the shape the task API returns — for versed
-// to union the local runtime with a runner's own tasks in one list.
+// Snapshots returns every hosted task in the shape the task API returns.
 func (d *InProcessHandler) Snapshots() []task.Snapshot {
 	d.mu.Lock()
 	defer d.mu.Unlock()

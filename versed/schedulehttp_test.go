@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,7 +17,7 @@ import (
 // GET /schedules lists every record with its grid and its standing tick; POST /schedules/{id}/tick
 // backfills one, for a caller the record admits.
 func TestSchedulesOnTheWire(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Zone = time.UTC
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())

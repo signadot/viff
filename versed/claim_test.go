@@ -2,6 +2,7 @@ package versed
 
 import (
 	"errors"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -85,7 +86,7 @@ func TestTheClaimSettlesAQuestion(t *testing.T) {
 // that runs nothing more.
 func TestARestartFinishesAClaimedSettle(t *testing.T) {
 	raw := entitytest.Store(t)
-	first := NewWithStore(ScriptedBuilder, raw)
+	first := serverWith(t, runnerdtest.Scripted, raw)
 	t.Cleanup(first.stopAllIOs)
 	_, ts := askingOn(t, first)
 	const alice, bob = "user:alice@example.com", "user:bob@example.com"
@@ -99,7 +100,7 @@ func TestARestartFinishesAClaimedSettle(t *testing.T) {
 	ts.Close()
 	first.stopAllIOs()
 
-	second := NewWithStore(ScriptedBuilder, raw)
+	second := serverWith(t, runnerdtest.Scripted, raw)
 	t.Cleanup(second.stopAllIOs)
 	second.Start(t.Context())
 	waitValue(t, second, ref, "answer", "yes")
@@ -113,7 +114,7 @@ func TestARestartFinishesAClaimedSettle(t *testing.T) {
 		t.Fatalf("the claim still says undelivered: %v", rec["followed"])
 	}
 
-	third := NewWithStore(ScriptedBuilder, raw)
+	third := serverWith(t, runnerdtest.Scripted, raw)
 	t.Cleanup(third.stopAllIOs)
 	third.Start(t.Context())
 	time.Sleep(200 * time.Millisecond)

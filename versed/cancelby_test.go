@@ -11,7 +11,7 @@ import (
 	"github.com/signadot/verse/mirror"
 )
 
-// A CANCEL IS RECORDED AS WHOEVER MADE IT, wherever the task runs. The embedded runner's own
+// A CANCEL IS RECORDED AS WHOEVER MADE IT, wherever the task runs. The local runner's own
 // handler used to take a cancel's body as it stood, so its `by` was written down unchecked; a
 // cancel goes through the task's handle now, as say and autonomy do, and a `by` naming anybody
 // but the caller is refused.

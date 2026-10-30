@@ -3,6 +3,7 @@ package versed
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -22,7 +23,7 @@ import (
 func TestTheDoorRefusesWhenTheRegistrationsAreUnread(t *testing.T) {
 	cluster := idptest.New(t)
 	fs := &failReads{Store: entitytest.Store(t)}
-	srv := NewWithStore(ScriptedBuilder, fs)
+	srv := serverWith(t, runnerdtest.Scripted, fs)
 	srv.Start(t.Context())
 	if err := srv.SetAuth(Auth{Iod: AuthIod{Issuer: cluster.URL}}); err != nil {
 		t.Fatal(err)

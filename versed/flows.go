@@ -319,15 +319,12 @@ func (s *Server) controlledTask(w http.ResponseWriter, r *http.Request, id strin
 }
 
 // taskHandle is the handle a task is controlled through, wherever it runs: the one the engine of
-// the scope holding it tracks it by, else the local runtime's, else the runner hosting it.
+// the scope holding it tracks it by, else the runner hosting it.
 func (s *Server) taskHandle(holder, id string) task.Handle {
 	for _, eng := range s.flowEngines(holder) {
 		if h, ok := eng.Handle(id); ok {
 			return h
 		}
-	}
-	if t := s.Embedded.Lookup(id); t != nil {
-		return t
 	}
 	return s.attach(id)
 }

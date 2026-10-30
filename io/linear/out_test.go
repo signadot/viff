@@ -2,6 +2,8 @@ package linear_test
 
 import (
 	"context"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/versed/versedtest"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -11,7 +13,6 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/io/linear"
-	"github.com/signadot/verse/versed"
 )
 
 // The second out half, and the reason there is one: everything below runs on the same io.Out as
@@ -27,7 +28,7 @@ type outRig struct {
 func newOutRig(t *testing.T) *outRig {
 	t.Helper()
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
+	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
 	f.team("ENG", "Engineering")

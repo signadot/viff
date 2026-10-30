@@ -2,6 +2,7 @@ package versed
 
 import (
 	"context"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -95,7 +96,7 @@ func settledByDeadline(t *testing.T, srv *Server, qid string, at time.Time) {
 // A QUESTION DATED BY ITS RECORD settles at that date: the stamp is the date the record says, not
 // a duration from when the question happened to be posed.
 func TestAQuestionSettlesAtTheDateItsRecordSays(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	datedServer(t, srv)
 	ask := entity.RefAt("ask", "one")
 	by := srv.now().Add(90 * time.Second)
@@ -115,7 +116,7 @@ func TestAQuestionSettlesAtTheDateItsRecordSays(t *testing.T) {
 // EDITING THE DATE MOVES THE CLOCK. Whoever may write the record moves the question's deadline by
 // writing a new date; the question is not re-posed, its instant is.
 func TestEditingTheRecordsDateMovesTheQuestionsDeadline(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	datedServer(t, srv)
 	ask := entity.RefAt("ask", "one")
 	later := srv.now().Add(time.Hour)
@@ -142,7 +143,7 @@ func TestEditingTheRecordsDateMovesTheQuestionsDeadline(t *testing.T) {
 
 // A SETTLED QUESTION KEEPS THE CLOCK IT SETTLED UNDER: what it records is what happened.
 func TestASettledQuestionsDeadlineDoesNotMove(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	datedServer(t, srv)
 	ask := entity.RefAt("ask", "one")
 	by := srv.now().Add(time.Minute)
@@ -161,7 +162,7 @@ func TestASettledQuestionsDeadlineDoesNotMove(t *testing.T) {
 
 // A DATE NO CLOCK READS asks nobody: a question that would never settle as its asker meant.
 func TestARecordWhoseDateIsUnreadableIsNotAsked(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	datedServer(t, srv)
 	for _, by := range []any{"friday", 42} {
 		bad := entity.RefAt("ask", "bad")
@@ -188,7 +189,7 @@ func TestARecordWhoseDateIsUnreadableIsNotAsked(t *testing.T) {
 
 // A RECORD THAT GIVES NO DATE GIVES NO CLOCK: the question is asked, and stands until answered.
 func TestARecordGivingNoDateIsAskedWithNoClock(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	datedServer(t, srv)
 	ask := entity.RefAt("ask", "undated")
 	entitytest.Set(t, srv.Store, ask, entity.Obj{"question": "q"}.Payload())
@@ -207,7 +208,7 @@ func TestARecordGivingNoDateIsAskedWithNoClock(t *testing.T) {
 // moved to, not the one it was first posed with.
 func TestAMovedDeadlineHoldsAcrossARestart(t *testing.T) {
 	addr := entitytest.Addr(t)
-	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	first := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	clock := clockOf(t, first)
 	ctx, stop := context.WithCancel(t.Context())
 	first.Start(ctx)
@@ -234,7 +235,7 @@ func TestAMovedDeadlineHoldsAcrossARestart(t *testing.T) {
 	ts.Close()
 	stop()
 
-	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	second := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	second.clock = clock
 	second.Start(t.Context())
 	settledByDeadline(t, second, qid, soon)
@@ -246,7 +247,7 @@ func TestAMovedDeadlineHoldsAcrossARestart(t *testing.T) {
 // THE DATE IS A RECORD'S TO SAY, and a rule says only where: `within` and `atFrom` are not
 // written together, `at` is never a rule's, and a spawn's gate has no record to read one from.
 func TestADatedDeadlineIsWrittenAsWhereTheDateIs(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()

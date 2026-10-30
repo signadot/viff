@@ -2,24 +2,22 @@ package versed
 
 import (
 	"encoding/json"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/task"
 )
 
 // The scope overlay is honored end-to-end through the HTTP surface, and
 // POST /scope/delete tears it down — the teardown path a client drives.
 func TestScopeOverHTTP(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -89,8 +87,8 @@ func TestScopeOverHTTP(t *testing.T) {
 // DELETING A SCOPE CANCELS WHAT IT OWNS (git-issue y51f9ce5h12kr2zvmxn0). A scope's tasks run in
 // the runtime every scope shares with baseline, so dropping the scope's engine and its overlay
 // left them running, answering to a scope that no longer exists with nowhere to record what they
-// did. Both kinds go: what the scope's engine tracks, and what the runtime hosts under the scope
-// that no engine does. Baseline's are not the scope's, and keep running.
+// did. What the scope's engine tracks goes, every spawn in the scope among it. Baseline's are not
+// the scope's, and keep running.
 func TestDeletingAScopeCancelsItsLiveTasks(t *testing.T) {
 	srv, ts := startedServer(t)
 	// A scope is its overlay, and the store refuses to delete one holding nothing.
@@ -98,10 +96,6 @@ func TestDeletingAScopeCancelsItsLiveTasks(t *testing.T) {
 	eng := srv.scopeEngine("me")
 	tracked := newIdleHandle(t)
 	eng.Adopt("demo.pr.1", "tracked", tracked)
-	srv.host("hosted", hostedTask{scope: "me"})
-	mustLaunch(t, srv, runner.Launch{ID: "hosted", Script: "sleep 30", Environment: openNet})
-	other := mustLaunch(t, srv, runner.Launch{ID: "other", Script: "sleep 30", Environment: openNet})
-	t.Cleanup(func() { other.Cancel("test over", "test") })
 	baseline := newIdleHandle(t)
 	srv.Eng.Adopt("demo.pr.1", "baseline", baseline)
 
@@ -118,23 +112,7 @@ func TestDeletingAScopeCancelsItsLiveTasks(t *testing.T) {
 	if tracked.count("cancel") != 1 {
 		t.Errorf("the scope engine's task was cancelled %d times, want once", tracked.count("cancel"))
 	}
-	statusOf := func(id string) task.Status {
-		inst, _ := srv.Embedded.SnapshotOf(id)
-		return inst.Status
-	}
-	deadline := time.After(3 * time.Second)
-	for !statusOf("hosted").Terminal() {
-		select {
-		case <-deadline:
-			t.Fatalf("the task the runtime hosts under the scope is %s, want it cancelled", statusOf("hosted"))
-		case <-time.After(10 * time.Millisecond):
-		}
-	}
-	if got := statusOf("hosted"); got != task.Cancelled {
-		t.Errorf("the hosted task ended %s, want %s", got, task.Cancelled)
-	}
-	if baseline.count("cancel") != 0 || statusOf("other").Terminal() {
-		t.Errorf("baseline's work was touched: engine task cancelled %d times, runtime task %s",
-			baseline.count("cancel"), statusOf("other"))
+	if baseline.count("cancel") != 0 {
+		t.Errorf("baseline's work was touched: its task cancelled %d times", baseline.count("cancel"))
 	}
 }

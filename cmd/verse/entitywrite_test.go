@@ -5,6 +5,8 @@ import (
 	"crypto/rsa"
 	"errors"
 	"fmt"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/versed/versedtest"
 	"io"
 	"net/http/httptest"
 	"strings"
@@ -93,7 +95,7 @@ func (nopCloser) Close() error { return nil }
 func serve(t *testing.T) entity.Store {
 	t.Helper()
 	store := entitytest.Store(t)
-	srv := versed.NewWithStore(versed.ScriptedBuilder, store)
+	srv := versedtest.Server(t, runnerdtest.Scripted, store)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	// An issuer at its own address, as `verse up` is where its config names none.

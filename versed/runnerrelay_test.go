@@ -66,7 +66,7 @@ func TestARunnerRelaysTheOwnerOfATaskItHosts(t *testing.T) {
 	resp.Body.Close()
 	spawnOn(t, ts.URL, "on-gpu")
 	waitTaskStatus(t, srv, "on-gpu", "running")
-	// A task this verse's own runner hosts: an agent gpu does not offer.
+	// A task the local runner hosts: an agent gpu does not offer.
 	postTony(t, ts.URL+"/tasks", map[string]any{"id": "at-home", "spawn": map[string]any{"agent": map[string]any{"name": "verse"}, "prompt": "go"}}).Body.Close()
 	whoami := ts.URL + "/whoami?format=tony"
 
@@ -82,7 +82,7 @@ func TestARunnerRelaysTheOwnerOfATaskItHosts(t *testing.T) {
 	for what, c := range map[string]struct{ task, presented, account, want string }{
 		"another principal beside the task": {"on-gpu", "user:mallory@example.com", "", "made as the task's owner"},
 		"a task that does not stand":        {"nobody-ran-this", "", "", "no task nobody-ran-this stands"},
-		"a task on another runtime":         {"at-home", "", "", "this verse's own runtime"},
+		"a task on another runner":          {"at-home", "", "", "runs on verse.runners.local, not verse.runners.gpu"},
 		"an account beside the task":        {"on-gpu", "", "github:alice", "never an account"},
 	} {
 		if code, body := asTask(t, http.MethodGet, whoami, token, c.task, c.presented, c.account); code != http.StatusForbidden || !strings.Contains(body, c.want) {

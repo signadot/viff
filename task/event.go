@@ -49,6 +49,9 @@ const (
 	EventChild    = "child"    // a sub-agent started or ended
 	EventStatus   = "status"   // the task's status changed: its Text is a Status (running, paused, done, …)
 	EventPending  = "pending"  // a gate is blocked awaiting resolution (carries the decision id)
+	// EventWithdrawn is a question the task posed withdrawn before it was answered, when its last
+	// waiter stopped waiting (a say, a pause, a cancel, a deadline): ID is the question's, Text why.
+	EventWithdrawn = "withdrawn"
 	// EventSay is an utterance in the task's conversation. By empty = the task's own
 	// narration (the agent's words); By set = a say-to folded in from an operator or a
 	// resolver (what was "steer"). One kind, speaker in By — "you say to it, it says back".

@@ -14,7 +14,7 @@ import (
 	"github.com/signadot/verse/task/tasktest"
 )
 
-// The local runtime joins the task.Snapshot conformance suite, so the two producers are
+// The in-process handler joins the task.Snapshot conformance suite, so the two producers are
 // held to the same properties rather than each being spot-checked on its own terms.
 func TestConformance(t *testing.T) {
 	p := &localProducer{specs: map[string]tasktest.Spec{}}

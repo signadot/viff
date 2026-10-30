@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -39,7 +40,7 @@ func taskFor(t *testing.T, srv *Server, rule, subject string) entity.Entity {
 // the pair of daniel and the rule, which acts as daniel — so the task record is daniel's, and says
 // who asked. The same charter's rule without `as` spawns as its installer, as every spawn did.
 func TestASpawnAsTheSubjectActsForTheRecordsOwner(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -97,7 +98,7 @@ func TestASpawnAsTheSubjectActsForTheRecordsOwner(t *testing.T) {
 // asker itself is refused at install, where its author can be told. So is a gate naming
 // $principal where nobody is: on a spawn not `as: subject`, or on the rule's own gate.
 func TestAChartersSpawnCannotNameWhoItActsFor(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -145,7 +146,7 @@ func TestAChartersSpawnCannotNameWhoItActsFor(t *testing.T) {
 // is; over the installer's own place it installs; and a rule over Daniel's space that acts as
 // itself installs as before.
 func TestARuleActsAsTheSubjectOnlyInItsInstallersPlace(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -209,7 +210,7 @@ func taskQuestion(t *testing.T, srv *Server, ref entity.Ref) string {
 // person; run for daniel's ask, it is held out to daniel alone — nobody else says go for him.
 // The same rule without `as` asks as it always did, openly.
 func TestATaskActingForTheAskerAsksThem(t *testing.T) {
-	srv := NewWithStore(stepBuilder(t), entitytest.Store(t)) // its action is a step, so its own gate asks
+	srv := serverWith(t, stepBuilder(t), entitytest.Store(t)) // its action is a step, so its own gate asks
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -270,7 +271,7 @@ func taskStatus(t *testing.T, srv *Server, ref entity.Ref) string {
 // on it as it runs is written as them: were it written as the pair, the rule's installer would
 // have to hold the asker's record too, and the task would stand `running` after it was done.
 func TestATaskActingForTheAskerIsSeenToFinish(t *testing.T) {
-	srv := NewWithStore(stepBuilder(t), entitytest.Store(t)) // its action is a step, so its own gate asks
+	srv := serverWith(t, stepBuilder(t), entitytest.Store(t)) // its action is a step, so its own gate asks
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()

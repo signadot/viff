@@ -3,6 +3,8 @@ package io_test
 import (
 	"context"
 	"fmt"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/versed/versedtest"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -14,7 +16,6 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	verseio "github.com/signadot/verse/io"
-	"github.com/signadot/verse/versed"
 )
 
 // refSha is what a ref stands at, or "" when there is no such ref.
@@ -85,7 +86,7 @@ type gitOutRig struct {
 func newGitOutRig(t *testing.T, g *verseio.Git, id string) *gitOutRig {
 	t.Helper()
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
+	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:git-iod")
 	sink := g.Sink()

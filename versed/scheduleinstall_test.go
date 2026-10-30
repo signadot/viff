@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -43,7 +44,7 @@ func del(t *testing.T, as, url string) *http.Response {
 }
 
 func TestAScheduleDeclaredInACharterIsARecordWithANext(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Zone = time.UTC
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
@@ -136,7 +137,7 @@ func (c *scheduleListings) ListAtErr(at []string, depth int, pred func(entity.Re
 // fifteen charters read every schedule record fifteen times, one after another.
 func TestTheCharterTreeReadsTheSchedulesOnce(t *testing.T) {
 	cs := &scheduleListings{Store: entitytest.Store(t)}
-	srv := NewWithStore(ScriptedBuilder, cs)
+	srv := serverWith(t, runnerdtest.Scripted, cs)
 	srv.Zone = time.UTC
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
@@ -169,7 +170,7 @@ func TestTheCharterTreeReadsTheSchedulesOnce(t *testing.T) {
 }
 
 func TestAPackagesScheduleCarriesItsAddressAndLeavesWithIt(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Zone = time.UTC
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
@@ -219,7 +220,7 @@ func TestAPackagesScheduleCarriesItsAddressAndLeavesWithIt(t *testing.T) {
 }
 
 func TestAScheduleIsNotAScopes(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Start(t.Context())
 	docs, err := codec.ParseNodes([]byte(`{name: mine, every: 1h}`), codec.Tony)
 	if err != nil {

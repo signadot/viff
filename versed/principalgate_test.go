@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -32,7 +33,7 @@ func waitingOn(t *testing.T, srv *Server, id string) []string {
 // A GATE NAMING $principal ASKS WHOEVER RAN THE TASK, and the task's record says whom it acts for.
 // A gate naming nobody is the docket's (TestARunsGateTakesAThreshold).
 func TestAGateNamingPrincipalAsksWhoeverRanTheTask(t *testing.T) {
-	srv := NewWithStore(stepBuilder(t), entitytest.Store(t))
+	srv := serverWith(t, stepBuilder(t), entitytest.Store(t))
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	gates := shellGate(0, nil)
@@ -54,7 +55,7 @@ func TestAGateNamingPrincipalAsksWhoeverRanTheTask(t *testing.T) {
 // AN ASK'S `then` ASKS ITS ASKER: the task acts for daniel, so its own question, naming nobody,
 // waits on him rather than on the docket, and its record keeps that across a restart.
 func TestAThenTasksOwnQuestionAsksTheAsker(t *testing.T) {
-	srv, ts := askingOn(t, NewWithStore(stepBuilder(t), entitytest.Store(t)))
+	srv, ts := askingOn(t, serverWith(t, stepBuilder(t), entitytest.Store(t)))
 	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
 	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Land it?", to: [oscar@example.com], then: {spawn: {prompt: "true", environment: {systems: {network: {mode: open}, commands: {run: {}}}}, autonomy: `+stepAsksTony+`}}}`))
 	land := mirror.AskRef(id)
@@ -74,7 +75,7 @@ func TestAThenTasksOwnQuestionAsksTheAsker(t *testing.T) {
 // A RUN BY NOBODY CANNOT NAME $principal: a runner acting as itself is no person to ask, so the
 // spawn is refused rather than its gate left to the docket.
 func TestAGateNamingPrincipalIsRefusedForNobody(t *testing.T) {
-	srv := issuing(t, NewWithStore(ScriptedBuilder, entitytest.Store(t)))
+	srv := issuing(t, serverWith(t, runnerdtest.Scripted, entitytest.Store(t)))
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	gates := shellGate(0, nil)
@@ -92,7 +93,7 @@ func TestAGateNamingPrincipalIsRefusedForNobody(t *testing.T) {
 // A THRESHOLD NOBODY CAN REACH IS REFUSED for a run started by hand, as a charter's is at its
 // install: two approvals from one person is a question proceed can never settle.
 func TestAThresholdOverTooFewAnswerersIsRefused(t *testing.T) {
-	srv := issuing(t, NewWithStore(ScriptedBuilder, entitytest.Store(t)))
+	srv := issuing(t, serverWith(t, runnerdtest.Scripted, entitytest.Store(t)))
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	gates := shellGate(0, nil)
@@ -111,7 +112,7 @@ func TestAThresholdOverTooFewAnswerersIsRefused(t *testing.T) {
 // SLIDING A GATE NAMING $principal ONTO A RUNNING TASK is refused as its spawn would be: a run a
 // runner started acts for nobody, and one a person started acts for them.
 func TestAVectorNamingPrincipalNeedsSomebodyToAsk(t *testing.T) {
-	srv := issuing(t, NewWithStore(ScriptedBuilder, entitytest.Store(t)))
+	srv := issuing(t, serverWith(t, runnerdtest.Scripted, entitytest.Store(t)))
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	tokens := map[string]string{runnerID: staticRunnerAs(t, ts.URL, runnerID)}

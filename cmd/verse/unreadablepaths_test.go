@@ -2,6 +2,8 @@ package main
 
 import (
 	"errors"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/versed/versedtest"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -11,7 +13,6 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/versed"
 )
 
 // unreadable is a store whose reads do not happen — the shape of a store under load, where a
@@ -79,7 +80,7 @@ func (u *unreadable) ReadError() error {
 func serveUnreadable(t *testing.T) *unreadable {
 	t.Helper()
 	store := &unreadable{Store: entitytest.Store(t)}
-	srv := versed.NewWithStore(versed.ScriptedBuilder, store)
+	srv := versedtest.Server(t, runnerdtest.Scripted, store)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	testAddr = strings.TrimPrefix(ts.URL, "http://")

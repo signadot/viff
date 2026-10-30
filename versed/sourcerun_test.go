@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/signadot/verse/api"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -96,7 +97,7 @@ func TestSourcesAreRestoredOnRestart(t *testing.T) {
 	store := entitytest.Store(t)
 	dir := repoWithCommit(t)
 
-	first := NewWithStore(ScriptedBuilder, store)
+	first := serverWith(t, runnerdtest.Scripted, store)
 	ts := httptest.NewServer(first.Handler())
 	if resp := postTony(t, ts.URL+"/iods", map[string]any{
 		"root": "git", "name": "local", "dir": dir,
@@ -113,7 +114,7 @@ func TestSourcesAreRestoredOnRestart(t *testing.T) {
 	gitIn(t, dir, "branch", "while-down")
 
 	// A new server over the same store: the registration is all it has.
-	second := NewWithStore(ScriptedBuilder, store)
+	second := serverWith(t, runnerdtest.Scripted, store)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	second.ctx = ctx

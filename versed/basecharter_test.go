@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"testing"
 	"time"
 
@@ -31,7 +32,7 @@ func calendarFact(t *testing.T, srv *Server, name, field string) string {
 }
 
 func TestTheBaseCharterStandsEveryVerseUp(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Zone = time.UTC
 	srv.Start(t.Context())
 
@@ -55,7 +56,7 @@ func TestTheBaseCharterStandsEveryVerseUp(t *testing.T) {
 }
 
 func TestTheCalendarIsDerivedFromTheHourlyTick(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Zone = time.UTC
 	srv.Start(t.Context())
 	scheduleRecord(t, srv, "hourly")

@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -120,7 +121,7 @@ func firingQuestions(store entity.Store, origin string) []string {
 // dev's rule gates to baseline: `verse gate` in baseline listed a question about
 // `demo.ask2.1`, and `verse data demo ask2 1` there answered nothing stands there.
 func TestAScopedRulesGateStaysInItsScope(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()

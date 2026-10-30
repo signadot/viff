@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -43,7 +44,7 @@ func (l lagging) WatchSubtreeProgress(depth int, prefix ...string) (<-chan entit
 // a question held out to them, or here, read a node held out to nobody.
 func TestARecordTheSystemEstablishesHoldsAtTheRoutesAtOnce(t *testing.T) {
 	addr := entitytest.Addr(t)
-	srv := NewWithStore(ScriptedBuilder, lagging{entitytest.StoreAt(t, addr)})
+	srv := serverWith(t, runnerdtest.Scripted, lagging{entitytest.StoreAt(t, addr)})
 	t.Cleanup(srv.stopAllIOs)
 	if err := entity.Track(t.Context(), srv.Store); err != nil {
 		t.Fatal(err)

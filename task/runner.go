@@ -24,10 +24,8 @@ type Runner interface {
 	Ref() string
 }
 
-// Lister is a Runner that keeps its OWN task registry — a runner behind a URL — distinct
-// from the local runtime. The in-process runner does NOT implement it: it delegates to the
-// same runnerd the union already lists, so a runner's tasks are added without double-counting
-// local ones.
+// Lister is a Runner that keeps its OWN task registry and can be asked for it: a runner behind a
+// URL.
 //
 // It is declared HERE, beside Runner, rather than inline at the call site that asserts it.
 // The assertion is structural and checked with `, ok`, so widening a signature on one side

@@ -143,7 +143,7 @@ func TestAnAskIsCheckedWhereItIsAsked(t *testing.T) {
 // gets no network it does not name, and this runner builds only the host's.
 func TestAThensSpawnIsHeldToTheRunnerWhenAsked(t *testing.T) {
 	srv, ts := asking(t)
-	srv.Embedded.Describe(stock.Open().Describe([]string{runner.NetworkOpen}))
+	describeLocal(t, srv, stock.Open().Describe([]string{runner.NetworkOpen}))
 	resp := ask(t, "user:daniel@example.com", ts.URL, `{name: x, question: q, then: {spawn: {script: "true"}}}`)
 	if msg := bodyOf(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(msg, "mode none: this runner builds open only") {
 		t.Errorf("a then whose network the runner does not build: %s %q, want 400", resp.Status, msg)

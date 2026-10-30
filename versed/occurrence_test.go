@@ -55,7 +55,7 @@ func TestATaskRecordSaysWhichRunItIs(t *testing.T) {
 		return task.NewTask(l.ID, sup, &countingDriver{n: 1}, noopExecutor{})
 	}
 	store := entitytest.Store(t)
-	srv := NewWithStore(drive, store)
+	srv := serverWith(t, drive, store)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 

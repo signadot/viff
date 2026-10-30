@@ -23,7 +23,7 @@ import (
 // blocks on it and there is a real task gate to answer.
 func askingServer(t *testing.T) *Server {
 	t.Helper()
-	srv := NewWithStore(askingBuilder(t), entitytest.Store(t))
+	srv := serverWith(t, askingBuilder(t), entitytest.Store(t))
 	t.Cleanup(func() { checkAskRecords(t, srv.Store) })
 	return srv
 }
@@ -104,7 +104,7 @@ func TestTaskResolveAnswersALocalGate(t *testing.T) {
 // A run is gated by the steps it takes: a gate over `commands.run` asks before a command runs,
 // and `verse task run --gates` is how an ad-hoc run gets one.
 func TestARunAsksAtAGateOverItsStep(t *testing.T) {
-	srv := NewWithStore(stepBuilder(t), entitytest.Store(t))
+	srv := serverWith(t, stepBuilder(t), entitytest.Store(t))
 	ops := httptest.NewServer(srv.Handler())
 	defer ops.Close()
 
@@ -196,8 +196,8 @@ var stepAsks = task.Autonomy{{Match: &task.Match{System: "commands"}, Then: task
 // stepAsksTony is stepAsks as a spawn writes it.
 const stepAsksTony = `[{match: {system: commands}, then: ask}, {then: ask}]`
 
-// openNet is the network a test's in-process task runs on: the test server's embedded runner
-// describes no offers, so it refuses a spawn that names no network, which is none.
+// openNet is the network a test's task runs on: the host's, which the test server's local runner
+// builds.
 var openNet = systems.Environment{Systems: systems.Systems{"network": {{Attributes: map[string]string{"mode": runner.NetworkOpen}}}}}
 
 // openEnv is an environment that gives the open network alone, as a spawn built of maps writes it.

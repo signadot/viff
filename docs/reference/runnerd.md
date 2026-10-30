@@ -18,10 +18,9 @@ launch names repositories, in a workspace of git checkouts:
 runnerd -config <file> -token-file <file> [-sandbox bwrap|none]
 ```
 
-The same runner also runs embedded. `verse up` hosts the verse runner in its own process and
-reaches it by Go calls, with no `runnerd` process. Both use package `runner/runnerd`, which holds
-a runner's tasks and serves them. A central deployment is meant to run no work in verse itself,
-with each runner a `runnerd` of its own (`localRunner: false`). What follows a task's ask, its
+`verse up` starts this runner beside itself as its local runner
+([the local runner](up.md#the-local-runner)); no task runs in verse's own process. A central
+deployment starts none, with each runner a `runnerd` of its own (`localRunner: false`). What follows a task's ask, its
 `then:` spawn, runs on the task's runner.
 
 ## The sandbox

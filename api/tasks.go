@@ -51,19 +51,17 @@ type Spawn struct {
 //
 //tony:schemagen=verse-instance,notag
 type Task struct {
-	ID         string             `tony:"field=id"`
-	Prompt     string             `tony:"field=prompt,omitzero"`
-	Status     task.Status        `tony:"field=status"`
-	Runner     string             `tony:"field=runner,omitzero"` // where it runs or ran: local, or the runner's url
-	RunnerName string             `tony:"field=runnerName,omitzero"`
-	Cursor     int64              `tony:"field=cursor,omitzero"`
-	Occurrence int64              `tony:"field=occurrence,omitzero"`
-	Started    string             `tony:"field=started,omitzero"`
-	Ended      string             `tony:"field=ended,omitzero"`
-	Result     string             `tony:"field=result,omitzero"`
-	Err        string             `tony:"field=err,omitzero"`
-	Pending    []task.PendingGate `tony:"field=pending,omitzero"`
-	Refused    map[string]int     `tony:"field=refused,omitzero"`
+	ID         string         `tony:"field=id"`
+	Prompt     string         `tony:"field=prompt,omitzero"`
+	Status     task.Status    `tony:"field=status"`
+	Runner     string         `tony:"field=runner,omitzero"` // where it runs or ran: the runner's url
+	RunnerName string         `tony:"field=runnerName,omitzero"`
+	Occurrence int64          `tony:"field=occurrence,omitzero"`
+	Started    string         `tony:"field=started,omitzero"`
+	Ended      string         `tony:"field=ended,omitzero"`
+	Result     string         `tony:"field=result,omitzero"`
+	Err        string         `tony:"field=err,omitzero"`
+	Refused    map[string]int `tony:"field=refused,omitzero"`
 	// Agent is who ran it and with what, its name and settings as the runner resolved them, or
 	// as the spawn asked before the runner reported; nil for a script (Script). Its annotations
 	// are the runner's plumbing and never here.
@@ -74,23 +72,6 @@ type Task struct {
 	// ended under.
 	Autonomy   task.Autonomy `tony:"field=autonomy,omitzero"`
 	AutonomyBy string        `tony:"field=autonomyBy,omitzero"`
-}
-
-// TaskFrom is the task as verse reports it, from what a runner reports of it.
-func TaskFrom(snap task.Snapshot) Task {
-	t := Task{
-		ID: snap.ID, Prompt: snap.Prompt, Status: snap.Status,
-		Cursor: snap.Cursor, Occurrence: snap.Occurrence, Started: snap.Started, Ended: snap.Ended,
-		Result: snap.Result, Err: snap.Err, Pending: snap.Pending, Refused: snap.Refused,
-	}
-	switch snap.Agent {
-	case "script":
-		t.Script = true
-	case "":
-	default:
-		t.Agent = &runner.Agent{Name: snap.Agent, Settings: snap.Settings}
-	}
-	return t
 }
 
 // Who is who ran the task, in a word, for a listing: `script`, the agent's name, or `agent` for

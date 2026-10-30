@@ -42,7 +42,7 @@ func slideGates(t *testing.T, url, id, body string) {
 func TestASlidGateIsAskedWithItsDefaultAndLabels(t *testing.T) {
 	release := make(chan struct{})
 	t.Cleanup(func() { close(release) })
-	srv := NewWithStore(func(l runner.Launch, reg *task.Registry) *task.Task {
+	srv := serverWith(t, func(l runner.Launch, reg *task.Registry) *task.Task {
 		sup := systemstest.Opened(task.NewSupervisor(l.Environment, l.Autonomy, reg), l.Environment)
 		sup.SetStepOf(commandStep)
 		return task.NewTask(l.ID, sup, &blockedDriver{release: release}, okExecutor{})
@@ -50,7 +50,7 @@ func TestASlidGateIsAskedWithItsDefaultAndLabels(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	t.Cleanup(func() {
-		if tk := srv.Embedded.Lookup("slid"); tk != nil {
+		if tk := localOf(t, srv).Lookup("slid"); tk != nil {
 			tk.Cancel("the test is over", "test")
 		}
 	})
@@ -124,7 +124,7 @@ func TestASlideOfGatesAloneIsTheRequestersOnARelayedTask(t *testing.T) {
 func TestAPolicyReplacedByNoneIsTheDefault(t *testing.T) {
 	release := make(chan struct{})
 	t.Cleanup(func() { close(release) })
-	srv := NewWithStore(func(l runner.Launch, reg *task.Registry) *task.Task {
+	srv := serverWith(t, func(l runner.Launch, reg *task.Registry) *task.Task {
 		sup := systemstest.Opened(task.NewSupervisor(l.Environment, l.Autonomy, reg), l.Environment)
 		sup.SetStepOf(commandStep)
 		return task.NewTask(l.ID, sup, &blockedDriver{release: release}, okExecutor{})
@@ -132,7 +132,7 @@ func TestAPolicyReplacedByNoneIsTheDefault(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	t.Cleanup(func() {
-		if tk := srv.Embedded.Lookup("none"); tk != nil {
+		if tk := localOf(t, srv).Lookup("none"); tk != nil {
 			tk.Cancel("the test is over", "test")
 		}
 	})

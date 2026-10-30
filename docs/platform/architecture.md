@@ -61,7 +61,7 @@ bounded number of events, and can be resumed. The task posts its gate decisions 
 
 **`runner/runnerd`** hosts a runner's tasks. `runnerd` serves it over HTTP, with each task in a
 process of its own under bwrap, and `verse up` starts one beside itself as its local runner; a
-test hands versed a runner in its own process. **`runner/runnerd/verse`**, **`codex`** and **`claude`** are the agents: verse's own, and
+test serves one over HTTP (`runner/runnerd/runnerdtest`). **`runner/runnerd/verse`**, **`codex`** and **`claude`** are the agents: verse's own, and
 two foreign CLIs gated inside the run. **`runner/runnerd/stock`** is the runner verse ships,
 running the agents its configuration names and scripts.
 

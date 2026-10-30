@@ -19,7 +19,7 @@ import (
 // replaces the old under `described`, `offers` gone.
 func TestAStaleRegistrationIsAskedAgain(t *testing.T) {
 	srv := testServer(t)
-	srv.NoLocalRunner = true
+	noLocalRunner(t, srv)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	face, _ := offeringFace(t, ts.URL, "codex")
@@ -65,7 +65,7 @@ func TestAStaleRegistrationIsAskedAgain(t *testing.T) {
 // the agent takes named.
 func TestAModelTheAgentDoesNotTakeIsRefusedAtInstall(t *testing.T) {
 	srv := testServer(t)
-	srv.NoLocalRunner = true
+	noLocalRunner(t, srv)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	face, _ := offeringFace(t, ts.URL, "codex")
@@ -109,7 +109,7 @@ func TestAModelTheAgentDoesNotTakeIsRefusedAtInstall(t *testing.T) {
 // record says `script: true` and names no agent.
 func TestATasksAgentIsOnItsRecord(t *testing.T) {
 	srv := testServer(t)
-	srv.NoLocalRunner = true
+	noLocalRunner(t, srv)
 	srv.DefaultAgent = "codex" // verse's default, which this runner offers
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()

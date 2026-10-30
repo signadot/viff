@@ -58,8 +58,7 @@ func reasonRunner(t *testing.T, verseURL, reason string) *face {
 }
 
 // A FAILED TASK SAYS WHY, where a task is read. The reason a runner puts on its terminal frame
-// is the record's: `task get` and the list answer it off the mirror for a task on a named
-// runner, which neither the local runtime nor the default runner can be asked about. And the
+// is the record's: `task get` and the list answer it off the mirror, whatever runner ran it. And the
 // record says what the task was and which driver ran it, the two facts a reader of a failure
 // wants next, without a trip to the runner.
 func TestAFailedTaskOnANamedRunnerSaysWhy(t *testing.T) {

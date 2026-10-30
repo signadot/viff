@@ -75,6 +75,11 @@ type AskRecord struct {
 	// over a settled record.
 	WaitingOn  []string `tony:"field=waitingOn,omitzero"`
 	AskedAgain bool     `tony:"field=askedAgain,omitzero"`
+	// PosedRun and PosedCursor are where a task's question was last posed from: the run of the
+	// task (its startedAt) and the frame's cursor in it, which tell the task asking it again from
+	// the same asking replayed.
+	PosedRun    string `tony:"field=posedRun,omitzero"`
+	PosedCursor int64  `tony:"field=posedCursor,omitzero"`
 	// Suspended says a suspension withdrew it; Expires when a settled record goes.
 	Suspended bool   `tony:"field=suspended,omitzero"`
 	Expires   string `tony:"field=expires,omitzero"`

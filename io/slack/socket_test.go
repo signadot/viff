@@ -3,6 +3,8 @@ package slack_test
 import (
 	"context"
 	"fmt"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/versed/versedtest"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -92,7 +94,7 @@ func newSocketRig(t *testing.T) *socketRig { return newSocketRigWith(t, nil) }
 func newSocketRigWith(t *testing.T, bearer client.BearerFunc) *socketRig {
 	t.Helper()
 	store := entitytest.Store(t)
-	srv := versed.NewWithStore(versed.ScriptedBuilder, store)
+	srv := versedtest.Server(t, runnerdtest.Scripted, store)
 	vs := httptest.NewServer(srv.Handler())
 	t.Cleanup(vs.Close)
 	addr := strings.TrimPrefix(vs.URL, "http://")

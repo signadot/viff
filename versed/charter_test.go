@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"testing"
 	"time"
 
@@ -29,7 +30,7 @@ func matchAt(path string, value map[string]any) trigger.Match {
 // the store holds crosses the gap.
 func TestStartRestoresTheCharter(t *testing.T) {
 	addr := entitytest.Addr(t)
-	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	first := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	if err := first.Eng.AddTrigger(trigger.Trigger{
 		Name: "review",
 		Condition: trigger.Condition{
@@ -41,7 +42,7 @@ func TestStartRestoresTheCharter(t *testing.T) {
 	}
 
 	store := entitytest.StoreAt(t, addr)
-	second := NewWithStore(ScriptedBuilder, store)
+	second := serverWith(t, runnerdtest.Scripted, store)
 	second.Start(t.Context())
 
 	if got := userRules(second.Eng); len(got) != 1 || got[0].Name != "review" {

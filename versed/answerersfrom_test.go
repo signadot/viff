@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -34,7 +35,7 @@ func heldOutTo(t *testing.T, srv *Server, qid string) []string {
 // the record names, and latches the record when it is answered.
 func askingRule(t *testing.T, need int) (*Server, *httptest.Server) {
 	t.Helper()
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
@@ -129,7 +130,7 @@ func TestARecordNamingNoAnswerersIsAnOpenQuestion(t *testing.T) {
 
 // AND THE PATH IS CHECKED AT INSTALL: a field of the subject's value, dotted.
 func TestAnswerersFromNamesAField(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()

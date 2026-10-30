@@ -11,11 +11,11 @@ import (
 	"github.com/signadot/verse/systems"
 )
 
-// THE EMBEDDED RUNNER TAKES A VIRTUAL KEY: a firing whose spawn names one carries it as the
+// THE LOCAL RUNNER TAKES A VIRTUAL KEY: a firing whose spawn names one carries it as the
 // agent's `verse.portkey/virtual-key`, and `verse up`'s runner offers that annotation, so the
 // launch is run on the key and not refused at every firing.
-func TestTheEmbeddedRunnerTakesAVirtualKey(t *testing.T) {
-	cfg, _ := embeddedRunner(config.LLMConfig{APIKey: "pk"}, nil)
+func TestTheLocalRunnerTakesAVirtualKey(t *testing.T) {
+	cfg, _ := localRunnerOffers(config.LLMConfig{APIKey: "pk"}, nil)
 	if err := cfg.Check(); err != nil {
 		t.Fatal(err)
 	}

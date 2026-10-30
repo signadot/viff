@@ -39,7 +39,7 @@ func TestTheLocalRunnersTokenIsMadeOnceAndKept(t *testing.T) {
 // and moved where the port is taken.
 func TestTheLocalRunnersConfigIsOneRunnerdLoads(t *testing.T) {
 	path := filepath.Join(t.TempDir(), localRunnerConfig)
-	c, _ := embeddedRunner(config.LLMConfig{APIKey: "k", Model: "m"}, task.DefaultShellEnv)
+	c, _ := localRunnerOffers(config.LLMConfig{APIKey: "k", Model: "m"}, task.DefaultShellEnv)
 	verse := runnerd.Verse{URL: "http://localhost:9797", Issuer: "https://verse.example.com"}
 	if err := writeLocalRunnerConfig(path, "127.0.0.1:9803", verse, c); err != nil {
 		t.Fatal(err)

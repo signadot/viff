@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/signadot/verse/versed/versedtest"
 	"io"
 	"net/http/httptest"
 	"os"
@@ -23,7 +24,6 @@ import (
 	verseagent "github.com/signadot/verse/runner/runnerd/verse"
 	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/versed"
 )
 
 // serveCalls is serve with the verse runner hosting scripts, the way `verse up` does: a script
@@ -43,7 +43,7 @@ func serveCalls(t *testing.T) entity.Store {
 		return task.NewTask(l.ID, systemstest.Opened(task.NewSupervisor(l.Environment, l.Autonomy, reg), l.Environment), &stepsDriver{prompt: l.Prompt}, stepsExec{ask: ask})
 	}
 	store := entitytest.Store(t)
-	srv := versed.NewWithStore(build, store)
+	srv := versedtest.Server(t, build, store)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	// Before Close, which waits for every open request: an attach still streaming a task that

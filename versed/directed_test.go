@@ -2,6 +2,7 @@ package versed
 
 import (
 	"fmt"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -43,7 +44,7 @@ func installAs(t *testing.T, as, url, charter string) *http.Response {
 // is refused, and the charter's owner answers what their own rule asked. With two answerers
 // and `need: 2` the question waits for both.
 func TestAGateHeldOutToItsAnswerers(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -172,7 +173,7 @@ func TestAGateNobodyCouldSettleIsRefusedAtInstall(t *testing.T) {
 // two of them. This answers at the first instant the registry has the question, which is that
 // window, and it has to be refused and counted exactly as it would be a minute later.
 func TestAQuestionIsNotAnswerableBeforeItIsPosed(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()

@@ -2,6 +2,7 @@ package versed
 
 import (
 	"bytes"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -60,7 +61,7 @@ func TestTheCheckFindsNoChangeAfterARestart(t *testing.T) {
 	tree := strings.Join(docs, "\n---\n")
 
 	store := entitytest.Store(t)
-	first := issuing(t, NewWithStore(ScriptedBuilder, store))
+	first := issuing(t, serverWith(t, runnerdtest.Scripted, store))
 	first.Start(t.Context())
 	ts := httptest.NewServer(first.Handler())
 	registerRunner(t, ts, "verse-runner", "verse") // the tree's spawns name it
@@ -73,7 +74,7 @@ func TestTheCheckFindsNoChangeAfterARestart(t *testing.T) {
 	}
 	ts.Close()
 
-	second := NewWithStore(ScriptedBuilder, store)
+	second := serverWith(t, runnerdtest.Scripted, store)
 	second.Start(t.Context())
 	ts2 := httptest.NewServer(second.Handler())
 	defer ts2.Close()

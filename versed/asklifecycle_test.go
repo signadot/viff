@@ -2,6 +2,7 @@ package versed
 
 import (
 	"context"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -125,7 +126,7 @@ func TestAnOnwardAskKeepsItsRulesWhenChanged(t *testing.T) {
 // rather than standing pending with nobody waiting on it.
 func TestAnAskThatCannotBeAskedAgainSaysSo(t *testing.T) {
 	addr := entitytest.Addr(t)
-	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	first := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	ctx, down := context.WithCancel(t.Context())
 	first.Start(ctx)
 	ts := httptest.NewServer(first.Handler())
@@ -140,7 +141,7 @@ func TestAnAskThatCannotBeAskedAgainSaysSo(t *testing.T) {
 	if err := entity.SetLevel(first.Store, pr, entity.Read, nil); err != nil {
 		t.Fatal(err)
 	}
-	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	second := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	second.Start(t.Context())
 	t.Cleanup(second.stopAllIOs)
 	deadline := time.Now().Add(10 * time.Second)
@@ -163,7 +164,7 @@ func TestAnAskThatCannotBeAskedAgainSaysSo(t *testing.T) {
 // with its verdict and no `answer`, still runs its `then`.
 func TestAnAnsweredAskWithoutItsAnswerFieldStillFollows(t *testing.T) {
 	addr := entitytest.Addr(t)
-	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	first := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	ctx, down := context.WithCancel(t.Context())
 	first.Start(ctx)
 	ts := httptest.NewServer(first.Handler())
@@ -180,7 +181,7 @@ func TestAnAnsweredAskWithoutItsAnswerFieldStillFollows(t *testing.T) {
 	}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
-	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	second := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	second.Start(t.Context())
 	t.Cleanup(second.stopAllIOs)
 	asked := entity.ToObj(entity.Get(askField(t, second, id, "then-asked"), "then-asked"))

@@ -146,12 +146,12 @@ func TestAWorkersVectorFrameDoesNotSayWhoSlidIt(t *testing.T) {
 	}
 }
 
-// A hosted task's frames are made in this process, by routes that checked their actor.
-func TestAHostedTasksFramesAreTrusted(t *testing.T) {
+// Frames verse makes itself, for a task no runner holds, are trusted: nobody relayed them.
+func TestFramesVerseMakesItselfAreTrusted(t *testing.T) {
 	const ana = "user:ana@example.com"
 	store := entitytest.Store(t)
 	h := &fakeHandle{ch: make(chan task.Event)}
-	Reflect(store, "t1", h, Meta{Runner: LocalRunner})
+	Reflect(store, "t1", h, Meta{})
 	h.ch <- task.Event{Kind: task.EventAutonomy, Text: task.DefaultAutonomy().Summary(), By: ana}
 	got := awaitFields(t, store, Ref("t1"), "the slide", func(f map[string]any) bool { return f["autonomyBy"] == ana })
 	if got["autonomyBy"] != ana {

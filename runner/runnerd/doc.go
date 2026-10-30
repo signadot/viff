@@ -6,10 +6,9 @@
 //     the handler passes verse's requests on to it. The task's process holds its one task with
 //     an InProcessHandler (ServeTask).
 //
-// A runner is embedded in another program, or standalone, a program of its own. `verse up`
-// embeds the runners verse ships with an InProcessHandler, with no sandbox, and calls Launch,
-// Lookup and the question hooks (OnQuestion, OnCheck, OnDrop) directly. `runnerd` (cmd/runnerd)
-// is a standalone runner with a SubprocessHandler.
+// A runner is a program of its own: `runnerd` (cmd/runnerd) with a SubprocessHandler, which
+// `verse up` starts beside itself as its local runner, or one written on an InProcessHandler, as
+// the sample runner is and as a test serves one (runnerdtest). verse reaches each over HTTP.
 //
 // Both handlers serve the task contract over HTTP (HTTPHandler) — launch tasks, stream their
 // events (SSE), resolve their gates by id, steer them, replace their gates, pause and cancel

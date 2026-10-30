@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -54,7 +55,7 @@ func (f *failReads) ReadError() error {
 // listings that already carried this guard (/state, /charter) are why the shape was recognised.
 func TestAListingRefusesRatherThanAnsweringEmpty(t *testing.T) {
 	fs := &failReads{Store: entitytest.Store(t)}
-	srv := NewWithStore(ScriptedBuilder, fs)
+	srv := serverWith(t, runnerdtest.Scripted, fs)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -103,7 +104,7 @@ func (charterUnread) ReadError() error { return nil }
 // after both let the schedules' listing clear the charter's failure, and a restore found no
 // packages to bring back.
 func TestPackagesSeenAnswersForEachRead(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, charterUnread{entitytest.Store(t)})
+	srv := serverWith(t, runnerdtest.Scripted, charterUnread{entitytest.Store(t)})
 	if names, err := srv.packagesSeenErr(); !entity.IsUnread(err) {
 		t.Fatalf("packages read as %v with %v while the charter could not be read, want a read that did not happen", names, err)
 	}

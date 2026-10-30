@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -15,7 +16,7 @@ import (
 // A rule whose action fails is marked in the charter's listing, where its author looks, and
 // counted in the status: the place in the rule, what it was about, and why.
 func TestARuleInTroubleIsMarkedInTheCharterAndCountedInTheStatus(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()

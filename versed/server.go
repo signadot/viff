@@ -21,11 +21,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"slices"
 	"sort"
 	"strconv"
@@ -46,9 +44,7 @@ import (
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/resolver"
 	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
-	"github.com/signadot/verse/runner/runnerd/stock"
 	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 	"github.com/signadot/verse/trigger"
@@ -102,25 +98,12 @@ type Server struct {
 	replacing sync.Map
 	Reg       *task.Registry
 	Eng       *trigger.Engine
-	// Embedded is the runner a server is handed in process (NewWithStore's builder): its tasks
-	// run in this process. Tests hand one; `verse up` hands none and starts a runnerd, its local
-	// runner, which is a registration like any other (localrunner.go). With no builder it is
-	// empty, and nothing is routed to it.
-	Embedded *runnerd.InProcessHandler
-	runner   client.Launcher // the embedded runner, reached in process
-	// inProcess is whether the server was handed a builder, and so a runner in process that
-	// routing may send work to: tests. `verse up` hands none, and starts a runnerd instead.
-	inProcess bool
 	// localRunner is whether a `local` registration is this verse's (RegisterLocalRunner), so
 	// `verse status` says how it is.
 	localRunner bool
 	// DefaultAgent is the agent a prompt naming none is for, bound at the spawn; empty is
 	// DefaultAgent (`defaultAgent` in the config).
 	DefaultAgent string
-	// NoLocalRunner keeps work from the runner the server was handed in process, so every spawn
-	// goes to a registered runner: a test's stand-in for a verse with no local runner
-	// (`localRunner: false`, which `verse up` honours by starting none).
-	NoLocalRunner bool
 	// runnerTokens is the tokens this verse has minted toward its runners, one per audience,
 	// kept until they are about to expire (runnerauth.go).
 	runnerTokens runnerTokens
@@ -132,7 +115,7 @@ type Server struct {
 	keptRegistrations keptRegistrations
 	// hosted is what verse knows of each task it launched that the runner does not carry: the
 	// scope its records live in, what it is about, whom it acts for, and whom its questions
-	// naming nobody go to. Keyed by task id; read when the embedded runner raises a question.
+	// naming nobody go to. Keyed by task id; read when the task's runner raises a question.
 	hosted sync.Map
 	// hostedMu orders the writes to hosted (host, repolicy, retire); reads take none. It guards
 	// hostedSerial, the serial of the last run hosted.
@@ -270,11 +253,11 @@ type options struct{ perms Perms }
 // assembled without it is the open one.
 func WithPerms(p Perms) Option { return func(o *options) { o.perms = p } }
 
-// NewWithStore assembles the server with the given task driver builder (scripted,
-// LLM, …) over a store. The engine resolves trigger gates through the shared registry,
-// so a human answers them out-of-band via POST /asks/{id}/answer; a trigger's spawn action
-// goes through the task runtime (hosted, mirrored into the verse).
-func NewWithStore(build runnerd.Builder, store entity.Store, opts ...Option) *Server {
+// NewWithStore assembles the server over a store. The engine resolves trigger gates through the
+// shared registry, so a human answers them out-of-band via POST /asks/{id}/answer; a trigger's
+// spawn action is routed to a registered runner and mirrored into the verse. No task runs in
+// this process.
+func NewWithStore(store entity.Store, opts ...Option) *Server {
 	var o options
 	for _, opt := range opts {
 		opt(&o)
@@ -317,8 +300,7 @@ func NewWithStore(build runnerd.Builder, store entity.Store, opts ...Option) *Se
 	susp := trigger.NewSuspensions()
 	susp.Load(nil)
 	eng.SetSuspensions(susp)
-	host := runnerd.NewInProcessHandler(build)
-	s := &Server{Store: store, Reg: reg, Eng: eng, Embedded: host, susp: susp, clock: wallClock{},
+	s := &Server{Store: store, Reg: reg, Eng: eng, susp: susp, clock: wallClock{},
 		seedErr:   seedErr,
 		scopeEngs: map[string]*scopeEngine{}, ioRuns: map[string]*sourceRun{},
 		charterMu: make(chan struct{}, 1),
@@ -327,8 +309,6 @@ func NewWithStore(build runnerd.Builder, store entity.Store, opts ...Option) *Se
 		// context to run under, and one that is never cancelled would be worse than one
 		// cancelled at task exit.
 		ctx: context.Background()}
-	s.runner = localRunner{host} // the in-process runner, reached in process and nowhere else
-	s.inProcess = build != nil
 
 	// Publish every posed question as `gate:question:<id>`, from both places questions are
 	// raised: the engine's own registry for a firing's gates, and each hosted task for a
@@ -372,44 +352,11 @@ func NewWithStore(build runnerd.Builder, store entity.Store, opts ...Option) *Se
 		}
 		mirror.DropQuestion(s.storeForScope(q.Scope), q.ID, why)
 	})
-	// A HOSTED task's questions are retired here. The registry above is the ENGINE's — a
-	// firing's own gates — and a task spawned into runnerd gets a registry of its own, which is
-	// why this is a second registration rather than the same one reaching both.
-	host.OnDrop(func(taskID, questionID, why string) {
-		mirror.DropQuestion(s.storeForScope(s.hostedOf(taskID).scope), questionID, why)
-	})
 	// NOBODY ANSWERS AN ASK ABOUT SOMETHING THEY CANNOT READ (9ce3bva0, D3): an ask naming
 	// answerers who may not read its subject is refused before it is posed, to the firing or the
 	// action that asked it.
 	reg.OnCheck(func(q task.GateQuestion) error {
 		return checkAudience(s.storeForScope(q.Scope), q)
-	})
-	host.OnCheck(func(taskID string, q task.GateQuestion) error {
-		ht := s.hostedOf(taskID)
-		return checkAudience(s.storeForScope(ht.scope), hostedQuestion(ht, q))
-	})
-	host.OnQuestion(func(taskID string, p task.Pending) {
-		ht := s.hostedOf(taskID)
-		// WHERE this question goes is the task's to say, not this closure's. runnerd is one
-		// runtime under baseline and every scoped engine, so a publisher registered once
-		// closed over the baseline store and posted every scope's questions there — while
-		// the task's own record went to the scope that spawned it. `verse gates` then
-		// showed a pending gate `verse ps` would not list, on every dev's docket at once,
-		// naming content only one of them could read (git-issue kwxxm8cth12ksn99fhn0).
-		//
-		// The scope rides on the launch, so it is known before the task is, and every
-		// record this callback writes goes to the same store as the instance record: the
-		// docket a reader sees is the tasks a reader sees.
-		store := s.storeForScope(ht.scope)
-		// A task gate's question knows what it would DO but not what it is about: the
-		// flow belongs to the task, not to the action. Fill it in from what verse kept of
-		// the launch, so a rule can select "the questions about demo:pr:1" by matching one
-		// record rather than joining two (hostedQuestion).
-		p.Question = hostedQuestion(ht, p.Question)
-		if mirror.PostQuestion(store, p, taskID) {
-			arm(store, p.Question)
-			_ = s.finishSettle(store, p.Question.ID, taskID)
-		}
 	})
 
 	// The Spawner owns the full lifecycle: host it via the runner, then mirror
@@ -571,46 +518,6 @@ func checkAudience(store entity.Store, q task.GateQuestion) error {
 // versedActor is the name versed acts under on a task's handle when nobody else is named: who
 // cancelled a scope's tasks, for the record.
 const versedActor = "system:versed"
-
-// localRunner is the embedded runner (Server.Embedded) as a task.Runner: verse reaches it by Go
-// calls rather than over HTTP. Remote runners (a base URL: k8s, lambda, another verse)
-// implement the same task.Runner behind the wire contract; the engine drives them through the
-// identical seam. See docs/task-control.md.
-//
-// The runtime is served to nobody raw: the operator API serves it behind the door (a
-// principal, the perms check, the mirror).
-type localRunner struct{ d *runnerd.InProcessHandler }
-
-func (l localRunner) Launch(spec runner.Launch) task.Handle {
-	t, err := l.d.Launch(spec)
-	if err != nil {
-		return task.FailedHandle(err.Error())
-	}
-	return t
-}
-
-// Attach returns the still-live in-process handle for id, or nil — after a restart the
-// in-memory runtime is gone, so the caller orphans (a local task cannot outlive verse).
-func (l localRunner) Attach(id string) task.Handle {
-	if p := l.d.Lookup(id); p != nil {
-		return localHandle{p, l.d}
-	}
-	return nil
-}
-
-// localHandle is a task the embedded runner hosts, whose autonomy is changed through the runner,
-// so the change is checked as a runner reached by url checks it (runnerd.CheckAutonomy): each row
-// reaches the launch's environment, which stays as the launch had it.
-type localHandle struct {
-	*task.Task
-	d *runnerd.InProcessHandler
-}
-
-func (h localHandle) SetAutonomy(p task.Autonomy, by string) error {
-	return h.d.SetAutonomy(h.Task.ID, p, by)
-}
-
-func (localRunner) Ref() string { return "local" }
 
 // mintNonce returns an unguessable path segment.
 func mintNonce() string {
@@ -1065,7 +972,7 @@ type resumedRun struct{ subject, chain string }
 // and its completion advances the sequence. Then the claim must stay: dropping it would let a
 // concurrent firing start a second run alongside the one still going.
 //
-// It does not survive when the task was orphaned (a local runtime cannot outlive verse) or
+// It does not survive when the task was orphaned (its runner is gone, and the task with it) or
 // when nothing was resumed at all. Then no completion is coming, and a surviving claim would
 // block that sequence forever with no live task to explain why.
 //
@@ -1475,16 +1382,13 @@ func (s *Server) Handler() http.Handler {
 	rt.handleControl("POST /flow/say", s.flowSay, "verse-flow-select", one("verse-steered"))
 	rt.handle("POST /flow/cancel", s.flowCancel, "verse-flow-select", one("verse-steered"))
 	// The tasks. Every route a runner serves is registered here, so versed answers each itself:
-	// the reads union the embedded runner's tasks with the installed runners', and the control
-	// routes reach a task through its handle wherever it runs. The embedded runner's handler is
-	// mounted under /tasks after them, and answers only what none of them matches: the 404s and
-	// 405s of a method and path versed doesn't serve.
-	ph := s.Embedded.HTTPHandler()
+	// the reads are the task records, and the control routes reach a task through its handle
+	// wherever it runs.
 	rt.handle("GET /tasks", s.listTasks, "", list("verse-instance"))
 	rt.handle("POST /tasks", s.spawnTask, "verse-spawn", one("verse-spawned"))
 	rt.handle("GET /tasks/{id}", s.getTask, "", one("verse-instance"))
 	rt.handle("GET /tasks/{id}/events", func(w http.ResponseWriter, r *http.Request) {
-		s.taskEvents(w, r, ph)
+		s.taskEvents(w, r)
 	}, "", stream("verse-task-event"))
 	// cancel/say are runner-agnostic: local tasks go to the runtime, remote
 	// ones to the runner's handle — so `task cancel`/`say` work wherever a task runs.
@@ -1520,8 +1424,6 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("PUT /tasks/{id}/autonomy", func(w http.ResponseWriter, r *http.Request) {
 		s.taskControl(w, r, "autonomy")
 	}, "verse-set-autonomy", nothing)
-	rt.mount("/tasks", ph)
-	rt.mount("/tasks/", ph)
 	s.routes = rt.routes
 	s.unattributed = rt.unattributed
 	s.control = rt.control
@@ -1697,22 +1599,6 @@ func (s *Server) notePrincipal(p string) {
 	s.users.Store(p, struct{}{})
 }
 
-// ScriptedBuilder is the verse runner embedded with no model credential: it runs scripts, and
-// refuses an agent. What tests and a keyless `verse up` host tasks with, its operator being their
-// author, so what it stops inside a run is open (stock.Open).
-var ScriptedBuilder = stock.New(stock.Open(), stock.Secrets{}, scriptedRoot(), io.Discard).Build
-
-// scriptedRoot is where ScriptedBuilder's tasks work: a directory of its own under the temporary
-// directory, since the runner keeps a task's credential and its tools socket OUTSIDE the
-// workspace, and makes them under the temporary directory.
-func scriptedRoot() string {
-	root := filepath.Join(os.TempDir(), "verse-embedded")
-	if err := os.MkdirAll(root, 0o700); err != nil {
-		return os.TempDir()
-	}
-	return root
-}
-
 // deleteScope drops the ?scope copy-on-write overlay and all its data —
 // teardown. It runs against the baseline store (only baseline may delete a scope), so it
 // is independent of scopedStore.
@@ -1755,23 +1641,11 @@ func (s *Server) deleteScope(w http.ResponseWriter, r *http.Request) {
 
 // cancelScopeTasks cancels every live task a scope owns (docs/reference/scopes.md#what-a-scope-owns):
 // what its engine tracks — its rules' tasks and `task run --scope`, wherever they run — and
-// what the local runtime hosts under the scope that no engine does. The engine's go without
+// what no engine does is none of this process's to reach. The engine's go without
 // their completion hooks, which would act inside the scope being deleted (Engine.CancelLive).
 func (s *Server) cancelScopeTasks(scope string, eng *trigger.Engine) {
-	reason := "scope " + scope + " was deleted"
-	cancelled := map[string]bool{}
 	if eng != nil {
-		for _, id := range eng.CancelLive(reason) {
-			cancelled[id] = true
-		}
-	}
-	for _, inst := range s.Embedded.Snapshots() {
-		if sc, ok := s.hostedScope(inst.ID); !ok || sc != scope || cancelled[inst.ID] {
-			continue
-		}
-		if t := s.Embedded.Lookup(inst.ID); t != nil {
-			t.Cancel(reason, versedActor)
-		}
+		eng.CancelLive("scope " + scope + " was deleted")
 	}
 }
 
@@ -2910,7 +2784,7 @@ func (s *Server) ownerOf(store entity.Store, questionID string) string {
 	if s.isTask(owner) {
 		return owner
 	}
-	return s.taskHoldingGate(questionID)
+	return ""
 }
 
 // pendingQuestions selects the open questions: the docket, as a slice of the store.
@@ -3166,7 +3040,7 @@ func (s *Server) answerQuestion(w http.ResponseWriter, r *http.Request, body api
 				return true
 			}
 		}
-		return s.taskHoldingGate(body.ID) != ""
+		return s.taskHoldsGate(body.ID)
 	}
 	q, found, err := s.posed(store, body.ID, raised)
 	if unreadable(w, r, err) {
@@ -3615,6 +3489,8 @@ func (s *Server) settleOverdueIn(store entity.Store, pending []entity.Entity) bo
 // asking each to remember it.
 func (s *Server) reflect(store entity.Store, id string, serial uint64, h task.Handle, m mirror.Meta) {
 	m.Arm = func(id, within string) { s.armDeadline(store, id, within) }
+	// A question the task poses, or poses again, takes an answer decided and not yet heard.
+	m.Posed = func(qid string) { _ = s.finishSettle(store, qid, id) }
 	// Its end retires what verse hosted of this run, by the serial host answered (0 for a spawn
 	// refused before it hosted anything, whose end must leave whatever stands under its id).
 	m.Ended = func() { s.retire(id, serial) }
@@ -4583,8 +4459,8 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, api.Spawned{ID: id})
 }
 
-// listTasks is the unified task list: the local runtime plus, when the runner keeps its own
-// registry, its tasks — each stamped with its runner so a client sees where a task runs.
+// listTasks is the task list: the task records, each stamped with its runner so a client sees
+// where a task runs.
 func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 	out, err := s.taskSnapshots(s.scopedStore(r))
 	if err != nil {
@@ -4602,8 +4478,7 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 		}
 		kept := make([]api.Task, 0, len(out))
 		for _, inst := range out {
-			if inst.RunnerName == want ||
-				(inst.RunnerName == "" && want == runnerEntityRef(LocalRunnerName).String() && inst.Runner == "local") {
+			if inst.RunnerName == want {
 				kept = append(kept, inst)
 			}
 		}
@@ -4612,9 +4487,8 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, out)
 }
 
-// taskSnapshots is the unified task list for one store view (baseline, or a ?scope
-// overlay): the local runtime plus the active runner's own tasks, each stamped with its
-// runner.
+// taskSnapshots is the task list for one store view (baseline, or a ?scope overlay): the task
+// records, each stamped with its runner.
 //
 // The runtime and a runner are scope-blind — they hold every task globally — so a
 // bare list would leak a scope's tasks into baseline (and across
@@ -4637,23 +4511,13 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 // list. Now it costs neither: the rows are already here, and a runtime that does not answer
 // only means its live detail is missing, so the record's own account stands in.
 func (s *Server) taskSnapshots(store entity.Store) ([]api.Task, error) {
-	// The live view, by id, from what can be asked cheaply: the runner a server was handed in
-	// process. A registered runner's tasks are the records' to say.
-	live := map[string]liveTask{}
-	for _, inst := range s.Embedded.Snapshots() {
-		live[inst.ID] = liveTask{inst, "local"}
-	}
 	out := make([]api.Task, 0)
 	for _, ent := range taskRows(store) {
 		rec := entity.ToObj(ent.Payload)
 		if rec == nil {
 			continue
 		}
-		var got *liveTask
-		if l, ok := live[ent.Ref.Name()]; ok {
-			got = &l
-		}
-		out = append(out, taskOf(ent.Ref.Name(), got, ent.Payload))
+		out = append(out, taskOf(ent.Ref.Name(), ent.Payload))
 	}
 	return out, nil
 }
@@ -4686,13 +4550,6 @@ func taskCount(store entity.Store) int {
 	return n
 }
 
-// liveTask is a runner's snapshot of a task it holds, and which runner that is: `local`, or the
-// runner's url.
-type liveTask struct {
-	snap task.Snapshot
-	on   string
-}
-
 // taskOf is a task as verse reports it (api.Task): the runner's snapshot while one holds it,
 // else what the record kept, and in both cases what only the record knows.
 //
@@ -4714,23 +4571,20 @@ type liveTask struct {
 //   - UNDER WHAT AUTONOMY: the runner holds the rows it decides by, and the record holds them
 //     with verse's part of each ask (what silence settles on, the labels) and who last
 //     replaced them, kept after the task ends.
-func taskOf(id string, live *liveTask, payload entity.Payload) api.Task {
+func taskOf(id string, payload entity.Payload) api.Task {
 	rec := entity.ToObj(payload)
 	str := func(k string) string { v, _ := rec[k].(string); return v }
 	num := func(k string) int64 { v, _ := rec[k].(int64); return v }
-	var t api.Task
-	if live != nil {
-		t = api.TaskFrom(live.snap)
-		t.Runner = live.on
-	} else {
-		t = api.Task{
-			ID: id, Prompt: str("prompt"),
-			Status: task.Status(str("status")), Result: str("result"), Err: str("err"),
-		}
-		t.Agent, t.Script = mirror.AgentOf(payload)
+	t := api.Task{
+		ID: id, Prompt: str("prompt"),
+		Status: task.Status(str("status")), Result: str("result"), Err: str("err"),
+		Runner: str("runner"),
 	}
-	if on := str("runner"); on != "" {
-		t.Runner = on
+	t.Agent, t.Script = mirror.AgentOf(payload)
+	// A pause is a hold, recorded beside the lifecycle status (`paused`), and reported as the
+	// status it is while the task runs.
+	if t.Status == task.Running && rec["paused"] == true {
+		t.Status = task.Paused
 	}
 	t.RunnerName = str("runnerName")
 	if occ := num("occurrence"); occ != 0 {
@@ -4767,7 +4621,7 @@ func (s *Server) scopeMembers(store entity.Store) map[string]bool {
 	return ids
 }
 
-// isTask reports whether id names a task in the runtime or the active runner.
+// isTask reports whether id names a task the runner its record names holds.
 //
 // A runner that did not answer reports false here, which is not the same fact and is the best
 // this signature can hold. It is bounded: the one caller uses this to decide whether a gate id
@@ -4775,9 +4629,6 @@ func (s *Server) scopeMembers(store entity.Store) map[string]bool {
 // falls through to the same answer it would have given anyway. Widening it would widen the
 // gate-routing chain above for a case that chain cannot act on.
 func (s *Server) isTask(id string) bool {
-	if _, ok := s.Embedded.SnapshotOf(id); ok {
-		return true
-	}
 	if l, ok := s.placeOf(id).(taskLister); ok {
 		_, err := l.TaskSnapshot(id)
 		return err == nil
@@ -4786,8 +4637,8 @@ func (s *Server) isTask(id string) bool {
 }
 
 // placeOf is the runner a task actually ran on, as its record says: routing picks one per task,
-// and that is the whole feature. nil when the task ran in this process, or is not one this verse
-// knows.
+// and that is the whole feature, read where the task lives. nil when the task is not one this
+// verse knows.
 //
 // Everything that reached across the seam used to consult `s.runner` alone, so work sent
 // somewhere by name was invisible to it: a gate raised on a per-spawn runner could be LISTED
@@ -4800,61 +4651,54 @@ func (s *Server) isTask(id string) bool {
 // still existing, which is what keeps removing a runner from orphaning work that is running
 // perfectly well (see reconcileTasks, and docs/runners.md on what a restart does).
 func (s *Server) placeOf(id string) task.Runner {
-	e, ok, err := s.Store.Get(mirror.Ref(id))
+	// In the scope the task lives in, where verse launched it: a scoped task's record is in its
+	// scope's overlay, and baseline holds none.
+	store := s.Store
+	if sc, ok := s.hostedScope(id); ok {
+		store = s.storeForScope(sc)
+	}
+	e, ok, err := store.Get(mirror.Ref(id))
 	if err != nil || !ok {
 		return nil
 	}
 	ref := entity.Str(e.Payload, "runner")
-	// `local` means in process, which the runnerd branch above already covers.
-	if ref == "" || ref == "local" || ref == s.runner.Ref() {
+	if ref == "" {
 		return nil
 	}
 	return s.dialAt(ref)
 }
 
-// taskHoldingGate finds which task has decisionID open, for a gate id that does not
-// carry its owner.
-//
-// A gate the embedded runtime raises is <task-id>~dN, so its owner is readable off the id. A
-// runner behind a URL names its gates as it likes, and an id without GateSep in it recovers
-// nothing when split, so `verse gate approve` would answer 404 on a gate `verse gate` was
-// listing one line above, `task:` and all. The routing information is not missing; it is in
-// the runner's snapshot rather than in the id. This reads it from there.
-//
-// Unscoped, like isTask beside it: a resolve is addressed by a unique decision id, not
-// discovered by listing, so it does not go through taskSnapshots' scope filter.
-func (s *Server) taskHoldingGate(decisionID string) string {
-	holds := func(inst task.Snapshot) bool {
-		for _, pg := range inst.Pending {
-			if pg.ID == decisionID {
-				return true
-			}
-		}
+// taskHoldsGate is whether the task a gate id names, by its owner prefix, is waiting on that gate,
+// as its runner says now. A runner's frame reaches whoever follows the task's events as soon as
+// the mirror does, and a person answering from the stream can be faster than the mirror's record
+// of the question: the runner is asked, rather than the answer refused as no such question.
+func (s *Server) taskHoldsGate(questionID string) bool {
+	owner, _, ok := strings.Cut(questionID, task.GateSep)
+	if !ok {
 		return false
 	}
-	for _, inst := range s.Embedded.Snapshots() {
-		if holds(inst) {
-			return inst.ID
+	l, isLister := s.placeOf(owner).(taskLister)
+	if !isLister {
+		return false
+	}
+	snap, err := l.TaskSnapshot(owner)
+	if err != nil {
+		return false
+	}
+	for _, pg := range snap.Pending {
+		if pg.ID == questionID {
+			return true
 		}
 	}
-	return ""
+	return false
 }
 
-// resolveTaskDecision answers a task's pending gate (write/shell/delegate) — the
-// runtime for a local task, the runner handle for a remote one.
+// resolveTaskDecision answers a task's pending gate (write/shell/delegate), through the handle of
+// the runner hosting it.
 func (s *Server) resolveTaskDecision(taskID, decisionID string, res task.Resolution) error {
-	if _, ok := s.Embedded.SnapshotOf(taskID); ok {
-		if s.Embedded.Resolve(taskID, decisionID, res) {
-			return nil
-		}
-		// The local registry answers by id and cannot say which of the two it was. The
-		// record can, and the caller consults it; here the honest answer is "not open".
-		return task.ErrNoSuchDecision
-	}
 	if h := s.attach(taskID); h != nil {
-		// by is carried across this seam, not dropped: the local leg above takes the whole
-		// Resolution, so a remote gate that lost the answerer would be attributed
-		// differently from an identical local one purely by where it happened to run.
+		// by is carried across this seam, not dropped: a gate that lost the answerer would be
+		// recorded as answered by nobody.
 		if rh, ok := h.(gateResolver); ok {
 			return rh.Resolve(decisionID, res.Chosen(), strings.Join(res.Steer, " "), res.By)
 		}
@@ -4863,27 +4707,18 @@ func (s *Server) resolveTaskDecision(taskID, decisionID string, res task.Resolut
 	return task.ErrNoSuchTask
 }
 
-// attach reaches a task wherever it actually runs: the runner its own task:instance records
-// first, the runner this process holds last.
-//
-// The order is not a preference. An HTTP runner's Attach hands back a handle for ANY id without
-// asking, so consulting another first would reach whichever place answers rather than the one
-// holding the task.
+// attach reaches a task wherever it actually runs: the runner its own task:instance records.
 //
 // One helper rather than the same two lines at each call site, because "reach this task" was
 // written three times and every copy assumed one runner: answering a gate, streaming a read
 // plane, and deciding whether an id is a task at all.
 func (s *Server) attach(id string) task.Handle {
 	if p := s.placeOf(id); p != nil {
-		if h := p.Attach(id); h != nil {
-			return h
-		}
+		return p.Attach(id)
 	}
-	return s.runner.Attach(id)
+	return nil
 }
 
-// getTask resolves one task across backends: the local runtime first (live detail),
-// then the runner's own registry — so `task get <id>` works wherever the task runs.
 // mayReadTask asks the permission check whether the request may read a task, and answers the
 // request when it may not: refused in the check's words, or the store's error when the record
 // could not be read.
@@ -4900,27 +4735,23 @@ func (s *Server) mayReadTask(w http.ResponseWriter, r *http.Request, id string) 
 	return !unreadable(w, r, err)
 }
 
+// getTask is one task as its record says it, so `task get <id>` works wherever the task runs.
 func (s *Server) getTask(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if !s.mayReadTask(w, r, id) {
 		return
 	}
-	var live *liveTask
-	if inst, ok := s.Embedded.SnapshotOf(id); ok {
-		live = &liveTask{inst, "local"}
-	}
-	// The mirror: what only the record knows, for a live task, and the whole account for a task
-	// no runtime here answers for — one on a registered runner is not held by the in-process
-	// runtime, so without it `task get` would 404 for work that is running.
+	// The record: a task runs on a registered runner, and verse's account of it is what it
+	// mirrored.
 	var rec entity.Payload
 	if e, ok, _ := s.scopedStore(r).Get(mirror.Ref(id)); ok && entity.ToObj(e.Payload) != nil {
 		rec = e.Payload
 	}
-	if live == nil && rec == nil {
+	if rec == nil {
 		noSuchTask(w, r, id)
 		return
 	}
-	writeOut(w, r, http.StatusOK, taskOf(id, live, rec))
+	writeOut(w, r, http.StatusOK, taskOf(id, rec))
 }
 
 // noSuchTask is the 404 every task route ends at, and it says which id space it is about.
@@ -4943,15 +4774,9 @@ func noSuchTask(w http.ResponseWriter, r *http.Request, id string) {
 // taskEvents bridges `attach` across backends: a locally-hosted task streams from the
 // runtime (its native SSE); a remote one is bridged here — Subscribe the runner
 // handle (which replays the merged log then goes live) and re-emit each event as SSE.
-func (s *Server) taskEvents(w http.ResponseWriter, r *http.Request, runtime http.Handler) {
+func (s *Server) taskEvents(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	// Asked before the stream is handed to whoever serves it: a hosted task's is the runtime's
-	// own handler, which knows nothing of who is reading.
 	if !s.mayReadTask(w, r, id) {
-		return
-	}
-	if _, ok := s.Embedded.SnapshotOf(id); ok {
-		runtime.ServeHTTP(w, r) // local runtime owns it
 		return
 	}
 	s.streamEvents(w, r, id)
@@ -5001,7 +4826,7 @@ type sinceSubscriber interface {
 }
 
 // subscribeAt opens the read plane at the cursor the client asked for, so `?since=` means the
-// same thing on this route as it does on the local runtime's: the frames AFTER that cursor,
+// same thing on this route as it does on a runner's own: the frames AFTER that cursor,
 // then live, with an EventGap first if the cursor is below what is still retained.
 //
 // It read nothing before, so a remote task replayed from the beginning however
@@ -5026,9 +4851,8 @@ func subscribeAt(h task.Handle, since string) (<-chan task.Event, func()) {
 	return sub.SubscribeSince(n)
 }
 
-// taskControl routes cancel/say: a task the local runtime hosts is served by it (live
-// detail); otherwise the request goes to the runner's handle (a remote task),
-// so the same command works wherever a task runs. Pause and resume are the operator's hold
+// taskControl routes cancel/say to the handle of the runner hosting the task, so the same command
+// works wherever a task runs. Pause and resume are the operator's hold
 // (holdTask), taken and lifted as `flow suspend|resume --task` take them.
 //
 // CONTROL IS HELD, not assumed: the task's owner holds it by owning the task, and the runner

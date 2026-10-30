@@ -2,6 +2,7 @@ package versed
 
 import (
 	"context"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -206,7 +207,7 @@ func TestAnAskIsNotAnsweredByItsAsker(t *testing.T) {
 // answer given after it still settles the ask and runs its then.
 func TestAnAskOutlivesARestart(t *testing.T) {
 	addr := entitytest.Addr(t)
-	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	first := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	ctx, stop := context.WithCancel(t.Context())
 	first.Start(ctx)
 	ts := httptest.NewServer(first.Handler())
@@ -217,7 +218,7 @@ func TestAnAskOutlivesARestart(t *testing.T) {
 	ts.Close()
 	stop()
 
-	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	second := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	second.Start(t.Context())
 	ts2 := httptest.NewServer(second.Handler())
 	defer ts2.Close()

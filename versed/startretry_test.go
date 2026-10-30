@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -20,7 +21,7 @@ func TestAStartWhoseReadsFailedIsAskedAgain(t *testing.T) {
 	raw := entitytest.Store(t)
 
 	// What the verse held when it went down: a rule and a source, installed the ordinary way.
-	first := NewWithStore(ScriptedBuilder, raw)
+	first := serverWith(t, runnerdtest.Scripted, raw)
 	ts := httptest.NewServer(first.Handler())
 	if resp := postTony(t, ts.URL+"/charter", map[string]any{
 		"name":      "review",
@@ -39,7 +40,7 @@ func TestAStartWhoseReadsFailedIsAskedAgain(t *testing.T) {
 
 	// Back up over a store that does not answer.
 	fs := &failReads{Store: raw, on: true}
-	second := NewWithStore(ScriptedBuilder, fs)
+	second := serverWith(t, runnerdtest.Scripted, fs)
 	second.retryWait = 10 * time.Millisecond
 	second.Start(t.Context())
 	t.Cleanup(second.stopAllIOs)

@@ -14,7 +14,7 @@ import (
 func routedServer(t *testing.T) (*Server, *httptest.Server, map[string]string) {
 	t.Helper()
 	srv, ts, cluster := runnerServer(t)
-	srv.NoLocalRunner = true
+	noLocalRunner(t, srv)
 	files := map[string]string{}
 	for _, name := range []string{"a", "b"} {
 		sub := "system:serviceaccount:verse:" + name

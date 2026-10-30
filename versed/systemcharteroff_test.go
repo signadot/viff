@@ -2,6 +2,7 @@ package versed
 
 import (
 	"context"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -23,7 +24,7 @@ rules:
 `
 	addr := entitytest.Addr(t)
 	start := func(texts []SystemCharter) (*Server, *httptest.Server, func()) {
-		srv := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+		srv := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 		srv.SystemCharters = texts
 		ctx, stop := context.WithCancel(t.Context())
 		srv.Start(ctx)

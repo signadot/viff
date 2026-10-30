@@ -2222,6 +2222,16 @@ func (s *AskRecord) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["askedAgain"] = ir.FromBool(bool(s.AskedAgain))
 	}
 
+	// Field: PosedRun
+	if s.PosedRun != "" {
+		irMap["posedRun"] = ir.FromString(string(s.PosedRun))
+	}
+
+	// Field: PosedCursor
+	if s.PosedCursor != 0 {
+		irMap["posedCursor"] = ir.FromInt(int64(s.PosedCursor))
+	}
+
 	// Field: Suspended
 	if s.Suspended {
 		irMap["suspended"] = ir.FromBool(bool(s.Suspended))
@@ -2653,6 +2663,18 @@ func (s *AskRecord) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected bool, got %v", "askedAgain", fieldNodeUnwrapped.Type)
 			}
 			s.AskedAgain = bool(fieldNodeUnwrapped.Bool)
+		case "posedRun":
+			// Field: PosedRun
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "posedRun", fieldNodeUnwrapped.Type)
+			}
+			s.PosedRun = string(fieldNodeUnwrapped.String)
+		case "posedCursor":
+			// Field: PosedCursor
+			if fieldNodeUnwrapped.Int64 == nil {
+				return fmt.Errorf("field %q: expected number, got %v", "posedCursor", fieldNodeUnwrapped.Type)
+			}
+			s.PosedCursor = int64(*fieldNodeUnwrapped.Int64)
 		case "suspended":
 			// Field: Suspended
 			if fieldNodeUnwrapped.Type != ir.BoolType {
@@ -3070,6 +3092,16 @@ func (s *AskRow) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Field: AskedAgain
 	if s.AskedAgain {
 		irMap["askedAgain"] = ir.FromBool(bool(s.AskedAgain))
+	}
+
+	// Field: PosedRun
+	if s.PosedRun != "" {
+		irMap["posedRun"] = ir.FromString(string(s.PosedRun))
+	}
+
+	// Field: PosedCursor
+	if s.PosedCursor != 0 {
+		irMap["posedCursor"] = ir.FromInt(int64(s.PosedCursor))
 	}
 
 	// Field: Suspended
@@ -3508,6 +3540,18 @@ func (s *AskRow) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected bool, got %v", "askedAgain", fieldNodeUnwrapped.Type)
 			}
 			s.AskedAgain = bool(fieldNodeUnwrapped.Bool)
+		case "posedRun":
+			// Field: PosedRun
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "posedRun", fieldNodeUnwrapped.Type)
+			}
+			s.PosedRun = string(fieldNodeUnwrapped.String)
+		case "posedCursor":
+			// Field: PosedCursor
+			if fieldNodeUnwrapped.Int64 == nil {
+				return fmt.Errorf("field %q: expected number, got %v", "posedCursor", fieldNodeUnwrapped.Type)
+			}
+			s.PosedCursor = int64(*fieldNodeUnwrapped.Int64)
 		case "suspended":
 			// Field: Suspended
 			if fieldNodeUnwrapped.Type != ir.BoolType {
@@ -3931,6 +3975,16 @@ func (s *DocketRow) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Field: AskedAgain
 	if s.AskedAgain {
 		irMap["askedAgain"] = ir.FromBool(bool(s.AskedAgain))
+	}
+
+	// Field: PosedRun
+	if s.PosedRun != "" {
+		irMap["posedRun"] = ir.FromString(string(s.PosedRun))
+	}
+
+	// Field: PosedCursor
+	if s.PosedCursor != 0 {
+		irMap["posedCursor"] = ir.FromInt(int64(s.PosedCursor))
 	}
 
 	// Field: Suspended
@@ -4377,6 +4431,18 @@ func (s *DocketRow) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected bool, got %v", "askedAgain", fieldNodeUnwrapped.Type)
 			}
 			s.AskedAgain = bool(fieldNodeUnwrapped.Bool)
+		case "posedRun":
+			// Field: PosedRun
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "posedRun", fieldNodeUnwrapped.Type)
+			}
+			s.PosedRun = string(fieldNodeUnwrapped.String)
+		case "posedCursor":
+			// Field: PosedCursor
+			if fieldNodeUnwrapped.Int64 == nil {
+				return fmt.Errorf("field %q: expected number, got %v", "posedCursor", fieldNodeUnwrapped.Type)
+			}
+			s.PosedCursor = int64(*fieldNodeUnwrapped.Int64)
 		case "suspended":
 			// Field: Suspended
 			if fieldNodeUnwrapped.Type != ir.BoolType {
@@ -11639,11 +11705,6 @@ func (s *Task) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["runnerName"] = ir.FromString(string(s.RunnerName))
 	}
 
-	// Field: Cursor
-	if s.Cursor != 0 {
-		irMap["cursor"] = ir.FromInt(int64(s.Cursor))
-	}
-
 	// Field: Occurrence
 	if s.Occurrence != 0 {
 		irMap["occurrence"] = ir.FromInt(int64(s.Occurrence))
@@ -11667,19 +11728,6 @@ func (s *Task) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Field: Err
 	if s.Err != "" {
 		irMap["err"] = ir.FromString(string(s.Err))
-	}
-
-	// Field: Pending
-	if len(s.Pending) > 0 {
-		slice := make([]*ir.Node, len(s.Pending))
-		for i, v := range s.Pending {
-			node, err = v.ToTonyIR(opts...)
-			if err != nil {
-				return nil, fmt.Errorf("failed to convert slice element %d: %w", i, err)
-			}
-			slice[i] = node
-		}
-		irMap["pending"] = ir.FromSlice(slice)
 	}
 
 	// Field: Refused
@@ -11783,12 +11831,6 @@ func (s *Task) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "runnerName", fieldNodeUnwrapped.Type)
 			}
 			s.RunnerName = string(fieldNodeUnwrapped.String)
-		case "cursor":
-			// Field: Cursor
-			if fieldNodeUnwrapped.Int64 == nil {
-				return fmt.Errorf("field %q: expected number, got %v", "cursor", fieldNodeUnwrapped.Type)
-			}
-			s.Cursor = int64(*fieldNodeUnwrapped.Int64)
 		case "occurrence":
 			// Field: Occurrence
 			if fieldNodeUnwrapped.Int64 == nil {
@@ -11819,21 +11861,6 @@ func (s *Task) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "err", fieldNodeUnwrapped.Type)
 			}
 			s.Err = string(fieldNodeUnwrapped.String)
-		case "pending":
-			// Field: Pending
-			if fieldNodeUnwrapped.Type == ir.ArrayType {
-				slice := make([]task.PendingGate, len(fieldNodeUnwrapped.Values))
-				for i, v := range fieldNodeUnwrapped.Values {
-					elem := task.PendingGate{}
-					if err := elem.FromTonyIR(v, opts...); err != nil {
-						return fmt.Errorf("failed to convert slice element %d: %w", i, err)
-					}
-					slice[i] = elem
-				}
-				s.Pending = slice
-			} else {
-				return fmt.Errorf("%s: expected array, got %v", "field \"pending\"", fieldNodeUnwrapped.Type)
-			}
 		case "refused":
 			// Field: Refused
 			if fieldNodeUnwrapped.Type == ir.ObjectType {

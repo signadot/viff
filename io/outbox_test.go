@@ -1,6 +1,8 @@
 package io_test
 
 import (
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/versed/versedtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,7 +13,6 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	verseio "github.com/signadot/verse/io"
-	"github.com/signadot/verse/versed"
 )
 
 // AN OUT HALF READS THE OUTBOXES PACKAGES DECLARE FOR IT, as it reads its own place: a package at
@@ -20,7 +21,7 @@ import (
 // input, inside the package.
 func TestAnOutHalfReadsTheOutboxesSendingToIt(t *testing.T) {
 	store := entitytest.Store(t)
-	srv := versed.NewWithStore(versed.ScriptedBuilder, store)
+	srv := versedtest.Server(t, runnerdtest.Scripted, store)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	const as = "agent:demo-iod"

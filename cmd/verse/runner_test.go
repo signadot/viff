@@ -20,8 +20,8 @@ import (
 	"github.com/signadot/verse/task"
 )
 
-// runnerFace is a real runner for the client to install: the same runnerd handler verse's own
-// in-process runner is, so the install probe has something truthful to find.
+// runnerFace is a real runner for the client to install: a runnerd handler, as every runner is, so
+// the install probe has something truthful to find.
 //
 // It serves the verse serve started, behind the door runnerd puts in front of a runner, and
 // holds a static token: tokenFile is where, for `verse runner add -token-file`.

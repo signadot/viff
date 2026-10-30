@@ -164,7 +164,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	if len(shellEnv) == 0 {
 		shellEnv = task.DefaultShellEnv
 	}
-	runnerCfg, runnerSecrets := embeddedRunner(appCfg.LLM, shellEnv)
+	runnerCfg, runnerSecrets := localRunnerOffers(appCfg.LLM, shellEnv)
 	hostsLocally := appCfg.HostsLocally()
 	if on, err := strconv.ParseBool(cfg.LocalRunner); err == nil {
 		hostsLocally = on // validate refused anything but unset, true or false
@@ -211,7 +211,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		perms.Reseed = perms.Reseed || on
 	}
 	// No runner in this process: every task runs on a registered runner, the local one among them.
-	srv := versed.NewWithStore(nil, store, versed.WithPerms(perms))
+	srv := versed.NewWithStore(store, versed.WithPerms(perms))
 	// NO POLICY, NO SERVING. The root's record is what admits anybody at all now, so a server
 	// that could not write it would refuse every request from every person — which reads as a
 	// verse that lost its data, and is worth failing loudly at the start instead.
@@ -466,12 +466,12 @@ func authOf(c config.AuthConfig) versed.Auth {
 	return a
 }
 
-// embeddedRunner is the runner `verse up` runs its tasks on, in its own process: scripts, and the
+// localRunnerOffers is what the local runner `verse up` starts offers: scripts, and the
 // verse agent where there is a model credential, which a launch may route by a virtual key it was
 // let spend (versed's `verse.portkey/virtual-key` annotation). Its operator is the person running
 // it, so what it stops inside a run is open to them, said as open ceilings: a ceiling written
 // nowhere is closed.
-func embeddedRunner(llm config.LLMConfig, shellEnv []string) (stock.Config, stock.Secrets) {
+func localRunnerOffers(llm config.LLMConfig, shellEnv []string) (stock.Config, stock.Secrets) {
 	c := stock.Open()
 	c.Script.ShellEnv = shellEnv
 	if llm.APIKey != "" {

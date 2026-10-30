@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -36,12 +37,11 @@ func TestAnInterruptedHostedTaskWithdrawsItsQuestionAtOnce(t *testing.T) {
 	}
 	qid := waitQuestion(t, srv, "held-1")
 
-	// An intervention — a `say` redirects the run, and the machine withdraws whatever gate was
-	// outstanding (state.interrupt → effDropGate).
-	say := postTony(t, ops.URL+"/tasks/held-1/say", api.Say{Instruction: "do the other thing", By: "user:" + tester})
-	say.Body.Close()
-	if say.StatusCode >= 300 {
-		t.Fatalf("say = %s", say.Status)
+	// An intervention — a pause holds the run, and the machine withdraws whatever gate was
+	// outstanding (effDropGate). The task stands paused, so no terminal sweep can settle the
+	// question first: what leaves it off the docket is the withdrawal the runner reports.
+	if code, msg := control(t, ops, "/tasks/held-1/pause", "", nil); code != http.StatusNoContent {
+		t.Fatalf("pause = %d %s", code, msg)
 	}
 
 	// THE `why` IS WHAT TELLS THE TWO APART, and it is the discriminator the issue used. Both

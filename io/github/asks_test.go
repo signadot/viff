@@ -2,6 +2,8 @@ package github_test
 
 import (
 	"context"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/versed/versedtest"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 	"net/http/httptest"
@@ -44,7 +46,7 @@ type asksRig struct {
 func newAsksRig(t *testing.T) *asksRig {
 	t.Helper()
 	store := entitytest.Store(t)
-	srv := versed.NewWithStore(versed.ScriptedBuilder, store)
+	srv := versedtest.Server(t, runnerdtest.Scripted, store)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	addr := strings.TrimPrefix(ts.URL, "http://")

@@ -2,6 +2,7 @@ package versed
 
 import (
 	"context"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -122,6 +123,7 @@ func (okExecutor) Execute(_ context.Context, tu task.ToolUse) (task.StepResult, 
 // An operator can install one, list it, and read it back. The address is the one they typed.
 func TestRunnerAddListShow(t *testing.T) {
 	srv := testServer(t)
+	noLocalRunner(t, srv) // the one runner listed is the one installed here
 	ts := httptest.NewServer(srv.Handler())
 	face := runnerFace(t, ts.URL)
 	defer ts.Close()
@@ -478,10 +480,10 @@ func waitForStatus(t *testing.T, ch <-chan task.Event, want task.Status) {
 // Two tasks in one verse, running in two places. What a drive could not do before was use its
 // own runner for SOME of the work — a second runner meant a second verse, and then everything
 // went there. An agent only gpu offers goes to gpu; a script, which both offer, goes to the one
-// carrying less, this verse's own.
+// carrying less, the local runner.
 func TestTwoTasksRunInTwoPlaces(t *testing.T) {
 	srv := testServer(t)
-	srv.Embedded.Describe(offering()) // scripts, building no network
+	describeLocal(t, srv, offering()) // scripts, building no network
 	ts := httptest.NewServer(srv.Handler())
 	face := runnerFace(t, ts.URL)
 	defer ts.Close()
@@ -493,19 +495,19 @@ func TestTwoTasksRunInTwoPlaces(t *testing.T) {
 	named := spawnOK(t, ts, map[string]any{"id": "on-gpu", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t"}})
 	deflt := spawnOK(t, ts, map[string]any{"id": "on-default", "spawn": map[string]any{"script": "true"}})
 
-	// It really went there: the runner face has it, and this verse's own runner does not.
+	// It really went there: the runner face has it, and the local runner does not.
 	remote := client.HTTP(face.Bare).(task.Lister)
 	if _, err := remote.TaskSnapshot(named); err != nil {
 		t.Fatalf("the agent only gpu offers did not reach it: %v", err)
 	}
 	if _, err := remote.TaskSnapshot(deflt); err == nil {
-		t.Fatal("the script went to gpu, which carries a task, over this verse's own runner, which carries none")
+		t.Fatal("the script went to gpu, which carries a task, over the local runner, which carries none")
 	}
-	if _, ok := srv.Embedded.SnapshotOf(deflt); !ok {
-		t.Fatal("the script did not go to this verse's own runner")
+	if _, ok := localOf(t, srv).SnapshotOf(deflt); !ok {
+		t.Fatal("the script did not go to the local runner")
 	}
-	if _, ok := srv.Embedded.SnapshotOf(named); ok {
-		t.Fatal("the spawn for gpu's agent ALSO ran in-process")
+	if _, ok := localOf(t, srv).SnapshotOf(named); ok {
+		t.Fatal("the spawn for gpu's agent ALSO ran on the local runner")
 	}
 
 	// And each task records where it went, by url and by the name that was written.
@@ -516,8 +518,8 @@ func TestTwoTasksRunInTwoPlaces(t *testing.T) {
 	if rec["runnerName"] != "verse.runners.gpu" {
 		t.Fatalf("runnerName = %v, want the registration it went to", rec["runnerName"])
 	}
-	if got := instanceOf(t, srv, deflt)["runnerName"]; got != nil {
-		t.Fatalf("runnerName = %v on a task this verse's own runner hosts, want absent", got)
+	if got := instanceOf(t, srv, deflt)["runnerName"]; got != "verse.runners.local" {
+		t.Fatalf("runnerName = %v on a task the local runner hosts, want verse.runners.local", got)
 	}
 }
 
@@ -526,7 +528,7 @@ func TestTwoTasksRunInTwoPlaces(t *testing.T) {
 // verse's to say.
 func TestASpawnNoRunnerTakesIsRefused(t *testing.T) {
 	srv := testServer(t)
-	srv.NoLocalRunner = true // and nothing is registered
+	noLocalRunner(t, srv) // and nothing is registered
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -535,8 +537,8 @@ func TestASpawnNoRunnerTakesIsRefused(t *testing.T) {
 	if msg := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(msg, "no runner offers the agent fake") {
 		t.Fatalf("a spawn no runner takes = %s %q, want 400 saying no runner offers its agent", resp.Status, msg)
 	}
-	if _, ok := srv.Embedded.SnapshotOf("nope"); ok {
-		t.Fatal("the refused spawn ran on this verse's own runner anyway")
+	if _, ok := localOf(t, srv).SnapshotOf("nope"); ok {
+		t.Fatal("the refused spawn ran on the local runner anyway")
 	}
 	if _, ok, _ := srv.Store.Get(mirror.Ref("nope")); ok {
 		t.Fatal("the refused spawn was mirrored — nothing was started, so there is nothing to mirror")
@@ -555,8 +557,8 @@ func TestASpawnNoRunnerTakesIsRefused(t *testing.T) {
 	if e := h.Err(); !strings.Contains(e, "no runner offers scripts") {
 		t.Fatalf("failure = %q, want it to say no runner offers scripts", e)
 	}
-	if _, ok := srv.Embedded.SnapshotOf("fired"); ok {
-		t.Fatal("a charter spawn no runner takes ran on this verse's own runner instead")
+	if _, ok := localOf(t, srv).SnapshotOf("fired"); ok {
+		t.Fatal("a charter spawn no runner takes ran on the local runner instead")
 	}
 }
 
@@ -596,7 +598,7 @@ func TestRestartReattachesEvenAfterTheRunnerIsRemoved(t *testing.T) {
 	store := entitytest.Store(t)
 
 	// A verse that spawns onto a named runner, then dies.
-	first := issuing(t, NewWithStore(ScriptedBuilder, store))
+	first := issuing(t, serverWith(t, runnerdtest.Scripted, store))
 	ts := httptest.NewServer(first.Handler())
 	face := runnerFace(t, ts.URL)
 	postTony(t, ts.URL+"/runners", map[string]any{
@@ -612,7 +614,7 @@ func TestRestartReattachesEvenAfterTheRunnerIsRemoved(t *testing.T) {
 	}
 
 	// "verse restart": a new server over the same store.
-	second := issuing(t, NewWithStore(ScriptedBuilder, store))
+	second := issuing(t, serverWith(t, runnerdtest.Scripted, store))
 	second.reconcileTasks()
 
 	rec := instanceOf(t, second, id)
@@ -628,7 +630,7 @@ func TestRestartReattachesEvenAfterTheRunnerIsRemoved(t *testing.T) {
 
 	// A NEW spawn for what only the removed runner offered is refused, though: the work that is
 	// already there is reachable, and no runner offers its agent now.
-	second.NoLocalRunner = true
+	noLocalRunner(t, second)
 	ts2 := httptest.NewServer(second.Handler())
 	defer ts2.Close()
 	resp := postTony(t, ts2.URL+"/tasks", map[string]any{"id": "later", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t"}})
@@ -642,7 +644,7 @@ func TestRestartReattachesEvenAfterTheRunnerIsRemoved(t *testing.T) {
 // reading a charter.
 func TestOperatorCanSeeWhere(t *testing.T) {
 	srv := testServer(t)
-	srv.Embedded.Describe(offering()) // scripts: with gpu carrying a task, a script goes here
+	describeLocal(t, srv, offering()) // scripts: with gpu carrying a task, a script goes here
 	ts := httptest.NewServer(srv.Handler())
 	face := runnerFace(t, ts.URL)
 	defer ts.Close()
@@ -653,7 +655,7 @@ func TestOperatorCanSeeWhere(t *testing.T) {
 	named := spawnOK(t, ts, map[string]any{"id": "there", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t"}})
 	here := spawnOK(t, ts, map[string]any{"id": "here", "spawn": map[string]any{"script": "true"}})
 
-	// ps names the runner per task, and this verse's own reads `local` rather than blank.
+	// ps names the runner per task, the local runner among them.
 	byID := map[string]map[string]any{}
 	for _, m := range psList(t, ts, "") {
 		byID[m["id"].(string)] = m
@@ -661,8 +663,8 @@ func TestOperatorCanSeeWhere(t *testing.T) {
 	if got := byID[named]["runnerName"]; got != "verse.runners.gpu" {
 		t.Fatalf("runnerName = %v, want the registration it went to", got)
 	}
-	if got := byID[here]["runner"]; got != "local" {
-		t.Fatalf("runner = %v for this verse's own, want \"local\" rather than blank", got)
+	if got := byID[here]["runnerName"]; got != "verse.runners.local" {
+		t.Fatalf("runnerName = %v for the local runner's task, want verse.runners.local", got)
 	}
 
 	// --runner selects, on the registration's name.
@@ -671,7 +673,7 @@ func TestOperatorCanSeeWhere(t *testing.T) {
 		t.Fatalf("ps --runner = %+v, want just the one on that runner", only)
 	}
 	if local := psList(t, ts, "local"); len(local) != 1 || local[0]["id"] != here {
-		t.Fatalf("ps --runner local = %+v, want just the one this verse hosts", local)
+		t.Fatalf("ps --runner local = %+v, want just the one on the local runner", local)
 	}
 
 	// `verse runner` counts what it is carrying, from the store.

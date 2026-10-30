@@ -3,6 +3,7 @@ package versed
 import (
 	"context"
 	"fmt"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -104,7 +105,7 @@ func TestASettledAskStandsAWeekByDefault(t *testing.T) {
 // AN EXPIRY OUTLIVES THE PROCESS THAT ARMED IT: the ask holds it, and the next start arms it again.
 func TestAnAsksExpiryHoldsAcrossARestart(t *testing.T) {
 	addr := entitytest.Addr(t)
-	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	first := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	clock := clockOf(t, first)
 	ctx, stop := context.WithCancel(t.Context())
 	first.Start(ctx)
@@ -117,7 +118,7 @@ func TestAnAsksExpiryHoldsAcrossARestart(t *testing.T) {
 
 	// The same clock: the expiry is an instant on the record, and the second verse arms it
 	// against the clock as it stands.
-	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	second := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	second.clock = clock
 	second.Start(t.Context())
 	clock.Advance(3 * time.Second)

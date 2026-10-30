@@ -271,6 +271,8 @@ define:
   orphanedAt: .[string]
   pose: .[string]
   posedAt: .[string]
+  posedCursor: .[int]
+  posedRun: .[string]
   question: .[string]
   reason: .[string]
   said: .[object(verse-ask-said)]
@@ -331,6 +333,8 @@ define:
   orphanedAt: .[string]
   pose: .[string]
   posedAt: .[string]
+  posedCursor: .[int]
+  posedRun: .[string]
   question: .[string]
   reason: .[string]
   said: .[object(verse-ask-said)]
@@ -454,6 +458,8 @@ define:
   orphanedAt: .[string]
   pose: .[string]
   posedAt: .[string]
+  posedCursor: .[int]
+  posedRun: .[string]
   question: .[string]
   reason: .[string]
   said: .[object(verse-ask-said)]
@@ -936,17 +942,14 @@ signature:
 context:
 - tony-format/context
 - runner: github.com/signadot/verse/runner
-- task: github.com/signadot/verse/task
 define:
   agent: .[nullable(runner:verse-runner-agent)]
   autonomy: !irtype {}
   autonomyBy: .[string]
-  cursor: .[int]
   ended: .[string]
   err: .[string]
   id: .[string]
   occurrence: .[int]
-  pending: .[array(task:verse-pending-gate)]
   prompt: .[string]
   refused: .[object(int)]
   result: .[string]

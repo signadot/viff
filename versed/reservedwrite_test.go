@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,7 +18,7 @@ import (
 // system has not used yet — `verse.schedule.date`, before the base charter first derives it —
 // made the node, owned it, and the system then wrote into what was theirs.
 func TestAPersonsRuleDoesNotWriteUnderVerse(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Start(t.Context()) // the base charter's levels stand, so the derive below is otherwise well formed
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()

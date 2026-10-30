@@ -2,6 +2,7 @@ package versed
 
 import (
 	"context"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -128,7 +129,7 @@ func TestARestartReposesAFiringsQuestion(t *testing.T) {
 		Action:    trigger.Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 	}
 
-	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	first := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	ctx, stop := context.WithCancel(t.Context())
 	first.Start(ctx)
 	if err := first.Eng.AddTrigger(rule); err != nil {
@@ -151,7 +152,7 @@ func TestARestartReposesAFiringsQuestion(t *testing.T) {
 	}
 	stop() // the verse goes down, and the firing waiting on that answer goes with it
 
-	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	second := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	second.Start(t.Context())
 
 	// Same id, and answerable: the replay re-posed it, so the record the reconcile settled

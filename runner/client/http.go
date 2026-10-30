@@ -1,7 +1,6 @@
 // Package client is verse's HTTP client of a runner: an httpRunner drives a runner at a base URL
-// over the Runner API (package runner), so the engine can run a task on another host or k8s
-// exactly as it runs one in process. It is the mirror of versed's localRunner — same
-// task.Runner seam, HTTP transport. See docs/task-control.md.
+// over the Runner API (package runner), so the engine runs a task wherever a runner serves it:
+// beside verse, on another host, on k8s. See docs/task-control.md.
 package client
 
 import (

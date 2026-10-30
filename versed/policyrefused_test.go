@@ -19,14 +19,14 @@ import (
 func TestARefusedPolicyLeavesVersesPart(t *testing.T) {
 	release := make(chan struct{})
 	t.Cleanup(func() { close(release) })
-	srv := NewWithStore(func(l runner.Launch, reg *task.Registry) *task.Task {
+	srv := serverWith(t, func(l runner.Launch, reg *task.Registry) *task.Task {
 		return task.NewTask(l.ID, systemstest.Opened(task.NewSupervisor(l.Environment, l.Autonomy, reg), l.Environment), &blockedDriver{release: release}, okExecutor{})
 	}, entitytest.Store(t))
-	srv.Embedded.Describe(stock.Open().Describe([]string{runner.NetworkOpen}))
+	describeLocal(t, srv, stock.Open().Describe([]string{runner.NetworkOpen}))
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	t.Cleanup(func() {
-		if tk := srv.Embedded.Lookup("held"); tk != nil {
+		if tk := localOf(t, srv).Lookup("held"); tk != nil {
 			tk.Cancel("the test is over", "test")
 		}
 	})
@@ -37,7 +37,7 @@ func TestARefusedPolicyLeavesVersesPart(t *testing.T) {
 		t.Fatalf("spawn = %s: %s", resp.Status, readBody(t, resp))
 	}
 	resp.Body.Close()
-	// A row on commands, which the embedded runner does not intercept for a script: it refuses it.
+	// A row on commands, which the local runner does not intercept for a script: it refuses it.
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/tasks/held/autonomy", strings.NewReader(
 		`{autonomy: [{match: {system: commands}, then: deny}, {name: deploy, then: {ask: {within: 1m, default: proceed}}}]}`))
 	req.Header.Set("Content-Type", "application/tony")

@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -39,7 +40,7 @@ func (c *countingStore) Rev() int64 { c.reads++; return c.Store.Rev() }
 // behind per attempt. Staging sat 0/1 for half an hour on a healthy store.
 func TestHealthzReadsNothing(t *testing.T) {
 	cs := &countingStore{Store: entitytest.Store(t)}
-	srv := NewWithStore(ScriptedBuilder, cs)
+	srv := serverWith(t, runnerdtest.Scripted, cs)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -84,7 +85,7 @@ func TestHealthzReadsNothing(t *testing.T) {
 // later change cannot quietly make /status cheap by making it useless.
 func TestStatusStillReadsTheStore(t *testing.T) {
 	cs := &countingStore{Store: entitytest.Store(t)}
-	srv := NewWithStore(ScriptedBuilder, cs)
+	srv := serverWith(t, runnerdtest.Scripted, cs)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 

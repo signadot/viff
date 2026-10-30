@@ -30,7 +30,7 @@ func TestMain(m *testing.M) {
 	}
 	os.Setenv("VERSE_USER", tester)
 	// The scripts these tests run call the task's tools with verse-call-tool, which the
-	// embedded runner finds on PATH: built once, here, from the tree under test.
+	// local runner finds on PATH: built once, here, from the tree under test.
 	if err := buildCallTool(dir); err != nil {
 		panic(err)
 	}

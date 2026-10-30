@@ -16,7 +16,7 @@ import (
 // again with nothing changed, it keeps its description; nobody but the system may take its name.
 func TestTheLocalRunnerIsARegistrationLikeAnyOther(t *testing.T) {
 	srv := testServer(t)
-	srv.NoLocalRunner = true // no runner in process: the local runner is the registration
+	noLocalRunner(t, srv) // the test's own runner stands aside: this face is the local runner
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	stopped := make(chan struct{}, 1)
@@ -32,16 +32,10 @@ func TestTheLocalRunnerIsARegistrationLikeAnyOther(t *testing.T) {
 	if err := srv.RegisterLocalRunner(face.URL, face.Subject); err != nil {
 		t.Fatal(err)
 	}
-	// Not described until it says hello, or is checked; the status says so, from the runner.
-	st := apiStatus(t, ts)
-	if st.Runner == nil || st.Runner.At != "verse.runners.local" || st.Runner.Described || st.Runner.Why == "" {
-		t.Fatalf("status before the describe = %+v, want local not described and why", st.Runner)
-	}
-	if resp, err := http.Get(ts.URL + "/runners/local/check"); err != nil || resp.StatusCode != http.StatusOK {
-		t.Fatalf("check = %v %v", resp, err)
-	}
-	if st := apiStatus(t, ts); !st.Runner.Described || len(st.Runner.Offers) == 0 || st.Runner.URL != face.URL {
-		t.Fatalf("status after the describe = %+v, want it described with what it offers", st.Runner)
+	// Described at its registration, since it already answers; the status says what it offers.
+	if st := apiStatus(t, ts); st.Runner == nil || st.Runner.At != "verse.runners.local" || !st.Runner.Described ||
+		len(st.Runner.Offers) == 0 || st.Runner.URL != face.URL {
+		t.Fatalf("status after the registration = %+v, want local described with what it offers", st.Runner)
 	}
 	id := spawnOK(t, ts, map[string]any{"spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t"}})
 	if got := instanceOf(t, srv, id)["runnerName"]; got != "verse.runners.local" {

@@ -47,7 +47,7 @@ func TestEachRunLeavesItsOwnRecord(t *testing.T) {
 	// so the second run of an id follows a restart, which is exactly what staging did between
 	// its 18:15 and 19:05 runs. A test that spawned twice against one server would be
 	// asserting about one run wearing two names.
-	srv := NewWithStore(drive, store)
+	srv := serverWith(t, drive, store)
 	ts := httptest.NewServer(srv.Handler())
 	spawnScoped(t, ts, "run-1", "")
 	waitTerminal(t, store, "run-1")
@@ -57,7 +57,7 @@ func TestEachRunLeavesItsOwnRecord(t *testing.T) {
 	entitytest.Set(t, store, entity.RefAt("demo", "pr", "2"),
 		entity.Obj{"stage": "open"}.Payload())
 
-	srv2 := NewWithStore(drive, store)
+	srv2 := serverWith(t, drive, store)
 	ts2 := httptest.NewServer(srv2.Handler())
 	defer ts2.Close()
 	spawnScoped(t, ts2, "run-1", "")
@@ -157,7 +157,7 @@ func TestAClearedFieldIsAbsent(t *testing.T) {
 		sup := systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, reg), l.Environment)
 		return task.NewTask(l.ID, sup, &countingDriver{n: 1}, noopExecutor{})
 	}
-	srv := NewWithStore(drive, store)
+	srv := serverWith(t, drive, store)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 

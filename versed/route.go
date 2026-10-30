@@ -14,7 +14,6 @@ import (
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
-	"github.com/signadot/verse/task"
 )
 
 // WHERE A SPAWN RUNS is verse's to say. A spawn names its doer, an agent or a script, and what it
@@ -25,9 +24,9 @@ import (
 // The steps, at every launch (route):
 //
 //  1. Candidates: the registrations that are described (api.Runner.Current) and offer the doer,
-//     the local runner `verse up` starts among them, and the runner a server was handed in
-//     process, where it was (tests). A registration with no description is no candidate: the
-//     hello, the probe at start and `verse runner check` describe it, never a spawn.
+//     the local runner `verse up` starts among them. A registration with no description is no
+//     candidate: the hello, the probe at start and `verse runner check` describe it, never a
+//     spawn.
 //  2. Fit: the candidates whose offer takes the launch (runnerd.CheckOffer).
 //  3. Load: fewest tasks on record not yet ended, then by name.
 //  4. Handshake: the first is asked what it is now (handshake); one that does not prove itself,
@@ -39,36 +38,20 @@ import (
 // DefaultAgent is the agent a prompt naming none is for, where the Server names none.
 const DefaultAgent = "verse"
 
-// ownRunner is how a refusal names the runner a server was handed in process (tests), which has no
-// registration.
-const ownRunner = "this verse's own runner"
-
 // placed is where a launch went: the runner, and how the task's record names it.
 type placed struct {
 	launcher client.Launcher
-	name     string // the registration's address, `verse.runners.<name>`; "" for this verse's own runner
-	subject  string // the subject the registration names; "" for this verse's own runner
+	name     string // the registration's address, `verse.runners.<name>`
+	subject  string // the subject the registration names
 }
 
 // candidate is a runner a launch could go to, with what it offers.
 type candidate struct {
-	reg  *api.Runner // nil for this verse's own runner
+	reg  *api.Runner
 	desc runner.Description
 }
 
-func (c candidate) name() string {
-	if c.reg == nil {
-		return ""
-	}
-	return runnerEntityRef(c.reg.Name).String()
-}
-
-func (c candidate) where() string { return cmp.Or(c.name(), ownRunner) }
-
-// unsaid is whether this candidate is the runner a server was handed in process with nothing said
-// of what it offers: it takes what it is asked and checks its launches itself, after every runner
-// that said what it offers. Only a test hands a server a runner, and most say nothing of it.
-func (c candidate) unsaid() bool { return c.reg == nil && len(c.desc.Offers) == 0 }
+func (c candidate) name() string { return runnerEntityRef(c.reg.Name).String() }
 
 // defaultAgent is the agent a prompt naming none is for.
 func (s *Server) defaultAgent() string { return cmp.Or(s.DefaultAgent, DefaultAgent) }
@@ -101,11 +84,6 @@ func (s *Server) bindDefaultAgent(l *runner.Launch) {
 	l.Agent = &a
 }
 
-// hostsWork is whether this verse's own runner, in process, is a candidate: only for a server
-// handed one (tests), and not where it is told to host nothing (NoLocalRunner). `verse up` hands
-// none: its local runner is a registration like any other (localrunner.go).
-func (s *Server) hostsWork() bool { return s.inProcess && !s.NoLocalRunner }
-
 // doerOf is what a launch asks for, as a refusal says it.
 func doerOf(l *runner.Launch) string {
 	if l.Script != "" {
@@ -120,7 +98,7 @@ func doerOf(l *runner.Launch) string {
 // candidates is step 1: the runners that offer the launch's doer, read in verse's own view, and
 // the registrations passed over, for having no description or for being none this verse reads
 // (each as the refusal names it). on, where set, holds the launch to one runner, by the address a
-// task's record names it by ("" for this verse's own).
+// task's record names it by.
 func (s *Server) candidates(l *runner.Launch, on *string) (offer []candidate, passed []string, err error) {
 	regs, bad, err := readRunners(s.Store)
 	if err != nil {
@@ -129,12 +107,6 @@ func (s *Server) candidates(l *runner.Launch, on *string) (offer []candidate, pa
 	for _, b := range bad {
 		if on == nil || *on == b.Ref.String() {
 			passed = append(passed, fmt.Sprintf("%s, unreadable: %v", b.Ref, b.Err))
-		}
-	}
-	if s.hostsWork() && (on == nil || *on == "") {
-		c := candidate{desc: s.Embedded.Description()}
-		if c.unsaid() || offersDoer(c.desc, l) {
-			offer = append(offer, c)
 		}
 	}
 	for i := range regs {
@@ -170,12 +142,8 @@ func offersDoer(desc runner.Description, l *runner.Launch) bool {
 // fitting is step 2: the candidates whose offer takes the launch, and why each other did not.
 func fitting(offer []candidate, l *runner.Launch, check func(*runner.Launch, runner.Description) error) (fit []candidate, refused []string) {
 	for _, c := range offer {
-		if c.unsaid() {
-			fit = append(fit, c)
-			continue
-		}
 		if err := check(l, c.desc); err != nil {
-			refused = append(refused, fmt.Sprintf("%s: %v", c.where(), err))
+			refused = append(refused, fmt.Sprintf("%s: %v", c.name(), err))
 			continue
 		}
 		fit = append(fit, c)
@@ -232,14 +200,11 @@ func (s *Server) route(l *runner.Launch, on *string) (placed, error) {
 	s.byLoad(fit)
 	var refusedNow []string
 	for _, c := range fit {
-		if c.reg == nil {
-			return placed{launcher: s.runner}, nil
-		}
 		desc, err := s.handshake(*c.reg)
 		if err == nil {
 			// What it says now, which may have changed since it was last described.
 			if err = runnerd.CheckOffer(l, desc); err != nil {
-				err = fmt.Errorf("%s: %w", c.where(), err)
+				err = fmt.Errorf("%s: %w", c.name(), err)
 			}
 		}
 		if err != nil {
@@ -251,8 +216,8 @@ func (s *Server) route(l *runner.Launch, on *string) (placed, error) {
 	return placed{}, fmt.Errorf("no runner that takes this spawn took it at the handshake: %s", strings.Join(refusedNow, "; "))
 }
 
-// byLoad is step 3: fewest tasks on record not yet ended, then by name, this verse's own runner
-// with nothing said of its offers last. One read of the task records per launch.
+// byLoad is step 3: fewest tasks on record not yet ended, then by name. One read of the task
+// records per launch.
 func (s *Server) byLoad(fit []candidate) {
 	if len(fit) < 2 {
 		return
@@ -260,17 +225,10 @@ func (s *Server) byLoad(fit []candidate) {
 	instances := taskRows(s.Store)
 	load := make(map[string]int, len(fit))
 	for _, c := range fit {
-		if c.reg == nil {
-			load[""] = ownLoad(instances)
-			continue
-		}
 		load[c.name()], _, _ = runnerCounts(instances, runnerEntityRef(c.reg.Name), c.reg.URL)
 	}
 	sort.SliceStable(fit, func(i, j int) bool {
 		a, b := fit[i], fit[j]
-		if a.unsaid() != b.unsaid() {
-			return b.unsaid()
-		}
 		if la, lb := load[a.name()], load[b.name()]; la != lb {
 			return la < lb
 		}
@@ -278,26 +236,8 @@ func (s *Server) byLoad(fit []candidate) {
 	})
 }
 
-// ownLoad is how many tasks this verse's own runner carries that have not ended, as recorded.
-func ownLoad(instances []entity.Entity) int {
-	n := 0
-	for _, ent := range instances {
-		rec := entity.ToObj(ent.Payload)
-		if rec == nil {
-			continue
-		}
-		if named, _ := rec["runnerName"].(string); named != "" {
-			continue
-		}
-		if st, _ := rec["status"].(string); !task.TerminalStatus(st) {
-			n++
-		}
-	}
-	return n
-}
-
-// taskRunner is the runner task id runs on, by the address its record names it by ("" for this
-// verse's own runner): as verse launched it, or as its record says.
+// taskRunner is the runner task id runs on, by the address its record names it by: as verse
+// launched it, or as its record says.
 func (s *Server) taskRunner(id string) (string, error) {
 	if ht := s.hostedOf(id); ht.launched != nil {
 		return ht.launched.runner, nil

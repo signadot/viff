@@ -17,7 +17,7 @@ import (
 // within it, and one written outside the ceiling is refused with the ceiling named.
 func TestACharterIsHeldToItsRunnersCeilingsAtInstall(t *testing.T) {
 	srv := testServer(t)
-	srv.NoLocalRunner = true
+	noLocalRunner(t, srv)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	h := runnerd.NewInProcessHandler(func(l runner.Launch, _ *task.Registry) *task.Task { return nil })

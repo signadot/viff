@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"strings"
 	"testing"
@@ -74,7 +75,7 @@ func TestChildGrantsRefuseAnswer(t *testing.T) {
 		t.Fatal("SetChildGrants recorded answer")
 	}
 
-	refusing := NewWithStore(ScriptedBuilder, entitytest.Store(t), WithPerms(Perms{ChildGrants: levels}))
+	refusing := serverWith(t, runnerdtest.Scripted, entitytest.Store(t), WithPerms(Perms{ChildGrants: levels}))
 	if err := refusing.SeedError(); err == nil || !strings.Contains(err.Error(), "child-grants") {
 		t.Fatalf("a root default handing down answer: seed error %v, want it refused", err)
 	}

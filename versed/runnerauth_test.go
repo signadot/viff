@@ -220,7 +220,7 @@ func guardedFace(t *testing.T, verseURL, file string) *httptest.Server {
 // which the spawner could not have written.
 func TestTheLaunchHandshakeIsRecordedAsVerse(t *testing.T) {
 	srv, ts, cluster := runnerServer(t)
-	srv.NoLocalRunner = true
+	noLocalRunner(t, srv)
 	own := tokenFile(t, t.TempDir(), "gpu", cluster.Token(iodAudience, runnerSub, nil))
 	face := guardedFace(t, ts.URL, own)
 	resp := postTony(t, ts.URL+"/runners", map[string]any{"name": "gpu", "url": face.URL, "subject": runnerSub})
@@ -259,7 +259,7 @@ func TestTheLaunchHandshakeIsRecordedAsVerse(t *testing.T) {
 // spawn, and a check that finds it proving itself again lets it.
 func TestTheDescribeIsTheHandshake(t *testing.T) {
 	srv, ts, cluster := runnerServer(t)
-	srv.NoLocalRunner = true
+	noLocalRunner(t, srv)
 	dir := t.TempDir()
 	own := tokenFile(t, dir, "gpu", cluster.Token(iodAudience, runnerSub, nil))
 	face := guardedFace(t, ts.URL, own)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/signadot/verse/versed/versedtest"
 	"io"
 	"net/http/httptest"
 	"strings"
@@ -13,7 +14,6 @@ import (
 	"github.com/signadot/verse/runner/runnerd/stock"
 	"github.com/signadot/verse/systems/systemstest"
 	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/versed"
 )
 
 // parrot is a driver that holds a conversation and proposes nothing: it goes quiet at once,
@@ -59,7 +59,7 @@ func serveParrot(t *testing.T) entity.Store {
 		return tk
 	}
 	store := entitytest.Store(t)
-	srv := versed.NewWithStore(build, store)
+	srv := versedtest.Server(t, build, store)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	t.Cleanup(ts.CloseClientConnections)

@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -90,7 +91,7 @@ func TestAListingAnswersOnlyWhatMayBeRead(t *testing.T) {
 // read. The owner's rule fires on it and the other's does not — and the other's leaves no
 // trace, since a rule that cannot see a subject is not woken by it.
 func TestACharterReadsAsItsOwner(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	entity.PolicyOf(srv.Store).SetRootChildGrants(nil)
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())

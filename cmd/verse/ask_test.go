@@ -3,6 +3,8 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/versed/versedtest"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -13,7 +15,6 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/versed"
 )
 
 const (
@@ -33,7 +34,7 @@ func serveAsking(t *testing.T) entity.Store {
 func serveAskingAt(t *testing.T) (entity.Store, *httptest.Server) {
 	t.Helper()
 	store := entitytest.Store(t)
-	srv := versed.NewWithStore(versed.ScriptedBuilder, store)
+	srv := versedtest.Server(t, runnerdtest.Scripted, store)
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)

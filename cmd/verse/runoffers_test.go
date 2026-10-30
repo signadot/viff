@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/signadot/verse/versed/versedtest"
 	"io"
 	"net/http/httptest"
 	"os"
@@ -13,16 +14,14 @@ import (
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/stock"
-	"github.com/signadot/verse/versed"
 )
 
-// serveKeyless is serve as a `verse up` with no model credential: the embedded runner runs
+// serveKeyless is serve as a `verse up` with no model credential: the local runner runs
 // scripts, offers no agent, and says so, as up publishes it.
 func serveKeyless(t *testing.T) {
 	t.Helper()
 	cfg, secrets := stock.Config{Script: &stock.Script{}}, stock.Secrets{}
-	srv := versed.NewWithStore(stock.New(cfg, secrets, t.TempDir(), io.Discard).Build, entitytest.Store(t))
-	srv.Embedded.Describe(cfg.Describe([]string{runner.NetworkOpen}))
+	srv := versedtest.Offering(t, stock.New(cfg, secrets, t.TempDir(), io.Discard).Build, cfg.Describe([]string{runner.NetworkOpen}), entitytest.Store(t))
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	t.Cleanup(ts.CloseClientConnections)
@@ -30,7 +29,7 @@ func serveKeyless(t *testing.T) {
 }
 
 // AN ATTACHED SCRIPT RUNS: a conversation is an agent's, so a script run with --attach asks for
-// none, and the runner, which holds none with a script, takes it. The embedded runner builds an
+// none, and the runner, which holds none with a script, takes it. The local runner builds an
 // open network alone, and the spawn says so.
 func TestAnAttachedScriptRuns(t *testing.T) {
 	serveKeyless(t)
@@ -58,7 +57,7 @@ func TestAPromptIsForVersesDefaultAgent(t *testing.T) {
 }
 
 // THE SPAWN MEANS WHAT IT SAYS: a network it does not name is none, as in a charter, and the
-// embedded runner, which builds open alone, refuses it and any other mode by name.
+// local runner, which builds open alone, refuses it and any other mode by name.
 func TestTaskRunsNetworkIsTheSpawns(t *testing.T) {
 	serveKeyless(t)
 	for _, c := range []struct{ env, says string }{
@@ -78,16 +77,15 @@ func TestTaskRunsNetworkIsTheSpawns(t *testing.T) {
 	}
 }
 
-// openNet is the environment of a run on the host's network, which the embedded runner builds.
+// openNet is the environment of a run on the host's network, which the local runner builds.
 const openNet = `environment: {systems: {network: {mode: open}}}`
 
 // AN ASK'S THEN RUNS ON `verse up`: what follows a yes is the asker's run, a spawn as `task run`
-// takes one, here on the host's network, which is the one the embedded runner builds.
-func TestAnAsksThenRunsOnTheEmbeddedRunner(t *testing.T) {
+// takes one, here on the host's network, which is the one the local runner builds.
+func TestAnAsksThenRunsOnTheLocalRunner(t *testing.T) {
 	cfg, secrets := stock.Config{Script: &stock.Script{}}, stock.Secrets{}
 	store := entitytest.Store(t)
-	srv := versed.NewWithStore(stock.New(cfg, secrets, t.TempDir(), io.Discard).Build, store)
-	srv.Embedded.Describe(cfg.Describe([]string{runner.NetworkOpen}))
+	srv := versedtest.Offering(t, stock.New(cfg, secrets, t.TempDir(), io.Discard).Build, cfg.Describe([]string{runner.NetworkOpen}), store)
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
@@ -117,7 +115,7 @@ func TestAnAsksThenRunsOnTheEmbeddedRunner(t *testing.T) {
 	t.Fatalf("the then's task %s never finished: %v", task, payloadOf(t, store, mirror.Ref(task)))
 }
 
-// A POLICY CHANGE IS A WHOLE POLICY, held as the runner holds a launch: on the embedded runner,
+// A POLICY CHANGE IS A WHOLE POLICY, held as the runner holds a launch: on the local runner,
 // `task autonomy <id> <rows>` replaces the run's autonomy and is taken, and a policy with a row that
 // matches nothing the run's environment gives is refused by the runner, as a runner reached by
 // url refuses it, and leaves the policy that stands. There is no dial: a bare `ask` is not a policy.

@@ -23,7 +23,7 @@ func harnessServer(t *testing.T, modelURL string) *Server {
 		s = stock.Secrets{PortkeyAPIKey: "test-key", PortkeyBaseURL: modelURL}
 	}
 	h := stock.New(stock.Open(stock.AgentName), s, t.TempDir(), io.Discard)
-	srv := NewWithStore(h.Build, entitytest.Store(t))
+	srv := serverWith(t, h.Build, entitytest.Store(t))
 	srv.Start(t.Context())
 	var trig trigger.Trigger
 	if err := codec.Unmarshal([]byte(`{

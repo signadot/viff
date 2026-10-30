@@ -3,6 +3,7 @@ package versed
 import (
 	"context"
 	"github.com/signadot/verse/api"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -27,7 +28,7 @@ import (
 // server's memory is gone, and only what the store holds crosses the gap.
 func TestAScopesOwnCharterSurvivesARestart(t *testing.T) {
 	addr := entitytest.Addr(t)
-	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	first := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	firstHTTP := httptest.NewServer(first.Handler())
 	defer firstHTTP.Close()
 	// The first server's own lifetime, CANCELLED before the second starts. Without that it
@@ -46,7 +47,7 @@ func TestAScopesOwnCharterSurvivesARestart(t *testing.T) {
 
 	// Restart: a second server over the same substrate, and a scope engine created fresh.
 	store := entitytest.StoreAt(t, addr)
-	second := NewWithStore(ScriptedBuilder, store)
+	second := serverWith(t, runnerdtest.Scripted, store)
 	second.Start(t.Context())
 	secondHTTP := httptest.NewServer(second.Handler())
 	defer secondHTTP.Close()
@@ -151,7 +152,7 @@ func TestAScopeDoesNotInheritBaselinesCharter(t *testing.T) {
 // baseline still holds its.
 func TestAScopeShadowsABaselineRuleAcrossARestart(t *testing.T) {
 	addr := entitytest.Addr(t)
-	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	first := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	firstHTTP := httptest.NewServer(first.Handler())
 	defer firstHTTP.Close()
 	firstCtx, down := context.WithCancel(t.Context())
@@ -187,7 +188,7 @@ func TestAScopeShadowsABaselineRuleAcrossARestart(t *testing.T) {
 	first.stopAllIOs()
 
 	store := entitytest.StoreAt(t, addr)
-	second := NewWithStore(ScriptedBuilder, store)
+	second := serverWith(t, runnerdtest.Scripted, store)
 	second.Start(t.Context())
 	secondHTTP := httptest.NewServer(second.Handler())
 	defer secondHTTP.Close()

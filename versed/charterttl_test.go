@@ -2,6 +2,7 @@ package versed
 
 import (
 	"context"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -188,7 +189,7 @@ func TestACharterTTLIsAPackagesDuration(t *testing.T) {
 // next start arms it again.
 func TestACharterTTLHoldsAcrossARestart(t *testing.T) {
 	addr := entitytest.Addr(t)
-	first := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	first := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	clock := clockOf(t, first)
 	ctx, stop := context.WithCancel(t.Context())
 	first.Start(ctx)
@@ -199,7 +200,7 @@ func TestACharterTTLHoldsAcrossARestart(t *testing.T) {
 	ts.Close()
 	stop()
 
-	second := NewWithStore(ScriptedBuilder, entitytest.StoreAt(t, addr))
+	second := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	second.clock = clock
 	second.Start(t.Context())
 	expiryArmed(t, second, "repos.r.hello")

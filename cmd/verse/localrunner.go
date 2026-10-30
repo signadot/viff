@@ -269,7 +269,7 @@ func localToken(dir string) (path, token string, err error) {
 
 // writeLocalRunnerConfig writes the runner's configuration: where it listens, the verse it serves
 // (where it reaches it, and the issuer its tokens are signed as where that is spelled otherwise),
-// and what it offers (embeddedRunner's), rewritten on every up.
+// and what it offers (localRunnerOffers), rewritten on every up.
 func writeLocalRunnerConfig(path, listen string, verse runnerd.Verse, c stock.Config) error {
 	if verse.Issuer == verse.URL {
 		verse.Issuer = "" // the default: said once

@@ -2,6 +2,7 @@ package versed
 
 import (
 	"context"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -79,7 +80,7 @@ func TestSinceMeansTheSameOnEveryRunner(t *testing.T) {
 	}
 
 	t.Run("local", func(t *testing.T) {
-		srv := NewWithStore(drive, entitytest.Store(t))
+		srv := serverWith(t, drive, entitytest.Store(t))
 		ts := httptest.NewServer(srv.Handler())
 		defer ts.Close()
 		spawn := postTony(t, ts.URL+"/tasks", map[string]any{"id": "p", "spawn": map[string]any{"script": "work", "environment": openEnv}})
@@ -89,7 +90,7 @@ func TestSinceMeansTheSameOnEveryRunner(t *testing.T) {
 
 	t.Run("remote", func(t *testing.T) {
 		srv := testServer(t)
-		srv.NoLocalRunner = true // so the spawn goes to the registered runner
+		noLocalRunner(t, srv) // so the spawn goes to the registered runner
 		ts := httptest.NewServer(srv.Handler())
 		defer ts.Close()
 		d := runnerd.NewInProcessHandler(drive)
@@ -210,14 +211,6 @@ func TestBelowTheWatermarkResyncs(t *testing.T) {
 		}
 	}
 
-	t.Run("local", func(t *testing.T) {
-		srv := NewWithStore(drive, entitytest.Store(t))
-		ts := httptest.NewServer(srv.Handler())
-		defer ts.Close()
-		mustLaunch(t, srv, runner.Launch{ID: "p", Script: "true", Environment: openNet})
-		assertGap(t, ts.URL+"/tasks/p/events")
-	})
-
 	// The remote leg is the one this step changed: the cursor is handed to the REMOTE's own
 	// `?since=`, so the resync decision is made by the side that knows what it still holds.
 	// Asking for everything and discarding locally could never produce this frame.
@@ -227,7 +220,7 @@ func TestBelowTheWatermarkResyncs(t *testing.T) {
 		pol := client.HTTP(remote.URL)
 		pol.Launch(runner.Launch{ID: "p", Script: "true", Environment: openNet})
 
-		srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+		srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 		// The task's record says where it runs, as a launch through verse would have left it.
 		entitytest.Set(t, srv.Store, mirror.Ref("p"), entity.Obj{"status": "running", "runner": remote.URL}.Payload())
 		ts := httptest.NewServer(srv.Handler())
@@ -250,12 +243,13 @@ func TestAFastTaskIsStillRecordedAsFinished(t *testing.T) {
 			sup := systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, reg), l.Environment)
 			return task.NewTask(l.ID, sup, &countingDriver{n: n}, noopExecutor{})
 		}
-		srv := NewWithStore(drive, entitytest.Store(t))
-		h := mustLaunch(t, srv, runner.Launch{ID: "p", Script: "true", Environment: openNet})
-		mirror.Reflect(srv.Store, "p", h, mirror.Meta{Runner: "local"})
+		srv := serverWith(t, drive, entitytest.Store(t))
+		ts := httptest.NewServer(srv.Handler())
+		defer ts.Close()
+		postTony(t, ts.URL+"/tasks", map[string]any{"id": "p", "spawn": map[string]any{"script": "true", "environment": openEnv}}).Body.Close()
 
 		var last string
-		for range 500 {
+		for range 6000 { // over the wire, the mirror of a long run takes its time
 			e, _, _ := srv.Store.Get(mirror.Ref("p"))
 			last = entity.Str(e.Payload, "status")
 			if task.Status(last).Terminal() {
@@ -267,14 +261,4 @@ func TestAFastTaskIsStillRecordedAsFinished(t *testing.T) {
 			t.Fatalf("a %d-action task that completed is mirrored as %q", n, last)
 		}
 	}
-}
-
-// mustLaunch launches on the embedded runner, failing the test on a refusal.
-func mustLaunch(t *testing.T, srv *Server, l runner.Launch) task.Handle {
-	t.Helper()
-	h, err := srv.Embedded.Launch(l)
-	if err != nil {
-		t.Fatalf("launch %s: %v", l.ID, err)
-	}
-	return h
 }

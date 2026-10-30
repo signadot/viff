@@ -40,8 +40,8 @@ import (
 //
 // A RUNNER IS NEVER TAKEN AT ITS WORD. A header naming a `runner:` with no bearer that proves it
 // is refused at the door, on the name alone and without reading the registrations, under every
-// mode. `verse up`'s embedded runner is no registration and never calls the door; a laptop's
-// runner proves itself with a static token, as any runner off Kubernetes does.
+// mode. `verse up`'s local runner, like any runner off Kubernetes, proves itself with a static
+// token.
 //
 // WHY IT MATTERS NOW. Versed writes a task's reports as the runner itself, from what it mirrors
 // off the runner's stream, so a runner has never had to call verse and nothing at the door has

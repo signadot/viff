@@ -3,6 +3,7 @@ package versed
 import (
 	"errors"
 	"fmt"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -146,7 +147,7 @@ func TestTheSystemCharterIsInstalledAtStartAsTheSystem(t *testing.T) {
 	}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.SystemCharter = path
 	srv.Start(t.Context())
 
@@ -229,7 +230,7 @@ func TestWhatTheSystemMakesInItsOwnHalfIsNotAnybodysToTake(t *testing.T) {
 	}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t), WithPerms(Perms{ChildGrants: entity.Levels{}}))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t), WithPerms(Perms{ChildGrants: entity.Levels{}}))
 	srv.SystemCharter = path
 	srv.Zone = time.UTC
 	srv.Start(t.Context())
@@ -312,7 +313,7 @@ func TestANameTheSystemHasNotUsedYetCannotBeReserved(t *testing.T) {
 	}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.SystemCharter = path
 	srv.Zone = time.UTC
 	srv.Start(t.Context())

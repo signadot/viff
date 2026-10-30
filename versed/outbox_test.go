@@ -2,6 +2,7 @@ package versed
 
 import (
 	"fmt"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -24,7 +25,7 @@ const (
 // tested here is what a package's declaration does with it, not how an io is installed.
 func outboxServer(t *testing.T) (*Server, *httptest.Server) {
 	t.Helper()
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t), WithPerms(Perms{ChildGrants: entity.Levels{}}))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t), WithPerms(Perms{ChildGrants: entity.Levels{}}))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
@@ -142,7 +143,7 @@ func TestAnOutboxDeclarationIsChecked(t *testing.T) {
 // AN OUTBOX FOLLOWS ITS IO OUT AND BACK IN: the io's removal takes back the grant on every outbox
 // sending to it, and installing it again grants them, with the package left as it was.
 func TestAnOutboxFollowsItsIO(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t), WithPerms(Perms{ChildGrants: entity.Levels{}}))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t), WithPerms(Perms{ChildGrants: entity.Levels{}}))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()

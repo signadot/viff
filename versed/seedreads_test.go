@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"testing"
 
 	"github.com/signadot/verse/entity"
@@ -42,7 +43,7 @@ func TestWhatTheSystemMadeBeneathARowIsReadThroughTheRowsLine(t *testing.T) {
 		{"a root default that holds out nothing", []Option{WithPerms(Perms{ChildGrants: entity.Levels{}})}},
 	} {
 		t.Run(c.what, func(t *testing.T) {
-			srv := NewWithStore(ScriptedBuilder, entitytest.Store(t), c.opts...)
+			srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t), c.opts...)
 			perms := entity.As(srv.Store, entity.SystemPerms)
 			for _, row := range rows {
 				made := entity.RefAt(append(row.Segs(), "made-by-the-system")...)

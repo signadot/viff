@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/versed/versedtest"
 	"net/http/httptest"
 	"strings"
 	"sync"
@@ -14,7 +16,6 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	verseio "github.com/signadot/verse/io"
-	"github.com/signadot/verse/versed"
 )
 
 // The out half's machinery, tested with a sink that is nothing like Slack: the pass, the status
@@ -63,7 +64,7 @@ type outRig struct {
 func newOutRig(t *testing.T) *outRig {
 	t.Helper()
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
+	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	place := entity.RefAt("demo", "out")
 	sink := &noted{}
@@ -373,7 +374,7 @@ func (k *keeping) Keep(_ context.Context, in verseio.Input) {
 // Slack thread's questions — stays current for a message whose last edit was refused.
 func TestAKeeperIsToldOfARefusedInput(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versed.NewWithStore(versed.ScriptedBuilder, store).Handler())
+	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	sink := &keeping{}
 	sink.err = verseio.Permanent(errors.New("msg_too_long"))

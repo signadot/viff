@@ -24,8 +24,8 @@ const LocalRunnerName = "local"
 
 // RegisterLocalRunner writes the local runner's registration, as the system, naming url and the
 // subject of its static token. A registration that already says so is left as it stands, its
-// description with it; one that says anything else is written whole, its description gone until
-// the runner's hello describes it again.
+// description with it; one that says anything else is written whole, and described then and there
+// where the runner already answers (one a crashed run left), or by its hello once it starts.
 func (s *Server) RegisterLocalRunner(url, subject string) error {
 	e := api.Runner{Name: LocalRunnerName, URL: url, Subject: subject}
 	if err := e.Check(); err != nil {
@@ -46,6 +46,7 @@ func (s *Server) RegisterLocalRunner(url, subject string) error {
 		return err
 	}
 	s.forgetRegistrations()
+	_, _ = s.handshake(e) // a runner not answering yet is described by its hello
 	return nil
 }
 

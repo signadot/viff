@@ -58,7 +58,7 @@ func TestAFiringRefusedBeforeItsLaunchIsGivenNoCredential(t *testing.T) {
 		t.Fatalf("install = %d %s", code, out)
 	}
 	// This verse's own runner describes itself after the install, and offers no codex.
-	srv.Embedded.Describe(offering())
+	describeLocal(t, srv, offering())
 	if code, out := bearer(t, http.MethodPost, ts.URL+"/entity", ana, "", func() string {
 		b, _ := codec.Marshal(api.PutEntity{At: "demo.pr.1", Payload: entity.Obj{"stage": "ready"}.Payload()}, codec.Tony)
 		return string(b)
@@ -79,7 +79,7 @@ func TestAFiringRefusedBeforeItsLaunchIsGivenNoCredential(t *testing.T) {
 // `verse up`, whose runner builds only the open network, the firing would launch with none.
 func TestACharterFiresWithItsNetwork(t *testing.T) {
 	srv := testServer(t)
-	srv.Embedded.Describe(stock.Open().Describe([]string{runner.NetworkOpen}))
+	describeLocal(t, srv, stock.Open().Describe([]string{runner.NetworkOpen}))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()

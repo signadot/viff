@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -21,7 +22,7 @@ const issueNextSchedule = "repos.verse.git-issue:sweep"
 // its facts and the stub proposal, and a closed issue none. At the next tick an issue that moved
 // gets its new facts and keeps its proposal: the derive owns the facts, the stub owns `next`.
 func TestIssueNextProposesOnTheTick(t *testing.T) {
-	srv := NewWithStore(ScriptedBuilder, entitytest.Store(t))
+	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Zone = time.UTC
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())

@@ -3,6 +3,7 @@ package versed
 import (
 	"errors"
 	"fmt"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -106,7 +107,7 @@ func (d deafMirror) Scope(name string) entity.Store { return deafMirror{d.Store.
 
 func TestAnInstallTheStoreDidNotRecordIsTakenBackOut(t *testing.T) {
 	lose := &atomic.Bool{}
-	srv := NewWithStore(ScriptedBuilder, deafMirror{entitytest.Store(t), lose})
+	srv := serverWith(t, runnerdtest.Scripted, deafMirror{entitytest.Store(t), lose})
 	t.Cleanup(srv.stopAllIOs)
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())

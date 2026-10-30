@@ -2,6 +2,8 @@ package main
 
 import (
 	"errors"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/versed/versedtest"
 	"net/http/httptest"
 	"strings"
 	"sync"
@@ -11,7 +13,6 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/versed"
 )
 
 // flapping is a store whose reads FAIL, beside a reader whose reads SUCCEED — the ordinary state
@@ -81,7 +82,7 @@ func (f *flapping) ListAtErr([]string, int, func(entity.Ref) bool) ([]entity.Ent
 // microseconds.
 func TestAFailedReadIsRefusedHoweverBusyTheNeighbours(t *testing.T) {
 	st := &flapping{Store: entitytest.Store(t)}
-	srv := versed.NewWithStore(versed.ScriptedBuilder, st)
+	srv := versedtest.Server(t, runnerdtest.Scripted, st)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	testAddr = strings.TrimPrefix(ts.URL, "http://")
