@@ -49,7 +49,7 @@ func AskRaised(id, question string) string {
 
 // AskQuery is the GET /asks query that keeps only the caller's own asks arg names, by the id or
 // the name it was asked under: how `verse ask <name|id>`, verse_ask_get and verse-ask-get find
-// one ask without reading every ask.
+// one ask without being answered every ask.
 func AskQuery(arg string) url.Values { return url.Values{"ask": {arg}} }
 
 // LabelsOf reads an ask's labels: name=value pairs, comma-separated. A pair without its `=`, or an

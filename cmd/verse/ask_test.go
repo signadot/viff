@@ -162,7 +162,7 @@ func TestTheWatchSaysWhatHappenedSinceItsCursor(t *testing.T) {
 	his, _ := runCLIIn(t, strings.NewReader(""), "questions", "--watch", "--since", "0")
 	waitFor(t, his, "waiting on you "+qid+": Review verse/ask?")
 	waitFor(t, his, "settled "+qid+": answered")
-	if strings.Contains(his.String(), "asked "+id) {
+	if strings.Contains(his.String(), "raised question "+id) {
 		t.Fatalf("davido's watch tells him of daniel's ask as his own:\n%s", his.String())
 	}
 
@@ -170,16 +170,20 @@ func TestTheWatchSaysWhatHappenedSinceItsCursor(t *testing.T) {
 	// question watch's. It is read once it says an ask of his raised after.
 	as(t, davido)
 	own := askAs(t, davido, "tea", "-q", "Tea?")
+	// An ask he names nothing is raised all the same, under the name verse gives it.
+	if anon := askAs(t, davido, "-q", "Coffee?"); !strings.HasPrefix(anon, "run-") {
+		t.Fatalf("an ask named nothing was raised as %q, want verse's run-<nonce>", anon)
+	}
 	as(t, davido)
 	asks, _ := runCLIIn(t, strings.NewReader(""), "ask", "--watch", "--since", "0")
-	waitFor(t, asks, "asked "+own+": Tea?")
+	waitFor(t, asks, "raised question "+own+": Tea?")
 	if strings.Contains(asks.String(), "waiting on you") {
 		t.Fatalf("davido's ask watch says a question waits on him:\n%s", asks.String())
 	}
 
 	as(t, daniel)
 	mine, _ := runCLIIn(t, strings.NewReader(""), "ask", "--watch", "--since", "0")
-	waitFor(t, mine, "asked "+id+": Review verse/ask?")
+	waitFor(t, mine, "raised question "+id+": Review verse/ask?")
 	waitFor(t, mine, "answered "+id+" yes: Review verse/ask?")
 	if strings.Contains(mine.String(), "waiting on you") {
 		t.Fatalf("daniel's watch says a question waits on him:\n%s", mine.String())
@@ -321,7 +325,8 @@ func TestAnAskIsCheckedBeforeItIsWritten(t *testing.T) {
 		{"ask", "land", "-q", "x?", "--then", `{shell: "rm -rf /"}`},
 		{"ask", "land", "-q", "x?", "--then", `{prompt: "merge it"}`},
 		{"ask", "land", "-q", "x?", "--then", `{spawn: {script: "echo hi", environment: {systems: {git: {repo: $subject.value.repo, fetch: {}}}}}}`},
-		{"ask", "-q", "x?"},
+		{"ask", "-q", "x?", "--withdraw"},
+		{"ask", "--to", "oscar@example.com"},
 		{"ask", "land", "--to", "oscar@example.com"},
 		{"ask", "land", "-q", "x?", "--on-silence", "yes"},
 	} {
@@ -432,7 +437,7 @@ func TestAWatchFromACursorSaysWhatHappensAfterItsHistory(t *testing.T) {
 	qid := questionOn(t, store, mirror.AskRef(id))
 	as(t, daniel)
 	mine, _ := runCLIIn(t, strings.NewReader(""), "ask", "--watch", "--since", "0")
-	waitFor(t, mine, "asked "+id+": Review?")
+	waitFor(t, mine, "raised question "+id+": Review?")
 
 	as(t, davido)
 	if out, err := runCLI(t, "question", qid, "--answer", "proceed"); err != nil {
@@ -448,7 +453,7 @@ func TestTheWatchSaysAnAskStandingBeforeItAnsweredOnce(t *testing.T) {
 	as(t, daniel)
 	mine, _ := runCLIIn(t, strings.NewReader(""), "ask", "--watch")
 	after := askAs(t, daniel, "tag", "-q", "Tag?", "--to", "oscar@example.com")
-	waitFor(t, mine, "asked "+after+": Tag?")
+	waitFor(t, mine, "raised question "+after+": Tag?")
 	qAfter := questionOn(t, store, mirror.AskRef(after))
 
 	as(t, davido)
@@ -463,16 +468,16 @@ func TestTheWatchSaysAnAskStandingBeforeItAnsweredOnce(t *testing.T) {
 	waitFieldCLI(t, store, mirror.AskRef(before), "expires")
 	waitFieldCLI(t, store, mirror.AskRef(after), "expires")
 	last := askAs(t, daniel, "last", "-q", "Last?")
-	waitFor(t, mine, "asked "+last+": Last?")
+	waitFor(t, mine, "raised question "+last+": Last?")
 
 	out := mine.String()
-	for _, line := range []string{"answered " + before + " yes: Review?", "answered " + after + " yes: Tag?", "asked " + after + ": Tag?"} {
+	for _, line := range []string{"answered " + before + " yes: Review?", "answered " + after + " yes: Tag?", "raised question " + after + ": Tag?"} {
 		if n := saidLines(out, line); n != 1 {
 			t.Errorf("%q said %d times, want once:\n%s", line, n, out)
 		}
 	}
 	// It stood when the watch opened, so its asking is not news.
-	if n := saidLines(out, "asked "+before+": Review?"); n != 0 {
+	if n := saidLines(out, "raised question "+before+": Review?"); n != 0 {
 		t.Errorf("the ask standing before the watch was said asked:\n%s", out)
 	}
 }
@@ -483,7 +488,7 @@ func TestTheWatchSaysAnExpiredAskExpired(t *testing.T) {
 	as(t, daniel)
 	mine, _ := runCLIIn(t, strings.NewReader(""), "ask", "--watch")
 	pending := askAs(t, daniel, "later", "-q", "Later?", "--to", "oscar@example.com")
-	waitFor(t, mine, "asked "+pending+": Later?")
+	waitFor(t, mine, "raised question "+pending+": Later?")
 	brief := askAs(t, daniel, "brief", "-q", "Brief?", "--to", "oscar@example.com", "--keep", "1s")
 	q := questionOn(t, store, mirror.AskRef(brief))
 	as(t, davido)
@@ -509,12 +514,12 @@ func TestTheWatchFollowsAgainWhenItsStreamEnds(t *testing.T) {
 	as(t, daniel)
 	mine, _ := runCLIIn(t, strings.NewReader(""), "ask", "--watch")
 	first := askAs(t, daniel, "first", "-q", "First?")
-	waitFor(t, mine, "asked "+first+": First?")
+	waitFor(t, mine, "raised question "+first+": First?")
 	ts.CloseClientConnections()
 	waitFor(t, mine, "the stream ended")
 	second := askAs(t, daniel, "second", "-q", "Second?")
-	waitFor(t, mine, "asked "+second+": Second?")
-	if n := saidLines(mine.String(), "asked "+first+": First?"); n != 1 {
+	waitFor(t, mine, "raised question "+second+": Second?")
+	if n := saidLines(mine.String(), "raised question "+first+": First?"); n != 1 {
 		t.Fatalf("the ask before the stream ended said %d times:\n%s", n, mine.String())
 	}
 }

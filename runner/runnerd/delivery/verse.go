@@ -80,9 +80,11 @@ func (s *Server) verseAskCreate(ctx context.Context, tk Task, req Request) Reply
 	if err := codec.Unmarshal([]byte(said), &asked, codec.Tony); err != nil || asked.ID == "" {
 		return Reply{Error: "the verse raised the ask and its answer does not say the id: " + said}
 	}
-	// The question as the task wrote it: verse took the ask, so it reads.
+	// The question as the task wrote it, which verse took.
 	var ask api.Ask
-	_ = codec.Unmarshal([]byte(req.Ask), &ask, codec.Tony)
+	if err := codec.Unmarshal([]byte(req.Ask), &ask, codec.Tony); err != nil {
+		return Reply{Error: "the verse raised " + asked.ID + ", and the ask carried does not read back: " + err.Error()}
+	}
 	out := api.AskRaised(asked.ID, ask.Question)
 	fmt.Fprintf(s.Log, "delivery: %s: %s\n", tk.ID, out)
 	return Reply{OK: true, Out: out}

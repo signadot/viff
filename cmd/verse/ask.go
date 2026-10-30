@@ -67,7 +67,7 @@ func askCmd() *cli.Command {
 	return cli.NewCommandAt(&cfg.Command, "ask").
 		WithAliases("asks").
 		WithSynopsis("ask — asking somebody something: bare lists your asks, <name|id> shows one, " +
-			"<name> -q <question> [--to <who>] [--due <when>] [--then <value>] [--else <value>] [--keep <duration>] asks, <name|id> --withdraw takes back, --watch follows").
+			"[<name>] -q <question> [--to <who>] [--due <when>] [--then <value>] [--else <value>] [--keep <duration>] asks, <name|id> --withdraw takes back, --watch follows").
 		WithOpts(opts...).
 		WithRun(cfg.run)
 }
@@ -95,8 +95,10 @@ func (cfg *askConfig) run(cc *cli.Context, args []string) error {
 		return fmt.Errorf("%w: --since goes with --watch", cli.ErrUsage)
 	}
 	switch {
-	case name == "" && (cfg.Question != "" || cfg.Withdraw || asking):
-		return fmt.Errorf("%w: an ask is named: `verse ask <name> -q <question>`", cli.ErrUsage)
+	case name == "" && cfg.Question != "" && !cfg.Withdraw:
+		return cfg.create(cc, "")
+	case name == "" && (cfg.Withdraw || asking):
+		return fmt.Errorf("%w: a change or a withdrawal names the ask: `verse ask <name|id> --withdraw`", cli.ErrUsage)
 	case name == "":
 		return listAsks(cc)
 	case cfg.Question != "":
@@ -729,7 +731,7 @@ func (w *askWatch) saidOfMine(id string, prev, rec entity.Payload, rev string, s
 	case prev != nil && mirror.EditOf(prev) != 0 && edit > mirror.EditOf(prev):
 		say(rev, fmt.Sprintf("asked again %s, as edit %d: %s", id, edit, entity.Str(rec, "question")))
 	case prev == nil && entity.Str(rec, "status") == "":
-		say(rev, fmt.Sprintf("asked %s: %s", id, entity.Str(rec, "question")))
+		say(rev, api.AskRaised(id, entity.Str(rec, "question")))
 	}
 	answer := entity.Str(rec, "answer")
 	if said, ok := w.answered[id]; answer == "" || (ok && said == edit) {

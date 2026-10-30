@@ -105,7 +105,7 @@ func TestWaitMissesNothingBetweenCalls(t *testing.T) {
 	since := openWait(t, dan)
 	first := askAs(t, daniel, "first", "-q", "First?", "--to", "oscar@example.com")
 	second := askAs(t, daniel, "second", "-q", "Second?", "--to", "oscar@example.com")
-	_, c1 := waitUntil(t, dan, since, "asked "+first+": First?", "asked "+second+": Second?")
+	_, c1 := waitUntil(t, dan, since, "raised question "+first+": First?", "raised question "+second+": Second?")
 
 	// No call in flight: davido answers the first, daniel withdraws the second.
 	questionOn(t, store, mirror.AskRef(first))
@@ -120,7 +120,7 @@ func TestWaitMissesNothingBetweenCalls(t *testing.T) {
 	answered, withdrawn := "answered "+first+" yes: First?", "withdrawn "+second
 	out, c2 := waitUntil(t, dan, c1, answered, withdrawn)
 	if strings.Count(out, answered) != 1 || strings.Count(out, withdrawn) != 1 ||
-		strings.Index(out, answered) > strings.Index(out, withdrawn) || strings.Contains(out, "asked "+first) {
+		strings.Index(out, answered) > strings.Index(out, withdrawn) || strings.Contains(out, "raised question "+first) {
 		t.Fatalf("from %s:\n%s", c1, out)
 	}
 	if out, c3, _ := waitCall(t, dan, c2, 1); !strings.HasPrefix(out, "nothing in ") || c3 != c2 {
@@ -177,7 +177,7 @@ func TestWaitFollowsAgainWhenItsStreamEnds(t *testing.T) {
 	dan := mcpSessionAs(t, daniel)
 	since := openWait(t, dan)
 	first := askAs(t, daniel, "first", "-q", "First?")
-	out1, c1 := waitUntil(t, dan, since, "asked "+first+": First?")
+	out1, c1 := waitUntil(t, dan, since, "raised question "+first+": First?")
 	ts.CloseClientConnections()
 	// That ends every connection to the verse, the CLI's idle ones in the shared pool with the
 	// wait's stream, and a POST on one the CLI has not yet seen close fails rather than being
@@ -185,8 +185,8 @@ func TestWaitFollowsAgainWhenItsStreamEnds(t *testing.T) {
 	// does too.
 	http.DefaultTransport.(*http.Transport).CloseIdleConnections()
 	second := askAs(t, daniel, "second", "-q", "Second?")
-	out2, _ := waitUntil(t, dan, c1, "asked "+second+": Second?")
-	if n := strings.Count(out1+out2, "asked "+first+": First?"); n != 1 {
+	out2, _ := waitUntil(t, dan, c1, "raised question "+second+": Second?")
+	if n := strings.Count(out1+out2, "raised question "+first+": First?"); n != 1 {
 		t.Fatalf("the ask before the stream ended said %d times:\n%s%s", n, out1, out2)
 	}
 }
@@ -248,7 +248,7 @@ func TestWaitAnswersInParts(t *testing.T) {
 	var wants []string
 	for _, name := range []string{"first", "second", "third", "fourth"} {
 		id := askAs(t, daniel, name, "-q", strings.Repeat(name, 10)+"?")
-		wants = append(wants, "asked "+id)
+		wants = append(wants, "raised question "+id)
 	}
 	whole, end := waitUntil(t, dan, since, wants...)
 	lines := func(s string) []string {

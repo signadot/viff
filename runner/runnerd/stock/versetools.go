@@ -40,7 +40,7 @@ func verseTools(cl *delivery.Client) []verse.Tool {
 	held := " A spawn reaches no further than this task does, its autonomy is no looser, and it runs on " +
 		"this task's runner with this task's model credential."
 	create := map[string]any{
-		"name":       text("what you call the ask; its id is derived from it and answered"),
+		"name":       text("what you call the ask; its id is derived from it and answered. Absent, verse names it"),
 		"question":   text("what is asked, in the words the answerers read"),
 		"to":         text("who is asked: a name or a comma-separated list, in the grammar a grant uses (user:ana@example.com, ana@example.com, group:leads); absent, anyone may answer"),
 		"due":        text("when it settles if nobody answers: an RFC 3339 date or a duration from now (48h)"),
@@ -59,10 +59,11 @@ func verseTools(cl *delivery.Client) []verse.Tool {
 		Description: "Ask somebody something, as the person this task runs for, as `verse ask <name> -q " +
 			"<question>` and verse_ask_create do: the question, who is asked, when it settles if nobody " +
 			"answers, and what follows a yes or a no, which runs on their authority. It does not wait: the " +
-			"call answers the ask's id, and the ask stands after this task ends. To ask something and wait " +
+			"call answers `raised question <id>: <question>`, verse-ask-get <id> reads the ask back, and " +
+			"it stands after this task ends. To ask something and wait " +
 			"for the answer yourself, use question-ask.",
 		Params:   create,
-		Required: []string{"name", "question"},
+		Required: []string{"question"},
 		Step:     task.StepVerseAskCreate,
 		Fields:   func(map[string]any) (map[string]string, bool) { return map[string]string{}, true },
 		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
@@ -75,9 +76,6 @@ func verseTools(cl *delivery.Client) []verse.Tool {
 			}
 			w := p.words
 			name, question := strings.TrimSpace(w["name"]), strings.TrimSpace(w["question"])
-			if name == "" {
-				return "not raised: an ask needs a name", true, nil
-			}
 			if question == "" {
 				return "not raised: an ask needs a question", true, nil
 			}

@@ -33,8 +33,12 @@ func TestTheAskToolsAskAnswerAndWithdraw(t *testing.T) {
 		t.Fatalf("davido's answer: error=%v %q", isErr, out)
 	}
 	waitFieldCLI(t, store, mirror.AskRef(id), "answer")
-	if out, isErr := callTool(t, dan, "verse_ask_get", map[string]any{"name_or_id": "land"}); isErr || !strings.Contains(out, "answer: yes") {
+	if out, isErr := callTool(t, dan, "verse_ask_get", map[string]any{"name_or_id": " land "}); isErr || !strings.Contains(out, "answer: yes") {
 		t.Fatalf("the answer is not on daniel's ask: error=%v\n%s", isErr, out)
+	}
+	// Named nothing, an ask is raised under the name verse gives it, as `verse ask -q` raises it.
+	if out, isErr := callTool(t, dan, "verse_ask_create", map[string]any{"question": "Coffee?"}); isErr || !strings.HasPrefix(out, "raised question run-") {
+		t.Fatalf("an ask named nothing: error=%v %q", isErr, out)
 	}
 
 	out, _ = callTool(t, dan, "verse_ask_create", map[string]any{"name": "lunch", "question": "Lunch?", "to": "oscar@example.com"})

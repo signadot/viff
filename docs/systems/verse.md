@@ -35,7 +35,7 @@ spawn:
 
 | Tool | Mirrors | What it does | Step |
 |---|---|---|---|
-| `verse-ask-create` | `verse ask <name> -q`, `verse_ask_create` | raises an ask as the person the task runs for: `name`, `question`, `to`, `due`, `on_silence`, `then`, `else`, `about`, `keep`, `label` ([asking](../asking.md)). It does not wait: the result is the ask's id, and the ask stands after the task ends. | `verse.ask-create` |
+| `verse-ask-create` | `verse ask [<name>] -q`, `verse_ask_create` | raises an ask as the person the task runs for: `name`, `question`, `to`, `due`, `on_silence`, `then`, `else`, `about`, `keep`, `label` ([asking](../asking.md)). It does not wait: the result is `raised question <id>: <question>`, and the ask stands after the task ends. Without a `name`, verse names it `run-<nonce>`. | `verse.ask-create` |
 | `verse-ask-get` | `verse ask <name\|id>`, `verse_ask_get` | reads one of the person's asks, by `name_or_id`: the name it was asked under or its id. The result is the ask as `verse ask` shows it: its `status` and `answer`, `pending` until it settles (or `why`, where it settled with no answer), what it asked and of whom, its due, and what its `then` and `else` did. | `verse.ask-get` |
 | `verse-ask-list` | `verse ask`, `verse_ask_list` | lists the person's asks, each as `verse ask` lists it: its id, question, who is asked, its due, its `status`, and its `answer`, `pending` until it settles. | `verse.ask-list` |
 | `verse-data-get` | `verse data`, `verse_data` | reads the verse at an address as the person: `at`, `if`, `if_at`, `trim`, and with `paths` the addresses beneath it, `depth` levels deep, one kinded path per line. | `verse.data-get` |

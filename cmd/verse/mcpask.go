@@ -85,7 +85,7 @@ type askGetIn struct {
 type askListIn struct{}
 
 type askCreateIn struct {
-	Name      string `json:"name" jsonschema:"what you call the ask; its id is derived from it and answered"`
+	Name      string `json:"name,omitempty" jsonschema:"what you call the ask; its id is derived from it and answered. Absent, verse names it"`
 	Question  string `json:"question" jsonschema:"what is asked, in the words the answerers read"`
 	To        string `json:"to,omitempty" jsonschema:"who is asked: a name or a comma-separated list, in the grammar a grant uses (user:ana@example.com, ana@example.com, group:leads); absent, anyone may answer"`
 	Due       string `json:"due,omitempty" jsonschema:"when it settles if nobody answers: an RFC 3339 date or a duration from now (48h)"`
@@ -125,7 +125,7 @@ func (m *mcpServer) addAskTools(s *mcp.Server) {
 	}, m.askList)
 	addTool(m, s, &mcp.Tool{
 		Name: "verse_ask_create",
-		Description: "Ask somebody something, as you, as `verse ask <name> -q <question>` does: " +
+		Description: "Ask somebody something, as you, as `verse ask [<name>] -q <question>` does: " +
 			"the question, who is asked, when it settles if nobody answers, and what follows a yes " +
 			"or a no, which runs on your authority. Answers come back through verse_wait.",
 		Annotations: writes(false),
@@ -144,10 +144,11 @@ func (m *mcpServer) addAskTools(s *mcp.Server) {
 }
 
 func (m *mcpServer) askGet(ctx context.Context, _ *mcp.CallToolRequest, in askGetIn) (*mcp.CallToolResult, any, error) {
-	if in.NameOrID == "" {
+	arg := strings.TrimSpace(in.NameOrID)
+	if arg == "" {
 		return nil, nil, fmt.Errorf("name the ask, by its name or its id")
 	}
-	return m.askRead(askShown(m.c.With(ctx), in.NameOrID))
+	return m.askRead(askShown(m.c.With(ctx), arg))
 }
 
 func (m *mcpServer) askList(ctx context.Context, _ *mcp.CallToolRequest, _ askListIn) (*mcp.CallToolResult, any, error) {
@@ -173,10 +174,7 @@ func (m *mcpServer) askCreate(ctx context.Context, _ *mcp.CallToolRequest, in as
 	if err := m.nobody(); err != nil {
 		return nil, nil, err
 	}
-	if strings.TrimSpace(in.Name) == "" {
-		return nil, nil, fmt.Errorf("an ask needs a name")
-	}
-	spec := api.AskSpec{Name: in.Name, Question: in.Question, To: in.To, Due: in.Due, OnSilence: in.OnSilence,
+	spec := api.AskSpec{Name: strings.TrimSpace(in.Name), Question: in.Question, To: in.To, Due: in.Due, OnSilence: in.OnSilence,
 		About: in.About, Keep: in.Keep, Label: in.Label}
 	var err error
 	if in.Then != "" {

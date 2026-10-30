@@ -50,7 +50,7 @@ claude mcp add verse-read -- verse mcp -read-only
 | `verse_question_answer` | `verse question <id> --answer` | answers a question with an `option` |
 | `verse_ask_get` | `verse ask <name\|id>` | shows one of your asks, by name or id |
 | `verse_ask_list` | `verse ask` | lists your asks |
-| `verse_ask_create` | `verse ask <name> -q` | asks someone: `question`, `to`, `due`, `then`, `else`, … |
+| `verse_ask_create` | `verse ask [<name>] -q` | asks someone: `question`, `name`, `to`, `due`, `then`, `else`, … |
 | `verse_ask_change` | `verse ask <name> --due …` | moves or changes an ask |
 | `verse_ask_withdraw` | `verse ask <name> --withdraw` | withdraws an ask |
 | `verse_wait` | `verse ask --watch`, `verse question --watch` | waits for an ask of yours or a question for you to change |

@@ -1,6 +1,7 @@
 package stock
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/http"
@@ -40,7 +41,8 @@ func TestAScriptRaisesAnAskTheRunnerCarriesToVerse(t *testing.T) {
 		mu.Lock()
 		saw = append(saw, doc)
 		mu.Unlock()
-		return 201, "id: " + doc["name"].(string) + "-1a2b", nil
+		name, _ := doc["name"].(string)
+		return 201, "id: " + cmp.Or(name, "run") + "-1a2b", nil
 	}
 	c := Config{Script: &Script{Systems: map[string]System{"verse": {Ceiling: systems.Open()}}}}
 	env := envOf(netOpen, nil, nil)
@@ -63,18 +65,20 @@ func TestAScriptRaisesAnAskTheRunnerCarriesToVerse(t *testing.T) {
 	if !strings.Contains(snap.Result, "tea-9z9z") {
 		t.Errorf("the script listed its owner's asks as %q, want the owner's other ask among them", snap.Result)
 	}
-	// An ask is raised under a name the script gives, as verse_ask_create and `verse ask <name>`
-	// raise it: one with none is refused at the tool, and verse is handed nothing (below, the
-	// one ask it was handed is r1's).
-	rt.Launch(runner.Launch{ID: "r3", Script: "#!/bin/sh\nverse-call-tool verse-ask-create -question 'Land it?' || true\n",
+	// An ask the script names nothing is raised all the same, and verse names it, as
+	// verse_ask_create and `verse ask -q` leave it to verse: the task's id is not its name.
+	rt.Launch(runner.Launch{ID: "r3", Script: "#!/bin/sh\nverse-call-tool verse-ask-create -question 'Ship it?'\n",
 		Environment: env, Autonomy: allow})
-	if snap := ended(t, rt, "r3"); strings.HasPrefix(snap.Result, "raised") || !strings.Contains(snap.Result, "name") {
-		t.Errorf("a raise naming no ask read %q (%s), want it refused for its name", snap.Result, snap.Status)
+	if snap := ended(t, rt, "r3"); snap.Status != task.Done || !strings.Contains(snap.Result, "raised question run-1a2b: Ship it?") {
+		t.Errorf("a raise naming no ask read %q (%s), want it raised under verse's name", snap.Result, snap.Status)
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(saw) != 1 {
+	if len(saw) != 2 {
 		t.Fatalf("the raiser was handed %d asks", len(saw))
+	}
+	if name, _ := saw[1]["name"].(string); name != "" {
+		t.Errorf("an ask the script named nothing was handed to verse as %v, want no name", saw[1])
 	}
 	got := saw[0]
 	then, _ := got["then"].(map[string]any)
