@@ -70,7 +70,7 @@ func (s *Server) mintCredential(store entity.Store, eng *trigger.Engine, id stri
 	}
 	// NOT FOR A RUNNER. A runner's door is held to tokens for its own name, and admits the
 	// verse's alone (runner.VerseSubject); a credential naming a runner as its audience would be
-	// a token the door turns away at best, and has nothing else to be for.
+	// a token the door turns away, with nothing else to be for.
 	regs, _, err := readRunners(s.Store)
 	if err != nil {
 		return "", nil, errors.New(notRead("the runners' registrations, which a credential's audience is checked against", err))

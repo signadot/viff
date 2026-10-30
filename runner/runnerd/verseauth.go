@@ -27,9 +27,8 @@ import (
 // call a token it minted for this runner, `iss` versed's issuer name, `aud` this runner's own
 // subject and `sub` verse (runner.VerseSubject). The runner reads versed's keys at the url it
 // reaches versed at, and holds every bearer to that issuer, that audience, that subject and a live
-// signature; a request that does not verify is refused
-// before its body is read, so a launch, with its prompt and its repositories, leaves verse for a
-// runner nobody else can drive. Without the block the runner answers whoever reaches its port,
+// signature; a request that does not verify is refused before its body is read, so a launch, with
+// its prompt and its repositories, leaves verse for a runner nobody else can drive. Without the block the runner answers whoever reaches its port,
 // as every runner did.
 //
 // THE AUDIENCE IS THE RUNNER'S OWN NAME. A token minted for one runner is good at no other: a
