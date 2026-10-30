@@ -117,7 +117,7 @@ func TestTheCharterWriteToolsRefuse(t *testing.T) {
 		args map[string]any
 		want string
 	}{
-		{"verse_charter_install", map[string]any{"charters": ""}, "none to install"},
+		{"verse_charter_install", map[string]any{"charters": ""}, "an install carries the charters"},
 		{"verse_charter_install", map[string]any{"at": "sync", "charters": two}, "each installed at their own at:"},
 		{"verse_charter_install", map[string]any{"prune": true, "charters": two}, "name it in at"},
 		{"verse_charter_install", map[string]any{"charters": two + "---\n{name: x}"}, "document 3 is no charter"},

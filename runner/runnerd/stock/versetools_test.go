@@ -10,9 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/verse"
 	"github.com/signadot/verse/systems"
@@ -109,47 +107,6 @@ func TestAScriptRaisesAnAskTheRunnerCarriesToVerse(t *testing.T) {
 	}
 }
 
-// THE TOOL TAKES WHAT verse_ask_create TAKES, read as `verse ask` reads it (api.NewAsk): `to` a
-// comma-separated list, `then` and `else` tony documents, `label` name=value pairs, each a string.
-// What the CLI refuses, the tool refuses, and a parameter that is not a string is refused rather
-// than read as nothing.
-func TestTheAskCreateToolTakesWhatTheMCPToolTakes(t *testing.T) {
-	var schema map[string]any
-	for _, tool := range verseTools(nil) {
-		if tool.Name == askCreateTool {
-			schema = tool.Params
-		}
-	}
-	read := func(in map[string]any) (api.Ask, error) {
-		p, err := paramsOf(in, schema)
-		if err != nil {
-			return api.Ask{}, err
-		}
-		return api.NewAsk(api.AskSpec{Question: "q", To: p.words["to"], Label: p.words["label"]}, time.Now())
-	}
-	if _, err := read(map[string]any{"questoin": "q"}); err == nil || !strings.Contains(err.Error(), "questoin is not a parameter") {
-		t.Errorf("a parameter the tool does not take = %v, want it refused by name", err)
-	}
-	ask, err := read(map[string]any{"to": "user:ana@example.com, group:leads", "label": "team=payments, kind=deploy"})
-	if err != nil || len(ask.To) != 2 || ask.To[1] != "group:leads" || ask.Labels["kind"] != "deploy" || len(ask.Labels) != 2 {
-		t.Errorf("read as %+v, %v", ask, err)
-	}
-	if doc, err := docOf("then", `{spawn: {script: "true"}}`); err != nil || entity.Get(doc, "spawn") == nil {
-		t.Errorf("then = %v, %v", doc, err)
-	}
-	if _, err := docOf("then", "spawn it"); err == nil {
-		t.Error("a then that is no document was taken")
-	}
-	for _, bad := range []map[string]any{
-		{"label": "team"}, {"to": "user:ana@example.com,,group:leads"},
-		{"to": []any{"user:ana@example.com"}}, {"label": map[string]any{"team": "payments"}},
-	} {
-		if _, err := read(bad); err == nil {
-			t.Errorf("%v was taken, where verse_ask_create refuses it", bad)
-		}
-	}
-}
-
 // A SCRIPT READS AND WRITES THE VERSE FOR ITS OWNER, and the runner carries each act on its
 // route: the write as the PutEntity `verse data --put` sends, with its condition; the read with
 // the query `verse data` sends, trimmed as verse_data trims it, or listed one kinded path per
@@ -228,33 +185,11 @@ func TestAScriptReadsAndWritesTheVerseTheRunnerCarries(t *testing.T) {
 	}
 }
 
-// THE DATA TOOLS TAKE WHAT verse_data AND ITS KIN TAKE, typed as they type it: a string, a
-// boolean, an integer however the codec carried it. A parameter of another type, or one the tool
-// does not take, is refused rather than read as nothing.
-func TestTheDataToolsTakeWhatTheMCPToolsTake(t *testing.T) {
-	schema := map[string]any{
-		"at":    map[string]any{"type": "string"},
-		"paths": map[string]any{"type": "boolean"},
-		"depth": map[string]any{"type": "integer"},
-	}
-	p, err := paramsOf(map[string]any{"at": "acme.notes", "paths": true, "depth": int64(2), "if": nil}, schema)
-	if err != nil || p.words["at"] != "acme.notes" || !p.flags["paths"] || p.nums["depth"] != 2 {
-		t.Errorf("read as %+v, %v", p, err)
-	}
-	if p, err := paramsOf(map[string]any{"depth": float64(1)}, schema); err != nil || p.nums["depth"] != 1 {
-		t.Errorf("a whole float read as %+v, %v", p, err)
-	}
-	for _, bad := range []map[string]any{
-		{"paths": "yes"}, {"depth": 1.5}, {"at": 7}, {"bogus": "x"},
-	} {
-		if _, err := paramsOf(bad, schema); err == nil {
-			t.Errorf("%v was taken", bad)
-		}
-	}
-
-	// What the grammar refuses, a tool says naming its own parameter, before anything is carried.
+// A TOOL REFUSES WHAT verbs.Read AND THE GRAMMAR REFUSE, saying it after what was not done and
+// naming the parameter, before anything is carried.
+func TestTheVerseToolsRefuseNamingTheParameter(t *testing.T) {
 	tools := map[string]verse.Tool{}
-	for _, tl := range verseDataTools(nil) {
+	for _, tl := range append(append(verseTools(nil), verseDataTools(nil)...), verseCharterTools(nil)...) {
 		tools[tl.Name] = tl
 	}
 	for _, c := range []struct {
@@ -265,6 +200,12 @@ func TestTheDataToolsTakeWhatTheMCPToolsTake(t *testing.T) {
 		{dataPutTool, map[string]any{"at": "acme.notes.n1", "value": "{stage: "}, "not written: value: "},
 		{dataPutTool, map[string]any{"at": "acme.notes.n1", "value": "1", "create": true, "update": true}, "not written: create: create and update are opposites"},
 		{dataGetTool, map[string]any{"if_at": "labels"}, "not read: if_at: "},
+		{dataGetTool, map[string]any{"depth": 1}, "not read: depth goes with paths"},
+		{dataPutTool, map[string]any{"at": "acme.notes.n1", "value": 1}, "not written: value is a string"},
+		{askCreateTool, map[string]any{"questoin": "q"}, "not raised: questoin is not a parameter"},
+		{askCreateTool, map[string]any{"question": "q", "then": "spawn it"}, "not raised: then: "},
+		{askGetTool, map[string]any{"name_or_id": "  "}, "not read: name the ask"},
+		{charterRemoveTool, map[string]any{}, "not removed: path names what to remove"},
 	} {
 		out, isErr, err := tools[c.tool].Do(context.Background(), task.ToolUse{Input: c.in})
 		if err != nil || !isErr || !strings.HasPrefix(out, c.want) {

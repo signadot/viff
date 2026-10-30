@@ -51,6 +51,15 @@ func AskNamed(asks []entity.Entity, arg string) (entity.Entity, error) {
 		len(named), arg, strings.Join(ids, ", "))
 }
 
+// AskRows is the asks as the listing shows them, one AskRow each.
+func AskRows(asks []entity.Entity) entity.Payload {
+	rows := make([]any, 0, len(asks))
+	for _, e := range asks {
+		rows = append(rows, AskRow(e))
+	}
+	return entity.Val(rows)
+}
+
 // AskRow is one ask as the listing shows it: its status, and its answer, `pending` until it
 // settles. One that settled with no answer (QuestionOrphaned) has none to show, and says why;
 // a record GET /asks could not read says that.

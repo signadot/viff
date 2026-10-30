@@ -1,12 +1,15 @@
 package main
 
 import (
+	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/verbs"
 )
 
 // mcpSession is a client connected to `verse mcp` toward the verse the test started, acting as
@@ -141,6 +144,39 @@ func TestAReadOnlyServerServesOnlyTheReads(t *testing.T) {
 	}
 }
 
+// THE VERBS A RUNNER OFFERS TOO ARE SERVED AS DEFINED (verbs): each tool with its description and
+// its parameters as verse mcp's face reads them, required and typed as the definition says, and
+// no other parameter taken.
+func TestTheSharedVerbsAreServedAsDefined(t *testing.T) {
+	serveAsking(t)
+	tools, err := mcpSession(t).ListTools(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	served := map[string]*mcp.Tool{}
+	for _, tool := range tools.Tools {
+		served[tool.Name] = tool
+	}
+	for _, v := range verbs.All {
+		tool := served[v.Tool]
+		if tool == nil {
+			t.Errorf("%s is not served", v.Tool)
+			continue
+		}
+		var schema map[string]any
+		b, _ := json.Marshal(tool.InputSchema)
+		if err := json.Unmarshal(b, &schema); err != nil {
+			t.Fatal(err)
+		}
+		want, _ := json.Marshal(v.Schema(verbs.MCP))
+		var wantSchema map[string]any
+		_ = json.Unmarshal(want, &wantSchema)
+		if tool.Description != v.Description(verbs.MCP) || !reflect.DeepEqual(schema, wantSchema) {
+			t.Errorf("%s is served as %q %v, defined as %q %v", v.Tool, tool.Description, schema, v.Description(verbs.MCP), wantSchema)
+		}
+	}
+}
+
 // AN ADDRESS NOTHING STANDS AT is answered in the words `verse data` says it in.
 func TestTheDataToolSaysWhatTheCLISays(t *testing.T) {
 	serveAsking(t)
@@ -250,7 +286,7 @@ func TestTheDataToolsRefuseWhatIsNoWrite(t *testing.T) {
 		want      string
 	}{
 		{"", "verse_data_put", map[string]any{"at": "demo.pr.1", "value": "{a: b}"}, "nobody is configured"},
-		{tester, "verse_data_put", map[string]any{"at": "", "value": "{a: b}"}, "wants a path"},
+		{tester, "verse_data_put", map[string]any{"at": "", "value": "{a: b}"}, "at says where to write"},
 		{tester, "verse_data_rm", map[string]any{"at": "demo.pr.*"}, ""},
 		{tester, "verse_data_put", map[string]any{"at": "demo.pr.1", "value": "{a: b}", "update": true, "grants": "[]"}, "creates the node"},
 	} {

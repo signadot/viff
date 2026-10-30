@@ -114,7 +114,7 @@ func TestTheCharterCheckToolAnswersAsTheCLIDoes(t *testing.T) {
 		{"sync", "{name: mark}", "document 1 is no charter"},
 		{"sync", onlyRule("sync.one") + "---\nnull\n---\n{name: mark}", "document 3 is no charter"},
 		{"sync", onlyRule("sync.one") + "---\n" + onlyRule("sync.one"), "document 1 and document 2 are both the charter at sync.one"},
-		{"sync", "", "there is none to check"},
+		{"sync", "", "a check carries the charters"},
 		{"", onlyRule("sync.one"), "names the address"},
 	} {
 		// A refusal speaks of the tool's parameters, never the command line's flags.

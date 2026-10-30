@@ -15,6 +15,7 @@ import (
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/client"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/verbs"
 )
 
 // verse mcp: the user face of verse as an MCP server (a5mvads7, v27eah17). The host of a person's
@@ -156,6 +157,29 @@ func addTool[In, Out any](m *mcpServer, s *mcp.Server, t *mcp.Tool, h mcp.ToolHa
 		return
 	}
 	mcp.AddTool(s, t, h)
+}
+
+// addVerb registers a verb verse mcp and a runner's verse system both offer (verbs): its tool,
+// description and input schema from the one definition, the call read as the runner's tool reads
+// it (verbs.Read), and h given what was read. A verb that writes refuses nobody first.
+func addVerb(m *mcpServer, s *mcp.Server, v *verbs.Verb, h func(context.Context, verbs.Args) (*mcp.CallToolResult, any, error)) {
+	ann := readOnly()
+	if !v.Reads {
+		ann = writes(v.Takes)
+	}
+	t := &mcp.Tool{Name: v.Tool, Description: v.Description(verbs.MCP), InputSchema: v.Schema(verbs.MCP), Annotations: ann}
+	addTool(m, s, t, func(ctx context.Context, _ *mcp.CallToolRequest, in map[string]any) (*mcp.CallToolResult, any, error) {
+		if !v.Reads {
+			if err := m.nobody(); err != nil {
+				return nil, nil, err
+			}
+		}
+		a, err := v.Read(in)
+		if err != nil {
+			return nil, nil, err
+		}
+		return h(ctx, a)
+	})
 }
 
 // readOnly is the annotation every reading tool carries, so a host can allow the reads by kind.

@@ -5,17 +5,17 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/api"
+	"github.com/signadot/verse/verbs"
 )
 
 // The question tools mirror `verse question`, the answerer's side: what is asked of you, and
 // answering it. The ask tools mirror `verse ask`, the asker's: asking somebody something,
-// changing it while it waits, taking it back.
+// changing it while it waits, taking it back. Raising, reading back and listing are verbs a
+// runner's verse system offers too, defined once (verbs).
 
 type questionIn struct {
 	ID     string `json:"id,omitempty" jsonschema:"one question by its id: its options, ballots, deadline and outcome; without it, the questions waiting on you"`
@@ -78,25 +78,6 @@ func (m *mcpServer) answer(ctx context.Context, _ *mcp.CallToolRequest, in answe
 	return sentence(said), nil, nil
 }
 
-type askGetIn struct {
-	NameOrID string `json:"name_or_id" jsonschema:"one of your asks, by the name you asked it under or its id"`
-}
-
-type askListIn struct{}
-
-type askCreateIn struct {
-	Name      string `json:"name,omitempty" jsonschema:"what you call the ask; its id is derived from it and answered. Absent, verse names it"`
-	Question  string `json:"question" jsonschema:"what is asked, in the words the answerers read"`
-	To        string `json:"to,omitempty" jsonschema:"who is asked: a name or a comma-separated list, in the grammar a grant uses (user:ana@example.com, ana@example.com, group:leads); absent, anyone may answer"`
-	Due       string `json:"due,omitempty" jsonschema:"when it settles if nobody answers: an RFC 3339 date or a duration from now (48h)"`
-	OnSilence string `json:"on_silence,omitempty" jsonschema:"with due: what it settles on if nobody answers by then, yes or no (the default); yes runs the then"`
-	Then      string `json:"then,omitempty" jsonschema:"what follows a yes, on your authority, as a tony document of one key: {spawn: <a spawn, as a charter writes one>}, {answer: {ask: <id>, choice: <option>}} or {ask: {name: …, question: …}}"`
-	Else      string `json:"else,omitempty" jsonschema:"what follows a no, or silence settling on no, on your authority; one key, as then takes"`
-	About     string `json:"about,omitempty" jsonschema:"the path the ask is about, as a kinded path"`
-	Keep      string `json:"keep,omitempty" jsonschema:"how long it stands once settled, as a duration (72h); absent, a week"`
-	Label     string `json:"label,omitempty" jsonschema:"what the ask says about itself, name=value, comma-separated (team=payments,kind=deploy)"`
-}
-
 type askChangeIn struct {
 	NameOrID string `json:"name_or_id" jsonschema:"the ask, by the name you asked it under or its id"`
 	Due      string `json:"due,omitempty" jsonschema:"move when it settles: an RFC 3339 date or a duration from now; asks nothing again"`
@@ -110,26 +91,9 @@ type askWithdrawIn struct {
 }
 
 func (m *mcpServer) addAskTools(s *mcp.Server) {
-	addTool(m, s, &mcp.Tool{
-		Name: "verse_ask_get",
-		Description: "One of your asks, as `verse ask <name|id>` shows it: by the name you asked it under or " +
-			"its id, whether it was answered, whom it waits on, and what its then and else did. " +
-			"What waits on you is verse_question.",
-		Annotations: readOnly(),
-	}, m.askGet)
-	addTool(m, s, &mcp.Tool{
-		Name: "verse_ask_list",
-		Description: "Your asks, as `verse ask` lists them: each with its id, question, who is asked, its " +
-			"due and its status. verse_ask_get reads one of them. What waits on you is verse_question.",
-		Annotations: readOnly(),
-	}, m.askList)
-	addTool(m, s, &mcp.Tool{
-		Name: "verse_ask_create",
-		Description: "Ask somebody something, as you, as `verse ask [<name>] -q <question>` does: " +
-			"the question, who is asked, when it settles if nobody answers, and what follows a yes " +
-			"or a no, which runs on your authority. Answers come back through verse_wait.",
-		Annotations: writes(false),
-	}, m.askCreate)
+	addVerb(m, s, verbs.AskGet, m.askGet)
+	addVerb(m, s, verbs.AskList, m.askList)
+	addVerb(m, s, verbs.AskCreate, m.askCreate)
 	addTool(m, s, &mcp.Tool{
 		Name: "verse_ask_change",
 		Description: "Change one of your asks while it waits, as `verse ask <name> --due/--to/--then/--else` " +
@@ -143,15 +107,11 @@ func (m *mcpServer) addAskTools(s *mcp.Server) {
 	}, m.askWithdraw)
 }
 
-func (m *mcpServer) askGet(ctx context.Context, _ *mcp.CallToolRequest, in askGetIn) (*mcp.CallToolResult, any, error) {
-	arg := strings.TrimSpace(in.NameOrID)
-	if arg == "" {
-		return nil, nil, fmt.Errorf("name the ask, by its name or its id")
-	}
-	return m.askRead(askShown(m.c.With(ctx), arg))
+func (m *mcpServer) askGet(ctx context.Context, a verbs.Args) (*mcp.CallToolResult, any, error) {
+	return m.askRead(askShown(m.c.With(ctx), a.Word("name_or_id")))
 }
 
-func (m *mcpServer) askList(ctx context.Context, _ *mcp.CallToolRequest, _ askListIn) (*mcp.CallToolResult, any, error) {
+func (m *mcpServer) askList(ctx context.Context, _ verbs.Args) (*mcp.CallToolResult, any, error) {
 	return m.askRead(askList(m.c.With(ctx), m.me))
 }
 
@@ -170,24 +130,8 @@ func (m *mcpServer) askRead(node *ir.Node, line string, err error) (*mcp.CallToo
 	return answer(&buf)
 }
 
-func (m *mcpServer) askCreate(ctx context.Context, _ *mcp.CallToolRequest, in askCreateIn) (*mcp.CallToolResult, any, error) {
-	if err := m.nobody(); err != nil {
-		return nil, nil, err
-	}
-	spec := api.AskSpec{Name: strings.TrimSpace(in.Name), Question: in.Question, To: in.To, Due: in.Due, OnSilence: in.OnSilence,
-		About: in.About, Keep: in.Keep, Label: in.Label}
-	var err error
-	if in.Then != "" {
-		if spec.Then, err = thenDoc([]byte(in.Then), mcpIn); err != nil {
-			return nil, nil, err
-		}
-	}
-	if in.Else != "" {
-		if spec.Else, err = thenDoc([]byte(in.Else), mcpIn); err != nil {
-			return nil, nil, err
-		}
-	}
-	body, err := newAsk(spec)
+func (m *mcpServer) askCreate(ctx context.Context, a verbs.Args) (*mcp.CallToolResult, any, error) {
+	body, err := verbs.AskOf(a, time.Now())
 	if err != nil {
 		return nil, nil, err
 	}

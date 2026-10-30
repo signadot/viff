@@ -23,6 +23,7 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/verbs"
 )
 
 // `verse ask` is asking somebody something, and following what you asked (docs/asking.md).
@@ -212,14 +213,11 @@ func thenOf(cc *cli.Context, s string) (entity.Payload, error) {
 	return thenDoc(src, inFmt())
 }
 
-// thenDoc reads what follows an answer from a document in the format in.
+// thenDoc reads what follows an answer from a document in the format in (verbs.ThenDoc).
 func thenDoc(src []byte, in codec.Format) (entity.Payload, error) {
-	n, err := codec.ParseNode(src, in)
+	n, err := verbs.ThenDoc(src, in)
 	if err != nil {
 		return nil, fmt.Errorf("%w: --then: %v", cli.ErrUsage, err)
-	}
-	if !entity.IsObj(n) {
-		return nil, fmt.Errorf("%w: --then is one key naming what runs: {spawn: …}, {answer: …} or {ask: …}", cli.ErrUsage)
 	}
 	return n, nil
 }
@@ -317,11 +315,7 @@ func askList(c *client.Client, me string) (*ir.Node, string, error) {
 	if len(asks) == 0 {
 		return nil, fmt.Sprintf("%s has no asks standing", me), nil
 	}
-	rows := make([]any, 0, len(asks))
-	for _, e := range asks {
-		rows = append(rows, mirror.AskRow(e))
-	}
-	return entity.Val(rows), "", nil
+	return mirror.AskRows(asks), "", nil
 }
 
 // askShown is one ask, named or numbered, as `verse ask <name|id>` shows it.

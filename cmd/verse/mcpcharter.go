@@ -12,26 +12,12 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/signadot/verse/charterfile"
-	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/verbs"
 )
 
 // The charter tools mirror `verse charter`: its read, --check, -a and -r (-R stays on the command
-// line); and the commands that say what the verse is: `verse status`, `verse schema`, and `verse
+// line), verbs a runner's verse system offers too, defined once (verbs); and the commands that say what the verse is: `verse status`, `verse schema`, and `verse
 // flow`'s listing and `flow show`.
-
-type charterIn struct {
-	Path  string `json:"path,omitempty" jsonschema:"the charter's path as a kinded path: an address (verse-dev.drift), then a reach into what stands there (verse-dev.drift.rules.watcher); empty is baseline's charter, and what is under it"`
-	At    string `json:"at,omitempty" jsonschema:"where the address ends, when the server cannot tell: a package whose address ends in rules, strata or schedules. path is then read beneath it"`
-	Depth *int   `json:"depth,omitempty" jsonschema:"how far under the address to go: 0 is the address alone, 1 adds its immediate children; without it, everything"`
-	Paths bool   `json:"paths,omitempty" jsonschema:"answer one kinded path per rule and level instead of the charter, each a path this tool takes back"`
-	If    string `json:"if,omitempty" jsonschema:"keep only the parts matching this tony pattern"`
-	Trim  string `json:"trim,omitempty" jsonschema:"write only the parts this match document names, as a key set: {rules}"`
-}
-
-type charterCheckIn struct {
-	At       string `json:"at" jsonschema:"the address the charters would be installed at, as a kinded path, as an install with a prune would take it: what stands at and under it and the charters leave out would go"`
-	Charters string `json:"charters" jsonschema:"the charters, in tony, each a document saying its own at: (at or under the address) with reads, ttl, strata, schedules and rules as a charter file does; several are separated by lines of ---"`
-}
 
 type statusIn struct {
 	If   string `json:"if,omitempty" jsonschema:"keep only the parts matching this tony pattern"`
@@ -40,17 +26,6 @@ type statusIn struct {
 
 // schemaName is what a definition's name may be, so that one reaches no other route.
 var schemaName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
-
-type charterInstallIn struct {
-	At       string `json:"at,omitempty" jsonschema:"where, as a kinded path: the address one charter, rule or level is installed at (empty is baseline); with prune, the address the charters stand for"`
-	Charters string `json:"charters" jsonschema:"what to install, in tony: one charter (at:, reads:, ttl:, strata:, schedules:, rules:; ttl: how long it stands, as 72h), or a rule, a level or a list of them; several charters are separated by lines of ---, each at its own at:"`
-	Prune    bool   `json:"prune,omitempty" jsonschema:"make at and what is under it hold what the charters hold: a package or a rule they leave out goes, in the same step"`
-}
-
-type charterRemoveIn struct {
-	Path string `json:"path,omitempty" jsonschema:"what to remove, as a kinded path: a package's address (verse-dev.drift), or one rule, level or schedule of it (verse-dev.drift.rules.watcher). What it wrote stays"`
-	At   string `json:"at,omitempty" jsonschema:"where the address ends, when the server cannot tell: a package whose address ends in rules, strata or schedules. path is then read beneath it, and without path the package at at is removed"`
-}
 
 type schemaIn struct {
 	Name string `json:"name,omitempty" jsonschema:"one definition by name (verse-entity); without it, the whole schema: the top-level paths, the shape served at each, and every definition they name"`
@@ -68,34 +43,10 @@ type flowShowIn struct {
 }
 
 func (m *mcpServer) addCharterTools(s *mcp.Server) {
-	addTool(m, s, &mcp.Tool{
-		Name: "verse_charter",
-		Description: "Read the charter at a path, as `verse charter` does: an installed charter as its " +
-			"file (at, reads, ttl, strata, schedules, rules), a rule or level of one as it stands, or with " +
-			"paths one line per rule and level. What the file cannot say follows it as notes: a rule " +
-			"held, suspended or in trouble, and the charters under the address.",
-		Annotations: readOnly(),
-	}, m.charter)
-	addTool(m, s, &mcp.Tool{
-		Name: "verse_charter_check",
-		Description: "Ask whether charters would install at an address, as `verse charter --check` " +
-			"does: each charter's verdict, and what the install would add, change and take away. " +
-			"Nothing is installed; a refusal is the answer, not an error.",
-		Annotations: readOnly(),
-	}, m.charterCheck)
-	addTool(m, s, &mcp.Tool{
-		Name: "verse_charter_install",
-		Description: "Install charters, as `verse charter -a` does, on your authority: one at an address, or " +
-			"several each at its own at:, and with prune what they leave out at and under the address goes. " +
-			"Answers what went where, the rules held and the notes on them; verse_charter_check asks first.",
-		Annotations: writes(true),
-	}, m.charterInstall)
-	addTool(m, s, &mcp.Tool{
-		Name: "verse_charter_remove",
-		Description: "Remove a package, or one rule, level or schedule of one, as `verse charter -r` does. What it wrote " +
-			"stays. A place and everything under it is removed from the command line, with -R.",
-		Annotations: writes(true),
-	}, m.charterRemove)
+	addVerb(m, s, verbs.CharterGet, m.charter)
+	addVerb(m, s, verbs.CharterCheck, m.charterCheck)
+	addVerb(m, s, verbs.CharterInstall, m.charterInstall)
+	addVerb(m, s, verbs.CharterRemove, m.charterRemove)
 	addTool(m, s, &mcp.Tool{
 		Name: "verse_status",
 		Description: "What the verse is and what it runs, as `verse status` says: the store's rev, live " +
@@ -122,38 +73,18 @@ func (m *mcpServer) addCharterTools(s *mcp.Server) {
 	}, m.flowShow)
 }
 
-func (m *mcpServer) charter(ctx context.Context, _ *mcp.CallToolRequest, in charterIn) (*mcp.CallToolResult, any, error) {
-	addr, err := entity.PathSegs(in.At)
-	if err != nil {
-		return nil, nil, fmt.Errorf("at: %w", err)
-	}
-	reach, err := entity.PathSegs(in.Path)
-	if err != nil {
-		return nil, nil, fmt.Errorf("path: %w", err)
-	}
-	split := -1
-	if in.At != "" {
-		split = len(addr)
-	}
-	depth := -1
-	if in.Depth != nil {
-		if *in.Depth < 0 {
-			return nil, nil, fmt.Errorf("depth is never negative: without it, everything under the address")
-		}
-		depth = *in.Depth
-	}
-	f, err := filtersOf(in.If, in.Trim)
+func (m *mcpServer) charter(ctx context.Context, a verbs.Args) (*mcp.CallToolResult, any, error) {
+	r, err := verbs.CharterGetOf(a)
 	if err != nil {
 		return nil, nil, err
 	}
-	q, full := charterfile.Query(append(addr, reach...), split, depth)
-	resp, err := m.c.With(ctx).Get("/charter", q)
+	resp, err := m.c.With(ctx).Get("/charter", r.Query)
 	if err != nil {
 		return nil, nil, fmt.Errorf("charter: %w", err)
 	}
 	var buf bytes.Buffer
-	if in.Paths && resp.StatusCode < http.StatusBadRequest {
-		if err := renderCharterPaths(&buf, resp, full, true); err != nil {
+	if r.Paths && resp.StatusCode < http.StatusBadRequest {
+		if err := renderCharterPaths(&buf, resp, r.Full, true); err != nil {
 			return nil, nil, err
 		}
 		return answer(&buf)
@@ -162,6 +93,7 @@ func (m *mcpServer) charter(ctx context.Context, _ *mcp.CallToolRequest, in char
 	if err != nil {
 		return nil, nil, err
 	}
+	f := filters{keep: r.Keep, project: r.Trim}
 	if !charterfile.IsNode(node) {
 		if err := renderIR(&buf, node, f, m.out, false); err != nil {
 			return nil, nil, err
@@ -169,7 +101,7 @@ func (m *mcpServer) charter(ctx context.Context, _ *mcp.CallToolRequest, in char
 		return answer(&buf)
 	}
 	var notes bytes.Buffer
-	if err := renderCharterFile(&buf, &notes, node, full, f, m.out, false, asKPaths); err != nil {
+	if err := renderCharterFile(&buf, &notes, node, r.Full, f, m.out, false, asKPaths); err != nil {
 		return nil, nil, err
 	}
 	res, _, err := answer(&buf)
@@ -184,16 +116,12 @@ func (m *mcpServer) charter(ctx context.Context, _ *mcp.CallToolRequest, in char
 	return res, nil, nil
 }
 
-func (m *mcpServer) charterCheck(ctx context.Context, _ *mcp.CallToolRequest, in charterCheckIn) (*mcp.CallToolResult, any, error) {
-	segs, err := entity.PathSegs(in.At)
-	if err != nil {
-		return nil, nil, fmt.Errorf("at: %w", err)
-	}
-	docs, err := charterfile.CheckDocs(in.Charters, mcpIn)
+func (m *mcpServer) charterCheck(ctx context.Context, a verbs.Args) (*mcp.CallToolResult, any, error) {
+	at, docs, err := verbs.CharterCheckOf(a)
 	if err != nil {
 		return nil, nil, err
 	}
-	resp, err := charterCheckVia(m.c.With(ctx), entity.JoinSegs(segs), docs)
+	resp, err := charterCheckVia(m.c.With(ctx), at, docs)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -204,20 +132,8 @@ func (m *mcpServer) charterCheck(ctx context.Context, _ *mcp.CallToolRequest, in
 	return answer(&buf)
 }
 
-func (m *mcpServer) charterInstall(ctx context.Context, _ *mcp.CallToolRequest, in charterInstallIn) (*mcp.CallToolResult, any, error) {
-	if err := m.nobody(); err != nil {
-		return nil, nil, err
-	}
-	segs, err := entity.PathSegs(in.At)
-	if err != nil {
-		return nil, nil, fmt.Errorf("at: %w", err)
-	}
-	at := entity.JoinSegs(segs)
-	docs, names, err := charterfile.Text(in.Charters, mcpIn)
-	if err != nil {
-		return nil, nil, err
-	}
-	q, defs, err := charterfile.InstallQuery(docs, names, at, in.Prune)
+func (m *mcpServer) charterInstall(ctx context.Context, a verbs.Args) (*mcp.CallToolResult, any, error) {
+	q, defs, err := verbs.CharterInstallOf(a)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -225,6 +141,8 @@ func (m *mcpServer) charterInstall(ctx context.Context, _ *mcp.CallToolRequest, 
 	if err != nil {
 		return nil, nil, fmt.Errorf("install: %w", err)
 	}
+	// The report names the scope the install was made in, this server's, as a task's names
+	// none: its acts are baseline's.
 	var buf bytes.Buffer
 	if err := installAnswer(&buf, resp, m.c.Scope, asKPaths); err != nil {
 		return nil, nil, fmt.Errorf("install: %w", err)
@@ -232,27 +150,12 @@ func (m *mcpServer) charterInstall(ctx context.Context, _ *mcp.CallToolRequest, 
 	return answer(&buf)
 }
 
-func (m *mcpServer) charterRemove(ctx context.Context, _ *mcp.CallToolRequest, in charterRemoveIn) (*mcp.CallToolResult, any, error) {
-	if err := m.nobody(); err != nil {
+func (m *mcpServer) charterRemove(ctx context.Context, a verbs.Args) (*mcp.CallToolResult, any, error) {
+	names, split, err := verbs.CharterRemoveOf(a)
+	if err != nil {
 		return nil, nil, err
 	}
-	addr, err := entity.PathSegs(in.At)
-	if err != nil {
-		return nil, nil, fmt.Errorf("at: %w", err)
-	}
-	reach, err := entity.PathSegs(in.Path)
-	if err != nil {
-		return nil, nil, fmt.Errorf("path: %w", err)
-	}
-	if len(reach) == 0 && len(addr) == 0 {
-		return nil, nil, fmt.Errorf("path names what to remove: a package's address, or one with " +
-			"rules.<name>, strata.<name> or schedules.<name> after it")
-	}
-	split := -1
-	if in.At != "" {
-		split = len(addr)
-	}
-	said, err := charterRmVia(m.c.With(ctx), append(addr, reach...), split, false, asKPaths)
+	said, err := charterRmVia(m.c.With(ctx), names, split, false, asKPaths)
 	if err != nil {
 		return nil, nil, fmt.Errorf("remove: %w", err)
 	}

@@ -114,7 +114,7 @@ func (s *Server) verseAskGet(ctx context.Context, tk Task, req Request) Reply {
 }
 
 // verseAskList answers a `verse.ask-list`: the owner's asks, each as `verse ask` lists it
-// (mirror.AskRow), or the sentence that says there are none.
+// (mirror.AskRows), or the sentence that says there are none.
 func (s *Server) verseAskList(ctx context.Context, tk Task, req Request) Reply {
 	if s.Services.Verse == nil {
 		return Reply{Error: noVerse}
@@ -126,11 +126,7 @@ func (s *Server) verseAskList(ctx context.Context, tk Task, req Request) Reply {
 	if len(asks) == 0 {
 		return Reply{OK: true, Out: "the person this task runs for has no asks standing"}
 	}
-	rows := make([]any, 0, len(asks))
-	for _, e := range asks {
-		rows = append(rows, mirror.AskRow(e))
-	}
-	return tonyOut(entity.Val(rows))
+	return tonyOut(mirror.AskRows(asks))
 }
 
 // ownersAsks is the owner's asks, read from verse for the task (GET /asks) once its autonomy and
