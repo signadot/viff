@@ -2,6 +2,7 @@
 blocked_by: []
 blocks: []
 branches: []
+closed_by: d3a1843264e87bbbeb5cf743c1ee87b42bdced1b
 commits: []
 created: "2026-10-29T14:52:55.447081+01:00"
 duplicates: []
@@ -11,5 +12,5 @@ labels:
 - runner
 - workspace
 related_issues: []
-status: open
-updated: "2026-10-29T14:52:55.633523+01:00"
+status: closed
+updated: "2026-10-30T07:41:28.243989+01:00"
