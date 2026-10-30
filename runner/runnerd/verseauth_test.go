@@ -117,6 +117,9 @@ func TestARunnerServesItsVerseAlone(t *testing.T) {
 		"a token for another audience":                verse.Token("some-audience", "verse", nil),
 		"the cluster's token, not the verse's":        cluster.Token(runnerSub, "verse", nil),
 		"a forged token":                              verse.Forged(runnerSub, "verse", nil),
+		// What else the verse's issuer signs, for an audience a charter declared: this runner's.
+		"a gate credential the verse minted for this runner": verse.Token(runnerSub, "verse.trigger.rule.deploy:auto",
+			map[string]any{"task": "deploy@demo.pr.1", "gates": []any{map[string]any{"passed": "auto"}}}),
 	} {
 		for _, path := range []string{"/describe", "/tasks"} {
 			if resp := get(path, bad); resp.StatusCode != http.StatusUnauthorized || resp.Header.Get(runner.TokenHeader) != "" {

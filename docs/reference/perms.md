@@ -457,7 +457,9 @@ answers a runner's token `503`, rather than taking it as one nobody registered.
 The registration also holds the runner to its subject when verse asks it what it offers
 ([runners](../runners.md#who-the-runner-is)): a runner that does not prove it is the one registered
 takes no spawn. And verse proves itself to the runner the other way round, with a token it signs
-as the issuer `auth.issuer` makes it, minted for that runner's subject alone.
+as the issuer `auth.issuer` makes it, minted for that runner's subject alone, with `sub: verse`.
+The runner admits that subject alone, since the same issuer signs gate credentials too, for an
+audience a charter declares.
 
 ### A person relayed by a trusted iod
 

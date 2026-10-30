@@ -24,9 +24,10 @@ import (
 //
 // A RUNNER BELONGS TO ONE VERSE. Its configuration names the verse it serves by the tokens versed
 // signs: versed is an issuer of its own (auth.issuer on the verse side), and presents on every
-// call a token it minted for this runner, `iss` versed's issuer name and `aud` this runner's own
-// subject. The runner reads versed's keys at the url it reaches versed at, and holds every bearer
-// to that issuer, that audience and a live signature; a request that does not verify is refused
+// call a token it minted for this runner, `iss` versed's issuer name, `aud` this runner's own
+// subject and `sub` verse (runner.VerseSubject). The runner reads versed's keys at the url it
+// reaches versed at, and holds every bearer to that issuer, that audience, that subject and a live
+// signature; a request that does not verify is refused
 // before its body is read, so a launch, with its prompt and its repositories, leaves verse for a
 // runner nobody else can drive. Without the block the runner answers whoever reaches its port,
 // as every runner did.
@@ -207,12 +208,20 @@ func (g *Guard) admit(r *http.Request) (int, string) {
 		return http.StatusUnauthorized, fmt.Sprintf("this runner serves one verse, %s, and the request "+
 			"presents no bearer: versed presents a token it signs for this runner (auth.issuer)", g.v.Issuer)
 	}
-	if _, err := g.verifierFor().Verify(r.Context(), token); err != nil {
+	id, err := g.verifierFor().Verify(r.Context(), token)
+	if err != nil {
 		if keysUnread(err) {
 			return http.StatusServiceUnavailable, fmt.Sprintf("the verse's keys at %s%s could not be read, so the "+
 				"bearer cannot be verified: %v", g.v.URL, keySetPath, err)
 		}
 		return http.StatusUnauthorized, fmt.Sprintf("the bearer did not verify as %s's token for %s: %v", g.v.Issuer, g.v.Audience, err)
+	}
+	// THE VERSE'S OWN TOKEN, NOT ANYTHING ITS ISSUER SIGNED. The issuer signs a gate credential
+	// for whatever audience a charter declares, this runner's name included; what tells the
+	// verse's token from one is its subject (runner.VerseSubject).
+	if id.Subject != runner.VerseSubject {
+		return http.StatusUnauthorized, fmt.Sprintf("the bearer is %s's token for %s, and not the verse's own: "+
+			"its subject is %q, where the verse's is %q", g.v.Issuer, g.v.Audience, id.Subject, runner.VerseSubject)
 	}
 	return 0, ""
 }

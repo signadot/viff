@@ -189,7 +189,7 @@ func (s *Server) runnerTokenFor(aud string) func() (string, error) {
 		}
 		expires := now.Add(runnerTokenLife)
 		tok, err := s.issuer.sign(map[string]any{
-			"iss": s.issuer.url, "sub": "verse", "aud": aud,
+			"iss": s.issuer.url, "sub": runner.VerseSubject, "aud": aud,
 			"iat": now.Unix(), "nbf": now.Unix(), "exp": expires.Unix(),
 			"jti": hex.EncodeToString(b[:]),
 		})

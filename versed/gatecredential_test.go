@@ -334,3 +334,20 @@ func TestNoCredentialWithoutAnAnswerToVouchFor(t *testing.T) {
 		}
 	}
 }
+
+// A credential is for a system outside verse, and a runner is not one: a spawn declaring a
+// runner's subject as its audience is minted nothing, since the token would be one verse signed
+// for that runner's name.
+func TestNoCredentialForARunner(t *testing.T) {
+	srv, _, _ := credentialServer(t)
+	regs, _, err := readRunners(srv.Store)
+	if err != nil || len(regs) == 0 {
+		t.Fatalf("the local runner's registration: %v, %v", regs, err)
+	}
+	spec := launch.Spec{Chain: "deploy", Subject: "demo.pr.1", Credential: &launch.Credential{Audience: regs[0].Subject},
+		Passed: []launch.Passed{{Gate: "ok", How: launch.PassedAuto}}}
+	if _, _, err := srv.mintCredential(srv.Store, srv.Eng, "deploy@demo.pr.1", spec, "via:verse.trigger.rule.deploy"); err == nil ||
+		!strings.Contains(err.Error(), "which is the runner "+regs[0].Name) {
+		t.Errorf("a credential for the runner %s: %v, want a refusal naming it", regs[0].Name, err)
+	}
+}

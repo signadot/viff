@@ -44,6 +44,12 @@ const DescriptionVersion = 2
 // first. A runner that verifies no verse answers none, since a token is for its verse alone.
 const TokenHeader = "Verse-Runner-Token"
 
+// VerseSubject is the `sub` of the token a verse presents to its runners: the verse itself. The
+// verse's issuer signs other tokens too, a gate credential among them (`sub` the rule and how its
+// gate passed), for an audience the charter declares; the subject is what tells the verse's own
+// token from those, so a runner's door admits this one alone.
+const VerseSubject = "verse"
+
 // A STATIC TOKEN IS KNOWN BY ITS HASH. A runner with no runtime to issue it a workload token, on a
 // machine off Kubernetes, proves itself with a token it and its registrar hold, as an iod may
 // (auth.iod.static). The registration names it by its hash, `sha256:<hex>`, as its subject, so

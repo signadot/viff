@@ -76,8 +76,8 @@ verse runner add verse-runner http://verse-runner:9802 -subject system:serviceac
   is minted for that runner alone, its subject the audience, so a copy taken at one runner opens
   no other's door. A runner whose configuration names its verse (`verse:` in
   [runnerd.md](reference/runnerd.md#configuration)) reads verse's keys where it reaches verse,
-  holds every bearer to verse's issuer name and its own audience, and refuses every other
-  caller's launch. The
+  holds every bearer to verse's issuer name, its own audience and the subject `verse`, and
+  refuses every other caller's launch. The
   description itself is public: anyone may ask what the runner offers. To the verse it
   verified, and to nobody else, the runner answers `GET /describe` with its own token, and
   verse checks the token's subject against the registration before it records what the runner

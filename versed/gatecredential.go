@@ -3,6 +3,7 @@ package versed
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -66,6 +67,19 @@ func (s *Server) mintCredential(store entity.Store, eng *trigger.Engine, id stri
 	if aud == "" {
 		return "", nil, fmt.Errorf("the spawn asks for a credential for no audience: `credential: " +
 			"{audience: …}` names the system the token is shown to")
+	}
+	// NOT FOR A RUNNER. A runner's door is held to tokens for its own name, and admits the
+	// verse's alone (runner.VerseSubject); a credential naming a runner as its audience would be
+	// a token the door turns away at best, and has nothing else to be for.
+	regs, _, err := readRunners(s.Store)
+	if err != nil {
+		return "", nil, errors.New(notRead("the runners' registrations, which a credential's audience is checked against", err))
+	}
+	for _, reg := range regs {
+		if reg.Subject == aud {
+			return "", nil, fmt.Errorf("the spawn asks for a credential for %s, which is the runner %s: a "+
+				"credential vouches for a task to a system outside verse, and a runner hears from verse alone", aud, reg.Name)
+		}
 	}
 	if len(spec.Passed) == 0 {
 		return "", nil, fmt.Errorf("the spawn asks for a credential, and no gate let this launch " +

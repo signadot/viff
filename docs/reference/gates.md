@@ -379,6 +379,10 @@ the token from the file and the role from `AWS_ROLE_ARN`.
 ([`auth.issuer`](up.md#configuration)). The outside system reads the verse's public keys from
 that address, and checks each token's signature for itself.
 
+**The audience is a system outside verse.** A credential whose audience is a registered runner's
+subject is refused at the spawn. A runner admits only the token verse signs as itself, `sub:
+verse`, so a credential would not open its door.
+
 **`sub` is what the outside system matches on.** It is the rule's address, then how the gate was
 passed:
 
