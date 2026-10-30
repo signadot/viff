@@ -343,7 +343,7 @@ func (s Setting) Takes(v string) error {
 			return fmt.Errorf("%q is not true or false", v)
 		}
 	}
-	if len(s.Values) > 0 && !slices.ContainsFunc(s.Values, func(p string) bool { return systems.Match(p, v, true) }) {
+	if len(s.Values) > 0 && !slices.ContainsFunc(s.Values, func(p string) bool { return systems.Match(p, v, systems.SepNone) }) {
 		return fmt.Errorf("%q is none of %s", v, strings.Join(s.Values, ", "))
 	}
 	return nil

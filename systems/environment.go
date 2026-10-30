@@ -321,7 +321,7 @@ func (e Environment) Reaches(system, verb string, params map[string]string) bool
 		for name, pattern := range params {
 			if a, isAttr := d.Attribute(name); isAttr {
 				v := b.Attributes[name]
-				if !strings.Contains(v, "$") && !Match(pattern, Canonical(a.Form, v), false) {
+				if !strings.Contains(v, "$") && !Match(pattern, Canonical(a.Form, v), FormSep(a.Form)) {
 					named = false
 				}
 			}
@@ -409,7 +409,7 @@ func (e Environment) Blocks(system string) []Block { return e.Systems[system] }
 // has a value both patterns match (Intersect). A field only one names is free.
 func (s Shape) Meets(step string, params map[string]string) bool {
 	for name, pattern := range params {
-		if sp, ok := s[name]; ok && !Intersect(sp, pattern, Crossing(step, name)) {
+		if sp, ok := s[name]; ok && !Intersect(sp, pattern, Sep(step, name)) {
 			return false
 		}
 	}
@@ -419,7 +419,7 @@ func (s Shape) Meets(step string, params map[string]string) bool {
 // Matches is whether a step's fields are of the shape.
 func (s Shape) Matches(step string, fields map[string]string) bool {
 	for name, pattern := range s {
-		if !Match(pattern, fields[name], Crossing(step, name)) {
+		if !Match(pattern, fields[name], Sep(step, name)) {
 			return false
 		}
 	}

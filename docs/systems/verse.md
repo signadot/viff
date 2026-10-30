@@ -43,7 +43,7 @@ spawn:
 | `verse-data-rm` | `verse data <address> --rm`, `verse_data_rm` | removes what stands at an address `at` as the person: the data there, or one field of it. | `verse.data-rm` |
 | `verse-charter-get` | `verse charter`, `verse_charter` | reads the charter at a `path` as the person: an installed charter as its file, with what the file cannot say (a rule held, suspended or in trouble, the charters under the address) as notes after it; a rule or level of one as it stands; with `paths` one kinded path per rule and level, `depth` levels deep. `at`, `if` and `trim` as `verse charter` takes them. | `verse.charter-get` |
 | `verse-charter-check` | `verse charter --check`, `verse_charter_check` | asks whether `charters`, one tony document apiece, would install at the address `at`: each charter's verdict, and what the install would add, change and take away. Nothing is installed. | `verse.charter-check` |
-| `verse-charter-install` | `verse charter -a`, `verse_charter_install` | installs `charters` as the person: one charter, or a rule, a level or a list of them, at the address `at`; several, each at its own `at:`; with `prune`, what they leave out at and under `at` goes, in the same step. The result says what went where, the rules held, and when a charter with a `ttl:` goes. | `verse.charter-install` |
+| `verse-charter-install` | `verse charter -a`, `verse_charter_install` | installs `charters` as the person: one charter, or a rule, a level or a list of them, at the address `at`; several, each at its own `at:`; with `prune`, what they leave out at and under `at` goes, in the same step. The result says what went where, the rules held, and when a charter with a `ttl:` goes. | `verse.charter-install`, with `at` |
 | `verse-charter-remove` | `verse charter -r`, `verse_charter_remove` | removes a package at a `path`, or one rule, level or schedule of it, as the person. What it wrote stays. `at` as `verse charter` takes it. | `verse.charter-remove` |
 
 The ask is the person's, not the task's. Its `from` names them, with the task beside them, and
@@ -68,6 +68,18 @@ bound ([a charter a task installs](../reference/charter.md)). So neither what a 
 what follows its asks can install charters. The hold is on spawns: a rule's `patch` and `derive`,
 a write into an outbox among them, are the person's writes, as any charter's are, whether or not
 the task has `verse.data-put`. Giving a task `verse.charter-install` gives it that.
+
+Where a task may install is the spawn's to bound, with `at`: the address the install acts at,
+which everything it installs lies at or under. With `prune` it is the prune's address; otherwise
+it is the deepest address the charters it installs all share. An address is matched a segment at
+a time, `*` taking one and `**` several. This task may install only at
+`play.issues.issue`, as a prune of one charter per issue would, and nowhere else:
+
+```tony
+environment:
+  systems:
+    verse: {data-get: {}, charter-install: {at: play.issues.issue}}
+```
 
 ```sh
 verse-call-tool verse-ask-create -question "Post these release notes for v1.3 in #deploys?" \

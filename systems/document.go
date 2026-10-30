@@ -89,19 +89,21 @@ type Field struct {
 
 // The forms a param's value takes.
 const (
-	FormBool   = "bool"   // true or false
-	FormRef    = "ref"    // a full ref: refs/heads/main
-	FormBranch = "branch" // a branch's name, not its ref: main
-	FormUpper  = "upper"  // uppercase: ENG, ENG-42
-	FormLower  = "lower"  // lowercase: deploys
-	FormRepo   = "repo"   // host/owner/name, lowercase: github.com/acme/app
-	FormText   = "text"   // free text, a command: `/` is a character, and `*` matches across it
+	FormBool    = "bool"    // true or false
+	FormRef     = "ref"     // a full ref: refs/heads/main
+	FormBranch  = "branch"  // a branch's name, not its ref: main
+	FormUpper   = "upper"   // uppercase: ENG, ENG-42
+	FormLower   = "lower"   // lowercase: deploys
+	FormRepo    = "repo"    // host/owner/name, lowercase: github.com/acme/app
+	FormText    = "text"    // free text, a command: `/` is a character, and `*` matches across it
+	FormAddress = "address" // a dotted address in the store: play.issues.issue, `.` separating its segments
 )
 
 // Accepts says why a pattern on the field can never match a value of its form, or one of its
-// values when it lists them, or nil when it can. A pattern is read as the text it is, `*` matching within a `/` segment and `**` across
-// them: a pattern of only `*`s takes any value of a form without a `/`, and a value of a form
-// that has some (a full ref) is matched by one that spells them, or by `**`.
+// values when it lists them, or nil when it can. A pattern is read as the text it is, `*` matching
+// within a segment (between `/`s, or `.`s in an address) and `**` across them: a pattern of only
+// `*`s takes any value of a form without a separator, and a value of a form that has some (a full
+// ref) is matched by one that spells them, or by `**`.
 func (p Field) Accepts(pattern string) error {
 	if len(p.Values) > 0 && pattern != "*" && !slices.Contains(p.Values, pattern) {
 		return fmt.Errorf("%q: the field is one of %s, or `*`", pattern, strings.Join(p.Values, ", "))
@@ -320,11 +322,11 @@ func checkValues(form string, values []string) error {
 
 func checkForm(form string) error {
 	switch form {
-	case "", FormBool, FormRef, FormBranch, FormUpper, FormLower, FormRepo, FormText:
+	case "", FormBool, FormRef, FormBranch, FormUpper, FormLower, FormRepo, FormText, FormAddress:
 		return nil
 	}
-	return fmt.Errorf("the form %q is not one of %s, %s, %s, %s, %s, %s, %s",
-		form, FormBool, FormRef, FormBranch, FormUpper, FormLower, FormRepo, FormText)
+	return fmt.Errorf("the form %q is not one of %s, %s, %s, %s, %s, %s, %s, %s",
+		form, FormBool, FormRef, FormBranch, FormUpper, FormLower, FormRepo, FormText, FormAddress)
 }
 
 // Unique is the document's unique attribute, if it has one.

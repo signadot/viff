@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/signadot/verse/api"
+	"github.com/signadot/verse/charterfile"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
@@ -224,7 +225,21 @@ func (s *Server) verseRouted(ctx context.Context, tk Task, req Request) Reply {
 	case req.Op == OpVerseCharterRemove && q.Get("at") == "" && q.Get("path") == "":
 		return Reply{Refused: "a removal names what it removes"}
 	}
-	if why := s.refused(tk, req.Decision, task.Step{Name: route.step, Fields: map[string]string{}}); why != "" {
+	fields := map[string]string{}
+	if req.Op == OpVerseCharterInstall {
+		// The address the install acts at, from what it carries, as the tool named it
+		// (charterfile.InstallAt): what the task's environment and the ceiling bound.
+		docs, err := codec.ParseNodes([]byte(req.Body), codec.Tony)
+		if err != nil {
+			return Reply{Refused: "the charters do not read: " + err.Error()}
+		}
+		at, err := charterfile.InstallAt(q, docs)
+		if err != nil {
+			return Reply{Refused: err.Error()}
+		}
+		fields["at"] = at
+	}
+	if why := s.refused(tk, req.Decision, task.Step{Name: route.step, Fields: fields}); why != "" {
 		return Reply{Refused: why}
 	}
 	path := route.path

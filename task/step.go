@@ -72,10 +72,11 @@ var (
 	StepVerseDataPut = systems.Step("verse", "data-put")
 	StepVerseDataRm  = systems.Step("verse", "data-rm")
 	// The charters, `verse charter`'s: read, asked whether some would install, installed, or
-	// removed.
+	// removed. An install names the address it acts at (charterfile.InstallAt), which everything
+	// it installs lies at or under.
 	StepVerseCharterGet     = systems.Step("verse", "charter-get")
 	StepVerseCharterCheck   = systems.Step("verse", "charter-check")
-	StepVerseCharterInstall = systems.Step("verse", "charter-install")
+	StepVerseCharterInstall = systems.Step("verse", "charter-install", "at")
 	StepVerseCharterRemove  = systems.Step("verse", "charter-remove")
 	// A connection a task opens through the runner's proxy, which only a network of allow has:
 	// the proxy decides it, by the host and the port it sees.

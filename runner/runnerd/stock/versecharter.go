@@ -195,21 +195,22 @@ func verseCharterTools(cl *delivery.Client) []verse.Tool {
 			"rules reaches no further than this task does, less installing charters, under autonomy no " +
 			"looser and with this task's credential, on any runner: verse refuses one that would. A rule's " +
 			"patch and derive are theirs, as any charter's are.",
-		Params: install, Required: []string{"charters"}, Step: task.StepVerseCharterInstall, Fields: none,
+		Params: install, Required: []string{"charters"}, Step: task.StepVerseCharterInstall,
+		// The address the install acts at, which an environment's shape bounds; a call that does
+		// not read is no step, and Do says why.
+		Fields: func(in map[string]any) (map[string]string, bool) {
+			q, defs, err := installOf(in, install)
+			if err != nil {
+				return nil, false
+			}
+			at, err := charterfile.InstallAt(q, defs)
+			if err != nil {
+				return nil, false
+			}
+			return map[string]string{"at": at}, true
+		},
 		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
-			p, err := paramsOf(tu.Input, install)
-			if err != nil {
-				return "not installed: " + err.Error(), true, nil
-			}
-			segs, err := entity.PathSegs(strings.TrimSpace(p.words["at"]))
-			if err != nil {
-				return "not installed: at: " + err.Error(), true, nil
-			}
-			docs, names, err := charterfile.Text(p.words["charters"], codec.Tony)
-			if err != nil {
-				return "not installed: " + err.Error(), true, nil
-			}
-			q, defs, err := charterfile.InstallQuery(docs, names, entity.JoinSegs(segs), p.flags["prune"])
+			q, defs, err := installOf(tu.Input, install)
 			if err != nil {
 				return "not installed: " + err.Error(), true, nil
 			}
@@ -265,6 +266,24 @@ func verseCharterTools(cl *delivery.Client) []verse.Tool {
 			return charterfile.Removed(names, split, "", false, true), false, nil
 		},
 	}}
+}
+
+// installOf reads an install's call: the query and the definitions to send
+// (charterfile.InstallQuery), as `verse charter -a` reads its flags.
+func installOf(in map[string]any, schema map[string]any) (url.Values, []*ir.Node, error) {
+	p, err := paramsOf(in, schema)
+	if err != nil {
+		return nil, nil, err
+	}
+	segs, err := entity.PathSegs(strings.TrimSpace(p.words["at"]))
+	if err != nil {
+		return nil, nil, fmt.Errorf("at: %w", err)
+	}
+	docs, names, err := charterfile.Text(p.words["charters"], codec.Tony)
+	if err != nil {
+		return nil, nil, err
+	}
+	return charterfile.InstallQuery(docs, names, entity.JoinSegs(segs), p.flags["prune"])
 }
 
 // documents is charters to send, one tony document apiece, as `verse charter` sends them

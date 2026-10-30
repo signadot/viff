@@ -150,29 +150,34 @@ func TestAStepIsWithinTheEnvironmentByItsBlockAndShape(t *testing.T) {
 func TestAPatternWithinAnother(t *testing.T) {
 	for _, c := range []struct {
 		outer, inner string
-		crossing     bool
+		sep          byte
 		within       bool
 	}{
-		{"refs/heads/verse/**", "refs/heads/verse/auto/*", false, true},
-		{"refs/heads/verse/**", "refs/heads/verse/auto/x", false, true},
-		{"refs/heads/*", "refs/heads/main", false, true},
-		{"refs/heads/*", "refs/heads/**", false, false},
-		{"refs/heads/*", "refs/heads/a/b", false, false},
-		{"refs/heads/verse/auto/*", "refs/heads/verse/**", false, false},
-		{"github.com/acme/**", "github.com/acme/app", false, true},
-		{"github.com/acme/*", "github.com/acme/*", false, true},
-		{"github.com/acme/a*", "github.com/acme/*", false, false},
-		{"*", "x/y", true, true},
-		{"make *", "make test", true, true},
-		{"make test", "make *", true, false},
-		{"**", "", false, true},
-		{"x", "y", false, false},
+		{"refs/heads/verse/**", "refs/heads/verse/auto/*", SepPath, true},
+		{"refs/heads/verse/**", "refs/heads/verse/auto/x", SepPath, true},
+		{"refs/heads/*", "refs/heads/main", SepPath, true},
+		{"refs/heads/*", "refs/heads/**", SepPath, false},
+		{"refs/heads/*", "refs/heads/a/b", SepPath, false},
+		{"refs/heads/verse/auto/*", "refs/heads/verse/**", SepPath, false},
+		{"github.com/acme/**", "github.com/acme/app", SepPath, true},
+		{"github.com/acme/*", "github.com/acme/*", SepPath, true},
+		{"github.com/acme/a*", "github.com/acme/*", SepPath, false},
+		{"*", "x/y", SepNone, true},
+		{"make *", "make test", SepNone, true},
+		{"make test", "make *", SepNone, false},
+		{"**", "", SepPath, true},
+		{"x", "y", SepPath, false},
+		{"play.issues.**", "play.issues.issue.*", SepAddress, true},
+		{"play.issues.*", "play.issues.issue", SepAddress, true},
+		{"play.issues.*", "play.issues.issue.x", SepAddress, false},
+		{"play.issues.*", "play.issues.**", SepAddress, false},
+		{"a.*", "a.b/c", SepAddress, true},
 	} {
-		if got := PatternContains(c.outer, c.inner, c.crossing); got != c.within {
+		if got := PatternContains(c.outer, c.inner, c.sep); got != c.within {
 			t.Errorf("%q within %q: %v, want %v", c.inner, c.outer, got, c.within)
 		}
 		// Sound: what it calls within, Match agrees on for a sample of the inner's values.
-		if c.within && !strings.Contains(c.inner, "*") && !Match(c.outer, c.inner, c.crossing) {
+		if c.within && !strings.Contains(c.inner, "*") && !Match(c.outer, c.inner, c.sep) {
 			t.Errorf("%q within %q, but Match refuses it", c.inner, c.outer)
 		}
 	}
@@ -200,10 +205,12 @@ func TestABoundEnvironmentIsCanonical(t *testing.T) {
 	}
 }
 
-// A FIELD OF THE FORM TEXT CROSSES `/` WITH A `*`; any other does not.
-func TestTextCrosses(t *testing.T) {
-	if !Crossing("commands.run", "command") || Crossing("git.push", "ref") || Crossing("files.write", "path") {
-		t.Error("crossing by form")
+// A FIELD'S FORM SAYS WHAT SEPARATES ITS SEGMENTS: none in text, so a `*` there crosses `/`; `.`
+// in an address; `/` in any other.
+func TestTheFormSaysTheSeparator(t *testing.T) {
+	if Sep("commands.run", "command") != SepNone || Sep("git.push", "ref") != SepPath ||
+		Sep("files.write", "path") != SepPath || Sep("verse.charter-install", "at") != SepAddress {
+		t.Error("separators by form")
 	}
 	e, err := readEnv(t, `systems: {commands: {run: {command: "make *"}}}`)
 	if err != nil || e.Check() != nil {
@@ -212,38 +219,53 @@ func TestTextCrosses(t *testing.T) {
 	if !e.Allows("commands.run", map[string]string{"command": "make test/unit"}) {
 		t.Error("a command's * crosses /")
 	}
+	e, err = readEnv(t, `systems: {verse: {charter-install: {at: "play.issues.*"}}}`)
+	if err != nil || e.Check() != nil {
+		t.Fatal(err, e.Check())
+	}
+	if !e.Allows("verse.charter-install", map[string]string{"at": "play.issues.issue"}) {
+		t.Error("an address's * takes one segment")
+	}
+	if e.Allows("verse.charter-install", map[string]string{"at": "play.issues.issue.x"}) ||
+		e.Allows("verse.charter-install", map[string]string{"at": "play"}) {
+		t.Error("an address's * crosses a `.`, or an address above the pattern is allowed")
+	}
 }
 
 // TWO PATTERNS MEET when some value matches both, though neither contains the other.
 func TestPatternsIntersect(t *testing.T) {
 	for _, c := range []struct {
-		a, b     string
-		crossing bool
-		meet     bool
+		a, b string
+		sep  byte
+		meet bool
 	}{
-		{"refs/*/x", "refs/heads/*", false, true},
-		{"refs/heads/verse/auto/*", "refs/heads/verse/**", false, true},
-		{"refs/tags/*", "refs/heads/*", false, false},
-		{"refs/heads/*", "refs/heads/a/b", false, false},
-		{"refs/heads/**", "refs/heads/a/b", false, true},
-		{"*", "a/b", false, false},
-		{"*", "a/b", true, true},
-		{"make *", "* test", true, true},
-		{"true", "false", false, false},
-		{"", "**", false, true},
-		{"a*b", "*c*", false, true},
+		{"refs/*/x", "refs/heads/*", SepPath, true},
+		{"refs/heads/verse/auto/*", "refs/heads/verse/**", SepPath, true},
+		{"refs/tags/*", "refs/heads/*", SepPath, false},
+		{"refs/heads/*", "refs/heads/a/b", SepPath, false},
+		{"refs/heads/**", "refs/heads/a/b", SepPath, true},
+		{"*", "a/b", SepPath, false},
+		{"*", "a/b", SepNone, true},
+		{"make *", "* test", SepNone, true},
+		{"true", "false", SepPath, false},
+		{"", "**", SepPath, true},
+		{"a*b", "*c*", SepPath, true},
+		{"play.*.x", "play.issues.*", SepAddress, true},
+		{"*", "a.b", SepAddress, false},
+		{"*", "a.b", SepPath, true},
 	} {
-		if got := Intersect(c.a, c.b, c.crossing); got != c.meet {
+		if got := Intersect(c.a, c.b, c.sep); got != c.meet {
 			t.Errorf("%q ∩ %q: %v, want %v", c.a, c.b, got, c.meet)
 		}
-		if got := Intersect(c.b, c.a, c.crossing); got != c.meet {
+		if got := Intersect(c.b, c.a, c.sep); got != c.meet {
 			t.Errorf("%q ∩ %q: %v, want %v (the other way)", c.b, c.a, got, c.meet)
 		}
 	}
 }
 
 // INTERSECT IS SOUND: a value two patterns both match is never said to be in neither, over
-// random patterns and values from a small alphabet where `/` and the wildcards collide often.
+// random patterns and values from a small alphabet where the separators and the wildcards collide
+// often.
 func TestIntersectAgreesWithMatch(t *testing.T) {
 	r := rand.New(rand.NewPCG(1, 2))
 	gen := func(alphabet string, n int) string {
@@ -254,10 +276,10 @@ func TestIntersectAgreesWithMatch(t *testing.T) {
 		return b.String()
 	}
 	for range 20000 {
-		a, b, v := gen("ab/*", 6), gen("ab/*", 6), gen("ab/", 6)
-		crossing := r.IntN(2) == 0
-		if Match(a, v, crossing) && Match(b, v, crossing) && !Intersect(a, b, crossing) {
-			t.Fatalf("%q and %q both match %q (crossing %v), but Intersect says they meet nowhere", a, b, v, crossing)
+		a, b, v := gen("ab/.*", 6), gen("ab/.*", 6), gen("ab/.", 6)
+		sep := []byte{SepNone, SepPath, SepAddress}[r.IntN(3)]
+		if Match(a, v, sep) && Match(b, v, sep) && !Intersect(a, b, sep) {
+			t.Fatalf("%q and %q both match %q (separator %q), but Intersect says they meet nowhere", a, b, v, sep)
 		}
 	}
 }

@@ -37,7 +37,7 @@ func TestTheDocumentsDescribeTheSystems(t *testing.T) {
 		"verse.data-rm":         "",
 		"verse.charter-get":     "",
 		"verse.charter-check":   "",
-		"verse.charter-install": "",
+		"verse.charter-install": "at",
 		"verse.charter-remove":  "",
 		"slack.post":            "channel",
 		"slack.reply":           "channel,thread",

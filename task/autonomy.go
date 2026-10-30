@@ -204,7 +204,7 @@ func (m *Match) meets(n *Match) bool {
 		return false
 	}
 	for name, mp := range m.Params {
-		if np, ok := n.Params[name]; ok && !systems.Intersect(mp, np, m.crossing(name)) {
+		if np, ok := n.Params[name]; ok && !systems.Intersect(mp, np, m.sep(name)) {
 			return false
 		}
 	}
@@ -225,20 +225,20 @@ func (m *Match) encloses(n *Match) bool {
 	}
 	for name, mp := range m.Params {
 		np, ok := n.Params[name]
-		if !ok || !systems.PatternContains(mp, np, m.crossing(name)) {
+		if !ok || !systems.PatternContains(mp, np, m.sep(name)) {
 			return false
 		}
 	}
 	return true
 }
 
-// crossing is whether a param's patterns cross path segments, as the match's step says of it
-// (systems.Crossing); a match naming no verb reads the param as a plain pattern.
-func (m *Match) crossing(name string) bool {
+// sep is what separates a param's segments, as the match's step says of it (systems.Sep); a
+// match naming no verb reads the param as a plain pattern, segmented by `/`.
+func (m *Match) sep(name string) byte {
 	if m.System == "" || m.Verb == "" {
-		return false
+		return systems.SepPath
 	}
-	return systems.Crossing(systems.StepName(m.System, m.Verb), name)
+	return systems.Sep(systems.StepName(m.System, m.Verb), name)
 }
 
 // words is a match in words, for a refusal that names it: `every call` for one naming nothing.
@@ -289,7 +289,7 @@ func (m *Match) Matches(s Step) bool {
 		return false
 	}
 	for name, pattern := range m.Params {
-		if !systems.Match(pattern, s.Fields[name], systems.Crossing(s.Name, name)) {
+		if !systems.Match(pattern, s.Fields[name], systems.Sep(s.Name, name)) {
 			return false
 		}
 	}

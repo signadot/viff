@@ -51,6 +51,53 @@ func InstallQuery(docs []*ir.Node, names []string, at string, prune bool) (url.V
 	return q, defs, nil
 }
 
+// InstallAt is the address an install acts at, as the verse system's charter-install step names
+// it (field `at`): with a prune, the prune's; otherwise the deepest address every charter of docs
+// lies at or under, each at its own `at:` or, saying none, at q's `at` (baseline, empty), as verse
+// places them. Everything the install writes is at or under it, so a shape on it bounds the
+// install.
+func InstallAt(q url.Values, docs []*ir.Node) (string, error) {
+	if prune := q.Get("prune"); prune != "" {
+		segs, err := AddrSegs(prune)
+		if err != nil {
+			return "", fmt.Errorf("prune: %w", err)
+		}
+		return entity.JoinSegs(segs), nil
+	}
+	var common []string
+	first := true
+	for _, doc := range docs {
+		if in := codec.Unwrap(doc); in == nil || in.Type == ir.NullType {
+			continue
+		}
+		at := q.Get("at")
+		if IsDoc(doc) && str(doc, "at") != "" {
+			at = str(doc, "at")
+		}
+		segs, err := AddrSegs(at)
+		if err != nil {
+			return "", fmt.Errorf("at %q: %w", at, err)
+		}
+		if first {
+			common, first = segs, false
+			continue
+		}
+		n := 0
+		for n < len(common) && n < len(segs) && common[n] == segs[n] {
+			n++
+		}
+		common = common[:n]
+	}
+	if first {
+		segs, err := AddrSegs(q.Get("at"))
+		if err != nil {
+			return "", fmt.Errorf("at: %w", err)
+		}
+		common = segs
+	}
+	return entity.JoinSegs(common), nil
+}
+
 // Installed says what went where, in both coordinates, from what POST /charter answered (node,
 // api.Installed); scope is the install's.
 //

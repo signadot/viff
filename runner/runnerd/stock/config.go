@@ -529,7 +529,7 @@ func (c *Config) checkForge(at string, sections map[string]System) error {
 			return fmt.Errorf("%s.git.ceiling[%d]: names no repo; a git ceiling names the repositories it is for, on the forge (%s)", at, i, forge)
 		}
 		for _, p := range repos {
-			if p = systems.Canonical(systems.FormRepo, p); !systems.PatternContains(forge, p, false) {
+			if p = systems.Canonical(systems.FormRepo, p); !systems.PatternContains(forge, p, systems.SepPath) {
 				return fmt.Errorf("%s.git.ceiling[%d].repo: %s is beyond the runner's forge (%s): it fetches from nowhere else", at, i, p, forge)
 			}
 		}
@@ -543,7 +543,7 @@ func (c Config) checkBuilds(networks []string) error {
 	for _, doer := range c.doers() {
 		for i, b := range c.systemsOf(doer)["network"].Ceiling {
 			for _, mode := range b.Attributes["mode"] {
-				if !slices.ContainsFunc(networks, func(n string) bool { return systems.Match(mode, n, false) }) {
+				if !slices.ContainsFunc(networks, func(n string) bool { return systems.Match(mode, n, systems.SepPath) }) {
 					return fmt.Errorf("%s.systems.network.ceiling[%d].mode: %s is no network this runner's sandbox builds (it builds: %s)",
 						sectionOf(doer), i, mode, strings.Join(networks, ", "))
 				}

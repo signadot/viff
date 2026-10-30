@@ -249,3 +249,42 @@ func TestATasksDataActsAreCarriedToVerse(t *testing.T) {
 		t.Errorf("a runner that reaches no verse: %+v", rep)
 	}
 }
+
+// AN INSTALL IS BOUND BY WHERE THE TASK'S ENVIRONMENT SAYS IT MAY INSTALL: the step's `at` is the
+// address the install acts at (charterfile.InstallAt), the prune's or the deepest address its
+// charters share, and one beyond the environment's shape is refused before verse is asked.
+func TestATasksInstallIsBoundByItsEnvironmentsAt(t *testing.T) {
+	var saw []string
+	verse := func(_ context.Context, _, _, path string, _ []byte) (int, string, error) {
+		saw = append(saw, path)
+		return http.StatusCreated, "installed: []", nil
+	}
+	l := within(nil)
+	l.Environment.Systems["verse"] = []systems.Block{{Verbs: map[string][]systems.Shape{
+		"charter-install": {{"at": "play.issues.issue"}},
+	}}}
+	tk := Task{ID: "t7", Workspace: &workspace.Workspace{}, Launch: l}
+	s := &Server{Log: io.Discard, Services: Services{Verse: verse}, Ceilings: map[string]systems.Ceiling{"verse": systems.Open()}}
+
+	for _, c := range []struct {
+		req     Request
+		carried bool
+	}{
+		{Request{Op: OpVerseCharterInstall, Query: "prune=play.issues.issue", Body: "at: play.issues.issue.a\n---\nat: play.issues.issue.b\n"}, true},
+		{Request{Op: OpVerseCharterInstall, Body: "at: play.issues.issue.a\n---\nat: play.issues.issue.b\n"}, true},
+		{Request{Op: OpVerseCharterInstall, Query: "at=play.issues.issue", Body: "{name: r, condition: {subject: x}, action: {patch: {}}}\n"}, true},
+		{Request{Op: OpVerseCharterInstall, Query: "prune=play.issues", Body: "at: play.issues.issue.a\n"}, false},
+		{Request{Op: OpVerseCharterInstall, Body: "at: play.issues.issue.a\n"}, false},
+		{Request{Op: OpVerseCharterInstall, Body: "at: play.issues.issue.a\n---\nat: play.other\n"}, false},
+		{Request{Op: OpVerseCharterInstall, Body: "rules: []\n"}, false},
+	} {
+		saw = nil
+		rep := s.answer(tk, frame(t, c.req))
+		switch {
+		case c.carried && (!rep.OK || len(saw) != 1):
+			t.Errorf("%s %q: %+v, want it carried", c.req.Query, c.req.Body, rep)
+		case !c.carried && (!strings.Contains(rep.Refused, "outside the environment") || len(saw) != 0):
+			t.Errorf("%s %q: %+v (carried %v), want it refused as outside the environment", c.req.Query, c.req.Body, rep, saw)
+		}
+	}
+}

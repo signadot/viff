@@ -192,10 +192,10 @@ func (cb CeilingBlock) admits(d Document, name, v string, written bool) bool {
 	for _, p := range cb.Attributes[name] {
 		p = Canonical(a.Form, p)
 		if written && strings.Contains(v, "$") {
-			if Intersect(p, bound.ReplaceAllString(v, "**"), false) {
+			if Intersect(p, bound.ReplaceAllString(v, "**"), FormSep(a.Form)) {
 				return true
 			}
-		} else if Match(p, v, false) {
+		} else if Match(p, v, FormSep(a.Form)) {
 			return true
 		}
 	}
@@ -211,7 +211,7 @@ var bound = regexp.MustCompile(`\$[A-Za-z_][A-Za-z0-9_.]*`)
 func ShapeWithin(step string, outer, inner Shape) bool {
 	for name, op := range outer {
 		ip, named := inner[name]
-		if !named || !PatternContains(op, ip, Crossing(step, name)) {
+		if !named || !PatternContains(op, ip, Sep(step, name)) {
 			return false
 		}
 	}
@@ -263,7 +263,7 @@ func (c Ceiling) Refuses(step string, fields map[string]string) (why string, ok 
 		for name, patterns := range cb.Attributes {
 			a, _ := d.Attribute(name)
 			if !slices.ContainsFunc(patterns, func(p string) bool {
-				return Match(Canonical(a.Form, p), Canonical(a.Form, fields[name]), false)
+				return Match(Canonical(a.Form, p), Canonical(a.Form, fields[name]), FormSep(a.Form))
 			}) {
 				inside = false
 			}
