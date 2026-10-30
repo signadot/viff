@@ -295,6 +295,35 @@ func (c Config) without(system string) Config {
 	return c
 }
 
+// agentPrograms is where lookPath finds the program of each agent the runner runs that has one of
+// its own (codex, claude): the paths a task's sandbox binds, so the program it runs is there.
+func (c Config) agentPrograms(lookPath func(string) (string, error)) []string {
+	var progs []string
+	for _, prog := range []string{c.codexProgram(), c.claudeProgram()} {
+		if prog == "" {
+			continue
+		}
+		if p, err := lookPath(prog); err == nil {
+			progs = append(progs, p)
+		}
+	}
+	return progs
+}
+
+func (c Config) codexProgram() string {
+	if cc := c.codexConfig(); cc != nil {
+		return cc.Program()
+	}
+	return ""
+}
+
+func (c Config) claudeProgram() string {
+	if cc := c.claudeConfig(); cc != nil {
+		return cc.Program()
+	}
+	return ""
+}
+
 // CheckStart refuses what the runner cannot start with, from the environment it starts in
 // (getenv) and the programs it finds (lookPath), given the configuration Held left it: nothing
 // left to offer, an agent whose program is not there. It returns what it lets start and is worth

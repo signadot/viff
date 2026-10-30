@@ -14,6 +14,7 @@ import (
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/task"
 )
 
 // WHERE A SPAWN RUNS is verse's to say. A spawn names its doer, an agent or a script, and what it
@@ -189,6 +190,12 @@ func (s *Server) fits(l *runner.Launch, on *string, check func(*runner.Launch, r
 // the refusal when none is left.
 func (s *Server) route(l *runner.Launch, on *string) (placed, error) {
 	s.bindDefaultAgent(l)
+	// A RUN THAT IS STILL LIVE goes back to the runner running it, whose join answers with it: a
+	// launch is "once, safe to retry" on one runner, and routed afresh a second launch of the id
+	// would start a second copy on whichever runner carries less.
+	if on == nil {
+		on = s.liveOn(l.ID)
+	}
 	offer, passed, err := s.candidates(l, on)
 	if err != nil {
 		return placed{}, err
@@ -213,7 +220,18 @@ func (s *Server) route(l *runner.Launch, on *string) (placed, error) {
 		}
 		return placed{launcher: client.HTTPOver(c.reg.URL, s.transportFor(*c.reg)), name: c.name(), subject: c.reg.Subject}, nil
 	}
-	return placed{}, fmt.Errorf("no runner that takes this spawn took it at the handshake: %s", strings.Join(refusedNow, "; "))
+	// Every one that took it failed its handshake: said with the rest of why nothing took it, the
+	// runners whose offer refused it and the registrations passed over, so the refusal names
+	// every runner an operator would look at, and how (`verse runner check <name>`).
+	var b strings.Builder
+	fmt.Fprintf(&b, "no runner that takes this spawn took it at the handshake: %s", strings.Join(refusedNow, "; "))
+	if len(refused) > 0 {
+		fmt.Fprintf(&b, "; refused it: %s", strings.Join(refused, "; "))
+	}
+	if len(passed) > 0 {
+		fmt.Fprintf(&b, "; passed over: %s", strings.Join(passed, "; "))
+	}
+	return placed{}, errors.New(b.String())
 }
 
 // byLoad is step 3: fewest tasks on record not yet ended, then by name. One read of the task
@@ -250,4 +268,22 @@ func (s *Server) taskRunner(id string) (string, error) {
 		return "", fmt.Errorf("task %s has no record, so where what follows its ask runs cannot be held to its runner", id)
 	}
 	return entity.Str(ent.Payload, "runnerName"), nil
+}
+
+// liveOn is the runner a run of id that has not ended is on, by its record (nil where there is
+// none, or it has ended): in the scope verse launched it in, else baseline.
+func (s *Server) liveOn(id string) *string {
+	store := s.Store
+	if sc, ok := s.hostedScope(id); ok {
+		store = s.storeForScope(sc)
+	}
+	e, ok, err := store.Get(mirror.Ref(id))
+	if err != nil || !ok {
+		return nil
+	}
+	name := entity.Str(e.Payload, "runnerName")
+	if name == "" || task.Status(entity.Str(e.Payload, "status")).Terminal() {
+		return nil
+	}
+	return &name
 }

@@ -7,6 +7,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 
@@ -87,6 +88,9 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 		fmt.Fprintf(log, "runnerd: no %s beside %s or on PATH: a script reaches its tools only by "+
 			"the socket $%s names\n", CallToolBinary, command[0], calltool.Env)
 	}
+	// And the agents' own programs, where the runner finds them: one installed outside the system
+	// directories, as a person's `claude` is under ~/.local/bin, would not be inside the sandbox.
+	programs = append(programs, c.agentPrograms(exec.LookPath)...)
 	blob, err := codec.Marshal(taskConfig{Config: c, Secrets: s, CallTool: tool, Networks: nets, ReachesVerse: c.reachesVerse}, codec.Tony)
 	if err != nil {
 		return nil, err

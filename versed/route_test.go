@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // routedServer is a verse whose own runner hosts nothing, with two runners registered by workload
@@ -80,7 +81,30 @@ func TestAHandshakeThatFailsFallsThroughToTheNextRunner(t *testing.T) {
 	resp := postTony(t, ts.URL+"/tasks", map[string]any{"id": "nowhere", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t"}})
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "took it at the handshake") ||
-		!strings.Contains(body, "verse.runners.b has not proved it is the runner registered") {
-		t.Fatalf("a spawn every runner fails = %s: %s, want 400 naming b's handshake", resp.Status, body)
+		!strings.Contains(body, "verse.runners.b has not proved it is the runner registered") ||
+		!strings.Contains(body, "passed over: verse.runners.a, not described") {
+		t.Fatalf("a spawn every runner fails = %s: %s, want 400 naming b's handshake and a passed over", resp.Status, body)
+	}
+}
+
+// A RUN STILL LIVE IS LAUNCHED WHERE IT RUNS: a second launch of its id goes to the runner its
+// record names, whose join answers with the run, rather than by load to the other runner, which
+// would start a second copy and leave the first unreachable.
+func TestALiveRunIsLaunchedAgainWhereItRuns(t *testing.T) {
+	srv, ts, _ := routedServer(t)
+	defer ts.Close()
+	spawn := map[string]any{"id": "dup", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "t"}}
+	spawnOK(t, ts, spawn)
+	waitTaskStatus(t, srv, "dup", "running")
+	if got := instanceOf(t, srv, "dup")["runnerName"]; got != "verse.runners.a" {
+		t.Fatalf("the first launch went to %v, want verse.runners.a, first by name", got)
+	}
+	spawnOK(t, ts, spawn) // by load, b: a carries the run
+	// The record is the mirror's to rewrite, after the launch answers: watched for a while, it
+	// must not move to b.
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if got := instanceOf(t, srv, "dup")["runnerName"]; got != "verse.runners.a" {
+			t.Fatalf("the second launch of the live id went to %v, want verse.runners.a, where it runs", got)
+		}
 	}
 }

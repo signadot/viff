@@ -4779,6 +4779,13 @@ func (s *Server) taskEvents(w http.ResponseWriter, r *http.Request) {
 	if !s.mayReadTask(w, r, id) {
 		return
 	}
+	// IN THE REQUEST'S VIEW, as `GET /tasks/{id}` answers: a task whose record this store does not
+	// hold is no task here, though the runner hosting it would stream it to whoever reached it. A
+	// scope's task read from baseline, or from another scope, is not found.
+	if _, ok, _ := s.scopedStore(r).Get(mirror.Ref(id)); !ok {
+		noSuchTask(w, r, id)
+		return
+	}
 	s.streamEvents(w, r, id)
 }
 

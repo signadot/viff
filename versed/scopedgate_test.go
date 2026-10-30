@@ -154,3 +154,30 @@ func TestAScopedRulesGateStaysInItsScope(t *testing.T) {
 		t.Fatalf("a scoped rule's question reached baseline's docket: %v", got)
 	}
 }
+
+// A SCOPE'S TASK IS READ IN THE SCOPE: its snapshot and its stream are found where its record is,
+// and from baseline, or from another scope, neither is, though the runner hosting it would stream
+// it to whoever reached it.
+func TestAScopesTaskIsReadInTheScope(t *testing.T) {
+	srv := askingServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	spawnScoped(t, ts, "sc1", "me")
+	waitQuestion(t, &Server{Store: srv.Store.Scope("me")}, "sc1")
+	for _, scope := range []string{"", "other"} {
+		for _, route := range []string{"/tasks/sc1", "/tasks/sc1/events"} {
+			url := ts.URL + route
+			if scope != "" {
+				url += "?scope=" + scope
+			}
+			resp := getAs(t, "user:"+tester, url)
+			if body := readBody(t, resp); resp.StatusCode != http.StatusNotFound {
+				t.Errorf("%s from %q = %s %q, want 404", route, scope, resp.Status, body)
+			}
+		}
+	}
+	resp := getAs(t, "user:"+tester, ts.URL+"/tasks/sc1?scope=me")
+	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
+		t.Errorf("the task from its scope = %s %q, want 200", resp.Status, body)
+	}
+}

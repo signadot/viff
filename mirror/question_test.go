@@ -514,3 +514,62 @@ func TestAQuestionAskedAgainByFrameIsPosedAgain(t *testing.T) {
 		t.Fatalf("asked by another run, the question = %v, want it pending and asked again", got)
 	}
 }
+
+// A REPLAY IS NOT AN ASKING, whatever it finds: a record posed before runs were recorded is the
+// same run's, and a replay from below a second asking does not lower where the record says it was
+// last posed, so the second asking replayed is not taken for a third.
+func TestAReplayDoesNotPoseAQuestionAgain(t *testing.T) {
+	const ann = "user:ann@example.com"
+	store := entitytest.Store(t)
+	ask := func(run string, cursor int64) {
+		t.Helper()
+		ev := task.Event{Kind: task.EventPending, ID: "t1~d1", Gate: "write", Cursor: cursor}
+		PostFrameQuestion(store, ev, "t1", run, "", []string{ann}, nil)
+	}
+	answer := func() {
+		t.Helper()
+		AnswerQuestion(store, "t1~d1", task.Resolution{Choice: task.Proceed, Proceed: true, By: ann})
+	}
+	status := func() string {
+		t.Helper()
+		e, _, _ := store.Get(QuestionRef("t1~d1"))
+		return entity.Str(e.Payload, "status")
+	}
+
+	// Posed and answered before runs were recorded, then replayed under a run.
+	ask("", 5)
+	answer()
+	ask("run-1", 5)
+	if got := status(); got != QuestionAnswered {
+		t.Fatalf("a pre-run record replayed is %s, want it still answered", got)
+	}
+
+	// Asked again at 9 and answered, then the stream replayed from the start.
+	ask("run-1", 9)
+	answer()
+	ask("run-1", 5)
+	ask("run-1", 9)
+	if got := status(); got != QuestionAnswered {
+		t.Fatalf("a replay from below the second asking is %s, want it still answered", got)
+	}
+}
+
+// ANOTHER RUN'S QUESTION TAKES NOTHING OF THE LAST RUN'S: its counter started over, so its first
+// question has the old one's id, and the ballots and the claim on the record answered that one.
+func TestAnotherRunsQuestionTakesNoAnswerOfTheLast(t *testing.T) {
+	const ann = "user:ann@example.com"
+	store := entitytest.Store(t)
+	ev := task.Event{Kind: task.EventPending, ID: "t1~d1", Gate: "write", Cursor: 3}
+	PostFrameQuestion(store, ev, "t1", "run-1", "", []string{ann}, nil)
+	// The last run's question orphaned with a ballot cast and a claim standing on it.
+	entitytest.Set(t, store, QuestionRef("t1~d1"), entity.Obj{
+		"status": QuestionOrphaned, "ballots": entity.Obj{ann: entity.Obj{"choice": task.Proceed}},
+		"followed": entity.Obj{"verdict": task.Proceed}, "verdict": task.Proceed,
+	}.Payload())
+	PostFrameQuestion(store, ev, "t1", "run-2", "", []string{ann}, nil)
+	e, _, _ := store.Get(QuestionRef("t1~d1"))
+	got := entity.ToObj(e.Payload)
+	if got["status"] != QuestionPending || got["ballots"] != nil || got["followed"] != nil || got["verdict"] != nil {
+		t.Fatalf("the next run's question = %v, want it pending with no ballot, claim or verdict of the last", got)
+	}
+}

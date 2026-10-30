@@ -863,17 +863,36 @@ func PostFrameQuestion(store entity.Store, ev task.Event, taskID, run, subject s
 	delete(rec, "status")
 	delete(rec, "posedAt")
 	// Which run, and where in its stream, it was posed from, so a later asking can be told from a
-	// replay.
-	again := false
+	// replay. A record that names no run was posed before runs were recorded, and a frame met there
+	// is its replay. Within a run the cursor only rises, so a replay from below cannot lower it and
+	// make a later replayed frame look new.
+	again, newRun := false, false
 	if ev.Cursor > 0 && run != "" {
+		cursor := ev.Cursor
 		if e, ok, err := store.Get(ref); err == nil && ok {
+			priorRun := entity.Str(e.Payload, PosedRunField)
+			prior, _ := entity.ToObj(e.Payload)[PosedCursorField].(int64)
+			settled := false
 			switch entity.Str(e.Payload, "status") {
 			case QuestionAnswered, QuestionOrphaned:
-				prior, _ := entity.ToObj(e.Payload)[PosedCursorField].(int64)
-				again = entity.Str(e.Payload, PosedRunField) != run || ev.Cursor > prior
+				settled = true
+			}
+			switch {
+			case priorRun == "":
+				// Posed before runs were recorded, so where is unknown: a frame met here is taken
+				// for its replay, the safe side, since taking replays for askings put every
+				// settled question of every live task back on the docket. It records run and
+				// cursor now, and is told apart from here on.
+			case priorRun != run:
+				// ANOTHER RUN of the task under the same id: its question counter started over, so
+				// this is a different question under an old id, whatever the record says of it.
+				again, newRun = true, true
+			default:
+				again = settled && ev.Cursor > prior
+				cursor = max(cursor, prior)
 			}
 		}
-		rec[PosedCursorField], rec[PosedRunField] = ev.Cursor, run
+		rec[PosedCursorField], rec[PosedRunField] = cursor, run
 	}
 	// FROM THE TASK, whatever id the worker raised it under: the task is who asked.
 	if taskID != "" {
@@ -920,6 +939,25 @@ func PostFrameQuestion(store entity.Store, ev task.Event, taskID, run, subject s
 	}
 	if again {
 		clearPriorAnswer(store, ref, posed)
+		if newRun {
+			// A NEW ROUND, whatever the status: an answer, ballots or a claim from the last run answered
+			// another question, and delivered here (finishSettle) would settle this one with them.
+			for _, k := range []string{"verdict", "by", "via", "why", "say", "answeredAt", "ballots", "followed"} {
+				posed[k] = entity.Removed()
+			}
+			if d, ok := rec["deadline"].(entity.Obj); ok {
+				d["at"] = entity.Removed()
+				posed["deadline"] = d
+			}
+			// And what the last run's question said that this one does not: the record is merged
+			// into, so a field this frame leaves out would otherwise stand from the other question.
+			for _, k := range []string{"deadline", "step", "fields", "tool", "action", "reason", "subject"} {
+				if _, ok := rec[k]; !ok {
+					posed[k] = entity.Removed()
+				}
+			}
+			posed["askedAgain"] = true
+		}
 		writeAt(store, ref, posed)
 		return true
 	}
