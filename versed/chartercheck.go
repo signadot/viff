@@ -27,7 +27,7 @@ import (
 // its write: the files split into packages as an install splits them, the prune's targets as an
 // install computes them, the address as the installer's to take, the outboxes against the iods
 // registered, and each package's strata and rules in an engine of the check's own that is never
-// started (trigger.Check). A verdict of `installs` says the install would not be refused by any
+// started (trigger.Check), each spawn against what the runners offer as the install's is. A verdict of `installs` says the install would not be refused by any
 // of these; what it cannot say is what the store answers on the day, which is the install's own.
 func (s *Server) checkCharter(w http.ResponseWriter, r *http.Request) {
 	docs, err := codec.ReadNodes(r)
@@ -137,7 +137,7 @@ func (s *Server) checkPackage(store entity.Store, installer string, g charterGro
 		}
 		rules = append(rules, t)
 	}
-	held, err := trigger.Check(store, confine, reads, installer, strata, rules)
+	held, err := trigger.Check(store, confine, reads, installer, strata, rules, s.offerCheck())
 	if err != nil {
 		return pkg, err
 	}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/runner"
 )
 
 // Check answers whether one package's levels and rules would install, without installing them.
@@ -17,9 +18,15 @@ import (
 //
 // It answers the first refusal, as an install does, and the rules that would be HELD: installed
 // but waiting for a stratum the file does not declare, which an install admits and says.
-func Check(store entity.Store, confine Subtree, reads []Subtree, as string, strata []Stratum, rules []Trigger) (held []string, err error) {
+//
+// offer is what the install checks a spawn against (Engine.SetOfferCheck), nil for none. Without
+// it, the check said `installs` for a spawn whose agent no runner offers, and the install it
+// spoke for was then refused.
+func Check(store entity.Store, confine Subtree, reads []Subtree, as string, strata []Stratum, rules []Trigger,
+	offer func(runner.Launch) error) (held []string, err error) {
 	e := New(store, nil)
 	e.Confine(confine)
+	e.SetOfferCheck(offer)
 	e.SetReads(reads)
 	for _, st := range strata {
 		if err := e.addStratum(st, false, as); err != nil {

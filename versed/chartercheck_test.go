@@ -46,6 +46,7 @@ func checkAt(t *testing.T, ts *httptest.Server, at, docs string) api.CharterChec
 func TestTheCharterCheckSaysWhatAnInstallWouldDo(t *testing.T) {
 	srv := testServer(t)
 	srv.Start(t.Context())
+	describeLocal(t, srv, offering()) // the local runner: scripts only, as a keyless `verse up`'s
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 
@@ -90,6 +91,14 @@ func TestTheCharterCheckSaysWhatAnInstallWouldDo(t *testing.T) {
 	// And outside the address the tree is checked at.
 	if got := checkAt(t, ts, "repos.elsewhere", checkedPackage); got.Verdict != "refused" {
 		t.Fatalf("a package outside the address: %+v", got)
+	}
+	// And a spawn whose agent no runner offers, which the install refuses: the check said
+	// `installs` for it, and the install it spoke for was refused.
+	spawns := "at: repos.r.work\nrules:\n- name: work\n  condition: {subject: {path: \"repos.r.work.*\", value: {stage: todo}}}\n" +
+		"  action:\n    spawn: {agent: {name: claude}, prompt: go}\n    onDone: {patch: {stage: done}}\n"
+	if got := checkAt(t, ts, "repos.r", checkedPackage+"---\n"+spawns); got.Verdict != "refused" ||
+		!strings.Contains(got.Refusal, "no runner offers the agent claude") {
+		t.Fatalf("a spawn no runner offers: %+v", got)
 	}
 	// And an outbox to no io.
 	sends := "at: repos.r.out\nreads: []\nsends: [{from: o, to: slack.Nowhere.out}]\n"

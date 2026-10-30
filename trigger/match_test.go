@@ -211,6 +211,33 @@ func TestMatchRejectsBadShape(t *testing.T) {
 	}
 }
 
+// `**` IS REFUSED. kpath read it as `*.*`, exactly two levels, so a rule written for every depth
+// beneath a node selected two levels down and never fired. The wildcards a path has are still
+// taken, and a `*` inside a name is a character of it (TestAPathTakesNoOperatorAndNoList).
+func TestDoubleStarIsRefused(t *testing.T) {
+	for _, src := range []string{
+		`{path: "demo.reflex.**"}`,
+		`{path: "demo.**.stage"}`,
+		`"demo.reflex.**"`,
+	} {
+		var m Match
+		err := codec.Unmarshal([]byte(src), &m, codec.Tony)
+		if err == nil || !strings.Contains(err.Error(), "`..`") {
+			t.Errorf("%s: %v, want a refusal naming the wildcards", src, err)
+		}
+	}
+	for _, src := range []string{
+		`{path: "demo.reflex.*.*.signal.*"}`,
+		`{path: "demo.reflex.."}`,
+		`{path: 'demo."*"'}`,
+	} {
+		var m Match
+		if err := codec.Unmarshal([]byte(src), &m, codec.Tony); err != nil {
+			t.Errorf("%s: %v, want it taken", src, err)
+		}
+	}
+}
+
 // AN ADDRESS IS A PATH, written as the kinded path string or as `path:` — the two mean one thing.
 func TestAnAddressIsAPath(t *testing.T) {
 	want := []string{"verse", "ask", "*"}

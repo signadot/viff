@@ -239,8 +239,9 @@ is still in the matching state. See
 A match is a tony match, and `tony.Match` evaluates it.
 
 **A path takes no operator.** A path is a kinded path, the same one that `verse data -at`
-reads. A segment is a name, `*` or `..`. To select a family of names, write a predicate on
-what the node holds:
+reads. A segment is a name, `*` or `..`. `**` is refused: it would read as `*.*`, exactly two
+levels, where `..` is every depth. To select a family of names, write a predicate on what the
+node holds:
 
 ```tony
 # every pr whose branch is a hotfix
