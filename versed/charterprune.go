@@ -171,11 +171,11 @@ func (tx *charterTx) dropRule(name string) (int, error) {
 	if err != nil {
 		return http.StatusServiceUnavailable, err
 	}
-	if _, err := eng.RemoveTriggerAs(tx.as(), name); err != nil {
+	if _, err := eng.RemoveTriggerAs(tx.ctx, tx.as(), name); err != nil {
 		return charterCode(err), fmt.Errorf("prune: rule %q: %w", name, err)
 	}
 	tx.push(func() error {
-		if err := eng.RestoreTrigger(old); err != nil {
+		if err := eng.RestoreTrigger(tx.undoCtx(), old); err != nil {
 			return err
 		}
 		return entity.RestoreRecord(tx.store, whose)
@@ -192,11 +192,11 @@ func (tx *charterTx) dropStratum(name string) (int, error) {
 	if err != nil {
 		return http.StatusServiceUnavailable, err
 	}
-	if err := eng.RemoveStratumAs(tx.as(), name); err != nil {
+	if err := eng.RemoveStratumAs(tx.ctx, tx.as(), name); err != nil {
 		return charterCode(err), fmt.Errorf("prune: level %q: %w", name, err)
 	}
 	tx.push(func() error {
-		if err := eng.RestoreStratum(old); err != nil {
+		if err := eng.RestoreStratum(tx.undoCtx(), old); err != nil {
 			return err
 		}
 		return entity.RestoreRecord(tx.store, whose)

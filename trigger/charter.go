@@ -1,13 +1,12 @@
 package trigger
 
-// The charter is durable: an installed trigger is written into the verse as a
-// trigger:rule:<name> entity, and read back at startup.
+// The charter is its records: an installed rule is written into the verse as a
+// trigger:rule:<name> entity, and the engine follows the records (follow.go).
 //
-// Before this, a charter lived only in the engine's memory. Everything else a restart needs
-// was already durable — a task is mirrored, a sequence's position is a fact on its
-// subject, a claim is a lease in the store, and resume rehydrates a chain's hooks from it —
-// so the one thing that did not survive was the program itself. A verse came back up with
-// its work in progress intact and nothing left to react to it.
+// Everything else a restart needs is durable — a task is mirrored, a sequence's position is a
+// fact on its subject, a claim is a lease in the store, and resume rehydrates a chain's hooks
+// from it — so the program is too: a verse comes back up with its work in progress intact and
+// the charter standing to react to it.
 //
 // It is one entity per rule rather than one charter document, because that is what the
 // operations already are: installing writes one entity, removing deletes one, and neither
@@ -83,16 +82,17 @@ func (e *Engine) OwnerOf(name string) string {
 // verse's, and reporting the second as the first sends someone to debug a correct trigger.
 var ErrCharter = errors.New("the charter could not be written")
 
-// persist writes t into the verse as its charter entity.
+// persist writes t into the verse as its charter entity, and answers the revision the write
+// landed at: what a caller waits for the follow to reach. A write that changed nothing lands
+// at none.
 //
 // Its failure is RETURNED rather than logged, unlike the engine's reactive writes: this one
-// is on a request path (`verse c -a`), and a trigger that did not persist is one the
-// next restart silently drops. The installer is entitled to hear that at install time
-// rather than discover it after a restart, by its absence.
-func (e *Engine) persist(t Trigger, as string, take bool) error {
+// is on a request path (`verse c -a`), and the record is the rule, so a trigger that did not
+// persist is one the engine never runs. The installer hears that at install time.
+func (e *Engine) persist(t Trigger, as string, take bool) (int64, error) {
 	doc, err := t.ToTonyIR()
 	if err != nil {
-		return fmt.Errorf("trigger %q: encoding it for the charter: %w", t.Name, err)
+		return 0, fmt.Errorf("trigger %q: encoding it for the charter: %w", t.Name, err)
 	}
 	ref := charter.RuleRef(e.confine.stamp(), t.Name)
 	// The installing task is written with the rule, or taken off: a write merges, and a rule a
@@ -105,17 +105,18 @@ func (e *Engine) persist(t Trigger, as string, take bool) error {
 			rec[charter.TaskEnvironmentField] = systems.Environment{Systems: t.TaskEnvironment.Systems}
 		}
 	}
-	if _, _, err := e.store.Write(entity.Write{
+	_, rev, err := e.store.Write(entity.Write{
 		At:        ref.At(),
 		Value:     rec.Payload(),
 		Principal: as,
-	}); err != nil {
-		return fmt.Errorf("%w: trigger %q: writing %s: %w", ErrCharter, t.Name, ref, err)
+	})
+	if err != nil {
+		return 0, fmt.Errorf("%w: trigger %q: writing %s: %w", ErrCharter, t.Name, ref, err)
 	}
 	if !take {
-		return nil
+		return rev, nil
 	}
-	return e.takeForTheSystem(ref, as)
+	return rev, e.takeForTheSystem(ref, as)
 }
 
 // takeForTheSystem gives a record the system installed an owner record of its own, the
@@ -142,117 +143,48 @@ func (e *Engine) takeForTheSystem(ref entity.Ref, as string) error {
 	return nil
 }
 
-// forget deletes a rule's charter entity, so a removal survives the restart the install
-// does. Logged rather than returned: a trigger removed from a live engine has stopped
-// firing whatever the store says, so the removal has already taken effect — but an
-// operator has to know that the rule will come back at the next start.
-//
-// Deleting an address nothing ever wrote is a clean no-op in the store, which is what lets a
-// deliberately non-durable rule take this same removal path without a second one, and without
-// a Warn. No durable rule can be caught by it either: a name is unique across the charter.
-func (e *Engine) forget(name string) {
-	e.write(charter.RuleRef(e.confine.stamp(), name).At(), nil)
-}
-
-// LoadCharter installs the rules standing in the verse — the durable charter — into this
-// engine. Called at startup, before observation begins, so that entering subtree mode
-// gives each restored rule its watch (see ObserveScoped).
-//
-// Restoring a rule is an ordinary install, which means it REPLAYS: a subtree watch is
-// level-triggered at the open, so a restored trigger acts on what already matches it. That
-// is the same property installing a trigger has always had, and it is why a charter states
-// transitions as latches rather than edges — see docs/change-events.md. A restart is then
-// just an install over a verse that has moved on.
-//
-// A rule that cannot be decoded or installed is REPORTED AND SKIPPED, and its entity is
-// left alone: the rest of the charter is still a program worth running, and a rule verse
-// could not read is not one it should quietly delete. Errors are joined, so one bad rule
-// names itself rather than hiding behind "the charter failed to load".
-//
-// IN A SCOPE it restores the scope's OWN rules and passes over the baseline ones it can see
-// through the overlay (ownRecord). Baseline's charter running in every live scope is a
-// question about what a scope means, and a restore is not where it gets decided.
-func (e *Engine) LoadCharter() error {
-	// At the charter's own slice. A restore is the one moment the store is largest and
-	// nothing else is waiting yet, and this read at the ROOT was 18.8s of staging's 88s
-	// startup.
-	ents, err := entity.BelowErr(e.store, charter.IsRule, 2, entity.VerseRoot, charter.System)
-	// A FAILED READ IS NOT AN EMPTY CHARTER. List answers nil either way, and taking the
-	// second reading brings a verse back running NO RULES and saying nothing about it — which
-	// under load is exactly when it happens. Reported as the read it is (entity.IsUnread), so
-	// the restore asks again — and asked BEFORE anything is installed, so a load that reports
-	// it installed nothing and the next call is the same call.
-	//
-	// THIS read's failure, not the store's last one: at a restore every restored rule's firings
-	// read through the same store, so its shared flag condemns a load whose read was fine and
-	// clears one whose read failed.
+// forget deletes a rule's record, and answers the revision the delete landed at. Deleting an
+// address nothing ever wrote is a clean no-op in the store, which is what lets a removal of a
+// name nothing holds take this same path, with no second one. Its failure is returned: the
+// record is the rule, so a delete that did not land is a removal that did not happen.
+func (e *Engine) forget(name string) (int64, error) {
+	ref := charter.RuleRef(e.confine.stamp(), name)
+	_, rev, err := e.store.Write(entity.Write{At: ref.At()})
 	if err != nil {
-		return entity.Unread(fmt.Errorf("the charter could not be read, so nothing was restored from it: %w", err))
+		return 0, fmt.Errorf("%w: trigger %q: deleting %s: %w", ErrCharter, name, ref, err)
 	}
-	return e.LoadCharterFrom(ents)
+	return rev, nil
 }
 
-// LoadCharterFrom is LoadCharter over records already read: the rules among ents that are this
-// engine's own. It is how many engines restore from ONE read — restorePackages lists the charter
-// once and hands every package's engine the lot, where each reading it for itself read the whole
-// charter once per package.
-func (e *Engine) LoadCharterFrom(ents []entity.Entity) error {
-	var errs []error
-	for _, ent := range ents {
-		if !charter.IsRule(ent.Ref) || !e.ownRecord(ent) {
-			continue
-		}
-		t, err := ruleOf(ent)
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		// A rule already standing under its name is what this load would install: a load
-		// asked twice — the second time because the first could not read the strata, say —
-		// installs each rule once.
-		if _, standing := e.triggerNamed(t.Name); standing {
-			continue
-		}
-		// durable=false: it is already durable — that is where it came from. Re-writing it
-		// would be a no-op with a revision attached, and a charter subtree watch would see
-		// every restart as a charter change. As whoever owns it, which its record says.
-		if err := e.addTrigger(t, false, e.OwnerOf(t.Name)); err != nil {
-			errs = append(errs, fmt.Errorf("charter %s: %w", ent.Ref, err))
-		}
-	}
-	return errors.Join(errs...)
-}
-
-// ruleOf decodes one charter entity back into a trigger.
+// ruleOf decodes one charter record back into a trigger.
 //
 // A name that disagrees with the address is refused rather than reconciled. The two are
 // written together and can only diverge by a hand edit, and neither answer is safe: the
 // name is what a spawn id and a chain are built from, while the address is what a removal
 // deletes — so installing under one and deleting under the other would leave a rule nothing
 // can get rid of.
-func ruleOf(ent entity.Entity) (Trigger, error) {
-	doc := entity.Get(ent.Payload, charter.SpecField)
-	if doc == nil {
-		return Trigger{}, fmt.Errorf("charter %s: no %s field (payload is %v)", ent.Ref, charter.SpecField, ent.Payload)
+func ruleOf(rec charter.Record) (Trigger, error) {
+	if rec.Spec == nil {
+		return Trigger{}, fmt.Errorf("charter %s: no %s field", rec.Ref, charter.SpecField)
 	}
 	var t Trigger
-	if err := t.FromTonyIR(doc); err != nil {
-		return Trigger{}, fmt.Errorf("charter %s: %w", ent.Ref, err)
+	if err := t.FromTonyIR(rec.Spec); err != nil {
+		return Trigger{}, fmt.Errorf("charter %s: %w", rec.Ref, err)
 	}
-	t.Task = entity.Str(ent.Payload, charter.TaskField)
-	if n := entity.Get(ent.Payload, charter.TaskEnvironmentField); n != nil && t.Task != "" {
+	t.Task = rec.Task
+	if rec.TaskEnvironment != nil && t.Task != "" {
 		var env systems.Environment
-		if err := env.FromTonyIR(n); err != nil {
-			return Trigger{}, fmt.Errorf("charter %s: %s: %w", ent.Ref, charter.TaskEnvironmentField, err)
+		if err := env.FromTonyIR(rec.TaskEnvironment); err != nil {
+			return Trigger{}, fmt.Errorf("charter %s: %s: %w", rec.Ref, charter.TaskEnvironmentField, err)
 		}
 		t.TaskEnvironment = &env
 	}
-	// The id is the name for baseline and `<address>:<name>` for a package (CharterRefAt), so
+	// The id is the name for baseline and `<address>:<name>` for a package (charter.ID), so
 	// the check is against the tail: what has to agree is the NAME, and the package half of the
 	// address is not part of it.
-	if t.Name != charter.Name(ent.Ref.Name()) {
+	if t.Name != rec.Name {
 		return Trigger{}, fmt.Errorf("charter %s: the rule names itself %q; a rule is addressed by its "+
-			"name, so it would install as one trigger and be removed as another", ent.Ref, t.Name)
+			"name, so it would install as one trigger and be removed as another", rec.Ref, t.Name)
 	}
 	return t, nil
 }

@@ -22,7 +22,7 @@ func Check(store entity.Store, confine Subtree, reads []Subtree, as string, stra
 	e.Confine(confine)
 	e.SetReads(reads)
 	for _, st := range strata {
-		if err := e.addStratum(st, false, as); err != nil {
+		if err := e.addStratum(st); err != nil {
 			return nil, fmt.Errorf("stratum %q: %w", st.Name, err)
 		}
 	}

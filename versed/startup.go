@@ -11,10 +11,13 @@ import (
 	"github.com/signadot/verse/trigger"
 )
 
-// The pause before a phase whose read did not happen is asked again, and its ceiling.
+// The pause before a phase whose read did not happen is asked again, and its ceiling; and how
+// long a phase waits for an engine's charter to be read from its records before it says so and
+// is asked again (charterIn).
 const (
 	retryWait    = 2 * time.Second
 	retryWaitMax = 30 * time.Second
+	restoreWait  = 2 * time.Second
 )
 
 // The phases of Start, by the name each reports under. Named once, because a phase that
@@ -23,7 +26,6 @@ const (
 	phasePerms       = "loaded the perms mirror"
 	phaseSuspensions = "loaded the suspensions"
 	phaseTasks       = "reconciled tasks"
-	phaseStrata      = "restored the strata"
 	phaseCharter     = "restored the charter"
 	phasePackages    = "restored packages"
 	phaseSystem      = "installed the system charter"
@@ -143,39 +145,32 @@ func (s *Server) awaiting(phases ...string) error {
 	return nil
 }
 
-// loaded runs one of the baseline charter's loads under the charter lock — a phase asked again
-// runs beside a serving verse, and an operator's install must not race it — and sorts its
-// answer: a read that did not happen is the phase's to ask again, anything else is a rule or a
-// level that would not restore, reported and skipped so that one bad record does not cost the
-// rest. A lock that could not be taken in time is asked again too.
-func (s *Server) loaded(load func() error) error {
-	release, err := s.lockCharter(s.ctxOrBackground())
-	if err != nil {
-		return entity.Unread(err)
+// charterIn waits for an engine's charter to be read from its records (trigger.Engine.Restored):
+// the follow's opening picture, every rule and level standing in the store placed, armed or
+// pending with why. A charter not in by restoreWait is reported as a read that did not happen,
+// with what the store is doing for the watch, so the phase is asked again until it is and
+// status says so meanwhile (Restoring). what names the charter in that report.
+func (s *Server) charterIn(ctx context.Context, eng *trigger.Engine, what string) error {
+	wait := s.restoreWait
+	if wait <= 0 {
+		wait = restoreWait
 	}
-	defer release()
-	err = load()
-	if entity.IsUnread(err) {
-		return err
+	select {
+	case <-eng.Restored():
+		return nil
+	case <-ctx.Done():
+		return nil
+	case <-time.After(wait):
+		return entity.Unread(fmt.Errorf("%s is being read from its records: %s", what, eng.FollowState()))
 	}
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "verse: charter: %v\n", err)
-	}
-	return nil
 }
 
-// restoreScopeCharter reinstalls the scope's own strata and rules, in that order and for the
-// reason Start gives: a rule names the stratum it lives in, and one restored before its
-// stratum is held rather than installed.
-//
-// Failures are logged rather than returned, as Start's are: the caller is a request that has
-// something else to do (installing a trigger, listing one), and a scope whose charter came
-// back incomplete is still a scope worth serving.
-func (s *Server) restoreScopeCharter(eng *trigger.Engine, scope string) {
-	if err := eng.LoadStrata(); err != nil {
-		fmt.Fprintf(os.Stderr, "verse: strata (scope %s): %v\n", scope, err)
-	}
-	if err := eng.LoadCharter(); err != nil {
+// restoreScopeCharter waits for the scope's own charter to be read from its records, for the
+// reason Start waits for baseline's: a scope's engine is made on demand, by a request that then
+// reads or writes its charter. A charter not in by then is logged, as Start's are, and arrives
+// when the store answers: the engine follows its records whether or not anybody waited.
+func (s *Server) restoreScopeCharter(ctx context.Context, eng *trigger.Engine, scope string) {
+	if err := s.charterIn(ctx, eng, "the charter of scope "+scope); err != nil {
 		fmt.Fprintf(os.Stderr, "verse: charter (scope %s): %v\n", scope, err)
 	}
 }
@@ -230,18 +225,20 @@ func (s *Server) Start(ctx context.Context) {
 	// reintroduction when engine-wide steering is wired.
 	s.Eng.ObserveScoped(ctx)
 
-	// The durable charter: the rules standing in the verse are reinstalled, so the program a
-	// restart comes back to is the one it went down with. Each opens its own watch as it
-	// installs and REPLAYS what already matches it — which is why this follows reconcile: a
-	// restored trigger should see a task entity that tells the truth about the restart
-	// rather than the `running` a dead runtime left behind.
+	// The durable charter: the engine follows its records from the moment it observes
+	// (trigger/follow.go), so the program a restart comes back to is the one it went down with,
+	// and this phase is the wait for the records to be in. Each rule opens its own watch as it
+	// arms and REPLAYS what already matches it — which is why this follows reconcile: a restored
+	// trigger should see a task entity that tells the truth about the restart rather than the
+	// `running` a dead runtime left behind.
 	//
 	// And why it follows ObserveScoped, which is what binds ctx to the engine: anything
 	// restored before that runs under a context nothing cancels, so it would outlive the
 	// shutdown that was supposed to stop it.
 	//
-	// A rule that could not be restored is reported and skipped, so one bad entity does not
-	// cost the rest of the charter.
+	// A record that could not be placed is reported and left standing, so one bad entity does
+	// not cost the rest of the charter. The levels and the rules arrive in one picture, in no
+	// order: a rule placed before its level is held for it, and armed when the level is in.
 	//
 	// This is BASELINE's charter. A scope's own is restored when its engine is built, which
 	// happens on demand — the first scoped request, i.e. the dev reconnecting (see
@@ -249,24 +246,11 @@ func (s *Server) Start(ctx context.Context) {
 	// have one: a scope's layer is invisible from baseline and nothing registers a scope's
 	// existence. So a scope nobody has come back to sits inert, which is the remaining
 	// half of the gap scoped resume also has (see reconcileClaims).
-	// The ORDERING first: a rule names the stratum it lives in, and one restored before its
-	// stratum is held rather than installed — correct, and it would then only start firing when
-	// something happened to touch the stratum again. Loading strata first makes the restart what
-	// it should be, an install over a verse that has moved on.
-	// Two phases rather than one, so that each is asked again on its own: a rule restored
-	// before its level is held and installs when the level arrives, so the order between the
-	// two holds whichever of them the store answers first.
-	phase(phaseStrata, func() error {
-		if err := s.awaiting(phaseSuspensions); err != nil {
-			return err
-		}
-		return s.loaded(s.Eng.LoadStrata)
-	})
 	phase(phaseCharter, func() error {
 		if err := s.awaiting(phaseSuspensions); err != nil {
 			return err
 		}
-		return s.loaded(s.Eng.LoadCharter)
+		return s.charterIn(ctx, s.Eng, "the charter")
 	})
 	// The charter PACKAGES, each into an engine of its own: a package is a stamp on records
 	// anyone can list, so unlike a scope a restart can bring every one of them back rather than

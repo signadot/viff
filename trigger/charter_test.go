@@ -1,6 +1,8 @@
 package trigger
 
 import (
+	"bytes"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -23,12 +25,36 @@ import (
 func restart(t *testing.T, addr string) (*Engine, entity.Store) {
 	t.Helper()
 	store := entitytest.StoreAt(t, addr)
+	return reopened(t, store), store
+}
+
+// reopened is a fresh engine over a store, observing, with its charter read from the records.
+func reopened(t *testing.T, store entity.Store) *Engine {
+	t.Helper()
 	eng := New(store, task.AutoResolver{})
-	eng.ObserveScoped(t.Context()) // versed's order: observe, then restore into it
-	if err := eng.LoadCharter(); err != nil {
-		t.Fatalf("LoadCharter: %v", err)
+	eng.ObserveScoped(t.Context())
+	restored(t, eng)
+	return eng
+}
+
+// restored waits for the engine's charter to be read from its records.
+func restored(t *testing.T, eng *Engine) {
+	t.Helper()
+	select {
+	case <-eng.Restored():
+	case <-time.After(5 * time.Second):
+		t.Fatalf("the charter was not restored: %s", eng.FollowState())
 	}
-	return eng, store
+}
+
+// charterOf is every rule standing in the engine's charter, armed or pending.
+func charterOf(eng *Engine) []Trigger { return append(eng.Triggers(), eng.Held()...) }
+
+// logging gives an engine a logger whose lines the test can read.
+func logging(eng *Engine) *bytes.Buffer {
+	out := &bytes.Buffer{}
+	eng.SetLogger(slog.New(slog.NewTextHandler(out, nil)))
+	return out
 }
 
 // A trigger installed before a restart still fires after it. This is the whole point: a
@@ -77,7 +103,7 @@ func TestARulesTaskSurvivesARestart(t *testing.T) {
 		t.Fatalf("restored, the rule's task is %q holding %+v, want installer holding %+v", got.Task, got.TaskEnvironment, env)
 	}
 	rule.Task, rule.TaskEnvironment = "", nil
-	if err := back.InstallTriggerAs("", rule); err != nil {
+	if err := back.InstallTriggerAs(t.Context(), "", rule); err != nil {
 		t.Fatalf("installed again: %v", err)
 	}
 	if again, _ := restart(t, addr); func() bool { got, _ := again.Rule("review"); return got.Task != "" || got.TaskEnvironment != nil }() {
@@ -189,7 +215,11 @@ func TestCharterRoundTripsOperators(t *testing.T) {
 	if br := ir.Get(ir.Get(subject, "value"), "branch"); br == nil || br.Tag != "!glob" {
 		t.Fatalf("the predicate's branch = %v; the operator did not survive as a tag", br)
 	}
-	back, err := ruleOf(ent)
+	rec, err := charter.Decode(ent, 0)
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	back, err := ruleOf(rec)
 	if err != nil {
 		t.Fatalf("ruleOf: %v", err)
 	}
@@ -257,8 +287,9 @@ func TestReinstallReplacesTheRule(t *testing.T) {
 	}
 }
 
-// A charter entity nothing can read is reported and SKIPPED, not fatal: the rest of the
-// charter is still a program worth running, and one unreadable rule must not cost it.
+// A charter record nothing can read is reported and LEFT STANDING, with the rest placed: the
+// rest of the charter is still a program worth running, and one unreadable rule must not cost
+// it.
 func TestUnreadableRuleIsReportedAndSkipped(t *testing.T) {
 	addr := entitytest.Addr(t)
 	first := entitytest.StoreAt(t, addr)
@@ -274,15 +305,14 @@ func TestUnreadableRuleIsReportedAndSkipped(t *testing.T) {
 
 	store := entitytest.StoreAt(t, addr)
 	back := New(store, task.AutoResolver{})
-	err := back.LoadCharter()
-	if err == nil {
-		t.Fatal("LoadCharter reported success over an undecodable rule")
-	}
-	if !strings.Contains(err.Error(), "junk") {
-		t.Fatalf("LoadCharter error does not name the rule that failed: %v", err)
-	}
-	if got := back.Triggers(); len(got) != 1 || got[0].Name != "review" {
+	said := logging(back)
+	back.ObserveScoped(t.Context())
+	restored(t, back)
+	if got := charterOf(back); len(got) != 1 || got[0].Name != "review" {
 		t.Fatalf("charter = %v; one bad rule cost the good one", got)
+	}
+	if !strings.Contains(said.String(), "junk") {
+		t.Fatalf("the record that could not be placed is not named:\n%s", said)
 	}
 }
 
@@ -303,11 +333,14 @@ func TestRuleNameMustMatchItsAddress(t *testing.T) {
 	}
 	entitytest.Set(t, store, charter.RuleRef("", "elsewhere"), entity.Obj{charter.SpecField: entity.Raw(doc)}.Payload())
 
-	if err := eng.LoadCharter(); err == nil {
-		t.Fatal("a rule named 'review' installed from trigger.rule.elsewhere")
-	}
-	if got := eng.Triggers(); len(got) != 0 {
+	said := logging(eng)
+	eng.ObserveScoped(t.Context())
+	restored(t, eng)
+	if got := charterOf(eng); len(got) != 0 {
 		t.Fatalf("charter = %v; the misaddressed rule installed anyway", got)
+	}
+	if !strings.Contains(said.String(), "names itself") {
+		t.Fatalf("the misaddressed record is not said:\n%s", said)
 	}
 }
 
@@ -350,11 +383,8 @@ func TestAbsenceLatchSurvivesTheCharterStore(t *testing.T) {
 	}
 
 	// What a restart does.
-	back := New(store, task.AutoResolver{})
-	if err := back.LoadCharter(); err != nil {
-		t.Fatalf("load: %v", err)
-	}
-	loaded := back.Triggers()
+	back := reopened(t, store)
+	loaded := charterOf(back)
 	if len(loaded) != 1 {
 		t.Fatalf("loaded %d rules", len(loaded))
 	}
@@ -390,7 +420,7 @@ func TestAbsenceLatchSurvivesTheCharterStore(t *testing.T) {
 // half of a document surviving, which is worse than none of it.
 //
 // The path this walks is the real one: decode as an install does, persist, then read back as
-// LoadCharter does.
+// a restore does.
 func TestARuleKeepsItsComments(t *testing.T) {
 	eng, store := newEng(t)
 	src := []byte("# why this rule exists, in the author's words\n" +
@@ -418,7 +448,11 @@ func TestARuleKeepsItsComments(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("the charter entity: ok=%v err=%v", ok, err)
 	}
-	back, err := ruleOf(ent)
+	rec, err := charter.Decode(ent, 0)
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	back, err := ruleOf(rec)
 	if err != nil {
 		t.Fatalf("ruleOf: %v", err)
 	}
@@ -489,7 +523,11 @@ func TestARuleKeepsEveryCommentItWasWrittenWith(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("the charter entity: ok=%v err=%v", ok, err)
 	}
-	back, err := ruleOf(ent)
+	rec, err := charter.Decode(ent, 0)
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	back, err := ruleOf(rec)
 	if err != nil {
 		t.Fatalf("ruleOf: %v", err)
 	}

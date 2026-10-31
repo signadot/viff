@@ -40,12 +40,14 @@ func (s *Server) packageEngine(at string) (*trigger.Engine, error) {
 	}
 	s.scopeMu.Lock()
 	defer s.scopeMu.Unlock()
-	return s.packageEngineLocked(confine)
+	return s.packageEngineLocked(confine, nil)
 }
 
 // packageEngineLocked is packageEngine with the lock already held — the restore path below
-// builds several in one pass.
-func (s *Server) packageEngineLocked(confine trigger.Subtree) (*trigger.Engine, error) {
+// builds several in one pass — and reads what the package declares it reads, for an engine made
+// here: set before the engine observes, since its rules are placed from their records the
+// moment it does and each is checked against the declaration as it is placed.
+func (s *Server) packageEngineLocked(confine trigger.Subtree, reads []trigger.Subtree) (*trigger.Engine, error) {
 	key := "at:" + confine.Stamp()
 	if pe, ok := s.scopeEngs[key]; ok {
 		return pe.eng, nil
@@ -62,11 +64,12 @@ func (s *Server) packageEngineLocked(confine trigger.Subtree) (*trigger.Engine, 
 	eng.SetSpawner(s.spawnerFor(s.Store, "", eng))
 	eng.SetDeadlineMover(s.moveDeadline)
 	eng.SetOfferCheck(s.offerCheck())
+	eng.SetReads(reads)
 	ctx, cancel := context.WithCancel(s.ctx)
 	// Per-trigger observation, exactly as a scope's engine has: each rule watches the subtrees
 	// it reads, which for a package is usually wider than what it may write.
 	eng.ObserveScoped(ctx)
-	s.scopeEngs[key] = &scopeEngine{eng: eng, cancel: cancel}
+	s.scopeEngs[key] = &scopeEngine{eng: eng, ctx: ctx, cancel: cancel}
 	return eng, nil
 }
 
@@ -122,19 +125,18 @@ func (s *Server) kickEngines() {
 	}
 }
 
-// restorePackages installs each package's durable charter back into an engine of its own.
+// restorePackages brings each package's charter back into an engine of its own, and waits for
+// the records to be in.
 //
 // A package is VISIBLE where a scope is not, and that is the whole difference in lifecycle: a
 // scope's layer cannot be enumerated from baseline, so a scope comes back when its owner
 // reconnects, while a package is a stamp on records anyone can list — so a restart brings every
-// package back by reading the charter and grouping it by address.
+// package back by reading the charter and grouping it by address. Each engine then follows its
+// own records (trigger/follow.go), taking the ones stamped with its address.
 //
-// It runs after the baseline charter is loaded, and takes only the records stamped with an
-// address; the baseline load takes only the unstamped ones (Engine.ownRecord).
-//
-// ASKED AGAIN WHOLE when a read did not happen — the listing of packages, or of the charter
-// (entity.IsUnread): both are read before anything is installed, a load skips what already
-// stands, and an engine is found rather than made, so a second run installs nothing twice.
+// ASKED AGAIN WHOLE when the listing did not happen (entity.IsUnread), and when an engine's
+// records are not in by the wait: an engine is found rather than made, so a second run makes
+// nothing twice.
 func (s *Server) restorePackages() error {
 	if err := s.awaiting(phaseSuspensions); err != nil {
 		return err
@@ -151,13 +153,10 @@ func (s *Server) restorePackages() error {
 	}
 	defer release()
 
-	// ONE READ OF THE CHARTER, and everything the restore installs comes from it: which packages
-	// exist, what each declares it reads, and its strata and rules. Each engine reading for
-	// itself read the whole charter twice per package, one package after another, while the
-	// store was at its busiest. And the declarations read apart from the rules could fail where
-	// the rules' read did not: every package then read as declaring nothing, and its rules loaded
-	// against an engine with no declaration and were refused, one after another
-	// (git-issue wb2pp5j0h12kssy9whn0).
+	// ONE READ OF THE CHARTER, for which packages exist and what each declares it reads. The
+	// declarations and the rules read apart could fail apart: every package then read as
+	// declaring nothing, and its rules were refused one after another (git-issue
+	// wb2pp5j0h12kssy9whn0). Each engine takes its rules and levels from its own follow.
 	records, err := entity.BelowErr(s.Store, isCharterRecord, 2, entity.VerseRoot, charter.System)
 	if err != nil {
 		return entity.Unread(fmt.Errorf("the charter could not be read, so no package was restored: %w", err))
@@ -173,6 +172,7 @@ func (s *Server) restorePackages() error {
 	if len(names) == 0 {
 		return nil
 	}
+	imports := importsIn(records, names)
 	s.scopeMu.Lock()
 	engs := make([]*trigger.Engine, 0, len(names))
 	for _, at := range names {
@@ -181,7 +181,9 @@ func (s *Server) restorePackages() error {
 			logPackage("charter package %q: %v", at, err)
 			continue
 		}
-		eng, err := s.packageEngineLocked(confine)
+		// With its declaration, for an engine made here: a rule is checked against what its
+		// package declares it reads as it is placed.
+		eng, err := s.packageEngineLocked(confine, imports[at])
 		if err != nil {
 			logPackage("charter package %q: %v", at, err)
 			continue
@@ -189,16 +191,15 @@ func (s *Server) restorePackages() error {
 		engs = append(engs, eng)
 	}
 	s.scopeMu.Unlock()
-	// The declarations before the rules: a rule is checked against its package's reads as it
-	// installs, so a restore that loaded the charter first would refuse what it is restoring.
-	s.restorePackageImports(importsIn(records, names))
-	// OFF THE LOCK, for the reason a scope's restore is: loading a charter opens a watch per
+	// And for an engine that stood already — made by an install that arrived before this —
+	// the declaration as the records have it (restorePackageImports).
+	s.restorePackageImports(imports)
+	// OFF THE LOCK, for the reason a scope's restore is: a charter coming in opens a watch per
 	// rule, and holding the registry lock across that stalls every other lookup behind it.
+	ctx := s.ctxOrBackground()
 	for _, eng := range engs {
-		for _, load := range []func([]entity.Entity) error{eng.LoadStrataFrom, eng.LoadCharterFrom} {
-			if err := load(records); err != nil {
-				logPackage("charter package: %v", err)
-			}
+		if err := s.charterIn(ctx, eng, "the charter at "+eng.At()); err != nil {
+			return err
 		}
 	}
 	return nil

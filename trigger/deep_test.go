@@ -131,11 +131,8 @@ func TestTheIDThatIsAnAsteriskIsNameable(t *testing.T) {
 		t.Fatalf("install: %v", err)
 	}
 
-	second := New(store, task.AutoResolver{})
-	if err := second.LoadCharter(); err != nil {
-		t.Fatalf("restore: %v", err)
-	}
-	back, ok := second.Trigger("literal-star")
+	second := reopened(t, store)
+	back, ok := second.Rule("literal-star")
 	if !ok {
 		t.Fatal("the rule did not come back")
 	}

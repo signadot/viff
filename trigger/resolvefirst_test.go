@@ -43,11 +43,11 @@ func TestAFiringThatCannotBeResolvedWritesNothing(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	for _, s := range strata {
-		if err := eng.addStratum(s, false, ""); err != nil {
+		if err := eng.addStratum(s); err != nil {
 			t.Fatalf("stratum %q: %v", s.Name, err)
 		}
 	}
-	if err := eng.addTrigger(trigs[0], false, ""); err != nil {
+	if err := eng.addTrigger(trigs[0], ""); err != nil {
 		t.Fatalf("does not install: %v", err)
 	}
 

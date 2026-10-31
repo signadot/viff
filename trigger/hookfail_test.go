@@ -3,9 +3,10 @@ package trigger
 import (
 	"context"
 	"errors"
-	"github.com/signadot/verse/systems"
 	"strings"
 	"testing"
+
+	"github.com/signadot/verse/systems"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"

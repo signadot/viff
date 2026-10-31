@@ -421,7 +421,7 @@ func (s *Server) deleteCharterItem(w http.ResponseWriter, r *http.Request) {
 	// nobody checked is the system deleting somebody's rule, its owner record with it, and
 	// leaving the name free for the stranger who asked.
 	who := entity.PrincipalOf(s.scopedStore(r))
-	if removed, err := eng.RemoveTriggerAs(who, name); refused(w, err) {
+	if removed, err := eng.RemoveTriggerAs(r.Context(), who, name); refused(w, err) {
 		return
 	} else if removed {
 		w.WriteHeader(http.StatusNoContent)
@@ -444,7 +444,7 @@ func (s *Server) deleteCharterItem(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	switch err := eng.RemoveStratumAs(who, name); {
+	switch err := eng.RemoveStratumAs(r.Context(), who, name); {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, entity.ErrForbidden):
@@ -508,7 +508,7 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 		}
 		wait = d
 	}
-	in, code, err := s.installCharterPruning(s.scopedStore(r), q.Get("scope"), q.Get("at"), q.Get("prune"), docs, hold)
+	in, code, err := s.installCharterPruning(r.Context(), s.scopedStore(r), q.Get("scope"), q.Get("at"), q.Get("prune"), docs, hold)
 	if err != nil {
 		http.Error(w, err.Error(), code)
 		return
@@ -542,7 +542,7 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 // WHAT IT ANSWERS IS SETTLED AFTERWARDS (installed.settle), off the charter lock: a wait for
 // the rules to arm, if asked for, and then what the install has to say of each rule, which is
 // how things stand when the request ends.
-func (s *Server) installCharterPruning(store entity.Store, scope, at, prune string, docs []*ir.Node, hold *taskCharter) (*charterInstall, int, error) {
+func (s *Server) installCharterPruning(ctx context.Context, store entity.Store, scope, at, prune string, docs []*ir.Node, hold *taskCharter) (*charterInstall, int, error) {
 	groups, err := charterFilesPruning(docs, at, prune)
 	if err != nil {
 		return nil, http.StatusBadRequest, err
@@ -562,7 +562,7 @@ func (s *Server) installCharterPruning(store entity.Store, scope, at, prune stri
 			return nil, code, err
 		}
 	}
-	tx := &charterTx{s: s, store: store, scope: scope, hold: hold, dropped: map[string][]string{}}
+	tx := &charterTx{s: s, ctx: ctx, store: store, scope: scope, hold: hold, dropped: map[string][]string{}}
 	if code, err := tx.install(groups); err != nil {
 		return nil, code, err
 	}
@@ -600,7 +600,7 @@ func (in *charterInstall) settle(ctx context.Context, wait time.Duration) []char
 // acts through, the scope and the address the file is being applied at. The system's own
 // charter comes through here from a file rather than a request (installSystemCharter).
 func (s *Server) installCharterAs(store entity.Store, scope, at string, docs []*ir.Node) ([]charterGroup, int, error) {
-	in, code, err := s.installCharterPruning(store, scope, at, "", docs, nil)
+	in, code, err := s.installCharterPruning(s.ctxOrBackground(), store, scope, at, "", docs, nil)
 	if err != nil {
 		return nil, code, err
 	}
@@ -1042,7 +1042,9 @@ func (s *Server) charterEngineFor(scope, at string) (*trigger.Engine, error) {
 // is as much as an engine holding live watches can offer and is what "the file is either the
 // charter or it is not" needs.
 type charterTx struct {
-	s     *Server
+	s *Server
+	// ctx bounds each wait on the engine to hold what the request wrote (trigger.Engine.InstallTriggerAs).
+	ctx   context.Context
 	store entity.Store
 	scope string
 	at    string
@@ -1096,6 +1098,10 @@ func (tx *charterTx) notes(at string) []ruleNotes {
 }
 
 func (tx *charterTx) push(f func() error) { tx.undo = append(tx.undo, f) }
+
+// undoCtx bounds an undo's wait on the engine: the request's lifetime is not it, since what is
+// put back is put back whether or not the requester is still there to hear it.
+func (tx *charterTx) undoCtx() context.Context { return context.WithoutCancel(tx.ctx) }
 
 // as is who this install is by: the request's principal, which the rule and level records are
 // written as, so that the charter acts as its installer from then on.
@@ -1158,12 +1164,12 @@ func (tx *charterTx) stratum(def *ir.Node) (int, error) {
 	if err != nil {
 		return http.StatusServiceUnavailable, err
 	}
-	if err := eng.InstallStratumAs(tx.as(), st); err != nil {
+	if err := eng.InstallStratumAs(tx.ctx, tx.as(), st); err != nil {
 		return charterCode(err), err
 	}
 	tx.push(func() error {
 		if had {
-			if err := eng.RestoreStratum(old); err != nil {
+			if err := eng.RestoreStratum(tx.undoCtx(), old); err != nil {
 				return err
 			}
 			return entity.RestoreRecord(tx.store, whose)
@@ -1210,25 +1216,17 @@ func (tx *charterTx) rule(def *ir.Node) (int, error) {
 	if err != nil {
 		return http.StatusServiceUnavailable, err
 	}
-	// THE SYSTEM REAPPLYING A RULE THAT STANDS AS IT IS leaves it standing. A system charter is
-	// applied over what stood at every start, after the restore has brought the same rules back,
-	// and an install replays the rule over everything it selects: on staging that was each
-	// repository's charter replayed once more, eight minutes before the verse was ready, for a
-	// config that had not changed. The same text standing as the system is what the install
-	// would leave, so there is nothing to apply. A person applying a file still replays it.
+	// THE SYSTEM REAPPLYING A RULE THAT STANDS AS IT IS leaves it standing, with nothing
+	// written. A system charter is applied over what stood at every start, after the restore
+	// has brought the same rules back: the same text standing as the system is what the
+	// install would leave, so there is nothing to apply. A rule whose words moved while its
+	// meaning stayed — the comments its author writes above it are part of its record, and
+	// not of what it does — is written, and the engine's copy follows the record with nothing
+	// placed again (trigger.Engine.InstallTriggerAs).
 	//
 	// Decided before anything is read from the store: whose a rule stands as is the perms
 	// mirror's (ActsAs), and the record snapshot below is only for undoing an install.
-	if had && tx.as() == entity.SystemCharter && before == tx.as() && sameValue(old, t) {
-		// ITS WORDS MAY HAVE MOVED WHILE ITS MEANING STAYED: the comments an author writes above
-		// a rule are part of its record — the rule as its author left it — and not of what it
-		// does. The record follows the text, with no install and nothing replayed.
-		if !sameText(old, t) {
-			if err := eng.RewriteRuleAs(tx.as(), t); err != nil {
-				return charterCode(err), err
-			}
-			tx.push(func() error { return eng.RewriteRuleAs("", old) })
-		}
+	if had && tx.as() == entity.SystemCharter && before == tx.as() && trigger.SameText(old, t) {
 		return http.StatusCreated, nil
 	}
 	// AND WHOSE IT STOOD AS, which is its perms record and not anything in the rule. An install
@@ -1239,12 +1237,12 @@ func (tx *charterTx) rule(def *ir.Node) (int, error) {
 	if err != nil {
 		return http.StatusServiceUnavailable, err
 	}
-	if err := eng.InstallTriggerAs(tx.as(), t); err != nil {
+	if err := eng.InstallTriggerAs(tx.ctx, tx.as(), t); err != nil {
 		return charterCode(err), err
 	}
 	tx.push(func() error {
 		if had {
-			if err := eng.RestoreTrigger(old); err != nil {
+			if err := eng.RestoreTrigger(tx.undoCtx(), old); err != nil {
 				return err
 			}
 			return entity.RestoreRecord(tx.store, whose)
@@ -1402,7 +1400,7 @@ func (s *Server) deleteCharterAt(w http.ResponseWriter, r *http.Request, at stri
 	}
 	who := entity.PrincipalOf(s.scopedStore(r)) // see deleteCharterItem: the engine refuses for them
 	if kind == "rules" {
-		if removed, err := eng.RemoveTriggerAs(who, name); refused(w, err) {
+		if removed, err := eng.RemoveTriggerAs(r.Context(), who, name); refused(w, err) {
 			return
 		} else if removed {
 			w.WriteHeader(http.StatusNoContent)
@@ -1411,7 +1409,7 @@ func (s *Server) deleteCharterAt(w http.ResponseWriter, r *http.Request, at stri
 		notHere()
 		return
 	}
-	switch err := eng.RemoveStratumAs(who, name); {
+	switch err := eng.RemoveStratumAs(r.Context(), who, name); {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, entity.ErrForbidden):

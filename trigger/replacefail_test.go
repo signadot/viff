@@ -43,7 +43,7 @@ func TestAReplacementThatCannotBeWrittenLeavesTheRuleAndItsOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	eng := New(store, task.NewRegistry())
-	if err := eng.InstallTriggerAs(alice, reviewRule("review", entity.Obj{"stage": "reviewed"})); err != nil {
+	if err := eng.InstallTriggerAs(t.Context(), alice, reviewRule("review", entity.Obj{"stage": "reviewed"})); err != nil {
 		t.Fatal(err)
 	}
 	owner := func() string {
@@ -69,7 +69,7 @@ func TestAReplacementThatCannotBeWrittenLeavesTheRuleAndItsOwner(t *testing.T) {
 	} {
 		name, failures := c.name, c.failures
 		inner.n = failures
-		if err := eng.InstallTriggerAs(alice, reviewRule("review", entity.Obj{"stage": "approved"})); err == nil {
+		if err := eng.InstallTriggerAs(t.Context(), alice, reviewRule("review", entity.Obj{"stage": "approved"})); err == nil {
 			t.Fatalf("%s: the edit landed through a store that refused it", name)
 		}
 		inner.n = 0

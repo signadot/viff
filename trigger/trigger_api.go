@@ -1,11 +1,13 @@
 package trigger
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -18,66 +20,113 @@ import (
 	"github.com/signadot/verse/trigger/charter"
 )
 
-// AddTrigger installs a trigger into the charter — durably: the rule is written into the
-// verse as its trigger:rule:<name> entity, so it is still there after a restart (see
-// charter.go). It validates each gate's mode and rejects a duplicate name. The engine
-// interprets the trigger directly — there is no separate compiled form.
-func (e *Engine) AddTrigger(t Trigger) error { return e.addTrigger(t, true, "") }
+// AddTrigger installs a rule into the charter, refusing a name in use: one rule at a time,
+// where a name already taken is a collision somebody has not noticed. InstallTrigger replaces.
+func (e *Engine) AddTrigger(t Trigger) error {
+	e.trigMu.Lock()
+	err := e.nameTaken(t.Name)
+	e.trigMu.Unlock()
+	if err != nil {
+		return err
+	}
+	return e.InstallTriggerAs(context.Background(), "", t)
+}
 
 // InstallTrigger is AddTrigger for a CHARTER FILE: a rule of the same name is REPLACED rather
 // than refused, because the file is what the operator means and re-applying one is the ordinary
-// way to change a rule.
-//
-// AddTrigger keeps its refusal, and should: it is one rule at a time, where a name already in
-// use is a collision somebody has not noticed. A file naming a rule twice is a different thing
-// from a file being applied twice.
-//
-// INSTALLED OR HELD, both, which is why the removal is unconditional. A rule waiting for its
-// stratum is still a rule of this name, and asking only Trigger left it standing — so re-applying
-// an edited file met nameTaken's "is already held" and was refused, which is the one act this
-// function exists to allow.
-func (e *Engine) InstallTrigger(t Trigger) error { return e.InstallTriggerAs("", t) }
+// way to change a rule. Installed or held, both: a rule waiting for its stratum is still a rule
+// of this name.
+func (e *Engine) InstallTrigger(t Trigger) error {
+	return e.InstallTriggerAs(context.Background(), "", t)
+}
 
 // InstallTriggerAs is InstallTrigger on behalf of a principal: the rule's record is written as
 // theirs, so the charter acts as its installer from then on. The empty principal is the
-// store's own — the system, for a restore — and is what InstallTrigger passes.
-func (e *Engine) InstallTriggerAs(as string, t Trigger) error {
-	// REPLACING A RULE IS ITS OWNER'S ACT, asked before anything is touched: what stands is
-	// taken out of the engine through the engine's own hands, which are the system's, so a
-	// check made only by the write that puts the new rule down comes after the old one is gone.
+// store's own — the system — and is what InstallTrigger passes. It returns once the engine
+// holds the rule (followed), bounded by ctx.
+//
+// THE RECORD IS THE RULE (follow.go): the install is the write, and what the engine runs
+// follows from it. Every check a rule faces is made first, with the old one still standing: a
+// file re-applied with a mistake in it is refused and leaves what stood standing.
+func (e *Engine) InstallTriggerAs(ctx context.Context, as string, t Trigger) error {
+	// REPLACING A RULE IS ITS OWNER'S ACT, asked before anything is touched: the record is
+	// written through the engine's own store, which is the system's, so a check made only by
+	// the write would pass for anybody.
 	if err := e.MayRemoveTrigger(as, t.Name); err != nil {
 		return err
 	}
-	// AND NOTHING MOVES UNTIL THE REPLACEMENT IS KNOWN GOOD. Every check a rule faces is made
-	// of the replacement first, with the old one still installed: a file re-applied with a
-	// mistake in it is refused and leaves what stood standing.
-	if _, err := e.vet(t, as); err != nil {
+	hold, err := e.vet(t, as)
+	if err != nil {
 		return err
 	}
-	old, had := e.Rule(t.Name)
-	if !had {
-		// NOT IN THE ENGINE IS NOT THE SAME AS NOT WRITTEN DOWN. A rule whose restore failed, or
-		// one this engine refused at a restart, stands in the store with its record and is in
-		// neither list here — and installed as though fresh, a write that then fails would be
-		// cleaned up by removing what stands. The store is asked.
-		_, stands, err := e.store.Get(e.RuleRef(t.Name))
-		if err != nil {
-			return fmt.Errorf("%w: trigger %q: reading %s: %w", ErrCharter, t.Name, e.RuleRef(t.Name), err)
-		}
-		return e.place(t, true, as, true, stands)
-	}
+	_, had := e.Rule(t.Name)
 	// WRITTEN OVER, NOT DELETED AND WRITTEN. A rule's spec is stored raw, so a write replaces
-	// it whole, and deleting the entity first would take its owner record with it — the grants
+	// it whole, and deleting the record first would take its owner record with it — the grants
 	// on it, and whose the rule is: the replacement would be recorded as whoever replaced it
 	// and fire as them. A rule stays its installer's through an edit by a co-owner; only the
 	// system, installing at a name it decides, takes it (takeForTheSystem).
-	e.unplace(t.Name)
-	if err := e.place(t, true, as, true, true); err != nil {
-		if back := e.RestoreTrigger(old); back != nil {
-			e.logger.Error("the rule that stood could not be put back", "trigger", old.Name, "err", back)
+	rev, err := e.persist(t, as, true)
+	if err != nil {
+		if rev > 0 && !had {
+			// Written and not taken: a record standing under a name nobody placed is worse
+			// than none, where the name was free.
+			if _, back := e.forget(t.Name); back != nil {
+				e.logger.Error("the record of a refused install could not be taken back", "trigger", t.Name, "err", back)
+			}
 		}
 		return err
 	}
+	if err := e.followed(ctx, rev, func() { e.admit(t, hold) }); err != nil {
+		return err
+	}
+	e.reworded(t)
+	// The take lands after the record, so the follow may have vetted the rule as whose it was:
+	// a pass vets it again as whose it is.
+	e.kick()
+	e.passed(ctx, t.Name)
+	return nil
+}
+
+// passed waits for the pass a placed rule waits on to answer for it: armed, or held for what a
+// pass does not clear. A pass is the vet and the asks for the rule's watches, answered at once
+// — the store opens them behind the arm — so an install's answer says what the rule waits for,
+// and not that it waits for the pass.
+func (e *Engine) passed(ctx context.Context, name string) {
+	e.trigMu.Lock()
+	var settled chan struct{}
+	if i := e.pendingIndex(name); i >= 0 && e.pending[i].cause.passing() {
+		settled = e.pending[i].settled
+	}
+	e.trigMu.Unlock()
+	if settled == nil {
+		return
+	}
+	select {
+	case <-settled:
+	case <-ctx.Done():
+	case <-time.After(followWait):
+	}
+}
+
+// reworded swaps a rule's words in where the follow could not: a watch reports what differs
+// in value, and a rule written over with the same value and other words — the comments its
+// author left above it moved — is a commit it says nothing of. The record holds the words, a
+// restart reads them, and the engine's copy follows here.
+func (e *Engine) reworded(t Trigger) {
+	if cur, ok := e.Rule(t.Name); ok && SameValue(cur, t) && !SameText(cur, t) {
+		e.reword(t)
+	}
+}
+
+// addTrigger puts a rule into the engine with nothing written, vetted as an install vets it and
+// refused as one refuses: for a test, and the shape a check's engine would hold (Check). The
+// record is the rule everywhere else.
+func (e *Engine) addTrigger(t Trigger, as string) error {
+	hold, err := e.vet(t, as)
+	if err != nil {
+		return err
+	}
+	e.admit(t, hold)
 	return nil
 }
 
@@ -85,38 +134,15 @@ func (e *Engine) InstallTriggerAs(as string, t Trigger) error {
 // that is backing out. It is the engine's own act and is asked of nobody: it writes the old
 // content over what stands and CLAIMS NOTHING, so whose the rule is does not move — restored as
 // an install would be, a rule put back by the engine would be taken for the system.
-func (e *Engine) RestoreTrigger(old Trigger) error {
-	e.unplace(old.Name)
-	return e.place(old, true, "", false, true)
-}
-
-// RewriteRuleAs writes a rule's record over as t spells it and holds t in the engine in place of
-// what stood, with no install: nothing is vetted again, no watch is opened, nothing replays. It
-// is for a rule that MEANS what it meant and no longer SAYS it the same way — the comments its
-// author left above it have moved — so the record stays the rule as its author left it, and a
-// rule that does what it did fires for nothing. as is who the write is made as, "" for the
-// engine's own (an undo); whose the rule is does not move either way.
-func (e *Engine) RewriteRuleAs(as string, t Trigger) error {
-	if _, stands := e.Rule(t.Name); !stands {
-		return fmt.Errorf("%w: trigger %q: no such rule stands to rewrite", ErrCharter, t.Name)
-	}
-	if err := e.persist(t, as, false); err != nil {
+func (e *Engine) RestoreTrigger(ctx context.Context, old Trigger) error {
+	rev, err := e.persist(old, "", false)
+	if err != nil {
 		return err
 	}
-	// Installed or held: a rule waiting on its stratum stands by name as an installed one does
-	// (Rule), and its record has just been written over, so the engine's copy follows too.
-	e.trigMu.Lock()
-	for i := range e.triggers {
-		if e.triggers[i].Name == t.Name {
-			e.triggers[i] = t
-		}
+	if err := e.followed(ctx, rev, func() { e.place(old, "") }); err != nil {
+		return err
 	}
-	for i := range e.pending {
-		if e.pending[i].Name == t.Name {
-			e.pending[i].Trigger = t
-		}
-	}
-	e.trigMu.Unlock()
+	e.reworded(old)
 	return nil
 }
 
@@ -137,25 +163,30 @@ func (e *Engine) MayRemoveTrigger(principal, name string) error {
 	return entity.Check(e.store, principal, entity.OwnerLevel, charter.RuleRef(e.confine.stamp(), name), "removing it")
 }
 
-// RemoveTriggerAs is RemoveTrigger on behalf of a principal, refused where they may not.
-func (e *Engine) RemoveTriggerAs(principal, name string) (bool, error) {
+// RemoveTrigger removes a rule by name — armed or pending, since either occupies the name — and
+// reports whether it stood. The removal is the delete of its record, which is what the next
+// start reads, and the engine follows: the rule's watches stop with it, or a removed rule keeps
+// firing off a watch nothing lists any more.
+func (e *Engine) RemoveTrigger(name string) bool {
+	stood, err := e.RemoveTriggerAs(context.Background(), "", name)
+	if err != nil {
+		e.logger.Warn("a rule's removal did not land", "trigger", name, "err", err)
+	}
+	return stood
+}
+
+// RemoveTriggerAs is RemoveTrigger on behalf of a principal, refused where they may not, and
+// answered once the engine no longer holds the rule (followed), bounded by ctx.
+func (e *Engine) RemoveTriggerAs(ctx context.Context, principal, name string) (bool, error) {
 	if err := e.MayRemoveTrigger(principal, name); err != nil {
 		return false, err
 	}
-	return e.RemoveTrigger(name), nil
-}
-
-// addTrigger installs a trigger, writing it to the durable charter when durable.
-//
-// A caller passes false when the rule is already written down elsewhere: LoadCharter's rules
-// came out of the store, so writing them back would be a no-op with a revision attached.
-//
-// It is also what an OWNING record needs, should one return — a rule carried inside another
-// entity's definition and reinstalled with it. Writing it out again would give one rule two
-// owners and two lifetimes, and the standalone copy would outlive the owner that reaped it.
-// Goals were the case that motivated the flag; see git-issue 9by2kc0n.
-func (e *Engine) addTrigger(t Trigger, durable bool, as string) error {
-	return e.place(t, durable, as, true, false)
+	_, stood := e.Rule(name)
+	rev, err := e.forget(name)
+	if err != nil {
+		return false, err
+	}
+	return stood, e.followed(ctx, rev, func() { e.unplace(name) })
 }
 
 // vet is every check an install makes of a rule, and changes nothing. A rule that fails one
@@ -346,28 +377,14 @@ func (e *Engine) vet(t Trigger, as string) (*cause, error) {
 	return hold, nil
 }
 
-// place installs a rule that vet admits: into the engine, and into the store when durable. as
-// is who the write is made as; take is whether a system install claims the record
-// (takeForTheSystem); over is whether a record of this name already stands and is being written
-// over.
+// admit puts a vetted rule into the engine, in the stead of whatever stood under its name:
+// armed where nothing holds it and nothing is to be opened for it (baseline mode), pending
+// otherwise — for the pass it kicks, or with the cause vet held it for (reconcile.go).
 //
-// ACCEPTED IS WRITTEN AND CHECKED. The rule goes in pending with its cause — what vet holds it
-// for, or its watches, which the reconciler opens (reconcile.go) — and this returns: arming
-// is the store's pace, not the install's. A rule held for its stratum is a rule and a stratum
-// being separate entities, either of which can arrive first, and making that order matter is
-// exactly what one-entity-per-rule exists to avoid. In baseline mode a rule with no hold is
-// armed here: the dispatch loop sees every change, and there is no watch to open.
-//
-// OVER DECIDES WHAT A FAILURE UNDOES. A fresh install that cannot be made durable is taken out
-// whole, the record with it. A replacement that cannot is taken out of the ENGINE and nothing
-// else: the record standing is the one before it, with its owner and its grants, and removing
-// it would turn a store that refused one write into a rule that is gone and a name that is
-// anybody's.
-func (e *Engine) place(t Trigger, durable bool, as string, take, over bool) error {
-	hold, err := e.vet(t, as)
-	if err != nil {
-		return err
-	}
+// ONE STEP: what stood goes out and the rule comes in under one hold of the lock, so nothing
+// that reads the charter between finds the name empty — a wait on the rule (Ready) follows a
+// replacement through.
+func (e *Engine) admit(t Trigger, hold *cause) {
 	if hold == nil {
 		// Advisory checks: a charter can mean what it says and still not mean what its author
 		// intended. These name it and install it anyway. And the ones that need the REST of the
@@ -377,80 +394,47 @@ func (e *Engine) place(t Trigger, durable bool, as string, take, over bool) erro
 			e.logger.Warn("charter", "trigger", t.Name, "note", w)
 		}
 	}
-	// The name is unique across the WHOLE charter, pending rules included — otherwise two
-	// installs of one name would both be waiting, and whichever cause cleared first would
-	// decide which rule the name meant.
 	e.trigMu.Lock()
-	if err := e.nameTaken(t.Name); err != nil {
-		e.trigMu.Unlock()
-		return err
-	}
-	// WRITTEN DOWN BEFORE IT IS ARMED: in subtree mode the watch is what makes the trigger
-	// fire, so a rule that cannot be made durable never starts. It takes its name now, so a
-	// second install of the name waits on this one, and stands among the pending rules as
-	// being written down, which no pass touches: a pass that is running meanwhile — another
-	// install's, a registration's, the backstop's — would otherwise arm it, and fire it, before
-	// a failed persist takes it back. (In baseline mode the dispatch loop already reads the
-	// charter, so a firing can race a failed persist and be rolled back after it — the same way
-	// removing a trigger stops FURTHER firings rather than cancelling one in flight.)
-	if hold != nil || e.subtree {
-		e.hold(t, cause{causePersist, ""})
-	} else {
+	e.unplaceLocked(t.Name)
+	switch {
+	case hold != nil:
+		e.hold(t, *hold)
+	case e.subtree:
+		e.hold(t, cause{causePass, ""})
+	default:
 		e.triggers = append(e.triggers, t)
 	}
 	e.trigMu.Unlock()
-	if durable {
-		if err := e.persist(t, as, take); err != nil {
-			// An installed rule the next restart would lose is worse than none.
-			if over {
-				e.unplace(t.Name)
-			} else {
-				e.RemoveTrigger(t.Name)
-			}
-			return err
-		}
-	}
 	// The shapes of its sequences are a constant of the charter, recorded for every rule placed
 	// — a held one arms later, by the reconciler, and fires with them — and forgotten with it.
 	e.recordShapes(t)
-	if hold != nil {
-		e.setCause(t.Name, *hold)
+	switch {
+	case hold == nil:
+		if e.subtree {
+			e.kick()
+		}
+	case hold.kind == causeRefused:
+		e.logger.Warn("rule refused: it is written down, and fires on nothing until it passes as the world stands",
+			"trigger", t.Name, "err", hold.why)
+	default:
 		e.logger.Warn("rule held: it is written down, and fires on nothing until what it waits for is here",
 			"trigger", t.Name, "waits", hold.String())
-		return nil
 	}
-	if e.subtree {
-		e.setCause(t.Name, cause{causePass, ""})
-		e.kick()
-	}
-	return nil
 }
 
-// RemoveTrigger removes a trigger by name. Reports whether it existed. Builds a fresh
-// slice, so a concurrent dispatch (which snapshots under the lock) is unaffected.
-//
-// It also STOPS THE TRIGGER'S OBSERVATION, which in subtree mode is not the charter's
-// business but a set of live goroutines: each trigger holds its own subtree watch, so a
-// removal that only edits the charter leaves those watchers running and the removed trigger
-// keeps firing — invisibly, since nothing lists it any more. Dropping it from the dispatch
-// snapshot is enough only for the root loop, where observation is shared and the charter
-// really is the whole answer.
-//
-// And it DELETES THE RULE'S CHARTER ENTITY, which is the same argument one level out: a
-// removal that only stops the live engine leaves the rule standing in the store, and the
-// next start reinstalls what an operator removed.
-func (e *Engine) RemoveTrigger(name string) bool {
-	found := e.unplace(name)
-	if found {
-		e.forget(name) // the durable copy — off the charter lock, since it is a store write
-	}
-	return found
-}
-
-// unplace takes a rule out of the ENGINE — installed or held — and leaves what is written down:
-// the half of a removal a replacement needs, since what it writes goes over what stands.
+// unplace takes a rule out of the ENGINE — armed or pending — and leaves what is written down.
 func (e *Engine) unplace(name string) bool {
 	e.trigMu.Lock()
+	defer e.trigMu.Unlock()
+	return e.unplaceLocked(name)
+}
+
+// unplaceLocked is unplace with trigMu HELD. It STOPS THE RULE'S OBSERVATION, which in subtree
+// mode is a set of live goroutines: each rule holds its own watches, so a removal that only
+// edited the charter would leave them running and the removed rule firing — invisibly, since
+// nothing lists it any more. A PENDING rule goes by the same name: it would arm the moment its
+// cause cleared.
+func (e *Engine) unplaceLocked(name string) bool {
 	named := func(t Trigger) bool { return t.Name == name }
 	armed := slices.ContainsFunc(e.triggers, named)
 	e.triggers = slices.DeleteFunc(slices.Clone(e.triggers), named)
@@ -458,10 +442,6 @@ func (e *Engine) unplace(name string) bool {
 		e.stopWatchers(name)
 		e.forgetTrouble(name)
 	}
-	// A PENDING rule is removable too, and by the same name: it was written down, so leaving it
-	// behind would arm it the moment its cause cleared — a rule coming back to life after an
-	// operator removed it, which is the failure deleting the charter entity exists to prevent,
-	// one step earlier.
 	pending := false
 	for i := range e.pending {
 		if named(e.pending[i].Trigger) {
@@ -473,7 +453,6 @@ func (e *Engine) unplace(name string) bool {
 	if armed || pending {
 		e.forgetShapes(name)
 	}
-	e.trigMu.Unlock()
 	return armed || pending
 }
 

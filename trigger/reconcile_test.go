@@ -70,8 +70,8 @@ func TestARuleHeldForARunnerArmsWhenOneRegisters(t *testing.T) {
 // at the store's pace. A store that does not open the watch yet does not refuse the install; the
 // rule is armed and arming, says what the store is doing, and watches when the store answers.
 func TestAnInstallAnswersOnceAcceptedAndArmsBehindIt(t *testing.T) {
-	store := newPhased(t, entitytest.Store(t))
-	store.set(entity.WatchRefused, errors.New("context deadline exceeded"))
+	store := phasedStore(t, entitytest.Store(t))
+	store.Set(entity.WatchRefused, errors.New("context deadline exceeded"))
 	eng := New(store, task.AutoResolver{})
 	eng.ObserveScoped(t.Context())
 	if err := eng.AddTrigger(Trigger{
@@ -85,7 +85,7 @@ func TestAnInstallAnswersOnceAcceptedAndArmsBehindIt(t *testing.T) {
 	if n := eng.NotesOn(Trigger{Name: "review"}); n.Waits == "" || !n.Arming {
 		t.Fatalf("notes = %+v; want the rule arming", n)
 	}
-	store.set(entity.WatchOpen, nil)
+	store.Set(entity.WatchOpen, nil)
 	waitArmed(t, eng, "review")
 	waitArming(t, eng, nil)
 	ref := entity.RefAt("demo", "pr", "1")

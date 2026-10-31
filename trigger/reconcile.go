@@ -46,8 +46,7 @@ const (
 	causeStratum causeKind = iota // the stratum it names is not installed
 	causeRunner                   // no runner offers what its spawn asks
 	causeRead                     // a read the vetting needs did not happen
-	causeRefused                  // it does not pass now, as the world stands since its install
-	causePersist                  // its record is being written; no pass touches it until it is
+	causeRefused                  // it does not pass now, as the world stands
 	causePass                     // placed, or back from a lift; the pass it kicked arms it
 )
 
@@ -62,8 +61,6 @@ func (c cause) String() string {
 		return "waiting on a read: " + c.why
 	case causeRefused:
 		return "refused: " + c.why
-	case causePersist:
-		return "being written down"
 	default:
 		if c.why != "" {
 			return "waiting for a pass to arm it: " + c.why
@@ -93,8 +90,8 @@ func (e *Engine) hold(t Trigger, c cause) {
 }
 
 // passing is whether a cause is one the next pass clears on its own, with nothing else to
-// happen first: a rule just placed, or back from a lift, or being written down.
-func (c cause) passing() bool { return c.kind == causePass || c.kind == causePersist }
+// happen first: a rule just placed, or back from a lift.
+func (c cause) passing() bool { return c.kind == causePass }
 
 // settle closes a pending entry's settled, once. Called with trigMu HELD.
 func (e *Engine) settle(i int) {
@@ -177,9 +174,6 @@ func (e *Engine) pass() {
 // the store for its watches and is armed with the handles, at once: the store opens them
 // behind the arm, and a removal that lands meanwhile wins (arm).
 func (e *Engine) try(h held) {
-	if h.cause.kind == causePersist {
-		return // its install has it: written down first, then placed for the pass it kicks
-	}
 	hold, err := e.vet(h.Trigger, e.OwnerOf(h.Name))
 	if err != nil {
 		if e.setCause(h.Name, cause{causeRefused, err.Error()}) {

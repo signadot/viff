@@ -200,6 +200,13 @@ type Engine struct {
 	// recordShapes) because hashing an action mutates its nodes.
 	shapeMu sync.Mutex
 	shapes  map[string]string
+
+	// following is the engine's watch over its own records, from which the charter is derived
+	// (follow.go); nil before the engine starts. badRecords is the revision each record that
+	// could not be placed was last said at, guarded by trigMu.
+	followMu   sync.Mutex
+	following  *follower
+	badRecords map[string]int64
 }
 
 // New builds an engine over store, using resolver for trigger gates.
@@ -215,6 +222,8 @@ func New(store entity.Store, resolver task.Resolver) *Engine {
 		watches:  map[string]*ruleWatches{},
 		kicks:    make(chan struct{}, 1),
 		every:    reconcileEvery,
+
+		badRecords: map[string]int64{},
 	}
 }
 
@@ -282,6 +291,9 @@ func (e *Engine) Start(ctx context.Context) {
 	go e.loop(ctx, ch, unsub)
 	e.watchTaskRecords(ctx)
 	e.startReconciler(ctx)
+	// The charter, from its records: what stands is placed, and what is written from here is
+	// followed (follow.go).
+	e.follow(ctx)
 }
 
 // startReconciler runs the reconciler under ctx, once, and asks for a pass: the caller has just
@@ -312,6 +324,7 @@ func (e *Engine) ObserveScoped(ctx context.Context) {
 	e.triggers = nil
 	e.trigMu.Unlock()
 	e.startReconciler(ctx)
+	e.follow(ctx)
 	// Watch the task:instance mirror subtree directly, independent of any charter trigger:
 	// this drives store-driven reaping AND completion-hook (onX) application in scoped mode,
 	// where no root dispatch loop runs. Store-driven means race-free for a fast task (unlike

@@ -76,7 +76,7 @@ func TestAnInstallWritesTheRuleAsItsInstaller(t *testing.T) {
 		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Action:    setStage("reviewed"),
 	}
-	if err := eng.InstallTriggerAs("scott@example.com", tr); err != nil {
+	if err := eng.InstallTriggerAs(t.Context(), "scott@example.com", tr); err != nil {
 		t.Fatal(err)
 	}
 	if got := st.by(charter.RuleRef("", "review")); got != "scott@example.com" {
@@ -84,10 +84,7 @@ func TestAnInstallWritesTheRuleAsItsInstaller(t *testing.T) {
 	}
 	// Restored at a start, the record is re-written by nobody in particular: the store's own
 	// default, which is what an empty principal leaves to it.
-	eng2 := New(st, task.AutoResolver{})
-	if err := eng2.LoadCharter(); err != nil {
-		t.Fatal(err)
-	}
+	eng2 := reopened(t, st)
 	if err := eng2.InstallTrigger(tr); err != nil {
 		t.Fatal(err)
 	}

@@ -168,10 +168,8 @@ func (e *Engine) watchingLocked(name string) (bool, string) {
 // pass that will arm it (cause.passing) is waited on through that pass, and a rule that moves
 // while it is waited on — a lift holds it again, for the pass — is followed through the move.
 // Nil for a rule held for something waiting does not cure, or not in the charter. A rule armed
-// with no watches (baseline mode) is ready.
-//
-// A replacement under the name (InstallTriggerAs) takes the old rule out and puts the new one
-// in as two steps, and a wait that reads the engine between them is answered as on a removal.
+// with no watches (baseline mode) is ready. A replacement under the name is one step (place),
+// so a wait reads the rule as it is now, never the name empty between.
 func (e *Engine) Ready(name string) <-chan struct{} {
 	wait, done := e.readyOn(name)
 	if wait == nil || done {

@@ -171,8 +171,10 @@ type Server struct {
 	waitMu  sync.Mutex
 	waiting map[string]bool
 	// retryWait is the first pause before a phase is asked again; it doubles per attempt up to
-	// retryWaitMax. Zero is the constant, which is every caller but a test.
-	retryWait time.Duration
+	// retryWaitMax. restoreWait is how long a phase waits for a charter to be read from its
+	// records before it is asked again. Zero is the constant, which is every caller but a test.
+	retryWait   time.Duration
+	restoreWait time.Duration
 	// Per-registration reflectors. An installed source runs one, under a child of ctx, and it
 	// is the only handle on a goroutine that WRITES a slice — so a remove that forgets to stop
 	// one leaks a second writer past the disjointness check the install just made.
@@ -1039,9 +1041,9 @@ func (s *Server) engineOf(scope string) *trigger.Engine {
 // engine is created on demand and restored nothing. A dev came back from a restart to a
 // scope whose charter listed fine and fired at nothing.
 //
-// Baseline's rules, which the scoped store reads through, are NOT installed here — see
-// Engine.LoadCharter. That is a decision about what a scope means and it is still open; what
-// is not open is that a scope's own rules must run.
+// Baseline's rules, which the scoped store reads through, are NOT installed here — the engine
+// places only the records stamped with its scope (trigger/follow.go). That is a decision about
+// what a scope means and it is still open; what is not open is that a scope's own rules must run.
 func (s *Server) scopeEngine(scope string) *trigger.Engine {
 	s.scopeMu.Lock()
 	se, ok := s.scopeEngs[scope]
@@ -1086,7 +1088,7 @@ func (s *Server) scopeEngine(scope string) *trigger.Engine {
 			fmt.Fprintf(os.Stderr, "verse: perms mirror (scope %s): %v\n", scope, err)
 		}
 		s.loadScopeSuspensions(se, scope)
-		s.restoreScopeCharter(se.eng, scope)
+		s.restoreScopeCharter(se.ctx, se.eng, scope)
 	})
 	return se.eng
 }

@@ -25,7 +25,7 @@ func TestAPersonsRuleIsRefusedUnderVerseAtTheWrite(t *testing.T) {
 		}
 	}
 	eng := New(store, task.NewRegistry())
-	if err := eng.InstallTriggerAs(alice, reviewRule("hers", entity.Obj{"stage": "reviewed"})); err != nil {
+	if err := eng.InstallTriggerAs(t.Context(), alice, reviewRule("hers", entity.Obj{"stage": "reviewed"})); err != nil {
 		t.Fatal(err)
 	}
 	if err := eng.AddTrigger(reviewRule("the-systems", entity.Obj{"stage": "seen"})); err != nil {

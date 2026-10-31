@@ -3,11 +3,12 @@ package versed
 import (
 	"context"
 	"fmt"
-	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/entity"

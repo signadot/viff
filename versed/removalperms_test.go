@@ -155,7 +155,7 @@ func TestANameTheSystemInstallsAtIsNotKeptBySomebodyWhoTookItFirst(t *testing.T)
 	if err := codec.Unmarshal([]byte(`{name: calendar, condition: {subject: {path: "demo.m.*", value: {stage: open}}}, action: {patch: {stage: hers}}}`), &squat, codec.Tony); err != nil {
 		t.Fatal(err)
 	}
-	if err := srv.Eng.InstallTriggerAs(mallory, squat); err != nil {
+	if err := srv.Eng.InstallTriggerAs(t.Context(), mallory, squat); err != nil {
 		t.Fatalf("the fixture is wrong: mallory cannot install a rule named calendar: %v", err)
 	}
 	if got := owner(t, srv, rule); got != mallory {
