@@ -2,8 +2,128 @@ package entity
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
+	"time"
+
+	logdapi "github.com/signadot/tony-format/go-tony/system/logd/api"
 )
+
+// WatchPhase is what the store is doing for a watch now. A watch is a thing the store works on
+// over time — it waits for a slot, asks the substrate, is answered or refused, drops and is
+// asked again — and a consumer that holds one is told where it stands rather than made to wait
+// on it (Store.Watch).
+type WatchPhase int
+
+const (
+	WatchInLine    WatchPhase = iota // waiting for a slot in the line (watchGate)
+	WatchOpening                     // the establish is sent and the opening picture not in
+	WatchOpen                        // the picture is in; streaming
+	WatchReopening                   // it ended, or was found dead; in line or establishing again
+	WatchRefused                     // the last establish failed; asked again after a backoff
+	WatchFailed                      // refused for a reason asking again cannot cure; final
+)
+
+// String is the phase as status and an install's answer say it; the open phase says nothing.
+func (p WatchPhase) String() string {
+	switch p {
+	case WatchInLine:
+		return "in line at the store"
+	case WatchOpening:
+		return "its watch is being opened"
+	case WatchReopening:
+		return "its watch is being opened again after a drop"
+	case WatchRefused:
+		return "the store refused its watch, and is asked again"
+	case WatchFailed:
+		return "the store cannot watch it"
+	}
+	return ""
+}
+
+// WatchState is a watch's phase, with the error of a refusal and when the phase was entered.
+type WatchState struct {
+	Phase WatchPhase
+	Err   error // the establish's error while Refused or Failed
+	Since time.Time
+}
+
+// String is the state as a wait is reported: the phase's words, with the refusal's.
+func (s WatchState) String() string {
+	if s.Err != nil {
+		return s.Phase.String() + ": " + s.Err.Error()
+	}
+	return s.Phase.String()
+}
+
+// A Watch is a subscriber to the store's watch on a prefix (pump), answered at once: what the
+// store has to do to open it — the line, the establish, its retries — is the store's, and the
+// handle says where that stands.
+type Watch struct {
+	// Commits is the stream: one commit per commit the watched slice changed at the pattern,
+	// opened with what already stands there unless NoInit asked otherwise (Store.WatchSubtree).
+	Commits <-chan Commit
+	// State is the phase now, and a channel closed when it next changes. The two are read
+	// together, so a reader that finds the channel closed asks again and misses nothing.
+	State func() (WatchState, <-chan struct{})
+	// Ready is closed at the watch's first Open, and never reopened: what a consumer waits on
+	// that wants the watch standing before it goes on.
+	Ready <-chan struct{}
+	// Progress asks the standing watch how far it is current, for a handle opened with
+	// Progress (WatchSubtreeProgress); nil otherwise.
+	Progress func(ctx context.Context) (int64, error)
+	// Close ends the subscription: the stream closes, and a watch in line is out of it.
+	Close func()
+}
+
+// WatchOptions are a watch's manners.
+type WatchOptions struct {
+	// WaitIfAbsent opens on a path holding nothing and waits for it; without it, such a path
+	// Fails the watch with what the picture showed — a person naming a path at a command line
+	// would rather be told than wait.
+	WaitIfAbsent bool
+	// NoInit joins at the next change: the opening picture is taken in and not sent.
+	NoInit bool
+	// Progress asks the watch's progress (Watch.Progress); such a watch opens ahead of the line.
+	Progress bool
+}
+
+// await is what the conveniences do with a handle: wait for the watch to be Open, and answer
+// the stream, or the first refusal's error with the handle closed — what a caller that asked
+// for a channel expects, as the store answered before it said phases. Open rather than merely
+// past the line, because what a refusal of the subscriber's own turns on (WaitIfAbsent) is in
+// the picture.
+func await(w *Watch, err error) (<-chan Commit, func(), error) {
+	if err != nil {
+		return nil, nil, err
+	}
+	for {
+		st, changed := w.State()
+		switch st.Phase {
+		case WatchOpen:
+			return w.Commits, w.Close, nil
+		case WatchRefused, WatchFailed:
+			w.Close()
+			return nil, nil, st.Err
+		default:
+			<-changed
+		}
+	}
+}
+
+// uncurable is a refusal that asking again will not change: a path the substrate cannot
+// address, or one that disagrees with the shape of what stands there. Such a watch Fails.
+func uncurable(err error) bool {
+	var e *logdapi.Error
+	if !errors.As(err, &e) {
+		return false
+	}
+	switch e.Code {
+	case logdapi.ErrCodeInvalidPath, "path_conflict":
+		return true
+	}
+	return false
+}
 
 // DefaultWatchSlots is how many watches a store opens at once where its config says nothing
 // (LogdConfig.WatchSlots is the knob). Under logd's eight reads per session

@@ -2,6 +2,7 @@ package entity
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -436,4 +437,95 @@ func TestAWatchOnNothingIsRefusedWhenAskedNotToWait(t *testing.T) {
 	}
 	defer unsub()
 	reader(ch).quiet(t, "a watch joining at the next change replayed the slice")
+}
+
+// A watch is answered at once, as a handle that says where the store stands with it: opening,
+// then open, with Ready closed; a joiner to a pump already open is Open, and Ready, in the call.
+func TestAWatchSaysItsPhases(t *testing.T) {
+	s := openStore(t)
+	set(t, s, RefAt("demo", "pr", "1"), Obj{"stage": "open"}.Payload())
+	w, err := s.Watch([]string{"demo", "pr"}, PrefixPattern([]string{"demo", "pr"}, 3), WatchOptions{WaitIfAbsent: true})
+	if err != nil {
+		t.Fatalf("watch: %v", err)
+	}
+	defer w.Close()
+	select {
+	case <-w.Ready:
+	case <-time.After(5 * time.Second):
+		st, _ := w.State()
+		t.Fatalf("the watch never opened; it says %v", st)
+	}
+	if st, _ := w.State(); st.Phase != WatchOpen || st.Err != nil {
+		t.Fatalf("after Ready the watch says %v, want open", st)
+	}
+	if c := <-w.Commits; len(c.Changes) != 1 {
+		t.Fatalf("the opening picture carries %d changes, want the one entity", len(c.Changes))
+	}
+
+	late, err := s.Watch([]string{"demo", "pr"}, PrefixPattern([]string{"demo", "pr"}, 3), WatchOptions{WaitIfAbsent: true})
+	if err != nil {
+		t.Fatalf("late watch: %v", err)
+	}
+	defer late.Close()
+	select {
+	case <-late.Ready:
+	default:
+		t.Fatal("a joiner to an open pump is not Ready in the call")
+	}
+	if st, _ := late.State(); st.Phase != WatchOpen {
+		t.Fatalf("a joiner to an open pump says %v, want open", st)
+	}
+
+	// A subscriber that asked not to wait on a path holding nothing Fails on the picture, with
+	// the words, and its Ready never closes.
+	none, err := s.Watch([]string{"demo", "nothing"}, PrefixPattern([]string{"demo", "nothing"}, 3), WatchOptions{})
+	if err != nil {
+		t.Fatalf("watch on nothing: %v", err)
+	}
+	defer none.Close()
+	eventually(t, "the watch on nothing says Failed", func() bool {
+		st, _ := none.State()
+		return st.Phase == WatchFailed && st.Err != nil && strings.Contains(st.Err.Error(), "nothing stands there")
+	})
+	select {
+	case <-none.Ready:
+		t.Fatal("a Failed watch closed Ready")
+	default:
+	}
+}
+
+// A refusal is a phase, not an error: the store asks again behind the handle, and the watch
+// opens when the store answers.
+func TestARefusedWatchIsAskedAgainBehindItsHandle(t *testing.T) {
+	docd := startDocd(t, startLogd(t))
+	g := newGate(t, docd.ClientTCPAddr())
+	s := openStoreAt(t, g.addr())
+	set(t, s, RefAt("demo", "pr", "1"), Obj{"stage": "open"}.Payload())
+	// New connections go nowhere, and the one standing is cut: the next establish is refused.
+	g.point("127.0.0.1:1")
+	g.cut()
+	w, err := s.Watch([]string{"demo", "pr"}, PrefixPattern([]string{"demo", "pr"}, 3), WatchOptions{WaitIfAbsent: true})
+	if err != nil {
+		t.Fatalf("watch: %v", err)
+	}
+	defer w.Close()
+	eventuallyWithin(t, 30*time.Second, "the watch says Refused", func() bool {
+		st, _ := w.State()
+		return st.Phase == WatchRefused && st.Err != nil
+	})
+	select {
+	case <-w.Ready:
+		t.Fatal("Ready closed on a refused watch")
+	default:
+	}
+	g.point(docd.ClientTCPAddr())
+	select {
+	case <-w.Ready:
+	case <-time.After(30 * time.Second):
+		st, _ := w.State()
+		t.Fatalf("the refused watch never opened once the store answered; it says %v", st)
+	}
+	if c := <-w.Commits; len(c.Changes) != 1 {
+		t.Fatalf("the opening picture carries %d changes, want the one entity", len(c.Changes))
+	}
 }

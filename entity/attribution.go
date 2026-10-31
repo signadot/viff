@@ -2156,6 +2156,18 @@ func (a *attributed) WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsent
 	return a.narrowing(ch), unsub, nil
 }
 
+// Watch is the store's handle with its stream narrowed as every watch through a view is; the
+// phase, Ready, progress and Close are the store's own.
+func (a *attributed) Watch(prefix []string, at *kpath.KPath, opts WatchOptions) (*Watch, error) {
+	w, err := a.Store.Watch(prefix, at, opts)
+	if err != nil {
+		return nil, err
+	}
+	narrowed := *w
+	narrowed.Commits = a.narrowing(w.Commits)
+	return &narrowed, nil
+}
+
 func (a *attributed) AsOf(rev int64, within ...[]string) (Snapshot, error) {
 	snap, err := a.Store.AsOf(rev, within...)
 	if err != nil || IsSystem(a.principal) {

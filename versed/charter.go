@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -611,40 +610,28 @@ func (s *Server) installCharterAs(store entity.Store, scope, at string, docs []*
 // gone meanwhile ends the wait through its request's context, and this bounds one that stays.
 const maxInstallWait = time.Hour
 
-// waitArmed holds until every rule this request placed is armed or held for something other
-// than its watches, or until wait has passed, or ctx — the request's — ends. Nothing is waited
-// for with no wait. A rule held for a stratum or a runner does not arm by waiting, so it is
-// not waited on: the answer says what it waits for.
+// waitArmed holds until every rule this request placed has its watches open (Engine.Ready),
+// or until wait has passed, or ctx — the request's — ends. Nothing is waited for with no wait.
+// A rule held for a stratum or a runner does not arm by waiting, so it is not waited on: the
+// answer says what it waits for. The channel is fetched by name once every install has
+// returned, so a rule replaced by this very install is waited on as the rule it is now.
 func (tx *charterTx) waitArmed(ctx context.Context, wait time.Duration) {
 	if wait <= 0 || len(tx.placed) == 0 {
 		return
 	}
-	// Each engine is asked once a tick, whatever number of rules went to it.
-	arming := func() bool {
-		asked := map[*trigger.Engine][]string{}
-		for _, p := range tx.placed {
-			names, ok := asked[p.eng]
-			if !ok {
-				names = p.eng.Arming()
-				asked[p.eng] = names
-			}
-			if slices.Contains(names, p.rule.Name) {
-				return true
-			}
-		}
-		return false
-	}
 	deadline := time.NewTimer(wait)
 	defer deadline.Stop()
-	poll := time.NewTicker(20 * time.Millisecond)
-	defer poll.Stop()
-	for arming() {
+	for _, p := range tx.placed {
+		ready := p.eng.Ready(p.rule.Name)
+		if ready == nil {
+			continue
+		}
 		select {
+		case <-ready:
 		case <-deadline.C:
 			return
 		case <-ctx.Done():
 			return
-		case <-poll.C:
 		}
 	}
 }

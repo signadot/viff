@@ -1588,8 +1588,7 @@ func (s *LogdStore) WatchSubtreeAt(depth int, waitIfAbsent bool, prefix ...strin
 // `git.head.verse` watches `git.head` — a watch AT the node would see that node's own changes
 // and never its appearance — and reports the one node its pattern names.
 func (s *LogdStore) WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsent, noInit bool) (<-chan Commit, func(), error) {
-	ch, unsub, _, err := s.watchPattern(prefix, at, waitIfAbsent, noInit, false)
-	return ch, unsub, err
+	return await(s.Watch(prefix, at, WatchOptions{WaitIfAbsent: waitIfAbsent, NoInit: noInit}))
 }
 
 // WatchSubtreeProgress is WatchSubtree for a consumer that keeps a copy of the slice and has to
@@ -1602,7 +1601,12 @@ func (s *LogdStore) WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 // ahead of the line (watchGate): reads wait on it, so it is not to wait on the rest.
 func (s *LogdStore) WatchSubtreeProgress(depth int, prefix ...string) (<-chan Commit, func(), func(context.Context) (int64, error), error) {
 	prefix = trimEmpty(prefix)
-	return s.watchPattern(prefix, PrefixPattern(prefix, depth), true, false, true)
+	w, err := s.Watch(prefix, PrefixPattern(prefix, depth), WatchOptions{WaitIfAbsent: true, Progress: true})
+	ch, unsub, err := await(w, err)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return ch, unsub, w.Progress, nil
 }
 
 // nodesAt calls fn for every node exactly depth object levels below node — whatever stands there:

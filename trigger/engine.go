@@ -174,12 +174,12 @@ type Engine struct {
 	// baseline's, which a scoped store reads through and cannot otherwise distinguish. See
 	// SetScope.
 	scope string
-	// watchers holds, per trigger name, the cancel that stops THAT trigger's subtree
-	// watchers. In subtree mode a trigger's observation is its own goroutines, so the
-	// charter alone no longer says what fires: removing a trigger has to stop them, or a
-	// removed trigger keeps firing off a watch nobody can see. Guarded by trigMu, with
-	// the charter it mirrors.
-	watchers map[string]func()
+	// watches holds, per armed rule, the handles of its watches and the cancel that stops
+	// the goroutines firing on them (watches.go). In subtree mode a rule's observation is its
+	// own, so the charter alone no longer says what fires: removing a rule has to stop them,
+	// or a removed rule keeps firing off a watch nobody can see. Guarded by trigMu, with the
+	// charter it mirrors.
+	watches map[string]*ruleWatches
 	// pending is every rule of the charter that is not armed, with why (reconcile.go). Guarded
 	// by trigMu.
 	pending []held
@@ -212,7 +212,7 @@ func New(store entity.Store, resolver task.Resolver) *Engine {
 		causes:   map[int64]link{},
 		tripPace: DefaultTripPace,
 		shapes:   map[string]string{},
-		watchers: map[string]func(){},
+		watches:  map[string]*ruleWatches{},
 		kicks:    make(chan struct{}, 1),
 		every:    reconcileEvery,
 	}
@@ -307,7 +307,7 @@ func (e *Engine) ObserveScoped(ctx context.Context) {
 	// subtree mode is independent of whether triggers were added before or after this call.
 	e.trigMu.Lock()
 	for _, t := range e.triggers {
-		e.hold(t, cause{causeWatch, "not asked for yet"})
+		e.hold(t, cause{causePass, ""})
 	}
 	e.triggers = nil
 	e.trigMu.Unlock()
@@ -331,124 +331,6 @@ func (e *Engine) watchTaskRecords(ctx context.Context) {
 		go e.reapLoop(ctx, ch, unsub)
 	} else {
 		e.tracef("task record watch: %v", err)
-	}
-}
-
-// A rule's watches are opened by the reconciler as it arms the rule (reconcile.go): one
-// subtree watch per (system,kind) the trigger's condition READS — its When, or its Subject when
-// there is no When — fired on each matching change. Asking the formula which subtrees it reads —
-// the same question a Monitor asks — means a When over several subtrees is watched correctly
-// for free, and there is no "exactly one match" restriction to enforce.
-//
-// The watchers run under a context of this trigger's own, derived from bgctx, and its cancel
-// is kept under the trigger's name (watchers) — so RemoveTrigger can stop exactly these
-// goroutines while every other trigger keeps observing. A partial failure (the second of three
-// subtrees refuses to watch) cancels the ones already opened, and the rule stays pending with
-// the refusal as its cause, asked for again at the next pass.
-
-// watchedSubtrees is what a trigger's watch has to cover, or why it cannot be watched at all —
-// the part of opening a watch that does not depend on the store answering.
-func (e *Engine) watchedSubtrees(t Trigger) ([]Subtree, error) {
-	// Everything the trigger READS, not just what dispatches it: a verdict is a function of
-	// its cause, its condition and its subject together, so a change to any of them can change
-	// it. This is the same list the commit skip is asked about (Trigger.reads), which is what
-	// keeps "what it watches" and "what could change its answer" from drifting apart.
-	subtrees := t.reads()
-	if len(subtrees) == 0 {
-		return nil, fmt.Errorf("subtree trigger %q: it reads no subtree to watch", t.Name)
-	}
-	for _, st := range subtrees {
-		if st.Named() == 0 { // a root alone is the whole of a half, which is not watchable
-			return nil, fmt.Errorf("subtree trigger %q needs a system in its `on`, its `when` or its "+
-				"`subject` (kind optional); a scoped engine opens no root watch, so there is "+
-				"nothing to watch without one", t.Name)
-		}
-	}
-	return subtrees, nil
-}
-
-// openWatches opens one watch per subtree and evaluates the trigger on what each delivers,
-// until ctx ends. A watch the store refuses ends it with that error; the watches already opened
-// are the caller's to cancel.
-func (e *Engine) openWatches(ctx context.Context, t Trigger, subtrees []Subtree) error {
-	for _, st := range subtrees {
-		// AT THE SUBTREE'S OWN DEPTH — the depth the match that named it says its subjects
-		// stand at. Reported at the fixed arity instead, a change to anything deeper arrived
-		// as a change to its three-segment ancestor, which is not the entity this rule is
-		// about (see entity.Store.WatchSubtree).
-		ch, unsub, err := e.store.WatchPattern(st.Path(), st.Pattern(), true, false)
-		if err != nil {
-			return fmt.Errorf("scoped trigger %q: watch %s: %w", t.Name, strings.Join(st.Path(), ":"), err)
-		}
-		go func() {
-			defer unsub()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case c, ok := <-ch:
-					if !ok {
-						return
-					}
-					// A cancel and a pending commit are both ready: select picks either, so
-					// removal has to be checked, not merely selected on, or a removed
-					// trigger can still fire once on a commit that raced it.
-					if ctx.Err() != nil {
-						return
-					}
-					// Fire on bgctx, not this trigger's ctx: a firing already under way — a
-					// posed gate, a spawned task — belongs to the work, not to the charter
-					// entry, and removing the trigger stops FURTHER firings rather than
-					// cancelling one in flight.
-					//
-					// No skip check: this watch delivers only the subtrees the trigger reads,
-					// so arriving here IS the skip's answer. firstSight inside evaluate is
-					// what keeps several watched subtrees from evaluating one commit several
-					// times, and what tells a commit one watch delivers late from a replay.
-					e.evaluate(e.bgctx, t, e.visibleTo(t, c))
-				}
-			}
-		}()
-	}
-	return nil
-}
-
-// registerWatchers records the cancel that stops a trigger's subtree watchers. It cancels
-// any cancel it replaces — a re-installed name must not leave its predecessor's watchers
-// running — and, if the trigger is no longer in the charter, cancels the one just handed to
-// it: opening the watches is not instantaneous, so a RemoveTrigger can land in the middle
-// of it, and the removal has to win rather than lose to a late registration.
-func (e *Engine) registerWatchers(name string, cancel func()) {
-	e.trigMu.Lock()
-	old := e.watchers[name]
-	installed := false
-	for _, t := range e.triggers {
-		if t.Name == name {
-			installed = true
-			break
-		}
-	}
-	if installed {
-		e.watchers[name] = cancel
-	} else {
-		delete(e.watchers, name)
-	}
-	e.trigMu.Unlock()
-	if old != nil {
-		old()
-	}
-	if !installed {
-		cancel()
-	}
-}
-
-// stopWatchers stops a trigger's subtree watchers, if it had any (nothing in baseline
-// mode). Called with trigMu HELD: the cancel is non-blocking — the watcher goroutines
-// notice and unsubscribe on their own — so this cannot deadlock against the charter lock.
-func (e *Engine) stopWatchers(name string) {
-	if cancel := e.watchers[name]; cancel != nil {
-		delete(e.watchers, name)
-		cancel()
 	}
 }
 

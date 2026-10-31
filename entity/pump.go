@@ -2,6 +2,7 @@ package entity
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -42,13 +43,12 @@ type pump struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	// opened is closed once the first establish has answered, and openErr is its answer: a
-	// joiner that found the pump being opened waits on the one, then reads the other.
-	opened  chan struct{}
-	openErr error
-
-	mu   sync.Mutex
-	subs []*sub
+	mu sync.Mutex
+	// phase is what the store is doing for this watch now (WatchPhase), and changed is closed
+	// and replaced each time it moves: a handle reads the two together (Watch.State).
+	phase   WatchState
+	changed chan struct{}
+	subs    []*sub
 	// joined counts every subscriber that ever joined, for the linger rule above.
 	joined int
 	// ended says the pump is out of the store's map, where no join can find it, and its
@@ -70,12 +70,11 @@ type pump struct {
 	// downstream could then ask a question about a change at the commit it happened at, which
 	// is the whole affordance AsOf exists to offer.
 	rev int64
-	// pictured is whether the first opening picture has been taken in; picture is closed when
-	// it has, for a joiner that has to know what it showed (waitIfAbsent false).
+	// pictured is whether the first opening picture has been taken in.
 	pictured bool
-	picture  chan struct{}
-	// absent is whether the last picture showed the path holding nothing, and no patch has
-	// arrived since: the answer a joiner that would rather be refused than wait is given.
+	// absent is whether the last event showed the path holding nothing: a picture of nothing,
+	// or a patch that took the path away. A subscriber that would rather be refused than wait
+	// (WatchOptions.WaitIfAbsent) Fails on it.
 	absent bool
 	// reseed is whether a subscriber is dropped and waiting for room; the loop's reseed timer
 	// runs while it is.
@@ -96,6 +95,15 @@ type sub struct {
 	// progress is whether this subscriber asked to hear the pump's progress answers
 	// (WatchSubtreeProgress); a plain one has no use for a commit carrying no change.
 	progress bool
+	// waitIfAbsent is whether a path holding nothing is waited for; without it the subscriber
+	// Fails on the picture that shows it (failed).
+	waitIfAbsent bool
+	// ready is closed at the subscriber's first Open (Watch.Ready); readied says it has been.
+	ready   chan struct{}
+	readied bool
+	// failed is a refusal of this subscriber's own, where the pump stands: the path holds
+	// nothing and it asked not to wait. Final; its handle says Failed.
+	failed error
 	// prev is the document this subscriber's last commit was taken against, nil before any:
 	// equal to the pump's prev while it is current, and behind it while it is dropped or has
 	// just joined, when its next commit is the net of the difference.
@@ -213,11 +221,15 @@ func askProgress(ctx context.Context, w *libctl.Watch) <-chan error {
 	return done
 }
 
-// watchPattern subscribes to the pump at `prefix`, starting it when there is none, and answers
-// the subscriber's stream, the leave that ends it, and the pump's progress. progress is whether
-// the caller asks the watch's progress (WatchSubtreeProgress): such a pump opens ahead of the
-// line (watchGate), and such a subscriber hears the progress answers in its stream.
-func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent, noInit, progress bool) (<-chan Commit, func(), func(context.Context) (int64, error), error) {
+// Watch subscribes to the pump at prefix, starting it when there is none, and answers at
+// once: what the store has to do to open the watch — the line, the establish, its retries —
+// is the pump's, and the handle says where that stands (Watch.State). A late joiner to an
+// open pump is Open, and Ready, in this call, seeded from the pump's copy with no read and no
+// slot. The error is for a request the store cannot make at all; a refusal is a phase.
+func (s *LogdStore) Watch(prefix []string, at *kpath.KPath, opts WatchOptions) (*Watch, error) {
+	if at == nil {
+		return nil, errors.New("watch: no pattern to watch at")
+	}
 	prefix = trimEmpty(prefix)
 	// The path as segments as well as a kpath: every event is rooted at the watched path and
 	// the document is rooted at the store root, so the segments are what bridges the two (see
@@ -227,42 +239,30 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 	for _, p := range prefix {
 		path += "." + seg(p)
 	}
-	sb := &sub{pattern: []*kpath.KPath{at}, key: at.String(), out: make(chan Commit, 256), progress: progress}
-	p, err := s.join(path, segs, sb, noInit)
-	if err != nil {
-		return nil, nil, nil, err
+	sb := &sub{pattern: []*kpath.KPath{at}, key: at.String(), out: make(chan Commit, 256),
+		progress: opts.Progress, waitIfAbsent: opts.WaitIfAbsent, ready: make(chan struct{})}
+	p := s.join(path, segs, sb, opts.NoInit)
+	w := &Watch{
+		Commits: sb.out,
+		State:   func() (WatchState, <-chan struct{}) { return p.stateOf(sb) },
+		Ready:   sb.ready,
+		Close:   func() { p.leave(sb) },
 	}
-	// THE PICTURE IS ALWAYS WAITED FOR by the pump, and a subscriber that would rather be
-	// refused — a person naming a path at a command line (WatchSubtreeAt) — is told what it
-	// showed. Until step 3 makes the answer a phase of a handle, the telling waits here.
-	if !waitIfAbsent {
-		select {
-		case <-p.picture:
-		case <-p.ctx.Done():
-			p.leave(sb)
-			return nil, nil, nil, fmt.Errorf("watching %s: %w", path, p.ctx.Err())
-		}
-		p.mu.Lock()
-		absent := p.absent
-		p.mu.Unlock()
-		if absent {
-			p.leave(sb)
-			return nil, nil, nil, fmt.Errorf("watching %s: nothing stands there", path)
-		}
+	if opts.Progress {
+		w.Progress = p.progress
 	}
-	return sb.out, func() { p.leave(sb) }, p.progress, nil
+	return w, nil
 }
 
 // join adds sb to the pump at path, starting the pump when there is none. A joiner of a pump
-// already open is seeded from the pump's copy; one that finds the pump being opened waits for
-// the opening to answer, and shares its failure.
-func (s *LogdStore) join(path string, segs []string, sb *sub, noInit bool) (*pump, error) {
+// already pictured is seeded from the pump's copy, here.
+func (s *LogdStore) join(path string, segs []string, sb *sub, noInit bool) *pump {
 	s.pumpsMu.Lock()
 	p, found := s.pumps[path]
 	if !found {
 		ctx, cancel := context.WithCancel(s.ctx)
-		p = &pump{s: s, path: path, segs: segs, ctx: ctx, cancel: cancel,
-			opened: make(chan struct{}), picture: make(chan struct{}), doc: ir.Null()}
+		p = &pump{s: s, path: path, segs: segs, ctx: ctx, cancel: cancel, doc: ir.Null(),
+			phase: WatchState{Phase: WatchOpening, Since: time.Now()}, changed: make(chan struct{})}
 		s.pumps[path] = p
 	}
 	p.mu.Lock()
@@ -276,74 +276,62 @@ func (s *LogdStore) join(path string, segs []string, sb *sub, noInit bool) (*pum
 			sb.silent = true
 		}
 	}
+	if p.pictured {
+		p.admit(sb)
+	}
 	p.mu.Unlock()
 	s.pumpsMu.Unlock()
 	if !found {
-		if err := p.open(); err != nil {
-			return nil, err
-		}
-	} else {
-		select {
-		case <-p.opened:
-		case <-s.ctx.Done():
-			p.leave(sb)
-			return nil, fmt.Errorf("watching %s: %w", path, s.ctx.Err())
-		}
-		if p.openErr != nil {
-			p.leave(sb)
-			return nil, p.openErr
-		}
+		go p.run()
 	}
 	// A late joiner's opening picture: from the pump's copy, in this call. A commit the pump
 	// emitted between the append above and here has seeded it already (sub.prev set).
 	p.mu.Lock()
-	if p.pictured && sb.prev == nil {
+	if p.pictured && sb.prev == nil && sb.failed == nil {
 		p.deliver(sb, true)
 	}
 	p.mu.Unlock()
-	return p, nil
+	return p
 }
 
-// open establishes the pump's first watch, in line when the pump is, and starts the loop. A
-// failure takes the pump out of the store's map and is the answer of every join waiting on it.
-func (p *pump) open() error {
-	held := false
-	if p.inLine() {
-		if err := p.s.gate.take(p.ctx); err != nil {
-			p.fail(fmt.Errorf("watching %s: %w", p.path, err))
-			return p.openErr
-		}
-		held = true
+// admit judges sb against the picture, under p.mu: one that asked not to wait on a path
+// holding nothing Fails on it; otherwise it is Ready if the watch is Open.
+func (p *pump) admit(sb *sub) {
+	if sb.failed != nil || sb.readied {
+		return
 	}
-	w, err := p.s.establish(p.ctx, p.path, &libctl.WatchOptions{WaitIfAbsent: true})
-	if err != nil {
-		if held {
-			p.s.gate.give()
-		}
-		p.fail(err)
-		return p.openErr
+	if !sb.waitIfAbsent && p.absent {
+		sb.failed = fmt.Errorf("watching %s: nothing stands there", p.path)
+		return
 	}
-	p.stand(w)
-	pumpOpens.Add(1)
-	close(p.opened)
-	go p.run(w, held)
-	return nil
+	if p.phase.Phase == WatchOpen {
+		close(sb.ready)
+		sb.readied = true
+	}
 }
 
-// fail is an opening that did not: the pump leaves the store's map, its subscribers are
-// detached (their channels never spoke and are not closed, since their joins answer the
-// error instead), and the joins waiting on it are released with it.
-func (p *pump) fail(err error) {
-	p.s.pumpsMu.Lock()
+// stateOf is sb's state: a refusal of its own where it has one, the pump's phase otherwise,
+// with the channel the next change closes.
+func (p *pump) stateOf(sb *sub) (WatchState, <-chan struct{}) {
 	p.mu.Lock()
-	delete(p.s.pumps, p.path)
-	p.ended = true
-	p.subs = nil
-	p.mu.Unlock()
-	p.s.pumpsMu.Unlock()
-	p.openErr = err
-	close(p.opened)
-	p.cancel()
+	defer p.mu.Unlock()
+	if sb.failed != nil {
+		return WatchState{Phase: WatchFailed, Err: sb.failed, Since: p.phase.Since}, p.changed
+	}
+	return p.phase, p.changed
+}
+
+// setPhase moves the pump to a phase, under p.mu, and tells every handle; Open readies every
+// subscriber not yet Ready.
+func (p *pump) setPhase(ph WatchPhase, err error) {
+	p.phase = WatchState{Phase: ph, Err: err, Since: time.Now()}
+	close(p.changed)
+	p.changed = make(chan struct{})
+	if ph == WatchOpen {
+		for _, sb := range p.subs {
+			p.admit(sb)
+		}
+	}
 }
 
 // leave removes sb and closes its stream; the last to leave ends the pump, after its linger.
@@ -566,12 +554,13 @@ func (p *pump) retry() bool {
 	return p.reseed
 }
 
-// run drains the pump's watch, re-establishing it whenever it ends, until the pump's ctx ends.
-// held is whether a slot in the line is held for the opening picture.
-func (p *pump) run(w *libctl.Watch, held bool) {
+// run opens the pump's watch and drains it, re-establishing it whenever it ends, until the
+// pump's ctx ends.
+func (p *pump) run() {
 	s := p.s
 	// A slot is held from an establish until the opening picture is in; give is the one way
 	// it goes back: on the picture, on a failed establish, or when the pump ends.
+	held := false
 	give := func() {
 		if held {
 			held = false
@@ -581,12 +570,15 @@ func (p *pump) run(w *libctl.Watch, held bool) {
 	defer func() {
 		give()
 		// The pump ends: out of the map if it is not already (a store closing), and every
-		// subscriber still on it hears its stream close.
+		// subscriber still on it hears its stream close and sees a final phase.
 		s.pumpsMu.Lock()
 		p.mu.Lock()
 		if !p.ended {
 			delete(s.pumps, p.path)
 			p.ended = true
+		}
+		if p.phase.Phase != WatchFailed {
+			p.setPhase(WatchFailed, errors.New("the watch ended with its store"))
 		}
 		subs := p.subs
 		p.subs = nil
@@ -596,6 +588,64 @@ func (p *pump) run(w *libctl.Watch, held bool) {
 			close(sb.out)
 		}
 	}()
+	// establish opens the watch, in line when the pump is, asking again after a refusal with
+	// a backoff of 100ms doubling to 5s, and says the phase as it goes. It answers no watch
+	// when the pump's ctx ends, or when the refusal is one asking again cannot cure (Failed).
+	//
+	// IN LINE: every watch a restore arms, or a drop ended, wants to open at once, and the
+	// line is what makes that a few at a time (watchGate).
+	establish := func(first bool) (*libctl.Watch, bool) {
+		backoff := 100 * time.Millisecond
+		lined, opening := WatchInLine, WatchOpening
+		if !first {
+			lined, opening = WatchReopening, WatchReopening
+		}
+		for {
+			if p.inLine() {
+				p.mu.Lock()
+				p.setPhase(lined, nil)
+				p.mu.Unlock()
+				if s.gate.take(p.ctx) != nil {
+					return nil, false
+				}
+				held = true
+			}
+			p.mu.Lock()
+			p.setPhase(opening, nil)
+			p.mu.Unlock()
+			w, err := s.establish(p.ctx, p.path, &libctl.WatchOptions{WaitIfAbsent: true})
+			if err == nil {
+				return w, true
+			}
+			give()
+			p.mu.Lock()
+			if uncurable(err) {
+				p.setPhase(WatchFailed, err)
+				p.mu.Unlock()
+				return nil, false
+			}
+			p.setPhase(WatchRefused, err)
+			p.mu.Unlock()
+			select {
+			case <-p.ctx.Done():
+				return nil, false
+			case <-time.After(backoff):
+			}
+			backoff = min(backoff*2, 5*time.Second)
+		}
+	}
+	// failed holds a pump whose watch Failed: it stops asking, its handles say so, and it ends
+	// with its last subscriber as any pump does.
+	failed := func() {
+		<-p.ctx.Done()
+	}
+	w, ok := establish(true)
+	if !ok {
+		failed()
+		return
+	}
+	p.stand(w)
+	pumpOpens.Add(1)
 	// A progress event is current through its commit: nothing is applied, and the
 	// subscribers that asked are told, in order with every commit before it.
 	progressed := func(commit int64) {
@@ -629,11 +679,12 @@ func (p *pump) run(w *libctl.Watch, held bool) {
 					sb.prev = p.doc
 				}
 			}
-			close(p.picture)
+		}
+		if ev.Patch == nil {
+			p.setPhase(WatchOpen, nil) // the picture is in: Open, and its subscribers Ready
 		}
 		p.emit(ev.Patch == nil)
 	}
-	backoff := 100 * time.Millisecond
 	// A watch can die WITHOUT SAYING SO, and then this loop would wait on a channel nothing
 	// will ever send to again. See subtreeHealAfter: the heal timer is what bounds how long
 	// that can last.
@@ -769,45 +820,26 @@ func (p *pump) run(w *libctl.Watch, held bool) {
 		if p.ctx.Err() != nil {
 			return
 		}
-		for {
-			// RE-WATCH AND RECONCILE, rather than resuming from the commit the ended event
-			// names. logd offers an exact resume point (WatchEndedError.Commit) and libctl's
-			// own doc says who it is for: "a snapshot-diffing consumer needs neither and can
-			// just re-watch and reconcile against its last snapshot." That is precisely this
-			// pump — it holds prev and reports the difference — and measured, the choice is
-			// not close. Resuming replays the missed deltas one at a time into a stream that
-			// is already the bottleneck: a 2000-entity slice reached 894 of 2000 in three
-			// minutes. Re-initializing sends ONE State carrying net state, and the same slice
-			// completed in 32s.
-			//
-			// IN LINE AGAIN: every watch a drop ended wants back at once, and the line is what
-			// makes that a few at a time (watchGate).
-			if p.inLine() {
-				if s.gate.take(p.ctx) != nil {
-					return
-				}
-				held = true
-			}
-			nw, err := s.establish(p.ctx, p.path, &libctl.WatchOptions{WaitIfAbsent: true})
-			if err == nil {
-				w = nw
-				p.stand(nw)
-				// An ask still out on the watch that ended answers for nobody, and the
-				// progress event it would have drawn never reaches this stream.
-				probe, swallow = nil, 0
-				quiet() // the picture is pending again; its arrival starts the heal
-				subtreeReopens.Add(1)
-				backoff = 100 * time.Millisecond
-				break
-			}
-			give()
-			select {
-			case <-p.ctx.Done():
-				return
-			case <-time.After(backoff):
-			}
-			backoff = min(backoff*2, 5*time.Second)
+		// RE-WATCH AND RECONCILE, rather than resuming from the commit the ended event names.
+		// logd offers an exact resume point (WatchEndedError.Commit) and libctl's own doc says
+		// who it is for: "a snapshot-diffing consumer needs neither and can just re-watch and
+		// reconcile against its last snapshot." That is precisely this pump — it holds prev and
+		// reports the difference — and measured, the choice is not close. Resuming replays the
+		// missed deltas one at a time into a stream that is already the bottleneck: a
+		// 2000-entity slice reached 894 of 2000 in three minutes. Re-initializing sends ONE
+		// State carrying net state, and the same slice completed in 32s.
+		nw, ok := establish(false)
+		if !ok {
+			failed()
+			return
 		}
+		w = nw
+		p.stand(nw)
+		// An ask still out on the watch that ended answers for nobody, and the progress event
+		// it would have drawn never reaches this stream.
+		probe, swallow = nil, 0
+		quiet() // the picture is pending again; its arrival starts the heal
+		subtreeReopens.Add(1)
 	}
 }
 

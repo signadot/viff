@@ -1,6 +1,7 @@
 package trigger
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -37,7 +38,7 @@ func TestARuleHeldForARunnerArmsWhenOneRegisters(t *testing.T) {
 		t.Fatalf("a spawn no runner offers refused the install: %v", err)
 	}
 	ps := eng.Pendings()
-	if len(ps) != 1 || ps[0].Rule != "run" || ps[0].Arming || !strings.Contains(ps[0].Cause, "waiting for a runner") {
+	if len(ps) != 1 || ps[0].Rule != "run" || !strings.Contains(ps[0].Cause, "waiting for a runner") {
 		t.Fatalf("pending = %+v; want run held for a runner", ps)
 	}
 	if _, stands := eng.Rule("run"); !stands {
@@ -67,12 +68,11 @@ func TestARuleHeldForARunnerArmsWhenOneRegisters(t *testing.T) {
 
 // AN INSTALL ANSWERS ONCE ACCEPTED: written and checked, with its watch opened behind the answer
 // at the store's pace. A store that does not open the watch yet does not refuse the install; the
-// rule is arming, and arms when the store answers.
+// rule is armed and arming, says what the store is doing, and watches when the store answers.
 func TestAnInstallAnswersOnceAcceptedAndArmsBehindIt(t *testing.T) {
-	store := &unwatchable{Store: entitytest.Store(t)}
-	store.on.Store(true)
+	store := newPhased(t, entitytest.Store(t))
+	store.set(entity.WatchRefused, errors.New("context deadline exceeded"))
 	eng := New(store, task.AutoResolver{})
-	eng.every = 5 * time.Millisecond
 	eng.ObserveScoped(t.Context())
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
@@ -81,12 +81,13 @@ func TestAnInstallAnswersOnceAcceptedAndArmsBehindIt(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("a store that did not open the watch refused the install: %v", err)
 	}
-	waitHeld(t, eng, "review", "the store refused its watch, and is asked again: ")
-	if n := eng.NotesOn(Trigger{Name: "review"}); n.Waits == "" {
-		t.Fatalf("notes = %+v; want the rule held", n)
+	waitArmingSays(t, eng, "review", "the store refused its watch, and is asked again: ")
+	if n := eng.NotesOn(Trigger{Name: "review"}); n.Waits == "" || !n.Arming {
+		t.Fatalf("notes = %+v; want the rule arming", n)
 	}
-	store.on.Store(false)
+	store.set(entity.WatchOpen, nil)
 	waitArmed(t, eng, "review")
+	waitArming(t, eng, nil)
 	ref := entity.RefAt("demo", "pr", "1")
 	entitytest.Set(t, store, ref, entity.Obj{"stage": "open"}.Payload())
 	waitStage(t, store, ref, "reviewed")

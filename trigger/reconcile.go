@@ -8,21 +8,26 @@ import (
 	"time"
 )
 
-// A RULE OF THE CHARTER IS ARMED OR PENDING. Armed, it is in e.triggers with its watches open,
-// and fires. Pending, it is in e.pending with the CAUSE it waits on: it stands by name, as an
-// installed rule does, and fires on nothing. The causes are the ones that can clear without
-// the rule's record changing — a stratum it names not installed yet, no runner offering what
-// its spawn asks, a read the vetting needs that did not happen, watches the store has not
-// opened or refused, and a vet that passed at install and fails now that the world has moved.
-// Everything else an install refuses, where the author is present to hear it (vet).
+// A RULE OF THE CHARTER IS ARMED OR PENDING. Armed, it is in e.triggers with its watches
+// asked of the store, and fires on what they deliver. Pending, it is in e.pending with the
+// CAUSE it waits on: it stands by name, as an installed rule does, and fires on nothing. The
+// causes are the ones that can clear without the rule's record changing — a stratum it names
+// not installed yet, no runner offering what its spawn asks, a read the vetting needs that did
+// not happen, a vet that passed at install and fails now that the world has moved, and the
+// pass itself, for a rule just placed or just lifted. Everything else an install refuses,
+// where the author is present to hear it (vet).
+//
+// THE STORE IS NOT A CAUSE. An armed rule's watches are handles (entity.Watch), opened by the
+// store behind the arm — in line, established, asked again after a refusal or a drop — and
+// the rule is armed from the moment it has them: what the store is doing for each is read
+// off the handle (watching), and is what `arming:` says. Nothing moves between the lists
+// when a watch drops or is refused.
 //
 // The reconciler is what clears a cause: a pass over every pending rule, in the order they
 // were placed, vetting each again and arming the ones that pass. A pass runs when something
 // that could clear a cause happens — a rule placed, a stratum installed, a declaration set, a
 // suspension lifted, and what versed sees: a runner registered or gone — and once a minute
-// regardless (git-issue wv2pp5j0). The pace of a pass is the store's: arming opens the rule's watches, each of which
-// waits in the store's line (entity.watchGate), so a restore's worth of rules arms a few at a
-// time, and an install made meanwhile waits its turn in the same line.
+// regardless (git-issue wv2pp5j0).
 
 // ErrNoOffer marks an offer check's refusal of a spawn no runner offers at all, as against one
 // some runner offers and none takes: the first is held for a runner that may register, the
@@ -32,7 +37,7 @@ var ErrNoOffer = errors.New("no runner offers it")
 // cause is why a pending rule is not armed.
 type cause struct {
 	kind causeKind
-	why  string // the words: the stratum's name, the runner refusal, the read's, the store's or the vet's error
+	why  string // the words: the stratum's name, the runner refusal, the read's or the vet's error
 }
 
 type causeKind int
@@ -43,14 +48,8 @@ const (
 	causeRead                     // a read the vetting needs did not happen
 	causeRefused                  // it does not pass now, as the world stands since its install
 	causePersist                  // its record is being written; no pass touches it until it is
-	causeStore                    // the store refused its watches, and is asked again
-	causeWatch                    // its watches are being opened
+	causePass                     // placed, or back from a lift; the pass it kicked arms it
 )
-
-// arming is whether a cause is the store's alone: the rule passed every check, and what stands
-// between it and firing is the store opening its watches, or opening them again after refusing
-// to. An install counts such a rule and a `wait` waits for it (api.InstalledPackage).
-func (c cause) arming() bool { return c.kind == causeWatch || c.kind == causeStore }
 
 // String is the cause as status and an install's answer say it.
 func (c cause) String() string {
@@ -65,10 +64,11 @@ func (c cause) String() string {
 		return "refused: " + c.why
 	case causePersist:
 		return "being written down"
-	case causeStore:
-		return "the store refused its watch, and is asked again: " + c.why
 	default:
-		return "its watch is being opened at the store's pace"
+		if c.why != "" {
+			return "waiting for a pass to arm it: " + c.why
+		}
+		return "waiting for a pass to arm it"
 	}
 }
 
@@ -79,31 +79,41 @@ type held struct {
 	Trigger
 	cause cause
 	gen   uint64
+	// settled is closed once a pass has answered for this entry: it armed, it was removed, or
+	// its cause became one a pass does not clear by itself (settles). What a wait on a rule
+	// just placed hangs on (Ready).
+	settled chan struct{}
+	done    bool
 }
 
 // hold puts a rule among the pending ones with this cause. Called with trigMu HELD.
 func (e *Engine) hold(t Trigger, c cause) {
 	e.placed++
-	e.pending = append(e.pending, held{Trigger: t, cause: c, gen: e.placed})
+	e.pending = append(e.pending, held{Trigger: t, cause: c, gen: e.placed, settled: make(chan struct{})})
 }
 
-// Pending is one pending rule as the engine reports it: its name, why it is not armed, and
-// whether that is the store alone — it passed every check, and the store has not opened its
-// watches yet (cause.arming).
+// passing is whether a cause is one the next pass clears on its own, with nothing else to
+// happen first: a rule just placed, or back from a lift, or being written down.
+func (c cause) passing() bool { return c.kind == causePass || c.kind == causePersist }
+
+// settle closes a pending entry's settled, once. Called with trigMu HELD.
+func (e *Engine) settle(i int) {
+	if !e.pending[i].done {
+		e.pending[i].done = true
+		close(e.pending[i].settled)
+	}
+}
+
+// Pending is one rule that fires on nothing as the engine reports it: its name and why. From
+// Pendings, a pending rule and its cause; from Arming, an armed rule and what the store is
+// doing for its watch.
 type Pending struct {
-	Rule   string
-	Cause  string
-	Arming bool
+	Rule  string
+	Cause string
 }
 
-// reconcileEvery is the backstop: a pass this long after the last, kicked or not. A rule the
-// store refused a watch for is asked for again sooner, storeRetryEvery after the pass that
-// found it so: the store answers at its own pace, and a `wait` of an install is shorter than
-// the backstop.
-const (
-	reconcileEvery  = time.Minute
-	storeRetryEvery = 5 * time.Second
-)
+// reconcileEvery is the backstop: a pass this long after the last, kicked or not.
+const reconcileEvery = time.Minute
 
 // Kick asks for a pass over the pending rules: something that could clear a cause happened
 // that the engine does not see for itself — a runner or an io registered, a session back.
@@ -123,8 +133,7 @@ func (e *Engine) kick() {
 	}
 }
 
-// reconcile is the reconciler's loop: a pass per kick, and one every reconcileEvery — or
-// storeRetryEvery, while a rule waits on a store that refused its watch.
+// reconcile is the reconciler's loop: a pass per kick, and one every reconcileEvery.
 func (e *Engine) reconcile(ctx context.Context) {
 	every := time.NewTimer(e.every)
 	defer every.Stop()
@@ -142,20 +151,8 @@ func (e *Engine) reconcile(ctx context.Context) {
 			default:
 			}
 		}
-		every.Reset(e.nextPass())
+		every.Reset(e.every)
 	}
-}
-
-// nextPass is how long until the pass after this one, kicked or not.
-func (e *Engine) nextPass() time.Duration {
-	e.trigMu.Lock()
-	defer e.trigMu.Unlock()
-	for _, h := range e.pending {
-		if h.cause.kind == causeStore {
-			return min(e.every, storeRetryEvery)
-		}
-	}
-	return e.every
 }
 
 // pass tries every pending rule once, in the order they were placed.
@@ -176,9 +173,9 @@ func (e *Engine) pass() {
 // arrived and its subject is outside it, say, or the runner that offered its spawn left and
 // another's ceiling is lower — stays pending with the refusal as its cause: it was accepted,
 // its record stands, and the world that refuses it may change back. It is reported once, as
-// the cause changes. A rule still held has its cause brought up to date. One that passes has
-// its watches opened, and is armed once they are: a removal that lands while they open wins,
-// as it wins over a late registration (registerWatchers).
+// the cause changes. A rule still held has its cause brought up to date. One that passes asks
+// the store for its watches and is armed with the handles, at once: the store opens them
+// behind the arm, and a removal that lands meanwhile wins (arm).
 func (e *Engine) try(h held) {
 	if h.cause.kind == causePersist {
 		return // its install has it: written down first, then placed for the pass it kicks
@@ -195,29 +192,25 @@ func (e *Engine) try(h held) {
 		e.setCause(h.Name, *hold)
 		return
 	}
-	var cancel context.CancelFunc
+	var rw *ruleWatches
 	if e.subtree {
 		subtrees, err := e.watchedSubtrees(h.Trigger)
 		if err != nil {
-			e.setCause(h.Name, cause{causeStore, err.Error()})
+			e.setCause(h.Name, cause{causeRefused, err.Error()})
 			return
 		}
-		e.setCause(h.Name, cause{causeWatch, "opening its watch"})
-		var ctx context.Context
-		ctx, cancel = context.WithCancel(e.bgctx)
-		if err := e.openWatches(ctx, h.Trigger, subtrees); err != nil {
-			cancel()
-			e.setCause(h.Name, cause{causeStore, err.Error()})
+		if rw, err = e.openWatches(h.Trigger, subtrees); err != nil {
+			// A request the store cannot make at all, which asking again does not change: a
+			// refusal, where the store's own refusal of a watch is a phase on the handle.
+			e.setCause(h.Name, cause{causeRefused, "the store cannot watch it: " + err.Error()})
 			return
 		}
 	}
-	if !e.arm(h, cancel) {
-		if cancel != nil {
-			cancel()
-		}
+	if !e.arm(h, rw) {
+		rw.stop()
 		return
 	}
-	if !h.cause.arming() {
+	if h.cause.kind != causePass {
 		// Advised as it arms: what a rule held for its stratum crosses is not known until then.
 		for _, w := range append(advise(h.Trigger), e.adviseDeriveClobber(h.Trigger)...) {
 			e.logger.Warn("charter", "trigger", h.Name, "note", w)
@@ -226,10 +219,10 @@ func (e *Engine) try(h held) {
 	}
 }
 
-// arm moves the pending rule a pass vetted to the armed ones, with the cancel that stops its
-// watches (none in baseline mode), answering false where it is no longer pending — removed
-// meanwhile, or removed and placed again under its name, which is another rule.
-func (e *Engine) arm(h held, cancel func()) bool {
+// arm moves the pending rule a pass vetted to the armed ones, with its watches (none in
+// baseline mode), answering false where it is no longer pending — removed meanwhile, or
+// removed and placed again under its name, which is another rule.
+func (e *Engine) arm(h held, rw *ruleWatches) bool {
 	name := h.Name
 	e.trigMu.Lock()
 	i := e.pendingIndex(name)
@@ -237,18 +230,17 @@ func (e *Engine) arm(h held, cancel func()) bool {
 		e.trigMu.Unlock()
 		return false
 	}
+	e.settle(i)
 	e.pending = slices.Delete(slices.Clone(e.pending), i, i+1)
 	e.triggers = append(e.triggers, h.Trigger)
-	old := e.watchers[name]
-	if cancel != nil {
-		e.watchers[name] = cancel
+	old := e.watches[name]
+	if rw != nil {
+		e.watches[name] = rw
 	} else {
-		delete(e.watchers, name)
+		delete(e.watches, name)
 	}
 	e.trigMu.Unlock()
-	if old != nil {
-		old()
-	}
+	old.stop()
 	return true
 }
 
@@ -272,6 +264,9 @@ func (e *Engine) setCause(name string, c cause) bool {
 	if i < 0 || e.pending[i].cause == c {
 		return false
 	}
+	if e.pending[i].cause.passing() && !c.passing() {
+		e.settle(i) // the pass answered: it waits on something else now
+	}
 	e.pending[i].cause = c
 	return true
 }
@@ -282,25 +277,24 @@ func (e *Engine) Pendings() []Pending {
 	defer e.trigMu.Unlock()
 	out := make([]Pending, 0, len(e.pending))
 	for _, h := range e.pending {
-		out = append(out, Pending{Rule: h.Name, Cause: h.cause.String(), Arming: h.cause.arming()})
+		out = append(out, Pending{Rule: h.Name, Cause: h.cause.String()})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Rule < out[j].Rule })
 	return out
 }
 
-// Arming is the names of the rules that wait on the store alone, sorted: they passed every
-// check, and the store is opening their watches, or asked to again after refusing (cause.arming).
-// Empty on a verse that is up.
-func (e *Engine) Arming() []string {
+// Arming is every armed rule whose watches are not all open, sorted by name, each with what
+// the store is doing for the first that is not (watching). Empty on a verse that is up.
+func (e *Engine) Arming() []Pending {
 	e.trigMu.Lock()
 	defer e.trigMu.Unlock()
-	var out []string
-	for _, h := range e.pending {
-		if h.cause.arming() {
-			out = append(out, h.Name)
+	var out []Pending
+	for _, t := range e.triggers {
+		if ok, doing := e.watchingLocked(t.Name); !ok {
+			out = append(out, Pending{Rule: t.Name, Cause: doing})
 		}
 	}
-	sort.Strings(out)
+	sort.Slice(out, func(i, j int) bool { return out[i].Rule < out[j].Rule })
 	return out
 }
 

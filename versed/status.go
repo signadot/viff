@@ -201,6 +201,7 @@ type charterCensus struct {
 	here          bool // a charter is installed AT this address
 	rules, strata int
 	pending       []trigger.Pending // rules of the charter not armed, each with why (not in rules)
+	arming        []trigger.Pending // armed rules whose watch the store is still opening, each with what it is doing (in rules)
 	suspended     []string          // rules counted above that a suspension holds about every subject
 	kids          map[string]*charterCensus
 	order         []string
@@ -227,13 +228,8 @@ func (c *charterCensus) count(eng *trigger.Engine) {
 		return
 	}
 	trigs := eng.Triggers()
-	c.pending = eng.Pendings()
+	c.pending, c.arming = eng.Pendings(), eng.Arming()
 	c.rules, c.strata = len(trigs), len(eng.Strata())
-	for _, p := range c.pending {
-		if p.Arming {
-			c.rules++
-		}
-	}
 	for _, t := range trigs {
 		if len(eng.SuspendedWhole(t.Name)) > 0 {
 			c.suspended = append(c.suspended, t.Name)
@@ -259,17 +255,16 @@ func (c *charterCensus) node() *ir.Node {
 		add("rules", ir.FromInt(int64(c.rules)))
 		add("strata", ir.FromInt(int64(c.strata)))
 		// Named with why: a rule that is in the charter and fires on nothing is one somebody
-		// may be waiting on. `arming` is the ones that passed every check and wait on the
-		// store alone — counted in `rules`, as an install counts them, so the count does not
-		// turn on the store's pace; `pending` is the rest, not counted, each with what it
-		// waits for.
+		// may be waiting on. `arming` is the armed ones whose watch the store is still
+		// opening, each with what it is doing — counted in `rules`, as an install counts
+		// them, so the count does not turn on the store's pace; `pending` is the held ones,
+		// not counted, each with what it waits for.
 		var af, av, pf, pv []*ir.Node
+		for _, p := range c.arming {
+			af = append(af, ir.FromString(p.Rule))
+			av = append(av, ir.FromString(p.Cause))
+		}
 		for _, p := range c.pending {
-			if p.Arming {
-				af = append(af, ir.FromString(p.Rule))
-				av = append(av, ir.FromString(p.Cause))
-				continue
-			}
 			pf = append(pf, ir.FromString(p.Rule))
 			pv = append(pv, ir.FromString(p.Cause))
 		}

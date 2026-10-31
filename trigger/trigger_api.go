@@ -419,7 +419,7 @@ func (e *Engine) place(t Trigger, durable bool, as string, take, over bool) erro
 		return nil
 	}
 	if e.subtree {
-		e.setCause(t.Name, cause{causeWatch, "not asked for yet"})
+		e.setCause(t.Name, cause{causePass, ""})
 		e.kick()
 	}
 	return nil
@@ -461,7 +461,13 @@ func (e *Engine) unplace(name string) bool {
 	// behind would arm it the moment its cause cleared — a rule coming back to life after an
 	// operator removed it, which is the failure deleting the charter entity exists to prevent,
 	// one step earlier.
-	pending := slices.ContainsFunc(e.pending, func(h held) bool { return named(h.Trigger) })
+	pending := false
+	for i := range e.pending {
+		if named(e.pending[i].Trigger) {
+			pending = true
+			e.settle(i)
+		}
+	}
 	e.pending = slices.DeleteFunc(slices.Clone(e.pending), func(h held) bool { return named(h.Trigger) })
 	if armed || pending {
 		e.forgetShapes(name)
@@ -509,8 +515,9 @@ func (e *Engine) Rule(name string) (Trigger, bool) {
 // and the log is read by whoever runs the daemon — the author is whoever sent the file, and
 // what they are told is the install's answer.
 type Notes struct {
-	// Waits is what the rule waits for, as a pending rule says it (Pending.Cause), and "" for
-	// an armed rule; Arming says the wait is its watches alone.
+	// Waits is what the rule waits for: what a pending rule says (Pending.Cause), or for an
+	// armed rule whose watches are not all open yet, what the store is doing for them, with
+	// Arming set; "" for an armed rule watching.
 	Waits  string
 	Arming bool
 	// Advice is what the rule says that its author may not have meant (advise).
@@ -522,7 +529,9 @@ func (e *Engine) NotesOn(t Trigger) Notes {
 	var n Notes
 	e.trigMu.Lock()
 	if i := e.pendingIndex(t.Name); i >= 0 {
-		n.Waits, n.Arming = e.pending[i].cause.String(), e.pending[i].cause.arming()
+		n.Waits = e.pending[i].cause.String()
+	} else if ok, doing := e.watchingLocked(t.Name); !ok {
+		n.Waits, n.Arming = doing, true
 	}
 	e.trigMu.Unlock()
 	if n.Waits != "" && !n.Arming {
