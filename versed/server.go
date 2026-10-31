@@ -4499,17 +4499,14 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 // scopes every instance would be visible in every scope, making this a no-op — the
 // isolation boundary is the store's (real on docd/logd).
 //
-// The ROWS come from the task:instance mirror, and the runtimes are consulted only to
-// enrich them. That inversion is what per-task runners require: a task on a named runner
-// is not in the in-process runtime, so a union over the runtimes this process holds would simply
-// not list it — and the fix is not to fan out over every installed runner, which
-// would let one dead runner take out the whole list in a feature whose whole point is that
-// runners come and go. The mirror is written at spawn and is complete without asking anybody.
+// The ROWS come from the task:instance mirror alone, and nothing here asks a runner anything:
+// a task on a named runner is reached through its record, not through a union of registries,
+// so no runner being up or down changes what is listed. The mirror is written at spawn and is
+// complete without asking anybody.
 //
-// It also settles what an unreachable runner costs here. It used to cost ROWS, silently
-// (git-issue 6mnmxj6mh12krz3ae1n0), and then — once ListTasks could say so — the whole
-// list. Now it costs neither: the rows are already here, and a runtime that does not answer
-// only means its live detail is missing, so the record's own account stands in.
+// It also settles what an unreachable runner used to cost here: ROWS, silently (git-issue
+// 6mnmxj6mh12krz3ae1n0), and then — once ListTasks could say so — the whole list. Now it costs
+// nothing, because nothing here is asked to answer.
 func (s *Server) taskSnapshots(store entity.Store) ([]api.Task, error) {
 	out := make([]api.Task, 0)
 	for _, ent := range taskRows(store) {
@@ -4550,27 +4547,14 @@ func taskCount(store entity.Store) int {
 	return n
 }
 
-// taskOf is a task as verse reports it (api.Task): the runner's snapshot while one holds it,
-// else what the record kept, and in both cases what only the record knows.
+// taskOf is a task as verse reports it (api.Task), built from the record alone (task:instance):
+// where it ran and under what autonomy, which run it is, when it started and ended, its status,
+// its result and what it refused — everything a listing or a get answers is what verse
+// mirrored, not a live read of a runner.
 //
-// The record is what verse can say about a task it is not holding a handle on — one on a named
-// runner, or one whose runtime has not been asked — and it is the RECORD's to say several
-// things even when a runner answers:
-//
-//   - Where it ran: the runtime knows it hosts the task, and the record knows which installed
-//     runner that is and what the charter called it.
-//   - WHICH RUN this is: the runtime may know it — a firing carries the commit that caused it —
-//     but only the record always does. An ad-hoc run's occurrence is the revision its own first
-//     record write landed at, decided after the process is already running, so a live snapshot
-//     of one would report nothing and the same task would start naming its run only once the
-//     runtime had let it go. Reading it here is what makes `verse ps` able to answer "is this
-//     the run that record is about" without a second lookup.
-//   - WHEN: a live snapshot knows it is hosting the task, and the mirror is what wrote down
-//     when that began. A row for a running task would otherwise carry no start at all, which
-//     is the one it is most often asked for.
-//   - UNDER WHAT AUTONOMY: the runner holds the rows it decides by, and the record holds them
-//     with verse's part of each ask (what silence settles on, the labels) and who last
-//     replaced them, kept after the task ends.
+// Reading the record rather than a runner is what makes this work for a task on a named
+// runner without asking that runner anything, and keeps answering for one whose runner has
+// since been removed, which is when an operator most wants it.
 func taskOf(id string, payload entity.Payload) api.Task {
 	rec := entity.ToObj(payload)
 	str := func(k string) string { v, _ := rec[k].(string); return v }
@@ -4771,9 +4755,8 @@ func noSuchTask(w http.ResponseWriter, r *http.Request, id string) {
 			"`verse flow show %s` reads the flow.", id, id))
 }
 
-// taskEvents bridges `attach` across backends: a locally-hosted task streams from the
-// runtime (its native SSE); a remote one is bridged here — Subscribe the runner
-// handle (which replays the merged log then goes live) and re-emit each event as SSE.
+// taskEvents streams one task's events as SSE, bridged through its runner's handle (Subscribe,
+// which replays the merged log then goes live) and re-emitted here, wherever the task runs.
 func (s *Server) taskEvents(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if !s.mayReadTask(w, r, id) {
@@ -4881,20 +4864,18 @@ func (s *Server) taskControl(w http.ResponseWriter, r *http.Request, op string) 
 	if _, ok := s.controlledTask(w, r, id); !ok {
 		return
 	}
-	// CANCEL, SAY AND AUTONOMY GO THROUGH THE HANDLE WHEREVER THE TASK RUNS, the runtime's own
-	// included: each records who did it, and that is whoever the request is made as (actor). The
-	// runtime's own handler takes the request as it stands and records the body's `by`, so the
-	// party checked for control would not be the party written down.
-	// WHEREVER IT RUNS, not wherever this process's runner is. s.attach reads the task's own
-	// record to find the runner hosting it and falls back to the default; s.runner.Attach
-	// asks the default and nothing else. Every task a charter spawns onto a named pool
-	// therefore had no reachable control at all: `verse ps cancel <id>` answered 404 while
-	// the runner holding it cancelled the same task happily when asked directly.
+	// CANCEL, SAY AND AUTONOMY GO THROUGH THE HANDLE WHEREVER THE TASK RUNS: each records who
+	// did it, and that is whoever the request is made as (actor).
+	// WHEREVER IT RUNS. s.attach reads the task's own record for the runner hosting it, with no
+	// fallback: a task on a named runner is reached there, by name, or not at all. Before this
+	// read existed, control asked a single default runner, so every task a charter spawns onto a
+	// named pool had no reachable control: `verse ps cancel <id>` answered 404 while the runner
+	// holding it cancelled the same task happily when asked directly.
 	//
-	// The events route learned this already — "wherever it runs, not wherever the default
-	// runner is" is its comment, added when attach 404'd on per-spawn runners — and control
-	// was left behind. Reading a stream and stopping the thing that produces it are the same
-	// question about where a task lives.
+	// The events route learned this already — "wherever it runs, not wherever this process's
+	// runner is" is its comment, added when attach 404'd on per-spawn runners — and control was left
+	// behind. Reading a stream and stopping the thing that produces it are the same question
+	// about where a task lives.
 	h := s.attach(id)
 	if h == nil {
 		noSuchTask(w, r, id)

@@ -315,7 +315,7 @@ type Gate struct {
 	ModeDoc  []string `tony:"-"`
 	ModeNote []string `tony:"-"`
 	Name     string   `tony:"field=name,omitzero,comment=NameDoc,lineComment=NameNote"`
-	// auto | ask | park. Empty is auto, unless the gate carries a threshold, options or a
+	// auto | ask. Empty is auto, unless the gate carries a threshold, options or a
 	// deadline, which only make sense for a question somebody is asked; then it is ask.
 	Mode string `tony:"field=mode,omitzero,comment=ModeDoc,lineComment=ModeNote"`
 	// Need is how many ballots settle `proceed`; one `deny` still refuses. It is the short
