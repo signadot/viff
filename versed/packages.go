@@ -134,11 +134,22 @@ func (s *Server) restorePackages() error {
 	}
 	defer release()
 
+	// ONE READ OF THE CHARTER, and everything the restore installs comes from it: which packages
+	// exist, what each declares it reads, and its strata and rules. Each engine reading for
+	// itself read the whole charter twice per package, one package after another, while the
+	// store was at its busiest. And the declarations read apart from the rules could fail where
+	// the rules' read did not: every package then read as declaring nothing, and its rules loaded
+	// against an engine with no declaration and were refused, one after another
+	// (git-issue wb2pp5j0h12kssy9whn0).
+	records, err := entity.BelowErr(s.Store, isCharterRecord, 2, entity.VerseRoot, trigger.CharterSystem)
+	if err != nil {
+		return entity.Unread(fmt.Errorf("the charter could not be read, so no package was restored: %w", err))
+	}
 	// EVERY ADDRESS THAT HAS RECORDS, not only those with rules: a package whose levels are
 	// installed and whose rules were refused is still a package, and one that did not come back
-	// at a restart would be a set of levels nobody could see or remove. packagesSeen is the one
+	// at a restart would be a set of levels nobody could see or remove. packagesIn is the one
 	// answer to "which packages exist", asked here too.
-	names, err := s.packagesSeenErr()
+	names, err := s.packagesIn(records)
 	if err != nil {
 		return fmt.Errorf("charter packages could not be read, so none were restored: %w", err)
 	}
@@ -163,14 +174,7 @@ func (s *Server) restorePackages() error {
 	s.scopeMu.Unlock()
 	// The declarations before the rules: a rule is checked against its package's reads as it
 	// installs, so a restore that loaded the charter first would refuse what it is restoring.
-	s.restorePackageImports()
-	// ONE READ FOR EVERY PACKAGE: the strata and the rules both live under `verse.trigger`, and
-	// each engine takes its own from the lot. Each engine reading for itself read the whole
-	// charter twice per package, one package after another, while the store was at its busiest.
-	records, err := entity.BelowErr(s.Store, isCharterRecord, 2, entity.VerseRoot, trigger.CharterSystem)
-	if err != nil {
-		return entity.Unread(fmt.Errorf("the charter could not be read, so no package was restored: %w", err))
-	}
+	s.restorePackageImports(importsIn(records, names))
 	// OFF THE LOCK, for the reason a scope's restore is: loading a charter opens a watch per
 	// rule, and holding the registry lock across that stalls every other lookup behind it.
 	for _, eng := range engs {
@@ -196,10 +200,9 @@ func (s *Server) packagesSeen() []string {
 	return out
 }
 
-// packagesSeenErr is packagesSeen reporting the read that did not happen, for the restore:
-// an empty answer and no answer are opposite facts about the charter.
+// packagesSeenErr is packagesSeen reporting the read that did not happen: an empty answer and
+// no answer are opposite facts about the charter.
 func (s *Server) packagesSeenErr() ([]string, error) {
-	var out []string
 	// ALL THREE KINDS OF RECORD, because any one of them makes a package exist: its rules, its
 	// levels, and the declaration of what it declares it reads. Reading only the rules made a package
 	// with levels and no rules INVISIBLE — which is not an exotic state, it is what a
@@ -219,6 +222,13 @@ func (s *Server) packagesSeenErr() ([]string, error) {
 	if err != nil {
 		return nil, entity.Unread(err)
 	}
+	return s.packagesIn(charter)
+}
+
+// packagesIn is the packages a listing of the charter names, with those the schedules name —
+// which live apart, so they are read here.
+func (s *Server) packagesIn(charter []entity.Entity) ([]string, error) {
+	var out []string
 	for _, ent := range charter {
 		if at := entity.Str(ent.Payload, trigger.AtField); at != "" {
 			out = append(out, at)
@@ -282,7 +292,11 @@ func (s *Server) setPackageImports(store entity.Store, at string, subs []trigger
 			"`reads:` belongs to a package, one installed at an address: its file's `at:`, or " +
 			"`verse c -a <address> -f <file>`")
 	}
-	graph := s.packageImports()
+	graph, err := s.packageImports()
+	if err != nil {
+		return fmt.Errorf("reads: the packages' declarations could not be read, so whether this "+
+			"closes a cycle cannot be said: %w", err)
+	}
 	graph[confine.Stamp()] = subs
 	if c := trigger.Cycle(graph); c != "" {
 		return fmt.Errorf("reads: this would close a cycle between packages: %s — one reads "+
@@ -386,18 +400,33 @@ func (s *Server) dropPackageEngine(at string) {
 	}
 }
 
-// packageImports reads the declared graph out of the store: every package that has a record,
-// and what it declares it reads. A package with rules and no record reads nothing, which is the default
+// packageImports reads the declared graph out of the store, reporting the read that did not
+// happen: a graph read as empty is one where every package reads nothing, which is the opposite
+// fact.
+func (s *Server) packageImports() (map[string][]trigger.Subtree, error) {
+	charter, err := entity.BelowErr(s.Store, isCharterRecord, 2, entity.VerseRoot, trigger.CharterSystem)
+	if err != nil {
+		return nil, entity.Unread(err)
+	}
+	names, err := s.packagesIn(charter)
+	if err != nil {
+		return nil, err
+	}
+	return importsIn(charter, names), nil
+}
+
+// importsIn is the declared graph in a listing of the charter: every package named, and what it
+// declares it reads. A package with rules and no declaration reads nothing, which is the default
 // the declaration replaces.
-func (s *Server) packageImports() map[string][]trigger.Subtree {
+func importsIn(charter []entity.Entity, names []string) map[string][]trigger.Subtree {
 	out := map[string][]trigger.Subtree{}
-	for _, at := range s.packagesSeen() {
+	for _, at := range names {
 		out[at] = nil
 	}
-	// At the subtree, for the reason packagesSeen gives: a package declaration lives under
-	// `verse.trigger.package`, and List reads the root.
-	for _, ent := range entity.Below(s.Store, trigger.IsCharterPackage, 2,
-		entity.VerseRoot, trigger.CharterSystem) {
+	for _, ent := range charter {
+		if !trigger.IsCharterPackage(ent.Ref) {
+			continue
+		}
 		at := entity.Str(ent.Payload, trigger.AtField)
 		if at == "" {
 			at = ent.Ref.Name()
@@ -415,8 +444,8 @@ func (s *Server) packageImports() map[string][]trigger.Subtree {
 // restorePackageImports gives each package engine its declaration back, BEFORE the rules are
 // loaded — a rule is checked against the reads declaration as it installs, so a restore that loaded the
 // charter first would refuse the very rules it is bringing back.
-func (s *Server) restorePackageImports() {
-	for at, subs := range s.packageImports() {
+func (s *Server) restorePackageImports(imports map[string][]trigger.Subtree) {
+	for at, subs := range imports {
 		if len(subs) == 0 {
 			continue
 		}
@@ -609,10 +638,15 @@ func (s *Server) takeDown(store entity.Store, at string) error {
 	// could not be removed, and still counted. There was no way out of that state but a wipe.
 	//
 	// This is the same listing packagesSeen does, with the same predicate, which is the point:
-	// what makes a package visible is what a removal has to reach.
+	// what makes a package visible is what a removal has to reach — and a read that did not
+	// happen is not "nothing left", or the records it missed outlive their package as above.
+	records, err := entity.BelowErr(s.Store, isCharterRecord, 2, entity.VerseRoot, trigger.CharterSystem)
+	if err != nil {
+		return fmt.Errorf("%s: the charter could not be read, so records the engine had not "+
+			"installed may remain: %w", at, entity.Unread(err))
+	}
 	left := 0
-	for _, ent := range entity.Below(s.Store, isCharterRecord, 2,
-		entity.VerseRoot, trigger.CharterSystem) {
+	for _, ent := range records {
 		if entity.Str(ent.Payload, trigger.AtField) != at {
 			continue
 		}

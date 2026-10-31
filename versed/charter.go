@@ -1038,6 +1038,9 @@ func (tx *charterTx) imports(def *ir.Node) (int, error) {
 	}
 	was := trigger.SendsOf(prev)
 	if err := tx.s.setPackageImports(tx.store, at, subs); err != nil {
+		if entity.IsUnread(err) {
+			return http.StatusServiceUnavailable, err
+		}
 		return http.StatusBadRequest, err
 	}
 	tx.push(func() error {
@@ -1242,6 +1245,10 @@ func (s *Server) deleteCharter(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.removePackage(s.scopedStore(r), at, r.URL.Query().Get("recurse") == "true"); err != nil {
 		if refused(w, err) {
+			return
+		}
+		if entity.IsUnread(err) {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
 			return
 		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
