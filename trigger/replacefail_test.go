@@ -7,6 +7,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // failsAt refuses the next n writes at one address, as a store under load refuses a write now
@@ -31,12 +32,12 @@ func (f *failsAt) Write(w entity.Write) (bool, int64, error) {
 // that acts as nobody, under a name that is anybody's, because a store refused one write.
 func TestAReplacementThatCannotBeWrittenLeavesTheRuleAndItsOwner(t *testing.T) {
 	alice, mallory := "user:alice@example.com", "user:mallory@example.com"
-	rule := CharterRefAt("", "review")
+	rule := charter.RuleRef("", "review")
 	inner := &failsAt{Store: entitytest.OpenStore(t), at: rule}
 	store := entity.As(inner, entity.SystemDefault)
 	// Anybody installs a rule, as the seed says.
-	if err := entity.SetGrants(store, entity.VerseRef(CharterSystem, CharterKind), []entity.Grant{{
-		At: entity.VerseRef(CharterSystem, CharterKind).Segs(), Below: true,
+	if err := entity.SetGrants(store, entity.VerseRef(charter.System, charter.RuleKind), []entity.Grant{{
+		At: entity.VerseRef(charter.System, charter.RuleKind).Segs(), Below: true,
 		To: map[entity.Level][]string{entity.OwnerLevel: {entity.Everyone}},
 	}}); err != nil {
 		t.Fatal(err)

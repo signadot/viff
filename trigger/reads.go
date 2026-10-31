@@ -9,6 +9,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // WHAT A PACKAGE READS, DECLARED — and with it the thing confinement alone could not give:
@@ -239,26 +240,6 @@ func (s Subtree) Overlaps(o Subtree) bool {
 		func(kp *kpath.KPath) bool { return kp.Descend })
 }
 
-// PackageKind is where a package's own declaration lives: `verse:trigger:package:<address>`,
-// beside the rules and the strata that carry the same `at`.
-//
-// A RECORD OF ITS OWN, rather than a field stamped on each rule, because the reads declaration are a
-// property of the PACKAGE and not of any rule in it: two installs into one address would
-// otherwise each carry their own answer, and the graph would depend on which rule you read. The
-// id is the address, so a package has exactly one.
-const PackageKind = "package"
-
-// PackageRef names the entity holding one package's declaration.
-func PackageRef(at string) entity.Ref { return entity.VerseRef(CharterSystem, PackageKind, at) }
-
-// IsCharterPackage reports whether an address is a package declaration's.
-func IsCharterPackage(r entity.Ref) bool {
-	return r.ChildOf(entity.VerseRoot, CharterSystem, PackageKind)
-}
-
-// ReadsField is where the declaration keeps them, as the dotted addresses StampReads writes.
-const ReadsField = "reads"
-
 // ── the reads graph ─────────────────────────────────────────────────────────
 
 // Cycle reports the cycle a package's reads would close, or "" for none.
@@ -377,7 +358,7 @@ func ReadsFromNode(node *ir.Node) ([]Subtree, error) {
 	var field *ir.Node
 	if node.Type == ir.ObjectType {
 		for i, key := range node.Fields {
-			if key != nil && key.Type == ir.StringType && key.String == ReadsField {
+			if key != nil && key.Type == ir.StringType && key.String == charter.ReadsField {
 				field = node.Values[i]
 			}
 		}

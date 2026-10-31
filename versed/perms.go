@@ -11,6 +11,7 @@ import (
 	"github.com/signadot/verse/resolver"
 	"github.com/signadot/verse/schedule"
 	"github.com/signadot/verse/trigger"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // The seed: what the system holds out, so that the flows a verse runs today are admitted by
@@ -46,15 +47,15 @@ var seed = []struct {
 	{entity.VerseRef(mirror.System, mirror.RunKind), entity.Read, []string{entity.Everyone}},
 	{entity.VerseRef(mirror.System, mirror.ClaimKind), entity.OwnerLevel, []string{entity.Everyone}},
 	{entity.VerseRef(mirror.System, mirror.ClaimKind), entity.Read, []string{entity.Everyone}},
-	{entity.VerseRef(trigger.CharterSystem, trigger.CharterKind), entity.OwnerLevel, []string{entity.Everyone}},
-	{entity.VerseRef(trigger.CharterSystem, trigger.CharterKind), entity.Read, []string{entity.Everyone}},
-	{entity.VerseRef(trigger.StrataSystem, trigger.StrataKind), entity.OwnerLevel, []string{entity.Everyone}},
-	{entity.VerseRef(trigger.StrataSystem, trigger.StrataKind), entity.Read, []string{entity.Everyone}},
-	{entity.VerseRef(trigger.CharterSystem, trigger.PackageKind), entity.OwnerLevel, []string{entity.Everyone}},
-	{entity.VerseRef(trigger.CharterSystem, trigger.PackageKind), entity.Read, []string{entity.Everyone}},
+	{entity.VerseRef(charter.System, charter.RuleKind), entity.OwnerLevel, []string{entity.Everyone}},
+	{entity.VerseRef(charter.System, charter.RuleKind), entity.Read, []string{entity.Everyone}},
+	{entity.VerseRef(charter.System, charter.StratumKind), entity.OwnerLevel, []string{entity.Everyone}},
+	{entity.VerseRef(charter.System, charter.StratumKind), entity.Read, []string{entity.Everyone}},
+	{entity.VerseRef(charter.System, charter.PackageKind), entity.OwnerLevel, []string{entity.Everyone}},
+	{entity.VerseRef(charter.System, charter.PackageKind), entity.Read, []string{entity.Everyone}},
 	// A suspension is written by the route that holds its table, as the system; what it holds,
 	// and who holds it, is everybody's to read, so a suspended thing is never a mystery.
-	{entity.VerseRef(trigger.CharterSystem, trigger.SuspensionKind), entity.Read, []string{entity.Everyone}},
+	{entity.VerseRef(charter.System, trigger.SuspensionKind), entity.Read, []string{entity.Everyone}},
 	{entity.VerseRef(resolver.System), entity.OwnerLevel, []string{entity.Everyone}},
 	{entity.VerseRef(resolver.System), entity.Read, []string{entity.Everyone}},
 	{entity.VerseRef(runnersSystem), entity.OwnerLevel, []string{entity.Everyone}},

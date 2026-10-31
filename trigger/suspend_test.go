@@ -11,6 +11,7 @@ import (
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // suspending is an engine over store with a loaded table of its own and the given suspensions in
@@ -299,7 +300,7 @@ func TestAWildcardStopsCoveringWhatSomebodyOwns(t *testing.T) {
 	if err := eng.addTrigger(reviewRule("review", entity.Obj{"stage": "reviewed"}), false, "user:alice@example.com"); err != nil {
 		t.Fatal(err)
 	}
-	if err := entity.Establish(store, CharterRefAt("", "review"), "user:alice@example.com", entity.Ref{}, nil); err != nil {
+	if err := entity.Establish(store, charter.RuleRef("", "review"), "user:alice@example.com", entity.Ref{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -687,7 +688,7 @@ func TestARulePatchesARowThatHoldsSomebodyElsesPlace(t *testing.T) {
 	if err := eng.addTrigger(reviewRule("review", entity.Obj{"stage": "reviewed"}), false, alice); err != nil {
 		t.Fatal(err)
 	}
-	if err := entity.Establish(store, CharterRefAt("", "review"), alice, entity.Ref{}, nil); err != nil {
+	if err := entity.Establish(store, charter.RuleRef("", "review"), alice, entity.Ref{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())

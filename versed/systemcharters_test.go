@@ -2,19 +2,20 @@ package versed
 
 import (
 	"context"
-	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/trigger/charter"
+
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/system/repocharters"
-	"github.com/signadot/verse/trigger"
 )
 
 // A charter handed to the server as text is installed as the system once the sources are
@@ -116,7 +117,7 @@ func packageFirings(srv *Server) int {
 // A changed text still installs, and replays what it changed.
 func TestAnUnchangedSystemCharterIsNotReplayedAtARestart(t *testing.T) {
 	addr := entitytest.Addr(t)
-	charter := func(stamp string) []SystemCharter {
+	charters := func(stamp string) []SystemCharter {
 		return []SystemCharter{{Name: "notes", Text: []byte(`at: notes
 rules: [{name: mark,
   condition: {subject: {path: "notes.item.*"}},
@@ -128,7 +129,7 @@ rules: [{name: mark,
 	// the rule's record was written.
 	start := func(texts []SystemCharter) (*Server, int, int, int) {
 		t.Helper()
-		rule := trigger.CharterRefAt("notes", "mark")
+		rule := charter.RuleRef("notes", "mark")
 		rg := &recordGets{Store: entitytest.StoreAt(t, addr), of: entity.PermsRef(rule), rule: rule}
 		srv := serverWith(t, runnerdtest.Scripted, rg)
 		srv.SystemCharters = texts
@@ -140,13 +141,13 @@ rules: [{name: mark,
 		return srv, packageFirings(srv), rg.n, rg.writes
 	}
 
-	first, _, _, _ := start(charter("a"))
+	first, _, _, _ := start(charters("a"))
 	for _, id := range []string{"1", "2", "3"} {
 		entitytest.Set(t, first.Store, entity.RefAt("notes", "item", id), entity.Obj{"n": id}.Payload())
 	}
 	waitUntil(t, "the rule to mark every item", func() bool { return packageFirings(first) >= 3 })
 
-	_, fired, reads, writes := start(charter("a"))
+	_, fired, reads, writes := start(charters("a"))
 	if fired != 3 {
 		t.Errorf("a restart with the text unchanged fired the rule %d times over 3 items, want 3: once in the restore", fired)
 	}
@@ -160,7 +161,7 @@ rules: [{name: mark,
 	if writes != 0 {
 		t.Errorf("a restart with the text unchanged wrote the rule's record %d times, want 0", writes)
 	}
-	changed, _, _, _ := start(charter("b"))
+	changed, _, _, _ := start(charters("b"))
 	waitUntil(t, "a changed text to install and replay", func() bool {
 		e, ok, _ := changed.Store.Get(entity.RefAt("notes", "item", "1"))
 		return ok && entity.Str(e.Payload, "seen") == "b"
@@ -173,7 +174,7 @@ rules: [{name: mark,
 // engine and in the store, and the rule fires for nothing.
 func TestASystemRulesWordsFollowItsTextWithoutAReplay(t *testing.T) {
 	addr := entitytest.Addr(t)
-	charter := func(words string) []SystemCharter {
+	charters := func(words string) []SystemCharter {
 		return []SystemCharter{{Name: "notes", Text: []byte("at: notes\nrules:\n" + words + "\n" +
 			"- name: mark\n  condition: {subject: {path: \"notes.item.*\"}}\n  action: {patch: {seen: a}}\n")}}
 	}
@@ -195,20 +196,20 @@ func TestASystemRulesWordsFollowItsTextWithoutAReplay(t *testing.T) {
 		}
 		return ""
 	}
-	first := start(charter("# the first words"))
+	first := start(charters("# the first words"))
 	waitUntil(t, "the rule to install with its words", func() bool { return words(first) == "# the first words" })
 	for _, id := range []string{"1", "2", "3"} {
 		entitytest.Set(t, first.Store, entity.RefAt("notes", "item", id), entity.Obj{"n": id}.Payload())
 	}
 	waitUntil(t, "the rule to mark every item", func() bool { return packageFirings(first) >= 3 })
 
-	second := start(charter("# the second words"))
+	second := start(charters("# the second words"))
 	waitUntil(t, "the restore to replay the rule once", func() bool { return packageFirings(second) >= 3 })
 	waitUntil(t, "the engine's rule to follow the words", func() bool { return words(second) == "# the second words" })
 	if fired := packageFirings(second); fired != 3 {
 		t.Errorf("a change to the words above the rule fired it %d times over 3 items, want 3: the restore's", fired)
 	}
-	rec, ok, err := second.Store.Get(trigger.CharterRefAt("notes", "mark"))
+	rec, ok, err := second.Store.Get(charter.RuleRef("notes", "mark"))
 	if err != nil || !ok {
 		t.Fatalf("the rule's record: ok=%v err=%v", ok, err)
 	}

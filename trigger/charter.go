@@ -18,112 +18,13 @@ package trigger
 import (
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/systems"
+	"github.com/signadot/verse/trigger/charter"
 )
-
-// CharterSystem/CharterKind name where the durable charter lives: trigger:rule:<name>, the
-// id being the trigger's name (which is unique by construction — AddTrigger refuses a
-// duplicate — so the address needs nothing else to be distinct).
-const (
-	CharterSystem = "trigger"
-	CharterKind   = "rule"
-)
-
-// IsCharterRule reports whether an address is a durable rule's — the namespace's own question,
-// asked by anything that lists the charter.
-func IsCharterRule(r entity.Ref) bool {
-	return r.ChildOf(entity.VerseRoot, CharterSystem, CharterKind)
-}
-
-// CharterRef names the entity holding one of BASELINE's rules.
-func CharterRef(name string) entity.Ref { return CharterRefAt("", name) }
-
-// CharterRefAt names the entity holding one rule of the charter installed at an address.
-//
-// A PACKAGE'S RECORDS ARE ADDRESSED BY PACKAGE — `verse:trigger:rule:drift:head-moved` — and
-// baseline's keep the bare name. Without that the id is the rule's name alone, so two packages
-// with a rule (or a stratum) of the same name write one record: the second install silently
-// replaces the first's, both engines keep running from memory, and the restart is where one
-// package's rules quietly do not come back. Two groups not having to agree on names is most of
-// what a package is FOR, so the address is what has to carry the package.
-//
-// The package goes FIRST, so a listing sorted by address groups a package's rules together —
-// which is the order somebody reading `verse data verse.trigger.rule` wants. The id may hold
-// colons (ParseRef splits the first two and the rest is the id), so nothing else has to change.
-func CharterRefAt(at, name string) entity.Ref {
-	return entity.VerseRef(CharterSystem, CharterKind, recordID(at, name))
-}
-
-// RecordName is recordName for a reader outside the package — the server lists a charter by the
-// names its records carry, and the package half of the id is not part of a rule's name.
-func RecordName(id string) string { return recordName(id) }
-
-// recordName is the name inside a record id — the tail after the package address, and the whole
-// id for baseline. The split is on the LAST colon: an address may hold none (`drift`) or one
-// (`demo.pr` is dotted, so still none), and a rule's name may not hold one, so the last colon
-// is the divider whenever there is a package at all.
-func recordName(id string) string {
-	if i := strings.LastIndex(id, ":"); i >= 0 {
-		return id[i+1:]
-	}
-	return id
-}
-
-// recordID is the id a charter record takes: the name for baseline, `<address>:<name>` for a
-// package. One function, so a rule and a stratum cannot drift on the spelling.
-func recordID(at, name string) string { return mirror.RecordID(at, name) }
-
-// specField is where a durable record keeps the declaration it was installed from — the rule
-// on trigger:rule. One name for it across record kinds, because it is one idea: a goal kept
-// its own definition under this same key while goals existed.
-//
-// It holds the declaration as STRUCTURE, written under entity.Raw. A charter is full of
-// operator tags — `id: !glob "hotfix-*"`, `patch: {tmp: !delete null}` — and a write is a
-// tony patch, so an unescaped payload has them executed by the store rather than stored by
-// it: not a rule that reads back wrong, one that cannot be read back at all (the entity's own
-// patch log stops applying, "glob patching null gave cannot patch with glob operation"). That
-// is what forced the text form here, and `!raw` is the escape that lifts it — the subtree is
-// stored verbatim, tags intact, interpreting nothing at any depth.
-//
-// Structure rather than text because the record is then the rule itself: `verse data get
-// trigger:rule:review` shows a document a person can read field by field, a charter change is
-// an ordinary observable fact about a shape rather than about a string, and nothing has to
-// re-parse to ask a question about it. Raw also REPLACES, so re-installing a rule cannot
-// leave a field of the version before it standing in the version after — which a merged
-// structural write would, and which the text form got for free by being one scalar.
-const specField = "spec"
-
-// scopeField is the scope a record belongs to — absent for baseline. It is what makes a
-// scope's charter restorable: a scoped store reads baseline layered underneath, so a listing
-// in a scope returns both, and only the record can say which is which. See Engine.SetScope.
-const scopeField = "scope"
-
-// atField is the ADDRESS a charter was installed at — the subtree its rules may write in,
-// absent for the baseline charter, which may write anywhere.
-//
-// It is the same idea as `scope` one axis over. A scope says whose COPY of the verse a rule
-// acts in; an address says which part of the verse it acts on. Both are stamped for the same
-// reason: the records live in one listing, and only the record can say which charter a rule
-// belongs to.
-const atField = "at"
-
-// taskField is the task whose tools installed a rule (Trigger.Task), absent for one a person
-// or the system installed, and taskEnvironmentField what that task could hand on when it did
-// (Trigger.TaskEnvironment), the systems alone.
-const (
-	taskField            = "task"
-	taskEnvironmentField = "taskEnvironment"
-)
-
-// AtField is atField for a reader outside the package — the server groups the charter by it to
-// bring every package back at a restart.
-const AtField = atField
 
 // ownRecord reports whether a charter record belongs to THIS engine's scope: the one
 // stamped on it is the scope the engine acts in.
@@ -133,25 +34,16 @@ const AtField = atField
 // charter into one scope — which is a decision about what a scope means, not a
 // restore detail, and is not this function's to make (docs/reference/scopes.md).
 func (e *Engine) ownRecord(ent entity.Entity) bool {
-	return entity.Str(ent.Payload, scopeField) == e.scope &&
-		entity.Str(ent.Payload, atField) == e.confine.stamp()
+	return entity.Str(ent.Payload, charter.ScopeField) == e.scope &&
+		entity.Str(ent.Payload, charter.AtField) == e.confine.stamp()
 }
 
-// record builds a declaration's durable payload: the spec, plus the scope when this engine
-// acts in one and the address it was installed at. One builder, so a rule and a stratum cannot
-// drift on either. WHOSE it is, is not in it: that is its owner record's to say, and a second
-// statement beside it is one that can disagree.
+// record builds a declaration's durable payload (charter.Payload): the spec, plus the scope
+// when this engine acts in one and the address it was installed at.
 func (e *Engine) record(doc *ir.Node) entity.Payload { return e.recordObj(doc).Payload() }
 
 func (e *Engine) recordObj(doc *ir.Node) entity.Obj {
-	p := entity.Obj{specField: entity.Raw(doc)}
-	if e.scope != "" {
-		p[scopeField] = e.scope
-	}
-	if at := e.confine.stamp(); at != "" {
-		p[atField] = at
-	}
-	return p
+	return charter.Payload(doc, e.scope, e.confine.stamp())
 }
 
 // installer is who an install acting as `as` is by: `as`, or the principal the engine's own
@@ -165,9 +57,11 @@ func (e *Engine) installer(as string) string {
 
 // RuleRef is where the rule of this name stands in this engine's charter, and StratumRef a
 // level: the address its content is at, and the one its perms record is about.
-func (e *Engine) RuleRef(name string) entity.Ref { return CharterRefAt(e.confine.stamp(), name) }
+func (e *Engine) RuleRef(name string) entity.Ref { return charter.RuleRef(e.confine.stamp(), name) }
 
-func (e *Engine) StratumRef(name string) entity.Ref { return StrataRefAt(e.confine.stamp(), name) }
+func (e *Engine) StratumRef(name string) entity.Ref {
+	return charter.StratumRef(e.confine.stamp(), name)
+}
 
 // OwnerOf is whose the rule of this name is, and so who it fires as: the owner on its record
 // (entity.ActsAs). "" for a rule with none, which fires as nobody, for a mirror that did not
@@ -200,15 +94,15 @@ func (e *Engine) persist(t Trigger, as string, take bool) error {
 	if err != nil {
 		return fmt.Errorf("trigger %q: encoding it for the charter: %w", t.Name, err)
 	}
-	ref := CharterRefAt(e.confine.stamp(), t.Name)
+	ref := charter.RuleRef(e.confine.stamp(), t.Name)
 	// The installing task is written with the rule, or taken off: a write merges, and a rule a
 	// person installs over a task's is theirs, held by nothing the task was.
 	rec := e.recordObj(doc)
-	rec[taskField], rec[taskEnvironmentField] = entity.Removed(), entity.Removed()
+	rec[charter.TaskField], rec[charter.TaskEnvironmentField] = entity.Removed(), entity.Removed()
 	if t.Task != "" {
-		rec[taskField] = t.Task
+		rec[charter.TaskField] = t.Task
 		if t.TaskEnvironment != nil {
-			rec[taskEnvironmentField] = systems.Environment{Systems: t.TaskEnvironment.Systems}
+			rec[charter.TaskEnvironmentField] = systems.Environment{Systems: t.TaskEnvironment.Systems}
 		}
 	}
 	if _, _, err := e.store.Write(entity.Write{
@@ -257,7 +151,7 @@ func (e *Engine) takeForTheSystem(ref entity.Ref, as string) error {
 // deliberately non-durable rule take this same removal path without a second one, and without
 // a Warn. No durable rule can be caught by it either: a name is unique across the charter.
 func (e *Engine) forget(name string) {
-	e.write(CharterRefAt(e.confine.stamp(), name).At(), nil)
+	e.write(charter.RuleRef(e.confine.stamp(), name).At(), nil)
 }
 
 // LoadCharter installs the rules standing in the verse — the durable charter — into this
@@ -282,7 +176,7 @@ func (e *Engine) LoadCharter() error {
 	// At the charter's own slice. A restore is the one moment the store is largest and
 	// nothing else is waiting yet, and this read at the ROOT was 18.8s of staging's 88s
 	// startup.
-	ents, err := entity.BelowErr(e.store, IsCharterRule, 2, entity.VerseRoot, CharterSystem)
+	ents, err := entity.BelowErr(e.store, charter.IsRule, 2, entity.VerseRoot, charter.System)
 	// A FAILED READ IS NOT AN EMPTY CHARTER. List answers nil either way, and taking the
 	// second reading brings a verse back running NO RULES and saying nothing about it — which
 	// under load is exactly when it happens. Reported as the read it is (entity.IsUnread), so
@@ -305,7 +199,7 @@ func (e *Engine) LoadCharter() error {
 func (e *Engine) LoadCharterFrom(ents []entity.Entity) error {
 	var errs []error
 	for _, ent := range ents {
-		if !IsCharterRule(ent.Ref) || !e.ownRecord(ent) {
+		if !charter.IsRule(ent.Ref) || !e.ownRecord(ent) {
 			continue
 		}
 		t, err := ruleOf(ent)
@@ -337,26 +231,26 @@ func (e *Engine) LoadCharterFrom(ents []entity.Entity) error {
 // deletes — so installing under one and deleting under the other would leave a rule nothing
 // can get rid of.
 func ruleOf(ent entity.Entity) (Trigger, error) {
-	doc := entity.Get(ent.Payload, specField)
+	doc := entity.Get(ent.Payload, charter.SpecField)
 	if doc == nil {
-		return Trigger{}, fmt.Errorf("charter %s: no %s field (payload is %v)", ent.Ref, specField, ent.Payload)
+		return Trigger{}, fmt.Errorf("charter %s: no %s field (payload is %v)", ent.Ref, charter.SpecField, ent.Payload)
 	}
 	var t Trigger
 	if err := t.FromTonyIR(doc); err != nil {
 		return Trigger{}, fmt.Errorf("charter %s: %w", ent.Ref, err)
 	}
-	t.Task = entity.Str(ent.Payload, taskField)
-	if n := entity.Get(ent.Payload, taskEnvironmentField); n != nil && t.Task != "" {
+	t.Task = entity.Str(ent.Payload, charter.TaskField)
+	if n := entity.Get(ent.Payload, charter.TaskEnvironmentField); n != nil && t.Task != "" {
 		var env systems.Environment
 		if err := env.FromTonyIR(n); err != nil {
-			return Trigger{}, fmt.Errorf("charter %s: %s: %w", ent.Ref, taskEnvironmentField, err)
+			return Trigger{}, fmt.Errorf("charter %s: %s: %w", ent.Ref, charter.TaskEnvironmentField, err)
 		}
 		t.TaskEnvironment = &env
 	}
 	// The id is the name for baseline and `<address>:<name>` for a package (CharterRefAt), so
 	// the check is against the tail: what has to agree is the NAME, and the package half of the
 	// address is not part of it.
-	if t.Name != recordName(ent.Ref.Name()) {
+	if t.Name != charter.Name(ent.Ref.Name()) {
 		return Trigger{}, fmt.Errorf("charter %s: the rule names itself %q; a rule is addressed by its "+
 			"name, so it would install as one trigger and be removed as another", ent.Ref, t.Name)
 	}

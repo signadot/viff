@@ -34,30 +34,8 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/trigger/charter"
 )
-
-// StrataSystem/StrataKind name where the durable strata live: trigger:strata:<name>, beside
-// the rules at trigger:rule:<name>. The id is the stratum's name, which is what makes a
-// duplicate NAME impossible by construction and a duplicate LEVEL a thing to check.
-const (
-	StrataSystem = "trigger"
-	StrataKind   = "strata"
-)
-
-// IsStratum reports whether an address is a durable stratum's — the namespace's own question,
-// asked by anything that lists the ordering, as IsCharterRule is for the rules.
-func IsStratum(r entity.Ref) bool { return r.ChildOf(entity.VerseRoot, StrataSystem, StrataKind) }
-
-// StrataRef names the entity holding one of BASELINE's strata.
-func StrataRef(name string) entity.Ref { return StrataRefAt("", name) }
-
-// StrataRefAt names the entity holding one stratum of the charter installed at an address —
-// addressed by package for the reason CharterRefAt gives at length: two packages declaring a
-// level of the same name (`reflected` is the obvious one, since every package that reads a
-// source wants a bottom level for it) would otherwise write one record.
-func StrataRefAt(at, name string) entity.Ref {
-	return entity.VerseRef(StrataSystem, StrataKind, recordID(at, name))
-}
 
 // Stratum is one level of the ordering: what it owns, and where it sits.
 //
@@ -397,7 +375,7 @@ func (e *Engine) MayRemoveStratum(principal, name string) error {
 	if _, ok := e.stratum(name); !ok {
 		return nil
 	}
-	return entity.Check(e.store, principal, entity.OwnerLevel, StrataRefAt(e.confine.stamp(), name), "removing it")
+	return entity.Check(e.store, principal, entity.OwnerLevel, charter.StratumRef(e.confine.stamp(), name), "removing it")
 }
 
 // RemoveStratumAs is RemoveStratum on behalf of a principal, refused where they may not.
@@ -616,10 +594,10 @@ func (e *Engine) RemoveStratum(name string) error {
 		return fmt.Errorf("stratum %q at %s still holds %d rule(s) (%s): removing it would leave "+
 			"them installed and unchecked — every subject that passed its pattern would be "+
 			"answering to nothing. Remove the rules first, or move them",
-			name, StrataRefAt(e.confine.stamp(), name), len(users), strings.Join(shown, ", "))
+			name, charter.StratumRef(e.confine.stamp(), name), len(users), strings.Join(shown, ", "))
 	}
 	e.removeStratum(name)
-	e.write(StrataRefAt(e.confine.stamp(), name).At(), nil)
+	e.write(charter.StratumRef(e.confine.stamp(), name).At(), nil)
 	return nil
 }
 
@@ -660,13 +638,13 @@ func (e *Engine) promote(string) { e.kick() }
 
 // persistStratum writes s into the verse as its stratum entity. Raw for the same reason a rule
 // is raw: a match is full of operator tags, and an unescaped write has the store execute them
-// rather than store them (see charter.go's specField).
+// rather than store them (see charter.go's charter.SpecField).
 func (e *Engine) persistStratum(s Stratum, as string, take bool) error {
 	doc, err := s.ToTonyIR()
 	if err != nil {
 		return fmt.Errorf("stratum %q: encoding it: %w", s.Name, err)
 	}
-	ref := StrataRefAt(e.confine.stamp(), s.Name)
+	ref := charter.StratumRef(e.confine.stamp(), s.Name)
 	if _, _, err := e.store.Write(entity.Write{
 		At:        ref.At(),
 		Value:     e.record(doc),
@@ -692,7 +670,7 @@ func (e *Engine) persistStratum(s Stratum, as string, take bool) error {
 // answer for a rule whose stratum has not arrived, and the right one here too: the ordering it
 // asked to be checked against is not in force in this scope.
 func (e *Engine) LoadStrata() error {
-	ents, err := entity.BelowErr(e.store, IsStratum, 2, entity.VerseRoot, StrataSystem)
+	ents, err := entity.BelowErr(e.store, charter.IsStratum, 2, entity.VerseRoot, charter.System)
 	// Asked before anything is installed, and of this read alone, for LoadCharter's reasons: a
 	// load that could not read installed nothing, and is asked again.
 	if err != nil {
@@ -706,7 +684,7 @@ func (e *Engine) LoadStrata() error {
 func (e *Engine) LoadStrataFrom(ents []entity.Entity) error {
 	var errs []error
 	for _, ent := range ents {
-		if !IsStratum(ent.Ref) || !e.ownRecord(ent) {
+		if !charter.IsStratum(ent.Ref) || !e.ownRecord(ent) {
 			continue
 		}
 		s, err := stratumOf(ent)
@@ -728,15 +706,15 @@ func (e *Engine) LoadStrataFrom(ents []entity.Entity) error {
 // reason ruleOf gives: the name is what a rule references and the address is what a removal
 // deletes, so the two diverging leaves a stratum nothing can get rid of.
 func stratumOf(ent entity.Entity) (Stratum, error) {
-	doc := entity.Get(ent.Payload, specField)
+	doc := entity.Get(ent.Payload, charter.SpecField)
 	if doc == nil {
-		return Stratum{}, fmt.Errorf("stratum %s: no %s field (payload is %v)", ent.Ref, specField, ent.Payload)
+		return Stratum{}, fmt.Errorf("stratum %s: no %s field (payload is %v)", ent.Ref, charter.SpecField, ent.Payload)
 	}
 	var s Stratum
 	if err := s.FromTonyIR(doc); err != nil {
 		return Stratum{}, fmt.Errorf("stratum %s: %w", ent.Ref, err)
 	}
-	if s.Name != recordName(ent.Ref.Name()) { // the tail: a package's records carry its address
+	if s.Name != charter.Name(ent.Ref.Name()) { // the tail: a package's records carry its address
 		return Stratum{}, fmt.Errorf("stratum %s: it names itself %q; a stratum is addressed by "+
 			"its name, so it would install as one and be removed as another", ent.Ref, s.Name)
 	}
@@ -1171,7 +1149,7 @@ func (a Action) validateDerive() error {
 	// that writes its record, and by nothing that observes the store, so a record a rule derived
 	// would suspend nothing while every listing said it did.
 	for _, t := range a.derives() {
-		if segs := t.segs(); len(segs) >= 2 && segs[0] == entity.VerseRoot && segs[1] == CharterSystem &&
+		if segs := t.segs(); len(segs) >= 2 && segs[0] == entity.VerseRoot && segs[1] == charter.System &&
 			(len(segs) == 2 || segs[2] == SuspensionKind) {
 			return fmt.Errorf("action.derive into %s: a suspension is made by `verse flow suspend`, "+
 				"and a record a rule wrote there would hold nothing", strings.Join(segs, "."))

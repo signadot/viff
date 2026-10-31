@@ -13,6 +13,7 @@ import (
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/trigger"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // taskCharterFile is a package whose rule spawns as spawn says, with a second rule beside it.
@@ -126,7 +127,7 @@ func TestATaskInstallsACharterHeldWithinTheTask(t *testing.T) {
 	if code, body := carryFor(t, http.MethodPost, ts.URL+"/charter?format=tony", token, "installer", file); code != http.StatusCreated {
 		t.Fatalf("the task's install within it = %d %s", code, body)
 	}
-	rule := trigger.CharterRefAt("repos.r.task", "build")
+	rule := charter.RuleRef("repos.r.task", "build")
 	if rec, _, _ := srv.Store.Get(rule); entity.Str(rec.Payload, "task") != "installer" || entity.Get(rec.Payload, "taskEnvironment") == nil {
 		t.Fatalf("the rule's record = %v, want it to name the task that installed it, and keep its hold", rec.Payload)
 	}
@@ -140,7 +141,7 @@ func TestATaskInstallsACharterHeldWithinTheTask(t *testing.T) {
 	if code, body := carryFor(t, http.MethodDelete, ts.URL+"/charter?path=repos.r.task.rules.spare", token, "installer", ""); code/100 != 2 {
 		t.Fatalf("the task's removal = %d %s", code, body)
 	}
-	if _, ok, _ := srv.Store.Get(trigger.CharterRefAt("repos.r.task", "spare")); ok {
+	if _, ok, _ := srv.Store.Get(charter.RuleRef("repos.r.task", "spare")); ok {
 		t.Error("the rule stands after the task removed it")
 	}
 
@@ -240,7 +241,7 @@ func TestATasksCredentialIsHeldWhereASpawnSpendsOne(t *testing.T) {
 	if _, code, err := srv.installCharterPruning(entity.As(srv.Store, "user:"+tester), "", "", "", docs, hold); err != nil {
 		t.Fatalf("the install = %d %v", code, err)
 	}
-	if rec, _, _ := srv.Store.Get(trigger.CharterRefAt("repos.r.task", "spare")); entity.Str(rec.Payload, "task") != "keyed" ||
+	if rec, _, _ := srv.Store.Get(charter.RuleRef("repos.r.task", "spare")); entity.Str(rec.Payload, "task") != "keyed" ||
 		entity.Get(rec.Payload, "taskEnvironment") == nil {
 		t.Errorf("the rule's record = %v, want the task and what it holds the rule within", rec.Payload)
 	}

@@ -10,7 +10,7 @@ import (
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/trigger"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // A CHARTER FILE IS APPLIED AS ONE STEP.
@@ -54,7 +54,7 @@ func TestACharterFileIsAppliedAsOneStep(t *testing.T) {
 
 	// NOTHING STANDS. Not the level the first document would have installed, not a package for it
 	// to belong to, and not an engine watching on behalf of a charter that is not there.
-	if _, ok, _ := srv.Store.Get(trigger.StrataRefAt("probe.pkg", "lvl")); ok {
+	if _, ok, _ := srv.Store.Get(charter.StratumRef("probe.pkg", "lvl")); ok {
 		t.Error("the level from the refused file is standing")
 	}
 	if got := srv.packagesSeen(); len(got) != 0 {
@@ -127,7 +127,7 @@ func TestARefusedFilePutsBackWhatItReplaced(t *testing.T) {
 	}
 
 	// The store agrees, which is what a restart would read.
-	ent, ok, _ := srv.Store.Get(trigger.CharterRefAt("notes", "note"))
+	ent, ok, _ := srv.Store.Get(charter.RuleRef("notes", "note"))
 	if !ok {
 		t.Fatal("the rule's record is gone")
 	}

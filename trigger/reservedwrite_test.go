@@ -7,6 +7,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // THE REFUSAL AT THE WRITE, which is the one every charter-authored write passes: a person's
@@ -16,7 +17,7 @@ import (
 func TestAPersonsRuleIsRefusedUnderVerseAtTheWrite(t *testing.T) {
 	const alice = "user:alice@example.com"
 	store := entity.As(entitytest.OpenStore(t), entity.SystemDefault)
-	for _, row := range []entity.Ref{entity.VerseRef(CharterSystem, CharterKind), entity.VerseRef("schedule")} {
+	for _, row := range []entity.Ref{entity.VerseRef(charter.System, charter.RuleKind), entity.VerseRef("schedule")} {
 		if err := entity.SetGrants(store, row, []entity.Grant{{
 			At: row.Segs(), Below: true, To: map[entity.Level][]string{entity.OwnerLevel: {entity.Everyone}},
 		}}); err != nil {

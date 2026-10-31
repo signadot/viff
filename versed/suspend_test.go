@@ -3,13 +3,15 @@ package versed
 import (
 	"context"
 	"fmt"
-	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/trigger/charter"
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
@@ -119,7 +121,7 @@ func TestASystemResumeLiftsOnlyTheSystemsHold(t *testing.T) {
 	// person holds, where both hold `control` over what it covers.
 	owns(t, srv, "user:alice@example.com",
 		[]entity.Grant{{To: map[entity.Level][]string{entity.Control: {"user:bob@example.com"}, entity.Read: {entity.Everyone}}}},
-		trigger.CharterRef("loop"))
+		charter.RuleRef("", "loop"))
 	if code, _, msg := suspendAs(t, ts, "suspend", "alice@example.com", "", api.FlowSelect{Charter: ":loop", Subject: "*", Why: "and I want to read it"}); code != http.StatusOK {
 		t.Fatalf("alice's suspend = %d %s", code, msg)
 	}

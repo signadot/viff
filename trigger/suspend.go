@@ -25,6 +25,7 @@ import (
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // SuspensionKind is where the records live: verse.trigger.suspension.<id>.
@@ -39,12 +40,12 @@ const Recursive = ".**"
 
 // SuspensionRef names the record of one suspension.
 func SuspensionRef(id string) entity.Ref {
-	return entity.VerseRef(CharterSystem, SuspensionKind, id)
+	return entity.VerseRef(charter.System, SuspensionKind, id)
 }
 
 // IsSuspension reports whether an address is a suspension's record.
 func IsSuspension(r entity.Ref) bool {
-	return r.ChildOf(entity.VerseRoot, CharterSystem, SuspensionKind)
+	return r.ChildOf(entity.VerseRoot, charter.System, SuspensionKind)
 }
 
 // Suspension is one record: what it covers, the scope it was made in, and who holds it.
@@ -191,7 +192,7 @@ func (s Suspension) Payload() entity.Payload {
 		p["recursive"] = true
 	}
 	if s.Scope != "" {
-		p[scopeField] = s.Scope
+		p[charter.ScopeField] = s.Scope
 	}
 	held := entity.Obj{}
 	for who, h := range s.Held {
@@ -219,7 +220,7 @@ func SuspensionOf(p entity.Payload) (Suspension, error) {
 	if err != nil {
 		return Suspension{}, err
 	}
-	s.Scope = entity.Str(p, scopeField)
+	s.Scope = entity.Str(p, charter.ScopeField)
 	s.Held = map[string]Holder{}
 	for who, h := range entity.Fields(entity.Get(p, "held")) {
 		s.Held[who] = Holder{Why: entity.Str(h, "why"), Since: entity.Str(h, "since"),
@@ -296,7 +297,7 @@ func (s Suspension) CharterPlace() (entity.Ref, bool) {
 	case len(s.charter) > 0:
 		return entity.RefAt(s.charter...), true
 	case s.Rule != Every:
-		return CharterRef(s.Rule), true
+		return charter.RuleRef("", s.Rule), true
 	}
 	return entity.Ref{}, false
 }
@@ -625,7 +626,7 @@ func (e *Engine) charterPlace(rule string) entity.Ref {
 	if e.confine.confined() {
 		return entity.RefAt(e.confine.Path()...)
 	}
-	return CharterRef(rule)
+	return charter.RuleRef("", rule)
 }
 
 // atSegs is this engine's charter address as segments, none for an unaddressed charter.

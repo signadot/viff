@@ -7,6 +7,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // stamps keeps the principal each address was last written as, so a test can read what
@@ -39,7 +40,7 @@ func TestAFiringWritesAsItsRule(t *testing.T) {
 	st := &stamps{Store: entitytest.Store(t)}
 	eng := New(st, task.AutoResolver{})
 
-	want := entity.Via(CharterRefAt("", "review"))
+	want := entity.Via(charter.RuleRef("", "review"))
 	if got := eng.Principal("review.onDone.onFailed"); got != want {
 		t.Fatalf("Principal(review.onDone.onFailed) = %q, want %q", got, want)
 	}
@@ -60,7 +61,7 @@ func TestAFiringWritesAsItsRule(t *testing.T) {
 		t.Fatal(err)
 	}
 	pkg.Confine(sub)
-	if got, want := pkg.Principal("head-moved"), entity.Via(CharterRefAt(sub.Stamp(), "head-moved")); got != want {
+	if got, want := pkg.Principal("head-moved"), entity.Via(charter.RuleRef(sub.Stamp(), "head-moved")); got != want {
 		t.Fatalf("a packaged rule's principal = %q, want %q", got, want)
 	}
 }
@@ -78,7 +79,7 @@ func TestAnInstallWritesTheRuleAsItsInstaller(t *testing.T) {
 	if err := eng.InstallTriggerAs("scott@example.com", tr); err != nil {
 		t.Fatal(err)
 	}
-	if got := st.by(CharterRefAt("", "review")); got != "scott@example.com" {
+	if got := st.by(charter.RuleRef("", "review")); got != "scott@example.com" {
 		t.Fatalf("the rule record was written as %q, want the installer", got)
 	}
 	// Restored at a start, the record is re-written by nobody in particular: the store's own
@@ -90,7 +91,7 @@ func TestAnInstallWritesTheRuleAsItsInstaller(t *testing.T) {
 	if err := eng2.InstallTrigger(tr); err != nil {
 		t.Fatal(err)
 	}
-	if got := st.by(CharterRefAt("", "review")); got != "" {
+	if got := st.by(charter.RuleRef("", "review")); got != "" {
 		t.Fatalf("an install with no principal wrote the record as %q", got)
 	}
 }

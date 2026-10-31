@@ -15,6 +15,7 @@ import (
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // observe/sdlc/effectuate — the ordering the design note is written around, which is what
@@ -539,7 +540,7 @@ func TestARuleIsHeldUntilItsStratumArrives(t *testing.T) {
 		t.Fatal("a held rule is installed; it must not fire until its stratum arrives")
 	}
 	// It is written down: held is not lost.
-	if _, ok, _ := store.Get(CharterRef("early")); !ok {
+	if _, ok, _ := store.Get(charter.RuleRef("", "early")); !ok {
 		t.Fatal("a held rule was not persisted; a restart would lose it")
 	}
 	// A second rule under the same name is refused, held or not.

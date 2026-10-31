@@ -11,6 +11,7 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/trigger"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // A CHARTER STANDS FOR AS LONG AS ITS INSTALL SAYS: a fielded charter's `ttl:` is how long, and
@@ -80,7 +81,7 @@ func (tx *charterTx) expiry(g *charterGroup) (int, error) {
 	if err != nil {
 		return http.StatusBadRequest, err
 	}
-	ref := trigger.PackageRef(confine.Stamp())
+	ref := charter.PackageRef(confine.Stamp())
 	if g.ttl > 0 {
 		g.expires = tx.s.now().Add(g.ttl).UTC().Format(time.RFC3339)
 		if _, _, err := tx.store.Write(entity.Write{At: entity.Path{Ref: ref}, Value: entity.Obj{
@@ -117,8 +118,8 @@ func (s *Server) armCharters() error {
 	if err := s.awaiting(phasePackages); err != nil {
 		return err
 	}
-	kind := entity.VerseRef(trigger.CharterSystem, trigger.PackageKind)
-	ch, unsub, err := s.Store.WatchSubtree(len(kind.Segs())+1, entity.VerseRoot, trigger.CharterSystem, trigger.PackageKind)
+	kind := entity.VerseRef(charter.System, charter.PackageKind)
+	ch, unsub, err := s.Store.WatchSubtree(len(kind.Segs())+1, entity.VerseRoot, charter.System, charter.PackageKind)
 	if err != nil {
 		return entity.Unread(fmt.Errorf("the charters could not be followed, so no expiry was armed: %w", err))
 	}
@@ -134,7 +135,7 @@ func (s *Server) armCharters() error {
 					return
 				}
 				for _, ev := range c.Changes {
-					if !trigger.IsCharterPackage(ev.Ref) {
+					if !charter.IsPackage(ev.Ref) {
 						continue
 					}
 					if ev.Op == entity.Delete || ev.To == nil {
@@ -186,7 +187,7 @@ func (s *Server) expireCharter(ref entity.Ref) {
 		s.expireCharterLater(ref, ent.Payload)
 		return
 	}
-	at := entity.Str(ent.Payload, trigger.AtField)
+	at := entity.Str(ent.Payload, charter.AtField)
 	if err := s.uninstallOne(entity.As(s.Store, entity.SystemDefault), at); err != nil {
 		fmt.Fprintf(os.Stderr, "verse: charter %s: its ttl is over, and it was not removed: %v\n", at, err)
 		return

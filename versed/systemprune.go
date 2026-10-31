@@ -8,6 +8,7 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/trigger"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // pruneSystemCharters takes down each charter package the system installed that none of the
@@ -45,14 +46,14 @@ func (s *Server) pruneSystemCharters() {
 	defer release()
 	// The listing's own failure: the ActsAs reads below would otherwise set or clear the
 	// store's flag before it was asked.
-	rules, err := entity.BelowErr(s.Store, trigger.IsCharterRule, 2, entity.VerseRoot, trigger.CharterSystem)
+	rules, err := entity.BelowErr(s.Store, charter.IsRule, 2, entity.VerseRoot, charter.System)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "verse: system charters the config dropped: %v\n", err)
 		return
 	}
 	system := map[string]bool{}
 	for _, ent := range rules {
-		at := entity.Str(ent.Payload, trigger.AtField)
+		at := entity.Str(ent.Payload, charter.AtField)
 		if at == "" || named[at] {
 			continue
 		}

@@ -15,6 +15,7 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/trigger"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // Suspensions (docs/control.md): one record per thing suspended, keyed by what it covers,
@@ -57,7 +58,7 @@ func (s *Server) suspensionsFor(scope string) *trigger.Suspensions {
 // so a record is the scope's only when its stamp says so, as a rule record is. A read that did
 // not happen is reported as one, so whatever loads the table asks again.
 func readSuspensions(store entity.Store, scope string) ([]trigger.Suspension, error) {
-	ents, err := entity.BelowErr(store, trigger.IsSuspension, 1, entity.VerseRoot, trigger.CharterSystem, trigger.SuspensionKind)
+	ents, err := entity.BelowErr(store, trigger.IsSuspension, 1, entity.VerseRoot, charter.System, trigger.SuspensionKind)
 	if err != nil {
 		return nil, entity.Unread(fmt.Errorf("the suspensions could not be read, so everything stays held: %w", err))
 	}

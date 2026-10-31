@@ -15,6 +15,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // AddTrigger installs a trigger into the charter — durably: the rule is written into the
@@ -133,7 +134,7 @@ func (e *Engine) MayRemoveTrigger(principal, name string) error {
 	if _, ok := e.Rule(name); !ok {
 		return nil
 	}
-	return entity.Check(e.store, principal, entity.OwnerLevel, CharterRefAt(e.confine.stamp(), name), "removing it")
+	return entity.Check(e.store, principal, entity.OwnerLevel, charter.RuleRef(e.confine.stamp(), name), "removing it")
 }
 
 // RemoveTriggerAs is RemoveTrigger on behalf of a principal, refused where they may not.

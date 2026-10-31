@@ -16,6 +16,7 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/trigger"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // THE CHARTER IS ONE THING AT ONE ADDRESS, and this is the one route that serves it.
@@ -787,7 +788,7 @@ func (g charterGroup) empty() bool {
 
 // fileKeys are the keys of a fielded charter, and the only ones it may carry. The file is the
 // node `verse c` prints for one address, so what the install reads is what the listing wrote.
-var fileKeys = []string{"at", trigger.ReadsField, trigger.SendsField, charterTTLField, "rules", "schedules", "strata"}
+var fileKeys = []string{"at", charter.ReadsField, trigger.SendsField, charterTTLField, "rules", "schedules", "strata"}
 
 // charterFiles splits a request into the charters it installs, in request order.
 //
@@ -899,7 +900,7 @@ func fieldedCharter(doc *ir.Node, at string) (charterGroup, error) {
 				return charterGroup{}, errors.New("a charter's `at:` is an address (`drift`, `demo.pr`)")
 			}
 			declared = v.String
-		case trigger.ReadsField:
+		case charter.ReadsField:
 			hasReads = true
 		case trigger.SendsField:
 			hasSends = true

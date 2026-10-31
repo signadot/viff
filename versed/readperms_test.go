@@ -1,7 +1,6 @@
 package versed
 
 import (
-	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -9,11 +8,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/trigger/charter"
+
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/trigger"
 )
 
 func getAs(t *testing.T, as, url string) *http.Response {
@@ -136,7 +137,7 @@ func TestACharterReadsAsItsOwner(t *testing.T) {
 	if entity.Get(entity.Get(e.Payload, "seenBy"), "bob") != nil {
 		t.Fatalf("bob's rule fired on alice's pr: %v", e.Payload)
 	}
-	if got := owner(t, srv, trigger.CharterRef("bobs-rule")); got != "user:bob@example.com" {
+	if got := owner(t, srv, charter.RuleRef("", "bobs-rule")); got != "user:bob@example.com" {
 		t.Fatalf("bob's rule is owned by %q", got)
 	}
 

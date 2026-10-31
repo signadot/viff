@@ -10,7 +10,7 @@ import (
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/trigger"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // postAs is postTony with the request made by somebody: the principal header the CLI sends
@@ -88,15 +88,15 @@ func TestARequestsPrincipalOwnsWhatItCreates(t *testing.T) {
 		t.Fatalf("alice is not on the list of users (ok=%v err=%v)", ok, err)
 	}
 
-	charter := `{ name: review,
+	rule := `{ name: review,
 	  condition: { subject: { path: "demo.pr.*", value: { stage: open } } },
 	  action: { patch: { stage: reviewing } } }`
-	resp = postAs(t, "scott@example.com", ts.URL+"/charter", "application/tony", charter)
+	resp = postAs(t, "scott@example.com", ts.URL+"/charter", "application/tony", rule)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install: %s", resp.Status)
 	}
-	if got := owner(t, srv, trigger.CharterRefAt("", "review")); got != "user:scott@example.com" {
+	if got := owner(t, srv, charter.RuleRef("", "review")); got != "user:scott@example.com" {
 		t.Fatalf("the rule record is owned by %q, want its installer", got)
 	}
 
@@ -232,7 +232,7 @@ func TestAnInstallThatNamesNobodyIsRefusedByTheInstall(t *testing.T) {
 	if err == nil || code != http.StatusBadRequest {
 		t.Fatalf("an install by nobody: %d %v, want 400", code, err)
 	}
-	rule := trigger.CharterRef("anon")
+	rule := charter.RuleRef("", "anon")
 	if _, ok, _ := srv.Store.Get(rule); ok {
 		t.Fatal("the rule was refused and written anyway")
 	}

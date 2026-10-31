@@ -14,6 +14,7 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // restart stands a second engine up over the same substrate, the way `verse up` does after
@@ -170,14 +171,14 @@ func TestCharterRoundTripsOperators(t *testing.T) {
 	}
 	installed, _ := eng.Trigger("hotfix") // post-desugar: what the engine actually runs
 
-	ent, ok, err := store.Get(CharterRef("hotfix"))
+	ent, ok, err := store.Get(charter.RuleRef("", "hotfix"))
 	if err != nil || !ok {
 		t.Fatalf("the charter entity does not read back: ok=%v err=%v", ok, err)
 	}
 	// The spec is STRUCTURE on the entity — a document to navigate, not a string to re-parse.
-	spec := entity.Get(ent.Payload, specField)
+	spec := entity.Get(ent.Payload, charter.SpecField)
 	if spec == nil || !entity.IsObj(spec) {
-		t.Fatalf("%s = %v; want the rule as an object", specField, spec)
+		t.Fatalf("%s = %v; want the rule as an object", charter.SpecField, spec)
 	}
 	// The subject's path is stored as the kinded path it was written as, and the operator its
 	// PREDICATE carries survives as a tag — which is where an operator lives now.
@@ -247,11 +248,11 @@ func TestReinstallReplacesTheRule(t *testing.T) {
 		t.Fatalf("AddTrigger (again): %v", err)
 	}
 
-	ent, ok, _ := store.Get(CharterRef("review"))
+	ent, ok, _ := store.Get(charter.RuleRef("", "review"))
 	if !ok {
 		t.Fatal("the charter entity does not read back")
 	}
-	if g := ir.Get(entity.Get(ent.Payload, specField), "gates"); g != nil {
+	if g := ir.Get(entity.Get(ent.Payload, charter.SpecField), "gates"); g != nil {
 		t.Fatalf("gates = %v; the removed gate survived the re-install", g)
 	}
 }
@@ -269,7 +270,7 @@ func TestUnreadableRuleIsReportedAndSkipped(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	entitytest.Set(t, first, CharterRef("junk"), entity.Obj{specField: "this is not a trigger: [ {"}.Payload())
+	entitytest.Set(t, first, charter.RuleRef("", "junk"), entity.Obj{charter.SpecField: "this is not a trigger: [ {"}.Payload())
 
 	store := entitytest.StoreAt(t, addr)
 	back := New(store, task.AutoResolver{})
@@ -300,7 +301,7 @@ func TestRuleNameMustMatchItsAddress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entitytest.Set(t, store, CharterRef("elsewhere"), entity.Obj{specField: entity.Raw(doc)}.Payload())
+	entitytest.Set(t, store, charter.RuleRef("", "elsewhere"), entity.Obj{charter.SpecField: entity.Raw(doc)}.Payload())
 
 	if err := eng.LoadCharter(); err == nil {
 		t.Fatal("a rule named 'review' installed from trigger.rule.elsewhere")
@@ -413,7 +414,7 @@ func TestARuleKeepsItsComments(t *testing.T) {
 	}
 
 	// …and back out the way a restart reads it.
-	ent, ok, err := store.Get(CharterRef("commented"))
+	ent, ok, err := store.Get(charter.RuleRef("", "commented"))
 	if err != nil || !ok {
 		t.Fatalf("the charter entity: ok=%v err=%v", ok, err)
 	}
@@ -484,7 +485,7 @@ func TestARuleKeepsEveryCommentItWasWrittenWith(t *testing.T) {
 		t.Fatalf("AddTrigger: %v", err)
 	}
 
-	ent, ok, err := store.Get(CharterRef("everything"))
+	ent, ok, err := store.Get(charter.RuleRef("", "everything"))
 	if err != nil || !ok {
 		t.Fatalf("the charter entity: ok=%v err=%v", ok, err)
 	}

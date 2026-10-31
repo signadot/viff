@@ -15,7 +15,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/trigger"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // idleHandle is a task that is running and does nothing: the engine holds a flow open around
@@ -386,7 +386,7 @@ func TestFlowSteeringAsksControl(t *testing.T) {
 // the side left out is every one.
 func TestAFlowActIsNarrowedOrRefused(t *testing.T) {
 	srv, ts := startedServer(t)
-	testerOwns(t, srv, entity.RefAt("demo"), trigger.CharterRef("review"), mirror.Ref("run"))
+	testerOwns(t, srv, entity.RefAt("demo"), charter.RuleRef("", "review"), mirror.Ref("run"))
 	h := newIdleHandle(t)
 	srv.Eng.Adopt("demo.pr.1", "run", h)
 	for _, c := range []struct {

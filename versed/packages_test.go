@@ -3,7 +3,6 @@ package versed
 import (
 	"context"
 	"errors"
-	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"io"
 	"net/http/httptest"
 	"slices"
@@ -11,10 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/trigger/charter"
+
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/trigger"
 )
 
 // declareReads posts a package's `reads:` declaration, which a rule reading outside its own
@@ -76,11 +77,11 @@ func TestACharterPackageRunsAtItsAddress(t *testing.T) {
 
 	// The record says which package it belongs to, so a reader can tell whose rule it is
 	// without inferring it from which listing it turned up in.
-	rule, ok, _ := srv.Store.Get(trigger.CharterRefAt("notes", "note-the-head"))
+	rule, ok, _ := srv.Store.Get(charter.RuleRef("notes", "note-the-head"))
 	if !ok {
 		t.Fatal("the package's rule was not written down")
 	}
-	if got := entity.Str(rule.Payload, trigger.AtField); got != "notes" {
+	if got := entity.Str(rule.Payload, charter.AtField); got != "notes" {
 		t.Fatalf("the record says at=%q, want notes", got)
 	}
 }
@@ -178,7 +179,7 @@ type charterListings struct {
 }
 
 func (c *charterListings) count(at []string) {
-	if slices.Equal(at, []string{entity.VerseRoot, trigger.CharterSystem}) {
+	if slices.Equal(at, []string{entity.VerseRoot, charter.System}) {
 		c.n++
 	}
 }
@@ -339,7 +340,7 @@ func (f *flakyCharter) ListAt(at []string, depth int, pred func(entity.Ref) bool
 	return out
 }
 func (f *flakyCharter) ListAtErr(at []string, depth int, pred func(entity.Ref) bool) ([]entity.Entity, error) {
-	if slices.Equal(at, []string{entity.VerseRoot, trigger.CharterSystem}) {
+	if slices.Equal(at, []string{entity.VerseRoot, charter.System}) {
 		f.n++
 		if f.n == f.fail {
 			return nil, errFor("context deadline exceeded")
@@ -505,10 +506,10 @@ func TestAPackageCanBeUninstalled(t *testing.T) {
 	if err := srv.removePackage(srv.Store, "notes", false); err != nil {
 		t.Fatalf("uninstall: %v", err)
 	}
-	if _, ok, _ := srv.Store.Get(trigger.CharterRefAt("notes", "note-the-head")); ok {
+	if _, ok, _ := srv.Store.Get(charter.RuleRef("notes", "note-the-head")); ok {
 		t.Error("the rule outlived the package")
 	}
-	if _, ok, _ := srv.Store.Get(trigger.PackageRef("notes")); ok {
+	if _, ok, _ := srv.Store.Get(charter.PackageRef("notes")); ok {
 		t.Error("the declaration of what it declares it reads outlived the package")
 	}
 	if len(srv.packagesSeen()) != 0 {
@@ -628,7 +629,7 @@ func TestAPackageWithNoRulesIsStillAPackage(t *testing.T) {
 	if got := srv.packagesSeen(); len(got) != 0 {
 		t.Errorf("the package is still listed after uninstall: %v", got)
 	}
-	if _, ok, _ := srv.Store.Get(trigger.StrataRefAt("notes", "lvl")); ok {
+	if _, ok, _ := srv.Store.Get(charter.StratumRef("notes", "lvl")); ok {
 		t.Error("the level outlived the package")
 	}
 }
@@ -653,7 +654,7 @@ func TestUninstallReachesARuleTheEngineNeverInstalled(t *testing.T) {
 	}
 	// The record a refused rule leaves: written at the address, never in any engine. Written
 	// by hand because that is exactly the state — the install path refuses it.
-	stray := trigger.CharterRefAt("notes", "refused")
+	stray := charter.RuleRef("notes", "refused")
 	entitytest.Set(t, srv.Store, stray, entity.Obj{
 		"at": "notes", "name": "refused",
 		"condition": entity.Obj{"subject": "git.head.*"},

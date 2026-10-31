@@ -2,11 +2,13 @@ package versed
 
 import (
 	"fmt"
-	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/trigger/charter"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
@@ -54,7 +56,7 @@ func TestAPackageDeclaresAnOutbox(t *testing.T) {
 	if resp := installAs(t, alice, ts.URL, announce); resp.StatusCode >= 300 {
 		t.Fatalf("install: %s: %s", resp.Status, bodyOf(t, resp))
 	}
-	decl, ok, _ := srv.Store.Get(trigger.PackageRef("demo.announce"))
+	decl, ok, _ := srv.Store.Get(charter.PackageRef("demo.announce"))
 	if got := trigger.SendsOf(decl.Payload); !ok || len(got) != 1 ||
 		got[0].From != "demo.announce.out.slack" || got[0].To != slackOut {
 		t.Fatalf("the declaration records %v, want demo.announce.out.slack → %s", got, slackOut)
