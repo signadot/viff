@@ -71,16 +71,27 @@ func TestADropReopensWatchesAFewAtATime(t *testing.T) {
 		t.Fatalf("%d watches were opening at once across the drop; the line allows 2", h)
 	}
 
-	// And they are live: a write at one slice reaches its watch.
-	was := seen[3].Load()
-	if _, _, err := s.Write(Write{
-		At:    RefAt("demo", "w3", "y").At(),
-		Value: Obj{"stage": "open"}.Payload(),
-	}); err != nil {
-		t.Fatalf("write after the drop: %v", err)
+	// And every one is back and live: a write at each slice reaches its watch. (The reopen
+	// count above is reached by one watch reopening twice as well; this is not.)
+	var was [n]int64
+	for i := range was {
+		was[i] = seen[i].Load()
 	}
-	eventuallyWithin(t, 10*time.Second, "the re-established watch reports a write", func() bool {
-		return seen[3].Load() > was
+	for i := 0; i < n; i++ {
+		if _, _, err := s.Write(Write{
+			At:    RefAt("demo", fmt.Sprintf("w%d", i), "y").At(),
+			Value: Obj{"stage": "open"}.Payload(),
+		}); err != nil {
+			t.Fatalf("write w%d after the drop: %v", i, err)
+		}
+	}
+	eventuallyWithin(t, 10*time.Second, "every re-established watch reports its write", func() bool {
+		for i := range seen {
+			if seen[i].Load() <= was[i] {
+				return false
+			}
+		}
+		return true
 	})
 }
 
@@ -134,13 +145,15 @@ func TestAProgressWatchOpensAheadOfTheLine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
-	t.Cleanup(func() { s.Close() })
-
-	// The one slot is held for the length of the test.
+	// The one slot is held for the length of the test, and given back only once the store
+	// is closed, so the watch left in line is refused rather than opened on a closing store.
 	if err := s.gate.take(t.Context()); err != nil {
 		t.Fatalf("hold the slot: %v", err)
 	}
-	t.Cleanup(s.gate.give)
+	t.Cleanup(func() {
+		s.Close()
+		s.gate.give()
+	})
 
 	type opened struct {
 		stop func()
@@ -174,4 +187,28 @@ func TestAProgressWatchOpensAheadOfTheLine(t *testing.T) {
 	case <-time.After(time.Second):
 	}
 	eventually(t, "the plain watch is in line", func() bool { return s.gate.waiting.Load() == 1 })
+}
+
+// A store configured with no line (WatchSlots below zero) opens every watch as it is asked
+// for: the off switch, for a deployment where the line turns out to be in the way.
+func TestNoLineOpensEveryWatchAtOnce(t *testing.T) {
+	docd := startDocd(t, startLogd(t))
+	s, err := OpenLogdStore(LogdConfig{Addr: docd.ClientTCPAddr(), ClientID: "verse-test", WatchSlots: -1})
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	if s.gate.slots != nil {
+		t.Fatal("a store with WatchSlots below zero keeps a line")
+	}
+	for i := 0; i < 6; i++ {
+		_, stop, err := s.WatchSubtree(3, "demo", fmt.Sprintf("w%d", i))
+		if err != nil {
+			t.Fatalf("watch w%d: %v", i, err)
+		}
+		t.Cleanup(stop)
+	}
+	if w, o := s.gate.waiting.Load(), s.gate.inFlight.Load(); w != 0 || o != 0 {
+		t.Fatalf("no line, yet %d waiting and %d opening were counted", w, o)
+	}
 }

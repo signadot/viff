@@ -94,15 +94,21 @@ const DefaultWatchSlots = 4
 // "it fails closed"), so one in line would hold every such read for the length of the round
 // behind it. They are few — the loaded view's two, over the perms mirror — and their pictures
 // are small; they open ahead of the line, and the line is sized with room for them.
+//
+// OFF is a line with no slots (LogdConfig.WatchSlots below zero; versed reads it from
+// VERSE_WATCH_SLOTS): take and give do nothing, and watches open as they are asked for.
 type watchGate struct {
-	slots    chan struct{}
-	waiting  atomic.Int64 // watches in line
-	inFlight atomic.Int64 // watches between their establish and their opening picture
-	high     atomic.Int64 // the most in flight at once: what a test checks
+	slots    chan struct{} // nil when off
+	waiting  atomic.Int64  // watches in line
+	inFlight atomic.Int64  // watches between their establish and their opening picture
+	high     atomic.Int64  // the most in flight at once: what a test checks
 }
 
 func newWatchGate(n int) *watchGate {
-	if n <= 0 {
+	if n < 0 {
+		return &watchGate{}
+	}
+	if n == 0 {
 		n = DefaultWatchSlots
 	}
 	return &watchGate{slots: make(chan struct{}, n)}
@@ -110,6 +116,9 @@ func newWatchGate(n int) *watchGate {
 
 // take waits for a slot, or for ctx.
 func (g *watchGate) take(ctx context.Context) error {
+	if g.slots == nil {
+		return nil
+	}
 	g.waiting.Add(1)
 	defer g.waiting.Add(-1)
 	select {
@@ -128,6 +137,9 @@ func (g *watchGate) take(ctx context.Context) error {
 
 // give returns a slot.
 func (g *watchGate) give() {
+	if g.slots == nil {
+		return
+	}
 	g.inFlight.Add(-1)
 	<-g.slots
 }
@@ -283,8 +295,9 @@ type LogdConfig struct {
 	// ConnectTimeout bounds the initial session connect; 0 uses the default. A caller that
 	// retries (waiting for logd/docd to come up) sets this short so each attempt fails fast.
 	ConnectTimeout time.Duration
-	// WatchSlots is how many watches this store opens at once (watchGate); 0 uses
-	// DefaultWatchSlots.
+	// WatchSlots is how many watches this store opens at once (watchGate): 0 uses
+	// DefaultWatchSlots, and a negative count is no line at all, every watch opening as it is
+	// asked for.
 	WatchSlots int
 	// Logger receives what this store cannot report through a return value — a watch delta
 	// that did not apply, whose cost every event after it pays. Nil uses the default.
@@ -1877,21 +1890,34 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 		// A watch can die WITHOUT SAYING SO, and then this loop would wait on a channel
 		// nothing will ever send to again. See subtreeHealAfter: the heal timer is what
 		// bounds how long that can last.
+		//
+		// NOT WHILE THE OPENING PICTURE IS PENDING. From an establish until its State (or
+		// Absent) arrives, the watch is a read the store is serving, and a probe sent then
+		// queues behind that very read and answers nothing about the watch; a slow picture —
+		// the condition the line (watchGate) exists for — would read as a dead watch and send
+		// it round again. So the timer stands still (quiet) from each establish until the
+		// first event, which starts it (alive). A session that dies meanwhile is the
+		// heartbeat's to end, and ends this stream with it.
 		heal := time.NewTimer(subtreeHealAfter)
 		defer heal.Stop()
 		healAfter := subtreeHealAfter
-		// alive holds the heal off for a whole interval from now, and forgets any backoff it
-		// accrued: the watch has just shown itself alive, or has just been opened.
-		alive := func() {
-			healAfter = subtreeHealAfter
+		// quiet stops the heal, and drains a firing nobody took.
+		quiet := func() {
 			if !heal.Stop() {
 				select {
 				case <-heal.C:
 				default:
 				}
 			}
+		}
+		// alive holds the heal off for a whole interval from now, and forgets any backoff it
+		// accrued: the watch has just shown itself alive.
+		alive := func() {
+			healAfter = subtreeHealAfter
+			quiet()
 			heal.Reset(healAfter)
 		}
+		quiet() // the first picture is pending
 		// probe is a heal's ask in flight on w, nil while there is none; swallow counts the
 		// progress events those asks draw, which are the pump's and not the consumer's.
 		var probe <-chan error
@@ -2018,10 +2044,7 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 					// An ask still out on the watch that ended answers for nobody, and the
 					// progress event it would have drawn never reaches this stream.
 					probe, swallow = nil, 0
-					// The heal counts from the open, not from the last event of the watch that
-					// ended: a wait in line can outlast the interval, and a fresh watch asked
-					// before its opening picture is in is asked behind that very read.
-					alive()
+					quiet() // the picture is pending again; its arrival starts the heal
 					subtreeReopens.Add(1)
 					backoff = 100 * time.Millisecond
 					break

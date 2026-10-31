@@ -183,7 +183,20 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		return err
 	}
 	defer d.stop()
-	store, err := openDocdStore(entity.LogdConfig{Addr: d.clientAddr, ClientID: "versed"}, 3*time.Minute, cc)
+	// How many watches the store opens at once (entity.LogdConfig.WatchSlots): the env a
+	// cluster sets without a rebuild (`kubectl set env deploy/versed VERSE_WATCH_SLOTS=2`),
+	// a count, or `off` for no line at all. Unset is the store's default.
+	watchSlots := 0
+	if v := os.Getenv("VERSE_WATCH_SLOTS"); v != "" {
+		if v == "off" {
+			watchSlots = -1
+		} else if n, err := strconv.Atoi(v); err != nil || n <= 0 {
+			return fmt.Errorf("VERSE_WATCH_SLOTS=%q: a count above zero, or off", v)
+		} else {
+			watchSlots = n
+		}
+	}
+	store, err := openDocdStore(entity.LogdConfig{Addr: d.clientAddr, ClientID: "versed", WatchSlots: watchSlots}, 3*time.Minute, cc)
 	if err != nil {
 		return fmt.Errorf("connect to docd at %s: %w", d.clientAddr, err)
 	}
