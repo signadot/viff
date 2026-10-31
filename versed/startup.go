@@ -1,12 +1,14 @@
 package versed
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sort"
 	"time"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/trigger"
 )
 
 // The pause before a phase whose read did not happen is asked again, and its ceiling.
@@ -160,4 +162,165 @@ func (s *Server) loaded(load func() error) error {
 		fmt.Fprintf(os.Stderr, "verse: charter: %v\n", err)
 	}
 	return nil
+}
+
+// restoreScopeCharter reinstalls the scope's own strata and rules, in that order and for the
+// reason Start gives: a rule names the stratum it lives in, and one restored before its
+// stratum is held rather than installed.
+//
+// Failures are logged rather than returned, as Start's are: the caller is a request that has
+// something else to do (installing a trigger, listing one), and a scope whose charter came
+// back incomplete is still a scope worth serving.
+func (s *Server) restoreScopeCharter(eng *trigger.Engine, scope string) {
+	if err := eng.LoadStrata(); err != nil {
+		fmt.Fprintf(os.Stderr, "verse: strata (scope %s): %v\n", scope, err)
+	}
+	if err := eng.LoadCharter(); err != nil {
+		fmt.Fprintf(os.Stderr, "verse: charter (scope %s): %v\n", scope, err)
+	}
+}
+
+// SeedError is what the permission seed refused with, nil when it landed. A server holding one
+// has no autonomy and must not serve; `verse up` says so and stops.
+func (s *Server) SeedError() error { return s.seedErr }
+
+// StartServing is Start for a server that is about to serve: it takes the lifetime context
+// synchronously — scoped engines need it, and a request may arrive immediately — and runs the
+// restore behind it.
+//
+// It exists because `verse up` served nothing until Start returned. The restore is several
+// store-shaped phases and there is no reason the API should be absent for them: /healthz
+// answers `started: false` with a 503 until they finish, so readiness gates exactly as it did
+// while an operator (and the probe) gets an answer instead of a refused connection.
+func (s *Server) StartServing(ctx context.Context) {
+	s.ctx = ctx
+	s.susp.Unload() // before the first request can be served, which Start's goroutine is not
+	go s.Start(ctx)
+}
+
+// Start begins the engine's reactive loop (observing the store). It returns
+// immediately; the loop runs until ctx is cancelled. It first reconciles orphans —
+// task:instance entities a previous run left running — since this is the monolith
+// (the task runtime restarts with the engine, so those tasks are gone).
+func (s *Server) Start(ctx context.Context) {
+	s.ctx = ctx // scoped engines (created later, per scope) start under this
+	// Nothing is suspended that the records do not say, and nothing runs until they have been
+	// read: the table holds everything from here until phaseSuspensions loads it.
+	if s.susp.Loaded() {
+		s.susp.Unload()
+	}
+	// WHERE THE TIME GOES, said out loud, and A READ THAT DID NOT HAPPEN IS ASKED AGAIN: each
+	// phase reads the store, and one whose read hit its deadline says so and is retried until
+	// it answers, rather than restoring nothing for good (startup.go).
+	phase := s.phase
+	defer func() { s.restored.Store(true) }()
+	// The perms mirror, loaded and watched, so the check every write and read makes costs no
+	// round trip: on a busy store the per-write read hit its deadline and refused the write.
+	phase(phasePerms, func() error { return entity.Track(ctx, s.Store) })
+	// The suspensions before anything they could hold is re-attached or restored: until they
+	// have loaded they hold everything, and a store that cannot serve them holds every rule and
+	// task, since a suspension that failed open on a restart would resume what somebody stopped.
+	phase(phaseSuspensions, s.restoreSuspensions)
+	phase(phaseTasks, s.reconcileTasks) // resume remote-hosted tasks; orphan local-dead ones
+	// Per-trigger subtree observation — no root watch. The baseline engine watches
+	// exactly the (system[,kind]) subtree each trigger matches, the same docd-aligned
+	// model the scoped engines use; a mount under verse no longer collides with (and
+	// force-ends) a whole-verse root watch. The old root-watch dispatch loop (Start)
+	// and its cursor/steering control plane remain in the engine, dormant, for
+	// reintroduction when engine-wide steering is wired.
+	s.Eng.ObserveScoped(ctx)
+
+	// The durable charter: the rules standing in the verse are reinstalled, so the program a
+	// restart comes back to is the one it went down with. Each opens its own watch as it
+	// installs and REPLAYS what already matches it — which is why this follows reconcile: a
+	// restored trigger should see a task entity that tells the truth about the restart
+	// rather than the `running` a dead runtime left behind.
+	//
+	// And why it follows ObserveScoped, which is what binds ctx to the engine: anything
+	// restored before that runs under a context nothing cancels, so it would outlive the
+	// shutdown that was supposed to stop it.
+	//
+	// A rule that could not be restored is reported and skipped, so one bad entity does not
+	// cost the rest of the charter.
+	//
+	// This is BASELINE's charter. A scope's own is restored when its engine is built, which
+	// happens on demand — the first scoped request, i.e. the dev reconnecting (see
+	// scopeEngine). It cannot happen here, because a restart cannot enumerate the scopes that
+	// have one: a scope's layer is invisible from baseline and nothing registers a scope's
+	// existence. So a scope nobody has come back to sits inert, which is the remaining
+	// half of the gap scoped resume also has (see reconcileClaims).
+	// The ORDERING first: a rule names the stratum it lives in, and one restored before its
+	// stratum is held rather than installed — correct, and it would then only start firing when
+	// something happened to touch the stratum again. Loading strata first makes the restart what
+	// it should be, an install over a verse that has moved on.
+	// Two phases rather than one, so that each is asked again on its own: a rule restored
+	// before its level is held and installs when the level arrives, so the order between the
+	// two holds whichever of them the store answers first.
+	phase(phaseStrata, func() error {
+		if err := s.awaiting(phaseSuspensions); err != nil {
+			return err
+		}
+		return s.loaded(s.Eng.LoadStrata)
+	})
+	phase(phaseCharter, func() error {
+		if err := s.awaiting(phaseSuspensions); err != nil {
+			return err
+		}
+		return s.loaded(s.Eng.LoadCharter)
+	})
+	// The charter PACKAGES, each into an engine of its own: a package is a stamp on records
+	// anyone can list, so unlike a scope a restart can bring every one of them back rather than
+	// waiting for somebody to reconnect. It follows the baseline load because the two split the
+	// same listing between them — baseline takes the unstamped records, a package its own.
+	phase(phasePackages, s.restorePackages)
+	// And the charter the deployment itself stands behind, as the system. After the restore,
+	// so that it is installed over what stood rather than under it, and every time, since an
+	// install of what already stands is a no-op with a revision attached and the file is the
+	// truth about what the system's charter is.
+	phase(phaseSystem, func() error {
+		// Over what stood, so it waits for the restore to have answered; a restore still
+		// being asked again is a charter this must not install under.
+		if err := s.awaiting(phaseCharter, phasePackages); err != nil {
+			return err
+		}
+		s.installSystemCharter()
+		return nil
+	})
+	// And the systems' documents, which say what a task may do (package systems): kept where
+	// a charter's gates can be read against them, over what stood, every time, since the
+	// binary's documents are the truth about what the systems are.
+	phase(phaseSystems, s.installSystems)
+
+	// And the clocks. A question's deadline is durable and the timer that fires it is not.
+	phase(phaseDeadlines, s.armDeadlines)
+	// And the schedules, for the same reason: the record holds `next`, this process holds the
+	// timer.
+	phase(phaseSchedules, s.armSchedules)
+	// And the asks' expiries, for the same reason: the ask holds `expires`, this process the timer.
+	phase(phaseAsks, s.armAsks)
+	// And the charters', the same again: a package's declaration holds its `expires`.
+	phase(phaseCharters, s.armCharters)
+	// And a person's asks: each that waits is waited on again, since the wait was the last
+	// process's, and a yes whose `then` had not started starts.
+	phase(phaseAsksWait, s.resumeAsks)
+	// And the sources, last: each one's first pass is a write the restored charter should be
+	// standing to react to. A level-triggered pass does not repeat itself, so what a rule
+	// missed by being late it would miss for good.
+	phase(phaseSources, s.restoreSources)
+	phase(phaseRunners, s.probeRunners)
+	// And the charters verse ships at the system level, rendered by `verse up` from the config
+	// (Server.SystemCharters). After the sources: such a charter declares outboxes to the places
+	// the iods read, and the declaration is checked against the iods the restore registered. Over
+	// what stood, as the system charter file is, and every time, for the same reason.
+	phase(phaseSystemTexts, func() error {
+		if err := s.awaiting(phaseSystem, phaseSources); err != nil {
+			return err
+		}
+		s.installSystemCharters()
+		// And what the system installed that the config no longer names goes, which is how
+		// dropping a charter from the config turns it off.
+		s.pruneSystemCharters()
+		return nil
+	})
+	s.reportActingAsNobody()
 }
