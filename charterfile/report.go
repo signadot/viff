@@ -170,8 +170,8 @@ func installNotes(w io.Writer, e *ir.Node) (arming bool) {
 			h = codec.Unwrap(h)
 			if boolean(h, "arming") {
 				arming = true
-				fmt.Fprintf(w, "  arming: rule %s is accepted, and its watch is being opened at the "+
-					"store's pace (wait=<duration> holds the answer for it).\n", str(h, "rule"))
+				fmt.Fprintf(w, "  arming: rule %s is accepted, and %s (wait=<duration> holds the answer for it).\n",
+					str(h, "rule"), str(h, "waits"))
 				continue
 			}
 			fmt.Fprintf(w, "  held: rule %s is %s. It fires on nothing until then.\n",

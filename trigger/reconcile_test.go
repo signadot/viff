@@ -81,7 +81,7 @@ func TestAnInstallAnswersOnceAcceptedAndArmsBehindIt(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("a store that did not open the watch refused the install: %v", err)
 	}
-	waitHeld(t, eng, "review", "waiting on the store: ")
+	waitHeld(t, eng, "review", "the store refused its watch, and is asked again: ")
 	if n := eng.NotesOn(Trigger{Name: "review"}); n.Waits == "" {
 		t.Fatalf("notes = %+v; want the rule held", n)
 	}
@@ -169,5 +169,32 @@ func waitArmed(t *testing.T, e *Engine, name string) {
 			t.Fatalf("pending = %+v, armed = %v; want %s armed", e.Pendings(), e.Triggers(), name)
 		}
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// EVERY SPAWN IS ASKED OF THE RUNNERS: a rule whose first spawn no runner offers and whose
+// second some runner refuses is refused, where the author is, not held for the first — the
+// hold would hide a refusal that waiting will not cure.
+func TestARefusedSpawnOutranksAnUnofferedOne(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, task.AutoResolver{})
+	eng.SetOfferCheck(func(l runner.Launch) error {
+		if l.Script == "first" {
+			return fmt.Errorf("%w: no runner offers a script", ErrNoOffer)
+		}
+		return fmt.Errorf("no runner takes it: the ceiling is lower")
+	})
+	eng.ObserveScoped(t.Context())
+	rule := mustParseCharter(t, `
+- name: run
+  condition: {subject: {path: "demo.pr.*", value: {stage: open}}}
+  action: {seq: [{spawn: {script: "first"}}, {spawn: {script: "second"}}]}
+`)
+	err := eng.AddTrigger(rule)
+	if err == nil || !strings.Contains(err.Error(), "the ceiling is lower") {
+		t.Fatalf("install = %v; want the second spawn\x27s refusal", err)
+	}
+	if got := eng.Held(); len(got) != 0 {
+		t.Fatalf("pending = %v; a refused rule is not held", got)
 	}
 }

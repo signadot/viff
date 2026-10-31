@@ -60,7 +60,7 @@ func TestARestoredRuleKeepsAskingForItsWatch(t *testing.T) {
 		t.Fatalf("armed = %v; a rule whose watch did not open is not armed", got)
 	}
 	for _, name := range []string{"other", "review"} {
-		waitHeld(t, back, name, "waiting on the store: ")
+		waitHeld(t, back, name, "the store refused its watch, and is asked again: ")
 	}
 
 	// Deaf meanwhile: a subject that matches is not acted on.

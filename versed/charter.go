@@ -475,7 +475,15 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	defer release()
+	// RELEASED BEFORE THE WAIT: the lock is one charter operation at a time, and a `wait` is
+	// the store's pace, not an operation; held through it, an install waiting on a busy store
+	// would refuse every other install, removal and sweep for as long as it waited.
+	released := false
+	defer func() {
+		if !released {
+			release()
+		}
+	}()
 	docs, err := codec.ReadNodes(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -500,13 +508,15 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 		}
 		wait = d
 	}
-	groups, pruned, code, err := s.installCharterPruning(r.Context(), s.scopedStore(r), q.Get("scope"),
-		q.Get("at"), q.Get("prune"), docs, hold, wait)
+	in, code, err := s.installCharterPruning(s.scopedStore(r), q.Get("scope"), q.Get("at"), q.Get("prune"), docs, hold)
 	if err != nil {
 		http.Error(w, err.Error(), code)
 		return
 	}
-	out := api.Installed{Installed: installedReport(groups), Pruned: pruned}
+	release()
+	released = true
+	groups := in.settle(r.Context(), wait)
+	out := api.Installed{Installed: installedReport(groups), Pruned: in.pruned}
 	writeOut(w, r, http.StatusCreated, out)
 }
 
@@ -527,13 +537,15 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 // dormant because of how it was laid out; then the rules.
 //
 // With a PRUNE ROOT it is also a removal: see charterprune.go. With a HOLD it is a task's,
-// and every rule's spawns are held within the task (chartertask.go). With a WAIT, the answer
-// is held until the rules installed are armed, or that long: what it says of each is how things
-// stand when the request ends.
-func (s *Server) installCharterPruning(ctx context.Context, store entity.Store, scope, at, prune string, docs []*ir.Node, hold *taskCharter, wait time.Duration) ([]charterGroup, []api.Pruned, int, error) {
+// and every rule's spawns are held within the task (chartertask.go).
+//
+// WHAT IT ANSWERS IS SETTLED AFTERWARDS (installed.settle), off the charter lock: a wait for
+// the rules to arm, if asked for, and then what the install has to say of each rule, which is
+// how things stand when the request ends.
+func (s *Server) installCharterPruning(store entity.Store, scope, at, prune string, docs []*ir.Node, hold *taskCharter) (*charterInstall, int, error) {
 	groups, err := charterFilesPruning(docs, at, prune)
 	if err != nil {
-		return nil, nil, http.StatusBadRequest, err
+		return nil, http.StatusBadRequest, err
 	}
 	// AN INSTALL NAMES ITS INSTALLER. The engine persists a rule through its own store, which
 	// is the system's, and an empty name there means the engine's: a charter installed by
@@ -541,42 +553,58 @@ func (s *Server) installCharterPruning(ctx context.Context, store entity.Store, 
 	// (Server.principals); this refuses the call, whoever comes to make it — before a prune
 	// asks what nobody may remove, which an empty name would pass.
 	if entity.PrincipalOf(store) == "" {
-		return nil, nil, http.StatusBadRequest, errors.New("a charter names who installs it: its rules act as their installer")
+		return nil, http.StatusBadRequest, errors.New("a charter names who installs it: its rules act as their installer")
 	}
 	var gone []string
 	if prune != "" {
 		var code int
 		if gone, code, err = s.pruneTargets(store, scope, prune, groups); err != nil {
-			return nil, nil, code, err
+			return nil, code, err
 		}
 	}
 	tx := &charterTx{s: s, store: store, scope: scope, hold: hold, dropped: map[string][]string{}}
 	if code, err := tx.install(groups); err != nil {
-		return nil, nil, code, err
+		return nil, code, err
 	}
 	if prune != "" {
 		if code, err := tx.pruneKept(groups); err != nil {
 			code, err := tx.refuse(code, err)
-			return nil, nil, code, err
+			return nil, code, err
 		}
 	}
 	takePackageAddresses(store, entity.PrincipalOf(store), groups)
-	tx.waitArmed(ctx, wait)
-	for i := range groups {
-		groups[i].said = tx.notes(groups[i].at)
-	}
 	if code, err := s.pruneGone(store, gone); err != nil {
-		return nil, nil, code, err
+		return nil, code, err
 	}
-	return groups, tx.prunedReport(gone), http.StatusCreated, nil
+	return &charterInstall{tx: tx, groups: groups, pruned: tx.prunedReport(gone)}, http.StatusCreated, nil
+}
+
+// charterInstall is a request's worth of charters, in: what to answer for it is settled after.
+type charterInstall struct {
+	tx     *charterTx
+	groups []charterGroup
+	pruned []api.Pruned
+}
+
+// settle answers the groups with what the install has to say of each rule, after waiting that
+// long, at most, for the rules it placed to arm (waitArmed).
+func (in *charterInstall) settle(ctx context.Context, wait time.Duration) []charterGroup {
+	in.tx.waitArmed(ctx, wait)
+	for i := range in.groups {
+		in.groups[i].said = in.tx.notes(in.groups[i].at)
+	}
+	return in.groups
 }
 
 // installCharterAs is the install with the request already read off: the store the installer
 // acts through, the scope and the address the file is being applied at. The system's own
 // charter comes through here from a file rather than a request (installSystemCharter).
 func (s *Server) installCharterAs(store entity.Store, scope, at string, docs []*ir.Node) ([]charterGroup, int, error) {
-	groups, _, code, err := s.installCharterPruning(s.ctx, store, scope, at, "", docs, nil, 0)
-	return groups, code, err
+	in, code, err := s.installCharterPruning(store, scope, at, "", docs, nil)
+	if err != nil {
+		return nil, code, err
+	}
+	return in.settle(s.ctx, 0), code, nil
 }
 
 // maxInstallWait is the longest an install's answer is held for its rules to arm: a caller
@@ -591,9 +619,16 @@ func (tx *charterTx) waitArmed(ctx context.Context, wait time.Duration) {
 	if wait <= 0 || len(tx.placed) == 0 {
 		return
 	}
+	// Each engine is asked once a tick, whatever number of rules went to it.
 	arming := func() bool {
+		asked := map[*trigger.Engine][]string{}
 		for _, p := range tx.placed {
-			if slices.Contains(p.eng.Arming(), p.rule.Name) {
+			names, ok := asked[p.eng]
+			if !ok {
+				names = p.eng.Arming()
+				asked[p.eng] = names
+			}
+			if slices.Contains(names, p.rule.Name) {
 				return true
 			}
 		}

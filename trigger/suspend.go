@@ -945,7 +945,7 @@ func (e *Engine) disarm(name, why string) {
 		}
 		e.triggers = slices.Delete(slices.Clone(e.triggers), i, i+1)
 		e.stopWatchers(name)
-		e.pending = append(e.pending, held{Trigger: t, cause: cause{causeWatch, why}})
+		e.hold(t, cause{causeWatch, why})
 		return
 	}
 }

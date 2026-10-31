@@ -224,6 +224,8 @@ type Engine struct {
 	// pending is every rule of the charter that is not armed, with why (reconcile.go). Guarded
 	// by trigMu.
 	pending []held
+	// placed counts the rules ever placed among the pending ones; each carries its number (held.gen).
+	placed uint64
 	// kicks asks the reconciler for a pass; reconciling says one is running to ask; every is
 	// the backstop between passes (reconcileEvery; short in tests).
 	kicks       chan struct{}
@@ -323,12 +325,12 @@ func (e *Engine) Start(ctx context.Context) {
 	e.startReconciler(ctx)
 }
 
-// startReconciler runs the reconciler under ctx, once, and asks it for a first pass.
+// startReconciler runs the reconciler under ctx, once, and asks for a pass: the caller has just
+// placed rules for it, whether or not it was running already.
 func (e *Engine) startReconciler(ctx context.Context) {
-	if e.reconciling.Swap(true) {
-		return
+	if !e.reconciling.Swap(true) {
+		go e.reconcile(ctx)
 	}
-	go e.reconcile(ctx)
 	e.kick()
 }
 
@@ -346,7 +348,7 @@ func (e *Engine) ObserveScoped(ctx context.Context) {
 	// subtree mode is independent of whether triggers were added before or after this call.
 	e.trigMu.Lock()
 	for _, t := range e.triggers {
-		e.pending = append(e.pending, held{Trigger: t, cause: cause{causeWatch, "not asked for yet"}})
+		e.hold(t, cause{causeWatch, "not asked for yet"})
 	}
 	e.triggers = nil
 	e.trigMu.Unlock()

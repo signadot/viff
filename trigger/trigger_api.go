@@ -209,7 +209,8 @@ func (e *Engine) vet(t Trigger, as string) (*cause, error) {
 	// A spawn NO RUNNER OFFERS (ErrNoOffer) is held instead: the runner may register after the
 	// rule, as every runner does at a restore (git-issue wv2pp5j0).
 	if e.offerCheck != nil {
-		var refused error
+		// Every spawn is asked: a refusal of a later one outranks a hold for an earlier one.
+		var refused, unoffered error
 		t.Action.eachSpawn(t.Name, func(chain string, spec *launch.Spec) {
 			if refused != nil {
 				return
@@ -223,14 +224,21 @@ func (e *Engine) vet(t Trigger, as string) (*cause, error) {
 			// stand-ins installLaunch writes for it, being no binding, never are. The launch is
 			// held to them again, bound.
 			l.Environment = spec.Environment
-			if err := e.offerCheck(l); err != nil {
+			switch err := e.offerCheck(l); {
+			case err == nil:
+			case errors.Is(err, ErrNoOffer):
+				if unoffered == nil {
+					unoffered = fmt.Errorf("trigger %q: spawn: %w", chain, err)
+				}
+			default:
 				refused = fmt.Errorf("trigger %q: spawn: %w", chain, err)
 			}
 		})
-		if errors.Is(refused, ErrNoOffer) {
-			holdFor(cause{causeRunner, refused.Error()})
-		} else if refused != nil {
+		if refused != nil {
 			return nil, refused
+		}
+		if unoffered != nil {
+			holdFor(cause{causeRunner, unoffered.Error()})
 		}
 	}
 	// A RULE THAT DOES NOTHING IS REFUSED. It installed, reported "installed 1 trigger(s)",
@@ -376,20 +384,20 @@ func (e *Engine) place(t Trigger, durable bool, as string, take, over bool) erro
 		e.trigMu.Unlock()
 		return err
 	}
-	switch {
-	case hold != nil:
-		e.pending = append(e.pending, held{Trigger: t, cause: *hold})
-	case e.subtree:
-		e.pending = append(e.pending, held{Trigger: t, cause: cause{causeWatch, "not asked for yet"}})
-	default:
+	// WRITTEN DOWN BEFORE IT IS ARMED: in subtree mode the watch is what makes the trigger
+	// fire, so a rule that cannot be made durable never starts. It takes its name now, so a
+	// second install of the name waits on this one, and stands among the pending rules as
+	// being written down, which no pass touches: a pass that is running meanwhile — another
+	// install's, a registration's, the backstop's — would otherwise arm it, and fire it, before
+	// a failed persist takes it back. (In baseline mode the dispatch loop already reads the
+	// charter, so a firing can race a failed persist and be rolled back after it — the same way
+	// removing a trigger stops FURTHER firings rather than cancelling one in flight.)
+	if hold != nil || e.subtree {
+		e.hold(t, cause{causePersist, ""})
+	} else {
 		e.triggers = append(e.triggers, t)
 	}
 	e.trigMu.Unlock()
-	// Persist before arming: in subtree mode the watch is what makes the trigger fire, so a
-	// rule that cannot be made durable never starts. (In baseline mode the dispatch loop
-	// already reads the charter, so a firing can race a failed persist and be rolled back
-	// after it — the same way removing a trigger stops FURTHER firings rather than cancelling
-	// one in flight.)
 	if durable {
 		if err := e.persist(t, as, take); err != nil {
 			// An installed rule the next restart would lose is worse than none.
@@ -405,11 +413,13 @@ func (e *Engine) place(t Trigger, durable bool, as string, take, over bool) erro
 	// — a held one arms later, by the reconciler, and fires with them — and forgotten with it.
 	e.recordShapes(t)
 	if hold != nil {
+		e.setCause(t.Name, *hold)
 		e.logger.Warn("rule held: it is written down, and fires on nothing until what it waits for is here",
 			"trigger", t.Name, "waits", hold.String())
 		return nil
 	}
 	if e.subtree {
+		e.setCause(t.Name, cause{causeWatch, "not asked for yet"})
 		e.kick()
 	}
 	return nil
@@ -512,7 +522,7 @@ func (e *Engine) NotesOn(t Trigger) Notes {
 	var n Notes
 	e.trigMu.Lock()
 	if i := e.pendingIndex(t.Name); i >= 0 {
-		n.Waits, n.Arming = e.pending[i].cause.String(), e.pending[i].cause.kind == causeWatch
+		n.Waits, n.Arming = e.pending[i].cause.String(), e.pending[i].cause.arming()
 	}
 	e.trigMu.Unlock()
 	if n.Waits != "" && !n.Arming {

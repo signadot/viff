@@ -4180,9 +4180,15 @@ func (c *charterCensus) count(eng *trigger.Engine) {
 	if eng == nil {
 		return
 	}
-	c.rules, c.strata = len(eng.Triggers())+len(eng.Arming()), len(eng.Strata())
+	trigs := eng.Triggers()
 	c.pending = eng.Pendings()
-	for _, t := range eng.Triggers() {
+	c.rules, c.strata = len(trigs), len(eng.Strata())
+	for _, p := range c.pending {
+		if p.Arming {
+			c.rules++
+		}
+	}
+	for _, t := range trigs {
 		if len(eng.SuspendedWhole(t.Name)) > 0 {
 			c.suspended = append(c.suspended, t.Name)
 		}
@@ -4211,18 +4217,18 @@ func (c *charterCensus) node() *ir.Node {
 		// store alone — counted in `rules`, as an install counts them, so the count does not
 		// turn on the store's pace; `pending` is the rest, not counted, each with what it
 		// waits for.
-		var arming []string
-		var pf, pv []*ir.Node
+		var af, av, pf, pv []*ir.Node
 		for _, p := range c.pending {
 			if p.Arming {
-				arming = append(arming, p.Rule)
+				af = append(af, ir.FromString(p.Rule))
+				av = append(av, ir.FromString(p.Cause))
 				continue
 			}
 			pf = append(pf, ir.FromString(p.Rule))
 			pv = append(pv, ir.FromString(p.Cause))
 		}
-		if len(arming) > 0 {
-			add("arming", strNodes(arming))
+		if len(af) > 0 {
+			add("arming", &ir.Node{Type: ir.ObjectType, Fields: af, Values: av})
 		}
 		if len(pf) > 0 {
 			add("pending", &ir.Node{Type: ir.ObjectType, Fields: pf, Values: pv})
