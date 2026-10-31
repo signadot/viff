@@ -1,5 +1,6 @@
 !issue
-blocked_by: []
+blocked_by:
+- wz2pp5j0h12krmxewnn0
 blocks: []
 branches: []
 commits: []
@@ -12,4 +13,4 @@ related_issues:
 - wf2pp5j0h12ksze9whn0
 - wq2pp5j0h12ks355wnn0
 status: open
-updated: "2026-10-31T10:01:07.233096+01:00"
+updated: "2026-10-31T10:01:26.377918+01:00"
