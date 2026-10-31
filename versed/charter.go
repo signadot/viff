@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -118,19 +119,18 @@ func (s *Server) fillCharter(node *charterNode, at string, rows []api.ScheduleRo
 			node.ttl, node.expires = entity.Str(decl, charterTTLField), entity.Str(decl, charterExpiresField)
 		}
 	}
-	// THE RULES THAT STAND, the held ones among them: a held rule is written down and occupies
-	// its name, so a listing without it shows a charter its author did not install, and the
-	// rule they are looking for is the one that is missing. Each is marked with the stratum it
+	// THE RULES THAT STAND, the pending ones among them: a pending rule is written down and
+	// occupies its name, so a listing without it shows a charter its author did not install,
+	// and the rule they are looking for is the one that is missing. Each is marked with what it
 	// waits for.
-	held := eng.Held()
-	listed := append(eng.Triggers(), held...)
+	listed := append(eng.Triggers(), eng.Held()...)
 	node.triggers, err = codec.ToNode(listed)
 	if err != nil {
 		return fmt.Errorf("charter at %q: %w", at, err)
 	}
 	markTaskRules(listed, node.triggers)
 	markSuspendedRules(eng, node.triggers)
-	markHeldRules(held, node.triggers)
+	markHeldRules(eng.Pendings(), node.triggers)
 	if err := markTroubledRules(eng, node.triggers); err != nil {
 		return fmt.Errorf("charter at %q: %w", at, err)
 	}
@@ -298,10 +298,13 @@ func (s *Server) getCharter(w http.ResponseWriter, r *http.Request) {
 		}
 		node := &charterNode{here: true, writes: "the " + scope + " scope"}
 		var err error
-		if node.triggers, err = codec.ToNode(eng.Triggers()); err != nil {
+		// Armed and pending alike, each pending one marked with what it waits for, as the tree's
+		// packages list theirs.
+		if node.triggers, err = codec.ToNode(append(eng.Triggers(), eng.Held()...)); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		markHeldRules(eng.Pendings(), node.triggers)
 		if node.strata, err = codec.ToNode(eng.Strata()); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -483,8 +486,19 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
+	// `wait=<duration>` holds the answer until the request's rules are armed, or that long:
+	// an install answers once accepted, and arming is the store's pace (api.InstalledPackage).
+	var wait time.Duration
+	if v := q.Get("wait"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d < 0 {
+			http.Error(w, fmt.Sprintf("wait=%q: a duration, as 30s", v), http.StatusBadRequest)
+			return
+		}
+		wait = d
+	}
 	groups, pruned, code, err := s.installCharterPruning(s.scopedStore(r), q.Get("scope"),
-		q.Get("at"), q.Get("prune"), docs, hold)
+		q.Get("at"), q.Get("prune"), docs, hold, wait)
 	if err != nil {
 		http.Error(w, err.Error(), code)
 		return
@@ -510,8 +524,10 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 // dormant because of how it was laid out; then the rules.
 //
 // With a PRUNE ROOT it is also a removal: see charterprune.go. With a HOLD it is a task's,
-// and every rule's spawns are held within the task (chartertask.go).
-func (s *Server) installCharterPruning(store entity.Store, scope, at, prune string, docs []*ir.Node, hold *taskCharter) ([]charterGroup, []api.Pruned, int, error) {
+// and every rule's spawns are held within the task (chartertask.go). With a WAIT, the answer
+// is held until the rules installed are armed, or that long: what it says of each is how things
+// stand when the request ends.
+func (s *Server) installCharterPruning(store entity.Store, scope, at, prune string, docs []*ir.Node, hold *taskCharter, wait time.Duration) ([]charterGroup, []api.Pruned, int, error) {
 	groups, err := charterFilesPruning(docs, at, prune)
 	if err != nil {
 		return nil, nil, http.StatusBadRequest, err
@@ -542,6 +558,7 @@ func (s *Server) installCharterPruning(store entity.Store, scope, at, prune stri
 		}
 	}
 	takePackageAddresses(store, entity.PrincipalOf(store), groups)
+	tx.waitArmed(s.ctx, wait)
 	for i := range groups {
 		groups[i].said = tx.notes(groups[i].at)
 	}
@@ -555,8 +572,36 @@ func (s *Server) installCharterPruning(store entity.Store, scope, at, prune stri
 // acts through, the scope and the address the file is being applied at. The system's own
 // charter comes through here from a file rather than a request (installSystemCharter).
 func (s *Server) installCharterAs(store entity.Store, scope, at string, docs []*ir.Node) ([]charterGroup, int, error) {
-	groups, _, code, err := s.installCharterPruning(store, scope, at, "", docs, nil)
+	groups, _, code, err := s.installCharterPruning(store, scope, at, "", docs, nil, 0)
 	return groups, code, err
+}
+
+// waitArmed holds until every rule this request placed is armed or held for something other
+// than its watches, or until wait has passed, or ctx ends. Nothing is waited for with no wait.
+// A rule held for a stratum or a runner does not arm by waiting, so it is not waited on: the
+// answer says what it waits for.
+func (tx *charterTx) waitArmed(ctx context.Context, wait time.Duration) {
+	if wait <= 0 || len(tx.placed) == 0 {
+		return
+	}
+	arming := func() bool {
+		for _, p := range tx.placed {
+			if n := p.eng.NotesOn(p.rule); n.Arming {
+				return true
+			}
+		}
+		return false
+	}
+	deadline := time.After(wait)
+	for arming() {
+		select {
+		case <-deadline:
+			return
+		case <-ctx.Done():
+			return
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
 }
 
 // install applies every group, or refuses and puts back what it had applied.
@@ -662,22 +707,28 @@ func takePackageAddresses(store entity.Store, installer string, groups []charter
 // not the one that installed.
 //
 // AND WHAT THE INSTALL HAS TO SAY, which is the author's to read and nobody else's to act on:
-// `held`, the rules written down and waiting for a stratum, each with the stratum; `notes`, the
-// advisories, each with its rule. `rules` counts the rules that are installed and can fire, so
-// a file whose one rule is held answers 0 and says why.
+// `held`, the rules written down and not armed, each with what it waits for — its watches,
+// which the store opens at its own pace, or a stratum or a runner that is not there yet;
+// `notes`, the advisories, each with its rule. `rules` counts the rules accepted to fire, the
+// ones still arming among them, so a file whose one rule is held for a stratum answers 0 and
+// says why, and the count does not turn on the store's pace.
 func installedReport(groups []charterGroup) []api.InstalledPackage {
 	out := make([]api.InstalledPackage, 0, len(groups))
 	for _, g := range groups {
 		e := api.InstalledPackage{Strata: len(g.strata), At: g.at, Expires: g.expires}
+		held := 0
 		for _, n := range g.said {
-			if n.Held != "" {
-				e.Held = append(e.Held, api.HeldRule{Rule: n.rule, Stratum: n.Held})
+			if n.Waits != "" {
+				e.Held = append(e.Held, api.HeldRule{Rule: n.rule, Waits: n.Waits, Arming: n.Arming})
+				if !n.Arming {
+					held++
+				}
 			}
 			for _, a := range n.Advice {
 				e.Notes = append(e.Notes, api.RuleNote{Rule: n.rule, Note: a})
 			}
 		}
-		e.Rules = len(g.rules) - len(e.Held)
+		e.Rules = len(g.rules) - held
 		out = append(out, e)
 	}
 	return out
@@ -1004,7 +1055,7 @@ func (tx *charterTx) notes(at string) []ruleNotes {
 		if p.at != at {
 			continue
 		}
-		if n := p.eng.NotesOn(p.rule); n.Held != "" || len(n.Advice) > 0 {
+		if n := p.eng.NotesOn(p.rule); n.Waits != "" || len(n.Advice) > 0 {
 			out = append(out, ruleNotes{rule: p.rule.Name, Notes: n})
 		}
 	}

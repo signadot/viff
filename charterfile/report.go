@@ -105,7 +105,10 @@ func InstallAt(q url.Values, docs []*ir.Node) (string, error) {
 // word for the default SCOPE, so a scoped install that says only "baseline" reads as the one
 // place it did not go. A scope is the coordinate somebody carries in a flag and forgets, which
 // is exactly the one a report owes them back.
-func Installed(w io.Writer, node *ir.Node, scope string, kpaths bool) {
+//
+// It answers whether any rule is still ARMING — accepted, its watch not open yet — which a caller
+// that asked the install to wait turns into its exit status.
+func Installed(w io.Writer, node *ir.Node, scope string, kpaths bool) (arming bool) {
 	inScope := ""
 	if scope != "" {
 		inScope = " in scope " + scope
@@ -114,7 +117,7 @@ func Installed(w io.Writer, node *ir.Node, scope string, kpaths bool) {
 	list := codec.Unwrap(field(node, "installed"))
 	if list == nil || list.Type != ir.ArrayType {
 		fmt.Fprintln(w, "installed")
-		return
+		return false
 	}
 	for _, el := range list.Values {
 		e := codec.Unwrap(el)
@@ -135,7 +138,7 @@ func Installed(w io.Writer, node *ir.Node, scope string, kpaths bool) {
 		} else {
 			fmt.Fprintf(w, "%s: installed %d stratum(a) and %d trigger(s)\n", where, strata, rules)
 		}
-		installNotes(w, e)
+		arming = installNotes(w, e) || arming
 	}
 	pruned(w, node, kpaths)
 	// WHERE TO LOOK, said at the moment it is not obvious: a charter installed into packages
@@ -148,24 +151,31 @@ func Installed(w io.Writer, node *ir.Node, scope string, kpaths bool) {
 		}
 		fmt.Fprintf(w, "%s shows every charter and where each may write\n", reader)
 	}
+	return arming
 }
 
-// installNotes says what installing one package had to say: when its ttl ends, the rules held,
-// and the advisories.
+// installNotes says what installing one package had to say: when its ttl ends, the rules held
+// and the ones still arming, and the advisories. It answers whether any is still arming.
 //
 // UNDER THE LINE THAT SAYS WHAT WAS INSTALLED, because each changes what that line means: a
 // charter with a ttl is installed until then, a held rule is counted out of it, and an advisory
 // is a rule that was counted and does something other than it reads. All are the author's to act
 // on, and this is where the author is.
-func installNotes(w io.Writer, e *ir.Node) {
+func installNotes(w io.Writer, e *ir.Node) (arming bool) {
 	if expires := str(e, "expires"); expires != "" {
 		fmt.Fprintf(w, "  ttl: it is removed at %s, as -r removes it; installing it again renews it.\n", expires)
 	}
 	if held := codec.Unwrap(field(e, "held")); held != nil && held.Type == ir.ArrayType {
 		for _, h := range held.Values {
 			h = codec.Unwrap(h)
-			fmt.Fprintf(w, "  held: rule %s waits for stratum %s, which is not installed. "+
-				"It fires on nothing until that stratum is.\n", str(h, "rule"), str(h, "stratum"))
+			if boolean(h, "arming") {
+				arming = true
+				fmt.Fprintf(w, "  arming: rule %s is accepted, and its watch is being opened at the "+
+					"store's pace (wait=<duration> holds the answer for it).\n", str(h, "rule"))
+				continue
+			}
+			fmt.Fprintf(w, "  held: rule %s is %s. It fires on nothing until then.\n",
+				str(h, "rule"), str(h, "waits"))
 		}
 	}
 	if notes := codec.Unwrap(field(e, "notes")); notes != nil && notes.Type == ir.ArrayType {
@@ -174,6 +184,7 @@ func installNotes(w io.Writer, e *ir.Node) {
 			fmt.Fprintf(w, "  note: rule %s: %s\n", str(n, "rule"), str(n, "note"))
 		}
 	}
+	return arming
 }
 
 // pruned says what a prune took away: out of a package the directory kept, each thing by name; a

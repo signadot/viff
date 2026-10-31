@@ -231,7 +231,7 @@ func TestAScriptReadsTheChartersTheRunnerCarries(t *testing.T) {
 		case method == http.MethodGet && strings.Contains(path, "depth=1"):
 			return 200, "{children: {hello: {writes: [repos.r.hello.*], rules: [{name: lift}], strata: [{name: low}]}}}", nil
 		case method == http.MethodGet:
-			return 200, "{writes: [repos.r.hello.*], rules: [{name: lift, held: high, condition: {subject: {path: repos.r.hello.low.*}}}]}", nil
+			return 200, "{writes: [repos.r.hello.*], rules: [{name: lift, held: \"waiting for stratum high\", condition: {subject: {path: repos.r.hello.low.*}}}]}", nil
 		case method == http.MethodPost && path == "/charter/check?at=repos.r":
 			checked = string(body)
 			return 200, "{verdict: installs}", nil
@@ -264,8 +264,8 @@ func TestAScriptReadsTheChartersTheRunnerCarries(t *testing.T) {
 		t.Fatalf("the script said %q", snap.Result)
 	}
 	file := parts[0]
-	if !strings.Contains(file, "at: repos.r.hello") || !strings.Contains(file, "name: lift") || strings.Contains(file, "held: high") ||
-		!strings.Contains(file, "note: repos.r.hello: rule lift is held: it waits for stratum high") {
+	if !strings.Contains(file, "at: repos.r.hello") || !strings.Contains(file, "name: lift") || strings.Contains(file, "held: \"waiting") ||
+		!strings.Contains(file, "note: repos.r.hello: rule lift is held: waiting for stratum high") {
 		t.Errorf("the charter read as %q, want its file and the note on the held rule", file)
 	}
 	if got := strings.TrimSpace(parts[1]); got != "repos.r.hello.rules.lift\nrepos.r.hello.strata.low" {

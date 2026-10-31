@@ -67,6 +67,9 @@ import (
 // checkReads does that, at install.
 func (e *Engine) SetReads(in []Subtree) {
 	e.reads = append([]Subtree(nil), in...)
+	// A rule held for reading what was not declared yet is armed by the next pass; and a
+	// narrowing is RecheckReads's to refuse, not this.
+	e.kick()
 }
 
 // Imports is what this engine declares it reads beyond its own address.

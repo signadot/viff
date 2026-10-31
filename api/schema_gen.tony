@@ -594,8 +594,9 @@ signature:
 context:
 - tony-format/context
 define:
+  arming: .[bool]
   rule: .[string]
-  stratum: .[string]
+  waits: .[string]
 signature:
   name: verse-held-rule
 ---

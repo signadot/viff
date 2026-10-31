@@ -4154,8 +4154,8 @@ func (s *Server) charterTop() *ir.Node {
 type charterCensus struct {
 	here          bool // a charter is installed AT this address
 	rules, strata int
-	arming        []string // rules counted above whose watch is still being opened
-	suspended     []string // rules counted above that a suspension holds about every subject
+	pending       []trigger.Pending // rules of the charter not armed, each with why (not in rules)
+	suspended     []string          // rules counted above that a suspension holds about every subject
 	kids          map[string]*charterCensus
 	order         []string
 }
@@ -4181,7 +4181,7 @@ func (c *charterCensus) count(eng *trigger.Engine) {
 		return
 	}
 	c.rules, c.strata = len(eng.Triggers()), len(eng.Strata())
-	c.arming = eng.Arming()
+	c.pending = eng.Pendings()
 	for _, t := range eng.Triggers() {
 		if len(eng.SuspendedWhole(t.Name)) > 0 {
 			c.suspended = append(c.suspended, t.Name)
@@ -4206,10 +4206,25 @@ func (c *charterCensus) node() *ir.Node {
 	if c.here {
 		add("rules", ir.FromInt(int64(c.rules)))
 		add("strata", ir.FromInt(int64(c.strata)))
-		// Named, not counted: a rule that is in the charter and fires on nothing is one
-		// somebody may be waiting on, and the count above says it is installed.
-		if len(c.arming) > 0 {
-			add("arming", strNodes(c.arming))
+		// Named with why, not counted: a rule that is in the charter and fires on nothing is
+		// one somebody may be waiting on, and `rules` counts only the armed. `arming` is the
+		// ones that passed every check and wait on the store alone; `pending` is the rest,
+		// each with what it waits for.
+		var arming []string
+		var pf, pv []*ir.Node
+		for _, p := range c.pending {
+			if p.Arming {
+				arming = append(arming, p.Rule)
+				continue
+			}
+			pf = append(pf, ir.FromString(p.Rule))
+			pv = append(pv, ir.FromString(p.Cause))
+		}
+		if len(arming) > 0 {
+			add("arming", strNodes(arming))
+		}
+		if len(pf) > 0 {
+			add("pending", &ir.Node{Type: ir.ObjectType, Fields: pf, Values: pv})
 		}
 		// And the ones a suspension holds whole: installed, counted, and firing on nothing until
 		// somebody resumes them.

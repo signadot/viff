@@ -105,6 +105,22 @@ func (s *Server) packageEngines() []*trigger.Engine {
 	return out
 }
 
+// kickEngines asks every engine this verse runs — baseline's, each package's, each scope's —
+// for a pass over its pending rules (trigger.Engine.Kick): something that could clear a cause
+// happened that no engine sees for itself, a runner registered or removed.
+func (s *Server) kickEngines() {
+	s.Eng.Kick()
+	s.scopeMu.Lock()
+	engs := make([]*trigger.Engine, 0, len(s.scopeEngs))
+	for _, pe := range s.scopeEngs {
+		engs = append(engs, pe.eng)
+	}
+	s.scopeMu.Unlock()
+	for _, eng := range engs {
+		eng.Kick()
+	}
+}
+
 // restorePackages installs each package's durable charter back into an engine of its own.
 //
 // A package is VISIBLE where a scope is not, and that is the whole difference in lifecycle: a
@@ -573,7 +589,7 @@ func (s *Server) mayUninstall(store entity.Store, at string) error {
 			}
 		}
 	}
-	for _, t := range eng.Triggers() {
+	for _, t := range append(eng.Triggers(), eng.Held()...) {
 		if err := eng.MayRemoveTrigger(who, t.Name); err != nil {
 			return err
 		}
@@ -607,7 +623,9 @@ func (s *Server) takeDown(store entity.Store, at string) error {
 	if err != nil {
 		return err
 	}
-	for _, t := range eng.Triggers() {
+	// Armed and pending alike: a pending rule is written down and would arm the moment its
+	// cause cleared, in a package somebody removed.
+	for _, t := range append(eng.Triggers(), eng.Held()...) {
 		eng.RemoveTrigger(t.Name)
 	}
 	for _, st := range eng.Strata() {

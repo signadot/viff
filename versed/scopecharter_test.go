@@ -132,7 +132,7 @@ func TestAScopeDoesNotInheritBaselinesCharter(t *testing.T) {
 		t.Fatal("no engine for the scope after a scoped install")
 	}
 	var names []string
-	for _, tr := range eng.Triggers() {
+	for _, tr := range append(eng.Triggers(), eng.Held()...) { // armed, or arming behind the install
 		names = append(names, tr.Name)
 	}
 	if len(names) != 1 || names[0] != "scoped-only" {
@@ -205,7 +205,7 @@ func TestAScopeShadowsABaselineRuleAcrossARestart(t *testing.T) {
 	// …and the scope restored the dev's, once, under the same name.
 	eng := second.engFor("me")
 	var scoped []string
-	for _, tr := range eng.Triggers() {
+	for _, tr := range append(eng.Triggers(), eng.Held()...) { // armed, or arming behind the restore
 		scoped = append(scoped, tr.Name)
 	}
 	if len(scoped) != 2 { // review (the dev's) + connect-probe

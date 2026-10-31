@@ -646,45 +646,17 @@ func (e *Engine) nameTaken(name string) error {
 			return fmt.Errorf("trigger %q already exists (remove it first)", name)
 		}
 	}
-	for _, held := range e.pending {
-		if held.Name == name {
-			return fmt.Errorf("trigger %q is already held, waiting for stratum %q (remove it "+
-				"first)", name, held.Stratum)
+	for _, h := range e.pending {
+		if h.Name == name {
+			return fmt.Errorf("trigger %q is already pending, %s (remove it first)", name, h.cause)
 		}
 	}
 	return nil
 }
 
-// promote installs the rules that were held for this stratum.
-//
-// Collected under the lock and installed OUTSIDE it: addTrigger takes trigMu itself, and a
-// promotion running under the caller's lock would deadlock on the first rule.
-func (e *Engine) promote(stratum string) {
-	e.trigMu.Lock()
-	var ready []Trigger
-	held := e.pending[:0]
-	for _, t := range e.pending {
-		if t.Stratum == stratum {
-			ready = append(ready, t)
-			continue
-		}
-		held = append(held, t)
-	}
-	e.pending = held
-	e.trigMu.Unlock()
-	for _, t := range ready {
-		// durable=false: it was written when it was held. A rule that fails its checks NOW —
-		// its subject is outside the stratum that just arrived — is reported and dropped from
-		// memory; its entity stays, so the next restart says the same thing rather than
-		// quietly forgetting a rule someone wrote.
-		if err := e.addTrigger(t, false, e.OwnerOf(t.Name)); err != nil {
-			e.logger.Warn("held rule does not fit the stratum it named",
-				"trigger", t.Name, "stratum", stratum, "err", err)
-			continue
-		}
-		e.logger.Info("held rule installed: its stratum arrived", "trigger", t.Name, "stratum", stratum)
-	}
-}
+// promote asks the reconciler for a pass: a rule held for this stratum is armed by it, now that
+// the stratum is here (reconcile.go).
+func (e *Engine) promote(string) { e.kick() }
 
 // persistStratum writes s into the verse as its stratum entity. Raw for the same reason a rule
 // is raw: a match is full of operator tags, and an unescaped write has the store execute them

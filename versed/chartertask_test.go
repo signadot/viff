@@ -237,7 +237,7 @@ func TestATasksCredentialIsHeldWhereASpawnSpendsOne(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, code, err := srv.installCharterPruning(entity.As(srv.Store, "user:"+tester), "", "", "", docs, hold); err != nil {
+	if _, _, code, err := srv.installCharterPruning(entity.As(srv.Store, "user:"+tester), "", "", "", docs, hold, 0); err != nil {
 		t.Fatalf("the install = %d %v", code, err)
 	}
 	if rec, _, _ := srv.Store.Get(trigger.CharterRefAt("repos.r.task", "spare")); entity.Str(rec.Payload, "task") != "keyed" ||

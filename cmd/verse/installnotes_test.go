@@ -35,7 +35,7 @@ func TestCharterAddPrintsWhatTheInstallHasToSay(t *testing.T) {
 	}
 	for _, want := range []string{
 		"baseline: installed 1 trigger(s)",
-		"held: rule waits waits for stratum sdcl, which is not installed",
+		"held: rule waits is waiting for stratum sdcl. It fires on nothing until then.",
 		"note: rule asks-again: gate \"approval\" blocks",
 	} {
 		if !strings.Contains(out, want) {
@@ -45,7 +45,7 @@ func TestCharterAddPrintsWhatTheInstallHasToSay(t *testing.T) {
 	// The listing says the rule is held — on stderr, since the file on stdout is what installs,
 	// and a mark in it would be refused, or kept as the rule's comment.
 	out, errOut, err := runCLIStreams(t, "charter")
-	if err != nil || !strings.Contains(errOut, "rule waits is held: it waits for stratum sdcl") {
+	if err != nil || !strings.Contains(errOut, "rule waits is held: waiting for stratum sdcl") {
 		t.Errorf("the charter does not say the rule is held (%v):\n%s", err, errOut)
 	}
 	if !strings.Contains(out, "name: waits") || strings.Contains(out, "held") {

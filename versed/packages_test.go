@@ -383,11 +383,15 @@ func TestARestoreNeverLoadsRulesWithoutTheirDeclaration(t *testing.T) {
 		fc.n, fc.fail = 0, fail
 		return srv, fc
 	}
+	// Loaded is standing by name, armed or pending: arming is the reconciler's, behind the
+	// restore (trigger/reconcile.go).
 	restored := func(srv *Server) bool {
 		eng := srv.packageEngineIfRunning("notes")
-		return eng != nil && slices.ContainsFunc(eng.Triggers(), func(tr trigger.Trigger) bool {
-			return tr.Name == "note-the-head"
-		})
+		if eng == nil {
+			return false
+		}
+		_, stands := eng.Rule("note-the-head")
+		return stands
 	}
 
 	// How many listings a restore makes, so that each in turn can be the one that fails.

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/scott-cotton/cli"
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -79,6 +80,11 @@ type charterFlags struct {
 	// Prune makes `-a -d` a sync: what stands at and under the path afterwards is what the
 	// directory holds. It is `-R <path>` then `-a -d`, as one step (versed/charterprune.go).
 	Prune bool `cli:"name=prune desc='with --add --dir, remove what the directory leaves out at and under the path'"`
+	// Wait holds an install's answer until its rules are armed, or that long: an install answers
+	// once the charters are accepted, and a rule's watch opens at the store's pace. Without it
+	// the answer says which rules are still arming; with it, one still arming when the time is
+	// up is answered with exit status 3 (versed/charter.go, api.InstalledPackage).
+	Wait string `cli:"name=wait desc='with --add, hold the answer until the rules are armed, or this long (as 30s); exit 3 if one is still arming'"`
 	// Check asks whether the charters of -d or -f would install at the path as `-a -d --prune`
 	// installs them, and what would change, installing nothing (versed/chartercheck.go). -f is a
 	// directory holding that one file, the prune included. A refusal is its answer, as an
@@ -380,38 +386,50 @@ func charterAdd(cc *cli.Context, at, file string) error {
 // names the command in a failure to send (`charter -a -d`); a refusal is `charter -a`'s whatever
 // the command, as it has always read.
 func installReply(cc *cli.Context, sending string, q url.Values, defs []*ir.Node) error {
+	if trig.Wait != "" {
+		if _, err := time.ParseDuration(trig.Wait); err != nil {
+			return fmt.Errorf("%w: --wait takes a duration, as 30s: %q", cli.ErrUsage, trig.Wait)
+		}
+		q.Set("wait", trig.Wait)
+	}
 	c := apiClient()
 	resp, err := c.PostNodes("/charter", q, defs)
 	if err != nil {
 		return fmt.Errorf("%s: %w", sending, err)
 	}
-	if err := installAnswer(cc.Out, resp, c.Scope, asSteps); err != nil {
+	arming, err := installAnswer(cc.Out, resp, c.Scope, asSteps)
+	if err != nil {
 		return fmt.Errorf("charter -a: %w", err)
+	}
+	// Waited for, and still arming when the time was up: said above, and said again as the
+	// exit status, so a script can tell "not yet" from "refused" (1) without reading the lines.
+	if arming && trig.Wait != "" {
+		return cli.ExitCodeErr(3)
 	}
 	return nil
 }
 
-// installAnswer writes what an install answered to w, naming addresses as sp spells them; a
-// refusal is the error, in the server's words.
-func installAnswer(w io.Writer, resp *http.Response, scope string, sp spelling) error {
+// installAnswer writes what an install answered to w, naming addresses as sp spells them, and
+// says whether any rule is still arming; a refusal is the error, in the server's words.
+func installAnswer(w io.Writer, resp *http.Response, scope string, sp spelling) (arming bool, err error) {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(body)))
+		return false, fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(body)))
 	}
-	reportInstalled(w, body, respFmt(resp), scope, sp)
-	return nil
+	return reportInstalled(w, body, respFmt(resp), scope, sp), nil
 }
 
-// reportInstalled says what an install answered, as charterfile.Installed says it.
-func reportInstalled(w io.Writer, body []byte, format codec.Format, scope string, sp spelling) {
+// reportInstalled says what an install answered, as charterfile.Installed says it, and whether
+// any rule is still arming.
+func reportInstalled(w io.Writer, body []byte, format codec.Format, scope string, sp spelling) bool {
 	node, err := codec.ParseNode(body, format)
 	if err != nil {
 		// Installed, and the report is unreadable: say the first and do not pretend the second.
 		fmt.Fprintln(w, "installed")
-		return
+		return false
 	}
-	charterfile.Installed(w, node, scope, sp == asKPaths)
+	return charterfile.Installed(w, node, scope, sp == asKPaths)
 }
 
 const (

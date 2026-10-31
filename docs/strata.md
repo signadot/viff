@@ -366,28 +366,30 @@ install: the number is the whole ordering, and two equal numbers do not say whic
 
 A stratum and a rule are separate entities, so either can arrive first. **A rule that names a
 stratum that is not installed is held, not refused.** A [held rule](glossary.md#held-rule) is
-stored and does not fire. Verse installs it when its stratum arrives. The rule has passed every
-other check, so only the ordering waits.
+stored and does not fire. Verse arms it when its stratum arrives. The rule has passed every
+other check, so only the ordering waits. A rule whose spawn names an agent no runner offers yet
+is held the same way, for the runner.
 
 **A file holds rules when it names a stratum it does not define.** A charter written to sit
 beside another charter does this. `verse c -a` sends a file's strata first, so a self-contained
 charter never holds a rule.
 
-The install says which rules it held. A misspelled stratum name is held the same way, so read
-this line:
+The install says which rules it held, and what each waits for. A misspelled stratum name is
+held the same way, so read this line:
 
 ```
 $ verse charter -a -f review.tony
 baseline: installed 0 trigger(s)
-  held: rule review waits for stratum sdcl, which is not installed. It fires on nothing until that stratum is.
+  held: rule review is waiting for stratum sdcl. It fires on nothing until then.
 ```
 
-The count is the number of rules that can fire. `verse charter` lists a held rule with
-`held: <stratum>`.
+The count is the number of rules accepted to fire. A rule whose watch is still opening counts,
+and the install says `arming:` for it; a held rule does not. `verse charter` lists a held rule
+with `held: <what it waits for>`.
 
 `verse c <address> rules <name>` shows a held rule too, with the same `held` line.
 `verse status` counts the rules that can fire, so a charter of four rules with two held reports
-two.
+two, and names the two under `pending` with what each waits for.
 
 **To edit a level, apply the file again.** A stratum installed exactly as declared is left alone.
 A stratum that differs is replaced, as a rule of the same name is.

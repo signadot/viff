@@ -26,10 +26,10 @@ func (u *unwatchable) WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsen
 	return u.Store.WatchPattern(prefix, at, waitIfAbsent, noInit)
 }
 
-// A RESTORED RULE WHOSE WATCH COULD NOT BE OPENED IS ARMED, NOT ABANDONED: it stands in the
-// charter, status says it is arming, and when the store answers it watches — and acts on the
-// backlog it could not see meanwhile. Before this it stood in the charter deaf until the next
-// restart, counted as installed by every listing.
+// A RESTORED RULE WHOSE WATCH COULD NOT BE OPENED IS PENDING, NOT ABANDONED: it stands in the
+// charter by name, status says it is arming, and when the store answers the reconciler arms it —
+// and it acts on the backlog it could not see meanwhile. Before this it stood in the charter
+// deaf until the next restart, counted as installed by every listing.
 func TestARestoredRuleKeepsAskingForItsWatch(t *testing.T) {
 	addr := entitytest.Addr(t)
 	first := entitytest.StoreAt(t, addr)
@@ -46,16 +46,22 @@ func TestARestoredRuleKeepsAskingForItsWatch(t *testing.T) {
 
 	store := &unwatchable{Store: entitytest.StoreAt(t, addr), on: true}
 	back := New(store, task.AutoResolver{})
-	back.armWait = 5 * time.Millisecond
+	back.every = 5 * time.Millisecond // the backstop, which is what asks again here
 	back.ObserveScoped(t.Context())
 	if err := back.LoadCharter(); err != nil {
 		t.Fatalf("a watch the store did not answer failed the restore: %v", err)
 	}
-	if got := back.Triggers(); len(got) != 2 {
-		t.Fatalf("charter = %v; the rules whose watch did not open are not in it", got)
+	if got := back.Held(); len(got) != 2 {
+		t.Fatalf("pending = %v; the rules whose watch did not open are not in the charter", got)
 	}
-	if got := back.Arming(); len(got) != 2 || got[0] != "other" || got[1] != "review" {
-		t.Fatalf("arming = %v; want both rules", got)
+	if got := back.Triggers(); len(got) != 0 {
+		t.Fatalf("armed = %v; a rule whose watch did not open is not armed", got)
+	}
+	waitArming(t, back, []string{"other", "review"})
+	for _, p := range back.Pendings() {
+		if !p.Arming {
+			t.Fatalf("%s waits on %q, not on its watch", p.Rule, p.Cause)
+		}
 	}
 
 	// Deaf meanwhile: a subject that matches is not acted on.
@@ -66,16 +72,19 @@ func TestARestoredRuleKeepsAskingForItsWatch(t *testing.T) {
 		t.Fatalf("a rule with no watch acted: %v", e.Payload)
 	}
 
-	// A removal while arming stops the asking, as it stops the watching.
+	// A removal while pending stops the asking, as it stops the watching.
 	if !back.RemoveTrigger("other") {
 		t.Fatal("other was not in the charter to remove")
 	}
 	waitArming(t, back, []string{"review"})
 
-	// The store answers: the rule watches, and the backlog it missed is acted on.
+	// The store answers: the rule arms, watches, and the backlog it missed is acted on.
 	store.on = false
 	waitStage(t, store, ref, "reviewed")
 	waitArming(t, back, nil)
+	if got := back.Triggers(); len(got) != 1 || got[0].Name != "review" {
+		t.Fatalf("armed = %v; want review", got)
+	}
 }
 
 func waitArming(t *testing.T, e *Engine, want []string) {

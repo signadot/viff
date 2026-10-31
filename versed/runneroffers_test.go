@@ -167,9 +167,13 @@ func TestASpawnGoesWhereItsDoerIsOffered(t *testing.T) {
 		return `[{name: r, condition: {subject: {path: "x.*", value: {go: true}}},
 		  action: {patch: {go: false}, spawn: {agent: {name: ` + agent + `}, prompt: go}}}]`
 	}
-	if resp := installAs(t, "user:"+tester, ts.URL, rule("claude")); resp.StatusCode != http.StatusBadRequest ||
-		!strings.Contains(readBody(t, resp), "no runner offers the agent claude") {
-		t.Fatalf("a charter naming an agent no runner offers installed: %s", resp.Status)
+	// A charter naming an agent no runner offers is accepted and its rule HELD for one, with the
+	// offers named: a runner may register after the rule (trigger/reconcile.go).
+	resp := installAs(t, "user:"+tester, ts.URL, rule("claude"))
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusCreated || !strings.Contains(body, "no runner offers the agent claude") ||
+		strings.Contains(body, "arming") {
+		t.Fatalf("a charter naming an agent no runner offers = %s: %s; want it accepted and the rule held for a runner", resp.Status, body)
 	}
 	if resp := installAs(t, "user:"+tester, ts.URL, rule("codex")); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("a charter naming an agent a runner offers = %s: %s", resp.Status, readBody(t, resp))

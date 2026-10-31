@@ -169,7 +169,17 @@ func CharterInstallOf(a Args) (url.Values, []*ir.Node, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return charterfile.InstallQuery(docs, names, entity.JoinSegs(segs), a.Flag("prune"))
+	q, defs, err := charterfile.InstallQuery(docs, names, entity.JoinSegs(segs), a.Flag("prune"))
+	if err != nil {
+		return nil, nil, err
+	}
+	if w := a.Word("wait"); w != "" {
+		if _, err := time.ParseDuration(w); err != nil {
+			return nil, nil, fmt.Errorf("wait: %q is no duration (as 30s)", w)
+		}
+		q.Set("wait", w)
+	}
+	return q, defs, nil
 }
 
 // CharterRemoveOf is what a charter-remove removes: the names of its path, and where its address

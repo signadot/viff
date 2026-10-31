@@ -922,12 +922,33 @@ func (e *Engine) reArm(covers func(rule string) bool) {
 		}
 		e.seenMu.Unlock()
 		if e.subtree {
-			if err := e.armTriggerSubtree(t); err != nil {
-				e.logger.Warn("a lifted rule could not be armed again", "trigger", t.Name, "err", err)
-			}
+			// Back to pending, its watches stopped, for the reconciler to open again: the
+			// opening state they replay is the world as it stands (reconcile.go).
+			e.disarm(t.Name, "armed again after a lift")
 			continue
 		}
 		go e.evaluate(e.bgctx, t, entity.Commit{Rev: head})
+	}
+	if e.subtree {
+		e.kick()
+	}
+}
+
+// disarm takes an armed rule back to pending with its watches stopped, for the reconciler to
+// arm again; a rule not armed is left as it is.
+func (e *Engine) disarm(name, why string) {
+	e.trigMu.Lock()
+	defer e.trigMu.Unlock()
+	for i, t := range e.triggers {
+		if t.Name != name {
+			continue
+		}
+		nt := make([]Trigger, 0, len(e.triggers)-1)
+		nt = append(nt, e.triggers[:i]...)
+		e.triggers = append(nt, e.triggers[i+1:]...)
+		e.stopWatchers(name)
+		e.pending = append(e.pending, held{Trigger: t, cause: cause{causeWatch, why}})
+		return
 	}
 }
 
@@ -987,7 +1008,7 @@ func (e *Engine) Names(s Suspension) bool {
 	at := e.atSegs()
 	e.trigMu.Lock()
 	defer e.trigMu.Unlock()
-	for _, set := range [][]Trigger{e.triggers, e.pending} {
+	for _, set := range [][]Trigger{e.triggers, e.pendingTriggers()} {
 		for _, t := range set {
 			if s.CoversCharter(at, t.Name) {
 				return true
