@@ -1,6 +1,7 @@
 !issue
 blocked_by: []
-blocks: []
+blocks:
+- wv2pp5j0h12ks1ncwnn0
 branches: []
 commits: []
 created: "2026-10-31T10:01:07.343808+01:00"
@@ -9,4 +10,4 @@ id: wz2pp5j0h12krmxewnn0
 labels: []
 related_issues: []
 status: open
-updated: "2026-10-31T10:01:07.343808+01:00"
+updated: "2026-10-31T10:01:26.29898+01:00"
