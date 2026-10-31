@@ -3,6 +3,7 @@ package trigger
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -400,12 +401,14 @@ func (e *Engine) place(t Trigger, durable bool, as string, take, over bool) erro
 			return err
 		}
 	}
+	// The shapes of its sequences are a constant of the charter, recorded for every rule placed
+	// — a held one arms later, by the reconciler, and fires with them — and forgotten with it.
+	e.recordShapes(t)
 	if hold != nil {
 		e.logger.Warn("rule held: it is written down, and fires on nothing until what it waits for is here",
 			"trigger", t.Name, "waits", hold.String())
 		return nil
 	}
-	e.recordShapes(t)
 	if e.subtree {
 		e.kick()
 	}
@@ -437,18 +440,10 @@ func (e *Engine) RemoveTrigger(name string) bool {
 // the half of a removal a replacement needs, since what it writes goes over what stands.
 func (e *Engine) unplace(name string) bool {
 	e.trigMu.Lock()
-	found := false
-	var nt []Trigger
-	for _, t := range e.triggers {
-		if t.Name == name {
-			found = true
-			continue
-		}
-		nt = append(nt, t)
-	}
-	e.triggers = nt
-	if found {
-		e.forgetShapes(name)
+	named := func(t Trigger) bool { return t.Name == name }
+	armed := slices.ContainsFunc(e.triggers, named)
+	e.triggers = slices.DeleteFunc(slices.Clone(e.triggers), named)
+	if armed {
 		e.stopWatchers(name)
 		e.forgetTrouble(name)
 	}
@@ -456,18 +451,13 @@ func (e *Engine) unplace(name string) bool {
 	// behind would arm it the moment its cause cleared — a rule coming back to life after an
 	// operator removed it, which is the failure deleting the charter entity exists to prevent,
 	// one step earlier.
-	var np []held
-	for _, h := range e.pending {
-		if h.Name == name {
-			found = true
-			e.forgetShapes(name)
-			continue
-		}
-		np = append(np, h)
+	pending := slices.ContainsFunc(e.pending, func(h held) bool { return named(h.Trigger) })
+	e.pending = slices.DeleteFunc(slices.Clone(e.pending), func(h held) bool { return named(h.Trigger) })
+	if armed || pending {
+		e.forgetShapes(name)
 	}
-	e.pending = np
 	e.trigMu.Unlock()
-	return found
+	return armed || pending
 }
 
 // Trigger returns one installed trigger by name.

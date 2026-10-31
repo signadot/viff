@@ -943,9 +943,7 @@ func (e *Engine) disarm(name, why string) {
 		if t.Name != name {
 			continue
 		}
-		nt := make([]Trigger, 0, len(e.triggers)-1)
-		nt = append(nt, e.triggers[:i]...)
-		e.triggers = append(nt, e.triggers[i+1:]...)
+		e.triggers = slices.Delete(slices.Clone(e.triggers), i, i+1)
 		e.stopWatchers(name)
 		e.pending = append(e.pending, held{Trigger: t, cause: cause{causeWatch, why}})
 		return

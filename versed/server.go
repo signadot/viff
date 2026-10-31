@@ -4180,7 +4180,7 @@ func (c *charterCensus) count(eng *trigger.Engine) {
 	if eng == nil {
 		return
 	}
-	c.rules, c.strata = len(eng.Triggers()), len(eng.Strata())
+	c.rules, c.strata = len(eng.Triggers())+len(eng.Arming()), len(eng.Strata())
 	c.pending = eng.Pendings()
 	for _, t := range eng.Triggers() {
 		if len(eng.SuspendedWhole(t.Name)) > 0 {
@@ -4206,10 +4206,11 @@ func (c *charterCensus) node() *ir.Node {
 	if c.here {
 		add("rules", ir.FromInt(int64(c.rules)))
 		add("strata", ir.FromInt(int64(c.strata)))
-		// Named with why, not counted: a rule that is in the charter and fires on nothing is
-		// one somebody may be waiting on, and `rules` counts only the armed. `arming` is the
-		// ones that passed every check and wait on the store alone; `pending` is the rest,
-		// each with what it waits for.
+		// Named with why: a rule that is in the charter and fires on nothing is one somebody
+		// may be waiting on. `arming` is the ones that passed every check and wait on the
+		// store alone — counted in `rules`, as an install counts them, so the count does not
+		// turn on the store's pace; `pending` is the rest, not counted, each with what it
+		// waits for.
 		var arming []string
 		var pf, pv []*ir.Node
 		for _, p := range c.pending {

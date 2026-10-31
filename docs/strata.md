@@ -388,8 +388,10 @@ and the install says `arming:` for it; a held rule does not. `verse charter` lis
 with `held: <what it waits for>`.
 
 `verse c <address> rules <name>` shows a held rule too, with the same `held` line.
-`verse status` counts the rules that can fire, so a charter of four rules with two held reports
-two, and names the two under `pending` with what each waits for.
+`verse status` counts the rules as the install does, so a charter of four rules with two held
+reports two, and names the two under `pending` with what each waits for. A rule that passed at
+install and fails now, because the runner that offered its spawn is gone, say, is held the same
+way: it stands, `pending` says `refused: …` for it, and it arms when the world lets it.
 
 **To edit a level, apply the file again.** A stratum installed exactly as declared is left alone.
 A stratum that differs is replaced, as a rule of the same name is.

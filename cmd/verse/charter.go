@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/scott-cotton/cli"
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -387,10 +386,7 @@ func charterAdd(cc *cli.Context, at, file string) error {
 // the command, as it has always read.
 func installReply(cc *cli.Context, sending string, q url.Values, defs []*ir.Node) error {
 	if trig.Wait != "" {
-		if _, err := time.ParseDuration(trig.Wait); err != nil {
-			return fmt.Errorf("%w: --wait takes a duration, as 30s: %q", cli.ErrUsage, trig.Wait)
-		}
-		q.Set("wait", trig.Wait)
+		q.Set("wait", trig.Wait) // read by the server, the one reader of it (versed/charter.go)
 	}
 	c := apiClient()
 	resp, err := c.PostNodes("/charter", q, defs)

@@ -174,10 +174,7 @@ func CharterInstallOf(a Args) (url.Values, []*ir.Node, error) {
 		return nil, nil, err
 	}
 	if w := a.Word("wait"); w != "" {
-		if _, err := time.ParseDuration(w); err != nil {
-			return nil, nil, fmt.Errorf("wait: %q is no duration (as 30s)", w)
-		}
-		q.Set("wait", w)
+		q.Set("wait", w) // read by the server, the one reader of it (versed/charter.go)
 	}
 	return q, defs, nil
 }

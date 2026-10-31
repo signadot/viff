@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -486,18 +487,20 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	// `wait=<duration>` holds the answer until the request's rules are armed, or that long:
-	// an install answers once accepted, and arming is the store's pace (api.InstalledPackage).
+	// `wait=<duration>` holds the answer until the request's rules are armed, or that long,
+	// at most maxInstallWait: an install answers once accepted, and arming is the store's pace
+	// (api.InstalledPackage). This is the one reader of the duration; the command and the
+	// tools send it as written, so a bad one has one answer.
 	var wait time.Duration
 	if v := q.Get("wait"); v != "" {
 		d, err := time.ParseDuration(v)
-		if err != nil || d < 0 {
-			http.Error(w, fmt.Sprintf("wait=%q: a duration, as 30s", v), http.StatusBadRequest)
+		if err != nil || d < 0 || d > maxInstallWait {
+			http.Error(w, fmt.Sprintf("wait=%q: a duration, as 30s, up to %s", v, maxInstallWait), http.StatusBadRequest)
 			return
 		}
 		wait = d
 	}
-	groups, pruned, code, err := s.installCharterPruning(s.scopedStore(r), q.Get("scope"),
+	groups, pruned, code, err := s.installCharterPruning(r.Context(), s.scopedStore(r), q.Get("scope"),
 		q.Get("at"), q.Get("prune"), docs, hold, wait)
 	if err != nil {
 		http.Error(w, err.Error(), code)
@@ -527,7 +530,7 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 // and every rule's spawns are held within the task (chartertask.go). With a WAIT, the answer
 // is held until the rules installed are armed, or that long: what it says of each is how things
 // stand when the request ends.
-func (s *Server) installCharterPruning(store entity.Store, scope, at, prune string, docs []*ir.Node, hold *taskCharter, wait time.Duration) ([]charterGroup, []api.Pruned, int, error) {
+func (s *Server) installCharterPruning(ctx context.Context, store entity.Store, scope, at, prune string, docs []*ir.Node, hold *taskCharter, wait time.Duration) ([]charterGroup, []api.Pruned, int, error) {
 	groups, err := charterFilesPruning(docs, at, prune)
 	if err != nil {
 		return nil, nil, http.StatusBadRequest, err
@@ -558,7 +561,7 @@ func (s *Server) installCharterPruning(store entity.Store, scope, at, prune stri
 		}
 	}
 	takePackageAddresses(store, entity.PrincipalOf(store), groups)
-	tx.waitArmed(s.ctx, wait)
+	tx.waitArmed(ctx, wait)
 	for i := range groups {
 		groups[i].said = tx.notes(groups[i].at)
 	}
@@ -572,34 +575,41 @@ func (s *Server) installCharterPruning(store entity.Store, scope, at, prune stri
 // acts through, the scope and the address the file is being applied at. The system's own
 // charter comes through here from a file rather than a request (installSystemCharter).
 func (s *Server) installCharterAs(store entity.Store, scope, at string, docs []*ir.Node) ([]charterGroup, int, error) {
-	groups, _, code, err := s.installCharterPruning(store, scope, at, "", docs, nil, 0)
+	groups, _, code, err := s.installCharterPruning(s.ctx, store, scope, at, "", docs, nil, 0)
 	return groups, code, err
 }
 
+// maxInstallWait is the longest an install's answer is held for its rules to arm: a caller
+// gone meanwhile ends the wait through its request's context, and this bounds one that stays.
+const maxInstallWait = time.Hour
+
 // waitArmed holds until every rule this request placed is armed or held for something other
-// than its watches, or until wait has passed, or ctx ends. Nothing is waited for with no wait.
-// A rule held for a stratum or a runner does not arm by waiting, so it is not waited on: the
-// answer says what it waits for.
+// than its watches, or until wait has passed, or ctx — the request's — ends. Nothing is waited
+// for with no wait. A rule held for a stratum or a runner does not arm by waiting, so it is
+// not waited on: the answer says what it waits for.
 func (tx *charterTx) waitArmed(ctx context.Context, wait time.Duration) {
 	if wait <= 0 || len(tx.placed) == 0 {
 		return
 	}
 	arming := func() bool {
 		for _, p := range tx.placed {
-			if n := p.eng.NotesOn(p.rule); n.Arming {
+			if slices.Contains(p.eng.Arming(), p.rule.Name) {
 				return true
 			}
 		}
 		return false
 	}
-	deadline := time.After(wait)
+	deadline := time.NewTimer(wait)
+	defer deadline.Stop()
+	poll := time.NewTicker(20 * time.Millisecond)
+	defer poll.Stop()
 	for arming() {
 		select {
-		case <-deadline:
+		case <-deadline.C:
 			return
 		case <-ctx.Done():
 			return
-		case <-time.After(20 * time.Millisecond):
+		case <-poll.C:
 		}
 	}
 }

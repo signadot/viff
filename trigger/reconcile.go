@@ -3,6 +3,7 @@ package trigger
 import (
 	"context"
 	"errors"
+	"slices"
 	"sort"
 	"time"
 )
@@ -12,8 +13,8 @@ import (
 // installed rule does, and fires on nothing. The causes are the ones that can clear without
 // the rule's record changing — a stratum it names not installed yet, no runner offering what
 // its spawn asks, a read the vetting needs that did not happen, watches the store has not
-// opened yet. Everything else an install refuses, where the author is present to hear it
-// (vet).
+// opened or refused, and a vet that passed at install and fails now that the world has moved.
+// Everything else an install refuses, where the author is present to hear it (vet).
 //
 // The reconciler is what clears a cause: a pass over every pending rule, in the order they
 // were placed, vetting each again and arming the ones that pass. A pass runs when something
@@ -31,7 +32,7 @@ var ErrNoOffer = errors.New("no runner offers it")
 // cause is why a pending rule is not armed.
 type cause struct {
 	kind causeKind
-	why  string // the words: the stratum's name, the runner refusal, the read's or the watch's error
+	why  string // the words: the stratum's name, the runner refusal, the read's, the store's or the vet's error
 }
 
 type causeKind int
@@ -40,7 +41,9 @@ const (
 	causeStratum causeKind = iota // the stratum it names is not installed
 	causeRunner                   // no runner offers what its spawn asks
 	causeRead                     // a read the vetting needs did not happen
-	causeWatch                    // its watches are not open yet
+	causeStore                    // the store refused its watches
+	causeRefused                  // it does not pass now, as the world stands since its install
+	causeWatch                    // its watches are being opened
 )
 
 // String is the cause as status and an install's answer say it.
@@ -52,6 +55,10 @@ func (c cause) String() string {
 		return "waiting for a runner: " + c.why
 	case causeRead:
 		return "waiting on a read: " + c.why
+	case causeStore:
+		return "waiting on the store: " + c.why
+	case causeRefused:
+		return "refused: " + c.why
 	default:
 		return "arming: " + c.why
 	}
@@ -129,16 +136,17 @@ func (e *Engine) pass() {
 }
 
 // try vets one pending rule again and arms it if it passes. A rule refused now — its stratum
-// arrived and its subject is outside it, say — is reported and dropped from memory; its record
-// stays, so the next restart says the same thing rather than quietly forgetting a rule someone
-// wrote. A rule still held has its cause brought up to date. One that passes has its watches
-// opened, and is armed once they are: a removal that lands while they open wins, as it wins
-// over a late registration (registerWatchers).
+// arrived and its subject is outside it, say, or the runner that offered its spawn left and
+// another's ceiling is lower — stays pending with the refusal as its cause: it was accepted,
+// its record stands, and the world that refuses it may change back. It is reported once, as
+// the cause changes. A rule still held has its cause brought up to date. One that passes has
+// its watches opened, and is armed once they are: a removal that lands while they open wins,
+// as it wins over a late registration (registerWatchers).
 func (e *Engine) try(h held) {
 	hold, err := e.vet(h.Trigger, e.OwnerOf(h.Name))
 	if err != nil {
-		if e.dropPending(h.Name) {
-			e.logger.Warn("pending rule refused: it does not pass now that what it waited for is here",
+		if e.setCause(h.Name, cause{causeRefused, err.Error()}) {
+			e.logger.Warn("pending rule refused: it does not pass as the world stands; it fires on nothing until it does",
 				"trigger", h.Name, "waited", h.cause.String(), "err", err)
 		}
 		return
@@ -151,7 +159,7 @@ func (e *Engine) try(h held) {
 	if e.subtree {
 		subtrees, err := e.watchedSubtrees(h.Trigger)
 		if err != nil {
-			e.setCause(h.Name, cause{causeWatch, err.Error()})
+			e.setCause(h.Name, cause{causeStore, err.Error()})
 			return
 		}
 		e.setCause(h.Name, cause{causeWatch, "opening its watch"})
@@ -159,7 +167,7 @@ func (e *Engine) try(h held) {
 		ctx, cancel = context.WithCancel(e.bgctx)
 		if err := e.openWatches(ctx, h.Trigger, subtrees); err != nil {
 			cancel()
-			e.setCause(h.Name, cause{causeWatch, err.Error()})
+			e.setCause(h.Name, cause{causeStore, err.Error()})
 			return
 		}
 	}
@@ -188,9 +196,7 @@ func (e *Engine) arm(name string, cancel func()) bool {
 		return false
 	}
 	h := e.pending[i]
-	np := make([]held, 0, len(e.pending)-1)
-	np = append(np, e.pending[:i]...)
-	e.pending = append(np, e.pending[i+1:]...)
+	e.pending = slices.Delete(slices.Clone(e.pending), i, i+1)
 	e.triggers = append(e.triggers, h.Trigger)
 	old := e.watchers[name]
 	if cancel != nil {
@@ -216,27 +222,16 @@ func (e *Engine) pendingIndex(name string) int {
 	return -1
 }
 
-// setCause brings a pending rule's cause up to date; a rule no longer pending is left alone.
-func (e *Engine) setCause(name string, c cause) {
-	e.trigMu.Lock()
-	defer e.trigMu.Unlock()
-	if i := e.pendingIndex(name); i >= 0 {
-		e.pending[i].cause = c
-	}
-}
-
-// dropPending takes a pending rule out of memory and nothing else, answering whether it stood.
-func (e *Engine) dropPending(name string) bool {
+// setCause brings a pending rule's cause up to date, answering whether that changed it; a
+// rule no longer pending is left alone.
+func (e *Engine) setCause(name string, c cause) bool {
 	e.trigMu.Lock()
 	defer e.trigMu.Unlock()
 	i := e.pendingIndex(name)
-	if i < 0 {
+	if i < 0 || e.pending[i].cause == c {
 		return false
 	}
-	np := make([]held, 0, len(e.pending)-1)
-	np = append(np, e.pending[:i]...)
-	e.pending = append(np, e.pending[i+1:]...)
-	e.forgetShapes(name)
+	e.pending[i].cause = c
 	return true
 }
 
@@ -272,11 +267,7 @@ func (e *Engine) Arming() []string {
 func (e *Engine) Held() []Trigger {
 	e.trigMu.Lock()
 	defer e.trigMu.Unlock()
-	out := make([]Trigger, 0, len(e.pending))
-	for _, h := range e.pending {
-		out = append(out, h.Trigger)
-	}
-	return out
+	return e.pendingTriggers()
 }
 
 // pendingTriggers is the pending rules without their causes, for the walks over the charter
