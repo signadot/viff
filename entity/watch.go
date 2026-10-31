@@ -46,6 +46,9 @@ type WatchState struct {
 	Phase WatchPhase
 	Err   error // the establish's error while Refused or Failed
 	Since time.Time
+	// Opened is whether the watch has been Open before: a Refused after that is a watch that
+	// stood being asked for again, which a consumer that wants its stream waits through.
+	Opened bool
 }
 
 // String is the state as a wait is reported: the phase's words, with the refusal's.
@@ -89,20 +92,22 @@ type WatchOptions struct {
 }
 
 // await is what the conveniences do with a handle: wait for the watch to be Open, and answer
-// the stream, or the first refusal's error with the handle closed — what a caller that asked
-// for a channel expects, as the store answered before it said phases. Open rather than merely
-// past the line, because what a refusal of the subscriber's own turns on (WaitIfAbsent) is in
-// the picture.
+// the stream, or a refusal's error with the handle closed — what a caller that asked for a
+// channel expects, as the store answered before it said phases. Open rather than merely past
+// the line, because what a refusal of the subscriber's own turns on (WaitIfAbsent) is in the
+// picture. A refusal of a watch that has stood (WatchState.Opened) is the store asking again
+// for it, behind the handle, and is waited through: a joiner that arrives between two asks is
+// not told no for it.
 func await(w *Watch, err error) (<-chan Commit, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
 	for {
 		st, changed := w.State()
-		switch st.Phase {
-		case WatchOpen:
+		switch {
+		case st.Phase == WatchOpen:
 			return w.Commits, w.Close, nil
-		case WatchRefused, WatchFailed:
+		case st.Phase == WatchFailed, st.Phase == WatchRefused && !st.Opened:
 			w.Close()
 			return nil, nil, st.Err
 		default:
@@ -112,17 +117,11 @@ func await(w *Watch, err error) (<-chan Commit, func(), error) {
 }
 
 // uncurable is a refusal that asking again will not change: a path the substrate cannot
-// address, or one that disagrees with the shape of what stands there. Such a watch Fails.
+// address. Such a watch Fails. A path that disagrees with the shape of what stands there
+// (path_conflict) is not one: a write can change the shape, so it is Refused and asked again.
 func uncurable(err error) bool {
 	var e *logdapi.Error
-	if !errors.As(err, &e) {
-		return false
-	}
-	switch e.Code {
-	case logdapi.ErrCodeInvalidPath, "path_conflict":
-		return true
-	}
-	return false
+	return errors.As(err, &e) && e.Code == logdapi.ErrCodeInvalidPath
 }
 
 // DefaultWatchSlots is how many watches a store opens at once where its config says nothing

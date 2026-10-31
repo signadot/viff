@@ -48,7 +48,10 @@ type pump struct {
 	// and replaced each time it moves: a handle reads the two together (Watch.State).
 	phase   WatchState
 	changed chan struct{}
-	subs    []*sub
+	// opened is whether the watch has been Open: a refusal after that is a watch that stood
+	// being asked for again (WatchState.Opened).
+	opened bool
+	subs   []*sub
 	// joined counts every subscriber that ever joined, for the linger rule above.
 	joined int
 	// ended says the pump is out of the store's map, where no join can find it, and its
@@ -268,6 +271,9 @@ func (s *LogdStore) join(path string, segs []string, sb *sub, noInit bool) *pump
 	p.mu.Lock()
 	p.subs = append(p.subs, sb)
 	p.joined++
+	if !found && p.inLineLocked() {
+		p.phase.Phase = WatchInLine // born where run will find it: in the line, or past it
+	}
 	if noInit {
 		// Joining at the next change: the picture, in or to come, is taken in and not said.
 		if p.pictured {
@@ -276,9 +282,7 @@ func (s *LogdStore) join(path string, segs []string, sb *sub, noInit bool) *pump
 			sb.silent = true
 		}
 	}
-	if p.pictured {
-		p.admit(sb)
-	}
+	p.admit(sb)
 	p.mu.Unlock()
 	s.pumpsMu.Unlock()
 	if !found {
@@ -294,10 +298,12 @@ func (s *LogdStore) join(path string, segs []string, sb *sub, noInit bool) *pump
 	return p
 }
 
-// admit judges sb against the picture, under p.mu: one that asked not to wait on a path
-// holding nothing Fails on it; otherwise it is Ready if the watch is Open.
+// admit judges sb against the picture of an Open watch, under p.mu: one that asked not to
+// wait on a path holding nothing Fails on it; otherwise it is Ready. A watch not Open has no
+// picture to judge by — the last one, while the watch is being opened again, is stale, and
+// the reopen's may show the path standing — so sb waits for the Open that admits it.
 func (p *pump) admit(sb *sub) {
-	if sb.failed != nil || sb.readied {
+	if sb.failed != nil || sb.readied || p.phase.Phase != WatchOpen {
 		return
 	}
 	if !sb.waitIfAbsent && p.absent {
@@ -316,15 +322,22 @@ func (p *pump) stateOf(sb *sub) (WatchState, <-chan struct{}) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if sb.failed != nil {
-		return WatchState{Phase: WatchFailed, Err: sb.failed, Since: p.phase.Since}, p.changed
+		return WatchState{Phase: WatchFailed, Err: sb.failed, Since: p.phase.Since, Opened: p.opened}, p.changed
 	}
 	return p.phase, p.changed
 }
 
 // setPhase moves the pump to a phase, under p.mu, and tells every handle; Open readies every
-// subscriber not yet Ready.
+// subscriber not yet Ready. A phase set again with nothing new to say — in line, then
+// establishing, both Reopening — is one phase, entered once.
 func (p *pump) setPhase(ph WatchPhase, err error) {
-	p.phase = WatchState{Phase: ph, Err: err, Since: time.Now()}
+	if ph == p.phase.Phase && err == nil && p.phase.Err == nil {
+		return
+	}
+	if ph == WatchOpen {
+		p.opened = true
+	}
+	p.phase = WatchState{Phase: ph, Err: err, Since: time.Now(), Opened: p.opened}
 	close(p.changed)
 	p.changed = make(chan struct{})
 	if ph == WatchOpen {
@@ -380,6 +393,11 @@ func (p *pump) endIfIdle() {
 func (p *pump) inLine() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	return p.inLineLocked()
+}
+
+// inLineLocked is inLine with p.mu HELD.
+func (p *pump) inLineLocked() bool {
 	for _, sb := range p.subs {
 		if sb.progress {
 			return false
@@ -451,9 +469,10 @@ func (p *pump) emit(state bool) {
 	shared := map[string][]Event{}
 	for _, sb := range p.subs {
 		// Nothing to say to one current through doc already (seeded silently at this very
-		// picture), and nothing to be done for one dropped with no room yet: the reseed tries
-		// it when there is, rather than a walk of the whole slice for it on every commit.
-		if sb.silent || sb.prev == p.doc || (sb.dropped && !sb.room()) {
+		// picture), nothing to one that Failed (its handle is final, and its stream says
+		// nothing more), and nothing to be done for one dropped with no room yet: the reseed
+		// tries it when there is, rather than a walk of the whole slice for it on every commit.
+		if sb.silent || sb.failed != nil || sb.prev == p.doc || (sb.dropped && !sb.room()) {
 			continue
 		}
 		var changes []Event
@@ -634,10 +653,18 @@ func (p *pump) run() {
 			backoff = min(backoff*2, 5*time.Second)
 		}
 	}
-	// failed holds a pump whose watch Failed: it stops asking, its handles say so, and it ends
-	// with its last subscriber as any pump does.
+	// failed ends a pump whose watch Failed: it leaves the store's map, so that a later join
+	// to the prefix asks the store afresh rather than finding this verdict, and run's return
+	// closes every subscriber's stream under the Failed phase their handles keep saying.
 	failed := func() {
-		<-p.ctx.Done()
+		s.pumpsMu.Lock()
+		p.mu.Lock()
+		if !p.ended {
+			delete(s.pumps, p.path)
+			p.ended = true
+		}
+		p.mu.Unlock()
+		s.pumpsMu.Unlock()
 	}
 	w, ok := establish(true)
 	if !ok {

@@ -24,7 +24,8 @@ import (
 // RemoveTrigger can stop exactly these while every other rule keeps observing.
 
 // ruleWatches is what an armed rule holds in subtree mode: the handles of its watches, the
-// cancel that stops the goroutines firing on them, and ready, closed once every handle is.
+// cancel that stops the goroutines firing on them, and ready, closed once every handle is or
+// the rule is stopped.
 type ruleWatches struct {
 	handles []*entity.Watch
 	cancel  context.CancelFunc
@@ -110,16 +111,27 @@ func (e *Engine) openWatches(t Trigger, subtrees []Subtree) (*ruleWatches, error
 			}
 		}()
 	}
-	// ready closes once every handle's Ready has, and never if the rule is stopped first.
+	// ready closes once every handle's Ready has, or one of them Failed, or the rule is
+	// stopped: either way there is nothing more to wait for, and a waiter left on the channel
+	// would wait forever (Ready).
 	go func() {
+		defer close(rw.ready)
 		for _, w := range rw.handles {
-			select {
-			case <-w.Ready:
-			case <-ctx.Done():
-				return
+			for {
+				st, changed := w.State()
+				if st.Phase == entity.WatchFailed {
+					return
+				}
+				select {
+				case <-w.Ready:
+				case <-changed:
+					continue
+				case <-ctx.Done():
+					return
+				}
+				break
 			}
 		}
-		close(rw.ready)
 	}()
 	return rw, nil
 }
@@ -150,38 +162,56 @@ func (e *Engine) watchingLocked(name string) (bool, string) {
 	return true, ""
 }
 
-// Ready is a channel closed once every watch of the armed rule is open — what an install's
-// `wait` waits on. A rule still pending for the pass that will arm it (cause.passing) is
-// waited on through that pass: the channel closes once the pass has answered and, if it
-// armed the rule, once its watches are open. Nil for a rule held for something waiting does
-// not cure, or not in the charter. A rule armed with no watches (baseline mode) is ready.
+// Ready is a channel closed once there is nothing more to wait for on the rule of this name:
+// every watch of the armed rule is open, or one the store cannot open at all (Failed), or the
+// rule is out of the charter — what an install's `wait` waits on. A rule still pending for the
+// pass that will arm it (cause.passing) is waited on through that pass, and a rule that moves
+// while it is waited on — a lift holds it again, for the pass — is followed through the move.
+// Nil for a rule held for something waiting does not cure, or not in the charter. A rule armed
+// with no watches (baseline mode) is ready.
+//
+// A replacement under the name (InstallTriggerAs) takes the old rule out and puts the new one
+// in as two steps, and a wait that reads the engine between them is answered as on a removal.
 func (e *Engine) Ready(name string) <-chan struct{} {
+	wait, done := e.readyOn(name)
+	if wait == nil || done {
+		return wait
+	}
+	out := make(chan struct{})
+	go func() {
+		defer close(out)
+		for wait != nil && !done {
+			<-wait
+			wait, done = e.readyOn(name)
+		}
+	}()
+	return out
+}
+
+// readyOn is what a waiter on the rule waits on next, and whether that is the end of the
+// waiting: readyNow and true for a rule with nothing to wait for, nil for one not waited on.
+// Asked again after each step, since a step's end may be a move rather than the rule being
+// ready: its watches stopped by a lift or a replacement, the pass that held it answered.
+func (e *Engine) readyOn(name string) (<-chan struct{}, bool) {
 	e.trigMu.Lock()
+	defer e.trigMu.Unlock()
 	if rw := e.watches[name]; rw != nil {
-		e.trigMu.Unlock()
-		return rw.ready
+		select {
+		case <-rw.ready:
+			return readyNow, true // open, or failed; stopped, it is out of the map by now
+		default:
+			return rw.ready, false
+		}
 	}
 	for _, t := range e.triggers {
 		if t.Name == name {
-			e.trigMu.Unlock()
-			return readyNow
+			return readyNow, true
 		}
 	}
 	if i := e.pendingIndex(name); i >= 0 && e.pending[i].cause.passing() {
-		settled := e.pending[i].settled
-		e.trigMu.Unlock()
-		out := make(chan struct{})
-		go func() {
-			<-settled
-			if r := e.Ready(name); r != nil {
-				<-r
-			}
-			close(out)
-		}()
-		return out
+		return e.pending[i].settled, false
 	}
-	e.trigMu.Unlock()
-	return nil
+	return nil, true
 }
 
 // readyNow is a channel already closed: the answer for a rule with nothing to wait on.

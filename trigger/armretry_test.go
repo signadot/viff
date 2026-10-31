@@ -208,6 +208,102 @@ func TestArmingSaysWhatTheStoreIsDoing(t *testing.T) {
 	waitArming(t, eng, nil)
 }
 
+// A RULE REMOVED WHILE ARMING LEAVES ITS WAITERS NOTHING TO WAIT FOR: Ready closes on the
+// removal, for the one who took it before and for the one who asks after.
+func TestReadyClosesWhenARuleIsRemovedWhileArming(t *testing.T) {
+	store := newPhased(t, entitytest.Store(t))
+	store.set(entity.WatchInLine, nil)
+	eng := New(store, task.AutoResolver{})
+	eng.ObserveScoped(t.Context())
+	if err := eng.AddTrigger(Trigger{
+		Name:      "review",
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
+		Action:    setStage("reviewed"),
+	}); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	waitArmingSays(t, eng, "review", "in line at the store")
+	before := eng.Ready("review")
+	if !eng.RemoveTrigger("review") {
+		t.Fatal("review was not in the charter to remove")
+	}
+	select {
+	case <-before:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Ready taken before the removal never closed")
+	}
+	if after := eng.Ready("review"); after != nil {
+		t.Fatal("a removed rule has a Ready to wait on")
+	}
+}
+
+// A WATCH THE STORE CANNOT OPEN AT ALL leaves nothing to wait for: the rule stands armed, says
+// so under `arming:` with the store's words, and Ready closes rather than holding an install's
+// wait to its deadline.
+func TestAFailedWatchReleasesTheWait(t *testing.T) {
+	store := newPhased(t, entitytest.Store(t))
+	store.set(entity.WatchInLine, nil)
+	eng := New(store, task.AutoResolver{})
+	eng.ObserveScoped(t.Context())
+	if err := eng.AddTrigger(Trigger{
+		Name:      "review",
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
+		Action:    setStage("reviewed"),
+	}); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	waitArmingSays(t, eng, "review", "in line at the store")
+	ready := eng.Ready("review")
+	store.set(entity.WatchFailed, errors.New("invalid path"))
+	select {
+	case <-ready:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Ready held on a watch the store cannot open")
+	}
+	waitArmingSays(t, eng, "review", "the store cannot watch it: invalid path")
+	if got := eng.Triggers(); len(got) != 1 {
+		t.Fatalf("armed = %v; the rule stands, with the store's verdict on its watch", got)
+	}
+}
+
+// A WAIT FOLLOWS THE RULE THROUGH A MOVE: a rule lifted while its watch was opening is held
+// again for the pass and armed afresh, and the wait taken before the lift holds until the
+// watch the rule has now is open.
+func TestReadyFollowsARuleThroughALift(t *testing.T) {
+	store := newPhased(t, entitytest.Store(t))
+	store.set(entity.WatchInLine, nil)
+	eng, tbl := suspending(t, store, "user:tester")
+	eng.ObserveScoped(t.Context())
+	if err := eng.AddTrigger(Trigger{
+		Name:      "review",
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
+		Action:    setStage("reviewed"),
+	}); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	waitArmingSays(t, eng, "review", "in line at the store")
+	ready := eng.Ready("review")
+	s, err := NewSuspension("", "review", "*", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Held = map[string]Holder{"user:tester": {Why: "testing"}}
+	tbl.Put(s)
+	tbl.Lift(s.ID())
+	waitArmingSays(t, eng, "review", "in line at the store")
+	select {
+	case <-ready:
+		t.Fatal("Ready closed on the lift, with the rule's new watch still in line")
+	case <-time.After(100 * time.Millisecond):
+	}
+	store.set(entity.WatchOpen, nil)
+	select {
+	case <-ready:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Ready did not close once the lifted rule's watch opened")
+	}
+}
+
 // waitArming waits until the arming rules are exactly these, by name.
 func waitArming(t *testing.T, e *Engine, want []string) {
 	t.Helper()

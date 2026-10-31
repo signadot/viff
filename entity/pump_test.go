@@ -1,10 +1,13 @@
 package entity
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
+
+	logdapi "github.com/signadot/tony-format/go-tony/system/logd/api"
 )
 
 // pumpsHeld is how many pumps the store holds now.
@@ -492,6 +495,28 @@ func TestAWatchSaysItsPhases(t *testing.T) {
 		t.Fatal("a Failed watch closed Ready")
 	default:
 	}
+	// Failed is final: its stream says nothing more, whatever lands at the path after.
+	set(t, s, RefAt("demo", "nothing", "1"), Obj{"stage": "open"}.Payload())
+	reader(none.Commits).quiet(t, "a Failed watch heard a commit")
+}
+
+// Asking again cures every refusal but a path the substrate cannot address: a path that
+// disagrees with the shape of what stands there is a shape a write can change.
+func TestOnlyAnUnaddressablePathIsUncurable(t *testing.T) {
+	for code, want := range map[string]bool{
+		logdapi.ErrCodeInvalidPath:  true,
+		logdapi.ErrCodePathConflict: false,
+		logdapi.ErrCodeNotFound:     false,
+		"context deadline exceeded": false,
+	} {
+		err := fmt.Errorf("watching: %w", &logdapi.Error{Code: code, Message: code})
+		if got := uncurable(err); got != want {
+			t.Errorf("uncurable(%s) = %v, want %v", code, got, want)
+		}
+	}
+	if uncurable(errors.New("context deadline exceeded")) {
+		t.Error("an error that is not the substrate's is uncurable")
+	}
 }
 
 // A refusal is a phase, not an error: the store asks again behind the handle, and the watch
@@ -527,5 +552,46 @@ func TestARefusedWatchIsAskedAgainBehindItsHandle(t *testing.T) {
 	}
 	if c := <-w.Commits; len(c.Changes) != 1 {
 		t.Fatalf("the opening picture carries %d changes, want the one entity", len(c.Changes))
+	}
+
+	// A WATCH THAT STOOD AND IS REFUSED AGAIN is the store asking for it again, and a joiner
+	// that wants its stream waits through the ask rather than being told no for it.
+	g.point("127.0.0.1:1")
+	g.cut()
+	eventuallyWithin(t, 30*time.Second, "the watch says Refused again, having stood", func() bool {
+		st, _ := w.State()
+		return st.Phase == WatchRefused && st.Opened
+	})
+	type answer struct {
+		ch  <-chan Commit
+		err error
+	}
+	joined := make(chan answer, 1)
+	go func() {
+		ch, unsub, err := s.WatchSubtree(3, "demo", "pr")
+		if err == nil {
+			defer unsub()
+		}
+		joined <- answer{ch, err}
+		if err == nil {
+			<-t.Context().Done()
+		}
+	}()
+	select {
+	case a := <-joined:
+		t.Fatalf("a joiner between two asks was answered (%v, %v); want it to wait through the ask", a.ch, a.err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	g.point(docd.ClientTCPAddr())
+	select {
+	case a := <-joined:
+		if a.err != nil {
+			t.Fatalf("the joiner was told no once the store answered: %v", a.err)
+		}
+		if c := <-a.ch; len(c.Changes) != 1 {
+			t.Fatalf("the joiner's picture carries %d changes, want the one entity", len(c.Changes))
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("the joiner never heard the store answer")
 	}
 }
