@@ -71,6 +71,65 @@ var (
 // instrument for the test that holds a quiet, live watch is asked and not replaced.
 var subtreeReopens atomic.Int64
 
+// DefaultWatchSlots is how many watches a store opens at once where its config says nothing.
+// Under logd's eight reads per session (maxConcurrentReads), so that pings, writes and the
+// reads of the moment keep flowing beside a round of opens. A var, so a test can set it.
+var DefaultWatchSlots = 4
+
+// watchGate is the line a watch waits in to open: a slot is taken before the establish and
+// given back when the opening State (or Absent) has arrived, since that picture is a read the
+// store serves and a session has a few reads at a time. Asked for every watch at once — the
+// restore arming every rule at start, a drop re-establishing every watch it ended — they take
+// every read slot, the ping queues behind them, the heartbeat tears the session down, and the
+// round begins again: on staging one timeout became twenty minutes of them (git-issue
+// wz2pp5j0). In line, a round is a few at a time, and the session answers between.
+//
+// FIFO, and one line: a re-establish and a new watch wait together. The root watch (Observe)
+// is not in it: it is one watch, opened only while something observes.
+type watchGate struct {
+	slots    chan struct{}
+	waiting  atomic.Int64 // watches in line
+	inFlight atomic.Int64 // watches between their establish and their opening picture
+	high     atomic.Int64 // the most in flight at once: what a test checks
+}
+
+func newWatchGate(n int) *watchGate {
+	if n <= 0 {
+		n = DefaultWatchSlots
+	}
+	return &watchGate{slots: make(chan struct{}, n)}
+}
+
+// take waits for a slot, or for ctx.
+func (g *watchGate) take(ctx context.Context) error {
+	g.waiting.Add(1)
+	defer g.waiting.Add(-1)
+	select {
+	case g.slots <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	n := g.inFlight.Add(1)
+	for {
+		h := g.high.Load()
+		if n <= h || g.high.CompareAndSwap(h, n) {
+			return nil
+		}
+	}
+}
+
+// give returns a slot.
+func (g *watchGate) give() {
+	g.inFlight.Add(-1)
+	<-g.slots
+}
+
+// WatchesWaiting is how many watches this store has in line to open, and how many are opening:
+// a number for status, where a count above zero says the store is behind on its watches.
+func (s *LogdStore) WatchesWaiting() (waiting, opening int64) {
+	return s.gate.waiting.Load(), s.gate.inFlight.Load()
+}
+
 // askProgress asks a watch for its progress off the pump's loop, within healProbeWithin, and
 // answers nil for a head and the error for no answer.
 func askProgress(ctx context.Context, w *libctl.Watch) <-chan error {
@@ -159,6 +218,7 @@ type LogdStore struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	logger *slog.Logger
+	gate   *watchGate // the line a watch waits in to open on sess
 
 	cfg LogdConfig // retained so Scope() can clone it for a scoped child
 
@@ -221,6 +281,9 @@ type LogdConfig struct {
 	// ConnectTimeout bounds the initial session connect; 0 uses the default. A caller that
 	// retries (waiting for logd/docd to come up) sets this short so each attempt fails fast.
 	ConnectTimeout time.Duration
+	// WatchSlots is how many watches this store opens at once (watchGate); 0 uses
+	// DefaultWatchSlots.
+	WatchSlots int
 	// Logger receives what this store cannot report through a return value — a watch delta
 	// that did not apply, whose cost every event after it pays. Nil uses the default.
 	Logger *slog.Logger
@@ -276,7 +339,7 @@ func OpenLogdStore(cfg LogdConfig) (*LogdStore, error) {
 
 	s := &LogdStore{
 		root: root, cfg: cfg, sess: sess, ctx: ctx, cancel: cancel,
-		logger: cfg.Logger, subs: map[int]*observer{},
+		logger: cfg.Logger, subs: map[int]*observer{}, gate: newWatchGate(cfg.WatchSlots),
 	}
 
 	// No standing root watch. The store serves Get/List/Modify on demand (single-ref
@@ -1669,8 +1732,16 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 	// that stood before the watch opened, only the fields written since. So the watch opens on
 	// the state the substrate offers (as a re-established one does), and a caller that wanted to
 	// join at the next change gets that state taken in silently below rather than reported.
+	//
+	// IN LINE FIRST (watchGate): the slot is held from here until the opening picture is in,
+	// and the pump below holds it.
+	if err := s.gate.take(ctx); err != nil {
+		cancel()
+		return nil, nil, nil, err
+	}
 	w, err := s.establish(ctx, path, &libctl.WatchOptions{WaitIfAbsent: waitIfAbsent})
 	if err != nil {
+		s.gate.give()
 		cancel()
 		return nil, nil, nil, err
 	}
@@ -1695,6 +1766,17 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 	out := make(chan Commit, 256)
 	go func() {
 		defer close(out)
+		// held is whether this pump holds a gate slot: taken above for the first establish and
+		// again before each re-establish, given back when the opening picture arrives — or
+		// here, if the pump ends or the watch ends before it.
+		held := true
+		give := func() {
+			if held {
+				held = false
+				s.gate.give()
+			}
+		}
+		defer give()
 		// doc is the watched subtree as a root-rooted document, maintained by APPLYING
 		// each watch event: a State (initial or reconnect) replaces it; a Patch is
 		// applied with tony.Patch. We never interpret the patch's structure — which
@@ -1870,6 +1952,9 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 						}
 						continue
 					}
+					if ev.Patch == nil {
+						give() // the opening picture is in, whichever establish asked for it
+					}
 					if !seeded && ev.Patch == nil {
 						apply(ev)
 						prev = doc
@@ -1892,6 +1977,7 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 			// against the last snapshot.
 			stand(nil)
 			w.Close()
+			give() // a watch that ended before its picture came gives its slot back here
 			if ctx.Err() != nil {
 				return
 			}
@@ -1905,8 +1991,15 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 				// missed deltas one at a time into a stream that is already the bottleneck: a
 				// 2000-entity slice reached 894 of 2000 in three minutes. Re-initializing
 				// sends ONE State carrying net state, and the same slice completed in 32s.
+				//
+				// IN LINE AGAIN: every watch a drop ended wants back at once, and the line is
+				// what makes that a few at a time (watchGate).
+				if s.gate.take(ctx) != nil {
+					return
+				}
 				nw, err := s.establish(ctx, path, &libctl.WatchOptions{WaitIfAbsent: true})
 				if err == nil {
+					held = true
 					w = nw
 					stand(nw)
 					// An ask still out on the watch that ended answers for nobody, and the
@@ -1916,6 +2009,7 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 					backoff = 100 * time.Millisecond
 					break
 				}
+				s.gate.give()
 				select {
 				case <-ctx.Done():
 					return
