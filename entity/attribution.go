@@ -3715,15 +3715,6 @@ func PrincipalRef(kind, principal string) Ref { return VerseRef(PrincipalSystem,
 
 func (a *attributed) ReadError() error { return ReadFailed(a.Store) }
 
-// WatchesWaiting is the inner store's line of watches (LogdStore.WatchesWaiting), and none for
-// a store that keeps no line.
-func (a *attributed) WatchesWaiting() (waiting, opening int64) {
-	if h, ok := a.Store.(interface{ WatchesWaiting() (int64, int64) }); ok {
-		return h.WatchesWaiting()
-	}
-	return 0, 0
-}
-
 // StandsAt answers only for what the principal may read into. Whether a node exists is something
 // a read tells you, so it is refused where the read would be: asked freely, it would say which
 // names stand inside a place held out to nobody.

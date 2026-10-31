@@ -47,7 +47,7 @@ func TestADropReopensWatchesAFewAtATime(t *testing.T) {
 		}(i, ch)
 	}
 	// Every watch has its opening picture: the first diff reports the whole slice.
-	holdsWithin(t, 20*time.Second, "every watch opened", func() bool {
+	eventuallyWithin(t, 20*time.Second, "every watch opened", func() bool {
 		for i := range seen {
 			if seen[i].Load() == 0 {
 				return false
@@ -61,12 +61,11 @@ func TestADropReopensWatchesAFewAtATime(t *testing.T) {
 
 	before := subtreeReopens.Load()
 	g.cut()
-	holdsWithin(t, 30*time.Second, "every watch re-established", func() bool {
+	eventuallyWithin(t, 30*time.Second, "every watch re-established", func() bool {
 		return subtreeReopens.Load() >= before+n
 	})
-	holdsWithin(t, 10*time.Second, "the line drained", func() bool {
-		waiting, opening := s.WatchesWaiting()
-		return waiting == 0 && opening == 0
+	eventuallyWithin(t, 10*time.Second, "the line drained", func() bool {
+		return s.gate.waiting.Load() == 0 && s.gate.inFlight.Load() == 0
 	})
 	if h := s.gate.high.Load(); h > 2 {
 		t.Fatalf("%d watches were opening at once across the drop; the line allows 2", h)
@@ -80,7 +79,7 @@ func TestADropReopensWatchesAFewAtATime(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("write after the drop: %v", err)
 	}
-	holdsWithin(t, 10*time.Second, "the re-established watch reports a write", func() bool {
+	eventuallyWithin(t, 10*time.Second, "the re-established watch reports a write", func() bool {
 		return seen[3].Load() > was
 	})
 }
@@ -126,14 +125,53 @@ func TestAWatchOnNothingHoldsNoSlot(t *testing.T) {
 	}
 }
 
-// holdsWithin polls cond until it holds or the deadline passes, and fails with why otherwise.
-func holdsWithin(t *testing.T, within time.Duration, why string, cond func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(within)
-	for !cond() {
-		if time.Now().After(deadline) {
-			t.Fatalf("not within %s: %s", within, why)
-		}
-		time.Sleep(50 * time.Millisecond)
+// A watch asked for its progress (WatchSubtreeProgress) is the watermark's, and every
+// attributed read above the watermark waits on it: it opens ahead of the line, where a plain
+// watch waits its turn.
+func TestAProgressWatchOpensAheadOfTheLine(t *testing.T) {
+	docd := startDocd(t, startLogd(t))
+	s, err := OpenLogdStore(LogdConfig{Addr: docd.ClientTCPAddr(), ClientID: "verse-test", WatchSlots: 1})
+	if err != nil {
+		t.Fatalf("open store: %v", err)
 	}
+	t.Cleanup(func() { s.Close() })
+
+	// The one slot is held for the length of the test.
+	if err := s.gate.take(t.Context()); err != nil {
+		t.Fatalf("hold the slot: %v", err)
+	}
+	t.Cleanup(s.gate.give)
+
+	type opened struct {
+		stop func()
+		err  error
+	}
+	plain := make(chan opened, 1)
+	go func() {
+		_, stop, err := s.WatchSubtree(3, "demo", "plain")
+		plain <- opened{stop, err}
+	}()
+	asked := make(chan opened, 1)
+	go func() {
+		_, stop, _, err := s.WatchSubtreeProgress(3, "demo", "asked")
+		asked <- opened{stop, err}
+	}()
+	select {
+	case o := <-asked:
+		if o.err != nil {
+			t.Fatalf("progress watch: %v", o.err)
+		}
+		o.stop()
+	case <-time.After(10 * time.Second):
+		t.Fatal("the progress watch waited in the line")
+	}
+	select {
+	case o := <-plain:
+		if o.err == nil {
+			o.stop()
+		}
+		t.Fatal("the plain watch opened past a held slot")
+	case <-time.After(time.Second):
+	}
+	eventually(t, "the plain watch is in line", func() bool { return s.gate.waiting.Load() == 1 })
 }

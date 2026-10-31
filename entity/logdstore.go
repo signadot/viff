@@ -84,8 +84,13 @@ var DefaultWatchSlots = 4
 // round begins again: on staging one timeout became twenty minutes of them (git-issue
 // wz2pp5j0). In line, a round is a few at a time, and the session answers between.
 //
-// FIFO, and one line: a re-establish and a new watch wait together. The root watch (Observe)
-// is not in it: it is one watch, opened only while something observes.
+// FIFO, and one line: a re-establish and a new watch wait together. Two kinds of watch are not
+// in it. The root watch (Observe) is one watch, opened only while something observes. A watch
+// asked for its progress (WatchSubtreeProgress) is the watermark's: every attributed read above
+// the watermark waits on it, and is refused while it has no standing watch (see watermark.go,
+// "it fails closed"), so one in line would hold every such read for the length of the round
+// behind it. They are few — the loaded view's two, over the perms mirror — and their pictures
+// are small; they open ahead of the line, and the line is sized with room for them.
 type watchGate struct {
 	slots    chan struct{}
 	waiting  atomic.Int64 // watches in line
@@ -122,12 +127,6 @@ func (g *watchGate) take(ctx context.Context) error {
 func (g *watchGate) give() {
 	g.inFlight.Add(-1)
 	<-g.slots
-}
-
-// WatchesWaiting is how many watches this store has in line to open, and how many are opening:
-// a number for status, where a count above zero says the store is behind on its watches.
-func (s *LogdStore) WatchesWaiting() (waiting, opening int64) {
-	return s.gate.waiting.Load(), s.gate.inFlight.Load()
 }
 
 // askProgress asks a watch for its progress off the pump's loop, within healProbeWithin, and
@@ -1699,7 +1698,7 @@ func (s *LogdStore) WatchSubtreeAt(depth int, waitIfAbsent bool, prefix ...strin
 // `git.head.verse` watches `git.head` — a watch AT the node would see that node's own changes
 // and never its appearance — and reports the one node its pattern names.
 func (s *LogdStore) WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsent, noInit bool) (<-chan Commit, func(), error) {
-	ch, unsub, _, err := s.watchPattern(prefix, at, waitIfAbsent, noInit)
+	ch, unsub, _, err := s.watchPattern(prefix, at, waitIfAbsent, noInit, true)
 	return ch, unsub, err
 }
 
@@ -1709,13 +1708,16 @@ func (s *LogdStore) WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 // carries a commit marked as progress (Commit.progress) at that head or later, after every
 // commit at or below it. A watch that ends before it answers carries none; the stream goes on
 // with the re-established watch's State, marked as a resync. The error is the watch not being
-// asked — being re-established, or a store that cannot say (`unsupported`).
+// asked — being re-established, or a store that cannot say (`unsupported`). Such a watch opens
+// ahead of the line (watchGate): reads wait on it, so it is not to wait on the rest.
 func (s *LogdStore) WatchSubtreeProgress(depth int, prefix ...string) (<-chan Commit, func(), func(context.Context) (int64, error), error) {
 	prefix = trimEmpty(prefix)
-	return s.watchPattern(prefix, PrefixPattern(prefix, depth), true, false)
+	return s.watchPattern(prefix, PrefixPattern(prefix, depth), true, false, false)
 }
 
-func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent, noInit bool) (<-chan Commit, func(), func(context.Context) (int64, error), error) {
+// inLine says whether the watch stands in the store's line to open (watchGate), on its first
+// establish and on each re-establish.
+func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent, noInit, inLine bool) (<-chan Commit, func(), func(context.Context) (int64, error), error) {
 	prefix = trimEmpty(prefix)
 	// The path as segments as well as a kpath: every event is rooted at the watched path
 	// and the document is rooted at the store root, so the segments are what bridges the two
@@ -1735,13 +1737,17 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 	//
 	// IN LINE FIRST (watchGate): the slot is held from here until the opening picture is in,
 	// and the pump below holds it.
-	if err := s.gate.take(ctx); err != nil {
-		cancel()
-		return nil, nil, nil, err
+	if inLine {
+		if err := s.gate.take(ctx); err != nil {
+			cancel()
+			return nil, nil, nil, err
+		}
 	}
 	w, err := s.establish(ctx, path, &libctl.WatchOptions{WaitIfAbsent: waitIfAbsent})
 	if err != nil {
-		s.gate.give()
+		if inLine {
+			s.gate.give()
+		}
 		cancel()
 		return nil, nil, nil, err
 	}
@@ -1768,8 +1774,9 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 		defer close(out)
 		// held is whether this pump holds a gate slot: taken above for the first establish and
 		// again before each re-establish, given back when the opening picture arrives — or
-		// here, if the pump ends or the watch ends before it.
-		held := true
+		// here, if the pump ends or the watch ends before it. A watch not in line never holds
+		// one.
+		held := inLine
 		give := func() {
 			if held {
 				held = false
@@ -1994,12 +2001,12 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 				//
 				// IN LINE AGAIN: every watch a drop ended wants back at once, and the line is
 				// what makes that a few at a time (watchGate).
-				if s.gate.take(ctx) != nil {
+				if inLine && s.gate.take(ctx) != nil {
 					return
 				}
 				nw, err := s.establish(ctx, path, &libctl.WatchOptions{WaitIfAbsent: true})
 				if err == nil {
-					held = true
+					held = inLine
 					w = nw
 					stand(nw)
 					// An ask still out on the watch that ended answers for nobody, and the
@@ -2009,7 +2016,9 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 					backoff = 100 * time.Millisecond
 					break
 				}
-				s.gate.give()
+				if inLine {
+					s.gate.give()
+				}
 				select {
 				case <-ctx.Done():
 					return

@@ -109,10 +109,17 @@ func openStoreAt(t *testing.T, addr string) *LogdStore {
 	return s
 }
 
-// eventually polls cond until true or the deadline, failing otherwise.
+// eventually polls cond until true or three seconds, failing otherwise.
 func eventually(t *testing.T, why string, cond func() bool) {
 	t.Helper()
-	deadline := time.After(3 * time.Second)
+	eventuallyWithin(t, 3*time.Second, why, cond)
+}
+
+// eventuallyWithin is eventually with the deadline given: for what takes a round of the
+// store, not a moment of it.
+func eventuallyWithin(t *testing.T, within time.Duration, why string, cond func() bool) {
+	t.Helper()
+	deadline := time.After(within)
 	for {
 		if cond() {
 			return
