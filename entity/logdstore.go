@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	tony "github.com/signadot/tony-format/go-tony"
@@ -24,138 +23,6 @@ import (
 // Log-backed entities are stored at <root>.<system>.<kind>.<id>, so a single watch on
 // the root observes the whole (historied) verse.
 const DefaultRoot = "verse"
-
-// subtreeHealAfter and subtreeHealMax bound how long a subtree watch can be DEAD WITHOUT
-// KNOWING IT before it finds out.
-//
-// A watch can end for reasons the client did not cause: logd drops a watcher whose buffer it
-// cannot drain, because Broadcast runs on the committing goroutine and will not block on a slow
-// consumer (server/watch.go, "fail it loudly"). Since go-tony v0.0.112 that arrives as a proper
-// terminal watch event carrying a resume commit, so the ordinary path below — the events channel
-// closing, and the re-watch that follows — learns about it promptly and this timer never fires.
-//
-// It exists for the case where nothing arrives to be learned from. Before v0.0.112 the failure
-// was sent as an ERROR RESPONSE stamped with the watch's id, and libctl routes anything without
-// an Event to its table of in-flight REQUESTS, where a watch id has not appeared since its own
-// request completed — so it was logged as "dropping response with no matching request" and
-// dropped. The watch was then ORPHANED: gone on the server, alive here, its channel silent
-// forever, and a trigger over that slice quietly stopped firing with no error anywhere a charter
-// author would see. Measured against a server of that vintage, a slice taking sustained writes
-// stalled partway through and never moved again.
-//
-// That specific hole is closed upstream. This stays because the shape of it is not specific: a
-// consumer that can only ever be told is a consumer that waits forever whenever the telling is
-// what breaks. So the watch does not only wait — a whole interval of silence, from a slice that
-// may merely be idle or from one whose watch is gone, is answered by ASKING THE WATCH
-// (libctl Watch.Progress): one small request the server answers with its head, which a watch
-// that is gone does not answer. Only then is it re-established, whose State resyncs the document
-// and whose diff against the last snapshot emits whatever was missed. Re-establishing at every
-// silence instead was measured on staging: most slices see an event about once a minute, so
-// ~390 watches each paid a State of their whole subtree every minute, 13 a second, a third of
-// logd's read work (git-issue v13rvrcth12krdjbvdn0). The interval DOUBLES while nothing arrives,
-// to subtreeHealMax, so an idle slice is asked less and less often; any event resets it.
-//
-// healProbeWithin is how long the ask may take before silence is read as death. Generous
-// against a loaded store, since a false death costs the State the ask exists to avoid.
-//
-// Vars, not consts, so a test can shorten them: the failure they answer takes thousands of
-// writes to provoke, and waiting out the production interval to observe the cure would make
-// the test useless.
-var (
-	subtreeHealAfter = 30 * time.Second
-	subtreeHealMax   = 5 * time.Minute
-	healProbeWithin  = 10 * time.Second
-)
-
-// subtreeReopens counts the subtree watches re-established after they ended or fell silent: an
-// instrument for the test that holds a quiet, live watch is asked and not replaced.
-var subtreeReopens atomic.Int64
-
-// DefaultWatchSlots is how many watches a store opens at once where its config says nothing
-// (LogdConfig.WatchSlots is the knob). Under logd's eight reads per session
-// (maxConcurrentReads), so that pings, writes and the reads of the moment keep flowing beside
-// a round of opens.
-const DefaultWatchSlots = 4
-
-// watchGate is the line a watch waits in to open: a slot is taken before the establish and
-// given back when the opening State (or Absent) has arrived, since that picture is a read the
-// store serves and a session has a few reads at a time. Asked for every watch at once — the
-// restore arming every rule at start, a drop re-establishing every watch it ended — they take
-// every read slot, the ping queues behind them, the heartbeat tears the session down, and the
-// round begins again: on staging one timeout became twenty minutes of them (git-issue
-// wz2pp5j0). In line, a round is a few at a time, and the session answers between. The line
-// is the client's side of it: that a session's ping waits behind its reads at all is logd's
-// (tony-format x32pp5j0), and the line's width is set against logd's count as it stands.
-//
-// FIFO, and one line: a re-establish and a new watch wait together. Two kinds of watch are not
-// in it. The root watch (Observe) is one watch, opened only while something observes. A watch
-// asked for its progress (WatchSubtreeProgress) is the watermark's: every attributed read above
-// the watermark waits on it, and is refused while it has no standing watch (see watermark.go,
-// "it fails closed"), so one in line would hold every such read for the length of the round
-// behind it. They are few — the loaded view's two, over the perms mirror — and their pictures
-// are small; they open ahead of the line, and the line is sized with room for them.
-//
-// OFF is a line with no slots (LogdConfig.WatchSlots below zero; versed reads it from
-// VERSE_WATCH_SLOTS): take and give do nothing, and watches open as they are asked for.
-type watchGate struct {
-	slots    chan struct{} // nil when off
-	waiting  atomic.Int64  // watches in line
-	inFlight atomic.Int64  // watches between their establish and their opening picture
-	high     atomic.Int64  // the most in flight at once: what a test checks
-}
-
-func newWatchGate(n int) *watchGate {
-	if n < 0 {
-		return &watchGate{}
-	}
-	if n == 0 {
-		n = DefaultWatchSlots
-	}
-	return &watchGate{slots: make(chan struct{}, n)}
-}
-
-// take waits for a slot, or for ctx.
-func (g *watchGate) take(ctx context.Context) error {
-	if g.slots == nil {
-		return nil
-	}
-	g.waiting.Add(1)
-	defer g.waiting.Add(-1)
-	select {
-	case g.slots <- struct{}{}:
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	n := g.inFlight.Add(1)
-	for {
-		h := g.high.Load()
-		if n <= h || g.high.CompareAndSwap(h, n) {
-			return nil
-		}
-	}
-}
-
-// give returns a slot.
-func (g *watchGate) give() {
-	if g.slots == nil {
-		return
-	}
-	g.inFlight.Add(-1)
-	<-g.slots
-}
-
-// askProgress asks a watch for its progress off the pump's loop, within healProbeWithin, and
-// answers nil for a head and the error for no answer.
-func askProgress(ctx context.Context, w *libctl.Watch) <-chan error {
-	done := make(chan error, 1)
-	go func() {
-		pctx, cancel := context.WithTimeout(ctx, healProbeWithin)
-		defer cancel()
-		_, err := w.Progress(pctx)
-		done <- err
-	}()
-	return done
-}
 
 // sessionBudget is how long ONE call on the session may take: a read, or an attempt to
 // establish a watch. The one call that had no budget at all is what made a store outage
@@ -262,6 +129,11 @@ type LogdStore struct {
 
 	scopesMu sync.Mutex
 	scopes   map[string]*LogdStore // lazily-created scoped children, keyed by scope name
+
+	// pumps are the watches this store holds on prefixes, one per prefix path, shared by every
+	// subscriber to that prefix (pump). A scoped child has its own, on its own session.
+	pumpsMu sync.Mutex
+	pumps   map[string]*pump
 }
 
 // ReadError is the last read this store could not perform, or nil. The next read that succeeds
@@ -355,6 +227,7 @@ func OpenLogdStore(cfg LogdConfig) (*LogdStore, error) {
 	s := &LogdStore{
 		root: root, cfg: cfg, sess: sess, ctx: ctx, cancel: cancel,
 		logger: cfg.Logger, subs: map[int]*observer{}, gate: newWatchGate(cfg.WatchSlots),
+		pumps: map[string]*pump{},
 	}
 
 	// No standing root watch. The store serves Get/List/Modify on demand (single-ref
@@ -1692,11 +1565,12 @@ func trimEmpty(prefix []string) []string {
 // WatchSubtreeAt is WatchSubtree for a caller that did NOT choose the path — a person naming one
 // at a command line — and so wants a path holding nothing refused rather than waited on.
 //
-// The refusal is the substrate's: since go-tony v0.0.201 a watch on such a path is refused unless
-// the client asks to wait, which is the same answer a read of it gives. So this costs no extra
-// read; it is one flag on the request verse already makes, and the alternative — reading the path
-// first to decide whether to open the stream — would be verse re-implementing what the store
-// does at the point it is asked.
+// The answer is the watch's own picture: the store's one watch on the prefix (pump) always
+// waits, since the rules sharing it mean to, and what its opening State says — the path holds
+// nothing (Absent, which a patch that takes the path away says too) — is what this caller is
+// refused on. So this costs no read of its own; it reads the picture every subscriber to the
+// prefix is seeded from, and the alternative — reading the path first to decide whether to
+// open the stream — would be verse asking twice.
 // NO INIT EVENT: a subtree watch normally opens with the full state at the starting commit, and
 // this one joins the stream at its next change, as `Observe` does. A caller that wants what
 // already stands there asks WatchPattern for it, which is what `verse watch --init` does.
@@ -1714,7 +1588,7 @@ func (s *LogdStore) WatchSubtreeAt(depth int, waitIfAbsent bool, prefix ...strin
 // `git.head.verse` watches `git.head` — a watch AT the node would see that node's own changes
 // and never its appearance — and reports the one node its pattern names.
 func (s *LogdStore) WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsent, noInit bool) (<-chan Commit, func(), error) {
-	ch, unsub, _, err := s.watchPattern(prefix, at, waitIfAbsent, noInit, true)
+	ch, unsub, _, err := s.watchPattern(prefix, at, waitIfAbsent, noInit, false)
 	return ch, unsub, err
 }
 
@@ -1728,370 +1602,7 @@ func (s *LogdStore) WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 // ahead of the line (watchGate): reads wait on it, so it is not to wait on the rest.
 func (s *LogdStore) WatchSubtreeProgress(depth int, prefix ...string) (<-chan Commit, func(), func(context.Context) (int64, error), error) {
 	prefix = trimEmpty(prefix)
-	return s.watchPattern(prefix, PrefixPattern(prefix, depth), true, false, false)
-}
-
-// inLine says whether the watch stands in the store's line to open (watchGate), on its first
-// establish and on each re-establish.
-func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent, noInit, inLine bool) (<-chan Commit, func(), func(context.Context) (int64, error), error) {
-	prefix = trimEmpty(prefix)
-	// The path as segments as well as a kpath: every event is rooted at the watched path
-	// and the document is rooted at the store root, so the segments are what bridges the two
-	// (see nestAt).
-	segs := append([]string{s.root}, prefix...)
-	path := seg(s.root)
-	for _, p := range prefix {
-		path += "." + seg(p)
-	}
-	ctx, cancel := context.WithCancel(s.ctx)
-	// THE STATE IS ALWAYS ASKED FOR, and noInit says only whether it is SAID. Every commit this
-	// watch emits carries an entity's whole state (Event.To), and that state is this watch's copy
-	// of the slice with each delta applied: a copy that starts from nothing holds, for an entity
-	// that stood before the watch opened, only the fields written since. So the watch opens on
-	// the state the substrate offers (as a re-established one does), and a caller that wanted to
-	// join at the next change gets that state taken in silently below rather than reported.
-	//
-	// IN LINE FIRST (watchGate): the slot is held from here until the opening picture is in,
-	// and the pump below holds it. held is whether a slot is held, set with every take and
-	// cleared by give, the one way a slot goes back: on the opening picture, on a failed
-	// establish, or when the pump ends. Below the pump's launch, the pump alone touches them.
-	held := false
-	give := func() {
-		if held {
-			held = false
-			s.gate.give()
-		}
-	}
-	if inLine {
-		if err := s.gate.take(ctx); err != nil {
-			cancel()
-			return nil, nil, nil, fmt.Errorf("watching %s: %w", path, err)
-		}
-		held = true
-	}
-	w, err := s.establish(ctx, path, &libctl.WatchOptions{WaitIfAbsent: waitIfAbsent})
-	if err != nil {
-		give()
-		cancel()
-		return nil, nil, nil, err
-	}
-	// standing is the watch progress is asked of: this one, then each that re-establishes it,
-	// and none while it is being re-established.
-	var standingMu sync.Mutex
-	standing := w
-	stand := func(nw *libctl.Watch) {
-		standingMu.Lock()
-		standing = nw
-		standingMu.Unlock()
-	}
-	progress := func(ctx context.Context) (int64, error) {
-		standingMu.Lock()
-		cur := standing
-		standingMu.Unlock()
-		if cur == nil {
-			return 0, fmt.Errorf("watching %s: the watch is being re-established", path)
-		}
-		return cur.Progress(ctx)
-	}
-	out := make(chan Commit, 256)
-	go func() {
-		defer close(out)
-		defer give() // a pump that ends with a slot held gives it back
-		// doc is the watched subtree as a root-rooted document, maintained by APPLYING
-		// each watch event: a State (initial or reconnect) replaces it; a Patch is
-		// applied with tony.Patch. We never interpret the patch's structure — which
-		// operations a delta is spelled with, and in what order, is logd's to choose —
-		// we apply it opaquely and read entities out of the reconstructed object.
-		//
-		// prev is the last emitted snapshot, and it starts EMPTY — including under the
-		// opening State, so the first diff reports the whole slice and the backlog fires.
-		// Nothing here distinguishes the opening State from a reconnect's, and nothing has
-		// to: after the first diff prev holds the slice, so a reconnect's State diffs to
-		// the gap alone.
-		doc := ir.Null()
-		// prev is the document the last diff was taken against. It starts EMPTY, so the
-		// first diff reports everything standing at the pattern.
-		var prev *ir.Node
-		pattern := []*kpath.KPath{at}
-		// rev is the commit the reconstructed doc now stands at, stamped on every event the
-		// next diff emits. Without it a subtree event carried no revision at all while a root
-		// event carried its commit — the same stream, one half of it unable to say WHEN.
-		// Nothing downstream could then ask a question about a change at the commit it
-		// happened at, which is the whole affordance AsOf exists to offer.
-		var rev int64
-		// sent is the commit of the last commit sent, which a consumer that applied it holds the
-		// place as of — and as of every commit after it that changed nothing at the pattern — and
-		// resync says the event just applied was a State: the diff it makes is the net of every
-		// commit since, not the changes of the one it is stamped with. Both ride each commit as
-		// since and resync, for a consumer that keeps a copy of its own beside other reads of the
-		// same place (Attribution.follow).
-		var sent int64
-		var resync bool
-		// seeded is whether the opening State has been taken in: under noInit it is taken
-		// into the copy and the snapshot alike, so the first diff says nothing about what
-		// already stood, and the first change carries the whole of what it changed.
-		seeded := !noInit
-		send := func(c Commit) bool {
-			select {
-			case out <- c:
-				return true
-			case <-ctx.Done():
-				return false
-			}
-		}
-		apply := func(ev *logdapi.WatchEvent) {
-			resync = ev.Patch == nil
-			if ev.Commit > rev {
-				rev = ev.Commit
-			}
-			switch {
-			case ev.Patch != nil:
-				// A patch that fails to apply leaves doc unchanged and is reported; a
-				// later State (e.g. on reconnect) resyncs it. We never decode the patch
-				// to recover by hand (applyDelta). A patch that TOOK THE PATH AWAY is
-				// applied like any other — that is how this copy comes to hold nothing —
-				// so the Absent riding on it needs no branch of its own.
-				doc = s.applyDelta(doc, nestAt(ev.Patch, segs))
-			case ev.State != nil || ev.Absent:
-				doc = nestAt(stateOf(ev), segs) // full current state of the subtree
-			}
-		}
-		// emitDiff reconstructs the entity set from doc and emits the diff vs the last
-		// snapshot as ONE commit, stamped with the revision the doc now stands at. Returns
-		// false if the consumer went away (ctx done) mid-send.
-		//
-		// It is called once per watch event, never once per burst. Coalescing — apply N
-		// deltas, diff once — used to make a rapid N-file write cost one diff instead of N,
-		// and it is exact for a LEVEL, since the merged diff still reports each entity's
-		// current state. It is lossy for an EDGE: a value that appears at one commit and
-		// disappears at the next leaves no trace in a diff spanning both, and a transition the
-		// stream never reported cannot be recovered downstream. So the diff is per commit, and
-		// the cost is a subtree walk per commit rather than per burst.
-		//
-		// A commit that changes nothing in this slice emits nothing rather than an empty
-		// commit: this watch reports one subtree, and a consumer of it has no use for the
-		// revisions where its slice stood still.
-		emitDiff := func() bool {
-			// One change walk (changesAt), with no delta to prune it: a State replaces the
-			// document wholesale, so only the two documents can say what differs. It compares
-			// with ir.Node.DeepEqual, not reflect.DeepEqual — a node carries Parent links that
-			// say where it sits rather than what it holds, and a document rebuilt from a fresh
-			// read wires them anew, which reflect would count as every node changing.
-			changes := changesAt(pattern, childByKey(prev, s.root), childByKey(doc, s.root), nil, rev)
-			prev = doc
-			if len(changes) == 0 {
-				return true
-			}
-			c := Commit{Rev: rev, Changes: changes, since: sent, resync: resync}
-			sent = rev
-			return send(c)
-		}
-		backoff := 100 * time.Millisecond
-		// A watch can die WITHOUT SAYING SO, and then this loop would wait on a channel
-		// nothing will ever send to again. See subtreeHealAfter: the heal timer is what
-		// bounds how long that can last.
-		//
-		// NOT WHILE THE OPENING PICTURE IS PENDING. From an establish until its State (or
-		// Absent) arrives, the watch is a read the store is serving, and a probe sent then
-		// queues behind that very read and answers nothing about the watch; a slow picture —
-		// the condition the line (watchGate) exists for — would read as a dead watch and send
-		// it round again. So the timer stands still (quiet) from each establish until the
-		// first event, which starts it (alive). A session that dies meanwhile is the
-		// heartbeat's to end, and ends this stream with it.
-		heal := time.NewTimer(subtreeHealAfter)
-		defer heal.Stop()
-		healAfter := subtreeHealAfter
-		// quiet stops the heal, and drains a firing nobody took.
-		quiet := func() {
-			if !heal.Stop() {
-				select {
-				case <-heal.C:
-				default:
-				}
-			}
-		}
-		// alive holds the heal off for a whole interval from now, and forgets any backoff it
-		// accrued: the watch has just shown itself alive.
-		alive := func() {
-			healAfter = subtreeHealAfter
-			quiet()
-			heal.Reset(healAfter)
-		}
-		quiet() // the first picture is pending
-		// probe is a heal's ask in flight on w, nil while there is none; swallow counts the
-		// progress events those asks draw, which are the pump's and not the consumer's.
-		var probe <-chan error
-		swallow := 0
-		for {
-			// Drain the current watch until it ends. A clean end is a force-end
-			// (a mount/unmount overlapping this subtree changed membership →
-			// WatchEndedError, reason "session_mounted" or "session_unmounted"
-			// since go-tony v0.0.122, one "membership_changed" before it) or a
-			// dropped connection — NOT a terminal condition. We re-establish below
-			// rather than returning, and the reason does not change that: every
-			// ending upstream defines is re-establishable, and re-watching is the
-			// whole response. It would matter to code deciding whether the content
-			// it is about to see SHOULD differ; this loop only has to catch up.
-		pump:
-			for {
-				select {
-				case <-ctx.Done():
-					w.Close()
-					return
-				case <-heal.C:
-					// Quiet for a whole interval. Either the slice is idle or the watch is
-					// dead, and the watch itself is asked which: one request, off this loop so
-					// the stream keeps draining meanwhile. The timer stands still until it
-					// answers, or does not, below.
-					if probe == nil {
-						probe = askProgress(ctx, w)
-						// Counted as sent, not as answered: the progress event an ask draws
-						// can reach the stream before the ask's own answer is read here.
-						swallow++
-					}
-				case err := <-probe:
-					probe = nil
-					// Back off while nothing changes either way, so an idle slice is asked
-					// less often and a dark one is not re-established every interval.
-					healAfter = min(healAfter*2, subtreeHealMax)
-					heal.Reset(healAfter)
-					if err != nil {
-						break pump // no answer: dead, or as good as; re-establish
-					}
-				case ev, ok := <-w.Events():
-					if !ok {
-						break pump // watch ended; re-establish
-					}
-					if ev.Progress && swallow > 0 {
-						// A heal's ask answered, which the answer itself already said. Not an
-						// event about the slice, so neither the heal nor the consumer hears it.
-						swallow--
-						if ev.Commit > rev {
-							rev = ev.Commit
-						}
-						continue
-					}
-					alive()
-					if ev.ReplayComplete {
-						continue // live watch: no replay phase to complete
-					}
-					if ev.Progress {
-						// Current through its commit: nothing is applied, and the consumer that
-						// asked is told, in order with every commit before it.
-						if ev.Commit > rev {
-							rev = ev.Commit
-						}
-						c := Commit{Rev: ev.Commit, since: sent, progress: true}
-						sent = ev.Commit
-						if !send(c) {
-							w.Close()
-							return
-						}
-						continue
-					}
-					if ev.Patch == nil {
-						give() // the opening picture is in, whichever establish asked for it
-					}
-					if !seeded && ev.Patch == nil {
-						apply(ev)
-						prev = doc
-						seeded = true
-						continue
-					}
-					// One event in, one diff out. There is no burst-coalescing here: see
-					// emitDiff on why a merged diff is exact for a level and lossy for an
-					// edge.
-					apply(ev)
-					if !emitDiff() {
-						w.Close()
-						return
-					}
-				}
-			}
-			// The watch ended (force-end or drop). Re-establish on the same path — it
-			// re-composes against the CURRENT mount set — with backoff. The fresh
-			// State event replaces doc with current truth, and emitDiff closes any gap
-			// against the last snapshot.
-			stand(nil)
-			w.Close()
-			give() // a watch that ended before its picture came gives its slot back here
-			if ctx.Err() != nil {
-				return
-			}
-			for {
-				// RE-WATCH AND RECONCILE, rather than resuming from the commit the ended
-				// event names. logd offers an exact resume point (WatchEndedError.Commit) and
-				// libctl's own doc says who it is for: "a snapshot-diffing consumer needs
-				// neither and can just re-watch and reconcile against its last snapshot."
-				// That is precisely this watch — emitDiff holds prev and reports the
-				// difference — and measured, the choice is not close. Resuming replays the
-				// missed deltas one at a time into a stream that is already the bottleneck: a
-				// 2000-entity slice reached 894 of 2000 in three minutes. Re-initializing
-				// sends ONE State carrying net state, and the same slice completed in 32s.
-				//
-				// IN LINE AGAIN: every watch a drop ended wants back at once, and the line is
-				// what makes that a few at a time (watchGate).
-				if inLine {
-					if s.gate.take(ctx) != nil {
-						return
-					}
-					held = true
-				}
-				nw, err := s.establish(ctx, path, &libctl.WatchOptions{WaitIfAbsent: true})
-				if err == nil {
-					w = nw
-					stand(nw)
-					// An ask still out on the watch that ended answers for nobody, and the
-					// progress event it would have drawn never reaches this stream.
-					probe, swallow = nil, 0
-					quiet() // the picture is pending again; its arrival starts the heal
-					subtreeReopens.Add(1)
-					backoff = 100 * time.Millisecond
-					break
-				}
-				give()
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(backoff):
-				}
-				backoff = min(backoff*2, 5*time.Second)
-			}
-		}
-	}()
-	return out, cancel, progress, nil
-}
-
-// nestAt puts a watch event's node under the segments of the path it is rooted at, which is
-// what makes it part of a document rooted further up.
-//
-// ONE ROOTING (session protocol 2). Every event of a watch — the State it opens on and each
-// Patch after it — is rooted AT THE WATCHED PATH, with that path's own segments stripped: a
-// watch on verse.demo.pr sees top-level fields that are ids. The documents this store reads
-// entities out of are rooted at the store root, because a Ref is addressed from there and
-// nothing below the root is fixed for the store as a whole. Nesting is the difference
-// between the two rootings, and it is the same for both event shapes.
-//
-// A nil node is a path holding nothing and nests as a null, which reads out as no entities.
-func nestAt(node *ir.Node, segs []string) *ir.Node {
-	if node == nil {
-		node = ir.Null()
-	}
-	for i := len(segs) - 1; i >= 0; i-- {
-		node = ir.FromMap(map[string]*ir.Node{segs[i]: node})
-	}
-	return node
-}
-
-// stateOf is the value a state event opens on: what it carries, or — when the path holds
-// nothing — an empty object. ABSENCE IS SAID BY THE WIRE, not spelled as a null: null is a
-// value a path can hold, so a document seeded with one where nothing stands could not tell
-// an entity holding null from a slice that is empty.
-func stateOf(ev *logdapi.WatchEvent) *ir.Node {
-	if ev.Absent {
-		return ir.FromMap(map[string]*ir.Node{})
-	}
-	return ev.State
+	return s.watchPattern(prefix, PrefixPattern(prefix, depth), true, false, true)
 }
 
 // nodesAt calls fn for every node exactly depth object levels below node — whatever stands there:
