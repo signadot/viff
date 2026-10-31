@@ -71,10 +71,11 @@ var (
 // instrument for the test that holds a quiet, live watch is asked and not replaced.
 var subtreeReopens atomic.Int64
 
-// DefaultWatchSlots is how many watches a store opens at once where its config says nothing.
-// Under logd's eight reads per session (maxConcurrentReads), so that pings, writes and the
-// reads of the moment keep flowing beside a round of opens. A var, so a test can set it.
-var DefaultWatchSlots = 4
+// DefaultWatchSlots is how many watches a store opens at once where its config says nothing
+// (LogdConfig.WatchSlots is the knob). Under logd's eight reads per session
+// (maxConcurrentReads), so that pings, writes and the reads of the moment keep flowing beside
+// a round of opens.
+const DefaultWatchSlots = 4
 
 // watchGate is the line a watch waits in to open: a slot is taken before the establish and
 // given back when the opening State (or Absent) has arrived, since that picture is a read the
@@ -82,7 +83,9 @@ var DefaultWatchSlots = 4
 // restore arming every rule at start, a drop re-establishing every watch it ended — they take
 // every read slot, the ping queues behind them, the heartbeat tears the session down, and the
 // round begins again: on staging one timeout became twenty minutes of them (git-issue
-// wz2pp5j0). In line, a round is a few at a time, and the session answers between.
+// wz2pp5j0). In line, a round is a few at a time, and the session answers between. The line
+// is the client's side of it: that a session's ping waits behind its reads at all is logd's
+// (tony-format x32pp5j0), and the line's width is set against logd's count as it stands.
 //
 // FIFO, and one line: a re-establish and a new watch wait together. Two kinds of watch are not
 // in it. The root watch (Observe) is one watch, opened only while something observes. A watch
@@ -1736,18 +1739,26 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 	// join at the next change gets that state taken in silently below rather than reported.
 	//
 	// IN LINE FIRST (watchGate): the slot is held from here until the opening picture is in,
-	// and the pump below holds it.
+	// and the pump below holds it. held is whether a slot is held, set with every take and
+	// cleared by give, the one way a slot goes back: on the opening picture, on a failed
+	// establish, or when the pump ends. Below the pump's launch, the pump alone touches them.
+	held := false
+	give := func() {
+		if held {
+			held = false
+			s.gate.give()
+		}
+	}
 	if inLine {
 		if err := s.gate.take(ctx); err != nil {
 			cancel()
-			return nil, nil, nil, err
+			return nil, nil, nil, fmt.Errorf("watching %s: %w", path, err)
 		}
+		held = true
 	}
 	w, err := s.establish(ctx, path, &libctl.WatchOptions{WaitIfAbsent: waitIfAbsent})
 	if err != nil {
-		if inLine {
-			s.gate.give()
-		}
+		give()
 		cancel()
 		return nil, nil, nil, err
 	}
@@ -1772,18 +1783,7 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 	out := make(chan Commit, 256)
 	go func() {
 		defer close(out)
-		// held is whether this pump holds a gate slot: taken above for the first establish and
-		// again before each re-establish, given back when the opening picture arrives — or
-		// here, if the pump ends or the watch ends before it. A watch not in line never holds
-		// one.
-		held := inLine
-		give := func() {
-			if held {
-				held = false
-				s.gate.give()
-			}
-		}
-		defer give()
+		defer give() // a pump that ends with a slot held gives it back
 		// doc is the watched subtree as a root-rooted document, maintained by APPLYING
 		// each watch event: a State (initial or reconnect) replaces it; a Patch is
 		// applied with tony.Patch. We never interpret the patch's structure — which
@@ -1880,6 +1880,18 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 		heal := time.NewTimer(subtreeHealAfter)
 		defer heal.Stop()
 		healAfter := subtreeHealAfter
+		// alive holds the heal off for a whole interval from now, and forgets any backoff it
+		// accrued: the watch has just shown itself alive, or has just been opened.
+		alive := func() {
+			healAfter = subtreeHealAfter
+			if !heal.Stop() {
+				select {
+				case <-heal.C:
+				default:
+				}
+			}
+			heal.Reset(healAfter)
+		}
 		// probe is a heal's ask in flight on w, nil while there is none; swallow counts the
 		// progress events those asks draw, which are the pump's and not the consumer's.
 		var probe <-chan error
@@ -1933,15 +1945,7 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 						}
 						continue
 					}
-					// It is alive: hold the heal off, and forget any backoff it accrued.
-					healAfter = subtreeHealAfter
-					if !heal.Stop() {
-						select {
-						case <-heal.C:
-						default:
-						}
-					}
-					heal.Reset(healAfter)
+					alive()
 					if ev.ReplayComplete {
 						continue // live watch: no replay phase to complete
 					}
@@ -2001,24 +2005,28 @@ func (s *LogdStore) watchPattern(prefix []string, at *kpath.KPath, waitIfAbsent,
 				//
 				// IN LINE AGAIN: every watch a drop ended wants back at once, and the line is
 				// what makes that a few at a time (watchGate).
-				if inLine && s.gate.take(ctx) != nil {
-					return
+				if inLine {
+					if s.gate.take(ctx) != nil {
+						return
+					}
+					held = true
 				}
 				nw, err := s.establish(ctx, path, &libctl.WatchOptions{WaitIfAbsent: true})
 				if err == nil {
-					held = inLine
 					w = nw
 					stand(nw)
 					// An ask still out on the watch that ended answers for nobody, and the
 					// progress event it would have drawn never reaches this stream.
 					probe, swallow = nil, 0
+					// The heal counts from the open, not from the last event of the watch that
+					// ended: a wait in line can outlast the interval, and a fresh watch asked
+					// before its opening picture is in is asked behind that very read.
+					alive()
 					subtreeReopens.Add(1)
 					backoff = 100 * time.Millisecond
 					break
 				}
-				if inLine {
-					s.gate.give()
-				}
+				give()
 				select {
 				case <-ctx.Done():
 					return
