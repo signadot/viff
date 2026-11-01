@@ -83,7 +83,12 @@
 # what runs is recorded, the candidate's issue is closed, and the commit status on main's commit
 # passes. An install the io refuses is a GitHub issue, closed by the next install that succeeds,
 # and the commit status fails. A tree on verse/live nobody answered yes to is not installed.
-
+#
+# A REFUSED INSTALL IS ASKED AGAIN when the verse moves, not only when the repository does: what
+# refused it may have been the verse's (no runner offering a spawn yet, a build behind the
+# charters, an io not registered), and the minute's check of verse/live finds when the tree would
+# install. Each time that check's verdict rises to `installs`, the install of what verse/live
+# holds is asked again, once; the io does nothing for an install that stands.
 #
 # NOTHING STANDS UNSAID. Each way main, verse/live and the installed charters can disagree has an
 # outcome somebody sees:
@@ -91,7 +96,8 @@
 #   main's tree unanswered          its question, on the candidate's issue
 #   main's tree answered no         an issue, open while main holds it
 #   main's check refused            an issue, open until main's tree passes
-#   an install refused              an issue, open until an install succeeds
+#   an install refused              an issue, open until an install succeeds, and the install
+#                                   asked again when the minute's check says it would
 #   verse/live not what runs        an issue, open until verse/live is back in step: the installed
 #                                   charters are checked against verse/live's tree every minute
 #                                   (the reconciler's own schedule), and two rounds differing at
@@ -732,8 +738,9 @@ rules:
       id: install-failed
       value: {closed: true}
 # An install the io refused for good is an issue in the repository, saying what the verse said,
-# and the commit status on main's commit fails. The issue and the status stand until the input
-# changes: a fix on main is a new tree, a new candidate and a new question.
+# and the commit status on main's commit fails. The issue and the status stand until an install
+# succeeds: a fix on main is a new tree, a new candidate and a new question, and a verse that has
+# moved under the tree is the install asked again (install-again).
 - name: install-failed
   stratum: install
   condition:
@@ -750,7 +757,7 @@ rules:
         to: issue
         open:
           title: "charters: the install of what verse/live holds failed"
-          body: "verse refused to install the charters tree $subject.value.tree, from commit $subject.value.from, into repos.verse:\n\n$subject.value.error\n\nThis issue closes when an install succeeds."
+          body: "verse refused to install the charters tree $subject.value.tree, from commit $subject.value.from, into repos.verse:\n\n$subject.value.error\n\nverse asks again when its minute check finds the tree would install. This issue closes when an install succeeds."
         closed: false
     - path: "repo-charters.verse.out.github"
       id: $subject.value.tree
@@ -809,6 +816,25 @@ rules:
     - path: "repo-charters.verse.livecheck"
       id: live
       value: {to: "check.repos.verse", record: live, round: $subject.value.due}
+# A REFUSED INSTALL ASKED AGAIN: each time the minute's check finds that what verse/live holds
+# would install, where it did not find so the round before, the install of that tree is asked
+# again, once (an edge, not a level). What refused it may have been the verse's and not the
+# tree's: no runner offering a spawn yet, a build behind the charters, an io not registered. The
+# io does nothing for an install that stands, so a rise over a tree that runs costs nothing.
+- name: install-again
+  stratum: livecheck
+  condition:
+    on:
+      path: "repo-charters.verse.livecheck.*"
+      value: {record: live, verdict: installs}
+    subject:
+      path: "repo-charters.verse.livecheck.*"
+      value: {record: live, verdict: installs, tree: !glob "*", round: !glob "*"}
+  action:
+    derive:
+    - path: "repo-charters.verse.install"
+      id: $subject.value.tree
+      value: {again: $subject.value.round}
 # verse/live HOLDING SOMETHING OTHER THAN WHAT RUNS is an open issue: not restored. The ask comes
 # when somebody opens a pull request to fix it; what runs back in step closes it. Two rounds in a
 # row at one entry, so an install verse is making is not taken for it.

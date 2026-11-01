@@ -60,13 +60,15 @@ func prAt(t *testing.T, srv *versed.Server, n int, sha, tree string) {
 }
 
 // installedBy answers an install input as the git io's out half would: the status beside it
-// saying which tree was installed, for which entry of verse/live, from which commit.
+// saying which tree was installed, for which entry of verse/live, from which commit, and taking
+// away a refusal standing before it in the same write (io/out.go).
 func installedBy(t *testing.T, srv *versed.Server, tree, entry, from string) {
 	t.Helper()
 	ioLatency()
 	entitytest.Set(t, srv.Store, entity.RefAt("repo-charters", "r", "install", tree+"~status"), entity.Obj{
 		"tree": tree, "sha": entry, "from": from, "address": "repos.r", "charters": 1, "to": "install.repos.r",
-		"at": time.Now().UTC().Format(time.RFC3339),
+		"at":    time.Now().UTC().Format(time.RFC3339),
+		"error": entity.Removed(), "failed": entity.Removed(), "failedAt": entity.Removed(), "failedOn": entity.Removed(),
 	}.Payload())
 }
 

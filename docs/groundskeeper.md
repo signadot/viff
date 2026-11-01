@@ -49,7 +49,8 @@ the repository, and it is reviewed like any other change.
   in the directory. `git log refs/verse/live` is what ran, and from where.
 - **Every problem has an issue.** A no, a check that fails, an install that is refused, and
   installed charters that differ from `verse/live` each open an issue. The issue closes when the
-  cause is gone.
+  cause is gone. A refused install is asked again when verse's minute check finds it would
+  install.
 
 The reconciler is itself a charter that verse ships.
 [Its text](../system/repocharters/charter.tony.tmpl) explains all of this in its comments, and a
