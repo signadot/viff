@@ -126,7 +126,7 @@ but only once Dana has looked at the UI:
 ```sh
 # alice
 verse ask ship -q "Ship the hotfix?" --to you@example.com
-#   asked ship-3f2a…: Ship the hotfix?
+#   raised question ship-3f2a…: Ship the hotfix?
 
 # you
 verse ask ui-ok -q "Is the UI ok to ship?" --to dana@example.com --due 24h \
