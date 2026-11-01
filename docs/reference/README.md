@@ -67,7 +67,7 @@ Comments need no flag: verse reads and writes them everywhere.
 
 | Command | What it does |
 |---|---|
-| `status` | the engine and the store, now. `restoring:` names the parts of a start that are still waiting on the store; `arming:` under a charter names rules whose watch is still opening. Both are absent on a verse that is up. |
+| `status` | the engine and the store, now. `restoring:` names the parts of a start that are still waiting on the store; `arming:` under a charter names armed rules whose watch the store is still opening, with what it is doing for each — in line, opening it, opening it again after a drop, or refused and asking again — and `pending:` the rules held for something else — a stratum, a runner — with what each waits for. All are absent on a verse that is up. |
 | `schema [<name>]` | the whole schema: the root, by top-level path, then every shape it names. A name prints that one definition. |
 
 ### data (d)

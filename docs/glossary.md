@@ -370,8 +370,9 @@ See [Strata](strata.md#two-rules-and-they-are-the-whole-thing).
 
 ### held rule
 
-A held rule is a rule that names a stratum that is not installed. It fires on nothing until
-the stratum is installed. `verse charter` prints it with `held: <stratum>`.
+A held rule is a rule that is installed but not armed: it names a stratum that is not
+installed, or a spawn no runner offers yet. It fires on nothing until what it waits for
+arrives, and verse arms it then. `verse charter` prints it with `held: <what it waits for>`.
 
 A held rule is not under a [hold](#hold).
 

@@ -6902,8 +6902,13 @@ func (s *HeldRule) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Field: Rule
 	irMap["rule"] = ir.FromString(string(s.Rule))
 
-	// Field: Stratum
-	irMap["stratum"] = ir.FromString(string(s.Stratum))
+	// Field: Waits
+	irMap["waits"] = ir.FromString(string(s.Waits))
+
+	// Field: Arming
+	if s.Arming {
+		irMap["arming"] = ir.FromBool(bool(s.Arming))
+	}
 
 	return ir.FromMap(irMap), nil
 }
@@ -6944,12 +6949,18 @@ func (s *HeldRule) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "rule", fieldNodeUnwrapped.Type)
 			}
 			s.Rule = string(fieldNodeUnwrapped.String)
-		case "stratum":
-			// Field: Stratum
+		case "waits":
+			// Field: Waits
 			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "stratum", fieldNodeUnwrapped.Type)
+				return fmt.Errorf("field %q: expected string, got %v", "waits", fieldNodeUnwrapped.Type)
 			}
-			s.Stratum = string(fieldNodeUnwrapped.String)
+			s.Waits = string(fieldNodeUnwrapped.String)
+		case "arming":
+			// Field: Arming
+			if fieldNodeUnwrapped.Type != ir.BoolType {
+				return fmt.Errorf("field %q: expected bool, got %v", "arming", fieldNodeUnwrapped.Type)
+			}
+			s.Arming = bool(fieldNodeUnwrapped.Bool)
 		default:
 			if gomap.IsStrict(opts...) {
 				return fmt.Errorf("unknown field %q for HeldRule", fieldName.String)

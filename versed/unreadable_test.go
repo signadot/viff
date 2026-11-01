@@ -1,18 +1,19 @@
 package versed
 
 import (
-	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"testing"
 
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/trigger/charter"
+
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/trigger"
 )
 
 // failReads is a store whose reads do not happen — the shape of a store under load, where a
@@ -93,7 +94,7 @@ func (c charterUnread) ListAt(at []string, depth int, pred func(entity.Ref) bool
 	return out
 }
 func (c charterUnread) ListAtErr(at []string, depth int, pred func(entity.Ref) bool) ([]entity.Entity, error) {
-	if slices.Equal(at, []string{entity.VerseRoot, trigger.CharterSystem}) {
+	if slices.Equal(at, []string{entity.VerseRoot, charter.System}) {
 		return nil, errFor("context deadline exceeded")
 	}
 	return entity.ListAtErr(c.Store, at, depth, pred)

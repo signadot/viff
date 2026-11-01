@@ -11,6 +11,7 @@ import (
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // suspending is an engine over store with a loaded table of its own and the given suspensions in
@@ -296,10 +297,10 @@ func TestAWildcardStopsCoveringWhatSomebodyOwns(t *testing.T) {
 	// suspend, and a rule acts as whoever owns it, so it is hers to patch her own PR with. Not
 	// written down, since this store holds none of versed's seed rows to admit her record — so
 	// the record is put there, a rule nobody owns acting as nobody.
-	if err := eng.addTrigger(reviewRule("review", entity.Obj{"stage": "reviewed"}), false, "user:alice@example.com"); err != nil {
+	if err := eng.addTrigger(reviewRule("review", entity.Obj{"stage": "reviewed"}), "user:alice@example.com"); err != nil {
 		t.Fatal(err)
 	}
-	if err := entity.Establish(store, CharterRefAt("", "review"), "user:alice@example.com", entity.Ref{}, nil); err != nil {
+	if err := entity.Establish(store, charter.RuleRef("", "review"), "user:alice@example.com", entity.Ref{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -323,7 +324,7 @@ func TestAWildcardStopsCoveringWhatSomebodyOwns(t *testing.T) {
 func TestOnlyTheSystemSuspendsTheSystemsRule(t *testing.T) {
 	store := entity.As(entitytest.Store(t), entity.SystemDefault)
 	eng, tbl := suspending(t, store, "user:bob@example.com", [3]string{"*", "", "demo.pr.2"})
-	if err := eng.addTrigger(reviewRule("review", entity.Obj{"stage": "reviewed"}), false, entity.SystemCharter); err != nil {
+	if err := eng.addTrigger(reviewRule("review", entity.Obj{"stage": "reviewed"}), entity.SystemCharter); err != nil {
 		t.Fatal(err)
 	}
 	pr2 := entity.RefAt("demo", "pr", "2")
@@ -684,10 +685,10 @@ func TestARulePatchesARowThatHoldsSomebodyElsesPlace(t *testing.T) {
 	store := entity.As(raw, entity.SystemDefault)
 	eng := New(store, task.NewRegistry())
 	alice, carol := "user:alice@example.com", "user:carol@example.com"
-	if err := eng.addTrigger(reviewRule("review", entity.Obj{"stage": "reviewed"}), false, alice); err != nil {
+	if err := eng.addTrigger(reviewRule("review", entity.Obj{"stage": "reviewed"}), alice); err != nil {
 		t.Fatal(err)
 	}
-	if err := entity.Establish(store, CharterRefAt("", "review"), alice, entity.Ref{}, nil); err != nil {
+	if err := entity.Establish(store, charter.RuleRef("", "review"), alice, entity.Ref{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())

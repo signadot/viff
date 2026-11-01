@@ -172,6 +172,12 @@ type Store interface {
 	// watches the place above it. The two flags are the watch's manners — whether to wait on a
 	// path holding nothing, and whether to open with what already stands there.
 	WatchPattern(prefix []string, at *kpath.KPath, waitIfAbsent, noInit bool) (<-chan Commit, func(), error)
+	// Watch is WatchPattern answered at once, as a handle: the store's one watch on the prefix
+	// is opened — in line, established, asked again after a refusal — behind the answer, and
+	// the handle says where that stands (WatchPhase) and when it is Ready. A refusal is a
+	// phase, not an error; the error is a request the store cannot make at all. The two above
+	// are this with the wait made for the caller.
+	Watch(prefix []string, at *kpath.KPath, opts WatchOptions) (*Watch, error)
 	// Scope returns a view of the store isolated to the named scope: writes land in
 	// the scope, reads and Observe/Since see the baseline layered with the scope.
 	// This is the seam for a sandbox: one party's work overlaid on the shared verse (see

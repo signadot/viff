@@ -159,6 +159,9 @@ var (
 				"charters are separated by lines of ---, each at its own at:"), "an install carries the charters"),
 			flag("prune", "make at and what is under it hold what the charters hold: a package or a rule they "+
 				"leave out goes, in the same step"),
+			text("wait", "how long to hold the answer for the rules to arm, as 30s: an install answers once "+
+				"the charters are accepted, and a rule's watch opens at the store's pace; without it the "+
+				"answer says which rules are still arming"),
 		},
 	}
 	CharterRemove = &Verb{

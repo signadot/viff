@@ -2,11 +2,12 @@ package versed
 
 import (
 	"bytes"
-	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 

@@ -144,7 +144,7 @@ func (m *mcpServer) charterInstall(ctx context.Context, a verbs.Args) (*mcp.Call
 	// The report names the scope the install was made in, this server's, as a task's names
 	// none: its acts are baseline's.
 	var buf bytes.Buffer
-	if err := installAnswer(&buf, resp, m.c.Scope, asKPaths); err != nil {
+	if _, err := installAnswer(&buf, resp, m.c.Scope, asKPaths); err != nil {
 		return nil, nil, fmt.Errorf("install: %w", err)
 	}
 	return answer(&buf)

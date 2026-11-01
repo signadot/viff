@@ -10,6 +10,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/schedule"
 	"github.com/signadot/verse/trigger"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // A CHARTER PACKAGE is a charter installed at an address: its own engine, its own rules, its
@@ -39,12 +40,14 @@ func (s *Server) packageEngine(at string) (*trigger.Engine, error) {
 	}
 	s.scopeMu.Lock()
 	defer s.scopeMu.Unlock()
-	return s.packageEngineLocked(confine)
+	return s.packageEngineLocked(confine, nil)
 }
 
 // packageEngineLocked is packageEngine with the lock already held — the restore path below
-// builds several in one pass.
-func (s *Server) packageEngineLocked(confine trigger.Subtree) (*trigger.Engine, error) {
+// builds several in one pass — and reads what the package declares it reads, for an engine made
+// here: set before the engine observes, since its rules are placed from their records the
+// moment it does and each is checked against the declaration as it is placed.
+func (s *Server) packageEngineLocked(confine trigger.Subtree, reads []trigger.Subtree) (*trigger.Engine, error) {
 	key := "at:" + confine.Stamp()
 	if pe, ok := s.scopeEngs[key]; ok {
 		return pe.eng, nil
@@ -61,11 +64,12 @@ func (s *Server) packageEngineLocked(confine trigger.Subtree) (*trigger.Engine, 
 	eng.SetSpawner(s.spawnerFor(s.Store, "", eng))
 	eng.SetDeadlineMover(s.moveDeadline)
 	eng.SetOfferCheck(s.offerCheck())
+	eng.SetReads(reads)
 	ctx, cancel := context.WithCancel(s.ctx)
 	// Per-trigger observation, exactly as a scope's engine has: each rule watches the subtrees
 	// it reads, which for a package is usually wider than what it may write.
 	eng.ObserveScoped(ctx)
-	s.scopeEngs[key] = &scopeEngine{eng: eng, cancel: cancel}
+	s.scopeEngs[key] = &scopeEngine{eng: eng, ctx: ctx, cancel: cancel}
 	return eng, nil
 }
 
@@ -105,19 +109,34 @@ func (s *Server) packageEngines() []*trigger.Engine {
 	return out
 }
 
-// restorePackages installs each package's durable charter back into an engine of its own.
+// kickEngines asks every engine this verse runs — baseline's, each package's, each scope's —
+// for a pass over its pending rules (trigger.Engine.Kick): something that could clear a cause
+// happened that no engine sees for itself, a runner registered or removed.
+func (s *Server) kickEngines() {
+	s.Eng.Kick()
+	s.scopeMu.Lock()
+	engs := make([]*trigger.Engine, 0, len(s.scopeEngs))
+	for _, pe := range s.scopeEngs {
+		engs = append(engs, pe.eng)
+	}
+	s.scopeMu.Unlock()
+	for _, eng := range engs {
+		eng.Kick()
+	}
+}
+
+// restorePackages brings each package's charter back into an engine of its own, and waits for
+// the records to be in.
 //
 // A package is VISIBLE where a scope is not, and that is the whole difference in lifecycle: a
 // scope's layer cannot be enumerated from baseline, so a scope comes back when its owner
 // reconnects, while a package is a stamp on records anyone can list — so a restart brings every
-// package back by reading the charter and grouping it by address.
+// package back by reading the charter and grouping it by address. Each engine then follows its
+// own records (trigger/follow.go), taking the ones stamped with its address.
 //
-// It runs after the baseline charter is loaded, and takes only the records stamped with an
-// address; the baseline load takes only the unstamped ones (Engine.ownRecord).
-//
-// ASKED AGAIN WHOLE when a read did not happen — the listing of packages, or of the charter
-// (entity.IsUnread): both are read before anything is installed, a load skips what already
-// stands, and an engine is found rather than made, so a second run installs nothing twice.
+// ASKED AGAIN WHOLE when the listing did not happen (entity.IsUnread), and when an engine's
+// records are not in by the wait: an engine is found rather than made, so a second run makes
+// nothing twice.
 func (s *Server) restorePackages() error {
 	if err := s.awaiting(phaseSuspensions); err != nil {
 		return err
@@ -134,14 +153,11 @@ func (s *Server) restorePackages() error {
 	}
 	defer release()
 
-	// ONE READ OF THE CHARTER, and everything the restore installs comes from it: which packages
-	// exist, what each declares it reads, and its strata and rules. Each engine reading for
-	// itself read the whole charter twice per package, one package after another, while the
-	// store was at its busiest. And the declarations read apart from the rules could fail where
-	// the rules' read did not: every package then read as declaring nothing, and its rules loaded
-	// against an engine with no declaration and were refused, one after another
-	// (git-issue wb2pp5j0h12kssy9whn0).
-	records, err := entity.BelowErr(s.Store, isCharterRecord, 2, entity.VerseRoot, trigger.CharterSystem)
+	// ONE READ OF THE CHARTER, for which packages exist and what each declares it reads. The
+	// declarations and the rules read apart could fail apart: every package then read as
+	// declaring nothing, and its rules were refused one after another (git-issue
+	// wb2pp5j0h12kssy9whn0). Each engine takes its rules and levels from its own follow.
+	records, err := entity.BelowErr(s.Store, isCharterRecord, 2, entity.VerseRoot, charter.System)
 	if err != nil {
 		return entity.Unread(fmt.Errorf("the charter could not be read, so no package was restored: %w", err))
 	}
@@ -156,6 +172,7 @@ func (s *Server) restorePackages() error {
 	if len(names) == 0 {
 		return nil
 	}
+	imports := importsIn(records, names)
 	s.scopeMu.Lock()
 	engs := make([]*trigger.Engine, 0, len(names))
 	for _, at := range names {
@@ -164,7 +181,9 @@ func (s *Server) restorePackages() error {
 			logPackage("charter package %q: %v", at, err)
 			continue
 		}
-		eng, err := s.packageEngineLocked(confine)
+		// With its declaration, for an engine made here: a rule is checked against what its
+		// package declares it reads as it is placed.
+		eng, err := s.packageEngineLocked(confine, imports[at])
 		if err != nil {
 			logPackage("charter package %q: %v", at, err)
 			continue
@@ -172,16 +191,15 @@ func (s *Server) restorePackages() error {
 		engs = append(engs, eng)
 	}
 	s.scopeMu.Unlock()
-	// The declarations before the rules: a rule is checked against its package's reads as it
-	// installs, so a restore that loaded the charter first would refuse what it is restoring.
-	s.restorePackageImports(importsIn(records, names))
-	// OFF THE LOCK, for the reason a scope's restore is: loading a charter opens a watch per
+	// And for an engine that stood already — made by an install that arrived before this —
+	// the declaration as the records have it (restorePackageImports).
+	s.restorePackageImports(imports)
+	// OFF THE LOCK, for the reason a scope's restore is: a charter coming in opens a watch per
 	// rule, and holding the registry lock across that stalls every other lookup behind it.
+	ctx := s.ctxOrBackground()
 	for _, eng := range engs {
-		for _, load := range []func([]entity.Entity) error{eng.LoadStrataFrom, eng.LoadCharterFrom} {
-			if err := load(records); err != nil {
-				logPackage("charter package: %v", err)
-			}
+		if err := s.charterIn(ctx, eng, "the charter at "+eng.At()); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -192,7 +210,7 @@ func (s *Server) restorePackages() error {
 // the listing and the removal have to agree about what a package IS — a package that can be
 // seen by records the removal does not remove is a package nobody can take down.
 func isCharterRecord(r entity.Ref) bool {
-	return trigger.IsCharterRule(r) || trigger.IsStratum(r) || trigger.IsCharterPackage(r)
+	return charter.IsRule(r) || charter.IsStratum(r) || charter.IsPackage(r)
 }
 
 func (s *Server) packagesSeen() []string {
@@ -218,7 +236,7 @@ func (s *Server) packagesSeenErr() ([]string, error) {
 	//
 	// EACH READ ANSWERS FOR ITSELF. One check of the store's flag after both let the second
 	// read's success clear the first's failure, and a restore then brought back no packages.
-	charter, err := entity.BelowErr(s.Store, isCharterRecord, 2, entity.VerseRoot, trigger.CharterSystem)
+	charter, err := entity.BelowErr(s.Store, isCharterRecord, 2, entity.VerseRoot, charter.System)
 	if err != nil {
 		return nil, entity.Unread(err)
 	}
@@ -227,10 +245,10 @@ func (s *Server) packagesSeenErr() ([]string, error) {
 
 // packagesIn is the packages a listing of the charter names, with those the schedules name —
 // which live apart, so they are read here.
-func (s *Server) packagesIn(charter []entity.Entity) ([]string, error) {
+func (s *Server) packagesIn(records []entity.Entity) ([]string, error) {
 	var out []string
-	for _, ent := range charter {
-		if at := entity.Str(ent.Payload, trigger.AtField); at != "" {
+	for _, ent := range records {
+		if at := entity.Str(ent.Payload, charter.AtField); at != "" {
 			out = append(out, at)
 		}
 	}
@@ -314,12 +332,12 @@ func (s *Server) setPackageImports(store entity.Store, at string, subs []trigger
 		eng.SetReads(before) // narrowing refused: the engine is left as it was
 		return fmt.Errorf("reads: %w", err)
 	}
-	p := entity.Obj{trigger.AtField: confine.Stamp()}
+	p := entity.Obj{charter.AtField: confine.Stamp()}
 	if len(subs) > 0 {
-		p[trigger.ReadsField] = trigger.StampReads(subs)
+		p[charter.ReadsField] = trigger.StampReads(subs)
 	}
 	if _, _, err := store.Write(entity.Write{
-		At:    entity.Path{Ref: trigger.PackageRef(confine.Stamp())},
+		At:    entity.Path{Ref: charter.PackageRef(confine.Stamp())},
 		Value: p.Payload(),
 	}); err != nil {
 		eng.SetReads(before)
@@ -336,7 +354,7 @@ func (s *Server) packageDecl(at string) (entity.Payload, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	ent, ok, err := s.Store.Get(trigger.PackageRef(confine.Stamp()))
+	ent, ok, err := s.Store.Get(charter.PackageRef(confine.Stamp()))
 	if err != nil {
 		return nil, false, fmt.Errorf("reading the declaration at %s: %w", at, err)
 	}
@@ -368,7 +386,7 @@ func (s *Server) putPackageDecl(store entity.Store, at string, was entity.Payloa
 	if err != nil {
 		return err
 	}
-	ref := trigger.PackageRef(confine.Stamp())
+	ref := charter.PackageRef(confine.Stamp())
 	if err := s.removeDecl(store, ref); err != nil {
 		return fmt.Errorf("removing the declaration at %s: %w", at, err)
 	}
@@ -404,7 +422,7 @@ func (s *Server) dropPackageEngine(at string) {
 // happen: a graph read as empty is one where every package reads nothing, which is the opposite
 // fact.
 func (s *Server) packageImports() (map[string][]trigger.Subtree, error) {
-	charter, err := entity.BelowErr(s.Store, isCharterRecord, 2, entity.VerseRoot, trigger.CharterSystem)
+	charter, err := entity.BelowErr(s.Store, isCharterRecord, 2, entity.VerseRoot, charter.System)
 	if err != nil {
 		return nil, entity.Unread(err)
 	}
@@ -418,22 +436,22 @@ func (s *Server) packageImports() (map[string][]trigger.Subtree, error) {
 // importsIn is the declared graph in a listing of the charter: every package named, and what it
 // declares it reads. A package with rules and no declaration reads nothing, which is the default
 // the declaration replaces.
-func importsIn(charter []entity.Entity, names []string) map[string][]trigger.Subtree {
+func importsIn(records []entity.Entity, names []string) map[string][]trigger.Subtree {
 	out := map[string][]trigger.Subtree{}
 	for _, at := range names {
 		out[at] = nil
 	}
-	for _, ent := range charter {
-		if !trigger.IsCharterPackage(ent.Ref) {
+	for _, ent := range records {
+		if !charter.IsPackage(ent.Ref) {
 			continue
 		}
-		at := entity.Str(ent.Payload, trigger.AtField)
+		at := entity.Str(ent.Payload, charter.AtField)
 		if at == "" {
 			at = ent.Ref.Name()
 		}
-		subs, err := trigger.ParseReads(entity.Strs(ent.Payload, trigger.ReadsField))
+		subs, err := trigger.ParseReads(entity.Strs(ent.Payload, charter.ReadsField))
 		if err != nil {
-			logPackage("charter package %q: %v", at, err)
+			logPackage("records package %q: %v", at, err)
 			continue
 		}
 		out[at] = subs
@@ -564,7 +582,7 @@ func (s *Server) mayUninstall(store entity.Store, at string) error {
 	// requester's — so asked only there, a stranger's uninstall would take every rule down and
 	// then be refused.
 	who := entity.PrincipalOf(store)
-	if decl := trigger.PackageRef(confine.Stamp()); who != "" && !entity.IsSystem(who) {
+	if decl := charter.PackageRef(confine.Stamp()); who != "" && !entity.IsSystem(who) {
 		if _, stands, err := s.Store.Get(decl); err != nil {
 			return err
 		} else if stands {
@@ -573,7 +591,7 @@ func (s *Server) mayUninstall(store entity.Store, at string) error {
 			}
 		}
 	}
-	for _, t := range eng.Triggers() {
+	for _, t := range append(eng.Triggers(), eng.Held()...) {
 		if err := eng.MayRemoveTrigger(who, t.Name); err != nil {
 			return err
 		}
@@ -607,7 +625,9 @@ func (s *Server) takeDown(store entity.Store, at string) error {
 	if err != nil {
 		return err
 	}
-	for _, t := range eng.Triggers() {
+	// Armed and pending alike: a pending rule is written down and would arm the moment its
+	// cause cleared, in a package somebody removed.
+	for _, t := range append(eng.Triggers(), eng.Held()...) {
 		eng.RemoveTrigger(t.Name)
 	}
 	for _, st := range eng.Strata() {
@@ -626,7 +646,7 @@ func (s *Server) takeDown(store entity.Store, at string) error {
 			}
 		}
 	}
-	if err := s.removeDecl(store, trigger.PackageRef(confine.Stamp())); err != nil {
+	if err := s.removeDecl(store, charter.PackageRef(confine.Stamp())); err != nil {
 		return fmt.Errorf("%s: removing the declaration: %w", at, err)
 	}
 	// AND WHATEVER ELSE IS IN THE STORE AT THIS ADDRESS, which is not always what the engine
@@ -640,14 +660,14 @@ func (s *Server) takeDown(store entity.Store, at string) error {
 	// This is the same listing packagesSeen does, with the same predicate, which is the point:
 	// what makes a package visible is what a removal has to reach — and a read that did not
 	// happen is not "nothing left", or the records it missed outlive their package as above.
-	records, err := entity.BelowErr(s.Store, isCharterRecord, 2, entity.VerseRoot, trigger.CharterSystem)
+	records, err := entity.BelowErr(s.Store, isCharterRecord, 2, entity.VerseRoot, charter.System)
 	if err != nil {
 		return fmt.Errorf("%s: the charter could not be read, so records the engine had not "+
 			"installed may remain: %w", at, entity.Unread(err))
 	}
 	left := 0
 	for _, ent := range records {
-		if entity.Str(ent.Payload, trigger.AtField) != at {
+		if entity.Str(ent.Payload, charter.AtField) != at {
 			continue
 		}
 		if _, _, err := store.Write(entity.Write{At: entity.Path{Ref: ent.Ref}}); err != nil {

@@ -66,7 +66,7 @@ claude mcp add verse-read -- verse mcp -read-only
 | `verse_flow_show` | `verse flow show` | draws a subject's work as a tree, and what suspends it |
 | `verse_charter` | `verse charter` | reads the charter at a path: the file, a rule or level of it, or its `paths` |
 | `verse_charter_check` | `verse charter --check` | says whether charters would install at an address, and what would change |
-| `verse_charter_install` | `verse charter -a` | installs a charter, a rule or a list of them at an address, or several charters each at its own `at:`; with `prune`, what they leave out at and under the address goes |
+| `verse_charter_install` | `verse charter -a` | installs a charter, a rule or a list of them at an address, or several charters each at its own `at:`; with `prune`, what they leave out at and under the address goes; with `wait`, the answer is held that long for the rules to arm |
 | `verse_charter_remove` | `verse charter -r` | removes a package, or one rule, level or schedule of one |
 | `verse_status` | `verse status` | says what the verse is running, and what went wrong at its firings |
 | `verse_schema` | `verse schema` | prints the schema, or one definition of it |

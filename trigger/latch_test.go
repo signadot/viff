@@ -2,10 +2,11 @@ package trigger
 
 import (
 	"context"
-	"github.com/signadot/verse/systems"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/signadot/verse/systems"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/entity"

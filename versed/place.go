@@ -11,7 +11,7 @@ import (
 	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/resolver"
 	"github.com/signadot/verse/schedule"
-	"github.com/signadot/verse/trigger"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // A PLACE IS TAKEN BY WHAT IS INSTALLED OVER IT. A charter package writes beneath its address
@@ -115,7 +115,7 @@ func actingAsNobody(store entity.Store) ([]entity.Ref, error) {
 		at   []string
 		pred func(entity.Ref) bool
 	}{
-		{[]string{entity.VerseRoot, trigger.CharterSystem, trigger.CharterKind}, nil},
+		{[]string{entity.VerseRoot, charter.System, charter.RuleKind}, nil},
 		{[]string{entity.VerseRoot, schedule.System}, schedule.IsRecord},
 		{[]string{entity.VerseRoot, verseio.System}, verseio.IsRegistration},
 		{[]string{entity.VerseRoot, resolver.System}, resolver.IsResolver},

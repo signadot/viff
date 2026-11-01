@@ -212,7 +212,7 @@ An install that succeeds may print more lines. Read them:
 
 ```
   ttl: it is removed at 2026-11-01T09:00:00Z, as -r removes it; installing it again renews it.
-  held: rule triage-intake waits for stratum intake, which is not installed. It fires on nothing until that stratum is.
+  held: rule triage-intake is waiting for stratum intake. It fires on nothing until then.
   note: rule approve-deploy: gate "approval" blocks, and its refusal does not advance the subject past its own predicate (stage): …
 ```
 

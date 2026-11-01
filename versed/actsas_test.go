@@ -3,19 +3,20 @@ package versed
 import (
 	"errors"
 	"fmt"
-	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
 
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/trigger/charter"
+
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/resolver"
 	"github.com/signadot/verse/schedule"
-	"github.com/signadot/verse/trigger"
 )
 
 // A PLACE THAT ACTS IS INSTALLED AS SOMEBODY'S OR NOT AT ALL. A rule fires, a source reflects, a
@@ -46,7 +47,7 @@ func TestAnInstallerHoldingLessThanOwnerInstallsNothing(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	lessThanOwner(t, srv,
-		entity.VerseRef(trigger.CharterSystem, trigger.CharterKind),
+		entity.VerseRef(charter.System, charter.RuleKind),
 		entity.VerseRef(schedule.System), entity.VerseRef(verseio.System), entity.VerseRef(resolver.System))
 	carol := "carol@example.com"
 	dir := repoWithCommit(t)
@@ -60,7 +61,7 @@ func TestAnInstallerHoldingLessThanOwnerInstallsNothing(t *testing.T) {
 			name: carols,
 			condition: {subject: {path: "demo.pr.*", value: {stage: open}}},
 			action: {patch: {stage: seen}},
-		}`), trigger.CharterRef("carols")},
+		}`), charter.RuleRef("", "carols")},
 		{"a schedule", installAs(t, carol, ts.URL, `{name: carols-hour, every: 1h}`),
 			schedule.Ref(schedule.RecordID("", "carols-hour"))},
 		{"a resolver", postAs(t, carol, ts.URL+"/resolvers", "application/tony",
@@ -123,7 +124,7 @@ func TestAnInstallTheStoreDidNotRecordIsTakenBackOut(t *testing.T) {
 	if body := bodyOf(t, resp); resp.StatusCode != http.StatusConflict || !strings.Contains(body, "act as nobody") {
 		t.Fatalf("an install whose record was lost: %s %q, want 409", resp.Status, body)
 	}
-	if _, stands, _ := srv.Store.Get(trigger.CharterRef("watched")); stands {
+	if _, stands, _ := srv.Store.Get(charter.RuleRef("", "watched")); stands {
 		t.Error("the rule stands, with no record to say whose")
 	}
 	if _, had := srv.Eng.Rule("watched"); had {
@@ -143,11 +144,11 @@ func TestAnInstallTheStoreDidNotRecordIsTakenBackOut(t *testing.T) {
 	if resp := installAs(t, "alice@example.com", ts.URL, rule); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("the install, with the store answering: %s %s", resp.Status, bodyOf(t, resp))
 	}
-	if who, err := entity.ActsAs(srv.Store, trigger.CharterRef("watched")); err != nil || who != "user:alice@example.com" {
+	if who, err := entity.ActsAs(srv.Store, charter.RuleRef("", "watched")); err != nil || who != "user:alice@example.com" {
 		t.Errorf("the rule acts as %q (%v), want alice", who, err)
 	}
 	// What the system installs acts as the system, by its own record.
-	if who, err := entity.ActsAs(srv.Store, trigger.CharterRef("clock")); err != nil || !entity.IsSystem(who) {
+	if who, err := entity.ActsAs(srv.Store, charter.RuleRef("", "clock")); err != nil || !entity.IsSystem(who) {
 		t.Errorf("the base charter's clock acts as %q (%v), want the system", who, err)
 	}
 }

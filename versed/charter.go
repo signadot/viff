@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/trigger"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // THE CHARTER IS ONE THING AT ONE ADDRESS, and this is the one route that serves it.
@@ -118,19 +120,18 @@ func (s *Server) fillCharter(node *charterNode, at string, rows []api.ScheduleRo
 			node.ttl, node.expires = entity.Str(decl, charterTTLField), entity.Str(decl, charterExpiresField)
 		}
 	}
-	// THE RULES THAT STAND, the held ones among them: a held rule is written down and occupies
-	// its name, so a listing without it shows a charter its author did not install, and the
-	// rule they are looking for is the one that is missing. Each is marked with the stratum it
+	// THE RULES THAT STAND, the pending ones among them: a pending rule is written down and
+	// occupies its name, so a listing without it shows a charter its author did not install,
+	// and the rule they are looking for is the one that is missing. Each is marked with what it
 	// waits for.
-	held := eng.Held()
-	listed := append(eng.Triggers(), held...)
+	listed := append(eng.Triggers(), eng.Held()...)
 	node.triggers, err = codec.ToNode(listed)
 	if err != nil {
 		return fmt.Errorf("charter at %q: %w", at, err)
 	}
 	markTaskRules(listed, node.triggers)
 	markSuspendedRules(eng, node.triggers)
-	markHeldRules(held, node.triggers)
+	markHeldRules(eng.Pendings(), node.triggers)
 	if err := markTroubledRules(eng, node.triggers); err != nil {
 		return fmt.Errorf("charter at %q: %w", at, err)
 	}
@@ -298,10 +299,13 @@ func (s *Server) getCharter(w http.ResponseWriter, r *http.Request) {
 		}
 		node := &charterNode{here: true, writes: "the " + scope + " scope"}
 		var err error
-		if node.triggers, err = codec.ToNode(eng.Triggers()); err != nil {
+		// Armed and pending alike, each pending one marked with what it waits for, as the tree's
+		// packages list theirs.
+		if node.triggers, err = codec.ToNode(append(eng.Triggers(), eng.Held()...)); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		markHeldRules(eng.Pendings(), node.triggers)
 		if node.strata, err = codec.ToNode(eng.Strata()); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -417,7 +421,7 @@ func (s *Server) deleteCharterItem(w http.ResponseWriter, r *http.Request) {
 	// nobody checked is the system deleting somebody's rule, its owner record with it, and
 	// leaving the name free for the stranger who asked.
 	who := entity.PrincipalOf(s.scopedStore(r))
-	if removed, err := eng.RemoveTriggerAs(who, name); refused(w, err) {
+	if removed, err := eng.RemoveTriggerAs(r.Context(), who, name); refused(w, err) {
 		return
 	} else if removed {
 		w.WriteHeader(http.StatusNoContent)
@@ -440,7 +444,7 @@ func (s *Server) deleteCharterItem(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	switch err := eng.RemoveStratumAs(who, name); {
+	switch err := eng.RemoveStratumAs(r.Context(), who, name); {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, entity.ErrForbidden):
@@ -471,7 +475,15 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	defer release()
+	// RELEASED BEFORE THE WAIT: the lock is one charter operation at a time, and a `wait` is
+	// the store's pace, not an operation; held through it, an install waiting on a busy store
+	// would refuse every other install, removal and sweep for as long as it waited.
+	released := false
+	defer func() {
+		if !released {
+			release()
+		}
+	}()
 	docs, err := codec.ReadNodes(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -483,13 +495,28 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	groups, pruned, code, err := s.installCharterPruning(s.scopedStore(r), q.Get("scope"),
-		q.Get("at"), q.Get("prune"), docs, hold)
+	// `wait=<duration>` holds the answer until the request's rules are armed, or that long,
+	// at most maxInstallWait: an install answers once accepted, and arming is the store's pace
+	// (api.InstalledPackage). This is the one reader of the duration; the command and the
+	// tools send it as written, so a bad one has one answer.
+	var wait time.Duration
+	if v := q.Get("wait"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d < 0 || d > maxInstallWait {
+			http.Error(w, fmt.Sprintf("wait=%q: a duration, as 30s, up to %s", v, maxInstallWait), http.StatusBadRequest)
+			return
+		}
+		wait = d
+	}
+	in, code, err := s.installCharterPruning(r.Context(), s.scopedStore(r), q.Get("scope"), q.Get("at"), q.Get("prune"), docs, hold)
 	if err != nil {
 		http.Error(w, err.Error(), code)
 		return
 	}
-	out := api.Installed{Installed: installedReport(groups), Pruned: pruned}
+	release()
+	released = true
+	groups := in.settle(r.Context(), wait)
+	out := api.Installed{Installed: installedReport(groups), Pruned: in.pruned}
 	writeOut(w, r, http.StatusCreated, out)
 }
 
@@ -511,10 +538,14 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 //
 // With a PRUNE ROOT it is also a removal: see charterprune.go. With a HOLD it is a task's,
 // and every rule's spawns are held within the task (chartertask.go).
-func (s *Server) installCharterPruning(store entity.Store, scope, at, prune string, docs []*ir.Node, hold *taskCharter) ([]charterGroup, []api.Pruned, int, error) {
+//
+// WHAT IT ANSWERS IS SETTLED AFTERWARDS (installed.settle), off the charter lock: a wait for
+// the rules to arm, if asked for, and then what the install has to say of each rule, which is
+// how things stand when the request ends.
+func (s *Server) installCharterPruning(ctx context.Context, store entity.Store, scope, at, prune string, docs []*ir.Node, hold *taskCharter) (*charterInstall, int, error) {
 	groups, err := charterFilesPruning(docs, at, prune)
 	if err != nil {
-		return nil, nil, http.StatusBadRequest, err
+		return nil, http.StatusBadRequest, err
 	}
 	// AN INSTALL NAMES ITS INSTALLER. The engine persists a rule through its own store, which
 	// is the system's, and an empty name there means the engine's: a charter installed by
@@ -522,41 +553,88 @@ func (s *Server) installCharterPruning(store entity.Store, scope, at, prune stri
 	// (Server.principals); this refuses the call, whoever comes to make it — before a prune
 	// asks what nobody may remove, which an empty name would pass.
 	if entity.PrincipalOf(store) == "" {
-		return nil, nil, http.StatusBadRequest, errors.New("a charter names who installs it: its rules act as their installer")
+		return nil, http.StatusBadRequest, errors.New("a charter names who installs it: its rules act as their installer")
 	}
 	var gone []string
 	if prune != "" {
 		var code int
 		if gone, code, err = s.pruneTargets(store, scope, prune, groups); err != nil {
-			return nil, nil, code, err
+			return nil, code, err
 		}
 	}
-	tx := &charterTx{s: s, store: store, scope: scope, hold: hold, dropped: map[string][]string{}}
+	tx := &charterTx{s: s, ctx: ctx, store: store, scope: scope, hold: hold, dropped: map[string][]string{}}
 	if code, err := tx.install(groups); err != nil {
-		return nil, nil, code, err
+		return nil, code, err
 	}
 	if prune != "" {
 		if code, err := tx.pruneKept(groups); err != nil {
 			code, err := tx.refuse(code, err)
-			return nil, nil, code, err
+			return nil, code, err
 		}
 	}
 	takePackageAddresses(store, entity.PrincipalOf(store), groups)
-	for i := range groups {
-		groups[i].said = tx.notes(groups[i].at)
-	}
 	if code, err := s.pruneGone(store, gone); err != nil {
-		return nil, nil, code, err
+		return nil, code, err
 	}
-	return groups, tx.prunedReport(gone), http.StatusCreated, nil
+	return &charterInstall{tx: tx, groups: groups, pruned: tx.prunedReport(gone)}, http.StatusCreated, nil
+}
+
+// charterInstall is a request's worth of charters, in: what to answer for it is settled after.
+type charterInstall struct {
+	tx     *charterTx
+	groups []charterGroup
+	pruned []api.Pruned
+}
+
+// settle answers the groups with what the install has to say of each rule, after waiting that
+// long, at most, for the rules it placed to arm (waitArmed).
+func (in *charterInstall) settle(ctx context.Context, wait time.Duration) []charterGroup {
+	in.tx.waitArmed(ctx, wait)
+	for i := range in.groups {
+		in.groups[i].said = in.tx.notes(in.groups[i].at)
+	}
+	return in.groups
 }
 
 // installCharterAs is the install with the request already read off: the store the installer
 // acts through, the scope and the address the file is being applied at. The system's own
 // charter comes through here from a file rather than a request (installSystemCharter).
 func (s *Server) installCharterAs(store entity.Store, scope, at string, docs []*ir.Node) ([]charterGroup, int, error) {
-	groups, _, code, err := s.installCharterPruning(store, scope, at, "", docs, nil)
-	return groups, code, err
+	in, code, err := s.installCharterPruning(s.ctxOrBackground(), store, scope, at, "", docs, nil)
+	if err != nil {
+		return nil, code, err
+	}
+	return in.settle(s.ctx, 0), code, nil
+}
+
+// maxInstallWait is the longest an install's answer is held for its rules to arm: a caller
+// gone meanwhile ends the wait through its request's context, and this bounds one that stays.
+const maxInstallWait = time.Hour
+
+// waitArmed holds until every rule this request placed has its watches open (Engine.Ready),
+// or until wait has passed, or ctx — the request's — ends. Nothing is waited for with no wait.
+// A rule held for a stratum or a runner does not arm by waiting, so it is not waited on: the
+// answer says what it waits for. The channel is fetched by name once every install has
+// returned, so a rule replaced by this very install is waited on as the rule it is now.
+func (tx *charterTx) waitArmed(ctx context.Context, wait time.Duration) {
+	if wait <= 0 || len(tx.placed) == 0 {
+		return
+	}
+	deadline := time.NewTimer(wait)
+	defer deadline.Stop()
+	for _, p := range tx.placed {
+		ready := p.eng.Ready(p.rule.Name)
+		if ready == nil {
+			continue
+		}
+		select {
+		case <-ready:
+		case <-deadline.C:
+			return
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 // install applies every group, or refuses and puts back what it had applied.
@@ -662,22 +740,28 @@ func takePackageAddresses(store entity.Store, installer string, groups []charter
 // not the one that installed.
 //
 // AND WHAT THE INSTALL HAS TO SAY, which is the author's to read and nobody else's to act on:
-// `held`, the rules written down and waiting for a stratum, each with the stratum; `notes`, the
-// advisories, each with its rule. `rules` counts the rules that are installed and can fire, so
-// a file whose one rule is held answers 0 and says why.
+// `held`, the rules written down and not armed, each with what it waits for — its watches,
+// which the store opens at its own pace, or a stratum or a runner that is not there yet;
+// `notes`, the advisories, each with its rule. `rules` counts the rules accepted to fire, the
+// ones still arming among them, so a file whose one rule is held for a stratum answers 0 and
+// says why, and the count does not turn on the store's pace.
 func installedReport(groups []charterGroup) []api.InstalledPackage {
 	out := make([]api.InstalledPackage, 0, len(groups))
 	for _, g := range groups {
 		e := api.InstalledPackage{Strata: len(g.strata), At: g.at, Expires: g.expires}
+		held := 0
 		for _, n := range g.said {
-			if n.Held != "" {
-				e.Held = append(e.Held, api.HeldRule{Rule: n.rule, Stratum: n.Held})
+			if n.Waits != "" {
+				e.Held = append(e.Held, api.HeldRule{Rule: n.rule, Waits: n.Waits, Arming: n.Arming})
+				if !n.Arming {
+					held++
+				}
 			}
 			for _, a := range n.Advice {
 				e.Notes = append(e.Notes, api.RuleNote{Rule: n.rule, Note: a})
 			}
 		}
-		e.Rules = len(g.rules) - len(e.Held)
+		e.Rules = len(g.rules) - held
 		out = append(out, e)
 	}
 	return out
@@ -704,7 +788,7 @@ func (g charterGroup) empty() bool {
 
 // fileKeys are the keys of a fielded charter, and the only ones it may carry. The file is the
 // node `verse c` prints for one address, so what the install reads is what the listing wrote.
-var fileKeys = []string{"at", trigger.ReadsField, trigger.SendsField, charterTTLField, "rules", "schedules", "strata"}
+var fileKeys = []string{"at", charter.ReadsField, trigger.SendsField, charterTTLField, "rules", "schedules", "strata"}
 
 // charterFiles splits a request into the charters it installs, in request order.
 //
@@ -816,7 +900,7 @@ func fieldedCharter(doc *ir.Node, at string) (charterGroup, error) {
 				return charterGroup{}, errors.New("a charter's `at:` is an address (`drift`, `demo.pr`)")
 			}
 			declared = v.String
-		case trigger.ReadsField:
+		case charter.ReadsField:
 			hasReads = true
 		case trigger.SendsField:
 			hasSends = true
@@ -958,7 +1042,9 @@ func (s *Server) charterEngineFor(scope, at string) (*trigger.Engine, error) {
 // is as much as an engine holding live watches can offer and is what "the file is either the
 // charter or it is not" needs.
 type charterTx struct {
-	s     *Server
+	s *Server
+	// ctx bounds each wait on the engine to hold what the request wrote (trigger.Engine.InstallTriggerAs).
+	ctx   context.Context
 	store entity.Store
 	scope string
 	at    string
@@ -1004,7 +1090,7 @@ func (tx *charterTx) notes(at string) []ruleNotes {
 		if p.at != at {
 			continue
 		}
-		if n := p.eng.NotesOn(p.rule); n.Held != "" || len(n.Advice) > 0 {
+		if n := p.eng.NotesOn(p.rule); n.Waits != "" || len(n.Advice) > 0 {
 			out = append(out, ruleNotes{rule: p.rule.Name, Notes: n})
 		}
 	}
@@ -1012,6 +1098,10 @@ func (tx *charterTx) notes(at string) []ruleNotes {
 }
 
 func (tx *charterTx) push(f func() error) { tx.undo = append(tx.undo, f) }
+
+// undoCtx bounds an undo's wait on the engine: the request's lifetime is not it, since what is
+// put back is put back whether or not the requester is still there to hear it.
+func (tx *charterTx) undoCtx() context.Context { return context.WithoutCancel(tx.ctx) }
 
 // as is who this install is by: the request's principal, which the rule and level records are
 // written as, so that the charter acts as its installer from then on.
@@ -1074,18 +1164,21 @@ func (tx *charterTx) stratum(def *ir.Node) (int, error) {
 	if err != nil {
 		return http.StatusServiceUnavailable, err
 	}
-	if err := eng.InstallStratumAs(tx.as(), st); err != nil {
+	err = eng.InstallStratumAs(tx.ctx, tx.as(), st)
+	if err == nil || errors.Is(err, trigger.ErrNotReflected) { // written either way: see rule
+		tx.push(func() error {
+			if had {
+				if err := eng.RestoreStratum(tx.undoCtx(), old); err != nil {
+					return err
+				}
+				return entity.RestoreRecord(tx.store, whose)
+			}
+			return eng.RemoveStratum(st.Name)
+		})
+	}
+	if err != nil {
 		return charterCode(err), err
 	}
-	tx.push(func() error {
-		if had {
-			if err := eng.RestoreStratum(old); err != nil {
-				return err
-			}
-			return entity.RestoreRecord(tx.store, whose)
-		}
-		return eng.RemoveStratum(st.Name)
-	})
 	return http.StatusCreated, nil
 }
 
@@ -1126,25 +1219,17 @@ func (tx *charterTx) rule(def *ir.Node) (int, error) {
 	if err != nil {
 		return http.StatusServiceUnavailable, err
 	}
-	// THE SYSTEM REAPPLYING A RULE THAT STANDS AS IT IS leaves it standing. A system charter is
-	// applied over what stood at every start, after the restore has brought the same rules back,
-	// and an install replays the rule over everything it selects: on staging that was each
-	// repository's charter replayed once more, eight minutes before the verse was ready, for a
-	// config that had not changed. The same text standing as the system is what the install
-	// would leave, so there is nothing to apply. A person applying a file still replays it.
+	// THE SYSTEM REAPPLYING A RULE THAT STANDS AS IT IS leaves it standing, with nothing
+	// written. A system charter is applied over what stood at every start, after the restore
+	// has brought the same rules back: the same text standing as the system is what the
+	// install would leave, so there is nothing to apply. A rule whose words moved while its
+	// meaning stayed — the comments its author writes above it are part of its record, and
+	// not of what it does — is written, and the engine's copy follows the record with nothing
+	// placed again (trigger.Engine.InstallTriggerAs).
 	//
 	// Decided before anything is read from the store: whose a rule stands as is the perms
 	// mirror's (ActsAs), and the record snapshot below is only for undoing an install.
-	if had && tx.as() == entity.SystemCharter && before == tx.as() && sameValue(old, t) {
-		// ITS WORDS MAY HAVE MOVED WHILE ITS MEANING STAYED: the comments an author writes above
-		// a rule are part of its record — the rule as its author left it — and not of what it
-		// does. The record follows the text, with no install and nothing replayed.
-		if !sameText(old, t) {
-			if err := eng.RewriteRuleAs(tx.as(), t); err != nil {
-				return charterCode(err), err
-			}
-			tx.push(func() error { return eng.RewriteRuleAs("", old) })
-		}
+	if had && tx.as() == entity.SystemCharter && before == tx.as() && trigger.SameText(old, t) {
 		return http.StatusCreated, nil
 	}
 	// AND WHOSE IT STOOD AS, which is its perms record and not anything in the rule. An install
@@ -1155,19 +1240,25 @@ func (tx *charterTx) rule(def *ir.Node) (int, error) {
 	if err != nil {
 		return http.StatusServiceUnavailable, err
 	}
-	if err := eng.InstallTriggerAs(tx.as(), t); err != nil {
+	// THE UNDO IS PUSHED FOR WHAT WAS WRITTEN, not for what was answered: an install whose record
+	// landed and whose wait for the engine to show it did not (trigger.ErrNotReflected) is a
+	// failure the transaction unwinds, and the record it wrote is part of what it unwinds.
+	err = eng.InstallTriggerAs(tx.ctx, tx.as(), t)
+	if err == nil || errors.Is(err, trigger.ErrNotReflected) {
+		tx.push(func() error {
+			if had {
+				if err := eng.RestoreTrigger(tx.undoCtx(), old); err != nil {
+					return err
+				}
+				return entity.RestoreRecord(tx.store, whose)
+			}
+			eng.RemoveTrigger(t.Name)
+			return nil
+		})
+	}
+	if err != nil {
 		return charterCode(err), err
 	}
-	tx.push(func() error {
-		if had {
-			if err := eng.RestoreTrigger(old); err != nil {
-				return err
-			}
-			return entity.RestoreRecord(tx.store, whose)
-		}
-		eng.RemoveTrigger(t.Name)
-		return nil
-	})
 	// A rule fires as whoever its record says, so one that stands without its installer's is
 	// refused here, with the undo above already in place to take it back out.
 	if err := actsAsInstaller(tx.store, eng.RuleRef(t.Name), tx.as(), before); err != nil {
@@ -1318,7 +1409,7 @@ func (s *Server) deleteCharterAt(w http.ResponseWriter, r *http.Request, at stri
 	}
 	who := entity.PrincipalOf(s.scopedStore(r)) // see deleteCharterItem: the engine refuses for them
 	if kind == "rules" {
-		if removed, err := eng.RemoveTriggerAs(who, name); refused(w, err) {
+		if removed, err := eng.RemoveTriggerAs(r.Context(), who, name); refused(w, err) {
 			return
 		} else if removed {
 			w.WriteHeader(http.StatusNoContent)
@@ -1327,7 +1418,7 @@ func (s *Server) deleteCharterAt(w http.ResponseWriter, r *http.Request, at stri
 		notHere()
 		return
 	}
-	switch err := eng.RemoveStratumAs(who, name); {
+	switch err := eng.RemoveStratumAs(r.Context(), who, name); {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, entity.ErrForbidden):
