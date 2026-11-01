@@ -117,7 +117,7 @@ type RepoCharterConfig struct {
 	// is opened, through the github io.
 	GitHub string `tony:"field=github"`
 	// Branch is the branch the charters follow: the one a pull request proposes a change onto,
-	// and whose charters verse/live is moved to. Empty is `main`.
+	// and whose charters are added to the record verse/live. Empty is `main`.
 	Branch string `tony:"field=branch,omitzero"`
 	// At is the address the repository's charters install at, as `verse c -a` spells one
 	// (`repos.verse`). The git io installs there as itself, so it owns the address or holds

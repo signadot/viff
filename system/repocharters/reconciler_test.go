@@ -32,12 +32,13 @@ func mainAt(t *testing.T, srv *versed.Server, sha, tree string) {
 	}.Payload())
 }
 
-// liveAt moves the reflected verse/live of r to sha with the charters tree given, as the git io's
-// reflection would once it made or moved the branch.
-func liveAt(t *testing.T, srv *versed.Server, sha, tree string) {
+// liveAt moves the reflected record verse/live of r to its entry, holding the charters tree given
+// and naming the commit of main it came from, as the git io's reflection would once it made the
+// record or appended to it.
+func liveAt(t *testing.T, srv *versed.Server, entry, tree, from string) {
 	t.Helper()
-	entitytest.Set(t, srv.Store, entity.RefAt("git", "r", "ref", "verse/live"), entity.Obj{
-		"repo": "r", "name": "verse/live", "sha": sha, "type": "commit", "tree": entity.Obj{"charters": tree},
+	entitytest.Set(t, srv.Store, entity.RefAt("git", "r", "record", "live"), entity.Obj{
+		"repo": "r", "name": "live", "sha": entry, "tree": tree, "from": from,
 	}.Payload())
 }
 
@@ -59,12 +60,12 @@ func prAt(t *testing.T, srv *versed.Server, n int, sha, tree string) {
 }
 
 // installedBy answers an install input as the git io's out half would: the status beside it
-// saying which tree was installed, for which commit.
-func installedBy(t *testing.T, srv *versed.Server, tree, sha string) {
+// saying which tree was installed, for which entry of verse/live, from which commit.
+func installedBy(t *testing.T, srv *versed.Server, tree, entry, from string) {
 	t.Helper()
 	ioLatency()
 	entitytest.Set(t, srv.Store, entity.RefAt("repo-charters", "r", "install", tree+"~status"), entity.Obj{
-		"tree": tree, "sha": sha, "address": "repos.r", "charters": 1, "to": "install.repos.r",
+		"tree": tree, "sha": entry, "from": from, "address": "repos.r", "charters": 1, "to": "install.repos.r",
 		"at": time.Now().UTC().Format(time.RFC3339),
 	}.Payload())
 }
@@ -96,12 +97,12 @@ func statusUnder(p entity.Payload, context string) entity.Payload {
 func ioLatency() { time.Sleep(150 * time.Millisecond) }
 
 // refusedBy answers an install input as the out half records a refusal for good: the error, and
-// the tree, commit and address the io says beside it (io/gitinstall.go), and nothing else.
-func refusedBy(t *testing.T, srv *versed.Server, tree, sha, why string) {
+// the tree, entry, commit and address the io says beside it (io/gitinstall.go), and nothing else.
+func refusedBy(t *testing.T, srv *versed.Server, tree, entry, from, why string) {
 	t.Helper()
 	ioLatency()
 	entitytest.Set(t, srv.Store, entity.RefAt("repo-charters", "r", "install", tree+"~status"), entity.Obj{
-		"tree": tree, "sha": sha, "address": "repos.r",
+		"tree": tree, "sha": entry, "from": from, "address": "repos.r",
 		"error": why, "failed": "permanent", "failedOn": "abcd", "failedAt": time.Now().UTC().Format(time.RFC3339),
 	}.Payload())
 }
@@ -143,15 +144,6 @@ func waitQuestionID(t *testing.T, srv *versed.Server, id string) {
 		case <-time.After(5 * time.Millisecond):
 		}
 	}
-}
-
-// tagInputFor is the tag input for a tree, named by the tree in the git outbox, where the io
-// reads it: an input under a name ending in ~status (the install's status, the rule's subject)
-// is one the sink never reads, so the input is named and not keyed.
-func tagInputFor(t *testing.T, srv *versed.Server, tree string) entity.Payload {
-	t.Helper()
-	ref := entity.RefAt("repo-charters", "r", "out", "git", tree)
-	return waitEntity(t, srv, ref, func(p entity.Payload) bool { return entity.Str(p, "to") == "tag.live-verse/"+tree })
 }
 
 // A repository whose id is `verse` installs like any other: its package is
@@ -235,12 +227,12 @@ func TestTheReconcilerFollowsItsBranch(t *testing.T) {
 }
 
 // The reconciler: main's charters tree is a candidate; an unanswered one is asked about; a yes on
-// main's tree makes verse/live hold it, and the tree verse/live holds is handed to the git io to
-// install; the io's answer records what runs and tags it. A candidate asked about while
-// verse/live stands rides a pull request with verse's check on it, closed as superseded when
-// main moves on; a commit to main that leaves the charters alone installs nothing; a rollback to
-// a tree answered before moves verse/live with no second ask; a no closes the pull request with
-// the check failed; and an install the io refuses is an issue.
+// main's tree makes the record verse/live hold it, and the tree verse/live holds is handed to the
+// git io to install; the io's answer records what runs. A candidate asked about while verse/live
+// stands rides an issue with verse's statuses on main's commit, closed as superseded when main
+// moves on and closed by its install; a commit to main that leaves the charters alone installs
+// nothing; a rollback to a tree answered before appends to verse/live with no second ask; a no
+// closes the issue with the status failed; and an install the io refuses is an issue.
 func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	dir := t.TempDir()
 	// Hosted as `verse up` hosts tasks, so a call list can ask.
@@ -298,6 +290,8 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 
 	const treeA, treeB = "aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111", "bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222"
 	sha := func(n int) string { return strings.Repeat(fmt.Sprint(n), 40) }
+	// entry is verse/live's entry for main's commit n: a commit of its own, not main's.
+	entry := func(n int) string { return "e" + strings.Repeat(fmt.Sprint(n), 39) }
 	gitIn := func(id string) entity.Ref { return entity.RefAt("repo-charters", "r", "out", "git", id) }
 	ghIn := func(id string) entity.Ref { return entity.RefAt("repo-charters", "r", "out", "github", id) }
 	installIn := func(tree string) entity.Ref { return entity.RefAt("repo-charters", "r", "install", tree) }
@@ -314,8 +308,8 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	}
 	answer := func(qid, choice string) { answerSaying(qid, choice, "") }
 
-	// 1. A tree on main: a candidate and its question; nothing asked of the iods yet, and no pull
-	// request, since verse/live does not stand.
+	// 1. A tree on main: a candidate and its question; nothing asked of the iods yet, and no
+	// candidate's issue, since verse/live does not stand.
 	mainAt(t, srv, sha(1), treeA)
 	cand := entity.RefAt("repo-charters", "r", "candidate", treeA)
 	waitEntity(t, srv, cand, func(p entity.Payload) bool { return entity.Str(p, "tree") == treeA })
@@ -332,93 +326,102 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	checkedBy(t, srv, treeA, "installs", "")
 	waitEntity(t, srv, ghIn(treeA), func(p entity.Payload) bool { return entity.Str(statusUnder(p, "verse/check"), "state") == "success" })
 
-	// 2. Yes: verse/live is made at the candidate's commit. Nothing is installed until verse/live
-	// holds the tree.
+	// 2. Yes: verse/live is made holding the tree, from the candidate's commit. Nothing is
+	// installed until verse/live holds the tree.
 	answer(qid, "proceed")
 	waitEntity(t, srv, cand, func(p entity.Payload) bool { return strings.Contains(entity.Str(p, "answer"), "chose proceed") })
-	made := waitEntity(t, srv, gitIn("live-made"), func(p entity.Payload) bool { return entity.Str(p, "sha") == sha(1) })
-	if entity.Str(made, "to") != "branch.verse/live" || fmt.Sprint(entity.ToObj(made)["create"]) != "true" {
+	made := waitEntity(t, srv, gitIn("live-made"), func(p entity.Payload) bool { return entity.Str(p, "from") == sha(1) })
+	if entity.Str(made, "to") != "record.live" || entity.Str(made, "tree") != treeA || fmt.Sprint(entity.ToObj(made)["create"]) != "true" {
 		t.Fatalf("the input making verse/live = %v", entity.ToObj(made))
 	}
 	if _, ok, _ := srv.Store.Get(installIn(treeA)); ok {
 		t.Fatal("an install was asked for before verse/live held the tree")
 	}
-	// 3. The io made it; the tree verse/live holds is installed, at verse/live's commit.
-	liveAt(t, srv, sha(1), treeA)
-	in := waitEntity(t, srv, installIn(treeA), func(p entity.Payload) bool { return entity.Str(p, "sha") == sha(1) })
-	if entity.Str(in, "to") != "install.repos.r" || entity.Str(in, "tree") != treeA {
+	// 3. The io made it; the tree verse/live holds is installed, for verse/live's entry, from
+	// main's commit.
+	liveAt(t, srv, entry(1), treeA, sha(1))
+	in := waitEntity(t, srv, installIn(treeA), func(p entity.Payload) bool { return entity.Str(p, "sha") == entry(1) })
+	if entity.Str(in, "to") != "install.repos.r" || entity.Str(in, "tree") != treeA || entity.Str(in, "from") != sha(1) {
 		t.Fatalf("install input = %v", entity.ToObj(in))
 	}
-	installedBy(t, srv, treeA, sha(1))
-	waitEntity(t, srv, running, func(p entity.Payload) bool { return entity.Str(p, "tree") == treeA && entity.Str(p, "sha") == sha(1) })
-	if tag := tagInputFor(t, srv, treeA); entity.Str(tag, "sha") != sha(1) || fmt.Sprint(entity.ToObj(tag)["create"]) != "true" {
-		t.Errorf("tag input = %v", entity.ToObj(tag))
-	}
-	// The first candidate never had a pull request: what stands under its name is the passed
-	// check alone, with no `to`, which no io reads.
+	installedBy(t, srv, treeA, entry(1), sha(1))
+	waitEntity(t, srv, running, func(p entity.Payload) bool {
+		return entity.Str(p, "tree") == treeA && entity.Str(p, "sha") == entry(1) && entity.Str(p, "from") == sha(1)
+	})
+	// The first candidate never had an issue: what stands under its name is the statuses on
+	// main's commit alone, with no `to`, which no io reads.
 	ghA := waitEntity(t, srv, ghIn(treeA), func(p entity.Payload) bool { return statusUnder(p, "verse") != nil })
 	if entity.Str(ghA, "to") != "" || entity.Str(statusUnder(ghA, "verse"), "state") != "success" ||
-		entity.Str(statusUnder(ghA, "verse/check"), "state") != "success" {
+		entity.Str(statusUnder(ghA, "verse"), "sha") != sha(1) || entity.Str(statusUnder(ghA, "verse/check"), "state") != "success" {
 		t.Fatalf("the first tree's github input = %v", entity.ToObj(ghA))
 	}
+	// Nothing for the git io under the tree's name: no tag, no branch.
+	if p, ok, _ := srv.Store.Get(gitIn(treeA)); ok {
+		t.Errorf("a git input stands for the tree: %v", entity.ToObj(p.Payload))
+	}
 
-	// 4. Main moves to another tree: a question, and a pull request onto verse/live with the
-	// check pending; nothing installed or moved until it is answered.
+	// 4. Main moves to another tree: a question, on the candidate's issue, saying how to see the
+	// change against what runs, with the status pending on main's commit; nothing installed or
+	// moved until it is answered.
 	mainAt(t, srv, sha(2), treeB)
 	qidB := repocharters.QuestionID("r", treeB)
 	waitQuestionID(t, srv, qidB)
-	branch := waitEntity(t, srv, gitIn(treeB), func(entity.Payload) bool { return true })
-	if entity.Str(branch, "to") != "branch.verse/candidate/"+treeB || entity.Str(branch, "sha") != sha(2) {
-		t.Errorf("candidate branch input = %v", entity.ToObj(branch))
+	issueB := waitEntity(t, srv, ghIn(treeB), func(p entity.Payload) bool { return entity.Str(p, "asks") != "" })
+	if body := entity.Str(entity.Get(issueB, "open"), "body"); entity.Str(issueB, "to") != "issue" ||
+		!strings.Contains(body, treeB) || !strings.Contains(body, "refs/verse/live") || !strings.Contains(body, sha(2)) ||
+		entity.Str(issueB, "asks") != qidB || entity.Str(statusUnder(issueB, "verse"), "state") != "pending" ||
+		entity.Str(statusUnder(issueB, "verse"), "sha") != sha(2) || fmt.Sprint(entity.ToObj(issueB)["closed"]) != "false" {
+		t.Errorf("the candidate's issue input = %v", entity.ToObj(issueB))
 	}
-	pr := waitEntity(t, srv, ghIn(treeB), func(p entity.Payload) bool { return entity.Str(p, "asks") != "" })
-	if entity.Str(pr, "to") != "branch.verse/candidate/"+treeB || entity.Str(entity.Get(pr, "open"), "base") != "verse/live" ||
-		entity.Str(pr, "asks") != qidB || entity.Str(statusUnder(pr, "verse"), "state") != "pending" || entity.Str(statusUnder(pr, "verse"), "sha") != sha(2) {
-		t.Errorf("candidate pull request input = %v", entity.ToObj(pr))
+	if p, ok, _ := srv.Store.Get(gitIn(treeB)); ok {
+		t.Errorf("a candidate was branched: %v", entity.ToObj(p.Payload))
 	}
-	// Its check stands beside the decision's status on the same pull request.
+	// Its check stands beside the decision's status on the same commit.
 	checkedBy(t, srv, treeB, "installs", "")
 	prB0 := waitEntity(t, srv, ghIn(treeB), func(p entity.Payload) bool { return entity.Str(statusUnder(p, "verse/check"), "state") == "success" })
-	if entity.Str(statusUnder(prB0, "verse"), "state") != "pending" {
-		t.Errorf("the check overwrote the decision's status: %v", entity.ToObj(prB0))
+	if entity.Str(statusUnder(prB0, "verse"), "state") != "pending" || entity.Str(statusUnder(prB0, "verse/check"), "sha") != sha(2) {
+		t.Errorf("the check overwrote the decision's status, or is on no commit: %v", entity.ToObj(prB0))
 	}
 
 	// 5. Main goes back to the first tree at a new commit, before B was answered: verse/live
-	// already holds that tree, so nothing moves and nothing installs; B's pull request is closed
-	// as superseded, its question standing.
+	// already holds that tree, so nothing moves and nothing installs; B's issue is closed as
+	// superseded, its question standing.
 	mainAt(t, srv, sha(3), treeA)
 	waitEntity(t, srv, ghIn(treeB), func(p entity.Payload) bool { return fmt.Sprint(entity.ToObj(p)["closed"]) == "true" })
 	time.Sleep(300 * time.Millisecond)
 	if p, ok, _ := srv.Store.Get(gitIn("live")); ok {
 		t.Fatalf("verse/live was moved for a tree it already holds: %v", entity.ToObj(p.Payload))
 	}
-	if p, _, _ := srv.Store.Get(installIn(treeA)); entity.Str(p.Payload, "sha") != sha(1) {
+	if p, _, _ := srv.Store.Get(installIn(treeA)); entity.Str(p.Payload, "sha") != entry(1) {
 		t.Fatalf("a commit to main reinstalled: %v", entity.ToObj(p.Payload))
 	}
 
-	// 6. Main carries B again and its standing question is answered yes: verse/live is moved to
-	// the candidate's commit, and once it holds B, B is installed and its pull request's check
-	// passes.
+	// 6. Main carries B again and its standing question is answered yes: B is appended to
+	// verse/live from the candidate's commit, and once verse/live holds it, B is installed, its
+	// issue is closed and the status on main's commit passes.
 	mainAt(t, srv, sha(4), treeB)
 	answer(qidB, "proceed")
-	moved := waitEntity(t, srv, gitIn("live"), func(p entity.Payload) bool { return entity.Str(p, "sha") == sha(4) })
-	if entity.Str(moved, "to") != "branch.verse/live" || entity.Get(moved, "create") != nil {
-		t.Fatalf("the input moving verse/live = %v", entity.ToObj(moved))
+	moved := waitEntity(t, srv, gitIn("live"), func(p entity.Payload) bool { return entity.Str(p, "from") == sha(4) })
+	if entity.Str(moved, "to") != "record.live" || entity.Str(moved, "tree") != treeB || entity.Get(moved, "create") != nil {
+		t.Fatalf("the input appending to verse/live = %v", entity.ToObj(moved))
 	}
-	liveAt(t, srv, sha(4), treeB)
-	waitEntity(t, srv, installIn(treeB), func(p entity.Payload) bool { return entity.Str(p, "sha") == sha(4) })
-	installedBy(t, srv, treeB, sha(4))
+	liveAt(t, srv, entry(4), treeB, sha(4))
+	waitEntity(t, srv, installIn(treeB), func(p entity.Payload) bool { return entity.Str(p, "sha") == entry(4) })
+	installedBy(t, srv, treeB, entry(4), sha(4))
 	waitEntity(t, srv, running, func(p entity.Payload) bool { return entity.Str(p, "tree") == treeB })
-	waitEntity(t, srv, ghIn(treeB), func(p entity.Payload) bool { return entity.Str(statusUnder(p, "verse"), "state") == "success" })
+	doneB := waitEntity(t, srv, ghIn(treeB), func(p entity.Payload) bool { return entity.Str(statusUnder(p, "verse"), "state") == "success" })
+	if entity.Str(statusUnder(doneB, "verse"), "sha") != sha(4) || fmt.Sprint(entity.ToObj(doneB)["closed"]) != "true" {
+		t.Errorf("the installed candidate's issue input = %v", entity.ToObj(doneB))
+	}
 
-	// 7. A rollback: main returns to A, answered before. verse/live is moved back with no second
-	// ask, and A is installed again at the new commit.
+	// 7. A rollback: main returns to A, answered before. A is appended to verse/live again with no
+	// second ask, and installed again for the new entry.
 	mainAt(t, srv, sha(5), treeA)
-	waitEntity(t, srv, gitIn("live"), func(p entity.Payload) bool { return entity.Str(p, "sha") == sha(5) })
-	liveAt(t, srv, sha(5), treeA)
-	waitEntity(t, srv, installIn(treeA), func(p entity.Payload) bool { return entity.Str(p, "sha") == sha(5) })
-	installedBy(t, srv, treeA, sha(5))
-	waitEntity(t, srv, running, func(p entity.Payload) bool { return entity.Str(p, "sha") == sha(5) })
+	waitEntity(t, srv, gitIn("live"), func(p entity.Payload) bool { return entity.Str(p, "from") == sha(5) && entity.Str(p, "tree") == treeA })
+	liveAt(t, srv, entry(5), treeA, sha(5))
+	waitEntity(t, srv, installIn(treeA), func(p entity.Payload) bool { return entity.Str(p, "sha") == entry(5) })
+	installedBy(t, srv, treeA, entry(5), sha(5))
+	waitEntity(t, srv, running, func(p entity.Payload) bool { return entity.Str(p, "sha") == entry(5) })
 	for _, p := range srv.Reg.Pending() {
 		if strings.HasPrefix(p.Question.ID, "repo-charters.r:propose@"+cand.String()) {
 			t.Errorf("the rollback asked again: %v", p.Question.ID)
@@ -428,10 +431,10 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	// 8. A commit to main that leaves the charters alone moves nothing and installs nothing.
 	mainAt(t, srv, sha(6), treeA)
 	time.Sleep(300 * time.Millisecond)
-	if p, _, _ := srv.Store.Get(installIn(treeA)); entity.Str(p.Payload, "sha") != sha(5) {
+	if p, _, _ := srv.Store.Get(installIn(treeA)); entity.Str(p.Payload, "sha") != entry(5) {
 		t.Fatalf("an unrelated commit to main reinstalled: %v", entity.ToObj(p.Payload))
 	}
-	if p, _, _ := srv.Store.Get(gitIn("live")); entity.Str(p.Payload, "sha") != sha(5) {
+	if p, _, _ := srv.Store.Get(gitIn("live")); entity.Str(p.Payload, "from") != sha(5) {
 		t.Fatalf("an unrelated commit to main moved verse/live: %v", entity.ToObj(p.Payload))
 	}
 
@@ -452,22 +455,25 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	}
 	waitEntity(t, srv, ghIn(treeC), func(p entity.Payload) bool { return entity.Str(statusUnder(p, "verse/check"), "state") == "failure" })
 	answer(qidC, "proceed")
-	waitEntity(t, srv, gitIn("live"), func(p entity.Payload) bool { return entity.Str(p, "sha") == sha(7) })
-	liveAt(t, srv, sha(7), treeC)
-	waitEntity(t, srv, installIn(treeC), func(p entity.Payload) bool { return entity.Str(p, "sha") == sha(7) })
-	refusedBy(t, srv, treeC, sha(7), "trigger \"x\": a derive must land strictly above the rule")
+	waitEntity(t, srv, gitIn("live"), func(p entity.Payload) bool { return entity.Str(p, "from") == sha(7) })
+	liveAt(t, srv, entry(7), treeC, sha(7))
+	waitEntity(t, srv, installIn(treeC), func(p entity.Payload) bool { return entity.Str(p, "sha") == entry(7) })
+	refusedBy(t, srv, treeC, entry(7), sha(7), "trigger \"x\": a derive must land strictly above the rule")
 	issue := waitEntity(t, srv, ghIn("install-failed"), func(p entity.Payload) bool { return entity.Str(p, "to") == "issue" })
 	if !strings.Contains(entity.Str(entity.Get(issue, "open"), "body"), treeC) ||
 		!strings.Contains(entity.Str(entity.Get(issue, "open"), "body"), "strictly above") || fmt.Sprint(entity.ToObj(issue)["closed"]) != "false" {
 		t.Errorf("the install's issue input = %v", entity.ToObj(issue))
 	}
-	waitEntity(t, srv, ghIn(treeC), func(p entity.Payload) bool { return entity.Str(statusUnder(p, "verse"), "state") == "failure" })
+	failedC := waitEntity(t, srv, ghIn(treeC), func(p entity.Payload) bool { return entity.Str(statusUnder(p, "verse"), "state") == "failure" })
+	if entity.Str(statusUnder(failedC, "verse"), "sha") != sha(7) {
+		t.Errorf("the refused install's status is not on main's commit: %v", entity.ToObj(failedC))
+	}
 	if p, _, _ := srv.Store.Get(running); entity.Str(p.Payload, "tree") != treeA {
 		t.Errorf("running moved on a refused install: %v", entity.ToObj(p.Payload))
 	}
 
-	// 10. A tree answered no: its pull request is closed and its check fails, saying so; verse/live
-	// is not moved for it.
+	// 10. A tree answered no: its issue is closed and its status fails, saying so; verse/live is
+	// not appended to for it.
 	const treeD = "dddd4444dddd4444dddd4444dddd4444dddd4444"
 	mainAt(t, srv, sha(8), treeD)
 	qidD := repocharters.QuestionID("r", treeD)
@@ -478,8 +484,8 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 		t.Errorf("the denied candidate's github input = %v", entity.ToObj(prD))
 	}
 	time.Sleep(200 * time.Millisecond)
-	if p, _, _ := srv.Store.Get(gitIn("live")); entity.Str(p.Payload, "sha") == sha(8) {
-		t.Fatal("verse/live was moved for a denied tree")
+	if p, _, _ := srv.Store.Get(gitIn("live")); entity.Str(p.Payload, "from") == sha(8) {
+		t.Fatal("verse/live was appended to for a denied tree")
 	}
 
 	// 11. Answers read by the option chosen, whatever the words after it say: a yes whose words
@@ -494,11 +500,11 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	checkedBy(t, srv, treeE, "installs", "")
 	waitEntity(t, srv, ghIn("check-refused"), func(p entity.Payload) bool { return fmt.Sprint(entity.ToObj(p)["closed"]) == "true" })
 	answerSaying(qidE, "proceed", "last time they chose deny")
-	waitEntity(t, srv, gitIn("live"), func(p entity.Payload) bool { return entity.Str(p, "sha") == sha(9) })
+	waitEntity(t, srv, gitIn("live"), func(p entity.Payload) bool { return entity.Str(p, "from") == sha(9) })
 	// And the install that succeeds closes the refused install's issue.
-	liveAt(t, srv, sha(9), treeE)
-	waitEntity(t, srv, installIn(treeE), func(p entity.Payload) bool { return entity.Str(p, "sha") == sha(9) })
-	installedBy(t, srv, treeE, sha(9))
+	liveAt(t, srv, entry(9), treeE, sha(9))
+	waitEntity(t, srv, installIn(treeE), func(p entity.Payload) bool { return entity.Str(p, "sha") == entry(9) })
+	installedBy(t, srv, treeE, entry(9), sha(9))
 	waitEntity(t, srv, ghIn("install-failed"), func(p entity.Payload) bool { return fmt.Sprint(entity.ToObj(p)["closed"]) == "true" })
 	mainAt(t, srv, strings.Repeat("a", 40), treeF)
 	qidF := repocharters.QuestionID("r", treeF)
@@ -506,8 +512,8 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	answerSaying(qidF, "deny", "they chose proceed: not this time")
 	waitEntity(t, srv, ghIn(treeF), func(p entity.Payload) bool { return fmt.Sprint(entity.ToObj(p)["closed"]) == "true" })
 	time.Sleep(300 * time.Millisecond)
-	if p, _, _ := srv.Store.Get(gitIn("live")); entity.Str(p.Payload, "sha") == strings.Repeat("a", 40) {
-		t.Fatal("a no whose words mention a yes moved verse/live")
+	if p, _, _ := srv.Store.Get(gitIn("live")); entity.Str(p.Payload, "from") == strings.Repeat("a", 40) {
+		t.Fatal("a no whose words mention a yes appended to verse/live")
 	}
 
 	// 12. Main fails again: the same standing issue is asked open again, saying the new tree.
@@ -521,7 +527,7 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 
 	// 13. A pull request to main proposing a tree: the question is asked on it, with verse's
 	// request for changes holding the merge and its status waiting on the head, and the check's
-	// status beside it. No branch or pull request onto verse/live: main does not carry the tree.
+	// status beside it. No candidate's issue: main does not carry the tree.
 	const treeH = "1111bbbb1111bbbb1111bbbb1111bbbb1111bbbb"
 	prIn := func(n int) entity.Ref {
 		return entity.RefAt("repo-charters", "r", "out", "github", "pr", fmt.Sprint(n))
@@ -566,18 +572,18 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	if p, ok, _ := srv.Store.Get(prIn(8)); ok && entity.Str(p.Payload, "to") != "" {
 		t.Errorf("a pull request leaving the charters alone is spoken to: %v", entity.ToObj(p.Payload))
 	}
-	if p, _, _ := srv.Store.Get(gitIn("live")); entity.Str(p.Payload, "sha") == headH {
-		t.Fatal("verse/live was moved to a pull request's head")
+	if p, _, _ := srv.Store.Get(gitIn("live")); entity.Str(p.Payload, "from") == headH {
+		t.Fatal("verse/live was appended to from a pull request's head")
 	}
 	// The merge: main carries the answered tree, and it installs with no second question.
 	mainAt(t, srv, sha(10), treeH)
-	waitEntity(t, srv, gitIn("live"), func(p entity.Payload) bool { return entity.Str(p, "sha") == sha(10) })
-	liveAt(t, srv, sha(10), treeH)
-	waitEntity(t, srv, installIn(treeH), func(p entity.Payload) bool { return entity.Str(p, "sha") == sha(10) })
-	installedBy(t, srv, treeH, sha(10))
+	waitEntity(t, srv, gitIn("live"), func(p entity.Payload) bool { return entity.Str(p, "from") == sha(10) })
+	liveAt(t, srv, entry(10), treeH, sha(10))
+	waitEntity(t, srv, installIn(treeH), func(p entity.Payload) bool { return entity.Str(p, "sha") == entry(10) })
+	installedBy(t, srv, treeH, entry(10), sha(10))
 	waitEntity(t, srv, running, func(p entity.Payload) bool { return entity.Str(p, "tree") == treeH })
 	if p, ok, _ := srv.Store.Get(gitIn(treeH)); ok {
-		t.Errorf("a tree answered on its pull request to main was branched for verse/live: %v", entity.ToObj(p.Payload))
+		t.Errorf("a git input stands for a tree answered on its pull request to main: %v", entity.ToObj(p.Payload))
 	}
 	if p, ok, _ := srv.Store.Get(prIn(8)); ok && entity.Str(p.Payload, "to") != "" {
 		t.Errorf("after the merge, a pull request leaving the charters alone is spoken to: %v", entity.ToObj(p.Payload))
@@ -636,8 +642,8 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	}
 
 	// 16. Removing the charters directory: a pull request that removes it proposes the empty
-	// tree, and the question says what that means. Answered yes and merged, verse/live moves to
-	// it and it is installed: every charter at the address taken down.
+	// tree, and the question says what that means. Answered yes and merged, it is appended to
+	// verse/live and installed: every charter at the address taken down.
 	prAt(t, srv, 12, strings.Repeat("4", 40), verseio.EmptyTree)
 	qidE0 := repocharters.QuestionID("r", verseio.EmptyTree)
 	waitQuestionID(t, srv, qidE0)
@@ -658,13 +664,13 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	checkedBy(t, srv, verseio.EmptyTree, "installs", "")
 	waitEntity(t, srv, prIn(12), func(p entity.Payload) bool { return entity.Str(entity.Get(p, "review"), "event") == "dismiss" })
 	mainAt(t, srv, sha(11), verseio.EmptyTree)
-	waitEntity(t, srv, gitIn("live"), func(p entity.Payload) bool { return entity.Str(p, "sha") == sha(11) })
-	liveAt(t, srv, sha(11), verseio.EmptyTree)
-	gone := waitEntity(t, srv, installIn(verseio.EmptyTree), func(p entity.Payload) bool { return entity.Str(p, "sha") == sha(11) })
+	waitEntity(t, srv, gitIn("live"), func(p entity.Payload) bool { return entity.Str(p, "from") == sha(11) })
+	liveAt(t, srv, entry(11), verseio.EmptyTree, sha(11))
+	gone := waitEntity(t, srv, installIn(verseio.EmptyTree), func(p entity.Payload) bool { return entity.Str(p, "sha") == entry(11) })
 	if entity.Str(gone, "to") != "install.repos.r" {
 		t.Errorf("the empty tree's install input = %v", entity.ToObj(gone))
 	}
-	installedBy(t, srv, verseio.EmptyTree, sha(11))
+	installedBy(t, srv, verseio.EmptyTree, entry(11), sha(11))
 	waitEntity(t, srv, running, func(p entity.Payload) bool { return entity.Str(p, "tree") == verseio.EmptyTree })
 
 	// 17. Every minute verse/live is checked against what is installed. In step, nothing is said;
@@ -691,7 +697,7 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	// tick of its own at the same instant would be read in place of this one.
 	due := tickAt(time.Now().UTC().Truncate(time.Minute).Add(-24 * time.Hour))
 	lc := waitEntity(t, srv, liveIn, func(p entity.Payload) bool { return entity.Str(p, "round") == due })
-	if entity.Str(lc, "to") != "check.repos.r" || entity.Str(lc, "ref") != "verse/live" || entity.Str(lc, "of") != "charters" {
+	if entity.Str(lc, "to") != "check.repos.r" || entity.Str(lc, "record") != "live" || entity.Get(lc, "ref") != nil {
 		t.Fatalf("the check of verse/live = %v", entity.ToObj(lc))
 	}
 	sweep := waitEntity(t, srv, gitIn("obsolete"), func(p entity.Payload) bool { return entity.Str(p, "before") == due })
@@ -699,23 +705,23 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 		!strings.Contains(fmt.Sprint(entity.ToObj(sweep)["keep"]), verseio.EmptyTree) || !strings.Contains(fmt.Sprint(entity.ToObj(sweep)["keep"]), treeI) {
 		t.Fatalf("the obsolete sweep = %v", entity.ToObj(sweep))
 	}
-	liveStatus(entity.Obj{"ref": "verse/live", "round": due, "verdict": "installs", "changes": 3, "differingFor": 1, "sha": sha(11), "tree": verseio.EmptyTree})
+	liveStatus(entity.Obj{"record": "live", "round": due, "verdict": "installs", "changes": 3, "differingFor": 1, "sha": entry(11), "tree": verseio.EmptyTree})
 	time.Sleep(300 * time.Millisecond)
 	if p, ok, _ := srv.Store.Get(ghIn("live-drift")); ok && entity.Str(p.Payload, "to") != "" {
 		t.Fatalf("one round differing opened an issue: %v", entity.ToObj(p.Payload))
 	}
-	liveStatus(entity.Obj{"ref": "verse/live", "round": due, "verdict": "installs", "changes": 3, "differingFor": 2, "sha": sha(11), "tree": verseio.EmptyTree})
+	liveStatus(entity.Obj{"record": "live", "round": due, "verdict": "installs", "changes": 3, "differingFor": 2, "sha": entry(11), "tree": verseio.EmptyTree})
 	drift := waitEntity(t, srv, ghIn("live-drift"), func(p entity.Payload) bool { return entity.Str(p, "to") == "issue" })
 	if fmt.Sprint(entity.ToObj(drift)["closed"]) != "false" || !strings.Contains(entity.Str(entity.Get(drift, "open"), "body"), "by 3 charter(s)") {
 		t.Errorf("the drift issue = %v", entity.ToObj(drift))
 	}
-	liveStatus(entity.Obj{"ref": "verse/live", "round": due, "verdict": "installs", "changes": 0, "differingFor": 0, "sha": sha(11), "tree": verseio.EmptyTree})
+	liveStatus(entity.Obj{"record": "live", "round": due, "verdict": "installs", "changes": 0, "differingFor": 0, "sha": entry(11), "tree": verseio.EmptyTree})
 	waitEntity(t, srv, ghIn("live-drift"), func(p entity.Payload) bool { return fmt.Sprint(entity.ToObj(p)["closed"]) == "true" })
-	liveStatus(entity.Obj{"ref": "verse/live", "round": due, "verdict": "missing"})
+	liveStatus(entity.Obj{"record": "live", "round": due, "verdict": "missing"})
 	waitEntity(t, srv, ghIn("live-drift"), func(p entity.Payload) bool {
 		return fmt.Sprint(entity.ToObj(p)["closed"]) == "false" && strings.Contains(entity.Str(entity.Get(p, "open"), "body"), "gone")
 	})
-	liveStatus(entity.Obj{"ref": "verse/live", "round": due, "verdict": "installs", "changes": 0, "differingFor": 0, "sha": sha(11), "tree": verseio.EmptyTree})
+	liveStatus(entity.Obj{"record": "live", "round": due, "verdict": "installs", "changes": 0, "differingFor": 0, "sha": entry(11), "tree": verseio.EmptyTree})
 	waitEntity(t, srv, ghIn("live-drift"), func(p entity.Payload) bool { return fmt.Sprint(entity.ToObj(p)["closed"]) == "true" })
 
 	// 18. Main's charters answered no: an issue says so while main holds them, and closes when main

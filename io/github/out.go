@@ -135,7 +135,8 @@ import (
 //	open: {title: "charters: the install of <tree> failed", body: "…"}
 //
 // opened once and kept in step, answered with `number, url, postedAt, updatedAt, posted` as a pull
-// request is; `text`, `asks` and `closed: true` then apply to it, and `closed: false` reopens it
+// request is; `text`, `asks`, `commitStatus` (each naming its `sha`: an issue has no head) and
+// `closed: true` then apply to it, and `closed: false` reopens it
 // where this io closed it (`reopenedAt`): one standing issue a charter opens and closes as what it
 // is about goes wrong and right. It is how a charter files what
 // went wrong where the repository's people read, with no number to know before the issue exists.
@@ -388,11 +389,16 @@ func (k *Sink) openWith(ctx context.Context, repo string, in verseio.Input, spec
 		}
 		merge(more)
 	}
-	if spec := entity.Get(in.Value, "commitStatus"); spec != nil && in.To != issueTarget {
+	if spec := entity.Get(in.Value, "commitStatus"); spec != nil {
 		// BESIDE, NEVER INSTEAD: a status GitHub refuses (an App not yet allowed `statuses:
 		// write`) is said on the input's status and does not fail the input, which would stop
-		// the rest of it — the replies to its question above all — being asked again.
-		merge(k.commitStatuses(ctx, repo, number, spec, in.Status, fields))
+		// the rest of it — the replies to its question above all — being asked again. An issue
+		// has no head, so a status asked beside one names its commit (pull 0: no head to read).
+		pull := number
+		if in.To == issueTarget {
+			pull = 0
+		}
+		merge(k.commitStatuses(ctx, repo, pull, spec, in.Status, fields))
 	}
 	if closed := ir.Uncomment(entity.Get(in.Value, "closed")); closed != nil && closed.Type == ir.BoolType && closed.Bool &&
 		entity.Get(in.Status, "closed") == nil && entity.Get(in.Status, "adopted") == nil {
@@ -483,7 +489,7 @@ func (k *Sink) commitStatuses(ctx context.Context, repo string, number int, spec
 
 // commitStatus keeps one context's commit status on the pull request's head: `state` (pending,
 // success, failure or error), `description`, and `sha`, the head it is about, which defaults to
-// the pull request's. A status GitHub already has, by state, description and sha, is not posted
+// the pull request's; beside an issue (number 0) there is no head, and `sha` is required. A status GitHub already has, by state, description and sha, is not posted
 // again. `target` is the pull request's url, which the status links to; `status` is what was
 // recorded for this context.
 //
@@ -509,6 +515,10 @@ func (k *Sink) commitStatus(ctx context.Context, repo string, number int, contex
 	case "pending", "success", "failure", "error":
 	default:
 		return failed(fmt.Errorf("`commitStatus.%s.state` is pending, success, failure or error, not %q", context, state),
+			fingerprint(state+"\x00"+description+"\x00"+sha))
+	}
+	if sha == "" && number == 0 {
+		return failed(fmt.Errorf("`commitStatus.%s` names no sha, and an issue has no head to put it on", context),
 			fingerprint(state+"\x00"+description+"\x00"+sha))
 	}
 	if sha == "" {

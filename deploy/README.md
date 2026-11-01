@@ -409,10 +409,12 @@ directory holds people's data; keep it out of the repository.
 The reconciler of the verse repository's charters is a charter verse ships at the system level
 (`system/repocharters`, [the example](../docs/reference/examples/repo-charters/repo-charters.tony)):
 what runs in verse is the tree of `.verse/charters` that `verse/live` holds, and `verse/live` holds
-only a tree an answer said yes to. A change to the charters that reaches main is put to the team
-as a pull request onto `verse/live`, with two commit statuses on its head: `verse/check`, what
-verse's charter check says an install would do, and `verse`, the decision. A yes moves
-`verse/live` to it, and a commit to main that leaves the charters alone installs nothing.
+only a tree an answer said yes to. `verse/live` is a record the git iod keeps, `refs/verse/live`,
+not a branch: each entry holds the charters tree and names the commit of main it came from
+([a record](../docs/reference/iod.md#a-record)). A change to the charters that reaches main is put
+to the team on an issue, with two commit statuses on main's commit: `verse/check`, what verse's
+charter check says an install would do, and `verse`, the decision. A yes adds it to
+`verse/live`, and a commit to main that leaves the charters alone installs nothing.
 While the charters on main would be refused, one issue says so and why; it closes when main
 passes the check. A refused install has an issue of its own, closed by the next install that
 succeeds. Each reopens for the next round rather than multiplying. The pieces on a deployment:
@@ -430,12 +432,10 @@ succeeds. Each reopens for the next round rather than multiplying. The pieces on
   stands on a deployment that skips this.
 - **The git iod** with `-tree .verse/charters -out` (on), registered with its out place
   (`repopulate.sh`), and `child-owner` under `repos` for `agent:git-iod`, so it installs the
-  charters as itself. With `gitAsApp` it pushes as the App, which is what lets it move
-  `verse/live` once only the App may.
+  charters as itself. With `gitAsApp` it pushes as the App, so `refs/verse/live` is written as
+  the App.
 - **The github iod** with `githubOut` on, registered with its out place, and the App allowed
   `statuses: write` for the commit status ([the GitHub App](#the-github-app-signadot-verse)).
-- **On GitHub**, a branch protection on `verse/live` that lets the App alone push, so verse is
-  the only writer of what runs. A repository setting, not a knob here.
 
 Pausing the repository's charters is `verse flow suspend -charter repos.verse -r -why …`. The
 reconciler is the system's, and no request may suspend it. Turning it off is dropping the
@@ -716,7 +716,8 @@ These permissions are the token's ([above](#creating-the-entries)) plus the out 
 Issues and Pull requests to comment, open, review and close, and Contents to merge. **Commit
 statuses (`statuses: write`) is not in the manifest and is wanted**: the repo-charters reconciler
 puts its `verse` and `verse/check` statuses on the head of a pull request to main that changes the
-charters, and of its candidate pull request onto verse/live (an input's `commitStatus`), and
+charters, and on main's commit for a change that reached main unanswered (an input's
+`commitStatus`), and
 without the permission GitHub refuses the status and the refusal lands on the input's status.
 Add it under the App's settings (Permissions & events → Repository permissions → Commit
 statuses: Read and write); the installation then asks an org owner to approve the new

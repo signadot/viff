@@ -39,11 +39,14 @@ the repository, and it is reviewed like any other change.
   that the new charters install. It reports the answer and the check on the pull request, as the
   statuses `verse` and `verse/check`. It requests changes until the answer is yes and the check
   passes. When the pull request merges, the charters install with no second question.
-- **A change that reached main without a yes**, such as a direct push, gets its own pull request
-  onto the branch `verse/live`. The question is its comment.
-- **What is installed follows the branch `verse/live`.** A yes moves `verse/live` to the change.
-  The git [iod](glossary.md#iod) then installs the charters on `verse/live` at `repos.verse`, and
-  removes a charter that is not in the directory.
+- **A change that reached main without a yes**, such as a direct push, gets an issue that asks
+  the question and says how to see the change against what runs. The statuses go on main's
+  commit.
+- **What is installed follows `verse/live`.** It is a record the git [iod](glossary.md#iod)
+  keeps in the repository, `refs/verse/live`: not a branch, but a chain of commits, each holding
+  the charters it installs and naming the commit of main they came from. A yes adds the change to
+  it, and the iod installs the charters it holds at `repos.verse`, removing a charter that is not
+  in the directory. `git log refs/verse/live` is what ran, and from where.
 - **Every problem has an issue.** A no, a check that fails, an install that is refused, and
   installed charters that differ from `verse/live` each open an issue. The issue closes when the
   cause is gone.
@@ -57,8 +60,7 @@ deployment installs [a rendering of it](reference/examples/repo-charters/repo-ch
 Verse acts on GitHub as a GitHub App. Its pull requests, reviews, comments and statuses are the
 App's, as `<app>[bot]`. So verse can review a pull request that a person opened, and a person
 can review one that verse opened. With a person's token, neither works: GitHub refuses a review
-from a pull request's own author. And when only the App may push `verse/live`, only verse
-decides what runs.
+from a pull request's own author.
 
 **1. Create the App** in your organization's settings (Developer settings → GitHub Apps). Turn
 its webhook off: the events come from the repository's webhook (step 4). Give it these
@@ -68,7 +70,7 @@ repository permissions:
 |---|---|---|
 | Metadata | read | reads the repository |
 | Actions | read | reads the checks on a pull request |
-| Contents | write | merges, and moves `verse/live` |
+| Contents | write | merges, and writes `refs/verse/live` |
 | Issues | write | opens and closes the issues that say what went wrong |
 | Pull requests | write | comments, opens, reviews and closes pull requests |
 | Commit statuses | write | posts `verse` and `verse/check` |
@@ -94,9 +96,8 @@ each iod reports the charters directory, so verse sees a pull request that chang
 itself, so it must own the address they install at, or hold `child-owner` above it
 ([the out half of git](reference/iod.md#the-out-half-of-git)).
 
-**4. On the repository**, protect `verse/live` so that only the App may push to it. Add a
-webhook to `https://<host>/github/webhook`, with the content type `application/json` and the
-secret that the github iod reads as `GITHUB_WEBHOOK_SECRET`.
+**4. On the repository**, add a webhook to `https://<host>/github/webhook`, with the content type
+`application/json` and the secret that the github iod reads as `GITHUB_WEBHOOK_SECRET`.
 
 [The deployment guide](../deploy/README.md#the-github-app-signadot-verse) creates verse's own App
 from a manifest and puts its keys on a cluster.

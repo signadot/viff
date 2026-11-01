@@ -196,9 +196,9 @@ build:
     gitMirror: "https://github.com/signadot/verse.git"
     # The git iod fetches and pushes AS THE GITHUB APP: its three keys, read from the github iod's
     # Secret (verse-github), make the app's installation token the only credential git presents,
-    # in place of the `verse-git` PAT. Then a branch only the app may push to (verse/live, the
-    # repo-charters reconciler's) is one the git iod can move. Needs githubSecretKey's entry to
-    # carry the app (deploy/README.md, The GitHub App).
+    # in place of the `verse-git` PAT, so what it writes (refs/verse/live, the repo-charters
+    # reconciler's record) is written as the app. Needs githubSecretKey's entry to carry the app
+    # (deploy/README.md, The GitHub App).
     gitAsApp: false
 
     # The issues `git issue` keeps inside a repository, reflected as `git-issue:*`.
@@ -249,8 +249,8 @@ build:
     githubDiscussions: false
     # The out half: comments, pull requests, merges, reviews, closes, checks and issues asked
     # for under `github.<org>.<name>.out`, as the App. The repo-charters reconciler's question,
-    # review and statuses on a pull request to main ride it, and its candidate pull request onto
-    # verse/live; off, nothing asked of GitHub is done (docs/reference/iod.md).
+    # review and statuses on a pull request to main ride it, and its candidate's issue; off,
+    # nothing asked of GitHub is done (docs/reference/iod.md).
     githubOut: false
     githubWebhookHost: ""
 

@@ -43,7 +43,7 @@ const (
 // which the git io installs at repos.verse when the reconciler asks. A charter in the tree is
 // what a newcomer copies and what a deployment runs, and a check added at install is a check
 // these files have to pass: a file that stops installing is found here and not at the next
-// ship, or at the next pull request onto verse/live.
+// ship, or at the next change to the charters on main.
 func TestEveryDeployedCharterInstalls(t *testing.T) {
 	// Every charter in the tree is in the order: one added beside these is installed here too.
 	var inTree []string

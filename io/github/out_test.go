@@ -696,6 +696,22 @@ func TestAnOpenInputFilesAnIssue(t *testing.T) {
 	if it := f.repos["signadot/verse"].find(int(number)); it == nil || it.pull || it.title != "charters: the install of aaaa failed" || it.body != "exit status 1" {
 		t.Fatalf("the issue filed = %+v", it)
 	}
+	// A commit status beside it goes on the commit it names, linking to the issue; one naming no
+	// commit is said beside the issue, since an issue has no head, and does not fail the input.
+	in["commitStatus"] = entity.Obj{
+		"verse":       entity.Obj{"state": "failure", "description": "the install failed", "sha": "dddd4444"},
+		"verse/check": entity.Obj{"state": "success", "description": "installs"},
+	}
+	entitytest.Set(t, store, ref, in.Payload())
+	pass()
+	posted := f.statusesOn("signadot/verse")
+	if len(posted) != 1 || posted[0].sha != "dddd4444" || posted[0].context != "verse" || posted[0].target != fmt.Sprint(status()["url"]) {
+		t.Fatalf("statuses beside an issue = %+v", posted)
+	}
+	if cs, _ := status()["commitStatus"].(map[string]any); cs == nil ||
+		!strings.Contains(fmt.Sprint(cs["verse/check"]), "no head") || status()["error"] != nil {
+		t.Fatalf("a status naming no commit beside an issue: status %v", status())
+	}
 	// Quiet when nothing changed; an edit to the body is an edit, not a second issue.
 	pass()
 	in["open"] = entity.Obj{"title": "charters: the install of aaaa failed", "body": "exit status 1\n\nand the log"}

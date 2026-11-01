@@ -56,7 +56,7 @@ type Params struct {
 	// `github.<org>.<name>` and reads inputs for under `github.<org>.<name>.out`.
 	GitHub string
 	// Branch is the branch the repository's charters follow, the one a change is proposed onto
-	// and verse/live is moved to: `main`, or `master`. Empty is `main`.
+	// and whose charters are added to the record verse/live: `main`, or `master`. Empty is `main`.
 	Branch string
 	// InstallAt is the address the repository's charters install at, as `verse c -a` spells
 	// one: `repos.verse`. The git io installs there as itself, so it has to own the address or

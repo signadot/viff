@@ -10,7 +10,7 @@
 # apart, and every rule's subject is one of them or an effect of one:
 #
 #   repo-charters.verse.state.main           what is on main: {sha, tree}
-#   repo-charters.verse.state.live           what is on verse/live: {sha, tree}
+#   repo-charters.verse.state.live           what refs/verse/live holds: {sha, tree, from}
 #   repo-charters.verse.candidate.<tree>     one per charters tree ever on main or proposed by
 #                                                a pull request to main: {tree, ask, title, seen},
 #                                                `sha` where main carries it, `checked` once
@@ -19,9 +19,9 @@
 #                                                that proposes it: {decision, check, text}
 #   repo-charters.verse.pull.<number>        what an open pull request to main proposes now:
 #                                                {pr, head, tree}, `tree` empty for nothing
-#   repo-charters.verse.livecheck.live       the minute's check of verse/live against what is
-#                                                installed, and the git io's answer beside it
-#   repo-charters.verse.running              verse's note of its last install: {sha, tree}
+#   repo-charters.verse.livecheck.live       the minute's check of refs/verse/live against what
+#                                                is installed, and the git io's answer beside it
+#   repo-charters.verse.running              verse's note of its last install: {sha, tree, from}
 #
 # A tree is the sha of the charters directory's tree object, as the git io reflects it with
 # `-tree <path>` (`tree.charters` on every ref): the identity of the directory's contents, the
@@ -54,37 +54,41 @@
 # answer stands for the tree, so when the pull request merges, main carries a tree already answered
 # and it installs with no second question.
 #
-# THE verse/live PULL REQUEST is for a change that reached main without that answer (an ordinary
-# push, a pull request merged around verse): the question is rendered where a reviewer already is,
-# a branch at the candidate's commit, opened onto verse/live, so its diff is what is on main
-# against what runs, with the question as its comment, the answer heard there, and verse's commit
-# status on its head saying what verse waits for and then what it decided. It is opened only once
-# verse/live stands, while the candidate is main's and not what verse/live holds, and closed as
-# superseded when main moves on; its question stands either way. A no closes it with the commit
-# status failed.
+# THE CANDIDATE'S ISSUE is for a change that reached main without that answer (an ordinary push, a
+# pull request merged around verse): the question is asked on an issue, where the repository's
+# people read, saying what main carries against what runs and how to see the difference, with the
+# answer heard there and verse's commit status on main's commit saying what verse waits for and
+# then what it decided. It is opened only once verse/live stands, while the candidate is main's
+# and not what verse/live holds, closed as superseded when main moves on, and closed once its tree
+# is installed; its question stands either way. A no closes it with the commit status failed.
 #
 # THE CHECK is apart from the decision and from the install: each candidate tree is checked against
 # what runs by the verse's charter check, which installs nothing, and its verdict is a status of
 # its own on either pull request (`verse/check`); while main's tree would be refused an issue says
 # so, and it closes when main's tree passes.
 #
-# THE INSTALL FOLLOWS verse/live, which is what runs: the git io reflects verse/live's charters
-# tree as it reflects main's, and a tree on verse/live whose candidate was answered yes is
-# installed, by the git io, from its own copy of the repository, at `repos.verse`, as itself,
-# pruning what the tree leaves out (iod reference, the out half of git). So a commit to main that
-# leaves the charters alone changes nothing the install reads, and installs nothing. A yes on
-# main's tree moves verse/live to the candidate's commit (the git io, as the App): made there at
-# the first install, moved on a later yes or a rollback; a candidate pull request whose head is
-# that commit is then merged by GitHub's own reckoning, its head having reached its base. The
-# io's status says what it installed and for which commit, and the rules read that: what runs is
-# recorded, the tree is tagged once, and the pull request's commit status passes. An install the
-# io refuses is a GitHub issue, closed by the next install that succeeds, and the pull request's
-# commit status fails. A tree on verse/live nobody answered yes to is not installed.
+# verse/live IS A RECORD, `refs/verse/live` (iod reference, a record): a chain of commits the git
+# io writes, each holding a charters tree as its whole tree, its parent the entry before, and the
+# commit of main it came from as its `From:` trailer. Not a branch: nothing checks it out or
+# builds it, and `git log refs/verse/live` is what ran, when, and from where. The tree is its
+# identity, as it is everywhere here: an entry is appended only for a tree the last does not hold.
+#
+# THE INSTALL FOLLOWS verse/live, which is what runs: the git io reflects the record, and a tree
+# it holds whose candidate was answered yes is installed, by the git io, from its own copy of the
+# repository, at `repos.verse`, as itself, pruning what the tree leaves out (iod reference, the
+# out half of git). So a commit to main that leaves the charters alone changes nothing the install
+# reads, and installs nothing. A yes on main's tree appends it to verse/live (the git io, as the
+# App): the record made at the first install, appended to on a later yes or a rollback. The io's
+# status says what it installed, for which entry and from which commit, and the rules read that:
+# what runs is recorded, the candidate's issue is closed, and the commit status on main's commit
+# passes. An install the io refuses is a GitHub issue, closed by the next install that succeeds,
+# and the commit status fails. A tree on verse/live nobody answered yes to is not installed.
+
 #
 # NOTHING STANDS UNSAID. Each way main, verse/live and the installed charters can disagree has an
 # outcome somebody sees:
 #
-#   main's tree unanswered          its question, on the pull request onto verse/live
+#   main's tree unanswered          its question, on the candidate's issue
 #   main's tree answered no         an issue, open while main holds it
 #   main's check refused            an issue, open until main's tree passes
 #   an install refused              an issue, open until an install succeeds
@@ -92,9 +96,8 @@
 #                                   charters are checked against verse/live's tree every minute
 #                                   (the reconciler's own schedule), and two rounds differing at
 #                                   one commit open it, so an install under way is not taken for
-#                                   it. Neither restored nor asked about at the time: the ask comes
-#                                   with a pull request to fix it. A verse/live that is gone is
-#                                   the same issue.
+#                                   it. Not restored: the ask comes with a pull request to fix it.
+#                                   A verse/live that is gone is the same issue.
 #   a question nothing proposes     settled `obsolete` by the git io's sweep, every minute, and
 #                                   asked again if its tree is proposed again
 #
@@ -189,18 +192,20 @@ rules:
     - path: "repo-charters.verse.check"
       id: $subject.value.tree.charters
       value: {to: "check.repos.verse", tree: $subject.value.tree.charters, sha: $subject.value.sha}
-# What is on verse/live, which is what runs once installed: its sha and the charters tree.
+# What verse/live holds, which is what runs once installed: its last entry, the charters tree it
+# holds, and the commit of main the tree came from. An entry the git io wrote names that commit;
+# one written another way, with no `From:`, is not read until verse writes the next.
 - name: live
   stratum: reflected
   condition:
     subject:
-      path: "git.verse.ref.\"verse/live\""
-      value: {tree: {charters: !glob "*"}}
+      path: "git.verse.record.live"
+      value: {tree: !glob "*", from: !glob "*"}
   action:
     derive:
     - path: "repo-charters.verse.state"
       id: live
-      value: {sha: $subject.value.sha, tree: $subject.value.tree.charters}
+      value: {sha: $subject.value.sha, tree: $subject.value.tree, from: $subject.value.from}
 # An open pull request to main that changes the charters proposes the tree at its head: a
 # candidate and its check. The github io's `-tree` reports `changes` against the head's merge
 # base with main, so a pull request that leaves the charters alone proposes nothing, and neither
@@ -543,25 +548,12 @@ rules:
         text: "This pull request no longer changes the charters verse runs, so verse asks nothing here."
         asks: []
         review: {event: dismiss, body: "verse: this pull request no longer changes the charters."}
-# ON THE verse/live PULL REQUEST, for a change that reached main without an answer: while a
-# candidate is asked about, its question rides a pull request from a branch at the candidate's
-# commit, opened onto verse/live, so its diff is what is on main against what runs, with the
-# question as its comment and the answer heard there, and verse's commit status pending on its
-# head. Only once verse/live stands, and only while the candidate is main's and not what
-# verse/live holds; one main has moved past is closed as superseded.
-- name: candidate-branch
-  stratum: candidates
-  condition:
-    subject:
-      path: "repo-charters.verse.candidate.*"
-      # The commit is read so that the branch follows main to a new commit of this tree.
-      value: !and [!not.has-path answer, {sha: !glob "*"}]
-  action:
-    derive:
-    - path: "repo-charters.verse.out.git"
-      id: $subject.value.tree
-      value: {to: "branch.verse/candidate/$subject.value.tree", sha: $subject.value.sha}
-- name: candidate-pr
+# ON THE CANDIDATE'S ISSUE, for a change that reached main without an answer: while a candidate is
+# asked about, its question rides an issue saying what main carries against what runs, with the
+# answer heard there, and verse's commit status pending on main's commit. Only once verse/live
+# stands, and only while the candidate is main's and not what verse/live holds; one main has moved
+# past is closed as superseded, and one installed is closed by the install.
+- name: candidate-issue
   stratum: candidates
   condition:
     subject:
@@ -582,14 +574,16 @@ rules:
     - path: "repo-charters.verse.out.github"
       id: $subject.value.tree
       value:
-        to: "branch.verse/candidate/$subject.value.tree"
-        open: {base: "verse/live", title: "charters: $subject.value.title"}
+        to: issue
+        open:
+          title: "charters: $subject.value.title"
+          body: "main at $subject.value.sha carries the charters tree $subject.value.tree, which is not what runs at repos.verse, and nobody has answered for it yet. An answer here installs it.\n\nWhat it changes, against what runs:\n\n    git fetch origin refs/verse/live\n    git diff FETCH_HEAD $subject.value.tree\n\nThis issue closes once the tree is installed, or once main carries another."
         text: "What is on main against what runs. An answer here installs it."
         asks: "repo-charters.verse:propose@repo-charters.verse.candidate.$subject.value.tree~2"
-        commitStatus: {verse: {state: pending, description: "waiting for an answer to the question on this pull request", sha: $subject.value.sha}}
+        commitStatus: {verse: {state: pending, description: "waiting for an answer to the question on the candidate's issue", sha: $subject.value.sha}}
         closed: false
-# The check's verdict on the verse/live pull request of a tree main carries, while it is asked
-# about there.
+# The check's verdict on main's commit of a tree main carries, while it is asked about on the
+# candidate's issue.
 - name: live-checked
   stratum: candidates
   condition:
@@ -601,7 +595,7 @@ rules:
     - path: "repo-charters.verse.out.github"
       id: $subject.value.tree
       value:
-        commitStatus: {"verse/check": {state: success, description: "installs cleanly over what runs"}}
+        commitStatus: {"verse/check": {state: success, description: "installs cleanly over what runs", sha: $subject.value.sha}}
 - name: live-check-refused
   stratum: candidates
   condition:
@@ -613,7 +607,7 @@ rules:
     - path: "repo-charters.verse.out.github"
       id: $subject.value.tree
       value:
-        commitStatus: {"verse/check": {state: failure, description: "would be refused; see the issue"}}
+        commitStatus: {"verse/check": {state: failure, description: "would be refused; see the issue", sha: $subject.value.sha}}
 - name: candidate-superseded
   stratum: candidates
   condition:
@@ -630,8 +624,8 @@ rules:
     - path: "repo-charters.verse.out.github"
       id: $subject.value.tree
       value: {closed: true}
-# A no closes the candidate's pull request, with verse's commit status failed on its head: the record of
-# the decision, where the question was asked.
+# A no closes the candidate's issue, with verse's commit status failed on main's commit: the record
+# of the decision, where the question was asked.
 - name: candidate-denied
   stratum: candidates
   condition:
@@ -645,10 +639,11 @@ rules:
       value:
         closed: true
         commitStatus: {verse: {state: failure, description: "denied: $subject.value.answer", sha: $subject.value.sha}}
-# A yes on main's tree makes verse/live hold it: made at the candidate's commit where verse/live
-# does not stand yet (the first install), and moved there where it stands at another tree (a
-# later yes, or a rollback to a tree answered before). Two inputs for the one branch, because a
-# read of verse/live is nothing before it stands, and a rule reading nothing never fires.
+# A yes on main's tree makes verse/live hold it: the record made holding it where verse/live does
+# not stand yet (the first install), and the tree appended where it holds another (a later yes,
+# or a rollback to a tree answered before), each entry naming the candidate's commit. Two inputs
+# for the one record, because a read of verse/live is nothing before it stands, and a rule reading
+# nothing never fires.
 - name: live-made
   stratum: candidates
   condition:
@@ -663,7 +658,7 @@ rules:
     derive:
     - path: "repo-charters.verse.out.git"
       id: live-made
-      value: {to: "branch.verse/live", sha: $subject.value.sha, create: true}
+      value: {to: "record.live", tree: $subject.value.tree, from: $subject.value.sha, create: true}
 - name: live-moved
   stratum: candidates
   condition:
@@ -681,11 +676,11 @@ rules:
     derive:
     - path: "repo-charters.verse.out.git"
       id: live
-      value: {to: "branch.verse/live", sha: $subject.value.sha}
+      value: {to: "record.live", tree: $subject.value.tree, from: $subject.value.sha}
 # The tree verse/live holds is installed, where its candidate was answered yes: the git io is
-# asked to install it, at verse/live's commit. The input is named for the tree and carries the
-# commit, so the io does nothing for a tree it already installed for that commit, and a commit
-# to main moves nothing here: only verse/live moving does.
+# asked to install it, for verse/live's entry. The input is named for the tree and carries the
+# entry and the commit of main it came from, so the io does nothing for a tree it already
+# installed for that entry, and a commit to main moves nothing here: only verse/live moving does.
 - name: install
   stratum: candidates
   condition:
@@ -703,11 +698,12 @@ rules:
         to: "install.repos.verse"
         tree: $subject.value.tree
         sha: !get-path {at: [repo-charters, verse, state, live], path: sha}
-# The io's answer: the tree it installed and for which commit. What runs is recorded, the
-# candidate's pull request's commit status passes, and the tree is tagged once at the commit it first ran
-# from. ONLY THE ANSWER FOR verse/live's COMMIT: a rule fires for every status it selects at every
-# commit under its place, and what runs is one record, so the statuses of earlier installs must
-# not be selected, or whichever fired last would be what runs.
+        from: !get-path {at: [repo-charters, verse, state, live], path: from}
+# The io's answer: the tree it installed, for which entry and from which commit. What runs is
+# recorded, the candidate's issue is closed, and the commit status on main's commit passes. ONLY
+# THE ANSWER FOR verse/live's ENTRY: a rule fires for every status it selects at every commit
+# under its place, and what runs is one record, so the statuses of earlier installs must not be
+# selected, or whichever fired last would be what runs.
 - name: installed
   stratum: install
   condition:
@@ -723,28 +719,21 @@ rules:
     derive:
     - path: "repo-charters.verse"
       id: running
-      value: {tree: $subject.value.tree, sha: $subject.value.sha}
-    # Merged at depth onto the candidate's pull request input, where one was opened; where none
-    # was (the first install, a rollback), this stands alone with no to, and no io reads it.
+      value: {tree: $subject.value.tree, sha: $subject.value.sha, from: $subject.value.from}
+    # Merged at depth onto the candidate's issue input, where one was opened, closing it; where
+    # none was (the first install, a rollback), this stands alone with no to, and no io reads it.
     - path: "repo-charters.verse.out.github"
       id: $subject.value.tree
       value:
-        commitStatus: {verse: {state: success, description: "installed at $subject.value.sha", sha: $subject.value.sha}}
+        commitStatus: {verse: {state: success, description: "installed from $subject.value.from", sha: $subject.value.from}}
+        closed: true
     # A refused install's issue is closed by an install that succeeds.
     - path: "repo-charters.verse.out.github"
       id: install-failed
       value: {closed: true}
-    # The tag names the TREE and stands at the commit it first ran from, once: a later commit
-    # carrying the same tree rewrites this input with its sha, and the io, asked to create, finds
-    # the tag standing and leaves it. NAMED, not keyed: a keyed input would stand under the rule
-    # and its subject, and the subject here is the install's status, whose name ends in ~status,
-    # which the sink never reads into. Named, it stands at out.git.<tree>, where the io finds it.
-    - path: "repo-charters.verse.out.git"
-      id: $subject.value.tree
-      value: {to: "tag.live-verse/$subject.value.tree", sha: $subject.value.sha, create: true}
 # An install the io refused for good is an issue in the repository, saying what the verse said,
-# and the candidate's pull request's commit status fails. The issue and the status stand until the
-# input changes: a fix on main is a new tree, a new candidate and a new question.
+# and the commit status on main's commit fails. The issue and the status stand until the input
+# changes: a fix on main is a new tree, a new candidate and a new question.
 - name: install-failed
   stratum: install
   condition:
@@ -761,12 +750,12 @@ rules:
         to: issue
         open:
           title: "charters: the install of what verse/live holds failed"
-          body: "verse refused to install the charters tree $subject.value.tree at commit $subject.value.sha into repos.verse:\n\n$subject.value.error\n\nThis issue closes when an install succeeds."
+          body: "verse refused to install the charters tree $subject.value.tree, from commit $subject.value.from, into repos.verse:\n\n$subject.value.error\n\nThis issue closes when an install succeeds."
         closed: false
     - path: "repo-charters.verse.out.github"
       id: $subject.value.tree
       value:
-        commitStatus: {verse: {state: failure, description: "the install failed; see the issue", sha: $subject.value.sha}}
+        commitStatus: {verse: {state: failure, description: "the install failed; see the issue", sha: $subject.value.from}}
 # MAIN'S CHARTERS ANSWERED NO: what runs stays as it was, and an issue says so while main holds the
 # denied tree. It closes when main's charters are anything else.
 - name: main-denied
@@ -802,9 +791,9 @@ rules:
     - path: "repo-charters.verse.out.github"
       id: main-denied
       value: {closed: true}
-# EVERY MINUTE, verse/live against what is installed: the git io resolves verse/live in its own
-# copy and asks the verse's charter check what installing its tree would change (iod reference,
-# the check of a ref). Only once verse/live has stood: before the first install there is nothing
+# EVERY MINUTE, verse/live against what is installed: the git io reads the record in its own copy
+# and asks the verse's charter check what installing its tree would change (iod reference, the
+# check of a record). Only once verse/live has stood: before the first install there is nothing
 # to compare.
 - name: live-check
   stratum: ticks
@@ -819,17 +808,16 @@ rules:
     derive:
     - path: "repo-charters.verse.livecheck"
       id: live
-      value: {to: "check.repos.verse", ref: "verse/live", of: charters, round: $subject.value.due}
-# verse/live HOLDING SOMETHING OTHER THAN WHAT RUNS is an open issue: neither restored nor asked
-# about at the time. The ask comes when somebody opens a pull request to fix it; moving verse/live
-# back in step closes it. Two rounds in a row at one commit, so an install verse is making is not
-# taken for it.
+      value: {to: "check.repos.verse", record: live, round: $subject.value.due}
+# verse/live HOLDING SOMETHING OTHER THAN WHAT RUNS is an open issue: not restored. The ask comes
+# when somebody opens a pull request to fix it; what runs back in step closes it. Two rounds in a
+# row at one entry, so an install verse is making is not taken for it.
 - name: live-in-step
   stratum: livecheck
   condition:
     subject:
       path: "repo-charters.verse.livecheck.*"
-      value: {ref: "verse/live", verdict: installs, changes: 0}
+      value: {record: live, verdict: installs, changes: 0}
   action:
     derive:
     - path: "repo-charters.verse.out.github"
@@ -840,7 +828,7 @@ rules:
   condition:
     subject:
       path: "repo-charters.verse.livecheck.*"
-      value: {ref: "verse/live", verdict: installs, changes: !gt 0, differingFor: !ge 2}
+      value: {record: live, verdict: installs, changes: !gt 0, differingFor: !ge 2}
   action:
     derive:
     - path: "repo-charters.verse.out.github"
@@ -849,14 +837,14 @@ rules:
         to: issue
         open:
           title: "charters: verse/live is not what runs"
-          body: "verse/live (commit $subject.value.sha, tree $subject.value.tree) differs from the charters installed at repos.verse by $subject.value.changes charter(s). Nothing installs from it while it does.\n\nOpen a pull request to main to change the charters, or move verse/live back in step; this issue closes when it is."
+          body: "refs/verse/live (entry $subject.value.sha, tree $subject.value.tree) differs from the charters installed at repos.verse by $subject.value.changes charter(s).\n\nOpen a pull request to main to change the charters, or put what runs back in step with it; this issue closes when they agree."
         closed: false
 - name: live-refused
   stratum: livecheck
   condition:
     subject:
       path: "repo-charters.verse.livecheck.*"
-      value: {ref: "verse/live", verdict: refused, differingFor: !ge 2}
+      value: {record: live, verdict: refused, differingFor: !ge 2}
   action:
     derive:
     - path: "repo-charters.verse.out.github"
@@ -865,14 +853,14 @@ rules:
         to: issue
         open:
           title: "charters: verse/live is not what runs"
-          body: "verse/live (commit $subject.value.sha, tree $subject.value.tree) holds charters an install at repos.verse would refuse:\n\n$subject.value.refusal\n\nOpen a pull request to main to change the charters, or move verse/live back in step; this issue closes when it is."
+          body: "refs/verse/live (entry $subject.value.sha, tree $subject.value.tree) holds charters an install at repos.verse would refuse:\n\n$subject.value.refusal\n\nOpen a pull request to main to change the charters; this issue closes when what it holds would install and runs."
         closed: false
 - name: live-missing
   stratum: livecheck
   condition:
     subject:
       path: "repo-charters.verse.livecheck.*"
-      value: {ref: "verse/live", verdict: missing}
+      value: {record: live, verdict: missing}
   action:
     derive:
     - path: "repo-charters.verse.out.github"
@@ -881,7 +869,7 @@ rules:
         to: issue
         open:
           title: "charters: verse/live is not what runs"
-          body: "verse/live is gone from the repository, so nothing records what runs at repos.verse there.\n\nPut verse/live back at the commit verse put it at; this issue closes when it is."
+          body: "refs/verse/live is gone from the repository, so nothing records what runs at repos.verse there.\n\nPut it back at the entry verse wrote last; this issue closes when it is."
         closed: false
 # EVERY MINUTE, the questions about trees nothing proposes now are settled `obsolete` by the git io:
 # what is proposed is main's tree, verse/live's, and each open pull request to main's change, read
