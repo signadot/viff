@@ -10,7 +10,7 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/scott-cotton/cli v0.3.1
 	github.com/signadot/tony-format/git-issue v0.3.2
-	github.com/signadot/tony-format/go-tony v0.0.248
+	github.com/signadot/tony-format/go-tony v0.0.249-0.20261101132347-4668350498bd
 	golang.org/x/net v0.59.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sys v0.49.0

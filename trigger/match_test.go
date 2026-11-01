@@ -211,9 +211,10 @@ func TestMatchRejectsBadShape(t *testing.T) {
 	}
 }
 
-// `**` IS REFUSED. kpath read it as `*.*`, exactly two levels, so a rule written for every depth
-// beneath a node selected two levels down and never fired. The wildcards a path has are still
-// taken, and a `*` inside a name is a character of it (TestAPathTakesNoOperatorAndNoList).
+// `**` IS REFUSED, by the path's own grammar: a wildcard ends its segment, so a `*` straight after
+// one is no path. A rule written `a.**` for every depth beneath a node would otherwise select
+// something else and never fire; `..` is every depth. The wildcards a path has are still taken,
+// and a `*` inside a quoted name is a character of it (TestAPathTakesNoOperatorAndNoList).
 func TestDoubleStarIsRefused(t *testing.T) {
 	for _, src := range []string{
 		`{path: "demo.reflex.**"}`,
@@ -222,8 +223,8 @@ func TestDoubleStarIsRefused(t *testing.T) {
 	} {
 		var m Match
 		err := codec.Unmarshal([]byte(src), &m, codec.Tony)
-		if err == nil || !strings.Contains(err.Error(), "`..`") {
-			t.Errorf("%s: %v, want a refusal naming the wildcards", src, err)
+		if err == nil || !strings.Contains(err.Error(), "demo.") {
+			t.Errorf("%s: %v, want a refusal naming the address", src, err)
 		}
 	}
 	for _, src := range []string{

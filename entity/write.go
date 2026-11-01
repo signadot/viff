@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -920,18 +919,11 @@ func PatternNodes(s string) ([]*ir.Node, error) {
 	return out, nil
 }
 
-// patternKPath is the parse the pattern readers share: the leading-dot and `**` guards, then
-// kpath.
+// patternKPath is the parse the pattern readers share: the leading-dot guard, then kpath.
 func patternKPath(s string) ([]*kpath.KPath, error) {
 	if strings.HasPrefix(s, ".") && !strings.HasPrefix(s, "..") {
 		return nil, fmt.Errorf("address %q begins with an empty segment: a segment is a name, "+
 			"and `*` is how a position is left open", s)
-	}
-	// kpath reads `**` as `*.*`: two positions left open, not every depth, so `a.**` written for
-	// "anything under a" selected exactly two levels down, and a rule written so never fired.
-	if doubleStar.MatchString(s) {
-		return nil, fmt.Errorf("address %q: `**` is two positions left open (`*.*`), not every "+
-			"depth: write `..` to reach every depth beneath a node, or `*.*` for exactly two", s)
 	}
 	kp, err := kpath.Parse(s)
 	if err != nil {
@@ -939,10 +931,6 @@ func patternKPath(s string) ([]*kpath.KPath, error) {
 	}
 	return KPathSegments(kp), nil
 }
-
-// doubleStar is an unquoted `**` segment: one between dots or at an end, and so never inside a
-// quoted name.
-var doubleStar = regexp.MustCompile(`(^|\.)\*\*+(\.|$)`)
 
 func exprSegs(s string, descend bool) ([]string, error) {
 	// A LEADING dot is the one thing kpath does not object to and this must: `.demo` parses as
