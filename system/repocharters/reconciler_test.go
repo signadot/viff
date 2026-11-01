@@ -1,4 +1,4 @@
-package versed
+package repocharters_test
 
 import (
 	"fmt"
@@ -20,10 +20,12 @@ import (
 	"github.com/signadot/verse/runner/runnerd/stock"
 	"github.com/signadot/verse/schedule"
 	"github.com/signadot/verse/system/repocharters"
+	"github.com/signadot/verse/versed"
+	"github.com/signadot/verse/versed/versedtest"
 )
 
 // main moves the reflected main of r to sha with the charters tree given, as the git io would.
-func mainAt(t *testing.T, srv *Server, sha, tree string) {
+func mainAt(t *testing.T, srv *versed.Server, sha, tree string) {
 	t.Helper()
 	entitytest.Set(t, srv.Store, entity.RefAt("git", "r", "ref", "main"), entity.Obj{
 		"repo": "r", "name": "main", "sha": sha, "type": "commit", "tree": entity.Obj{"charters": tree},
@@ -32,7 +34,7 @@ func mainAt(t *testing.T, srv *Server, sha, tree string) {
 
 // liveAt moves the reflected verse/live of r to sha with the charters tree given, as the git io's
 // reflection would once it made or moved the branch.
-func liveAt(t *testing.T, srv *Server, sha, tree string) {
+func liveAt(t *testing.T, srv *versed.Server, sha, tree string) {
 	t.Helper()
 	entitytest.Set(t, srv.Store, entity.RefAt("git", "r", "ref", "verse/live"), entity.Obj{
 		"repo": "r", "name": "verse/live", "sha": sha, "type": "commit", "tree": entity.Obj{"charters": tree},
@@ -42,7 +44,7 @@ func liveAt(t *testing.T, srv *Server, sha, tree string) {
 // prAt reflects an open pull request #n of r onto main, its head at sha, as the github io does
 // with `-tree .verse/charters`: changing the charters to the tree given, or, given none, leaving
 // them as they were where it branched.
-func prAt(t *testing.T, srv *Server, n int, sha, tree string) {
+func prAt(t *testing.T, srv *versed.Server, n int, sha, tree string) {
 	t.Helper()
 	pr := entity.Obj{
 		"repo": "signadot/r", "number": n, "state": "open", "base": "main", "head": fmt.Sprintf("topic-%d", n), "headSha": sha,
@@ -58,7 +60,7 @@ func prAt(t *testing.T, srv *Server, n int, sha, tree string) {
 
 // installedBy answers an install input as the git io's out half would: the status beside it
 // saying which tree was installed, for which commit.
-func installedBy(t *testing.T, srv *Server, tree, sha string) {
+func installedBy(t *testing.T, srv *versed.Server, tree, sha string) {
 	t.Helper()
 	ioLatency()
 	entitytest.Set(t, srv.Store, entity.RefAt("repo-charters", "r", "install", tree+"~status"), entity.Obj{
@@ -69,7 +71,7 @@ func installedBy(t *testing.T, srv *Server, tree, sha string) {
 
 // checkedBy answers a check input as the git io's out half would: the tree, and the verse's
 // verdict on it (io/gitcheck.go).
-func checkedBy(t *testing.T, srv *Server, tree, verdict, refusal string) {
+func checkedBy(t *testing.T, srv *versed.Server, tree, verdict, refusal string) {
 	t.Helper()
 	ioLatency()
 	st := entity.Obj{"tree": tree, "address": "repos.r", "verdict": verdict, "to": "check.repos.r",
@@ -95,7 +97,7 @@ func ioLatency() { time.Sleep(150 * time.Millisecond) }
 
 // refusedBy answers an install input as the out half records a refusal for good: the error, and
 // the tree, commit and address the io says beside it (io/gitinstall.go), and nothing else.
-func refusedBy(t *testing.T, srv *Server, tree, sha, why string) {
+func refusedBy(t *testing.T, srv *versed.Server, tree, sha, why string) {
 	t.Helper()
 	ioLatency()
 	entitytest.Set(t, srv.Store, entity.RefAt("repo-charters", "r", "install", tree+"~status"), entity.Obj{
@@ -104,7 +106,7 @@ func refusedBy(t *testing.T, srv *Server, tree, sha, why string) {
 	}.Payload())
 }
 
-func waitEntity(t *testing.T, srv *Server, ref entity.Ref, want func(entity.Payload) bool) entity.Payload {
+func waitEntity(t *testing.T, srv *versed.Server, ref entity.Ref, want func(entity.Payload) bool) entity.Payload {
 	t.Helper()
 	deadline := time.After(20 * time.Second) // generous: the full suite runs beside it
 	for {
@@ -125,7 +127,7 @@ func waitEntity(t *testing.T, srv *Server, ref entity.Ref, want func(entity.Payl
 }
 
 // waitQuestionID waits for the question with id to stand.
-func waitQuestionID(t *testing.T, srv *Server, id string) {
+func waitQuestionID(t *testing.T, srv *versed.Server, id string) {
 	t.Helper()
 	deadline := time.After(20 * time.Second) // generous: the full suite runs beside it
 	for {
@@ -146,7 +148,7 @@ func waitQuestionID(t *testing.T, srv *Server, id string) {
 // tagInputFor is the tag input for a tree, named by the tree in the git outbox, where the io
 // reads it: an input under a name ending in ~status (the install's status, the rule's subject)
 // is one the sink never reads, so the input is named and not keyed.
-func tagInputFor(t *testing.T, srv *Server, tree string) entity.Payload {
+func tagInputFor(t *testing.T, srv *versed.Server, tree string) entity.Payload {
 	t.Helper()
 	ref := entity.RefAt("repo-charters", "r", "out", "git", tree)
 	return waitEntity(t, srv, ref, func(p entity.Payload) bool { return entity.Str(p, "to") == "tag.live-verse/"+tree })
@@ -156,8 +158,7 @@ func tagInputFor(t *testing.T, srv *Server, tree string) entity.Payload {
 // `repo-charters.verse`, and its outboxes are plain names inside it, not `verse.install`, which
 // the outbox check reads as verse's own half (staging's first ship refused it so).
 func TestTheReconcilerInstallsForARepositoryCalledVerse(t *testing.T) {
-	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
-	t.Cleanup(srv.stopAllIOs)
+	srv := versedtest.Server(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
@@ -183,8 +184,7 @@ func TestTheReconcilerInstallsForARepositoryCalledVerse(t *testing.T) {
 // A reconciler rendered for another branch follows that branch: its tree is a candidate, and so is
 // what a pull request onto it proposes, while main and a pull request onto main propose nothing.
 func TestTheReconcilerFollowsItsBranch(t *testing.T) {
-	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
-	t.Cleanup(srv.stopAllIOs)
+	srv := versedtest.Server(t, runnerdtest.Scripted, entitytest.Store(t))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
@@ -245,8 +245,7 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	dir := t.TempDir()
 	// Hosted as `verse up` hosts tasks, so a call list can ask.
 	drivers := stock.New(stock.Open(), stock.Secrets{}, dir, io.Discard)
-	srv := serverWith(t, drivers.Build, entitytest.Store(t))
-	t.Cleanup(srv.stopAllIOs)
+	srv := versedtest.Server(t, drivers.Build, entitytest.Store(t))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)

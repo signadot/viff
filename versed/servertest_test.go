@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/entity"
@@ -236,4 +237,25 @@ func someSubject(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return sub
+}
+
+// waitEntity waits for the entity at ref to stand as want says.
+func waitEntity(t *testing.T, srv *Server, ref entity.Ref, want func(entity.Payload) bool) entity.Payload {
+	t.Helper()
+	deadline := time.After(20 * time.Second) // generous: the full suite runs beside it
+	for {
+		e, ok, _ := srv.Store.Get(ref)
+		if ok && want(e.Payload) {
+			return e.Payload
+		}
+		select {
+		case <-deadline:
+			var have any
+			if ok {
+				have = entity.ToObj(e.Payload)
+			}
+			t.Fatalf("%s never became what was waited for; have %v", ref, have)
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
 }
