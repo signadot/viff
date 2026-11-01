@@ -47,9 +47,9 @@ func gitMain(args []string) error {
 	ctx := context.Background()
 	// AS AN APP, where the environment names one (GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID and
 	// GITHUB_APP_PRIVATE_KEY, as the github io takes them): the app's installation token is the
-	// only credential git presents, so a fetch and a push are the app's, and a branch only the
-	// app may push to (verse/live) is one this io can move. Before the first clone, which is the
-	// first thing that asks git for a credential.
+	// only credential git presents, so a fetch and a push are the app's, and what it writes
+	// (refs/verse/live, for the repo-charters reconciler) is written as the app. Before the
+	// first clone, which is the first thing that asks git for a credential.
 	app, err := githubApp()
 	if err != nil {
 		return err

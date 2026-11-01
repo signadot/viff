@@ -27,12 +27,13 @@ import (
 //	tree: 4b825dc6…               # the tree object of the charters directory, as the reflection
 //	                              # reports it (`tree.<name>` on a ref)
 //	sha:  4f668c1c…               # the commit it is installed for, carried onto the status
+//	from: 9d1e0a7b…               # optional: the commit the tree came from, carried onto it too
 //
 // This archives the tree out of the repository, reads every charter file in it, and asks the
 // verse to install them as `verse c -a <address> -d <dir> --prune` would: one request, every
 // charter in it or none, and what the directory leaves out under the address removed. The status
-// answers `tree`, `sha`, `at`, and `charters`, how many were installed. A tree already installed
-// for the same commit costs nothing.
+// answers `tree`, `sha`, `from`, `at`, and `charters`, how many were installed. A tree already
+// installed for the same commit costs nothing.
 //
 // IT IS THE REPO-CHARTERS RECONCILER'S DOER (git-issue j9vbwvja, dzxn44gw). The reconciler
 // decides, and the install has to happen where a copy of the repository is: on a deployment that
@@ -70,6 +71,9 @@ func (k *GitSink) install(ctx context.Context, rp repo, in Input, address string
 	asked := entity.Obj{"tree": tree, "address": at}
 	if sha != "" {
 		asked["sha"] = sha
+	}
+	if from := strings.TrimSpace(entity.Str(in.Value, "from")); from != "" {
+		asked["from"] = from
 	}
 	// The tree object, in full and one the repository has. A tree it lacks is refused for good,
 	// as a missing commit is for a ref: the reflection read it before anything asked to install it.

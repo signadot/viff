@@ -16,20 +16,20 @@ import (
 
 // The out half of the git io: a ref written where the io reads, and a tree of charters installed
 // into the verse. It exists for the repo-charters reconciler (git-issue j9vbwvjah12krs9tqsn0),
-// which records an install as a tag, keeps a branch at the running sha, and has the charters
-// installed from the repository's own copy (gitinstall.go), and it does those three things and
-// nothing else: no commit, no tree written, no merge. A ref it writes is at a sha that already
-// exists in the repository.
+// which keeps what runs as a record (gitrecord.go) and has the charters installed from the
+// repository's own copy (gitinstall.go). A tag or a branch it writes is at a sha that already
+// exists in the repository; the one commit it makes is a record's entry, holding a tree the
+// repository has. No tree is written and nothing is merged.
 //
 // Somebody writes an input under a repository's out place, `git.<repo>.out.<name>`, or a package
 // writes one in an outbox it declares for that place:
 //
-//	to:  tag.live-verse.3        # everything after the first dot is the tag's name
+//	to:  tag.v1.3                # everything after the first dot is the tag's name
 //	sha: 4f668c1c…               # a commit the repository has; a tag or a short sha resolves
 //
 // or
 //
-//	to:  branch.verse/live       # a branch, moved to the sha, forward or back
+//	to:  branch.verse/next       # a branch, moved to the sha, forward or back
 //	sha: 4f668c1c…
 //	create: true                 # or: made where it is absent, and left alone where it stands
 //	                             # (a tag takes it too)
@@ -109,11 +109,14 @@ func (k *GitSink) Deliver(ctx context.Context, in Input) (entity.Obj, error) {
 	if kind == checkTarget && found {
 		return k.check(ctx, rp, in, name)
 	}
+	if kind == recordTarget && found {
+		return k.record(ctx, rp, in, name)
+	}
 	if in.To == obsoleteTarget {
 		return k.obsolete(ctx, in)
 	}
 	if !found || name == "" || (kind != "tag" && kind != "branch") {
-		return nil, Permanent(fmt.Errorf("`to` is tag.<name>, branch.<name>, install.<address>, check.<address> or obsolete, not %q", in.To))
+		return nil, Permanent(fmt.Errorf("`to` is tag.<name>, branch.<name>, record.<name>, install.<address>, check.<address> or obsolete, not %q", in.To))
 	}
 	if strings.HasPrefix(name, "refs/") || strings.Contains(name, "..") || strings.HasSuffix(name, "/") {
 		return nil, Permanent(fmt.Errorf("`to` %q: %q is not a ref's short name", in.To, name))
@@ -136,9 +139,8 @@ func (k *GitSink) Deliver(ctx context.Context, in Input) (entity.Obj, error) {
 	cur, _ := gitCmd(ctx, rp.dir, "rev-parse", "--verify", "-q", ref)
 	now := k.now().UTC().Format(time.RFC3339)
 	// CREATE ONLY: a ref made once where it is absent and left alone where it stands. A branch
-	// somebody else moves on, verse/live under the pull requests verse merges into it, is never
-	// moved back by this; a tag that marks the first commit a tree ran at is not refused when
-	// the tree runs again from another.
+	// somebody else moves on is never moved back by this, and a tag that marks a commit once is
+	// not refused when it is asked for again at another.
 	if c := ir.Uncomment(entity.Get(in.Value, "create")); c != nil && c.Type == ir.BoolType && c.Bool && cur != "" {
 		if entity.Str(in.Status, "ref") == ref {
 			return nil, nil

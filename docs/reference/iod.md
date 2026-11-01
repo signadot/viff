@@ -156,6 +156,7 @@ converges at the full reflection of every minute.
 | Address | Payload |
 |---|---|
 | `git.<repo>.ref.<name>` | `repo, name, sha, type`, and `tree` for each directory `-tree` names: `tree: {<name>: <object sha>}`, the empty tree where the directory is not there. These are branches, tags and remote-tracking branches, and nothing else. |
+| `git.<repo>.record.<name>` | `repo, name, sha, tree`, and `from` where its last entry names one: a [record](#a-record) the out half keeps, `refs/verse/<name>`, with `tree` its last entry's whole tree |
 | `git.<repo>.head` | `repo, ref, sha, dirty`, and `ahead`/`behind` when an upstream is set |
 | `git.<repo>.commit.<sha>` | `repo, sha, msg, author, parents`, and `trailers` when the commit has any. `parents` is a list of shas: empty for a root commit, two for a merge, first parent first. No [cover](../glossary.md#cover-of-a-reflection) reaches a commit, so history stays. |
 
@@ -173,7 +174,8 @@ Every ref and every commit beneath the address is owned through that record.
 A ref name keeps its slashes inside one segment: `git.verse.ref."origin/main"`.
 
 **The iod names three ref spaces.** It asks git for `refs/heads`, `refs/tags` and
-`refs/remotes`, and for nothing else. The tip of a pull request is
+`refs/remotes` as refs, and for its own records under `refs/verse`, and for nothing else. The
+tip of a pull request is
 `github.<org>.<name>.pr.<n>.headSha`, from the iod that owns pull requests.
 [Three ref spaces are named](#three-ref-spaces-are-named) gives the reason.
 
@@ -232,17 +234,20 @@ an **input** under the repository's out place, `git.<repo>.out`, and the iod ans
 | `{to: tag.<name>, sha}` | makes the tag at the commit | `ref, sha, at` |
 | `{to: branch.<name>, sha}` | moves the branch to the commit, forward or back | `ref, sha, at`, and `was`, the sha it stood at |
 | `{to: branch.<name>, sha, create: true}` | makes the branch at the commit where there is none, and leaves one that stands alone; a tag takes `create` too | `ref, sha, at`, and `kept: true` where it stood already |
-| `{to: install.<address>, tree, sha}` | installs the charters in the tree object into the verse at the address, as `verse c -a <address> -d <dir> --prune` would, from the iod's own copy of the repository; `sha` is the commit it is installed for | `tree, sha, address, at`, and `charters`, how many |
+| `{to: record.<name>, tree, from}` | appends an entry holding the tree to the [record](#a-record) `refs/verse/<name>`, where its last entry holds another tree; `from`, optional, is the commit the tree was taken from; `create: true` makes the record where there is none and leaves one that stands alone | `ref, sha, tree, at`, and `was`, the entry before; `kept: true` where it stood already |
+| `{to: install.<address>, tree, sha, from}` | installs the charters in the tree object into the verse at the address, as `verse c -a <address> -d <dir> --prune` would, from the iod's own copy of the repository; `sha` is the commit it is installed for, and `from`, optional, the commit the tree came from | `tree, sha, from, address, at`, and `charters`, how many |
 | `{to: check.<address>, tree}` | asks the verse's charter check what an install of the tree at the address would do, and installs nothing | `tree, address, checkedAt`, and the check's `verdict` (`installs` or `refused`), `refusal`, `packages` and `pruned` |
 | `{to: check.<address>, ref, of, round}` | the same check for the tree a ref holds now in the iod's own copy (`of` names the `-tree` directory, and may be left out where there is one), made again whenever `round` changes | as above, with `ref`, `sha` and `round`; `changes`, how many charters the install would add, change, remove or prune (0 is in step with what runs); `differingFor`, the rounds in a row it has differed at one commit; a ref the repository lacks is the verdict `missing` |
+| `{to: check.<address>, record, round}` | the same, for the tree a record's last entry holds | as above, with `record` in place of `ref` |
 | `{to: obsolete, prefix, keep, before}` | answers `obsolete`, as the iod, every pending question waiting on it whose id begins with `prefix`, whose key (the id after the prefix, up to `~`) is none of the strings under `keep`, posed by `before`, and offering `obsolete` | `obsoleted`, the ids answered; `sweptAt`, `before` |
 
 ```sh
-verse data git verse out live -put '{to: tag.live-verse.3, sha: 4f668c1c}'
-verse data git verse out head -put '{to: branch.verse/live, sha: 4f668c1c}'
+verse data git verse out release -put '{to: tag.v1.3, sha: 4f668c1c}'
+verse data git verse out head -put '{to: branch.verse/next, sha: 4f668c1c}'
+verse data git verse out live -put '{to: record.live, tree: 9d5e2b71, from: 4f668c1c}'
 verse data git verse out install -put '{to: install.repos.verse, tree: 9d5e2b71, sha: 4f668c1c}'
 verse data git verse out check -put '{to: check.repos.verse, tree: 9d5e2b71}'
-verse data git verse out livecheck -put '{to: check.repos.verse, ref: verse/live, round: "1"}'
+verse data git verse out livecheck -put '{to: check.repos.verse, record: live, round: "1"}'
 ```
 
 - **A check is not an install.** It reads the tree's charter files as the install does and asks
@@ -251,8 +256,8 @@ verse data git verse out livecheck -put '{to: check.repos.verse, ref: verse/live
   `refused`, a file that does not parse among them, is an answer on the status and not a failed
   input; a tree the repository lacks is asked about again on the next pass, since a pull request's
   tree can be asked about before this iod has fetched it, and a verse that cannot be reached is
-  tried again. A tree checked already costs nothing. Checked by `ref` with a `round`, it is the
-  repo-charters reconciler's minute check that verse/live is what is installed.
+  tried again. A tree checked already costs nothing. Checked by `record` with a `round`, it is
+  the repo-charters reconciler's minute check that `refs/verse/live` is what is installed.
 - **An obsolete sweep settles what nothing proposes.** The charter that asked decides what is
   still proposed and names it in `keep`; the iod only applies it, and only to questions posed by
   `before`, the instant `keep` was read at, so a question about something newer is left for the
@@ -279,9 +284,22 @@ verse data git verse out livecheck -put '{to: check.repos.verse, ref: verse/live
   credential it fetches with, and writes its own copy so the next reflection sees it. A
   repository on disk gets the ref written in place.
 
-This half is what the repo-charters reconciler uses to keep `verse/live` at the commit of the
-tree the team said yes to, to install the tree `verse/live` holds, and to tag the commit a tree
-first ran from ([the example](examples/repo-charters/repo-charters.tony)). It makes no commit and no tree.
+#### A record
+
+A **record** is a ref of verse's own, `refs/verse/<name>`: a chain of commits, each holding a
+tree as its whole tree, with the entry before as its parent and the commit the tree was taken
+from as its `From:` trailer. It is not a branch, so nothing checks it out, builds it, or opens a
+pull request onto it, and `git log refs/verse/<name>` is its history. The tree is what it
+records: an entry is appended only for a tree its last entry does not hold, so the same tree
+from another commit is the same record. An entry is appended with a lease on the one before,
+and pushed where the iod reads, as a branch is moved. A mirror clone fetches every ref, so the
+iod's own copy carries the record; anybody else fetches it by name (`git fetch origin
+refs/verse/live:refs/verse/live`).
+
+This half is what the repo-charters reconciler uses to keep `refs/verse/live` holding the tree
+the team said yes to, and to install the tree it holds
+([the example](examples/repo-charters/repo-charters.tony)). The one commit it makes is a
+record's entry, and it writes no tree.
 
 ## git-issue
 

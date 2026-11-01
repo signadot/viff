@@ -319,6 +319,7 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 	// tip window is simply not mentioned — and an unmentioned, uncovered entity stays.
 	rn := Reflection{Covers: []entity.Pattern{
 		Cover(g.root, id, "ref", "*"),
+		Cover(g.root, id, "record", "*"),
 		Cover(g.root, id, "head"),
 	}}
 
@@ -341,6 +342,26 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 			p["tree"] = t
 		}
 		rn.Add(entity.RefAt(g.root, id, "ref", name), p)
+	}
+
+	// Records: refs/verse/<name>, verse's own refs (gitrecord.go) — git.<repo>.record.<name>
+	// {repo, name, sha, tree, from}, the tree being the entry's whole tree.
+	recs, err := gitRecords(ctx, dir)
+	if err != nil {
+		return Reflection{}, err
+	}
+	recNames := make([]string, 0, len(recs))
+	for name := range recs {
+		recNames = append(recNames, name)
+	}
+	sort.Strings(recNames)
+	for _, name := range recNames {
+		r := recs[name]
+		p := entity.Obj{"repo": id, "name": name, "sha": r.sha, "tree": r.tree}
+		if r.from != "" {
+			p["from"] = r.from
+		}
+		rn.Add(entity.RefAt(g.root, id, "record", name), p)
 	}
 
 	// HEAD: branch, tip sha, dirty (and ahead/behind when an upstream is set).
@@ -373,8 +394,9 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 
 type refInfo struct{ sha, typ string }
 
-// reflectedRefs is the ref space this source reflects: branches, tags, and remote-tracking
-// branches. Everything else in a repository is somebody else's namespace.
+// reflectedRefs is the ref space this source reflects as refs: branches, tags, and remote-tracking
+// branches. Its own records, under refs/verse/, it reflects as records (gitRecords). Everything
+// else in a repository is somebody else's namespace.
 //
 // NAMED EXPLICITLY, because `for-each-ref` with no pattern is EVERY ref, and a mirror clone
 // maps every ref the remote has (`+refs/*:refs/*`, see gitrepos.go). On GitHub that means

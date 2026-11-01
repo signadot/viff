@@ -24,17 +24,24 @@ import (
 // or, for what a ref holds now, resolved from this io's own copy when the check is made:
 //
 //	to:    check.repos.verse
-//	ref:   verse/live             # a branch or tag, as `git rev-parse` resolves a short name
+//	ref:   main                   # a branch or tag, as `git rev-parse` resolves a short name
 //	of:    charters               # which `-tree` directory; may be left out when there is one
 //	round: 2026-10-04T21:00:00Z   # checked again whenever this changes
+//
+// or, for what a record holds now (gitrecord.go), its entry's whole tree:
+//
+//	to:     check.repos.verse
+//	record: live                  # refs/verse/live
+//	round:  2026-10-04T21:00:00Z
 //
 // This reads the tree's charter files out of the repository, as the install input does, and asks
 // the verse's charter check (`POST /charter/check`) what an install of them at the address would
 // do. The status answers `tree`, `address`, `checkedAt`, and the check's own answer: `verdict`
 // (`installs` or `refused`), `refusal`, `packages` (each with what it would add, change, remove,
 // and hold) and `pruned`; and `changes`, how many charters the install would add, change, remove
-// or prune, so 0 is a tree that is what runs. A ref's check also answers `ref`, `sha` (the commit
-// it stood at) and `round`, a ref that is not there is the verdict `missing`, and
+// or prune, so 0 is a tree that is what runs. A ref's or a record's check also answers `ref` or
+// `record`, `sha` (the commit it stood at) and `round`, one that is not there is the verdict
+// `missing`, and
 // `differingFor` counts the rounds in a row the ref has differed from what runs at one commit: an
 // install verse is making takes a moment, and a reader that waits for 2 does not mistake it for
 // drift. A tree checked already, or a round checked already, costs nothing.
@@ -63,12 +70,14 @@ func (k *GitSink) check(ctx context.Context, rp repo, in Input, address string) 
 	at := entity.JoinSegs(segs)
 	tree := strings.TrimSpace(entity.Str(in.Value, "tree"))
 	ref := strings.TrimSpace(entity.Str(in.Value, "ref"))
+	record := strings.TrimSpace(entity.Str(in.Value, "record"))
 	round := strings.TrimSpace(entity.Str(in.Value, "round"))
-	if (tree == "") == (ref == "") {
-		return nil, Permanent(fmt.Errorf("a check input carries {to, tree} or {to, ref}, and this one has %s", map[bool]string{true: "neither", false: "both"}[tree == ""]))
+	if n := countSet(tree, ref, record); n != 1 {
+		return nil, Permanent(fmt.Errorf("a check input carries one of {to, tree}, {to, ref} and {to, record}, and this one has %s",
+			map[bool]string{true: "none", false: "more than one"}[n == 0]))
 	}
 	if entity.Get(in.Status, "error") == nil && entity.Str(in.Status, "verdict") != "" &&
-		entity.Str(in.Status, "round") == round && (ref != "" || entity.Str(in.Status, "tree") == tree) {
+		entity.Str(in.Status, "round") == round && (tree == "" || entity.Str(in.Status, "tree") == tree) {
 		return nil, nil // checked, and the status says so
 	}
 	asked := entity.Obj{"address": at}
@@ -77,9 +86,15 @@ func (k *GitSink) check(ctx context.Context, rp repo, in Input, address string) 
 	}
 	now := k.now().UTC().Format(time.RFC3339)
 	sha := ""
-	if ref != "" {
-		asked["ref"] = ref
-		if tree, sha, err = k.refTree(ctx, rp, ref, strings.TrimSpace(entity.Str(in.Value, "of"))); err != nil {
+	if ref != "" || record != "" {
+		if ref != "" {
+			asked["ref"] = ref
+			tree, sha, err = k.refTree(ctx, rp, ref, strings.TrimSpace(entity.Str(in.Value, "of")))
+		} else {
+			asked["record"] = record
+			tree, sha, err = recordTree(ctx, rp.dir, record)
+		}
+		if err != nil {
 			return asked, err
 		}
 		if sha == "" {
@@ -183,6 +198,17 @@ func (k *GitSink) refTree(ctx context.Context, rp repo, ref, of string) (tree, s
 		return EmptyTree, sha, nil
 	}
 	return tree, sha, nil
+}
+
+// countSet is how many of the strings are not empty.
+func countSet(ss ...string) int {
+	n := 0
+	for _, s := range ss {
+		if s != "" {
+			n++
+		}
+	}
+	return n
 }
 
 // countChanges is how many charters an install of the checked tree would add, change, remove or
