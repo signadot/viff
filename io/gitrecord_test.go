@@ -104,9 +104,17 @@ func TestARecordHoldsATreeAndChainsItsEntries(t *testing.T) {
 		t.Errorf("status of a kept record = %v", st)
 	}
 
+	// An entry somebody else wrote, with no From: trailer, is reflected all the same, its `from`
+	// said empty: a record is a ref anybody who can push may write.
+	byHand := gitOut(t, dir, "commit-tree", treeA, "-m", "by hand")
+	gitOut(t, dir, "update-ref", "refs/verse/hand", byHand)
+
 	recs := reflectedRecords(t, g)
 	if p := recs["live"]; entity.Str(p, "sha") != second || entity.Str(p, "tree") != treeB || entity.Str(p, "from") != three {
 		t.Errorf("the reflected record = %v", entity.ToObj(recs["live"]))
+	}
+	if p := recs["hand"]; entity.Str(p, "sha") != byHand || entity.Str(p, "tree") != treeA || entity.Get(p, "from") == nil || entity.Str(p, "from") != "" {
+		t.Errorf("the reflected record written by hand = %v", entity.ToObj(recs["hand"]))
 	}
 
 	// Refused for good: a tree the repository lacks, a from it lacks, no tree, a bad name.
@@ -160,12 +168,18 @@ func TestARecordIsCheckedAgainstWhatRuns(t *testing.T) {
 		return r.status(t, "live")
 	}
 	if st := check("1"); st["verdict"] != "installs" || fmt.Sprint(st["changes"]) != "0" ||
-		st["record"] != "live" || st["sha"] != entry || st["tree"] != treeA || st["ref"] != nil {
+		st["record"] != "live" || st["sha"] != entry || st["tree"] != treeA || st["ref"] != nil || st["verdictSince"] != "1" {
 		t.Fatalf("the record in step with what runs: status %v", st)
+	}
+	// The same verdict at the same entry a round later holds since the round it began.
+	if st := check("1a"); st["verdictSince"] != "1" {
+		t.Fatalf("the same verdict a round later: status %v", st)
 	}
 	r.ask(t, "rec", entity.Obj{"to": "record.live", "tree": treeB, "from": two})
 	r.pass(t)
-	if st := check("2"); fmt.Sprint(st["changes"]) != "1" || fmt.Sprint(st["differingFor"]) != "1" || st["tree"] != treeB {
+	// A new entry begins its verdict again, the same verdict or not.
+	if st := check("2"); fmt.Sprint(st["changes"]) != "1" || fmt.Sprint(st["differingFor"]) != "1" || st["tree"] != treeB ||
+		st["verdict"] != "installs" || st["verdictSince"] != "2" {
 		t.Fatalf("the record moved to charters that do not run: status %v", st)
 	}
 	r.ask(t, "gone", entity.Obj{"to": "check.repos.r", "record": "nosuch", "round": "1"})

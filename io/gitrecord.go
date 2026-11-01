@@ -34,7 +34,8 @@ import (
 // commit is the same record. An entry is appended with a lease on the one before, and pushed where
 // the io reads from, as a branch is moved (gitout.go).
 //
-// Reflected as `git.<repo>.record.<name>`: `{repo, name, sha, tree, from}`.
+// Reflected as `git.<repo>.record.<name>`: `{repo, name, sha, tree, from}`, `from` empty for an
+// entry with no From: trailer, which anybody who can push may write.
 
 // recordTarget is the kind a record input's `to` begins with.
 const recordTarget = "record"

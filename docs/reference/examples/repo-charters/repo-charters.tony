@@ -47,12 +47,13 @@
 # io's `-tree`, against the head's merge base) proposes the tree at its head, and the question is
 # asked there, where the change is reviewed, beside its `verse` status (the answer) and its
 # `verse/check` status (the check) on the head. Verse holds nothing: the merge is the repository's,
-# under whatever review it asks for, and the gate is the install. A repository that wants a tree
-# the install would refuse kept off main makes `verse/check` a required check. What it says follows
-# the tree the pull request proposes NOW: pushed on to another tree, it is asked about that one in
-# the same comment; once it leaves the charters alone, the comment says so. The answer stands for
-# the tree, so a yes given on the pull request installs it once it merges, with no second question,
-# and a tree merged unanswered is asked on the candidate's issue.
+# under whatever review it asks for, and the gate is the install. Neither status can be a required
+# check: verse says them only on a pull request that changes the charters, and a required check
+# would hold every other pull request to main. What it says follows the tree the pull request
+# proposes NOW: pushed on to another tree, it is asked about that one in the same comment; once it
+# leaves the charters alone, the comment says so. The answer stands for the tree, so a yes given
+# on the pull request installs it once it merges, with no second question, and a tree merged
+# unanswered is asked on the candidate's issue.
 #
 # THE CANDIDATE'S ISSUE is for a change that reached main without that answer (an ordinary push, a
 # pull request merged around verse): the question is asked on an issue, where the repository's
@@ -87,8 +88,9 @@
 # A REFUSED INSTALL IS ASKED AGAIN when the verse moves, not only when the repository does: what
 # refused it may have been the verse's (no runner offering a spawn yet, a build behind the
 # charters, an io not registered), and the minute's check of verse/live finds when the tree would
-# install. Each time that check's verdict rises to `installs`, the install of what verse/live
-# holds is asked again, once; the io does nothing for an install that stands.
+# install. Each time that check's verdict begins to be `installs` for an entry of verse/live, the
+# install of what the entry holds is asked again, once; the io does nothing for an install that
+# stands.
 #
 # NOTHING STANDS UNSAID. Each way main, verse/live and the installed charters can disagree has an
 # outcome somebody sees:
@@ -200,13 +202,14 @@ rules:
       value: {to: "check.repos.verse", tree: $subject.value.tree.charters, sha: $subject.value.sha}
 # What verse/live holds, which is what runs once installed: its last entry, the charters tree it
 # holds, and the commit of main the tree came from. An entry the git io wrote names that commit;
-# one written another way, with no `From:`, is not read until verse writes the next.
+# anybody who can push can write one that does not, and its `from` is empty: what it holds is
+# what verse/live holds all the same, with no commit of main to say statuses on.
 - name: live
   stratum: reflected
   condition:
     subject:
       path: "git.verse.record.live"
-      value: {tree: !glob "*", from: !glob "*"}
+      value: {tree: !glob "*"}
   action:
     derive:
     - path: "repo-charters.verse.state"
@@ -490,8 +493,8 @@ rules:
             description: !get-path {at: [repo-charters, verse, verdict, $subject.value.tree], path: check.description}
             sha: $subject.value.head
 # A pull request that no longer changes the charters is asked nothing: the comment says so, and
-# both statuses on its head say there is nothing to wait for, so a required `verse/check` passes.
-# One that never did writes an input with no `to`, which no io reads.
+# both statuses on its head say there is nothing to wait for. One that never did writes an input
+# with no `to`, which no io reads.
 - name: pr-quiet
   stratum: proposals
   condition:
@@ -686,7 +689,7 @@ rules:
     - path: "repo-charters.verse.out.github"
       id: $subject.value.tree
       value:
-        commitStatus: {verse: {state: success, description: "installed from $subject.value.from", sha: $subject.value.from}}
+        commitStatus: {verse: {state: success, description: "installed into repos.verse", sha: $subject.value.from}}
         closed: true
     # A refused install's issue is closed by an install that succeeds.
     - path: "repo-charters.verse.out.github"
@@ -712,7 +715,7 @@ rules:
         to: issue
         open:
           title: "charters: the install of what verse/live holds failed"
-          body: "verse refused to install the charters tree $subject.value.tree, from commit $subject.value.from, into repos.verse:\n\n$subject.value.error\n\nverse asks again when its minute check finds the tree would install. This issue closes when an install succeeds."
+          body: "verse refused to install the charters tree $subject.value.tree, refs/verse/live's entry $subject.value.sha, into repos.verse:\n\n$subject.value.error\n\nverse asks again when its minute check finds the tree would install. This issue closes when an install succeeds."
         closed: false
     - path: "repo-charters.verse.out.github"
       id: $subject.value.tree
@@ -771,25 +774,27 @@ rules:
     - path: "repo-charters.verse.livecheck"
       id: live
       value: {to: "check.repos.verse", record: live, round: $subject.value.due}
-# A REFUSED INSTALL ASKED AGAIN: each time the minute's check finds that what verse/live holds
-# would install, where it did not find so the round before, the install of that tree is asked
-# again, once (an edge, not a level). What refused it may have been the verse's and not the
-# tree's: no runner offering a spawn yet, a build behind the charters, an io not registered. The
-# io does nothing for an install that stands, so a rise over a tree that runs costs nothing.
+# A REFUSED INSTALL ASKED AGAIN: each time the minute's check finds that what an entry of
+# verse/live holds would install, where it did not find so before, the install of that tree is
+# asked again, once. What refused it may have been the verse's and not the tree's: no runner
+# offering a spawn yet, a build behind the charters, an io not registered. The io says since when
+# the verdict has held at the entry (`verdictSince`), which is the same round after round while it
+# holds and begins again at a new entry, so the install's input changes once each time the verdict
+# begins and not once a minute; and the io does nothing for an install that stands, so a verdict
+# over a tree that runs costs nothing. Not an edge: an edge rises only where the verdict was not
+# `installs` before, so a new entry found to install, as the one before it was, would never be
+# asked again.
 - name: install-again
   stratum: livecheck
   condition:
-    on:
-      path: "repo-charters.verse.livecheck.*"
-      value: {record: live, verdict: installs}
     subject:
       path: "repo-charters.verse.livecheck.*"
-      value: {record: live, verdict: installs, tree: !glob "*", round: !glob "*"}
+      value: {record: live, verdict: installs, tree: !glob "*", verdictSince: !glob "*"}
   action:
     derive:
     - path: "repo-charters.verse.install"
       id: $subject.value.tree
-      value: {again: $subject.value.round}
+      value: {again: $subject.value.verdictSince}
 # verse/live HOLDING SOMETHING OTHER THAN WHAT RUNS is an open issue: not restored. The ask comes
 # when somebody opens a pull request to fix it; what runs back in step closes it. Two rounds in a
 # row at one entry, so an install verse is making is not taken for it.

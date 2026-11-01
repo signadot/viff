@@ -773,4 +773,15 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	}
 	answer(qidN, "proceed")
 	waitEntity(t, srv, gitIn("live"), func(p entity.Payload) bool { return entity.Str(p, "from") == sha(14) })
+
+	// 21. An entry of verse/live written by hand, with no From: trailer (anybody who can push may
+	// write one), holding a tree answered yes: it is what verse/live holds all the same, and it
+	// installs, from no commit of main.
+	liveAt(t, srv, entry(21), treeA, "")
+	byHand := waitEntity(t, srv, installIn(treeA), func(p entity.Payload) bool { return entity.Str(p, "sha") == entry(21) })
+	if entity.Str(byHand, "to") != "install.repos.r" || entity.Str(byHand, "from") != "" {
+		t.Errorf("the install of an entry written by hand = %v", entity.ToObj(byHand))
+	}
+	installedBy(t, srv, treeA, entry(21), "")
+	waitEntity(t, srv, running, func(p entity.Payload) bool { return entity.Str(p, "sha") == entry(21) })
 }

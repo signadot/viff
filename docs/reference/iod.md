@@ -156,7 +156,7 @@ converges at the full reflection of every minute.
 | Address | Payload |
 |---|---|
 | `git.<repo>.ref.<name>` | `repo, name, sha, type`, and `tree` for each directory `-tree` names: `tree: {<name>: <object sha>}`, the empty tree where the directory is not there. These are branches, tags and remote-tracking branches, and nothing else. |
-| `git.<repo>.record.<name>` | `repo, name, sha, tree`, and `from` where its last entry names one: a [record](#a-record) the out half keeps, `refs/verse/<name>`, with `tree` its last entry's whole tree |
+| `git.<repo>.record.<name>` | `repo, name, sha, tree, from`: a [record](#a-record) the out half keeps, `refs/verse/<name>`, with `tree` its last entry's whole tree and `from` its `From:` trailer, empty where it has none |
 | `git.<repo>.head` | `repo, ref, sha, dirty`, and `ahead`/`behind` when an upstream is set |
 | `git.<repo>.commit.<sha>` | `repo, sha, msg, author, parents`, and `trailers` when the commit has any. `parents` is a list of shas: empty for a root commit, two for a merge, first parent first. No [cover](../glossary.md#cover-of-a-reflection) reaches a commit, so history stays. |
 
@@ -237,7 +237,7 @@ an **input** under the repository's out place, `git.<repo>.out`, and the iod ans
 | `{to: record.<name>, tree, from}` | appends an entry holding the tree to the [record](#a-record) `refs/verse/<name>`, where its last entry holds another tree; `from`, optional, is the commit the tree was taken from; `create: true` makes the record where there is none and leaves one that stands alone | `ref, sha, tree, at`, and `was`, the entry before; `kept: true` where it stood already |
 | `{to: install.<address>, tree, sha, from}` | installs the charters in the tree object into the verse at the address, as `verse c -a <address> -d <dir> --prune` would, from the iod's own copy of the repository; `sha` is the commit it is installed for, and `from`, optional, the commit the tree came from | `tree, sha, from, address, at`, and `charters`, how many |
 | `{to: check.<address>, tree}` | asks the verse's charter check what an install of the tree at the address would do, and installs nothing | `tree, address, checkedAt`, and the check's `verdict` (`installs` or `refused`), `refusal`, `packages` and `pruned` |
-| `{to: check.<address>, ref, of, round}` | the same check for the tree a ref holds now in the iod's own copy (`of` names the `-tree` directory, and may be left out where there is one), made again whenever `round` changes | as above, with `ref`, `sha` and `round`; `changes`, how many charters the install would add, change, remove or prune (0 is in step with what runs); `differingFor`, the rounds in a row it has differed at one commit; a ref the repository lacks is the verdict `missing` |
+| `{to: check.<address>, ref, of, round}` | the same check for the tree a ref holds now in the iod's own copy (`of` names the `-tree` directory, and may be left out where there is one), made again whenever `round` changes | as above, with `ref`, `sha` and `round`; `changes`, how many charters the install would add, change, remove or prune (0 is in step with what runs); `differingFor`, the rounds in a row it has differed at one commit; `verdictSince`, the round from which the verdict has been what it is at that commit; a ref the repository lacks is the verdict `missing` |
 | `{to: check.<address>, record, round}` | the same, for the tree a record's last entry holds | as above, with `record` in place of `ref` |
 | `{to: obsolete, prefix, keep, before}` | answers `obsolete`, as the iod, every pending question waiting on it whose id begins with `prefix`, whose key (the id after the prefix, up to `~`) is none of the strings under `keep`, posed by `before`, and offering `obsolete` | `obsoleted`, the ids answered; `sweptAt`, `before` |
 
@@ -294,7 +294,8 @@ records: an entry is appended only for a tree its last entry does not hold, so t
 from another commit is the same record. An entry is appended with a lease on the one before,
 and pushed where the iod reads, as a branch is moved. A mirror clone fetches every ref, so the
 iod's own copy carries the record; anybody else fetches it by name (`git fetch origin
-refs/verse/live:refs/verse/live`).
+refs/verse/live:refs/verse/live`). Anybody who can push to the repository can also write it, so
+an entry may have no `From:`, and the reflection then says `from` empty.
 
 This half is what the repo-charters reconciler uses to keep `refs/verse/live` holding the tree
 the team said yes to, and to install the tree it holds

@@ -44,7 +44,10 @@ import (
 // `missing`, and
 // `differingFor` counts the rounds in a row the ref has differed from what runs at one commit: an
 // install verse is making takes a moment, and a reader that waits for 2 does not mistake it for
-// drift. A tree checked already, or a round checked already, costs nothing.
+// drift. `verdictSince` is the round from which the verdict has been what it is at that commit,
+// so a reader can act once each time a verdict starts to hold, and once more for each new commit
+// it holds at, rather than once per round. A tree checked already, or a round checked already,
+// costs nothing.
 //
 // A VERDICT OF `refused` IS AN ANSWER, NOT A FAILURE: the check did what it was asked, and the
 // status carries the refusal for a reader to act on. A file in the tree that does not parse is
@@ -102,6 +105,7 @@ func (k *GitSink) check(ctx context.Context, rp repo, in Input, address string) 
 			for _, f := range []string{"refusal", "packages", "pruned", "changes", "differingFor"} {
 				asked[f] = entity.Removed()
 			}
+			asked["verdictSince"] = verdictSince(in.Status, "", "", "missing", round)
 			return asked, nil
 		}
 		asked["sha"] = sha
@@ -124,6 +128,7 @@ func (k *GitSink) check(ctx context.Context, rp repo, in Input, address string) 
 		asked["verdict"], asked["refusal"] = "refused", readErr.Error()
 		asked["packages"], asked["pruned"], asked["changes"] = entity.Removed(), entity.Removed(), entity.Removed()
 		asked["differingFor"] = differingFor(in.Status, sha, tree, true)
+		asked["verdictSince"] = verdictSince(in.Status, sha, tree, "refused", round)
 		return asked, nil
 	}
 	resp, err := k.Verse.PostNodes("/charter/check", url.Values{"at": {at}}, docs)
@@ -163,6 +168,7 @@ func (k *GitSink) check(ctx context.Context, rp repo, in Input, address string) 
 	n := countChanges(answer)
 	asked["changes"] = n
 	asked["differingFor"] = differingFor(in.Status, sha, tree, n > 0 || entity.Str(answer, "verdict") != "installs")
+	asked["verdictSince"] = verdictSince(in.Status, sha, tree, entity.Str(answer, "verdict"), round)
 	return asked, nil
 }
 
@@ -223,6 +229,21 @@ func countChanges(answer entity.Payload) int {
 		}
 	}
 	return n
+}
+
+// verdictSince is the round from which a check of a ref or a record has found verdict at one
+// commit: what the status says where it found the same verdict at the same commit before, and
+// this round where the verdict or the commit is new. A check with no round says none.
+func verdictSince(status entity.Payload, sha, tree, verdict, round string) any {
+	if round == "" {
+		return entity.Removed()
+	}
+	if entity.Str(status, "sha") == sha && entity.Str(status, "tree") == tree && entity.Str(status, "verdict") == verdict {
+		if since := entity.Str(status, "verdictSince"); since != "" {
+			return since
+		}
+	}
+	return round
 }
 
 // differingFor is the rounds in a row a check has found its ref (or tree) differing from what

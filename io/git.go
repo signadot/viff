@@ -357,10 +357,9 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 	sort.Strings(recNames)
 	for _, name := range recNames {
 		r := recs[name]
-		p := entity.Obj{"repo": id, "name": name, "sha": r.sha, "tree": r.tree}
-		if r.from != "" {
-			p["from"] = r.from
-		}
+		// `from` is always said, empty for an entry with no From: trailer: a record is a ref
+		// anyone who can push may write, so nothing reading it may assume the trailer is there.
+		p := entity.Obj{"repo": id, "name": name, "sha": r.sha, "tree": r.tree, "from": r.from}
 		rn.Add(entity.RefAt(g.root, id, "record", name), p)
 	}
 

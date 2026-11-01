@@ -19,9 +19,10 @@ import (
 )
 
 // AN INSTALL REFUSED BY THE VERSE IS ASKED AGAIN once the verse has moved: each time the minute's
-// check of verse/live finds its tree would install, where it did not the round before, the
+// check of an entry of verse/live finds its tree would install, where it did not before, the
 // install of that tree is asked again, once. Not every minute: a round that finds it so again
-// asks nothing.
+// asks nothing. And per entry: an entry found to install, as the one before it was, is asked
+// again too.
 func TestARefusedInstallIsAskedAgainWhenTheCheckFindsItInstalls(t *testing.T) {
 	drivers := stock.New(stock.Open(), stock.Secrets{}, t.TempDir(), io.Discard)
 	srv := versedtest.Server(t, drivers.Build, entitytest.Store(t))
@@ -69,10 +70,12 @@ func TestARefusedInstallIsAskedAgainWhenTheCheckFindsItInstalls(t *testing.T) {
 		resp.Body.Close()
 		return due
 	}
-	checked := func(due, verdict string) {
+	// checked answers the round's check of verse/live as the git io would, at an entry, saying
+	// since which round the verdict has held there (io/gitcheck.go).
+	checked := func(due, verdict, since, entry, tree string) {
 		t.Helper()
 		waitEntity(t, srv, entity.RefAt("repo-charters", "r", "livecheck", "live"), func(p entity.Payload) bool { return entity.Str(p, "round") == due })
-		st := entity.Obj{"record": "live", "round": due, "verdict": verdict, "sha": entry, "tree": tree, "to": "check.repos.r"}
+		st := entity.Obj{"record": "live", "round": due, "verdict": verdict, "verdictSince": since, "sha": entry, "tree": tree, "to": "check.repos.r"}
 		if verdict == "installs" {
 			st["changes"], st["differingFor"] = 0, 0
 		} else {
@@ -92,7 +95,7 @@ func TestARefusedInstallIsAskedAgainWhenTheCheckFindsItInstalls(t *testing.T) {
 
 	// The check refuses as the install did: nothing asked again.
 	r1 := tick(round(1))
-	checked(r1, "refused")
+	checked(r1, "refused", r1, entry, tree)
 	time.Sleep(300 * time.Millisecond)
 	if a := again(); a != "" {
 		t.Fatalf("a check that refuses asked the install again: %q", a)
@@ -100,23 +103,23 @@ func TestARefusedInstallIsAskedAgainWhenTheCheckFindsItInstalls(t *testing.T) {
 	// The verse moved (a runner came up): the check finds it installs, and the install is asked
 	// again, carrying the round.
 	r2 := tick(round(2))
-	checked(r2, "installs")
+	checked(r2, "installs", r2, entry, tree)
 	in := waitEntity(t, srv, installIn, func(p entity.Payload) bool { return entity.Str(p, "again") == r2 })
 	if entity.Str(in, "to") != "install.repos.r" || entity.Str(in, "tree") != tree || entity.Str(in, "sha") != entry || entity.Str(in, "from") != main {
 		t.Fatalf("the install asked again = %v", entity.ToObj(in))
 	}
 	// Still installs a round later: not asked again.
 	r3 := tick(round(3))
-	checked(r3, "installs")
+	checked(r3, "installs", r2, entry, tree)
 	time.Sleep(300 * time.Millisecond)
 	if a := again(); a != r2 {
 		t.Fatalf("a round that found it installs again asked again: %q", a)
 	}
 	// Refused, then installs: asked again, once more.
 	r4 := tick(round(4))
-	checked(r4, "refused")
+	checked(r4, "refused", r4, entry, tree)
 	r5 := tick(round(5))
-	checked(r5, "installs")
+	checked(r5, "installs", r5, entry, tree)
 	waitEntity(t, srv, installIn, func(p entity.Payload) bool { return entity.Str(p, "again") == r5 })
 	// And the install that then succeeds is what runs, closing the refused install's issue.
 	installedBy(t, srv, tree, entry, main)
@@ -124,4 +127,25 @@ func TestARefusedInstallIsAskedAgainWhenTheCheckFindsItInstalls(t *testing.T) {
 	waitEntity(t, srv, entity.RefAt("repo-charters", "r", "out", "github", "install-failed"), func(p entity.Payload) bool {
 		return fmt.Sprint(entity.ToObj(p)["closed"]) == "true"
 	})
+
+	// A NEW ENTRY, found to install as the one before it was. What runs is checked and installs;
+	// a yes appends another tree, whose install is refused; the verse moves; and the check of the
+	// new entry finds it installs. The verdict never stopped being `installs`, and the install is
+	// asked again all the same, since the verdict begins again at the new entry.
+	r6 := tick(round(6))
+	checked(r6, "installs", r5, entry, tree)
+	const tree2, main2, entry2 = "bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222", "2222222222222222222222222222222222222222", "e222222222222222222222222222222222222222"
+	installIn2 := entity.RefAt("repo-charters", "r", "install", tree2)
+	mainAt(t, srv, main2, tree2)
+	qid2 := repocharters.QuestionID("r", tree2)
+	waitQuestionID(t, srv, qid2)
+	if resp := postAs(t, "user:"+tester, ts.URL+answerPath(qid2), "application/tony", "{choice: proceed}"); resp.StatusCode/100 != 2 {
+		t.Fatalf("answer = %s: %s", resp.Status, readBody(t, resp))
+	}
+	liveAt(t, srv, entry2, tree2, main2)
+	waitEntity(t, srv, installIn2, func(p entity.Payload) bool { return entity.Str(p, "sha") == entry2 })
+	refusedBy(t, srv, tree2, entry2, main2, "trigger \"work\": spawn: no runner offers it")
+	r7 := tick(round(7))
+	checked(r7, "installs", r7, entry2, tree2)
+	waitEntity(t, srv, installIn2, func(p entity.Payload) bool { return entity.Str(p, "again") == r7 })
 }
