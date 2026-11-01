@@ -2,11 +2,12 @@ package versed
 
 import (
 	"context"
-	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"

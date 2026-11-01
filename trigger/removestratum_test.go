@@ -6,6 +6,7 @@ import (
 
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // A LEVEL A RULE DERIVES INTO IS IN USE, even when no rule LIVES in it.
@@ -100,7 +101,7 @@ func TestAStratumRefusalNamesThePaths(t *testing.T) {
 		t.Fatal("removed a level a rule lives in")
 	}
 	for _, want := range []string{
-		StrataRefAt(eng.confine.stamp(), "tip").String(),
+		charter.StratumRef(eng.confine.stamp(), "tip").String(),
 		eng.RuleRef("gather").String(),
 	} {
 		if !strings.Contains(err.Error(), want) {

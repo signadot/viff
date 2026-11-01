@@ -1,12 +1,13 @@
 package versed
 
 import (
-	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"

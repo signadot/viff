@@ -171,15 +171,21 @@ func (tx *charterTx) dropRule(name string) (int, error) {
 	if err != nil {
 		return http.StatusServiceUnavailable, err
 	}
-	if _, err := eng.RemoveTriggerAs(tx.as(), name); err != nil {
+	// The undo is pushed for what was deleted, not for what was answered: a removal whose
+	// delete landed and whose wait for the engine did not (trigger.ErrNotReflected) is unwound
+	// with the rest, record included.
+	_, err = eng.RemoveTriggerAs(tx.ctx, tx.as(), name)
+	if err == nil || errors.Is(err, trigger.ErrNotReflected) {
+		tx.push(func() error {
+			if err := eng.RestoreTrigger(tx.undoCtx(), old); err != nil {
+				return err
+			}
+			return entity.RestoreRecord(tx.store, whose)
+		})
+	}
+	if err != nil {
 		return charterCode(err), fmt.Errorf("prune: rule %q: %w", name, err)
 	}
-	tx.push(func() error {
-		if err := eng.RestoreTrigger(old); err != nil {
-			return err
-		}
-		return entity.RestoreRecord(tx.store, whose)
-	})
 	tx.dropped[tx.at] = append(tx.dropped[tx.at], "rule "+name)
 	return 0, nil
 }
@@ -192,15 +198,18 @@ func (tx *charterTx) dropStratum(name string) (int, error) {
 	if err != nil {
 		return http.StatusServiceUnavailable, err
 	}
-	if err := eng.RemoveStratumAs(tx.as(), name); err != nil {
+	err = eng.RemoveStratumAs(tx.ctx, tx.as(), name)
+	if err == nil || errors.Is(err, trigger.ErrNotReflected) { // deleted either way: see dropRule
+		tx.push(func() error {
+			if err := eng.RestoreStratum(tx.undoCtx(), old); err != nil {
+				return err
+			}
+			return entity.RestoreRecord(tx.store, whose)
+		})
+	}
+	if err != nil {
 		return charterCode(err), fmt.Errorf("prune: level %q: %w", name, err)
 	}
-	tx.push(func() error {
-		if err := eng.RestoreStratum(old); err != nil {
-			return err
-		}
-		return entity.RestoreRecord(tx.store, whose)
-	})
 	tx.dropped[tx.at] = append(tx.dropped[tx.at], "level "+name)
 	return 0, nil
 }

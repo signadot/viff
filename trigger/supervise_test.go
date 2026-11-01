@@ -2,13 +2,14 @@ package trigger
 
 import (
 	"context"
-	"github.com/signadot/verse/systems"
 	"os"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/signadot/verse/systems"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"

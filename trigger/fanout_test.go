@@ -3,11 +3,12 @@ package trigger
 import (
 	"context"
 	"fmt"
-	"github.com/signadot/verse/systems"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/signadot/verse/systems"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"

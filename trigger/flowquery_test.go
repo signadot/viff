@@ -2,9 +2,10 @@ package trigger
 
 import (
 	"context"
-	"github.com/signadot/verse/systems"
 	"reflect"
 	"testing"
+
+	"github.com/signadot/verse/systems"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"

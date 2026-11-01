@@ -1,12 +1,13 @@
 package versed
 
 import (
-	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
@@ -38,10 +39,14 @@ func TestAStartWhoseReadsFailedIsAskedAgain(t *testing.T) {
 	ts.Close()
 	first.stopAllIOs()
 
-	// Back up over a store that does not answer.
-	fs := &failReads{Store: raw, on: true}
+	// Back up over a store that does not answer: its reads do not happen, and the charter's
+	// watch is refused.
+	ph := entitytest.NewPhased(raw)
+	ph.Set(entity.WatchRefused, errFor("context deadline exceeded"))
+	fs := &failReads{Store: ph, on: true}
 	second := serverWith(t, runnerdtest.Scripted, fs)
 	second.retryWait = 10 * time.Millisecond
+	second.restoreWait = 10 * time.Millisecond
 	second.Start(t.Context())
 	t.Cleanup(second.stopAllIOs)
 	ts = httptest.NewServer(second.Handler())
@@ -65,6 +70,7 @@ func TestAStartWhoseReadsFailedIsAskedAgain(t *testing.T) {
 
 	// The store answers: every phase completes, and what it restores is there.
 	fs.on = false
+	ph.Set(entity.WatchOpen, nil)
 	deadline := time.After(3 * time.Second)
 	for len(second.Restoring()) > 0 {
 		select {

@@ -15,6 +15,7 @@ import (
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // observe/sdlc/effectuate — the ordering the design note is written around, which is what
@@ -539,7 +540,7 @@ func TestARuleIsHeldUntilItsStratumArrives(t *testing.T) {
 		t.Fatal("a held rule is installed; it must not fire until its stratum arrives")
 	}
 	// It is written down: held is not lost.
-	if _, ok, _ := store.Get(CharterRef("early")); !ok {
+	if _, ok, _ := store.Get(charter.RuleRef("", "early")); !ok {
 		t.Fatal("a held rule was not persisted; a restart would lose it")
 	}
 	// A second rule under the same name is refused, held or not.
@@ -622,54 +623,16 @@ func TestStrataSurviveARestart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	second := New(store, task.AutoResolver{})
-	if err := second.LoadStrata(); err != nil {
-		t.Fatalf("LoadStrata: %v", err)
-	}
-	if err := second.LoadCharter(); err != nil {
-		t.Fatalf("LoadCharter: %v", err)
-	}
+	second := reopened(t, store)
 	got := second.Strata()
 	if len(got) != 3 || got[0].Name != "observe" || got[2].Level != 100 {
 		t.Fatalf("the ordering did not come back: %+v", got)
 	}
-	if len(second.Triggers()) != 1 {
-		t.Fatalf("the rule did not come back installed: %+v", second.Triggers())
-	}
+	waitArmed(t, second, "r") // the rule came back installed, whichever record the picture gave first
 	// The match round-tripped as a match, not as whatever a naive encoding would have made
 	// of it — this is what the raw escape on the stratum entity is for.
 	if !Matches(got[0].Match).contains(mm("gh.issue.*")) {
 		t.Fatalf("the stratum's pattern did not survive the round trip: %+v", got[0].Match)
-	}
-}
-
-// The ordering has to load BEFORE the charter, or every restored rule is held and the verse
-// comes up with a charter that does not fire.
-func TestCharterLoadedBeforeStrataHoldsItsRules(t *testing.T) {
-	store := entitytest.Store(t)
-	first := New(store, task.AutoResolver{})
-	withStrata(t, first, demoStrata()...)
-	if err := first.AddTrigger(Trigger{
-		Name:      "r",
-		Stratum:   "observe",
-		Condition: Condition{Subject: mm("gh.issue.*")},
-		Action:    seenAction(),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	// Deliberately the wrong order, to pin what it costs.
-	second := New(store, task.AutoResolver{})
-	if err := second.LoadCharter(); err != nil {
-		t.Fatal(err)
-	}
-	if len(second.Triggers()) != 0 {
-		t.Fatal("a rule installed before its stratum existed")
-	}
-	if err := second.LoadStrata(); err != nil {
-		t.Fatal(err)
-	}
-	if len(second.Triggers()) != 1 {
-		t.Fatal("the held rule did not install once the ordering loaded")
 	}
 }
 

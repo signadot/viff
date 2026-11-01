@@ -2,16 +2,17 @@ package versed
 
 import (
 	"context"
-	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/trigger/charter"
+
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/trigger"
 )
 
 // WHOSE A RULE IS, IS ITS OWNER RECORD'S TO SAY, and nothing else says it: the rule's own entity
@@ -44,7 +45,7 @@ func TestWhoseARuleIsIsSaidOnce(t *testing.T) {
 	}
 	by := func(srv *Server, name string) string {
 		t.Helper()
-		e, ok, err := srv.Store.Get(trigger.CharterRef(name))
+		e, ok, err := srv.Store.Get(charter.RuleRef("", name))
 		if err != nil || !ok {
 			t.Fatalf("no record for %s (ok=%v err=%v)", name, ok, err)
 		}
@@ -84,7 +85,7 @@ func TestWhoseARuleIsIsSaidOnce(t *testing.T) {
 	if got := by(second, "review"); got != alice {
 		t.Fatalf("after the refused re-apply review is %q's, want %q", got, alice)
 	}
-	if got := owner(t, second, trigger.CharterRef("review")); got != alice {
+	if got := owner(t, second, charter.RuleRef("", "review")); got != alice {
 		t.Fatalf("after the refused re-apply review's record is owned by %q, want %q", got, alice)
 	}
 }

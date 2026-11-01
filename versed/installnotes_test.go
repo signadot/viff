@@ -78,11 +78,11 @@ func TestAHeldRuleIsSaidToItsInstaller(t *testing.T) {
 	if len(held) != 1 {
 		t.Fatalf("held = %v, want the rule named", got[0]["held"])
 	}
-	if h, _ := held[0].(map[string]any); h["rule"] != "waits" || h["stratum"] != "sdcl" {
-		t.Errorf("held = %v, want rule waits and stratum sdcl", held[0])
+	if h, _ := held[0].(map[string]any); h["rule"] != "waits" || h["waits"] != "waiting for stratum sdcl" || h["arming"] != nil {
+		t.Errorf("held = %v, want rule waits, waiting for stratum sdcl, and not arming", held[0])
 	}
 	if listing := charterListing(t, ts.URL); !strings.Contains(listing, "name: waits") ||
-		!strings.Contains(listing, "held: sdcl") {
+		!strings.Contains(listing, `held: "waiting for stratum sdcl"`) {
 		t.Errorf("the charter does not list the held rule as held:\n%s", listing)
 	}
 

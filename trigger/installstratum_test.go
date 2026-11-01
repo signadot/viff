@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/task"
 )
 
 // TWO HALVES OF ONE FILE MEANT TWO THINGS. `InstallTrigger` replaces a rule of the same name,
@@ -38,10 +37,7 @@ func TestReApplyingAFileReplacesALevel(t *testing.T) {
 	// THE STORE HAS THE EDITED ONE TOO, whole. A write MERGES at its path, so a level written over
 	// the one it replaces would keep whatever the edit dropped — and the charter a restart brings
 	// back would not be the charter that is running. Read back the way a restart does.
-	back := New(store, task.AutoResolver{})
-	if err := back.LoadStrata(); err != nil {
-		t.Fatalf("loading the strata back: %v", err)
-	}
+	back := reopened(t, store)
 	if s := back.Strata(); len(s) != 1 || s[0].Level != 20 || len(s[0].Match) != 2 {
 		t.Fatalf("the durable level is not the one that is running: %+v", s)
 	}
@@ -51,10 +47,7 @@ func TestReApplyingAFileReplacesALevel(t *testing.T) {
 	if err := eng.InstallStratum(Stratum{Name: "drift", Level: 20, Match: []Match{mm("gh")}}); err != nil {
 		t.Fatalf("narrowing the union: %v", err)
 	}
-	back = New(store, task.AutoResolver{})
-	if err := back.LoadStrata(); err != nil {
-		t.Fatalf("loading the strata back: %v", err)
-	}
+	back = reopened(t, store)
 	if s := back.Strata(); len(s) != 1 || len(s[0].Match) != 1 {
 		t.Fatalf("the narrowed level kept what it dropped: %+v", s)
 	}
@@ -94,10 +87,7 @@ func TestAnEditedLevelARuleNoLongerFitsIsRefused(t *testing.T) {
 	if s := eng.Strata(); len(s) != 1 || !isPath(s[0].Match[0], "gh") {
 		t.Fatalf("the refused edit was made anyway: %+v", s)
 	}
-	back := New(store, task.AutoResolver{})
-	if err := back.LoadStrata(); err != nil {
-		t.Fatalf("loading the strata back: %v", err)
-	}
+	back := reopened(t, store)
 	if s := back.Strata(); len(s) != 1 || !isPath(s[0].Match[0], "gh") {
 		t.Fatalf("the durable level is not the one that is running: %+v", s)
 	}

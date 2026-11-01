@@ -1,8 +1,10 @@
 package versed
 
 import (
-	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"testing"
+
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/trigger/charter"
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
@@ -10,7 +12,6 @@ import (
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/resolver"
 	"github.com/signadot/verse/schedule"
-	"github.com/signadot/verse/trigger"
 )
 
 // What the system made beneath a row is everybody's to read BY THE ROW'S OWN LINE, and not by a
@@ -26,9 +27,9 @@ func TestWhatTheSystemMadeBeneathARowIsReadThroughTheRowsLine(t *testing.T) {
 		entity.VerseRef(mirror.System, mirror.InstanceKind),
 		entity.VerseRef(mirror.System, mirror.RunKind),
 		entity.VerseRef(mirror.System, mirror.ClaimKind),
-		entity.VerseRef(trigger.CharterSystem, trigger.CharterKind),
-		entity.VerseRef(trigger.StrataSystem, trigger.StrataKind),
-		entity.VerseRef(trigger.CharterSystem, trigger.PackageKind),
+		entity.VerseRef(charter.System, charter.RuleKind),
+		entity.VerseRef(charter.System, charter.StratumKind),
+		entity.VerseRef(charter.System, charter.PackageKind),
 		entity.VerseRef(resolver.System),
 		entity.VerseRef(runnersSystem),
 		entity.VerseRef(verseio.System),

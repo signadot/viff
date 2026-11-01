@@ -12,6 +12,7 @@ import (
 	"github.com/signadot/verse/entity"
 	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/trigger"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // OUTBOXES: a package's places an io's out half reads (trigger.SendsField, git-issue
@@ -62,8 +63,8 @@ func (s *Server) setPackageSends(store entity.Store, installer, at string, sends
 		field = trigger.StampSends(sends)
 	}
 	if _, _, err := store.Write(entity.Write{
-		At:    entity.Path{Ref: trigger.PackageRef(confine.Stamp())},
-		Value: entity.Obj{trigger.AtField: confine.Stamp(), trigger.SendsField: field}.Payload(),
+		At:    entity.Path{Ref: charter.PackageRef(confine.Stamp())},
+		Value: entity.Obj{charter.AtField: confine.Stamp(), trigger.SendsField: field}.Payload(),
 	}); err != nil {
 		return fmt.Errorf("sends: recording the declaration: %w", err)
 	}
@@ -183,8 +184,8 @@ func (s *Server) packageSends(at string) ([]trigger.Send, error) {
 // outboxesTo is every declared outbox sending to place, in package order.
 func (s *Server) outboxesTo(place string) []trigger.Send {
 	var out []trigger.Send
-	for _, ent := range entity.Below(s.Store, trigger.IsCharterPackage, 2,
-		entity.VerseRoot, trigger.CharterSystem) {
+	for _, ent := range entity.Below(s.Store, charter.IsPackage, 2,
+		entity.VerseRoot, charter.System) {
 		for _, send := range trigger.SendsOf(ent.Payload) {
 			if send.To == place {
 				out = append(out, send)

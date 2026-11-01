@@ -29,7 +29,7 @@ func Check(store entity.Store, confine Subtree, reads []Subtree, as string, stra
 	e.SetOfferCheck(offer)
 	e.SetReads(reads)
 	for _, st := range strata {
-		if err := e.addStratum(st, false, as); err != nil {
+		if err := e.addStratum(st); err != nil {
 			return nil, fmt.Errorf("stratum %q: %w", st.Name, err)
 		}
 	}
@@ -39,11 +39,11 @@ func Check(store entity.Store, confine Subtree, reads []Subtree, as string, stra
 			return nil, fmt.Errorf("the package names rule %q twice", t.Name)
 		}
 		seen[t.Name] = true
-		ok, err := e.vet(t, as)
+		hold, err := e.vet(t, as)
 		if err != nil {
 			return nil, err
 		}
-		if !ok {
+		if hold != nil {
 			held = append(held, t.Name)
 		}
 	}

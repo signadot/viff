@@ -10,7 +10,7 @@ import (
 	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/resolver"
-	"github.com/signadot/verse/trigger"
+	"github.com/signadot/verse/trigger/charter"
 )
 
 // The places the grammar says act are the places that do: a rule, a source and a resolver each
@@ -19,8 +19,8 @@ import (
 // the packages that own them; this is where the two spellings are held together.
 func TestTheGrammarsActorsAreTheOnesThatAct(t *testing.T) {
 	for _, ref := range []entity.Ref{
-		trigger.CharterRef("x"),
-		trigger.CharterRefAt("drift", "head-moved"),
+		charter.RuleRef("", "x"),
+		charter.RuleRef("drift", "head-moved"),
 		verseio.Ref("cluster"),
 		resolver.Ref("gate"),
 	} {

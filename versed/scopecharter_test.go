@@ -2,8 +2,6 @@ package versed
 
 import (
 	"context"
-	"github.com/signadot/verse/api"
-	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,9 +9,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/api"
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/trigger/charter"
+
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/trigger"
 )
 
 // A SCOPE'S OWN CHARTER SURVIVES A RESTART, the way baseline's does.
@@ -132,7 +133,7 @@ func TestAScopeDoesNotInheritBaselinesCharter(t *testing.T) {
 		t.Fatal("no engine for the scope after a scoped install")
 	}
 	var names []string
-	for _, tr := range eng.Triggers() {
+	for _, tr := range append(eng.Triggers(), eng.Held()...) { // armed, or arming behind the install
 		names = append(names, tr.Name)
 	}
 	if len(names) != 1 || names[0] != "scoped-only" {
@@ -140,7 +141,7 @@ func TestAScopeDoesNotInheritBaselinesCharter(t *testing.T) {
 	}
 	// The baseline rule is visible THROUGH the scope as an entity — the listing is not empty,
 	// the restore is what passes over it.
-	if _, ok, _ := srv.Store.Scope("me").Get(trigger.CharterRef("baseline-review")); !ok {
+	if _, ok, _ := srv.Store.Scope("me").Get(charter.RuleRef("", "baseline-review")); !ok {
 		t.Fatal("the baseline rule is not visible through the scope — this test proves nothing")
 	}
 }
@@ -205,7 +206,7 @@ func TestAScopeShadowsABaselineRuleAcrossARestart(t *testing.T) {
 	// …and the scope restored the dev's, once, under the same name.
 	eng := second.engFor("me")
 	var scoped []string
-	for _, tr := range eng.Triggers() {
+	for _, tr := range append(eng.Triggers(), eng.Held()...) { // armed, or arming behind the restore
 		scoped = append(scoped, tr.Name)
 	}
 	if len(scoped) != 2 { // review (the dev's) + connect-probe

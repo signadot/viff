@@ -260,7 +260,7 @@ under the address are named there too. If `merge.tony` left out its level `refle
 `verse charter` would say:
 
 ```
-note: repos verse merge: rule proposal-appeared is held: it waits for stratum reflected, which is not installed
+note: repos verse merge: rule proposal-appeared is held: waiting for stratum reflected
 note: under here: repos verse drift, repos verse merge — `verse c -d <dir>` writes every charter to a file of its own
 ```
 
@@ -281,6 +281,15 @@ An install adds and replaces by name, so a rule missing from the directory stays
 - Rules the directory keeps go on running. They are not stopped and started again.
 - Every file must be at or under the address.
 - If anything is refused, the removals are put back along with the installs.
+
+**An install answers once its rules are accepted, not once they are armed.** A rule's watch
+opens behind the answer, and a rule held for a stratum or a runner arms when that arrives.
+`--wait <duration>` holds the answer that long for the rules to arm, and the command exits 3 if
+any is still arming when it runs out; a held rule is said, and waited for by nothing:
+
+```sh
+verse charter -a repos.verse -f drift.tony --wait 10s   # back when drift's rules can fire, or after 10s
+```
 
 **`--check` asks what an install would do, and does none of it.** It takes `-d` or `-f`, as
 `-a <address> -d <dir> --prune` would install them, and answers a verdict, `installs` or `refused`

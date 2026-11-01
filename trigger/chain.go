@@ -2,9 +2,10 @@ package trigger
 
 import (
 	"fmt"
-	"github.com/signadot/verse/launch"
 	"strconv"
 	"strings"
+
+	"github.com/signadot/verse/launch"
 
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 )

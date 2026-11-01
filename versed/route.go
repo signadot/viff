@@ -15,6 +15,7 @@ import (
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/trigger"
 )
 
 // WHERE A SPAWN RUNS is verse's to say. A spawn names its doer, an agent or a script, and what it
@@ -166,6 +167,11 @@ func nowhere(l *runner.Launch, offered bool, refused, passed []string) error {
 	}
 	if len(passed) > 0 {
 		fmt.Fprintf(&b, "; passed over: %s", strings.Join(passed, "; "))
+	}
+	if !offered && len(refused) == 0 {
+		// Marked, for an install: a doer no runner offers is one a runner may offer later, and
+		// the rule is held for it rather than refused (trigger.vet).
+		return fmt.Errorf("%w: %s", trigger.ErrNoOffer, b.String())
 	}
 	return errors.New(b.String())
 }

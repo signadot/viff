@@ -250,6 +250,16 @@ what fails.
 The resync costs one `State`. The diff is against the snapshot the watch already holds, so the
 resync sends nothing when the subtree was only idle.
 
+The store holds one watch per prefix, and every consumer of that prefix subscribes to it. A
+hundred rules over the tasks are one watch on the tasks: one opening picture, one re-establish
+after a drop, one copy of the slice, and on each commit one change walk per distinct pattern
+among them. A consumer that subscribes to a watch already open is handed its replay from that
+copy, with no read of the store. The watch never waits on a consumer: a commit a consumer
+cannot take yet waits in its backlog, in order, so a burst it is slow to take still reaches it
+one commit per commit. A consumer whose backlog is full too is caught up later with the net of
+what it missed, marked as a resync, which is what a re-established watch's `State` already
+looks like to it.
+
 `Observe` (the root watch) starts "from now" and does not replay. It is the watch of the whole
 store behind the debug stream. Its consumer, the dispatch loop, starts from `store.Rev()` and
 catches up with `Since`. A level read at the open belongs to the watch that *is* what a rule

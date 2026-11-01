@@ -3,12 +3,14 @@ package versed
 import (
 	"errors"
 	"fmt"
-	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/trigger/charter"
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
@@ -54,10 +56,10 @@ func TestARuleIsRemovedAndReplacedByItsOwnerAlone(t *testing.T) {
 		if _, ok := srv.Eng.Rule(name); !ok {
 			t.Fatalf("the engine no longer holds %s", name)
 		}
-		if _, ok, _ := srv.Store.Get(trigger.CharterRef(name)); !ok {
+		if _, ok, _ := srv.Store.Get(charter.RuleRef("", name)); !ok {
 			t.Fatalf("%s is gone from the store", name)
 		}
-		if got := owner(t, srv, trigger.CharterRef(name)); got != want {
+		if got := owner(t, srv, charter.RuleRef("", name)); got != want {
 			t.Fatalf("%s is %q's, want %q", name, got, want)
 		}
 	}
@@ -97,7 +99,7 @@ func TestARuleIsRemovedAndReplacedByItsOwnerAlone(t *testing.T) {
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("alice removing her own rule: %s", resp.Status)
 	}
-	if ok, _ := entity.Holds(srv.Store, "user:"+mallory, entity.ReadWrite, trigger.CharterRef("calendar")); ok {
+	if ok, _ := entity.Holds(srv.Store, "user:"+mallory, entity.ReadWrite, charter.RuleRef("", "calendar")); ok {
 		t.Error("mallory holds read-write on the system's rule")
 	}
 }
@@ -145,7 +147,7 @@ func TestAStrangersRemovalLeavesASourceRunning(t *testing.T) {
 func TestANameTheSystemInstallsAtIsNotKeptBySomebodyWhoTookItFirst(t *testing.T) {
 	store := entitytest.Store(t)
 	srv := serverWith(t, runnerdtest.Scripted, store)
-	mallory, rule := "user:mallory@example.com", trigger.CharterRef("calendar")
+	mallory, rule := "user:mallory@example.com", charter.RuleRef("", "calendar")
 	if err := entity.Claim(entity.As(srv.Store, mallory), rule, mallory); !errors.Is(err, entity.ErrForbidden) {
 		t.Fatalf("mallory reserved a rule's name with nothing standing at it: %v", err)
 	}
@@ -153,7 +155,7 @@ func TestANameTheSystemInstallsAtIsNotKeptBySomebodyWhoTookItFirst(t *testing.T)
 	if err := codec.Unmarshal([]byte(`{name: calendar, condition: {subject: {path: "demo.m.*", value: {stage: open}}}, action: {patch: {stage: hers}}}`), &squat, codec.Tony); err != nil {
 		t.Fatal(err)
 	}
-	if err := srv.Eng.InstallTriggerAs(mallory, squat); err != nil {
+	if err := srv.Eng.InstallTriggerAs(t.Context(), mallory, squat); err != nil {
 		t.Fatalf("the fixture is wrong: mallory cannot install a rule named calendar: %v", err)
 	}
 	if got := owner(t, srv, rule); got != mallory {
@@ -223,7 +225,7 @@ func TestReplacingARuleKeepsItsOwnerAndARefusedOneKeepsTheRule(t *testing.T) {
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	alice, rule := "alice@example.com", trigger.CharterRef("alices")
+	alice, rule := "alice@example.com", charter.RuleRef("", "alices")
 	if resp := installAs(t, alice, ts.URL, alicesRule); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install: %s", resp.Status)
 	}
@@ -271,7 +273,7 @@ func TestARefusedFileLeavesALevelItsInstallers(t *testing.T) {
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	alice, level := "alice@example.com", trigger.StrataRefAt("", "lvl")
+	alice, level := "alice@example.com", charter.StratumRef("", "lvl")
 	file := func(n int, extra string) string {
 		return fmt.Sprintf(`[{name: lvl, level: %d, match: [{path: "demo.lv"}, {path: "demo.other"}]},
 			{name: lv-rule, stratum: lvl, condition: {subject: {path: "demo.lv.*", value: {stage: open}}}, action: {patch: {stage: seen}}}%s]`, n, extra)
@@ -328,7 +330,7 @@ func TestARefusedSystemFileGivesBackTheNameItTook(t *testing.T) {
 			t.Fatalf("alice's install: %s %s", resp.Status, readBody(t, resp))
 		}
 	}
-	rule, level := trigger.CharterRef("review"), trigger.StrataRefAt("", "lvl")
+	rule, level := charter.RuleRef("", "review"), charter.StratumRef("", "lvl")
 	// A closed place of bob's, which alice and her rule hold nothing on.
 	vault := entity.RefAt("vault")
 	if err := entity.Claim(entity.As(srv.Store, bob), vault, bob); err != nil {

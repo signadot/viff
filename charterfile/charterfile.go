@@ -399,8 +399,7 @@ func unmarked(rule *ir.Node, at string, kpaths bool) (*ir.Node, []string) {
 		v := codec.Unwrap(inner.Values[i])
 		switch key.String {
 		case "held":
-			notes = append(notes, fmt.Sprintf("note: %s: rule %s is held: it waits for stratum %s, "+
-				"which is not installed", where, name, v.String))
+			notes = append(notes, fmt.Sprintf("note: %s: rule %s is held: %s", where, name, v.String))
 		case "suspended":
 			notes = append(notes, fmt.Sprintf("note: %s: rule %s is suspended by %s", where, name,
 				strings.Join(strValues(v), ", ")))
@@ -488,6 +487,11 @@ func str(n *ir.Node, name string) string {
 		return v.String
 	}
 	return ""
+}
+
+func boolean(n *ir.Node, name string) bool {
+	v := codec.Unwrap(field(n, name))
+	return v != nil && v.Type == ir.BoolType && v.Bool
 }
 
 // num reads a number off the NODE, which is not what codec.AsInt64 does: that takes a Go value,

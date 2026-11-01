@@ -24,6 +24,7 @@ package trigger
 // charter that gives it twice has not said which comes first.
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -34,30 +35,8 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/trigger/charter"
 )
-
-// StrataSystem/StrataKind name where the durable strata live: trigger:strata:<name>, beside
-// the rules at trigger:rule:<name>. The id is the stratum's name, which is what makes a
-// duplicate NAME impossible by construction and a duplicate LEVEL a thing to check.
-const (
-	StrataSystem = "trigger"
-	StrataKind   = "strata"
-)
-
-// IsStratum reports whether an address is a durable stratum's — the namespace's own question,
-// asked by anything that lists the ordering, as IsCharterRule is for the rules.
-func IsStratum(r entity.Ref) bool { return r.ChildOf(entity.VerseRoot, StrataSystem, StrataKind) }
-
-// StrataRef names the entity holding one of BASELINE's strata.
-func StrataRef(name string) entity.Ref { return StrataRefAt("", name) }
-
-// StrataRefAt names the entity holding one stratum of the charter installed at an address —
-// addressed by package for the reason CharterRefAt gives at length: two packages declaring a
-// level of the same name (`reflected` is the obvious one, since every package that reads a
-// source wants a bottom level for it) would otherwise write one record.
-func StrataRefAt(at, name string) entity.Ref {
-	return entity.VerseRef(StrataSystem, StrataKind, recordID(at, name))
-}
 
 // Stratum is one level of the ordering: what it owns, and where it sits.
 //
@@ -342,6 +321,11 @@ func (e *Engine) Stratum(name string) (Stratum, bool) { return e.stratum(name) }
 func (e *Engine) stratum(name string) (Stratum, bool) {
 	e.trigMu.Lock()
 	defer e.trigMu.Unlock()
+	return e.stratumLocked(name)
+}
+
+// stratumLocked is stratum with trigMu HELD.
+func (e *Engine) stratumLocked(name string) (Stratum, bool) {
 	for _, s := range e.strata {
 		if s.Name == name {
 			return s, true
@@ -350,43 +334,53 @@ func (e *Engine) stratum(name string) (Stratum, bool) {
 	return Stratum{}, false
 }
 
-// AddStratum installs a stratum — durably, as its trigger:strata:<name> entity.
-func (e *Engine) AddStratum(s Stratum) error { return e.addStratum(s, true, "") }
+// AddStratum installs a stratum — durably, as its trigger:strata:<name> entity — refusing a
+// name in use. InstallStratum replaces.
+func (e *Engine) AddStratum(s Stratum) error {
+	if _, stands := e.stratum(s.Name); stands {
+		return fmt.Errorf("stratum %q already exists (remove it first)", s.Name)
+	}
+	return e.InstallStratumAs(context.Background(), "", s)
+}
 
 // InstallStratum is AddStratum for a CHARTER FILE: a level already installed EXACTLY as declared
 // is a no-op, and one that DIFFERS is REPLACED — the same answer InstallTrigger gives a rule,
 // because the file is what the operator means and re-applying an edited one is the ordinary way
 // to change a charter.
 //
-// It used to be REFUSED, and what the refusal protected was real: the rules in a stratum were
-// checked against it when they installed (checkLevels), so moving it under them would leave a
-// charter whose ordering nobody has verified. What was wrong was the price it charged — uninstall
-// the whole package, which takes its rules down with it — for editing a level beside a rule in one
-// file, where the rule is replaced without ceremony. The same command meant two things in one
-// file, and that is what this settles.
-//
-// So the check is RE-RUN rather than the change refused. Every rule standing in this charter faces
-// the level discipline again against the new ordering, and one that no longer fits refuses the
-// CHANGE, naming itself. Nothing is left standing unchecked — the property the refusal bought —
-// and nothing has to be taken down to get it. It is RecheckReads one axis over, which is what an
-// operator NARROWING an `reads:` declaration already gets.
-func (e *Engine) InstallStratum(s Stratum) error { return e.InstallStratumAs("", s) }
+// The rules in a stratum were checked against it when they installed (checkLevels), so moving
+// it under them would leave a charter whose ordering nobody has verified. The check is RE-RUN
+// rather than the change refused: every rule standing in this charter faces the level
+// discipline again against the new ordering, and one that no longer fits refuses the CHANGE,
+// naming itself. Nothing is left standing unchecked, and nothing has to be taken down to get
+// it. It is RecheckReads one axis over, which is what an operator NARROWING a `reads:`
+// declaration already gets.
+func (e *Engine) InstallStratum(s Stratum) error {
+	return e.InstallStratumAs(context.Background(), "", s)
+}
 
-// InstallStratumAs is InstallStratum on behalf of a principal, the way InstallTriggerAs is.
-func (e *Engine) InstallStratumAs(as string, s Stratum) error {
+// InstallStratumAs is InstallStratum on behalf of a principal, the way InstallTriggerAs is,
+// answered once the engine's follow has the level's record (reached), bounded by ctx.
+//
+// A LEVEL IS APPLIED TO THE ORDERING BEFORE IT IS WRITTEN, where a rule is written and then
+// placed from its record (follow.go): the checks a level faces are over the ordering it joins
+// — the set's properties, and every rule's fit under the edited level — and are made in
+// memory, with the record written last so that a level the engine would not accept is not
+// one the records say. The follow finds the record saying what the ordering already does.
+func (e *Engine) InstallStratumAs(ctx context.Context, as string, s Stratum) error {
 	old, ok := e.stratum(s.Name)
 	if !ok {
-		return e.addStratum(s, true, as)
+		return e.addStratumTaking(ctx, s, as, true)
 	}
 	if old.Level == s.Level && matchesText(old.Match) == matchesText(s.Match) {
 		return nil // the same level, declared again: the file has been applied twice
 	}
-	// Asked before anything moves, for the reason InstallTriggerAs asks: the swap deletes the
+	// Asked before anything moves, for the reason InstallTriggerAs asks: the swap writes the
 	// standing record through the engine's own store.
 	if err := e.MayRemoveStratum(as, s.Name); err != nil {
 		return err
 	}
-	return e.replaceStratum(old, s, as)
+	return e.replaceStratum(ctx, old, s, as)
 }
 
 // MayRemoveStratum is MayRemoveTrigger for a level.
@@ -397,30 +391,30 @@ func (e *Engine) MayRemoveStratum(principal, name string) error {
 	if _, ok := e.stratum(name); !ok {
 		return nil
 	}
-	return entity.Check(e.store, principal, entity.OwnerLevel, StrataRefAt(e.confine.stamp(), name), "removing it")
+	return entity.Check(e.store, principal, entity.OwnerLevel, charter.StratumRef(e.confine.stamp(), name), "removing it")
 }
 
 // RemoveStratumAs is RemoveStratum on behalf of a principal, refused where they may not.
-func (e *Engine) RemoveStratumAs(principal, name string) error {
+func (e *Engine) RemoveStratumAs(ctx context.Context, principal, name string) error {
 	if err := e.MayRemoveStratum(principal, name); err != nil {
 		return err
 	}
-	return e.RemoveStratum(name)
+	return e.removeStratumAt(ctx, name)
 }
 
 // replaceStratum swaps an installed level for an edited one, and puts the old one back if the
 // rules standing in this charter do not survive the change.
 //
-// The order is addStratum's, for addStratum's reasons: the set-properties first (against the other
+// The order is addStratumTaking's, for its reasons: the set-properties first (against the other
 // strata — the level being replaced is not its own neighbour), then the swap in memory, then the
-// re-check, and the durable record LAST, so a level the engine would not accept is not one a
-// restart brings back.
+// re-check, and the durable record LAST, so a level the engine would not accept is not one the
+// records say.
 //
 // The re-check runs OFF trigMu, so a firing in flight can see the edited level before the check
 // that puts it back has finished. checkLevels takes the lock itself and holding it across them
-// would deadlock, and the window is the one addStratum already has between appending a level and
+// would deadlock, and the window is the one an install already has between appending a level and
 // promoting the rules held for it — install-time, and bounded by a syntactic check.
-func (e *Engine) replaceStratum(old, s Stratum, as string) error {
+func (e *Engine) replaceStratum(ctx context.Context, old, s Stratum, as string) error {
 	if err := s.validate(); err != nil {
 		return err
 	}
@@ -441,23 +435,28 @@ func (e *Engine) replaceStratum(old, s Stratum, as string) error {
 	// level's owner record with it, and the grants on it, and hand the level to whoever edited
 	// it. A write that does not land leaves the old record standing, so there is nothing to put
 	// back in the store.
-	if err := e.persistStratum(s, as, true); err != nil {
+	rev, err := e.persistStratum(s, as, true)
+	if err != nil {
 		e.swapStratum(old)
 		return err
 	}
-	return nil
+	return e.reached(ctx, rev)
 }
 
 // RestoreStratum puts a level back as it stood — the undo of a replacement, for a transaction
 // that is backing out. The engine's own act, asked of nobody, and it CLAIMS NOTHING: put back
 // as an install by nobody would be, the level would be taken for the system, and its installer
 // refused the next time they edited it.
-func (e *Engine) RestoreStratum(old Stratum) error {
+func (e *Engine) RestoreStratum(ctx context.Context, old Stratum) error {
 	if _, ok := e.stratum(old.Name); !ok {
-		return e.addStratumTaking(old, true, "", false)
+		return e.addStratumTaking(ctx, old, "", false)
 	}
 	e.swapStratum(old)
-	return e.persistStratum(old, "", false)
+	rev, err := e.persistStratum(old, "", false)
+	if err != nil {
+		return err
+	}
+	return e.reached(ctx, rev)
 }
 
 // recheckLevels asks the level discipline of every rule already installed, which is what an
@@ -529,36 +528,38 @@ func (e *Engine) swapStratumLocked(s Stratum) {
 	}
 }
 
-// addStratum installs a stratum, writing it to the store when durable.
-//
-// The two set-properties live here rather than in validate because neither is a property of the
-// stratum being installed: both are about the ordering it is joining.
-func (e *Engine) addStratum(s Stratum, durable bool, as string) error {
-	return e.addStratumTaking(s, durable, as, true)
-}
-
-// addStratumTaking is addStratum saying whether a system install claims the record.
-func (e *Engine) addStratumTaking(s Stratum, durable bool, as string, take bool) error {
+// addStratum puts a stratum into the ordering, with nothing written: for the check's engine
+// (Check), and for an install before it writes. The two set-properties live here rather than in
+// validate because neither is a property of the stratum being installed: both are about the
+// ordering it is joining.
+func (e *Engine) addStratum(s Stratum) error {
 	if err := s.validate(); err != nil {
 		return err
 	}
 	e.trigMu.Lock()
+	defer e.trigMu.Unlock()
 	if err := e.checkStrataSetLocked(s, ""); err != nil {
-		e.trigMu.Unlock()
 		return err
 	}
 	e.strata = append(e.strata, s)
-	e.trigMu.Unlock()
-	if durable {
-		if err := e.persistStratum(s, as, take); err != nil {
-			e.removeStratum(s.Name)
-			return err
-		}
+	return nil
+}
+
+// addStratumTaking installs a stratum durably, saying whether a system install claims the
+// record, and answers once the follow has it.
+func (e *Engine) addStratumTaking(ctx context.Context, s Stratum, as string, take bool) error {
+	if err := e.addStratum(s); err != nil {
+		return err
+	}
+	rev, err := e.persistStratum(s, as, take)
+	if err != nil {
+		e.removeStratum(s.Name)
+		return err
 	}
 	// A rule installed before its stratum was held rather than refused; this is what it was
 	// waiting for.
 	e.promote(s.Name)
-	return nil
+	return e.reached(ctx, rev)
 }
 
 // RemoveStratum removes a stratum by name. It is REFUSED while any installed rule names it.
@@ -569,6 +570,13 @@ func (e *Engine) addStratumTaking(s Stratum, durable bool, as string, take bool)
 // been told they were ordered. That is a guarantee withdrawn without saying so, which is worse
 // than an error the operator can answer by removing the rules first.
 func (e *Engine) RemoveStratum(name string) error {
+	return e.removeStratumAt(context.Background(), name)
+}
+
+// removeStratumAt is the removal, asked of nobody: the record is deleted, and the ordering
+// follows — here, since the level's checks are over the ordering in memory, and through the
+// follow, which finds it gone already.
+func (e *Engine) removeStratumAt(ctx context.Context, name string) error {
 	e.trigMu.Lock()
 	var users []string
 	for _, t := range e.triggers {
@@ -616,15 +624,18 @@ func (e *Engine) RemoveStratum(name string) error {
 		return fmt.Errorf("stratum %q at %s still holds %d rule(s) (%s): removing it would leave "+
 			"them installed and unchecked — every subject that passed its pattern would be "+
 			"answering to nothing. Remove the rules first, or move them",
-			name, StrataRefAt(e.confine.stamp(), name), len(users), strings.Join(shown, ", "))
+			name, charter.StratumRef(e.confine.stamp(), name), len(users), strings.Join(shown, ", "))
+	}
+	ref := charter.StratumRef(e.confine.stamp(), name)
+	_, rev, err := e.store.Write(entity.Write{At: ref.At()})
+	if err != nil {
+		return fmt.Errorf("%w: stratum %q: deleting %s: %w", ErrCharter, name, ref, err)
 	}
 	e.removeStratum(name)
-	e.write(StrataRefAt(e.confine.stamp(), name).At(), nil)
-	return nil
+	return e.reached(ctx, rev)
 }
 
-// removeStratum drops it from the in-memory ordering. Split out so addStratum can undo itself
-// when the write fails.
+// removeStratum drops it from the in-memory ordering.
 func (e *Engine) removeStratum(name string) {
 	e.trigMu.Lock()
 	defer e.trigMu.Unlock()
@@ -646,127 +657,55 @@ func (e *Engine) nameTaken(name string) error {
 			return fmt.Errorf("trigger %q already exists (remove it first)", name)
 		}
 	}
-	for _, held := range e.pending {
-		if held.Name == name {
-			return fmt.Errorf("trigger %q is already held, waiting for stratum %q (remove it "+
-				"first)", name, held.Stratum)
+	for _, h := range e.pending {
+		if h.Name == name {
+			return fmt.Errorf("trigger %q is already pending, %s (remove it first)", name, h.cause)
 		}
 	}
 	return nil
 }
 
-// promote installs the rules that were held for this stratum.
-//
-// Collected under the lock and installed OUTSIDE it: addTrigger takes trigMu itself, and a
-// promotion running under the caller's lock would deadlock on the first rule.
-func (e *Engine) promote(stratum string) {
-	e.trigMu.Lock()
-	var ready []Trigger
-	held := e.pending[:0]
-	for _, t := range e.pending {
-		if t.Stratum == stratum {
-			ready = append(ready, t)
-			continue
-		}
-		held = append(held, t)
-	}
-	e.pending = held
-	e.trigMu.Unlock()
-	for _, t := range ready {
-		// durable=false: it was written when it was held. A rule that fails its checks NOW —
-		// its subject is outside the stratum that just arrived — is reported and dropped from
-		// memory; its entity stays, so the next restart says the same thing rather than
-		// quietly forgetting a rule someone wrote.
-		if err := e.addTrigger(t, false, e.OwnerOf(t.Name)); err != nil {
-			e.logger.Warn("held rule does not fit the stratum it named",
-				"trigger", t.Name, "stratum", stratum, "err", err)
-			continue
-		}
-		e.logger.Info("held rule installed: its stratum arrived", "trigger", t.Name, "stratum", stratum)
-	}
-}
+// promote asks the reconciler for a pass: a rule held for this stratum is armed by it, now that
+// the stratum is here (reconcile.go).
+func (e *Engine) promote(string) { e.kick() }
 
 // persistStratum writes s into the verse as its stratum entity. Raw for the same reason a rule
 // is raw: a match is full of operator tags, and an unescaped write has the store execute them
-// rather than store them (see charter.go's specField).
-func (e *Engine) persistStratum(s Stratum, as string, take bool) error {
+// rather than store them (see charter.go's charter.SpecField).
+func (e *Engine) persistStratum(s Stratum, as string, take bool) (int64, error) {
 	doc, err := s.ToTonyIR()
 	if err != nil {
-		return fmt.Errorf("stratum %q: encoding it: %w", s.Name, err)
+		return 0, fmt.Errorf("stratum %q: encoding it: %w", s.Name, err)
 	}
-	ref := StrataRefAt(e.confine.stamp(), s.Name)
-	if _, _, err := e.store.Write(entity.Write{
+	ref := charter.StratumRef(e.confine.stamp(), s.Name)
+	_, rev, err := e.store.Write(entity.Write{
 		At:        ref.At(),
 		Value:     e.record(doc),
 		Principal: as,
-	}); err != nil {
-		return fmt.Errorf("%w: stratum %q: writing %s: %w", ErrCharter, s.Name, ref, err)
+	})
+	if err != nil {
+		return 0, fmt.Errorf("%w: stratum %q: writing %s: %w", ErrCharter, s.Name, ref, err)
 	}
 	if !take {
-		return nil
+		return rev, nil
 	}
-	return e.takeForTheSystem(ref, as)
+	return rev, e.takeForTheSystem(ref, as)
 }
 
-// LoadStrata installs the strata standing in the verse. Called at startup BEFORE LoadCharter,
-// because a rule names its stratum and the ordering has to be there to name.
-//
-// A stratum that cannot be decoded or installed is reported and skipped, as a rule is: the rest
-// of the ordering is still worth having, and the rules that named the broken one are then held
-// rather than lost.
-//
-// In a scope it restores the scope's own strata, for the reason LoadCharter gives. A scoped rule
-// naming an inherited stratum is therefore HELD rather than installed — which is the existing
-// answer for a rule whose stratum has not arrived, and the right one here too: the ordering it
-// asked to be checked against is not in force in this scope.
-func (e *Engine) LoadStrata() error {
-	ents, err := entity.BelowErr(e.store, IsStratum, 2, entity.VerseRoot, StrataSystem)
-	// Asked before anything is installed, and of this read alone, for LoadCharter's reasons: a
-	// load that could not read installed nothing, and is asked again.
-	if err != nil {
-		return entity.Unread(fmt.Errorf("the strata could not be read, so nothing was restored from them: %w", err))
-	}
-	return e.LoadStrataFrom(ents)
-}
-
-// LoadStrataFrom is LoadStrata over records already read, for LoadCharterFrom's reason: the
-// strata among ents that are this engine's own.
-func (e *Engine) LoadStrataFrom(ents []entity.Entity) error {
-	var errs []error
-	for _, ent := range ents {
-		if !IsStratum(ent.Ref) || !e.ownRecord(ent) {
-			continue
-		}
-		s, err := stratumOf(ent)
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		if _, standing := e.stratum(s.Name); standing {
-			continue // a load asked twice installs each level once
-		}
-		if err := e.addStratum(s, false, ""); err != nil {
-			errs = append(errs, fmt.Errorf("stratum %s: %w", ent.Ref, err))
-		}
-	}
-	return errors.Join(errs...)
-}
-
-// stratumOf decodes one stratum entity. A name disagreeing with the address is refused for the
+// stratumOf decodes one stratum record. A name disagreeing with the address is refused for the
 // reason ruleOf gives: the name is what a rule references and the address is what a removal
 // deletes, so the two diverging leaves a stratum nothing can get rid of.
-func stratumOf(ent entity.Entity) (Stratum, error) {
-	doc := entity.Get(ent.Payload, specField)
-	if doc == nil {
-		return Stratum{}, fmt.Errorf("stratum %s: no %s field (payload is %v)", ent.Ref, specField, ent.Payload)
+func stratumOf(rec charter.Record) (Stratum, error) {
+	if rec.Spec == nil {
+		return Stratum{}, fmt.Errorf("stratum %s: no %s field", rec.Ref, charter.SpecField)
 	}
 	var s Stratum
-	if err := s.FromTonyIR(doc); err != nil {
-		return Stratum{}, fmt.Errorf("stratum %s: %w", ent.Ref, err)
+	if err := s.FromTonyIR(rec.Spec); err != nil {
+		return Stratum{}, fmt.Errorf("stratum %s: %w", rec.Ref, err)
 	}
-	if s.Name != recordName(ent.Ref.Name()) { // the tail: a package's records carry its address
+	if s.Name != rec.Name { // the tail: a package's records carry its address
 		return Stratum{}, fmt.Errorf("stratum %s: it names itself %q; a stratum is addressed by "+
-			"its name, so it would install as one and be removed as another", ent.Ref, s.Name)
+			"its name, so it would install as one and be removed as another", rec.Ref, s.Name)
 	}
 	return s, nil
 }
@@ -1199,7 +1138,7 @@ func (a Action) validateDerive() error {
 	// that writes its record, and by nothing that observes the store, so a record a rule derived
 	// would suspend nothing while every listing said it did.
 	for _, t := range a.derives() {
-		if segs := t.segs(); len(segs) >= 2 && segs[0] == entity.VerseRoot && segs[1] == CharterSystem &&
+		if segs := t.segs(); len(segs) >= 2 && segs[0] == entity.VerseRoot && segs[1] == charter.System &&
 			(len(segs) == 2 || segs[2] == SuspensionKind) {
 			return fmt.Errorf("action.derive into %s: a suspension is made by `verse flow suspend`, "+
 				"and a record a rule wrote there would hold nothing", strings.Join(segs, "."))

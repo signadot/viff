@@ -1120,7 +1120,7 @@ func stillInstalled(ref entity.Ref) entity.Require {
 // the read it is (entity.IsUnread), so the phase asks again until the listing happens and the
 // sources start — a restart is not what it should take.
 func (s *Server) restoreSources() error {
-	if err := s.awaiting(phaseStrata, phaseCharter, phasePackages); err != nil {
+	if err := s.awaiting(phaseCharter, phasePackages); err != nil {
 		return err
 	}
 	installed, err := verseio.ListErr(s.Store)
@@ -1134,7 +1134,7 @@ func (s *Server) restoreSources() error {
 		}
 		if err := s.startSource(e); err != nil {
 			// Reported and skipped, so one bad registration does not cost the rest — the same
-			// rule LoadCharter follows for a rule that will not restore.
+			// rule the charter's restore follows for a record that will not place.
 			fmt.Fprintf(os.Stderr, "verse: source %s: %v\n", verseio.Ref(e.Name), err)
 		}
 	}

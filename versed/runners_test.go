@@ -2,7 +2,6 @@ package versed
 
 import (
 	"context"
-	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/runner"

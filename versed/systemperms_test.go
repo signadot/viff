@@ -3,7 +3,6 @@ package versed
 import (
 	"errors"
 	"fmt"
-	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,13 +11,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/trigger/charter"
+
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/schedule"
-	"github.com/signadot/verse/trigger"
 )
 
 // A request presents user:, agent: or runner:, or a bare email for a person. A name versed makes
@@ -151,7 +152,7 @@ func TestTheSystemCharterIsInstalledAtStartAsTheSystem(t *testing.T) {
 	srv.SystemCharter = path
 	srv.Start(t.Context())
 
-	rule := trigger.CharterRef("system-watch")
+	rule := charter.RuleRef("", "system-watch")
 	if _, ok, err := srv.Store.Get(rule); err != nil || !ok {
 		t.Fatalf("the system charter was not installed (ok=%v err=%v)", ok, err)
 	}
@@ -170,7 +171,7 @@ func TestTheSystemCharterIsInstalledAtStartAsTheSystem(t *testing.T) {
 	}
 	strangerMakesNothingIn(t, srv, rule)
 	// …and the rules in the binary's own base charter are taken the same way.
-	if ok, _ := entity.Holds(srv.Store, "user:mallory@example.com", entity.ReadWrite, trigger.CharterRef("calendar")); ok {
+	if ok, _ := entity.Holds(srv.Store, "user:mallory@example.com", entity.ReadWrite, charter.RuleRef("", "calendar")); ok {
 		t.Fatal("a stranger holds read-write on the base charter's calendar rule")
 	}
 

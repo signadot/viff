@@ -42,10 +42,18 @@ type Installed struct {
 }
 
 // InstalledPackage is one package's worth of an install: where it went (At, absent for
-// baseline), the rules installed that can fire, and the strata. A rule written down and waiting
-// for a stratum is Held, not counted in Rules; Notes are advisories, each with its rule. Both are
-// the author's to read and nobody else's to act on. Expires is the instant a charter with a
-// `ttl:` is removed at, RFC 3339; installing it again renews it.
+// baseline), the rules accepted to fire, and the strata. A rule written down and not armed is
+// Held, with what it waits for; Notes are advisories, each with its rule. Both are the author's
+// to read and nobody else's to act on. Expires is the instant a charter with a `ttl:` is
+// removed at, RFC 3339; installing it again renews it.
+//
+// An install answers once the charter is accepted — written and checked — and arming is the
+// store's pace: a rule's watches open a few at a time behind every other watch the verse is
+// opening. So Held carries the rules still arming at the instant of the answer, marked Arming,
+// and `?wait=<d>` holds the answer until none is, or d has passed (versed/charter.go). Rules
+// counts an arming rule, since it has passed every check and the store alone stands between it
+// and firing, and leaves out one held for a stratum or a runner: the count is the same whatever
+// the store's pace.
 //
 //tony:schemagen=verse-installed-package,notag
 type InstalledPackage struct {
@@ -57,12 +65,15 @@ type InstalledPackage struct {
 	Notes   []RuleNote `tony:"field=notes,omitzero"`
 }
 
-// HeldRule is a rule installed and waiting for a stratum the package does not declare.
+// HeldRule is a rule installed and not armed: Waits says what for — a stratum the package does
+// not declare, a runner no registration offers, a read that did not happen, or its watches,
+// which Arming marks: the rule passed every check and the store has not opened them yet.
 //
 //tony:schemagen=verse-held-rule,notag
 type HeldRule struct {
-	Rule    string `tony:"field=rule"`
-	Stratum string `tony:"field=stratum"`
+	Rule   string `tony:"field=rule"`
+	Waits  string `tony:"field=waits"`
+	Arming bool   `tony:"field=arming,omitzero"`
 }
 
 // RuleNote is an advisory about a rule: something the install took but the author may not

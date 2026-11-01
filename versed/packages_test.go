@@ -3,7 +3,6 @@ package versed
 import (
 	"context"
 	"errors"
-	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 	"io"
 	"net/http/httptest"
 	"slices"
@@ -11,10 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/runner/runnerd/runnerdtest"
+	"github.com/signadot/verse/trigger/charter"
+
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/trigger"
 )
 
 // declareReads posts a package's `reads:` declaration, which a rule reading outside its own
@@ -76,11 +77,11 @@ func TestACharterPackageRunsAtItsAddress(t *testing.T) {
 
 	// The record says which package it belongs to, so a reader can tell whose rule it is
 	// without inferring it from which listing it turned up in.
-	rule, ok, _ := srv.Store.Get(trigger.CharterRefAt("notes", "note-the-head"))
+	rule, ok, _ := srv.Store.Get(charter.RuleRef("notes", "note-the-head"))
 	if !ok {
 		t.Fatal("the package's rule was not written down")
 	}
-	if got := entity.Str(rule.Payload, trigger.AtField); got != "notes" {
+	if got := entity.Str(rule.Payload, charter.AtField); got != "notes" {
 		t.Fatalf("the record says at=%q, want notes", got)
 	}
 }
@@ -178,7 +179,7 @@ type charterListings struct {
 }
 
 func (c *charterListings) count(at []string) {
-	if slices.Equal(at, []string{entity.VerseRoot, trigger.CharterSystem}) {
+	if slices.Equal(at, []string{entity.VerseRoot, charter.System}) {
 		c.n++
 	}
 }
@@ -327,6 +328,99 @@ func TestAPackagesImportsAreRestored(t *testing.T) {
 	})
 }
 
+// flakyCharter fails one listing of the charter's slice — the fail'th since n was zeroed — while
+// every other read happens and the store's shared flag says all is well.
+type flakyCharter struct {
+	entity.Store
+	n, fail int
+}
+
+func (f *flakyCharter) ListAt(at []string, depth int, pred func(entity.Ref) bool) []entity.Entity {
+	out, _ := f.ListAtErr(at, depth, pred)
+	return out
+}
+func (f *flakyCharter) ListAtErr(at []string, depth int, pred func(entity.Ref) bool) ([]entity.Entity, error) {
+	if slices.Equal(at, []string{entity.VerseRoot, charter.System}) {
+		f.n++
+		if f.n == f.fail {
+			return nil, errFor("context deadline exceeded")
+		}
+	}
+	return entity.ListAtErr(f.Store, at, depth, pred)
+}
+func (*flakyCharter) ReadError() error { return nil }
+
+// A RESTORE THAT LOSES ANY ONE OF ITS READS restores no rule and is asked again; it never loads
+// a package's rules without the declaration they were installed under. On staging the read of
+// the declarations failed while the read of the rules landed: every package read as declaring
+// nothing, each rule was refused for reading outside its address, and the restore answered nil,
+// so nothing asked again.
+func TestARestoreNeverLoadsRulesWithoutTheirDeclaration(t *testing.T) {
+	addr := entitytest.Addr(t)
+	first := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
+	ctx, stop := context.WithCancel(t.Context())
+	first.Start(ctx)
+	ts := httptest.NewServer(first.Handler())
+	if code, msg := declareReads(t, ts.URL, "notes", "git"); code != 201 {
+		t.Fatalf("declaring = %d: %s", code, msg)
+	}
+	if code, msg := installAt(t, ts.URL, "notes", `{
+		name: note-the-head,
+		condition: {when: {path: "git.head.*"}, subject: {path: "notes.seen.head"}},
+		action: {patch: {saw: "yes"}},
+	}`); code != 201 {
+		t.Fatalf("installing = %d: %s", code, msg)
+	}
+	ts.Close()
+	stop()
+	time.Sleep(50 * time.Millisecond)
+
+	// restoring stands a server up over the store, unstarted so that only the restore reads,
+	// failing the fail'th listing of the charter.
+	restoring := func(fail int) (*Server, *flakyCharter) {
+		fc := &flakyCharter{Store: entitytest.StoreAt(t, addr)}
+		srv := serverWith(t, runnerdtest.Scripted, fc)
+		srv.ctx = t.Context()
+		fc.n, fc.fail = 0, fail
+		return srv, fc
+	}
+	// Loaded is standing by name, armed or pending: arming is the reconciler's, behind the
+	// restore (trigger/reconcile.go).
+	restored := func(srv *Server) bool {
+		eng := srv.packageEngineIfRunning("notes")
+		if eng == nil {
+			return false
+		}
+		_, stands := eng.Rule("note-the-head")
+		return stands
+	}
+
+	// How many listings a restore makes, so that each in turn can be the one that fails.
+	srv, fc := restoring(0)
+	if err := srv.restorePackages(); err != nil || !restored(srv) {
+		t.Fatalf("a restore over a healthy store = %v, restored %v", err, restored(srv))
+	}
+	reads := fc.n
+	for k := 1; k <= reads; k++ {
+		srv, fc := restoring(k)
+		err := srv.restorePackages()
+		if err == nil {
+			if !restored(srv) {
+				t.Errorf("listing %d of %d failed and the restore answered nil without the rule, so nothing asks again", k, reads)
+			}
+			continue
+		}
+		if !entity.IsUnread(err) {
+			t.Errorf("listing %d of %d failed and the restore answered %v, want a read that did not happen", k, reads, err)
+			continue
+		}
+		fc.fail = 0
+		if err := srv.restorePackages(); err != nil || !restored(srv) {
+			t.Errorf("listing %d of %d failed, and asked again the restore = %v, restored %v", k, reads, err, restored(srv))
+		}
+	}
+}
+
 // Narrowing must not leave a rule standing outside what its package declares — re-installing a
 // charter with a line deleted is exactly how that would happen.
 func TestNarrowingImportsIsRefusedWhileARuleNeedsThem(t *testing.T) {
@@ -412,10 +506,10 @@ func TestAPackageCanBeUninstalled(t *testing.T) {
 	if err := srv.removePackage(srv.Store, "notes", false); err != nil {
 		t.Fatalf("uninstall: %v", err)
 	}
-	if _, ok, _ := srv.Store.Get(trigger.CharterRefAt("notes", "note-the-head")); ok {
+	if _, ok, _ := srv.Store.Get(charter.RuleRef("notes", "note-the-head")); ok {
 		t.Error("the rule outlived the package")
 	}
-	if _, ok, _ := srv.Store.Get(trigger.PackageRef("notes")); ok {
+	if _, ok, _ := srv.Store.Get(charter.PackageRef("notes")); ok {
 		t.Error("the declaration of what it declares it reads outlived the package")
 	}
 	if len(srv.packagesSeen()) != 0 {
@@ -535,7 +629,7 @@ func TestAPackageWithNoRulesIsStillAPackage(t *testing.T) {
 	if got := srv.packagesSeen(); len(got) != 0 {
 		t.Errorf("the package is still listed after uninstall: %v", got)
 	}
-	if _, ok, _ := srv.Store.Get(trigger.StrataRefAt("notes", "lvl")); ok {
+	if _, ok, _ := srv.Store.Get(charter.StratumRef("notes", "lvl")); ok {
 		t.Error("the level outlived the package")
 	}
 }
@@ -560,7 +654,7 @@ func TestUninstallReachesARuleTheEngineNeverInstalled(t *testing.T) {
 	}
 	// The record a refused rule leaves: written at the address, never in any engine. Written
 	// by hand because that is exactly the state — the install path refuses it.
-	stray := trigger.CharterRefAt("notes", "refused")
+	stray := charter.RuleRef("notes", "refused")
 	entitytest.Set(t, srv.Store, stray, entity.Obj{
 		"at": "notes", "name": "refused",
 		"condition": entity.Obj{"subject": "git.head.*"},

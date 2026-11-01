@@ -214,6 +214,9 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 	e.Described = described
 	out := runnerRow(taskRows(store), e, nil)
 	out.Reach, out.Why, out.Warning = reach, why, warning
+	// A rule held for a runner that offers what its spawn asks may have been waiting for this
+	// one (trigger.Engine.Kick).
+	s.kickEngines()
 	writeOut(w, r, http.StatusCreated, out)
 }
 
@@ -460,6 +463,7 @@ func (s *Server) removeRunner(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.forgetRegistrations()
+	s.kickEngines() // a rule held for a runner is told, by the next pass, what offers remain
 	writeOut(w, r, http.StatusOK, out)
 }
 
