@@ -31,4 +31,6 @@ An ordinary restart does not meet it, since every record already stands with its
 
 ## The fix
 
-The system's write of a rule's record carries its owner, as a person's does: one write, so no rule record ever stands without one. The same holds for every other node the system writes and then takes in a second step (`takeForTheSystem`, `entity.ClaimForSystem`, and `versed/charter.go`'s `takePackageAddresses`): the owner goes in the write that makes the node. Retrying refused firings, or ordering the backlog after the second write, would leave ownerless data standing in between, and is not the fix.
+The system's write of a rule's record carries its owner, as a person's does: one write, so no rule record ever stands without one. Retrying refused firings, or ordering the backlog after the second write, would leave ownerless data standing in between, and is not the fix.
+
+Not the same defect: `versed/charter.go`'s `takePackageAddresses` gives a package's address an owner record after its install, but the rows beneath are owned all along, through the owner above. Only a `via:` place reads its owner from its own record alone, so only a node that acts goes ownerless in a second-step take.
