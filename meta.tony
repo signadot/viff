@@ -2,6 +2,7 @@
 blocked_by: []
 blocks: []
 branches: []
+closed_by: 5e1af4c6cbaf326f0371d1eef839a939cddd9d1a
 commits: []
 created: "2026-11-01T23:31:42.797212+01:00"
 duplicates: []
@@ -10,5 +11,5 @@ labels:
 - system-repo-charter
 related_issues:
 - xv2pp5j0h12ksd50wxn0
-status: open
-updated: "2026-11-01T23:58:56.143306+01:00"
+status: closed
+updated: "2026-11-01T23:58:56.456434+01:00"
