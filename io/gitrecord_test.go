@@ -117,18 +117,22 @@ func TestARecordHoldsATreeAndChainsItsEntries(t *testing.T) {
 		t.Errorf("the reflected record written by hand = %v", entity.ToObj(recs["hand"]))
 	}
 
-	// Refused for good: a tree the repository lacks, a from it lacks, no tree, a bad name.
-	for name, in := range map[string]entity.Obj{
+	// Refused for good: a tree the repository lacks, a from it lacks, no tree, a full refname, and
+	// every name git takes as no ref, which would otherwise fail at the push and be tried again.
+	refused := map[string]entity.Obj{
 		"nosuch":   {"to": "record.x", "tree": "0123456789abcdef0123456789abcdef01234567"},
 		"nofrom":   {"to": "record.x", "tree": treeA, "from": "0123456789abcdef0123456789abcdef01234567"},
 		"notree":   {"to": "record.x"},
-		"badname":  {"to": "record.a..b", "tree": treeA},
 		"refsname": {"to": "record.refs/heads/main", "tree": treeA},
-	} {
+	}
+	for i, name := range []string{"a..b", "a:b", "a b", "a~1", "a^", "a?", "a[", "a@{1}", "x.lock", "a.", "a//b", "a/.b", "a\\b", "a/"} {
+		refused[fmt.Sprintf("badname%d", i)] = entity.Obj{"to": "record." + name, "tree": treeA}
+	}
+	for name, in := range refused {
 		r.ask(t, name, in)
 	}
 	r.pass(t)
-	for _, name := range []string{"nosuch", "nofrom", "notree", "badname", "refsname"} {
+	for name := range refused {
 		if st := r.status(t, name); st["failed"] != verseio.PermanentFailure {
 			t.Errorf("%s: status %v, want a permanent refusal", name, st)
 		}

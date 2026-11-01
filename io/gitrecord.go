@@ -2,7 +2,9 @@ package io
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -46,16 +48,26 @@ const recordRefs = "refs/verse/"
 // recordAuthor is who an entry is by: the io, writing as itself, with no address.
 var recordAuthor = []string{"-c", "user.name=verse", "-c", "user.email=verse@verse.invalid"}
 
-// validRecordName is whether name can be a record's: a ref's short name, under refs/verse/.
-func validRecordName(name string) bool {
-	return name != "" && !strings.HasPrefix(name, "refs/") && !strings.HasPrefix(name, "-") &&
-		!strings.Contains(name, "..") && !strings.HasSuffix(name, "/")
+// recordName refuses for good a name that cannot be a record's: one git does not take as a ref
+// under refs/verse/ (`git check-ref-format`, which is git's own rule, so a name it refuses is
+// never pushed or written and failed there, to be tried again every pass), and a full refname,
+// which would nest. A git that does not answer is an error that may pass.
+func recordName(ctx context.Context, name string) error {
+	if name == "" || strings.HasPrefix(name, "refs/") {
+		return Permanent(fmt.Errorf("%q is not a record's name", name))
+	}
+	_, err := gitCmd(ctx, "", "check-ref-format", recordRefs+name)
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == 1 {
+		return Permanent(fmt.Errorf("%q is not a record's name: git takes no ref %s", name, recordRefs+name))
+	}
+	return err
 }
 
 // record carries one record input out.
 func (k *GitSink) record(ctx context.Context, rp repo, in Input, name string) (entity.Obj, error) {
-	if !validRecordName(name) {
-		return nil, Permanent(fmt.Errorf("`to` %q: %q is not a record's name", in.To, name))
+	if err := recordName(ctx, name); err != nil {
+		return nil, fmt.Errorf("`to` %q: %w", in.To, err)
 	}
 	ref := recordRefs + name
 	want := strings.TrimSpace(entity.Str(in.Value, "tree"))
@@ -148,8 +160,8 @@ func gitRecords(ctx context.Context, dir string) (map[string]recordInfo, error) 
 // recordTree is the commit a record stands at and the tree it holds, or no commit (sha "") for a
 // record the repository does not have.
 func recordTree(ctx context.Context, dir, name string) (tree, sha string, err error) {
-	if !validRecordName(name) {
-		return "", "", Permanent(fmt.Errorf("`record` %q is not a record's name", name))
+	if err := recordName(ctx, name); err != nil {
+		return "", "", fmt.Errorf("`record`: %w", err)
 	}
 	sha, err = gitCmd(ctx, dir, "rev-parse", "--verify", "-q", recordRefs+name+"^{commit}")
 	if err != nil || !fullSHA.MatchString(sha) {
