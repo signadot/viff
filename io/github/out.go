@@ -714,7 +714,7 @@ func (k *Sink) mergeAt(ctx context.Context, repo string, number int, spec, statu
 // else opened: the question's comment (`text`, `asks`; its facts as `comment`, `commentUrl`,
 // `commentPosted`, `commentAt`), verse's review (`review`; reviewBeside), and its commit statuses
 // (`commitStatus`; commitStatuses). It is how the repo-charters reconciler asks its question on a
-// pull request to main and blocks the merge until it is answered (git-issue dzxn44gw).
+// pull request to main, beside its answer and its check as statuses (git-issue dzxn44gw).
 //
 // The comment's failure is the input's, retried; a review or a status GitHub refuses is said
 // beside the rest and does not stop the comment, whose replies are where the answer comes from.

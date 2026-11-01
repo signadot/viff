@@ -45,14 +45,14 @@
 #
 # ON THE PULL REQUEST TO MAIN, first: a pull request to main that changes the charters (the github
 # io's `-tree`, against the head's merge base) proposes the tree at its head, and the question is
-# asked there, where the change is reviewed. Verse requests changes on it until the question is
-# answered yes AND its charter check finds the tree installs, which holds the merge where main's
-# protection requires approving reviews, and posts its `verse` status (the answer) and its
-# `verse/check` status (the check) on the head. What it says follows the tree the pull request
-# proposes NOW: pushed on to another tree, it is asked about that one in the same comment; once it
-# leaves the charters alone, the request for changes is dismissed and the comment says so. The
-# answer stands for the tree, so when the pull request merges, main carries a tree already answered
-# and it installs with no second question.
+# asked there, where the change is reviewed, beside its `verse` status (the answer) and its
+# `verse/check` status (the check) on the head. Verse holds nothing: the merge is the repository's,
+# under whatever review it asks for, and the gate is the install. A repository that wants a tree
+# the install would refuse kept off main makes `verse/check` a required check. What it says follows
+# the tree the pull request proposes NOW: pushed on to another tree, it is asked about that one in
+# the same comment; once it leaves the charters alone, the comment says so. The answer stands for
+# the tree, so a yes given on the pull request installs it once it merges, with no second question,
+# and a tree merged unanswered is asked on the candidate's issue.
 #
 # THE CANDIDATE'S ISSUE is for a change that reached main without that answer (an ordinary push, a
 # pull request merged around verse): the question is asked on an issue, where the repository's
@@ -379,9 +379,8 @@ rules:
     onDone:
       patch: {answer: $result, askedAt: $subject.value.seen}
 # WHAT VERSE SAYS ABOUT A TREE on any pull request that proposes it, from its answer and its
-# check: the decision (the `verse` status), the check (the `verse/check` status, and the comment's
-# text, which says why a refused tree would be refused), and the hold (verse's review), which
-# needs both.
+# check: the decision (the `verse` status) and the check (the `verse/check` status, and the
+# comment's text, which says why a refused tree would be refused). Neither holds the merge.
 # A NEW TREE'S VERDICT is written whole, pending on both counts, in one derive: the rule drawing
 # a pull request from it reads every field, and one that found half a verdict would fail and
 # wait to be tried again. After that each count is its own: the answer rewrites the decision,
@@ -402,10 +401,9 @@ rules:
       value:
         decision:
           state: pending
-          description: "waiting for an answer; merging is held until then"
+          description: "not answered yet; merging does not wait for it"
         check: {state: pending, description: "checking against what runs"}
-        review: {event: request-changes, body: "verse: this changes the charters verse runs, and waits for an answer to the question on this pull request."}
-        text: "This pull request changes the charters verse runs for this repository. Merging waits for an answer to the question below, and a yes takes effect once this merges."
+        text: "This pull request changes the charters verse runs for this repository. A yes to the question below installs them once this merges; merging does not wait for it, and unanswered, the question is asked again on an issue after the merge."
 - name: verdict-yes
   stratum: candidates
   condition:
@@ -419,7 +417,7 @@ rules:
       value:
         decision:
           state: success
-          description: "answered yes"
+          description: "answered yes; installs once merged"
 - name: verdict-no
   stratum: candidates
   condition:
@@ -433,10 +431,7 @@ rules:
       value:
         decision:
           state: failure
-          description: "answered no"
-        # The hold for a no does not wait on the check, so it is written with the decision: the
-        # status and the review never disagree in between.
-        review: {event: request-changes, body: "verse: answered no ($subject.value.answer). These charters do not take effect."}
+          description: "answered no; not installed, merged or not"
 - name: verdict-installs
   stratum: candidates
   condition:
@@ -449,7 +444,7 @@ rules:
       id: $subject.value.tree
       value:
         check: {state: success, description: "installs cleanly over what runs"}
-        text: "This pull request changes the charters verse runs for this repository. Merging waits for an answer to the question below, and a yes takes effect once this merges."
+        text: "This pull request changes the charters verse runs for this repository. A yes to the question below installs them once this merges; merging does not wait for it, and unanswered, the question is asked again on an issue after the merge."
 - name: verdict-refused
   stratum: candidates
   condition:
@@ -462,55 +457,13 @@ rules:
       id: $subject.value.tree
       value:
         check: {state: failure, description: "would be refused; see the comment"}
-        text: "This pull request changes the charters verse runs for this repository. Merging waits for an answer to the question below, and a yes takes effect once this merges.\n\nverse's charter check says these charters would be refused if installed into repos.verse:\n\n$subject.value.refusal"
-# THE HOLD, verse's review, lifts only when BOTH halves agree: the question answered yes AND the
-# charter check finding the tree installs. A yes on a tree the check has not answered yet, or
-# refuses, leaves the merge held, saying what it waits for, so a tree the install would refuse is
-# never let through on a yes alone. Unanswered, it is the one `verdict-new` writes as the candidate
-# appears (an obsolete answer only ever follows that); a no's is written with its decision
-# (`verdict-no`), since it waits on nothing; a yes's is one rule per state of the check.
-- name: hold-yes-unchecked
-  stratum: candidates
-  condition:
-    subject:
-      path: "repo-charters.verse.candidate.*"
-      value: !and [{answer: !regexp "^\\S+ chose proceed(: |\\z)"}, !not.has-path checked]
-  action:
-    derive:
-    - path: "repo-charters.verse.verdict"
-      id: $subject.value.tree
-      value:
-        review: {event: request-changes, body: "verse: answered yes; waiting for verse's charter check of these charters before the merge."}
-- name: hold-yes-refused
-  stratum: candidates
-  condition:
-    subject:
-      path: "repo-charters.verse.candidate.*"
-      value: {answer: !regexp "^\\S+ chose proceed(: |\\z)", checked: refused}
-  action:
-    derive:
-    - path: "repo-charters.verse.verdict"
-      id: $subject.value.tree
-      value:
-        review: {event: request-changes, body: "verse: answered yes, but verse's charter check refuses these charters (see the comment); the merge stays held until they pass."}
-- name: hold-lifted
-  stratum: candidates
-  condition:
-    subject:
-      path: "repo-charters.verse.candidate.*"
-      value: {answer: !regexp "^\\S+ chose proceed(: |\\z)", checked: installs}
-  action:
-    derive:
-    - path: "repo-charters.verse.verdict"
-      id: $subject.value.tree
-      value:
-        review: {event: dismiss, body: "verse: answered yes, and the charter check passes; this takes effect once merged."}
+        text: "This pull request changes the charters verse runs for this repository. A yes to the question below installs them once this merges; merging does not wait for it, and unanswered, the question is asked again on an issue after the merge.\n\nverse's charter check says these charters would be refused if installed into repos.verse:\n\n$subject.value.refusal"
 # ON THE PULL REQUEST TO MAIN, what verse says about the tree it proposes now: the comment with
-# the question, verse's review, and both statuses on its head, drawn from that tree's verdict. Re
-# drawn when any verdict changes (`when`), since what is read in an action is copied, not
-# followed. One input per pull request, so a pull request that moves to another tree is asked
-# about that tree in the same comment, under the same review.
-- name: pr-hold
+# the question, and both statuses on its head, drawn from that tree's verdict. Re drawn when any
+# verdict changes (`when`), since what is read in an action is copied, not followed. One input per
+# pull request, so a pull request that moves to another tree is asked about that tree in the same
+# comment.
+- name: pr-asked
   stratum: proposals
   condition:
     when:
@@ -527,7 +480,6 @@ rules:
         tree: $subject.value.tree
         text: !get-path {at: [repo-charters, verse, verdict, $subject.value.tree], path: text}
         asks: "repo-charters.verse:propose@repo-charters.verse.candidate.$subject.value.tree~2"
-        review: !get-path {at: [repo-charters, verse, verdict, $subject.value.tree], path: review}
         commitStatus:
           verse:
             state: !get-path {at: [repo-charters, verse, verdict, $subject.value.tree], path: decision.state}
@@ -537,8 +489,9 @@ rules:
             state: !get-path {at: [repo-charters, verse, verdict, $subject.value.tree], path: check.state}
             description: !get-path {at: [repo-charters, verse, verdict, $subject.value.tree], path: check.description}
             sha: $subject.value.head
-# A pull request that no longer changes the charters is held for nothing: the review dismissed and
-# the comment saying so. One that never did writes an input with no `to`, which no io reads.
+# A pull request that no longer changes the charters is asked nothing: the comment says so, and
+# both statuses on its head say there is nothing to wait for, so a required `verse/check` passes.
+# One that never did writes an input with no `to`, which no io reads.
 - name: pr-quiet
   stratum: proposals
   condition:
@@ -553,7 +506,9 @@ rules:
         tree: ""
         text: "This pull request no longer changes the charters verse runs, so verse asks nothing here."
         asks: []
-        review: {event: dismiss, body: "verse: this pull request no longer changes the charters."}
+        commitStatus:
+          verse: {state: success, description: "changes no charters", sha: $subject.value.head}
+          "verse/check": {state: success, description: "changes no charters", sha: $subject.value.head}
 # ON THE CANDIDATE'S ISSUE, for a change that reached main without an answer: while a candidate is
 # asked about, its question rides an issue saying what main carries against what runs, with the
 # answer heard there, and verse's commit status pending on main's commit. Only once verse/live

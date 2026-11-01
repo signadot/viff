@@ -527,9 +527,9 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 		return fmt.Sprint(entity.ToObj(p)["closed"]) == "false" && strings.Contains(entity.Str(entity.Get(p, "open"), "body"), treeG)
 	})
 
-	// 13. A pull request to main proposing a tree: the question is asked on it, with verse's
-	// request for changes holding the merge and its status waiting on the head, and the check's
-	// status beside it. No candidate's issue: main does not carry the tree.
+	// 13. A pull request to main proposing a tree: the question is asked on it, with its status
+	// waiting on the head and the check's status beside it, and nothing holds the merge. No
+	// candidate's issue: main does not carry the tree.
 	const treeH = "1111bbbb1111bbbb1111bbbb1111bbbb1111bbbb"
 	prIn := func(n int) entity.Ref {
 		return entity.RefAt("repo-charters", "r", "out", "github", "pr", fmt.Sprint(n))
@@ -543,8 +543,7 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	qidH := repocharters.QuestionID("r", treeH)
 	waitQuestionID(t, srv, qidH)
 	onPR := waitEntity(t, srv, prIn(7), func(p entity.Payload) bool { return entity.Str(p, "asks") != "" })
-	if entity.Str(onPR, "to") != "pr.7" || entity.Str(onPR, "asks") != qidH ||
-		entity.Str(entity.Get(onPR, "review"), "event") != "request-changes" ||
+	if entity.Str(onPR, "to") != "pr.7" || entity.Str(onPR, "asks") != qidH || entity.Get(onPR, "review") != nil ||
 		entity.Str(statusUnder(onPR, "verse"), "state") != "pending" || entity.Str(statusUnder(onPR, "verse"), "sha") != headH {
 		t.Errorf("the pull request to main's input = %v", entity.ToObj(onPR))
 	}
@@ -556,13 +555,10 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	}
 	// A pull request that leaves the charters alone proposes nothing, now or once main moves on.
 	prAt(t, srv, 8, strings.Repeat("d", 40), "")
-	// Yes: the hold is dismissed and the status passes; nothing moves until the merge.
+	// Yes: the status passes; nothing moves until the merge.
 	answer(qidH, "proceed")
-	// The status is the answer and the hold needs the check too, written apart: wait for both.
-	onPR = waitEntity(t, srv, prIn(7), func(p entity.Payload) bool {
-		return entity.Str(statusUnder(p, "verse"), "state") == "success" && entity.Str(entity.Get(p, "review"), "event") == "dismiss"
-	})
-	if entity.Str(onPR, "to") != "pr.7" {
+	onPR = waitEntity(t, srv, prIn(7), func(p entity.Payload) bool { return entity.Str(statusUnder(p, "verse"), "state") == "success" })
+	if entity.Str(onPR, "to") != "pr.7" || entity.Get(onPR, "review") != nil {
 		t.Errorf("the answered pull request to main's input = %v", entity.ToObj(onPR))
 	}
 	time.Sleep(300 * time.Millisecond)
@@ -592,7 +588,8 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	}
 
 	// 14. A pull request to main whose tree would be refused and is answered no: the refusal is
-	// in its comment, the check fails, and the hold stands, saying the answer.
+	// in its comment, the check fails, and the answer's status fails, saying so; nothing holds the
+	// merge.
 	const treeI = "2222cccc2222cccc2222cccc2222cccc2222cccc"
 	headI := strings.Repeat("e", 40)
 	prAt(t, srv, 9, headI, treeI)
@@ -606,14 +603,13 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	}
 	answer(qidI, "deny")
 	onPR = waitEntity(t, srv, prIn(9), func(p entity.Payload) bool { return entity.Str(statusUnder(p, "verse"), "state") == "failure" })
-	if entity.Str(entity.Get(onPR, "review"), "event") != "request-changes" ||
-		!strings.Contains(entity.Str(entity.Get(onPR, "review"), "body"), "answered no") {
+	if entity.Get(onPR, "review") != nil || !strings.Contains(entity.Str(statusUnder(onPR, "verse"), "description"), "answered no") {
 		t.Errorf("the denied pull request to main's input = %v", entity.ToObj(onPR))
 	}
 
 	// 15. A pull request that moves to another tree is asked about that one, in the same input;
 	// an answer to the tree it left does not reach it; and once it leaves the charters alone, the
-	// hold is dismissed and the comment says so.
+	// comment says so and both statuses on its head pass.
 	const treeJ, treeK = "3333dddd3333dddd3333dddd3333dddd3333dddd", "4444eeee4444eeee4444eeee4444eeee4444eeee"
 	prAt(t, srv, 11, strings.Repeat("1", 40), treeJ)
 	qidJ, qidK := repocharters.QuestionID("r", treeJ), repocharters.QuestionID("r", treeK)
@@ -623,7 +619,7 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	prAt(t, srv, 11, headK, treeK)
 	waitQuestionID(t, srv, qidK)
 	onPR = waitEntity(t, srv, prIn(11), func(p entity.Payload) bool { return entity.Str(p, "asks") == qidK })
-	if entity.Str(onPR, "tree") != treeK || entity.Str(entity.Get(onPR, "review"), "event") != "request-changes" ||
+	if entity.Str(onPR, "tree") != treeK || entity.Get(onPR, "review") != nil ||
 		entity.Str(statusUnder(onPR, "verse"), "sha") != headK || entity.Str(statusUnder(onPR, "verse"), "state") != "pending" {
 		t.Errorf("the pull request moved to another tree = %v", entity.ToObj(onPR))
 	}
@@ -632,14 +628,16 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 		return entity.Str(entity.Get(p, "decision"), "state") == "success"
 	})
 	time.Sleep(300 * time.Millisecond)
-	if p, _, _ := srv.Store.Get(prIn(11)); entity.Str(entity.Get(p.Payload, "review"), "event") != "request-changes" ||
-		entity.Str(statusUnder(p.Payload, "verse"), "state") != "pending" {
-		t.Errorf("an answer to a tree the pull request left lifted its hold: %v", entity.ToObj(p.Payload))
+	if p, _, _ := srv.Store.Get(prIn(11)); entity.Str(statusUnder(p.Payload, "verse"), "state") != "pending" {
+		t.Errorf("an answer to a tree the pull request left reached it: %v", entity.ToObj(p.Payload))
 	}
-	prAt(t, srv, 11, strings.Repeat("3", 40), "")
-	onPR = waitEntity(t, srv, prIn(11), func(p entity.Payload) bool { return entity.Str(entity.Get(p, "review"), "event") == "dismiss" })
+	headQ := strings.Repeat("3", 40)
+	prAt(t, srv, 11, headQ, "")
+	onPR = waitEntity(t, srv, prIn(11), func(p entity.Payload) bool { return entity.Str(statusUnder(p, "verse/check"), "sha") == headQ })
 	if entity.Str(onPR, "to") != "pr.11" || !strings.Contains(entity.Str(onPR, "text"), "no longer changes the charters") ||
-		len(entity.ToObj(onPR)["asks"].([]any)) != 0 {
+		len(entity.ToObj(onPR)["asks"].([]any)) != 0 || entity.Get(onPR, "review") != nil ||
+		entity.Str(statusUnder(onPR, "verse/check"), "state") != "success" ||
+		entity.Str(statusUnder(onPR, "verse"), "state") != "success" || entity.Str(statusUnder(onPR, "verse"), "sha") != headQ {
 		t.Errorf("the pull request that left the charters alone = %v", entity.ToObj(onPR))
 	}
 
@@ -653,18 +651,20 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 		t.Errorf("the empty tree's question does not say it removes every charter: %v", entity.ToObj(q.Payload))
 	}
 	waitEntity(t, srv, prIn(12), func(p entity.Payload) bool { return entity.Str(p, "asks") == qidE0 })
-	// The hold lifts only when the answer and the check agree: a yes with the check still out
-	// keeps it, a yes the check refuses keeps it, and a yes the check passes lifts it.
+	// The answer and the check are said apart, and neither waits on the other: a yes with the
+	// check still out, a check that refuses, and one that passes.
 	answer(qidE0, "proceed")
-	held := func(p entity.Payload, says string) bool {
-		r := entity.Get(p, "review")
-		return entity.Str(r, "event") == "request-changes" && strings.Contains(entity.Str(r, "body"), says)
+	says := func(answer, check string) func(entity.Payload) bool {
+		return func(p entity.Payload) bool {
+			return entity.Str(statusUnder(p, "verse"), "state") == answer && entity.Str(statusUnder(p, "verse/check"), "state") == check &&
+				entity.Get(p, "review") == nil
+		}
 	}
-	waitEntity(t, srv, prIn(12), func(p entity.Payload) bool { return held(p, "waiting for verse's charter check") })
+	waitEntity(t, srv, prIn(12), says("success", "pending"))
 	checkedBy(t, srv, verseio.EmptyTree, "refused", "stratum \"z\": a level is taken")
-	waitEntity(t, srv, prIn(12), func(p entity.Payload) bool { return held(p, "refuses these charters") })
+	waitEntity(t, srv, prIn(12), says("success", "failure"))
 	checkedBy(t, srv, verseio.EmptyTree, "installs", "")
-	waitEntity(t, srv, prIn(12), func(p entity.Payload) bool { return entity.Str(entity.Get(p, "review"), "event") == "dismiss" })
+	waitEntity(t, srv, prIn(12), says("success", "success"))
 	mainAt(t, srv, sha(11), verseio.EmptyTree)
 	waitEntity(t, srv, gitIn("live"), func(p entity.Payload) bool { return entity.Str(p, "from") == sha(11) })
 	liveAt(t, srv, entry(11), verseio.EmptyTree, sha(11))
@@ -759,4 +759,18 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 	waitEntity(t, srv, mirror.AskRef(qidL), func(p entity.Payload) bool { return entity.Str(p, "status") == "pending" })
 	answer(qidL, "proceed")
 	waitEntity(t, srv, candL, func(p entity.Payload) bool { return strings.Contains(entity.Str(p, "answer"), "chose proceed") })
+
+	// 20. A pull request merged with its question unanswered: nothing held it, and the same
+	// question rides the candidate's issue once main carries the tree; answered there, it installs.
+	const treeN = "7777bbbb7777bbbb7777bbbb7777bbbb7777bbbb"
+	prAt(t, srv, 14, strings.Repeat("5", 40), treeN)
+	qidN := repocharters.QuestionID("r", treeN)
+	waitQuestionID(t, srv, qidN)
+	mainAt(t, srv, sha(14), treeN)
+	onIssue := waitEntity(t, srv, ghIn(treeN), func(p entity.Payload) bool { return entity.Str(p, "to") == "issue" })
+	if entity.Str(onIssue, "asks") != qidN || entity.Str(statusUnder(onIssue, "verse"), "sha") != sha(14) {
+		t.Errorf("the candidate's issue for a tree merged unanswered = %v", entity.ToObj(onIssue))
+	}
+	answer(qidN, "proceed")
+	waitEntity(t, srv, gitIn("live"), func(p entity.Payload) bool { return entity.Str(p, "from") == sha(14) })
 }

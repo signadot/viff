@@ -37,8 +37,9 @@ the repository, and it is reviewed like any other change.
 
 - **A pull request that changes the charters** gets a question: install this? Verse also checks
   that the new charters install. It reports the answer and the check on the pull request, as the
-  statuses `verse` and `verse/check`. It requests changes until the answer is yes and the check
-  passes. When the pull request merges, the charters install with no second question.
+  statuses `verse` and `verse/check`. Neither holds the merge; make `verse/check` a required
+  check to keep charters the install would refuse off main. A yes given on the pull request
+  installs the charters once it merges, with no second question.
 - **A change that reached main without a yes**, such as a direct push, gets an issue that asks
   the question and says how to see the change against what runs. The statuses go on main's
   commit.
