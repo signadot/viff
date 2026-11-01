@@ -459,7 +459,7 @@ ok "the question is settled with both ballots on the record"
 # alice reads the answer off her ask and off the watch.
 step "ask: alice asks bob, bob answers, alice sees it"
 LAND=$(VERSE_USER=user:alice v ask land -q "Review verse/ask?" --to user:bob --due 48h) || die "alice could not ask"
-LAND=${LAND#asked }
+LAND=${LAND#raised question }
 LAND=${LAND%%:*}
 # The ask is the question: its id is what bob answers, once it is posed and waits on him.
 AID=$LAND
@@ -509,7 +509,7 @@ method: {driver: service}
 TONY
 has "$(VERSE_USER=user:carol v resolver grant carols-desk)" "answers for you" || die "carol could not grant the desk"
 SHIP=$(VERSE_USER=user:alice v ask ship -q "Ship it?" --to user:carol) || die "alice could not ask carol"
-SHIP=${SHIP#asked }
+SHIP=${SHIP#raised question }
 SHIP=${SHIP%%:*}
 desk() { curl -s -H 'Verse-Principal: user:dan' -H 'Verse-Resolver: carols-desk' "$@"; }
 served=
