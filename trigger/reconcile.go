@@ -14,8 +14,7 @@ import (
 // causes are the ones that can clear without the rule's record changing — a stratum it names
 // not installed yet, no runner offering what its spawn asks (Runners), a read the vetting needs
 // that did not happen, a vet that passed at install and fails now that the world has moved, and
-// the
-// pass itself, for a rule just placed or just lifted. Everything else an install refuses,
+// the pass itself, for a rule just placed or just lifted. Everything else an install refuses,
 // where the author is present to hear it (vet).
 //
 // THE STORE IS NOT A CAUSE. An armed rule's watches are handles (entity.Watch), opened by the
