@@ -58,14 +58,16 @@ func TestQuotedDotsAreAnOrdinaryName(t *testing.T) {
 	}
 }
 
-// `**` is TWO OPEN POSITIONS, not a descent. It reads as two segments and selects two levels,
-// which is an ordinary address of its own length — and is exactly the confusion that made the
-// case above worth a test: the two spellings look alike and mean different things, and only one
-// of them is a question this grammar can ask.
-func TestDoubleStarIsTwoOpenPositions(t *testing.T) {
-	segs, err := ExprSegs("lineage.trace.**")
+// `**` IS NO SEGMENT, and is refused: a wildcard ends its segment, so a `*` straight after one is
+// no path (kpath). It looks like the descent of the case above and like `*.*`, two open positions,
+// and means neither; read as one of them, an address written for every depth selected two levels.
+func TestDoubleStarIsNoSegment(t *testing.T) {
+	if segs, err := ExprSegs("lineage.trace.**"); err == nil {
+		t.Fatalf("ExprSegs(`lineage.trace.**`) = %q; want it refused", segs)
+	}
+	segs, err := ExprSegs("lineage.trace.*.*")
 	if err != nil {
-		t.Fatalf("ExprSegs(`lineage.trace.**`): %v", err)
+		t.Fatalf("ExprSegs(`lineage.trace.*.*`): %v", err)
 	}
 	want := []string{"lineage", "trace", "*", "*"}
 	if strings.Join(segs, "\x00") != strings.Join(want, "\x00") {

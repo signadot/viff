@@ -143,19 +143,20 @@ func CharterGetOf(a Args) (CharterRead, error) {
 	return r, nil
 }
 
-// CharterCheckOf is what a charter-check asks of POST /charter/check: the address and the
-// charters (charterfile.CheckDocs).
-func CharterCheckOf(a Args) (string, []*ir.Node, error) {
+// CharterCheckOf is what a charter-check asks of POST /charter/check: the query, the address and
+// whether the runners are to come (charterfile.CheckQuery), and the charters
+// (charterfile.CheckDocs).
+func CharterCheckOf(a Args) (url.Values, []*ir.Node, error) {
 	segs, err := Address(a, "at")
 	if err != nil {
-		return "", nil, err
+		return nil, nil, err
 	}
 	at := entity.JoinSegs(segs)
 	if at == "" {
-		return "", nil, fmt.Errorf("a check names the address the charters would be installed at")
+		return nil, nil, fmt.Errorf("a check names the address the charters would be installed at")
 	}
 	docs, err := charterfile.CheckDocs(a.Word("charters"), codec.Tony)
-	return at, docs, err
+	return charterfile.CheckQuery(at, a.Flag("runners-to-come")), docs, err
 }
 
 // CharterInstallOf is what a charter-install sends POST /charter: the query and the definitions

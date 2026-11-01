@@ -118,7 +118,7 @@ func TestARunnerIsInstalledWithWhatItOffers(t *testing.T) {
 
 // A SPAWN GOES WHERE ITS DOER IS OFFERED, and is checked against that offer where it is written:
 // a hand run at the prompt, a charter at its install. What some runner takes goes there; what none
-// offers, or none takes, is refused saying so, before a task record is written. The local runner is
+// offers, or none takes, is refused saying so, before a task record or a rule is written. The local runner is
 // one of the runners, with its own offers.
 func TestASpawnGoesWhereItsDoerIsOffered(t *testing.T) {
 	srv := testServer(t)
@@ -167,13 +167,12 @@ func TestASpawnGoesWhereItsDoerIsOffered(t *testing.T) {
 		return `[{name: r, condition: {subject: {path: "x.*", value: {go: true}}},
 		  action: {patch: {go: false}, spawn: {agent: {name: ` + agent + `}, prompt: go}}}]`
 	}
-	// A charter naming an agent no runner offers is accepted and its rule HELD for one, with the
-	// offers named: a runner may register after the rule (trigger/reconcile.go).
+	// A charter naming an agent no runner offers is refused at its install, with the offers named,
+	// as a hand run of it is (trigger.Runners).
 	resp := installAs(t, "user:"+tester, ts.URL, rule("claude"))
 	body := readBody(t, resp)
-	if resp.StatusCode != http.StatusCreated || !strings.Contains(body, "no runner offers the agent claude") ||
-		strings.Contains(body, "arming") {
-		t.Fatalf("a charter naming an agent no runner offers = %s: %s; want it accepted and the rule held for a runner", resp.Status, body)
+	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "no runner offers the agent claude") {
+		t.Fatalf("a charter naming an agent no runner offers = %s: %s; want it refused", resp.Status, body)
 	}
 	if resp := installAs(t, "user:"+tester, ts.URL, rule("codex")); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("a charter naming an agent a runner offers = %s: %s", resp.Status, readBody(t, resp))

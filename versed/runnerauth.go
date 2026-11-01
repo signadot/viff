@@ -396,10 +396,12 @@ func (s *Server) describeAgain(store entity.Store, e api.Runner, tries int) (api
 		if err := writeDescribed(store, e.Name, desc); err != nil {
 			return out, http.StatusInternalServerError, err
 		}
+		s.offersChanged()
 	case client.Unverified:
 		if err := removeDescribed(store, e.Name); err != nil {
 			return out, http.StatusInternalServerError, err
 		}
+		s.kickEngines() // what it offered is gone, and a pass says so to the rules that spawned on it
 	}
 	return out, http.StatusOK, nil
 }

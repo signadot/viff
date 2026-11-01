@@ -3,6 +3,7 @@ package versed
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"net/http"
 	"sort"
 
@@ -27,8 +28,14 @@ import (
 // its write: the files split into packages as an install splits them, the prune's targets as an
 // install computes them, the address as the installer's to take, the outboxes against the iods
 // registered, and each package's strata and rules in an engine of the check's own that is never
-// started (trigger.Check). A verdict of `installs` says the install would not be refused by any
-// of these; what it cannot say is what the store answers on the day, which is the install's own.
+// started (trigger.Check), each spawn against what the runners offer as the install's is. A
+// verdict of `installs` says the install would not be refused by any of these; what it cannot say
+// is what the store answers on the day, which is the install's own.
+//
+// `?runners=to-come` asks for the vet a restore places a rule with: a spawn no runner offers at
+// all is held, "waiting for a runner", where the install refuses it — for a charter checked
+// against a verse whose runners are not up yet. Without it, or with `checked`, the check vets as
+// the install does, whenever it is asked.
 func (s *Server) checkCharter(w http.ResponseWriter, r *http.Request) {
 	docs, err := codec.ReadNodes(r)
 	if err != nil {
@@ -40,19 +47,28 @@ func (s *Server) checkCharter(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "a check names the address the tree would be installed at (?at=)", http.StatusBadRequest)
 		return
 	}
+	runners := trigger.RunnersChecked
+	switch v := r.URL.Query().Get("runners"); v {
+	case "", "checked":
+	case "to-come":
+		runners = trigger.RunnersToCome
+	default:
+		http.Error(w, fmt.Sprintf("runners is checked or to-come, not %q", v), http.StatusBadRequest)
+		return
+	}
 	// A task verse holds no launch of is answered as any refusal is: the verdict.
 	hold, err := s.taskCharterOf(r)
 	if err != nil {
 		writeOut(w, r, http.StatusOK, api.CharterCheck{At: at, Verdict: "refused", Refusal: err.Error()})
 		return
 	}
-	writeOut(w, r, http.StatusOK, s.checkCharterAt(s.scopedStore(r), r.URL.Query().Get("scope"), at, docs, hold))
+	writeOut(w, r, http.StatusOK, s.checkCharterAt(s.scopedStore(r), r.URL.Query().Get("scope"), at, docs, hold, runners))
 }
 
 // checkCharterAt is the check, as the store's principal, in scope ("" for baseline): a refusal is
 // the verdict, never an error. hold is the task asking, whose install would be held within it
-// (chartertask.go), or nil.
-func (s *Server) checkCharterAt(store entity.Store, scope, at string, docs []*ir.Node, hold *taskCharter) api.CharterCheck {
+// (chartertask.go), or nil; runners is what the vet makes of a spawn no runner offers.
+func (s *Server) checkCharterAt(store entity.Store, scope, at string, docs []*ir.Node, hold *taskCharter, runners trigger.Runners) api.CharterCheck {
 	out := api.CharterCheck{At: at, Verdict: "installs"}
 	refuse := func(err error) api.CharterCheck {
 		out.Verdict, out.Refusal, out.Packages = "refused", err.Error(), nil
@@ -78,7 +94,7 @@ func (s *Server) checkCharterAt(store entity.Store, scope, at string, docs []*ir
 		if err := ttlInScope(g, scope); err != nil {
 			return refuse(err)
 		}
-		pkg, err := s.checkPackage(store, installer, g, hold)
+		pkg, err := s.checkPackage(store, installer, g, hold, runners)
 		if err != nil {
 			return refuse(err)
 		}
@@ -88,7 +104,7 @@ func (s *Server) checkCharterAt(store entity.Store, scope, at string, docs []*ir
 }
 
 // checkPackage checks one package of the tree and says what would change in it.
-func (s *Server) checkPackage(store entity.Store, installer string, g charterGroup, hold *taskCharter) (api.CharterCheckPackage, error) {
+func (s *Server) checkPackage(store entity.Store, installer string, g charterGroup, hold *taskCharter, runners trigger.Runners) (api.CharterCheckPackage, error) {
 	pkg := api.CharterCheckPackage{At: g.at}
 	confine, err := trigger.ParseAt(g.at)
 	if err != nil {
@@ -137,7 +153,7 @@ func (s *Server) checkPackage(store entity.Store, installer string, g charterGro
 		}
 		rules = append(rules, t)
 	}
-	held, err := trigger.Check(store, confine, reads, installer, strata, rules)
+	held, err := trigger.Check(store, confine, reads, installer, strata, rules, s.offerCheck(), runners)
 	if err != nil {
 		return pkg, err
 	}

@@ -60,8 +60,8 @@ type Server struct {
 	// text with a name for the log: what `verse up` renders from the config for charters verse
 	// ships at the system level (system/repocharters), which the engine knows nothing of.
 	SystemCharters []SystemCharter
-	// systemWaiting are those of SystemCharters refused at start, tried again as iods are
-	// registered (installWaitingSystemCharters); systemMu orders the two.
+	// systemWaiting are those of SystemCharters refused at start, tried again as iods and
+	// runners are registered (installWaitingSystemCharters); systemMu orders the two.
 	systemMu      sync.Mutex
 	systemWaiting []SystemCharter
 	Store         entity.Store

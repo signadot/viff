@@ -15,6 +15,17 @@ import (
 // and _remove, and the verse system's tools: kpaths spells an address as a kinded path, the way
 // a tool takes it, and otherwise as the steps a command line takes.
 
+// CheckQuery is what a check sends beside the charters: the address, and with runnersToCome the
+// vet a restore places a rule with, which holds a spawn no runner offers where the install
+// refuses it (POST /charter/check?runners=to-come).
+func CheckQuery(at string, runnersToCome bool) url.Values {
+	q := url.Values{"at": {at}}
+	if runnersToCome {
+		q.Set("runners", "to-come")
+	}
+	return q
+}
+
 // InstallQuery is how an install sends charters given as text: one document is a file, installed
 // at at, and may be the shorthand (a rule, a level, a list of them); several, or a prune, are a
 // directory, each a charter at its own at:, and with prune what they leave out under at goes. It

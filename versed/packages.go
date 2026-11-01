@@ -125,6 +125,15 @@ func (s *Server) kickEngines() {
 	}
 }
 
+// offersChanged is what follows a runner's offers being written or taken away: a pass in every
+// engine, since a rule pending for a spawn no runner offered may arm now, and the system
+// charters refused at start tried again, since one may have been refused for want of this
+// runner. The retry installs, so it runs behind the caller, which may be a launch's handshake.
+func (s *Server) offersChanged() {
+	s.kickEngines()
+	go s.installWaitingSystemCharters()
+}
+
 // restorePackages brings each package's charter back into an engine of its own, and waits for
 // the records to be in.
 //

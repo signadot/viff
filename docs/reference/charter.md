@@ -301,6 +301,14 @@ verse charter --check repos.verse -d out/        # verdict: installs, packages: 
 verse charter --check repos.verse -f drift.tony  # a directory holding this one file
 ```
 
+A spawn no runner offers is refused by the check, as the install refuses it. When the runners
+are not up yet, `--runners-to-come` checks the way verse places a rule it restores: such a rule
+is held for a runner and named among the held ones, where the install would refuse it.
+
+```sh
+verse charter --check repos.verse -d out/ --runners-to-come
+```
+
 A check with `-f` is the check of a directory that holds that one file, the prune included: the
 answer names what `-a repos.verse -d` with `--prune` would take from under `repos.verse`, which
 `-a -f` never takes. So the check of `drift.tony` alone names `merge` among what the prune takes.

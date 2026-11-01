@@ -367,8 +367,9 @@ install: the number is the whole ordering, and two equal numbers do not say whic
 A stratum and a rule are separate entities, so either can arrive first. **A rule that names a
 stratum that is not installed is held, not refused.** A [held rule](glossary.md#held-rule) is
 stored and does not fire. Verse arms it when its stratum arrives. The rule has passed every
-other check, so only the ordering waits. A rule whose spawn names an agent no runner offers yet
-is held the same way, for the runner.
+other check, so only the ordering waits. A rule restored with a spawn no runner offers yet is
+held the same way, for the runner, since a restart reads the charter before the runners answer.
+An install refuses such a spawn.
 
 **A file holds rules when it names a stratum it does not define.** A charter written to sit
 beside another charter does this. `verse c -a` sends a file's strata first, so a self-contained

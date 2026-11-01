@@ -55,7 +55,7 @@ func (e *Engine) InstallTriggerAs(ctx context.Context, as string, t Trigger) err
 	if err := e.MayRemoveTrigger(as, t.Name); err != nil {
 		return err
 	}
-	hold, err := e.vet(t, as)
+	hold, err := e.vet(t, as, RunnersChecked)
 	if err != nil {
 		return err
 	}
@@ -118,11 +118,11 @@ func (e *Engine) reworded(t Trigger) {
 	}
 }
 
-// addTrigger puts a rule into the engine with nothing written, vetted as an install vets it and
-// refused as one refuses: for a test, and the shape a check's engine would hold (Check). The
-// record is the rule everywhere else.
-func (e *Engine) addTrigger(t Trigger, as string) error {
-	hold, err := e.vet(t, as)
+// addTrigger puts a rule into the engine with nothing written, vetted with runners as the
+// caller says and refused as that vet refuses: for a test. The record is the rule everywhere
+// else.
+func (e *Engine) addTrigger(t Trigger, as string, runners Runners) error {
+	hold, err := e.vet(t, as, runners)
 	if err != nil {
 		return err
 	}
@@ -192,9 +192,10 @@ func (e *Engine) RemoveTriggerAs(ctx context.Context, principal, name string) (b
 // vet is every check an install makes of a rule, and changes nothing. A rule that fails one
 // is REFUSED, with the error; one that passes them all is admitted, with no hold; and one whose
 // checks cannot all be made yet is HELD, with the cause that can clear (reconcile.go) — its
-// stratum not installed, no runner offering its spawn, a read that did not happen. A refusal
-// outranks a hold: a rule wrong in some way that waiting will not cure is told about THAT.
-func (e *Engine) vet(t Trigger, as string) (*cause, error) {
+// stratum not installed, a read that did not happen, and, where runners says the runners are
+// still to come, no runner offering its spawn. A refusal outranks a hold: a rule wrong in some
+// way that waiting will not cure is told about THAT.
+func (e *Engine) vet(t Trigger, as string, runners Runners) (*cause, error) {
 	var hold *cause
 	holdFor := func(c cause) {
 		if hold == nil {
@@ -238,8 +239,9 @@ func (e *Engine) vet(t Trigger, as string) (*cause, error) {
 	// AGAINST WHAT THE RUNNERS OFFER, where the author is present: a spawn a runner offers and
 	// none takes — a model none takes, repos on a forge none has, an environment over every
 	// ceiling — is refused here, with the offers named, rather than failing at its first firing.
-	// A spawn NO RUNNER OFFERS (ErrNoOffer) is held instead: the runner may register after the
-	// rule, as every runner does at a restore (git-issue wv2pp5j0).
+	// A spawn NO RUNNER OFFERS (ErrNoOffer) is refused the same, unless the caller says the
+	// runner may be still to come (RunnersToCome), as the engine's placing of a record does: then
+	// it is held for one (git-issue xf2pp5j0h12krh1ywxn0).
 	if e.offerCheck != nil {
 		// Every spawn is asked: a refusal of a later one outranks a hold for an earlier one.
 		var refused, unoffered error
@@ -258,7 +260,7 @@ func (e *Engine) vet(t Trigger, as string) (*cause, error) {
 			l.Environment = spec.Environment
 			switch err := e.offerCheck(l); {
 			case err == nil:
-			case errors.Is(err, ErrNoOffer):
+			case errors.Is(err, ErrNoOffer) && runners == RunnersToCome:
 				if unoffered == nil {
 					unoffered = fmt.Errorf("trigger %q: spawn: %w", chain, err)
 				}

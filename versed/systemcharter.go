@@ -35,10 +35,12 @@ func (s *Server) installSystemCharter() {
 // the system, after the sources are restored: one that sends to an io's place is checked against
 // the iods registered, and a text that cannot be installed is reported and the rest go on.
 //
-// ONE REFUSED FOR WANT OF ITS IOS WAITS FOR THEM. A verse started on an empty store (a wipe) has
-// no iods at start, and its iods are registered afterwards (deploy/repopulate.sh), so such a
-// charter is refused here and would stay missing until the next restart. It is kept, and tried
-// again each time an io with an out half is registered (installWaitingSystemCharters).
+// ONE REFUSED FOR WANT OF ITS IOS OR RUNNERS WAITS FOR THEM. A verse started on an empty store (a
+// wipe) has no iods or runners at start, and they are registered afterwards
+// (deploy/repopulate.sh), so such a charter — one sending to an io, or spawning on a runner — is
+// refused here and would stay missing until the next restart. It is kept, and tried again each
+// time an io with an out half is registered or a runner's offers are written
+// (installWaitingSystemCharters, offersChanged).
 func (s *Server) installSystemCharters() {
 	s.systemMu.Lock()
 	defer s.systemMu.Unlock()
@@ -51,7 +53,8 @@ func (s *Server) installSystemCharters() {
 }
 
 // installWaitingSystemCharters tries again each system charter refused so far, as an io's
-// registration may be what it was waiting for, and keeps those refused again.
+// registration or a runner's offers may be what it was waiting for, and keeps those refused
+// again.
 func (s *Server) installWaitingSystemCharters() {
 	s.systemMu.Lock()
 	defer s.systemMu.Unlock()
@@ -61,7 +64,7 @@ func (s *Server) installWaitingSystemCharters() {
 			still = append(still, c)
 			continue
 		}
-		fmt.Fprintf(os.Stderr, "verse: system charter %s: installed, once an io it sends to stood\n", c.Name)
+		fmt.Fprintf(os.Stderr, "verse: system charter %s: installed, once what it was waiting for stood\n", c.Name)
 	}
 	s.systemWaiting = still
 }

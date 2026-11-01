@@ -118,7 +118,10 @@ func TestATaskInstallsACharterHeldWithinTheTask(t *testing.T) {
 		if code != http.StatusOK || !strings.Contains(body, "refused") || !strings.Contains(body, c.want) {
 			t.Errorf("the task checking a spawn on %s = %d %s, want it refused naming %s", what, code, body, c.want)
 		}
-		if got := checkAt(t, ts, "repos.r", file); got.Verdict != "installs" {
+		// Its owner is held to nothing the task was. The local runner takes no virtual key, so
+		// the owner's install of that one is refused too, as the runners' and not as the task's.
+		if got := checkAt(t, ts, "repos.r", file); strings.Contains(got.Refusal, c.want) ||
+			(got.Verdict != "installs" && what != "another credential") {
 			t.Errorf("its owner checking a spawn on %s = %+v, want it to install", what, got)
 		}
 	}

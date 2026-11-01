@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/runner"
 )
 
 // Check answers whether one package's levels and rules would install, without installing them.
@@ -17,9 +18,17 @@ import (
 //
 // It answers the first refusal, as an install does, and the rules that would be HELD: installed
 // but waiting for a stratum the file does not declare, which an install admits and says.
-func Check(store entity.Store, confine Subtree, reads []Subtree, as string, strata []Stratum, rules []Trigger) (held []string, err error) {
+//
+// offer is what the install checks a spawn against (Engine.SetOfferCheck), nil for none, so a
+// spawn no runner takes is refused here as the install refuses it. runners is what the vet makes
+// of a spawn no runner offers at all: RunnersChecked refuses it, as an install does;
+// RunnersToCome holds it, as a restore places a rule before the runners are known, for a check
+// against a verse whose runners are not up yet.
+func Check(store entity.Store, confine Subtree, reads []Subtree, as string, strata []Stratum, rules []Trigger,
+	offer func(runner.Launch) error, runners Runners) (held []string, err error) {
 	e := New(store, nil)
 	e.Confine(confine)
+	e.SetOfferCheck(offer)
 	e.SetReads(reads)
 	for _, st := range strata {
 		if err := e.addStratum(st); err != nil {
@@ -32,7 +41,7 @@ func Check(store entity.Store, confine Subtree, reads []Subtree, as string, stra
 			return nil, fmt.Errorf("the package names rule %q twice", t.Name)
 		}
 		seen[t.Name] = true
-		hold, err := e.vet(t, as)
+		hold, err := e.vet(t, as, runners)
 		if err != nil {
 			return nil, err
 		}

@@ -351,9 +351,10 @@ func (e *Engine) placeRecord(rec charter.Record) {
 // place vets a rule as whose it is and admits it: pending with the refusal where vet refuses
 // — its record stands, and the world that refuses it may change (reconcile.go) — since what
 // reaches here refused is a record written some other way than an install, which refuses
-// where the author is present, or one whose world has moved.
+// where the author is present, or one whose world has moved. A spawn no runner offers is held
+// for a runner (RunnersToCome): the record was accepted, and its runner may be still to come.
 func (e *Engine) place(t Trigger, as string) {
-	hold, err := e.vet(t, as)
+	hold, err := e.vet(t, as, RunnersToCome)
 	if err != nil {
 		hold = &cause{causeRefused, err.Error()}
 	}

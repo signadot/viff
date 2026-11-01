@@ -116,7 +116,7 @@ func TestDocCharartersInstall(t *testing.T) {
 				name := tr.Name
 				n++
 				tr.Name = fmt.Sprintf("doc%d", n) // unique: one engine holds them all
-				if err := eng.addTrigger(tr, ""); err != nil {
+				if err := eng.addTrigger(tr, "", RunnersChecked); err != nil {
 					t.Errorf("%s:%d: charter %q does not install:\n  %v\n\n%s",
 						filepath.Base(path), blk.line, name, err, indent(blk.text))
 				}

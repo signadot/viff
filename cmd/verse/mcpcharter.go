@@ -117,11 +117,11 @@ func (m *mcpServer) charter(ctx context.Context, a verbs.Args) (*mcp.CallToolRes
 }
 
 func (m *mcpServer) charterCheck(ctx context.Context, a verbs.Args) (*mcp.CallToolResult, any, error) {
-	at, docs, err := verbs.CharterCheckOf(a)
+	q, docs, err := verbs.CharterCheckOf(a)
 	if err != nil {
 		return nil, nil, err
 	}
-	resp, err := charterCheckVia(m.c.With(ctx), at, docs)
+	resp, err := charterCheckVia(m.c.With(ctx), q, docs)
 	if err != nil {
 		return nil, nil, err
 	}
