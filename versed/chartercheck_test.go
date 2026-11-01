@@ -24,10 +24,15 @@ rules:
     - {path: repos.r.hello.high, id: seen, value: {seen: true}}
 `
 
-// checkAt posts docs to the charter check at an address, as user, and reads its answer.
-func checkAt(t *testing.T, ts *httptest.Server, at, docs string) api.CharterCheck {
+// checkAt posts docs to the charter check at an address, as user, and reads its answer. query is
+// any more of the check's query, as runners=to-come.
+func checkAt(t *testing.T, ts *httptest.Server, at, docs string, query ...string) api.CharterCheck {
 	t.Helper()
-	resp := postAs(t, "user:"+tester, ts.URL+"/charter/check?at="+at+"&format=tony", "application/tony", docs)
+	q := "?at=" + at + "&format=tony"
+	for _, kv := range query {
+		q += "&" + kv
+	}
+	resp := postAs(t, "user:"+tester, ts.URL+"/charter/check"+q, "application/tony", docs)
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("check = %s: %s", resp.Status, body)
@@ -99,6 +104,16 @@ func TestTheCharterCheckSaysWhatAnInstallWouldDo(t *testing.T) {
 	if got := checkAt(t, ts, "repos.r", checkedPackage+"---\n"+spawns); got.Verdict != "refused" ||
 		!strings.Contains(got.Refusal, "no runner offers the agent claude") {
 		t.Fatalf("a spawn no runner offers: %+v", got)
+	}
+	// Asked to vet as a restore places a rule, for a verse whose runners are not up yet, the
+	// check holds it for a runner instead, and says so.
+	if got := checkAt(t, ts, "repos.r", checkedPackage+"---\n"+spawns, "runners=to-come"); got.Verdict != "installs" ||
+		len(got.Packages) != 2 || strings.Join(got.Packages[1].Held, ",") != "work" {
+		t.Fatalf("a spawn no runner offers, its runner to come: %+v", got)
+	}
+	resp := postAs(t, "user:"+tester, ts.URL+"/charter/check?at=repos.r&runners=sometime", "application/tony", checkedPackage)
+	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "checked or to-come") {
+		t.Fatalf("runners=sometime = %s: %s; want it refused", resp.Status, body)
 	}
 	// And an outbox to no io.
 	sends := "at: repos.r.out\nreads: []\nsends: [{from: o, to: slack.Nowhere.out}]\n"

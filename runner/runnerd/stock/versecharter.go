@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -139,7 +138,7 @@ func verseCharterTools(cl *delivery.Client) []verse.Tool {
 			return strings.Join(append(parts, notes...), "\n"), false, nil
 		}),
 		toolOf(verbs.CharterCheck, task.StepVerseCharterCheck, "not checked", func(ctx context.Context, tu task.ToolUse, a verbs.Args) (string, bool, error) {
-			at, docs, err := verbs.CharterCheckOf(a)
+			q, docs, err := verbs.CharterCheckOf(a)
 			if err != nil {
 				return "not checked: " + err.Error(), true, nil
 			}
@@ -147,7 +146,6 @@ func verseCharterTools(cl *delivery.Client) []verse.Tool {
 			if err != nil {
 				return "not checked: " + err.Error(), true, nil
 			}
-			q := url.Values{"at": {at}}
 			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpVerseCharterCheck,
 				Query: q.Encode(), Body: body}))
 		}),

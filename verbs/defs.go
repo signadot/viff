@@ -140,6 +140,8 @@ var (
 			need(text("charters", "the charters, in tony, each a document saying its own at: (at or under the "+
 				"address) with reads, ttl, strata, schedules and rules as a charter file does; several are "+
 				"separated by lines of ---"), "a check carries the charters"),
+			flag("runners-to-come", "hold a spawn no runner offers for a runner still to come, as verse does for "+
+				"a rule it restores, where an install refuses it: for a verse whose runners are not up yet"),
 		},
 	}
 	CharterInstall = &Verb{

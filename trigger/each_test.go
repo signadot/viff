@@ -75,7 +75,7 @@ func TestEachInstallsInEitherLayout(t *testing.T) {
 			}
 		}
 		for _, tr := range trigs {
-			if err := eng.addTrigger(tr, ""); err != nil {
+			if err := eng.addTrigger(tr, "", RunnersChecked); err != nil {
 				t.Fatalf("rule %q does not install: %v", tr.Name, err)
 			}
 			// …and the target was READ as a fan-out rather than as a payload.
@@ -132,7 +132,7 @@ func TestEachRefusals(t *testing.T) {
 			for _, s := range strata {
 				_ = eng.addStratum(s)
 			}
-			err := eng.addTrigger(trigs[0], "")
+			err := eng.addTrigger(trigs[0], "", RunnersChecked)
 			if err == nil {
 				t.Fatal("installed, and should not have")
 			}
@@ -172,7 +172,7 @@ func TestPlainDeriveIsUnchanged(t *testing.T) {
 			t.Fatalf("stratum %q: %v", s.Name, err)
 		}
 	}
-	if err := eng.addTrigger(trigs[0], ""); err != nil {
+	if err := eng.addTrigger(trigs[0], "", RunnersChecked); err != nil {
 		t.Fatalf("does not install: %v", err)
 	}
 	ds := trigs[0].Action.allDerives()
@@ -213,7 +213,7 @@ func TestEachInAHookFacesTheLevelCheck(t *testing.T) {
 			t.Fatalf("stratum %q: %v", s.Name, err)
 		}
 	}
-	err := eng.addTrigger(trigs[0], "")
+	err := eng.addTrigger(trigs[0], "", RunnersChecked)
 	if err == nil {
 		t.Fatal("a fan-out into its own stratum installed; a derive must land strictly above")
 	}
@@ -252,7 +252,7 @@ func TestEachDerivesOnePerElement(t *testing.T) {
 			t.Fatalf("stratum %q: %v", s.Name, err)
 		}
 	}
-	if err := eng.addTrigger(trigs[0], ""); err != nil {
+	if err := eng.addTrigger(trigs[0], "", RunnersChecked); err != nil {
 		t.Fatalf("does not install: %v", err)
 	}
 
@@ -378,7 +378,7 @@ func TestEachRefusesAnElementWithNoKey(t *testing.T) {
 			t.Fatalf("stratum %q: %v", s.Name, err)
 		}
 	}
-	if err := eng.addTrigger(trigs[0], ""); err != nil {
+	if err := eng.addTrigger(trigs[0], "", RunnersChecked); err != nil {
 		t.Fatalf("does not install: %v", err)
 	}
 	subj := entity.RefAt("git", "commit", "verse/abc")
@@ -477,7 +477,7 @@ func TestEachOverATaskAnswer(t *testing.T) {
 			t.Fatalf("stratum %q: %v", s.Name, err)
 		}
 	}
-	if err := eng.addTrigger(trigs[0], ""); err != nil {
+	if err := eng.addTrigger(trigs[0], "", RunnersChecked); err != nil {
 		t.Fatalf("does not install: %v", err)
 	}
 
@@ -574,7 +574,7 @@ func TestLedgerReachesThePrompt(t *testing.T) {
 			t.Fatalf("stratum %q: %v", s.Name, err)
 		}
 	}
-	if err := eng.addTrigger(trigs[0], ""); err != nil {
+	if err := eng.addTrigger(trigs[0], "", RunnersChecked); err != nil {
 		t.Fatalf("gather does not install: %v", err)
 	}
 

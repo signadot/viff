@@ -14,10 +14,29 @@ import (
 	"github.com/signadot/verse/task"
 )
 
-// A RULE WHOSE SPAWN NO RUNNER OFFERS IS HELD, NOT REFUSED: the runner may register after the
-// rule, as every runner does at a restore. It stands by name, says what it waits for, and the
-// pass a registration kicks arms it. A spawn some runner offers and none takes is still refused
-// (TestASpawnsEnvironmentIsHeldToTheCeilingAtInstall).
+// A SPAWN NO RUNNER OFFERS IS REFUSED AT AN INSTALL, where the author is present to hear it,
+// as one some runner offers and none takes is (TestASpawnsEnvironmentIsHeldToTheCeilingAtInstall).
+// What an install says depends on the call and never on when it is made, so there is nothing
+// about the engine's state here to set.
+func TestASpawnNoRunnerOffersIsRefusedAtAnInstall(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, task.AutoResolver{})
+	eng.SetOfferCheck(func(l runner.Launch) error {
+		return fmt.Errorf("%w: no runner offers a script", ErrNoOffer)
+	})
+	eng.ObserveScoped(t.Context())
+	err := eng.AddTrigger(scriptRule(t))
+	if err == nil || !strings.Contains(err.Error(), "no runner offers a script") {
+		t.Fatalf("install = %v; want it refused, naming the spawn no runner offers", err)
+	}
+	if _, stands := eng.Rule("run"); stands {
+		t.Fatal("a refused install left the rule standing")
+	}
+}
+
+// A RULE PLACED FROM ITS RECORD IS HELD FOR A RUNNER, NOT REFUSED: the record was accepted, and
+// a restore places the records' rules before the runners have been heard from. It stands by
+// name, says what it waits for, and the pass a registration kicks arms it.
 func TestARuleHeldForARunnerArmsWhenOneRegisters(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
@@ -29,18 +48,8 @@ func TestARuleHeldForARunnerArmsWhenOneRegisters(t *testing.T) {
 		return fmt.Errorf("%w: no runner offers a script", ErrNoOffer)
 	})
 	eng.ObserveScoped(t.Context())
-	rule := mustParseCharter(t, `
-- name: run
-  condition: {subject: {path: "demo.pr.*", value: {stage: open}}}
-  action: {patch: {stage: started}, spawn: {script: "true"}}
-`)
-	if err := eng.AddTrigger(rule); err != nil {
-		t.Fatalf("a spawn no runner offers refused the install: %v", err)
-	}
-	ps := eng.Pendings()
-	if len(ps) != 1 || ps[0].Rule != "run" || !strings.Contains(ps[0].Cause, "waiting for a runner") {
-		t.Fatalf("pending = %+v; want run held for a runner", ps)
-	}
+	placeRecord(t, eng, scriptRule(t))
+	waitHeld(t, eng, "run", "waiting for a runner")
 	if _, stands := eng.Rule("run"); !stands {
 		t.Fatal("a held rule does not stand by name")
 	}
@@ -50,19 +59,32 @@ func TestARuleHeldForARunnerArmsWhenOneRegisters(t *testing.T) {
 	// A pass with no runner leaves it held.
 	eng.Kick()
 	time.Sleep(20 * time.Millisecond)
-	if ps := eng.Pendings(); len(ps) != 1 {
+	if ps := eng.Pendings(); len(ps) != 1 || !strings.Contains(ps[0].Cause, "waiting for a runner") {
 		t.Fatalf("pending = %+v after a pass with no runner; want it still held", ps)
 	}
 	// A runner registers: the pass it kicks arms the rule.
 	offered.Store(true)
 	eng.Kick()
 	waitArming(t, eng, nil)
-	deadline := time.Now().Add(2 * time.Second)
-	for len(eng.Pendings()) > 0 || len(eng.Triggers()) != 1 {
-		if time.Now().After(deadline) {
-			t.Fatalf("pending = %+v, armed = %v; want run armed", eng.Pendings(), eng.Triggers())
-		}
-		time.Sleep(5 * time.Millisecond)
+	waitArmed(t, eng, "run")
+}
+
+// scriptRule is a rule whose one spawn is a script.
+func scriptRule(t *testing.T) Trigger {
+	t.Helper()
+	return mustParseCharter(t, `
+- name: run
+  condition: {subject: {path: "demo.pr.*", value: {stage: open}}}
+  action: {patch: {stage: started}, spawn: {script: "true"}}
+`)
+}
+
+// placeRecord writes a rule's record with no install, as a restore finds one: the follow places
+// it, vetted as the engine places a rule (RunnersToCome).
+func placeRecord(t *testing.T, eng *Engine, rule Trigger) {
+	t.Helper()
+	if _, err := eng.persist(rule, "", true); err != nil {
+		t.Fatalf("writing the record of %s: %v", rule.Name, err)
 	}
 }
 
@@ -105,14 +127,7 @@ func TestAPendingRuleRefusedLaterStandsWithTheRefusal(t *testing.T) {
 	answer.Store(&noOffer)
 	eng.SetOfferCheck(func(l runner.Launch) error { return *answer.Load() })
 	eng.ObserveScoped(t.Context())
-	rule := mustParseCharter(t, `
-- name: run
-  condition: {subject: {path: "demo.pr.*", value: {stage: open}}}
-  action: {patch: {stage: started}, spawn: {script: "true"}}
-`)
-	if err := eng.AddTrigger(rule); err != nil {
-		t.Fatalf("a spawn no runner offers refused the install: %v", err)
-	}
+	placeRecord(t, eng, scriptRule(t))
 	waitHeld(t, eng, "run", "waiting for a runner: ")
 
 	// A runner offers it and refuses it: the rule is refused, and stands.
@@ -174,8 +189,8 @@ func waitArmed(t *testing.T, e *Engine, name string) {
 }
 
 // EVERY SPAWN IS ASKED OF THE RUNNERS: a rule whose first spawn no runner offers and whose
-// second some runner refuses is refused, where the author is, not held for the first — the
-// hold would hide a refusal that waiting will not cure.
+// second some runner refuses is refused, even by a vet that holds for a runner still to come,
+// not held for the first — the hold would hide a refusal that waiting will not cure.
 func TestARefusedSpawnOutranksAnUnofferedOne(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
@@ -191,9 +206,9 @@ func TestARefusedSpawnOutranksAnUnofferedOne(t *testing.T) {
   condition: {subject: {path: "demo.pr.*", value: {stage: open}}}
   action: {seq: [{spawn: {script: "first"}}, {spawn: {script: "second"}}]}
 `)
-	err := eng.AddTrigger(rule)
+	err := eng.addTrigger(rule, "", RunnersToCome)
 	if err == nil || !strings.Contains(err.Error(), "the ceiling is lower") {
-		t.Fatalf("install = %v; want the second spawn\x27s refusal", err)
+		t.Fatalf("vet = %v; want the second spawn\x27s refusal", err)
 	}
 	if got := eng.Held(); len(got) != 0 {
 		t.Fatalf("pending = %v; a refused rule is not held", got)

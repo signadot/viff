@@ -12,8 +12,9 @@ import (
 // asked of the store, and fires on what they deliver. Pending, it is in e.pending with the
 // CAUSE it waits on: it stands by name, as an installed rule does, and fires on nothing. The
 // causes are the ones that can clear without the rule's record changing — a stratum it names
-// not installed yet, no runner offering what its spawn asks, a read the vetting needs that did
-// not happen, a vet that passed at install and fails now that the world has moved, and the
+// not installed yet, no runner offering what its spawn asks (Runners), a read the vetting needs
+// that did not happen, a vet that passed at install and fails now that the world has moved, and
+// the
 // pass itself, for a rule just placed or just lifted. Everything else an install refuses,
 // where the author is present to hear it (vet).
 //
@@ -30,9 +31,28 @@ import (
 // regardless (git-issue wv2pp5j0).
 
 // ErrNoOffer marks an offer check's refusal of a spawn no runner offers at all, as against one
-// some runner offers and none takes: the first is held for a runner that may register, the
-// second is refused where the author is present.
+// some runner offers and none takes. Both are refused where the author is present: an install,
+// and a check unless it asks otherwise. A rule the engine places from its record is held for a
+// runner instead (Runners).
 var ErrNoOffer = errors.New("no runner offers it")
+
+// Runners is what a vet makes of a spawn no runner offers at all (ErrNoOffer).
+//
+// THE CALLER SAYS WHICH, so the answer depends on the call and never on when it is made: an
+// install made while verse is starting is refused as one made an hour later. The hold is the
+// placing's: a record was accepted, and a restore places the records' rules before the runners
+// have been heard from, so a spawn no runner offers then may be one whose runner is still to
+// come. A rule held so arms at the pass a runner's registration kicks.
+type Runners int
+
+const (
+	// RunnersChecked refuses a spawn no runner offers, as every other offer failure is refused.
+	// An install's vet, and a check's unless it asks otherwise.
+	RunnersChecked Runners = iota
+	// RunnersToCome holds it, "waiting for a runner": the vet of a rule the engine places from
+	// its record or tries again in a pass, and a check that asks for it.
+	RunnersToCome
+)
 
 // cause is why a pending rule is not armed.
 type cause struct {
@@ -174,7 +194,7 @@ func (e *Engine) pass() {
 // the store for its watches and is armed with the handles, at once: the store opens them
 // behind the arm, and a removal that lands meanwhile wins (arm).
 func (e *Engine) try(h held) {
-	hold, err := e.vet(h.Trigger, e.OwnerOf(h.Name))
+	hold, err := e.vet(h.Trigger, e.OwnerOf(h.Name), RunnersToCome)
 	if err != nil {
 		if e.setCause(h.Name, cause{causeRefused, err.Error()}) {
 			e.logger.Warn("pending rule refused: it does not pass as the world stands; it fires on nothing until it does",

@@ -38,7 +38,7 @@ rules:
 	if !ok {
 		t.Fatal("did not parse")
 	}
-	held, err := Check(store, confine, nil, "user:ana@example.com", strata, trigs, nil)
+	held, err := Check(store, confine, nil, "user:ana@example.com", strata, trigs, nil, RunnersChecked)
 	if err != nil {
 		t.Fatalf("a package that installs was refused: %v", err)
 	}
@@ -52,7 +52,7 @@ rules:
 	// Sideways: a derive into its own level is refused, as an install refuses it.
 	bad := strings.Replace(src, "path: repos.r.high, id: seen", "path: repos.r.low, id: seen", 1)
 	trigs, _, strata, _, _ = parseBlock(bad)
-	if _, err := Check(store, confine, nil, "user:ana@example.com", strata, trigs, nil); err == nil || !strings.Contains(err.Error(), "lift") {
+	if _, err := Check(store, confine, nil, "user:ana@example.com", strata, trigs, nil, RunnersChecked); err == nil || !strings.Contains(err.Error(), "lift") {
 		t.Fatalf("a sideways derive: %v, want a refusal naming the rule", err)
 	}
 	// Outside the address: confined to repos.r, a rule selecting elsewhere is refused.
@@ -62,12 +62,12 @@ rules:
   action:
     derive`, 1)
 	trigs, _, strata, _, _ = parseBlock(far)
-	if _, err := Check(store, confine, nil, "user:ana@example.com", strata, trigs, nil); err == nil {
+	if _, err := Check(store, confine, nil, "user:ana@example.com", strata, trigs, nil, RunnersChecked); err == nil {
 		t.Fatal("a rule outside its stratum's pattern was admitted")
 	}
 	// The same rule twice in one package.
 	trigs, _, strata, _, _ = parseBlock(src)
-	if _, err := Check(store, confine, nil, "user:ana@example.com", strata, append(trigs, trigs[0]), nil); err == nil || !strings.Contains(err.Error(), "twice") {
+	if _, err := Check(store, confine, nil, "user:ana@example.com", strata, append(trigs, trigs[0]), nil, RunnersChecked); err == nil || !strings.Contains(err.Error(), "twice") {
 		t.Fatalf("a rule named twice: %v", err)
 	}
 }

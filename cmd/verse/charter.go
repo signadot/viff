@@ -32,6 +32,7 @@ import (
 //	verse c -a -d <dir>                     install every charter file in a directory, as one step
 //	verse c -a demo -d <dir> --prune        …and remove what it leaves out at and under demo
 //	verse c --check demo -d <dir>           whether that install would go, and what it would change
+//	verse c --check demo -d <dir> --runners-to-come   …holding a spawn no runner offers yet
 //	verse c -r verse-dev drift              take that package down whole
 //	verse c -r verse-dev drift rules watcher   …or one rule out of it
 //	verse c -R verse-dev                    …or a place and everything under it
@@ -89,6 +90,10 @@ type charterFlags struct {
 	// directory holding that one file, the prune included. A refusal is its answer, as an
 	// install's verdict, not an error.
 	Check bool `cli:"name=check desc='with -d, or -f as a directory of that one file: whether the charters would install at the path as -a -d --prune would, and what would change; installs nothing'"`
+	// RunnersToCome asks the check for the vet verse places a restored rule with: a spawn no
+	// runner offers is held for a runner still to come, where an install refuses it. For a verse
+	// whose runners are not up yet; without it the check answers as the install would.
+	RunnersToCome bool `cli:"name=runners-to-come desc='with --check, hold a spawn no runner offers for a runner still to come, as verse does for a rule it restores, where an install refuses it'"`
 	// Paths prints one path per line instead of the document, as `verse data --paths` does and
 	// for the same reason: a document cannot be piped back into the command that answered it.
 	Paths bool `cli:"name=paths desc='print one path per rule and level instead of the document, as steps'"`
@@ -144,6 +149,9 @@ func charterCmd() *cli.Command {
 			case trig.Prune && (!trig.Add || trig.Dir == ""):
 				return fmt.Errorf("%w: --prune syncs an address to a directory: "+
 					"`verse c -a <address> -d <dir> --prune`", cli.ErrUsage)
+			case trig.RunnersToCome && !trig.Check:
+				return fmt.Errorf("%w: --runners-to-come is a way of asking --check; an install "+
+					"refuses a spawn no runner offers", cli.ErrUsage)
 			case trig.Check && (trig.Add || trig.Rm || trig.RmR):
 				return fmt.Errorf("%w: --check asks what an install would do, and does nothing; "+
 					"it goes with no --add or --rm", cli.ErrUsage)
@@ -160,7 +168,7 @@ func charterCmd() *cli.Command {
 				if err != nil {
 					return fmt.Errorf("charter --check: %w", err)
 				}
-				resp, err := charterCheckVia(apiClient(), at, docs)
+				resp, err := charterCheckVia(apiClient(), charterfile.CheckQuery(at, trig.RunnersToCome), docs)
 				if err != nil {
 					return err
 				}

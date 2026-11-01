@@ -264,11 +264,11 @@ func charterSource(cc *cli.Context, file, dir string) ([]*ir.Node, error) {
 
 // charterCheckVia asks, through c, whether docs would install at at with a prune, and what would
 // change: POST /charter/check.
-func charterCheckVia(c *client.Client, at string, docs []*ir.Node) (*http.Response, error) {
-	if at == "" {
+func charterCheckVia(c *client.Client, q url.Values, docs []*ir.Node) (*http.Response, error) {
+	if q.Get("at") == "" {
 		return nil, fmt.Errorf("a check names the address the charters would be installed at")
 	}
-	resp, err := c.PostNodes("/charter/check", url.Values{"at": {at}}, docs)
+	resp, err := c.PostNodes("/charter/check", q, docs)
 	if err != nil {
 		return nil, fmt.Errorf("charter check: %w", err)
 	}
