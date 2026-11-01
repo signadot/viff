@@ -3,10 +3,10 @@
 // change (Follow). The engine (package trigger) is derived from them: an install is a write
 // here, a removal a delete, and what the engine runs is what it reads back.
 //
-// THE RECORD IS THE RULE. A charter was once the engine's memory with a durable copy beside
-// it, and the two could disagree: a rule that failed to restore stood in the store and in
-// neither of the engine's lists, an install that landed and could not be placed was undone
-// by hand. One source, read by everything, is the shape that cannot disagree with itself.
+// THE RECORD IS THE RULE. An engine that kept its charter in memory with a durable copy beside
+// it would have two that can disagree — a rule standing in the store and in neither of the
+// engine's lists, an install landed and not placed — and the disagreement would be somebody's
+// to notice. One source, read by everything, is the shape that cannot disagree with itself.
 //
 // It is one record per rule rather than one charter document, because that is what the
 // operations already are: installing writes one record, removing deletes one, and neither

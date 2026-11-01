@@ -25,18 +25,6 @@ import (
 	"github.com/signadot/verse/trigger/charter"
 )
 
-// ownRecord reports whether a charter record belongs to THIS engine's scope: the one
-// stamped on it is the scope the engine acts in.
-//
-// A record with no scope is baseline's. Read from a scope that is what an INHERITED rule looks
-// like, and skipping it is what keeps a restore from installing the whole baseline
-// charter into one scope — which is a decision about what a scope means, not a
-// restore detail, and is not this function's to make (docs/reference/scopes.md).
-func (e *Engine) ownRecord(ent entity.Entity) bool {
-	return entity.Str(ent.Payload, charter.ScopeField) == e.scope &&
-		entity.Str(ent.Payload, charter.AtField) == e.confine.stamp()
-}
-
 // record builds a declaration's durable payload (charter.Payload): the spec, plus the scope
 // when this engine acts in one and the address it was installed at.
 func (e *Engine) record(doc *ir.Node) entity.Payload { return e.recordObj(doc).Payload() }

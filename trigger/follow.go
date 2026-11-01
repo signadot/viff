@@ -28,17 +28,34 @@ import (
 // record and places the rule itself, as the follow would, and the follow's picture reconciles
 // by name when it starts: a record whose value the placed rule already has is left as it
 // stands, one whose value differs replaces it.
+//
+// THE WRITE IS THE INSTALL; THE WAIT IS FOR THE ENGINE TO SHOW IT. A caller whose wait ends
+// before the follow has delivered its write — the bound ran out, its context ended, the follow
+// is dead — is answered with ErrNotReflected: the record stands as written and the engine will
+// hold it when the follow reaches it, and what failed is the showing. A caller that unwinds on
+// an error puts such a write back deliberately, not by leaving it out of the unwind.
 
 // followWait bounds how long a caller waits for the follow to deliver what it wrote, beyond its
 // own context: a charter the engine is not following is a failure, not a lag, and the caller is
-// told rather than held.
+// told rather than held. The bound covers the ask for a mark too, since the store's request is
+// bounded by nothing but its context. An engine's own is followWait unless set (tests).
 const followWait = 10 * time.Second
+
+// followRetry is how long a refused follow waits before it is asked for again.
+const followRetry = time.Second
+
+// ErrNotReflected is the error an install, a restore or a removal is answered with when its
+// write landed and the wait for the engine to show it did not end with it shown: the record is
+// as the caller wrote it, and the engine is not yet. Wrapped in ErrCharter.
+var ErrNotReflected = errors.New("the record is written and the engine has not yet reflected it")
 
 // follower is the engine's watch over its records and how far it has read them.
 type follower struct {
-	w *entity.Watch
-
 	mu sync.Mutex
+	// w is the watch once the store has answered it; refused is why it has not, while the
+	// follow asks again (a refusal is a phase, as the store's own are).
+	w       *entity.Watch
+	refused error
 	// rev is the revision the charter is current through: every record set or deleted at or
 	// before it has been placed or unplaced. changed is closed and replaced as it advances.
 	rev     int64
@@ -64,14 +81,6 @@ func (e *Engine) follow(ctx context.Context) {
 	}
 	f := &follower{changed: make(chan struct{}), restored: make(chan struct{})}
 	e.following = f
-	w, err := charter.Follow(e.store)
-	if err != nil {
-		// A request the store cannot make at all: the engine runs what it holds, and says so.
-		f.dead = fmt.Errorf("%w: following the charter: %w", ErrCharter, err)
-		e.logger.Error("the charter cannot be followed: the engine runs what it holds, and an install is refused", "err", err)
-		return
-	}
-	f.w = w
 	go e.followLoop(ctx, f)
 }
 
@@ -82,11 +91,25 @@ func (e *Engine) follower() *follower {
 	return e.following
 }
 
-// followLoop applies each delivery of the watch to the charter, advancing rev, and marks the
-// restore once the opening picture is in.
+// followLoop asks the store for the watch, again after a refusal until ctx ends, then applies
+// each delivery of it to the charter, advancing rev, and marks the restore once the opening
+// picture is in.
 func (e *Engine) followLoop(ctx context.Context, f *follower) {
-	defer f.w.Close()
-	ready := f.w.Ready
+	w, err := charter.Follow(e.store)
+	for err != nil {
+		f.refuse(err)
+		e.logger.Warn("the charter's watch was refused; asked again", "in", e.followRetry, "err", err)
+		select {
+		case <-ctx.Done():
+			f.end(ctx.Err())
+			return
+		case <-time.After(e.followRetry):
+		}
+		w, err = charter.Follow(e.store)
+	}
+	f.open(w)
+	defer w.Close()
+	ready := w.Ready
 	for {
 		select {
 		case <-ctx.Done():
@@ -98,8 +121,8 @@ func (e *Engine) followLoop(ctx context.Context, f *follower) {
 			// in the stream (Progress), in order with every commit before it. An empty charter
 			// pictures nothing, so the mark is what says the restore is in.
 			ready = nil
-			go f.mark(ctx)
-		case c, ok := <-f.w.Commits:
+			go f.mark(ctx, w, e.followWait)
+		case c, ok := <-w.Commits:
 			if !ok {
 				f.end(errors.New("the charter's watch ended"))
 				return
@@ -114,21 +137,54 @@ func (e *Engine) followLoop(ctx context.Context, f *follower) {
 	}
 }
 
-// mark asks the watch how far current it is, until it answers: it may not be standing at the
-// instant the picture arrived.
-func (f *follower) mark(ctx context.Context) {
-	for ctx.Err() == nil {
-		rev, err := f.w.Progress(ctx)
+// refuse records that the store refused the watch, and open that it answered it; each wakes
+// every waiter.
+func (f *follower) refuse(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.refused = err
+	close(f.changed)
+	f.changed = make(chan struct{})
+}
+
+func (f *follower) open(w *entity.Watch) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.w, f.refused = w, nil
+	close(f.changed)
+	f.changed = make(chan struct{})
+}
+
+// mark asks the watch how far current it is, and again until the mark has come through the
+// stream: the watch may not be standing at the instant the picture arrived, and a mark it
+// answered is in the stream of the watch that answered it — one that drops before the mark
+// reaches the stream comes back on a picture that may carry nothing, so the mark is asked
+// for again, bounded as a caller's ask is.
+func (f *follower) mark(ctx context.Context, w *entity.Watch, bound time.Duration) {
+	for {
+		f.mu.Lock()
+		done, dead := f.done, f.dead
+		f.mu.Unlock()
+		if done || dead != nil || ctx.Err() != nil {
+			return
+		}
+		ask, cancel := context.WithTimeout(ctx, bound)
+		rev, err := w.Progress(ask)
+		cancel()
+		again := 50 * time.Millisecond
 		if err == nil {
 			f.mu.Lock()
 			f.need, f.marked = rev, true
 			f.mu.Unlock()
 			f.advance(0)
-			return
+			again = bound
 		}
 		select {
+		case <-f.restored:
+			return
 		case <-ctx.Done():
-		case <-time.After(50 * time.Millisecond):
+			return
+		case <-time.After(again):
 		}
 	}
 }
@@ -180,12 +236,15 @@ func (e *Engine) FollowState() entity.WatchState {
 		return entity.WatchState{Phase: entity.WatchFailed, Err: errors.New("the engine is not started")}
 	}
 	f.mu.Lock()
-	dead := f.dead
+	dead, w, refused := f.dead, f.w, f.refused
 	f.mu.Unlock()
-	if dead != nil {
+	switch {
+	case dead != nil:
 		return entity.WatchState{Phase: entity.WatchFailed, Err: dead}
+	case w == nil:
+		return entity.WatchState{Phase: entity.WatchRefused, Err: refused}
 	}
-	st, _ := f.w.State()
+	st, _ := w.State()
 	return st
 }
 
@@ -202,45 +261,49 @@ func (e *Engine) followed(ctx context.Context, rev int64, direct func()) error {
 
 // reached waits until the follow has delivered every record through rev — the one a caller
 // just wrote — so that the engine holds what the caller wrote when the call returns. Bounded by
-// ctx and by followWait; a follow that is dead, or whose watch the store cannot open, answers
-// with that. Nothing to wait for before the follow runs.
+// ctx and by the engine's followWait, the ask for a mark included; a wait that ends any other
+// way than delivered is ErrNotReflected, with why: the follow is dead, its watch Failed or not
+// yet answered, the bound ran out, the caller's context ended. Nothing to wait for before the
+// follow runs.
 func (e *Engine) reached(ctx context.Context, rev int64) error {
 	f := e.follower()
 	if f == nil {
 		return nil
 	}
-	deadline := time.NewTimer(followWait)
-	defer deadline.Stop()
+	bound, cancel := context.WithTimeout(ctx, e.followWait)
+	defer cancel()
 	for {
 		f.mu.Lock()
-		cur, changed, dead := f.rev, f.changed, f.dead
+		cur, changed, dead, w, refused := f.rev, f.changed, f.dead, f.w, f.refused
 		f.mu.Unlock()
 		if cur >= rev {
 			return nil
 		}
 		if dead != nil {
-			return fmt.Errorf("%w: the engine is not following its charter: %w", ErrCharter, dead)
+			return fmt.Errorf("%w: %w: the engine is not following its charter: %w", ErrCharter, ErrNotReflected, dead)
 		}
-		st, moved := f.w.State()
-		if st.Phase == entity.WatchFailed {
-			return fmt.Errorf("%w: the charter's watch: %s", ErrCharter, st)
-		}
-		if st.Phase == entity.WatchOpen {
-			// The stream carries only what changed, and a commit that changed nothing at the
-			// records — a record written back as it stands, a delete of nothing — is one it
-			// says nothing of; asked, the watch marks in the stream how far current it is, in
-			// order with every commit before the mark.
-			if _, err := f.w.Progress(ctx); err != nil && ctx.Err() != nil {
-				return ctx.Err()
+		st, moved := entity.WatchState{Phase: entity.WatchRefused, Err: refused}, (<-chan struct{})(nil)
+		if w != nil {
+			st, moved = w.State()
+			if st.Phase == entity.WatchFailed {
+				return fmt.Errorf("%w: %w: the charter's watch: %s", ErrCharter, ErrNotReflected, st)
+			}
+			if st.Phase == entity.WatchOpen {
+				// The stream carries only what changed, and a commit that changed nothing at
+				// the records — a record written back as it stands, a delete of nothing — is
+				// one it says nothing of; asked, the watch marks in the stream how far current
+				// it is, in order with every commit before the mark.
+				w.Progress(bound) // an ask that did not answer in the bound ends below
 			}
 		}
 		select {
 		case <-changed:
 		case <-moved:
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-deadline.C:
-			return fmt.Errorf("%w: the charter's watch has not delivered revision %d in %s (%s)", ErrCharter, rev, followWait, st)
+		case <-bound.Done():
+			if err := ctx.Err(); err != nil {
+				return fmt.Errorf("%w: %w: %w", ErrCharter, ErrNotReflected, err)
+			}
+			return fmt.Errorf("%w: %w: the charter's watch has not delivered revision %d in %s (%s)", ErrCharter, ErrNotReflected, rev, e.followWait, st)
 		}
 	}
 }
@@ -297,17 +360,12 @@ func (e *Engine) place(t Trigger, as string) {
 	e.admit(t, hold)
 }
 
-// unplaceRecord takes out what a deleted record held, where this engine held it. In a scope the
-// store is asked whether the record still stands: the scope reads baseline through, so a
-// deletion of baseline's record under a name the scope's own charter holds is not the scope's,
-// and its own record says so by standing. A read that did not happen does not keep a rule the
-// stream said is gone.
+// unplaceRecord takes out what a deleted record held, where this engine held it: a deletion at
+// the engine's own address, under a name it holds. The stream is the engine's view of the
+// records — a scope's is the scope's, baseline read through — so a deletion of baseline's record
+// under a name the scope's own charter holds changes nothing the scope sees, and is not
+// delivered to it.
 func (e *Engine) unplaceRecord(ch charter.Change) {
-	if e.scope != "" {
-		if _, stands, err := e.store.Get(ch.Ref); err == nil && stands {
-			return
-		}
-	}
 	switch ch.Kind {
 	case charter.RuleKind:
 		if ch.Ref == e.RuleRef(ch.Name) {

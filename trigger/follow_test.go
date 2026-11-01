@@ -1,9 +1,13 @@
 package trigger
 
 import (
+	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
@@ -338,5 +342,169 @@ func TestAScopeFollowsOnlyItsOwnRecords(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	if tr, ok := eng.Rule("review"); !ok || entity.Str(tr.Action.Patch, "stage") != "mine" {
 		t.Fatalf("the scope's own rule did not survive baseline's removal: %+v, %v", tr, ok)
+	}
+}
+
+// refusing is a store that refuses the writes deny names, as a store under a precondition or
+// out of reach does, and answers everything else.
+type refusing struct {
+	entity.Store
+	deny func(entity.Write) error
+}
+
+func (r refusing) Write(w entity.Write) (bool, int64, error) {
+	if err := r.deny(w); err != nil {
+		return false, 0, err
+	}
+	return r.Store.Write(w)
+}
+
+// A REMOVAL THE STORE REFUSES IS HEARD, and the rule stands: the delete is the removal, so a
+// delete that did not land removed nothing, and the caller is told so rather than told the rule
+// is gone while its record stands.
+func TestARemovalTheStoreRefusesIsHeard(t *testing.T) {
+	refuse := errors.New("the store is read-only for now")
+	var denying atomic.Bool
+	store := refusing{Store: entitytest.Store(t), deny: func(w entity.Write) error {
+		if denying.Load() && w.Value == nil {
+			return refuse
+		}
+		return nil
+	}}
+	eng := New(store, task.AutoResolver{})
+	eng.ObserveScoped(t.Context())
+	restored(t, eng)
+	if err := eng.InstallTrigger(Trigger{
+		Name:      "review",
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*")}},
+		Action:    setStage("reviewed"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	denying.Store(true)
+	stood, err := eng.RemoveTriggerAs(t.Context(), "", "review")
+	if !errors.Is(err, refuse) || !errors.Is(err, ErrCharter) {
+		t.Fatalf("the refused removal answered (%v, %v); want the store's refusal as ErrCharter", stood, err)
+	}
+	if _, stands := eng.Rule("review"); !stands {
+		t.Fatal("the rule is gone from the engine while its record stands")
+	}
+	denying.Store(false)
+	if stood, err := eng.RemoveTriggerAs(t.Context(), "", "review"); err != nil || !stood {
+		t.Fatalf("the removal after the refusal answered (%v, %v)", stood, err)
+	}
+	waitGone(t, eng, "review")
+}
+
+// A RULE INSTALLED BEFORE THE ENGINE STARTS STANDS ONCE WHEN IT HAS: the install placed it
+// directly, and the follow's picture finds the record agreeing with what stands.
+func TestAnInstallBeforeStartIsNotPlacedAgain(t *testing.T) {
+	eng := New(entitytest.Store(t), task.AutoResolver{})
+	if err := eng.AddTrigger(Trigger{
+		Name:      "review",
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*")}},
+		Action:    setStage("reviewed"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	eng.ObserveScoped(t.Context())
+	restored(t, eng)
+	waitArmed(t, eng, "review")
+	// The start holds each standing rule for its first pass, which is one placing; the follow's
+	// picture, in by Restored, adds none.
+	eng.trigMu.Lock()
+	placed := eng.placed
+	eng.trigMu.Unlock()
+	if placed != 1 {
+		t.Fatalf("placed %d times once started; want the start's one", placed)
+	}
+	if got := charterOf(eng); len(got) != 1 {
+		t.Fatalf("charter = %v; want the one rule", got)
+	}
+}
+
+// A WAIT THAT RUNS OUT SAYS THE RECORD IS WRITTEN. The install is the write, and the caller is
+// answered once the engine shows it; when it does not within the bound — the store has not
+// answered the charter's watch — the caller is told that, as ErrNotReflected, the record stands,
+// and the engine holds the rule once the store answers.
+func TestAWaitThatRunsOutSaysTheRecordIsWritten(t *testing.T) {
+	store := entitytest.NewPhased(entitytest.Store(t))
+	store.Hold = func(prefix []string) bool { return len(prefix) >= 2 && prefix[1] == charter.Prefix[1] }
+	store.Set(entity.WatchInLine, nil)
+	eng := New(store, task.AutoResolver{})
+	eng.followWait = 100 * time.Millisecond
+	eng.ObserveScoped(t.Context())
+	tr := Trigger{
+		Name:      "review",
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*")}},
+		Action:    setStage("reviewed"),
+	}
+	err := eng.InstallTriggerAs(t.Context(), "", tr)
+	if !errors.Is(err, ErrNotReflected) || !errors.Is(err, ErrCharter) {
+		t.Fatalf("the install over a watch in line answered %v; want ErrNotReflected", err)
+	}
+	if _, stands, _ := store.Get(charter.RuleRef("", "review")); !stands {
+		t.Fatal("the record of the unreflected install does not stand")
+	}
+	if _, stands := eng.Rule("review"); stands {
+		t.Fatal("the rule stands in the engine before the follow delivered it")
+	}
+	// The caller's context ending is told the same way.
+	ended, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := eng.InstallTriggerAs(ended, "", tr); !errors.Is(err, ErrNotReflected) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("the install under an ended context answered %v; want ErrNotReflected with the cancellation", err)
+	}
+	store.Set(entity.WatchOpen, nil)
+	restored(t, eng)
+	waitArmed(t, eng, "review")
+}
+
+// unwatchable is a store that refuses to make a watch, left times, before it answers one.
+type unwatchable struct {
+	entity.Store
+	left atomic.Int32
+}
+
+func (u *unwatchable) Watch(prefix []string, at *kpath.KPath, opts entity.WatchOptions) (*entity.Watch, error) {
+	if u.left.Add(-1) >= 0 {
+		return nil, errors.New("no watch for you")
+	}
+	return u.Store.Watch(prefix, at, opts)
+}
+
+// A FOLLOW THE STORE REFUSES IS ASKED FOR AGAIN: a refusal is a phase the engine reports
+// (FollowState) and waits through, not the end of following, and the charter is restored once
+// the store answers.
+func TestARefusedFollowIsAskedAgain(t *testing.T) {
+	store := &unwatchable{Store: entitytest.Store(t)}
+	store.left.Store(3)
+	first := New(store.Store, task.AutoResolver{})
+	if err := first.AddTrigger(Trigger{
+		Name:      "review",
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*")}},
+		Action:    setStage("reviewed"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	eng := New(store, task.AutoResolver{})
+	eng.followRetry = 20 * time.Millisecond
+	eng.followWait = 50 * time.Millisecond
+	eng.ObserveScoped(t.Context())
+	if st := eng.FollowState(); st.Phase != entity.WatchRefused || st.Err == nil || st.Err.Error() != "no watch for you" {
+		t.Fatalf("the follow says %q while refused; want the refusal", st)
+	}
+	if err := eng.InstallTriggerAs(t.Context(), "", Trigger{
+		Name:      "triage",
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "bug", "*")}},
+		Action:    setStage("triaged"),
+	}); !errors.Is(err, ErrNotReflected) {
+		t.Fatalf("an install while the follow is refused answered %v; want ErrNotReflected", err)
+	}
+	restored(t, eng)
+	waitArmed(t, eng, "review")
+	waitArmed(t, eng, "triage")
+	if st := eng.FollowState(); st.Phase != entity.WatchOpen {
+		t.Fatalf("the follow says %q once answered", st)
 	}
 }

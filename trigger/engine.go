@@ -207,6 +207,9 @@ type Engine struct {
 	followMu   sync.Mutex
 	following  *follower
 	badRecords map[string]int64
+	// followWait bounds a caller's wait for the follow to show its write, and followRetry is
+	// how long a refused follow waits before it is asked for again; the package's unless set.
+	followWait, followRetry time.Duration
 }
 
 // New builds an engine over store, using resolver for trigger gates.
@@ -223,7 +226,9 @@ func New(store entity.Store, resolver task.Resolver) *Engine {
 		kicks:    make(chan struct{}, 1),
 		every:    reconcileEvery,
 
-		badRecords: map[string]int64{},
+		badRecords:  map[string]int64{},
+		followWait:  followWait,
+		followRetry: followRetry,
 	}
 }
 

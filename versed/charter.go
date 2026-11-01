@@ -1164,18 +1164,21 @@ func (tx *charterTx) stratum(def *ir.Node) (int, error) {
 	if err != nil {
 		return http.StatusServiceUnavailable, err
 	}
-	if err := eng.InstallStratumAs(tx.ctx, tx.as(), st); err != nil {
+	err = eng.InstallStratumAs(tx.ctx, tx.as(), st)
+	if err == nil || errors.Is(err, trigger.ErrNotReflected) { // written either way: see rule
+		tx.push(func() error {
+			if had {
+				if err := eng.RestoreStratum(tx.undoCtx(), old); err != nil {
+					return err
+				}
+				return entity.RestoreRecord(tx.store, whose)
+			}
+			return eng.RemoveStratum(st.Name)
+		})
+	}
+	if err != nil {
 		return charterCode(err), err
 	}
-	tx.push(func() error {
-		if had {
-			if err := eng.RestoreStratum(tx.undoCtx(), old); err != nil {
-				return err
-			}
-			return entity.RestoreRecord(tx.store, whose)
-		}
-		return eng.RemoveStratum(st.Name)
-	})
 	return http.StatusCreated, nil
 }
 
@@ -1237,19 +1240,25 @@ func (tx *charterTx) rule(def *ir.Node) (int, error) {
 	if err != nil {
 		return http.StatusServiceUnavailable, err
 	}
-	if err := eng.InstallTriggerAs(tx.ctx, tx.as(), t); err != nil {
+	// THE UNDO IS PUSHED FOR WHAT WAS WRITTEN, not for what was answered: an install whose record
+	// landed and whose wait for the engine to show it did not (trigger.ErrNotReflected) is a
+	// failure the transaction unwinds, and the record it wrote is part of what it unwinds.
+	err = eng.InstallTriggerAs(tx.ctx, tx.as(), t)
+	if err == nil || errors.Is(err, trigger.ErrNotReflected) {
+		tx.push(func() error {
+			if had {
+				if err := eng.RestoreTrigger(tx.undoCtx(), old); err != nil {
+					return err
+				}
+				return entity.RestoreRecord(tx.store, whose)
+			}
+			eng.RemoveTrigger(t.Name)
+			return nil
+		})
+	}
+	if err != nil {
 		return charterCode(err), err
 	}
-	tx.push(func() error {
-		if had {
-			if err := eng.RestoreTrigger(tx.undoCtx(), old); err != nil {
-				return err
-			}
-			return entity.RestoreRecord(tx.store, whose)
-		}
-		eng.RemoveTrigger(t.Name)
-		return nil
-	})
 	// A rule fires as whoever its record says, so one that stands without its installer's is
 	// refused here, with the undo above already in place to take it back out.
 	if err := actsAsInstaller(tx.store, eng.RuleRef(t.Name), tx.as(), before); err != nil {
