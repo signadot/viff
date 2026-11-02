@@ -365,22 +365,165 @@ func bindEnvironment(e systems.Environment, b Binding) systems.Environment {
 // string — a hook's patch value, a say's text.
 func Expand(s string, b Binding) string { return expand(s, b) }
 
+// Unbound is every reference in the fields Bind expands that reaches PAST what the binding
+// holds, each as `field: $reference`: `$subject.value.never` where the binding has
+// `subject.value` and no `subject.value.never`, `$stage.never` where it has `stage`. Bind leaves
+// such a reference as written; a caller that must not launch on one (a firing) refuses with
+// these. A bare `$name` the binding lacks is not here: in prose or a shell value it is as
+// likely `$HOME` or `$5` as a reference, and it stays as written (see expand).
+func (s Spec) Unbound(b Binding) []string {
+	var out []string
+	s.texts(func(field, text string) {
+		_, past := expandRefs(text, b)
+		for _, ref := range past {
+			out = append(out, field+": "+ref)
+		}
+	})
+	sort.Strings(out)
+	return out
+}
+
+// Mentions reports whether any field Bind expands names `$ref`, or a reference under it — what
+// a caller asks before paying for a binding only some spawns read.
+func (s Spec) Mentions(ref string) bool {
+	found := false
+	s.texts(func(_, text string) {
+		found = found || strings.Contains(text, "$"+ref)
+	})
+	return found
+}
+
+// texts is each field Bind expands, by the name an error gives it (the names CheckByHand uses).
+// It must name what Bind, bindAgent and bindEnvironment expand and nothing else: a field it
+// missed would launch with a reference Unbound never saw.
+func (s Spec) texts(yield func(field, text string)) {
+	yield("prompt", s.Prompt)
+	yield("subject", s.Subject)
+	if s.Agent != nil {
+		yield("agent.name", s.Agent.Name)
+		for _, k := range slices.Sorted(maps.Keys(s.Agent.Settings)) {
+			yield("agent."+k, s.Agent.Settings[k])
+		}
+	}
+	for _, k := range slices.Sorted(maps.Keys(s.Environment.Vars)) {
+		yield("environment.vars."+k, s.Environment.Vars[k])
+	}
+	for _, name := range slices.Sorted(maps.Keys(s.Environment.Systems)) {
+		if name == "network" {
+			continue
+		}
+		for i, blk := range s.Environment.Systems[name] {
+			for _, k := range slices.Sorted(maps.Keys(blk.Attributes)) {
+				yield(fmt.Sprintf("environment.systems.%s[%d].%s", name, i, k), blk.Attributes[k])
+			}
+		}
+	}
+}
+
 // expand replaces every `$key` in s with the binding's value, longest key first, so `$subject`
-// is not read as `$sub` followed by `ject`. A key the binding lacks is left as written.
+// is not read as `$sub` followed by `ject`. A key the binding lacks is left as written, and so
+// is a reference that reaches past the longest key that matches it (expandRefs).
 func expand(s string, b Binding) string {
+	out, _ := expandRefs(s, b)
+	return out
+}
+
+// expandRefs is expand, also answering the references it left as written because they reach
+// past what the binding holds.
+//
+// AT EACH `$`, THE LONGEST KEY THAT MATCHES THERE, AND ONE PASS. This was a ReplaceAll per key,
+// longest first, and it had two faults that the flat map made easy to hit. A reference to an
+// absent path matched a SHORTER key and kept the rest of its own spelling: `$subject.value.never`
+// on a subject without `never` rendered as the whole value as tony followed by `.never`, and a
+// pull request whose body named a cleared field got the whole record as its body. And a value
+// substituted early was scanned again by every shorter key after it, so text the subject carried
+// could be expanded as though the charter had written it. Now each `$` is read once, against
+// the charter's text only.
+//
+// A reference REACHES PAST its key when the key is followed by `.` and a letter or `_` (a field
+// below it), or by `[` (an index): `$stage.never`, `$subject.value.items[0]`. That is a reference
+// to something the binding does not hold, and it is left whole rather than half-substituted. A
+// key followed by anything else ends there — `$stage.` at the end of a sentence, `$subjects` —
+// as it always has.
+func expandRefs(s string, b Binding) (string, []string) {
 	if s == "" || !strings.Contains(s, "$") {
-		return s
+		return s, nil
 	}
 	keys := make([]string, 0, len(b))
 	for k := range b {
-		keys = append(keys, k)
+		if k != "" {
+			keys = append(keys, k)
+		}
 	}
 	sort.Slice(keys, func(i, j int) bool { return len(keys[i]) > len(keys[j]) })
-	for _, k := range keys {
-		s = strings.ReplaceAll(s, "$"+k, b[k])
+	var out strings.Builder
+	var past []string
+	for i := 0; i < len(s); {
+		if s[i] != '$' {
+			out.WriteByte(s[i])
+			i++
+			continue
+		}
+		key, ok := "", false
+		for _, k := range keys {
+			if strings.HasPrefix(s[i+1:], k) {
+				key, ok = k, true
+				break
+			}
+		}
+		if !ok {
+			out.WriteByte('$')
+			i++
+			continue
+		}
+		end := i + 1 + len(key)
+		if to := refEnd(s, end); to > end {
+			past = append(past, s[i:to])
+			out.WriteString(s[i:to])
+			i = to
+			continue
+		}
+		out.WriteString(b[key])
+		i = end
 	}
-	return s
+	return out.String(), past
 }
+
+// refEnd is where a reference that goes on at j ends, or j when it does not go on: a reference
+// goes on with `.` and a letter or `_`, or with `[`, and runs over the characters a dotted path
+// or an index is spelled with — a `]` only where it closes a `[` of its own, so a reference in
+// brackets in prose ends inside them.
+func refEnd(s string, j int) int {
+	if j >= len(s) {
+		return j
+	}
+	switch {
+	case s[j] == '[':
+	case s[j] == '.' && j+1 < len(s) && (isLetter(s[j+1]) || s[j+1] == '_'):
+	default:
+		return j
+	}
+	k, open := j, 0
+scan:
+	for ; k < len(s); k++ {
+		switch c := s[k]; {
+		case isLetter(c) || isDigit(c) || c == '_' || c == '-' || c == '.':
+		case c == '[':
+			open++
+		case c == ']' && open > 0: // a bracket the reference opened, and not prose's
+			open--
+		default:
+			break scan
+		}
+	}
+	for k > j && s[k-1] == '.' { // a sentence's full stop is not part of it
+		k--
+	}
+	return k
+}
+
+func isLetter(c byte) bool { return 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' }
+func isDigit(c byte) bool  { return '0' <= c && c <= '9' }
 
 // AnnotationVirtualKey is the agent annotation the verse runner reads its Portkey virtual key
 // from: the name verse resolved a spawn's `virtualKey` address to.
