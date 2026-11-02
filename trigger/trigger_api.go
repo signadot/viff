@@ -885,10 +885,13 @@ func payloadBinding(payload entity.Payload) launch.Binding {
 	// Fields of an object payload only: a scalar payload (42, true) has no named parts to
 	// bind, so a template's $vars simply find nothing rather than binding the whole value
 	// to some invented name.
-	if !entity.IsObj(payload) {
-		return b
-	}
-	for k, v := range ir.ToMap(payload) {
+	//
+	// entity.Fields and not ir.ToMap, because a payload put from a file with a head comment is
+	// stored with it: its root is a Comment node wrapping the object. IsObj sees through the
+	// wrapper, so the rule's condition matched and it fired; ToMap does not, so no field was
+	// bound and every `$field` fell back to the shorter key's text (a git block's `repo` came out
+	// as the whole record followed by `.repo`). Fields unwraps, as the match does.
+	for k, v := range entity.Fields(payload) {
 		if text, ok := bindText(v); ok {
 			b[k] = text
 		}
@@ -994,10 +997,8 @@ func payloadPaths(payload entity.Payload) map[string]entity.Payload {
 	out := map[string]entity.Payload{}
 	var walk func(n entity.Payload, prefix string)
 	walk = func(n entity.Payload, prefix string) {
-		if !entity.IsObj(n) {
-			return
-		}
-		for k, v := range ir.ToMap(n) {
+		// Past a comment wrapper, at the root and at every depth, for payloadBinding's reason.
+		for k, v := range entity.Fields(n) {
 			if strings.Contains(k, ".") {
 				continue
 			}
