@@ -13,9 +13,9 @@ import (
 // CAUSE it waits on: it stands by name, as an installed rule does, and fires on nothing. The
 // causes are the ones that can clear without the rule's record changing — a stratum it names
 // not installed yet, no runner offering what its spawn asks (Runners), a read the vetting needs
-// that did not happen, a vet that passed at install and fails now that the world has moved, and
-// the pass itself, for a rule just placed or just lifted. Everything else an install refuses,
-// where the author is present to hear it (vet).
+// that did not happen, a vet that passed at install and fails now that the world has moved, its
+// owner record not landed yet (asOwner), and the pass itself, for a rule just placed or just
+// lifted. Everything else an install refuses, where the author is present to hear it (vet).
 //
 // THE STORE IS NOT A CAUSE. An armed rule's watches are handles (entity.Watch), opened by the
 // store behind the arm — in line, established, asked again after a refusal or a drop — and
@@ -67,6 +67,7 @@ const (
 	causeRead                     // a read the vetting needs did not happen
 	causeRefused                  // it does not pass now, as the world stands
 	causePass                     // placed, or back from a lift; the pass it kicked arms it
+	causeOwner                    // placed ahead of its owner record; the pass after it lands arms it
 )
 
 // String is the cause as status and an install's answer say it.
@@ -80,6 +81,8 @@ func (c cause) String() string {
 		return "waiting on a read: " + c.why
 	case causeRefused:
 		return "refused: " + c.why
+	case causeOwner:
+		return "waiting for its owner record"
 	default:
 		if c.why != "" {
 			return "waiting for a pass to arm it: " + c.why
@@ -108,9 +111,10 @@ func (e *Engine) hold(t Trigger, c cause) {
 	e.pending = append(e.pending, held{Trigger: t, cause: c, gen: e.placed, settled: make(chan struct{})})
 }
 
-// passing is whether a cause is one the next pass clears on its own, with nothing else to
-// happen first: a rule just placed, or back from a lift.
-func (c cause) passing() bool { return c.kind == causePass }
+// passing is whether a cause is one a pass clears with nothing else to happen first: a rule
+// just placed, or back from a lift, or placed ahead of the owner record its install writes
+// after it — the install kicks once the record is in, and that pass arms it.
+func (c cause) passing() bool { return c.kind == causePass || c.kind == causeOwner }
 
 // settle closes a pending entry's settled, once. Called with trigMu HELD.
 func (e *Engine) settle(i int) {
@@ -185,15 +189,19 @@ func (e *Engine) pass() {
 	}
 }
 
-// try vets one pending rule again and arms it if it passes. A rule refused now — its stratum
-// arrived and its subject is outside it, say, or the runner that offered its spawn left and
-// another's ceiling is lower — stays pending with the refusal as its cause: it was accepted,
-// its record stands, and the world that refuses it may change back. It is reported once, as
-// the cause changes. A rule still held has its cause brought up to date. One that passes asks
-// the store for its watches and is armed with the handles, at once: the store opens them
-// behind the arm, and a removal that lands meanwhile wins (arm).
+// try vets one pending rule again, as whose it is (asOwner), and arms it if it passes. A rule
+// refused now — its stratum arrived and its subject is outside it, say, or the runner that
+// offered its spawn left and another's ceiling is lower — stays pending with the refusal as its
+// cause: it was accepted, its record stands, and the world that refuses it may change back. It
+// is reported once, as the cause changes. A rule still held has its cause brought up to date.
+// One that passes asks the store for its watches and is armed with the handles, at once: the
+// store opens them behind the arm, and a removal that lands meanwhile wins (arm).
 func (e *Engine) try(h held) {
-	hold, err := e.vet(h.Trigger, e.OwnerOf(h.Name), RunnersToCome)
+	as, hold := e.asOwner(h.Name)
+	var err error
+	if hold == nil {
+		hold, err = e.vet(h.Trigger, as, RunnersToCome)
+	}
 	if err != nil {
 		if e.setCause(h.Name, cause{causeRefused, err.Error()}) {
 			e.logger.Warn("pending rule refused: it does not pass as the world stands; it fires on nothing until it does",
@@ -223,7 +231,7 @@ func (e *Engine) try(h held) {
 		rw.stop()
 		return
 	}
-	if h.cause.kind != causePass {
+	if !h.cause.passing() {
 		// Advised as it arms: what a rule held for its stratum crosses is not known until then.
 		for _, w := range append(advise(h.Trigger), e.adviseDeriveClobber(h.Trigger)...) {
 			e.logger.Warn("charter", "trigger", h.Name, "note", w)

@@ -243,3 +243,66 @@ func mentions(n *ir.Node, line string) bool {
 	}
 	return false
 }
+
+// A SYSTEM RULE INSTALLED OVER DATA THAT STANDS ACTS ON IT, reading what its condition reads. The
+// rule acts as its record, and its record has its owner from the write that makes it: never a
+// moment standing with none, armed and acting as nobody, its first firings refused and the rule
+// left waiting for a change that never comes, as the repo-charters reconcilers were on staging
+// when they were installed afresh over the data they left.
+func TestASystemRuleInstalledOverDataThatStandsActsOnIt(t *testing.T) {
+	addr := entitytest.Addr(t)
+	start := func(texts []SystemCharter) *Server {
+		t.Helper()
+		// A store as slow to take a perms record as staging's: a record written apart from its
+		// node, after it, lands after the engine has followed the node and armed the rule.
+		store := &slowRecords{Store: entitytest.StoreAt(t, addr), of: entity.PermsRef(charter.RuleRef("notes", "mark"))}
+		srv := serverWith(t, runnerdtest.Scripted, store)
+		srv.SystemCharters = texts
+		ctx, stop := context.WithCancel(t.Context())
+		t.Cleanup(stop)
+		srv.Start(ctx)
+		return srv
+	}
+	// The data first, with no charter: what a removed charter leaves behind.
+	bare := start(nil)
+	entitytest.Set(t, bare.Store, entity.RefAt("notes", "state"), entity.Obj{"flag": "up"}.Payload())
+	for _, id := range []string{"1", "2", "3"} {
+		entitytest.Set(t, bare.Store, entity.RefAt("notes", "item", id), entity.Obj{"n": id}.Payload())
+	}
+	srv := start([]SystemCharter{{Name: "notes", Text: []byte(`at: notes
+rules:
+- name: mark
+  condition:
+    subject:
+      path: "notes.item.*"
+      value: !let
+        let:
+        - flag: !get-path {at: [notes, state], path: flag}
+        in: {n: !glob "*"}
+  action: {patch: {seen: yes}}
+`)}})
+	waitUntil(t, "the rule to mark every item that stood before it", func() bool {
+		for _, id := range []string{"1", "2", "3"} {
+			e, ok, _ := srv.Store.Get(entity.RefAt("notes", "item", id))
+			if !ok || entity.Str(e.Payload, "seen") != "yes" {
+				return false
+			}
+		}
+		return true
+	})
+}
+
+// slowRecords is a store that takes a while to write one perms record, as a store across a
+// network does any write: what the engine does in the meantime is what it does with the record
+// not there.
+type slowRecords struct {
+	entity.Store
+	of entity.Ref
+}
+
+func (s *slowRecords) Write(w entity.Write) (bool, int64, error) {
+	if w.At.Ref == s.of {
+		time.Sleep(300 * time.Millisecond)
+	}
+	return s.Store.Write(w)
+}

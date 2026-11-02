@@ -54,14 +54,38 @@ func (e *Engine) StratumRef(name string) entity.Ref {
 // (entity.ActsAs). "" for a rule with none, which fires as nobody, for a mirror that did not
 // answer, and over a store that attributes nothing.
 func (e *Engine) OwnerOf(name string) string {
-	if entity.PolicyOf(e.store) == nil {
-		return ""
-	}
-	who, err := entity.ActsAs(e.store, e.RuleRef(name))
-	if err != nil {
-		return ""
-	}
+	who, _ := e.ownerOf(name)
 	return who
+}
+
+// ownerOf is OwnerOf with the mirror not answering apart from the rule having no record: "" and
+// the error for the first, "" and none for the second and over a store that attributes nothing.
+func (e *Engine) ownerOf(name string) (string, error) {
+	if entity.PolicyOf(e.store) == nil {
+		return "", nil
+	}
+	return entity.ActsAs(e.store, e.RuleRef(name))
+}
+
+// asOwner is whose a rule placed from its record is vetted as — and so armed as, since what a
+// pass vets it as is what it fires as — or the cause it is held for instead. A place acts as
+// the owner on its own record and as nobody without one (entity.ActsAs), so a rule whose record
+// is not here is not vetted as anybody: its install writes the record after the rule (persist),
+// and a follow that delivers the rule first would arm it as nobody, its backlog fired at once
+// and every read refused, and the firing it gets over what already stood spent. Held for the
+// record instead, it is armed by the pass that follows it (InstallTriggerAs kicks once the
+// record is in), and arms over the same backlog as whose it is. A record the mirror did not
+// answer for is a read the vetting needs that did not happen. Over a store that attributes
+// nothing a rule is nobody's and is vetted so, with nothing to wait for.
+func (e *Engine) asOwner(name string) (string, *cause) {
+	as, err := e.ownerOf(name)
+	switch {
+	case err != nil:
+		return "", &cause{causeRead, "whose it is: " + err.Error()}
+	case as == "" && entity.PolicyOf(e.store) != nil:
+		return "", &cause{causeOwner, ""}
+	}
+	return as, nil
 }
 
 // ErrCharter marks an install refused by the STORE rather than by the rule: the trigger is

@@ -80,8 +80,8 @@ func (e *Engine) InstallTriggerAs(ctx context.Context, as string, t Trigger) err
 		return err
 	}
 	e.reworded(t)
-	// The take lands after the record, so the follow may have vetted the rule as whose it was:
-	// a pass vets it again as whose it is.
+	// The owner record lands after the rule's, so the follow may have vetted the rule as whose
+	// it was, or held it for the record (asOwner): a pass vets it again as whose it is.
 	e.kick()
 	e.passed(ctx, t.Name)
 	return nil
@@ -139,7 +139,7 @@ func (e *Engine) RestoreTrigger(ctx context.Context, old Trigger) error {
 	if err != nil {
 		return err
 	}
-	if err := e.followed(ctx, rev, func() { e.place(old, "") }); err != nil {
+	if err := e.followed(ctx, rev, func() { e.place(old) }); err != nil {
 		return err
 	}
 	e.reworded(old)
@@ -418,6 +418,7 @@ func (e *Engine) admit(t Trigger, hold *cause) {
 	case hold.kind == causeRefused:
 		e.logger.Warn("rule refused: it is written down, and fires on nothing until it passes as the world stands",
 			"trigger", t.Name, "err", hold.why)
+	case hold.passing(): // the pass its install kicks arms it: no news
 	default:
 		e.logger.Warn("rule held: it is written down, and fires on nothing until what it waits for is here",
 			"trigger", t.Name, "waits", hold.String())

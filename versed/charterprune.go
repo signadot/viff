@@ -173,14 +173,17 @@ func (tx *charterTx) dropRule(name string) (int, error) {
 	}
 	// The undo is pushed for what was deleted, not for what was answered: a removal whose
 	// delete landed and whose wait for the engine did not (trigger.ErrNotReflected) is unwound
-	// with the rest, record included.
+	// with the rest, record included. THE RECORD FIRST: the delete took it with the rule, and a
+	// rule acts as the owner on its own record, so one put back ahead of it is placed as
+	// nobody's and held for the record (trigger.Engine.asOwner) until a pass finds it. Put back
+	// under its record, it is placed as whose it was.
 	_, err = eng.RemoveTriggerAs(tx.ctx, tx.as(), name)
 	if err == nil || errors.Is(err, trigger.ErrNotReflected) {
 		tx.push(func() error {
-			if err := eng.RestoreTrigger(tx.undoCtx(), old); err != nil {
+			if err := entity.RestoreRecord(tx.store, whose); err != nil {
 				return err
 			}
-			return entity.RestoreRecord(tx.store, whose)
+			return eng.RestoreTrigger(tx.undoCtx(), old)
 		})
 	}
 	if err != nil {

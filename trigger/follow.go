@@ -345,18 +345,22 @@ func (e *Engine) placeRecord(rec charter.Record) {
 		}
 		return
 	}
-	e.place(t, e.OwnerOf(t.Name))
+	e.place(t)
 }
 
-// place vets a rule as whose it is and admits it: pending with the refusal where vet refuses
-// — its record stands, and the world that refuses it may change (reconcile.go) — since what
-// reaches here refused is a record written some other way than an install, which refuses
-// where the author is present, or one whose world has moved. A spawn no runner offers is held
-// for a runner (RunnersToCome): the record was accepted, and its runner may be still to come.
-func (e *Engine) place(t Trigger, as string) {
-	hold, err := e.vet(t, as, RunnersToCome)
-	if err != nil {
-		hold = &cause{causeRefused, err.Error()}
+// place vets a rule as whose it is (asOwner) and admits it: pending for its owner record where
+// that is not here yet, and pending with the refusal where vet refuses — its record stands, and
+// the world that refuses it may change (reconcile.go) — since what reaches here refused is a
+// record written some other way than an install, which refuses where the author is present, or
+// one whose world has moved. A spawn no runner offers is held for a runner (RunnersToCome): the
+// record was accepted, and its runner may be still to come.
+func (e *Engine) place(t Trigger) {
+	as, hold := e.asOwner(t.Name)
+	if hold == nil {
+		var err error
+		if hold, err = e.vet(t, as, RunnersToCome); err != nil {
+			hold = &cause{causeRefused, err.Error()}
+		}
 	}
 	e.admit(t, hold)
 }
