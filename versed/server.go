@@ -584,6 +584,14 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 			Environment: &spec.Environment, VirtualKey: spec.VirtualKey, // the address, before it is resolved below
 			HeldBy: func() []string { return eng.HeldBy(id) },
 		}
+		// A LAUNCH THE ENGINE REFUSED starts nothing, and is a failed task with the reason like
+		// every refusal below: a reference in its strings reached past what the firing bound
+		// (trigger's launch). Recorded here so the task id says why, with its occurrence.
+		if spec.Refusal != "" {
+			h := task.FailedHandle(fmt.Sprintf("spawn %s: %s", id, spec.Refusal))
+			s.reflect(rec, id, 0, h, meta)
+			return h
+		}
 		// A RULE A TASK INSTALLED launches within the task, as its record says it was launched,
 		// bound as this firing bound it (chartertask.go).
 		if rule, ok := eng.Rule(trigger.ChainRule(spec.Chain)); ok {

@@ -135,6 +135,14 @@ type Spec struct {
 	// It rides to the RECORD and stops there: not a value a charter can read (see
 	// deriveMayReference), but what a reader of the record uses to tell one run from the next.
 	Occurrence int64 `tony:"field=occurrence,omitzero"`
+	// Refusal is why the ENGINE refused this launch, "" for a launch it did not refuse: a
+	// reference in the spawn's strings that reaches past what the firing bound. Engine-owned,
+	// and no field of a spec written by hand.
+	//
+	// The Spawner is still called, so the refusal is recorded where every other refusal is: a
+	// Spawner given one STARTS NOTHING, writes the task's record as failed with this reason, as
+	// it does for a launch it refuses itself, and answers a failed handle (task.FailedHandle).
+	Refusal string `tony:"-"`
 	// As says whose authority the task runs with beside the rule's: `subject`, the owner of the
 	// record the firing is about — whoever wrote the ask a rule answers. Empty, the task runs as
 	// the rule alone.

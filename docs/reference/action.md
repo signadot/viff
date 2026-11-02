@@ -483,6 +483,11 @@ action:
     patch: {stage: failed, why: $err}
 ```
 
+The refused task is on record like a task that a runner refuses. Its id holds `status: failed`,
+with the refusal as `err` and the firing's `occurrence`, so `verse task get` says why. Nothing
+was started. Its `onFailed` reads `$subject.value` at the commit that its rule fired at, as any
+hook does.
+
 A bare `$name` that nothing binds is left as written, and the spawn launches. In prose or in a
 shell value it is as likely `$HOME` or `$5` as a binding. A binding followed by anything else
 ends there: `$stage.` at the end of a sentence is the stage and a full stop.

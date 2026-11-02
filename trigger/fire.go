@@ -577,8 +577,9 @@ func (e *Engine) spawnHooked(id string, spec launch.Spec, hooks *Action, chain s
 }
 
 // startHooked is spawnHooked with what starts the task named: the Spawner, or for a launch the
-// engine refuses itself, a task that has already failed — which passes every check a spawn
-// does and is tracked the same way, so its completion hooks run as a started task's would.
+// engine refuses itself, the Spawner given the refusal, which starts nothing and answers a task
+// that has already failed — one that passes every check a spawn does and is tracked the same
+// way, so its completion hooks run as a started task's would.
 func (e *Engine) startHooked(id string, spec launch.Spec, hooks *Action, chain string,
 	start func(id string, spec launch.Spec) task.Handle) task.Handle {
 	if e.spawn == nil {

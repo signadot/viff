@@ -27,6 +27,10 @@ import (
 // resolver, scope, environment), build, mirror into the verse, and run/host — so
 // the engine stays agnostic to how tasks are hosted (a runnerd runtime here,
 // an RPC to a remote runtime when distributed).
+//
+// A spec with a Refusal is a launch the engine refused: the Spawner starts nothing, records
+// the task as failed with that reason as it records a launch it refuses itself, and returns a
+// failed handle.
 type Spawner func(id string, spec launch.Spec) task.Handle
 
 // Engine runs the ECA loop over an entity-verse.

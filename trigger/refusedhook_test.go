@@ -26,6 +26,9 @@ func TestARefusedLaunchsOnFailedReadsTheSubjectAtTheFiring(t *testing.T) {
 	// Mirrors nothing for a refused launch, so the hook can only read at the firing from what
 	// the engine itself holds.
 	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
+		if spec.Refusal != "" {
+			return task.FailedHandle(spec.Refusal)
+		}
 		return startHookTask(store, id, spec)
 	})
 	if err := eng.AddTrigger(mustParseCharter(t, `

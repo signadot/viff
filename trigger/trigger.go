@@ -1313,6 +1313,12 @@ func (e *Engine) launch(a Action, chain string, subj entity.Ref, root, value ent
 	// stopped here would leave the subject latched with nothing saying why. A failed task ends
 	// the way a launch the runner refuses ends: the action's onFailed runs, with this as `$err`,
 	// and can write the subject down as failed. It is kept on the rule as well, for its author.
+	//
+	// THROUGH THE SPAWNER, with the refusal on the spec (launch.Spec.Refusal), so the task is
+	// recorded where every other refusal is: versed writes a failed record at the task id with
+	// the reason, as it does for a launch it refuses itself, and `verse task get` shows it. The
+	// Spawner starts nothing for it. One that answers no handle still leaves a failed task here,
+	// so the hooks run either way.
 	if unbound := a.Spawn.Unbound(b); len(unbound) > 0 {
 		verb := "is"
 		if len(unbound) > 1 {
@@ -1322,8 +1328,12 @@ func (e *Engine) launch(a Action, chain string, subj entity.Ref, root, value ent
 			strings.Join(unbound, ", "), verb)
 		e.tracef("trigger %s: %v; the task fails without starting", chain, err)
 		e.failed(chain, subj, err)
-		return e.startHooked(id, spec, &hooks, chain, func(string, launch.Spec) task.Handle {
-			return task.FailedHandle(err.Error())
+		spec.Refusal = err.Error()
+		return e.startHooked(id, spec, &hooks, chain, func(id string, spec launch.Spec) task.Handle {
+			if h := e.spawn(id, spec); h != nil {
+				return h
+			}
+			return task.FailedHandle(spec.Refusal)
 		}), nil
 	}
 	return e.spawnHooked(id, spec, &hooks, chain), nil

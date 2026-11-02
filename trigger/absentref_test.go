@@ -15,7 +15,8 @@ import (
 
 // A SPAWN NAMING AN ABSENT FIELD UNDER A BOUND ONE IS REFUSED, and the refusal is a failed
 // task: the rule's own patch lands, the action's onFailed runs with the refusal as `$err`, and
-// nothing is started.
+// nothing is started: the Spawner is given the refusal (launch.Spec.Refusal), to record the
+// task as failed, and starts nothing.
 //
 // It used to launch. On a subject `{stage: absent}`, `deep=[$subject.value.never]` reached the
 // agent as `deep=[stage: absent.never]` — the shorter key `subject.value` and the rest of the
@@ -32,11 +33,16 @@ func TestASpawnNamingAnAbsentPathIsRefusedAsAFailedTask(t *testing.T) {
 			store := entitytest.Store(t)
 			eng := New(store, task.AutoResolver{})
 			var mu sync.Mutex
-			var launched []string
+			var launched, refused []string
 			eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
 				mu.Lock()
+				defer mu.Unlock()
+				// As versed's spawner does: a refused launch starts nothing and is a failed task.
+				if spec.Refusal != "" {
+					refused = append(refused, spec.Refusal)
+					return task.FailedHandle(spec.Refusal)
+				}
 				launched = append(launched, spec.Prompt)
-				mu.Unlock()
 				return startHookTask(store, id, spec)
 			})
 			if err := eng.AddTrigger(mustParseCharter(t, `
@@ -72,6 +78,9 @@ func TestASpawnNamingAnAbsentPathIsRefusedAsAFailedTask(t *testing.T) {
 			defer mu.Unlock()
 			if len(launched) != 0 {
 				t.Errorf("the spawner was asked to launch %q", launched)
+			}
+			if len(refused) != 1 || !strings.Contains(refused[0], c.ref) {
+				t.Errorf("the spawner was given refusals %q, want the one naming %s, so it records the task", refused, c.ref)
 			}
 			found := false
 			for _, tr := range eng.Troubles() {
