@@ -61,3 +61,15 @@ func TestAListElementBindsInASpawn(t *testing.T) {
 		t.Errorf("unbound = %q, want %q", got, want)
 	}
 }
+
+// A TOP-LEVEL NAME SPELLED LIKE A PATH KEEPS ITS SPELLING: on `{a: {b: nested}, "a.b": flat}`,
+// `$a.b` is the field called `a.b`, and not `b` under `a`, whichever the map ranged over last.
+func TestADottedTopLevelNameKeepsItsSpelling(t *testing.T) {
+	payload := entity.Obj{"a": map[string]any{"b": "nested"}, "a.b": "flat"}.Payload()
+	for range 20 {
+		b := bindingFor(payload, entity.RefAt("demo", "pr", "1"), payload)
+		if got := b["a.b"]; got != "flat" {
+			t.Fatalf("a.b = %q, want the top-level field `a.b`, flat", got)
+		}
+	}
+}

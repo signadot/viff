@@ -892,15 +892,20 @@ func payloadBinding(payload entity.Payload) launch.Binding {
 	// wrapper, so the rule's condition matched and it fired; ToMap does not, so no field was
 	// bound and every `$field` fell back to the shorter key's text (a git block's `repo` came out
 	// as the whole record followed by `.repo`). Fields unwraps, as the match does.
-	for k, v := range entity.Fields(payload) {
+	fields := entity.Fields(payload)
+	for k, v := range fields {
 		bindNode(b, k, v)
 	}
 	// AND EVERY PATH UNDER A FIELD, as under `$subject.value`: `$data.severity` on a payload
 	// `{data: {severity: high}}` is `high`, and `$data.findings[0].id` is the first finding's id,
 	// as a patch resolves them at any depth. Bound flat only, they were refused as not present,
 	// which they were. A payload that is itself a list has no field to start a path from.
+	//
+	// A top-level name that is spelled like a path keeps it: on `{a: {b: nested}, "a.b": flat}`,
+	// `$a.b` is the field called `a.b`, as it was before paths were bound, and the nested `b` is
+	// not addressable in a spawn's strings (payloadPaths says why a name is not two things).
 	for path, v := range payloadPaths(payload) {
-		if strings.HasPrefix(path, "[") {
+		if _, taken := fields[path]; taken || strings.HasPrefix(path, "[") {
 			continue
 		}
 		bindNode(b, path, v)
@@ -1031,7 +1036,8 @@ func bindingFor(payload entity.Payload, subject entity.Ref, value entity.Payload
 // matched by literal text, so `a.b` as a field name and `a` containing `b` would produce the same
 // key and one would silently win; a name that cannot be addressed unambiguously is better left
 // unaddressable here. Such a field is still reachable as a node (`$subject.value` resolves through
-// kpath, which quotes), and a top-level one is still bound flat by its own name (payloadBinding).
+// kpath, which quotes), and a top-level one is still bound flat by its own name, which a path
+// spelled the same does not take from it (payloadBinding).
 func payloadPaths(payload entity.Payload) map[string]entity.Payload {
 	out := map[string]entity.Payload{}
 	var walk func(n entity.Payload, prefix string)
