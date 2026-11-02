@@ -9,6 +9,7 @@ import (
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/launch"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -71,5 +72,58 @@ func TestAHookSpawnReadsTheSubjectAtTheFiring(t *testing.T) {
 	}
 	if w := vars["WHOLE"]; !strings.Contains(w, "round: 0") || strings.Contains(w, "chain") {
 		t.Errorf("WHOLE = %q, want the subject's payload and not the task's record", w)
+	}
+}
+
+// A HOOK'S SPAWN FOR A TASK WITH NO FIRING COMMIT REFUSES `$subject.value` BY NAME, as the hook's
+// patch fails by name: an adopted task whose record says no `occurrence` has no revision to read
+// the subject at, and the task's own record is not the subject.
+func TestAHookSpawnWithNoFiringCommitRefusesSubjectValueByName(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, task.AutoResolver{})
+	specs := make(chan launch.Spec, 4)
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
+		specs <- spec
+		if spec.Refusal != "" {
+			return task.FailedHandle(spec.Refusal)
+		}
+		return startHookTask(store, id, spec)
+	})
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: review
+  condition:
+    subject: {path: "demo.pr.*", value: {stage: never}}
+  action:
+    spawn:
+      script: "true"
+      autonomy: [{then: allow}]
+    onDone:
+      patch: {stage: reviewed}
+      spawn:
+        script: "echo $STAGE"
+        autonomy: [{then: allow}]
+        environment:
+          vars: {STAGE: $subject.value.stage}
+`)); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
+
+	// Adopted with no record at all, so nothing says which firing it belongs to.
+	sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+	p := task.NewTask("review@demo.pr.1", sup, immediate{}, noExec{})
+	eng.AdoptChain(prRef("1").String(), p.ID, "review", p)
+	go p.Run(context.Background())
+
+	select {
+	case hook := <-specs:
+		if hook.Chain != "review.onDone" || !strings.Contains(hook.Refusal, "environment.vars.STAGE: $subject.value.stage") {
+			t.Fatalf("hook spawn %q refused with %q, want it refused naming $subject.value.stage", hook.Chain, hook.Refusal)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the hook never spawned")
 	}
 }
