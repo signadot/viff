@@ -1097,8 +1097,8 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 	if a.Spawn == nil {
 		return nil, nil
 	}
-	return e.launchSpawn(a, chain, subj, root, e.spawnSubjectValue(a.Spawn, chain, oc, subj, root, src),
-		oc.commit.Rev, oc.passed)
+	value, valueWhy := e.spawnSubjectValue(a.Spawn, chain, oc, subj, root, src)
+	return e.launchSpawn(a, chain, subj, root, value, valueWhy, oc.commit.Rev, oc.passed)
 }
 
 // spawnSubjectValue is what `$subject.value` binds to in a spawn's strings: the subject's payload,
@@ -1114,21 +1114,22 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 //
 // Read only when the spawn names it, since for a hook it is a read at a revision. One that cannot
 // be read — a task nothing in the charter started has no commit to read at — leaves it unbound,
-// and the launch refuses on the reference by name.
+// and the launch refuses on the reference by name, with why it could not be read (the error,
+// which launch puts in the refusal for those references, as the hook's patch would say it).
 func (e *Engine) spawnSubjectValue(spec *launch.Spec, chain string, oc occasion, subj entity.Ref,
-	root entity.Payload, src refSource) entity.Payload {
+	root entity.Payload, src refSource) (entity.Payload, error) {
 	if src != fromCause {
-		return root
+		return root, nil
 	}
 	if !spec.Mentions(refSubject + "." + subjPartValue) {
-		return nil
+		return nil, nil
 	}
 	v, err := e.subjectValueAt(oc, subj)
 	if err != nil {
 		e.tracef("trigger %s: %v; the spawn's $%s.%s is unbound", chain, err, refSubject, subjPartValue)
-		return nil
+		return nil, err
 	}
-	return v
+	return v, nil
 }
 
 // derivedWrite is one entity an action derives, resolved: where it goes and what it holds.
@@ -1239,15 +1240,16 @@ func (a Action) resolveDerives(chain string, oc occasion, subj entity.Ref, e *En
 // revision this run is about, 0 when nothing caused it; passed is the gates the firing passed,
 // nil for a launch no firing's gates admitted.
 func (e *Engine) launchSpawn(a Action, chain string, subj entity.Ref, root, value entity.Payload,
-	occurrence int64, passed []launch.Passed) (task.Handle, error) {
+	valueWhy error, occurrence int64, passed []launch.Passed) (task.Handle, error) {
 	// A SUSPENDED SUBJECT STARTS NOTHING. A hook's writes and derives have landed by now —
 	// recording is not progress — and what it would start is parked here. The lift starts it.
 	if held := e.settled(mirror.TriggerOf(chain), subj); len(held) > 0 {
-		e.park(parkedLaunch{a: a, chain: chain, subj: subj, root: root, value: value, occurrence: occurrence, passed: passed})
+		e.park(parkedLaunch{a: a, chain: chain, subj: subj, root: root, value: value, valueWhy: valueWhy,
+			occurrence: occurrence, passed: passed})
 		e.tracef("%s: %s is suspended (%s); its launch is parked", chain, subj, strings.Join(held, ", "))
 		return nil, nil
 	}
-	return e.launch(a, chain, subj, root, value, occurrence, passed)
+	return e.launch(a, chain, subj, root, value, valueWhy, occurrence, passed)
 }
 
 // ownerSettle is how long a firing spawning `as: subject` waits for the subject's owner record to
@@ -1255,8 +1257,11 @@ func (e *Engine) launchSpawn(a Action, chain string, subj entity.Ref, root, valu
 const ownerSettle = 250 * time.Millisecond
 
 // launch is launchSpawn past the suspension: what a parked launch re-enters when it is released.
+//
+// valueWhy is why value is nil where the spawn names `$subject.value` (spawnSubjectValue): the
+// reason a reference under it is refused, in place of "not present".
 func (e *Engine) launch(a Action, chain string, subj entity.Ref, root, value entity.Payload,
-	occurrence int64, passed []launch.Passed) (task.Handle, error) {
+	valueWhy error, occurrence int64, passed []launch.Passed) (task.Handle, error) {
 	b := bindingFor(root, subj, value)
 	spec := a.Spawn.Bind(b)
 	// What the firing's gates settled, the engine's to say and nobody else's: it is what a
@@ -1321,12 +1326,7 @@ func (e *Engine) launch(a Action, chain string, subj entity.Ref, root, value ent
 	// Spawner starts nothing for it. One that answers no handle still leaves a failed task here,
 	// so the hooks run either way.
 	if unbound := a.Spawn.Unbound(b); len(unbound) > 0 {
-		verb := "is"
-		if len(unbound) > 1 {
-			verb = "are"
-		}
-		err := fmt.Errorf("spawn refused: %s %s not present in the payload that fired this action",
-			strings.Join(unbound, ", "), verb)
+		err := refusalOf(unbound, valueWhy)
 		e.tracef("trigger %s: %v; the task fails without starting", chain, err)
 		e.failed(chain, subj, err)
 		spec.Refusal = err.Error()
@@ -1338,6 +1338,46 @@ func (e *Engine) launch(a Action, chain string, subj entity.Ref, root, value ent
 		}), nil
 	}
 	return e.spawnHooked(id, spec, &hooks, chain), nil
+}
+
+// refusalOf is the reason a launch is refused for the references Unbound named. Each is "not
+// present", but for one under `$subject.value` when the subject could not be read at all
+// (valueWhy): the subject may well hold it, and the cause is that there was nothing to read it
+// at, which is what the hook's patch says in the same case.
+func refusalOf(unbound []string, valueWhy error) error {
+	var absent, unread []string
+	for _, u := range unbound {
+		if valueWhy != nil && namesSubjectValue(u) {
+			unread = append(unread, u)
+		} else {
+			absent = append(absent, u)
+		}
+	}
+	var parts []string
+	if len(absent) > 0 {
+		verb := "is"
+		if len(absent) > 1 {
+			verb = "are"
+		}
+		parts = append(parts, fmt.Sprintf("%s %s not present in the payload that fired this action",
+			strings.Join(absent, ", "), verb))
+	}
+	if len(unread) > 0 {
+		parts = append(parts, fmt.Sprintf("%s: %v", strings.Join(unread, ", "), valueWhy))
+	}
+	return fmt.Errorf("spawn refused: %s", strings.Join(parts, "; "))
+}
+
+// namesSubjectValue reports whether an entry of Spec.Unbound ("field: $ref") is a reference to
+// `$subject.value` or under it.
+func namesSubjectValue(entry string) bool {
+	const ref = "$" + refSubject + "." + subjPartValue
+	_, r, ok := strings.Cut(entry, ": ")
+	if !ok || !strings.HasPrefix(r, ref) {
+		return false
+	}
+	rest := r[len(ref):]
+	return rest == "" || rest[0] == '.' || rest[0] == '['
 }
 
 // installLaunch is a charter's spawn as the launch it will become, for the checks made at

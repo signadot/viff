@@ -505,7 +505,8 @@ binding that holds a leaf is prose, because a leaf has no path under it. So `$fi
 `open.never`.
 
 A completion hook's spawn for a task that the charter did not start has no commit to read at, so
-there `$subject.value` refuses the launch by name.
+there `$subject.value` refuses the launch by name. The refusal says that there was no commit to
+read the subject at, as the hook's patch says. It does not say that the subject lacks the field.
 
 ### `!get-path` and `!list-paths`: reaching other data
 

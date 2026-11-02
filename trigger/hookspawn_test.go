@@ -123,6 +123,10 @@ func TestAHookSpawnWithNoFiringCommitRefusesSubjectValueByName(t *testing.T) {
 		if hook.Chain != "review.onDone" || !strings.Contains(hook.Refusal, "environment.vars.STAGE: $subject.value.stage") {
 			t.Fatalf("hook spawn %q refused with %q, want it refused naming $subject.value.stage", hook.Chain, hook.Refusal)
 		}
+		// And saying why: the subject holds `stage`; there is no commit to read it at.
+		if strings.Contains(hook.Refusal, "not present") || !strings.Contains(hook.Refusal, "no causing commit") {
+			t.Errorf("refusal = %q, want the reason the subject could not be read, not \"not present\"", hook.Refusal)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the hook never spawned")
 	}
