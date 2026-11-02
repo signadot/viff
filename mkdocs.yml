@@ -1,4 +1,8 @@
 site_name: Verse
+site_description: A shared space where a team's software delivery work runs, under rules the team writes.
+# Where the site is served. What makes a page's address absolute: the canonical link on each
+# page, and the card image a link to the site unfurls with (overrides/main.html).
+site_url: https://signadot.github.io/verse/
 # The repository, linked with its icon from the header of every page, as tony-format's site
 # does. edit_uri is empty so the link is to the repository rather than a per-page "Edit on
 # GitHub".
@@ -118,5 +122,6 @@ validation:
 
 extra_css:
   - pygments.css
+  - extra.css
 plugins:
   - mermaid2

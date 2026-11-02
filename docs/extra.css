@@ -1,0 +1,7 @@
+/* The brand in the navbar is the logo (overrides/main.html): sized to the bar, so the bar is
+   no taller than it is with the site's name in it. */
+.navbar-brand img {
+    height: 32px;
+    width: auto;
+    display: block;
+}
