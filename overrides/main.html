@@ -1,9 +1,10 @@
 {% extends "base.html" %}
 
 {#- The theme's block, with the icons verse's: the theme names its own favicon here, and a page
-    naming two is left to each browser's choice (Safari takes the theme's and shows nothing). So
-    the block is spelled whole, with one .ico, the SVG where a browser reads one, and the touch
-    icon for a home screen. -#}
+    naming several is left to each browser's choice. So the block is spelled whole, with ONE
+    icon, the .ico at 16, 32 and 48, and the touch icon for a home screen. Not the SVG: it is
+    drawn with masks and gradients, and a browser that takes an SVG icon over the .ico (Safari)
+    showed it blank. -#}
 {% block site_meta %}
         <meta charset="utf-8">
         <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -12,7 +13,6 @@
         {% if config.site_author %}<meta name="author" content="{{ config.site_author }}">{% endif %}
         {% if page and page.canonical_url %}<link rel="canonical" href="{{ page.canonical_url }}">{% endif %}
         <link rel="icon" href="{{ 'images/favicon.ico'|url }}" sizes="16x16 32x32 48x48">
-        <link rel="icon" type="image/svg+xml" href="{{ 'images/favicon.svg'|url }}">
         <link rel="apple-touch-icon" href="{{ 'images/apple-touch-icon.png'|url }}">
 {% endblock %}
 
