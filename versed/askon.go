@@ -148,7 +148,8 @@ func onMatch(p entity.Payload) (row int, then entity.Payload, ok bool) {
 // rather than keep; and it takes the place of the rows that stood, whole. After the checks, which
 // fill in the edit an answer consents to on the rows as they stand (checkThen).
 func storeOn(rec entity.Obj) {
-	if on, ok := rec["on"].(*ir.Node); ok && on != nil {
+	// A removal (entity.Removed) is the store's to carry out, not data to keep.
+	if on, ok := rec["on"].(*ir.Node); ok && on != nil && !on.DeepEqual(entity.Removed()) {
 		rec["on"] = entity.Raw(on)
 	}
 }

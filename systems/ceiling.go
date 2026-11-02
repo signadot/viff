@@ -255,7 +255,7 @@ func (c Ceiling) Refuses(step string, fields *ir.Node) (why string, ok bool) {
 		inside := true
 		for name, pattern := range cb.Attributes {
 			a, _ := d.Attribute(name)
-			if !MatchField(a.Form, pattern, ir.Get(ir.Uncomment(fields), name)) {
+			if !MatchField(a.Form, pattern, stepValue(fields, name)) {
 				inside = false
 			}
 		}
@@ -273,10 +273,10 @@ func (c Ceiling) Refuses(step string, fields *ir.Node) (why string, ok bool) {
 		}
 	}
 	if len(near) == 0 {
-		return fmt.Sprintf("the runner's ceiling gives no `%s` for it (%s)", verb, stepWords(d, fields)), true
+		return fmt.Sprintf("the runner's ceiling gives no `%s` for it (%s)", verb, stepWords(d, verb, fields)), true
 	}
 	return fmt.Sprintf("no shape of `%s` the runner's ceiling gives matches (%s): it gives %s",
-		verb, stepWords(d, fields), strings.Join(near, "; ")), true
+		verb, stepWords(d, verb, fields), strings.Join(near, "; ")), true
 }
 
 func shapeList(shapes []Shape) string {

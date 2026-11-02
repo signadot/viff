@@ -213,37 +213,43 @@ func safeMatch(value, pattern *ir.Node) (ok bool, err error) {
 // canonical spelling (Canonical), so `acme/*` is `github.com/acme/*`. A regexp is read as
 // written, against the canonical spelling. Other forms are as written.
 func canon(form string, n *ir.Node) *ir.Node {
-	if form != FormRepo || n == nil {
+	if form != FormRepo || n == nil || !canonRepo(n, false) {
 		return n
 	}
 	out := n.Clone()
-	canonRepo(out)
+	canonRepo(out, true)
 	return out
 }
 
-// canonRepo spells each repository a pattern names canonically, in place: an untagged string,
-// one under `!glob` or `!not`, and the branches of `!or` and `!and`.
-func canonRepo(n *ir.Node) {
+// canonRepo is whether a pattern names some repository other than canonically: an untagged
+// string, one under `!glob` or `!not`, or a branch of `!or` and `!and`. With write, it spells each
+// canonically, in place.
+func canonRepo(n *ir.Node, write bool) bool {
 	n = ir.Uncomment(n)
 	if n == nil {
-		return
+		return false
 	}
+	changes := false
 	last := n.Tag
 	if i := strings.LastIndexAny(last, ".!"); i >= 0 {
 		last = last[i+1:]
 	}
 	switch n.Type {
 	case ir.StringType:
-		if last == "" || last == "glob" || last == "not" {
-			n.String = Canonical(FormRepo, n.String)
+		if c := Canonical(FormRepo, n.String); (last == "" || last == "glob" || last == "not") && c != n.String {
+			changes = true
+			if write {
+				n.String = c
+			}
 		}
 	case ir.ArrayType:
 		if last == "or" || last == "and" {
 			for _, v := range n.Values {
-				canonRepo(v)
+				changes = canonRepo(v, write) || changes
 			}
 		}
 	}
+	return changes
 }
 
 // ── text ────────────────────────────────────────────────────────────────────────────────────
@@ -715,25 +721,31 @@ func Words(n *ir.Node) string {
 // FieldText is a step's field as text, for a comparison by spelling (a block's unique
 // attribute) and a refusal that quotes it: empty where the step does not carry it.
 func FieldText(fields *ir.Node, name string) string {
-	fields = ir.Uncomment(fields)
-	if fields == nil {
-		return ""
-	}
-	v := ir.Get(fields, name)
+	v := stepValue(fields, name)
 	if v == nil {
 		return ""
 	}
-	return ValueText(v)
+	return ValueText("", v)
 }
 
-// ValueText is a step's value as text: a string as itself, an address as its names joined by
-// `.`, anything else in tony.
-func ValueText(v *ir.Node) string {
+// stepValue is a step's value of the field name, nil where it carries none: a step built with no
+// fields carries none of them.
+func stepValue(fields *ir.Node, name string) *ir.Node {
+	fields = ir.Uncomment(fields)
+	if fields == nil || fields.Type != ir.ObjectType {
+		return nil
+	}
+	return ir.Get(fields, name)
+}
+
+// ValueText is a step's value of a field of form as text: a string as itself, an address (the
+// form path) as its names joined by `.`, anything else in tony.
+func ValueText(form string, v *ir.Node) string {
 	v = ir.Uncomment(v)
 	if v == nil {
 		return ""
 	}
-	if names, ok := pathValue(v); ok {
+	if names, ok := pathValue(v); ok && form == FormPath {
 		return PathText(names)
 	}
 	return Words(v)

@@ -55,22 +55,6 @@ func (s Step) Field(name string) *ir.Node {
 	return nil
 }
 
-// Doc is the step as a row's match reads it: `system`, `verb`, then its fields, flat:
-// `{system: git, verb: push, repo: github.com/acme/app, ref: refs/heads/main, force: false}`.
-func (s Step) Doc() *ir.Node {
-	system, verb, _ := systems.Split(s.Name)
-	kvs := []ir.KeyVal{
-		{Key: ir.FromString(matchSystem), Val: ir.FromString(system)},
-		{Key: ir.FromString(matchVerb), Val: ir.FromString(verb)},
-	}
-	if f := ir.Uncomment(s.Fields); f != nil && f.Type == ir.ObjectType {
-		for i, k := range f.Fields {
-			kvs = append(kvs, ir.KeyVal{Key: ir.FromString(k.String), Val: f.Values[i]})
-		}
-	}
-	return ir.FromKeyVals(kvs)
-}
-
 // The steps a gate can name: each a verb of a system (package systems), `<system>.<verb>`, and
 // naming one here claims it as a step the runner stops, with the fields the code fills on it,
 // which systems.Check holds to what the document gives the step. Every verb a document
@@ -139,7 +123,7 @@ func (s Step) String() string {
 	b.WriteString(s.Name)
 	if f := ir.Uncomment(s.Fields); f != nil && f.Type == ir.ObjectType {
 		for i, k := range f.Fields {
-			fmt.Fprintf(&b, " %s=%s", k.String, describeTrunc(oneLine(systems.ValueText(f.Values[i]))))
+			fmt.Fprintf(&b, " %s=%s", k.String, describeTrunc(oneLine(systems.ValueText(systems.FormOf(s.Name, k.String), f.Values[i]))))
 		}
 	}
 	return b.String()

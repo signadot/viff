@@ -659,8 +659,10 @@ func onWords(on *ir.Node) []string {
 	for _, row := range on.Values {
 		cond := "on any answer"
 		if m := entity.Get(row, "match"); m != nil {
-			if v := entity.Str(m, "verdict"); v != "" && len(verseio.Fields(m)) == 1 {
-				cond = "on *" + v + "*"
+			// A verdict by name alone reads as the word; a tagged one (`!not proceed`) as the
+			// pattern it is, since its word is not what it matches.
+			if v := ir.Uncomment(entity.Get(m, "verdict")); v != nil && v.Tag == "" && v.Type == ir.StringType && len(verseio.Fields(m)) == 1 {
+				cond = "on *" + v.String + "*"
 			} else if b, err := codec.NodeBytesWire(m, codec.Tony); err == nil {
 				cond = "on `" + string(b) + "`"
 			}

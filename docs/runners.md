@@ -198,7 +198,7 @@ described or unreadable, and how to find out why; or each runner that failed the
 
 A spawn that writes `runner:` is refused for the field: where work runs is verse's to say.
 
-What follows a task's ask (`then:`, `else:`) runs on the task's runner, as it was checked when the
+What follows a task's ask, the rows of its `on`, runs on the task's runner, as it was checked when the
 task raised the ask ([the verse system](systems/verse.md)).
 
 ### Not the agent

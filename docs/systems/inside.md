@@ -79,9 +79,9 @@ A row on `files` or `commands` decides the act as the agent names it. It does no
 way to the same result:
 
 - A write through the shell, such as `echo x > db/x.sql`, is a `commands.run` step. It is not a
-  `files.write` step, so a row on `files` with `path: "db/**"` does not see it.
-- A `command` pattern matches the whole command string. `git push*` matches
-  `git push origin x`, but not `cd x && git push`.
+  `files.write` step, so a row on `files` with `path: !regexp "^db/"` does not see it.
+- A `command` pattern matches the whole command string. `!regexp "^git push"` matches
+  `git push origin x`, but not `cd x && git push`; `!regexp "git push"` matches both.
 
 So treat these rows as advice the runner checks, not as a wall. What must hold, write where the
 runner does it: a push is the runner's own act (`git.push`), and the network is built into the

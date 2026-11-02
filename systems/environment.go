@@ -273,7 +273,7 @@ func (e Environment) Refuses(step string, fields *ir.Node) (why string, ok bool)
 		words[i] = sh.String()
 	}
 	return fmt.Sprintf("no shape of `%s` the environment's %s gives matches (%s): it gives %s",
-		verb, where, stepWords(d, fields), strings.Join(words, ", ")), true
+		verb, where, stepWords(d, verb, fields), strings.Join(words, ", ")), true
 }
 
 // reachesNothing is whether the environment gives no system a step is of: none, or only the
@@ -298,7 +298,7 @@ func (s Shape) String() string {
 
 // stepWords is a step's fields as a refusal quotes them beside the shapes: the verb's own, since
 // the block's attributes are no shape's to name (the refusal says which block it is).
-func stepWords(d Document, fields *ir.Node) string {
+func stepWords(d Document, verb string, fields *ir.Node) string {
 	fields = ir.Uncomment(fields)
 	if fields == nil || fields.Type != ir.ObjectType {
 		return ""
@@ -308,7 +308,7 @@ func stepWords(d Document, fields *ir.Node) string {
 		if _, isAttr := d.Attribute(k.String); isAttr {
 			continue
 		}
-		fs = append(fs, k.String+"="+ValueText(fields.Values[i]))
+		fs = append(fs, k.String+"="+ValueText(FormOf(StepName(d.Name, verb), k.String), fields.Values[i]))
 	}
 	return strings.Join(fs, " ")
 }
@@ -427,7 +427,7 @@ func (s Shape) Meets(step string, params map[string]*ir.Node) bool {
 // Matches is whether a step's fields are of the shape.
 func (s Shape) Matches(step string, fields *ir.Node) bool {
 	for name, pattern := range s {
-		if !MatchField(FormOf(step, name), pattern, ir.Get(ir.Uncomment(fields), name)) {
+		if !MatchField(FormOf(step, name), pattern, stepValue(fields, name)) {
 			return false
 		}
 	}

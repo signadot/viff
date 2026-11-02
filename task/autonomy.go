@@ -16,9 +16,9 @@ import (
 	"github.com/signadot/verse/systems"
 )
 
-// AN AUTONOMY IS ONE ORDERED LIST OVER EVERY CALL A TASK MAKES. Each row names a call by a tony
-// match over the step (Step.Doc): its system, its verb and patterns over its fields (package
-// systems), and says what happens to it: `deny` refuses it with the row's name and asks nobody, `ask` poses the question a
+// AN AUTONOMY IS ONE ORDERED LIST OVER EVERY CALL A TASK MAKES. Each row names a call by its
+// system, its verb, and a tony match pattern over each field it names, read by the field's form
+// (systems.MatchField), and says what happens to it: `deny` refuses it with the row's name and asks nobody, `ask` poses the question a
 // gate poses and the answer decides, and `allow` lets it go. The first row that matches a call
 // decides it, and the last row, which names no call, decides every call no row above matched:
 // the task's dial, `ask` when there is no autonomy.
@@ -213,8 +213,9 @@ func (m *Match) meets(n *Match) bool {
 	if mv, nv := m.VerbNames(), n.VerbNames(); mv != nil && nv != nil && !slices.ContainsFunc(mv, func(v string) bool { return slices.Contains(nv, v) }) {
 		return false
 	}
+	verbs := m.VerbNames()
 	for name, mp := range m.Params {
-		if np, ok := n.Params[name]; ok && !systems.FieldMeets(m.form(name), mp, np) {
+		if np, ok := n.Params[name]; ok && !systems.FieldMeets(m.formIn(verbs, name), mp, np) {
 			return false
 		}
 	}
@@ -239,9 +240,10 @@ func (m *Match) encloses(n *Match) bool {
 			return false
 		}
 	}
+	verbs := m.VerbNames()
 	for name, mp := range m.Params {
 		np, ok := n.Params[name]
-		if !ok || !systems.FieldContains(m.form(name), mp, np) {
+		if !ok || !systems.FieldContains(m.formIn(verbs, name), mp, np) {
 			return false
 		}
 	}
@@ -250,8 +252,11 @@ func (m *Match) encloses(n *Match) bool {
 
 // form is a param's form, as the first of the match's verbs that carries it says (systems.FieldOf);
 // empty, any text, where none does.
-func (m *Match) form(name string) string {
-	for _, v := range m.VerbNames() {
+func (m *Match) form(name string) string { return m.formIn(m.VerbNames(), name) }
+
+// formIn is form, the match's verbs given.
+func (m *Match) formIn(verbs []string, name string) string {
+	for _, v := range verbs {
 		if f, ok := systems.FieldOf(systems.StepName(m.System, v), name); ok {
 			return f.Form
 		}
@@ -748,8 +753,9 @@ func (m *Match) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 		}
 	}
 	// A number under a field that is not one is the digits it was written with: `issue: 7`.
+	verbs := out.VerbNames()
 	for name, p := range out.Params {
-		switch out.form(name) {
+		switch out.formIn(verbs, name) {
 		case systems.FormInt, systems.FormBool, systems.FormDoc:
 		default:
 			digits(p)
