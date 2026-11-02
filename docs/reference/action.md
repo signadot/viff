@@ -459,7 +459,9 @@ text, `3` and not `"3"`; a field that holds an object or a list is tony. Every p
 binds as well, as a patch resolves it: `$data.severity` on `{data: {severity: high}}` is `high`.
 So does every element of a list, at any depth: `$data.items[0]`, and `$result.findings[0].id` in
 an `onDone`.
-`$subject`, `.ref` and `.name` bind as in the table. `.value` binds as the subject's whole
+`$subject`, `.ref` and `.name` bind as in the table. `$subject.commit` does not bind in a
+spawn's strings, because a spawn is not where provenance belongs, so it refuses the launch as a
+part that is not present (see below). `.value` binds as the subject's whole
 payload, and every path into it binds as well, `$subject.value.handoff.summary`. A payload
 written with a head comment binds as it would without one.
 
