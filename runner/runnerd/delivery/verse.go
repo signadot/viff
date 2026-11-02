@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/charterfile"
 	"github.com/signadot/verse/codec"
@@ -65,7 +66,12 @@ func (s *Server) verseAskCreate(ctx context.Context, tk Task, req Request) Reply
 	if strings.TrimSpace(req.Ask) == "" {
 		return Reply{Refused: "a raise carries the ask"}
 	}
-	if why := s.refused(tk, req.Decision, task.NewStep(task.StepVerseAskCreate, map[string]string{})); why != "" {
+	// The question as the task wrote it, which the step is about and verse is given.
+	var ask api.Ask
+	if err := codec.Unmarshal([]byte(req.Ask), &ask, codec.Tony); err != nil {
+		return Reply{Refused: "the ask does not read: " + err.Error()}
+	}
+	if why := s.refused(tk, req.Decision, askStep(ask)); why != "" {
 		return Reply{Refused: why}
 	}
 	code, said, err := s.Services.Verse(ctx, tk.ID, http.MethodPost, "/asks", []byte(req.Ask))
@@ -81,14 +87,33 @@ func (s *Server) verseAskCreate(ctx context.Context, tk Task, req Request) Reply
 	if err := codec.Unmarshal([]byte(said), &asked, codec.Tony); err != nil || asked.ID == "" {
 		return Reply{Error: "the verse raised the ask and its answer does not say the id: " + said}
 	}
-	// The question as the task wrote it, which verse took.
-	var ask api.Ask
-	if err := codec.Unmarshal([]byte(req.Ask), &ask, codec.Tony); err != nil {
-		return Reply{Error: "the verse raised " + asked.ID + ", and the ask carried does not read back: " + err.Error()}
-	}
 	out := api.AskRaised(asked.ID, ask.Question)
 	fmt.Fprintf(s.Log, "delivery: %s: %s\n", tk.ID, out)
 	return Reply{OK: true, Out: out}
+}
+
+// askStep is the raise of ask as a row reads it: whom it is put to, its labels, and the rows of
+// its `on` as the ask carries them, each where the ask has it.
+func askStep(ask api.Ask) task.Step {
+	st := task.NewStep(task.StepVerseAskCreate, nil)
+	if len(ask.To) > 0 {
+		to := make([]*ir.Node, len(ask.To))
+		for i, name := range ask.To {
+			to[i] = ir.FromString(name)
+		}
+		st = st.With("to", ir.FromSlice(to))
+	}
+	if len(ask.Labels) > 0 {
+		labels := make(map[string]*ir.Node, len(ask.Labels))
+		for k, v := range ask.Labels {
+			labels[k] = ir.FromString(v)
+		}
+		st = st.With("labels", ir.FromMap(labels))
+	}
+	if on := ir.Uncomment(ask.On); on != nil && on.Type != ir.NullType {
+		st = st.With("on", on)
+	}
+	return st
 }
 
 // verseAskGet answers a `verse.ask-get`: the ask req.Ask names, by its id or the name it was asked
@@ -222,6 +247,23 @@ func (s *Server) verseRouted(ctx context.Context, tk Task, req Request) Reply {
 		return Reply{Refused: "a removal names what it removes"}
 	}
 	fields := map[string]string{}
+	var value *ir.Node
+	switch req.Op {
+	case OpVerseDataGet, OpVerseDataRm:
+		// The address read or removed, as the query names it: what a row's `path` bounds.
+		if at := q.Get("at"); at != "" {
+			fields["path"] = at
+		}
+	case OpVerseDataPut:
+		var put api.PutEntity
+		if err := codec.Unmarshal([]byte(req.Body), &put, codec.Tony); err != nil {
+			return Reply{Refused: "the write does not read: " + err.Error()}
+		}
+		if put.At != "" {
+			fields["path"] = put.At
+		}
+		value = put.Payload
+	}
 	if req.Op == OpVerseCharterInstall {
 		// The address the install acts at, from what it carries, as the tool named it
 		// (charterfile.InstallAt): what the task's environment and the ceiling bound.
@@ -235,7 +277,11 @@ func (s *Server) verseRouted(ctx context.Context, tk Task, req Request) Reply {
 		}
 		fields["at"] = at
 	}
-	if why := s.refused(tk, req.Decision, task.NewStep(route.step, fields)); why != "" {
+	st := task.NewStep(route.step, fields)
+	if value != nil {
+		st = st.With("value", value)
+	}
+	if why := s.refused(tk, req.Decision, st); why != "" {
 		return Reply{Refused: why}
 	}
 	path := route.path

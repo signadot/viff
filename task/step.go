@@ -111,15 +111,15 @@ var (
 	StepQuestionAsk = systems.Step("question", "ask")
 	// An ask the doer raises for the person the task runs for, `verse ask`'s, carried to verse by
 	// the runner: it does not wait.
-	StepVerseAskCreate = systems.Step("verse", "ask-create")
+	StepVerseAskCreate = systems.Step("verse", "ask-create", "to", "labels", "on")
 	// One of that person's asks read back, `verse ask <name|id>`'s: whether it was answered.
 	StepVerseAskGet = systems.Step("verse", "ask-get")
 	// All of that person's asks, `verse ask`'s listing.
 	StepVerseAskList = systems.Step("verse", "ask-list")
 	// The verse at an address, `verse data`'s: read, written, or removed, as that person.
-	StepVerseDataGet = systems.Step("verse", "data-get")
-	StepVerseDataPut = systems.Step("verse", "data-put")
-	StepVerseDataRm  = systems.Step("verse", "data-rm")
+	StepVerseDataGet = systems.Step("verse", "data-get", "path")
+	StepVerseDataPut = systems.Step("verse", "data-put", "path", "value")
+	StepVerseDataRm  = systems.Step("verse", "data-rm", "path")
 	// The charters, `verse charter`'s: read, asked whether some would install, installed, or
 	// removed. An install names the address it acts at (charterfile.InstallAt), which everything
 	// it installs lies at or under.

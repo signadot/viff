@@ -3,16 +3,27 @@ description: "Verse itself, acted on by a task as the person it runs for would a
 verbs:
 - name: ask-create
   description: "Raise an ask as the person the task runs for, as `verse ask` and verse_ask_create do, and go on without waiting: the call answers `raised question <id>: <question>`, and the ask stands after the task ends. The rows of its `on` run as that person when it settles, and a spawn among them reaches no further than the task does, less charter-install, on its runner and with its credential."
+  fields:
+  - {name: to, form: doc, description: "whom the ask is put to, as a list of names in the grammar a grant uses ([user:dana@example.com]); absent where anyone may answer"}
+  - {name: labels, form: doc, description: "the labels the ask carries, an object of names and values"}
+  - {name: on, form: doc, description: "the rows of what follows the answer, each `{match, then}`, as verse keeps them. A row matches them as tony does: `on: !not.all.not {then: {answer: null}}` is a raise some row of which answers another ask"}
 - name: ask-get
   description: "Read one of the asks of the person the task runs for, by the name it was asked under or its id, as `verse ask <name|id>` and verse_ask_get do: whether it was answered (`status`, and `answer`, `pending` until it settles, or `why` where it settled with no answer), what it asked and of whom, its due, and what its `on` ran."
 - name: ask-list
   description: "List the asks of the person the task runs for, as `verse ask` and verse_ask_list do: each with its id, question, who is asked, its due, its `status`, and its `answer`, `pending` until it settles."
 - name: data-get
   description: "Read the verse at an address as the person the task runs for, as `verse data` and verse_data do: the document stored there, or with paths the addresses beneath it, chosen by an if pattern and trimmed to what a trim names."
+  fields:
+  - {name: path, form: path, description: "the address read, at or under its pattern: `[scratch]` is every address under scratch"}
 - name: data-put
   description: "Write a value at an address as the person the task runs for, as `verse data <address> --put` and verse_data_put do: merged into what stands there, on create, update or expect only on that condition, with grants for a node it creates. Answers what stands there after the write."
+  fields:
+  - {name: path, form: path, description: "the address written, at or under its pattern: `[scratch]` is every address under scratch"}
+  - {name: value, form: doc, description: "what is written there, as the write carries it"}
 - name: data-rm
   description: "Remove what stands at an address as the person the task runs for, an entity or one field of one, as `verse data <address> --rm` and verse_data_rm do."
+  fields:
+  - {name: path, form: path, description: "the address removed, at or under its pattern: `[scratch]` is every address under scratch"}
 - name: charter-get
   description: "Read the charter at a path as the person the task runs for would, as `verse charter` and verse_charter do: an installed charter as its file, with notes saying what the file cannot (a rule held, suspended or in trouble, and the charters under it), a rule or level as it stands, or with paths one kinded path per rule and level."
 - name: charter-check

@@ -34,12 +34,12 @@ spawn:
 
 | Tool | Mirrors | What it does | Step |
 |---|---|---|---|
-| `verse-ask-create` | `verse ask [<name>] -q`, `verse_ask_create` | raises an ask as the person the task runs for: `name`, `question`, `to`, `due`, `on_silence`, `on`, `about`, `keep`, `label` ([asking](../asking.md)). It does not wait: the result is `raised question <id>: <question>`, and the ask stands after the task ends. Without a `name`, verse names it `run-<nonce>`. | `verse.ask-create` |
+| `verse-ask-create` | `verse ask [<name>] -q`, `verse_ask_create` | raises an ask as the person the task runs for: `name`, `question`, `to`, `due`, `on_silence`, `on`, `about`, `keep`, `label` ([asking](../asking.md)). It does not wait: the result is `raised question <id>: <question>`, and the ask stands after the task ends. Without a `name`, verse names it `run-<nonce>`. | `verse.ask-create`, with `to`, `labels` and `on` |
 | `verse-ask-get` | `verse ask <name\|id>`, `verse_ask_get` | reads one of the person's asks, by `name_or_id`: the name it was asked under or its id. The result is the ask as `verse ask` shows it: its `status` and `answer`, `pending` until it settles (or `why`, where it settled with no answer), what it asked and of whom, its due, and what its `on` ran. | `verse.ask-get` |
 | `verse-ask-list` | `verse ask`, `verse_ask_list` | lists the person's asks, each as `verse ask` lists it: its id, question, who is asked, its due, its `status`, and its `answer`, `pending` until it settles. | `verse.ask-list` |
-| `verse-data-get` | `verse data`, `verse_data` | reads the verse at an address as the person: `at`, `if`, `if_at`, `trim`, and with `paths` the addresses beneath it, `depth` levels deep, one kinded path per line. | `verse.data-get` |
-| `verse-data-put` | `verse data <address> --put`, `verse_data_put` | writes a `value` at an address `at` as the person, merged into what stands there; with `create`, `update` or `expect` only on that condition, with `grants` for a node it creates. The result is what stands there after the write. | `verse.data-put` |
-| `verse-data-rm` | `verse data <address> --rm`, `verse_data_rm` | removes what stands at an address `at` as the person: the data there, or one field of it. | `verse.data-rm` |
+| `verse-data-get` | `verse data`, `verse_data` | reads the verse at an address as the person: `at`, `if`, `if_at`, `trim`, and with `paths` the addresses beneath it, `depth` levels deep, one kinded path per line. | `verse.data-get`, with `path` |
+| `verse-data-put` | `verse data <address> --put`, `verse_data_put` | writes a `value` at an address `at` as the person, merged into what stands there; with `create`, `update` or `expect` only on that condition, with `grants` for a node it creates. The result is what stands there after the write. | `verse.data-put`, with `path` and `value` |
+| `verse-data-rm` | `verse data <address> --rm`, `verse_data_rm` | removes what stands at an address `at` as the person: the data there, or one field of it. | `verse.data-rm`, with `path` |
 | `verse-charter-get` | `verse charter`, `verse_charter` | reads the charter at a `path` as the person: an installed charter as its file, with what the file cannot say (a rule held, suspended or in trouble, the charters under the address) as notes after it; a rule or level of one as it stands; with `paths` one kinded path per rule and level, `depth` levels deep. `at`, `if` and `trim` as `verse charter` takes them. | `verse.charter-get` |
 | `verse-charter-check` | `verse charter --check`, `verse_charter_check` | asks whether `charters`, one tony document apiece, would install at the address `at`: each charter's verdict, and what the install would add, change and take away. Nothing is installed. | `verse.charter-check` |
 | `verse-charter-install` | `verse charter -a`, `verse_charter_install` | installs `charters` as the person: one charter, or a rule, a level or a list of them, at the address `at`; several, each at its own `at:`; with `prune`, what they leave out at and under `at` goes, in the same step. The result says what went where, the rules held, and when a charter with a `ttl:` goes. | `verse.charter-install`, with `at` |
@@ -56,6 +56,21 @@ which says whether it was answered.
 A task reads and writes with the data tools as the person: what they cannot see, the task cannot
 either, and what they may not write is refused in verse's words. What a task does on verse is done in
 baseline, whatever scope the task runs in, and the runner refuses a request that names a scope.
+
+A row decides these steps by what they carry. `verse.ask-create` carries the ask's `to`,
+`labels` and `on` as the ask has them. Each data step carries its address as `path`, which is
+matched at or under the row's pattern, and `verse.data-put` carries the `value` it writes:
+
+```tony
+autonomy:
+- {match: {system: verse, verb: ask-create, on: !not.all.not {then: {ask: null}}}, then: deny}
+- {match: {system: verse, verb: data-put, path: [scratch]}, then: allow}
+- {match: {system: verse, verb: !or [data-put, data-rm]}, then: ask}
+- {then: allow}
+```
+
+The first row refuses a raise with a row that raises a further ask. The second lets writes under
+`scratch` go unasked, and the third asks before every other write or removal.
 
 A task reads the charters with `verse-charter-get`, asks whether its own would install with
 `verse-charter-check`, and installs and removes them with `verse-charter-install` and
