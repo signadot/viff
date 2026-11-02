@@ -902,8 +902,11 @@ func payloadBinding(payload entity.Payload) launch.Binding {
 	// which they were. A payload that is itself a list has no field to start a path from.
 	//
 	// A top-level name that is spelled like a path keeps it: on `{a: {b: nested}, "a.b": flat}`,
-	// `$a.b` is the field called `a.b`, as it was before paths were bound, and the nested `b` is
-	// not addressable in a spawn's strings (payloadPaths says why a name is not two things).
+	// `$a.b` is the field called `a.b`, as it was before paths were bound. Only that one spelling
+	// is skipped, and only here. The nested `b` is still reachable below it (`$a.b.c` on
+	// `{a: {b: {c: deepc}}}` is `deepc`), and under `$subject.value` it is the only one bound,
+	// since there a name holding a dot is not bound at all (payloadPaths): `$subject.value.a.b` is
+	// the nested `b`. Rare enough to leave as it is.
 	for path, v := range payloadPaths(payload) {
 		if _, taken := fields[path]; taken || strings.HasPrefix(path, "[") {
 			continue
@@ -1043,8 +1046,9 @@ func bindingFor(payload entity.Payload, subject entity.Ref, value entity.Payload
 // matched by literal text, so `a.b` as a field name and `a` containing `b` would produce the same
 // key and one would silently win; a name that cannot be addressed unambiguously is better left
 // unaddressable here. Such a field is still reachable as a node (`$subject.value` resolves through
-// kpath, which quotes), and a top-level one is still bound flat by its own name, which a path
-// spelled the same does not take from it (payloadBinding).
+// kpath, which quotes), and a top-level one of the payload a rule reads is still bound flat by
+// its own name, which a path spelled the same does not take from it (payloadBinding). Under
+// `$subject.value` such a name is not bound, so a nested path spelled like it is.
 func payloadPaths(payload entity.Payload) map[string]entity.Payload {
 	out := map[string]entity.Payload{}
 	var walk func(n entity.Payload, prefix string)
