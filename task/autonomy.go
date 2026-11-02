@@ -6,7 +6,6 @@ import (
 	"maps"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -22,6 +21,12 @@ import (
 // gate poses and the answer decides, and `allow` lets it go. The first row that matches a call
 // decides it, and the last row, which names no call, decides every call no row above matched:
 // the task's dial, `ask` when there is no autonomy.
+//
+// AN ADDRESS IS READ TOWARD REFUSING. A call at an address reaches everything under it, so a row
+// that allows matches one whose reach lies within its `path`, and a row that denies or asks one
+// whose reach touches it (Row.reading). With `deny [play, secret]` above `allow [play]`, a read of
+// `play` or `play.*` is denied, and with `allow [scratch]` first, a read of the root is not
+// allowed.
 //
 // THE AUTONOMY DECIDES, AND DOES NOT REACH. What a task may do at all is its environment's
 // (systems.Environment): a step outside it is refused before any row is read, and a row only
@@ -138,26 +143,27 @@ func (p Autonomy) Clone() Autonomy {
 // out are outer's rows a row of p above this one covers whole, since no call of theirs reaches
 // this row, and outer's rows on calls env does not give, since no call of theirs is this task's.
 //
-// Two matches could decide the same call where their systems agree, their verbs share one, and
-// each param they both name has patterns that meet (systems.FieldMeets); one covers the other
+// Two rows could decide the same call where their systems agree, their verbs share one, and
+// each param they both name has patterns that meet (systems.FieldMeetsAs); one covers the other
 // where it names no param the other does not, its verbs hold the other's, and each of its
-// patterns holds the other's (systems.FieldContains). Reading patterns against patterns, not
-// against a call, is what makes this sound for any operator on either side: one the analysis
-// does not read is held to be within another only where the two are the same.
+// patterns holds the other's (systems.FieldContainsAs), each read as its row reads an address.
+// Reading patterns against patterns, not against a call, is what makes this sound for any
+// operator on either side: one the analysis does not read is held to be within another only
+// where the two are the same.
 func (p Autonomy) Within(outer Autonomy, env systems.Environment) error {
 	outer = outer.OrDefault()
 	inner := p.OrDefault()
 	for i, r := range inner {
 		covered := false
 		for _, o := range outer {
-			if !o.Match.meets(r.Match) || decidedAbove(inner[:i], o.Match) || !reaches(env, o.Match) {
+			if !o.meets(r) || decidedAbove(inner[:i], o) || !reaches(env, o.Match) {
 				continue
 			}
 			if modeRank(r.Then.Mode) > modeRank(o.Then.Mode) {
 				return fmt.Errorf("[%d]: `then: %s` on %s, where the autonomy it must lie within says %s on %s",
 					i, r.Then.Mode, r.Match.words(), o.Then.Mode, o.Match.words())
 			}
-			if o.Match.encloses(r.Match) {
+			if o.encloses(r) {
 				covered = true
 				break
 			}
@@ -182,11 +188,11 @@ func modeRank(mode string) int {
 	return 2
 }
 
-// decidedAbove is whether a row among rows covers every call m matches, so none of them reaches a
+// decidedAbove is whether a row among rows covers every call o matches, so none of them reaches a
 // row below.
-func decidedAbove(rows Autonomy, m *Match) bool {
+func decidedAbove(rows Autonomy, o Row) bool {
 	for _, q := range rows {
-		if q.Match.encloses(m) {
+		if q.encloses(o) {
 			return true
 		}
 	}
@@ -201,9 +207,20 @@ func reaches(env systems.Environment, m *Match) bool {
 	return env.Reaches(m.System, m.VerbNames(), m.Params)
 }
 
-// meets is whether some call could be matched by both m and n: their systems and verbs agree
+// reading is how the row reads an address (systems.Reading): within its pattern for a row that
+// allows, touching it for one that denies or asks, so each errs toward refusing. A mode that is
+// none of these is read as allow, as modeRank reads it.
+func (r Row) reading() systems.Reading {
+	if r.Then.Mode == ThenDeny || r.Then.Mode == ThenAsk {
+		return systems.Touches
+	}
+	return systems.Within
+}
+
+// meets is whether some call could be matched by both r and o: their systems and verbs agree
 // where both name one, and each param both name has patterns that meet.
-func (m *Match) meets(n *Match) bool {
+func (r Row) meets(o Row) bool {
+	m, n := r.Match, o.Match
 	if m.Any() || n.Any() {
 		return true
 	}
@@ -215,16 +232,17 @@ func (m *Match) meets(n *Match) bool {
 	}
 	verbs := m.VerbNames()
 	for name, mp := range m.Params {
-		if np, ok := n.Params[name]; ok && !systems.FieldMeets(m.formIn(verbs, name), mp, np) {
+		if np, ok := n.Params[name]; ok && !systems.FieldMeetsAs(m.formIn(verbs, name), r.reading(), mp, o.reading(), np) {
 			return false
 		}
 	}
 	return true
 }
 
-// encloses is whether every call n matches, m matches too: m names no system or param n does not,
-// its verbs hold n's, and each pattern of m's holds n's for the same param.
-func (m *Match) encloses(n *Match) bool {
+// encloses is whether every call o matches, r matches too: r names no system or param o does not,
+// its verbs hold o's, and each pattern of r's holds o's for the same param.
+func (r Row) encloses(o Row) bool {
+	m, n := r.Match, o.Match
 	if m.Any() {
 		return true
 	}
@@ -243,7 +261,7 @@ func (m *Match) encloses(n *Match) bool {
 	verbs := m.VerbNames()
 	for name, mp := range m.Params {
 		np, ok := n.Params[name]
-		if !ok || !systems.FieldContains(m.formIn(verbs, name), mp, np) {
+		if !ok || !systems.FieldContainsAs(m.formIn(verbs, name), r.reading(), mp, o.reading(), np) {
 			return false
 		}
 	}
@@ -348,8 +366,11 @@ func (m *Match) Any() bool {
 	return m == nil || (m.System == "" && m.Verb == "" && m.VerbPattern == nil && len(m.Params) == 0)
 }
 
-// Matches reports whether the row's match covers a call.
-func (m *Match) Matches(s Step) bool {
+// Matches reports whether the row covers a call, reading an address as the row does (reading).
+func (r Row) Matches(s Step) bool { return r.Match.matches(s, r.reading()) }
+
+// matches is whether the match covers a call, an address read as rd.
+func (m *Match) matches(s Step, rd systems.Reading) bool {
 	if m.Any() {
 		return true
 	}
@@ -357,7 +378,7 @@ func (m *Match) Matches(s Step) bool {
 		return false
 	}
 	for name, pattern := range m.Params {
-		if !systems.MatchField(systems.FormOf(s.Name, name), pattern, s.Field(name)) {
+		if !systems.MatchFieldAs(systems.FormOf(s.Name, name), rd, pattern, s.Field(name)) {
 			return false
 		}
 	}
@@ -384,7 +405,7 @@ func (m *Match) covers(step string) bool {
 // as a ceiling's are read.
 func (p Autonomy) Decide(s Step) (Row, int) {
 	for i, r := range p {
-		if r.Match.Matches(s) {
+		if r.Matches(s) {
 			return r, i
 		}
 	}
@@ -752,46 +773,8 @@ func (m *Match) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			out.Params[key.String] = systems.Plain(val)
 		}
 	}
-	// A number under a field that is not one is the digits it was written with: `issue: 7`.
-	verbs := out.VerbNames()
-	for name, p := range out.Params {
-		switch out.formIn(verbs, name) {
-		case systems.FormInt, systems.FormBool, systems.FormDoc:
-		default:
-			digits(p)
-		}
-	}
 	*m = out
 	return nil
-}
-
-// digits rewrites each number in a pattern as the string of its digits.
-func digits(n *ir.Node) {
-	if n == nil {
-		return
-	}
-	if n.Type == ir.NumberType {
-		text := numberText(n)
-		*n = ir.Node{Type: ir.StringType, String: text, Tag: n.Tag, Parent: n.Parent, ParentIndex: n.ParentIndex, ParentField: n.ParentField}
-		return
-	}
-	for _, v := range n.Values {
-		digits(v)
-	}
-}
-
-// numberText is a number as the digits it was written with: an integer the parser read into
-// Int64 and a float into Float64 leave Number empty.
-func numberText(n *ir.Node) string {
-	switch {
-	case n.Number != "":
-		return n.Number
-	case n.Int64 != nil:
-		return strconv.FormatInt(*n.Int64, 10)
-	case n.Float64 != nil:
-		return strconv.FormatFloat(*n.Float64, 'g', -1, 64)
-	}
-	return ""
 }
 
 // ToTonyIR writes `deny`, `ask` or `allow`, or `{ask: {…}}` for an ask with a shape.

@@ -2,7 +2,6 @@ package stock
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"strings"
 
@@ -38,56 +37,17 @@ var (
 
 // verseCharterTools are the verse system's charter tools.
 func verseCharterTools(cl *delivery.Client) []verse.Tool {
-	install := toolOf(verbs.CharterInstall, task.StepVerseCharterInstall, "not installed", func(ctx context.Context, tu task.ToolUse, a verbs.Args) (string, bool, error) {
-		q, defs, err := verbs.CharterInstallOf(a)
-		if err != nil {
-			return "not installed: " + err.Error(), true, nil
-		}
-		body, err := documents(defs)
-		if err != nil {
-			return "not installed: " + err.Error(), true, nil
-		}
-		rep, err := cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpVerseCharterInstall,
-			Query: q.Encode(), Body: body})
-		if err != nil || !rep.OK {
-			return relay(rep, err)
-		}
-		node, err := codec.ParseNode([]byte(rep.Out), codec.Tony)
-		if err != nil {
-			return "", false, fmt.Errorf("the verse's answer does not read: %w", err)
-		}
-		// A task's install is baseline's, as all its acts on verse are (delivery refuses a
-		// scope), so the report names none.
-		var out strings.Builder
-		charterfile.Installed(&out, node, "", true)
-		return strings.TrimSpace(out.String()), false, nil
-	})
-	// The address the install acts at, which an environment's shape bounds; a call that does
-	// not read is no step, and Do says why.
-	install.Fields = func(in map[string]any) (map[string]string, bool) {
-		a, err := verbs.CharterInstall.Read(in)
-		if err != nil {
-			return nil, false
-		}
-		q, defs, err := verbs.CharterInstallOf(a)
-		if err != nil {
-			return nil, false
-		}
-		at, err := charterfile.InstallAt(q, defs)
-		if err != nil {
-			return nil, false
-		}
-		return map[string]string{"at": at}, true
-	}
 	return []verse.Tool{
-		toolOf(verbs.CharterGet, task.StepVerseCharterGet, "not read", func(ctx context.Context, tu task.ToolUse, a verbs.Args) (string, bool, error) {
+		toolOf(cl, verbs.CharterGet, task.StepVerseCharterGet, "not read", func(a verbs.Args) (delivery.Request, error) {
+			r, err := verbs.CharterGetOf(a)
+			if err != nil {
+				return delivery.Request{}, err
+			}
+			return delivery.Request{Op: delivery.OpVerseCharterGet, Query: r.Query.Encode()}, nil
+		}, func(a verbs.Args, rep delivery.Reply) (string, bool, error) {
 			r, err := verbs.CharterGetOf(a)
 			if err != nil {
 				return "not read: " + err.Error(), true, nil
-			}
-			rep, err := cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpVerseCharterGet, Query: r.Query.Encode()})
-			if err != nil || !rep.OK {
-				return relay(rep, err)
 			}
 			node, err := codec.ParseNode([]byte(rep.Out), codec.Tony)
 			if err != nil {
@@ -137,28 +97,51 @@ func verseCharterTools(cl *delivery.Client) []verse.Tool {
 			}
 			return strings.Join(append(parts, notes...), "\n"), false, nil
 		}),
-		toolOf(verbs.CharterCheck, task.StepVerseCharterCheck, "not checked", func(ctx context.Context, tu task.ToolUse, a verbs.Args) (string, bool, error) {
+		toolOf(cl, verbs.CharterCheck, task.StepVerseCharterCheck, "not checked", func(a verbs.Args) (delivery.Request, error) {
 			q, docs, err := verbs.CharterCheckOf(a)
 			if err != nil {
-				return "not checked: " + err.Error(), true, nil
+				return delivery.Request{}, err
 			}
 			body, err := documents(docs)
 			if err != nil {
-				return "not checked: " + err.Error(), true, nil
+				return delivery.Request{}, err
 			}
-			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpVerseCharterCheck,
-				Query: q.Encode(), Body: body}))
+			return delivery.Request{Op: delivery.OpVerseCharterCheck, Query: q.Encode(), Body: body}, nil
+		}, nil),
+		// The install's step is the address it acts at (delivery.StepOf), which an environment's
+		// shape bounds.
+		toolOf(cl, verbs.CharterInstall, task.StepVerseCharterInstall, "not installed", func(a verbs.Args) (delivery.Request, error) {
+			q, defs, err := verbs.CharterInstallOf(a)
+			if err != nil {
+				return delivery.Request{}, err
+			}
+			body, err := documents(defs)
+			if err != nil {
+				return delivery.Request{}, err
+			}
+			return delivery.Request{Op: delivery.OpVerseCharterInstall, Query: q.Encode(), Body: body}, nil
+		}, func(_ verbs.Args, rep delivery.Reply) (string, bool, error) {
+			node, err := codec.ParseNode([]byte(rep.Out), codec.Tony)
+			if err != nil {
+				return "", false, fmt.Errorf("the verse's answer does not read: %w", err)
+			}
+			// A task's install is baseline's, as all its acts on verse are (delivery refuses a
+			// scope), so the report names none.
+			var out strings.Builder
+			charterfile.Installed(&out, node, "", true)
+			return strings.TrimSpace(out.String()), false, nil
 		}),
-		install,
-		toolOf(verbs.CharterRemove, task.StepVerseCharterRemove, "not removed", func(ctx context.Context, tu task.ToolUse, a verbs.Args) (string, bool, error) {
+		toolOf(cl, verbs.CharterRemove, task.StepVerseCharterRemove, "not removed", func(a verbs.Args) (delivery.Request, error) {
+			names, split, err := verbs.CharterRemoveOf(a)
+			if err != nil {
+				return delivery.Request{}, err
+			}
+			q, _ := charterfile.Query(names, split, -1)
+			return delivery.Request{Op: delivery.OpVerseCharterRemove, Query: q.Encode()}, nil
+		}, func(a verbs.Args, _ delivery.Reply) (string, bool, error) {
 			names, split, err := verbs.CharterRemoveOf(a)
 			if err != nil {
 				return "not removed: " + err.Error(), true, nil
-			}
-			q, _ := charterfile.Query(names, split, -1)
-			rep, err := cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpVerseCharterRemove, Query: q.Encode()})
-			if err != nil || !rep.OK {
-				return relay(rep, err)
 			}
 			return charterfile.Removed(names, split, "", false, true), false, nil
 		}),

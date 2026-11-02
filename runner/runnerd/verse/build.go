@@ -178,9 +178,11 @@ type Tool struct {
 	// Step, when the tool is one, is the step each use of it is (git.push), and Fields that
 	// use's fields: what its gates match and what a question about it says. Fields reports false
 	// for a use refused before any gate, which Do then says. A tool with no Step is no step, and
-	// nothing asks before it.
+	// nothing asks before it. Build, where set, is the use's step whole, for a step whose fields
+	// carry structure (an address, an ask's `on`), and Fields is not read.
 	Step   string
 	Fields func(input map[string]any) (map[string]string, bool)
+	Build  func(input map[string]any) (task.Step, bool)
 	// Do performs it once the gate has approved. out is what the model reads and what the read
 	// plane narrates.
 	//
@@ -398,6 +400,9 @@ func stepOf(tu task.ToolUse, extra map[string]Tool) (task.Step, bool) {
 	}
 	if t.Step == "" {
 		return task.Step{}, false
+	}
+	if t.Build != nil {
+		return t.Build(tu.Input)
 	}
 	fields, ok := t.Fields(tu.Input)
 	if !ok {

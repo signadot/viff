@@ -146,7 +146,7 @@ func TestARowMatchesAStep(t *testing.T) {
 		{on("commands", "run", "command", `!regexp "^rm "`), run("rm -rf x\necho done"), true},
 		{on("commands", "run", "command", `!regexp "git push"`), run("cd repo\ngit push origin main"), true},
 	} {
-		if got := tc.m.Matches(tc.s); got != tc.want {
+		if got := (Row{Match: tc.m, Then: Then{Mode: ThenAllow}}).Matches(tc.s); got != tc.want {
 			t.Errorf("%+v on %s = %v, want %v", tc.m, tc.s, got, tc.want)
 		}
 	}
@@ -647,10 +647,10 @@ func TestANumberInAMatchIsItsDigits(t *testing.T) {
 		if got := r.Match.Params["issue"]; systems.Words(got) != "7" {
 			t.Errorf("%s reads the issue as %s", src, systems.Words(got))
 		}
-		if !r.Match.Matches(NewStep(StepGitHubIssueComment, map[string]string{"repo": "x", "issue": "7"})) {
+		if !r.Matches(NewStep(StepGitHubIssueComment, map[string]string{"repo": "x", "issue": "7"})) {
 			t.Errorf("%s does not match issue 7", src)
 		}
-		if r.Match.Matches(NewStep(StepGitHubIssueComment, map[string]string{"repo": "x", "issue": "8"})) {
+		if r.Matches(NewStep(StepGitHubIssueComment, map[string]string{"repo": "x", "issue": "8"})) {
 			t.Errorf("%s matches issue 8", src)
 		}
 	}

@@ -283,6 +283,10 @@ param is a tony match pattern:
 - **`!regexp "^refs/heads/verse/"` is a Go regexp.** It is unanchored unless it says `^` or `$`,
   so `!regexp "git push"` is every command with a push in it.
 - **`!or [a, b]` takes either.** `!and` and `!not` work as they do in tony.
+- **An address is a list of segments,** `[play, secret]` or `play.secret`, each a name, `*` for
+  any one, or a pattern over one. A step at an address reaches everything under it, so a row
+  that allows matches only a step whose whole reach lies under the pattern, and a row that
+  denies or asks matches one that reaches anything under it ([verse](../systems/verse.md)).
 
 The verb can be a pattern too: `verb: !or [fetch, push]`. The last row names no step, and is
 what a call of a named verb gets when no row above matched it. Verse refuses an autonomy that ends with a named step, or that puts a row

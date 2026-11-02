@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/tony-format/go-tony/ir/kpath"
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/charterfile"
 	"github.com/signadot/verse/codec"
@@ -64,16 +65,18 @@ func (s *Server) verseAskCreate(ctx context.Context, tk Task, req Request) Reply
 	if s.Services.Verse == nil {
 		return Reply{Error: noVerse}
 	}
-	if strings.TrimSpace(req.Ask) == "" {
-		return Reply{Refused: "a raise carries the ask"}
+	st, why := StepOf(req)
+	if why != "" {
+		return Reply{Refused: why}
 	}
-	// The question as the task wrote it, which the step is about and verse is given.
+	if why := s.refused(tk, req.Decision, st); why != "" {
+		return Reply{Refused: why}
+	}
+	// The question as the task wrote it, which the step is about and verse is given; StepOf read
+	// it already.
 	var ask api.Ask
 	if err := codec.Unmarshal([]byte(req.Ask), &ask, codec.Tony); err != nil {
 		return Reply{Refused: "the ask does not read: " + err.Error()}
-	}
-	if why := s.refused(tk, req.Decision, askStep(ask)); why != "" {
-		return Reply{Refused: why}
 	}
 	code, said, err := s.Services.Verse(ctx, tk.ID, http.MethodPost, "/asks", []byte(req.Ask))
 	switch {
@@ -91,6 +94,103 @@ func (s *Server) verseAskCreate(ctx context.Context, tk Task, req Request) Reply
 	out := api.AskRaised(asked.ID, ask.Question)
 	fmt.Fprintf(s.Log, "delivery: %s: %s\n", tk.ID, out)
 	return Reply{OK: true, Out: out}
+}
+
+// StepOf is the step a request to verse is, and why it is refused before any row decides it, ""
+// where it is not. The runner decides it (Server's verse verbs), and so does the task before it
+// sends the request (stock's verse tools), so a row decides one step on both sides: the ask a
+// raise carries, the address a data verb names, the address an install acts at.
+func StepOf(req Request) (task.Step, string) {
+	switch req.Op {
+	case OpVerseAskCreate:
+		if strings.TrimSpace(req.Ask) == "" {
+			return task.Step{}, "a raise carries the ask"
+		}
+		var ask api.Ask
+		if err := codec.Unmarshal([]byte(req.Ask), &ask, codec.Tony); err != nil {
+			return task.Step{}, "the ask does not read: " + err.Error()
+		}
+		return askStep(ask), ""
+	case OpVerseAskGet:
+		if strings.TrimSpace(req.Ask) == "" {
+			return task.Step{}, "a read names the ask, by its name or its id"
+		}
+		return task.NewStep(task.StepVerseAskGet, nil), ""
+	case OpVerseAskList:
+		return task.NewStep(task.StepVerseAskList, nil), ""
+	}
+	route, ok := verseRoutes[req.Op]
+	if !ok {
+		return task.Step{}, fmt.Sprintf("%s is no verb of verse's", req.Op)
+	}
+	q, err := url.ParseQuery(req.Query)
+	if err != nil {
+		return task.Step{}, "the query does not read: " + err.Error()
+	}
+	// NO SCOPE: a task's acts on verse are its owner's in baseline, whatever scope the task ran
+	// in, and the tools send none. A query that names one is not the tools', and where it goes
+	// is not the task's to choose.
+	if q.Has("scope") {
+		return task.Step{}, "a task's acts on verse are its owner's in baseline: the query names no scope"
+	}
+	switch {
+	case req.Op == OpVerseDataPut && strings.TrimSpace(req.Body) == "":
+		return task.Step{}, "a write carries what it writes"
+	case req.Op == OpVerseDataRm && q.Get("at") == "":
+		return task.Step{}, "a removal names what it removes"
+	case req.Op == OpVerseCharterCheck && (q.Get("at") == "" || strings.TrimSpace(req.Body) == ""):
+		return task.Step{}, "a check names the address and carries the charters"
+	case req.Op == OpVerseCharterInstall && strings.TrimSpace(req.Body) == "":
+		return task.Step{}, "an install carries the charters"
+	case req.Op == OpVerseCharterRemove && q.Get("at") == "" && q.Get("path") == "":
+		return task.Step{}, "a removal names what it removes"
+	}
+	fields := map[string]string{}
+	// The address a data step names, the root where it names none: what a row's `path` bounds,
+	// a write's or a removal's `sub` (an access below the address, `votes[0]`) on the end of it.
+	// One that does not read is refused here, so no step reaches a row with an address its
+	// pattern cannot see.
+	var addr, value *ir.Node
+	switch req.Op {
+	case OpVerseDataGet:
+		if addr, err = systems.Address(q.Get("at")); err != nil {
+			return task.Step{}, err.Error()
+		}
+	case OpVerseDataRm:
+		if addr, err = systems.Address(kpath.Join(q.Get("at"), q.Get("sub"))); err != nil {
+			return task.Step{}, err.Error()
+		}
+	case OpVerseDataPut:
+		var put api.PutEntity
+		if err := codec.Unmarshal([]byte(req.Body), &put, codec.Tony); err != nil {
+			return task.Step{}, "the write does not read: " + err.Error()
+		}
+		if addr, err = systems.Address(kpath.Join(put.At, put.Sub)); err != nil {
+			return task.Step{}, err.Error()
+		}
+		value = put.Payload
+	}
+	if req.Op == OpVerseCharterInstall {
+		// The address the install acts at, from what it carries, as the tool named it
+		// (charterfile.InstallAt): what the task's environment and the ceiling bound.
+		docs, err := codec.ParseNodes([]byte(req.Body), codec.Tony)
+		if err != nil {
+			return task.Step{}, "the charters do not read: " + err.Error()
+		}
+		at, err := charterfile.InstallAt(q, docs)
+		if err != nil {
+			return task.Step{}, err.Error()
+		}
+		fields["at"] = at
+	}
+	st := task.NewStep(route.step, fields)
+	if addr != nil {
+		st = st.With("path", addr)
+	}
+	if value != nil {
+		st = st.With("value", value)
+	}
+	return st, ""
 }
 
 // askStep is the raise of ask as a row reads it: whom it is put to, its labels, and the rows of
@@ -124,10 +224,10 @@ func (s *Server) verseAskGet(ctx context.Context, tk Task, req Request) Reply {
 	if s.Services.Verse == nil {
 		return Reply{Error: noVerse}
 	}
-	arg := strings.TrimSpace(req.Ask)
-	if arg == "" {
-		return Reply{Refused: "a read names the ask, by its name or its id"}
+	if _, why := StepOf(req); why != "" {
+		return Reply{Refused: why}
 	}
+	arg := strings.TrimSpace(req.Ask)
 	asks, rep := s.ownersAsks(ctx, tk, req, task.StepVerseAskGet, api.AskQuery(arg))
 	if asks == nil {
 		return rep
@@ -225,68 +325,11 @@ func (s *Server) verseRouted(ctx context.Context, tk Task, req Request) Reply {
 		return Reply{Error: noVerse}
 	}
 	route := verseRoutes[req.Op]
-	q, err := url.ParseQuery(req.Query)
-	if err != nil {
-		return Reply{Refused: "the query does not read: " + err.Error()}
+	st, why := StepOf(req)
+	if why != "" {
+		return Reply{Refused: why}
 	}
-	// NO SCOPE: a task's acts on verse are its owner's in baseline, whatever scope the task ran
-	// in, and the tools send none. A query that names one is not the tools', and where it goes
-	// is not the task's to choose.
-	if q.Has("scope") {
-		return Reply{Refused: "a task's acts on verse are its owner's in baseline: the query names no scope"}
-	}
-	switch {
-	case req.Op == OpVerseDataPut && strings.TrimSpace(req.Body) == "":
-		return Reply{Refused: "a write carries what it writes"}
-	case req.Op == OpVerseDataRm && q.Get("at") == "":
-		return Reply{Refused: "a removal names what it removes"}
-	case req.Op == OpVerseCharterCheck && (q.Get("at") == "" || strings.TrimSpace(req.Body) == ""):
-		return Reply{Refused: "a check names the address and carries the charters"}
-	case req.Op == OpVerseCharterInstall && strings.TrimSpace(req.Body) == "":
-		return Reply{Refused: "an install carries the charters"}
-	case req.Op == OpVerseCharterRemove && q.Get("at") == "" && q.Get("path") == "":
-		return Reply{Refused: "a removal names what it removes"}
-	}
-	fields := map[string]string{}
-	// The address a data step names, the root where it names none: what a row's `path` bounds.
-	// One that does not read is refused here, so no step reaches a row with an address its
-	// pattern cannot see.
-	var addr, value *ir.Node
-	switch req.Op {
-	case OpVerseDataGet, OpVerseDataRm:
-		if addr, err = systems.Address(q.Get("at")); err != nil {
-			return Reply{Refused: err.Error()}
-		}
-	case OpVerseDataPut:
-		var put api.PutEntity
-		if err := codec.Unmarshal([]byte(req.Body), &put, codec.Tony); err != nil {
-			return Reply{Refused: "the write does not read: " + err.Error()}
-		}
-		if addr, err = systems.Address(put.At); err != nil {
-			return Reply{Refused: err.Error()}
-		}
-		value = put.Payload
-	}
-	if req.Op == OpVerseCharterInstall {
-		// The address the install acts at, from what it carries, as the tool named it
-		// (charterfile.InstallAt): what the task's environment and the ceiling bound.
-		docs, err := codec.ParseNodes([]byte(req.Body), codec.Tony)
-		if err != nil {
-			return Reply{Refused: "the charters do not read: " + err.Error()}
-		}
-		at, err := charterfile.InstallAt(q, docs)
-		if err != nil {
-			return Reply{Refused: err.Error()}
-		}
-		fields["at"] = at
-	}
-	st := task.NewStep(route.step, fields)
-	if addr != nil {
-		st = st.With("path", addr)
-	}
-	if value != nil {
-		st = st.With("value", value)
-	}
+	q, _ := url.ParseQuery(req.Query) // StepOf read it
 	if why := s.refused(tk, req.Decision, st); why != "" {
 		return Reply{Refused: why}
 	}

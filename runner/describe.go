@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -353,11 +352,22 @@ func (s Setting) Takes(v string) error {
 // characters, `/` among them, and anything else itself.
 func settingMatch(pattern, v string) bool {
 	parts := strings.Split(pattern, "*")
-	for i, p := range parts {
-		parts[i] = regexp.QuoteMeta(p)
+	if len(parts) == 1 {
+		return v == pattern
 	}
-	ok, _ := regexp.MatchString("(?s)^"+strings.Join(parts, ".*")+"$", v)
-	return ok
+	first, last := parts[0], parts[len(parts)-1]
+	if len(v) < len(first)+len(last) || !strings.HasPrefix(v, first) || !strings.HasSuffix(v, last) {
+		return false
+	}
+	v = v[len(first) : len(v)-len(last)]
+	for _, p := range parts[1 : len(parts)-1] {
+		i := strings.Index(v, p)
+		if i < 0 {
+			return false
+		}
+		v = v[i+len(p):]
+	}
+	return true
 }
 
 // System is one system an offer holds: what the runner builds of it, and the ceiling over it.

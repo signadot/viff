@@ -35,44 +35,70 @@ var askListTool = systems.Tool("verse", verbs.AskList.Name)
 // its own.
 func verseTools(cl *delivery.Client) []verse.Tool {
 	return []verse.Tool{
-		toolOf(verbs.AskCreate, task.StepVerseAskCreate, "not raised", func(ctx context.Context, tu task.ToolUse, a verbs.Args) (string, bool, error) {
+		toolOf(cl, verbs.AskCreate, task.StepVerseAskCreate, "not raised", func(a verbs.Args) (delivery.Request, error) {
 			ask, err := verbs.AskOf(a, time.Now())
 			if err != nil {
-				return "not raised: " + err.Error(), true, nil
+				return delivery.Request{}, err
 			}
 			doc, err := codec.Marshal(ask, codec.Tony)
 			if err != nil {
-				return "not raised: " + err.Error(), true, nil
+				return delivery.Request{}, err
 			}
-			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpVerseAskCreate, Ask: string(doc)}))
-		}),
-		toolOf(verbs.AskGet, task.StepVerseAskGet, "not read", func(ctx context.Context, tu task.ToolUse, a verbs.Args) (string, bool, error) {
-			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpVerseAskGet, Ask: a.Word("name_or_id")}))
-		}),
-		toolOf(verbs.AskList, task.StepVerseAskList, "not read", func(ctx context.Context, tu task.ToolUse, a verbs.Args) (string, bool, error) {
-			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpVerseAskList}))
-		}),
+			return delivery.Request{Op: delivery.OpVerseAskCreate, Ask: string(doc)}, nil
+		}, nil),
+		toolOf(cl, verbs.AskGet, task.StepVerseAskGet, "not read", func(a verbs.Args) (delivery.Request, error) {
+			return delivery.Request{Op: delivery.OpVerseAskGet, Ask: a.Word("name_or_id")}, nil
+		}, nil),
+		toolOf(cl, verbs.AskList, task.StepVerseAskList, "not read", func(verbs.Args) (delivery.Request, error) {
+			return delivery.Request{Op: delivery.OpVerseAskList}, nil
+		}, nil),
 	}
 }
 
 // toolOf is a verb of the verse system as a task is offered it: its name, description and
 // parameters from the definition verse mcp's tool is built from too, and step, what each use is.
-// A call verbs.Read refuses is refused, its words after not; do is given the rest. A use has no
-// fields unless the tool says them (withFields).
-func toolOf(v *verbs.Verb, step, not string, do func(context.Context, task.ToolUse, verbs.Args) (string, bool, error)) verse.Tool {
+// request is the request to verse a use is, from the call verbs.Read reads, and answer what the
+// tool says of verse's reply where it is not the reply itself. A call verbs.Read or request
+// refuses is refused, its words after not.
+//
+// THE TASK DECIDES THE STEP THE RUNNER WILL: each use's step is the one delivery.StepOf makes of
+// its request, as the runner makes it when the request arrives, so a row on an address or an
+// ask's `on` decides the same step on both sides.
+func toolOf(cl *delivery.Client, v *verbs.Verb, step, not string, request func(verbs.Args) (delivery.Request, error),
+	answer func(verbs.Args, delivery.Reply) (string, bool, error)) verse.Tool {
+	read := func(in map[string]any) (verbs.Args, delivery.Request, error) {
+		a, err := v.Read(in)
+		if err != nil {
+			return verbs.Args{}, delivery.Request{}, err
+		}
+		req, err := request(a)
+		return a, req, err
+	}
 	return verse.Tool{
 		Name:        systems.Tool("verse", v.Name),
 		Description: v.Description(verbs.Task),
 		Params:      v.Properties(verbs.Task),
 		Required:    v.Required(),
 		Step:        step,
-		Fields:      func(map[string]any) (map[string]string, bool) { return map[string]string{}, true },
+		Build: func(in map[string]any) (task.Step, bool) {
+			_, req, err := read(in)
+			if err != nil {
+				return task.Step{}, false
+			}
+			st, why := delivery.StepOf(req)
+			return st, why == ""
+		},
 		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
-			a, err := v.Read(tu.Input)
+			a, req, err := read(tu.Input)
 			if err != nil {
 				return not + ": " + err.Error(), true, nil
 			}
-			return do(ctx, tu, a)
+			req.Decision = tu.Decision
+			rep, err := cl.Ask(req)
+			if err != nil || !rep.OK || answer == nil {
+				return relay(rep, err)
+			}
+			return answer(a, rep)
 		},
 	}
 }

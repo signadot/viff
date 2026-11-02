@@ -1,8 +1,8 @@
 package stock
 
 import (
-	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	tony "github.com/signadot/tony-format/go-tony"
@@ -36,14 +36,16 @@ var (
 // verseDataTools are the verse system's data tools.
 func verseDataTools(cl *delivery.Client) []verse.Tool {
 	return []verse.Tool{
-		toolOf(verbs.DataGet, task.StepVerseDataGet, "not read", func(ctx context.Context, tu task.ToolUse, a verbs.Args) (string, bool, error) {
+		toolOf(cl, verbs.DataGet, task.StepVerseDataGet, "not read", func(a verbs.Args) (delivery.Request, error) {
+			r, err := verbs.DataGetOf(a)
+			if err != nil {
+				return delivery.Request{}, err
+			}
+			return delivery.Request{Op: delivery.OpVerseDataGet, Query: r.Query.Encode()}, nil
+		}, func(a verbs.Args, rep delivery.Reply) (string, bool, error) {
 			r, err := verbs.DataGetOf(a)
 			if err != nil {
 				return "not read: " + err.Error(), true, nil
-			}
-			rep, err := cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpVerseDataGet, Query: r.Query.Encode()})
-			if err != nil || !rep.OK {
-				return relay(rep, err)
 			}
 			node, err := codec.ParseNode([]byte(rep.Out), codec.Tony)
 			if err != nil {
@@ -66,33 +68,41 @@ func verseDataTools(cl *delivery.Client) []verse.Tool {
 			}
 			return tonyText(node)
 		}),
-		toolOf(verbs.DataPut, task.StepVerseDataPut, "not written", func(ctx context.Context, tu task.ToolUse, a verbs.Args) (string, bool, error) {
+		toolOf(cl, verbs.DataPut, task.StepVerseDataPut, "not written", func(a verbs.Args) (delivery.Request, error) {
 			body, err := verbs.DataPutOf(a)
 			if err != nil {
-				return "not written: " + err.Error(), true, nil
+				return delivery.Request{}, err
 			}
 			doc, err := codec.Marshal(body, codec.Tony)
 			if err != nil {
-				return "not written: " + err.Error(), true, nil
+				return delivery.Request{}, err
 			}
-			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpVerseDataPut, Body: string(doc)}))
-		}),
-		toolOf(verbs.DataRm, task.StepVerseDataRm, "not removed", func(ctx context.Context, tu task.ToolUse, a verbs.Args) (string, bool, error) {
-			segs, err := verbs.Address(a, "at")
+			return delivery.Request{Op: delivery.OpVerseDataPut, Body: string(doc)}, nil
+		}, nil),
+		toolOf(cl, verbs.DataRm, task.StepVerseDataRm, "not removed", func(a verbs.Args) (delivery.Request, error) {
+			q, _, err := removal(a)
+			if err != nil {
+				return delivery.Request{}, err
+			}
+			return delivery.Request{Op: delivery.OpVerseDataRm, Query: q.Encode()}, nil
+		}, func(a verbs.Args, _ delivery.Reply) (string, bool, error) {
+			_, at, err := removal(a)
 			if err != nil {
 				return "not removed: " + err.Error(), true, nil
-			}
-			q, at, err := api.RemoveQuery(segs)
-			if err != nil {
-				return "not removed: " + err.Error(), true, nil
-			}
-			rep, err := cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpVerseDataRm, Query: q.Encode()})
-			if err != nil || !rep.OK {
-				return relay(rep, err)
 			}
 			return api.RemovedLine(at), false, nil
 		}),
 	}
+}
+
+// removal is the removal a data-rm call makes, as `verse data --rm` makes it (api.RemoveQuery),
+// and the place it names.
+func removal(a verbs.Args) (url.Values, entity.Path, error) {
+	segs, err := verbs.Address(a, "at")
+	if err != nil {
+		return nil, entity.Path{}, err
+	}
+	return api.RemoveQuery(segs)
 }
 
 // tonyText is a document as a tool answers it: tony, without a trailing newline.

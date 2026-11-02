@@ -579,17 +579,20 @@ func (c Config) checkBuilds(networks []string) error {
 			if !ok {
 				continue
 			}
-			named, literal := systems.Literals(mode)
-			if !literal && !slices.ContainsFunc(networks, func(n string) bool { return systems.MatchField("", mode, ir.FromString(n)) }) {
-				named = []string{systems.Words(mode)}
+			if systems.FieldContains("", systems.OneOf(networks...), mode) {
+				continue
 			}
-			for _, v := range named {
-				if literal && slices.Contains(networks, v) {
-					continue
+			what := systems.Words(mode) + " names a network that is not one"
+			if named, literal := systems.Literals(mode); literal {
+				for _, v := range named {
+					if !slices.Contains(networks, v) {
+						what = v + " is no network"
+						break
+					}
 				}
-				return fmt.Errorf("%s.systems.network.ceiling[%d].mode: %s is no network this runner's sandbox builds (it builds: %s)",
-					sectionOf(doer), i, v, strings.Join(networks, ", "))
 			}
+			return fmt.Errorf("%s.systems.network.ceiling[%d].mode: %s this runner's sandbox builds (it builds: %s)",
+				sectionOf(doer), i, what, strings.Join(networks, ", "))
 		}
 	}
 	return nil

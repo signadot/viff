@@ -645,9 +645,6 @@ func fingerprint(body string) string {
 	return hex.EncodeToString(sum[:8])
 }
 
-// thenWords is what an ask's `then` runs, in words for a message: the prompt a model works from or
-// the script that runs, another ask it answers, or one it raises. Empty for an ask that runs
-// nothing.
 // onWords is what each row of an ask's `on` runs, in words, in its order: the answers it matches
 // and what runs as the asker, or that nothing does, since such a row stops the rows after it.
 func onWords(on *ir.Node) []string {

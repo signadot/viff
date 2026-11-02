@@ -14,16 +14,16 @@ verbs:
 - name: data-get
   description: "Read the verse at an address as the person the task runs for, as `verse data` and verse_data do: the document stored there, or with paths the addresses beneath it, chosen by an if pattern and trimmed to what a trim names."
   fields:
-  - {name: path, form: path, description: "the address read, at or under its pattern: `[scratch]` is every address under scratch"}
+  - {name: path, form: path, description: "the address read, and everything under it: a row that allows holds all of it within its pattern, and one that denies or asks matches where it touches any of it. `[scratch]` is every address under scratch"}
 - name: data-put
   description: "Write a value at an address as the person the task runs for, as `verse data <address> --put` and verse_data_put do: merged into what stands there, on create, update or expect only on that condition, with grants for a node it creates. Answers what stands there after the write."
   fields:
-  - {name: path, form: path, description: "the address written, at or under its pattern: `[scratch]` is every address under scratch"}
+  - {name: path, form: path, description: "the address written, and everything under it: a row that allows holds all of it within its pattern, and one that denies or asks matches where it touches any of it. `[scratch]` is every address under scratch"}
   - {name: value, form: doc, description: "what is written there, as the write carries it"}
 - name: data-rm
   description: "Remove what stands at an address as the person the task runs for, an entity or one field of one, as `verse data <address> --rm` and verse_data_rm do."
   fields:
-  - {name: path, form: path, description: "the address removed, at or under its pattern: `[scratch]` is every address under scratch"}
+  - {name: path, form: path, description: "the address removed, and everything under it: a row that allows holds all of it within its pattern, and one that denies or asks matches where it touches any of it. `[scratch]` is every address under scratch"}
 - name: charter-get
   description: "Read the charter at a path as the person the task runs for would, as `verse charter` and verse_charter do: an installed charter as its file, with notes saying what the file cannot (a rule held, suspended or in trouble, and the charters under it), a rule or level as it stands, or with paths one kinded path per rule and level."
 - name: charter-check

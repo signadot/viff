@@ -114,7 +114,7 @@ const (
 // pattern it was meant as. An operator is checked as tony reads it, and where it is one that
 // matches text, against the form's spelling.
 func (f Field) Accepts(pattern *ir.Node) error {
-	pattern = ir.Uncomment(pattern)
+	pattern = spelled(f.Form, ir.Uncomment(pattern))
 	if isAny(pattern) {
 		return nil
 	}

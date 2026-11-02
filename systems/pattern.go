@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp/syntax"
 	"slices"
+	"strconv"
 	"strings"
 
 	tony "github.com/signadot/tony-format/go-tony"
@@ -21,10 +22,12 @@ import (
 // systems name no operator of their own. `!glob` is Go's path.Match, whose `*` stops at a `/`;
 // `!regexp` is Go's regexp, anchored where it says so.
 //
-// ONE FIELD READS OTHERWISE: one of the form path, an address, is at or under its pattern, as a
-// charter's `path:` reads one. The pattern is a list of segments, or an address spelled as a
-// kinded path (`play.issues.*`), and each segment is a name, `*` for any one, or an operator over
-// one segment.
+// ONE FIELD READS OTHERWISE: one of the form path, an address. A step at an address reaches it
+// and everything under it, so it is read against a pattern one of two ways (Reading): what it
+// reaches lies Within the addresses the pattern names, or Touches them. The pattern is a list of
+// segments, or an address spelled as a kinded path (`play.issues.*`), and each segment is a name,
+// `*` for any one, or an operator over one segment. In a step's address, `*` is any one child and
+// `..` any depth.
 //
 // A check that holds one pattern within another (a row within an outer autonomy, a shape within
 // a ceiling) reads patterns against patterns, never against a value: FieldContains answers yes
@@ -33,9 +36,30 @@ import (
 // operator they do not model is still a pattern a row may write: it is held within another only
 // where the two are the same.
 
-// MatchField is whether a step's value of a field of form meets pattern. An absent value meets
-// nothing, `null` included, as tony's object match has it.
+// MatchField is whether a step's value of a field of form meets pattern, an address read Within.
+// An absent value meets nothing, `null` included, as tony's object match has it.
 func MatchField(form string, pattern, value *ir.Node) bool {
+	return MatchFieldAs(form, Within, pattern, value)
+}
+
+// Reading is how a step's address (the form path) is read against a pattern: what the step
+// reaches lies Within the addresses the pattern names, or Touches them. A value of any other form
+// reaches itself alone, so it reads the same either way.
+type Reading int
+
+const (
+	Within Reading = iota
+	Touches
+)
+
+// opposite is the other reading: what a step reaches lies within everything a pattern does not
+// name exactly where it does not touch what the pattern names, so `!not` turns one into the other.
+func (r Reading) opposite() Reading { return 1 - r }
+
+// MatchFieldAs is MatchField, an address read as r says. Within errs toward no and Touches toward
+// yes: a step's reach split across two branches of an `!or` lies within neither, and one touching
+// each branch of an `!and` touches it.
+func MatchFieldAs(form string, r Reading, pattern, value *ir.Node) bool {
 	pattern, value = ir.Uncomment(pattern), ir.Uncomment(value)
 	if value == nil {
 		return false
@@ -46,17 +70,17 @@ func MatchField(form string, pattern, value *ir.Node) bool {
 	if op, branches := combinator(pattern); op != "" {
 		switch op {
 		case "or":
-			return slices.ContainsFunc(branches, func(b *ir.Node) bool { return MatchField(form, b, value) })
+			return slices.ContainsFunc(branches, func(b *ir.Node) bool { return MatchFieldAs(form, r, b, value) })
 		case "and":
-			return !slices.ContainsFunc(branches, func(b *ir.Node) bool { return !MatchField(form, b, value) })
+			return !slices.ContainsFunc(branches, func(b *ir.Node) bool { return !MatchFieldAs(form, r, b, value) })
 		case "not":
-			return !MatchField(form, branches[0], value)
+			return !MatchFieldAs(form, r.opposite(), branches[0], value)
 		}
 	}
-	if form == FormPath {
-		return pathMatch(pattern, value)
+	if pattern = canon(form, pattern); form == FormPath {
+		return pathMatch(r, pattern, value)
 	}
-	ok, err := safeMatch(value, canon(form, pattern))
+	ok, err := safeMatch(value, pattern)
 	return err == nil && ok
 }
 
@@ -112,6 +136,26 @@ func FieldContains(form string, outer, inner *ir.Node) bool {
 		return true
 	}
 	return outer.DeepEqual(inner)
+}
+
+// FieldContainsAs is FieldContains for patterns read as ro and ri (Reading). Only an address reads
+// two ways. Read alike, or outer Touches what inner reads Within, outer holds inner where it names
+// every address inner does; outer Within holds inner Touches only where it names every address,
+// since a step at the root touches whatever names any.
+func FieldContainsAs(form string, ro Reading, outer *ir.Node, ri Reading, inner *ir.Node) bool {
+	if form == FormPath && ro == Within && ri == Touches {
+		return FieldContains(form, outer, ir.FromSlice([]*ir.Node{}))
+	}
+	return FieldContains(form, outer, inner)
+}
+
+// FieldMeetsAs is FieldMeets for patterns read as ra and rb (Reading). Two addresses both read
+// Touches always meet: a step at the root touches both.
+func FieldMeetsAs(form string, ra Reading, a *ir.Node, rb Reading, b *ir.Node) bool {
+	if form == FormPath && ra == Touches && rb == Touches {
+		return true
+	}
+	return FieldMeets(form, a, b)
 }
 
 // FieldMeets is whether some value could match both patterns. It answers no only where none
@@ -209,16 +253,64 @@ func safeMatch(value, pattern *ir.Node) (ok bool, err error) {
 	return tony.Match(value, pattern)
 }
 
-// canon is a pattern as its form spells values once: a repository's literal or glob in its
-// canonical spelling (Canonical), so `acme/*` is `github.com/acme/*`. A regexp is read as
-// written, against the canonical spelling. Other forms are as written.
+// canon is a pattern as its form spells values once (spelled), a repository's literal or glob in
+// its canonical spelling (Canonical) too, so `acme/*` is `github.com/acme/*`. A regexp is read as
+// written, against the canonical spelling. n is not changed.
 func canon(form string, n *ir.Node) *ir.Node {
+	n = spelled(form, n)
 	if form != FormRepo || n == nil || !canonRepo(n, false) {
 		return n
 	}
 	out := n.Clone()
 	canonRepo(out, true)
 	return out
+}
+
+// spelled is a pattern with each number under a field that is no number, boolean or document
+// read as the digits it was written with: `issue: 7` is the issue "7". n is not changed.
+func spelled(form string, n *ir.Node) *ir.Node {
+	if form == FormInt || form == FormBool || form == FormDoc || !hasNumber(n) {
+		return n
+	}
+	out := n.Clone()
+	digits(out)
+	return out
+}
+
+// hasNumber is whether a pattern holds a number, at any depth of its lists.
+func hasNumber(n *ir.Node) bool {
+	n = ir.Uncomment(n)
+	return n != nil && (n.Type == ir.NumberType || slices.ContainsFunc(n.Values, hasNumber))
+}
+
+// digits rewrites each number in a pattern as the string of its digits, in place.
+func digits(n *ir.Node) {
+	n = ir.Uncomment(n)
+	if n == nil {
+		return
+	}
+	if n.Type == ir.NumberType {
+		text := numberText(n)
+		*n = ir.Node{Type: ir.StringType, String: text, Tag: n.Tag, Parent: n.Parent, ParentIndex: n.ParentIndex, ParentField: n.ParentField}
+		return
+	}
+	for _, v := range n.Values {
+		digits(v)
+	}
+}
+
+// numberText is a number as the digits it was written with: an integer the parser read into
+// Int64 and a float into Float64 leave Number empty.
+func numberText(n *ir.Node) string {
+	switch {
+	case n.Number != "":
+		return n.Number
+	case n.Int64 != nil:
+		return strconv.FormatInt(*n.Int64, 10)
+	case n.Float64 != nil:
+		return strconv.FormatFloat(*n.Float64, 'g', -1, 64)
+	}
+	return ""
 }
 
 // canonRepo is whether a pattern names some repository other than canonically: an untagged
@@ -519,9 +611,9 @@ func pathPattern(n *ir.Node) ([]*ir.Node, error) {
 }
 
 // Address is a kinded path as a step carries it in a field of the form path: its segments in
-// order, a name as itself and any other segment (`(b)`, `[0]`) as its own text, so every address
-// verse reads is one a row's pattern sees, and lies under the names above it. The root, "", is
-// no segments. A path that does not read is an error, for the runner to refuse the step on.
+// order, a name as itself and any other segment (`(b)`, `[0]`, a wildcard, `..`) as its own text,
+// so every address verse reads is one a row's pattern sees, and lies under the names above it.
+// The root, "", is no segments. A path that does not read is an error, for the runner to refuse the step on.
 func Address(s string) (*ir.Node, error) {
 	if s == "" {
 		return ir.FromSlice([]*ir.Node{}), nil
@@ -535,8 +627,6 @@ func Address(s string) (*ir.Node, error) {
 		switch {
 		case p.Field != nil:
 			segs = append(segs, ir.FromString(*p.Field))
-		case p.FieldAll:
-			segs = append(segs, ir.FromString("*"))
 		default:
 			one := *p
 			one.Next = nil
@@ -573,6 +663,10 @@ func segMatch(want *ir.Node, seg string) bool {
 	return err == nil && ok
 }
 
+// wild is whether a segment of a step's address is a wildcard, any one child: `*`, `[*]`, `(*)`,
+// `{*}`.
+func wild(seg string) bool { return seg == "*" || seg == "[*]" || seg == "(*)" || seg == "{*}" }
+
 // segLiteral is a segment's name, where it names one.
 func segLiteral(s *ir.Node) (string, bool) {
 	if s.Tag != "" || s.String == "*" {
@@ -581,14 +675,25 @@ func segLiteral(s *ir.Node) (string, bool) {
 	return s.String, true
 }
 
-func pathMatch(pattern, value *ir.Node) bool {
+// pathMatch is whether what an address reaches lies within what a path pattern names, or touches
+// it, as r says. The address reaches itself and everything under it, its `*` any one child and its
+// `..` any depth. It lies within where it is at or under the pattern, each of its segments one the
+// pattern's admits, and touches where, as far as the shorter goes, each of its could be one.
+func pathMatch(r Reading, pattern, value *ir.Node) bool {
 	segs, err := pathPattern(pattern)
 	names, ok := pathValue(value)
-	if err != nil || !ok || len(names) < len(segs) {
+	if err != nil || !ok {
 		return false
 	}
 	for i, s := range segs {
-		if !segMatch(s, names[i]) {
+		switch {
+		case i == len(names) || names[i] == "..":
+			return r == Touches
+		case wild(names[i]):
+			if r == Within && (s.Tag != "" || s.String != "*") {
+				return false
+			}
+		case !segMatch(s, names[i]):
 			return false
 		}
 	}
@@ -650,11 +755,13 @@ func pathMeets(a, b *ir.Node) bool {
 // ── words ───────────────────────────────────────────────────────────────────────────────────
 
 // PathText is an address a step carries in its one spelling: its names joined by `.`, and a
-// segment that is no name (`(b)`, `[0]`) after the one before it, as a kinded path writes it.
+// segment that is no name (`(b)`, `[0]`) after the one before it, as a kinded path writes it, a
+// descent (`..`) among them.
 func PathText(names []string) string {
 	var b strings.Builder
 	for i, n := range names {
-		if i > 0 && !strings.HasPrefix(n, "(") && !strings.HasPrefix(n, "[") && !strings.HasPrefix(n, "{") {
+		joined := i == 0 || n == ".." || names[i-1] == ".." || strings.HasPrefix(n, "(") || strings.HasPrefix(n, "[") || strings.HasPrefix(n, "{")
+		if !joined {
 			b.WriteByte('.')
 		}
 		b.WriteString(n)
@@ -715,6 +822,9 @@ func Binds(n *ir.Node) bool {
 	n = ir.Uncomment(n)
 	if n == nil {
 		return false
+	}
+	if op, branches := combinator(n); op != "" {
+		return slices.ContainsFunc(branches, Binds)
 	}
 	if n.Type == ir.StringType {
 		op, _ := operand(n)

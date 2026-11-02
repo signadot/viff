@@ -58,8 +58,8 @@ either, and what they may not write is refused in verse's words. What a task doe
 baseline, whatever scope the task runs in, and the runner refuses a request that names a scope.
 
 A row decides these steps by what they carry. `verse.ask-create` carries the ask's `to`,
-`labels` and `on` as the ask has them. Each data step carries its address as `path`, which is
-matched at or under the row's pattern, and `verse.data-put` carries the `value` it writes:
+`labels` and `on` as the ask has them. Each data step carries its address as `path`, and
+`verse.data-put` carries the `value` it writes:
 
 ```tony
 autonomy:
@@ -72,14 +72,16 @@ autonomy:
 The first row refuses a raise with a row that raises a further ask. The second lets writes under
 `scratch` go unasked, and the third asks before every other write or removal.
 
-A row on `path` bounds the address the step names, and nothing more. A read of an address
-returns everything under it, so a read of the root returns all of verse, and a write at an
-address can change what lies under it. A row that denies `[secrets]` therefore does not stop a
-read of the root. To keep a task within part of verse, allow where it may go and let the last
-row refuse or ask about the rest, as the rows above do for writes:
+A step at an address reaches everything under it: a read of `play` returns `play.secret`, a
+read of the root returns all of verse, and a write at an address can change what lies under it.
+In the step's address, `*` is any one child and `..` any depth. So a row reads `path` toward
+refusing: a row that allows matches a step whose whole reach lies under its pattern, and a row
+that denies or asks matches a step that reaches anything under it. With these rows, a read of
+`play.notes` is allowed, and a read of `play.secret.x`, `play`, `play.*` or the root is denied:
 
 ```tony
-- {match: {system: verse, verb: data-get, path: [scratch]}, then: allow}
+- {match: {system: verse, verb: data-get, path: [play, secret]}, then: deny}
+- {match: {system: verse, verb: data-get, path: [play]}, then: allow}
 - {match: {system: verse, verb: data-get}, then: deny}
 ```
 

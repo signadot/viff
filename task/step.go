@@ -39,7 +39,7 @@ func (s Step) With(name string, v *ir.Node) Step {
 	if f := ir.Uncomment(s.Fields); f != nil && f.Type == ir.ObjectType {
 		for i, k := range f.Fields {
 			if k.String != name {
-				kvs = append(kvs, ir.KeyVal{Key: ir.FromString(k.String), Val: f.Values[i]})
+				kvs = append(kvs, ir.KeyVal{Key: ir.FromString(k.String), Val: systems.Plain(f.Values[i])})
 			}
 		}
 	}
