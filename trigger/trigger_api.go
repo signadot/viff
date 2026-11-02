@@ -896,6 +896,14 @@ func payloadBinding(payload entity.Payload) launch.Binding {
 			b[k] = text
 		}
 	}
+	// AND EVERY PATH UNDER A FIELD, as under `$subject.value`: `$data.severity` on a payload
+	// `{data: {severity: high}}` is `high`, as a patch resolves it at any depth. Bound flat only,
+	// it was refused as not present, which it was.
+	for path, v := range payloadPaths(payload) {
+		if text, ok := bindText(v); ok {
+			b[path] = text
+		}
+	}
 	return b
 }
 
@@ -950,6 +958,14 @@ func bindText(n entity.Payload) (string, bool) {
 // $subject; a producer that means the flow publishes `flow`, which is read as $flow.)
 func bindingFor(payload entity.Payload, subject entity.Ref, value entity.Payload) launch.Binding {
 	b := payloadBinding(payload)
+	// A payload field called `subject`, and every path under it, is shadowed whole: a
+	// `subject.value` from the payload must not stand in for the subject's value where that is
+	// left unbound.
+	for k := range b {
+		if k == refSubject || strings.HasPrefix(k, refSubject+".") {
+			delete(b, k)
+		}
+	}
 	b[refSubject] = subject.String()
 	// The parts, spelled as dotted keys, because a spawn's strings are NOT expanded by the
 	// reference machinery — launch.Bind is a flat ReplaceAll over this map. Without them
@@ -991,7 +1007,7 @@ func bindingFor(payload entity.Payload, subject entity.Ref, value entity.Payload
 }
 
 // payloadPaths is every node under an object payload, keyed by its dotted path — the spelling a
-// charter writes after `$subject.value.`.
+// charter writes after `$subject.value.`, or after `$` for the payload a rule reads.
 //
 // A SEGMENT HOLDING A DOT IS SKIPPED, itself and everything under it. This map is matched by
 // literal text, so `a.b` as a field name and `a` containing `b` would produce the same key and
