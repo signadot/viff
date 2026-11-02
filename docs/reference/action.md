@@ -453,8 +453,42 @@ earlier. A charter whose task does not write its own subject gets the reading it
 A task that the charter did not start has no such commit. There `.value` and `.commit` fail by
 name. They do not resolve to a silent zero.
 
-In the strings of a spawn, the parts of the identity bind flatly. `.value` does not bind there,
-because a payload has no text form and its top-level fields are already bound by name.
+**In the strings of a spawn**, its prompt, its agent's name and settings, its `vars` and the
+attributes of its systems, a binding is replaced by its text. A field that holds a leaf is its own
+text, `3` and not `"3"`; a field that holds an object or a list is tony. `$subject`, `.ref` and
+`.name` bind as in the table. `.value` binds as the subject's whole payload, and every path into
+it binds as well, `$subject.value.handoff.summary`. A field written with a head comment binds as
+it would without one.
+
+`$subject.value` in a spawn is what it is in a patch. In a rule's own firing it is the subject.
+**In a completion hook's spawn it is the subject at the commit its rule fired at, as in the
+hook's patch, and not the finished task's record.** The task's own facts are flat: `$status`,
+`$result`, `$data`, `$err`.
+
+**A reference that reaches past what is bound refuses the launch**, as a patch refuses an absent
+reference. That is a binding followed by `.` and a field, or by `[`, that the payload does not
+hold: `$subject.value.never`, or `$stage.never` where `stage` holds a string. It is never replaced
+by the shorter binding's text with the rest of the reference after it. The refusal is a failed
+task: the action's patch has already landed, and its `onFailed` runs with `$err` naming the
+reference, so it can write the subject down as failed:
+
+```tony
+action:
+  patch: {stage: developing}
+  spawn:
+    agent: {name: verse}
+    prompt: "open a pull request whose body is $subject.value.handoff.summary"
+  onFailed:
+    # "spawn refused: prompt: $subject.value.handoff.summary is not present in the payload that fired this action"
+    patch: {stage: failed, why: $err}
+```
+
+A bare `$name` that nothing binds is left as written, and the spawn launches. In prose or in a
+shell value it is as likely `$HOME` or `$5` as a binding. A binding followed by anything else
+ends there: `$stage.` at the end of a sentence is the stage and a full stop.
+
+A completion hook's spawn for a task that the charter did not start has no commit to read at, so
+there `$subject.value` refuses the launch by name.
 
 ### `!get-path` and `!list-paths`: reaching other data
 
