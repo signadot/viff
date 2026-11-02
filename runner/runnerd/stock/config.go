@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -73,6 +74,11 @@ type Config struct {
 	Agents map[string]Agent `tony:"field=agents,omitzero"`
 	// Script is the runner's scripts: present, it offers them.
 	Script *Script `tony:"field=script,omitzero"`
+	// ReadOnly is host paths every task's sandbox has, read only, at the same path: what the
+	// operator keeps for the tasks to read and none of them may change, as a module cache or a
+	// package store filled ahead of time, so a task can build and test with no network to fetch
+	// from. Absolute, and refused where it is the task's to write (under the runner's work).
+	ReadOnly []string `tony:"field=readOnly,omitzero"`
 
 	// reachesVerse is whether the runner carries the verse system's verbs to the verse it serves
 	// (Standalone's toVerse): not the file's to say, since it follows from the runner's `verse:`
@@ -609,6 +615,11 @@ func (c *Config) Check() error {
 	for _, name := range slices.Sorted(maps.Keys(c.Agents)) {
 		if err := c.checkAgent(name, c.Agents[name]); err != nil {
 			return err
+		}
+	}
+	for _, p := range c.ReadOnly {
+		if !filepath.IsAbs(p) || filepath.Clean(p) == "/" {
+			return fmt.Errorf("readOnly: %q is not an absolute path below /", p)
 		}
 	}
 	if c.Script != nil {

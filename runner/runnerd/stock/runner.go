@@ -91,6 +91,15 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 	// And the agents' own programs, where the runner finds them: one installed outside the system
 	// directories, as a person's `claude` is under ~/.local/bin, would not be inside the sandbox.
 	programs = append(programs, c.agentPrograms(exec.LookPath)...)
+	// And what the operator keeps for every task to read: bound read only where it is, as the
+	// programs are. One that is not there is said, and left out.
+	for _, p := range c.ReadOnly {
+		if _, err := os.Stat(p); err != nil {
+			fmt.Fprintf(log, "runnerd: readOnly %s: %v; the tasks will not have it\n", p, err)
+			continue
+		}
+		programs = append(programs, p)
+	}
 	blob, err := codec.Marshal(taskConfig{Config: c, Secrets: s, CallTool: tool, Networks: nets, ReachesVerse: c.reachesVerse}, codec.Tony)
 	if err != nil {
 		return nil, err
