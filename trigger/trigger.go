@@ -1224,7 +1224,8 @@ const ownerSettle = 250 * time.Millisecond
 // launch is launchSpawn past the suspension: what a parked launch re-enters when it is released.
 func (e *Engine) launch(a Action, chain string, subj entity.Ref, root entity.Payload,
 	occurrence int64, passed []launch.Passed) (task.Handle, error) {
-	spec := a.Spawn.Bind(bindingFor(root, subj))
+	b := bindingFor(root, subj)
+	spec := a.Spawn.Bind(b)
 	// What the firing's gates settled, the engine's to say and nobody else's: it is what a
 	// credential vouches for, so a value a charter wrote there does not survive to it.
 	spec.Passed = append([]launch.Passed(nil), passed...)
@@ -1268,7 +1269,32 @@ func (e *Engine) launch(a Action, chain string, subj entity.Ref, root entity.Pay
 	// fire when it reaches a terminal status. chain is this action's kpath, so a hook's own
 	// spawn — or a sequence's next element — gets a distinct, deterministic id.
 	hooks := a
-	return e.spawnHooked(spawnID(e.idOwner(), chainID(chain), subj), spec, &hooks, chain), nil
+	id := spawnID(e.idOwner(), chainID(chain), subj)
+	// A REFERENCE THE BINDING DOES NOT HOLD REFUSES THE LAUNCH, as it refuses a patch: a
+	// `$subject.value.handoff.summary` put after the handoff was cleared, or a `$stage.never`. Bind
+	// left it as written, and what it would have rendered before — the shorter key's text and the
+	// rest of the reference — went out as a pull request's body. A bare `$name` nothing binds is
+	// not one of these: it is as likely `$HOME` as a reference, and it stays as written.
+	//
+	// AS A FAILED TASK, and not as an error from the firing. The firing's own writes have landed —
+	// the patch that took the subject out of the rule's selection with them — so a refusal that
+	// stopped here would leave the subject latched with nothing saying why. A failed task ends
+	// the way a launch the runner refuses ends: the action's onFailed runs, with this as `$err`,
+	// and can write the subject down as failed. It is kept on the rule as well, for its author.
+	if unbound := a.Spawn.Unbound(b); len(unbound) > 0 {
+		verb := "is"
+		if len(unbound) > 1 {
+			verb = "are"
+		}
+		err := fmt.Errorf("spawn refused: %s %s not present in the payload that fired this action",
+			strings.Join(unbound, ", "), verb)
+		e.tracef("trigger %s: %v; the task fails without starting", chain, err)
+		e.failed(chain, subj, err)
+		return e.startHooked(id, spec, &hooks, chain, func(string, launch.Spec) task.Handle {
+			return task.FailedHandle(err.Error())
+		}), nil
+	}
+	return e.spawnHooked(id, spec, &hooks, chain), nil
 }
 
 // installLaunch is a charter's spawn as the launch it will become, for the checks made at

@@ -573,6 +573,14 @@ func matchText(m map[string]any) string {
 // this task ends), chain is this spawn's position in a hook chain (for deterministic nested
 // ids). Public Spawn passes nil/"" — an ordinary spawn with no chaining.
 func (e *Engine) spawnHooked(id string, spec launch.Spec, hooks *Action, chain string) task.Handle {
+	return e.startHooked(id, spec, hooks, chain, e.spawn)
+}
+
+// startHooked is spawnHooked with what starts the task named: the Spawner, or for a launch the
+// engine refuses itself, a task that has already failed — which passes every check a spawn
+// does and is tracked the same way, so its completion hooks run as a started task's would.
+func (e *Engine) startHooked(id string, spec launch.Spec, hooks *Action, chain string,
+	start func(id string, spec launch.Spec) task.Handle) task.Handle {
 	if e.spawn == nil {
 		e.tracef("no spawner configured; cannot spawn %q", id)
 		return nil
@@ -608,7 +616,7 @@ func (e *Engine) spawnHooked(id string, spec launch.Spec, hooks *Action, chain s
 	}
 
 	e.tracef("spawn task %s (doer=%s): %s", id, spec.Who(), spec.Prompt)
-	h := e.spawn(id, spec)
+	h := start(id, spec)
 	if h != nil && spec.Subject != "" {
 		e.track(flowTask{id: id, subject: spec.Subject, h: h, hooks: hooks, chain: chain})
 	}
