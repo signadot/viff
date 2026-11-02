@@ -27,6 +27,11 @@ type flowTask struct {
 	// what makes a hook's spawn id distinct and deterministic, and what a reader (or, later,
 	// a resume) can navigate back to the action that owns it.
 	chain string
+	// occurrence is the commit that caused the firing this task belongs to (launch.Spec's
+	// Occurrence), 0 where none did. A completion hook reads at it, off the task's record; this
+	// is the engine's own copy for a task whose record does not say, because nothing mirrored
+	// one before the hook ran — a launch the engine refused, whose task never reached a runner.
+	occurrence int64
 	// WHOSE HOLD it is at its boundary, since a pause is one bool in the runtime and two parties
 	// take it: an operator's `flow suspend --task` (operator), and the suspensions that paused it
 	// (suspended). A lift resumes only what nothing else holds, and `flow resume --task` does not
@@ -336,6 +341,13 @@ func (e *Engine) taskEvent(fp flowTask, status task.Status) entity.Event {
 	}
 	if fp.chain != "" {
 		st["chain"] = fp.chain
+	}
+	// And the commit the firing was about, where the record does not say it yet, for the same
+	// reason: applyHook reads at it. A launch the engine refused fails before anything has
+	// mirrored its task, so without this the hook read at revision 0, and a hook reading
+	// `$subject.value` failed saying a task the charter started was one nothing started.
+	if _, ok := st["occurrence"]; !ok && fp.occurrence != 0 {
+		st["occurrence"] = fp.occurrence
 	}
 	ev.To = st.Payload()
 	return ev

@@ -618,7 +618,7 @@ func (e *Engine) startHooked(id string, spec launch.Spec, hooks *Action, chain s
 	e.tracef("spawn task %s (doer=%s): %s", id, spec.Who(), spec.Prompt)
 	h := start(id, spec)
 	if h != nil && spec.Subject != "" {
-		e.track(flowTask{id: id, subject: spec.Subject, h: h, hooks: hooks, chain: chain})
+		e.track(flowTask{id: id, subject: spec.Subject, h: h, hooks: hooks, chain: chain, occurrence: spec.Occurrence})
 	}
 	return h
 }
