@@ -1,6 +1,7 @@
 package trigger
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/signadot/verse/entity"
@@ -33,5 +34,30 @@ func TestAPayloadsSubjectFieldDoesNotBindUnderSubject(t *testing.T) {
 	}
 	if b["subject"] != entity.RefAt("demo", "pr", "1").String() {
 		t.Errorf("subject = %q, want the resolved subject", b["subject"])
+	}
+}
+
+// AN ELEMENT OF A LIST BINDS IN A SPAWN'S STRINGS, at any depth and under `$subject.value` too, as
+// a patch resolves `$result.findings[0].id`. No element was bound, so each was refused as not
+// present, which it was. An index past the end is not present, and is refused.
+func TestAListElementBindsInASpawn(t *testing.T) {
+	payload := entity.Obj{"data": map[string]any{
+		"items":    []any{"a", "b"},
+		"findings": []any{map[string]any{"id": "x"}},
+		"grid":     []any{[]any{"p", "q"}},
+	}}.Payload()
+	b := bindingFor(payload, entity.RefAt("demo", "pr", "1"), payload)
+	spec := launch.Spec{Prompt: "first=$data.items[0] id=$data.findings[0].id cell=$data.grid[0][1] " +
+		"deep=$subject.value.data.items[1] deepid=$subject.value.data.findings[0].id"}
+	if unbound := spec.Unbound(b); len(unbound) != 0 {
+		t.Errorf("unbound = %q, want none: every element named is present", unbound)
+	}
+	if got, want := spec.Bind(b).Prompt, "first=a id=x cell=q deep=b deepid=x"; got != want {
+		t.Errorf("prompt = %q, want %q", got, want)
+	}
+	past := launch.Spec{Prompt: "gone=$data.items[5] deep=$subject.value.data.findings[1].id"}
+	want := []string{"prompt: $data.items[5]", "prompt: $subject.value.data.findings[1].id"}
+	if got := past.Unbound(b); !slices.Equal(got, want) {
+		t.Errorf("unbound = %q, want %q", got, want)
 	}
 }

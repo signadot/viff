@@ -457,6 +457,8 @@ name. They do not resolve to a silent zero.
 attributes of its systems, a binding is replaced by its text. A field that holds a leaf is its own
 text, `3` and not `"3"`; a field that holds an object or a list is tony. Every path under a field
 binds as well, as a patch resolves it: `$data.severity` on `{data: {severity: high}}` is `high`.
+So does every element of a list, at any depth: `$data.items[0]`, and `$result.findings[0].id` in
+an `onDone`.
 `$subject`, `.ref` and `.name` bind as in the table. `.value` binds as the subject's whole
 payload, and every path into it binds as well, `$subject.value.handoff.summary`. A payload
 written with a head comment binds as it would without one.
@@ -472,9 +474,9 @@ hook's patch, and not the finished task's record.** The task's own facts are fla
 
 **A reference that reaches past what is bound refuses the launch**, as a patch refuses an absent
 reference. That is a binding that holds an object or a list, followed by `.` and a field, or by
-`[`, that the payload does not hold: `$subject.value.never`, or `$changes.never` where `changes`
-is an object without `never`. Every path that the payload holds is bound, so this is a path that
-is absent. It is never replaced by the shorter binding's text with the rest of the reference
+`[`, that the payload does not hold: `$subject.value.never`, `$changes.never` where `changes`
+is an object without `never`, or `$items[5]` where `items` holds two elements. Every path that the
+payload holds is bound, the elements of its lists among them, so this is a path that is absent. It is never replaced by the shorter binding's text with the rest of the reference
 after it. The refusal is a failed
 task: the action's patch has already landed, and its `onFailed` runs with `$err` naming the
 reference, so it can write the subject down as failed:

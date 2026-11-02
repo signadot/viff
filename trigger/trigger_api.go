@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -895,9 +896,13 @@ func payloadBinding(payload entity.Payload) launch.Binding {
 		bindNode(b, k, v)
 	}
 	// AND EVERY PATH UNDER A FIELD, as under `$subject.value`: `$data.severity` on a payload
-	// `{data: {severity: high}}` is `high`, as a patch resolves it at any depth. Bound flat only,
-	// it was refused as not present, which it was.
+	// `{data: {severity: high}}` is `high`, and `$data.findings[0].id` is the first finding's id,
+	// as a patch resolves them at any depth. Bound flat only, they were refused as not present,
+	// which they were. A payload that is itself a list has no field to start a path from.
 	for path, v := range payloadPaths(payload) {
+		if strings.HasPrefix(path, "[") {
+			continue
+		}
 		bindNode(b, path, v)
 	}
 	return b
@@ -1011,26 +1016,38 @@ func bindingFor(payload entity.Payload, subject entity.Ref, value entity.Payload
 	// path win over the shallow one and both over the bare `subject`.
 	bindNode(b, refSubject+"."+subjPartValue, value)
 	for path, v := range payloadPaths(value) {
-		bindNode(b, refSubject+"."+subjPartValue+"."+path, v)
+		bindNode(b, joinPath(refSubject+"."+subjPartValue, path), v)
 	}
 	return b
 }
 
-// payloadPaths is every node under an object payload, keyed by its dotted path — the spelling a
-// charter writes after `$subject.value.`, or after `$` for the payload a rule reads.
+// payloadPaths is every node under a payload, keyed by its path — the spelling a charter writes
+// after `$subject.value`, or after `$` for the payload a rule reads: a field as `a.b`, and an
+// ELEMENT OF A LIST as `items[0]`, at any depth (`findings[0].id`, `m[0][1]`), as a patch resolves
+// it. A path into a list at the root starts with its index (`[0]`), which only `$subject.value`
+// can be followed by. An index past a list's end is not a key, so it is refused as absent.
 //
-// A SEGMENT HOLDING A DOT IS SKIPPED, itself and everything under it. This map is matched by
-// literal text, so `a.b` as a field name and `a` containing `b` would produce the same key and
-// one would silently win; a name that cannot be addressed unambiguously is better left
-// unaddressable. Such a field is still reachable as a node (`$subject.value` resolves through
-// kpath, which quotes), and its top-level form is still flat here.
+// A SEGMENT HOLDING A DOT OR A BRACKET IS SKIPPED, itself and everything under it. This map is
+// matched by literal text, so `a.b` as a field name and `a` containing `b` would produce the same
+// key and one would silently win; a name that cannot be addressed unambiguously is better left
+// unaddressable here. Such a field is still reachable as a node (`$subject.value` resolves through
+// kpath, which quotes), and a top-level one is still bound flat by its own name (payloadBinding).
 func payloadPaths(payload entity.Payload) map[string]entity.Payload {
 	out := map[string]entity.Payload{}
 	var walk func(n entity.Payload, prefix string)
 	walk = func(n entity.Payload, prefix string) {
 		// Past a comment wrapper, at the root and at every depth, for payloadBinding's reason.
+		n = ir.Uncomment(n)
+		if n != nil && n.Type == ir.ArrayType {
+			for i, v := range n.Values {
+				path := prefix + "[" + strconv.Itoa(i) + "]"
+				out[path] = v
+				walk(v, path)
+			}
+			return
+		}
 		for k, v := range entity.Fields(n) {
-			if strings.Contains(k, ".") {
+			if strings.ContainsAny(k, ".[]") {
 				continue
 			}
 			path := k
@@ -1043,6 +1060,14 @@ func payloadPaths(payload entity.Payload) map[string]entity.Payload {
 	}
 	walk(payload, "")
 	return out
+}
+
+// joinPath is a path from payloadPaths under prefix: `prefix.a`, or `prefix[0]` for an index.
+func joinPath(prefix, path string) string {
+	if strings.HasPrefix(path, "[") {
+		return prefix + path
+	}
+	return prefix + "." + path
 }
 
 // ParseMode maps a gate mode name to a Mode.
