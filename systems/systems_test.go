@@ -22,7 +22,7 @@ func TestTheDocumentsDescribeTheSystems(t *testing.T) {
 	}
 	for step, want := range map[string]string{
 		"git.push":              "repo,from,ref,delete,force,exists,own",
-		"github.create-pr":      "repo,base,head,own",
+		"github.create-pr":      "repo,base,head,own,draft",
 		"github.update-pr":      "repo,head,base,own",
 		"git-issue.push":        "repo",
 		"github-issue.comment":  "repo,issue",

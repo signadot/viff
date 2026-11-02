@@ -70,13 +70,17 @@ spawn:
   - {then: allow}
 ```
 
+`draft` is whether the pull request opens as a draft, `true` or `false`. A shape naming
+`draft: true` (`create-pr: {base: main, own: true, draft: true}`) gives a task drafts only: it
+can propose, and a person marks the proposal ready.
+
 `own` on a pull request is the runner's word that the head's tip is a commit this task made, as
 it is on a push ([git](git.md#what-a-task-can-do)). The runner refuses a pull request from a
 branch this run did not push whatever the rows say.
 
 | Tool | What it does | Step |
 |---|---|---|
-| `github-create-pr` | opens a pull request from a branch the task pushed into a base; if one is already open from that branch, it finds that one | `github.create-pr`, with `repo`, `base`, `head` |
+| `github-create-pr` | opens a pull request from a branch the task pushed into a base, as a draft when it says `draft: true`; if one is already open from that branch, it finds that one | `github.create-pr`, with `repo`, `base`, `head`, `draft` |
 | `github-update-pr` | changes the open pull request from a branch the task pushed: its title, body or base. What it does not name stays as it is. | `github.update-pr`, with `repo`, `head`, and `base` when it moves the base |
 | `github-list-prs` | reads the open pull requests, most recently changed first: each one's number, title, author, branches, last change, and whom a review is requested from. It stops at 500 and says so. | `github.list-prs`, with `repo` |
 | `github-read-pr` | reads one pull request by its number: its fields, whom a review is requested from, the reviews given so far, and its description | `github.read-pr`, with `repo`, `pr` |

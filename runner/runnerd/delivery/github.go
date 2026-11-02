@@ -41,6 +41,8 @@ type GitHubPR struct {
 	Base  string `tony:"field=base"`
 	Title string `tony:"field=title,omitzero"`
 	Body  string `tony:"field=body,omitzero"`
+	// Draft opens it as a draft. An update leaves a pull request's draft state as it is.
+	Draft bool `tony:"field=draft,omitzero"`
 }
 
 // GitHubAPI is github.com's API, where a runner whose forge is github.com opens pull requests
@@ -86,7 +88,7 @@ func OpenGitHubPR(ctx context.Context, hc *http.Client, token string, s GitHubPR
 	if title == "" {
 		title = s.Head
 	}
-	body := map[string]string{"title": title, "head": s.Head, "base": s.Base, "body": s.Body}
+	body := map[string]any{"title": title, "head": s.Head, "base": s.Base, "body": s.Body, "draft": s.Draft}
 	var made struct {
 		Number int    `json:"number"`
 		URL    string `json:"html_url"`
@@ -94,7 +96,11 @@ func OpenGitHubPR(ctx context.Context, hc *http.Client, token string, s GitHubPR
 	if err := githubAPI(ctx, hc, token, http.MethodPost, repo, body, &made); err != nil {
 		return "", fmt.Errorf("opening a pull request from %s into %s: %w", s.Head, s.Base, err)
 	}
-	return fmt.Sprintf("opened pull request #%d from %s into %s: %s", made.Number, s.Head, s.Base, made.URL), nil
+	kind := "pull request"
+	if s.Draft {
+		kind = "draft pull request"
+	}
+	return fmt.Sprintf("opened %s #%d from %s into %s: %s", kind, made.Number, s.Head, s.Base, made.URL), nil
 }
 
 // githubAPI is one call to GitHub's REST API, with the runner's token.

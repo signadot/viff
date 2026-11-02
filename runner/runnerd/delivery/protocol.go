@@ -53,6 +53,8 @@ type Request struct {
 	Base  string `tony:"field=base,omitzero"`
 	Title string `tony:"field=title,omitzero"`
 	Body  string `tony:"field=body,omitzero"`
+	// Draft opens a pull request as a draft (github.create-pr, draft=true).
+	Draft bool `tony:"field=draft,omitzero"`
 	// PR is the pull request a read names, by its number at the forge.
 	PR string `tony:"field=pr,omitzero"`
 	// A tracker's act: Issue is the issue a comment or a close is about (a number at the forge,

@@ -78,7 +78,7 @@ func (s Step) Field(name string) *ir.Node {
 var (
 	StepGitPush           = systems.Step("git", "push", "repo", "from", "ref", "delete", "force", "exists", "own")
 	StepGitFetch          = systems.Step("git", "fetch", "repo", "from")
-	StepGitHubCreatePR    = systems.Step("github", "create-pr", "repo", "base", "head", "own")
+	StepGitHubCreatePR    = systems.Step("github", "create-pr", "repo", "base", "head", "own", "draft")
 	StepGitHubUpdatePR    = systems.Step("github", "update-pr", "repo", "head", "base", "own")
 	StepGitHubListPRs     = systems.Step("github", "list-prs", "repo")
 	StepGitHubReadPR      = systems.Step("github", "read-pr", "repo", "pr")

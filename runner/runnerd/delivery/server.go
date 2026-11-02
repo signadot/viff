@@ -359,6 +359,9 @@ func (s *Server) pullRequest(ctx context.Context, tk Task, req Request) Reply {
 	if base != "" {
 		fields["base"] = base // an update that names none keeps the base
 	}
+	if req.Op != OpUpdatePR {
+		fields["draft"] = strconv.FormatBool(req.Draft)
+	}
 	if why := s.refused(tk, req.Decision, task.NewStep(step, fields)); why != "" {
 		return Reply{Refused: why}
 	}
@@ -377,7 +380,7 @@ func (s *Server) pullRequest(ctx context.Context, tk Task, req Request) Reply {
 		return Reply{Refused: fmt.Sprintf("a proposal is from a branch this run pushed, and %q of %s isn't one",
 			strings.TrimPrefix(head, "refs/heads/"), t.Repo.Repo.Repo)}
 	}
-	spec := GitHubPR{API: api, Owner: owner, Repo: repo, Head: req.Branch, Base: base, Title: req.Title, Body: req.Body}
+	spec := GitHubPR{API: api, Owner: owner, Repo: repo, Head: req.Branch, Base: base, Title: req.Title, Body: req.Body, Draft: req.Draft}
 	hc := s.HTTP
 	if hc == nil {
 		hc = http.DefaultClient

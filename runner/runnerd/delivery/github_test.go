@@ -20,7 +20,7 @@ import (
 // rather than opening a second when there is.
 func TestOpenGitHubPROpensOnceAndThenFinds(t *testing.T) {
 	var open []map[string]any
-	var posted map[string]string
+	var posted map[string]any
 	var auth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth = r.Header.Get("Authorization")
@@ -54,7 +54,7 @@ func TestOpenGitHubPROpensOnceAndThenFinds(t *testing.T) {
 	if !strings.Contains(out, "opened pull request #7") {
 		t.Errorf("first push: %q", out)
 	}
-	if posted["head"] != "verse/train" || posted["base"] != "master" || posted["title"] != "drift" || posted["body"] != "the train" {
+	if posted["head"] != "verse/train" || posted["base"] != "master" || posted["title"] != "drift" || posted["body"] != "the train" || posted["draft"] != false {
 		t.Errorf("opened with %v — not what was asked", posted)
 	}
 	if auth != "Bearer tok" {
@@ -257,4 +257,32 @@ func TestATaskReadsPullRequestsThroughTheRunner(t *testing.T) {
 			t.Errorf("reply: %+v", rep)
 		}
 	})
+}
+
+// A DRAFT IS ASKED FOR AS ONE: GitHub opens the pull request as a draft, and the answer says so.
+func TestOpenGitHubPROpensADraft(t *testing.T) {
+	var posted map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.Write([]byte("[]"))
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&posted); err != nil {
+			t.Fatal(err)
+		}
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"number": 9, "html_url": "https://github.com/example/app/pull/9"}`))
+	}))
+	defer srv.Close()
+	out, err := OpenGitHubPR(context.Background(), srv.Client(), "tok", GitHubPR{API: srv.URL, Owner: "signadot",
+		Repo: "signadot", Head: "verse/sso", Base: "master", Title: "sso", Draft: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if posted["draft"] != true {
+		t.Errorf("opened with %v, want draft: true", posted)
+	}
+	if !strings.Contains(out, "opened draft pull request #9") {
+		t.Errorf("said %q", out)
+	}
 }

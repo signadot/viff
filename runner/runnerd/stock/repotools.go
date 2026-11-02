@@ -168,8 +168,18 @@ func prTool(cl *delivery.Client, ws *workspace.Workspace, names []string, name s
 		step = task.StepGitHubUpdatePR
 	}
 	baseIs := "`base` omitted means the branch the checkout started from"
+	params := map[string]any{
+		"repo":  map[string]any{"type": "string", "enum": names},
+		"head":  map[string]any{"type": "string"},
+		"base":  map[string]any{"type": "string"},
+		"title": map[string]any{"type": "string"},
+		"body":  map[string]any{"type": "string"},
+	}
 	if name == updatePRTool {
 		baseIs = "`base` omitted keeps the pull request's base"
+	} else {
+		baseIs += "; `draft: true` opens it as a draft"
+		params["draft"] = map[string]any{"type": "boolean"}
 	}
 	return verse.Tool{
 		Name: name,
@@ -177,13 +187,7 @@ func prTool(cl *delivery.Client, ws *workspace.Workspace, names []string, name s
 			baseIs + ". Push the branch first: a pull " +
 			"request proposes what a push put there. The runner holds the credential; you never see it. " +
 			"Repositories: " + strings.Join(names, ", ") + ".",
-		Params: map[string]any{
-			"repo":  map[string]any{"type": "string", "enum": names},
-			"head":  map[string]any{"type": "string"},
-			"base":  map[string]any{"type": "string"},
-			"title": map[string]any{"type": "string"},
-			"body":  map[string]any{"type": "string"},
-		},
+		Params:   params,
 		Required: oneOf(names),
 		Step:     step,
 		Fields: func(in map[string]any) (map[string]string, bool) {
@@ -194,6 +198,9 @@ func prTool(cl *delivery.Client, ws *workspace.Workspace, names []string, name s
 			fields := map[string]string{"repo": t.Repo.Repo.Canonical(), "head": head}
 			if base != "" {
 				fields["base"] = base // an update that names none keeps the base the proposal has
+			}
+			if name == createPRTool {
+				fields["draft"] = strconv.FormatBool(draftOf(in))
 			}
 			if rep, err := askState(cl, t.Repo.Name(), head); err == nil && rep.OK {
 				fields["own"] = strconv.FormatBool(rep.Own)
@@ -210,9 +217,21 @@ func prTool(cl *delivery.Client, ws *workspace.Workspace, names []string, name s
 				op = delivery.OpUpdatePR
 			}
 			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: op, Repo: t.Repo.Name(), Branch: head, Base: base,
-				Title: str(tu.Input, "title"), Body: str(tu.Input, "body")}))
+				Title: str(tu.Input, "title"), Body: str(tu.Input, "body"), Draft: name == createPRTool && draftOf(tu.Input)}))
 		},
 	}
+}
+
+// draftOf is a create-pr's `draft`, which a model may send as a boolean or as its word.
+func draftOf(in map[string]any) bool {
+	switch v := in["draft"].(type) {
+	case bool:
+		return v
+	case string:
+		b, _ := strconv.ParseBool(strings.TrimSpace(v))
+		return b
+	}
+	return false
 }
 
 // listPRsToolFor reads a repository's open pull requests at the forge, with the runner's token:

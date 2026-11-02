@@ -4,6 +4,8 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
+
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/verse"
 	"github.com/signadot/verse/runner/runnerd/workspace"
@@ -97,5 +99,33 @@ func TestThePullRequestReadsAreOfferedAsTheirSteps(t *testing.T) {
 	list := listPRsToolFor(nil, ws, []string{"app"})
 	if f, ok := list.Fields(map[string]any{}); list.Step != task.StepGitHubListPRs || !ok || len(f) != 1 || f["repo"] != "github.com/acme/app" {
 		t.Errorf("github-list-prs is the step %q with %v", list.Step, f)
+	}
+}
+
+// A DRAFT IS A FIELD OF THE PROPOSAL, so an environment can give drafts only: a shape naming
+// `draft: true` allows a create-pr asking for a draft, however the model spelled it, and refuses
+// one opening ready. An update says nothing about it.
+func TestAnEnvironmentCanGiveDraftsOnly(t *testing.T) {
+	ws := &workspace.Workspace{Branch: "verse/auto/t1",
+		Trees: []*workspace.Tree{{Repo: workspace.Repo{Repo: runner.Repo{Repo: "acme/app", From: "main"}}}}}
+	names := []string{ws.Trees[0].Repo.Name()}
+	create, update := prTool(nil, ws, names, createPRTool), prTool(nil, ws, names, updatePRTool)
+	draftsOnly := systems.Environment{Systems: systems.Systems{"github": {{
+		Attributes: map[string]string{"repo": "github.com/acme/app"},
+		Verbs:      map[string][]systems.Shape{"create-pr": {{"draft": ir.FromBool(true)}}}}}}}
+	for _, d := range []any{true, "true"} {
+		f, _ := create.Fields(map[string]any{"draft": d})
+		if f["draft"] != "true" || !draftsOnly.Allows(task.StepGitHubCreatePR, systems.FieldsDoc(task.StepGitHubCreatePR, f)) {
+			t.Errorf("draft %#v: fields %v, want a draft the environment allows", d, f)
+		}
+	}
+	for _, in := range []map[string]any{{}, {"draft": false}} {
+		f, _ := create.Fields(in)
+		if f["draft"] != "false" || draftsOnly.Allows(task.StepGitHubCreatePR, systems.FieldsDoc(task.StepGitHubCreatePR, f)) {
+			t.Errorf("%v: fields %v, want a ready pull request the environment refuses", in, f)
+		}
+	}
+	if f, _ := update.Fields(map[string]any{"draft": true}); f["draft"] != "" {
+		t.Errorf("update-pr names draft %q, want nothing", f["draft"])
 	}
 }

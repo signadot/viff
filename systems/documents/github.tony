@@ -9,6 +9,7 @@ verbs:
   - {name: base, form: branch, description: "the branch the pull request is into"}
   - {name: head, form: branch, description: "the branch it is from"}
   - {name: own, form: bool, description: "true when the head's tip at the forge is a commit this task made. The runner fills it; a task cannot say it."}
+  - {name: draft, form: bool, description: "true when the pull request opens as a draft, which asks no reviewer and cannot be merged until somebody marks it ready; false when it opens ready. A shape naming `draft: true` lets a task open drafts only."}
 - name: update-pr
   description: "Change the open pull request from a branch the task pushed: its title, body or base."
   fields:
