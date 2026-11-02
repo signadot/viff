@@ -506,6 +506,12 @@ binding that holds a leaf is prose, because a leaf has no path under it. So `$fi
 `file` is `main` renders as `main.go`, and `$stage.never` where `stage` is `open` renders as
 `open.never`.
 
+A binding is matched by its spelling. The longest binding that the text after `$` begins with
+is taken, even where the name runs on past it. So a misspelt field next to a shorter field that
+it begins with is not refused. It renders as the shorter field's text followed by the rest of the
+name: on `{data: {sev: high}}`, `$data.severity` renders as `higherity`. `$changess` where
+`changes` is bound is the changes followed by `s`. Spell a field as the payload spells it.
+
 A completion hook's spawn for a task that the charter did not start has no commit to read at, so
 there `$subject.value` refuses the launch by name. The refusal says that there was no commit to
 read the subject at, as the hook's patch says. It does not say that the subject lacks the field.
