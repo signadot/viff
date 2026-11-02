@@ -286,3 +286,41 @@ func TestOpenGitHubPROpensADraft(t *testing.T) {
 		t.Errorf("said %q", out)
 	}
 }
+
+// A PULL REQUEST'S CHECKS ARE READ WITH IT: failing and unfinished by name and link, passing and
+// skipped counted, check runs and commit statuses alike.
+func TestReadGitHubPRSaysItsHeadsChecks(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/acme/app/pulls/9":
+			w.Write([]byte(`{"number": 9, "title": "sso", "state": "open", "draft": true, "html_url": "u",
+				"user": {"login": "ana"}, "base": {"ref": "master"}, "head": {"ref": "verse/deliver/sso", "sha": "abcdef1234567"}}`))
+		case "/repos/acme/app/pulls/9/reviews":
+			w.Write([]byte(`[]`))
+		case "/repos/acme/app/commits/abcdef1234567/check-runs":
+			w.Write([]byte(`{"check_runs": [
+				{"name": "Control Backend CI", "status": "completed", "conclusion": "failure", "html_url": "https://ci/1"},
+				{"name": "Control Frontend CI", "status": "in_progress", "html_url": "https://ci/2"},
+				{"name": "Detect Changes", "status": "completed", "conclusion": "success"},
+				{"name": "IaC", "status": "completed", "conclusion": "skipped"}]}`))
+		case "/repos/acme/app/commits/abcdef1234567/status":
+			w.Write([]byte(`{"statuses": [{"context": "sandbox", "state": "success"}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	out, err := ReadGitHubPR(context.Background(), srv.Client(), "tok", srv.URL, "acme", "app", 9)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"checks on abcdef123: 1 failing, 1 not done, 2 passing, 1 skipped",
+		"failing: Control Backend CI (failure) https://ci/1",
+		"not done: Control Frontend CI (in_progress) https://ci/2",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the read does not say %q:\n%s", want, out)
+		}
+	}
+}

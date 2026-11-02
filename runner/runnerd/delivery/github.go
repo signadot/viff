@@ -227,6 +227,7 @@ type ghUser struct {
 
 type ghRef struct {
 	Ref string `json:"ref"`
+	SHA string `json:"sha"`
 }
 
 type ghPR struct {
@@ -378,10 +379,77 @@ func ReadGitHubPR(ctx context.Context, hc *http.Client, token, api, owner, repo 
 			b.WriteString(": " + strings.ReplaceAll(body, "\n", "\n    "))
 		}
 	}
+	if p.Head != nil && p.Head.SHA != "" {
+		b.WriteString(prChecks(ctx, hc, token, api, owner, repo, p.Head.SHA))
+	}
 	if body := strings.TrimSpace(p.Body); body != "" {
 		b.WriteString("\nThe description, as its author wrote it:\n" + body)
 	}
 	return b.String(), nil
+}
+
+// prChecks is what CI says of a pull request's head: its check runs and its commit statuses,
+// those failing and those not yet done by name and link, those passing counted. A task that
+// opened or pushed to a pull request reads here whether it is green, without a credential of its
+// own. A forge that will not say is said in a line, and the read goes on.
+func prChecks(ctx context.Context, hc *http.Client, token, api, owner, repo, sha string) string {
+	at := fmt.Sprintf("%s/repos/%s/%s/commits/%s", api, url.PathEscape(owner), url.PathEscape(repo), url.PathEscape(sha))
+	var runs struct {
+		Runs []struct {
+			Name       string `json:"name"`
+			Status     string `json:"status"`
+			Conclusion string `json:"conclusion"`
+			URL        string `json:"html_url"`
+		} `json:"check_runs"`
+	}
+	var combined struct {
+		Statuses []struct {
+			Context string `json:"context"`
+			State   string `json:"state"`
+			URL     string `json:"target_url"`
+		} `json:"statuses"`
+	}
+	runsErr := githubCall(ctx, hc, token, http.MethodGet, at+"/check-runs?per_page=100", nil, &runs, readLimit)
+	statusErr := githubCall(ctx, hc, token, http.MethodGet, at+"/status?per_page=100", nil, &combined, readLimit)
+	if runsErr != nil && statusErr != nil {
+		return fmt.Sprintf("\nchecks on %.9s: not read (%v)", sha, runsErr)
+	}
+	var failing, pending []string
+	passing, skipped := 0, 0
+	for _, r := range runs.Runs {
+		switch {
+		case r.Status != "completed":
+			pending = append(pending, fmt.Sprintf("%s (%s) %s", r.Name, r.Status, r.URL))
+		case r.Conclusion == "success" || r.Conclusion == "neutral":
+			passing++
+		case r.Conclusion == "skipped":
+			skipped++
+		default:
+			failing = append(failing, fmt.Sprintf("%s (%s) %s", r.Name, r.Conclusion, r.URL))
+		}
+	}
+	for _, st := range combined.Statuses {
+		switch st.State {
+		case "success":
+			passing++
+		case "pending":
+			pending = append(pending, fmt.Sprintf("%s (pending) %s", st.Context, st.URL))
+		default:
+			failing = append(failing, fmt.Sprintf("%s (%s) %s", st.Context, st.State, st.URL))
+		}
+	}
+	if len(failing)+len(pending)+passing+skipped == 0 {
+		return fmt.Sprintf("\nchecks on %.9s: none reported", sha)
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "\nchecks on %.9s: %d failing, %d not done, %d passing, %d skipped", sha, len(failing), len(pending), passing, skipped)
+	for _, f := range failing {
+		b.WriteString("\n  failing: " + f)
+	}
+	for _, p := range pending {
+		b.WriteString("\n  not done: " + p)
+	}
+	return b.String()
 }
 
 // githubRead answers a `github.list-prs` or a `github.read-pr`: the step decided by the launch's

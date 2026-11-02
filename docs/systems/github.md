@@ -83,7 +83,7 @@ branch this run did not push whatever the rows say.
 | `github-create-pr` | opens a pull request from a branch the task pushed into a base, as a draft when it says `draft: true`; if one is already open from that branch, it finds that one | `github.create-pr`, with `repo`, `base`, `head`, `draft` |
 | `github-update-pr` | changes the open pull request from a branch the task pushed: its title, body or base. What it does not name stays as it is. | `github.update-pr`, with `repo`, `head`, and `base` when it moves the base |
 | `github-list-prs` | reads the open pull requests, most recently changed first: each one's number, title, author, branches, last change, and whom a review is requested from. It stops at 500 and says so. | `github.list-prs`, with `repo` |
-| `github-read-pr` | reads one pull request by its number: its fields, whom a review is requested from, the reviews given so far, and its description | `github.read-pr`, with `repo`, `pr` |
+| `github-read-pr` | reads one pull request by its number: its fields, whom a review is requested from, the reviews given so far, what CI says of its head (check runs and commit statuses: failing and unfinished by name and link, passing and skipped counted), and its description | `github.read-pr`, with `repo`, `pr` |
 
 A pull request must come from a branch this run pushed. A pull request from any other branch
 is refused. Its commits carry the task's trailers, so the iod's copy of the pull request can be
