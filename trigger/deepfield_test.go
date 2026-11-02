@@ -4,8 +4,10 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
+	"github.com/signadot/verse/mirror"
 )
 
 // A PATH UNDER A TOP-LEVEL FIELD BINDS IN A SPAWN'S STRINGS, as a path under `$subject.value`
@@ -71,5 +73,30 @@ func TestADottedTopLevelNameKeepsItsSpelling(t *testing.T) {
 		if got := b["a.b"]; got != "flat" {
 			t.Fatalf("a.b = %q, want the top-level field `a.b`, flat", got)
 		}
+	}
+}
+
+// A PATH PAST A NULL IS NOT PRESENT, in a spawn's strings as in a patch (a path into null does not
+// resolve): a task's result keeps a null it wrote, so an onDone's `$data.findings[0].id` on
+// `{findings: null}` is refused, not rendered as `[0].id`. A bare `$data.summary.n` is "". A null
+// `$subject.value` is refused past it the same way.
+func TestAPathPastANullIsNotPresentInASpawn(t *testing.T) {
+	st := entity.Obj{"status": "done"}
+	st["data"] = mirror.ParseResult(`{"findings": null, "summary": {"n": null}}`)
+	b := bindingFor(st.Payload(), entity.RefAt("demo", "pr", "1"), entity.Obj{"stage": "open"}.Payload())
+	spec := launch.Spec{Prompt: "first=[$data.findings[0].id] n=[$data.summary.n.z]"}
+	want := []string{"prompt: $data.findings[0].id", "prompt: $data.summary.n.z"}
+	if got := spec.Unbound(b); !slices.Equal(got, want) {
+		t.Errorf("unbound = %q, want %q", got, want)
+	}
+	bare := launch.Spec{Prompt: "n=[$data.summary.n]"}
+	if got, want := bare.Bind(b).Prompt, "n=[]"; got != want {
+		t.Errorf("prompt = %q, want %q", got, want)
+	}
+
+	nb := bindingFor(st.Payload(), entity.RefAt("demo", "pr", "1"), ir.Null())
+	sv := launch.Spec{Prompt: "$subject.value.stage"}
+	if got, want := sv.Unbound(nb), []string{"prompt: $subject.value.stage"}; !slices.Equal(got, want) {
+		t.Errorf("unbound = %q, want %q", got, want)
 	}
 }

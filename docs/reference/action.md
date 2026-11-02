@@ -504,7 +504,9 @@ shell value it is as likely `$HOME` or `$5` as a binding. A binding followed by 
 ends there: `$stage.` at the end of a sentence is the stage and a full stop. What follows a
 binding that holds a leaf is prose, because a leaf has no path under it. So `$file.go` where
 `file` is `main` renders as `main.go`, and `$stage.never` where `stage` is `open` renders as
-`open.never`.
+`open.never`. A null is not such a leaf. A bare `$data.n` where `n` is null renders as nothing,
+but a path past it is not present, as a path into null does not resolve in a patch. So
+`$data.findings[0].id` in an `onDone`, on a result that wrote `findings: null`, refuses the launch.
 
 A binding is matched by its spelling. The longest binding that the text after `$` begins with
 is taken, even where the name runs on past it. So a misspelt field next to a shorter field that

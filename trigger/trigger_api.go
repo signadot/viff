@@ -913,16 +913,22 @@ func payloadBinding(payload entity.Payload) launch.Binding {
 	return b
 }
 
-// bindNode binds key to n's text (bindText), and marks it composite where n is an object or a
-// list, so a reference going on past it is a path the binding does not hold rather than prose
-// (launch.Binding.MarkComposite).
+// bindNode binds key to n's text (bindText), and marks it composite where n is an object, a
+// list or a null, so a reference going on past it is a path the binding does not hold rather than
+// prose (launch.Binding.MarkComposite).
+//
+// A NULL IS MARKED TOO, though it renders as "": a bare `$data.n` is empty, but a path past it
+// (`$data.findings[0].id` on `{findings: null}`, `$subject.value.stage` on a null value) does not
+// resolve, as a patch's deref says of a path into null. Left a leaf, it rendered as the rest of
+// the reference alone (`[0].id`), the shorter key's text plus the rest. A task's result keeps a
+// null it wrote (mirror.ParseResult), so a hook's `$data` can carry one.
 func bindNode(b launch.Binding, key string, n entity.Payload) {
 	text, ok := bindText(n)
 	if !ok {
 		return
 	}
 	b[key] = text
-	if u := ir.Uncomment(n); u != nil && (u.Type == ir.ObjectType || u.Type == ir.ArrayType) {
+	if u := ir.Uncomment(n); u != nil && (u.Type == ir.ObjectType || u.Type == ir.ArrayType || u.Type == ir.NullType) {
 		b.MarkComposite(key)
 	}
 }
@@ -944,8 +950,9 @@ func bindNode(b launch.Binding, key string, n entity.Payload) {
 //
 // One leaf DOES change: a null field bound as `<nil>`, which was Go's zero value leaking into a
 // prompt rather than anything anybody chose. It is `""` now, which is what scalarText has always
-// meant by it. A payload read from the store cannot carry one anyway (entity's nodeToPayload
-// drops them), so this is reachable only from a payload the engine synthesises.
+// meant by it. A payload read from the store cannot carry one (entity's nodeToPayload drops
+// them), but one the engine synthesises can: a task's `data`, from its result, keeps a null the
+// task wrote. bindNode marks it composite, so only the bare reference is "".
 //
 // A field that cannot be rendered at all is left UNBOUND rather than bound to "": an unbound
 // `$var` is left in the prompt as written, which is the documented behaviour and is visible,
