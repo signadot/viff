@@ -1,18 +1,20 @@
 {% extends "base.html" %}
 
-{#- The favicon: the SVG where the browser reads one, and the .ico for the rest. After the theme's
-    own tags, so the theme's default icon is named first and these are what a browser takes. -#}
+{#- The favicon: the SVG where the browser reads one, the .ico for the rest, and the touch icon
+    for a home screen. After the theme's own tags, so the theme's default icon is named first and
+    these are what a browser takes. -#}
 {% block site_meta %}
 {{ super() }}
         <link rel="icon" type="image/svg+xml" href="{{ 'images/favicon.svg'|url }}">
         <link rel="icon" href="{{ 'images/favicon.ico'|url }}" sizes="any">
+        <link rel="apple-touch-icon" href="{{ 'images/apple-touch-icon.png'|url }}">
 {% endblock %}
 
-{#- The brand is the logo for a dark bar: the theme's navbar is bootstrap's primary blue
-    (nav_style), and verse-logo-dark.svg carries the light wordmark. The alt text is what the
-    theme would have printed. -#}
+{#- The brand is the lockup drawn for the theme's navbar (nav_style's cerulean bar): a slate ring
+    and the light wordmark, which the blue would otherwise swallow. The alt text is what the theme
+    would have printed. -#}
 {% block site_name %}
-                <a class="navbar-brand" href="{{ nav.homepage.url|url }}"><img src="{{ 'images/verse-logo-dark.svg'|url }}" alt="{{ config.site_name }}"></a>
+                <a class="navbar-brand" href="{{ nav.homepage.url|url }}"><img src="{{ 'images/verse-logo-navbar.svg'|url }}" alt="{{ config.site_name }}"></a>
 {% endblock %}
 
 {#- Keeps the site out of search results until launch. Remove the robots line when verse goes
