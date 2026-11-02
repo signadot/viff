@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/delivery"
 	"github.com/signadot/verse/runner/runnerd/workspace"
@@ -39,10 +41,10 @@ func TestAReplacedPolicyIsCheckedByTheRunnerAndReachesItsChannel(t *testing.T) {
 	h := NewSubprocessHandler(SubprocessConfig{Log: io.Discard})
 	h.Describe(runner.Description{Version: runner.DescriptionVersion, Offers: []runner.Offer{{Agent: &runner.AgentOffer{Name: "verse"},
 		Systems: map[string]runner.System{
-			"git": {Ceiling: ceiling(t, `{repo: "github.com/acme/**", fetch: {}, push: {ref: "refs/heads/verse/**"}}`)},
+			"git": {Ceiling: ceiling(t, `{repo: !regexp "^github\\.com/acme/", fetch: {}, push: {ref: !regexp "^refs/heads/verse/"}}`)},
 		}}}})
 	env := gitEnv("acme/app")
-	env.Systems["git"][0].Verbs["push"] = []systems.Shape{{"ref": "refs/heads/verse/**"}}
+	env.Systems["git"][0].Verbs["push"] = []systems.Shape{{"ref": systems.Regexp("^refs/heads/verse/")}}
 	l := &runner.Launch{ID: "x", Prompt: "p", Agent: &runner.Agent{Name: "verse"}, Environment: env,
 		Autonomy: task.Autonomy{{Match: &task.Match{System: "git"}, Then: ask}, {Then: ask}}}
 	ch, err := delivery.Open(l.ID, &workspace.Workspace{}, nil, func(workspace.Repo) (string, error) { return "", nil }, delivery.Services{}, nil, l, io.Discard)
@@ -87,14 +89,24 @@ func TestAReplacedPolicyIsCheckedByTheRunnerAndReachesItsChannel(t *testing.T) {
 	}
 
 	// Within it: the task's process takes it, and the channel holds it from then on.
-	want := task.Autonomy{{Name: "auto", Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"ref": "refs/heads/verse/auto/*"}}, Then: allow}, {Then: ask}}
-	if code, msg := put(`{autonomy: [{name: auto, match: {system: git, verb: push, ref: "refs/heads/verse/auto/*"}, then: allow}, {then: ask}]}`); code != http.StatusNoContent {
+	want := task.Autonomy{{Name: "auto", Match: &task.Match{System: "git", Verb: "push", Params: map[string]*ir.Node{"ref": systems.Glob("refs/heads/verse/auto/*")}}, Then: allow}, {Then: ask}}
+	if code, msg := put(`{autonomy: [{name: auto, match: {system: git, verb: push, ref: !glob "refs/heads/verse/auto/*"}, then: allow}, {then: ask}]}`); code != http.StatusNoContent {
 		t.Fatalf("a replacement within the ceiling = %d %q, want 204", code, msg)
 	}
 	if n := reached.Load(); n != 1 {
 		t.Errorf("the task's process was asked %d time(s), want once", n)
 	}
-	if got := ch.Autonomy(); !reflect.DeepEqual(got, want) {
+	if got := ch.Autonomy(); policyWire(t, got) != policyWire(t, want) {
 		t.Errorf("the channel's policy after the replacement:\n got %+v\nwant %+v", got, want)
 	}
+}
+
+// policyWire is an autonomy as tony writes it: its patterns are nodes, compared as what they say.
+func policyWire(t *testing.T, a task.Autonomy) string {
+	t.Helper()
+	b, err := codec.Marshal(a, codec.Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }

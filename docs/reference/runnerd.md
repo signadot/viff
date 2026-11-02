@@ -137,12 +137,12 @@ agents:
     systems:                               # claude's ceilings
       git:
         ceiling:
-        - repo: "github.com/acme/**"
+        - repo: !regexp "^github\\.com/acme/"
           fetch: {}
-          push: [{ref: "refs/heads/verse/**"}, {ref: "refs/heads/release/*", force: "false"}]
-      git-issue: {ceiling: {repo: "github.com/acme/**"}}
+          push: [{ref: !regexp "^refs/heads/verse/"}, {ref: !glob "refs/heads/release/*", force: false}]
+      git-issue: {ceiling: {repo: !regexp "^github\\.com/acme/"}}
       linear-issue: {ceiling: {create: {team: ENG}, comment: {}, close: {}}}   # closed without LINEAR_API_KEY
-      network: {ceiling: {mode: [none, allow], tcp-client: [{host: "*.github.com"}, {host: pypi.org}]}}
+      network: {ceiling: {mode: !or [none, allow], tcp-client: [{host: !glob "*.github.com"}, {host: pypi.org}]}}
       files: {ceiling: {}}
       commands: {ceiling: {}}
 script:                                    # scripts are offered only with this section
@@ -167,7 +167,7 @@ script:                                    # scripts are offered only with this 
 | `agents.verse.annotations.<name>` | an annotation a launch may set, with the `type` of its value and the `default` used where a launch sets none. The verse agent knows one, `verse.portkey/virtual-key`, a Portkey virtual key: a routing label, not a secret. Only the verse agent takes annotations. | none |
 | `agents.<name>.shellEnv`, `script.shellEnv` | the variables of the runner's environment the doer's task shell is given, by name: the process's values of those names and nothing else. With the proxy's variables, they are the whole environment of the doer's task process too ([the sandbox](#the-sandbox)), and a launch's `with.env` may not name one of its own doer's. No variable the runner reads a credential from may be named (`GITHUB_TOKEN`, `LINEAR_API_KEY`, `SLACK_BOT_TOKEN`, `PORTKEY_API_KEY`, `PORTKEY_BASE_URL`, `PORTKEY_VIRTUAL_KEY`, `OPENAI_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`), and an empty list is refused: leave it out for the default. A declaration, not a wall: exactly as strong as the sandbox, and with `-sandbox none` no stronger than the task's good manners. | `task.DefaultShellEnv`: enough for a shell to find its tools, and no secret |
 | `agents.<name>.systems.<system>`, `script.systems.<system>` | the doer's ceiling over one system, `{ceiling: …}`. The runner performs `git` and `git-issue` with `repos`, `github` and `github-issue` where the forge is GitHub, and `linear-issue` and `slack` where a section's ceiling names them and their credential is set: where it is not, the runner starts with the system closed to every doer, says so, and no offer holds it, so a spawn that needs it is refused where it is written. It performs [`verse`](../systems/verse.md) too, carried to its verse with the runner's own token. A section for a system the runner does not perform is refused, but for `verse`'s, taken on every doer. Every doer's offer holds each system the runner performs, closed where the doer's section names none. `files`, `commands`, `agent` and `question`, which the runner stops inside a run, are a doer's where the runner stops that doer on them: the verse agent all four, codex and claude `files`, `commands` and `question`, a script `question` alone; another is refused. `network` is every doer's. | closed: nothing of the system. For `network`, no bound beyond what the sandbox builds |
-| `….ceiling` | the ceiling over what the doer's tasks may do with the system: blocks written as a spawn's environment writes the system, a block or a list of them, each attribute a pattern or a list of patterns (`repo: "github.com/acme/**"`, `mode: [none, allow]`), each verb its shapes. A ceiling lists what it allows: a spawn's environment must lie within it, every block within one of its blocks and every shape within one of its shapes, and there is no "all but". A block naming no verb (`files: {ceiling: {}}`) allows every verb of its system, any call; a section with no ceiling at all is refused, since it would close the system as leaving it out does. An attribute a block names bounds every environment block it holds: one that leaves it unsaid stands for its default (network's `mode`, none), or, with none (git's `from`), is beyond the block. A `git` ceiling names its repositories, on the runner's forge. A `network` ceiling naming a mode the runner's sandbox can't build is refused when the runner starts. A runner whose ceilings can't give what an agent requires (codex's and claude's `commands.run` and `files.write`) does not start. | |
+| `….ceiling` | the ceiling over what the doer's tasks may do with the system: blocks written as a spawn's environment writes the system, a block or a list of them, each attribute one pattern, with `!or` for several (`repo: !regexp "^github\\.com/acme/"`, `mode: !or [none, allow]`), each verb its shapes. A ceiling lists what it allows: a spawn's environment must lie within it, every block within one of its blocks and every shape within one of its shapes, and there is no "all but". A block naming no verb (`files: {ceiling: {}}`) allows every verb of its system, any call; a section with no ceiling at all is refused, since it would close the system as leaving it out does. An attribute a block names bounds every environment block it holds: one that leaves it unsaid stands for its default (network's `mode`, none), or, with none (git's `from`), is beyond the block. A `git` ceiling names its repositories, on the runner's forge. A `network` ceiling naming a mode the runner's sandbox can't build is refused when the runner starts. A runner whose ceilings can't give what an agent requires (codex's and claude's `commands.run` and `files.write`) does not start. | |
 
 #### Layouts
 
@@ -224,14 +224,14 @@ offers:
   converse: true
   systems:
     network:
-      builds: {mode: [none, open, allow]}
-      ceiling: {mode: [none, allow], tcp-client: [{host: "*.github.com"}, {host: pypi.org}]}
+      builds: {mode: !or [none, open, allow]}
+      ceiling: {mode: !or [none, allow], tcp-client: [{host: !glob "*.github.com"}, {host: pypi.org}]}
     git:
       ceiling:
-        repo: "github.com/acme/**"
+        repo: !regexp "^github\\.com/acme/"
         fetch: {}
-        push: [{ref: "refs/heads/verse/**"}, {force: "false", ref: "refs/heads/release/*"}]
-    git-issue: {ceiling: {repo: "github.com/acme/**", close: {}, comment: {}, create: {}, pull: {}, push: {}}}
+        push: [{ref: !regexp "^refs/heads/verse/"}, {force: false, ref: !glob "refs/heads/release/*"}]
+    git-issue: {ceiling: {repo: !regexp "^github\\.com/acme/", close: {}, comment: {}, create: {}, pull: {}, push: {}}}
     github: {}
     github-issue: {}
     linear-issue: {ceiling: {close: {}, comment: {}, create: {team: ENG}}}
@@ -244,14 +244,14 @@ offers:
 - script: true
   systems:
     network:
-      builds: {mode: [none, open, allow]}
-      ceiling: {mode: [none, allow], tcp-client: [{host: "*.github.com"}, {host: pypi.org}]}
+      builds: {mode: !or [none, open, allow]}
+      ceiling: {mode: !or [none, allow], tcp-client: [{host: !glob "*.github.com"}, {host: pypi.org}]}
     git:
       ceiling:
-        repo: "github.com/acme/**"
+        repo: !regexp "^github\\.com/acme/"
         fetch: {}
-        push: [{ref: "refs/heads/verse/**"}, {force: "false", ref: "refs/heads/release/*"}]
-    git-issue: {ceiling: {repo: "github.com/acme/**", close: {}, comment: {}, create: {}, pull: {}, push: {}}}
+        push: [{ref: !regexp "^refs/heads/verse/"}, {force: false, ref: !glob "refs/heads/release/*"}]
+    git-issue: {ceiling: {repo: !regexp "^github\\.com/acme/", close: {}, comment: {}, create: {}, pull: {}, push: {}}}
     github: {}
     github-issue: {}
     linear-issue: {ceiling: {close: {}, comment: {}, create: {team: ENG}}}
@@ -340,7 +340,7 @@ for the `verse` agent.
 
 A request that is several steps goes ahead only where each of them would on its own: a patch
 touching `a.go` and `db/b.sql` is refused by a row, the environment or a ceiling that refuses
-either, wherever the row stands, and asked about by a row on `db/**`. Each row that asks about
+either, wherever the row stands, and asked about by a row on `!regexp "^db/"`. Each row that asks about
 any of its steps asks once, and every answer must be yes. A codex launch's environment gives
 `commands` and `files`, its shell and its edits, or the launch is refused where it is written
 (the offer `requires` them): codex cannot run without them, and a row may deny them. An
@@ -408,7 +408,7 @@ ordinary action, so the environment and the autonomy decide it, the docket lists
 
 An edit through a symlink is decided on the path Claude names and on the file of the workspace
 it lands on, and goes ahead only where both would, as a patch of codex's does: a row, the
-environment or a ceiling on `db/**` decides a write through `docs/link → ../db`, wherever the row stands. The
+environment or a ceiling on `!regexp "^db/"` decides a write through `docs/link → ../db`, wherever the row stands. The
 workspace is the task's filesystem: where a write can land at all is the sandbox's to bound. A
 file a command writes (`echo x > db/x.sql`, a build, a generator) is Claude's Bash and so
 `commands.run` alone; no `files` row sees it

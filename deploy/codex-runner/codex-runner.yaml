@@ -65,21 +65,21 @@ data:
             - repo: github.com/signadot/verse
               fetch: {}
               push:
-              - {ref: refs/heads/main, force: "false", delete: "false"}
-              - {ref: "refs/heads/verse/**"}
-            - repo: "github.com/signadot/**"
+              - {ref: refs/heads/main, force: false, delete: false}
+              - {ref: !regexp "^refs/heads/verse/"}
+            - repo: !regexp "^github\\.com/signadot/"
               fetch: {}
-              push: {ref: "refs/heads/verse/**"}
-          git-issue: {ceiling: {repo: "github.com/signadot/**"}}
-          github: {ceiling: {repo: "github.com/signadot/**"}}
-          github-issue: {ceiling: {repo: "github.com/signadot/**"}}
+              push: {ref: !regexp "^refs/heads/verse/"}
+          git-issue: {ceiling: {repo: !regexp "^github\\.com/signadot/"}}
+          github: {ceiling: {repo: !regexp "^github\\.com/signadot/"}}
+          github-issue: {ceiling: {repo: !regexp "^github\\.com/signadot/"}}
           # Linear and Slack, made with the credentials the iods hold (LINEAR_API_KEY from
           # verse-linear, SLACK_BOT_TOKEN from verse-slack): a ceiling naming either is what makes
           # the runner offer the system, and where its variable is unset the runner starts with it
           # closed, and says so. ENG
           # is the team the Linear iod reflects; the channels are the ones the Slack bot is in. A
           # Slack shape names one channel, so two channels are two shapes.
-          linear-issue: {ceiling: {create: {team: ENG}, comment: {issue: "ENG-*"}, close: {issue: "ENG-*"}}}
+          linear-issue: {ceiling: {create: {team: ENG}, comment: {issue: !glob "ENG-*"}, close: {issue: !glob "ENG-*"}}}
           slack:
             ceiling:
               read: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]

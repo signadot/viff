@@ -338,7 +338,9 @@ func writeDescribed(w entity.Store, name string, desc runner.Description) error 
 	}.Payload()}); err != nil {
 		return err
 	}
-	_, _, err := w.Write(entity.Write{At: at, Value: entity.Obj{"described": desc}.Payload()})
+	// Raw: a ceiling's patterns are tony operators (`!or`, `!glob`), the runner's words to keep,
+	// not the store's to evaluate.
+	_, _, err := w.Write(entity.Write{At: at, Value: entity.Obj{"described": entity.Raw(entity.Val(desc))}.Payload()})
 	return err
 }
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"maps"
 	"net"
 	"os"
 	"strings"
@@ -136,7 +135,7 @@ func (c *Channel) answered(st task.Step, decision string) (string, bool) {
 		return "", false
 	}
 	for i, a := range c.answers {
-		if a.step.Name == st.Name && maps.Equal(a.step.Fields, st.Fields) && a.choice == task.Proceed {
+		if a.step.Name == st.Name && a.step.Fields.DeepEqual(st.Fields) && a.choice == task.Proceed {
 			return take(i)
 		}
 	}

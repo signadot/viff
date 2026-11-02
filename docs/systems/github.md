@@ -60,11 +60,11 @@ spawn:
         from: main
         fetch: {}
         push:
-        - {ref: "refs/heads/verse/auto/*", exists: "false"}
-        - {ref: "refs/heads/verse/auto/*", own: "true"}
+        - {ref: !glob "refs/heads/verse/auto/*", exists: false}
+        - {ref: !glob "refs/heads/verse/auto/*", own: true}
       github:
       - repo: acme/app
-        create-pr: {base: main, own: "true"}
+        create-pr: {base: main, own: true}
   autonomy:
   - {match: {system: github, verb: create-pr}, then: ask}
   - {then: allow}
@@ -109,7 +109,7 @@ agents:
   claude:
     systems:
       github:
-        ceiling: {repo: "github.com/acme/**", create-pr: {base: main}, update-pr: {}}
+        ceiling: {repo: !regexp "^github\\.com/acme/", create-pr: {base: main}, update-pr: {}}
 ```
 
 Verse refuses to install a spawn whose environment gives proposals beyond the ceiling, saying

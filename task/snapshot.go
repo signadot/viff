@@ -1,5 +1,7 @@
 package task
 
+import "github.com/signadot/tony-format/go-tony/ir"
+
 // Snapshot is a task as its runner reports it: the answer to `GET /tasks` (a list of them)
 // and `GET /tasks/{id}`. It is the runtime's view, and only what the runner knows; verse's own
 // view of a task (api.Task) adds what verse knows, and the durable record (the mirror's
@@ -43,14 +45,14 @@ type Snapshot struct {
 //
 //tony:schemagen=verse-pending-gate,notag
 type PendingGate struct {
-	ID     string            `tony:"field=id"`
-	Origin string            `tony:"field=origin,omitzero"`
-	Gate   string            `tony:"field=gate,omitzero"`
-	Tool   string            `tony:"field=tool,omitzero"`
-	Action string            `tony:"field=action,omitzero"` // the action in one line, see ToolUse.Describe
-	Step   string            `tony:"field=step,omitzero"`
-	Fields map[string]string `tony:"field=fields,omitzero"`
-	Reason string            `tony:"field=reason,omitzero"`
+	ID     string   `tony:"field=id"`
+	Origin string   `tony:"field=origin,omitzero"`
+	Gate   string   `tony:"field=gate,omitzero"`
+	Tool   string   `tony:"field=tool,omitzero"`
+	Action string   `tony:"field=action,omitzero"` // the action in one line, see ToolUse.Describe
+	Step   string   `tony:"field=step,omitzero"`
+	Fields *ir.Node `tony:"field=fields,omitzero"`
+	Reason string   `tony:"field=reason,omitzero"`
 }
 
 // Status is a task's lifecycle state, in Snapshot's `status` and an EventStatus's

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/runner/runnerd/stock"
@@ -79,8 +80,8 @@ func Everything(agents ...string) runner.Description {
 		if doc.Name == "network" {
 			// What it builds, every network, and no ceiling: an unwritten network ceiling bounds
 			// nothing, where Open would allow no connection.
-			held[doc.Name] = runner.System{Builds: systems.Ceiling{{Attributes: map[string][]string{
-				"mode": {runner.NetworkOpen, runner.NetworkNone, runner.NetworkAllow}}}}}
+			held[doc.Name] = runner.System{Builds: systems.Ceiling{{Attributes: map[string]*ir.Node{
+				"mode": systems.OneOf(runner.NetworkOpen, runner.NetworkNone, runner.NetworkAllow)}}}}
 			continue
 		}
 		held[doc.Name] = runner.System{Ceiling: systems.Open()}

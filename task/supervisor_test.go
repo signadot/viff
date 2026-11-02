@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/tony-format/go-tony/parse"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/systems/systemstest"
@@ -43,7 +45,7 @@ func anyEnv() systems.Environment {
 // askOn is a policy that asks before the tool `tool`, under toolSup: every other step goes ahead.
 func askOn(tool string) Autonomy {
 	return Autonomy{
-		{Name: "g", Match: &Match{System: "commands", Verb: "run", Params: map[string]string{"command": tool}}, Then: Then{Mode: ThenAsk}},
+		{Name: "g", Match: &Match{System: "commands", Verb: "run", Params: map[string]*ir.Node{"command": ir.FromString(tool)}}, Then: Then{Mode: ThenAsk}},
 		{Then: Then{Mode: ThenAllow}},
 	}
 }
@@ -53,14 +55,18 @@ func asksOnCommands() Autonomy {
 	return Autonomy{{Match: &Match{System: "commands"}, Then: Then{Mode: ThenAsk}}, {Then: Then{Mode: ThenAsk}}}
 }
 
-// on is a match of one system's verb with the params given.
+// on is a match of one system's verb with the params given, each written in tony.
 func on(system, verb string, params ...string) *Match {
 	m := &Match{System: system, Verb: verb}
 	for i := 0; i+1 < len(params); i += 2 {
 		if m.Params == nil {
-			m.Params = map[string]string{}
+			m.Params = map[string]*ir.Node{}
 		}
-		m.Params[params[i]] = params[i+1]
+		n, err := parse.Parse([]byte(params[i+1]))
+		if err != nil {
+			panic(err)
+		}
+		m.Params[params[i]] = systems.Plain(n)
 	}
 	return m
 }
@@ -74,7 +80,7 @@ func toolSup(p Autonomy, r Resolver) *Supervisor {
 		if st, ok := StepOf(tu); ok {
 			return st, true
 		}
-		return Step{Name: StepCommandsRun, Fields: map[string]string{"command": tu.Name}}, true
+		return NewStep(StepCommandsRun, map[string]string{"command": tu.Name}), true
 	})
 	return s
 }
@@ -97,7 +103,7 @@ func TestTheVerseToolsAreSteps(t *testing.T) {
 	// A path is the one the executor writes, however the model spelled it.
 	for _, spelled := range []string{"db/x.sql", "./db/x.sql", "/db/x.sql", "db/../db/x.sql", "db//x.sql"} {
 		st, _ := StepOf(ToolUse{Name: "write_file", Input: map[string]any{"path": spelled}})
-		if st.Fields["path"] != "db/x.sql" {
+		if systems.FieldText(st.Fields, "path") != "db/x.sql" {
 			t.Errorf("%q is the step %s, want path=db/x.sql", spelled, st)
 		}
 	}
@@ -112,8 +118,8 @@ func TestTheVerseToolsAreSteps(t *testing.T) {
 // segment and `**` across, and a command as a whole string with `*` matching anything. A param
 // it leaves out matches anything, and so does a system or a verb.
 func TestARowMatchesAStep(t *testing.T) {
-	write := func(path string) Step { return Step{Name: StepFilesWrite, Fields: map[string]string{"path": path}} }
-	run := func(cmd string) Step { return Step{Name: StepCommandsRun, Fields: map[string]string{"command": cmd}} }
+	write := func(path string) Step { return NewStep(StepFilesWrite, map[string]string{"path": path}) }
+	run := func(cmd string) Step { return NewStep(StepCommandsRun, map[string]string{"command": cmd}) }
 	for _, tc := range []struct {
 		m    *Match
 		s    Step
@@ -126,19 +132,19 @@ func TestARowMatchesAStep(t *testing.T) {
 		{&Match{System: "files"}, write("x"), true},
 		{on("files", "write"), write("anything/at/all"), true},
 		{on("files", "write"), run("ls"), false},
-		{on("files", "write", "path", "db/*.sql"), write("db/x.sql"), true},
-		{on("files", "write", "path", "db/*.sql"), write("db/m/x.sql"), false},
-		{on("files", "write", "path", "db/**"), write("db/m/x.sql"), true},
-		{on("files", "write", "path", "db/**.sql"), write("db/m/x.go"), false},
+		{on("files", "write", "path", `!glob "db/*.sql"`), write("db/x.sql"), true},
+		{on("files", "write", "path", `!glob "db/*.sql"`), write("db/m/x.sql"), false},
+		{on("files", "write", "path", `!regexp "^db/"`), write("db/m/x.sql"), true},
+		{on("files", "write", "path", `!regexp "^db/.*\\.sql$"`), write("db/m/x.go"), false},
 		{on("files", "write", "path", "db/x.sql"), write("db/x.sql"), true},
 		{on("files", "write", "path", "db/x.sql"), write("db/xsql"), false},
-		{on("commands", "run", "command", "git push*"), run("git push origin main"), true},
-		{on("commands", "run", "command", "rm *"), run("rm -rf /tmp/a/b"), true},
+		{on("commands", "run", "command", `!regexp "^git push"`), run("git push origin main"), true},
+		{on("commands", "run", "command", `!regexp "^rm "`), run("rm -rf /tmp/a/b"), true},
 		{on("commands", "run", "command", "make"), run("make test"), false},
 		// A command of several lines is matched as a whole: `*` crosses the newline.
-		{on("commands", "run", "command", "git push*"), run("git push origin main\n"), true},
-		{on("commands", "run", "command", "rm *"), run("rm -rf x\necho done"), true},
-		{on("commands", "run", "command", "*git push*"), run("cd repo\ngit push origin main"), true},
+		{on("commands", "run", "command", `!regexp "^git push"`), run("git push origin main\n"), true},
+		{on("commands", "run", "command", `!regexp "^rm "`), run("rm -rf x\necho done"), true},
+		{on("commands", "run", "command", `!regexp "git push"`), run("cd repo\ngit push origin main"), true},
 	} {
 		if got := tc.m.Matches(tc.s); got != tc.want {
 			t.Errorf("%+v on %s = %v, want %v", tc.m, tc.s, got, tc.want)
@@ -153,7 +159,7 @@ func TestTheLastRowIsTheDial(t *testing.T) {
 	if p := (Autonomy{{Then: allow}, {Then: ask}}); p.Default() != ThenAsk || p.MayAsk(StepGitPush) {
 		t.Errorf("the dial reads %s, may ask %v", p.Default(), p.MayAsk(StepGitPush))
 	}
-	p := Autonomy{{Match: on("git", "push", "ref", "refs/heads/verse/*"), Then: allow}, {Match: on("git", "push"), Then: ask}, {Then: allow}}
+	p := Autonomy{{Match: on("git", "push", "ref", `!glob "refs/heads/verse/*"`), Then: allow}, {Match: on("git", "push"), Then: ask}, {Then: allow}}
 	if !p.MayAsk(StepGitPush) || p.MayAsk(StepCommandsRun) {
 		t.Errorf("may ask: push %v, run %v", p.MayAsk(StepGitPush), p.MayAsk(StepCommandsRun))
 	}
@@ -164,15 +170,15 @@ func TestTheLastRowIsTheDial(t *testing.T) {
 // not a row, saying what it does give.
 func TestAStepOutsideTheEnvironmentIsRefusedFirst(t *testing.T) {
 	asked := 0
-	env := systems.Environment{Systems: systems.Systems{"files": {{Verbs: map[string][]systems.Shape{"write": {{"path": "docs/**"}}}}}}}
+	env := systems.Environment{Systems: systems.Systems{"files": {{Verbs: map[string][]systems.Shape{"write": {{"path": systems.Regexp("^docs/")}}}}}}}
 	sup := systemstest.Opened(NewSupervisor(env, Autonomy{{Then: Then{Mode: ThenAllow}}},
 		resolverFunc(func(GateQuestion) Resolution { asked++; return Resolution{Choice: Proceed, Proceed: true} })), env)
 	for _, c := range []struct {
 		st   Step
 		says string
 	}{
-		{Step{Name: StepCommandsRun, Fields: map[string]string{"command": "ls"}}, "the environment gives no `commands` (it gives: files)"},
-		{Step{Name: StepFilesWrite, Fields: map[string]string{"path": "src/x.go"}}, "it gives {path: docs/**}"},
+		{NewStep(StepCommandsRun, map[string]string{"command": "ls"}), "the environment gives no `commands` (it gives: files)"},
+		{NewStep(StepFilesWrite, map[string]string{"path": "src/x.go"}), "it gives {path: !regexp ^docs/}"},
 	} {
 		res, err := sup.Ask(context.Background(), c.st, ToolUse{})
 		if err != nil || res.Proceed || res.By != ByEnvironment || res.Question.Gate != EnvironmentGate ||
@@ -180,11 +186,11 @@ func TestAStepOutsideTheEnvironmentIsRefusedFirst(t *testing.T) {
 			t.Errorf("%s: %+v %v, asked %d; want refused by the environment saying %q", c.st, res, err, asked, c.says)
 		}
 	}
-	if res, err := sup.Ask(context.Background(), Step{Name: StepFilesWrite, Fields: map[string]string{"path": "docs/a.md"}}, ToolUse{}); err != nil || !res.Proceed || res.By != ByAuto {
+	if res, err := sup.Ask(context.Background(), NewStep(StepFilesWrite, map[string]string{"path": "docs/a.md"}), ToolUse{}); err != nil || !res.Proceed || res.By != ByAuto {
 		t.Errorf("a step within: %+v %v; want it allowed by the row", res, err)
 	}
 	if res, _ := systemstest.Opened(NewSupervisor(systems.Environment{}, nil, resolverFunc(func(GateQuestion) Resolution { asked++; return Resolution{} })), systems.Environment{}).
-		Ask(context.Background(), Step{Name: StepFilesWrite, Fields: map[string]string{"path": "a"}}, ToolUse{}); res.Proceed ||
+		Ask(context.Background(), NewStep(StepFilesWrite, map[string]string{"path": "a"}), ToolUse{}); res.Proceed ||
 		!strings.Contains(res.Note, "gives no system") || asked != 0 {
 		t.Errorf("an empty environment: %+v, asked %d; want refused saying what to add", res, asked)
 	}
@@ -194,11 +200,11 @@ func TestAStepOutsideTheEnvironmentIsRefusedFirst(t *testing.T) {
 // only through `own: true` lets the task's own branch go and refuses another's.
 func TestAPushIsWithinOnTheFieldsTheRunnerFills(t *testing.T) {
 	env := systems.Environment{Systems: systems.Systems{"git": {{Attributes: map[string]string{"repo": "github.com/acme/app"},
-		Verbs: map[string][]systems.Shape{"push": {{"ref": "refs/heads/verse/auto/*", "own": "true"}}}}}}}
+		Verbs: map[string][]systems.Shape{"push": {{"ref": systems.Glob("refs/heads/verse/auto/*"), "own": ir.FromBool(true)}}}}}}}
 	sup := systemstest.Opened(NewSupervisor(env, Autonomy{{Then: Then{Mode: ThenAllow}}}, resolverFunc(func(GateQuestion) Resolution { return Resolution{} })), env)
 	push := func(own string) Step {
-		return Step{Name: StepGitPush, Fields: map[string]string{"repo": "github.com/acme/app", "ref": "refs/heads/verse/auto/t1",
-			"delete": "false", "force": "false", "exists": "true", "own": own}}
+		return NewStep(StepGitPush, map[string]string{"repo": "github.com/acme/app", "ref": "refs/heads/verse/auto/t1",
+			"delete": "false", "force": "false", "exists": "true", "own": own})
 	}
 	if res, _ := sup.Ask(context.Background(), push("true"), ToolUse{}); !res.Proceed {
 		t.Errorf("its own branch: %+v, want it allowed", res)
@@ -241,7 +247,7 @@ func TestARowSaysHowAStepIsAsked(t *testing.T) {
 func TestADenyRowRefusesWithoutAsking(t *testing.T) {
 	asked := false
 	sup := systemstest.Opened(NewSupervisor(anyEnv(), Autonomy{
-		{Name: "no-rm", Match: on("commands", "run", "command", "rm *"), Then: Then{Mode: ThenDeny}},
+		{Name: "no-rm", Match: on("commands", "run", "command", `!regexp "^rm "`), Then: Then{Mode: ThenDeny}},
 		{Then: Then{Mode: ThenAllow}},
 	}, resolverFunc(func(GateQuestion) Resolution { asked = true; return Resolution{Choice: Proceed, Proceed: true} })), anyEnv())
 	res, err := sup.Check(context.Background(), ToolUse{Name: "run_bash", Input: map[string]any{"command": "rm -rf /"}})
@@ -258,7 +264,7 @@ func TestADenyRowRefusesWithoutAsking(t *testing.T) {
 // how many approvals settle it, how long it stands, and who is asked.
 func TestTheFirstMatchingRowAsksItsQuestion(t *testing.T) {
 	g := Autonomy{
-		{Name: "migrations", Match: on("files", "write", "path", "db/**"),
+		{Name: "migrations", Match: on("files", "write", "path", `!regexp "^db/"`),
 			Then: Then{Mode: ThenAsk, Ask: &Ask{Need: 2, Within: "24h", Answerers: []string{"group:dba"}}}},
 		{Name: "any-write", Match: on("files", "write"), Then: Then{Mode: ThenAsk}},
 		{Then: Then{Mode: ThenAllow}},
@@ -321,8 +327,8 @@ func TestAPolicyIsChecked(t *testing.T) {
 		{Autonomy{{Match: on("files", "run"), Then: ask}, {Then: ask}}, "no verb"},
 		{Autonomy{{Match: &Match{Verb: "push"}, Then: ask}, {Then: ask}}, "names its system"},
 		{Autonomy{{Match: on("files", "write", "command", "ls"), Then: ask}, {Then: ask}}, "match.command: not a field"},
-		{Autonomy{{Match: &Match{Params: map[string]string{"ref": "main"}}, Then: ask}, {Then: ask}}, "names its system"},
-		{Autonomy{{Match: &Match{Verb: "close", Params: map[string]string{"issue": "eng-42"}}, Then: Then{Mode: ThenDeny}}, {Then: allow}}, "names its system"},
+		{Autonomy{{Match: &Match{Params: map[string]*ir.Node{"ref": ir.FromString("main")}}, Then: ask}, {Then: ask}}, "names its system"},
+		{Autonomy{{Match: &Match{Verb: "close", Params: map[string]*ir.Node{"issue": ir.FromString("eng-42")}}, Then: Then{Mode: ThenDeny}}, {Then: allow}}, "names its system"},
 		{Autonomy{{Match: on("git", "push", "ref", "$subject.head"), Then: ask}, {Then: ask}}, "not bound"},
 		{Autonomy{{Match: on("commands", "run"), Then: Then{Mode: ThenAsk, Ask: &Ask{Need: -1}}}, {Then: ask}}, "need"},
 		{Autonomy{{Match: on("commands", "run"), Then: Then{Mode: ThenAsk, Ask: &Ask{Within: "soon"}}}, {Then: ask}}, "within"},
@@ -340,15 +346,15 @@ func TestAPolicyIsChecked(t *testing.T) {
 		{Autonomy{{Match: &Match{System: "network"}, Then: ask}, {Then: ask}}, "a connection can't wait for an answer"},
 		{Autonomy{{Match: on("git", "push", "delete", "True"), Then: Then{Mode: ThenDeny}}, {Then: allow}}, "true or false"},
 		{Autonomy{{Match: on("git", "push", "ref", "main"), Then: Then{Mode: ThenDeny}}, {Then: allow}}, "a full ref (refs/heads/main)"},
-		{Autonomy{{Match: on("git", "push", "ref", "*", "delete", "true"), Then: Then{Mode: ThenDeny}}, {Then: allow}}, "does not cross its `/`"},
-		{Autonomy{{Match: on("git", "push", "ref", "*/main"), Then: Then{Mode: ThenDeny}}, {Then: allow}}, "does not cross its `/`"},
-		{Autonomy{{Match: on("git", "push", "ref", "refs/*"), Then: Then{Mode: ThenDeny}}, {Then: allow}}, "does not cross its `/`"},
-		{Autonomy{{Match: on("git", "push", "delete", ""), Then: Then{Mode: ThenDeny}}, {Then: allow}}, "never empty"},
+		{Autonomy{{Match: on("git", "push", "ref", `"*"`, "delete", "true"), Then: Then{Mode: ThenDeny}}, {Then: allow}}, "any value is `null`"},
+		{Autonomy{{Match: on("git", "push", "ref", `!glob "*/main"`), Then: Then{Mode: ThenDeny}}, {Then: allow}}, "`*` stops at a `/`"},
+		{Autonomy{{Match: on("git", "push", "ref", `!glob "refs/*"`), Then: Then{Mode: ThenDeny}}, {Then: allow}}, "`*` stops at a `/`"},
+		{Autonomy{{Match: on("git", "push", "ref", `""`), Then: Then{Mode: ThenDeny}}, {Then: allow}}, "never empty"},
 		{Autonomy{{Match: on("git", "push", "repo", "acme/app"), Then: Then{Mode: ThenDeny}}, {Then: allow}}, "`host/owner/name`"},
 		{Autonomy{{Match: on("github", "create-pr", "repo", "github.com/Acme/App"), Then: Then{Mode: ThenDeny}}, {Then: allow}}, "lowercase (github.com/acme/app)"},
 		{Autonomy{{Match: on("github", "create-pr", "base", "refs/heads/main"), Then: Then{Mode: ThenDeny}}, {Then: allow}}, "a branch's name (main)"},
 		{Autonomy{{Match: on("linear-issue", "create", "team", "eng"), Then: Then{Mode: ThenDeny}}, {Then: allow}}, "uppercase (ENG)"},
-		{Autonomy{{Match: on("slack", "post", "channel", "#Deploys"), Then: Then{Mode: ThenDeny}}, {Then: allow}}, "lowercase, without a `#` (deploys)"},
+		{Autonomy{{Match: on("slack", "post", "channel", `"#Deploys"`), Then: Then{Mode: ThenDeny}}, {Then: allow}}, "lowercase, without a `#` (deploys)"},
 	} {
 		if err := tc.p.Check(); err == nil || !strings.Contains(err.Error(), tc.says) {
 			t.Errorf("%+v: %v, want an error saying %q", tc.p, err, tc.says)
@@ -357,13 +363,13 @@ func TestAPolicyIsChecked(t *testing.T) {
 	for _, ok := range []Autonomy{
 		{},
 		{{Then: ask}},
-		{{Match: on("git", "push", "repo", "**"), Then: allow}, {Then: ask}},
-		{{Match: &Match{System: "git", Params: map[string]string{"ref": "refs/heads/main"}}, Then: Then{Mode: ThenDeny}}, {Then: allow}},
-		{{Match: on("git", "push", "ref", "**", "delete", "true"), Then: Then{Mode: ThenDeny}}, {Then: allow}},
-		{{Match: on("git", "push", "ref", "refs/heads/*", "delete", "true"), Then: Then{Mode: ThenDeny}}, {Then: allow}},
-		{{Match: on("git", "push", "ref", "*/heads/main"), Then: Then{Mode: ThenDeny}}, {Then: allow}},
-		{{Match: on("github", "update-pr", "base", ""), Then: allow}, {Then: ask}}, // an update that keeps its base
-		{{Match: on("git", "push", "force", "*"), Then: Then{Mode: ThenDeny}}, {Then: allow}},
+		{{Match: on("git", "push", "repo", "null"), Then: allow}, {Then: ask}},
+		{{Match: &Match{System: "git", Params: map[string]*ir.Node{"ref": ir.FromString("refs/heads/main")}}, Then: Then{Mode: ThenDeny}}, {Then: allow}},
+		{{Match: on("git", "push", "ref", "null", "delete", "true"), Then: Then{Mode: ThenDeny}}, {Then: allow}},
+		{{Match: on("git", "push", "ref", `!glob "refs/heads/*"`, "delete", "true"), Then: Then{Mode: ThenDeny}}, {Then: allow}},
+		{{Match: on("git", "push", "ref", `!glob "*/heads/main"`), Then: Then{Mode: ThenDeny}}, {Then: allow}},
+		{{Match: on("github", "update-pr", "base", `""`), Then: allow}, {Then: ask}}, // an update that keeps its base
+		{{Match: on("git", "push", "force", "null"), Then: Then{Mode: ThenDeny}}, {Then: allow}},
 	} {
 		if err := ok.Check(); err != nil {
 			t.Errorf("%+v: %v", ok, err)
@@ -420,7 +426,7 @@ func TestATaskStartsWithoutAsking(t *testing.T) {
 		go func() { oc, _ := p.Run(context.Background()); done <- oc }()
 		waitFor(t, func() bool { return len(reg.Pending()) == 1 })
 		q := reg.Pending()[0].Question
-		if q.Gate != "autonomy[0]" || q.Step.Name != StepCommandsRun || q.Step.Fields["command"] != "work" {
+		if q.Gate != "autonomy[0]" || q.Step.Name != StepCommandsRun || systems.FieldText(q.Step.Fields, "command") != "work" {
 			t.Fatalf("first asked %+v, want the step under the row on commands", q)
 		}
 		reg.Answer(q.ID, Choose(choice, "user:ana"))
@@ -457,7 +463,7 @@ func TestSetPolicyOnARunningTask(t *testing.T) {
 	if err := p.SetAutonomy(askOn("deploy"), "user:ana"); err != nil {
 		t.Fatal(err)
 	}
-	if g := p.sup.Autonomy(); len(g) != 2 || g[0].Match.Params["command"] != "deploy" {
+	if g := p.sup.Autonomy(); len(g) != 2 || systems.Words(g[0].Match.Params["command"]) != "deploy" {
 		t.Fatalf("policy now %+v", g)
 	}
 	e := <-events
@@ -515,18 +521,18 @@ func (l *syncLog) String() string {
 func TestTheCeilingIsReadAfterThePolicy(t *testing.T) {
 	asked := 0
 	sup := systemstest.Opened(NewSupervisor(anyEnv(), Autonomy{
-		{Name: "ship", Match: on("commands", "run", "command", "make ship*"), Then: Then{Mode: ThenAsk}},
+		{Name: "ship", Match: on("commands", "run", "command", `!regexp "^make ship"`), Then: Then{Mode: ThenAsk}},
 		{Match: &Match{System: "files"}, Then: Then{Mode: ThenAllow}},
 		{Then: Then{Mode: ThenAllow}},
 	}, resolverFunc(func(GateQuestion) Resolution { asked++; return Resolution{Choice: Proceed, Proceed: true} })), anyEnv())
 	sup.SetCeilings(map[string]systems.Ceiling{"commands": {{
-		Verbs: map[string][]systems.Shape{"run": {{"command": "ls*"}, {"command": "make test*"}}},
+		Verbs: map[string][]systems.Shape{"run": {{"command": systems.Regexp("^ls")}, {"command": systems.Regexp("^make test")}}},
 	}}})
 	for _, command := range []string{"make ship v1", "rm -rf /"} {
 		res, err := sup.child().Check(context.Background(), ToolUse{Name: "run_bash", Input: map[string]any{"command": command}})
 		if err != nil || res.Proceed || res.Choice != Deny || res.By != ByCeiling || asked != 0 ||
 			!strings.Contains(res.Note, "beyond the runner's ceiling for commands") ||
-			!strings.Contains(res.Note, "{command: ls*}, {command: make test*}") ||
+			!strings.Contains(res.Note, `{command: !regexp ^ls}, {command: !regexp "^make test"}`) ||
 			!strings.Contains(res.Note, "a check that missed") {
 			t.Fatalf("%s: Check = %+v, %v (asked %d)", command, res, err, asked)
 		}
@@ -555,13 +561,13 @@ func TestTheCeilingIsReadAfterThePolicy(t *testing.T) {
 // stands; each row that asks about either asks once, in the order of the steps, and every answer
 // must be a yes; a row asking about both asks once.
 func TestAnActionOfSeveralStepsGoesAheadOnlyWhereEachWould(t *testing.T) {
-	write := func(path string) Step { return Step{Name: StepFilesWrite, Fields: map[string]string{"path": path}} }
+	write := func(path string) Step { return NewStep(StepFilesWrite, map[string]string{"path": path}) }
 	steps := []Step{write("docs/x"), write("db/x")}
 	var asked []string
 	supIn := func(env systems.Environment, p Autonomy, no string) *Supervisor {
 		asked = nil
 		s := NewSupervisor(env, p, resolverFunc(func(q GateQuestion) Resolution {
-			asked = append(asked, q.Gate+" "+q.Step.Fields["path"])
+			asked = append(asked, q.Gate+" "+systems.FieldText(q.Step.Fields, "path"))
 			if q.Gate == no {
 				return Resolution{Choice: Deny, Steer: []string{"no from " + q.Gate}}
 			}
@@ -580,30 +586,30 @@ func TestAnActionOfSeveralStepsGoesAheadOnlyWhereEachWould(t *testing.T) {
 		}
 		return res
 	}
-	docs := Row{Name: "docs", Match: on("files", "write", "path", "docs/**"), Then: Then{Mode: ThenAllow}}
+	docs := Row{Name: "docs", Match: on("files", "write", "path", `!regexp "^docs/"`), Then: Then{Mode: ThenAllow}}
 	allowFiles := Autonomy{{Match: &Match{System: "files"}, Then: Then{Mode: ThenAllow}}}
-	onlyDocs := systems.Ceiling{{Verbs: map[string][]systems.Shape{"write": {{"path": "docs/**"}}}}}
+	onlyDocs := systems.Ceiling{{Verbs: map[string][]systems.Shape{"write": {{"path": systems.Regexp("^docs/")}}}}}
 
 	// A catch-all deny below an allow on the path named: the step it lands on is refused.
 	if res := check(sup(Autonomy{docs, {Name: "rest", Match: on("files", "write"), Then: Then{Mode: ThenDeny}}}, "")); res.Proceed ||
-		res.By != ByAutonomy || res.Question.Gate != "rest" || res.Question.Step.Fields["path"] != "db/x" || len(asked) != 0 {
+		res.By != ByAutonomy || res.Question.Gate != "rest" || systems.FieldText(res.Question.Step.Fields, "path") != "db/x" || len(asked) != 0 {
 		t.Errorf("allow docs, deny the rest: %+v (asked %v), want refused by rest on db/x", res, asked)
 	}
 	// An environment that gives writes under docs alone, under an autonomy that allows every write.
-	if res := check(supIn(systems.Environment{Systems: systems.Systems{"files": {{Verbs: map[string][]systems.Shape{"write": {{"path": "docs/**"}}}}}}}, allowFiles, "")); res.Proceed ||
-		res.By != ByEnvironment || res.Question.Step.Fields["path"] != "db/x" {
+	if res := check(supIn(systems.Environment{Systems: systems.Systems{"files": {{Verbs: map[string][]systems.Shape{"write": {{"path": systems.Regexp("^docs/")}}}}}}}, allowFiles, "")); res.Proceed ||
+		res.By != ByEnvironment || systems.FieldText(res.Question.Step.Fields, "path") != "db/x" {
 		t.Errorf("environment of docs: %+v, want refused by the environment on db/x", res)
 	}
 	// The runner's ceiling on where it lands, under an autonomy that allows every write.
 	s := sup(allowFiles, "")
 	s.SetCeilings(map[string]systems.Ceiling{"files": onlyDocs})
-	if res := check(s); res.Proceed || res.By != ByCeiling || res.Question.Step.Fields["path"] != "db/x" {
+	if res := check(s); res.Proceed || res.By != ByCeiling || systems.FieldText(res.Question.Step.Fields, "path") != "db/x" {
 		t.Errorf("ceiling of docs: %+v, want refused by the ceiling on db/x", res)
 	}
 	// Two rows ask: each once, in the order of the steps, and both answers decide.
 	asks := Autonomy{
-		{Name: "schema", Match: on("files", "write", "path", "db/**"), Then: Then{Mode: ThenAsk}},
-		{Name: "doc", Match: on("files", "write", "path", "docs/**"), Then: Then{Mode: ThenAsk}},
+		{Name: "schema", Match: on("files", "write", "path", `!regexp "^db/"`), Then: Then{Mode: ThenAsk}},
+		{Name: "doc", Match: on("files", "write", "path", `!regexp "^docs/"`), Then: Then{Mode: ThenAsk}},
 	}
 	if res := check(sup(asks, "")); !res.Proceed || strings.Join(asked, ", ") != "doc docs/x, schema db/x" ||
 		strings.Join(res.Steer, ", ") != "yes from doc, yes from schema" {
@@ -624,7 +630,7 @@ func TestAnActionOfSeveralStepsGoesAheadOnlyWhereEachWould(t *testing.T) {
 	}
 	// Every step allowed: allowed, nobody asked, as the first step.
 	if res := check(sup(allowFiles, "")); !res.Proceed ||
-		res.By != ByAuto || len(asked) != 0 || res.Question.Step.Fields["path"] != "docs/x" {
+		res.By != ByAuto || len(asked) != 0 || systems.FieldText(res.Question.Step.Fields, "path") != "docs/x" {
 		t.Errorf("all allowed: %+v (asked %v)", res, asked)
 	}
 }
@@ -638,25 +644,25 @@ func TestANumberInAMatchIsItsDigits(t *testing.T) {
 		if err := r.FromTony([]byte(src)); err != nil {
 			t.Fatal(err)
 		}
-		if got := r.Match.Params["issue"]; got != "7" {
-			t.Errorf("%s reads the issue as %q", src, got)
+		if got := r.Match.Params["issue"]; systems.Words(got) != "7" {
+			t.Errorf("%s reads the issue as %s", src, systems.Words(got))
 		}
-		if !r.Match.Matches(Step{Name: StepGitHubIssueComment, Fields: map[string]string{"repo": "x", "issue": "7"}}) {
+		if !r.Match.Matches(NewStep(StepGitHubIssueComment, map[string]string{"repo": "x", "issue": "7"})) {
 			t.Errorf("%s does not match issue 7", src)
 		}
-		if r.Match.Matches(Step{Name: StepGitHubIssueComment, Fields: map[string]string{"repo": "x", "issue": "8"}}) {
+		if r.Match.Matches(NewStep(StepGitHubIssueComment, map[string]string{"repo": "x", "issue": "8"})) {
 			t.Errorf("%s matches issue 8", src)
 		}
 	}
 }
 
-// NULL IS NO PATTERN: a param written null would otherwise drop out of the match, and an allow
-// row with it would allow every call of the verb.
-func TestANullInAMatchIsRefused(t *testing.T) {
-	for _, src := range []string{`{match: {system: git, verb: push, ref: null}, then: allow}`,
+// A NULL SYSTEM OR VERB IS REFUSED: a system is named, and a verb left out matches any. A param
+// written null is any value the step carries, as tony matches it.
+func TestANullSystemOrVerbInAMatchIsRefused(t *testing.T) {
+	for _, src := range []string{`{match: {system: git, verb: null}, then: allow}`,
 		`{match: {system: null, verb: push}, then: allow}`} {
 		var r Row
-		if err := r.FromTony([]byte(src)); err == nil || !strings.Contains(err.Error(), "null is no pattern") {
+		if err := r.FromTony([]byte(src)); err == nil || !strings.Contains(err.Error(), "match.") {
 			t.Errorf("%s: %v (%+v), want it refused", src, err, r.Match)
 		}
 	}

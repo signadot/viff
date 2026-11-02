@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
@@ -22,16 +23,16 @@ func TestASpawnsShapeIsCheckedAtInstall(t *testing.T) {
 		{"a person", `{person: "user:ana", prompt: go}`, "no runner takes a person yet"},
 		{"a withhold, which is no more", `{script: "true", autonomy: [{match: {system: commands}, then: withhold}, {then: ask}]}`, `"withhold" is not one of deny, ask, allow`},
 		{"a row the environment gives nothing to", `{script: "true", environment: {systems: {commands: {run: {}}}}, autonomy: [{match: {system: files, verb: write}, then: deny}, {then: ask}]}`, "autonomy[0]: matches nothing the environment gives (system=files verb=write)"},
-		{"a row no shape has a value in common with", `{script: "true", environment: {systems: {git: {repo: acme/app, push: {ref: "refs/heads/verse/*"}}}}, autonomy: [{match: {system: git, verb: push, ref: "refs/tags/*"}, then: allow}, {then: ask}]}`, "matches nothing the environment gives"},
+		{"a row no shape has a value in common with", `{script: "true", environment: {systems: {git: {repo: acme/app, push: {ref: !glob "refs/heads/verse/*"}}}}, autonomy: [{match: {system: git, verb: push, ref: !glob "refs/tags/*"}, then: allow}, {then: ask}]}`, "matches nothing the environment gives"},
 		{"a timeout that is no duration", `{script: "true", timeout: soon}`, "is not a duration"},
 		{"a variable name that is no name", `{script: "true", environment: {vars: {"A-B": x}}}`, "a variable's name"},
-		{"a host the proxy cannot take", `{script: "true", environment: {systems: {network: {mode: allow, tcp-client: [{host: "**.example.com"}]}}}}`, "is not a host"},
-		{"a wildcard over a top-level domain", `{script: "true", environment: {systems: {network: {mode: allow, tcp-client: [{host: "*.com"}]}}}}`, "matches too much"},
-		{"an allowlist of everything", `{script: "true", environment: {systems: {network: {mode: allow, tcp-client: [{host: "*"}]}}}}`, "wants an open network"},
-		{"a port spelled with a zero", `{script: "true", environment: {systems: {network: {mode: allow, tcp-client: [{host: example.com, port: "0443"}]}}}}`, "is not a port"},
+		{"a host the proxy cannot take", `{script: "true", environment: {systems: {network: {mode: allow, tcp-client: [{host: "**.example.com"}]}}}}`, "a pattern is written `!glob` or `!regexp`"},
+		{"a wildcard over a top-level domain", `{script: "true", environment: {systems: {network: {mode: allow, tcp-client: [{host: !glob "*.com"}]}}}}`, "matches too much"},
+		{"an allowlist of everything", `{script: "true", environment: {systems: {network: {mode: allow, tcp-client: [{host: null}]}}}}`, "any host is mode open"},
+		{"a port spelled with a zero", `{script: "true", environment: {systems: {network: {mode: allow, tcp-client: [{host: example.com, port: "0443"}]}}}}`, "the field is a number: write 0443, unquoted"},
 		{"a host with a trailing dot", `{script: "true", environment: {systems: {network: {mode: allow, tcp-client: [{host: "example.com."}]}}}}`, "is not a host"},
 		{"a host in brackets", `{script: "true", environment: {systems: {network: {mode: allow, tcp-client: [{host: "[example.com]"}]}}}}`, "is not a host"},
-		{"a port that is no port", `{script: "true", environment: {systems: {network: {mode: allow, tcp-client: [{host: api.example.com, port: http}]}}}}`, "is not a port"},
+		{"a port that is no port", `{script: "true", environment: {systems: {network: {mode: allow, tcp-client: [{host: api.example.com, port: http}]}}}}`, "the field is a whole number"},
 		{"hosts under a mode that is not allow", `{script: "true", environment: {systems: {network: {mode: open, tcp-client: [{host: example.com}]}}}}`, "tcp-client is for mode allow"},
 		{"a virtual key written as an annotation", `{agent: {name: verse, annotations: {verse.portkey/virtual-key: vk-prod}}, prompt: go}`, "is verse's to write"},
 		{"a row whose match is bound", `{script: "true", autonomy: [{name: head, match: {system: git, verb: push, ref: $subject.head}, then: ask}, {then: ask}]}`, "is not bound"},
@@ -64,7 +65,7 @@ func TestARowOnABoundRepoInstalls(t *testing.T) {
     patch: {stage: started}
     spawn:
       script: "true"
-      environment: {systems: {git: [{repo: $subject.value.repo, fetch: {}, push: {ref: "refs/heads/verse/*"}}]}}
+      environment: {systems: {git: [{repo: $subject.value.repo, fetch: {}, push: {ref: !glob "refs/heads/verse/*"}}]}}
       autonomy: [{match: {system: git, verb: push, repo: github.com/acme/app}, then: allow}, {then: ask}]
 `)); err != nil {
 		t.Fatalf("a row on the repo the firing binds: %v", err)
@@ -149,20 +150,20 @@ func TestWhatTheFiringBindsIsStoodInForAtInstall(t *testing.T) {
 // of the ceiling's is refused naming what the ceiling gives.
 func TestASpawnsEnvironmentIsHeldToTheCeilingAtInstall(t *testing.T) {
 	ceiling := systems.Ceiling{{
-		Attributes: map[string][]string{"repo": {"github.com/signadot/**"}},
-		Verbs:      map[string][]systems.Shape{"fetch": {{}}, "push": {{"ref": "refs/heads/verse/**"}}},
+		Attributes: map[string]*ir.Node{"repo": systems.Regexp("^github\\.com/signadot/")},
+		Verbs:      map[string][]systems.Shape{"fetch": {{}}, "push": {{"ref": systems.Regexp("^refs/heads/verse/")}}},
 	}}
 	desc := runner.Description{Version: runner.DescriptionVersion, Offers: []runner.Offer{{Script: true,
 		Systems: map[string]runner.System{
 			"git":     {Ceiling: ceiling},
-			"network": {Builds: systems.Ceiling{{Attributes: map[string][]string{"mode": {runner.NetworkNone}}}}},
+			"network": {Builds: systems.Ceiling{{Attributes: map[string]*ir.Node{"mode": systems.OneOf(runner.NetworkNone)}}}},
 		}}}}
 	for _, c := range []struct{ what, git, want string }{
-		{"a repository the firing binds", `{repo: $subject.value.repo, fetch: {}, push: {ref: "refs/heads/verse/auto/*"}}`, ""},
+		{"a repository the firing binds", `{repo: $subject.value.repo, fetch: {}, push: {ref: !glob "refs/heads/verse/auto/*"}}`, ""},
 		{"an owner's repository the firing names", `{repo: "github.com/signadot/$subject.value.name", fetch: {}}`, ""},
-		{"another owner before the $", `{repo: "github.com/other/$subject.value.name", fetch: {}}`, "is beyond github.com/signadot/**"},
+		{"another owner before the $", `{repo: "github.com/other/$subject.value.name", fetch: {}}`, `is beyond !regexp ^github\.com/signadot/`},
 		{"a literal repository outside", `{repo: other/app, fetch: {}}`, "repo github.com/other/app is beyond"},
-		{"a push wider than the ceiling's", `{repo: signadot/app, push: {ref: "refs/heads/**"}}`, "within no shape of its: {ref: refs/heads/verse/**}"},
+		{"a push wider than the ceiling's", `{repo: signadot/app, push: {ref: !regexp "^refs/heads/"}}`, "within no shape of its: {ref: !regexp ^refs/heads/verse/}"},
 	} {
 		t.Run(c.what, func(t *testing.T) {
 			eng := New(entitytest.Store(t), task.AutoResolver{})

@@ -16,9 +16,9 @@ import (
 	"github.com/signadot/verse/systems"
 )
 
-// AN AUTONOMY IS ONE ORDERED LIST OVER EVERY CALL A TASK MAKES. Each row names a call by its
-// system, its verb and the step's fields as patterns (package systems), and says what happens
-// to it: `deny` refuses it with the row's name and asks nobody, `ask` poses the question a
+// AN AUTONOMY IS ONE ORDERED LIST OVER EVERY CALL A TASK MAKES. Each row names a call by a tony
+// match over the step (Step.Doc): its system, its verb and patterns over its fields (package
+// systems), and says what happens to it: `deny` refuses it with the row's name and asks nobody, `ask` poses the question a
 // gate poses and the answer decides, and `allow` lets it go. The first row that matches a call
 // decides it, and the last row, which names no call, decides every call no row above matched:
 // the task's dial, `ask` when there is no autonomy.
@@ -30,7 +30,7 @@ import (
 //
 //	autonomy:
 //	- {match: {system: git, verb: push, ref: refs/heads/main}, then: deny}
-//	- {match: {system: git, verb: push, ref: refs/heads/verse/auto/*}, then: allow}
+//	- {match: {system: git, verb: push, ref: !glob "refs/heads/verse/auto/*"}, then: allow}
 //	- {match: {system: git, verb: push}, then: {ask: {need: 2, answerers: [group:release], within: 4h}}}
 //	- {then: ask}
 //
@@ -51,18 +51,24 @@ type Row struct {
 	Then Then `tony:"field=then"`
 }
 
-// Match is the calls a row is about, written flat:
-// `{system: git, verb: push, ref: refs/heads/main}`. Every row but the default names its system;
-// a verb left out matches any of the system's; a param is a pattern over the call's field of
-// that name, `*` within a segment and `**` across, and a command matching as a whole string. A
-// param the verb does not have is refused, and so is a `$`: a match is a pattern over what the
-// task does, not bound by the firing.
+// Match is the calls a row is about, a tony match over the step written flat:
+// `{system: git, verb: push, ref: refs/heads/main}`. Every row but the default names its
+// system; a verb left out matches any of the system's, and one may be a pattern over their names
+// (`verb: !or [data-put, data-rm]`); a param is a pattern over the step's field of that name, in
+// tony's grammar (`ref: !glob "refs/heads/verse/*"`, `force: true`, `command: !regexp "git
+// push"`; systems.MatchField), an absent field meeting none of them. A param the verbs do not
+// have is refused, and so is a `$`: a match is a pattern over what the task does, not bound by
+// the firing.
 //
 //tony:schemagen=verse-task-policy-match,notag,codec=custom
 type Match struct {
 	System string
-	Verb   string
-	Params map[string]string
+	// Verb is the verb the row names by name; empty where it names any, or a pattern.
+	Verb string
+	// VerbPattern is the verbs the row names by a pattern over their names, nil where it names
+	// one or any.
+	VerbPattern *ir.Node
+	Params      map[string]*ir.Node
 }
 
 // Then is what a row does with a call: `deny`, `ask` or `allow`, or `{ask: {…}}`,
@@ -115,7 +121,7 @@ func (p Autonomy) Clone() Autonomy {
 	for _, r := range p {
 		nr := Row{Name: r.Name, Then: Then{Mode: r.Then.Mode}}
 		if r.Match != nil {
-			nr.Match = &Match{System: r.Match.System, Verb: r.Match.Verb, Params: maps.Clone(r.Match.Params)}
+			nr.Match = r.Match.clone()
 		}
 		if a := r.Then.Ask; a != nil {
 			nr.Then.Ask = &Ask{Need: a.Need, Answerers: slices.Clone(a.Answerers), Within: a.Within, Default: a.Default, Labels: maps.Clone(a.Labels)}
@@ -132,11 +138,12 @@ func (p Autonomy) Clone() Autonomy {
 // out are outer's rows a row of p above this one covers whole, since no call of theirs reaches
 // this row, and outer's rows on calls env does not give, since no call of theirs is this task's.
 //
-// Two matches could decide the same call where their systems and verbs agree, or one names none,
-// and each param they both name has patterns that meet (systems.Intersect); one covers the other
-// where it names no more than the other does and each of its patterns contains the other's
-// (systems.PatternContains). Reading patterns against patterns, not against a call, is what makes
-// this sound for a `*` on either side.
+// Two matches could decide the same call where their systems agree, their verbs share one, and
+// each param they both name has patterns that meet (systems.FieldMeets); one covers the other
+// where it names no param the other does not, its verbs hold the other's, and each of its
+// patterns holds the other's (systems.FieldContains). Reading patterns against patterns, not
+// against a call, is what makes this sound for any operator on either side: one the analysis
+// does not read is held to be within another only where the two are the same.
 func (p Autonomy) Within(outer Autonomy, env systems.Environment) error {
 	outer = outer.OrDefault()
 	inner := p.OrDefault()
@@ -191,7 +198,7 @@ func reaches(env systems.Environment, m *Match) bool {
 	if m.Any() || m.System == "" {
 		return true
 	}
-	return env.Reaches(m.System, m.Verb, m.Params)
+	return env.Reaches(m.System, m.VerbNames(), m.Params)
 }
 
 // meets is whether some call could be matched by both m and n: their systems and verbs agree
@@ -200,19 +207,22 @@ func (m *Match) meets(n *Match) bool {
 	if m.Any() || n.Any() {
 		return true
 	}
-	if (m.System != "" && n.System != "" && m.System != n.System) || (m.Verb != "" && n.Verb != "" && m.Verb != n.Verb) {
+	if m.System != "" && n.System != "" && m.System != n.System {
+		return false
+	}
+	if mv, nv := m.VerbNames(), n.VerbNames(); mv != nil && nv != nil && !slices.ContainsFunc(mv, func(v string) bool { return slices.Contains(nv, v) }) {
 		return false
 	}
 	for name, mp := range m.Params {
-		if np, ok := n.Params[name]; ok && !systems.Intersect(mp, np, m.sep(name)) {
+		if np, ok := n.Params[name]; ok && !systems.FieldMeets(m.form(name), mp, np) {
 			return false
 		}
 	}
 	return true
 }
 
-// encloses is whether every call n matches, m matches too: m names no system, verb or param n does
-// not, and each pattern of m's contains n's for the same param.
+// encloses is whether every call n matches, m matches too: m names no system or param n does not,
+// its verbs hold n's, and each pattern of m's holds n's for the same param.
 func (m *Match) encloses(n *Match) bool {
 	if m.Any() {
 		return true
@@ -220,25 +230,80 @@ func (m *Match) encloses(n *Match) bool {
 	if n.Any() {
 		return false
 	}
-	if (m.System != "" && m.System != n.System) || (m.Verb != "" && m.Verb != n.Verb) {
+	if m.System != "" && m.System != n.System {
 		return false
+	}
+	if mv := m.VerbNames(); mv != nil {
+		nv := n.VerbNames()
+		if nv == nil || slices.ContainsFunc(nv, func(v string) bool { return !slices.Contains(mv, v) }) {
+			return false
+		}
 	}
 	for name, mp := range m.Params {
 		np, ok := n.Params[name]
-		if !ok || !systems.PatternContains(mp, np, m.sep(name)) {
+		if !ok || !systems.FieldContains(m.form(name), mp, np) {
 			return false
 		}
 	}
 	return true
 }
 
-// sep is what separates a param's segments, as the match's step says of it (systems.Sep); a
-// match naming no verb reads the param as a plain pattern, segmented by `/`.
-func (m *Match) sep(name string) byte {
-	if m.System == "" || m.Verb == "" {
-		return systems.SepPath
+// form is a param's form, as the first of the match's verbs that carries it says (systems.FieldOf);
+// empty, any text, where none does.
+func (m *Match) form(name string) string {
+	for _, v := range m.VerbNames() {
+		if f, ok := systems.FieldOf(systems.StepName(m.System, v), name); ok {
+			return f.Form
+		}
 	}
-	return systems.Sep(systems.StepName(m.System, m.Verb), name)
+	return ""
+}
+
+// VerbNames is the verbs of its system the match names: its verb, those its pattern matches, or
+// nil for any.
+func (m *Match) VerbNames() []string {
+	switch {
+	case m == nil || m.System == "":
+		return nil
+	case m.Verb != "":
+		return []string{m.Verb}
+	case m.VerbPattern == nil:
+		if d, ok := systems.Get(m.System); ok {
+			return verbNames(d)
+		}
+		return nil
+	}
+	d, _ := systems.Get(m.System)
+	var out []string
+	for _, v := range d.Verbs {
+		if systems.MatchField("", m.VerbPattern, ir.FromString(v.Name)) {
+			out = append(out, v.Name)
+		}
+	}
+	if out == nil {
+		out = []string{}
+	}
+	return out
+}
+
+// clone is a copy that aliases nothing of m.
+func (m *Match) clone() *Match {
+	out := &Match{System: m.System, Verb: m.Verb, VerbPattern: cloneNode(m.VerbPattern)}
+	if m.Params != nil {
+		out.Params = make(map[string]*ir.Node, len(m.Params))
+		for k, v := range m.Params {
+			out.Params[k] = cloneNode(v)
+		}
+	}
+	return out
+}
+
+// cloneNode is a copy of n, nil for nil.
+func cloneNode(n *ir.Node) *ir.Node {
+	if n == nil {
+		return nil
+	}
+	return n.Clone()
 }
 
 // words is a match in words, for a refusal that names it: `every call` for one naming nothing.
@@ -247,17 +312,16 @@ func (m *Match) words() string {
 		return "every call"
 	}
 	parts := []string{}
-	if m.System != "" {
-		s := m.System
-		if m.Verb != "" {
-			s = systems.StepName(m.System, m.Verb)
-		}
-		parts = append(parts, s)
-	} else if m.Verb != "" {
-		parts = append(parts, "verb "+m.Verb)
+	switch {
+	case m.System != "" && m.Verb != "":
+		parts = append(parts, systems.StepName(m.System, m.Verb))
+	case m.System != "" && m.VerbPattern != nil:
+		parts = append(parts, m.System, "verb="+systems.Words(m.VerbPattern))
+	case m.System != "":
+		parts = append(parts, m.System)
 	}
 	for _, k := range slices.Sorted(maps.Keys(m.Params)) {
-		parts = append(parts, k+"="+m.Params[k])
+		parts = append(parts, k+"="+systems.Words(m.Params[k]))
 	}
 	return strings.Join(parts, " ")
 }
@@ -276,7 +340,7 @@ func (p Autonomy) OrDefault() Autonomy {
 
 // Any reports whether the match covers every call: no system, no verb, no param.
 func (m *Match) Any() bool {
-	return m == nil || (m.System == "" && m.Verb == "" && len(m.Params) == 0)
+	return m == nil || (m.System == "" && m.Verb == "" && m.VerbPattern == nil && len(m.Params) == 0)
 }
 
 // Matches reports whether the row's match covers a call.
@@ -284,12 +348,11 @@ func (m *Match) Matches(s Step) bool {
 	if m.Any() {
 		return true
 	}
-	system, verb, _ := systems.Split(s.Name)
-	if (m.System != "" && m.System != system) || (m.Verb != "" && m.Verb != verb) {
+	if !m.covers(s.Name) {
 		return false
 	}
 	for name, pattern := range m.Params {
-		if !systems.Match(pattern, s.Fields[name], systems.Sep(s.Name, name)) {
+		if !systems.MatchField(systems.FormOf(s.Name, name), pattern, s.Field(name)) {
 			return false
 		}
 	}
@@ -302,7 +365,13 @@ func (m *Match) covers(step string) bool {
 		return true
 	}
 	system, verb, _ := systems.Split(step)
-	return (m.System == "" || m.System == system) && (m.Verb == "" || m.Verb == verb)
+	if m.System != "" && m.System != system {
+		return false
+	}
+	if m.Verb != "" {
+		return m.Verb == verb
+	}
+	return m.VerbPattern == nil || systems.MatchField("", m.VerbPattern, ir.FromString(verb))
 }
 
 // Decide is the row that decides a call: the first that matches it, and its place. An autonomy
@@ -398,7 +467,7 @@ func (p Autonomy) About(step string) string {
 		}
 		var fs []string
 		for _, k := range r.sortedParams() {
-			fs = append(fs, k+"="+r.Match.Params[k])
+			fs = append(fs, k+"="+systems.Words(r.Match.Params[k]))
 		}
 		parts = append(parts, strings.Join(fs, " ")+": "+what+" ("+p.NameOf(i)+")")
 	}
@@ -505,37 +574,41 @@ func (r Row) Check() error {
 	return r.Match.Check()
 }
 
-// Check is what a match has to satisfy: a system the documents describe, a verb it has, and
-// fields of the steps it covers (package systems: a block's attributes and a verb's fields). A verb is named within its system: `close` is a different call
-// in each tracker, and a row on one says which.
+// Check is what a match has to satisfy: a system the documents describe, a verb it has or a
+// pattern naming some of them, and fields of the steps it covers (package systems: a block's
+// attributes and a verb's fields), each pattern one a value of the field could meet
+// (systems.Field.Accepts). A verb is named within its system: `close` is a different call in
+// each tracker, and a row on one says which.
 func (m *Match) Check() error {
 	if m.Any() {
 		return nil
 	}
-	var covered []systems.Verb
-	var d systems.Document
-	if m.System != "" {
-		var ok bool
-		d, ok = systems.Get(m.System)
-		if !ok {
-			return fmt.Errorf("match.system: %q is not a system (they are: %s)", m.System, strings.Join(systemNames(), ", "))
-		}
-		if m.Verb != "" {
-			v, ok := d.Verb(m.Verb)
-			if !ok {
-				return fmt.Errorf("match.verb: %s has no verb %q (it has: %s)", m.System, m.Verb, strings.Join(verbNames(d), ", "))
-			}
-			covered = []systems.Verb{v}
-		} else {
-			covered = d.Verbs
-		}
-	} else {
+	if m.System == "" {
 		return errors.New("match: a row names its system, as `{system: git, verb: push}` does; only the " +
 			"default row, last, names none")
 	}
+	d, ok := systems.Get(m.System)
+	if !ok {
+		return fmt.Errorf("match.system: %q is not a system (they are: %s)", m.System, strings.Join(systemNames(), ", "))
+	}
+	if m.Verb != "" {
+		if _, ok := d.Verb(m.Verb); !ok {
+			return fmt.Errorf("match.verb: %s has no verb %q (it has: %s)", m.System, m.Verb, strings.Join(verbNames(d), ", "))
+		}
+	}
+	if m.VerbPattern != nil {
+		names := systems.Field{Name: "verb", Values: verbNames(d)}
+		if err := names.Accepts(m.VerbPattern); err != nil {
+			return fmt.Errorf("match.verb: %w", err)
+		}
+		if len(m.VerbNames()) == 0 {
+			return fmt.Errorf("match.verb: %s names none of %s's verbs (%s), so the row would never match",
+				systems.Words(m.VerbPattern), m.System, strings.Join(verbNames(d), ", "))
+		}
+	}
 	params := map[string][]systems.Field{}
-	for _, v := range covered {
-		fields, _ := d.StepFields(v.Name)
+	for _, v := range m.VerbNames() {
+		fields, _ := d.StepFields(v)
 		for _, f := range fields {
 			params[f.Name] = append(params[f.Name], f)
 		}
@@ -546,15 +619,19 @@ func (m *Match) Check() error {
 			return fmt.Errorf("match.%s: not a field of the calls the row names (they have: %s)",
 				name, strings.Join(slices.Sorted(maps.Keys(params)), ", "))
 		}
-		if strings.Contains(m.Params[name], "$") {
-			return fmt.Errorf("match.%s: %q: a match is a pattern over what the task does and is not bound, "+
-				"so a `$` in it would never match", name, m.Params[name])
+		if name == matchSystem || name == matchVerb {
+			return fmt.Errorf("match.%s: %s and %s name the call, and no field is called either", name, matchSystem, matchVerb)
+		}
+		pattern := m.Params[name]
+		if systems.Binds(pattern) {
+			return fmt.Errorf("match.%s: %s: a match is a pattern over what the task does and is not bound, "+
+				"so a `$` in it would never match", name, systems.Words(pattern))
 		}
 		// A pattern no call's field could be spelled as never matches, which in a deny row lets
 		// through what it was written to stop: refused, unless one of the calls takes it.
 		var refused error
-		for _, p := range forms {
-			if refused = p.Accepts(m.Params[name]); refused == nil {
+		for _, f := range forms {
+			if refused = f.Accepts(pattern); refused == nil {
 				break
 			}
 		}
@@ -611,24 +688,31 @@ func (m Match) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if m.System != "" {
 		kvs = append(kvs, ir.KeyVal{Key: ir.FromString(matchSystem), Val: ir.FromString(m.System)})
 	}
-	if m.Verb != "" {
+	switch {
+	case m.Verb != "":
 		kvs = append(kvs, ir.KeyVal{Key: ir.FromString(matchVerb), Val: ir.FromString(m.Verb)})
+	case m.VerbPattern != nil:
+		kvs = append(kvs, ir.KeyVal{Key: ir.FromString(matchVerb), Val: m.VerbPattern.Clone()})
 	}
 	for _, name := range slices.Sorted(maps.Keys(m.Params)) {
-		kvs = append(kvs, ir.KeyVal{Key: ir.FromString(name), Val: ir.FromString(m.Params[name])})
+		v := m.Params[name]
+		if v == nil {
+			v = ir.Null()
+		}
+		kvs = append(kvs, ir.KeyVal{Key: ir.FromString(name), Val: v.Clone()})
 	}
 	return ir.FromKeyVals(kvs), nil
 }
 
-// FromTonyIR reads the flat form. A param's value is a string, or a boolean or a number as
-// one would spell it (`delete: true`).
+// FromTonyIR reads the flat form: `system` a name, `verb` a name or a pattern, and every other
+// key a param, a pattern as written, `null` any value the step carries.
 func (m *Match) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
-	node = ir.Uncomment(node)
+	node = systems.Plain(ir.Uncomment(node))
 	if node == nil || node.Type == ir.NullType {
 		*m = Match{}
 		return nil
 	}
-	if node.Type != ir.ObjectType {
+	if node.Type != ir.ObjectType || node.Tag != "" {
 		return errors.New("match: an object, `{system: git, verb: push, ref: refs/heads/main}`")
 	}
 	out := Match{}
@@ -638,33 +722,56 @@ func (m *Match) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			return errors.New("match: a key is a name")
 		}
 		val := ir.Uncomment(node.Values[i])
-		var s string
-		switch {
-		case val == nil || val.Type == ir.NullType:
-			return fmt.Errorf("match.%s: null is no pattern; leave the key out to match any value", key.String)
-		case val.Type == ir.StringType:
-			s = val.String
-		case val.Type == ir.BoolType:
-			s = fmt.Sprint(val.Bool)
-		case val.Type == ir.NumberType:
-			s = numberText(val)
-		default:
-			return fmt.Errorf("match.%s: a pattern is a string", key.String)
+		if val == nil {
+			val = ir.Null()
 		}
 		switch key.String {
 		case matchSystem:
-			out.System = s
+			if val.Tag != "" || val.Type != ir.StringType {
+				return errors.New("match.system: a system by its name, `git`")
+			}
+			out.System = val.String
 		case matchVerb:
-			out.Verb = s
+			switch {
+			case val.Tag == "" && val.Type == ir.StringType:
+				out.Verb = val.String
+			case val.Tag == "" && val.Type == ir.NullType:
+				return errors.New("match.verb: null is any verb; leave the key out to match any")
+			default:
+				out.VerbPattern = systems.Plain(val)
+			}
 		default:
 			if out.Params == nil {
-				out.Params = map[string]string{}
+				out.Params = map[string]*ir.Node{}
 			}
-			out.Params[key.String] = s
+			out.Params[key.String] = systems.Plain(val)
+		}
+	}
+	// A number under a field that is not one is the digits it was written with: `issue: 7`.
+	for name, p := range out.Params {
+		switch out.form(name) {
+		case systems.FormInt, systems.FormBool, systems.FormDoc:
+		default:
+			digits(p)
 		}
 	}
 	*m = out
 	return nil
+}
+
+// digits rewrites each number in a pattern as the string of its digits.
+func digits(n *ir.Node) {
+	if n == nil {
+		return
+	}
+	if n.Type == ir.NumberType {
+		text := numberText(n)
+		*n = ir.Node{Type: ir.StringType, String: text, Tag: n.Tag, Parent: n.Parent, ParentIndex: n.ParentIndex, ParentField: n.ParentField}
+		return
+	}
+	for _, v := range n.Values {
+		digits(v)
+	}
 }
 
 // numberText is a number as the digits it was written with: an integer the parser read into

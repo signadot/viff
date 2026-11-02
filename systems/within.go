@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+
+	"github.com/signadot/tony-format/go-tony/ir"
 )
 
 // Within is why e reaches beyond outer, or nil: every system e gives, outer gives, and each block
@@ -36,14 +38,14 @@ func (e Environment) within(outer Environment, written bool) error {
 	return nil
 }
 
-// ceilingOf is an environment's blocks of one system as a ceiling: each attribute's value its one
-// pattern, and the verbs with their shapes as given.
+// ceilingOf is an environment's blocks of one system as a ceiling: each attribute's value its
+// pattern, a literal, and the verbs with their shapes as given.
 func ceilingOf(blocks []Block) Ceiling {
 	c := make(Ceiling, 0, len(blocks))
 	for _, b := range blocks {
-		cb := CeilingBlock{Attributes: map[string][]string{}, Verbs: b.Verbs}
+		cb := CeilingBlock{Attributes: map[string]*ir.Node{}, Verbs: b.Verbs}
 		for k, v := range b.Attributes {
-			cb.Attributes[k] = []string{v}
+			cb.Attributes[k] = ir.FromString(v)
 		}
 		c = append(c, cb)
 	}

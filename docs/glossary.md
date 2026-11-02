@@ -626,7 +626,8 @@ See [Control](control.md#a-hold-on-a-run).
 ### autonomy
 
 The autonomy of a task is an ordered list of rows over its steps. Each row names steps by
-system, verb and fields, and says what happens to them: `deny`, `ask` or `allow`. The first row
+system, verb and fields, each field a tony match pattern (a value, `null` for any, `!glob`,
+`!regexp`, `!or`), and says what happens to them: `deny`, `ask` or `allow`. The first row
 that matches a step decides it. The last row names no step and decides every step that no row
 above matched: it is the task's dial.
 
@@ -669,7 +670,7 @@ See [Systems](systems/README.md).
 
 A ceiling is the limit a runner's operator sets on what any task may do with a system the
 runner holds for it. It is written as an environment is, blocks of the system's attributes and
-verbs, each attribute a pattern, under `systems.<name>.ceiling` in the runner's configuration,
+verbs, each attribute a tony match pattern, under `systems.<name>.ceiling` in the runner's configuration,
 and it lists what it allows: a system with no ceiling is closed, the network apart. The runner
 publishes it with its offers, beside what it `builds` of the system by its nature. A spawn's
 [environment](#environment) lies within it: verse refuses to install one beyond it, and the

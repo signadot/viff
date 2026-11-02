@@ -195,5 +195,5 @@ func TestAttachToTaskOnPerSpawnRunner(t *testing.T) {
 // command run: the step a gate on `commands.run` asks about.
 func commandStep(tu task.ToolUse) (task.Step, bool) {
 	cmd, _ := tu.Input["command"].(string)
-	return task.Step{Name: task.StepCommandsRun, Fields: map[string]string{"command": cmd}}, true
+	return task.NewStep(task.StepCommandsRun, map[string]string{"command": cmd}), true
 }

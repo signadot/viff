@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
@@ -100,12 +101,12 @@ func TestAScriptsPushIsAskedAboutAndLands(t *testing.T) {
 
 // verseOnly is a git ceiling on acme/svc giving its fetch and pushes to its verse/ branches.
 var verseOnly = systems.Ceiling{{
-	Attributes: map[string][]string{"repo": {"github.com/acme/svc"}},
-	Verbs:      map[string][]systems.Shape{"fetch": {{}}, "push": {{"ref": "refs/heads/verse/**"}}},
+	Attributes: map[string]*ir.Node{"repo": systems.OneOf("github.com/acme/svc")},
+	Verbs:      map[string][]systems.Shape{"fetch": {{}}, "push": {{"ref": systems.Regexp("^refs/heads/verse/")}}},
 }}
 
 // pushesTo is an environment giving acme/svc's fetch and a push to refs as shaped.
-func pushesTo(ref string) systems.Environment {
+func pushesTo(ref *ir.Node) systems.Environment {
 	return systems.Environment{Systems: systems.Systems{
 		"network":  {{Attributes: map[string]string{"mode": runner.NetworkOpen}}},
 		"git":      {{Attributes: map[string]string{"repo": "acme/svc"}, Verbs: map[string][]systems.Shape{"fetch": {{}}, "push": {{"ref": ref}}}}},
@@ -125,12 +126,12 @@ func TestAScriptIsHeldToTheRunnersCeiling(t *testing.T) {
 		map[string]System{"git": {Ceiling: verseOnly}}), Secrets{}, Tokens{})
 
 	allow := task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}
-	l := rt.Launch(runner.Launch{ID: "t0", Autonomy: allow, Script: "true", Environment: pushesTo("refs/heads/main")})
-	if !strings.Contains(l.Err(), "beyond this runner's ceiling for git") || !strings.Contains(l.Err(), "{ref: refs/heads/verse/**}") {
+	l := rt.Launch(runner.Launch{ID: "t0", Autonomy: allow, Script: "true", Environment: pushesTo(ir.FromString("refs/heads/main"))})
+	if !strings.Contains(l.Err(), "beyond this runner's ceiling for git") || !strings.Contains(l.Err(), "{ref: !regexp ^refs/heads/verse/}") {
 		t.Fatalf("a launch giving a push to main past the ceiling: %q, want it refused saying what the ceiling gives", l.Err())
 	}
 
-	rt.Launch(runner.Launch{ID: "t1", Autonomy: allow, Environment: pushesTo("refs/heads/verse/**"), Script: "#!/bin/sh\n" + commitScript +
+	rt.Launch(runner.Launch{ID: "t1", Autonomy: allow, Environment: pushesTo(systems.Regexp("^refs/heads/verse/")), Script: "#!/bin/sh\n" + commitScript +
 		"verse-call-tool git-push -branch main\necho \"main=$?\"\nverse-call-tool git-push\necho \"own=$?\""})
 	snap := ended(t, rt, "t1")
 	if snap.Status != task.Done || !strings.Contains(snap.Result, "main=3") || !strings.Contains(snap.Result, "own=0") ||
@@ -154,7 +155,7 @@ func TestAnAskBeyondTheEnvironmentIsNeverPut(t *testing.T) {
 	seed(t, forge, "acme/svc")
 	rt := serveConfigured(t, every(Config{Repos: &Repos{Mirrors: t.TempDir(), Forge: forge}},
 		map[string]System{"git": {Ceiling: verseOnly}}), Secrets{}, Tokens{})
-	rt.Launch(runner.Launch{ID: "t1", Autonomy: task.Autonomy{pushGate, {Then: task.Then{Mode: task.ThenAllow}}}, Environment: pushesTo("refs/heads/verse/**"),
+	rt.Launch(runner.Launch{ID: "t1", Autonomy: task.Autonomy{pushGate, {Then: task.Then{Mode: task.ThenAllow}}}, Environment: pushesTo(systems.Regexp("^refs/heads/verse/")),
 		Script: "#!/bin/sh\n" + commitScript + "verse-call-tool git-push -branch main\necho \"main=$?\""})
 	snap := ended(t, rt, "t1")
 	if snap.Status != task.Done || !strings.Contains(snap.Result, "main=3") || !strings.Contains(snap.Result, "outside the environment") {
@@ -417,7 +418,7 @@ func TestAPushWithinOnlyThroughOwnPassesBothChecks(t *testing.T) {
 	env := envOf(netOpen, nil, nil)
 	env.Systems["git"] = []systems.Block{{Attributes: map[string]string{"repo": "acme/svc"}, Verbs: map[string][]systems.Shape{
 		"fetch": {{}},
-		"push":  {{"ref": "refs/heads/**", "exists": "false"}, {"ref": "refs/heads/**", "own": "true"}},
+		"push":  {{"ref": systems.Regexp("^refs/heads/"), "exists": ir.FromBool(false)}, {"ref": systems.Regexp("^refs/heads/"), "own": ir.FromBool(true)}},
 	}}}
 	again := "cd svc\necho more > f\ngit -c user.name=a -c user.email=a@x commit -qam more -m 'Verse-Task: t1'\ncd ..\n"
 	script := "#!/bin/sh\n" + commitScript + "cd ..\n" +
@@ -428,7 +429,7 @@ func TestAPushWithinOnlyThroughOwnPassesBothChecks(t *testing.T) {
 	snap := ended(t, rt, "t1")
 	if snap.Status != task.Done || !strings.Contains(snap.Result, "first=0") || !strings.Contains(snap.Result, "second=0") ||
 		strings.Contains(snap.Result, "main=0") || !strings.Contains(snap.Result, "outside the environment") ||
-		!strings.Contains(snap.Result, "{exists: false, ref: refs/heads/**}, {own: true, ref: refs/heads/**}") {
+		!strings.Contains(snap.Result, "{exists: false, ref: !regexp ^refs/heads/}, {own: true, ref: !regexp ^refs/heads/}") {
 		t.Fatalf("task: %+v", snap)
 	}
 	if !at(t, forge, "refs/heads/verse/auto/t1") {

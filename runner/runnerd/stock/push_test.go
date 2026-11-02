@@ -15,6 +15,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
@@ -42,7 +43,7 @@ func launchPusher(rt client.Launcher, id string, rows ...task.Row) {
 // pushGate asks before any push, and noMain refuses a push to main.
 var (
 	pushGate = task.Row{Name: "push", Match: &task.Match{System: "git", Verb: "push"}, Then: task.Then{Mode: task.ThenAsk}}
-	noMain   = task.Row{Name: "no-main", Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"ref": "refs/heads/main"}}, Then: task.Then{Mode: task.ThenDeny}}
+	noMain   = task.Row{Name: "no-main", Match: &task.Match{System: "git", Verb: "push", Params: map[string]*ir.Node{"ref": ir.FromString("refs/heads/main")}}, Then: task.Then{Mode: task.ThenDeny}}
 )
 
 // A PUSH DENIED SENDS NOTHING, AND THE WORK IS HELD: the agent is told no, the forge never sees the

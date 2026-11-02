@@ -5,13 +5,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/systems"
 )
 
 // builds is a network System building the modes given.
 func builds(modes ...string) System {
-	return System{Builds: systems.Ceiling{{Attributes: map[string][]string{"mode": modes}}}}
+	return System{Builds: systems.Ceiling{{Attributes: map[string]*ir.Node{"mode": systems.OneOf(modes...)}}}}
 }
 
 // A description reads as the Runners doc writes it, and survives the trip back.
@@ -26,13 +27,13 @@ offers:
     annotations: {verse.portkey/virtual-key: string}
   converse: true
   systems:
-    network: {builds: {mode: [none, open, allow]}, ceiling: {mode: [none, allow], tcp-client: {host: "*.github.com"}}}
+    network: {builds: {mode: !or [none, open, allow]}, ceiling: {mode: !or [none, allow], tcp-client: {host: !glob "*.github.com"}}}
     files: {ceiling: {write: {}}}
-    commands: {ceiling: {run: [{command: "make *"}, {command: "go test ./..."}]}}
-    git: {ceiling: [{repo: [acme/app, "github.com/acme/lib*"], fetch: {}}, {repo: acme/docs, push: {ref: "refs/heads/verse/**"}}]}
+    commands: {ceiling: {run: [{command: !regexp "^make "}, {command: "go test ./..."}]}}
+    git: {ceiling: [{repo: !or [acme/app, !glob "github.com/acme/lib*"], fetch: {}}, {repo: acme/docs, push: {ref: !regexp "^refs/heads/verse/"}}]}
 - script: true
   systems:
-    network: {builds: {mode: [open]}}
+    network: {builds: {mode: open}}
 `
 	var d Description
 	if err := codec.Unmarshal([]byte(src), &d, codec.Tony); err != nil {
@@ -51,26 +52,26 @@ offers:
 			Converse: true,
 			Systems: map[string]System{
 				"network": {
-					Builds: systems.Ceiling{{Attributes: map[string][]string{"mode": {"none", "open", "allow"}}, Verbs: map[string][]systems.Shape{}}},
-					Ceiling: systems.Ceiling{{Attributes: map[string][]string{"mode": {"none", "allow"}},
-						Verbs: map[string][]systems.Shape{"tcp-client": {{"host": "*.github.com"}}}}},
+					Builds: systems.Ceiling{{Attributes: map[string]*ir.Node{"mode": systems.OneOf("none", "open", "allow")}, Verbs: map[string][]systems.Shape{}}},
+					Ceiling: systems.Ceiling{{Attributes: map[string]*ir.Node{"mode": systems.OneOf("none", "allow")},
+						Verbs: map[string][]systems.Shape{"tcp-client": {{"host": systems.Glob("*.github.com")}}}}},
 				},
-				"files": {Ceiling: systems.Ceiling{{Attributes: map[string][]string{},
+				"files": {Ceiling: systems.Ceiling{{Attributes: map[string]*ir.Node{},
 					Verbs: map[string][]systems.Shape{"write": {{}}}}}},
-				"commands": {Ceiling: systems.Ceiling{{Attributes: map[string][]string{},
-					Verbs: map[string][]systems.Shape{"run": {{"command": "make *"}, {"command": "go test ./..."}}}}}},
+				"commands": {Ceiling: systems.Ceiling{{Attributes: map[string]*ir.Node{},
+					Verbs: map[string][]systems.Shape{"run": {{"command": systems.Regexp("^make ")}, {"command": ir.FromString("go test ./...")}}}}}},
 				"git": {Ceiling: systems.Ceiling{
-					{Attributes: map[string][]string{"repo": {"acme/app", "github.com/acme/lib*"}}, Verbs: map[string][]systems.Shape{"fetch": {{}}}},
-					{Attributes: map[string][]string{"repo": {"acme/docs"}}, Verbs: map[string][]systems.Shape{"push": {{"ref": "refs/heads/verse/**"}}}},
+					{Attributes: map[string]*ir.Node{"repo": ir.FromSlice([]*ir.Node{ir.FromString("acme/app"), systems.Glob("github.com/acme/lib*")}).WithTag("!or")}, Verbs: map[string][]systems.Shape{"fetch": {{}}}},
+					{Attributes: map[string]*ir.Node{"repo": systems.OneOf("acme/docs")}, Verbs: map[string][]systems.Shape{"push": {{"ref": systems.Regexp("^refs/heads/verse/")}}}},
 				}},
 			},
 		},
 		{Script: true, Systems: map[string]System{"network": {
-			Builds: systems.Ceiling{{Attributes: map[string][]string{"mode": {"open"}}, Verbs: map[string][]systems.Shape{}}},
+			Builds: systems.Ceiling{{Attributes: map[string]*ir.Node{"mode": systems.OneOf("open")}, Verbs: map[string][]systems.Shape{}}},
 		}}},
 	}}
-	if !reflect.DeepEqual(d, want) {
-		t.Fatalf("read\n%+v\nwant\n%+v", d, want)
+	if wire(t, d) != wire(t, want) {
+		t.Fatalf("read\n%s\nwant\n%s", wire(t, d), wire(t, want))
 	}
 	if err := d.Check(); err != nil {
 		t.Fatalf("checked: %v", err)
@@ -83,9 +84,19 @@ offers:
 	if err := codec.Unmarshal(out, &back, codec.Tony); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	if !reflect.DeepEqual(back, want) {
-		t.Fatalf("after the trip\n%+v\nwant\n%+v\nwire:\n%s", back, want, out)
+	if wire(t, back) != wire(t, want) {
+		t.Fatalf("after the trip\n%s\nwant\n%s", wire(t, back), wire(t, want))
 	}
+}
+
+// wire is a description as tony writes it: its patterns are nodes, compared as what they say.
+func wire(t *testing.T, d Description) string {
+	t.Helper()
+	out, err := codec.Marshal(d, codec.Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
 }
 
 // AN AGENT IS WRITTEN FLAT: its name, its settings beside it, a number or a boolean read as it is

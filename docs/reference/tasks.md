@@ -120,7 +120,7 @@ spawn:
       - repo: acme/app
         from: main
         fetch: {}
-        push: {ref: refs/heads/main, force: "false", delete: "false"}
+        push: {ref: refs/heads/main, force: false, delete: false}
   autonomy:
   - {then: allow}
 ```
@@ -140,7 +140,7 @@ block gives is refused before any row is read ([systems](../systems/README.md#a-
 | `linear-issue` | Linear's issues: `create` in a `team`, `comment` and `close` on an `issue` ([linear-issue](../systems/linear-issue.md)). |
 | `slack` | Slack's channels: `post`, `reply`, `read` and `react`, each in a `channel` ([slack](../systems/slack.md)). |
 | `verse` | verse itself, acted on as the person the task runs for: `ask-create`, `ask-get`, `ask-list`, `data-get`, `data-put`, `data-rm`, `charter-get`, `charter-check`, `charter-install` and `charter-remove`, the verbs of `verse mcp` ([verse](../systems/verse.md)). |
-| `files`, `commands`, `agent`, `question` | what a doer does inside its run. `files: {}` gives every write, `commands: {run: {command: "make *"}}` the commands it names ([files, commands and agent](../systems/inside.md), [question](../systems/question.md)). |
+| `files`, `commands`, `agent`, `question` | what a doer does inside its run. `files: {}` gives every write, `commands: {run: {command: !regexp "^make "}}` the commands it names ([files, commands and agent](../systems/inside.md), [question](../systems/question.md)). |
 
 A script calls the task's tools from its shell with `verse-call-tool`: `git-push`, `git-fetch`,
 `github-create-pr`, `question-ask`, and the others its environment gives. Each call is an action
@@ -168,8 +168,8 @@ that matches a step decides it.
 
 ```tony
 autonomy:
-- {match: {system: git, verb: push, ref: "refs/heads/verse/auto/*", exists: "false"}, then: allow}
-- {match: {system: git, verb: push, ref: "refs/heads/verse/auto/*", own: "true"}, then: allow}
+- {match: {system: git, verb: push, ref: !glob "refs/heads/verse/auto/*", exists: false}, then: allow}
+- {match: {system: git, verb: push, ref: !glob "refs/heads/verse/auto/*", own: true}, then: allow}
 - {match: {system: git, verb: push}, then: {ask: {need: 2, answerers: [group:release], within: 4h, default: deny}}}
 - {then: ask}
 ```
@@ -266,15 +266,24 @@ charter's or one given to `task run`:
 - name: sub-agents
   match: {system: agent, verb: call-sub-agent}
   then: ask
-- {match: {system: git, verb: push, ref: "refs/heads/release/*"}, then: deny}
+- {match: {system: git, verb: push, ref: !glob "refs/heads/release/*"}, then: deny}
 - {then: allow}
 ```
 
 `match` names a step by its system and, if it wants to, by its verb and the step's params. A
-verb or a param the row leaves out matches anything: `{system: git}` is every git call. `*`
-matches within a segment and `**` across. A command matches as a whole string, with `*`
-matching anything. The last row names no step, and is what a call of a named verb gets when no
-row above matched it. Verse refuses an autonomy that ends with a named step, or that puts a row
+verb or a param the row leaves out matches anything: `{system: git}` is every git call. Each
+param is a tony match pattern:
+
+- **A plain value matches itself.** `true`, `false` and a port are written unquoted.
+- **`null` matches any value** the step carries.
+- **`!glob "refs/heads/release/*"` is a glob.** Its `*` stops at a `/`, so `refs/heads/*` is
+  every branch.
+- **`!regexp "^refs/heads/verse/"` is a Go regexp.** It is unanchored unless it says `^` or `$`,
+  so `!regexp "git push"` is every command with a push in it.
+- **`!or [a, b]` takes either.** `!and` and `!not` work as they do in tony.
+
+The verb can be a pattern too: `verb: !or [fetch, push]`. The last row names no step, and is
+what a call of a named verb gets when no row above matched it. Verse refuses an autonomy that ends with a named step, or that puts a row
 with no match before the end.
 
 Each step is a verb of a system, written `<system>.<verb>`. The tool a doer calls for it is

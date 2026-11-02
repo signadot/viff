@@ -2,24 +2,73 @@ package task
 
 import (
 	"fmt"
-	"maps"
 	"path"
-	"slices"
 	"strings"
+
+	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/systems"
 )
 
 // Step is what a task is about to do: a call of a system's verb, `<system>.<verb>`
 // (`commands.run`), and its fields, its block's attributes and its verb's fields as the
-// document names them (`command: make test`). An autonomy's rows
-// match on steps, and a question about one says which.
+// document names them, each in its form's type (`{command: make test}`, `{force: false}`). An
+// autonomy's rows match on steps (Doc), and a question about one says which.
+//
+// The runner works the fields out from the act it is about to carry out, never from what the
+// task says of it.
 //
 // A step is not every action. Reading a file or listing a directory isn't one, and nothing asks
 // before them.
 type Step struct {
-	Name   string
-	Fields map[string]string
+	Name string
+	// Fields is an object of the step's fields, nil for a step that carries none.
+	Fields *ir.Node
+}
+
+// NewStep is a step as a runner works it out, its fields as text, each typed by its form
+// (systems.FieldsDoc): `force: "false"` is false, and `port: "443"` 443.
+func NewStep(name string, fields map[string]string) Step {
+	return Step{Name: name, Fields: systems.FieldsDoc(name, fields)}
+}
+
+// With is the step with a field set to v as given, for one whose value is structure (the form
+// doc: an ask's `on`). s is not changed.
+func (s Step) With(name string, v *ir.Node) Step {
+	var kvs []ir.KeyVal
+	if f := ir.Uncomment(s.Fields); f != nil && f.Type == ir.ObjectType {
+		for i, k := range f.Fields {
+			if k.String != name {
+				kvs = append(kvs, ir.KeyVal{Key: ir.FromString(k.String), Val: f.Values[i]})
+			}
+		}
+	}
+	kvs = append(kvs, ir.KeyVal{Key: ir.FromString(name), Val: systems.Plain(v)})
+	return Step{Name: s.Name, Fields: ir.FromKeyVals(kvs)}
+}
+
+// Field is the step's value of a field, nil where it carries none.
+func (s Step) Field(name string) *ir.Node {
+	if f := ir.Uncomment(s.Fields); f != nil {
+		return ir.Get(f, name)
+	}
+	return nil
+}
+
+// Doc is the step as a row's match reads it: `system`, `verb`, then its fields, flat:
+// `{system: git, verb: push, repo: github.com/acme/app, ref: refs/heads/main, force: false}`.
+func (s Step) Doc() *ir.Node {
+	system, verb, _ := systems.Split(s.Name)
+	kvs := []ir.KeyVal{
+		{Key: ir.FromString(matchSystem), Val: ir.FromString(system)},
+		{Key: ir.FromString(matchVerb), Val: ir.FromString(verb)},
+	}
+	if f := ir.Uncomment(s.Fields); f != nil && f.Type == ir.ObjectType {
+		for i, k := range f.Fields {
+			kvs = append(kvs, ir.KeyVal{Key: ir.FromString(k.String), Val: f.Values[i]})
+		}
+	}
+	return ir.FromKeyVals(kvs)
 }
 
 // The steps a gate can name: each a verb of a system (package systems), `<system>.<verb>`, and
@@ -83,12 +132,15 @@ var (
 	StepNetworkTCPClient = systems.Step("network", "tcp-client", "mode", "host", "port")
 )
 
-// String is the step in one line: `files.write path=db/x.sql`.
+// String is the step in one line: `files.write path=db/x.sql`, its fields in the order the
+// document gives them.
 func (s Step) String() string {
 	var b strings.Builder
 	b.WriteString(s.Name)
-	for _, k := range slices.Sorted(maps.Keys(s.Fields)) {
-		fmt.Fprintf(&b, " %s=%s", k, describeTrunc(oneLine(s.Fields[k])))
+	if f := ir.Uncomment(s.Fields); f != nil && f.Type == ir.ObjectType {
+		for i, k := range f.Fields {
+			fmt.Fprintf(&b, " %s=%s", k.String, describeTrunc(oneLine(systems.ValueText(f.Values[i]))))
+		}
 	}
 	return b.String()
 }
@@ -97,19 +149,20 @@ func (s Step) String() string {
 // a file, `run_bash` runs a command, and a delegation delegates. Anything else is no step.
 func StepOf(tu ToolUse) (Step, bool) {
 	if tu.CallAgent != nil {
-		return Step{Name: StepAgentCallSubAgent, Fields: map[string]string{"agent": tu.CallAgent.Agent}}, true
+		return NewStep(StepAgentCallSubAgent, map[string]string{"agent": tu.CallAgent.Agent}), true
 	}
 	switch tu.Name {
 	case "write_file":
-		return Step{Name: StepFilesWrite, Fields: map[string]string{"path": rootRelative(str(tu.Input, "path"))}}, true
+		return NewStep(StepFilesWrite, map[string]string{"path": rootRelative(str(tu.Input, "path"))}), true
 	case "run_bash":
-		return Step{Name: StepCommandsRun, Fields: map[string]string{"command": str(tu.Input, "command")}}, true
+		return NewStep(StepCommandsRun, map[string]string{"command": str(tu.Input, "command")}), true
 	}
 	return Step{}, false
 }
 
 // rootRelative is a path as the executor writes it: joined onto the task's root, so `/db/x.sql`,
-// `./db/x.sql` and `db/../db/x.sql` are all `db/x.sql`, and a gate on `db/**` sees each of them.
+// `./db/x.sql` and `db/../db/x.sql` are all `db/x.sql`, and a gate on `!regexp "^db/"` sees each
+// of them.
 // A symlink inside the root can still lead elsewhere in it; the gate sees the path as given.
 func rootRelative(p string) string {
 	return strings.TrimPrefix(path.Clean("/"+p), "/")

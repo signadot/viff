@@ -403,7 +403,7 @@ func stepOf(tu task.ToolUse, extra map[string]Tool) (task.Step, bool) {
 	if !ok {
 		return task.Step{}, false
 	}
-	return task.Step{Name: t.Step, Fields: fields}, true
+	return task.NewStep(t.Step, fields), true
 }
 
 func truncate(s string, n int) string {

@@ -4,7 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -20,7 +22,7 @@ func TestASpawnCarriesItsAutonomy(t *testing.T) {
 		  {name: release, match: {system: git, verb: push, ref: refs/heads/main}, then: {ask: {need: 2, answerers: ["user:*"],
 		   within: "4h", default: deny, labels: {slack: C0C3KHG9B0W}}}},
 		  {name: shell, match: {system: commands, verb: run}, then: ask},
-		  {match: {system: git, verb: push, ref: "refs/heads/verse/*"}, then: deny},
+		  {match: {system: git, verb: push, ref: !glob "refs/heads/verse/*"}, then: deny},
 		  {then: allow},
 		],
 	}`), &spec, codec.Tony)
@@ -32,7 +34,7 @@ func TestASpawnCarriesItsAutonomy(t *testing.T) {
 		p[0].Then.Ask.Labels["slack"] != "C0C3KHG9B0W" || p[0].Then.Ask.Within != "4h" || p[0].Then.Ask.Answerers[0] != "user:*" {
 		t.Fatalf("policy = %+v", p)
 	}
-	if p[0].Match.System != "git" || p[0].Match.Verb != "push" || p[0].Match.Params["ref"] != "refs/heads/main" {
+	if p[0].Match.System != "git" || p[0].Match.Verb != "push" || systems.Words(p[0].Match.Params["ref"]) != "refs/heads/main" {
 		t.Fatalf("the first row's match did not survive: %+v", p[0].Match)
 	}
 	if p[1].Then.Mode != task.ThenAsk || p[1].Then.Ask != nil || p[2].Then.Mode != task.ThenDeny || p[2].Match.System != "git" || p[3].Match != nil || p[3].Then.Mode != task.ThenAllow {
@@ -53,8 +55,8 @@ func TestASpawnCarriesItsAutonomy(t *testing.T) {
 	bound := spec.Bind(Binding{"subject": "demo.pr.1"})
 	bound.Autonomy[0].Then.Ask.Need = 9
 	bound.Autonomy[0].Then.Ask.Labels["slack"] = "changed"
-	bound.Autonomy[0].Match.Params["ref"] = "changed"
-	if p[0].Then.Ask.Need != 2 || p[0].Then.Ask.Labels["slack"] != "C0C3KHG9B0W" || p[0].Match.Params["ref"] != "refs/heads/main" {
+	bound.Autonomy[0].Match.Params["ref"] = ir.FromString("changed")
+	if p[0].Then.Ask.Need != 2 || p[0].Then.Ask.Labels["slack"] != "C0C3KHG9B0W" || systems.Words(p[0].Match.Params["ref"]) != "refs/heads/main" {
 		t.Fatal("a bound spec aliases the charter's autonomy")
 	}
 }

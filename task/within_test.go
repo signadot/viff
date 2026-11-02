@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/systems"
 )
 
@@ -12,7 +13,7 @@ import (
 // gives, and the default no looser on what the rows above it leave.
 func TestAnAutonomyWithinAnother(t *testing.T) {
 	outer := Autonomy{
-		{Match: &Match{System: "git", Verb: "push", Params: map[string]string{"ref": "refs/heads/verse/auto/*"}}, Then: Then{Mode: ThenAllow}},
+		{Match: &Match{System: "git", Verb: "push", Params: map[string]*ir.Node{"ref": systems.Glob("refs/heads/verse/auto/*")}}, Then: Then{Mode: ThenAllow}},
 		{Match: &Match{System: "git", Verb: "push"}, Then: Then{Mode: ThenDeny}},
 		{Match: &Match{System: "commands"}, Then: Then{Mode: ThenAsk}},
 		{Then: Then{Mode: ThenAsk}},
@@ -36,7 +37,7 @@ func TestAnAutonomyWithinAnother(t *testing.T) {
 		"the same": {outer, env, ""},
 		"stricter": {Autonomy{{Match: &Match{System: "commands"}, Then: Then{Mode: ThenDeny}}, {Then: Then{Mode: ThenDeny}}}, env, ""},
 		"the allowed push, the rest denied as the outer denies it": {Autonomy{
-			{Match: &Match{System: "git", Verb: "push", Params: map[string]string{"ref": "refs/heads/verse/auto/*"}}, Then: Then{Mode: ThenAllow}},
+			{Match: &Match{System: "git", Verb: "push", Params: map[string]*ir.Node{"ref": systems.Glob("refs/heads/verse/auto/*")}}, Then: Then{Mode: ThenAllow}},
 			{Match: &Match{System: "git", Verb: "push"}, Then: Then{Mode: ThenDeny}},
 			{Then: Then{Mode: ThenAsk}}}, env, ""},
 		"none, which asks, where the outer denies a push": {nil, env, "`then: ask` on every call, where the autonomy it must lie within says deny on git.push"},
@@ -44,12 +45,12 @@ func TestAnAutonomyWithinAnother(t *testing.T) {
 		"a looser default":                                {Autonomy{{Then: Then{Mode: ThenAllow}}}, env, "`then: allow` on every call, where the autonomy it must lie within says deny on git.push"},
 		"a looser default, reaching no git":               {Autonomy{{Then: Then{Mode: ThenAllow}}}, noGit, "`then: allow` on every call, where the autonomy it must lie within says ask on commands"},
 		"allowing what the outer asks":                    {Autonomy{{Match: &Match{System: "commands"}, Then: Then{Mode: ThenAllow}}, {Then: Then{Mode: ThenAsk}}}, env, "`then: allow` on commands, where the autonomy it must lie within says ask on commands"},
-		"asking what the outer denies":                    {Autonomy{{Match: &Match{System: "git", Verb: "push", Params: map[string]string{"ref": "refs/heads/release/*"}}, Then: Then{Mode: ThenAsk}}, {Match: &Match{System: "git", Verb: "push"}, Then: Then{Mode: ThenDeny}}, {Then: Then{Mode: ThenAsk}}}, env, "`then: ask` on git.push ref=refs/heads/release/*, where the autonomy it must lie within says deny on git.push"},
+		"asking what the outer denies":                    {Autonomy{{Match: &Match{System: "git", Verb: "push", Params: map[string]*ir.Node{"ref": systems.Glob("refs/heads/release/*")}}, Then: Then{Mode: ThenAsk}}, {Match: &Match{System: "git", Verb: "push"}, Then: Then{Mode: ThenDeny}}, {Then: Then{Mode: ThenAsk}}}, env, "`then: ask` on git.push ref=!glob refs/heads/release/*, where the autonomy it must lie within says deny on git.push"},
 		"a wider push":                                    {Autonomy{{Match: &Match{System: "git", Verb: "push"}, Then: Then{Mode: ThenAllow}}, {Then: Then{Mode: ThenAsk}}}, env, "`then: allow` on git.push, where the autonomy it must lie within says deny on git.push"},
 		// The default row covers every call the rows above leave, so it is held to the outer's rows on those too.
 		"a default that allows what a row of the outer denies": {Autonomy{{Match: &Match{System: "network"}, Then: Then{Mode: ThenDeny}}, {Then: Then{Mode: ThenAllow}}}, env, "`then: allow` on every call, where the autonomy it must lie within says deny on git.push"},
-		// A `*` in the inner row is a wider pattern, not a call the outer's narrower row misses.
-		"a wildcard over a denied pattern": {Autonomy{{Match: &Match{System: "git", Verb: "push", Params: map[string]string{"ref": "*"}}, Then: Then{Mode: ThenAllow}}, {Then: Then{Mode: ThenAsk}}}, env, "`then: allow` on git.push ref=*, where the autonomy it must lie within says deny on git.push"},
+		// A `null` in the inner row is any value: wider than the outer's pattern, not a call its narrower row misses.
+		"a wildcard over a denied pattern": {Autonomy{{Match: &Match{System: "git", Verb: "push", Params: map[string]*ir.Node{"ref": ir.Null()}}, Then: Then{Mode: ThenAllow}}, {Then: Then{Mode: ThenAsk}}}, env, "`then: allow` on git.push ref=null, where the autonomy it must lie within says deny on git.push"},
 	} {
 		err := c.inner.Within(outer, c.env)
 		switch {

@@ -12,10 +12,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -46,7 +48,7 @@ func TestATasksNetworkIsWhatItsLaunchSays(t *testing.T) {
 	if err := codec.Unmarshal(body, &desc, codec.Tony); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(desc.Offers[0].Systems["network"].Builds[0].Attributes["mode"], ","); got != "open,none,allow" {
+	if got := systems.Words(desc.Offers[0].Systems["network"].Builds[0].Attributes["mode"]); got != "!or [open, none, allow]" {
 		t.Errorf("the runner builds networks %s, want what bwrap builds", got)
 	}
 
@@ -145,7 +147,7 @@ func TestARowOnTheNetworkDecidesAConnection(t *testing.T) {
 	n := &runner.Network{Mode: runner.NetworkAllow, Allow: []string{allowed}}
 	probe := "#!/bin/sh\ncurl -s -m 5 " + origin.URL + " || echo origin-unreachable\n"
 	for want, autonomy := range map[string]task.Autonomy{
-		"not-here": {{Name: "not-here", Match: &task.Match{System: "network", Params: map[string]string{"host": host}}, Then: task.Then{Mode: task.ThenDeny}}, {Then: task.Then{Mode: task.ThenAllow}}},
+		"not-here": {{Name: "not-here", Match: &task.Match{System: "network", Params: map[string]*ir.Node{"host": ir.FromString(host)}}, Then: task.Then{Mode: task.ThenDeny}}, {Then: task.Then{Mode: task.ThenAllow}}},
 		"reached":  {{Then: task.Then{Mode: task.ThenAllow}}},
 	} {
 		rt.Launch(runner.Launch{ID: want, Autonomy: autonomy, Script: probe, Environment: envOf(n, nil, nil)})

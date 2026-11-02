@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/systems/systemstest"
 
@@ -450,7 +451,7 @@ func TestCodexActionsAreGatedOnTheDocket(t *testing.T) {
 	if p.Tool != kindPatch || p.Question.Gate != "write" {
 		t.Fatalf("the second question is %s via gate %q, want %s via gate write", p.Tool, p.Question.Gate, kindPatch)
 	}
-	if st := p.Question.Step; st.Name != task.StepFilesWrite || st.Fields["path"] != "notes.txt" {
+	if st := p.Question.Step; st.Name != task.StepFilesWrite || systems.FieldText(st.Fields, "path") != "notes.txt" {
 		t.Errorf("the patch is asked about as %s, want a write of notes.txt (relative to the workspace)", st)
 	}
 	reg.Answer(p.Question.ID, task.Resolution{Choice: task.Deny, By: "user:ana", Note: "no new files in this change"})
@@ -891,21 +892,21 @@ func TestCodexSteps(t *testing.T) {
 func TestARequestOfSeveralStepsGoesAheadOnlyWhereEachWould(t *testing.T) {
 	d := &driver{}
 	d.proposed.Store(&proposal{steps: []task.Step{
-		{Name: task.StepFilesWrite, Fields: map[string]string{"path": "a.go"}},
-		{Name: task.StepFilesWrite, Fields: map[string]string{"path": "db/b.sql"}},
+		task.NewStep(task.StepFilesWrite, map[string]string{"path": "a.go"}),
+		task.NewStep(task.StepFilesWrite, map[string]string{"path": "db/b.sql"}),
 	}})
 	var asked []string
 	sup := systemstest.Opened(task.NewSupervisor(workEnv, task.Autonomy{
-		{Name: "schema", Match: &task.Match{System: "files", Verb: "write", Params: map[string]string{"path": "db/**"}}, Then: task.Then{Mode: task.ThenAsk}},
+		{Name: "schema", Match: &task.Match{System: "files", Verb: "write", Params: map[string]*ir.Node{"path": systems.Regexp("^db/")}}, Then: task.Then{Mode: task.ThenAsk}},
 		{Then: task.Then{Mode: task.ThenAllow}},
-	}, resolveWith(func(q task.GateQuestion) { asked = append(asked, q.Gate+" "+q.Step.Fields["path"]) })), workEnv)
+	}, resolveWith(func(q task.GateQuestion) { asked = append(asked, q.Gate+" "+systems.FieldText(q.Step.Fields, "path")) })), workEnv)
 	sup.SetStepsOf(d.stepsOf)
 	if res, err := sup.Check(context.Background(), task.ToolUse{}); err != nil || !res.Proceed || strings.Join(asked, ", ") != "schema db/b.sql" {
 		t.Fatalf("asked %v (%+v, %v), want the write the gate names", asked, res, err)
 	}
 	asked = nil
 	sup.SetAutonomy(task.Autonomy{
-		{Name: "go", Match: &task.Match{System: "files", Verb: "write", Params: map[string]string{"path": "*.go"}}, Then: task.Then{Mode: task.ThenAllow}},
+		{Name: "go", Match: &task.Match{System: "files", Verb: "write", Params: map[string]*ir.Node{"path": systems.Glob("*.go")}}, Then: task.Then{Mode: task.ThenAllow}},
 		{Name: "rest", Match: &task.Match{System: "files", Verb: "write"}, Then: task.Then{Mode: task.ThenDeny}},
 	})
 	if res, _ := sup.Check(context.Background(), task.ToolUse{}); res.Proceed || res.Question.Gate != "rest" || len(asked) != 0 {

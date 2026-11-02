@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -68,7 +67,7 @@ func TestALaunchReachesARemoteRunnerWhole(t *testing.T) {
 			Annotations: map[string]string{"verse.portkey/virtual-key": "route-a"}},
 		Environment: systems.Environment{Vars: map[string]string{"BRANCH": "main"}, Systems: systems.Systems{
 			// As the environment reads back: a block's attributes and verbs are maps, if empty.
-			"slack":   {{Attributes: map[string]string{}, Verbs: map[string][]systems.Shape{"post": {{"channel": "deploys"}}}}},
+			"slack":   {{Attributes: map[string]string{}, Verbs: map[string][]systems.Shape{"post": {{"channel": ir.FromString("deploys")}}}}},
 			"network": {{Attributes: map[string]string{"mode": runner.NetworkOpen}, Verbs: map[string][]systems.Shape{}}},
 		}},
 		Prompt: "review it", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, Converse: true,
@@ -87,8 +86,17 @@ func TestALaunchReachesARemoteRunnerWhole(t *testing.T) {
 		t.Errorf("Answer arrived as %v, want the contract sent", got.Answer)
 	}
 	got.Answer, sent.Answer = nil, nil
-	if !reflect.DeepEqual(got, sent) {
-		t.Errorf("the launch arrived as\n%+v\nwant\n%+v", got, sent)
+	// Compared as tony writes them: a shape's patterns are nodes, equal as what they say.
+	gotWire, err := codec.Marshal(got, codec.Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sentWire, err := codec.Marshal(sent, codec.Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotWire) != string(sentWire) {
+		t.Errorf("the launch arrived as\n%s\nwant\n%s", gotWire, sentWire)
 	}
 	// And the runner says back which run it is, and who runs it.
 	snap, err := client.HTTP(srv.URL).(task.Lister).TaskSnapshot(sent.ID)

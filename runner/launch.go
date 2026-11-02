@@ -268,10 +268,11 @@ func (l *Launch) Trackers() []Tracker {
 func (l *Launch) Vars() map[string]string { return l.Environment.Vars }
 
 // Network is what the runner builds for the run from its environment's `network` block: its
-// mode, absent being none, and under allow the hosts its `tcp-client` shapes name, as the
-// task's proxy reads them (`host`, `host:port`, `*.domain`).
-// The task's proxy decides each connection by the shapes themselves (runnerd.connectionRefused);
-// these entries are what Check holds a shape's host and port to.
+// mode, absent being none, and under allow the hosts its `tcp-client` shapes name by a literal
+// or a glob, as entries (`host`, `host:port`, `*.domain`).
+// The task's proxy decides each connection by the shapes themselves (runnerd.connectionRefused),
+// a host written as any other pattern included; these entries are what Check holds a shape's
+// host and port to.
 func (l *Launch) Network() Network {
 	blocks := l.Environment.Systems["network"]
 	if len(blocks) == 0 {
@@ -283,13 +284,40 @@ func (l *Launch) Network() Network {
 		n.Mode = NetworkNone
 	}
 	for _, s := range b.Verbs["tcp-client"] {
-		entry := s["host"]
-		if p := s["port"]; p != "" && p != "*" {
-			entry = net.JoinHostPort(entry, p)
+		entry, ok := hostEntry(s["host"])
+		if !ok {
+			continue
+		}
+		if p := ir.Uncomment(s["port"]); p != nil && p.Tag == "" && p.Type == ir.NumberType && p.Int64 != nil {
+			entry = net.JoinHostPort(entry, strconv.FormatInt(*p.Int64, 10))
 		}
 		n.Allow = append(n.Allow, entry)
 	}
 	return n
+}
+
+// hostEntry is a shape's host as an entry, where it is a literal or a glob: the name, or the
+// glob's text (`*.github.com`).
+func hostEntry(n *ir.Node) (string, bool) {
+	n = ir.Uncomment(n)
+	switch {
+	case n == nil || n.Type != ir.StringType:
+		return "", false
+	case n.Tag == "":
+		return n.String, true
+	case n.Tag == "!glob":
+		return n.String, true
+	}
+	return "", false
+}
+
+// tcpShapes is the `tcp-client` shapes of the environment's network.
+func tcpShapes(env systems.Environment) []systems.Shape {
+	var out []systems.Shape
+	for _, b := range env.Systems["network"] {
+		out = append(out, b.Verbs["tcp-client"]...)
+	}
+	return out
 }
 
 // Network is what a run may reach beside its model: NetworkNone, NetworkOpen, or NetworkAllow
@@ -350,18 +378,16 @@ func (l *Launch) Check() error {
 	if err := CheckRepos(l.Repos()); err != nil {
 		return err
 	}
-	n := l.Network()
-	if n.Mode != NetworkAllow && len(n.Allow) > 0 {
+	n, shapes := l.Network(), tcpShapes(l.Environment)
+	if n.Mode != NetworkAllow && len(shapes) > 0 {
 		return fmt.Errorf("environment.systems.network: tcp-client is for mode allow, not %s", n.Mode)
 	}
-	if n.Mode == NetworkAllow && len(n.Allow) == 0 {
+	if n.Mode == NetworkAllow && len(shapes) == 0 {
 		return errors.New("environment.systems.network: mode allow names the hosts it allows, under tcp-client")
 	}
-	for _, blk := range l.Environment.Systems["network"] {
-		for i, shape := range blk.Verbs["tcp-client"] {
-			if shape["host"] == "" {
-				return fmt.Errorf("environment.systems.network.tcp-client[%d]: a shape names the host it allows; any host is mode open", i)
-			}
+	for i, shape := range shapes {
+		if h := ir.Uncomment(shape["host"]); h == nil || h.Type == ir.NullType {
+			return fmt.Errorf("environment.systems.network.tcp-client[%d]: a shape names the host it allows; any host is mode open", i)
 		}
 	}
 	for i, entry := range n.Allow {
@@ -389,7 +415,7 @@ func CheckReach(p task.Autonomy, env systems.Environment) error {
 		if r.Match.Any() || r.Match.System == "" {
 			continue
 		}
-		if !env.Reaches(r.Match.System, r.Match.Verb, r.Match.Params) {
+		if !env.Reaches(r.Match.System, r.Match.VerbNames(), r.Match.Params) {
 			return fmt.Errorf("autonomy[%d]: matches nothing the environment gives (%s), so it never decides: "+
 				"give it in environment.systems.%s, or drop the row", i, rowMatch(r.Match), r.Match.System)
 		}
@@ -400,11 +426,14 @@ func CheckReach(p task.Autonomy, env systems.Environment) error {
 // rowMatch is a row's match in words, for a refusal that names it.
 func rowMatch(m *task.Match) string {
 	fs := []string{"system=" + m.System}
-	if m.Verb != "" {
+	switch {
+	case m.Verb != "":
 		fs = append(fs, "verb="+m.Verb)
+	case m.VerbPattern != nil:
+		fs = append(fs, "verb="+systems.Words(m.VerbPattern))
 	}
 	for _, k := range slices.Sorted(maps.Keys(m.Params)) {
-		fs = append(fs, k+"="+m.Params[k])
+		fs = append(fs, k+"="+systems.Words(m.Params[k]))
 	}
 	return strings.Join(fs, " ")
 }

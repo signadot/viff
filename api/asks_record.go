@@ -1,6 +1,8 @@
 package api
 
 import (
+	"github.com/signadot/tony-format/go-tony/ir"
+
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/task"
 )
@@ -60,11 +62,11 @@ type AskRecord struct {
 	// Spawns is what a firing's gate would start.
 	Spawns string `tony:"field=spawns,omitzero"`
 	// Tool, Action, Step and Fields are the step a task's question is about: the tool it called,
-	// the system and verb, and the fields of the step.
-	Tool   string            `tony:"field=tool,omitzero"`
-	Action string            `tony:"field=action,omitzero"`
-	Step   string            `tony:"field=step,omitzero"`
-	Fields map[string]string `tony:"field=fields,omitzero"`
+	// the system and verb, and the fields of the step, each in its form's type.
+	Tool   string   `tony:"field=tool,omitzero"`
+	Action string   `tony:"field=action,omitzero"`
+	Step   string   `tony:"field=step,omitzero"`
+	Fields *ir.Node `tony:"field=fields,omitzero"`
 	// Labels are what the ask says about itself for whoever watches asks.
 	Labels map[string]string `tony:"field=labels,omitzero"`
 	// Options are the answers it takes, each with the votes it needs; Deadline when it settles

@@ -22,10 +22,10 @@ func pose(t *testing.T, store entity.Store, id, gate, taskID string, step task.S
 
 // writeStep is the step a write of path is; runStep the step running a command is.
 func writeStep(path string) task.Step {
-	return task.Step{Name: task.StepFilesWrite, Fields: map[string]string{"path": path}}
+	return task.NewStep(task.StepFilesWrite, map[string]string{"path": path})
 }
 func runStep(command string) task.Step {
-	return task.Step{Name: task.StepCommandsRun, Fields: map[string]string{"command": command}}
+	return task.NewStep(task.StepCommandsRun, map[string]string{"command": command})
 }
 
 // ids returns the question ids a pattern picks, so a test can say what a rule would fire on.

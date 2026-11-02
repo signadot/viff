@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/runner/runnerd/runnerdtest"
 
 	"github.com/signadot/verse/api"
@@ -93,7 +94,7 @@ func offeringAll(h *runnerd.InProcessHandler, agents ...string) *runnerd.InProce
 
 // builds is the network as a runner holds it that builds these modes and has no ceiling over it.
 func builds(modes ...string) runner.System {
-	return runner.System{Builds: systems.Ceiling{{Attributes: map[string][]string{"mode": modes}}}}
+	return runner.System{Builds: systems.Ceiling{{Attributes: map[string]*ir.Node{"mode": systems.OneOf(modes...)}}}}
 }
 
 // a driver that never finishes on its own, so a task stays live long enough to be work that

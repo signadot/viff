@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/runner"
@@ -59,8 +60,7 @@ func runnerTokenFile(t *testing.T) string {
 // building every network.
 func offeringAll(h *runnerd.InProcessHandler) *runnerd.InProcessHandler {
 	h.Describe(runner.Description{Version: runner.DescriptionVersion, Offers: []runner.Offer{{Script: true,
-		Systems: map[string]runner.System{"network": {Builds: systems.Ceiling{{Attributes: map[string][]string{
-			"mode": {runner.NetworkOpen, runner.NetworkNone, runner.NetworkAllow}}}}}}}}})
+		Systems: map[string]runner.System{"network": {Builds: systems.Ceiling{{Attributes: map[string]*ir.Node{"mode": systems.OneOf(runner.NetworkOpen, runner.NetworkNone, runner.NetworkAllow)}}}}}}}})
 	return h
 }
 

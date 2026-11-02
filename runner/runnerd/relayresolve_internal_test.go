@@ -13,6 +13,7 @@ import (
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/delivery"
 	"github.com/signadot/verse/runner/runnerd/workspace"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -43,7 +44,7 @@ func TestARelayedAnswerIsKeptWithTheCallItIsAbout(t *testing.T) {
 	p := &proc{id: l.ID, l: l, ready: ready, gone: make(chan struct{}), done: make(chan struct{}),
 		prox: httputil.NewSingleHostReverseProxy(u), co: &checkout{l: l, ch: ch}}
 	push := map[string]string{"repo": "github.com/acme/app", "ref": "refs/heads/verse/auto/x", "delete": "false", "force": "false", "exists": "false", "own": "false"}
-	p.record(task.Event{Kind: task.EventPending, Task: "x", Cursor: 1, ID: "x~d1", Step: task.StepGitPush, Fields: push})
+	p.record(task.Event{Kind: task.EventPending, Task: "x", Cursor: 1, ID: "x~d1", Step: task.StepGitPush, Fields: systems.FieldsDoc(task.StepGitPush, push)})
 	p.record(task.Event{Kind: task.EventPending, Task: "x", Cursor: 2, ID: "x~d2"}) // a bare ask, about no call
 	h.mu.Lock()
 	h.tasks[l.ID] = p

@@ -23,7 +23,7 @@ func pushing(repos ...string) systems.Environment {
 	e := systems.Environment{Systems: systems.Systems{}}
 	for _, r := range repos {
 		e.Systems["git"] = append(e.Systems["git"], systems.Block{Attributes: map[string]string{"repo": r},
-			Verbs: map[string][]systems.Shape{"push": {{"ref": "refs/heads/**"}}}})
+			Verbs: map[string][]systems.Shape{"push": {{"ref": systems.Regexp("^refs/heads/")}}}})
 	}
 	return e
 }

@@ -32,7 +32,7 @@ func gitLaunch(id string, repo runner.Repo, policy task.Autonomy) *runner.Launch
 	}
 	return &runner.Launch{ID: id, Prompt: "p", Agent: &runner.Agent{Name: "verse"}, Autonomy: policy,
 		Environment: systems.Environment{Systems: systems.Systems{"git": {{Attributes: attrs,
-			Verbs: map[string][]systems.Shape{"fetch": {{}}, "push": {{"ref": "refs/heads/**"}}}}}}}}
+			Verbs: map[string][]systems.Shape{"fetch": {{}}, "push": {{"ref": systems.Regexp("^refs/heads/")}}}}}}}}
 }
 
 // within is a launch whose environment gives every verb of each named system: in a block per repo

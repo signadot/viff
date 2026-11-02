@@ -5,13 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"path"
+	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/signadot/tony-format/go-tony/gomap"
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/parse"
 )
 
@@ -79,36 +83,245 @@ type Field struct {
 	// written another way would never match, and a row written with it is refused (Accepts).
 	// Empty is any text.
 	Form string `tony:"field=form,omitzero"`
-	// Values are the only values the field takes, when it lists them: a pattern on it is one of
-	// them, or `*`.
+	// Values are the only values the field takes, when it lists them: a literal on it is one of
+	// them, and an operator matches one.
 	Values []string `tony:"field=values,omitzero"`
-	// Required is whether every shape of an environment's block gives it (`*` allowed). A row's
+	// Required is whether every shape of an environment's block gives it (`null` for any). A row's
 	// match may leave it out, as any field.
 	Required bool `tony:"field=required,omitzero"`
 }
 
-// The forms a param's value takes.
+// The forms a field's value takes: how a step carries it, and what a pattern on it is checked
+// against (Accepts).
 const (
-	FormBool    = "bool"    // true or false
-	FormRef     = "ref"     // a full ref: refs/heads/main
-	FormBranch  = "branch"  // a branch's name, not its ref: main
-	FormUpper   = "upper"   // uppercase: ENG, ENG-42
-	FormLower   = "lower"   // lowercase: deploys
-	FormRepo    = "repo"    // host/owner/name, lowercase: github.com/acme/app
-	FormText    = "text"    // free text, a command: `/` is a character, and `*` matches across it
-	FormAddress = "address" // a dotted address in the store: play.issues.issue, `.` separating its segments
+	FormBool   = "bool"   // true or false
+	FormInt    = "int"    // a whole number: 443
+	FormRef    = "ref"    // a full ref: refs/heads/main
+	FormBranch = "branch" // a branch's name, not its ref: main
+	FormUpper  = "upper"  // uppercase: ENG, ENG-42
+	FormLower  = "lower"  // lowercase: deploys
+	FormRepo   = "repo"   // host/owner/name, lowercase: github.com/acme/app
+	FormText   = "text"   // free text, a command: `/` is a character like any other
+	FormPath   = "path"   // an address in the store, its names in order: [play, issues, issue]
+	FormDoc    = "doc"    // structure, held as given: an ask's `on`
 )
 
 // Accepts says why a pattern on the field can never match a value of its form, or one of its
-// values when it lists them, or nil when it can. A pattern is read as the text it is, `*` matching
-// within a segment (between `/`s, or `.`s in an address) and `**` across them: a pattern of only
-// `*`s takes any value of a form without a separator, and a value of a form that has some (a full
-// ref) is matched by one that spells them, or by `**`.
-func (p Field) Accepts(pattern string) error {
-	if len(p.Values) > 0 && pattern != "*" && !slices.Contains(p.Values, pattern) {
-		return fmt.Errorf("%q: the field is one of %s, or `*`", pattern, strings.Join(p.Values, ", "))
+// values where it lists them, or nil where it can. A literal is a value of the form: a string of
+// a text form, true or false of a bool, a number of an int, an address of a path. A string that
+// holds a `*` on a field no value of which does is refused as the literal it is, naming the
+// pattern it was meant as. An operator is checked as tony reads it, and where it is one that
+// matches text, against the form's spelling.
+func (f Field) Accepts(pattern *ir.Node) error {
+	pattern = ir.Uncomment(pattern)
+	if isAny(pattern) {
+		return nil
 	}
-	return accepts(p.Form, pattern)
+	if t := unknownOp(pattern); t != "" {
+		return fmt.Errorf("%s is no operator of tony's, and it would match the value under it as a literal", t)
+	}
+	if op, branches := combinator(pattern); op != "" {
+		for i, b := range branches {
+			if err := f.Accepts(b); err != nil {
+				if op == "not" {
+					return fmt.Errorf("!not: %w", err)
+				}
+				return fmt.Errorf("!%s[%d]: %w", op, i, err)
+			}
+		}
+		return nil
+	}
+	if _, err := safeMatch(sampleOf(f.Form), pattern); err != nil {
+		return err
+	}
+	if f.Form == FormPath {
+		_, err := pathPattern(pattern)
+		return err
+	}
+	if pattern.Tag == "" {
+		return f.acceptsValue(pattern)
+	}
+	switch op, text := operand(pattern); op {
+	case "glob":
+		return f.acceptsText("!glob", text, func(v string) bool { ok, _ := path.Match(text, v); return ok })
+	case "regexp":
+		re, err := regexp.Compile(text)
+		if err != nil {
+			return err
+		}
+		return f.acceptsText("!regexp", text, re.MatchString)
+	}
+	return nil
+}
+
+// sampleOf is a value of form, which a pattern is evaluated against once to find what tony
+// refuses in it: an operator it has not, a regexp that does not compile, a name no `!let` binds.
+func sampleOf(form string) *ir.Node {
+	switch form {
+	case FormBool:
+		return ir.FromBool(false)
+	case FormInt:
+		return ir.FromInt(0)
+	case FormPath:
+		return ir.FromSlice(nil)
+	case FormDoc:
+		return ir.FromKeyVals(nil)
+	}
+	return ir.FromString("")
+}
+
+// acceptsValue is why an untagged pattern, a literal, is no value of the field, or nil.
+func (f Field) acceptsValue(n *ir.Node) error {
+	switch f.Form {
+	case FormDoc:
+		return nil
+	case FormBool:
+		if n.Type == ir.BoolType {
+			return nil
+		}
+		if n.Type == ir.StringType && (n.String == "true" || n.String == "false") {
+			return fmt.Errorf("%q is a string, and the field is true or false: write %s, unquoted", n.String, n.String)
+		}
+		return errors.New("the field is true or false")
+	case FormInt:
+		if n.Type == ir.NumberType && n.Int64 != nil {
+			return nil
+		}
+		if n.Type == ir.StringType {
+			if _, err := strconv.ParseInt(n.String, 10, 64); err == nil {
+				return fmt.Errorf("%q is a string, and the field is a number: write %s, unquoted", n.String, n.String)
+			}
+		}
+		return errors.New("the field is a whole number")
+	}
+	switch n.Type {
+	case ir.StringType:
+	case ir.ArrayType:
+		return errors.New("a list is no value of the field: a pattern is one value, and alternatives are written `!or [a, b]`")
+	default:
+		return errors.New("the field is text: a string")
+	}
+	v := n.String
+	if len(f.Values) > 0 && !slices.Contains(f.Values, v) {
+		if v == "*" {
+			return fmt.Errorf("%q: the field is one of %s; any of them is `null`", v, strings.Join(f.Values, ", "))
+		}
+		return fmt.Errorf("%q: the field is one of %s", v, strings.Join(f.Values, ", "))
+	}
+	if f.Form != "" && f.Form != FormText && strings.Contains(v, "*") {
+		if v == "*" || strings.Trim(v, "*") == "" {
+			return fmt.Errorf("%q is a literal no value of the field is: any value is `null`", v)
+		}
+		if before, _, ok := strings.Cut(v, "**"); ok {
+			if before != "" && v == before+"**" {
+				return fmt.Errorf("%q is a literal no value of the field is: every value beginning %s is `!regexp %q`",
+					v, before, "^"+regexp.QuoteMeta(before))
+			}
+			return fmt.Errorf("%q is a literal no value of the field is: a pattern is written `!glob` or `!regexp`, "+
+				"and a glob's `*` stops at a `/`", v)
+		}
+		return fmt.Errorf("%q is a literal no value of the field is: a pattern is written `!glob %q`", v, v)
+	}
+	return checkText(f.Form, v)
+}
+
+// acceptsText is why an operator over text (`!glob`, `!regexp`) can match no value of the field,
+// or nil: it matches text, so not a bool, a number or an address; on a field that lists its
+// values, it matches one; and a glob is spelled as the form's values are, its `*` within a `/`.
+func (f Field) acceptsText(op, text string, matches func(string) bool) error {
+	switch f.Form {
+	case FormBool, FormInt, FormPath, FormDoc:
+		return fmt.Errorf("%s matches text, and the field is %s", op, formWords(f.Form))
+	}
+	if len(f.Values) > 0 {
+		if !slices.ContainsFunc(f.Values, matches) {
+			return fmt.Errorf("%s %q matches none of the field's values, %s", op, text, strings.Join(f.Values, ", "))
+		}
+		return nil
+	}
+	if op != "!glob" {
+		return nil
+	}
+	if _, err := path.Match(text, ""); err != nil {
+		return fmt.Errorf("!glob %q: %v", text, err)
+	}
+	if f.Form == "" || f.Form == FormText {
+		return nil
+	}
+	if before, _, ok := strings.Cut(text, "**"); ok {
+		if before != "" && text == before+"**" {
+			return fmt.Errorf("!glob %q: a glob's `*` stops at a `/`, so `**` is `*`: every value beginning %s is `!regexp %q`",
+				text, before, "^"+regexp.QuoteMeta(before))
+		}
+		return fmt.Errorf("!glob %q: a glob's `*` stops at a `/`, so `**` is `*`: a pattern across them is a `!regexp`", text)
+	}
+	switch f.Form {
+	case FormRef:
+		switch {
+		case !strings.HasPrefix(text, "refs/") && !strings.HasPrefix(text, "*"):
+			return fmt.Errorf("!glob %q: the field is a full ref (refs/heads/%s)", text, text)
+		case strings.Count(text, "/") < 2:
+			return fmt.Errorf("!glob %q: the field is a full ref (refs/heads/main), and `*` stops at a `/`: "+
+				"`refs/heads/*` is every branch, `!regexp \"^refs/\"` every ref", text)
+		}
+		return nil
+	case FormRepo:
+		if strings.Count(text, "/") < 2 {
+			return fmt.Errorf("!glob %q: the field is a repository as `host/owner/name` (github.com/acme/app), "+
+				"and `*` stops at a `/`: `github.com/acme/*` is an owner's", text)
+		}
+	}
+	return checkText(f.Form, strings.ReplaceAll(text, "*", ""))
+}
+
+// formWords is a form as a refusal names it.
+func formWords(form string) string {
+	switch form {
+	case FormBool:
+		return "true or false"
+	case FormInt:
+		return "a number"
+	case FormPath:
+		return "an address (a list of segments, or play.issues.*)"
+	case FormDoc:
+		return "structure, matched as tony matches it"
+	}
+	return "text"
+}
+
+// checkText is why a string is no value of a text form's spelling, or nil.
+func checkText(form, v string) error {
+	if v == "" && (form == FormRef || form == FormRepo) {
+		return errors.New("an empty value: the field is never empty")
+	}
+	switch form {
+	case FormRepo:
+		if v != "" && strings.Count(v, "/") < 2 {
+			return fmt.Errorf("%q: the field is a repository as `host/owner/name` (github.com/acme/app)", v)
+		}
+		if v != strings.ToLower(v) {
+			return fmt.Errorf("%q: the field is lowercase (%s)", v, strings.ToLower(v))
+		}
+	case FormRef:
+		if v != "" && (!strings.HasPrefix(v, "refs/") || strings.Count(v, "/") < 2) {
+			return fmt.Errorf("%q: the field is a full ref (refs/heads/%s)", v, strings.TrimPrefix(v, "refs/"))
+		}
+	case FormBranch:
+		if strings.HasPrefix(v, "refs/") {
+			return fmt.Errorf("%q: the field is a branch's name (%s), not its ref", v,
+				strings.TrimPrefix(strings.TrimPrefix(v, "refs/"), "heads/"))
+		}
+	case FormUpper:
+		if v != strings.ToUpper(v) {
+			return fmt.Errorf("%q: the field is uppercase (%s)", v, strings.ToUpper(v))
+		}
+	case FormLower:
+		if v != strings.ToLower(v) || strings.HasPrefix(v, "#") {
+			return fmt.Errorf("%q: the field is lowercase, without a `#` (%s)", v,
+				strings.TrimPrefix(strings.ToLower(v), "#"))
+		}
+	}
+	return nil
 }
 
 // Field is the attribute as a field of a step, which a shape and a row match like any other.
@@ -116,55 +329,32 @@ func (a Attribute) Field() Field {
 	return Field{Name: a.Name, Description: a.Description, Form: a.Form, Values: a.Values}
 }
 
-func accepts(form, pattern string) error {
-	if form == "" {
-		return nil
-	}
-	if pattern == "" && (form == FormBool || form == FormRef || form == FormRepo) {
-		return errors.New("an empty pattern: the field is never empty")
-	}
-	if form == FormRepo && !strings.Contains(pattern, "**") && strings.Count(pattern, "/") < 2 {
-		return fmt.Errorf("%q: the field is a repository as `host/owner/name` (github.com/acme/app), "+
-			"and `*` does not cross its `/`: `github.com/acme/*` is an owner's, `**` every one", pattern)
-	}
-	if form == FormRef {
-		switch {
-		case !strings.HasPrefix(pattern, "refs/") && !strings.HasPrefix(pattern, "*"):
-			return fmt.Errorf("%q: the field is a full ref (refs/heads/%s)", pattern, pattern)
-		case !strings.Contains(pattern, "**") && strings.Count(pattern, "/") < 2:
-			return fmt.Errorf("%q: the field is a full ref (refs/heads/main), and `*` does not cross its `/`: "+
-				"`refs/heads/*` is every branch, `**` every ref", pattern)
-		}
-		return nil
-	}
-	if strings.Trim(pattern, "*") == "" {
-		return nil
-	}
-	switch form {
+// Value is a value a runner works out for the field, as text, in the form's type: a bool's
+// `true` true, an int's `443` 443, an address's `play.issues` its names, a repository in its
+// canonical spelling. Text that does not read as its form stays text, which no pattern of the
+// form matches.
+func (f Field) Value(s string) *ir.Node {
+	switch f.Form {
 	case FormBool:
-		if pattern != "true" && pattern != "false" {
-			return fmt.Errorf("%q: the field is true or false", pattern)
+		if b, err := strconv.ParseBool(s); err == nil && (s == "true" || s == "false") {
+			return ir.FromBool(b)
 		}
-	case FormBranch:
-		if strings.HasPrefix(pattern, "refs/") {
-			return fmt.Errorf("%q: the field is a branch's name (%s), not its ref", pattern,
-				strings.TrimPrefix(strings.TrimPrefix(pattern, "refs/"), "heads/"))
+	case FormInt:
+		if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+			return ir.FromInt(n)
 		}
-	case FormUpper:
-		if pattern != strings.ToUpper(pattern) {
-			return fmt.Errorf("%q: the field is uppercase (%s)", pattern, strings.ToUpper(pattern))
+	case FormPath:
+		if segs, err := pathPattern(ir.FromString(s)); err == nil {
+			names := make([]*ir.Node, len(segs))
+			for i, seg := range segs {
+				names[i] = ir.FromString(seg.String)
+			}
+			return ir.FromSlice(names)
 		}
 	case FormRepo:
-		if pattern != strings.ToLower(pattern) {
-			return fmt.Errorf("%q: the field is lowercase (%s)", pattern, strings.ToLower(pattern))
-		}
-	case FormLower:
-		if pattern != strings.ToLower(pattern) || strings.HasPrefix(pattern, "#") {
-			return fmt.Errorf("%q: the field is lowercase, without a `#` (%s)", pattern,
-				strings.TrimPrefix(strings.ToLower(pattern), "#"))
-		}
+		return ir.FromString(Canonical(f.Form, s))
 	}
-	return nil
+	return ir.FromString(s)
 }
 
 //go:embed documents/*.tony
@@ -275,7 +465,7 @@ func (d Document) check() error {
 			return fmt.Errorf("%s: attribute %s: %w", d.Name, a.Name, err)
 		}
 		if a.Default != "" {
-			if err := a.Field().Accepts(a.Default); err != nil || strings.Contains(a.Default, "*") {
+			if err := a.Field().Accepts(a.Field().Value(a.Default)); err != nil || strings.Contains(a.Default, "*") {
 				return fmt.Errorf("%s: attribute %s: the default %q is not one of its values", d.Name, a.Name, a.Default)
 			}
 		}
@@ -313,7 +503,7 @@ func (d Document) check() error {
 // checkValues is whether a field's listed values are each one of its form, and not a pattern.
 func checkValues(form string, values []string) error {
 	for _, val := range values {
-		if err := accepts(form, val); err != nil || val == "" || strings.Contains(val, "*") {
+		if err := checkText(form, val); err != nil || val == "" || strings.Contains(val, "*") {
 			return fmt.Errorf("the value %q is not one of its form", val)
 		}
 	}
@@ -322,11 +512,11 @@ func checkValues(form string, values []string) error {
 
 func checkForm(form string) error {
 	switch form {
-	case "", FormBool, FormRef, FormBranch, FormUpper, FormLower, FormRepo, FormText, FormAddress:
+	case "", FormBool, FormInt, FormRef, FormBranch, FormUpper, FormLower, FormRepo, FormText, FormPath, FormDoc:
 		return nil
 	}
-	return fmt.Errorf("the form %q is not one of %s, %s, %s, %s, %s, %s, %s, %s",
-		form, FormBool, FormRef, FormBranch, FormUpper, FormLower, FormRepo, FormText, FormAddress)
+	return fmt.Errorf("the form %q is not one of %s", form, strings.Join([]string{FormBool, FormInt, FormRef,
+		FormBranch, FormUpper, FormLower, FormRepo, FormText, FormPath, FormDoc}, ", "))
 }
 
 // Unique is the document's unique attribute, if it has one.
@@ -471,4 +661,55 @@ func Steps() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// FieldOf is the field a step carries by name: its block's attribute or its verb's field. False
+// for a step no document describes, or a name it does not carry.
+func FieldOf(step, name string) (Field, bool) {
+	system, verb, ok := Split(step)
+	if !ok {
+		return Field{}, false
+	}
+	d, ok := Get(system)
+	if !ok {
+		return Field{}, false
+	}
+	fields, _ := d.StepFields(verb)
+	for _, f := range fields {
+		if f.Name == name {
+			return f, true
+		}
+	}
+	return Field{}, false
+}
+
+// FormOf is the form of a field a step carries, empty (any text) where the document gives none.
+func FormOf(step, name string) string {
+	f, _ := FieldOf(step, name)
+	return f.Form
+}
+
+// FieldsDoc is a step's fields as a runner works them out, as text, each in its form's type
+// (Field.Value): in the order the document gives them, and a field it does not describe after,
+// as text.
+func FieldsDoc(step string, fields map[string]string) *ir.Node {
+	var kvs []ir.KeyVal
+	seen := map[string]bool{}
+	if system, verb, ok := Split(step); ok {
+		if d, ok := Get(system); ok {
+			described, _ := d.StepFields(verb)
+			for _, f := range described {
+				if v, given := fields[f.Name]; given {
+					kvs = append(kvs, ir.KeyVal{Key: ir.FromString(f.Name), Val: f.Value(v)})
+					seen[f.Name] = true
+				}
+			}
+		}
+	}
+	for _, k := range slices.Sorted(maps.Keys(fields)) {
+		if !seen[k] {
+			kvs = append(kvs, ir.KeyVal{Key: ir.FromString(k), Val: ir.FromString(fields[k])})
+		}
+	}
+	return ir.FromKeyVals(kvs)
 }

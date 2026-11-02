@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/runner/runnerd/workspace"
 	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
@@ -252,7 +253,8 @@ func TestATasksDataActsAreCarriedToVerse(t *testing.T) {
 
 // AN INSTALL IS BOUND BY WHERE THE TASK'S ENVIRONMENT SAYS IT MAY INSTALL: the step's `at` is the
 // address the install acts at (charterfile.InstallAt), the prune's or the deepest address its
-// charters share, and one beyond the environment's shape is refused before verse is asked.
+// charters share; one at or under the environment's shape is carried, and one beyond it is refused
+// before verse is asked.
 func TestATasksInstallIsBoundByItsEnvironmentsAt(t *testing.T) {
 	var saw []string
 	verse := func(_ context.Context, _, _, path string, _ []byte) (int, string, error) {
@@ -261,7 +263,7 @@ func TestATasksInstallIsBoundByItsEnvironmentsAt(t *testing.T) {
 	}
 	l := within(nil)
 	l.Environment.Systems["verse"] = []systems.Block{{Verbs: map[string][]systems.Shape{
-		"charter-install": {{"at": "play.issues.issue"}},
+		"charter-install": {{"at": ir.FromString("play.issues.issue")}},
 	}}}
 	tk := Task{ID: "t7", Workspace: &workspace.Workspace{}, Launch: l}
 	s := &Server{Log: io.Discard, Services: Services{Verse: verse}, Ceilings: map[string]systems.Ceiling{"verse": systems.Open()}}
@@ -274,7 +276,7 @@ func TestATasksInstallIsBoundByItsEnvironmentsAt(t *testing.T) {
 		{Request{Op: OpVerseCharterInstall, Body: "at: play.issues.issue.a\n---\nat: play.issues.issue.b\n"}, true},
 		{Request{Op: OpVerseCharterInstall, Query: "at=play.issues.issue", Body: "{name: r, condition: {subject: x}, action: {patch: {}}}\n"}, true},
 		{Request{Op: OpVerseCharterInstall, Query: "prune=play.issues", Body: "at: play.issues.issue.a\n"}, false},
-		{Request{Op: OpVerseCharterInstall, Body: "at: play.issues.issue.a\n"}, false},
+		{Request{Op: OpVerseCharterInstall, Body: "at: play.issues.issue.a\n"}, true},
 		{Request{Op: OpVerseCharterInstall, Body: "at: play.issues.issue.a\n---\nat: play.other\n"}, false},
 		{Request{Op: OpVerseCharterInstall, Body: "rules: []\n"}, false},
 	} {

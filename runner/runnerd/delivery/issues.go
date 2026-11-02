@@ -40,7 +40,7 @@ func (s *Server) gitIssuePull(ctx context.Context, tk Task, req Request) Reply {
 	if t == nil {
 		return Reply{Error: fmt.Sprintf("no repository %q in this workspace", req.Repo)}
 	}
-	if why := s.refused(tk, req.Decision, task.Step{Name: task.StepGitIssuePull, Fields: map[string]string{"repo": t.Repo.Repo.Canonical()}}); why != "" {
+	if why := s.refused(tk, req.Decision, task.NewStep(task.StepGitIssuePull, map[string]string{"repo": t.Repo.Repo.Canonical()})); why != "" {
 		return Reply{Refused: why}
 	}
 	mirror, err := s.Mirrors.FetchIssues(ctx, t.Repo.Remote)
@@ -77,7 +77,7 @@ func (s *Server) gitIssuePush(ctx context.Context, tk Task, req Request) Reply {
 	if t == nil {
 		return Reply{Error: fmt.Sprintf("no repository %q in this workspace", req.Repo)}
 	}
-	if why := s.refused(tk, req.Decision, task.Step{Name: task.StepGitIssuePush, Fields: map[string]string{"repo": t.Repo.Repo.Canonical()}}); why != "" {
+	if why := s.refused(tk, req.Decision, task.NewStep(task.StepGitIssuePush, map[string]string{"repo": t.Repo.Repo.Canonical()})); why != "" {
 		return Reply{Refused: why}
 	}
 	tok, err := tk.Credential(t.Repo)
@@ -112,7 +112,7 @@ func (s *Server) githubIssue(ctx context.Context, tk Task, req Request) Reply {
 	if req.Op != OpGitHubIssueCreate {
 		fields["issue"] = req.Issue
 	}
-	if why := s.refused(tk, req.Decision, task.Step{Name: req.Op, Fields: fields}); why != "" {
+	if why := s.refused(tk, req.Decision, task.NewStep(req.Op, fields)); why != "" {
 		return Reply{Refused: why}
 	}
 	owner, name, err := RepoPath(t.Repo.Remote)
@@ -176,7 +176,7 @@ func (s *Server) linearIssue(ctx context.Context, tk Task, req Request) Reply {
 	} else {
 		fields["issue"] = strings.ToUpper(req.Issue)
 	}
-	if why := s.refused(tk, req.Decision, task.Step{Name: req.Op, Fields: fields}); why != "" {
+	if why := s.refused(tk, req.Decision, task.NewStep(req.Op, fields)); why != "" {
 		return Reply{Refused: why}
 	}
 	auth, base, hc := s.Services.LinearAuth, s.Services.LinearAPI, s.http()

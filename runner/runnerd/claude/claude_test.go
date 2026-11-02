@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/verse"
 	"github.com/signadot/verse/systems"
@@ -729,7 +730,7 @@ func TestClaudeActionsAreGatedOnTheDocket(t *testing.T) {
 	if p.Tool != kindWrite || p.Question.Gate != "write" {
 		t.Fatalf("the second question is %s via gate %q, want %s via gate write", p.Tool, p.Question.Gate, kindWrite)
 	}
-	if st := p.Question.Step; st.Name != task.StepFilesWrite || st.Fields["path"] != "notes.txt" {
+	if st := p.Question.Step; st.Name != task.StepFilesWrite || systems.FieldText(st.Fields, "path") != "notes.txt" {
 		t.Errorf("the edit is asked about as %s, want a write of notes.txt (relative to the workspace)", st)
 	}
 	reg.Answer(p.Question.ID, task.Resolution{Choice: task.Deny, By: "user:ana", Note: "no new files in this change"})
@@ -1800,8 +1801,8 @@ func TestARowOnWhereAWriteLandsDecidesIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	tk, err := Task(runner.Launch{ID: "run-claude-23", Prompt: "x", Agent: &runner.Agent{Name: Agent}, Environment: workEnv, Autonomy: task.Autonomy{
-		{Name: "db", Match: &task.Match{System: "files", Verb: "write", Params: map[string]string{"path": "db/**"}}, Then: task.Then{Mode: task.ThenDeny}},
-		{Name: "docs", Match: &task.Match{System: "files", Verb: "write", Params: map[string]string{"path": "docs/**"}}, Then: task.Then{Mode: task.ThenAllow}},
+		{Name: "db", Match: &task.Match{System: "files", Verb: "write", Params: map[string]*ir.Node{"path": systems.Regexp("^db/")}}, Then: task.Then{Mode: task.ThenDeny}},
+		{Name: "docs", Match: &task.Match{System: "files", Verb: "write", Params: map[string]*ir.Node{"path": systems.Regexp("^docs/")}}, Then: task.Then{Mode: task.ThenAllow}},
 		{Match: &task.Match{System: "commands"}, Then: task.Then{Mode: task.ThenAllow}},
 	}}, reg, creds, fakeEnv(), w, nil, systemstest.Open(workEnv))
 	if err != nil {
@@ -1840,16 +1841,16 @@ func TestAWriteThroughALinkIsDecidedWhereItLandsWhereverTheRowStands(t *testing.
 		by       string
 	}{
 		{"allow docs, deny the rest", task.Autonomy{
-			{Name: "docs", Match: &task.Match{System: "files", Verb: "write", Params: map[string]string{"path": "docs/**"}}, Then: task.Then{Mode: task.ThenAllow}},
+			{Name: "docs", Match: &task.Match{System: "files", Verb: "write", Params: map[string]*ir.Node{"path": systems.Regexp("^docs/")}}, Then: task.Then{Mode: task.ThenAllow}},
 			{Name: "rest", Match: &task.Match{System: "files", Verb: "write"}, Then: task.Then{Mode: task.ThenDeny}},
 			commands,
 		}, workEnv, systemstest.Open(workEnv), task.ByAutonomy},
 		{"the environment of docs", task.Autonomy{files(task.Then{Mode: task.ThenAllow}), commands}, systems.Environment{Systems: systems.Systems{
 			"commands": workEnv.Systems["commands"],
-			"files":    {{Verbs: map[string][]systems.Shape{"write": {{"path": "docs/**"}}}}},
+			"files":    {{Verbs: map[string][]systems.Shape{"write": {{"path": systems.Regexp("^docs/")}}}}},
 		}}, systemstest.Open(workEnv), task.ByEnvironment},
 		{"the ceiling of docs", task.Autonomy{files(task.Then{Mode: task.ThenAllow}), commands}, workEnv, map[string]systems.Ceiling{"files": {
-			{Verbs: map[string][]systems.Shape{"write": {{"path": "docs/**"}}}},
+			{Verbs: map[string][]systems.Shape{"write": {{"path": systems.Regexp("^docs/")}}}},
 		}, "commands": systems.Open()}, task.ByCeiling},
 	} {
 		t.Run(c.name, func(t *testing.T) {

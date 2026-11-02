@@ -3,6 +3,8 @@ package systems
 import (
 	"strings"
 	"testing"
+
+	"github.com/signadot/tony-format/go-tony/ir"
 )
 
 // AN ENVIRONMENT WITHIN ANOTHER reaches no system the other does not, and each block of a
@@ -10,7 +12,7 @@ import (
 // given there, its shapes within the other's.
 func TestAnEnvironmentWithinAnother(t *testing.T) {
 	outer := Environment{Systems: Systems{
-		"git":     {{Attributes: map[string]string{"repo": "github.com/signadot/verse", "from": "main"}, Verbs: map[string][]Shape{"fetch": {{}}, "push": {{"ref": "refs/heads/verse/**"}}}}},
+		"git":     {{Attributes: map[string]string{"repo": "github.com/signadot/verse", "from": "main"}, Verbs: map[string][]Shape{"fetch": {{}}, "push": {{"ref": ir.FromString("^refs/heads/verse/").WithTag("!regexp")}}}}},
 		"network": {{Attributes: map[string]string{"mode": "open"}}},
 	}}
 	for name, c := range map[string]struct {
@@ -22,7 +24,7 @@ func TestAnEnvironmentWithinAnother(t *testing.T) {
 			"network": {{Attributes: map[string]string{"mode": "open"}}},
 		}}, ""},
 		"a narrower push": {Environment{Systems: Systems{
-			"git": {{Attributes: map[string]string{"repo": "github.com/signadot/verse", "from": "main"}, Verbs: map[string][]Shape{"push": {{"ref": "refs/heads/verse/auto/*"}}}}},
+			"git": {{Attributes: map[string]string{"repo": "github.com/signadot/verse", "from": "main"}, Verbs: map[string][]Shape{"push": {{"ref": ir.FromString("refs/heads/verse/auto/*").WithTag("!glob")}}}}},
 		}}, ""},
 		"a system the outer does not reach": {Environment{Systems: Systems{
 			"commands": {{Verbs: map[string][]Shape{"run": {{}}}}},
@@ -34,7 +36,7 @@ func TestAnEnvironmentWithinAnother(t *testing.T) {
 			"network": {{Attributes: map[string]string{"mode": "open"}, Verbs: map[string][]Shape{"connect": {{}}}}},
 		}}, "gives no `connect`"},
 		"a wider push": {Environment{Systems: Systems{
-			"git": {{Attributes: map[string]string{"repo": "github.com/signadot/verse", "from": "main"}, Verbs: map[string][]Shape{"push": {{"ref": "refs/heads/**"}}}}},
+			"git": {{Attributes: map[string]string{"repo": "github.com/signadot/verse", "from": "main"}, Verbs: map[string][]Shape{"push": {{"ref": ir.FromString("^refs/heads/").WithTag("!regexp")}}}}},
 		}}, "within no shape"},
 	} {
 		err := c.inner.Within(outer)

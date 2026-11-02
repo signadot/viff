@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/systems/systemstest"
 )
 
@@ -85,7 +86,7 @@ func TestEachCallsEventsNameTheCall(t *testing.T) {
 		if tu.Name == "read" {
 			return Step{}, false
 		}
-		return Step{Name: StepCommandsRun, Fields: map[string]string{"command": tu.Name}}, true
+		return NewStep(StepCommandsRun, map[string]string{"command": tu.Name}), true
 	})
 	p := NewTask("t", sup, &scriptDriver{steps: []ToolUse{tool("build"), tool("deploy"), tool("read")}}, &recExec{})
 	ch, unsub := p.Subscribe()
@@ -118,7 +119,7 @@ func TestEachCallsEventsNameTheCall(t *testing.T) {
 	}
 	var have []seen
 	for _, ev := range evs {
-		have = append(have, seen{ev.Kind, ev.Tool, ev.Gate, ev.Step, ev.Fields["command"], ev.Proceed})
+		have = append(have, seen{ev.Kind, ev.Tool, ev.Gate, ev.Step, systems.FieldText(ev.Fields, "command"), ev.Proceed})
 	}
 	want := []seen{
 		{EventDecision, "build", "autonomy[1]", StepCommandsRun, "build", true},

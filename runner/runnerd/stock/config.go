@@ -10,8 +10,11 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
@@ -544,23 +547,24 @@ func Load(path string) (runnerd.Config, Config, error) {
 }
 
 // checkForge refuses a `git` ceiling block reaching past the runner's forge: it fetches from
-// nowhere else, so each block names its repositories, each within `<host>/**`.
+// nowhere else, so each block names its repositories, each within the forge's
+// (`!regexp "^github\\.com/"`).
 func (c *Config) checkForge(at string, sections map[string]System) error {
 	ceiling := sections["git"].Ceiling
 	if len(ceiling) == 0 || c.Repos == nil {
 		return nil
 	}
 	host, _ := c.Repos.forge()
-	forge := strings.ToLower(host) + "/**"
+	forge := ir.FromString("^" + regexp.QuoteMeta(strings.ToLower(host)) + "/").WithTag("!regexp")
 	for i, b := range ceiling {
 		repos := b.Attributes["repo"]
-		if len(repos) == 0 {
-			return fmt.Errorf("%s.git.ceiling[%d]: names no repo; a git ceiling names the repositories it is for, on the forge (%s)", at, i, forge)
+		if repos == nil {
+			return fmt.Errorf("%s.git.ceiling[%d]: names no repo; a git ceiling names the repositories it is for, on the forge (%s)",
+				at, i, systems.Words(forge))
 		}
-		for _, p := range repos {
-			if p = systems.Canonical(systems.FormRepo, p); !systems.PatternContains(forge, p, systems.SepPath) {
-				return fmt.Errorf("%s.git.ceiling[%d].repo: %s is beyond the runner's forge (%s): it fetches from nowhere else", at, i, p, forge)
-			}
+		if !systems.FieldContains(systems.FormRepo, forge, repos) {
+			return fmt.Errorf("%s.git.ceiling[%d].repo: %s is beyond the runner's forge (%s): it fetches from nowhere else",
+				at, i, systems.Words(repos), systems.Words(forge))
 		}
 	}
 	return nil
@@ -571,11 +575,20 @@ func (c *Config) checkForge(at string, sections map[string]System) error {
 func (c Config) checkBuilds(networks []string) error {
 	for _, doer := range c.doers() {
 		for i, b := range c.systemsOf(doer)["network"].Ceiling {
-			for _, mode := range b.Attributes["mode"] {
-				if !slices.ContainsFunc(networks, func(n string) bool { return systems.Match(mode, n, systems.SepPath) }) {
-					return fmt.Errorf("%s.systems.network.ceiling[%d].mode: %s is no network this runner's sandbox builds (it builds: %s)",
-						sectionOf(doer), i, mode, strings.Join(networks, ", "))
+			mode, ok := b.Attributes["mode"]
+			if !ok {
+				continue
+			}
+			named, literal := systems.Literals(mode)
+			if !literal && !slices.ContainsFunc(networks, func(n string) bool { return systems.MatchField("", mode, ir.FromString(n)) }) {
+				named = []string{systems.Words(mode)}
+			}
+			for _, v := range named {
+				if literal && slices.Contains(networks, v) {
+					continue
 				}
+				return fmt.Errorf("%s.systems.network.ceiling[%d].mode: %s is no network this runner's sandbox builds (it builds: %s)",
+					sectionOf(doer), i, v, strings.Join(networks, ", "))
 			}
 		}
 	}

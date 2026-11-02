@@ -528,8 +528,8 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 	// The step the question is about, and its fields: which repository, which ref, which path.
 	if q.Step.Name != "" {
 		rec["step"] = q.Step.Name
-		if len(q.Step.Fields) > 0 {
-			rec["fields"] = stringObj(q.Step.Fields)
+		if f := stepFields(q.Step.Fields); f != nil {
+			rec["fields"] = f
 		}
 	}
 	rec[ToField] = toGrantees(q.Answerers)
@@ -909,8 +909,8 @@ func PostFrameQuestion(store entity.Store, ev task.Event, taskID, run, subject s
 			rec[k] = v
 		}
 	}
-	if len(ev.Fields) > 0 {
-		rec["fields"] = stringObj(ev.Fields)
+	if f := stepFields(ev.Fields); f != nil {
+		rec["fields"] = f
 	}
 	rec[ToField] = toGrantees(answerers)
 	// What the question offers, as a posed one carries it: the frame's options, or the
@@ -1267,13 +1267,15 @@ func StaleAnswer(store entity.Store, id string, res task.Resolution) {
 	})
 }
 
-// stringObj is a string map as the record carries it.
-func stringObj(m map[string]string) entity.Obj {
-	out := entity.Obj{}
-	for k, v := range m {
-		out[k] = v
+// stepFields is a step's fields as a record keeps them, nil where it carries none: escaped as data,
+// since a field of structure may hold what a match says (an ask's `on`), which a write would
+// otherwise read as an operator.
+func stepFields(f *ir.Node) entity.Payload {
+	f = ir.Uncomment(f)
+	if f == nil || f.Type != ir.ObjectType || len(f.Fields) == 0 {
+		return nil
 	}
-	return out
+	return entity.Raw(f)
 }
 
 // clearPriorAnswer prepares a record that is being posed AGAIN under an id that already

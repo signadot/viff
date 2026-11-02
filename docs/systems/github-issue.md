@@ -73,5 +73,5 @@ agents:
   claude:
     systems:
       github-issue:
-        ceiling: {repo: "github.com/acme/**", create: {}, comment: {}, close: {}}
+        ceiling: {repo: !regexp "^github\\.com/acme/", create: {}, comment: {}, close: {}}
 ```

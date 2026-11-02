@@ -27,8 +27,8 @@ environment:
     files: {}
     commands: {}
 autonomy:
-- {match: {system: files, verb: write, path: "db/**"}, then: ask}
-- {match: {system: commands, verb: run, command: "make ship*"}, then: ask}
+- {match: {system: files, verb: write, path: !regexp "^db/"}, then: ask}
+- {match: {system: commands, verb: run, command: !regexp "^make ship"}, then: ask}
 - {then: allow}
 ```
 
@@ -47,7 +47,7 @@ environment:
   systems:
     network:
       mode: allow
-      tcp-client: [{host: api.github.com}, {host: pypi.org, port: "443"}]
+      tcp-client: [{host: api.github.com}, {host: pypi.org, port: 443}]
 ```
 
 | `mode` | What the run reaches |

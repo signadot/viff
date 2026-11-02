@@ -545,7 +545,7 @@ func (d *driver) propose(ev event) (*proposal, task.ToolUse, error) {
 		if p.cmd.Kind == "writeStdin" {
 			in["kind"] = "stdin"
 		}
-		p.steps = []task.Step{{Name: task.StepCommandsRun, Fields: map[string]string{"command": cmd}}}
+		p.steps = []task.Step{task.NewStep(task.StepCommandsRun, map[string]string{"command": cmd})}
 		return p, task.ToolUse{Name: kindShell, Input: in}, nil
 
 	case "item/fileChange/requestApproval":
@@ -562,7 +562,7 @@ func (d *driver) propose(ev event) (*proposal, task.ToolUse, error) {
 		// among others, and a document's list is []any.
 		var changes []any
 		write := func(path string) {
-			p.steps = append(p.steps, task.Step{Name: task.StepFilesWrite, Fields: map[string]string{"path": path}})
+			p.steps = append(p.steps, task.NewStep(task.StepFilesWrite, map[string]string{"path": path}))
 		}
 		for _, ch := range d.items[fc.ItemID].Changes {
 			path := d.rel(ch.Path)
@@ -597,7 +597,7 @@ func (d *driver) propose(ev event) (*proposal, task.ToolUse, error) {
 		}
 		// The step `question.ask`, as the `question-ask` tool's use is: decided by the autonomy,
 		// then put to the person.
-		p.steps = []task.Step{{Name: task.StepQuestionAsk, Fields: map[string]string{}}}
+		p.steps = []task.Step{task.NewStep(task.StepQuestionAsk, map[string]string{})}
 		return p, task.ToolUse{Name: kindAsk, Input: map[string]any{"questions": qs}}, nil
 
 	case "item/tool/call":
@@ -643,7 +643,7 @@ func (d *driver) propose(ev event) (*proposal, task.ToolUse, error) {
 				// A write, or an access this side does not read, which the answer would grant
 				// whole: each is gated as a write.
 				if e.Access != "read" && e.Access != "deny" {
-					p.steps = append(p.steps, task.Step{Name: task.StepFilesWrite, Fields: map[string]string{"path": ref}})
+					p.steps = append(p.steps, task.NewStep(task.StepFilesWrite, map[string]string{"path": ref}))
 				}
 				if e.Access != "deny" {
 					named = true
@@ -656,7 +656,7 @@ func (d *driver) propose(ev event) (*proposal, task.ToolUse, error) {
 				paths = append(paths, "read "+d.rel(r))
 			}
 			for _, w := range fs.Write {
-				p.steps = append(p.steps, task.Step{Name: task.StepFilesWrite, Fields: map[string]string{"path": d.rel(w)}})
+				p.steps = append(p.steps, task.NewStep(task.StepFilesWrite, map[string]string{"path": d.rel(w)}))
 				paths = append(paths, "write "+d.rel(w))
 			}
 			in["paths"] = paths
@@ -667,7 +667,7 @@ func (d *driver) propose(ev event) (*proposal, task.ToolUse, error) {
 		if (len(p.steps) == 0 && !named) || len(perm.Other) > 0 {
 			// A request for what this side cannot name is still a widening, and the answer grants
 			// the request whole: gate it as a write.
-			p.steps = append(p.steps, task.Step{Name: task.StepFilesWrite, Fields: map[string]string{"path": ""}})
+			p.steps = append(p.steps, task.NewStep(task.StepFilesWrite, map[string]string{"path": ""}))
 		}
 		return p, task.ToolUse{Name: kindPermissions, Input: in}, nil
 	}

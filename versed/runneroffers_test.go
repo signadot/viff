@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/runner"
@@ -108,7 +109,7 @@ func TestARunnerIsInstalledWithWhatItOffers(t *testing.T) {
 		t.Fatalf("add of a runner that offers nothing = %s: %s, want 400", resp.Status, body)
 	}
 	// A doer offered twice: a launch names its doer, and could not say which of the two it means.
-	script := runner.Offer{Script: true, Systems: map[string]runner.System{"network": {Builds: systems.Ceiling{{Attributes: map[string][]string{"mode": {runner.NetworkOpen}}}}}}}
+	script := runner.Offer{Script: true, Systems: map[string]runner.System{"network": {Builds: systems.Ceiling{{Attributes: map[string]*ir.Node{"mode": systems.OneOf(runner.NetworkOpen)}}}}}}
 	d.Describe(runner.Description{Version: runner.DescriptionVersion, Offers: []runner.Offer{script, script}})
 	resp = postTony(t, ts.URL+"/runners", provenFace(t, ts.URL, d.HTTPHandler(), func() {}).reg("twice"))
 	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "it offers script twice") {

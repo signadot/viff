@@ -3,6 +3,8 @@ package launch
 import (
 	"reflect"
 	"testing"
+
+	"github.com/signadot/tony-format/go-tony/ir"
 )
 
 // Bind carries EVERY field of a Spec.
@@ -85,9 +87,16 @@ func TestBindCarriesEveryAgentAndEnvironmentField(t *testing.T) {
 	carried(t, reflect.ValueOf(got.Environment), "Environment")
 }
 
+// nodeType is a pattern's, which fill and carried take as a leaf.
+var nodeType = reflect.TypeOf((*ir.Node)(nil))
+
 // fill sets every leaf of v to something other than its zero value.
 func fill(t *testing.T, v reflect.Value, path string) {
 	t.Helper()
+	if v.Type() == nodeType { // a pattern is a leaf: its parent links lead back up the tree
+		v.Set(reflect.ValueOf(ir.FromString("x")))
+		return
+	}
 	switch v.Kind() {
 	case reflect.String:
 		v.SetString("x")
@@ -120,6 +129,12 @@ func fill(t *testing.T, v reflect.Value, path string) {
 // carried fails for each leaf of v that is zero: a field fill set and Bind did not copy.
 func carried(t *testing.T, v reflect.Value, path string) {
 	t.Helper()
+	if v.Type() == nodeType {
+		if v.IsNil() {
+			t.Errorf("Bind dropped %s", path)
+		}
+		return
+	}
 	switch v.Kind() {
 	case reflect.Struct:
 		for i := range v.NumField() {

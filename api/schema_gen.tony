@@ -257,6 +257,7 @@ signature:
 ---
 context:
 - tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
 - task: github.com/signadot/verse/task
 define:
   about: .[string]
@@ -271,7 +272,7 @@ define:
   due: .[string]
   edit: .[int]
   expires: .[string]
-  fields: .[object(string)]
+  fields: .[tony-base:ir]
   followed: .[nullable(verse-ask-followed)]
   from: .[nullable(verse-ask-from)]
   gate: .[string]
@@ -311,6 +312,7 @@ signature:
 ---
 context:
 - tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
 - task: github.com/signadot/verse/task
 define:
   about: .[string]
@@ -325,7 +327,7 @@ define:
   due: .[string]
   edit: .[int]
   expires: .[string]
-  fields: .[object(string)]
+  fields: .[tony-base:ir]
   followed: .[nullable(verse-ask-followed)]
   from: .[nullable(verse-ask-from)]
   gate: .[string]
@@ -428,6 +430,7 @@ signature:
 ---
 context:
 - tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
 - task: github.com/signadot/verse/task
 define:
   about: .[string]
@@ -442,7 +445,7 @@ define:
   due: .[string]
   edit: .[int]
   expires: .[string]
-  fields: .[object(string)]
+  fields: .[tony-base:ir]
   followed: .[nullable(verse-ask-followed)]
   from: .[nullable(verse-ask-from)]
   gate: .[string]

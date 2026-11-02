@@ -39,6 +39,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/systems"
@@ -79,7 +80,7 @@ func main() {
 	d.Describe(runner.Description{Version: runner.DescriptionVersion, Offers: []runner.Offer{{
 		Agent: &runner.AgentOffer{Name: "sample"},
 		Systems: map[string]runner.System{"network": {
-			Builds: systems.Ceiling{{Attributes: map[string][]string{"mode": {runner.NetworkOpen}}}},
+			Builds: systems.Ceiling{{Attributes: map[string]*ir.Node{"mode": systems.OneOf(runner.NetworkOpen)}}},
 		}},
 	}}})
 	log.Printf("runner listening on %s — install it with: verse runner add <name> http://<host>%s -token-file %s",

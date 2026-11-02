@@ -3,6 +3,7 @@ package stock
 import (
 	"slices"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/claude"
 	"github.com/signadot/verse/runner/runnerd/codex"
@@ -50,7 +51,7 @@ func (c Config) Describe(networks []string) runner.Description {
 // where allow is one, a connection to any host through its proxy. The network is apart from the
 // empty block (systems.Block.Given), so the connection is said.
 func networkBuilds(networks []string) systems.Ceiling {
-	b := systems.CeilingBlock{Attributes: map[string][]string{"mode": networks}}
+	b := systems.CeilingBlock{Attributes: map[string]*ir.Node{"mode": systems.OneOf(networks...)}}
 	if slices.Contains(networks, runner.NetworkAllow) {
 		b.Verbs = map[string][]systems.Shape{"tcp-client": {{}}}
 	}

@@ -70,9 +70,9 @@ the task has `verse.data-put`. Giving a task `verse.charter-install` gives it th
 
 Where a task may install is the spawn's to bound, with `at`: the address the install acts at,
 which everything it installs lies at or under. With `prune` it is the prune's address; otherwise
-it is the deepest address the charters it installs all share. An address is matched a segment at
-a time, `*` taking one and `**` several. This task may install only at
-`play.issues.issue`, as a prune of one charter per issue would, and nowhere else:
+it is the deepest address the charters it installs all share. An address matches a pattern when
+it is at or under it, and a `*` in the pattern takes any one segment. This task may install at
+`play.issues.issue` and under it, as a prune of one charter per issue would, and nowhere else:
 
 ```tony
 environment:

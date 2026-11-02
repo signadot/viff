@@ -1,5 +1,7 @@
 package task
 
+import "github.com/signadot/tony-format/go-tony/ir"
+
 // Event is one event on `GET /tasks/{id}/events`: one structured entry on a task's read
 // plane, streamed over SSE. The loop emits loop-level events; a driver's own narration is a
 // separate concern (wired at the edge, not here).
@@ -18,13 +20,13 @@ type Event struct {
 	Action string `tony:"field=action,omitzero"`
 	Gate   string `tony:"field=gate,omitzero"`
 	// Step and Fields are the system call a pending, a decision or an exec event is about
-	// (task.Step), when it is one: `<system>.<verb>` and the call's params, what an autonomy row
-	// matches. A decision names the row that decided it as Gate; the exec that follows it names
-	// the same call, with its outcome.
-	Step    string            `tony:"field=step,omitzero"`
-	Fields  map[string]string `tony:"field=fields,omitzero"`
-	By      string            `tony:"field=by,omitzero"`
-	Proceed bool              `tony:"field=proceed,omitzero"`
+	// (task.Step), when it is one: `<system>.<verb>` and the step's fields, each in its form's
+	// type, what an autonomy row matches. A decision names the row that decided it as Gate; the
+	// exec that follows it names the same call, with its outcome.
+	Step    string   `tony:"field=step,omitzero"`
+	Fields  *ir.Node `tony:"field=fields,omitzero"`
+	By      string   `tony:"field=by,omitzero"`
+	Proceed bool     `tony:"field=proceed,omitzero"`
 	// Choice is the option a decision settled on; Proceed is the same fact as yes or no, kept
 	// for every reader of a two-option question. A pending event offers Options and a
 	// Deadline the way a posed question does, so a worker that raises a gate with outcomes

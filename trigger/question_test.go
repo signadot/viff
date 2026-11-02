@@ -43,8 +43,8 @@ func TestACharterRuleFiresOnAPendingQuestion(t *testing.T) {
 			Tool:     "act",
 		}, "run-a")
 	}
-	pose("run-a~d1", "write-guard", task.Step{Name: task.StepFilesWrite, Fields: map[string]string{"path": "cfg/app.tony"}})
-	pose("run-a~d2", "read-guard", task.Step{Name: task.StepCommandsRun, Fields: map[string]string{"command": "cat cfg/app.tony"}})
+	pose("run-a~d1", "write-guard", task.NewStep(task.StepFilesWrite, map[string]string{"path": "cfg/app.tony"}))
+	pose("run-a~d2", "read-guard", task.NewStep(task.StepCommandsRun, map[string]string{"command": "cat cfg/app.tony"}))
 
 	escalated := func(id string) bool {
 		e, _, _ := store.Get(mirror.QuestionRef(id))

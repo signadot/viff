@@ -22,7 +22,7 @@ func reasonRunner(t *testing.T, verseURL, reason string) *face {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /describe", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", codec.MediaType(codec.Tony))
-		w.Write([]byte("{version: 2, offers: [{agent: {name: codex}, systems: {network: {builds: {mode: [open, none, allow]}}}}]}\n"))
+		w.Write([]byte("{version: 2, offers: [{agent: {name: codex}, systems: {network: {builds: {mode: !or [open, none, allow]}}}}]}\n"))
 	})
 	mux.HandleFunc("POST /tasks", func(w http.ResponseWriter, r *http.Request) {
 		var l runner.Launch

@@ -3,6 +3,8 @@ package systems
 import (
 	"strings"
 	"testing"
+
+	"github.com/signadot/tony-format/go-tony/ir"
 )
 
 // THE DOCUMENTS READ, AND NAME WHAT THE CODE NAMES: every system has verbs, a step's fields are
@@ -131,17 +133,18 @@ func TestADocumentIsCheckedAndAVerbMustBeClaimed(t *testing.T) {
 	}
 }
 
-// A FIELD THAT LISTS ITS VALUES TAKES ONE OF THEM, or `*`; an attribute is a field of the step,
-// matched by its form.
+// A FIELD THAT LISTS ITS VALUES TAKES ONE OF THEM, `null` for any, or an operator that matches
+// one; an attribute is a field of the step, matched by its form.
 func TestValuesAndAttributesAreMatchedAsFields(t *testing.T) {
 	owner := Field{Name: "owner", Values: []string{"task", "other"}}
-	for pattern, ok := range map[string]bool{"task": true, "other": true, "*": true, "mine": false, "": false} {
-		if err := owner.Accepts(pattern); (err == nil) != ok {
-			t.Errorf("owner %q: %v, want accepted=%v", pattern, err, ok)
+	for pattern, ok := range map[string]bool{`task`: true, `other`: true, `null`: true, `"*"`: false, `mine`: false, `""`: false,
+		`!or [task, other]`: true, `!or [task, mine]`: false, `!glob "t*"`: true, `!glob "x*"`: false, `!not task`: true} {
+		if err := owner.Accepts(pat(t, pattern)); (err == nil) != ok {
+			t.Errorf("owner %s: %v, want accepted=%v", pattern, err, ok)
 		}
 	}
 	repo := Attribute{Name: "repo", Form: FormRepo}.Field()
-	if repo.Accepts("github.com/acme/app") != nil || repo.Accepts("GitHub.com/acme/app") == nil {
+	if repo.Accepts(ir.FromString("github.com/acme/app")) != nil || repo.Accepts(ir.FromString("GitHub.com/acme/app")) == nil {
 		t.Error("an attribute is matched by its form")
 	}
 	d, _ := Get("git")

@@ -610,7 +610,7 @@ func (d *driver) propose(ev event) (*proposal, task.ToolUse, error) {
 		if why := str(in, "description"); why != "" {
 			out["reason"] = why
 		}
-		p.steps = []task.Step{{Name: task.StepCommandsRun, Fields: map[string]string{"command": cmd}}}
+		p.steps = []task.Step{task.NewStep(task.StepCommandsRun, map[string]string{"command": cmd})}
 		return p, task.ToolUse{Name: kindBash, Input: out}, nil
 
 	case "Edit", "Write":
@@ -631,7 +631,7 @@ func (d *driver) propose(ev event) (*proposal, task.ToolUse, error) {
 			out["new"] = truncate(str(in, "new_string"), 200)
 		}
 		for _, at := range paths {
-			p.steps = append(p.steps, task.Step{Name: task.StepFilesWrite, Fields: map[string]string{"path": at}})
+			p.steps = append(p.steps, task.NewStep(task.StepFilesWrite, map[string]string{"path": at}))
 		}
 		return p, task.ToolUse{Name: p.kind, Input: out}, nil
 
@@ -649,7 +649,7 @@ func (d *driver) propose(ev event) (*proposal, task.ToolUse, error) {
 		}
 		// The step `question.ask`, as the `question-ask` tool's use is: decided by the autonomy,
 		// then put to the person.
-		p.steps = []task.Step{{Name: task.StepQuestionAsk, Fields: map[string]string{}}}
+		p.steps = []task.Step{task.NewStep(task.StepQuestionAsk, map[string]string{})}
 		return p, task.ToolUse{Name: kindAsk, Input: map[string]any{"questions": qs}}, nil
 	}
 

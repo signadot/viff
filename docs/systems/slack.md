@@ -104,7 +104,7 @@ agents:
         ceiling:
           post: {channel: deploys}
           reply: {channel: deploys}
-          read: [{channel: deploys}, {channel: "eng-*"}]
+          read: [{channel: deploys}, {channel: !glob "eng-*"}]
           react: {channel: deploys}
 ```
 

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
@@ -16,23 +17,23 @@ func TestARowMustReachTheEnvironment(t *testing.T) {
 		Attributes: map[string]string{"repo": "github.com/acme/app"},
 		Verbs: map[string][]systems.Shape{
 			"fetch": {{}},
-			"push":  {{"ref": "refs/heads/verse/*"}},
+			"push":  {{"ref": systems.Glob("refs/heads/verse/*")}},
 		},
 	}}}}
-	push := func(ref string) task.Row {
-		return task.Row{Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"ref": ref}}, Then: task.Then{Mode: task.ThenAllow}}
+	push := func(ref *ir.Node) task.Row {
+		return task.Row{Match: &task.Match{System: "git", Verb: "push", Params: map[string]*ir.Node{"ref": ref}}, Then: task.Then{Mode: task.ThenAllow}}
 	}
 	dflt := task.Row{Then: task.Then{Mode: task.ThenAsk}}
 	for _, c := range []struct {
 		row  task.Row
 		says string // "" = accepted
 	}{
-		{push("refs/tags/*"), "autonomy[0]: matches nothing the environment gives (system=git verb=push ref=refs/tags/*)"},
-		{push("refs/heads/**"), ""},  // wider: the environment bounds it
-		{push("refs/*/verse/x"), ""}, // overlaps refs/heads/verse/*, contains it neither way
-		{push("refs/heads/verse/fix"), ""},
+		{push(systems.Glob("refs/tags/*")), "autonomy[0]: matches nothing the environment gives (system=git verb=push ref=!glob refs/tags/*)"},
+		{push(systems.Regexp("^refs/heads/")), ""}, // wider: the environment bounds it
+		{push(systems.Glob("refs/*/verse/x")), ""}, // overlaps refs/heads/verse/*, contains it neither way
+		{push(ir.FromString("refs/heads/verse/fix")), ""},
 		{task.Row{Match: &task.Match{System: "git"}, Then: task.Then{Mode: task.ThenAsk}}, ""},
-		{task.Row{Match: &task.Match{System: "git", Params: map[string]string{"repo": "github.com/other/*"}}, Then: task.Then{Mode: task.ThenDeny}}, "matches nothing the environment gives (system=git repo=github.com/other/*)"},
+		{task.Row{Match: &task.Match{System: "git", Params: map[string]*ir.Node{"repo": systems.Glob("github.com/other/*")}}, Then: task.Then{Mode: task.ThenDeny}}, "matches nothing the environment gives (system=git repo=!glob github.com/other/*)"},
 		{task.Row{Match: &task.Match{System: "slack"}, Then: task.Then{Mode: task.ThenAllow}}, "give it in environment.systems.slack"},
 	} {
 		err := CheckReach(task.Autonomy{c.row, dflt}, env)
@@ -46,7 +47,7 @@ func TestARowMustReachTheEnvironment(t *testing.T) {
 	// Not where a launch is checked: a launch is bound, and a row naming one repository of a
 	// charter that binds another is dead for that run, not wrong. The rule is held where a spawn
 	// is written, on the environment as written.
-	l := &Launch{ID: "x", Script: "echo", Environment: env, Autonomy: task.Autonomy{push("refs/tags/*"), dflt}}
+	l := &Launch{ID: "x", Script: "echo", Environment: env, Autonomy: task.Autonomy{push(systems.Glob("refs/tags/*")), dflt}}
 	if err := l.Check(); err != nil {
 		t.Errorf("a bound launch with a row that never fires is refused: %v", err)
 	}

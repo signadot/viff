@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/runner/runnerd/workspace"
 	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
@@ -48,7 +49,7 @@ func slackAPI(t *testing.T, saw *[]string) string {
 func TestATasksSlackMessageNamesTheTask(t *testing.T) {
 	var saw []string
 	// The runner's ceiling gives #deploys alone.
-	deploys := []systems.Shape{{"channel": "deploys"}}
+	deploys := []systems.Shape{{"channel": ir.FromString("deploys")}}
 	ceiling := systems.Ceiling{{Verbs: map[string][]systems.Shape{"post": deploys, "reply": deploys, "read": deploys, "react": deploys}}}
 	s := &Server{Log: io.Discard, Services: Services{SlackToken: "xoxb-own", SlackAPI: slackAPI(t, &saw)}, Ceilings: map[string]systems.Ceiling{"slack": ceiling}}
 	l := within(nil, "slack")

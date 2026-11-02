@@ -29,8 +29,8 @@ func TestACharteredPushIsThePushItNames(t *testing.T) {
 		case "own":
 			own = "true"
 		}
-		return task.Step{Name: "git.push", Fields: map[string]string{
-			"repo": "github.com/signadot/verse", "ref": ref, "force": force, "delete": del, "exists": exists, "own": own}}
+		return task.NewStep("git.push", map[string]string{
+			"repo": "github.com/signadot/verse", "ref": ref, "force": force, "delete": del, "exists": exists, "own": own})
 	}
 	for _, c := range []struct {
 		file  string

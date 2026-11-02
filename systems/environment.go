@@ -39,9 +39,10 @@ type Block struct {
 	Verbs      map[string][]Shape
 }
 
-// Shape is one allowed form of a verb's step: a field and the pattern its value must match. A
-// field the shape does not name matches any value, so `{}` is any step of the verb.
-type Shape map[string]string
+// Shape is one allowed form of a verb's step: a field and the pattern its value must match (a
+// tony match, pattern.go). A field the shape does not name may hold any value, so `{}` is any step
+// of the verb.
+type Shape map[string]*ir.Node
 
 // Check is what an environment has to satisfy, against the systems' documents: variables named
 // as a shell names them; systems that exist; blocks of each system's attributes and verbs, its
@@ -107,8 +108,11 @@ func (b Block) check(d Document) error {
 		if strings.Contains(v, "*") {
 			return fmt.Errorf("%s: %q: an attribute is a value, not a pattern", name, v)
 		}
-		if err := a.Field().Accepts(Canonical(a.Form, v)); err != nil {
+		if err := checkText(a.Form, Canonical(a.Form, v)); err != nil {
 			return fmt.Errorf("%s: %w", name, err)
+		}
+		if len(a.Values) > 0 && !slices.Contains(a.Values, v) {
+			return fmt.Errorf("%s: %q: the attribute is one of %s", name, v, strings.Join(a.Values, ", "))
 		}
 	}
 	for _, verb := range slices.Sorted(maps.Keys(b.Verbs)) {
@@ -149,8 +153,8 @@ func (s Shape) check(v Verb) error {
 		if !ok {
 			return fmt.Errorf(".%s: not a field of %s (it has: %s)", name, v.Name, strings.Join(fieldNames(v), ", "))
 		}
-		if strings.Contains(s[name], "$") {
-			return fmt.Errorf(".%s: %q: a shape is a pattern over what the task does and is not bound", name, s[name])
+		if Binds(s[name]) {
+			return fmt.Errorf(".%s: %s: a shape is a pattern over what the task does and is not bound", name, Words(s[name]))
 		}
 		if err := f.Accepts(s[name]); err != nil {
 			return fmt.Errorf(".%s: %w", name, err)
@@ -158,7 +162,7 @@ func (s Shape) check(v Verb) error {
 	}
 	for _, f := range v.Fields {
 		if _, given := s[f.Name]; f.Required && !given {
-			return fmt.Errorf(".%s: every shape of %s says it (`*` for any)", f.Name, v.Name)
+			return fmt.Errorf(".%s: every shape of %s says it (`null` for any)", f.Name, v.Name)
 		}
 	}
 	return nil
@@ -194,7 +198,7 @@ func (e Environment) checkAcross() error {
 // Allows is whether a step is within the environment: its system is here, a block of it is the
 // step's (the one whose unique attribute the step carries, or the system's one block), the
 // block gives the verb, and a shape of it matches the step's fields.
-func (e Environment) Allows(step string, fields map[string]string) bool {
+func (e Environment) Allows(step string, fields *ir.Node) bool {
 	system, verb, ok := Split(step)
 	if !ok {
 		return false
@@ -205,7 +209,7 @@ func (e Environment) Allows(step string, fields map[string]string) bool {
 	}
 	unique, hasUnique := d.Unique()
 	for _, b := range e.Systems[system] {
-		if hasUnique && Canonical(unique.Form, fields[unique.Name]) != Canonical(unique.Form, b.Attributes[unique.Name]) {
+		if hasUnique && Canonical(unique.Form, FieldText(fields, unique.Name)) != Canonical(unique.Form, b.Attributes[unique.Name]) {
 			continue
 		}
 		for _, s := range b.Given(system)[verb] {
@@ -221,7 +225,7 @@ func (e Environment) Allows(step string, fields map[string]string) bool {
 // the system or the block it lacks, or the verb the block does not give, naming what is there;
 // or, for a step of the right block and verb that no shape matches, the shapes it does give. ok
 // is false for a step the environment allows.
-func (e Environment) Refuses(step string, fields map[string]string) (why string, ok bool) {
+func (e Environment) Refuses(step string, fields *ir.Node) (why string, ok bool) {
 	if e.Allows(step, fields) {
 		return "", false
 	}
@@ -245,14 +249,14 @@ func (e Environment) Refuses(step string, fields map[string]string) (why string,
 	for i := range blocks {
 		v := blocks[i].Attributes[unique.Name]
 		named = append(named, v)
-		if !hasUnique || Canonical(unique.Form, fields[unique.Name]) == Canonical(unique.Form, v) {
+		if !hasUnique || Canonical(unique.Form, FieldText(fields, unique.Name)) == Canonical(unique.Form, v) {
 			b = &blocks[i]
 			break
 		}
 	}
 	if b == nil {
 		return fmt.Sprintf("the environment gives `%s` no block for %s %s (it has: %s)",
-			system, unique.Name, fields[unique.Name], strings.Join(named, ", ")), true
+			system, unique.Name, FieldText(fields, unique.Name), strings.Join(named, ", ")), true
 	}
 	where := "`" + system + "`"
 	if hasUnique {
@@ -283,35 +287,39 @@ func (e Environment) reachesNothing() bool {
 	return true
 }
 
-// String is a shape as a spawn writes it, its fields in order: `{ref: refs/heads/*, own: true}`.
+// String is a shape as a spawn writes it, its fields in order: `{ref: !glob refs/heads/*, own: true}`.
 func (s Shape) String() string {
 	fs := make([]string, 0, len(s))
 	for _, k := range slices.Sorted(maps.Keys(s)) {
-		fs = append(fs, k+": "+s[k])
+		fs = append(fs, k+": "+Words(s[k]))
 	}
 	return "{" + strings.Join(fs, ", ") + "}"
 }
 
 // stepWords is a step's fields as a refusal quotes them beside the shapes: the verb's own, since
 // the block's attributes are no shape's to name (the refusal says which block it is).
-func stepWords(d Document, fields map[string]string) string {
-	fs := make([]string, 0, len(fields))
-	for _, k := range slices.Sorted(maps.Keys(fields)) {
-		if _, isAttr := d.Attribute(k); isAttr {
+func stepWords(d Document, fields *ir.Node) string {
+	fields = ir.Uncomment(fields)
+	if fields == nil || fields.Type != ir.ObjectType {
+		return ""
+	}
+	fs := make([]string, 0, len(fields.Fields))
+	for i, k := range fields.Fields {
+		if _, isAttr := d.Attribute(k.String); isAttr {
 			continue
 		}
-		fs = append(fs, k+"="+fields[k])
+		fs = append(fs, k.String+"="+ValueText(fields.Values[i]))
 	}
 	return strings.Join(fs, " ")
 }
 
 // Reaches is whether a row's match can match some step the environment allows: its system is
-// here, a block of it whose attributes the row's params name it by, giving the verb when the row
-// names one, whose step carries every field the row names, with a shape each of whose patterns has
+// here, a block of it whose attributes the row's params name it by, giving one of the verbs the
+// row names (any, for nil), whose step carries every field the row names, with a shape each of whose patterns has
 // a value in common with the row's (Intersect) where both name a field. A row that can match nothing is a mistake (it never fires), while a row
 // wider than the environment is not: the environment bounds it. An attribute still to be bound at
 // the firing (`$…`) could be anything, and is taken to match.
-func (e Environment) Reaches(system, verb string, params map[string]string) bool {
+func (e Environment) Reaches(system string, verbs []string, params map[string]*ir.Node) bool {
 	d, ok := Get(system)
 	if !ok {
 		return false
@@ -321,7 +329,9 @@ func (e Environment) Reaches(system, verb string, params map[string]string) bool
 		for name, pattern := range params {
 			if a, isAttr := d.Attribute(name); isAttr {
 				v := b.Attributes[name]
-				if !strings.Contains(v, "$") && !Match(pattern, Canonical(a.Form, v), FormSep(a.Form)) {
+				if strings.Contains(v, "$") {
+					named = named && meetsWritten(a.Form, pattern, v)
+				} else if !MatchField(a.Form, pattern, a.Field().Value(v)) {
 					named = false
 				}
 			}
@@ -330,13 +340,11 @@ func (e Environment) Reaches(system, verb string, params map[string]string) bool
 			continue
 		}
 		given := b.Given(system)
-		var verbs []string
-		if verb != "" {
-			verbs = []string{verb}
-		} else {
-			verbs = slices.Collect(maps.Keys(given))
+		candidates := verbs
+		if candidates == nil {
+			candidates = slices.Collect(maps.Keys(given))
 		}
-		for _, v := range verbs {
+		for _, v := range candidates {
 			if !carries(d, v, params) {
 				continue // its step has no such field, so no call of it is the row's
 			}
@@ -389,7 +397,7 @@ func (e Environment) Gives(step string) bool {
 }
 
 // carries is whether a verb's step has every field the row's params name.
-func carries(d Document, verb string, params map[string]string) bool {
+func carries(d Document, verb string, params map[string]*ir.Node) bool {
 	fields, ok := d.StepFields(verb)
 	if !ok {
 		return false
@@ -406,10 +414,10 @@ func carries(d Document, verb string, params map[string]string) bool {
 func (e Environment) Blocks(system string) []Block { return e.Systems[system] }
 
 // Meets is whether a shape and a row's params can both hold of one step: each field both name
-// has a value both patterns match (Intersect). A field only one names is free.
-func (s Shape) Meets(step string, params map[string]string) bool {
+// has a value both patterns could match (FieldMeets). A field only one names is free.
+func (s Shape) Meets(step string, params map[string]*ir.Node) bool {
 	for name, pattern := range params {
-		if sp, ok := s[name]; ok && !Intersect(sp, pattern, Sep(step, name)) {
+		if sp, ok := s[name]; ok && !FieldMeets(FormOf(step, name), sp, pattern) {
 			return false
 		}
 	}
@@ -417,9 +425,9 @@ func (s Shape) Meets(step string, params map[string]string) bool {
 }
 
 // Matches is whether a step's fields are of the shape.
-func (s Shape) Matches(step string, fields map[string]string) bool {
+func (s Shape) Matches(step string, fields *ir.Node) bool {
 	for name, pattern := range s {
-		if !Match(pattern, fields[name], Sep(step, name)) {
+		if !MatchField(FormOf(step, name), pattern, ir.Get(ir.Uncomment(fields), name)) {
 			return false
 		}
 	}
@@ -433,7 +441,7 @@ func Canonical(form, v string) string {
 		return v
 	}
 	// `owner/name` is github.com's. A first segment with a dot is a host, which no owner's name
-	// has: so a pattern of a host's, `git.example.com/**`, is not read as an owner on github.com.
+	// has: so a glob of a host's, `git.example.com/*`, is not read as an owner on github.com.
 	if first, _, _ := strings.Cut(v, "/"); strings.Count(v, "/") == 1 && !strings.Contains(first, ".") {
 		v = "github.com/" + v
 	}
@@ -581,11 +589,7 @@ func readShape(node *ir.Node) (Shape, error) {
 		if key == nil || key.Type != ir.StringType {
 			return nil, errors.New("a shape's key is a field's name")
 		}
-		v, err := scalar(ir.Uncomment(node.Values[i]))
-		if err != nil {
-			return nil, fmt.Errorf(".%s: %w", key.String, err)
-		}
-		s[key.String] = v
+		s[key.String] = Plain(ir.Uncomment(node.Values[i]))
 	}
 	return s, nil
 }
@@ -661,7 +665,11 @@ func (b Block) node() *ir.Node {
 func (s Shape) node() *ir.Node {
 	var kvs []ir.KeyVal
 	for _, name := range slices.Sorted(maps.Keys(s)) {
-		kvs = append(kvs, ir.KeyVal{Key: ir.FromString(name), Val: ir.FromString(s[name])})
+		v := s[name]
+		if v == nil {
+			v = ir.Null()
+		}
+		kvs = append(kvs, ir.KeyVal{Key: ir.FromString(name), Val: v.Clone()})
 	}
 	return ir.FromKeyVals(kvs)
 }

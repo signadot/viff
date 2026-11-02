@@ -5,7 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/systems"
 )
 
 // The wire types must survive a round trip through every dialect. The JSON path is the
@@ -20,7 +22,7 @@ func TestTonyRoundTrip(t *testing.T) {
 		{"instance", Snapshot{
 			ID: "run-1", Prompt: "review", Agent: "llm", Status: Running,
 			Cursor:  7,
-			Pending: []PendingGate{{ID: "d1", Gate: "shell", Step: StepCommandsRun, Fields: map[string]string{"command": "ls"}, Reason: "why"}},
+			Pending: []PendingGate{{ID: "d1", Gate: "shell", Step: StepCommandsRun, Fields: systems.FieldsDoc(StepCommandsRun, map[string]string{"command": "ls"}), Reason: "why"}},
 		}, func() any { return &Snapshot{} }},
 
 		{
@@ -31,11 +33,11 @@ func TestTonyRoundTrip(t *testing.T) {
 
 		{"frame", Event{
 			Kind: EventDecision, Task: "run-1", Cursor: 3, ID: "d1",
-			Gate: "shell", Step: StepCommandsRun, Fields: map[string]string{"command": "ls"}, By: "user:walter@example.com", Proceed: true, Text: "ok",
+			Gate: "shell", Step: StepCommandsRun, Fields: systems.FieldsDoc(StepCommandsRun, map[string]string{"command": "ls"}), By: "user:walter@example.com", Proceed: true, Text: "ok",
 		}, func() any { return &Event{} }},
 
 		{"autonomy", Autonomy{
-			{Name: "release", Match: &Match{System: "git", Verb: "push", Params: map[string]string{"repo": "signadot/verse", "ref": "refs/heads/release/*"}},
+			{Name: "release", Match: &Match{System: "git", Verb: "push", Params: map[string]*ir.Node{"repo": ir.FromString("signadot/verse"), "ref": systems.Glob("refs/heads/release/*")}},
 				Then: Then{Mode: ThenAsk, Ask: &Ask{Need: 2, Within: "24h", Answerers: []string{"group:release"}, Default: "deny", Labels: map[string]string{"team": "release"}}}},
 			{Match: &Match{Verb: "push"}, Then: Then{Mode: ThenDeny}},
 			{Then: Then{Mode: ThenAsk}},
@@ -55,8 +57,14 @@ func TestTonyRoundTrip(t *testing.T) {
 				if err := codec.Unmarshal(b, got, f); err != nil {
 					t.Fatalf("unmarshal %q: %v", b, err)
 				}
-				if !reflect.DeepEqual(reflect.ValueOf(got).Elem().Interface(), c.v) {
-					t.Errorf("round trip differs\n wire: %s\n  got: %+v\n want: %+v", b, got, c.v)
+				// Read back and written again, it is the wire it was read from: a pattern is a
+				// tony node, compared as what it says rather than as the struct holding it.
+				again, err := codec.Marshal(reflect.ValueOf(got).Elem().Interface(), f)
+				if err != nil {
+					t.Fatalf("marshal again: %v", err)
+				}
+				if string(again) != string(b) {
+					t.Errorf("round trip differs\n wire: %s\n  got: %s", b, again)
 				}
 			})
 		}

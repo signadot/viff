@@ -62,7 +62,7 @@ func TestPutPolicyReplacesARunningTasksPolicy(t *testing.T) {
 		{`{autonomy: [{name: p, match: {system: git, verb: push}, then: ask}, {then: ask}]}`, http.StatusBadRequest, "autonomy[0]: matches nothing the environment gives (system=git verb=push)"},
 		{`{autonomy: [{name: g, match: {system: files, verb: write, command: ls}, then: ask}, {then: ask}]}`, http.StatusBadRequest, "match.command: not a field"},
 		{`{gates: []}`, http.StatusBadRequest, "unknown field"},
-		{`{autonomy: [{name: migrations, match: {system: files, verb: write, path: "db/**"}, then: ask}, {then: allow}], by: "user:ana"}`, http.StatusNoContent, ""},
+		{`{autonomy: [{name: migrations, match: {system: files, verb: write, path: !regexp "^db/"}, then: ask}, {then: allow}], by: "user:ana"}`, http.StatusNoContent, ""},
 		// A verb no row names is still the environment's, and the default row decides it.
 		{`{autonomy: [{then: allow}]}`, http.StatusNoContent, ""},
 		{`{autonomy: [{match: {system: files, verb: write}, then: deny}, {then: allow}]}`, http.StatusNoContent, ""},

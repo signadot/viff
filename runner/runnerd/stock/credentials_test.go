@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/gomap"
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/parse"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
@@ -53,8 +54,8 @@ func TestTheRunnersSystemsAndCeilings(t *testing.T) {
 		{agentWith(AgentName, map[string]System{"files": {}}), "agents.verse.systems.files: a section names a ceiling"},
 		{Config{Script: &Script{Systems: map[string]System{"git": {Ceiling: systems.Open()}}}}, "does not perform git"},
 		{Config{Repos: &Repos{Mirrors: "/m", Host: "ghe.corp"}, Script: &Script{Systems: map[string]System{"github": {Ceiling: systems.Open()}}}}, "does not perform github"},
-		{Config{Repos: &Repos{Mirrors: "/m"}, Script: &Script{Systems: map[string]System{"git": {Ceiling: ceiling(t, `{repo: "github.com/acme/**", fly: {}}`)}}}}, `no attribute or verb "fly"`},
-		{Config{Repos: &Repos{Mirrors: "/m"}, Script: &Script{Systems: map[string]System{"git": {Ceiling: ceiling(t, `{repo: "github.com/acme/**", push: {ref: main}}`)}}}}, "push[0].ref"},
+		{Config{Repos: &Repos{Mirrors: "/m"}, Script: &Script{Systems: map[string]System{"git": {Ceiling: ceiling(t, `{repo: !regexp "^github\\.com/acme/", fly: {}}`)}}}}, `no attribute or verb "fly"`},
+		{Config{Repos: &Repos{Mirrors: "/m"}, Script: &Script{Systems: map[string]System{"git": {Ceiling: ceiling(t, `{repo: !regexp "^github\\.com/acme/", push: {ref: main}}`)}}}}, "push[0].ref"},
 		// A script is stopped on its questions alone: its commands and files are one action.
 		{Config{Script: &Script{Systems: map[string]System{"commands": {Ceiling: systems.Open()}}}}, "script.systems.commands: the runner does not stop script on commands inside its run; of those, its section may name question"},
 	} {
@@ -65,7 +66,7 @@ func TestTheRunnersSystemsAndCeilings(t *testing.T) {
 
 	cfg := Config{Repos: &Repos{Mirrors: "/m", Forge: "/forge"},
 		Agents: map[string]Agent{AgentName: {Systems: map[string]System{
-			"git":          {Ceiling: ceiling(t, `{repo: "github.com/acme/**", fetch: {}, push: {ref: "refs/heads/verse/**"}}`)},
+			"git":          {Ceiling: ceiling(t, `{repo: !regexp "^github\\.com/acme/", fetch: {}, push: {ref: !regexp "^refs/heads/verse/"}}`)},
 			"linear-issue": {Ceiling: ceiling(t, `{create: {team: ENG}, comment: {}}`)},
 		}}},
 		Script: &Script{Systems: map[string]System{
@@ -83,10 +84,10 @@ func TestTheRunnersSystemsAndCeilings(t *testing.T) {
 	// section does not name closed for that doer.
 	d := cfg.Describe(nil)
 	agent, script := d.Offers[0], d.Offers[1]
-	if git := agent.Systems["git"].Ceiling; len(git) != 1 || git[0].Attributes["repo"][0] != "github.com/acme/**" || len(git[0].Verbs["push"]) != 1 {
+	if git := agent.Systems["git"].Ceiling; len(git) != 1 || systems.Words(git[0].Attributes["repo"]) != `!regexp ^github\.com/acme/` || len(git[0].Verbs["push"]) != 1 {
 		t.Errorf("the agent's git ceiling %+v, want it as its section writes it", git)
 	}
-	if git := script.Systems["git"].Ceiling; len(git) != 1 || git[0].Attributes["repo"][0] != "github.com/acme/svc" {
+	if git := script.Systems["git"].Ceiling; len(git) != 1 || systems.Words(git[0].Attributes["repo"]) != "github.com/acme/svc" {
 		t.Errorf("the scripts' git ceiling %+v, want it as their section writes it", git)
 	}
 	if lin, has := script.Systems["linear-issue"]; !has || len(lin.Ceiling) != 0 {
@@ -107,7 +108,7 @@ func TestTheRunnersSystemsAndCeilings(t *testing.T) {
 		}
 	}
 	// What the channel holds a task to is its doer's ceiling.
-	if got := cfg.ceilings(ScriptDoer)["git"]; len(got) != 1 || got[0].Attributes["repo"][0] != "github.com/acme/svc" {
+	if got := cfg.ceilings(ScriptDoer)["git"]; len(got) != 1 || systems.Words(got[0].Attributes["repo"]) != "github.com/acme/svc" {
 		t.Errorf("the channel's git ceiling for a script: %+v", got)
 	}
 	if got := cfg.doer(&runner.Launch{Prompt: "p"}); got != AgentName {
@@ -388,11 +389,11 @@ func TestACeilingOfRowsIsRefused(t *testing.T) {
 // `<host>/**`, since the runner fetches from nowhere else.
 func TestAGitCeilingKeepsToTheForge(t *testing.T) {
 	for text, says := range map[string]string{
-		`{repo: "github.com/acme/**", fetch: {}}`:           "",
-		`{repo: ["acme/app", "github.com/x/*"], fetch: {}}`: "",
-		`{repo: "gitlab.com/acme/**", fetch: {}}`:           "beyond the runner's forge (github.com/**)",
-		`{repo: "**", fetch: {}}`:                           "beyond the runner's forge",
-		`{fetch: {}}`:                                       "names no repo",
+		`{repo: !regexp "^github\\.com/acme/", fetch: {}}`:          "",
+		`{repo: !or [acme/app, !glob "github.com/x/*"], fetch: {}}`: "",
+		`{repo: !regexp "^gitlab\\.com/acme/", fetch: {}}`:          "is beyond the runner's forge (!regexp ^github\\.com/)",
+		`{repo: null, fetch: {}}`:                                   "beyond the runner's forge",
+		`{fetch: {}}`:                                               "names no repo",
 	} {
 		c := Config{Repos: &Repos{Mirrors: "/m"}, Script: &Script{Systems: map[string]System{"git": {Ceiling: ceiling(t, text)}}}}
 		err := c.Check()
@@ -400,8 +401,8 @@ func TestAGitCeilingKeepsToTheForge(t *testing.T) {
 			t.Errorf("%s: %v, want %q", text, err, says)
 		}
 	}
-	ghes := Config{Repos: &Repos{Mirrors: "/m", Host: "ghe.corp"}, Script: &Script{Systems: map[string]System{"git": {Ceiling: ceiling(t, `{repo: "github.com/acme/**", fetch: {}}`)}}}}
-	if err := ghes.Check(); err == nil || !strings.Contains(err.Error(), "ghe.corp/**") {
+	ghes := Config{Repos: &Repos{Mirrors: "/m", Host: "ghe.corp"}, Script: &Script{Systems: map[string]System{"git": {Ceiling: ceiling(t, `{repo: !regexp "^github\\.com/acme/", fetch: {}}`)}}}}
+	if err := ghes.Check(); err == nil || !strings.Contains(err.Error(), `!regexp ^ghe\.corp/`) {
 		t.Errorf("github.com's repositories on a GHES runner: %v", err)
 	}
 }
@@ -411,13 +412,13 @@ func TestAGitCeilingKeepsToTheForge(t *testing.T) {
 // spawn whose environment gives a command beyond it is refused saying what the ceiling gives; one
 // with no section is closed.
 func TestAnInnerSystemsCeilingIsTheOperatorsLine(t *testing.T) {
-	c := agentWith(AgentName, map[string]System{"commands": {Ceiling: ceiling(t, `{run: {command: "make *"}}`)}})
+	c := agentWith(AgentName, map[string]System{"commands": {Ceiling: ceiling(t, `{run: {command: !regexp "^make "}}`)}})
 	if err := c.Check(); err != nil {
 		t.Fatal(err)
 	}
 	d := c.Describe([]string{runner.NetworkOpen})
 	agent := d.Offers[0]
-	if cmds := agent.Systems["commands"]; len(cmds.Ceiling) != 1 || cmds.Ceiling[0].Verbs["run"][0]["command"] != "make *" {
+	if cmds := agent.Systems["commands"]; len(cmds.Ceiling) != 1 || systems.Words(cmds.Ceiling[0].Verbs["run"][0]["command"]) != `!regexp "^make "` {
 		t.Errorf("the agent's commands ceiling: %+v", cmds)
 	}
 	if files := agent.Systems["files"]; len(files.Ceiling) != 0 {
@@ -432,11 +433,11 @@ func TestAnInnerSystemsCeilingIsTheOperatorsLine(t *testing.T) {
 		e.Systems["commands"] = []systems.Block{{Verbs: map[string][]systems.Shape{"run": {shape}}}}
 		return e
 	}
-	if err := runnerd.CheckLaunch(launch(cmds(systems.Shape{"command": "make test"})), d, nil); err != nil {
+	if err := runnerd.CheckLaunch(launch(cmds(systems.Shape{"command": ir.FromString("make test")})), d, nil); err != nil {
 		t.Errorf("a command within the ceiling: %v", err)
 	}
 	err := runnerd.CheckLaunch(launch(cmds(systems.Shape{})), d, nil)
-	if err == nil || !strings.Contains(err.Error(), "beyond this runner's ceiling for commands") || !strings.Contains(err.Error(), "{command: make *}") {
+	if err == nil || !strings.Contains(err.Error(), "beyond this runner's ceiling for commands") || !strings.Contains(err.Error(), `{command: !regexp "^make "}`) {
 		t.Errorf("any command under a ceiling of make: %v", err)
 	}
 	if err := runnerd.CheckLaunch(launch(giving(envOf(netOpen, nil, nil), "files")), d, nil); err == nil || !strings.Contains(err.Error(), "the ceiling gives nothing") {
@@ -479,7 +480,7 @@ func TestOpenInsideOpensWhatARunIsStoppedOn(t *testing.T) {
 // the agent has its own or the configuration names one; and every offer holding the network, with
 // what the sandbox builds of it beside the doer's ceiling, as written.
 func TestDescribePublishesBuildsAndSettings(t *testing.T) {
-	net := map[string]System{"network": {Ceiling: ceiling(t, `{mode: [none, allow], tcp-client: {host: "*.github.com"}}`)}}
+	net := map[string]System{"network": {Ceiling: ceiling(t, `{mode: !or [none, allow], tcp-client: {host: !glob "*.github.com"}}`)}}
 	c := Config{
 		Agents: map[string]Agent{
 			AgentName: {Settings: map[string]Setting{runner.SettingModel: {Values: []string{"claude-*"}, Default: "claude-sonnet-5"}}, Systems: net},
@@ -516,11 +517,11 @@ func TestDescribePublishesBuildsAndSettings(t *testing.T) {
 			t.Errorf("%s: converse %v, want every agent to hold a conversation and a script none", o.Name(), o.Converse)
 		}
 		net := o.Systems["network"]
-		if len(net.Builds) != 1 || strings.Join(net.Builds[0].Attributes["mode"], ",") != "none,open,allow" {
-			t.Errorf("%s: network builds %+v, want the sandbox's", o.Name(), net.Builds)
+		if len(net.Builds) != 1 || systems.Words(net.Builds[0].Attributes["mode"]) != "!or [none, open, allow]" {
+			t.Errorf("%s: network builds %+v (mode %s), want the sandbox's", o.Name(), net.Builds, systems.Words(net.Builds[0].Attributes["mode"]))
 		}
-		if len(net.Ceiling) != 1 || strings.Join(net.Ceiling[0].Attributes["mode"], ",") != "none,allow" {
-			t.Errorf("%s: network ceiling %+v, want it as written", o.Name(), net.Ceiling)
+		if len(net.Ceiling) != 1 || systems.Words(net.Ceiling[0].Attributes["mode"]) != "!or [none, allow]" {
+			t.Errorf("%s: network ceiling %+v (mode %s), want it as written", o.Name(), net.Ceiling, systems.Words(net.Ceiling[0].Attributes["mode"]))
 		}
 	}
 	if m := agentWith(AgentName, nil).Describe(nil).Offers[0].Agent.Settings[runner.SettingModel]; m.Default {
@@ -575,7 +576,7 @@ func TestTheAgentsSettingsAreChecked(t *testing.T) {
 // A NETWORK CEILING THE SANDBOX CAN'T MEET IS REFUSED WHEN THE RUNNER STARTS, not at each spawn:
 // an unconfined sandbox builds only the open network.
 func TestARunnerRefusesACeilingItsSandboxCantBuild(t *testing.T) {
-	c := Config{Script: &Script{Systems: map[string]System{"network": {Ceiling: ceiling(t, `{mode: [none, allow]}`)}}}}
+	c := Config{Script: &Script{Systems: map[string]System{"network": {Ceiling: ceiling(t, `{mode: !or [none, allow]}`)}}}}
 	_, err := Standalone(c, Secrets{}, Tokens{}, runnerd.Unconfined{}, []string{os.Args[0]}, t.TempDir(), t.TempDir(), nil, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "script.systems.network.ceiling[0].mode: none is no network this runner's sandbox builds (it builds: open)") {
 		t.Errorf("a ceiling of none and allow on an unconfined sandbox: %v", err)

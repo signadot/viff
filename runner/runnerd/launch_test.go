@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/runner"
@@ -53,7 +54,7 @@ func netEnv(mode string, hosts ...string) systems.Environment {
 		if b.Verbs == nil {
 			b.Verbs = map[string][]systems.Shape{}
 		}
-		b.Verbs["tcp-client"] = append(b.Verbs["tcp-client"], systems.Shape{"host": h})
+		b.Verbs["tcp-client"] = append(b.Verbs["tcp-client"], systems.Shape{"host": ir.FromString(h)})
 	}
 	return systems.Environment{Systems: systems.Systems{"network": {b}}}
 }
@@ -79,7 +80,7 @@ func builds(modes ...string) runner.System {
 	if len(modes) == 0 {
 		modes = []string{runner.NetworkOpen, runner.NetworkNone, runner.NetworkAllow}
 	}
-	b := systems.CeilingBlock{Attributes: map[string][]string{"mode": modes}}
+	b := systems.CeilingBlock{Attributes: map[string]*ir.Node{"mode": systems.OneOf(modes...)}}
 	if slices.Contains(modes, runner.NetworkAllow) {
 		b.Verbs = map[string][]systems.Shape{"tcp-client": {{}}} // allow builds a connection to any host
 	}
@@ -145,7 +146,7 @@ func TestALaunchItOffersRuns(t *testing.T) {
 	for _, body := range []string{
 		`{id: a1, agent: {name: verse, model: m, annotations: {verse.portkey/virtual-key: k}}, environment: {vars: {BRANCH: main}}, prompt: go, autonomy: [{then: allow}], converse: true}`,
 		`{id: s1, script: "echo hi"}`,
-		`{id: a2, agent: {name: verse}, prompt: go, environment: {systems: {files: {write: {}}, commands: {run: {}}, agent: {call-sub-agent: {}}}}, autonomy: [{name: m, match: {system: files, verb: write, path: "db/**"}, then: ask}, {name: c, match: {system: commands, verb: run, command: "git push*"}, then: deny}, {name: d, match: {system: agent, verb: call-sub-agent}, then: ask}, {then: allow}]}`,
+		`{id: a2, agent: {name: verse}, prompt: go, environment: {systems: {files: {write: {}}, commands: {run: {}}, agent: {call-sub-agent: {}}}}, autonomy: [{name: m, match: {system: files, verb: write, path: !regexp "^db/"}, then: ask}, {name: c, match: {system: commands, verb: run, command: !regexp "^git push"}, then: deny}, {name: d, match: {system: agent, verb: call-sub-agent}, then: ask}, {then: allow}]}`,
 	} {
 		if code, msg := postLaunch(t, srv.URL, body); code != http.StatusCreated {
 			t.Errorf("%s = %d %s, want 201", body, code, msg)
@@ -258,14 +259,14 @@ func TestARunnersOwnVariablesAreRefused(t *testing.T) {
 // A launch's repo is on a forge the runner's ceiling lists.
 func TestARepoIsOnAForgeTheRunnerServes(t *testing.T) {
 	desc := runner.Description{Offers: []runner.Offer{{Agent: &runner.AgentOffer{Name: "verse"},
-		Systems: map[string]runner.System{"git": {Ceiling: ceiling(t, `{repo: ["github.com/**", "git.example.com/**"], fetch: {}}`)}}}}}
+		Systems: map[string]runner.System{"git": {Ceiling: ceiling(t, `{repo: !or [!regexp "^github\\.com/", !regexp "^git\\.example\\.com/"], fetch: {}}`)}}}}}
 	for _, c := range []struct {
 		repo runner.Repo
 		says string // "" = accepted
 	}{
 		{runner.Repo{Repo: "acme/app"}, ""},
 		{runner.Repo{Repo: "git.example.com/acme/app"}, ""},
-		{runner.Repo{Repo: "gitlab.com/acme/app"}, "environment.systems.git: beyond this runner's ceiling for git: repo gitlab.com/acme/app is beyond github.com/**, git.example.com/**"},
+		{runner.Repo{Repo: "gitlab.com/acme/app"}, "environment.systems.git: beyond this runner's ceiling for git: repo gitlab.com/acme/app is beyond !or [!regexp ^github\\.com/, !regexp ^git\\.example\\.com/]"},
 	} {
 		l := &runner.Launch{ID: "x", Prompt: "p", Agent: &runner.Agent{Name: "verse"}, Environment: gitEnv(c.repo.Repo)}
 		err := CheckLaunch(l, desc, nil)
@@ -283,7 +284,7 @@ func TestARepoIsOnAForgeTheRunnerServes(t *testing.T) {
 // `$a/../..` none past the name check and an owner's ceiling.
 func TestAValueAFiringBoundIsHeldAsWritten(t *testing.T) {
 	desc := runner.Description{Offers: []runner.Offer{{Agent: &runner.AgentOffer{Name: "verse"},
-		Systems: map[string]runner.System{"git": {Ceiling: ceiling(t, `{repo: ["github.com/acme/**"], from: [main], fetch: {}}`)}}}}}
+		Systems: map[string]runner.System{"git": {Ceiling: ceiling(t, `{repo: !regexp "^github\\.com/acme/", from: main, fetch: {}}`)}}}}}
 	spec := launch.Spec{Prompt: "p", Environment: systems.Environment{Systems: systems.Systems{"git": {{
 		Attributes: map[string]string{"repo": "$repo", "from": "$head"}, Verbs: map[string][]systems.Shape{"fetch": {{}}}}}}}}
 	for _, c := range []struct {
@@ -340,13 +341,13 @@ func TestALaunchsEnvironmentIsWithinTheRunnersCeilings(t *testing.T) {
 	desc := runner.Description{Offers: []runner.Offer{{Script: true,
 		Systems: map[string]runner.System{
 			"git": {Ceiling: ceiling(t, `
-- repo: "github.com/acme/**"
+- repo: !regexp "^github\\.com/acme/"
   fetch: {}
-  push: [{ref: "refs/heads/verse/**"}, {ref: "refs/heads/release/*", force: "false"}]
+  push: [{ref: !regexp "^refs/heads/verse/"}, {ref: !glob "refs/heads/release/*", force: false}]
 - repo: github.com/acme/site
   fetch: {}`)},
 			"github":   {Ceiling: systems.Open()},
-			"commands": {Ceiling: ceiling(t, `{run: {command: "make *"}}`)},
+			"commands": {Ceiling: ceiling(t, `{run: {command: !regexp "^make "}}`)},
 			"files":    {},
 		}}}}
 	env := func(git string, more ...string) systems.Environment {
@@ -365,13 +366,13 @@ func TestALaunchsEnvironmentIsWithinTheRunnersCeilings(t *testing.T) {
 		env  systems.Environment
 		says string // "" = accepted
 	}{
-		{"a push within", env(`{repo: acme/app, fetch: {}, push: {ref: "refs/heads/verse/auto/*"}}`), ""},
-		{"a release push that keeps force out", env(`{repo: acme/app, push: {ref: "refs/heads/release/1.0", force: "false"}}`), ""},
+		{"a push within", env(`{repo: acme/app, fetch: {}, push: {ref: !glob "refs/heads/verse/auto/*"}}`), ""},
+		{"a release push that keeps force out", env(`{repo: acme/app, push: {ref: "refs/heads/release/1.0", force: false}}`), ""},
 		{"a second block of the ceiling", env(`{repo: acme/site, fetch: {}}`), ""},
 		{"a repository outside", env(`{repo: other/app, fetch: {}}`),
-			"environment.systems.git: beyond this runner's ceiling for git: [0]: repo github.com/other/app is beyond github.com/acme/**"},
-		{"a push wider than any shape", env(`{repo: acme/app, push: {ref: "refs/heads/**"}}`), "push {ref: refs/heads/**} is within no shape of its"},
-		{"a bare push under a ceiling naming ref", env(`{repo: acme/app, push: {}}`), "push {} is within no shape of its: {ref: refs/heads/verse/**}"},
+			"environment.systems.git: beyond this runner's ceiling for git: [0]: repo github.com/other/app is beyond !regexp ^github\\.com/acme/"},
+		{"a push wider than any shape", env(`{repo: acme/app, push: {ref: !regexp "^refs/heads/"}}`), "push {ref: !regexp ^refs/heads/} is within no shape of its"},
+		{"a bare push under a ceiling naming ref", env(`{repo: acme/app, push: {}}`), "push {} is within no shape of its: {ref: !regexp ^refs/heads/verse/}"},
 		{"a release push leaving force open", env(`{repo: acme/app, push: {ref: "refs/heads/release/1.0"}}`), "within no shape"},
 		{"a verb the block does not give", env(`{repo: acme/site, push: {ref: refs/heads/main}}`), "[1]: it gives no `push` (it gives: fetch)"},
 		{"an open ceiling", env(`{repo: acme/app, fetch: {}}`, `, github: {repo: acme/app, create-pr: {}}`), ""},
@@ -388,14 +389,14 @@ func TestALaunchsEnvironmentIsWithinTheRunnersCeilings(t *testing.T) {
 		}
 	}
 	// The slide is held to the environment the launch had, which is within the ceilings.
-	running := launch(env(`{repo: acme/app, push: {ref: "refs/heads/verse/**"}}`))
-	push := func(ref string) task.Row {
-		return task.Row{Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"ref": ref}}, Then: task.Then{Mode: task.ThenAllow}}
+	running := launch(env(`{repo: acme/app, push: {ref: !regexp "^refs/heads/verse/"}}`))
+	push := func(ref *ir.Node) task.Row {
+		return task.Row{Match: &task.Match{System: "git", Verb: "push", Params: map[string]*ir.Node{"ref": ref}}, Then: task.Then{Mode: task.ThenAllow}}
 	}
-	if err := CheckAutonomy(task.Autonomy{push("refs/heads/release/2.0"), {Then: ask}}, running); err == nil || !strings.Contains(err.Error(), "matches nothing the environment gives") {
+	if err := CheckAutonomy(task.Autonomy{push(ir.FromString("refs/heads/release/2.0")), {Then: ask}}, running); err == nil || !strings.Contains(err.Error(), "matches nothing the environment gives") {
 		t.Errorf("a slide reaching past the environment: %v", err)
 	}
-	if err := CheckAutonomy(task.Autonomy{push("refs/heads/verse/auto/*"), {Then: ask}}, running); err != nil {
+	if err := CheckAutonomy(task.Autonomy{push(systems.Glob("refs/heads/verse/auto/*")), {Then: ask}}, running); err != nil {
 		t.Errorf("a slide within the environment: %v", err)
 	}
 }
@@ -415,7 +416,7 @@ func TestANetworkCeilingBoundsOnlyWhereWritten(t *testing.T) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	bounded := offer(map[string]runner.System{"network": {Ceiling: ceiling(t, `{mode: [none, allow], tcp-client: {host: "*.github.com"}}`)}})
+	bounded := offer(map[string]runner.System{"network": {Ceiling: ceiling(t, `{mode: !or [none, allow], tcp-client: {host: !glob "*.github.com"}}`)}})
 	if err := CheckLaunch(l, bounded, nil); err == nil || !strings.Contains(err.Error(), "beyond this runner's ceiling for network") {
 		t.Errorf("a host beyond the network ceiling: %v", err)
 	}
@@ -538,10 +539,10 @@ func TestADoersRequiredStepsAreGiven(t *testing.T) {
 		return e
 	}
 	for text, says := range map[string]string{
-		`{systems: {network: {mode: open}, files: {write: {}}}}`:                                       "codex on this runner requires commands.run: add `commands: {}` or `commands: {run: {}}`",
-		`{systems: {network: {mode: open}, commands: {run: {}}}}`:                                      "requires files.write: add `files: {}` or `files: {write: {}}`",
-		`{systems: {network: {mode: open}, commands: {}, files: {}}}`:                                  "",
-		`{systems: {network: {mode: open}, commands: {run: {command: "make *"}}, files: {write: {}}}}`: "", // narrowed, but given
+		`{systems: {network: {mode: open}, files: {write: {}}}}`:                                               "codex on this runner requires commands.run: add `commands: {}` or `commands: {run: {}}`",
+		`{systems: {network: {mode: open}, commands: {run: {}}}}`:                                              "requires files.write: add `files: {}` or `files: {write: {}}`",
+		`{systems: {network: {mode: open}, commands: {}, files: {}}}`:                                          "",
+		`{systems: {network: {mode: open}, commands: {run: {command: !regexp "^make "}}, files: {write: {}}}}`: "", // narrowed, but given
 	} {
 		l := &runner.Launch{ID: "x", Prompt: "go", Agent: &runner.Agent{Name: "codex"}, Environment: env(text)}
 		err := CheckOffer(l, desc)

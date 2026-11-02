@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/task"
 )
 
@@ -63,14 +64,14 @@ func TestARepoIsReadOffItsSpelling(t *testing.T) {
 // A REPO IS NAMED IN LOWER CASE in a step, as the forge reads it: a spawn's `Acme/Secret` is the
 // repository a row on `github.com/acme/secret` denies.
 func TestARowNamesARepoWhateverItsCase(t *testing.T) {
-	p := task.Autonomy{{Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"repo": "github.com/acme/secret"}},
+	p := task.Autonomy{{Match: &task.Match{System: "git", Verb: "push", Params: map[string]*ir.Node{"repo": ir.FromString("github.com/acme/secret")}},
 		Then: task.Then{Mode: task.ThenDeny}}, {Then: task.Then{Mode: task.ThenAllow}}}
 	if err := p.Check(); err != nil {
 		t.Fatal(err)
 	}
 	for _, spelled := range []string{"Acme/Secret", "GitHub.com/ACME/secret"} {
 		r := Repo{Repo: spelled}
-		step := task.Step{Name: task.StepGitPush, Fields: map[string]string{"repo": r.Canonical(), "ref": "refs/heads/main", "delete": "false", "force": "false"}}
+		step := task.NewStep(task.StepGitPush, map[string]string{"repo": r.Canonical(), "ref": "refs/heads/main", "delete": "false", "force": "false"})
 		if row, _ := p.Decide(step); row.Then.Mode != task.ThenDeny {
 			t.Errorf("%s (%s): %s, want the row's deny", spelled, r.Canonical(), row.Then.Mode)
 		}

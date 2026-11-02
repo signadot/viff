@@ -183,7 +183,7 @@ func (s *Server) refresh(ctx context.Context, tk Task, req Request) Reply {
 	if t == nil {
 		return Reply{Error: fmt.Sprintf("no repository %q in this workspace", req.Repo)}
 	}
-	if why := s.refused(tk, req.Decision, task.Step{Name: task.StepGitFetch, Fields: map[string]string{"repo": t.Repo.Repo.Canonical(), "from": t.Repo.From}}); why != "" {
+	if why := s.refused(tk, req.Decision, task.NewStep(task.StepGitFetch, map[string]string{"repo": t.Repo.Repo.Canonical(), "from": t.Repo.From})); why != "" {
 		return Reply{Refused: why}
 	}
 	mirror, err := s.Mirrors.Ensure(ctx, t.Repo.Remote)
@@ -234,14 +234,14 @@ func (s *Server) push(ctx context.Context, tk Task, req Request) Reply {
 	auth := workspace.TokenAuth(tok)(t.Repo.Remote)
 	// The branch's state at the forge comes BEFORE the decision, because two of the step's
 	// fields are facts only this side can supply: whether the branch is there, and whether its
-	// tip is this task's. A row that keeps a task to branches it makes (`exists: "false"`) or
-	// made (`own: "true"`) is decided on what the forge says now, never on what the task said,
+	// tip is this task's. A row that keeps a task to branches it makes (`exists: false`) or
+	// made (`own: true`) is decided on what the forge says now, never on what the task said,
 	// and a delete is decided on the same facts as a write.
 	st, tip, err := s.state(ctx, tk, t, req.Branch, auth)
 	if err != nil {
 		return Reply{Error: err.Error()}
 	}
-	if why := s.refused(tk, req.Decision, task.Step{Name: task.StepGitPush, Fields: pushFields(t, ref, req.Delete, req.Force, st)}); why != "" {
+	if why := s.refused(tk, req.Decision, task.NewStep(task.StepGitPush, pushFields(t, ref, req.Delete, req.Force, st))); why != "" {
 		return Reply{Refused: why}
 	}
 	// A branch this run created is its own to rewrite; any other is rewritten only when the
@@ -359,7 +359,7 @@ func (s *Server) pullRequest(ctx context.Context, tk Task, req Request) Reply {
 	if base != "" {
 		fields["base"] = base // an update that names none keeps the base
 	}
-	if why := s.refused(tk, req.Decision, task.Step{Name: step, Fields: fields}); why != "" {
+	if why := s.refused(tk, req.Decision, task.NewStep(step, fields)); why != "" {
 		return Reply{Refused: why}
 	}
 	if _, has := s.Ceilings["github"]; !has {

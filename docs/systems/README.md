@@ -33,7 +33,7 @@ called, which row decided it, and what happened.
 
 A spawn's `environment.systems` gives a task what it may do, one block per system (or per
 repository, for the systems that name one). A block names the verbs it gives, each with its
-shapes: `git: {repo: acme/app, fetch: {}, push: {ref: "refs/heads/verse/**"}}`.
+shapes: `git: {repo: acme/app, fetch: {}, push: {ref: !regexp "^refs/heads/verse/"}}`.
 
 **A block that names no verb gives every verb of its system, any call**: `files: {}`,
 `question: {}`, `git-issue: {repo: acme/app}`. Once one verb is written, only the verbs written

@@ -74,7 +74,7 @@ agents:
   claude:
     systems:
       git-issue:
-        ceiling: {repo: "github.com/acme/**", create: {}, comment: {}, close: {}, pull: {}, push: {}}
+        ceiling: {repo: !regexp "^github\\.com/acme/", create: {}, comment: {}, close: {}, pull: {}, push: {}}
 ```
 
 Verse refuses to install a spawn whose environment gives a tracker of another repository. The

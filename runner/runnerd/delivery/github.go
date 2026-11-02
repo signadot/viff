@@ -393,7 +393,7 @@ func (s *Server) githubRead(ctx context.Context, tk Task, req Request) Reply {
 	if req.Op == OpGitHubReadPR {
 		fields["pr"] = req.PR
 	}
-	if why := s.refused(tk, req.Decision, task.Step{Name: req.Op, Fields: fields}); why != "" {
+	if why := s.refused(tk, req.Decision, task.NewStep(req.Op, fields)); why != "" {
 		return Reply{Refused: why}
 	}
 	owner, name, err := RepoPath(t.Repo.Remote)

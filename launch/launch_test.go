@@ -60,11 +60,11 @@ func TestBindLeavesTheScriptAndTheWordsAndBindsTheEnvironment(t *testing.T) {
 		Environment: systems.Environment{
 			Vars: map[string]string{"BRANCH": "$subject.head"},
 			Systems: systems.Systems{
-				"git":     {{Attributes: map[string]string{"repo": "acme/app"}, Verbs: map[string][]systems.Shape{"push": {{"ref": "refs/heads/$sneaky"}}}}},
-				"network": {{Attributes: map[string]string{"mode": "$sneaky"}, Verbs: map[string][]systems.Shape{"tcp-client": {{"host": "$sneaky"}}}}},
+				"git":     {{Attributes: map[string]string{"repo": "acme/app"}, Verbs: map[string][]systems.Shape{"push": {{"ref": ir.FromString("refs/heads/$sneaky")}}}}},
+				"network": {{Attributes: map[string]string{"mode": "$sneaky"}, Verbs: map[string][]systems.Shape{"tcp-client": {{"host": ir.FromString("$sneaky")}}}}},
 			},
 		},
-		Autonomy: task.Autonomy{{Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"ref": "$sneaky"}}, Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{Answerers: []string{"$sneaky"}}}}, {Then: task.Then{Mode: task.ThenAsk}}}}
+		Autonomy: task.Autonomy{{Match: &task.Match{System: "git", Verb: "push", Params: map[string]*ir.Node{"ref": ir.FromString("$sneaky")}}, Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{Answerers: []string{"$sneaky"}}}}, {Then: task.Then{Mode: task.ThenAsk}}}}
 	got := s.Bind(Binding{"subject.head": "x;curl evil", "b": "BOUND", "sneaky": "auto", "model": "large"})
 	if got.Script != script {
 		t.Fatalf("Script = %q, want the text as written", got.Script)
@@ -76,14 +76,14 @@ func TestBindLeavesTheScriptAndTheWordsAndBindsTheEnvironment(t *testing.T) {
 		t.Fatalf("model = %q, want it bound", got.Agent.Model())
 	}
 	net := got.Environment.Systems["network"][0]
-	if got.Agent.Annotations["verse.portkey/virtual-key"] != "$sneaky" || got.Autonomy[0].Match.Params["ref"] != "$sneaky" ||
-		got.Autonomy[0].Then.Ask.Answerers[0] != "$sneaky" || got.Environment.Systems["git"][0].Verbs["push"][0]["ref"] != "refs/heads/$sneaky" ||
-		net.Attributes["mode"] != "$sneaky" || net.Verbs["tcp-client"][0]["host"] != "$sneaky" {
+	if got.Agent.Annotations["verse.portkey/virtual-key"] != "$sneaky" || systems.Words(got.Autonomy[0].Match.Params["ref"]) != "$sneaky" ||
+		got.Autonomy[0].Then.Ask.Answerers[0] != "$sneaky" || systems.Words(got.Environment.Systems["git"][0].Verbs["push"][0]["ref"]) != "refs/heads/$sneaky" ||
+		net.Attributes["mode"] != "$sneaky" || systems.Words(net.Verbs["tcp-client"][0]["host"]) != "$sneaky" {
 		t.Fatalf("a word was expanded: %+v", got)
 	}
 	got.Agent.Annotations["verse.portkey/virtual-key"] = "changed"
-	got.Environment.Systems["git"][0].Verbs["push"][0]["ref"] = "changed"
-	if s.Agent.Annotations["verse.portkey/virtual-key"] != "$sneaky" || s.Environment.Systems["git"][0].Verbs["push"][0]["ref"] != "refs/heads/$sneaky" {
+	got.Environment.Systems["git"][0].Verbs["push"][0]["ref"] = ir.FromString("changed")
+	if s.Agent.Annotations["verse.portkey/virtual-key"] != "$sneaky" || systems.Words(s.Environment.Systems["git"][0].Verbs["push"][0]["ref"]) != "refs/heads/$sneaky" {
 		t.Fatal("Bind aliased the receiver's annotations or shapes")
 	}
 }

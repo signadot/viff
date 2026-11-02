@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd"
@@ -75,7 +77,7 @@ func openedFor(c Config, doer string, sys map[string]System) map[string]System {
 			s.Ceiling = systems.Open()
 			if name == "git" {
 				host, _ := c.Repos.forge()
-				s.Ceiling[0].Attributes = map[string][]string{"repo": {strings.ToLower(host) + "/**"}}
+				s.Ceiling[0].Attributes = map[string]*ir.Node{"repo": systems.Regexp("^" + regexp.QuoteMeta(strings.ToLower(host)) + "/")}
 			}
 		}
 		held[name] = s
@@ -174,7 +176,7 @@ func TestAnAgentsPushIsGatedAndTheRunnerMakesIt(t *testing.T) {
 		}
 	})
 	rt := serveRepos(t, forge, Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL})
-	rt.Launch(runner.Launch{ID: "t1", Prompt: "do the work", Autonomy: append(task.Autonomy{{Name: "push", Match: &task.Match{System: "git", Verb: "push", Params: map[string]string{"ref": "refs/heads/verse/auto/*"}}, Then: task.Then{Mode: task.ThenAsk}}},
+	rt.Launch(runner.Launch{ID: "t1", Prompt: "do the work", Autonomy: append(task.Autonomy{{Name: "push", Match: &task.Match{System: "git", Verb: "push", Params: map[string]*ir.Node{"ref": systems.Glob("refs/heads/verse/auto/*")}}, Then: task.Then{Mode: task.ThenAsk}}},
 		allowing("git", "commands", "files")...),
 		Agent: &runner.Agent{Name: AgentName}, Environment: giving(envOf(netOpen, []runner.Repo{{Repo: "acme/svc"}}, nil), "commands", "files")})
 
@@ -187,7 +189,7 @@ func TestAnAgentsPushIsGatedAndTheRunnerMakesIt(t *testing.T) {
 	// The runner's two facts are on the question too: the branch is not at the forge yet.
 	want := map[string]string{"repo": "github.com/acme/svc", "from": "main", "ref": "refs/heads/verse/auto/t1", "delete": "false", "force": "false",
 		"exists": "false", "own": "false"}
-	if q.Step != task.StepGitPush || q.Gate != "push" || !maps.Equal(q.Fields, want) {
+	if q.Step != task.StepGitPush || q.Gate != "push" || !q.Fields.DeepEqual(systems.FieldsDoc(q.Step, want)) {
 		t.Fatalf("the question was %+v, want the push gate on %v", q, want)
 	}
 	resolver := rt.Attach("t1").(interface {
@@ -357,9 +359,9 @@ func envOf(n *runner.Network, repos []runner.Repo, trackers []runner.Tracker) sy
 			if b.Verbs == nil {
 				b.Verbs = map[string][]systems.Shape{}
 			}
-			shape := systems.Shape{"host": host}
+			shape := systems.Shape{"host": ir.FromString(host)}
 			if port != "" {
-				shape["port"] = port
+				shape["port"] = ir.FromString(port)
 			}
 			b.Verbs["tcp-client"] = append(b.Verbs["tcp-client"], shape)
 		}

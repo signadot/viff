@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/client"
 	"github.com/signadot/verse/runner/runnerd/delivery"
@@ -80,7 +81,7 @@ func slackRunner(t *testing.T, api string, ceiling systems.Ceiling) client.Launc
 func TestAScriptPostsToSlackUnderAnAskingPolicy(t *testing.T) {
 	withCallTool(t)
 	api := &slackAPI{}
-	deploys := map[string][]systems.Shape{"post": {{"channel": "deploys"}}, "read": {{"channel": "deploys"}}}
+	deploys := map[string][]systems.Shape{"post": {{"channel": ir.FromString("deploys")}}, "read": {{"channel": ir.FromString("deploys")}}}
 	rt := slackRunner(t, api.serve(t), systems.Ceiling{{Verbs: deploys}})
 	env := envOf(netOpen, nil, nil)
 	env.Systems["slack"] = []systems.Block{{Verbs: deploys}}
@@ -90,11 +91,11 @@ func TestAScriptPostsToSlackUnderAnAskingPolicy(t *testing.T) {
 		"verse-call-tool slack-read -channel deploys -thread 1790000000.000100\n" +
 		"env | grep -c xoxb || true"
 	rt.Launch(runner.Launch{ID: "s1", Script: script, Environment: env, Autonomy: task.Autonomy{
-		{Name: "announce", Match: &task.Match{System: "slack", Verb: "post", Params: map[string]string{"channel": "deploys"}}, Then: task.Then{Mode: task.ThenAsk}},
+		{Name: "announce", Match: &task.Match{System: "slack", Verb: "post", Params: map[string]*ir.Node{"channel": ir.FromString("deploys")}}, Then: task.Then{Mode: task.ThenAsk}},
 		{Match: &task.Match{System: "slack"}, Then: task.Then{Mode: task.ThenAllow}},
 		{Then: task.Then{Mode: task.ThenAllow}}}})
 	q := pending(t, rt, "s1")
-	if q.Step != task.StepSlackPost || !maps.Equal(q.Fields, map[string]string{"channel": "deploys"}) || q.Gate != "announce" {
+	if q.Step != task.StepSlackPost || !q.Fields.DeepEqual(systems.FieldsDoc(q.Step, map[string]string{"channel": "deploys"})) || q.Gate != "announce" {
 		t.Fatalf("asked about %+v, want the post to deploys, by the row announce", q)
 	}
 	if err := rt.Attach("s1").(resolver).Resolve(q.ID, task.Proceed, "", "user:ana"); err != nil {
@@ -133,7 +134,7 @@ func TestAScriptPostsToSlackUnderAnAskingPolicy(t *testing.T) {
 	}
 
 	general := envOf(netOpen, nil, nil)
-	general.Systems["slack"] = []systems.Block{{Verbs: map[string][]systems.Shape{"post": {{"channel": "general"}}}}}
+	general.Systems["slack"] = []systems.Block{{Verbs: map[string][]systems.Shape{"post": {{"channel": ir.FromString("general")}}}}}
 	h := rt.Launch(runner.Launch{ID: "s2", Script: "#!/bin/sh\necho hi", Environment: general, Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}})
 	if err := h.Err(); !strings.Contains(err, "beyond this runner's ceiling for slack") || !strings.Contains(err, "{channel: deploys}") {
 		t.Errorf("an environment posting where the ceiling closes: %q", err)

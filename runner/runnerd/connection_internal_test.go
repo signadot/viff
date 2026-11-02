@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
@@ -28,13 +29,13 @@ func allowing(shapes ...systems.Shape) systems.Environment {
 // autonomy, a default of deny, or one of ask; then the runner's ceiling, whatever the rows said.
 func TestAConnectionIsDecidedByTheEnvironmentTheAutonomyAndTheCeiling(t *testing.T) {
 	allow, deny, ask := task.Then{Mode: task.ThenAllow}, task.Then{Mode: task.ThenDeny}, task.Then{Mode: task.ThenAsk}
-	env := allowing(systems.Shape{"host": "*.github.com"}, systems.Shape{"host": "registry.internal", "port": "5000"}, systems.Shape{"host": "169.254.169.254"})
+	env := allowing(systems.Shape{"host": systems.Glob("*.github.com")}, systems.Shape{"host": ir.FromString("registry.internal"), "port": ir.FromInt(5000)}, systems.Shape{"host": ir.FromString("169.254.169.254")})
 	open := task.Autonomy{{Match: &task.Match{System: "network"}, Then: allow}, {Then: ask}}
 	noAPI := task.Autonomy{
-		{Name: "no-api", Match: &task.Match{System: "network", Params: map[string]string{"host": "api.github.com"}}, Then: deny},
+		{Name: "no-api", Match: &task.Match{System: "network", Params: map[string]*ir.Node{"host": ir.FromString("api.github.com")}}, Then: deny},
 		{Then: allow},
 	}
-	bound := ceiling(t, `{mode: allow, tcp-client: [{host: "*.github.com"}, {host: registry.internal}]}`)
+	bound := ceiling(t, `{mode: allow, tcp-client: [{host: !glob "*.github.com"}, {host: registry.internal}]}`)
 	for _, c := range []struct {
 		p          task.Autonomy
 		host, port string
@@ -44,7 +45,7 @@ func TestAConnectionIsDecidedByTheEnvironmentTheAutonomyAndTheCeiling(t *testing
 		{open, "api.github.com", "22", ""}, // a shape naming no port allows any
 		{open, "github.com", "443", "outside the environment"},
 		{open, "registry.internal", "5000", ""},
-		{open, "registry.internal", "443", "it gives {host: *.github.com}, {host: registry.internal, port: 5000}"},
+		{open, "registry.internal", "443", "it gives {host: !glob *.github.com}, {host: registry.internal, port: 5000}"},
 		{noAPI, "api.github.com", "443", "the autonomy's row no-api"},
 		{noAPI, "raw.github.com", "443", ""},
 		{nil, "api.github.com", "443", ""},                         // no autonomy: the default row asks, and does not decide it
@@ -78,8 +79,8 @@ func TestAReplacementDecidesTheNextConnection(t *testing.T) {
 	}
 	h := NewSubprocessHandler(SubprocessConfig{Log: io.Discard})
 	h.Describe(described(agentOffer(nil)))
-	l := &runner.Launch{ID: "x", Prompt: "p", Agent: &runner.Agent{Name: "verse"}, Environment: allowing(systems.Shape{"host": "google.com"}),
-		Autonomy: task.Autonomy{{Name: "not-yet", Match: &task.Match{System: "network", Params: map[string]string{"host": "google.com"}}, Then: task.Then{Mode: task.ThenDeny}}, {Then: task.Then{Mode: task.ThenAllow}}}}
+	l := &runner.Launch{ID: "x", Prompt: "p", Agent: &runner.Agent{Name: "verse"}, Environment: allowing(systems.Shape{"host": ir.FromString("google.com")}),
+		Autonomy: task.Autonomy{{Name: "not-yet", Match: &task.Match{System: "network", Params: map[string]*ir.Node{"host": ir.FromString("google.com")}}, Then: task.Then{Mode: task.ThenDeny}}, {Then: task.Then{Mode: task.ThenAllow}}}}
 	ready := make(chan struct{})
 	close(ready)
 	p := &proc{id: l.ID, l: l, ready: ready, gone: make(chan struct{}), done: make(chan struct{}), prox: httputil.NewSingleHostReverseProxy(u)}
@@ -117,7 +118,7 @@ func TestAReplacementDecidesTheNextConnection(t *testing.T) {
 // account, which the task's process never has.
 func TestARefusedConnectionIsOnTheSnapshot(t *testing.T) {
 	eg, err := NewEgress("x", nil, func(host, port string) error {
-		return connectionRefused(allowing(systems.Shape{"host": "google.com"}), nil, nil, host, port)
+		return connectionRefused(allowing(systems.Shape{"host": ir.FromString("google.com")}), nil, nil, host, port)
 	}, io.Discard)
 	if err != nil {
 		t.Fatal(err)

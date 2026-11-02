@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/runner/runnerd/verse"
@@ -163,7 +164,7 @@ func TestAnAgentsGatedCommandAsks(t *testing.T) {
 	d := New(opened(Config{}), Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL}, t.TempDir(), io.Discard)
 	reg := task.NewRegistry()
 	p := d.Build(runner.Launch{ID: "t1", Prompt: "push it", Agent: &runner.Agent{Name: AgentName}, Environment: giving(envOf(netOpen, nil, nil), "commands"),
-		Autonomy: task.Autonomy{{Name: "push", Match: &task.Match{System: "commands", Verb: "run", Params: map[string]string{"command": "git push*"}}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAllow}}}}, reg)
+		Autonomy: task.Autonomy{{Name: "push", Match: &task.Match{System: "commands", Verb: "run", Params: map[string]*ir.Node{"command": systems.Regexp("^git push")}}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAllow}}}}, reg)
 	done := make(chan error, 1)
 	go func() { _, err := p.Run(context.Background()); done <- err }()
 	var pend []task.Pending
@@ -174,7 +175,7 @@ func TestAnAgentsGatedCommandAsks(t *testing.T) {
 		t.Fatal("the gated command didn't ask")
 	}
 	q := pend[0].Question
-	if q.Gate != "push" || q.Step.Name != task.StepCommandsRun || q.Step.Fields["command"] != "git push origin main" {
+	if q.Gate != "push" || q.Step.Name != task.StepCommandsRun || systems.FieldText(q.Step.Fields, "command") != "git push origin main" {
 		t.Fatalf("asked %+v", q)
 	}
 	reg.Answer(q.ID, task.Choose(task.Deny, "user:ana"))

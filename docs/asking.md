@@ -50,7 +50,7 @@ cat > on.tony <<'EOF'
           - repo: acme/app
             from: main
             fetch: {}
-            push: {ref: refs/heads/main, force: "false", delete: "false"}
+            push: {ref: refs/heads/main, force: false, delete: false}
       autonomy:
       - {match: {system: commands}, then: allow}
       - {match: {system: git, verb: fetch}, then: allow}
@@ -100,7 +100,7 @@ cat > release.tony <<'EOF'
           - repo: acme/app
             from: release
             fetch: {}
-            push: {ref: refs/heads/release, force: "false", delete: "false"}
+            push: {ref: refs/heads/release, force: false, delete: false}
       autonomy:
       - {then: allow}
 EOF

@@ -20,6 +20,6 @@ verbs:
 - name: charter-install
   description: "Install charters as the person the task runs for, as `verse charter -a` and verse_charter_install do: each a fielded charter at its own `at:` (with `ttl:`, it is removed when that is over), or a bare rule list at an address, applied as one step, with a prune taking what the charters given leave out under the address. Answers what was installed. A spawn among its rules reaches no further than the task does, less this verb, with no looser autonomy and the task's credential where it spends one, on any runner: what the task installs cannot install charters."
   fields:
-  - {name: at, form: address, description: "the address the install acts at: with a prune, the prune's; otherwise the deepest address every charter it installs lies at or under (play.issues.issue). Everything it installs is at or under it, so a shape on it bounds where the task installs: `*` takes one segment, `**` several"}
+  - {name: at, form: path, description: "the address the install acts at: with a prune, the prune's; otherwise the deepest address every charter it installs lies at or under (play.issues.issue). Everything it installs is at or under it, so a shape on it bounds where the task installs: an address is at or under its pattern, whose `*` takes any one segment"}
 - name: charter-remove
   description: "Remove what stands in the charters as the person the task runs for, as `verse charter -r` and verse_charter_remove do: a whole charter by its address, or one rule, level or schedule of it by its path."

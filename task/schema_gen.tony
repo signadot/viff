@@ -31,6 +31,7 @@ signature:
 ---
 context:
 - tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
   action: .[string]
   answerers: .[array(string)]
@@ -40,7 +41,7 @@ define:
   deadline: .[nullable(verse-deadline)]
   dropped: .[int]
   err: .[string]
-  fields: .[object(string)]
+  fields: .[tony-base:ir]
   gate: .[string]
   id: .[string]
   kind: .[string]
@@ -56,18 +57,21 @@ signature:
 ---
 context:
 - tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
-  Params: .[object(string)]
+  Params: .[object(tony-base:ir)]
   System: .[string]
   Verb: .[string]
+  VerbPattern: .[tony-base:ir]
 signature:
   name: verse-task-policy-match
 ---
 context:
 - tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
   action: .[string]
-  fields: .[object(string)]
+  fields: .[tony-base:ir]
   gate: .[string]
   id: .[string]
   origin: .[string]

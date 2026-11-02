@@ -18,17 +18,17 @@ import (
 // it when one ceiling block holds it whole (Contains), and a step is within it when a block
 // whose attributes it matches gives a shape it matches (Refuses).
 //
-// It differs from an environment in its attributes: each is a list of patterns a value matches,
-// not the value (`repo: "github.com/signadot/**"`, `mode: [none, allow]`; one pattern may be
-// written bare), and so a step may fall within more than one block. An attribute a ceiling block
+// It differs from an environment in its attributes: each is a pattern a value matches, not the
+// value (`repo: !regexp "^github\\.com/signadot/"`, `mode: !or [none, allow]`), a tony match
+// as a shape's fields are, and so a step may fall within more than one block. An attribute a ceiling block
 // names bounds every environment block it holds: one that leaves the attribute unsaid stands for
 // its document's default where there is one (the network's mode, none), and is beyond the block
 // where there is none (git's `from`: a block bounding `from` holds only blocks that say it).
 //
 //	ceiling:
-//	- repo: "github.com/signadot/**"
+//	- repo: !glob "github.com/signadot/*"
 //	  fetch: {}
-//	  push: [{ref: "refs/heads/verse/**"}, {ref: "refs/heads/release/*", force: "false"}]
+//	  push: [{ref: !regexp "^refs/heads/verse/"}, {ref: !glob "refs/heads/release/*", force: false}]
 type Ceiling []CeilingBlock
 
 // Open is the ceiling that bounds nothing of a system: the empty block, every verb in any shape,
@@ -40,15 +40,15 @@ type Ceiling []CeilingBlock
 // allows it no connection, where an unwritten network ceiling bounds nothing.
 func Open() Ceiling { return Ceiling{{}} }
 
-// CeilingBlock is one block of a ceiling: the attribute values it is for, as patterns, and the
-// verbs it gives with their shapes.
+// CeilingBlock is one block of a ceiling: the attribute values it is for, each as a pattern, and
+// the verbs it gives with their shapes.
 type CeilingBlock struct {
-	Attributes map[string][]string
+	Attributes map[string]*ir.Node
 	Verbs      map[string][]Shape
 }
 
 // Check is what a ceiling for system has to satisfy: its attributes and verbs the document's,
-// every pattern one its field takes, no shape bound at a firing, and no empty list.
+// every pattern one its field takes (Field.Accepts), nothing bound at a firing, and no empty list.
 func (c Ceiling) Check(system string) error {
 	d, ok := Get(system)
 	if !ok {
@@ -63,9 +63,11 @@ func (c Ceiling) Check(system string) error {
 		}
 		for _, name := range slices.Sorted(maps.Keys(b.Attributes)) {
 			a, ok := d.Attribute(name)
+			p := b.Attributes[name]
+			empty := p != nil && p.Tag == "" && p.Type == ir.ArrayType && len(p.Values) == 0
 			if !ok {
 				if _, isVerb := d.Verb(name); isVerb {
-					if len(b.Attributes[name]) == 0 {
+					if empty {
 						return at(fmt.Errorf("%s: an empty list allows nothing; leave the verb out instead", name))
 					}
 					return at(fmt.Errorf("%s: a verb takes a shape or a list of shapes (`%s: {}` for any)", name, name))
@@ -73,16 +75,14 @@ func (c Ceiling) Check(system string) error {
 				return at(fmt.Errorf("%s: %s has no attribute or verb %q (attributes: %s; verbs: %s)", name, system, name,
 					strings.Join(attributeNames(d), ", "), strings.Join(verbNames(d), ", ")))
 			}
-			if len(b.Attributes[name]) == 0 {
+			if empty {
 				return at(fmt.Errorf("%s: an empty list allows nothing; leave the attribute out for any", name))
 			}
-			for _, p := range b.Attributes[name] {
-				if strings.Contains(p, "$") {
-					return at(fmt.Errorf("%s: %q: a ceiling is the runner's and binds nothing", name, p))
-				}
-				if err := a.Field().Accepts(Canonical(a.Form, p)); err != nil {
-					return at(fmt.Errorf("%s: %w", name, err))
-				}
+			if Binds(p) {
+				return at(fmt.Errorf("%s: %s: a ceiling is the runner's and binds nothing", name, Words(p)))
+			}
+			if err := a.Field().Accepts(canon(a.Form, p)); err != nil {
+				return at(fmt.Errorf("%s: %w", name, err))
 			}
 		}
 		for _, verb := range slices.Sorted(maps.Keys(b.Verbs)) {
@@ -161,11 +161,11 @@ func (cb CeilingBlock) contains(d Document, b Block, written bool) (why string, 
 			if a, ok := d.Attribute(name); ok && a.Default != "" {
 				v = a.Default
 			} else {
-				return fmt.Sprintf("its %s is unsaid, and the ceiling's is %s", name, strings.Join(cb.Attributes[name], ", ")), true
+				return fmt.Sprintf("its %s is unsaid, and the ceiling's is %s", name, Words(cb.Attributes[name])), true
 			}
 		}
 		if !cb.admits(d, name, v, written) {
-			return fmt.Sprintf("%s %s is beyond %s", name, v, strings.Join(cb.Attributes[name], ", ")), true
+			return fmt.Sprintf("%s %s is beyond %s", name, v, Words(cb.Attributes[name])), true
 		}
 	}
 	allows, gives := given(d.Name, cb.Verbs), b.Given(d.Name)
@@ -184,34 +184,27 @@ func (cb CeilingBlock) contains(d Document, b Block, written bool) (why string, 
 	return "", false
 }
 
-// admits is whether an attribute's value lies within the block's patterns for it: matched as a
+// admits is whether an attribute's value lies within the block's pattern for it: matched as a
 // value, or, as written and still to be bound, met by one (ContainsAsWritten).
 func (cb CeilingBlock) admits(d Document, name, v string, written bool) bool {
 	a, _ := d.Attribute(name)
 	v = Canonical(a.Form, v)
-	for _, p := range cb.Attributes[name] {
-		p = Canonical(a.Form, p)
-		if written && strings.Contains(v, "$") {
-			if Intersect(p, bound.ReplaceAllString(v, "**"), FormSep(a.Form)) {
-				return true
-			}
-		} else if Match(p, v, FormSep(a.Form)) {
-			return true
-		}
+	if written && strings.Contains(v, "$") {
+		return meetsWritten(a.Form, cb.Attributes[name], v)
 	}
-	return false
+	return MatchField(a.Form, cb.Attributes[name], a.Field().Value(v))
 }
 
 // bound is a binding a firing replaces, in an attribute as a charter writes it.
 var bound = regexp.MustCompile(`\$[A-Za-z_][A-Za-z0-9_.]*`)
 
 // ShapeWithin is whether every call inner allows, outer allows too: each field outer names, inner
-// names, with a pattern within outer's (PatternContains). A field outer leaves out is any; one
+// names, with a pattern within outer's (FieldContains). A field outer leaves out is any; one
 // inner leaves out is any too, and so beyond an outer that names it.
 func ShapeWithin(step string, outer, inner Shape) bool {
 	for name, op := range outer {
 		ip, named := inner[name]
-		if !named || !PatternContains(op, ip, Sep(step, name)) {
+		if !named || !FieldContains(FormOf(step, name), op, ip) {
 			return false
 		}
 	}
@@ -236,7 +229,7 @@ func (c Ceiling) Gives(step string) bool {
 // Beyond is why a step lies beyond a runner's ceilings, by system, or ok false: beyond its
 // system's (Ceiling.Refuses), or of a system they name no ceiling for, which is closed, as a
 // ceiling written nowhere is. Ceilings that are nil name none, and close every system.
-func Beyond(ceilings map[string]Ceiling, step string, fields map[string]string) (why string, ok bool) {
+func Beyond(ceilings map[string]Ceiling, step string, fields *ir.Node) (why string, ok bool) {
 	system, _, valid := Split(step)
 	if !valid {
 		return fmt.Sprintf("%s is no step of a system", step), true
@@ -251,7 +244,7 @@ func Beyond(ceilings map[string]Ceiling, step string, fields map[string]string) 
 // Refuses is why a step lies beyond the ceiling, or ok false: no block whose attributes its
 // fields match gives a shape matching it. Said as Environment.Refuses says it, in what the ceiling
 // gives, so the line it crossed can be read.
-func (c Ceiling) Refuses(step string, fields map[string]string) (why string, ok bool) {
+func (c Ceiling) Refuses(step string, fields *ir.Node) (why string, ok bool) {
 	system, verb, valid := Split(step)
 	if !valid {
 		return fmt.Sprintf("%s is no step of a system", step), true
@@ -260,11 +253,9 @@ func (c Ceiling) Refuses(step string, fields map[string]string) (why string, ok 
 	var near []string
 	for _, cb := range c {
 		inside := true
-		for name, patterns := range cb.Attributes {
+		for name, pattern := range cb.Attributes {
 			a, _ := d.Attribute(name)
-			if !slices.ContainsFunc(patterns, func(p string) bool {
-				return Match(Canonical(a.Form, p), Canonical(a.Form, fields[name]), FormSep(a.Form))
-			}) {
+			if !MatchField(a.Form, pattern, ir.Get(ir.Uncomment(fields), name)) {
 				inside = false
 			}
 		}
@@ -304,8 +295,8 @@ func verbList(names []string) string {
 }
 
 // FromTonyIR reads a ceiling as a runner's config writes it: a block, or a list of blocks, each
-// key an attribute (a value, or a list of values) or a verb (a shape, or a list of shapes), told
-// apart by what the key holds; whether each is its system's is Check's to say.
+// key an attribute (a pattern) or a verb (a shape, or a list of shapes), told apart by what the
+// key holds; whether each is its system's is Check's to say.
 func (c *Ceiling) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 	node = ir.Uncomment(node)
 	if node == nil || node.Type == ir.NullType {
@@ -344,66 +335,56 @@ func readCeilingBlock(node *ir.Node) (CeilingBlock, error) {
 	if node == nil || node.Type != ir.ObjectType {
 		return CeilingBlock{}, errors.New("a ceiling block is an object of attributes and verbs")
 	}
-	b := CeilingBlock{Attributes: map[string][]string{}, Verbs: map[string][]Shape{}}
+	b := CeilingBlock{Attributes: map[string]*ir.Node{}, Verbs: map[string][]Shape{}}
 	for i, key := range node.Fields {
 		key = ir.Uncomment(key)
 		if key == nil || key.Type != ir.StringType {
 			return CeilingBlock{}, errors.New("a key is an attribute's or a verb's name")
 		}
 		name := key.String
-		val := ir.Uncomment(node.Values[i])
-		var items []*ir.Node
-		if val != nil && val.Type == ir.ArrayType {
-			items = val.Values
-		} else {
-			items = []*ir.Node{val}
-		}
-		shapes, values := []Shape{}, []string{}
-		for j, item := range items {
-			item = ir.Uncomment(item)
-			if item != nil && item.Type == ir.ObjectType {
-				s, err := readShape(item)
+		val := Plain(ir.Uncomment(node.Values[i]))
+		switch {
+		case val != nil && val.Tag == "" && val.Type == ir.ObjectType:
+			s, err := readShape(val)
+			if err != nil {
+				return CeilingBlock{}, fmt.Errorf("%s%w", name, err)
+			}
+			b.Verbs[name] = []Shape{s}
+		case val != nil && val.Tag == "" && val.Type == ir.ArrayType && len(val.Values) > 0 &&
+			!slices.ContainsFunc(val.Values, func(v *ir.Node) bool { v = ir.Uncomment(v); return v == nil || v.Type != ir.ObjectType }):
+			shapes := []Shape{}
+			for j, item := range val.Values {
+				s, err := readShape(ir.Uncomment(item))
 				if err != nil {
 					return CeilingBlock{}, fmt.Errorf("%s[%d]%w", name, j, err)
 				}
 				shapes = append(shapes, s)
-				continue
 			}
-			v, err := scalar(item)
-			if err != nil {
-				return CeilingBlock{}, fmt.Errorf("%s: %w", name, err)
-			}
-			values = append(values, v)
-		}
-		switch {
-		case len(shapes) > 0 && len(values) > 0:
-			return CeilingBlock{}, fmt.Errorf("%s: a verb's shapes or an attribute's values, not both", name)
-		case len(shapes) > 0:
 			b.Verbs[name] = shapes
+		case val != nil && val.Tag == "" && val.Type == ir.ArrayType &&
+			slices.ContainsFunc(val.Values, func(v *ir.Node) bool { v = ir.Uncomment(v); return v != nil && v.Type == ir.ObjectType }):
+			return CeilingBlock{}, fmt.Errorf("%s: a verb's shapes or an attribute's pattern, not both", name)
 		default:
-			b.Attributes[name] = values
+			if val == nil {
+				val = ir.Null()
+			}
+			b.Attributes[name] = val
 		}
 	}
 	return b, nil
 }
 
-// Node writes the ceiling as a config writes it: one block bare, an attribute of one pattern
-// bare.
+// Node writes the ceiling as a config writes it: one block bare.
 func (c Ceiling) Node() *ir.Node {
 	items := make([]*ir.Node, len(c))
 	for i, b := range c {
 		var kvs []ir.KeyVal
 		for _, name := range slices.Sorted(maps.Keys(b.Attributes)) {
-			ps := b.Attributes[name]
-			val := ir.FromString(ps[0])
-			if len(ps) != 1 {
-				vs := make([]*ir.Node, len(ps))
-				for j, p := range ps {
-					vs[j] = ir.FromString(p)
-				}
-				val = ir.FromSlice(vs)
+			v := b.Attributes[name]
+			if v == nil {
+				v = ir.Null()
 			}
-			kvs = append(kvs, ir.KeyVal{Key: ir.FromString(name), Val: val})
+			kvs = append(kvs, ir.KeyVal{Key: ir.FromString(name), Val: v.Clone()})
 		}
 		for _, verb := range slices.Sorted(maps.Keys(b.Verbs)) {
 			shapes := b.Verbs[verb]

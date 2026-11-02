@@ -217,7 +217,7 @@ rules:
       # `receive.denyNonFastForwards` on main at the far end, and the runner refuses to rewrite
       # it before the remote ever sees the push.
       autonomy:
-      - {match: {system: git, verb: push, ref: refs/heads/main, force: "false", delete: "false"}, then: allow}
+      - {match: {system: git, verb: push, ref: refs/heads/main, force: false, delete: false}, then: allow}
       - {match: {system: git, verb: push}, then: deny}
       - {then: allow}
       #
@@ -232,7 +232,7 @@ rules:
           - repo: signadot/verse
             from: main
             fetch: {}
-            push: {ref: refs/heads/main, force: "false", delete: "false"}
+            push: {ref: refs/heads/main, force: false, delete: false}
       # A STATIC LIST OVER A DYNAMIC SET: the branches are not interpolated into the command,
       # they are FOUND in the clone. The train's `branches` field is for the person reading the
       # docket; the task reads the refs it has.
@@ -303,7 +303,7 @@ rules:
       # `receive.denyDeletes` must NOT be set on this pattern at the far end, or the sweep is
       # refused every time — the one rule that has to be ABSENT rather than present.
       autonomy:
-      - {match: {system: git, verb: push, ref: "refs/heads/verse/auto/*", delete: "true"}, then: allow}
+      - {match: {system: git, verb: push, ref: !glob "refs/heads/verse/auto/*", delete: true}, then: allow}
       - {match: {system: git, verb: push}, then: deny}
       - {then: allow}
       environment:
@@ -316,7 +316,7 @@ rules:
           - repo: signadot/verse
             from: main
             fetch: {}
-            push: {ref: "refs/heads/verse/auto/*", delete: "true"}
+            push: {ref: !glob "refs/heads/verse/auto/*", delete: true}
       script: 'verse-call-tool git-push -branch "$BRANCH" -delete'
       # No `answer:`: a script has no model to repair a contract with. What used to be read out
       # of the answer — which branches went — is the script itself, and the ref is in the record

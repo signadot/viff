@@ -14,6 +14,7 @@ import (
 
 	"github.com/signadot/tony-format/git-issue/issuelib"
 	"github.com/signadot/tony-format/git-issue/ops"
+	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd/delivery"
@@ -43,7 +44,7 @@ verse-call-tool git-issue-pull
 git -C svc for-each-ref --format='%(refname)' refs/git-issues/
 `, task.Row{Name: "filing", Match: &task.Match{System: "git-issue", Verb: "push"}, Then: task.Then{Mode: task.ThenAsk}})
 	q := pending(t, rt, "t1")
-	if q.Step != task.StepGitIssuePush || q.Gate != "filing" || !maps.Equal(q.Fields, map[string]string{"repo": "github.com/acme/svc"}) {
+	if q.Step != task.StepGitIssuePush || q.Gate != "filing" || !q.Fields.DeepEqual(systems.FieldsDoc(q.Step, map[string]string{"repo": "github.com/acme/svc"})) {
 		t.Fatalf("asked about %+v, want the push of the tracker (a filing here and a pull ask nobody)", q)
 	}
 	if err := rt.Attach("t1").(resolver).Resolve(q.ID, task.Proceed, "", "user:ana"); err != nil {
@@ -86,7 +87,7 @@ func TestADeniedIssuePushSendsNothing(t *testing.T) {
 	rt := serveRepos(t, forge, Secrets{})
 	launchScript(rt, "t1", "#!/bin/sh\nverse-call-tool git-issue-create -title no >/dev/null\n"+
 		"verse-call-tool git-issue-push; echo \"exit=$?\"\ngit -C svc for-each-ref refs/git-issues/v1/open | wc -l",
-		task.Row{Name: "leaving", Match: &task.Match{System: "git-issue", Verb: "push", Params: map[string]string{"repo": "github.com/acme/*"}}, Then: task.Then{Mode: task.ThenAsk}})
+		task.Row{Name: "leaving", Match: &task.Match{System: "git-issue", Verb: "push", Params: map[string]*ir.Node{"repo": systems.Glob("github.com/acme/*")}}, Then: task.Then{Mode: task.ThenAsk}})
 	q := pending(t, rt, "t1")
 	if err := rt.Attach("t1").(resolver).Resolve(q.ID, task.Deny, "", "user:ana"); err != nil {
 		t.Fatal(err)
@@ -126,9 +127,9 @@ func TestAScriptFilesALinearIssueWithTheRunnersCredential(t *testing.T) {
 		Secrets{}, Tokens{Linear: "lin_api_secret", LinearAPI: api.URL})
 	script := "#!/bin/sh\nverse-call-tool linear-issue-create -team eng -title \"the roof leaks\" -description \"when it rains\"\n" +
 		"echo \"exit=$?\"\nenv | grep -c LINEAR || true"
-	launchScript(rt, "t1", script, task.Row{Name: "linear", Match: &task.Match{System: "linear-issue", Verb: "create", Params: map[string]string{"team": "ENG"}}, Then: task.Then{Mode: task.ThenAsk}})
+	launchScript(rt, "t1", script, task.Row{Name: "linear", Match: &task.Match{System: "linear-issue", Verb: "create", Params: map[string]*ir.Node{"team": ir.FromString("ENG")}}, Then: task.Then{Mode: task.ThenAsk}})
 	q := pending(t, rt, "t1")
-	if q.Step != task.StepLinearIssueCreate || !maps.Equal(q.Fields, map[string]string{"team": "ENG"}) {
+	if q.Step != task.StepLinearIssueCreate || !q.Fields.DeepEqual(systems.FieldsDoc(q.Step, map[string]string{"team": "ENG"})) {
 		t.Fatalf("asked about %+v, want the filing in ENG", q)
 	}
 	if err := rt.Attach("t1").(resolver).Resolve(q.ID, task.Proceed, "", "user:ana"); err != nil {

@@ -53,8 +53,8 @@ spawn:
         from: main
         fetch: {}
         push:
-        - {ref: "refs/heads/verse/auto/*", exists: "false"}
-        - {ref: "refs/heads/verse/auto/*", own: "true"}
+        - {ref: !glob "refs/heads/verse/auto/*", exists: false}
+        - {ref: !glob "refs/heads/verse/auto/*", own: true}
   autonomy:
   - {then: allow}
 ```
@@ -65,9 +65,9 @@ task delivers carries its trailers). They are how a shape keeps a task to its ow
 first shape above gives a branch the task makes, the second one it made, and another task's
 `verse/auto/*` branch is neither, so a push onto it, a rewrite of it or its deletion is outside
 the environment. A push to `main` is too, since no shape names it. A shape with no `exists` or
-`own` gives by the ref alone, so `{ref: "refs/heads/verse/auto/*"}` lets a task push onto every
+`own` gives by the ref alone, so `{ref: !glob "refs/heads/verse/auto/*"}` lets a task push onto every
 task's branch. A task that retires the branches that landed is given
-`{ref: "refs/heads/verse/auto/*", delete: "true"}` for that reason: the branches it deletes are
+`{ref: !glob "refs/heads/verse/auto/*", delete: true}` for that reason: the branches it deletes are
 other tasks'.
 
 A `git` block that names no verb gives every verb of git, any call: every push, forced or
@@ -82,8 +82,9 @@ A push sends what the task **committed**, and nothing it left uncommitted. Each 
 trailers that name the task. The runner first puts the work in its own mirror, so a push that
 does not reach the remote is tried again, not lost. In a row, `repo` is the repository as `host/owner/name` in lower
 case, `from` is the branch the checkout started at, and `ref` is a full ref such as
-`refs/heads/main`, however the spawn wrote them. A `*`
-stays within one `/`: `refs/heads/*` is every branch, and `**` every ref. A script calls the same
+`refs/heads/main`, however the spawn wrote them. A pattern on a field is a tony one:
+`!glob "refs/heads/*"` is every branch, since a glob's `*` stays within one `/`, and
+`!regexp "^refs/"` is every ref. A script calls the same
 tools with `verse-call-tool`, and the same rows decide them.
 
 ## Where the credential lives
@@ -105,14 +106,14 @@ agents:
     systems:
       git:
         ceiling:
-        - repo: "github.com/acme/**"
+        - repo: !regexp "^github\\.com/acme/"
           fetch: {}
-          push: {ref: "refs/heads/verse/**"}
+          push: {ref: !regexp "^refs/heads/verse/"}
 ```
 
 Verse refuses to install a spawn whose environment gives a push beyond the ceiling, every shape
 within one of the ceiling's, saying what the ceiling gives. A ceiling lists what it allows, so
-`release/**` is beyond this one, written nowhere. A row wider than the environment installs:
+`!regexp "^refs/heads/release/"` is beyond this one, written nowhere. A row wider than the environment installs:
 what is fixed at install is that the task has `git.push` at all, and each push is decided at the
 act, by the row and then by the ceiling, which the runner reads again
 ([the verse runner](../reference/runnerd.md#what-it-offers)).

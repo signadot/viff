@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -342,10 +343,21 @@ func (s Setting) Takes(v string) error {
 			return fmt.Errorf("%q is not true or false", v)
 		}
 	}
-	if len(s.Values) > 0 && !slices.ContainsFunc(s.Values, func(p string) bool { return systems.Match(p, v, systems.SepNone) }) {
+	if len(s.Values) > 0 && !slices.ContainsFunc(s.Values, func(p string) bool { return settingMatch(p, v) }) {
 		return fmt.Errorf("%q is none of %s", v, strings.Join(s.Values, ", "))
 	}
 	return nil
+}
+
+// settingMatch is whether a setting's value is one a pattern of its Values spells: `*` any run of
+// characters, `/` among them, and anything else itself.
+func settingMatch(pattern, v string) bool {
+	parts := strings.Split(pattern, "*")
+	for i, p := range parts {
+		parts[i] = regexp.QuoteMeta(p)
+	}
+	ok, _ := regexp.MatchString("(?s)^"+strings.Join(parts, ".*")+"$", v)
+	return ok
 }
 
 // System is one system an offer holds: what the runner builds of it, and the ceiling over it.

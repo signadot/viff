@@ -7,4 +7,4 @@ verbs:
   description: "Open a connection to a host, through the runner's proxy. The proxy sees the host and the port, never what is said over the connection: for https, not the path, the method or the body. A connection does not wait for an answer, so a row on it allows or denies, and never asks."
   fields:
   - {name: host, form: lower, description: "the host connected to, in lower case and without a trailing dot: api.github.com"}
-  - {name: port, description: "the port connected to: 443. A shape that names no port allows any"}
+  - {name: port, form: int, description: "the port connected to: 443. A shape that names no port allows any"}

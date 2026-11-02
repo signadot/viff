@@ -19,8 +19,7 @@ import (
 // ahead. Then the runner's ceiling over the network, whatever the rows said: the environment lies
 // within it, so a refusal there is the launch's check having missed one.
 func connectionRefused(env systems.Environment, p task.Autonomy, ceiling systems.Ceiling, host, port string) error {
-	st := task.Step{Name: task.StepNetworkTCPClient,
-		Fields: map[string]string{"mode": runner.NetworkAllow, "host": host, "port": port}}
+	st := task.NewStep(task.StepNetworkTCPClient, map[string]string{"mode": runner.NetworkAllow, "host": host, "port": port})
 	dest := net.JoinHostPort(host, port)
 	if why, outside := env.Refuses(st.Name, st.Fields); outside {
 		return fmt.Errorf("egress: %s is outside the environment: %s", dest, why)

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/runner/runnerd"
 	"github.com/signadot/verse/systems"
@@ -23,8 +24,8 @@ func TestACharterIsHeldToItsRunnersCeilingsAtInstall(t *testing.T) {
 	h := runnerd.NewInProcessHandler(func(l runner.Launch, _ *task.Registry) *task.Task { return nil })
 	h.Describe(runner.Description{Version: runner.DescriptionVersion, Offers: []runner.Offer{{Script: true,
 		Systems: map[string]runner.System{"network": builds(runner.NetworkNone, runner.NetworkOpen), "git": {Ceiling: systems.Ceiling{{
-			Attributes: map[string][]string{"repo": {"github.com/signadot/**"}},
-			Verbs:      map[string][]systems.Shape{"fetch": {{}}, "push": {{"ref": "refs/heads/verse/**"}}},
+			Attributes: map[string]*ir.Node{"repo": systems.Regexp("^github\\.com/signadot/")},
+			Verbs:      map[string][]systems.Shape{"fetch": {{}}, "push": {{"ref": systems.Regexp("^refs/heads/verse/")}}},
 		}}}}}}})
 	face := provenFace(t, ts.URL, h.HTTPHandler(), func() {})
 	if resp := postTony(t, ts.URL+"/runners", map[string]any{"name": "ceiled", "url": face.URL, "subject": face.Subject}); resp.StatusCode != http.StatusCreated {
@@ -50,13 +51,13 @@ func TestACharterIsHeldToItsRunnersCeilingsAtInstall(t *testing.T) {
 		defer resp.Body.Close()
 		return resp.StatusCode, readBody(t, resp)
 	}
-	if code, body := install("bound", `{repo: $subject.value.repo, fetch: {}, push: {ref: "refs/heads/verse/auto/*"}}`); code != http.StatusCreated {
+	if code, body := install("bound", `{repo: $subject.value.repo, fetch: {}, push: {ref: !glob "refs/heads/verse/auto/*"}}`); code != http.StatusCreated {
 		t.Errorf("a bound repository = %d %s, want it installed", code, body)
 	}
 	for name, git := range map[string]string{
 		"outside": `{repo: other/app, fetch: {}}`,
 		"owner":   `{repo: "github.com/other/$subject.value.name", fetch: {}}`,
-		"wider":   `{repo: signadot/app, push: {ref: "refs/heads/**"}}`,
+		"wider":   `{repo: signadot/app, push: {ref: !regexp "^refs/heads/"}}`,
 	} {
 		if code, body := install(name, git); code == http.StatusCreated || !strings.Contains(body, "beyond this runner's ceiling for git") {
 			t.Errorf("%s = %d %s, want it refused naming the ceiling", name, code, body)

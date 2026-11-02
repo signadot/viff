@@ -62,7 +62,7 @@ func TestTaskRunsNetworkIsTheSpawns(t *testing.T) {
 	for _, c := range []struct{ env, says string }{
 		{"", "mode none: this runner builds open only"},
 		{`environment: {systems: {network: {mode: none}}}`, "mode none: this runner builds open only"},
-		{`environment: {systems: {network: {mode: allow, tcp-client: {host: api.github.com, port: "443"}}}}`, "mode allow: this runner builds open only"},
+		{`environment: {systems: {network: {mode: allow, tcp-client: {host: api.github.com, port: 443}}}}`, "mode allow: this runner builds open only"},
 		{openNet, ""},
 	} {
 		spec := "script: \"echo hi\"\n" + c.env + "\n"

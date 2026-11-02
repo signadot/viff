@@ -340,13 +340,9 @@ func (s *Event) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["step"] = ir.FromString(string(s.Step))
 	}
 
-	// Field: Fields
-	if len(s.Fields) > 0 {
-		mapNodes := make(map[string]*ir.Node)
-		for k, v := range s.Fields {
-			mapNodes[k] = ir.FromString(string(v))
-		}
-		irMap["fields"] = ir.FromMap(mapNodes)
+	// Field: Fields (optional)
+	if s.Fields != nil {
+		irMap["fields"] = s.Fields
 	}
 
 	// Field: By
@@ -498,22 +494,10 @@ func (s *Event) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			}
 			s.Step = string(fieldNodeUnwrapped.String)
 		case "fields":
-			// Field: Fields
-			if fieldNodeUnwrapped.Type == ir.ObjectType {
-				m := make(map[string]string)
-				irMap := ir.ToMap(fieldNodeUnwrapped)
-				for k, v := range irMap {
-					ctx := fmt.Sprintf("map value at key %q", k)
-					var val string
-					if v.Type != ir.StringType {
-						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
-					}
-					val = v.String
-					m[k] = val
-				}
-				s.Fields = m
+			if gomap.GetUnmapComments(opts...) {
+				s.Fields = fieldNode
 			} else {
-				return fmt.Errorf("%s: expected object, got %v", "field \"fields\"", fieldNodeUnwrapped.Type)
+				s.Fields = fieldNodeUnwrapped
 			}
 		case "by":
 			// Field: By
@@ -1118,6 +1102,11 @@ func (s *PendingGate) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	if s == nil {
 		return ir.Null(), nil
 	}
+	var node *ir.Node
+	var err error
+	_ = node // suppress unused variable error
+	_ = err  // suppress unused variable error
+
 	// Create IR object map
 	irMap := make(map[string]*ir.Node)
 
@@ -1149,13 +1138,9 @@ func (s *PendingGate) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["step"] = ir.FromString(string(s.Step))
 	}
 
-	// Field: Fields
-	if len(s.Fields) > 0 {
-		mapNodes := make(map[string]*ir.Node)
-		for k, v := range s.Fields {
-			mapNodes[k] = ir.FromString(string(v))
-		}
-		irMap["fields"] = ir.FromMap(mapNodes)
+	// Field: Fields (optional)
+	if s.Fields != nil {
+		irMap["fields"] = s.Fields
 	}
 
 	// Field: Reason
@@ -1233,22 +1218,10 @@ func (s *PendingGate) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error
 			}
 			s.Step = string(fieldNodeUnwrapped.String)
 		case "fields":
-			// Field: Fields
-			if fieldNodeUnwrapped.Type == ir.ObjectType {
-				m := make(map[string]string)
-				irMap := ir.ToMap(fieldNodeUnwrapped)
-				for k, v := range irMap {
-					ctx := fmt.Sprintf("map value at key %q", k)
-					var val string
-					if v.Type != ir.StringType {
-						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
-					}
-					val = v.String
-					m[k] = val
-				}
-				s.Fields = m
+			if gomap.GetUnmapComments(opts...) {
+				s.Fields = fieldNode
 			} else {
-				return fmt.Errorf("%s: expected object, got %v", "field \"fields\"", fieldNodeUnwrapped.Type)
+				s.Fields = fieldNodeUnwrapped
 			}
 		case "reason":
 			// Field: Reason

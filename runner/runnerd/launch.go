@@ -151,7 +151,7 @@ func checkBuilds(l *runner.Launch, o runner.Offer) error {
 			if err := sys.Builds.Contains(name, b); err != nil {
 				if name == "network" && len(sys.Builds) == 1 {
 					mode := cmp.Or(b.Attributes["mode"], runner.NetworkNone)
-					if modes := sys.Builds[0].Attributes["mode"]; !slices.Contains(modes, mode) {
+					if modes, ok := systems.Literals(sys.Builds[0].Attributes["mode"]); ok && !slices.Contains(modes, mode) {
 						return fmt.Errorf("environment.systems.network: mode %s: this runner builds %s only", mode, strings.Join(modes, ", "))
 					}
 				}
@@ -165,7 +165,9 @@ func checkBuilds(l *runner.Launch, o runner.Offer) error {
 // buildsWords is what a runner builds of a system, as a refusal says it.
 func buildsWords(system string, builds systems.Ceiling) string {
 	if system == "network" && len(builds) == 1 {
-		return "it builds: " + strings.Join(builds[0].Attributes["mode"], ", ")
+		if modes, ok := systems.Literals(builds[0].Attributes["mode"]); ok {
+			return "it builds: " + strings.Join(modes, ", ")
+		}
 	}
 	return "its offer's `builds` says what it builds"
 }

@@ -65,7 +65,7 @@ func (s *Server) verseAskCreate(ctx context.Context, tk Task, req Request) Reply
 	if strings.TrimSpace(req.Ask) == "" {
 		return Reply{Refused: "a raise carries the ask"}
 	}
-	if why := s.refused(tk, req.Decision, task.Step{Name: task.StepVerseAskCreate, Fields: map[string]string{}}); why != "" {
+	if why := s.refused(tk, req.Decision, task.NewStep(task.StepVerseAskCreate, map[string]string{})); why != "" {
 		return Reply{Refused: why}
 	}
 	code, said, err := s.Services.Verse(ctx, tk.ID, http.MethodPost, "/asks", []byte(req.Ask))
@@ -133,7 +133,7 @@ func (s *Server) verseAskList(ctx context.Context, tk Task, req Request) Reply {
 // the runner's ceiling decide step, narrowed by q where it names one (`ask`); nil, with the reply
 // that says why, where they were not read.
 func (s *Server) ownersAsks(ctx context.Context, tk Task, req Request, step string, q url.Values) ([]entity.Entity, Reply) {
-	if why := s.refused(tk, req.Decision, task.Step{Name: step, Fields: map[string]string{}}); why != "" {
+	if why := s.refused(tk, req.Decision, task.NewStep(step, map[string]string{})); why != "" {
 		return nil, Reply{Refused: why}
 	}
 	path := "/asks"
@@ -235,7 +235,7 @@ func (s *Server) verseRouted(ctx context.Context, tk Task, req Request) Reply {
 		}
 		fields["at"] = at
 	}
-	if why := s.refused(tk, req.Decision, task.Step{Name: route.step, Fields: fields}); why != "" {
+	if why := s.refused(tk, req.Decision, task.NewStep(route.step, fields)); why != "" {
 		return Reply{Refused: why}
 	}
 	path := route.path
