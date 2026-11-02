@@ -937,13 +937,18 @@ func bindText(n entity.Payload) (string, bool) {
 }
 
 // bindingFor builds the template binding for an action: the fields of the payload its
-// references read (see refSource), plus $subject — the RESOLVED subject it is about.
+// references read (see refSource), plus $subject — the RESOLVED subject it is about — and its
+// parts, `value` and every path into it read from value, the subject's payload.
+//
+// value is its own argument because it is not always payload: for a completion hook payload is
+// the finished task's record, and value is the subject at the commit its rule fired at
+// (Engine.spawnSubjectValue). nil leaves `$subject.value` unbound.
 //
 // $subject is set LAST, deliberately: it is the one reserved binding, and a payload field
 // happening to be called "subject" must not shadow it. (It used to be set first and
 // overwritten, which is why a fact carrying a `subject` field of its own silently redirected
 // $subject; a producer that means the flow publishes `flow`, which is read as $flow.)
-func bindingFor(payload entity.Payload, subject entity.Ref) launch.Binding {
+func bindingFor(payload entity.Payload, subject entity.Ref, value entity.Payload) launch.Binding {
 	b := payloadBinding(payload)
 	b[refSubject] = subject.String()
 	// The parts, spelled as dotted keys, because a spawn's strings are NOT expanded by the
@@ -974,10 +979,10 @@ func bindingFor(payload entity.Payload, subject entity.Ref) launch.Binding {
 	// for an object-valued field — so `value` is bound the same way, and so is every path under
 	// it. `launch.expand` substitutes longest key first, which is what makes the deep path win
 	// over the shallow one and both over the bare `subject`.
-	if text, ok := bindText(payload); ok {
+	if text, ok := bindText(value); ok {
 		b[refSubject+"."+subjPartValue] = text
 	}
-	for path, v := range payloadPaths(payload) {
+	for path, v := range payloadPaths(value) {
 		if text, ok := bindText(v); ok {
 			b[refSubject+"."+subjPartValue+"."+path] = text
 		}

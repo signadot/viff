@@ -1096,7 +1096,38 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 	if a.Spawn == nil {
 		return nil, nil
 	}
-	return e.launchSpawn(a, chain, subj, root, oc.commit.Rev, oc.passed)
+	return e.launchSpawn(a, chain, subj, root, e.spawnSubjectValue(a.Spawn, chain, oc, subj, root, src),
+		oc.commit.Rev, oc.passed)
+}
+
+// spawnSubjectValue is what `$subject.value` binds to in a spawn's strings: the subject's payload,
+// as the same action's patch reads it.
+//
+// For a rule's own firing that is root, the subject's payload, which the binding has always read.
+// For a COMPLETION HOOK root is the finished task's record, and binding `$subject.value` from it
+// put that record where the subject belongs: `vars: {ROUND: $subject.value.round}` reached the
+// script as `autonomy: … chain: step … trigger: step` followed by `.round`. A hook's patch reads
+// the subject at the commit its rule fired at (subjectFor, subjectValueAt), and its spawn reads it
+// there too; the task's own facts stay where they are, flat, as `$status`, `$result`, `$data`
+// and `$err`.
+//
+// Read only when the spawn names it, since for a hook it is a read at a revision. One that cannot
+// be read — a task nothing in the charter started has no commit to read at — leaves it unbound,
+// and the launch refuses on the reference by name.
+func (e *Engine) spawnSubjectValue(spec *launch.Spec, chain string, oc occasion, subj entity.Ref,
+	root entity.Payload, src refSource) entity.Payload {
+	if src != fromCause {
+		return root
+	}
+	if !spec.Mentions(refSubject + "." + subjPartValue) {
+		return nil
+	}
+	v, err := e.subjectValueAt(oc, subj)
+	if err != nil {
+		e.tracef("trigger %s: %v; the spawn's $%s.%s is unbound", chain, err, refSubject, subjPartValue)
+		return nil
+	}
+	return v
 }
 
 // derivedWrite is one entity an action derives, resolved: where it goes and what it holds.
@@ -1203,18 +1234,19 @@ func (a Action) resolveDerives(chain string, oc occasion, subj entity.Ref, e *En
 // (a suspension's) re-enters here when it is released.
 //
 // root is what $references read (the cause's payload for a hook, the subject's own
-// otherwise); occurrence is the store revision this run is about, 0 when nothing caused it;
-// passed is the gates the firing passed, nil for a launch no firing's gates admitted.
-func (e *Engine) launchSpawn(a Action, chain string, subj entity.Ref, root entity.Payload,
+// otherwise); value is what $subject.value reads (spawnSubjectValue); occurrence is the store
+// revision this run is about, 0 when nothing caused it; passed is the gates the firing passed,
+// nil for a launch no firing's gates admitted.
+func (e *Engine) launchSpawn(a Action, chain string, subj entity.Ref, root, value entity.Payload,
 	occurrence int64, passed []launch.Passed) (task.Handle, error) {
 	// A SUSPENDED SUBJECT STARTS NOTHING. A hook's writes and derives have landed by now —
 	// recording is not progress — and what it would start is parked here. The lift starts it.
 	if held := e.settled(mirror.TriggerOf(chain), subj); len(held) > 0 {
-		e.park(parkedLaunch{a: a, chain: chain, subj: subj, root: root, occurrence: occurrence, passed: passed})
+		e.park(parkedLaunch{a: a, chain: chain, subj: subj, root: root, value: value, occurrence: occurrence, passed: passed})
 		e.tracef("%s: %s is suspended (%s); its launch is parked", chain, subj, strings.Join(held, ", "))
 		return nil, nil
 	}
-	return e.launch(a, chain, subj, root, occurrence, passed)
+	return e.launch(a, chain, subj, root, value, occurrence, passed)
 }
 
 // ownerSettle is how long a firing spawning `as: subject` waits for the subject's owner record to
@@ -1222,9 +1254,9 @@ func (e *Engine) launchSpawn(a Action, chain string, subj entity.Ref, root entit
 const ownerSettle = 250 * time.Millisecond
 
 // launch is launchSpawn past the suspension: what a parked launch re-enters when it is released.
-func (e *Engine) launch(a Action, chain string, subj entity.Ref, root entity.Payload,
+func (e *Engine) launch(a Action, chain string, subj entity.Ref, root, value entity.Payload,
 	occurrence int64, passed []launch.Passed) (task.Handle, error) {
-	b := bindingFor(root, subj)
+	b := bindingFor(root, subj, value)
 	spec := a.Spawn.Bind(b)
 	// What the firing's gates settled, the engine's to say and nobody else's: it is what a
 	// credential vouches for, so a value a charter wrote there does not survive to it.

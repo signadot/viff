@@ -840,7 +840,8 @@ func TestTheCausalChainCrossesTheLevel(t *testing.T) {
 // bindingFor publishes them as keys. Forgetting that does not error: `$subject.name` substitutes
 // the bare key and leaves the text "demo.pr.1.name", which is why this is pinned.
 func TestSubjectPartsBindInSpawnStrings(t *testing.T) {
-	b := bindingFor(entity.Obj{"stage": "open"}.Payload(), entity.RefAt("demo", "pr", "1"))
+	payload := entity.Obj{"stage": "open"}.Payload()
+	b := bindingFor(payload, entity.RefAt("demo", "pr", "1"), payload)
 	spec := launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject.name at $subject.ref ($subject) at $stage"}
 	got := spec.Bind(b).Prompt
 	if want := `review 1 at demo.pr."1" (demo.pr."1") at open`; got != want {

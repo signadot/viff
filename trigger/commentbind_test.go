@@ -33,7 +33,7 @@ func TestACommentedPayloadBindsItsFields(t *testing.T) {
 			"git": {{Attributes: map[string]string{"repo": "$subject.value.repo"}}},
 		}},
 	}
-	b := bindingFor(payload, entity.RefAt("demo", "work", "1"))
+	b := bindingFor(payload, entity.RefAt("demo", "work", "1"), payload)
 	got := spec.Bind(b)
 	if got.Prompt != "flat=signadot/verse deep=done" {
 		t.Errorf("prompt = %q", got.Prompt)

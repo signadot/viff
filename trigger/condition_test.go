@@ -120,7 +120,7 @@ func TestSubjectBindingNotShadowedByPayloadField(t *testing.T) {
 		Op:  entity.Set,
 		To:  entity.Obj{"subject": `change.pr."42"`, "flow": `change.pr."42"`}.Payload(),
 	}
-	b := bindingFor(ev.To, ev.Ref)
+	b := bindingFor(ev.To, ev.Ref, ev.To)
 	if got := b["subject"]; got != ev.Ref.String() {
 		t.Fatalf("$subject = %q; a payload field named \"subject\" shadowed the reserved binding "+
 			"(want %q)", got, ev.Ref)

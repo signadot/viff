@@ -593,7 +593,7 @@ func TestLedgerReachesThePrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 	// What the NEXT rule's spawn would interpolate.
-	b := bindingFor(got.Payload, subj)
+	b := bindingFor(got.Payload, subj, got.Payload)
 	if !strings.Contains(b["outstanding"], "entity.nodeToPayload") {
 		t.Errorf("$outstanding does not carry the open finding:\n%s", b["outstanding"])
 	}

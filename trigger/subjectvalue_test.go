@@ -74,7 +74,8 @@ func TestSubjectValueResolvesInAString(t *testing.T) {
 // when the field it names holds an object, rather than a second opinion about text form.
 func TestSubjectValueOnItsOwnIsThePayload(t *testing.T) {
 	subj := entity.RefAt("demo", "pr", "1")
-	b := bindingFor(entity.Obj{"stage": "open", "who": map[string]any{"by": "ana"}}.Payload(), subj)
+	payload := entity.Obj{"stage": "open", "who": map[string]any{"by": "ana"}}.Payload()
+	b := bindingFor(payload, subj, payload)
 
 	whole := b["subject.value"]
 	for _, want := range []string{"stage: open", "by: ana"} {
@@ -92,10 +93,11 @@ func TestSubjectValueOnItsOwnIsThePayload(t *testing.T) {
 // one of them would silently win. Its top-level flat binding is untouched.
 func TestADottedFieldNameIsNotBoundUnderValue(t *testing.T) {
 	subj := entity.RefAt("demo", "pr", "1")
-	b := bindingFor(entity.Obj{
+	payload := entity.Obj{
 		"v1.2": map[string]any{"tag": "x"},
 		"ok":   "yes",
-	}.Payload(), subj)
+	}.Payload()
+	b := bindingFor(payload, subj, payload)
 
 	if _, found := b["subject.value.v1.2"]; found {
 		t.Error("a dotted field name was bound under value, where it cannot be told apart from a path")
