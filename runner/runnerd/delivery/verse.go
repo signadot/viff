@@ -14,6 +14,7 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
 )
 
@@ -247,20 +248,22 @@ func (s *Server) verseRouted(ctx context.Context, tk Task, req Request) Reply {
 		return Reply{Refused: "a removal names what it removes"}
 	}
 	fields := map[string]string{}
-	var value *ir.Node
+	// The address a data step names, the root where it names none: what a row's `path` bounds.
+	// One that does not read is refused here, so no step reaches a row with an address its
+	// pattern cannot see.
+	var addr, value *ir.Node
 	switch req.Op {
 	case OpVerseDataGet, OpVerseDataRm:
-		// The address read or removed, as the query names it: what a row's `path` bounds.
-		if at := q.Get("at"); at != "" {
-			fields["path"] = at
+		if addr, err = systems.Address(q.Get("at")); err != nil {
+			return Reply{Refused: err.Error()}
 		}
 	case OpVerseDataPut:
 		var put api.PutEntity
 		if err := codec.Unmarshal([]byte(req.Body), &put, codec.Tony); err != nil {
 			return Reply{Refused: "the write does not read: " + err.Error()}
 		}
-		if put.At != "" {
-			fields["path"] = put.At
+		if addr, err = systems.Address(put.At); err != nil {
+			return Reply{Refused: err.Error()}
 		}
 		value = put.Payload
 	}
@@ -278,6 +281,9 @@ func (s *Server) verseRouted(ctx context.Context, tk Task, req Request) Reply {
 		fields["at"] = at
 	}
 	st := task.NewStep(route.step, fields)
+	if addr != nil {
+		st = st.With("path", addr)
+	}
 	if value != nil {
 		st = st.With("value", value)
 	}

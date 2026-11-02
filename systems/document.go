@@ -351,12 +351,8 @@ func (f Field) Value(s string) *ir.Node {
 			return ir.FromInt(n)
 		}
 	case FormPath:
-		if segs, err := pathPattern(ir.FromString(s)); err == nil {
-			names := make([]*ir.Node, len(segs))
-			for i, seg := range segs {
-				names[i] = ir.FromString(seg.String)
-			}
-			return ir.FromSlice(names)
+		if addr, err := Address(s); err == nil {
+			return addr
 		}
 	case FormRepo:
 		return ir.FromString(Canonical(f.Form, s))

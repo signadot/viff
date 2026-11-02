@@ -72,6 +72,19 @@ autonomy:
 The first row refuses a raise with a row that raises a further ask. The second lets writes under
 `scratch` go unasked, and the third asks before every other write or removal.
 
+A row on `path` bounds the address the step names, and nothing more. A read of an address
+returns everything under it, so a read of the root returns all of verse, and a write at an
+address can change what lies under it. A row that denies `[secrets]` therefore does not stop a
+read of the root. To keep a task within part of verse, allow where it may go and let the last
+row refuse or ask about the rest, as the rows above do for writes:
+
+```tony
+- {match: {system: verse, verb: data-get, path: [scratch]}, then: allow}
+- {match: {system: verse, verb: data-get}, then: deny}
+```
+
+An address the runner cannot read is refused before any row decides it.
+
 A task reads the charters with `verse-charter-get`, asks whether its own would install with
 `verse-charter-check`, and installs and removes them with `verse-charter-install` and
 `-remove`, all as the person. A charter the task installs stands after the task ends, and every

@@ -518,6 +518,34 @@ func pathPattern(n *ir.Node) ([]*ir.Node, error) {
 	return nil, fmt.Errorf("an address is a list of segments or a path (play.issues.*)")
 }
 
+// Address is a kinded path as a step carries it in a field of the form path: its segments in
+// order, a name as itself and any other segment (`(b)`, `[0]`) as its own text, so every address
+// verse reads is one a row's pattern sees, and lies under the names above it. The root, "", is
+// no segments. A path that does not read is an error, for the runner to refuse the step on.
+func Address(s string) (*ir.Node, error) {
+	if s == "" {
+		return ir.FromSlice([]*ir.Node{}), nil
+	}
+	kp, err := kpath.Parse(s)
+	if err != nil {
+		return nil, fmt.Errorf("the address %q does not read: %v", s, err)
+	}
+	var segs []*ir.Node
+	for p := kp; p != nil; p = p.Next {
+		switch {
+		case p.Field != nil:
+			segs = append(segs, ir.FromString(*p.Field))
+		case p.FieldAll:
+			segs = append(segs, ir.FromString("*"))
+		default:
+			one := *p
+			one.Next = nil
+			segs = append(segs, ir.FromString(one.String()))
+		}
+	}
+	return ir.FromSlice(segs), nil
+}
+
 // pathValue is an address as a step carries it: its names, in order.
 func pathValue(n *ir.Node) ([]string, bool) {
 	n = ir.Uncomment(n)
@@ -621,8 +649,18 @@ func pathMeets(a, b *ir.Node) bool {
 
 // ── words ───────────────────────────────────────────────────────────────────────────────────
 
-// PathText is an address a step carries in its one spelling: its names joined by `.`.
-func PathText(names []string) string { return strings.Join(names, ".") }
+// PathText is an address a step carries in its one spelling: its names joined by `.`, and a
+// segment that is no name (`(b)`, `[0]`) after the one before it, as a kinded path writes it.
+func PathText(names []string) string {
+	var b strings.Builder
+	for i, n := range names {
+		if i > 0 && !strings.HasPrefix(n, "(") && !strings.HasPrefix(n, "[") && !strings.HasPrefix(n, "{") {
+			b.WriteByte('.')
+		}
+		b.WriteString(n)
+	}
+	return b.String()
+}
 
 // Plain is a pattern as its author wrote it, less the tags a parser attaches to record how it
 // was spelled (`!bracket`, `!literal`), at every depth: an untagged pattern is then a literal,
