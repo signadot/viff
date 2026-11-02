@@ -216,6 +216,39 @@ type Passed struct {
 // Binding is the variables a firing binds: `subject`, the subject's fields, `owner`, …
 type Binding map[string]string
 
+// compositeMark is the prefix of the entry a Binding keeps for a key whose value is an object or
+// a list (MarkComposite). No field name starts with a NUL, and expand reads no key that does.
+const compositeMark = "\x00composite\x00"
+
+// MarkComposite records that key's value is an OBJECT OR A LIST, rendered as tony, rather than a
+// leaf. It decides what a reference going on past the key is (expandRefs): past a composite it is
+// a path the binding does not hold, and refused; past a leaf it is the leaf's text and then prose,
+// `$file.go`.
+func (b Binding) MarkComposite(key string) { b[compositeMark+key] = "" }
+
+// Keys is the keys the binding binds, without the entries MarkComposite keeps.
+func (b Binding) Keys() []string {
+	out := make([]string, 0, len(b))
+	for k := range b {
+		if !strings.HasPrefix(k, compositeMark) {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// Unbind removes key, and its composite mark with it.
+func (b Binding) Unbind(key string) {
+	delete(b, key)
+	delete(b, compositeMark+key)
+}
+
+// composite reports whether key was marked by MarkComposite.
+func (b Binding) composite(key string) bool {
+	_, ok := b[compositeMark+key]
+	return ok
+}
+
 // Bind expands the template against a binding and returns the concrete spec. Pure: the
 // receiver is not changed, and nothing in the result aliases it. Engine-owned fields (Chain,
 // Occurrence, ActsFor, Passed) are not carried: the engine sets them.
@@ -375,7 +408,8 @@ func Expand(s string, b Binding) string { return expand(s, b) }
 
 // Unbound is every reference in the fields Bind expands that reaches PAST what the binding
 // holds, each as `field: $reference`: `$subject.value.never` where the binding has
-// `subject.value` and no `subject.value.never`, `$stage.never` where it has `stage`. Bind leaves
+// `subject.value`, an object, and no `subject.value.never`; `$changes.never` where `changes` is
+// one. Past a leaf is prose, and not here (expandRefs). Bind leaves
 // such a reference as written; a caller that must not launch on one (a firing) refuses with
 // these. A bare `$name` the binding lacks is not here: in prose or a shell value it is as
 // likely `$HOME` or `$5` as a reference, and it stays as written (see expand).
@@ -448,21 +482,19 @@ func expand(s string, b Binding) string {
 // could be expanded as though the charter had written it. Now each `$` is read once, against
 // the charter's text only.
 //
-// A reference REACHES PAST its key when the key is followed by `.` and a letter or `_` (a field
-// below it), or by `[` (an index): `$stage.never`, `$subject.value.items[0]`. That is a reference
-// to something the binding does not hold, and it is left whole rather than half-substituted. A
-// key followed by anything else ends there — `$stage.` at the end of a sentence, `$subjects` —
-// as it always has.
+// A reference REACHES PAST its key when the key's value is an object or a list (MarkComposite)
+// and the key is followed by `.` and a letter or `_` (a field below it), or by `[` (an index):
+// `$subject.value.never`, `$changes.items[0]`. Every path the payload holds is bound, so that is
+// a reference to something the binding does not hold, and it is left whole rather than
+// half-substituted. After a LEAF the same characters are prose and not a path — `$file.go` is the
+// file's name and `.go` — so the leaf is substituted and the rest stays as written. A key followed
+// by anything else ends there — `$stage.` at the end of a sentence, `$subjects` — as it always
+// has.
 func expandRefs(s string, b Binding) (string, []string) {
 	if s == "" || !strings.Contains(s, "$") {
 		return s, nil
 	}
-	keys := make([]string, 0, len(b))
-	for k := range b {
-		if k != "" {
-			keys = append(keys, k)
-		}
-	}
+	keys := slices.DeleteFunc(b.Keys(), func(k string) bool { return k == "" })
 	sort.Slice(keys, func(i, j int) bool { return len(keys[i]) > len(keys[j]) })
 	var out strings.Builder
 	var past []string
@@ -485,7 +517,7 @@ func expandRefs(s string, b Binding) (string, []string) {
 			continue
 		}
 		end := i + 1 + len(key)
-		if to := refEnd(s, end); to > end {
+		if to := refEnd(s, end); to > end && b.composite(key) {
 			past = append(past, s[i:to])
 			out.WriteString(s[i:to])
 			i = to

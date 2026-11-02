@@ -9,23 +9,39 @@ import (
 	"github.com/signadot/verse/systems"
 )
 
-// A REFERENCE THAT REACHES PAST A KEY IS NOT HALF-SUBSTITUTED. `$subject.value.never` on a
-// subject without `never` matched the shorter `subject.value` and kept the rest of its own
-// spelling, so the text read as the whole value followed by `.never`. It is left whole now, and
-// Unbound names it, which is what a firing refuses on.
+// A REFERENCE THAT REACHES PAST AN OBJECT OR A LIST IS NOT HALF-SUBSTITUTED.
+// `$subject.value.never` on a subject without `never` matched the shorter `subject.value` and
+// kept the rest of its own spelling, so the text read as the whole value followed by `.never`.
+// It is left whole now, and Unbound names it, which is what a firing refuses on.
 func TestAReferencePastAKeyIsLeftWholeAndNamed(t *testing.T) {
-	b := Binding{"subject": "demo.pr.1", "subject.value": "stage: absent", "stage": "absent"}
-	s := Spec{Prompt: "never=[$never] deep=[$subject.value.never] flat=[$stage.never] idx=[$stage[0]] ok=[$stage]."}
+	b := Binding{"subject": "demo.pr.1", "subject.value": "stage: absent", "changes": "[a]", "stage": "absent"}
+	b.MarkComposite("subject")
+	b.MarkComposite("subject.value")
+	b.MarkComposite("changes")
+	s := Spec{Prompt: "never=[$never] deep=[$subject.value.never] flat=[$changes.never] idx=[$changes[0]] part=[$subject.never] ok=[$stage]."}
 
 	got := s.Bind(b).Prompt
-	want := "never=[$never] deep=[$subject.value.never] flat=[$stage.never] idx=[$stage[0]] ok=[absent]."
+	want := "never=[$never] deep=[$subject.value.never] flat=[$changes.never] idx=[$changes[0]] part=[$subject.never] ok=[absent]."
 	if got != want {
 		t.Fatalf("prompt =\n  %q\nwant\n  %q", got, want)
 	}
 	gotRefs := s.Unbound(b)
-	wantRefs := []string{"prompt: $stage.never", "prompt: $stage[0]", "prompt: $subject.value.never"}
+	wantRefs := []string{"prompt: $changes.never", "prompt: $changes[0]", "prompt: $subject.never", "prompt: $subject.value.never"}
 	if !slices.Equal(gotRefs, wantRefs) {
 		t.Fatalf("Unbound = %q, want %q — a bare $never stays as written and is not named", gotRefs, wantRefs)
+	}
+}
+
+// PAST A LEAF IS PROSE: `$file.go` is the file's name and `.go`, and `$stage[0]` the stage and
+// a bracket. A leaf has no path under it, so what follows is not a reference to one.
+func TestWhatFollowsALeafIsProse(t *testing.T) {
+	b := Binding{"file": "main", "stage": "open"}
+	s := Spec{Prompt: "edit $file.go at $stage[0] and $stage.never"}
+	if refs := s.Unbound(b); len(refs) != 0 {
+		t.Fatalf("Unbound = %q, want none", refs)
+	}
+	if got, want := s.Bind(b).Prompt, "edit main.go at open[0] and open.never"; got != want {
+		t.Fatalf("prompt = %q, want %q", got, want)
 	}
 }
 
@@ -67,7 +83,9 @@ func TestUnboundReadsWhatBindExpands(t *testing.T) {
 			},
 		},
 	}
-	got := s.Unbound(Binding{"a": "A"})
+	composite := Binding{"a": "A"}
+	composite.MarkComposite("a")
+	got := s.Unbound(composite)
 	want := []string{
 		"agent.model: $a.b", "agent.name: $a.b", "environment.systems.git[0].repo: $a.b",
 		"environment.vars.V: $a.b", "prompt: $a.b", "subject: $a.b",

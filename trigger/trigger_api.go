@@ -892,19 +892,29 @@ func payloadBinding(payload entity.Payload) launch.Binding {
 	// bound and every `$field` fell back to the shorter key's text (a git block's `repo` came out
 	// as the whole record followed by `.repo`). Fields unwraps, as the match does.
 	for k, v := range entity.Fields(payload) {
-		if text, ok := bindText(v); ok {
-			b[k] = text
-		}
+		bindNode(b, k, v)
 	}
 	// AND EVERY PATH UNDER A FIELD, as under `$subject.value`: `$data.severity` on a payload
 	// `{data: {severity: high}}` is `high`, as a patch resolves it at any depth. Bound flat only,
 	// it was refused as not present, which it was.
 	for path, v := range payloadPaths(payload) {
-		if text, ok := bindText(v); ok {
-			b[path] = text
-		}
+		bindNode(b, path, v)
 	}
 	return b
+}
+
+// bindNode binds key to n's text (bindText), and marks it composite where n is an object or a
+// list, so a reference going on past it is a path the binding does not hold rather than prose
+// (launch.Binding.MarkComposite).
+func bindNode(b launch.Binding, key string, n entity.Payload) {
+	text, ok := bindText(n)
+	if !ok {
+		return
+	}
+	b[key] = text
+	if u := ir.Uncomment(n); u != nil && (u.Type == ir.ObjectType || u.Type == ir.ArrayType) {
+		b.MarkComposite(key)
+	}
 }
 
 // bindText renders one field for a spawn's flat substitution: a leaf as its own text, and a
@@ -961,12 +971,14 @@ func bindingFor(payload entity.Payload, subject entity.Ref, value entity.Payload
 	// A payload field called `subject`, and every path under it, is shadowed whole: a
 	// `subject.value` from the payload must not stand in for the subject's value where that is
 	// left unbound.
-	for k := range b {
+	for _, k := range b.Keys() {
 		if k == refSubject || strings.HasPrefix(k, refSubject+".") {
-			delete(b, k)
+			b.Unbind(k)
 		}
 	}
 	b[refSubject] = subject.String()
+	// A record, though it renders as its address: `$subject.never` names a part it does not have.
+	b.MarkComposite(refSubject)
 	// The parts, spelled as dotted keys, because a spawn's strings are NOT expanded by the
 	// reference machinery — launch.Bind is a flat ReplaceAll over this map. Without them
 	// `task: "approve $subject.name"` would substitute the bare key and leave the text
@@ -995,13 +1007,9 @@ func bindingFor(payload entity.Payload, subject entity.Ref, value entity.Payload
 	// for an object-valued field — so `value` is bound the same way, and so is every path under
 	// it. `launch.expand` substitutes longest key first, which is what makes the deep path win
 	// over the shallow one and both over the bare `subject`.
-	if text, ok := bindText(value); ok {
-		b[refSubject+"."+subjPartValue] = text
-	}
+	bindNode(b, refSubject+"."+subjPartValue, value)
 	for path, v := range payloadPaths(value) {
-		if text, ok := bindText(v); ok {
-			b[refSubject+"."+subjPartValue+"."+path] = text
-		}
+		bindNode(b, refSubject+"."+subjPartValue+"."+path, v)
 	}
 	return b
 }

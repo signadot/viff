@@ -27,7 +27,7 @@ import (
 func TestASpawnNamingAnAbsentPathIsRefusedAsAFailedTask(t *testing.T) {
 	for _, c := range []struct{ name, prompt, ref string }{
 		{"under subject.value", "never=[$never] deep=[$subject.value.never]", "$subject.value.never"},
-		{"under a top-level field", "flat=[$stage.never]", "$stage.never"},
+		{"under a top-level field", "flat=[$changes.never]", "$changes.never"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			store := entitytest.Store(t)
@@ -63,7 +63,7 @@ func TestASpawnNamingAnAbsentPathIsRefusedAsAFailedTask(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			eng.Start(ctx)
-			entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
+			entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open", "changes": map[string]any{"a": 1}}.Payload())
 
 			waitField(t, store, prRef("1"), "stage", "failed")
 			e, _, _ := store.Get(prRef("1"))
@@ -94,7 +94,8 @@ func TestASpawnNamingAnAbsentPathIsRefusedAsAFailedTask(t *testing.T) {
 }
 
 // A BARE `$name` NOTHING BINDS IS LEFT AS WRITTEN, and the spawn launches: in prose or a shell
-// value it is as likely `$HOME` or `$5` as a reference, so it cannot be refused on.
+// value it is as likely `$HOME` or `$5` as a reference, so it cannot be refused on. And what
+// follows a field holding a leaf is prose: `$stage.go` is the stage and `.go`.
 func TestASpawnNamingAnAbsentTopLevelFieldLaunchesWithItAsWritten(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
@@ -109,7 +110,7 @@ func TestASpawnNamingAnAbsentTopLevelFieldLaunchesWithItAsWritten(t *testing.T) 
     spawn:
       agent: {name: verse}
       autonomy: [{then: allow}]
-      prompt: "never=[$never] home=[$HOME] stage=[$stage]"
+      prompt: "never=[$never] home=[$HOME] stage=[$stage] file=[$stage.go]"
 `)); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
@@ -120,7 +121,7 @@ func TestASpawnNamingAnAbsentTopLevelFieldLaunchesWithItAsWritten(t *testing.T) 
 
 	select {
 	case spec := <-specs:
-		if want := "never=[$never] home=[$HOME] stage=[open]"; spec.Prompt != want {
+		if want := "never=[$never] home=[$HOME] stage=[open] file=[open.go]"; spec.Prompt != want {
 			t.Fatalf("prompt = %q, want %q", spec.Prompt, want)
 		}
 	case <-time.After(5 * time.Second):

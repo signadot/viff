@@ -467,9 +467,11 @@ hook's patch, and not the finished task's record.** The task's own facts are fla
 `$result`, `$data`, `$err`.
 
 **A reference that reaches past what is bound refuses the launch**, as a patch refuses an absent
-reference. That is a binding followed by `.` and a field, or by `[`, that the payload does not
-hold: `$subject.value.never`, or `$stage.never` where `stage` holds a string. It is never replaced
-by the shorter binding's text with the rest of the reference after it. The refusal is a failed
+reference. That is a binding that holds an object or a list, followed by `.` and a field, or by
+`[`, that the payload does not hold: `$subject.value.never`, or `$changes.never` where `changes`
+is an object without `never`. Every path that the payload holds is bound, so this is a path that
+is absent. It is never replaced by the shorter binding's text with the rest of the reference
+after it. The refusal is a failed
 task: the action's patch has already landed, and its `onFailed` runs with `$err` naming the
 reference, so it can write the subject down as failed:
 
@@ -491,7 +493,10 @@ hook does.
 
 A bare `$name` that nothing binds is left as written, and the spawn launches. In prose or in a
 shell value it is as likely `$HOME` or `$5` as a binding. A binding followed by anything else
-ends there: `$stage.` at the end of a sentence is the stage and a full stop.
+ends there: `$stage.` at the end of a sentence is the stage and a full stop. What follows a
+binding that holds a leaf is prose, because a leaf has no path under it. So `$file.go` where
+`file` is `main` renders as `main.go`, and `$stage.never` where `stage` is `open` renders as
+`open.never`.
 
 A completion hook's spawn for a task that the charter did not start has no commit to read at, so
 there `$subject.value` refuses the launch by name.
