@@ -461,6 +461,10 @@ binds as well, as a patch resolves it: `$data.severity` on `{data: {severity: hi
 payload, and every path into it binds as well, `$subject.value.handoff.summary`. A payload
 written with a head comment binds as it would without one.
 
+The strings are expanded in one pass, over what the charter wrote. Text that a binding brings in
+is not expanded again: a subject whose title is `costs $owner` puts `costs $owner` in the prompt,
+and the `$owner` in it is not replaced.
+
 `$subject.value` in a spawn is what it is in a patch. In a rule's own firing it is the subject.
 **In a completion hook's spawn it is the subject at the commit its rule fired at, as in the
 hook's patch, and not the finished task's record.** The task's own facts are flat: `$status`,
