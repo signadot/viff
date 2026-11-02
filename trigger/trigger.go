@@ -693,7 +693,8 @@ func firingWithin(t Trigger) [][]string {
 // shadow it. A Patch resolves the same names as a kpath deref, at any depth and keeping the
 // value's type ($result, $verse.review.step, $result.findings[0].id) — see deref.go, which
 // is what lets a task's output become a fact the next `when` can match rather than only
-// text in the next prompt. A Spawn's strings keep the older flat substitution (launch.Bind).
+// text in the next prompt. A Spawn's strings are bound as text instead (launch.Bind): one pass,
+// the longest key that matches at each `$`, with every path under a field bound as its own key.
 //
 //tony:schemagen=verse-action,notag,comment=Doc,lineComment=Note
 type Action struct {

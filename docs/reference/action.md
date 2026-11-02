@@ -458,8 +458,8 @@ attributes of its systems, a binding is replaced by its text. A field that holds
 text, `3` and not `"3"`; a field that holds an object or a list is tony. Every path under a field
 binds as well, as a patch resolves it: `$data.severity` on `{data: {severity: high}}` is `high`.
 `$subject`, `.ref` and `.name` bind as in the table. `.value` binds as the subject's whole
-payload, and every path into it binds as well, `$subject.value.handoff.summary`. A field written
-with a head comment binds as it would without one.
+payload, and every path into it binds as well, `$subject.value.handoff.summary`. A payload
+written with a head comment binds as it would without one.
 
 `$subject.value` in a spawn is what it is in a patch. In a rule's own firing it is the subject.
 **In a completion hook's spawn it is the subject at the commit its rule fired at, as in the

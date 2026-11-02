@@ -980,12 +980,14 @@ func bindingFor(payload entity.Payload, subject entity.Ref, value entity.Payload
 	// A record, though it renders as its address: `$subject.never` names a part it does not have.
 	b.MarkComposite(refSubject)
 	// The parts, spelled as dotted keys, because a spawn's strings are NOT expanded by the
-	// reference machinery — launch.Bind is a flat ReplaceAll over this map. Without them
-	// `task: "approve $subject.name"` would substitute the bare key and leave the text
-	// "gh.issue.1.name": wrong, and silently so, which is the worst way for a template to fail.
+	// reference machinery: launch.Bind reads this map as text, in one pass, taking at each `$`
+	// the longest key that matches there (launch.expandRefs). Without them
+	// `task: "approve $subject.name"` would match the bare `subject`, which is marked a record,
+	// and be refused as a part it does not hold.
 	//
-	// launch.expand sorts its keys longest-first, so the dotted key wins over the bare one.
-	// That sort was written for an unrelated reason and is what makes this work at all.
+	// The longest key wins, so the dotted key is read before the bare one. A reference that goes
+	// on past a key holding an object or a list is a path this map does not hold, and launch
+	// leaves it whole and names it (Spec.Unbound) rather than rendering the shorter key's text.
 	//
 	// `commit` is absent because a spawn is not where provenance belongs and a firing may have
 	// none.
@@ -1005,8 +1007,8 @@ func bindingFor(payload entity.Payload, subject entity.Ref, value entity.Payload
 	// It was left out on the argument that a payload has no text form. That stopped being true
 	// when bindText learned to render a composite as tony, which is what `$stage` already does
 	// for an object-valued field — so `value` is bound the same way, and so is every path under
-	// it. `launch.expand` substitutes longest key first, which is what makes the deep path win
-	// over the shallow one and both over the bare `subject`.
+	// it. launch takes the longest key that matches at each `$`, which is what makes the deep
+	// path win over the shallow one and both over the bare `subject`.
 	bindNode(b, refSubject+"."+subjPartValue, value)
 	for path, v := range payloadPaths(value) {
 		bindNode(b, refSubject+"."+subjPartValue+"."+path, v)
