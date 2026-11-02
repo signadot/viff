@@ -1206,14 +1206,9 @@ func (s *Ask) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["onSilence"] = ir.FromString(string(s.OnSilence))
 	}
 
-	// Field: Then (optional)
-	if s.Then != nil {
-		irMap["then"] = s.Then
-	}
-
-	// Field: Else (optional)
-	if s.Else != nil {
-		irMap["else"] = s.Else
+	// Field: On (optional)
+	if s.On != nil {
+		irMap["on"] = s.On
 	}
 
 	// Field: About
@@ -1319,17 +1314,11 @@ func (s *Ask) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "onSilence", fieldNodeUnwrapped.Type)
 			}
 			s.OnSilence = string(fieldNodeUnwrapped.String)
-		case "then":
+		case "on":
 			if gomap.GetUnmapComments(opts...) {
-				s.Then = fieldNode
+				s.On = fieldNode
 			} else {
-				s.Then = fieldNodeUnwrapped
-			}
-		case "else":
-			if gomap.GetUnmapComments(opts...) {
-				s.Else = fieldNode
-			} else {
-				s.Else = fieldNodeUnwrapped
+				s.On = fieldNodeUnwrapped
 			}
 		case "about":
 			// Field: About
@@ -1898,14 +1887,9 @@ func (s *AskChange) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["to"] = ir.FromSlice(slice)
 	}
 
-	// Field: Then (optional)
-	if s.Then != nil {
-		irMap["then"] = s.Then
-	}
-
-	// Field: Else (optional)
-	if s.Else != nil {
-		irMap["else"] = s.Else
+	// Field: On (optional)
+	if s.On != nil {
+		irMap["on"] = s.On
 	}
 
 	return ir.FromMap(irMap), nil
@@ -1976,17 +1960,11 @@ func (s *AskChange) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			} else {
 				return fmt.Errorf("%s: expected array, got %v", "field \"to\"", fieldNodeUnwrapped.Type)
 			}
-		case "then":
+		case "on":
 			if gomap.GetUnmapComments(opts...) {
-				s.Then = fieldNode
+				s.On = fieldNode
 			} else {
-				s.Then = fieldNodeUnwrapped
-			}
-		case "else":
-			if gomap.GetUnmapComments(opts...) {
-				s.Else = fieldNode
-			} else {
-				s.Else = fieldNodeUnwrapped
+				s.On = fieldNodeUnwrapped
 			}
 		default:
 			if gomap.IsStrict(opts...) {
@@ -2081,22 +2059,17 @@ func (s *AskRecord) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["onSilence"] = ir.FromString(string(s.OnSilence))
 	}
 
-	// Field: Then (optional)
-	if s.Then != nil {
-		node, err = s.Then.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
+	// Field: On
+	if len(s.On) > 0 {
+		slice := make([]*ir.Node, len(s.On))
+		for i, v := range s.On {
+			node, err = v.ToTonyIR(opts...)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert slice element %d: %w", i, err)
+			}
+			slice[i] = node
 		}
-		irMap["then"] = node
-	}
-
-	// Field: Else (optional)
-	if s.Else != nil {
-		node, err = s.Else.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
-		}
-		irMap["else"] = node
+		irMap["on"] = ir.FromSlice(slice)
 	}
 
 	// Field: Keep
@@ -2348,68 +2321,13 @@ func (s *AskRecord) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["followed"] = node
 	}
 
-	// Field: ThenTask
-	if s.ThenTask != "" {
-		irMap["then-task"] = ir.FromString(string(s.ThenTask))
-	}
-
-	// Field: ElseTask
-	if s.ElseTask != "" {
-		irMap["else-task"] = ir.FromString(string(s.ElseTask))
-	}
-
-	// Field: ThenFailed (optional)
-	if s.ThenFailed != nil {
-		node, err = s.ThenFailed.ToTonyIR(opts...)
+	// Field: Ran (optional)
+	if s.Ran != nil {
+		node, err = s.Ran.ToTonyIR(opts...)
 		if err != nil {
 			return nil, err
 		}
-		irMap["then-failed"] = node
-	}
-
-	// Field: ElseFailed (optional)
-	if s.ElseFailed != nil {
-		node, err = s.ElseFailed.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
-		}
-		irMap["else-failed"] = node
-	}
-
-	// Field: ThenAnswered (optional)
-	if s.ThenAnswered != nil {
-		node, err = s.ThenAnswered.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
-		}
-		irMap["then-answered"] = node
-	}
-
-	// Field: ElseAnswered (optional)
-	if s.ElseAnswered != nil {
-		node, err = s.ElseAnswered.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
-		}
-		irMap["else-answered"] = node
-	}
-
-	// Field: ThenAsked (optional)
-	if s.ThenAsked != nil {
-		node, err = s.ThenAsked.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
-		}
-		irMap["then-asked"] = node
-	}
-
-	// Field: ElseAsked (optional)
-	if s.ElseAsked != nil {
-		node, err = s.ElseAsked.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
-		}
-		irMap["else-asked"] = node
+		irMap["ran"] = node
 	}
 
 	return ir.FromMap(irMap), nil
@@ -2493,17 +2411,20 @@ func (s *AskRecord) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "onSilence", fieldNodeUnwrapped.Type)
 			}
 			s.OnSilence = string(fieldNodeUnwrapped.String)
-		case "then":
-			// Field: Then
-			s.Then = &AskFollow{}
-			if err := s.Then.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
-			}
-		case "else":
-			// Field: Else
-			s.Else = &AskFollow{}
-			if err := s.Else.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
+		case "on":
+			// Field: On
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]AskOn, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					elem := AskOn{}
+					if err := elem.FromTonyIR(v, opts...); err != nil {
+						return fmt.Errorf("failed to convert slice element %d: %w", i, err)
+					}
+					slice[i] = elem
+				}
+				s.On = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"on\"", fieldNodeUnwrapped.Type)
 			}
 		case "keep":
 			// Field: Keep
@@ -2812,52 +2733,10 @@ func (s *AskRecord) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if err := s.Followed.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
 			}
-		case "then-task":
-			// Field: ThenTask
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "then-task", fieldNodeUnwrapped.Type)
-			}
-			s.ThenTask = string(fieldNodeUnwrapped.String)
-		case "else-task":
-			// Field: ElseTask
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "else-task", fieldNodeUnwrapped.Type)
-			}
-			s.ElseTask = string(fieldNodeUnwrapped.String)
-		case "then-failed":
-			// Field: ThenFailed
-			s.ThenFailed = &AskFollowFailed{}
-			if err := s.ThenFailed.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
-			}
-		case "else-failed":
-			// Field: ElseFailed
-			s.ElseFailed = &AskFollowFailed{}
-			if err := s.ElseFailed.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
-			}
-		case "then-answered":
-			// Field: ThenAnswered
-			s.ThenAnswered = &AskFollowAnswered{}
-			if err := s.ThenAnswered.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
-			}
-		case "else-answered":
-			// Field: ElseAnswered
-			s.ElseAnswered = &AskFollowAnswered{}
-			if err := s.ElseAnswered.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
-			}
-		case "then-asked":
-			// Field: ThenAsked
-			s.ThenAsked = &AskFollowAsked{}
-			if err := s.ThenAsked.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
-			}
-		case "else-asked":
-			// Field: ElseAsked
-			s.ElseAsked = &AskFollowAsked{}
-			if err := s.ElseAsked.FromTonyIR(fieldNode, opts...); err != nil {
+		case "ran":
+			// Field: Ran
+			s.Ran = &AskRan{}
+			if err := s.Ran.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
 			}
 		default:
@@ -2953,22 +2832,17 @@ func (s *AskRow) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["onSilence"] = ir.FromString(string(s.OnSilence))
 	}
 
-	// Field: Then (optional)
-	if s.Then != nil {
-		node, err = s.Then.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
+	// Field: On
+	if len(s.On) > 0 {
+		slice := make([]*ir.Node, len(s.On))
+		for i, v := range s.On {
+			node, err = v.ToTonyIR(opts...)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert slice element %d: %w", i, err)
+			}
+			slice[i] = node
 		}
-		irMap["then"] = node
-	}
-
-	// Field: Else (optional)
-	if s.Else != nil {
-		node, err = s.Else.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
-		}
-		irMap["else"] = node
+		irMap["on"] = ir.FromSlice(slice)
 	}
 
 	// Field: Keep
@@ -3220,68 +3094,13 @@ func (s *AskRow) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["followed"] = node
 	}
 
-	// Field: ThenTask
-	if s.ThenTask != "" {
-		irMap["then-task"] = ir.FromString(string(s.ThenTask))
-	}
-
-	// Field: ElseTask
-	if s.ElseTask != "" {
-		irMap["else-task"] = ir.FromString(string(s.ElseTask))
-	}
-
-	// Field: ThenFailed (optional)
-	if s.ThenFailed != nil {
-		node, err = s.ThenFailed.ToTonyIR(opts...)
+	// Field: Ran (optional)
+	if s.Ran != nil {
+		node, err = s.Ran.ToTonyIR(opts...)
 		if err != nil {
 			return nil, err
 		}
-		irMap["then-failed"] = node
-	}
-
-	// Field: ElseFailed (optional)
-	if s.ElseFailed != nil {
-		node, err = s.ElseFailed.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
-		}
-		irMap["else-failed"] = node
-	}
-
-	// Field: ThenAnswered (optional)
-	if s.ThenAnswered != nil {
-		node, err = s.ThenAnswered.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
-		}
-		irMap["then-answered"] = node
-	}
-
-	// Field: ElseAnswered (optional)
-	if s.ElseAnswered != nil {
-		node, err = s.ElseAnswered.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
-		}
-		irMap["else-answered"] = node
-	}
-
-	// Field: ThenAsked (optional)
-	if s.ThenAsked != nil {
-		node, err = s.ThenAsked.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
-		}
-		irMap["then-asked"] = node
-	}
-
-	// Field: ElseAsked (optional)
-	if s.ElseAsked != nil {
-		node, err = s.ElseAsked.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
-		}
-		irMap["else-asked"] = node
+		irMap["ran"] = node
 	}
 
 	// Field: Unreadable
@@ -3370,17 +3189,20 @@ func (s *AskRow) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "onSilence", fieldNodeUnwrapped.Type)
 			}
 			s.OnSilence = string(fieldNodeUnwrapped.String)
-		case "then":
-			// Field: Then
-			s.Then = &AskFollow{}
-			if err := s.Then.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
-			}
-		case "else":
-			// Field: Else
-			s.Else = &AskFollow{}
-			if err := s.Else.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
+		case "on":
+			// Field: On
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]AskOn, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					elem := AskOn{}
+					if err := elem.FromTonyIR(v, opts...); err != nil {
+						return fmt.Errorf("failed to convert slice element %d: %w", i, err)
+					}
+					slice[i] = elem
+				}
+				s.On = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"on\"", fieldNodeUnwrapped.Type)
 			}
 		case "keep":
 			// Field: Keep
@@ -3689,52 +3511,10 @@ func (s *AskRow) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if err := s.Followed.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
 			}
-		case "then-task":
-			// Field: ThenTask
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "then-task", fieldNodeUnwrapped.Type)
-			}
-			s.ThenTask = string(fieldNodeUnwrapped.String)
-		case "else-task":
-			// Field: ElseTask
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "else-task", fieldNodeUnwrapped.Type)
-			}
-			s.ElseTask = string(fieldNodeUnwrapped.String)
-		case "then-failed":
-			// Field: ThenFailed
-			s.ThenFailed = &AskFollowFailed{}
-			if err := s.ThenFailed.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
-			}
-		case "else-failed":
-			// Field: ElseFailed
-			s.ElseFailed = &AskFollowFailed{}
-			if err := s.ElseFailed.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
-			}
-		case "then-answered":
-			// Field: ThenAnswered
-			s.ThenAnswered = &AskFollowAnswered{}
-			if err := s.ThenAnswered.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
-			}
-		case "else-answered":
-			// Field: ElseAnswered
-			s.ElseAnswered = &AskFollowAnswered{}
-			if err := s.ElseAnswered.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
-			}
-		case "then-asked":
-			// Field: ThenAsked
-			s.ThenAsked = &AskFollowAsked{}
-			if err := s.ThenAsked.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
-			}
-		case "else-asked":
-			// Field: ElseAsked
-			s.ElseAsked = &AskFollowAsked{}
-			if err := s.ElseAsked.FromTonyIR(fieldNode, opts...); err != nil {
+		case "ran":
+			// Field: Ran
+			s.Ran = &AskRan{}
+			if err := s.Ran.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
 			}
 		case "unreadable":
@@ -3836,22 +3616,17 @@ func (s *DocketRow) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["onSilence"] = ir.FromString(string(s.OnSilence))
 	}
 
-	// Field: Then (optional)
-	if s.Then != nil {
-		node, err = s.Then.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
+	// Field: On
+	if len(s.On) > 0 {
+		slice := make([]*ir.Node, len(s.On))
+		for i, v := range s.On {
+			node, err = v.ToTonyIR(opts...)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert slice element %d: %w", i, err)
+			}
+			slice[i] = node
 		}
-		irMap["then"] = node
-	}
-
-	// Field: Else (optional)
-	if s.Else != nil {
-		node, err = s.Else.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
-		}
-		irMap["else"] = node
+		irMap["on"] = ir.FromSlice(slice)
 	}
 
 	// Field: Keep
@@ -4103,68 +3878,13 @@ func (s *DocketRow) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["followed"] = node
 	}
 
-	// Field: ThenTask
-	if s.ThenTask != "" {
-		irMap["then-task"] = ir.FromString(string(s.ThenTask))
-	}
-
-	// Field: ElseTask
-	if s.ElseTask != "" {
-		irMap["else-task"] = ir.FromString(string(s.ElseTask))
-	}
-
-	// Field: ThenFailed (optional)
-	if s.ThenFailed != nil {
-		node, err = s.ThenFailed.ToTonyIR(opts...)
+	// Field: Ran (optional)
+	if s.Ran != nil {
+		node, err = s.Ran.ToTonyIR(opts...)
 		if err != nil {
 			return nil, err
 		}
-		irMap["then-failed"] = node
-	}
-
-	// Field: ElseFailed (optional)
-	if s.ElseFailed != nil {
-		node, err = s.ElseFailed.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
-		}
-		irMap["else-failed"] = node
-	}
-
-	// Field: ThenAnswered (optional)
-	if s.ThenAnswered != nil {
-		node, err = s.ThenAnswered.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
-		}
-		irMap["then-answered"] = node
-	}
-
-	// Field: ElseAnswered (optional)
-	if s.ElseAnswered != nil {
-		node, err = s.ElseAnswered.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
-		}
-		irMap["else-answered"] = node
-	}
-
-	// Field: ThenAsked (optional)
-	if s.ThenAsked != nil {
-		node, err = s.ThenAsked.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
-		}
-		irMap["then-asked"] = node
-	}
-
-	// Field: ElseAsked (optional)
-	if s.ElseAsked != nil {
-		node, err = s.ElseAsked.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
-		}
-		irMap["else-asked"] = node
+		irMap["ran"] = node
 	}
 
 	// Field: Unreadable
@@ -4261,17 +3981,20 @@ func (s *DocketRow) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "onSilence", fieldNodeUnwrapped.Type)
 			}
 			s.OnSilence = string(fieldNodeUnwrapped.String)
-		case "then":
-			// Field: Then
-			s.Then = &AskFollow{}
-			if err := s.Then.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
-			}
-		case "else":
-			// Field: Else
-			s.Else = &AskFollow{}
-			if err := s.Else.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
+		case "on":
+			// Field: On
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]AskOn, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					elem := AskOn{}
+					if err := elem.FromTonyIR(v, opts...); err != nil {
+						return fmt.Errorf("failed to convert slice element %d: %w", i, err)
+					}
+					slice[i] = elem
+				}
+				s.On = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"on\"", fieldNodeUnwrapped.Type)
 			}
 		case "keep":
 			// Field: Keep
@@ -4580,52 +4303,10 @@ func (s *DocketRow) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			if err := s.Followed.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
 			}
-		case "then-task":
-			// Field: ThenTask
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "then-task", fieldNodeUnwrapped.Type)
-			}
-			s.ThenTask = string(fieldNodeUnwrapped.String)
-		case "else-task":
-			// Field: ElseTask
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "else-task", fieldNodeUnwrapped.Type)
-			}
-			s.ElseTask = string(fieldNodeUnwrapped.String)
-		case "then-failed":
-			// Field: ThenFailed
-			s.ThenFailed = &AskFollowFailed{}
-			if err := s.ThenFailed.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
-			}
-		case "else-failed":
-			// Field: ElseFailed
-			s.ElseFailed = &AskFollowFailed{}
-			if err := s.ElseFailed.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
-			}
-		case "then-answered":
-			// Field: ThenAnswered
-			s.ThenAnswered = &AskFollowAnswered{}
-			if err := s.ThenAnswered.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
-			}
-		case "else-answered":
-			// Field: ElseAnswered
-			s.ElseAnswered = &AskFollowAnswered{}
-			if err := s.ElseAnswered.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
-			}
-		case "then-asked":
-			// Field: ThenAsked
-			s.ThenAsked = &AskFollowAsked{}
-			if err := s.ThenAsked.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
-			}
-		case "else-asked":
-			// Field: ElseAsked
-			s.ElseAsked = &AskFollowAsked{}
-			if err := s.ElseAsked.FromTonyIR(fieldNode, opts...); err != nil {
+		case "ran":
+			// Field: Ran
+			s.Ran = &AskRan{}
+			if err := s.Ran.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
 			}
 		case "unreadable":
@@ -4898,6 +4579,110 @@ func (s *AskTo) ToTony(opts ...gomap.MapOption) ([]byte, error) {
 
 // FromTony parses Tony format bytes and populates AskTo.
 func (s *AskTo) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
+// ToTonyIR converts AskOn to a Tony IR node.
+func (s *AskOn) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	var node *ir.Node
+	var err error
+	_ = node // suppress unused variable error
+	_ = err  // suppress unused variable error
+
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: Match (optional)
+	if s.Match != nil {
+		irMap["match"] = s.Match
+	}
+
+	// Field: Then (optional)
+	if s.Then != nil {
+		node, err = s.Then.ToTonyIR(opts...)
+		if err != nil {
+			return nil, err
+		}
+		irMap["then"] = node
+	}
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates AskOn from a Tony IR node.
+func (s *AskOn) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for AskOn, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "match":
+			if gomap.GetUnmapComments(opts...) {
+				s.Match = fieldNode
+			} else {
+				s.Match = fieldNodeUnwrapped
+			}
+		case "then":
+			// Field: Then
+			s.Then = &AskFollow{}
+			if err := s.Then.FromTonyIR(fieldNode, opts...); err != nil {
+				return err
+			}
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for AskOn", fieldName.String)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts AskOn to Tony format bytes.
+func (s *AskOn) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates AskOn.
+func (s *AskOn) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
 	if err != nil {
 		return err
@@ -5706,11 +5491,6 @@ func (s *AskFollowed) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 	// Field: At
 	irMap["at"] = ir.FromString(string(s.At))
 
-	// Field: Field
-	if s.Field != "" {
-		irMap["field"] = ir.FromString(string(s.Field))
-	}
-
 	// Field: Verdict
 	if s.Verdict != "" {
 		irMap["verdict"] = ir.FromString(string(s.Verdict))
@@ -5794,12 +5574,6 @@ func (s *AskFollowed) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error
 				return fmt.Errorf("field %q: expected string, got %v", "at", fieldNodeUnwrapped.Type)
 			}
 			s.At = string(fieldNodeUnwrapped.String)
-		case "field":
-			// Field: Field
-			if fieldNodeUnwrapped.Type != ir.StringType {
-				return fmt.Errorf("field %q: expected string, got %v", "field", fieldNodeUnwrapped.Type)
-			}
-			s.Field = string(fieldNodeUnwrapped.String)
 		case "verdict":
 			// Field: Verdict
 			if fieldNodeUnwrapped.Type != ir.StringType {
@@ -5884,6 +5658,158 @@ func (s *AskFollowed) ToTony(opts ...gomap.MapOption) ([]byte, error) {
 
 // FromTony parses Tony format bytes and populates AskFollowed.
 func (s *AskFollowed) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
+// ToTonyIR converts AskRan to a Tony IR node.
+func (s *AskRan) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	var node *ir.Node
+	var err error
+	_ = node // suppress unused variable error
+	_ = err  // suppress unused variable error
+
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: Row
+	irMap["row"] = ir.FromInt(int64(s.Row))
+
+	// Field: At
+	irMap["at"] = ir.FromString(string(s.At))
+
+	// Field: Task
+	if s.Task != "" {
+		irMap["task"] = ir.FromString(string(s.Task))
+	}
+
+	// Field: Answered (optional)
+	if s.Answered != nil {
+		node, err = s.Answered.ToTonyIR(opts...)
+		if err != nil {
+			return nil, err
+		}
+		irMap["answered"] = node
+	}
+
+	// Field: Asked (optional)
+	if s.Asked != nil {
+		node, err = s.Asked.ToTonyIR(opts...)
+		if err != nil {
+			return nil, err
+		}
+		irMap["asked"] = node
+	}
+
+	// Field: Failed (optional)
+	if s.Failed != nil {
+		node, err = s.Failed.ToTonyIR(opts...)
+		if err != nil {
+			return nil, err
+		}
+		irMap["failed"] = node
+	}
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates AskRan from a Tony IR node.
+func (s *AskRan) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for AskRan, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "row":
+			// Field: Row
+			if fieldNodeUnwrapped.Int64 == nil {
+				return fmt.Errorf("field %q: expected number, got %v", "row", fieldNodeUnwrapped.Type)
+			}
+			s.Row = int(*fieldNodeUnwrapped.Int64)
+		case "at":
+			// Field: At
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "at", fieldNodeUnwrapped.Type)
+			}
+			s.At = string(fieldNodeUnwrapped.String)
+		case "task":
+			// Field: Task
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "task", fieldNodeUnwrapped.Type)
+			}
+			s.Task = string(fieldNodeUnwrapped.String)
+		case "answered":
+			// Field: Answered
+			s.Answered = &AskFollowAnswered{}
+			if err := s.Answered.FromTonyIR(fieldNode, opts...); err != nil {
+				return err
+			}
+		case "asked":
+			// Field: Asked
+			s.Asked = &AskFollowAsked{}
+			if err := s.Asked.FromTonyIR(fieldNode, opts...); err != nil {
+				return err
+			}
+		case "failed":
+			// Field: Failed
+			s.Failed = &AskFollowFailed{}
+			if err := s.Failed.FromTonyIR(fieldNode, opts...); err != nil {
+				return err
+			}
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for AskRan", fieldName.String)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts AskRan to Tony format bytes.
+func (s *AskRan) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates AskRan.
+func (s *AskRan) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
 	if err != nil {
 		return err

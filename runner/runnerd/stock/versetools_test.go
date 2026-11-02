@@ -46,7 +46,7 @@ func TestAScriptRaisesAnAskTheRunnerCarriesToVerse(t *testing.T) {
 	env := envOf(netOpen, nil, nil)
 	env.Systems["verse"] = []systems.Block{{}}
 	script := "#!/bin/sh\n" +
-		"verse-call-tool verse-ask-create -name r1 -question 'Land it?' -to 'user:alice@example.com, group:leads' -label team=payments,kind=deploy -due ' 48h ' -then '{spawn: {script: \"true\"}}'\n" +
+		"verse-call-tool verse-ask-create -name r1 -question 'Land it?' -to 'user:alice@example.com, group:leads' -label team=payments,kind=deploy -due ' 48h ' -on '[{match: {verdict: proceed}, then: {spawn: {script: \"true\"}}}]'\n" +
 		"verse-call-tool verse-ask-get -name_or_id r1-1a2b\n" +
 		"verse-call-tool verse-ask-list\n"
 	allow := task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}
@@ -79,8 +79,13 @@ func TestAScriptRaisesAnAskTheRunnerCarriesToVerse(t *testing.T) {
 		t.Errorf("an ask the script named nothing was handed to verse as %v, want no name", saw[1])
 	}
 	got := saw[0]
-	then, _ := got["then"].(map[string]any)
-	spawn, _ := then["spawn"].(map[string]any)
+	rows, _ := got["on"].([]any)
+	var spawn map[string]any
+	if len(rows) == 1 {
+		row, _ := rows[0].(map[string]any)
+		then, _ := row["then"].(map[string]any)
+		spawn, _ = then["spawn"].(map[string]any)
+	}
 	if got["for-task"] != "r1" || got["name"] != "r1" || got["question"] != "Land it?" || spawn["script"] != "true" {
 		t.Errorf("the raiser was handed %v", got)
 	}
@@ -203,7 +208,7 @@ func TestTheVerseToolsRefuseNamingTheParameter(t *testing.T) {
 		{dataGetTool, map[string]any{"depth": 1}, "not read: depth goes with paths"},
 		{dataPutTool, map[string]any{"at": "acme.notes.n1", "value": 1}, "not written: value is a string"},
 		{askCreateTool, map[string]any{"questoin": "q"}, "not raised: questoin is not a parameter"},
-		{askCreateTool, map[string]any{"question": "q", "then": "spawn it"}, "not raised: then: "},
+		{askCreateTool, map[string]any{"question": "q", "on": "spawn it"}, "not raised: on: "},
 		{askGetTool, map[string]any{"name_or_id": "  "}, "not read: name the ask"},
 		{charterRemoveTool, map[string]any{}, "not removed: path names what to remove"},
 	} {

@@ -69,14 +69,18 @@ type Resolve struct {
 }
 
 // Ask is a person asking somebody something (`verse ask`, POST /asks): what is asked, of whom, by
-// when, and what follows a yes. The ask is written at `verse.ask.<id>` as its asker's record, with
-// the id derived from Name, and the verb poses it (docs/asking.md).
+// when, and what follows its answer. The ask is written at `verse.ask.<id>` as its asker's record,
+// with the id derived from Name, and the verb poses it (docs/asking.md).
 //
-// Then is one key naming what follows a yes, on the asker's authority: `{spawn: {…}}`, a task
-// written as a charter's spawn is (its prompt or script, agent, environment and autonomy) and
-// meaning only what it says; `{answer: {ask, choice, say?, force?}}`, an answer to another ask as
-// the asker; or `{ask: {…}}`, another ask the asker raises, whose `due` may be a duration from
-// the yes. Absent, the ask is a vote and the answer is all it leaves.
+// On is what follows the answer, as rows read in order: each `{match, then}`, where match is a tony
+// match over the answer as the record's `followed` spells it (`{verdict: proceed}`, `{by:
+// deadline}`), and absent matches every answer. The first row that matches is the one whose then
+// runs, on the asker's authority. A then is one key: `{spawn: {…}}`, a task written as a charter's
+// spawn is (its prompt or script, agent, environment and autonomy) and meaning only what it says;
+// `{answer: {ask, choice, say?, force?}}`, an answer to another ask as the asker; or `{ask: {…}}`,
+// another ask the asker raises, whose `due` may be a duration from the answer. A then that is
+// null or `{}` does nothing. No row matching, or no On, and the ask is a vote: the answer is all
+// it leaves.
 //
 //tony:schemagen=verse-ask,notag
 type Ask struct {
@@ -86,15 +90,12 @@ type Ask struct {
 	// or anyone.
 	To  []string `tony:"field=to,omitzero"`
 	Due string   `tony:"field=due,omitzero"`
-	// OnSilence is what the ask settles on when Due passes and nobody has answered: `no`, the
-	// default, or `yes`, which runs its `then` as an answer would. It needs a Due. An onward ask
-	// takes the served ask's.
+	// OnSilence is the option the ask settles on when Due passes and nobody has answered: `deny`,
+	// the default, or `proceed`. It needs a Due. What follows is On's to say, as for an answer:
+	// the answer silence makes is `by: deadline`. An onward ask takes the served ask's.
 	OnSilence string         `tony:"field=onSilence,omitzero"`
-	Then      entity.Payload `tony:"field=then,omitzero"`
-	// Else is what follows a no, as Then is what follows a yes: a no answered, or silence settling
-	// on no at Due. It takes what Then does.
-	Else  entity.Payload `tony:"field=else,omitzero"`
-	About string         `tony:"field=about,omitzero"`
+	On        entity.Payload `tony:"field=on,omitzero"`
+	About     string         `tony:"field=about,omitzero"`
 	// Keep is how long the ask stands once settled, as a duration (168h); absent, a week.
 	Keep string `tony:"field=keep,omitzero"`
 	// Labels are what the ask says about itself for whoever watches asks (`team: payments`).
@@ -102,7 +103,7 @@ type Ask struct {
 	// Serves makes this an ONWARD ask (9ce3bva0, stage 4): one a resolver raises, made as the
 	// resolver, about an ask it serves — the ask's id — for the party named in For, or the only
 	// one it serves it for. Its options are the served ask's, its clock fits inside the served
-	// ask's, and it takes no `then`: what follows it is the answer it carries back.
+	// ask's, and it takes no `on`: what follows it is the answer it carries back.
 	Serves string `tony:"field=serves,omitzero"`
 	For    string `tony:"field=for,omitzero"`
 }
@@ -162,9 +163,9 @@ func (r Recorded) String() string {
 }
 
 // AskChange is a change to a waiting ask by its asker (`verse ask <id> --due …`, PATCH
-// /asks/{id}). A new Due moves its clock and asks nothing again. A new Question, To, Then
-// or Else changes what it asks, so it is asked again, as the next edit, and the ballots cast before
-// are dropped. Edit is the edit the asker changed, where they name it; a change to an ask that has
+// /asks/{id}). A new Due moves its clock and asks nothing again. A new Question, To or On changes
+// what it asks, so it is asked again, as the next edit, and the ballots cast before are dropped. A
+// new On takes the place of the rows whole. Edit is the edit the asker changed, where they name it; a change to an ask that has
 // moved on since is refused.
 //
 //tony:schemagen=verse-ask-change,notag
@@ -173,6 +174,5 @@ type AskChange struct {
 	Due      string         `tony:"field=due,omitzero"`
 	Question string         `tony:"field=question,omitzero"`
 	To       []string       `tony:"field=to,omitzero"`
-	Then     entity.Payload `tony:"field=then,omitzero"`
-	Else     entity.Payload `tony:"field=else,omitzero"`
+	On       entity.Payload `tony:"field=on,omitzero"`
 }

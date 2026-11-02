@@ -37,9 +37,9 @@ type AskRecord struct {
 	// Due is when a person's ask settles if nobody answers, and OnSilence what it settles on.
 	Due       string `tony:"field=due,omitzero"`
 	OnSilence string `tony:"field=onSilence,omitzero"`
-	// Then and Else are what follows a yes and a no, on the asker's authority.
-	Then *AskFollow `tony:"field=then,omitzero"`
-	Else *AskFollow `tony:"field=else,omitzero"`
+	// On is what follows its answer, on the asker's authority: rows read in order, the first whose
+	// match the answer meets running its then.
+	On []AskOn `tony:"field=on,omitzero"`
 	// Keep is how long the record stands once settled, a Go duration.
 	Keep string `tony:"field=keep,omitzero"`
 	// Serves is the ask an onward ask was raised to serve.
@@ -108,20 +108,13 @@ type AskRecord struct {
 	// Carried is how an onward ask's answer was carried back to the ask it serves.
 	Carried *AskCarried `tony:"field=carried,omitzero"`
 
-	// Followed is the claim that settled the question, the resolution and which of Then and Else
-	// it ran: a question settles once, by its first claim, so an answer that lost the race to
-	// claim it runs neither and is not delivered.
+	// Followed is the claim that settled the question: a question settles once, by its first
+	// claim, so an answer that lost the race to claim it runs nothing and is not delivered. It is
+	// what the rows of On match.
 	Followed *AskFollowed `tony:"field=followed,omitzero"`
-	// What became of Then and Else: the task they started, a failure, and the answer or ask they
-	// made.
-	ThenTask     string             `tony:"field=then-task,omitzero"`
-	ElseTask     string             `tony:"field=else-task,omitzero"`
-	ThenFailed   *AskFollowFailed   `tony:"field=then-failed,omitzero"`
-	ElseFailed   *AskFollowFailed   `tony:"field=else-failed,omitzero"`
-	ThenAnswered *AskFollowAnswered `tony:"field=then-answered,omitzero"`
-	ElseAnswered *AskFollowAnswered `tony:"field=else-answered,omitzero"`
-	ThenAsked    *AskFollowAsked    `tony:"field=then-asked,omitzero"`
-	ElseAsked    *AskFollowAsked    `tony:"field=else-asked,omitzero"`
+	// Ran is what the row of On that matched ran: the task it started, a failure, or the answer or
+	// ask it made. Absent where no row matched, or the one that did does nothing.
+	Ran *AskRan `tony:"field=ran,omitzero"`
 }
 
 // AskRow is one ask as `GET /asks` lists it: the record as stored, and, for a record that does
@@ -201,9 +194,19 @@ type AskTo struct {
 	Task     string   `tony:"field=task,omitzero"`
 }
 
-// AskFollow is what follows a person's ask's yes (`then`) or no (`else`): exactly one of a spawn,
-// an answer to another ask, or another ask. A spawn and an ask are stored as their asker wrote
-// them, and read strictly when they run.
+// AskOn is one row of what follows a person's ask's answer: a tony match over the answer as
+// Followed spells it, absent for every answer, and what follows where it is the first row to
+// match, absent where that is nothing.
+//
+//tony:schemagen=verse-ask-on,notag
+type AskOn struct {
+	Match entity.Payload `tony:"field=match,omitzero"`
+	Then  *AskFollow     `tony:"field=then,omitzero"`
+}
+
+// AskFollow is what follows a person's ask's answer, a row of its On: at most one of a spawn, an
+// answer to another ask, or another ask, none being nothing. A spawn and an ask are stored as
+// their asker wrote them, and read strictly when they run.
 //
 //tony:schemagen=verse-ask-follow,notag
 type AskFollow struct {
@@ -212,7 +215,7 @@ type AskFollow struct {
 	Ask    entity.Payload   `tony:"field=ask,omitzero"`
 }
 
-// AskFollowAnswer is an answer to another ask that follows a yes or a no, as its asker: the ask,
+// AskFollowAnswer is an answer to another ask that follows an answer, as its asker: the ask,
 // the choice, words with it, whether it forces a settled ask, and the edit it answers.
 //
 //tony:schemagen=verse-ask-follow-answer,notag
@@ -264,7 +267,7 @@ type AskStale struct {
 	Say     []string `tony:"field=say,omitzero"`
 }
 
-// AskFollowFailed is a then or else that could not run: when, and why.
+// AskFollowFailed is a row's then that could not run: when, and why.
 //
 //tony:schemagen=verse-ask-follow-failed,notag
 type AskFollowFailed struct {
@@ -273,14 +276,12 @@ type AskFollowFailed struct {
 }
 
 // AskFollowed is the claim that settled the question: the resolution, in the keys the answered
-// record uses, when it was claimed, and which field (`then` or `else`) it ran. The claim is the
-// answer: a question pending under one has its answer decided and not yet delivered, and
+// record uses, and when it was claimed. The claim is the answer: a question pending under one has its answer decided and not yet delivered, and
 // Undelivered says why the last delivery failed, until the question is posed again and it is.
 //
 //tony:schemagen=verse-ask-followed,notag
 type AskFollowed struct {
 	At            string   `tony:"field=at"`
-	Field         string   `tony:"field=field,omitzero"`
 	Verdict       string   `tony:"field=verdict,omitzero"`
 	By            string   `tony:"field=by,omitzero"`
 	Via           string   `tony:"field=via,omitzero"`
@@ -291,7 +292,21 @@ type AskFollowed struct {
 	Undelivered   string   `tony:"field=undelivered,omitzero"`
 }
 
-// AskFollowAnswered is an answer a then or else made: when it started, the ask it answered, the
+// AskRan is what the row of an ask's On that matched its answer ran, once: the row, by its place
+// from 0, when it started, and the task it started, the answer or ask it made, or why it could
+// not run.
+//
+//tony:schemagen=verse-ask-ran,notag
+type AskRan struct {
+	Row      int                `tony:"field=row"`
+	At       string             `tony:"field=at"`
+	Task     string             `tony:"field=task,omitzero"`
+	Answered *AskFollowAnswered `tony:"field=answered,omitzero"`
+	Asked    *AskFollowAsked    `tony:"field=asked,omitzero"`
+	Failed   *AskFollowFailed   `tony:"field=failed,omitzero"`
+}
+
+// AskFollowAnswered is an answer a row's then made: when it started, the ask it answered, the
 // status that answer got, and the refusal where it was refused.
 //
 //tony:schemagen=verse-ask-follow-answered,notag
@@ -302,7 +317,7 @@ type AskFollowAnswered struct {
 	Refused string `tony:"field=refused,omitzero"`
 }
 
-// AskFollowAsked is an ask a then or else raised: when it started, the status raising it got, the
+// AskFollowAsked is an ask a row's then raised: when it started, the status raising it got, the
 // ask's id, and the refusal where it was refused.
 //
 //tony:schemagen=verse-ask-follow-asked,notag

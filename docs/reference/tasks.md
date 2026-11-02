@@ -313,8 +313,8 @@ param written `null` is refused rather than dropped: to match any value, leave i
 **Whom a row asks.** A row that names nobody asks the docket. `answerers: [$principal]` asks
 whom the task acts for, which for a run you start is you. Verse refuses `$principal` for a task
 that acts for nobody: one run as the system, or a rule's task without `as: subject`. A task that
-acts for somebody else asks them with every question that names nobody: an ask's `then` asks its
-asker, and a spawn `as: subject` asks the subject's owner. The task's record shows it, as
+acts for somebody else asks them with every question that names nobody: a task an ask's row
+starts asks its asker, and a spawn `as: subject` asks the subject's owner. The task's record shows it, as
 `answerers: [$principal]` beside `actsFor:`. A row's answerers are checked as a gate's are
 ([gates](gates.md#gates-whether-it-proceeds)): a group it names has to exist, as
 `group:release` does above only where somebody made it, and `need` can be no more than the
@@ -418,14 +418,14 @@ An autonomy row on `question` decides the asking as any autonomy row decides its
 A task that asks as the person it runs for, and goes on, uses the
 [verse system](../systems/verse.md)'s `verse-ask-create`, as they would use `verse ask`. The
 ask's `from` is `{principal: <them>, task: <this task>}`, and it stands after the task ends. Its
-`then` and `else` run as them when it settles, and the task reads it back with `verse-ask-get`
-to see whether it was answered. A spawn in its `then` or `else` is held within the task:
+rows run as them when it settles, and the task reads it back with `verse-ask-get` to see
+whether it was answered. A spawn in any of its rows is held within the task:
 an environment no wider than the task's, less `verse.charter-install`, an autonomy no looser, the task's runner (`runner:`
-names it) and the task's credential where it spends one. An answer in its `then` or `else` is
+names it) and the task's credential where it spends one. An answer in any of its rows is
 refused, at any depth: it would be theirs, on any ask that waits on them. Once raised, the ask is theirs, and they change it as any
 of their own. The task's record carries its launch, `environment` and `virtualKey` (the address
-its spawn named, never the key), so a restart that resumes the task holds a `then` within it as
-before.
+its spawn named, never the key), so a restart that resumes the task holds a row's spawn within
+it as before.
 
 A task may also install charters as that person, with `verse-charter-install`. A spawn among
 their rules is held within the task in the same way, on any runner, and never gives

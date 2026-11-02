@@ -19,7 +19,7 @@ import (
 // runner carries a task's install (`verse-charter-install`) as the task's owner, and the
 // charter stands after the task ends, its rules firing as that owner: unheld, a task given
 // only `verse` would install a rule whose spawn reaches every system the owner can. So each
-// spawn among its rules is held within the task (taskCharter), as an ask's `then` and `else`
+// spawn among its rules is held within the task (taskCharter), as the rows of an ask's `on`
 // are (taskBound):
 //
 //   - the environment is the task's less `verse.charter-install`, so nothing a task installs,

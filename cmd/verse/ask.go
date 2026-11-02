@@ -34,13 +34,13 @@ import (
 //
 //	verse ask                                       your asks
 //	verse ask land                                  one of them, and whom it waits on
-//	verse ask land -q "Review verse/ask?" --to ani@example.com --due 48h --then @then.tony
+//	verse ask land -q "Review verse/ask?" --to ani@example.com --due 48h --on @on.tony
 //	verse ask land --withdraw                       take it back
 //	verse ask --watch                               a line when one settles, or a question waits on you
 //
 // THE NAME IS THE POSITIONAL in every case, and what to do is a flag.
 //
-// CHANGED WHILE IT WAITS, by its asker: `--due` moves its date and asks nothing again; `--then`
+// CHANGED WHILE IT WAITS, by its asker: `--due` moves its date and asks nothing again; `--on`
 // or `--to` changes what it asks, so it is asked again as its next edit (PATCH /asks/{id}).
 
 type askConfig struct {
@@ -48,9 +48,8 @@ type askConfig struct {
 	Question  string `cli:"name=question aliases=q desc='ask this: creates the ask under the name'"`
 	To        string `cli:"name=to desc='who is asked: a name or a comma-separated list, in the grammar a grant uses; absent, anyone may answer'"`
 	Due       string `cli:"name=due desc='when it settles if nobody answers: an RFC 3339 date or a duration from now (48h)'"`
-	OnSilence string `cli:"name=on-silence desc='with --due: what it settles on if nobody answers by then, yes or no (the default); yes runs the then'"`
-	Then      string `cli:"name=then desc='what follows a yes, on your authority: one key naming it: {spawn: <a spawn, as a charter writes one>}, {answer: {ask: <id>, choice: <option>}} or {ask: {name: …, question: …, …}}; - reads it from stdin, @<file> from a file'"`
-	Else      string `cli:"name=else desc='what follows a no, on your authority: a no answered, or silence settling on no at --due; one key, as --then takes'"`
+	OnSilence string `cli:"name=on-silence desc='with --due: the option it settles on if nobody answers by then, proceed or deny (the default)'"`
+	On        string `cli:"name=on desc='what follows its answer, on your authority: a list of rows read in order, each {match: <a tony match over the answer, {verdict: proceed} or {by: deadline}; absent, any>, then: <one key: {spawn: …}, {answer: {ask: <id>, choice: <option>}} or {ask: {…}}; null or {} does nothing>}, the first that matches running its then; - reads it from stdin, @<file> from a file'"`
 	About     string `cli:"name=about desc='the path the ask is about, as a kinded path'"`
 	Keep      string `cli:"name=keep desc='how long it stands once settled, as a duration (72h); absent, a week'"`
 	Label     string `cli:"name=label desc='what the ask says about itself for whoever watches asks: name=value, comma-separated (team=payments,kind=deploy)'"`
@@ -68,7 +67,7 @@ func askCmd() *cli.Command {
 	return cli.NewCommandAt(&cfg.Command, "ask").
 		WithAliases("asks").
 		WithSynopsis("ask — asking somebody something: bare lists your asks, <name|id> shows one, " +
-			"[<name>] -q <question> [--to <who>] [--due <when>] [--then <value>] [--else <value>] [--keep <duration>] asks, <name|id> --withdraw takes back, --watch follows").
+			"[<name>] -q <question> [--to <who>] [--due <when>] [--on <rows>] [--keep <duration>] asks, <name|id> --withdraw takes back, --watch follows").
 		WithOpts(opts...).
 		WithRun(cfg.run)
 }
@@ -85,7 +84,7 @@ func (cfg *askConfig) run(cc *cli.Context, args []string) error {
 	if len(args) == 1 {
 		name = args[0]
 	}
-	asking := cfg.To != "" || cfg.Due != "" || cfg.Then != "" || cfg.Else != "" || cfg.About != "" || cfg.Keep != "" || cfg.Label != "" || cfg.OnSilence != ""
+	asking := cfg.To != "" || cfg.Due != "" || cfg.On != "" || cfg.About != "" || cfg.Keep != "" || cfg.Label != "" || cfg.OnSilence != ""
 	if cfg.Watch {
 		if name != "" || cfg.Question != "" || cfg.Withdraw || asking {
 			return fmt.Errorf("%w: --watch follows all your asks, and takes nothing else", cli.ErrUsage)
@@ -124,20 +123,15 @@ func (cfg *askConfig) run(cc *cli.Context, args []string) error {
 // ── asking ───────────────────────────────────────────────────────────────────
 
 func (cfg *askConfig) create(cc *cli.Context, name string) error {
-	var then, els entity.Payload
+	var on entity.Payload
 	var err error
-	if cfg.Else != "" {
-		if els, err = thenOf(cc, cfg.Else); err != nil {
-			return err
-		}
-	}
-	if cfg.Then != "" {
-		if then, err = thenOf(cc, cfg.Then); err != nil {
+	if cfg.On != "" {
+		if on, err = onOf(cc, cfg.On); err != nil {
 			return err
 		}
 	}
 	body, err := newAsk(api.AskSpec{Name: name, Question: cfg.Question, To: cfg.To, Due: cfg.Due,
-		OnSilence: cfg.OnSilence, About: cfg.About, Keep: cfg.Keep, Label: cfg.Label, Then: then, Else: els})
+		OnSilence: cfg.OnSilence, About: cfg.About, Keep: cfg.Keep, Label: cfg.Label, On: on})
 	if err != nil {
 		return err
 	}
@@ -192,32 +186,32 @@ func dateOf(s string, now time.Time) (string, error) {
 	return due, usage(err)
 }
 
-// thenOf reads --then as a document in the input format: inline, `-` for stdin, or `@<file>`.
-// What it may say is the route's to check, which answers with what an ask runs.
-func thenOf(cc *cli.Context, s string) (entity.Payload, error) {
+// onOf reads --on as a document in the input format: inline, `-` for stdin, or `@<file>`. What it
+// may say is the route's to check, which answers with what an ask runs.
+func onOf(cc *cli.Context, s string) (entity.Payload, error) {
 	src := []byte(s)
 	switch {
 	case s == "-":
 		b, err := io.ReadAll(cc.In)
 		if err != nil {
-			return nil, fmt.Errorf("--then: %w", err)
+			return nil, fmt.Errorf("--on: %w", err)
 		}
 		src = b
 	case strings.HasPrefix(s, "@"):
 		b, err := os.ReadFile(s[1:])
 		if err != nil {
-			return nil, fmt.Errorf("--then: %w", err)
+			return nil, fmt.Errorf("--on: %w", err)
 		}
 		src = b
 	}
-	return thenDoc(src, inFmt())
+	return onDoc(src, inFmt())
 }
 
-// thenDoc reads what follows an answer from a document in the format in (verbs.ThenDoc).
-func thenDoc(src []byte, in codec.Format) (entity.Payload, error) {
-	n, err := verbs.ThenDoc(src, in)
+// onDoc reads what follows an answer from a document in the format in (verbs.OnDoc).
+func onDoc(src []byte, in codec.Format) (entity.Payload, error) {
+	n, err := verbs.OnDoc(src, in)
 	if err != nil {
-		return nil, fmt.Errorf("%w: --then: %v", cli.ErrUsage, err)
+		return nil, fmt.Errorf("%w: --on: %v", cli.ErrUsage, err)
 	}
 	return n, nil
 }
@@ -330,7 +324,7 @@ func askShown(c *client.Client, arg string) (*ir.Node, string, error) {
 
 // ── changing ─────────────────────────────────────────────────────────────────
 
-// change is `verse ask <name|id> --due …`, `--then …` or `--to …`: the asker changing an ask while
+// change is `verse ask <name|id> --due …`, `--on …` or `--to …`: the asker changing an ask while
 // it waits. It names the edit it read, so a change to an ask that moved on meanwhile is refused.
 func (cfg *askConfig) change(cc *cli.Context, arg string) error {
 	var ch askEdit
@@ -345,13 +339,8 @@ func (cfg *askConfig) change(cc *cli.Context, arg string) error {
 			return err
 		}
 	}
-	if cfg.Else != "" {
-		if ch.Else, err = thenOf(cc, cfg.Else); err != nil {
-			return err
-		}
-	}
-	if cfg.Then != "" {
-		if ch.Then, err = thenOf(cc, cfg.Then); err != nil {
+	if cfg.On != "" {
+		if ch.On, err = onOf(cc, cfg.On); err != nil {
 			return err
 		}
 	}
@@ -365,9 +354,9 @@ func (cfg *askConfig) change(cc *cli.Context, arg string) error {
 
 // askEdit is a change to a waiting ask, read: a date, answerers in the grammar, what follows.
 type askEdit struct {
-	Due        string
-	To         []string
-	Then, Else entity.Payload
+	Due string
+	To  []string
+	On  entity.Payload
 }
 
 // changeAsk changes the ask arg names, as the edit it read, and says what became of it.
@@ -376,7 +365,7 @@ func changeAsk(c *client.Client, arg string, ch askEdit) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	body := api.AskChange{Edit: mirror.EditOf(e.Payload), Due: ch.Due, To: ch.To, Then: ch.Then, Else: ch.Else}
+	body := api.AskChange{Edit: mirror.EditOf(e.Payload), Due: ch.Due, To: ch.To, On: ch.On}
 	resp, err := c.Patch("/asks/"+url.PathEscape(e.Ref.Name()), body)
 	if err != nil {
 		return "", fmt.Errorf("ask: %w", err)

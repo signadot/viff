@@ -39,7 +39,7 @@ func askID(t *testing.T, resp *http.Response) string {
 func TestAnAskIsItsAskersAndReadByWhomItAsks(t *testing.T) {
 	srv, ts := asking(t)
 	const daniel, davido, bob = "user:daniel@example.com", "user:oscar@example.com", "user:bob@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge verse/ask?", to: [oscar@example.com], then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}`))
+	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge verse/ask?", to: [oscar@example.com], on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}]}`))
 	if !strings.HasPrefix(id, "land-") {
 		t.Fatalf("id %q is not derived from the name", id)
 	}
@@ -92,7 +92,7 @@ func TestAnAskIsItsAskersAndReadByWhomItAsks(t *testing.T) {
 // refuses, and not by owning anything above it, since nobody but the system does.
 func TestNobodyElseWritesAnAsk(t *testing.T) {
 	srv, ts := asking(t)
-	id := askID(t, ask(t, "user:daniel@example.com", ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com], then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}`))
+	id := askID(t, ask(t, "user:daniel@example.com", ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com], on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}]}`))
 	ref := mirror.AskRef(id)
 	for _, who := range []string{"user:bob@example.com", tester} {
 		if _, _, err := entity.As(srv.Store, who).Write(entity.Write{
@@ -108,25 +108,25 @@ func TestAnAskIsCheckedWhereItIsAsked(t *testing.T) {
 	past := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
 	soon := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
 	for body, want := range map[string]string{
-		`{name: x}`:                                             "question is required",
-		`{name: x, question: q, to: [davido]}`:                  "a bare word names nothing",
-		`{name: x, question: q, due: tomorrow}`:                 "RFC 3339",
-		`{name: x, question: q, due: "` + past + `"}`:           "not in the future",
-		`{name: x, question: q, then: {prompt: a, script: ""}}`: "one key",
-		`{name: x, question: q, then: {shell: "rm -rf /"}}`:     "not something an ask runs",
-		`{name: x, question: q, then: {spawn: {prompt: "", environment: {systems: {network: {mode: open}}}}}}`: "then.spawn: a `prompt`",
-		`{name: x, question: q, then: {prompt: "merge it"}}`:                                                   "not something an ask runs (spawn, answer, ask)",
-		`{name: x, question: q, then: {spawn: {prompt: go, doer: {agent: verse}}}}`:                            "then.spawn: ",
-		`{name: x, question: q, then: {spawn: {prompt: "merge it", runner: gpu}}}`:                             `then.spawn: unknown field "runner"`,
-		`{name: x, question: q, then: {spawn: {script: "true", chain: review}}}`:                               "then.spawn.chain: a firing's",
-		`{name: x, question: q, then: {spawn: {script: "true", subject: demo.pr.x}}}`:                          "then.spawn.subject: a then's task is about its ask",
-		`{name: x, question: q, labels: {"a b": c}}`:                                                           "a label's name is a word",
-		`{name: x, question: q, onSilence: yes}`:                                                               "has no due",
-		`{name: x, question: q, due: "` + soon + `", onSilence: maybe}`:                                        "yes or no",
+		`{name: x}`:                                   "question is required",
+		`{name: x, question: q, to: [davido]}`:        "a bare word names nothing",
+		`{name: x, question: q, due: tomorrow}`:       "RFC 3339",
+		`{name: x, question: q, due: "` + past + `"}`: "not in the future",
+		`{name: x, question: q, on: [{match: {verdict: proceed}, then: {prompt: a, script: ""}}]}`:                                                "one key",
+		`{name: x, question: q, on: [{match: {verdict: proceed}, then: {shell: "rm -rf /"}}]}`:                                                    "not something an ask runs",
+		`{name: x, question: q, on: [{match: {verdict: proceed}, then: {spawn: {prompt: "", environment: {systems: {network: {mode: open}}}}}}]}`: "then.spawn: a `prompt`",
+		`{name: x, question: q, on: [{match: {verdict: proceed}, then: {prompt: "merge it"}}]}`:                                                   "not something an ask runs (spawn, answer, ask)",
+		`{name: x, question: q, on: [{match: {verdict: proceed}, then: {spawn: {prompt: go, doer: {agent: verse}}}}]}`:                            "then.spawn: ",
+		`{name: x, question: q, on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge it", runner: gpu}}}]}`:                             `then.spawn: unknown field "runner"`,
+		`{name: x, question: q, on: [{match: {verdict: proceed}, then: {spawn: {script: "true", chain: review}}}]}`:                               "then.spawn.chain: a firing's",
+		`{name: x, question: q, on: [{match: {verdict: proceed}, then: {spawn: {script: "true", subject: demo.pr.x}}}]}`:                          "then.spawn.subject: a then's task is about its ask",
+		`{name: x, question: q, labels: {"a b": c}}`:                                                                                              "a label's name is a word",
+		`{name: x, question: q, onSilence: proceed}`:                                                                                              "has no due",
+		`{name: x, question: q, due: "` + soon + `", onSilence: maybe}`:                                                                           "proceed or deny",
 		// A key the ask does not know is refused rather than dropped: `answerers` dropped would
 		// be an ask that names nobody, put to everyone.
-		`{name: x, question: q, answerers: [oscar@example.com]}`:                                      "answerers",
-		`{name: x, question: q, then: {ask: {name: d, question: q, answerers: [oscar@example.com]}}}`: "answerers",
+		`{name: x, question: q, answerers: [oscar@example.com]}`:                                                                         "answerers",
+		`{name: x, question: q, on: [{match: {verdict: proceed}, then: {ask: {name: d, question: q, answerers: [oscar@example.com]}}}]}`: "answerers",
 	} {
 		resp := ask(t, "user:daniel@example.com", ts.URL, body)
 		if msg := bodyOf(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(msg, want) {
@@ -144,11 +144,11 @@ func TestAnAskIsCheckedWhereItIsAsked(t *testing.T) {
 func TestAThensSpawnIsHeldToTheRunnerWhenAsked(t *testing.T) {
 	srv, ts := asking(t)
 	describeLocal(t, srv, stock.Open().Describe([]string{runner.NetworkOpen}))
-	resp := ask(t, "user:daniel@example.com", ts.URL, `{name: x, question: q, then: {spawn: {script: "true"}}}`)
+	resp := ask(t, "user:daniel@example.com", ts.URL, `{name: x, question: q, on: [{match: {verdict: proceed}, then: {spawn: {script: "true"}}}]}`)
 	if msg := bodyOf(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(msg, "mode none: this runner builds open only") {
 		t.Errorf("a then whose network the runner does not build: %s %q, want 400", resp.Status, msg)
 	}
-	resp = ask(t, "user:daniel@example.com", ts.URL, `{name: y, question: q, then: {spawn: {script: "true", environment: {systems: {network: {mode: open}}}}}}`)
+	resp = ask(t, "user:daniel@example.com", ts.URL, `{name: y, question: q, on: [{match: {verdict: proceed}, then: {spawn: {script: "true", environment: {systems: {network: {mode: open}}}}}}]}`)
 	if msg := bodyOf(t, resp); resp.StatusCode != http.StatusCreated {
 		t.Errorf("a then the runner runs: %s %q, want 201", resp.Status, msg)
 	}
@@ -158,9 +158,9 @@ func TestAThensSpawnIsHeldToTheRunnerWhenAsked(t *testing.T) {
 // asker said silence means, and on no where they said nothing, so nobody answering runs no `then`.
 func TestAnAsksSilenceIsNoUnlessItSaysYes(t *testing.T) {
 	srv, ts, clock := keeping(t, 0)
-	for name, said := range map[string]string{"quiet": "", "lazy": ", onSilence: yes", "said": ", onSilence: no"} {
+	for name, said := range map[string]string{"quiet": "", "lazy": ", onSilence: proceed", "said": ", onSilence: deny"} {
 		want := task.Deny
-		if said == ", onSilence: yes" {
+		if said == ", onSilence: proceed" {
 			want = task.Proceed
 		}
 		due := clock.Now().Add(time.Minute).UTC().Format(time.RFC3339)

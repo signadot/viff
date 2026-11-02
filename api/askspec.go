@@ -10,18 +10,18 @@ import (
 )
 
 // AskSpec is a new ask as a person says it: the words `verse ask`'s flags, verse_ask_create and
-// the verse system's verse-ask-create take, the then and the else already read. One grammar for
-// all three, so a task asks as its owner would.
+// the verse system's verse-ask-create take, its `on` already read. One grammar for all three, so a
+// task asks as its owner would.
 type AskSpec struct {
 	Name, Question, To, Due, OnSilence, About, Keep, Label string
-	Then, Else                                             entity.Payload
+	On                                                     entity.Payload
 }
 
 // NewAsk is the body POST /asks takes for s, its due read against now. An error names the field
 // it is about (to, due, label).
 func NewAsk(s AskSpec, now time.Time) (Ask, error) {
 	body := Ask{Name: s.Name, Question: s.Question, About: s.About, Keep: s.Keep,
-		OnSilence: s.OnSilence, Then: s.Then, Else: s.Else}
+		OnSilence: s.OnSilence, On: s.On}
 	var err error
 	if s.Label != "" {
 		if body.Labels, err = LabelsOf(s.Label); err != nil {

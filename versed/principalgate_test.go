@@ -58,7 +58,7 @@ func TestAGateNamingPrincipalAsksWhoeverRanTheTask(t *testing.T) {
 func TestAThenTasksOwnQuestionAsksTheAsker(t *testing.T) {
 	srv, ts := askingOn(t, serverWith(t, stepBuilder(t), entitytest.Store(t)))
 	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Land it?", to: [oscar@example.com], then: {spawn: {prompt: "true", environment: {systems: {network: {mode: open}, commands: {run: {}}}}, autonomy: `+stepAsksTony+`}}}`))
+	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Land it?", to: [oscar@example.com], on: [{match: {verdict: proceed}, then: {spawn: {prompt: "true", environment: {systems: {network: {mode: open}, commands: {run: {}}}}, autonomy: `+stepAsksTony+`}}}]}`))
 	land := mirror.AskRef(id)
 	posed(t, srv, land)
 	if resp := answerAs(t, davido, ts.URL, id); resp.StatusCode != http.StatusNoContent {
@@ -66,10 +66,10 @@ func TestAThenTasksOwnQuestionAsksTheAsker(t *testing.T) {
 	}
 	then := thenTaskOf(t, srv, land)
 	if got := waitingOn(t, srv, waitQuestion(t, srv, then.Ref.Name())); !slices.Equal(got, []string{daniel}) {
-		t.Fatalf("the then-task's question waits on %v, want daniel alone", got)
+		t.Fatalf("the row's task question waits on %v, want daniel alone", got)
 	}
 	if got := entity.Strs(then.Payload, "answerers"); !slices.Equal(got, []string{task.PrincipalAnswerer}) {
-		t.Errorf("the then-task's record holds answerers %v, want [%s]", got, task.PrincipalAnswerer)
+		t.Errorf("the row's task record holds answerers %v, want [%s]", got, task.PrincipalAnswerer)
 	}
 }
 

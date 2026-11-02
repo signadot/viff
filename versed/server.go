@@ -2584,7 +2584,7 @@ func (s *Server) finishSettle(store entity.Store, id, owner string) error {
 	}
 	// What follows it first, as at the claim: the marks it writes keep it to once, so what ran
 	// before a crash does not run again, and what did not yet runs now.
-	s.followAsk(mirror.AskRef(id), followField(res))
+	s.followAsk(mirror.AskRef(id))
 	return s.deliver(store, id, res, owner, true)
 }
 

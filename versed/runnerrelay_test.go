@@ -197,7 +197,7 @@ func TestATaskRaisesAnAskForItsOwnerHeldWithinTheTask(t *testing.T) {
 
 	// Beyond the task: it was given no network, and the then's spawn asks for one.
 	code, body := raiseFor(t, ts.URL, token, "raiser", `{name: wide, question: "Open it up?", to: [`+alice+`],
-		then: {spawn: {script: "true", environment: {systems: {network: {mode: open}}}}}}`)
+		on: [{match: {verdict: proceed}, then: {spawn: {script: "true", environment: {systems: {network: {mode: open}}}}}}]}`)
 	if code != http.StatusBadRequest || !strings.Contains(body, "environment") {
 		t.Fatalf("a then reaching beyond the task = %d %s, want 400 naming the environment", code, body)
 	}
@@ -213,7 +213,7 @@ func TestATaskRaisesAnAskForItsOwnerHeldWithinTheTask(t *testing.T) {
 		"another credential":                 {`{prompt: "go", virtualKey: acme.keys.other}`, ".virtualKey"},
 		"an agent its runner does not offer": {`{agent: {name: verse}, prompt: "go"}`, "no runner offers the agent verse"},
 	} {
-		code, body := raiseFor(t, ts.URL, token, "raiser", `{name: off, question: "Off it?", to: [`+alice+`], then: {spawn: `+c.spawn+`}}`)
+		code, body := raiseFor(t, ts.URL, token, "raiser", `{name: off, question: "Off it?", to: [`+alice+`], on: [{match: {verdict: proceed}, then: {spawn: `+c.spawn+`}}]}`)
 		if code != http.StatusBadRequest || !strings.Contains(body, c.want) || strings.Contains(body, "vk-") {
 			t.Errorf("a then on %s = %d %s, want 400 naming %s, and no key", what, code, body, c.want)
 		}
@@ -223,9 +223,9 @@ func TestATaskRaisesAnAskForItsOwnerHeldWithinTheTask(t *testing.T) {
 	// them), so nothing that follows a task's ask makes one, at any depth.
 	for what, then := range map[string]string{
 		"a then":              `{answer: {ask: someones-gate, choice: yes}}`,
-		"a then's ask's then": `{ask: {question: "And?", to: [` + alice + `], then: {answer: {ask: someones-gate, choice: yes}}}}`,
+		"a then's ask's then": `{ask: {question: "And?", to: [` + alice + `], on: [{match: {verdict: proceed}, then: {answer: {ask: someones-gate, choice: yes}}}]}}`,
 	} {
-		code, body := raiseFor(t, ts.URL, token, "raiser", `{name: settle, question: "Settle it?", to: [`+alice+`], then: `+then+`}`)
+		code, body := raiseFor(t, ts.URL, token, "raiser", `{name: settle, question: "Settle it?", to: [`+alice+`], on: [{then: `+then+`}]}`)
 		if code != http.StatusBadRequest || !strings.Contains(body, "answers no ask") {
 			t.Errorf("%s that answers = %d %s, want 400: what follows a task's ask answers no ask", what, code, body)
 		}
@@ -233,18 +233,18 @@ func TestATaskRaisesAnAskForItsOwnerHeldWithinTheTask(t *testing.T) {
 
 	// Raised, the ask is the owner's to change, beyond the task too.
 	code, body = raiseFor(t, ts.URL, token, "raiser", `{name: mine, question: "Mine?", to: [`+alice+`],
-		then: {spawn: {script: "true"}}}`)
+		on: [{match: {verdict: proceed}, then: {spawn: {script: "true"}}}]}`)
 	if code != http.StatusCreated {
 		t.Fatalf("a raise to change = %d %s", code, body)
 	}
 	mine, _ := tonyOf(t, body)["id"].(string)
 	posed(t, srv, mirror.AskRef(mine))
-	if resp := change(t, "user:"+tester, ts.URL, mine, `{then: {spawn: {script: "true", environment: {systems: {network: {mode: open}}}}}}`); resp.StatusCode/100 != 2 {
+	if resp := change(t, "user:"+tester, ts.URL, mine, `{on: [{match: {verdict: proceed}, then: {spawn: {script: "true", environment: {systems: {network: {mode: open}}}}}}]}`); resp.StatusCode/100 != 2 {
 		t.Errorf("its owner changing a task's raise = %s: %s", resp.Status, bodyOf(t, resp))
 	}
 
 	code, body = raiseFor(t, ts.URL, token, "raiser", `{name: land, question: "Land it?", to: [`+alice+`],
-		then: {spawn: {script: "true"}}}`)
+		on: [{match: {verdict: proceed}, then: {spawn: {script: "true"}}}]}`)
 	if code != http.StatusCreated {
 		t.Fatalf("a raise within the task = %d %s", code, body)
 	}

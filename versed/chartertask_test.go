@@ -303,20 +303,20 @@ func TestATasksAskHandsOnNoCharterInstall(t *testing.T) {
 	}
 
 	for what, follow := range map[string]string{
-		"a then that reaches every verb": `then: ` + spawn(`{}`),
-		"a then that installs":           `then: ` + spawn(`{charter-install: {}}`),
-		"an else that installs":          `else: ` + spawn(`{charter-install: {}}`),
-		"an ask's then that installs":    `then: {ask: {question: "And then?", to: [` + alice + `], then: ` + spawn(`{}`) + `}}`,
+		"a row that reaches every verb": `on: [{then: ` + spawn(`{}`) + `}]`,
+		"a row that installs":           `on: [{match: {verdict: proceed}, then: ` + spawn(`{charter-install: {}}`) + `}]`,
+		"a later row that installs":     `on: [{match: {verdict: proceed}, then: null}, {then: ` + spawn(`{charter-install: {}}`) + `}]`,
+		"an ask's row that installs":    `on: [{match: {verdict: proceed}, then: {ask: {question: "And then?", to: [` + alice + `], on: [{then: ` + spawn(`{}`) + `}]}}}]`,
 	} {
 		code, body := raiseFor(t, ts.URL, token, "raiser", `{name: more, question: "More?", to: [`+alice+`], `+follow+`}`)
 		if code != http.StatusBadRequest || !strings.Contains(body, "charter-install") {
 			t.Errorf("%s = %d %s, want 400 naming charter-install", what, code, body)
 		}
 	}
-	code, body := raiseFor(t, ts.URL, token, "raiser", `{name: rest, question: "The rest?", to: [`+alice+`], then: `+
-		spawn(`{data-get: {}, charter-remove: {}}`)+`, else: `+spawn(`{ask-create: {}}`)+`}`)
+	code, body := raiseFor(t, ts.URL, token, "raiser", `{name: rest, question: "The rest?", to: [`+alice+`], on: [{match: {verdict: proceed}, then: `+
+		spawn(`{data-get: {}, charter-remove: {}}`)+`}, {then: `+spawn(`{ask-create: {}}`)+`}]}`)
 	if code != http.StatusCreated {
-		t.Errorf("a then and an else with the rest of verse = %d %s, want it raised", code, body)
+		t.Errorf("two rows with the rest of verse = %d %s, want it raised", code, body)
 	}
 }
 

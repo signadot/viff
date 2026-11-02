@@ -23,7 +23,7 @@ func asking(t *testing.T) (*Server, *httptest.Server) {
 }
 
 // askingOn is asking over a server built elsewhere: one whose tasks' actions are steps
-// (stepBuilder), for a test about a then-task's own gate.
+// (stepBuilder), for a test about the gate of the task a row ran.
 func askingOn(t *testing.T, srv *Server) (*Server, *httptest.Server) {
 	t.Helper()
 	srv.Start(t.Context())
@@ -38,7 +38,7 @@ func waitField(t *testing.T, srv *Server, ref entity.Ref, field string) string {
 	deadline := time.After(5 * time.Second)
 	for {
 		if e, ok, _ := srv.Store.Get(ref); ok {
-			if v := entity.Str(e.Payload, field); v != "" {
+			if v := strAt(e.Payload, field); v != "" {
 				return v
 			}
 		}
@@ -66,10 +66,10 @@ func posed(t *testing.T, srv *Server, ref entity.Ref) {
 	}
 }
 
-// thenTaskOf waits for the task an ask's `then` ran, by the id written on the ask.
+// thenTaskOf waits for the task the row of an ask's `on` ran, by the id written on the ask.
 func thenTaskOf(t *testing.T, srv *Server, ref entity.Ref) entity.Entity {
 	t.Helper()
-	id := waitField(t, srv, ref, "then-task")
+	id := waitField(t, srv, ref, "ran.task")
 	deadline := time.After(5 * time.Second)
 	for {
 		if e, ok, _ := srv.Store.Get(mirror.Ref(id)); ok {
@@ -88,7 +88,7 @@ func thenTaskOf(t *testing.T, srv *Server, ref entity.Ref) entity.Entity {
 func TestAnAskIsAnsweredAndItsThenRunsForTheAsker(t *testing.T) {
 	srv, ts := asking(t)
 	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Review verse/ask?", to: [oscar@example.com], then: {spawn: {prompt: "merge verse/ask to main", environment: {systems: {network: {mode: open}}}}}}`))
+	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Review verse/ask?", to: [oscar@example.com], on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge verse/ask to main", environment: {systems: {network: {mode: open}}}}}}]}`))
 	land := mirror.AskRef(id)
 	posed(t, srv, land)
 	if got := heldOutTo(t, srv, id); len(got) != 1 || got[0] != davido {
@@ -125,7 +125,7 @@ func TestAThenRunsRecordCarriesItsPolicy(t *testing.T) {
 	srv, ts := asking(t)
 	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
 	id := askID(t, ask(t, daniel, ts.URL, `{name: tag, question: "Tag v1?", to: [oscar@example.com],
-		then: {spawn: {script: "true", environment: {systems: {network: {mode: open}, question: {ask: {}}}}, autonomy: [{match: {system: question}, then: allow}, {then: deny}]}}}`))
+		on: [{match: {verdict: proceed}, then: {spawn: {script: "true", environment: {systems: {network: {mode: open}, question: {ask: {}}}}, autonomy: [{match: {system: question}, then: allow}, {then: deny}]}}}]}`))
 	tag := mirror.AskRef(id)
 	posed(t, srv, tag)
 	if resp := answerAs(t, davido, ts.URL, id); resp.StatusCode != http.StatusNoContent {
@@ -133,10 +133,10 @@ func TestAThenRunsRecordCarriesItsPolicy(t *testing.T) {
 	}
 	then := thenTaskOf(t, srv, tag)
 	if p := mirror.AutonomyOf(then.Payload); len(p) != 2 || p[0].Match.System != "question" || p[0].Then.Mode != "allow" {
-		t.Errorf("the then-task's record holds the policy %v, want the one written beside the script", p)
+		t.Errorf("the row's task record holds the policy %v, want the one written beside the script", p)
 	}
 	if _, script := mirror.AgentOf(then.Payload); !script {
-		t.Errorf("the then-task's record is no script's: %v", entity.ToObj(then.Payload))
+		t.Errorf("the row's task record is no script's: %v", entity.ToObj(then.Payload))
 	}
 }
 
@@ -149,7 +149,7 @@ func TestAThensAutonomyIsCheckedWhenAsked(t *testing.T) {
 		`{spawn: {prompt: "go", environment: {systems: {network: {mode: open}}}, autonomy: [{match: {verb: push}, then: allow}, {then: deny}]}}`,
 		`{answer: {ask: other, choice: proceed}, autonomy: [{then: deny}]}`,
 	} {
-		resp := ask(t, "user:daniel@example.com", ts.URL, `{name: bad, question: "Go?", then: `+then+`}`)
+		resp := ask(t, "user:daniel@example.com", ts.URL, `{name: bad, question: "Go?", on: [{then: `+then+`}]}`)
 		if resp.StatusCode != http.StatusBadRequest {
 			t.Errorf("then %s: %s %s, want 400", then, resp.Status, bodyOf(t, resp))
 		}
@@ -176,7 +176,7 @@ func TestAnAskWithoutAThenIsAVote(t *testing.T) {
 func TestANoToAnAskIsRecordedAndRunsNothing(t *testing.T) {
 	srv, ts := asking(t)
 	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge verse/ask?", to: [oscar@example.com], then: {spawn: {prompt: "merge verse/ask to main", environment: {systems: {network: {mode: open}}}}}}`))
+	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge verse/ask?", to: [oscar@example.com], on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge verse/ask to main", environment: {systems: {network: {mode: open}}}}}}]}`))
 	land := mirror.AskRef(id)
 	posed(t, srv, land)
 	resp := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "deny", By: davido})
@@ -187,7 +187,7 @@ func TestANoToAnAskIsRecordedAndRunsNothing(t *testing.T) {
 		t.Fatalf("the ask records %q, want no", got)
 	}
 	time.Sleep(200 * time.Millisecond)
-	if e, _, _ := srv.Store.Get(land); entity.Get(e.Payload, "then-task") != nil {
+	if e, _, _ := srv.Store.Get(land); atPath(e.Payload, "ran.task") != nil {
 		t.Fatal("a no ran the then")
 	}
 }
@@ -213,7 +213,7 @@ func TestAnAskOutlivesARestart(t *testing.T) {
 	first.Start(ctx)
 	ts := httptest.NewServer(first.Handler())
 	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com], then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}`))
+	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com], on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}]}`))
 	land := mirror.AskRef(id)
 	posed(t, first, land)
 	ts.Close()

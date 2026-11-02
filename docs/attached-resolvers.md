@@ -132,7 +132,7 @@ is answered yes, `by: user:carol@example.com`, `via: via:verse.resolvers.carols-
 
 - **It fits inside the ask it serves.** It offers the same options, each settled by one ballot.
   Its clock fits inside the served ask's: a later date is refused, and with none it takes that
-  clock, and what silence settles on there. It takes no `then`.
+  clock, and what silence settles on there. It takes no `on`.
 - **What it comes to is carried back.** When it settles, versed answers the served ask as the
   resolver, for the party it was raised for, held to the grant and the match as they stand then.
   A clock that settled on no option carries nothing. The onward ask records `carried`.

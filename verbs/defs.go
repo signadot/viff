@@ -17,7 +17,7 @@ var (
 	AskCreate = &Verb{
 		Name: "ask-create", Tool: "verse_ask_create",
 		Lead: "Ask somebody something", CLI: "`verse ask [<name>] -q <question>`",
-		Does: "the question, who is asked, when it settles if nobody answers, and what follows a yes or a no, " +
+		Does: "the question, who is asked, when it settles if nobody answers, and what follows its answer, " +
 			"which runs on the asker's authority. It does not wait: the call answers `raised question <id>: " +
 			"<question>`, and {ask-get} <id> reads the ask back.",
 		MCPNote:  "Answers come back through verse_wait.",
@@ -28,12 +28,12 @@ var (
 			text("to", "who is asked: a name or a comma-separated list, in the grammar a grant uses "+
 				"(user:ana@example.com, ana@example.com, group:leads); absent, anyone may answer"),
 			text("due", "when it settles if nobody answers: an RFC 3339 date or a duration from now (48h)"),
-			text("on_silence", "with due: what it settles on if nobody answers by then, yes or no (the default); yes runs the then"),
-			{Name: "then", Type: "string", TaskNote: held,
-				Desc: "what follows a yes, on the asker's authority, as a tony document of one key: {spawn: <a spawn, " +
-					"as a charter writes one>}, {answer: {ask: <id>, choice: <option>}} or {ask: {name: …, question: …}}."},
-			{Name: "else", Type: "string", TaskNote: held,
-				Desc: "what follows a no, or silence settling on no, on the asker's authority; one key, as then takes."},
+			text("on_silence", "with due: the option it settles on if nobody answers by then, proceed or deny (the default)"),
+			{Name: "on", Type: "string", TaskNote: held,
+				Desc: "what follows its answer, on the asker's authority, as a tony list of rows read in order: each " +
+					"{match: <a tony match over the answer, {verdict: proceed} or {by: deadline}; absent, any answer>, " +
+					"then: <one key: {spawn: <a spawn, as a charter writes one>}, {answer: {ask: <id>, choice: <option>}} " +
+					"or {ask: {name: …, question: …}}; null or {} does nothing>}. The first row that matches runs its then."},
 			text("about", "the path the ask is about, as a kinded path"),
 			text("keep", "how long it stands once settled, as a duration (72h); absent, a week"),
 			text("label", "what the ask says about itself, name=value, comma-separated (team=payments,kind=deploy)"),
@@ -44,7 +44,7 @@ var (
 		Lead: "Read back one of the asks raised", CLI: "`verse ask <name|id>`",
 		Does: "by the name it was asked under or the id {ask-create} answered: whether it was answered " +
 			"(`status`, and `answer`, pending until it settles, or `why` where it settled with no answer), " +
-			"what it asked and of whom, its due, and what its then and else did.",
+			"what it asked and of whom, its due, and what its on ran.",
 		MCPNote: "What waits on you is verse_question.",
 		Params: []Param{
 			need(text("name_or_id", "one ask, by the name it was asked under or its id"), "name the ask, by its name or its id"),

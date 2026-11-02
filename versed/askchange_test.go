@@ -49,8 +49,8 @@ func TestAnAsksDateMovesWithoutAskingAgain(t *testing.T) {
 	srv, ts := asking(t)
 	in24 := time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339)
 	for body, want := range map[string]string{
-		`{name: land, question: "Merge?", to: [oscar@example.com]}`:                                      task.Deny,
-		`{name: lazy, question: "Merge?", to: [oscar@example.com], due: "` + in24 + `", onSilence: yes}`: task.Proceed,
+		`{name: land, question: "Merge?", to: [oscar@example.com]}`:                                          task.Deny,
+		`{name: lazy, question: "Merge?", to: [oscar@example.com], due: "` + in24 + `", onSilence: proceed}`: task.Proceed,
 	} {
 		id := askID(t, ask(t, chAsker, ts.URL, body))
 		ref := mirror.AskRef(id)
@@ -83,10 +83,10 @@ func mustTime(t *testing.T, s string) time.Time {
 // what it says now.
 func TestAChangedThenAsksAgain(t *testing.T) {
 	srv, ts := asking(t)
-	id := askID(t, ask(t, chAsker, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com], then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}`))
+	id := askID(t, ask(t, chAsker, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com], on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}]}`))
 	ref := mirror.AskRef(id)
 	posed(t, srv, ref)
-	if resp := change(t, chAsker, ts.URL, id, `{then: {spawn: {prompt: "merge it and tag it", environment: {systems: {network: {mode: open}}}}}}`); resp.StatusCode != http.StatusOK {
+	if resp := change(t, chAsker, ts.URL, id, `{on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge it and tag it", environment: {systems: {network: {mode: open}}}}}}]}`); resp.StatusCode != http.StatusOK {
 		t.Fatalf("changing then: %s: %s", resp.Status, bodyOf(t, resp))
 	}
 	resp := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "proceed", By: chDavido, Edit: 1})

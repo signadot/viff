@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/runner"
@@ -92,16 +91,16 @@ func TestAnAsksThenRunsOnTheLocalRunner(t *testing.T) {
 	t.Cleanup(ts.CloseClientConnections)
 	testAddr = strings.TrimPrefix(ts.URL, "http://")
 
-	id := askAs(t, daniel, "land", "-q", "go?", "--to", daniel, "--then", `{spawn: {script: "echo landed", environment: {systems: {network: {mode: open}}}}}`)
+	id := askAs(t, daniel, "land", "-q", "go?", "--to", daniel, "--on", `[{match: {verdict: proceed}, then: {spawn: {script: "echo landed", environment: {systems: {network: {mode: open}}}}}}]`)
 	ref := mirror.AskRef(id)
 	if out, err := runCLI(t, "gate", questionOn(t, store, ref), "--answer", "proceed"); err != nil {
 		t.Fatalf("answer: %v\n%s", err, out)
 	}
-	waitFieldCLI(t, store, ref, "then-task")
-	task := entity.Str(entity.Val(payloadOf(t, store, ref)), "then-task")
+	waitFieldCLI(t, store, ref, "ran.task")
+	task := atPathCLI(payloadOf(t, store, ref), "ran.task").(string)
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		if why := payloadOf(t, store, ref)["then-failed"]; why != nil {
+		if why := atPathCLI(payloadOf(t, store, ref), "ran.failed"); why != nil {
 			t.Fatalf("the then did not start: %v", why)
 		}
 		switch rec := payloadOf(t, store, mirror.Ref(task)); rec["status"] {

@@ -6,15 +6,16 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
 )
 
-// THE VERSE SYSTEM'S EXAMPLE HOLDS: the `then` docs/systems/verse.md raises is within the task
-// its spawn launches, as the raise checks it (taskBound.holds). Read out of the doc rather than a
+// THE VERSE SYSTEM'S EXAMPLE HOLDS: the row of `on` docs/systems/verse.md raises is within the
+// task its spawn launches, as the raise checks it (taskBound.holds). Read out of the doc rather than a
 // copy, so the example cannot drift into one the raise refuses.
-func TestTheVerseSystemsExampleThenHoldsWithinItsTask(t *testing.T) {
+func TestTheVerseSystemsExampleOnHoldsWithinItsTask(t *testing.T) {
 	src, err := os.ReadFile("../docs/systems/verse.md")
 	if err != nil {
 		t.Fatal(err)
@@ -26,27 +27,34 @@ func TestTheVerseSystemsExampleThenHoldsWithinItsTask(t *testing.T) {
 	}
 	block := doc[spawnAt+len("```tony\n"):]
 	block = block[:strings.Index(block, "```")]
-	then := regexp.MustCompile(`(?s)-then '([^']*)'`).FindStringSubmatch(doc)
-	if then == nil {
-		t.Fatal("docs/systems/verse.md has no -then example")
+	on := regexp.MustCompile(`(?s)-on '([^']*)'`).FindStringSubmatch(doc)
+	if on == nil {
+		t.Fatal("docs/systems/verse.md has no -on example")
 	}
-	spec := func(what, src string) launch.Spec {
+	parse := func(what, src string) entity.Payload {
 		n, err := codec.ParseNode([]byte(src), codec.Tony)
 		if err != nil {
 			t.Fatalf("%s: %v", what, err)
 		}
+		return n
+	}
+	spec := func(what string, n entity.Payload) launch.Spec {
 		s, err := thenSpec(entity.Get(n, "spawn"))
 		if err != nil {
 			t.Fatalf("%s's spawn%v", what, err)
 		}
 		return s
 	}
-	task, follows := spec("the task", block), spec("the then", then[1])
+	rows := ir.Uncomment(parse("the on", on[1]))
+	if rows.Type != ir.ArrayType || len(rows.Values) != 1 {
+		t.Fatalf("the doc's on is not one row: %s", on[1])
+	}
+	task, follows := spec("the task", parse("the task", block)), spec("the row", entity.Get(rows.Values[0], "then"))
 	bound := &taskBound{
 		launched: &launched{task.Environment, "verse.runners.verse-runner", task.VirtualKey},
 		autonomy: task.Autonomy,
 	}
 	if err := bound.holds(follows); err != nil {
-		t.Errorf("the doc's then is refused at its raise: spawn%v", err)
+		t.Errorf("the doc's row is refused at its raise: spawn%v", err)
 	}
 }

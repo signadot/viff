@@ -1005,15 +1005,12 @@ func AnswerQuestion(store entity.Store, id string, res task.Resolution) {
 }
 
 // ClaimRecord is a resolution as a question's claim records it (`followed`, api.AskFollowed):
-// when, which of `then` and `else` it runs, and the answer in the keys the answered record
-// uses, so a reader of either reads one shape. The claim is the answer (versed consequence.go).
+// when, and the answer in the keys the answered record uses, so a reader of either reads one
+// shape. The claim is the answer (versed consequence.go), and what the rows of a person's ask's
+// `on` match (versed askon.go).
 func ClaimRecord(res task.Resolution, now time.Time) entity.Obj {
 	rec := resolutionKeys(res)
 	rec["at"] = now.UTC().Format(time.RFC3339)
-	rec["field"] = "else"
-	if res.Chosen() == task.Proceed {
-		rec["field"] = "then"
-	}
 	// What the answered record carries elsewhere, and a restart needs to deliver the same
 	// resolution: the edit it answered, and how the answerer was authenticated.
 	if res.Edit != 0 {
@@ -1328,8 +1325,7 @@ func clearPriorAnswer(store entity.Store, ref entity.Ref, rec entity.Obj) {
 	// THE CLAIM GOES WITH THE ROUND, AS THE BALLOTS DO. A question that was answered and is
 	// posed again is a new question under an old id, and the claim that settled the last one
 	// (`followed`, versed consequence.go) is not its answer: cleared, so this asking takes a
-	// claim of its own; what the last claim ran stays marked (`then-task` and the rest), so it is
-	// not run again. A PENDING or orphaned question posed again keeps its claim: that is an
+	// claim of its own; what the last claim ran stays marked (`ran`), so it is not run again. A PENDING or orphaned question posed again keeps its claim: that is an
 	// answer decided and not yet heard, delivered now that something waits on it again.
 	if status == QuestionAnswered {
 		rec["ballots"] = entity.Removed()

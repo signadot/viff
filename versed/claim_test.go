@@ -43,7 +43,7 @@ func TestTheClaimSettlesAQuestion(t *testing.T) {
 	srv, ts := asking(t)
 	const alice, bob, carol, dave = "user:alice@example.com", "user:bob@example.com", "user:carol@example.com", "user:dave@example.com"
 	id := askID(t, ask(t, alice, ts.URL, `{name: ship, question: "Ship?", to: [bob@example.com, carol@example.com, dave@example.com],
-		then: {spawn: {prompt: "announce it", environment: {systems: {network: {mode: open}}}}}}`))
+		on: [{match: {verdict: proceed}, then: {spawn: {prompt: "announce it", environment: {systems: {network: {mode: open}}}}}}]}`))
 	ref := mirror.AskRef(id)
 	posed(t, srv, ref)
 	claimAsk(t, srv, ref, task.Choose(task.Deny, bob))
@@ -73,7 +73,7 @@ func TestTheClaimSettlesAQuestion(t *testing.T) {
 		t.Fatalf("the ask settled as %v %v (%v), want bob's no", rec["verdict"], rec["by"], rec["answer"])
 	}
 	time.Sleep(100 * time.Millisecond)
-	if e, _, _ := srv.Store.Get(ref); entity.Get(e.Payload, "then-task") != nil {
+	if e, _, _ := srv.Store.Get(ref); atPath(e.Payload, "ran.task") != nil {
 		t.Fatalf("carol's yes ran the then of a question bob's no settled: %v", entity.ToObj(e.Payload))
 	}
 	if resp := answerWith(t, bob, ts.URL, id, task.Deny); resp.StatusCode != http.StatusNoContent {
@@ -92,7 +92,7 @@ func TestARestartFinishesAClaimedSettle(t *testing.T) {
 	_, ts := askingOn(t, first)
 	const alice, bob = "user:alice@example.com", "user:bob@example.com"
 	id := askID(t, ask(t, alice, ts.URL, `{name: ship, question: "Ship?", to: [bob@example.com],
-		then: {spawn: {prompt: "announce it", environment: {systems: {network: {mode: open}}}}}}`))
+		on: [{match: {verdict: proceed}, then: {spawn: {prompt: "announce it", environment: {systems: {network: {mode: open}}}}}}]}`))
 	ref := mirror.AskRef(id)
 	posed(t, first, ref)
 	claimAsk(t, first, ref, task.Choose(task.Proceed, bob))
@@ -119,8 +119,8 @@ func TestARestartFinishesAClaimedSettle(t *testing.T) {
 	t.Cleanup(third.stopAllIOs)
 	third.Start(t.Context())
 	time.Sleep(200 * time.Millisecond)
-	if e, _, _ := third.Store.Get(ref); entity.Str(e.Payload, "then-task") != then.Ref.Name() {
-		t.Fatalf("a later start ran the then again: %q, was %q", entity.Str(e.Payload, "then-task"), then.Ref.Name())
+	if e, _, _ := third.Store.Get(ref); entity.Str(atPath(e.Payload, "ran"), "task") != then.Ref.Name() {
+		t.Fatalf("a later start ran the then again: %q, was %q", entity.Str(atPath(e.Payload, "ran"), "task"), then.Ref.Name())
 	}
 }
 

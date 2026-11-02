@@ -21,36 +21,25 @@ import (
 func AskOf(a Args, now time.Time) (api.Ask, error) {
 	spec := api.AskSpec{Name: a.Word("name"), Question: a.Word("question"), To: a.Word("to"), Due: a.Word("due"),
 		OnSilence: a.Word("on_silence"), About: a.Word("about"), Keep: a.Word("keep"), Label: a.Word("label")}
-	var err error
-	if spec.Then, err = thenOf(a, "then"); err != nil {
-		return api.Ask{}, err
-	}
-	if spec.Else, err = thenOf(a, "else"); err != nil {
-		return api.Ask{}, err
+	if a.Word("on") != "" {
+		n, err := OnDoc([]byte(a.Word("on")), codec.Tony)
+		if err != nil {
+			return api.Ask{}, fmt.Errorf("on: %w", err)
+		}
+		spec.On = n
 	}
 	return api.NewAsk(spec, now)
 }
 
-func thenOf(a Args, key string) (entity.Payload, error) {
-	if a.Word(key) == "" {
-		return nil, nil
-	}
-	n, err := ThenDoc([]byte(a.Word(key)), codec.Tony)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", key, err)
-	}
-	return n, nil
-}
-
-// ThenDoc reads what follows an answer, a then or an else, from a document in the format in: one
-// key naming what runs. What it may say is POST /asks's to check.
-func ThenDoc(src []byte, in codec.Format) (entity.Payload, error) {
+// OnDoc reads what follows an answer, an ask's `on`, from a document in the format in: a list of
+// rows, each {match, then}. What a row may say is POST /asks's to check.
+func OnDoc(src []byte, in codec.Format) (entity.Payload, error) {
 	n, err := codec.ParseNode(src, in)
 	if err != nil {
 		return nil, err
 	}
-	if !entity.IsObj(n) {
-		return nil, fmt.Errorf("one key naming what runs: {spawn: …}, {answer: …} or {ask: …}")
+	if n = ir.Uncomment(n); n == nil || n.Type != ir.ArrayType {
+		return nil, fmt.Errorf("a list of rows, each {match, then}: the first whose match the answer meets runs its then")
 	}
 	return n, nil
 }

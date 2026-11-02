@@ -34,8 +34,8 @@ spawn:
 
 | Tool | Mirrors | What it does | Step |
 |---|---|---|---|
-| `verse-ask-create` | `verse ask [<name>] -q`, `verse_ask_create` | raises an ask as the person the task runs for: `name`, `question`, `to`, `due`, `on_silence`, `then`, `else`, `about`, `keep`, `label` ([asking](../asking.md)). It does not wait: the result is `raised question <id>: <question>`, and the ask stands after the task ends. Without a `name`, verse names it `run-<nonce>`. | `verse.ask-create` |
-| `verse-ask-get` | `verse ask <name\|id>`, `verse_ask_get` | reads one of the person's asks, by `name_or_id`: the name it was asked under or its id. The result is the ask as `verse ask` shows it: its `status` and `answer`, `pending` until it settles (or `why`, where it settled with no answer), what it asked and of whom, its due, and what its `then` and `else` did. | `verse.ask-get` |
+| `verse-ask-create` | `verse ask [<name>] -q`, `verse_ask_create` | raises an ask as the person the task runs for: `name`, `question`, `to`, `due`, `on_silence`, `on`, `about`, `keep`, `label` ([asking](../asking.md)). It does not wait: the result is `raised question <id>: <question>`, and the ask stands after the task ends. Without a `name`, verse names it `run-<nonce>`. | `verse.ask-create` |
+| `verse-ask-get` | `verse ask <name\|id>`, `verse_ask_get` | reads one of the person's asks, by `name_or_id`: the name it was asked under or its id. The result is the ask as `verse ask` shows it: its `status` and `answer`, `pending` until it settles (or `why`, where it settled with no answer), what it asked and of whom, its due, and what its `on` ran. | `verse.ask-get` |
 | `verse-ask-list` | `verse ask`, `verse_ask_list` | lists the person's asks, each as `verse ask` lists it: its id, question, who is asked, its due, its `status`, and its `answer`, `pending` until it settles. | `verse.ask-list` |
 | `verse-data-get` | `verse data`, `verse_data` | reads the verse at an address as the person: `at`, `if`, `if_at`, `trim`, and with `paths` the addresses beneath it, `depth` levels deep, one kinded path per line. | `verse.data-get` |
 | `verse-data-put` | `verse data <address> --put`, `verse_data_put` | writes a `value` at an address `at` as the person, merged into what stands there; with `create`, `update` or `expect` only on that condition, with `grants` for a node it creates. The result is what stands there after the write. | `verse.data-put` |
@@ -46,9 +46,9 @@ spawn:
 | `verse-charter-remove` | `verse charter -r`, `verse_charter_remove` | removes a package at a `path`, or one rule, level or schedule of it, as the person. What it wrote stays. `at` as `verse charter` takes it. | `verse.charter-remove` |
 
 The ask is the person's, not the task's. Its `from` names them, with the task beside them, and
-nothing waits on it. Its `then` and `else` run as that person when it settles. A spawn in either
+nothing waits on it. Its rows run as that person when it settles. A spawn in any of them
 is held within the task when the ask is raised: an environment no wider than the task's, less
-`verse.charter-install`, an autonomy no looser, and the task's credential where it spends one, and it runs on the task's runner. An answer in either is refused,
+`verse.charter-install`, an autonomy no looser, and the task's credential where it spends one, and it runs on the task's runner. An answer in any of them is refused,
 since it would be the person's, on any ask that waits on them, another task's gate among them. A task that needs the answer to
 go on uses `question-ask`. One that looks again later reads the ask back with `verse-ask-get`,
 which says whether it was answered.
@@ -83,12 +83,12 @@ environment:
 ```sh
 verse-call-tool verse-ask-create -question "Post these release notes for v1.3 in #deploys?" \
   -to user:dana@example.com -due 48h \
-  -then '{spawn: {script: "verse-call-tool slack-post -channel deploys -text \"v1.3: …\"",
-    autonomy: [{then: allow}], environment: {systems: {slack: {post: {channel: deploys}}}}}}'
+  -on '[{match: {verdict: proceed}, then: {spawn: {script: "verse-call-tool slack-post -channel deploys -text \"v1.3: …\"",
+    autonomy: [{then: allow}], environment: {systems: {slack: {post: {channel: deploys}}}}}}}]'
 ```
 
-The `then` above runs on the task's runner, with an environment that gives no more of Slack than
-the task's, and an autonomy no looser. A `then` whose doer the task's runner does not offer, or
+The row above runs on the task's runner, with an environment that gives no more of Slack than
+the task's, and an autonomy no looser. A spawn whose doer the task's runner does not offer, or
 naming a channel the task's environment does not give, is refused when the ask is raised. So what follows the ask can do no
 more than the task could have done itself: the ask lets the task end now and leave the post to
 dana's answer, which may come days later.

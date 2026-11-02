@@ -80,15 +80,14 @@ context:
 define:
   about: .[string]
   due: .[string]
-  else: .[tony-base:ir]
   for: .[string]
   keep: .[string]
   labels: .[object(string)]
   name: .[string]
+  on: .[tony-base:ir]
   onSilence: .[string]
   question: .[string]
   serves: .[string]
-  then: .[tony-base:ir]
   to: .[array(string)]
 signature:
   name: verse-ask
@@ -121,9 +120,8 @@ context:
 define:
   due: .[string]
   edit: .[int]
-  else: .[tony-base:ir]
+  on: .[tony-base:ir]
   question: .[string]
-  then: .[tony-base:ir]
   to: .[array(string)]
 signature:
   name: verse-ask-change
@@ -184,7 +182,6 @@ define:
   authenticated: .[string]
   by: .[string]
   edit: .[int]
-  field: .[string]
   say: .[array(string)]
   undelivered: .[string]
   verdict: .[string]
@@ -202,6 +199,27 @@ define:
   task: .[string]
 signature:
   name: verse-ask-from
+---
+context:
+- tony-format/context
+- tony-base: github.com/signadot/tony-format/go-tony/schema
+define:
+  match: .[tony-base:ir]
+  then: .[nullable(verse-ask-follow)]
+signature:
+  name: verse-ask-on
+---
+context:
+- tony-format/context
+define:
+  answered: .[nullable(verse-ask-follow-answered)]
+  asked: .[nullable(verse-ask-follow-asked)]
+  at: .[string]
+  failed: .[nullable(verse-ask-follow-failed)]
+  row: .[int]
+  task: .[string]
+signature:
+  name: verse-ask-ran
 ---
 context:
 - tony-format/context
@@ -252,11 +270,6 @@ define:
   deadline: .[nullable(task:verse-deadline)]
   due: .[string]
   edit: .[int]
-  else: .[nullable(verse-ask-follow)]
-  else-answered: .[nullable(verse-ask-follow-answered)]
-  else-asked: .[nullable(verse-ask-follow-asked)]
-  else-failed: .[nullable(verse-ask-follow-failed)]
-  else-task: .[string]
   expires: .[string]
   fields: .[object(string)]
   followed: .[nullable(verse-ask-followed)]
@@ -266,6 +279,7 @@ define:
   keep: .[string]
   labels: .[object(string)]
   name: .[string]
+  on: .[array(verse-ask-on)]
   onSilence: .[string]
   options: .[array(task:verse-option)]
   orphanedAt: .[string]
@@ -274,6 +288,7 @@ define:
   posedCursor: .[int]
   posedRun: .[string]
   question: .[string]
+  ran: .[nullable(verse-ask-ran)]
   reason: .[string]
   said: .[object(verse-ask-said)]
   say: .[array(string)]
@@ -284,11 +299,6 @@ define:
   step: .[string]
   subject: .[string]
   suspended: .[bool]
-  then: .[nullable(verse-ask-follow)]
-  then-answered: .[nullable(verse-ask-follow-answered)]
-  then-asked: .[nullable(verse-ask-follow-asked)]
-  then-failed: .[nullable(verse-ask-follow-failed)]
-  then-task: .[string]
   to: .[nullable(verse-ask-to)]
   tool: .[string]
   turn: .[string]
@@ -314,11 +324,6 @@ define:
   deadline: .[nullable(task:verse-deadline)]
   due: .[string]
   edit: .[int]
-  else: .[nullable(verse-ask-follow)]
-  else-answered: .[nullable(verse-ask-follow-answered)]
-  else-asked: .[nullable(verse-ask-follow-asked)]
-  else-failed: .[nullable(verse-ask-follow-failed)]
-  else-task: .[string]
   expires: .[string]
   fields: .[object(string)]
   followed: .[nullable(verse-ask-followed)]
@@ -328,6 +333,7 @@ define:
   keep: .[string]
   labels: .[object(string)]
   name: .[string]
+  on: .[array(verse-ask-on)]
   onSilence: .[string]
   options: .[array(task:verse-option)]
   orphanedAt: .[string]
@@ -336,6 +342,7 @@ define:
   posedCursor: .[int]
   posedRun: .[string]
   question: .[string]
+  ran: .[nullable(verse-ask-ran)]
   reason: .[string]
   said: .[object(verse-ask-said)]
   say: .[array(string)]
@@ -346,11 +353,6 @@ define:
   step: .[string]
   subject: .[string]
   suspended: .[bool]
-  then: .[nullable(verse-ask-follow)]
-  then-answered: .[nullable(verse-ask-follow-answered)]
-  then-asked: .[nullable(verse-ask-follow-asked)]
-  then-failed: .[nullable(verse-ask-follow-failed)]
-  then-task: .[string]
   to: .[nullable(verse-ask-to)]
   tool: .[string]
   turn: .[string]
@@ -439,11 +441,6 @@ define:
   deadline: .[nullable(task:verse-deadline)]
   due: .[string]
   edit: .[int]
-  else: .[nullable(verse-ask-follow)]
-  else-answered: .[nullable(verse-ask-follow-answered)]
-  else-asked: .[nullable(verse-ask-follow-asked)]
-  else-failed: .[nullable(verse-ask-follow-failed)]
-  else-task: .[string]
   expires: .[string]
   fields: .[object(string)]
   followed: .[nullable(verse-ask-followed)]
@@ -453,6 +450,7 @@ define:
   keep: .[string]
   labels: .[object(string)]
   name: .[string]
+  on: .[array(verse-ask-on)]
   onSilence: .[string]
   options: .[array(task:verse-option)]
   orphanedAt: .[string]
@@ -461,6 +459,7 @@ define:
   posedCursor: .[int]
   posedRun: .[string]
   question: .[string]
+  ran: .[nullable(verse-ask-ran)]
   reason: .[string]
   said: .[object(verse-ask-said)]
   say: .[array(string)]
@@ -472,11 +471,6 @@ define:
   step: .[string]
   subject: .[string]
   suspended: .[bool]
-  then: .[nullable(verse-ask-follow)]
-  then-answered: .[nullable(verse-ask-follow-answered)]
-  then-asked: .[nullable(verse-ask-follow-asked)]
-  then-failed: .[nullable(verse-ask-follow-failed)]
-  then-task: .[string]
   to: .[nullable(verse-ask-to)]
   tool: .[string]
   turn: .[string]

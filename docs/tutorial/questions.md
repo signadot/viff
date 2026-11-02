@@ -21,7 +21,7 @@ This page needs [a verse running](README.md#start), and nothing else.
 
 ```sh
 verse ask deploy -q "Deploy the release to staging?" --to ana@example.com --due 1h \
-  --then '{spawn: {script: "echo deploying", environment: {systems: {network: {mode: open}}}}}'
+  --on '[{match: {verdict: proceed}, then: {spawn: {script: "echo deploying", environment: {systems: {network: {mode: open}}}}}}]'
 # raised question deploy-b8a7d6bea9e3: Deploy the release to staging?
 ```
 
@@ -30,7 +30,7 @@ verse ask deploy -q "Deploy the release to staging?" --to ana@example.com --due 
 | `-q` | the question |
 | `--to` | who may answer. Without it, anyone may. |
 | `--due` | when it settles if nobody answers, as a date or a duration from now. Without it, it waits until somebody answers. |
-| `--then` | what runs after a yes, on your authority: a spawn, written as a charter's is. Here it is a script, run as written, with the host's network; a `prompt` gives the job to an agent instead, and `autonomy` says what it may do unasked. Without `--then`, the ask only records the answer. |
+| `--on` | what runs after the answer, on your authority: rows, each a `match` on the answer and a `then`. This one row meets a yes (`{verdict: proceed}`), and its `then` is a spawn, written as a charter's is. Here it is a script, run as written, with the host's network; a `prompt` gives the job to an agent instead, and `autonomy` says what it may do unasked. Without `--on`, the ask only records the answer. |
 
 The name, `deploy`, is yours. The id adds a suffix, and commands take either one.
 
@@ -80,8 +80,8 @@ verse question deploy-b8a7d6bea9e3 --answer proceed --as ana@example.com
 verse ask deploy          # answer: yes
 ```
 
-Bob is not asked, so he may not answer. He may not even read the ask. Ana's yes ran what
-`--then` said, as a task that acts for you:
+Bob is not asked, so he may not answer. He may not even read the ask. Ana's yes met the row,
+which ran its spawn as a task that acts for you:
 
 ```sh
 verse task
@@ -99,11 +99,11 @@ A task is the next page. Here it is enough that a yes can start one.
 
 ## Silence, and changing your mind
 
-If nobody answers by the date, the answer is no, unless you say otherwise. An ask for
+If nobody answers by the date, the ask settles on `deny`, unless you say otherwise. An ask for
 objections says otherwise:
 
 ```sh
-verse ask hotfix -q "Any objection to the hotfix?" --to dee@example.com --due 10s --on-silence yes
+verse ask hotfix -q "Any objection to the hotfix?" --to dee@example.com --due 10s --on-silence proceed
 verse ask hotfix          # ten seconds later: answer: yes
 ```
 
@@ -116,7 +116,7 @@ verse ask deploy-prod --due 4h         # moved deploy-prod-… to the date four 
 verse ask deploy-prod --withdraw
 ```
 
-A new date moves the clock and keeps the answers given. A new `--then` or a new `--to` changes
+A new date moves the clock and keeps the answers given. A new `--on` or a new `--to` changes
 what was asked. So the ask is asked again, and the earlier answers do not count.
 
 ## A question is data
@@ -143,5 +143,5 @@ Each answer is a ballot. It says who chose what, and whether verse authenticated
 their word. `verse watch verse ask '*'` follows every ask you can read, and a rule can select an
 ask as it selects any other data.
 
-[Asking](../asking.md) has the rest: asks that answer other asks, an `else` for a no, how long an
+[Asking](../asking.md) has the rest: asks that answer other asks, a row for a no or for silence, how long an
 ask stands, and who may read it. Next, [tasks](tasks.md).

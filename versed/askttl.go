@@ -14,7 +14,7 @@ import (
 // task's question. Asks accumulate, and one that settled a month ago is clutter on the docket and
 // in its asker's list, not history. So a settled ask — answered, withdrawn, orphaned, cancelled:
 // anything but waiting — is given an expiry, when it settled plus its `keep`, and at that instant
-// the system removes it. What its `then` ran is a task, and follows the task rules.
+// the system removes it. A task the row of its `on` started follows the task rules.
 //
 // Removed from what stands, not from the record of what happened: the store keeps its log as its
 // own retention says (cmd/verse/docd.go), so `verse ask --watch --since` replays a removed ask for

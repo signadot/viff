@@ -69,7 +69,7 @@ func AskRow(e entity.Entity) entity.Obj {
 	if to := GranteesTo(p); len(to) > 0 {
 		row["to"] = to
 	}
-	for _, f := range []string{"due", "then", "then-answered", "then-asked", "else", "else-answered", "else-asked", "subject", "keep", "expires"} {
+	for _, f := range []string{"due", "on", "ran", "subject", "keep", "expires"} {
 		if v := entity.Get(p, f); v != nil {
 			row[f] = v
 		}

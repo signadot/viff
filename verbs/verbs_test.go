@@ -56,9 +56,9 @@ func TestEachFaceReadsItsOwnWords(t *testing.T) {
 			}
 		}
 	}
-	then := func(f Face) string { return AskCreate.Properties(f)["then"].(map[string]any)["description"].(string) }
-	if strings.Contains(then(MCP), "this task") || !strings.Contains(then(Task), "no further than this task") {
-		t.Errorf("then says %q to verse mcp and %q to a task", then(MCP), then(Task))
+	on := func(f Face) string { return AskCreate.Properties(f)["on"].(map[string]any)["description"].(string) }
+	if strings.Contains(on(MCP), "this task") || !strings.Contains(on(Task), "no further than this task") {
+		t.Errorf("on says %q to verse mcp and %q to a task", on(MCP), on(Task))
 	}
 	for _, v := range All {
 		for _, f := range []Face{MCP, Task} {
@@ -114,8 +114,8 @@ func TestACallIsReadByItsSchema(t *testing.T) {
 	}
 }
 
-// AN ASK IS READ AS `verse ask` READS IT (api.NewAsk): `to` a comma-separated list, `then` and
-// `else` tony documents of one key, `label` name=value pairs. What the CLI refuses, the verb
+// AN ASK IS READ AS `verse ask` READS IT (api.NewAsk): `to` a comma-separated list, `on` a
+// tony list of rows, `label` name=value pairs. What the CLI refuses, the verb
 // refuses.
 func TestAnAskIsReadAsTheCLIReadsIt(t *testing.T) {
 	ask := func(in map[string]any) error {
@@ -127,19 +127,19 @@ func TestAnAskIsReadAsTheCLIReadsIt(t *testing.T) {
 		return err
 	}
 	a, err := AskCreate.Read(map[string]any{"question": "q", "to": "user:ana@example.com, group:leads",
-		"label": "team=payments, kind=deploy", "then": `{spawn: {script: "true"}}`})
+		"label": "team=payments, kind=deploy", "on": `[{then: {spawn: {script: "true"}}}]`})
 	if err != nil {
 		t.Fatal(err)
 	}
 	got, err := AskOf(a, time.Now())
 	if err != nil || len(got.To) != 2 || got.To[1] != "group:leads" || got.Labels["kind"] != "deploy" ||
-		len(got.Labels) != 2 || entity.Get(got.Then, "spawn") == nil || got.Name != "" {
+		len(got.Labels) != 2 || len(entity.Fields(got.On)) != 0 || got.On == nil || got.Name != "" {
 		t.Errorf("read as %+v, %v", got, err)
 	}
 	for _, bad := range []map[string]any{
 		{"question": "q", "label": "team"}, {"question": "q", "to": "user:ana@example.com,,group:leads"},
 		{"question": "q", "to": []any{"user:ana@example.com"}}, {"question": "q", "label": map[string]any{"team": "payments"}},
-		{"question": "q", "then": "spawn it"}, {"question": "q", "else": "[a]"}, {"name": "n"},
+		{"question": "q", "on": "spawn it"}, {"question": "q", "on": "{then: {}}"}, {"name": "n"},
 	} {
 		if err := ask(bad); err == nil {
 			t.Errorf("%v was taken", bad)

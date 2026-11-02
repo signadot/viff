@@ -1,8 +1,8 @@
 # Asking
 
 `verse ask` asks somebody something. The ask goes to the people you name, with a date if you
-give one. Their answer is written back on your ask. On a yes, what you said should follow runs
-for you. Every verse can ask: nothing has to be installed for it.
+give one. Their answer is written back on your ask, and what you said should follow that answer
+runs for you. Every verse can ask: nothing has to be installed for it.
 
 An ask is how anything in verse waits for a person. You raise one with `verse ask`. A rule's
 gate raises one when it stops for a person. A task raises one with its `question-ask` tool and
@@ -17,12 +17,13 @@ record, on one docket.
 | **asker** | whoever raised the ask: its record's `from`, `{principal: <you>}`. Your ask is your record |
 | **to** | whom the ask is put to: a name or a list, in the [grammar a grant uses](perms.md#principals-and-grantees). Absent, anyone may answer. The record keeps it as `to: {grantees: […]}` |
 | **due** | the date the ask settles at if nobody answers. Absent, it has no date and waits for an answer |
-| **on silence** | what the ask settles on at its date if nobody answers: `no`, unless you say `--on-silence yes` |
+| **on silence** | the option the ask settles on at its date if nobody answers: `deny`, unless you say `--on-silence proceed` |
 | **question** | an ask as the person asked sees it: one that waits on you. `verse question` lists them |
 | **docket** | every pending ask you can read, whoever raised it and whoever it waits on. `verse question --all` lists it |
-| **then** | what follows a yes, as one key: `{spawn: {…}}` is a task, written as a charter's spawn is (`prompt` or `script`, `agent`, `environment`, `autonomy`, …) and meaning only what it says; `{answer: {ask: <id>, choice: <option>}}` answers another ask as you; `{ask: {…}}` raises another ask. Absent, the ask is a **vote** |
-| **else** | what follows a no, whether answered or by silence at the date. It takes one key, as `then` does |
+| **on** | what follows the answer: a list of rows, read in order. Each row is a `match` on the answer and a `then`. The first row whose match the answer meets runs its `then` ([what follows](#what-follows-the-answer)). Absent, or met by no row, the ask is a **vote** |
+| **then** | what a row runs, as one key: `{spawn: {…}}` is a task, written as a charter's spawn is (`prompt` or `script`, `agent`, `environment`, `autonomy`, …) and meaning only what it says; `{answer: {ask: <id>, choice: <option>}}` answers another ask as you; `{ask: {…}}` raises another ask. `null` or `{}` runs nothing |
 | **answer** | what is written back: `yes` or `no` |
+| **ran** | what the row that met the answer ran: `{row, at}` and the task it started, the answer or ask it made, or why it failed |
 | **edit** | which version of your ask an answer agreed to: 1 as first asked, and one more each time you change what it asks |
 | **labels** | what the ask says about itself, for whoever watches asks: `--label team=payments,kind=deploy`. Verse routes nothing by them |
 
@@ -36,30 +37,32 @@ task, `{task}`, and is absent where it names nobody. `by` is who settled it.
 ## Asking
 
 ```sh
-cat > then.tony <<'EOF'
-spawn:
-  prompt: fast-forward main to ask-ui, run the tests, and push main
-  environment:
-    systems:
-      network: {mode: open}
-      commands: {}
-      git:
-      - repo: acme/app
-        from: main
-        fetch: {}
-        push: {ref: refs/heads/main, force: "false", delete: "false"}
-  autonomy:
-  - {match: {system: commands}, then: allow}
-  - {match: {system: git, verb: fetch}, then: allow}
-  - {then: ask}
+cat > on.tony <<'EOF'
+- match: {verdict: proceed}
+  then:
+    spawn:
+      prompt: fast-forward main to ask-ui, run the tests, and push main
+      environment:
+        systems:
+          network: {mode: open}
+          commands: {}
+          git:
+          - repo: acme/app
+            from: main
+            fetch: {}
+            push: {ref: refs/heads/main, force: "false", delete: "false"}
+      autonomy:
+      - {match: {system: commands}, then: allow}
+      - {match: {system: git, verb: fetch}, then: allow}
+      - {then: ask}
 EOF
 verse ask land -q "Merge ask-ui into main of acme/app? No answer in 48h is a yes." \
-  --to dana@example.com --due 48h --on-silence yes --then @then.tony
+  --to dana@example.com --due 48h --on-silence proceed --on @on.tony
 ```
 
-`then.tony` is what follows a yes: an agent given the prompt, in an environment that gives it the
-network, the shell, and a checkout of acme/app that it may fetch and push to `main` without a
-rewrite. The autonomy runs the shell and the fetch unasked, and asks you before the push. A spawn
+`on.tony` has one row. Its match, `{verdict: proceed}`, meets a yes, and its `then` is what
+follows: an agent given the prompt, in an environment that gives it the network, the shell, and
+a checkout of acme/app that it may fetch and push to `main` without a rewrite. The autonomy runs the shell and the fetch unasked, and asks you before the push. A spawn
 means only what it says: one that names no network has none, and verse checks it against the
 runner it would run on when you ask, not after the yes.
 
@@ -72,34 +75,36 @@ Dana answers it like any ask: `verse question <id> --answer proceed` for yes, or
 You do not answer your own ask, unless you named yourself in `--to`.
 
 `--due` takes a date (`2026-10-02T17:00:00Z`) or a duration from now. If Dana answers yes, the
-ask gets `answer: yes`, and its `then` runs as a task for you. A no gets `answer: no` and runs
-nothing. No answer by the date is a no, unless you said otherwise. Here silence means nobody
-objects, so `--on-silence yes` makes silence a yes. You choose it when you ask, and it stays
-when the date moves.
+ask gets `answer: yes`, and the row's `then` runs as a task for you. A no gets `answer: no`,
+meets no row, and runs nothing. No answer by the date settles on `deny`, unless you said
+otherwise. Here silence means nobody objects, so `--on-silence proceed` makes silence a yes. You
+choose it when you ask, and it stays when the date moves.
 
-Leave out `--to`, and anyone may answer. Leave out `--then`, and the ask is a vote: the answer
-is all it leaves.
+Leave out `--to`, and anyone may answer. Leave out `--on`, and the ask is a vote: the answer is
+all it leaves.
 
 A `then` that is a script runs exactly what it says, as `verse task run` runs one:
 
 ```sh
 cat > release.tony <<'EOF'
-spawn:
-  script: |
-    git -C app merge --ff-only mirror/main
-    verse-call-tool git-push -repo app -branch release
-  environment:
-    systems:
-      network: {mode: open}
-      git:
-      - repo: acme/app
-        from: release
-        fetch: {}
-        push: {ref: refs/heads/release, force: "false", delete: "false"}
-  autonomy:
-  - {then: allow}
+- match: {verdict: proceed}
+  then:
+    spawn:
+      script: |
+        git -C app merge --ff-only mirror/main
+        verse-call-tool git-push -repo app -branch release
+      environment:
+        systems:
+          network: {mode: open}
+          git:
+          - repo: acme/app
+            from: release
+            fetch: {}
+            push: {ref: refs/heads/release, force: "false", delete: "false"}
+      autonomy:
+      - {then: allow}
 EOF
-verse ask release -q "Fast-forward release to main for v1.2?" --to dana@example.com --then @release.tony
+verse ask release -q "Fast-forward release to main for v1.2?" --to dana@example.com --on @release.tony
 ```
 
 The script fast-forwards the checkout's `release` to `main`, and the runner pushes it. A push is
@@ -111,14 +116,46 @@ what you wrote, so its autonomy lets it run as you wrote it.
 
 A `then` may also answer another ask, or raise one, as you ([composing asks](#composing-asks)).
 
-Verse checks what you give before it writes anything: the names, the date, and that `then` is
-one key an ask can run. If it refuses, nothing is written.
+Verse checks what you give before it writes anything: the names, the date, that each `match` is
+a pattern it can apply, and that each `then` is one key an ask can run. If it refuses, nothing is
+written.
+
+## What follows the answer
+
+`on` is a list of rows. When the ask settles, verse reads the rows in order, and the first row
+whose `match` meets the answer runs its `then`. No later row runs. A row with no `match` meets
+every answer, so it belongs last. A row whose `then` is `null` or `{}` runs nothing, and the rows
+after it do not run either.
+
+The `match` is a tony match pattern, the one `verse data --if` takes. It is matched against the
+answer as the ask's record holds it under `followed`:
+
+| field | what it is |
+|---|---|
+| `verdict` | the option the ask settled on: `proceed` or `deny` |
+| `by` | who settled it, or `deadline` where silence did at the date |
+| `via` | the resolver or io the answer came through, where one did |
+| `why`, `say` | the reason given and the words said with the answer, where there were any |
+
+So `{verdict: proceed}` meets a yes, and `{verdict: deny}` meets a no, answered or by silence.
+`{by: deadline}` meets silence alone, and `{verdict: !not proceed}` meets anything but a yes.
+Rows can tell an answered no from silence:
+
+```tony
+- match: {verdict: proceed}
+  then: {spawn: {…}}
+- match: {by: deadline}
+  then: {ask: {name: ship-lead, question: "Nobody answered: ship the hotfix?", to: [lead@example.com]}}
+```
+
+A yes runs the first row. Silence at the date runs the second. An answered no meets neither, so
+it runs nothing.
 
 ## Composing asks
 
 A `then` may be one more act of yours: an answer to another ask, or another ask. Verse makes it
-as you when the ask it follows is answered yes. It gives you no right you do not already have.
-The yes is only the condition.
+as you when the answer meets its row. It gives you no right you do not already have. The answer
+is only the condition.
 
 **Your answer waits on somebody else's.** Alice asks you to ship the hotfix. You will say yes,
 but only once Dana has looked at the UI:
@@ -130,7 +167,7 @@ verse ask ship -q "Ship the hotfix?" --to you@example.com
 
 # you
 verse ask ui-ok -q "Is the UI ok to ship?" --to dana@example.com --due 24h \
-  --then '{answer: {ask: ship-3f2a…, choice: proceed, say: "dana checked the UI"}}'
+  --on '[{match: {verdict: proceed}, then: {answer: {ask: ship-3f2a…, choice: proceed, say: "dana checked the UI"}}}]'
 ```
 
 When Dana answers `proceed`, verse answers `ship` with `proceed` as you, with your words, as if
@@ -139,10 +176,13 @@ you had answered it yourself. `verse ask ui-ok` says what happened:
 ```
 answer: yes
 …
-then-answered:
-  ask: ship-3f2a…
+ran:
+  row: 0
   at: "2026-09-30T10:12:00Z"
-  status: 204
+  answered:
+    ask: ship-3f2a…
+    at: "2026-09-30T10:12:00Z"
+    status: 204
 ```
 
 Alice's `verse ask ship` reads `answer: yes`, and its record says it was answered
@@ -151,18 +191,19 @@ and `ship` still waits on you. If `ship` needs two proceeds, yours is one ballot
 for another.
 
 **Asks chain.** `{ask: {…}}` takes what `verse ask` takes (name, question, to, due,
-onSilence, then, else, about, labels, keep), and raises that ask as you on a yes. A `due` that
-is a duration counts from the yes. Its own `then` may answer or ask in turn. Here Dana's yes asks Ann
-to deploy, and Ann's yes answers `ship`:
+onSilence, on, about, labels, keep), and raises that ask as you when its row is met. A `due`
+that is a duration counts from the answer. Its own rows may answer or ask in turn. Here Dana's
+yes asks Ann to deploy, and Ann's yes answers `ship`:
 
 ```sh
 verse ask ui-ok -q "Is the UI ok to ship?" --to dana@example.com --due 24h \
-  --then '{ask: {name: deploy, question: "Deploy the hotfix to staging?", to: [ann@example.com],
-            due: 4h, then: {answer: {ask: ship-3f2a…, choice: proceed}}}}'
+  --on '[{match: {verdict: proceed}, then: {ask: {name: deploy, question: "Deploy the hotfix to staging?",
+          to: [ann@example.com], due: 4h,
+          on: [{match: {verdict: proceed}, then: {answer: {ask: ship-3f2a…, choice: proceed}}}]}}}]'
 ```
 
-`verse ask ui-ok` then reads `then-asked: {id: deploy-…}`. `deploy` is your ask, to Ann, due
-four hours after Dana's yes.
+`verse ask ui-ok` then reads `ran: {row: 0, asked: {id: deploy-…}}`. `deploy` is your ask, to
+Ann, due four hours after Dana's yes.
 
 **Verse checks when you ask, and again when it acts.** When you ask `ui-ok`, verse checks that
 `ship` exists, waits on you, and has a `proceed` option, and that Ann can read what `deploy` is
@@ -173,30 +214,30 @@ makes the answer or the ask as you would make it at that moment:
   asked again, and your answer to the old words is refused.
 - If `ship` has settled in the meantime, there is nothing to answer.
 
-What was refused, and why, is on your ask, as `then-answered` or `then-asked` with `refused`.
+What was refused, and why, is on your ask, under `ran`, as `answered` or `asked` with
+`refused`.
 
-**A no has an `else`.** It takes what `then` takes, and runs on a no: an answered no, or silence
-at the date, which is a no unless you said `--on-silence yes`. This is how you escalate. Ask
-Ann, and if she says no or nobody answers in four hours, ask the lead:
+**A no can run something too.** This is how you escalate. Ask Ann, and if she says no or nobody
+answers in four hours, ask the lead:
 
 ```sh
 verse ask ship -q "Ship the hotfix?" --to ann@example.com --due 4h \
-  --else '{ask: {name: ship-lead, question: "Ann said no, or did not answer: ship the hotfix?",
-           to: [lead@example.com], due: 4h}}'
+  --on '[{match: {verdict: deny}, then: {ask: {name: ship-lead, question: "Ann said no, or did not answer: ship the hotfix?",
+          to: [lead@example.com], due: 4h}}}]'
 ```
 
-`verse ask ship` then reads `else-asked: {id: ship-lead-…}`. An ask withdrawn before anybody
-answered runs neither. The message in Slack shows both: what a yes runs, and what a no runs.
+`verse ask ship` then reads `ran: {row: 0, asked: {id: ship-lead-…}}`. An ask withdrawn before
+anybody answered runs nothing. The message in Slack shows each row: what it meets, and what it
+runs.
 
 ## How long it stands
 
 An ask that has settled, answered or not, stays for a week and is then removed. That holds for
 every ask on the docket, whoever raised it. For your own ask, `--keep 72h` sets another time.
-`verse ask` shows when it goes, as `expires`. What its `then` ran is a task, and it stays as
-tasks do.
+`verse ask` shows when it goes, as `expires`. A task its row started stays as tasks do.
 
 An ask settles once, on the first answer that settles it. Verse writes that answer on the ask as
-`followed` before its `then` or `else` runs, and before whoever asked hears it. So what runs,
+`followed` before the row it meets runs, and before whoever asked hears it. So what runs,
 what the asker hears and what the ask says are that one answer's. An answer that lands after it
 is refused, and the refusal names whose answer stands. If the answer cannot reach whoever waits
 on the ask, `followed` says why, as `undelivered`. The answer still stands: it reaches them when
@@ -250,13 +291,13 @@ While an ask waits, you can change it, or take it back:
 
 ```sh
 verse ask land --due 72h                               # move its date: nothing is asked again
-verse ask land --then @then.tony                       # change what follows: it is asked again
+verse ask land --on @on.tony                           # change what follows: it is asked again
 verse ask land --to ani@example.com                    # ask somebody else: asked again, of them
 verse ask land --withdraw                              # take it back
 ```
 
 An answer agrees to what was asked, not to when. So a new date moves the clock and keeps any
-answer already given. A new `then` or a new `--to` changes what is asked, so the ask is asked
+answer already given. A new `--on` or a new `--to` changes what is asked, so the ask is asked
 again as its next **edit**. Answers to the earlier edit do not count, and an answer that names
 that edit is refused. So nobody answers words they were not asked.
 
@@ -266,28 +307,28 @@ behalf.
 Once an ask has an answer, it does not change, even before the answer reaches you. Anything more
 is a new ask.
 
-In Slack, the message says who asked and what a yes runs, and a reply answers that edit. The
+In Slack, the message says who asked and what each row runs, and a reply answers that edit. The
 message is drawn again when the ask changes. A reply to the old words is refused. A reply to the
 new message answers what it now says.
 
-## Whose authority the `then` runs with
+## Whose authority what follows runs with
 
-Yours alone, and the same for `else`. You raised the ask, so what follows it is yours to answer
-for. Ask Dana "may I merge this?", and her yes lets you merge what you may merge. Dana does not
+Yours alone. You raised the ask, so what follows it is yours to answer for. Ask Dana "may I merge this?", and her yes lets you merge what you may merge. Dana does not
 need that right. The task is your record, so its own gates ask you.
 
 Nobody but you writes your ask. It is yours, and nobody owns a place above it.
 
-The `then` runs before your wait is released, and a spawn has run once it is launched.
+What follows runs before your wait is released, and a spawn has run once it is launched.
 
-A task's `verse-ask-create` is your ask too, when the task runs for you. Its `then` runs with
-your authority, so a spawn in it is held within the task: its environment no wider than the
+A task's `verse-ask-create` is your ask too, when the task runs for you. Its rows run with your
+authority, so a spawn in any of them is held within the task: its environment no wider than the
 task's, less installing charters (`verse.charter-install`), its autonomy no looser, on the
-task's runner, spending the task's credential where it spends one (a script spends none). The same holds for its `else`, and for an ask its
-`then` raises. An answer in any of them is refused: it would be yours, on any ask that waits on
-you, another task's gate among them. A task cannot raise past what you let it do. Once raised, the ask is yours to change as any of yours.
+task's runner, spending the task's credential where it spends one (a script spends none). The
+same holds for an ask a row raises, and for its rows. An answer in any of them is refused: it
+would be yours, on any ask that waits on you, another task's gate among them. A task cannot
+raise past what you let it do. Once raised, the ask is yours to change as any of yours.
 
-Only an ask has a `then`. You need not be there when the answer comes, so the ask carries what
+Only an ask has an `on`. You need not be there when the answer comes, so the ask carries what
 follows it. A rule's gate has none: what a rule does about a yes is its action
 ([gates](reference/gates.md#ondenied-what-a-no-means)). An autonomy row's ask has none either:
 the task waits on it, and what the task does about a yes is the step it asked about

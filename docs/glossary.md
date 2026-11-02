@@ -280,8 +280,8 @@ See [Strata](strata.md#derive-identity-not-state).
 
 `spawn` starts a [task](#task). Its fields say what the work is, who does it, what it works in
 and how each step is decided: `prompt` or `script`, `agent`, `environment`, `autonomy`, `answer`,
-`timeout` and `runner`. `verse task run -f <file>` and an ask's `then: {spawn: …}` take the same
-spawn.
+`timeout` and `runner`. `verse task run -f <file>` and a row of an ask's `on`, `then: {spawn: …}`,
+take the same spawn.
 
 Also written: launch spec (the Go type `launch.Spec`).
 

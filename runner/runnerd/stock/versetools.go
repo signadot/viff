@@ -20,7 +20,7 @@ import (
 // (verse.Ask).
 
 // askCreateTool is `verse ask [<name>] -q <question>`, verse_ask_create: an ask raised as the
-// person the task runs for. It does not wait: the ask outlives the task, and its `then` and `else`
+// person the task runs for. It does not wait: the ask outlives the task, and the rows of its `on`
 // run as that person when it settles, which is what a stored continuation is for.
 var askCreateTool = systems.Tool("verse", verbs.AskCreate.Name)
 

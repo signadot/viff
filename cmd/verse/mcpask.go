@@ -82,8 +82,7 @@ type askChangeIn struct {
 	NameOrID string `json:"name_or_id" jsonschema:"the ask, by the name you asked it under or its id"`
 	Due      string `json:"due,omitempty" jsonschema:"move when it settles: an RFC 3339 date or a duration from now; asks nothing again"`
 	To       string `json:"to,omitempty" jsonschema:"change who is asked, as to takes it; asks again"`
-	Then     string `json:"then,omitempty" jsonschema:"change what follows a yes, as then takes it; asks again"`
-	Else     string `json:"else,omitempty" jsonschema:"change what follows a no, as else takes it; asks again"`
+	On       string `json:"on,omitempty" jsonschema:"change what follows its answer, rows as on takes them, in place of the rows it had; asks again"`
 }
 
 type askWithdrawIn struct {
@@ -96,8 +95,8 @@ func (m *mcpServer) addAskTools(s *mcp.Server) {
 	addVerb(m, s, verbs.AskCreate, m.askCreate)
 	addTool(m, s, &mcp.Tool{
 		Name: "verse_ask_change",
-		Description: "Change one of your asks while it waits, as `verse ask <name> --due/--to/--then/--else` " +
-			"does: a new due date asks nothing again; new answerers or a new then or else asks it again.",
+		Description: "Change one of your asks while it waits, as `verse ask <name> --due/--to/--on` " +
+			"does: a new due date asks nothing again; new answerers or a new on asks it again.",
 		Annotations: writes(false),
 	}, m.askChange)
 	addTool(m, s, &mcp.Tool{
@@ -146,8 +145,8 @@ func (m *mcpServer) askChange(ctx context.Context, _ *mcp.CallToolRequest, in as
 	if err := m.nobody(); err != nil {
 		return nil, nil, err
 	}
-	if in.Due == "" && in.To == "" && in.Then == "" && in.Else == "" {
-		return nil, nil, fmt.Errorf("a change says what changes: due, to, then or else")
+	if in.Due == "" && in.To == "" && in.On == "" {
+		return nil, nil, fmt.Errorf("a change says what changes: due, to or on")
 	}
 	var ch askEdit
 	var err error
@@ -161,13 +160,8 @@ func (m *mcpServer) askChange(ctx context.Context, _ *mcp.CallToolRequest, in as
 			return nil, nil, err
 		}
 	}
-	if in.Then != "" {
-		if ch.Then, err = thenDoc([]byte(in.Then), mcpIn); err != nil {
-			return nil, nil, err
-		}
-	}
-	if in.Else != "" {
-		if ch.Else, err = thenDoc([]byte(in.Else), mcpIn); err != nil {
+	if in.On != "" {
+		if ch.On, err = onDoc([]byte(in.On), mcpIn); err != nil {
 			return nil, nil, err
 		}
 	}

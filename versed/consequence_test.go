@@ -1,7 +1,6 @@
 package versed
 
 import (
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,8 +12,8 @@ import (
 )
 
 // ONLY A PERSON'S ASK CARRIES WHAT FOLLOWS ITS ANSWER (consequence.go): a rule's gate and an
-// autonomy row's ask are waited on by what asked, so neither takes a `then` or an `else`. What a person's ask runs
-// is pinned in askcharter_test.go and askthen_test.go.
+// autonomy row's ask are waited on by what asked, so neither takes an `on`. What a person's ask
+// runs is pinned in askcharter_test.go and askthen_test.go.
 
 // waitValue waits for a field of a record to hold a value.
 func waitValue(t *testing.T, srv *Server, ref entity.Ref, field, want string) {
@@ -34,47 +33,43 @@ func waitValue(t *testing.T, srv *Server, ref entity.Ref, field, want string) {
 }
 
 // A RULE'S GATE STARTS NOTHING OF ITS OWN: what a rule does about a yes is its action, and about
-// a no its gate's onDenied. A gate writing `then` or `else` is refused at install, naming the field.
-func TestARulesGateTakesNoThenOrElse(t *testing.T) {
+// a no its gate's onDenied. A gate writing `on` is refused at install, naming the field.
+func TestARulesGateTakesNoOn(t *testing.T) {
 	_, ts := asking(t)
-	for _, field := range []string{"then", "else"} {
-		resp := installAs(t, "user:alice@example.com", ts.URL, `{name: r,
-			condition: {subject: {path: "demo.e.*", value: {stage: open}}},
-			gates: [{name: approval, mode: ask, `+field+`: {spawn: {prompt: "announce", environment: {systems: {network: {mode: open}}}}}}],
-			action: {patch: {stage: reviewing}}}`)
-		body := bodyOf(t, resp)
-		if resp.StatusCode != http.StatusBadRequest {
-			t.Errorf("a gate with %s: install = %s, want refused: %s", field, resp.Status, body)
-		} else if !strings.Contains(body, field) {
-			t.Errorf("a gate with %s: refused without naming it: %s", field, body)
-		}
+	resp := installAs(t, "user:alice@example.com", ts.URL, `{name: r,
+		condition: {subject: {path: "demo.e.*", value: {stage: open}}},
+		gates: [{name: approval, mode: ask, on: [{then: {spawn: {prompt: "announce", environment: {systems: {network: {mode: open}}}}}}]}],
+		action: {patch: {stage: reviewing}}}`)
+	body := bodyOf(t, resp)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("a gate with on: install = %s, want refused: %s", resp.Status, body)
+	} else if !strings.Contains(body, `"on"`) {
+		t.Errorf("a gate with on: refused without naming it: %s", body)
 	}
 }
 
 // A TASK'S QUESTION STARTS NOTHING OF ITS OWN: the task waits on it, and what it does about a yes
-// is its next step. An autonomy row's ask writing `then` or `else` is refused at the spawn, naming
-// the field, before anything starts.
-func TestAnAutonomyRowsAskTakesNoThenOrElse(t *testing.T) {
+// is its next step. An autonomy row's ask writing `on` is refused at the spawn, naming the field,
+// before anything starts.
+func TestAnAutonomyRowsAskTakesNoOn(t *testing.T) {
 	srv := askingServer(t)
 	ops := httptest.NewServer(srv.Handler())
 	defer ops.Close()
-	for i, field := range []string{"then", "else"} {
-		id := fmt.Sprintf("cq-%d", i)
-		resp := postTony(t, ops.URL+"/tasks", map[string]any{"id": id, "spawn": map[string]any{
-			"script": "true", "environment": stepEnv,
-			"autonomy": []map[string]any{
-				{"match": map[string]any{"system": "commands"}, "then": map[string]any{"ask": map[string]any{
-					field: map[string]any{"spawn": map[string]any{"prompt": "log the step", "environment": map[string]any{"systems": map[string]any{"network": map[string]any{"mode": "open"}}}}}}}},
-				{"then": "ask"},
-			}}})
-		body := bodyOf(t, resp)
-		if resp.StatusCode != http.StatusBadRequest {
-			t.Errorf("an autonomy row's ask with %s: spawn = %s, want refused: %s", field, resp.Status, body)
-		} else if !strings.Contains(body, field) {
-			t.Errorf("an autonomy row's ask with %s: refused without naming it: %s", field, body)
-		}
-		if _, ok, _ := srv.Store.Get(mirror.Ref(id)); ok {
-			t.Errorf("an autonomy row's ask with %s: the refused spawn left a task record", field)
-		}
+	const id = "cq-0"
+	resp := postTony(t, ops.URL+"/tasks", map[string]any{"id": id, "spawn": map[string]any{
+		"script": "true", "environment": stepEnv,
+		"autonomy": []map[string]any{
+			{"match": map[string]any{"system": "commands"}, "then": map[string]any{"ask": map[string]any{
+				"on": []map[string]any{{"then": map[string]any{"spawn": map[string]any{"prompt": "log the step", "environment": map[string]any{"systems": map[string]any{"network": map[string]any{"mode": "open"}}}}}}}}}},
+			{"then": "ask"},
+		}}})
+	body := bodyOf(t, resp)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("an autonomy row's ask with on: spawn = %s, want refused: %s", resp.Status, body)
+	} else if !strings.Contains(body, `"on"`) {
+		t.Errorf("an autonomy row's ask with on: refused without naming it: %s", body)
+	}
+	if _, ok, _ := srv.Store.Get(mirror.Ref(id)); ok {
+		t.Errorf("an autonomy row's ask with on: the refused spawn left a task record")
 	}
 }

@@ -96,7 +96,7 @@ of the place it is about — is refused with 409, naming the resolver, unless it
 | `to` | Whom it names, as `{grantees: […]}`; with `subject`, its parties. |
 | `by`, `via` | On an answer through a resolver: the party it answered for, and the resolver. On each ballot too. |
 | `serves` | On an onward ask: `{id, edit, for}`, the ask it serves and the party it was raised for. |
-| `onSilence` | What its clock settles on: `deny` unless its asker said yes, and on an onward ask the served ask's. |
+| `onSilence` | What its clock settles on: `deny` unless its asker said `proceed`, and on an onward ask the served ask's. |
 | `carried` | On an onward ask: what became of carrying it back — the status, and why where refused. |
 
 ## The verbs

@@ -91,11 +91,21 @@ func questionOn(t *testing.T, store entity.Store, ask entity.Ref) string {
 	return ""
 }
 
+// atPathCLI is the value at a dotted path of fields in m, nil where any is absent: `ran.task`.
+func atPathCLI(m map[string]any, path string) any {
+	var v any = m
+	for _, k := range strings.Split(path, ".") {
+		mm, _ := v.(map[string]any)
+		v = mm[k]
+	}
+	return v
+}
+
 func waitFieldCLI(t *testing.T, store entity.Store, ref entity.Ref, field string) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		if payloadOf(t, store, ref)[field] != nil {
+		if atPathCLI(payloadOf(t, store, ref), field) != nil {
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -108,14 +118,14 @@ func waitFieldCLI(t *testing.T, store entity.Store, ref entity.Ref, field string
 func TestAnAskIsAskedAnsweredAndSeen(t *testing.T) {
 	store := serveAsking(t)
 	id := askAs(t, daniel, "land", "-q", "Review verse/ask?", "--to", "oscar@example.com",
-		"--due", "48h", "--on-silence", "yes", "--then", `{spawn: {prompt: "merge verse/ask", environment: {systems: {network: {mode: open}}}}}`, "--keep", "72h")
+		"--due", "48h", "--on-silence", "proceed", "--on", `[{match: {verdict: proceed}, then: {spawn: {prompt: "merge verse/ask", environment: {systems: {network: {mode: open}}}}}}]`, "--keep", "72h")
 	ref := mirror.AskRef(id)
 	rec := payloadOf(t, store, ref)
 	if rec["onSilence"] != "proceed" {
-		t.Fatalf("onSilence = %v, want --on-silence yes to settle silence on proceed", rec["onSilence"])
+		t.Fatalf("onSilence = %v, want --on-silence proceed to settle silence on proceed", rec["onSilence"])
 	}
 	// What silence settles on is said when the ask is asked, and not changed after.
-	if _, err := runCLI(t, "ask", "land", "--on-silence", "no"); err == nil || !strings.Contains(err.Error(), "go with --question") {
+	if _, err := runCLI(t, "ask", "land", "--on-silence", "deny"); err == nil || !strings.Contains(err.Error(), "go with --question") {
 		t.Fatalf("--on-silence on a standing ask: %v, want it refused as going with --question", err)
 	}
 	if got := mirror.GranteesTo(entity.Obj(rec).Payload()); len(got) != 1 || got[0] != davido {
@@ -321,15 +331,15 @@ func TestAnAskIsCheckedBeforeItIsWritten(t *testing.T) {
 		{"ask", "land", "-q", "x?", "--due", "-1h"},
 		{"ask", "land", "-q", "x?", "--due", "2020-01-01T00:00:00Z"},
 		{"ask", "land", "-q", "x?", "--due", "tomorrow"},
-		{"ask", "land", "-q", "x?", "--then", "merge it"},
-		{"ask", "land", "-q", "x?", "--then", `{spawn: {prompt: a, script: b}}`},
-		{"ask", "land", "-q", "x?", "--then", `{shell: "rm -rf /"}`},
-		{"ask", "land", "-q", "x?", "--then", `{prompt: "merge it"}`},
-		{"ask", "land", "-q", "x?", "--then", `{spawn: {script: "echo hi", environment: {systems: {git: {repo: $subject.value.repo, fetch: {}}}}}}`},
+		{"ask", "land", "-q", "x?", "--on", "merge it"},
+		{"ask", "land", "-q", "x?", "--on", `[{match: {verdict: proceed}, then: {spawn: {prompt: a, script: b}}}]`},
+		{"ask", "land", "-q", "x?", "--on", `[{match: {verdict: proceed}, then: {shell: "rm -rf /"}}]`},
+		{"ask", "land", "-q", "x?", "--on", `[{match: {verdict: proceed}, then: {prompt: "merge it"}}]`},
+		{"ask", "land", "-q", "x?", "--on", `[{match: {verdict: proceed}, then: {spawn: {script: "echo hi", environment: {systems: {git: {repo: $subject.value.repo, fetch: {}}}}}}}]`},
 		{"ask", "-q", "x?", "--withdraw"},
 		{"ask", "--to", "oscar@example.com"},
 		{"ask", "land", "--to", "oscar@example.com"},
-		{"ask", "land", "-q", "x?", "--on-silence", "yes"},
+		{"ask", "land", "-q", "x?", "--on-silence", "proceed"},
 	} {
 		if _, err := runCLI(t, args...); err == nil {
 			t.Errorf("%v was accepted", args)
@@ -340,11 +350,11 @@ func TestAnAskIsCheckedBeforeItIsWritten(t *testing.T) {
 	}
 }
 
-// CHANGED WHILE IT WAITS, by its asker: --due moves its date and asks nothing again, --then asks
+// CHANGED WHILE IT WAITS, by its asker: --due moves its date and asks nothing again, --on asks
 // it again as its next edit, and --about, which says what a new ask is, is refused.
 func TestAWaitingAskIsChangedByItsAsker(t *testing.T) {
 	store := serveAsking(t)
-	id := askAs(t, daniel, "land", "-q", "Review?", "--to", "oscar@example.com", "--due", "1h", "--then", `{spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}`)
+	id := askAs(t, daniel, "land", "-q", "Review?", "--to", "oscar@example.com", "--due", "1h", "--on", `[{match: {verdict: proceed}, then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}]`)
 	ref := mirror.AskRef(id)
 	questionOn(t, store, ref)
 	if out, err := runCLI(t, "ask", "land", "--due", "72h"); err != nil || !strings.Contains(out, "moved "+id) {
@@ -357,7 +367,7 @@ func TestAWaitingAskIsChangedByItsAsker(t *testing.T) {
 	if got := mirror.EditOf(entity.Val(payloadOf(t, store, ref))); got != 1 {
 		t.Fatalf("moving the date asked again: edit %d", got)
 	}
-	out, err := runCLI(t, "ask", "land", "--then", `{spawn: {prompt: "merge it and tag it", environment: {systems: {network: {mode: open}}}}}`)
+	out, err := runCLI(t, "ask", "land", "--on", `[{match: {verdict: proceed}, then: {spawn: {prompt: "merge it and tag it", environment: {systems: {network: {mode: open}}}}}}]`)
 	if err != nil || !strings.Contains(out, "as edit 2") {
 		t.Fatalf("changing then: %v\n%s", err, out)
 	}
@@ -401,15 +411,15 @@ func TestAWithdrawnAskIsGoneAndAsksNobody(t *testing.T) {
 func TestACallsThenRunsItsCalls(t *testing.T) {
 	store := serveCalls(t)
 	id := askAs(t, daniel, "land", "-q", "Tag it?", "--to", "oscar@example.com",
-		"--then", `{spawn: {script: "echo tagged", environment: {systems: {network: {mode: open}}}}}`)
+		"--on", `[{match: {verdict: proceed}, then: {spawn: {script: "echo tagged", environment: {systems: {network: {mode: open}}}}}}]`)
 	ref := mirror.AskRef(id)
 	questionOn(t, store, ref)
 	as(t, davido)
 	if out, err := runCLI(t, "gate", id, "--answer", "proceed"); err != nil {
 		t.Fatalf("davido's answer: %v\n%s", err, out)
 	}
-	waitFieldCLI(t, store, ref, "then-task")
-	task := mirror.Ref(payloadOf(t, store, ref)["then-task"].(string))
+	waitFieldCLI(t, store, ref, "ran.task")
+	task := mirror.Ref(atPathCLI(payloadOf(t, store, ref), "ran.task").(string))
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		p := payloadOf(t, store, task)

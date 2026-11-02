@@ -15,7 +15,7 @@ func TestTheAskToolsAskAnswerAndWithdraw(t *testing.T) {
 
 	out, isErr := callTool(t, dan, "verse_ask_create", map[string]any{
 		"name": "land", "question": "Review verse/ask?", "to": "oscar@example.com", "due": "48h",
-		"then": `{spawn: {prompt: "merge verse/ask"}}`,
+		"on": `[{match: {verdict: proceed}, then: {spawn: {prompt: "merge verse/ask"}}}]`,
 	})
 	if isErr || !strings.HasPrefix(out, "raised question ") || !strings.HasSuffix(out, ": Review verse/ask?") {
 		t.Fatalf("the ask: error=%v %q", isErr, out)

@@ -17,6 +17,7 @@ import (
 
 	verseapi "github.com/signadot/verse/api"
 	"github.com/signadot/verse/client"
+	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	verseio "github.com/signadot/verse/io"
 	"github.com/signadot/verse/mirror"
@@ -374,8 +375,7 @@ type posed struct {
 	spoken   bool          // some ballot carried words
 	edit     int           // the edit of the ask this shows
 	asker    string        // who asked, for a person's ask
-	then     string        // what a yes runs, in words
-	els      string        // what a no runs, in words
+	on       []string      // what each row of its `on` runs, in words, in order
 	via      string        // the resolver an answer came through
 	servedBy string        // the resolver serving it for whom this message is for
 }
@@ -460,8 +460,7 @@ func (k *Sink) question(reader *client.Client, whom, id string) (posed, error) {
 	q.status, q.verdict = entity.Str(doc, "status"), entity.Str(doc, "verdict")
 	q.by, q.why = entity.Str(doc, "by"), entity.Str(doc, "why")
 	q.edit, q.asker, q.via = mirror.EditOf(doc), mirror.PrincipalFrom(doc), entity.Str(doc, "via")
-	q.then = thenWords(entity.Get(doc, "then"))
-	q.els = thenWords(entity.Get(doc, "else"))
+	q.on = onWords(entity.Get(doc, "on"))
 	if whom != "" && q.status == mirror.QuestionPending {
 		q.servedBy = servedFor(reader, id)
 	}
@@ -508,13 +507,10 @@ func (q posed) line() string {
 		if q.asker != "" {
 			line += " · asked by " + person(q.asker)
 		}
-		// WHAT A YES RUNS, shown as it stands at this edit: the answer is consent to it, and a
-		// change to it is a new asking that redraws this message and refuses a reply to the old.
-		if q.then != "" {
-			line += " · on yes, runs as the asker: " + q.then
-		}
-		if q.els != "" {
-			line += " · on no, runs as the asker: " + q.els
+		// WHAT AN ANSWER RUNS, shown as it stands at this edit: the answer is consent to it, and
+		// a change to it is a new asking that redraws this message and refuses a reply to the old.
+		for _, w := range q.on {
+			line += " · " + w
 		}
 		if len(q.waiting) > 0 {
 			line += " · waiting on " + people(q.waiting)
@@ -652,6 +648,33 @@ func fingerprint(body string) string {
 // thenWords is what an ask's `then` runs, in words for a message: the prompt a model works from or
 // the script that runs, another ask it answers, or one it raises. Empty for an ask that runs
 // nothing.
+// onWords is what each row of an ask's `on` runs, in words, in its order: the answers it matches
+// and what runs as the asker, or that nothing does, since such a row stops the rows after it.
+func onWords(on *ir.Node) []string {
+	on = ir.Uncomment(on)
+	if on == nil || on.Type != ir.ArrayType {
+		return nil
+	}
+	var out []string
+	for _, row := range on.Values {
+		cond := "on any answer"
+		if m := entity.Get(row, "match"); m != nil {
+			if v := entity.Str(m, "verdict"); v != "" && len(verseio.Fields(m)) == 1 {
+				cond = "on *" + v + "*"
+			} else if b, err := codec.NodeBytesWire(m, codec.Tony); err == nil {
+				cond = "on `" + string(b) + "`"
+			}
+		}
+		if w := thenWords(entity.Get(row, "then")); w != "" {
+			out = append(out, cond+", runs as the asker: "+w)
+		} else {
+			out = append(out, cond+", nothing runs")
+		}
+	}
+	return out
+}
+
+// thenWords is what a row's then runs, in words, "" for nothing.
 func thenWords(then *ir.Node) string {
 	if then == nil {
 		return ""

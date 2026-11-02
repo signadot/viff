@@ -37,7 +37,7 @@ func TestAnAnswerDeliveredBeforeARewordingIsNotOvertaken(t *testing.T) {
 		t.Fatalf("delivering davido's yes: %v", err)
 	}
 	later := time.Now().Add(72 * time.Hour).UTC().Format(time.RFC3339)
-	resp := change(t, daniel, ts.URL, id, `{question: "Merge, and tag it?", then: {spawn: {prompt: "merge and tag", environment: {systems: {network: {mode: open}}}}}, due: "`+later+`"}`)
+	resp := change(t, daniel, ts.URL, id, `{question: "Merge, and tag it?", on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge and tag", environment: {systems: {network: {mode: open}}}}}}], due: "`+later+`"}`)
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("a change after the answer was delivered: %s: %s, want 409", resp.Status, bodyOf(t, resp))
 	}
@@ -112,7 +112,7 @@ func TestAnOnwardAskKeepsItsRulesWhenChanged(t *testing.T) {
 	onward := raiseOnward(t, srv, ts.URL, served, "")
 	in72 := time.Now().Add(72 * time.Hour).UTC().Format(time.RFC3339)
 	for body, want := range map[string]string{
-		`{then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}`: "takes no `then`",
+		`{on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}]}`: "takes no `on`",
 		`{due: "` + in72 + `"}`: "past ask",
 	} {
 		resp := changeAs(t, alice, "helper", ts.URL, onward, body)
@@ -170,7 +170,7 @@ func TestAnAnsweredAskWithoutItsAnswerFieldStillFollows(t *testing.T) {
 	first.Start(ctx)
 	ts := httptest.NewServer(first.Handler())
 	id := askID(t, ask(t, "user:scott@example.com", ts.URL, `{name: ship, question: q, to: [ann@example.com],
-		then: {ask: {name: next, question: "And then?", to: [lead@example.com]}}}`))
+		on: [{match: {verdict: proceed}, then: {ask: {name: next, question: "And then?", to: [lead@example.com]}}}]}`))
 	posed(t, first, mirror.AskRef(id))
 	ts.Close()
 	down()
@@ -185,8 +185,8 @@ func TestAnAnsweredAskWithoutItsAnswerFieldStillFollows(t *testing.T) {
 	second := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	second.Start(t.Context())
 	t.Cleanup(second.stopAllIOs)
-	asked := entity.ToObj(entity.Get(askField(t, second, id, "then-asked"), "then-asked"))
+	asked := entity.ToObj(atPath(askField(t, second, id, "ran.asked"), "ran.asked"))
 	if next, _ := asked["id"].(string); !strings.HasPrefix(next, "next-") {
-		t.Fatalf("then-asked %v, want the next ask raised", asked)
+		t.Fatalf("ran.asked %v, want the next ask raised", asked)
 	}
 }

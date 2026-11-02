@@ -17,13 +17,23 @@ import (
 
 const ani = "user:ani@example.com"
 
-// askAni is scott asking ani something with a `then`, as `verse ask` does, and the input a charter
+// tonyDoc is src read as a tony document.
+func tonyDoc(t *testing.T, src string) entity.Payload {
+	t.Helper()
+	n, err := codec.ParseNode([]byte(src), codec.Tony)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+// askAni is scott asking ani something with an `on`, as `verse ask` does, and the input a charter
 // derives to reach her; it answers the ask's id once it is posed.
 func (r *socketRig) askAni(t *testing.T) string {
 	t.Helper()
 	resp, err := client.New(r.addr, "user:scott@example.com").Post("/asks", nil, verseapi.Ask{
 		Name: "land", Question: "Merge verse/ask?", To: []string{ani},
-		Then: entity.Obj{"spawn": entity.Obj{"prompt": "merge verse/ask to main", "environment": entity.Obj{"systems": entity.Obj{"network": entity.Obj{"mode": "open"}}}}}.Payload(),
+		On: tonyDoc(t, `[{match: {verdict: proceed}, then: {spawn: {prompt: "merge verse/ask to main", environment: {systems: {network: {mode: open}}}}}}]`),
 	})
 	if err != nil || resp.StatusCode != http.StatusCreated {
 		t.Fatalf("asking ani: %v %v", err, resp)
@@ -67,7 +77,7 @@ func TestAPersonsAskReachesThemReadAsThem(t *testing.T) {
 		t.Fatalf("posted %v, want ani's DM: %v", r.fake.posted, r.status(t, "land"))
 	}
 	said := shown(t, r.fake.posted[0])
-	for _, want := range []string{"Merge verse/ask?", "asked by `scott@example.com`", "on yes, runs as the asker: “merge verse/ask to main”", "Answer in this thread"} {
+	for _, want := range []string{"Merge verse/ask?", "asked by `scott@example.com`", "on *proceed*, runs as the asker: “merge verse/ask to main”", "Answer in this thread"} {
 		if !strings.Contains(said, want) {
 			t.Errorf("ani's DM does not say %q: %q", want, said)
 		}
@@ -91,7 +101,7 @@ func TestAReplyToAnAskSinceChangedIsRefused(t *testing.T) {
 	id := r.askAni(t)
 	r.pass(t)
 	r.ts, _ = r.fake.posted[0]["ts"].(string)
-	b, _ := codec.Marshal(verseapi.AskChange{Then: entity.Obj{"spawn": entity.Obj{"prompt": "merge it and tag it", "environment": entity.Obj{"systems": entity.Obj{"network": entity.Obj{"mode": "open"}}}}}.Payload()}, codec.Tony)
+	b, _ := codec.Marshal(verseapi.AskChange{On: tonyDoc(t, `[{match: {verdict: proceed}, then: {spawn: {prompt: "merge it and tag it", environment: {systems: {network: {mode: open}}}}}}]`)}, codec.Tony)
 	req, _ := http.NewRequest(http.MethodPatch, "http://"+r.addr+"/asks/"+id, strings.NewReader(string(b)))
 	req.Header.Set("Content-Type", "application/tony")
 	req.Header.Set(verseapi.PrincipalHeader, "user:scott@example.com")
@@ -128,7 +138,7 @@ func TestAReplyToAMessageNotYetRedrawnIsRefused(t *testing.T) {
 	r.pass(t)
 	r.ts, _ = r.fake.posted[0]["ts"].(string)
 	if code := r.send(t, "user:scott@example.com", "", http.MethodPatch, "/asks/"+id,
-		`{then: {spawn: {prompt: "merge it and tag it", environment: {systems: {network: {mode: open}}}}}}`); code != http.StatusOK {
+		`{on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge it and tag it", environment: {systems: {network: {mode: open}}}}}}]}`); code != http.StatusOK {
 		t.Fatalf("scott's change: %d", code)
 	}
 	r.fake.fail["chat.update"] = "cant_update_message" // refused, and the message stands with its old words
@@ -270,9 +280,8 @@ func TestADMSaysWhatAYesAndANoRun(t *testing.T) {
 	ship := post("user:alice@example.com", verseapi.Ask{Name: "ship", Question: "Ship it?", To: []string{"user:scott@example.com"}})
 	id := post("user:scott@example.com", verseapi.Ask{
 		Name: "ui-ok", Question: "Is the UI ok?", To: []string{ani},
-		Then: entity.Obj{"answer": entity.Obj{"ask": ship, "choice": "proceed"}}.Payload(),
-		Else: entity.Obj{"ask": entity.Obj{"name": "ship-lead", "question": "Ani said no: ship it?",
-			"to": []any{"lead@example.com"}}}.Payload(),
+		On: tonyDoc(t, `[{match: {verdict: proceed}, then: {answer: {ask: `+ship+`, choice: proceed}}},
+			{then: {ask: {name: ship-lead, question: "Ani said no: ship it?", to: [lead@example.com]}}}]`),
 	})
 	r.ask(t, ani, "ui-ok", entity.Obj{"text": "An ask is waiting on you.", "asks": id})
 	r.pass(t)
@@ -281,8 +290,8 @@ func TestADMSaysWhatAYesAndANoRun(t *testing.T) {
 	}
 	said := shown(t, r.fake.posted[0])
 	for _, want := range []string{
-		"on yes, runs as the asker: answers `" + ship + "` *proceed*",
-		"on no, runs as the asker: asks “Ani said no: ship it?” of `lead@example.com`",
+		"on *proceed*, runs as the asker: answers `" + ship + "` *proceed*",
+		"on any answer, runs as the asker: asks “Ani said no: ship it?” of `lead@example.com`",
 	} {
 		if !strings.Contains(said, want) {
 			t.Errorf("ani's DM does not say %q: %q", want, said)

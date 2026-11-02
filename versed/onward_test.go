@@ -105,13 +105,13 @@ func TestAnOnwardAskIsRaisedInsideTheAskItServes(t *testing.T) {
 	late := time.Now().Add(72 * time.Hour).UTC().Format(time.RFC3339)
 	soon := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
 	for body, want := range map[string]int{
-		`{name: up2, question: q, serves: ` + served + `, due: "` + late + `"}`:                                                            http.StatusBadRequest,
-		`{name: up3, question: q, serves: ` + served + `, then: {spawn: {prompt: "go", environment: {systems: {network: {mode: open}}}}}}`: http.StatusBadRequest,
-		`{name: up4, question: q, serves: ` + served + `, for: dan@example.com}`:                                                           http.StatusForbidden,
-		`{name: up5, question: q, serves: nothing-here}`:                                                                                   http.StatusNotFound,
-		`{name: up6, question: q, for: bob@example.com}`:                                                                                   http.StatusBadRequest,
+		`{name: up2, question: q, serves: ` + served + `, due: "` + late + `"}`:                                                                                               http.StatusBadRequest,
+		`{name: up3, question: q, serves: ` + served + `, on: [{match: {verdict: proceed}, then: {spawn: {prompt: "go", environment: {systems: {network: {mode: open}}}}}}]}`: http.StatusBadRequest,
+		`{name: up4, question: q, serves: ` + served + `, for: dan@example.com}`:                                                                                              http.StatusForbidden,
+		`{name: up5, question: q, serves: nothing-here}`:                                                                                                                      http.StatusNotFound,
+		`{name: up6, question: q, for: bob@example.com}`:                                                                                                                      http.StatusBadRequest,
 		// Its silence is the served ask's, so it says none of its own.
-		`{name: up8, question: q, serves: ` + served + `, due: "` + soon + `", onSilence: yes}`: http.StatusBadRequest,
+		`{name: up8, question: q, serves: ` + served + `, due: "` + soon + `", onSilence: proceed}`: http.StatusBadRequest,
 	} {
 		if resp := raise(body); resp.StatusCode != want {
 			t.Errorf("%s: %s %s, want %d", body, resp.Status, bodyOf(t, resp), want)

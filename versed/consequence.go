@@ -14,32 +14,32 @@ import (
 )
 
 // WHAT FOLLOWS A QUESTION RUNS AS WHOEVER ASKED, BEFORE THE ANSWER GOES BACK TO THEM. Only an
-// asker who does not wait on the answer in the store writes a `then`: a person's ask, which runs
-// its `then` as that person (`from`), and one a task raises for its owner (`verse-ask-create`),
-// which runs as the owner, held within the task (taskBound). A rule's question carries none, since what a rule does about
-// a yes is its action, and a task's carries none, since what a task does about a yes is its next
-// step. The asker's wait is released once the `then` has run, and a spawn has run once it is
-// launched: nobody waits for a task that follows a yes to finish.
+// asker who does not wait on the answer in the store writes an `on`: a person's ask, whose rows run
+// as that person (`from`), and one a task raises for its owner (`verse-ask-create`), whose rows
+// run as the owner, held within the task (taskBound). A rule's question carries none, since what
+// a rule does about an answer is its action, and a task's carries none, since what a task does
+// about an answer is its next step. The asker's wait is released once the row the answer meets
+// has run (askon.go), and a spawn has run once it is launched: nobody waits for a task that
+// follows an answer to finish.
 //
-// The record keeps it to once. Each `then` marks the ask before it acts (`then-task`,
-// `then-answered`, `then-asked`), conditional on no mark standing, so a delivery that failed and
-// is tried again, or a restart that finds the question answered, finds the `then` done rather
-// than doing it twice (followAsk).
+// The record keeps it to once. The row marks the ask before it acts (`ran`), conditional on no
+// mark standing, so a delivery that failed and is tried again, or a restart that finds the
+// question answered, finds the row run rather than running it twice (followAsk).
 
-// askerOf is the principal a question's `then` runs as, from its `from`: the principal that asked.
-// Empty for a record that names none, which a question carrying a `then` never is.
+// askerOf is the principal a question's `on` runs as, from its `from`: the principal that asked.
+// Empty for a record that names none, which a question carrying an `on` never is.
 func (s *Server) askerOf(p entity.Payload) string {
 	return entity.Str(entity.Get(p, mirror.FromField), "principal")
 }
 
 // consequence claims a question for a resolution and runs what follows it, before the answer is
-// delivered to whoever asked: its `then` on a yes, its `else` otherwise. THE CLAIM IS THE ANSWER:
-// the resolution is written on the record as `followed`, conditional on no claim standing, and
-// the first written settles the question. Two answers landing together both come here, and the
-// one whose write fails runs nothing — not the other field, and not the same one twice — and
-// delivers nothing (settle); what the record holds is then what a restart delivers, where the
-// delivery had not yet taken (finishSettle), and what the asks' marks keep the `then` to once
-// across (followAsk). A claim with nothing to run behind it costs a key on the record and
+// delivered to whoever asked: the row of its `on` the answer meets. THE CLAIM IS THE ANSWER: the
+// resolution is written on the record as `followed`, conditional on no claim standing, and the
+// first written settles the question. Two answers landing together both come here, and the one
+// whose write fails runs nothing — not another row, and not the same one twice — and delivers
+// nothing (settle); what the record holds is then what a restart delivers, where the delivery had
+// not yet taken (finishSettle), and what the asks' marks keep the row to once across
+// (followAsk). A claim with nothing to run behind it costs a key on the record and
 // nothing else.
 //
 // Answers whether this resolution claimed the question, and where it did not, the claim that
@@ -69,7 +69,7 @@ func (s *Server) consequence(store entity.Store, id string, res task.Resolution)
 		}
 		return false, standing, nil
 	}
-	s.followAsk(ref, followField(res))
+	s.followAsk(ref)
 	return true, askClaim{Resolution: res, pending: true}, nil
 }
 
@@ -99,15 +99,6 @@ func standingClaim(store entity.Store, id string) (c askClaim, ok bool, err erro
 	c.pending = entity.Str(ent.Payload, "status") == mirror.QuestionPending
 	c.undelivered = entity.Get(entity.Get(ent.Payload, "followed"), "undelivered") != nil
 	return c, true, nil
-}
-
-// followField is which of a question's consequences a resolution runs: `then` on a yes, by
-// what it settled on (Chosen), so a resolution and its claim read one field.
-func followField(res task.Resolution) string {
-	if res.Chosen() == task.Proceed {
-		return "then"
-	}
-	return "else"
 }
 
 // delivered takes the undelivered note off a question's claim, once a delivery that had failed

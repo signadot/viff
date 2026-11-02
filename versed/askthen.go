@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/api"
 	"github.com/signadot/verse/codec"
@@ -20,19 +19,20 @@ import (
 	"github.com/signadot/verse/runner/runnerd"
 )
 
-// A `then` THAT ANSWERS OR ASKS: on a yes, the asker answers another ask, or raises one, on their
-// own authority, as `verse question --answer` and `verse ask` would for them. The yes lends them
-// nothing: it is the condition, and what follows is theirs.
+// A `then` THAT ANSWERS OR ASKS: on the answer a row of `on` matches (askon.go), the asker answers
+// another ask, or raises one, on their own authority, as `verse question --answer` and `verse ask`
+// would for them. The answer lends them nothing: it is the condition, and what follows is theirs.
 //
 //	then: {answer: {ask: ship-3f2a…, choice: proceed, say: "david says the UI is ok"}}
-//	then: {ask: {name: deploy, question: "Deploy it?", to: [ann@…], due: 4h, then: {…}}}
+//	then: {ask: {name: deploy, question: "Deploy it?", to: [ann@…], due: 4h, on: […]}}
 //
 // NOTHING IS SPAWNED. Each is one more act of the asker's, made by the route that makes it
 // (answerQuestion, raiseAsk), so it is held to what the asker's own act would be when it is made.
 //
 // THE WORDS CONSENTED TO: an answer to a person's ask names the edit it answers, filled in when the
-// asking is raised if it names none, so an ask reworded before the yes is not answered with words
-// its asker never saw. Filled for a `then` nested in an ask's `then` too, when the first is raised.
+// asking is raised if it names none, so an ask reworded before the answer is not answered with
+// words its asker never saw. Filled for a `then` nested in an ask's `on` too, when the first is
+// raised.
 
 // thenAnswerFields are the fields `then: {answer}` takes.
 var thenAnswerFields = []string{"ask", "choice", "say", "force", "edit"}
@@ -84,7 +84,7 @@ func thenAnswerOf(m entity.Obj) (thenAnswer, error) {
 }
 
 // thenAskOf reads `then: {ask: …}` as the ask it raises, with its date as it would stand if raised
-// now: a duration counts from the yes that raises it, and a date is taken as written.
+// now: a duration counts from the answer that raises it, and a date is taken as written.
 func thenAskOf(v entity.Payload, now time.Time) (api.Ask, error) {
 	var body api.Ask
 	if err := codec.FromNodeStrict(v, &body); err != nil {
@@ -95,7 +95,7 @@ func thenAskOf(v entity.Payload, now time.Time) (api.Ask, error) {
 	}
 	if d, err := time.ParseDuration(body.Due); err == nil {
 		if d <= 0 {
-			return body, fmt.Errorf("due %s: a duration from the yes that raises it, and more than none", body.Due)
+			return body, fmt.Errorf("due %s: a duration from the answer that raises it, and more than none", body.Due)
 		}
 		body.Due = now.Add(d).UTC().Format(time.RFC3339)
 	}
@@ -104,30 +104,30 @@ func thenAskOf(v entity.Payload, now time.Time) (api.Ask, error) {
 
 // checkThen checks what a `then` that answers or asks names against the verse as it stands, as
 // asker, where the asker is present to hear what is wrong, and fills in the edit an answer
-// consents to. self is the ask the `then` is on, where it has an id yet. It recurses through an
-// ask's own `then`.
+// consents to. self is the ask the `then` is on, where it has an id yet. It recurses through the
+// rows of an ask's own `on`.
 //
 // WHAT FOLLOWS A TASK'S ASK ANSWERS NOTHING (within set). An answer is made as the task's owner,
 // on any ask that waits on them, and another task's gate is one: a task allowed only to raise asks
 // would settle a gate its owner was asked, by an ask that answers it on silence, with no person
 // in the loop. A spawn has an environment and an autonomy to hold within the task; an answer has
 // nothing to hold, so it is refused, here and in every `then` beneath.
-func (s *Server) checkThen(asker string, then map[string]any, self string, now time.Time, within *taskBound) (int, error) {
-	if m, ok := asMap(then["answer"]); ok {
+func (s *Server) checkThen(asker string, then entity.Payload, self string, now time.Time, within *taskBound) (int, error) {
+	if a := entity.Get(then, "answer"); a != nil {
 		if within != nil {
 			return http.StatusBadRequest, errors.New("then.answer: what follows a task's ask answers no ask: " +
 				"the answer would be the owner's, and nothing holds it within the task")
 		}
-		return s.checkThenAnswer(asker, m, self)
+		return s.checkThenAnswer(asker, a, self)
 	}
-	if v, ok := then["spawn"]; ok {
+	if v := entity.Get(then, "spawn"); v != nil {
 		return s.checkThenSpawn(asker, v, within)
 	}
-	m, ok := asMap(then["ask"])
-	if !ok {
+	q := entity.Get(then, "ask")
+	if q == nil {
 		return 0, nil
 	}
-	next, err := thenAskOf(entity.Obj(m).Payload(), now)
+	next, err := thenAskOf(q, now)
 	if err != nil {
 		return http.StatusBadRequest, fmt.Errorf("then.ask: %w", err)
 	}
@@ -138,14 +138,16 @@ func (s *Server) checkThen(asker string, then map[string]any, self string, now t
 	if err := askAudience(s.Store, asker, next.About, answerers); err != nil {
 		return http.StatusForbidden, fmt.Errorf("then.ask: %w", err)
 	}
-	for _, field := range []string{"then", "else"} {
-		if inner, ok := asMap(m[field]); ok {
-			if code, err := s.checkThen(asker, inner, "", now, within); err != nil {
-				return code, fmt.Errorf("ask.%s: %w", field, err)
-			}
+	var code int
+	err = eachThen(q, func(row int, inner entity.Payload) error {
+		c, err := s.checkThen(asker, inner, "", now, within)
+		if err != nil {
+			code = c
+			return fmt.Errorf("ask.on[%d].%w", row, err)
 		}
-	}
-	return 0, nil
+		return nil
+	})
+	return code, err
 }
 
 // checkThenSpawn checks a then's spawn as a run started by hand is checked, where the asker is
@@ -153,14 +155,7 @@ func (s *Server) checkThen(asker string, then map[string]any, self string, now t
 // asker with answerers who can settle its asks, the credential it names readable by the asker,
 // and what the runner it names offers — so a spawn the runner can't run is refused now rather
 // than after the yes.
-func (s *Server) checkThenSpawn(asker string, v any, within *taskBound) (int, error) {
-	n, ok := v.(*ir.Node)
-	if !ok {
-		var err error
-		if n, err = gomap.ToTonyIR(v); err != nil {
-			return http.StatusBadRequest, fmt.Errorf("spawn: %w", err)
-		}
-	}
+func (s *Server) checkThenSpawn(asker string, n entity.Payload, within *taskBound) (int, error) {
 	spec, err := thenSpec(n)
 	if err != nil {
 		return http.StatusBadRequest, fmt.Errorf("spawn%w", err)
@@ -198,21 +193,26 @@ func (s *Server) checkThenSpawn(asker string, v any, within *taskBound) (int, er
 	return 0, nil
 }
 
-// asMap reads a value of a `then` as the object it is, however it was built.
-func asMap(v any) (map[string]any, bool) {
-	switch m := v.(type) {
-	case entity.Obj:
-		return m, m != nil
-	case map[string]any:
-		return m, m != nil
+// setField sets an object node's field in place, adding it where the object has none.
+func setField(obj *ir.Node, key string, val *ir.Node) {
+	obj = ir.Uncomment(obj)
+	for i, f := range obj.Fields {
+		if f.String == key {
+			val.Parent, val.ParentIndex, val.ParentField = obj, i, key
+			obj.Values[i] = val
+			return
+		}
 	}
-	return nil, false
+	i := len(obj.Fields)
+	obj.Fields = append(obj.Fields, &ir.Node{Type: ir.StringType, String: key, Parent: obj, ParentIndex: i, ParentField: key})
+	val.Parent, val.ParentIndex, val.ParentField = obj, i, key
+	obj.Values = append(obj.Values, val)
 }
 
 // checkThenAnswer checks an answer a `then` will make: the ask stands, the asker may read it, it
 // is pending, it waits on them, and the option is one of its own; and fills in its edit.
-func (s *Server) checkThenAnswer(asker string, m map[string]any, self string) (int, error) {
-	a, err := thenAnswerOf(m)
+func (s *Server) checkThenAnswer(asker string, n entity.Payload, self string) (int, error) {
+	a, err := thenAnswerOf(entity.ToObj(n))
 	if err != nil {
 		return http.StatusBadRequest, fmt.Errorf("then.answer: %w", err)
 	}
@@ -262,12 +262,12 @@ func (s *Server) checkThenAnswer(asker string, m map[string]any, self string) (i
 		return http.StatusConflict, fmt.Errorf("then.answer: ask %s stands at edit %d, not %d", a.Ask, edit, a.Edit)
 	}
 	if edit > 0 {
-		m["edit"] = edit
+		setField(n, "edit", ir.FromInt(int64(edit)))
 	}
 	return 0, nil
 }
 
-// answersBack is the chain of asks from `from` to one whose `then` or `else` answers self, each
+// answersBack is the chain of asks from `from` to one a row of whose `on` answers self, each
 // answering the next, or nil where none does: what a `then` answering `from` would come back
 // through. Read as the system, since the chain runs through asks the asker may not read.
 func (s *Server) answersBack(from, self string) []string {
@@ -284,29 +284,36 @@ func (s *Server) answersBack(from, self string) []string {
 			return nil
 		}
 		path = append(path, id)
-		for _, field := range []string{"then", "else"} {
-			next := entity.Str(entity.Get(entity.Get(ent.Payload, field), "answer"), "ask")
-			if next == "" {
-				continue
+		var found []string
+		_ = eachThen(ent.Payload, func(_ int, then entity.Payload) error {
+			next := entity.Str(entity.Get(then, "answer"), "ask")
+			switch {
+			case next == "":
+				return nil
+			case next == self:
+				found = path
+			default:
+				found = walk(next, path)
 			}
-			if next == self {
-				return path
+			if found != nil {
+				return errFound
 			}
-			if p := walk(next, path); p != nil {
-				return p
-			}
-		}
-		return nil
+			return nil
+		})
+		return found
 	}
 	return walk(from, nil)
 }
 
-// thenAnswers makes the answer an answered ask's `then` names, as its asker, once: marked on the
-// ask first, conditional on no mark standing, so a restart makes it where it was not made and not
-// where it was; and what became of it is written there, as `then-answered`.
-func (s *Server) thenAnswers(ref entity.Ref, field, asker string, m entity.Obj) {
+// errFound stops a walk over an ask's rows once it has what it was looking for.
+var errFound = errors.New("found")
+
+// thenAnswers makes the answer the matching row of an answered ask's `on` names, as its asker,
+// once: marked on the ask first, conditional on no mark standing, so a restart makes it where it
+// was not made and not where it was; and what became of it is written there, as `ran.answered`.
+func (s *Server) thenAnswers(ref entity.Ref, row int, asker string, m entity.Obj) {
 	a, err := thenAnswerOf(m)
-	if err != nil || !s.markThen(ref, field+"-answered") {
+	if err != nil || !s.markRan(ref, row) {
 		return
 	}
 	body := api.Resolve{ID: a.Ask, Choice: a.Choice, By: asker, Edit: a.Edit, Force: a.Force}
@@ -323,13 +330,13 @@ func (s *Server) thenAnswers(ref entity.Ref, field, asker string, m entity.Obj) 
 	if rec.Code >= 300 {
 		out["refused"] = strings.TrimSpace(rec.Body.String())
 	}
-	s.writeThen(ref, field+"-answered", out)
+	s.writeRan(ref, "answered", out)
 }
 
-// thenAsks raises the ask an answered ask's `then` names, as its asker, once, the way thenAnswers
-// answers; what became of it is written as `then-asked`.
-func (s *Server) thenAsks(ref entity.Ref, field, asker string, q entity.Payload) {
-	if !s.markThen(ref, field+"-asked") {
+// thenAsks raises the ask the matching row of an answered ask's `on` names, as its asker, once,
+// the way thenAnswers answers; what became of it is written as `ran.asked`.
+func (s *Server) thenAsks(ref entity.Ref, row int, asker string, q entity.Payload) {
+	if !s.markRan(ref, row) {
 		return
 	}
 	now := s.now()
@@ -337,7 +344,7 @@ func (s *Server) thenAsks(ref entity.Ref, field, asker string, q entity.Payload)
 	body, err := thenAskOf(q, now)
 	if err != nil {
 		out["status"], out["refused"] = http.StatusBadRequest, err.Error()
-		s.writeThen(ref, field+"-asked", out)
+		s.writeRan(ref, "asked", out)
 		return
 	}
 	id, code, err := s.raiseAsk(entity.As(s.Store, asker), asker, body, now, "")
@@ -347,31 +354,44 @@ func (s *Server) thenAsks(ref entity.Ref, field, asker string, q entity.Payload)
 	} else {
 		out["id"] = id
 	}
-	s.writeThen(ref, field+"-asked", out)
+	s.writeRan(ref, "asked", out)
 }
 
-// markThen marks an ask's `then` as made, under field, where no mark stands: whether this is the
-// one that makes it.
-func (s *Server) markThen(ref entity.Ref, field string) bool {
-	unmarked, err := codec.ParseNode([]byte(`!not.has-path `+field), codec.Tony)
+// markRan marks the row of an ask's `on` that matched as run, as `ran: {row, at}`, where no mark
+// stands: whether this is the one that runs it. An ask settles once, so one row ever runs.
+func (s *Server) markRan(ref entity.Ref, row int) bool {
+	return s.markRanWith(ref, row, nil)
+}
+
+// markRanWith is markRan with what the mark carries beside the row and when: the task a spawn
+// starts, whose id is minted before it runs.
+func (s *Server) markRanWith(ref entity.Ref, row int, with entity.Obj) bool {
+	unmarked, err := codec.ParseNode([]byte(`!not.has-path `+ranField), codec.Tony)
 	if err != nil {
 		return false
+	}
+	mark := entity.Obj{"row": row, "at": s.now().UTC().Format(time.RFC3339)}
+	for k, v := range with {
+		mark[k] = v
 	}
 	// ON THE RECORD THAT STANDS: a mark never creates a stub where the ask is not, as it would for
 	// a question kept in a scope this store does not see.
 	marked, _, err := entity.As(s.Store, entity.SystemDocket).Write(entity.Write{
 		At:    ref.At(),
-		Value: entity.Obj{field: entity.Obj{"at": s.now().UTC().Format(time.RFC3339)}}.Payload(),
+		Value: entity.Obj{ranField: mark}.Payload(),
 		When:  []entity.Require{{At: ref.At(), Pattern: entity.Present()}, {Pattern: unmarked}},
 	})
 	return err == nil && marked
 }
 
-// writeThen writes what became of an ask's `then` on the ask.
-func (s *Server) writeThen(ref entity.Ref, field string, out entity.Obj) {
+// ranField is where an ask's record says what its `on` ran (api.AskRan).
+const ranField = "ran"
+
+// writeRan writes what became of the row an ask's `on` ran, under ran.field.
+func (s *Server) writeRan(ref entity.Ref, field string, out entity.Obj) {
 	if _, _, err := entity.As(s.Store, entity.SystemDocket).Write(entity.Write{
-		At: ref.At(), Value: entity.Obj{field: out}.Payload(),
+		At: ref.At(), Value: entity.Obj{ranField: entity.Obj{field: out}}.Payload(),
 	}); err != nil {
-		fmt.Fprintf(os.Stderr, "verse: ask %s: what its then came to was not written: %v\n", ref.Name(), err)
+		fmt.Fprintf(os.Stderr, "verse: ask %s: what its on ran was not written: %v\n", ref.Name(), err)
 	}
 }
