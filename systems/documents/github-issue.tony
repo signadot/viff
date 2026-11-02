@@ -8,8 +8,8 @@ verbs:
 - name: comment
   description: "Comment on an issue at the repository, by its number."
   fields:
-  - {name: issue, description: "the issue's number"}
+  - {name: issue, form: text, description: "the issue's number"}
 - name: close
   description: "Close an issue at the repository, by its number."
   fields:
-  - {name: issue, description: "the issue's number"}
+  - {name: issue, form: text, description: "the issue's number"}

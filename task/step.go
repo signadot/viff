@@ -47,6 +47,20 @@ func (s Step) With(name string, v *ir.Node) Step {
 	return Step{Name: s.Name, Fields: ir.FromKeyVals(kvs)}
 }
 
+// Same is whether o is the same step: its name, and fields that say the same, however they were
+// spelled on the way (a flow object read back is tagged `!bracket`), no fields being `{}`.
+func (s Step) Same(o Step) bool {
+	return s.Name == o.Name && plainFields(s.Fields).DeepEqual(plainFields(o.Fields))
+}
+
+// plainFields is fields without their layout, `{}` for none.
+func plainFields(f *ir.Node) *ir.Node {
+	if f = systems.Plain(ir.Uncomment(f)); f == nil || f.Type == ir.NullType {
+		return ir.FromKeyVals(nil)
+	}
+	return f
+}
+
 // Field is the step's value of a field, nil where it carries none.
 func (s Step) Field(name string) *ir.Node {
 	if f := ir.Uncomment(s.Fields); f != nil {

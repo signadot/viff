@@ -602,7 +602,7 @@ func (m *Match) Check() error {
 		}
 	}
 	if m.VerbPattern != nil {
-		names := systems.Field{Name: "verb", Values: verbNames(d)}
+		names := systems.Field{Name: "verb", Form: systems.FormText, Values: verbNames(d)}
 		if err := names.Accepts(m.VerbPattern); err != nil {
 			return fmt.Errorf("match.verb: %w", err)
 		}

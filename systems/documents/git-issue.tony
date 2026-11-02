@@ -8,11 +8,11 @@ verbs:
 - name: comment
   description: "Comment on an issue in the checkout's tracker, by its id."
   fields:
-  - {name: issue, description: "the issue's id, or an unambiguous prefix of it"}
+  - {name: issue, form: text, description: "the issue's id, or an unambiguous prefix of it"}
 - name: close
   description: "Close an issue in the checkout's tracker, by its id, naming the commit that closed it when there is one."
   fields:
-  - {name: issue, description: "the issue's id, or an unambiguous prefix of it"}
+  - {name: issue, form: text, description: "the issue's id, or an unambiguous prefix of it"}
 - name: pull
   description: "Bring the remote's tracker into the checkout: its issue refs, fetched by the runner and set here."
 - name: push

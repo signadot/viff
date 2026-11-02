@@ -4,4 +4,4 @@ verbs:
 - name: write
   description: "Write a file under the workspace root."
   fields:
-  - {name: path, description: "the path written, relative to the workspace root; in a workspace with repositories it begins with the repository's directory"}
+  - {name: path, form: file, description: "the path written, relative to the workspace root; in a workspace with repositories it begins with the repository's directory"}

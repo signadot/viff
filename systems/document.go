@@ -102,6 +102,7 @@ const (
 	FormLower  = "lower"  // lowercase: deploys
 	FormRepo   = "repo"   // host/owner/name, lowercase: github.com/acme/app
 	FormText   = "text"   // free text, a command: `/` is a character like any other
+	FormFile   = "file"   // a file's path in the workspace, `/` between its directories: db/x.sql
 	FormPath   = "path"   // an address in the store, its names in order: [play, issues, issue]
 	FormDoc    = "doc"    // structure, held as given: an ask's `on`
 )
@@ -208,9 +209,15 @@ func (f Field) acceptsValue(n *ir.Node) error {
 		}
 		return fmt.Errorf("%q: the field is one of %s", v, strings.Join(f.Values, ", "))
 	}
-	if f.Form != "" && f.Form != FormText && strings.Contains(v, "*") {
+	if strings.Contains(v, "*") {
 		if v == "*" || strings.Trim(v, "*") == "" {
 			return fmt.Errorf("%q is a literal no value of the field is: any value is `null`", v)
+		}
+		if f.Form == FormText || f.Form == "" {
+			// Text may hold a `*`, but a literal with one reads as a pattern while matching only
+			// itself, so a `*` is written in a regexp either way.
+			return fmt.Errorf("%q holds a `*`, which a literal does not take: the pattern it means is `!regexp %q`, "+
+				"and a `*` of the text itself is `\\*` in a regexp", v, starRegexp(v))
 		}
 		if before, _, ok := strings.Cut(v, "**"); ok {
 			if before != "" && v == before+"**" {
@@ -512,11 +519,31 @@ func checkValues(form string, values []string) error {
 
 func checkForm(form string) error {
 	switch form {
-	case "", FormBool, FormInt, FormRef, FormBranch, FormUpper, FormLower, FormRepo, FormText, FormPath, FormDoc:
+	case "":
+		return errors.New("a field has a form, which says what its value is and how a pattern on it is checked")
+	case FormBool, FormInt, FormRef, FormBranch, FormUpper, FormLower, FormRepo, FormText, FormFile, FormPath, FormDoc:
 		return nil
 	}
 	return fmt.Errorf("the form %q is not one of %s", form, strings.Join([]string{FormBool, FormInt, FormRef,
-		FormBranch, FormUpper, FormLower, FormRepo, FormText, FormPath, FormDoc}, ", "))
+		FormBranch, FormUpper, FormLower, FormRepo, FormText, FormFile, FormPath, FormDoc}, ", "))
+}
+
+// starRegexp is the regexp a text with `*`s in it was meant as: each `*` any run, anchored at an
+// end without one (`git push*` is `^git push`).
+func starRegexp(v string) string {
+	parts := strings.Split(v, "*")
+	for i, p := range parts {
+		parts[i] = regexp.QuoteMeta(p)
+	}
+	re := strings.Join(parts, ".*")
+	re = strings.TrimSuffix(strings.TrimPrefix(re, ".*"), ".*")
+	if !strings.HasPrefix(v, "*") {
+		re = "^" + re
+	}
+	if !strings.HasSuffix(v, "*") {
+		re += "$"
+	}
+	return re
 }
 
 // Unique is the document's unique attribute, if it has one.

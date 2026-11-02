@@ -274,7 +274,9 @@ charter's or one given to `task run`:
 verb or a param the row leaves out matches anything: `{system: git}` is every git call. Each
 param is a tony match pattern:
 
-- **A plain value matches itself.** `true`, `false` and a port are written unquoted.
+- **A plain value matches itself.** `true`, `false` and a port are written unquoted. A plain
+  value with a `*` in it is refused, since it would match only itself: the pattern it means is
+  a `!glob` or a `!regexp`, and the refusal names it.
 - **`null` matches any value** the step carries.
 - **`!glob "refs/heads/release/*"` is a glob.** Its `*` stops at a `/`, so `refs/heads/*` is
   every branch.

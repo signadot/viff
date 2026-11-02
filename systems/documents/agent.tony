@@ -4,4 +4,4 @@ verbs:
 - name: call-sub-agent
   description: "Call a sub-agent by name: a child run inside the runner, on this task's stream, under its policy."
   fields:
-  - {name: agent, description: "the sub-agent called"}
+  - {name: agent, form: text, description: "the sub-agent called"}

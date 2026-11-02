@@ -20,4 +20,4 @@ verbs:
 - name: read-pr
   description: "Read one pull request by its number: its fields, whom a review is waiting on, the reviews given so far, and its description. What its author and reviewers wrote comes into the task as they wrote it."
   fields:
-  - {name: pr, description: "the pull request's number"}
+  - {name: pr, form: text, description: "the pull request's number"}

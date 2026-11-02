@@ -1,7 +1,7 @@
 name: network
 description: "What a task's run may reach on the network, which the runner builds when the run starts: no network, the runner's own (open), or only the hosts it allows, through a proxy the runner serves the task. Under allow, each connection goes through that proxy, and the runner decides it as a step."
 attributes:
-- {name: mode, values: [none, open, allow], default: none, description: "none: no network; open: the runner's own network, which it does not see into; allow: only what the proxy lets through. Fixed when the run starts."}
+- {name: mode, form: text, values: [none, open, allow], default: none, description: "none: no network; open: the runner's own network, which it does not see into; allow: only what the proxy lets through. Fixed when the run starts."}
 verbs:
 - name: tcp-client
   description: "Open a connection to a host, through the runner's proxy. The proxy sees the host and the port, never what is said over the connection: for https, not the path, the method or the body. A connection does not wait for an answer, so a row on it allows or denies, and never asks."
