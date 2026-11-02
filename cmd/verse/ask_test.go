@@ -559,6 +559,9 @@ func TestTheQuestionFlagsThatMeanNothingTogetherAreRefused(t *testing.T) {
 		{"question", "q1", "--served"},
 		{"question", "q1", "--watch"},
 		{"question", "q1", "--since", "3"},
+		{"question", "--notify"},
+		{"question", "q1", "--notify"},
+		{"ask", "--notify"},
 	} {
 		if _, err := runCLI(t, args...); !errors.Is(err, cli.ErrUsage) {
 			t.Errorf("%v: %v, want a usage error", args, err)

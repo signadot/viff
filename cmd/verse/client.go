@@ -628,6 +628,7 @@ type gateConfig struct {
 	All    bool   `cli:"name=all desc='every pending ask you can read, whoever raised it and whoever it waits on: the whole docket'"`
 	Watch  bool   `cli:"name=watch desc='print a line when a question starts waiting on you, and when it settles, until stopped'"`
 	Since  string `cli:"name=since desc='with --watch: replay from this revision first, so nothing between two runs is missed'"`
+	Notify bool   `cli:"name=notify desc='with --watch: also notify on the desktop when a question starts waiting on you, and when it settles (D-Bus on Linux, Notification Center on macOS)'"`
 	Answer string `cli:"name=answer desc='the option to choose, by id (proceed|deny on a yes-or-no question)'"`
 	As     string `cli:"name=as desc='identity answering; the configured user when left off (a decision names who made it)'"`
 	Say    string `cli:"name=say aliases=s desc='words to say to the agent on resolution'"`
@@ -663,7 +664,7 @@ func gateCmd() *cli.Command {
 						"`verse question <id> --answer %s`", cli.ErrUsage, cfg.Answer)
 				}
 				if cfg.Watch {
-					return watchAsks(cc, cfg.Since, false, true)
+					return watchAsks(cc, cfg.Since, cfg.Notify, false, true)
 				}
 				resp, err := httpGet("/asks", questionQuery(cfg.All, cfg.Served))
 				if err != nil {
@@ -718,6 +719,8 @@ func (cfg *gateConfig) together(id bool) error {
 	switch {
 	case cfg.Since != "" && !cfg.Watch:
 		return fmt.Errorf("%w: --since goes with --watch", cli.ErrUsage)
+	case cfg.Notify && !cfg.Watch:
+		return fmt.Errorf("%w: --notify goes with --watch", cli.ErrUsage)
 	case id && (cfg.Watch || cfg.All):
 		return fmt.Errorf("%w: --watch and --all are about every question, and take no id", cli.ErrUsage)
 	case id && cfg.Served:

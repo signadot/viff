@@ -6,6 +6,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/fatih/color v1.19.0
 	github.com/go-git/go-git/v5 v5.19.2
+	github.com/godbus/dbus/v5 v5.2.2
 	github.com/google/gops v0.3.28
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/scott-cotton/cli v0.3.1

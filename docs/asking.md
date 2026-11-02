@@ -285,6 +285,17 @@ verse question --watch    # a line when one starts waiting on you, and when it s
 ([resolvers](attached-resolvers.md)). `--all` lists the whole docket. `verse question --watch`
 takes `--since` as `verse ask --watch` does.
 
+Either watch takes `--notify` to say what needs you on the desktop too: a question that starts
+waiting on you (urgent, so it stays until you dismiss it where the desktop keeps such ones), a
+question settling, an ask of yours answered. On Linux it goes to the notification service on the
+session bus (`org.freedesktop.Notifications`, which GNOME, KDE, dunst, mako and swaync serve); on
+macOS, to Notification Center through `osascript`. With no such service the watch refuses to
+start. The lines it prints are the same.
+
+```sh
+verse question --watch --notify
+```
+
 ## Changing your mind
 
 While an ask waits, you can change it, or take it back:

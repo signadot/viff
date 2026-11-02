@@ -56,6 +56,7 @@ type askConfig struct {
 	Withdraw  bool   `cli:"name=withdraw desc='take the ask back: it is removed, and its question withdrawn'"`
 	Watch     bool   `cli:"name=watch desc='print a line when an ask of yours settles, or a question starts waiting on you, until stopped'"`
 	Since     string `cli:"name=since desc='with --watch: replay from this revision first, so nothing between two runs is missed'"`
+	Notify    bool   `cli:"name=notify desc='with --watch: also notify on the desktop when an ask of yours is answered (D-Bus on Linux, Notification Center on macOS)'"`
 }
 
 func askCmd() *cli.Command {
@@ -91,8 +92,8 @@ func (cfg *askConfig) run(cc *cli.Context, args []string) error {
 		}
 		return cfg.watch(cc)
 	}
-	if cfg.Since != "" {
-		return fmt.Errorf("%w: --since goes with --watch", cli.ErrUsage)
+	if cfg.Since != "" || cfg.Notify {
+		return fmt.Errorf("%w: --since and --notify go with --watch", cli.ErrUsage)
 	}
 	switch {
 	case name == "" && cfg.Question != "" && !cfg.Withdraw:
@@ -415,13 +416,14 @@ func withdrawAskVia(c *client.Client, arg string) (string, error) {
 // watch prints a line when an ask of the caller's is made, asked again, answered or goes. What
 // waits on them is `verse question --watch`'s: each side follows its own.
 func (cfg *askConfig) watch(cc *cli.Context) error {
-	return watchAsks(cc, cfg.Since, true, false)
+	return watchAsks(cc, cfg.Since, cfg.Notify, true, false)
 }
 
 // watchAsks is the one subscription both sides follow, over the docket, where every ask stands
 // whoever raised it: asks says what becomes of the caller's asks, questions what starts waiting on
-// them and settles. It runs until stopped, with no time limit of its own.
-func watchAsks(cc *cli.Context, since string, asks, questions bool) error {
+// them and settles. It runs until stopped, with no time limit of its own. notify also says what
+// needs the caller on the desktop (notify.go).
+func watchAsks(cc *cli.Context, since string, notify, asks, questions bool) error {
 	me, err := principal("")
 	if err != nil {
 		return err
@@ -439,6 +441,14 @@ func watchAsks(cc *cli.Context, since string, asks, questions bool) error {
 		fmt.Fprintf(cc.Out, "@%s %s\n", rev, line)
 	}
 	w := newAskWatch(apiClient(), me, asks, questions)
+	if notify {
+		send, stop, err := desktopAlerts(say)
+		if err != nil {
+			return err
+		}
+		defer stop()
+		w.alert = send
+	}
 	return w.follow(ctx, since, say)
 }
 
@@ -628,6 +638,9 @@ type askWatch struct {
 	hasLast bool
 	since   string
 	now     func() time.Time
+	// alert, where the watch was asked to notify, is told what needs the caller: a question
+	// waiting on them, one of theirs settling, an ask of theirs answered.
+	alert func(alert)
 }
 
 func newAskWatch(c *client.Client, me string, asks, questions bool) *askWatch {
@@ -688,9 +701,11 @@ func (w *askWatch) frame(f askFrame, say func(rev, line string)) {
 			line += " (served by " + by + ")"
 		}
 		say(f.rev, line)
+		w.notify(alert{title: "verse: a question waits on you", body: poseOf(rec) + "\n" + id, urgent: true})
 	case status != "" && status != mirror.QuestionPending && w.seen[id]:
 		delete(w.seen, id)
 		say(f.rev, fmt.Sprintf("settled %s: %s", id, status))
+		w.notify(alert{title: "verse: a question settled", body: id + ": " + status})
 	}
 }
 
@@ -723,6 +738,14 @@ func (w *askWatch) saidOfMine(id string, prev, rec entity.Payload, rev string, s
 	w.answered[id] = edit
 	if prev != nil || !w.fromNow {
 		say(rev, fmt.Sprintf("answered %s %s: %s", id, answer, entity.Str(rec, "question")))
+		w.notify(alert{title: "verse: your ask was answered " + answer, body: entity.Str(rec, "question") + "\n" + id})
+	}
+}
+
+// notify hands a to the desktop, where the watch was asked to.
+func (w *askWatch) notify(a alert) {
+	if w.alert != nil {
+		w.alert(a)
 	}
 }
 
