@@ -478,10 +478,10 @@ hook's patch, and not the finished task's record.** The task's own facts are fla
 reference. That is a binding that holds an object or a list, followed by `.` and a field, or by
 `[`, that the payload does not hold: `$subject.value.never`, `$changes.never` where `changes`
 is an object without `never`, or `$items[5]` where `items` holds two elements. Every path that the
-payload holds is bound, the elements of its lists among them, so this is a path that is absent. It is never replaced by the shorter binding's text with the rest of the reference
-after it. The refusal is a failed
-task: the action's patch has already landed, and its `onFailed` runs with `$err` naming the
-reference, so it can write the subject down as failed:
+payload holds is bound, the elements of its lists among them, so this is a path that is absent.
+It is never replaced by the shorter binding's text with the rest of the reference after it. The
+refusal is a failed task: the action's patch has already landed, and its `onFailed` runs with
+`$err` naming the reference, so it can write the subject down as failed:
 
 ```tony
 action:
