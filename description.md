@@ -1,0 +1,3 @@
+# docs: the refined logo set, and the lockup drawn for the navbar
+
+The logo set in docs/images is replaced by the refined one: the mark's wordmark outlined from the typeface, light and dark lockups, a lockup drawn for the theme's cerulean navbar (slate ring, light wordmark), the favicon in SVG, .ico and PNG cuts, a touch icon, and the social card. The site's brand becomes the navbar lockup and the touch icon is linked; the script that draws the set from one geometry is kept under scripts/.
