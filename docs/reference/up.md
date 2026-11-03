@@ -164,6 +164,13 @@ has a version, it installs `runnerd` and `verse-call-tool` of that version into
 `~/.verse/bin/<version>/` with `go install`, as it installs `o`. A development build has no
 version to install, and is refused with how to build them. `--runnerd-bin` names one.
 
+A `runnerd` found beside `verse` or on `PATH` has to be the same build as `verse`: the same
+release, or built from the same commit of the same tree. One of another build is refused, with
+both builds named, since it may describe itself in a form this verse refuses, and the runner
+would then fail to register a step away from the cause. Build both together (`make bin`, or
+`go build -o <dir> ./cmd/verse ./cmd/runnerd ./cmd/verse-call-tool`). A `runnerd` that
+`--runnerd-bin` names is used whatever its build, and `up` says so when it is another.
+
 **Across a crash.** `up` finds what a crashed run left by dialing, not by a pid. The runner that
 answers at the recorded port and proves this data dir's token is used as it stands, its tasks
 with it, and is asked every 30 seconds whether it still answers, so one is started in its place

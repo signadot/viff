@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/signadot/verse/config"
@@ -83,5 +84,42 @@ func TestTheDataDirIsTheAddressUnderTheVerseHome(t *testing.T) {
 		if err != nil || got != filepath.Join(home, want) {
 			t.Errorf("defaultDataDir(%q) = %q %v, want %s", addr, got, err, filepath.Join(home, want))
 		}
+	}
+}
+
+// A runnerd of another build than verse is named, with both builds: a commit apart, or one tree
+// with changes and one without, is another build. A build either side does not stamp is not
+// checked, since nothing can be said of it.
+func TestCompareBuilds(t *testing.T) {
+	const (
+		rel   = "v0.4.0"
+		head  = "v0.0.0-20261103135715-64582230a219"
+		dirty = head + "+dirty"
+		older = "v0.0.0-20261030182401-2fe12a545d41"
+	)
+	cases := map[string]struct {
+		ours, theirs string
+		another      bool
+	}{
+		"one release":              {ours: rel, theirs: rel},
+		"one commit":               {ours: head, theirs: head},
+		"one dirty tree":           {ours: dirty, theirs: dirty},
+		"a commit apart":           {ours: head, theirs: older, another: true},
+		"dirty and clean":          {ours: dirty, theirs: head, another: true},
+		"a release and a checkout": {ours: rel, theirs: head, another: true},
+		"verse unstamped (go run)": {ours: "", theirs: head},
+		"runnerd unstamped":        {ours: head, theirs: ""},
+		"runnerd a devel build":    {ours: head, theirs: "(devel)"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			err := compareBuilds("/bin/runnerd", c.ours, c.theirs)
+			if (err != nil) != c.another {
+				t.Fatalf("compareBuilds(%q, %q) = %v, want another build: %v", c.ours, c.theirs, err, c.another)
+			}
+			if err != nil && (!strings.Contains(err.Error(), c.ours) || !strings.Contains(err.Error(), c.theirs)) {
+				t.Errorf("%v: want both builds named", err)
+			}
+		})
 	}
 }

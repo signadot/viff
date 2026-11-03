@@ -381,8 +381,14 @@ func localRunnerEnv(s stock.Secrets) []string {
 // resolveRunnerd answers with the runnerd to start the local runner with, in this order: the flag;
 // beside this verse executable; verse's cache, ~/.verse/bin/<version>/runnerd; on PATH; and
 // `go install` of this verse's version into the cache, with verse-call-tool beside it.
+//
+// A runnerd found beside verse or on PATH is refused where it is another build than this verse
+// (sameBuild); the flag's is used with a warning, since naming one is the way to run another.
 func resolveRunnerd(explicit string, out io.Writer) (string, error) {
 	if explicit != "" {
+		if err := sameBuild(explicit); err != nil {
+			fmt.Fprintf(out, "verse up: %v; using it, since --runnerd-bin names it\n", err)
+		}
 		return explicit, nil
 	}
 	if self, err := os.Executable(); err == nil {
@@ -390,17 +396,22 @@ func resolveRunnerd(explicit string, out io.Writer) (string, error) {
 			self = real
 		}
 		if beside := filepath.Join(filepath.Dir(self), "runnerd"); isFile(beside) {
+			if err := sameBuild(beside); err != nil {
+				return "", fmt.Errorf("verse up: %w; %s", err, rebuildBoth)
+			}
 			return beside, nil
 		}
 	}
 	version := verseVersion()
 	cached := cachedRunnerd(version)
+	// Not run through sameBuild: the cache is keyed by this verse's version, so what it holds
+	// is this build by construction.
 	if cached != "" && isFile(cached) {
 		return cached, nil
 	}
 	if onPath, err := exec.LookPath("runnerd"); err == nil {
-		if v := moduleVersionOf(onPath); version != "" && v != version {
-			fmt.Fprintf(out, "verse up: using runnerd from PATH (%s, built from verse %s; this verse is %s)\n", onPath, cmpOr(v, "unknown"), version)
+		if err := sameBuild(onPath); err != nil {
+			return "", fmt.Errorf("verse up: on PATH, %w; %s", err, rebuildBoth)
 		}
 		return onPath, nil
 	}
@@ -426,10 +437,32 @@ func resolveRunnerd(explicit string, out io.Writer) (string, error) {
 	return cached, nil
 }
 
-// verseVersion is this verse's module version, "" for a development build.
+// rebuildBoth is what to do about a runnerd of another build.
+const rebuildBoth = "build both from one tree (`make bin`, or `go build -o <dir> ./cmd/verse ./cmd/runnerd ./cmd/verse-call-tool`), " +
+	"or pass --runnerd-bin to run that one anyway, or --local-runner=false"
+
+// sameBuild is why the runnerd at bin is another build than this verse, or nil. A build is its
+// module version as Go stamps it: a release's tag, or, built from a checkout, a pseudo-version
+// that carries the commit and +dirty where the tree had changes. Two builds of one tree agree;
+// a verse rebuilt after a pull and a runnerd that was not do not, and the runner they make
+// describes itself in a form this verse may refuse, as a failed registration a step away from
+// its cause. A build either side does not stamp (go run, a test) is not checked.
+func sameBuild(bin string) error { return compareBuilds(bin, verseVersion(), moduleVersionOf(bin)) }
+
+// compareBuilds is sameBuild's answer, given the two builds.
+func compareBuilds(bin, ours, theirs string) error {
+	if ours == "" || theirs == "" || theirs == "(devel)" || ours == theirs {
+		return nil
+	}
+	return fmt.Errorf("the runnerd at %s is built from verse %s, and this verse from %s", bin, theirs, ours)
+}
+
+// verseVersion is this verse's module version as Go stamps it: a release's tag, or, built from a
+// checkout, a pseudo-version carrying the commit and +dirty where the tree had changes. "" where
+// Go stamped none (go run, a test).
 func verseVersion() string {
 	bi, ok := debug.ReadBuildInfo()
-	if !ok || bi.Main.Version == "" || bi.Main.Version == "(devel)" {
+	if !ok || bi.Main.Version == "(devel)" {
 		return ""
 	}
 	return bi.Main.Version
@@ -455,13 +488,6 @@ func moduleVersionOf(bin string) string {
 		return ""
 	}
 	return bi.Main.Version
-}
-
-func cmpOr(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
 }
 
 // verseHome is where verse keeps what it writes for itself: $VERSE_HOME, else ~/.verse.
