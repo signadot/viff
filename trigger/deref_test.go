@@ -294,6 +294,8 @@ func TestTheOldSpellingIsRefusedAtInstall(t *testing.T) {
 		{"whole", "{sha: $subject.value.sha}", "write .[subject.value.sha]"},
 		{"in text", `{note: "saw $result"}`, "$result"},
 		{"in a read's address", "{r: !get-path {at: [git, repo, $subject.value.head]}}", "$subject.value.head"},
+		{"in a dotted address", `{r: !get-path "git.repo.$subject.value.head"}`, `git.repo."$[subject.value.head]"`},
+		{"in an at: string", `{r: !get-path {at: "git.repo.v$sha"}}`, `git.repo."v$[sha]"`},
 		{"a literal dollar-word", `{home: "$HOME/x"}`, "'$[\"$HOME\"]'"},
 		{"the new spelling", `{sha: .[subject.value.sha], note: "saw $[result]", lit: '$["$HOME"]'}`, ""},
 		{"inside an expression", `{n: '.[$env["pr-number"]]'}`, ""},

@@ -827,6 +827,9 @@ func (a Action) validate() error {
 		name string
 		doc  entity.Payload
 	}{{"action.patch", a.Patch}, {"action.derive", a.Derive}} {
+		if err := legacyAddress(part.name, part.doc); err != nil {
+			return err
+		}
 		if ref := legacyRef(part.doc); ref != "" {
 			return legacyRefusal(part.name, ref)
 		}

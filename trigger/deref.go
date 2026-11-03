@@ -374,6 +374,48 @@ func legacyRefusal(where, ref string) error {
 		where, ref, ref, ref, ref)
 }
 
+// legacyAddress is the refusal of the old spelling in a read's address written as a string,
+// nil for none. The general refusal (legacyRefusal) says to write `.[ref]`, which a dotted address
+// refuses in its turn (dottedExpressions); this one says what a dotted address takes: the
+// expression in a quoted segment, or the address as a list.
+func legacyAddress(where string, doc entity.Payload) error {
+	return eachPathRead(doc, func(n *ir.Node) error {
+		s, ok := addressText(n)
+		if !ok {
+			return nil
+		}
+		ref := legacyRef(ir.FromString(s))
+		if ref == "" {
+			return nil
+		}
+		return fmt.Errorf("%s: !%s %q carries $%s, the old spelling of a reference. In a dotted "+
+			"address the expression goes in a quoted segment, `%s`, or the address is written as a "+
+			"list with the expression as a segment of its own, `.[%s]`", where, pathKind(n), s, ref,
+			quotedRespelling(s, ref), ref)
+	})
+}
+
+// quotedRespelling is s with its first `$ref` written as `$[ref]` and the segment holding it
+// quoted: `git.repo.$subject.value.head` is `git.repo."$[subject.value.head]"`.
+func quotedRespelling(s, ref string) string {
+	tok := "$" + ref
+	start := strings.Index(s, tok)
+	if start < 0 {
+		return s
+	}
+	end := start + len(tok)
+	segStart := strings.LastIndex(s[:start], ".") + 1
+	if segStart < len(s) && (s[segStart] == '"' || s[segStart] == '\'') {
+		// Quoted already: the expression is all it needs.
+		return s[:start] + "$[" + ref + "]" + s[end:]
+	}
+	segEnd := len(s)
+	if i := strings.Index(s[end:], "."); i >= 0 {
+		segEnd = end + i
+	}
+	return s[:segStart] + `"` + s[segStart:start] + "$[" + ref + "]" + s[end:segEnd] + `"` + s[segEnd:]
+}
+
 // expressionRefusal is what is wrong with the first expression in doc that is refused at
 // install, nil for none. where names the document, `action.patch`.
 //
