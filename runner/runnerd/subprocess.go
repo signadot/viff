@@ -823,6 +823,11 @@ func (h *SubprocessHandler) relayResolve(w http.ResponseWriter, r *http.Request,
 	}
 	step, about := p.gateAbout(body.ID)
 	again()
+	if p.co != nil {
+		// Marked in flight before the process hears it: the act it allows can reach the
+		// channel before the process's word that it was taken comes back (Channel.Relaying).
+		defer p.co.ch.Relaying()()
+	}
 	rec := &statusRecorder{ResponseWriter: w}
 	p.prox.ServeHTTP(rec, r)
 	switch {

@@ -43,6 +43,12 @@ type Channel struct {
 	// the model and says what it likes, and the runner is the side that saw the answer given.
 	answersMu sync.Mutex
 	answers   []answer
+	// relaying counts the answers on their way to the task's process (Relaying), and landed
+	// is closed when the last of them has been taken or refused. The process acts the moment
+	// it hears an answer, which is before this side hears that it was taken, so an act that
+	// arrives meanwhile is judged once it has (answered) rather than refused for the gap.
+	relaying int
+	landed   chan struct{}
 
 	// serving is set once Serve has begun, and served closed once it has returned: what Settle
 	// waits for, so no request is still being performed when the trees are judged.
@@ -69,6 +75,31 @@ func (c *Channel) Answer(decision string, step task.Step, choice, by string) {
 	c.answers = append(c.answers, answer{decision: decision, step: step, choice: choice, by: by})
 }
 
+// Relaying marks an answer on its way to the task's process, and returns what the relay calls
+// once the process has taken it (and Answer kept it) or refused it. Until then an act is not
+// judged (answered): the process acts as soon as its own side hears the answer, and the act can
+// reach this side ahead of the word that the answer was taken. Keeping the answer before relaying
+// it would open the opposite gap, an act performed on an answer the process then refused.
+func (c *Channel) Relaying() (landed func()) {
+	c.answersMu.Lock()
+	defer c.answersMu.Unlock()
+	if c.relaying == 0 {
+		c.landed = make(chan struct{})
+	}
+	c.relaying++
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			c.answersMu.Lock()
+			defer c.answersMu.Unlock()
+			c.relaying--
+			if c.relaying == 0 {
+				close(c.landed)
+			}
+		})
+	}
+}
+
 // Answers is how many relayed answers no act has taken yet.
 func (c *Channel) Answers() int {
 	c.answersMu.Lock()
@@ -84,6 +115,13 @@ func (c *Channel) Answers() int {
 func (c *Channel) answered(st task.Step, decision string) (string, bool) {
 	c.answersMu.Lock()
 	defer c.answersMu.Unlock()
+	for c.relaying > 0 {
+		// An answer is in flight: judged once it has landed, whichever way.
+		landed := c.landed
+		c.answersMu.Unlock()
+		<-landed
+		c.answersMu.Lock()
+	}
 	take := func(i int) (string, bool) {
 		by := c.answers[i].by
 		c.answers = append(c.answers[:i], c.answers[i+1:]...)
