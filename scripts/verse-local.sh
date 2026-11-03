@@ -3,7 +3,7 @@
 # docs/platform/local-verse.md), from its settings: scripts/verse-local.env, with yours over them in
 # ~/.config/verse-local.env.
 #
-#   - the settings, rendered into ~/.verse/local.env, which pitchfork's run lines source;
+#   - the settings, rendered into ~/.verse/local/local.env, which pitchfork's run lines source;
 #   - verse, runnerd and verse-call-tool built from this tree, and the `o` it pins, in the bin dir;
 #   - the verse's config: who you are, where the verse is, and the issuer it signs as;
 #   - the data dir, with the issuer's key, and logd's config with the compaction cutoff;
@@ -20,7 +20,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEFAULTS="$REPO/scripts/verse-local.env"
 OVERRIDES="$HOME/.config/verse-local.env"
-RENDERED="$HOME/.verse/local.env"
+RENDERED="$HOME/.verse/local/local.env"
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'verse-local: %s\n' "$*" >&2; exit 1; }
@@ -56,6 +56,7 @@ write_rendered() {
 say "settings"
 # shellcheck source=verse-local.env
 . "$DEFAULTS"
+default_data="$VERSE_LOCAL_DATA"
 if [[ -f "$OVERRIDES" ]]; then
 	# shellcheck disable=SC1090
 	. "$OVERRIDES"
@@ -80,6 +81,23 @@ rendered="# The local verse's settings, rendered by scripts/verse-local.sh setup
 for n in $names; do
 	rendered+="$n=$(printf '%q' "${!n}")"$'\n'
 done
+# Before ~/.verse/local, setup kept the store in ~/.verse/localhost_9797, which a plain verse up on
+# localhost:9797 uses too, and the runner in ~/.verse/runner. Starting a fresh store over such a
+# setup would leave the old one and its runner's registration behind without a word.
+old_data="$HOME/.verse/localhost_9797"
+if [[ "$VERSE_LOCAL_DATA" == "$default_data" && ! -e "$VERSE_LOCAL_DATA" &&
+	-e "$old_data/issuer.pem" && -e "$HOME/.verse/runner/runner.tony" ]]; then
+	die "a local verse set up before ~/.verse/local is in $old_data, with its runner in ~/.verse/runner.
+  To keep using it where it is, say so in $OVERRIDES:
+    VERSE_LOCAL_DATA=\"\$HOME/.verse/localhost_9797\"
+    VERSE_LOCAL_RUNNER_DIR=\"\$HOME/.verse/runner\"
+    VERSE_LOCAL_CONFIG=\"\$HOME/.config/verse-local.tony\"
+  To move it, stop it (pitchfork stop -l), move the three to $VERSE_LOCAL_DATA,
+  $VERSE_LOCAL_RUNNER_DIR and $VERSE_LOCAL_CONFIG, and change the issuer's key in the config
+  to $VERSE_LOCAL_DATA/issuer.pem.
+  To start a new one beside it: mkdir -p $VERSE_LOCAL_DATA"
+fi
+
 write_rendered "$RENDERED" 644 "$rendered"
 
 BIN="$VERSE_LOCAL_BIN"
@@ -119,16 +137,15 @@ fi
 write_once "$CONFIG" 644 "user: $user
 addr: $ADDR
 $issuer"
-if ! grep -q 'issuer:' "$CONFIG"; then
-	grep -q '^auth:' "$CONFIG" && die "$CONFIG has an auth block and no issuer; add: issuer: {url: \"http://$ADDR\", key: \"$DATA/issuer.pem\"}"
-	printf '%s' "$issuer" >>"$CONFIG"
-	say "  added   the issuer to $CONFIG"
-fi
 # The config is yours once written, so a setting it carries is checked, not rewritten.
+grep -q 'issuer:' "$CONFIG" ||
+	die "$CONFIG names no issuer, and this verse signs its runner's tokens as one; add to its auth block: issuer: {url: \"http://$ADDR\", key: \"$DATA/issuer.pem\"}"
 grep -Eq "^addr: *\"?$ADDR\"? *$" "$CONFIG" ||
 	die "$CONFIG does not say addr: $ADDR, which VERSE_LOCAL_ADDR does; make them agree"
 grep -q "url: \"http://$ADDR\"" "$CONFIG" ||
 	die "$CONFIG's issuer url is not \"http://$ADDR\", which VERSE_LOCAL_ADDR makes it; make them agree"
+grep -q "key: \"$DATA/issuer.pem\"" "$CONFIG" ||
+	die "$CONFIG's issuer key is not \"$DATA/issuer.pem\", in the data dir VERSE_LOCAL_DATA names; make them agree"
 
 say "data dir"
 mkdir -p "$DATA"
@@ -196,8 +213,17 @@ fi
 say "Claude Code"
 if ! command -v claude >/dev/null 2>&1; then
 	say "  no claude on PATH: add the MCP server once it is, by running setup again"
-elif claude mcp get "$MCP_NAME" >/dev/null 2>&1; then
-	say "  kept    the MCP server $MCP_NAME"
+elif mcp="$(claude mcp get "$MCP_NAME" 2>/dev/null)"; then
+	# Kept where it runs this verse on this config; else it is an older setup's, or another
+	# verse's under the same name, and Claude Code would go on reaching that one.
+	if grep -qF "Command: $BIN/verse" <<<"$mcp" && grep -qF "VERSE_CONFIG=$CONFIG" <<<"$mcp"; then
+		say "  kept    the MCP server $MCP_NAME"
+	else
+		claude mcp remove "$MCP_NAME" -s user >/dev/null ||
+			die "the MCP server $MCP_NAME is not $BIN/verse on $CONFIG, and is not in your user scope to replace; remove it, or set VERSE_LOCAL_MCP_NAME"
+		claude mcp add "$MCP_NAME" -s user -e "VERSE_CONFIG=$CONFIG" -- "$BIN/verse" mcp >/dev/null
+		say "  updated the MCP server $MCP_NAME, to $BIN/verse on $CONFIG"
+	fi
 else
 	claude mcp add "$MCP_NAME" -s user -e "VERSE_CONFIG=$CONFIG" -- "$BIN/verse" mcp >/dev/null
 	say "  added   the MCP server $MCP_NAME (verse mcp, as $user)"
