@@ -47,7 +47,7 @@ func TestSubjectValueResolvesInAString(t *testing.T) {
     spawn:
       agent: {name: verse}
       autonomy: [{then: allow}]
-      prompt: "flat=$sha one=$subject.value.sha two=$subject.value.covering deep=$subject.value.result.report bare=$subject"
+      prompt: "flat=$[sha] one=$[subject.value.sha] two=$[subject.value.covering] deep=$[subject.value.result.report] bare=$[subject.ref]"
 `)); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
@@ -70,45 +70,20 @@ func TestSubjectValueResolvesInAString(t *testing.T) {
 	}
 }
 
-// `$subject.value` on its own is the whole payload, as tony — the same rendering `$stage` gets
-// when the field it names holds an object, rather than a second opinion about text form.
+// `subject.value` on its own is the whole payload, as tony, the same rendering any field holding
+// an object gets.
 func TestSubjectValueOnItsOwnIsThePayload(t *testing.T) {
 	subj := entity.RefAt("demo", "pr", "1")
 	payload := entity.Obj{"stage": "open", "who": map[string]any{"by": "ana"}}.Payload()
 	b := bindingFor(payload, subj, payload)
 
-	whole := b["subject.value"]
+	whole := bound(t, launch.Spec{Prompt: "$[subject.value]"}, b).Prompt
 	for _, want := range []string{"stage: open", "by: ana"} {
 		if !strings.Contains(whole, want) {
-			t.Fatalf("$subject.value = %q, which does not carry %q", whole, want)
+			t.Fatalf("$[subject.value] = %q, which does not carry %q", whole, want)
 		}
 	}
-	if got := b["subject.value.who.by"]; got != "ana" {
-		t.Fatalf("$subject.value.who.by = %q, want ana", got)
-	}
-}
-
-// A FIELD NAME HOLDING A DOT IS NOT BOUND under `value`, itself or anything below it: the map is
-// matched by literal text, so `a.b` as a name and `a` containing `b` would produce one key and
-// one of them would silently win. Its top-level flat binding is untouched.
-func TestADottedFieldNameIsNotBoundUnderValue(t *testing.T) {
-	subj := entity.RefAt("demo", "pr", "1")
-	payload := entity.Obj{
-		"v1.2": map[string]any{"tag": "x"},
-		"ok":   "yes",
-	}.Payload()
-	b := bindingFor(payload, subj, payload)
-
-	if _, found := b["subject.value.v1.2"]; found {
-		t.Error("a dotted field name was bound under value, where it cannot be told apart from a path")
-	}
-	if _, found := b["subject.value.v1.2.tag"]; found {
-		t.Error("a field under a dotted name was bound")
-	}
-	if got := b["subject.value.ok"]; got != "yes" {
-		t.Errorf("subject.value.ok = %q — an ordinary name beside it must still bind", got)
-	}
-	if b["v1.2"] == "" {
-		t.Error("the flat top-level binding for a dotted name is gone")
+	if got := bound(t, launch.Spec{Prompt: "$[subject.value.who.by]"}, b).Prompt; got != "ana" {
+		t.Fatalf("$[subject.value.who.by] = %q, want ana", got)
 	}
 }

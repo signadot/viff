@@ -32,7 +32,7 @@ the environment gives `question`.
 spawn:
   agent: {name: verse}
   environment: {systems: {network: {mode: open}, question: {}}}
-  prompt: "Decide whether $subject can be rolled back, and ask before you say so."
+  prompt: "Decide whether $[subject.ref] can be rolled back, and ask before you say so."
   autonomy:
   - match: {system: question}
     then: allow

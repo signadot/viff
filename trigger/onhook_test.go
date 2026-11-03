@@ -92,7 +92,7 @@ func TestOnDoneFiresUnderScoped(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:  entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 		},
 	}); err != nil {
@@ -125,13 +125,13 @@ func TestOnDoneChains(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
+			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{
 				Patch: entity.Obj{"stage": "reviewed"}.Payload(),
-				Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "merge $subject"},
+				Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "merge $[subject.ref]"},
 				OnDone: &Action{
 					Patch: entity.Obj{"stage": "merged"}.Payload(),
-					Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "approve $subject"},
+					Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "approve $[subject.ref]"},
 					OnDone: &Action{
 						Patch: entity.Obj{"stage": "approved"}.Payload(),
 					},
@@ -183,7 +183,7 @@ func TestOnFailed(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:    entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review and fail $subject"},
+			Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review and fail $[subject.ref]"},
 			OnDone:   &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 			OnFailed: &Action{Patch: entity.Obj{"stage": "rejected"}.Payload()},
 		},
@@ -427,7 +427,7 @@ func TestHookReadsTheSubjectAtTheCausingCommit(t *testing.T) {
     subject: {path: "demo.pr.*", value: {stage: open}}
   action:
     patch: {stage: reviewing}
-    spawn: {agent: {name: verse}, prompt: "review $subject"}
+    spawn: {agent: {name: verse}, prompt: "review $[subject.ref]"}
     onDone:
       patch:
         stage: reviewed
@@ -471,8 +471,8 @@ func TestSeqCarrierHookReadsTheCausingCommit(t *testing.T) {
   action:
     patch: {stage: deploying}
     seq:
-    - spawn: {agent: {name: verse}, prompt: "canary $subject"}
-    - spawn: {agent: {name: verse}, prompt: "rollout $subject"}
+    - spawn: {agent: {name: verse}, prompt: "canary $[subject.ref]"}
+    - spawn: {agent: {name: verse}, prompt: "rollout $[subject.ref]"}
     onDone:
       patch:
         stage:   deployed

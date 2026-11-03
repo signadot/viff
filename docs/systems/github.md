@@ -51,7 +51,7 @@ requests are within reach; the autonomy decides among them.
 ```tony
 spawn:
   agent: {name: verse}
-  prompt: "Make the failing check on $subject pass, and open a pull request."
+  prompt: "Make the failing check on $[subject.ref] pass, and open a pull request."
   environment:
     systems:
       network: {mode: open}

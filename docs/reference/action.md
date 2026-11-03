@@ -213,21 +213,21 @@ under bash, and takes no `agent`. A spawn with both, or neither, is refused.
 
 An agent's settings are written beside its name: `agent: {name: codex, model: gpt-5-codex,
 effort: high}`. Each is one the runner's offer declares, with a value it takes; one it does not
-declare is refused. They take `$vars`, so a charter can write `model: $subject.value.model`.
+declare is refused. They take expressions, so a charter can write `model: $[subject.value.model]`.
 `agent.annotations` are settings for the runner, such as `verse.portkey/virtual-key`. Verse
 writes that one itself from `virtualKey`, the address of the model credential the run spends
 ([virtual key](../glossary.md#virtual-key)), and refuses it written in `annotations`.
 
 **The environment.** `environment` is what the run works in. `vars` are variables set in the
 task's shell, by name: how a script gets data from the subject without splicing it into its
-text, `vars: {BRANCH: $subject.value.head}`. A runner refuses a name it owns. `systems` is what
+text, `vars: {BRANCH: $[subject.value.head]}`. A runner refuses a name it owns. `systems` is what
 the task may do, one block per [system](../systems/README.md), and it is the whole of it: a step
 no block gives is refused before any row is read. A block names the verbs it gives, each with its
 shapes; a block that names no verb gives every verb of its system, the network apart.
 
 | System | What its block does |
 |---|---|
-| `git` | a repository the task works in: `{repo: acme/app, from: main, fetch: {}, push: [{ref: !glob "refs/heads/verse/auto/*", exists: false}, {ref: !glob "refs/heads/verse/auto/*", own: true}]}`. `repo` is `owner/name` at GitHub, or `host/owner/name` on another forge; `from` omitted is the default branch. Both take `$vars`, so a charter can write `from: $subject.value.head`. Its `push` shapes are what may leave it, by `ref`, `delete`, `force`, and `exists` and `own`, which the runner fills from the forge; a charter that ships writes them rather than an empty block, which would give every push. The record of the task carries `git`, so a reader sees what the run worked on without the charter. |
+| `git` | a repository the task works in: `{repo: acme/app, from: main, fetch: {}, push: [{ref: !glob "refs/heads/verse/auto/*", exists: false}, {ref: !glob "refs/heads/verse/auto/*", own: true}]}`. `repo` is `owner/name` at GitHub, or `host/owner/name` on another forge; `from` omitted is the default branch. Both take expressions, so a charter can write `from: $[subject.value.head]`. Its `push` shapes are what may leave it, by `ref`, `delete`, `force`, and `exists` and `own`, which the runner fills from the forge; a charter that ships writes them rather than an empty block, which would give every push. The record of the task carries `git`, so a reader sees what the run worked on without the charter. |
 | `git-issue` | a repository's own tracker, of a repository `git` checks out: `{repo: acme/app}` gives all its verbs |
 | `github`, `github-issue`, `linear-issue`, `slack` | the forge's pull requests, the trackers' issues, and Slack's channels, each a block of its own: `{repo: acme/app}` for `github` and `github-issue`; Linear's and Slack's blocks name their verbs and shapes, such as `{post: {channel: deploys}}` ([the systems](../systems/README.md)) |
 | `verse` | verse itself, acted on as the person the task runs for: reading and writing data, asks, and installing charters (`verse.charter-install`). A charter a task installs launches within the task, less `verse.charter-install` ([the verse system](../systems/verse.md), [the charter](charter.md)) |
@@ -314,7 +314,7 @@ grant`). Verse refuses a `resolver:` on a spawn at install.
 spawn:
   agent: {name: verse}
   environment: {systems: {network: {mode: open}}}
-  prompt:   "Review $subject for security defects."
+  prompt:   "Review $[subject.ref] for security defects."
   answer:
     severity: !or [low, high]
     note:     !irtype string
@@ -342,7 +342,7 @@ record under `requests`, a place the rule's installer owns and grants people to 
     spawn:
       agent: {name: verse}
       environment: {systems: {network: {mode: open}}}
-      prompt: $subject.value.prompt
+      prompt: $[subject.value.prompt]
       as: subject
 ```
 
@@ -374,7 +374,7 @@ spawn:
     git -C app merge --ff-only "mirror/$BRANCH"
     verse-call-tool git-push -branch main
   environment:
-    vars: {BRANCH: $subject.value.head}
+    vars: {BRANCH: $[subject.value.head]}
     systems:
       network: {mode: open}
       git:
@@ -395,8 +395,8 @@ the runner declines is an answer on the call's output, and the script decides wh
 `verse-call-tool git-push -branch "$BRANCH" -delete || true` is a sweep that one declined ref does
 not stop.
 
-**A script's text is not bound.** `$subject` in a prompt is the subject; in a script it is the
-shell's, and verse leaves it alone. A value from the firing reaches a script as a variable in
+**A script's text is not bound.** `$[subject.ref]` in a prompt is the subject; a script's text
+is never expanded, so every `$` in it is the shell's. A value from the firing reaches a script as a variable in
 the environment's `vars`, which the shell reads and never parses: spliced into the text, a branch named
 `x;curl …` would be a program.
 
@@ -415,14 +415,15 @@ branches.
 
 ### Bindings
 
-A [binding](../glossary.md#binding) is a name that begins with `$`. Every field of **the payload
-an action reads** is bound by name (`$stage`, `$path`, …). `$subject` is bound too, to the
-resolved subject. Which payload the action reads has exactly two answers. The answer depends on
+A [binding](../glossary.md#binding) is a name an action reads a value by. In a patch it is `$`
+and the name, `$stage`; in the strings of a spawn it is an expression, `$[stage]`
+([below](#in-the-strings-of-a-spawn)). Every field of **the payload an action reads** is bound by
+name (`stage`, `path`, …). `subject` is bound too, to the resolved subject. Which payload the action reads has exactly two answers. The answer depends on
 *why* the action runs.
 
 **A firing of a rule reads the payload of the subject itself.** The change that dispatched the
 firing may be at a different address. Its fields would mean nothing on the subject being acted
-on. So `review $subject` in the prompt of a spawn names the PR the firing is about, even when the
+on. So `review $[subject.ref]` in the prompt of a spawn names the PR the firing is about, even when the
 change that fired was a task's and not the PR's. `$stage` is the stage of that PR, and
 not of the task.
 
@@ -432,7 +433,7 @@ engine makes that payload itself, and does not read it from the store. The mirro
 written the terminal facts yet. This is why those bindings resolve at all, and why they are
 flat. They are facts about a run, and no address holds them.
 
-`$subject` is a record. The bare form is its address.
+`subject` is a record. In a patch, the bare `$subject` is its address.
 
 | Binding | Value |
 |---|---|
@@ -453,44 +454,81 @@ earlier. A charter whose task does not write its own subject gets the reading it
 A task that the charter did not start has no such commit. There `.value` and `.commit` fail by
 name. They do not resolve to a silent zero.
 
-**In the strings of a spawn**, its prompt, its agent's name and settings, its `vars` and the
-attributes of its systems, a binding is replaced by its text. A field that holds a leaf is its own
-text, `3` and not `"3"`; a field that holds an object or a list is tony. Every path under a field
-binds as well, as a patch resolves it: `$data.severity` on `{data: {severity: high}}` is `high`.
-So does every element of a list, at any depth: `$data.items[0]`, and `$result.findings[0].id` in
-an `onDone`.
-`$subject`, `.ref` and `.name` bind as in the table. `$subject.commit` does not bind in a
-spawn's strings, because a spawn is not where provenance belongs, so it refuses the launch as a
-part that is not present (see below). `.value` binds as the subject's whole
-payload, and every path into it binds as well, `$subject.value.handoff.summary`. A payload
-written with a head comment binds as it would without one.
+#### In the strings of a spawn
 
-The strings are expanded in one pass, over what the charter wrote. Text that a binding brings in
-is not expanded again: a subject whose title is `costs $owner` puts `costs $owner` in the prompt,
-and the `$owner` in it is not replaced.
+The strings of a spawn are its prompt, its agent's name and settings, its `vars` and the
+attributes of its systems. A value goes into one as an **expression**, `$[subject.value.sha]`,
+which is [tony's](https://signadot.github.io/tony-format/), evaluated against:
 
-`$subject.value` in a spawn is what it is in a patch. In a rule's own firing it is the subject.
-**In a completion hook's spawn it is the subject at the commit its rule fired at, as in the
-hook's patch, and not the finished task's record.** The task's own facts are flat: `$status`,
-`$result`, `$data`, `$err`.
+- each field of the payload the action reads, by name: `$[stage]`, and in a completion hook
+  `$[status]`, `$[result]`, `$[data]` and `$[err]`;
+- `subject`, as `ref` (its address), `name` (the address's last segment) and `value` (its
+  payload, as in the table). `$subject.commit` has no counterpart, because a spawn is not where
+  provenance belongs.
 
-**A reference that reaches past what is bound refuses the launch**, as a patch refuses an absent
-reference. That is a binding that holds an object or a list, followed by `.` and a field, or by
-`[`, that the payload does not hold: `$subject.value.never`, `$changes.never` where `changes`
-is an object without `never`, or `$items[5]` where `items` holds two elements. Every path that the
-payload holds is bound, the elements of its lists among them, so this is a path that is absent.
-It is never replaced by the shorter binding's text with the rest of the reference after it. The
-refusal is a failed task: the action's patch has already landed, and its `onFailed` runs with
-`$err` naming the reference, so it can write the subject down as failed:
+A `$` that does not open `$[` is not an expression, and stays as written: `$HOME` and `$5` reach
+the agent as they are, whatever the payload holds. `$$[` is a literal `$[`. A string that is one
+`.[…]` and nothing else is an expression too, `repo: .[subject.value.repo]`; a `.[` anywhere else
+is text, so a jq filter such as `.[0].name` in a prompt reaches the agent as written.
+
+A leaf is its own text, `3` and not `"3"`, and a written null is `null`. An object or a list is
+tony on one line, its fields in name order, so a charter that puts a ledger in front of an agent
+puts a document there:
+
+```tony
+prompt: "Outstanding findings: $[findings]\n\nThe diff:\n…"
+```
+
+A path goes as deep as the payload does, the elements of its lists among them:
+`$[data.items[0]]`, and `$[result.findings[0].id]` in an `onDone`. What follows an expression is
+prose: `$[file].go` where `file` is `main` is `main.go`. A string that holds an expression
+anywhere but the whole of it is quoted in tony, `prompt: "review $[subject.ref]"`, since an
+unquoted `[` starts a list.
+
+A field whose name is not a word, such as `pr-number`, is read by index:
+`$[subject.value["pr-number"]]`, and at the top level `$[$env["pr-number"]]`. That is still a
+path, and an absent key refuses the launch as a dotted path does. Written as a path,
+`$[pr-number]` is a subtraction: it is refused where `pr` or `number` is absent, and where both
+are numbers it expands to their difference without a word. `get(subject.value, "pr-number")` reads
+the same field but is a call, so an absent key is null rather than a refusal; give it a default,
+`$[get(subject.value, "pr-number") ?? "none"]`.
+
+An expression is more than a path. `$[data.summary ?? "no summary"]` is a default, and
+`$[status == "done" ? "landed" : "stopped"]` a choice. The clock is not callable (`now()`,
+`date()`): a launch that is parked, released or retried says the same thing each time.
+
+The strings are expanded in one pass, over what the charter wrote. Text that an expression brings
+in is not expanded again: a subject whose title is `costs $[owner]` puts `costs $[owner]` in the
+prompt.
+
+`subject.value` in a spawn is what `$subject.value` is in a patch. In a rule's own firing it is the
+subject. **In a completion hook's spawn it is the subject at the commit its rule fired at, as in
+the hook's patch, and not the finished task's record.** Reading it there is a read at that commit,
+which verse makes when an expression reads `subject` other than as `subject.ref` or
+`subject.name`: `$[subject.value.round]`, `$[subject?.value]`, `$[subject["value"]]`, or
+`$[subject]` whole. The task's own facts are the top-level
+names: `status`, `result`, `data`, `err`. Each is there whatever the task said: `result` and `err`
+are empty where it said nothing, and `data` is null where its result is no document, so a prompt
+that an `onDone` and an `onFailed` share can say `$[err]` in both.
+
+**A path that is not there refuses the launch**, as an absent reference refuses a patch:
+`$[subject.value.never]` on a subject without `never`, `$[items[5]]` where `items` holds two
+elements, `$[nosuch]`. A path through a null does not resolve either. Only a plain path is held
+to this: a name, then fields and indexes. An expression with `?.`, `??` or a call says for itself
+what absence means: `$[subject.value?.handoff?.summary ?? "none"]`. An expression that does not
+compile, or calls the clock, refuses the launch the same way.
+
+The refusal is a failed task. The action's patch has already landed, and its `onFailed` runs with
+`$err` saying what was absent, so it can write the subject down as failed:
 
 ```tony
 action:
   patch: {stage: developing}
   spawn:
     agent: {name: verse}
-    prompt: "open a pull request whose body is $subject.value.handoff.summary"
+    prompt: "open a pull request whose body is $[subject.value.handoff.summary]"
   onFailed:
-    # "spawn refused: prompt: $subject.value.handoff.summary is not present in the payload that fired this action"
+    # spawn refused: prompt: error evaluating "subject.value.handoff.summary": no "handoff" in subject.value
     patch: {stage: failed, why: $err}
 ```
 
@@ -499,24 +537,11 @@ with the refusal as `err` and the firing's `occurrence`, so `verse task get` say
 was started. Its `onFailed` reads `$subject.value` at the commit that its rule fired at, as any
 hook does.
 
-A bare `$name` that nothing binds is left as written, and the spawn launches. In prose or in a
-shell value it is as likely `$HOME` or `$5` as a binding. A binding followed by anything else
-ends there: `$stage.` at the end of a sentence is the stage and a full stop. What follows a
-binding that holds a leaf is prose, because a leaf has no path under it. So `$file.go` where
-`file` is `main` renders as `main.go`, and `$stage.never` where `stage` is `open` renders as
-`open.never`. A null is not such a leaf. A bare `$data.n` where `n` is null renders as nothing,
-but a path past it is not present, as a path into null does not resolve in a patch. So
-`$data.findings[0].id` in an `onDone`, on a result that wrote `findings: null`, refuses the launch.
-
-A binding is matched by its spelling. The longest binding that the text after `$` begins with
-is taken, even where the name runs on past it. So a misspelt field next to a shorter field that
-it begins with is not refused. It renders as the shorter field's text followed by the rest of the
-name: on `{data: {sev: high}}`, `$data.severity` renders as `higherity`. `$changess` where
-`changes` is bound is the changes followed by `s`. Spell a field as the payload spells it.
-
 A completion hook's spawn for a task that the charter did not start has no commit to read at, so
-there `$subject.value` refuses the launch by name. The refusal says that there was no commit to
-read the subject at, as the hook's patch says. It does not say that the subject lacks the field.
+there an expression that reads `subject.value` refuses the launch. Its field's refusal says that
+there was no commit to read the subject at, as the hook's patch says, and not that the subject
+lacks the field; another field keeps its own refusal. An expression that says what absence means, `$[subject.value?.round ?? 0]`,
+expands as it is.
 
 ### `!get-path` and `!list-paths`: reaching other data
 
@@ -653,7 +678,7 @@ way, under the same `!raw` escape:
 spawn:
   agent: {name: verse}
   environment: {systems: {network: {mode: open}}}
-  prompt:   "Review $subject."
+  prompt:   "Review $[subject.ref]."
   answer:
     class:    !or [bug, nit, risk]
     severity: !or [low, high]
@@ -746,25 +771,12 @@ null. The failure is the same one that a failed write takes: the action stops, a
 not start.
 
 **There is no escape.** `$$` is not a literal dollar, and `a$$b` references `$b`. Anything that
-is not a well-formed reference is left exactly as written: `$5.00`, `100$`, a bare `$`.
+is not a well-formed reference is left exactly as written: `$5.00`, `100$`, a bare `$`. (In the
+strings of a spawn, `$$[` is a literal `$[`.)
 
-The strings of a spawn use a flatter substitution:
-
-- top-level fields only;
-- always as text;
-- an unresolved `$var` stays in place, and does not fail.
-
-So `$verse.review.step` derefs in a `patch`, and does not in a `spawn.prompt`.
-
-A field that holds a **document** renders as tony in a prompt. A charter that puts a ledger in
-front of an agent puts a document there:
-
-```tony
-prompt: "Outstanding findings:\n$findings\n\nThe diff:\n…"
-```
-
-Leaves do not change. `$stage` and `$count` bind exactly their own bytes (`3`, never `"3"`). A
-null field binds empty.
+The strings of a spawn are expressions instead
+([In the strings of a spawn](#in-the-strings-of-a-spawn)): `$verse.review.step` in a patch is
+`$[verse.review.step]` in a prompt.
 
 ### Completion hooks: one trigger, chaining visible
 
@@ -789,11 +801,11 @@ action:
   patch:  { stage: reviewing }
   spawn:
     agent: {name: verse}
-    prompt: "review the pull request at $subject"
+    prompt: "review the pull request at $[subject.ref]"
     environment:
       systems:
         network: {mode: open}
-        git: {repo: acme/app, from: $subject.value.head, fetch: {}}
+        git: {repo: acme/app, from: $[subject.value.head], fetch: {}}
     autonomy:
     - then: allow
   onDone:
@@ -836,14 +848,14 @@ orphaned, and never tracked. So no tracked task reaches that status.
         environment:
           systems:
             network: {mode: open}
-            git: {repo: acme/app, from: $subject.value.head, fetch: {}}
+            git: {repo: acme/app, from: $[subject.value.head], fetch: {}}
     - spawn:
         agent: {name: verse}
-        prompt: "review the pull request at $subject"
+        prompt: "review the pull request at $[subject.ref]"
         environment:
           systems:
             network: {mode: open}
-            git: {repo: acme/app, from: $subject.value.head, fetch: {}}
+            git: {repo: acme/app, from: $[subject.value.head], fetch: {}}
         autonomy:
         - then: allow
       onFailed:

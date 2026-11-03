@@ -312,8 +312,9 @@ See [Convergence](convergence.md#what-ends-a-firing).
 
 ### binding
 
-A binding is a name that begins with `$`, inside an action. Verse replaces it with a value
-when the rule fires, such as `$subject` for the address of the subject. An
+A binding is a name inside an action that verse replaces with a value when the rule fires:
+`$subject` in a patch for the address of the subject, or `$[subject.ref]` in a spawn's strings,
+which are expressions. An
 [account binding](#account-binding) is another thing.
 
 See [The action of a rule](reference/action.md#bindings).

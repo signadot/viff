@@ -98,7 +98,7 @@ func TestFanOutSpawnsPerMember(t *testing.T) {
 			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewed"}},
 		},
 		Action: Action{
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "ship $subject"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "ship $[subject.ref]"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 		},
 	}); err != nil {
@@ -174,7 +174,7 @@ func TestFanOutRefireIsIdempotentPerMember(t *testing.T) {
 			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewed"}},
 		},
 		Action: Action{
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "ship $subject"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "ship $[subject.ref]"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 		},
 	}); err != nil {

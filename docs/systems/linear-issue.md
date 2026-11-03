@@ -43,7 +43,7 @@ so the block names no repository. The autonomy decides each call by the team or 
 spawn:
   agent: {name: verse}
   environment: {systems: {network: {mode: open}, linear-issue: {create: {team: ENG}, comment: {}, close: {}}}}
-  prompt: "Read $subject and file the follow-ups it names in ENG."
+  prompt: "Read $[subject.ref] and file the follow-ups it names in ENG."
   autonomy:
   - {match: {system: linear-issue, verb: create, team: ENG}, then: allow}
   - {match: {system: linear-issue}, then: ask}

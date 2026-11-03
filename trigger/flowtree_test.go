@@ -63,12 +63,12 @@ func TestFlowTreeJoinsHistoryAndCharter(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
+			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{
 				Patch:    entity.Obj{"stage": "reviewed"}.Payload(),
-				Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "merge $subject"},
+				Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "merge $[subject.ref]"},
 				OnDone:   &Action{Patch: entity.Obj{"stage": "merged"}.Payload()},
-				OnFailed: &Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "escalate $subject"}},
+				OnFailed: &Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "escalate $[subject.ref]"}},
 			},
 		},
 	}); err != nil {
@@ -112,7 +112,7 @@ func TestFlowTreeJoinsHistoryAndCharter(t *testing.T) {
 	if esc.ID != "" {
 		t.Errorf("unrun branch carries a task id %q", esc.ID)
 	}
-	if esc.Prompt != "escalate $subject" {
+	if esc.Prompt != "escalate $[subject.ref]" {
 		t.Errorf("unrun branch task = %q; want the charter's declared (unbound) task", esc.Prompt)
 	}
 	// A set-only hook still appears — a node is a position in the charter, not only a spawn.
@@ -141,8 +141,8 @@ func TestFlowTreeSeqCarrierHooks(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Seq: []Action{
-				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "lint $subject"}},
-				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "test $subject"},
+				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "lint $[subject.ref]"}},
+				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "test $[subject.ref]"},
 					OnFailed: &Action{Patch: entity.Obj{"stage": "broken"}.Payload()}},
 			},
 			OnDone:   &Action{Patch: entity.Obj{"stage": "built"}.Payload()},
@@ -186,9 +186,9 @@ func TestFlowTreePendingWhileRunning(t *testing.T) {
 		Name:      "review",
 		Condition: Condition{Subject: prSubject("never")},
 		Action: Action{
-			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
+			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{
-				Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "merge $subject"},
+				Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "merge $[subject.ref]"},
 				Patch: entity.Obj{"stage": "merging"}.Payload(),
 			},
 		},
@@ -281,7 +281,7 @@ func TestFlowTreeHookFailure(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:  entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 		},
 	}); err != nil {
@@ -319,7 +319,7 @@ func TestFlowTreeSeqCarrierHookFailure(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:  entity.Obj{"stage": "deploying"}.Payload(),
-			Seq:    []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "canary $subject"}}},
+			Seq:    []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "canary $[subject.ref]"}}},
 			OnDone: &Action{Patch: entity.Obj{"stage": "deployed"}.Payload()},
 		},
 	}); err != nil {

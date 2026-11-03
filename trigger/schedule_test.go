@@ -28,7 +28,7 @@ func tickRule(name string) Trigger {
 	return Trigger{
 		Name:      name,
 		Condition: Condition{Subject: mm("verse.schedule.hourly.tick.*")},
-		Action:    Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: name + " for $subject"}},
+		Action:    Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: name + " for $[subject.ref]"}},
 	}
 }
 

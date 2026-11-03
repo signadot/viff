@@ -200,8 +200,8 @@ If a watcher took a State verbatim, the State would seed a document whose first 
 missing. Every read of it would go from the document's root to the watched address and find
 nothing. The seed would give no entities. The level state would shrink to *whatever was patched
 after the watch opened*, and nothing would say so. A deep write of one field would then report an
-entity of one field. A rule would bind `$note` from a payload that has no note. The result is not a
-crash: it is a task whose prompt reads `$note` literally. So both watchers re-root the State
+entity of one field. A rule's prompt would read `$[note]` from a payload that has no note. The result
+is not a crash: it is a launch refused for a field the record holds. So both watchers re-root the State
 (`entity.stateDoc`), and the document has one shape.
 
 The diff makes the subtree watch send an edge only on a real change. An entity whose rebuilt

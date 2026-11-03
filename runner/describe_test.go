@@ -186,7 +186,7 @@ func TestASettingTakesItsValues(t *testing.T) {
 		{Setting{Form: FormNumber}, "warm", false},
 		{Setting{Form: FormBool}, "true", true},
 		{Setting{Form: FormBool}, "yes", false},
-		{Setting{Values: []string{"low", "high"}}, "$subject.effort", false}, // bound, and none of them
+		{Setting{Values: []string{"low", "high"}}, "$[subject.effort]", false}, // bound, and none of them
 	} {
 		if err := c.s.Takes(c.v); (err == nil) != c.takes {
 			t.Errorf("%+v takes %q: %v, want %v", c.s, c.v, err, c.takes)

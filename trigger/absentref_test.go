@@ -18,16 +18,13 @@ import (
 // nothing is started: the Spawner is given the refusal (launch.Spec.Refusal), to record the
 // task as failed, and starts nothing.
 //
-// It used to launch. On a subject `{stage: absent}`, `deep=[$subject.value.never]` reached the
-// agent as `deep=[stage: absent.never]` — the shorter key `subject.value` and the rest of the
-// reference — which is how a pull request whose body read a cleared field got the whole work
-// record as its body. A patch naming the same reference has always written nothing; a spawn
-// refuses too, but after the firing's writes, so the subject is written down as failed by its
-// own onFailed rather than left latched with nothing saying why.
+// A patch naming the same reference writes nothing; a spawn refuses too, but after the firing's
+// writes, so the subject is written down as failed by its own onFailed rather than left latched
+// with nothing saying why.
 func TestASpawnNamingAnAbsentPathIsRefusedAsAFailedTask(t *testing.T) {
-	for _, c := range []struct{ name, prompt, ref string }{
-		{"under subject.value", "never=[$never] deep=[$subject.value.never]", "$subject.value.never"},
-		{"under a top-level field", "flat=[$changes.never]", "$changes.never"},
+	for _, c := range []struct{ name, prompt, absent string }{
+		{"under subject.value", "never=[$never] deep=[$[subject.value.never]]", `no "never" in subject.value`},
+		{"under a top-level field", "flat=[$[changes.never]]", `no "never" in changes`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			store := entitytest.Store(t)
@@ -68,8 +65,8 @@ func TestASpawnNamingAnAbsentPathIsRefusedAsAFailedTask(t *testing.T) {
 			waitField(t, store, prRef("1"), "stage", "failed")
 			e, _, _ := store.Get(prRef("1"))
 			why := entity.Str(e.Payload, "why")
-			if !strings.Contains(why, "prompt: "+c.ref) || !strings.Contains(why, "not present") {
-				t.Errorf("why = %q, want it to name the reference, %s, and say it is not present", why, c.ref)
+			if !strings.Contains(why, "prompt: ") || !strings.Contains(why, c.absent) {
+				t.Errorf("why = %q, want it to name the field and say %s", why, c.absent)
 			}
 			if strings.Contains(why, "$never]") || strings.Contains(why, "$never,") {
 				t.Errorf("why = %q names the bare $never, which is left as written and not refused", why)
@@ -79,12 +76,12 @@ func TestASpawnNamingAnAbsentPathIsRefusedAsAFailedTask(t *testing.T) {
 			if len(launched) != 0 {
 				t.Errorf("the spawner was asked to launch %q", launched)
 			}
-			if len(refused) != 1 || !strings.Contains(refused[0], c.ref) {
-				t.Errorf("the spawner was given refusals %q, want the one naming %s, so it records the task", refused, c.ref)
+			if len(refused) != 1 || !strings.Contains(refused[0], c.absent) {
+				t.Errorf("the spawner was given refusals %q, want the one saying %s, so it records the task", refused, c.absent)
 			}
 			found := false
 			for _, tr := range eng.Troubles() {
-				found = found || (tr.Rule == "develop" && strings.Contains(tr.Why, c.ref))
+				found = found || (tr.Rule == "develop" && strings.Contains(tr.Why, c.absent))
 			}
 			if !found {
 				t.Errorf("the refusal is not kept on the rule: %+v", eng.Troubles())
@@ -93,10 +90,10 @@ func TestASpawnNamingAnAbsentPathIsRefusedAsAFailedTask(t *testing.T) {
 	}
 }
 
-// A BARE `$name` NOTHING BINDS IS LEFT AS WRITTEN, and the spawn launches: in prose or a shell
-// value it is as likely `$HOME` or `$5` as a reference, so it cannot be refused on. And what
-// follows a field holding a leaf is prose: `$stage.go` is the stage and `.go`.
-func TestASpawnNamingAnAbsentTopLevelFieldLaunchesWithItAsWritten(t *testing.T) {
+// A `$` THAT DOES NOT OPEN `$[` IS LEFT AS WRITTEN, and the spawn launches: in prose or a shell
+// value it is `$HOME` or `$5`, not a reference. And what follows an expression is prose:
+// `$[stage].go` is the stage and `.go`.
+func TestADollarThatIsNotAnExpressionLaunchesAsWritten(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	specs := make(chan launch.Spec, 4)
@@ -110,7 +107,7 @@ func TestASpawnNamingAnAbsentTopLevelFieldLaunchesWithItAsWritten(t *testing.T) 
     spawn:
       agent: {name: verse}
       autonomy: [{then: allow}]
-      prompt: "never=[$never] home=[$HOME] stage=[$stage] file=[$stage.go]"
+      prompt: "never=[$never] home=[$HOME] stage=[$[stage]] file=[$[stage].go]"
 `)); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}

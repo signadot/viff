@@ -11,15 +11,11 @@ import (
 
 // Deref: reading a value OUT of the payload that fired an action, by kpath.
 //
-// An action could always NAME a value ($stage, $result) — but only inside a spawn's string
-// fields, and only as text, because launch.Binding is map[string]string built with
-// fmt.Sprint over the payload's top-level fields. Two consequences followed. A nested value
-// was unreachable at all ($verse.review.done had no spelling), and a task's output could
-// parameterize the next PROMPT but could never become a fact the next `when` matches on:
-// the loop closed through state transitions the charter wrote by hand, never through what a
-// task actually found.
+// A spawn's strings name values with expressions (`$[stage]`, launch.Binding), as text. A task's
+// output can parameterize the next PROMPT that way, but a fact the next `when` matches on is
+// written by a patch.
 //
-// Expanding a `patch` closes it. An action can lift a value out of the payload that fired it
+// Expanding a `patch` gives it that. An action can lift a value out of the payload that fired it
 // and write it onto the subject, TYPED, where the match grammar can see it. That is the same
 // vocabulary pairing the rest of the model uses — a Match reads, a Patch writes — with the
 // reference as the third member, and it is why this is a deref rather than a template
@@ -303,8 +299,7 @@ func scalarText(n entity.Payload) (string, bool) {
 	// PAST THE COMMENT WRAPPER, for the reason the walks around it do it: a head comment makes
 	// the value under it a wrapper node, and asking a wrapper for its type answers CommentType —
 	// so a scalar somebody wrote a note above rendered as "no text at all". That is not a
-	// rendering nit here: this is what interpolates `$sha` into a prompt, what reads a fan-out
-	// element's `key`, and what a keyed derive's address is made of, and each of those treats
+	// rendering nit here: this is what reads a fan-out element's `key`, and what a keyed derive's address is made of, and each of those treats
 	// "no text" as a failure of the firing. A comment must not decide whether a rule can name
 	// its own subject.
 	n = ir.Uncomment(n)

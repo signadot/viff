@@ -329,7 +329,7 @@ func TestAPolicyIsChecked(t *testing.T) {
 		{Autonomy{{Match: on("files", "write", "command", "ls"), Then: ask}, {Then: ask}}, "match.command: not a field"},
 		{Autonomy{{Match: &Match{Params: map[string]*ir.Node{"ref": ir.FromString("main")}}, Then: ask}, {Then: ask}}, "names its system"},
 		{Autonomy{{Match: &Match{Verb: "close", Params: map[string]*ir.Node{"issue": ir.FromString("eng-42")}}, Then: Then{Mode: ThenDeny}}, {Then: allow}}, "names its system"},
-		{Autonomy{{Match: on("git", "push", "ref", "$subject.head"), Then: ask}, {Then: ask}}, "not bound"},
+		{Autonomy{{Match: on("git", "push", "ref", "$[subject.head]"), Then: ask}, {Then: ask}}, "not bound"},
 		{Autonomy{{Match: on("commands", "run"), Then: Then{Mode: ThenAsk, Ask: &Ask{Need: -1}}}, {Then: ask}}, "need"},
 		{Autonomy{{Match: on("commands", "run"), Then: Then{Mode: ThenAsk, Ask: &Ask{Within: "soon"}}}, {Then: ask}}, "within"},
 		{Autonomy{{Match: on("commands", "run"), Then: Then{Mode: ThenAllow, Ask: &Ask{Need: 2}}}, {Then: ask}}, "goes with `ask`"},

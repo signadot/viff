@@ -32,6 +32,7 @@ import (
 	"sort"
 	"strings"
 
+	tonyeval "github.com/signadot/tony-format/go-tony/eval"
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/systems"
@@ -42,8 +43,8 @@ import (
 const AsSubject = "subject"
 
 // Spec is the declarative launch descriptor. It is a *template*: string fields may contain
-// $vars (e.g. "$subject") that Bind expands against a concrete event, turning a generic action
-// into a specific launch. All fields are optional; a runner supplies defaults for any left blank.
+// expressions (e.g. "$[subject.ref]") that Bind expands against a concrete event, turning a
+// generic action into a specific launch. All fields are optional; a runner supplies defaults for any left blank.
 //
 //tony:schemagen=verse-launch-spec,notag,comment=Doc,lineComment=Note
 type Spec struct {
@@ -59,13 +60,13 @@ type Spec struct {
 	Script string `tony:"field=script,omitzero"`
 	// Agent is the agent a prompt is for, and how it works; absent is verse's default agent
 	// (`defaultAgent`), bound at the spawn.
-	// Its name and its settings take $vars.
+	// Its name and its settings take expressions.
 	Agent *runner.Agent `tony:"field=agent,omitzero"`
 	// Person is reserved for a person doing the work; no runner takes one yet.
 	Person string `tony:"field=person,omitzero"`
 	// Environment is what the run can reach and the variables its shell is given
-	// (systems.Environment). A block's attributes and the vars take $vars, so a charter can
-	// check out `$subject.value.repo`; a shape does not, and neither does the network: a
+	// (systems.Environment). A block's attributes and the vars take expressions, so a charter
+	// can check out `$[subject.value.repo]`; a shape does not, and neither does the network: a
 	// pattern says how far a run may reach, and payload text must not widen it.
 	Environment systems.Environment `tony:"field=environment,omitzero"`
 	// Autonomy is what happens to each step of the task (task.Autonomy): the first row that
@@ -75,8 +76,8 @@ type Spec struct {
 	// FIRING's and run once before the action; the autonomy decides every step of the task it
 	// starts. Absent asks before every step.
 	//
-	// Not expanded: a row's match names a step and its fields, and a $var in one could only
-	// name a repository or a ref chosen by whoever last wrote the entity being matched.
+	// Not expanded: a row's match names a step and its fields, and an expression in one could
+	// only name a repository or a ref chosen by whoever last wrote the entity being matched.
 	Autonomy task.Autonomy `tony:"field=autonomy,omitzero"`
 	// Timeout bounds the run: a duration ("1h"). Verse enforces it by cancelling, so it holds
 	// on every runner. Empty is no bound.
@@ -213,61 +214,94 @@ type Passed struct {
 	Authenticated string `tony:"field=authenticated,omitzero"`
 }
 
-// Binding is the variables a firing binds: `subject`, the subject's fields, `owner`, …
-type Binding map[string]string
+// Binding is what a spawn's expressions are evaluated against: the names a firing binds, each to
+// the value a tony expression reads (`subject`, as {ref, name, value}, and the fields of the
+// payload the firing read), as eval.ToAny gives them.
+type Binding map[string]any
 
-// compositeMark is the prefix of the entry a Binding keeps for a key whose value is an object or
-// a list (MarkComposite). No field name starts with a NUL, and expand reads no key that does.
-const compositeMark = "\x00composite\x00"
+// exprOptions is how a spawn's strings are expanded.
+//
+// NO CLOCK: a firing's launch is retried, and parked and released, and has to say the same thing
+// each time, so the builtins that read the time are not callable. AN OBJECT OR A LIST IS TONY in
+// a string, the format the rest of verse writes, so a prompt carrying a ledger carries something
+// a person and a parser can both read.
+var exprOptions = tonyeval.EvalOptions{
+	DisableBuiltins: []string{"now", "date"},
+	Composite:       tonyeval.CompositeTony,
+}
 
-// MarkComposite records that key's value is an OBJECT OR A LIST, rendered as tony, rather than a
-// leaf. It decides what a reference going on past the key is (expandRefs): past a composite it is
-// a path the binding does not hold, and refused; past a leaf it is the leaf's text and then prose,
-// `$file.go`.
-func (b Binding) MarkComposite(key string) { b[compositeMark+key] = "" }
+// Expand is s with its expressions expanded against b, as Bind expands a spawn's strings, under
+// the same options: what else a firing says in words, a gate's pose, reads as its spawn does.
+func Expand(s string, b Binding) (string, error) {
+	return tonyeval.ExpandStringWithOptions(s, b, &exprOptions)
+}
 
-// Keys is the keys the binding binds, without the entries MarkComposite keeps.
-func (b Binding) Keys() []string {
-	out := make([]string, 0, len(b))
-	for k := range b {
-		if !strings.HasPrefix(k, compositeMark) {
-			out = append(out, k)
-		}
+// binder expands a spec's strings against one binding, and keeps what would not expand.
+type binder struct {
+	b       Binding
+	refused Refusals
+}
+
+// Refusals is what Bind would not expand, one Refusal per field.
+type Refusals []Refusal
+
+// Refusal is a field Bind would not expand, by the name texts gives it, and why.
+type Refusal struct {
+	Field string
+	Err   error
+}
+
+// Error is each refusal as `field: why`, in field order.
+func (r Refusals) Error() string {
+	out := make([]string, len(r))
+	for i, f := range r {
+		out[i] = f.Field + ": " + f.Err.Error()
+	}
+	return strings.Join(out, "; ")
+}
+
+// text is s expanded, or s as written where it will not expand, which is kept as field's
+// refusal: an absent name, field or index on a plain path (`$[data.summary]` where data has no
+// summary), an expression that does not compile, or one that calls the clock.
+//
+// A `$` that does not open `$[` is not an expression, so `$HOME` and `$5` stay as written
+// whatever the binding holds.
+func (x *binder) text(field, s string) string {
+	if !strings.Contains(s, "[") {
+		return s
+	}
+	out, err := Expand(s, x.b)
+	if err != nil {
+		x.refused = append(x.refused, Refusal{Field: field, Err: err})
+		return s
 	}
 	return out
 }
 
-// Unbind removes key, and its composite mark with it.
-func (b Binding) Unbind(key string) {
-	delete(b, key)
-	delete(b, compositeMark+key)
-}
-
-// composite reports whether key was marked by MarkComposite.
-func (b Binding) composite(key string) bool {
-	_, ok := b[compositeMark+key]
-	return ok
-}
-
-// Bind expands the template against a binding and returns the concrete spec. Pure: the
-// receiver is not changed, and nothing in the result aliases it. Engine-owned fields (Chain,
-// Occurrence, ActsFor, Passed) are not carried: the engine sets them.
-func (s Spec) Bind(b Binding) Spec {
+// Bind expands the template against a binding and returns the concrete spec, and what would not
+// expand, by field, as Refusals. Pure: the receiver is not changed, and nothing in the result
+// aliases it. Engine-owned fields (Chain, Occurrence, ActsFor, Passed) are not carried: the
+// engine sets them.
+//
+// A spec with a refusal is still whole, the refused strings as written: a caller that must not
+// launch on one (a firing) records it as a failed task, and that record is the spec.
+func (s Spec) Bind(b Binding) (Spec, error) {
+	x := &binder{b: b}
 	out := Spec{
-		Prompt:  expand(s.Prompt, b),
-		Subject: expand(s.Subject, b),
+		Prompt:  x.text("prompt", s.Prompt),
+		Subject: x.text("subject", s.Subject),
 		Timeout: s.Timeout,
 		Script:  s.Script,
 		Person:  s.Person,
 	}
-	out.Agent = bindAgent(s.Agent, b)
-	out.Environment = bindEnvironment(s.Environment, b)
+	out.Agent = x.agent(s.Agent)
+	out.Environment = x.environment(s.Environment)
 	out.Retain = s.Retain
 	// The contract is a pattern a reader of the result applies, not text about the thing the
 	// firing is about: it is carried across as it was written.
 	out.Answer = s.Answer
 	// VirtualKey is carried and NOT expanded: it names a credential drawn from a fixed set, so a
-	// $var in one could only name a key that does not exist — or one chosen by whoever last
+	// expression in one could only name a key that does not exist — or one chosen by whoever last
 	// wrote the entity being matched, which would let payload text decide whose budget this
 	// firing spends.
 	out.VirtualKey = s.VirtualKey
@@ -285,16 +319,18 @@ func (s Spec) Bind(b Binding) Spec {
 		c := *s.Credential
 		out.Credential = &c
 	}
-	return out
+	if len(x.refused) > 0 {
+		sort.Slice(x.refused, func(i, j int) bool { return x.refused[i].Field < x.refused[j].Field })
+		return out, x.refused
+	}
+	return out, nil
 }
 
 // CheckByHand is what a spawn written by hand — `verse task run -f`, an ask's `then: {spawn}` —
 // has to be beside Launch.Check: nothing fires for it, so it sets none of what a firing sets
-// (chain, occurrence, as, actsFor, credential, passed), and a `$` in a field that names something
-// — where a firing would bind one (Bind) and it can mean nothing else — is refused rather than
-// left as written, since there is nothing to bind it. The prompt and the vars are prose and shell
-// values, where a `$` is as likely literal (`$HOME`, `$5`), and are left as written, as a charter
-// leaves a `$key` it has no binding for.
+// (chain, occurrence, as, actsFor, credential, passed), and an expression, `$[…]`, in a field that
+// names something is refused rather than left as written, since there is nothing to bind it. The
+// prompt and the vars are prose and shell values, and are left as written.
 func (s Spec) CheckByHand() error {
 	for _, f := range []struct {
 		field string
@@ -322,8 +358,8 @@ func (s Spec) CheckByHand() error {
 		}
 	}
 	for _, field := range slices.Sorted(maps.Keys(bound)) {
-		if strings.Contains(bound[field], "$") {
-			return fmt.Errorf("%s: a `$` is bound when a rule fires, and nothing fires for a spawn written by hand", field)
+		if systems.Templated(bound[field]) {
+			return fmt.Errorf("%s: an expression is bound when a rule fires, and nothing fires for a spawn written by hand", field)
 		}
 	}
 	return nil
@@ -341,16 +377,16 @@ func (s Spec) Who() string {
 	return ""
 }
 
-// bindAgent expands which agent, its model and its effort, and copies its annotations.
-func bindAgent(a *runner.Agent, b Binding) *runner.Agent {
+// agent expands which agent, its model and its effort, and copies its annotations.
+func (x *binder) agent(a *runner.Agent) *runner.Agent {
 	if a == nil {
 		return nil
 	}
-	out := &runner.Agent{Name: expand(a.Name, b)}
+	out := &runner.Agent{Name: x.text("agent.name", a.Name)}
 	if a.Settings != nil {
 		out.Settings = make(map[string]string, len(a.Settings))
-		for k, v := range a.Settings {
-			out.Settings[k] = expand(v, b)
+		for _, k := range slices.Sorted(maps.Keys(a.Settings)) {
+			out.Settings[k] = x.text("agent."+k, a.Settings[k])
 		}
 	}
 	if a.Annotations != nil {
@@ -359,34 +395,35 @@ func bindAgent(a *runner.Agent, b Binding) *runner.Agent {
 	return out
 }
 
-// bindEnvironment expands what a charter has reason to build out of the firing — which
+// environment expands what a charter has reason to build out of the firing — which
 // repository, which branch it starts from, which tracker, the values of its variables — and
 // copies the rest.
 //
 // A SCRIPT'S TEXT IS NOT EXPANDED. It is a program, and a value spliced into it is part of the
 // program: a branch named `x;curl …` reflected from a remote would run. Data reaches a script
-// as its variables instead, `environment: {vars: {BRANCH: $branch}}`, which the shell reads as
+// as its variables instead, `environment: {vars: {BRANCH: $[branch]}}`, which the shell reads as
 // `"$BRANCH"` and never parses. Shapes are not expanded, and nothing of the network is: what a
 // run may reach is the charter's to say, never the subject's.
 //
 // Copied, never shared: a bound spec aliasing the charter's maps would let one firing's edit
 // reach every later one.
-func bindEnvironment(e systems.Environment, b Binding) systems.Environment {
+func (x *binder) environment(e systems.Environment) systems.Environment {
 	var out systems.Environment
 	if e.Vars != nil {
 		out.Vars = make(map[string]string, len(e.Vars))
-		for k, v := range e.Vars {
-			out.Vars[k] = expand(v, b)
+		for _, k := range slices.Sorted(maps.Keys(e.Vars)) {
+			out.Vars[k] = x.text("environment.vars."+k, e.Vars[k])
 		}
 	}
 	if e.Systems != nil {
 		out.Systems = systems.Systems{}
-		for name, blocks := range e.Systems {
-			for _, blk := range blocks {
+		for _, name := range slices.Sorted(maps.Keys(e.Systems)) {
+			for i, blk := range e.Systems[name] {
 				nb := systems.Block{Attributes: make(map[string]string, len(blk.Attributes)), Verbs: make(map[string][]systems.Shape, len(blk.Verbs))}
-				for k, v := range blk.Attributes {
+				for _, k := range slices.Sorted(maps.Keys(blk.Attributes)) {
+					v := blk.Attributes[k]
 					if name != "network" {
-						v = expand(v, b)
+						v = x.text(fmt.Sprintf("environment.systems.%s[%d].%s", name, i, k), v)
 					}
 					nb.Attributes[k] = v
 				}
@@ -402,42 +439,118 @@ func bindEnvironment(e systems.Environment, b Binding) systems.Environment {
 	return out
 }
 
-// Expand is expand for callers outside the package: the spec's own $var rule applied to one
-// string — a hook's patch value, a say's text.
-func Expand(s string, b Binding) string { return expand(s, b) }
-
-// Unbound is every reference in the fields Bind expands that reaches PAST what the binding
-// holds, each as `field: $reference`: `$subject.value.never` where the binding has
-// `subject.value`, an object, and no `subject.value.never`; `$changes.never` where `changes` is
-// one. Past a leaf is prose, and not here (expandRefs). Bind leaves
-// such a reference as written; a caller that must not launch on one (a firing) refuses with
-// these. A bare `$name` the binding lacks is not here: in prose or a shell value it is as
-// likely `$HOME` or `$5` as a reference, and it stays as written (see expand).
-func (s Spec) Unbound(b Binding) []string {
+// Reads is each field Bind expands, by the name texts gives it, where an expression reads name
+// other than through one of parts: what a caller asks before paying for a binding only some
+// spawns read. `subject` read other than as `subject.ref` or `subject.name` reads its value,
+// however it is spelled: `subject.value.round`, `subject?.value`, `subject["value"]`, or
+// `subject` whole. A name after a `.` is a field of something else, a name in a quoted string is
+// text, and text outside an expression is prose; none of them reads name.
+func (s Spec) Reads(name string, parts ...string) []string {
 	var out []string
 	s.texts(func(field, text string) {
-		_, past := expandRefs(text, b)
-		for _, ref := range past {
-			out = append(out, field+": "+ref)
+		for _, expr := range expressions(text) {
+			if readsBeyond(expr, name, parts) {
+				out = append(out, field)
+				return
+			}
 		}
 	})
-	sort.Strings(out)
 	return out
 }
 
-// Mentions reports whether any field Bind expands names `$ref`, or a reference under it — what
-// a caller asks before paying for a binding only some spawns read.
-func (s Spec) Mentions(ref string) bool {
-	found := false
-	s.texts(func(_, text string) {
-		found = found || strings.Contains(text, "$"+ref)
-	})
-	return found
+// readsBeyond is whether expr names name other than as `name.part` or `name?.part`.
+func readsBeyond(expr, name string, parts []string) bool {
+	ident := func(c byte) bool {
+		return c == '_' || '0' <= c && c <= '9' || 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z'
+	}
+	var quote byte
+	for i := 0; i < len(expr); i++ {
+		c := expr[i]
+		switch {
+		case quote != 0:
+			if c == '\\' {
+				i++
+			} else if c == quote {
+				quote = 0
+			}
+			continue
+		case c == '"' || c == '\'' || c == '`':
+			quote = c
+			continue
+		}
+		if !strings.HasPrefix(expr[i:], name) || i > 0 && (ident(expr[i-1]) || expr[i-1] == '.') {
+			continue
+		}
+		rest := expr[i+len(name):]
+		if rest != "" && ident(rest[0]) {
+			continue
+		}
+		rest = strings.TrimLeft(rest, " \t")
+		rest = strings.TrimPrefix(rest, "?")
+		through := false
+		if after, ok := strings.CutPrefix(rest, "."); ok {
+			for _, p := range parts {
+				if strings.HasPrefix(after, p) && (len(after) == len(p) || !ident(after[len(p)])) {
+					through = true
+				}
+			}
+		}
+		if !through {
+			return true
+		}
+		i += len(name) - 1
+	}
+	return false
+}
+
+// expressions is the text inside each `$[…]` of s, as the expansion finds them: brackets nest, a
+// quoted string is read whole, and `$$[` is a literal `$[`. An s that is one `.[…]` and nothing
+// else is that one expression.
+func expressions(s string) []string {
+	if raw := tonyeval.GetRaw(s); raw != "" {
+		return []string{raw}
+	}
+	var out []string
+	for i := 0; i < len(s); i++ {
+		if strings.HasPrefix(s[i:], "$$[") {
+			i += 2
+			continue
+		}
+		if !strings.HasPrefix(s[i:], "$[") {
+			continue
+		}
+		depth, j, quote := 0, i+1, byte(0)
+	scan:
+		for ; j < len(s); j++ {
+			switch c := s[j]; {
+			case quote != 0 && c == '\\':
+				j++
+			case quote != 0:
+				if c == quote {
+					quote = 0
+				}
+			case c == '"' || c == '\'':
+				quote = c
+			case c == '[':
+				depth++
+			case c == ']':
+				if depth--; depth == 0 {
+					break scan
+				}
+			}
+		}
+		if j >= len(s) {
+			break
+		}
+		out = append(out, s[i+2:j])
+		i = j
+	}
+	return out
 }
 
 // texts is each field Bind expands, by the name an error gives it (the names CheckByHand uses).
-// It must name what Bind, bindAgent and bindEnvironment expand and nothing else: a field it
-// missed would launch with a reference Unbound never saw.
+// It must name what Bind expands and nothing else: a field it missed would carry an expression
+// Reads never saw.
 func (s Spec) texts(yield func(field, text string)) {
 	yield("prompt", s.Prompt)
 	yield("subject", s.Subject)
@@ -461,109 +574,6 @@ func (s Spec) texts(yield func(field, text string)) {
 		}
 	}
 }
-
-// expand replaces every `$key` in s with the binding's value, longest key first, so `$subject`
-// is not read as `$sub` followed by `ject`. A key the binding lacks is left as written, and so
-// is a reference that reaches past the longest key that matches it (expandRefs).
-func expand(s string, b Binding) string {
-	out, _ := expandRefs(s, b)
-	return out
-}
-
-// expandRefs is expand, also answering the references it left as written because they reach
-// past what the binding holds.
-//
-// AT EACH `$`, THE LONGEST KEY THAT MATCHES THERE, AND ONE PASS. This was a ReplaceAll per key,
-// longest first, and it had two faults that the flat map made easy to hit. A reference to an
-// absent path matched a SHORTER key and kept the rest of its own spelling: `$subject.value.never`
-// on a subject without `never` rendered as the whole value as tony followed by `.never`, and a
-// pull request whose body named a cleared field got the whole record as its body. And a value
-// substituted early was scanned again by every shorter key after it, so text the subject carried
-// could be expanded as though the charter had written it. Now each `$` is read once, against
-// the charter's text only.
-//
-// A reference REACHES PAST its key when the key's value is an object or a list (MarkComposite)
-// and the key is followed by `.` and a letter or `_` (a field below it), or by `[` (an index):
-// `$subject.value.never`, `$changes.items[0]`. Every path the payload holds is bound, so that is
-// a reference to something the binding does not hold, and it is left whole rather than
-// half-substituted. After a LEAF the same characters are prose and not a path — `$file.go` is the
-// file's name and `.go` — so the leaf is substituted and the rest stays as written. A key followed
-// by anything else ends there — `$stage.` at the end of a sentence, `$subjects` — as it always
-// has.
-func expandRefs(s string, b Binding) (string, []string) {
-	if s == "" || !strings.Contains(s, "$") {
-		return s, nil
-	}
-	keys := slices.DeleteFunc(b.Keys(), func(k string) bool { return k == "" })
-	sort.Slice(keys, func(i, j int) bool { return len(keys[i]) > len(keys[j]) })
-	var out strings.Builder
-	var past []string
-	for i := 0; i < len(s); {
-		if s[i] != '$' {
-			out.WriteByte(s[i])
-			i++
-			continue
-		}
-		key, ok := "", false
-		for _, k := range keys {
-			if strings.HasPrefix(s[i+1:], k) {
-				key, ok = k, true
-				break
-			}
-		}
-		if !ok {
-			out.WriteByte('$')
-			i++
-			continue
-		}
-		end := i + 1 + len(key)
-		if to := refEnd(s, end); to > end && b.composite(key) {
-			past = append(past, s[i:to])
-			out.WriteString(s[i:to])
-			i = to
-			continue
-		}
-		out.WriteString(b[key])
-		i = end
-	}
-	return out.String(), past
-}
-
-// refEnd is where a reference that goes on at j ends, or j when it does not go on: a reference
-// goes on with `.` and a letter or `_`, or with `[`, and runs over the characters a dotted path
-// or an index is spelled with — a `]` only where it closes a `[` of its own, so a reference in
-// brackets in prose ends inside them.
-func refEnd(s string, j int) int {
-	if j >= len(s) {
-		return j
-	}
-	switch {
-	case s[j] == '[':
-	case s[j] == '.' && j+1 < len(s) && (isLetter(s[j+1]) || s[j+1] == '_'):
-	default:
-		return j
-	}
-	k, open := j, 0
-scan:
-	for ; k < len(s); k++ {
-		switch c := s[k]; {
-		case isLetter(c) || isDigit(c) || c == '_' || c == '-' || c == '.':
-		case c == '[':
-			open++
-		case c == ']' && open > 0: // a bracket the reference opened, and not prose's
-			open--
-		default:
-			break scan
-		}
-	}
-	for k > j && s[k-1] == '.' { // a sentence's full stop is not part of it
-		k--
-	}
-	return k
-}
-
-func isLetter(c byte) bool { return 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' }
-func isDigit(c byte) bool  { return '0' <= c && c <= '9' }
 
 // AnnotationVirtualKey is the agent annotation the verse runner reads its Portkey virtual key
 // from: the name verse resolved a spawn's `virtualKey` address to.

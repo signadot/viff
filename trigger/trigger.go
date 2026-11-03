@@ -15,8 +15,10 @@
 package trigger
 
 import (
+	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -870,7 +872,7 @@ func (a Action) validate() error {
 			case aud == "":
 				return fmt.Errorf("spawn `credential:` names no audience: `credential: {audience: …}` " +
 					"says which system the token is for")
-			case strings.Contains(aud, "$"):
+			case systems.Templated(aud):
 				return fmt.Errorf("spawn `credential: {audience: %s}`: the audience is declared and "+
 					"not derived, so text in the subject cannot choose which system a token is good for", aud)
 			}
@@ -890,7 +892,7 @@ func (a Action) validate() error {
 		if err := a.Spawn.Autonomy.Check(); err != nil {
 			return fmt.Errorf("spawn.autonomy%w", err)
 		}
-		// Each row reaches the environment as written, its `$` attributes still unbound, before
+		// Each row reaches the environment as written, its `$[…]` attributes still unbound, before
 		// they are stood in for below.
 		if err := runner.CheckReach(a.Spawn.Autonomy, a.Spawn.Environment); err != nil {
 			return fmt.Errorf("spawn.%w", err)
@@ -1098,35 +1100,37 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 		return nil, nil
 	}
 	value, valueWhy := e.spawnSubjectValue(a.Spawn, chain, oc, subj, root, src)
-	return e.launchSpawn(a, chain, subj, root, value, valueWhy, oc.commit.Rev, oc.passed)
+	b := bindingFor(root, subj, value)
+	if src == fromCause {
+		taskFacts(b)
+	}
+	return e.launchSpawn(a, chain, subj, b, valueWhy, oc.commit.Rev, oc.passed)
 }
 
-// spawnSubjectValue is what `$subject.value` binds to in a spawn's strings: the subject's payload,
+// spawnSubjectValue is what `subject.value` is in a spawn's expressions: the subject's payload,
 // as the same action's patch reads it.
 //
-// For a rule's own firing that is root, the subject's payload, which the binding has always read.
-// For a COMPLETION HOOK root is the finished task's record, and binding `$subject.value` from it
-// put that record where the subject belongs: `vars: {ROUND: $subject.value.round}` reached the
-// script as `autonomy: … chain: step … trigger: step` followed by `.round`. A hook's patch reads
-// the subject at the commit its rule fired at (subjectFor, subjectValueAt), and its spawn reads it
-// there too; the task's own facts stay where they are, flat, as `$status`, `$result`, `$data`
-// and `$err`.
+// For a rule's own firing that is root, the subject's payload. For a COMPLETION HOOK root is the
+// finished task's record, which is not the subject: a hook's patch reads the subject at the
+// commit its rule fired at (subjectFor, subjectValueAt), and its spawn reads it there too, so
+// `vars: {ROUND: $[subject.value.round]}` is the subject's round. The task's own facts are the
+// binding's top-level names, `status`, `result`, `data` and `err`.
 //
-// Read only when the spawn names it, since for a hook it is a read at a revision. One that cannot
-// be read — a task nothing in the charter started has no commit to read at — leaves it unbound,
-// and the launch refuses on the reference by name, with why it could not be read (the error,
-// which launch puts in the refusal for those references, as the hook's patch would say it).
+// Read only when an expression of the spawn reads it (Reads), since for a hook it is a read at
+// a revision. One that cannot be read — a task nothing in the charter started has no commit to
+// read at — is answered as the error, which a refusal of the launch says in place of the value it
+// lacks, as the hook's patch would say it.
 func (e *Engine) spawnSubjectValue(spec *launch.Spec, chain string, oc occasion, subj entity.Ref,
 	root entity.Payload, src refSource) (entity.Payload, error) {
 	if src != fromCause {
 		return root, nil
 	}
-	if !spec.Mentions(refSubject + "." + subjPartValue) {
+	if len(spec.Reads(refSubject, subjPartRef, subjPartName)) == 0 {
 		return nil, nil
 	}
 	v, err := e.subjectValueAt(oc, subj)
 	if err != nil {
-		e.tracef("trigger %s: %v; the spawn's $%s.%s is unbound", chain, err, refSubject, subjPartValue)
+		e.tracef("trigger %s: %v; the spawn's %s.%s cannot be read", chain, err, refSubject, subjPartValue)
 		return nil, err
 	}
 	return v, nil
@@ -1235,21 +1239,21 @@ func (a Action) resolveDerives(chain string, oc occasion, subj entity.Ref, e *En
 // deterministic id. Its own function rather than the tail of applyOne, since a parked launch
 // (a suspension's) re-enters here when it is released.
 //
-// root is what $references read (the cause's payload for a hook, the subject's own
-// otherwise); value is what $subject.value reads (spawnSubjectValue); occurrence is the store
+// b is what the spawn's expressions read (bindingFor): the cause's payload for a hook, the
+// subject's own otherwise, and the subject; occurrence is the store
 // revision this run is about, 0 when nothing caused it; passed is the gates the firing passed,
 // nil for a launch no firing's gates admitted.
-func (e *Engine) launchSpawn(a Action, chain string, subj entity.Ref, root, value entity.Payload,
+func (e *Engine) launchSpawn(a Action, chain string, subj entity.Ref, b launch.Binding,
 	valueWhy error, occurrence int64, passed []launch.Passed) (task.Handle, error) {
 	// A SUSPENDED SUBJECT STARTS NOTHING. A hook's writes and derives have landed by now —
 	// recording is not progress — and what it would start is parked here. The lift starts it.
 	if held := e.settled(mirror.TriggerOf(chain), subj); len(held) > 0 {
-		e.park(parkedLaunch{a: a, chain: chain, subj: subj, root: root, value: value, valueWhy: valueWhy,
+		e.park(parkedLaunch{a: a, chain: chain, subj: subj, binding: b, valueWhy: valueWhy,
 			occurrence: occurrence, passed: passed})
 		e.tracef("%s: %s is suspended (%s); its launch is parked", chain, subj, strings.Join(held, ", "))
 		return nil, nil
 	}
-	return e.launch(a, chain, subj, root, value, valueWhy, occurrence, passed)
+	return e.launch(a, chain, subj, b, valueWhy, occurrence, passed)
 }
 
 // ownerSettle is how long a firing spawning `as: subject` waits for the subject's owner record to
@@ -1258,12 +1262,26 @@ const ownerSettle = 250 * time.Millisecond
 
 // launch is launchSpawn past the suspension: what a parked launch re-enters when it is released.
 //
-// valueWhy is why value is nil where the spawn names `$subject.value` (spawnSubjectValue): the
-// reason a reference under it is refused, in place of "not present".
-func (e *Engine) launch(a Action, chain string, subj entity.Ref, root, value entity.Payload,
+// valueWhy is why the binding has no `subject.value` where the spawn reads it
+// (spawnSubjectValue).
+func (e *Engine) launch(a Action, chain string, subj entity.Ref, b launch.Binding,
 	valueWhy error, occurrence int64, passed []launch.Passed) (task.Handle, error) {
-	b := bindingFor(root, subj, value)
-	spec := a.Spawn.Bind(b)
+	spec, refused := a.Spawn.Bind(b)
+	// A field refused where the subject could not be read says that, and not that the subject
+	// has no value: the subject may well hold what the field reads, and the cause is that there
+	// was nothing to read it at, which is what the hook's patch says in the same case. A field
+	// that does not read the value keeps its own refusal, and one that did not need it, an
+	// expression with a default, expands as it is.
+	var fields launch.Refusals
+	if valueWhy != nil && errors.As(refused, &fields) {
+		reads := a.Spawn.Reads(refSubject, subjPartRef, subjPartName)
+		for i := range fields {
+			if slices.Contains(reads, fields[i].Field) {
+				fields[i].Err = fmt.Errorf("%s.%s: %w", refSubject, subjPartValue, valueWhy)
+			}
+		}
+		refused = fields
+	}
 	// What the firing's gates settled, the engine's to say and nobody else's: it is what a
 	// credential vouches for, so a value a charter wrote there does not survive to it.
 	spec.Passed = append([]launch.Passed(nil), passed...)
@@ -1308,11 +1326,11 @@ func (e *Engine) launch(a Action, chain string, subj entity.Ref, root, value ent
 	// spawn — or a sequence's next element — gets a distinct, deterministic id.
 	hooks := a
 	id := spawnID(e.idOwner(), chainID(chain), subj)
-	// A REFERENCE THE BINDING DOES NOT HOLD REFUSES THE LAUNCH, as it refuses a patch: a
-	// `$subject.value.handoff.summary` put after the handoff was cleared, or a `$stage.never`. Bind
-	// left it as written, and what it would have rendered before — the shorter key's text and the
-	// rest of the reference — went out as a pull request's body. A bare `$name` nothing binds is
-	// not one of these: it is as likely `$HOME` as a reference, and it stays as written.
+	// AN EXPRESSION THAT WILL NOT EXPAND REFUSES THE LAUNCH, as an absent reference refuses a
+	// patch: a `$[subject.value.handoff.summary]` put after the handoff was cleared, a
+	// `$[data.summary]` on a result without one, a `$[now()]`. Bind left it as written, and a
+	// pull request's body is no place for an expression. A `$` that does not open `$[` is not an
+	// expression: `$HOME` stays as written.
 	//
 	// AS A FAILED TASK, and not as an error from the firing. The firing's own writes have landed —
 	// the patch that took the subject out of the rule's selection with them — so a refusal that
@@ -1325,8 +1343,8 @@ func (e *Engine) launch(a Action, chain string, subj entity.Ref, root, value ent
 	// the reason, as it does for a launch it refuses itself, and `verse task get` shows it. The
 	// Spawner starts nothing for it. One that answers no handle still leaves a failed task here,
 	// so the hooks run either way.
-	if unbound := a.Spawn.Unbound(b); len(unbound) > 0 {
-		err := refusalOf(unbound, valueWhy)
+	if refused != nil {
+		err := fmt.Errorf("spawn refused: %w", refused)
 		e.tracef("trigger %s: %v; the task fails without starting", chain, err)
 		e.failed(chain, subj, err)
 		spec.Refusal = err.Error()
@@ -1340,50 +1358,10 @@ func (e *Engine) launch(a Action, chain string, subj entity.Ref, root, value ent
 	return e.spawnHooked(id, spec, &hooks, chain), nil
 }
 
-// refusalOf is the reason a launch is refused for the references Unbound named. Each is "not
-// present", but for one under `$subject.value` when the subject could not be read at all
-// (valueWhy): the subject may well hold it, and the cause is that there was nothing to read it
-// at, which is what the hook's patch says in the same case.
-func refusalOf(unbound []string, valueWhy error) error {
-	var absent, unread []string
-	for _, u := range unbound {
-		if valueWhy != nil && namesSubjectValue(u) {
-			unread = append(unread, u)
-		} else {
-			absent = append(absent, u)
-		}
-	}
-	var parts []string
-	if len(absent) > 0 {
-		verb := "is"
-		if len(absent) > 1 {
-			verb = "are"
-		}
-		parts = append(parts, fmt.Sprintf("%s %s not present in the payload that fired this action",
-			strings.Join(absent, ", "), verb))
-	}
-	if len(unread) > 0 {
-		parts = append(parts, fmt.Sprintf("%s: %v", strings.Join(unread, ", "), valueWhy))
-	}
-	return fmt.Errorf("spawn refused: %s", strings.Join(parts, "; "))
-}
-
-// namesSubjectValue reports whether an entry of Spec.Unbound ("field: $ref") is a reference to
-// `$subject.value` or under it.
-func namesSubjectValue(entry string) bool {
-	const ref = "$" + refSubject + "." + subjPartValue
-	_, r, ok := strings.Cut(entry, ": ")
-	if !ok || !strings.HasPrefix(r, ref) {
-		return false
-	}
-	rest := r[len(ref):]
-	return rest == "" || rest[0] == '.' || rest[0] == '['
-}
-
 // installLaunch is a charter's spawn as the launch it will become, for the checks made at
 // install: each value the firing binds stood in by one that passes, so what is checked is
 // everything but what the firing cannot know yet. known is whether the doer is the one that
-// will run: an agent named by `$` is bound at the firing, so it cannot be checked against what
+// will run: an agent named by an expression is bound at the firing, so it cannot be checked against what
 // a runner offers here.
 func installLaunch(spec launch.Spec) (l runner.Launch, known bool) {
 	l = runner.Launch{
@@ -1394,12 +1372,12 @@ func installLaunch(spec launch.Spec) (l runner.Launch, known bool) {
 	if spec.Agent != nil {
 		a := *spec.Agent
 		a.Annotations = maps.Clone(spec.Agent.Annotations)
-		if strings.Contains(a.Name, "$") {
+		if systems.Templated(a.Name) {
 			known, a.Name = false, "chosen-at-the-firing"
 		}
 		// A setting the firing binds is the launch's to check, bound: left out here.
 		a.Settings = maps.Clone(spec.Agent.Settings)
-		maps.DeleteFunc(a.Settings, func(_, v string) bool { return strings.Contains(v, "$") })
+		maps.DeleteFunc(a.Settings, func(_, v string) bool { return systems.Templated(v) })
 		l.Agent = &a
 	}
 	if spec.VirtualKey != "" {
@@ -1415,12 +1393,12 @@ func installLaunch(spec launch.Spec) (l runner.Launch, known bool) {
 	return l, known
 }
 
-// templatedEnvironment is a spawn's environment with each `$var` in an attribute the firing
+// templatedEnvironment is a spawn's environment with each expression in an attribute the firing
 // expands (a repo's `repo` and `from`, a tracker's `repo`) stood in by a placeholder that
-// passes the shape check, so a charter writing `repo: $subject.repo` is checked for everything
+// passes the shape check, so a charter writing `repo: $[subject.value.repo]` is checked for everything
 // but the name it cannot know yet. Each templated name stands in for its own text, so two that
 // the firing names apart read as two checkouts and a tracker written as its repo is reads as
-// that repo's; a host written before the `$` is kept, since which forge a repository is on is
+// that repo's; a host written before the expression is kept, since which forge a repository is on is
 // what a runner's offer is checked for.
 func templatedEnvironment(e systems.Environment) systems.Environment {
 	out := systems.Environment{Vars: e.Vars}
@@ -1433,7 +1411,7 @@ func templatedEnvironment(e systems.Environment) systems.Environment {
 		for _, b := range blocks {
 			nb := systems.Block{Attributes: map[string]string{}, Verbs: b.Verbs}
 			for k, v := range b.Attributes {
-				if strings.Contains(v, "$") {
+				if systems.Templated(v) {
 					a, _ := d.Attribute(k)
 					switch a.Form {
 					case systems.FormRepo:
@@ -1452,26 +1430,27 @@ func templatedEnvironment(e systems.Environment) systems.Environment {
 	return out
 }
 
-// templatedRepoName is a repo's name with a `$` in it stood in by a placeholder for that text.
+// templatedRepoName is a repo's name with an expression in it stood in by a placeholder for that text.
 // Where only the name is templated, the owner (and the host) written before it are kept, since a
 // runner's ceiling may be scoped to an owner.
 func templatedRepoName(name string) string {
-	if !strings.Contains(name, "$") {
+	if !systems.Templated(name) {
 		return name
 	}
+	whole := systems.Whole(name)
 	word := strings.Map(func(r rune) rune {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
 			return r
 		}
 		return '-'
 	}, name)
-	if i := strings.LastIndex(name, "/"); i > 0 && !strings.Contains(name[:i], "$") &&
+	if i := strings.LastIndex(name, "/"); !whole && i > 0 && !systems.Templated(name[:i]) &&
 		(strings.Contains(name[:i], "/") || !strings.Contains(name[:i], ".")) { // an owner, not a host alone
 		return name[:i] + "/templated-" + strings.Trim(word, "-")
 	}
 	out := "owner/templated-" + strings.Trim(word, "-")
-	if host, rest, ok := strings.Cut(name, "/"); ok && strings.Contains(host, ".") &&
-		!strings.Contains(host, "$") && rest != "" {
+	if host, rest, ok := strings.Cut(name, "/"); !whole && ok && strings.Contains(host, ".") &&
+		!systems.Templated(host) && rest != "" {
 		out = host + "/" + out
 	}
 	return out

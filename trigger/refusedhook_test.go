@@ -40,7 +40,7 @@ func TestARefusedLaunchsOnFailedReadsTheSubjectAtTheFiring(t *testing.T) {
     spawn:
       agent: {name: verse}
       autonomy: [{then: allow}]
-      prompt: "deep=[$subject.value.never]"
+      prompt: "deep=[$[subject.value.never]]"
     onFailed:
       patch: {stage: failed, why: $err, was: $subject.value.stage}
 `)); err != nil {
@@ -56,7 +56,7 @@ func TestARefusedLaunchsOnFailedReadsTheSubjectAtTheFiring(t *testing.T) {
 	if was := entity.Str(e.Payload, "was"); was != "open" {
 		t.Errorf("was = %q, want open: the subject at the commit the rule fired at", was)
 	}
-	if why := entity.Str(e.Payload, "why"); !strings.Contains(why, "$subject.value.never") {
+	if why := entity.Str(e.Payload, "why"); !strings.Contains(why, `no "never" in subject.value`) {
 		t.Errorf("why = %q, want the refusal naming the reference", why)
 	}
 	id := spawnID(eng.idOwner(), chainID("develop"), prRef("1"))

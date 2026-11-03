@@ -87,14 +87,14 @@ func TestAnEnvironmentLessAVerb(t *testing.T) {
 // it is held to its value.
 func TestAnEnvironmentWithinAnotherAsWritten(t *testing.T) {
 	outer := Environment{Systems: Systems{"git": {{Attributes: map[string]string{"repo": "github.com/signadot/*", "from": "main"}}}}}
-	written := Environment{Systems: Systems{"git": {{Attributes: map[string]string{"repo": "$repo", "from": "main"}}}}}
+	written := Environment{Systems: Systems{"git": {{Attributes: map[string]string{"repo": "$[repo]", "from": "main"}}}}}
 	if err := written.WithinAsWritten(outer); err != nil {
 		t.Errorf("as written: %v", err)
 	}
 	if err := written.Within(outer); err == nil {
-		t.Error("`$repo` bound as itself is within github.com/signadot/*")
+		t.Error("`$[repo]` bound as itself is within github.com/signadot/*")
 	}
-	other := Environment{Systems: Systems{"git": {{Attributes: map[string]string{"repo": "github.com/other/$repo", "from": "main"}}}}}
+	other := Environment{Systems: Systems{"git": {{Attributes: map[string]string{"repo": "github.com/other/$[repo]", "from": "main"}}}}}
 	if err := other.WithinAsWritten(outer); err == nil {
 		t.Error("another owner before the `$` is within, as written")
 	}

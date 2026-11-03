@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
+	tonyeval "github.com/signadot/tony-format/go-tony/eval"
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
-	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/task"
@@ -878,177 +878,65 @@ func gateID(owner, trigger, gate string, subjects []entity.Ref) string {
 		entity.SafeSeg(trigger), entity.SafeSeg(gate), task.GateSep, entity.SegHash(segs))
 }
 
-// payloadBinding binds each field of the changed payload by its name (e.g. $flow, $stage,
-// $path). It carries no $subject: resolving a Subject expression ("$flow") needs these
-// bindings, so the subject cannot be among them without circularity.
-func payloadBinding(payload entity.Payload) launch.Binding {
-	b := launch.Binding{}
-	// Fields of an object payload only: a scalar payload (42, true) has no named parts to
-	// bind, so a template's $vars simply find nothing rather than binding the whole value
-	// to some invented name.
-	//
-	// entity.Fields and not ir.ToMap, because a payload put from a file with a head comment is
-	// stored with it: its root is a Comment node wrapping the object. IsObj sees through the
-	// wrapper, so the rule's condition matched and it fired; ToMap does not, so no field was
-	// bound and every `$field` fell back to the shorter key's text (a git block's `repo` came out
-	// as the whole record followed by `.repo`). Fields unwraps, as the match does.
-	fields := entity.Fields(payload)
-	for k, v := range fields {
-		bindNode(b, k, v)
-	}
-	// AND EVERY PATH UNDER A FIELD, as under `$subject.value`: `$data.severity` on a payload
-	// `{data: {severity: high}}` is `high`, and `$data.findings[0].id` is the first finding's id,
-	// as a patch resolves them at any depth. Bound flat only, they were refused as not present,
-	// which they were. A payload that is itself a list has no field to start a path from.
-	//
-	// A top-level name that is spelled like a path keeps it: on `{a: {b: nested}, "a.b": flat}`,
-	// `$a.b` is the field called `a.b`, as it was before paths were bound. Only that one spelling
-	// is skipped, and only here. The nested `b` is still reachable below it (`$a.b.c` on
-	// `{a: {b: {c: deepc}}}` is `deepc`), and under `$subject.value` it is the only one bound,
-	// since there a name holding a dot is not bound at all (payloadPaths): `$subject.value.a.b` is
-	// the nested `b`. Rare enough to leave as it is.
-	for path, v := range payloadPaths(payload) {
-		if _, taken := fields[path]; taken || strings.HasPrefix(path, "[") {
-			continue
-		}
-		bindNode(b, path, v)
-	}
-	return b
-}
-
-// bindNode binds key to n's text (bindText), and marks it composite where n is an object, a
-// list or a null, so a reference going on past it is a path the binding does not hold rather than
-// prose (launch.Binding.MarkComposite).
-//
-// A NULL IS MARKED TOO, though it renders as "": a bare `$data.n` is empty, but a path past it
-// (`$data.findings[0].id` on `{findings: null}`, `$subject.value.stage` on a null value) does not
-// resolve, as a patch's deref says of a path into null. Left a leaf, it rendered as the rest of
-// the reference alone (`[0].id`), the shorter key's text plus the rest. A task's result keeps a
-// null it wrote (mirror.ParseResult), so a hook's `$data` can carry one.
-func bindNode(b launch.Binding, key string, n entity.Payload) {
-	text, ok := bindText(n)
-	if !ok {
-		return
-	}
-	b[key] = text
-	if u := ir.Uncomment(n); u != nil && (u.Type == ir.ObjectType || u.Type == ir.ArrayType || u.Type == ir.NullType) {
-		b.MarkComposite(key)
-	}
-}
-
-// bindText renders one field for a spawn's flat substitution: a leaf as its own text, and a
-// COMPOSITE as tony.
-//
-// The composite half is the part with an argument. This read the field off `entity.ToObj` and
-// printed it with `fmt.Sprint`, which is Go's formatting of a decoded map — a charter putting a
-// document in a prompt got `map[logdstore.go:nodeToPayload:map[status:open was:…]]`. A model
-// reads that, which is why it stood so long. It is still three wrong things: not a format
-// anything documents, lossy where a value holds a bracket or a colon, and unpasteable back into
-// the verse it came from. Tony is the format the rest of this system already writes, so a prompt
-// carrying a ledger carries something a person and a parser can both read.
-//
-// The leaf half must not move, and that is why it goes through `scalarText` rather than a second
-// opinion about text form: every charter that interpolates `$stage` or `$count` today gets the
-// same bytes it got before — `3`, not `"3"`.
-//
-// One leaf DOES change: a null field bound as `<nil>`, which was Go's zero value leaking into a
-// prompt rather than anything anybody chose. It is `""` now, which is what scalarText has always
-// meant by it. A payload read from the store cannot carry one (entity's nodeToPayload drops
-// them), but one the engine synthesises can: a task's `data`, from its result, keeps a null the
-// task wrote. bindNode marks it composite, so only the bare reference is "".
-//
-// A field that cannot be rendered at all is left UNBOUND rather than bound to "": an unbound
-// `$var` is left in the prompt as written, which is the documented behaviour and is visible,
-// where an empty string is a silent hole in a sentence.
-func bindText(n entity.Payload) (string, bool) {
-	if n == nil {
-		return "", false
-	}
-	if s, ok := scalarText(n); ok {
-		return s, true
-	}
-	out, err := codec.Marshal(n, codec.Tony)
-	if err != nil {
-		return "", false
-	}
-	return strings.TrimRight(string(out), "\n"), true
-}
-
-// bindingFor builds the template binding for an action: the fields of the payload its
-// references read (see refSource), plus $subject — the RESOLVED subject it is about — and its
-// parts, `value` and every path into it read from value, the subject's payload.
+// bindingFor is what an action's spawn expressions are evaluated against (launch.Binding): each
+// field of the payload its references read (see refSource), by its name, and `subject`, the
+// RESOLVED subject it is about, as {ref, name, value}: its address, the address's last segment,
+// and its payload.
 //
 // value is its own argument because it is not always payload: for a completion hook payload is
-// the finished task's record, and value is the subject at the commit its rule fired at
-// (Engine.spawnSubjectValue). nil leaves `$subject.value` unbound.
+// the finished task's record, whose fields are `status`, `result`, `data` and `err`, and value is
+// the subject at the commit its rule fired at (Engine.spawnSubjectValue). nil leaves
+// `subject.value` out, so an expression that reads it is refused as naming something absent.
 //
-// $subject is set LAST, deliberately: it is the one reserved binding, and a payload field
-// happening to be called "subject" must not shadow it. (It used to be set first and
-// overwritten, which is why a fact carrying a `subject` field of its own silently redirected
-// $subject; a producer that means the flow publishes `flow`, which is read as $flow.)
+// `subject` is set LAST: it is the one reserved name, and a payload field happening to be called
+// `subject` must not shadow it.
+//
+// entity.Fields and not ir.ToMap, because a payload put from a file with a head comment is stored
+// with it: its root is a Comment node wrapping the object. IsObj sees through the wrapper, so the
+// rule's condition matches; Fields unwraps, as the match does. A payload that is not an object (42,
+// true) has no named parts, so only `subject` is bound.
 func bindingFor(payload entity.Payload, subject entity.Ref, value entity.Payload) launch.Binding {
-	b := payloadBinding(payload)
-	// A payload field called `subject`, and every path under it, is shadowed whole: a
-	// `subject.value` from the payload must not stand in for the subject's value where that is
-	// left unbound.
-	for _, k := range b.Keys() {
-		if k == refSubject || strings.HasPrefix(k, refSubject+".") {
-			b.Unbind(k)
-		}
+	b := launch.Binding{}
+	for k, v := range entity.Fields(payload) {
+		b[k] = anyOf(v)
 	}
-	b[refSubject] = subject.String()
-	// A record, though it renders as its address: `$subject.never` names a part it does not have.
-	b.MarkComposite(refSubject)
-	// The parts, spelled as dotted keys, because a spawn's strings are NOT expanded by the
-	// reference machinery: launch.Bind reads this map as text, in one pass, taking at each `$`
-	// the longest key that matches there (launch.expandRefs). Without them
-	// `task: "approve $subject.name"` would match the bare `subject`, which is marked a record,
-	// and be refused as a part it does not hold.
-	//
-	// The longest key wins, so the dotted key is read before the bare one. A reference that goes
-	// on past a key holding an object or a list is a path this map does not hold, and launch
-	// leaves it whole and names it (Spec.Unbound) rather than rendering the shorter key's text.
-	//
-	// `commit` is absent because a spawn is not where provenance belongs and a firing may have
-	// none.
-	b[refSubject+"."+subjPartRef] = subject.String()
-	b[refSubject+"."+subjPartName] = subject.Name()
-	// `value`, AND EVERY PATH INTO IT. In a node position `$subject.value.sha` is a kpath into
-	// the payload and has always resolved; in a string it did not, because this map is all a
-	// spawn's strings get and `value` was left out of it — so the bare `subject` key matched the
-	// prefix and `.value.sha` stayed literal text:
-	//
-	//	Review the drift between verse-dev:drift:at.value.sha and verse-dev:drift:at.value.covering
-	//
-	// which is what went to the runner (git-issue s4rx0tr3h12ksa8fgsn0). A charter then had to
-	// use the flat `$sha` in a prompt and `$subject.value.sha` in the hook two lines below it,
-	// each being the only spelling that works where it sits, with nothing saying so.
-	//
-	// It was left out on the argument that a payload has no text form. That stopped being true
-	// when bindText learned to render a composite as tony, which is what `$stage` already does
-	// for an object-valued field — so `value` is bound the same way, and so is every path under
-	// it. launch takes the longest key that matches at each `$`, which is what makes the deep
-	// path win over the shallow one and both over the bare `subject`.
-	bindNode(b, refSubject+"."+subjPartValue, value)
-	for path, v := range payloadPaths(value) {
-		bindNode(b, joinPath(refSubject+"."+subjPartValue, path), v)
+	subj := map[string]any{subjPartRef: subject.String(), subjPartName: subject.Name()}
+	if value != nil {
+		subj[subjPartValue] = anyOf(value)
 	}
+	b[refSubject] = subj
 	return b
 }
 
-// payloadPaths is every node under a payload, keyed by its path — the spelling a charter writes
-// after `$subject.value`, or after `$` for the payload a rule reads: a field as `a.b`, and an
-// ELEMENT OF A LIST as `items[0]`, at any depth (`findings[0].id`, `m[0][1]`), as a patch resolves
-// it. A path into a list at the root starts with its index (`[0]`), which only `$subject.value`
-// can be followed by. An index past a list's end is not a key, so it is refused as absent.
+// taskFacts gives a completion hook's spawn every fact of the task that ended, whether or not
+// the task had it: `result` and `err` are "" where it said nothing, and `data` is null where its
+// result is no document. So `$[err]` in a prompt an onDone and an onFailed share reads the same
+// in both, as `$[status]` does.
+func taskFacts(b launch.Binding) {
+	for _, k := range []string{"result", "err"} {
+		if _, ok := b[k]; !ok {
+			b[k] = ""
+		}
+	}
+	if _, ok := b["data"]; !ok {
+		b["data"] = nil
+	}
+}
+
+// anyOf is n as an expression reads it (eval.ToAny), nil for no node.
+func anyOf(n entity.Payload) any {
+	if n == nil {
+		return nil
+	}
+	return tonyeval.ToAny(n)
+}
+
+// payloadPaths is every node under a payload, keyed by its path: a field as `a.b`, and an ELEMENT
+// OF A LIST as `items[0]`, at any depth (`findings[0].id`, `m[0][1]`). A path into a list at the
+// root starts with its index (`[0]`).
 //
-// A SEGMENT HOLDING A DOT OR A BRACKET IS SKIPPED, itself and everything under it. This map is
-// matched by literal text, so `a.b` as a field name and `a` containing `b` would produce the same
-// key and one would silently win; a name that cannot be addressed unambiguously is better left
-// unaddressable here. Such a field is still reachable as a node (`$subject.value` resolves through
-// kpath, which quotes), and a top-level one of the payload a rule reads is still bound flat by
-// its own name, which a path spelled the same does not take from it (payloadBinding). Under
-// `$subject.value` such a name is not bound, so a nested path spelled like it is.
+// A SEGMENT HOLDING A DOT OR A BRACKET IS SKIPPED, itself and everything under it: `a.b` as a
+// field name and `a` containing `b` would produce the same key, and one would silently win.
 func payloadPaths(payload entity.Payload) map[string]entity.Payload {
 	out := map[string]entity.Payload{}
 	var walk func(n entity.Payload, prefix string)
@@ -1077,14 +965,6 @@ func payloadPaths(payload entity.Payload) map[string]entity.Payload {
 	}
 	walk(payload, "")
 	return out
-}
-
-// joinPath is a path from payloadPaths under prefix: `prefix.a`, or `prefix[0]` for an index.
-func joinPath(prefix, path string) string {
-	if strings.HasPrefix(path, "[") {
-		return prefix + path
-	}
-	return prefix + "." + path
 }
 
 // ParseMode maps a gate mode name to a Mode.

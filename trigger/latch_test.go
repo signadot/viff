@@ -26,7 +26,7 @@ func TestLatchCheck(t *testing.T) {
 		}
 		return m
 	}
-	spawn := &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"}
+	spawn := &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"}
 
 	ok := map[string]Trigger{
 		// The canonical shape: spawn the work, let its completion advance the subject past
@@ -100,7 +100,7 @@ func TestAbsenceLatchShapeLatches(t *testing.T) {
 			{Key: ir.FromString("validated"), Val: ir.Null()},
 		}).WithTag("!not"),
 	}}
-	spawn := &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: `Read the file at path "$path" and report any problems.`}
+	spawn := &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: `Read the file at path "$[path]" and report any problems.`}
 
 	// A literal latch.
 	act := Action{Spawn: spawn, OnDone: &Action{Patch: entity.Obj{"validated": true}.Payload()}}
@@ -128,7 +128,7 @@ func TestAbsenceLatchShapeLatches(t *testing.T) {
 // (git-issue 2xth4bxsh12krsfwdxn0). A payload is any tony value, and both sides of that check
 // were collapsed to the top-level keys of an object.
 func TestLatchDecidesShapesKeysCouldNot(t *testing.T) {
-	spawn := &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"}
+	spawn := &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"}
 	subject := func(pred *ir.Node) Condition {
 		return Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": pred}}
 	}
@@ -237,7 +237,7 @@ func TestLatchFoldsThroughPredicateStructure(t *testing.T) {
 // writing a value out of a task (`patch: {stage: $result.status}`), which may well latch.
 func TestLatchRefusesOnlyWhatItCanSee(t *testing.T) {
 	pred := entity.Obj{"stage": "open"}.Payload()
-	spawn := &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"}
+	spawn := &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"}
 	hook := func(p entity.Payload) Action { return Action{Spawn: spawn, OnDone: &Action{Patch: p}} }
 
 	cases := []struct {
@@ -292,7 +292,7 @@ func TestAFiringDoesNotAskAgainWhileItsWorkRuns(t *testing.T) {
 			"value": map[string]any{"stage": "open"}}},
 		Gates: []Gate{{Name: "go", Mode: "ask"}},
 		Action: Action{
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 		},
 	}); err != nil {
@@ -381,7 +381,7 @@ func TestAddTriggerRefusesAnUnlatchedSpawn(t *testing.T) {
 	err := eng.AddTrigger(Trigger{
 		Name:      "spin",
 		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
-		Action:    Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"}},
+		Action:    Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"}},
 	})
 	if err == nil {
 		t.Fatal("installed a charter that cannot stop spawning")

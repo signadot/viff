@@ -153,7 +153,7 @@ condition:
       stage: ready
 action:
   spawn:
-    prompt:   "retrain the ranker on $subject"
+    prompt:   "retrain the ranker on $[subject.ref]"
     agent: {name: verse}                                  # ← who does it
     environment: {systems: {network: {mode: open}}}       # ← what it may reach
     autonomy: [{then: ask}]                               # ← what it may do unasked

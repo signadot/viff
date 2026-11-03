@@ -83,11 +83,11 @@ charter has an agent review each open pull request, once somebody says yes:
       stage: reviewing
     spawn:
       agent: {name: verse}
-      prompt: "review the pull request at $subject"
+      prompt: "review the pull request at $[subject.ref]"
       environment:
         systems:
           network: {mode: open}
-          git: {repo: $subject.value.repo, from: $subject.value.head, fetch: {}}
+          git: {repo: $[subject.value.repo], from: $[subject.value.head], fetch: {}}
       autonomy:
       - then: allow
     onDone:

@@ -32,7 +32,7 @@ func TestALaunchTheEngineRefusedIsAFailedTaskOnRecord(t *testing.T) {
 		condition: {subject: {path: "demo.pr.*", value: {stage: open}}},
 		action: {
 			patch: {stage: developing},
-			spawn: {script: "true", environment: {vars: {DEEP: $subject.value.changes.never}, systems: {commands: {run: {}}, network: {mode: open}}}, autonomy: `+stepAsksTony+`},
+			spawn: {script: "true", environment: {vars: {DEEP: $[subject.value.changes.never]}, systems: {commands: {run: {}}, network: {mode: open}}}, autonomy: `+stepAsksTony+`},
 			onFailed: {patch: {stage: failed, was: $subject.value.stage}},
 		},
 	}`)
@@ -53,7 +53,7 @@ func TestALaunchTheEngineRefusedIsAFailedTaskOnRecord(t *testing.T) {
 		}
 		rec, _, _ = srv.Store.Get(rec.Ref)
 	}
-	if got := entity.Str(rec.Payload, "err"); !strings.Contains(got, "$subject.value.changes.never") {
+	if got := entity.Str(rec.Payload, "err"); !strings.Contains(got, `no "never" in subject.value.changes`) {
 		t.Errorf("err = %q, want the refusal naming the reference", got)
 	}
 	if mirror.OccurrenceOf(rec.Payload) == 0 {

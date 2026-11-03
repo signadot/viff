@@ -532,9 +532,13 @@ func meetTokens(x, y []int) bool {
 	return meet(0, 0)
 }
 
-// writtenTokens is an attribute's value as a charter writes it, each binding still to be bound
-// (`$…`) a run of anything: the values it could be once a firing binds it.
+// writtenTokens is an attribute's value as a charter writes it, each expression still to be bound
+// (`$[…]`, or the whole of a v that is one `.[…]`; Templated) a run of anything: the values it
+// could be once a firing binds it.
 func writtenTokens(v string) []int {
+	if Whole(v) {
+		return []int{tokAcross}
+	}
 	var out []int
 	last := 0
 	for _, loc := range bound.FindAllStringIndex(v, -1) {
@@ -816,8 +820,8 @@ func unknownOp(n *ir.Node) string {
 	return ""
 }
 
-// Binds is whether a pattern holds a binding a firing would fill (`$…`) where it is read as
-// text: a literal or a glob, never a regexp, whose `$` is the end of the text.
+// Binds is whether a pattern holds an expression a firing would fill (Templated) where it is read
+// as text: a literal or a glob, never a regexp, whose `$` is the end of the text.
 func Binds(n *ir.Node) bool {
 	n = ir.Uncomment(n)
 	if n == nil {
@@ -828,7 +832,7 @@ func Binds(n *ir.Node) bool {
 	}
 	if n.Type == ir.StringType {
 		op, _ := operand(n)
-		return op != "regexp" && strings.Contains(n.String, "$")
+		return op != "regexp" && Templated(n.String)
 	}
 	return slices.ContainsFunc(n.Values, Binds)
 }

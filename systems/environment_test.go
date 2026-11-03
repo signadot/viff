@@ -87,7 +87,7 @@ func TestAnEnvironmentIsChecked(t *testing.T) {
 		`systems: {git: {repo: acme/app, push: []}}`:                                            "an empty list allows nothing",
 		`systems: {git: {repo: acme/app, push: {branch: main}}}`:                                "push.branch: not a field of push",
 		`systems: {git: {repo: acme/app, push: {ref: main}}}`:                                   "push.ref:",
-		`systems: {git: {repo: acme/app, push: {ref: $ref}}}`:                                   "is not bound",
+		`systems: {git: {repo: acme/app, push: {ref: $[ref]}}}`:                                 "is not bound",
 		`systems: {git: {repo: acme/app, push: [{ref: "refs/heads/a"}, {exists: maybe}]}}`:      "push[1].exists:",
 		`systems: {git: {repo: acme/app, push: {exists: "false"}}}`:                             "write false, unquoted",
 		`systems: {git: {repo: acme/app, push: {ref: "refs/heads/*"}}}`:                         "is written `!glob",
@@ -113,7 +113,7 @@ func TestAnEnvironmentIsChecked(t *testing.T) {
 	// The environment checked is bound, so a `$` in a value is part of it: install stands a
 	// charter's `$` in before it checks (trigger.installLaunch), and a payload a firing bound
 	// is held as written.
-	if e, err := readEnv(t, `systems: {git: {repo: $subject.value.repo, fetch: {}}}`); err != nil || e.Check() == nil {
+	if e, err := readEnv(t, `systems: {git: {repo: $[subject.value.repo], fetch: {}}}`); err != nil || e.Check() == nil {
 		t.Errorf("a $ attribute: %v, want it refused", err)
 	}
 }
@@ -398,7 +398,7 @@ func TestARowReachesTheEnvironment(t *testing.T) {
 			t.Errorf("%s.%s %v: reaches %v, want %v", c.system, c.verb, c.params, got, c.reaches)
 		}
 	}
-	bound, _ := readEnv(t, `systems: {git: {repo: $subject.value.repo, push: {ref: !glob "refs/heads/*"}}}`)
+	bound, _ := readEnv(t, `systems: {git: {repo: $[subject.value.repo], push: {ref: !glob "refs/heads/*"}}}`)
 	if !bound.Reaches("git", []string{"push"}, params("repo", `github.com/acme/app`)) {
 		t.Error("a repo bound at the firing could be any, so a row naming one reaches it")
 	}

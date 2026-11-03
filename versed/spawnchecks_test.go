@@ -31,7 +31,7 @@ func TestAHandRunIsCheckedAsTheRunnerWillCheckIt(t *testing.T) {
 		// Written by hand, it is read as strictly as a charter's spawn and binds nothing.
 		{"a key the spawn does not have", map[string]any{"id": "doer", "spawn": map[string]any{"prompt": "go", "doer": map[string]any{"agent": "verse"}}}, `unknown field "doer"`},
 		{"a key the request does not have", map[string]any{"id": "flat", "prompt": "go"}, `unknown field "prompt"`},
-		{"a $ where a firing binds one", map[string]any{"id": "dollar", "spawn": map[string]any{"prompt": "review it", "subject": "$subject"}}, "spawn.subject: a `$` is bound when a rule fires"},
+		{"an expression where a firing binds one", map[string]any{"id": "dollar", "spawn": map[string]any{"prompt": "review it", "subject": "$[subject.ref]"}}, "spawn.subject: an expression is bound when a rule fires"},
 		{"what only a firing sets", map[string]any{"id": "chained", "spawn": map[string]any{"script": "true", "chain": "review"}}, "spawn.chain: a firing's"},
 		{"rows of no shape", map[string]any{"id": "rowless", "spawn": map[string]any{"script": "true", "autonomy": []map[string]any{{"then": "sometimes"}}}}, "spawn.autonomy[0]: "},
 	} {

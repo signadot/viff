@@ -63,8 +63,8 @@ func TestASpawnCarriesTheGatesItsFiringPassed(t *testing.T) {
 				Gates:     []Gate{{Name: "free", Mode: "auto"}, {Name: "ok", Mode: "ask"}},
 				Action: Action{
 					Patch:  entity.Obj{"stage": "deploying"}.Payload(),
-					Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "deploy $subject"},
-					OnDone: &Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "after $subject"}},
+					Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "deploy $[subject.ref]"},
+					OnDone: &Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "after $[subject.ref]"}},
 				},
 			}); err != nil {
 				t.Fatalf("AddTrigger: %v", err)
@@ -115,7 +115,7 @@ func TestASequencesStepsCarryNoGate(t *testing.T) {
 		Gates:     []Gate{{Name: "ok", Mode: "ask"}},
 		Action: Action{
 			Patch: entity.Obj{"stage": "deploying"}.Payload(),
-			Seq:   []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "one $subject"}}, {Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "two $subject"}}},
+			Seq:   []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "one $[subject.ref]"}}, {Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "two $[subject.ref]"}}},
 		},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -146,7 +146,7 @@ func TestACredentialNobodyCouldMintIsRefusedAtInstall(t *testing.T) {
 		want string
 	}{
 		{"no audience", Trigger{Gates: ask, Action: Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "p", Credential: cred(" ")}}}, "names no audience"},
-		{"a derived audience", Trigger{Gates: ask, Action: Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "p", Credential: cred("$target")}}}, "declared and not derived"},
+		{"a derived audience", Trigger{Gates: ask, Action: Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "p", Credential: cred("$[target]")}}}, "declared and not derived"},
 		{"no gate", Trigger{Action: Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "p", Credential: cred("sts")}}}, "the rule has no gate"},
 		{"a hook's spawn", Trigger{Gates: ask, Action: Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "p"},
 			OnDone: &Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "q", Credential: cred("sts")}}}}, "onDone asks for a credential"},

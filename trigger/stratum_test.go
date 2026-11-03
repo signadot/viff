@@ -201,7 +201,7 @@ func TestDeriveMustLandStrictlyAbove(t *testing.T) {
 			Name: "x4", Stratum: "sdlc",
 			Condition: Condition{Subject: mm("signadot.feature.*")},
 			Action: Action{
-				Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
+				Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
 				OnDone: &Action{Derive: deriveAction("gh.issue", entity.Obj{"a": 1}).Derive},
 			},
 		},
@@ -835,16 +835,14 @@ func TestTheCausalChainCrossesTheLevel(t *testing.T) {
 	}
 }
 
-// $subject's parts, in a SPAWN string. Spawn templates do not go through the reference
-// machinery at all — launch.Bind is a flat ReplaceAll — so the dotted forms only work if
-// bindingFor publishes them as keys. Forgetting that does not error: `$subject.name` substitutes
-// the bare key and leaves the text "demo.pr.1.name", which is why this is pinned.
+// `subject`'s parts, in a SPAWN string: its address, the address's last segment, and beside them
+// the payload's own fields.
 func TestSubjectPartsBindInSpawnStrings(t *testing.T) {
 	payload := entity.Obj{"stage": "open"}.Payload()
 	b := bindingFor(payload, entity.RefAt("demo", "pr", "1"), payload)
-	spec := launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject.name at $subject.ref ($subject) at $stage"}
-	got := spec.Bind(b).Prompt
-	if want := `review 1 at demo.pr."1" (demo.pr."1") at open`; got != want {
+	spec := launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.name] at $[subject.ref] at $[stage]"}
+	got := bound(t, spec, b).Prompt
+	if want := `review 1 at demo.pr."1" at open`; got != want {
 		t.Fatalf("task = %q, want %q", got, want)
 	}
 }

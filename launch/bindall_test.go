@@ -54,13 +54,17 @@ func TestBindCarriesEveryField(t *testing.T) {
 		"Refusal":    "why the engine refused the launch, which is the engine's finding about the binding and not a request",
 		// A comment describes the spawn AS WRITTEN, so it belongs to the charter and not to the
 		// run: the persisted rule is the un-bound spec, which keeps them, and binding one into a
-		// running task would carry an author's note somewhere nobody reads it. Substituting
-		// `$subject` inside a comment would be worse still.
+		// running task would carry an author's note somewhere nobody reads it. Expanding
+		// `$[subject.ref]` inside a comment would be worse still.
 		"Doc":  "a comment on the rule, which describes what was written rather than what runs",
 		"Note": "a comment on the rule, which describes what was written rather than what runs",
 	}
 
-	out := reflect.ValueOf(spec.Bind(Binding{}))
+	bound, err := spec.Bind(Binding{})
+	if err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+	out := reflect.ValueOf(bound)
 	for i := range out.NumField() {
 		name := out.Type().Field(i).Name
 		zero := out.Field(i).IsZero()
@@ -83,7 +87,7 @@ func TestBindCarriesEveryAgentAndEnvironmentField(t *testing.T) {
 	var spec Spec
 	fill(t, reflect.ValueOf(&spec.Agent).Elem(), "Agent")
 	fill(t, reflect.ValueOf(&spec.Environment).Elem(), "Environment")
-	got := spec.Bind(Binding{})
+	got := bind(t, spec, Binding{})
 	carried(t, reflect.ValueOf(got.Agent), "Agent")
 	carried(t, reflect.ValueOf(got.Environment), "Environment")
 }

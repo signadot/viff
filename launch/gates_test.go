@@ -17,7 +17,7 @@ import (
 func TestASpawnCarriesItsAutonomy(t *testing.T) {
 	var spec Spec
 	err := codec.Unmarshal([]byte(`{
-		agent: {name: verse}, prompt: "review $subject",
+		agent: {name: verse}, prompt: "review $[subject.ref]",
 		autonomy: [
 		  {name: release, match: {system: git, verb: push, ref: refs/heads/main}, then: {ask: {need: 2, answerers: ["user:*"],
 		   within: "4h", default: deny, labels: {slack: C0C3KHG9B0W}}}},
@@ -52,7 +52,7 @@ func TestASpawnCarriesItsAutonomy(t *testing.T) {
 			t.Errorf("written back without %q:\n%s", want, out)
 		}
 	}
-	bound := spec.Bind(Binding{"subject": "demo.pr.1"})
+	bound := bind(t, spec, Binding{"subject": map[string]any{"ref": "demo.pr.1"}})
 	bound.Autonomy[0].Then.Ask.Need = 9
 	bound.Autonomy[0].Then.Ask.Labels["slack"] = "changed"
 	bound.Autonomy[0].Match.Params["ref"] = ir.FromString("changed")

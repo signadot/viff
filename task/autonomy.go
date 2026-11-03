@@ -62,8 +62,8 @@ type Row struct {
 // (`verb: !or [data-put, data-rm]`); a param is a pattern over the step's field of that name, in
 // tony's grammar (`ref: !glob "refs/heads/verse/*"`, `force: true`, `command: !regexp "git
 // push"`; systems.MatchField), an absent field meeting none of them. A param the verbs do not
-// have is refused, and so is a `$`: a match is a pattern over what the task does, not bound by
-// the firing.
+// have is refused, and so is an expression, `$[…]`: a match is a pattern over what the task does,
+// not bound by the firing.
 //
 //tony:schemagen=verse-task-policy-match,notag,codec=custom
 type Match struct {
@@ -651,7 +651,7 @@ func (m *Match) Check() error {
 		pattern := m.Params[name]
 		if systems.Binds(pattern) {
 			return fmt.Errorf("match.%s: %s: a match is a pattern over what the task does and is not bound, "+
-				"so a `$` in it would never match", name, systems.Words(pattern))
+				"so an expression in it would never match", name, systems.Words(pattern))
 		}
 		// A pattern no call's field could be spelled as never matches, which in a deny row lets
 		// through what it was written to stop: refused, unless one of the calls takes it.

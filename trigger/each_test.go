@@ -10,6 +10,7 @@ import (
 
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/task"
 )
 
@@ -32,7 +33,7 @@ func TestEachInstallsInEitherLayout(t *testing.T) {
   condition:
     subject: {path: "git.commit.*", value: {reviewed: pending}}
   action:
-    spawn: {agent: {name: verse}, prompt: "review $sha"}
+    spawn: {agent: {name: verse}, prompt: "review $[sha]"}
     onDone:
       patch: {reviewed: done}
       derive:
@@ -58,7 +59,7 @@ func TestEachInstallsInEitherLayout(t *testing.T) {
   condition:
     subject: {path: "git.commit.*", value: {reviewed: pending}}
   action:
-    spawn: {agent: {name: verse}, prompt: "review $sha"}
+    spawn: {agent: {name: verse}, prompt: "review $[sha]"}
     onDone:
       patch: {reviewed: done}
       derive: [{path: "drift.finding", value: !each {over: $data.findings, key: $item.symbol, value: {symbol: $item.symbol}}}]
@@ -453,7 +454,7 @@ func TestEachOverATaskAnswer(t *testing.T) {
   condition:
     subject: {path: "git.commit.*", value: {reviewed: pending}}
   action:
-    spawn: {agent: {name: verse}, prompt: "review $sha"}
+    spawn: {agent: {name: verse}, prompt: "review $[sha]"}
     onDone:
       patch: {reviewed: done}
       derive:
@@ -593,20 +594,20 @@ func TestLedgerReachesThePrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 	// What the NEXT rule's spawn would interpolate.
-	b := bindingFor(got.Payload, subj, got.Payload)
-	if !strings.Contains(b["outstanding"], "entity.nodeToPayload") {
-		t.Errorf("$outstanding does not carry the open finding:\n%s", b["outstanding"])
+	outstanding := bound(t, launch.Spec{Prompt: "$[outstanding]"}, bindingFor(got.Payload, subj, got.Payload)).Prompt
+	if !strings.Contains(outstanding, "entity.nodeToPayload") {
+		t.Errorf("$[outstanding] does not carry the open finding:\n%s", outstanding)
 	}
-	if strings.Contains(b["outstanding"], "source/github.Reflect") {
-		t.Errorf("$outstanding carries a resolved finding — the human override does not hold:\n%s",
-			b["outstanding"])
+	if strings.Contains(outstanding, "source/github.Reflect") {
+		t.Errorf("$[outstanding] carries a resolved finding — the human override does not hold:\n%s",
+			outstanding)
 	}
 	// And it is a document, not Go's formatting of one: a prompt a person can read, and an
 	// answer shaped like what it was shown.
-	if strings.Contains(b["outstanding"], "map[") {
-		t.Errorf("$outstanding is Go's map formatting:\n%s", b["outstanding"])
+	if strings.Contains(outstanding, "map[") {
+		t.Errorf("$[outstanding] is Go's map formatting:\n%s", outstanding)
 	}
-	if _, err := codec.ParseNode([]byte(b["outstanding"]), codec.Tony); err != nil {
-		t.Errorf("$outstanding does not parse as tony: %v\n%s", err, b["outstanding"])
+	if _, err := codec.ParseNode([]byte(outstanding), codec.Tony); err != nil {
+		t.Errorf("$[outstanding] does not parse as tony: %v\n%s", err, outstanding)
 	}
 }

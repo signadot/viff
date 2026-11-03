@@ -51,12 +51,12 @@ func TestACharterIsHeldToItsRunnersCeilingsAtInstall(t *testing.T) {
 		defer resp.Body.Close()
 		return resp.StatusCode, readBody(t, resp)
 	}
-	if code, body := install("bound", `{repo: $subject.value.repo, fetch: {}, push: {ref: !glob "refs/heads/verse/auto/*"}}`); code != http.StatusCreated {
+	if code, body := install("bound", `{repo: $[subject.value.repo], fetch: {}, push: {ref: !glob "refs/heads/verse/auto/*"}}`); code != http.StatusCreated {
 		t.Errorf("a bound repository = %d %s, want it installed", code, body)
 	}
 	for name, git := range map[string]string{
 		"outside": `{repo: other/app, fetch: {}}`,
-		"owner":   `{repo: "github.com/other/$subject.value.name", fetch: {}}`,
+		"owner":   `{repo: "github.com/other/$[subject.value.name]", fetch: {}}`,
 		"wider":   `{repo: signadot/app, push: {ref: !regexp "^refs/heads/"}}`,
 	} {
 		if code, body := install(name, git); code == http.StatusCreated || !strings.Contains(body, "beyond this runner's ceiling for git") {

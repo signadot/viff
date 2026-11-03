@@ -309,7 +309,7 @@ rules:
       environment:
         # The branch as the script's environment: a ref name read from the remote is data, and
         # spliced into the script's text it would be a program.
-        vars: {BRANCH: $branch}
+        vars: {BRANCH: $[branch]}
         systems:
           network: {mode: open}
           git:

@@ -22,7 +22,7 @@ func TestAHookNamingASubjectFieldIsAdvised(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:  entity.Obj{"stage": "claimed"}.Payload(),
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{Patch: entity.Obj{"sha": "$covering"}.Payload()},
 		},
 	})
@@ -50,7 +50,7 @@ func TestAHookNamingTheTaskIsNotAdvised(t *testing.T) {
 			Name:      "claim",
 			Condition: Condition{Subject: prSubject("open")},
 			Action: Action{
-				Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
+				Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
 				OnDone: &Action{Patch: entity.Obj{"saw": "$" + name}.Payload()},
 			},
 		})
@@ -69,7 +69,7 @@ func TestADottedHookReferenceIsNotAdvised(t *testing.T) {
 		Name:      "claim",
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
-			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
+			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{Patch: entity.Obj{
 				"sha": "$subject.value.covering", "sev": "$data.severity",
 			}.Payload()},
@@ -91,7 +91,7 @@ func TestAHookThatCannotResolveWritesTheFailureDown(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:  entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{Patch: entity.Obj{"sha": "$covering"}.Payload()},
 		},
 	}); err != nil {

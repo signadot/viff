@@ -852,8 +852,7 @@ type parkedLaunch struct {
 	a          Action
 	chain      string
 	subj       entity.Ref
-	root       entity.Payload
-	value      entity.Payload
+	binding    launch.Binding
 	valueWhy   error
 	occurrence int64
 	passed     []launch.Passed
@@ -886,7 +885,7 @@ func (e *Engine) releaseLaunches() {
 			kept = append(kept, l)
 			continue
 		}
-		if _, err := e.launch(l.a, l.chain, l.subj, l.root, l.value, l.valueWhy, l.occurrence, l.passed); err != nil {
+		if _, err := e.launch(l.a, l.chain, l.subj, l.binding, l.valueWhy, l.occurrence, l.passed); err != nil {
 			e.logger.Warn("a parked launch did not start", "chain", l.chain, "subject", l.subj.String(), "err", err)
 		}
 	}

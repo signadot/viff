@@ -171,7 +171,7 @@ task itself has `verse.data-put`. A spawn's author who gives a task charter-inst
 that.
 
 The install and `verse charter --check` refuse a spawn beyond the task, and an attribute still to
-be bound, such as `repo: $subject.value.repo`, is within where some value of it could be. The rule
+be bound, such as `repo: $[subject.value.repo]`, is within where some value of it could be. The rule
 records the task, and what the task could hand on when it installed it. At each firing the spawn,
 bound, is held to that, after the task has ended too and whatever becomes of the task's record: a
 firing that binds a repository the task never reached fails, with the reason in `err`. A task in a

@@ -39,7 +39,7 @@ func TestASpawnsReposAreCheckedAtInstall(t *testing.T) {
 	}
 	eng = New(entitytest.Store(t), task.AutoResolver{})
 	if err := eng.AddTrigger(rule(
-		runner.Repo{Repo: "$subject.repo", From: "$subject.head"},
+		runner.Repo{Repo: "$[subject.value.repo]", From: "$[subject.value.head]"},
 		runner.Repo{Repo: "acme/docs"},
 	)); err != nil {
 		t.Fatalf("a well-formed repos list is refused: %v", err)

@@ -89,7 +89,7 @@ func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewing"}},
 		},
 		Action: Action{
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "follow up on $subject"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "follow up on $[subject.ref]"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "followed"}.Payload()},
 		},
 	}); err != nil {
@@ -103,7 +103,7 @@ func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 
 	spec := <-specs
 	if spec.Prompt != "follow up on "+pr.String() {
-		t.Fatalf("$subject did not bind to the resolved subject: %q", spec.Prompt)
+		t.Fatalf("$[subject.ref] did not bind to the resolved subject: %q", spec.Prompt)
 	}
 	// And the spawned task is tagged with that subject, so its flow is the PR's.
 	if spec.Subject != pr.String() {
@@ -111,8 +111,8 @@ func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 	}
 }
 
-// $subject is reserved and must win over a same-named payload field. This is what let a
-// goal:done fact (which carries `subject`) silently redirect $subject before the binding
+// `subject` is reserved and must win over a same-named payload field. This is what let a
+// goal:done fact (which carries `subject`) silently redirect the subject before the binding
 // order was fixed; goal latches now also publish `flow` for a trigger to read.
 func TestSubjectBindingNotShadowedByPayloadField(t *testing.T) {
 	ev := entity.Event{
@@ -121,12 +121,10 @@ func TestSubjectBindingNotShadowedByPayloadField(t *testing.T) {
 		To:  entity.Obj{"subject": `change.pr."42"`, "flow": `change.pr."42"`}.Payload(),
 	}
 	b := bindingFor(ev.To, ev.Ref, ev.To)
-	if got := b["subject"]; got != ev.Ref.String() {
-		t.Fatalf("$subject = %q; a payload field named \"subject\" shadowed the reserved binding "+
-			"(want %q)", got, ev.Ref)
-	}
-	if got := b["flow"]; got != `change.pr."42"` {
-		t.Fatalf("$flow = %q, want the payload field", got)
+	got := bound(t, launch.Spec{Prompt: "$[subject.ref] $[flow]"}, b).Prompt
+	if want := ev.Ref.String() + ` change.pr."42"`; got != want {
+		t.Fatalf("prompt = %q, want %q: a payload field named \"subject\" must not shadow the "+
+			"reserved binding", got, want)
 	}
 }
 

@@ -59,11 +59,12 @@ A question says two things in words, for a person:
 A reader needs no grant on the subject to read either. The other fields of a gate are for the
 engine: they say who asked and how the question settles.
 
-Verse expands `pose` at the firing, against the firing's subject. `$[…]` is
-[go-tony's expression](https://github.com/signadot/tony-format), and only `subject.name` and
-`subject.value` are in scope. The question carries the result as words. If the expression does
-not expand, the question is still asked: verse drops the words, and a reader reads `reason`
-instead.
+Verse expands `pose` at the firing, against the firing's subject, as it expands
+[the strings of a spawn](action.md#in-the-strings-of-a-spawn) in the same firing: the subject's
+fields by name, and `subject` as `ref`, `name` and `value`. A pose and a prompt that say
+`$[subject.value.title]` say the same words. The question carries the result as words. If the
+expression does not expand, the question is still asked: verse drops the words, and a reader
+reads `reason` instead.
 
 ### Options and their thresholds
 

@@ -98,7 +98,7 @@ func TestAModelTheAgentDoesNotTakeIsRefusedAtInstall(t *testing.T) {
 	if code, body := install("huge", "huge"); code == http.StatusCreated || !strings.Contains(body, `"huge" is none of small, large`) {
 		t.Errorf("a model the agent does not take = %d %s, want it refused naming what it takes", code, body)
 	}
-	if code, body := install("bound", "$subject.value.model"); code != http.StatusCreated {
+	if code, body := install("bound", "$[subject.value.model]"); code != http.StatusCreated {
 		t.Errorf("a model the firing binds = %d %s, want it installed: the launch is checked bound", code, body)
 	}
 }

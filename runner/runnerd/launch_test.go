@@ -286,7 +286,7 @@ func TestAValueAFiringBoundIsHeldAsWritten(t *testing.T) {
 	desc := runner.Description{Offers: []runner.Offer{{Agent: &runner.AgentOffer{Name: "verse"},
 		Systems: map[string]runner.System{"git": {Ceiling: ceiling(t, `{repo: !regexp "^github\\.com/acme/", from: main, fetch: {}}`)}}}}}
 	spec := launch.Spec{Prompt: "p", Environment: systems.Environment{Systems: systems.Systems{"git": {{
-		Attributes: map[string]string{"repo": "$repo", "from": "$head"}, Verbs: map[string][]systems.Shape{"fetch": {{}}}}}}}}
+		Attributes: map[string]string{"repo": "$[repo]", "from": "$[head]"}, Verbs: map[string][]systems.Shape{"fetch": {{}}}}}}}}
 	for _, c := range []struct {
 		b    launch.Binding
 		says string // "" = accepted
@@ -296,8 +296,12 @@ func TestAValueAFiringBoundIsHeldAsWritten(t *testing.T) {
 		{launch.Binding{"repo": "$a/../..", "head": "main"}, `repo: "$a/../.."`},
 		{launch.Binding{"repo": "acme/$x", "head": "main"}, `repo: "acme/$x"`},
 	} {
-		l := &runner.Launch{ID: "x", Prompt: "p", Agent: &runner.Agent{Name: "verse"}, Environment: spec.Bind(c.b).Environment}
-		err := CheckLaunch(l, desc, nil)
+		bound, err := spec.Bind(c.b)
+		if err != nil {
+			t.Fatalf("%v: %v", c.b, err)
+		}
+		l := &runner.Launch{ID: "x", Prompt: "p", Agent: &runner.Agent{Name: "verse"}, Environment: bound.Environment}
+		err = CheckLaunch(l, desc, nil)
 		switch {
 		case c.says == "" && err != nil:
 			t.Errorf("%v: refused: %v", c.b, err)
@@ -504,7 +508,7 @@ func TestAnAgentsSettingsAreTheOffers(t *testing.T) {
 	}{
 		{map[string]string{"model": "claude-sonnet-5", "temperature": "0.2"}, nil, ""},
 		{nil, nil, ""},
-		{map[string]string{"model": "$subject.model"}, nil, `"$subject.model" is none of claude-*`},
+		{map[string]string{"model": "$[subject.model]"}, nil, `"$[subject.model]" is none of claude-*`},
 		{map[string]string{"effort": "high"}, nil, "agent.effort: verse on this runner takes no `effort` (it takes: model, temperature)"},
 		{map[string]string{"model": "gpt-5"}, nil, `agent.model: verse on this runner takes no such model: "gpt-5" is none of claude-*`},
 		{map[string]string{"temperature": "warm"}, nil, `"warm" is not a number`},

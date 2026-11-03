@@ -69,9 +69,9 @@ func TestHookBindsTerminalStatusAndResult(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
+			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{
-				Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "s=$status r=$result f=$flow"},
+				Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "s=$[status] r=$[result] f=$[flow]"},
 			},
 		},
 	}); err != nil {
@@ -100,7 +100,7 @@ func TestHookResultPatchesSubjectAndDrivesNextTrigger(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
+			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{
 				// the task's finding becomes a field on the subject
 				Patch: entity.Obj{"stage": "reviewed", "severity": "$result"}.Payload(),
@@ -137,7 +137,7 @@ func TestHookUnresolvedReferenceFailsTheFiring(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
+			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{
 				Patch: entity.Obj{"stage": "reviewed", "sev": "$nosuchfield"}.Payload(),
 			},

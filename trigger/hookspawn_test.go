@@ -13,13 +13,9 @@ import (
 	"github.com/signadot/verse/task"
 )
 
-// IN A COMPLETION HOOK'S SPAWN, `$subject.value` IS THE SUBJECT, as it is in the hook's patch:
-// the subject at the commit its rule fired at. The task's own facts stay flat, as `$status`.
-//
-// It was the finished task's record. A hook's `root` is the cause's payload, and the spawn bound
-// `$subject.value` from it, so a second script's `vars: {ROUND: $subject.value.round}` got the
-// first task's whole record as tony (`autonomy: … chain: step … trigger: step`) followed by
-// `.round`, where the subject said `round: 0`.
+// IN A COMPLETION HOOK'S SPAWN, `subject.value` IS THE SUBJECT, as it is in the hook's patch:
+// the subject at the commit its rule fired at, not the finished task's record. The task's own
+// facts are top-level names, as `status`.
 func TestAHookSpawnReadsTheSubjectAtTheFiring(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
@@ -42,7 +38,7 @@ func TestAHookSpawnReadsTheSubjectAtTheFiring(t *testing.T) {
         script: "echo $ROUND"
         autonomy: [{then: allow}]
         environment:
-          vars: {ROUND: $subject.value.round, STAGE: $subject.value.stage, STATUS: $status, WHOLE: $subject.value}
+          vars: {ROUND: $[subject.value.round], STAGE: $[subject.value.stage], STATUS: $[status], WHOLE: $[subject.value]}
 `)); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
@@ -56,7 +52,7 @@ func TestAHookSpawnReadsTheSubjectAtTheFiring(t *testing.T) {
 		select {
 		case hook = <-specs:
 		case <-time.After(5 * time.Second):
-			t.Fatal("the hook never spawned: it was refused, or never fired. Bound from the task's record, `$subject.value.round` is a path the binding does not hold")
+			t.Fatal("the hook never spawned: it was refused, or never fired. Bound from the task's record, `subject.value.round` is a path the binding does not hold")
 		}
 	}
 	vars := hook.Environment.Vars
@@ -75,7 +71,7 @@ func TestAHookSpawnReadsTheSubjectAtTheFiring(t *testing.T) {
 	}
 }
 
-// A HOOK'S SPAWN FOR A TASK WITH NO FIRING COMMIT REFUSES `$subject.value` BY NAME, as the hook's
+// A HOOK'S SPAWN FOR A TASK WITH NO FIRING COMMIT REFUSES `subject.value` BY NAME, as the hook's
 // patch fails by name: an adopted task whose record says no `occurrence` has no revision to read
 // the subject at, and the task's own record is not the subject.
 func TestAHookSpawnWithNoFiringCommitRefusesSubjectValueByName(t *testing.T) {
@@ -103,7 +99,7 @@ func TestAHookSpawnWithNoFiringCommitRefusesSubjectValueByName(t *testing.T) {
         script: "echo $STAGE"
         autonomy: [{then: allow}]
         environment:
-          vars: {STAGE: $subject.value.stage}
+          vars: {STAGE: $[subject.value.stage]}
 `)); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
@@ -120,12 +116,12 @@ func TestAHookSpawnWithNoFiringCommitRefusesSubjectValueByName(t *testing.T) {
 
 	select {
 	case hook := <-specs:
-		if hook.Chain != "review.onDone" || !strings.Contains(hook.Refusal, "environment.vars.STAGE: $subject.value.stage") {
-			t.Fatalf("hook spawn %q refused with %q, want it refused naming $subject.value.stage", hook.Chain, hook.Refusal)
+		if hook.Chain != "review.onDone" || !strings.Contains(hook.Refusal, "subject.value: ") {
+			t.Fatalf("hook spawn %q refused with %q, want it refused naming subject.value", hook.Chain, hook.Refusal)
 		}
 		// And saying why: the subject holds `stage`; there is no commit to read it at.
-		if strings.Contains(hook.Refusal, "not present") || !strings.Contains(hook.Refusal, "no causing commit") {
-			t.Errorf("refusal = %q, want the reason the subject could not be read, not \"not present\"", hook.Refusal)
+		if strings.Contains(hook.Refusal, `no "value"`) || !strings.Contains(hook.Refusal, "no causing commit") {
+			t.Errorf("refusal = %q, want the reason the subject could not be read, not that it has no value", hook.Refusal)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the hook never spawned")

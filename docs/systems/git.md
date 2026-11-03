@@ -44,7 +44,7 @@ the environment gives:
 ```tony
 spawn:
   agent: {name: verse}
-  prompt: "Make the failing check on $subject pass."
+  prompt: "Make the failing check on $[subject.ref] pass."
   environment:
     systems:
       network: {mode: open}

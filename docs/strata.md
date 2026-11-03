@@ -179,7 +179,7 @@ The link works the same way for a spawn, for the same reason. A derive is about 
 subject. The condition decides which, and the charter does not have to write it in. So
 `do.approve` can say "approve the thing this is about", and the link says which thing. A
 charter may also write `$subject` into a field of its own (`pr: $subject`), and a spawn
-downstream can then use it (`prompt: "approve $pr"`).
+downstream can then use it (`prompt: "approve $[pr]"`).
 
 Two things follow. A re-fire about the same subject writes the same address, so it changes
 nothing. And **no two rules can address one derived entity**: rule names are unique in a

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	tonyeval "github.com/signadot/tony-format/go-tony/eval"
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 )
@@ -113,15 +114,15 @@ func (c Ceiling) Check(system string) error {
 // is beyond, but for its document's default, which is what the block means), and each verb it
 // gives is the ceiling block's, each shape within one of its shapes (ShapeWithin).
 //
-// The block is bound, a launch's: a `$` in a value is part of it, as it is where the value is
-// used, since a firing binds payload text as written. A charter's spawn, still to be bound, is
+// The block is bound, a launch's: a `$[` in a value is part of it, as it is where the value is
+// used, since what a firing substitutes is not expanded again. A charter's spawn, still to be bound, is
 // held by ContainsAsWritten.
 func (c Ceiling) Contains(system string, b Block) error { return c.contains(system, b, false) }
 
 // ContainsAsWritten is Contains for a block as a charter writes it, at install: an attribute
-// still to be bound at a firing (`$…`) could be many values, so each binding is read as any run
+// still to be bound at a firing (`$[…]`) could be many values, so each binding is read as any run
 // (meetsWritten), and it is within where some value of it could be. A charter binding its repository
-// installs under a ceiling of an owner's, and one naming another owner before the `$` does not.
+// installs under a ceiling of an owner's, and one naming another owner before the expression does not.
 // The launch, bound, is held to the ceiling again, by Contains.
 func (c Ceiling) ContainsAsWritten(system string, b Block) error { return c.contains(system, b, true) }
 
@@ -189,14 +190,24 @@ func (cb CeilingBlock) contains(d Document, b Block, written bool) (why string, 
 func (cb CeilingBlock) admits(d Document, name, v string, written bool) bool {
 	a, _ := d.Attribute(name)
 	v = Canonical(a.Form, v)
-	if written && strings.Contains(v, "$") {
+	if written && Templated(v) {
 		return meetsWritten(a.Form, cb.Attributes[name], v)
 	}
 	return MatchField(a.Form, cb.Attributes[name], a.Field().Value(v))
 }
 
-// bound is a binding a firing replaces, in an attribute as a charter writes it.
-var bound = regexp.MustCompile(`\$[A-Za-z_][A-Za-z0-9_.]*`)
+// Templated is whether v holds an expression a firing replaces: a `$[…]`, or a v that is one
+// `.[…]` and nothing else (Whole). A `$` that opens none is text, as it is where the value is
+// used: `$HOME`, `$5`; and so is a `.[` in a value it is not the whole of.
+func Templated(v string) bool { return strings.Contains(v, "$[") || Whole(v) }
+
+// Whole is whether v is one `.[…]` and nothing else, which a firing replaces whole: the test the
+// expansion makes (eval.GetRaw).
+func Whole(v string) bool { return tonyeval.GetRaw(v) != "" }
+
+// bound is an expression a firing replaces, in an attribute as a charter writes it: `$[…]`, an
+// index's brackets inside it included.
+var bound = regexp.MustCompile(`\$\[(?:[^\[\]]|\[[^\[\]]*\])*\]`)
 
 // ShapeWithin is whether every call inner allows, outer allows too: each field outer names, inner
 // names, with a pattern within outer's (FieldContains). A field outer leaves out is any; one

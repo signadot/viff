@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	tonyeval "github.com/signadot/tony-format/go-tony/eval"
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/codec"
@@ -106,9 +105,10 @@ func (e *Engine) fireSubjects(ctx context.Context, t Trigger, c entity.Commit, s
 
 // pose is a gate's question in words, expanded against the subject this firing settled on.
 //
-// The environment is the subject and nothing else: its address as `subject.name` and its payload
-// as `subject.value`, which is the same payload the action's own references read (refPayload), so
-// a sentence and the patch beneath it can never disagree about what they saw.
+// The environment is a spawn's in the same firing (bindingFor), expanded as a spawn's strings are
+// (launch.Expand): the subject's fields by name, and `subject` as `ref`, `name` and `value`. The
+// payload is the one the action's own references read (refPayload), so a sentence and the patch
+// beneath it can never disagree about what they saw.
 //
 // It is the EXPRESSIONS that are borrowed from go-tony, not its operations: `$[…]` is evaluated
 // against that environment, and `!exec`, `!file` and the rest of the eval registry are nowhere in
@@ -121,11 +121,8 @@ func (e *Engine) pose(rule string, g Gate, oc occasion, subj entity.Ref) string 
 	if g.Pose == "" {
 		return ""
 	}
-	env := map[string]any{"subject": map[string]any{
-		"name":  subj.String(),
-		"value": tonyeval.ToAny(e.refPayload(oc.ev, subj, fromSubject)),
-	}}
-	said, err := tonyeval.ExpandString(g.Pose, env)
+	v := e.refPayload(oc.ev, subj, fromSubject)
+	said, err := launch.Expand(g.Pose, bindingFor(v, subj, v))
 	if err != nil {
 		e.tracef("%s: gate %s: its pose did not expand: %v", g.Name, subj, err)
 		e.failed(rule+"."+g.Name+".pose", subj, fmt.Errorf("the pose did not expand: %w", err))

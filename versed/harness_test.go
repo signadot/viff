@@ -30,7 +30,7 @@ func harnessServer(t *testing.T, modelURL string) *Server {
 		name: read,
 		condition: {subject: {path: "demo.note.*", value: !and [{text: null}, !not {read: null}]}},
 		action: {
-			spawn:  {agent: {name: verse}, prompt: "answer in one word: $subject.value.text", environment: {systems: {network: {mode: open}}}, autonomy: [{then: allow}]},
+			spawn:  {agent: {name: verse}, prompt: "answer in one word: $[subject.value.text]", environment: {systems: {network: {mode: open}}}, autonomy: [{then: allow}]},
 			onDone: {patch: {read: $result}},
 			onFailed: {patch: {read: failed}},
 		},

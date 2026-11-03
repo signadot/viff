@@ -113,7 +113,7 @@ spawn:
     git -C app merge --ff-only "mirror/$BRANCH"
     verse-call-tool git-push -branch main
   environment:
-    vars: {BRANCH: $branch}
+    vars: {BRANCH: $[branch]}
     systems:
       network: {mode: open}
       git:

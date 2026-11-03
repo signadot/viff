@@ -39,7 +39,7 @@ func TestAGatePosesItsQuestionInWords(t *testing.T) {
 // The subject's address is in the environment too, for a question about a thing whose payload
 // says nothing worth reading.
 func TestAPoseMayNameTheSubjectItself(t *testing.T) {
-	if said := asked(t, "Approve $[subject.name]?", entity.Obj{"stage": "open"}); !strings.Contains(said, "demo.pr") {
+	if said := asked(t, "Approve $[subject.ref]?", entity.Obj{"stage": "open"}); !strings.Contains(said, "demo.pr") {
 		t.Errorf("posed %q, want the subject's address in it", said)
 	}
 }

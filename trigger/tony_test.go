@@ -32,7 +32,7 @@ func TestCharterRoundTrip(t *testing.T) {
 			},
 			Gates: []Gate{{Name: "human", Mode: "ask"}},
 			Action: Action{Spawn: &launch.Spec{
-				Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}},
+				Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}},
 			}},
 		},
 		{

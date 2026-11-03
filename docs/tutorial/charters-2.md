@@ -56,7 +56,7 @@ rules:
     patch: {stage: reviewing}
     spawn:
       script: 'echo reviewing "$SUBJECT"; sleep 2'
-      environment: {vars: {SUBJECT: $subject}, systems: {network: {mode: open}}}
+      environment: {vars: {SUBJECT: $[subject.ref]}, systems: {network: {mode: open}}}
     onDone:
       patch: {stage: reviewed}
 EOF
@@ -88,10 +88,10 @@ rules:
     seq:
     - spawn:
         script: 'echo lint "$SUBJECT"'
-        environment: {vars: {SUBJECT: $subject}, systems: {network: {mode: open}}}
+        environment: {vars: {SUBJECT: $[subject.ref]}, systems: {network: {mode: open}}}
     - spawn:
         script: 'echo test "$SUBJECT"'
-        environment: {vars: {SUBJECT: $subject}, systems: {network: {mode: open}}}
+        environment: {vars: {SUBJECT: $[subject.ref]}, systems: {network: {mode: open}}}
       onFailed:
         patch: {stage: broken}
     onDone:

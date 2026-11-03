@@ -237,17 +237,17 @@ rules:
         files: !irtype 0
         findings: !irtype []
       prompt: |
-        The verse repository is checked out at ./verse with its full history, at $to.
+        The verse repository is checked out at ./verse with its full history, at $[to].
 
-        Review the RANGE $from..$to — everything that has landed since the last review — and
-        answer with `at: $to`. The range is what you review; $to is the commit the tree stands
+        Review the RANGE $[from]..$[to] — everything that has landed since the last review — and
+        answer with `at: $[to]`. The range is what you review; $[to] is the commit the tree stands
         at, and it is what your answer is a claim about. main can move while you work, so a
         reader must not have to assume which commit you meant.
 
         WHAT STILL STANDS. These are the findings the last review left open — claims that some
         Go symbol's comments disagree with its code:
 
-        $outstanding
+        $[outstanding]
 
         A finding you do not mention stays open on its own and will be handed to you again, so
         leaving it out is correct and re-listing it unchanged costs tokens for no fact. What you
@@ -260,11 +260,11 @@ rules:
 
         WHAT CHANGED. The Go files the range touched:
 
-            git -C verse diff --name-only $from..$to -- '*.go'
+            git -C verse diff --name-only $[from]..$[to] -- '*.go'
 
         For each of those files, read what changed in it:
 
-            git -C verse diff $from..$to -- <path>
+            git -C verse diff $[from]..$[to] -- <path>
 
         and judge the comments on the declarations that changed, plus any comment the change
         made wrong elsewhere in the same file. A comment is STALE when it DISAGREES with the
@@ -275,7 +275,7 @@ rules:
 
         A range is not a commit, and that changes one thing: a comment broken by one commit and
         corrected by a later one in the SAME range is not a finding. What you are judging is the
-        tree at $to, and the intermediate states are somebody else's history.
+        tree at $[to], and the intermediate states are somebody else's history.
 
         FIX each stale one in place with write_file: rewrite the comment to say what the code now
         does, in the voice of the comments around it. Change nothing else — not the code, not the
@@ -292,7 +292,7 @@ rules:
         branch, and a branch is a PROPOSAL — somebody has to approve it, and it can be declined,
         or superseded, or retired unmerged while main moves on. So a symbol you fixed is still
         `status: open`, because it is still wrong in the tree you reviewed, and you say where you
-        proposed the fix: `proposedAt: $to`. The review that comes after the fix LANDS reads
+        proposed the fix: `proposedAt: $[to]`. The review that comes after the fix LANDS reads
         main, finds the comment accurate, and resolves it. That is what makes the ledger a record
         of MAIN rather than of what agents believe they did.
 
@@ -302,7 +302,7 @@ rules:
         is not handed to anybody again.
 
         A finding you are handed that already carries `proposedAt` and is STILL WRONG means that
-        fix did not land. Fix it again and say `proposedAt: $to` for this attempt: the work is
+        fix did not land. Fix it again and say `proposedAt: $[to]` for this attempt: the work is
         cheap and idempotent, where a comment nobody corrects is permanent.
 
         READ EACH THING ONCE. Re-reading a file you have read does not make a verdict truer, and
@@ -334,12 +334,12 @@ rules:
                 {"symbol": "entity.nodeToPayload",
                  "status": "open",
                  "says": "the comment says it returns nil for an empty map; it returns an empty payload",
-                 "at": "$to",
-                 "proposedAt": "$to"},
+                 "at": "$[to]",
+                 "proposedAt": "$[to]"},
                 {"symbol": "trigger.predicateNode",
                  "status": "resolved",
                  "says": "named a function deleted in this range; the comment is accurate now",
-                 "at": "$to",
+                 "at": "$[to]",
                  "proposedAt": null}
               ]
             }

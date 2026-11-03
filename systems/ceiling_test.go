@@ -54,7 +54,7 @@ func TestACeilingReadsAndIsChecked(t *testing.T) {
 		`{repo: !glob "github.com/a/*", push: []}`:          "an empty list allows nothing",
 		`{repo: !glob "github.com/a/*", fetch: main}`:       "a verb takes a shape",
 		`{repo: !glob "github.com/a/*", push: {ref: main}}`: "push[0].ref",
-		`{repo: "$subject", fetch: {}}`:                     "binds nothing",
+		`{repo: "$[subject.ref]", fetch: {}}`:               "binds nothing",
 		`{repo: [acme/app, acme/docs], fetch: {}}`:          "alternatives are written `!or",
 		`{repo: "signadot/**", fetch: {}}`:                  "!regexp",
 	} {
@@ -90,11 +90,11 @@ func TestABlockIsWithinTheCeiling(t *testing.T) {
 		`{repo: signadot/app, push: {ref: "refs/heads/release/1.0", force: false}}`: "",
 		`{repo: github.com/acme/app, fetch: {}}`:                                    "",
 		`{repo: verse/verse, push: {ref: refs/heads/main}}`:                         "",
-		`{repo: $subject.value.repo, fetch: {}}`:                                    "is beyond",
+		`{repo: $[subject.value.repo], fetch: {}}`:                                  "is beyond",
 		`{repo: "$a/../..", fetch: {}}`:                                             "is beyond",
-		`{repo: "github.com/signadot/$subject.value.name", fetch: {}}`:              "",
+		`{repo: "github.com/signadot/$[subject.value.name]", fetch: {}}`:            "",
 		`{repo: other/app, fetch: {}}`:                                              "repo github.com/other/app is beyond",
-		`{repo: "github.com/other/$subject.value.name", fetch: {}}`:                 "is beyond",
+		`{repo: "github.com/other/$[subject.value.name]", fetch: {}}`:               "is beyond",
 		`{repo: signadot/app, push: {ref: refs/heads/main}}`:                        "push {ref: refs/heads/main} is within no shape",
 		`{repo: signadot/app, push: {ref: "refs/heads/release/1.0"}}`:               "within no shape", // force left open
 		`{repo: signadot/app, push: {}}`:                                            "within no shape", // the bare verb
@@ -108,9 +108,9 @@ func TestABlockIsWithinTheCeiling(t *testing.T) {
 	// As a charter writes it, at install, a `$` attribute is within where some binding of it
 	// could be.
 	for text, want := range map[string]string{
-		`{repo: $subject.value.repo, fetch: {}}`:                       "",
-		`{repo: "github.com/signadot/$subject.value.name", fetch: {}}`: "",
-		`{repo: "github.com/other/$subject.value.name", fetch: {}}`:    "is beyond",
+		`{repo: $[subject.value.repo], fetch: {}}`:                       "",
+		`{repo: "github.com/signadot/$[subject.value.name]", fetch: {}}`: "",
+		`{repo: "github.com/other/$[subject.value.name]", fetch: {}}`:    "is beyond",
 	} {
 		err := c.ContainsAsWritten("git", block(text))
 		if want == "" && err != nil || want != "" && (err == nil || !strings.Contains(err.Error(), want)) {

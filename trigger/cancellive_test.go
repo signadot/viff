@@ -66,7 +66,7 @@ func TestCancelLiveCancelsWithoutHooks(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:       entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn:       &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"},
+			Spawn:       &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
 			OnCancelled: &Action{Patch: entity.Obj{"stage": "hooked"}.Payload()},
 		},
 	}); err != nil {

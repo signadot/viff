@@ -32,7 +32,7 @@ post, each hour, what landed on `main` in the hour before:
   action:
     spawn:
       agent: {name: verse}
-      prompt: "post to #deploys a summary of what landed on main in the hour before $subject.name"
+      prompt: "post to #deploys a summary of what landed on main in the hour before $[subject.name]"
       environment:
         systems:
           network: {mode: open}

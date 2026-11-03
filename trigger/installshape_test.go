@@ -35,8 +35,8 @@ func TestASpawnsShapeIsCheckedAtInstall(t *testing.T) {
 		{"a port that is no port", `{script: "true", environment: {systems: {network: {mode: allow, tcp-client: [{host: api.example.com, port: http}]}}}}`, "the field is a whole number"},
 		{"hosts under a mode that is not allow", `{script: "true", environment: {systems: {network: {mode: open, tcp-client: [{host: example.com}]}}}}`, "tcp-client is for mode allow"},
 		{"a virtual key written as an annotation", `{agent: {name: verse, annotations: {verse.portkey/virtual-key: vk-prod}}, prompt: go}`, "is verse's to write"},
-		{"a row whose match is bound", `{script: "true", autonomy: [{name: head, match: {system: git, verb: push, ref: $subject.head}, then: ask}, {then: ask}]}`, "is not bound"},
-		{"a shape that is bound", `{script: "true", environment: {systems: {git: {repo: acme/app, push: {ref: $subject.head}}}}}`, "is not bound"},
+		{"a row whose match is bound", `{script: "true", autonomy: [{name: head, match: {system: git, verb: push, ref: $[subject.head]}, then: ask}, {then: ask}]}`, "is not bound"},
+		{"a shape that is bound", `{script: "true", environment: {systems: {git: {repo: acme/app, push: {ref: $[subject.head]}}}}}`, "is not bound"},
 	} {
 		t.Run(c.what, func(t *testing.T) {
 			eng := New(entitytest.Store(t), task.AutoResolver{})
@@ -65,7 +65,7 @@ func TestARowOnABoundRepoInstalls(t *testing.T) {
     patch: {stage: started}
     spawn:
       script: "true"
-      environment: {systems: {git: [{repo: $subject.value.repo, fetch: {}, push: {ref: !glob "refs/heads/verse/*"}}]}}
+      environment: {systems: {git: [{repo: $[subject.value.repo], fetch: {}, push: {ref: !glob "refs/heads/verse/*"}}]}}
       autonomy: [{match: {system: git, verb: push, repo: github.com/acme/app}, then: allow}, {then: ask}]
 `)); err != nil {
 		t.Fatalf("a row on the repo the firing binds: %v", err)
@@ -105,9 +105,9 @@ func TestWhatTheFiringBindsIsStoodInForAtInstall(t *testing.T) {
       environment:
         systems:
           git:
-          - {repo: $subject.repo, from: $subject.head, fetch: {}}
-          - {repo: ghe.corp/$subject.lib, fetch: {}}
-          - {repo: acme/$subject.app, fetch: {}}
+          - {repo: $[subject.value.repo], from: $[subject.value.head], fetch: {}}
+          - {repo: "ghe.corp/$[subject.value.lib]", fetch: {}}
+          - {repo: "acme/$[subject.value.app]", fetch: {}}
       prompt: go
       virtualKey: verse.credentials.team
 `)); err != nil {
@@ -116,10 +116,10 @@ func TestWhatTheFiringBindsIsStoodInForAtInstall(t *testing.T) {
 	if len(checked) != 1 || len(checked[0].Repos()) != 3 {
 		t.Fatalf("the offer was asked about %+v", checked)
 	}
-	// The offer is asked about the environment AS WRITTEN, each `$` still there: the runner's
+	// The offer is asked about the environment AS WRITTEN, each expression still there: the runner's
 	// ceiling holds a binding within where some value of it could be (systems.Ceiling.Contains),
 	// which no stand-in for it would be.
-	for i, want := range []string{"$subject.repo", "ghe.corp/$subject.lib", "acme/$subject.app"} {
+	for i, want := range []string{"$[subject.value.repo]", "ghe.corp/$[subject.value.lib]", "acme/$[subject.value.app]"} {
 		if got := checked[0].Repos()[i].Repo; got != want {
 			t.Errorf("repository %d is %q at the offer check, want it as written, %q", i, got, want)
 		}
@@ -128,7 +128,7 @@ func TestWhatTheFiringBindsIsStoodInForAtInstall(t *testing.T) {
 		t.Errorf("the offer was asked about %+v, without the virtual key the firing carries", checked[0].Agent)
 	}
 	for i, spawn := range []string{
-		`{agent: {name: $subject.agent}, prompt: go}`,
+		`{agent: {name: $[subject.agent]}, prompt: go}`,
 	} {
 		checked = nil
 		if err := eng.AddTrigger(mustParseCharter(t, `
@@ -159,9 +159,9 @@ func TestASpawnsEnvironmentIsHeldToTheCeilingAtInstall(t *testing.T) {
 			"network": {Builds: systems.Ceiling{{Attributes: map[string]*ir.Node{"mode": systems.OneOf(runner.NetworkNone)}}}},
 		}}}}
 	for _, c := range []struct{ what, git, want string }{
-		{"a repository the firing binds", `{repo: $subject.value.repo, fetch: {}, push: {ref: !glob "refs/heads/verse/auto/*"}}`, ""},
-		{"an owner's repository the firing names", `{repo: "github.com/signadot/$subject.value.name", fetch: {}}`, ""},
-		{"another owner before the $", `{repo: "github.com/other/$subject.value.name", fetch: {}}`, `is beyond !regexp ^github\.com/signadot/`},
+		{"a repository the firing binds", `{repo: $[subject.value.repo], fetch: {}, push: {ref: !glob "refs/heads/verse/auto/*"}}`, ""},
+		{"an owner's repository the firing names", `{repo: "github.com/signadot/$[subject.value.name]", fetch: {}}`, ""},
+		{"another owner before the $", `{repo: "github.com/other/$[subject.value.name]", fetch: {}}`, `is beyond !regexp ^github\.com/signadot/`},
 		{"a literal repository outside", `{repo: other/app, fetch: {}}`, "repo github.com/other/app is beyond"},
 		{"a push wider than the ceiling's", `{repo: signadot/app, push: {ref: !regexp "^refs/heads/"}}`, "within no shape of its: {ref: !regexp ^refs/heads/verse/}"},
 	} {

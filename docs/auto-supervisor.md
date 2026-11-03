@@ -62,7 +62,7 @@ verse c -a -f - <<'TONY'
       agent: {name: verse}
       environment: {systems: {network: {mode: open}}}
       prompt: |
-        Assess $subject for landing. Read the change and the tests it touches.
+        Assess $[subject.ref] for landing. Read the change and the tests it touches.
         You are a review supervisor. Decide what is yours to decide and promote what is
         not: answer `escalate` whenever a person should look at this, `reject` when it
         should not land at all, and `approve` only when you would defend landing it

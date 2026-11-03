@@ -136,7 +136,7 @@ rules:
     spawn:
       agent: {name: verse}
       environment: {systems: {network: {mode: open}}}
-      prompt: "Review this issue: $title. Is it a bug or a feature, and how severe is it?"
+      prompt: "Review this issue: $[title]. Is it a bug or a feature, and how severe is it?"
       answer:
         kind:     !or [bug, feature]
         severity: !or [low, normal, high]
@@ -150,8 +150,8 @@ verse data verse-tutorial issue 1          # stage: reviewed, and the kind and s
 ```
 
 The spawn names its **agent**: here `verse`, verse's own, with the host's network and a
-`prompt` that is the one job. `$subject` and every field of the issue are bound in the action,
-so `$title` in the prompt is the issue's title. Its environment gives only the network, so the
+`prompt` that is the one job. The subject and every field of the issue are bound in the action,
+and a spawn's strings read them as expressions, so `$[title]` in the prompt is the issue's title. Its environment gives only the network, so the
 agent is given no verb: it reads and answers, and cannot write a file, run a command or push
 ([the environment and the autonomy](tasks.md#the-environment-and-the-autonomy)). A spawn with a
 `script` in place of the prompt runs that script, and the script is the work.

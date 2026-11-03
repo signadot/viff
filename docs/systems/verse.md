@@ -136,7 +136,7 @@ rules:
   action:
     spawn: {script: "verse-call-tool slack-post -channel deploys -text \"main failed after v1.3: $RUN\"",
       autonomy: [{then: allow}],
-      environment: {vars: {RUN: $subject}, systems: {slack: {post: {channel: deploys}}}}}'
+      environment: {vars: {RUN: $[subject.ref]}, systems: {slack: {post: {channel: deploys}}}}}'
 ```
 
 ## Where the credential lives

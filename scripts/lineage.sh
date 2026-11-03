@@ -294,7 +294,7 @@ rules:
       commits: !list-paths {at: "lineage.trace.*.*.*.*.*.*", value: { target: $subject.value.target }, path: commit}
       authors: !list-paths {at: "lineage.trace.*.*.*.*.*.*", value: { target: $subject.value.target }, path: author}
       titles:  !list-paths {at: "lineage.trace.*.*.*.*.*.*", value: { target: $subject.value.target }, path: title}
-    spawn: { script: 'echo shipping "$SUBJECT"; sleep 30', environment: {vars: {SUBJECT: $subject}, systems: {network: {mode: open}}} }
+    spawn: { script: 'echo shipping "$SUBJECT"; sleep 30', environment: {vars: {SUBJECT: $[subject.ref]}, systems: {network: {mode: open}}} }
 TONY
 ok "3 strata + 2 rules (lin-pr-lineage derives; lin-release-manifest reads the set)"
 

@@ -45,8 +45,8 @@ func TestSpawnRoutesBoundSpec(t *testing.T) {
 		return p
 	})
 
-	spec := launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $subject"}.
-		Bind(launch.Binding{"subject": `demo.pr."1"`})
+	spec := bound(t, launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
+		launch.Binding{"subject": map[string]any{"ref": `demo.pr."1"`}})
 
 	p := eng.Spawn("rev-1", spec)
 	if p == nil {
@@ -92,7 +92,7 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 		Condition: Condition{Subject: Match{"path": pathOf("local", "file", "*"),
 			"value": map[string]any{"stage": "open"}}},
 		Action: Action{
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "validate $path"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "validate $[path]"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "validated"}.Payload()},
 		},
 	}); err != nil {

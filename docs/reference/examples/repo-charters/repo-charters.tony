@@ -373,7 +373,7 @@ rules:
       environment:
         # The question as the script's environment: its text is the candidate's, and spliced
         # into the script it would be a program.
-        vars: {ASK: $ask}
+        vars: {ASK: $[ask]}
         systems:
           network: {mode: open}
           question: {}

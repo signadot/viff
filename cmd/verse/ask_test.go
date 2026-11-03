@@ -335,7 +335,7 @@ func TestAnAskIsCheckedBeforeItIsWritten(t *testing.T) {
 		{"ask", "land", "-q", "x?", "--on", `[{match: {verdict: proceed}, then: {spawn: {prompt: a, script: b}}}]`},
 		{"ask", "land", "-q", "x?", "--on", `[{match: {verdict: proceed}, then: {shell: "rm -rf /"}}]`},
 		{"ask", "land", "-q", "x?", "--on", `[{match: {verdict: proceed}, then: {prompt: "merge it"}}]`},
-		{"ask", "land", "-q", "x?", "--on", `[{match: {verdict: proceed}, then: {spawn: {script: "echo hi", environment: {systems: {git: {repo: $subject.value.repo, fetch: {}}}}}}}]`},
+		{"ask", "land", "-q", "x?", "--on", `[{match: {verdict: proceed}, then: {spawn: {script: "echo hi", environment: {systems: {git: {repo: $[subject.value.repo], fetch: {}}}}}}}]`},
 		{"ask", "-q", "x?", "--withdraw"},
 		{"ask", "--to", "oscar@example.com"},
 		{"ask", "land", "--to", "oscar@example.com"},
