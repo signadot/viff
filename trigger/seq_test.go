@@ -321,14 +321,18 @@ func TestSeqStoppedRunReleasesItsClaim(t *testing.T) {
 	waitField(t, store, ref, "note", "failed")
 
 	// The claim is back. It is a MECHANISM for exclusion, and there is nothing left to exclude.
+	// Every later firing on the subject (the off-ramp's own writes fire it) takes the claim for
+	// the moment it decides under it, as startSeq must, and gives it back; so it is free at some
+	// instant rather than stably free, and what a leak looks like is a claim that never is.
 	claim := mirror.ClaimRef(spawnID("", "review", ref))
+	held := true
 	for range 100 {
-		if _, held, _ := store.Get(claim); !held {
+		if _, held, _ = store.Get(claim); !held {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if _, held, _ := store.Get(claim); held {
+	if held {
 		t.Errorf("%s is still held after the run stopped: fail-stop by leak, and the next "+
 			"restart would free it", claim)
 	}
