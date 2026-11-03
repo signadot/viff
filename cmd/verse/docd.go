@@ -8,12 +8,15 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/scott-cotton/cli"
+
+	"github.com/signadot/verse/config"
 )
 
 // docdAddrFile is where, in the data dir, verse records the client face of the docd it started,
@@ -48,7 +51,24 @@ type docd struct {
 // docd to accept connections before returning.
 func resolveDocd(cfg *upConfig, cc *cli.Context) (docd, error) {
 	if cfg.DocdAddr != "" { // contradictory combinations are refused by upConfig.validate
+		if set, ok := configuredCutoff(appCfg); ok {
+			fmt.Fprintf(cc.Err, "verse up: the compaction cutoff %q, from %s, is not applied: the store at %s is configured where it runs\n", set.value, set.from, cfg.DocdAddr)
+		}
 		return docd{clientAddr: cfg.DocdAddr, stop: func() {}}, nil
+	}
+	// The cutoff before anything else, so a bad one is said before `o` is installed or a data
+	// dir made. --logd-config replaces the file it goes into, so a configured one is said and
+	// not applied, as beside --docd-addr.
+	var cut cutoff
+	if cfg.LogdConfig != "" {
+		if set, ok := configuredCutoff(appCfg); ok {
+			fmt.Fprintf(cc.Err, "verse up: the compaction cutoff %q, from %s, is not applied: --logd-config %s replaces the file it goes into\n", set.value, set.from, cfg.LogdConfig)
+		}
+	} else {
+		var err error
+		if cut, err = resolveCutoff(cfg.CompactionCutoff, appCfg); err != nil {
+			return docd{}, err
+		}
 	}
 
 	// Resolve `o` BEFORE the data dir and the ports: with no o there is nothing to bring
@@ -84,7 +104,7 @@ func resolveDocd(cfg *upConfig, cc *cli.Context) (docd, error) {
 		}
 	}
 
-	logdCfg, err := resolveLogdConfig(cfg.LogdConfig, dataDir)
+	logdCfg, err := resolveLogdConfig(cfg.LogdConfig, dataDir, cut)
 	if err != nil {
 		return docd{}, err
 	}
@@ -250,8 +270,8 @@ func resolveO(explicit string, cc *cli.Context) (string, error) {
 	return onPath, nil
 }
 
-// defaultLogdConfig is what verse asks of the logd it spawns, written into the data dir on
-// every up as logd.verse.tony and passed as -config.
+// defaultCutoff is the compaction cutoff of the store `verse up` starts, where neither
+// --compaction-cutoff nor the config's compactionCutoff says another.
 //
 // COMPACTION, which logd leaves off. Off means every patch ever written is retained, and a
 // read replays the ones that reach its path — so a store's read cost grows with its whole
@@ -259,31 +279,116 @@ func resolveO(explicit string, cc *cli.Context) (string, error) {
 // what the disk holds. A verse is a long-lived store written to by an engine that fires on
 // every commit, so "keep everything forever" is not a default it can live on.
 //
+// A DAY, because the cutoff is how far back an EXACT read works, and verse reads at a firing's
+// causing commit when the action runs: after a gate, at a hook, at a sequence step. A
+// completion hook reads its subject at the commit that fired it, which is as old as the task it
+// waited on, so a cutoff shorter than a task loses the task's hook: the read is refused as too
+// old, nothing is written, and the subject stays where it was. An hour lost the hook of every
+// task that ran longer. A day is staging's cutoff (docdCompactionCutoff in deploy/profiles/staging.tony).
+const defaultCutoff = "1d"
+
+// cutoff is the compaction cutoff verse writes into the logd config, and where it came from,
+// which the file names so that whoever reads it knows what to change.
+type cutoff struct {
+	value string
+	from  string
+}
+
+// resolveCutoff is the cutoff for this run: the flag, else the configured one
+// (configuredCutoff), else defaultCutoff. A value logd would refuse is refused here, before
+// anything is started.
+func resolveCutoff(flag string, c *config.Config) (cutoff, error) {
+	cut := cutoff{value: defaultCutoff, from: "verse up's default"}
+	if set, ok := configuredCutoff(c); ok {
+		cut = set
+	}
+	if flag != "" {
+		cut = cutoff{value: flag, from: "verse up --compaction-cutoff"}
+	}
+	if _, err := parseCutoff(cut.value); err != nil {
+		return cutoff{}, fmt.Errorf("verse up: the compaction cutoff %q, from %s: %w", cut.value, cut.from, err)
+	}
+	return cut, nil
+}
+
+// configuredCutoff is the cutoff the configuration sets, and where: the variable, which
+// overrides the file, else the file's compactionCutoff. False where neither sets one.
+func configuredCutoff(c *config.Config) (cutoff, bool) {
+	if v := os.Getenv("VERSE_COMPACTION_CUTOFF"); v != "" {
+		return cutoff{value: v, from: "VERSE_COMPACTION_CUTOFF"}, true
+	}
+	if c.CompactionCutoff != "" {
+		return cutoff{value: c.CompactionCutoff, from: "compactionCutoff in the verse config"}, true
+	}
+	return cutoff{}, false
+}
+
+// parseCutoff reads a duration as logd does (server.ParseDuration): time.ParseDuration's, plus
+// d for 24h, w for 7d and y for 365d. Here rather than imported, because logd's server package
+// brings its storage engine into this binary with it. Stricter than logd in one thing: zero
+// and negatives are refused, since logd reads a cutoff that is not positive as its own 1h
+// default, the silent hour this setting exists to replace.
+func parseCutoff(s string) (time.Duration, error) {
+	var out strings.Builder
+	for rest := s; rest != ""; {
+		i := 0
+		for i < len(rest) && (rest[i] >= '0' && rest[i] <= '9' || rest[i] == '.') {
+			i++
+		}
+		j := i
+		for j < len(rest) && !(rest[j] >= '0' && rest[j] <= '9' || rest[j] == '.') {
+			j++
+		}
+		num, unit := rest[:i], rest[i:j]
+		rest = rest[j:]
+		hours := map[string]float64{"d": 24, "w": 24 * 7, "y": 24 * 365}[unit]
+		if hours == 0 {
+			out.WriteString(num + unit)
+			continue
+		}
+		n, err := strconv.ParseFloat(num, 64)
+		if err != nil {
+			return 0, fmt.Errorf("not a duration: write it as 1d, 36h or 90m")
+		}
+		fmt.Fprintf(&out, "%gh", n*hours)
+	}
+	d, err := time.ParseDuration(out.String())
+	if err != nil {
+		return 0, fmt.Errorf("not a duration: write it as 1d, 36h or 90m")
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("a cutoff is longer than nothing")
+	}
+	return d, nil
+}
+
+// logdConfig is the logd config verse writes for the store it starts: the cutoff, and a header
+// that says where the cutoff came from and that the file is rewritten.
+//
 // ONE FIELD, and the rest is logd's. The cutoff is the only part of the autonomy verse has an
-// opinion about: it is how far back an EXACT replay works, and past it history degrades to
-// snapshot granularity. Every cursor verse issues is minutes old at most — the engine's own
-// catch-up, `verse watch --since`, a source resuming — and a replay that falls below the
-// floor is refused rather than answered wrong, which Since turns into a resync
-// (TestSinceBelowReplayFloorResyncs). An hour is two orders of magnitude of headroom over
-// what any of them ask for. The tiers, the multiplier and the grace period are upstream's
-// guess and stay upstream's guess, so improving them does not need a verse release.
-const defaultLogdConfig = `# Written by verse on every ` + "`verse up`" + `; edits here do not survive one.
-# To configure the logd yourself, pass verse up --logd-config <file> — the same file
-# ` + "`o system logd serve`" + ` takes — and verse passes yours through instead of this.
+// opinion about. The tiers, the multiplier and the grace period are upstream's guess and stay
+// upstream's guess, so improving them does not need a verse release.
+func logdConfig(cut cutoff) string {
+	return `# Written by verse on every ` + "`verse up`" + `; edits here do not survive one.
+# Its cutoff is from ` + cut.from + `. Another is set with --compaction-cutoff,
+# or compactionCutoff in the verse config. To configure the logd yourself, pass
+# verse up --logd-config <file>, the same file ` + "`o system logd serve`" + ` takes.
 compaction: {
-  cutoff: 1h
+  cutoff: ` + cut.value + `
 }
 `
+}
 
 // resolveLogdConfig answers with the config file `o sys up` is given: the operator's, if they
-// named one, and otherwise verse's own written into the data dir.
+// named one, and otherwise verse's own, written into the data dir with the cutoff cut.
 //
 // It is written into the DATA DIR rather than a temp file so that a store being debugged
 // carries the autonomy it was run under beside the data that autonomy shaped — `ls /data` says
 // what compaction was asked for. It is rewritten every up, and says so in its own first line,
 // because it is verse's statement about the store rather than the store's own configuration:
-// an operator with something to say passes --logd-config, which replaces it entirely.
-func resolveLogdConfig(explicit, dataDir string) (string, error) {
+// an operator with something to say sets the cutoff, or passes --logd-config, which replaces
+// the file entirely.
+func resolveLogdConfig(explicit, dataDir string, cut cutoff) (string, error) {
 	if explicit != "" {
 		if !isFile(explicit) {
 			return "", fmt.Errorf("verse up: --logd-config %s: no such file", explicit)
@@ -296,7 +401,7 @@ func resolveLogdConfig(explicit, dataDir string) (string, error) {
 		return "", fmt.Errorf("verse up: making the data dir: %w", err)
 	}
 	path := filepath.Join(dataDir, "logd.verse.tony")
-	if err := os.WriteFile(path, []byte(defaultLogdConfig), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(logdConfig(cut)), 0o644); err != nil {
 		return "", fmt.Errorf("verse up: writing the logd config: %w", err)
 	}
 	return path, nil

@@ -110,6 +110,7 @@ define:
   addr: .[string]
   agent: .[string]
   auth: !verse-auth-config null
+  compactionCutoff: .[string]
   defaultAgent: .[string]
   format: !verse-format null
   llm: !verse-llm null

@@ -84,6 +84,11 @@ func (s *Config) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["tripDuration"] = ir.FromString(string(s.TripDuration))
 	}
 
+	// Field: CompactionCutoff
+	if s.CompactionCutoff != "" {
+		irMap["compactionCutoff"] = ir.FromString(string(s.CompactionCutoff))
+	}
+
 	// Field: Perms (optional)
 	if !isZeroValue_Config_Perms(s.Perms) {
 		node, err = s.Perms.ToTonyIR(opts...)
@@ -221,6 +226,12 @@ func (s *Config) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "tripDuration", fieldNodeUnwrapped.Type)
 			}
 			s.TripDuration = string(fieldNodeUnwrapped.String)
+		case "compactionCutoff":
+			// Field: CompactionCutoff
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "compactionCutoff", fieldNodeUnwrapped.Type)
+			}
+			s.CompactionCutoff = string(fieldNodeUnwrapped.String)
 		case "perms":
 			// Field: Perms
 			if err := s.Perms.FromTonyIR(fieldNode, opts...); err != nil {

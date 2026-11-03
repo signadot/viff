@@ -56,11 +56,22 @@ See [store.md](store.md).
 ```sh
 verse up -data /srv/verse                    # a data dir of your choosing
 verse up -docd-addr host:port                # attach to an already-running docd
+verse up -compaction-cutoff 36h              # keep every patch for 36 hours, not a day
 verse up -logd-config logd.tony              # start logd with this configuration
 ```
 
-`-logd-config` replaces the logd configuration that verse writes for the daemons it starts. It
-configures a logd that `up` starts, so verse refuses it beside `-docd-addr`.
+**The store keeps every patch for a day.** `up` writes the logd configuration for the store it
+starts into the data dir, as `logd.verse.tony`, on every start. It sets one thing, the
+compaction cutoff: inside it a read at a commit is exact, and past it history thins to logd's
+snapshots. verse reads at a firing's commit when the action runs, after a gate, at a hook, at a
+sequence step, so the cutoff has to be longer than any of those waits. A completion hook waits
+as long as its task. The default is `1d`, as on staging. `-compaction-cutoff`, or
+`compactionCutoff` in the config, sets another, as logd reads a duration (`36h`, `2d`, `1w`).
+The file names where its cutoff came from.
+
+`-logd-config` replaces that file with yours, cutoff included, so verse refuses it beside
+`-compaction-cutoff`. Both configure a logd that `up` starts, so verse refuses them beside
+`-docd-addr`: a store that `up` does not start is configured where it runs.
 
 **A store call has a time limit, and reads and writes have different limits.**
 
@@ -442,6 +453,7 @@ Every key, and the variable that sets it:
 | `auth: {iod: {issuer, audience, accounts, static}}` | | `verse up` | the issuer of the iods' workload tokens, and which iod each is |
 | `auth: {issuer: {url, key}}` | | `verse up` | the address and signing key the verse issues its own tokens with |
 | `perms: {child-grants, admins}` | `VERSE_PERMS_ADMINS` for `admins`, comma-separated | `verse up` | what the root holds out, and who may take a top-level place |
+| `compactionCutoff` | `VERSE_COMPACTION_CUTOFF` | `verse up` | how long the store `up` starts keeps every patch ([the store](#the-store)); `--compaction-cutoff` overrides it. `1d` by default |
 | `tripDuration` | | `verse up` | how long a firing waits when the [cycle throttle](../cycle-throttle.md) trips. A duration, `1s` by default; `0` refuses the firing |
 | `shellEnv` | | `verse up` | the variables a local task's shell passes through from the server's environment. Everything else is unset |
 | `llm: {baseURL, apiKey, virtualKey, model}` | `PORTKEY_BASE_URL`, `PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY`, `OPENAI_MODEL` | `verse up` | the model and credentials the `verse` agent uses |

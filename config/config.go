@@ -89,6 +89,13 @@ type Config struct {
 	//
 	// A duration string ("1s", "500ms"). Server-side, read by `verse up`.
 	TripDuration string `tony:"field=tripDuration,omitzero"`
+	// CompactionCutoff is how far back the store keeps every patch, for the store `verse up`
+	// starts: inside it a read at a commit is exact, and past it history thins to logd's
+	// snapshots. A duration as logd reads one, with d, w and y ("1d", "36h"). Empty is `verse
+	// up`'s default. Server-side, read by `verse up` (`--compaction-cutoff`), which writes it into
+	// the logd config it starts the store with; a store it does not start (`--docd-addr`) is
+	// configured where it runs. Env: VERSE_COMPACTION_CUTOFF.
+	CompactionCutoff string `tony:"field=compactionCutoff,omitzero"`
 	// Perms is the part of the permission check's policy that is a setting rather than a
 	// record. Server-side, read by `verse up`.
 	Perms PermsConfig `tony:"field=perms,omitzero"`
@@ -757,6 +764,7 @@ func (c *Config) applyEnv() error {
 	c.Agent = envOr("VERSE_AGENT", c.Agent)
 	c.SystemCharter = envOr("VERSE_SYSTEM_CHARTER", c.SystemCharter)
 	c.DefaultAgent = envOr("VERSE_DEFAULT_AGENT", c.DefaultAgent)
+	c.CompactionCutoff = envOr("VERSE_COMPACTION_CUTOFF", c.CompactionCutoff)
 	if v := os.Getenv("VERSE_LOCAL_RUNNER"); v != "" {
 		on, err := strconv.ParseBool(v)
 		if err != nil {

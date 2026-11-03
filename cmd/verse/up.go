@@ -45,7 +45,9 @@ type upConfig struct {
 	DocdAdvertiseAddr string `cli:"name=docd-advertise-addr desc='publish this client-face address on /status instead of --docd-addr (for clients that cannot reach it)'"`
 	Data              string `cli:"name=data desc='data dir; verse ups logd+docd here via o sys up, and keeps the local runner here. default: ~/.verse/<addr> ($VERSE_HOME/<addr>)'"`
 	LogdConfig        string `cli:"name=logd-config desc='logd configuration file (tony) for the spawned daemons, replacing the one verse writes (see docd.go)'"`
-	OBin              string `cli:"name=o-bin desc='path to the o binary for spawning daemons; default: go run the pinned go-tony cmd/o'"`
+	// CompactionCutoff is the config's compactionCutoff, for this run (see docd.go).
+	CompactionCutoff string `cli:"name=compaction-cutoff desc='how far back the store verse up starts keeps every patch, as logd reads a duration (1d, 36h); default: the config, else 1d'"`
+	OBin             string `cli:"name=o-bin desc='path to the o binary for spawning daemons; default: go run the pinned go-tony cmd/o'"`
 	// LocalRunner false is a verse whose own runner hosts nothing: every spawn goes to a registered
 	// runner. Unset is the config's `localRunner`, true by default. A string, since unset is not
 	// false and the flag library takes a bool by value alone.
@@ -78,6 +80,17 @@ func (cfg *upConfig) validate() error {
 	}
 	if cfg.DocdAddr != "" && cfg.LogdConfig != "" {
 		return fmt.Errorf("%w: verse up: --logd-config configures the logd verse spawns, and --docd-addr spawns none", cli.ErrUsage)
+	}
+	if cfg.DocdAddr != "" && cfg.CompactionCutoff != "" {
+		return fmt.Errorf("%w: verse up: --compaction-cutoff configures the logd verse spawns, and --docd-addr spawns none; set it where that store runs", cli.ErrUsage)
+	}
+	if cfg.LogdConfig != "" && cfg.CompactionCutoff != "" {
+		return fmt.Errorf("%w: verse up: --compaction-cutoff goes into the logd config verse writes, and --logd-config replaces it; set the cutoff in your file", cli.ErrUsage)
+	}
+	if cfg.CompactionCutoff != "" {
+		if _, err := parseCutoff(cfg.CompactionCutoff); err != nil {
+			return fmt.Errorf("%w: verse up: --compaction-cutoff=%q: %v", cli.ErrUsage, cfg.CompactionCutoff, err)
+		}
 	}
 	// An advertised address is a claim about a face that exists, and needs the face it
 	// re-addresses. Without --docd-addr the face is an ephemeral port on a docd verse
