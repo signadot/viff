@@ -1,0 +1,5 @@
+# TestClaudeSteerReachesTheRunningTurn reads the stand-in's log before the steer is recorded
+
+The test sends a steer mid-turn and, as soon as the driver returns the next proposal, reads the stand-in claude's log once for `"user":"skip the generated files"` with `"midTurn":true`. The stand-in records the words on its own clock, after echoing them back; the driver can return the next proposal (which the stand-in's turn goroutine issued on the previous decision) before the stand-in's stdin loop has recorded the steer. Under a loaded machine the single read lands first and the test fails with "the steer did not reach the running session", showing a log without the user entry. Reproduced 2 in 25 under a parallel suite.
+
+The steer does reach the session; the test is what reads too early. Wait for the entry, as the test's other log assertions do (waitLog).
