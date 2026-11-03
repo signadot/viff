@@ -820,8 +820,10 @@ func unknownOp(n *ir.Node) string {
 	return ""
 }
 
-// Binds is whether a pattern holds an expression a firing would fill (Templated) where it is read
-// as text: a literal or a glob, never a regexp, whose `$` is the end of the text.
+// Binds is whether a pattern holds a `$` where it is read as text: a literal or a glob, never a
+// regexp, whose `$` is the end of the text. A pattern is not bound, so `$[subject.value.branch]`
+// in one never matches, and `$subject.value.branch` is text no ref is spelled as: in a deny row
+// either lets through what it was written to stop.
 func Binds(n *ir.Node) bool {
 	n = ir.Uncomment(n)
 	if n == nil {
@@ -832,7 +834,7 @@ func Binds(n *ir.Node) bool {
 	}
 	if n.Type == ir.StringType {
 		op, _ := operand(n)
-		return op != "regexp" && Templated(n.String)
+		return op != "regexp" && strings.Contains(n.String, "$")
 	}
 	return slices.ContainsFunc(n.Values, Binds)
 }
