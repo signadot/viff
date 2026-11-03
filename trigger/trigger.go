@@ -690,13 +690,13 @@ func firingWithin(t Trigger) [][]string {
 // thing twice, by side channel, and only existed because $subject was wired to the matched
 // entity rather than to the subject.)
 //
-// Bindings available to templates: each field of the changed payload by name ($stage,
-// $path, …), and $subject — the RESOLVED subject, set last so a payload field cannot
-// shadow it. A Patch resolves the same names as a kpath deref, at any depth and keeping the
-// value's type ($result, $verse.review.step, $result.findings[0].id) — see deref.go, which
-// is what lets a task's output become a fact the next `when` can match rather than only
-// text in the next prompt. A Spawn's strings are bound as text instead (launch.Bind): one pass,
-// the longest key that matches at each `$`, with every path under a field bound as its own key.
+// Bindings available to templates: each field of the changed payload by name, and the
+// subject — the RESOLVED subject, set last so a payload field cannot shadow it. A Patch
+// resolves them as a kpath deref, at any depth and keeping the value's type ($result,
+// $verse.review.step, $result.findings[0].id) — see deref.go, which is what lets a task's
+// output become a fact the next `when` can match rather than only text in the next prompt. A
+// Spawn's strings are go-tony expressions over them instead, `$[…]` ($[stage],
+// $[subject.value.sha]): see bindingFor and launch.Expand.
 //
 //tony:schemagen=verse-action,notag,comment=Doc,lineComment=Note
 type Action struct {

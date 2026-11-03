@@ -941,7 +941,7 @@ func payloadPaths(payload entity.Payload) map[string]entity.Payload {
 	out := map[string]entity.Payload{}
 	var walk func(n entity.Payload, prefix string)
 	walk = func(n entity.Payload, prefix string) {
-		// Past a comment wrapper, at the root and at every depth, for payloadBinding's reason.
+		// Past a comment wrapper, at the root and at every depth, for bindingFor's reason.
 		n = ir.Uncomment(n)
 		if n != nil && n.Type == ir.ArrayType {
 			for i, v := range n.Values {

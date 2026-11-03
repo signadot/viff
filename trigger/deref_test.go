@@ -232,7 +232,7 @@ func TestRefRootSubjectWins(t *testing.T) {
 }
 
 // A scalar payload has no named parts, so a reference into one fails rather than binding the
-// whole value to an invented name — the rule payloadBinding already states for the spawn side.
+// whole value to an invented name — the rule bindingFor states for the spawn side.
 func TestRefRootScalarPayload(t *testing.T) {
 	ev := entity.Event{To: ir.FromInt(42)}
 	root := refRoot(ev.To, subjectNode(entity.RefAt("demo", "count", "1"), nil, 0))
