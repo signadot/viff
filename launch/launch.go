@@ -34,6 +34,7 @@ import (
 
 	tonyeval "github.com/signadot/tony-format/go-tony/eval"
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/verse/exprs"
 	"github.com/signadot/verse/runner"
 	"github.com/signadot/verse/systems"
 	"github.com/signadot/verse/task"
@@ -358,7 +359,7 @@ func (s Spec) CheckByHand() error {
 		}
 	}
 	for _, field := range slices.Sorted(maps.Keys(bound)) {
-		if systems.Templated(bound[field]) {
+		if exprs.Templated(bound[field]) {
 			return fmt.Errorf("%s: an expression is bound when a rule fires, and nothing fires for a spawn written by hand", field)
 		}
 	}

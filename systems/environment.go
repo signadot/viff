@@ -12,6 +12,7 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/verse/exprs"
 )
 
 // Environment is what a spawn's run can reach, and the variables its shell is given. It is
@@ -329,7 +330,7 @@ func (e Environment) Reaches(system string, verbs []string, params map[string]*i
 		for name, pattern := range params {
 			if a, isAttr := d.Attribute(name); isAttr {
 				v := b.Attributes[name]
-				if Templated(v) {
+				if exprs.Templated(v) {
 					named = named && meetsWritten(a.Form, pattern, v)
 				} else if !MatchField(a.Form, pattern, a.Field().Value(v)) {
 					named = false
@@ -437,7 +438,7 @@ func (s Shape) Matches(step string, fields *ir.Node) bool {
 // Canonical is a value as its form spells it once: a `repo` is `host/owner/name` in lower case,
 // `owner/name` being github.com's.
 func Canonical(form, v string) string {
-	if form != FormRepo || v == "" || Templated(v) {
+	if form != FormRepo || v == "" || exprs.Templated(v) {
 		return v
 	}
 	// `owner/name` is github.com's. A first segment with a dot is a host, which no owner's name

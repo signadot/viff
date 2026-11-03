@@ -4,13 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"regexp"
 	"slices"
 	"strings"
 
-	tonyeval "github.com/signadot/tony-format/go-tony/eval"
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/verse/exprs"
 )
 
 // A CEILING IS A RUNNER'S BOUND ON ONE SYSTEM, in the environment's form: blocks of attributes
@@ -190,24 +189,11 @@ func (cb CeilingBlock) contains(d Document, b Block, written bool) (why string, 
 func (cb CeilingBlock) admits(d Document, name, v string, written bool) bool {
 	a, _ := d.Attribute(name)
 	v = Canonical(a.Form, v)
-	if written && Templated(v) {
+	if written && exprs.Templated(v) {
 		return meetsWritten(a.Form, cb.Attributes[name], v)
 	}
 	return MatchField(a.Form, cb.Attributes[name], a.Field().Value(v))
 }
-
-// Templated is whether v holds an expression a firing replaces: a `$[…]`, or a v that is one
-// `.[…]` and nothing else (Whole). A `$` that opens none is text, as it is where the value is
-// used: `$HOME`, `$5`; and so is a `.[` in a value it is not the whole of.
-func Templated(v string) bool { return strings.Contains(v, "$[") || Whole(v) }
-
-// Whole is whether v is one `.[…]` and nothing else, which a firing replaces whole: the test the
-// expansion makes (eval.GetRaw).
-func Whole(v string) bool { return tonyeval.GetRaw(v) != "" }
-
-// bound is an expression a firing replaces, in an attribute as a charter writes it: `$[…]`, an
-// index's brackets inside it included.
-var bound = regexp.MustCompile(`\$\[(?:[^\[\]]|\[[^\[\]]*\])*\]`)
 
 // ShapeWithin is whether every call inner allows, outer allows too: each field outer names, inner
 // names, with a pattern within outer's (FieldContains). A field outer leaves out is any; one

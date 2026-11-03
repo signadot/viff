@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/exprs"
 	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/mirror"
 	"github.com/signadot/verse/runner"
@@ -870,7 +871,7 @@ func (a Action) validate() error {
 			case aud == "":
 				return fmt.Errorf("spawn `credential:` names no audience: `credential: {audience: …}` " +
 					"says which system the token is for")
-			case systems.Templated(aud):
+			case exprs.Templated(aud):
 				return fmt.Errorf("spawn `credential: {audience: %s}`: the audience is declared and "+
 					"not derived, so text in the subject cannot choose which system a token is good for", aud)
 			}
@@ -1351,12 +1352,12 @@ func installLaunch(spec launch.Spec) (l runner.Launch, known bool) {
 	if spec.Agent != nil {
 		a := *spec.Agent
 		a.Annotations = maps.Clone(spec.Agent.Annotations)
-		if systems.Templated(a.Name) {
+		if exprs.Templated(a.Name) {
 			known, a.Name = false, "chosen-at-the-firing"
 		}
 		// A setting the firing binds is the launch's to check, bound: left out here.
 		a.Settings = maps.Clone(spec.Agent.Settings)
-		maps.DeleteFunc(a.Settings, func(_, v string) bool { return systems.Templated(v) })
+		maps.DeleteFunc(a.Settings, func(_, v string) bool { return exprs.Templated(v) })
 		l.Agent = &a
 	}
 	if spec.VirtualKey != "" {
@@ -1390,7 +1391,7 @@ func templatedEnvironment(e systems.Environment) systems.Environment {
 		for _, b := range blocks {
 			nb := systems.Block{Attributes: map[string]string{}, Verbs: b.Verbs}
 			for k, v := range b.Attributes {
-				if systems.Templated(v) {
+				if exprs.Templated(v) {
 					a, _ := d.Attribute(k)
 					switch a.Form {
 					case systems.FormRepo:
@@ -1413,23 +1414,23 @@ func templatedEnvironment(e systems.Environment) systems.Environment {
 // Where only the name is templated, the owner (and the host) written before it are kept, since a
 // runner's ceiling may be scoped to an owner.
 func templatedRepoName(name string) string {
-	if !systems.Templated(name) {
+	if !exprs.Templated(name) {
 		return name
 	}
-	whole := systems.Whole(name)
+	whole := exprs.Whole(name)
 	word := strings.Map(func(r rune) rune {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
 			return r
 		}
 		return '-'
 	}, name)
-	if i := strings.LastIndex(name, "/"); !whole && i > 0 && !systems.Templated(name[:i]) &&
+	if i := strings.LastIndex(name, "/"); !whole && i > 0 && !exprs.Templated(name[:i]) &&
 		(strings.Contains(name[:i], "/") || !strings.Contains(name[:i], ".")) { // an owner, not a host alone
 		return name[:i] + "/templated-" + strings.Trim(word, "-")
 	}
 	out := "owner/templated-" + strings.Trim(word, "-")
 	if host, rest, ok := strings.Cut(name, "/"); !whole && ok && strings.Contains(host, ".") &&
-		!systems.Templated(host) && rest != "" {
+		!exprs.Templated(host) && rest != "" {
 		out = host + "/" + out
 	}
 	return out

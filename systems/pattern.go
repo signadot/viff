@@ -13,6 +13,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 	"github.com/signadot/tony-format/go-tony/mergeop"
+	"github.com/signadot/verse/exprs"
 )
 
 // A STEP IS MATCHED BY A TONY MATCH. A row's match, an environment's shape and a runner's ceiling
@@ -536,15 +537,15 @@ func meetTokens(x, y []int) bool {
 // (`$[…]`, or the whole of a v that is one `.[…]`; Templated) a run of anything: the values it
 // could be once a firing binds it.
 func writtenTokens(v string) []int {
-	if Whole(v) {
+	if exprs.Whole(v) {
 		return []int{tokAcross}
 	}
 	var out []int
 	last := 0
-	for _, loc := range bound.FindAllStringIndex(v, -1) {
-		out = append(out, literalTokens(v[last:loc[0]])...)
+	for _, sp := range exprs.Expressions(v) {
+		out = append(out, literalTokens(v[last:sp.Start])...)
 		out = append(out, tokAcross)
-		last = loc[1]
+		last = sp.End
 	}
 	return append(out, literalTokens(v[last:])...)
 }
