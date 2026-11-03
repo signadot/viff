@@ -1,0 +1,5 @@
+# The runner keeps a relayed answer after the process may already have acted on it
+
+SubprocessHandler.relayResolve proxies a gate's answer to the task's process and, once the process has taken it (204), keeps it on the task's channel (Channel.Answer) for the act the answer is about. The process acts the moment its registry hears the answer, which is before the 204 has travelled back: the script's verse-call-tool reaches the channel, delivery.Server.refused asks Task.Answered, finds nothing kept yet, and refuses the act as "this runner relayed no answer to the question". TestAScriptFilesAGitIssueAndPushesTheTracker fails that way, 1 in 25 under load, with the push refused and the script exiting 3.
+
+An act arriving while an answer is being relayed should wait for the relay's verdict rather than be refused: the channel counts the answers in flight, and `answered` waits until none is, so an act is judged on what the process was actually given. Keeping the answer before relaying it would open the opposite window (an act performed on an answer the process then refuses as stale), so the wait is the shape.
