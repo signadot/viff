@@ -2,6 +2,7 @@
 blocked_by: []
 blocks: []
 branches: []
+closed_by: 20b254fefd646bbf9f070884d23ada80459ce212
 commits: []
 created: "2026-11-03T09:48:34.35102+01:00"
 duplicates: []
@@ -9,5 +10,5 @@ id: rf8avq5ah12ksrmzx5n0
 labels:
 - runner
 related_issues: []
-status: open
-updated: "2026-11-03T09:48:34.500776+01:00"
+status: closed
+updated: "2026-11-03T10:02:20.083569+01:00"
