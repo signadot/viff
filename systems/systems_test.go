@@ -156,3 +156,19 @@ func TestValuesAndAttributesAreMatchedAsFields(t *testing.T) {
 		t.Errorf("git's unique attribute: %+v %v", u, ok)
 	}
 }
+
+// AN OPERATOR IN A SEGMENT OF AN ADDRESS IS TRIED when the pattern is checked, as an operator over
+// text is: a regexp that does not compile matches no name, which in a deny row protects nothing,
+// so it is refused where its author hears it rather than passing over every address at a match.
+func TestAnAddressSegmentsOperatorIsTried(t *testing.T) {
+	path := Field{Name: "path", Form: FormPath}
+	for pattern, ok := range map[string]bool{`[play, !regexp "iss.*"]`: true, `[play, !regexp "("]`: false,
+		`[play, !gloob x]`: false, `[play, !or [a, b]]`: true, `play.issues.*`: true} {
+		if err := path.Accepts(pat(t, pattern)); (err == nil) != ok {
+			t.Errorf("path %s: %v, want accepted=%v", pattern, err, ok)
+		}
+	}
+	if err := path.Accepts(pat(t, `[play, !regexp "("]`)); err == nil || !strings.Contains(err.Error(), "segment 1") {
+		t.Errorf("a refusal names the segment: %v", err)
+	}
+}

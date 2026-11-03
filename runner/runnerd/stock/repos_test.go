@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -361,7 +362,12 @@ func envOf(n *runner.Network, repos []runner.Repo, trackers []runner.Tracker) sy
 			}
 			shape := systems.Shape{"host": ir.FromString(host)}
 			if port != "" {
-				shape["port"] = ir.FromString(port)
+				// A port is a number on the step, so a shape writes it as one.
+				n, err := strconv.ParseInt(port, 10, 64)
+				if err != nil {
+					panic(err)
+				}
+				shape["port"] = ir.FromInt(n)
 			}
 			b.Verbs["tcp-client"] = append(b.Verbs["tcp-client"], shape)
 		}

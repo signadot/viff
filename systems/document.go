@@ -136,8 +136,22 @@ func (f Field) Accepts(pattern *ir.Node) error {
 		return err
 	}
 	if f.Form == FormPath {
-		_, err := pathPattern(pattern)
-		return err
+		segs, err := pathPattern(pattern)
+		if err != nil {
+			return err
+		}
+		// A segment's operator is tried against a name once, as the whole pattern was against a
+		// sample: tony reads a list pattern element by element only against a list of its length,
+		// so a regexp that does not compile in a segment went unread above.
+		for i, seg := range segs {
+			if seg.Tag == "" {
+				continue
+			}
+			if _, err := safeMatch(ir.FromString(""), seg); err != nil {
+				return fmt.Errorf("segment %d: %w", i, err)
+			}
+		}
+		return nil
 	}
 	if pattern.Tag == "" {
 		return f.acceptsValue(pattern)
