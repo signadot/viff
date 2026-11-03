@@ -628,7 +628,7 @@ type gateConfig struct {
 	All    bool   `cli:"name=all desc='every pending ask you can read, whoever raised it and whoever it waits on: the whole docket'"`
 	Watch  bool   `cli:"name=watch desc='print a line when a question starts waiting on you, and when it settles, until stopped'"`
 	Since  string `cli:"name=since desc='with --watch: replay from this revision first, so nothing between two runs is missed'"`
-	Notify bool   `cli:"name=notify desc='with --watch: also notify on the desktop when a question starts waiting on you, and when it settles (D-Bus on Linux, Notification Center on macOS)'"`
+	Notify bool   `cli:"name=notify desc='with --watch: also notify on the desktop when a question starts waiting on you, closing it once it settles (D-Bus on Linux, Notification Center on macOS)'"`
 	Answer string `cli:"name=answer desc='the option to choose, by id (proceed|deny on a yes-or-no question)'"`
 	As     string `cli:"name=as desc='identity answering; the configured user when left off (a decision names who made it)'"`
 	Say    string `cli:"name=say aliases=s desc='words to say to the agent on resolution'"`

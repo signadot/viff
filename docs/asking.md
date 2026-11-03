@@ -286,11 +286,17 @@ verse question --watch    # a line when one starts waiting on you, and when it s
 takes `--since` as `verse ask --watch` does.
 
 Either watch takes `--notify` to say what needs you on the desktop too: a question that starts
-waiting on you (urgent, so it stays until you dismiss it where the desktop keeps such ones), a
-question settling, an ask of yours answered. On Linux it goes to the notification service on the
-session bus (`org.freedesktop.Notifications`, which GNOME, KDE, dunst, mako and swaync serve); on
-macOS, to Notification Center through `osascript`. With no such service the watch refuses to
-start. The lines it prints are the same.
+waiting on you (urgent, so it stays until you dismiss it where the desktop keeps such ones), and
+an ask of yours answered. A question that settles closes its notification rather than adding one;
+the watch's line says how it settled. What stands when the watch opens, or what `--since` and a
+reconnect catch up on, is one quiet summary ("2 questions wait on you"), not a notification each.
+
+On Linux and the BSDs it goes to the notification service on the session bus
+(`org.freedesktop.Notifications`, which GNOME, KDE, dunst, mako and swaync serve), with a
+question's text escaped where the service reads markup. On macOS it goes to Notification Center
+through `osascript`, which attributes it to Script Editor: allow Script Editor under System
+Settings › Notifications, or nothing appears. With no such service the watch refuses to start. A
+desktop that refuses or falls behind is said once, on a line; the lines are the same either way.
 
 ```sh
 verse question --watch --notify

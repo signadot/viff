@@ -477,6 +477,7 @@ func (w *askWatch) follow(ctx context.Context, since string, say func(rev, line 
 		w.mu.Lock()
 		w.fromNow = cursor == ""
 		w.mu.Unlock()
+		w.catchUp()
 		carried := false
 		began, err := followFrames(ctx, w.c, q, func(f askFrame) { carried = true; w.frame(f, say) })
 		if ctx.Err() != nil {
@@ -639,19 +640,92 @@ type askWatch struct {
 	since   string
 	now     func() time.Time
 	// alert, where the watch was asked to notify, is told what needs the caller: a question
-	// waiting on them, one of theirs settling, an ask of theirs answered.
+	// waiting on them, an ask of theirs answered; and a question settling, to close its
+	// notification.
 	alert func(alert)
+	// catching is whether the stream is still delivering what stood when it opened, or the history
+	// a cursor replays: frames that arrive back to back, until the stream has been quiet for
+	// quietFor. What it meets then is counted in standing and answeredSince, and said on the desktop
+	// as one summary once it is caught up, not as a burst of notifications, urgent ones among them.
+	catching      bool
+	quiet         *time.Timer
+	quietFor      time.Duration
+	standing      map[string]bool
+	answeredSince int
 }
 
 func newAskWatch(c *client.Client, me string, asks, questions bool) *askWatch {
 	return &askWatch{c: c, me: me, asks: asks, questions: questions, now: time.Now,
 		askVerse: func(id string) bool { return waitingOnMe(c, id) },
-		recs:     map[string]entity.Payload{}, answered: map[string]int{}, seen: map[string]bool{}}
+		recs:     map[string]entity.Payload{}, answered: map[string]int{}, seen: map[string]bool{},
+		quietFor: askCaughtUp, standing: map[string]bool{}}
+}
+
+// askCaughtUp is how long a stream is quiet before the watch takes it to have delivered what
+// stood, or what it replays: those frames are sent back to back, and what follows is news.
+const askCaughtUp = time.Second
+
+// catchUp starts the catching up a newly opened stream does, where the watch notifies: until the
+// stream is quiet, what it meets is summed, not notified.
+func (w *askWatch) catchUp() {
+	if w.alert == nil {
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.catching = true
+	if w.quiet == nil {
+		w.quiet = time.AfterFunc(w.quietFor, w.caughtUp)
+	} else {
+		w.quiet.Reset(w.quietFor)
+	}
+}
+
+// caughtUp ends the catching up, and says on the desktop, once and quietly, what it met: the
+// questions still waiting on the caller, and the asks of theirs answered.
+func (w *askWatch) caughtUp() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.catching {
+		return
+	}
+	w.catching = false
+	var parts, poses []string
+	if n := len(w.standing); n > 0 {
+		parts = append(parts, plural(n, "question waits", "questions wait")+" on you")
+		for id := range w.standing {
+			poses = append(poses, poseOf(w.recs[id]))
+		}
+		slices.Sort(poses)
+		if len(poses) > 3 {
+			poses = append(poses[:3], "…")
+		}
+	}
+	if w.answeredSince > 0 {
+		parts = append(parts, plural(w.answeredSince, "ask of yours was", "asks of yours were")+" answered")
+	}
+	clear(w.standing)
+	w.answeredSince = 0
+	if len(parts) == 0 {
+		return
+	}
+	w.notify(alert{title: "verse: " + strings.Join(parts, "; "), body: strings.Join(poses, "\n")})
+}
+
+// plural is n with one or many, as n says.
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
 }
 
 func (w *askWatch) frame(f askFrame, say func(rev, line string)) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.catching && w.quiet != nil {
+		w.quiet.Reset(w.quietFor)
+	}
 	// A GAP is commits the route dropped for a watcher that fell behind: what they changed is not
 	// here, so the watch says so, and from where to replay them.
 	if f.gap > 0 {
@@ -701,11 +775,17 @@ func (w *askWatch) frame(f askFrame, say func(rev, line string)) {
 			line += " (served by " + by + ")"
 		}
 		say(f.rev, line)
-		w.notify(alert{title: "verse: a question waits on you", body: poseOf(rec) + "\n" + id, urgent: true})
+		if w.catching {
+			w.standing[id] = true
+		} else {
+			w.notify(alert{title: "verse: a question waits on you", body: poseOf(rec) + "\n" + id, urgent: true, key: id})
+		}
 	case status != "" && status != mirror.QuestionPending && w.seen[id]:
 		delete(w.seen, id)
+		delete(w.standing, id)
 		say(f.rev, fmt.Sprintf("settled %s: %s", id, status))
-		w.notify(alert{title: "verse: a question settled", body: id + ": " + status})
+		// It no longer needs the caller: its notification is closed, not followed by another.
+		w.notify(alert{key: id, withdraw: true})
 	}
 }
 
@@ -738,7 +818,11 @@ func (w *askWatch) saidOfMine(id string, prev, rec entity.Payload, rev string, s
 	w.answered[id] = edit
 	if prev != nil || !w.fromNow {
 		say(rev, fmt.Sprintf("answered %s %s: %s", id, answer, entity.Str(rec, "question")))
-		w.notify(alert{title: "verse: your ask was answered " + answer, body: entity.Str(rec, "question") + "\n" + id})
+		if w.catching {
+			w.answeredSince++
+		} else {
+			w.notify(alert{title: "verse: answered " + answer, body: entity.Str(rec, "question") + "\n" + id})
+		}
 	}
 }
 
