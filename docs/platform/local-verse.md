@@ -18,6 +18,7 @@ This page is for working with verse and Claude day to day.
 | `runner` | a `runnerd` offering scripts and claude, registered with versed | `127.0.0.1:9810` |
 
 They are declared in [`pitchfork.toml`](../../pitchfork.toml), at the root of this repository.
+These are the parts of [a deployment](deployment.md), filled in for one machine.
 
 Every address and path they use is a setting. The settings and their defaults are in
 [`scripts/verse-local.env`](../../scripts/verse-local.env); yours go in

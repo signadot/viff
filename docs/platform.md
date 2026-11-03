@@ -6,6 +6,8 @@ tasks, answers gates) starts at [the docs index](README.md).
 
 ## Run a verse
 
+- [What a deployment is](platform/deployment.md): the store, versed, the runners and the iods,
+  and the knob or setting each kind of deployment, Kubernetes or local, fills them in with.
 - [Starting a verse](reference/up.md): `verse up`, its flags, and the config file.
 - [Platform commands](platform/commands.md): `up`, `down`, `runner`, `io` and `resolver`,
   and the smoke test.
