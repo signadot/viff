@@ -101,6 +101,8 @@ func TestEachRefusals(t *testing.T) {
 		{"unknown field", `{over: .[data.f], key: .[item.k], value: {a: 1}, sweep: true}`, `no field "sweep"`},
 		{"over is text", `{over: "the $[data.findings]", key: .[item.k], value: {a: 1}}`, "one expression and nothing else"},
 		{"key off the element", `{over: .[data.f], key: .[subject.name], value: {a: 1}}`, "out of THE ELEMENT"},
+		{"key reads nothing", `{over: .[data.f], key: '.["fixed"]', value: {a: 1}}`, "reads nothing of the element"},
+		{"key is arithmetic", `{over: .[data.f], key: '.[1 + 1]', value: {a: 1}}`, "reads nothing of the element"},
 		{"value is scalar", `{over: .[data.f], key: .[item.k], value: 1}`, "must be an object"},
 		{"value reads state", `{over: .[data.f], key: .[item.k], value: {a: .[data.total]}}`, "and nothing else"},
 		{"value reads the occasion", `{over: .[data.f], key: .[item.k], value: {a: .[subject.commit]}}`, "and nothing else"},

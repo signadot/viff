@@ -922,7 +922,7 @@ func (d deriveTarget) addr() string { return entity.JoinSegs(d.segs()) }
 // is what `key` declares and why it is not optional.
 type eachSpec struct {
 	Over entity.Payload // one whole `.[…]`: the collection to walk
-	Key  entity.Payload // one whole `.[…]`, or a literal id: the address suffix
+	Key  entity.Payload // one whole `.[…]` read from the element: the address suffix
 	// ID is Key with the composition dropped, exactly as a single derive's is: the element
 	// lands at the place plus this value, so a fan-out can write onto entities a DIFFERENT
 	// rule owns the naming of. That is the whole use — a fan-out addressed by `key` can only
@@ -1227,6 +1227,14 @@ func validateEach(n entity.Payload) error {
 			"out of THE ELEMENT, `%s`, and nothing else. That is the whole of what makes a "+
 			"fan-out safe — the same answer yields the same addresses — and one read from "+
 			"anywhere else would give every element the same address", spelling, key, bad, refItem)
+	}
+	// AND IT READS THE ELEMENT. Refusing every name but `item` leaves a key that reads no name at
+	// all, `.["fixed"]` or `.[1 + 1]`, and that is the same address for every element: each
+	// writes over the last, and the fan-out derives one entity.
+	if reads, _ := exprs.ReadsIn(key); !slices.ContainsFunc(reads, func(r exprs.Path) bool { return r[0] == refItem }) {
+		return fmt.Errorf("!each `%s` is %s, which reads nothing of the element: every element "+
+			"would land at one address, each writing over the last. An element's address is read "+
+			"out of THE ELEMENT, `%s: .[item.symbol]`", spelling, key, spelling)
 	}
 	if spec.Value == nil || spec.Value.Type != ir.ObjectType {
 		// Same reason a plain derive's payload must be an object: the engine writes the subject
