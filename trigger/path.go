@@ -107,11 +107,11 @@ func addressPattern(v *ir.Node) ([]*ir.Node, error) {
 		// The same reading a subject's string form gets (entity.PatternNodes), so one spelling
 		// means one thing wherever it is written: a bare `*` is the open position, a quoted
 		// `"*"` the name that is an asterisk.
-		segs, err := entity.PatternNodes(v.String)
-		if err != nil {
+		if err := dottedExpressions(v.String); err != nil {
 			return nil, err
 		}
-		if err := dottedExpressions(v.String, segs); err != nil {
+		segs, err := entity.PatternNodes(v.String)
+		if err != nil {
 			return nil, err
 		}
 		for _, sg := range segs {
@@ -135,21 +135,34 @@ func addressPattern(v *ir.Node) ([]*ir.Node, error) {
 	return nil, fmt.Errorf("is a list of segments or a dotted path; got %v", v.Type)
 }
 
-// dottedExpressions refuses a dotted address that an expression does not survive. A DOTTED
-// ADDRESS IS SPLIT ON ITS DOTS, and an expression holds dots of its own: in
-// `git.repo.$[subject.value.head]` the split lands inside it. Quoted, the segment is whole,
-// `git.repo."$[subject.value.head]"`, and the firing interpolates it. A whole `.[…]` is a value,
-// not text, and an address is not one value: it is a list of segments, written as one.
-func dottedExpressions(s string, segs []*ir.Node) error {
+// dot// dottedExpressions refuses a dotted address that an expression does not survive, and says
+// so before the address is parsed, whose own refusal would be about something else. A DOTTED
+// ADDRESS IS SPLIT ON ITS DOTS, and its grammar reads a `[` as an index: in
+// `git.repo.$[subject.value.head]` the parse lands inside the expression. Quoted, the segment is
+// whole, `git.repo."$[subject.value.head]"`, and the firing interpolates it. A whole `.[…]` is a
+// value, not text, and an address is not one value: it is a list of segments, written as one.
+func dottedExpressions(s string) error {
 	if exprs.Whole(s) {
 		return fmt.Errorf("%q is one expression, and an address is a list of segments: write it "+
 			"as one, `[git, repo, .[subject.value.head]]`", s)
 	}
-	for _, seg := range segs {
-		if lit, ok := entity.PathLiteral(seg); ok && strings.Contains(lit, "$[") && len(exprs.Expressions(lit)) == 0 {
-			return fmt.Errorf("%q splits an expression on its dots: quote the segment that holds "+
-				"it, `git.repo.\"$[subject.value.head]\"`, or write the address as a list, "+
-				"`[git, repo, .[subject.value.head]]`", s)
+	// A segment is quoted as kpath quotes one: from its start, in either quote, up to the same
+	// quote unescaped.
+	var quote byte
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case quote != 0 && c == '\\':
+			i++
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case (c == '"' || c == '\'') && (i == 0 || s[i-1] == '.'):
+			quote = c
+		case strings.HasPrefix(s[i:], "$["):
+			return fmt.Errorf("%q holds an expression outside quotes, where the address is split "+
+				"on its dots: quote the segment that holds it, `git.repo.\"$[subject.value.head]\"`, "+
+				"or write the address as a list, `[git, repo, .[subject.value.head]]`", s)
 		}
 	}
 	return nil
@@ -360,12 +373,12 @@ func readSpec(n *ir.Node) (pathSpec, error) {
 	}
 	switch body.Type {
 	case ir.StringType:
+		if err := dottedExpressions(body.String); err != nil {
+			return spec, fmt.Errorf("!%s: %w", kind, err)
+		}
 		at, path, err := splitRead(body.String)
 		if err != nil {
 			return spec, fmt.Errorf("!%s %q: %w", kind, body.String, err)
-		}
-		if err := dottedExpressions(body.String, at); err != nil {
-			return spec, fmt.Errorf("!%s: %w", kind, err)
 		}
 		spec.At, spec.Path = at, path
 	case ir.ObjectType:

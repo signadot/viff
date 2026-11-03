@@ -67,6 +67,7 @@ func TestGetPathMustNameOneNode(t *testing.T) {
 		"a reference last":       readOf(`!get-path {at: [git, repo, .[subject.value.head]]}`),
 		"a payload path":         readOf(`!get-path {at: "git.repo.abc", path: branch}`),
 		"a reference in an addr": get(`git.repo."$[subject.value.head]"`),
+		"single-quoted":          get(`git.repo.'$[subject.value.head]'`),
 		// A short path names the node at it: git.repo is a place and something in it.
 		"a short address": get("git.repo"),
 	}
@@ -675,5 +676,28 @@ func TestGetPathStringFormIndexesIntoAnArray(t *testing.T) {
 	got, _, _ := store.Get(ref)
 	if v := entity.ToObj(got.Payload)["second"]; v != "v2" {
 		t.Errorf("second = %v, want \"v2\" — an index into the payload", v)
+	}
+}
+
+// AN EXPRESSION OUTSIDE QUOTES IN A DOTTED ADDRESS is told what to write: the address is split
+// on its dots and its `[` read as an index, so the parse would refuse it for something else.
+func TestADottedAddressSaysToQuoteItsExpression(t *testing.T) {
+	eng, _ := newEng(t)
+	for why, read := range map[string]entity.Payload{
+		"the address form":    get(`git.repo.$[subject.value.head]`),
+		"the object form":     readOf(`!get-path {at: "git.repo.$[subject.value.head]"}`),
+		"a name, no dots":     get(`git.repo.$[sha]`),
+		"inside a segment":    get(`git.repo.v$[sha]`),
+		"after a quoted one":  get(`git."$[a]".$[b]`),
+		"after an apostrophe": get(`git.repo.don't$[b]`),
+	} {
+		err := eng.AddTrigger(Trigger{
+			Name:      "dotted-" + strings.ReplaceAll(strings.ReplaceAll(why, " ", "-"), ",", ""),
+			Condition: Condition{Subject: mm("demo.pr.*")},
+			Action:    readAction(read),
+		})
+		if err == nil || !strings.Contains(err.Error(), "quote the segment") {
+			t.Errorf("%s: install = %v, want the guidance to quote the segment", why, err)
+		}
 	}
 }
