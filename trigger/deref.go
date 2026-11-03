@@ -3,7 +3,10 @@ package trigger
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
+	"github.com/expr-lang/expr/ast"
+	"github.com/expr-lang/expr/parser"
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/exprs"
@@ -368,6 +371,96 @@ func legacyRefusal(where, ref string) error {
 		"now: write .[%s] for the value itself, typed, or $[%s] inside text. Text that means a "+
 		"literal dollar is written as an expression too: '$[\"$%s\"]'",
 		where, ref, ref, ref, ref)
+}
+
+// expressionRefusal is what is wrong with the first expression in doc that is refused at
+// install, nil for none. where names the document, `action.patch`.
+//
+// AN EXPRESSION THAT DOES NOT PARSE is refused here rather than at the firing, where it would
+// fail every firing of the rule, and before that, a firing's question of what the expressions
+// read of the subject (wantsOf) would have gone unasked.
+//
+// A WHOLE VALUE THAT IS A MAP OR A LIST LITERAL, `.[{findings: data.findings}]`, is refused for
+// what it does with absence. A plain path that is not there refuses the firing, and that is the
+// rule a value written into the store is held to. Inside a larger expression the same path is
+// null, and a literal is a larger expression: the map would be written with `findings: null`,
+// a fact nobody stated. In tony the map is a map already, and each value its own expression,
+// `{findings: .[data.findings]}`, so each field is held to the rule. A literal deeper in the
+// expression, `map(data.items, {{id: #.id}})`, builds what tony cannot, and stands.
+func expressionRefusal(where string, doc entity.Payload) error {
+	var err error
+	eachText(doc, func(s string) {
+		if err != nil {
+			return
+		}
+		for _, sp := range exprs.Expressions(s) {
+			tree, perr := parser.Parse(sp.Expr)
+			if perr != nil {
+				err = fmt.Errorf("%s: %q does not parse: %w", where, s, perr)
+				return
+			}
+			if !exprs.Whole(s) {
+				continue
+			}
+			if tony, ok := tonyLiteral(tree.Node); ok {
+				err = fmt.Errorf("%s: %q builds a %s inside an expression, where a field that "+
+					"is not there is null rather than a refusal. Write it in tony, each value its "+
+					"own expression: %s", where, s, literalKind(tree.Node), tony)
+				return
+			}
+		}
+	})
+	return err
+}
+
+// tonyLiteral is a map or a list literal respelled as tony, each value its own `.[…]`; false
+// for anything else. A key that is computed has no tony spelling, and the respelling is a
+// pattern for one.
+func tonyLiteral(n ast.Node) (string, bool) {
+	switch x := n.(type) {
+	case *ast.MapNode:
+		parts := make([]string, len(x.Pairs))
+		for i, pn := range x.Pairs {
+			pair := pn.(*ast.PairNode)
+			k, ok := pair.Key.(*ast.StringNode)
+			if !ok {
+				return "{name: .[expression], …}", true
+			}
+			key := k.Value
+			if !plainKey(key) {
+				key = strconv.Quote(key)
+			}
+			parts[i] = key + ": .[" + pair.Value.String() + "]"
+		}
+		return "{" + strings.Join(parts, ", ") + "}", true
+	case *ast.ArrayNode:
+		parts := make([]string, len(x.Nodes))
+		for i, el := range x.Nodes {
+			parts[i] = ".[" + el.String() + "]"
+		}
+		return "[" + strings.Join(parts, ", ") + "]", true
+	}
+	return "", false
+}
+
+func literalKind(n ast.Node) string {
+	if _, ok := n.(*ast.MapNode); ok {
+		return "map"
+	}
+	return "list"
+}
+
+// plainKey is whether a map key reads as itself unquoted in tony.
+func plainKey(k string) bool {
+	if k == "" || !identStart(k[0]) {
+		return false
+	}
+	for i := 1; i < len(k); i++ {
+		if !identPart(k[i]) && k[i] != '-' {
+			return false
+		}
+	}
+	return true
 }
 
 // refAt reports the length of the old spelling's reference token at the start of s, or 0 when

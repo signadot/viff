@@ -536,10 +536,19 @@ prompt.
 
 **A path that is not there refuses**: `.[subject.value.never]` on a subject without `never`,
 `.[items[5]]` where `items` holds two elements, `.[nosuch]`. A path through a null does not
-resolve either. Only a plain path is held to this: a name, then fields and indexes. An expression
-with `?.`, `??` or a call says for itself what absence means:
-`'$[subject.value?.handoff?.summary ?? "none"]'`. An expression that does not compile, or calls
-the clock, refuses the same way.
+resolve either. Only an expression that is a plain path is held to this: a name, then fields and
+indexes, and nothing else. Inside a larger expression an absent field is null:
+`'$[subject.value.never == "x" ? "yes" : "no"]'` gives `no`. `?.` and `??` say so on purpose,
+`'$[subject.value?.handoff?.summary ?? "none"]'`. A value that must be there is its own `.[…]`.
+
+So in a patch or a derive, verse refuses at install a value that is one map or list literal,
+`'.[{findings: data.findings, n: result}]'`, since an absent field in it would be written as null.
+The refusal gives the same value in tony, where each field is its own expression and held to the
+rule: `{findings: .[data.findings], n: .[result]}`. A literal deeper in an expression builds what
+tony cannot, and stands: `'.[map(data.items, {{id: #.id}})]'`, where the outer braces are the
+predicate and the inner ones the map. An expression in a patch or a derive that does not parse is
+refused at install too. One that does not compile, or calls the clock, refuses at the firing as an
+absent path does.
 
 In a patch or a derive the refusal fails the firing, and verse writes nothing. The store records
 an absent key as different from a null one. Writing null for an absent path would turn "the task

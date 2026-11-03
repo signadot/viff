@@ -830,6 +830,11 @@ func (a Action) validate() error {
 		if ref := legacyRef(part.doc); ref != "" {
 			return legacyRefusal(part.name, ref)
 		}
+		// Each expression parses, and a whole value is not a map or list literal, which would
+		// write null for what is absent (deref.go, expressionRefusal).
+		if err := expressionRefusal(part.name, part.doc); err != nil {
+			return err
+		}
 	}
 	// The derive's own shape and its content rule. Checked here so it runs over every action in
 	// the tree — validate recurses into a sequence's elements and a hook's action — while WHERE

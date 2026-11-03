@@ -161,3 +161,107 @@ func TestAHookWritesNullDataForATaskWithNoDocument(t *testing.T) {
 		t.Errorf("said = %q, want the task's text", s)
 	}
 }
+
+// AN EXPRESSION IS PARSED AT INSTALL, in a patch and in a derive: one that does not parse would
+// fail every firing of the rule, and a charter that cannot fire is the author's to hear about.
+func TestAnExpressionThatDoesNotParseIsRefusedAtInstall(t *testing.T) {
+	for why, patch := range map[string]entity.Payload{
+		"a whole value":  entity.Obj{"x": ".[subject.value.]"}.Payload(),
+		"text":           entity.Obj{"x": "see $[subject.value.(]"}.Payload(),
+		"under a field":  entity.Obj{"x": entity.Obj{"y": ".[1 +]"}.Payload()}.Payload(),
+		"in a list item": entity.Obj{"x": []any{"ok", ".[)]"}}.Payload(),
+	} {
+		eng, _ := newEng(t)
+		err := eng.AddTrigger(Trigger{
+			Name:      "unparsed",
+			Condition: Condition{Subject: prSubject("open")},
+			Action:    Action{Patch: patch},
+		})
+		if err == nil || !strings.Contains(err.Error(), "does not parse") {
+			t.Errorf("%s: install = %v, want it refused as not parsing", why, err)
+		}
+	}
+}
+
+// A WHOLE VALUE THAT IS A MAP OR A LIST LITERAL IS REFUSED: inside it, a field that is not there
+// is null, and the literal would write that null where a plain path refuses the firing. The
+// refusal spells the value in tony, which holds each field to the rule. A literal deeper in an
+// expression builds what tony cannot, and installs.
+func TestAWholeMapOrListLiteralIsRefusedAtInstall(t *testing.T) {
+	charter := func(part, value string) string {
+		return `
+- name: reflected
+  level: 0
+  match: {path: "git"}
+- name: findings
+  level: 10
+  match: {path: "drift"}
+---
+- name: lit
+  stratum: reflected
+  condition:
+    subject: {path: "git.commit.*"}
+  action:
+` + map[string]string{
+			"patch":  "    patch: {x: " + value + "}\n",
+			"derive": "    derive: [{path: \"drift.head\", value: {x: " + value + "}}]\n",
+		}[part]
+	}
+	install := func(t *testing.T, src string) error {
+		t.Helper()
+		trigs, _, strata, _, ok := parseBlock(src)
+		if !ok {
+			t.Fatalf("did not parse as a charter:\n%s", src)
+		}
+		eng := New(entitytest.Store(t), task.AutoResolver{})
+		for _, s := range strata {
+			if err := eng.addStratum(s); err != nil {
+				t.Fatalf("stratum %q: %v", s.Name, err)
+			}
+		}
+		return eng.addTrigger(trigs[0], "", RunnersChecked)
+	}
+	for _, part := range []string{"patch", "derive"} {
+		for value, want := range map[string]string{
+			`'.[{sha: subject.value.sha, n: subject.value.n}]'`: "{sha: .[subject.value.sha], n: .[subject.value.n]}",
+			`'.[[subject.value.sha, subject.name]]'`:            "[.[subject.value.sha], .[subject.name]]",
+		} {
+			err := install(t, charter(part, value))
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Errorf("%s %s: install = %v, want it refused with the tony spelling %s", part, value, err, want)
+			}
+		}
+		deeper := `'.[map(subject.value.items, {{id: #.id}})]'`
+		if err := install(t, charter(part, deeper)); err != nil {
+			t.Errorf("%s %s: refused (%v); a literal under a call builds what tony cannot", part, deeper, err)
+		}
+	}
+}
+
+// THE TONY SPELLING HOLDS EACH FIELD TO THE RULE: `{findings: .[…]}` with nothing there refuses
+// the firing, where the expression-built map would have written `findings: null`.
+func TestAFieldThatIsNotThereRefusesTheFiring(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, task.AutoResolver{})
+	tr := Trigger{
+		Name:      "absent",
+		Condition: Condition{Subject: prSubject("open")},
+		Action: Action{Patch: entity.Obj{
+			"stage": "done",
+			"f":     entity.Obj{"findings": ".[subject.value.missing]"}.Payload(),
+		}.Payload()},
+	}
+	if err := eng.AddTrigger(tr); err != nil {
+		t.Fatalf("does not install: %v", err)
+	}
+	subj := entity.RefAt("demo", "pr", "1")
+	payload := entity.Obj{"stage": "open"}.Payload()
+	if _, _, err := store.Write(entity.Write{At: subj.At(), Value: payload}); err != nil {
+		t.Fatal(err)
+	}
+	oc := occasion{commit: entity.Commit{Rev: store.Rev()}, snap: &snapCache{}, ev: entity.Event{Ref: subj, To: payload}}
+	_, err := tr.Action.applyOne("absent", oc, subj, eng, fromSubject)
+	if err == nil || !strings.Contains(err.Error(), "missing") {
+		t.Errorf("firing = %v, want it refused for the absent field", err)
+	}
+}
