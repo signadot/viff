@@ -1,0 +1,5 @@
+# A withdrawn question can outlive its run on the docket
+
+When the loop withdraws a standing question (a driver's Withdrawn, a say, a cancel), effDropGate cancels the gate's context and the machine moves on at once: the next effect asks the driver, and a driver whose process has died fails the run in the same breath. The question leaves the docket from the gate's own seam, when Registry.Resolve sees its context end, which runs concurrently. So the run can end before the question is off the docket. TestAGateQuestionGoesWithClaude sees it as "1 question(s) still on the docket after the run" (seen four times in full runs); in versed the drop is published through the task's EventWithdrawn, which would follow the task's terminal frame.
+
+The withdrawal should be settled before the loop moves on: effDropGate waits for the gate's seam to return, which is when the registry has taken the question down.
