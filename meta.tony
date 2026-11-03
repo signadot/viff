@@ -6,7 +6,9 @@ commits: []
 created: "2026-11-03T09:01:08.282464+01:00"
 duplicates: []
 id: y1n12a3gh12ksh4mx5n0
-labels: []
+labels:
+- agent
+- charter
 related_issues: []
 status: open
-updated: "2026-11-03T09:01:08.282464+01:00"
+updated: "2026-11-03T09:01:08.376124+01:00"
