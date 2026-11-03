@@ -299,7 +299,7 @@ params are the verb's:
 | Step | Params |
 |---|---|
 | `git.push` | `repo`, `from`, `ref`, `delete`, `force`; `exists` and `own`, filled by the runner |
-| `github.create-pr` | `repo`, `base`, `head`; `own`, filled by the runner |
+| `github.create-pr` | `repo`, `base`, `head`, `draft`; `own`, filled by the runner |
 | `github.update-pr` | `repo`, `head`, `base`; `own`, filled by the runner |
 | `github.list-prs` | `repo` |
 | `github.read-pr` | `repo`, `pr` |
