@@ -160,9 +160,11 @@ handshake, and is passed over until it is restarted on the new.
 
 **Which `runnerd`.** `up` looks beside the `verse` executable first (`make bin` puts both
 there), then in `~/.verse/bin/<version>/`, then on `PATH`; where none is found and this verse
-has a version, it installs `runnerd` and `verse-call-tool` of that version into
-`~/.verse/bin/<version>/` with `go install`, as it installs `o`. A development build has no
-version to install, and is refused with how to build them. `--runnerd-bin` names one.
+is a release, it installs `runnerd` and `verse-call-tool` of that release into
+`~/.verse/bin/<version>/` with `go install`, as it installs `o`. A `verse` built from a checkout
+is no release: Go stamps it a pseudo-version, which names a commit, with `+dirty` where the tree
+had changes, and nothing installs it by that. `up` refuses it with how to build the runner
+beside it. `--runnerd-bin` names one.
 
 A `runnerd` found beside `verse` or on `PATH` has to be the same build as `verse`: the same
 release, or built from the same commit of the same tree. One of another build is refused, with

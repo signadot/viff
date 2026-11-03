@@ -123,3 +123,21 @@ func TestCompareBuilds(t *testing.T) {
 		})
 	}
 }
+
+// Only a release is a version `go install` can fetch. A build from a checkout is stamped a
+// pseudo-version, +dirty or not, and verse up does not try to install one by it.
+func TestReleaseOf(t *testing.T) {
+	cases := map[string]string{
+		"v0.4.0":                                   "v0.4.0",
+		"v0.0.0-20261103141526-28c9a666cff9":       "",
+		"v0.0.0-20261103141526-28c9a666cff9+dirty": "",
+		"v0.4.1-0.20261103141526-28c9a666cff9":     "",
+		"v0.4.0+dirty":                             "",
+		"":                                         "",
+	}
+	for version, want := range cases {
+		if got := releaseOf(version); got != want {
+			t.Errorf("releaseOf(%q) = %q, want %q", version, got, want)
+		}
+	}
+}

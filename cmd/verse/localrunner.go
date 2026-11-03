@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"debug/buildinfo"
@@ -22,6 +23,7 @@ import (
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
+	"golang.org/x/mod/module"
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/runner"
@@ -403,8 +405,9 @@ func resolveRunnerd(explicit string, out io.Writer) (string, error) {
 		}
 	}
 	version := verseVersion()
-	cached := cachedRunnerd(version)
-	// Not run through sameBuild: the cache is keyed by this verse's version, so what it holds
+	release := releaseOf(version)
+	cached := cachedRunnerd(release)
+	// Not run through sameBuild: the cache is keyed by this verse's release, so what it holds
 	// is this build by construction.
 	if cached != "" && isFile(cached) {
 		return cached, nil
@@ -416,25 +419,40 @@ func resolveRunnerd(explicit string, out io.Writer) (string, error) {
 		return onPath, nil
 	}
 	if cached == "" {
-		return "", fmt.Errorf("verse up: no runnerd beside this verse or on PATH, and this is a development build with no version to install; " +
-			"build them beside it (`make bin`, or `go build -o <dir> ./cmd/runnerd ./cmd/verse-call-tool`), or pass --runnerd-bin, or --local-runner=false")
+		return "", fmt.Errorf("verse up: no runnerd beside this verse or on PATH, and this verse (%s) is no release to install one of; %s",
+			cmp.Or(version, "no version stamped"), buildBeside)
 	}
 	if _, err := exec.LookPath("go"); err != nil {
-		return "", fmt.Errorf("verse up: no runnerd beside this verse or on PATH, and no `go` to install one (%s/cmd/runnerd@%s); pass --runnerd-bin, or --local-runner=false", verseModule, version)
+		return "", fmt.Errorf("verse up: no runnerd beside this verse or on PATH, and no `go` to install one (%s/cmd/runnerd@%s); pass --runnerd-bin, or --local-runner=false", verseModule, release)
 	}
-	fmt.Fprintf(out, "verse up: installing runnerd and verse-call-tool %s into %s (once per version)…\n", version, filepath.Dir(cached))
+	fmt.Fprintf(out, "verse up: installing runnerd and verse-call-tool %s into %s (once per version)…\n", release, filepath.Dir(cached))
 	for _, cmd := range []string{"runnerd", "verse-call-tool"} {
-		install := exec.Command("go", "install", verseModule+"/cmd/"+cmd+"@"+version)
+		install := exec.Command("go", "install", verseModule+"/cmd/"+cmd+"@"+release)
 		install.Env = append(os.Environ(), "GOBIN="+filepath.Dir(cached))
 		install.Stdout, install.Stderr = out, out
 		if err := install.Run(); err != nil {
-			return "", fmt.Errorf("verse up: go install %s/cmd/%s@%s: %w; pass --runnerd-bin, or --local-runner=false", verseModule, cmd, version, err)
+			return "", fmt.Errorf("verse up: go install %s/cmd/%s@%s: %w; pass --runnerd-bin, or --local-runner=false", verseModule, cmd, release, err)
 		}
 	}
 	if !isFile(cached) {
-		return "", fmt.Errorf("verse up: installed runnerd %s but found none at %s; pass --runnerd-bin", version, cached)
+		return "", fmt.Errorf("verse up: installed runnerd %s but found none at %s; pass --runnerd-bin", release, cached)
 	}
 	return cached, nil
+}
+
+// buildBeside is what to do where there is no runnerd and none to install.
+const buildBeside = "build them beside it (`make bin`, or `go build -o <dir> ./cmd/verse ./cmd/runnerd ./cmd/verse-call-tool`), " +
+	"or pass --runnerd-bin, or --local-runner=false"
+
+// releaseOf is version where it is a release, which `go install` can fetch by it, and "" where it
+// is not: a pseudo-version, which Go stamps on a build from a checkout and names a commit the
+// module proxy may never have seen, or a version with a build suffix such as +dirty, which names
+// a tree nobody can fetch.
+func releaseOf(version string) string {
+	if version == "" || module.IsPseudoVersion(version) || strings.Contains(version, "+") {
+		return ""
+	}
+	return version
 }
 
 // rebuildBoth is what to do about a runnerd of another build.
@@ -469,7 +487,7 @@ func verseVersion() string {
 }
 
 // cachedRunnerd is where verse keeps a runnerd it installed: ~/.verse/bin/<version>/runnerd,
-// beside the `o` it installs (cachedO).
+// beside the `o` it installs (cachedO). version is a release (releaseOf); "" has no place.
 func cachedRunnerd(version string) string {
 	if version == "" {
 		return ""
