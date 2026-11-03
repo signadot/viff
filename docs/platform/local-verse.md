@@ -11,21 +11,42 @@ This page is for working with verse and Claude day to day.
 
 ## What runs, and where it lives
 
-| pitchfork daemon | what it is | listens on |
+| pitchfork daemon | what it is | listens on, by default |
 |---|---|---|
 | `store` | logd and docd (`o sys up`), on the data dir | `127.0.0.1:9790`–`9793` |
 | `versed` | `verse up --docd-addr … --local-runner=false`: the engine and the API, starting no runner of its own | `localhost:9797` |
 | `runner` | a `runnerd` offering scripts and claude, registered with versed | `127.0.0.1:9810` |
 
 They are declared in [`pitchfork.toml`](../../pitchfork.toml), at the root of this repository.
-What they read is under your home, and none of it is in the repository:
 
-| path | what it holds |
-|---|---|
-| `~/.local/bin` | `verse`, `runnerd`, `verse-call-tool`, and the `o` this tree pins |
-| `~/.config/verse-local.tony` | the verse's config: who you are, its address, the issuer it signs as |
-| `~/.verse/localhost_9797` | the data dir: the store, the issuer's key (`issuer.pem`) and logd's config |
-| `~/.verse/runner` | the runner's `runner.tony`, its `token` (0600) and its credentials, `env` (0600) |
+Every address and path they use is a setting. The settings and their defaults are in
+[`scripts/verse-local.env`](../../scripts/verse-local.env); yours go in
+`~/.config/verse-local.env`, which is read after it, in the same `NAME="value"` form:
+
+```sh
+# ~/.config/verse-local.env: a second local verse beside the first, keeping patches for a week
+VERSE_LOCAL_ADDR="localhost:19797"
+VERSE_LOCAL_DATA="$HOME/.verse/localhost_19797"
+VERSE_LOCAL_COMPACTION_CUTOFF="1w"
+```
+
+`setup` renders them into `~/.verse/local.env`, which each daemon's run line sources, so a
+setting changed takes a `setup` and a restart of what it touches.
+
+What the daemons read is under your home, and none of it is in the repository. With the defaults:
+
+| path | setting | what it holds |
+|---|---|---|
+| `~/.verse/local.env` | | the settings, rendered: what the run lines source |
+| `~/.local/bin` | `VERSE_LOCAL_BIN` | `verse`, `runnerd`, `verse-call-tool`, and the `o` this tree pins |
+| `~/.config/verse-local.tony` | `VERSE_LOCAL_CONFIG` | the verse's config: who you are, its address, the issuer it signs as |
+| `~/.verse/localhost_9797` | `VERSE_LOCAL_DATA` | the data dir: the store, the issuer's key (`issuer.pem`) and logd's config |
+| `~/.verse/runner` | `VERSE_LOCAL_RUNNER_DIR` | the runner's `runner.tony`, its `token` (0600) and its credentials, `env` (0600) |
+
+**The store keeps every patch for a day** (`VERSE_LOCAL_COMPACTION_CUTOFF`, `1d`, as on staging).
+Past the cutoff a read at a commit is approximate, and verse refuses it, so a completion hook
+whose task ran longer than the cutoff is lost. `setup` writes the cutoff into the data dir's
+`logd.verse.tony`, which says where it came from; the store reads it when it starts.
 
 Your `~/.config/verse.tony`, the config of whichever verse the CLI reaches by default, is not
 touched: the local verse is reached with `VERSE_CONFIG=~/.config/verse-local.tony`.
@@ -35,8 +56,8 @@ touched: the local verse is reached with `VERSE_CONFIG=~/.config/verse-local.ton
 - Go, as for any build of this repository.
 - [Claude Code](https://claude.com/claude-code) installed (`claude` on your `PATH`, in
   `~/.local/bin` is fine) and logged in.
-- pitchfork: `mise use -g pitchfork`. mise puts what it installs on your `PATH` only where it is
-  activated, so `~/.bashrc` (or your shell's) needs `eval "$(mise activate bash)"`.
+- [pitchfork](https://pitchfork.jdx.dev), installed as
+  [its own instructions](https://pitchfork.jdx.dev/installation) say.
 - On Linux, bubblewrap (`bwrap`), which the runner confines each task with. On Ubuntu 24.04 it needs
   an AppArmor profile, since unprivileged user namespaces are restricted there:
 
@@ -63,10 +84,13 @@ touched: the local verse is reached with `VERSE_CONFIG=~/.config/verse-local.ton
 scripts/verse-local.sh setup
 ```
 
-`setup` builds the binaries from this tree, and writes what is missing of the config, the data
-dir's key and logd config, and the runner's config and token. It adds `verse mcp` to Claude Code as
-`verse-local`, acting as your git email. It writes nothing that is there already, and says what it
-kept, so it is also how you rebuild after a pull.
+`setup` renders the settings, builds the binaries from this tree, and writes the store's logd
+config. It writes what is missing of the config, the data dir's key, and the runner's config and
+token, and it adds `verse mcp` to Claude Code as `verse-local`, acting as your git email. What
+was there already it keeps, and says so. It checks that the config and `runner.tony` name the
+addresses the settings do, and stops where they do not, since they are yours to edit. Run it
+again after a pull, which rebuilds `verse` and `runnerd` together, as `verse` requires, or after
+changing a setting.
 
 The runner's credential for Claude is yours to make, once:
 
@@ -100,6 +124,7 @@ pitchfork list                             # what runs
 pitchfork logs store versed runner --tail  # follow the logs
 pitchfork tui                              # a dashboard
 pitchfork restart versed runner            # after `setup` rebuilt the binaries
+pitchfork restart store                    # after changing the compaction cutoff
 pitchfork restart runner                   # after editing runner.tony or env
 pitchfork disable runner                   # keep it down, e.g. to run it by hand; `enable` undoes it
 ```
@@ -153,7 +178,10 @@ no network is refused for it. `setup` and the runner choose this by themselves; 
 
 | what you see | why, and what to do |
 |---|---|
-| `pitchfork: command not found` | mise is not activated in your shell: `eval "$(mise activate bash)"`, or `mise x -- pitchfork …` |
+| `pitchfork: command not found` | pitchfork is not installed, or not on your `PATH`: [its instructions](https://pitchfork.jdx.dev/installation) |
+| a daemon's log: `verse-local: no ~/.verse/local.env` | the settings are not rendered yet: `scripts/verse-local.sh setup` |
+| `setup`: `… does not say addr: …, which VERSE_LOCAL_ADDR does` | a setting changed, and the config or `runner.tony` that names it was written before: edit the line it names |
+| versed's log: `the runnerd at … is built from verse …, and this verse from …` | only for a `verse up` that starts its own runner; here, run `setup`, which builds both |
 | the runner's log: `sandbox bwrap: … Failed RTM_NEWADDR: Operation not permitted` | bubblewrap is not let make namespaces: the AppArmor profile above, or `VERSE_SANDBOX=none` |
 | the runner's log: `announcing to …: 401 Unauthorized … none names this one` | it is not registered yet: `scripts/verse-local.sh setup` with versed up |
 | a task fails: `exec: "claude": executable file not found` | `claude` is not on the `PATH` the runner starts with; `pitchfork.toml` puts `~/.local/bin` first |

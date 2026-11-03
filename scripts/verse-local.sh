@@ -1,27 +1,26 @@
 #!/usr/bin/env bash
 # verse-local.sh setup — what a verse on this machine needs before pitchfork runs it (pitchfork.toml;
-# docs/platform/local-verse.md):
+# docs/platform/local-verse.md), from its settings: scripts/verse-local.env, with yours over them in
+# ~/.config/verse-local.env.
 #
-#   - verse, runnerd and verse-call-tool built from this tree, and the `o` it pins, in ~/.local/bin;
-#   - ~/.config/verse-local.tony: who you are, where the verse is, and the issuer it signs as;
-#   - ~/.verse/localhost_9797: the data dir, with the issuer's key and logd's config;
-#   - ~/.verse/runner: the runner's config (scripts and claude) and its token, 0600;
-#   - Claude Code's MCP server for the verse ($MCP_NAME);
+#   - the settings, rendered into ~/.verse/local.env, which pitchfork's run lines source;
+#   - verse, runnerd and verse-call-tool built from this tree, and the `o` it pins, in the bin dir;
+#   - the verse's config: who you are, where the verse is, and the issuer it signs as;
+#   - the data dir, with the issuer's key, and logd's config with the compaction cutoff;
+#   - the runner's dir: its config (scripts and claude) and its token, 0600;
+#   - Claude Code's MCP server for the verse;
 #   - the runner's registration, once, where versed is up (else run setup again once it is).
 #
-# It writes only what is missing, and says what it kept. The runner's credentials are yours to
-# write, in ~/.verse/runner/env, 0600: setup says how. Then: pitchfork start -l.
+# Run it again after a pull, or a setting changed. It rebuilds the binaries, renders the settings
+# and the logd config afresh, and writes the rest only where missing, saying what it kept. The
+# runner's credentials are yours to write, in its dir's env, 0600: setup says how. Then:
+# pitchfork start -l, or a restart of what a change touched.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BIN="$HOME/.local/bin"
-CONFIG="$HOME/.config/verse-local.tony"
-DATA="$HOME/.verse/localhost_9797"
-RUNNER="$HOME/.verse/runner"
-ADDR="localhost:9797"
-RUNNER_URL="http://127.0.0.1:9810"
-RUNNER_NAME="${RUNNER_NAME:-laptop}"
-MCP_NAME="${MCP_NAME:-verse-local}"
+DEFAULTS="$REPO/scripts/verse-local.env"
+OVERRIDES="$HOME/.config/verse-local.env"
+RENDERED="$HOME/.verse/local.env"
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'verse-local: %s\n' "$*" >&2; exit 1; }
@@ -38,10 +37,63 @@ write_once() {
 	say "  wrote   $1"
 }
 
-[[ "${1:-}" == setup ]] || { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+# write_rendered path mode content: write path where it is missing or says something else.
+write_rendered() {
+	if [[ -e "$1" ]] && [[ "$(cat "$1")" == "${3%$'\n'}" ]]; then
+		say "  kept    $1"
+		return
+	fi
+	local what=wrote
+	[[ -e "$1" ]] && what=updated
+	mkdir -p "$(dirname "$1")"
+	(umask 077; printf '%s' "$3" >"$1")
+	chmod "$2" "$1"
+	say "  $what $(printf '%*s' $((7 - ${#what})) '')$1"
+}
+
+[[ "${1:-}" == setup ]] || { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+
+say "settings"
+# shellcheck source=verse-local.env
+. "$DEFAULTS"
+if [[ -f "$OVERRIDES" ]]; then
+	# shellcheck disable=SC1090
+	. "$OVERRIDES"
+	say "  read    $OVERRIDES, over $DEFAULTS"
+else
+	say "  read    $DEFAULTS ($OVERRIDES, yours over it, is not there)"
+fi
+names="$(sed -n 's/^\(VERSE_LOCAL_[A-Z_]*\)=.*/\1/p' "$DEFAULTS")"
+for n in $names; do
+	[[ -n "${!n:-}" ]] || die "$n is empty; scripts/verse-local.env gives it a default, so ~/.config/verse-local.env set it to nothing"
+done
+# A cutoff logd refuses would take the store down at start; one it reads as zero would leave its
+# own hour in place, the one this setting exists to replace.
+[[ "$VERSE_LOCAL_COMPACTION_CUTOFF" =~ ^([0-9]*\.?[0-9]+(ns|us|ms|s|m|h|d|w|y))+$ ]] &&
+	[[ "$VERSE_LOCAL_COMPACTION_CUTOFF" =~ [1-9] ]] ||
+	die "VERSE_LOCAL_COMPACTION_CUTOFF=$VERSE_LOCAL_COMPACTION_CUTOFF: a duration longer than nothing, as logd reads one (1d, 36h, 90m)"
+rendered="# The local verse's settings, rendered by scripts/verse-local.sh setup from
+# $DEFAULTS
+# and $OVERRIDES. pitchfork's run lines source it.
+# Edits here do not survive a setup: change a setting in $OVERRIDES.
+"
+for n in $names; do
+	rendered+="$n=$(printf '%q' "${!n}")"$'\n'
+done
+write_rendered "$RENDERED" 644 "$rendered"
+
+BIN="$VERSE_LOCAL_BIN"
+CONFIG="$VERSE_LOCAL_CONFIG"
+DATA="$VERSE_LOCAL_DATA"
+RUNNER="$VERSE_LOCAL_RUNNER_DIR"
+ADDR="$VERSE_LOCAL_ADDR"
+RUNNER_URL="http://$VERSE_LOCAL_RUNNER_LISTEN"
+RUNNER_NAME="$VERSE_LOCAL_RUNNER_NAME"
+MCP_NAME="$VERSE_LOCAL_MCP_NAME"
 
 say "binaries, in $BIN"
 mkdir -p "$BIN"
+# Together, always: verse refuses a runnerd of another build than its own.
 (cd "$REPO" && go build -o "$BIN/" ./cmd/verse ./cmd/runnerd ./cmd/verse-call-tool)
 say "  built   verse, runnerd, verse-call-tool"
 pin="$(awk '$1 == "github.com/signadot/tony-format/go-tony" {print $2}' "$REPO/go.mod")"
@@ -58,10 +110,12 @@ fi
 
 say "config"
 user="$(git -C "$REPO" config user.email || true)"
-[[ -n "$user" ]] || die "no git user.email to name you by; set it, or write $CONFIG yourself"
 issuer="auth:
   issuer: {url: \"http://$ADDR\", key: \"$DATA/issuer.pem\"}
 "
+if [[ ! -e "$CONFIG" ]]; then
+	[[ -n "$user" ]] || die "no git user.email to name you by; set it, or write $CONFIG yourself"
+fi
 write_once "$CONFIG" 644 "user: $user
 addr: $ADDR
 $issuer"
@@ -70,6 +124,11 @@ if ! grep -q 'issuer:' "$CONFIG"; then
 	printf '%s' "$issuer" >>"$CONFIG"
 	say "  added   the issuer to $CONFIG"
 fi
+# The config is yours once written, so a setting it carries is checked, not rewritten.
+grep -Eq "^addr: *\"?$ADDR\"? *$" "$CONFIG" ||
+	die "$CONFIG does not say addr: $ADDR, which VERSE_LOCAL_ADDR does; make them agree"
+grep -q "url: \"http://$ADDR\"" "$CONFIG" ||
+	die "$CONFIG's issuer url is not \"http://$ADDR\", which VERSE_LOCAL_ADDR makes it; make them agree"
 
 say "data dir"
 mkdir -p "$DATA"
@@ -79,14 +138,18 @@ else
 	(umask 077; openssl genrsa -out "$DATA/issuer.pem" 2048 2>/dev/null)
 	say "  wrote   $DATA/issuer.pem"
 fi
-# The logd config verse up writes: compaction with an hour's cutoff (cmd/verse/docd.go).
-write_once "$DATA/logd.verse.tony" 644 "compaction: {
-  cutoff: 1h
+# The store's logd config, from the setting; the store reads it at its next start.
+write_rendered "$DATA/logd.verse.tony" 644 "# Written by scripts/verse-local.sh setup on every run; edits here do not survive one.
+# Its cutoff is VERSE_LOCAL_COMPACTION_CUTOFF, from scripts/verse-local.env or, over it,
+# ~/.config/verse-local.env: change it there, run setup, and restart the store. A plain verse up
+# on this data dir writes its own over this one, and setup puts this back.
+compaction: {
+  cutoff: $VERSE_LOCAL_COMPACTION_CUTOFF
 }
 "
 
 say "runner"
-write_once "$RUNNER/runner.tony" 644 "listen: \"${RUNNER_URL#http://}\"
+write_once "$RUNNER/runner.tony" 644 "listen: \"$VERSE_LOCAL_RUNNER_LISTEN\"
 verse: {url: \"http://$ADDR\"}
 script:
   shellEnv: [PATH, HOME, USER, LANG]
@@ -103,6 +166,10 @@ agents:
       question: {ceiling: {}}
       verse: {ceiling: {}}
 "
+grep -Eq "^listen: *\"?$VERSE_LOCAL_RUNNER_LISTEN\"? *$" "$RUNNER/runner.tony" ||
+	die "$RUNNER/runner.tony does not say listen: \"$VERSE_LOCAL_RUNNER_LISTEN\", which VERSE_LOCAL_RUNNER_LISTEN does; make them agree"
+grep -q "url: \"http://$ADDR\"" "$RUNNER/runner.tony" ||
+	die "$RUNNER/runner.tony's verse url is not \"http://$ADDR\", which VERSE_LOCAL_ADDR makes it; make them agree"
 write_once "$RUNNER/token" 600 "$(openssl rand -hex 32)
 "
 if [[ -s "$RUNNER/env" ]]; then
@@ -127,7 +194,9 @@ else
 fi
 
 say "Claude Code"
-if claude mcp get "$MCP_NAME" >/dev/null 2>&1; then
+if ! command -v claude >/dev/null 2>&1; then
+	say "  no claude on PATH: add the MCP server once it is, by running setup again"
+elif claude mcp get "$MCP_NAME" >/dev/null 2>&1; then
 	say "  kept    the MCP server $MCP_NAME"
 else
 	claude mcp add "$MCP_NAME" -s user -e "VERSE_CONFIG=$CONFIG" -- "$BIN/verse" mcp >/dev/null
