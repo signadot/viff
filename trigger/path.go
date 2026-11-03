@@ -107,9 +107,6 @@ func addressPattern(v *ir.Node) ([]*ir.Node, error) {
 		// The same reading a subject's string form gets (entity.PatternNodes), so one spelling
 		// means one thing wherever it is written: a bare `*` is the open position, a quoted
 		// `"*"` the name that is an asterisk.
-		if err := dottedExpressions(v.String); err != nil {
-			return nil, err
-		}
 		segs, err := entity.PatternNodes(v.String)
 		if err != nil {
 			return nil, err
@@ -135,9 +132,9 @@ func addressPattern(v *ir.Node) ([]*ir.Node, error) {
 	return nil, fmt.Errorf("is a list of segments or a dotted path; got %v", v.Type)
 }
 
-// dot// dottedExpressions refuses a dotted address that an expression does not survive, and says
-// so before the address is parsed, whose own refusal would be about something else. A DOTTED
-// ADDRESS IS SPLIT ON ITS DOTS, and its grammar reads a `[` as an index: in
+// dottedExpressions refuses, at install, a dotted address that an expression does not survive,
+// and says so before the address is parsed, whose own refusal would be about something else. A
+// DOTTED ADDRESS IS SPLIT ON ITS DOTS, and its grammar reads a `[` as an index: in
 // `git.repo.$[subject.value.head]` the parse lands inside the expression. Quoted, the segment is
 // whole, `git.repo."$[subject.value.head]"`, and the firing interpolates it. A whole `.[…]` is a
 // value, not text, and an address is not one value: it is a list of segments, written as one.
@@ -166,6 +163,26 @@ func dottedExpressions(s string) error {
 		}
 	}
 	return nil
+}
+
+// addressText is a read's address as written, where it is written as a string: the string form,
+// or `at:` as one. False for an address written as a list, whose segments are values each.
+func addressText(n *ir.Node) (string, bool) {
+	body := ir.Uncomment(n)
+	if body == nil {
+		return "", false
+	}
+	switch body.Type {
+	case ir.StringType:
+		return body.String, true
+	case ir.ObjectType:
+		for i, f := range body.Fields {
+			if v := ir.Uncomment(body.Values[i]); f.String == readKeyAt && v != nil && v.Type == ir.StringType {
+				return v.String, true
+			}
+		}
+	}
+	return "", false
 }
 
 // validateAt is validate for an address written as a path. The rules are the same ones, said
@@ -373,9 +390,6 @@ func readSpec(n *ir.Node) (pathSpec, error) {
 	}
 	switch body.Type {
 	case ir.StringType:
-		if err := dottedExpressions(body.String); err != nil {
-			return spec, fmt.Errorf("!%s: %w", kind, err)
-		}
 		at, path, err := splitRead(body.String)
 		if err != nil {
 			return spec, fmt.Errorf("!%s %q: %w", kind, body.String, err)
@@ -480,6 +494,14 @@ func eachPathRead(n entity.Payload, fn func(*ir.Node) error) error {
 func readTargets(n entity.Payload) ([]pathSpec, error) {
 	var out []pathSpec
 	err := eachPathRead(n, func(node *ir.Node) error {
+		// The spelling of a dotted address is the author's, and checked here, at install, before
+		// it is parsed: at the firing the string is expanded, and what a bound value holds is
+		// not the author's to be told how to quote.
+		if s, ok := addressText(node); ok {
+			if err := dottedExpressions(s); err != nil {
+				return fmt.Errorf("!%s: %w", pathKind(node), err)
+			}
+		}
 		spec, err := readSpec(node)
 		if err != nil {
 			return err
