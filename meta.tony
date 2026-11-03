@@ -2,6 +2,7 @@
 blocked_by: []
 blocks: []
 branches: []
+closed_by: 2b59e3b8b89136fcfc91ea88effa8edcd3bbc112
 commits: []
 created: "2026-11-03T09:48:26.081701+01:00"
 duplicates: []
@@ -9,5 +10,5 @@ id: rb8avq5ah12kspmzx5n0
 labels:
 - task
 related_issues: []
-status: open
-updated: "2026-11-03T09:48:26.207709+01:00"
+status: closed
+updated: "2026-11-03T10:02:10.934476+01:00"
