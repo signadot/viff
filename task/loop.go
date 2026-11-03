@@ -224,10 +224,11 @@ type Task struct {
 	log      io.Writer
 
 	// touched only by the Run goroutine:
-	idc        int
-	seq        int                     // the boundary the machine last reached (for attribution)
-	gateCancel context.CancelCauseFunc // withdraws the standing question, saying why
-	cancelSeen bool                    // ctx.Done has already been turned into an input
+	idc         int
+	seq         int                     // the boundary the machine last reached (for attribution)
+	gateCancel  context.CancelCauseFunc // withdraws the standing question, saying why
+	gateSettled <-chan struct{}         // closed once the standing question's seam has returned
+	cancelSeen  bool                    // ctx.Done has already been turned into an input
 
 	// test hook, called at each boundary before the cancellation check:
 	onEnterBoundary func(seq int)
@@ -528,12 +529,12 @@ func (p *Task) perform(ctx context.Context, s state, effs []effect, replies chan
 			// question that reads as "the task died" and one that reads as "an operator
 			// redirected this run" — the same settling, and not the same news.
 			gctx, gcancel := context.WithCancelCause(ctx)
-			p.gateCancel = gcancel
 			tu, tok := v.tu, v.tok
 			// A driver that can take its proposal back is watched while the question stands,
 			// and the withdrawal names this question by its token, so one that arrives after
 			// the answer did is about a decision already made and changes nothing.
 			settled := make(chan struct{})
+			p.gateCancel, p.gateSettled = gcancel, settled
 			if w, ok := p.driver.(Withdrawer); ok {
 				if gone := w.Withdrawn(tu); gone != nil {
 					go func() {
@@ -558,7 +559,13 @@ func (p *Task) perform(ctx context.Context, s state, effs []effect, replies chan
 			if p.gateCancel != nil {
 				p.logf("↯ withdrawing the standing question: %s", v.why)
 				p.gateCancel(errors.New(v.why))
-				p.gateCancel = nil
+				// Off the docket BEFORE the loop moves on. The question comes down in the
+				// seam that posed it, as its context ends (Registry.Resolve), and what follows
+				// a withdrawal can end the run in one step: a driver whose process has gone.
+				// A run that ended ahead of its question would leave one standing about a
+				// task that is over, published after the frame that said so.
+				<-p.gateSettled
+				p.gateCancel, p.gateSettled = nil, nil
 			}
 
 		case effExecute:
@@ -589,7 +596,8 @@ func (p *Task) perform(ctx context.Context, s state, effs []effect, replies chan
 			// The person's turn, posed as the question it is. Its context is the standing
 			// question's, so a say or a pause withdraws it the way they withdraw a gate.
 			gctx, gcancel := context.WithCancelCause(ctx)
-			p.gateCancel = gcancel
+			settled := make(chan struct{})
+			p.gateCancel, p.gateSettled = gcancel, settled
 			p.turns++
 			q := GateQuestion{
 				ID: fmt.Sprintf("%s%st%d", p.ID, GateSep, p.turns), Origin: p.ID, Gate: "turn",
@@ -600,6 +608,7 @@ func (p *Task) perform(ctx context.Context, s state, effs []effect, replies chan
 			p.seam("the turn", replies,
 				func(err error) input { return inTurn{err: err, tok: tok} },
 				func() input {
+					defer close(settled)
 					res, err := p.turn.Resolve(gctx, q, ToolUse{Name: "turn", ID: q.ID})
 					return inTurn{res: res, err: err, tok: tok}
 				})
