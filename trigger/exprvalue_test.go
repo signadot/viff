@@ -67,7 +67,7 @@ func TestEachKeyComposesAndRefusesNull(t *testing.T) {
     subject: {path: "git.commit.*", value: {reviewed: pending}}
   action:
     patch: {reviewed: done}
-    derive: [{path: "drift.finding", value: !each {over: .[subject.value.f], key: ` + key + `, value: {was: .[item.was]}}}]
+    derive: [{path: "drift.finding", value: !each {over: .[subject.value.f], key: ` + key + `, value: {was: .[item.was], of: .[subject.value.reviewed]}}}]
 `)
 		if !ok {
 			t.Fatal("did not parse as a charter")
@@ -108,6 +108,10 @@ func TestEachKeyComposesAndRefusesNull(t *testing.T) {
 		for _, e := range store.ListAt([]string{"drift", "finding"}, 2+1+len(subj.Segs())+1, nil) {
 			segs := e.Ref.Segs()
 			keys = append(keys, segs[len(segs)-1])
+			// Every element reads the one subject the firing read, at the causing commit.
+			if of := entity.Str(e.Payload, "of"); of != "pending" {
+				t.Errorf("%s: of = %q, want the subject's value at the firing", e.Ref, of)
+			}
 		}
 		if strings.Join(keys, ",") != "a-x,b-y" {
 			t.Errorf("keys = %v, want a-x and b-y", keys)

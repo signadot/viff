@@ -1367,12 +1367,7 @@ const deriveFromField = "derivedFrom"
 // deriveContent resolves what a derive writes: its expressions evaluated against `subject` alone,
 // then the engine's linkage merged in.
 func (e *Engine) deriveContent(payload entity.Payload, chain string, oc occasion, subj entity.Ref, projection bool) (entity.Payload, error) {
-	// The wants are read off the derive itself, and `commit` is cleared whatever it asked for:
-	// install refuses subject.commit here, and clearing it means the expression cannot resolve
-	// either. Two ends saying the same thing, so relaxing one alone cannot open the other.
-	w := wantsOf(payload)
-	w.commit = false
-	sn, err := e.subjectFor(oc, subj, w)
+	sn, err := e.deriveSubject(oc, subj, payload)
 	if err != nil {
 		return nil, err
 	}
@@ -1386,17 +1381,21 @@ func (e *Engine) deriveContent(payload entity.Payload, chain string, oc occasion
 	return deriveLinkage(expanded, chain, subj, projection)
 }
 
-// eachContent resolves what ONE element derives: its `value` with `item` and the subject
-// evaluated, then the engine's linkage. deriveContent's twin, and it clears `commit` for the same
-// reason — a derive that writes something new on every lap wakes the level above, which wakes
-// the rule again.
-func (e *Engine) eachContent(spec *eachSpec, chain string, oc occasion, subj entity.Ref, item entity.Payload) (entity.Payload, error) {
-	w := wantsOf(spec.Value)
+// deriveSubject is the subject a derive's content reads: the parts its expressions ask for
+// (wantsOf), with `commit` cleared whatever they asked for. Install refuses subject.commit in a
+// derive, and clearing it here means the expression cannot resolve either: two ends saying the
+// same thing, so relaxing one alone cannot open the other. A derive that wrote something new on
+// every lap would wake the level above, which wakes the rule again.
+func (e *Engine) deriveSubject(oc occasion, subj entity.Ref, content entity.Payload) (map[string]any, error) {
+	w := wantsOf(content)
 	w.commit = false
-	sn, err := e.subjectFor(oc, subj, w)
-	if err != nil {
-		return nil, err
-	}
+	return e.subjectFor(oc, subj, w)
+}
+
+// eachContent resolves what ONE element derives: its `value` with `item` and the subject sn
+// evaluated, then the engine's linkage. deriveContent's twin. sn is deriveSubject's for
+// spec.Value, asked once per firing by the caller: it is the same for every element.
+func (e *Engine) eachContent(spec *eachSpec, chain string, oc occasion, subj entity.Ref, sn map[string]any, item entity.Payload) (entity.Payload, error) {
 	expanded, err := expandPatch(spec.Value, eachEnvFor(sn, item), e.readerFor(oc))
 	if err != nil {
 		return nil, err

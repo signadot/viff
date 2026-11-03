@@ -1181,6 +1181,13 @@ func (a Action) resolveDerives(chain string, oc occasion, subj entity.Ref, e *En
 				e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, d.addr(), err)
 				return nil, err
 			}
+			// What each element's `value` reads of the subject is one question, asked once here
+			// rather than once per element: the answer is the same for all of them.
+			valueSubj, err := e.deriveSubject(oc, subj, d.Each.Value)
+			if err != nil {
+				e.tracef("trigger %s: %v; not spawning", chain, err)
+				return nil, err
+			}
 			for i, item := range elems {
 				key, err := eachKey(d.Each, eachEnvFor(sn, item), i)
 				if err != nil {
@@ -1192,7 +1199,7 @@ func (a Action) resolveDerives(chain string, oc occasion, subj entity.Ref, e *En
 					segs = namedSegs(key) // author-named: the place plus the value, see deriveTarget.ID
 				}
 				ref := d.refFor(segs...)
-				payload, err := e.eachContent(d.Each, chain, oc, subj, item)
+				payload, err := e.eachContent(d.Each, chain, oc, subj, valueSubj, item)
 				if err != nil {
 					e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, ref, err)
 					return nil, err
