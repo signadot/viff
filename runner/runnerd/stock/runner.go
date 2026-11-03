@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/runner"
@@ -91,14 +92,19 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 	// And the agents' own programs, where the runner finds them: one installed outside the system
 	// directories, as a person's `claude` is under ~/.local/bin, would not be inside the sandbox.
 	programs = append(programs, c.agentPrograms(exec.LookPath)...)
-	// And what the operator keeps for every task to read: bound read only where it is, as the
-	// programs are. One that is not there is said, and left out.
+	// And what the operator keeps for every task to read (`readOnly:`), bound read only where it
+	// is at each launch. None may hold, or lie in, what the runner keeps from its tasks.
+	mirrors := filepath.Join(work, "mirrors")
+	if c.Repos != nil {
+		mirrors = c.Repos.Mirrors
+	}
+	if err := checkReadOnly(c.ReadOnly, map[string]string{"work": work, "control": control, "mirrors": mirrors}); err != nil {
+		return nil, err
+	}
 	for _, p := range c.ReadOnly {
 		if _, err := os.Stat(p); err != nil {
-			fmt.Fprintf(log, "runnerd: readOnly %s: %v; the tasks will not have it\n", p, err)
-			continue
+			fmt.Fprintf(log, "runnerd: readOnly %s: %v; the tasks will not have it while it is not there\n", p, err)
 		}
-		programs = append(programs, p)
 	}
 	blob, err := codec.Marshal(taskConfig{Config: c, Secrets: s, CallTool: tool, Networks: nets, ReachesVerse: c.reachesVerse}, codec.Tony)
 	if err != nil {
@@ -123,7 +129,7 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 	}
 	h := runnerd.NewSubprocessHandler(runnerd.SubprocessConfig{
 		Command: command, Env: func(l *runner.Launch) []string { return task.ShellEnv(c.shellEnv(c.doer(l))) }, Config: blob,
-		Sandbox: sb, Programs: programs, Repos: repos, AgentHosts: hosts,
+		Sandbox: sb, Programs: programs, ReadOnly: c.ReadOnly, Repos: repos, AgentHosts: hosts,
 		Work: work, Control: control, Log: log,
 	})
 	h.Describe(c.Describe(nets))
@@ -405,4 +411,46 @@ func envSet(env map[string]string) []string {
 		out = append(out, k+"="+env[k])
 	}
 	return out
+}
+
+// checkReadOnly refuses a readOnly path that holds, is, or lies in one of the runner's own
+// directories (kept, by what they are): its work, where each task's is the task's alone to write;
+// its mirrors, every repository it holds whoever's launch named it; and its control directory,
+// the tasks' sockets, which no sandbox binds. A read-only mount does not stop a process connecting
+// to a unix socket on it, so a readOnly naming the control directory's parent would hand every
+// task every task's control socket. Paths are compared as the filesystem resolves them, where
+// they exist.
+func checkReadOnly(paths []string, kept map[string]string) error {
+	names := slices.Sorted(maps.Keys(kept))
+	for _, p := range paths {
+		rp := resolved(p)
+		for _, name := range names {
+			k := kept[name]
+			if k == "" {
+				continue
+			}
+			rk := resolved(k)
+			if within(rp, rk) || within(rk, rp) {
+				return fmt.Errorf("readOnly: %s overlaps the runner's %s directory (%s), which no task may be given", p, name, k)
+			}
+		}
+	}
+	return nil
+}
+
+// resolved is p absolute and with its links followed, as far as it exists.
+func resolved(p string) string {
+	if a, err := filepath.Abs(p); err == nil {
+		p = a
+	}
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
+	}
+	return filepath.Clean(p)
+}
+
+// within is whether p is dir or lies under it.
+func within(p, dir string) bool {
+	rel, err := filepath.Rel(dir, p)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, "../")
 }

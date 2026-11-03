@@ -77,7 +77,8 @@ type Config struct {
 	// ReadOnly is host paths every task's sandbox has, read only, at the same path: what the
 	// operator keeps for the tasks to read and none of them may change, as a module cache or a
 	// package store filled ahead of time, so a task can build and test with no network to fetch
-	// from. Absolute, and refused where it is the task's to write (under the runner's work).
+	// from. Absolute and below /; the runner refuses at start one that holds or lies in its work,
+	// mirrors or control directory (checkReadOnly), and binds each at a launch where it is then.
 	ReadOnly []string `tony:"field=readOnly,omitzero"`
 
 	// reachesVerse is whether the runner carries the verse system's verbs to the verse it serves

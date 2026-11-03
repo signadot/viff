@@ -66,6 +66,10 @@ type SubprocessConfig struct {
 	// Programs are the other programs a task runs, found inside the sandbox where they are
 	// outside it: a script's verse-call-tool.
 	Programs []string
+	// ReadOnly are paths the operator keeps for every task to read (`readOnly:`), bound read
+	// only where they are as Programs are. Each is looked for at the launch: one removed since
+	// the runner started is left out of that task, and said, rather than failing every launch.
+	ReadOnly []string
 	// Repos checks out the repos a launch names, and performs what a task asks over its channel:
 	// a push, a proposal, a tracker's act. Nil refuses a launch that names repos, and opens no
 	// channel.
@@ -469,7 +473,7 @@ func (h *SubprocessHandler) start(ctx context.Context, p *proc, l *runner.Launch
 	out := tagged(h.Log, p.id)
 	cmd.Stdout, cmd.Stderr = out, out
 	cmd.ExtraFiles = append([]*os.File{lf, lifeR}, extra...) // fd 3, fd 4, and fd 5
-	if err := h.Sandbox.Wrap(cmd, root, network, h.Programs); err != nil {
+	if err := h.Sandbox.Wrap(cmd, root, network, withReadOnly(h.Programs, h.ReadOnly, out)); err != nil {
 		return err
 	}
 	if err := cmd.Start(); err != nil {
@@ -1028,4 +1032,18 @@ func (t *tagWriter) Write(b []byte) (int, error) {
 		return 0, err
 	}
 	return len(b), nil
+}
+
+// withReadOnly is programs and the readOnly paths there at this launch, each one not there said
+// on log and left out.
+func withReadOnly(programs, readOnly []string, log io.Writer) []string {
+	out := slices.Clip(programs)
+	for _, ro := range readOnly {
+		if _, err := os.Stat(ro); err != nil {
+			fmt.Fprintf(log, "runnerd: readOnly %s: %v; this task does not have it\n", ro, err)
+			continue
+		}
+		out = append(out, ro)
+	}
+	return out
 }
