@@ -71,9 +71,9 @@ func TestAHookSpawnReadsTheSubjectAtTheFiring(t *testing.T) {
 	}
 }
 
-// A HOOK'S SPAWN FOR A TASK WITH NO FIRING COMMIT REFUSES `subject.value` BY NAME, as the hook's
-// patch fails by name: an adopted task whose record says no `occurrence` has no revision to read
-// the subject at, and the task's own record is not the subject.
+// A HOOK'S SPAWN FOR A TASK WITH NO FIRING COMMIT REFUSES `subject.value` BY NAME: an adopted
+// task whose record says no `occurrence` has no revision to read the subject at, so the subject
+// has no value, and the task's own record is not read in its place.
 func TestAHookSpawnWithNoFiringCommitRefusesSubjectValueByName(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
@@ -116,12 +116,9 @@ func TestAHookSpawnWithNoFiringCommitRefusesSubjectValueByName(t *testing.T) {
 
 	select {
 	case hook := <-specs:
-		if hook.Chain != "review.onDone" || !strings.Contains(hook.Refusal, "subject.value: ") {
-			t.Fatalf("hook spawn %q refused with %q, want it refused naming subject.value", hook.Chain, hook.Refusal)
-		}
-		// And saying why: the subject holds `stage`; there is no commit to read it at.
-		if strings.Contains(hook.Refusal, `no "value"`) || !strings.Contains(hook.Refusal, "no causing commit") {
-			t.Errorf("refusal = %q, want the reason the subject could not be read, not that it has no value", hook.Refusal)
+		if hook.Chain != "review.onDone" || !strings.Contains(hook.Refusal, `environment.vars.STAGE: `) ||
+			!strings.Contains(hook.Refusal, `no "value" in subject`) {
+			t.Fatalf("hook spawn %q refused with %q, want STAGE refused for the subject's missing value", hook.Chain, hook.Refusal)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the hook never spawned")

@@ -1,7 +1,6 @@
 package launch
 
 import (
-	"slices"
 	"strings"
 	"testing"
 
@@ -95,8 +94,5 @@ func TestARefusalNamesTheFieldsBindExpands(t *testing.T) {
 	if bound.Script != ref || bound.Person != ref || bound.VirtualKey != ref || bound.Agent.Annotations["x"] != ref ||
 		bound.Environment.Systems["network"][0].Attributes["mode"] != ref {
 		t.Errorf("Bind expanded a field it carries as written: %+v", bound)
-	}
-	if got := s.Reads("a"); strings.Join(slices.Sorted(slices.Values(got)), ",") != strings.Join(want, ",") || len((Spec{Script: ref}).Reads("a")) != 0 {
-		t.Errorf("Reads = %q, want the fields Bind expands, and only those", got)
 	}
 }

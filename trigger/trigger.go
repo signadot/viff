@@ -15,10 +15,8 @@
 package trigger
 
 import (
-	"errors"
 	"fmt"
 	"maps"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -1099,12 +1097,16 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 	if a.Spawn == nil {
 		return nil, nil
 	}
-	value, valueWhy := e.spawnSubjectValue(a.Spawn, chain, oc, subj, root, src)
+	value, err := e.spawnSubjectValue(chain, oc, subj, root, src)
+	if err != nil {
+		e.tracef("trigger %s: %v; not spawning", chain, err)
+		return nil, err
+	}
 	b := bindingFor(root, subj, value)
 	if src == fromCause {
 		taskFacts(b)
 	}
-	return e.launchSpawn(a, chain, subj, b, valueWhy, oc.commit.Rev, oc.passed)
+	return e.launchSpawn(a, chain, subj, b, oc.commit.Rev, oc.passed)
 }
 
 // spawnSubjectValue is what `subject.value` is in a spawn's expressions: the subject's payload,
@@ -1116,24 +1118,20 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 // `vars: {ROUND: $[subject.value.round]}` is the subject's round. The task's own facts are the
 // binding's top-level names, `status`, `result`, `data` and `err`.
 //
-// Read only when an expression of the spawn reads it (Reads), since for a hook it is a read at
-// a revision. One that cannot be read — a task nothing in the charter started has no commit to
-// read at — is answered as the error, which a refusal of the launch says in place of the value it
-// lacks, as the hook's patch would say it.
-func (e *Engine) spawnSubjectValue(spec *launch.Spec, chain string, oc occasion, subj entity.Ref,
-	root entity.Payload, src refSource) (entity.Payload, error) {
+// A hook's firing with no causing commit has nothing to read the subject at (a task nothing in the
+// charter started), so its subject has no value, and an expression reading one is refused as any
+// absent path is. A read that fails fails the firing, as the hook's patch does.
+func (e *Engine) spawnSubjectValue(chain string, oc occasion, subj entity.Ref, root entity.Payload,
+	src refSource) (entity.Payload, error) {
 	if src != fromCause {
 		return root, nil
 	}
-	if len(spec.Reads(refSubject, subjPartRef, subjPartName)) == 0 {
+	if oc.commit.Rev == 0 {
+		e.tracef("trigger %s: no causing commit to read %s at; the spawn's %s has no %s",
+			chain, subj, refSubject, subjPartValue)
 		return nil, nil
 	}
-	v, err := e.subjectValueAt(oc, subj)
-	if err != nil {
-		e.tracef("trigger %s: %v; the spawn's %s.%s cannot be read", chain, err, refSubject, subjPartValue)
-		return nil, err
-	}
-	return v, nil
+	return e.subjectValueAt(oc, subj)
 }
 
 // derivedWrite is one entity an action derives, resolved: where it goes and what it holds.
@@ -1244,16 +1242,15 @@ func (a Action) resolveDerives(chain string, oc occasion, subj entity.Ref, e *En
 // revision this run is about, 0 when nothing caused it; passed is the gates the firing passed,
 // nil for a launch no firing's gates admitted.
 func (e *Engine) launchSpawn(a Action, chain string, subj entity.Ref, b launch.Binding,
-	valueWhy error, occurrence int64, passed []launch.Passed) (task.Handle, error) {
+	occurrence int64, passed []launch.Passed) (task.Handle, error) {
 	// A SUSPENDED SUBJECT STARTS NOTHING. A hook's writes and derives have landed by now —
 	// recording is not progress — and what it would start is parked here. The lift starts it.
 	if held := e.settled(mirror.TriggerOf(chain), subj); len(held) > 0 {
-		e.park(parkedLaunch{a: a, chain: chain, subj: subj, binding: b, valueWhy: valueWhy,
-			occurrence: occurrence, passed: passed})
+		e.park(parkedLaunch{a: a, chain: chain, subj: subj, binding: b, occurrence: occurrence, passed: passed})
 		e.tracef("%s: %s is suspended (%s); its launch is parked", chain, subj, strings.Join(held, ", "))
 		return nil, nil
 	}
-	return e.launch(a, chain, subj, b, valueWhy, occurrence, passed)
+	return e.launch(a, chain, subj, b, occurrence, passed)
 }
 
 // ownerSettle is how long a firing spawning `as: subject` waits for the subject's owner record to
@@ -1261,27 +1258,9 @@ func (e *Engine) launchSpawn(a Action, chain string, subj entity.Ref, b launch.B
 const ownerSettle = 250 * time.Millisecond
 
 // launch is launchSpawn past the suspension: what a parked launch re-enters when it is released.
-//
-// valueWhy is why the binding has no `subject.value` where the spawn reads it
-// (spawnSubjectValue).
 func (e *Engine) launch(a Action, chain string, subj entity.Ref, b launch.Binding,
-	valueWhy error, occurrence int64, passed []launch.Passed) (task.Handle, error) {
+	occurrence int64, passed []launch.Passed) (task.Handle, error) {
 	spec, refused := a.Spawn.Bind(b)
-	// A field refused where the subject could not be read says that, and not that the subject
-	// has no value: the subject may well hold what the field reads, and the cause is that there
-	// was nothing to read it at, which is what the hook's patch says in the same case. A field
-	// that does not read the value keeps its own refusal, and one that did not need it, an
-	// expression with a default, expands as it is.
-	var fields launch.Refusals
-	if valueWhy != nil && errors.As(refused, &fields) {
-		reads := a.Spawn.Reads(refSubject, subjPartRef, subjPartName)
-		for i := range fields {
-			if slices.Contains(reads, fields[i].Field) {
-				fields[i].Err = fmt.Errorf("%s.%s: %w", refSubject, subjPartValue, valueWhy)
-			}
-		}
-		refused = fields
-	}
 	// What the firing's gates settled, the engine's to say and nobody else's: it is what a
 	// credential vouches for, so a value a charter wrote there does not survive to it.
 	spec.Passed = append([]launch.Passed(nil), passed...)

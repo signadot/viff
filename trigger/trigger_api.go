@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -895,14 +895,22 @@ func gateID(owner, trigger, gate string, subjects []entity.Ref) string {
 // with it: its root is a Comment node wrapping the object. IsObj sees through the wrapper, so the
 // rule's condition matches; Fields unwraps, as the match does. A payload that is not an object (42,
 // true) has no named parts, so only `subject` is bound.
+//
+// CONVERTED ONCE where value is the payload, a rule's own firing and a gate's pose: its fields
+// are the entries of the whole, which an expression only reads.
 func bindingFor(payload entity.Payload, subject entity.Ref, value entity.Payload) launch.Binding {
 	b := launch.Binding{}
-	for k, v := range entity.Fields(payload) {
-		b[k] = anyOf(v)
+	whole := anyOf(value)
+	if m, ok := whole.(map[string]any); ok && value == payload {
+		maps.Copy(b, m)
+	} else {
+		for k, v := range entity.Fields(payload) {
+			b[k] = anyOf(v)
+		}
 	}
 	subj := map[string]any{subjPartRef: subject.String(), subjPartName: subject.Name()}
 	if value != nil {
-		subj[subjPartValue] = anyOf(value)
+		subj[subjPartValue] = whole
 	}
 	b[refSubject] = subj
 	return b
@@ -931,28 +939,19 @@ func anyOf(n entity.Payload) any {
 	return tonyeval.ToAny(n)
 }
 
-// payloadPaths is every node under a payload, keyed by its path: a field as `a.b`, and an ELEMENT
-// OF A LIST as `items[0]`, at any depth (`findings[0].id`, `m[0][1]`). A path into a list at the
-// root starts with its index (`[0]`).
+// payloadPaths is every field under a payload, keyed by its dotted path (`a.b`), at any depth of
+// objects: what the clobber advice compares between a derive and a patch (clobberNotes). A list
+// is one field, and its elements are not paths of their own: a patch writing `reviewers` writes
+// the list.
 //
-// A SEGMENT HOLDING A DOT OR A BRACKET IS SKIPPED, itself and everything under it: `a.b` as a
-// field name and `a` containing `b` would produce the same key, and one would silently win.
+// A SEGMENT HOLDING A DOT IS SKIPPED, itself and everything under it: `a.b` as a field name and
+// `a` containing `b` would produce the same key, and one would silently win.
 func payloadPaths(payload entity.Payload) map[string]entity.Payload {
 	out := map[string]entity.Payload{}
 	var walk func(n entity.Payload, prefix string)
 	walk = func(n entity.Payload, prefix string) {
-		// Past a comment wrapper, at the root and at every depth, for bindingFor's reason.
-		n = ir.Uncomment(n)
-		if n != nil && n.Type == ir.ArrayType {
-			for i, v := range n.Values {
-				path := prefix + "[" + strconv.Itoa(i) + "]"
-				out[path] = v
-				walk(v, path)
-			}
-			return
-		}
-		for k, v := range entity.Fields(n) {
-			if strings.ContainsAny(k, ".[]") {
+		for k, v := range entity.Fields(ir.Uncomment(n)) {
+			if strings.Contains(k, ".") {
 				continue
 			}
 			path := k
