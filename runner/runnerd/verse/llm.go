@@ -436,7 +436,7 @@ func resultContent(prev task.StepResult) string {
 // fail is not optional because the loop's contract depends on it. It is the only structural
 // way an agent can say "I could not": a driver that simply stops is read as SUCCESS by
 // everything downstream, so a launch that withheld fail would turn every failure into a
-// completed task with an excuse in its result. A charter deref'ing $result is exactly
+// completed task with an excuse in its result. A charter reading `result` is exactly
 // the caller that cannot afford that.
 //
 // An unknown name is an error rather than a skip. Quietly offering fewer tools than the

@@ -115,7 +115,7 @@ func TestTheGateCharterAsksEachPersonAQuestionWaitsOn(t *testing.T) {
 			t.Errorf("the message to %s asks %v, want the question it is about", who, msg["asks"])
 		}
 		// And its one line NAMES what reached them, resolved rather than left as the reference
-		// that asked for it: a deref that silently fails would show somebody `$subject.value…`.
+		// that asked for it: a deref that silently fails would show somebody `$[subject.value…]`.
 		text, _ := msg["text"].(string)
 		if !strings.Contains(text, "review") || strings.Contains(text, "$") {
 			t.Errorf("the message to %s says %q, want the rule that reached them, resolved", who, text)

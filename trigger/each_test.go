@@ -39,12 +39,12 @@ func TestEachInstallsInEitherLayout(t *testing.T) {
       derive:
       - path: "drift.finding"
         value: !each
-          over: $data.findings
-          key: $item.symbol
+          over: .[data.findings]
+          key: .[item.symbol]
           value:
-            symbol: $item.symbol
-            was: $item.was
-            about: $subject.name
+            symbol: .[item.symbol]
+            was: .[item.was]
+            about: .[subject.name]
 `,
 		`
 - name: reflected
@@ -62,7 +62,7 @@ func TestEachInstallsInEitherLayout(t *testing.T) {
     spawn: {agent: {name: verse}, prompt: "review $[sha]"}
     onDone:
       patch: {reviewed: done}
-      derive: [{path: "drift.finding", value: !each {over: $data.findings, key: $item.symbol, value: {symbol: $item.symbol}}}]
+      derive: [{path: "drift.finding", value: !each {over: .[data.findings], key: .[item.symbol], value: {symbol: .[item.symbol]}}}]
 `,
 	} {
 		trigs, _, strata, _, ok := parseBlock(src)
@@ -94,16 +94,16 @@ func TestEachInstallsInEitherLayout(t *testing.T) {
 // Every way of getting it wrong is refused at install, by name and by rule.
 func TestEachRefusals(t *testing.T) {
 	cases := []struct{ name, derive, want string }{
-		{"no address", `{over: $data.findings, value: {a: 1}}`, "needs a `key`"},
-		{"both key and id", `{over: $data.f, key: $item.k, id: $item.k, value: {a: 1}}`, "answered twice"},
-		{"id off the element", `{over: $data.f, id: $subject.name, value: {a: 1}}`, "rooted at $item"},
-		{"no over", `{key: $item.k, value: {a: 1}}`, `missing "over"`},
-		{"unknown field", `{over: $data.f, key: $item.k, value: {a: 1}, sweep: true}`, `no field "sweep"`},
-		{"over is text", `{over: "the $data.findings", key: $item.k, value: {a: 1}}`, "single reference"},
-		{"key off the element", `{over: $data.f, key: $subject.name, value: {a: 1}}`, "rooted at $item"},
-		{"value is scalar", `{over: $data.f, key: $item.k, value: 1}`, "must be an object"},
-		{"value reads state", `{over: $data.f, key: $item.k, value: {a: $data.total}}`, "and nothing else"},
-		{"value reads the occasion", `{over: $data.f, key: $item.k, value: {a: $subject.commit}}`, "and nothing else"},
+		{"no address", `{over: .[data.findings], value: {a: 1}}`, "needs a `key`"},
+		{"both key and id", `{over: .[data.f], key: .[item.k], id: .[item.k], value: {a: 1}}`, "answered twice"},
+		{"id off the element", `{over: .[data.f], id: .[subject.name], value: {a: 1}}`, "out of THE ELEMENT"},
+		{"no over", `{key: .[item.k], value: {a: 1}}`, `missing "over"`},
+		{"unknown field", `{over: .[data.f], key: .[item.k], value: {a: 1}, sweep: true}`, `no field "sweep"`},
+		{"over is text", `{over: "the $[data.findings]", key: .[item.k], value: {a: 1}}`, "one expression and nothing else"},
+		{"key off the element", `{over: .[data.f], key: .[subject.name], value: {a: 1}}`, "out of THE ELEMENT"},
+		{"value is scalar", `{over: .[data.f], key: .[item.k], value: 1}`, "must be an object"},
+		{"value reads state", `{over: .[data.f], key: .[item.k], value: {a: .[data.total]}}`, "and nothing else"},
+		{"value reads the occasion", `{over: .[data.f], key: .[item.k], value: {a: .[subject.commit]}}`, "and nothing else"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -161,7 +161,7 @@ func TestPlainDeriveIsUnchanged(t *testing.T) {
     subject: {path: "gh.issue.*", value: {label: urgent}}
   action:
     patch: {triaged: true}
-    derive: [{path: "signadot.feature", value: {priority: urgent, about: $subject.name}}]
+    derive: [{path: "signadot.feature", value: {priority: urgent, about: .[subject.name]}}]
 `
 	trigs, _, strata, _, ok := parseBlock(src)
 	if !ok {
@@ -202,7 +202,7 @@ func TestEachInAHookFacesTheLevelCheck(t *testing.T) {
     spawn: {agent: {name: verse}, prompt: "x"}
     onDone:
       patch: {reviewed: done}
-      derive: [{path: "drift.finding", value: !each {over: $data.f, key: $item.k, value: {a: $item.k}}}]
+      derive: [{path: "drift.finding", value: !each {over: .[data.f], key: .[item.k], value: {a: .[item.k]}}}]
 `
 	trigs, _, strata, _, ok := parseBlock(src)
 	if !ok {
@@ -240,7 +240,7 @@ func TestEachDerivesOnePerElement(t *testing.T) {
     subject: {path: "git.commit.*", value: {reviewed: pending}}
   action:
     patch: {reviewed: done}
-    derive: [{path: "drift.finding", value: !each {over: $subject.value.f, key: $item.sym, value: {sym: $item.sym, was: $item.was}}}]
+    derive: [{path: "drift.finding", value: !each {over: .[subject.value.f], key: .[item.sym], value: {sym: .[item.sym], was: .[item.was]}}}]
 `
 	trigs, _, strata, _, ok := parseBlock(src)
 	if !ok {
@@ -366,7 +366,7 @@ func TestEachRefusesAnElementWithNoKey(t *testing.T) {
     subject: {path: "git.commit.*", value: {reviewed: pending}}
   action:
     patch: {reviewed: done}
-    derive: [{path: "drift.finding", value: !each {over: $subject.value.f, key: $item.sym, value: {was: $item.was}}}]
+    derive: [{path: "drift.finding", value: !each {over: .[subject.value.f], key: .[item.sym], value: {was: .[item.was]}}}]
 `
 	trigs, _, strata, _, ok := parseBlock(src)
 	if !ok {
@@ -438,8 +438,8 @@ func TestEachSegsSeparatesKeysThatWouldFlattenAlike(t *testing.T) {
 //
 // This is what the construct is for — an agent reports twelve findings and each becomes a fact
 // with an address — and it is a different root from the trigger case above: `over` reads the
-// finished task's payload ($data), while each element's `value` still resolves against the
-// subject and $item alone.
+// finished task's payload (`data`), while each element's `value` still resolves against the
+// subject and `item` alone.
 func TestEachOverATaskAnswer(t *testing.T) {
 	src := `
 - name: reflected
@@ -460,12 +460,12 @@ func TestEachOverATaskAnswer(t *testing.T) {
       derive:
       - path: "drift.finding"
         value: !each
-          over: $data.findings
-          key: $item.symbol
+          over: .[data.findings]
+          key: .[item.symbol]
           value:
-            symbol: $item.symbol
-            says: $item.says
-            about: $subject.name
+            symbol: .[item.symbol]
+            says: .[item.says]
+            about: .[subject.name]
 `
 	trigs, _, strata, _, ok := parseBlock(src)
 	if !ok {

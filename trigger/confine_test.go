@@ -197,7 +197,7 @@ func TestAPackageMaySubjectOnASourceItOnlyReads(t *testing.T) {
     derive:
     - path: "drift.head"
       value:
-        repo: $subject.value.repo
+        repo: .[subject.value.repo]
 `)); err != nil {
 		t.Fatalf("a rule deriving from a source it reads was refused: %v", err)
 	}

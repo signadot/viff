@@ -76,15 +76,15 @@ verse c -a -f - <<'TONY'
     onDone:
       patch:
         stage:  assessed
-        review: { decision: $data.decision, risk: $data.risk, why: $data.why, by: $chain }
+        review: { decision: .[data.decision], risk: .[data.risk], why: .[data.why], by: .[chain] }
     onFailed:
       patch:
         stage:  assessed
         review:
           decision: escalate
           risk:     high
-          why:      "the supervisor did not decide: $err"
-          by:       $chain
+          why:      "the supervisor did not decide: $[err]"
+          by:       .[chain]
 
 - name: remit                  # the ceiling: an approval outside the remit becomes a promotion
   condition:

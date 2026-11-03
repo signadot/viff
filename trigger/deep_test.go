@@ -174,7 +174,7 @@ func TestAPackageKeepsTwoLevelsUnderOneAddress(t *testing.T) {
   action:
     derive:
     - path: "verse-dev.drift.head"
-      value: {sha: $subject.value.sha}
+      value: {sha: .[subject.value.sha]}
 `)); err != nil {
 		t.Fatalf("the tip rule did not install: %v", err)
 	}

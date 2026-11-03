@@ -547,8 +547,8 @@ func (g Gate) options() []task.Option {
 //	         waking commit did not change this subject (see causeFor).
 //	commit — the commit that CAUSED this firing. Never zeroed for pacing: a gated firing still
 //	         happened because of one particular commit, and that commit is the state the rule
-//	         was evaluated against, which is what $subject.value must be read at and what
-//	         $subject.commit names.
+//	         was evaluated against, which is what subject.value must be read at and what
+//	         subject.commit names.
 //
 // Before this they were one field and `parent` won, so a firing held at a gate reported no
 // causing commit at all.
@@ -629,8 +629,8 @@ func (oc occasion) snapshot(e *Engine) (entity.Snapshot, error) {
 // only grows, against a read budget that does not (entity.sessionBudget).
 //
 // A PREFIX rather than the address, so what it names is a SUPERSET of what the reads can reach:
-// a templated address (`demo.pr.$id`) narrows to the place it stands in, and its `$id` is
-// resolved inside that. A read whose FIRST segment is templated names no place at all, and there
+// an address with an expression in it (`[demo, pr, .[id]]`) narrows to the place it stands in,
+// and the expression is resolved inside that. A read whose FIRST segment is templated names no place at all, and there
 // the snapshot is taken whole — narrowing to what could not be worked out would answer "nothing"
 // for a read that should have found something, which is the one failure worth paying seconds to
 // avoid.
@@ -642,10 +642,9 @@ func firingWithin(t Trigger) [][]string {
 		}
 		for _, s := range segs {
 			// A segment that is a reference is not a place until the firing resolves it, and
-			// `demo.$kind.x` narrowed to `demo.$kind` is a narrowing to nothing at all. Any
-			// dollar at all, rather than a well-formed reference (refAt): a charter may hold a
-			// literal one, and reading the whole verse for a place named `$5` is the cheap way
-			// to be wrong here.
+			// `demo."$[kind]".x` narrowed to `demo."$[kind]"` is a narrowing to nothing at all.
+			// Any dollar at all, rather than a well-formed expression: reading the whole verse
+			// for a place named `$5` is the cheap way to be wrong here.
 			if strings.Contains(s, "$") {
 				return false
 			}
@@ -686,16 +685,16 @@ func firingWithin(t Trigger) [][]string {
 //
 // It has no target of its own: what an action acts on is the Condition's Subject. (This
 // replaced a `setRef` field and a charter-set `spawn.subject`, which expressed the same
-// thing twice, by side channel, and only existed because $subject was wired to the matched
-// entity rather than to the subject.)
+// thing twice, by side channel, and only existed because the subject reference was wired to
+// the matched entity rather than to the subject.)
 //
-// Bindings available to templates: each field of the changed payload by name, and the
-// subject — the RESOLVED subject, set last so a payload field cannot shadow it. A Patch
-// resolves them as a kpath deref, at any depth and keeping the value's type ($result,
-// $verse.review.step, $result.findings[0].id) — see deref.go, which is what lets a task's
-// output become a fact the next `when` can match rather than only text in the next prompt. A
-// Spawn's strings are go-tony expressions over them instead, `$[…]` ($[stage],
-// $[subject.value.sha]): see bindingFor and launch.Expand.
+// The names an action's expressions read: each field of the changed payload by name (`stage`,
+// `path`, …), and `subject`, the RESOLVED subject, set last so a payload field cannot shadow
+// it. A Patch value that is one `.[…]` and nothing else becomes the expression's value, keeping
+// its type (`.[result]`, `.[verse.review.step]`, `.[result.findings[0].id]`) — see deref.go,
+// which is what lets a task's output become a fact the next `when` can match rather than only
+// text in the next prompt. A `$[…]` inside text is written into the text, in a patch as in a
+// Spawn's strings (launch.Spec.Bind).
 //
 //tony:schemagen=verse-action,notag,comment=Doc,lineComment=Note
 type Action struct {
@@ -726,7 +725,7 @@ type Action struct {
 	// rules can ever address the same derived entity.
 	//
 	// Its content may reference the firing's SUBJECT and nothing else — every part of it,
-	// including $subject.value, and refused at install for anything further (validateDerive,
+	// including subject.value, and refused at install for anything further (validateDerive,
 	// via deriveMayReference). The line is not "no references": that was where this started
 	// and it was too strict, since including something of the subject in another entity is
 	// what a derive is FOR.
@@ -734,9 +733,9 @@ type Action struct {
 	// What the ordering actually needs is content the levels above cannot influence. Nothing
 	// above can write the subject — a patch touches only its own subject and a derive only
 	// climbs — so a read from above that wakes the rule without changing the subject resolves
-	// $subject.value to the same bytes, writes them to the same address, and dies as a no-op
+	// subject.value to the same bytes, writes them to the same address, and dies as a no-op
 	// the store ends by itself. That is what lets a rule read a HIGHER level without the read
-	// becoming a cycle. $subject.commit is the one part refused, because it is a function of
+	// becoming a cycle. subject.commit is the one part refused, because it is a function of
 	// WHEN the firing happened rather than of the subject, so a read from above does change
 	// it. The worked cycle is on deriveMayReference. See stratum.go and docs/strata.md.
 	Derive entity.Payload `tony:"field=derive,omitzero"`
@@ -821,6 +820,17 @@ func (a *Action) does() bool {
 // hook needs a task to complete, so any onX requires a spawn; each hook is itself an action
 // and is validated recursively.
 func (a Action) validate() error {
+	// THE OLD SPELLING, refused before anything is asked of the expressions: `$subject.value.sha`
+	// in a patch is text now, and would land on the subject as text (deref.go, legacyRef). The
+	// refusal says what to write, which no later check could.
+	for _, part := range []struct {
+		name string
+		doc  entity.Payload
+	}{{"action.patch", a.Patch}, {"action.derive", a.Derive}} {
+		if ref := legacyRef(part.doc); ref != "" {
+			return legacyRefusal(part.name, ref)
+		}
+	}
 	// The derive's own shape and its content rule. Checked here so it runs over every action in
 	// the tree — validate recurses into a sequence's elements and a hook's action — while WHERE
 	// a derive may land, and where a path read inside one may reach, are checked once per rule
@@ -1027,8 +1037,8 @@ func (a Action) apply(chain string, oc occasion, subjects []entity.Ref, e *Engin
 // a sequence tell "this element is running" from "this element is already finished" — the
 // distinction advanceSeq turns on.
 func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, src refSource) (task.Handle, error) {
-	// What $references read: the cause's payload for a hook, the subject's own otherwise.
-	// Resolved once, so a patch and a spawn in one action cannot disagree about what $x means.
+	// What expressions read by name: the cause's payload for a hook, the subject's own otherwise.
+	// Resolved once, so a patch and a spawn in one action cannot disagree about what `x` means.
 	root := e.refPayload(oc.ev, subj, src)
 
 	// EVERYTHING IS RESOLVED BEFORE ANYTHING IS WRITTEN. The patch is what takes the subject
@@ -1044,25 +1054,25 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 	// store's failure and not the charter's.
 	var patch entity.Payload
 	if a.Patch != nil {
-		// Resolve $references against the payload that fired this action, so a patch can
-		// write a value it read (a completed task's $result, a nested $verse.review.done)
-		// rather than only a constant. An unresolved reference fails the firing for the same
-		// reason a failed write does — and specifically must not be dropped: the store
-		// distinguishes an absent key from a null one, so omitting it would launder "the
-		// task never said" into "the task said nothing", which a match reads as a
-		// different fact.
+		// Evaluate expressions against the payload that fired this action, so a patch can
+		// write a value it read (a completed task's `.[result]`, a nested
+		// `.[verse.review.done]`) rather than only a constant. An absent plain path fails the
+		// firing for the same reason a failed write does — and specifically must not be
+		// dropped: the store distinguishes an absent key from a null one, so omitting it would
+		// launder "the task never said" into "the task said nothing", which a match reads as a
+		// different fact. `?.` and `??` are how a charter says what absence means.
 		sn, err := e.subjectFor(oc, subj, wantsOf(a.Patch))
 		if err != nil {
 			e.tracef("trigger %s: %v; not spawning", chain, err)
 			return nil, err
 		}
-		patch, err = expandPatch(a.Patch, refRoot(root, sn), e.readerFor(oc))
+		patch, err = expandPatch(a.Patch, refEnv(root, sn, src), e.readerFor(oc))
 		if err != nil {
 			e.tracef("trigger %s: patch on %s could not be resolved (%v); not spawning", chain, subj, err)
 			return nil, err
 		}
 	}
-	derived, err := a.resolveDerives(chain, oc, subj, e, root)
+	derived, err := a.resolveDerives(chain, oc, subj, e, root, src)
 	if err != nil {
 		return nil, err
 	}
@@ -1144,21 +1154,21 @@ type derivedWrite struct {
 // resolveDerives resolves every entity an action derives about one subject, and writes none of
 // them: each address and each content, in the order the action declares them.
 //
-// The only reference a derive may carry is $subject, checked at install (validateDerive) and
+// The only name a derive's expressions may read is subject, checked at install (validateDerive) and
 // resolved against a root holding nothing else. What the engine adds beyond that is the
 // linkage — which subject this derivation is about — on the precedent the spawn sets for its
 // own subject.
-func (a Action) resolveDerives(chain string, oc occasion, subj entity.Ref, e *Engine, root entity.Payload) ([]derivedWrite, error) {
+func (a Action) resolveDerives(chain string, oc occasion, subj entity.Ref, e *Engine, root entity.Payload, src refSource) ([]derivedWrite, error) {
 	var out []derivedWrite
 	for _, d := range a.derives() {
 		// A FAN-OUT: one derived entity per element of `over`, addressed by `key`.
 		//
 		// `over` resolves against the payload the action reads — the finished task's in a hook,
 		// which is where an answer with twelve findings arrives — while each element's `value`
-		// resolves against the subject and `$item` alone. Two roots, because they are two
+		// resolves against the subject and `item` alone. Two roots, because they are two
 		// different questions: what to walk, and what one element writes.
 		if d.Each != nil {
-			// The subject parts `over` and `key` reach for: `over: $subject.value.findings` is
+			// The subject parts `over` and `key` reach for: `over: .[subject.value.findings]` is
 			// the trigger-side spelling and it costs a read at the causing commit, which is
 			// exactly what wantsOf exists to ask for rather than always paying.
 			sn, err := e.subjectFor(oc, subj, wantsOf(d.Each.Over).or(wantsOf(d.Each.Key)))
@@ -1166,13 +1176,13 @@ func (a Action) resolveDerives(chain string, oc occasion, subj entity.Ref, e *En
 				e.tracef("trigger %s: %v; not spawning", chain, err)
 				return nil, err
 			}
-			elems, err := e.eachElements(d.Each, refRoot(root, sn))
+			elems, err := e.eachElements(d.Each, refEnv(root, sn, src))
 			if err != nil {
 				e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, d.addr(), err)
 				return nil, err
 			}
 			for i, item := range elems {
-				key, err := eachKey(d.Each, eachRootFor(sn, item), i)
+				key, err := eachKey(d.Each, eachEnvFor(sn, item), i)
 				if err != nil {
 					e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, d.addr(), err)
 					return nil, err
@@ -1194,14 +1204,14 @@ func (a Action) resolveDerives(chain string, oc occasion, subj entity.Ref, e *En
 		segs := deriveSegs(chainID(chain), subj)
 		if d.Key != nil {
 			// A KEYED derive: one entity per value, addressed the way a fan-out's elements are.
-			// The key is read from the same root the content is, so `key: $subject.value.sha`
-			// says "one of these per tip".
+			// The key is read from the same environment the content is, so
+			// `key: .[subject.value.sha]` says "one of these per tip".
 			sn, err := e.subjectFor(oc, subj, wantsOf(d.Key))
 			if err != nil {
 				e.tracef("trigger %s: %v; not spawning", chain, err)
 				return nil, err
 			}
-			key, err := keyText(d.Key, refRoot(root, sn))
+			key, err := keyText(d.Key, launch.Binding{refSubject: sn})
 			if err != nil {
 				e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, d.addr(), err)
 				return nil, err
@@ -1216,7 +1226,7 @@ func (a Action) resolveDerives(chain string, oc occasion, subj entity.Ref, e *En
 				e.tracef("trigger %s: %v; not spawning", chain, err)
 				return nil, err
 			}
-			key, err := keyText(d.ID, refRoot(root, sn))
+			key, err := keyText(d.ID, launch.Binding{refSubject: sn})
 			if err != nil {
 				e.tracef("trigger %s: derive into %s failed (%v); not spawning", chain, d.addr(), err)
 				return nil, err
@@ -1315,7 +1325,7 @@ func (e *Engine) launch(a Action, chain string, subj entity.Ref, b launch.Bindin
 	// AS A FAILED TASK, and not as an error from the firing. The firing's own writes have landed —
 	// the patch that took the subject out of the rule's selection with them — so a refusal that
 	// stopped here would leave the subject latched with nothing saying why. A failed task ends
-	// the way a launch the runner refuses ends: the action's onFailed runs, with this as `$err`,
+	// the way a launch the runner refuses ends: the action's onFailed runs, with this as `err`,
 	// and can write the subject down as failed. It is kept on the rule as well, for its author.
 	//
 	// THROUGH THE SPAWNER, with the refusal on the spec (launch.Spec.Refusal), so the task is

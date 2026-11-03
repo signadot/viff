@@ -104,7 +104,7 @@ type Minted struct {
 type Meta struct {
 	// Subject is the flow this task belongs to. It is carried on the entity as "flow"
 	// so a completion trigger can advance that subject when the task finishes, and does
-	// not collide with the $subject binding (the matched ref).
+	// not collide with the subject binding (the matched ref).
 	Subject string
 	// Occurrence is the store revision this RUN is about — the commit that woke the firing,
 	// or the store's own revision when a person typed `verse task run`. Zero when neither is
@@ -232,7 +232,7 @@ func TriggerOf(chain string) string {
 //
 // The provenance a task carries beyond its own state is Meta.
 // RecordFields is every field a task record carries — the flat vocabulary a completion hook's
-// `$name` resolves against, since a hook is handed the task's own payload.
+// expressions read by name, since a hook is handed the task's own payload.
 //
 // It is a LIST BESIDE THE WRITES rather than a derivation of them, and the failure mode of that
 // is what decides how it may be used: a field added below and not added here is missing from
@@ -1031,7 +1031,7 @@ func project(store entity.Store, id string, st entity.Obj, m Meta) int64 {
 }
 
 // ParseResult is the structured face of a driver's final answer: the answer document
-// projected beside the text as `data` so a charter can deref into it ($data.severity)
+// projected beside the text as `data` so a charter can read into it (`.[data.severity]`)
 // instead of pattern-matching prose. nil when the answer is not structured, and `result`
 // always carries the text either way — the two are one value with two faces, not
 // alternatives.
@@ -1040,7 +1040,7 @@ func project(store entity.Store, id string, st entity.Obj, m Meta) int64 {
 // parses fine as a tony string, so without that gate `data` would be present for practically
 // every answer and would signal nothing.
 //
-// This is what makes a reference the declaration: a charter that derefs $data.severity has
+// This is what makes a reference the declaration: a charter that reads `.[data.severity]` has
 // said it expects structure, and gets a loud failure when the agent returned prose instead —
 // no schema to declare up front, and no reliance on the agent reporting its own failure
 // honestly. A spawn that wants that failure moved EARLIER, onto the task rather than onto

@@ -144,8 +144,8 @@ shape_tony() {
 			        # A derive may reference its own subject and nothing else — which is
 			        # what lets its content be checked at install and what keeps a re-fire
 			        # a no-op. `.value` reads at the commit that caused the firing.
-			        about: $subject
-			        from: $subject.value.title
+			        about: .[subject.ref]
+			        from: .[subject.value.title]
 		TONY
 		;;
 	vote)

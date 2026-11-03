@@ -3,21 +3,21 @@ package trigger
 // `!get-path` and `!list-paths` are the references that reach beyond the firing's own subject.
 //
 // A charter could already CONDITION on outside state — `when` and `on` both name other entities
-// — but it could not copy any of it: every `$reference` an action can write reads the subject,
+// — but it could not copy any of it: every expression an action can write reads the subject,
 // or the task that just finished.
 //
 //	repo:   !get-path git.repo.acme
 //	branch: !get-path git.repo.acme.branch
 //	all:    !list-paths { at: "git.repo.*", path: branch }
-//	ref:    !get-path { at: "git.repo.$subject.value.head", path: branch }
+//	ref:    !get-path { at: [git, repo, .[subject.value.head]], path: branch }
 //
 // ONE ADDRESS, all the way down. A verse is one document (entity/doc.go, and `verse data`
 // answers it), so an entity address is a path prefix and the
 // path simply continues it into the payload. That used to need the object form's `path:` key,
 // because an id may contain dots and the colon spelling could not say where the id ended; the
 // dot spelling can, quoting where it must, so a whole address fits in one string (see
-// splitRead). The object form stays for what a string cannot hold: a `value:` predicate, and
-// a `$reference` id that reads better as its own key.
+// splitRead). The object form stays for what a string cannot hold, a `value:` predicate, and
+// for an address written as a list, each segment of which may be a whole `.[…]`.
 //
 // THE PAIR IS ONE GRAMMAR SPLIT BY CARDINALITY, and the names say which. `!get-path` answers with ONE
 // node and refuses anything that could name several; `!list-paths` answers with a list and is
@@ -76,6 +76,8 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/exprs"
+	"github.com/signadot/verse/launch"
 )
 
 // The two tags, and the payload-path key they share.
@@ -109,6 +111,9 @@ func addressPattern(v *ir.Node) ([]*ir.Node, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := dottedExpressions(v.String, segs); err != nil {
+			return nil, err
+		}
 		for _, sg := range segs {
 			if entity.PathIsDescend(sg) {
 				return nil, fmt.Errorf("`..` reaches every depth beneath it, and a path read " +
@@ -130,11 +135,31 @@ func addressPattern(v *ir.Node) ([]*ir.Node, error) {
 	return nil, fmt.Errorf("is a list of segments or a dotted path; got %v", v.Type)
 }
 
+// dottedExpressions refuses a dotted address that an expression does not survive. A DOTTED
+// ADDRESS IS SPLIT ON ITS DOTS, and an expression holds dots of its own: in
+// `git.repo.$[subject.value.head]` the split lands inside it. Quoted, the segment is whole,
+// `git.repo."$[subject.value.head]"`, and the firing interpolates it. A whole `.[…]` is a value,
+// not text, and an address is not one value: it is a list of segments, written as one.
+func dottedExpressions(s string, segs []*ir.Node) error {
+	if exprs.Whole(s) {
+		return fmt.Errorf("%q is one expression, and an address is a list of segments: write it "+
+			"as one, `[git, repo, .[subject.value.head]]`", s)
+	}
+	for _, seg := range segs {
+		if lit, ok := entity.PathLiteral(seg); ok && strings.Contains(lit, "$[") && len(exprs.Expressions(lit)) == 0 {
+			return fmt.Errorf("%q splits an expression on its dots: quote the segment that holds "+
+				"it, `git.repo.\"$[subject.value.head]\"`, or write the address as a list, "+
+				"`[git, repo, .[subject.value.head]]`", s)
+		}
+	}
+	return nil
+}
+
 // validateAt is validate for an address written as a path. The rules are the same ones, said
 // about segments rather than about three named dimensions.
 //
 // A SEGMENT ABOVE THE ENTITY IS A NAME OR AN OPEN POSITION — a literal or a bare `*` — and the
-// last is the entity being named, which may glob in a list read and may be a `$reference` in
+// last is the entity being named, which may glob in a list read and may be an expression in
 // either.
 //
 // What is REFUSED above the entity is a glob and a reference, and for one reason each: a glob
@@ -167,12 +192,14 @@ func (p pathSpec) validateAt() error {
 	if p.kind != GetPathTag {
 		return nil
 	}
-	// What makes it a GET: neither the entity nor the field may name several things.
-	if lit, ok := entity.PathLiteral(p.At[len(p.At)-1]); !ok || strings.ContainsAny(lit, "*?[") {
+	// What makes it a GET: neither the entity nor the field may name several things. An entity
+	// named by an expression, `.[subject.value.head]`, is not known until the firing binds it,
+	// and is asked again then: readAddress validates the address it expanded.
+	if lit, ok := entity.PathLiteral(p.At[len(p.At)-1]); !ok || strings.ContainsAny(lit, "*?[") && !exprs.Templated(lit) {
 		return fmt.Errorf("!%s %s: the last segment can name several entities. Use !%s, which "+
 			"answers with a list", p.kind, p.target(), ListPathsTag)
 	}
-	if strings.Contains(p.Path, "*") {
+	if strings.Contains(p.Path, "*") && !exprs.Templated(p.Path) {
 		return fmt.Errorf("!%s %s: the path %q has a wildcard, which can name several values. "+
 			"Use !%s, which answers with a list", p.kind, p.target(), p.Path, ListPathsTag)
 	}
@@ -337,6 +364,9 @@ func readSpec(n *ir.Node) (pathSpec, error) {
 		if err != nil {
 			return spec, fmt.Errorf("!%s %q: %w", kind, body.String, err)
 		}
+		if err := dottedExpressions(body.String, at); err != nil {
+			return spec, fmt.Errorf("!%s: %w", kind, err)
+		}
 		spec.At, spec.Path = at, path
 	case ir.ObjectType:
 		for i, f := range body.Fields {
@@ -402,9 +432,6 @@ const readKeyAt = "at"
 
 // validate enforces what an address may say at install.
 func (p pathSpec) validate() error {
-	if err := p.checkNoBinding(); err != nil {
-		return err
-	}
 	if len(p.At) == 0 {
 		return fmt.Errorf("!%s has no address: `at: \"a.kinded.path\"`", p.kind)
 	}
@@ -452,8 +479,8 @@ func readTargets(n entity.Payload) ([]pathSpec, error) {
 
 // resolveRead answers one path read at fire time: expand the references in its address, then
 // read from the firing's snapshot.
-func (e *Engine) resolveRead(node *ir.Node, root entity.Payload, oc occasion) (entity.Payload, error) {
-	spec, err := readAddress(node, root)
+func (e *Engine) resolveRead(node *ir.Node, env launch.Binding, oc occasion) (entity.Payload, error) {
+	spec, err := readAddress(node, env)
 	if err != nil {
 		return nil, err
 	}
@@ -467,8 +494,8 @@ func (e *Engine) resolveRead(node *ir.Node, root entity.Payload, oc occasion) (e
 // resolveReadAt is the same against a snapshot the caller already holds. A CONDITION has one —
 // the reader its own predicates are evaluated against — so its reads are answered from the world
 // the condition is deciding about, with no second replay and no chance of the two disagreeing.
-func resolveReadAt(node *ir.Node, root entity.Payload, snap entity.Snapshot) (entity.Payload, error) {
-	spec, err := readAddress(node, root)
+func resolveReadAt(node *ir.Node, env launch.Binding, snap entity.Snapshot) (entity.Payload, error) {
+	spec, err := readAddress(node, env)
 	if err != nil {
 		return nil, err
 	}
@@ -477,12 +504,13 @@ func resolveReadAt(node *ir.Node, root entity.Payload, snap entity.Snapshot) (en
 
 // readAddress expands a read's address and interprets it.
 //
-// The address is expanded FIRST — `id: $subject.value.head` is the point of the feature — and
-// expanded with no reader of its own: an address is not a place for another read, and allowing
-// one would make how many entities a firing touches a question only the store can answer.
-func readAddress(node *ir.Node, root entity.Payload) (pathSpec, error) {
+// The address is expanded FIRST — `at: [git, repo, .[subject.value.head]]` is the point of the
+// feature — against the firing's environment, and with no reader of its own: an address is not a
+// place for another read, and allowing one would make how many entities a firing touches a
+// question only the store can answer.
+func readAddress(node *ir.Node, env launch.Binding) (pathSpec, error) {
 	kind := pathKind(node)
-	addr, err := expandPatch(untag(node), root, nil)
+	addr, err := expandPatch(untag(node), env, nil)
 	if err != nil {
 		return pathSpec{}, err
 	}
@@ -578,7 +606,7 @@ func retag(n *ir.Node, kind string) *ir.Node { return n.Clone().WithTag("!" + ki
 
 // readerFor binds a firing's occasion into the reader the expander calls.
 func (e *Engine) readerFor(oc occasion) readFn {
-	return func(node *ir.Node, root entity.Payload) (entity.Payload, error) {
-		return e.resolveRead(node, root, oc)
+	return func(node *ir.Node, env launch.Binding) (entity.Payload, error) {
+		return e.resolveRead(node, env, oc)
 	}
 }

@@ -87,7 +87,7 @@ func TestADeriveThatOwnsItsFieldsIsNotAdvised(t *testing.T) {
     derive:
     - path: "notes.row"
       value:
-        sha: $subject.name
+        sha: .[subject.name]
 - name: gather
   stratum: high
   condition: {subject: {path: "notes.row.*", value: !not.has-path reviewed}}

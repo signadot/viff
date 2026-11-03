@@ -70,7 +70,7 @@ rules:
     - path: "repos.verse.git-issue"
       id: sweep
       value:
-        due: $subject.value.due
+        due: .[subject.value.due]
         open: !list-paths
           at: "git-issue.verse.issue.*"
           value:
@@ -94,15 +94,15 @@ rules:
     derive:
     - path: "repos.verse.git-issue.next-proposal"
       value: !each
-        over: $subject.value.open
-        id: $item
+        over: .[subject.value.open]
+        id: .[item]
         value:
-          issue: $item
+          issue: .[item]
           title: !get-path
-            at: [git-issue, verse, issue, $item]
+            at: [git-issue, verse, issue, .[item]]
             path: title
           updatedAt: !get-path
-            at: [git-issue, verse, issue, $item]
+            at: [git-issue, verse, issue, .[item]]
             path: updatedAt
 # 3. A proposal record with no proposal gets the stub: verse analyzes it next.
 #

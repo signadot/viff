@@ -56,7 +56,7 @@ func (w *watch) quiet(t *testing.T, why string) {
 // document, and the initial State event is what seeds it; a document seeded with null
 // holds only what has been patched since, so a deep write of one field surfaces as an
 // entity of one field. That is the level-state contract broken at its root: the trigger
-// engine matches on To and binds $vars from it, so a task's `note` vanishes from both
+// engine matches on To and binds names from it, so a task's `note` vanishes from both
 // the match and the agent's prompt.
 func TestWatchSubtreeLevelsFieldsWrittenBeforeTheWatch(t *testing.T) {
 	s := openStore(t)

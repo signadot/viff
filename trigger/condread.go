@@ -7,6 +7,8 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/exprs"
+	"github.com/signadot/verse/launch"
 )
 
 // A CONDITION may read another entity, and this is what makes that mean something.
@@ -42,7 +44,7 @@ import (
 //     WHETHER the rule fires and over WHAT, so a change to it changes the answer — and `touches`
 //     skips a commit on the argument that a trigger whose reads did not change would reach the
 //     same verdict. That argument is only true if this counts as a read. See Trigger.reads.
-//   - IT CANNOT NAME $subject. In an action the subject is settled and its fields are the useful
+//   - IT CANNOT NAME `subject`. In an action the subject is settled and its fields are the useful
 //     thing to address by; in a condition the subject is what is being SELECTED, so there is no
 //     one entity to be about yet. Refused by name below rather than resolving to nothing.
 func (e *Engine) conditionMatch(m Match, snap entity.Snapshot) (Match, error) {
@@ -57,8 +59,11 @@ func (e *Engine) conditionMatch(m Match, snap entity.Snapshot) (Match, error) {
 	if len(specs) == 0 {
 		return m, nil // the ordinary case: no read, no snapshot, nothing to do
 	}
-	expanded, err := expandPatch(pred, conditionRoot(), readerAt(snap))
-	if err != nil {
+	// The reads alone are answered. The predicate's own strings are a pattern's: a `!let`'s
+	// `.[name]` is tony's to bind when the match runs, and evaluating it here, against an
+	// environment that binds nothing, would refuse every one of them.
+	expanded := pred.DeepCopy()
+	if err := answerReads(expanded, conditionEnv(), readerAt(snap)); err != nil {
 		return nil, err
 	}
 	out := make(Match, len(m))
@@ -71,15 +76,15 @@ func (e *Engine) conditionMatch(m Match, snap entity.Snapshot) (Match, error) {
 
 // readerAt binds a snapshot into the reader the expander calls.
 func readerAt(snap entity.Snapshot) readFn {
-	return func(node *ir.Node, root entity.Payload) (entity.Payload, error) {
-		return resolveReadAt(node, root, snap)
+	return func(node *ir.Node, env launch.Binding) (entity.Payload, error) {
+		return resolveReadAt(node, env, snap)
 	}
 }
 
-// conditionRoot is what a condition's read may address by reference: nothing. It is an empty
-// record rather than the subject's, so `$subject` in a condition fails as an unknown reference —
-// see checkConditionReads, which says why in the rule's own terms at install.
-func conditionRoot() entity.Payload { return ir.FromMap(map[string]*ir.Node{}) }
+// conditionEnv is what a condition's read may name in its address: nothing. It binds no
+// `subject`, so `.[subject.ref]` in a condition fails as no such name — see
+// checkConditionReads, which says why in the rule's own terms at install.
+func conditionEnv() launch.Binding { return launch.Binding{} }
 
 // conditionReads is the subtrees a condition's own reads touch, for Trigger.reads.
 //
@@ -99,12 +104,12 @@ func conditionReads(m Match) []Subtree {
 }
 
 // checkConditionReads is the install-time half: a read in a condition is checked for shape like
-// any other, and refused outright if it names the subject.
+// any other, and refused outright if it names the subject, or a `!let` binding.
 //
 // The refusal is by NAME rather than by letting the expansion fail at fire time, because the two
-// failures read differently to whoever wrote the rule. "unknown reference $subject" invites them
-// to go looking for a typo; this says the thing that is actually true — a condition is what
-// chooses the subject, so there is not one yet to read a field from.
+// failures read differently to whoever wrote the rule. "no such name subject" invites them to go
+// looking for a typo; this says the thing that is actually true — a condition is what chooses
+// the subject, so there is not one yet to read a field from.
 func checkConditionReads(m Match) error {
 	pred := m.Predicate()
 	if pred == nil {
@@ -122,12 +127,33 @@ func checkConditionReads(m Match) error {
 		// spelling — an `at:` walked straight past this and failed at fire time instead.
 		segs := append(s.match().Segs(), s.Path)
 		for _, seg := range segs {
-			if strings.Contains(seg, "$"+refSubject) {
-				return fmt.Errorf("a condition's read cannot name $%s (%s): the subject is what "+
+			if namesSubject(seg) {
+				return fmt.Errorf("a condition's read cannot name %s (%s): the subject is what "+
 					"the condition selects, so the firing has none yet — address the entity "+
 					"literally, or read it in the action instead", refSubject, s.target())
 			}
 		}
+		if err := s.checkNoBinding(); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// namesSubject is whether a segment of a condition's read reads `subject`: in an expression, or
+// in the old spelling, `$subject`, which is refused here with the reason that is true of both.
+func namesSubject(seg string) bool {
+	if strings.Contains(seg, "$"+refSubject) {
+		return true
+	}
+	reads, err := exprs.ReadsIn(seg)
+	if err != nil {
+		return false
+	}
+	for _, r := range reads {
+		if r[0] == refSubject || r[0] == exprs.Env {
+			return true
+		}
+	}
+	return false
 }

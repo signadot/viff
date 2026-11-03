@@ -2,11 +2,9 @@ package trigger
 
 import (
 	"fmt"
-	"strings"
-
-	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/exprs"
 	"github.com/signadot/verse/mirror"
 )
 
@@ -27,27 +25,26 @@ func advise(t Trigger) []string {
 	return out
 }
 
-// adviseHookFlatRef names the reference a completion hook cannot resolve, at install rather
-// than at the firing nobody is watching.
+// adviseHookFlatRef names the name a completion hook cannot resolve, at install rather than at
+// the firing nobody is watching.
 //
-// A HOOK'S FLAT `$name` RESOLVES AGAINST THE TASK, not against the subject. That is right — a
-// hook is woken by a task finishing and is handed its record — and it is the opposite of what
-// the rule beside it reads like, because in the ACTION two lines above, the flat names ARE the
-// subject's:
+// A HOOK'S NAMES RESOLVE AGAINST THE TASK, not against the subject. That is right — a hook is
+// woken by a task finishing and is handed its record — and it is the opposite of what the rule
+// beside it reads like, because in the ACTION two lines above, the names ARE the subject's:
 //
 //	action:
-//	  patch: {stage: claimed, covering: !get-path {…}}   # $covering here is the subject's
+//	  patch: {stage: claimed, covering: !get-path {…}}   # covering here is the subject's
 //	  onDone:
-//	    patch: {sha: $covering}                          # …and here it is nothing at all
+//	    patch: {sha: .[covering]}                        # …and here it is nothing at all
 //
-// What that costs is the whole firing. The reference does not resolve, the patch is refused,
-// and the record stays exactly where it was — a cursor stuck in `claimed` with a completed task
-// beside it (git-issue 91jktrr3h12ksa8fgsn0). It IS written down, onto the task's own record
-// under `hook`, which is where an operator who already suspects a hook goes looking; this is for
-// the operator who does not yet.
+// What that costs is the whole firing. The name does not resolve, the patch is refused, and the
+// record stays exactly where it was — a cursor stuck in `claimed` with a completed task beside it
+// (git-issue 91jktrr3h12ksa8fgsn0). It IS written down, onto the task's own record under `hook`,
+// which is where an operator who already suspects a hook goes looking; this is for the operator
+// who does not yet.
 //
-// `$subject` is the one reference that still means the subject inside a hook, so the note says
-// to spell it `$subject.value.<name>`.
+// `subject` is the one name that still means the subject inside a hook, so the note says to
+// spell it `subject.value.<name>`.
 //
 // ADVICE, NOT A REFUSAL, and the reason is mirror.RecordFields: it is a list maintained beside
 // the writes, so a field added to a task record and not added there would make a correct hook
@@ -61,9 +58,9 @@ func adviseHookFlatRef(t Trigger) []string {
 				continue
 			}
 			out = append(out, fmt.Sprintf(
-				"%s names $%s, which a task record does not carry — a hook's flat names are the "+
+				"%s reads %s, which a task record does not carry — a hook's names are the "+
 					"TASK's (%s), where the action above it has the subject's. If %s is a field "+
-					"of the subject, spell it $subject.value.%s; the firing writes nothing at all "+
+					"of the subject, spell it subject.value.%s; the firing writes nothing at all "+
 					"as it stands",
 				h.chain, name, "status, result, data, err, flow, chain, …", name, name))
 		}
@@ -103,40 +100,24 @@ func hooksOf(a *Action) []hookHere {
 	return out
 }
 
-// flatRefs is every `$name` in a payload that names ONE identifier — no dot, so no record to
-// walk into. `$subject.value.x` and `$data.x` are not flat and are not this function's business.
+// flatRefs is every name a payload's expressions read from the environment (exprs.Reads), once
+// each, in the order first read: `.[covering]` and `.[covering.sha]` both read `covering`.
+// `subject` and `$env` are not task fields and are not this function's business.
 func flatRefs(p entity.Payload) []string {
 	seen := map[string]bool{}
 	var out []string
-	var walk func(n entity.Payload)
-	walk = func(n entity.Payload) {
-		n = ir.Uncomment(n)
-		if n == nil {
+	eachText(p, func(s string) {
+		reads, err := exprs.ReadsIn(s)
+		if err != nil {
 			return
 		}
-		if n.Type == ir.StringType {
-			s := n.String
-			for i := 0; i < len(s); i++ {
-				if s[i] != '$' {
-					continue
-				}
-				k := refAt(s[i:])
-				if k == 0 {
-					continue
-				}
-				if name := s[i+1 : i+k]; !strings.Contains(name, ".") && !seen[name] {
-					seen[name] = true
-					out = append(out, name)
-				}
-				i += k - 1
+		for _, r := range reads {
+			if name := r[0]; name != refSubject && name != exprs.Env && !seen[name] {
+				seen[name] = true
+				out = append(out, name)
 			}
-			return
 		}
-		for _, v := range n.Values {
-			walk(v)
-		}
-	}
-	walk(p)
+	})
 	return out
 }
 

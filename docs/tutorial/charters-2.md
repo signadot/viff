@@ -174,7 +174,7 @@ fix goes to, and the default branch of every repository:
 ```tony
 action:
   patch:
-    base:     !get-path {at: [verse-tutorial, repo, $subject.value.repo], path: branch}
+    base:     !get-path {at: [verse-tutorial, repo, .[subject.value.repo]], path: branch}
     branches: !list-paths {at: "verse-tutorial.repo.*", path: branch}
 ```
 
@@ -236,7 +236,7 @@ rules:
   condition:
     subject: {path: "verse-tutorial.incident.*", value: {stage: open}}
   action:
-    patch: {stage: routed, team: $subject.valeu.area}
+    patch: {stage: routed, team: .[subject.valeu.area]}
 EOF
 verse data verse-tutorial incident 1 -put '{stage: open, area: billing}'
 verse data verse-tutorial incident 1             # stage: open — the rule fired and failed

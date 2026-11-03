@@ -33,7 +33,7 @@ func TestALaunchTheEngineRefusedIsAFailedTaskOnRecord(t *testing.T) {
 		action: {
 			patch: {stage: developing},
 			spawn: {script: "true", environment: {vars: {DEEP: $[subject.value.changes.never]}, systems: {commands: {run: {}}, network: {mode: open}}}, autonomy: `+stepAsksTony+`},
-			onFailed: {patch: {stage: failed, was: $subject.value.stage}},
+			onFailed: {patch: {stage: failed, was: .[subject.value.stage]}},
 		},
 	}`)
 	resp.Body.Close()

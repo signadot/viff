@@ -43,7 +43,7 @@ func hookResultEngine(t *testing.T, answer string) (*Engine, entity.Store) {
 
 // A completion hook binds the TERMINAL payload. reapOnDone and mirror.Reflect are two
 // independent readers of the same task bus, so the hook used to see the pre-terminal
-// projection instead: $status bound "running" and $result was absent — the payload a
+// projection instead: status bound "running" and result was absent — the payload a
 // completion hook exists to read.
 func TestHookBindsTerminalStatusAndResult(t *testing.T) {
 	eng, store := hookResultEngine(t, "SHIPIT")
@@ -103,7 +103,7 @@ func TestHookResultPatchesSubjectAndDrivesNextTrigger(t *testing.T) {
 			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{
 				// the task's finding becomes a field on the subject
-				Patch: entity.Obj{"stage": "reviewed", "severity": "$result"}.Payload(),
+				Patch: entity.Obj{"stage": "reviewed", "severity": ".[result]"}.Payload(),
 			},
 		},
 	}); err != nil {
@@ -139,7 +139,7 @@ func TestHookUnresolvedReferenceFailsTheFiring(t *testing.T) {
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{
-				Patch: entity.Obj{"stage": "reviewed", "sev": "$nosuchfield"}.Payload(),
+				Patch: entity.Obj{"stage": "reviewed", "sev": ".[nosuchfield]"}.Payload(),
 			},
 		},
 	}); err != nil {

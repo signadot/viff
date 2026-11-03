@@ -93,7 +93,7 @@ import (
 //
 // A Subject is a plain Match too: on a firing it is matched against the entity the firing is
 // about — including a reflected task's own subject (its `flow`), so `subject: demo.pr.*`
-// on a completion trigger advances the PR that task was about. There is no deferred `$var`
+// on a completion trigger advances the PR that task was about. There is no deferred reference
 // form: the pattern IS the reference (see Trigger.resolveSubject).
 //
 //tony:schemagen=verse-match,notag,codec=custom

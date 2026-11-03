@@ -34,7 +34,7 @@ import (
 // AT THE INSTALL, AND AT A CHECK, every spawn as the charter writes it: an attribute still to be
 // bound is within where some value of it could be (systems.Environment.WithinAsWritten). The rule
 // records the task and what it could hand on (trigger.Trigger.Task, TaskEnvironment), and AT EACH
-// FIRING the spawn, bound, is held to that (spawnerFor): a `$repo` the firing binds to a
+// FIRING the spawn, bound, is held to that (spawnerFor): a `$[repo]` the firing binds to a
 // repository the task never reached does not launch. The rule keeps its own hold because it
 // outlives the task's record: a scoped task's record goes with its scope, and its install went
 // to baseline. Autonomy and credential are written into the spawn and never bound, so the

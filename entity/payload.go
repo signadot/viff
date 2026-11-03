@@ -23,7 +23,7 @@ import (
 // of the schema looks at.
 //
 // Nothing here is an *object* predicate. Field-shaped features — a trigger's `fields`
-// match, `$var` bindings — read fields through Get/Str, which answer empty for a payload
+// match, expression bindings — read fields through Get/Str, which answer empty for a payload
 // that has no fields, so a scalar payload simply does not match rather than erroring.
 type Payload = *ir.Node
 

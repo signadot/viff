@@ -68,7 +68,7 @@ func TestDefaultFrameDescribesNoGatesAsUngated(t *testing.T) {
 }
 
 // The other half of the complaint. The old prompt ended "stop with a one-paragraph
-// summary" — while trigger/deref.go is built to resolve $result.findings[0].severity
+// summary" — while trigger/deref.go is built to resolve `.[result.findings[0].severity]`
 // structurally out of that same final message. The prompt won, and structured answers came
 // back as prose. The default must not ask for a summary, and must say what the last
 // message is FOR, so a task that names a shape is not competing with the frame.

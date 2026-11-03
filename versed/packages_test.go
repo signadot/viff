@@ -578,7 +578,7 @@ func TestACharterInstallsAtAnyDepthAndWritesWhereItIs(t *testing.T) {
 		`{name: reflected, level: 0, match: {path: "git"}}`,
 		`{name: tip, level: 10, match: {path: "verse-dev.drift.head"}}`,
 		`{name: head-moved, stratum: reflected, condition: {subject: "git.head.verse"},
-		  action: {derive: [{path: "verse-dev.drift.head", value: {sha: $subject.value.sha}}]}}`,
+		  action: {derive: [{path: "verse-dev.drift.head", value: {sha: .[subject.value.sha]}}]}}`,
 	} {
 		if code, msg := installAt(t, ts.URL, "verse-dev.drift", def); code != 201 {
 			t.Fatalf("installing %s = %d: %s", def[:24], code, msg)

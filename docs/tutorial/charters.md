@@ -141,9 +141,9 @@ rules:
         kind:     !or [bug, feature]
         severity: !or [low, normal, high]
     onDone:
-      patch: {stage: reviewed, kind: $data.kind, severity: $data.severity}
+      patch: {stage: reviewed, kind: .[data.kind], severity: .[data.severity]}
     onFailed:
-      patch: {stage: unreviewed, why: $err}
+      patch: {stage: unreviewed, why: .[err]}
 EOF
 verse task                                 # the task, while it runs, and its result once it is done
 verse data verse-tutorial issue 1          # stage: reviewed, and the kind and severity the agent chose
@@ -210,11 +210,11 @@ rules:
     patch: {stage: raised}
     derive:
     - path: "verse-tutorial.bug"
-      id: $subject.name
+      id: .[subject.name]
       value:
-        about: $subject
-        title: $subject.value.title
-        priority: $subject.value.severity
+        about: .[subject.ref]
+        title: .[subject.value.title]
+        priority: .[subject.value.severity]
 - name: schedule
   stratum: bugs
   condition:

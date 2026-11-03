@@ -34,7 +34,7 @@ func TestAFiringThatCannotBeResolvedWritesNothing(t *testing.T) {
     subject: {path: "git.commit.*", value: {reviewed: pending}}
   action:
     patch: {reviewed: done}
-    derive: [{path: "drift.finding", value: !each {over: $subject.value.f, key: $item.sym, value: {sym: $item.sym, proposed: $item.proposedAt}}}]
+    derive: [{path: "drift.finding", value: !each {over: .[subject.value.f], key: .[item.sym], value: {sym: .[item.sym], proposed: .[item.proposedAt]}}}]
 `
 	trigs, _, strata, _, ok := parseBlock(src)
 	if !ok {

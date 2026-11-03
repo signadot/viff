@@ -253,10 +253,10 @@ rules:
     derive:
     - path: "lineage.trace"
       value:
-        pr:      $subject
-        title:   $subject.value.title
-        commit:  $subject.value.headSha
-        target:  $subject.value.base
+        pr:      .[subject.ref]
+        title:   .[subject.value.title]
+        commit:  .[subject.value.headSha]
+        target:  .[subject.value.base]
         # The commit is a different system's entity, and reaching it is where two real id
         # schemes bite. git keeps a commit under its repository — a sha is not a sound
         # cross-repo key, since two repositories have independent histories — and names the
@@ -268,15 +268,15 @@ rules:
         # It answers a one-element list rather than a value, which is the shape of "find the
         # thing that says this about itself" and the price of two systems that never agreed
         # on an id — which is the whole point being demonstrated.
-        message: !list-paths {at: "git.*.commit.*", value: {sha: $subject.value.headSha}, path: msg}
-        author:  !list-paths {at: "git.*.commit.*", value: {sha: $subject.value.headSha}, path: author}
+        message: !list-paths {at: "git.*.commit.*", value: {sha: .[subject.value.headSha]}, path: msg}
+        author:  !list-paths {at: "git.*.commit.*", value: {sha: .[subject.value.headSha]}, path: author}
 
 # The release does not correlate anything; it READS THE SET. A derive is about exactly one
 # subject, so fifty traces cannot feed one release — the level above reads them instead.
 # `patch` rather than `derive` on purpose: reads inside a patch are unconstrained.
 #
 # The predicate is what keeps that read from being a walk of every trace in the verse, and it
-# is expanded like the rest of the address — `$subject.value.target` is the release's OWN
+# is expanded like the rest of the address — `.[subject.value.target]` is the release's OWN
 # branch, so this is one rule rather than one rule per branch.
 #
 # EIGHT SEGMENTS, because a derived entity is as deep as what it is about: `lineage.trace`, the
@@ -290,10 +290,10 @@ rules:
   action:
     patch:
       stage:   shipped
-      prs:     !list-paths {at: "lineage.trace.*.*.*.*.*.*", value: { target: $subject.value.target }, path: pr}
-      commits: !list-paths {at: "lineage.trace.*.*.*.*.*.*", value: { target: $subject.value.target }, path: commit}
-      authors: !list-paths {at: "lineage.trace.*.*.*.*.*.*", value: { target: $subject.value.target }, path: author}
-      titles:  !list-paths {at: "lineage.trace.*.*.*.*.*.*", value: { target: $subject.value.target }, path: title}
+      prs:     !list-paths {at: "lineage.trace.*.*.*.*.*.*", value: { target: .[subject.value.target] }, path: pr}
+      commits: !list-paths {at: "lineage.trace.*.*.*.*.*.*", value: { target: .[subject.value.target] }, path: commit}
+      authors: !list-paths {at: "lineage.trace.*.*.*.*.*.*", value: { target: .[subject.value.target] }, path: author}
+      titles:  !list-paths {at: "lineage.trace.*.*.*.*.*.*", value: { target: .[subject.value.target] }, path: title}
     spawn: { script: 'echo shipping "$SUBJECT"; sleep 30', environment: {vars: {SUBJECT: $[subject.ref]}, systems: {network: {mode: open}}} }
 TONY
 ok "3 strata + 2 rules (lin-pr-lineage derives; lin-release-manifest reads the set)"

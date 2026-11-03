@@ -44,7 +44,7 @@ func TestParseResultOnlyStructure(t *testing.T) {
 }
 
 // An agent that has just read nine files narrates and fences before it answers, and that
-// was the observed shape of the failure: `data` absent, and a hook derefing $data.class
+// was the observed shape of the failure: `data` absent, and a hook reading `.[data.class]`
 // failing at patch time. A fenced answer is a formatting habit, not a refusal to answer, so
 // the document inside the fence is the answer — and it is the SAME document the spawn's
 // answer contract validated, because both go through answer.Extract.

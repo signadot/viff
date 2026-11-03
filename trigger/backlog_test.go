@@ -11,7 +11,7 @@ import (
 
 // waitEcho polls for the value an action's patch wrote, which is the only proof that
 // carries both facts at once: that the firing happened, and that the payload it fired on was
-// the whole entity (an unresolved $note fails the firing instead of writing).
+// the whole entity (an unresolved `.[note]` fails the firing instead of writing).
 func waitEcho(t *testing.T, s entity.Store, ref entity.Ref, want string) {
 	t.Helper()
 	deadline := time.After(5 * time.Second)
@@ -36,7 +36,7 @@ func echoTrigger(name string) Trigger {
 			"path":  pathOf("demo", "task", "*"),
 			"value": map[string]any{"stage": "ready"},
 		}},
-		Action: Action{Patch: entity.Obj{"echo": "$note"}.Payload()},
+		Action: Action{Patch: entity.Obj{"echo": ".[note]"}.Payload()},
 	}
 }
 

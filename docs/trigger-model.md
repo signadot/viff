@@ -226,7 +226,7 @@ a rule whose patch names a field the pull request does not have:
 ```tony
 - name: copies
   condition: {subject: {path: "demo.pr.*", value: {stage: open}}}
-  action: {patch: {stage: seen, reviewer: $assignee}}
+  action: {patch: {stage: seen, reviewer: .[assignee]}}
 ```
 
 After three failed firings, `verse charter` writes this on stderr:

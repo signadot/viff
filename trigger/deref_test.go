@@ -14,13 +14,12 @@ import (
 	"github.com/signadot/verse/task"
 )
 
-// derefRoot is the payload the reference tests resolve against.
+// derefEnv is the environment the expression tests evaluate against.
 //
-// It goes through refRoot rather than writing `subject` by hand, because $subject is a RECORD
-// now and the bare form is the record's `ref`. A fixture that spelled it as a string would be
-// testing a shape the engine never builds.
-func derefRoot() entity.Payload {
-	return refRoot(entity.Obj{
+// It goes through refEnv rather than writing `subject` by hand, because `subject` is a RECORD and
+// a fixture that spelled it some other way would be testing a shape the engine never builds.
+func derefEnv() launch.Binding {
+	return refEnv(entity.Obj{
 		"result": "SHIPIT",
 		"status": "done",
 		"count":  3,
@@ -30,60 +29,74 @@ func derefRoot() entity.Payload {
 		"verse":  entity.Obj{"review": entity.Obj{"done": true, "step": 2}},
 		"list":   []any{"a", "b"},
 		"obj":    entity.Obj{"k": "v"},
-	}.Payload(), subjectNode(entity.RefAt("demo", "pr", "1"), nil, 0))
+	}.Payload(), subjectRecord(entity.RefAt("demo", "pr", "1"), nil, 0), fromSubject)
 }
 
-// A patch value that is exactly one reference resolves to that reference's NODE, so the
-// value keeps its type. This is the property string interpolation could not have, and the
-// reason it matters is the store's predicates are type-exact: a 3 written as "3" (or as 3.0)
-// is a value `value: {count: 3}` does not match.
-func TestDerefWholeValueKeepsType(t *testing.T) {
-	root := derefRoot()
+// valueOf is what one patch value comes to, through the walk a firing makes (expandPatch).
+func valueOf(s string, env launch.Binding) (entity.Payload, error) {
+	got, err := expandPatch(entity.Obj{"v": s}.Payload(), env, nil)
+	if err != nil {
+		return nil, err
+	}
+	return entity.Get(got, "v"), nil
+}
+
+// A patch value that is one `.[…]` and nothing else is the expression's VALUE, so it keeps its
+// type. The reason it matters is the store's predicates are type-exact: a 3 written as "3" is a
+// value `value: {count: 3}` does not match.
+func TestWholeValueKeepsType(t *testing.T) {
+	env := derefEnv()
 	for _, tc := range []struct {
-		ref  string
+		in   string
 		want ir.Type
 	}{
-		{"$result", ir.StringType},
-		{"$count", ir.NumberType},
-		{"$ok", ir.BoolType},
-		{"$nul", ir.NullType},
-		{"$obj", ir.ObjectType},
-		{"$list", ir.ArrayType},
-		{"$verse.review.done", ir.BoolType},
-		{"$verse.review.step", ir.NumberType},
-		{"$list[1]", ir.StringType},
+		{".[result]", ir.StringType},
+		{".[count]", ir.NumberType},
+		{".[ok]", ir.BoolType},
+		{".[nul]", ir.NullType},
+		{".[obj]", ir.ObjectType},
+		{".[list]", ir.ArrayType},
+		{".[verse.review.done]", ir.BoolType},
+		{".[verse.review.step]", ir.NumberType},
+		{".[list[1]]", ir.StringType},
+		{`.[verse.review.missing ?? "none"]`, ir.StringType},
+		{`.[status == "done" ? count : nul]`, ir.NumberType},
 	} {
-		got, err := expandString(tc.ref, root)
+		got, err := valueOf(tc.in, env)
 		if err != nil {
-			t.Errorf("%s: %v", tc.ref, err)
+			t.Errorf("%s: %v", tc.in, err)
 			continue
 		}
 		if got.Type != tc.want {
-			t.Errorf("%s: type = %v, want %v", tc.ref, got.Type, tc.want)
+			t.Errorf("%s: type = %v, want %v", tc.in, got.Type, tc.want)
 		}
 	}
 
 	// the integer survives as an integer, not as text and not as a float
-	n, err := expandString("$count", root)
+	n, err := valueOf(".[count]", env)
 	if err != nil {
-		t.Fatalf("$count: %v", err)
+		t.Fatalf(".[count]: %v", err)
 	}
 	if n.Int64 == nil || *n.Int64 != 3 {
-		t.Errorf("$count: Int64 = %v, want 3", n.Int64)
+		t.Errorf(".[count]: Int64 = %v, want 3", n.Int64)
 	}
 }
 
-// A reference embedded in text interpolates and is a string — it was written as one.
-func TestDerefInterpolates(t *testing.T) {
-	root := derefRoot()
+// An expression embedded in text interpolates and is a string — it was written as one.
+func TestTextInterpolates(t *testing.T) {
+	env := derefEnv()
 	for _, tc := range []struct{ in, want string }{
-		{"got $result", "got SHIPIT"},
-		{"$status/$result", "done/SHIPIT"},
-		{"n=$count r=$ratio ok=$ok", "n=3 r=1.5 ok=true"},
-		{"step $verse.review.step of 3", "step 2 of 3"},
-		{"about $subject", `about demo.pr."1"`},
+		{"got $[result]", "got SHIPIT"},
+		{"$[status]/$[result]", "done/SHIPIT"},
+		{"n=$[count] r=$[ratio] ok=$[ok]", "n=3 r=1.5 ok=true"},
+		{"step $[verse.review.step] of 3", "step 2 of 3"},
+		{"about $[subject.ref]", `about demo.pr."1"`},
+		// A written null is `null` in text, as it is in a spawn's strings.
+		{"x=$[nul]", "x=null"},
+		// A composite is tony on one line, as it is in a spawn's strings.
+		{"saw $[obj] here", "saw {k: v} here"},
 	} {
-		got, err := expandString(tc.in, root)
+		got, err := valueOf(tc.in, env)
 		if err != nil {
 			t.Errorf("%q: %v", tc.in, err)
 			continue
@@ -94,49 +107,32 @@ func TestDerefInterpolates(t *testing.T) {
 	}
 }
 
-// A composite has no text form: inventing one would make "saw $result" mean something
-// different depending on what a task happened to return.
-func TestDerefCompositeInTextIsAnError(t *testing.T) {
-	_, err := expandString("saw $obj here", derefRoot())
-	if err == nil {
-		t.Fatal("interpolating an object should error")
-	}
-	if !strings.Contains(err.Error(), "no text form") {
-		t.Errorf("error should say why: %v", err)
-	}
-}
-
-// Absent and null are different answers. An absent reference fails the firing; a field
+// Absent and null are different answers. An absent plain path fails the firing; a field
 // written null resolves to null, because the store records that difference and a match
 // spells the two cases apart.
-func TestDerefAbsentErrorsNullResolves(t *testing.T) {
-	root := derefRoot()
-	if _, err := expandString("$nope", root); err == nil {
-		t.Error("an absent reference should error, not silently vanish")
+func TestAbsentErrorsNullResolves(t *testing.T) {
+	env := derefEnv()
+	for _, s := range []string{".[nope]", ".[verse.review.missing]", "saw $[nope]", ".[nul.x]"} {
+		if _, err := valueOf(s, env); err == nil {
+			t.Errorf("%s: an absent path should error, not silently vanish", s)
+		}
 	}
-	if _, err := expandString("$verse.review.missing", root); err == nil {
-		t.Error("an absent nested reference should error")
-	}
-	got, err := expandString("$nul", root)
+	got, err := valueOf(".[nul]", env)
 	if err != nil {
-		t.Fatalf("$nul: %v", err)
+		t.Fatalf(".[nul]: %v", err)
 	}
 	if got.Type != ir.NullType {
-		t.Errorf("$nul: type = %v, want Null", got.Type)
+		t.Errorf(".[nul]: type = %v, want Null", got.Type)
 	}
 }
 
-// A charter may hold a literal dollar, and a patch was never expanded before this change —
-// so anything that is not a well-formed reference is left exactly as written.
-//
-// There is no escape: "$$" is not "a literal dollar", it is a dollar followed by whatever
-// comes next, and "a$$b" therefore references $b. That matches launch.expand on the spawn
-// side, which has no escape either — one rule for both halves is worth more here than a
-// convention only one of them honours.
-func TestDerefLeavesLiteralDollars(t *testing.T) {
-	root := derefRoot()
-	for _, s := range []string{"$5.00", "100$", "$", "$ result", "$-x", "50%$"} {
-		got, err := expandString(s, root)
+// A `$` that does not open `$[` is text, and so is a `.[` that is not the whole value. The old
+// spelling, `$result`, is text here too: it is refused at install (legacyRef), not evaluated.
+// `$$[` is a literal `$[`.
+func TestTextThatIsNoExpressionIsLeftAsWritten(t *testing.T) {
+	env := derefEnv()
+	for _, s := range []string{"$5.00", "100$", "$", "$ result", "$-x", "50%$", "$result", "a.[result]", ".[0].name x"} {
+		got, err := valueOf(s, env)
 		if err != nil {
 			t.Errorf("%q should not error: %v", s, err)
 			continue
@@ -145,6 +141,9 @@ func TestDerefLeavesLiteralDollars(t *testing.T) {
 			t.Errorf("%q -> %q, want it unchanged", s, got.String)
 		}
 	}
+	if got, err := valueOf("$$[result]", env); err != nil || got.String != "$[result]" {
+		t.Errorf("$$[result] -> %v (err %v), want the literal $[result]", got, err)
+	}
 }
 
 // expandPatch walks the whole document, and must not lose what makes a patch a patch: the
@@ -152,14 +151,16 @@ func TestDerefLeavesLiteralDollars(t *testing.T) {
 // of null.
 func TestExpandPatchPreservesTagsAndNesting(t *testing.T) {
 	patch := entity.Obj{
-		"stage":   "$status",
-		"verdict": "$result",
-		"nested":  entity.Obj{"deep": "$verse.review.step"},
+		"stage":   ".[status]",
+		"verdict": ".[result]",
+		"nested":  entity.Obj{"deep": ".[verse.review.step]"},
 		"tmp":     nil,
+		"gone":    ".[status]",
 	}.Payload()
 	entity.Get(patch, "tmp").Tag = "!delete"
+	entity.Get(patch, "gone").Tag = "!delete"
 
-	got, err := expandPatch(patch, derefRoot(), nil)
+	got, err := expandPatch(patch, derefEnv(), nil)
 	if err != nil {
 		t.Fatalf("expandPatch: %v", err)
 	}
@@ -176,8 +177,11 @@ func TestExpandPatchPreservesTagsAndNesting(t *testing.T) {
 	if tag := entity.Get(got, "tmp").Tag; tag != "!delete" {
 		t.Errorf("mergeop tag lost: tmp.Tag = %q, want !delete", tag)
 	}
+	if g := entity.Get(got, "gone"); g.Tag != "!delete" || g.String != "done" {
+		t.Errorf("an expression under !delete = %q tagged %q, want done tagged !delete", g.String, g.Tag)
+	}
 	// the original is untouched — a charter is installed once and fired many times
-	if v := entity.Str(patch, "stage"); v != "$status" {
+	if v := entity.Str(patch, "stage"); v != ".[status]" {
 		t.Errorf("expandPatch mutated the installed patch: stage = %q", v)
 	}
 }
@@ -186,7 +190,7 @@ func TestExpandPatchPreservesTagsAndNesting(t *testing.T) {
 // costs nothing and cannot fail.
 func TestExpandPatchConstantIsUnchanged(t *testing.T) {
 	patch := entity.Obj{"stage": "reviewed", "n": 7}.Payload()
-	got, err := expandPatch(patch, derefRoot(), nil)
+	got, err := expandPatch(patch, derefEnv(), nil)
 	if err != nil {
 		t.Fatalf("expandPatch: %v", err)
 	}
@@ -195,56 +199,121 @@ func TestExpandPatchConstantIsUnchanged(t *testing.T) {
 	}
 }
 
-// resolvedSubject asks the root what `$subject` means, which is the contract — the record
-// behind it is an implementation detail, and reading the field directly would test that
-// instead.
-func resolvedSubject(t *testing.T, root entity.Payload) string {
+// resolvedSubject asks the environment what `subject.ref` is, which is the contract — the record
+// behind it is an implementation detail, and reading the field directly would test that instead.
+func resolvedSubject(t *testing.T, env launch.Binding) string {
 	t.Helper()
-	v, err := expandString("$subject", root)
+	v, err := valueOf(".[subject.ref]", env)
 	if err != nil {
-		t.Fatalf("$subject did not resolve: %v", err)
+		t.Fatalf("subject.ref did not resolve: %v", err)
 	}
 	return v.String
 }
 
-// refRoot must not round-trip through Go values: that turns a tony int into a float64, and
-// the store's predicates are type-exact.
-func TestRefRootPreservesNumberTypes(t *testing.T) {
-	ev := entity.Event{To: entity.Obj{"count": 3}.Payload()}
-	root := refRoot(ev.To, subjectNode(entity.RefAt("demo", "pr", "1"), nil, 0))
-	n := entity.Get(root, "count")
-	if n == nil || n.Int64 == nil || *n.Int64 != 3 {
-		t.Fatalf("count did not survive as an integer: %v", n)
+// `subject` whole is the record {ref, name, value}, and never carries the firing's commit, so a
+// whole-subject write does not stamp the subject anew on every firing.
+func TestSubjectWholeIsTheRecord(t *testing.T) {
+	ref := entity.RefAt("demo", "pr", "1")
+	env := refEnv(nil, subjectRecord(ref, entity.Obj{"stage": "open"}.Payload(), 0), fromSubject)
+	got, err := valueOf(".[subject]", env)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if s := resolvedSubject(t, root); s != `demo.pr."1"` {
+	if entity.Str(got, "ref") != ref.String() || entity.Str(got, "name") != "1" ||
+		entity.Str(entity.Get(got, "value"), "stage") != "open" || entity.Get(got, "commit") != nil {
+		t.Errorf(".[subject] = %v, want {ref, name, value} and no commit", got)
+	}
+	if w := wantsOf(entity.Obj{"s": ".[subject]"}.Payload()); !w.value || w.commit {
+		t.Errorf("wants of .[subject] = %+v, want the value and not the commit", w)
+	}
+	if w := wantsOf(entity.Obj{"s": "at $[subject.commit]"}.Payload()); w.value || !w.commit {
+		t.Errorf("wants of subject.commit = %+v, want the commit alone", w)
+	}
+	if w := wantsOf(entity.Obj{"s": ".[subject.ref + subject.name]"}.Payload()); w.value || w.commit {
+		t.Errorf("wants of the identity = %+v, want nothing to read", w)
+	}
+}
+
+// The environment must not round-trip a number into something a match reads differently: an int
+// comes back an int.
+func TestRefEnvKeepsIntegers(t *testing.T) {
+	env := refEnv(entity.Obj{"count": 3}.Payload(), subjectRecord(entity.RefAt("demo", "pr", "1"), nil, 0), fromSubject)
+	n, err := valueOf(".[count]", env)
+	if err != nil || n.Int64 == nil || *n.Int64 != 3 {
+		t.Fatalf("count did not survive as an integer: %v (err %v)", n, err)
+	}
+	if s := resolvedSubject(t, env); s != `demo.pr."1"` {
 		t.Errorf("subject = %q, want demo.pr.1", s)
 	}
 }
 
-// $subject is the one reserved reference and a payload field must not shadow it — the same
-// rule bindingFor states for the spawn side.
-func TestRefRootSubjectWins(t *testing.T) {
-	ev := entity.Event{To: entity.Obj{"subject": `demo.pr."999"`}.Payload()}
-	root := refRoot(ev.To, subjectNode(entity.RefAt("demo", "pr", "1"), nil, 0))
-	if s := resolvedSubject(t, root); s != `demo.pr."1"` {
+// `subject` is the one reserved name and a payload field must not shadow it — the same rule
+// bindingFor states for the spawn side.
+func TestRefEnvSubjectWins(t *testing.T) {
+	env := refEnv(entity.Obj{"subject": `demo.pr."999"`}.Payload(), subjectRecord(entity.RefAt("demo", "pr", "1"), nil, 0), fromSubject)
+	if s := resolvedSubject(t, env); s != `demo.pr."1"` {
 		t.Errorf("subject = %q, want the resolved subject demo.pr.1", s)
 	}
 }
 
-// A scalar payload has no named parts, so a reference into one fails rather than binding the
+// A scalar payload has no named parts, so a name read from one fails rather than binding the
 // whole value to an invented name — the rule bindingFor states for the spawn side.
-func TestRefRootScalarPayload(t *testing.T) {
-	ev := entity.Event{To: ir.FromInt(42)}
-	root := refRoot(ev.To, subjectNode(entity.RefAt("demo", "count", "1"), nil, 0))
-	if _, err := expandString("$anything", root); err == nil {
-		t.Error("a reference into a scalar payload should error")
+func TestRefEnvScalarPayload(t *testing.T) {
+	env := refEnv(ir.FromInt(42), subjectRecord(entity.RefAt("demo", "count", "1"), nil, 0), fromSubject)
+	if _, err := valueOf(".[anything]", env); err == nil {
+		t.Error("a name read from a scalar payload should error")
 	}
-	if s := resolvedSubject(t, root); s != `demo.count."1"` {
-		t.Errorf("$subject must still resolve for a scalar payload, got %q", s)
+	if s := resolvedSubject(t, env); s != `demo.count."1"` {
+		t.Errorf("subject.ref must still resolve for a scalar payload, got %q", s)
 	}
 }
 
-// An action's references read the SUBJECT, not the change that dispatched the firing. Those
+// A completion hook's environment has every fact of its task, as its spawn's does: `data` is
+// null where the task gave no document, and `result` and `err` are "".
+func TestAHooksEnvironmentHasEveryTaskFact(t *testing.T) {
+	env := refEnv(entity.Obj{"status": "done"}.Payload(), subjectRecord(entity.RefAt("demo", "pr", "1"), nil, 0), fromCause)
+	for in, want := range map[string]ir.Type{".[data]": ir.NullType, ".[result]": ir.StringType, ".[err]": ir.StringType} {
+		got, err := valueOf(in, env)
+		if err != nil || got.Type != want {
+			t.Errorf("%s = %v (err %v), want %v", in, got, err, want)
+		}
+	}
+	if _, err := valueOf(".[data.findings]", env); err == nil {
+		t.Error(".[data.findings] through a null data resolved; it should refuse")
+	}
+}
+
+// THE OLD SPELLING IS REFUSED AT INSTALL, with what to write instead: `$subject.value.sha` in a
+// patch is text now, and would land on the subject as text.
+func TestTheOldSpellingIsRefusedAtInstall(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		patch string
+		want  string // in the refusal; "" for none
+	}{
+		{"whole", "{sha: $subject.value.sha}", "write .[subject.value.sha]"},
+		{"in text", `{note: "saw $result"}`, "$result"},
+		{"in a read's address", "{r: !get-path {at: [git, repo, $subject.value.head]}}", "$subject.value.head"},
+		{"a literal dollar-word", `{home: "$HOME/x"}`, "'$[\"$HOME\"]'"},
+		{"the new spelling", `{sha: .[subject.value.sha], note: "saw $[result]", lit: '$["$HOME"]'}`, ""},
+		{"inside an expression", `{n: '.[$env["pr-number"]]'}`, ""},
+		{"a dollar that names nothing", `{price: "$5", pct: "50%$", d: "$$"}`, ""},
+	} {
+		patch, err := codec.ParseNode([]byte(tc.patch), codec.Tony)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		err = Action{Patch: patch}.validate()
+		switch {
+		case tc.want == "" && err != nil:
+			t.Errorf("%s: refused: %v", tc.name, err)
+		case tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)):
+			t.Errorf("%s: err = %v, want it to say %q", tc.name, err, tc.want)
+		}
+	}
+}
+
+// An action's names read the SUBJECT, not the change that dispatched the firing. Those
 // are the same entity for an ordinary rule, and different the moment a `when` puts the cause
 // somewhere else — where binding off the cause meant writing a CI status's fields onto a PR.
 func TestReferencesReadTheSubjectNotTheCause(t *testing.T) {
@@ -260,9 +329,9 @@ func TestReferencesReadTheSubjectNotTheCause(t *testing.T) {
 			When:    MatchWhen(mm("ci.status.*")),
 			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewed"}},
 		},
-		// $branch is a field of the PR. The CI status has no such field — and carries a
+		// branch is a field of the PR. The CI status has no such field — and carries a
 		// `branch` of its own precisely to catch a binding that read the cause instead.
-		Action: Action{Patch: entity.Obj{"shipped": "$branch"}.Payload()},
+		Action: Action{Patch: entity.Obj{"shipped": ".[branch]"}.Payload()},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
@@ -281,7 +350,7 @@ func TestReferencesReadTheSubjectNotTheCause(t *testing.T) {
 			return // bound from the subject
 		}
 		if got == "main" {
-			t.Fatalf("$branch bound from the CAUSE (the ci status), not the subject")
+			t.Fatalf("branch bound from the CAUSE (the ci status), not the subject")
 		}
 		select {
 		case <-deadline:
@@ -301,7 +370,7 @@ func TestReferencesOnASubjectOnlyTriggerReadTheEvent(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name:      "note",
 		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
-		Action:    Action{Patch: entity.Obj{"noted": "$branch", "stage": "seen"}.Payload()},
+		Action:    Action{Patch: entity.Obj{"noted": ".[branch]", "stage": "seen"}.Payload()},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}

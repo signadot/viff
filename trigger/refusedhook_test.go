@@ -13,7 +13,7 @@ import (
 )
 
 // A LAUNCH THE ENGINE REFUSES ENDS IN AN onFailed THAT READS AT THE FIRING, as any task's hook
-// does: `was: $subject.value.stage` is the subject as the condition selected it.
+// does: `was: .[subject.value.stage]` is the subject as the condition selected it.
 //
 // It was not. A refused task fails before anything has mirrored its record, so the hook's
 // occasion took its commit from a record with no `occurrence`, read at revision 0, and failed
@@ -42,7 +42,7 @@ func TestARefusedLaunchsOnFailedReadsTheSubjectAtTheFiring(t *testing.T) {
       autonomy: [{then: allow}]
       prompt: "deep=[$[subject.value.never]]"
     onFailed:
-      patch: {stage: failed, why: $err, was: $subject.value.stage}
+      patch: {stage: failed, why: .[err], was: .[subject.value.stage]}
 `)); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}

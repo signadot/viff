@@ -33,7 +33,7 @@ import (
 //
 // `done` and `ended` are the two ways a run CONCLUDES, and a run that concluded either way does
 // not run again at this shape (seqConcluded). They are separate fields rather than one, because
-// they are separate facts about the subject: `$verse.charter.review.done` is a documented thing
+// they are separate facts about the subject: `verse.charter.review.done` is a documented thing
 // to write a rule about, and "it finished" must not start meaning "it stopped somewhere".
 //
 // One reserved name rather than a family of flat keys, because the payload is the AUTHOR's
@@ -211,7 +211,7 @@ func (e *Engine) resumeSeq(chain string, subj entity.Ref, oc occasion) bool {
 	}
 	e.publishSeq(carrierChain, oc.parent, subj, entity.Obj{seqStep: idx + 1})
 	// A resumed sequence is downstream of the task that just completed, so its elements
-	// read that task's facts — $result and the rest — exactly as a hook does.
+	// read that task's facts — result and the rest — exactly as a hook does.
 	e.advanceSeq(carrierChain, *carrier, idx+1, oc, subj, fromCause)
 	return true
 }
@@ -282,7 +282,7 @@ func (e *Engine) shapeMatches(chain string, subj entity.Ref, want string) bool {
 // overlay here would replace the whole `verse` key and erase a sibling trigger's progress.
 //
 // It carries the firing's causal chain for the same reason (see causal.go): progress lands on
-// the SUBJECT, under a root a charter can match on — `$verse.review.done` is a documented thing
+// the SUBJECT, under a root a charter can match on — `verse.review.done` is a documented thing
 // to write a rule about — so a progress write can wake a rule exactly as an action's own write
 // can, and a hop it did not count would be a hop the throttle cannot see. parent is 0 wherever
 // the sequence resumed off a task completing, which is the world coming back and the right

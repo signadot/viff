@@ -59,7 +59,7 @@ rules:
     subject: {path: "verse.schedule.minutely.tick.*"}
   action:
     derive:
-    - {path: "verse.schedule", id: time,     value: {time: $subject.value.time}}
+    - {path: "verse.schedule", id: time,     value: {time: .[subject.value.time]}}
 
 # The calendar: everything that changes by the day, from the hourly tick, so `date` commits
 # once a day and a rule reading it wakes once a day.
@@ -69,9 +69,9 @@ rules:
     subject: {path: "verse.schedule.hourly.tick.*"}
   action:
     derive:
-    - {path: "verse.schedule", id: date,     value: {date: $subject.value.date}}
-    - {path: "verse.schedule", id: year,     value: {year: $subject.value.year}}
-    - {path: "verse.schedule", id: month,    value: {month: $subject.value.month}}
-    - {path: "verse.schedule", id: day,      value: {day: $subject.value.day}}
-    - {path: "verse.schedule", id: weekday,  value: {weekday: $subject.value.weekday}}
-    - {path: "verse.schedule", id: timezone, value: {timezone: $subject.value.timezone}}
+    - {path: "verse.schedule", id: date,     value: {date: .[subject.value.date]}}
+    - {path: "verse.schedule", id: year,     value: {year: .[subject.value.year]}}
+    - {path: "verse.schedule", id: month,    value: {month: .[subject.value.month]}}
+    - {path: "verse.schedule", id: day,      value: {day: .[subject.value.day]}}
+    - {path: "verse.schedule", id: weekday,  value: {weekday: .[subject.value.weekday]}}
+    - {path: "verse.schedule", id: timezone, value: {timezone: .[subject.value.timezone]}}

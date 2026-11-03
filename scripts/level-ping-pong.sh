@@ -133,7 +133,7 @@ printf '\n'
 feat=$(v data --paths signadot feature '*' | head -1)
 [ -n "$feat" ] || die "the derive never landed"
 ok "the derived entity is $feat"
-note "it stands at the issue's own name (id: \$subject.name) and records what it is about:"
+note "it stands at the issue's own name (id: .[subject.name]) and records what it is about:"
 # UNQUOTED: `--paths` answers in steps, and the shell splitting them is what a read takes.
 # shellcheck disable=SC2086
 v data $feat

@@ -27,6 +27,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -35,6 +36,8 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/exprs"
+	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/trigger/charter"
 )
 
@@ -850,7 +853,7 @@ type deriveTarget struct {
 	// batch's answer. A gate is identified by (trigger, gate, subject); if the subject cannot
 	// vary, two batches are one subject, asked about as one.
 	//
-	// It keys on STATE deliberately, which `!each` already does (`key: $item.symbol`), and the
+	// It keys on STATE deliberately, which `!each` already does (`key: .[item.symbol]`), and the
 	// invariant is the one a fan-out rests on rather than an exception to it: a derive may carry
 	// state exactly when its address is a function of that same state. A re-fire reading the
 	// same subject computes the same key, writes the same bytes to the same address, and dies as
@@ -918,8 +921,8 @@ func (d deriveTarget) addr() string { return entity.JoinSegs(d.segs()) }
 // **content may carry state exactly when the address is a function of that same state** — which
 // is what `key` declares and why it is not optional.
 type eachSpec struct {
-	Over entity.Payload // a single $reference to the collection to walk
-	Key  entity.Payload // a single $reference, rooted at $item — the address suffix
+	Over entity.Payload // one whole `.[…]`: the collection to walk
+	Key  entity.Payload // one whole `.[…]`, or a literal id: the address suffix
 	// ID is Key with the composition dropped, exactly as a single derive's is: the element
 	// lands at the place plus this value, so a fan-out can write onto entities a DIFFERENT
 	// rule owns the naming of. That is the whole use — a fan-out addressed by `key` can only
@@ -1000,19 +1003,17 @@ func readEach(n entity.Payload) (*eachSpec, error) {
 	return spec, nil
 }
 
-// soleRef reports the reference a node consists ENTIRELY of. A reference embedded in text
-// interpolates and yields a string, which is right for a prompt and wrong for both of these
-// fields: `over` names a collection to walk and `key` names an identity, and neither has a
-// meaning as "some text with a value in it".
-func soleRef(n entity.Payload) (string, bool) {
-	if n == nil || n.Type != ir.StringType {
+// wholeExpr reports the expression a node consists ENTIRELY of: a string that is one `.[…]` and
+// nothing else, answered as written. An expression embedded in text interpolates and yields a
+// string, which is right for a prompt and wrong for both of these fields: `over` names a
+// collection to walk and `key` names an identity, and neither has a meaning as "some text with a
+// value in it".
+func wholeExpr(n entity.Payload) (string, bool) {
+	n = ir.Uncomment(n)
+	if n == nil || n.Type != ir.StringType || !exprs.Whole(n.String) {
 		return "", false
 	}
-	s := n.String
-	if l := refAt(s); l == len(s) && l > 0 {
-		return s[1:], true
-	}
-	return "", false
+	return n.String, true
 }
 
 // derives reads THIS action's derive block into its targets: a list of entries, each naming the
@@ -1204,10 +1205,10 @@ func validateEach(n entity.Payload) error {
 	if err != nil {
 		return err
 	}
-	if _, ok := soleRef(spec.Over); !ok {
-		return fmt.Errorf("!each `over` must be a single reference to the collection to walk " +
-			"(`over: $data.findings`), not text with one in it: a reference embedded in a string " +
-			"interpolates to text, and there is nothing to walk in that")
+	if _, ok := wholeExpr(spec.Over); !ok {
+		return fmt.Errorf("!each `over` must be one expression and nothing else, the collection " +
+			"to walk (`over: .[data.findings]`), not text with one in it: an expression embedded " +
+			"in a string interpolates to text, and there is nothing to walk in that")
 	}
 	// `key` or `id` — the same check, since they differ in what the engine puts in FRONT of
 	// the value, not in what the value may be read from.
@@ -1215,15 +1216,17 @@ func validateEach(n entity.Payload) error {
 	if spec.ID != nil {
 		which, spelling = spec.ID, "id"
 	}
-	key, ok := soleRef(which)
+	key, ok := wholeExpr(which)
 	if !ok {
-		return fmt.Errorf("!each `%s` must be a single reference (`%s: $item.symbol`)", spelling, spelling)
+		return fmt.Errorf("!each `%s` must be one expression and nothing else, read from the "+
+			"element (`%s: .[item.symbol]`, or composed, `'.[item.symbol + \"-\" + item.kind]'`)",
+			spelling, spelling)
 	}
-	if key != refItem && !strings.HasPrefix(key, refItem+".") {
-		return fmt.Errorf("!each `%s` is %q: an element's address must be read out of THE "+
-			"ELEMENT, so it is rooted at $%s. That is the whole of what makes a fan-out safe — "+
-			"the same answer yields the same addresses — and one read from anywhere else would "+
-			"give every element the same address", spelling, "$"+key, refItem)
+	if bad := readsOnly(ir.FromString(key), false, refItem); bad != "" {
+		return fmt.Errorf("!each `%s` is %s, which reads %s: an element's address must be read "+
+			"out of THE ELEMENT, `%s`, and nothing else. That is the whole of what makes a "+
+			"fan-out safe — the same answer yields the same addresses — and one read from "+
+			"anywhere else would give every element the same address", spelling, key, bad, refItem)
 	}
 	if spec.Value == nil || spec.Value.Type != ir.ObjectType {
 		// Same reason a plain derive's payload must be an object: the engine writes the subject
@@ -1231,54 +1234,36 @@ func validateEach(n entity.Payload) error {
 		return fmt.Errorf("!each `value` must be an object: the engine writes the subject this " +
 			"derivation is about into it, which a scalar has nowhere to hold")
 	}
-	if ref := firstBadEachRef(spec.Value); ref != "" {
-		return fmt.Errorf("!each `value` carries the reference %q: an element's payload may "+
-			"reference the ELEMENT ($%s) and the firing's identity ($%s and its parts), and "+
-			"nothing else. $%s.commit is refused here for the reason it is refused in a plain "+
-			"derive: it is a function of WHEN the firing happened rather than of what it is "+
-			"about, so a derive carrying one writes something new on every lap",
-			ref, refItem, refSubject, refSubject)
+	if bad := readsOnly(spec.Value, true, refItem, refSubject); bad != "" {
+		return fmt.Errorf("!each `value` reads %s: an element's payload may read the ELEMENT "+
+			"(`%s`) and the firing's subject (`%s` and its parts), and nothing else. "+
+			"`%s.commit` is refused here for the reason it is refused in a plain derive: it is "+
+			"a function of WHEN the firing happened rather than of what it is about, so a derive "+
+			"carrying one writes something new on every lap", bad, refItem, refSubject, refSubject)
 	}
 	return nil
 }
 
-// refItem is the element binding inside a fan-out. `$item` rather than `$resultItem` because
-// the construct is meant to work over `$subject.value.something` too, and a name that hard-codes
+// refItem is the element binding inside a fan-out. `item` rather than `resultItem` because
+// the construct is meant to work over `subject.value.something` too, and a name that hard-codes
 // where the collection came from would have to be renamed or duplicated the first time it does.
 const refItem = "item"
 
-// firstBadEachRef is firstBadRef with the element admitted.
-func firstBadEachRef(n entity.Payload) string {
-	bad := ""
-	eachRef(n, func(ref string) {
-		if bad != "" {
-			return
-		}
-		if ref == refItem || strings.HasPrefix(ref, refItem+".") {
-			return
-		}
-		if !deriveMayReference(ref) {
-			bad = ref
-		}
-	})
-	return bad
-}
-
-// A derive may reference its SUBJECT and nothing else — every part of it, including the
-// subject's state, but not the occasion of the firing.
+// A derive may read its SUBJECT and nothing else — every part of it, including the subject's
+// state, but not the occasion of the firing.
 //
 // The line is not "identity, never state", which is where this started and which was too
-// strict. What the ordering actually needs is content THE LEVELS ABOVE CANNOT INFLUENCE, and a
-// reference cannot reach another entity at all: it reads the firing's own subject, or a
+// strict. What the ordering actually needs is content THE LEVELS ABOVE CANNOT INFLUENCE, and an
+// expression cannot reach another entity at all: it reads the firing's own subject, or a
 // task's result. Nothing above can write the subject — a patch touches only its own subject
 // and a derive only climbs — so an upward read that wakes the rule without changing the subject
-// resolves $subject.value to the same bytes, writes them to the same address, and dies as a
-// no-op. That is the property "reads may go anywhere" rests on, and $subject.value keeps it.
+// resolves subject.value to the same bytes, writes them to the same address, and dies as a
+// no-op. That is the property "reads may go anywhere" rests on, and subject.value keeps it.
 //
-// $subject.commit does not, and it is the one part refused here. It is a function of WHEN the
+// subject.commit does not, and it is the one part refused here. It is a function of WHEN the
 // firing happened rather than of the subject, so a read from above changes it:
 //
-//	L (level 0, subject S, reads D)   derive: { at: $subject.commit }
+//	L (level 0, subject S, reads D)   derive: { at: .[subject.commit] }
 //	H (level 10, subject D)           patch:  { seen: true }
 //
 //	S changes → L derives D{at: 100} → H patches D → L's read wakes it at commit 102 →
@@ -1288,67 +1273,76 @@ func firstBadEachRef(n entity.Payload) string {
 // out, and it would cost the read side its freedom (`read at your level or below` would have to
 // come back). The engine's own linkage stays commit-free for exactly this reason: recording the
 // causing commit at verse.meta.derivedFrom would reintroduce the loop from inside the engine.
-func deriveMayReference(ref string) bool {
-	if ref == refSubject {
-		return true
-	}
-	switch subjectPart(ref) {
-	case subjPartRef, subjPartName, subjPartValue:
-		return true
-	}
-	return false
-}
-
-// firstBadRef reports the first $reference in a subtree that a derive may not carry, or "" when
-// every one of them is admissible.
-func firstBadRef(n entity.Payload) string {
+//
+// readsOnly is the check, over every expression in a document: the first that reads a name
+// outside allowed, or subject.commit, as text to quote; "" when none does. `$env` reads every
+// name the environment holds, which is allowed exactly where the environment holds allowed and
+// nothing else (env). An expression that does not parse is answered with its error, since what
+// it reads cannot be said.
+func readsOnly(n entity.Payload, env bool, allowed ...string) string {
 	bad := ""
-	eachRef(n, func(ref string) {
-		if bad == "" && !deriveMayReference(ref) {
-			bad = ref
+	eachText(n, func(s string) {
+		for _, sp := range exprs.Expressions(s) {
+			if bad != "" {
+				return
+			}
+			reads, err := exprs.Reads(sp.Expr)
+			if err != nil {
+				bad = fmt.Sprintf("%q, which does not parse (%v)", sp.Expr, err)
+				return
+			}
+			for _, r := range reads {
+				if !deriveMayRead(r, env, allowed) {
+					bad = fmt.Sprintf("%q in %q", strings.Join(r, "."), sp.Expr)
+					return
+				}
+			}
 		}
 	})
 	return bad
 }
 
+// deriveMayRead is whether a derive may read r: a name in allowed, and never subject.commit.
+func deriveMayRead(r exprs.Path, env bool, allowed []string) bool {
+	if r[0] == exprs.Env {
+		return env
+	}
+	if !slices.Contains(allowed, r[0]) {
+		return false
+	}
+	return r[0] != refSubject || len(r) < 2 || r[1] != subjPartCommit
+}
+
 // eachElements resolves a fan-out's `over` and yields the elements to derive from.
 //
 // `over` must name a LIST. That is narrower than it could be — a kpath can select across
-// structure, and the residual reached for ListKPath so an answer would not have to put its items
-// in one array at one depth — and the narrowness is the point at this size: `$data.findings` and
-// `$data.findings.*` would otherwise be two spellings, one yielding the list as a single element
-// whose `key` cannot resolve, and a fan-out that quietly derives one entity is the failure this
-// whole construct exists to stop being possible. A charter that wants a nested answer flattened
-// says so in its answer contract, where the shape is already declared.
-func (e *Engine) eachElements(spec *eachSpec, root entity.Payload) ([]entity.Payload, error) {
-	ref, _ := soleRef(spec.Over) // install-checked
-	node, err := deref(root, ref)
+// structure — and the narrowness is the point: a fan-out over something that is not a list
+// would derive it as a single element whose `key` cannot resolve, and a fan-out that quietly
+// derives one entity is the failure this whole construct exists to stop being possible. A
+// charter that wants a nested answer flattened says so in its answer contract, where the shape is
+// already declared, or in the expression: `.[data.groups | flatten()]`.
+func (e *Engine) eachElements(spec *eachSpec, env launch.Binding) ([]entity.Payload, error) {
+	over, _ := wholeExpr(spec.Over) // install-checked
+	node, err := launch.ExpandValue(over, env)
 	if err != nil {
-		return nil, fmt.Errorf("!each over $%s: %w", ref, err)
+		return nil, fmt.Errorf("!each over %s: %w", over, err)
 	}
-	if node == nil || node.Type != ir.ArrayType {
-		got := "nothing"
-		if node != nil {
-			got = node.Type.String()
-		}
-		return nil, fmt.Errorf("!each over $%s is %s, and a fan-out walks a LIST: ask for one in "+
+	if node.Type != ir.ArrayType {
+		return nil, fmt.Errorf("!each over %s is %s, and a fan-out walks a LIST: ask for one in "+
 			"the answer contract (`findings: !irtype []`) rather than deriving from a shape "+
-			"nobody declared", ref, got)
+			"nobody declared", over, node.Type)
 	}
 	return node.Values, nil
 }
 
-// eachRootFor builds the root ONE element resolves against: the subject, and `$item`.
+// eachEnvFor builds the environment ONE element resolves against: the subject, and `item`.
 //
 // The firing's own payload is deliberately not in it. Install already refuses a `value` that
-// references anything else, and this is the same rule said structurally — a derive reaches its
+// reads anything else, and this is the same rule said structurally — a derive reaches its
 // subject and its element, and a reader of this function does not have to trust a check
 // somewhere else to know that.
-func eachRootFor(subject *ir.Node, item entity.Payload) entity.Payload {
-	return ir.FromMap(map[string]*ir.Node{
-		refSubject: subject,
-		refItem:    item.DeepCopy(),
-	})
+func eachEnvFor(subject map[string]any, item entity.Payload) launch.Binding {
+	return launch.Binding{refSubject: subject, refItem: anyOf(item)}
 }
 
 // eachSegs addresses one derived element: (rule, subject, key), one segment per part.
@@ -1370,11 +1364,11 @@ func eachSegs(chain string, ref entity.Ref, key string) []string {
 // one is the Condition's answer, not something the charter should be trusted to interpolate.
 const deriveFromField = "derivedFrom"
 
-// deriveContent resolves what a derive writes: its $subject references expanded, then the
-// engine's linkage merged in.
+// deriveContent resolves what a derive writes: its expressions evaluated against `subject` alone,
+// then the engine's linkage merged in.
 func (e *Engine) deriveContent(payload entity.Payload, chain string, oc occasion, subj entity.Ref, projection bool) (entity.Payload, error) {
 	// The wants are read off the derive itself, and `commit` is cleared whatever it asked for:
-	// install refuses $subject.commit here, and clearing it means the reference cannot resolve
+	// install refuses subject.commit here, and clearing it means the expression cannot resolve
 	// either. Two ends saying the same thing, so relaxing one alone cannot open the other.
 	w := wantsOf(payload)
 	w.commit = false
@@ -1382,18 +1376,18 @@ func (e *Engine) deriveContent(payload entity.Payload, chain string, oc occasion
 	if err != nil {
 		return nil, err
 	}
-	// Against a root holding ONLY the subject, not the payload that fired the action: a derive
-	// reaches its own subject and nothing else, and that is structural here rather than a rule
-	// enforced only at install.
-	expanded, err := expandPatch(payload, refRoot(nil, sn), e.readerFor(oc))
+	// Against an environment holding ONLY the subject, not the payload that fired the action: a
+	// derive reaches its own subject and nothing else, and that is structural here rather than a
+	// rule enforced only at install.
+	expanded, err := expandPatch(payload, launch.Binding{refSubject: sn}, e.readerFor(oc))
 	if err != nil {
 		return nil, err
 	}
 	return deriveLinkage(expanded, chain, subj, projection)
 }
 
-// eachContent resolves what ONE element derives: its `value` with `$item` and the subject
-// expanded, then the engine's linkage. deriveContent's twin, and it clears `commit` for the same
+// eachContent resolves what ONE element derives: its `value` with `item` and the subject
+// evaluated, then the engine's linkage. deriveContent's twin, and it clears `commit` for the same
 // reason — a derive that writes something new on every lap wakes the level above, which wakes
 // the rule again.
 func (e *Engine) eachContent(spec *eachSpec, chain string, oc occasion, subj entity.Ref, item entity.Payload) (entity.Payload, error) {
@@ -1403,7 +1397,7 @@ func (e *Engine) eachContent(spec *eachSpec, chain string, oc occasion, subj ent
 	if err != nil {
 		return nil, err
 	}
-	expanded, err := expandPatch(spec.Value, eachRootFor(sn, item), e.readerFor(oc))
+	expanded, err := expandPatch(spec.Value, eachEnvFor(sn, item), e.readerFor(oc))
 	if err != nil {
 		return nil, err
 	}
@@ -1417,12 +1411,12 @@ func (e *Engine) eachContent(spec *eachSpec, chain string, oc occasion, subj ent
 // produces a ledger that is quietly short, and short is the one failure a reader cannot see —
 // where a refused firing is loud, is about the whole answer, and leaves the previous state
 // standing to be re-derived when the answer is fixed.
-func eachKey(spec *eachSpec, root entity.Payload, at int) (string, error) {
+func eachKey(spec *eachSpec, env launch.Binding, at int) (string, error) {
 	which, spelling := spec.Key, "key"
 	if spec.ID != nil {
 		which, spelling = spec.ID, "id"
 	}
-	s, err := keyText(which, root)
+	s, err := keyText(which, env)
 	if err != nil {
 		return "", fmt.Errorf("!each %s on element %d: %w", spelling, at, err)
 	}
@@ -1435,20 +1429,26 @@ func eachKey(spec *eachSpec, root entity.Payload, at int) (string, error) {
 // An EMPTY key is a failure rather than a blank segment, in both spellings and for one reason:
 // an address that silently collapses to the unkeyed one is the fan-out deriving a single entity,
 // or the keyed derive re-asking a question it has already had answered. Both are the failure the
-// key was written to prevent, and neither is visible in what stands afterwards.
-func keyText(key entity.Payload, root entity.Payload) (string, error) {
+// key was written to prevent, and neither is visible in what stands afterwards. A NULL key is
+// an empty one, and not the segment `null`: two elements that both lack the field would
+// otherwise share an entity. A composite is not a name at all.
+func keyText(key entity.Payload, env launch.Binding) (string, error) {
 	if lit := literalKey(key); lit != "" {
 		return lit, nil // an author-named id: the same address for every subject
 	}
-	ref, _ := soleRef(key) // install-checked
-	n, err := deref(root, ref)
+	x, _ := wholeExpr(key) // install-checked
+	n, err := launch.ExpandValue(x, env)
 	if err != nil {
-		return "", fmt.Errorf("key $%s: %w", ref, err)
+		return "", fmt.Errorf("key %s: %w", x, err)
 	}
 	s, ok := scalarText(n)
-	if !ok || s == "" {
-		return "", fmt.Errorf("key $%s is empty: an address read from a value only tells two "+
-			"of them apart while every one of them carries it", ref)
+	if !ok {
+		return "", fmt.Errorf("key %s is %s, which is not a name: an address segment is the "+
+			"text of a scalar", x, ir.Uncomment(n).Type)
+	}
+	if s == "" {
+		return "", fmt.Errorf("key %s is empty: an address read from a value only tells two "+
+			"of them apart while every one of them carries it", x)
 	}
 	return s, nil
 }
@@ -1517,28 +1517,28 @@ func strataText(all []Stratum) string {
 // checkDeriveKey checks a single derive's `key` — the same two questions `!each`'s key answers,
 // minus the one about the element.
 //
-// It must be a SOLE reference, for the reason a fan-out's must: one embedded in text
-// interpolates to a string, and an address assembled out of prose is not one anybody can predict
-// or find. And it may read only what the CONTENT may — the subject, including its state — since
-// the two are the same claim: the address is a function of the state, which is exactly what
-// makes carrying that state in the payload sound.
+// It must be ONE expression and nothing else, for the reason a fan-out's must: one embedded in
+// text interpolates to a string, and an address assembled out of prose is not one anybody can
+// predict or find. And it may read only what the CONTENT may — the subject, including its state
+// — since the two are the same claim: the address is a function of the state, which is exactly
+// what makes carrying that state in the payload sound.
 // It is `id`'s check too: the two differ in what the engine puts in front of the value, not in
 // what the value may be read from.
 func checkDeriveKey(key entity.Payload, where string) error {
 	if key == nil {
 		return nil
 	}
-	ref, ok := soleRef(key)
+	x, ok := wholeExpr(key)
 	if !ok {
-		return fmt.Errorf("action.derive.%s `key` must be a single reference "+
-			"(`key: $%s.value.sha`): a reference embedded in a string interpolates to text, and "+
-			"an address is not something to assemble out of prose", where, refSubject)
+		return fmt.Errorf("action.derive.%s `key` must be one expression and nothing else "+
+			"(`key: .[%s.value.sha]`): an expression embedded in a string interpolates to text, "+
+			"and an address is not something to assemble out of prose", where, refSubject)
 	}
-	if !deriveMayReference(ref) {
-		return fmt.Errorf("action.derive.%s `key` is %q: a keyed derive's address may be read "+
-			"from the firing's SUBJECT and nothing else — $%s.commit included, since a key that "+
-			"is a function of WHEN the rule fired writes a new entity on every lap",
-			where, "$"+ref, refSubject)
+	if bad := readsOnly(key, true, refSubject); bad != "" {
+		return fmt.Errorf("action.derive.%s `key` is %s, which reads %s: a keyed derive's address "+
+			"may be read from the firing's SUBJECT and nothing else — %s.commit included, since a "+
+			"key that is a function of WHEN the rule fired writes a new entity on every lap",
+			where, x, bad, refSubject)
 	}
 	return nil
 }
@@ -1556,31 +1556,31 @@ func checkDeriveID(id entity.Payload, where string) error {
 	return checkDeriveKey(id, where)
 }
 
-// literalKey is the text of a key that is a plain string carrying no reference, "" otherwise.
+// literalKey is the text of a key that is a plain string holding no expression, "" otherwise.
 func literalKey(key entity.Payload) string {
-	if key == nil || key.Type != ir.StringType || key.String == "" || strings.Contains(key.String, "$") {
+	key = ir.Uncomment(key)
+	if key == nil || key.Type != ir.StringType || key.String == "" || exprs.Templated(key.String) {
 		return ""
 	}
 	return key.String
 }
 
 // checkLiteralDerive is the content check both derive spellings share: an object (the engine
-// writes the subject linkage into it, and a scalar has nowhere to hold that), and IDENTITY
-// references only.
+// writes the subject linkage into it, and expressions that read the subject alone.
 func checkLiteralDerive(payload entity.Payload, where string) error {
 	if payload == nil || payload.Type != ir.ObjectType {
 		return fmt.Errorf("action.derive.%s must be an object: the engine writes the subject this "+
 			"derivation is about into it, which a scalar has nowhere to hold", where)
 	}
-	if ref := firstBadRef(payload); ref != "" {
-		return fmt.Errorf("action.derive.%s carries the reference %q: a derive may reference the "+
-			"firing's IDENTITY and never its STATE, and $%s is the only reference that is "+
-			"identity. The distinction is what the whole ordering rests on: a derived entity's "+
-			"address is a function of (rule, subject), so a derive whose content is also fixed by "+
-			"(rule, subject) writes the same bytes to the same address on every re-fire — a no-op "+
-			"the store ends by itself, which is why a rule may read a HIGHER level without that "+
-			"read becoming a cycle. A value read from a payload changes as rules fire, so a derive "+
-			"carrying one would make exactly that read live", where, ref, refSubject)
+	if bad := readsOnly(payload, true, refSubject); bad != "" {
+		return fmt.Errorf("action.derive.%s reads %s: a derive may read the firing's SUBJECT "+
+			"(`%s` and its parts) and nothing else. That is what the whole ordering rests on: "+
+			"nothing above a derive's level can write its subject, so a re-fire woken from above "+
+			"writes the same bytes to the same address — a no-op the store ends by itself, which "+
+			"is why a rule may read a HIGHER level without that read becoming a cycle. "+
+			"%s.commit is refused for the same reason: it is a function of WHEN the rule fired, "+
+			"so a derive carrying it writes something new on every lap", where, bad, refSubject,
+			refSubject)
 	}
 	return nil
 }

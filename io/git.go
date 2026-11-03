@@ -87,7 +87,7 @@ const EmptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 // there carries the empty tree (EmptyTree): no files is a state of the directory like any other,
 // and removing it is a change to that state. spec is `<name>=<path>`, or a bare path whose last segment is the name: `.verse/charters`
 // is reflected as `tree.charters`. The name is one plain word, so a charter can spell it in a
-// reference (`$subject.value.tree.charters`), which a path with a dot or a slash in it cannot be.
+// expression (`.[subject.value.tree.charters]`), which a path with a dot or a slash in it cannot be.
 //
 // A tree's sha is the identity of a directory's contents, so two refs that differ only outside
 // the directory carry the same one, and a squash or a rebase of the same change keeps it. That

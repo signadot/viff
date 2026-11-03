@@ -42,8 +42,8 @@ func TestAKeyedDeriveIsOneEntityPerValue(t *testing.T) {
   action:
     derive:
     - path: "demo.batch"
-      key: $subject.value.sha
-      value: {sha: $subject.value.sha}
+      key: .[subject.value.sha]
+      value: {sha: .[subject.value.sha]}
 `)); err != nil {
 		t.Fatalf("the keyed rule did not install: %v", err)
 	}
@@ -91,11 +91,11 @@ func TestAKeyedDeriveRefusesAKeyThatIsNotAnAddress(t *testing.T) {
 	for _, tc := range []struct {
 		name, key, says string
 	}{
-		{"text with a reference in it", `"batch-$subject.value.sha"`, "single reference"},
+		{"text with a reference in it", `"batch-$[subject.value.sha]"`, "one expression and nothing else"},
 		// The same refusal a derive's CONTENT gets, for the same reason: a key that is a
 		// function of when the rule fired writes a new entity on every lap.
-		{"the occasion of the firing", `$subject.commit`, "SUBJECT and nothing else"},
-		{"another entity's state", `$data.sha`, "SUBJECT and nothing else"},
+		{"the occasion of the firing", `.[subject.commit]`, "SUBJECT and nothing else"},
+		{"another entity's state", `.[data.sha]`, "SUBJECT and nothing else"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			eng := New(entitytest.Store(t), task.AutoResolver{})
@@ -157,8 +157,8 @@ func TestANamedDeriveIsAddressedByItsValue(t *testing.T) {
   action:
     derive:
     - path: "demo.batch"
-      id: $subject.value.sha
-      value: {sha: $subject.value.sha}
+      id: .[subject.value.sha]
+      value: {sha: .[subject.value.sha]}
 `)); err != nil {
 		t.Fatalf("the named rule did not install: %v", err)
 	}
@@ -197,9 +197,9 @@ func TestADeriveRefusesBothKeyAndID(t *testing.T) {
   action:
     derive:
     - path: "git.batch"
-      key: $subject.value.sha
-      id: $subject.value.sha
-      value: {sha: $subject.value.sha}
+      key: .[subject.value.sha]
+      id: .[subject.value.sha]
+      value: {sha: .[subject.value.sha]}
 `))
 	if err == nil {
 		t.Fatal("a derive with both `key` and `id` installed")
@@ -234,8 +234,8 @@ func TestANamedFanOutLandsOnAnotherRulesEntities(t *testing.T) {
   action:
     derive:
     - path: "demo.batch"
-      id: $subject.value.sha
-      value: {sha: $subject.value.sha}
+      id: .[subject.value.sha]
+      value: {sha: .[subject.value.sha]}
 `)); err != nil {
 		t.Fatalf("the naming rule did not install: %v", err)
 	}
@@ -248,8 +248,8 @@ func TestANamedFanOutLandsOnAnotherRulesEntities(t *testing.T) {
     derive:
     - path: "demo.batch"
       value: !each
-        over: $subject.value.shas
-        id: $item
+        over: .[subject.value.shas]
+        id: .[item]
         value: {marked: true}
 `)); err != nil {
 		t.Fatalf("the marking rule did not install: %v", err)

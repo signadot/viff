@@ -402,7 +402,7 @@ func entityField(t *testing.T, store entity.Store, ref entity.Ref, key string) s
 // A COMPLETION HOOK READS AT THE COMMIT THAT CAUSED ITS FIRING.
 //
 // It used to read at no commit at all: applyHook built an occasion with none, so
-// `$subject.value`, `$subject.commit`, `!get-path` and `!list-paths` were unresolvable in
+// `subject.value`, `subject.commit`, `!get-path` and `!list-paths` were unresolvable in
 // every hook, and a rule that wanted to derive a release note from what shipped could not be
 // written down (git-issue hjxd56jy). Worse, it failed HALFWAY — a hook's `patch` lands before
 // its `derive`, so the subject latched to "finished" over a derivation that never happened.
@@ -431,8 +431,8 @@ func TestHookReadsTheSubjectAtTheCausingCommit(t *testing.T) {
     onDone:
       patch:
         stage: reviewed
-        was:  $subject.value.stage
-        area: $subject.value.area
+        was:  .[subject.value.stage]
+        area: .[subject.value.area]
 `)); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
@@ -476,7 +476,7 @@ func TestSeqCarrierHookReadsTheCausingCommit(t *testing.T) {
     onDone:
       patch:
         stage:   deployed
-        shipped: $subject.value.version
+        shipped: .[subject.value.version]
 `)); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}

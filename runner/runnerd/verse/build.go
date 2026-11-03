@@ -27,8 +27,8 @@ import (
 // are things a constant cannot get right.
 //
 // The final assistant message is what Result() returns, which is what a completed task's
-// `result` carries, which is what a charter's `$result` derefs. trigger/deref.go resolves
-// $result.findings[0].severity structurally, so a frame that asked for a closing summary in
+// `result` carries, which is what a charter's `result` reads. trigger/deref.go evaluates
+// `.[result.findings[0].severity]` structurally, so a frame that asked for a closing summary in
 // prose would get prose where a structure is read. So it says the final message is the answer
 // itself, and a launch wanting a particular shape states it in its own frame, which is what the
 // field is for.
@@ -362,7 +362,7 @@ func Build(cfg Config) *task.Task {
 		// conservative reading of delegation — a sub-agent should not be handed a
 		// capability its parent's launch withheld — and inheriting the frame keeps the
 		// answer shape the charter asked for, since a child's result folds into the
-		// parent's conversation and thence into what $result reads.
+		// parent's conversation and thence into what `result` reads.
 		//
 		// It does NOT inherit the answer contract, and the asymmetry is the point. The
 		// contract describes THIS task's answer — the value a charter derefs — while a

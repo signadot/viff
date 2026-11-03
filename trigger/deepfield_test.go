@@ -58,7 +58,7 @@ func TestAPayloadsSubjectFieldDoesNotBindUnderSubject(t *testing.T) {
 }
 
 // AN ELEMENT OF A LIST BINDS IN A SPAWN'S STRINGS, at any depth and under `subject.value` too, as
-// a patch resolves `$result.findings[0].id`. An index past the end is not present, and is refused.
+// a patch resolves `.[result.findings[0].id]`. An index past the end is not present, and is refused.
 func TestAListElementBindsInASpawn(t *testing.T) {
 	payload := entity.Obj{"data": map[string]any{
 		"items":    []any{"a", "b"},

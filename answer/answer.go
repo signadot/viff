@@ -3,7 +3,7 @@
 // An agent ends by talking: the loop stops when the model stops calling tools, and the
 // result is whatever prose it stopped on (runner/runnerd/verse/llm.go). So "the
 // model finished the job" and "the model stopped talking" are the same observation, and a
-// charter that derefs `$data.class` finds out at PATCH time — after the work is done and the
+// charter that reads `.[data.class]` finds out at PATCH time — after the work is done and the
 // tokens are spent — that the agent narrated instead of answering. The failure lands on a hook
 // nobody is watching, and the entity is stranded at a stage no rule matches.
 //
@@ -168,7 +168,7 @@ func (c *Contract) Repairs() int { return c.maxTries }
 // repair attempts teaching a model not to fence would be spending the budget on the wrong
 // thing.
 //
-// A nil error means the answer is good and the returned node is what a charter's `$data`
+// A nil error means the answer is good and the returned node is what a charter's `data`
 // will deref — the same value mirror projects, because both go through Extract.
 func (c *Contract) Check(final string) (*ir.Node, error) {
 	doc, parseErr := extract(final)
@@ -321,7 +321,7 @@ func (f *Failure) Repair(c *Contract, failTool string) string {
 // braces into a record, and a wrong document is worse than no document.
 //
 // It is the ONE definition of "the data in an answer", used by the contract check and by
-// the mirror's projection both, so what a contract validated and what `$data` derefs cannot
+// the mirror's projection both, so what a contract validated and what `data` reads cannot
 // be different documents.
 func Extract(text string) *ir.Node {
 	n, _ := extract(text)

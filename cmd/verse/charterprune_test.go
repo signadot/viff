@@ -31,7 +31,7 @@ rules:
   action:
     derive:
     - path: "sync.keep.row"
-      id: $subject.value.id
+      id: .[subject.value.id]
       value: {seen: true}
 - name: extra
   stratum: src
@@ -40,7 +40,7 @@ rules:
   action:
     derive:
     - path: "sync.keep.row"
-      id: $subject.value.id
+      id: .[subject.value.id]
       value: {other: true}
 `
 
@@ -62,7 +62,7 @@ rules:
   action:
     derive:
     - path: "sync.keep.row"
-      id: $subject.value.id
+      id: .[subject.value.id]
       value: {seen: true}
 `
 
@@ -85,7 +85,7 @@ rules:
   action:
     derive:
     - path: "` + at + `.row"
-      id: $subject.value.id
+      id: .[subject.value.id]
       value: {seen: true}
 `
 }

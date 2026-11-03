@@ -180,14 +180,14 @@ func (e *Engine) retireHandle(id string, h task.Handle) (flowTask, bool) {
 // applyHook fires the completion hook for a terminated task's status (if any), scoped to
 // exactly that task: the hook (a full Action) runs about the task's own subject. The chain
 // name descends by status, so a hook's own spawn gets a distinct deterministic id. ev carries the
-// completed task:instance payload, so the hook's templates can read $status/$flow/$result.
+// completed task:instance payload, so the hook's expressions can read status, flow and result.
 func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	subject, serr := entity.ParseAddr(fp.subject)
 	// WHAT COMMIT THIS READS AT: the one that caused the firing this task belongs to.
 	//
 	// A hook is woken by a task finishing rather than by a write, so it has no cause of its
 	// own — and for a while that was taken to mean it had no revision to read at either, which
-	// left `$subject.value`, `$subject.commit`, `!get-path` and `!list-paths` unresolvable in
+	// left `subject.value`, `subject.commit`, `!get-path` and `!list-paths` unresolvable in
 	// every onDone/onFailed/onCancelled/onOrphaned there has ever been. That is the whole read
 	// vocabulary, in the half of a rule where the interesting writes live: a `derive` of a
 	// release note from what shipped could not be written down (git-issue hjxd56jy).
@@ -265,7 +265,7 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 // recordHookFailure persists a completion hook's failure onto the task whose completion
 // fired it, under a `hook` record:
 //
-//	hook: { chain: review.onDone, status: failed, err: "$data.severity is not present …" }
+//	hook: { chain: review.onDone, status: failed, err: ".[data.severity]: …" }
 //
 // A hook is where an unverifiable claim turns into a state transition, so its failure is the
 // one an operator most needs to see — and a trace line is invisible to everything that reads
@@ -303,7 +303,7 @@ func (e *Engine) recordHookFailure(ref entity.Ref, chain string, err error) {
 // mirror.Reflect are two independent subscribers to the same task bus, so when this path
 // wins the retire — which for a fast task it reliably does, the engine's reader getting
 // there first — the store still holds the PRE-terminal projection. The hook then bound
-// $status to "running" and found no $result at all, which is exactly the payload a
+// status to "running" and found no result at all, which is exactly the payload a
 // completion hook exists to read. The store-driven path never had this problem: mirror
 // writes status and result in one commit (see mirror.go), so the event it dispatches on
 // already carries both.
@@ -326,7 +326,7 @@ func (e *Engine) taskEvent(fp flowTask, status task.Status) entity.Event {
 		if r := fp.h.Result(); r != "" {
 			st["result"] = r
 			// Derive `data` here too, with the mirror's own function: a hook that derefs
-			// $data.x must resolve against the same document the store ends up holding,
+			// .[data.x] must resolve against the same document the store ends up holding,
 			// and this path can run before the mirror has written anything.
 			if d := mirror.ParseResult(r); d != nil {
 				st["data"] = d
@@ -345,7 +345,7 @@ func (e *Engine) taskEvent(fp flowTask, status task.Status) entity.Event {
 	// And the commit the firing was about, where the record does not say it yet, for the same
 	// reason: applyHook reads at it. A launch the engine refused fails before anything has
 	// mirrored its task, so without this the hook read at revision 0, and a hook reading
-	// `$subject.value` failed saying a task the charter started was one nothing started.
+	// `subject.value` failed saying a task the charter started was one nothing started.
 	if _, ok := st["occurrence"]; !ok && fp.occurrence != 0 {
 		st["occurrence"] = fp.occurrence
 	}

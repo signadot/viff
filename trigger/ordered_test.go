@@ -38,8 +38,8 @@ func TestAConditionComparesOneFieldWithAnother(t *testing.T) {
   action:
     derive:
     - path: "demo.alert"
-      key: $subject.value.org
-      value: {org: $subject.value.org}
+      key: .[subject.value.org]
+      value: {org: .[subject.value.org]}
 `)); err != nil {
 		t.Fatalf("the rule did not install: %v", err)
 	}

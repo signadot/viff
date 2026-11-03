@@ -142,10 +142,10 @@ rules:
   action:
     derive:
     - path: "repos.verse.drift.range"
-      id: $subject.value.covering
+      id: .[subject.value.covering]
       value:
-        from: $subject.value.sha
-        to: $subject.value.covering
+        from: .[subject.value.sha]
+        to: .[subject.value.covering]
 # 3. Before the review, the STANDING SET is read onto the range.
 #
 # A separate rule rather than a line in the next one, and the reason is ordering: a spawn's
@@ -230,9 +230,9 @@ rules:
           question: {}
       # THE ANSWER IS A CONTRACT rather than a request in the prose. "Your final message is JSON"
       # was obeyed on one run and ignored on the next, and an unparseable answer is not a bad
-      # answer — it is no answer: `$data` resolves to nothing, the completion hook is refused,
-      # and the review is lost with the record left in no state at all, silently (git issue
-      # 91jktrr3h12ksa8fgsn0).
+      # answer — it is no answer: `.[data.findings]` has nothing to read, the completion hook
+      # is refused, and the review is lost with the record left in no state at all, silently
+      # (git issue 91jktrr3h12ksa8fgsn0).
       answer:
         files: !irtype 0
         findings: !irtype []
@@ -347,24 +347,24 @@ rules:
       derive:
       - path: "repos.verse.drift.finding"
         value: !each
-          over: $data.findings
-          id: $item.symbol
+          over: .[data.findings]
+          id: .[item.symbol]
           value:
-            symbol: $item.symbol
-            status: $item.status
-            says: $item.says
-            at: $item.at
-            proposedAt: $item.proposedAt
+            symbol: .[item.symbol]
+            status: .[item.status]
+            says: .[item.says]
+            at: .[item.at]
+            proposedAt: .[item.proposedAt]
       patch:
         stage: reviewed
         status: done
-        report: $data
+        report: .[data]
         err: !delete null
     onFailed:
       patch:
         stage: failed
         status: failed
-        err: $err
+        err: .[err]
     onCancelled:
       patch:
         stage: !delete null
@@ -372,7 +372,7 @@ rules:
 # 5. …and the cursor steps, but only onto the range it claimed and only once that range is done.
 #
 # `covering: !or .[done]` is the subject's own field tested against a bound set. The range's
-# address cannot be read from a condition — a condition read may not name $subject, since the
+# address cannot be read from a condition — a condition read may not name the subject, since the
 # subject is what it selects — so this asks whether what we claimed is among the shas that have
 # been reviewed. A failed review leaves `status: failed`, so it is not in that set: the chain
 # stops where it broke, visibly, and `verse data repos.verse.drift.at --put '{stage: idle}'` is the
@@ -394,6 +394,6 @@ rules:
           covering: !or .[done]
   action:
     patch:
-      sha: $subject.value.covering
+      sha: .[subject.value.covering]
       covering: !delete null
       stage: idle

@@ -292,7 +292,7 @@ func TestFlowTreeHookFailure(t *testing.T) {
 	entitytest.Set(t, store, entity.VerseRef("task", "instance", "review@demo.pr.7"),
 		entity.Obj{
 			"status": "done", "flow": `demo.pr."7"`, "chain": "review", "trigger": "review",
-			"hook": entity.Obj{"chain": "review.onDone", "status": "failed", "err": "$subject.value: no causing commit"},
+			"hook": entity.Obj{"chain": "review.onDone", "status": "failed", "err": "subject.value: no causing commit"},
 		}.Payload())
 
 	n, ok := find(onlyTree(t, eng, `demo.pr."7"`).Roots, "review.onDone")

@@ -74,7 +74,7 @@ func TestSetValuedSubjectFansOut(t *testing.T) {
 	}
 }
 
-// Each fanned-out member gets its own task, with $subject bound to THAT member — so a
+// Each fanned-out member gets its own task, with subject bound to THAT member — so a
 // broadcast spawn is N tasks each about one subject, not one task about a set.
 func TestFanOutSpawnsPerMember(t *testing.T) {
 	store := entitytest.Store(t)
@@ -126,7 +126,7 @@ func TestFanOutSpawnsPerMember(t *testing.T) {
 	for _, id := range []string{"1", "2", "3"} {
 		ref := `demo.pr."` + id + `"`
 		if seen[ref] != "ship "+ref {
-			t.Errorf("member %s: task = %q, want $subject bound to that member", ref, seen[ref])
+			t.Errorf("member %s: task = %q, want subject.ref bound to that member", ref, seen[ref])
 		}
 	}
 	if len(ids) != 3 {

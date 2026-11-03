@@ -11,6 +11,7 @@ import (
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/launch"
 	"github.com/signadot/verse/task"
 )
 
@@ -47,8 +48,9 @@ func TestACommentDoesNotHideAReadFromTheWalks(t *testing.T) {
 			t.Errorf("%s: the walk found %d reads (err %v) — the rule's snapshot would not hold "+
 				"what it reads", tc.name, len(specs), err)
 		}
-		out, err := expandPatch(n, ir.FromMap(map[string]*ir.Node{}),
-			func(*ir.Node, entity.Payload) (entity.Payload, error) { return ir.FromString("aaa111"), nil })
+		out := n.DeepCopy()
+		err = answerReads(out, conditionEnv(),
+			func(*ir.Node, launch.Binding) (entity.Payload, error) { return ir.FromString("aaa111"), nil })
 		if err != nil {
 			t.Errorf("%s: expand: %v", tc.name, err)
 			continue
@@ -109,30 +111,30 @@ func TestARuleWithCommentsAroundItsReadFires(t *testing.T) {
 	t.Fatal("the rule never selected: a comment in its predicate is still hiding the read")
 }
 
-// THE SAME BLINDNESS, IN THE CHECK THAT KEEPS A CASCADE FINITE. `eachRef` walks a derive's
-// content looking for references it may not carry — `$subject.commit` above all, which is a
+// THE SAME BLINDNESS, IN THE CHECK THAT KEEPS A CASCADE FINITE. `readsOnly` walks a derive's
+// content looking for what it may not read — `subject.commit` above all, which is a
 // function of WHEN the firing happened and so makes a derive write something new on every lap.
 // It stopped at a comment wrapper too, so writing a comment above the field turned the check off
 // and the derive installed.
 func TestACommentDoesNotHideAReference(t *testing.T) {
 	for _, tc := range []struct{ name, src string }{
-		{"plain", "{at: $subject.commit}"},
-		{"under a head comment", "# why this is here\n{at: $subject.commit}"},
-		{"the field under a comment", "{ok: 1\n# why this is here\nat: $subject.commit}"},
+		{"plain", "{at: .[subject.commit]}"},
+		{"under a head comment", "# why this is here\n{at: .[subject.commit]}"},
+		{"the field under a comment", "{ok: 1\n# why this is here\nat: .[subject.commit]}"},
 	} {
 		n, err := codec.ParseNode([]byte(tc.src), codec.Tony)
 		if err != nil {
 			t.Errorf("%s: %v", tc.name, err)
 			continue
 		}
-		if got := firstBadRef(n); got != "subject.commit" {
+		if got := readsOnly(n, true, refSubject); !strings.Contains(got, "subject.commit") {
 			t.Errorf("%s: the content check found %q, so a derive carrying the firing's occasion "+
 				"would install", tc.name, got)
 		}
 	}
 }
 
-// AND IN THE LEAF RENDERER, which is what a prompt's `$sha`, a fan-out's `key` and a keyed
+// AND IN THE LEAF RENDERER, which is what a fan-out's `key` and a keyed
 // derive's address are all made of. A comment-wrapped scalar answered "no text at all", and each
 // of those callers reads that as a failed firing — so a note written above a value could stop a
 // rule from being able to name its own subject.

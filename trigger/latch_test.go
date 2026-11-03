@@ -107,11 +107,11 @@ func TestAbsenceLatchShapeLatches(t *testing.T) {
 	if err := checkLatch(unvalidated, act); err != nil {
 		t.Fatalf("the validator still re-spawns: %v", err)
 	}
-	// And a $reference, which is the case that needs the fold rather than a value comparison:
+	// And an expression, which is the case that needs the fold rather than a value comparison:
 	// what lands is unknown, but that SOMETHING lands is not, and an absence constraint is
 	// decided by presence alone. (An unresolved reference fails the firing rather than being
 	// dropped, so if the patch applied at all, a value is there.)
-	byHash := Action{Spawn: spawn, OnDone: &Action{Patch: entity.Obj{"validated": "$hash"}.Payload()}}
+	byHash := Action{Spawn: spawn, OnDone: &Action{Patch: entity.Obj{"validated": ".[hash]"}.Payload()}}
 	if err := checkLatch(unvalidated, byHash); err != nil {
 		t.Fatalf("a latch on a referenced value was not seen: %v", err)
 	}
@@ -234,7 +234,7 @@ func TestLatchFoldsThroughPredicateStructure(t *testing.T) {
 
 // The three answers the relation gives, and which of them a REFUSAL rests on. Undecided is not
 // a no: a check that refused everything it could not decide would refuse the ordinary shape of
-// writing a value out of a task (`patch: {stage: $result.status}`), which may well latch.
+// writing a value out of a task (`patch: {stage: .[result.status]}`), which may well latch.
 func TestLatchRefusesOnlyWhatItCanSee(t *testing.T) {
 	pred := entity.Obj{"stage": "open"}.Payload()
 	spawn := &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"}
@@ -249,7 +249,7 @@ func TestLatchRefusesOnlyWhatItCanSee(t *testing.T) {
 		{"writes elsewhere", hook(entity.Obj{"note": "x"}.Payload()), latchUntouched},
 		{"writes nothing", Action{Spawn: spawn}, latchUntouched},
 		{"writes the same value", hook(entity.Obj{"stage": "open"}.Payload()), latchMatches},
-		{"writes a reference", hook(entity.Obj{"stage": "$result.status"}.Payload()), latchUnsure},
+		{"writes a reference", hook(entity.Obj{"stage": ".[result.status]"}.Payload()), latchUnsure},
 		{"deletes the field", hook(ir.FromKeyVals([]ir.KeyVal{
 			{Key: ir.FromString("stage"), Val: ir.Null().WithTag("!delete")},
 		})), latchHolds},

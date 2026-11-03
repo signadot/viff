@@ -390,9 +390,9 @@ something to say about one symbol. `id:` makes the address the place plus the va
 derive:
 - path: [repos, verse, drift, finding]
   value: !each
-    over: $data.findings
-    id: $item.symbol          # `key:` here would be one row per (review, symbol)
-    value: {symbol: $item.symbol, status: $item.status, …}
+    over: .[data.findings]
+    id: .[item.symbol]          # `key:` here would be one row per (review, symbol)
+    value: {symbol: .[item.symbol], status: .[item.status], …}
 ```
 
 With `key:`, a later review's `resolved` lands beside the open row and nothing a review says can

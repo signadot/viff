@@ -36,7 +36,7 @@ func TestTheCharterToolsInstallAndRemove(t *testing.T) {
 
 	rule := func(name string) string {
 		return `{name: ` + name + `, stratum: src, condition: {subject: {path: "demo.item.*"}}, ` +
-			`action: {derive: [{path: "sync.one.row", id: $subject.value.id, value: {` + name + `: true}}]}}`
+			`action: {derive: [{path: "sync.one.row", id: .[subject.value.id], value: {` + name + `: true}}]}}`
 	}
 	if out, isErr := callTool(t, cs, "verse_charter_install", map[string]any{"at": "sync.one",
 		"charters": "[" + rule("again") + ", " + rule("more") + "]"}); isErr ||

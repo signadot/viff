@@ -237,7 +237,7 @@ func TestSupervisorFailurePromotesRatherThanStrands(t *testing.T) {
 	if d := entity.Str(review, "decision"); d != "escalate" {
 		t.Errorf("onFailed writes decision %q, want escalate — a failure must promote, not clear", d)
 	}
-	if why := entity.Str(review, "why"); !strings.Contains(why, "$err") {
-		t.Errorf("onFailed's why = %q, want the failure carried in it ($err)", why)
+	if why := entity.Str(review, "why"); !strings.Contains(why, "$[err]") {
+		t.Errorf("onFailed's why = %q, want the failure carried in it, $[err]", why)
 	}
 }

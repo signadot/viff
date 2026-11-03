@@ -71,10 +71,9 @@ func TestDeepWriteFiresAWholeEntityTrigger(t *testing.T) {
 // document, seeded by the watch's initial State — and a field written before the trigger was
 // installed is part of it.
 //
-// The binding is the point, not just the firing. An action resolves its $refs against the
-// payload that fired it, so a partial payload does not fail loudly: the trigger fires, the
-// reference resolves to nothing, and what lands (or what an agent is asked to do) says
-// "$note" where the note should be.
+// The binding is the point, not just the firing. An action reads its names from the
+// payload that fired it, so a partial payload is a firing about a note that is not there to
+// read.
 func TestDeepWriteUnderSubtreeWatchCarriesTheWholeEntity(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
@@ -84,7 +83,7 @@ func TestDeepWriteUnderSubtreeWatchCarriesTheWholeEntity(t *testing.T) {
 			"path":  pathOf("demo", "task", "*"),
 			"value": map[string]any{"stage": "ready"},
 		}},
-		Action: Action{Patch: entity.Obj{"echo": "$note"}.Payload()},
+		Action: Action{Patch: entity.Obj{"echo": ".[note]"}.Payload()},
 	}); err != nil {
 		t.Fatal(err)
 	}

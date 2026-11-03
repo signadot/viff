@@ -26,7 +26,7 @@ func mustParse(t *testing.T, src string) *Contract {
 }
 
 // The contract is satisfied by the document and says so with the document, which is what a
-// charter's $data derefs.
+// charter's `data` reads.
 func TestCheckAcceptsAndReturnsTheDocument(t *testing.T) {
 	c := mustParse(t, contractSrc)
 	doc, err := c.Check(`{class: bug, severity: high, why: "nil deref in handler"}`)
@@ -507,7 +507,7 @@ func TestExampleIsAnInstanceOfTheContract(t *testing.T) {
 // rather than of the field.
 //
 // It matters because `!all` is how a contract states an element shape at ALL, and an element
-// shape is what a fan-out needs: a derive referencing `$item.says` fails the firing when one
+// shape is what a fan-out needs: a derive reading `.[item.says]` fails the firing when one
 // element omits it, after the task has finished and its work is done. Stated in the contract,
 // the same omission is caught while there is still a repair loop to fix it.
 func TestExampleOfAllIsAList(t *testing.T) {

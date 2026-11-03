@@ -238,19 +238,19 @@ func TestUnstratifiedRuleMayNotDerive(t *testing.T) {
 }
 
 // The load-bearing one. A derive may reference the firing's IDENTITY and never its STATE:
-// $subject is fixed by the same pair the derived address is fixed by, so a re-fire still writes
+// subject is fixed by the same pair the derived address is fixed by, so a re-fire still writes
 // identical bytes at an identical address, and the read side keeps the inertness it leans on. A
 // value read from a payload moves as rules fire, and would take that away.
 func TestDeriveContentMustBeLiteral(t *testing.T) {
 	eng, _ := newEng(t)
 	withStrata(t, eng, demoStrata()...)
 	for why, payload := range map[string]entity.Obj{
-		"a bare reference":     {"who": "$result"},
-		"one inside text":      {"note": "about $result now"},
-		"one nested deeper":    {"a": entity.Obj{"b": "$stage"}},
-		"one inside a list":    {"a": []any{"ok", "$result"}},
-		"a dotted path":        {"a": "$verse.review.step"},
-		"an indexed reference": {"a": "$result.findings[0].id"},
+		"a bare reference":     {"who": ".[result]"},
+		"one inside text":      {"note": "about $[result] now"},
+		"one nested deeper":    {"a": entity.Obj{"b": ".[stage]"}},
+		"one inside a list":    {"a": []any{"ok", ".[result]"}},
+		"a dotted path":        {"a": ".[verse.review.step]"},
+		"an indexed reference": {"a": ".[result.findings[0].id]"},
 	} {
 		err := eng.AddTrigger(Trigger{
 			Name:      "ref-" + strings.ReplaceAll(why, " ", "-"),
@@ -263,14 +263,14 @@ func TestDeriveContentMustBeLiteral(t *testing.T) {
 		}
 	}
 	// A literal dollar is not a reference, and never was — the same rule the expander uses.
-	// $subject is, and is the one that is allowed.
+	// subject is, and is the one that is allowed.
 	for why, payload := range map[string]entity.Obj{
-		"a literal dollar":     {"price": "$5"},
-		"$subject alone":       {"what": "$subject"},
-		"$subject inside text": {"note": "raised from $subject"},
-		"$subject nested":      {"a": entity.Obj{"b": "$subject"}},
-		"$subject twice":       {"a": "$subject", "b": "$subject"},
-		"$subject beside a $5": {"a": "$subject costs $5"},
+		"a literal dollar":    {"price": "$5"},
+		"the ref alone":       {"what": ".[subject.ref]"},
+		"the ref inside text": {"note": "raised from $[subject.ref]"},
+		"the ref nested":      {"a": entity.Obj{"b": ".[subject.ref]"}},
+		"the ref twice":       {"a": ".[subject.ref]", "b": ".[subject.ref]"},
+		"the ref beside a $5": {"a": "$[subject.ref] costs $5"},
 	} {
 		if err := eng.AddTrigger(Trigger{
 			Name:      "ok-" + strings.ReplaceAll(strings.ReplaceAll(why, " ", "-"), "$", ""),
@@ -281,33 +281,33 @@ func TestDeriveContentMustBeLiteral(t *testing.T) {
 			t.Errorf("%s was refused: %v", why, err)
 		}
 	}
-	// The parts of $subject, which are all admissible in a derive EXCEPT the one that is a
+	// The parts of the subject, which are all admissible in a derive EXCEPT the one that is a
 	// function of the firing's occasion rather than of the subject.
 	for _, part := range []string{"ref", "name", "value", "value.stage"} {
 		if err := eng.AddTrigger(Trigger{
 			Name:      "part-" + strings.ReplaceAll(part, ".", "-"),
 			Stratum:   "observe",
 			Condition: Condition{Subject: mm("gh.issue.*")},
-			Action:    deriveAction("signadot.feature", entity.Obj{"x": "$subject." + part}),
+			Action:    deriveAction("signadot.feature", entity.Obj{"x": ".[subject." + part + "]"}),
 		}); err != nil {
-			t.Errorf("$subject.%s was refused in a derive: %v", part, err)
+			t.Errorf("subject.%s was refused in a derive: %v", part, err)
 		}
 	}
-	// $subject.commit is refused, and it is the interesting one: it varies with WHEN the
+	// subject.commit is refused, and it is the interesting one: it varies with WHEN the
 	// firing happened, so a read from a higher level changes what the derive writes — which
 	// is a cross-level cycle, the thing the ordering exists to rule out.
 	if err := eng.AddTrigger(Trigger{
 		Name:      "subject-commit",
 		Stratum:   "observe",
 		Condition: Condition{Subject: mm("gh.issue.*")},
-		Action:    deriveAction("signadot.feature", entity.Obj{"at": "$subject.commit"}),
+		Action:    deriveAction("signadot.feature", entity.Obj{"at": ".[subject.commit]"}),
 	}); err == nil {
-		t.Error("$subject.commit was accepted in a derive; an upward read would then change " +
+		t.Error("$[subject.commit] was accepted in a derive; an upward read would then change " +
 			"what it writes, and the loop that follows crosses a level")
 	}
 }
 
-// $subject resolves, and to the same thing on every firing — which is what keeps a re-fire a
+// subject resolves, and to the same thing on every firing — which is what keeps a re-fire a
 // no-op and the read side inert. Both halves are asserted here because only together do they
 // make the reference safe.
 func TestDeriveResolvesSubjectAndStaysInert(t *testing.T) {
@@ -320,7 +320,7 @@ func TestDeriveResolvesSubjectAndStaysInert(t *testing.T) {
 		Name:      "raise",
 		Stratum:   "low",
 		Condition: Condition{Subject: mm("gh.issue.*")},
-		Action:    deriveAction("signadot.feature", entity.Obj{"what": "$subject", "note": "raised from $subject"}),
+		Action:    deriveAction("signadot.feature", entity.Obj{"what": ".[subject.ref]", "note": "raised from $[subject.ref]"}),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -333,13 +333,13 @@ func TestDeriveResolvesSubjectAndStaysInert(t *testing.T) {
 	derived := waitDerived(t, store, []string{"signadot", "feature"}, "raise", ref)
 	obj := entity.ToObj(derived.Payload)
 	if obj["what"] != `gh.issue."1"` {
-		t.Fatalf("$subject did not resolve to the ref: %+v", obj)
+		t.Fatalf(".[subject.ref] did not resolve to the ref: %+v", obj)
 	}
 	if obj["note"] != `raised from gh.issue."1"` {
-		t.Fatalf("$subject did not resolve inside text: %+v", obj)
+		t.Fatalf("$[subject.ref] did not resolve inside text: %+v", obj)
 	}
 
-	// Re-fire about the same subject: same bytes, same address. If $subject varied, this is
+	// Re-fire about the same subject: same bytes, same address. If subject varied, this is
 	// where the read side would stop being inert.
 	rev := store.Rev()
 	entitytest.Set(t, store, ref, entity.Obj{"n": 2}.Payload())
@@ -847,25 +847,24 @@ func TestSubjectPartsBindInSpawnStrings(t *testing.T) {
 	}
 }
 
-// The record's parts resolve in a patch, and the bare form still means the address — which is
-// what keeps every charter written before the record existed meaning what it meant.
+// The record's parts resolve in a patch: its address, the address's last segment, the commit
+// that caused the firing where it is named, and the payload at that commit.
 func TestSubjectPartsResolveInAPatch(t *testing.T) {
-	root := refRoot(entity.Obj{"stage": "open"}.Payload(),
-		subjectNode(entity.RefAt("demo", "pr", "7"), entity.Obj{"stage": "open"}.Payload(), 42))
-	for ref, want := range map[string]string{
-		"$subject":             `demo.pr."7"`,
-		"$subject.ref":         `demo.pr."7"`,
-		"$subject.name":        "7",
-		"$subject.commit":      "42",
-		"$subject.value.stage": "open",
+	env := refEnv(entity.Obj{"stage": "open"}.Payload(),
+		subjectRecord(entity.RefAt("demo", "pr", "7"), entity.Obj{"stage": "open"}.Payload(), 42), fromSubject)
+	for in, want := range map[string]string{
+		".[subject.ref]":         `demo.pr."7"`,
+		".[subject.name]":        "7",
+		".[subject.commit]":      "42",
+		".[subject.value.stage]": "open",
 	} {
-		got, err := expandString(ref, root)
+		got, err := valueOf(in, env)
 		if err != nil {
-			t.Errorf("%s: %v", ref, err)
+			t.Errorf("%s: %v", in, err)
 			continue
 		}
 		if txt, _ := scalarText(got); txt != want {
-			t.Errorf("%s = %q, want %q", ref, txt, want)
+			t.Errorf("%s = %q, want %q", in, txt, want)
 		}
 	}
 }
@@ -873,7 +872,7 @@ func TestSubjectPartsResolveInAPatch(t *testing.T) {
 // A FIRING HELD AT A GATE WITHDRAWS when its subject moves out of the rule's selection before
 // the answer comes.
 //
-// $subject.value reads the subject as of the commit that caused the firing (the case above),
+// subject.value reads the subject as of the commit that caused the firing (the case above),
 // so a late answer could act from that snapshot. It does not: a gate asks its question of a
 // world, and the answer applies to that world. A subject that the rule would no longer select
 // is one the charter has moved on from, and acting on the old snapshot anyway is how a merge
@@ -888,7 +887,7 @@ func TestAFiringWithdrawsWhenItsSubjectMovesOnUnderTheGate(t *testing.T) {
 		Name:      "record",
 		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Gates:     []Gate{{Mode: "ask"}},
-		Action:    Action{Patch: entity.Obj{"sawStage": "$subject.value.stage", "sawAt": "$subject.commit"}.Payload()},
+		Action:    Action{Patch: entity.Obj{"sawStage": ".[subject.value.stage]", "sawAt": ".[subject.commit]"}.Payload()},
 	}); err != nil {
 		t.Fatal(err)
 	}

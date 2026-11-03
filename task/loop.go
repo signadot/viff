@@ -784,7 +784,7 @@ func (p *Task) teardown(ctx context.Context, td effTeardown) (Outcome, error) {
 	// err off that frame. Recorded only on the task, it reached the mirror by a second read of
 	// the runner's snapshot, which in the window between this frame and Run returning still
 	// said running and had no err — so a failed claude task's entity carried its result and
-	// no reason, and a charter's onFailed binding $err wrote nothing (zm5vx3z2h12ks5x8vhn0).
+	// no reason, and a charter's onFailed reading err wrote nothing (zm5vx3z2h12ks5x8vhn0).
 	p.setErr(td.cause)
 	if len(td.frames) > 0 {
 		p.logf("— %s: unwinding %d frame(s)", td.status, len(td.frames))

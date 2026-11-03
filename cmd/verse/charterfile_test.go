@@ -29,7 +29,7 @@ rules:
   action:
     derive:
     - path: "roundtrip.row"
-      id: $subject.value.id
+      id: .[subject.value.id]
       value: {seen: true} # the flag it sets
 `
 

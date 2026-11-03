@@ -62,8 +62,8 @@ func TestDerefIntoTaskData(t *testing.T) {
 			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{Patch: entity.Obj{
 				"stage":    "reviewed",
-				"severity": "$data.severity",
-				"first":    "$data.findings[0].id",
+				"severity": ".[data.severity]",
+				"first":    ".[data.findings[0].id]",
 			}.Payload()},
 		},
 	}); err != nil {
@@ -76,7 +76,7 @@ func TestDerefIntoTaskData(t *testing.T) {
 }
 
 // The agent that reports failure in prose is the case that motivated all of this. Its answer
-// is not structure, so `data` is absent, so a hook naming $data.severity fails — the subject
+// is not structure, so `data` is absent, so a hook reading `.[data.severity]` fails — the subject
 // does not advance on an unverified claim, without anything having to detect the lie.
 func TestProseAnswerCannotSatisfyADeref(t *testing.T) {
 	eng, store := structuredEngine(t, structured{r: "Error could not open file"})
@@ -87,7 +87,7 @@ func TestProseAnswerCannotSatisfyADeref(t *testing.T) {
 		Action: Action{
 			Patch:  entity.Obj{"stage": "reviewing"}.Payload(),
 			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
-			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed", "severity": "$data.severity"}.Payload()},
+			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed", "severity": ".[data.severity]"}.Payload()},
 		},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -179,8 +179,8 @@ func TestDerefReadsAFencedAnswer(t *testing.T) {
 			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{Patch: entity.Obj{
 				"stage":    "reviewed",
-				"severity": "$data.severity",
-				"first":    "$data.findings[0].id",
+				"severity": ".[data.severity]",
+				"first":    ".[data.findings[0].id]",
 			}.Payload()},
 		},
 	}); err != nil {

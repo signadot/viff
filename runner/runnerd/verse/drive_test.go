@@ -231,7 +231,7 @@ func drive(t *testing.T, withVerb bool) driveResult {
 // This is the floor `fail` was introduced to raise, and folding it into `yield` is exactly the
 // kind of change that could lower it again without anything noticing — the failure mode is a
 // task reporting `done`, which no assertion about the loop would catch. A charter dereferencing
-// $result is the caller that cannot afford it.
+// `result` is the caller that cannot afford it.
 func TestDriveAnImpossibleJobYieldsCannot(t *testing.T) {
 	requireDrive(t)
 	root := t.TempDir()

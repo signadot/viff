@@ -333,7 +333,7 @@ func payloadToNode(p Payload) *ir.Node {
 // It has to happen HERE, at the one boundary every payload verse hands out is made at, because
 // a head comment WRAPS the value it precedes in a CommentType node. A payload standing behind
 // one is not an object as far as anything that asks: Get, Str, Fields and IsObj all answer
-// empty, `verse data demo.pr.1.stage` refuses the field, and a `$stage` binding comes back
+// empty, `verse data demo.pr.1.stage` refuses the field, and a `stage` binding comes back
 // blank. Worse, tony.Match sees through comments, so a trigger SELECTS the entity and then
 // reads nothing out of it — a rule that fires on the right subject and acts on nothing.
 //

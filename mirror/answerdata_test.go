@@ -43,7 +43,7 @@ func TestAnAnswerEchoingItsContractLandsAsData(t *testing.T) {
 }
 
 // The ordinary case pays nothing: an answer with no tags is stored exactly as it was
-// written, so `$data.x` derefs against what the agent said and not around an escape.
+// written, so `.[data.x]` reads what the agent said and not around an escape.
 func TestAnOrdinaryAnswerIsUnchanged(t *testing.T) {
 	d := ParseResult("done\n\n```\n{\"status\": \"fixed\", \"file\": \"docs/runners.md\"}\n```\n")
 	if d == nil {

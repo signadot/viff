@@ -14,7 +14,7 @@ import (
 )
 
 // A SPAWN NAMING AN ABSENT FIELD UNDER A BOUND ONE IS REFUSED, and the refusal is a failed
-// task: the rule's own patch lands, the action's onFailed runs with the refusal as `$err`, and
+// task: the rule's own patch lands, the action's onFailed runs with the refusal as `err`, and
 // nothing is started: the Spawner is given the refusal (launch.Spec.Refusal), to record the
 // task as failed, and starts nothing.
 //
@@ -53,7 +53,7 @@ func TestASpawnNamingAnAbsentPathIsRefusedAsAFailedTask(t *testing.T) {
       autonomy: [{then: allow}]
       prompt: "`+c.prompt+`"
     onFailed:
-      patch: {stage: failed, why: $err}
+      patch: {stage: failed, why: .[err]}
 `)); err != nil {
 				t.Fatalf("AddTrigger: %v", err)
 			}

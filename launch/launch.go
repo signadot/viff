@@ -100,7 +100,7 @@ type Spec struct {
 	// thing without the wrapper). nil = no contract, and the run ends wherever the doer stops.
 	//
 	// It is inline beside Prompt rather than a name to resolve: it is written by the authoring
-	// party for this spawn, and only the charter that derefs `$data.severity` knows what shape
+	// party for this spawn, and only the charter that reads `data.severity` knows what shape
 	// it needs. It is a DOCUMENT rather than the text of one: a contract is dense with
 	// operators (`!or`, `!irtype`), and `!raw` (entity.Raw) carries it as structure, readable
 	// field by field on the rule's own entity. It is not advice: it is checked when the doer
@@ -220,14 +220,19 @@ type Passed struct {
 // payload the firing read), as eval.ToAny gives them.
 type Binding map[string]any
 
-// exprOptions is how a spawn's strings are expanded.
+// exprOptions is how a firing's expressions are evaluated: a spawn's strings, a gate's pose, and
+// the values of a patch and a derive (ExpandValue).
 //
 // NO CLOCK: a firing's launch is retried, and parked and released, and has to say the same thing
-// each time, so the builtins that read the time are not callable. AN OBJECT OR A LIST IS TONY in
-// a string, the format the rest of verse writes, so a prompt carrying a ledger carries something
-// a person and a parser can both read.
+// each time, so the builtins that read the time are not callable. NO DOCUMENT READS: go-tony's
+// script functions read the document an expression stands in, or the process's environment, and a
+// charter reaches other data through `!get-path` and `!list-paths`, whose reads a rule tracks.
+// They are callable only where an expansion is given a position (ExpandValue's is the value's
+// own), and are refused by name wherever they are. AN OBJECT OR A LIST IS TONY in a string, the
+// format the rest of verse writes, so a prompt carrying a ledger carries something a person and a
+// parser can both read.
 var exprOptions = tonyeval.EvalOptions{
-	DisableBuiltins: []string{"now", "date"},
+	DisableBuiltins: []string{"now", "date", "getpath", "listpath", "getenv", "whereami"},
 	Composite:       tonyeval.CompositeTony,
 }
 
@@ -235,6 +240,14 @@ var exprOptions = tonyeval.EvalOptions{
 // the same options: what else a firing says in words, a gate's pose, reads as its spawn does.
 func Expand(s string, b Binding) (string, error) {
 	return tonyeval.ExpandStringWithOptions(s, b, &exprOptions)
+}
+
+// ExpandValue is the value s stands for in a document a firing writes, a patch's or a derive's:
+// where s is one `.[…]` and nothing else, the expression's value, typed (a number stays a number,
+// an object an object); otherwise s with its `$[…]` expanded, a string. It carries no tag: the
+// tag belongs to the place s stood in, which the caller keeps.
+func ExpandValue(s string, b Binding) (*ir.Node, error) {
+	return tonyeval.ExpandIRWithOptions(ir.FromString(s), b, &exprOptions)
 }
 
 // binder expands a spec's strings against one binding, and keeps what would not expand.

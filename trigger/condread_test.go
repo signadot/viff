@@ -5,8 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/tony-format/go-tony/ir"
-
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/entity"
 	"github.com/signadot/verse/entity/entitytest"
@@ -119,7 +117,7 @@ func TestAConditionReadOfAnAbsentEntitySelectsNothing(t *testing.T) {
 	}
 }
 
-// A condition's read cannot name $subject, and the refusal happens at INSTALL with the reason
+// A condition's read cannot name subject, and the refusal happens at INSTALL with the reason
 // rather than at a firing nobody is watching.
 func TestAConditionReadCannotNameTheSubject(t *testing.T) {
 	store := entitytest.Store(t)
@@ -131,7 +129,7 @@ func TestAConditionReadCannotNameTheSubject(t *testing.T) {
     subject:
       path: "merge.proposal.*"
       value: !let
-        let: [{tip: !get-path {at: [git, head, $subject.value.branch], path: sha}}]
+        let: [{tip: !get-path {at: [git, head, .[subject.value.branch]], path: sha}}]
         in:  {base: !not .[tip]}
   action:
     patch: {state: stale}
@@ -139,7 +137,7 @@ func TestAConditionReadCannotNameTheSubject(t *testing.T) {
 	if err == nil {
 		t.Fatal("installed a condition whose read names the subject it is selecting")
 	}
-	if !strings.Contains(err.Error(), "$subject") || !strings.Contains(err.Error(), "selects") {
+	if !strings.Contains(err.Error(), "cannot name subject") || !strings.Contains(err.Error(), "selects") {
 		t.Fatalf("err = %v — want it to say why, not just that something is unknown", err)
 	}
 }
@@ -162,7 +160,7 @@ func TestAConditionReadJoinsTheReadSet(t *testing.T) {
 
 // A TAG SURVIVES EXPANSION, which is the difference between a predicate and its opposite.
 //
-// expandInto rebuilds a string node after substituting `$refs` into it, and CloneTo copies the
+// expandInto rebuilds a string node after expanding its expressions, and CloneTo copies the
 // source's tag over the destination's — so a tagged string walked by the expander came back
 // bare. `base: !not .[tip]` became `base: .[tip]`: no error, no complaint, the exact inverse of
 // what the charter said, in the rule that decides which branches to delete.
@@ -172,7 +170,7 @@ func TestAConditionReadJoinsTheReadSet(t *testing.T) {
 func TestExpansionKeepsATagOnAString(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"an operator over a binding", `{base: !not .[tip]}`, "!not"},
-		{"an operator over a reference", `{branch: !glob $name}`, "!glob"},
+		{"an operator over an expression", `{branch: !glob .[name]}`, "!glob"},
 		{"and one over a plain string", `{branch: !glob "verse/auto/*"}`, "!glob"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -180,8 +178,9 @@ func TestExpansionKeepsATagOnAString(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			root := refRoot(entity.Obj{"name": "verse/auto/1"}.Payload(), ir.FromString(`demo.pr."1"`))
-			out, err := expandPatch(pred, root, nil)
+			env := refEnv(entity.Obj{"name": "verse/auto/1", "tip": "abc"}.Payload(),
+				subjectRecord(entity.RefAt("demo", "pr", "1"), nil, 0), fromSubject)
+			out, err := expandPatch(pred, env, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

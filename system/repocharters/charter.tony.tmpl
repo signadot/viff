@@ -193,13 +193,13 @@ rules:
     derive:
     - path: "repo-charters.{{.Repo}}.state"
       id: main
-      value: {sha: $subject.value.sha, tree: $subject.value.tree.{{.Tree}}}
+      value: {sha: .[subject.value.sha], tree: '.[subject.value.tree["{{.Tree}}"]]'}
     - path: "repo-charters.{{.Repo}}.candidate"
-      id: $subject.value.tree.{{.Tree}}
-      value: {sha: $subject.value.sha, tree: $subject.value.tree.{{.Tree}}}
+      id: '.[subject.value.tree["{{.Tree}}"]]'
+      value: {sha: .[subject.value.sha], tree: '.[subject.value.tree["{{.Tree}}"]]'}
     - path: "repo-charters.{{.Repo}}.check"
-      id: $subject.value.tree.{{.Tree}}
-      value: {to: "check.{{.InstallAt}}", tree: $subject.value.tree.{{.Tree}}, sha: $subject.value.sha}
+      id: '.[subject.value.tree["{{.Tree}}"]]'
+      value: {to: "check.{{.InstallAt}}", tree: '.[subject.value.tree["{{.Tree}}"]]', sha: .[subject.value.sha]}
 # What verse/live holds, which is what runs once installed: its last entry, the charters tree it
 # holds, and the commit of main the tree came from. An entry the git io wrote names that commit;
 # anybody who can push can write one that does not, and its `from` is empty: what it holds is
@@ -214,7 +214,7 @@ rules:
     derive:
     - path: "repo-charters.{{.Repo}}.state"
       id: live
-      value: {sha: $subject.value.sha, tree: $subject.value.tree, from: $subject.value.from}
+      value: {sha: .[subject.value.sha], tree: .[subject.value.tree], from: .[subject.value.from]}
 # An open pull request to main that changes the charters proposes the tree at its head: a
 # candidate and its check. The github io's `-tree` reports `changes` against the head's merge
 # base with main, so a pull request that leaves the charters alone proposes nothing, and neither
@@ -231,14 +231,14 @@ rules:
   action:
     derive:
     - path: "repo-charters.{{.Repo}}.candidate"
-      id: $subject.value.changes.{{.Tree}}
-      value: {tree: $subject.value.changes.{{.Tree}}, seen: $subject.value.updatedAt}
+      id: '.[subject.value.changes["{{.Tree}}"]]'
+      value: {tree: '.[subject.value.changes["{{.Tree}}"]]', seen: .[subject.value.updatedAt]}
     - path: "repo-charters.{{.Repo}}.check"
-      id: $subject.value.changes.{{.Tree}}
-      value: {to: "check.{{.InstallAt}}", tree: $subject.value.changes.{{.Tree}}, sha: $subject.value.headSha}
+      id: '.[subject.value.changes["{{.Tree}}"]]'
+      value: {to: "check.{{.InstallAt}}", tree: '.[subject.value.changes["{{.Tree}}"]]', sha: .[subject.value.headSha]}
     - path: "repo-charters.{{.Repo}}.pull"
-      id: $subject.value.number
-      value: {pr: $subject.value.number, head: $subject.value.headSha, tree: $subject.value.changes.{{.Tree}}}
+      id: .[subject.value.number]
+      value: {pr: .[subject.value.number], head: .[subject.value.headSha], tree: '.[subject.value.changes["{{.Tree}}"]]'}
 - name: pull-quiet
   stratum: pulls
   condition:
@@ -248,8 +248,8 @@ rules:
   action:
     derive:
     - path: "repo-charters.{{.Repo}}.pull"
-      id: $subject.value.number
-      value: {pr: $subject.value.number, head: $subject.value.headSha, tree: ""}
+      id: .[subject.value.number]
+      value: {pr: .[subject.value.number], head: .[subject.value.headSha], tree: ""}
 # THE CHECK, apart from the decision: the git io asks the verse's charter check what an install
 # of a tree would do (iod reference, the out half of git), and its verdict is written onto the
 # candidate, where the pull requests' `verse/check` statuses are drawn from. The check input
@@ -264,7 +264,7 @@ rules:
   action:
     derive:
     - path: "repo-charters.{{.Repo}}.candidate"
-      id: $subject.value.tree
+      id: .[subject.value.tree]
       value: {checked: installs}
 - name: check-refused
   stratum: checks
@@ -275,8 +275,8 @@ rules:
   action:
     derive:
     - path: "repo-charters.{{.Repo}}.candidate"
-      id: $subject.value.tree
-      value: {checked: refused, refusal: $subject.value.refusal}
+      id: .[subject.value.tree]
+      value: {checked: refused, refusal: .[subject.value.refusal]}
 # ONE STANDING ISSUE says main's charters would be refused, and it is closed when main passes:
 # opened (or reopened) when the check of main's tree is refused, saying which tree and why, and
 # closed when the check of main's tree finds it installs. One issue rather than one per tree,
@@ -299,7 +299,7 @@ rules:
         to: issue
         open:
           title: "charters: {{.Branch}}'s charters would be refused"
-          body: "verse's charter check says an install of the charters on {{.Branch}} (tree $subject.value.tree) into {{.InstallAt}} would be refused:\n\n$subject.value.refusal\n\nThis issue closes when the charters on {{.Branch}} pass the check."
+          body: "verse's charter check says an install of the charters on {{.Branch}} (tree $[subject.value.tree]) into {{.InstallAt}} would be refused:\n\n$[subject.value.refusal]\n\nThis issue closes when the charters on {{.Branch}} pass the check."
         closed: false
 - name: main-passed
   stratum: checks
@@ -326,8 +326,8 @@ rules:
       value: !and [!not.has-path ask, {tree: !not "{{.EmptyTree}}"}]
   action:
     patch:
-      ask: "Install the charters tree $subject.value.tree into {{.InstallAt}}?"
-      title: "install the charters tree $subject.value.tree"
+      ask: "Install the charters tree $[subject.value.tree] into {{.InstallAt}}?"
+      title: "install the charters tree $[subject.value.tree]"
       seen: "1970-01-01T00:00:00Z"
 - name: name-removal
   stratum: candidates
@@ -380,7 +380,7 @@ rules:
       script: |
         verse-call-tool question-ask -question "$ASK" -options proceed -options deny -options obsolete{{if .Answerers}}{{.AnswererFlags}}{{end}}
     onDone:
-      patch: {answer: $result, askedAt: $subject.value.seen}
+      patch: {answer: .[result], askedAt: .[subject.value.seen]}
 # WHAT VERSE SAYS ABOUT A TREE on any pull request that proposes it, from its answer and its
 # check: the decision (the `verse` status) and the check (the `verse/check` status, and the
 # comment's text, which says why a refused tree would be refused). Neither holds the merge.
@@ -400,7 +400,7 @@ rules:
   action:
     derive:
     - path: "repo-charters.{{.Repo}}.verdict"
-      id: $subject.value.tree
+      id: .[subject.value.tree]
       value:
         decision:
           state: pending
@@ -416,7 +416,7 @@ rules:
   action:
     derive:
     - path: "repo-charters.{{.Repo}}.verdict"
-      id: $subject.value.tree
+      id: .[subject.value.tree]
       value:
         decision:
           state: success
@@ -430,7 +430,7 @@ rules:
   action:
     derive:
     - path: "repo-charters.{{.Repo}}.verdict"
-      id: $subject.value.tree
+      id: .[subject.value.tree]
       value:
         decision:
           state: failure
@@ -444,7 +444,7 @@ rules:
   action:
     derive:
     - path: "repo-charters.{{.Repo}}.verdict"
-      id: $subject.value.tree
+      id: .[subject.value.tree]
       value:
         check: {state: success, description: "installs cleanly over what runs"}
         text: "This pull request changes the charters verse runs for this repository. A yes to the question below installs them once this merges; merging does not wait for it, and unanswered, the question is asked again on an issue after the merge."
@@ -457,10 +457,10 @@ rules:
   action:
     derive:
     - path: "repo-charters.{{.Repo}}.verdict"
-      id: $subject.value.tree
+      id: .[subject.value.tree]
       value:
         check: {state: failure, description: "would be refused; see the comment"}
-        text: "This pull request changes the charters verse runs for this repository. A yes to the question below installs them once this merges; merging does not wait for it, and unanswered, the question is asked again on an issue after the merge.\n\nverse's charter check says these charters would be refused if installed into {{.InstallAt}}:\n\n$subject.value.refusal"
+        text: "This pull request changes the charters verse runs for this repository. A yes to the question below installs them once this merges; merging does not wait for it, and unanswered, the question is asked again on an issue after the merge.\n\nverse's charter check says these charters would be refused if installed into {{.InstallAt}}:\n\n$[subject.value.refusal]"
 # ON THE PULL REQUEST TO MAIN, what verse says about the tree it proposes now: the comment with
 # the question, and both statuses on its head, drawn from that tree's verdict. Re drawn when any
 # verdict changes (`when`), since what is read in an action is copied, not followed. One input per
@@ -477,21 +477,21 @@ rules:
   action:
     derive:
     - path: "repo-charters.{{.Repo}}.out.github.pr"
-      id: $subject.value.pr
+      id: .[subject.value.pr]
       value:
-        to: "pr.$subject.value.pr"
-        tree: $subject.value.tree
-        text: !get-path {at: [repo-charters, {{.Repo}}, verdict, $subject.value.tree], path: text}
-        asks: "repo-charters.{{.Repo}}:propose@repo-charters.{{.Repo}}.candidate.$subject.value.tree~2"
+        to: "pr.$[subject.value.pr]"
+        tree: .[subject.value.tree]
+        text: !get-path {at: [repo-charters, {{.Repo}}, verdict, .[subject.value.tree]], path: text}
+        asks: "repo-charters.{{.Repo}}:propose@repo-charters.{{.Repo}}.candidate.$[subject.value.tree]~2"
         commitStatus:
           verse:
-            state: !get-path {at: [repo-charters, {{.Repo}}, verdict, $subject.value.tree], path: decision.state}
-            description: !get-path {at: [repo-charters, {{.Repo}}, verdict, $subject.value.tree], path: decision.description}
-            sha: $subject.value.head
+            state: !get-path {at: [repo-charters, {{.Repo}}, verdict, .[subject.value.tree]], path: decision.state}
+            description: !get-path {at: [repo-charters, {{.Repo}}, verdict, .[subject.value.tree]], path: decision.description}
+            sha: .[subject.value.head]
           "verse/check":
-            state: !get-path {at: [repo-charters, {{.Repo}}, verdict, $subject.value.tree], path: check.state}
-            description: !get-path {at: [repo-charters, {{.Repo}}, verdict, $subject.value.tree], path: check.description}
-            sha: $subject.value.head
+            state: !get-path {at: [repo-charters, {{.Repo}}, verdict, .[subject.value.tree]], path: check.state}
+            description: !get-path {at: [repo-charters, {{.Repo}}, verdict, .[subject.value.tree]], path: check.description}
+            sha: .[subject.value.head]
 # A pull request that no longer changes the charters is asked nothing: the comment says so, and
 # both statuses on its head say there is nothing to wait for. One that never did writes an input
 # with no `to`, which no io reads.
@@ -504,14 +504,14 @@ rules:
   action:
     derive:
     - path: "repo-charters.{{.Repo}}.out.github.pr"
-      id: $subject.value.pr
+      id: .[subject.value.pr]
       value:
         tree: ""
         text: "This pull request no longer changes the charters verse runs, so verse asks nothing here."
         asks: []
         commitStatus:
-          verse: {state: success, description: "changes no charters", sha: $subject.value.head}
-          "verse/check": {state: success, description: "changes no charters", sha: $subject.value.head}
+          verse: {state: success, description: "changes no charters", sha: .[subject.value.head]}
+          "verse/check": {state: success, description: "changes no charters", sha: .[subject.value.head]}
 # ON THE CANDIDATE'S ISSUE, for a change that reached main without an answer: while a candidate is
 # asked about, its question rides an issue saying what main carries against what runs, with the
 # answer heard there, and verse's commit status pending on main's commit. Only once verse/live
@@ -536,15 +536,15 @@ rules:
   action:
     derive:
     - path: "repo-charters.{{.Repo}}.out.github"
-      id: $subject.value.tree
+      id: .[subject.value.tree]
       value:
         to: issue
         open:
-          title: "charters: $subject.value.title"
-          body: "{{.Branch}} at $subject.value.sha carries the charters tree $subject.value.tree, which is not what runs at {{.InstallAt}}, and nobody has answered for it yet. An answer here installs it.\n\nWhat it changes, against what runs:\n\n    git fetch origin refs/verse/live\n    git diff FETCH_HEAD $subject.value.tree\n\nThis issue closes once the tree is installed, or once {{.Branch}} carries another."
+          title: "charters: $[subject.value.title]"
+          body: "{{.Branch}} at $[subject.value.sha] carries the charters tree $[subject.value.tree], which is not what runs at {{.InstallAt}}, and nobody has answered for it yet. An answer here installs it.\n\nWhat it changes, against what runs:\n\n    git fetch origin refs/verse/live\n    git diff FETCH_HEAD $[subject.value.tree]\n\nThis issue closes once the tree is installed, or once {{.Branch}} carries another."
         text: "What is on {{.Branch}} against what runs. An answer here installs it."
-        asks: "repo-charters.{{.Repo}}:propose@repo-charters.{{.Repo}}.candidate.$subject.value.tree~2"
-        commitStatus: {verse: {state: pending, description: "waiting for an answer to the question on the candidate's issue", sha: $subject.value.sha}}
+        asks: "repo-charters.{{.Repo}}:propose@repo-charters.{{.Repo}}.candidate.$[subject.value.tree]~2"
+        commitStatus: {verse: {state: pending, description: "waiting for an answer to the question on the candidate's issue", sha: .[subject.value.sha]}}
         closed: false
 # The check's verdict on main's commit of a tree main carries, while it is asked about on the
 # candidate's issue.
@@ -557,9 +557,9 @@ rules:
   action:
     derive:
     - path: "repo-charters.{{.Repo}}.out.github"
-      id: $subject.value.tree
+      id: .[subject.value.tree]
       value:
-        commitStatus: {"verse/check": {state: success, description: "installs cleanly over what runs", sha: $subject.value.sha}}
+        commitStatus: {"verse/check": {state: success, description: "installs cleanly over what runs", sha: .[subject.value.sha]}}
 - name: live-check-refused
   stratum: candidates
   condition:
@@ -569,9 +569,9 @@ rules:
   action:
     derive:
     - path: "repo-charters.{{.Repo}}.out.github"
-      id: $subject.value.tree
+      id: .[subject.value.tree]
       value:
-        commitStatus: {"verse/check": {state: failure, description: "would be refused; see the issue", sha: $subject.value.sha}}
+        commitStatus: {"verse/check": {state: failure, description: "would be refused; see the issue", sha: .[subject.value.sha]}}
 - name: candidate-superseded
   stratum: candidates
   condition:
@@ -586,7 +586,7 @@ rules:
   action:
     derive:
     - path: "repo-charters.{{.Repo}}.out.github"
-      id: $subject.value.tree
+      id: .[subject.value.tree]
       value: {closed: true}
 # A no closes the candidate's issue, with verse's commit status failed on main's commit: the record
 # of the decision, where the question was asked.
@@ -599,10 +599,10 @@ rules:
   action:
     derive:
     - path: "repo-charters.{{.Repo}}.out.github"
-      id: $subject.value.tree
+      id: .[subject.value.tree]
       value:
         closed: true
-        commitStatus: {verse: {state: failure, description: "denied: $subject.value.answer", sha: $subject.value.sha}}
+        commitStatus: {verse: {state: failure, description: "denied: $[subject.value.answer]", sha: .[subject.value.sha]}}
 # A yes on main's tree makes verse/live hold it: the record made holding it where verse/live does
 # not stand yet (the first install), and the tree appended where it holds another (a later yes,
 # or a rollback to a tree answered before), each entry naming the candidate's commit. Two inputs
@@ -622,7 +622,7 @@ rules:
     derive:
     - path: "repo-charters.{{.Repo}}.out.git"
       id: live-made
-      value: {to: "record.live", tree: $subject.value.tree, from: $subject.value.sha, create: true}
+      value: {to: "record.live", tree: .[subject.value.tree], from: .[subject.value.sha], create: true}
 - name: live-moved
   stratum: candidates
   condition:
@@ -640,7 +640,7 @@ rules:
     derive:
     - path: "repo-charters.{{.Repo}}.out.git"
       id: live
-      value: {to: "record.live", tree: $subject.value.tree, from: $subject.value.sha}
+      value: {to: "record.live", tree: .[subject.value.tree], from: .[subject.value.sha]}
 # The tree verse/live holds is installed, where its candidate was answered yes: the git io is
 # asked to install it, for verse/live's entry. The input is named for the tree and carries the
 # entry and the commit of main it came from, so the io does nothing for a tree it already
@@ -657,10 +657,10 @@ rules:
   action:
     derive:
     - path: "repo-charters.{{.Repo}}.install"
-      id: $subject.value.tree
+      id: .[subject.value.tree]
       value:
         to: "install.{{.InstallAt}}"
-        tree: $subject.value.tree
+        tree: .[subject.value.tree]
         sha: !get-path {at: [repo-charters, {{.Repo}}, state, live], path: sha}
         from: !get-path {at: [repo-charters, {{.Repo}}, state, live], path: from}
 # The io's answer: the tree it installed, for which entry and from which commit. What runs is
@@ -683,13 +683,13 @@ rules:
     derive:
     - path: "repo-charters.{{.Repo}}"
       id: running
-      value: {tree: $subject.value.tree, sha: $subject.value.sha, from: $subject.value.from}
+      value: {tree: .[subject.value.tree], sha: .[subject.value.sha], from: .[subject.value.from]}
     # Merged at depth onto the candidate's issue input, where one was opened, closing it; where
     # none was (the first install, a rollback), this stands alone with no to, and no io reads it.
     - path: "repo-charters.{{.Repo}}.out.github"
-      id: $subject.value.tree
+      id: .[subject.value.tree]
       value:
-        commitStatus: {verse: {state: success, description: "installed into {{.InstallAt}}", sha: $subject.value.from}}
+        commitStatus: {verse: {state: success, description: "installed into {{.InstallAt}}", sha: .[subject.value.from]}}
         closed: true
     # A refused install's issue is closed by an install that succeeds.
     - path: "repo-charters.{{.Repo}}.out.github"
@@ -715,12 +715,12 @@ rules:
         to: issue
         open:
           title: "charters: the install of what verse/live holds failed"
-          body: "verse refused to install the charters tree $subject.value.tree, refs/verse/live's entry $subject.value.sha, into {{.InstallAt}}:\n\n$subject.value.error\n\nverse asks again when its minute check finds the tree would install. This issue closes when an install succeeds."
+          body: "verse refused to install the charters tree $[subject.value.tree], refs/verse/live's entry $[subject.value.sha], into {{.InstallAt}}:\n\n$[subject.value.error]\n\nverse asks again when its minute check finds the tree would install. This issue closes when an install succeeds."
         closed: false
     - path: "repo-charters.{{.Repo}}.out.github"
-      id: $subject.value.tree
+      id: .[subject.value.tree]
       value:
-        commitStatus: {verse: {state: failure, description: "the install failed; see the issue", sha: $subject.value.from}}
+        commitStatus: {verse: {state: failure, description: "the install failed; see the issue", sha: .[subject.value.from]}}
 # MAIN'S CHARTERS ANSWERED NO: what runs stays as it was, and an issue says so while main holds the
 # denied tree. It closes when main's charters are anything else.
 - name: main-denied
@@ -740,7 +740,7 @@ rules:
         to: issue
         open:
           title: "charters: {{.Branch}}'s charters were answered no"
-          body: "The charters on {{.Branch}} (tree $subject.value.tree) were answered no: $subject.value.answer.\n\nWhat runs at {{.InstallAt}} stays as it was. This issue closes when {{.Branch}}'s charters change."
+          body: "The charters on {{.Branch}} (tree $[subject.value.tree]) were answered no: $[subject.value.answer].\n\nWhat runs at {{.InstallAt}} stays as it was. This issue closes when {{.Branch}}'s charters change."
         closed: false
 - name: main-not-denied
   stratum: candidates
@@ -773,7 +773,7 @@ rules:
     derive:
     - path: "repo-charters.{{.Repo}}.livecheck"
       id: live
-      value: {to: "check.{{.InstallAt}}", record: live, round: $subject.value.due}
+      value: {to: "check.{{.InstallAt}}", record: live, round: .[subject.value.due]}
 # A REFUSED INSTALL ASKED AGAIN: each time the minute's check finds that what an entry of
 # verse/live holds would install, where it did not find so before, the install of that tree is
 # asked again, once. What refused it may have been the verse's and not the tree's: no runner
@@ -793,8 +793,8 @@ rules:
   action:
     derive:
     - path: "repo-charters.{{.Repo}}.install"
-      id: $subject.value.tree
-      value: {again: $subject.value.verdictSince}
+      id: .[subject.value.tree]
+      value: {again: .[subject.value.verdictSince]}
 # verse/live HOLDING SOMETHING OTHER THAN WHAT RUNS is an open issue: not restored. The ask comes
 # when somebody opens a pull request to fix it; what runs back in step closes it. Two rounds in a
 # row at one entry, so an install verse is making is not taken for it.
@@ -823,7 +823,7 @@ rules:
         to: issue
         open:
           title: "charters: verse/live is not what runs"
-          body: "refs/verse/live (entry $subject.value.sha, tree $subject.value.tree) differs from the charters installed at {{.InstallAt}} by $subject.value.changes charter(s).\n\nOpen a pull request to {{.Branch}} to change the charters, or put what runs back in step with it; this issue closes when they agree."
+          body: "refs/verse/live (entry $[subject.value.sha], tree $[subject.value.tree]) differs from the charters installed at {{.InstallAt}} by $[subject.value.changes] charter(s).\n\nOpen a pull request to {{.Branch}} to change the charters, or put what runs back in step with it; this issue closes when they agree."
         closed: false
 - name: live-refused
   stratum: livecheck
@@ -839,7 +839,7 @@ rules:
         to: issue
         open:
           title: "charters: verse/live is not what runs"
-          body: "refs/verse/live (entry $subject.value.sha, tree $subject.value.tree) holds charters an install at {{.InstallAt}} would refuse:\n\n$subject.value.refusal\n\nOpen a pull request to {{.Branch}} to change the charters; this issue closes when what it holds would install and runs."
+          body: "refs/verse/live (entry $[subject.value.sha], tree $[subject.value.tree]) holds charters an install at {{.InstallAt}} would refuse:\n\n$[subject.value.refusal]\n\nOpen a pull request to {{.Branch}} to change the charters; this issue closes when what it holds would install and runs."
         closed: false
 - name: live-missing
   stratum: livecheck
@@ -872,7 +872,7 @@ rules:
       value:
         to: obsolete
         prefix: "repo-charters.{{.Repo}}:propose@repo-charters.{{.Repo}}.candidate."
-        before: $subject.value.due
+        before: .[subject.value.due]
         keep:
           state: !list-paths {at: "repo-charters.{{.Repo}}.state.*", path: tree}
           pulls: !list-paths {at: "github.{{.GitHubOrg}}.{{.GitHubName}}.pr.*", value: {state: open, base: "{{.Branch}}"}, path: changes.{{.Tree}}}

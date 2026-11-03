@@ -64,7 +64,7 @@ func TestCompletionWhenSweepsItsSubject(t *testing.T) {
 	}
 }
 
-// $subject is the RESOLVED subject, so a spawn's task template names what the work is about
+// subject is the RESOLVED subject, so a spawn's task template names what the work is about
 // rather than whatever entity happened to fire the trigger.
 func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 	store := entitytest.Store(t)

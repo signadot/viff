@@ -22,7 +22,7 @@ func TestAChangeElsewhereDuringAFiringIsNotLost(t *testing.T) {
 		Name:      "copy",
 		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": readOf(`!let {let: [{repo: !get-path {at: "git.repo.abc"}}], in: {stage: open}}`)}},
 		Action: Action{Patch: entity.Obj{
-			"branch": readOf(`!get-path {at: [git, repo, $subject.value.head], path: branch}`),
+			"branch": readOf(`!get-path {at: [git, repo, .[subject.value.head]], path: branch}`),
 		}.Payload()},
 	}); err != nil {
 		t.Fatal(err)

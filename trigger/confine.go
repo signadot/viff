@@ -28,7 +28,7 @@ import (
 //     the address. This is `Matches.contains` — the same containment `checkLevels` asks about
 //     a stratum — asked of one more outer pattern.
 //   - At RUN, dynamically: `patchEntity` refuses a write outside. This is the half that makes
-//     it a guarantee: a derive's address can be templated (`!each` keys, `$subject` in a key),
+//     it a guarantee: a derive's address can be templated (`!each` keys, the subject in a key),
 //     and a static check over templates is best-effort, which stratum.go's own opening comment
 //     already names as the wrong shape for a promise.
 //

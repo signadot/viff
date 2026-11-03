@@ -46,7 +46,7 @@ func TestGetPathMustNameOneNode(t *testing.T) {
 		"a predicate":             readOf(`!get-path {at: "git.repo.abc", value: {x: 1}}`),
 		"an unknown key":          readOf(`!get-path {at: "git.repo.abc", branch: main}`),
 		"a glob above the last":   readOf(`!get-path {at: [git, !glob "re*", abc]}`),
-		"a reference above":       readOf(`!get-path {at: [$subject.name, repo, abc]}`),
+		"a reference above":       readOf(`!get-path {at: [.[subject.name], repo, abc]}`),
 		"a bare address":          get("git"),
 		// The positional keys are not a spelling of an address.
 		"the positional keys": readOf(`!get-path {system: git, kind: repo, id: abc}`),
@@ -64,9 +64,9 @@ func TestGetPathMustNameOneNode(t *testing.T) {
 	ok := map[string]entity.Payload{
 		"the object form":        readOf(`!get-path {at: "git.repo.abc"}`),
 		"the address form":       get("git.repo.abc"),
-		"a reference last":       readOf(`!get-path {at: [git, repo, $subject.value.head]}`),
+		"a reference last":       readOf(`!get-path {at: [git, repo, .[subject.value.head]]}`),
 		"a payload path":         readOf(`!get-path {at: "git.repo.abc", path: branch}`),
-		"a reference in an addr": get(`git.repo."$subject.value.head"`),
+		"a reference in an addr": get(`git.repo."$[subject.value.head]"`),
 		// A short path names the node at it: git.repo is a place and something in it.
 		"a short address": get("git.repo"),
 	}
@@ -109,7 +109,7 @@ func TestReadCopiesAnotherEntity(t *testing.T) {
 			"stage": "read",
 			// The id is a reference, which is the whole reason a read is worth having: the
 			// address is as dynamic as anyone needs, while what is checked at install stays put.
-			"repo": readOf(`!get-path {at: [git, repo, $subject.value.head]}`),
+			"repo": readOf(`!get-path {at: [git, repo, .[subject.value.head]]}`),
 		}.Payload()},
 	}); err != nil {
 		t.Fatal(err)
@@ -156,7 +156,7 @@ func TestReadOfSomethingAbsentFailsTheFiring(t *testing.T) {
 	}
 }
 
-// A read is answered at the commit that caused the firing, like $subject.value and for the same
+// A read is answered at the commit that caused the firing, like subject.value and for the same
 // reason: a firing held at a gate acts whenever the answer comes, and a late read writes from a
 // state nobody evaluated.
 func TestReadAnswersAtTheCausingCommit(t *testing.T) {
@@ -291,7 +291,7 @@ func TestOneSnapshotPerFiring(t *testing.T) {
 		"b": get("git.repo.b"),
 		"c": get("git.repo.c"),
 	}.Payload()
-	out, err := expandPatch(patch, refRoot(nil, subjectNode(entity.RefAt("demo", "pr", "1"), nil, 0)),
+	out, err := expandPatch(patch, refEnv(nil, subjectRecord(entity.RefAt("demo", "pr", "1"), nil, 0), fromSubject),
 		eng.readerFor(oc))
 	if err != nil {
 		t.Fatalf("expanding three reads: %v", err)
@@ -576,7 +576,7 @@ func TestListPathsPredicateExpandsAReference(t *testing.T) {
 		Condition: Condition{Subject: Match{"path": pathOf("rel", "tag", "*"), "value": map[string]any{"stage": "cut"}}},
 		Action: Action{Patch: entity.Obj{
 			"stage":  "shipped",
-			"picked": readOf(`!list-paths {at: "tr.trace.*", value: {target: $subject.value.target}, path: pr}`),
+			"picked": readOf(`!list-paths {at: "tr.trace.*", value: {target: .[subject.value.target]}, path: pr}`),
 		}.Payload()},
 	}); err != nil {
 		t.Fatal(err)

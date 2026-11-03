@@ -146,7 +146,7 @@ func TestAPanickingRootFailsTheTaskAndStillSaysSo(t *testing.T) {
 
 // terminalSaysWhy drains a task's stream and checks it ended with a terminal frame carrying the
 // reason. The mirror projects a task's err off that frame; a frame without it left a failed
-// task's entity with its result and no err, and a charter's onFailed binding $err wrote nothing
+// task's entity with its result and no err, and a charter's onFailed reading err wrote nothing
 // (zm5vx3z2h12ks5x8vhn0).
 func terminalSaysWhy(t *testing.T, ch <-chan Event, why string) {
 	t.Helper()

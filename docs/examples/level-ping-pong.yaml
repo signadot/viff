@@ -61,29 +61,28 @@ rules:
     subject: { path: "gh.issue.*", value: { stage: labeled } }
   action:
     derive:
-    # `id: $subject.name` puts the feature at signadot.feature.1, the issue's own name under the
+    # `id: .[subject.name]` puts the feature at signadot.feature.1, the issue's own name under the
     # feature place, so the rules above select it as `signadot.feature.*`. Without an id the
     # engine addresses it by provenance — signadot.feature.raise-feature.gh.issue.1 — and a rule
     # selecting it would have to say how deep that is.
     - path: "signadot.feature"
-      id: $subject.name
+      id: .[subject.name]
       value:
         priority: urgent
-        # A derive may reference its SUBJECT and nothing else. $subject is the whole address —
-        # "gh.issue.1", a kinded path — and .ref, .name (its last segment) and .value are its
-        # parts. Safe here because nothing at a higher level can write the subject, so an upward
+        # A derive may read its SUBJECT and nothing else. subject.ref is the whole address —
+        # "gh.issue.1", a kinded path — and subject.name (its last segment) and subject.value
+        # are its other parts. Safe here because nothing at a higher level can write the subject, so an upward
         # read cannot change what this derive writes: same bytes, same address, a no-op the store
         # ends by itself.
         #
-        # $subject.commit is the one part refused in a derive: it varies with WHEN the firing
+        # subject.commit is the one part refused in a derive: it varies with WHEN the firing
         # happened, so a read from above WOULD change it, and the loop that follows crosses a
         # level.
         #
-        # Under a key of your choosing, so a spawn at the level above can bind it flatly
-        # (`task: "approve $what"`). The engine also records it at verse.meta.derivedFrom,
-        # nested, where a spawn's flat substitution cannot reach it.
-        what: $subject
-        stage: $subject.value.stage
+        # Under a key of your choosing, so a spawn at the level above reads it by that name
+        # (`task: "approve $[what]"`). The engine also records it at verse.meta.derivedFrom.
+        what: .[subject.ref]
+        stage: .[subject.value.stage]
 
 # ── the coupling: a lower lap re-ignites the upper cycle ─────────────────────
 # The subject is at level 10 (this rule's own), and the `on` reads level 0. A read

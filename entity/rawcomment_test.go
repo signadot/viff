@@ -10,7 +10,7 @@ import (
 // THE STORE GUARD SEES UNDER A COMMENT, and this pins it because the walks beside it did not.
 //
 // Two walks in trigger/ stopped at a CommentType wrapper — a head comment makes the value under
-// it a wrapper node — so a `!get-path` under a comment was never expanded and a `$subject.commit`
+// it a wrapper node — so a `!get-path` under a comment was never expanded and a `subject.commit`
 // under one was never refused. The same blindness HERE would be worse than either: CheckPatchable
 // is what stops a match operator reaching the log, and an operator that reaches the log makes
 // every later read of every entity fail. Two staging deployments went that way before the guard

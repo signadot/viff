@@ -70,8 +70,8 @@ rules:
   action:
     derive:
     - path: "repos.verse.merge.proposal"
-      id: $subject.value.name
-      value: {repo: $subject.value.repo, branch: $subject.value.name, sha: $subject.value.sha}
+      id: .[subject.value.name]
+      value: {repo: .[subject.value.repo], branch: .[subject.value.name], sha: .[subject.value.sha]}
 ```
 
 Two packages that both react to `git.*` are normal.

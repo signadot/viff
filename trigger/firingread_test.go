@@ -55,7 +55,7 @@ func TestAFiringReadsOnlyThePlacesItsRuleNames(t *testing.T) {
 	}
 }
 
-// ONE SNAPSHOT PER FIRING, however many references read it. `$subject.value` used to take its
+// ONE SNAPSHOT PER FIRING, however many references read it. `subject.value` used to take its
 // own, so a fan-out of twenty members was twenty reads of one world.
 func TestAFiringTakesOneSnapshotForEveryReferenceInIt(t *testing.T) {
 	store := &countingStore{Store: entitytest.Store(t)}
@@ -72,7 +72,7 @@ func TestAFiringTakesOneSnapshotForEveryReferenceInIt(t *testing.T) {
   action:
     patch:
       stage: seen
-      note: $subject.value.note
+      note: .[subject.value.note]
       covering: !get-path {at: "git.verse.head", path: sha}
 `)); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -103,7 +103,7 @@ func TestARuleThatCannotNameWhatItReadsReadsTheWholeVerse(t *testing.T) {
     subject: {path: "drive.item.*", value: {stage: open}}
   action:
     patch:
-      seen: !get-path {at: "$subject.value.where", path: sha}
+      seen: !get-path {at: [.[subject.value.where]], path: sha}
 `)
 	if within := firingWithin(trig); within != nil {
 		t.Fatalf("firingWithin = %v, want nil — the read names no place, so nothing may be "+

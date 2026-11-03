@@ -71,18 +71,18 @@ rules:
     # `repos.verse.merge.proposal.proposal-appeared.git.verse.ref."verse/auto/…"` — and every rule below
     # that reads a proposal says `[verse-dev, merge, proposal, "*"]`, which is four. Those rules
     # would go on selecting, on the RULE level, whose payload is the whole subtree rather than
-    # one proposal: `proposal-outrun` fired on it and asked the verse runner to retire a `$branch`
+    # one proposal: `proposal-outrun` fired on it and asked the verse runner to retire a `branch`
     # that node does not have.
     #
     # A branch name is unique per proposal and is what every reader keys on, so naming it here
     # says the identity the rest of the file already assumes. `train-cut` two rules down does
     # the same with a sha.
     - path: "repos.verse.merge.proposal"
-      id: $subject.value.name
+      id: .[subject.value.name]
       value:
-        repo: $subject.value.repo
-        branch: $subject.value.name
-        sha: $subject.value.sha
+        repo: .[subject.value.repo]
+        branch: .[subject.value.name]
+        sha: .[subject.value.sha]
 # 1b. …and the commit it was cut from is pinned, once. The latch applied to a field: it selects
 # the proposals nobody has pinned, and writing one takes that proposal out of its own selection.
 - name: proposal-based
@@ -109,7 +109,7 @@ rules:
   action:
     patch:
       says: !get-path
-        at: [repos, verse, drift, range, $subject.value.base]
+        at: [repos, verse, drift, range, .[subject.value.base]]
         path: report
 # 2. THE TRAIN: one entity per tip, so a new main is a new question and the old one stops asking.
 - name: train-cut
@@ -119,9 +119,9 @@ rules:
   action:
     derive:
     - path: "repos.verse.merge.train"
-      id: $subject.value.sha
+      id: .[subject.value.sha]
       value:
-        sha: $subject.value.sha
+        sha: .[subject.value.sha]
 # 2b. …loaded with whatever is deliverable, and reloaded as that changes.
 #
 # THE READS ARE IN THE CONDITION BECAUSE THAT IS WHAT WAKES IT. A rule watches what its CONDITION
@@ -135,7 +135,7 @@ rules:
 # the branches; the review pushes and then answers, so the report always lands last. Asking
 # whether this tip is among the shas that have been REVIEWED puts the report in the read set,
 # which is the wake-up. (The train's own sha cannot be an address in a condition: a condition
-# read may not name $subject.)
+# read may not name the subject.)
 #
 # AND ONLY WHILE THE BATCH IS OPEN, and only for the tip that is actually there: a train whose
 # gate has been answered is a batch somebody decided the contents of, and every superseded train
@@ -172,7 +172,7 @@ rules:
       # AND WHAT THE REVIEW SAID about the range this train's tip ends. The train knows the sha
       # outright, where a proposal knows the reviewed commit only as `base`.
       says: !get-path
-        at: [repos, verse, drift, range, $subject.value.sha]
+        at: [repos, verse, drift, range, .[subject.value.sha]]
         path: report
 # 2c. …and somebody decides the batch, once per tip.
 #
@@ -262,7 +262,7 @@ rules:
     onFailed:
       patch:
         decided: failed
-        err: $err
+        err: .[err]
     # A cancel decided NOTHING, so `decided` is unwritten and the gate is asked again — where a
     # FAILED run should not re-ask anybody anything, which is why onFailed leaves it written.
     onCancelled:
@@ -327,4 +327,4 @@ rules:
     # branch outliving it is a ref nobody reads rather than a decision anybody is waiting on.
     onFailed:
       patch:
-        err: $err
+        err: .[err]

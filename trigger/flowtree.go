@@ -418,7 +418,7 @@ func (e *Engine) node(chain, kind string, run map[string]entity.Entity, act *Act
 	}
 	if !didRun && act.Spawn != nil {
 		// An unrun node's task can only come from the charter, and it is the declared
-		// (unbound) form — `review $subject` — because there was no firing to bind it.
+		// (unbound) form — `review $[subject.ref]` — because there was no firing to bind it.
 		n.Prompt = act.Spawn.Prompt
 	}
 	for _, h := range []struct {

@@ -7,6 +7,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/mergeop"
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/exprs"
 )
 
 // Deselection: whether a subject can still match the predicate that selected it, once the
@@ -41,7 +42,7 @@ import (
 // predicate form of the same argument is sound and is used — it is latchUntouched.
 //
 // The check is not the fold. Undecided is a PASS (see latch): a refusal is a contract, and the
-// values this cannot see through are ordinary ones — `patch: {stage: $result.status}` may well
+// values this cannot see through are ordinary ones — `patch: {stage: .[result.status]}` may well
 // latch. What it refuses is what it can see: a rule that writes nothing its subject reads, and
 // one whose write leaves the predicate satisfied.
 
@@ -201,7 +202,7 @@ func apply(in *post, p entity.Payload) *post {
 }
 
 // literal is what a non-object patch node leaves behind. A scalar replaces outright, so it is
-// known exactly — unless it carries a $reference, which resolves to a value only the firing
+// known exactly — unless it carries an expression, which resolves to a value only the firing
 // has. An array does not replace outright (tony patches arrays element-wise and appends the
 // rest), so it is reported as present rather than as itself.
 func literal(p *ir.Node) *post {
@@ -230,11 +231,12 @@ func (p *post) merged() *post {
 	return unwritten
 }
 
-// hasRef reports whether a node carries a $reference anywhere, by the same token rule the
-// expander uses — so what counts here is exactly what would be substituted.
+// hasRef reports whether a node carries an expression anywhere, by the same test the expander
+// makes before it evaluates a value (exprs.Templated) — so what counts here is what would be
+// substituted.
 func hasRef(n *ir.Node) bool {
 	found := false
-	eachRef(n, func(string) { found = true })
+	eachText(n, func(s string) { found = found || exprs.Templated(s) })
 	return found
 }
 
@@ -350,10 +352,10 @@ type latch int
 
 const (
 	// latchUnsure — it writes where the predicate reads, and what lands there is not knowable
-	// at install ($result, an operator this does not model). It may latch; nothing here can
+	// at install (`.[result]`, an operator this does not model). It may latch; nothing here can
 	// say. Treated as a pass, which is where this is deliberately looser than the fold: a
 	// check that refused every charter it could not decide would refuse `patch: {stage:
-	// $result.status}`, which is an ordinary latch.
+	// .[result.status]}`, which is an ordinary latch.
 	latchUnsure latch = iota
 	// latchHolds — there is a way for the action to end after which the subject's predicate is
 	// definitely false. ANY way, rather than every way: a rule whose onDone latches and whose

@@ -177,7 +177,7 @@ So a derive states the facts it owns. The rule that follows it starts from an **
 # the derive says what it knows, and nothing about the flow's state
 derive:
 - path: "notes.row"
-  value: {sha: $subject.name}
+  value: {sha: .[subject.name]}
 # …and the next rule latches on the absence, which is nobody's to overwrite
 condition:
   subject:
@@ -529,7 +529,7 @@ action:
     prompt: "open a pull request whose body is $[subject.value.handoff.summary]"
   onFailed:
     # spawn refused: prompt: error evaluating "subject.value.handoff.summary": no "handoff" in subject.value
-    patch: {stage: failed, why: $err}
+    patch: {stage: failed, why: .[err]}
 ```
 
 The refused task is on record like a task that a runner refuses. Its id holds `status: failed`,
@@ -552,9 +552,9 @@ finished. A [path read](../glossary.md#path-read) reaches data that is neither o
 action:
   patch:
     repo: !get-path
-      at: [git, repo, $subject.value.head]
+      at: [git, repo, .[subject.value.head]]
     branch: !get-path
-      at: [git, repo, $subject.value.head]
+      at: [git, repo, .[subject.value.head]]
       path: branch
     branches: !list-paths
       at: "git.repo.*"
@@ -727,8 +727,8 @@ substitution. It names a value, and does not compute one:
 onDone:
   patch:
     stage:    reviewed
-    severity: $result            # the task's own answer, as a fact on the subject
-    step:     $verse.review.step # any depth, and list indices: $result.findings[0].id
+    severity: .[result]            # the task's own answer, as a fact on the subject
+    step:     .[verse.review.step] # any depth, and list indices: .[result.findings[0].id]
 ```
 
 The grammar of references is that of [tony](https://signadot.github.io/tony-format/), not of
@@ -755,9 +755,9 @@ Predicates on the payload are exact about type. So a `3` flattened to `"3"` is a
 
 ```tony
 # the number 3
-patch: { count: $n }
+patch: { count: .[n] }
 # the string "saw 3"
-patch: { note: "saw $n" }
+patch: { note: "saw $[n]" }
 ```
 
 **A composite has no text form.** `"saw $result"`, where `$result` is an object, is an error. It

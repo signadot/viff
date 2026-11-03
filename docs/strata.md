@@ -33,7 +33,7 @@ rules:
     patch: { triaged: true }
     derive:
     - path: "signadot.feature"
-      id: $subject.name            # signadot.feature.1, for gh.issue.1
+      id: .[subject.name]            # signadot.feature.1, for gh.issue.1
       value:
         priority: urgent
 
@@ -48,7 +48,7 @@ rules:
     derive:
     - path: "do.approve"
       value:
-        feature: $subject
+        feature: .[subject.ref]
 ```
 
 `verse c -a -f charter.tony` installs the strata and the rules. It installs the strata first,
@@ -120,7 +120,7 @@ under the address:
 ```tony
 derive:
 - path: "repos.verse.drift.range"
-  value: {from: $subject.value.sha, to: $subject.value.covering}
+  value: {from: .[subject.value.sha], to: .[subject.value.covering]}
 ```
 
 **A derive may reference its subject, and nothing else.** `$subject` and its parts resolve.
@@ -197,8 +197,8 @@ A derive may name a `key:` and not fan out:
 action:
   derive:
   - path: "repos.verse.merge.train"
-    key:  $subject.value.sha      # one train per tip of main
-    value: {sha: $subject.value.sha}
+    key:  .[subject.value.sha]      # one train per tip of main
+    value: {sha: .[subject.value.sha]}
 ```
 
 The address becomes (rule, subject, key), like a fan-out with one element. The key is for a case
@@ -237,12 +237,12 @@ action:
   derive:
   - path: "repos.verse.drift.finding"
     value: !each
-      over:  $data.findings     # a list to walk; each element binds $item
-      key:   $item.symbol       # the address, read out of the element
+      over:  .[data.findings]     # a list to walk; each element binds item
+      key:   .[item.symbol]       # the address, read out of the element
       value:
-        symbol: $item.symbol
-        says:   $item.says
-        about:  $subject.name
+        symbol: .[item.symbol]
+        says:   .[item.says]
+        about:  .[subject.name]
 ```
 
 **`!each` follows the same rule as a plain derive.** A plain derive carries no state, because its

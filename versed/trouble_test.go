@@ -39,7 +39,7 @@ func TestARuleInTroubleIsMarkedInTheCharterAndCountedInTheStatus(t *testing.T) {
 	installFile(t, ts.URL, `{
 		name: copies,
 		condition: {subject: {path: "demo.pr.*", value: {stage: open}}},
-		action: {patch: {stage: seen, reviewer: $assignee}},
+		action: {patch: {stage: seen, reviewer: .[assignee]}},
 	}`)
 	resp := putAs(t, tester, ts.URL, "demo.pr.1", entity.Obj{"stage": "open"}.Payload())
 	resp.Body.Close()

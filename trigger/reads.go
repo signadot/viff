@@ -55,7 +55,7 @@ import (
 //     there, THAT install is where the cycle appears, and it is checked then too.
 //
 // The check is STATIC and complete at the granularity it checks, which is the address prefix. A
-// read's system and kind are always literal — a `$reference` or a glob reaches the id and no
+// read's system and kind are always literal — an expression or a glob reaches the id and no
 // further (path.go: "System, Kind string // always literal") — so where a read LANDS is knowable
 // at install even when which entity it lands on is not. That is what lets this be an install-time
 // refusal with no run-time half, unlike the write confinement, whose derive targets are templated.

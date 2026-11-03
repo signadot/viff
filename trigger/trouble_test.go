@@ -49,7 +49,7 @@ func TestAFailedActionIsKeptOnTheRule(t *testing.T) {
 	eng := patchEngine(t, store)
 	if err := eng.AddTrigger(ruleFrom(t, `{name: copies,
 		condition: {subject: {path: "demo.pr.*", value: {stage: open}}},
-		action: {patch: {stage: seen, reviewer: $assignee}}}`)); err != nil {
+		action: {patch: {stage: seen, reviewer: .[assignee]}}}`)); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())

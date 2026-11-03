@@ -32,9 +32,9 @@ rules:
   action:
     derive:
     - path: "notes.row"
-      id: $subject.value.id
+      id: .[subject.value.id]
       value:
-        seen: $subject.value.n
+        seen: .[subject.value.n]
 `
 
 // A charter package's address is its installer's, taken at install: one owner record at the
