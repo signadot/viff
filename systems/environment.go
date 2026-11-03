@@ -316,7 +316,7 @@ func stepWords(d Document, verb string, fields *ir.Node) string {
 // Reaches is whether a row's match can match some step the environment allows: its system is
 // here, a block of it whose attributes the row's params name it by, giving one of the verbs the
 // row names (any, for nil), whose step carries every field the row names, with a shape each of whose patterns has
-// a value in common with the row's (Intersect) where both name a field. A row that can match nothing is a mistake (it never fires), while a row
+// a value in common with the row's (FieldMeets) where both name a field. A row that can match nothing is a mistake (it never fires), while a row
 // wider than the environment is not: the environment bounds it. An attribute still to be bound at
 // the firing (`$…`) could be anything, and is taken to match.
 func (e Environment) Reaches(system string, verbs []string, params map[string]*ir.Node) bool {

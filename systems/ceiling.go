@@ -119,8 +119,8 @@ func (c Ceiling) Check(system string) error {
 func (c Ceiling) Contains(system string, b Block) error { return c.contains(system, b, false) }
 
 // ContainsAsWritten is Contains for a block as a charter writes it, at install: an attribute
-// still to be bound at a firing (`$…`) could be many values, so each binding is read as `**`, and
-// it is within where some value of it could be (Intersect). A charter binding its repository
+// still to be bound at a firing (`$…`) could be many values, so each binding is read as any run
+// (meetsWritten), and it is within where some value of it could be. A charter binding its repository
 // installs under a ceiling of an owner's, and one naming another owner before the `$` does not.
 // The launch, bound, is held to the ceiling again, by Contains.
 func (c Ceiling) ContainsAsWritten(system string, b Block) error { return c.contains(system, b, true) }

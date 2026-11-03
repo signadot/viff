@@ -683,9 +683,9 @@ func (s *Server) runThen(id string, ref entity.Ref, asker string, spec launch.Sp
 }
 
 // resumeAsks is the startup phase for the asks: wait again on each of a person's that waits,
-// since the wait was the last process's, and run the `then` of each answered ask whose `then` had
-// not started, since what follows a yes is the record's to keep across a restart, and the marks
-// say what ran.
+// since the wait was the last process's, and run what the row of each answered ask's `on` that
+// matched did not finish, since what it ran is the record's to keep across a restart, and the
+// marks say what ran.
 func (s *Server) resumeAsks() error {
 	if err := s.awaiting(phaseSystem); err != nil {
 		return err
