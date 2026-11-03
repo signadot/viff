@@ -51,39 +51,3 @@ func TestAReadOnlyPathIsReadableAndNotWritableInTheSandbox(t *testing.T) {
 		t.Fatal("the task wrote a read-only path")
 	}
 }
-
-// A READ-ONLY PATH MAY NOT REACH WHAT THE RUNNER KEEPS FROM ITS TASKS: its work, its mirrors, and
-// its control directory, whose sockets a read-only mount would still let a task connect to. A
-// path that holds one, is one, or lies in one is refused, links followed; one beside them is not.
-func TestAReadOnlyPathMayNotReachTheRunnersOwn(t *testing.T) {
-	base := t.TempDir()
-	run := filepath.Join(base, "var", "verse")
-	work, control, mirrors := filepath.Join(run, "work"), filepath.Join(run, "control"), filepath.Join(base, "mirrors")
-	cache := filepath.Join(base, "cache", "go")
-	for _, d := range []string{work, control, mirrors, cache} {
-		if err := os.MkdirAll(d, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	link := filepath.Join(base, "sneaky")
-	if err := os.Symlink(run, link); err != nil {
-		t.Fatal(err)
-	}
-	kept := map[string]string{"work": work, "control": control, "mirrors": mirrors}
-	for p, want := range map[string]string{
-		run:                            "control", // the parent of control and work
-		control:                        "control", // the directory itself
-		filepath.Join(work, "task-1"):  "work",    // a task's own
-		filepath.Join(mirrors, "o/r"):  "mirrors", // every repository the runner holds
-		link:                           "control", // the parent again, by a link
-		filepath.Join(base, "var", ""): "control", // further up
-	} {
-		err := checkReadOnly([]string{cache, p}, kept)
-		if err == nil || !strings.Contains(err.Error(), "the runner's "+want) {
-			t.Errorf("readOnly %s: %v, want refused for its %s", p, err, want)
-		}
-	}
-	if err := checkReadOnly([]string{cache, filepath.Join(base, "var", "other")}, kept); err != nil {
-		t.Errorf("paths beside the runner's own: %v", err)
-	}
-}

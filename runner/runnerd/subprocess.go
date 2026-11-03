@@ -7,12 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strconv"
@@ -67,9 +69,14 @@ type SubprocessConfig struct {
 	// outside it: a script's verse-call-tool.
 	Programs []string
 	// ReadOnly are paths the operator keeps for every task to read (`readOnly:`), bound read
-	// only where they are as Programs are. Each is looked for at the launch: one removed since
-	// the runner started is left out of that task, and said, rather than failing every launch.
+	// only where they are as Programs are. Each is looked for, and checked against the runner's
+	// own directories (CheckReadOnly), at the launch: one removed, or turned into a link to what
+	// the runner keeps, since the runner started is left out of that task, and said, rather than
+	// failing every launch or being bound.
 	ReadOnly []string
+	// Mirrors is the directory the runner keeps its mirrors in, which no ReadOnly path may reach,
+	// as it may not reach Work or Control.
+	Mirrors string
 	// Repos checks out the repos a launch names, and performs what a task asks over its channel:
 	// a push, a proposal, a tracker's act. Nil refuses a launch that names repos, and opens no
 	// channel.
@@ -473,7 +480,7 @@ func (h *SubprocessHandler) start(ctx context.Context, p *proc, l *runner.Launch
 	out := tagged(h.Log, p.id)
 	cmd.Stdout, cmd.Stderr = out, out
 	cmd.ExtraFiles = append([]*os.File{lf, lifeR}, extra...) // fd 3, fd 4, and fd 5
-	if err := h.Sandbox.Wrap(cmd, root, network, withReadOnly(h.Programs, h.ReadOnly, out)); err != nil {
+	if err := h.Sandbox.Wrap(cmd, root, network, withReadOnly(h.Programs, h.ReadOnly, KeptDirs(h.Work, h.Control, h.Mirrors), out)); err != nil {
 		return err
 	}
 	if err := cmd.Start(); err != nil {
@@ -1034,16 +1041,81 @@ func (t *tagWriter) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
-// withReadOnly is programs and the readOnly paths there at this launch, each one not there said
-// on log and left out.
-func withReadOnly(programs, readOnly []string, log io.Writer) []string {
+// withReadOnly is programs and the readOnly paths fit to bind at this launch: each one not there,
+// or reaching what kept names, is said on log and left out. The check is the start's again, since
+// a path may appear, or become a link, after it: --ro-bind follows the source's links.
+func withReadOnly(programs, readOnly []string, kept map[string]string, log io.Writer) []string {
 	out := slices.Clip(programs)
 	for _, ro := range readOnly {
 		if _, err := os.Stat(ro); err != nil {
 			fmt.Fprintf(log, "runnerd: readOnly %s: %v; this task does not have it\n", ro, err)
 			continue
 		}
+		if err := CheckReadOnly([]string{ro}, kept); err != nil {
+			fmt.Fprintf(log, "runnerd: %v; this task does not have it\n", err)
+			continue
+		}
 		out = append(out, ro)
 	}
 	return out
+}
+
+// KeptDirs names the runner's own directories, which no readOnly path may reach: its work, where
+// each task's is the task's alone to write; its mirrors, every repository it holds whoever's launch
+// named it; and its control directory, the tasks' sockets, which no sandbox binds. An empty one is
+// left out.
+func KeptDirs(work, control, mirrors string) map[string]string {
+	kept := map[string]string{}
+	for name, dir := range map[string]string{"work": work, "control": control, "mirrors": mirrors} {
+		if dir != "" {
+			kept[name] = dir
+		}
+	}
+	return kept
+}
+
+// CheckReadOnly refuses a readOnly path that holds, is, or lies in one of kept. A read-only mount
+// does not stop a process connecting to a unix socket on it, so a path holding the control
+// directory (in practice, $TMPDIR, where runnerd makes it) would hand every task every task's
+// control socket. Both sides are compared as the filesystem resolves them (resolved).
+func CheckReadOnly(paths []string, kept map[string]string) error {
+	names := slices.Sorted(maps.Keys(kept))
+	for _, p := range paths {
+		rp := resolved(p)
+		for _, name := range names {
+			rk := resolved(kept[name])
+			if within(rp, rk) || within(rk, rp) {
+				return fmt.Errorf("readOnly: %s overlaps the runner's %s directory (%s), which no task may be given", p, name, kept[name])
+			}
+		}
+	}
+	return nil
+}
+
+// resolved is p absolute with its links followed as far as it exists: the longest ancestor of p
+// that exists is resolved, and the rest joined back on, so a path not made yet is spelled as one
+// that is (/var/x/new as /private/var/x/new on macOS).
+func resolved(p string) string {
+	if a, err := filepath.Abs(p); err == nil {
+		p = a
+	}
+	p = filepath.Clean(p)
+	var rest []string
+	for {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Join(append([]string{r}, rest...)...)
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return filepath.Join(append([]string{p}, rest...)...)
+		}
+		rest = append([]string{filepath.Base(p)}, rest...)
+		p = parent
+	}
+}
+
+// within is whether p is dir or lies under it.
+func within(p, dir string) bool {
+	rel, err := filepath.Rel(dir, p)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, "../")
 }
