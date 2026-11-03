@@ -281,3 +281,38 @@ func TestAnEarlierStreamsClockEndsNothing(t *testing.T) {
 		t.Fatal("the first stream's clock ended the second's catching up")
 	}
 }
+
+// THE SUMMARY IS CLOSED once every question it counted has settled, as a question's own is: a
+// question met while catching up does not stay on screen after it stops needing you.
+func TestTheSummaryClosesWhenItsQuestionsSettle(t *testing.T) {
+	var got []alert
+	quiet := func(rev, line string) {}
+	w := newAskWatch(apiClient(), daniel, false, true)
+	w.quietFor = time.Hour
+	w.alert = func(a alert) { got = append(got, a) }
+	w.catchUp()
+	for _, id := range []string{"q1", "q2"} {
+		w.frame(askFrame{at: "verse.ask." + id, rev: "3", to: entity.Obj{
+			"status": "pending", "waitingOn": []any{daniel}, "pose": id}.Payload()}, quiet)
+	}
+	w.caughtUp()
+	if len(got) != 1 || got[0].key != catchUpKey {
+		t.Fatalf("summary %+v, want one keyed %q", got, catchUpKey)
+	}
+	settle := func(id, rev string) {
+		w.frame(askFrame{at: "verse.ask." + id, rev: rev, to: entity.Obj{
+			"status": "approved", "waitingOn": []any{daniel}}.Payload()}, quiet)
+	}
+	got = nil
+	settle("q1", "4")
+	for _, a := range got {
+		if a.key == catchUpKey {
+			t.Fatalf("closed the summary with q2 still waiting: %+v", got)
+		}
+	}
+	got = nil
+	settle("q2", "5")
+	if len(got) != 2 || !got[1].withdraw || got[1].key != catchUpKey {
+		t.Errorf("after the last settled: %+v, want q2's close and the summary's", got)
+	}
+}

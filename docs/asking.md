@@ -289,7 +289,8 @@ Either watch takes `--notify` to say what needs you on the desktop too: a questi
 waiting on you (urgent, so it stays until you dismiss it where the desktop keeps such ones), and
 an ask of yours answered. A question that settles closes its notification rather than adding one;
 the watch's line says how it settled. What stands when the watch opens, or what `--since` and a
-reconnect catch up on, is one quiet summary ("2 questions wait on you"), not a notification each.
+reconnect catch up on, is one quiet summary ("2 questions wait on you"), not a notification each; the summary
+is closed once every question it counted has settled.
 
 On Linux and the BSDs it goes to the notification service on the session bus
 (`org.freedesktop.Notifications`, which GNOME, KDE, dunst, mako and swaync serve), with a

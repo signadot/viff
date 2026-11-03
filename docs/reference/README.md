@@ -124,7 +124,7 @@ and `-if` kept none of it.
 | `question <id>` | that one record, as it stands: options, ballots, deadline, outcome |
 | `question <id> -answer <option> -as <who> [-say <text>] [-force]` | answer by option. A yes-or-no question's options are `proceed` and `deny`; a selection's are its doers. A question that needs more than one voice records the ballot and says where the tally stands (`1 of 2 for proceed`). `-force` answers one a resolver serves for you. |
 | `question approve <id> [-say <text>]` · `deny <id> [-say <text>]` | the two default options, as verbs. Also `y`, `yes` · `n`, `no`; `-s` for `-say`. |
-| `question -watch [-since <rev>]` | a line when a question starts waiting on you, and when it settles. Runs until stopped. `-since` replays from a revision, as far back as the store keeps its log. |
+| `question -watch [-since <rev>] [-notify]` | a line when a question starts waiting on you, and when it settles. Runs until stopped. `-since` replays from a revision, as far back as the store keeps its log. `-notify` also says it on the desktop (D-Bus on Linux and the BSDs, Notification Center on macOS): urgent when a question starts waiting, closed when it settles, one summary for what stood when the watch opened ([asking](../asking.md)). |
 
 ### ask (asks)
 
@@ -138,7 +138,7 @@ Your own questions to somebody, with a date ([asking](../asking.md)).
 | `ask <name\|id> -due <when>` | move its date while it waits; asks nothing again |
 | `ask <name\|id> -on <rows>` · `-to <who>,…` | change what it asks while it waits. It is asked again, and answers to the earlier version do not count. |
 | `ask <name\|id> -withdraw` | take it back: off the docket, and removed |
-| `ask -watch [-since <rev>]` | a line when an ask of yours is made, made again, settled or withdrawn. What waits on you is `question -watch`. |
+| `ask -watch [-since <rev>] [-notify]` | a line when an ask of yours is made, made again, settled or withdrawn. What waits on you is `question -watch`. `-notify` also says on the desktop when an ask of yours is answered ([asking](../asking.md)). |
 
 ### charter (charters, c)
 

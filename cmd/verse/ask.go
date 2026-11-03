@@ -37,6 +37,7 @@ import (
 //	verse ask land -q "Review verse/ask?" --to ani@example.com --due 48h --on @on.tony
 //	verse ask land --withdraw                       take it back
 //	verse ask --watch                               a line when one settles, or a question waits on you
+//	verse ask --watch --notify                      and on the desktop: what needs you (notify.go)
 //
 // THE NAME IS THE POSITIONAL in every case, and what to do is a flag.
 //
@@ -659,6 +660,9 @@ type askWatch struct {
 	quietFor      time.Duration
 	catchUpMax    time.Duration
 	standing      map[string]bool
+	// summarized are the questions the last summary counted as waiting, still waiting: the summary
+	// is closed once the last of them settles, as a question's own notification is.
+	summarized    map[string]bool
 	answeredSince int
 }
 
@@ -666,12 +670,16 @@ func newAskWatch(c *client.Client, me string, asks, questions bool) *askWatch {
 	return &askWatch{c: c, me: me, asks: asks, questions: questions, now: time.Now,
 		askVerse: func(id string) bool { return waitingOnMe(c, id) },
 		recs:     map[string]entity.Payload{}, answered: map[string]int{}, seen: map[string]bool{},
-		quietFor: askCaughtUp, catchUpMax: askCatchUpMax, standing: map[string]bool{}}
+		quietFor: askCaughtUp, catchUpMax: askCatchUpMax, standing: map[string]bool{}, summarized: map[string]bool{}}
 }
 
 // askCaughtUp is how long a stream is quiet before the watch takes it to have delivered what
 // stood, or what it replays: those frames are sent back to back, and what follows is news.
 const askCaughtUp = time.Second
+
+// catchUpKey keys the catching up's summary, which no question's id can be: a later summary
+// replaces it, and it is closed once every question it counted has settled.
+const catchUpKey = "#caught-up"
 
 // askCatchUpMax is the longest catching up lasts once a stream has opened: on a docket that
 // changes more often than askCaughtUp, the stream is never quiet, and what follows is news all the
@@ -742,6 +750,7 @@ func (w *askWatch) caughtUpLocked() {
 	if n := len(w.standing); n > 0 {
 		parts = append(parts, plural(n, "question waits", "questions wait")+" on you")
 		for id := range w.standing {
+			w.summarized[id] = true
 			poses = append(poses, poseOf(w.recs[id]))
 		}
 		slices.Sort(poses)
@@ -757,7 +766,7 @@ func (w *askWatch) caughtUpLocked() {
 	if len(parts) == 0 {
 		return
 	}
-	w.notify(alert{title: "verse: " + strings.Join(parts, "; "), body: strings.Join(poses, "\n")})
+	w.notify(alert{title: "verse: " + strings.Join(parts, "; "), body: strings.Join(poses, "\n"), key: catchUpKey})
 }
 
 // plural is n with one or many, as n says.
@@ -834,6 +843,12 @@ func (w *askWatch) frame(f askFrame, say func(rev, line string)) {
 		say(f.rev, fmt.Sprintf("settled %s: %s", id, status))
 		// It no longer needs the caller: its notification is closed, not followed by another.
 		w.notify(alert{key: id, withdraw: true})
+		if w.summarized[id] {
+			delete(w.summarized, id)
+			if len(w.summarized) == 0 {
+				w.notify(alert{key: catchUpKey, withdraw: true})
+			}
+		}
 	}
 }
 
