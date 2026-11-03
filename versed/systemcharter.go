@@ -37,7 +37,7 @@ func (s *Server) installSystemCharter() {
 //
 // ONE REFUSED FOR WANT OF ITS IOS OR RUNNERS WAITS FOR THEM. A verse started on an empty store (a
 // wipe) has no iods or runners at start, and they are registered afterwards
-// (deploy/repopulate.sh), so such a charter — one sending to an io, or spawning on a runner — is
+// (a deployment's repopulate script), so such a charter — one sending to an io, or spawning on a runner — is
 // refused here and would stay missing until the next restart. It is kept, and tried again each
 // time an io with an out half is registered or a runner's offers are written
 // (installWaitingSystemCharters, offersChanged).

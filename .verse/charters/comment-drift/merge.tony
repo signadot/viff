@@ -59,7 +59,7 @@ rules:
     subject:
       # THIS repository's, because the git source mirrors more than one and each mirror's refs
       # stand under its own place: example/app's deliveries are named the same way and
-      # belong to deploy/charters/example/repo/app/pr.tony, which reaches them through an environment this
+      # belong to the charter for that repository, which reaches them through an environment this
       # file's cannot.
       path: "git.verse.ref.*"
       value:

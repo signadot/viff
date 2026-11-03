@@ -10,7 +10,7 @@ import (
 )
 
 // A DEPLOYMENT HOLDS REGISTRATIONS TO ITS ADMIN, in the record and not in code: the ship's setup
-// (deploy/repopulate.sh) replaces the rows under verse.runners with the admin as the one who
+// (a deployment's repopulate script) replaces the rows under verse.runners with the admin as the one who
 // creates beneath it and everyone reading. After it, another principal's add is refused, the
 // admin's stands, and everyone still lists the registrations, as a spawn naming one must.
 func TestRegistrationsCanBeHeldToTheAdmin(t *testing.T) {

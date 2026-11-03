@@ -8,7 +8,7 @@ Two kinds exist, beside a plain `verse up`, which is no kind (see the end of thi
 
 - **Kubernetes**, in [`deploy/`](../../deploy/README.md): one `o build`, rendered with a profile
   (`deploy/profiles/<name>.tony`) and knobs (`build.tony`'s `env`, or `-e knob=value`), and
-  applied with `make deploy PROFILE=<name>`. Staging and minikube are its profiles.
+  applied with `make deploy PROFILE=<name>`. eks and minikube are its profiles.
 - **Local**, in [A verse on your machine](local-verse.md): pitchfork daemons
   ([`pitchfork.toml`](../../pitchfork.toml)), from settings
   ([`scripts/verse-local.env`](../../scripts/verse-local.env), with yours in
@@ -50,7 +50,7 @@ deploying it.
 | runs as | the `docd` StatefulSet | the `store` daemon |
 | its data | a volume: `storageClassName`, `storageSize`, or `hostPV` and `hostPath` | `VERSE_LOCAL_DATA` |
 | its faces | the `docd` Service (`:7071`), on the tailnet with `tailscaleExpose` | `VERSE_LOCAL_LOGD_ADDR`, `VERSE_LOCAL_DOCD_ADDR`, `VERSE_LOCAL_DOCD_MOUNT_ADDR`, `VERSE_LOCAL_STORE_ADMIN_ADDR` |
-| compaction cutoff | `docdCompactionCutoff` (staging: `1d`) | `VERSE_LOCAL_COMPACTION_CUTOFF` (`1d`) |
+| compaction cutoff | `docdCompactionCutoff` (eks: `1d`) | `VERSE_LOCAL_COMPACTION_CUTOFF` (`1d`) |
 | placement and memory | `docdPool`, `docdMemoryRequest`, `docdMemoryLimit`, `docdGoMemLimit` | none |
 | **versed** | | |
 | runs as | the `versed` Deployment | the `versed` daemon, `--local-runner=false` |

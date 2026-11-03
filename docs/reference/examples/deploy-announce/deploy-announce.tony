@@ -1,0 +1,63 @@
+# A deploy is announced in a Slack channel.
+#
+# A deployment is named by a `deploy/<instance>.N` tag on the repository (README.md, Deployment),
+# and once that tag is pushed the git iod reflects it as `git.verse.ref."deploy/<instance>.N"`.
+# This rule turns each new one into one message in the channel, through the Slack iod's out half,
+# with links to the tag on GitHub: its annotation (what the deploy runs), its tree and its history.
+#
+# A PACKAGE, SENDING THROUGH AN OUTBOX, as gate-ask.tony is: it writes only inside its own address,
+# so the messages land in `out.slack` here, and `sends:` declares that place an outbox of the
+# Slack iod's out place. Install it after the Slack iod.
+#
+# ── THE MESSAGE IS THE LATCH, AND THE SEED ───────────────────────────────────────
+#
+# A rule selecting on its subject acts on everything already standing when it is installed, so
+# without a latch the install announces every deploy there has ever been, and so does every
+# reinstall after a wipe. The record in the outbox, keyed by the tag, is that latch, kept in the
+# package, which is where a latch belongs: the rule selects a tag no record's `seen` matches,
+# `!not.or` over the list, and its own derive writes the `seen` that stops it.
+#
+# The out half delivers only a record carrying `to`, so a record WITHOUT one is silent, and that
+# is the seed: before installing, write `{seen: {name: <tag>}}` into the outbox for every tag the
+# remote already has (`verse data announce out slack <tag> --put '{seen: {name: <tag>}}'`).
+# Seeding after installing is a race the install wins.
+#
+# The channel is named by id because the out half takes a Slack id (`C…`) and not a name, and the
+# Slack iod's bot has to be in it. Change the id, the workspace in `sends:` and the repository in
+# the links for your own.
+
+at: announce
+reads: [git.verse.ref]
+sends:
+- from: out.slack
+  to: slack.example.out
+strata:
+- name: deploy-tags
+  level: 0
+  match: {path: "git.verse.ref"}
+- name: announced
+  level: 10
+  match: {path: "announce.out.slack"}
+rules:
+- name: deploy-announce
+  stratum: deploy-tags
+  condition:
+    subject:
+      path: "git.verse.ref.*"
+      value: !let
+        let:
+        - seen: !list-paths {at: "announce.out.slack.*", path: seen}
+        in: !and
+        - {name: !glob "deploy/*"}
+        # `.[seen]` is a list: `!list-paths` answers with one, `[{name: <tag>}, …]`, and the
+        # let puts it in place before `!or` reads it, so `!or` gets one pattern per record.
+        # None matching is a tag not yet announced; an empty list matches none and selects all.
+        - !not.or .[seen]
+  action:
+    derive:
+    - path: "announce.out.slack"
+      id: .[subject.value.name]
+      value:
+        to: C0EXAMPLE000
+        seen: {name: .[subject.value.name]}
+        text: "`$[subject.value.name]` is out: <https://github.com/example/app/releases/tag/$[subject.value.name]|tag> · <https://github.com/example/app/tree/$[subject.value.name]|tree> · <https://github.com/example/app/commits/$[subject.value.name]|history>"

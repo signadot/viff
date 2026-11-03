@@ -94,7 +94,7 @@ runner-docker: runner-linux ## build the verse runner image (bubblewrap containm
 # runtime image under a distinguishing tag, which is one repository to create and one pull
 # credential to grant:
 #
-#   make runner-push IMAGE_ARCH=amd64 RUNNER_IMAGE=example/verse-staging:runner
+#   make runner-push IMAGE_ARCH=amd64 RUNNER_IMAGE=<registry>/verse-runner:<tag>
 .PHONY: runner-push
 runner-push: runner-docker ## build + push $(RUNNER_IMAGE)
 	$(DOCKER) push $(RUNNER_IMAGE)
@@ -131,95 +131,10 @@ push: docker ## build + push $(PUSH_IMAGE) to the registry
 	$(DOCKER) tag $(IMAGE) $(PUSH_IMAGE)
 	$(DOCKER) push $(PUSH_IMAGE)
 
-# STAGING, BY IMMUTABLE REF. `make ship` builds the images tagged with the COMMIT, pushes them,
-# and deploys that ref — so "which build is staging running" is answered by reading the tag
-# instead of comparing registry digests by hand, which is what a moving tag costs the first time
-# a rollout reports success and runs the binary from before it (deploy/profiles/staging.tony).
-#
-# It refuses a dirty tree, because the whole value here is that the tag names a commit somebody
-# can check out. A tag that says 8f2c1a4 over a build that was 8f2c1a4-plus-whatever-was-open is
-# worse than `latest`: it is a moving tag wearing an immutable one's clothes.
-STAGING_SHA ?= $(shell git rev-parse --short HEAD)
-
-.PHONY: ship
-ship: ## build+push the images at the current commit and deploy staging at that ref
-	@if [ -n "$$(git status --porcelain)" ]; then \
-	  echo "ship: the tree is dirty — the image tag would name a commit that is not what is built"; \
-	  git status --short; exit 1; \
-	fi
-	@echo "ship: staging → $(STAGING_SHA)"
-	$(MAKE) push IMAGE_ARCH=amd64 PUSH_IMAGE=$(REGISTRY)/verse-staging:$(STAGING_SHA)
-	$(MAKE) runner-push IMAGE_ARCH=amd64 RUNNER_IMAGE=$(REGISTRY)/verse-runner:$(STAGING_SHA)
-	$(MAKE) codex-runner-push IMAGE_ARCH=amd64 CODEX_RUNNER_IMAGE=$(REGISTRY)/verse-runner:codex-$(STAGING_SHA)
-	$(MAKE) claude-runner-push IMAGE_ARCH=amd64 CLAUDE_RUNNER_IMAGE=$(REGISTRY)/verse-runner:claude-$(STAGING_SHA)
-	$(MAKE) deploy PROFILE=staging IMAGE=$(REGISTRY)/verse-staging:$(STAGING_SHA) \
-	  E="-e runnerImage=$(REGISTRY)/verse-runner:$(STAGING_SHA) -e codexRunnerImage=$(REGISTRY)/verse-runner:codex-$(STAGING_SHA) -e claudeRunnerImage=$(REGISTRY)/verse-runner:claude-$(STAGING_SHA)"
-
-# ONE TIER AT A TIME, because `ship` above applies all of them in a single kubectl apply and
-# the tiers do not always tolerate rolling together. versed and docd speak logd's session
-# protocol over the wire, so a protocol change (v0.0.173's match shape, say) means the two
-# vintages must not meet: a client of one against a server of the other has its path read as
-# "", which is the ROOT — an answer, with a commit, not an error. One apply starts both rolling
-# and there is no point in it where you can say which is up.
-#
-# So each of these pushes the image its tier runs, applies ONLY that tier's objects, and does
-# not return until they are rolled out. A protocol-changing ship is then a sequence somebody
-# can read:
-#
-#   kubectl --context <ctx> -n verse scale deploy/versed --replicas=0
-#   make ship-docd && make ship-versed && make ship-iods && make ship-runners
-#
-# The tier is the `tier` label every object in deploy/ carries, which is what `-l` selects on:
-# docd (the store), versed (the engine and its two Services), iods (the connectors) and runners
-# (the verse runner, the codex runner and the claude runner, each its own image). An object with
-# no `tier` — the Namespace, the ServiceAccount, the ExternalSecrets — belongs to none of them
-# and is shipped by a full `make deploy`; these targets update a deployment that already exists
-# rather than standing one up.
-SHIP_IMAGE       = $(REGISTRY)/verse-staging:$(STAGING_SHA)
-SHIP_RUNNER      = $(REGISTRY)/verse-runner:$(STAGING_SHA)
-SHIP_CODEX_RUNNER = $(REGISTRY)/verse-runner:codex-$(STAGING_SHA)
-SHIP_CLAUDE_RUNNER = $(REGISTRY)/verse-runner:claude-$(STAGING_SHA)
-
-# ship-clean is `ship`'s dirty-tree refusal, factored out so each tier inherits it: the tag
-# names a commit somebody can check out, and that is no less true when shipping one tier.
-.PHONY: ship-clean
-ship-clean:
-	@if [ -n "$$(git status --porcelain)" ]; then \
-	  echo "ship: the tree is dirty — the image tag would name a commit that is not what is built"; \
-	  git status --short; exit 1; \
-	fi
-
-# Each image is pushed by tag, and pushing one that is already there is cheap — the layers
-# exist, so it is a manifest check. That is why every tier target pushes rather than trusting
-# a previous one to have: `make ship-versed` alone must be a whole ship.
-.PHONY: ship-push ship-push-runners
-ship-push: ship-clean
-	@echo "ship: staging → $(STAGING_SHA)"
-	$(MAKE) push IMAGE_ARCH=amd64 PUSH_IMAGE=$(SHIP_IMAGE)
-ship-push-runners: ship-clean
-	@echo "ship: staging runners → $(STAGING_SHA), codex-$(STAGING_SHA), claude-$(STAGING_SHA)"
-	$(MAKE) runner-push IMAGE_ARCH=amd64 RUNNER_IMAGE=$(SHIP_RUNNER)
-	$(MAKE) codex-runner-push IMAGE_ARCH=amd64 CODEX_RUNNER_IMAGE=$(SHIP_CODEX_RUNNER)
-	$(MAKE) claude-runner-push IMAGE_ARCH=amd64 CLAUDE_RUNNER_IMAGE=$(SHIP_CLAUDE_RUNNER)
-
-# The apply half, shared: staging's profile, the sha-tagged images, one tier, and block on it.
-SHIP_DEPLOY = $(MAKE) deploy PROFILE=staging WAIT=1 IMAGE=$(SHIP_IMAGE) \
-	  E="-e runnerImage=$(SHIP_RUNNER) -e codexRunnerImage=$(SHIP_CODEX_RUNNER) -e claudeRunnerImage=$(SHIP_CLAUDE_RUNNER)"
-
-.PHONY: ship-docd ship-versed ship-iods ship-runners
-ship-docd: ship-push ## ship the store tier alone, and wait for it (roll this FIRST)
-	$(SHIP_DEPLOY) SELECT=tier=docd
-ship-versed: ship-push ## ship the engine alone, and wait for it (after docd)
-	$(SHIP_DEPLOY) SELECT=tier=versed
-ship-iods: ship-push ## ship the iods alone, and wait for them
-	$(SHIP_DEPLOY) SELECT=tier=iods
-ship-runners: ship-push-runners ## ship the runners alone (their own images), and wait for them
-	$(SHIP_DEPLOY) SELECT=tier=runners
-
 # make deploy PROFILE=minikube                     # default SC (no mount)
 # make deploy PROFILE=minikube HOSTPV=true HOSTPATH=/mnt/verse   # host-linked (needs --mount)
-# make deploy PROFILE=staging                      # the profile's own registry ref
-# make deploy PROFILE=staging IMAGE=example/verse-staging:v3    # …a particular build of it
+# make deploy PROFILE=eks                          # EKS: gp3, the EKS issuer (deploy/profiles/eks.tony)
+# make deploy PROFILE=eks IMAGE=<registry>/verse:<sha>   # …a particular build of it
 # make deploy E='-e gitIod=true -e slackIod=true'          # …plus source connectors
 #
 # `-O yaml` is not decoration. The default output is TONY, which for block-style input happens
@@ -238,15 +153,15 @@ E        ?=
 
 # Which image the render gets, and when NOT to say. `-e` beats a profile, so passing
 # `-e image=$(IMAGE)` unconditionally overrode every profile that names its own ref — which
-# deployed the local dev tag to staging, where no node can pull it. So:
+# deployed the local dev tag to a cluster where no node can pull it. So:
 #
 #   no PROFILE  — nothing else names one; pass $(IMAGE), the local flow's just-built tag.
-#   a PROFILE   — it names its own (minikube: verse:dev, staging: example/verse-staging),
+#   a PROFILE   — it names its own (minikube: verse:dev, eks: its own ref),
 #                 so stay quiet unless this invocation named one itself.
 #
 # `origin` is what tells "you said IMAGE/NAME/TAG" from the `?=` defaults at the top of this
 # file: those report `file`, a command-line or exported one reports otherwise. NAME/TAG count
-# as naming one, but they compose into $(NAME):$(TAG) — the SHARED repository — so on staging
+# as naming one, but they compose into $(NAME):$(TAG) — the SHARED repository — so on a cluster
 # `TAG=v9` renders `verse:v9` and fails to pull. Name IMAGE= outright there.
 IMAGE_NAMED  := $(filter-out file default undefined,$(origin IMAGE) $(origin NAME) $(origin TAG))
 DEPLOY_IMAGE := $(if $(PROFILE),$(if $(IMAGE_NAMED),$(IMAGE)),$(IMAGE))
@@ -266,12 +181,12 @@ CONTEXT ?=
 # block until what it applied is rolled out. Both are here rather than in a target of their own
 # because the alternative is a second copy of the context resolution above, and two ways to
 # say where a deploy goes is exactly the ambient-state problem that comment is about. The
-# ship-<tier> targets below are what use them; see there for why a tier ships alone.
+# a deployment ships one tier at a time with them (deploy/README.md, "Shipping one tier at a time").
 SELECT ?=
 WAIT   ?=
 WAIT_TIMEOUT ?= 5m
 .PHONY: deploy
-deploy: ## render deploy/ and kubectl apply (PROFILE=minikube|staging; CONTEXT= to override the target cluster; IMAGE= to pin one; HOSTPV/HOSTPATH to host-link; SELECT=tier=x for one tier; WAIT=1 to block on the rollout; E='-e k=v …')
+deploy: ## render deploy/ and kubectl apply (PROFILE=minikube|eks|<path to a profile>; CONTEXT= to override the target cluster; IMAGE= to pin one; HOSTPV/HOSTPATH to host-link; SELECT=tier=x for one tier; WAIT=1 to block on the rollout; E='-e k=v …')
 	@ctx='$(CONTEXT)'; \
 	if [ -z "$$ctx" ]; then \
 	  ctx=$$($(O) build deploy $(if $(PROFILE),-p $(PROFILE),) -s | sed -n 's/^kubeContext: *//p' | tr -d '"'); \

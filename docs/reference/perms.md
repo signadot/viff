@@ -408,7 +408,7 @@ registration, whose `subject` is the token's (`verse runner add -subject
 system:serviceaccount:<namespace>:<name>`). Whoever writes the registration vouches for the
 runner, once, and that is the whole decision. Who that may be is the record's to say: the seed
 holds `owner` beneath `verse.runners` out to everyone, the open verse's answer, and a deployment
-narrows it in the record, as `deploy/repopulate.sh` does to `user:admin@verse` with everyone
+narrows it in the record, as a deployment's repopulate script does to `user:admin@verse` with everyone
 still reading. What a runner proved is recorded as verse, whoever asked.
 
 The door keeps one table for both: a workload token's subject is looked up among the iods first

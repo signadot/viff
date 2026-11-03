@@ -100,7 +100,7 @@ itself, so it must own the address they install at, or hold `child-owner` above 
 **4. On the repository**, add a webhook to `https://<host>/github/webhook`, with the content type
 `application/json` and the secret that the github iod reads as `GITHUB_WEBHOOK_SECRET`.
 
-[The deployment guide](../deploy/README.md#the-github-app-signadot-verse) creates verse's own App
+[The deployment guide](../deploy/README.md#the-github-app) creates verse's own App
 from a manifest and puts its keys on a cluster.
 
 ## What runs on verse's own repository

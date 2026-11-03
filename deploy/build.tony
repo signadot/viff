@@ -2,18 +2,18 @@
 #
 #   o build deploy | kubectl apply -f -
 #   o build deploy -p minikube | kubectl apply -f -
-#   o build deploy -p staging | kubectl apply -f -
+#   o build deploy -p eks | kubectl apply -f -
 #
 # Split topology: a docd StatefulSet (logd+docd on a data volume — the AZ-pinned stateful
 # tier) and a versed Deployment (the stateless singleton engine that attaches to docd and
 # floats). Storage shape is per-profile: a dynamic PVC by default, a host mount on minikube,
-# EBS gp3 on staging. Sources are the base manifests in source/; env is injected via patches.
+# EBS gp3 on eks. Sources are the base manifests in source/; env is injected via patches.
 # See deploy/README.md.
 build:
   env:
     namespace: verse
     # The cluster this profile is FOR, as a kubectl context name. `kubectl apply` otherwise
-    # goes wherever your shell happens to point, which makes `make deploy PROFILE=staging` a
+    # goes wherever your shell happens to point, which makes `make deploy PROFILE=<name>` a
     # function of ambient state — and the command that deploys staging to staging is character
     # for character the command that deploys it to production. Naming it here makes the
     # manifests and the cluster travel together. "" falls back to the current context, which is
@@ -26,8 +26,8 @@ build:
     imagePullPolicy: ""
     # The name of an image pull secret for a private registry. NOT created here — this names
     # a Secret that already exists in the namespace, because a registry credential is not
-    # something a checked-in manifest should be carrying. On staging one arrives on its own
-    # (the signadot-registry ClusterExternalSecret fans it into every namespace); see
+    # something a checked-in manifest should be carrying. It may arrive on its own (a
+    # ClusterExternalSecret that fans one into every namespace, say); see
     # deploy/README.md. "" attaches none.
     imagePullSecret: ""
     storageSize: "10Gi"
@@ -35,7 +35,7 @@ build:
     # docd storage. The StatefulSet always uses a volumeClaimTemplate; only what BACKS the
     # PVC varies:
     #   default  — the cluster default StorageClass (dynamic).
-    #   staging  — a named StorageClass (dynamic EBS); set storageClassName + emitStorageClass.
+    #   eks      — a named StorageClass (dynamic EBS); set storageClassName + emitStorageClass.
     #   minikube — a static hostPath PersistentVolume (set hostPV; class becomes "").
     storageClassName: ""
     # Emit a verse-gp3 StorageClass (WaitForFirstConsumer, ebs.csi.aws.com). Needs the EBS
@@ -288,7 +288,7 @@ build:
     # "Who the runner is"). Each deployed runner gets a ServiceAccount and a projected token,
     # audience `verse`, which it answers on the describe and presents at versed's door, and which
     # its registration's `subject` is held to (`verse runner add -subject
-    # system:serviceaccount:verse:verse-runner`, as repopulate.sh does); the cluster is the issuer,
+    # system:serviceaccount:verse:verse-runner`, as a deployment's repopulate script does); the cluster is the issuer,
     # as for the iods. Versed proves itself the other way: it is an issuer of its own (the auth
     # file's `auth.issuer`, signing with the verse-issuer Secret this mounts into it), and presents
     # to each runner a token minted for that runner alone, so a runner serves this verse and no
@@ -796,7 +796,7 @@ build:
               requests:
                 storage: $[storageSize]
 
-  # staging: a named StorageClass (dynamic EBS) — re-emit the VCT with the class.
+  # A named StorageClass (eks: dynamic EBS) — re-emit the VCT with the class.
   - if: '.[ storageClassName != "" ]'
     match:
       kind: StatefulSet

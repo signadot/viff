@@ -52,7 +52,7 @@ data:
         shellEnv: [PATH, HOME, USER, LANG]
         settings:
           # A model the virtual key's provider serves, and the same one versed is given
-          # (deploy/profiles/staging.tony): one credential, one provider, one answer about
+          # (a profile): one credential, one provider, one answer about
           # which model this deployment runs.
           model: {default: claude-sonnet-5}
         # A spawn that names a virtual key of its own runs under it: verse read it from the

@@ -26,28 +26,28 @@ import (
 // everything under it — `waitingOn` to say whom, `pose` and `about` to say what, and an out half
 // whose inputs can be addressed by a fan-out rather than by hand.
 //
-// The rule below is the shipped one (deploy/charters/gate-ask.tony), tested here against a real
-// engine, a real store and a real question.
+// The rule below is the example a deployment copies (docs/reference/examples/gate-ask), tested
+// here against a real engine, a real store and a real question.
 
-// gateCharter is the SHIPPED rule, read from where a deployment installs it, with its place
-// swapped for one this test owns. Read rather than copied: a test carrying its own copy proves
-// that copy works, and the file somebody deploys drifts from it unnoticed.
+// gateCharter is the EXAMPLE rule, read from where a deployment copies it, with its place swapped
+// for one this test owns. Read rather than copied: a test carrying its own copy proves that copy
+// works, and the file somebody copies drifts from it unnoticed.
 func gateCharter(t *testing.T) string {
 	t.Helper()
-	b, err := os.ReadFile("../deploy/charters/verse/workspace/Signadot/gate-ask.tony")
+	b, err := os.ReadFile("../docs/reference/examples/gate-ask/gate-ask.tony")
 	if err != nil {
-		t.Fatalf("reading the shipped charter: %v", err)
+		t.Fatalf("reading the example charter: %v", err)
 	}
-	return strings.ReplaceAll(string(b), "slack.Signadot.out", "demo.out")
+	return strings.ReplaceAll(string(b), "slack.example.out", "demo.out")
 }
 
-// withSlackIO registers an io reading slack.Signadot.out, which is what the shipped packages'
+// withSlackIO registers an io reading slack.example.out, which is what the example packages'
 // outboxes send to: a package declaring one is refused unless an io reads the place it names.
 func withSlackIO(t *testing.T, srv *Server) {
 	t.Helper()
 	entitytest.Set(t, srv.Store, verseio.Ref("slack"), entity.Obj{
 		"name": "slack", "root": "slack",
-		"out": entity.Obj{"places": []any{"slack.Signadot.out"}, "as": "agent:slack-iod"},
+		"out": entity.Obj{"places": []any{"slack.example.out"}, "as": "agent:slack-iod"},
 	}.Payload())
 }
 

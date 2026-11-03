@@ -5,7 +5,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 
@@ -18,20 +17,18 @@ import (
 )
 
 // systemCharter is the charter a deployment has versed install at start as the system (deploy's
-// `systemCharter`), before any of the rest.
-const systemCharter = "verse/workspace/Signadot/gate-ask.tony"
+// `systemCharter`), before any of the rest: the example a deployment copies.
+const systemCharter = "../docs/reference/examples/gate-ask/gate-ask.tony"
 
-// deployOrder is the charters a deployment installs from deploy/charters, in the order
-// deploy/repopulate.sh installs them: a file, or a directory whose files install as one step.
-// The order is part of what is tested: a package may read what the one before it writes.
+// deployOrder is the example charters a deployment installs after the system's, in the order it
+// installs them: a file, or a directory whose files install as one step. The order is part of
+// what is tested: a package may read what the one before it writes.
 var deployOrder = []string{
-	"signadot/repo/signadot/comment-drift.tony",
-	"signadot/repo/signadot/pr.tony",
-	"verse/workspace/Signadot/deploy-announce.tony",
+	"../docs/reference/examples/deploy-announce/deploy-announce.tony",
 }
 
 // repoCharters is the repository's own charters, and repoChartersAt where the deployment's
-// repo-charters reconciler has the git io install them (deploy/auth/staging.tony): the whole
+// repo-charters reconciler has the git io install them (deploy/auth/eks.tony): the whole
 // directory as one request with a prune, as `verse c -a <address> -d <dir> --prune` sends it.
 const (
 	repoCharters   = "../.verse/charters"
@@ -39,45 +36,17 @@ const (
 )
 
 // EVERY DEPLOYED CHARTER INSTALLS, into one verse, in the order a deployment installs them: the
-// files under deploy/charters that repopulate.sh installs, then the repository's own charters,
-// which the git io installs at repos.verse when the reconciler asks. A charter in the tree is
-// what a newcomer copies and what a deployment runs, and a check added at install is a check
-// these files have to pass: a file that stops installing is found here and not at the next
-// ship, or at the next change to the charters on main.
+// examples a deployment copies, then the repository's own charters, which the git io installs at
+// repos.verse when the reconciler asks. A charter in the tree is what a newcomer copies and what
+// a deployment runs, and a check added at install is a check these files have to pass: a file
+// that stops installing is found here and not at the next ship, or at the next change to the
+// charters on main.
 func TestEveryDeployedCharterInstalls(t *testing.T) {
-	// Every charter in the tree is in the order: one added beside these is installed here too.
-	var inTree []string
-	err := filepath.WalkDir("../deploy/charters", func(path string, d os.DirEntry, err error) error {
-		if err == nil && !d.IsDir() && strings.HasSuffix(path, ".tony") {
-			inTree = append(inTree, strings.TrimPrefix(path, "../deploy/charters/"))
-		}
-		return err
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	listed := []string{systemCharter}
-	for _, name := range deployOrder {
-		files, err := charterFilesUnder(filepath.Join("../deploy/charters", name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, f := range files {
-			listed = append(listed, strings.TrimPrefix(f, "../deploy/charters/"))
-		}
-	}
-	sort.Strings(listed)
-	sort.Strings(inTree)
-	if strings.Join(listed, "\n") != strings.Join(inTree, "\n") {
-		t.Fatalf("the charters in deploy/charters are not the ones installed here:\n in the tree: %v\n installed:   %v",
-			inTree, listed)
-	}
-
 	// STARTED, as a deployment's verse is: the base charter is installed first, then the
 	// deployment's system charter, and a deployed charter builds on what they declare (the
 	// docket's stratum, `asks`, and the Slack place's, `gate-asked`).
 	srv := testServer(t)
-	srv.SystemCharter = filepath.Join("../deploy/charters", systemCharter)
+	srv.SystemCharter = systemCharter
 	srv.Start(t.Context())
 	for _, rule := range []string{"gate-ask", "gate-ask-person"} {
 		if got := srv.Eng.OwnerOf(rule); got != entity.SystemCharter {
@@ -91,7 +60,7 @@ func TestEveryDeployedCharterInstalls(t *testing.T) {
 	withSlackIO(t, srv)
 	registerDeployed(t, ts, "verse-runner", "../deploy/verse-runner/verse-runner.yaml")
 	for _, name := range deployOrder {
-		files, err := charterFilesUnder(filepath.Join("../deploy/charters", name))
+		files, err := charterFilesUnder(name)
 		if err != nil {
 			t.Fatal(err)
 		}

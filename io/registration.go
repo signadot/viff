@@ -278,7 +278,7 @@ func (o *OutHalf) check(name string) error {
 // <url> --root slack --out slack.Signadot.out` and names no claim at all: the claim comes from
 // probing the io, which happens after the request is read. Asked of the request, this check saw
 // an empty claim and refused every out half an operator ever typed — the deployment path, since
-// repopulate.sh types exactly that.
+// a deployment's repopulate script types exactly that.
 //
 // INSIDE THE CLAIM is load-bearing. An io asked for things outside its own slice would write
 // statuses where another writer owns the tree, and the grants this install seeds would be seeded

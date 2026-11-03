@@ -354,7 +354,7 @@ func TestAPassForNoSuchIoIsRefused(t *testing.T) {
 // `verse iod add slack <url> --root slack --out slack.Signadot.out` says nothing about what the
 // io owns — the claim comes from PROBING it. So the check that an out place is inside the claim
 // cannot be asked of the request, and asking it there refused every out half an operator typed,
-// including the one repopulate.sh types. The other tests here pass `owns` explicitly and so
+// including the one a deployment's repopulate script types. The other tests here pass `owns` explicitly and so
 // never went through this door.
 func TestAnOutHalfIsCheckedAgainstTheClaimTheProbeRead(t *testing.T) {
 	requireGit(t)

@@ -4,7 +4,7 @@ metadata:
   name: verse
   labels:
     app: verse
-    # `tier`, so `make ship-versed` reaches this Service too: the ship targets select one
+    # `tier`, so a one-tier deploy (`make deploy SELECT=tier=versed`) reaches this Service too: it selects one
     # tier out of the render, and an object without the label is an object nothing ships.
     tier: versed
 spec:

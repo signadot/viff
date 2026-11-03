@@ -8,6 +8,15 @@ tree.
 | [runner/](runner/main.go) | a verse [runner](../../glossary.md#runner): the smallest thing that serves the task-control contract. The two functions that a drive changes are marked. | `go run ./docs/reference/examples/runner -addr :9800` |
 | [io/](io/main.go) | a verse [iod](../../glossary.md#iod): the smallest thing that serves the reflection contract. The one function that a drive changes is marked. | `go run ./docs/reference/examples/io -addr :9801 -repo verse=/path/to/a/repo` |
 
+And three charters a deployment copies and fills in, each tested against a real engine with the
+rest of the tree:
+
+| Example | What it is | How a deployment uses it |
+|---|---|---|
+| [gate-ask/](gate-ask/gate-ask.tony) | one Slack message per person a pending question waits on, or one in the channel an ask's `slack` label names, through the Slack iod's out half | a copy with your workspace's place, installed at start as the system (`deploy/`'s `systemCharter`), since only the system reads every ask put to a person |
+| [deploy-announce/](deploy-announce/deploy-announce.tony) | one message in a channel per new `deploy/<instance>.N` tag, sent through its own outbox, with the message as the latch and a seed for the tags that already exist | a copy with your channel and repository, installed after the Slack iod, seeded first |
+| [repo-charters/](repo-charters/repo-charters.tony) | the reconciler of a repository's own `.verse/charters`, which versed renders from its config's `repoCharters` and installs as the system | read; `repoCharters` in the auth file is how a deployment turns it on ([deploy](../../../deploy/README.md#repo-charters)) |
+
 ## Running the runner
 
 ```sh

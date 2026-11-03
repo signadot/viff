@@ -61,9 +61,16 @@ roles, so there is one ref to pin and one build to cache.
 ```sh
 make deploy                                    # defaults (dynamic PVC)
 make deploy PROFILE=minikube
-make deploy PROFILE=staging                    # EKS + EBS + tailnet + the runners
+make deploy PROFILE=eks                        # EKS + EBS; the profile's values are placeholders
+make deploy PROFILE=/path/to/profile.tony      # a profile kept outside this repository
 o build deploy -s                              # show the resolved env, apply nothing
 ```
+
+A profile is a name under `deploy/profiles/`, or a file: `o build -p` takes either. The two
+checked in are shapes, `minikube` for a laptop and `eks` for a cluster with the values left as
+placeholders. A deployment with values of its own — its cluster, its registry, its secret
+entries — keeps its profile outside this repository and passes the path. That is how this
+directory is meant to be run: the build and the manifests here, the values there.
 
 Prefer `make deploy` over piping `o` into `kubectl` by hand, for two reasons that are easy to
 get wrong once each:
@@ -72,13 +79,13 @@ get wrong once each:
   valid YAML too — so a hand-rolled pipe works until a manifest uses flow mappings, and then
   `kubectl` refuses the whole stream over a line in a document nobody wrote.
 - **The cluster.** `kubectl apply` goes wherever your shell's current context points, which
-  makes a hand-rolled pipe a function of ambient state — and the command that deploys staging
-  to staging is character for character the command that deploys it somewhere else. A profile
+  makes a hand-rolled pipe a function of ambient state — and the command that deploys one
+  cluster is character for character the command that deploys another. A profile
   names its cluster in `kubeContext`, `make deploy` passes it explicitly, and it prints where
   it is going before it goes:
 
 ```
-deploy: profile 'staging' → context 'my-cluster.example.ts.net'
+deploy: profile '/path/to/profile.tony' → context '<the profile's kubeContext>'
 ```
 
 `CONTEXT=` overrides that, for the same shape of cluster under a different kubeconfig name.
@@ -93,7 +100,7 @@ PVC varies by profile:
 |---|---|---|
 | default | dynamic | cluster default StorageClass |
 | **minikube** | static hostPath PV | data on your laptop fs — survives pod restarts, Docker Desktop stop/start, **and** `minikube delete`; browsable |
-| **staging** | dynamic EBS gp3 | the cluster's own `gp3` SC, docd on the `stateful` node pool |
+| **eks** | dynamic EBS gp3 | the cluster's `gp3` SC; `docdPool` puts docd on a dedicated node pool |
 
 **minikube** — docd's data lives on your **laptop fs** (the only place that survives
 `minikube delete`), reached through a mount. Configure the mount **once** in your shell so a
@@ -132,32 +139,32 @@ cluster. (The minikube profile sets `hostPV: true`, `hostPath: /mnt/verse`.)
 
 > ⚠️ **Changing `storageSize` needs an orphan delete, not a reset.** The apply of a changed
 > `volumeClaimTemplate` is refused (`spec: Forbidden: updates to statefulset spec for fields
-> other than …`). On a class that allows expansion (staging's `gp3` does), grow the claim that
+> other than …`). On a class that allows expansion (EBS `gp3` does), grow the claim that
 > stands and let the StatefulSet be recreated around it, keeping the pod and the data:
 > ```sh
 > kubectl --context <ctx> -n verse patch pvc data-docd-0 -p '{"spec":{"resources":{"requests":{"storage":"30Gi"}}}}'
 > kubectl --context <ctx> -n verse delete statefulset docd --cascade=orphan
-> make deploy PROFILE=staging           # recreates docd with the new template; it takes over docd-0 and its claim
+> make deploy PROFILE=eks               # recreates docd with the new template; it takes over docd-0 and its claim
 > ```
 > An EBS volume never shrinks, and is modified at most once every six hours.
 
-**staging (EKS)** — docd lands on the cluster's dedicated `stateful` node pool (on-demand),
-on a dynamic volume from the cluster's `gp3` StorageClass; versed prefers `SPOT` and floats
-over the rest. The pool is *reserved*, not merely labelled — its nodes carry a
-`signadot.com/pool=stateful:NoSchedule` taint — so docd needs both halves: the `nodeSelector`
-to go there and the matching toleration to be let in. That is what `docdPool` emits.
+**eks (EKS)** — docd on a dynamic volume from the cluster's `gp3` StorageClass; versed may
+prefer `SPOT` (`spotVersed`) and float over the rest. A deployment that reserves a node pool for
+the stateful tier names it with `docdPool`: the pool's nodes carry a
+`signadot.com/pool=<x>:NoSchedule` taint, so docd needs both halves, the `nodeSelector` to go
+there and the matching toleration to be let in, and that is what the knob emits.
 
-It pulls `example/verse-staging:latest` — its own repository rather than a tag on the shared
-one, so a build driven on staging is never what everything else pulls:
+Give a cluster its own image repository rather than a tag on the shared one, so a build driven
+there is never what everything else pulls, and deploy at an immutable ref:
 
 ```sh
-make push PUSH_IMAGE=example/verse-staging:latest IMAGE_ARCH=amd64
-make deploy PROFILE=staging                          # the profile's ref
-make deploy PROFILE=staging IMAGE=example/verse-staging:v3   # a particular build
+make push PUSH_IMAGE=<registry>/verse:<sha> IMAGE_ARCH=amd64
+make deploy PROFILE=eks                              # the profile's ref
+make deploy PROFILE=eks IMAGE=<registry>/verse:<sha> # a particular build
 ```
 
-Nothing here creates the class or the pool; the cluster has both. On a cluster that has
-neither, `-e emitStorageClass=true` emits a `verse-gp3` class (`WaitForFirstConsumer` → the
+Nothing here creates the class or the pool. On a cluster that has no `gp3` class,
+`-e emitStorageClass=true` emits a `verse-gp3` class (`WaitForFirstConsumer` → the
 pod is auto-affinitized to the volume's AZ), which needs the [EBS CSI driver addon] with
 node-role IAM to create/attach volumes — otherwise the PVC stays `Pending`.
 
@@ -165,17 +172,12 @@ node-role IAM to create/attach volumes — otherwise the PVC stays `Pending`.
 
 ## A private registry (`imagePullSecret`)
 
-That repository is private, so `imagePullSecret: signadot-registry` on staging. It **names** a
-Secret; it does not create one — a checked-in manifest is not where a registry credential
-belongs, and on this cluster nobody creates it by hand either. A `ClusterExternalSecret` named
-`signadot-registry` fans the Docker Hub credential from AWS Secrets Manager into every
-namespace *except* a deny list, and `verse` is not on it — so creating the namespace is what
-puts the Secret there, hourly-refreshed and rotating on its own:
-
-```sh
-kubectl apply -f deploy/namespace/namespace.yaml
-kubectl -n verse get secret signadot-registry     # ESO fills it in within seconds
-```
+A private image repository needs a pull credential, and the knob **names** a Secret that
+already exists in the namespace; it does not create one — a checked-in manifest is not where a
+registry credential belongs. Make it by hand (`kubectl -n verse create secret docker-registry
+<name> …`), or have the External Secrets Operator fan it in: a `ClusterExternalSecret` that
+targets every namespace puts the Secret there when the namespace is created, hourly-refreshed
+and rotating on its own.
 
 ⚠️ **Do not copy the Secret between namespaces.** It carries `ownerReferences` to the
 `ExternalSecret` in the namespace it came from, owner references are namespace-local, and the
@@ -193,7 +195,7 @@ later does nothing for pods already standing:
 kubectl -n verse rollout restart deploy/versed statefulset/docd   # after attaching it late
 ```
 
-## Reaching it: the tailnet (`tailscaleExpose`, on for staging)
+## Reaching it: the tailnet (`tailscaleExpose`, off by default)
 
 Two annotations the [Tailscale Kubernetes operator] watches for — it stands up its own proxy
 pod per Service and dials that Service's ClusterIP, so nothing changes for in-cluster callers.
@@ -236,24 +238,24 @@ should be passed the Service name directly rather than discovering it.
 | key | default | meaning |
 |---|---|---|
 | `namespace` | `verse` | target namespace |
-| `image` | `signadot/verse:latest` | full image ref incl. tag (staging: `example/verse-staging:latest`) |
+| `image` | `signadot/verse:latest` | full image ref incl. tag; a cluster of your own wants its own repository and an immutable ref |
 | `imagePullSecret` | `""` | name an existing pull Secret, onto the `default` ServiceAccount |
-| `storageClassName` | `""` | PVC class; `""` = cluster default (staging sets `gp3`) |
+| `storageClassName` | `""` | PVC class; `""` = cluster default (eks: `gp3`) |
 | `storageSize` | `10Gi` | docd volume size |
 | `emitStorageClass` | `false` | emit a `verse-gp3` StorageClass |
 | `hostPV` | `false` | back the PVC with a static hostPath `PersistentVolume` (minikube) |
 | `hostPath` | `/mnt/verse` | the PV's in-VM host path when `hostPV` |
 | `docdPool` | `""` | put docd on the `signadot.com/pool=<x>` nodes, tolerating their taint |
 | `spotVersed` | `false` | let versed prefer `eks.amazonaws.com/capacityType: SPOT` |
-| `tailscaleExpose` | `false` | put the API and docd's two faces on the tailnet (staging: on) |
+| `tailscaleExpose` | `false` | put the API and docd's two faces on the tailnet |
 | `tailscaleTags` | `""` | `tailscale.com/tags` for both; `""` leaves the operator's `tag:k8s` |
 | `secretStore` | `aws-secretsmanager` | the `ClusterSecretStore` every entry below comes from |
 | `llmSecretKey` | `""` | entry for `verse-llm`; `""` emits no `ExternalSecret` |
 | `gitSecretKey` / `slackSecretKey` / `linearSecretKey` / `githubSecretKey` / `runnerSecretKey` / `codexSecretKey` / `claudeSecretKey` / `issuerSecretKey` | `""` | the same, one per credential |
 | `llmModel` | `""` | `OPENAI_MODEL` for versed; `""` leaves the driver's `gpt-4o` |
-| `systemCharter` | `""` | a charter under `deploy/`, mounted into versed and installed at start as the system (`VERSE_SYSTEM_CHARTER`); read at start, so a change takes a restart. Staging: `charters/verse/workspace/Signadot/gate-ask.tony` |
-| `authConfig` | `""` | verse's `auth` block, a file under `deploy/`, mounted into versed as its config (`VERSE_CONFIG`): who verifies people, which iods are trusted for whose accounts, how the iods prove themselves ([Who a request is from](#who-a-request-is-from-authconfig-iodtokens-runnertokens)). Staging: `auth/staging.tony` |
-| `iodTokens` | `false` | give the slack, github and git iods a ServiceAccount each and a projected token, so each proves it is the iod (staging and minikube: on) |
+| `systemCharter` | `""` | a charter under `deploy/`, mounted into versed and installed at start as the system (`VERSE_SYSTEM_CHARTER`); read at start, so a change takes a restart. The example a deployment copies under `deploy/` is [gate-ask](../docs/reference/examples/gate-ask/gate-ask.tony), with its Slack place filled in |
+| `authConfig` | `""` | verse's `auth` block, a file under `deploy/`, mounted into versed as its config (`VERSE_CONFIG`): who verifies people, which iods are trusted for whose accounts, how the iods prove themselves ([Who a request is from](#who-a-request-is-from-authconfig-iodtokens-runnertokens)). eks: `auth/eks.tony` |
+| `iodTokens` | `false` | give the slack, github and git iods a ServiceAccount each and a projected token, so each proves it is the iod (eks and minikube: on) |
 | `runnerTokens` | `true` | give each deployed runner a ServiceAccount and a projected token, and versed its signing key (the `verse-issuer` Secret, **required**: versed does not start without it), so a runner serves its verse alone and proves it is the one registered ([Who a request is from](#who-a-request-is-from-authconfig-iodtokens-runnertokens)). A deployed runner needs it: `runnerd` does not start without the verse it serves and its token |
 | `issuer` | `http://verse:9797` | the name versed's tokens are issued under, the auth file's `auth.issuer.url`: what each runner holds versed's tokens to (`VERSE_ISSUER`). The runners read the keys at versed's in-cluster url, so this is a name |
 | `issuerDiscoveryOpen` | `false` | let anyone reaching the API server read its OpenID discovery and keys, which versed needs where the cluster itself is the iods' issuer (minikube: on; EKS needs none) |
@@ -370,8 +372,8 @@ and a pod spec is not a secret. The helper is read-only on purpose: `credential.
 writes the file back on success *and* on failure, so against a read-only mount it spends a
 1000ms lock timeout and prints a fatal-looking line on every clone and every fetch.
 
-⚠️ **The shipped `gitMirror` default is `signadot/verse`, which is private** — so the connector
-crash-loops until that Secret exists, with git's own "could not read Username" in the log.
+⚠️ **A private mirror needs that Secret before the connector starts** — without it the pod
+crash-loops, with git's own "could not read Username" in the log.
 
 ### The git iod has no repositories
 
@@ -383,22 +385,31 @@ git](../docs/reference/iod.md#the-out-half-of-git)); nothing is pushed that nobo
 And it reflects the tree sha of each repository's `.verse/charters` directory on every ref
 (`-tree .verse/charters`), which is what the repo-charters reconciler keys approval on, and
 installs that tree into the verse when the reconciler asks (`{to: install.<address>}`), as
-itself: `repopulate.sh` holds `repos` out to it with `child-owner`. The mirror
+itself: the deployment's repopulate script holds `repos` out to it with `child-owner`. The mirror
 lives on an `emptyDir`, so a restart re-clones; swap in a PVC if that gets expensive. For a
 repository that already exists somewhere, run the same binary next to it with `-repo`, or skip
 the deployment entirely and use `verse iod add -dir`.
 
 ### Carrying what people wrote across a wipe
 
-A wipe takes the store with it, and `repopulate.sh` puts back what files in this repository
-describe: the charters, the iods, the runner. What people wrote by hand in places no charter
-manages is carried by `carry.sh`, over a list somebody keeps of those places,
-`carry/<deployment>.places`:
+A wipe takes the store with it: the store *is* the configuration, and there is no seed file a
+fresh verse reads. So a deployment keeps a repopulate script of its own, run after the wipe and
+after the tiers are up at the new vintage, that puts back what its files describe. Such a script
+registers the runner first (`verse runner add`, with the pod's subject), since a charter whose
+spawn no registered runner takes is refused at install; then installs the deployment's charters
+(`verse charter -a`), each as one step; then registers the iods (`verse iod add`, each with its
+out place and who may ask through it), removing again one that could not be reached so the next
+is not refused for overlap; and writes the two grants the rest depend on: `verse.runners` held to
+the admin with everyone reading, and `repos` with `child-owner` for the git iod. What is gone
+and nothing reconstructs: open gates, in-flight flows and the firing history.
+
+What people wrote by hand in places no charter manages is carried by `carry.sh`, over a list
+somebody keeps of those places, `carry/<deployment>.places`:
 
 ```sh
-deploy/carry.sh capture verse-staging:9797 deploy/carry/staging.places ~/carry   # before the wipe, as an admin
+deploy/carry.sh capture <addr> deploy/carry/<deployment>.places ~/carry   # before the wipe, as an admin
 # … wipe, ship, repopulate …
-deploy/carry.sh restore verse-staging:9797 deploy/carry/staging.places ~/carry   # after, as each place's owner
+deploy/carry.sh restore <addr> deploy/carry/<deployment>.places ~/carry   # after, as each place's owner
 ```
 
 Each place crosses with its owner, its grants and its data, and not its history. A charter
@@ -421,23 +432,24 @@ While the charters on main would be refused, one issue says so and why; it close
 passes the check. A refused install has an issue of its own, closed by the next install that
 succeeds. Each reopens for the next round rather than multiplying. The pieces on a deployment:
 
-- **`repoCharters`** in versed's config file (`deploy/auth/staging.tony`, mounted by the
+- **`repoCharters`** in versed's config file (`deploy/auth/eks.tony`, mounted by the
   `authConfig` knob) names the repository, its GitHub name, the branch its charters follow
   (`main` unless the entry says `branch`), the address its charters install at and who may
   answer; versed renders and installs the reconciler as the system at start, after
   the iods are restored ([up](../docs/reference/up.md)).
-- **Registrations held to the admin, readable by all.** `repopulate.sh` replaces the rows under
+- **Registrations held to the admin, readable by all.** The deployment's repopulate script
+  replaces the rows under
   `verse.runners` so that `user:admin@verse` alone creates beneath it, and everyone reads the
   node and what is registered: writing a registration vouches for a runner ([who the runner
   is](../docs/runners.md#who-the-runner-is)), and on this deployment that is the admin's act.
   The seed's own row, `owner` beneath `verse.runners` to everyone, is the open verse's and
   stands on a deployment that skips this.
 - **The git iod** with `-tree .verse/charters -out` (on), registered with its out place
-  (`repopulate.sh`), and `child-owner` under `repos` for `agent:git-iod`, so it installs the
-  charters as itself. With `gitAsApp` it pushes as the App, so `refs/verse/live` is written as
-  the App.
+  (the deployment's repopulate script), and `child-owner` under `repos` for `agent:git-iod`, so
+  it installs the charters as itself. With `gitAsApp` it pushes as the App, so `refs/verse/live`
+  is written as the App.
 - **The github iod** with `githubOut` on, registered with its out place, and the App allowed
-  `statuses: write` for the commit status ([the GitHub App](#the-github-app-signadot-verse)).
+  `statuses: write` for the commit status ([the GitHub App](#the-github-app)).
 
 Pausing the repository's charters is `verse flow suspend -charter repos.verse -r -why …`. The
 reconciler is the system's, and no request may suspend it. Turning it off is dropping the
@@ -467,8 +479,8 @@ cloning one it can reflect nothing from.
 | `gitMirror` | the verse repo | `[<id>=]<url>` to mirror; comma-separated for several |
 | `gitIssueIod` | `false` | deploy the git-issue connector |
 | `gitIssueMirror` | `""` | its own mirror set, when it differs; `""` follows `gitMirror` |
-| `gitAsApp` | `false` | the git iod fetches and pushes as the GitHub App, its keys read from `verse-github`, in place of the `verse-git` PAT (staging: on) |
-| `githubOut` | `false` | the github iod acts back as the App: comments, pull requests, merges, reviews, closes, checks and issues asked for under `github.<org>.<name>.out` (staging: on) |
+| `gitAsApp` | `false` | the git iod fetches and pushes as the GitHub App, its keys read from `verse-github`, in place of the `verse-git` PAT |
+| `githubOut` | `false` | the github iod acts back as the App: comments, pull requests, merges, reviews, closes, checks and issues asked for under `github.<org>.<name>.out` |
 | `slackIod` | `false` | deploy the Slack connector (needs the `verse-slack` Secret) |
 | `slackIodName` | `slack` | the registration name — must match `verse iod add <name> -root slack` |
 | `slackWorkspace` | `""` | the id prefix; `""` takes the team name from the token |
@@ -485,8 +497,8 @@ Without `authConfig`, a request to versed is whoever its header says, as it has 
 tailnet nobody else reaches. With it, versed verifies people and its own iods
 ([who a request is from](../docs/reference/perms.md#who-a-request-is-from)):
 
-- **`authConfig`** mounts the named file as versed's config (`VERSE_CONFIG`). Staging's,
-  `deploy/auth/staging.tony`, names the slack and github iods as trusted for their own systems'
+- **`authConfig`** mounts the named file as versed's config (`VERSE_CONFIG`). The eks profile's,
+  `deploy/auth/eks.tony`, names the slack and github iods as trusted for their own systems'
   accounts and the git iod for GitHub's, and the cluster as the issuer of the iods' tokens. It
   names no issuer for people: a person is who their CLI says (`mode: optional`), and binds their
   Slack or GitHub account by saying the nonce `verse account -link <provider>` gives them to the
@@ -508,7 +520,7 @@ tailnet nobody else reaches. With it, versed verifies people and its own iods
   is](../docs/runners.md#who-the-runner-is)). A runner's token has the audience `verse`: it
   answers it on the describe to the verse it verified and presents it at versed's door, and
   `verse runner add -subject system:serviceaccount:verse:<runner>` holds the registration to
-  it, as `repopulate.sh` does for `verse-runner`. Versed's token toward a runner is one it signs
+  it, as a deployment's repopulate script does. Versed's token toward a runner is one it signs
   itself, as the issuer the auth file's `auth.issuer` makes it, with the `verse-issuer` Secret
   this patch mounts (`issuerSecretKey`, or a Secret made by hand on minikube): minted for that
   runner's subject alone, so a copy taken at one runner opens no other's door. The patch names
@@ -519,7 +531,7 @@ tailnet nobody else reaches. With it, versed verifies people and its own iods
   it, and versed describes it then and there. A pod's readiness (`GET /ready`) is its server and
   nothing else, so the ship and the registrations may come in either order: `verse runner add
   <name> <url> -identity <name> -subject system:serviceaccount:verse:<name>` for each runner
-  after `make ship-runners` is answered by the new pod's handshake, and before it (`--no-probe`,
+  after the runners' tier ships is answered by the new pod's handshake, and before it (`--no-probe`,
   since the old pods cannot answer) is caught up by the new pod's hello within its backoff. A
   runner pod with no token answers none, and the add is refused rather than the first spawn.
 
@@ -556,7 +568,7 @@ are the names each consumer reads:
 | `gitSecretKey` | `verse-git` | `credential` — the value being `username=x-access-token\npassword=<PAT>\n` | a **file** at `/git-credentials/credential` |
 | `slackSecretKey` | `verse-slack` | `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET` | env; **not** optional — no token, no start. `SLACK_BOT_TOKEN` also in the runners, `optional: true` in the pod spec: a runner without it starts with `slack` closed, and says so |
 | `linearSecretKey` | `verse-linear` | `LINEAR_API_KEY` (the `Authorization` header verbatim), `LINEAR_WEBHOOK_SECRET` | env; `LINEAR_API_KEY` also in the runners, `optional: true` in the pod spec: a runner without it starts with `linear-issue` closed, and says so |
-| `githubSecretKey` | `verse-github` | `GITHUB_TOKEN`, or `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID` and `GITHUB_APP_PRIVATE_KEY` ([The GitHub App](#the-github-app-signadot-verse)); and `GITHUB_WEBHOOK_SECRET` | env; **not** optional — no Secret, no start |
+| `githubSecretKey` | `verse-github` | `GITHUB_TOKEN`, or `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID` and `GITHUB_APP_PRIVATE_KEY` ([The GitHub App](#the-github-app)); and `GITHUB_WEBHOOK_SECRET` | env; **not** optional — no Secret, no start |
 | `runnerSecretKey` | `verse-runner` | `gitToken` | env (`GITHUB_TOKEN`), in the runners and never in the sandbox |
 | `codexSecretKey` | `verse-codex` | `OPENAI_API_KEY` | env, in the codex runner, `optional: true` — a runner without it starts, and its first codex spawn fails; written as each task's Codex login |
 | `claudeSecretKey` | `verse-claude` | `ANTHROPIC_API_KEY` | env, in the claude runner, `optional: true` — a runner without it starts, and its first claude spawn fails, not logged in; handed to each task's claude process |
@@ -566,44 +578,45 @@ are the names each consumer reads:
 
 An entry is a JSON object whose keys are the ones in the table. Write it to a file rather than
 an argument, so no value reaches your shell history, and remove the file at the end. The region
-has to be the one the `ClusterSecretStore` reads — `us-west-2` here; an entry in another region
-or another account is invisible to the cluster no matter what the knob says.
+has to be the one the `ClusterSecretStore` reads; an entry in another region
+or another account is invisible to the cluster no matter what the knob says. The names below
+are a convention, `<deployment>/verse/<name>`; the knob is what ties a name to its Secret.
 
 ```sh
-put() { aws secretsmanager create-secret --region us-west-2 --name "$1" --secret-string file://"$2"; }
+put() { aws secretsmanager create-secret --region <region> --name "$1" --secret-string file://"$2"; }
 
 printf '{"PORTKEY_API_KEY":"%s","PORTKEY_VIRTUAL_KEY":"%s"}' "$pk" "$vk" > /tmp/e.json
-put staging/verse/llm /tmp/e.json
+put <deployment>/verse/llm /tmp/e.json
 
 # `credential` is a FILE git's helper cats, so its value carries real newlines — a \n inside a
 # JSON string is one, and the trailing one matters to git.
 printf '{"credential":"username=x-access-token\\npassword=%s\\n"}' "$pat" > /tmp/e.json
-put staging/verse/git /tmp/e.json
+put <deployment>/verse/git /tmp/e.json
 
 # The same PAT, held by a different process and revocable on its own.
 printf '{"gitToken":"%s"}' "$pat" > /tmp/e.json
-put staging/verse/verse-runner /tmp/e.json
+put <deployment>/verse/verse-runner /tmp/e.json
 
 printf '{"SLACK_BOT_TOKEN":"%s","SLACK_SIGNING_SECRET":"%s"}' "$bot" "$sig" > /tmp/e.json
-put staging/verse/slack /tmp/e.json
+put <deployment>/verse/slack /tmp/e.json
 
 printf '{"LINEAR_API_KEY":"%s","LINEAR_WEBHOOK_SECRET":"%s"}' "$key" "$sig" > /tmp/e.json
-put staging/verse/linear /tmp/e.json
+put <deployment>/verse/linear /tmp/e.json
 
 printf '{"GITHUB_TOKEN":"%s","GITHUB_WEBHOOK_SECRET":"%s"}' "$tok" "$sig" > /tmp/e.json
-put staging/verse/github /tmp/e.json
+put <deployment>/verse/github /tmp/e.json
 
 printf '{"OPENAI_API_KEY":"%s"}' "$key" > /tmp/e.json
-put staging/verse/codex /tmp/e.json
+put <deployment>/verse/codex /tmp/e.json
 
 printf '{"ANTHROPIC_API_KEY":"%s"}' "$key" > /tmp/e.json
-put staging/verse/claude /tmp/e.json
+put <deployment>/verse/claude /tmp/e.json
 
 # `issuer.pem` is a FILE versed reads, a multi-line PEM: jq carries its newlines into the JSON
 # string, and nobody but versed ever sees the private half.
 openssl genrsa -out /tmp/issuer.pem 2048
 jq -n --rawfile pem /tmp/issuer.pem '{"issuer.pem": $pem}' > /tmp/e.json
-put staging/verse/issuer /tmp/e.json
+put <deployment>/verse/issuer /tmp/e.json
 
 rm -f /tmp/e.json /tmp/issuer.pem
 ```
@@ -630,8 +643,8 @@ since the name already exists:
 
 ```sh
 printf '{"GITHUB_TOKEN":"%s"}' "$tok" > /tmp/e.json
-aws secretsmanager put-secret-value --region us-west-2 \
-  --secret-id staging/verse/github --secret-string file:///tmp/e.json && rm /tmp/e.json
+aws secretsmanager put-secret-value --region <region> \
+  --secret-id <deployment>/verse/github --secret-string file:///tmp/e.json && rm /tmp/e.json
 kubectl -n verse annotate externalsecret verse-github force-sync=$(date +%s) --overwrite
 kubectl -n verse rollout restart deploy/github-iod
 ```
@@ -649,56 +662,50 @@ mount, an anonymous clone, and a private repository answering 404.
 consumer needs `kubectl -n verse rollout restart deploy/<x>`. The `secrets/` dir renders ahead
 of the workloads so a first apply does not need that.
 
-### The GitHub App (`signadot-verse`)
+### The GitHub App
 
-The github iod's out half would act as an app rather than as a person's token: as
-`signadot-verse[bot]`, it can review pull requests that people open, and people can review the
-ones it opens. A person's token can do neither, since GitHub refuses a review from a pull
-request's own author.
-
-| | |
-|---|---|
-| app | `signadot-verse`, id **5154941**, owned by signadot, private: <https://github.com/apps/signadot-verse> |
-| installation | id **167005587**, on signadot, with selected repositories: **example/app, signadot/verse, example/infra** |
-| webhook | off: the iod's events come from repository webhooks ([Webhooks](#webhooks)) |
+The github iod's out half acts as an app rather than as a person's token: as `<your-app>[bot]`,
+it can review pull requests that people open, and people can review the ones it opens. A
+person's token can do neither, since GitHub refuses a review from a pull request's own author.
+The app's webhook stays off: the iod's events come from repository webhooks
+([Webhooks](#webhooks)).
 
 **`iod github` authenticates as the app when its entry carries the app.** That is three keys:
 `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, and `GITHUB_APP_PRIVATE_KEY`, the PEM. Given with
 `GITHUB_TOKEN`, the app is used and the token is ignored. So the keys can be added to the entry
 before a build that reads them is deployed, and the token is removed once one runs. A build that
-predates app support ignores the three keys. To add them to staging's entry, keeping what it
-holds:
+predates app support ignores the three keys. To add them to the entry, keeping what it holds:
 
 ```sh
 (umask 077
- aws secretsmanager get-secret-value --region us-west-2 --secret-id staging/verse/github \
+ aws secretsmanager get-secret-value --region <region> --secret-id <deployment>/verse/github \
    --query SecretString --output text \
- | jq --arg id 5154941 --arg inst 167005587 \
-      --rawfile key ~/.config/signadot-verse/signadot-verse.private-key.pem \
+ | jq --arg id <app id> --arg inst <installation id> \
+      --rawfile key <path to the app's private key>.pem \
       '. + {GITHUB_APP_ID: $id, GITHUB_APP_INSTALLATION_ID: $inst, GITHUB_APP_PRIVATE_KEY: $key}' \
    > /tmp/e.json)
-aws secretsmanager put-secret-value --region us-west-2 \
-  --secret-id staging/verse/github --secret-string file:///tmp/e.json && rm /tmp/e.json
+aws secretsmanager put-secret-value --region <region> \
+  --secret-id <deployment>/verse/github --secret-string file:///tmp/e.json && rm /tmp/e.json
 kubectl -n verse annotate externalsecret verse-github force-sync=$(date +%s) --overwrite
 kubectl -n verse rollout restart deploy/github-iod
 ```
 
-The iod's log says `authenticating as app 5154941, installation 167005587` when it starts. Once it
-does, `GITHUB_TOKEN` can be removed from the entry the same way, with `del(.GITHUB_TOKEN)` as the
-jq program.
+The iod's log says `authenticating as app <app id>, installation <installation id>` when it
+starts. Once it does, `GITHUB_TOKEN` can be removed from the entry the same way, with
+`del(.GITHUB_TOKEN)` as the jq program.
 
 **A repository the iod reflects must be in the installation.** Add it under the app's installation
-settings (signadot → Settings → GitHub Apps → signadot-verse → Configure → Repository access).
+settings (the org → Settings → GitHub Apps → the app → Configure → Repository access).
 
-It was created on 2026-10-01 from this manifest, through GitHub's
-[manifest flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest).
-`redirect_url` was a one-off local server that exchanged GitHub's code for the app's credentials,
+Create the app from a manifest, through GitHub's
+[manifest flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest):
+`redirect_url` is a one-off local server that exchanges GitHub's code for the app's credentials,
 and `hook_attributes.url` is a placeholder, since the webhook is inactive:
 
 ```json
 {
-  "name": "signadot-verse",
-  "url": "https://github.com/signadot/verse",
+  "name": "<your-app>",
+  "url": "https://github.com/<org>/<repo>",
   "description": "verse's github iod: reflects repositories into verse and acts back on them (comments, pull requests, merges, reviews, closes).",
   "public": false,
   "hook_attributes": {"url": "https://example.invalid/github/webhook", "active": false},
@@ -743,10 +750,10 @@ kubectl -n verse create secret generic verse-llm \
   --from-literal=OPENAI_MODEL=gpt-4o          # optional; the driver defaults to gpt-4o
 ```
 
-Staging names verse's own Portkey credential:
+or have a profile name the entry:
 
 ```
-llmSecretKey: "staging/verse/llm"
+llmSecretKey: "<deployment>/verse/llm"
 llmModel: "claude-sonnet-5"     # what that credential routes to; "" = the driver's gpt-4o
 ```
 
@@ -779,8 +786,8 @@ serves and its token to prove itself with. So the `verse-issuer` Secret is requi
 install it.
 
 ```sh
-make runner-push IMAGE_ARCH=amd64 RUNNER_IMAGE=example/verse-staging:runner
-make deploy PROFILE=staging E='-e runner=true -e runnerImage=example/verse-staging:runner'
+make runner-push IMAGE_ARCH=amd64 RUNNER_IMAGE=<registry>/verse-runner:<tag>
+make deploy PROFILE=eks E='-e runner=true -e runnerImage=<registry>/verse-runner:<tag>'
 verse runner add verse-runner http://verse-runner:9802 -identity verse-runner \
   -subject system:serviceaccount:verse:verse-runner    # it acts as runner:verse-runner, and proves it is the pod
 ```
@@ -867,42 +874,43 @@ for the runner to retry, and on an `emptyDir` that work dies with the pod.
 
 ## Shipping one tier at a time
 
-`make ship` builds both images at the current commit and applies **everything** in one
-`kubectl apply`. That is the right thing when nothing about the wire between the tiers has
-changed, and the wrong thing when it has: versed and docd speak logd's session protocol, so a
-protocol change (v0.0.173's match shape, say) means the two vintages must not meet — a client
-of one against a server of the other has its path read as `""`, which is the **root**: an
-answer, with a commit, not an error. One apply starts both rolling and there is no point in it
-where you can say which is up.
+A plain `make deploy` applies **everything** in one `kubectl apply`. That is the right thing
+when nothing about the wire between the tiers has changed, and the wrong thing when it has:
+versed and docd speak logd's session protocol, so a protocol change (v0.0.173's match shape,
+say) means the two vintages must not meet — a client of one against a server of the other has
+its path read as `""`, which is the **root**: an answer, with a commit, not an error. One apply
+starts both rolling and there is no point in it where you can say which is up.
 
-Four targets ship one tier each, and none of them returns before its rollout is done:
+`SELECT=tier=<tier>` applies one tier out of the render, and `WAIT=1` makes the target block
+until what it applied is rolled out, so a protocol-changing ship is a sequence somebody can
+read, the images pushed first at an immutable ref:
 
 ```bash
-CTX=my-cluster.example.ts.net
+CTX=<the profile's kubeContext>
+REF=<registry>/verse:<sha>
+RUNNERS="-e runnerImage=<registry>/verse-runner:<sha> -e codexRunnerImage=<registry>/verse-runner:codex-<sha> -e claudeRunnerImage=<registry>/verse-runner:claude-<sha>"
 
 kubectl --context $CTX -n verse scale deploy/versed --replicas=0
 kubectl --context $CTX -n verse wait --for=delete pod -l app=verse,tier=versed --timeout=2m
 
-make ship-docd          # the store; versed is down, so nothing is talking to it
-make ship-versed        # the engine, against a docd that is already up and new
-make ship-iods          # the iods
-make ship-runners       # the verse, codex and claude runners, their own images
+make deploy PROFILE=<profile> IMAGE=$REF E="$RUNNERS" SELECT=tier=docd WAIT=1      # the store; versed is down, so nothing is talking to it
+make deploy PROFILE=<profile> IMAGE=$REF E="$RUNNERS" SELECT=tier=versed WAIT=1    # the engine, against a docd that is already up and new
+make deploy PROFILE=<profile> IMAGE=$REF E="$RUNNERS" SELECT=tier=iods WAIT=1      # the iods
+make deploy PROFILE=<profile> IMAGE=$REF E="$RUNNERS" SELECT=tier=runners WAIT=1   # the verse, codex and claude runners, their own images
 ```
 
-`ship-versed` restores `replicas: 1` from the manifest, so the scale to 0 costs no
+The versed step restores `replicas: 1` from the manifest, so the scale to 0 costs no
 availability that a deploy was not already spending — versed is `replicas: 1` with
-`strategy: Recreate` and goes fully down on any apply. Each target pushes the image its tier
-runs before applying, so any one of them alone is a whole ship; pushing a tag that is already
-there is a manifest check, not an upload.
+`strategy: Recreate` and goes fully down on any apply. A deployment usually wraps these four in
+a Makefile of its own, each target pushing the image its tier runs before applying (`make push`,
+`make runner-push` and the codex and claude ones, at the commit's ref), so any one of them alone
+is a whole ship; pushing a tag that is already there is a manifest check, not an upload.
 
 The tier is the `tier` label every object in `deploy/` carries — `docd`, `versed`, `iods`,
 `runners` — and `kubectl apply -l` is what selects on it; the `runner` label beside it names which
 runner (`-l runner=codex`, `-l runner=claude`). Objects with no tier (the Namespace,
 the ServiceAccount, the ExternalSecrets) belong to none and are applied by a full `make
-deploy`: these targets update a deployment that exists rather than standing one up.
-
-`make deploy SELECT=tier=docd WAIT=1` is the same machinery without the image push, for a
-profile that is not staging.
+deploy`: a tier apply updates a deployment that exists rather than standing one up.
 
 ## When something stops answering (the admin face)
 

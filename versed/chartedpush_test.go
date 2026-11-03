@@ -14,7 +14,7 @@ import (
 // A CHARTER'S PUSH IS THE PUSH IT NAMES: a row that allows a push to a branch says whether that
 // push may rewrite it or delete it, and one that does not say lets the task do both; a row that
 // keeps a task to its own branches says so on `exists` and `own`, the two facts the runner fills,
-// and one that does not lets the task push onto another task's. Each deployed charter's spawn
+// and one that does not lets the task push onto another task's. Each charter's spawn
 // policy is read from the file and asked about the pushes its comment promises, and the ones it
 // refuses.
 func TestACharteredPushIsThePushItNames(t *testing.T) {
@@ -41,16 +41,9 @@ func TestACharteredPushIsThePushItNames(t *testing.T) {
 			[]task.Step{push("refs/heads/verse/auto/x", "false", "false", "new"), push("refs/heads/verse/auto/x", "false", "false", "own")},
 			[]task.Step{push("refs/heads/verse/auto/x", "false", "false", "theirs"), push("refs/heads/verse/auto/x", "true", "false", "own"),
 				push("refs/heads/verse/auto/x", "false", "true", "own"), push("refs/heads/main", "false", "false", "theirs")}},
-		{"../deploy/charters/example/repo/app/comment-drift.tony",
-			[]task.Step{push("refs/heads/verse/auto/x", "false", "false", "new"), push("refs/heads/verse/auto/x", "false", "false", "own")},
-			[]task.Step{push("refs/heads/verse/auto/x", "false", "false", "theirs"), push("refs/heads/verse/auto/x", "true", "false", "own"),
-				push("refs/heads/verse/auto/x", "false", "true", "own"), push("refs/heads/master", "false", "false", "theirs")}},
 		{"../.verse/charters/comment-drift/merge.tony",
 			[]task.Step{push("refs/heads/main", "false", "false", "theirs")},
 			[]task.Step{push("refs/heads/main", "true", "false", "theirs"), push("refs/heads/main", "false", "true", "theirs")}},
-		{"../deploy/charters/example/repo/app/pr.tony",
-			[]task.Step{push("refs/heads/verse/train", "true", "false", "theirs")},
-			[]task.Step{push("refs/heads/verse/train", "false", "true", "theirs"), push("refs/heads/master", "false", "false", "theirs")}},
 	} {
 		policies := chartedPolicies(t, c.file)
 		if len(policies) == 0 {

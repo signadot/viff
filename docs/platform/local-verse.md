@@ -1,6 +1,6 @@
 # A verse on your machine, with Claude
 
-This page sets up a verse on your own machine the way staging is laid out: the store, versed and a
+This page sets up a verse on your own machine the way a cluster deployment is laid out: the store, versed and a
 runner, each a process of its own, run by [pitchfork](https://pitchfork.jdx.dev). The runner offers
 scripts and the `claude` agent, so a spawn with `agent: {name: claude}` runs Claude Code, one step
 at a time, under the autonomy you give it. Claude Code reaches the same verse through
@@ -50,7 +50,7 @@ It is a dir of its own so that nothing else shares it. A plain `verse up` keeps 
 issuer and one set of registrations. The binaries are not put on your `PATH`, so a `verse` you
 installed there stays as it is: the commands below name this one.
 
-**The store keeps every patch for a day** (`VERSE_LOCAL_COMPACTION_CUTOFF`, `1d`, as on staging).
+**The store keeps every patch for a day** (`VERSE_LOCAL_COMPACTION_CUTOFF`, `1d`, as the eks profile keeps it).
 Past the cutoff a read at a commit is approximate, and verse refuses it, so a completion hook
 whose task ran longer than the cutoff is lost. `setup` writes the cutoff into the data dir's
 `logd.verse.tony`, which says where it came from; the store reads it when it starts.

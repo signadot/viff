@@ -41,7 +41,7 @@
 #
 # <dir> holds people's data. Keep it out of the repository.
 #
-# THE ADDRESS IS AN ARGUMENT, never the default, as in repopulate.sh and for the same reason.
+# THE ADDRESS IS AN ARGUMENT, never the default, as in a deployment's repopulate script and for the same reason.
 set -euo pipefail
 
 verb="${1:-}" ADDR="${2:-}" LIST="${3:-}" DIR="${4:-}"

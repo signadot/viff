@@ -284,7 +284,7 @@ func resolveO(explicit string, cc *cli.Context) (string, error) {
 // completion hook reads its subject at the commit that fired it, which is as old as the task it
 // waited on, so a cutoff shorter than a task loses the task's hook: the read is refused as too
 // old, nothing is written, and the subject stays where it was. An hour lost the hook of every
-// task that ran longer. A day is staging's cutoff (docdCompactionCutoff in deploy/profiles/staging.tony).
+// task that ran longer. A day is the eks profile's cutoff (docdCompactionCutoff in deploy/profiles/eks.tony).
 const defaultCutoff = "1d"
 
 // cutoff is the compaction cutoff verse writes into the logd config, and where it came from,

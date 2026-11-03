@@ -10,23 +10,23 @@ import (
 	"github.com/signadot/verse/entity/entitytest"
 )
 
-// THE DEPLOY ANNOUNCEMENT, as shipped: a package that announces each new deploy/staging.N tag in
-// its own outbox, and leaves a tag the seed already wrote down silent. The seed and the latch are
-// in the outbox, inside the package, where the rule reads them.
+// THE DEPLOY ANNOUNCEMENT, as the example has it: a package that announces each new deploy/<i>.N
+// tag in its own outbox, and leaves a tag the seed already wrote down silent. The seed and the
+// latch are in the outbox, inside the package, where the rule reads them.
 func TestTheDeployAnnouncementAnnouncesOnlyNewTags(t *testing.T) {
 	srv := testServer(t)
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	withSlackIO(t, srv)
-	b, err := os.ReadFile("../deploy/charters/verse/workspace/Signadot/deploy-announce.tony")
+	b, err := os.ReadFile("../docs/reference/examples/deploy-announce/deploy-announce.tony")
 	if err != nil {
 		t.Fatal(err)
 	}
-	box := func(tag string) entity.Ref { return entity.RefAt("verse-dev", "announce", "out", "slack", tag) }
+	box := func(tag string) entity.Ref { return entity.RefAt("announce", "out", "slack", tag) }
 
-	// The seed, before the install and by the same person, as scripts/deploy-announce-seed.sh
-	// writes it with `verse data --put`.
+	// The seed, before the install and by the same person, as the example's header says to write
+	// it with `verse data --put`.
 	if resp := putAs(t, "user:"+tester, ts.URL, box("deploy/staging.1").KPath(),
 		entity.Obj{"seen": entity.Obj{"name": "deploy/staging.1"}}.Payload()); resp.StatusCode >= 300 {
 		t.Fatalf("seeding: %s: %s", resp.Status, bodyOf(t, resp))

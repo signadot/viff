@@ -1028,7 +1028,7 @@ commitStatus:
 `state` is `pending`, `success`, `failure` or `error`. Its status holds `commitStatus.<context>`:
 `state`, `sha`, `at` and `posted`. The same state, description and sha again costs nothing; a
 changed one replaces the status under that context. The App needs `statuses: write` for it
-([the GitHub App](../../deploy/README.md#the-github-app-signadot-verse)). A status GitHub refuses,
+([the GitHub App](../../deploy/README.md#the-github-app)). A status GitHub refuses,
 such as one an App without `statuses: write` asks for, is `error` under its context and does not
 fail the input; a refusal is not asked again until the status asked for changes.
 
@@ -1151,7 +1151,7 @@ The manifests are `deploy/git-iod`, `deploy/git-issue-iod`, `deploy/slack-iod`,
 `deploy/linear-iod` and `deploy/github-iod`: one for each of the five iods. A setting of its own
 switches each manifest on, such as `-e slackIod=true`, or
 `-e githubIod=true -e githubRepos=org/name`. The manifests carry the label `tier: iods`, and
-`make ship-iods` selects on that label.
+`make deploy SELECT=tier=iods` selects on that label.
 
 A readiness probe asks each iod `GET /io`. This is the route by which an iod says what it is.
 So a pod is ready exactly when it can answer what verse asks it.

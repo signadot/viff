@@ -1,0 +1,53 @@
+# verse's `auth` block on EKS (docs/reference/up.md, `auth`; docs/reference/perms.md, "who a
+# request is from"). Mounted into versed by deploy/build.tony's `authConfig` knob.
+#
+# People are who they say they are (`optional`, no login), and prove to the Slack app and the
+# GitHub App which verse user they are by saying a nonce from the account the app knows
+# (`verse account -link slack`, `verse account -link github -account <login>`). Neither provider
+# names domains, so the iods relay bound accounts only: no first sight. The Slack, github and git
+# iods prove themselves with their pods' projected tokens, whose issuer is the cluster's, and each
+# is trusted for the accounts its own system knows: the git iod for GitHub's, since what it
+# installs from a repository is installed for the person behind the change. `required` waits on
+# an issuer for people, the team's identity provider.
+auth:
+  # This verse issues tokens of its own: the credential a gate mints for a task, and the token it
+  # presents to each runner, minted for that runner alone (docs/runners.md, "Who the runner is").
+  # The key is the verse-issuer Secret (deploy/build.tony's runnerTokens patch), and the url is
+  # the name the runners hold the tokens to (the `issuer` knob): in-cluster, since nothing outside
+  # verifies them.
+  issuer:
+    url: "http://verse:9797"
+    key: /etc/verse/issuer/issuer.pem
+  principal:
+    mode: optional
+    providers:
+      github:
+        iods: [github, git]
+      slack:
+        iods: [slack]
+  iod:
+    # The cluster's OIDC issuer: what `kubectl --context <ctx> get --raw
+    # /.well-known/openid-configuration` prints as `issuer`. EKS publishes its discovery document
+    # openly, so `issuerDiscoveryOpen` stays off.
+    issuer: "https://oidc.eks.<region>.amazonaws.com/id/<cluster-id>"
+    audience: verse
+    accounts:
+      "system:serviceaccount:verse:slack-iod": {principal: "agent:slack-iod", iod: slack}
+      "system:serviceaccount:verse:github-iod": {principal: "agent:github-iod", iod: github}
+      "system:serviceaccount:verse:git-iod": {principal: "agent:git-iod", iod: git}
+# The repositories whose charters verse reconciles (docs/reference/up.md, `repoCharters`;
+# docs/reference/examples/repo-charters). versed renders the reconciler for each at start and
+# installs it as the system, once the iods are restored: what runs in verse is the last state of
+# the repository's `.verse/charters` directory on its branch (`main` unless the entry says
+# `branch`) that an answer said yes to. The git iod reflects the tree (`-tree .verse/charters`)
+# and installs it at `at` as itself (`-out`; the grant is the deployment's to make, `child-owner`
+# under `repos` for `agent:git-iod`). The github iod reports what a pull request to main changes
+# in that directory and carries the question there (`githubOut`). Each repository named here is
+# mirrored by the git iod and reflected by the github iod (the profile's `gitMirror` and
+# `githubRepos`), with an out place each. Dropping an entry turns its reconciler off at the next
+# start and leaves the charters it installed running.
+repoCharters:
+- repo: verse
+  github: signadot/verse
+  at: repos.verse
+  answerers: ["user:*"]

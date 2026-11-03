@@ -1,0 +1,158 @@
+# A gate reaches the people it waits on, in Slack.
+#
+# This is the whole of it: a rule that selects pending questions and derives one message per
+# person each waits on. Nothing here knows what a gate IS — the record says who is waiting
+# (waitingOn), what is being asked (pose) and what it is about (about), and the Slack iod draws
+# those lines itself from the record every pass. What this file decides is only WHO is reached
+# and WHERE, which is the part that belongs to a deployment rather than to a program.
+#
+# WHY A CHARTER AND NOT CODE: a question is a record, the engine already fans out over a list,
+# and "one message per person" is a derive. Written in Go it would have been a second scheduler
+# with its own idea of who is waiting; written here, an answer that moves `waitingOn` moves the
+# messages on the next firing, and a reader can see the rule that sends them.
+#
+# INSTALLED AS THE SYSTEM (deploy's `systemCharter`, VERSE_SYSTEM_CHARTER). A rule acts as its
+# installer, and a person's ask is read only by whom it asks and who may read what it is about
+# (docs/asking.md): installed by anybody else, the rule would not see the asks put to people.
+
+# The docket's own stratum is the system's, `asks` (versed/system.tony), which every verse has; the
+# messages go strictly above it.
+strata:
+- name: gate-asked
+  level: 100030
+  match: {path: "slack.example.out"}
+rules:
+# A QUESTION A RULE OR A TASK RAISED, one message per person it waits on; a person's ask and an
+# onward ask have rules of their own below, so each line names who asked the way that kind of
+# asker is named. A question says who raised it in `from`: `{rule, at}`, `{task}` or
+# `{principal}`, exactly one (docs/asking.md).
+- name: gate-ask
+  stratum: asks
+  condition:
+    # Pending, and NAMING WHOM IT WAITS ON. A question that named nobody waits on whoever the
+    # docket admits — `waitingOn: [user:*]`, which is every person and so nobody to DM — and is
+    # answered from the docket rather than in somebody's messages.
+    #
+    # `to: {grantees: null}` is a PRESENCE test and reads backwards at first glance: a null in a
+    # predicate matches any value, so the only thing it constrains is that the field is there.
+    # "Absent" is the other spelling, `!not {to: {grantees: null}}` (trigger/match.go).
+    #
+    # And NOT ONE FOR A CHANNEL: an ask carrying a `slack` label is put to a channel, once, by
+    # gate-ask-channel, and messages nobody in particular.
+    subject:
+      path: "verse.ask.*"
+      value: !and
+      - {status: pending, to: {grantees: null}, from: {rule: null}}
+      - !not {labels: {slack: null}}
+  action:
+    derive:
+    # ONE PER PERSON, keyed by the principal, so the same person waiting on the same question
+    # keeps one message however often the rule fires, and a question that changes hands writes
+    # the new answerer's rather than editing somebody else's.
+    - path: "slack.example.out"
+      value: !each
+        over: .[subject.value.waitingOn]
+        key: .[item]
+        value:
+          to: .[item]
+          asks: .[subject.value.id]
+          # THE ONLY WORDS THIS RULE PUTS IN THE MESSAGE. Everything else under it — what is
+          # asked, what it is about, who else is waiting, how to answer — the iod draws from the
+          # question's own record each pass, so it stays true as the question moves. This line
+          # is what a notification shows before anybody opens it, so it says why THEY were
+          # reached and names the rule that reached them.
+          text: "$[subject.value.from.rule] is waiting on you."
+# A task's question, as gate-ask is a rule's: the line names the task.
+- name: gate-ask-task
+  stratum: asks
+  condition:
+    subject:
+      path: "verse.ask.*"
+      value: !and
+      - {status: pending, to: {grantees: null}, from: {task: null}}
+      - !not {labels: {slack: null}}
+  action:
+    derive:
+    - path: "slack.example.out"
+      value: !each
+        over: .[subject.value.waitingOn]
+        key: .[item]
+        value:
+          to: .[item]
+          asks: .[subject.value.id]
+          text: "$[subject.value.from.task] is waiting on you."
+# An ask, which a principal raised — a person, an agent, or a place acting (`via:`): the line names
+# who asked. A person's ask is DM'd whatever its labels. An onward ask is gate-ask-onward's.
+- name: gate-ask-person
+  stratum: asks
+  condition:
+    subject:
+      path: "verse.ask.*"
+      value: !and
+      - {status: pending, to: {grantees: null}, from: {principal: null}}
+      - !not {serves: null}
+  action:
+    derive:
+    - path: "slack.example.out"
+      value: !each
+        over: .[subject.value.waitingOn]
+        key: .[item]
+        value:
+          to: .[item]
+          asks: .[subject.value.id]
+          text: "$[subject.value.from.principal] is asking you."
+# An onward ask, which a resolver raised to serve another ask: the line names the resolver and the
+# party it asks for.
+- name: gate-ask-onward
+  stratum: asks
+  condition:
+    subject:
+      path: "verse.ask.*"
+      value: {status: pending, to: {grantees: null}, from: {principal: null}, serves: null}
+  action:
+    derive:
+    - path: "slack.example.out"
+      value: !each
+        over: .[subject.value.waitingOn]
+        key: .[item]
+        value:
+          to: .[item]
+          asks: .[subject.value.id]
+          text: "$[subject.value.from.principal] asks for $[subject.value.serves.for]."
+# A GATE'S QUESTION FOR A CHANNEL: one message in the channel its `slack` label names, and a reply
+# in that message's thread answers it as whoever typed it, held to whom it waits on. A gate puts
+# its question to a channel by naming `answerers: ["user:*"]` and the label (merge.tony's
+# merge-to-main): anyone whose Slack account is a verse user may answer, and nobody is DM'd.
+#
+# A RULE'S OR A TASK'S: the iod draws a channel's message reading the question as itself, and a
+# gate's question is read as its subject is, where a person's ask is read only by its asker and
+# whom it asks. A person's ask is DM'd, whatever its labels.
+- name: gate-ask-channel
+  stratum: asks
+  condition:
+    subject:
+      path: "verse.ask.*"
+      value: {status: pending, from: {rule: null}, labels: {slack: null}}
+  action:
+    derive:
+    - path: "slack.example.out"
+      id: .[subject.value.id]
+      value:
+        to: .[subject.value.labels.slack]
+        asks: .[subject.value.id]
+        text: "$[subject.value.from.rule] is asking here."
+# A task's question for a channel, as gate-ask-channel is a rule's: the line names the task.
+- name: gate-ask-task-channel
+  stratum: asks
+  condition:
+    subject:
+      path: "verse.ask.*"
+      value: {status: pending, from: {task: null}, labels: {slack: null}}
+  action:
+    derive:
+    - path: "slack.example.out"
+      id: .[subject.value.id]
+      value:
+        to: .[subject.value.labels.slack]
+        asks: .[subject.value.id]
+        text: "$[subject.value.from.task] is asking here."
