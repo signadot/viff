@@ -2,6 +2,7 @@
 blocked_by: []
 blocks: []
 branches: []
+closed_by: a60ff8f1afc95219d54c465aa1e04c0aee303413
 commits: []
 created: "2026-11-03T09:48:13.256263+01:00"
 duplicates: []
@@ -9,5 +10,5 @@ id: r38avq5ah12kskczx5n0
 labels:
 - test
 related_issues: []
-status: open
-updated: "2026-11-03T09:48:13.342533+01:00"
+status: closed
+updated: "2026-11-03T10:01:57.074379+01:00"
