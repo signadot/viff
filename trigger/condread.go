@@ -132,6 +132,16 @@ func checkConditionReads(m Match) error {
 					"the condition selects, so the firing has none yet — address the entity "+
 					"literally, or read it in the action instead", refSubject, s.target())
 			}
+			// THE OLD SPELLING, which is text now: `m.proposal.$kind` would read an entity
+			// named `$kind` and answer nothing. A condition's read has no reference to make
+			// in either spelling (checkNoBinding), so the refusal says to address it literally.
+			if ref := legacyRef(ir.FromString(seg)); ref != "" {
+				return fmt.Errorf("!%s %s carries $%s, the old spelling of a reference, which is "+
+					"text now: the read would name an entity called $%s and answer nothing. A "+
+					"condition's read is answered before the `!let` around it is evaluated and "+
+					"before there is a subject, so it has nothing to refer to: address the entity "+
+					"literally", s.kind, s.target(), ref, ref)
+			}
 		}
 		if err := s.checkNoBinding(); err != nil {
 			return err

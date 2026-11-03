@@ -142,6 +142,26 @@ func TestAConditionReadCannotNameTheSubject(t *testing.T) {
 	}
 }
 
+// A condition's read in the OLD SPELLING is refused at install: `$kind` is text now, and the read
+// would name an entity called `$kind` and quietly answer nothing.
+func TestAConditionReadRefusesTheOldSpelling(t *testing.T) {
+	eng := New(entitytest.Store(t), task.AutoResolver{})
+	err := eng.AddTrigger(mustParseCharter(t, `
+- name: old-spelling
+  condition:
+    subject:
+      path: "merge.proposal.*"
+      value: !let
+        let: [{kinds: !list-paths "m.proposal.$kind"}]
+        in:  {base: !not .[kinds]}
+  action:
+    patch: {state: stale}
+`))
+	if err == nil || !strings.Contains(err.Error(), "old spelling") || !strings.Contains(err.Error(), "literally") {
+		t.Fatalf("install = %v, want the old spelling refused with what to write", err)
+	}
+}
+
 // The subtree a condition reads is part of what the trigger reads, which is what `touches` is
 // entitled to skip on. Asserted directly, because the behaviour it buys (the test above) would
 // also pass for a while on a coincidence of dispatch.
