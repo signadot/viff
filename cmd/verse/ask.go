@@ -479,7 +479,7 @@ func (w *askWatch) follow(ctx context.Context, since string, say func(rev, line 
 		w.mu.Unlock()
 		w.catchUp()
 		carried := false
-		began, err := followFrames(ctx, w.c, q, func(f askFrame) { carried = true; w.frame(f, say) })
+		began, err := followFrames(ctx, w.c, q, w.opened, func(f askFrame) { carried = true; w.frame(f, say) })
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -567,9 +567,10 @@ func (e *watchRefused) Error() string { return e.err.Error() }
 func (e *watchRefused) Unwrap() error { return e.err }
 
 // followFrames reads the watch route under q and hands each frame to fn, until the stream ends or
-// ctx does. began says whether a stream was answered at all: a verse refusing the watch, or not
+// ctx does. opened, where set, is called once the route has answered with a stream, before its
+// first frame. began says whether a stream was answered at all: a verse refusing the watch, or not
 // answering, is not a stream that ended.
-func followFrames(ctx context.Context, c *client.Client, q url.Values, fn func(askFrame)) (began bool, err error) {
+func followFrames(ctx context.Context, c *client.Client, q url.Values, opened func(), fn func(askFrame)) (began bool, err error) {
 	resp, err := c.With(ctx).Get("/watch", q)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -580,6 +581,9 @@ func followFrames(ctx context.Context, c *client.Client, q url.Values, fn func(a
 	defer resp.Body.Close()
 	if resp.StatusCode >= http.StatusBadRequest {
 		return false, &watchRefused{status: resp.StatusCode, err: statusError(resp, "ask --watch")}
+	}
+	if opened != nil {
+		opened()
 	}
 	in := streamFmt(resp)
 	sc := bufio.NewScanner(resp.Body)
@@ -644,12 +648,16 @@ type askWatch struct {
 	// notification.
 	alert func(alert)
 	// catching is whether the stream is still delivering what stood when it opened, or the history
-	// a cursor replays: frames that arrive back to back, until the stream has been quiet for
-	// quietFor. What it meets then is counted in standing and answeredSince, and said on the desktop
-	// as one summary once it is caught up, not as a burst of notifications, urgent ones among them.
+	// a cursor replays: frames that arrive back to back, until the stream, once open, has been quiet
+	// for quietFor, or has been open for catchUpMax on a docket that is never quiet. What it meets
+	// then is counted in standing and answeredSince, and said on the desktop as one summary once it
+	// is caught up, not as a burst of notifications, urgent ones among them. catchGen tells one
+	// stream's timers from the next's.
 	catching      bool
-	quiet         *time.Timer
+	catchGen      int
+	quiet, capped *time.Timer
 	quietFor      time.Duration
+	catchUpMax    time.Duration
 	standing      map[string]bool
 	answeredSince int
 }
@@ -658,15 +666,21 @@ func newAskWatch(c *client.Client, me string, asks, questions bool) *askWatch {
 	return &askWatch{c: c, me: me, asks: asks, questions: questions, now: time.Now,
 		askVerse: func(id string) bool { return waitingOnMe(c, id) },
 		recs:     map[string]entity.Payload{}, answered: map[string]int{}, seen: map[string]bool{},
-		quietFor: askCaughtUp, standing: map[string]bool{}}
+		quietFor: askCaughtUp, catchUpMax: askCatchUpMax, standing: map[string]bool{}}
 }
 
 // askCaughtUp is how long a stream is quiet before the watch takes it to have delivered what
 // stood, or what it replays: those frames are sent back to back, and what follows is news.
 const askCaughtUp = time.Second
 
-// catchUp starts the catching up a newly opened stream does, where the watch notifies: until the
-// stream is quiet, what it meets is summed, not notified.
+// askCatchUpMax is the longest catching up lasts once a stream has opened: on a docket that
+// changes more often than askCaughtUp, the stream is never quiet, and what follows is news all the
+// same.
+const askCatchUpMax = 10 * time.Second
+
+// catchUp starts the catching up a stream about to be opened does, where the watch notifies:
+// what it meets is summed, not notified. Its clocks start when the stream opens (opened), so the
+// connect and the verse assembling what stands are not counted as quiet.
 func (w *askWatch) catchUp() {
 	if w.alert == nil {
 		return
@@ -674,10 +688,39 @@ func (w *askWatch) catchUp() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.catching = true
-	if w.quiet == nil {
-		w.quiet = time.AfterFunc(w.quietFor, w.caughtUp)
-	} else {
-		w.quiet.Reset(w.quietFor)
+	w.catchGen++
+	w.stopCatchClocks()
+}
+
+// opened starts the catching up's clocks, as the stream answers: quiet for quietFor, or open for
+// catchUpMax, ends it.
+func (w *askWatch) opened() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.catching {
+		return
+	}
+	gen := w.catchGen
+	end := func() { w.caughtUpFrom(gen) }
+	w.quiet = time.AfterFunc(w.quietFor, end)
+	w.capped = time.AfterFunc(w.catchUpMax, end)
+}
+
+func (w *askWatch) stopCatchClocks() {
+	for _, t := range []*time.Timer{w.quiet, w.capped} {
+		if t != nil {
+			t.Stop()
+		}
+	}
+	w.quiet, w.capped = nil, nil
+}
+
+// caughtUpFrom ends the catching up the stream gen began, and not a later one's.
+func (w *askWatch) caughtUpFrom(gen int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if gen == w.catchGen {
+		w.caughtUpLocked()
 	}
 }
 
@@ -686,10 +729,15 @@ func (w *askWatch) catchUp() {
 func (w *askWatch) caughtUp() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	w.caughtUpLocked()
+}
+
+func (w *askWatch) caughtUpLocked() {
 	if !w.catching {
 		return
 	}
 	w.catching = false
+	w.stopCatchClocks()
 	var parts, poses []string
 	if n := len(w.standing); n > 0 {
 		parts = append(parts, plural(n, "question waits", "questions wait")+" on you")

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -88,7 +89,6 @@ func TestCatchingUpIsOneQuietSummary(t *testing.T) {
 	if len(got) != 1 || !got[0].urgent || got[0].key != "q4" {
 		t.Errorf("after catching up, a new question: %+v", got)
 	}
-	w.quiet.Stop()
 }
 
 // A QUIET STREAM ENDS THE CATCHING UP by itself.
@@ -98,6 +98,7 @@ func TestAQuietStreamIsCaughtUp(t *testing.T) {
 	w.quietFor = 10 * time.Millisecond
 	w.alert = func(a alert) { done <- a }
 	w.catchUp()
+	w.opened()
 	w.frame(askFrame{at: "verse.ask.q1", rev: "3", to: entity.Obj{
 		"status": "pending", "waitingOn": []any{daniel}, "pose": "Land it?"}.Payload()}, func(string, string) {})
 	select {
@@ -218,5 +219,65 @@ func TestAStuckDesktopNeitherHangsNorHidesDrops(t *testing.T) {
 	}
 	if drops != 1 {
 		t.Errorf("said %q, want the drop said once", said)
+	}
+}
+
+// THE QUIET CLOCK STARTS WHEN THE STREAM OPENS: a verse slow to answer, or to assemble what stands,
+// is not quiet, and what it then sends is still caught up on.
+func TestCatchingUpWaitsForTheStreamToOpen(t *testing.T) {
+	w := newAskWatch(apiClient(), daniel, false, true)
+	w.quietFor = 10 * time.Millisecond
+	w.alert = func(alert) {}
+	w.catchUp()
+	time.Sleep(50 * time.Millisecond) // the connect, slow
+	w.mu.Lock()
+	catching := w.catching
+	w.mu.Unlock()
+	if !catching {
+		t.Fatal("caught up before the stream opened")
+	}
+	w.caughtUp()
+}
+
+// A DOCKET THAT IS NEVER QUIET ends the catching up all the same, catchUpMax after the stream
+// opened; and a stream's clocks do not end the next one's catching up.
+func TestABusyDocketIsCaughtUpAtTheCap(t *testing.T) {
+	done := make(chan alert, 4)
+	w := newAskWatch(apiClient(), daniel, false, true)
+	w.quietFor, w.catchUpMax = 30*time.Millisecond, 150*time.Millisecond
+	w.alert = func(a alert) { done <- a }
+	w.catchUp()
+	w.opened()
+	w.frame(askFrame{at: "verse.ask.q1", rev: "3", to: entity.Obj{
+		"status": "pending", "waitingOn": []any{daniel}, "pose": "Land it?"}.Payload()}, func(string, string) {})
+	stop := time.After(time.Second)
+	tick := time.NewTicker(5 * time.Millisecond)
+	defer tick.Stop()
+	for rev := 4; ; rev++ {
+		select {
+		case a := <-done:
+			if a.title != "verse: 1 question waits on you" {
+				t.Errorf("summary %+v", a)
+			}
+			return
+		case <-stop:
+			t.Fatal("a busy docket never caught up")
+		case <-tick.C:
+			w.frame(askFrame{at: "verse.ask.other", rev: strconv.Itoa(rev), to: entity.Obj{
+				"status": "pending", "waitingOn": []any{"someone-else"}, "pose": "Not yours"}.Payload()}, func(string, string) {})
+		}
+	}
+}
+
+// A RECONNECT'S CATCHING UP is its own: the first stream's clocks firing late end nothing.
+func TestAnEarlierStreamsClockEndsNothing(t *testing.T) {
+	w := newAskWatch(apiClient(), daniel, false, true)
+	w.alert = func(alert) {}
+	w.catchUp()
+	gen := w.catchGen
+	w.catchUp() // the reconnect
+	w.caughtUpFrom(gen)
+	if !w.catching {
+		t.Fatal("the first stream's clock ended the second's catching up")
 	}
 }
