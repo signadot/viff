@@ -841,10 +841,9 @@ func TestClaudeSteerReachesTheRunningTurn(t *testing.T) {
 	if err != nil || !more || tu.Name != kindWrite {
 		t.Fatalf("second proposal: %v %v %s", err, more, tu.Name)
 	}
-	entries := readLog(t, logPath)
-	if !logHas(entries, `"user":"skip the generated files"`, `"midTurn":true`) {
-		t.Fatalf("the steer did not reach the running session:\n%s", render(entries))
-	}
+	// The stand-in records the words as its own reader takes them, which is on its clock and
+	// not the driver's: the next proposal can come back first.
+	waitLog(t, logPath, `"user":"skip the generated files"`, `"midTurn":true`)
 	// A refusal from the loop is a deny to Claude, with the reason as the call's result.
 	tu, more, err = d.Next(ctx, task.StepResult{Use: tu, Blocked: true, Note: "docs only"})
 	if err != nil || !more || tu.Name != kindAsk {
