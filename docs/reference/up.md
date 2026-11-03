@@ -159,7 +159,8 @@ token means removing the file and restarting `up`: a runner holding the old one 
 handshake, and is passed over until it is restarted on the new.
 
 **Which `runnerd`.** `up` looks beside the `verse` executable first (`make bin` puts both
-there), then in `~/.verse/bin/<version>/`, then on `PATH`; where none is found and this verse
+there), then in `~/.verse/bin/<version>/`, which counts once it holds both `runnerd` and
+`verse-call-tool`, then on `PATH`; where none is found and this verse
 is a release, it installs `runnerd` and `verse-call-tool` of that release into
 `~/.verse/bin/<version>/` with `go install`, as it installs `o`. A `verse` built from a checkout
 is no release: Go stamps it a pseudo-version, which names a commit, with `+dirty` where the tree

@@ -408,8 +408,10 @@ func resolveRunnerd(explicit string, out io.Writer) (string, error) {
 	release := releaseOf(version)
 	cached := cachedRunnerd(release)
 	// Not run through sameBuild: the cache is keyed by this verse's release, so what it holds
-	// is this build by construction.
-	if cached != "" && isFile(cached) {
+	// is this build by construction. It counts once both binaries are in it: an install cut
+	// short between the two leaves a runnerd whose agents have no verse-call-tool, and is done
+	// again.
+	if cached != "" && cacheComplete(filepath.Dir(cached)) {
 		return cached, nil
 	}
 	if onPath, err := exec.LookPath("runnerd"); err == nil {
@@ -426,7 +428,7 @@ func resolveRunnerd(explicit string, out io.Writer) (string, error) {
 		return "", fmt.Errorf("verse up: no runnerd beside this verse or on PATH, and no `go` to install one (%s/cmd/runnerd@%s); pass --runnerd-bin, or --local-runner=false", verseModule, release)
 	}
 	fmt.Fprintf(out, "verse up: installing runnerd and verse-call-tool %s into %s (once per version)…\n", release, filepath.Dir(cached))
-	for _, cmd := range []string{"runnerd", "verse-call-tool"} {
+	for _, cmd := range cachedBinaries {
 		install := exec.Command("go", "install", verseModule+"/cmd/"+cmd+"@"+release)
 		install.Env = append(os.Environ(), "GOBIN="+filepath.Dir(cached))
 		install.Stdout, install.Stderr = out, out
@@ -434,10 +436,24 @@ func resolveRunnerd(explicit string, out io.Writer) (string, error) {
 			return "", fmt.Errorf("verse up: go install %s/cmd/%s@%s: %w; pass --runnerd-bin, or --local-runner=false", verseModule, cmd, release, err)
 		}
 	}
-	if !isFile(cached) {
-		return "", fmt.Errorf("verse up: installed runnerd %s but found none at %s; pass --runnerd-bin", release, cached)
+	if !cacheComplete(filepath.Dir(cached)) {
+		return "", fmt.Errorf("verse up: installed runnerd and verse-call-tool %s but found them not both in %s; pass --runnerd-bin", release, filepath.Dir(cached))
 	}
 	return cached, nil
+}
+
+// cachedBinaries are what an install puts in the cache, and what it holds once one is done.
+var cachedBinaries = []string{"runnerd", "verse-call-tool"}
+
+// cacheComplete is whether dir, a version's place in the cache, holds every binary an install
+// puts there.
+func cacheComplete(dir string) bool {
+	for _, name := range cachedBinaries {
+		if !isFile(filepath.Join(dir, name)) {
+			return false
+		}
+	}
+	return true
 }
 
 // buildBeside is what to do where there is no runnerd and none to install.

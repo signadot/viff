@@ -141,3 +141,24 @@ func TestReleaseOf(t *testing.T) {
 		}
 	}
 }
+
+// TestCacheComplete: a version's place in the cache counts once both binaries are in it, so an
+// install cut short after runnerd is done again rather than trusted.
+func TestCacheComplete(t *testing.T) {
+	dir := t.TempDir()
+	if cacheComplete(dir) {
+		t.Fatal("an empty dir is complete")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "runnerd"), []byte("x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if cacheComplete(dir) {
+		t.Fatal("a dir with runnerd and no verse-call-tool is complete")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "verse-call-tool"), []byte("x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if !cacheComplete(dir) {
+		t.Fatal("a dir with both is not complete")
+	}
+}
