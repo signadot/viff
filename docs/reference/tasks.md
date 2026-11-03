@@ -604,7 +604,7 @@ reinstalled charter poses it again under the same id, with the ballots already c
 If not, it stays orphaned.
 
 **`status: done` means that the task *stopped*, not that the work succeeded.** A hook that moves
-state on should name evidence (`patch: {stage: reviewed, severity: $data.severity}`), not trust
+state on should name evidence (`patch: {stage: reviewed, severity: .[data.severity]}`), not trust
 a bare claim ([bindings](action.md#bindings), [the answer contract](action.md#the-answer-contract)).
 
 ## Steering

@@ -20,9 +20,9 @@ not analyse it.
 
 ## Why a derive reads only its subject
 
-The limit follows from what a re-fire must be. A `$reference` cannot reach another entity at
-all. It reads the subject of the firing, or the result of a task. Nothing above can write the
-subject, since a patch touches only its own subject and a derive only climbs.
+The limit follows from what a re-fire must be. An expression in a derive cannot reach another
+entity at all. It reads the subject of the firing, or the result of a task. Nothing above can
+write the subject, since a patch touches only its own subject and a derive only climbs.
 
 So a read upward that wakes the rule without a change to the subject resolves to the same
 bytes. The derive writes them to the same address, and the write is a no-op. That is what makes

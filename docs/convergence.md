@@ -44,8 +44,9 @@ So every read the engine makes names its places:
 - The snapshot of a firing narrows to those subtrees and to the literal prefix of every
   [path read](glossary.md#path-read) in the rule (`firingWithin`).
 
-One case cannot be narrowed: a read whose address the firing learns only when it resolves it,
-such as `!get-path {at: "$subject.value.where"}`. There, the engine reads the whole store.
+An expression in a read's address stands in its last segment, since every segment above the
+last is a literal or `*`: `!get-path {at: [git, repo, .[subject.value.head]]}`. So the place a
+read stands in is known at install, and the snapshot narrows to it.
 
 The figures belong to the store and change with it. The shape does not:
 
@@ -75,7 +76,7 @@ this means for a condition and for an edge is in [the rule](trigger-model.md#the
 The reads of an [action](glossary.md#action) are pinned to C too. They are answered from **one
 snapshot per firing, taken at the commit that caused it**:
 
-- `$subject.value`, the payload of the subject;
+- `subject.value`, the payload of the subject;
 - the two path reads,
   [`!get-path` / `!list-paths`](reference/action.md#get-path-and-list-paths-reaching-other-data).
 
@@ -85,8 +86,8 @@ member's state at C with another member's state at a later commit.
 
 One exception remains. The **flat bindings** read the payload as it stands when the action runs
 (`Engine.refPayload`). A flat binding is a field of the subject's payload by its name, such as
-`$stage`. The entity a firing is about cannot change, because verse fixes the subject before any
-gate. But `$stage` is current, and `$subject.value.stage` is as of C: the same field, read at two
+`stage`. The entity a firing is about cannot change, because verse fixes the subject before any
+gate. But `stage` is current, and `subject.value.stage` is as of C: the same field, read at two
 moments.
 
 The reason is cost. `refPayload` runs for every firing, and pinning it would take a snapshot for
@@ -123,7 +124,7 @@ false. The check is a three-valued fold over the structure of the predicate:
 So the check reads a nested predicate, a replace of the whole value and a root operator each as
 what it is, not by the name of its top-level key.
 
-Some values are known only at fire time: `$result`, or an operator the fold does not model. These
+Some values are known only at fire time: `.[result]`, or an operator the fold does not model. These
 come out *undecided*, and undecided passes. The check refuses only what it can see:
 
 - a rule that writes nothing that its subject reads;

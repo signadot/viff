@@ -90,8 +90,8 @@ that grows structure depends on this.
 
 `derive` writes data at an address that is *not* the subject. A `patch` cannot do this. A
 [derive](../glossary.md#derive) is a list of entries. Each entry names an address as a path, and
-what goes there: `- {path: "repos.verse.drift.head", value: …}`. Its content may reference its
-own subject. It may also reference other data, at or below its own level.
+what goes there: `- {path: "repos.verse.drift.head", value: …}`. Its content may read its
+own subject. It may also read other data, at or below its own level.
 
 A derive is installable only inside a declared order of levels, and it must land strictly above
 the rule that writes it. See [strata](../strata.md).
@@ -125,7 +125,7 @@ and not one long paragraph. See
 [strata](../strata.md#each-when-one-answer-holds-many-facts).
 
 A single derive may carry a `key:` too:
-`- {path: "repos.verse.merge.train", key: $subject.value.sha, value: …}`. Its address is then a
+`- {path: "repos.verse.merge.train", key: .[subject.value.sha], value: …}`. Its address is then a
 function of (rule, subject, key), and not of (rule, subject). It gives one record per value of
 something, where the same subject keeps moving. See
 [strata](../strata.md#a-key-on-a-single-derive).
@@ -136,8 +136,8 @@ rule, the subject, the key. Nothing in the grammar builds that address from a su
 reader that wants the record must *describe* it, with a `"*"` per segment and a predicate on a
 field it happens to know. It cannot name it.
 
-With `id: $subject.value.sha` the record is `repos.verse.drift.head.aaaa1111`, and a reader
-spells it: `!get-path {at: [repos, verse, drift, head, $subject.value.sha], path: result.report}`.
+With `id: .[subject.value.sha]` the record is `repos.verse.drift.head.aaaa1111`, and a reader
+spells it: `!get-path {at: [repos, verse, drift, head, .[subject.value.sha]], path: result.report}`.
 
 `id:` gives the author the job of keeping addresses unique.
 
@@ -415,111 +415,140 @@ branches.
 
 ### Bindings
 
-A [binding](../glossary.md#binding) is a name an action reads a value by. In a patch it is `$`
-and the name, `$stage`; in the strings of a spawn it is an expression, `$[stage]`
-([below](#in-the-strings-of-a-spawn)). Every field of **the payload an action reads** is bound by
-name (`stage`, `path`, …). `subject` is bound too, to the resolved subject. Which payload the action reads has exactly two answers. The answer depends on
-*why* the action runs.
+A [binding](../glossary.md#binding) is a name an action reads a value by. A patch, a derive, the
+address of a path read and the strings of a spawn all read them the same way, through an
+[expression](#expressions): `.[stage]` is the value of `stage`, and `"saw $[stage]"` writes it
+into text. Every field of **the payload an action reads** is bound by name (`stage`, `path`, …).
+`subject` is bound too, to the resolved subject. Which payload the action reads has exactly two
+answers. The answer depends on *why* the action runs.
 
 **A firing of a rule reads the payload of the subject itself.** The change that dispatched the
 firing may be at a different address. Its fields would mean nothing on the subject being acted
 on. So `review $[subject.ref]` in the prompt of a spawn names the PR the firing is about, even when the
-change that fired was a task's and not the PR's. `$stage` is the stage of that PR, and
+change that fired was a task's and not the PR's. `stage` is the stage of that PR, and
 not of the task.
 
 **A completion hook reads the payload of the finished task.** So does an element of a sequence
-that a hook drives. `$status`, `$result`, `$data` and `$err` are the facts it exists to read. The
+that a hook drives. `status`, `result`, `data` and `err` are the facts it exists to read. The
 engine makes that payload itself, and does not read it from the store. The mirror may not have
 written the terminal facts yet. This is why those bindings resolve at all, and why they are
 flat. They are facts about a run, and no address holds them.
 
-`subject` is a record. In a patch, the bare `$subject` is its address.
+Each of the four is there whatever the task said. `result` and `err` are empty where it said
+nothing, and `data` is null where its result is no document. So a hook that an `onDone` and an
+`onFailed` share can say `.[err]` in both, and `report: .[data]` writes null for a task that gave
+no document. Reading into a null is not reading a null: `.[data.findings]` there refuses the
+firing, as any absent path does.
+
+`subject` is a record:
 
 | Binding | Value |
 |---|---|
-| `$subject` | the whole ref, `demo.pr.1` |
-| `$subject.ref` `.name` | the address, and its last segment: the key that the subject stands at |
-| `$subject.value` | the payload of the subject **at the commit that caused the firing**, and not at the moment the action runs. The two differ by however long a gate took to be answered. |
-| `$subject.commit` | the revision of that commit |
+| `subject.ref` | the address, `demo.pr.1` |
+| `subject.name` | its last segment: the key that the subject stands at |
+| `subject.value` | the payload of the subject **at the commit that caused the firing**, and not at the moment the action runs. The two differ by however long a gate took to be answered. |
+| `subject.commit` | the revision of that commit. A patch has it where it names `subject.commit` itself; a derive refuses it ([strata](../strata.md)), and a spawn has no counterpart, because a spawn is not where provenance belongs. |
+
+`.[subject]` whole is the record, an object. The address alone is `.[subject.ref]`.
 
 **A completion hook reads at the same commit that its rule fired at.** A task that finishes wakes
 the hook, and no write does. So the hook has no cause of its own. It takes the cause of the
 firing, which the record of the task carries as `occurrence`. So the hook survives a restart,
 even when the engine that runs the hook never saw the firing.
 
-In this way a rule is one statement about one moment. `$subject.value` in an `onDone` is the
+In this way a rule is one statement about one moment. `subject.value` in an `onDone` is the
 subject as the condition selected it. It is not the subject as the action left it one step
 earlier. A charter whose task does not write its own subject gets the reading its author meant.
+That holds in a hook's spawn too: there `subject.value` is the subject at the commit its rule
+fired at, as in the hook's patch, and not the finished task's record.
 
-A task that the charter did not start has no such commit. There `.value` and `.commit` fail by
-name. They do not resolve to a silent zero.
+A task that the charter did not start has no such commit. There a patch or a derive that reads
+`subject.value` or `subject.commit` fails, saying there was no commit to read the subject at. It
+does not resolve to a silent zero. A spawn holds only a plain path to this: there
+`'$[subject.value?.round ?? 0]'`, which says what absence means, expands as it is.
 
-#### In the strings of a spawn
+In a patch or a derive, verse reads the subject's value only where an expression asks for it: a
+read of `subject` other than as `subject.ref` or `subject.name`, such as `.[subject.value.round]`,
+`.[subject?.value]`, `.[subject["value"]]`, or `.[subject]` whole. A hook's spawn reads it
+wherever its rule's firing has a commit.
 
-The strings of a spawn are its prompt, its agent's name and settings, its `vars` and the
-attributes of its systems. A value goes into one as an **expression**, `$[subject.value.sha]`,
-which is [tony's](https://signadot.github.io/tony-format/), evaluated against:
+#### Expressions
 
-- each field of the payload the action reads, by name: `$[stage]`, and in a completion hook
-  `$[status]`, `$[result]`, `$[data]` and `$[err]`;
-- `subject`, as `ref` (its address), `name` (the address's last segment) and `value` (its
-  payload, as in the table). `$subject.commit` has no counterpart, because a spawn is not where
-  provenance belongs.
+An expression is [tony's](https://signadot.github.io/tony-format/), written in one of two ways.
 
-A `$` that does not open `$[` is not an expression, and stays as written: `$HOME` and `$5` reach
-the agent as they are, whatever the payload holds. `$$[` is a literal `$[`. A string that is one
-`.[…]` and nothing else is an expression too, `repo: .[subject.value.repo]`; a `.[` anywhere else
-is text, so a jq filter such as `.[0].name` in a prompt reaches the agent as written.
+- **A value that is one `.[…]` and nothing else** becomes the expression's value, with its type.
+  A number stays a number, and an object stays an object.
+- **A `$[…]` inside text** writes the value into the text, and the whole is a string.
 
-A leaf is its own text, `3` and not `"3"`, and a written null is `null`. An object or a list is
-tony on one line, its fields in name order, so a charter that puts a ledger in front of an agent
-puts a document there:
+```tony
+# the number 3
+patch: { count: .[n] }
+# the string "saw 3"
+patch: { note: "saw $[n]" }
+```
+
+Predicates on the payload are exact about type. So a `3` flattened to `"3"` is a value that
+`value: {count: 3}` does not match. The strings of a spawn are text, so there a whole `.[…]`,
+`repo: .[subject.value.repo]`, gives the value's text.
+
+In text, a leaf is its own text, `3` and not `"3"`, and a written null is `null`. An object or a
+list is tony on one line, its fields in name order, so a charter that puts a ledger in front of an
+agent puts a document there:
 
 ```tony
 prompt: "Outstanding findings: $[findings]\n\nThe diff:\n…"
 ```
 
+A whole `.[…]` writes an object with its fields in name order too, and a float with nothing after
+the point, `3.0`, as `3`.
+
+A `$` that does not open `$[` is not an expression. In a spawn's strings it stays as written:
+`$HOME` and `$5` reach the agent as they are, whatever the payload holds. In a patch or a derive,
+a `$` followed by a name, `$HOME` included, is the spelling references had before expressions,
+and verse refuses it at install with the expression to write instead. Text that means a dollar
+and a name writes it as an expression, `'$["$HOME"]'`. `$5` and a lone `$` are text everywhere.
+`$$[` is a literal `$[`. A `.[` anywhere but the whole of a value is text, so a jq filter such as
+`.[0].name` in a prompt reaches the agent as written.
+
 A path goes as deep as the payload does, the elements of its lists among them:
-`$[data.items[0]]`, and `$[result.findings[0].id]` in an `onDone`. What follows an expression is
-prose: `$[file].go` where `file` is `main` is `main.go`. A string that holds an expression
-anywhere but the whole of it is quoted in tony, `prompt: "review $[subject.ref]"`, since an
-unquoted `[` starts a list.
+`.[data.items[0]]`, and `.[result.findings[0].id]` in an `onDone`. What follows an expression in
+text is prose: `$[file].go` where `file` is `main` is `main.go`. A value that holds a space or a
+quote is quoted in tony, `prompt: "review $[subject.ref]"` and
+`'.[subject.value.title ?? "untitled"]'`, and a string with `$[…]` anywhere but the whole of it is
+quoted, since an unquoted `[` starts a list.
 
 A field whose name is not a word, such as `pr-number`, is read by index:
-`$[subject.value["pr-number"]]`, and at the top level `$[$env["pr-number"]]`. That is still a
-path, and an absent key refuses the launch as a dotted path does. Written as a path,
-`$[pr-number]` is a subtraction: it is refused where `pr` or `number` is absent, and where both
-are numbers it expands to their difference without a word. `get(subject.value, "pr-number")` reads
-the same field but is a call, so an absent key is null rather than a refusal; give it a default,
-`$[get(subject.value, "pr-number") ?? "none"]`.
+`.[subject.value["pr-number"]]`, and at the top level `.[$env["pr-number"]]`. That is still a
+path, and an absent key refuses as a dotted path does. Written as a path, `pr-number` is a
+subtraction: it is refused where `pr` or `number` is absent, and where both are numbers it gives
+their difference without a word. `get(subject.value, "pr-number")` reads the same field but is a
+call, so an absent key is null rather than a refusal; give it a default,
+`'.[get(subject.value, "pr-number") ?? "none"]'`.
 
 An expression is more than a path. `$[data.summary ?? "no summary"]` is a default, and
 `$[status == "done" ? "landed" : "stopped"]` a choice. The clock is not callable (`now()`,
-`date()`): a launch that is parked, released or retried says the same thing each time.
+`date()`): a firing, or a launch that is parked, released or retried, says the same thing each
+time.
 
-The strings are expanded in one pass, over what the charter wrote. Text that an expression brings
-in is not expanded again: a subject whose title is `costs $[owner]` puts `costs $[owner]` in the
+Values are expanded in one pass, over what the charter wrote. Text that an expression brings in
+is not expanded again: a subject whose title is `costs $[owner]` puts `costs $[owner]` in the
 prompt.
 
-`subject.value` in a spawn is what `$subject.value` is in a patch. In a rule's own firing it is the
-subject. **In a completion hook's spawn it is the subject at the commit its rule fired at, as in
-the hook's patch, and not the finished task's record.** Reading it there is a read at that commit,
-which verse makes when an expression reads `subject` other than as `subject.ref` or
-`subject.name`: `$[subject.value.round]`, `$[subject?.value]`, `$[subject["value"]]`, or
-`$[subject]` whole. The task's own facts are the top-level
-names: `status`, `result`, `data`, `err`. Each is there whatever the task said: `result` and `err`
-are empty where it said nothing, and `data` is null where its result is no document, so a prompt
-that an `onDone` and an `onFailed` share can say `$[err]` in both.
+**A path that is not there refuses**: `.[subject.value.never]` on a subject without `never`,
+`.[items[5]]` where `items` holds two elements, `.[nosuch]`. A path through a null does not
+resolve either. Only a plain path is held to this: a name, then fields and indexes. An expression
+with `?.`, `??` or a call says for itself what absence means:
+`'$[subject.value?.handoff?.summary ?? "none"]'`. An expression that does not compile, or calls
+the clock, refuses the same way.
 
-**A path that is not there refuses the launch**, as an absent reference refuses a patch:
-`$[subject.value.never]` on a subject without `never`, `$[items[5]]` where `items` holds two
-elements, `$[nosuch]`. A path through a null does not resolve either. Only a plain path is held
-to this: a name, then fields and indexes. An expression with `?.`, `??` or a call says for itself
-what absence means: `$[subject.value?.handoff?.summary ?? "none"]`. An expression that does not
-compile, or calls the clock, refuses the launch the same way.
+In a patch or a derive the refusal fails the firing, and verse writes nothing. The store records
+an absent key as different from a null one. Writing null for an absent path would turn "the task
+never said" into "the task said nothing", and a match reads those as different facts. A field
+written null reads as null. The failure is the one that a failed write takes: the action stops,
+and its spawn does not start.
 
-The refusal is a failed task. The action's patch has already landed, and its `onFailed` runs with
-`$err` saying what was absent, so it can write the subject down as failed:
+In a spawn the refusal is a failed task. The action's patch has already landed, and its
+`onFailed` runs with `err` saying what was absent, so it can write the subject down as failed:
 
 ```tony
 action:
@@ -534,14 +563,8 @@ action:
 
 The refused task is on record like a task that a runner refuses. Its id holds `status: failed`,
 with the refusal as `err` and the firing's `occurrence`, so `verse task get` says why. Nothing
-was started. Its `onFailed` reads `$subject.value` at the commit that its rule fired at, as any
+was started. Its `onFailed` reads `subject.value` at the commit that its rule fired at, as any
 hook does.
-
-A completion hook's spawn for a task that the charter did not start has no commit to read at, so
-there an expression that reads `subject.value` refuses the launch. Its field's refusal says that
-there was no commit to read the subject at, as the hook's patch says, and not that the subject
-lacks the field; another field keeps its own refusal. An expression that says what absence means, `$[subject.value?.round ?? 0]`,
-expands as it is.
 
 ### `!get-path` and `!list-paths`: reaching other data
 
@@ -589,11 +612,11 @@ tag that answers that question instead.
 | Form | What it is |
 |---|---|
 | a string | the address as a kinded path (`git.verse.head`), with nothing in it to expand. It may go on into the payload (`git.verse.head.sha`). |
-| `at` | the address as a path of at least two segments. Every segment above the last is a literal or `*`. The last is a literal, a `$reference`, or (list only) a `*` or an operator. |
+| `at` | the address as a path of at least two segments. Every segment above the last is a literal or `*`. The last is a literal, a whole `.[…]`, or (list only) a `*` or an operator. |
 | `path` | a kpath into the payload. Wildcards are list-only. Omitted, you get the whole payload. |
 | `value` | a predicate on the payload, **list only**: of the addresses the path selects, the ones that look like this |
 
-No segment above the last is a reference or a glob. The level check asks whether a read lands at
+No segment above the last is an expression or a glob. The level check asks whether a read lands at
 or below the stratum of the rule. It asks this of the literal prefix, because that is all that is
 known at install.
 
@@ -607,8 +630,10 @@ place, and the predicate narrows it.
 Neither form is a query that moves with time. Both are answered from one snapshot at the causing
 commit. So verse evaluates a predicate against the same world that the rule saw.
 
-The dots of the string form are its segments. A `$reference` has dots of its own, so it cannot
-be written inside one. Write an address that expands a reference with `at:`.
+The dots of the string form are its segments. An expression has dots of its own, so in the
+string form it is quoted as a segment of its own, `!get-path git.repo."$[subject.value.head]"`, or
+the address is written as a list with `at:`, `[git, repo, .[subject.value.head]]`. A whole `.[…]`
+cannot be the string form: an address is a list of segments, not one value.
 
 **In an action, they copy and do not track.** Verse reads the value once. If it changes
 afterwards, nothing runs again. This rule fires again only when its own subject changes, or when
@@ -650,7 +675,7 @@ Verse skips a rule at a commit that touched nothing the rule reads. A condition 
 against other data reaches a different verdict as soon as that data moves. So the read must
 count, or the skip would be wrong.
 
-**The read cannot name `$subject`.** In an action the subject is settled, and the action
+**The read cannot name `subject`.** In an action the subject is settled, and the action
 addresses other data by its fields. A condition *chooses* the subject, so no one subject is
 there to read from yet. Verse refuses it at install, and says so. It does not say "unknown
 reference".
@@ -703,7 +728,7 @@ complaint in front of it will not learn it in more turns.
 
 A run whose answer never satisfies its contract **fails**. This has four consequences.
 
-- `patch: { class: $data.class }` cannot fail at patch time, because a task that could not
+- `patch: { class: .[data.class] }` cannot fail at patch time, because a task that could not
   produce `class` did not succeed. The failure lands on `onFailed`, for which every rule already
   declares a branch. It does not land on a hook that nobody watches.
 - The check is on the answer, not the layout. Verse unwraps a fenced answer, so the repair
@@ -720,21 +745,15 @@ model. A script, with no model to ask again, is refused with a contract. It does
 the spawn unchecked. The charter downstream was written in the belief that the contract holds,
 so a contract dropped without a word is worse than none.
 
-A `patch` resolves references too. There a reference is a **deref by kpath**, not a template
-substitution. It names a value, and does not compute one:
+A patch writes what a task answered onto the subject, as a fact:
 
 ```tony
 onDone:
   patch:
     stage:    reviewed
-    severity: .[result]            # the task's own answer, as a fact on the subject
-    step:     .[verse.review.step] # any depth, and list indices: .[result.findings[0].id]
+    severity: .[data.severity]      # the task's own answer, as a fact on the subject
+    step:     .[verse.review.step]  # any depth, and list indices: .[result.findings[0].id]
 ```
-
-The grammar of references is that of [tony](https://signadot.github.io/tony-format/), not of
-verse. `$result.findings[0].id` resolves by handing `result.findings[0].id` to the same kpath
-navigation that addresses an action inside its rule (`review.seq[2].onFailed`). The familiar
-`$name` spelling *is* that kpath at depth one.
 
 A result patched onto the subject is an ordinary fact, and an ordinary condition matches it. The
 condition needs no knowledge of tasks. This closes the loop:
@@ -744,39 +763,6 @@ subject:
   path: "demo.pr.*"
   value: { stage: reviewed, severity: high }
 ```
-
-References in a patch follow four rules.
-
-**Whole value against interpolation.** A value that is **exactly** one reference resolves to the
-node of that reference. So a number stays a number, and an object stays an object. A reference
-**embedded in text** interpolates and gives a string, because that is how it was written.
-Predicates on the payload are exact about type. So a `3` flattened to `"3"` is a value that
-`value: {count: 3}` does not match.
-
-```tony
-# the number 3
-patch: { count: .[n] }
-# the string "saw 3"
-patch: { note: "saw $[n]" }
-```
-
-**A composite has no text form.** `"saw $result"`, where `$result` is an object, is an error. It
-is not a rendering. With a rendering, the same charter would mean different things, depending on
-what a task returned. Reference the object on its own to write the whole value.
-
-**An absent reference fails the firing.** Verse does not drop it. The store records an absent key
-as different from a null one. Omitting the reference would turn "the task never said" into "the
-task said nothing", and a match reads those as different facts. A field written null resolves to
-null. The failure is the same one that a failed write takes: the action stops, and its spawn does
-not start.
-
-**There is no escape.** `$$` is not a literal dollar, and `a$$b` references `$b`. Anything that
-is not a well-formed reference is left exactly as written: `$5.00`, `100$`, a bare `$`. (In the
-strings of a spawn, `$$[` is a literal `$[`.)
-
-The strings of a spawn are expressions instead
-([In the strings of a spawn](#in-the-strings-of-a-spawn)): `$verse.review.step` in a patch is
-`$[verse.review.step]` in a prompt.
 
 ### Completion hooks: one trigger, chaining visible
 

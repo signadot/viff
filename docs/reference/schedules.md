@@ -42,7 +42,7 @@ post, each hour, what landed on `main` in the hour before:
       - then: allow
 ```
 
-`$subject.name` is the tick's last segment, the instant it is due.
+`subject.name` is the tick's last segment, the instant it is due.
 
 A rule about a tick needs no [latch](../glossary.md#latch), and may not write one. Each tick has
 an address of its own, and only the next tick replaces it. So the rule fires once for each tick,

@@ -60,7 +60,7 @@ A reader needs no grant on the subject to read either. The other fields of a gat
 engine: they say who asked and how the question settles.
 
 Verse expands `pose` at the firing, against the firing's subject, as it expands
-[the strings of a spawn](action.md#in-the-strings-of-a-spawn) in the same firing: the subject's
+[the strings of a spawn](action.md#expressions) in the same firing: the subject's
 fields by name, and `subject` as `ref`, `name` and `value`. A pose and a prompt that say
 `$[subject.value.title]` say the same words. The question carries the result as words. If the
 expression does not expand, the question is still asked: verse drops the words, and a reader
@@ -466,7 +466,7 @@ spawn where it cannot. Either way it says why.
 - A completion hook's spawn, or a step of a `seq`. They start after the answer was given. Make
   that step a rule of its own, with its own gate.
 - A verse with no `auth.issuer`.
-- An `audience` with a `$reference` in it. The audience is declared in the charter, and the
+- An `audience` with an expression in it. The audience is declared in the charter, and the
   subject's text cannot choose it.
 
 **A token is minted once, when the task is spawned.** Verse cannot take a token back, so a

@@ -156,9 +156,9 @@ agent is given no verb: it reads and answers, and cannot write a file, run a com
 ([the environment and the autonomy](tasks.md#the-environment-and-the-autonomy)). A spawn with a
 `script` in place of the prompt runs that script, and the script is the work.
 
-`onDone` fires when the task is done, and what it reads is the task: `$result` is the
-[answer](tasks.md#the-answer) as text, and `$data` is the answer read as a document. So
-`$data.kind` is what the review decided, and the patch writes it onto the issue as the first rule
+`onDone` fires when the task is done, and what it reads is the task: `result` is the
+[answer](tasks.md#the-answer) as text, and `data` is the answer read as a document. So
+`.[data.kind]` is what the review decided, and the patch writes it onto the issue as the first rule
 wrote `stage`. From here on the answer is data like any other: `verse data` shows it, and a rule
 that selects `{kind: bug}` fires on it without knowing that a task wrote it. That is how a task
 connects to everything else in verse: through what it writes, not through a caller waiting on it
@@ -168,8 +168,8 @@ An agent answers in words, and the rule reads fields. `answer` is the **contract
 the shape the answer must have, written as a match pattern in the vocabulary of `when`. Verse
 tells the agent the contract when it starts, and checks the answer when it stops. An answer that
 misses is sent back with what was wrong, and the agent repairs it; one that never fits fails the
-task. So `$data.kind` in `onDone` is never absent, and `onFailed` says what happens when the
-task could not say it, with `$err` the reason
+task. So `data.kind` in `onDone` is never absent, and `onFailed` says what happens when the
+task could not say it, with `err` the reason
 ([the answer contract](../reference/action.md#the-answer-contract)). Only an agent, which can be
 asked again, can carry a contract, so a script carries none.
 
@@ -240,7 +240,7 @@ severity, `schedule` does not.
 Derived data keeps its **lineage**: what it came from. The engine writes it at
 `verse.meta.derivedFrom`, naming the rule and the subject, whatever the derived value says. So a
 bug leads back to its issue, and a read over `derivedFrom` finds everything one rule derived.
-`id: $subject.name` puts the bug at `verse-tutorial.bug.1`, under the name of the issue it is
+`id: .[subject.name]` puts the bug at `verse-tutorial.bug.1`, under the name of the issue it is
 about; without `id:`, the engine addresses it by the rule and the subject. Either way, no new id
 is minted for it ([`derive`: identity, not state](../strata.md#derive-identity-not-state)).
 

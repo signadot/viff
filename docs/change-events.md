@@ -296,7 +296,7 @@ an address it already holds would compare an ancestor with a descendant. The que
 depth, here as everywhere ([reference/entities.md](reference/entities.md)).
 
 This makes the [subject](glossary.md#subject) of a rule well defined. One event drives a firing,
-and that event carries one `Ref`. So `$subject`, and the flow keyed on it, is always exactly one
+and that event carries one `Ref`. So `subject`, and the flow keyed on it, is always exactly one
 entity. A match *pattern* is not limited to one entity: `demo.*.*` matches every demo entity. But
 dispatch is per edge of an entity. A broad pattern gives one independent firing per matching
 change.

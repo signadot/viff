@@ -484,7 +484,7 @@ a system, an environment beyond its ceilings. It accepts each of these:
 | What the rule holds | What happens |
 |---|---|
 | a key spelled wrongly inside `patch:` or inside the `value` of a `derive` | Verse writes the key as spelled. The keys of a payload are yours. |
-| a reference that names nothing, such as `$subject.valeu.x` | The firing fails and writes nothing. The rule gets `trouble`. |
+| an expression that names nothing, such as `.[subject.valeu.x]` | The firing fails and writes nothing. The rule gets `trouble`. |
 | a spawn whose `runner:` was removed after the install | The patch of the action lands, and the task fails at once: `verse task` shows `status: failed` and the reason in `err`. The rule gets no `trouble`. |
 | a condition over a place that the rule's owner may not read | The rule selects nothing, and nothing reports it. A rule reads the store as its owner does. |
 

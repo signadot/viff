@@ -24,7 +24,7 @@ tag makes a path read, and a plain key stays data.
 
 ## The answer contract
 
-A charter that patches `$data.class` onto its subject depends on the task producing a `class`.
+A charter that patches `.[data.class]` onto its subject depends on the task producing a `class`.
 Without a contract, verse checks that dependency at patch time. The work is done then, and the
 tokens are spent. What is left is a hook error on the task entity, and a subject stuck at a stage
 that no rule matches.
@@ -33,17 +33,17 @@ A prompt that asks for a shape does not prevent this. An agent that has just rea
 narrates, and puts its answer in a fence. A prompt is advice that a model may ignore. `answer`
 is the same request, made enforceable.
 
-## The two kinds of substitution
+## One kind of expression
 
-The strings of a spawn and a `patch` use different resolvers. One resolver for both is the
-obvious next step. It is not taken here, because a spawn that fails on an unbound variable would
-change what installed charters do.
+The strings of a spawn and the values of a `patch` and a `derive` are tony expressions, evaluated
+by one evaluator against the same names. An author learns one grammar. What a firing reads, and
+what a derive's install check allows, are asked of the expressions themselves, so what is decided
+and what is evaluated cannot drift apart.
 
-A document renders as tony in a prompt. This is the one place where the two halves differ on
-purpose. A patch refuses to give a composite a text form, because `"saw $result"` would make one
-charter mean different things depending on what a task returned. A prompt is text by nature, and
-has no whole-value form to use instead. So the only question is *which* text. That leaves do not
-change matters more than the feature.
+The whole-value form is what keeps a charter's meaning fixed. `.[result]` writes the object a
+task returned, as an object. `"saw $[result]"` asks for text, and a document renders as tony on
+one line, its fields in name order, in a patch as in a prompt. So the only question text raises
+is *which* text, and leaves that do not change matter more than the feature.
 
 ## The hooks are named fields
 

@@ -166,7 +166,7 @@ already holds never rose. When you mean "whenever this holds", write `when`.
 
 ## Reading something the rule is not about
 
-The `$references` of an action read the data the firing is about. To copy from other data, name
+The expressions of an action read the data the firing is about. To copy from other data, name
 it. Say each repository the team keeps is at `verse-tutorial.repo.<name>`, with its default
 branch, and each fix names its repository in `repo`. This action, on a fix, copies the branch the
 fix goes to, and the default branch of every repository:
@@ -252,7 +252,7 @@ trouble:
   count: 1
   kind: failed
   subject: 'verse-tutorial.incident."1"'
-  why: "$subject.valeu.area is not present in the payload that fired this action"
+  why: 'error evaluating "subject.valeu.area": no "valeu" in subject'
 ```
 
 `verse charter` prints a note for every rule in trouble, and `verse status` counts the failed

@@ -123,8 +123,8 @@ derive:
   value: {from: .[subject.value.sha], to: .[subject.value.covering]}
 ```
 
-**A derive may reference its subject, and nothing else.** `$subject` and its parts resolve.
-Verse refuses every other `$reference` at install. A [path read](glossary.md#path-read) may
+**A derive may read its subject, and nothing else.** An expression in a derive may name
+`subject` and its parts. Verse refuses an expression that reads any other name at install. A [path read](glossary.md#path-read) may
 reach further, under the limit that [Path reads inside a derive](#path-reads-inside-a-derive)
 states.
 
@@ -132,15 +132,15 @@ A rule may use `on` or `when` on anything at any level. The extra firings such a
 cannot change what the derive writes. The argument is in
 [Why a derive reads only its subject](design/strata.md#why-a-derive-reads-only-its-subject).
 
-**Verse refuses `$subject.commit` in a derive.** Its value depends on when the firing happened,
+**Verse refuses `subject.commit` in a derive.** Its value depends on when the firing happened,
 not on the subject, so a read from above does change it.
 
 A derive that writes something new on every firing wakes the level above, and that wakes the
 rule again. That is a cycle across levels, the one thing the ordering is there to prevent. For
 the same reason, the link the engine writes holds no commit.
 
-`$subject` and its parts are the [bindings](reference/action.md#bindings) of an action.
-`$subject.value` reads at the [commit](glossary.md#commit) that caused the firing.
+`subject` and its parts are [bindings](reference/action.md#bindings) of an action.
+`subject.value` reads at the [commit](glossary.md#commit) that caused the firing.
 
 That read costs nothing when the commit changed the subject, which is the usual case: a rule
 about the entity that changed. A member of a fan-out that the commit did not touch is read at
@@ -178,7 +178,7 @@ entity `raise` derived about `gh.issue.1`, and it reads back as exactly those se
 The link works the same way for a spawn, for the same reason. A derive is about exactly one
 subject. The condition decides which, and the charter does not have to write it in. So
 `do.approve` can say "approve the thing this is about", and the link says which thing. A
-charter may also write `$subject` into a field of its own (`pr: $subject`), and a spawn
+charter may also write the subject into a field of its own (`pr: .[subject.ref]`), and a spawn
 downstream can then use it (`prompt: "approve $[pr]"`).
 
 Two things follow. A re-fire about the same subject writes the same address, so it changes
@@ -213,19 +213,19 @@ in the address, a new tip is a new subject, and so a new question.
 
 The two install checks are those of the fan-out, without the check on the element:
 
-- The key must be a **single reference**. A reference inside text becomes a string, and an
-  address is not built out of text.
+- The key must be **one expression and nothing else**, a whole `.[…]`. A `$[…]` inside text
+  becomes a string, and an address is not built out of text.
 - The key may read the **subject**, its state included, and nothing else.
 
-Verse refuses `$subject.commit` in a key, as in the content: a key that depends on when the rule
+Verse refuses `subject.commit` in a key, as in the content: a key that depends on when the rule
 fired writes a new entity on every firing.
 
 The key keeps the rule, not an exception to it. A re-fire about the same subject computes the
 same key, and writes the same bytes to the same address. That write changes nothing, and that is
 what lets a rule read a higher level safely.
 
-`id:` takes the same single reference, but puts the entity at the address plus that value,
-with no rule and no subject. [derive](reference/action.md#derive) compares `id:` and `key:`.
+`id:` takes a whole `.[…]` too, or a literal name, but puts the entity at the address plus that
+value, with no rule and no subject. [derive](reference/action.md#derive) compares `id:` and `key:`.
 
 ## `!each`: when one answer holds many facts
 
@@ -254,11 +254,12 @@ gives the same addresses with the same bytes. One sentence covers both:
 
 Verse checks `over`, `key` and `value` at install. Each refusal applies that sentence:
 
-- `over` and `key` must each be a *single* reference. A reference inside text becomes a string,
-  and a string gives nothing to walk or to address.
-- `key` must be rooted at `$item`. Otherwise every element shares one address.
-- `value` may reference `$item` and the *identity* of the subject. `$subject.commit` stays
-  refused, for the reason it is refused in a plain derive.
+- `over` and `key` must each be *one* expression and nothing else, a whole `.[…]`. A `$[…]`
+  inside text becomes a string, and a string gives nothing to walk or to address.
+- `key` must read the element, `item`, and nothing else. Otherwise every element shares one
+  address. It may compose the element's fields, `'.[item.symbol + "-" + item.kind]'`.
+- `value` may read `item` and the subject. `subject.commit` stays refused, for the reason it is
+  refused in a plain derive.
 
 The keys under the tag are a closed set: verse refuses any other, such as `sweep: true`.
 

@@ -82,7 +82,7 @@ sequenceDiagram
 7. The runner delivers `verse/auto/<sha>/<task>` at the END of the task, and only if the working
    tree changed. A review that found nothing leaves no branch.
 8. The answer comes back: `onDone` writes `report`, `status: done`, `stage: reviewed`.
-9. The same hook writes the ledger through `!each` with `id: $item.symbol`, so a verdict lands ON
+9. The same hook writes the ledger through `!each` with `id: .[item.symbol]`, so a verdict lands ON
    the row it is about rather than beside it. This is the one arrow into the ledger.
 10. `advance` steps the cursor onto `covering` and back to `idle` — but only once that range is in
     the done set, so a failed review stops the line here.
@@ -359,26 +359,26 @@ Three things about it:
 
 - **The read joins the trigger's reads**, which is what wakes the rule when the thing it reads
   changes. That is the entire wake mechanism in the review half — there is no `on:` anywhere.
-- **A condition's read may not name `$subject`.** The subject is what the condition SELECTS, so
+- **A condition's read may not name `subject`.** The subject is what the condition SELECTS, so
   there is no one entity to read a field from yet, and the engine refuses it at install by name
   rather than letting it resolve to nothing. This is why `advance` asks whether `covering` is in a
-  bound LIST (`covering: !or .[done]`) instead of reading the range at `$subject.value.covering`.
+  bound LIST (`covering: !or .[done]`) instead of reading the range at `subject.value.covering`.
 - **An unbound name is an error, not a null.** A null pattern matches anything, so a misspelt
   binding that expanded to null would match every document there is.
 
-### `$sha` or `$subject.value.sha` — which reference works where
+### `sha` or `subject.value.sha` — which name works where
 
-Both name the same value and neither works in both places.
+A prompt and a patch read names the same way, so the question is only which payload a bare name
+reads.
 
-| where | spelling | why |
+| where | `.[sha]` | `.[subject.value.sha]` |
 |---|---|---|
-| a spawn's prompt, or any string | `$sha` | in a string, `$subject` interpolates to the whole REF and the rest stays literal text: `repos.verse.drift.at.value.sha` |
-| a node — an address, a patch value | `$subject.value.sha` | resolves as a kpath into the subject's payload |
-| inside a completion hook | `$subject.value.sha` | a hook's flat names resolve against the TASK's payload (`status`, `result`, `data`, `err`), so `$sha` there names nothing |
+| a rule's own firing | the subject's field | the same field, at the causing commit |
+| inside a completion hook | the TASK's payload (`status`, `result`, `data`, `err`), which has no `sha`: refused | the subject's field, at the commit its rule fired at |
 
-That last row is the one that bites: `sha: $covering` in an `onDone` refuses the whole firing and
-writes nothing, silently, leaving the record in no state at all (`91jktrr3h12ksa8fgsn0`).
-`$subject` is the one reference that still means the subject inside a hook.
+The hook row is the one that bites: `sha: .[covering]` in an `onDone` refuses the whole firing
+and writes nothing, leaving the record in no state at all (`91jktrr3h12ksa8fgsn0`). `subject` is
+the one name that still means the subject inside a hook.
 
 ### `!each` with `id:` rather than `key:`
 

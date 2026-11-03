@@ -111,7 +111,7 @@ The object form says the same path and adds a predicate:
 no operator. A condition on what a node holds is a predicate on the node, where a reader looks
 for it.
 
-There is no deferred `$var` form, and nothing in a payload can redirect a subject. Take a rule
+There is no deferred reference form, and nothing in a payload can redirect a subject. Take a rule
 whose cause is a change to `verse.task.instance`, and which acts on PRs. The rule acts on the
 PRs that its own `subject` selects, every one of them. It does not act on the one PR that the
 completed task names.
@@ -130,7 +130,7 @@ the subject that a finished task was about. The store cannot fake this correlati
 
 `flow` is a field that verse writes on the record of each task: the field *is* the subject of
 the task. The flow query reads it. A rule whose subject carries the field reads it as
-`$subject.value.flow`. The field is distinct from the reserved `$subject` binding, which is
+`subject.value.flow`. The field is distinct from the reserved `subject` binding, which is
 the resolved subject of the firing itself.
 
 ### Acting on a set

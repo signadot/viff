@@ -170,7 +170,7 @@ Never both match, and never neither. `remit` rewrites `decision` and leaves `why
 the person at the gate reads the supervisor's reasoning, *and* the note that says the charter
 overrode it.
 
-**Failure promotes.** `onFailed` writes `escalate` and `risk: high`, and carries `$err` into
+**Failure promotes.** `onFailed` writes `escalate` and `risk: high`, and carries `err` into
 `why`. A supervisor can fail in several ways:
 
 - it crashed;

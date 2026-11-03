@@ -61,7 +61,7 @@ before the commit with the document after it, at the depth that the watching que
 about. All the events of one commit share the revision of that commit.
 
 Because of this split, the [subject](../glossary.md#subject) of a [rule](../glossary.md#rule)
-is always one node. Verse dispatches one edge for each node. So `$subject`, and the flow keyed
+is always one node. Verse dispatches one edge for each node. So `subject`, and the flow keyed
 on it, is never ambiguous, even under a broad match. A broad pattern gives one
 [firing](../glossary.md#firing) for each matching change.
 
