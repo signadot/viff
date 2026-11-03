@@ -267,12 +267,13 @@ func expandInto(n entity.Payload, env launch.Binding, read readFn) error {
 		// expanded value carries none — so `tmp: !delete .[x]` would otherwise hand back a write
 		// of x, silently turning a deletion into its opposite. The tag belongs to the node's
 		// place in the document, not to the value being substituted into it.
+		//
+		// None, because the environment holds values (eval.ToAny), not nodes: a tag or a comment
+		// on what the expression reads is not carried, and a number held only as text arrives as
+		// a string. The reference says so (docs/reference/action.md, Expressions).
 		parent, field, index, tag := n.Parent, n.ParentField, n.ParentIndex, n.Tag
 		v.CloneTo(n)
-		n.Parent, n.ParentField, n.ParentIndex = parent, field, index
-		if n.Tag == "" {
-			n.Tag = tag
-		}
+		n.Parent, n.ParentField, n.ParentIndex, n.Tag = parent, field, index, tag
 		return nil
 	}
 	return nil

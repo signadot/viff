@@ -502,6 +502,11 @@ prompt: "Outstanding findings: $[findings]\n\nThe diff:\n…"
 A whole `.[…]` writes an object with its fields in name order too, and a float with nothing after
 the point, `3.0`, as `3`.
 
+An expression reads values, not the document they were written in. A copy writes the value
+without the tags and comments it had: `contract: .[subject.value.contract]` writes a `!raw`
+contract as a plain object. A number held only as text arrives as a string. A tag the charter
+puts on the value is its own and stays: `tmp: !delete .[x]` deletes.
+
 A `$` that does not open `$[` is not an expression. In a spawn's strings it stays as written:
 `$HOME` and `$5` reach the agent as they are, whatever the payload holds. In a patch or a derive,
 a `$` followed by a name, `$HOME` included, is the spelling references had before expressions,
