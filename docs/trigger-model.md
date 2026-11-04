@@ -249,7 +249,9 @@ installed or verse started. `at` is the last time. Installing the rule again cle
 `verse status` counts both kinds over every charter, as `firings: {failed, unread}`. The line
 is absent when nothing went wrong.
 
-A completion hook that fails is written on the record of its task, under `hook`.
+A completion hook that fails is written on the record of its task, under `hook`, and on its
+subject, under `verse.charter.<rule>.hook`, until a hook of the same rule about that subject
+runs cleanly ([Progress facts](reference/action.md#progress-facts)).
 
 A spawn that starts and then fails is not the rule's trouble. It is a task that failed, such
 as a spawn whose agent no runner offers any more, since the runner that did was removed after

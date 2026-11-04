@@ -3,6 +3,7 @@ package trigger
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -216,6 +217,178 @@ func TestASequenceStepPastTheCutoffReadsTheSubject(t *testing.T) {
 		select {
 		case <-deadline:
 			t.Fatalf("the sequence did not conclude done: %v", entity.ToObj(facts))
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
+// A HOOK THAT FAILS SAYS SO ON ITS SUBJECT, under its rule's own bookkeeping, and the next clean
+// hook of that rule about the subject takes it away. The task's record keeps its own `hook`
+// record as before; the subject's fields the author owns are not touched.
+func TestAFailedHookIsOnItsSubjectUntilTheNextCleanOne(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, task.AutoResolver{})
+	answers := make(chan string, 2)
+	answers <- `{nothing: here}`
+	answers <- `{verdict: fixed}`
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
+		sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+		p := task.NewTask(id, sup, structured{r: <-answers}, noExec{})
+		mirror.Reflect(store, id, p, mirror.Meta{Subject: spec.Subject, Runner: "local", Chain: spec.Chain,
+			Prompt: spec.Prompt, Occurrence: spec.Occurrence})
+		go p.Run(context.Background())
+		return p
+	})
+	// Scoped rather than Start, for the reason heldEngine gives.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.ObserveScoped(ctx)
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: fix
+  condition:
+    subject: {path: "demo.pr.*", value: {stage: open}}
+  action:
+    patch: {stage: fixing}
+    spawn:
+      prompt: "fix it"
+      autonomy: [{then: allow}]
+    onDone:
+      patch: {stage: .[data.verdict]}
+`)); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+
+	trouble := func() entity.Payload {
+		e, _, _ := store.Get(prRef("1"))
+		return entity.Get(entity.Get(entity.Get(entity.Get(e.Payload, VerseRoot), CharterKey), "fix"), hookTrouble)
+	}
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	deadline := time.After(5 * time.Second)
+	for trouble() == nil {
+		select {
+		case <-deadline:
+			e, _, _ := store.Get(prRef("1"))
+			t.Fatalf("the failed hook left nothing on its subject: %v", e.Payload)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	rec := trouble()
+	id := spawnID("", "fix", prRef("1"))
+	if c := entity.Str(rec, "chain"); c != "fix.onDone" {
+		t.Errorf("the subject's record names chain %q, want fix.onDone", c)
+	}
+	if got := entity.Str(rec, "task"); got != id {
+		t.Errorf("the subject's record names task %q, want %q", got, id)
+	}
+	if o := entity.Get(rec, "occurrence"); o == nil || o.Int64 == nil || *o.Int64 == 0 {
+		t.Errorf("the subject's record names no occurrence: %v", rec)
+	}
+	if err := entity.Str(rec, "err"); !strings.Contains(err, "verdict") {
+		t.Errorf("the subject's record says %q, want the reference that failed", err)
+	}
+	if e, _, _ := store.Get(prRef("1")); entity.Str(e.Payload, "stage") != "fixing" {
+		t.Errorf("the subject's stage moved to %q; a failed hook writes nothing of the author's", entity.Str(e.Payload, "stage"))
+	}
+	if e, _, _ := store.Get(mirror.Ref(id)); entity.Get(e.Payload, "hook") == nil {
+		t.Errorf("the task's own record lost its `hook` failure: %v", e.Payload)
+	}
+
+	// Again, and this time the hook runs cleanly: the trouble is gone with it. That the rule
+	// fires at all says the failed hook released its claim on the subject.
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	waitField(t, store, prRef("1"), "stage", "fixed")
+	deadline = time.After(5 * time.Second)
+	for trouble() != nil {
+		select {
+		case <-deadline:
+			t.Fatalf("a clean hook left the old failure on its subject: %v", trouble())
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
+// A SEQUENCE ELEMENT THAT CANNOT CONTINUE OFF A COMPLETION ENDS THE RUN AND SAYS WHY. The first
+// element's task answers without the field the next element reads. That used to be a trace line:
+// the run released, `step` stood still and nothing said why. Now it is written where a failed
+// hook is, and the run is `ended`, with the reason.
+func TestASequenceStepThatFailsOffACompletionEndsAndSaysWhy(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, task.AutoResolver{})
+	var fired int64
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
+		fired = spec.Occurrence
+		sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+		p := task.NewTask(id, sup, structured{r: `{nothing: here}`}, noExec{})
+		mirror.Reflect(store, id, p, mirror.Meta{Subject: spec.Subject, Runner: "local", Chain: spec.Chain,
+			Prompt: spec.Prompt, Occurrence: spec.Occurrence})
+		go p.Run(context.Background())
+		return p
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.ObserveScoped(ctx)
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: fix
+  condition:
+    subject: {path: "demo.pr.*", value: {stage: open}}
+  action:
+    patch: {stage: fixing}
+    seq:
+    - spawn:
+        prompt: "fix it"
+        autonomy: [{then: allow}]
+    - patch: {stage: .[data.verdict]}
+`)); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
+
+	facts := func() entity.Payload {
+		e, _, _ := store.Get(prRef("1"))
+		return entity.Get(entity.Get(entity.Get(e.Payload, VerseRoot), CharterKey), "fix")
+	}
+	deadline := time.After(5 * time.Second)
+	for entity.Str(facts(), seqEnded) == "" {
+		select {
+		case <-deadline:
+			e, _, _ := store.Get(prRef("1"))
+			t.Fatalf("the sequence never ended: %v", entity.ToObj(e.Payload))
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	f := facts()
+	if got := entity.Str(f, seqEnded); got != seqEndedError {
+		t.Errorf("ended = %q, want %q", got, seqEndedError)
+	}
+	if r := entity.Str(f, seqReason); !strings.Contains(r, "verdict") {
+		t.Errorf("reason = %q, want the reference that failed", r)
+	}
+	id := spawnID("", chainID("fix.seq[0]"), prRef("1"))
+	rec := entity.Get(f, hookTrouble)
+	if c := entity.Str(rec, "chain"); c != "fix.seq[1]" {
+		t.Errorf("the subject's hook record names chain %q, want fix.seq[1]: %v", c, entity.ToObj(rec))
+	}
+	if got := entity.Str(rec, "task"); got != id {
+		t.Errorf("the subject's hook record names task %q, want %q", got, id)
+	}
+	if o := entity.Get(rec, "occurrence"); o == nil || o.Int64 == nil || *o.Int64 != fired {
+		t.Errorf("the subject's hook record names occurrence %v, want %d, the firing's", o, fired)
+	}
+	if err := entity.Str(rec, "err"); !strings.Contains(err, "verdict") {
+		t.Errorf("the subject's hook record says %q, want the reference that failed", err)
+	}
+	if e, _, _ := store.Get(prRef("1")); entity.Str(e.Payload, "stage") != "fixing" {
+		t.Errorf("stage = %q; an element that failed writes nothing of the author's", entity.Str(e.Payload, "stage"))
+	}
+	deadline = time.After(5 * time.Second)
+	for {
+		if e, _, _ := store.Get(mirror.Ref(id)); entity.Str(entity.Get(e.Payload, "hook"), "status") == "failed" {
+			break
+		}
+		select {
+		case <-deadline:
+			e, _, _ := store.Get(mirror.Ref(id))
+			t.Fatalf("the completed task's record has no failed `hook`: %v", entity.ToObj(e.Payload))
 		case <-time.After(10 * time.Millisecond):
 		}
 	}

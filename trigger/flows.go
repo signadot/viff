@@ -265,8 +265,10 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	// a quote is not legal unescaped in a URL path. A field segment appends with '.'.
 	chain := fp.chain + "." + seg
 	if err := hook.apply(chain, oc, []entity.Ref{subj}, e, fromCause); err != nil {
-		e.recordHookFailure(mirror.Ref(fp.id), chain, err)
+		e.recordHookFailure(mirror.Ref(fp.id), subj, chain, mirror.OccurrenceOf(ev.To), err)
+		return
 	}
+	e.clearHookFailure(subj, chain)
 }
 
 // recordHookFailure persists a completion hook's failure onto the task whose completion
@@ -276,10 +278,12 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 //
 // A hook is where an unverifiable claim turns into a state transition, so its failure is the
 // one an operator most needs to see — and a trace line is invisible to everything that reads
-// the verse. Written here rather than onto the SUBJECT because the failure is a fact about
-// this task's completion, not about the PR: the subject deliberately did not advance, and
-// putting an error in a field a charter matches on is what would make `value: {stage: X}`
-// quietly stop matching.
+// the verse.
+//
+// AND ONTO THE SUBJECT, in the rule's own bookkeeping (recordHookTrouble), because the subject is
+// where somebody looks when it does not advance, and a failure only the task's record shows left
+// one standing at the stage the rule set with nothing on it saying why. Not in a field the author
+// owns: `stage` and the rest are untouched, so `value: {stage: X}` matches as it did.
 //
 // Writing to the task entity is safe despite the mirror owning that payload, because a
 // store write MERGES: a field the mirror never names survives its re-Put (see mirror.go,
@@ -288,7 +292,13 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 //
 // `hook` is one reserved name on an entity the engine and the mirror already co-own, the way
 // `verse` is one reserved root on a subject. status is the mirror's field and is left alone.
-func (e *Engine) recordHookFailure(ref entity.Ref, chain string, err error) {
+func (e *Engine) recordHookFailure(ref, subj entity.Ref, chain string, occurrence int64, err error) {
+	e.recordHookTrouble(subj, chain, ref.Name(), occurrence, err)
+	e.recordTaskHookFailure(ref, chain, err)
+}
+
+// recordTaskHookFailure is the task's half of recordHookFailure.
+func (e *Engine) recordTaskHookFailure(ref entity.Ref, chain string, err error) {
 	// AND SAID OUT LOUD. It was traced, which is off by default — so the paragraph above,
 	// about this being the failure an operator most needs to see, was true of the RECORD and
 	// not of the log. An operator who does not already suspect a hook has nothing to go on:
@@ -300,6 +310,61 @@ func (e *Engine) recordHookFailure(ref entity.Ref, chain string, err error) {
 		p["hook"] = entity.Obj{"chain": chain, "status": "failed", "err": err.Error()}
 		return p.Payload()
 	})
+}
+
+// hookTrouble is the field under verse.charter.<trigger> on a subject that says the rule's
+// completion hook failed about it.
+const hookTrouble = "hook"
+
+// recordHookTrouble writes a completion hook's failure onto the SUBJECT, under the rule's own
+// bookkeeping:
+//
+//	verse:
+//	  charter:
+//	    fix:
+//	      hook: {chain: fix.onDone, task: fix@…, occurrence: 4480, err: "…"}
+//
+// occurrence is the commit the rule fired at, off the task's record: which firing's hook this
+// was, and not where the hook read, which is the head.
+//
+// One per rule, so two rules whose hooks fail about one subject do not overwrite each other, and
+// a charter can match on its own rule's trouble — "when fix's hook is lost, ask a person" — as it
+// matches on a sequence's progress beside it (seq.go). It stands until a hook of the same rule
+// about the subject runs cleanly (clearHookFailure).
+//
+// Written as the hook's own writes are (patchEntity), so it is the rule's to write where the
+// hook's patch would have been, and it is no progress: a completion's write is not held by a
+// suspension, and begins no causal chain. task is "" where no task's completion ran the hook.
+func (e *Engine) recordHookTrouble(subj entity.Ref, chain, taskID string, occurrence int64, err error) {
+	rec := entity.Obj{"chain": chain, "task": taskID, "occurrence": occurrence, "err": err.Error()}
+	patch := entity.Obj{VerseRoot: entity.Obj{CharterKey: entity.Obj{
+		mirror.TriggerOf(chain): entity.Obj{hookTrouble: rec}}}}.Payload()
+	if werr := e.patchEntity(chain, 0, subj, subj, patch); werr != nil {
+		e.logger.Warn("a completion hook's failure could not be recorded on its subject",
+			"chain", chain, "subject", subj.String(), "err", werr.Error())
+	}
+}
+
+// clearHookFailure removes the rule's hook trouble from the subject once a hook of the same rule
+// about it has run cleanly: what it said is no longer why the subject stands where it does. It
+// writes only where there is something to remove, so a clean hook costs one read.
+func (e *Engine) clearHookFailure(subj entity.Ref, chain string) {
+	trig := mirror.TriggerOf(chain)
+	ent, ok, err := e.reader(trig).Get(subj)
+	if err != nil || !ok {
+		return
+	}
+	if entity.Get(entity.Get(entity.Get(entity.Get(ent.Payload, VerseRoot), CharterKey), trig), hookTrouble) == nil {
+		return
+	}
+	// A REMOVAL AT ITS PATH, rather than a `!delete` patched into the subject: a patch is written
+	// back whole through Modify, which drops a field only at the top of the payload, so a removal
+	// three levels down would merge away to nothing. As the rule, like the write it undoes.
+	at := subj.At(VerseRoot, CharterKey, trig, hookTrouble)
+	if _, _, werr := e.caused(chain, 0).Write(entity.Write{At: at}); werr != nil {
+		e.logger.Warn("a completion hook's old failure could not be cleared from its subject",
+			"chain", chain, "subject", subj.String(), "err", werr.Error())
+	}
 }
 
 // taskEvent synthesizes the store event for a completed task — the bus-driven reapOnDone

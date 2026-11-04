@@ -954,13 +954,34 @@ verse:
       steps: 3         # len(seq), known at install
       shape: "a3f1…"   # hash of the declared shape, known at install
       done:  true      # latched when step reaches steps
-      ended: failed    # …or the terminal status an off-ramp stopped it at
+      ended: failed    # …or the terminal status an off-ramp stopped it at, or `error`
+      reason: "…"      # with `ended: error`, why the element could not run
+      hook:            # the last completion hook of this rule that failed about this record
+        chain: review.onDone
+        task: review@demo.pr.1
+        occurrence: 4480
+        err: 'error evaluating "data.severity": no "severity" in data'
   meta:                # what verse records about the record itself
     vanishing: "2026-07-29T13:04:05Z"   # the intent to remove it — see Lifecycle
 ```
 
 `meta.vanishing` is described in
 [Lifecycle](../trigger-model.md#lifecycle-how-data-leaves).
+
+`hook` is written when a completion hook of the rule fails about this record: a reference that
+did not resolve, a write that was refused. The hook wrote nothing, so the record stays where the
+rule left it. `hook` says why. The fields the author owns, such as `stage`, are not touched. The
+task keeps its own status: a `done` task is not turned `failed`, and its `onFailed` does not run.
+The next hook of the same rule about this record that runs cleanly removes `hook`.
+
+A sequence element that runs after a task of the sequence finishes is written the same way when
+it fails, with the element's chain (`fix.seq[1]`) and the task that finished. That element reads
+the finished task's facts, which do not change, and no commit wakes a run that waits on a
+completion, so a failure there does not go away by waiting. So the run also ends: the sequence's
+facts get `ended: error`, and `reason` holds the error. The sequence then does not run again
+until its declared shape changes, as after an off-ramp. A clean hook or element of the rule later
+removes `hook`. An element that fails while the rule fires, before any task of the sequence has
+run, is not recorded. That run stops, and the next firing tries again.
 
 A join reads the position at whatever depth it needs:
 
@@ -978,7 +999,8 @@ subject:
 | Field | What it says |
 |---|---|
 | `done` | the engine latches it when `step` reaches `steps` |
-| `ended` | the terminal status other than `done` at which an element stopped the sequence. Its own `onFailed`/`onCancelled`/`onOrphaned` runs, and the sequence stops there. |
+| `ended` | the terminal status other than `done` at which an element stopped the sequence. Its own `onFailed`/`onCancelled`/`onOrphaned` runs, and the sequence stops there. `error` when an element after a finished task could not run. |
+| `reason` | with `ended: error`, the error of the element that could not run |
 | `shape` | a hash of the declared sequence. Verse compares it at each advance. |
 
 A join that asks for `done` does not match a run that gave up. A sequence that concluded either

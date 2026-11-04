@@ -29,7 +29,8 @@ import (
 //	      steps: 3         len(seq), known at install
 //	      shape: "1f2c…"   hash of the declared sequence
 //	      done:  true      latched when step reaches steps
-//	      ended: failed    the terminal status an off-ramp stopped it at
+//	      ended: failed    the terminal status an off-ramp stopped it at, or `error`
+//	      reason: "…"      with `error`: why the element after a completion could not run
 //
 // `done` and `ended` are the two ways a run CONCLUDES, and a run that concluded either way does
 // not run again at this shape (seqConcluded). They are separate fields rather than one, because
@@ -58,7 +59,14 @@ const (
 	seqShape = "shape"
 	seqDone  = "done"
 	seqEnded = "ended"
+	// seqReason says why a run ended at seqEndedError: the error of the element that could not
+	// continue off its task's completion (failResumed).
+	seqReason = "reason"
 )
+
+// seqEndedError is what `ended` holds when an element resumed off a task's completion failed,
+// rather than a task reaching an off-ramp status.
+const seqEndedError = "error"
 
 // startSeq begins carrier's sequence about subj, unless one is already running for it.
 func (e *Engine) startSeq(chain string, carrier Action, oc occasion, subj entity.Ref, src refSource) {
@@ -88,7 +96,7 @@ func (e *Engine) startSeq(chain string, carrier Action, oc occasion, subj entity
 		seqSteps: len(carrier.Seq),
 		seqShape: shape,
 	})
-	e.advanceSeq(chain, carrier, 0, oc, subj, src)
+	e.advanceSeq(chain, carrier, 0, oc, subj, src, false)
 }
 
 // advanceSeq runs elements from i onward until one SPAWNS — at which point the sequence waits
@@ -98,10 +106,19 @@ func (e *Engine) startSeq(chain string, carrier Action, oc occasion, subj entity
 // ordered writes, and an element that starts no task completes immediately. Without the
 // loop such an element would stall the sequence forever, waiting for a completion that no
 // task will ever report.
-func (e *Engine) advanceSeq(chain string, carrier Action, i int, oc occasion, subj entity.Ref, src refSource) {
+//
+// resumed says the elements run off a task's completion (resumeSeq) rather than off a firing
+// (startSeq). There an element is a completion hook in all but name — it reads the task's facts,
+// and the verse as it is when the task ended — and a failure is one too: see failResumed.
+func (e *Engine) advanceSeq(chain string, carrier Action, i int, oc occasion, subj entity.Ref, src refSource, resumed bool) {
 	for ; i < len(carrier.Seq); i++ {
 		el := carrier.Seq[i]
-		h, err := el.applyOne(seqChain(chain, i), oc, subj, e, src)
+		elChain := seqChain(chain, i)
+		h, err := el.applyOne(elChain, oc, subj, e, src)
+		if err != nil && resumed {
+			e.failResumed(chain, elChain, oc, subj, err)
+			return
+		}
 		if err != nil {
 			// A failed write ends the sequence where it stands. The step count is left at the
 			// last element that really completed, so the facts do not claim progress that did
@@ -116,12 +133,51 @@ func (e *Engine) advanceSeq(chain string, carrier Action, i int, oc occasion, su
 			e.releaseRun(chain, subj)
 			return
 		}
+		if resumed {
+			e.clearHookFailure(subj, elChain)
+		}
 		if h != nil {
 			return // in flight; its completion resumes us
 		}
 		e.publishSeq(chain, oc.parent, subj, entity.Obj{seqStep: i + 1})
 	}
 	e.finishSeq(chain, carrier, oc, subj, src)
+}
+
+// failResumed ends a sequence whose element, resumed off a task's completion, failed.
+//
+// It is the same event as a lost completion hook — the rule could not continue from its firing's
+// world — so it is written where one is: verse.charter.<rule>.hook on the subject, naming the
+// element's chain and the task that completed, and `hook` on that task's record
+// (recordHookFailure). The next clean hook or element of the rule removes it.
+//
+// And the run ENDS, with the reason, as an off-ramp ends it (stopSeq). advanceSeq's other
+// failure path releases and lets the next commit try again, because off a firing the reasons are
+// transient. Off a completion they are not: the element reads the finished task's facts, and a
+// missing `data` field does not appear in an answer already given, nor does any commit wake a
+// run that is waiting on a completion. Left at its step count the run would be dead and look
+// alive. Ended, it is concluded at this shape like any off-ramp (seqConcluded).
+//
+// The record goes down before the claim comes back, for the reason stopSeq gives.
+func (e *Engine) failResumed(chain, elChain string, oc occasion, subj entity.Ref, err error) {
+	e.tracef("seq %s: element %s failed off a completion (%v); sequence ends", chain, elChain, err)
+	if mirror.IsTask(oc.ev.Ref) {
+		e.recordHookFailure(oc.ev.Ref, subj, elChain, occurrenceOf(oc), err)
+	} else {
+		e.recordHookTrouble(subj, elChain, "", occurrenceOf(oc), err)
+	}
+	e.publishSeq(chain, 0, subj, entity.Obj{seqEnded: seqEndedError, seqReason: err.Error()})
+	e.releaseRun(chain, subj)
+}
+
+// occurrenceOf is the firing a hook's or a resumed element's trouble is about: the commit the
+// rule fired at, off the task's record where the occasion is a task's completion, and the firing's
+// own commit where a sequence of bare patches finished off the firing itself.
+func occurrenceOf(oc occasion) int64 {
+	if mirror.IsTask(oc.ev.Ref) {
+		return mirror.OccurrenceOf(oc.ev.To)
+	}
+	return oc.commit.Rev
 }
 
 // finishSeq latches `done` and fires the carrier's own onDone — the hook that means "after the
@@ -140,11 +196,15 @@ func (e *Engine) finishSeq(chain string, carrier Action, oc occasion, subj entit
 			// Record it against the task whose completion got us here. A sequence can also
 			// finish without one — every element being a bare patch completes immediately — and
 			// then ev is the original triggering change, whose ref is the subject rather than a
-			// task. There is no task to hang it on in that case, so it stays traced.
+			// task. There is no task to hang it on in that case, so only the subject says.
 			if mirror.IsTask(oc.ev.Ref) {
-				e.recordHookFailure(oc.ev.Ref, hook, err)
+				e.recordHookFailure(oc.ev.Ref, subj, hook, occurrenceOf(oc), err)
+			} else {
+				e.recordHookTrouble(subj, hook, "", occurrenceOf(oc), err)
 			}
+			return
 		}
+		e.clearHookFailure(subj, hook)
 	}
 }
 
@@ -211,7 +271,7 @@ func (e *Engine) resumeSeq(chain string, subj entity.Ref, oc occasion) bool {
 	e.publishSeq(carrierChain, oc.parent, subj, entity.Obj{seqStep: idx + 1})
 	// A resumed sequence is downstream of the task that just completed, so its elements
 	// read that task's facts — result and the rest — exactly as a hook does.
-	e.advanceSeq(carrierChain, *carrier, idx+1, oc, subj, fromCause)
+	e.advanceSeq(carrierChain, *carrier, idx+1, oc, subj, fromCause, true)
 	return true
 }
 
