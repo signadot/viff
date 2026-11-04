@@ -14,7 +14,7 @@
 #   repo-charters.{{.Repo}}.candidate.<tree>     one per charters tree ever on main or proposed by
 #                                                a pull request to main: {tree, ask, title, seen},
 #                                                `sha` where main carries it, `checked` once
-#                                                checked, then `answer` and `askedAt`
+#                                                checked, `askedAt` once asked, then `answer`
 #   repo-charters.{{.Repo}}.verdict.<tree>       what verse says about the tree on a pull request
 #                                                that proposes it: {decision, check, text}
 #   repo-charters.{{.Repo}}.pull.<number>        what an open pull request to main proposes now:
@@ -349,7 +349,10 @@ rules:
 # nothing proposes any more (`obsolete-sweep`), so no question stands for nothing. Such a tree is
 # asked about again once something proposes it again: once main holds it, or once a pull request
 # proposing it moves on from when it was asked. A pull request writes `seen`, its `updatedAt`, and
-# the answer records `askedAt`, the `seen` it was asked at (a candidate is named with a floor).
+# the question records `askedAt`, the `seen` it is asked at (a candidate is named with a floor):
+# written as the question is asked, beside the spawn, since a hook reads the candidate as it is
+# when the answer comes and `seen` may have moved by then. The rule does not fire about the
+# candidate again while the question stands, so nothing writes `askedAt` over in between.
 - name: propose
   stratum: candidates
   condition:
@@ -365,6 +368,7 @@ rules:
           - {answer: {{.Obsolete}}, tree: .[mainTree]}
           - {answer: {{.Obsolete}}, seen: !gt.get-path(root) askedAt}
   action:
+    patch: {askedAt: .[seen]}
     spawn:
       autonomy:
       - match: {system: question}
@@ -380,7 +384,7 @@ rules:
       script: |
         verse-call-tool question-ask -question "$ASK" -options proceed -options deny -options obsolete{{if .Answerers}}{{.AnswererFlags}}{{end}}
     onDone:
-      patch: {answer: .[result], askedAt: .[subject.value.seen]}
+      patch: {answer: .[result]}
 # WHAT VERSE SAYS ABOUT A TREE on any pull request that proposes it, from its answer and its
 # check: the decision (the `verse` status) and the check (the `verse/check` status, and the
 # comment's text, which says why a refused tree would be refused). Neither holds the merge.
