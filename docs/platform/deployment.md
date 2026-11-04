@@ -51,7 +51,7 @@ deploying it.
 | its data | a volume: `storageClassName`, `storageSize`, or `hostPV` and `hostPath` | `VERSE_LOCAL_DATA` |
 | its faces | the `docd` Service (`:7071`), on the tailnet with `tailscaleExpose` | `VERSE_LOCAL_LOGD_ADDR`, `VERSE_LOCAL_DOCD_ADDR`, `VERSE_LOCAL_DOCD_MOUNT_ADDR`, `VERSE_LOCAL_STORE_ADMIN_ADDR` |
 | compaction cutoff | `docdCompactionCutoff` (eks: `1d`) | `VERSE_LOCAL_COMPACTION_CUTOFF` (`1d`) |
-| placement and memory | `docdPool`, `docdMemoryRequest`, `docdMemoryLimit`, `docdGoMemLimit` | none |
+| placement and memory | `docdPool`, `docdPoolLabel`, `docdMemoryRequest`, `docdMemoryLimit`, `docdGoMemLimit` | none |
 | **versed** | | |
 | runs as | the `versed` Deployment | the `versed` daemon, `--local-runner=false` |
 | its address | the `verse` Service (`:9797`), on the tailnet with `tailscaleExpose` | `VERSE_LOCAL_ADDR` |
@@ -62,7 +62,7 @@ deploying it.
 | **The runners** | | |
 | which | `runner`, `codexRunner`, `claudeRunner`, each with its `…Image` | one, the `runner` daemon: scripts and claude |
 | its address | its Service (`verse-runner:9802`, …) | `VERSE_LOCAL_RUNNER_LISTEN` |
-| its config | the ConfigMap in `deploy/<runner>/<runner>.yaml` | `runner.tony` in `VERSE_LOCAL_RUNNER_DIR` |
+| its config | the ConfigMap in `deploy/<runner>/<runner>.yaml`, or a file of the deployment's: `runnerConfig`, `codexRunnerConfig`, `claudeRunnerConfig` | `runner.tony` in `VERSE_LOCAL_RUNNER_DIR` |
 | how it proves itself | its pod's ServiceAccount token (`runnerTokens`) | `token` in `VERSE_LOCAL_RUNNER_DIR` |
 | its credentials | `runnerSecretKey`, `codexSecretKey`, `claudeSecretKey` | `env` in `VERSE_LOCAL_RUNNER_DIR` |
 | registered | by hand, `verse runner add` | by setup, as `VERSE_LOCAL_RUNNER_NAME` |

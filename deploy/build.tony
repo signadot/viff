@@ -47,12 +47,14 @@ build:
     # minikube-mount: the node mount target (e.g. /mnt/verse). See deploy/README.md.
     hostPath: "/mnt/verse"
 
-    # Placement. docd goes on a dedicated node pool: nodes labelled signadot.com/pool=<x>
+    # Placement. docd goes on a dedicated node pool: nodes labelled <docdPoolLabel>=<docdPool>
     # and tainted with the same key/value, so the label selects the pool and the toleration
     # gets past the fence that keeps everything else off it. "" leaves docd wherever it lands.
     # versed is stateless, so it only PREFERS spot (label eks.amazonaws.com/capacityType) —
     # a preference costs nothing on a cluster that has no such label.
     docdPool: ""
+    # The label and taint key that names the pool, the same on both.
+    docdPoolLabel: "verse/pool"
     spotVersed: false
 
     # docd memory. "" on both leaves the container with no request and no limit, which is
@@ -160,18 +162,25 @@ build:
     # cheaper to grant a pull credential access to.
     runner: false
     runnerImage: "signadot/verse-runner:latest"
+    # Its configuration, a file under deploy/ as authConfig is, in place of the one its manifest
+    # carries: what it offers and the ceilings it holds each doer's tasks to. "" runs the
+    # manifest's, whose ceilings name placeholder repositories, channels and a Linear team, and so
+    # reach none of a deployment's own (deploy/README.md, "Its ceilings are placeholders").
+    runnerConfig: ""
     # The codex runner beside it: the same runner in an image with Codex in it, offering the codex
     # agent, with its own credential (the verse-codex Secret, from the entry codexSecretKey
     # names). Installing it is
     # `verse runner add codex http://codex-runner:9802 --subject system:serviceaccount:verse:codex-runner`.
     codexRunner: false
     codexRunnerImage: "signadot/verse-runner:codex"
+    codexRunnerConfig: ""   # as runnerConfig, for the codex runner
     # The claude runner, the same way: the runner in an image with Claude Code in it, offering
     # the claude agent, with its own credential (the verse-claude Secret, from the entry
     # claudeSecretKey names). Installing it is `verse runner add claude http://claude-runner:9802
     # --subject system:serviceaccount:verse:claude-runner`.
     claudeRunner: false
     claudeRunnerImage: "signadot/verse-runner:claude"
+    claudeRunnerConfig: ""  # as runnerConfig, for the claude runner
 
     # ── Sources: what reflects an external system into the verse ──────────────
     #
@@ -655,6 +664,24 @@ build:
               configMap:
                 name: verse-auth
 
+  # A runner's configuration from a file of the deployment's, carried in whole in place of the
+  # manifest's (runnerConfig, codexRunnerConfig, claudeRunnerConfig).
+  - if: '.[ runnerConfig != "" ]'
+    match: {kind: ConfigMap, metadata: {name: verse-runner-config}}
+    patch:
+      data:
+        verse-runner.tony: !file $[runnerConfig]
+  - if: '.[ codexRunnerConfig != "" ]'
+    match: {kind: ConfigMap, metadata: {name: codex-runner-config}}
+    patch:
+      data:
+        verse-runner.tony: !file $[codexRunnerConfig]
+  - if: '.[ claudeRunnerConfig != "" ]'
+    match: {kind: ConfigMap, metadata: {name: claude-runner-config}}
+    patch:
+      data:
+        verse-runner.tony: !file $[claudeRunnerConfig]
+
   # The verse image on both tiers (list-merge each container by name; docd runs `o`, versed
   # runs `verse` — one image, two roles).
   - match:
@@ -856,11 +883,23 @@ build:
         template:
           spec:
             nodeSelector:
-              signadot.com/pool: $[docdPool]
+              pool: $[docdPool]
             tolerations:
-            - key: signadot.com/pool
+            - key: $[docdPoolLabel]
               value: $[docdPool]
               effect: NoSchedule
+  # The selector's key is the knob, and a key is not interpolated as a value is: written as
+  # `pool` above, then renamed to docdPoolLabel.
+  - if: '.[ docdPool != "" ]'
+    match:
+      kind: StatefulSet
+    patch:
+      spec:
+        template:
+          spec:
+            nodeSelector: !rename
+            - from: pool
+              to: $[docdPoolLabel]
 
   # Let the stateless versed prefer spot.
   - if: '.[spotVersed]'

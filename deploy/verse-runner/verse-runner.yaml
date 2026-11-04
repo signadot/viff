@@ -39,9 +39,10 @@ data:
     # spawn's environment may give, held at install, at launch and again at each act. A ceiling
     # lists what it allows and nothing else is allowed, so a system with no ceiling under a doer
     # is closed to it; a block naming no verb (`{}`) allows every verb of its system.
-    # signadot's repositories, and their branches under verse/; main of verse's own, which its
-    # comment-drift merge lands on. No network ceiling: tasks get what the sandbox builds. What a
-    # doer's shell is given of the runner's environment is its `shellEnv`, by name: never a secret.
+    # The example org's repositories, and their branches under verse/; main of example/app, which
+    # a merge rule lands on. Placeholders, closed until a deployment names its own
+    # (`runnerConfig`). No network ceiling: tasks get what the sandbox builds. What a doer's
+    # shell is given of the runner's environment is its `shellEnv`, by name: never a secret.
     agents:
       verse:
         # The model credentials are read from the runner's environment, by the names versed
@@ -63,30 +64,30 @@ data:
         systems:
           git:
             ceiling:
-            - repo: github.com/signadot/verse
+            - repo: github.com/example/app
               fetch: {}
               push:
               - {ref: refs/heads/main, force: false, delete: false}
               - {ref: !regexp "^refs/heads/verse/"}
-            - repo: !regexp "^github\\.com/signadot/"
+            - repo: !regexp "^github\\.com/example/"
               fetch: {}
               push: {ref: !regexp "^refs/heads/verse/"}
-          git-issue: {ceiling: {repo: !regexp "^github\\.com/signadot/"}}
-          github: {ceiling: {repo: !regexp "^github\\.com/signadot/"}}
-          github-issue: {ceiling: {repo: !regexp "^github\\.com/signadot/"}}
+          git-issue: {ceiling: {repo: !regexp "^github\\.com/example/"}}
+          github: {ceiling: {repo: !regexp "^github\\.com/example/"}}
+          github-issue: {ceiling: {repo: !regexp "^github\\.com/example/"}}
           # Linear and Slack, made with the credentials the iods hold (LINEAR_API_KEY from
           # verse-linear, SLACK_BOT_TOKEN from verse-slack): a ceiling naming either is what makes
           # the runner offer the system, and where its variable is unset the runner starts with it
-          # closed, and says so. ENG
-          # is the team the Linear iod reflects; the channels are the ones the Slack bot is in. A
-          # Slack shape names one channel, so two channels are two shapes.
-          linear-issue: {ceiling: {create: {team: ENG}, comment: {issue: !glob "ENG-*"}, close: {issue: !glob "ENG-*"}}}
+          # closed, and says so. TEAM stands for the team the Linear iod reflects, and `verse`
+          # for a channel the Slack bot is in. A Slack shape names one channel, so two channels
+          # are two shapes.
+          linear-issue: {ceiling: {create: {team: TEAM}, comment: {issue: !glob "TEAM-*"}, close: {issue: !glob "TEAM-*"}}}
           slack:
             ceiling:
-              read: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
-              post: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
-              reply: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
-              react: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
+              read: [{channel: verse}]
+              post: [{channel: verse}]
+              reply: [{channel: verse}]
+              react: [{channel: verse}]
           files: {ceiling: {}}
           commands: {ceiling: {}}
           question: {ceiling: {}}
@@ -99,30 +100,30 @@ data:
       systems:
         git:
           ceiling:
-          - repo: github.com/signadot/verse
+          - repo: github.com/example/app
             fetch: {}
             push:
             - {ref: refs/heads/main, force: false, delete: false}
             - {ref: !regexp "^refs/heads/verse/"}
-          - repo: !regexp "^github\\.com/signadot/"
+          - repo: !regexp "^github\\.com/example/"
             fetch: {}
             push: {ref: !regexp "^refs/heads/verse/"}
-        git-issue: {ceiling: {repo: !regexp "^github\\.com/signadot/"}}
-        github: {ceiling: {repo: !regexp "^github\\.com/signadot/"}}
-        github-issue: {ceiling: {repo: !regexp "^github\\.com/signadot/"}}
+        git-issue: {ceiling: {repo: !regexp "^github\\.com/example/"}}
+        github: {ceiling: {repo: !regexp "^github\\.com/example/"}}
+        github-issue: {ceiling: {repo: !regexp "^github\\.com/example/"}}
         # Linear and Slack, made with the credentials the iods hold (LINEAR_API_KEY from
         # verse-linear, SLACK_BOT_TOKEN from verse-slack): a ceiling naming either is what makes
         # the runner offer the system, and where its variable is unset the runner starts with it
-        # closed, and says so. ENG
-        # is the team the Linear iod reflects; the channels are the ones the Slack bot is in. A
-        # Slack shape names one channel, so two channels are two shapes.
-        linear-issue: {ceiling: {create: {team: ENG}, comment: {issue: !glob "ENG-*"}, close: {issue: !glob "ENG-*"}}}
+        # closed, and says so. TEAM stands for the team the Linear iod reflects, and `verse`
+        # for a channel the Slack bot is in. A Slack shape names one channel, so two channels
+        # are two shapes.
+        linear-issue: {ceiling: {create: {team: TEAM}, comment: {issue: !glob "TEAM-*"}, close: {issue: !glob "TEAM-*"}}}
         slack:
           ceiling:
-            read: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
-            post: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
-            reply: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
-            react: [{channel: verse-dev}, {channel: verse-dev-slackio-testing}]
+            read: [{channel: verse}]
+            post: [{channel: verse}]
+            reply: [{channel: verse}]
+            react: [{channel: verse}]
         question: {ceiling: {}}
         verse: {ceiling: {}}
 ---

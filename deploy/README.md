@@ -151,7 +151,7 @@ cluster. (The minikube profile sets `hostPV: true`, `hostPath: /mnt/verse`.)
 **eks (EKS)** — docd on a dynamic volume from the cluster's `gp3` StorageClass; versed may
 prefer `SPOT` (`spotVersed`) and float over the rest. A deployment that reserves a node pool for
 the stateful tier names it with `docdPool`: the pool's nodes carry a
-`signadot.com/pool=<x>:NoSchedule` taint, so docd needs both halves, the `nodeSelector` to go
+`<docdPoolLabel>=<x>:NoSchedule` taint (`verse/pool` unless `docdPoolLabel` says), so docd needs both halves, the `nodeSelector` to go
 there and the matching toleration to be let in, and that is what the knob emits.
 
 Give a cluster its own image repository rather than a tag on the shared one, so a build driven
@@ -245,7 +245,8 @@ should be passed the Service name directly rather than discovering it.
 | `emitStorageClass` | `false` | emit a `verse-gp3` StorageClass |
 | `hostPV` | `false` | back the PVC with a static hostPath `PersistentVolume` (minikube) |
 | `hostPath` | `/mnt/verse` | the PV's in-VM host path when `hostPV` |
-| `docdPool` | `""` | put docd on the `signadot.com/pool=<x>` nodes, tolerating their taint |
+| `docdPool` | `""` | put docd on the `<docdPoolLabel>=<x>` nodes, tolerating their taint |
+| `docdPoolLabel` | `verse/pool` | the key the pool's nodes are labelled and tainted with |
 | `spotVersed` | `false` | let versed prefer `eks.amazonaws.com/capacityType: SPOT` |
 | `tailscaleExpose` | `false` | put the API and docd's two faces on the tailnet |
 | `tailscaleTags` | `""` | `tailscale.com/tags` for both; `""` leaves the operator's `tag:k8s` |
@@ -261,10 +262,13 @@ should be passed the Service name directly rather than discovering it.
 | `issuerDiscoveryOpen` | `false` | let anyone reaching the API server read its OpenID discovery and keys, which versed needs where the cluster itself is the iods' issuer (minikube: on; EKS needs none) |
 | `runner` | `false` | deploy the verse runner (its own image; install it with `verse runner add`) |
 | `runnerImage` | `signadot/verse-runner:latest` | its image ref — a tag in another repository is fine |
+| `runnerConfig` | `""` | its configuration, a file under `deploy/` as `authConfig` is, in place of the manifest's ([The verse runner](#the-verse-runner-runner-off-by-default)) |
 | `codexRunner` | `false` | deploy the codex runner beside it: the verse runner in an image with Codex in it, offering the codex agent |
 | `codexRunnerImage` | `signadot/verse-runner:codex` | its image ref |
+| `codexRunnerConfig` | `""` | as `runnerConfig`, for the codex runner |
 | `claudeRunner` | `false` | deploy the claude runner beside them: the verse runner in an image with Claude Code in it, offering the claude agent |
 | `claudeRunnerImage` | `signadot/verse-runner:claude` | its image ref |
+| `claudeRunnerConfig` | `""` | as `runnerConfig`, for the claude runner |
 | the iod knobs | off | see [Iods](#iods-optional) |
 
 ## Iods (optional)
@@ -791,6 +795,13 @@ make deploy PROFILE=eks E='-e runner=true -e runnerImage=<registry>/verse-runner
 verse runner add verse-runner http://verse-runner:9802 -identity verse-runner \
   -subject system:serviceaccount:verse:verse-runner    # it acts as runner:verse-runner, and proves it is the pod
 ```
+
+**Its ceilings are placeholders.** The configuration each runner's manifest carries names
+`github.com/example/` repositories, a Linear team `TEAM` and a Slack channel `verse`, so a task
+on it reaches none of a deployment's own until the deployment says which. It says so with a file
+of its own, carried in whole in place of the manifest's: `runnerConfig` for this runner,
+`codexRunnerConfig` and `claudeRunnerConfig` for the other two. Copy the manifest's
+`verse-runner.tony`, name your repositories, team and channels, and point the knob at it.
 
 Verse routes the charters' scripts and verse-agent spawns to it, as the runner that offers them
 (versed itself hosts nothing: `localRunner: false`). The url is the Service. The subject is its pod's ServiceAccount (`runnerTokens`): the add is the
