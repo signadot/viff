@@ -94,7 +94,7 @@ func pushToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) v
 		Name: pushTool,
 		Description: "Push this task's COMMITTED work to a branch of a repository, or delete a branch there. " +
 			"Commit what you want delivered first, every commit ending with the Verse-* trailers " +
-			"your brief names; uncommitted changes are never delivered, and a commit without the trailers " +
+			"your brief names, which $" + TrailersEnv + " also holds; uncommitted changes are never delivered, and a commit without the trailers " +
 			"is refused with what is missing. `branch` is where it goes; omit it to push your own branch " +
 			"under its own name. A push fast-forwards unless `force` says it may rewrite the branch; a " +
 			"branch you created is yours to rewrite. The task's autonomy decides each push by its " +

@@ -85,7 +85,10 @@ case, `from` is the branch the checkout started at, and `ref` is a full ref such
 `refs/heads/main`, however the spawn wrote them. A pattern on a field is a tony one:
 `!glob "refs/heads/*"` is every branch, since a glob's `*` stays within one `/`, and
 `!regexp "^refs/"` is every ref. A script calls the same
-tools with `verse-call-tool`, and the same rows decide them.
+tools with `verse-call-tool`, and the same rows decide them. The trailers a commit must end with
+are in its environment as `VERSE_TRAILERS`, the lines a commit message's last paragraph holds, so
+it commits with `git commit -m <subject> -m "$VERSE_TRAILERS"`. A trailer naming another task or
+person is refused at the push.
 
 ## Where the credential lives
 

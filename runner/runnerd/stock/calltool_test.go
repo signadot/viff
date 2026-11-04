@@ -58,9 +58,10 @@ func (e *buildError) Error() string {
 	return "building verse-call-tool: " + e.err.Error() + "\n" + string(e.out)
 }
 
-// commitScript commits work on the task's checkout of svc, as a script's own git does.
+// commitScript commits work on the task's checkout of svc, as a script's own git does, ending the
+// message with the trailers the runner gave it.
 const commitScript = "cd svc\necho work > f\ngit add f\n" +
-	"git -c user.name=a -c user.email=a@x commit -qm work -m 'Verse-Task: t1'\n"
+	"git -c user.name=a -c user.email=a@x commit -qm work -m \"$VERSE_TRAILERS\"\n"
 
 // launchScript launches a script on acme/svc, allowed to create the task's own branches, under
 // the rows given and `allow` for the rest, in an environment giving the repository, its tracker,

@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/signadot/verse/codec"
 	"github.com/signadot/verse/runner"
@@ -251,7 +252,13 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 		// here, from the tools the task was left with, so a prompt that says "file an issue"
 		// finds the tool rather than a shell that has no client for the tracker.
 		if len(ws.Trees) > 0 {
-			prompt = repoBrief(ws, workspace.RequiredTrailers(&l), &l) + prompt
+			trailers := workspace.RequiredTrailers(&l)
+			prompt = repoBrief(ws, trailers, &l) + prompt
+			// A script has no brief, so the trailers its commits must end with are in its
+			// environment, and in an agent's shell beside its brief. Set after the launch's
+			// vars, and the last of a name is the one a process gets, so a spawn cannot
+			// shadow them.
+			set = append(set, TrailersEnv+"="+strings.Join(trailers, "\n"))
 		}
 		prompt = toolsBrief(tools) + prompt
 	}
@@ -402,6 +409,13 @@ func onEnd(p *task.Task, fs []func()) *task.Task {
 	}()
 	return p
 }
+
+// TrailersEnv names the variable holding the trailers every commit a task delivers must end
+// with (workspace.RequiredTrailers), one per line, as the last paragraph of a commit message
+// holds them: `git commit -m <subject> -m "$VERSE_TRAILERS"`. It is set where the task has a
+// checkout. The push checks them against the launch's own values, so knowing them lets a task
+// claim nothing but itself.
+const TrailersEnv = "VERSE_TRAILERS"
 
 // envSet is a launch's `with.env` as a shell's NAME=value list, in name order.
 func envSet(env map[string]string) []string {
