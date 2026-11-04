@@ -17,6 +17,7 @@ package entitytest
 
 import (
 	"testing"
+	"time"
 
 	docdserver "github.com/signadot/tony-format/go-tony/system/docd/server"
 	logdserver "github.com/signadot/tony-format/go-tony/system/logd/server"
@@ -36,6 +37,13 @@ func Addr(t testing.TB) string {
 // LogdAddr brings up the logd alone, for a test that needs the substrate underneath docd
 // (one mounting a controller, say, which talks to docd's other face).
 func LogdAddr(t testing.TB) string {
+	t.Helper()
+	_, addr := startLogd(t)
+	return addr
+}
+
+// startLogd is LogdAddr with the storage underneath handed back as well.
+func startLogd(t testing.TB) (*storage.Storage, string) {
 	t.Helper()
 	store, err := storage.Open(t.TempDir(), nil)
 	if err != nil {
@@ -58,7 +66,32 @@ func LogdAddr(t testing.TB) string {
 		t.Fatalf("start logd: %v", err)
 	}
 	t.Cleanup(func() { srv.StopTCP() })
-	return srv.TCPAddr()
+	return store, srv.TCPAddr()
+}
+
+// CompactingStore is Store with a hand on its history: compact erases every commit the store
+// holds so far, as logd's compaction does to whatever is older than its cutoff, so a read at any
+// of those revisions is refused from then on (entity.ErrReplayTooOld) and the head still reads.
+// It is how a test reaches what a long-running verse reaches after its cutoff, without waiting.
+func CompactingStore(t testing.TB) (s *entity.LogdStore, compact func()) {
+	t.Helper()
+	logd, addr := startLogd(t)
+	s = StoreAt(t, docdOver(t, addr))
+	return s, func() {
+		t.Helper()
+		before := logd.ReplayFloor()
+		if err := logd.SwitchDLog(); err != nil {
+			t.Fatalf("switch dlog: %v", err)
+		}
+		cfg := storage.DefaultCompactionConfig()
+		cfg.Cutoff = -time.Hour // older than every commit: the whole delta history goes
+		if err := logd.Compact(cfg); err != nil {
+			t.Fatalf("compact: %v", err)
+		}
+		if logd.ReplayFloor() <= before {
+			t.Fatalf("compaction left the replay floor at %d: nothing was erased", logd.ReplayFloor())
+		}
+	}
 }
 
 // docdOver runs a docd against a logd and returns its client face.

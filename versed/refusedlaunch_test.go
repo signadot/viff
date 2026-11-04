@@ -60,8 +60,8 @@ func TestALaunchTheEngineRefusedIsAFailedTaskOnRecord(t *testing.T) {
 		t.Errorf("the record says no occurrence: %v", entity.ToObj(rec.Payload))
 	}
 	waitSubjectField(t, srv, subject, "stage", "failed")
-	if e, _, _ := srv.Store.Get(subject); entity.Str(e.Payload, "was") != "open" {
-		t.Errorf("the subject = %v, want was: open, read at the firing", entity.ToObj(e.Payload))
+	if e, _, _ := srv.Store.Get(subject); entity.Str(e.Payload, "was") != "developing" {
+		t.Errorf("the subject = %v, want was: developing, the subject as it is when the hook runs", entity.ToObj(e.Payload))
 	}
 }
 

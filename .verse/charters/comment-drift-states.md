@@ -374,7 +374,7 @@ reads.
 | where | `.[sha]` | `.[subject.value.sha]` |
 |---|---|---|
 | a rule's own firing | the subject's field | the same field, at the causing commit |
-| inside a completion hook | the TASK's payload (`status`, `result`, `data`, `err`), which has no `sha`: refused | the subject's field, at the commit its rule fired at |
+| inside a completion hook | the TASK's payload (`status`, `result`, `data`, `err`), which has no `sha`: refused | the subject's field, as it is when the task ends |
 
 The hook row is the one that bites: `sha: .[covering]` in an `onDone` refuses the whole firing
 and writes nothing, leaving the record in no state at all (`91jktrr3h12ksa8fgsn0`). `subject` is

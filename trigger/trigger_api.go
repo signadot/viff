@@ -885,7 +885,7 @@ func gateID(owner, trigger, gate string, subjects []entity.Ref) string {
 //
 // value is its own argument because it is not always payload: for a completion hook payload is
 // the finished task's record, whose fields are `status`, `result`, `data` and `err`, and value is
-// the subject at the commit its rule fired at (Engine.spawnSubjectValue). nil leaves
+// the subject as it is when the task ends (Engine.spawnSubjectValue). nil leaves
 // `subject.value` out, so an expression that reads it is refused as naming something absent.
 //
 // `subject` is set LAST: it is the one reserved name, and a payload field happening to be called

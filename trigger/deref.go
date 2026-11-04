@@ -567,17 +567,16 @@ func (e *Engine) subjectFor(oc occasion, subj entity.Ref, w subjectWants) (map[s
 	if w.commit {
 		if oc.commit.Rev == 0 {
 			return nil, fmt.Errorf("%s.%s: this firing has no causing commit, so there is no "+
-				"revision to name. A completion hook takes the commit that caused the firing "+
-				"it belongs to, read off its task's record; one whose record does not say — a "+
-				"task nothing in the charter started — has nothing to offer here",
-				refSubject, subjPartCommit)
+				"revision to name. A completion hook reads at the head, the verse as it is when "+
+				"its task ends, and names that", refSubject, subjPartCommit)
 		}
 		commit = oc.commit.Rev
 	}
 	return subjectRecord(subj, value, commit), nil
 }
 
-// subjectValueAt reads the subject's payload at the commit that caused the firing.
+// subjectValueAt reads the subject's payload at the occasion's commit: the one that caused the
+// firing, and for a completion hook the head, the verse as it is when the task ends (applyHook).
 func (e *Engine) subjectValueAt(oc occasion, subj entity.Ref) (entity.Payload, error) {
 	// Free when the causing commit changed this subject, which is the ordinary rule about the
 	// entity that changed: the payload at C is already in the commit.
@@ -589,9 +588,7 @@ func (e *Engine) subjectValueAt(oc occasion, subj entity.Ref) (entity.Payload, e
 	if oc.commit.Rev == 0 {
 		return nil, fmt.Errorf("%s.%s: this firing has no causing commit to read at, so there "+
 			"is no revision at which to pin the subject's state. A completion hook reads at "+
-			"the commit that caused the firing it belongs to, taken from its task's record; "+
-			"one whose record does not say — a task nothing in the charter started — has none",
-			refSubject, subjPartValue)
+			"the head, the verse as it is when its task ends", refSubject, subjPartValue)
 	}
 	// A fan-out member the commit did not touch, read at C: one firing about a set would
 	// otherwise mix one member's state at C with another's at whatever the store had reached by

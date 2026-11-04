@@ -446,31 +446,41 @@ firing, as any absent path does.
 |---|---|
 | `subject.ref` | the address, `demo.pr.1` |
 | `subject.name` | its last segment: the key that the subject stands at |
-| `subject.value` | the payload of the subject **at the commit that caused the firing**, and not at the moment the action runs. The two differ by however long a gate took to be answered. |
-| `subject.commit` | the revision of that commit. A patch has it where it names `subject.commit` itself; a derive refuses it ([strata](../strata.md)), and a spawn has no counterpart, because a spawn is not where provenance belongs. |
+| `subject.value` | the payload of the subject **at the commit that caused the firing**, and not at the moment the action runs. The two differ by however long a gate took to be answered. In a completion hook, the subject **as it is when the task ends**. |
+| `subject.commit` | the revision of that commit, and in a hook the revision the hook reads at. A patch has it where it names `subject.commit` itself; a derive refuses it ([strata](../strata.md)), and a spawn has no counterpart, because a spawn is not where provenance belongs. |
 
 `.[subject]` whole is the record, an object. The address alone is `.[subject.ref]`.
 
-**A completion hook reads at the same commit that its rule fired at.** A task that finishes wakes
-the hook, and no write does. So the hook has no cause of its own. It takes the cause of the
-firing, which the record of the task carries as `occurrence`. So the hook survives a restart,
-even when the engine that runs the hook never saw the firing.
+**A completion hook reads the subject as it is when the task ends.** A task that finishes wakes
+the hook, and no write does. So the hook has no cause of its own, and no commit of its own to
+read at. It reads at the head: `subject.value`, `subject.commit`, `!get-path`, `!list-paths`, a
+derive and the strings of a hook's spawn all read the verse as it stands when the task ends, in
+one snapshot, so a hook that reads twice reads one world. The head is always there to read. The
+store keeps history for its compaction cutoff only, and a hook that read at the commit its rule
+fired at lost that commit whenever its task ran longer than the cutoff. A hook also survives a
+restart, since nothing but the store is needed to read it.
 
-In this way a rule is one statement about one moment. `subject.value` in an `onDone` is the
-subject as the condition selected it. It is not the subject as the action left it one step
-earlier. A charter whose task does not write its own subject gets the reading its author meant.
-That holds in a hook's spawn too: there `subject.value` is the subject at the commit its rule
-fired at, as in the hook's patch, and not the finished task's record.
+So `subject.value` in an `onDone` is the subject as the rule's own action left it, its `patch`
+included, and as anything else wrote it while the task ran. That holds in a hook's spawn too:
+there `subject.value` is the subject as it is, as in the hook's patch, and not the finished
+task's record. The record of the task still carries `occurrence`, the commit its rule fired at.
+It says which firing the run was about, and nothing reads at it.
 
-A task that the charter did not start has no such commit. There a patch or a derive that reads
-`subject.value` or `subject.commit` fails, saying there was no commit to read the subject at. It
-does not resolve to a silent zero. A spawn holds only a plain path to this: there
-`'$[subject.value?.round ?? 0]'`, which says what absence means, expands as it is.
+**A value from the firing's moment is the firing's to write.** A hook that needs the subject as
+the condition selected it reads a field the firing wrote beside its spawn. No firing of the same
+rule writes over it while the task runs, because a hooked spawn holds its subject (see
+[Completion hooks](#completion-hooks-one-trigger-chaining-visible)). The `propose` rule of the
+[repository charters](examples/repo-charters/repo-charters.tony) asks a person about a
+candidate and records the `seen` it asked about: the firing writes `askedAt: .[seen]` beside its
+spawn, and its `onDone` writes the answer.
+
+A task that the charter did not start has no firing, and its hooks read the same way, the
+subject as it is. Nothing on its record has to name a commit for `subject.value` to resolve.
 
 In a patch or a derive, verse reads the subject's value only where an expression asks for it: a
 read of `subject` other than as `subject.ref` or `subject.name`, such as `.[subject.value.round]`,
 `.[subject?.value]`, `.[subject["value"]]`, or `.[subject]` whole. A hook's spawn reads it
-wherever its rule's firing has a commit.
+whenever one of its strings asks for it.
 
 #### Expressions
 
@@ -577,8 +587,8 @@ action:
 
 The refused task is on record like a task that a runner refuses. Its id holds `status: failed`,
 with the refusal as `err` and the firing's `occurrence`, so `verse task get` says why. Nothing
-was started. Its `onFailed` reads `subject.value` at the commit that its rule fired at, as any
-hook does.
+was started. Its `onFailed` reads `subject.value` as it is, as any hook does: `stage` is
+`developing`, which the firing wrote before the spawn was refused.
 
 ### `!get-path` and `!list-paths`: reaching other data
 

@@ -12,19 +12,18 @@ import (
 	"github.com/signadot/verse/task"
 )
 
-// A LAUNCH THE ENGINE REFUSES ENDS IN AN onFailed THAT READS AT THE FIRING, as any task's hook
-// does: `was: .[subject.value.stage]` is the subject as the condition selected it.
+// A LAUNCH THE ENGINE REFUSES ENDS IN AN onFailed THAT READS THE SUBJECT, as any task's hook
+// does: `was: .[subject.value.stage]` is the subject as it is, the rule's own patch included.
 //
 // It was not. A refused task fails before anything has mirrored its record, so the hook's
 // occasion took its commit from a record with no `occurrence`, read at revision 0, and failed
 // saying the task was one nothing in the charter started. The subject stayed latched at
 // `developing` — the outcome the refusal-as-a-failed-task exists to avoid — and the task id
-// held only the hook's failure.
-func TestARefusedLaunchsOnFailedReadsTheSubjectAtTheFiring(t *testing.T) {
+// held only the hook's failure. A hook reads at the head now, which no record has to name.
+func TestARefusedLaunchsOnFailedReadsTheSubject(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
-	// Mirrors nothing for a refused launch, so the hook can only read at the firing from what
-	// the engine itself holds.
+	// Mirrors nothing for a refused launch, so the hook has no record to read anything off.
 	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
 		if spec.Refusal != "" {
 			return task.FailedHandle(spec.Refusal)
@@ -53,8 +52,8 @@ func TestARefusedLaunchsOnFailedReadsTheSubjectAtTheFiring(t *testing.T) {
 
 	waitField(t, store, prRef("1"), "stage", "failed")
 	e, _, _ := store.Get(prRef("1"))
-	if was := entity.Str(e.Payload, "was"); was != "open" {
-		t.Errorf("was = %q, want open: the subject at the commit the rule fired at", was)
+	if was := entity.Str(e.Payload, "was"); was != "developing" {
+		t.Errorf("was = %q, want developing: the subject as it is when the refused task fails", was)
 	}
 	if why := entity.Str(e.Payload, "why"); !strings.Contains(why, `no "never" in subject.value`) {
 		t.Errorf("why = %q, want the refusal naming the reference", why)

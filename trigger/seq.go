@@ -180,10 +180,9 @@ func (e *Engine) stopSeq(chain string, subj entity.Ref, status task.Status) {
 // chain does not address a sequence element, in which case the ordinary hook path applies.
 func (e *Engine) resumeSeq(chain string, subj entity.Ref, oc occasion) bool {
 	// oc is the completion's occasion, built by applyHook: the finished task's event for its
-	// references, and the commit that caused the firing this sequence belongs to for reads at
-	// a revision. A resumed element begins a fresh causal chain (oc.parent is 0) and reads the
-	// world the rule was evaluated against, which is the same pair every element got from the
-	// element before it.
+	// references, and the head for reads at a revision — the verse as it is now that the task
+	// has ended, so an element sees what the elements before it wrote. A resumed element begins
+	// a fresh causal chain (oc.parent is 0).
 	carrierChain, idx, ok := seqIndexOf(chain)
 	if !ok {
 		return false

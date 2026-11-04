@@ -606,8 +606,8 @@ type snapCache struct {
 func (oc occasion) snapshot(e *Engine) (entity.Snapshot, error) {
 	if oc.commit.Rev == 0 {
 		return nil, fmt.Errorf("this firing has no causing commit to read at, so there is no " +
-			"revision to be as of. A completion hook takes the one that caused the firing it " +
-			"belongs to, off its task's record; a task nothing in the charter started has none")
+			"revision to be as of. A completion hook reads at the head, the verse as it is when " +
+			"its task ends")
 	}
 	if oc.snap == nil {
 		return oc.reads(e).AsOf(oc.commit.Rev, oc.within...) // no cache wired: correct, just unshared
@@ -1132,14 +1132,15 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 // as the same action's patch reads it.
 //
 // For a rule's own firing that is root, the subject's payload. For a COMPLETION HOOK root is the
-// finished task's record, which is not the subject: a hook's patch reads the subject at the
-// commit its rule fired at (subjectFor, subjectValueAt), and its spawn reads it there too, so
-// `vars: {ROUND: $[subject.value.round]}` is the subject's round. The task's own facts are the
-// binding's top-level names, `status`, `result`, `data` and `err`.
+// finished task's record, which is not the subject: a hook's patch reads the subject as it is
+// when the task ends (subjectFor, subjectValueAt, at the head applyHook's occasion names), and
+// its spawn reads it there too, so `vars: {ROUND: $[subject.value.round]}` is the subject's
+// round. The task's own facts are the binding's top-level names, `status`, `result`, `data` and
+// `err`.
 //
-// A hook's firing with no causing commit has nothing to read the subject at (a task nothing in the
-// charter started), so its subject has no value, and an expression reading one is refused as any
-// absent path is. A read that fails fails the firing, as the hook's patch does.
+// A firing with no commit has nothing to read the subject at, so its subject has no value, and an
+// expression reading one is refused as any absent path is. A read that fails fails the firing,
+// as the hook's patch does.
 func (e *Engine) spawnSubjectValue(chain string, oc occasion, subj entity.Ref, root entity.Payload,
 	src refSource) (entity.Payload, error) {
 	if src != fromCause {

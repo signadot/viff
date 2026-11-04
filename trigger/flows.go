@@ -28,9 +28,10 @@ type flowTask struct {
 	// a resume) can navigate back to the action that owns it.
 	chain string
 	// occurrence is the commit that caused the firing this task belongs to (launch.Spec's
-	// Occurrence), 0 where none did. A completion hook reads at it, off the task's record; this
-	// is the engine's own copy for a task whose record does not say, because nothing mirrored
-	// one before the hook ran — a launch the engine refused, whose task never reached a runner.
+	// Occurrence), 0 where none did. It names the firing a run was about, on the record and in a
+	// hook's trouble (recordHookTrouble); this is the engine's own copy for a task whose record
+	// does not say, because nothing mirrored one before the hook ran — a launch the engine
+	// refused, whose task never reached a runner.
 	occurrence int64
 	// WHOSE HOLD it is at its boundary, since a pause is one bool in the runtime and two parties
 	// take it: an operator's `flow suspend --task` (operator), and the suspensions that paused it
@@ -183,25 +184,31 @@ func (e *Engine) retireHandle(id string, h task.Handle) (flowTask, bool) {
 // completed task:instance payload, so the hook's expressions can read status, flow and result.
 func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	subject, serr := entity.ParseAddr(fp.subject)
-	// WHAT COMMIT THIS READS AT: the one that caused the firing this task belongs to.
+	// WHAT COMMIT THIS READS AT: the head, the verse as it is when the task ends.
 	//
 	// A hook is woken by a task finishing rather than by a write, so it has no cause of its
 	// own — and for a while that was taken to mean it had no revision to read at either, which
-	// left `subject.value`, `subject.commit`, `!get-path` and `!list-paths` unresolvable in
-	// every onDone/onFailed/onCancelled/onOrphaned there has ever been. That is the whole read
-	// vocabulary, in the half of a rule where the interesting writes live: a `derive` of a
-	// release note from what shipped could not be written down (git-issue hjxd56jy).
+	// left `$subject.value`, `$subject.commit`, `!get-path` and `!list-paths` unresolvable in
+	// every onDone/onFailed/onCancelled/onOrphaned there has ever been (git-issue hjxd56jy).
+	// It then read at the commit its rule fired at, off the record's `occurrence`, so that a
+	// rule was one statement about one moment. That moment is history, and the store keeps
+	// history for its compaction cutoff only: a task that ran past it lost its hook to a read
+	// the store rightly refused (entity.ErrReplayTooOld), and a capture of that moment on the
+	// task's record (signadot/verse#76) narrowed the loss without removing it, at a copy of
+	// the rule's places on every write of every hooked task (git-issue 8mzvx61xha9xres1xdn0).
 	//
-	// The firing's commit is the right one to offer, and not merely an available one. It is
-	// already what an action's path reads resolve at — "read at the commit that caused the
-	// firing, so a rule held at a gate for a day still writes what it was evaluated against"
-	// — so a hook reading there makes the rule ONE statement about one moment rather than two
-	// about different ones. A charter whose task does not write its own subject then has the
-	// author's intent exactly: that moment and the moment the task finished agree.
+	// The head is always there to read: no cutoff reaches it and no restart loses it, since
+	// nothing but the store is needed. A hook patches the subject as it is now, so the subject
+	// as it is now is also what its patch means. A value from the firing's moment is the
+	// firing's to write, on the subject beside its spawn, where the hook reads it back
+	// (docs/reference/action.md, Bindings); the claim the spawn took keeps the rule from
+	// writing over it in between (applyOne). What makes the hook survive a restart is as it
+	// was: the chain on the record names the action, and AdoptChain re-attaches it.
 	//
-	// It is read off the RECORD (`occurrence`, the revision a run is about) rather than
-	// carried in memory, which is what makes it survive a restart: a task resumed by
-	// AdoptChain is hooked by an engine that never saw the firing, and the record still says.
+	// Head, as every read the engine makes of the verse as it stands (selectsNow, a lift's
+	// reArm): what this process has been told of, which the task's own terminal write is, with
+	// no round trip. A write another process made that the watch has not delivered yet is one the
+	// next commit brings, as for any firing.
 	//
 	// This is the read only. The causal PARENT stays 0 — a hook does begin a fresh chain for
 	// the cycle throttle, which is causal.go's argument and a different question from which
@@ -215,7 +222,7 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	if t, ok := e.Trigger(hookOf); ok {
 		hookWithin = firingWithin(t)
 	}
-	oc := occasion{ev: ev, commit: entity.Commit{Rev: mirror.OccurrenceOf(ev.To)},
+	oc := occasion{ev: ev, commit: entity.Commit{Rev: e.store.Head()},
 		snap: &snapCache{}, within: hookWithin, reader: e.reader(hookOf)}
 	// A completed SEQUENCE ELEMENT advances its sequence instead of firing a hook: the list
 	// already says what follows, which is why an element may not carry its own onDone. Only

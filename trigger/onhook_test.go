@@ -399,19 +399,22 @@ func entityField(t *testing.T, store entity.Store, ref entity.Ref, key string) s
 	return entity.Str(e.Payload, key)
 }
 
-// A COMPLETION HOOK READS AT THE COMMIT THAT CAUSED ITS FIRING.
+// A COMPLETION HOOK READS THE SUBJECT AS IT IS WHEN THE TASK ENDS.
 //
 // It used to read at no commit at all: applyHook built an occasion with none, so
 // `subject.value`, `subject.commit`, `!get-path` and `!list-paths` were unresolvable in
 // every hook, and a rule that wanted to derive a release note from what shipped could not be
 // written down (git-issue hjxd56jy). Worse, it failed HALFWAY — a hook's `patch` lands before
 // its `derive`, so the subject latched to "finished" over a derivation that never happened.
+// Then it read at the firing's commit, off the task's record, until a task that outlived the
+// store's compaction cutoff lost its hook to a read the store no longer answered (git-issue
+// 8mzvx61xha9xres1xdn0).
 //
-// The commit offered is the firing's, taken from the task's own record. This test is the
-// decisive half of what that means: the action advances `stage` to `reviewing` BEFORE the task
-// starts, so the store says `reviewing` by the time the hook runs — and the hook still reads
-// `open`, the value at the commit the rule was evaluated against. One rule, one moment.
-func TestHookReadsTheSubjectAtTheCausingCommit(t *testing.T) {
+// The commit offered is the head. This test is the decisive half of what that means: the
+// action advances `stage` to `reviewing` BEFORE the task starts, and the hook reads
+// `reviewing`, the subject as the rule left it — what the firing wrote beside its spawn is
+// what its hook finds. A field the firing never touched reads as it was.
+func TestHookReadsTheSubjectAsItIs(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
@@ -441,20 +444,20 @@ func TestHookReadsTheSubjectAtTheCausingCommit(t *testing.T) {
 	waitField(t, store, prRef("1"), "stage", "reviewed")
 
 	ent, _, _ := store.Get(prRef("1"))
-	if got := entity.Str(ent.Payload, "was"); got != "open" {
-		t.Errorf("the hook read stage = %q; want \"open\" — the value at the causing commit, "+
-			"not whatever the action had already written over it", got)
+	if got := entity.Str(ent.Payload, "was"); got != "reviewing" {
+		t.Errorf("the hook read stage = %q; want \"reviewing\" — the subject as it is when the "+
+			"task ends, the rule's own patch included", got)
 	}
 	if got := entity.Str(ent.Payload, "area"); got != "auth" {
 		t.Errorf("the hook read area = %q; want \"auth\" — a field the firing never touched", got)
 	}
 }
 
-// The same commit reaches a SEQUENCE's carrier hook, which arrives by another road: a finished
+// The same read reaches a SEQUENCE's carrier hook, which arrives by another road: a finished
 // element resumes its sequence (resumeSeq) rather than firing a hook, and the carrier's own
 // `onDone` runs at the end of that path. It was the shape that produced the original report —
 // two rollout steps and a release note derived from what shipped.
-func TestSeqCarrierHookReadsTheCausingCommit(t *testing.T) {
+func TestSeqCarrierHookReadsTheSubject(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
@@ -487,6 +490,6 @@ func TestSeqCarrierHookReadsTheCausingCommit(t *testing.T) {
 	ent, _, _ := store.Get(prRef("2"))
 	if got := entity.Str(ent.Payload, "shipped"); got != "1.4.2" {
 		t.Errorf("the carrier's onDone read version = %q; want \"1.4.2\" — a sequence's hook "+
-			"reads at the same commit its rule fired at", got)
+			"reads the subject as it is when the run ends", got)
 	}
 }

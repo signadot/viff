@@ -14,9 +14,9 @@ import (
 )
 
 // IN A COMPLETION HOOK'S SPAWN, `subject.value` IS THE SUBJECT, as it is in the hook's patch:
-// the subject at the commit its rule fired at, not the finished task's record. The task's own
+// the subject as it is when the task ends, not the finished task's record. The task's own
 // facts are top-level names, as `status`.
-func TestAHookSpawnReadsTheSubjectAtTheFiring(t *testing.T) {
+func TestAHookSpawnReadsTheSubject(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	specs := make(chan launch.Spec, 4)
@@ -59,9 +59,9 @@ func TestAHookSpawnReadsTheSubjectAtTheFiring(t *testing.T) {
 	if vars["ROUND"] != "0" {
 		t.Errorf("ROUND = %q, want 0, the subject's round", vars["ROUND"])
 	}
-	// At the commit the rule fired at, before its own patch moved the subject to `developing`.
-	if vars["STAGE"] != "open" {
-		t.Errorf("STAGE = %q, want open: the subject as the condition selected it", vars["STAGE"])
+	// As the subject is when the task ends: after the rule's own patch moved it to `developing`.
+	if vars["STAGE"] != "developing" {
+		t.Errorf("STAGE = %q, want developing: the subject as it is when the task ends", vars["STAGE"])
 	}
 	if vars["STATUS"] != "done" {
 		t.Errorf("STATUS = %q, want done: the task's own facts are flat, and read from its record", vars["STATUS"])
@@ -71,10 +71,11 @@ func TestAHookSpawnReadsTheSubjectAtTheFiring(t *testing.T) {
 	}
 }
 
-// A HOOK'S SPAWN FOR A TASK WITH NO FIRING COMMIT REFUSES `subject.value` BY NAME: an adopted
-// task whose record says no `occurrence` has no revision to read the subject at, so the subject
-// has no value, and the task's own record is not read in its place.
-func TestAHookSpawnWithNoFiringCommitRefusesSubjectValueByName(t *testing.T) {
+// A HOOK'S SPAWN FOR A TASK WITH NO FIRING COMMIT READS THE SUBJECT ALL THE SAME: an adopted task
+// whose record says no `occurrence` belongs to no firing, and the hook reads at the head, which is
+// always there. The hook's own patch does not show: the hook reads one world, the verse as it was
+// when the task ended, and its patch lands after.
+func TestAHookSpawnWithNoFiringCommitReadsTheSubject(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	specs := make(chan launch.Spec, 4)
@@ -116,9 +117,11 @@ func TestAHookSpawnWithNoFiringCommitRefusesSubjectValueByName(t *testing.T) {
 
 	select {
 	case hook := <-specs:
-		if hook.Chain != "review.onDone" || !strings.Contains(hook.Refusal, `environment.vars.STAGE: `) ||
-			!strings.Contains(hook.Refusal, `no "value" in subject`) {
-			t.Fatalf("hook spawn %q refused with %q, want STAGE refused for the subject's missing value", hook.Chain, hook.Refusal)
+		if hook.Chain != "review.onDone" || hook.Refusal != "" {
+			t.Fatalf("hook spawn %q refused with %q, want it launched", hook.Chain, hook.Refusal)
+		}
+		if got := hook.Environment.Vars["STAGE"]; got != "open" {
+			t.Errorf("STAGE = %q, want open: the subject as it was when the task ended, before the hook's own patch", got)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the hook never spawned")
