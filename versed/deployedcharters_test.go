@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -27,8 +28,15 @@ var deployOrder = []string{
 	"../docs/reference/examples/deploy-announce/deploy-announce.tony",
 }
 
-// repoCharters is the repository's own charters, and repoChartersAt where the deployment's
-// repo-charters reconciler has the git io install them (deploy/auth/eks.tony): the whole
+// renderedExamples is the example charter versed renders itself from its config rather than a
+// deployment copying it (system/repocharters, TestTheReferenceExampleIsTheRenderedTemplate), so
+// it is not installed here: installed beside the one versed renders it would be a second reconciler.
+var renderedExamples = []string{
+	"../docs/reference/examples/repo-charters/repo-charters.tony",
+}
+
+// repoCharters is the repository's own charters, and repoChartersAt where this test's deployment
+// has the git io install them (a deployment's auth file names its own): the whole
 // directory as one request with a prune, as `verse c -a <address> -d <dir> --prune` sends it.
 const (
 	repoCharters   = "../.verse/charters"
@@ -42,6 +50,34 @@ const (
 // that stops installing is found here and not at the next ship, or at the next change to the
 // charters on main.
 func TestEveryDeployedCharterInstalls(t *testing.T) {
+	// Every example charter in the tree is in the order, or named as versed's to render: one added
+	// beside these is installed here too, or says why not, and the examples README's promise that
+	// each is tested holds.
+	var inTree []string
+	err := filepath.WalkDir("../docs/reference/examples", func(path string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.HasSuffix(path, ".tony") {
+			inTree = append(inTree, path)
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed := []string{systemCharter}
+	for _, name := range deployOrder {
+		files, err := charterFilesUnder(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		listed = append(listed, files...)
+	}
+	listed = append(listed, renderedExamples...)
+	sort.Strings(listed)
+	sort.Strings(inTree)
+	if strings.Join(listed, "\n") != strings.Join(inTree, "\n") {
+		t.Fatalf("the example charters are not the ones installed here:\n in the tree: %v\n installed:   %v", inTree, listed)
+	}
+
 	// STARTED, as a deployment's verse is: the base charter is installed first, then the
 	// deployment's system charter, and a deployed charter builds on what they declare (the
 	// docket's stratum, `asks`, and the Slack place's, `gate-asked`).

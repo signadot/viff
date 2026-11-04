@@ -187,9 +187,14 @@ WAIT   ?=
 WAIT_TIMEOUT ?= 5m
 .PHONY: deploy
 deploy: ## render deploy/ and kubectl apply (PROFILE=minikube|eks|<path to a profile>; CONTEXT= to override the target cluster; IMAGE= to pin one; HOSTPV/HOSTPATH to host-link; SELECT=tier=x for one tier; WAIT=1 to block on the rollout; E='-e k=v …')
-	@ctx='$(CONTEXT)'; \
+	@show=$$($(O) build deploy $(if $(PROFILE),-p $(PROFILE),) $(E) -s) || { echo "deploy: the environment does not evaluate; nothing applied"; exit 1; }; \
+	ctx='$(CONTEXT)'; \
 	if [ -z "$$ctx" ]; then \
-	  ctx=$$($(O) build deploy $(if $(PROFILE),-p $(PROFILE),) -s | sed -n 's/^kubeContext: *//p' | tr -d '"'); \
+	  ctx=$$(printf '%s\n' "$$show" | sed -n 's/^kubeContext: *//p' | tr -d '"'); \
+	fi; \
+	case "$$ctx" in '<'*'>') echo "deploy: the profile's kubeContext is a placeholder, $$ctx: fill it in, or say CONTEXT="; exit 1;; esac; \
+	if printf '%s\n' "$$show" | awk '/^docdPool:/{p=$$2} /^docdPoolLabel:/{l=$$2} END{exit !(p!="" && p!="\"\"" && (l=="" || l=="\"\""))}'; then \
+	  echo "deploy: docdPool is set and docdPoolLabel is empty, so the selector would have no key: name the pool's label"; exit 1; \
 	fi; \
 	echo "deploy: $(if $(PROFILE),profile '$(PROFILE)',defaults)$(if $(SELECT), [$(SELECT)],) → context '$${ctx:-$$(kubectl config current-context)}'"; \
 	$(O) build deploy -O yaml $(if $(PROFILE),-p $(PROFILE),) $(if $(DEPLOY_IMAGE),-e image=$(DEPLOY_IMAGE),) $(if $(HOSTPV),-e hostPV=$(HOSTPV),) $(if $(HOSTPATH),-e hostPath=$(HOSTPATH),) $(E) \

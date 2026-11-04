@@ -70,7 +70,10 @@ A profile is a name under `deploy/profiles/`, or a file: `o build -p` takes eith
 checked in are shapes, `minikube` for a laptop and `eks` for a cluster with the values left as
 placeholders. A deployment with values of its own — its cluster, its registry, its secret
 entries — keeps its profile outside this repository and passes the path. That is how this
-directory is meant to be run: the build and the manifests here, the values there.
+directory is meant to be run: the build and the manifests here, the values there. The knobs that
+name a file (`systemCharter`, `authConfig`, `runnerConfig` and the other two runners') read a path
+relative to `deploy/`, or an absolute one, which is how a deployment keeps those files beside its
+profile rather than under `deploy/`.
 
 Prefer `make deploy` over piping `o` into `kubectl` by hand, for two reasons that are easy to
 get wrong once each:
@@ -89,7 +92,9 @@ deploy: profile '/path/to/profile.tony' → context '<the profile's kubeContext>
 ```
 
 `CONTEXT=` overrides that, for the same shape of cluster under a different kubeconfig name.
-An empty `kubeContext` — the default, and minikube — falls back to the current context.
+An empty `kubeContext` — the default, and minikube — falls back to the current context. The eks
+profile ships a placeholder instead, which `make deploy` refuses until it is filled in or
+`CONTEXT=` says where.
 
 ## Storage (per profile)
 
@@ -152,7 +157,8 @@ cluster. (The minikube profile sets `hostPV: true`, `hostPath: /mnt/verse`.)
 prefer `SPOT` (`spotVersed`) and float over the rest. A deployment that reserves a node pool for
 the stateful tier names it with `docdPool`: the pool's nodes carry a
 `<docdPoolLabel>=<x>:NoSchedule` taint (`verse/pool` unless `docdPoolLabel` says), so docd needs both halves, the `nodeSelector` to go
-there and the matching toleration to be let in, and that is what the knob emits.
+there and the matching toleration to be let in, and that is what the knob emits. `make deploy`
+refuses a `docdPool` with an empty `docdPoolLabel`, since the selector would have no key.
 
 Give a cluster its own image repository rather than a tag on the shared one, so a build driven
 there is never what everything else pulls, and deploy at an immutable ref:
@@ -254,15 +260,15 @@ should be passed the Service name directly rather than discovering it.
 | `llmSecretKey` | `""` | entry for `verse-llm`; `""` emits no `ExternalSecret` |
 | `gitSecretKey` / `slackSecretKey` / `linearSecretKey` / `githubSecretKey` / `runnerSecretKey` / `codexSecretKey` / `claudeSecretKey` / `issuerSecretKey` | `""` | the same, one per credential |
 | `llmModel` | `""` | `OPENAI_MODEL` for versed; `""` leaves the driver's `gpt-4o` |
-| `systemCharter` | `""` | a charter under `deploy/`, mounted into versed and installed at start as the system (`VERSE_SYSTEM_CHARTER`); read at start, so a change takes a restart. The example a deployment copies under `deploy/` is [gate-ask](../docs/reference/examples/gate-ask/gate-ask.tony), with its Slack place filled in |
-| `authConfig` | `""` | verse's `auth` block, a file under `deploy/`, mounted into versed as its config (`VERSE_CONFIG`): who verifies people, which iods are trusted for whose accounts, how the iods prove themselves ([Who a request is from](#who-a-request-is-from-authconfig-iodtokens-runnertokens)). eks: `auth/eks.tony` |
+| `systemCharter` | `""` | a charter, by path (relative to `deploy/`, or absolute), mounted into versed and installed at start as the system (`VERSE_SYSTEM_CHARTER`); read at start, so a change takes a restart. The example a deployment copies under `deploy/` is [gate-ask](../docs/reference/examples/gate-ask/gate-ask.tony), with its Slack place filled in |
+| `authConfig` | `""` | verse's `auth` block, a file by path (relative to `deploy/`, or absolute), mounted into versed as its config (`VERSE_CONFIG`): who verifies people, which iods are trusted for whose accounts, how the iods prove themselves ([Who a request is from](#who-a-request-is-from-authconfig-iodtokens-runnertokens)). eks: `auth/eks.tony` |
 | `iodTokens` | `false` | give the slack, github and git iods a ServiceAccount each and a projected token, so each proves it is the iod (eks and minikube: on) |
 | `runnerTokens` | `true` | give each deployed runner a ServiceAccount and a projected token, and versed its signing key (the `verse-issuer` Secret, **required**: versed does not start without it), so a runner serves its verse alone and proves it is the one registered ([Who a request is from](#who-a-request-is-from-authconfig-iodtokens-runnertokens)). A deployed runner needs it: `runnerd` does not start without the verse it serves and its token |
 | `issuer` | `http://verse:9797` | the name versed's tokens are issued under, the auth file's `auth.issuer.url`: what each runner holds versed's tokens to (`VERSE_ISSUER`). The runners read the keys at versed's in-cluster url, so this is a name |
 | `issuerDiscoveryOpen` | `false` | let anyone reaching the API server read its OpenID discovery and keys, which versed needs where the cluster itself is the iods' issuer (minikube: on; EKS needs none) |
 | `runner` | `false` | deploy the verse runner (its own image; install it with `verse runner add`) |
 | `runnerImage` | `signadot/verse-runner:latest` | its image ref — a tag in another repository is fine |
-| `runnerConfig` | `""` | its configuration, a file under `deploy/` as `authConfig` is, in place of the manifest's ([The verse runner](#the-verse-runner-runner-off-by-default)) |
+| `runnerConfig` | `""` | its configuration, a file by path as `authConfig` is, in place of the manifest's ([The verse runner](#the-verse-runner-runner-off-by-default)) |
 | `codexRunner` | `false` | deploy the codex runner beside it: the verse runner in an image with Codex in it, offering the codex agent |
 | `codexRunnerImage` | `signadot/verse-runner:codex` | its image ref |
 | `codexRunnerConfig` | `""` | as `runnerConfig`, for the codex runner |
@@ -398,22 +404,25 @@ the deployment entirely and use `verse iod add -dir`.
 
 A wipe takes the store with it: the store *is* the configuration, and there is no seed file a
 fresh verse reads. So a deployment keeps a repopulate script of its own, run after the wipe and
-after the tiers are up at the new vintage, that puts back what its files describe. Such a script
-registers the runner first (`verse runner add`, with the pod's subject), since a charter whose
-spawn no registered runner takes is refused at install; then installs the deployment's charters
-(`verse charter -a`), each as one step; then registers the iods (`verse iod add`, each with its
-out place and who may ask through it), removing again one that could not be reached so the next
-is not refused for overlap; and writes the two grants the rest depend on: `verse.runners` held to
-the admin with everyone reading, and `repos` with `child-owner` for the git iod. What is gone
-and nothing reconstructs: open gates, in-flight flows and the firing history.
+after the tiers are up at the new vintage, that puts back what its files describe, in an order
+the install checks impose. The runner first (`verse runner add`, with the pod's subject), since a
+charter whose spawn no registered runner takes is refused at install. Then the iods (`verse iod
+add`, each with its out place and who may ask through it), removing again one that could not be
+reached so the next is not refused for overlap, and the two grants the rest depend on:
+`verse.runners` held to the admin with everyone reading, and `repos` with `child-owner` for the
+git iod. Then the deployment's charters (`verse charter -a`), each as one step, after the iods
+because a package that sends through an outbox (deploy-announce) is refused until the iod it
+names is registered; and one that latches on its own outbox is seeded before it is installed,
+since installing it first announces every tag there has ever been (the example's header says
+how). What is gone and nothing reconstructs: open gates, in-flight flows and the firing history.
 
 What people wrote by hand in places no charter manages is carried by `carry.sh`, over a list
-somebody keeps of those places, `carry/<deployment>.places`:
+somebody keeps of those places, a file the deployment keeps beside its profile:
 
 ```sh
-deploy/carry.sh capture <addr> deploy/carry/<deployment>.places ~/carry   # before the wipe, as an admin
+deploy/carry.sh capture <addr> <places file> ~/carry   # before the wipe, as an admin
 # … wipe, ship, repopulate …
-deploy/carry.sh restore <addr> deploy/carry/<deployment>.places ~/carry   # after, as each place's owner
+deploy/carry.sh restore <addr> <places file> ~/carry   # after, as each place's owner
 ```
 
 Each place crosses with its owner, its grants and its data, and not its history. A charter

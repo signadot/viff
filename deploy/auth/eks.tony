@@ -47,7 +47,7 @@ auth:
 # `githubRepos`), with an out place each. Dropping an entry turns its reconciler off at the next
 # start and leaves the charters it installed running.
 repoCharters:
-- repo: verse
-  github: signadot/verse
-  at: repos.verse
+- repo: app
+  github: example/app
+  at: repos.app
   answerers: ["user:*"]

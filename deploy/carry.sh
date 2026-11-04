@@ -8,7 +8,8 @@
 # THE PLACES FILE is the manual step, and on purpose: somebody names the places that hold what
 # people wrote and no charter manages. One place per line, as the CLI spells an address, in steps
 # (`notes team`; a step holding a dot is one segment, as `verse data` takes it); `#` starts a
-# comment. A deployment's own list is deploy/carry/<deployment>.places.
+# comment. A deployment keeps its own list beside its profile, outside this repository, and passes
+# the path.
 #
 # WHAT CROSSES, per place:
 #

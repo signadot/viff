@@ -4,8 +4,10 @@
 # `make deploy PROFILE=<path>` both take one. The knobs and what each means: deploy/README.md.
 env:
   # The cluster this profile is FOR, as a kubectl context name, so `make deploy` goes there and
-  # not wherever the shell happens to point. "" is the current context.
-  kubeContext: ""
+  # not wherever the shell happens to point. A placeholder here, which `make deploy` refuses until
+  # it is filled in (`CONTEXT=` overrides it), so trying this profile never applies to whatever
+  # context the shell has.
+  kubeContext: "<the kubectl context of the cluster>"
   # The image, incl. tag: a repository of your own, pushed with `make push PUSH_IMAGE=<ref>
   # IMAGE_ARCH=amd64`. Deploy at an immutable ref (`IMAGE=<ref>:<commit>`) rather than a moving
   # tag: a node that has pulled a tag once keeps it, and a rollout then reports success on the
@@ -14,8 +16,10 @@ env:
   # A pull Secret that already exists in the namespace, for a private registry; "" attaches none.
   imagePullSecret: ""
   # The cluster's gp3 class, which the EBS CSI driver backs. On a cluster that has none,
-  # `emitStorageClass: true` emits a `verse-gp3` class (WaitForFirstConsumer), which still needs
-  # the driver addon with node-role IAM to create and attach volumes.
+  # `emitStorageClass: true` emits a `verse-gp3` class (WaitForFirstConsumer), and then
+  # `storageClassName` has to say `verse-gp3` too, or the claim stays Pending on a class that is
+  # not there. The emitted class still needs the driver addon with node-role IAM to create and
+  # attach volumes.
   storageClassName: "gp3"
   emitStorageClass: false
   # The size a NEW claim is made at. A claim that stands is grown in place, which gp3 allows; the
@@ -64,22 +68,23 @@ env:
   # github iod reads `githubRepos`; `gitAsApp` and `githubOut` make both act as a GitHub App
   # (deploy/README.md, The GitHub App).
   gitIod: false
-  gitMirror: "https://github.com/signadot/verse.git"
+  gitMirror: "https://github.com/example/app.git"
   gitAsApp: false
   gitIssueIod: false
   githubIod: false
-  githubRepos: "signadot/verse"
+  githubRepos: "example/app"
   githubOut: false
   slackIod: false
   linearIod: false
   # The rule that reaches each person the asks waiting on them, installed as the system
-  # (docs/reference/examples/gate-ask): a copy with your Slack workspace in it, under deploy/.
+  # (docs/reference/examples/gate-ask): a copy with your Slack workspace in it, by path.
   systemCharter: ""
   # The runners, each its own image: scripts and the verse agent on the verse runner, codex and
   # claude on theirs. versed hosts nothing itself.
   runner: false
   runnerImage: "signadot/verse-runner:latest"
-  # Each runner's config, a file of yours under deploy/: the manifest's ceilings are placeholders
+  # Each runner's config, a path of yours, absolute where it sits beside this profile: the
+  # manifest's ceilings are placeholders
   # (deploy/README.md, "Its ceilings are placeholders").
   runnerConfig: ""
   localRunner: false

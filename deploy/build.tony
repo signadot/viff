@@ -162,7 +162,8 @@ build:
     # cheaper to grant a pull credential access to.
     runner: false
     runnerImage: "signadot/verse-runner:latest"
-    # Its configuration, a file under deploy/ as authConfig is, in place of the one its manifest
+    # Its configuration, a path as authConfig is (relative to deploy/, or absolute), in place of
+    # the one its manifest
     # carries: what it offers and the ceilings it holds each doer's tasks to. "" runs the
     # manifest's, whose ceilings name placeholder repositories, channels and a Linear team, and so
     # reach none of a deployment's own (deploy/README.md, "Its ceilings are placeholders").
@@ -266,7 +267,7 @@ build:
     # ingressClassName for the two webhook Ingresses; "" leaves the cluster default.
     ingressClassName: ""
 
-    # A charter versed installs at start AS THE SYSTEM, as a path under deploy/ (VERSE_SYSTEM_CHARTER,
+    # A charter versed installs at start AS THE SYSTEM, by path, relative to deploy/ or absolute (VERSE_SYSTEM_CHARTER,
     # config/config.go). "" installs none. It is how a rule that has to read what no person may —
     # every ask, to tell each person the ones waiting on them — gets installed at all: `--as
     # system` over the api is refused. Read at start, so a changed file takes a restart.
@@ -277,7 +278,7 @@ build:
     # spawn is routed to a registered runner (docs/runners.md, "Where a spawn runs").
     localRunner: true
 
-    # verse's `auth` block, as a path under deploy/ (VERSE_CONFIG, config/config.go): who verifies
+    # verse's `auth` block, by path, relative to deploy/ or absolute (VERSE_CONFIG, config/config.go): who verifies
     # people, which iods are trusted for whose accounts, and how the iods prove themselves
     # (docs/reference/up.md). "" leaves versed as it is: a request is whoever it says. The env
     # verse reads (VERSE_PERMS_ADMINS, the model's) still applies over the file. Read at start.
