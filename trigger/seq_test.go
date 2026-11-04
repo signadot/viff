@@ -210,18 +210,18 @@ func TestSeqClaimExcludesOverlap(t *testing.T) {
 	eng, _ := seqEngine(t, store)
 	ref := prRef("1")
 
-	if !eng.claimRun("review", ref) {
+	if !eng.claimRun("review", ref, nil) {
 		t.Fatal("first claim lost; nothing else holds it")
 	}
-	if eng.claimRun("review", ref) {
+	if eng.claimRun("review", ref, nil) {
 		t.Error("a second claim on a held run won — overlap is possible")
 	}
 	// a different subject is a different run
-	if !eng.claimRun("review", prRef("2")) {
+	if !eng.claimRun("review", prRef("2"), nil) {
 		t.Error("a claim on another subject was refused")
 	}
 	eng.releaseRun("review", ref)
-	if !eng.claimRun("review", ref) {
+	if !eng.claimRun("review", ref, nil) {
 		t.Error("the claim was not released when the run ended")
 	}
 }
@@ -244,7 +244,7 @@ func TestSeqClaimIsNotReactiveFuel(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	eng.claimRun("review", prRef("1"))
+	eng.claimRun("review", prRef("1"), nil)
 	time.Sleep(150 * time.Millisecond) // give a dispatch, if one were coming, time to arrive
 	// the claim entity exists…
 	if _, ok, _ := store.Get(mirror.ClaimRef(spawnID("", "review", prRef("1")))); !ok {

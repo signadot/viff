@@ -223,6 +223,235 @@ func TestASequenceStepPastTheCutoffReadsTheSubject(t *testing.T) {
 	}
 }
 
+// A HOOKED SPAWN HOLDS ITS SUBJECT UNTIL THE HOOK HAS RUN. The rule has no patch beside its spawn,
+// so nothing latches the subject: it still matches while the task runs. A change to it meanwhile
+// does not fire the rule again — the spawn's claim on (rule, subject) stands in the store until
+// the hook has written — and the claim is gone once it has. One task.
+func TestAHookedSpawnHoldsItsSubjectUntilTheHookHasRun(t *testing.T) {
+	release := make(chan struct{})
+	eng, store, _, specs := heldEngine(t, release, `{verdict: fixed}`)
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: fix
+  condition:
+    subject: {path: "demo.pr.*", value: {stage: open}}
+  action:
+    spawn:
+      prompt: "fix it"
+      autonomy: [{then: allow}]
+    onDone:
+      patch: {stage: .[data.verdict]}
+`)); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	select {
+	case <-specs:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the rule never spawned")
+	}
+	claim := mirror.ClaimRef(spawnID("", "fix", prRef("1")))
+	if _, held, _ := store.Get(claim); !held {
+		t.Fatalf("no claim at %s while the task runs", claim)
+	}
+	// The subject changes while the task runs, and still matches.
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open", "round": 1}.Payload())
+	select {
+	case spec := <-specs:
+		t.Fatalf("the rule spawned again (%s) while its task held the subject", spec.Chain)
+	case <-time.After(time.Second):
+	}
+	close(release)
+
+	waitField(t, store, prRef("1"), "stage", "fixed")
+	deadline := time.After(5 * time.Second)
+	for {
+		if _, held, _ := store.Get(claim); !held {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("the claim at %s stands after the hook has run", claim)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
+// A CHANGE MADE WHILE THE SUBJECT IS HELD FIRES THE RULE ONCE THE HOOK HAS RUN. The rule latches
+// with `fixing` and spawns; while the task runs somebody puts the subject back to `open`, which
+// fires the rule, and the hold refuses it. The hook writes `round` and leaves `stage` alone, so
+// the subject still matches when the hold comes off: the rule fires about it then, once, and a
+// second task starts. Refused and forgotten, the change would have waited for a commit that may
+// never come.
+func TestAChangeWhileTheSubjectIsHeldFiresTheRuleOnceTheHookHasRun(t *testing.T) {
+	release := make(chan struct{})
+	eng, store, _, specs := heldEngine(t, release, `{round: 4}`)
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: fix
+  condition:
+    subject: {path: "demo.pr.*", value: {stage: open}}
+  action:
+    patch: {stage: fixing}
+    spawn:
+      prompt: "fix it"
+      autonomy: [{then: allow}]
+    onDone:
+      patch: {round: .[data.round]}
+`)); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	select {
+	case <-specs:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the rule never spawned")
+	}
+	waitField(t, store, prRef("1"), "stage", "fixing")
+	// Somebody puts it back while the task runs. The rule fires, and the hold refuses it.
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	select {
+	case spec := <-specs:
+		t.Fatalf("the rule spawned again (%s) while its task held the subject", spec.Chain)
+	case <-time.After(time.Second):
+	}
+	close(release)
+
+	// The hook writes round and the hold comes off: the rule fires about the subject it still
+	// selects, and the second task's own patch latches it again.
+	select {
+	case spec := <-specs:
+		if spec.Chain != "fix" {
+			t.Fatalf("spawned %q after the hook, want the rule's own fix", spec.Chain)
+		}
+	case <-time.After(5 * time.Second):
+		e, _, _ := store.Get(prRef("1"))
+		t.Fatalf("the rule did not fire again once the hold came off; the subject: %v", entity.ToObj(e.Payload))
+	}
+	waitField(t, store, prRef("1"), "stage", "fixing")
+	e, _, _ := store.Get(prRef("1"))
+	if r := entity.Get(e.Payload, "round"); r == nil || r.Int64 == nil || *r.Int64 != 4 {
+		t.Errorf("round = %v, want 4: the first hook's write stands", r)
+	}
+	select {
+	case spec := <-specs:
+		t.Fatalf("a third task spawned (%s): the hold owes the subject one evaluation", spec.Chain)
+	case <-time.After(time.Second):
+	}
+}
+
+// A HOOK'S OWN TASK ENDING DOES NOT TAKE WHAT THE RULE'S HOLD OWES. The rule's onDone writes
+// nothing of the subject and spawns a task of its own, whose onDone fails and so writes only the
+// rule's own bookkeeping, which does not wake it: no write of the rule's own touches what it
+// reads, and only the hold's owed evaluation can fire it again. While a rule task runs the subject is put back to `open`, refused and
+// owed; the hook's own task, from the run before, ends meanwhile and releases only its hold.
+// When the rule's task ends, the refusal is still owed, and the rule fires once more. Keyed by
+// the rule's name alone, the nested task's end took it, and the change was lost.
+func TestANestedHookTaskEndingDoesNotTakeTheRulesRefusal(t *testing.T) {
+	// Each rule task waits on the release standing when it starts; the test hands out a fresh one
+	// for each, under the lock the spawner reads it under.
+	var mu sync.Mutex
+	release := make(chan struct{})
+	hookRelease := make(chan struct{})
+	store, _ := entitytest.CompactingStore(t)
+	eng := New(store, task.AutoResolver{})
+	specs := make(chan launch.Spec, 8)
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
+		specs <- spec
+		sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+		mu.Lock()
+		var d task.Driver = longRunning{release: release, r: "fixed"}
+		mu.Unlock()
+		if spec.Chain == "fix.onDone" {
+			d = longRunning{release: hookRelease, r: "noted"}
+		}
+		p := task.NewTask(id, sup, d, noExec{})
+		mirror.Reflect(store, id, p, mirror.Meta{Subject: spec.Subject, Runner: "local", Chain: spec.Chain,
+			Prompt: spec.Prompt, Occurrence: spec.Occurrence})
+		go p.Run(context.Background())
+		return p
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	eng.ObserveScoped(ctx)
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: fix
+  condition:
+    subject: {path: "demo.pr.*", value: {stage: open}}
+  action:
+    patch: {stage: fixing}
+    spawn:
+      prompt: "fix it"
+      autonomy: [{then: allow}]
+    onDone:
+      spawn:
+        prompt: "note it"
+        autonomy: [{then: allow}]
+      onDone:
+        patch: {noted: .[data.nope]}
+`)); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	next := func(want string) {
+		t.Helper()
+		select {
+		case spec := <-specs:
+			if spec.Chain != want {
+				t.Fatalf("spawned %q, want %q", spec.Chain, want)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s never spawned", want)
+		}
+	}
+	none := func(when string) {
+		t.Helper()
+		select {
+		case spec := <-specs:
+			t.Fatalf("the rule spawned %q %s", spec.Chain, when)
+		case <-time.After(time.Second):
+		}
+	}
+	endRuleTask := func() {
+		mu.Lock()
+		close(release)
+		release = make(chan struct{})
+		mu.Unlock()
+	}
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	next("fix")
+	waitField(t, store, prRef("1"), "stage", "fixing")
+	// Put back while the first task runs: refused, and owed. The task ends, its hook spawns its
+	// own task and writes nothing of the subject, and the owed evaluation starts a second task.
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	none("while its task held the subject")
+	endRuleTask()
+	next("fix.onDone")
+	next("fix")
+	waitField(t, store, prRef("1"), "stage", "fixing")
+	// Put back while the second task runs: refused, and owed again.
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	none("while its second task held the subject")
+	// The first run's hook task ends now, releasing its own hold and nothing else.
+	close(hookRelease)
+	deadline := time.After(5 * time.Second)
+	for {
+		e, _, _ := store.Get(prRef("1"))
+		rec := entity.Get(entity.Get(entity.Get(entity.Get(e.Payload, VerseRoot), CharterKey), "fix"), hookTrouble)
+		if entity.Str(rec, "chain") == "fix.onDone.onDone" {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("the hook's own task's failed hook never reached the subject: %v", entity.ToObj(e.Payload))
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	none("off its hook's task ending")
+	// The second task ends: its hook spawns again and writes nothing of the subject, so only the
+	// evaluation the hold owes can fire the rule, and it does.
+	endRuleTask()
+	next("fix.onDone")
+	next("fix")
+}
+
 // A HOOK THAT FAILS SAYS SO ON ITS SUBJECT, under its rule's own bookkeeping, and the next clean
 // hook of that rule about the subject takes it away. The task's record keeps its own `hook`
 // record as before; the subject's fields the author owns are not touched.

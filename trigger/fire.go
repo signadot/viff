@@ -233,8 +233,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 		e.tracef("%s: %s is suspended (%s); not firing", t.Name, subj, strings.Join(held, ", "))
 		return
 	}
-	if e.working(t, subj) {
-		e.tracef("%s: %s already has work running; not firing again", t.Name, subj)
+	if e.heldOff(t, subj) {
 		return
 	}
 	fl, ok := e.claimOrDefer(t.Name, subj, &oc)

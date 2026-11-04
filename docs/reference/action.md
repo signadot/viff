@@ -806,6 +806,18 @@ When the `spawn` of the action reaches a terminal status, the engine fires the m
 about the *same subject*, for exactly that task. The engine finds the hook through the registry
 of live tasks, keyed by task id. So a hook needs no `flow` match and no separate rule.
 
+**A hooked spawn holds its subject.** An action whose `spawn` carries a hook takes a claim on
+the rule and the subject when it fires, before it writes anything, and the rule does not fire
+about that subject again until the hook has run. The hook reads the subject as it is when the
+task ends ([Bindings](#bindings)), so what the firing wrote beside its spawn is what the hook
+finds, and no firing in between has written over it. The claim is a record in the store, as a
+sequence's run claim is, so a restart keeps it for a task that resumes and drops it for one that
+is orphaned. It comes off once the hook has written, whether the hook ran cleanly or failed. A
+firing about the subject that the hold refused is not lost: once the hook has run, the rule is
+evaluated about the subject again, at the head, if it still selects it. So a change made while
+the subject was held is seen then, and so is the hook's own write. A hold that refused nothing
+owes nothing, so a hook that writes nothing does not fire its rule again by itself.
+
 ```tony
 action:
   patch:  { stage: reviewing }

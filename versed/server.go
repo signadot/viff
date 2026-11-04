@@ -999,16 +999,23 @@ func (s *Server) reconcileClaims(resumed []resumedRun) {
 	}
 }
 
-// claimIsLive reports whether any resumed task belongs to the sequence this claim holds:
-// same subject, and a chain at or below the claim's own.
+// claimIsLive reports whether any resumed task belongs to the run this claim holds: same
+// subject, and a chain at or below the claim's own for a sequence, whose every element is a task
+// of the run; exactly the claim's own for a hooked spawn (mirror.ClaimOfSpawn), whose hooks'
+// spawns are held at chains of their own and release only those — a resumed `fix.onDone` task
+// must not keep `fix` held after it, or nothing would release it.
 func claimIsLive(claim entity.Entity, resumed []resumedRun) bool {
 	subject := entity.Str(claim.Payload, "flow")
 	chain := entity.Str(claim.Payload, "chain")
 	if subject == "" || chain == "" {
 		return false
 	}
+	exact := entity.Str(claim.Payload, mirror.ClaimOfField) == mirror.ClaimOfSpawn
 	for _, r := range resumed {
-		if r.subject == subject && trigger.ChainUnder(chain, r.chain) {
+		if r.subject != subject {
+			continue
+		}
+		if r.chain == chain || (!exact && trigger.ChainUnder(chain, r.chain)) {
 			return true
 		}
 	}

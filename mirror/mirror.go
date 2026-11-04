@@ -1095,6 +1095,17 @@ func preview(s string) string {
 // machinery, and the ignition guard is where machinery belongs.
 const ClaimKind = "claim"
 
+// ClaimOfField and ClaimOfSpawn: a claim's payload says `of: spawn` where it is a hooked
+// spawn's hold on its subject (trigger's applyOne) rather than a sequence's run claim. A
+// sequence's claim is kept alive across a restart by any resumed task at or below its chain,
+// since every element is a task of the run; a spawn's only by the task at its own chain, since
+// the hook's own spawns are held at chains of their own and release only those (versed's
+// claimIsLive).
+const (
+	ClaimOfField = "of"
+	ClaimOfSpawn = "spawn"
+)
+
 // ClaimRef is the entity a run is claimed at. The id is the spawn id, so the claim and the
 // task it guards share one address — there is nothing to keep in step.
 func ClaimRef(id string) entity.Ref { return entity.VerseRef(System, ClaimKind, id) }

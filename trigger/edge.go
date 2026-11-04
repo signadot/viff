@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/mirror"
 )
 
 // evaluate is THE firing rule, and the only one:
@@ -293,6 +294,95 @@ func (e *Engine) working(t Trigger, subj entity.Ref) bool {
 	defer e.liveMu.Unlock()
 	_, live := e.live[id]
 	return live
+}
+
+// heldForHook is working as the store knows it: whether a task of the top-level action's spawn
+// about subj holds the subject until its completion hook has run — the claim applyOne takes and
+// applyHook releases. Asked where working is, before the gates, and answered from the store
+// rather than the live registry, so it holds across a restart and through the moment between a
+// task ending and its hook writing, where the registry has already let the id go. The claim
+// itself settles a race; this spares a question on the docket for a firing it would refuse.
+func (e *Engine) heldForHook(t Trigger, subj entity.Ref) bool {
+	if !t.Action.hooked() {
+		return false
+	}
+	_, held, err := e.store.Get(mirror.ClaimRef(spawnID(e.idOwner(), chainID(t.Name), subj)))
+	return err == nil && held
+}
+
+// heldOff reports whether a hold refuses a firing of t about subj — a task of the rule's spawn
+// running (working), or standing between its end and its hook's write (heldForHook) — and
+// records the refusal where the hold's end takes it (released), for reconsider.
+//
+// A refused firing is a commit that touched what the rule reads while a task of its spawn held
+// the subject — a change somebody made meanwhile, or the hook's own write, whose firing can
+// arrive before the claim's release has landed. Dropped, that change would wait for the next
+// commit to touch the subject, which may never come. In memory only: a restart evaluates every
+// rule against what stands when it arms, which covers what a hold refused before it.
+//
+// CHECKED AND RECORDED UNDER ONE LOCK, the one released holds across its release and its take:
+// otherwise a release could land between this check seeing the hold and the record, and the
+// record would stand with nobody to take it. Recorded for a hooked spawn only: an unhooked
+// spawn's end takes nothing, so a record there would stand for ever and mean nothing.
+func (e *Engine) heldOff(t Trigger, subj entity.Ref) bool {
+	e.refusedMu.Lock()
+	defer e.refusedMu.Unlock()
+	held := false
+	if e.working(t, subj) {
+		e.tracef("%s: %s already has work running; not firing again", t.Name, subj)
+		held = true
+	} else if e.heldForHook(t, subj) {
+		e.tracef("%s: a task of its spawn holds %s until its hook has run; not firing", t.Name, subj)
+		held = true
+	}
+	if held && t.Action.hooked() {
+		if e.refused == nil {
+			e.refused = map[string]bool{}
+		}
+		e.refused[t.Name+"\x00"+subj.String()] = true
+	}
+	return held
+}
+
+// released drops a hooked spawn's claim on subj and, where the claim is the rule's own (its
+// top-level action's, the one firings are refused for), reports whether the hold refused a firing
+// of the rule about subj meanwhile, which the caller then owes the subject (reconsider). Under
+// the lock heldOff checks and records under, so no refusal slips between the two.
+//
+// A hook's own hooked spawn is held at a chain of its own, and its end takes nothing: the record
+// is the rule's, and a nested task ending while a second task of the rule runs would otherwise
+// wipe what that task's end is to take.
+func (e *Engine) released(chain string, subj entity.Ref, own bool) bool {
+	e.refusedMu.Lock()
+	defer e.refusedMu.Unlock()
+	e.releaseRun(chain, subj)
+	if !own {
+		return false
+	}
+	key := chain + "\x00" + subj.String()
+	was := e.refused[key]
+	delete(e.refused, key)
+	return was
+}
+
+// reconsider fires a rule about a subject it still selects, at the head: what a hold owes the
+// subject once it is off, for the firings it refused (heldOff). Nothing where the rule
+// no longer selects it — the hook's own patch is usually what took it out — and nothing where
+// no firing was refused, so a hook that writes nothing does not fire its rule again by itself:
+// a rule whose done path does not latch would otherwise run without end.
+func (e *Engine) reconsider(name string, subj entity.Ref) {
+	t, ok := e.triggerNamed(name)
+	if !ok || !e.selectsNow(t, subj) {
+		return
+	}
+	ctx := e.bgctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	oc := occasion{commit: entity.Commit{Rev: e.store.Head()}, snap: &snapCache{},
+		within: firingWithin(t), reader: e.reader(t.Name)}
+	e.tracef("%s: %s was held and has changed; firing at rev %d", t.Name, subj, oc.commit.Rev)
+	go e.fireOne(ctx, t, oc, subj)
 }
 
 // flight is one (trigger, subject) firing under way, and the questions it has in front of people

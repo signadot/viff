@@ -1,6 +1,7 @@
 package trigger
 
 import (
+	"errors"
 	"fmt"
 	"hash/fnv"
 
@@ -78,7 +79,7 @@ func (e *Engine) startSeq(chain string, carrier Action, oc occasion, subj entity
 	//
 	// The rule it teaches: every predicate guarding a decision must be evaluated UNDER the
 	// exclusive thing, or the exclusion guards nothing.
-	if !e.claimRun(chain, subj) {
+	if !e.claimRun(chain, subj, nil) {
 		e.tracef("seq %s: another run holds the claim for %s", chain, subj)
 		return
 	}
@@ -115,6 +116,14 @@ func (e *Engine) advanceSeq(chain string, carrier Action, i int, oc occasion, su
 		el := carrier.Seq[i]
 		elChain := seqChain(chain, i)
 		h, err := el.applyOne(elChain, oc, subj, e, src)
+		if errors.Is(err, errHeld) {
+			// The element's own hooked spawn is held — a task of it is still ending about this
+			// subject, its onFailed not yet run — which is no failure of the element and no element
+			// that ran: this run releases, and the next commit tries again.
+			e.tracef("seq %s: element %d is held (%v); sequence stops", chain, i, err)
+			e.releaseRun(chain, subj)
+			return
+		}
 		if err != nil && resumed {
 			e.failResumed(chain, elChain, oc, subj, err)
 			return
@@ -475,10 +484,17 @@ func chainUnder(prefix, target string) bool {
 //
 // It is held for the WHOLE sequence, not per element, which is what closes the gap between
 // elements where no task is live and the registry therefore had nothing to say.
-func (e *Engine) claimRun(chain string, subj entity.Ref) bool {
+//
+// A hooked spawn's hold on its subject is the same claim (applyOne), marked on its payload,
+// since a restart keeps the two alive by different rules (versed's claimIsLive): more is what
+// the mark adds.
+func (e *Engine) claimRun(chain string, subj entity.Ref, more entity.Obj) bool {
 	ref := mirror.ClaimRef(spawnID(e.idOwner(), chainID(chain), subj))
-	payload := entity.Obj{"flow": subj.String(), "chain": chain}.Payload()
-	won, _, err := e.store.Write(entity.Write{At: ref.At(), Value: payload, When: []entity.Require{entity.Created()}})
+	payload := entity.Obj{"flow": subj.String(), "chain": chain}
+	for k, v := range more {
+		payload[k] = v
+	}
+	won, _, err := e.store.Write(entity.Write{At: ref.At(), Value: payload.Payload(), When: []entity.Require{entity.Created()}})
 	if err != nil {
 		e.tracef("seq %s: claiming %s failed: %v", chain, ref, err)
 		return false

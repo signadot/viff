@@ -15,6 +15,7 @@
 package trigger
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"strings"
@@ -1018,6 +1019,9 @@ func (a Action) apply(chain string, oc occasion, subjects []entity.Ref, e *Engin
 	var first error
 	for _, subj := range subjects {
 		h, err := a.applyOne(chain, oc, subj, e, src)
+		if errors.Is(err, errHeld) {
+			continue // held, not failed: the hold's end owes the subject its evaluation (reconsider)
+		}
 		if err != nil {
 			if first == nil {
 				first = err
@@ -1045,6 +1049,47 @@ func (a Action) apply(chain string, oc occasion, subjects []entity.Ref, e *Engin
 // a sequence tell "this element is running" from "this element is already finished" — the
 // distinction advanceSeq turns on.
 func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, src refSource) (task.Handle, error) {
+	// A HOOKED SPAWN HOLDS ITS SUBJECT. An action whose spawn carries a completion hook takes a
+	// claim on (action, subject) before it writes anything, and the rule does not fire about
+	// the subject again until the hook has run: applyHook releases the claim on every path out,
+	// and nothing else does. The hook reads the subject as it is when the task ends, so what the
+	// firing wrote beside its spawn is what the hook finds — a firing in between would have
+	// written over it. The repo-charters `propose` rule writes the `seen` it asked about; fired
+	// again while the question stood, it would move that to a `seen` nobody was asked about.
+	//
+	// It is a sequence's run claim (claimRun), at this action's own chain: create-only in the
+	// store, so two firings that race settle there, and durable, so a restart finds it and
+	// versed's reconcileClaims keeps it exactly as long as the task it guards. fireOne asks the
+	// same question before the gates (heldForHook); this is the answer that cannot be raced.
+	hooked := a.hooked()
+	if hooked && !e.claimRun(chain, subj, entity.Obj{mirror.ClaimOfField: mirror.ClaimOfSpawn}) {
+		e.tracef("trigger %s: a task of this action holds %s until its hook has run; not firing", chain, subj)
+		return nil, errHeld
+	}
+	h, err := a.applyClaimed(chain, oc, subj, e, src)
+	// A claim outlives this call only on a task that will end: one started, or parked for a
+	// suspension to lift (launchSpawn), which starts then. Anything else — a reference that did
+	// not resolve, a write refused, no spawner — leaves no task to release it.
+	if hooked && h == nil && !e.parkedFor(chain, subj) {
+		e.releaseRun(chain, subj)
+	}
+	return h, err
+}
+
+// errHeld is applyOne's answer where the action's hooked spawn is held: a task of it is still
+// running about the subject, or ending with its hook not yet written. Not a failure of the
+// firing, which apply keeps off the rule, and not an element that ran, which advanceSeq would
+// otherwise take a nil handle for.
+var errHeld = errors.New("a task of this action holds the subject until its hook has run")
+
+// hooked reports whether the action spawns with a completion hook: the actions whose subject a
+// firing holds (applyOne) and whose task's end releases it (applyHook).
+func (a Action) hooked() bool {
+	return a.Spawn != nil && (a.OnDone != nil || a.OnFailed != nil || a.OnCancelled != nil || a.OnOrphaned != nil)
+}
+
+// applyClaimed is applyOne past the claim: the write, then the spawn.
+func (a Action) applyClaimed(chain string, oc occasion, subj entity.Ref, e *Engine, src refSource) (task.Handle, error) {
 	// What expressions read by name: the cause's payload for a hook, the subject's own otherwise.
 	// Resolved once, so a patch and a spawn in one action cannot disagree about what `x` means.
 	root := e.refPayload(oc.ev, subj, src)

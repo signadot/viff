@@ -224,6 +224,24 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	}
 	oc := occasion{ev: ev, commit: entity.Commit{Rev: e.store.Head()},
 		snap: &snapCache{}, within: hookWithin, reader: e.reader(hookOf)}
+	// THE SUBJECT IS RELEASED ONCE THE HOOK HAS RUN, however it ran: the claim the spawn took on
+	// it (applyOne) comes off on every path out of here, and the rule may fire about the subject
+	// again. After the hook's own writes, so that there is no moment in which the claim is free
+	// and what the hook had to say is unwritten (the order stopSeq keeps, for the same reason).
+	// A task adopted after its rule was removed has no hook to run and is released all the same,
+	// since nothing else would; one whose action spawned with no hook took no claim.
+	//
+	// AND WHAT THE HOLD REFUSED IS OWED: a firing refused while the task ran, or between its end
+	// and this release — the hook's own write is one, when its commit is dispatched before the
+	// release lands — is one evaluation at the head now (reconsider). For the rule's own action
+	// only: a hook's hooked spawn is held at its own chain, which no firing is refused for.
+	if serr == nil && fp.chain != "" && (fp.hooks == nil || fp.hooks.hooked()) {
+		defer func() {
+			if e.released(fp.chain, subject, fp.chain == hookOf) {
+				e.reconsider(hookOf, subject)
+			}
+		}()
+	}
 	// A completed SEQUENCE ELEMENT advances its sequence instead of firing a hook: the list
 	// already says what follows, which is why an element may not carry its own onDone. Only
 	// on `done` — any other terminal status is an off-ramp, and takes the hook path below so

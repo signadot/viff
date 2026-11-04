@@ -103,4 +103,21 @@ func TestClaimIsLive(t *testing.T) {
 			t.Errorf("%s: claimIsLive = %v, want %v", c.name, got, c.want)
 		}
 	}
+
+	// A hooked spawn's claim is kept by the task at its own chain and by nothing below it: a
+	// resumed task of its hook's own spawn releases only its own claim when it ends.
+	spawn := entity.Entity{Payload: entity.Obj{"flow": `demo.pr."1"`, "chain": "fix", mirror.ClaimOfField: mirror.ClaimOfSpawn}.Payload()}
+	for _, c := range []struct {
+		name string
+		res  []resumedRun
+		want bool
+	}{
+		{"the spawn's own task", []resumedRun{{`demo.pr."1"`, "fix"}}, true},
+		{"its hook's spawn", []resumedRun{{`demo.pr."1"`, "fix.onDone"}}, false},
+		{"another subject", []resumedRun{{`demo.pr."2"`, "fix"}}, false},
+	} {
+		if got := claimIsLive(spawn, c.res); got != c.want {
+			t.Errorf("%s: claimIsLive = %v, want %v", c.name, got, c.want)
+		}
+	}
 }

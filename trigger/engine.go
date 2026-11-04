@@ -128,6 +128,14 @@ type Engine struct {
 	flightMu sync.Mutex
 	inflight map[string]*flight
 
+	// refused holds the (trigger, subject) pairs a HOLD refused a firing of: a hooked task running
+	// (working), or standing between its end and its hook's write (heldForHook). The subject is
+	// owed one evaluation at the head once the hold is off (reconsider), so a change made while it
+	// was held is not lost. refusedMu covers the check that records (heldOff) and the release
+	// that takes (released), so neither slips between the other's two halves. See edge.go.
+	refusedMu sync.Mutex
+	refused   map[string]bool
+
 	// parked is the launches a suspension stopped at launchSpawn, in the order they arrived —
 	// a hook's or a sequence step's spawn about suspended work — each started when nothing
 	// holds it. It does not survive a restart. Guarded by parkMu.

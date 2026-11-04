@@ -864,6 +864,19 @@ func (e *Engine) park(l parkedLaunch) {
 	e.parkMu.Unlock()
 }
 
+// parkedFor reports whether a launch of chain about subj is parked: a hooked spawn's claim
+// stays with it (applyOne), since the lift starts the task, and the task's end releases it.
+func (e *Engine) parkedFor(chain string, subj entity.Ref) bool {
+	e.parkMu.Lock()
+	defer e.parkMu.Unlock()
+	for _, l := range e.parked {
+		if l.chain == chain && l.subj == subj {
+			return true
+		}
+	}
+	return false
+}
+
 // Parked is how many launches this engine is holding.
 func (e *Engine) Parked() int {
 	e.parkMu.Lock()
@@ -884,8 +897,14 @@ func (e *Engine) releaseLaunches() {
 			kept = append(kept, l)
 			continue
 		}
-		if _, err := e.launch(l.a, l.chain, l.subj, l.binding, l.occurrence, l.passed); err != nil {
+		h, err := e.launch(l.a, l.chain, l.subj, l.binding, l.occurrence, l.passed)
+		if err != nil {
 			e.logger.Warn("a parked launch did not start", "chain", l.chain, "subject", l.subj.String(), "err", err)
+		}
+		// The claim a hooked spawn took rode with the parked launch (applyOne); a launch that
+		// started nothing leaves no task to release it.
+		if l.a.hooked() && h == nil {
+			e.releaseRun(l.chain, l.subj)
 		}
 	}
 	if len(kept) > 0 {
