@@ -445,7 +445,14 @@ func (p *pump) apply(ev *logdapi.WatchEvent) {
 
 // emit hands every subscriber what the event just applied changed at its pattern, under p.mu.
 // state is whether that event was a State, whose changes are the net of every commit since
-// the last picture rather than one commit's own (Commit.resync).
+// the last picture rather than one commit's own (Commit.resync). patch is the event's delta, nil
+// for a State.
+//
+// A SUBSCRIBER CURRENT THROUGH THE COMMIT BEFORE gets the patch on its commit (Commit.delta),
+// rooted where Changes are, so Touches answers about a path from what the commit wrote rather
+// than from Changes, whose events stand at entity depth: a write to an entity's `stage` does not
+// touch that entity's `verse.charter`, though both are beneath the event. A subscriber walked from
+// further back gets none, since its Changes are the net of more than this patch.
 //
 // ONE WALK PER PATTERN among the subscribers current through prev: the changes are the same
 // for all of them, and only the since/resync bookkeeping is each one's, so they are handed
@@ -463,9 +470,13 @@ func (p *pump) apply(ev *logdapi.WatchEvent) {
 // A commit that changes nothing at a subscriber's pattern sends it nothing rather than an
 // empty commit: a consumer of one slice has no use for the revisions where its slice stood
 // still.
-func (p *pump) emit(state bool) {
+func (p *pump) emit(state bool, patch *ir.Node) {
 	root := p.s.root
 	after := childByKey(p.doc, root)
+	var delta *ir.Node // the patch as Commit.delta holds one: root stripped, nested to the watch's place
+	if !state && patch != nil {
+		delta = nestAt(patch, p.segs[1:])
+	}
 	shared := map[string][]Event{}
 	for _, sb := range p.subs {
 		// Nothing to say to one current through doc already (seeded silently at this very
@@ -491,7 +502,11 @@ func (p *pump) emit(state bool) {
 		} else {
 			changes = changesAt(sb.pattern, childByKey(sb.prev, root), after, nil, p.rev)
 		}
-		p.send(sb, changes, state || sb.prev != p.prev)
+		if sb.prev == p.prev {
+			p.send(sb, changes, state, delta)
+		} else {
+			p.send(sb, changes, true, nil)
+		}
 	}
 	p.prev = p.doc
 }
@@ -501,16 +516,17 @@ func (p *pump) emit(state bool) {
 // of itself (Commit.resync).
 func (p *pump) deliver(sb *sub, resync bool) {
 	root := p.s.root
-	p.send(sb, changesAt(sb.pattern, childByKey(sb.prev, root), childByKey(p.doc, root), nil, p.rev), resync)
+	p.send(sb, changesAt(sb.pattern, childByKey(sb.prev, root), childByKey(p.doc, root), nil, p.rev), resync, nil)
 }
 
 // send hands sb changes at doc without waiting: a subscriber that cannot take them, on its
 // channel or in its backlog, is marked dropped, to be tried again by the reseed, and no change
 // marks it current. A subscriber brought current that owes a progress mark is handed it here,
-// at the commit it is now current through.
-func (p *pump) send(sb *sub, changes []Event, resync bool) {
+// at the commit it is now current through. delta, where not nil, is the commit's own change
+// (see emit).
+func (p *pump) send(sb *sub, changes []Event, resync bool, delta *ir.Node) {
 	if len(changes) > 0 {
-		if !p.hand(sb, Commit{Rev: p.rev, Changes: changes, since: sb.sent, resync: resync}) {
+		if !p.hand(sb, Commit{Rev: p.rev, Changes: changes, since: sb.sent, resync: resync, delta: delta}) {
 			sb.dropped = true
 			p.reseed = true
 			return
@@ -710,7 +726,7 @@ func (p *pump) run() {
 		if ev.Patch == nil {
 			p.setPhase(WatchOpen, nil) // the picture is in: Open, and its subscribers Ready
 		}
-		p.emit(ev.Patch == nil)
+		p.emit(ev.Patch == nil, ev.Patch)
 	}
 	// A watch can die WITHOUT SAYING SO, and then this loop would wait on a channel nothing
 	// will ever send to again. See subtreeHealAfter: the heal timer is what bounds how long

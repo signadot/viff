@@ -174,8 +174,8 @@ func unionNames(a, b *ir.Node) []string {
 //
 // From the delta where the commit carries one: the pattern is walked through it, and it touches
 // wherever the delta holds something along the way — a merge reaching the pattern's end, or a
-// replacement at or above it. A commit with no delta (a subtree watch's) answers from its
-// Changes. Either way what the reader may not see is left out (Only).
+// replacement at or above it, a `..` reaching any depth. A commit with no delta (a subtree
+// watch's opening picture or resync) answers from its Changes. Either way what the reader may not see is left out (Only).
 func (c Commit) Touches(pattern *kpath.KPath) bool {
 	if c.delta == nil {
 		segs := KPathSegments(pattern)
@@ -220,7 +220,19 @@ func (c Commit) touches(kp *kpath.KPath, segs []string, delta *ir.Node) bool {
 		return visible()
 	}
 	if kp.Descend {
-		return visible() // every depth beneath here: whatever the delta holds under it counts
+		if kp.Next == nil {
+			return visible() // every depth beneath here: whatever the delta holds under it counts
+		}
+		// `..` then more: zero segments here, or one more name with the descent still standing.
+		if c.touches(kp.Next, segs, delta) {
+			return true
+		}
+		for i, f := range merge.Fields {
+			if c.touches(kp, append(append(make([]string, 0, len(segs)+1), segs...), fieldName(f)), merge.Values[i]) {
+				return true
+			}
+		}
+		return false
 	}
 	if kp.Field == nil && !kp.FieldAll {
 		return visible() // an access into an array: the node holding it is what is touched

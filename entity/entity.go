@@ -326,8 +326,9 @@ type Commit struct {
 	//
 	// Unexported because the delta's ENCODING is the store's — a merge, a `!replace`, a
 	// `!delete`, a field order — and nothing outside this package should learn to read one. A
-	// commit that carries none (a subtree watch's, which diffs a reconstructed document rather
-	// than reading the delta) answers from Changes instead.
+	// subtree watch's commit carries the patch it applied where its Changes are that patch's own
+	// (see pump.emit). A commit that carries none (a watch's opening picture or resync, whose
+	// Changes are the net of more than one commit) answers from Changes instead.
 	delta *ir.Node
 	// hidden, when set, is what this commit's reader may not see: Touches leaves those
 	// addresses out, as Only left them out of Changes, so a consumer asking either question
@@ -360,6 +361,12 @@ func (c Commit) Only(keep func(Ref) bool) Commit {
 	c.hidden = func(r Ref) bool { return !keep(r) || (prior != nil && prior(r)) }
 	return c
 }
+
+// Net reports whether the commit's Changes are the net of more than its own change: a subtree
+// watch's opening picture, or one re-established, whose Changes were taken against an older copy
+// or against nothing rather than against the verse just before Rev. Comparing such a commit with
+// the commit before it does not say what it changed for its consumer.
+func (c Commit) Net() bool { return c.resync }
 
 // WithDelta is the store stamping the change it received onto the commit it emits, so a
 // consumer can ask Touches about a path Changes was not built for. Package-internal by
