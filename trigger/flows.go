@@ -228,14 +228,17 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	// it (applyOne) comes off on every path out of here, and the rule may fire about the subject
 	// again. After the hook's own writes, so that there is no moment in which the claim is free
 	// and what the hook had to say is unwritten (the order stopSeq keeps, for the same reason).
-	// A task adopted after its rule was removed has no hook to run and is released all the same,
-	// since nothing else would; one whose action spawned with no hook took no claim.
+	// Released whether or not the action still carries a hook: AdoptChain rehydrates the hooks
+	// from the charter as it is now, so a hook removed while its task ran and a restart in
+	// between would leave the claim standing until the next restart's reconcile, and the rule
+	// refusing the subject once the hook is added back. A claim that is not there deletes as a
+	// no-op, and a sequence's run claim lives at the carrier's chain, never at a task's.
 	//
 	// AND WHAT THE HOLD REFUSED IS OWED: a firing refused while the task ran, or between its end
 	// and this release — the hook's own write is one, when its commit is dispatched before the
 	// release lands — is one evaluation at the head now (reconsider). For the rule's own action
 	// only: a hook's hooked spawn is held at its own chain, which no firing is refused for.
-	if serr == nil && fp.chain != "" && (fp.hooks == nil || fp.hooks.hooked()) {
+	if serr == nil && fp.chain != "" {
 		defer func() {
 			if e.released(fp.chain, subject, fp.chain == hookOf) {
 				e.reconsider(hookOf, subject)

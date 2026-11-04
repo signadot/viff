@@ -812,7 +812,9 @@ about that subject again until the hook has run. The hook reads the subject as i
 task ends ([Bindings](#bindings)), so what the firing wrote beside its spawn is what the hook
 finds, and no firing in between has written over it. The claim is a record in the store, as a
 sequence's run claim is, so a restart keeps it for a task that resumes and drops it for one that
-is orphaned. It comes off once the hook has written, whether the hook ran cleanly or failed. A
+is orphaned. It comes off once the hook has written, whether the hook ran cleanly or failed, and
+whether or not the action still carries the hook. A completion the engine missed leaves the
+subject held until a restart, whose reconcile drops the claim of a task that did not resume. A
 firing about the subject that the hold refused is not lost: once the hook has run, the rule is
 evaluated about the subject again, at the head, if it still selects it. So a change made while
 the subject was held is seen then, and so is the hook's own write. A hold that refused nothing
