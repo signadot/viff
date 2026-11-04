@@ -85,6 +85,10 @@ func (e *Engine) evaluate(ctx context.Context, t Trigger, c entity.Commit) {
 		e.unread(t.Name, c.Rev, err)
 		return
 	}
+	if e.onlyOwnBookkeeping(t, c, store, paths(reads), now) {
+		e.tracef("%s: rev %d changed only its own bookkeeping; not a cause", t.Name, c.Rev)
+		return
+	}
 	if t.Condition.On != nil {
 		if ok, _ := t.Condition.On.Eval(now); !ok {
 			return // the cause does not hold here, so there is no edge to have risen

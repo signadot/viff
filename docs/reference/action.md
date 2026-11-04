@@ -983,6 +983,32 @@ until its declared shape changes, as after an off-ramp. A clean hook or element 
 removes `hook`. An element that fails while the rule fires, before any task of the sequence has
 run, is not recorded. That run stops, and the next firing tries again.
 
+What the engine writes under `verse.charter.<rule>` does not wake that rule. A commit whose only
+change to what the rule reads is under its own `verse.charter.<rule>` (its sequence's position,
+its `hook` record) does not fire it. So a rule whose spawn has no patch beside it, and whose
+subject still matches when its hook fails, is not fired again by the record of that failure. It
+runs again when something else about the subject changes. Other rules are woken by the record as
+by any change. A subject at any depth works the same way, `demo..pr` included.
+
+The check costs one read of what the rule reads at the commit before. It is paid only on a
+commit that writes under the rule's own `verse.charter.<rule>` on a subject. A subject is written
+whole, so that is every write of a subject the rule has a record on: every write of a subject
+partway through the rule's sequence, and every write of a subject with a failed `hook` standing,
+until a clean hook removes it. A write of a subject where the rule has written nothing costs
+nothing more, whether versed watches the whole verse or each rule's subtrees.
+
+A charter can match on `hook`, for example
+to ask a person when `fix`'s hook was lost:
+
+```tony
+subject:
+  path: "demo.pr.*"
+  value:
+    verse:
+      charter:
+        fix: { hook: { chain: fix.onDone } }
+```
+
 A join reads the position at whatever depth it needs:
 
 ```tony

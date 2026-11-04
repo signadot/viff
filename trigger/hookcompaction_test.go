@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -391,5 +392,139 @@ func TestASequenceStepThatFailsOffACompletionEndsAndSaysWhy(t *testing.T) {
 			t.Fatalf("the completed task's record has no failed `hook`: %v", entity.ToObj(e.Payload))
 		case <-time.After(10 * time.Millisecond):
 		}
+	}
+}
+
+// A RULE'S OWN RECORD OF A FAILED HOOK DOES NOT FIRE IT AGAIN. The rule spawns with no patch beside
+// it and its onDone advances the subject, so nothing latches it: the subject still matches when
+// the hook fails. The failure is written on the subject under verse.charter.fix, and that commit,
+// whose only change is the rule's own bookkeeping, woke the rule, which spawned again, whose hook
+// failed again, without end. One task.
+func TestAFailedHooksRecordDoesNotRefireItsRule(t *testing.T) {
+	// A subject named through a wildcard, and one through a descent (review round 3: a `..` read
+	// as a name made the check never answer, and the loop came back for it).
+	for _, tc := range []struct {
+		name, path string
+		at         entity.Ref
+	}{
+		{"wildcard", "demo.pr.*", prRef("1")},
+		{"descent", "demo..pr", entity.RefAt("demo", "a", "pr")},
+	} {
+		t.Run(tc.name, func(t *testing.T) { failedHookDoesNotRefire(t, tc.path, tc.at) })
+	}
+}
+
+func failedHookDoesNotRefire(t *testing.T, path string, at entity.Ref) {
+	store := entitytest.Store(t)
+	eng := New(store, task.AutoResolver{})
+	var mu sync.Mutex
+	spawns := 0
+	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
+		mu.Lock()
+		spawns++
+		mu.Unlock()
+		sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
+		p := task.NewTask(id, sup, structured{r: `{nothing: here}`}, noExec{})
+		mirror.Reflect(store, id, p, mirror.Meta{Subject: spec.Subject, Runner: "local", Chain: spec.Chain,
+			Prompt: spec.Prompt, Occurrence: spec.Occurrence})
+		go p.Run(context.Background())
+		return p
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.ObserveScoped(ctx)
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: fix
+  condition:
+    subject: {path: "`+path+`", value: {stage: open}}
+  action:
+    spawn:
+      prompt: "fix it"
+      autonomy: [{then: allow}]
+    onDone:
+      patch: {stage: .[data.verdict]}
+`)); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	entitytest.Set(t, store, at, entity.Obj{"stage": "open"}.Payload())
+
+	// The hook fails and says so on the subject; then the rule has had its chance to fire again.
+	deadline := time.After(5 * time.Second)
+	for {
+		e, _, _ := store.Get(at)
+		if entity.Get(entity.Get(entity.Get(entity.Get(e.Payload, VerseRoot), CharterKey), "fix"), hookTrouble) != nil {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("the failed hook left nothing on its subject: %v", e.Payload)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	time.Sleep(3 * time.Second)
+	mu.Lock()
+	defer mu.Unlock()
+	if spawns != 1 {
+		t.Errorf("%d tasks spawned about one subject; the rule's own failure record must not fire it again", spawns)
+	}
+}
+
+// TestOnlyABookkeepingWriteAsksTheCommitBefore is the check's stated cost under scoped observation,
+// which is how versed observes: a commit of a subtree watch that writes a subject's own fields
+// does not reach the rule's verse.charter.<rule>, so the rule does not read the commit before for
+// it. One that writes the rule's record there does, and so does every write of the subject while
+// the record stands (review round 3: a watch's commit carried no
+// delta, Touches answered from its entity-depth events, and every subject commit paid the read).
+func TestOnlyABookkeepingWriteAsksTheCommitBefore(t *testing.T) {
+	store := entitytest.Store(t)
+	for _, tc := range []struct {
+		name, path string
+		at         entity.Ref
+		sub        []string
+	}{
+		{"wildcard", "demo.pr.*", prRef("1"), []string{"demo", "pr"}},
+		{"descent", "demo..pr", entity.RefAt("demo", "b", "pr"), []string{"demo"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ch, unsub, err := store.WatchSubtree(len(tc.sub)+1, tc.sub...)
+			if err != nil {
+				t.Fatalf("WatchSubtree: %v", err)
+			}
+			defer unsub()
+			trs := mustParseCharter(t, `
+- name: fix
+  condition:
+    subject: {path: "`+tc.path+`", value: {stage: open}}
+  action:
+    patch: {stage: fixing}
+`)
+			kp := ownBookkeepingPattern(trs)
+			next := func() entity.Commit {
+				t.Helper()
+				select {
+				case c := <-ch:
+					return c
+				case <-time.After(5 * time.Second):
+					t.Fatal("no commit from the watch")
+				}
+				return entity.Commit{}
+			}
+			entitytest.Set(t, store, tc.at, entity.Obj{"stage": "open"}.Payload())
+			if c := next(); !c.Net() && c.Touches(kp) {
+				t.Errorf("a write of the subject's stage (rev %d) reaches the rule's own bookkeeping", c.Rev)
+			}
+			entitytest.Set(t, store, tc.at, entity.Obj{"stage": "open",
+				VerseRoot: entity.Obj{CharterKey: entity.Obj{"fix": entity.Obj{hookTrouble: entity.Obj{"err": "lost"}}}}}.Payload())
+			if c := next(); c.Net() || !c.Touches(kp) {
+				t.Errorf("a write of the rule's own record (rev %d, net %v) does not reach its bookkeeping", c.Rev, c.Net())
+			}
+			entitytest.Set(t, store, tc.at, entity.Obj{"stage": "closed",
+				VerseRoot: entity.Obj{CharterKey: entity.Obj{"fix": entity.Obj{hookTrouble: entity.Obj{"err": "lost"}}}}}.Payload())
+			// The cost as stated: a subject is written whole, so while the record stands every write
+			// of the subject names it, and pays the read at the commit before.
+			if c := next(); !c.Touches(kp) {
+				t.Errorf("a write of a subject with its record standing (rev %d) does not reach the rule's bookkeeping", c.Rev)
+			}
+		})
 	}
 }
