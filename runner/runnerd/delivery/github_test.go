@@ -30,7 +30,7 @@ func TestOpenGitHubPROpensOnceAndThenFinds(t *testing.T) {
 		}
 		switch r.Method {
 		case http.MethodGet:
-			if r.URL.Query().Get("head") != "signadot:verse/train" || r.URL.Query().Get("state") != "open" {
+			if r.URL.Query().Get("head") != "example:verse/train" || r.URL.Query().Get("state") != "open" {
 				t.Errorf("listed with %q — not this head's open pull requests", r.URL.RawQuery)
 			}
 			json.NewEncoder(w).Encode(open)
@@ -44,7 +44,7 @@ func TestOpenGitHubPROpensOnceAndThenFinds(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	spec := GitHubPR{API: srv.URL, Owner: "signadot", Repo: "signadot", Head: "verse/train",
+	spec := GitHubPR{API: srv.URL, Owner: "example", Repo: "app", Head: "verse/train",
 		Base: "master", Title: "drift", Body: "the train"}
 
 	out, err := OpenGitHubPR(context.Background(), srv.Client(), "tok", spec)
@@ -79,11 +79,11 @@ func TestOpenGitHubPROpensOnceAndThenFinds(t *testing.T) {
 func TestRepoPathIsAForgesOrNothing(t *testing.T) {
 	for _, url := range []string{"https://github.com/example/app.git", "https://ghe.corp/example/app"} {
 		owner, name, err := RepoPath(url)
-		if err != nil || owner != "signadot" || name != "signadot" {
+		if err != nil || owner != "example" || name != "app" {
 			t.Fatalf("%s: %s %s %v", url, owner, name, err)
 		}
 	}
-	for _, bad := range []string{".", "/tmp/x.git", "https://github.com/signadot"} {
+	for _, bad := range []string{".", "/tmp/x.git", "https://github.com/example"} {
 		if _, _, err := RepoPath(bad); err == nil {
 			t.Errorf("%q resolved to a repository at a forge", bad)
 		}
@@ -109,7 +109,7 @@ func TestUpdateGitHubPRChangesTheOpenOneOrRefuses(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	spec := GitHubPR{API: srv.URL, Owner: "signadot", Repo: "signadot", Head: "verse/train", Title: "retitled"}
+	spec := GitHubPR{API: srv.URL, Owner: "example", Repo: "app", Head: "verse/train", Title: "retitled"}
 	if _, err := UpdateGitHubPR(context.Background(), srv.Client(), "tok", spec); err == nil || !strings.Contains(err.Error(), "no pull request is open") {
 		t.Fatalf("updating with none open: %v", err)
 	}
@@ -274,8 +274,8 @@ func TestOpenGitHubPROpensADraft(t *testing.T) {
 		w.Write([]byte(`{"number": 9, "html_url": "https://github.com/example/app/pull/9"}`))
 	}))
 	defer srv.Close()
-	out, err := OpenGitHubPR(context.Background(), srv.Client(), "tok", GitHubPR{API: srv.URL, Owner: "signadot",
-		Repo: "signadot", Head: "verse/sso", Base: "master", Title: "sso", Draft: true})
+	out, err := OpenGitHubPR(context.Background(), srv.Client(), "tok", GitHubPR{API: srv.URL, Owner: "example",
+		Repo: "app", Head: "verse/sso", Base: "master", Title: "sso", Draft: true})
 	if err != nil {
 		t.Fatal(err)
 	}

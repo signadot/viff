@@ -210,7 +210,7 @@ func TestAnIssueToolsStepNamesItsTracker(t *testing.T) {
 		in := map[string]any{"title": "t", "repo": "l", "issue": "7", "body": "b"}
 		switch {
 		case strings.HasPrefix(tl.Name, "github-"):
-			in["repo"] = "signadot"
+			in["repo"] = "app"
 		case strings.HasPrefix(tl.Name, "linear-"):
 			delete(in, "repo")
 			in["team"], in["issue"] = "eng", "eng-42"
@@ -229,10 +229,10 @@ func TestAnIssueToolsStepNamesItsTracker(t *testing.T) {
 	for i, tl := range tools {
 		byName[tl.Name] = i
 	}
-	if gh := tools[byName[githubIssueCreateTool]]; !strings.Contains(gh.Description, "Repositories: signadot, l.") || strings.Join(gh.Required, ",") != "repo,title" {
+	if gh := tools[byName[githubIssueCreateTool]]; !strings.Contains(gh.Description, "Repositories: app, l.") || strings.Join(gh.Required, ",") != "repo,title" {
 		t.Errorf("github-issue-create offers %q requiring %v, want every repository of a GitHub forge", gh.Description, gh.Required)
 	}
-	if gi := tools[byName[gitIssueCreateTool]]; !strings.Contains(gi.Description, "Repositories: signadot, l.") || strings.Join(gi.Required, ",") != "repo,title" {
+	if gi := tools[byName[gitIssueCreateTool]]; !strings.Contains(gi.Description, "Repositories: app, l.") || strings.Join(gi.Required, ",") != "repo,title" {
 		t.Errorf("git-issue-create offers %q requiring %v", gi.Description, gi.Required)
 	}
 	for _, tl := range issueTools(cl, ws, trackers, true, false) {

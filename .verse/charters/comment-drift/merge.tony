@@ -58,7 +58,7 @@ rules:
   condition:
     subject:
       # THIS repository's, because the git source mirrors more than one and each mirror's refs
-      # stand under its own place: example/app's deliveries are named the same way and
+      # stand under its own place: another repository's deliveries are named the same way and
       # belong to the charter for that repository, which reaches them through an environment this
       # file's cannot.
       path: "git.verse.ref.*"
