@@ -5,7 +5,7 @@
 # write that would close a loop ACROSS levels; recursion inside a level is exactly what a
 # level ordering permits, and what the cycle throttle is for. See docs/strata.md.
 #
-#   scripts/level-ping-pong.sh          # brings up an isolated verse and watches it
+#   test/level-ping-pong.sh          # brings up an isolated verse and watches it
 #
 # The shape:
 #

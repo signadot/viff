@@ -53,7 +53,7 @@ the repository, and it is reviewed like any other change.
   install.
 
 The reconciler is itself a charter that verse ships.
-[Its text](../system/repocharters/charter.tony.tmpl) explains all of this in its comments, and a
+[Its text](../internal/repocharters/charter.tony.tmpl) explains all of this in its comments, and a
 deployment installs [a rendering of it](reference/examples/repo-charters/repo-charters.tony).
 
 ## The GitHub App

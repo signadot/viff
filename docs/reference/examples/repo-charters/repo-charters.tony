@@ -1,6 +1,6 @@
 # The reconciler of a repository's charters, for the repository `verse` (git-issue dzxn44gw;
 # the design is j5vbwvja and its parts, and the decision on j5vbwvja: the gate is the install,
-# not the merge). RENDERED by system/repocharters from charter.tony.tmpl: edit the template.
+# not the merge). RENDERED by internal/repocharters from charter.tony.tmpl: edit the template.
 #
 # MAIN, in what follows and in the records' names, is the branch the repository's charters
 # follow, which for this rendering is `main`.
@@ -40,7 +40,7 @@
 # request names it.
 #
 # THE ANSWER is read as text, `<principal> chose <option>` with `: <words>` after it: the option is
-# the word after the principal, so the words never read as a choice (system/repocharters,
+# the word after the principal, so the words never read as a choice (internal/repocharters,
 # answeredProceed).
 #
 # ON THE PULL REQUEST TO MAIN, first: a pull request to main that changes the charters (the github

@@ -3,7 +3,7 @@
 # Built via `make claude-runner-docker`; it COPYs the same locally cross-compiled runnerd the
 # other images do, for the reason that Dockerfile gives. It is a separate image because what it
 # adds is sized by a different thing again: a three-hundred-megabyte agent binary pinned to the
-# version the claude agent was written against (runner/runnerd/claude), which neither the
+# version the claude agent was written against (pkg/runner/runnerd/claude), which neither the
 # runtime image nor the plain runner has any reason to carry.
 FROM debian:bookworm-slim
 ARG TARGETARCH

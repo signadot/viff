@@ -38,11 +38,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signadot/verse/adminface"
-	"github.com/signadot/verse/client"
-	"github.com/signadot/verse/entity"
-	verseio "github.com/signadot/verse/io"
-	verseiod "github.com/signadot/verse/io/iod"
+	"github.com/signadot/verse/internal/adminface"
+	"github.com/signadot/verse/pkg/client"
+	"github.com/signadot/verse/pkg/entity"
+	verseio "github.com/signadot/verse/pkg/io"
+	verseiod "github.com/signadot/verse/pkg/io/iod"
 )
 
 func main() {

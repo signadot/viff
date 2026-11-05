@@ -6,8 +6,8 @@ import (
 
 	"github.com/scott-cotton/cli"
 
-	"github.com/signadot/verse/api"
-	"github.com/signadot/verse/schedule"
+	"github.com/signadot/verse/pkg/api"
+	"github.com/signadot/verse/pkg/schedule"
 )
 
 // verse schedule: the schedules a verse ticks on. Bare, it lists every record with its period,

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	verseio "github.com/signadot/verse/io"
-	"github.com/signadot/verse/io/github"
+	verseio "github.com/signadot/verse/pkg/io"
+	"github.com/signadot/verse/pkg/io/github"
 )
 
 // The git source, served rather than run in task.
@@ -105,7 +105,7 @@ func gitMain(args []string) error {
 	if *out {
 		sink := git.Sink()
 		// An install input installs a tree of charters into the verse, as this io
-		// (io/gitinstall.go): the one client proves it at the door and makes the request.
+		// (pkg/io/gitinstall.go): the one client proves it at the door and makes the request.
 		sink.Verse = c.outClient(git.Root())
 		sink.As = c.principal(git.Root())
 		if _, err := c.outHalf(ctx, git.Root(), sink, git.OutRefs(), sink.Verse); err != nil {

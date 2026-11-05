@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/entity"
-	verseio "github.com/signadot/verse/io"
-	verseiod "github.com/signadot/verse/io/iod"
+	"github.com/signadot/verse/pkg/entity"
+	verseio "github.com/signadot/verse/pkg/io"
+	verseiod "github.com/signadot/verse/pkg/io/iod"
 )
 
 // sourceFace is a real source for the client to install: the same iod handler verse's own

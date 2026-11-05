@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/runner/runnerd/calltool"
+	"github.com/signadot/verse/pkg/runner/runnerd/calltool"
 )
 
 // A tool set shaped like the runner's: push with an enum and a boolean, ask with a required

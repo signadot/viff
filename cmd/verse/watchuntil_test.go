@@ -7,8 +7,8 @@ import (
 
 	"github.com/scott-cotton/cli"
 
-	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/pkg/codec"
+	"github.com/signadot/verse/pkg/entity"
 )
 
 // A FRAME, as the server sends one. --until is matched against this and not against the

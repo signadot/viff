@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/pkg/entity"
 )
 
 // A DEPTH IS COUNTED FROM THE ADDRESS, which is what makes the same number readable at every

@@ -16,7 +16,7 @@ import (
 
 	"github.com/scott-cotton/cli"
 
-	"github.com/signadot/verse/config"
+	"github.com/signadot/verse/internal/config"
 )
 
 // docdAddrFile is where, in the data dir, verse records the client face of the docd it started,

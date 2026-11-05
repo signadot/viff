@@ -24,10 +24,10 @@ import (
 	"github.com/scott-cotton/cli"
 	"golang.org/x/oauth2"
 
-	"github.com/signadot/verse/api"
-	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/config"
-	verseio "github.com/signadot/verse/io"
+	"github.com/signadot/verse/internal/config"
+	"github.com/signadot/verse/pkg/api"
+	"github.com/signadot/verse/pkg/codec"
+	verseio "github.com/signadot/verse/pkg/io"
 )
 
 // Logging in: the CLI proves who is at the keyboard to an identity provider the verse names, and

@@ -15,7 +15,7 @@
 # installer, and a person's ask is read only by whom it asks and who may read what it is about
 # (docs/asking.md): installed by anybody else, the rule would not see the asks put to people.
 
-# The docket's own stratum is the system's, `asks` (versed/system.tony), which every verse has; the
+# The docket's own stratum is the system's, `asks` (internal/versed/system.tony), which every verse has; the
 # messages go strictly above it.
 strata:
 - name: gate-asked
@@ -35,7 +35,7 @@ rules:
     #
     # `to: {grantees: null}` is a PRESENCE test and reads backwards at first glance: a null in a
     # predicate matches any value, so the only thing it constrains is that the field is there.
-    # "Absent" is the other spelling, `!not {to: {grantees: null}}` (trigger/match.go).
+    # "Absent" is the other spelling, `!not {to: {grantees: null}}` (internal/trigger/match.go).
     #
     # And NOT ONE FOR A CHANNEL: an ask carrying a `slack` label is put to a channel, once, by
     # gate-ask-channel, and messages nobody in particular.

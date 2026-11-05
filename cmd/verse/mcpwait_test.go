@@ -9,7 +9,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/pkg/mirror"
 )
 
 // waitCall is one verse_wait: what it said, the cursor it answered, and whether it was an error.

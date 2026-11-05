@@ -71,7 +71,7 @@ dist-linux: ## cross-compile verse + o + iod + runnerd + verse-call-tool for lin
 
 .PHONY: docker
 docker: dist-linux ## build the image, COPYing the pre-built linux binaries (no go build in docker)
-	$(DOCKER) build --platform linux/$(IMAGE_ARCH) --build-arg TARGETARCH=$(IMAGE_ARCH) -t $(IMAGE) .
+	$(DOCKER) build --platform linux/$(IMAGE_ARCH) --build-arg TARGETARCH=$(IMAGE_ARCH) -t $(IMAGE) -f build/Dockerfile .
 
 # The verse runner is its OWN image and its own target. It is not folded into `docker` because the
 # two images have nothing to do with each other's cadence: the runtime image is thin and pinned
@@ -219,7 +219,7 @@ deploy: ## render deploy/ and kubectl apply (PROFILE=minikube|eks|<path to a pro
 # via codec=custom — so it joins once those exist, not before.
 #
 # Codegen is deliberately NOT a dependency of `bin`/`dist-linux`: keeping it out of the
-# build path is what lets the Dockerfile just COPY binaries.
+# build path is what lets build/Dockerfile just COPY binaries.
 .PHONY: generate
 generate: ## regenerate tony codegen (currently a no-op — see the note above)
 	$(GO) generate ./...
@@ -279,7 +279,7 @@ check-mermaid: ## fail if a ```mermaid block does not parse (skips if node is ab
 # validation levels say. So its message is matched here, and that line is the failure.
 #
 # It skips loudly when mkdocs is absent, for the reason check-mermaid skips without node: `make
-# check` stays runnable on a machine with nothing but Go. `pip install -r requirements.txt`.
+# check` stays runnable on a machine with nothing but Go. `pip install -r docs/requirements.txt`.
 .PHONY: check-docs
 check-docs: ## fail if the docs do not build (skips if mkdocs is absent)
 	@if command -v mkdocs >/dev/null 2>&1; then \
@@ -287,15 +287,27 @@ check-docs: ## fail if the docs do not build (skips if mkdocs is absent)
 		if echo "$$out" | grep 'excluded from the built site'; then exit 1; fi; \
 		echo "the docs build"; \
 	else \
-		echo "mkdocs absent — skipping the docs build (pip install -r requirements.txt)"; \
+		echo "mkdocs absent — skipping the docs build (pip install -r docs/requirements.txt)"; \
 	fi
 
+# pkg/ is what a program outside the verse imports; internal/ is versed's own. The compiler does
+# not stop one from importing the other inside the module, so this does: the dependency closure
+# of pkg/ must hold nothing from internal/. Anchored on the module path, because stdlib and
+# third-party packages have internal/ directories of their own. It reads what an importer
+# compiles, not the tests: tests under pkg/ do stand up a versed through internal/versed's test
+# helpers, and nothing outside the module ever builds those.
+.PHONY: check-layers
+check-layers: ## fail if a package under pkg/ depends on one under internal/
+	@bad="$$($(GO) list -deps ./pkg/... | grep 'github.com/signadot/verse/internal/' || true)"; \
+	  [ -z "$$bad" ] || { echo "pkg/ imports internal/:"; echo "$$bad" | sed 's/^/  /'; exit 1; }
+	@echo "pkg/ imports nothing from internal/"
+
 .PHONY: check
-check: check-generate check-json check-mermaid check-docs ## every static check (what CI should run before the tests)
+check: check-generate check-json check-layers check-mermaid check-docs ## every static check (what CI should run before the tests)
 
 .PHONY: smoke
 smoke: ## end-to-end smoke of the core surfaces (isolated in-memory server on an ephemeral port)
-	@./smoke.sh
+	@./test/smoke.sh
 
 # Note the difference from smoke: smoke builds its own binaries and its own server and
 # reaps both; this one writes into YOUR running verse and leaves it there to play with.
@@ -324,8 +336,8 @@ lineage: ## seed a RUNNING verse with a commit → PR → release chain (./scrip
 # every existing client and `curl | jq` still uses. This is the target CI should call.
 .PHONY: smoke-all
 smoke-all: ## smoke under both renderings (tony default, then VERSE_OUTPUT_FORMAT=yaml)
-	@./smoke.sh
-	@VERSE_OUTPUT_FORMAT=yaml ./smoke.sh
+	@./test/smoke.sh
+	@VERSE_OUTPUT_FORMAT=yaml ./test/smoke.sh
 
 .PHONY: clean
 clean: ## remove dist/

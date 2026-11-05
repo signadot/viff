@@ -59,7 +59,7 @@ func TestValidateAdvertiseNeedsItsFace(t *testing.T) {
 }
 
 // VERSE_LOG turns the engine's trace on, and says so when it is asked for something that is not
-// a level. Every `tracef` in trigger/ is wired to slog Debug and nothing turned Debug on, so the
+// a level. Every `tracef` in internal/trigger/ is wired to slog Debug and nothing turned Debug on, so the
 // whole trace — which rule was evaluated at which commit, why a firing did not happen — was
 // unreachable from a running verse. A rule that silently does not fire is the hardest thing a
 // charter can do, and the tool for it was built and not connected.

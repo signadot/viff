@@ -9,10 +9,10 @@ import (
 
 	"github.com/scott-cotton/cli"
 
-	"github.com/signadot/verse/api"
-	"github.com/signadot/verse/client"
-	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/pkg/api"
+	"github.com/signadot/verse/pkg/client"
+	"github.com/signadot/verse/pkg/codec"
+	"github.com/signadot/verse/pkg/entity"
 )
 
 // verse flow: the work in flight and the work held from now on, through one set of flags. Bare,

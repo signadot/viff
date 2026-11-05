@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/resolver"
+	"github.com/signadot/verse/internal/resolver"
+	"github.com/signadot/verse/pkg/entity"
 )
 
 // `verse resolver grant <ref>` lets the resolver answer for you, at your own verse.for node, and

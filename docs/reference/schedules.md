@@ -63,7 +63,7 @@ The tick carries these fields.
 | `date`, `time`, `year`, `month`, `day`, `weekday`, `timezone` | the calendar of the due instant, in the daemon's zone (`TZ`) |
 
 **The calendar takes the place of a cron line.** Every verse installs a charter of its own when it
-starts ([versed/system.tony](../../versed/system.tony)). It has four schedules and two rules.
+starts ([internal/versed/system.tony](../../internal/versed/system.tony)). It has four schedules and two rules.
 
 The four schedules are `minutely`, `hourly`, `daily` and `weekly`. Their phase is a Monday at
 midnight in the zone.

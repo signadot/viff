@@ -16,10 +16,10 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
-	"github.com/signadot/verse/api"
-	"github.com/signadot/verse/client"
-	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/pkg/api"
+	"github.com/signadot/verse/pkg/client"
+	"github.com/signadot/verse/pkg/codec"
+	"github.com/signadot/verse/pkg/entity"
 )
 
 // ── HTTP helpers (all client commands connect to g.Addr) ─────────────────────

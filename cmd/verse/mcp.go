@@ -12,10 +12,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/scott-cotton/cli"
 
-	"github.com/signadot/verse/api"
-	"github.com/signadot/verse/client"
-	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/verbs"
+	"github.com/signadot/verse/pkg/api"
+	"github.com/signadot/verse/pkg/client"
+	"github.com/signadot/verse/pkg/codec"
+	"github.com/signadot/verse/pkg/verbs"
 )
 
 // verse mcp: the user face of verse as an MCP server (a5mvads7, v27eah17). The host of a person's

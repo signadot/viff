@@ -8,8 +8,8 @@ import (
 
 	"github.com/scott-cotton/cli"
 
-	"github.com/signadot/verse/api"
-	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/pkg/api"
+	"github.com/signadot/verse/pkg/codec"
 )
 
 func resolverCmd() *cli.Command {

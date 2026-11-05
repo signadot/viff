@@ -305,7 +305,7 @@ Run from wherever your `verse` reaches the API — no `kubectl exec` needed, and
 would depend on your current kubectx and skip the version-skew check the CLI's own transport
 does on every request. **The url stays the in-cluster Service name**, because it is *versed*
 that dials it: the CLI only posts `{name, root, url}`, and the probe happens server-side
-(`versed/io.go`). The mirror image of `-docd-advertise-addr`, where the client dials and
+(`internal/versed/io.go`). The mirror image of `-docd-advertise-addr`, where the client dials and
 so the address has to be reachable from where the client is.
 
 ⚠️ **The name has to match `<x>IOName`.** The hint url is baked into the pod
@@ -433,7 +433,7 @@ directory holds people's data; keep it out of the repository.
 ### Repo charters
 
 The reconciler of the verse repository's charters is a charter verse ships at the system level
-(`system/repocharters`, [the example](../docs/reference/examples/repo-charters/repo-charters.tony)):
+(`internal/repocharters`, [the example](../docs/reference/examples/repo-charters/repo-charters.tony)):
 what runs in verse is the tree of `.verse/charters` that `verse/live` holds, and `verse/live` holds
 only a tree an answer said yes to. `verse/live` is a record the git iod keeps, `refs/verse/live`,
 not a branch: each entry holds the charters tree and names the commit of main it came from

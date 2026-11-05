@@ -3,12 +3,12 @@ package main
 import (
 	"testing"
 
-	"github.com/signadot/verse/config"
-	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/runner/runnerd"
-	"github.com/signadot/verse/runner/runnerd/stock"
-	verseagent "github.com/signadot/verse/runner/runnerd/verse"
-	"github.com/signadot/verse/systems"
+	"github.com/signadot/verse/internal/config"
+	"github.com/signadot/verse/pkg/runner"
+	"github.com/signadot/verse/pkg/runner/runnerd"
+	"github.com/signadot/verse/pkg/runner/runnerd/stock"
+	verseagent "github.com/signadot/verse/pkg/runner/runnerd/verse"
+	"github.com/signadot/verse/pkg/systems"
 )
 
 // THE LOCAL RUNNER TAKES A VIRTUAL KEY: a firing whose spawn names one carries it as the

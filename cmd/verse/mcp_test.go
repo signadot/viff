@@ -8,8 +8,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/verbs"
+	"github.com/signadot/verse/pkg/codec"
+	"github.com/signadot/verse/pkg/verbs"
 )
 
 // mcpSession is a client connected to `verse mcp` toward the verse the test started, acting as

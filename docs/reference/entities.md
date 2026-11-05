@@ -508,7 +508,7 @@ The store guards such a write, so the CLI does not:
 | `votes(ana).choice`, keyed | refuses it at the commit; nothing is harmed |
 | `votes[2]` where two stand | refuses it at the patch, naming the length |
 
-`entity/arraywrite_test.go` tests all three answers, so each go-tony upgrade checks them again.
+`pkg/entity/arraywrite_test.go` tests all three answers, so each go-tony upgrade checks them again.
 Why the CLI relies on the third row is under
 [Why it is this way](../design/reference-entities.md#the-cli-and-array-writes).
 

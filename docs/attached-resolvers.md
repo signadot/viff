@@ -150,7 +150,7 @@ answer comes back over each hop. Removing a resolver withdraws the onward asks i
 
 ## Walk it
 
-[`smoke.sh`](../smoke.sh)'s resolver step runs the whole of this against a fresh verse: dan
+[`test/smoke.sh`](../test/smoke.sh)'s resolver step runs the whole of this against a fresh verse: dan
 installs a desk, carol grants it, alice asks carol, the desk serves the ask, asks erin onward, and
 erin's yes comes back on alice's ask as carol's, through the desk.
 

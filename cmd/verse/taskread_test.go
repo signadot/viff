@@ -13,7 +13,7 @@ import (
 
 	"github.com/scott-cotton/cli"
 
-	"github.com/signadot/verse/client"
+	"github.com/signadot/verse/pkg/client"
 )
 
 // taskServer answers GET /tasks/<id> with what next says, one call at a time, and points the

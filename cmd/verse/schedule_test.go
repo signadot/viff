@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/api"
-	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/pkg/api"
+	"github.com/signadot/verse/pkg/codec"
 )
 
 // `verse schedule tick <name> --due <instant>` posts the backfill to the schedule's record, the

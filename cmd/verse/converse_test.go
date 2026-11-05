@@ -2,18 +2,18 @@ package main
 
 import (
 	"context"
-	"github.com/signadot/verse/versed/versedtest"
+	"github.com/signadot/verse/internal/versed/versedtest"
 	"io"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/runner/runnerd/stock"
-	"github.com/signadot/verse/systems/systemstest"
-	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/pkg/entity"
+	"github.com/signadot/verse/pkg/entity/entitytest"
+	"github.com/signadot/verse/pkg/runner"
+	"github.com/signadot/verse/pkg/runner/runnerd/stock"
+	"github.com/signadot/verse/pkg/systems/systemstest"
+	"github.com/signadot/verse/pkg/task"
 )
 
 // parrot is a driver that holds a conversation and proposes nothing: it goes quiet at once,

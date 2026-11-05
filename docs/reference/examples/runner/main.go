@@ -40,10 +40,10 @@ import (
 	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/runner/runnerd"
-	"github.com/signadot/verse/systems"
-	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/pkg/runner"
+	"github.com/signadot/verse/pkg/runner/runnerd"
+	"github.com/signadot/verse/pkg/systems"
+	"github.com/signadot/verse/pkg/task"
 )
 
 func main() {

@@ -12,13 +12,13 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/runner/runnerd"
-	"github.com/signadot/verse/systems"
-	"github.com/signadot/verse/systems/systemstest"
-	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/pkg/entity"
+	"github.com/signadot/verse/pkg/mirror"
+	"github.com/signadot/verse/pkg/runner"
+	"github.com/signadot/verse/pkg/runner/runnerd"
+	"github.com/signadot/verse/pkg/systems"
+	"github.com/signadot/verse/pkg/systems/systemstest"
+	"github.com/signadot/verse/pkg/task"
 )
 
 // runnerFace is a real runner for the client to install: a runnerd handler, as every runner is, so

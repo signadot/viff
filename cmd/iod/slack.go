@@ -6,9 +6,9 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/signadot/verse/entity"
-	verseio "github.com/signadot/verse/io"
-	"github.com/signadot/verse/io/slack"
+	"github.com/signadot/verse/pkg/entity"
+	verseio "github.com/signadot/verse/pkg/io"
+	"github.com/signadot/verse/pkg/io/slack"
 )
 
 // The Slack source: a bot token, the channels the bot is in, and an events endpoint it owns.

@@ -13,40 +13,40 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 
 # PERMANENT exceptions, and every one of them is the SAME exception: a foreign wire format
 # that is not verse's to re-render, at the edge of the process that speaks it.
-#   runner/runnerd/verse/llm.go
+#   pkg/runner/runnerd/verse/llm.go
 #                            — the OpenAI chat-completions schema.
-#   codec/codec.go           — json.Number, in AsInt64. codec is where formats live.
-#   runner/runnerd/verse/modeltest/model.go
+#   pkg/codec/codec.go       — json.Number, in AsInt64. codec is where formats live.
+#   pkg/runner/runnerd/verse/modeltest/model.go
 #                            — the same OpenAI schema, served: the scripted model tests run
 #                              tasks against. The JSON stops at that file too.
-#   io/slack/*.go        — Slack's Web API and its signed event envelopes.
-#   io/linear/*.go       — Linear's GraphQL responses and its signed webhook bodies.
-#   io/github/*.go       — GitHub's REST responses.
-#   runner/runnerd/codex/rpc.go
+#   pkg/io/slack/*.go        — Slack's Web API and its signed event envelopes.
+#   pkg/io/linear/*.go       — Linear's GraphQL responses and its signed webhook bodies.
+#   pkg/io/github/*.go       — GitHub's REST responses.
+#   pkg/runner/runnerd/codex/rpc.go
 #                            — the codex app-server protocol: JSON-RPC over the process's stdio.
 #                              The JSON stops at that file, and what leaves it is typed Go
 #                              values the agent (codex.go) reads.
-#   runner/runnerd/claude/wire.go
+#   pkg/runner/runnerd/claude/wire.go
 #                            — Claude Code's stream protocol: one JSON message per line over the
 #                              process's stdio, control requests both ways and the MCP server
 #                              this side serves inside it. The JSON stops at that file too.
-#   runner/runnerd/delivery/github.go
+#   pkg/runner/runnerd/delivery/github.go
 #                            — GitHub's pull-request endpoints, the one forge write a runner
 #                              makes that is not a ref. Same exception as source/github: the
 #                              JSON stops at that file, and what leaves it is a tool result.
-#   versed/idptest/idp.go
+#   internal/versed/idptest/idp.go
 #                            — OpenID Connect's wire format, served: the identity provider the
 #                              tests point a verse and a CLI at. Discovery documents, key sets
 #                              and tokens are JSON by specification, and the JSON stops at that
 #                              file: a test holds a token as a string and claims as a map.
-#   versed/issuer.go        — the same wire format, issued: verse's own discovery document, key
+#   internal/versed/issuer.go        — the same wire format, issued: verse's own discovery document, key
 #                              set and the tokens it signs, which a relying party outside verse
 #                              reads as the specification writes them.
 #
 # The source connectors are the shape to copy: JSON stops at the
 # package boundary. What they hand back is an entity.Payload, and what they serve is rendered
 # by codec like everything else — so no verse surface acquires a second dialect from this.
-allow='runner/runnerd/verse/llm\.go|runner/runnerd/verse/modeltest/model\.go|codec/codec.go|io/slack/[a-z]+\.go|io/linear/[a-z]+\.go|io/github/[a-z]+\.go|runner/runnerd/delivery/github\.go|runner/runnerd/codex/rpc\.go|runner/runnerd/claude/wire\.go|versed/idptest/idp\.go|versed/issuer\.go'
+allow='pkg/runner/runnerd/verse/llm\.go|pkg/runner/runnerd/verse/modeltest/model\.go|pkg/codec/codec.go|pkg/io/slack/[a-z]+\.go|pkg/io/linear/[a-z]+\.go|pkg/io/github/[a-z]+\.go|pkg/runner/runnerd/delivery/github\.go|pkg/runner/runnerd/codex/rpc\.go|pkg/runner/runnerd/claude/wire\.go|internal/versed/idptest/idp\.go|internal/versed/issuer\.go'
 
 # git ls-files, not a filesystem walk: the tree carries untracked worktree copies and
 # scratch dirs, and a guard that trips on those is a guard people learn to ignore.

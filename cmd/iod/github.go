@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"github.com/signadot/verse/entity"
-	verseio "github.com/signadot/verse/io"
+	"github.com/signadot/verse/pkg/entity"
+	verseio "github.com/signadot/verse/pkg/io"
 	"log"
 	"net/http"
 	"strings"
 
-	"github.com/signadot/verse/io/github"
+	"github.com/signadot/verse/pkg/io/github"
 )
 
 // The GitHub source: a token, a set of repositories, and a webhook it owns.

@@ -133,7 +133,7 @@ name. The name keeps working after the registration is gone.
 
 ## What a caller can tell about a control call
 
-A control call that fails says which failure it is (`task/errors.go`):
+A control call that fails says which failure it is (`pkg/task/errors.go`):
 
 | Error | Meaning |
 |---|---|

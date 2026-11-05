@@ -44,9 +44,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/signadot/verse/entity"
-	verseio "github.com/signadot/verse/io"
-	verseiod "github.com/signadot/verse/io/iod"
+	"github.com/signadot/verse/pkg/entity"
+	verseio "github.com/signadot/verse/pkg/io"
+	verseiod "github.com/signadot/verse/pkg/io/iod"
 )
 
 func main() {

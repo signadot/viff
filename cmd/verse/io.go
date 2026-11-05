@@ -9,8 +9,8 @@ import (
 
 	"github.com/scott-cotton/cli"
 
-	"github.com/signadot/verse/codec"
-	verseio "github.com/signadot/verse/io"
+	"github.com/signadot/verse/pkg/codec"
+	verseio "github.com/signadot/verse/pkg/io"
 )
 
 type iosConfig struct {

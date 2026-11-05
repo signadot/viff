@@ -26,7 +26,7 @@ flowchart TB
     remote["remote<br/>client.HTTP"]
   end
 
-  rt["task runtime (task, runner/runnerd)<br/>Task · Supervisor · Autonomy · Event stream · gate registry"]
+  rt["task runtime (task, pkg/runner/runnerd)<br/>Task · Supervisor · Autonomy · Event stream · gate registry"]
 
   cli -->|"HTTP"| versed
   obs --> store
@@ -59,10 +59,10 @@ one you write. A `Supervisor` governs it: a step outside the task's `Environment
 and the rows of its `Autonomy` decide the rest, the last deciding a step that no other matches. The task emits a stream of events. The stream has a cursor, keeps a
 bounded number of events, and can be resumed. The task posts its gate decisions to a registry.
 
-**`runner/runnerd`** hosts a runner's tasks. `runnerd` serves it over HTTP, with each task in a
+**`pkg/runner/runnerd`** hosts a runner's tasks. `runnerd` serves it over HTTP, with each task in a
 process of its own under bwrap, and `verse up` starts one beside itself as its local runner; a
-test serves one over HTTP (`runner/runnerd/runnerdtest`). **`runner/runnerd/verse`**, **`codex`** and **`claude`** are the agents: verse's own, and
-two foreign CLIs gated inside the run. **`runner/runnerd/stock`** is the runner verse ships,
+test serves one over HTTP (`pkg/runner/runnerd/runnerdtest`). **`pkg/runner/runnerd/verse`**, **`codex`** and **`claude`** are the agents: verse's own, and
+two foreign CLIs gated inside the run. **`pkg/runner/runnerd/stock`** is the runner verse ships,
 running the agents its configuration names and scripts.
 
 **`mirror`** writes a task's state onto its entity, `verse.task.instance.<id>`. It writes the

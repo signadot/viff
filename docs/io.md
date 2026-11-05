@@ -204,7 +204,7 @@ The reasons are in [Why it is this way](#why-it-is-this-way).
 
 ## An iod you deploy
 
-`io/iod` serves the contract as two routes:
+`pkg/io/iod` serves the contract as two routes:
 
 | Route | Answer |
 |---|---|
@@ -400,7 +400,7 @@ the same image as `verse`, and deliberately not in the same process.
 
 The five are not privileged. They are ordinary external sources that are maintained in this
 repository. To write a sixth, copy the sample program. **The third and the fourth iod add
-nothing to `io/`, `versed/` or the CLI.** This tests the claim that the seam is general.
+nothing to `pkg/io/`, `internal/versed/` or the CLI.** This tests the claim that the seam is general.
 
 **The credential is the one difference between them.**
 

@@ -7,7 +7,7 @@ import (
 	"log"
 	"path/filepath"
 
-	verseio "github.com/signadot/verse/io"
+	verseio "github.com/signadot/verse/pkg/io"
 )
 
 // The git-issue source: the issues `git issue` keeps inside a git repository, reflected.

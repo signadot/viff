@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/pkg/entity"
+	"github.com/signadot/verse/pkg/entity/entitytest"
 )
 
 // A READ OF A PATH NOTHING STANDS AT SAYS SO, at every depth, and exits non-zero.

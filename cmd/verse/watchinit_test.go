@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/pkg/entity"
+	"github.com/signadot/verse/pkg/entity/entitytest"
 )
 
 // watchWithin runs a watch that is expected to end, and fails rather than hanging if it does not.

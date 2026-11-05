@@ -32,10 +32,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/signadot/verse/adminface"
-	"github.com/signadot/verse/runner/runnerd"
-	"github.com/signadot/verse/runner/runnerd/stock"
-	"github.com/signadot/verse/systems"
+	"github.com/signadot/verse/internal/adminface"
+	"github.com/signadot/verse/pkg/runner/runnerd"
+	"github.com/signadot/verse/pkg/runner/runnerd/stock"
+	"github.com/signadot/verse/pkg/systems"
 )
 
 func main() {

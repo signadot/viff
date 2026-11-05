@@ -4,7 +4,7 @@ import (
 	"net"
 	"os/user"
 
-	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/pkg/entity"
 )
 
 // localHost is the host part of the local user's name: `user:<login>@localhost`.

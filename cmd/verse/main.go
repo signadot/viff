@@ -15,8 +15,8 @@ import (
 	"github.com/fatih/color"
 	"github.com/scott-cotton/cli"
 
-	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/config"
+	"github.com/signadot/verse/internal/config"
+	"github.com/signadot/verse/pkg/codec"
 )
 
 const defaultAddr = "localhost:9797"

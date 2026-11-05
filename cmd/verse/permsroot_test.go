@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/config"
-	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/internal/config"
+	"github.com/signadot/verse/pkg/entity"
 )
 
 // `verse perms --root` is the top itself, whose address is the empty path — which on this

@@ -3,5 +3,5 @@
 # strings, document separators. Tags and tony's own forms (`.[string]`, `!key(name)`) render as
 # plain scalars.
 *.tony linguist-language=YAML
-# The templates system/ renders into tony are tony with `{{ }}` actions in them.
+# The templates internal/repocharters/ renders into tony are tony with `{{ }}` actions in them.
 *.tony.tmpl linguist-language=YAML

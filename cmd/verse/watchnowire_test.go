@@ -6,7 +6,7 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/pkg/codec"
 )
 
 // --nowire PRINTS THE BLOCK FORM, which is the whole ask: a frame wider than the terminal

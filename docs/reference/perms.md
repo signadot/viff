@@ -10,7 +10,7 @@ This page is the detail of permissions. [The model](../perms.md) defines the wor
 - what each act writes.
 
 The reason for each rule is in the source, beside the code that enforces it
-(`entity/attribution.go`, `versed/perms.go`, `versed/place.go`).
+(`pkg/entity/attribution.go`, `internal/versed/perms.go`, `internal/versed/place.go`).
 
 ## The grammar
 

@@ -46,5 +46,5 @@ verse
 
 ## The scripts
 
-`./smoke.sh` is a different thing. It builds its own binaries and runs its own isolated
+`./test/smoke.sh` is a different thing. It builds its own binaries and runs its own isolated
 server, and it touches nothing of yours.

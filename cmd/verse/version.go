@@ -8,8 +8,8 @@ import (
 	"os"
 	"sync"
 
-	"github.com/signadot/verse/api"
-	"github.com/signadot/verse/client"
+	"github.com/signadot/verse/pkg/api"
+	"github.com/signadot/verse/pkg/client"
 )
 
 // verse is the http.Client every command talks through. Its transport stamps this binary's

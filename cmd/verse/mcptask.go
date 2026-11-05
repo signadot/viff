@@ -14,10 +14,10 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/signadot/verse/api"
-	"github.com/signadot/verse/client"
-	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/pkg/api"
+	"github.com/signadot/verse/pkg/client"
+	"github.com/signadot/verse/pkg/codec"
+	"github.com/signadot/verse/pkg/task"
 )
 
 // The task tools mirror `verse task`: the tasks in the runtime, one task's transcript, running

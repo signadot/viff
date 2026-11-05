@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/signadot/verse/versed/versedtest"
+	"github.com/signadot/verse/internal/versed/versedtest"
 	"io"
 	"net/http/httptest"
 	"os"
@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/runner/runnerd/stock"
+	"github.com/signadot/verse/pkg/entity/entitytest"
+	"github.com/signadot/verse/pkg/mirror"
+	"github.com/signadot/verse/pkg/runner"
+	"github.com/signadot/verse/pkg/runner/runnerd/stock"
 )
 
 // serveKeyless is serve as a `verse up` with no model credential: the local runner runs

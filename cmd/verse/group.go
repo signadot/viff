@@ -7,7 +7,7 @@ import (
 
 	"github.com/scott-cotton/cli"
 
-	"github.com/signadot/verse/api"
+	"github.com/signadot/verse/pkg/api"
 )
 
 // groupCmd is `verse group`: a named set of principals, the grantee `group:<name>` admitting its

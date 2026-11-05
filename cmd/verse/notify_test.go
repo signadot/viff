@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/pkg/entity"
+	"github.com/signadot/verse/pkg/mirror"
 )
 
 // WHAT NEEDS YOU IS NOTIFIED, and only that: a question starting to wait on you (urgent, keyed by

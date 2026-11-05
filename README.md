@@ -92,34 +92,34 @@ second page of charters.
 
 ## What's here
 
-- `entity/` — the store. It is one tree of data, and a kinded path addresses each node.
+- `pkg/entity/` — the store. It is one tree of data, and a kinded path addresses each node.
   The store can be watched, and every commit has a revision. It is durable, and a *scope* is a
   copy-on-write view of it. It runs over logd and docd. Every write names who made it. A node
   belongs to whoever created it, and the store refuses a write that the node's permissions do
   not allow ([permissions](docs/perms.md)).
-- `trigger/` — the rule engine. A rule matches when all of its conditions hold. All the gates
+- `internal/trigger/` — the rule engine. A rule matches when all of its conditions hold. All the gates
   of a rule are asked at the same time, and all must pass. An action is data, not code. A new
   rule acts on what already stands in the store. The engine watches only the subtrees that
   its rules read.
-- `task/` — a *task* is a unit of work that verse governs and that you can steer. An agent or
+- `pkg/task/` — a *task* is a unit of work that verse governs and that you can steer. An agent or
   a shell command does it.
-- `runner/` — where a task runs: on a runner served over HTTP, the one `verse up` starts beside
+- `pkg/runner/` — where a task runs: on a runner served over HTTP, the one `verse up` starts beside
   itself or one registered with it. The engine drives each through one interface, so every
-  `verse task` command works with each. `runner/runnerd/` hosts a runner and serves it over
-  HTTP, and `runner/runnerd/stock/` is the runner verse ships.
-- `mirror/` — writes each running task into the store, as data at `verse.task.instance.<id>`.
+  `verse task` command works with each. `pkg/runner/runnerd/` hosts a runner and serves it over
+  HTTP, and `pkg/runner/runnerd/stock/` is the runner verse ships.
+- `pkg/mirror/` — writes each running task into the store, as data at `verse.task.instance.<id>`.
   So to observe or steer a task, you observe data.
-- `resolver/` — a service that answers asks for whoever grants it. A resolver is installed. It
+- `internal/resolver/` — a service that answers asks for whoever grants it. A resolver is installed. It
   is not written in a charter, because it lasts longer than one rule, and because it belongs to
   whoever runs it. Its `match` says which asks it watches; a person or a place's owner on record
   grants it to answer for them, and its answer is then theirs. To consult somebody it raises an
   onward ask, whose answer comes back as its own.
-- `io/` and `cmd/iod/` — the connection to an external system. An *iod* has two halves: it
+- `pkg/io/` and `cmd/iod/` — the connection to an external system. An *iod* has two halves: it
   reflects state in, and it acts out. You deploy an iod and install it (`verse iod add`). It
   owns a place in the store, such as `git`, and rules react to that place. Verse ships five
   (`iod git|git-issue|slack|linear|github`). To write another, copy the sample program and
   write one function.
-- `versed/` and `cmd/verse/` — the HTTP server and the `verse` CLI. Each command is named in
+- `internal/versed/` and `cmd/verse/` — the HTTP server and the `verse` CLI. Each command is named in
   the singular, and with no argument it lists.
 
   | The CLI | Commands |

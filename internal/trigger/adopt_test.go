@@ -1,0 +1,53 @@
+package trigger
+
+import (
+	"sync"
+	"testing"
+
+	"github.com/signadot/verse/pkg/entity/entitytest"
+	"github.com/signadot/verse/pkg/task"
+)
+
+// a Handle that records control calls; its read plane stays open (never terminal).
+type recHandle struct {
+	mu     sync.Mutex
+	paused bool
+	ch     chan task.Event
+}
+
+func (h *recHandle) Subscribe() (<-chan task.Event, func()) { return h.ch, func() {} }
+func (h *recHandle) SubscribeSince(int64) (<-chan task.Event, func()) {
+	return h.ch, func() {}
+}
+func (h *recHandle) Pause(string) error {
+	h.mu.Lock()
+	h.paused = true
+	h.mu.Unlock()
+	return nil
+}
+func (h *recHandle) Resume(string) error                     { return nil }
+func (h *recHandle) Cancel(string, string) error             { return nil }
+func (h *recHandle) Steer(string, string, string) error      { return nil }
+func (h *recHandle) SetAutonomy(task.Autonomy, string) error { return nil }
+func (h *recHandle) Result() string                          { return "" }
+func (h *recHandle) Err() string                             { return "" }
+func (*recHandle) Refused() map[string]int                   { return nil }
+func (*recHandle) Agent() (string, map[string]string)        { return "", nil }
+
+// A resumed task (Adopt) must be steerable, not merely observed: it is re-tracked
+// under its flow, so a selection of its subject reaches it and flow control holds it.
+func TestAdoptMakesResumedTaskSteerable(t *testing.T) {
+	eng := New(entitytest.Store(t), task.AutoResolver{})
+	h := &recHandle{ch: make(chan task.Event)}
+	eng.Adopt(`demo.pr."1"`, "review-demo.pr.1", h)
+
+	if n := len(eng.SelectFlow(mustSelect(t, "*", `demo.pr."1"`))); n != 1 {
+		t.Fatalf("the selection reached %d tasks, want 1 (adopted task not tracked)", n)
+	}
+	eng.HoldTask("review-demo.pr.1", true)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if !h.paused {
+		t.Fatal("adopted task was not held through its handle — re-tracking missing")
+	}
+}

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/pkg/codec"
 )
 
 // frames is what the server sends, in order. The one --until waits for is not the last, so a

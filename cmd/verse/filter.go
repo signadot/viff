@@ -12,9 +12,9 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
-	"github.com/signadot/verse/api"
-	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/pkg/api"
+	"github.com/signadot/verse/pkg/codec"
+	"github.com/signadot/verse/pkg/entity"
 )
 
 // --if AND --trim, on everything that answers with a collection.

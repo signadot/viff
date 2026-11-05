@@ -3,7 +3,7 @@
 # Built via `make codex-runner-docker`; it COPYs the same locally cross-compiled runnerd the
 # other image does, for the reason that Dockerfile gives. It is a separate image because what it
 # adds is sized by a different thing again: a hundred-megabyte agent binary pinned to the
-# version the codex agent was written against (runner/runnerd/codex), which neither the runtime
+# version the codex agent was written against (pkg/runner/runnerd/codex), which neither the runtime
 # image nor the plain runner has any reason to carry.
 FROM debian:bookworm-slim
 ARG TARGETARCH

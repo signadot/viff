@@ -1,7 +1,7 @@
 site_name: Verse
 site_description: A shared space where a team's software delivery work runs, under rules the team writes.
 # Where the site is served. What makes a page's address absolute: the canonical link on each
-# page, and the card image a link to the site unfurls with (overrides/main.html).
+# page, and the card image a link to the site unfurls with (docs/overrides/main.html).
 site_url: https://signadot.github.io/verse/
 # The repository, linked with its icon from the header of every page, as tony-format's site
 # does. edit_uri is empty so the link is to the repository rather than a per-page "Edit on
@@ -39,6 +39,11 @@ exclude_docs: |
   /reference/runnerd.md
   /reference/store.md
   /reference/examples/
+  # Not pages: the theme's template directory, the docs toolchain's pins, and the repository's
+  # own notes, all kept under docs/ so the root stays short.
+  /overrides/
+  /requirements.txt
+  /repository.md
 
 hooks:
   - scripts/mkdocs_repo_links.py
@@ -83,8 +88,8 @@ nav:
 theme:
   name: mkdocs
   highlightjs: false
-  # overrides/main.html marks every page noindex, nofollow until launch.
-  custom_dir: overrides
+  # docs/overrides/main.html marks every page noindex, nofollow until launch.
+  custom_dir: docs/overrides
 
 markdown_extensions:
   - tables: {}

@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	verseio "github.com/signadot/verse/io"
+	verseio "github.com/signadot/verse/pkg/io"
 )
 
 // THE OUT HALF ACTS AS ITS ROOT'S IOD, which is the principal `verse iod add` writes the out

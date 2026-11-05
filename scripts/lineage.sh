@@ -30,7 +30,7 @@
 # replay verb. This script always installs its rules first, so it never meets that; running it
 # against a repository already reflected does.
 #
-# Like seed-demo.sh — and unlike smoke.sh — this talks to YOUR verse and leaves what it
+# Like seed-demo.sh — and unlike test/smoke.sh — this talks to YOUR verse and leaves what it
 # writes behind for you to poke at.
 #
 #   ./verse up                        # in another terminal
@@ -454,7 +454,7 @@ cat <<'EDGES'
 
   3. THE MANIFEST COPIES; IT DOES NOT TRACK. Merge another PR onto main now and this
      release does not change — the read happened at the commit that fired the rule.
-     That is by design (trigger/path.go), and it is also what makes the predicate safe
+     That is by design (internal/trigger/path.go), and it is also what makes the predicate safe
      to have: it is evaluated against the one snapshot the whole firing reads, not
      against whatever the store reaches later. The proposed `!view.*` spelling for the
      tracking half is not built.

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/pkg/task"
 )
 
 // The delimiter every gate id carries must reach the route as ITSELF. That is the whole

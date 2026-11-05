@@ -5,8 +5,8 @@ import (
 	"crypto/rsa"
 	"errors"
 	"fmt"
-	"github.com/signadot/verse/runner/runnerd/runnerdtest"
-	"github.com/signadot/verse/versed/versedtest"
+	"github.com/signadot/verse/internal/versed/versedtest"
+	"github.com/signadot/verse/pkg/runner/runnerd/runnerdtest"
 	"io"
 	"net/http/httptest"
 	"strings"
@@ -15,9 +15,9 @@ import (
 
 	"github.com/scott-cotton/cli"
 
-	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/versed"
+	"github.com/signadot/verse/internal/versed"
+	"github.com/signadot/verse/pkg/entity"
+	"github.com/signadot/verse/pkg/entity/entitytest"
 )
 
 // testAddr is where serve() put the verse this test talks to. rootCmd() resolves the

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/pkg/entity"
 )
 
 // `--paths` WALKS, and the walk is what makes it impossible to be silently wrong.

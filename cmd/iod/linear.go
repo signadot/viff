@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/signadot/verse/io/linear"
+	"github.com/signadot/verse/pkg/io/linear"
 )
 
 // The Linear source: a credential, a set of teams, and a webhook it owns.

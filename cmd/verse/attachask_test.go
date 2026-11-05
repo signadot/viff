@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/signadot/verse/versed/versedtest"
+	"github.com/signadot/verse/internal/versed/versedtest"
 	"io"
 	"net/http/httptest"
 	"os"
@@ -16,14 +16,14 @@ import (
 
 	"github.com/scott-cotton/cli"
 
-	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/entity/entitytest"
-	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/runner/runnerd/stock"
-	verseagent "github.com/signadot/verse/runner/runnerd/verse"
-	"github.com/signadot/verse/systems/systemstest"
-	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/pkg/entity"
+	"github.com/signadot/verse/pkg/entity/entitytest"
+	"github.com/signadot/verse/pkg/mirror"
+	"github.com/signadot/verse/pkg/runner"
+	"github.com/signadot/verse/pkg/runner/runnerd/stock"
+	verseagent "github.com/signadot/verse/pkg/runner/runnerd/verse"
+	"github.com/signadot/verse/pkg/systems/systemstest"
+	"github.com/signadot/verse/pkg/task"
 )
 
 // serveCalls is serve with the verse runner hosting scripts, the way `verse up` does: a script

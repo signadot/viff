@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/pkg/codec"
+	"github.com/signadot/verse/pkg/entity"
 )
 
 func seedVoted(t *testing.T, store entity.Store) {

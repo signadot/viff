@@ -75,7 +75,7 @@ A delta carries exactly two facts that a reader can get without the earlier stat
 A removal is the **`!delete` tag**, not a null. A patch has no absence to observe, so a delta must
 spell a removal. Verse writes the tag (`entity.Removed`), and `tony.Diff` emits it for a key that
 went away. A bare null in a delta is an ordinary value that is set. `payload: null` is a legal
-payload. If verse read a null as a removal, no entity could hold that payload (`entity/change.go`,
+payload. If verse read a null as a removal, no entity could hold that payload (`pkg/entity/change.go`,
 `mergeInto`).
 
 ## The decision

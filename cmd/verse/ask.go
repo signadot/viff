@@ -18,12 +18,12 @@ import (
 	"github.com/scott-cotton/cli"
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/api"
-	"github.com/signadot/verse/client"
-	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/mirror"
-	"github.com/signadot/verse/verbs"
+	"github.com/signadot/verse/pkg/api"
+	"github.com/signadot/verse/pkg/client"
+	"github.com/signadot/verse/pkg/codec"
+	"github.com/signadot/verse/pkg/entity"
+	"github.com/signadot/verse/pkg/mirror"
+	"github.com/signadot/verse/pkg/verbs"
 )
 
 // `verse ask` is asking somebody something, and following what you asked (docs/asking.md).
@@ -901,7 +901,7 @@ func (w *askWatch) notify(a alert) {
 const askExpirySkew = time.Minute
 
 // removal is what an ask's going was, from the record it last stood as: a settled ask goes at the
-// expiry written on it (versed/askttl.go), and one taken away before then, or while it waited, was
+// expiry written on it (internal/versed/askttl.go), and one taken away before then, or while it waited, was
 // withdrawn. Replayed long after, a settled ask withdrawn before its expiry reads as expired: the
 // removal carries no date, and the watch has only its own clock to read.
 func (w *askWatch) removal(prev entity.Payload) string {

@@ -25,7 +25,7 @@ This is a simple pattern. For supervision as a live conversation, rather than a 
 install, see [resolvers](attached-resolvers.md).
 
 A test drives the charter below through each of its routes
-([`trigger/supervise_test.go`](../trigger/supervise_test.go)). The last section names the gaps.
+([`internal/trigger/supervise_test.go`](../internal/trigger/supervise_test.go)). The last section names the gaps.
 
 ## Two supervisors, one word
 

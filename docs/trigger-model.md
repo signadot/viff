@@ -99,7 +99,7 @@ Every gate must pass. A rule with no gates fires without asking anybody.
 
 A rule is data, with no code in it. So a charter can be installed over the wire, stored, and
 read back like any other data. The engine reads the rule directly; there is no compiled form. The Go
-types are in [trigger.go](../trigger/trigger.go).
+types are in [trigger.go](../internal/trigger/trigger.go).
 
 ## The rule
 

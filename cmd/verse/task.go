@@ -13,13 +13,13 @@ import (
 
 	"github.com/scott-cotton/cli"
 
-	"github.com/signadot/verse/api"
-	"github.com/signadot/verse/client"
-	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/launch"
-	"github.com/signadot/verse/systems"
-	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/pkg/api"
+	"github.com/signadot/verse/pkg/client"
+	"github.com/signadot/verse/pkg/codec"
+	"github.com/signadot/verse/pkg/entity"
+	"github.com/signadot/verse/pkg/launch"
+	"github.com/signadot/verse/pkg/systems"
+	"github.com/signadot/verse/pkg/task"
 )
 
 // taskSubs is the group's verbs. It is a function rather than a slice so each rootCmd() gets

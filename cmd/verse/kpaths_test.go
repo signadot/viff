@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/pkg/entity"
 )
 
 // `--kpaths` IS THE SAME LISTING AS ONE TOKEN PER LINE, and it exists for the one thing steps

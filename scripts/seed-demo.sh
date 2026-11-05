@@ -8,7 +8,7 @@
 # verse looks the same as a broken one: `verse data`, `verse charter` and `verse question`
 # all answer with nothing. This seeds enough that they don't, and prints what to type next.
 #
-# Unlike smoke.sh — which builds its own binaries and runs its own isolated server — this
+# Unlike test/smoke.sh — which builds its own binaries and runs its own isolated server — this
 # talks to YOUR verse, and leaves what it writes behind for you to play with.
 #
 #   ./verse up                       # in another terminal (or: make seed-demo)

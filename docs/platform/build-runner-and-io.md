@@ -15,7 +15,7 @@ runner.
 
 | Way | What you write | What you get |
 |---|---|---|
-| A, in Go | a `Builder`, a driver and an executor, on the package `runner/runnerd` | `runnerd` serves every route of the contract |
+| A, in Go | a `Builder`, a driver and an executor, on the package `pkg/runner/runnerd` | `runnerd` serves every route of the contract |
 | B, in any language | an HTTP server | nothing. You serve every route yourself. |
 
 The sample, [examples/runner/main.go](../reference/examples/runner/main.go), is way A. It
@@ -239,7 +239,7 @@ The sample does not do 7 and 8. Its `build` reads the id, the prompt, the enviro
 the launch and no other field. Add the refusals before you deploy a copy of it.
 
 Verse has no conformance test that a new runner can run against itself. There is one
-exception, for Go. The package `task/tasktest` tests a Go type that produces a
+exception, for Go. The package `pkg/task/tasktest` tests a Go type that produces a
 `task.Snapshot`. It tests four properties.
 
 - The snapshot reports the agent.
@@ -313,7 +313,7 @@ the difference.
 
 ### Serve it
 
-`iod.New(src).Handler()`, from the package `io/iod`, serves the two routes that verse
+`iod.New(src).Handler()`, from the package `pkg/io/iod`, serves the two routes that verse
 dials.
 
 | Route | What it answers |

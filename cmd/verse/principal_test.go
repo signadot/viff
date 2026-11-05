@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/pkg/entity"
 )
 
 // The config's `user:` is who the CLI acts as: what it writes is theirs, and the verse lists

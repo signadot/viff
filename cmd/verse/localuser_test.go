@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/config"
+	"github.com/signadot/verse/internal/config"
 )
 
 // loggedIn sets who the operating system says is logged in, for one test.

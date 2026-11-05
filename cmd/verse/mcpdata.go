@@ -7,7 +7,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/signadot/verse/verbs"
+	"github.com/signadot/verse/pkg/verbs"
 )
 
 // The data tools mirror `verse data`: the verse at an address. Each is a verb a runner's verse

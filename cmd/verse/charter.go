@@ -11,10 +11,10 @@ import (
 	"github.com/scott-cotton/cli"
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/charterfile"
-	"github.com/signadot/verse/client"
-	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/entity"
+	"github.com/signadot/verse/pkg/charterfile"
+	"github.com/signadot/verse/pkg/client"
+	"github.com/signadot/verse/pkg/codec"
+	"github.com/signadot/verse/pkg/entity"
 )
 
 // THE CHARTER IS ONE COMMAND, because it is one thing: rules and levels are installed from one
@@ -42,7 +42,7 @@ import (
 // SEARCH — it looked a name up in every charter — and that survives where it was useful, in the
 // refusal: the server names the charter that holds it and gives the path that reaches it.
 //
-// The tree is the SERVER's (versed/charter.go); this end asks for an address and a depth and
+// The tree is the SERVER's (internal/versed/charter.go); this end asks for an address and a depth and
 // renders what comes back as charter files (charterfile.go), which is what keeps the two from
 // disagreeing about shape.
 
@@ -78,15 +78,15 @@ type charterFlags struct {
 	// installed at its own `at:`; without, every charter at or under the path is written there.
 	Dir string `cli:"name=dir aliases=d desc='with --add, install every charter file under DIR; without, write each charter at or under the path to a file in DIR'"`
 	// Prune makes `-a -d` a sync: what stands at and under the path afterwards is what the
-	// directory holds. It is `-R <path>` then `-a -d`, as one step (versed/charterprune.go).
+	// directory holds. It is `-R <path>` then `-a -d`, as one step (internal/versed/charterprune.go).
 	Prune bool `cli:"name=prune desc='with --add --dir, remove what the directory leaves out at and under the path'"`
 	// Wait holds an install's answer until its rules are armed, or that long: an install answers
 	// once the charters are accepted, and a rule's watch opens at the store's pace. Without it
 	// the answer says which rules are still arming; with it, one still arming when the time is
-	// up is answered with exit status 3 (versed/charter.go, api.InstalledPackage).
+	// up is answered with exit status 3 (internal/versed/charter.go, api.InstalledPackage).
 	Wait string `cli:"name=wait desc='with --add, hold the answer until the rules are armed, or this long (as 30s); exit 3 if one is still arming'"`
 	// Check asks whether the charters of -d or -f would install at the path as `-a -d --prune`
-	// installs them, and what would change, installing nothing (versed/chartercheck.go). -f is a
+	// installs them, and what would change, installing nothing (internal/versed/chartercheck.go). -f is a
 	// directory holding that one file, the prune included. A refusal is its answer, as an
 	// install's verdict, not an error.
 	Check bool `cli:"name=check desc='with -d, or -f as a directory of that one file: whether the charters would install at the path as -a -d --prune would, and what would change; installs nothing'"`
@@ -394,7 +394,7 @@ func charterAdd(cc *cli.Context, at, file string) error {
 // the command, as it has always read.
 func installReply(cc *cli.Context, sending string, q url.Values, defs []*ir.Node) error {
 	if trig.Wait != "" {
-		q.Set("wait", trig.Wait) // read by the server, the one reader of it (versed/charter.go)
+		q.Set("wait", trig.Wait) // read by the server, the one reader of it (internal/versed/charter.go)
 	}
 	c := apiClient()
 	resp, err := c.PostNodes("/charter", q, defs)

@@ -16,17 +16,17 @@ import (
 
 	"github.com/scott-cotton/cli"
 
-	"github.com/signadot/verse/adminface"
-	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/config"
-	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/runner/runnerd"
-	"github.com/signadot/verse/runner/runnerd/stock"
-	verseagent "github.com/signadot/verse/runner/runnerd/verse"
-	"github.com/signadot/verse/system/repocharters"
-	"github.com/signadot/verse/task"
-	"github.com/signadot/verse/versed"
+	"github.com/signadot/verse/internal/adminface"
+	"github.com/signadot/verse/internal/config"
+	"github.com/signadot/verse/internal/repocharters"
+	"github.com/signadot/verse/internal/versed"
+	"github.com/signadot/verse/pkg/codec"
+	"github.com/signadot/verse/pkg/entity"
+	"github.com/signadot/verse/pkg/runner"
+	"github.com/signadot/verse/pkg/runner/runnerd"
+	"github.com/signadot/verse/pkg/runner/runnerd/stock"
+	verseagent "github.com/signadot/verse/pkg/runner/runnerd/verse"
+	"github.com/signadot/verse/pkg/task"
 )
 
 type upConfig struct {
@@ -129,7 +129,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		return err
 	}
 
-	// THE ENGINE'S TRACE, off unless asked for. Every `tracef` in trigger/ — which rule was
+	// THE ENGINE'S TRACE, off unless asked for. Every `tracef` in internal/trigger/ — which rule was
 	// evaluated at which commit, why a firing did not happen, what a read resolved to — is
 	// wired to slog Debug, and nothing anywhere turned Debug on, so all of it was unreachable
 	// from a running verse. A rule that silently does not fire is the hardest thing a charter

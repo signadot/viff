@@ -19,7 +19,7 @@ build:
     # manifests and the cluster travel together. "" falls back to the current context, which is
     # right for minikube and for anyone whose cluster this file has never heard of.
     kubeContext: ""
-    # Full image ref incl. tag (deploy/Dockerfile). Override: -e image=localhost:5000/verse:dev
+    # Full image ref incl. tag (build/Dockerfile). Override: -e image=localhost:5000/verse:dev
     image: "signadot/verse:latest"
     # Container imagePullPolicy. "" = leave the k8s default (Always for :latest, else
     # IfNotPresent). minikube/Docker Desktop use a locally-loaded image → set Never.
@@ -268,17 +268,17 @@ build:
     ingressClassName: ""
 
     # A charter versed installs at start AS THE SYSTEM, by path, relative to deploy/ or absolute (VERSE_SYSTEM_CHARTER,
-    # config/config.go). "" installs none. It is how a rule that has to read what no person may —
+    # internal/config/config.go). "" installs none. It is how a rule that has to read what no person may —
     # every ask, to tell each person the ones waiting on them — gets installed at all: `--as
     # system` over the api is refused. Read at start, so a changed file takes a restart.
     systemCharter: ""
 
     # Whether versed's own runner hosts work, beside the runners registered with it
-    # (VERSE_LOCAL_RUNNER, `localRunner` in config/config.go). False is a central versed: every
+    # (VERSE_LOCAL_RUNNER, `localRunner` in internal/config/config.go). False is a central versed: every
     # spawn is routed to a registered runner (docs/runners.md, "Where a spawn runs").
     localRunner: true
 
-    # verse's `auth` block, by path, relative to deploy/ or absolute (VERSE_CONFIG, config/config.go): who verifies
+    # verse's `auth` block, by path, relative to deploy/ or absolute (VERSE_CONFIG, internal/config/config.go): who verifies
     # people, which iods are trusted for whose accounts, and how the iods prove themselves
     # (docs/reference/up.md). "" leaves versed as it is: a request is whoever it says. The env
     # verse reads (VERSE_PERMS_ADMINS, the model's) still applies over the file. Read at start.

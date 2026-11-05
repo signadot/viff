@@ -25,11 +25,11 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"golang.org/x/mod/module"
 
-	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/runner/runnerd"
-	"github.com/signadot/verse/runner/runnerd/stock"
-	"github.com/signadot/verse/versed"
+	"github.com/signadot/verse/internal/versed"
+	"github.com/signadot/verse/pkg/codec"
+	"github.com/signadot/verse/pkg/runner"
+	"github.com/signadot/verse/pkg/runner/runnerd"
+	"github.com/signadot/verse/pkg/runner/runnerd/stock"
 )
 
 // THE LOCAL RUNNER is a runnerd `verse up` starts beside itself, as it starts logd and docd: a

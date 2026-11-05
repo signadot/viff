@@ -82,10 +82,10 @@ Rows, the resolver, boundaries and the terminal are the same wherever the task r
 ## The loop is a state machine
 
 In process, the loop is a pure transition, `step(state, input) → (state, []effect)`
-(`task/machine.go`). The shell around it does the I/O. You need to know two things about it
+(`pkg/task/machine.go`). The shell around it does the I/O. You need to know two things about it
 without reading it.
 
-**The contract is five properties** (`task/contract.go`):
+**The contract is five properties** (`pkg/task/contract.go`):
 
 1. A task reaches a terminal at most once, and emits nothing after it.
 2. A task does not terminate while a child is outstanding.
@@ -227,7 +227,7 @@ A resolve without a `choice` answers `400`, and the gate stays open.
 
 Each body is one Go type: the launch and the requests of the runner's own in package `runner`,
 and a task's snapshot, events and autonomy in package `task`. Verse uses them when it sends
-and the stock runner (`runner/runnerd`) when it reads. Each is in the schema under its name
+and the stock runner (`pkg/runner/runnerd`) when it reads. Each is in the schema under its name
 (`verse schema`), which is where a runner in another language reads it.
 
 | Route | Type | Schema name |

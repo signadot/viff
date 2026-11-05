@@ -13,9 +13,9 @@ import (
 	"github.com/scott-cotton/cli"
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/charterfile"
-	"github.com/signadot/verse/client"
-	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/pkg/charterfile"
+	"github.com/signadot/verse/pkg/client"
+	"github.com/signadot/verse/pkg/codec"
 )
 
 // WHAT `verse c` PRINTS IS WHAT `verse c -a` INSTALLS, one charter at a time:

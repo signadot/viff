@@ -2,8 +2,8 @@ package main
 
 import (
 	"bytes"
-	"github.com/signadot/verse/runner/runnerd/runnerdtest"
-	"github.com/signadot/verse/versed/versedtest"
+	"github.com/signadot/verse/internal/versed/versedtest"
+	"github.com/signadot/verse/pkg/runner/runnerd/runnerdtest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -19,14 +19,14 @@ import (
 
 	"github.com/scott-cotton/cli"
 
-	"github.com/signadot/verse/api"
-	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/config"
-	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/entity/entitytest"
-	verseio "github.com/signadot/verse/io"
-	"github.com/signadot/verse/versed"
-	"github.com/signadot/verse/versed/idptest"
+	"github.com/signadot/verse/internal/config"
+	"github.com/signadot/verse/internal/versed"
+	"github.com/signadot/verse/internal/versed/idptest"
+	"github.com/signadot/verse/pkg/api"
+	"github.com/signadot/verse/pkg/codec"
+	"github.com/signadot/verse/pkg/entity"
+	"github.com/signadot/verse/pkg/entity/entitytest"
+	verseio "github.com/signadot/verse/pkg/io"
 )
 
 // `verse account login` proves who is at the keyboard to the verse's identity provider, and from then on

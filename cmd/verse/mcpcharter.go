@@ -11,8 +11,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/signadot/verse/charterfile"
-	"github.com/signadot/verse/verbs"
+	"github.com/signadot/verse/pkg/charterfile"
+	"github.com/signadot/verse/pkg/verbs"
 )
 
 // The charter tools mirror `verse charter`: its read, --check, -a and -r (-R stays on the command

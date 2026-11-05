@@ -9,7 +9,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/verbs"
+	"github.com/signadot/verse/pkg/verbs"
 )
 
 // The question tools mirror `verse question`, the answerer's side: what is asked of you, and

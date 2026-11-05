@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/mirror"
+	"github.com/signadot/verse/pkg/mirror"
 )
 
 // ASKING THROUGH THE TOOLS, END TO END: victor asks oscar, oscar sees it waiting and answers it,

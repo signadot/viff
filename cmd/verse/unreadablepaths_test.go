@@ -2,8 +2,8 @@ package main
 
 import (
 	"errors"
-	"github.com/signadot/verse/runner/runnerd/runnerdtest"
-	"github.com/signadot/verse/versed/versedtest"
+	"github.com/signadot/verse/internal/versed/versedtest"
+	"github.com/signadot/verse/pkg/runner/runnerd/runnerdtest"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -11,8 +11,8 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
-	"github.com/signadot/verse/entity"
-	"github.com/signadot/verse/entity/entitytest"
+	"github.com/signadot/verse/pkg/entity"
+	"github.com/signadot/verse/pkg/entity/entitytest"
 )
 
 // unreadable is a store whose reads do not happen — the shape of a store under load, where a

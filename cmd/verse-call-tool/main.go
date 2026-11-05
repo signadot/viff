@@ -34,8 +34,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/signadot/verse/codec"
-	"github.com/signadot/verse/runner/runnerd/calltool"
+	"github.com/signadot/verse/pkg/codec"
+	"github.com/signadot/verse/pkg/runner/runnerd/calltool"
 )
 
 const (

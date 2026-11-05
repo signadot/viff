@@ -12,8 +12,8 @@ import (
 
 	"github.com/scott-cotton/cli"
 
-	"github.com/signadot/verse/api"
-	"github.com/signadot/verse/codec"
+	"github.com/signadot/verse/pkg/api"
+	"github.com/signadot/verse/pkg/codec"
 )
 
 // flowServer is a verse that records the flow verbs it is sent and answers the listing with rows.

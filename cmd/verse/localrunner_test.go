@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/config"
-	"github.com/signadot/verse/runner"
-	"github.com/signadot/verse/runner/runnerd"
-	"github.com/signadot/verse/runner/runnerd/stock"
-	"github.com/signadot/verse/task"
+	"github.com/signadot/verse/internal/config"
+	"github.com/signadot/verse/pkg/runner"
+	"github.com/signadot/verse/pkg/runner/runnerd"
+	"github.com/signadot/verse/pkg/runner/runnerd/stock"
+	"github.com/signadot/verse/pkg/task"
 )
 
 // THE LOCAL RUNNER'S TOKEN is made on the first run on a data dir, kept there for the user alone,

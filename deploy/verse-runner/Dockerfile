@@ -1,7 +1,7 @@
 # The verse runner image — a runner that codes, and the toolchain the work needs.
 #
 # Built via `make runner-docker` (which cross-compiles first); not a bare `docker build`, for
-# the reason the root Dockerfile gives: binaries are built LOCALLY and copied in, so the image
+# the reason build/Dockerfile gives: binaries are built LOCALLY and copied in, so the image
 # stays in sync with your build cache and does no Go compilation.
 #
 # It is a SEPARATE image from the verse runtime, deliberately. That one is thin on purpose —

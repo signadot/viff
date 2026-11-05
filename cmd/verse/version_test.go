@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/signadot/verse/api"
+	"github.com/signadot/verse/pkg/api"
 )
 
 // stub is a server that answers with the version it is told to claim, and records what the

@@ -80,7 +80,7 @@ The file names where its cutoff came from.
 | a read | beside the request loop of logd | a limit of its own |
 | a write | on the request loop of logd, behind every other write of the session | a separate number |
 
-Both limits are constants in `entity/logdstore.go`. When the connection goes quiet, the
+Both limits are constants in `pkg/entity/logdstore.go`. When the connection goes quiet, the
 session connects again. It does not fail the caller.
 
 **The readiness probe answers from this process alone.** `/healthz` reports three things:

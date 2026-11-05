@@ -10,7 +10,7 @@ import (
 	"github.com/scott-cotton/cli"
 	logd "github.com/signadot/tony-format/go-tony/system/logd/server"
 
-	"github.com/signadot/verse/config"
+	"github.com/signadot/verse/internal/config"
 )
 
 // parseCutoff is a copy of logd's duration syntax, kept out of the binary's imports. A value
