@@ -11,9 +11,9 @@ import (
 
 	"github.com/signadot/verse/pkg/runner/runnerd/runnerdtest"
 
-	"github.com/signadot/verse/internal/versed/idptest"
 	"github.com/signadot/verse/pkg/api"
 	"github.com/signadot/verse/pkg/entity/entitytest"
+	"github.com/signadot/verse/pkg/idptest"
 	"github.com/signadot/verse/pkg/runner"
 )
 

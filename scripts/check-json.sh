@@ -34,7 +34,7 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 #                            — GitHub's pull-request endpoints, the one forge write a runner
 #                              makes that is not a ref. Same exception as source/github: the
 #                              JSON stops at that file, and what leaves it is a tool result.
-#   internal/versed/idptest/idp.go
+#   pkg/idptest/idp.go
 #                            — OpenID Connect's wire format, served: the identity provider the
 #                              tests point a verse and a CLI at. Discovery documents, key sets
 #                              and tokens are JSON by specification, and the JSON stops at that
@@ -46,7 +46,7 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 # The source connectors are the shape to copy: JSON stops at the
 # package boundary. What they hand back is an entity.Payload, and what they serve is rendered
 # by codec like everything else — so no verse surface acquires a second dialect from this.
-allow='pkg/runner/runnerd/verse/llm\.go|pkg/runner/runnerd/verse/modeltest/model\.go|pkg/codec/codec.go|pkg/io/slack/[a-z]+\.go|pkg/io/linear/[a-z]+\.go|pkg/io/github/[a-z]+\.go|pkg/runner/runnerd/delivery/github\.go|pkg/runner/runnerd/codex/rpc\.go|pkg/runner/runnerd/claude/wire\.go|internal/versed/idptest/idp\.go|internal/versed/issuer\.go'
+allow='pkg/runner/runnerd/verse/llm\.go|pkg/runner/runnerd/verse/modeltest/model\.go|pkg/codec/codec.go|pkg/io/slack/[a-z]+\.go|pkg/io/linear/[a-z]+\.go|pkg/io/github/[a-z]+\.go|pkg/runner/runnerd/delivery/github\.go|pkg/runner/runnerd/codex/rpc\.go|pkg/runner/runnerd/claude/wire\.go|pkg/idptest/idp\.go|internal/versed/issuer\.go'
 
 # git ls-files, not a filesystem walk: the tree carries untracked worktree copies and
 # scratch dirs, and a guard that trips on those is a guard people learn to ignore.

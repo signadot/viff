@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/internal/versed/idptest"
 	"github.com/signadot/verse/pkg/api"
 	"github.com/signadot/verse/pkg/codec"
 	"github.com/signadot/verse/pkg/entity"
+	"github.com/signadot/verse/pkg/idptest"
 )
 
 // A request carrying an id_token from a provider the deployment names is whoever that account is

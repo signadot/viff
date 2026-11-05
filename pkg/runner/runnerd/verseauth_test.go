@@ -19,8 +19,8 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 
-	"github.com/signadot/verse/internal/versed/idptest"
 	"github.com/signadot/verse/pkg/api"
+	"github.com/signadot/verse/pkg/idptest"
 	"github.com/signadot/verse/pkg/runner"
 )
 

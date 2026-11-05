@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/internal/versed/idptest"
 	"github.com/signadot/verse/pkg/api"
 	"github.com/signadot/verse/pkg/codec"
 	"github.com/signadot/verse/pkg/entity"
+	"github.com/signadot/verse/pkg/idptest"
 	"github.com/signadot/verse/pkg/mirror"
 )
 
