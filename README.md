@@ -92,6 +92,15 @@ second page of charters.
 
 ## What's here
 
+Three tiers of package. Public by intent is what the two documented examples import: a runner
+is built on `pkg/runner`, `pkg/runner/runnerd`, `pkg/systems` and `pkg/task`; an iod on
+`pkg/entity`, `pkg/io` and `pkg/io/iod`; a program that drives a verse on `pkg/client`. The rest
+of `pkg/` is public because Go makes it so, being what those pull in, and nothing in it is
+promised yet. `internal/` is versed's own, until a documented need moves something out: opening
+a package is free, closing one breaks whoever imported it. `internal/iotests` holds the shipped
+iods' tests that run against a real versed, and, for github, linear and slack, their unit tests
+too, moved whole so that the fakes both kinds share stay unexported.
+
 - `pkg/entity/` — the store. It is one tree of data, and a kinded path addresses each node.
   The store can be watched, and every commit has a revision. It is durable, and a *scope* is a
   copy-on-write view of it. It runs over logd and docd. Every write names who made it. A node
